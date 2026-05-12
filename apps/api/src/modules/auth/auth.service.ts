@@ -30,6 +30,10 @@ function roleInitialStatus(role: UserRole): "active" | "pending" {
 
 export class AuthService {
   async register(payload: RegisterRequest): Promise<AuthServiceResult> {
+    if (payload.role === "admin") {
+      return { ok: false, code: "AUTH_FORBIDDEN", message: "Admin accounts cannot be registered publicly.", statusCode: 403 };
+    }
+
     const email = payload.email.toLowerCase().trim();
 
     try {
@@ -218,6 +222,10 @@ export class AuthService {
     const user = await usersRepository.findById(payload.sub);
     if (!user) {
       return { ok: false, code: "UNAUTHORIZED", message: "User not found." };
+    }
+
+    if (user.status === "suspended" || user.status === "banned") {
+      return { ok: false, code: "AUTH_ACCOUNT_SUSPENDED", message: "Account is suspended.", statusCode: 403 };
     }
 
     const authUser: AuthUser = {

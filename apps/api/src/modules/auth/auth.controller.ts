@@ -30,7 +30,11 @@ export const authController = {
       return;
     }
     const result = await authService.register(parsed.data);
-    reply.status(result.ok ? 201 : 409).send(result);
+    if (!result.ok) {
+      reply.status(result.statusCode ?? 409).send(result);
+      return;
+    }
+    reply.status(201).send(result);
   },
 
   async logout(
@@ -54,6 +58,6 @@ export const authController = {
       return;
     }
     const result = await authService.getMe(token);
-    reply.status(result.ok ? 200 : 401).send(result);
+    reply.status(result.ok ? 200 : (result.statusCode ?? 401)).send(result);
   },
 };
