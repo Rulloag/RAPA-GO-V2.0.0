@@ -3,7 +3,7 @@
  * Types for Trip, Wallet, Payment, Guide, Rental, etc. will be added here
  * as each module enters the implementation phase.
  *
- * Current state: foundational utility types + auth types (Phase 6).
+ * Current state: foundational utility types + auth types (Phase 6) + API response types (Phase 7).
  */
 
 import type { UserRole } from "../constants/index.js";
@@ -26,6 +26,49 @@ export type PaginatedResponse<T> = {
   page: number;
   pageSize: number;
 };
+
+// ─── API response envelope (Phase 7) ─────────────────────────────────────────
+
+/**
+ * Canonical error codes used across mobile and backend.
+ * Client-side codes (NETWORK_ERROR, TIMEOUT, INVALID_RESPONSE) are
+ * produced by the API client before reaching the backend.
+ */
+export type ApiErrorCode =
+  // Client-side transport errors
+  | "NETWORK_ERROR"
+  | "TIMEOUT"
+  | "INVALID_RESPONSE"
+  // Generic server errors
+  | "INTERNAL_SERVER_ERROR"
+  | "VALIDATION_ERROR"
+  | "NOT_FOUND"
+  | "UNAUTHORIZED"
+  | "FORBIDDEN"
+  // Auth-specific
+  | "AUTH_NOT_IMPLEMENTED"
+  | "AUTH_INVALID_CREDENTIALS"
+  | "AUTH_EMAIL_TAKEN"
+  | "AUTH_TOKEN_EXPIRED"
+  | (string & Record<never, never>); // allow module-specific codes without losing autocomplete
+
+/** Successful API response envelope. */
+export type ApiSuccessResponse<T> = {
+  ok: true;
+  data: T;
+  statusCode: number;
+};
+
+/** Error API response envelope. */
+export type ApiErrorResponse = {
+  ok: false;
+  code: ApiErrorCode;
+  message: string;
+  statusCode: number;
+};
+
+/** Union of all possible API responses. */
+export type ApiResponse<T> = ApiSuccessResponse<T> | ApiErrorResponse;
 
 // ─── Auth types ───────────────────────────────────────────────────────────────
 

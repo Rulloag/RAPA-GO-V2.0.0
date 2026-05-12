@@ -1,45 +1,42 @@
-import type { LoginRequest, RegisterRequest, AuthResponse } from "./auth.types.js";
-
-const API_BASE = import.meta.env["VITE_API_BASE_URL"] as string;
+import { apiClient } from "../../services/api/index.js";
+import type { AuthResponse } from "./auth.types.js";
+import type { LoginRequest, RegisterRequest } from "./auth.types.js";
 
 /**
  * AuthService (mobile) — communicates with the backend auth endpoints.
- * Never calls Supabase, Firebase, or any auth provider directly.
- * All auth logic is delegated to the backend.
+ * Uses the centralized apiClient — never calls fetch, Supabase, or any
+ * external auth provider directly.
  *
- * TODO(phase-auth-provider): replace placeholder 501 responses with real
- * backend integration once the auth provider is configured server-side.
+ * TODO(phase-auth-provider): endpoints currently return AUTH_NOT_IMPLEMENTED
+ * from the backend until the auth provider is configured server-side.
  */
 export const authService = {
   async login(payload: LoginRequest): Promise<AuthResponse> {
-    const res = await fetch(`${API_BASE}/auth/login`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    });
-    return res.json() as Promise<AuthResponse>;
+    const result = await apiClient.post<AuthResponse>("/auth/login", payload);
+    if (!result.ok) {
+      return { ok: false, code: result.code, message: result.message };
+    }
+    // Backend returns the AuthResponse shape directly (not nested under data)
+    return result.data;
   },
 
   async register(payload: RegisterRequest): Promise<AuthResponse> {
-    const res = await fetch(`${API_BASE}/auth/register`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    });
-    return res.json() as Promise<AuthResponse>;
+    const result = await apiClient.post<AuthResponse>("/auth/register", payload);
+    if (!result.ok) {
+      return { ok: false, code: result.code, message: result.message };
+    }
+    return result.data;
   },
 
   async logout(accessToken: string): Promise<void> {
-    await fetch(`${API_BASE}/auth/logout`, {
-      method: "POST",
-      headers: { Authorization: `Bearer ${accessToken}` },
-    });
+    await apiClient.post("/auth/logout", undefined, { token: accessToken });
   },
 
   async me(accessToken: string): Promise<AuthResponse> {
-    const res = await fetch(`${API_BASE}/auth/me`, {
-      headers: { Authorization: `Bearer ${accessToken}` },
-    });
-    return res.json() as Promise<AuthResponse>;
+    const result = await apiClient.get<AuthResponse>("/auth/me", { token: accessToken });
+    if (!result.ok) {
+      return { ok: false, code: result.code, message: result.message };
+    }
+    return result.data;
   },
 };
