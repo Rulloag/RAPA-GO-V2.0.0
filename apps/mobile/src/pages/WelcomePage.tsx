@@ -1,16 +1,11 @@
-import { IonText } from "@ionic/react";
+import { IonButton, IonText } from "@ionic/react";
+import { useHistory } from "react-router-dom";
 import { PublicLayout } from "../layouts/PublicLayout";
+import { ROUTES } from "../navigation/routes";
 
-/**
- * WelcomePage — initial landing screen.
- *
- * Shown when the app loads at route /welcome.
- * No auth, no business logic, no navigation to unbuilt modules.
- *
- * This page will be replaced by the authenticated home screen
- * once the auth module is implemented.
- */
 export function WelcomePage(): JSX.Element {
+  const history = useHistory();
+
   return (
     <PublicLayout title="RAPA GO">
       <div className="welcome-container">
@@ -31,6 +26,36 @@ export function WelcomePage(): JSX.Element {
             progresivamente en las próximas versiones.
           </p>
         </IonText>
+
+        {/* ── DEV NAVIGATION — remove before production ── */}
+        <div style={{ marginTop: "2rem", borderTop: "2px dashed var(--ion-color-medium)", paddingTop: "1rem" }}>
+          <IonText color="medium">
+            <p style={{ margin: "0 0 0.75rem", fontSize: "0.75rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em" }}>
+              Dev Navigation
+            </p>
+          </IonText>
+          <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+            <IonButton expand="block" color="primary" fill="outline" onClick={() => { history.push(ROUTES.PASSENGER.HOME); }}>
+              Pasajero
+            </IonButton>
+            <IonButton expand="block" color="success" fill="outline" onClick={() => { history.push(ROUTES.DRIVER.HOME); }}>
+              Conductor
+            </IonButton>
+            <IonButton expand="block" color="warning" fill="outline" onClick={() => { history.push(ROUTES.GUIDE.HOME); }}>
+              Guía Turístico
+            </IonButton>
+            <IonButton expand="block" color="tertiary" fill="outline" onClick={() => { history.push(ROUTES.RENTAL.HOME); }}>
+              Empresa Arriendo
+            </IonButton>
+            <IonButton expand="block" color="danger" fill="outline" onClick={() => { history.push(ROUTES.ADMIN.HOME); }}>
+              Administrador
+            </IonButton>
+            <IonButton expand="block" color="medium" fill="outline" onClick={() => { history.push(ROUTES.PROFILE.INDEX); }}>
+              Perfil
+            </IonButton>
+          </div>
+        </div>
+        {/* ── END DEV NAVIGATION ── */}
       </div>
     </PublicLayout>
   );
