@@ -13,6 +13,12 @@ export const ROUTES = {
   WELCOME: "/welcome",
   NOT_FOUND: "/404",
 
+  AUTH: {
+    BASE: "/auth",
+    LOGIN: "/auth/login",
+    REGISTER: "/auth/register",
+  },
+
   PASSENGER: {
     BASE: "/passenger",
     HOME: "/passenger/home",

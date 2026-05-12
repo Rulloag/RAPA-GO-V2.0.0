@@ -9,6 +9,7 @@
  */
 
 import Fastify from "fastify";
+import { authRoutes } from "./modules/auth/auth.routes.js";
 
 const server = Fastify({
   logger: {
@@ -25,6 +26,9 @@ server.get("/health", async () => {
     timestamp: new Date().toISOString(),
   };
 });
+
+// Auth module — placeholder, returns AUTH_NOT_IMPLEMENTED until provider is wired
+await server.register(authRoutes, { prefix: "/api/auth" });
 
 const start = async (): Promise<void> => {
   const port = Number(process.env["PORT"] ?? 3000);

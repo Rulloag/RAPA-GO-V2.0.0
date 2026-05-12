@@ -34,6 +34,17 @@ export function WelcomePage(): JSX.Element {
               Dev Navigation
             </p>
           </IonText>
+          <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem", marginBottom: "1rem" }}>
+            <IonText color="medium">
+              <p style={{ margin: 0, fontSize: "0.7rem", textTransform: "uppercase", letterSpacing: "0.06em" }}>Auth — Próxima fase</p>
+            </IonText>
+            <IonButton expand="block" color="primary" fill="solid" onClick={() => { history.push(ROUTES.AUTH.LOGIN); }}>
+              Login (placeholder)
+            </IonButton>
+            <IonButton expand="block" color="primary" fill="solid" onClick={() => { history.push(ROUTES.AUTH.REGISTER); }}>
+              Registro (placeholder)
+            </IonButton>
+          </div>
           <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
             <IonButton expand="block" color="primary" fill="outline" onClick={() => { history.push(ROUTES.PASSENGER.HOME); }}>
               Pasajero

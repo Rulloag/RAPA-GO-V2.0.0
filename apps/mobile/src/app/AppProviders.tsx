@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { AuthProvider } from "../features/auth";
 
 interface AppProvidersProps {
   children: ReactNode;
@@ -7,14 +8,14 @@ interface AppProvidersProps {
 /**
  * AppProviders — wraps the app with global context providers.
  *
- * Current state: pass-through wrapper.
+ * Providers active:
+ *  - AuthProvider (Phase 6): session state in memory only.
  *
- * Providers to be added here as each module is implemented:
- *  - AuthProvider (phase: auth)
+ * Providers to be added:
  *  - ThemeProvider (phase: settings)
  *
  * Rule: no business logic or data fetching in this component.
  */
 export function AppProviders({ children }: AppProvidersProps): JSX.Element {
-  return <>{children}</>;
+  return <AuthProvider>{children}</AuthProvider>;
 }

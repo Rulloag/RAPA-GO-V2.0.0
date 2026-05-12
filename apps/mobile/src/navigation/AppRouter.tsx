@@ -3,6 +3,7 @@ import { Redirect, Route, Switch } from "react-router-dom";
 import { ROUTES } from "./routes";
 import { WelcomePage } from "../pages/WelcomePage";
 import { NotFoundPage } from "../pages/NotFoundPage";
+import { LoginPage, RegisterPage } from "../features/auth";
 import { PassengerLayout } from "../layouts/PassengerLayout";
 import { DriverLayout } from "../layouts/DriverLayout";
 import { GuideLayout } from "../layouts/GuideLayout";
@@ -25,6 +26,10 @@ export function AppRouter(): JSX.Element {
         {/* Public */}
         <Route exact path={ROUTES.WELCOME} component={WelcomePage} />
         <Route exact path={ROUTES.NOT_FOUND} component={NotFoundPage} />
+
+        {/* Auth — placeholder pages, no real auth yet */}
+        <Route exact path={ROUTES.AUTH.LOGIN} component={LoginPage} />
+        <Route exact path={ROUTES.AUTH.REGISTER} component={RegisterPage} />
 
         {/* Role sections */}
         <Route path={ROUTES.PASSENGER.BASE} component={PassengerLayout} />
