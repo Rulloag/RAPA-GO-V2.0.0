@@ -18,10 +18,15 @@ export function globalErrorHandler(
 ): void {
   // 1. Typed AppError
   if (error instanceof AppError) {
+    const isServerError = error.statusCode >= 500;
+    if (isServerError) {
+      // Log internal details server-side, never expose them to the client
+      console.error(`[AppError] ${error.code}: ${error.message}`);
+    }
     void reply.status(error.statusCode).send({
       ok: false,
       code: error.code,
-      message: error.message,
+      message: isServerError ? "An unexpected error occurred." : error.message,
       statusCode: error.statusCode,
     });
     return;
