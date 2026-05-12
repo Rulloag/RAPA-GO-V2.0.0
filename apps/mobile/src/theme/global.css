@@ -1,0 +1,53 @@
+/*
+ * RAPA GO — Global styles
+ *
+ * Keep this file minimal. Component-level styles belong in each component.
+ * Ionic handles most layout and responsive behavior via its own system.
+ */
+
+/* Welcome page */
+.welcome-container {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  max-width: 480px;
+  margin: 2rem auto 0;
+}
+
+.welcome-title {
+  font-size: 2rem;
+  font-weight: 700;
+  margin: 0;
+}
+
+.welcome-subtitle {
+  font-size: 1.1rem;
+  margin: 0;
+}
+
+.welcome-status {
+  line-height: 1.6;
+  margin: 0;
+}
+
+/* NotFound page */
+.not-found-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1rem;
+  padding-top: 3rem;
+  text-align: center;
+}
+
+.not-found-code {
+  font-size: 5rem;
+  font-weight: 700;
+  margin: 0;
+  line-height: 1;
+}
+
+.not-found-message {
+  margin: 0;
+  font-size: 1rem;
+}
