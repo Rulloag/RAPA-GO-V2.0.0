@@ -17,7 +17,7 @@ export const authController = {
       return;
     }
     const result = await authService.login(parsed.data);
-    reply.status(result.ok ? 200 : 501).send(result);
+    reply.status(result.ok ? 200 : 401).send(result);
   },
 
   async register(
@@ -30,7 +30,7 @@ export const authController = {
       return;
     }
     const result = await authService.register(parsed.data);
-    reply.status(result.ok ? 201 : 501).send(result);
+    reply.status(result.ok ? 201 : 409).send(result);
   },
 
   async logout(
@@ -54,6 +54,6 @@ export const authController = {
       return;
     }
     const result = await authService.getMe(token);
-    reply.status(result.ok ? 200 : 501).send(result);
+    reply.status(result.ok ? 200 : 401).send(result);
   },
 };
