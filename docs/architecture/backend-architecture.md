@@ -7,7 +7,7 @@
 | Fastify | 4.x | Framework HTTP |
 | TypeScript | 5.x | Tipado estático |
 | Zod | 3.x | Validación de entrada |
-| Supabase JS Client | 2.x | Acceso a PostgreSQL y Auth |
+| postgres / pg | latest | Acceso a PostgreSQL (driver intercambiable según proveedor) |
 | jsonwebtoken | 9.x | Verificación de JWT |
 
 ## Estructura de carpetas (target)
@@ -18,7 +18,7 @@ backend/
 │   ├── routes/          — Definición de rutas HTTP por módulo
 │   ├── handlers/        — Lógica de cada endpoint
 │   ├── services/        — Lógica de negocio desacoplada de HTTP
-│   ├── repositories/    — Acceso a base de datos (Supabase queries)
+│   ├── repositories/    — Acceso a base de datos (queries SQL, independiente del proveedor)
 │   ├── schemas/         — Esquemas Zod (validación de entrada/salida)
 │   ├── plugins/         — Plugins Fastify (auth, cors, rate-limit)
 │   ├── providers/       — Integraciones externas (pagos, mapas, push)

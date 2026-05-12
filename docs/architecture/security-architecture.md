@@ -16,13 +16,14 @@
 [Backend Fastify]
   ↓  JWT verificado en cada request
 [Lógica de negocio + autorización de rol]
-  ↓  Supabase service_role (server-only)
-[PostgreSQL con RLS]
+  ↓  Credenciales de servicio (server-only, nunca expuestas al cliente)
+[PostgreSQL administrado]
 ```
 
 ## Autenticación
 
-- Implementada con **Supabase Auth** o **JWT firmado** gestionado por el backend.
+- Implementada con **JWT firmado** gestionado por el backend. El proveedor de auth es intercambiable (JWT propio, Supabase Auth u otro) siempre que esté encapsulado detrás del backend.
+- La app mobile nunca se conecta directamente a un proveedor de autenticación externo.
 - Tokens de acceso de vida corta (máx. 1 hora).
 - Refresh tokens con rotación.
 - El token viaja solo en el header `Authorization: Bearer <token>`.
@@ -46,16 +47,16 @@
 
 - Ninguna API key, secret o credencial está en el código fuente.
 - El cliente mobile no tiene acceso a ninguna variable de entorno del backend.
-- El `SUPABASE_SERVICE_ROLE_KEY` solo reside en el backend. Nunca en el cliente.
+- Las credenciales de acceso a la base de datos (sea `SUPABASE_SERVICE_ROLE_KEY`, `DATABASE_URL` u equivalente) solo residen en el backend. Nunca en el cliente.
 
 ## Datos sensibles en tránsito
 
 - Toda comunicación usa HTTPS/TLS.
-- Los certificados se gestionan a nivel de infraestructura (Supabase + hosting del backend).
+- Los certificados se gestionan a nivel de infraestructura del proveedor elegido.
 
 ## Row Level Security (RLS)
 
-Supabase RLS es una segunda capa de defensa. Aunque el backend valide la autorización, RLS impide que un bug en el backend exponga datos de otro usuario. Todas las tablas con datos de usuario tienen políticas RLS activas.
+Si el proveedor de base de datos es Supabase, RLS es una segunda capa de defensa: aunque el backend valide la autorización, RLS impide que un bug en el backend exponga datos de otro usuario. Con otros proveedores PostgreSQL, la responsabilidad de aislamiento recae completamente en el backend (middleware de roles + validaciones de servicio). En ambos casos, todas las tablas con datos de usuario deben tener protección de acceso activa.
 
 ## Rate limiting
 

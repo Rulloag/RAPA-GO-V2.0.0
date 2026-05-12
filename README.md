@@ -12,9 +12,9 @@ Aplicación móvil de transporte, turismo y servicios para Rapa Nui. Versión 2.
 |------|-----------|
 | Mobile | Ionic React + Capacitor + TypeScript |
 | Backend | Fastify + TypeScript |
-| Base de datos | PostgreSQL via Supabase |
-| Autenticación | Supabase Auth / JWT |
-| Tiempo real | Supabase Realtime / WebSocket |
+| Base de datos | PostgreSQL administrado (proveedor intercambiable: Supabase, Neon, Railway, AWS RDS, GCP Cloud SQL) |
+| Autenticación | JWT / refresh tokens gestionados por el backend (proveedor de auth intercambiable) |
+| Tiempo real | WebSocket gestionado por backend / Supabase Realtime como opción de infraestructura |
 | Mapas | Google Maps SDK/API |
 | Pagos | Flow / Transbank / MercadoPago (abstracción PaymentProvider) |
 | Validación | Zod |

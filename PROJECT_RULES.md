@@ -18,7 +18,7 @@
 
 - **R-STORE-01**: `localStorage` está prohibido para flujos críticos. Nunca almacenar: tokens de sesión activa, saldos de wallet, estado de viajes, datos de pago, matching o aprobaciones.
 - **R-STORE-02**: `localStorage` solo puede usarse para preferencias de interfaz no críticas: tema (claro/oscuro), idioma seleccionado, preferencias de UI locales.
-- **R-STORE-03**: El estado de sesión del usuario se gestiona mediante tokens seguros (JWT o Supabase Auth) controlados desde el backend.
+- **R-STORE-03**: El estado de sesión del usuario se gestiona mediante tokens seguros (JWT, refresh tokens o proveedor de auth equivalente) controlados desde el backend. El cliente mobile nunca gestiona sesiones directamente.
 
 ---
 
@@ -26,12 +26,12 @@
 
 - **R-STACK-01 (Mobile)**: Ionic React + Capacitor + TypeScript. Sin excepciones para la capa de presentación.
 - **R-STACK-02 (Backend)**: Fastify + TypeScript. Toda API es REST o WebSocket. Sin Express ni otros frameworks sin aprobación.
-- **R-STACK-03 (Database)**: PostgreSQL mediante Supabase. Sin bases de datos alternativas sin ADR aprobado.
-- **R-STACK-04 (Real-time)**: Supabase Realtime o WebSocket gestionado desde backend. Sin polling de cliente como solución permanente.
+- **R-STACK-03 (Database)**: PostgreSQL administrado. El proveedor es intercambiable (Supabase, Neon, Railway, AWS RDS, GCP Cloud SQL). Cambiar de proveedor requiere ADR aprobado pero no implica reescribir la app mobile.
+- **R-STACK-04 (Real-time)**: WebSocket gestionado desde el backend o Supabase Realtime como opción de infraestructura. Sin polling de cliente como solución permanente.
 - **R-STACK-05 (Maps)**: Google Maps SDK/API únicamente.
 - **R-STACK-06 (Payments)**: Abstracción `PaymentProvider`. Proveedores compatibles: Flow, Transbank, MercadoPago. Nunca acoplar al proveedor directamente.
 - **R-STACK-07 (Validation)**: Zod en frontend y backend para toda validación de esquemas.
-- **R-STACK-08 (Auth)**: Supabase Auth o JWT seguro gestionado desde backend. Sin auth del lado del cliente.
+- **R-STACK-08 (Auth)**: JWT + refresh tokens gestionados por el backend. El proveedor de auth es intercambiable (JWT propio, Supabase Auth, u otro). La app mobile nunca conecta directamente a un proveedor de auth externo.
 
 ---
 
@@ -67,11 +67,11 @@
 
 1. Documentación y arquitectura (fase actual).
 2. Setup del monorepo y configuración de entorno.
-3. Backend base (Fastify, Supabase, Auth).
+3. Backend base (Fastify, PostgreSQL, Auth gestionado por backend).
 4. Mobile base (Ionic React, Capacitor, navegación).
 5. Módulos por orden de prioridad definida en `docs/product/modules.md`.
 
 ---
 
-*Última actualización: 2026-05-11*
+*Última actualización: 2026-05-12*
 *Arquitecto principal: Rodrigo Alexander Ulloa González*

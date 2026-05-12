@@ -10,7 +10,7 @@ En una app de transporte, múltiples clientes (pasajero, conductor) necesitan ve
 
 ## Decisión
 
-**El backend y la base de datos son la única fuente de verdad.** Los clientes solo reciben proyecciones del estado actual via Supabase Realtime o WebSocket. Ningún cliente puede proclamar unilateralmente un cambio de estado sin que el backend lo valide y persista.
+**El backend y la base de datos son la única fuente de verdad.** Los clientes solo reciben proyecciones del estado actual via WebSocket gestionado por el backend o Supabase Realtime (si Supabase es el proveedor activo). Ningún cliente puede proclamar unilateralmente un cambio de estado sin que el backend lo valide y persista.
 
 ## Flujo correcto
 
@@ -26,13 +26,15 @@ NO CORRECTO:
   → Cualquier cliente puede escribir cualquier estado
 ```
 
-## Por qué no usar Supabase Realtime directamente desde el cliente para escritura
+## Por qué el cliente no escribe directamente a la base de datos ni al sistema de Realtime
 
-Supabase Realtime permite que los clientes se suscriban a cambios de tablas. Pero si los clientes también pudieran escribir directamente a las tablas (Supabase client insert/update), se pierde la validación de lógica de negocio que vive en el backend.
+Si el cliente pudiera escribir directamente (Supabase client insert/update, o WebSocket sin validación backend), se pierde la validación de lógica de negocio.
 
-La solución es:
-- **Lectura/Suscripción**: Supabase Realtime directo al cliente (eficiente, bajo latencia).
-- **Escritura**: Solo via API del backend. El backend escribe en Supabase y Realtime distribuye el cambio.
+La regla invariante es:
+- **Lectura/Suscripción**: El cliente recibe actualizaciones via WebSocket o Supabase Realtime (si el proveedor lo incluye).
+- **Escritura**: Solo via API del backend. El backend valida, persiste y el sistema de Realtime distribuye el cambio.
+
+Esta regla aplica independientemente del proveedor de base de datos o infraestructura elegido.
 
 ## Consecuencias
 

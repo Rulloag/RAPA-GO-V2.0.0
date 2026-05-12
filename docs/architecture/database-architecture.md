@@ -2,12 +2,17 @@
 
 ## Motor
 
-PostgreSQL gestionado mediante **Supabase**. Supabase provee:
-- PostgreSQL 15+.
-- Row Level Security (RLS).
-- Supabase Auth (gestión de usuarios base).
-- Supabase Realtime (publicación de cambios via CDC).
-- Supabase Storage (archivos: fotos de perfil, documentos).
+**PostgreSQL administrado**. El proveedor de infraestructura es intercambiable. Proveedores compatibles:
+
+| Proveedor | Notas |
+|-----------|-------|
+| Supabase Postgres | Opción de referencia para desarrollo inicial. Incluye RLS, Realtime y Storage. |
+| Neon | PostgreSQL serverless, buena opción para staging/producción. |
+| Railway Postgres | Simple de provisionar, bueno para entornos de desarrollo. |
+| AWS RDS | Opción enterprise para producción con alta disponibilidad. |
+| GCP Cloud SQL | Alternativa enterprise en ecosistema Google Cloud. |
+
+Cambiar de proveedor **no requiere modificar la app mobile** ni los contratos de API. Solo el backend adapta la capa de acceso a datos.
 
 ## Entidades principales (modelo conceptual)
 
@@ -30,8 +35,11 @@ admin_approvals    — Solicitudes de aprobación de operadores
 
 ## Principios de base de datos
 
-### RLS obligatorio
-Toda tabla que contiene datos de usuario tiene RLS activo. Las políticas definen que un usuario solo puede leer/escribir sus propios registros. Las rutas administrativas usan el service role del backend, nunca el cliente.
+### Acceso exclusivo desde backend
+La app mobile **nunca se conecta directamente a la base de datos**. Todo acceso pasa por el backend Fastify, que actúa como única puerta de entrada a los datos.
+
+### Row Level Security (RLS)
+Si el proveedor elegido es Supabase, se activa RLS en todas las tablas con datos de usuario. Con otros proveedores, la capa de autorización equivalente se implementa en el backend (middleware de roles + validaciones de servicio).
 
 ### Integridad referencial
 Las relaciones entre tablas usan foreign keys con `ON DELETE` definido explícitamente. No se crean relaciones implícitas por convención de nombre.
@@ -51,17 +59,17 @@ Los estados se modelan con tipos `ENUM` de PostgreSQL para garantizar integridad
 
 ## Acceso desde backend
 
-El backend accede a la base de datos exclusivamente a través del **Supabase JS Client** con el `service_role` key (nunca expuesto al cliente). El cliente mobile accede opcionalmente con el `anon key` solo para operaciones de auth permitidas por RLS.
+El backend accede a la base de datos a través de un cliente PostgreSQL con credenciales de servicio (nunca expuestas al cliente). Si se usa Supabase, se utiliza el `service_role` key. Con otros proveedores, se usa `DATABASE_URL` con usuario de solo-backend.
 
 ## Migrations
 
-Los cambios de esquema se gestionan mediante migraciones versionadas de Supabase CLI. Nunca se modifican tablas directamente en producción sin una migración documentada.
+Los cambios de esquema se gestionan mediante migraciones versionadas. Nunca se modifican tablas directamente en producción sin una migración documentada y revisada.
 
-## Supabase Storage
+## Almacenamiento de archivos
 
 Uso previsto:
 - Fotos de perfil de usuarios.
 - Documentos de habilitación de conductores/guías.
 - Fotos de vehículos.
 
-Los archivos se referencian en la base de datos por URL. El acceso a archivos sensibles (documentos) se protege con políticas de Storage RLS.
+Si el proveedor es Supabase, se usa Supabase Storage. Con otros proveedores, se usa S3 o equivalente. Los archivos se referencian en la base de datos por URL. El acceso a archivos sensibles (documentos) se protege mediante URLs firmadas generadas por el backend.
