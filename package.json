@@ -1,0 +1,25 @@
+{
+  "name": "rapa-go",
+  "version": "2.0.0",
+  "private": true,
+  "description": "RAPA GO V2.0.0 — Plataforma de movilidad y turismo para Rapa Nui",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "npm run dev:api & npm run dev:mobile",
+    "dev:mobile": "npm run dev --workspace=apps/mobile",
+    "dev:api": "npm run dev --workspace=apps/api",
+    "build": "npm run build --workspaces --if-present",
+    "build:mobile": "npm run build --workspace=apps/mobile",
+    "build:api": "npm run build --workspace=apps/api",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "lint": "npm run lint --workspaces --if-present",
+    "test": "npm run test --workspaces --if-present"
+  },
+  "engines": {
+    "node": ">=20.0.0",
+    "npm": ">=10.0.0"
+  }
+}

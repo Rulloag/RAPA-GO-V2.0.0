@@ -1,0 +1,10 @@
+{
+  "name": "@rapa-go/config",
+  "version": "2.0.0",
+  "private": true,
+  "description": "RAPA GO — Configuraciones compartidas de ESLint y TypeScript",
+  "exports": {
+    "./eslint/base": "./eslint/base.js",
+    "./typescript/base": "./typescript/base.json"
+  }
+}

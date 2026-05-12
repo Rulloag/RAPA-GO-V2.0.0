@@ -141,3 +141,13 @@ dist
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
 .vite/
+
+# RAPA GO monorepo — build outputs and native platform folders
+apps/mobile/dist/
+apps/mobile/android/
+apps/mobile/ios/
+apps/api/dist/
+packages/*/dist/
+
+# Capacitor
+.capacitor/

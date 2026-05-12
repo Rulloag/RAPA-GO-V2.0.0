@@ -23,27 +23,34 @@ Aplicación móvil de transporte, turismo y servicios para Rapa Nui. Versión 2.
 
 ```
 RAPA-GO-V2.0.0/
-├── PROJECT_RULES.md   — Reglas obligatorias del proyecto (leer primero)
-├── docs/              — Documentación técnica y de producto
+├── PROJECT_RULES.md        — Reglas obligatorias del proyecto (leer primero)
+├── package.json            — Workspace raíz del monorepo
+├── tsconfig.base.json      — Configuración TypeScript base compartida
+├── .npmrc                  — Configuración npm del monorepo
+├── docs/                   — Documentación técnica y de producto
 │   ├── README.md
 │   ├── project-overview.md
 │   ├── architecture/
 │   ├── product/
 │   ├── decisions/
 │   └── development/
-├── mobile/            — App Ionic React + Capacitor (próxima fase)
-├── backend/           — API Fastify (próxima fase)
-└── shared/            — Tipos y esquemas Zod compartidos (próxima fase)
+├── apps/
+│   ├── mobile/             — App Ionic React + Capacitor + TypeScript
+│   └── api/                — API Fastify + TypeScript
+└── packages/
+    ├── shared/             — Tipos, schemas Zod y constantes compartidas
+    └── config/             — Configuraciones ESLint/TypeScript reutilizables
 ```
 
-## Cómo empezar
+## Cómo empezar (desarrollo)
 
 1. Leer `PROJECT_RULES.md`.
-2. Leer `docs/project-overview.md`.
-3. Leer `docs/architecture/architecture-principles.md`.
-4. Revisar `docs/development/definition-of-done.md`.
+2. Leer `docs/project-overview.md` y `docs/architecture/architecture-principles.md`.
+3. Copiar variables de entorno: `cp apps/api/.env.example apps/api/.env` y `cp apps/mobile/.env.example apps/mobile/.env`.
+4. Instalar dependencias: `npm install` desde la raíz.
+5. Iniciar desarrollo: `npm run dev:api` o `npm run dev:mobile`.
 
-El código de aplicación (mobile, backend) se creará en fases posteriores siguiendo la arquitectura documentada.
+> Las dependencias aún no están instaladas. Esta estructura es la fase de setup del monorepo.
 
 ## Servicios
 
