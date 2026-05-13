@@ -26,6 +26,7 @@ import { useAuth } from "../../features/auth";
 import { profileService, type ProfileData } from "../../features/profile/profile.service";
 import { ROLE_HOME } from "../../navigation/RouteGuard";
 import { documentsService } from "../../features/documents/documents.service";
+import { bankAccountService, type BankAccountData } from "../../features/bankAccount/bankAccount.service";
 import {
   ROLE_REQUIRED_DOCS,
   DOCUMENT_LABEL,
@@ -371,11 +372,233 @@ function DocumentsPage(): JSX.Element {
 }
 
 export function ProfileBankAccountPage(): JSX.Element {
-  const m = meta("/profile/bank-account");
+  return <BankAccountPage />;
+}
+
+const ACCOUNT_TYPE_LABEL: Record<string, string> = {
+  checking: "Cuenta corriente",
+  savings:  "Cuenta de ahorro",
+  vista:    "Cuenta vista",
+};
+
+const BANK_OPTIONS = [
+  "Banco de Chile", "BancoEstado", "Santander", "BCI", "Scotiabank",
+  "Itaú", "BICE", "Security", "Falabella", "Ripley", "Coopeuch", "Otro",
+];
+
+function BankAccountPage(): JSX.Element {
+  const { session } = useAuth();
+
+  const [account,     setAccount]     = useState<BankAccountData | null>(null);
+  const [loading,     setLoading]     = useState(true);
+  const [loadError,   setLoadError]   = useState<string | null>(null);
+
+  const [holderInput, setHolderInput] = useState("");
+  const [bankInput,   setBankInput]   = useState("");
+  const [typeInput,   setTypeInput]   = useState<"checking" | "savings" | "vista">("checking");
+  const [numInput,    setNumInput]    = useState("");
+
+  const [saving,      setSaving]      = useState(false);
+  const [saveError,   setSaveError]   = useState<string | null>(null);
+  const [saveSuccess, setSaveSuccess] = useState(false);
+
+  const loadAccount = useCallback(async () => {
+    if (!session?.accessToken) return;
+    setLoading(true);
+    setLoadError(null);
+    try {
+      const data = await bankAccountService.getBankAccount(session.accessToken);
+      setAccount(data);
+      if (data) {
+        setHolderInput(data.accountHolderName);
+        setBankInput(data.bankName);
+        setTypeInput(data.accountType as "checking" | "savings" | "vista");
+      }
+    } catch (err) {
+      setLoadError(err instanceof Error ? err.message : "Error al cargar la cuenta bancaria.");
+    } finally {
+      setLoading(false);
+    }
+  }, [session?.accessToken]);
+
+  useEffect(() => { void loadAccount(); }, [loadAccount]);
+
+  async function handleSave() {
+    if (!session?.accessToken) return;
+    const trimHolder = holderInput.trim();
+    const trimBank   = bankInput.trim();
+    const trimNum    = numInput.trim();
+
+    if (!trimHolder || !trimBank || !trimNum) {
+      setSaveError("Completa todos los campos requeridos.");
+      return;
+    }
+
+    setSaving(true);
+    setSaveError(null);
+    setSaveSuccess(false);
+    try {
+      const updated = await bankAccountService.upsertBankAccount(session.accessToken, {
+        accountHolderName: trimHolder,
+        bankName:          trimBank,
+        accountType:       typeInput,
+        accountNumber:     trimNum,
+      });
+      setAccount(updated);
+      setHolderInput(updated.accountHolderName);
+      setBankInput(updated.bankName);
+      setTypeInput(updated.accountType as "checking" | "savings" | "vista");
+      setNumInput("");
+      setSaveSuccess(true);
+    } catch (err) {
+      setSaveError(err instanceof Error ? err.message : "Error al guardar la cuenta bancaria.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
   return (
     <IonPage>
-      <IonHeader><IonToolbar color="primary"><IonTitle>{m.label}</IonTitle></IonToolbar></IonHeader>
-      <IonContent className="ion-padding"><ModulePlaceholderPage title={m.label} role="passenger" plannedFeatures={m.plannedFeatures} /></IonContent>
+      <IonHeader>
+        <IonToolbar color="primary">
+          <IonTitle>Cuenta Bancaria</IonTitle>
+        </IonToolbar>
+      </IonHeader>
+
+      <IonContent className="ion-padding">
+        {/* Notice — pagos futuros */}
+        <div style={{
+          background:    "var(--ion-color-warning-tint)",
+          border:        "1px solid var(--ion-color-warning)",
+          borderRadius:  "8px",
+          padding:       "10px 14px",
+          marginBottom:  "16px",
+          fontSize:      "0.82rem",
+          color:         "var(--ion-color-warning-shade)",
+        }}>
+          <strong>Los pagos reales se implementarán en una fase futura.</strong><br />
+          Puedes registrar tu cuenta bancaria ahora. El procesamiento de pagos estará disponible próximamente.
+        </div>
+
+        {loading && (
+          <div style={{ display: "flex", justifyContent: "center", paddingTop: "40px" }}>
+            <IonSpinner name="crescent" />
+          </div>
+        )}
+
+        {loadError && <IonText color="danger"><p>{loadError}</p></IonText>}
+
+        {!loading && (
+          <>
+            {/* Current account info */}
+            {account && (
+              <IonCard style={{ marginBottom: "16px" }}>
+                <IonCardHeader>
+                  <IonCardTitle style={{ fontSize: "1rem" }}>Cuenta registrada</IonCardTitle>
+                </IonCardHeader>
+                <IonCardContent style={{ paddingTop: 0 }}>
+                  <div style={{ display: "flex", flexDirection: "column", gap: "6px", fontSize: "0.9rem" }}>
+                    <div><strong>Titular:</strong> {account.accountHolderName}</div>
+                    <div><strong>Banco:</strong> {account.bankName}</div>
+                    <div><strong>Tipo:</strong> {ACCOUNT_TYPE_LABEL[account.accountType] ?? account.accountType}</div>
+                    <div><strong>Número:</strong> •••• {account.accountNumberLast4}</div>
+                    <div>
+                      <strong>Estado:</strong>{" "}
+                      <IonBadge color={account.status === "active" ? "success" : "warning"} style={{ fontSize: "0.7rem" }}>
+                        {account.status === "active" ? "Activa" : "Pendiente"}
+                      </IonBadge>
+                    </div>
+                  </div>
+                </IonCardContent>
+              </IonCard>
+            )}
+
+            {/* Form */}
+            <IonCard>
+              <IonCardHeader>
+                <IonCardTitle style={{ fontSize: "1rem" }}>
+                  {account ? "Actualizar cuenta bancaria" : "Registrar cuenta bancaria"}
+                </IonCardTitle>
+              </IonCardHeader>
+              <IonCardContent style={{ paddingTop: 0 }}>
+
+                <IonItem lines="full">
+                  <IonLabel position="stacked">Nombre del titular</IonLabel>
+                  <IonInput
+                    value={holderInput}
+                    onIonInput={(e) => setHolderInput(String(e.detail.value ?? ""))}
+                    placeholder="Nombre completo del titular"
+                    maxlength={150}
+                    clearInput
+                  />
+                </IonItem>
+
+                <IonItem lines="full" style={{ marginTop: "8px" }}>
+                  <IonLabel position="stacked">Banco</IonLabel>
+                  <IonInput
+                    value={bankInput}
+                    onIonInput={(e) => setBankInput(String(e.detail.value ?? ""))}
+                    placeholder={BANK_OPTIONS.slice(0, 3).join(", ") + "..."}
+                    maxlength={100}
+                    clearInput
+                  />
+                </IonItem>
+
+                <IonItem lines="full" style={{ marginTop: "8px" }}>
+                  <IonLabel position="stacked">Tipo de cuenta</IonLabel>
+                  <select
+                    value={typeInput}
+                    onChange={(e) => setTypeInput(e.target.value as "checking" | "savings" | "vista")}
+                    style={{
+                      width: "100%", padding: "10px 0", background: "transparent",
+                      border: "none", fontSize: "1rem", color: "var(--ion-text-color)",
+                    }}
+                  >
+                    <option value="checking">Cuenta corriente</option>
+                    <option value="savings">Cuenta de ahorro</option>
+                    <option value="vista">Cuenta vista</option>
+                  </select>
+                </IonItem>
+
+                <IonItem lines="none" style={{ marginTop: "8px" }}>
+                  <IonLabel position="stacked">Número de cuenta</IonLabel>
+                  <IonInput
+                    value={numInput}
+                    onIonInput={(e) => setNumInput(String(e.detail.value ?? ""))}
+                    placeholder="Solo dígitos"
+                    type="tel"
+                    maxlength={20}
+                    clearInput
+                  />
+                  <IonNote slot="helper" style={{ fontSize: "0.7rem" }}>
+                    Solo se guardarán los últimos 4 dígitos.
+                  </IonNote>
+                </IonItem>
+
+                {saveSuccess && (
+                  <IonText color="success">
+                    <p style={{ margin: "8px 0 0", fontSize: "0.85rem" }}>✓ Cuenta bancaria guardada correctamente.</p>
+                  </IonText>
+                )}
+                {saveError && (
+                  <IonText color="danger">
+                    <p style={{ margin: "8px 0 0", fontSize: "0.85rem" }}>{saveError}</p>
+                  </IonText>
+                )}
+
+                <IonButton
+                  expand="block"
+                  style={{ marginTop: "16px" }}
+                  onClick={() => void handleSave()}
+                  disabled={saving}
+                >
+                  {saving ? <IonSpinner name="dots" /> : (account ? "Actualizar cuenta" : "Guardar cuenta")}
+                </IonButton>
+              </IonCardContent>
+            </IonCard>
+          </>
+        )}
+      </IonContent>
     </IonPage>
   );
 }

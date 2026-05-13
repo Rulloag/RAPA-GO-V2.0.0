@@ -21,7 +21,7 @@ const BASE_URL = (import.meta.env["VITE_API_BASE_URL"] as string | undefined) ??
  */
 
 async function request<T>(
-  method: "GET" | "POST" | "PATCH" | "DELETE",
+  method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE",
   path: string,
   body: unknown,
   options: RequestOptions = {},
@@ -97,6 +97,10 @@ export const apiClient = {
 
   patch<T>(path: string, body?: unknown, options?: RequestOptions): Promise<ApiResponse<T>> {
     return request<T>("PATCH", path, body, options);
+  },
+
+  put<T>(path: string, body?: unknown, options?: RequestOptions): Promise<ApiResponse<T>> {
+    return request<T>("PUT", path, body, options);
   },
 
   delete<T>(path: string, options?: RequestOptions): Promise<ApiResponse<T>> {
