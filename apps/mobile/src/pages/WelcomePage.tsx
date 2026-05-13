@@ -36,13 +36,13 @@ export function WelcomePage(): JSX.Element {
           </IonText>
           <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem", marginBottom: "1rem" }}>
             <IonText color="medium">
-              <p style={{ margin: 0, fontSize: "0.7rem", textTransform: "uppercase", letterSpacing: "0.06em" }}>Auth — Próxima fase</p>
+              <p style={{ margin: 0, fontSize: "0.7rem", textTransform: "uppercase", letterSpacing: "0.06em" }}>Auth</p>
             </IonText>
             <IonButton expand="block" color="primary" fill="solid" onClick={() => { history.push(ROUTES.AUTH.LOGIN); }}>
-              Login (placeholder)
+              Login
             </IonButton>
             <IonButton expand="block" color="primary" fill="solid" onClick={() => { history.push(ROUTES.AUTH.REGISTER); }}>
-              Registro (placeholder)
+              Registro
             </IonButton>
           </div>
           <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>

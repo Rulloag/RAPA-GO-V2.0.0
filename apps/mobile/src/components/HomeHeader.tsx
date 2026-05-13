@@ -66,7 +66,7 @@ export function HomeHeader({ title }: HomeHeaderProps): JSX.Element {
               flexWrap: "wrap",
             }}
           >
-            <span style={{ color: "var(--ion-color-contrast)", fontSize: "0.9rem", fontWeight: 500 }}>
+            <span style={{ color: `var(--ion-color-${color}-contrast)`, fontSize: "0.9rem", fontWeight: 500 }}>
               Hola, {user.name}
             </span>
             <StatusBadge
