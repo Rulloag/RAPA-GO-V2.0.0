@@ -29,6 +29,13 @@
       "when": 1778644649653,
       "tag": "0003_glorious_skullbuster",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1778647266114,
+      "tag": "0004_right_wendell_vaughn",
+      "breakpoints": true
     }
   ]
 }

@@ -4,3 +4,4 @@ export * from "./authCredentials.schema.js";
 export * from "./audit.schema.js";
 export * from "./documents.schema.js";
 export * from "./bankAccounts.schema.js";
+export * from "./rides.schema.js";
