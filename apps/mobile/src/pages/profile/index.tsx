@@ -78,25 +78,28 @@ export function ProfileIndexPage(): JSX.Element {
 
   async function handleSave() {
     if (!session?.accessToken || !profile) return;
+
+    // Build payload before entering loading state to avoid a flash of spinner
+    // when there's nothing to save.
+    const payload: { name?: string; avatarUrl?: string | null } = {};
+    const trimmedName = nameInput.trim();
+    if (trimmedName && trimmedName !== profile.name) {
+      payload.name = trimmedName;
+    }
+    const trimmedAvatar = avatarInput.trim();
+    const avatarChanged = trimmedAvatar !== (profile.avatarUrl ?? "");
+    if (avatarChanged) {
+      payload.avatarUrl = trimmedAvatar === "" ? null : trimmedAvatar;
+    }
+    if (Object.keys(payload).length === 0) {
+      setSaveError("No hay cambios para guardar.");
+      return;
+    }
+
     setSaving(true);
     setSaveError(null);
     setSaveSuccess(false);
     try {
-      const payload: { name?: string; avatarUrl?: string | null } = {};
-      const trimmedName = nameInput.trim();
-      if (trimmedName && trimmedName !== profile.name) {
-        payload.name = trimmedName;
-      }
-      const trimmedAvatar = avatarInput.trim();
-      const avatarChanged = trimmedAvatar !== (profile.avatarUrl ?? "");
-      if (avatarChanged) {
-        payload.avatarUrl = trimmedAvatar === "" ? null : trimmedAvatar;
-      }
-      if (Object.keys(payload).length === 0) {
-        setSaveError("No hay cambios para guardar.");
-        setSaving(false);
-        return;
-      }
       const updated = await profileService.updateProfile(session.accessToken, payload);
       setProfile(updated);
       setNameInput(updated.name);
