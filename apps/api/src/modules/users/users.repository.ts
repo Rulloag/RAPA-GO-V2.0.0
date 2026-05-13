@@ -2,7 +2,7 @@ import { eq } from "drizzle-orm";
 import { db } from "../../db/client.js";
 import { users } from "../../db/schema/index.js";
 import { AppError } from "../../shared/errors/AppError.js";
-import type { User, CreateUserInput, UserStatus } from "./users.types.js";
+import type { User, CreateUserInput, UpdateProfileInput, UserStatus } from "./users.types.js";
 
 /**
  * UsersRepository — all PostgreSQL access for the users table.
@@ -63,6 +63,28 @@ export class UsersRepository {
     } catch (err) {
       if (err instanceof AppError) throw err;
       throw AppError.internal(`Failed to update user status: ${String(err)}`);
+    }
+  }
+
+  async updateProfile(userId: string, input: UpdateProfileInput): Promise<User> {
+    try {
+      // Build update set only with provided fields to avoid overwriting with undefined
+      const set: Record<string, unknown> = { updatedAt: new Date() };
+      if (input.name !== undefined)      set["name"]      = input.name;
+      if ("avatarUrl" in input)          set["avatarUrl"] = input.avatarUrl;
+
+      const rows = await db
+        .update(users)
+        .set(set)
+        .where(eq(users.id, userId))
+        .returning();
+
+      const updated = rows[0];
+      if (!updated) throw AppError.notFound(`User ${userId} not found.`);
+      return updated;
+    } catch (err) {
+      if (err instanceof AppError) throw err;
+      throw AppError.internal(`Failed to update profile: ${String(err)}`);
     }
   }
 
