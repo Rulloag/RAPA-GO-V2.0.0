@@ -561,17 +561,19 @@ function BankAccountPage(): JSX.Element {
                 </IonItem>
 
                 <IonItem lines="none" style={{ marginTop: "8px" }}>
-                  <IonLabel position="stacked">Número de cuenta</IonLabel>
+                  <IonLabel position="stacked">
+                    Número de cuenta{account ? ` (actual: •••• ${account.accountNumberLast4})` : ""}
+                  </IonLabel>
                   <IonInput
                     value={numInput}
                     onIonInput={(e) => setNumInput(String(e.detail.value ?? ""))}
-                    placeholder="Solo dígitos"
+                    placeholder={account ? "Ingresa el número para confirmar cambios" : "Solo dígitos"}
                     type="tel"
                     maxlength={20}
                     clearInput
                   />
                   <IonNote slot="helper" style={{ fontSize: "0.7rem" }}>
-                    Solo se guardarán los últimos 4 dígitos.
+                    Solo se guardarán los últimos 4 dígitos. Requerido para guardar.
                   </IonNote>
                 </IonItem>
 
