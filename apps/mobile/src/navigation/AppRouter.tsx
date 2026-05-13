@@ -1,6 +1,8 @@
 import { IonRouterOutlet } from "@ionic/react";
 import { Redirect, Route, Switch } from "react-router-dom";
 import { ROUTES } from "./routes";
+import { RouteGuard, ROLE_HOME } from "./RouteGuard";
+import { useAuth } from "../features/auth";
 import { WelcomePage } from "../pages/WelcomePage";
 import { NotFoundPage } from "../pages/NotFoundPage";
 import { LoginPage, RegisterPage } from "../features/auth";
@@ -17,6 +19,53 @@ import {
   ProfileNotificationsPage,
 } from "../pages/profile";
 
+/** Wraps a private route: passes the current path to RouteGuard for role checking. */
+function PrivateRoute({
+  path,
+  component: Component,
+  exact,
+}: {
+  path: string;
+  component: React.ComponentType;
+  exact?: boolean;
+}): JSX.Element {
+  return (
+    <Route
+      path={path}
+      exact={exact}
+      render={() => (
+        <RouteGuard path={path}>
+          <Component />
+        </RouteGuard>
+      )}
+    />
+  );
+}
+
+/** Auth routes redirect to role home when user already has a session. */
+function AuthRoute({
+  path,
+  component: Component,
+}: {
+  path: string;
+  component: React.ComponentType;
+}): JSX.Element {
+  const { status, user } = useAuth();
+
+  return (
+    <Route
+      exact
+      path={path}
+      render={() => {
+        if (status === "authenticated" && user) {
+          return <Redirect to={ROLE_HOME[user.role]} />;
+        }
+        return <Component />;
+      }}
+    />
+  );
+}
+
 export function AppRouter(): JSX.Element {
   return (
     <IonRouterOutlet>
@@ -27,23 +76,23 @@ export function AppRouter(): JSX.Element {
         <Route exact path={ROUTES.WELCOME} component={WelcomePage} />
         <Route exact path={ROUTES.NOT_FOUND} component={NotFoundPage} />
 
-        {/* Auth — placeholder pages, no real auth yet */}
-        <Route exact path={ROUTES.AUTH.LOGIN} component={LoginPage} />
-        <Route exact path={ROUTES.AUTH.REGISTER} component={RegisterPage} />
+        {/* Auth — redirect to role home if already authenticated */}
+        <AuthRoute path={ROUTES.AUTH.LOGIN}    component={LoginPage} />
+        <AuthRoute path={ROUTES.AUTH.REGISTER} component={RegisterPage} />
 
-        {/* Role sections */}
-        <Route path={ROUTES.PASSENGER.BASE} component={PassengerLayout} />
-        <Route path={ROUTES.DRIVER.BASE} component={DriverLayout} />
-        <Route path={ROUTES.GUIDE.BASE} component={GuideLayout} />
-        <Route path={ROUTES.RENTAL.BASE} component={RentalLayout} />
-        <Route path={ROUTES.ADMIN.BASE} component={AdminLayout} />
+        {/* Role sections — protected by RouteGuard */}
+        <PrivateRoute path={ROUTES.PASSENGER.BASE} component={PassengerLayout} />
+        <PrivateRoute path={ROUTES.DRIVER.BASE}    component={DriverLayout} />
+        <PrivateRoute path={ROUTES.GUIDE.BASE}     component={GuideLayout} />
+        <PrivateRoute path={ROUTES.RENTAL.BASE}    component={RentalLayout} />
+        <PrivateRoute path={ROUTES.ADMIN.BASE}     component={AdminLayout} />
 
-        {/* Shared profile */}
-        <Route exact path={ROUTES.PROFILE.INDEX} component={ProfileIndexPage} />
-        <Route exact path={ROUTES.PROFILE.DOCUMENTS} component={ProfileDocumentsPage} />
-        <Route exact path={ROUTES.PROFILE.BANK_ACCOUNT} component={ProfileBankAccountPage} />
-        <Route exact path={ROUTES.PROFILE.SECURITY} component={ProfileSecurityPage} />
-        <Route exact path={ROUTES.PROFILE.NOTIFICATIONS} component={ProfileNotificationsPage} />
+        {/* Shared profile — protected, any authenticated role */}
+        <PrivateRoute exact path={ROUTES.PROFILE.INDEX}         component={ProfileIndexPage} />
+        <PrivateRoute exact path={ROUTES.PROFILE.DOCUMENTS}     component={ProfileDocumentsPage} />
+        <PrivateRoute exact path={ROUTES.PROFILE.BANK_ACCOUNT}  component={ProfileBankAccountPage} />
+        <PrivateRoute exact path={ROUTES.PROFILE.SECURITY}      component={ProfileSecurityPage} />
+        <PrivateRoute exact path={ROUTES.PROFILE.NOTIFICATIONS} component={ProfileNotificationsPage} />
 
         {/* Catch-all */}
         <Route render={() => <Redirect to={ROUTES.NOT_FOUND} />} />
