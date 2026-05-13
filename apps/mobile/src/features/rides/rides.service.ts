@@ -1,20 +1,35 @@
 import { apiClient } from "../../services/api/index.js";
 
+type RidesEnvelope = { ok: true; data: RideRequestData[]; statusCode: number };
+type RideEnvelope  = { ok: true; data: RideRequestData;   statusCode: number };
+
+/** Ride response for passenger — includes driverUserId and acceptedAt. */
 export interface RideRequestData {
   id:              string;
   passengerUserId: string;
+  driverUserId:    string | null;
   originText:      string;
   destinationText: string;
   notes:           string | null;
   status:          string;
   requestedAt:     string;
+  acceptedAt:      string | null;
   cancelledAt:     string | null;
   createdAt:       string;
   updatedAt:       string;
 }
 
-type RidesEnvelope = { ok: true; data: RideRequestData[]; statusCode: number };
-type RideEnvelope  = { ok: true; data: RideRequestData;   statusCode: number };
+/** Subset returned to drivers for their own accepted rides. */
+export interface DriverRideData {
+  id:              string;
+  originText:      string;
+  destinationText: string;
+  notes:           string | null;
+  status:          string;
+  requestedAt:     string;
+  acceptedAt:      string | null;
+  createdAt:       string;
+}
 
 /** Subset returned to drivers — no passenger identity. */
 export interface AvailableRideData {
@@ -57,5 +72,18 @@ export const ridesService = {
     const result = await apiClient.get<AvailableEnvelope>("/rides/available", { token: accessToken });
     if (!result.ok) throw new Error(result.message ?? "Failed to load available rides.");
     return (result.data as AvailableEnvelope).data;
+  },
+
+  async acceptRideRequest(accessToken: string, rideId: string): Promise<RideRequestData> {
+    const result = await apiClient.post<RideEnvelope>(`/rides/${rideId}/accept`, {}, { token: accessToken });
+    if (!result.ok) throw new Error(result.message ?? "Failed to accept ride request.");
+    return (result.data as RideEnvelope).data;
+  },
+
+  async listDriverRides(accessToken: string): Promise<DriverRideData[]> {
+    type DriverRidesEnvelope = { ok: true; data: DriverRideData[]; statusCode: number };
+    const result = await apiClient.get<DriverRidesEnvelope>("/rides/driver/me", { token: accessToken });
+    if (!result.ok) throw new Error(result.message ?? "Failed to load driver rides.");
+    return (result.data as DriverRidesEnvelope).data;
   },
 };

@@ -45,6 +45,31 @@ export class RidesRepository {
     }
   }
 
+  async findById(id: string): Promise<RideRequest | null> {
+    try {
+      const rows = await db
+        .select()
+        .from(rideRequests)
+        .where(eq(rideRequests.id, id))
+        .limit(1);
+      return rows[0] ?? null;
+    } catch (err) {
+      throw AppError.internal(`Failed to query ride request: ${String(err)}`);
+    }
+  }
+
+  async findByDriverId(driverUserId: string): Promise<RideRequest[]> {
+    try {
+      return await db
+        .select()
+        .from(rideRequests)
+        .where(eq(rideRequests.driverUserId, driverUserId))
+        .orderBy(desc(rideRequests.acceptedAt));
+    } catch (err) {
+      throw AppError.internal(`Failed to query driver rides: ${String(err)}`);
+    }
+  }
+
   async findAvailable(): Promise<RideRequest[]> {
     try {
       return await db
@@ -54,6 +79,22 @@ export class RidesRepository {
         .orderBy(desc(rideRequests.requestedAt));
     } catch (err) {
       throw AppError.internal(`Failed to query available rides: ${String(err)}`);
+    }
+  }
+
+  async accept(id: string, driverUserId: string): Promise<RideRequest> {
+    try {
+      const rows = await db
+        .update(rideRequests)
+        .set({ status: "accepted", driverUserId, acceptedAt: new Date(), updatedAt: new Date() })
+        .where(eq(rideRequests.id, id))
+        .returning();
+      const row = rows[0];
+      if (!row) throw AppError.internal("Update returned no rows.");
+      return row;
+    } catch (err) {
+      if (err instanceof AppError) throw err;
+      throw AppError.internal(`Failed to accept ride request: ${String(err)}`);
     }
   }
 

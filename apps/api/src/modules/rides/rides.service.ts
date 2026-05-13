@@ -3,7 +3,11 @@ import { SessionService } from "../auth/session.service.js";
 import { UsersRepository } from "../users/users.repository.js";
 import { RidesRepository } from "./rides.repository.js";
 import { AppError } from "../../shared/errors/AppError.js";
-import type { RideRequestResponse, RidesListResult, RideResult, AvailableRideResponse, AvailableRidesResult } from "./rides.types.js";
+import type {
+  RideRequestResponse, RidesListResult, RideResult,
+  AvailableRideResponse, AvailableRidesResult,
+  DriverRideResponse, DriverRidesListResult,
+} from "./rides.types.js";
 import type { RideRequest } from "../../db/schema/index.js";
 import type { CreateRideRequestInput } from "./rides.schemas.js";
 
@@ -16,14 +20,29 @@ function toResponse(r: RideRequest): RideRequestResponse {
   return {
     id:              r.id,
     passengerUserId: r.passengerUserId,
+    driverUserId:    r.driverUserId ?? null,
     originText:      r.originText,
     destinationText: r.destinationText,
     notes:           r.notes,
     status:          r.status,
     requestedAt:     r.requestedAt.toISOString(),
+    acceptedAt:      r.acceptedAt?.toISOString() ?? null,
     cancelledAt:     r.cancelledAt?.toISOString() ?? null,
     createdAt:       r.createdAt.toISOString(),
     updatedAt:       r.updatedAt.toISOString(),
+  };
+}
+
+function toDriverRideResponse(r: RideRequest): DriverRideResponse {
+  return {
+    id:              r.id,
+    originText:      r.originText,
+    destinationText: r.destinationText,
+    notes:           r.notes,
+    status:          r.status,
+    requestedAt:     r.requestedAt.toISOString(),
+    acceptedAt:      r.acceptedAt?.toISOString() ?? null,
+    createdAt:       r.createdAt.toISOString(),
   };
 }
 
@@ -134,5 +153,47 @@ export class RidesService {
 
     const rows = await ridesRepo.findAvailable();
     return { ok: true, rides: rows.map(toAvailableResponse) };
+  }
+
+  async acceptRideRequest(accessToken: string, rideId: string): Promise<RideResult> {
+    const auth = await authenticate(accessToken);
+    if (!auth.ok) return auth;
+
+    if (auth.role !== "driver") {
+      return { ok: false, code: "AUTH_FORBIDDEN", message: "Only drivers can accept ride requests.", statusCode: 403 };
+    }
+
+    const existing = await ridesRepo.findById(rideId);
+    if (!existing) {
+      return { ok: false, code: "NOT_FOUND", message: "Ride request not found.", statusCode: 404 };
+    }
+
+    if (existing.status === "accepted") {
+      return { ok: false, code: "RIDE_ALREADY_ACCEPTED", message: "This ride has already been accepted by another driver.", statusCode: 409 };
+    }
+
+    if (existing.status !== "requested") {
+      return {
+        ok: false,
+        code: "RIDE_CANNOT_ACCEPT",
+        message: `Ride request cannot be accepted — current status is '${existing.status}'.`,
+        statusCode: 409,
+      };
+    }
+
+    const accepted = await ridesRepo.accept(existing.id, auth.userId);
+    return { ok: true, ride: toResponse(accepted) };
+  }
+
+  async listDriverRides(accessToken: string): Promise<DriverRidesListResult> {
+    const auth = await authenticate(accessToken);
+    if (!auth.ok) return auth;
+
+    if (auth.role !== "driver") {
+      return { ok: false, code: "AUTH_FORBIDDEN", message: "Only drivers can access their ride list.", statusCode: 403 };
+    }
+
+    const rows = await ridesRepo.findByDriverId(auth.userId);
+    return { ok: true, rides: rows.map(toDriverRideResponse) };
   }
 }

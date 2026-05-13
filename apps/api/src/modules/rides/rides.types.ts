@@ -1,15 +1,33 @@
 export interface RideRequestResponse {
   id:              string;
   passengerUserId: string;
+  driverUserId:    string | null;
   originText:      string;
   destinationText: string;
   notes:           string | null;
   status:          string;
   requestedAt:     string;
+  acceptedAt:      string | null;
   cancelledAt:     string | null;
   createdAt:       string;
   updatedAt:       string;
 }
+
+/** Subset exposed to driver for their own accepted rides — no passenger identity. */
+export interface DriverRideResponse {
+  id:              string;
+  originText:      string;
+  destinationText: string;
+  notes:           string | null;
+  status:          string;
+  requestedAt:     string;
+  acceptedAt:      string | null;
+  createdAt:       string;
+}
+
+export type DriverRidesListResult =
+  | { ok: true;  rides: DriverRideResponse[] }
+  | { ok: false; code: string; message: string; statusCode: number };
 
 /** Subset exposed to drivers — no passenger identity fields. */
 export interface AvailableRideResponse {
