@@ -1,4 +1,4 @@
-import { pgTable, uuid, varchar, text, timestamp } from "drizzle-orm/pg-core";
+import { pgTable, uuid, varchar, text, timestamp, unique } from "drizzle-orm/pg-core";
 import { users } from "./users.schema.js";
 
 /**
@@ -19,7 +19,7 @@ export const userDocuments = pgTable("user_documents", {
   reviewedAt:       timestamp("reviewed_at",  { withTimezone: true }),
   createdAt:        timestamp("created_at",   { withTimezone: true }).notNull().defaultNow(),
   updatedAt:        timestamp("updated_at",   { withTimezone: true }).notNull().defaultNow(),
-});
+}, (t) => [unique("uq_user_document_type").on(t.userId, t.documentType)]);
 
 export type UserDocument    = typeof userDocuments.$inferSelect;
 export type NewUserDocument = typeof userDocuments.$inferInsert;

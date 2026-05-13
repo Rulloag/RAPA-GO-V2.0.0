@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { db } from "../../db/client.js";
 import { userDocuments } from "../../db/schema/index.js";
 import { AppError } from "../../shared/errors/AppError.js";
@@ -22,9 +22,9 @@ export class DocumentsRepository {
       const rows = await db
         .select()
         .from(userDocuments)
-        .where(eq(userDocuments.userId, userId))
-        .limit(100);
-      return rows.find((r) => r.documentType === documentType) ?? null;
+        .where(and(eq(userDocuments.userId, userId), eq(userDocuments.documentType, documentType)))
+        .limit(1);
+      return rows[0] ?? null;
     } catch (err) {
       throw AppError.internal(`Failed to query document by type: ${String(err)}`);
     }

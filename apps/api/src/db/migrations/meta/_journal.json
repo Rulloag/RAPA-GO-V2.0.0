@@ -15,6 +15,13 @@
       "when": 1778643474018,
       "tag": "0001_harsh_karen_page",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1778644273181,
+      "tag": "0002_overjoyed_wasp",
+      "breakpoints": true
     }
   ]
 }

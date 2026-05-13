@@ -1,0 +1,1 @@
+ALTER TABLE "user_documents" ADD CONSTRAINT "uq_user_document_type" UNIQUE("user_id","document_type");
