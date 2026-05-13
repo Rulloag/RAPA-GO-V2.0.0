@@ -45,6 +45,18 @@ export class RidesRepository {
     }
   }
 
+  async findAvailable(): Promise<RideRequest[]> {
+    try {
+      return await db
+        .select()
+        .from(rideRequests)
+        .where(eq(rideRequests.status, "requested"))
+        .orderBy(desc(rideRequests.requestedAt));
+    } catch (err) {
+      throw AppError.internal(`Failed to query available rides: ${String(err)}`);
+    }
+  }
+
   async cancel(id: string): Promise<RideRequest> {
     try {
       const rows = await db

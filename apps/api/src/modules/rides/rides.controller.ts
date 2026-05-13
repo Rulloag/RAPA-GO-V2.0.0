@@ -49,6 +49,20 @@ export const ridesController = {
     sendOk(reply, result.ride, 201);
   },
 
+  async listAvailableRides(request: FastifyRequest, reply: FastifyReply): Promise<void> {
+    const token = extractBearer(request);
+    if (!token) {
+      sendError(reply, { code: "UNAUTHORIZED", message: "Missing Bearer token.", statusCode: 401 });
+      return;
+    }
+    const result = await ridesService.listAvailableRides(token);
+    if (!result.ok) {
+      sendError(reply, { code: result.code, message: result.message, statusCode: result.statusCode });
+      return;
+    }
+    sendOk(reply, result.rides);
+  },
+
   async cancelRideRequest(
     request: FastifyRequest<{ Params: { id: string } }>,
     reply: FastifyReply,

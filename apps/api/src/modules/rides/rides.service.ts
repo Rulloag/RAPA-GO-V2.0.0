@@ -3,7 +3,7 @@ import { SessionService } from "../auth/session.service.js";
 import { UsersRepository } from "../users/users.repository.js";
 import { RidesRepository } from "./rides.repository.js";
 import { AppError } from "../../shared/errors/AppError.js";
-import type { RideRequestResponse, RidesListResult, RideResult } from "./rides.types.js";
+import type { RideRequestResponse, RidesListResult, RideResult, AvailableRideResponse, AvailableRidesResult } from "./rides.types.js";
 import type { RideRequest } from "../../db/schema/index.js";
 import type { CreateRideRequestInput } from "./rides.schemas.js";
 
@@ -24,6 +24,18 @@ function toResponse(r: RideRequest): RideRequestResponse {
     cancelledAt:     r.cancelledAt?.toISOString() ?? null,
     createdAt:       r.createdAt.toISOString(),
     updatedAt:       r.updatedAt.toISOString(),
+  };
+}
+
+function toAvailableResponse(r: RideRequest): AvailableRideResponse {
+  return {
+    id:              r.id,
+    originText:      r.originText,
+    destinationText: r.destinationText,
+    notes:           r.notes,
+    status:          r.status,
+    requestedAt:     r.requestedAt.toISOString(),
+    createdAt:       r.createdAt.toISOString(),
   };
 }
 
@@ -110,5 +122,17 @@ export class RidesService {
 
     const cancelled = await ridesRepo.cancel(existing.id);
     return { ok: true, ride: toResponse(cancelled) };
+  }
+
+  async listAvailableRides(accessToken: string): Promise<AvailableRidesResult> {
+    const auth = await authenticate(accessToken);
+    if (!auth.ok) return auth;
+
+    if (auth.role !== "driver") {
+      return { ok: false, code: "AUTH_FORBIDDEN", message: "Only drivers can view available rides.", statusCode: 403 };
+    }
+
+    const rows = await ridesRepo.findAvailable();
+    return { ok: true, rides: rows.map(toAvailableResponse) };
   }
 }
