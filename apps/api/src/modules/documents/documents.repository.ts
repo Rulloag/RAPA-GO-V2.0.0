@@ -1,0 +1,47 @@
+import { eq } from "drizzle-orm";
+import { db } from "../../db/client.js";
+import { userDocuments } from "../../db/schema/index.js";
+import { AppError } from "../../shared/errors/AppError.js";
+import type { UserDocument } from "../../db/schema/index.js";
+
+export class DocumentsRepository {
+  async findByUserId(userId: string): Promise<UserDocument[]> {
+    try {
+      return await db
+        .select()
+        .from(userDocuments)
+        .where(eq(userDocuments.userId, userId))
+        .orderBy(userDocuments.createdAt);
+    } catch (err) {
+      throw AppError.internal(`Failed to query documents: ${String(err)}`);
+    }
+  }
+
+  async findByUserIdAndType(userId: string, documentType: string): Promise<UserDocument | null> {
+    try {
+      const rows = await db
+        .select()
+        .from(userDocuments)
+        .where(eq(userDocuments.userId, userId))
+        .limit(100);
+      return rows.find((r) => r.documentType === documentType) ?? null;
+    } catch (err) {
+      throw AppError.internal(`Failed to query document by type: ${String(err)}`);
+    }
+  }
+
+  async create(userId: string, documentType: string): Promise<UserDocument> {
+    try {
+      const rows = await db
+        .insert(userDocuments)
+        .values({ userId, documentType, status: "pending" })
+        .returning();
+      const created = rows[0];
+      if (!created) throw AppError.internal("Insert returned no rows.");
+      return created;
+    } catch (err) {
+      if (err instanceof AppError) throw err;
+      throw AppError.internal(`Failed to create document record: ${String(err)}`);
+    }
+  }
+}

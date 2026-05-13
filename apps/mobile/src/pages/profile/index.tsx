@@ -1,4 +1,5 @@
 import {
+  IonBadge,
   IonButton,
   IonButtons,
   IonCard,
@@ -24,6 +25,13 @@ import { ROUTE_METADATA } from "../../navigation/routeConfig";
 import { useAuth } from "../../features/auth";
 import { profileService, type ProfileData } from "../../features/profile/profile.service";
 import { ROLE_HOME } from "../../navigation/RouteGuard";
+import { documentsService } from "../../features/documents/documents.service";
+import {
+  ROLE_REQUIRED_DOCS,
+  DOCUMENT_LABEL,
+  STATUS_COLOR as DOC_STATUS_COLOR,
+  STATUS_LABEL as DOC_STATUS_LABEL,
+} from "../../features/documents/documents.constants";
 
 function meta(path: string) {
   return ROUTE_METADATA.find((r) => r.path === path)!;
@@ -230,11 +238,134 @@ export function ProfileIndexPage(): JSX.Element {
 }
 
 export function ProfileDocumentsPage(): JSX.Element {
-  const m = meta("/profile/documents");
+  return <DocumentsPage />;
+}
+
+function DocumentsPage(): JSX.Element {
+  const { session, user } = useAuth();
+
+  const [docs,       setDocs]       = useState<import("../../features/documents/documents.service").DocumentRecord[]>([]);
+  const [loading,    setLoading]    = useState(true);
+  const [loadError,  setLoadError]  = useState<string | null>(null);
+  const [creating,   setCreating]   = useState<string | null>(null); // documentType being prepared
+  const [createErr,  setCreateErr]  = useState<string | null>(null);
+
+  const role = user?.role ?? "";
+
+  const requiredTypes: readonly string[] = (
+    (role in ROLE_REQUIRED_DOCS) ? ROLE_REQUIRED_DOCS[role] : []
+  ) as readonly string[];
+
+  useEffect(() => {
+    if (!session?.accessToken) return;
+    setLoading(true);
+    documentsService
+      .listDocuments(session.accessToken)
+      .then(setDocs)
+      .catch((e: unknown) => setLoadError(e instanceof Error ? e.message : "Error al cargar documentos."))
+      .finally(() => setLoading(false));
+  }, [session?.accessToken]);
+
+  async function handlePrepare(documentType: string) {
+    if (!session?.accessToken) return;
+    setCreating(documentType);
+    setCreateErr(null);
+    try {
+      const doc = await documentsService.createDocument(session.accessToken, documentType);
+      setDocs((prev) => [...prev, doc]);
+    } catch (e: unknown) {
+      setCreateErr(e instanceof Error ? e.message : "Error al preparar el documento.");
+    } finally {
+      setCreating(null);
+    }
+  }
+
+  const docByType = Object.fromEntries(docs.map((d) => [d.documentType, d]));
+
   return (
     <IonPage>
-      <IonHeader><IonToolbar color="primary"><IonTitle>{m.label}</IonTitle></IonToolbar></IonHeader>
-      <IonContent className="ion-padding"><ModulePlaceholderPage title={m.label} role="passenger" plannedFeatures={m.plannedFeatures} /></IonContent>
+      <IonHeader>
+        <IonToolbar color="primary">
+          <IonTitle>Documentos</IonTitle>
+        </IonToolbar>
+      </IonHeader>
+
+      <IonContent className="ion-padding">
+        {/* Notice */}
+        <div style={{
+          background: "var(--ion-color-warning-tint)",
+          border: "1px solid var(--ion-color-warning)",
+          borderRadius: "8px",
+          padding: "10px 14px",
+          marginBottom: "16px",
+          fontSize: "0.82rem",
+          color: "var(--ion-color-warning-shade)",
+        }}>
+          <strong>Carga de archivos pendiente para fase futura.</strong><br />
+          Puedes preparar el registro de cada documento ahora. La subida real de archivos estará disponible próximamente.
+        </div>
+
+        {loading && (
+          <div style={{ display: "flex", justifyContent: "center", padding: "32px" }}>
+            <IonSpinner name="crescent" />
+          </div>
+        )}
+
+        {loadError && <IonText color="danger"><p>{loadError}</p></IonText>}
+
+        {!loading && requiredTypes.length === 0 && (
+          <IonText color="medium"><p>Este rol no requiere documentos.</p></IonText>
+        )}
+
+        {!loading && requiredTypes.length > 0 && (
+          <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+            {requiredTypes.map((docType) => {
+              const existing = docByType[docType];
+              const label = DOCUMENT_LABEL[docType] ?? docType;
+              const status = existing?.status ?? null;
+              const statusColor = status ? DOC_STATUS_COLOR[status] ?? "medium" : "medium";
+              const statusText  = status ? DOC_STATUS_LABEL[status]  ?? status  : "No registrado";
+
+              return (
+                <IonCard key={docType} style={{ margin: 0 }}>
+                  <IonCardContent style={{ padding: "14px 16px" }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "8px" }}>
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontWeight: 600, fontSize: "0.9rem", marginBottom: "4px" }}>{label}</div>
+                        <IonBadge color={statusColor} style={{ fontSize: "0.7rem" }}>{statusText}</IonBadge>
+                        {existing?.rejectionReason && (
+                          <IonText color="danger">
+                            <p style={{ margin: "6px 0 0", fontSize: "0.78rem" }}>
+                              Motivo: {existing.rejectionReason}
+                            </p>
+                          </IonText>
+                        )}
+                      </div>
+                      {!existing && (
+                        <IonButton
+                          size="small"
+                          fill="outline"
+                          disabled={creating === docType}
+                          onClick={() => void handlePrepare(docType)}
+                          style={{ flexShrink: 0 }}
+                        >
+                          {creating === docType ? <IonSpinner name="dots" /> : "Preparar"}
+                        </IonButton>
+                      )}
+                    </div>
+                  </IonCardContent>
+                </IonCard>
+              );
+            })}
+          </div>
+        )}
+
+        {createErr && (
+          <IonText color="danger">
+            <p style={{ marginTop: "12px", fontSize: "0.85rem" }}>{createErr}</p>
+          </IonText>
+        )}
+      </IonContent>
     </IonPage>
   );
 }

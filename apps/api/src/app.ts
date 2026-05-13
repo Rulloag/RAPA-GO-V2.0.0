@@ -3,8 +3,9 @@ import { corsPlugin } from "./plugins/cors.js";
 import { helmetPlugin } from "./plugins/helmet.js";
 import { rateLimitPlugin } from "./plugins/rateLimit.js";
 import { globalErrorHandler } from "./shared/errors/errorHandler.js";
-import { authRoutes }    from "./modules/auth/auth.routes.js";
-import { profileRoutes } from "./modules/profile/profile.routes.js";
+import { authRoutes }       from "./modules/auth/auth.routes.js";
+import { profileRoutes }    from "./modules/profile/profile.routes.js";
+import { documentsRoutes }  from "./modules/documents/documents.routes.js";
 
 /**
  * buildApp — constructs and configures the Fastify instance.
@@ -39,8 +40,9 @@ export async function buildApp(): Promise<FastifyInstance> {
   }));
 
   // ── Modules ───────────────────────────────────────────────────────────────
-  await fastify.register(authRoutes,    { prefix: "/api/auth" });
-  await fastify.register(profileRoutes, { prefix: "/api/profile" });
+  await fastify.register(authRoutes,      { prefix: "/api/auth" });
+  await fastify.register(profileRoutes,   { prefix: "/api/profile" });
+  await fastify.register(documentsRoutes, { prefix: "/api/documents" });
 
   return fastify;
 }
