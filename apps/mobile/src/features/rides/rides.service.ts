@@ -15,6 +15,7 @@ export interface RideRequestData {
   requestedAt:     string;
   acceptedAt:      string | null;
   startedAt:          string | null;
+  completedAt:        string | null;
   cancelledAt:        string | null;
   cancellationReason: string | null;
   cancelledByRole:    string | null;
@@ -80,6 +81,12 @@ export const ridesService = {
   async acceptRideRequest(accessToken: string, rideId: string): Promise<RideRequestData> {
     const result = await apiClient.post<RideEnvelope>(`/rides/${rideId}/accept`, {}, { token: accessToken });
     if (!result.ok) throw new Error(result.message ?? "Failed to accept ride request.");
+    return (result.data as RideEnvelope).data;
+  },
+
+  async completeRide(accessToken: string, rideId: string): Promise<RideRequestData> {
+    const result = await apiClient.post<RideEnvelope>(`/rides/${rideId}/complete`, {}, { token: accessToken });
+    if (!result.ok) throw new Error(result.message ?? "Failed to complete ride.");
     return (result.data as RideEnvelope).data;
   },
 

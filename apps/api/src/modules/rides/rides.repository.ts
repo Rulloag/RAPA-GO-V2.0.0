@@ -101,6 +101,28 @@ export class RidesRepository {
   }
 
   /**
+   * Atomically complete a ride only when status='in_progress' AND driver matches.
+   * Returns null if no row was updated.
+   */
+  async complete(id: string, driverUserId: string): Promise<RideRequest | null> {
+    try {
+      const rows = await db
+        .update(rideRequests)
+        .set({ status: "completed", completedAt: new Date(), updatedAt: new Date() })
+        .where(and(
+          eq(rideRequests.id, id),
+          eq(rideRequests.status, "in_progress"),
+          eq(rideRequests.driverUserId, driverUserId),
+        ))
+        .returning();
+      return rows[0] ?? null;
+    } catch (err) {
+      if (err instanceof AppError) throw err;
+      throw AppError.internal(`Failed to complete ride: ${String(err)}`);
+    }
+  }
+
+  /**
    * Atomically start a ride only when status='accepted' AND driver matches.
    * Returns null if no row was updated.
    */

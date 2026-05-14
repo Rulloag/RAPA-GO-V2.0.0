@@ -12,6 +12,7 @@ export const rideRequests = pgTable("ride_requests", {
   requestedAt:       timestamp("requested_at",  { withTimezone: true }).notNull().defaultNow(),
   acceptedAt:        timestamp("accepted_at",   { withTimezone: true }),
   startedAt:            timestamp("started_at",          { withTimezone: true }),
+  completedAt:          timestamp("completed_at",        { withTimezone: true }),
   cancelledAt:          timestamp("cancelled_at",        { withTimezone: true }),
   cancellationReason:   text("cancellation_reason"),
   cancelledByUserId:    uuid("cancelled_by_user_id").references(() => users.id, { onDelete: "set null" }),

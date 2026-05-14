@@ -28,6 +28,7 @@ function toResponse(r: RideRequest): RideRequestResponse {
     requestedAt:     r.requestedAt.toISOString(),
     acceptedAt:      r.acceptedAt?.toISOString() ?? null,
     startedAt:       r.startedAt?.toISOString() ?? null,
+    completedAt:     r.completedAt?.toISOString() ?? null,
     cancelledAt:        r.cancelledAt?.toISOString() ?? null,
     cancellationReason: r.cancellationReason ?? null,
     cancelledByRole:    r.cancelledByRole ?? null,
@@ -186,6 +187,34 @@ export class RidesService {
     }
 
     return { ok: true, ride: toResponse(accepted) };
+  }
+
+  async completeRide(accessToken: string, rideId: string): Promise<RideResult> {
+    const auth = await authenticate(accessToken);
+    if (!auth.ok) return auth;
+
+    if (auth.role !== "driver") {
+      return { ok: false, code: "AUTH_FORBIDDEN", message: "Only drivers can complete rides.", statusCode: 403 };
+    }
+
+    const completed = await ridesRepo.complete(rideId, auth.userId);
+    if (!completed) {
+      const existing = await ridesRepo.findById(rideId);
+      if (!existing) {
+        return { ok: false, code: "NOT_FOUND", message: "Ride request not found.", statusCode: 404 };
+      }
+      if (existing.status !== "in_progress") {
+        return {
+          ok: false,
+          code: "RIDE_CANNOT_COMPLETE",
+          message: `Ride cannot be completed — current status is '${existing.status}'.`,
+          statusCode: 409,
+        };
+      }
+      return { ok: false, code: "AUTH_FORBIDDEN", message: "You can only complete rides assigned to you.", statusCode: 403 };
+    }
+
+    return { ok: true, ride: toResponse(completed) };
   }
 
   async startRide(accessToken: string, rideId: string): Promise<RideResult> {

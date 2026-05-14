@@ -235,8 +235,10 @@ function DriverMyRidesPage(): JSX.Element {
   const [loadError,   setLoadError]   = useState<string | null>(null);
   const [cancelling,  setCancelling]  = useState<string | null>(null);
   const [cancelError, setCancelError] = useState<string | null>(null);
-  const [starting,    setStarting]    = useState<string | null>(null);
-  const [startError,  setStartError]  = useState<string | null>(null);
+  const [starting,     setStarting]     = useState<string | null>(null);
+  const [startError,   setStartError]   = useState<string | null>(null);
+  const [completing,   setCompleting]   = useState<string | null>(null);
+  const [completeError,setCompleteError]= useState<string | null>(null);
 
   const loadRides = useCallback(async () => {
     if (!session?.accessToken) return;
@@ -253,6 +255,20 @@ function DriverMyRidesPage(): JSX.Element {
   }, [session?.accessToken]);
 
   useEffect(() => { void loadRides(); }, [loadRides]);
+
+  async function handleComplete(rideId: string) {
+    if (!session?.accessToken) return;
+    setCompleting(rideId);
+    setCompleteError(null);
+    try {
+      const updated = await ridesService.completeRide(session.accessToken, rideId);
+      setRides((prev) => prev.map((r) => (r.id === rideId ? { ...r, status: updated.status } : r)));
+    } catch (err) {
+      setCompleteError(err instanceof Error ? err.message : "Error al finalizar el viaje.");
+    } finally {
+      setCompleting(null);
+    }
+  }
 
   async function handleStart(rideId: string) {
     if (!session?.accessToken) return;
@@ -312,6 +328,7 @@ function DriverMyRidesPage(): JSX.Element {
         {loadError && <IonText color="danger"><p>{loadError}</p></IonText>}
         {cancelError && <IonText color="danger"><p style={{ fontSize: "0.85rem" }}>{cancelError}</p></IonText>}
         {startError && <IonText color="danger"><p style={{ fontSize: "0.85rem" }}>{startError}</p></IonText>}
+        {completeError && <IonText color="danger"><p style={{ fontSize: "0.85rem" }}>{completeError}</p></IonText>}
 
         {!loading && rides.length === 0 && (
           <IonText color="medium"><p>No tienes viajes aceptados todavía.</p></IonText>
@@ -342,6 +359,17 @@ function DriverMyRidesPage(): JSX.Element {
                           </div>
                         )}
                       </div>
+                      {ride.status === "in_progress" && (
+                        <IonButton
+                          size="small"
+                          color="primary"
+                          disabled={completing === ride.id}
+                          onClick={() => void handleComplete(ride.id)}
+                          style={{ flexShrink: 0 }}
+                        >
+                          {completing === ride.id ? <IonSpinner name="dots" /> : "Finalizar"}
+                        </IonButton>
+                      )}
                       {ride.status === "accepted" && (
                         <div style={{ display: "flex", flexDirection: "column", gap: "6px", flexShrink: 0 }}>
                           <IonButton
