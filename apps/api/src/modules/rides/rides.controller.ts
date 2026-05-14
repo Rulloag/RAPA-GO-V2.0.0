@@ -1,6 +1,6 @@
 import type { FastifyRequest, FastifyReply } from "fastify";
 import { RidesService } from "./rides.service.js";
-import { createRideRequestSchema } from "./rides.schemas.js";
+import { createRideRequestSchema, cancelAcceptedSchema } from "./rides.schemas.js";
 import { sendOk, sendError } from "../../shared/http/apiResponse.js";
 
 const ridesService = new RidesService();
@@ -106,6 +106,33 @@ export const ridesController = {
     }
     const { id } = request.params;
     const result = await ridesService.cancelRideRequest(token, id);
+    if (!result.ok) {
+      sendError(reply, { code: result.code, message: result.message, statusCode: result.statusCode });
+      return;
+    }
+    sendOk(reply, result.ride);
+  },
+
+  async cancelAcceptedRide(
+    request: FastifyRequest<{ Params: { id: string } }>,
+    reply: FastifyReply,
+  ): Promise<void> {
+    const token = extractBearer(request);
+    if (!token) {
+      sendError(reply, { code: "UNAUTHORIZED", message: "Missing Bearer token.", statusCode: 401 });
+      return;
+    }
+    const parsed = cancelAcceptedSchema.safeParse(request.body);
+    if (!parsed.success) {
+      sendError(reply, {
+        code:       "VALIDATION_ERROR",
+        message:    parsed.error.errors[0]?.message ?? "Invalid request body.",
+        statusCode: 400,
+      });
+      return;
+    }
+    const { id } = request.params;
+    const result = await ridesService.cancelAcceptedRide(token, id, parsed.data);
     if (!result.ok) {
       sendError(reply, { code: result.code, message: result.message, statusCode: result.statusCode });
       return;

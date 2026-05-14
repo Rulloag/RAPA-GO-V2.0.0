@@ -230,9 +230,11 @@ function DriverMyRidesPage(): JSX.Element {
     cancelled:   "medium",
   };
 
-  const [rides,     setRides]     = useState<DriverRideData[]>([]);
-  const [loading,   setLoading]   = useState(true);
-  const [loadError, setLoadError] = useState<string | null>(null);
+  const [rides,       setRides]       = useState<DriverRideData[]>([]);
+  const [loading,     setLoading]     = useState(true);
+  const [loadError,   setLoadError]   = useState<string | null>(null);
+  const [cancelling,  setCancelling]  = useState<string | null>(null);
+  const [cancelError, setCancelError] = useState<string | null>(null);
 
   const loadRides = useCallback(async () => {
     if (!session?.accessToken) return;
@@ -249,6 +251,20 @@ function DriverMyRidesPage(): JSX.Element {
   }, [session?.accessToken]);
 
   useEffect(() => { void loadRides(); }, [loadRides]);
+
+  async function handleCancelAccepted(rideId: string) {
+    if (!session?.accessToken) return;
+    setCancelling(rideId);
+    setCancelError(null);
+    try {
+      const updated = await ridesService.cancelAcceptedRide(session.accessToken, rideId);
+      setRides((prev) => prev.map((r) => (r.id === rideId ? { ...r, status: updated.status } : r)));
+    } catch (err) {
+      setCancelError(err instanceof Error ? err.message : "Error al cancelar el viaje.");
+    } finally {
+      setCancelling(null);
+    }
+  }
 
   return (
     <IonPage>
@@ -278,6 +294,7 @@ function DriverMyRidesPage(): JSX.Element {
         )}
 
         {loadError && <IonText color="danger"><p>{loadError}</p></IonText>}
+        {cancelError && <IonText color="danger"><p style={{ fontSize: "0.85rem" }}>{cancelError}</p></IonText>}
 
         {!loading && rides.length === 0 && (
           <IonText color="medium"><p>No tienes viajes aceptados todavía.</p></IonText>
@@ -291,20 +308,36 @@ function DriverMyRidesPage(): JSX.Element {
               return (
                 <IonCard key={ride.id} style={{ margin: 0 }}>
                   <IonCardContent style={{ padding: "14px 16px" }}>
-                    <div style={{ fontWeight: 600, fontSize: "0.9rem", marginBottom: "6px" }}>
-                      {ride.originText} → {ride.destinationText}
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "8px" }}>
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontWeight: 600, fontSize: "0.9rem", marginBottom: "6px" }}>
+                          {ride.originText} → {ride.destinationText}
+                        </div>
+                        <IonBadge color={color} style={{ fontSize: "0.7rem" }}>{label}</IonBadge>
+                        {ride.notes && (
+                          <div style={{ marginTop: "6px", fontSize: "0.8rem", color: "var(--ion-color-medium)" }}>
+                            {ride.notes}
+                          </div>
+                        )}
+                        {ride.acceptedAt && (
+                          <div style={{ marginTop: "6px", fontSize: "0.75rem", color: "var(--ion-color-medium)" }}>
+                            Aceptado: {new Date(ride.acceptedAt).toLocaleString("es-CL")}
+                          </div>
+                        )}
+                      </div>
+                      {ride.status === "accepted" && (
+                        <IonButton
+                          size="small"
+                          fill="outline"
+                          color="danger"
+                          disabled={cancelling === ride.id}
+                          onClick={() => void handleCancelAccepted(ride.id)}
+                          style={{ flexShrink: 0 }}
+                        >
+                          {cancelling === ride.id ? <IonSpinner name="dots" /> : "Cancelar"}
+                        </IonButton>
+                      )}
                     </div>
-                    <IonBadge color={color} style={{ fontSize: "0.7rem" }}>{label}</IonBadge>
-                    {ride.notes && (
-                      <div style={{ marginTop: "6px", fontSize: "0.8rem", color: "var(--ion-color-medium)" }}>
-                        {ride.notes}
-                      </div>
-                    )}
-                    {ride.acceptedAt && (
-                      <div style={{ marginTop: "6px", fontSize: "0.75rem", color: "var(--ion-color-medium)" }}>
-                        Aceptado: {new Date(ride.acceptedAt).toLocaleString("es-CL")}
-                      </div>
-                    )}
                   </IonCardContent>
                 </IonCard>
               );

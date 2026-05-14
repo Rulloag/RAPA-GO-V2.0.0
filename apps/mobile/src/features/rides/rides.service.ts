@@ -14,9 +14,11 @@ export interface RideRequestData {
   status:          string;
   requestedAt:     string;
   acceptedAt:      string | null;
-  cancelledAt:     string | null;
-  createdAt:       string;
-  updatedAt:       string;
+  cancelledAt:        string | null;
+  cancellationReason: string | null;
+  cancelledByRole:    string | null;
+  createdAt:          string;
+  updatedAt:          string;
 }
 
 /** Subset returned to drivers for their own accepted rides. */
@@ -77,6 +79,14 @@ export const ridesService = {
   async acceptRideRequest(accessToken: string, rideId: string): Promise<RideRequestData> {
     const result = await apiClient.post<RideEnvelope>(`/rides/${rideId}/accept`, {}, { token: accessToken });
     if (!result.ok) throw new Error(result.message ?? "Failed to accept ride request.");
+    return (result.data as RideEnvelope).data;
+  },
+
+  async cancelAcceptedRide(accessToken: string, rideId: string, reason?: string): Promise<RideRequestData> {
+    const body: { reason?: string } = {};
+    if (reason) body.reason = reason;
+    const result = await apiClient.post<RideEnvelope>(`/rides/${rideId}/cancel-accepted`, body, { token: accessToken });
+    if (!result.ok) throw new Error(result.message ?? "Failed to cancel ride.");
     return (result.data as RideEnvelope).data;
   },
 

@@ -9,7 +9,7 @@ import type {
   DriverRideResponse, DriverRidesListResult,
 } from "./rides.types.js";
 import type { RideRequest } from "../../db/schema/index.js";
-import type { CreateRideRequestInput } from "./rides.schemas.js";
+import type { CreateRideRequestInput, CancelAcceptedInput } from "./rides.schemas.js";
 
 const tokenService   = new TokenService();
 const sessionService = new SessionService();
@@ -27,8 +27,10 @@ function toResponse(r: RideRequest): RideRequestResponse {
     status:          r.status,
     requestedAt:     r.requestedAt.toISOString(),
     acceptedAt:      r.acceptedAt?.toISOString() ?? null,
-    cancelledAt:     r.cancelledAt?.toISOString() ?? null,
-    createdAt:       r.createdAt.toISOString(),
+    cancelledAt:        r.cancelledAt?.toISOString() ?? null,
+    cancellationReason: r.cancellationReason ?? null,
+    cancelledByRole:    r.cancelledByRole ?? null,
+    createdAt:          r.createdAt.toISOString(),
     updatedAt:       r.updatedAt.toISOString(),
   };
 }
@@ -183,6 +185,52 @@ export class RidesService {
     }
 
     return { ok: true, ride: toResponse(accepted) };
+  }
+
+  async cancelAcceptedRide(
+    accessToken: string,
+    rideId: string,
+    input: CancelAcceptedInput,
+  ): Promise<RideResult> {
+    const auth = await authenticate(accessToken);
+    if (!auth.ok) return auth;
+
+    if (auth.role !== "passenger" && auth.role !== "driver") {
+      return { ok: false, code: "AUTH_FORBIDDEN", message: "Only passengers or drivers can cancel rides.", statusCode: 403 };
+    }
+
+    const existing = await ridesRepo.findById(rideId);
+    if (!existing) {
+      return { ok: false, code: "NOT_FOUND", message: "Ride request not found.", statusCode: 404 };
+    }
+
+    if (auth.role === "passenger" && existing.passengerUserId !== auth.userId) {
+      return { ok: false, code: "AUTH_FORBIDDEN", message: "You can only cancel your own rides.", statusCode: 403 };
+    }
+    if (auth.role === "driver" && existing.driverUserId !== auth.userId) {
+      return { ok: false, code: "AUTH_FORBIDDEN", message: "You can only cancel rides assigned to you.", statusCode: 403 };
+    }
+
+    const cancelled = await ridesRepo.cancelAccepted(
+      rideId,
+      auth.userId,
+      auth.role,
+      input.reason ?? null,
+    );
+    if (!cancelled) {
+      const refetch = await ridesRepo.findById(rideId);
+      if (!refetch) {
+        return { ok: false, code: "NOT_FOUND", message: "Ride request not found.", statusCode: 404 };
+      }
+      return {
+        ok: false,
+        code: "RIDE_CANNOT_CANCEL",
+        message: `Ride request cannot be cancelled — current status is '${refetch.status}'.`,
+        statusCode: 409,
+      };
+    }
+
+    return { ok: true, ride: toResponse(cancelled) };
   }
 
   async listDriverRides(accessToken: string): Promise<DriverRidesListResult> {

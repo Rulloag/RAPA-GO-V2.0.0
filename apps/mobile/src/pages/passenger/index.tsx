@@ -288,6 +288,20 @@ function TripsPage(): JSX.Element {
     }
   }
 
+  async function handleCancelAccepted(rideId: string) {
+    if (!session?.accessToken) return;
+    setCancelling(rideId);
+    setCancelError(null);
+    try {
+      const updated = await ridesService.cancelAcceptedRide(session.accessToken, rideId);
+      setRides((prev) => prev.map((r) => (r.id === rideId ? updated : r)));
+    } catch (err) {
+      setCancelError(err instanceof Error ? err.message : "Error al cancelar el viaje.");
+    } finally {
+      setCancelling(null);
+    }
+  }
+
   return (
     <IonPage>
       <IonHeader>
@@ -331,13 +345,13 @@ function TripsPage(): JSX.Element {
                           {new Date(ride.requestedAt).toLocaleString("es-CL")}
                         </div>
                       </div>
-                      {ride.status === "requested" && (
+                      {(ride.status === "requested" || ride.status === "accepted") && (
                         <IonButton
                           size="small"
                           fill="outline"
                           color="danger"
                           disabled={cancelling === ride.id}
-                          onClick={() => void handleCancel(ride.id)}
+                          onClick={() => void (ride.status === "requested" ? handleCancel(ride.id) : handleCancelAccepted(ride.id))}
                           style={{ flexShrink: 0 }}
                         >
                           {cancelling === ride.id ? <IonSpinner name="dots" /> : "Cancelar"}
