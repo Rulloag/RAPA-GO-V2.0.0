@@ -97,7 +97,7 @@ export class RatingsService {
       ratedUserId,
       raterRole:     auth.role,
       rating:        input.rating,
-      comment:       input.comment ?? null,
+      comment:       input.comment?.trim() || null,
     });
 
     return { ok: true, rating: toResponse(row) };
