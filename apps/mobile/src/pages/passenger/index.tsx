@@ -327,6 +327,8 @@ function TripsPage(): JSX.Element {
             {rides.map((ride) => {
               const color = RIDE_STATUS_COLOR[ride.status] ?? "medium";
               const label = RIDE_STATUS_LABEL[ride.status] ?? ride.status;
+              const ts = (label: string, iso: string | null) =>
+                iso ? <div style={{ fontSize: "0.72rem", color: "var(--ion-color-medium)", marginTop: "3px" }}>{label}: {new Date(iso).toLocaleString("es-CL")}</div> : null;
               return (
                 <IonCard key={ride.id} style={{ margin: 0 }}>
                   <IonCardContent style={{ padding: "14px 16px" }}>
@@ -337,13 +339,27 @@ function TripsPage(): JSX.Element {
                         </div>
                         <IonBadge color={color} style={{ fontSize: "0.7rem" }}>{label}</IonBadge>
                         {ride.notes && (
-                          <div style={{ marginTop: "6px", fontSize: "0.8rem", color: "var(--ion-color-medium)" }}>
+                          <div style={{ marginTop: "5px", fontSize: "0.8rem", color: "var(--ion-color-medium)" }}>
                             {ride.notes}
                           </div>
                         )}
-                        <div style={{ marginTop: "6px", fontSize: "0.75rem", color: "var(--ion-color-medium)" }}>
-                          {new Date(ride.requestedAt).toLocaleString("es-CL")}
+                        <div style={{ marginTop: "5px" }}>
+                          {ts("Solicitado", ride.requestedAt)}
+                          {ride.status !== "requested" && ts("Aceptado", ride.acceptedAt)}
+                          {(ride.status === "in_progress" || ride.status === "completed") && ts("Iniciado", ride.startedAt)}
+                          {ride.status === "completed" && ts("Completado", ride.completedAt)}
+                          {ride.status === "cancelled" && ts("Cancelado", ride.cancelledAt)}
                         </div>
+                        {ride.status === "cancelled" && ride.cancellationReason && (
+                          <div style={{ marginTop: "5px", fontSize: "0.75rem", color: "var(--ion-color-danger)" }}>
+                            Motivo: {ride.cancellationReason}
+                          </div>
+                        )}
+                        {ride.status === "cancelled" && ride.cancelledByRole && (
+                          <div style={{ fontSize: "0.72rem", color: "var(--ion-color-medium)" }}>
+                            Cancelado por: {ride.cancelledByRole === "passenger" ? "pasajero" : "conductor"}
+                          </div>
+                        )}
                       </div>
                       {(ride.status === "requested" || ride.status === "accepted") && (
                         <IonButton

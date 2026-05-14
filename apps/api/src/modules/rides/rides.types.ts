@@ -17,16 +17,21 @@ export interface RideRequestResponse {
   updatedAt:           string;
 }
 
-/** Subset exposed to driver for their own accepted rides — no passenger identity. */
+/** Subset exposed to driver for their own rides — no passenger identity. */
 export interface DriverRideResponse {
-  id:              string;
-  originText:      string;
-  destinationText: string;
-  notes:           string | null;
-  status:          string;
-  requestedAt:     string;
-  acceptedAt:      string | null;
-  createdAt:       string;
+  id:                 string;
+  originText:         string;
+  destinationText:    string;
+  notes:              string | null;
+  status:             string;
+  requestedAt:        string;
+  acceptedAt:         string | null;
+  startedAt:          string | null;
+  completedAt:        string | null;
+  cancelledAt:        string | null;
+  cancellationReason: string | null;
+  cancelledByRole:    string | null;
+  createdAt:          string;
 }
 
 export type DriverRidesListResult =

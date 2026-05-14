@@ -306,19 +306,6 @@ function DriverMyRidesPage(): JSX.Element {
         </IonToolbar>
       </IonHeader>
       <IonContent className="ion-padding">
-        {/* Notice — mapa y finalización son futuros */}
-        <div style={{
-          background:   "var(--ion-color-warning-tint)",
-          border:       "1px solid var(--ion-color-warning)",
-          borderRadius: "8px",
-          padding:      "10px 14px",
-          marginBottom: "16px",
-          fontSize:     "0.82rem",
-          color:        "var(--ion-color-warning-shade)",
-        }}>
-          <strong>Mapa, navegación y finalización de viaje se implementarán en una fase futura.</strong>
-        </div>
-
         {loading && (
           <div style={{ display: "flex", justifyContent: "center", paddingTop: "40px" }}>
             <IonSpinner name="crescent" />
@@ -331,7 +318,7 @@ function DriverMyRidesPage(): JSX.Element {
         {completeError && <IonText color="danger"><p style={{ fontSize: "0.85rem" }}>{completeError}</p></IonText>}
 
         {!loading && rides.length === 0 && (
-          <IonText color="medium"><p>No tienes viajes aceptados todavía.</p></IonText>
+          <IonText color="medium"><p>No tienes viajes todavía.</p></IonText>
         )}
 
         {!loading && rides.length > 0 && (
@@ -339,23 +326,36 @@ function DriverMyRidesPage(): JSX.Element {
             {rides.map((ride) => {
               const color = DRIVER_STATUS_COLOR[ride.status] ?? "medium";
               const label = DRIVER_STATUS_LABEL[ride.status] ?? ride.status;
+              const ts = (lbl: string, iso: string | null) =>
+                iso ? <div style={{ fontSize: "0.72rem", color: "var(--ion-color-medium)", marginTop: "3px" }}>{lbl}: {new Date(iso).toLocaleString("es-CL")}</div> : null;
               return (
                 <IonCard key={ride.id} style={{ margin: 0 }}>
                   <IonCardContent style={{ padding: "14px 16px" }}>
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "8px" }}>
                       <div style={{ flex: 1 }}>
-                        <div style={{ fontWeight: 600, fontSize: "0.9rem", marginBottom: "6px" }}>
+                        <div style={{ fontWeight: 600, fontSize: "0.9rem", marginBottom: "4px" }}>
                           {ride.originText} → {ride.destinationText}
                         </div>
                         <IonBadge color={color} style={{ fontSize: "0.7rem" }}>{label}</IonBadge>
                         {ride.notes && (
-                          <div style={{ marginTop: "6px", fontSize: "0.8rem", color: "var(--ion-color-medium)" }}>
+                          <div style={{ marginTop: "5px", fontSize: "0.8rem", color: "var(--ion-color-medium)" }}>
                             {ride.notes}
                           </div>
                         )}
-                        {ride.acceptedAt && (
-                          <div style={{ marginTop: "6px", fontSize: "0.75rem", color: "var(--ion-color-medium)" }}>
-                            Aceptado: {new Date(ride.acceptedAt).toLocaleString("es-CL")}
+                        <div style={{ marginTop: "5px" }}>
+                          {ts("Aceptado",   ride.acceptedAt)}
+                          {(ride.status === "in_progress" || ride.status === "completed") && ts("Iniciado", ride.startedAt)}
+                          {ride.status === "completed"  && ts("Completado", ride.completedAt)}
+                          {ride.status === "cancelled"  && ts("Cancelado",  ride.cancelledAt)}
+                        </div>
+                        {ride.status === "cancelled" && ride.cancellationReason && (
+                          <div style={{ marginTop: "4px", fontSize: "0.75rem", color: "var(--ion-color-danger)" }}>
+                            Motivo: {ride.cancellationReason}
+                          </div>
+                        )}
+                        {ride.status === "cancelled" && ride.cancelledByRole && (
+                          <div style={{ fontSize: "0.72rem", color: "var(--ion-color-medium)" }}>
+                            Cancelado por: {ride.cancelledByRole === "passenger" ? "pasajero" : "conductor"}
                           </div>
                         )}
                       </div>

@@ -39,14 +39,19 @@ function toResponse(r: RideRequest): RideRequestResponse {
 
 function toDriverRideResponse(r: RideRequest): DriverRideResponse {
   return {
-    id:              r.id,
-    originText:      r.originText,
-    destinationText: r.destinationText,
-    notes:           r.notes,
-    status:          r.status,
-    requestedAt:     r.requestedAt.toISOString(),
-    acceptedAt:      r.acceptedAt?.toISOString() ?? null,
-    createdAt:       r.createdAt.toISOString(),
+    id:                 r.id,
+    originText:         r.originText,
+    destinationText:    r.destinationText,
+    notes:              r.notes,
+    status:             r.status,
+    requestedAt:        r.requestedAt.toISOString(),
+    acceptedAt:         r.acceptedAt?.toISOString() ?? null,
+    startedAt:          r.startedAt?.toISOString() ?? null,
+    completedAt:        r.completedAt?.toISOString() ?? null,
+    cancelledAt:        r.cancelledAt?.toISOString() ?? null,
+    cancellationReason: r.cancellationReason ?? null,
+    cancelledByRole:    r.cancelledByRole ?? null,
+    createdAt:          r.createdAt.toISOString(),
   };
 }
 
