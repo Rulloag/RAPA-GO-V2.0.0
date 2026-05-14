@@ -5,9 +5,11 @@ import {
   IonCardContent,
   IonContent,
   IonHeader,
+  IonItem,
   IonPage,
   IonSpinner,
   IonText,
+  IonTextarea,
   IonTitle,
   IonToolbar,
 } from "@ionic/react";
@@ -27,6 +29,22 @@ import { ROUTE_METADATA } from "../../navigation/routeConfig";
 import { ROUTES } from "../../navigation/routes";
 import { useAuth } from "../../features/auth";
 import { ridesService } from "../../features/rides/rides.service";
+
+function StarRatingInput({ value, onChange }: { value: number; onChange: (v: number) => void }) {
+  return (
+    <div style={{ display: "flex", gap: "4px", margin: "8px 0" }}>
+      {[1, 2, 3, 4, 5].map((s) => (
+        <span
+          key={s}
+          onClick={() => onChange(s)}
+          style={{ fontSize: "1.6rem", cursor: "pointer", color: s <= value ? "#f4c430" : "#ccc" }}
+        >
+          ★
+        </span>
+      ))}
+    </div>
+  );
+}
 
 function meta(path: string) {
   return ROUTE_METADATA.find((r) => r.path === path)!;
@@ -245,6 +263,13 @@ function DriverMyRidesPage(): JSX.Element {
   const [completing,   setCompleting]   = useState<string | null>(null);
   const [completeError,setCompleteError]= useState<string | null>(null);
 
+  const [ratingRideId,     setRatingRideId]     = useState<string | null>(null);
+  const [ratingStars,      setRatingStars]      = useState(5);
+  const [ratingComment,    setRatingComment]    = useState("");
+  const [submittingRating, setSubmittingRating] = useState(false);
+  const [ratingError,      setRatingError]      = useState<string | null>(null);
+  const [ratedIds,         setRatedIds]         = useState<Set<string>>(new Set());
+
   const loadRides = useCallback(async () => {
     if (!session?.accessToken) return;
     setLoading(true);
@@ -289,6 +314,23 @@ function DriverMyRidesPage(): JSX.Element {
     }
   }
 
+  async function handleSubmitRating() {
+    if (!session?.accessToken || !ratingRideId) return;
+    setSubmittingRating(true);
+    setRatingError(null);
+    try {
+      await ridesService.rateRide(session.accessToken, ratingRideId, ratingStars, ratingComment.trim() || undefined);
+      setRatedIds((prev) => new Set([...prev, ratingRideId]));
+      setRatingRideId(null);
+      setRatingStars(5);
+      setRatingComment("");
+    } catch (err) {
+      setRatingError(err instanceof Error ? err.message : "Error al calificar el viaje.");
+    } finally {
+      setSubmittingRating(false);
+    }
+  }
+
   async function handleCancelAccepted(rideId: string) {
     if (!session?.accessToken) return;
     setCancelling(rideId);
@@ -321,6 +363,7 @@ function DriverMyRidesPage(): JSX.Element {
         {cancelError && <IonText color="danger"><p style={{ fontSize: "0.85rem" }}>{cancelError}</p></IonText>}
         {startError && <IonText color="danger"><p style={{ fontSize: "0.85rem" }}>{startError}</p></IonText>}
         {completeError && <IonText color="danger"><p style={{ fontSize: "0.85rem" }}>{completeError}</p></IonText>}
+        {ratingError && <IonText color="danger"><p style={{ fontSize: "0.85rem" }}>{ratingError}</p></IonText>}
 
         {!loading && rides.length === 0 && (
           <IonText color="medium"><p>No tienes viajes todavía.</p></IonText>
@@ -369,44 +412,84 @@ function DriverMyRidesPage(): JSX.Element {
                           </div>
                         )}
                       </div>
-                      {ride.status === "in_progress" && (
-                        <IonButton
-                          size="small"
-                          color="primary"
-                          disabled={completing === ride.id}
-                          onClick={() => void handleComplete(ride.id)}
-                          style={{ flexShrink: 0 }}
-                        >
-                          {completing === ride.id ? <IonSpinner name="dots" /> : "Finalizar"}
-                        </IonButton>
-                      )}
-                      {ride.status === "accepted" && (
-                        <div style={{ display: "flex", flexDirection: "column", gap: "6px", flexShrink: 0 }}>
+                      <div style={{ display: "flex", flexDirection: "column", gap: "6px", flexShrink: 0 }}>
+                        {ride.status === "in_progress" && (
                           <IonButton
                             size="small"
-                            color="success"
-                            disabled={starting === ride.id}
-                            onClick={() => void handleStart(ride.id)}
+                            color="primary"
+                            disabled={completing === ride.id}
+                            onClick={() => void handleComplete(ride.id)}
                           >
-                            {starting === ride.id ? <IonSpinner name="dots" /> : "Iniciar"}
+                            {completing === ride.id ? <IonSpinner name="dots" /> : "Finalizar"}
                           </IonButton>
+                        )}
+                        {ride.status === "accepted" && (
+                          <>
+                            <IonButton
+                              size="small"
+                              color="success"
+                              disabled={starting === ride.id}
+                              onClick={() => void handleStart(ride.id)}
+                            >
+                              {starting === ride.id ? <IonSpinner name="dots" /> : "Iniciar"}
+                            </IonButton>
+                            <IonButton
+                              size="small"
+                              fill="outline"
+                              color="danger"
+                              disabled={cancelling === ride.id}
+                              onClick={() => void handleCancelAccepted(ride.id)}
+                            >
+                              {cancelling === ride.id ? <IonSpinner name="dots" /> : "Cancelar"}
+                            </IonButton>
+                          </>
+                        )}
+                        {ride.status === "completed" && !ratedIds.has(ride.id) && ratingRideId !== ride.id && (
                           <IonButton
                             size="small"
                             fill="outline"
-                            color="danger"
-                            disabled={cancelling === ride.id}
-                            onClick={() => void handleCancelAccepted(ride.id)}
+                            color="warning"
+                            onClick={() => { setRatingRideId(ride.id); setRatingStars(5); setRatingComment(""); setRatingError(null); }}
                           >
-                            {cancelling === ride.id ? <IonSpinner name="dots" /> : "Cancelar"}
+                            Calificar
                           </IonButton>
-                        </div>
-                      )}
+                        )}
+                        {ride.status === "completed" && ratedIds.has(ride.id) && (
+                          <IonText color="success" style={{ fontSize: "0.75rem" }}>✓ Calificado</IonText>
+                        )}
+                      </div>
                     </div>
                   </IonCardContent>
                 </IonCard>
               );
             })}
           </div>
+        )}
+
+        {ratingRideId && (
+          <IonCard style={{ margin: "12px 0 0" }}>
+            <IonCardContent style={{ padding: "14px 16px" }}>
+              <div style={{ fontWeight: 600, marginBottom: "4px" }}>Calificar pasajero</div>
+              <StarRatingInput value={ratingStars} onChange={setRatingStars} />
+              <IonItem lines="none" style={{ "--padding-start": "0" }}>
+                <IonTextarea
+                  value={ratingComment}
+                  onIonInput={(e) => setRatingComment(String(e.detail.value ?? ""))}
+                  placeholder="Comentario opcional"
+                  maxlength={500}
+                  rows={2}
+                />
+              </IonItem>
+              <div style={{ display: "flex", gap: "8px", marginTop: "8px" }}>
+                <IonButton size="small" onClick={() => void handleSubmitRating()} disabled={submittingRating}>
+                  {submittingRating ? <IonSpinner name="dots" /> : "Enviar"}
+                </IonButton>
+                <IonButton size="small" fill="outline" color="medium" onClick={() => setRatingRideId(null)}>
+                  Cancelar
+                </IonButton>
+              </div>
+            </IonCardContent>
+          </IonCard>
         )}
       </IonContent>
     </IonPage>

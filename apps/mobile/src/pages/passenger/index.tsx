@@ -32,6 +32,22 @@ import { ROUTES } from "../../navigation/routes";
 import { useAuth } from "../../features/auth";
 import { ridesService, type RideRequestData } from "../../features/rides/rides.service";
 
+function StarRatingInput({ value, onChange }: { value: number; onChange: (v: number) => void }) {
+  return (
+    <div style={{ display: "flex", gap: "4px", margin: "8px 0" }}>
+      {[1, 2, 3, 4, 5].map((s) => (
+        <span
+          key={s}
+          onClick={() => onChange(s)}
+          style={{ fontSize: "1.6rem", cursor: "pointer", color: s <= value ? "#f4c430" : "#ccc" }}
+        >
+          ★
+        </span>
+      ))}
+    </div>
+  );
+}
+
 function meta(path: string) {
   return ROUTE_METADATA.find((r) => r.path === path)!;
 }
@@ -273,6 +289,13 @@ function TripsPage(): JSX.Element {
   const [cancelling,  setCancelling]  = useState<string | null>(null);
   const [cancelError, setCancelError] = useState<string | null>(null);
 
+  const [ratingRideId,  setRatingRideId]  = useState<string | null>(null);
+  const [ratingStars,   setRatingStars]   = useState(5);
+  const [ratingComment, setRatingComment] = useState("");
+  const [submittingRating, setSubmittingRating] = useState(false);
+  const [ratingError,   setRatingError]   = useState<string | null>(null);
+  const [ratedIds,      setRatedIds]      = useState<Set<string>>(new Set());
+
   const loadRides = useCallback(async () => {
     if (!session?.accessToken) return;
     setLoading(true);
@@ -300,6 +323,23 @@ function TripsPage(): JSX.Element {
       setCancelError(err instanceof Error ? err.message : "Error al cancelar el viaje.");
     } finally {
       setCancelling(null);
+    }
+  }
+
+  async function handleSubmitRating() {
+    if (!session?.accessToken || !ratingRideId) return;
+    setSubmittingRating(true);
+    setRatingError(null);
+    try {
+      await ridesService.rateRide(session.accessToken, ratingRideId, ratingStars, ratingComment.trim() || undefined);
+      setRatedIds((prev) => new Set([...prev, ratingRideId]));
+      setRatingRideId(null);
+      setRatingStars(5);
+      setRatingComment("");
+    } catch (err) {
+      setRatingError(err instanceof Error ? err.message : "Error al calificar el viaje.");
+    } finally {
+      setSubmittingRating(false);
     }
   }
 
@@ -381,18 +421,32 @@ function TripsPage(): JSX.Element {
                           </div>
                         )}
                       </div>
-                      {(ride.status === "requested" || ride.status === "accepted") && (
-                        <IonButton
-                          size="small"
-                          fill="outline"
-                          color="danger"
-                          disabled={cancelling === ride.id}
-                          onClick={() => void (ride.status === "requested" ? handleCancel(ride.id) : handleCancelAccepted(ride.id))}
-                          style={{ flexShrink: 0 }}
-                        >
-                          {cancelling === ride.id ? <IonSpinner name="dots" /> : "Cancelar"}
-                        </IonButton>
-                      )}
+                      <div style={{ display: "flex", flexDirection: "column", gap: "6px", flexShrink: 0 }}>
+                        {(ride.status === "requested" || ride.status === "accepted") && (
+                          <IonButton
+                            size="small"
+                            fill="outline"
+                            color="danger"
+                            disabled={cancelling === ride.id}
+                            onClick={() => void (ride.status === "requested" ? handleCancel(ride.id) : handleCancelAccepted(ride.id))}
+                          >
+                            {cancelling === ride.id ? <IonSpinner name="dots" /> : "Cancelar"}
+                          </IonButton>
+                        )}
+                        {ride.status === "completed" && !ratedIds.has(ride.id) && ratingRideId !== ride.id && (
+                          <IonButton
+                            size="small"
+                            fill="outline"
+                            color="warning"
+                            onClick={() => { setRatingRideId(ride.id); setRatingStars(5); setRatingComment(""); setRatingError(null); }}
+                          >
+                            Calificar
+                          </IonButton>
+                        )}
+                        {ride.status === "completed" && ratedIds.has(ride.id) && (
+                          <IonText color="success" style={{ fontSize: "0.75rem" }}>✓ Calificado</IonText>
+                        )}
+                      </div>
                     </div>
                   </IonCardContent>
                 </IonCard>
@@ -405,6 +459,33 @@ function TripsPage(): JSX.Element {
           <IonText color="danger">
             <p style={{ marginTop: "12px", fontSize: "0.85rem" }}>{cancelError}</p>
           </IonText>
+        )}
+
+        {ratingRideId && (
+          <IonCard style={{ margin: "12px 0 0" }}>
+            <IonCardContent style={{ padding: "14px 16px" }}>
+              <div style={{ fontWeight: 600, marginBottom: "4px" }}>Calificar conductor</div>
+              <StarRatingInput value={ratingStars} onChange={setRatingStars} />
+              <IonItem lines="none" style={{ "--padding-start": "0" }}>
+                <IonTextarea
+                  value={ratingComment}
+                  onIonInput={(e) => setRatingComment(String(e.detail.value ?? ""))}
+                  placeholder="Comentario opcional"
+                  maxlength={500}
+                  rows={2}
+                />
+              </IonItem>
+              {ratingError && <IonText color="danger"><p style={{ fontSize: "0.82rem", margin: "4px 0" }}>{ratingError}</p></IonText>}
+              <div style={{ display: "flex", gap: "8px", marginTop: "8px" }}>
+                <IonButton size="small" onClick={() => void handleSubmitRating()} disabled={submittingRating}>
+                  {submittingRating ? <IonSpinner name="dots" /> : "Enviar"}
+                </IonButton>
+                <IonButton size="small" fill="outline" color="medium" onClick={() => setRatingRideId(null)}>
+                  Cancelar
+                </IonButton>
+              </div>
+            </IonCardContent>
+          </IonCard>
         )}
       </IonContent>
     </IonPage>

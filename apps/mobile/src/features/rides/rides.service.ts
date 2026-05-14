@@ -54,6 +54,18 @@ export interface AvailableRideData {
   createdAt:       string;
 }
 
+export interface RatingData {
+  id:            string;
+  rideRequestId: string;
+  raterUserId:   string;
+  ratedUserId:   string;
+  raterRole:     string;
+  rating:        number;
+  comment:       string | null;
+  createdAt:     string;
+  updatedAt:     string;
+}
+
 export interface CreateRideInput {
   originText:      string;
   destinationText: string;
@@ -117,5 +129,14 @@ export const ridesService = {
     const result = await apiClient.get<DriverRidesEnvelope>("/rides/driver/me", { token: accessToken });
     if (!result.ok) throw new Error(result.message ?? "Failed to load driver rides.");
     return (result.data as DriverRidesEnvelope).data;
+  },
+
+  async rateRide(accessToken: string, rideId: string, rating: number, comment?: string): Promise<RatingData> {
+    type RatingEnvelope = { ok: true; data: RatingData; statusCode: number };
+    const body: { rating: number; comment?: string } = { rating };
+    if (comment) body.comment = comment;
+    const result = await apiClient.post<RatingEnvelope>(`/rides/${rideId}/rate`, body, { token: accessToken });
+    if (!result.ok) throw new Error(result.message ?? "Failed to submit rating.");
+    return (result.data as RatingEnvelope).data;
   },
 };
