@@ -31,6 +31,7 @@ import { ROUTE_METADATA } from "../../navigation/routeConfig";
 import { ROUTES } from "../../navigation/routes";
 import { useAuth } from "../../features/auth";
 import { ridesService, type RideRequestData } from "../../features/rides/rides.service";
+import { MapPlaceholder } from "../../components/MapPlaceholder";
 
 function StarRatingInput({ value, onChange }: { value: number; onChange: (v: number) => void }) {
   return (
@@ -196,7 +197,13 @@ function RequestRidePage(): JSX.Element {
           La tarifa estimada se mostrará al solicitar. Tarifa referencial — el cálculo real con distancia se implementará en fase futura.
         </div>
 
-        <IonCard>
+        <MapPlaceholder
+          {...(originInput.trim() ? { originText: originInput.trim() } : {})}
+          {...(destInput.trim() ? { destinationText: destInput.trim() } : {})}
+          height={180}
+        />
+
+        <IonCard style={{ marginTop: "12px" }}>
           <IonCardContent style={{ paddingTop: "12px" }}>
             <IonItem lines="full">
               <IonLabel position="stacked">Origen</IonLabel>
@@ -387,7 +394,12 @@ function TripsPage(): JSX.Element {
               return (
                 <IonCard key={ride.id} style={{ margin: 0 }}>
                   <IonCardContent style={{ padding: "14px 16px" }}>
-                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "8px" }}>
+                    <MapPlaceholder
+                      originText={ride.originText}
+                      destinationText={ride.destinationText}
+                      height={130}
+                    />
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "8px", marginTop: "10px" }}>
                       <div style={{ flex: 1 }}>
                         <div style={{ fontWeight: 600, fontSize: "0.9rem", marginBottom: "4px" }}>
                           {ride.originText} → {ride.destinationText}

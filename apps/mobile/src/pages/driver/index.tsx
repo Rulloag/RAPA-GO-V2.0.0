@@ -29,6 +29,7 @@ import { ROUTE_METADATA } from "../../navigation/routeConfig";
 import { ROUTES } from "../../navigation/routes";
 import { useAuth } from "../../features/auth";
 import { ridesService } from "../../features/rides/rides.service";
+import { MapPlaceholder } from "../../components/MapPlaceholder";
 
 function StarRatingInput({ value, onChange }: { value: number; onChange: (v: number) => void }) {
   return (
@@ -192,7 +193,12 @@ function AvailableRidesPage(): JSX.Element {
             {rides.map((ride) => (
               <IonCard key={ride.id} style={{ margin: 0 }}>
                 <IonCardContent style={{ padding: "14px 16px" }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "8px" }}>
+                  <MapPlaceholder
+                    originText={ride.originText}
+                    destinationText={ride.destinationText}
+                    height={130}
+                  />
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "8px", marginTop: "10px" }}>
                     <div style={{ flex: 1 }}>
                       <div style={{ fontWeight: 600, fontSize: "0.9rem", marginBottom: "6px" }}>
                         {ride.originText} → {ride.destinationText}
@@ -379,7 +385,12 @@ function DriverMyRidesPage(): JSX.Element {
               return (
                 <IonCard key={ride.id} style={{ margin: 0 }}>
                   <IonCardContent style={{ padding: "14px 16px" }}>
-                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "8px" }}>
+                    <MapPlaceholder
+                      originText={ride.originText}
+                      destinationText={ride.destinationText}
+                      height={130}
+                    />
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "8px", marginTop: "10px" }}>
                       <div style={{ flex: 1 }}>
                         <div style={{ fontWeight: 600, fontSize: "0.9rem", marginBottom: "4px" }}>
                           {ride.originText} → {ride.destinationText}
