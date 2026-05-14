@@ -43,6 +43,13 @@
       "when": 1778651002883,
       "tag": "0005_damp_leech",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1778774799946,
+      "tag": "0006_dark_lyja",
+      "breakpoints": true
     }
   ]
 }

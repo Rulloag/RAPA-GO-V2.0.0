@@ -100,6 +100,36 @@ export class RidesRepository {
     }
   }
 
+  /**
+   * Atomically cancel a ride only when it is still in 'accepted' status.
+   * Returns null if no row was updated (status changed concurrently).
+   */
+  async cancelAccepted(
+    id: string,
+    cancelledByUserId: string,
+    cancelledByRole: string,
+    cancellationReason: string | null,
+  ): Promise<RideRequest | null> {
+    try {
+      const rows = await db
+        .update(rideRequests)
+        .set({
+          status:             "cancelled",
+          cancelledAt:        new Date(),
+          cancelledByUserId,
+          cancelledByRole,
+          cancellationReason,
+          updatedAt:          new Date(),
+        })
+        .where(and(eq(rideRequests.id, id), eq(rideRequests.status, "accepted")))
+        .returning();
+      return rows[0] ?? null;
+    } catch (err) {
+      if (err instanceof AppError) throw err;
+      throw AppError.internal(`Failed to cancel accepted ride: ${String(err)}`);
+    }
+  }
+
   async cancel(id: string): Promise<RideRequest> {
     try {
       const rows = await db

@@ -1,16 +1,18 @@
 export interface RideRequestResponse {
-  id:              string;
-  passengerUserId: string;
-  driverUserId:    string | null;
-  originText:      string;
-  destinationText: string;
-  notes:           string | null;
-  status:          string;
-  requestedAt:     string;
-  acceptedAt:      string | null;
-  cancelledAt:     string | null;
-  createdAt:       string;
-  updatedAt:       string;
+  id:                  string;
+  passengerUserId:     string;
+  driverUserId:        string | null;
+  originText:          string;
+  destinationText:     string;
+  notes:               string | null;
+  status:              string;
+  requestedAt:         string;
+  acceptedAt:          string | null;
+  cancelledAt:         string | null;
+  cancellationReason:  string | null;
+  cancelledByRole:     string | null;
+  createdAt:           string;
+  updatedAt:           string;
 }
 
 /** Subset exposed to driver for their own accepted rides — no passenger identity. */
