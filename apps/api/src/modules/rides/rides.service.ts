@@ -16,6 +16,11 @@ const sessionService = new SessionService();
 const usersRepo      = new UsersRepository();
 const ridesRepo      = new RidesRepository();
 
+function estimateFare(originText: string, destinationText: string): number {
+  const raw = 3000 + (originText.length + destinationText.length) * 50;
+  return Math.min(Math.max(raw, 3000), 50000);
+}
+
 function toResponse(r: RideRequest): RideRequestResponse {
   return {
     id:              r.id,
@@ -24,6 +29,7 @@ function toResponse(r: RideRequest): RideRequestResponse {
     originText:      r.originText,
     destinationText: r.destinationText,
     notes:           r.notes,
+    estimatedFareClp: r.estimatedFareClp ?? null,
     status:          r.status,
     requestedAt:     r.requestedAt.toISOString(),
     acceptedAt:      r.acceptedAt?.toISOString() ?? null,
@@ -43,6 +49,7 @@ function toDriverRideResponse(r: RideRequest): DriverRideResponse {
     originText:         r.originText,
     destinationText:    r.destinationText,
     notes:              r.notes,
+    estimatedFareClp:   r.estimatedFareClp ?? null,
     status:             r.status,
     requestedAt:        r.requestedAt.toISOString(),
     acceptedAt:         r.acceptedAt?.toISOString() ?? null,
@@ -57,11 +64,12 @@ function toDriverRideResponse(r: RideRequest): DriverRideResponse {
 
 function toAvailableResponse(r: RideRequest): AvailableRideResponse {
   return {
-    id:              r.id,
-    originText:      r.originText,
-    destinationText: r.destinationText,
-    notes:           r.notes,
-    status:          r.status,
+    id:               r.id,
+    originText:       r.originText,
+    destinationText:  r.destinationText,
+    notes:            r.notes,
+    estimatedFareClp: r.estimatedFareClp ?? null,
+    status:           r.status,
     requestedAt:     r.requestedAt.toISOString(),
     createdAt:       r.createdAt.toISOString(),
   };
@@ -117,11 +125,13 @@ export class RidesService {
       return { ok: false, code: "AUTH_FORBIDDEN", message: "Only passengers can create ride requests.", statusCode: 403 };
     }
 
+    const fare = estimateFare(input.originText, input.destinationText);
     const row = await ridesRepo.create(
       auth.userId,
       input.originText,
       input.destinationText,
       input.notes ?? null,
+      fare,
     );
     return { ok: true, ride: toResponse(row) };
   }

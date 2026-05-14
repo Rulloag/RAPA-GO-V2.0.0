@@ -180,6 +180,11 @@ function AvailableRidesPage(): JSX.Element {
                         {ride.originText} → {ride.destinationText}
                       </div>
                       <IonBadge color="warning" style={{ fontSize: "0.7rem" }}>Solicitado</IonBadge>
+                      {ride.estimatedFareClp != null && (
+                        <div style={{ marginTop: "4px", fontSize: "0.78rem", fontWeight: 500 }}>
+                          Tarifa est.: ${ride.estimatedFareClp.toLocaleString("es-CL")} CLP
+                        </div>
+                      )}
                       {ride.notes && (
                         <div style={{ marginTop: "6px", fontSize: "0.8rem", color: "var(--ion-color-medium)" }}>
                           {ride.notes}
@@ -337,6 +342,11 @@ function DriverMyRidesPage(): JSX.Element {
                           {ride.originText} → {ride.destinationText}
                         </div>
                         <IonBadge color={color} style={{ fontSize: "0.7rem" }}>{label}</IonBadge>
+                        {ride.estimatedFareClp != null && (
+                          <div style={{ marginTop: "4px", fontSize: "0.78rem", fontWeight: 500 }}>
+                            Tarifa est.: ${ride.estimatedFareClp.toLocaleString("es-CL")} CLP
+                          </div>
+                        )}
                         {ride.notes && (
                           <div style={{ marginTop: "5px", fontSize: "0.8rem", color: "var(--ion-color-medium)" }}>
                             {ride.notes}

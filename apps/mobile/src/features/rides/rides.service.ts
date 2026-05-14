@@ -5,13 +5,14 @@ type RideEnvelope  = { ok: true; data: RideRequestData;   statusCode: number };
 
 /** Ride response for passenger — includes driverUserId and acceptedAt. */
 export interface RideRequestData {
-  id:              string;
-  passengerUserId: string;
-  driverUserId:    string | null;
-  originText:      string;
-  destinationText: string;
-  notes:           string | null;
-  status:          string;
+  id:               string;
+  passengerUserId:  string;
+  driverUserId:     string | null;
+  originText:       string;
+  destinationText:  string;
+  notes:            string | null;
+  estimatedFareClp: number | null;
+  status:           string;
   requestedAt:     string;
   acceptedAt:      string | null;
   startedAt:          string | null;
@@ -29,6 +30,7 @@ export interface DriverRideData {
   originText:         string;
   destinationText:    string;
   notes:              string | null;
+  estimatedFareClp:   number | null;
   status:             string;
   requestedAt:        string;
   acceptedAt:         string | null;
@@ -42,11 +44,12 @@ export interface DriverRideData {
 
 /** Subset returned to drivers — no passenger identity. */
 export interface AvailableRideData {
-  id:              string;
-  originText:      string;
-  destinationText: string;
-  notes:           string | null;
-  status:          string;
+  id:               string;
+  originText:       string;
+  destinationText:  string;
+  notes:            string | null;
+  estimatedFareClp: number | null;
+  status:           string;
   requestedAt:     string;
   createdAt:       string;
 }

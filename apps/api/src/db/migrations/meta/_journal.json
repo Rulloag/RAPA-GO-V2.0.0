@@ -64,6 +64,13 @@
       "when": 1778776592467,
       "tag": "0008_spooky_ma_gnuci",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1778786069512,
+      "tag": "0009_classy_legion",
+      "breakpoints": true
     }
   ]
 }

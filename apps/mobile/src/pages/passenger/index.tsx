@@ -167,7 +167,6 @@ function RequestRidePage(): JSX.Element {
         </IonToolbar>
       </IonHeader>
       <IonContent className="ion-padding">
-        {/* Notice — mapa futuro */}
         <div style={{
           background:   "var(--ion-color-warning-tint)",
           border:       "1px solid var(--ion-color-warning)",
@@ -177,8 +176,8 @@ function RequestRidePage(): JSX.Element {
           fontSize:     "0.82rem",
           color:        "var(--ion-color-warning-shade)",
         }}>
-          <strong>Ubicación en mapa y asignación de conductor se implementarán en una fase futura.</strong><br />
-          Por ahora ingresa origen y destino como texto.
+          <strong>Ubicación en mapa se implementará en fase futura.</strong><br />
+          La tarifa estimada se mostrará al solicitar. Tarifa referencial — el cálculo real con distancia se implementará en fase futura.
         </div>
 
         <IonCard>
@@ -218,11 +217,27 @@ function RequestRidePage(): JSX.Element {
             </IonItem>
 
             {submitted && (
-              <IonText color="success">
-                <p style={{ margin: "8px 0 0", fontSize: "0.85rem" }}>
-                  ✓ Solicitud enviada. ID: {submitted.id.slice(0, 8)}… — Estado: {RIDE_STATUS_LABEL[submitted.status] ?? submitted.status}
-                </p>
-              </IonText>
+              <div style={{ margin: "10px 0 0" }}>
+                <IonText color="success">
+                  <p style={{ margin: 0, fontSize: "0.85rem" }}>
+                    ✓ Solicitud enviada — Estado: {RIDE_STATUS_LABEL[submitted.status] ?? submitted.status}
+                  </p>
+                </IonText>
+                {submitted.estimatedFareClp != null && (
+                  <div style={{
+                    marginTop: "8px",
+                    padding: "8px 12px",
+                    background: "var(--ion-color-light)",
+                    borderRadius: "6px",
+                    fontSize: "0.85rem",
+                  }}>
+                    <strong>Tarifa estimada: ${submitted.estimatedFareClp.toLocaleString("es-CL")} CLP</strong>
+                    <div style={{ fontSize: "0.72rem", color: "var(--ion-color-medium)", marginTop: "2px" }}>
+                      Tarifa referencial. El cálculo real se implementará en fase futura.
+                    </div>
+                  </div>
+                )}
+              </div>
             )}
             {submitError && (
               <IonText color="danger">
@@ -338,6 +353,11 @@ function TripsPage(): JSX.Element {
                           {ride.originText} → {ride.destinationText}
                         </div>
                         <IonBadge color={color} style={{ fontSize: "0.7rem" }}>{label}</IonBadge>
+                        {ride.estimatedFareClp != null && (
+                          <div style={{ marginTop: "4px", fontSize: "0.78rem", color: "var(--ion-color-dark)", fontWeight: 500 }}>
+                            Tarifa est.: ${ride.estimatedFareClp.toLocaleString("es-CL")} CLP
+                          </div>
+                        )}
                         {ride.notes && (
                           <div style={{ marginTop: "5px", fontSize: "0.8rem", color: "var(--ion-color-medium)" }}>
                             {ride.notes}

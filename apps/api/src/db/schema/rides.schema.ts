@@ -1,4 +1,4 @@
-import { pgTable, uuid, varchar, text, timestamp } from "drizzle-orm/pg-core";
+import { pgTable, uuid, varchar, text, timestamp, integer } from "drizzle-orm/pg-core";
 import { users } from "./users.schema.js";
 
 export const rideRequests = pgTable("ride_requests", {
@@ -6,7 +6,8 @@ export const rideRequests = pgTable("ride_requests", {
   passengerUserId:   uuid("passenger_user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
   originText:        varchar("origin_text",      { length: 150 }).notNull(),
   destinationText:   varchar("destination_text", { length: 150 }).notNull(),
-  notes:             text("notes"),
+  notes:               text("notes"),
+  estimatedFareClp:    integer("estimated_fare_clp"),
   driverUserId:      uuid("driver_user_id").references(() => users.id, { onDelete: "set null" }),
   status:            varchar("status", { length: 30 }).notNull().default("requested"),
   requestedAt:       timestamp("requested_at",  { withTimezone: true }).notNull().defaultNow(),

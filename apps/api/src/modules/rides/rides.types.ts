@@ -5,6 +5,7 @@ export interface RideRequestResponse {
   originText:          string;
   destinationText:     string;
   notes:               string | null;
+  estimatedFareClp:    number | null;
   status:              string;
   requestedAt:         string;
   acceptedAt:          string | null;
@@ -23,6 +24,7 @@ export interface DriverRideResponse {
   originText:         string;
   destinationText:    string;
   notes:              string | null;
+  estimatedFareClp:   number | null;
   status:             string;
   requestedAt:        string;
   acceptedAt:         string | null;
@@ -40,11 +42,12 @@ export type DriverRidesListResult =
 
 /** Subset exposed to drivers — no passenger identity fields. */
 export interface AvailableRideResponse {
-  id:              string;
-  originText:      string;
-  destinationText: string;
-  notes:           string | null;
-  status:          string;
+  id:               string;
+  originText:       string;
+  destinationText:  string;
+  notes:            string | null;
+  estimatedFareClp: number | null;
+  status:           string;
   requestedAt:     string;
   createdAt:       string;
 }
