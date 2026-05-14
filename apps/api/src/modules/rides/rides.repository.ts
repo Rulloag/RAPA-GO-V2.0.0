@@ -101,6 +101,28 @@ export class RidesRepository {
   }
 
   /**
+   * Atomically start a ride only when status='accepted' AND driver matches.
+   * Returns null if no row was updated.
+   */
+  async start(id: string, driverUserId: string): Promise<RideRequest | null> {
+    try {
+      const rows = await db
+        .update(rideRequests)
+        .set({ status: "in_progress", startedAt: new Date(), updatedAt: new Date() })
+        .where(and(
+          eq(rideRequests.id, id),
+          eq(rideRequests.status, "accepted"),
+          eq(rideRequests.driverUserId, driverUserId),
+        ))
+        .returning();
+      return rows[0] ?? null;
+    } catch (err) {
+      if (err instanceof AppError) throw err;
+      throw AppError.internal(`Failed to start ride: ${String(err)}`);
+    }
+  }
+
+  /**
    * Atomically cancel a ride only when it is still in 'accepted' status.
    * Returns null if no row was updated (status changed concurrently).
    */

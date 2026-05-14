@@ -27,6 +27,7 @@ function toResponse(r: RideRequest): RideRequestResponse {
     status:          r.status,
     requestedAt:     r.requestedAt.toISOString(),
     acceptedAt:      r.acceptedAt?.toISOString() ?? null,
+    startedAt:       r.startedAt?.toISOString() ?? null,
     cancelledAt:        r.cancelledAt?.toISOString() ?? null,
     cancellationReason: r.cancellationReason ?? null,
     cancelledByRole:    r.cancelledByRole ?? null,
@@ -185,6 +186,37 @@ export class RidesService {
     }
 
     return { ok: true, ride: toResponse(accepted) };
+  }
+
+  async startRide(accessToken: string, rideId: string): Promise<RideResult> {
+    const auth = await authenticate(accessToken);
+    if (!auth.ok) return auth;
+
+    if (auth.role !== "driver") {
+      return { ok: false, code: "AUTH_FORBIDDEN", message: "Only drivers can start rides.", statusCode: 403 };
+    }
+
+    // Atomic: UPDATE WHERE id=? AND status='accepted' AND driver_user_id=?
+    const started = await ridesRepo.start(rideId, auth.userId);
+    if (!started) {
+      const existing = await ridesRepo.findById(rideId);
+      if (!existing) {
+        return { ok: false, code: "NOT_FOUND", message: "Ride request not found.", statusCode: 404 };
+      }
+      // Check status first — no driver ownership info should be revealed for non-accepted rides
+      if (existing.status !== "accepted") {
+        return {
+          ok: false,
+          code: "RIDE_CANNOT_START",
+          message: `Ride cannot be started — current status is '${existing.status}'.`,
+          statusCode: 409,
+        };
+      }
+      // Status is 'accepted' but this driver is not the assigned one
+      return { ok: false, code: "AUTH_FORBIDDEN", message: "You can only start rides assigned to you.", statusCode: 403 };
+    }
+
+    return { ok: true, ride: toResponse(started) };
   }
 
   async cancelAcceptedRide(

@@ -8,6 +8,7 @@ export interface RideRequestResponse {
   status:              string;
   requestedAt:         string;
   acceptedAt:          string | null;
+  startedAt:           string | null;
   cancelledAt:         string | null;
   cancellationReason:  string | null;
   cancelledByRole:     string | null;

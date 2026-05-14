@@ -1,0 +1,1 @@
+ALTER TABLE "ride_requests" ADD COLUMN "started_at" timestamp with time zone;
