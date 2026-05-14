@@ -82,16 +82,18 @@ export class RidesRepository {
     }
   }
 
-  async accept(id: string, driverUserId: string): Promise<RideRequest> {
+  /**
+   * Atomically accept a ride only when it is still in 'requested' status.
+   * Returns null if no row was updated (status already changed — race condition).
+   */
+  async accept(id: string, driverUserId: string): Promise<RideRequest | null> {
     try {
       const rows = await db
         .update(rideRequests)
         .set({ status: "accepted", driverUserId, acceptedAt: new Date(), updatedAt: new Date() })
-        .where(eq(rideRequests.id, id))
+        .where(and(eq(rideRequests.id, id), eq(rideRequests.status, "requested")))
         .returning();
-      const row = rows[0];
-      if (!row) throw AppError.internal("Update returned no rows.");
-      return row;
+      return rows[0] ?? null;
     } catch (err) {
       if (err instanceof AppError) throw err;
       throw AppError.internal(`Failed to accept ride request: ${String(err)}`);

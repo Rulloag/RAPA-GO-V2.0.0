@@ -163,16 +163,17 @@ export class RidesService {
       return { ok: false, code: "AUTH_FORBIDDEN", message: "Only drivers can accept ride requests.", statusCode: 403 };
     }
 
-    const existing = await ridesRepo.findById(rideId);
-    if (!existing) {
-      return { ok: false, code: "NOT_FOUND", message: "Ride request not found.", statusCode: 404 };
-    }
-
-    if (existing.status === "accepted") {
-      return { ok: false, code: "RIDE_ALREADY_ACCEPTED", message: "This ride has already been accepted by another driver.", statusCode: 409 };
-    }
-
-    if (existing.status !== "requested") {
+    // Atomic accept: UPDATE WHERE id=? AND status='requested'
+    // If 0 rows updated, determine whether the ride doesn't exist or was already taken.
+    const accepted = await ridesRepo.accept(rideId, auth.userId);
+    if (!accepted) {
+      const existing = await ridesRepo.findById(rideId);
+      if (!existing) {
+        return { ok: false, code: "NOT_FOUND", message: "Ride request not found.", statusCode: 404 };
+      }
+      if (existing.status === "accepted") {
+        return { ok: false, code: "RIDE_ALREADY_ACCEPTED", message: "This ride has already been accepted by another driver.", statusCode: 409 };
+      }
       return {
         ok: false,
         code: "RIDE_CANNOT_ACCEPT",
@@ -181,7 +182,6 @@ export class RidesService {
       };
     }
 
-    const accepted = await ridesRepo.accept(existing.id, auth.userId);
     return { ok: true, ride: toResponse(accepted) };
   }
 
