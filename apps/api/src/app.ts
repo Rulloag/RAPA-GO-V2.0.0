@@ -9,6 +9,7 @@ import { documentsRoutes }     from "./modules/documents/documents.routes.js";
 import { bankAccountsRoutes }  from "./modules/bankAccounts/bankAccounts.routes.js";
 import { ridesRoutes }         from "./modules/rides/rides.routes.js";
 import { ratingsRoutes }       from "./modules/ratings/ratings.routes.js";
+import { adminRoutes }         from "./modules/admin/admin.routes.js";
 
 /**
  * buildApp — constructs and configures the Fastify instance.
@@ -49,6 +50,7 @@ export async function buildApp(): Promise<FastifyInstance> {
   await fastify.register(bankAccountsRoutes, { prefix: "/api/bank-account" });
   await fastify.register(ridesRoutes,        { prefix: "/api/rides" });
   await fastify.register(ratingsRoutes,      { prefix: "/api" });
+  await fastify.register(adminRoutes,        { prefix: "/api/admin" });
 
   return fastify;
 }

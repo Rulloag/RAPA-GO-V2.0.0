@@ -1,4 +1,22 @@
-import { IonContent, IonHeader, IonPage, IonTitle, IonToolbar } from "@ionic/react";
+import {
+  IonBadge,
+  IonButton,
+  IonCard,
+  IonCardContent,
+  IonContent,
+  IonHeader,
+  IonInput,
+  IonItem,
+  IonLabel,
+  IonPage,
+  IonSelect,
+  IonSelectOption,
+  IonSpinner,
+  IonText,
+  IonTitle,
+  IonToolbar,
+} from "@ionic/react";
+import { useEffect, useState, useCallback } from "react";
 import {
   cardOutline,
   carOutline,
@@ -13,6 +31,8 @@ import { HomeHeader } from "../../components/HomeHeader";
 import { ActionCard } from "../../components/ActionCard";
 import { ROUTE_METADATA } from "../../navigation/routeConfig";
 import { ROUTES } from "../../navigation/routes";
+import { useAuth } from "../../features/auth";
+import { adminService, type AdminUserData } from "../../features/admin/admin.service";
 
 function meta(path: string) {
   return ROUTE_METADATA.find((r) => r.path === path)!;
@@ -88,12 +108,191 @@ export function AdminHomePage(): JSX.Element {
   );
 }
 
+const ROLE_LABEL: Record<string, string> = {
+  passenger: "Pasajero",
+  driver:    "Conductor",
+  guide:     "Guía",
+  rental:    "Arriendo",
+  admin:     "Admin",
+};
+
+const STATUS_COLOR: Record<string, string> = {
+  pending:   "warning",
+  active:    "success",
+  suspended: "medium",
+  banned:    "danger",
+};
+
+const STATUS_LABEL: Record<string, string> = {
+  pending:   "Pendiente",
+  active:    "Activo",
+  suspended: "Suspendido",
+  banned:    "Bloqueado",
+};
+
 export function AdminUsersPage(): JSX.Element {
-  const m = meta("/admin/users");
+  const { session } = useAuth();
+
+  const [users,      setUsers]      = useState<AdminUserData[]>([]);
+  const [loading,    setLoading]    = useState(true);
+  const [loadError,  setLoadError]  = useState<string | null>(null);
+
+  const [filterRole,   setFilterRole]   = useState("");
+  const [filterStatus, setFilterStatus] = useState("");
+  const [filterSearch, setFilterSearch] = useState("");
+
+  const loadUsers = useCallback(async () => {
+    if (!session?.accessToken) return;
+    setLoading(true);
+    setLoadError(null);
+    try {
+      const params: { role?: string; status?: string; search?: string } = {};
+      if (filterRole)   params.role   = filterRole;
+      if (filterStatus) params.status = filterStatus;
+      if (filterSearch.trim()) params.search = filterSearch.trim();
+      const data = await adminService.listUsers(session.accessToken, params);
+      setUsers(data);
+    } catch (err) {
+      setLoadError(err instanceof Error ? err.message : "Error al cargar usuarios.");
+    } finally {
+      setLoading(false);
+    }
+  }, [session?.accessToken, filterRole, filterStatus, filterSearch]);
+
+  useEffect(() => { void loadUsers(); }, [loadUsers]);
+
   return (
     <IonPage>
-      <IonHeader><IonToolbar color="danger"><IonTitle>{m.label}</IonTitle></IonToolbar></IonHeader>
-      <IonContent className="ion-padding"><ModulePlaceholderPage title={m.label} role="admin" plannedFeatures={m.plannedFeatures} /></IonContent>
+      <IonHeader>
+        <IonToolbar color="danger">
+          <IonTitle>Usuarios</IonTitle>
+        </IonToolbar>
+      </IonHeader>
+      <IonContent className="ion-padding">
+
+        {/* Filters */}
+        <IonCard style={{ margin: "0 0 12px" }}>
+          <IonCardContent style={{ padding: "10px 12px" }}>
+            <IonItem lines="full">
+              <IonLabel position="stacked" style={{ fontSize: "0.78rem" }}>Buscar</IonLabel>
+              <IonInput
+                value={filterSearch}
+                onIonInput={(e) => setFilterSearch(String(e.detail.value ?? ""))}
+                placeholder="Nombre o email..."
+                clearInput
+              />
+            </IonItem>
+
+            <div style={{ display: "flex", gap: "8px", marginTop: "8px" }}>
+              <IonItem lines="none" style={{ flex: 1 }}>
+                <IonLabel position="stacked" style={{ fontSize: "0.78rem" }}>Rol</IonLabel>
+                <IonSelect
+                  value={filterRole}
+                  onIonChange={(e) => setFilterRole(String(e.detail.value ?? ""))}
+                  placeholder="Todos"
+                  interface="popover"
+                >
+                  <IonSelectOption value="">Todos</IonSelectOption>
+                  <IonSelectOption value="passenger">Pasajero</IonSelectOption>
+                  <IonSelectOption value="driver">Conductor</IonSelectOption>
+                  <IonSelectOption value="guide">Guía</IonSelectOption>
+                  <IonSelectOption value="rental">Arriendo</IonSelectOption>
+                  <IonSelectOption value="admin">Admin</IonSelectOption>
+                </IonSelect>
+              </IonItem>
+
+              <IonItem lines="none" style={{ flex: 1 }}>
+                <IonLabel position="stacked" style={{ fontSize: "0.78rem" }}>Estado</IonLabel>
+                <IonSelect
+                  value={filterStatus}
+                  onIonChange={(e) => setFilterStatus(String(e.detail.value ?? ""))}
+                  placeholder="Todos"
+                  interface="popover"
+                >
+                  <IonSelectOption value="">Todos</IonSelectOption>
+                  <IonSelectOption value="pending">Pendiente</IonSelectOption>
+                  <IonSelectOption value="active">Activo</IonSelectOption>
+                  <IonSelectOption value="suspended">Suspendido</IonSelectOption>
+                  <IonSelectOption value="banned">Bloqueado</IonSelectOption>
+                </IonSelect>
+              </IonItem>
+            </div>
+
+            <IonButton
+              expand="block"
+              size="small"
+              fill="outline"
+              color="danger"
+              style={{ marginTop: "8px" }}
+              onClick={() => void loadUsers()}
+              disabled={loading}
+            >
+              {loading ? <IonSpinner name="dots" /> : "Aplicar filtros"}
+            </IonButton>
+          </IonCardContent>
+        </IonCard>
+
+        {/* Summary count */}
+        {!loading && !loadError && (
+          <IonText color="medium">
+            <p style={{ fontSize: "0.78rem", margin: "0 0 10px" }}>
+              {users.length} usuario{users.length !== 1 ? "s" : ""} encontrado{users.length !== 1 ? "s" : ""}
+            </p>
+          </IonText>
+        )}
+
+        {/* Loading */}
+        {loading && (
+          <div style={{ display: "flex", justifyContent: "center", paddingTop: "40px" }}>
+            <IonSpinner name="crescent" />
+          </div>
+        )}
+
+        {/* Error */}
+        {loadError && <IonText color="danger"><p>{loadError}</p></IonText>}
+
+        {/* Empty */}
+        {!loading && !loadError && users.length === 0 && (
+          <IonText color="medium"><p>No se encontraron usuarios.</p></IonText>
+        )}
+
+        {/* User cards */}
+        {!loading && users.length > 0 && (
+          <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+            {users.map((user) => {
+              const statusColor = STATUS_COLOR[user.status] ?? "medium";
+              const statusLabel = STATUS_LABEL[user.status] ?? user.status;
+              const roleLabel   = ROLE_LABEL[user.role]   ?? user.role;
+              return (
+                <IonCard key={user.id} style={{ margin: 0 }}>
+                  <IonCardContent style={{ padding: "12px 14px" }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "8px" }}>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontWeight: 600, fontSize: "0.9rem", marginBottom: "4px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                          {user.name}
+                        </div>
+                        <div style={{ fontSize: "0.75rem", color: "var(--ion-color-medium)", marginBottom: "6px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                          {user.email}
+                        </div>
+                        <div style={{ display: "flex", flexWrap: "wrap", gap: "4px" }}>
+                          <IonBadge color="primary" style={{ fontSize: "0.68rem" }}>{roleLabel}</IonBadge>
+                          <IonBadge color={statusColor} style={{ fontSize: "0.68rem" }}>{statusLabel}</IonBadge>
+                          {user.isVerified && (
+                            <IonBadge color="tertiary" style={{ fontSize: "0.68rem" }}>Verificado</IonBadge>
+                          )}
+                        </div>
+                      </div>
+                      <div style={{ fontSize: "0.68rem", color: "var(--ion-color-medium)", flexShrink: 0, textAlign: "right" }}>
+                        {new Date(user.createdAt).toLocaleDateString("es-CL")}
+                      </div>
+                    </div>
+                  </IonCardContent>
+                </IonCard>
+              );
+            })}
+          </div>
+        )}
+      </IonContent>
     </IonPage>
   );
 }
