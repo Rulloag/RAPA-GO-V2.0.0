@@ -10,10 +10,10 @@
   "scripts": {
     "dev": "npm run dev:api & npm run dev:mobile",
     "dev:mobile": "npm run dev --workspace=apps/mobile",
-    "dev:api": "npm run dev --workspace=apps/api",
+    "dev:api": "npm run build --workspace=packages/shared && npm run dev --workspace=apps/api",
     "build": "npm run build --workspaces --if-present",
     "build:mobile": "npm run build --workspace=apps/mobile",
-    "build:api": "npm run build --workspace=apps/api",
+    "build:api": "npm run build --workspace=packages/shared && npm run build --workspace=apps/api",
     "typecheck": "npm run typecheck --workspaces --if-present",
     "lint": "npm run lint --workspaces --if-present",
     "test": "npm run test --workspaces --if-present"
