@@ -1,4 +1,5 @@
 import {
+  IonAlert,
   IonBadge,
   IonButton,
   IonCard,
@@ -21,6 +22,7 @@ import {
   cardOutline,
   carOutline,
   compassOutline,
+  documentTextOutline,
   keyOutline,
   peopleOutline,
   personOutline,
@@ -32,7 +34,7 @@ import { ActionCard } from "../../components/ActionCard";
 import { ROUTE_METADATA } from "../../navigation/routeConfig";
 import { ROUTES } from "../../navigation/routes";
 import { useAuth } from "../../features/auth";
-import { adminService, type AdminUserData } from "../../features/admin/admin.service";
+import { adminService, type AdminUserData, type AdminDocumentData } from "../../features/admin/admin.service";
 
 function meta(path: string) {
   return ROUTE_METADATA.find((r) => r.path === path)!;
@@ -93,6 +95,13 @@ export function AdminHomePage(): JSX.Element {
             title="Pagos"
             subtitle={PENDING}
             route={ROUTES.ADMIN.PAYMENTS}
+            color="danger"
+          />
+          <ActionCard
+            icon={documentTextOutline}
+            title="Documentos"
+            subtitle="Revisar y aprobar documentos de usuarios."
+            route={ROUTES.ADMIN.DOCUMENTS}
             color="danger"
           />
           <ActionCard
@@ -405,6 +414,296 @@ export function AdminSettingsPage(): JSX.Element {
     <IonPage>
       <IonHeader><IonToolbar color="danger"><IonTitle>{m.label}</IonTitle></IonToolbar></IonHeader>
       <IonContent className="ion-padding"><ModulePlaceholderPage title={m.label} role="admin" plannedFeatures={m.plannedFeatures} /></IonContent>
+    </IonPage>
+  );
+}
+
+const DOC_STATUS_COLOR: Record<string, string> = {
+  pending:  "warning",
+  uploaded: "primary",
+  approved: "success",
+  rejected: "danger",
+};
+
+const DOC_STATUS_LABEL: Record<string, string> = {
+  pending:  "Pendiente",
+  uploaded: "Subido",
+  approved: "Aprobado",
+  rejected: "Rechazado",
+};
+
+const DOC_TYPE_LABEL: Record<string, string> = {
+  identity_document:    "Cédula de identidad",
+  driver_license:       "Licencia de conducir",
+  vehicle_registration: "Registro de vehículo",
+  vehicle_insurance:    "Seguro del vehículo",
+  guide_certification:  "Certificación de guía",
+  business_registration:"Registro de empresa",
+  vehicle_ownership:    "Propiedad del vehículo",
+};
+
+export function AdminDocumentsPage(): JSX.Element {
+  const { session } = useAuth();
+
+  const [docs,       setDocs]      = useState<AdminDocumentData[]>([]);
+  const [loading,    setLoading]   = useState(true);
+  const [loadError,  setLoadError] = useState<string | null>(null);
+
+  const [filterStatus, setFilterStatus] = useState("");
+  const [filterType,   setFilterType]   = useState("");
+
+  const [actionId,     setActionId]     = useState<string | null>(null);
+  const [actionType,   setActionType]   = useState<"approve" | "reject" | null>(null);
+  const [rejectReason, setRejectReason] = useState("");
+  const [actioning,    setActioning]    = useState(false);
+  const [actionError,  setActionError]  = useState<string | null>(null);
+
+  const loadDocs = useCallback(async () => {
+    if (!session?.accessToken) return;
+    setLoading(true);
+    setLoadError(null);
+    try {
+      const params: { status?: string; documentType?: string } = {};
+      if (filterStatus) params.status       = filterStatus;
+      if (filterType)   params.documentType = filterType;
+      const data = await adminService.listDocuments(session.accessToken, params);
+      setDocs(data);
+    } catch (err) {
+      setLoadError(err instanceof Error ? err.message : "Error al cargar documentos.");
+    } finally {
+      setLoading(false);
+    }
+  }, [session?.accessToken, filterStatus, filterType]);
+
+  useEffect(() => { void loadDocs(); }, [loadDocs]);
+
+  async function handleApprove(docId: string) {
+    if (!session?.accessToken) return;
+    setActioning(true);
+    setActionError(null);
+    try {
+      const updated = await adminService.reviewDocument(session.accessToken, docId, "approved");
+      setDocs((prev) => prev.map((d) => (d.id === docId ? updated : d)));
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : "Error al aprobar.");
+    } finally {
+      setActioning(false);
+      setActionId(null);
+      setActionType(null);
+    }
+  }
+
+  async function handleReject() {
+    if (!session?.accessToken || !actionId) return;
+    if (!rejectReason.trim()) {
+      setActionError("El motivo de rechazo es obligatorio.");
+      return;
+    }
+    setActioning(true);
+    setActionError(null);
+    try {
+      const updated = await adminService.reviewDocument(session.accessToken, actionId, "rejected", rejectReason.trim());
+      setDocs((prev) => prev.map((d) => (d.id === actionId ? updated : d)));
+      setRejectReason("");
+      setActionId(null);
+      setActionType(null);
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : "Error al rechazar.");
+    } finally {
+      setActioning(false);
+    }
+  }
+
+  return (
+    <IonPage>
+      <IonHeader>
+        <IonToolbar color="danger">
+          <IonTitle>Documentos</IonTitle>
+        </IonToolbar>
+      </IonHeader>
+      <IonContent className="ion-padding">
+
+        {/* Filters */}
+        <IonCard style={{ margin: "0 0 12px" }}>
+          <IonCardContent style={{ padding: "10px 12px" }}>
+            <div style={{ display: "flex", gap: "8px" }}>
+              <IonItem lines="none" style={{ flex: 1 }}>
+                <IonLabel position="stacked" style={{ fontSize: "0.78rem" }}>Estado</IonLabel>
+                <IonSelect
+                  value={filterStatus}
+                  onIonChange={(e) => setFilterStatus(String(e.detail.value ?? ""))}
+                  placeholder="Todos"
+                  interface="popover"
+                >
+                  <IonSelectOption value="">Todos</IonSelectOption>
+                  <IonSelectOption value="pending">Pendiente</IonSelectOption>
+                  <IonSelectOption value="uploaded">Subido</IonSelectOption>
+                  <IonSelectOption value="approved">Aprobado</IonSelectOption>
+                  <IonSelectOption value="rejected">Rechazado</IonSelectOption>
+                </IonSelect>
+              </IonItem>
+
+              <IonItem lines="none" style={{ flex: 1 }}>
+                <IonLabel position="stacked" style={{ fontSize: "0.78rem" }}>Tipo</IonLabel>
+                <IonSelect
+                  value={filterType}
+                  onIonChange={(e) => setFilterType(String(e.detail.value ?? ""))}
+                  placeholder="Todos"
+                  interface="popover"
+                >
+                  <IonSelectOption value="">Todos</IonSelectOption>
+                  <IonSelectOption value="identity_document">Cédula</IonSelectOption>
+                  <IonSelectOption value="driver_license">Licencia</IonSelectOption>
+                  <IonSelectOption value="vehicle_registration">Reg. Vehículo</IonSelectOption>
+                  <IonSelectOption value="vehicle_insurance">Seguro</IonSelectOption>
+                  <IonSelectOption value="guide_certification">Cert. Guía</IonSelectOption>
+                  <IonSelectOption value="business_registration">Reg. Empresa</IonSelectOption>
+                  <IonSelectOption value="vehicle_ownership">Prop. Vehículo</IonSelectOption>
+                </IonSelect>
+              </IonItem>
+            </div>
+
+            <IonButton
+              expand="block"
+              size="small"
+              fill="outline"
+              color="danger"
+              style={{ marginTop: "8px" }}
+              onClick={() => void loadDocs()}
+              disabled={loading}
+            >
+              {loading ? <IonSpinner name="dots" /> : "Aplicar filtros"}
+            </IonButton>
+          </IonCardContent>
+        </IonCard>
+
+        {!loading && !loadError && (
+          <IonText color="medium">
+            <p style={{ fontSize: "0.78rem", margin: "0 0 10px" }}>
+              {docs.length} documento{docs.length !== 1 ? "s" : ""} encontrado{docs.length !== 1 ? "s" : ""}
+            </p>
+          </IonText>
+        )}
+
+        {loading && (
+          <div style={{ display: "flex", justifyContent: "center", paddingTop: "40px" }}>
+            <IonSpinner name="crescent" />
+          </div>
+        )}
+
+        {loadError && <IonText color="danger"><p>{loadError}</p></IonText>}
+
+        {!loading && !loadError && docs.length === 0 && (
+          <IonText color="medium"><p>No se encontraron documentos.</p></IonText>
+        )}
+
+        {!loading && docs.length > 0 && (
+          <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+            {docs.map((doc) => {
+              const statusColor = DOC_STATUS_COLOR[doc.status] ?? "medium";
+              const statusLabel = DOC_STATUS_LABEL[doc.status] ?? doc.status;
+              const typeLabel   = DOC_TYPE_LABEL[doc.documentType] ?? doc.documentType;
+              return (
+                <IonCard key={doc.id} style={{ margin: 0 }}>
+                  <IonCardContent style={{ padding: "12px 14px" }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "8px" }}>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontWeight: 600, fontSize: "0.9rem", marginBottom: "2px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                          {doc.userName}
+                        </div>
+                        <div style={{ fontSize: "0.75rem", color: "var(--ion-color-medium)", marginBottom: "4px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                          {doc.userEmail}
+                        </div>
+                        <div style={{ display: "flex", flexWrap: "wrap", gap: "4px", marginBottom: "4px" }}>
+                          <IonBadge color="primary"    style={{ fontSize: "0.68rem" }}>{doc.userRole}</IonBadge>
+                          <IonBadge color={statusColor} style={{ fontSize: "0.68rem" }}>{statusLabel}</IonBadge>
+                          <IonBadge color="secondary"  style={{ fontSize: "0.68rem" }}>{typeLabel}</IonBadge>
+                        </div>
+                        {doc.fileUrl && (
+                          <div style={{ fontSize: "0.72rem", color: "var(--ion-color-medium)", wordBreak: "break-all" }}>
+                            {doc.fileUrl}
+                          </div>
+                        )}
+                        {doc.rejectionReason && (
+                          <div style={{ fontSize: "0.72rem", color: "var(--ion-color-danger)", marginTop: "4px" }}>
+                            Motivo: {doc.rejectionReason}
+                          </div>
+                        )}
+                        {doc.reviewedAt && (
+                          <div style={{ fontSize: "0.68rem", color: "var(--ion-color-medium)", marginTop: "2px" }}>
+                            Revisado: {new Date(doc.reviewedAt).toLocaleDateString("es-CL")}
+                          </div>
+                        )}
+                      </div>
+                      <div style={{ fontSize: "0.68rem", color: "var(--ion-color-medium)", flexShrink: 0, textAlign: "right" }}>
+                        {new Date(doc.createdAt).toLocaleDateString("es-CL")}
+                      </div>
+                    </div>
+
+                    {/* Actions */}
+                    <div style={{ marginTop: "10px", borderTop: "1px solid var(--ion-color-light-shade)", paddingTop: "8px", display: "flex", gap: "8px" }}>
+                      <IonButton
+                        size="small"
+                        color="success"
+                        fill="outline"
+                        disabled={actioning || doc.status === "approved"}
+                        onClick={() => void handleApprove(doc.id)}
+                        style={{ flex: 1 }}
+                      >
+                        Aprobar
+                      </IonButton>
+                      <IonButton
+                        size="small"
+                        color="danger"
+                        fill="outline"
+                        disabled={actioning || doc.status === "rejected"}
+                        onClick={() => { setActionId(doc.id); setActionType("reject"); setRejectReason(""); setActionError(null); }}
+                        style={{ flex: 1 }}
+                      >
+                        Rechazar
+                      </IonButton>
+                    </div>
+                  </IonCardContent>
+                </IonCard>
+              );
+            })}
+          </div>
+        )}
+
+        {actionError && (
+          <IonText color="danger">
+            <p style={{ fontSize: "0.85rem", marginTop: "10px" }}>{actionError}</p>
+          </IonText>
+        )}
+
+        {/* Reject modal */}
+        <IonAlert
+          isOpen={actionType === "reject" && actionId !== null}
+          header="Rechazar documento"
+          message="Ingresa el motivo de rechazo (obligatorio)."
+          inputs={[
+            {
+              name: "reason",
+              type: "textarea",
+              placeholder: "Motivo del rechazo...",
+              value: rejectReason,
+              handler: (e: { value?: string }) => setRejectReason(e.value ?? ""),
+            },
+          ]}
+          buttons={[
+            {
+              text: "Cancelar",
+              role: "cancel",
+              handler: () => { setActionId(null); setActionType(null); setRejectReason(""); },
+            },
+            {
+              text: "Rechazar",
+              handler: () => { void handleReject(); },
+            },
+          ]}
+          onDidDismiss={() => { if (!actioning) { setActionId(null); setActionType(null); } }}
+        />
+      </IonContent>
     </IonPage>
   );
 }

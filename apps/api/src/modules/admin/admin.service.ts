@@ -4,8 +4,9 @@ import { UsersRepository } from "../users/users.repository.js";
 import { AdminRepository } from "./admin.repository.js";
 import { AuditService } from "../audit/audit.service.js";
 import { AppError } from "../../shared/errors/AppError.js";
-import type { ListUsersQuery, UpdateUserStatusInput } from "./admin.schemas.js";
-import type { AdminUsersListResult, AdminUserResult, AdminUserResponse } from "./admin.types.js";
+import type { ListUsersQuery, UpdateUserStatusInput, ListDocumentsQuery, ReviewDocumentInput } from "./admin.schemas.js";
+import type { AdminUsersListResult, AdminUserResult, AdminUserResponse, AdminDocumentResponse, AdminDocumentsListResult, AdminDocumentResult } from "./admin.types.js";
+import type { AdminDocumentRow } from "./admin.repository.js";
 import type { User } from "../users/users.types.js";
 
 const tokenService   = new TokenService();
@@ -13,6 +14,23 @@ const sessionService = new SessionService();
 const usersRepo      = new UsersRepository();
 const adminRepo      = new AdminRepository();
 const auditService   = new AuditService();
+
+function toDocResponse(d: AdminDocumentRow): AdminDocumentResponse {
+  return {
+    id:              d.id,
+    userId:          d.userId,
+    userName:        d.userName,
+    userEmail:       d.userEmail,
+    userRole:        d.userRole,
+    documentType:    d.documentType,
+    status:          d.status,
+    fileUrl:         d.fileUrl,
+    rejectionReason: d.rejectionReason,
+    uploadedAt:      d.uploadedAt?.toISOString() ?? null,
+    reviewedAt:      d.reviewedAt?.toISOString() ?? null,
+    createdAt:       d.createdAt.toISOString(),
+  };
+}
 
 function toResponse(u: User): AdminUserResponse {
   return {
@@ -105,5 +123,51 @@ export class AdminService {
     });
 
     return { ok: true, user: toResponse(updated) };
+  }
+
+  async listDocuments(accessToken: string, query: ListDocumentsQuery): Promise<AdminDocumentsListResult> {
+    const auth = await authenticate(accessToken);
+    if (!auth.ok) return auth;
+    if (auth.role !== "admin") {
+      return { ok: false, code: "AUTH_FORBIDDEN", message: "Admin access required.", statusCode: 403 };
+    }
+
+    const rows = await adminRepo.listDocuments({
+      status:       query.status,
+      documentType: query.documentType,
+      userId:       query.userId,
+    });
+
+    return { ok: true, documents: rows.map(toDocResponse) };
+  }
+
+  async reviewDocument(
+    accessToken: string,
+    documentId: string,
+    input: ReviewDocumentInput,
+  ): Promise<AdminDocumentResult> {
+    const auth = await authenticate(accessToken);
+    if (!auth.ok) return auth;
+    if (auth.role !== "admin") {
+      return { ok: false, code: "AUTH_FORBIDDEN", message: "Admin access required.", statusCode: 403 };
+    }
+
+    const existing = await adminRepo.findDocumentById(documentId);
+    if (!existing) {
+      return { ok: false, code: "NOT_FOUND", message: "Document not found.", statusCode: 404 };
+    }
+
+    const rejectionReason = input.status === "approved" ? null : (input.rejectionReason ?? null);
+    const updated = await adminRepo.reviewDocument(documentId, input.status, rejectionReason);
+    if (!updated) {
+      return { ok: false, code: "NOT_FOUND", message: "Document not found.", statusCode: 404 };
+    }
+
+    auditService.recordSafe({
+      eventType: "admin.document_reviewed",
+      metadata:  { adminUserId: auth.userId, documentId, previousStatus: existing.status, newStatus: input.status },
+    });
+
+    return { ok: true, document: toDocResponse(updated) };
   }
 }

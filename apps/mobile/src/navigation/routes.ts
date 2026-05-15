@@ -73,6 +73,7 @@ export const ROUTES = {
     TRIPS: "/admin/trips",
     PAYMENTS: "/admin/payments",
     SETTINGS: "/admin/settings",
+    DOCUMENTS: "/admin/documents",
   },
 
   PROFILE: {
