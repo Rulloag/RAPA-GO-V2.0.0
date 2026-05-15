@@ -32,4 +32,26 @@ export class AdminRepository {
       throw AppError.internal(`Failed to list users: ${String(err)}`);
     }
   }
+
+  async findById(id: string): Promise<User | null> {
+    try {
+      const rows = await db.select().from(users).where(eq(users.id, id)).limit(1);
+      return rows[0] ?? null;
+    } catch (err) {
+      throw AppError.internal(`Failed to find user: ${String(err)}`);
+    }
+  }
+
+  async updateStatus(id: string, status: string): Promise<User | null> {
+    try {
+      const rows = await db
+        .update(users)
+        .set({ status, updatedAt: new Date() })
+        .where(eq(users.id, id))
+        .returning();
+      return rows[0] ?? null;
+    } catch (err) {
+      throw AppError.internal(`Failed to update user status: ${String(err)}`);
+    }
+  }
 }

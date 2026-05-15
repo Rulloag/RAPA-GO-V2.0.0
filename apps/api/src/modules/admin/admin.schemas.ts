@@ -10,3 +10,9 @@ export const listUsersQuerySchema = z.object({
 });
 
 export type ListUsersQuery = z.infer<typeof listUsersQuerySchema>;
+
+export const updateUserStatusSchema = z.object({
+  status: z.enum(VALID_STATUSES),
+});
+
+export type UpdateUserStatusInput = z.infer<typeof updateUserStatusSchema>;

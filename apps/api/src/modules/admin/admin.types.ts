@@ -11,3 +11,4 @@ export interface AdminUserResponse {
 type ErrorResult = { ok: false; code: string; message: string; statusCode: number };
 
 export type AdminUsersListResult = { ok: true; users: AdminUserResponse[] } | ErrorResult;
+export type AdminUserResult      = { ok: true; user: AdminUserResponse }   | ErrorResult;

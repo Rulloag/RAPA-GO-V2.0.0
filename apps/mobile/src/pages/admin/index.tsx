@@ -141,6 +141,9 @@ export function AdminUsersPage(): JSX.Element {
   const [filterStatus, setFilterStatus] = useState("");
   const [filterSearch, setFilterSearch] = useState("");
 
+  const [updatingId,  setUpdatingId]  = useState<string | null>(null);
+  const [updateError, setUpdateError] = useState<string | null>(null);
+
   const loadUsers = useCallback(async () => {
     if (!session?.accessToken) return;
     setLoading(true);
@@ -160,6 +163,20 @@ export function AdminUsersPage(): JSX.Element {
   }, [session?.accessToken, filterRole, filterStatus, filterSearch]);
 
   useEffect(() => { void loadUsers(); }, [loadUsers]);
+
+  async function handleStatusChange(userId: string, newStatus: string) {
+    if (!session?.accessToken) return;
+    setUpdatingId(userId);
+    setUpdateError(null);
+    try {
+      const updated = await adminService.updateUserStatus(session.accessToken, userId, newStatus);
+      setUsers((prev) => prev.map((u) => (u.id === userId ? updated : u)));
+    } catch (err) {
+      setUpdateError(err instanceof Error ? err.message : "Error al actualizar estado.");
+    } finally {
+      setUpdatingId(null);
+    }
+  }
 
   return (
     <IonPage>
@@ -286,11 +303,46 @@ export function AdminUsersPage(): JSX.Element {
                         {new Date(user.createdAt).toLocaleDateString("es-CL")}
                       </div>
                     </div>
+
+                    {/* Status selector */}
+                    <div style={{ marginTop: "10px", borderTop: "1px solid var(--ion-color-light-shade)", paddingTop: "8px" }}>
+                      <IonItem lines="none" style={{ "--padding-start": "0", "--inner-padding-end": "0", "--min-height": "36px" }}>
+                        <IonLabel style={{ fontSize: "0.75rem", color: "var(--ion-color-medium)", flexShrink: 0, marginRight: "8px" }}>
+                          Estado:
+                        </IonLabel>
+                        {updatingId === user.id ? (
+                          <IonSpinner name="dots" style={{ width: "20px", height: "20px" }} />
+                        ) : (
+                          <IonSelect
+                            value={user.status}
+                            interface="popover"
+                            style={{ fontSize: "0.8rem" }}
+                            onIonChange={(e) => {
+                              const val = String(e.detail.value ?? "");
+                              if (val && val !== user.status) {
+                                void handleStatusChange(user.id, val);
+                              }
+                            }}
+                          >
+                            <IonSelectOption value="pending">Pendiente</IonSelectOption>
+                            <IonSelectOption value="active">Activo</IonSelectOption>
+                            <IonSelectOption value="suspended">Suspendido</IonSelectOption>
+                            <IonSelectOption value="banned">Bloqueado</IonSelectOption>
+                          </IonSelect>
+                        )}
+                      </IonItem>
+                    </div>
                   </IonCardContent>
                 </IonCard>
               );
             })}
           </div>
+        )}
+
+        {updateError && (
+          <IonText color="danger">
+            <p style={{ fontSize: "0.85rem", marginTop: "10px" }}>{updateError}</p>
+          </IonText>
         )}
       </IonContent>
     </IonPage>

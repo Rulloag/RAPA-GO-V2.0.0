@@ -2,15 +2,17 @@ import { TokenService } from "../auth/token.service.js";
 import { SessionService } from "../auth/session.service.js";
 import { UsersRepository } from "../users/users.repository.js";
 import { AdminRepository } from "./admin.repository.js";
+import { AuditService } from "../audit/audit.service.js";
 import { AppError } from "../../shared/errors/AppError.js";
-import type { ListUsersQuery } from "./admin.schemas.js";
-import type { AdminUsersListResult, AdminUserResponse } from "./admin.types.js";
+import type { ListUsersQuery, UpdateUserStatusInput } from "./admin.schemas.js";
+import type { AdminUsersListResult, AdminUserResult, AdminUserResponse } from "./admin.types.js";
 import type { User } from "../users/users.types.js";
 
 const tokenService   = new TokenService();
 const sessionService = new SessionService();
 const usersRepo      = new UsersRepository();
 const adminRepo      = new AdminRepository();
+const auditService   = new AuditService();
 
 function toResponse(u: User): AdminUserResponse {
   return {
@@ -69,5 +71,39 @@ export class AdminService {
     });
 
     return { ok: true, users: rows.map(toResponse) };
+  }
+
+  async updateUserStatus(
+    accessToken: string,
+    targetUserId: string,
+    input: UpdateUserStatusInput,
+  ): Promise<AdminUserResult> {
+    const auth = await authenticate(accessToken);
+    if (!auth.ok) return auth;
+
+    if (auth.role !== "admin") {
+      return { ok: false, code: "AUTH_FORBIDDEN", message: "Admin access required.", statusCode: 403 };
+    }
+
+    if (auth.userId === targetUserId) {
+      return { ok: false, code: "ADMIN_CANNOT_CHANGE_OWN_STATUS", message: "Admins cannot change their own status.", statusCode: 403 };
+    }
+
+    const existing = await adminRepo.findById(targetUserId);
+    if (!existing) {
+      return { ok: false, code: "NOT_FOUND", message: "User not found.", statusCode: 404 };
+    }
+
+    const updated = await adminRepo.updateStatus(targetUserId, input.status);
+    if (!updated) {
+      return { ok: false, code: "NOT_FOUND", message: "User not found.", statusCode: 404 };
+    }
+
+    auditService.recordSafe({
+      eventType: "admin.user_status_changed",
+      metadata:  { adminUserId: auth.userId, targetUserId, previousStatus: existing.status, newStatus: input.status },
+    });
+
+    return { ok: true, user: toResponse(updated) };
   }
 }

@@ -17,6 +17,17 @@ export interface ListUsersParams {
 }
 
 export const adminService = {
+  async updateUserStatus(accessToken: string, userId: string, status: string): Promise<AdminUserData> {
+    type Envelope = { ok: true; data: AdminUserData; statusCode: number };
+    const result = await apiClient.patch<Envelope>(
+      `/admin/users/${userId}/status`,
+      { status },
+      { token: accessToken },
+    );
+    if (!result.ok) throw new Error(result.message ?? "Failed to update user status.");
+    return (result.data as Envelope).data;
+  },
+
   async listUsers(accessToken: string, params: ListUsersParams = {}): Promise<AdminUserData[]> {
     type Envelope = { ok: true; data: AdminUserData[]; statusCode: number };
     const parts: string[] = [];
