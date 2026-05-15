@@ -116,8 +116,10 @@ export class DocumentsService {
       return { ok: false, code: "DOCUMENT_ALREADY_APPROVED", message: "An approved document cannot be replaced.", statusCode: 409 };
     }
 
-    // Sanitize filename: keep only alphanumeric, dots, dashes, underscores
-    const sanitized = input.fileName.replace(/[^a-zA-Z0-9._\-]/g, "_");
+    // Sanitize filename: replace unsafe chars, then collapse consecutive dots to prevent path traversal
+    const sanitized = input.fileName
+      .replace(/[^a-zA-Z0-9._\-]/g, "_")
+      .replace(/\.{2,}/g, "_");
     const fileUrl = `pending-storage://${documentId}/${sanitized}`;
 
     const updated = await documentsRepository.setUploadMetadata(documentId, fileUrl);
