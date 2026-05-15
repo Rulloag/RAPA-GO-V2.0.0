@@ -18,3 +18,7 @@ export type DocumentsServiceResult =
 export type DocumentCreateResult =
   | { ok: true;  document: DocumentResponse }
   | { ok: false; code: string; message: string; statusCode?: number };
+
+export type DocumentUploadMetadataResult =
+  | { ok: true;  document: DocumentResponse }
+  | { ok: false; code: string; message: string; statusCode?: number };

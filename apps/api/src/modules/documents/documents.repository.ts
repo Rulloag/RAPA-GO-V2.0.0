@@ -44,4 +44,32 @@ export class DocumentsRepository {
       throw AppError.internal(`Failed to create document record: ${String(err)}`);
     }
   }
+
+  async findById(id: string): Promise<UserDocument | null> {
+    try {
+      const rows = await db.select().from(userDocuments).where(eq(userDocuments.id, id)).limit(1);
+      return rows[0] ?? null;
+    } catch (err) {
+      throw AppError.internal(`Failed to query document by id: ${String(err)}`);
+    }
+  }
+
+  async setUploadMetadata(id: string, fileUrl: string): Promise<UserDocument | null> {
+    try {
+      const rows = await db
+        .update(userDocuments)
+        .set({
+          status:          "uploaded",
+          fileUrl,
+          rejectionReason: null,
+          uploadedAt:      new Date(),
+          updatedAt:       new Date(),
+        })
+        .where(eq(userDocuments.id, id))
+        .returning();
+      return rows[0] ?? null;
+    } catch (err) {
+      throw AppError.internal(`Failed to update document metadata: ${String(err)}`);
+    }
+  }
 }

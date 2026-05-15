@@ -28,4 +28,18 @@ export const documentsService = {
     if (!result.ok) throw new Error(result.message ?? "Failed to create document record.");
     return (result.data as DocEnvelope).data;
   },
+
+  async uploadMetadata(
+    accessToken: string,
+    documentId: string,
+    payload: { fileName: string; fileMimeType: string; fileSizeBytes: number },
+  ): Promise<DocumentRecord> {
+    const result = await apiClient.patch<DocEnvelope>(
+      `/documents/me/${documentId}/upload-metadata`,
+      payload,
+      { token: accessToken },
+    );
+    if (!result.ok) throw new Error(result.message ?? "Failed to register upload metadata.");
+    return (result.data as DocEnvelope).data;
+  },
 };

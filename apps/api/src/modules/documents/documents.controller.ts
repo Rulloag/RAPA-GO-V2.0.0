@@ -1,6 +1,6 @@
 import type { FastifyRequest, FastifyReply } from "fastify";
 import { DocumentsService } from "./documents.service.js";
-import { createDocumentSchema } from "./documents.schemas.js";
+import { createDocumentSchema, uploadMetadataSchema } from "./documents.schemas.js";
 import { sendOk, sendError } from "../../shared/http/apiResponse.js";
 
 const documentsService = new DocumentsService();
@@ -47,5 +47,28 @@ export const documentsController = {
       return;
     }
     sendOk(reply, result.document, 201);
+  },
+
+  async uploadMetadata(request: FastifyRequest<{ Params: { id: string } }>, reply: FastifyReply): Promise<void> {
+    const token = extractBearer(request);
+    if (!token) {
+      sendError(reply, { code: "UNAUTHORIZED", message: "Missing Bearer token.", statusCode: 401 });
+      return;
+    }
+    const parsed = uploadMetadataSchema.safeParse(request.body);
+    if (!parsed.success) {
+      sendError(reply, {
+        code: "VALIDATION_ERROR",
+        message: parsed.error.errors[0]?.message ?? "Invalid request body.",
+        statusCode: 400,
+      });
+      return;
+    }
+    const result = await documentsService.uploadMetadata(token, request.params.id, parsed.data);
+    if (!result.ok) {
+      sendError(reply, { code: result.code, message: result.message, statusCode: result.statusCode ?? 400 });
+      return;
+    }
+    sendOk(reply, result.document);
   },
 };

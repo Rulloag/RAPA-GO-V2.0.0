@@ -13,6 +13,8 @@ import {
   IonLabel,
   IonNote,
   IonPage,
+  IonSelect,
+  IonSelectOption,
   IonSpinner,
   IonText,
   IonTitle,
@@ -242,14 +244,24 @@ export function ProfileDocumentsPage(): JSX.Element {
   return <DocumentsPage />;
 }
 
+type DocumentRecord = import("../../features/documents/documents.service").DocumentRecord;
+
 function DocumentsPage(): JSX.Element {
   const { session, user } = useAuth();
 
-  const [docs,       setDocs]       = useState<import("../../features/documents/documents.service").DocumentRecord[]>([]);
+  const [docs,       setDocs]       = useState<DocumentRecord[]>([]);
   const [loading,    setLoading]    = useState(true);
   const [loadError,  setLoadError]  = useState<string | null>(null);
-  const [creating,   setCreating]   = useState<string | null>(null); // documentType being prepared
+  const [creating,   setCreating]   = useState<string | null>(null);
   const [createErr,  setCreateErr]  = useState<string | null>(null);
+
+  // Upload metadata form state
+  const [uploadDocId,   setUploadDocId]   = useState<string | null>(null);
+  const [fileName,      setFileName]      = useState("");
+  const [fileMimeType,  setFileMimeType]  = useState("image/jpeg");
+  const [fileSizeMB,    setFileSizeMB]    = useState("");
+  const [uploading,     setUploading]     = useState(false);
+  const [uploadErr,     setUploadErr]     = useState<string | null>(null);
 
   const role = user?.role ?? "";
 
@@ -281,6 +293,40 @@ function DocumentsPage(): JSX.Element {
     }
   }
 
+  async function handleUploadMetadata() {
+    if (!session?.accessToken || !uploadDocId) return;
+    const sizeBytes = Math.round(parseFloat(fileSizeMB) * 1024 * 1024);
+    if (!fileName.trim() || fileName.trim().length < 3) {
+      setUploadErr("El nombre de archivo debe tener al menos 3 caracteres.");
+      return;
+    }
+    if (!fileSizeMB || isNaN(sizeBytes) || sizeBytes <= 0) {
+      setUploadErr("El tamaño debe ser mayor a 0.");
+      return;
+    }
+    if (sizeBytes > 10 * 1024 * 1024) {
+      setUploadErr("El tamaño no puede superar 10 MB.");
+      return;
+    }
+    setUploading(true);
+    setUploadErr(null);
+    try {
+      const updated = await documentsService.uploadMetadata(session.accessToken, uploadDocId, {
+        fileName:      fileName.trim(),
+        fileMimeType,
+        fileSizeBytes: sizeBytes,
+      });
+      setDocs((prev) => prev.map((d) => (d.id === uploadDocId ? updated : d)));
+      setUploadDocId(null);
+      setFileName("");
+      setFileSizeMB("");
+    } catch (e: unknown) {
+      setUploadErr(e instanceof Error ? e.message : "Error al registrar metadata.");
+    } finally {
+      setUploading(false);
+    }
+  }
+
   const docByType = Object.fromEntries(docs.map((d) => [d.documentType, d]));
 
   return (
@@ -302,8 +348,8 @@ function DocumentsPage(): JSX.Element {
           fontSize: "0.82rem",
           color: "var(--ion-color-warning-shade)",
         }}>
-          <strong>Carga de archivos pendiente para fase futura.</strong><br />
-          Puedes preparar el registro de cada documento ahora. La subida real de archivos estará disponible próximamente.
+          <strong>Carga real de archivos se implementará en fase futura.</strong><br />
+          Esta fase solo registra metadata del documento. No se sube ningún archivo al servidor.
         </div>
 
         {loading && (
@@ -326,6 +372,8 @@ function DocumentsPage(): JSX.Element {
               const status = existing?.status ?? null;
               const statusColor = status ? DOC_STATUS_COLOR[status] ?? "medium" : "medium";
               const statusText  = status ? DOC_STATUS_LABEL[status]  ?? status  : "No registrado";
+              const canUpload   = existing && (existing.status === "pending" || existing.status === "rejected");
+              const isExpanded  = uploadDocId === existing?.id;
 
               return (
                 <IonCard key={docType} style={{ margin: 0 }}>
@@ -341,19 +389,96 @@ function DocumentsPage(): JSX.Element {
                             </p>
                           </IonText>
                         )}
+                        {existing?.fileUrl && (
+                          <p style={{ margin: "4px 0 0", fontSize: "0.72rem", color: "var(--ion-color-medium)", wordBreak: "break-all" }}>
+                            {existing.fileUrl}
+                          </p>
+                        )}
                       </div>
-                      {!existing && (
-                        <IonButton
-                          size="small"
-                          fill="outline"
-                          disabled={creating === docType}
-                          onClick={() => void handlePrepare(docType)}
-                          style={{ flexShrink: 0 }}
-                        >
-                          {creating === docType ? <IonSpinner name="dots" /> : "Preparar"}
-                        </IonButton>
-                      )}
+                      <div style={{ display: "flex", flexDirection: "column", gap: "6px", flexShrink: 0 }}>
+                        {!existing && (
+                          <IonButton
+                            size="small"
+                            fill="outline"
+                            disabled={creating === docType}
+                            onClick={() => void handlePrepare(docType)}
+                          >
+                            {creating === docType ? <IonSpinner name="dots" /> : "Preparar"}
+                          </IonButton>
+                        )}
+                        {canUpload && (
+                          <IonButton
+                            size="small"
+                            fill="outline"
+                            color="primary"
+                            onClick={() => {
+                              if (isExpanded) {
+                                setUploadDocId(null);
+                              } else {
+                                setUploadDocId(existing.id);
+                                setFileName("");
+                                setFileMimeType("image/jpeg");
+                                setFileSizeMB("");
+                                setUploadErr(null);
+                              }
+                            }}
+                          >
+                            {isExpanded ? "Cancelar" : "Marcar subido"}
+                          </IonButton>
+                        )}
+                      </div>
                     </div>
+
+                    {/* Upload metadata form */}
+                    {isExpanded && (
+                      <div style={{ marginTop: "12px", borderTop: "1px solid var(--ion-color-light-shade)", paddingTop: "10px" }}>
+                        <IonItem lines="full">
+                          <IonLabel position="stacked" style={{ fontSize: "0.78rem" }}>Nombre del archivo</IonLabel>
+                          <IonInput
+                            value={fileName}
+                            onIonInput={(e) => setFileName(String(e.detail.value ?? ""))}
+                            placeholder="ej: cedula_frente.jpg"
+                          />
+                        </IonItem>
+                        <IonItem lines="full">
+                          <IonLabel position="stacked" style={{ fontSize: "0.78rem" }}>Tipo de archivo</IonLabel>
+                          <IonSelect
+                            value={fileMimeType}
+                            onIonChange={(e) => setFileMimeType(String(e.detail.value ?? "image/jpeg"))}
+                            interface="popover"
+                          >
+                            <IonSelectOption value="image/jpeg">JPEG (imagen)</IonSelectOption>
+                            <IonSelectOption value="image/png">PNG (imagen)</IonSelectOption>
+                            <IonSelectOption value="application/pdf">PDF</IonSelectOption>
+                          </IonSelect>
+                        </IonItem>
+                        <IonItem lines="none">
+                          <IonLabel position="stacked" style={{ fontSize: "0.78rem" }}>Tamaño en MB (máx 10)</IonLabel>
+                          <IonInput
+                            type="number"
+                            value={fileSizeMB}
+                            onIonInput={(e) => setFileSizeMB(String(e.detail.value ?? ""))}
+                            placeholder="ej: 1.5"
+                            min="0.001"
+                            max="10"
+                          />
+                        </IonItem>
+                        {uploadErr && (
+                          <IonText color="danger">
+                            <p style={{ fontSize: "0.78rem", margin: "6px 0" }}>{uploadErr}</p>
+                          </IonText>
+                        )}
+                        <IonButton
+                          expand="block"
+                          size="small"
+                          style={{ marginTop: "8px" }}
+                          onClick={() => void handleUploadMetadata()}
+                          disabled={uploading}
+                        >
+                          {uploading ? <IonSpinner name="dots" /> : "Registrar metadata"}
+                        </IonButton>
+                      </div>
+                    )}
                   </IonCardContent>
                 </IonCard>
               );

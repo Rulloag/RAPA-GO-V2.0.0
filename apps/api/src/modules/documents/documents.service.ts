@@ -4,7 +4,8 @@ import { UsersRepository } from "../users/users.repository.js";
 import { DocumentsRepository } from "./documents.repository.js";
 import { AppError } from "../../shared/errors/AppError.js";
 import { ROLE_DOCUMENT_TYPES, DOCUMENT_TYPE_LABEL } from "./documents.constants.js";
-import type { DocumentsServiceResult, DocumentCreateResult, DocumentResponse } from "./documents.types.js";
+import type { DocumentsServiceResult, DocumentCreateResult, DocumentUploadMetadataResult, DocumentResponse } from "./documents.types.js";
+import type { UploadMetadataBody } from "./documents.schemas.js";
 import type { UserDocument } from "../../db/schema/index.js";
 
 const tokenService       = new TokenService();
@@ -92,5 +93,38 @@ export class DocumentsService {
 
     const doc = await documentsRepository.create(auth.userId, documentType);
     return { ok: true, document: toResponse(doc) };
+  }
+
+  async uploadMetadata(
+    accessToken: string,
+    documentId: string,
+    input: UploadMetadataBody,
+  ): Promise<DocumentUploadMetadataResult> {
+    const auth = await authenticate(accessToken);
+    if (!auth.ok) return auth;
+
+    const doc = await documentsRepository.findById(documentId);
+    if (!doc) {
+      return { ok: false, code: "NOT_FOUND", message: "Document not found.", statusCode: 404 };
+    }
+
+    if (doc.userId !== auth.userId) {
+      return { ok: false, code: "AUTH_FORBIDDEN", message: "Access denied.", statusCode: 403 };
+    }
+
+    if (doc.status === "approved") {
+      return { ok: false, code: "DOCUMENT_ALREADY_APPROVED", message: "An approved document cannot be replaced.", statusCode: 409 };
+    }
+
+    // Sanitize filename: keep only alphanumeric, dots, dashes, underscores
+    const sanitized = input.fileName.replace(/[^a-zA-Z0-9._\-]/g, "_");
+    const fileUrl = `pending-storage://${documentId}/${sanitized}`;
+
+    const updated = await documentsRepository.setUploadMetadata(documentId, fileUrl);
+    if (!updated) {
+      return { ok: false, code: "NOT_FOUND", message: "Document not found.", statusCode: 404 };
+    }
+
+    return { ok: true, document: toResponse(updated) };
   }
 }

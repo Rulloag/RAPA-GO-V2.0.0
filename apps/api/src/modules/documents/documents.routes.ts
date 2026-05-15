@@ -9,6 +9,7 @@ import { documentsController } from "./documents.controller.js";
  *   POST /api/documents/me — create a pending document record
  */
 export async function documentsRoutes(fastify: FastifyInstance): Promise<void> {
-  fastify.get("/me",  documentsController.listDocuments);
-  fastify.post("/me", documentsController.createDocument);
+  fastify.get("/me",                      documentsController.listDocuments);
+  fastify.post("/me",                     documentsController.createDocument);
+  fastify.patch("/me/:id/upload-metadata", documentsController.uploadMetadata);
 }
