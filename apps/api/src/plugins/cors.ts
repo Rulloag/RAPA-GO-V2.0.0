@@ -20,7 +20,7 @@ export async function corsPlugin(fastify: FastifyInstance): Promise<void> {
     origin =
       process.env["NODE_ENV"] === "production"
         ? false
-        : ["http://localhost:5173", "http://localhost:8100", "http://localhost:3000"];
+        : ["http://localhost:5173", "http://localhost:5174", "http://localhost:8100", "http://localhost:3000"];
   }
 
   await fastify.register(fastifyCors, {
