@@ -37,6 +37,8 @@ export class RidesRepository {
           status:             rideRequests.status,
           requestedAt:        rideRequests.requestedAt,
           acceptedAt:         rideRequests.acceptedAt,
+          enRouteAt:          rideRequests.enRouteAt,
+          arrivedAt:          rideRequests.arrivedAt,
           startedAt:          rideRequests.startedAt,
           completedAt:        rideRequests.completedAt,
           cancelledAt:        rideRequests.cancelledAt,

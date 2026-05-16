@@ -10,6 +10,8 @@ import {
   IonItem,
   IonLabel,
   IonPage,
+  IonRefresher,
+  IonRefresherContent,
   IonSelect,
   IonSelectOption,
   IonSpinner,
@@ -498,6 +500,9 @@ export function AdminTripsPage(): JSX.Element {
         </IonToolbar>
       </IonHeader>
       <IonContent className="ion-padding">
+        <IonRefresher slot="fixed" onIonRefresh={async (e) => { await loadData(); e.detail.complete(); }}>
+          <IonRefresherContent />
+        </IonRefresher>
 
         {/* Filter */}
         <IonCard style={{ margin: "0 0 12px" }}>
