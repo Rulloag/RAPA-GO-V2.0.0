@@ -2,6 +2,7 @@ export interface RideRequestResponse {
   id:                  string;
   passengerUserId:     string;
   driverUserId:        string | null;
+  driverName:          string | null;
   originText:          string;
   destinationText:     string;
   notes:               string | null;

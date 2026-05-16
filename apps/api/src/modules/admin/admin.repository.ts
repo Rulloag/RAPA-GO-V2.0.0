@@ -1,9 +1,39 @@
 import { db } from "../../db/client.js";
-import { users, userDocuments } from "../../db/schema/index.js";
-import { eq, and, or, ilike, type SQL } from "drizzle-orm";
+import { users, userDocuments, rideRequests } from "../../db/schema/index.js";
+import { eq, and, or, ilike, inArray, type SQL } from "drizzle-orm";
+import { alias } from "drizzle-orm/pg-core";
 import { AppError } from "../../shared/errors/AppError.js";
 import type { User } from "../users/users.types.js";
-import type { UserDocument } from "../../db/schema/index.js";
+import type { UserDocument, RideRequest } from "../../db/schema/index.js";
+
+export interface AdminRideRow {
+  id:                 string;
+  passengerUserId:    string;
+  passengerName:      string;
+  passengerEmail:     string;
+  driverUserId:       string | null;
+  driverName:         string | null;
+  driverEmail:        string | null;
+  originText:         string;
+  destinationText:    string;
+  notes:              string | null;
+  estimatedFareClp:   number | null;
+  status:             string;
+  requestedAt:        Date;
+  acceptedAt:         Date | null;
+  startedAt:          Date | null;
+  completedAt:        Date | null;
+  cancelledAt:        Date | null;
+  cancellationReason: string | null;
+  cancelledByRole:    string | null;
+  createdAt:          Date;
+}
+
+export interface ListRidesFilter {
+  status?:          string | undefined;
+  driverUserId?:    string | undefined;
+  passengerUserId?: string | undefined;
+}
 
 export interface AdminDocumentRow extends UserDocument {
   userName:  string;
@@ -145,6 +175,156 @@ export class AdminRepository {
       return this.findDocumentById(id);
     } catch (err) {
       throw AppError.internal(`Failed to review document: ${String(err)}`);
+    }
+  }
+
+  // ─── Rides ────────────────────────────────────────────────────────────────
+
+  private buildRideSelect() {
+    const passenger = alias(users, "passenger");
+    const driver    = alias(users, "driver");
+    return { passenger, driver };
+  }
+
+  async listRides(filter: ListRidesFilter): Promise<AdminRideRow[]> {
+    try {
+      const passenger = alias(users, "passenger");
+      const driver    = alias(users, "driver");
+      const conditions: SQL[] = [];
+      if (filter.status)          conditions.push(eq(rideRequests.status,          filter.status));
+      if (filter.driverUserId)    conditions.push(eq(rideRequests.driverUserId,    filter.driverUserId));
+      if (filter.passengerUserId) conditions.push(eq(rideRequests.passengerUserId, filter.passengerUserId));
+
+      const query = db
+        .select({
+          id:                 rideRequests.id,
+          passengerUserId:    rideRequests.passengerUserId,
+          passengerName:      passenger.name,
+          passengerEmail:     passenger.email,
+          driverUserId:       rideRequests.driverUserId,
+          driverName:         driver.name,
+          driverEmail:        driver.email,
+          originText:         rideRequests.originText,
+          destinationText:    rideRequests.destinationText,
+          notes:              rideRequests.notes,
+          estimatedFareClp:   rideRequests.estimatedFareClp,
+          status:             rideRequests.status,
+          requestedAt:        rideRequests.requestedAt,
+          acceptedAt:         rideRequests.acceptedAt,
+          startedAt:          rideRequests.startedAt,
+          completedAt:        rideRequests.completedAt,
+          cancelledAt:        rideRequests.cancelledAt,
+          cancellationReason: rideRequests.cancellationReason,
+          cancelledByRole:    rideRequests.cancelledByRole,
+          createdAt:          rideRequests.createdAt,
+        })
+        .from(rideRequests)
+        .innerJoin(passenger, eq(rideRequests.passengerUserId, passenger.id))
+        .leftJoin(driver, eq(rideRequests.driverUserId, driver.id))
+        .orderBy(rideRequests.requestedAt);
+
+      const rows = conditions.length > 0
+        ? await query.where(and(...conditions))
+        : await query;
+
+      return rows as AdminRideRow[];
+    } catch (err) {
+      throw AppError.internal(`Failed to list rides: ${String(err)}`);
+    }
+  }
+
+  async findRideById(id: string): Promise<AdminRideRow | null> {
+    try {
+      const passenger = alias(users, "passenger");
+      const driver    = alias(users, "driver");
+      const rows = await db
+        .select({
+          id:                 rideRequests.id,
+          passengerUserId:    rideRequests.passengerUserId,
+          passengerName:      passenger.name,
+          passengerEmail:     passenger.email,
+          driverUserId:       rideRequests.driverUserId,
+          driverName:         driver.name,
+          driverEmail:        driver.email,
+          originText:         rideRequests.originText,
+          destinationText:    rideRequests.destinationText,
+          notes:              rideRequests.notes,
+          estimatedFareClp:   rideRequests.estimatedFareClp,
+          status:             rideRequests.status,
+          requestedAt:        rideRequests.requestedAt,
+          acceptedAt:         rideRequests.acceptedAt,
+          startedAt:          rideRequests.startedAt,
+          completedAt:        rideRequests.completedAt,
+          cancelledAt:        rideRequests.cancelledAt,
+          cancellationReason: rideRequests.cancellationReason,
+          cancelledByRole:    rideRequests.cancelledByRole,
+          createdAt:          rideRequests.createdAt,
+        })
+        .from(rideRequests)
+        .innerJoin(passenger, eq(rideRequests.passengerUserId, passenger.id))
+        .leftJoin(driver, eq(rideRequests.driverUserId, driver.id))
+        .where(eq(rideRequests.id, id))
+        .limit(1);
+      return (rows[0] as AdminRideRow) ?? null;
+    } catch (err) {
+      throw AppError.internal(`Failed to find ride: ${String(err)}`);
+    }
+  }
+
+  /**
+   * Atomically assign a driver to a ride.
+   * WHERE id=? AND status='requested' — returns null if no row updated.
+   */
+  async assignDriver(rideId: string, driverUserId: string): Promise<RideRequest | null> {
+    try {
+      const rows = await db
+        .update(rideRequests)
+        .set({ status: "accepted", driverUserId, acceptedAt: new Date(), updatedAt: new Date() })
+        .where(and(eq(rideRequests.id, rideId), eq(rideRequests.status, "requested")))
+        .returning();
+      return rows[0] ?? null;
+    } catch (err) {
+      throw AppError.internal(`Failed to assign driver: ${String(err)}`);
+    }
+  }
+
+  /**
+   * Cancel a ride if its current status is among cancelableStatuses.
+   * Returns null if no row was updated.
+   */
+  async cancelRide(
+    rideId: string,
+    adminUserId: string,
+    reason: string,
+    cancelableStatuses: string[],
+  ): Promise<RideRequest | null> {
+    try {
+      const rows = await db
+        .update(rideRequests)
+        .set({
+          status:             "cancelled",
+          cancellationReason: reason,
+          cancelledByUserId:  adminUserId,
+          cancelledByRole:    "admin",
+          cancelledAt:        new Date(),
+          updatedAt:          new Date(),
+        })
+        .where(and(eq(rideRequests.id, rideId), inArray(rideRequests.status, cancelableStatuses)))
+        .returning();
+      return rows[0] ?? null;
+    } catch (err) {
+      throw AppError.internal(`Failed to cancel ride: ${String(err)}`);
+    }
+  }
+
+  async listActiveDrivers(): Promise<User[]> {
+    try {
+      return await db
+        .select()
+        .from(users)
+        .where(and(eq(users.role, "driver"), eq(users.status, "active")));
+    } catch (err) {
+      throw AppError.internal(`Failed to list active drivers: ${String(err)}`);
     }
   }
 }

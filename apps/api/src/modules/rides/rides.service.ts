@@ -1,7 +1,7 @@
 import { TokenService } from "../auth/token.service.js";
 import { SessionService } from "../auth/session.service.js";
 import { UsersRepository } from "../users/users.repository.js";
-import { RidesRepository } from "./rides.repository.js";
+import { RidesRepository, type RideWithDriverName } from "./rides.repository.js";
 import { AppError } from "../../shared/errors/AppError.js";
 import type {
   RideRequestResponse, RidesListResult, RideResult,
@@ -21,11 +21,12 @@ function estimateFare(originText: string, destinationText: string): number {
   return Math.min(Math.max(raw, 3000), 50000);
 }
 
-function toResponse(r: RideRequest): RideRequestResponse {
+function toResponse(r: RideRequest | RideWithDriverName): RideRequestResponse {
   return {
     id:              r.id,
     passengerUserId: r.passengerUserId,
     driverUserId:    r.driverUserId ?? null,
+    driverName:      ("driverName" in r ? r.driverName : null) ?? null,
     originText:      r.originText,
     destinationText: r.destinationText,
     notes:           r.notes,
@@ -113,7 +114,7 @@ export class RidesService {
       return { ok: false, code: "AUTH_FORBIDDEN", message: "Only passengers can access ride requests.", statusCode: 403 };
     }
 
-    const rows = await ridesRepo.findByPassengerId(auth.userId);
+    const rows = await ridesRepo.findByPassengerIdWithDriver(auth.userId);
     return { ok: true, rides: rows.map(toResponse) };
   }
 

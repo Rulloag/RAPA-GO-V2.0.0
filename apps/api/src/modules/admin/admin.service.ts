@@ -4,9 +4,9 @@ import { UsersRepository } from "../users/users.repository.js";
 import { AdminRepository } from "./admin.repository.js";
 import { AuditService } from "../audit/audit.service.js";
 import { AppError } from "../../shared/errors/AppError.js";
-import type { ListUsersQuery, UpdateUserStatusInput, ListDocumentsQuery, ReviewDocumentInput } from "./admin.schemas.js";
-import type { AdminUsersListResult, AdminUserResult, AdminUserResponse, AdminDocumentResponse, AdminDocumentsListResult, AdminDocumentResult } from "./admin.types.js";
-import type { AdminDocumentRow } from "./admin.repository.js";
+import type { ListUsersQuery, UpdateUserStatusInput, ListDocumentsQuery, ReviewDocumentInput, AdminListRidesQuery, AdminAssignDriverInput, AdminCancelRideInput } from "./admin.schemas.js";
+import type { AdminUsersListResult, AdminUserResult, AdminUserResponse, AdminDocumentResponse, AdminDocumentsListResult, AdminDocumentResult, AdminRidesListResult, AdminRideResult, AdminRideResponse, ActiveDriversListResult, ActiveDriverResponse } from "./admin.types.js";
+import type { AdminDocumentRow, AdminRideRow } from "./admin.repository.js";
 import type { User } from "../users/users.types.js";
 
 const tokenService   = new TokenService();
@@ -14,6 +14,42 @@ const sessionService = new SessionService();
 const usersRepo      = new UsersRepository();
 const adminRepo      = new AdminRepository();
 const auditService   = new AuditService();
+
+function toRideResponse(r: AdminRideRow): AdminRideResponse {
+  return {
+    id:                 r.id,
+    passengerUserId:    r.passengerUserId,
+    passengerName:      r.passengerName,
+    passengerEmail:     r.passengerEmail,
+    driverUserId:       r.driverUserId ?? null,
+    driverName:         r.driverName ?? null,
+    driverEmail:        r.driverEmail ?? null,
+    originText:         r.originText,
+    destinationText:    r.destinationText,
+    notes:              r.notes ?? null,
+    estimatedFareClp:   r.estimatedFareClp ?? null,
+    status:             r.status,
+    requestedAt:        r.requestedAt.toISOString(),
+    acceptedAt:         r.acceptedAt?.toISOString() ?? null,
+    startedAt:          r.startedAt?.toISOString() ?? null,
+    completedAt:        r.completedAt?.toISOString() ?? null,
+    cancelledAt:        r.cancelledAt?.toISOString() ?? null,
+    cancellationReason: r.cancellationReason ?? null,
+    cancelledByRole:    r.cancelledByRole ?? null,
+    createdAt:          r.createdAt.toISOString(),
+  };
+}
+
+function toDriverResponse(u: User): ActiveDriverResponse {
+  return {
+    id:         u.id,
+    name:       u.name,
+    email:      u.email,
+    status:     u.status,
+    isVerified: u.isVerified,
+    createdAt:  u.createdAt.toISOString(),
+  };
+}
 
 function toDocResponse(d: AdminDocumentRow): AdminDocumentResponse {
   return {
@@ -169,5 +205,136 @@ export class AdminService {
     });
 
     return { ok: true, document: toDocResponse(updated) };
+  }
+
+  async listRides(accessToken: string, query: AdminListRidesQuery): Promise<AdminRidesListResult> {
+    const auth = await authenticate(accessToken);
+    if (!auth.ok) return auth;
+    if (auth.role !== "admin") {
+      return { ok: false, code: "AUTH_FORBIDDEN", message: "Admin access required.", statusCode: 403 };
+    }
+
+    const rows = await adminRepo.listRides({
+      status:          query.status,
+      driverUserId:    query.driverUserId,
+      passengerUserId: query.passengerUserId,
+    });
+    return { ok: true, rides: rows.map(toRideResponse) };
+  }
+
+  async listActiveDrivers(accessToken: string): Promise<ActiveDriversListResult> {
+    const auth = await authenticate(accessToken);
+    if (!auth.ok) return auth;
+    if (auth.role !== "admin") {
+      return { ok: false, code: "AUTH_FORBIDDEN", message: "Admin access required.", statusCode: 403 };
+    }
+
+    const rows = await adminRepo.listActiveDrivers();
+    return { ok: true, drivers: rows.map(toDriverResponse) };
+  }
+
+  async assignDriver(
+    accessToken: string,
+    rideId: string,
+    input: AdminAssignDriverInput,
+  ): Promise<AdminRideResult> {
+    const auth = await authenticate(accessToken);
+    if (!auth.ok) return auth;
+    if (auth.role !== "admin") {
+      return { ok: false, code: "AUTH_FORBIDDEN", message: "Admin access required.", statusCode: 403 };
+    }
+
+    const existing = await adminRepo.findRideById(rideId);
+    if (!existing) {
+      return { ok: false, code: "NOT_FOUND", message: "Ride not found.", statusCode: 404 };
+    }
+    if (existing.status !== "requested") {
+      return { ok: false, code: "RIDE_CANNOT_ASSIGN", message: `Ride cannot be assigned — current status is '${existing.status}'.`, statusCode: 409 };
+    }
+
+    const driver = await adminRepo.findById(input.driverUserId);
+    if (!driver) {
+      return { ok: false, code: "NOT_FOUND", message: "Driver not found.", statusCode: 404 };
+    }
+    if (driver.role !== "driver") {
+      return { ok: false, code: "VALIDATION_ERROR", message: "User is not a driver.", statusCode: 400 };
+    }
+    if (driver.status !== "active") {
+      return { ok: false, code: "DRIVER_NOT_AVAILABLE", message: "Driver is not active.", statusCode: 400 };
+    }
+
+    const updated = await adminRepo.assignDriver(rideId, input.driverUserId);
+    if (!updated) {
+      const refetch = await adminRepo.findRideById(rideId);
+      return {
+        ok: false,
+        code: "RIDE_CANNOT_ASSIGN",
+        message: `Ride cannot be assigned — current status is '${refetch?.status ?? "unknown"}'.`,
+        statusCode: 409,
+      };
+    }
+
+    auditService.recordSafe({
+      eventType: "admin.ride_driver_assigned",
+      metadata:  {
+        adminUserId:    auth.userId,
+        rideId,
+        driverUserId:   input.driverUserId,
+        previousStatus: "requested",
+        newStatus:      "accepted",
+      },
+    });
+
+    const ride = await adminRepo.findRideById(rideId);
+    if (!ride) return { ok: false, code: "NOT_FOUND", message: "Ride not found after update.", statusCode: 404 };
+    return { ok: true, ride: toRideResponse(ride) };
+  }
+
+  async adminCancelRide(
+    accessToken: string,
+    rideId: string,
+    input: AdminCancelRideInput,
+  ): Promise<AdminRideResult> {
+    const auth = await authenticate(accessToken);
+    if (!auth.ok) return auth;
+    if (auth.role !== "admin") {
+      return { ok: false, code: "AUTH_FORBIDDEN", message: "Admin access required.", statusCode: 403 };
+    }
+
+    const existing = await adminRepo.findRideById(rideId);
+    if (!existing) {
+      return { ok: false, code: "NOT_FOUND", message: "Ride not found.", statusCode: 404 };
+    }
+
+    const cancelableStatuses = ["requested", "accepted", "driver_en_route", "driver_arrived"];
+    if (!cancelableStatuses.includes(existing.status)) {
+      return {
+        ok: false,
+        code: "RIDE_CANNOT_CANCEL",
+        message: `Ride cannot be cancelled — current status is '${existing.status}'.`,
+        statusCode: 409,
+      };
+    }
+
+    const previousStatus = existing.status;
+    const updated = await adminRepo.cancelRide(rideId, auth.userId, input.reason, cancelableStatuses);
+    if (!updated) {
+      const refetch = await adminRepo.findRideById(rideId);
+      return {
+        ok: false,
+        code: "RIDE_CANNOT_CANCEL",
+        message: `Ride cannot be cancelled — current status is '${refetch?.status ?? "unknown"}'.`,
+        statusCode: 409,
+      };
+    }
+
+    auditService.recordSafe({
+      eventType: "admin.ride_cancelled",
+      metadata:  { adminUserId: auth.userId, rideId, reason: input.reason, previousStatus },
+    });
+
+    const ride = await adminRepo.findRideById(rideId);
+    if (!ride) return { ok: false, code: "NOT_FOUND", message: "Ride not found after update.", statusCode: 404 };
+    return { ok: true, ride: toRideResponse(ride) };
   }
 }

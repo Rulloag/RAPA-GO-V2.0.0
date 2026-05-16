@@ -1,8 +1,13 @@
 import { and, desc, eq } from "drizzle-orm";
 import { db } from "../../db/client.js";
-import { rideRequests } from "../../db/schema/index.js";
+import { rideRequests, users } from "../../db/schema/index.js";
+import { alias } from "drizzle-orm/pg-core";
 import { AppError } from "../../shared/errors/AppError.js";
 import type { RideRequest } from "../../db/schema/index.js";
+
+export interface RideWithDriverName extends RideRequest {
+  driverName: string | null;
+}
 
 export class RidesRepository {
   async findByPassengerId(passengerUserId: string): Promise<RideRequest[]> {
@@ -14,6 +19,41 @@ export class RidesRepository {
         .orderBy(desc(rideRequests.requestedAt));
     } catch (err) {
       throw AppError.internal(`Failed to query ride requests: ${String(err)}`);
+    }
+  }
+
+  async findByPassengerIdWithDriver(passengerUserId: string): Promise<RideWithDriverName[]> {
+    try {
+      const driver = alias(users, "driver");
+      const rows = await db
+        .select({
+          id:                 rideRequests.id,
+          passengerUserId:    rideRequests.passengerUserId,
+          driverUserId:       rideRequests.driverUserId,
+          originText:         rideRequests.originText,
+          destinationText:    rideRequests.destinationText,
+          notes:              rideRequests.notes,
+          estimatedFareClp:   rideRequests.estimatedFareClp,
+          status:             rideRequests.status,
+          requestedAt:        rideRequests.requestedAt,
+          acceptedAt:         rideRequests.acceptedAt,
+          startedAt:          rideRequests.startedAt,
+          completedAt:        rideRequests.completedAt,
+          cancelledAt:        rideRequests.cancelledAt,
+          cancellationReason: rideRequests.cancellationReason,
+          cancelledByUserId:  rideRequests.cancelledByUserId,
+          cancelledByRole:    rideRequests.cancelledByRole,
+          createdAt:          rideRequests.createdAt,
+          updatedAt:          rideRequests.updatedAt,
+          driverName:         driver.name,
+        })
+        .from(rideRequests)
+        .leftJoin(driver, eq(rideRequests.driverUserId, driver.id))
+        .where(eq(rideRequests.passengerUserId, passengerUserId))
+        .orderBy(desc(rideRequests.requestedAt));
+      return rows as RideWithDriverName[];
+    } catch (err) {
+      throw AppError.internal(`Failed to query ride requests with driver: ${String(err)}`);
     }
   }
 

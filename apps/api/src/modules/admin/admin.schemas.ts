@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { RIDE_STATUSES } from "@rapa-go/shared";
 
 const VALID_ROLES   = ["passenger", "driver", "guide", "rental", "admin"] as const;
 const VALID_STATUSES = ["pending", "active", "suspended", "banned"] as const;
@@ -46,3 +47,26 @@ export const reviewDocumentSchema = z.object({
 });
 
 export type ReviewDocumentInput = z.infer<typeof reviewDocumentSchema>;
+
+// GET /admin/rides query
+export const adminListRidesQuerySchema = z.object({
+  status:          z.enum(RIDE_STATUSES).optional(),
+  driverUserId:    z.string().uuid().optional(),
+  passengerUserId: z.string().uuid().optional(),
+});
+
+export type AdminListRidesQuery = z.infer<typeof adminListRidesQuerySchema>;
+
+// POST /admin/rides/:id/assign body
+export const adminAssignDriverSchema = z.object({
+  driverUserId: z.string().uuid({ message: "driverUserId must be a valid UUID." }),
+});
+
+export type AdminAssignDriverInput = z.infer<typeof adminAssignDriverSchema>;
+
+// POST /admin/rides/:id/cancel body
+export const adminCancelRideSchema = z.object({
+  reason: z.string().trim().min(3, "Reason must be at least 3 characters.").max(500, "Reason cannot exceed 500 characters."),
+});
+
+export type AdminCancelRideInput = z.infer<typeof adminCancelRideSchema>;

@@ -1,6 +1,6 @@
 import type { FastifyRequest, FastifyReply } from "fastify";
 import { AdminService } from "./admin.service.js";
-import { listUsersQuerySchema, updateUserStatusSchema, listDocumentsQuerySchema, reviewDocumentSchema } from "./admin.schemas.js";
+import { listUsersQuerySchema, updateUserStatusSchema, listDocumentsQuerySchema, reviewDocumentSchema, adminListRidesQuerySchema, adminAssignDriverSchema, adminCancelRideSchema } from "./admin.schemas.js";
 import { sendOk, sendError } from "../../shared/http/apiResponse.js";
 
 const adminService = new AdminService();
@@ -60,5 +60,56 @@ export const adminController = {
     const result = await adminService.reviewDocument(token, req.params.id, parsed.data);
     if (!result.ok) return sendError(reply, { statusCode: result.statusCode, code: result.code, message: result.message });
     return sendOk(reply, result.document);
+  },
+
+  async listRides(req: FastifyRequest, reply: FastifyReply) {
+    const token = req.headers.authorization?.replace("Bearer ", "");
+    if (!token) return sendError(reply, { statusCode: 401, code: "UNAUTHORIZED", message: "Missing access token." });
+
+    const parsed = adminListRidesQuerySchema.safeParse(req.query);
+    if (!parsed.success) {
+      return sendError(reply, { statusCode: 400, code: "VALIDATION_ERROR", message: parsed.error.errors[0]?.message ?? "Invalid query params." });
+    }
+
+    const result = await adminService.listRides(token, parsed.data);
+    if (!result.ok) return sendError(reply, { statusCode: result.statusCode, code: result.code, message: result.message });
+    return sendOk(reply, result.rides);
+  },
+
+  async listActiveDrivers(req: FastifyRequest, reply: FastifyReply) {
+    const token = req.headers.authorization?.replace("Bearer ", "");
+    if (!token) return sendError(reply, { statusCode: 401, code: "UNAUTHORIZED", message: "Missing access token." });
+
+    const result = await adminService.listActiveDrivers(token);
+    if (!result.ok) return sendError(reply, { statusCode: result.statusCode, code: result.code, message: result.message });
+    return sendOk(reply, result.drivers);
+  },
+
+  async assignDriver(req: FastifyRequest<{ Params: { id: string } }>, reply: FastifyReply) {
+    const token = req.headers.authorization?.replace("Bearer ", "");
+    if (!token) return sendError(reply, { statusCode: 401, code: "UNAUTHORIZED", message: "Missing access token." });
+
+    const parsed = adminAssignDriverSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return sendError(reply, { statusCode: 400, code: "VALIDATION_ERROR", message: parsed.error.errors[0]?.message ?? "Invalid body." });
+    }
+
+    const result = await adminService.assignDriver(token, req.params.id, parsed.data);
+    if (!result.ok) return sendError(reply, { statusCode: result.statusCode, code: result.code, message: result.message });
+    return sendOk(reply, result.ride);
+  },
+
+  async adminCancelRide(req: FastifyRequest<{ Params: { id: string } }>, reply: FastifyReply) {
+    const token = req.headers.authorization?.replace("Bearer ", "");
+    if (!token) return sendError(reply, { statusCode: 401, code: "UNAUTHORIZED", message: "Missing access token." });
+
+    const parsed = adminCancelRideSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return sendError(reply, { statusCode: 400, code: "VALIDATION_ERROR", message: parsed.error.errors[0]?.message ?? "Invalid body." });
+    }
+
+    const result = await adminService.adminCancelRide(token, req.params.id, parsed.data);
+    if (!result.ok) return sendError(reply, { statusCode: result.statusCode, code: result.code, message: result.message });
+    return sendOk(reply, result.ride);
   },
 };

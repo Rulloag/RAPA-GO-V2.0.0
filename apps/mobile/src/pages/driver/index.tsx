@@ -101,28 +101,27 @@ export function DriverHomePage(): JSX.Element {
 }
 
 export function DriverRequestsPage(): JSX.Element {
-  return <AvailableRidesPage />;
+  return <AssignedRidesPage />;
 }
 
-function AvailableRidesPage(): JSX.Element {
+function AssignedRidesPage(): JSX.Element {
   const { session } = useAuth();
-  type AvailableRideData = import("../../features/rides/rides.service").AvailableRideData;
+  type DriverRideData = import("../../features/rides/rides.service").DriverRideData;
 
-  const [rides,       setRides]       = useState<AvailableRideData[]>([]);
-  const [loading,     setLoading]     = useState(true);
-  const [loadError,   setLoadError]   = useState<string | null>(null);
-  const [accepting,   setAccepting]   = useState<string | null>(null);
-  const [acceptError, setAcceptError] = useState<string | null>(null);
+  const [rides,     setRides]     = useState<DriverRideData[]>([]);
+  const [loading,   setLoading]   = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   const loadRides = useCallback(async () => {
     if (!session?.accessToken) return;
     setLoading(true);
     setLoadError(null);
     try {
-      const data = await ridesService.listAvailableRides(session.accessToken);
-      setRides(data);
+      const data = await ridesService.listDriverRides(session.accessToken);
+      // Show only assigned (non-terminal) rides
+      setRides(data.filter((r) => ["accepted", "driver_en_route", "driver_arrived", "in_progress"].includes(r.status)));
     } catch (err) {
-      setLoadError(err instanceof Error ? err.message : "Error al cargar solicitudes.");
+      setLoadError(err instanceof Error ? err.message : "Error al cargar viajes asignados.");
     } finally {
       setLoading(false);
     }
@@ -130,25 +129,11 @@ function AvailableRidesPage(): JSX.Element {
 
   useEffect(() => { void loadRides(); }, [loadRides]);
 
-  async function handleAccept(rideId: string) {
-    if (!session?.accessToken) return;
-    setAccepting(rideId);
-    setAcceptError(null);
-    try {
-      await ridesService.acceptRideRequest(session.accessToken, rideId);
-      setRides((prev) => prev.filter((r) => r.id !== rideId));
-    } catch (err) {
-      setAcceptError(err instanceof Error ? err.message : "Error al aceptar el viaje.");
-    } finally {
-      setAccepting(null);
-    }
-  }
-
   return (
     <IonPage>
       <IonHeader>
         <IonToolbar color="success">
-          <IonTitle>Solicitudes Disponibles</IonTitle>
+          <IonTitle>Mis Asignaciones</IonTitle>
           <div slot="end" style={{ paddingRight: "8px" }}>
             <IonButton fill="clear" color="light" onClick={() => void loadRides()} disabled={loading}>
               <IonIcon icon={refreshOutline} slot="icon-only" />
@@ -158,17 +143,17 @@ function AvailableRidesPage(): JSX.Element {
       </IonHeader>
 
       <IonContent className="ion-padding">
-        {/* Notice — mapa y finalización son futuros */}
+        {/* Informational notice */}
         <div style={{
-          background:   "var(--ion-color-warning-tint)",
-          border:       "1px solid var(--ion-color-warning)",
+          background:   "var(--ion-color-light)",
+          border:       "1px solid var(--ion-color-medium-tint)",
           borderRadius: "8px",
           padding:      "10px 14px",
           marginBottom: "16px",
           fontSize:     "0.82rem",
-          color:        "var(--ion-color-warning-shade)",
+          color:        "var(--ion-color-medium-shade)",
         }}>
-          <strong>Mapa, navegación y finalización de viaje se implementarán en una fase futura.</strong>
+          Los viajes son asignados por el centro de operaciones Rapa Go. Gestiona tus viajes activos desde "Mis Viajes".
         </div>
 
         {loading && (
@@ -178,12 +163,11 @@ function AvailableRidesPage(): JSX.Element {
         )}
 
         {loadError && <IonText color="danger"><p>{loadError}</p></IonText>}
-        {acceptError && <IonText color="danger"><p style={{ fontSize: "0.85rem" }}>{acceptError}</p></IonText>}
 
         {!loading && rides.length === 0 && (
           <IonText color="medium">
             <p style={{ textAlign: "center", marginTop: "40px" }}>
-              No hay solicitudes disponibles en este momento.
+              No tienes viajes asignados en este momento.
             </p>
           </IonText>
         )}
@@ -198,35 +182,27 @@ function AvailableRidesPage(): JSX.Element {
                     destinationText={ride.destinationText}
                     height={130}
                   />
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "8px", marginTop: "10px" }}>
-                    <div style={{ flex: 1 }}>
-                      <div style={{ fontWeight: 600, fontSize: "0.9rem", marginBottom: "6px" }}>
-                        {ride.originText} → {ride.destinationText}
-                      </div>
-                      <IonBadge color="warning" style={{ fontSize: "0.7rem" }}>Solicitado</IonBadge>
-                      {ride.estimatedFareClp != null && (
-                        <div style={{ marginTop: "4px", fontSize: "0.78rem", fontWeight: 500 }}>
-                          Tarifa est.: ${ride.estimatedFareClp.toLocaleString("es-CL")} CLP
-                        </div>
-                      )}
-                      {ride.notes && (
-                        <div style={{ marginTop: "6px", fontSize: "0.8rem", color: "var(--ion-color-medium)" }}>
-                          {ride.notes}
-                        </div>
-                      )}
-                      <div style={{ marginTop: "6px", fontSize: "0.75rem", color: "var(--ion-color-medium)" }}>
-                        {new Date(ride.requestedAt).toLocaleString("es-CL")}
-                      </div>
+                  <div style={{ marginTop: "10px" }}>
+                    <div style={{ fontWeight: 600, fontSize: "0.9rem", marginBottom: "6px" }}>
+                      {ride.originText} → {ride.destinationText}
                     </div>
-                    <IonButton
-                      size="small"
-                      color="success"
-                      disabled={accepting === ride.id}
-                      onClick={() => void handleAccept(ride.id)}
-                      style={{ flexShrink: 0 }}
-                    >
-                      {accepting === ride.id ? <IonSpinner name="dots" /> : "Aceptar"}
-                    </IonButton>
+                    <IonBadge color="primary" style={{ fontSize: "0.7rem" }}>Asignado</IonBadge>
+                    {ride.estimatedFareClp != null && (
+                      <div style={{ marginTop: "4px", fontSize: "0.78rem", fontWeight: 500 }}>
+                        Tarifa est.: ${ride.estimatedFareClp.toLocaleString("es-CL")} CLP
+                      </div>
+                    )}
+                    {ride.notes && (
+                      <div style={{ marginTop: "6px", fontSize: "0.8rem", color: "var(--ion-color-medium)" }}>
+                        {ride.notes}
+                      </div>
+                    )}
+                    <div style={{ marginTop: "6px", fontSize: "0.75rem", color: "var(--ion-color-medium)" }}>
+                      Asignado: {ride.acceptedAt ? new Date(ride.acceptedAt).toLocaleString("es-CL") : "—"}
+                    </div>
+                    <div style={{ marginTop: "6px", fontSize: "0.78rem", color: "var(--ion-color-medium)" }}>
+                      Gestiona este viaje desde "Mis Viajes".
+                    </div>
                   </div>
                 </IonCardContent>
               </IonCard>

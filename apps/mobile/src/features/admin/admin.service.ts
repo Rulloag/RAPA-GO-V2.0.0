@@ -37,6 +37,44 @@ export interface ListDocumentsParams {
   userId?:       string;
 }
 
+export interface AdminRideData {
+  id:                 string;
+  passengerUserId:    string;
+  passengerName:      string;
+  passengerEmail:     string;
+  driverUserId:       string | null;
+  driverName:         string | null;
+  driverEmail:        string | null;
+  originText:         string;
+  destinationText:    string;
+  notes:              string | null;
+  estimatedFareClp:   number | null;
+  status:             string;
+  requestedAt:        string;
+  acceptedAt:         string | null;
+  startedAt:          string | null;
+  completedAt:        string | null;
+  cancelledAt:        string | null;
+  cancellationReason: string | null;
+  cancelledByRole:    string | null;
+  createdAt:          string;
+}
+
+export interface ActiveDriverData {
+  id:         string;
+  name:       string;
+  email:      string;
+  status:     string;
+  isVerified: boolean;
+  createdAt:  string;
+}
+
+export interface ListRidesParams {
+  status?:          string;
+  driverUserId?:    string;
+  passengerUserId?: string;
+}
+
 export const adminService = {
   async updateUserStatus(accessToken: string, userId: string, status: string): Promise<AdminUserData> {
     type Envelope = { ok: true; data: AdminUserData; statusCode: number };
@@ -88,6 +126,47 @@ export const adminService = {
       { token: accessToken },
     );
     if (!result.ok) throw new Error(result.message ?? "Failed to review document.");
+    return (result.data as Envelope).data;
+  },
+
+  async listRides(accessToken: string, params: ListRidesParams = {}): Promise<AdminRideData[]> {
+    type Envelope = { ok: true; data: AdminRideData[]; statusCode: number };
+    const parts: string[] = [];
+    if (params.status)          parts.push(`status=${encodeURIComponent(params.status)}`);
+    if (params.driverUserId)    parts.push(`driverUserId=${encodeURIComponent(params.driverUserId)}`);
+    if (params.passengerUserId) parts.push(`passengerUserId=${encodeURIComponent(params.passengerUserId)}`);
+    const qs = parts.length ? `?${parts.join("&")}` : "";
+    const result = await apiClient.get<Envelope>(`/admin/rides${qs}`, { token: accessToken });
+    if (!result.ok) throw new Error(result.message ?? "Failed to load rides.");
+    return (result.data as Envelope).data;
+  },
+
+  async listActiveDrivers(accessToken: string): Promise<ActiveDriverData[]> {
+    type Envelope = { ok: true; data: ActiveDriverData[]; statusCode: number };
+    const result = await apiClient.get<Envelope>("/admin/drivers/active", { token: accessToken });
+    if (!result.ok) throw new Error(result.message ?? "Failed to load active drivers.");
+    return (result.data as Envelope).data;
+  },
+
+  async assignDriver(accessToken: string, rideId: string, driverUserId: string): Promise<AdminRideData> {
+    type Envelope = { ok: true; data: AdminRideData; statusCode: number };
+    const result = await apiClient.post<Envelope>(
+      `/admin/rides/${rideId}/assign`,
+      { driverUserId },
+      { token: accessToken },
+    );
+    if (!result.ok) throw new Error(result.message ?? "Failed to assign driver.");
+    return (result.data as Envelope).data;
+  },
+
+  async adminCancelRide(accessToken: string, rideId: string, reason: string): Promise<AdminRideData> {
+    type Envelope = { ok: true; data: AdminRideData; statusCode: number };
+    const result = await apiClient.post<Envelope>(
+      `/admin/rides/${rideId}/cancel`,
+      { reason },
+      { token: accessToken },
+    );
+    if (!result.ok) throw new Error(result.message ?? "Failed to cancel ride.");
     return (result.data as Envelope).data;
   },
 };

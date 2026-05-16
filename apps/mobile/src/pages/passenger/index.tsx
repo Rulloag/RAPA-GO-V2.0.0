@@ -56,19 +56,23 @@ function meta(path: string) {
 const PENDING = "Módulo preparado, implementación funcional pendiente.";
 
 const RIDE_STATUS_LABEL: Record<string, string> = {
-  requested:  "Solicitado",
-  accepted:   "Aceptado",
-  in_progress:"En curso",
-  completed:  "Completado",
-  cancelled:  "Cancelado",
+  requested:       "Solicitado",
+  accepted:        "Conductor asignado",
+  driver_en_route: "Conductor en camino",
+  driver_arrived:  "Conductor llegó",
+  in_progress:     "En curso",
+  completed:       "Completado",
+  cancelled:       "Cancelado",
 };
 
 const RIDE_STATUS_COLOR: Record<string, string> = {
-  requested:   "warning",
-  accepted:    "primary",
-  in_progress: "secondary",
-  completed:   "success",
-  cancelled:   "medium",
+  requested:       "warning",
+  accepted:        "primary",
+  driver_en_route: "tertiary",
+  driver_arrived:  "secondary",
+  in_progress:     "success",
+  completed:       "medium",
+  cancelled:       "danger",
 };
 
 export function PassengerHomePage(): JSX.Element {
@@ -405,6 +409,16 @@ function TripsPage(): JSX.Element {
                           {ride.originText} → {ride.destinationText}
                         </div>
                         <IonBadge color={color} style={{ fontSize: "0.7rem" }}>{label}</IonBadge>
+                        {ride.status === "requested" && (
+                          <div style={{ marginTop: "4px", fontSize: "0.78rem", color: "var(--ion-color-medium)", fontStyle: "italic" }}>
+                            Esperando asignación de conductor
+                          </div>
+                        )}
+                        {ride.status === "accepted" && (
+                          <div style={{ marginTop: "4px", fontSize: "0.78rem", color: "var(--ion-color-primary)" }}>
+                            Conductor asignado{ride.driverName ? `: ${ride.driverName}` : ""}
+                          </div>
+                        )}
                         {ride.estimatedFareClp != null && (
                           <div style={{ marginTop: "4px", fontSize: "0.78rem", color: "var(--ion-color-dark)", fontWeight: 500 }}>
                             Tarifa est.: ${ride.estimatedFareClp.toLocaleString("es-CL")} CLP
