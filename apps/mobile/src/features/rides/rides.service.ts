@@ -16,6 +16,8 @@ export interface RideRequestData {
   status:           string;
   requestedAt:     string;
   acceptedAt:      string | null;
+  enRouteAt:          string | null;
+  arrivedAt:          string | null;
   startedAt:          string | null;
   completedAt:        string | null;
   cancelledAt:        string | null;
@@ -35,6 +37,8 @@ export interface DriverRideData {
   status:             string;
   requestedAt:        string;
   acceptedAt:         string | null;
+  enRouteAt:          string | null;
+  arrivedAt:          string | null;
   startedAt:          string | null;
   completedAt:        string | null;
   cancelledAt:        string | null;
@@ -108,6 +112,18 @@ export const ridesService = {
   async completeRide(accessToken: string, rideId: string): Promise<RideRequestData> {
     const result = await apiClient.post<RideEnvelope>(`/rides/${rideId}/complete`, {}, { token: accessToken });
     if (!result.ok) throw new Error(result.message ?? "Failed to complete ride.");
+    return (result.data as RideEnvelope).data;
+  },
+
+  async markEnRoute(accessToken: string, rideId: string): Promise<RideRequestData> {
+    const result = await apiClient.post<RideEnvelope>(`/rides/${rideId}/en-route`, {}, { token: accessToken });
+    if (!result.ok) throw new Error(result.message ?? "Failed to mark ride en-route.");
+    return (result.data as RideEnvelope).data;
+  },
+
+  async markArrived(accessToken: string, rideId: string): Promise<RideRequestData> {
+    const result = await apiClient.post<RideEnvelope>(`/rides/${rideId}/arrived`, {}, { token: accessToken });
+    if (!result.ok) throw new Error(result.message ?? "Failed to mark arrival.");
     return (result.data as RideEnvelope).data;
   },
 

@@ -12,6 +12,8 @@ export const rideRequests = pgTable("ride_requests", {
   status:            varchar("status", { length: 30 }).notNull().default("requested"),
   requestedAt:       timestamp("requested_at",  { withTimezone: true }).notNull().defaultNow(),
   acceptedAt:        timestamp("accepted_at",   { withTimezone: true }),
+  enRouteAt:         timestamp("en_route_at",   { withTimezone: true }),
+  arrivedAt:         timestamp("arrived_at",    { withTimezone: true }),
   startedAt:            timestamp("started_at",          { withTimezone: true }),
   completedAt:          timestamp("completed_at",        { withTimezone: true }),
   cancelledAt:          timestamp("cancelled_at",        { withTimezone: true }),

@@ -38,6 +38,8 @@ export interface AdminRideResponse {
   status:             string;
   requestedAt:        string;
   acceptedAt:         string | null;
+  enRouteAt:          string | null;
+  arrivedAt:          string | null;
   startedAt:          string | null;
   completedAt:        string | null;
   cancelledAt:        string | null;

@@ -7,6 +7,8 @@ import {
   IonHeader,
   IonItem,
   IonPage,
+  IonRefresher,
+  IonRefresherContent,
   IonSpinner,
   IonText,
   IonTextarea,
@@ -223,23 +225,31 @@ function DriverMyRidesPage(): JSX.Element {
   type DriverRideData = import("../../features/rides/rides.service").DriverRideData;
 
   const DRIVER_STATUS_LABEL: Record<string, string> = {
-    accepted:    "Aceptado",
-    in_progress: "En curso",
-    completed:   "Completado",
-    cancelled:   "Cancelado",
+    accepted:        "Aceptado",
+    driver_en_route: "Voy en camino",
+    driver_arrived:  "Llegué al origen",
+    in_progress:     "En curso",
+    completed:       "Completado",
+    cancelled:       "Cancelado",
   };
   const DRIVER_STATUS_COLOR: Record<string, string> = {
-    accepted:    "primary",
-    in_progress: "secondary",
-    completed:   "success",
-    cancelled:   "medium",
+    accepted:        "primary",
+    driver_en_route: "tertiary",
+    driver_arrived:  "secondary",
+    in_progress:     "success",
+    completed:       "medium",
+    cancelled:       "medium",
   };
 
   const [rides,       setRides]       = useState<DriverRideData[]>([]);
   const [loading,     setLoading]     = useState(true);
   const [loadError,   setLoadError]   = useState<string | null>(null);
-  const [cancelling,  setCancelling]  = useState<string | null>(null);
-  const [cancelError, setCancelError] = useState<string | null>(null);
+  const [cancelling,   setCancelling]   = useState<string | null>(null);
+  const [cancelError,  setCancelError]  = useState<string | null>(null);
+  const [enRouting,    setEnRouting]    = useState<string | null>(null);
+  const [enRouteError, setEnRouteError] = useState<string | null>(null);
+  const [arriving,     setArriving]     = useState<string | null>(null);
+  const [arriveError,  setArriveError]  = useState<string | null>(null);
   const [starting,     setStarting]     = useState<string | null>(null);
   const [startError,   setStartError]   = useState<string | null>(null);
   const [completing,   setCompleting]   = useState<string | null>(null);
@@ -327,6 +337,34 @@ function DriverMyRidesPage(): JSX.Element {
     }
   }
 
+  async function handleEnRoute(rideId: string) {
+    if (!session?.accessToken) return;
+    setEnRouting(rideId);
+    setEnRouteError(null);
+    try {
+      const updated = await ridesService.markEnRoute(session.accessToken, rideId);
+      setRides((prev) => prev.map((r) => (r.id === rideId ? { ...r, status: updated.status, enRouteAt: updated.enRouteAt } : r)));
+    } catch (err) {
+      setEnRouteError(err instanceof Error ? err.message : "Error al marcar en camino.");
+    } finally {
+      setEnRouting(null);
+    }
+  }
+
+  async function handleArrived(rideId: string) {
+    if (!session?.accessToken) return;
+    setArriving(rideId);
+    setArriveError(null);
+    try {
+      const updated = await ridesService.markArrived(session.accessToken, rideId);
+      setRides((prev) => prev.map((r) => (r.id === rideId ? { ...r, status: updated.status, arrivedAt: updated.arrivedAt } : r)));
+    } catch (err) {
+      setArriveError(err instanceof Error ? err.message : "Error al marcar llegada.");
+    } finally {
+      setArriving(null);
+    }
+  }
+
   return (
     <IonPage>
       <IonHeader>
@@ -335,6 +373,9 @@ function DriverMyRidesPage(): JSX.Element {
         </IonToolbar>
       </IonHeader>
       <IonContent className="ion-padding">
+        <IonRefresher slot="fixed" onIonRefresh={(e) => { void loadRides().then(() => e.detail.complete()); }}>
+          <IonRefresherContent />
+        </IonRefresher>
         {loading && (
           <div style={{ display: "flex", justifyContent: "center", paddingTop: "40px" }}>
             <IonSpinner name="crescent" />
@@ -343,6 +384,8 @@ function DriverMyRidesPage(): JSX.Element {
 
         {loadError && <IonText color="danger"><p>{loadError}</p></IonText>}
         {cancelError && <IonText color="danger"><p style={{ fontSize: "0.85rem" }}>{cancelError}</p></IonText>}
+        {enRouteError && <IonText color="danger"><p style={{ fontSize: "0.85rem" }}>{enRouteError}</p></IonText>}
+        {arriveError && <IonText color="danger"><p style={{ fontSize: "0.85rem" }}>{arriveError}</p></IonText>}
         {startError && <IonText color="danger"><p style={{ fontSize: "0.85rem" }}>{startError}</p></IonText>}
         {completeError && <IonText color="danger"><p style={{ fontSize: "0.85rem" }}>{completeError}</p></IonText>}
         {ratingError && <IonText color="danger"><p style={{ fontSize: "0.85rem" }}>{ratingError}</p></IonText>}
@@ -383,7 +426,9 @@ function DriverMyRidesPage(): JSX.Element {
                           </div>
                         )}
                         <div style={{ marginTop: "5px" }}>
-                          {ts("Aceptado",   ride.acceptedAt)}
+                          {ts("Asignado",   ride.acceptedAt)}
+                          {ts("En camino",  (ride as DriverRideData & { enRouteAt?: string | null }).enRouteAt ?? null)}
+                          {ts("Llegué",     (ride as DriverRideData & { arrivedAt?: string | null }).arrivedAt ?? null)}
                           {(ride.status === "in_progress" || ride.status === "completed") && ts("Iniciado", ride.startedAt)}
                           {ride.status === "completed"  && ts("Completado", ride.completedAt)}
                           {ride.status === "cancelled"  && ts("Cancelado",  ride.cancelledAt)}
@@ -410,15 +455,35 @@ function DriverMyRidesPage(): JSX.Element {
                             {completing === ride.id ? <IonSpinner name="dots" /> : "Finalizar"}
                           </IonButton>
                         )}
+                        {ride.status === "driver_arrived" && (
+                          <IonButton
+                            size="small"
+                            color="success"
+                            disabled={starting === ride.id}
+                            onClick={() => void handleStart(ride.id)}
+                          >
+                            {starting === ride.id ? <IonSpinner name="dots" /> : "Iniciar viaje"}
+                          </IonButton>
+                        )}
+                        {ride.status === "driver_en_route" && (
+                          <IonButton
+                            size="small"
+                            color="secondary"
+                            disabled={arriving === ride.id}
+                            onClick={() => void handleArrived(ride.id)}
+                          >
+                            {arriving === ride.id ? <IonSpinner name="dots" /> : "Llegué"}
+                          </IonButton>
+                        )}
                         {ride.status === "accepted" && (
                           <>
                             <IonButton
                               size="small"
-                              color="success"
-                              disabled={starting === ride.id}
-                              onClick={() => void handleStart(ride.id)}
+                              color="tertiary"
+                              disabled={enRouting === ride.id}
+                              onClick={() => void handleEnRoute(ride.id)}
                             >
-                              {starting === ride.id ? <IonSpinner name="dots" /> : "Iniciar"}
+                              {enRouting === ride.id ? <IonSpinner name="dots" /> : "Voy en camino"}
                             </IonButton>
                             <IonButton
                               size="small"

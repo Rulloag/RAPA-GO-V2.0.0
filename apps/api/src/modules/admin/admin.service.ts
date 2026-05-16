@@ -31,6 +31,8 @@ function toRideResponse(r: AdminRideRow): AdminRideResponse {
     status:             r.status,
     requestedAt:        r.requestedAt.toISOString(),
     acceptedAt:         r.acceptedAt?.toISOString() ?? null,
+    enRouteAt:          r.enRouteAt?.toISOString() ?? null,
+    arrivedAt:          r.arrivedAt?.toISOString() ?? null,
     startedAt:          r.startedAt?.toISOString() ?? null,
     completedAt:        r.completedAt?.toISOString() ?? null,
     cancelledAt:        r.cancelledAt?.toISOString() ?? null,

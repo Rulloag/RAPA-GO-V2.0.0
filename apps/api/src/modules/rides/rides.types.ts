@@ -10,6 +10,8 @@ export interface RideRequestResponse {
   status:              string;
   requestedAt:         string;
   acceptedAt:          string | null;
+  enRouteAt:           string | null;
+  arrivedAt:           string | null;
   startedAt:           string | null;
   completedAt:         string | null;
   cancelledAt:         string | null;
@@ -29,6 +31,8 @@ export interface DriverRideResponse {
   status:             string;
   requestedAt:        string;
   acceptedAt:         string | null;
+  enRouteAt:          string | null;
+  arrivedAt:          string | null;
   startedAt:          string | null;
   completedAt:        string | null;
   cancelledAt:        string | null;

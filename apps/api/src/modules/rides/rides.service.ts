@@ -34,6 +34,8 @@ function toResponse(r: RideRequest | RideWithDriverName): RideRequestResponse {
     status:          r.status,
     requestedAt:     r.requestedAt.toISOString(),
     acceptedAt:      r.acceptedAt?.toISOString() ?? null,
+    enRouteAt:       r.enRouteAt?.toISOString() ?? null,
+    arrivedAt:       r.arrivedAt?.toISOString() ?? null,
     startedAt:       r.startedAt?.toISOString() ?? null,
     completedAt:     r.completedAt?.toISOString() ?? null,
     cancelledAt:        r.cancelledAt?.toISOString() ?? null,
@@ -54,6 +56,8 @@ function toDriverRideResponse(r: RideRequest): DriverRideResponse {
     status:             r.status,
     requestedAt:        r.requestedAt.toISOString(),
     acceptedAt:         r.acceptedAt?.toISOString() ?? null,
+    enRouteAt:          r.enRouteAt?.toISOString() ?? null,
+    arrivedAt:          r.arrivedAt?.toISOString() ?? null,
     startedAt:          r.startedAt?.toISOString() ?? null,
     completedAt:        r.completedAt?.toISOString() ?? null,
     cancelledAt:        r.cancelledAt?.toISOString() ?? null,
@@ -233,6 +237,69 @@ export class RidesService {
     return { ok: true, ride: toResponse(completed) };
   }
 
+  async markEnRoute(accessToken: string, rideId: string): Promise<RideResult> {
+    const auth = await authenticate(accessToken);
+    if (!auth.ok) return auth;
+
+    if (auth.role !== "driver") {
+      return { ok: false, code: "AUTH_FORBIDDEN", message: "Only drivers can mark rides en-route.", statusCode: 403 };
+    }
+
+    const updated = await ridesRepo.markEnRoute(rideId, auth.userId);
+    if (!updated) {
+      const existing = await ridesRepo.findById(rideId);
+      if (!existing) {
+        return { ok: false, code: "NOT_FOUND", message: "Ride request not found.", statusCode: 404 };
+      }
+      if (existing.driverUserId !== auth.userId) {
+        return { ok: false, code: "AUTH_FORBIDDEN", message: "You can only update rides assigned to you.", statusCode: 403 };
+      }
+      return {
+        ok: false,
+        code: "RIDE_CANNOT_MARK_EN_ROUTE",
+        message: `Ride cannot be marked en-route — current status is '${existing.status}'.`,
+        statusCode: 409,
+      };
+    }
+
+    void ridesRepo.findById(rideId); // no-op; audit below is fire-and-forget
+    const auditService = new (await import("../audit/audit.service.js")).AuditService();
+    auditService.recordSafe({ eventType: "ride.driver_en_route", metadata: { driverUserId: auth.userId, rideId } });
+
+    return { ok: true, ride: toResponse(updated) };
+  }
+
+  async markArrived(accessToken: string, rideId: string): Promise<RideResult> {
+    const auth = await authenticate(accessToken);
+    if (!auth.ok) return auth;
+
+    if (auth.role !== "driver") {
+      return { ok: false, code: "AUTH_FORBIDDEN", message: "Only drivers can mark arrival.", statusCode: 403 };
+    }
+
+    const updated = await ridesRepo.markArrived(rideId, auth.userId);
+    if (!updated) {
+      const existing = await ridesRepo.findById(rideId);
+      if (!existing) {
+        return { ok: false, code: "NOT_FOUND", message: "Ride request not found.", statusCode: 404 };
+      }
+      if (existing.driverUserId !== auth.userId) {
+        return { ok: false, code: "AUTH_FORBIDDEN", message: "You can only update rides assigned to you.", statusCode: 403 };
+      }
+      return {
+        ok: false,
+        code: "RIDE_CANNOT_MARK_ARRIVED",
+        message: `Ride cannot be marked arrived — current status is '${existing.status}'.`,
+        statusCode: 409,
+      };
+    }
+
+    const auditService = new (await import("../audit/audit.service.js")).AuditService();
+    auditService.recordSafe({ eventType: "ride.driver_arrived", metadata: { driverUserId: auth.userId, rideId } });
+
+    return { ok: true, ride: toResponse(updated) };
+  }
+
   async startRide(accessToken: string, rideId: string): Promise<RideResult> {
     const auth = await authenticate(accessToken);
     if (!auth.ok) return auth;
@@ -241,23 +308,22 @@ export class RidesService {
       return { ok: false, code: "AUTH_FORBIDDEN", message: "Only drivers can start rides.", statusCode: 403 };
     }
 
-    // Atomic: UPDATE WHERE id=? AND status='accepted' AND driver_user_id=?
+    // Atomic: UPDATE WHERE id=? AND status='driver_arrived' AND driver_user_id=?
     const started = await ridesRepo.start(rideId, auth.userId);
     if (!started) {
       const existing = await ridesRepo.findById(rideId);
       if (!existing) {
         return { ok: false, code: "NOT_FOUND", message: "Ride request not found.", statusCode: 404 };
       }
-      // Check status first — no driver ownership info should be revealed for non-accepted rides
-      if (existing.status !== "accepted") {
+      if (existing.status !== "driver_arrived") {
         return {
           ok: false,
           code: "RIDE_CANNOT_START",
-          message: `Ride cannot be started — current status is '${existing.status}'.`,
+          message: "Driver must mark arrival before starting the ride.",
           statusCode: 409,
         };
       }
-      // Status is 'accepted' but this driver is not the assigned one
+      // Status is 'driver_arrived' but this driver is not the assigned one
       return { ok: false, code: "AUTH_FORBIDDEN", message: "You can only start rides assigned to you.", statusCode: 403 };
     }
 

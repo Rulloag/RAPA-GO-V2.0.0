@@ -169,7 +169,51 @@ export class RidesRepository {
   }
 
   /**
-   * Atomically start a ride only when status='accepted' AND driver matches.
+   * Atomically mark a ride en-route: accepted → driver_en_route.
+   * Returns null if no row was updated.
+   */
+  async markEnRoute(id: string, driverUserId: string): Promise<RideRequest | null> {
+    try {
+      const rows = await db
+        .update(rideRequests)
+        .set({ status: "driver_en_route", enRouteAt: new Date(), updatedAt: new Date() })
+        .where(and(
+          eq(rideRequests.id, id),
+          eq(rideRequests.status, "accepted"),
+          eq(rideRequests.driverUserId, driverUserId),
+        ))
+        .returning();
+      return rows[0] ?? null;
+    } catch (err) {
+      if (err instanceof AppError) throw err;
+      throw AppError.internal(`Failed to mark ride en-route: ${String(err)}`);
+    }
+  }
+
+  /**
+   * Atomically mark a ride arrived: driver_en_route → driver_arrived.
+   * Returns null if no row was updated.
+   */
+  async markArrived(id: string, driverUserId: string): Promise<RideRequest | null> {
+    try {
+      const rows = await db
+        .update(rideRequests)
+        .set({ status: "driver_arrived", arrivedAt: new Date(), updatedAt: new Date() })
+        .where(and(
+          eq(rideRequests.id, id),
+          eq(rideRequests.status, "driver_en_route"),
+          eq(rideRequests.driverUserId, driverUserId),
+        ))
+        .returning();
+      return rows[0] ?? null;
+    } catch (err) {
+      if (err instanceof AppError) throw err;
+      throw AppError.internal(`Failed to mark ride arrived: ${String(err)}`);
+    }
+  }
+
+  /**
+   * Atomically start a ride only when status='driver_arrived' AND driver matches.
    * Returns null if no row was updated.
    */
   async start(id: string, driverUserId: string): Promise<RideRequest | null> {
@@ -179,7 +223,7 @@ export class RidesRepository {
         .set({ status: "in_progress", startedAt: new Date(), updatedAt: new Date() })
         .where(and(
           eq(rideRequests.id, id),
-          eq(rideRequests.status, "accepted"),
+          eq(rideRequests.status, "driver_arrived"),
           eq(rideRequests.driverUserId, driverUserId),
         ))
         .returning();

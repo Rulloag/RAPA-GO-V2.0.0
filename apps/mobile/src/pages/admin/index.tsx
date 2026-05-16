@@ -603,6 +603,8 @@ export function AdminTripsPage(): JSX.Element {
                     {/* Dates */}
                     <div style={{ fontSize: "0.72rem", color: "var(--ion-color-medium)", marginBottom: "8px" }}>
                       {ride.acceptedAt  && <div>Asignado: {new Date(ride.acceptedAt).toLocaleString("es-CL")}</div>}
+                      {ride.enRouteAt   && <div>En camino: {new Date(ride.enRouteAt).toLocaleString("es-CL")}</div>}
+                      {ride.arrivedAt   && <div>Llegó: {new Date(ride.arrivedAt).toLocaleString("es-CL")}</div>}
                       {ride.startedAt   && <div>Iniciado: {new Date(ride.startedAt).toLocaleString("es-CL")}</div>}
                       {ride.completedAt && <div>Completado: {new Date(ride.completedAt).toLocaleString("es-CL")}</div>}
                       {ride.cancelledAt && <div>Cancelado: {new Date(ride.cancelledAt).toLocaleString("es-CL")}</div>}

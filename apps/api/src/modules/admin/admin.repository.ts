@@ -21,6 +21,8 @@ export interface AdminRideRow {
   status:             string;
   requestedAt:        Date;
   acceptedAt:         Date | null;
+  enRouteAt:          Date | null;
+  arrivedAt:          Date | null;
   startedAt:          Date | null;
   completedAt:        Date | null;
   cancelledAt:        Date | null;
@@ -211,6 +213,8 @@ export class AdminRepository {
           status:             rideRequests.status,
           requestedAt:        rideRequests.requestedAt,
           acceptedAt:         rideRequests.acceptedAt,
+          enRouteAt:          rideRequests.enRouteAt,
+          arrivedAt:          rideRequests.arrivedAt,
           startedAt:          rideRequests.startedAt,
           completedAt:        rideRequests.completedAt,
           cancelledAt:        rideRequests.cancelledAt,
@@ -253,6 +257,8 @@ export class AdminRepository {
           status:             rideRequests.status,
           requestedAt:        rideRequests.requestedAt,
           acceptedAt:         rideRequests.acceptedAt,
+          enRouteAt:          rideRequests.enRouteAt,
+          arrivedAt:          rideRequests.arrivedAt,
           startedAt:          rideRequests.startedAt,
           completedAt:        rideRequests.completedAt,
           cancelledAt:        rideRequests.cancelledAt,

@@ -10,6 +10,8 @@ import {
   IonLabel,
   IonNote,
   IonPage,
+  IonRefresher,
+  IonRefresherContent,
   IonSpinner,
   IonText,
   IonTextarea,
@@ -376,6 +378,9 @@ function TripsPage(): JSX.Element {
         </IonToolbar>
       </IonHeader>
       <IonContent className="ion-padding">
+        <IonRefresher slot="fixed" onIonRefresh={(e) => { void loadRides().then(() => e.detail.complete()); }}>
+          <IonRefresherContent />
+        </IonRefresher>
         {loading && (
           <div style={{ display: "flex", justifyContent: "center", paddingTop: "40px" }}>
             <IonSpinner name="crescent" />
@@ -419,6 +424,16 @@ function TripsPage(): JSX.Element {
                             Conductor asignado{ride.driverName ? `: ${ride.driverName}` : ""}
                           </div>
                         )}
+                        {ride.status === "driver_en_route" && (
+                          <div style={{ marginTop: "4px", fontSize: "0.78rem", color: "var(--ion-color-tertiary)" }}>
+                            Tu conductor va en camino{ride.driverName ? `: ${ride.driverName}` : ""}
+                          </div>
+                        )}
+                        {ride.status === "driver_arrived" && (
+                          <div style={{ marginTop: "4px", fontSize: "0.78rem", color: "var(--ion-color-secondary)" }}>
+                            Tu conductor llegó al punto de origen{ride.driverName ? ` — ${ride.driverName}` : ""}
+                          </div>
+                        )}
                         {ride.estimatedFareClp != null && (
                           <div style={{ marginTop: "4px", fontSize: "0.78rem", color: "var(--ion-color-dark)", fontWeight: 500 }}>
                             Tarifa est.: ${ride.estimatedFareClp.toLocaleString("es-CL")} CLP
@@ -431,7 +446,9 @@ function TripsPage(): JSX.Element {
                         )}
                         <div style={{ marginTop: "5px" }}>
                           {ts("Solicitado", ride.requestedAt)}
-                          {ride.status !== "requested" && ts("Aceptado", ride.acceptedAt)}
+                          {ride.acceptedAt && ts("Conductor asignado", ride.acceptedAt)}
+                          {ride.enRouteAt  && ts("Conductor en camino", ride.enRouteAt)}
+                          {ride.arrivedAt  && ts("Conductor llegó", ride.arrivedAt)}
                           {(ride.status === "in_progress" || ride.status === "completed") && ts("Iniciado", ride.startedAt)}
                           {ride.status === "completed" && ts("Completado", ride.completedAt)}
                           {ride.status === "cancelled" && ts("Cancelado", ride.cancelledAt)}
