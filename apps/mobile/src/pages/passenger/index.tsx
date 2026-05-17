@@ -12,6 +12,8 @@ import {
   IonPage,
   IonRefresher,
   IonRefresherContent,
+  IonSelect,
+  IonSelectOption,
   IonSpinner,
   IonText,
   IonTextarea,
@@ -35,6 +37,7 @@ import { useAuth } from "../../features/auth";
 import { ridesService, type RideRequestData } from "../../features/rides/rides.service";
 import { MapPlaceholder } from "../../components/MapPlaceholder";
 import { DriverSummaryCard } from "../../components/DriverSummaryCard";
+import { RAPA_NUI_PLACES } from "@rapa-go/shared";
 
 function StarRatingInput({ value, onChange }: { value: number; onChange: (v: number) => void }) {
   return (
@@ -146,12 +149,36 @@ export function PassengerRequestRidePage(): JSX.Element {
 function RequestRidePage(): JSX.Element {
   const { session } = useAuth();
 
-  const [originInput, setOriginInput]  = useState("");
-  const [destInput,   setDestInput]    = useState("");
-  const [notesInput,  setNotesInput]   = useState("");
-  const [submitting,  setSubmitting]   = useState(false);
-  const [submitError, setSubmitError]  = useState<string | null>(null);
-  const [submitted,   setSubmitted]    = useState<RideRequestData | null>(null);
+  const [originInput,       setOriginInput]       = useState("");
+  const [destInput,         setDestInput]         = useState("");
+  const [notesInput,        setNotesInput]        = useState("");
+  const [selectedOriginId,  setSelectedOriginId]  = useState<string>("");
+  const [selectedDestId,    setSelectedDestId]    = useState<string>("");
+  const [submitting,        setSubmitting]        = useState(false);
+  const [submitError,       setSubmitError]       = useState<string | null>(null);
+  const [submitted,         setSubmitted]         = useState<RideRequestData | null>(null);
+
+  const sortedPlaces = [...RAPA_NUI_PLACES].sort((a, b) => {
+    if (a.isPopular && !b.isPopular) return -1;
+    if (!a.isPopular && b.isPopular) return 1;
+    return a.sortOrder - b.sortOrder;
+  });
+
+  function handleOriginPlaceSelect(placeId: string) {
+    const place = RAPA_NUI_PLACES.find(p => p.id === placeId);
+    if (place) {
+      setOriginInput(place.name);
+      setSelectedOriginId(placeId);
+    }
+  }
+
+  function handleDestPlaceSelect(placeId: string) {
+    const place = RAPA_NUI_PLACES.find(p => p.id === placeId);
+    if (place) {
+      setDestInput(place.name);
+      setSelectedDestId(placeId);
+    }
+  }
 
   async function handleRequest() {
     if (!session?.accessToken) return;
@@ -176,6 +203,8 @@ function RequestRidePage(): JSX.Element {
       setOriginInput("");
       setDestInput("");
       setNotesInput("");
+      setSelectedOriginId("");
+      setSelectedDestId("");
     } catch (err) {
       setSubmitError(err instanceof Error ? err.message : "Error al solicitar el viaje.");
     } finally {
@@ -213,10 +242,26 @@ function RequestRidePage(): JSX.Element {
         <IonCard style={{ marginTop: "12px" }}>
           <IonCardContent style={{ paddingTop: "12px" }}>
             <IonItem lines="full">
+              <IonLabel>Lugar frecuente (origen)</IonLabel>
+              <IonSelect
+                interface="action-sheet"
+                placeholder="Seleccionar origen frecuente"
+                value={selectedOriginId}
+                onIonChange={(e) => handleOriginPlaceSelect(e.detail.value as string)}
+              >
+                {sortedPlaces.map(place => (
+                  <IonSelectOption key={place.id} value={place.id}>
+                    {place.name}
+                  </IonSelectOption>
+                ))}
+              </IonSelect>
+            </IonItem>
+
+            <IonItem lines="full">
               <IonLabel position="stacked">Origen</IonLabel>
               <IonInput
                 value={originInput}
-                onIonInput={(e) => setOriginInput(String(e.detail.value ?? ""))}
+                onIonInput={(e) => { setOriginInput(String(e.detail.value ?? "")); setSelectedOriginId(""); }}
                 placeholder="Ej: Hotel Hanga Roa Eco Village"
                 maxlength={150}
                 clearInput
@@ -224,10 +269,26 @@ function RequestRidePage(): JSX.Element {
             </IonItem>
 
             <IonItem lines="full" style={{ marginTop: "8px" }}>
+              <IonLabel>Lugar frecuente (destino)</IonLabel>
+              <IonSelect
+                interface="action-sheet"
+                placeholder="Seleccionar destino frecuente"
+                value={selectedDestId}
+                onIonChange={(e) => handleDestPlaceSelect(e.detail.value as string)}
+              >
+                {sortedPlaces.map(place => (
+                  <IonSelectOption key={place.id} value={place.id}>
+                    {place.name}
+                  </IonSelectOption>
+                ))}
+              </IonSelect>
+            </IonItem>
+
+            <IonItem lines="full" style={{ marginTop: "8px" }}>
               <IonLabel position="stacked">Destino</IonLabel>
               <IonInput
                 value={destInput}
-                onIonInput={(e) => setDestInput(String(e.detail.value ?? ""))}
+                onIonInput={(e) => { setDestInput(String(e.detail.value ?? "")); setSelectedDestId(""); }}
                 placeholder="Ej: Aeropuerto Mataveri"
                 maxlength={150}
                 clearInput

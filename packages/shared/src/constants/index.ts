@@ -87,3 +87,5 @@ export const RIDE_STATUS_COLOR: Record<RideStatus, string> = {
   completed:       "medium",
   cancelled:       "danger",
 };
+
+export * from "./rapaNuiPlaces.js";
