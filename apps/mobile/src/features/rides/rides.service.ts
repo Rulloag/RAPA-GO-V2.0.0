@@ -25,6 +25,8 @@ export interface RideRequestData {
   cancelledByRole:    string | null;
   createdAt:          string;
   updatedAt:          string;
+  driverRatingAverage: number | null;
+  driverRatingCount:   number;
 }
 
 /** Subset returned to drivers for their own rides. */

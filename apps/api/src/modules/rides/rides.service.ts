@@ -42,7 +42,9 @@ function toResponse(r: RideRequest | RideWithDriverName): RideRequestResponse {
     cancellationReason: r.cancellationReason ?? null,
     cancelledByRole:    r.cancelledByRole ?? null,
     createdAt:          r.createdAt.toISOString(),
-    updatedAt:       r.updatedAt.toISOString(),
+    updatedAt:          r.updatedAt.toISOString(),
+    driverRatingAverage: ("driverRatingAverage" in r ? r.driverRatingAverage : null) ?? null,
+    driverRatingCount:   ("driverRatingCount"   in r ? r.driverRatingCount   : 0) ?? 0,
   };
 }
 

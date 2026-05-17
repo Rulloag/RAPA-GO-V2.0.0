@@ -1,12 +1,14 @@
-import { and, desc, eq } from "drizzle-orm";
+import { and, avg, count, desc, eq } from "drizzle-orm";
 import { db } from "../../db/client.js";
-import { rideRequests, users } from "../../db/schema/index.js";
+import { rideRequests, users, rideRatings } from "../../db/schema/index.js";
 import { alias } from "drizzle-orm/pg-core";
 import { AppError } from "../../shared/errors/AppError.js";
 import type { RideRequest } from "../../db/schema/index.js";
 
 export interface RideWithDriverName extends RideRequest {
-  driverName: string | null;
+  driverName:          string | null;
+  driverRatingAverage: number | null;
+  driverRatingCount:   number;
 }
 
 export class RidesRepository {
@@ -53,7 +55,39 @@ export class RidesRepository {
         .leftJoin(driver, eq(rideRequests.driverUserId, driver.id))
         .where(eq(rideRequests.passengerUserId, passengerUserId))
         .orderBy(desc(rideRequests.requestedAt));
-      return rows as RideWithDriverName[];
+
+      // Collect unique driverUserIds that are not null
+      const driverIds = [...new Set(rows.map((r) => r.driverUserId).filter((id): id is string => id != null))];
+
+      // Fetch AVG/COUNT ratings for each driver in one query
+      const ratingMap = new Map<string, { average: number | null; count: number }>();
+      if (driverIds.length > 0) {
+        const ratingRows = await db
+          .select({
+            ratedUserId:    rideRatings.ratedUserId,
+            avgRating:      avg(rideRatings.rating),
+            countRating:    count(rideRatings.rating),
+          })
+          .from(rideRatings)
+          .where(and(...driverIds.map((id) => eq(rideRatings.ratedUserId, id))))
+          .groupBy(rideRatings.ratedUserId);
+
+        for (const r of ratingRows) {
+          ratingMap.set(r.ratedUserId, {
+            average: r.avgRating != null ? parseFloat(r.avgRating) : null,
+            count:   Number(r.countRating),
+          });
+        }
+      }
+
+      return rows.map((r) => {
+        const ratingInfo = r.driverUserId != null ? (ratingMap.get(r.driverUserId) ?? { average: null, count: 0 }) : { average: null, count: 0 };
+        return {
+          ...r,
+          driverRatingAverage: ratingInfo.average,
+          driverRatingCount:   ratingInfo.count,
+        } as RideWithDriverName;
+      });
     } catch (err) {
       throw AppError.internal(`Failed to query ride requests with driver: ${String(err)}`);
     }

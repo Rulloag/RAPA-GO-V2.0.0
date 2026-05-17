@@ -34,6 +34,7 @@ import { ROUTES } from "../../navigation/routes";
 import { useAuth } from "../../features/auth";
 import { ridesService, type RideRequestData } from "../../features/rides/rides.service";
 import { MapPlaceholder } from "../../components/MapPlaceholder";
+import { DriverSummaryCard } from "../../components/DriverSummaryCard";
 
 function StarRatingInput({ value, onChange }: { value: number; onChange: (v: number) => void }) {
   return (
@@ -408,32 +409,25 @@ function TripsPage(): JSX.Element {
                       destinationText={ride.destinationText}
                       height={130}
                     />
+                    {ride.driverName && ["accepted", "driver_en_route", "driver_arrived", "in_progress", "completed"].includes(ride.status) && (
+                      <DriverSummaryCard
+                        driverName={ride.driverName}
+                        driverRatingAverage={ride.driverRatingAverage}
+                        driverRatingCount={ride.driverRatingCount}
+                        status={ride.status}
+                      />
+                    )}
+                    {!ride.driverName && ride.status === "requested" && (
+                      <div style={{ marginTop: "10px", fontSize: "0.82rem", color: "var(--ion-color-medium)", fontStyle: "italic" }}>
+                        Esperando asignación de conductor.
+                      </div>
+                    )}
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "8px", marginTop: "10px" }}>
                       <div style={{ flex: 1 }}>
                         <div style={{ fontWeight: 600, fontSize: "0.9rem", marginBottom: "4px" }}>
                           {ride.originText} → {ride.destinationText}
                         </div>
                         <IonBadge color={color} style={{ fontSize: "0.7rem" }}>{label}</IonBadge>
-                        {ride.status === "requested" && (
-                          <div style={{ marginTop: "4px", fontSize: "0.78rem", color: "var(--ion-color-medium)", fontStyle: "italic" }}>
-                            Esperando asignación de conductor
-                          </div>
-                        )}
-                        {ride.status === "accepted" && (
-                          <div style={{ marginTop: "4px", fontSize: "0.78rem", color: "var(--ion-color-primary)" }}>
-                            Conductor asignado{ride.driverName ? `: ${ride.driverName}` : ""}
-                          </div>
-                        )}
-                        {ride.status === "driver_en_route" && (
-                          <div style={{ marginTop: "4px", fontSize: "0.78rem", color: "var(--ion-color-tertiary)" }}>
-                            Tu conductor va en camino{ride.driverName ? `: ${ride.driverName}` : ""}
-                          </div>
-                        )}
-                        {ride.status === "driver_arrived" && (
-                          <div style={{ marginTop: "4px", fontSize: "0.78rem", color: "var(--ion-color-secondary)" }}>
-                            Tu conductor llegó al punto de origen{ride.driverName ? ` — ${ride.driverName}` : ""}
-                          </div>
-                        )}
                         {ride.estimatedFareClp != null && (
                           <div style={{ marginTop: "4px", fontSize: "0.78rem", color: "var(--ion-color-dark)", fontWeight: 500 }}>
                             Tarifa est.: ${ride.estimatedFareClp.toLocaleString("es-CL")} CLP
