@@ -1,4 +1,4 @@
-import { and, avg, count, desc, eq } from "drizzle-orm";
+import { and, avg, count, desc, eq, inArray } from "drizzle-orm";
 import { db } from "../../db/client.js";
 import { rideRequests, users, rideRatings } from "../../db/schema/index.js";
 import { alias } from "drizzle-orm/pg-core";
@@ -69,7 +69,7 @@ export class RidesRepository {
             countRating:    count(rideRatings.rating),
           })
           .from(rideRatings)
-          .where(and(...driverIds.map((id) => eq(rideRatings.ratedUserId, id))))
+          .where(inArray(rideRatings.ratedUserId, driverIds))
           .groupBy(rideRatings.ratedUserId);
 
         for (const r of ratingRows) {

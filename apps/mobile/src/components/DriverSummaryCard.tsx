@@ -46,7 +46,7 @@ export function DriverSummaryCard({
               width:           "52px",
               height:          "52px",
               borderRadius:    "50%",
-              background:      "#1a73e8",
+              background:      "var(--ion-color-primary)",
               color:           "#ffffff",
               display:         "flex",
               alignItems:      "center",
