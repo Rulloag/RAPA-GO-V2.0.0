@@ -323,7 +323,7 @@ export class AdminRepository {
     }
   }
 
-  async listActiveDrivers(): Promise<(User & { availability: string | null; currentRideId: string | null; lastSeenAt: Date | null })[]> {
+  async listActiveDrivers(): Promise<(User & { availability: string | null; currentRideId: string | null; lastSeenAt: Date | null; currentZone: string | null })[]> {
     try {
       const rows = await db
         .select({
@@ -339,11 +339,12 @@ export class AdminRepository {
           availability:  driverStatuses.availability,
           currentRideId: driverStatuses.currentRideId,
           lastSeenAt:    driverStatuses.lastSeenAt,
+          currentZone:   driverStatuses.currentZone,
         })
         .from(users)
         .leftJoin(driverStatuses, eq(users.id, driverStatuses.driverUserId))
         .where(and(eq(users.role, "driver"), eq(users.status, "active")));
-      return rows as (User & { availability: string | null; currentRideId: string | null; lastSeenAt: Date | null })[];
+      return rows as (User & { availability: string | null; currentRideId: string | null; lastSeenAt: Date | null; currentZone: string | null })[];
     } catch (err) {
       throw AppError.internal(`Failed to list active drivers: ${String(err)}`);
     }

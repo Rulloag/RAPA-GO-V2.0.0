@@ -42,19 +42,25 @@ export class DriverStatusService {
       ok: true,
       status: {
         availability:  status.availability,
+        currentZone:   status.currentZone ?? null,
         lastSeenAt:    status.lastSeenAt?.toISOString() ?? null,
         currentRideId: status.currentRideId ?? null,
       },
     };
   }
 
-  async updateMyStatus(accessToken: string, availability: string) {
+  async updateMyStatus(accessToken: string, availability: string, currentZone?: string | null) {
     const auth = await authenticate(accessToken);
     if (!auth.ok) return auth;
     if (auth.role !== "driver") return { ok: false, code: "AUTH_FORBIDDEN", message: "Only drivers can update driver status.", statusCode: 403 };
 
     if (!["available", "unavailable"].includes(availability)) {
       return { ok: false, code: "VALIDATION_ERROR", message: "availability must be 'available' or 'unavailable'.", statusCode: 400 };
+    }
+
+    const VALID_ZONES = ["hanga_roa", "mataveri", "anakena", "rano_raraku", "tongariki", "rano_kau_orongo", "vaihu_sur", "interior", "desconocida"];
+    if (currentZone !== undefined && currentZone !== null && !VALID_ZONES.includes(currentZone)) {
+      return { ok: false, code: "VALIDATION_ERROR", message: "currentZone inválida.", statusCode: 400 };
     }
 
     if (availability === "available") {
@@ -64,11 +70,12 @@ export class DriverStatusService {
       }
     }
 
-    const updated = await driverStatusRepo.upsert(auth.userId, availability);
+    const updated = await driverStatusRepo.upsert(auth.userId, availability, currentZone);
     return {
       ok: true,
       status: {
         availability:  updated.availability,
+        currentZone:   updated.currentZone ?? null,
         lastSeenAt:    updated.lastSeenAt?.toISOString() ?? null,
         currentRideId: updated.currentRideId ?? null,
       },

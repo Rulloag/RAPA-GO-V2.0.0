@@ -9,6 +9,7 @@ import {
   IonInput,
   IonItem,
   IonLabel,
+  IonNote,
   IonPage,
   IonRefresher,
   IonRefresherContent,
@@ -38,6 +39,7 @@ import { ROUTE_METADATA } from "../../navigation/routeConfig";
 import { ROUTES } from "../../navigation/routes";
 import { useAuth } from "../../features/auth";
 import { adminService, type AdminUserData, type AdminDocumentData, type AdminRideData, type ActiveDriverData } from "../../features/admin/admin.service";
+import { inferZoneFromText, getZoneLabel } from "@rapa-go/shared";
 
 function meta(path: string) {
   return ROUTE_METADATA.find((r) => r.path === path)!;
@@ -635,6 +637,13 @@ export function AdminTripsPage(): JSX.Element {
                     {/* Assign driver — only for 'requested' */}
                     {ride.status === "requested" && (() => {
                       const availableDrivers = drivers.filter((d) => d.availability === "available");
+                      const originZone = inferZoneFromText(ride.originText);
+                      const sortedDrivers = [...availableDrivers].sort((a, b) => {
+                        const aMatch = originZone && a.currentZone === originZone ? -1 : 0;
+                        const bMatch = originZone && b.currentZone === originZone ? -1 : 0;
+                        if (aMatch !== bMatch) return aMatch - bMatch;
+                        return (a.name ?? "").localeCompare(b.name ?? "");
+                      });
                       return (
                         <div style={{ borderTop: "1px solid var(--ion-color-light-shade)", paddingTop: "8px" }}>
                           {availableDrivers.length === 0 ? (
@@ -657,11 +666,21 @@ export function AdminTripsPage(): JSX.Element {
                                     setAssignDriverId((prev) => ({ ...prev, [ride.id]: val }));
                                   }}
                                 >
-                                  {availableDrivers.map((d) => (
-                                    <IonSelectOption key={d.id} value={d.id}>{d.name} · Disponible</IonSelectOption>
-                                  ))}
+                                  {sortedDrivers.map((d) => {
+                                    const isSuggested = originZone && d.currentZone === originZone;
+                                    return (
+                                      <IonSelectOption key={d.id} value={d.id}>
+                                        {d.name} · {getZoneLabel(d.currentZone as any)} {isSuggested ? "★" : ""}
+                                      </IonSelectOption>
+                                    );
+                                  })}
                                 </IonSelect>
                               </IonItem>
+                              {originZone && availableDrivers.some(d => d.currentZone === originZone) && (
+                                <IonNote color="success" style={{ fontSize: "0.8rem", paddingLeft: "16px", display: "block" }}>
+                                  ★ Sugerido por zona: {getZoneLabel(originZone)}
+                                </IonNote>
+                              )}
                               <IonButton
                                 expand="block"
                                 size="small"

@@ -44,7 +44,7 @@ function toRideResponse(r: AdminRideRow): AdminRideResponse {
   };
 }
 
-function toDriverResponse(u: User & { availability?: string | null; currentRideId?: string | null; lastSeenAt?: Date | null }): ActiveDriverResponse {
+function toDriverResponse(u: User & { availability?: string | null; currentRideId?: string | null; lastSeenAt?: Date | null; currentZone?: string | null }): ActiveDriverResponse {
   return {
     id:            u.id,
     name:          u.name,
@@ -55,6 +55,7 @@ function toDriverResponse(u: User & { availability?: string | null; currentRideI
     availability:  u.availability ?? "unavailable",
     currentRideId: u.currentRideId ?? null,
     lastSeenAt:    u.lastSeenAt?.toISOString() ?? null,
+    currentZone:   u.currentZone ?? null,
   };
 }
 

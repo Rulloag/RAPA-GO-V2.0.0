@@ -15,14 +15,21 @@ export class DriverStatusRepository {
     }
   }
 
-  async upsert(driverUserId: string, availability: string): Promise<DriverStatus> {
+  async upsert(driverUserId: string, availability: string, currentZone?: string | null): Promise<DriverStatus> {
     try {
+      const setValues: Partial<typeof driverStatuses.$inferInsert> = {
+        availability,
+        lastSeenAt: new Date(),
+        updatedAt: new Date(),
+      };
+      if (currentZone !== undefined) setValues.currentZone = currentZone;
+
       const rows = await db
         .insert(driverStatuses)
-        .values({ driverUserId, availability, lastSeenAt: new Date() })
+        .values({ driverUserId, availability, currentZone: currentZone ?? null, lastSeenAt: new Date() })
         .onConflictDoUpdate({
           target: driverStatuses.driverUserId,
-          set: { availability, lastSeenAt: new Date(), updatedAt: new Date() },
+          set: setValues,
         })
         .returning();
       const row = rows[0];

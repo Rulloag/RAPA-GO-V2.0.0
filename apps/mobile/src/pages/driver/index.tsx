@@ -7,9 +7,12 @@ import {
   IonHeader,
   IonItem,
   IonLabel,
+  IonNote,
   IonPage,
   IonRefresher,
   IonRefresherContent,
+  IonSelect,
+  IonSelectOption,
   IonSpinner,
   IonText,
   IonTextarea,
@@ -35,6 +38,7 @@ import { useAuth } from "../../features/auth";
 import { ridesService } from "../../features/rides/rides.service";
 import { MapPlaceholder } from "../../components/MapPlaceholder";
 import { driverStatusService } from "../../features/drivers/driverStatus.service";
+import { RAPA_NUI_ZONES, getZoneLabel } from "@rapa-go/shared";
 
 function StarRatingInput({ value, onChange }: { value: number; onChange: (v: number) => void }) {
   return (
@@ -63,11 +67,15 @@ export function DriverHomePage(): JSX.Element {
   const [driverAvailability, setDriverAvailability] = useState<"available" | "unavailable" | "busy">("unavailable");
   const [availabilityLoading, setAvailabilityLoading] = useState(false);
   const [availabilityError, setAvailabilityError] = useState<string | null>(null);
+  const [currentZone, setCurrentZone] = useState<string | null>(null);
 
   useEffect(() => {
     if (!session?.accessToken) return;
     void driverStatusService.getMyStatus(session.accessToken)
-      .then((s) => setDriverAvailability(s.availability))
+      .then((s) => {
+        setDriverAvailability(s.availability);
+        setCurrentZone(s.currentZone ?? null);
+      })
       .catch(() => {/* silently ignore on mount */});
   }, [session?.accessToken]);
 
@@ -77,8 +85,9 @@ export function DriverHomePage(): JSX.Element {
     setAvailabilityLoading(true);
     setAvailabilityError(null);
     try {
-      const updated = await driverStatusService.updateMyStatus(session.accessToken, newStatus);
+      const updated = await driverStatusService.updateMyStatus(session.accessToken, newStatus, currentZone);
       setDriverAvailability(updated.availability);
+      setCurrentZone(updated.currentZone ?? null);
     } catch (err) {
       setAvailabilityError(err instanceof Error ? err.message : "Error al actualizar estado.");
     } finally {
@@ -87,7 +96,11 @@ export function DriverHomePage(): JSX.Element {
   };
 
   const availabilityColor = driverAvailability === "available" ? "success" : driverAvailability === "busy" ? "warning" : "medium";
-  const availabilityLabel = driverAvailability === "available" ? "Disponible para viajes" : driverAvailability === "busy" ? "Ocupado en un viaje" : "No disponible";
+  const availabilityLabel = driverAvailability === "available"
+    ? `Disponible en ${getZoneLabel(currentZone as any)}`
+    : driverAvailability === "busy"
+    ? "Ocupado en viaje"
+    : "No disponible";
 
   return (
     <IonPage>
@@ -111,6 +124,34 @@ export function DriverHomePage(): JSX.Element {
                   onIonChange={() => void handleToggleAvailability()}
                 />
               )}
+            </IonItem>
+            <IonItem lines="none" color="inherit">
+              <IonLabel>Zona actual</IonLabel>
+              <IonSelect
+                interface="action-sheet"
+                placeholder="Seleccionar zona"
+                value={currentZone ?? ""}
+                disabled={driverAvailability === "busy" || availabilityLoading}
+                onIonChange={async (e) => {
+                  const zone = e.detail.value as string;
+                  setCurrentZone(zone || null);
+                  if (driverAvailability !== "busy" && session?.accessToken) {
+                    try {
+                      await driverStatusService.updateMyStatus(
+                        session.accessToken,
+                        driverAvailability === "available" ? "available" : "unavailable",
+                        zone || null,
+                      );
+                    } catch (_) { /* ignore zone-only update errors */ }
+                  }
+                }}
+              >
+                {RAPA_NUI_ZONES.filter(z => z.id !== "desconocida").map(zone => (
+                  <IonSelectOption key={zone.id} value={zone.id}>
+                    {zone.label}
+                  </IonSelectOption>
+                ))}
+              </IonSelect>
             </IonItem>
             {availabilityError && (
               <IonText color="danger">

@@ -1,0 +1,1 @@
+ALTER TABLE "driver_statuses" ADD COLUMN "current_zone" varchar(50);

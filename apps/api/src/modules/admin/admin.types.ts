@@ -58,6 +58,7 @@ export interface ActiveDriverResponse {
   availability:  string;
   currentRideId: string | null;
   lastSeenAt:    string | null;
+  currentZone:   string | null;
 }
 
 type ErrorResult = { ok: false; code: string; message: string; statusCode: number };

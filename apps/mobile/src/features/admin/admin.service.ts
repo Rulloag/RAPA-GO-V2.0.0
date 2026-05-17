@@ -72,6 +72,7 @@ export interface ActiveDriverData {
   availability:  string;
   currentRideId: string | null;
   lastSeenAt:    string | null;
+  currentZone:   string | null;
 }
 
 export interface ListRidesParams {

@@ -22,8 +22,8 @@ export const driverStatusController = {
     return sendOk(reply, result.status);
   },
 
-  async updateMyStatus(req: FastifyRequest<{ Body: { availability: string } }>, reply: FastifyReply) {
-    const result = await svc.updateMyStatus(getToken(req), req.body.availability);
+  async updateMyStatus(req: FastifyRequest<{ Body: { availability: string; currentZone?: string | null } }>, reply: FastifyReply) {
+    const result = await svc.updateMyStatus(getToken(req), req.body.availability, req.body.currentZone);
     if (!result.ok) {
       return sendError(reply, {
         code:       result.code       ?? "INTERNAL_ERROR",

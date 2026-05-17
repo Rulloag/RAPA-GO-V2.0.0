@@ -6,6 +6,7 @@ export const driverStatuses = pgTable("driver_statuses", {
   id:             uuid("id").primaryKey().defaultRandom(),
   driverUserId:   uuid("driver_user_id").notNull().unique().references(() => users.id, { onDelete: "cascade" }),
   availability:   varchar("availability", { length: 20 }).notNull().default("unavailable"),
+  currentZone:    varchar("current_zone", { length: 50 }),
   lastSeenAt:     timestamp("last_seen_at", { withTimezone: true }),
   currentRideId:  uuid("current_ride_id").references(() => rideRequests.id, { onDelete: "set null" }),
   createdAt:      timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
