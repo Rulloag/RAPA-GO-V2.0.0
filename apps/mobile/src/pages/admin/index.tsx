@@ -17,6 +17,7 @@ import {
   IonSpinner,
   IonText,
   IonTitle,
+  IonToast,
   IonToolbar,
 } from "@ionic/react";
 import { useEffect, useState, useCallback } from "react";
@@ -431,6 +432,9 @@ export function AdminTripsPage(): JSX.Element {
   const [cancelAlertId, setCancelAlertId] = useState<string | null>(null);
   const [cancelError,   setCancelError]   = useState<string | null>(null);
 
+  // Toast for DRIVER_NOT_AVAILABLE feedback
+  const [toastMsg, setToastMsg] = useState<string | null>(null);
+
   const loadData = useCallback(async () => {
     if (!session?.accessToken) return;
     setLoading(true);
@@ -471,7 +475,12 @@ export function AdminTripsPage(): JSX.Element {
         return next;
       });
     } catch (err) {
-      setAssignError(err instanceof Error ? err.message : "Error al asignar conductor.");
+      const msg = err instanceof Error ? err.message : "Error al asignar conductor.";
+      if (msg.includes("disponible") || msg.toLowerCase().includes("not available")) {
+        setToastMsg("El conductor no está disponible en este momento. Selecciona otro conductor.");
+      } else {
+        setAssignError(msg);
+      }
     } finally {
       setAssigningId(null);
     }
@@ -624,47 +633,50 @@ export function AdminTripsPage(): JSX.Element {
                     </div>
 
                     {/* Assign driver — only for 'requested' */}
-                    {ride.status === "requested" && (
-                      <div style={{ borderTop: "1px solid var(--ion-color-light-shade)", paddingTop: "8px" }}>
-                        {drivers.length === 0 ? (
-                          <IonItem lines="none" style={{ "--padding-start": "0", "--inner-padding-end": "0" }}>
-                            <IonLabel style={{ fontSize: "0.75rem" }} color="warning">
-                              No hay conductores activos disponibles.
-                            </IonLabel>
-                          </IonItem>
-                        ) : (
-                          <>
-                            <IonItem lines="none" style={{ "--padding-start": "0", "--inner-padding-end": "0", "--min-height": "44px" }}>
-                              <IonLabel style={{ fontSize: "0.75rem", flexShrink: 0, marginRight: "8px" }}>Conductor:</IonLabel>
-                              <IonSelect
-                                value={assignDriverId[ride.id] ?? ""}
-                                interface="action-sheet"
-                                placeholder="Seleccionar conductor..."
-                                style={{ fontSize: "0.78rem" }}
-                                onIonChange={(e) => {
-                                  const val = String(e.detail.value ?? "");
-                                  setAssignDriverId((prev) => ({ ...prev, [ride.id]: val }));
-                                }}
-                              >
-                                {drivers.map((d) => (
-                                  <IonSelectOption key={d.id} value={d.id}>{d.name}</IonSelectOption>
-                                ))}
-                              </IonSelect>
+                    {ride.status === "requested" && (() => {
+                      const availableDrivers = drivers.filter((d) => d.availability === "available");
+                      return (
+                        <div style={{ borderTop: "1px solid var(--ion-color-light-shade)", paddingTop: "8px" }}>
+                          {availableDrivers.length === 0 ? (
+                            <IonItem lines="none" style={{ "--padding-start": "0", "--inner-padding-end": "0" }}>
+                              <IonLabel style={{ fontSize: "0.75rem" }} color="warning">
+                                No hay conductores disponibles en este momento.
+                              </IonLabel>
                             </IonItem>
-                            <IonButton
-                              expand="block"
-                              size="small"
-                              color="primary"
-                              disabled={assigningId === ride.id || !assignDriverId[ride.id]}
-                              onClick={() => void handleAssign(ride.id)}
-                              style={{ marginTop: "6px" }}
-                            >
-                              {assigningId === ride.id ? <IonSpinner name="dots" /> : "Asignar conductor"}
-                            </IonButton>
-                          </>
-                        )}
-                      </div>
-                    )}
+                          ) : (
+                            <>
+                              <IonItem lines="none" style={{ "--padding-start": "0", "--inner-padding-end": "0", "--min-height": "44px" }}>
+                                <IonLabel style={{ fontSize: "0.75rem", flexShrink: 0, marginRight: "8px" }}>Conductor:</IonLabel>
+                                <IonSelect
+                                  value={assignDriverId[ride.id] ?? ""}
+                                  interface="action-sheet"
+                                  placeholder="Seleccionar conductor..."
+                                  style={{ fontSize: "0.78rem" }}
+                                  onIonChange={(e) => {
+                                    const val = String(e.detail.value ?? "");
+                                    setAssignDriverId((prev) => ({ ...prev, [ride.id]: val }));
+                                  }}
+                                >
+                                  {availableDrivers.map((d) => (
+                                    <IonSelectOption key={d.id} value={d.id}>{d.name} · Disponible</IonSelectOption>
+                                  ))}
+                                </IonSelect>
+                              </IonItem>
+                              <IonButton
+                                expand="block"
+                                size="small"
+                                color="primary"
+                                disabled={assigningId === ride.id || !assignDriverId[ride.id]}
+                                onClick={() => void handleAssign(ride.id)}
+                                style={{ marginTop: "6px" }}
+                              >
+                                {assigningId === ride.id ? <IonSpinner name="dots" /> : "Asignar conductor"}
+                              </IonButton>
+                            </>
+                          )}
+                        </div>
+                      );
+                    })()}
 
                     {/* Cancel — for cancelable statuses */}
                     {CANCELABLE_STATUSES.has(ride.status) && (
@@ -688,6 +700,15 @@ export function AdminTripsPage(): JSX.Element {
             })}
           </div>
         )}
+
+        {/* Driver not available toast */}
+        <IonToast
+          isOpen={toastMsg !== null}
+          message={toastMsg ?? ""}
+          duration={3500}
+          color="warning"
+          onDidDismiss={() => setToastMsg(null)}
+        />
 
         {/* Cancel alert */}
         <IonAlert

@@ -49,12 +49,15 @@ export interface AdminRideResponse {
 }
 
 export interface ActiveDriverResponse {
-  id:         string;
-  name:       string;
-  email:      string;
-  status:     string;
-  isVerified: boolean;
-  createdAt:  string;
+  id:            string;
+  name:          string;
+  email:         string;
+  status:        string;
+  isVerified:    boolean;
+  createdAt:     string;
+  availability:  string;
+  currentRideId: string | null;
+  lastSeenAt:    string | null;
 }
 
 type ErrorResult = { ok: false; code: string; message: string; statusCode: number };

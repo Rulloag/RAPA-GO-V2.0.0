@@ -63,12 +63,15 @@ export interface AdminRideData {
 }
 
 export interface ActiveDriverData {
-  id:         string;
-  name:       string;
-  email:      string;
-  status:     string;
-  isVerified: boolean;
-  createdAt:  string;
+  id:            string;
+  name:          string;
+  email:         string;
+  status:        string;
+  isVerified:    boolean;
+  createdAt:     string;
+  availability:  string;
+  currentRideId: string | null;
+  lastSeenAt:    string | null;
 }
 
 export interface ListRidesParams {

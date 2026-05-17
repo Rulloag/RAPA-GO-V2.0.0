@@ -236,6 +236,11 @@ export class RidesService {
       return { ok: false, code: "AUTH_FORBIDDEN", message: "You can only complete rides assigned to you.", statusCode: 403 };
     }
 
+    if (completed.driverUserId) {
+      const { DriverStatusRepository } = await import("../drivers/driverStatus.repository.js");
+      await new DriverStatusRepository().setAvailable(completed.driverUserId);
+    }
+
     return { ok: true, ride: toResponse(completed) };
   }
 
@@ -373,6 +378,11 @@ export class RidesService {
         message: `Ride request cannot be cancelled — current status is '${refetch.status}'.`,
         statusCode: 409,
       };
+    }
+
+    if (cancelled.driverUserId) {
+      const { DriverStatusRepository } = await import("../drivers/driverStatus.repository.js");
+      await new DriverStatusRepository().setAvailable(cancelled.driverUserId);
     }
 
     return { ok: true, ride: toResponse(cancelled) };

@@ -6,6 +6,7 @@ import {
   IonContent,
   IonHeader,
   IonItem,
+  IonLabel,
   IonPage,
   IonRefresher,
   IonRefresherContent,
@@ -13,6 +14,7 @@ import {
   IonText,
   IonTextarea,
   IonTitle,
+  IonToggle,
   IonToolbar,
 } from "@ionic/react";
 import { useEffect, useState, useCallback } from "react";
@@ -32,6 +34,7 @@ import { ROUTES } from "../../navigation/routes";
 import { useAuth } from "../../features/auth";
 import { ridesService } from "../../features/rides/rides.service";
 import { MapPlaceholder } from "../../components/MapPlaceholder";
+import { driverStatusService } from "../../features/drivers/driverStatus.service";
 
 function StarRatingInput({ value, onChange }: { value: number; onChange: (v: number) => void }) {
   return (
@@ -56,10 +59,67 @@ function meta(path: string) {
 const PENDING = "Módulo preparado, implementación funcional pendiente.";
 
 export function DriverHomePage(): JSX.Element {
+  const { session } = useAuth();
+  const [driverAvailability, setDriverAvailability] = useState<"available" | "unavailable" | "busy">("unavailable");
+  const [availabilityLoading, setAvailabilityLoading] = useState(false);
+  const [availabilityError, setAvailabilityError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!session?.accessToken) return;
+    void driverStatusService.getMyStatus(session.accessToken)
+      .then((s) => setDriverAvailability(s.availability))
+      .catch(() => {/* silently ignore on mount */});
+  }, [session?.accessToken]);
+
+  const handleToggleAvailability = async () => {
+    if (!session?.accessToken || driverAvailability === "busy") return;
+    const newStatus = driverAvailability === "available" ? "unavailable" : "available";
+    setAvailabilityLoading(true);
+    setAvailabilityError(null);
+    try {
+      const updated = await driverStatusService.updateMyStatus(session.accessToken, newStatus);
+      setDriverAvailability(updated.availability);
+    } catch (err) {
+      setAvailabilityError(err instanceof Error ? err.message : "Error al actualizar estado.");
+    } finally {
+      setAvailabilityLoading(false);
+    }
+  };
+
+  const availabilityColor = driverAvailability === "available" ? "success" : driverAvailability === "busy" ? "warning" : "medium";
+  const availabilityLabel = driverAvailability === "available" ? "Disponible para viajes" : driverAvailability === "busy" ? "Ocupado en un viaje" : "No disponible";
+
   return (
     <IonPage>
       <HomeHeader title="Inicio" />
       <IonContent className="ion-padding">
+        {/* Availability toggle */}
+        <IonCard color={availabilityColor} style={{ margin: "0 0 12px" }}>
+          <IonCardContent>
+            <IonItem lines="none" color="inherit">
+              <IonLabel>
+                <strong>Estado operacional</strong>
+                <p>{availabilityLabel}</p>
+              </IonLabel>
+              {availabilityLoading ? (
+                <IonSpinner name="dots" slot="end" />
+              ) : (
+                <IonToggle
+                  slot="end"
+                  checked={driverAvailability === "available"}
+                  disabled={driverAvailability === "busy" || availabilityLoading}
+                  onIonChange={() => void handleToggleAvailability()}
+                />
+              )}
+            </IonItem>
+            {availabilityError && (
+              <IonText color="danger">
+                <p style={{ fontSize: "0.78rem", margin: "4px 0 0" }}>{availabilityError}</p>
+              </IonText>
+            )}
+          </IonCardContent>
+        </IonCard>
+
         <div
           style={{
             display: "grid",

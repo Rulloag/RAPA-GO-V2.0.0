@@ -1,5 +1,5 @@
 import { db } from "../../db/client.js";
-import { users, userDocuments, rideRequests } from "../../db/schema/index.js";
+import { users, userDocuments, rideRequests, driverStatuses } from "../../db/schema/index.js";
 import { eq, and, or, ilike, inArray, type SQL } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import { AppError } from "../../shared/errors/AppError.js";
@@ -323,12 +323,27 @@ export class AdminRepository {
     }
   }
 
-  async listActiveDrivers(): Promise<User[]> {
+  async listActiveDrivers(): Promise<(User & { availability: string | null; currentRideId: string | null; lastSeenAt: Date | null })[]> {
     try {
-      return await db
-        .select()
+      const rows = await db
+        .select({
+          id:           users.id,
+          name:         users.name,
+          email:        users.email,
+          role:         users.role,
+          status:       users.status,
+          avatarUrl:    users.avatarUrl,
+          isVerified:   users.isVerified,
+          createdAt:    users.createdAt,
+          updatedAt:    users.updatedAt,
+          availability:  driverStatuses.availability,
+          currentRideId: driverStatuses.currentRideId,
+          lastSeenAt:    driverStatuses.lastSeenAt,
+        })
         .from(users)
+        .leftJoin(driverStatuses, eq(users.id, driverStatuses.driverUserId))
         .where(and(eq(users.role, "driver"), eq(users.status, "active")));
+      return rows as (User & { availability: string | null; currentRideId: string | null; lastSeenAt: Date | null })[];
     } catch (err) {
       throw AppError.internal(`Failed to list active drivers: ${String(err)}`);
     }

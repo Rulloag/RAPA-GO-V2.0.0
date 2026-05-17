@@ -3,17 +3,19 @@ import { SessionService } from "../auth/session.service.js";
 import { UsersRepository } from "../users/users.repository.js";
 import { AdminRepository } from "./admin.repository.js";
 import { AuditService } from "../audit/audit.service.js";
+import { DriverStatusRepository } from "../drivers/driverStatus.repository.js";
 import { AppError } from "../../shared/errors/AppError.js";
 import type { ListUsersQuery, UpdateUserStatusInput, ListDocumentsQuery, ReviewDocumentInput, AdminListRidesQuery, AdminAssignDriverInput, AdminCancelRideInput } from "./admin.schemas.js";
 import type { AdminUsersListResult, AdminUserResult, AdminUserResponse, AdminDocumentResponse, AdminDocumentsListResult, AdminDocumentResult, AdminRidesListResult, AdminRideResult, AdminRideResponse, ActiveDriversListResult, ActiveDriverResponse } from "./admin.types.js";
 import type { AdminDocumentRow, AdminRideRow } from "./admin.repository.js";
 import type { User } from "../users/users.types.js";
 
-const tokenService   = new TokenService();
-const sessionService = new SessionService();
-const usersRepo      = new UsersRepository();
-const adminRepo      = new AdminRepository();
-const auditService   = new AuditService();
+const tokenService     = new TokenService();
+const sessionService   = new SessionService();
+const usersRepo        = new UsersRepository();
+const adminRepo        = new AdminRepository();
+const auditService     = new AuditService();
+const driverStatusRepo = new DriverStatusRepository();
 
 function toRideResponse(r: AdminRideRow): AdminRideResponse {
   return {
@@ -42,14 +44,17 @@ function toRideResponse(r: AdminRideRow): AdminRideResponse {
   };
 }
 
-function toDriverResponse(u: User): ActiveDriverResponse {
+function toDriverResponse(u: User & { availability?: string | null; currentRideId?: string | null; lastSeenAt?: Date | null }): ActiveDriverResponse {
   return {
-    id:         u.id,
-    name:       u.name,
-    email:      u.email,
-    status:     u.status,
-    isVerified: u.isVerified,
-    createdAt:  u.createdAt.toISOString(),
+    id:            u.id,
+    name:          u.name,
+    email:         u.email,
+    status:        u.status,
+    isVerified:    u.isVerified,
+    createdAt:     u.createdAt.toISOString(),
+    availability:  u.availability ?? "unavailable",
+    currentRideId: u.currentRideId ?? null,
+    lastSeenAt:    u.lastSeenAt?.toISOString() ?? null,
   };
 }
 
@@ -265,6 +270,16 @@ export class AdminService {
       return { ok: false, code: "DRIVER_NOT_AVAILABLE", message: "Driver is not active.", statusCode: 400 };
     }
 
+    const driverStatus = await driverStatusRepo.findByDriverId(input.driverUserId);
+    if (!driverStatus || driverStatus.availability !== "available") {
+      return {
+        ok: false,
+        code: "DRIVER_NOT_AVAILABLE",
+        message: "El conductor no está disponible en este momento.",
+        statusCode: 409,
+      };
+    }
+
     const updated = await adminRepo.assignDriver(rideId, input.driverUserId);
     if (!updated) {
       const refetch = await adminRepo.findRideById(rideId);
@@ -275,6 +290,8 @@ export class AdminService {
         statusCode: 409,
       };
     }
+
+    await driverStatusRepo.setBusy(input.driverUserId, rideId);
 
     auditService.recordSafe({
       eventType: "admin.ride_driver_assigned",
@@ -328,6 +345,10 @@ export class AdminService {
         message: `Ride cannot be cancelled — current status is '${refetch?.status ?? "unknown"}'.`,
         statusCode: 409,
       };
+    }
+
+    if (existing.driverUserId) {
+      await driverStatusRepo.setAvailable(existing.driverUserId);
     }
 
     auditService.recordSafe({
