@@ -465,6 +465,11 @@ export function AdminTripsPage(): JSX.Element {
     try {
       const updated = await adminService.assignDriver(session.accessToken, rideId, driverUserId);
       setRides((prev) => prev.map((r) => (r.id === rideId ? updated : r)));
+      setAssignDriverId((prev) => {
+        const next = { ...prev };
+        delete next[rideId];
+        return next;
+      });
     } catch (err) {
       setAssignError(err instanceof Error ? err.message : "Error al asignar conductor.");
     } finally {
@@ -621,33 +626,43 @@ export function AdminTripsPage(): JSX.Element {
                     {/* Assign driver — only for 'requested' */}
                     {ride.status === "requested" && (
                       <div style={{ borderTop: "1px solid var(--ion-color-light-shade)", paddingTop: "8px" }}>
-                        <IonItem lines="none" style={{ "--padding-start": "0", "--inner-padding-end": "0", "--min-height": "36px" }}>
-                          <IonLabel style={{ fontSize: "0.75rem", flexShrink: 0, marginRight: "8px" }}>Conductor:</IonLabel>
-                          <IonSelect
-                            value={assignDriverId[ride.id] ?? ""}
-                            interface="popover"
-                            placeholder="Seleccionar..."
-                            style={{ fontSize: "0.78rem" }}
-                            onIonChange={(e) => {
-                              const val = String(e.detail.value ?? "");
-                              setAssignDriverId((prev) => ({ ...prev, [ride.id]: val }));
-                            }}
-                          >
-                            {drivers.map((d) => (
-                              <IonSelectOption key={d.id} value={d.id}>{d.name}</IonSelectOption>
-                            ))}
-                          </IonSelect>
-                        </IonItem>
-                        <IonButton
-                          expand="block"
-                          size="small"
-                          color="primary"
-                          disabled={assigningId === ride.id || !assignDriverId[ride.id]}
-                          onClick={() => void handleAssign(ride.id)}
-                          style={{ marginTop: "6px" }}
-                        >
-                          {assigningId === ride.id ? <IonSpinner name="dots" /> : "Asignar conductor"}
-                        </IonButton>
+                        {drivers.length === 0 ? (
+                          <IonItem lines="none" style={{ "--padding-start": "0", "--inner-padding-end": "0" }}>
+                            <IonLabel style={{ fontSize: "0.75rem" }} color="warning">
+                              No hay conductores activos disponibles.
+                            </IonLabel>
+                          </IonItem>
+                        ) : (
+                          <>
+                            <IonItem lines="none" style={{ "--padding-start": "0", "--inner-padding-end": "0", "--min-height": "44px" }}>
+                              <IonLabel style={{ fontSize: "0.75rem", flexShrink: 0, marginRight: "8px" }}>Conductor:</IonLabel>
+                              <IonSelect
+                                value={assignDriverId[ride.id] ?? ""}
+                                interface="action-sheet"
+                                placeholder="Seleccionar conductor..."
+                                style={{ fontSize: "0.78rem" }}
+                                onIonChange={(e) => {
+                                  const val = String(e.detail.value ?? "");
+                                  setAssignDriverId((prev) => ({ ...prev, [ride.id]: val }));
+                                }}
+                              >
+                                {drivers.map((d) => (
+                                  <IonSelectOption key={d.id} value={d.id}>{d.name}</IonSelectOption>
+                                ))}
+                              </IonSelect>
+                            </IonItem>
+                            <IonButton
+                              expand="block"
+                              size="small"
+                              color="primary"
+                              disabled={assigningId === ride.id || !assignDriverId[ride.id]}
+                              onClick={() => void handleAssign(ride.id)}
+                              style={{ marginTop: "6px" }}
+                            >
+                              {assigningId === ride.id ? <IonSpinner name="dots" /> : "Asignar conductor"}
+                            </IonButton>
+                          </>
+                        )}
                       </div>
                     )}
 
