@@ -1,24 +1,30 @@
 import {
+  IonAlert,
   IonBadge,
   IonButton,
   IonCard,
   IonCardContent,
+  IonChip,
   IonContent,
+  IonDatetime,
   IonHeader,
   IonInput,
   IonItem,
   IonLabel,
   IonList,
   IonListHeader,
+  IonModal,
   IonNote,
   IonPage,
   IonRefresher,
   IonRefresherContent,
+  IonSearchbar,
   IonSelect,
   IonSelectOption,
   IonSpinner,
   IonText,
   IonTextarea,
+  IonToast,
   IonTitle,
   IonToggle,
   IonToolbar,
@@ -44,6 +50,8 @@ import { MapFallback } from "../../components/MapFallback";
 import { DriverSummaryCard } from "../../components/DriverSummaryCard";
 import { RAPA_NUI_PLACES, RAPAGO_CONTACT, WA_MESSAGES } from "@rapa-go/shared";
 import { WhatsAppButton } from "../../components/WhatsAppButton";
+import { touristService, type GuidePublicData, type TouristServiceData, type ServiceBookingData } from "../../features/tourist/tourist.service.js";
+import { useIonViewWillEnter } from "@ionic/react";
 
 function StarRatingInput({ value, onChange }: { value: number; onChange: (v: number) => void }) {
   return (
@@ -669,12 +677,502 @@ function TripsPage(): JSX.Element {
   );
 }
 
+const BOOKING_STATUS_LABEL: Record<string, string> = {
+  pending:   "Pendiente",
+  confirmed: "Confirmada",
+  completed: "Completada",
+  cancelled: "Cancelada",
+};
+
+const BOOKING_STATUS_COLOR: Record<string, string> = {
+  pending:   "warning",
+  confirmed: "success",
+  completed: "medium",
+  cancelled: "danger",
+};
+
+const SERVICE_TYPE_LABEL: Record<string, string> = {
+  tour:     "Tour",
+  transfer: "Traslado",
+  workshop: "Taller",
+  custom:   "Personalizado",
+};
+
 export function PassengerGuidesPage(): JSX.Element {
-  const m = meta("/passenger/guides");
+  const { session } = useAuth();
+  const [guides,       setGuides]       = useState<GuidePublicData[]>([]);
+  const [loading,      setLoading]      = useState(true);
+  const [loadError,    setLoadError]    = useState<string | null>(null);
+  const [searchName,   setSearchName]   = useState("");
+  const [filterLang,   setFilterLang]   = useState("");
+  const [selectedGuide, setSelectedGuide] = useState<GuidePublicData | null>(null);
+
+  const load = useCallback(async () => {
+    if (!session?.accessToken) return;
+    setLoading(true);
+    setLoadError(null);
+    try {
+      const filters: { name?: string; language?: string } = {};
+      if (searchName.trim()) filters.name = searchName.trim();
+      if (filterLang) filters.language = filterLang;
+      const data = await touristService.listGuides(session.accessToken, filters);
+      setGuides(data);
+    } catch (err) {
+      setLoadError(err instanceof Error ? err.message : "Error al cargar guías.");
+    } finally {
+      setLoading(false);
+    }
+  }, [session?.accessToken, searchName, filterLang]);
+
+  useIonViewWillEnter(() => { void load(); });
+  useEffect(() => { void load(); }, [load]);
+
+  if (selectedGuide) {
+    return (
+      <PassengerGuideDetailPage
+        guide={selectedGuide}
+        onBack={() => setSelectedGuide(null)}
+      />
+    );
+  }
+
   return (
     <IonPage>
-      <IonHeader><IonToolbar color="primary"><IonTitle>{m.label}</IonTitle></IonToolbar></IonHeader>
-      <IonContent className="ion-padding"><ModulePlaceholderPage title={m.label} role="passenger" plannedFeatures={m.plannedFeatures} /></IonContent>
+      <IonHeader>
+        <IonToolbar color="primary">
+          <IonTitle>Guías Turísticos</IonTitle>
+        </IonToolbar>
+      </IonHeader>
+      <IonContent className="ion-padding">
+        <IonRefresher slot="fixed" onIonRefresh={(e) => { void load().then(() => e.detail.complete()); }}>
+          <IonRefresherContent />
+        </IonRefresher>
+
+        <IonSearchbar
+          value={searchName}
+          onIonInput={(e) => setSearchName(String(e.detail.value ?? ""))}
+          onIonChange={() => void load()}
+          placeholder="Buscar por nombre..."
+          debounce={400}
+        />
+
+        <IonItem lines="none" style={{ marginBottom: "8px" }}>
+          <IonLabel>Idioma</IonLabel>
+          <IonSelect
+            interface="action-sheet"
+            value={filterLang}
+            onIonChange={(e) => setFilterLang(String(e.detail.value ?? ""))}
+            placeholder="Todos"
+          >
+            <IonSelectOption value="">Todos</IonSelectOption>
+            <IonSelectOption value="es">Español</IonSelectOption>
+            <IonSelectOption value="en">English</IonSelectOption>
+            <IonSelectOption value="rapa_nui">Rapa Nui</IonSelectOption>
+          </IonSelect>
+        </IonItem>
+
+        {loading && (
+          <div style={{ display: "flex", justifyContent: "center", paddingTop: "40px" }}>
+            <IonSpinner name="crescent" />
+          </div>
+        )}
+
+        {loadError && <IonText color="danger"><p>{loadError}</p></IonText>}
+
+        {!loading && guides.length === 0 && (
+          <IonText color="medium"><p>No hay guías disponibles.</p></IonText>
+        )}
+
+        {!loading && guides.length > 0 && (
+          <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+            {guides.map((guide) => {
+              const initials = guide.name.trim().split(/\s+/).map((p) => p[0] ?? "").slice(0, 2).join("").toUpperCase();
+              const stars = guide.ratingAverage ? Math.round(guide.ratingAverage) : 0;
+              return (
+                <IonCard key={guide.id} style={{ margin: 0, cursor: "pointer" }} onClick={() => setSelectedGuide(guide)}>
+                  <IonCardContent style={{ padding: "14px 16px" }}>
+                    <div style={{ display: "flex", gap: "12px", alignItems: "flex-start" }}>
+                      <div style={{
+                        width: "48px", height: "48px", borderRadius: "50%",
+                        background: "var(--ion-color-warning)",
+                        display: "flex", alignItems: "center", justifyContent: "center",
+                        color: "#fff", fontWeight: 700, fontSize: "1rem", flexShrink: 0,
+                      }}>
+                        {initials || "G"}
+                      </div>
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontWeight: 600, fontSize: "0.95rem" }}>{guide.name}</div>
+                        {guide.bio && (
+                          <div style={{ fontSize: "0.78rem", color: "var(--ion-color-medium)", marginTop: "2px" }}>
+                            {guide.bio.slice(0, 80)}{guide.bio.length > 80 ? "…" : ""}
+                          </div>
+                        )}
+                        <div style={{ display: "flex", gap: "4px", flexWrap: "wrap", marginTop: "6px" }}>
+                          {(guide.languages ?? []).map((lang) => (
+                            <IonChip key={lang} style={{ fontSize: "0.7rem", height: "22px", margin: 0 }}>
+                              <IonLabel>{lang.toUpperCase()}</IonLabel>
+                            </IonChip>
+                          ))}
+                        </div>
+                        <div style={{ marginTop: "4px", fontSize: "0.78rem", color: "#f4c430" }}>
+                          {"★".repeat(stars)}{"☆".repeat(5 - stars)}
+                          <span style={{ color: "var(--ion-color-medium)", marginLeft: "4px" }}>
+                            ({guide.ratingCount})
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  </IonCardContent>
+                </IonCard>
+              );
+            })}
+          </div>
+        )}
+      </IonContent>
+    </IonPage>
+  );
+}
+
+function PassengerGuideDetailPage({ guide, onBack }: { guide: GuidePublicData; onBack: () => void }): JSX.Element {
+  const { session } = useAuth();
+  const [services,     setServices]     = useState<TouristServiceData[]>(guide.services ?? []);
+  const [loading,      setLoading]      = useState(!guide.services);
+  const [bookingService, setBookingService] = useState<TouristServiceData | null>(null);
+  const [bookingDate,  setBookingDate]  = useState(new Date().toISOString().slice(0, 10));
+  const [bookingTime,  setBookingTime]  = useState("");
+  const [numPeople,    setNumPeople]    = useState(1);
+  const [notes,        setNotes]        = useState("");
+  const [submitting,   setSubmitting]   = useState(false);
+  const [toastMsg,     setToastMsg]     = useState<string | null>(null);
+
+  useEffect(() => {
+    if (guide.services) return;
+    if (!session?.accessToken) return;
+    setLoading(true);
+    touristService.listGuideServices(session.accessToken, guide.id)
+      .then((data) => setServices(data))
+      .catch(() => setServices([]))
+      .finally(() => setLoading(false));
+  }, [guide.id, guide.services, session?.accessToken]);
+
+  const initials = guide.name.trim().split(/\s+/).map((p) => p[0] ?? "").slice(0, 2).join("").toUpperCase();
+  const stars = guide.ratingAverage ? Math.round(guide.ratingAverage) : 0;
+
+  async function handleBook() {
+    if (!session?.accessToken || !bookingService) return;
+    setSubmitting(true);
+    try {
+      const input: import("../../features/tourist/tourist.service.js").CreateBookingInput = {
+        serviceId:      bookingService.id,
+        bookingDate,
+        numberOfPeople: numPeople,
+      };
+      if (bookingTime) input.bookingTime = bookingTime;
+      if (notes.trim()) input.notes = notes.trim();
+      await touristService.createBooking(session.accessToken, input);
+      setToastMsg("Reserva creada correctamente.");
+      setBookingService(null);
+      setNotes("");
+      setNumPeople(1);
+    } catch (err) {
+      setToastMsg(err instanceof Error ? err.message : "Error al reservar.");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <IonPage>
+      <IonHeader>
+        <IonToolbar color="primary">
+          <IonButton slot="start" fill="clear" color="light" onClick={onBack}>← Volver</IonButton>
+          <IonTitle>{guide.name}</IonTitle>
+        </IonToolbar>
+      </IonHeader>
+      <IonContent className="ion-padding">
+        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", marginBottom: "16px" }}>
+          <div style={{
+            width: "72px", height: "72px", borderRadius: "50%",
+            background: "var(--ion-color-warning)",
+            display: "flex", alignItems: "center", justifyContent: "center",
+            color: "#fff", fontWeight: 700, fontSize: "1.6rem",
+          }}>
+            {initials || "G"}
+          </div>
+          <div style={{ fontWeight: 700, fontSize: "1.1rem", marginTop: "8px" }}>{guide.name}</div>
+          <div style={{ fontSize: "0.82rem", color: "#f4c430", margin: "4px 0" }}>
+            {"★".repeat(stars)}{"☆".repeat(5 - stars)}
+            <span style={{ color: "var(--ion-color-medium)", marginLeft: "4px" }}>({guide.ratingCount} valoraciones)</span>
+          </div>
+          {guide.bio && (
+            <div style={{ fontSize: "0.85rem", color: "var(--ion-color-medium)", textAlign: "center", marginTop: "4px" }}>
+              {guide.bio}
+            </div>
+          )}
+          {(guide.languages ?? []).length > 0 && (
+            <div style={{ display: "flex", gap: "6px", flexWrap: "wrap", justifyContent: "center", marginTop: "8px" }}>
+              {(guide.languages ?? []).map((lang) => (
+                <IonChip key={lang} color="primary" style={{ fontSize: "0.72rem", height: "22px" }}>
+                  <IonLabel>{lang.toUpperCase()}</IonLabel>
+                </IonChip>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <div style={{ fontWeight: 600, fontSize: "0.95rem", marginBottom: "10px" }}>Servicios disponibles</div>
+
+        {loading && <IonSpinner name="crescent" />}
+
+        {!loading && services.length === 0 && (
+          <IonText color="medium"><p>Este guía no tiene servicios activos.</p></IonText>
+        )}
+
+        {!loading && services.length > 0 && (
+          <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+            {services.map((svc) => (
+              <IonCard key={svc.id} style={{ margin: 0 }}>
+                <IonCardContent style={{ padding: "14px 16px" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "6px" }}>
+                    <div style={{ fontWeight: 600, fontSize: "0.9rem", flex: 1 }}>{svc.title}</div>
+                    <IonBadge color="tertiary" style={{ fontSize: "0.68rem", marginLeft: "8px", flexShrink: 0 }}>
+                      {SERVICE_TYPE_LABEL[svc.type] ?? svc.type}
+                    </IonBadge>
+                  </div>
+                  {svc.description && (
+                    <div style={{ fontSize: "0.8rem", color: "var(--ion-color-medium)", marginBottom: "6px" }}>
+                      {svc.description}
+                    </div>
+                  )}
+                  <div style={{ fontSize: "0.78rem", color: "var(--ion-color-medium)" }}>
+                    {svc.durationMinutes && <span>{svc.durationMinutes} min · </span>}
+                    {svc.maxPeople && <span>Máx {svc.maxPeople} personas · </span>}
+                    {svc.meetingPoint && <span>📍 {svc.meetingPoint}</span>}
+                  </div>
+                  {svc.price !== null && (
+                    <div style={{ fontWeight: 700, fontSize: "0.95rem", marginTop: "6px", color: "var(--ion-color-success)" }}>
+                      ${(svc.price / 100).toLocaleString("es-CL")} CLP / persona
+                    </div>
+                  )}
+                  {(svc.includes ?? []).length > 0 && (
+                    <div style={{ marginTop: "6px", fontSize: "0.78rem" }}>
+                      <strong>Incluye:</strong> {(svc.includes ?? []).join(", ")}
+                    </div>
+                  )}
+                  <IonButton
+                    expand="block"
+                    size="small"
+                    style={{ marginTop: "10px" }}
+                    onClick={() => { setBookingService(svc); setBookingDate(new Date().toISOString().slice(0, 10)); }}
+                  >
+                    Reservar
+                  </IonButton>
+                </IonCardContent>
+              </IonCard>
+            ))}
+          </div>
+        )}
+
+        <IonModal isOpen={bookingService !== null} onDidDismiss={() => setBookingService(null)}>
+          <IonHeader>
+            <IonToolbar color="primary">
+              <IonTitle>Reservar servicio</IonTitle>
+              <IonButton slot="end" fill="clear" color="light" onClick={() => setBookingService(null)}>Cerrar</IonButton>
+            </IonToolbar>
+          </IonHeader>
+          <IonContent className="ion-padding">
+            {bookingService && (
+              <>
+                <div style={{ fontWeight: 600, marginBottom: "12px" }}>{bookingService.title}</div>
+                <IonItem lines="full">
+                  <IonLabel position="stacked">Fecha</IonLabel>
+                  <IonInput
+                    type="date"
+                    value={bookingDate}
+                    min={new Date().toISOString().slice(0, 10)}
+                    onIonInput={(e) => setBookingDate(String(e.detail.value ?? ""))}
+                  />
+                </IonItem>
+                <IonItem lines="full">
+                  <IonLabel>Hora (opcional)</IonLabel>
+                  <IonSelect
+                    interface="action-sheet"
+                    value={bookingTime}
+                    onIonChange={(e) => setBookingTime(String(e.detail.value ?? ""))}
+                    placeholder="Sin hora específica"
+                  >
+                    <IonSelectOption value="">Sin hora</IonSelectOption>
+                    {["08:00","09:00","10:00","11:00","12:00","13:00","14:00","15:00","16:00","17:00"].map((t) => (
+                      <IonSelectOption key={t} value={t}>{t}</IonSelectOption>
+                    ))}
+                  </IonSelect>
+                </IonItem>
+                <IonItem lines="full">
+                  <IonLabel position="stacked">Número de personas</IonLabel>
+                  <IonInput
+                    type="number"
+                    value={numPeople}
+                    min={1}
+                    max={bookingService.maxPeople ?? 20}
+                    onIonInput={(e) => setNumPeople(Math.max(1, parseInt(String(e.detail.value ?? "1"), 10)))}
+                  />
+                </IonItem>
+                <IonItem lines="none">
+                  <IonLabel position="stacked">Notas (opcional)</IonLabel>
+                  <IonTextarea
+                    value={notes}
+                    onIonInput={(e) => setNotes(String(e.detail.value ?? ""))}
+                    placeholder="Indicaciones especiales..."
+                    rows={3}
+                    maxlength={500}
+                  />
+                </IonItem>
+                {bookingService.price !== null && (
+                  <div style={{ padding: "12px 0", fontWeight: 600 }}>
+                    Total estimado: ${((bookingService.price * numPeople) / 100).toLocaleString("es-CL")} CLP
+                  </div>
+                )}
+                <IonButton expand="block" onClick={() => void handleBook()} disabled={submitting} style={{ marginTop: "8px" }}>
+                  {submitting ? <IonSpinner name="dots" /> : "Confirmar reserva"}
+                </IonButton>
+              </>
+            )}
+          </IonContent>
+        </IonModal>
+
+        <IonToast
+          isOpen={toastMsg !== null}
+          message={toastMsg ?? ""}
+          duration={3000}
+          onDidDismiss={() => setToastMsg(null)}
+          color={toastMsg?.includes("Error") || toastMsg?.includes("Error") ? "danger" : "success"}
+        />
+      </IonContent>
+    </IonPage>
+  );
+}
+
+export function PassengerServiceBookingsPage(): JSX.Element {
+  const { session } = useAuth();
+  const [bookings,   setBookings]   = useState<ServiceBookingData[]>([]);
+  const [loading,    setLoading]    = useState(true);
+  const [loadError,  setLoadError]  = useState<string | null>(null);
+  const [cancelling, setCancelling] = useState<string | null>(null);
+  const [confirmId,  setConfirmId]  = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    if (!session?.accessToken) return;
+    setLoading(true);
+    setLoadError(null);
+    try {
+      const { items } = await touristService.getMyBookings(session.accessToken);
+      setBookings(items);
+    } catch (err) {
+      setLoadError(err instanceof Error ? err.message : "Error al cargar reservas.");
+    } finally {
+      setLoading(false);
+    }
+  }, [session?.accessToken]);
+
+  useIonViewWillEnter(() => { void load(); });
+  useEffect(() => { void load(); }, [load]);
+
+  async function handleCancel(bookingId: string) {
+    if (!session?.accessToken) return;
+    setCancelling(bookingId);
+    try {
+      const updated = await touristService.cancelBooking(session.accessToken, bookingId);
+      setBookings((prev) => prev.map((b) => (b.id === bookingId ? updated : b)));
+    } catch (err) {
+      setLoadError(err instanceof Error ? err.message : "Error al cancelar.");
+    } finally {
+      setCancelling(null);
+      setConfirmId(null);
+    }
+  }
+
+  return (
+    <IonPage>
+      <IonHeader>
+        <IonToolbar color="primary">
+          <IonTitle>Mis Reservas de Servicios</IonTitle>
+        </IonToolbar>
+      </IonHeader>
+      <IonContent className="ion-padding">
+        <IonRefresher slot="fixed" onIonRefresh={(e) => { void load().then(() => e.detail.complete()); }}>
+          <IonRefresherContent />
+        </IonRefresher>
+
+        {loading && (
+          <div style={{ display: "flex", justifyContent: "center", paddingTop: "40px" }}>
+            <IonSpinner name="crescent" />
+          </div>
+        )}
+
+        {loadError && <IonText color="danger"><p>{loadError}</p></IonText>}
+
+        {!loading && bookings.length === 0 && (
+          <IonText color="medium"><p>No tienes reservas de servicios turísticos.</p></IonText>
+        )}
+
+        {!loading && bookings.length > 0 && (
+          <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+            {bookings.map((b) => (
+              <IonCard key={b.id} style={{ margin: 0 }}>
+                <IonCardContent style={{ padding: "14px 16px" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontWeight: 600, fontSize: "0.9rem" }}>Reserva #{b.id.slice(0, 8)}</div>
+                      <div style={{ fontSize: "0.78rem", color: "var(--ion-color-medium)", marginTop: "2px" }}>
+                        Fecha: {b.bookingDate}{b.bookingTime ? ` ${b.bookingTime}` : ""}
+                      </div>
+                      <div style={{ fontSize: "0.78rem", color: "var(--ion-color-medium)" }}>
+                        {b.numberOfPeople} persona{b.numberOfPeople !== 1 ? "s" : ""}
+                        {b.totalPrice !== null && ` · $${(b.totalPrice / 100).toLocaleString("es-CL")} CLP`}
+                      </div>
+                      {b.notes && (
+                        <div style={{ fontSize: "0.75rem", color: "var(--ion-color-medium)", marginTop: "2px" }}>{b.notes}</div>
+                      )}
+                      <div style={{ marginTop: "6px" }}>
+                        <IonBadge color={BOOKING_STATUS_COLOR[b.status] ?? "medium"} style={{ fontSize: "0.7rem" }}>
+                          {BOOKING_STATUS_LABEL[b.status] ?? b.status}
+                        </IonBadge>
+                      </div>
+                      {b.cancellationReason && (
+                        <div style={{ fontSize: "0.72rem", color: "var(--ion-color-danger)", marginTop: "4px" }}>
+                          Motivo: {b.cancellationReason}
+                        </div>
+                      )}
+                    </div>
+                    {b.status === "pending" && (
+                      <IonButton
+                        size="small"
+                        fill="outline"
+                        color="danger"
+                        disabled={cancelling === b.id}
+                        onClick={() => setConfirmId(b.id)}
+                      >
+                        {cancelling === b.id ? <IonSpinner name="dots" /> : "Cancelar"}
+                      </IonButton>
+                    )}
+                  </div>
+                </IonCardContent>
+              </IonCard>
+            ))}
+          </div>
+        )}
+
+        <IonAlert
+          isOpen={confirmId !== null}
+          header="¿Cancelar reserva?"
+          message="Esta acción no se puede deshacer."
+          buttons={[
+            { text: "No", role: "cancel", handler: () => setConfirmId(null) },
+            { text: "Sí, cancelar", role: "confirm", handler: () => { if (confirmId) void handleCancel(confirmId); } },
+          ]}
+          onDidDismiss={() => setConfirmId(null)}
+        />
+      </IonContent>
     </IonPage>
   );
 }

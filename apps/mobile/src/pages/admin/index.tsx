@@ -15,6 +15,8 @@ import {
   IonPage,
   IonRefresher,
   IonRefresherContent,
+  IonSegment,
+  IonSegmentButton,
   IonSelect,
   IonSelectOption,
   IonSpinner,
@@ -24,6 +26,7 @@ import {
   IonToolbar,
 } from "@ionic/react";
 import { useEffect, useState, useCallback } from "react";
+import { touristService, type TouristServiceData, type ServiceBookingData } from "../../features/tourist/tourist.service.js";
 import {
   cardOutline,
   carOutline,
@@ -621,10 +624,17 @@ export function AdminGuidesPage(): JSX.Element {
   const { session } = useAuth();
   const token = session?.accessToken ?? "";
 
+  const [mainTab, setMainTab] = useState<"guides"|"services"|"bookings">("guides");
+
   const [guides,        setGuides]        = useState<AdminUserData[]>([]);
   const [loading,       setLoading]       = useState(true);
   const [filterStatus,  setFilterStatus]  = useState<string>("all");
   const [filterVerified,setFilterVerified]= useState<string>("all");
+
+  const [allServices,    setAllServices]    = useState<TouristServiceData[]>([]);
+  const [servicesLoading,setServicesLoading]= useState(false);
+  const [allBookings,    setAllBookings]    = useState<ServiceBookingData[]>([]);
+  const [bookingsLoading,setBookingsLoading]= useState(false);
 
   const loadGuides = useCallback(async () => {
     if (!token) return;
@@ -640,6 +650,23 @@ export function AdminGuidesPage(): JSX.Element {
   }, [token]);
 
   useEffect(() => { void loadGuides(); }, [loadGuides]);
+
+  useEffect(() => {
+    if (mainTab === "services" && token && allServices.length === 0) {
+      setServicesLoading(true);
+      touristService.getMyServices(token)
+        .then(setAllServices)
+        .catch(() => setAllServices([]))
+        .finally(() => setServicesLoading(false));
+    }
+    if (mainTab === "bookings" && token && allBookings.length === 0) {
+      setBookingsLoading(true);
+      touristService.getGuideBookings(token)
+        .then(({ items }) => setAllBookings(items))
+        .catch(() => setAllBookings([]))
+        .finally(() => setBookingsLoading(false));
+    }
+  }, [mainTab, token, allServices.length, allBookings.length]);
 
   const filtered = guides.filter((g) => {
     if (filterStatus !== "all" && g.status !== filterStatus) return false;
@@ -675,6 +702,51 @@ export function AdminGuidesPage(): JSX.Element {
           <IonRefresherContent />
         </IonRefresher>
 
+        <IonSegment value={mainTab} onIonChange={(e) => setMainTab(e.detail.value as "guides"|"services"|"bookings")} style={{ margin: "8px 16px" }}>
+          <IonSegmentButton value="guides"><IonLabel>Guías</IonLabel></IonSegmentButton>
+          <IonSegmentButton value="services"><IonLabel>Servicios</IonLabel></IonSegmentButton>
+          <IonSegmentButton value="bookings"><IonLabel>Reservas</IonLabel></IonSegmentButton>
+        </IonSegment>
+
+        {mainTab === "services" && (
+          <div className="ion-padding">
+            {servicesLoading && <IonSpinner name="crescent" />}
+            {!servicesLoading && allServices.length === 0 && <IonText color="medium"><p>No hay servicios registrados.</p></IonText>}
+            {!servicesLoading && allServices.map((svc) => (
+              <IonCard key={svc.id} style={{ margin: "0 0 10px" }}>
+                <IonCardContent style={{ padding: "12px 14px" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between" }}>
+                    <strong>{svc.title}</strong>
+                    <IonBadge color={svc.status === "active" ? "success" : "medium"} style={{ fontSize: "0.68rem" }}>{svc.status}</IonBadge>
+                  </div>
+                  <IonNote style={{ display: "block", fontSize: "0.78rem" }}>Tipo: {svc.type}</IonNote>
+                  {svc.price !== null && <IonNote style={{ display: "block", fontSize: "0.78rem" }}>${(svc.price / 100).toLocaleString("es-CL")} CLP/persona</IonNote>}
+                </IonCardContent>
+              </IonCard>
+            ))}
+          </div>
+        )}
+
+        {mainTab === "bookings" && (
+          <div className="ion-padding">
+            {bookingsLoading && <IonSpinner name="crescent" />}
+            {!bookingsLoading && allBookings.length === 0 && <IonText color="medium"><p>No hay reservas de servicios.</p></IonText>}
+            {!bookingsLoading && allBookings.map((b) => (
+              <IonCard key={b.id} style={{ margin: "0 0 10px" }}>
+                <IonCardContent style={{ padding: "12px 14px" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between" }}>
+                    <strong style={{ fontSize: "0.85rem" }}>#{b.id.slice(0, 8)}</strong>
+                    <IonBadge color={b.status === "confirmed" ? "success" : b.status === "pending" ? "warning" : b.status === "completed" ? "medium" : "danger"} style={{ fontSize: "0.68rem" }}>{b.status}</IonBadge>
+                  </div>
+                  <IonNote style={{ display: "block", fontSize: "0.78rem" }}>{b.bookingDate}{b.bookingTime ? ` ${b.bookingTime}` : ""}</IonNote>
+                  <IonNote style={{ display: "block", fontSize: "0.78rem" }}>{b.numberOfPeople} persona{b.numberOfPeople !== 1 ? "s" : ""}{b.totalPrice !== null ? ` · $${(b.totalPrice / 100).toLocaleString("es-CL")} CLP` : ""}</IonNote>
+                </IonCardContent>
+              </IonCard>
+            ))}
+          </div>
+        )}
+
+        {mainTab === "guides" && <>
         <div style={{ padding: "12px 16px 4px" }}>
           <p style={{ color: "var(--ion-color-medium)", margin: 0, fontSize: "0.9rem" }}>
             Gestión operacional de guías locales y servicios turísticos.
@@ -806,6 +878,7 @@ export function AdminGuidesPage(): JSX.Element {
             La asignación de guías a servicios se realizará desde el módulo Servicios Turísticos.
           </IonLabel>
         </IonItem>
+        </>}
       </IonContent>
     </IonPage>
   );

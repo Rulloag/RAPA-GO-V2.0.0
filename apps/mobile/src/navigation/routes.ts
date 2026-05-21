@@ -31,6 +31,7 @@ export const ROUTES = {
     RENTAL_DETAIL_PATTERN: "/passenger/rentals/:vehicleId",
     WALLET: "/passenger/wallet",
     PROFILE: "/passenger/profile",
+    SERVICE_BOOKINGS: "/passenger/service-bookings",
   },
 
   DRIVER: {

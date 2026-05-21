@@ -15,6 +15,7 @@ import { driverProfileRoutes } from "./modules/drivers/driverProfile.routes.js";
 import { passengerProfileRoutes } from "./modules/passengers/passengerProfile.routes.js";
 import { offlineRoutes }       from "./modules/offline/offline.routes.js";
 import { walletRoutes }        from "./modules/wallet/wallet.routes.js";
+import { touristRoutes }       from "./modules/tourist/tourist.routes.js";
 
 /**
  * buildApp — constructs and configures the Fastify instance.
@@ -61,6 +62,7 @@ export async function buildApp(): Promise<FastifyInstance> {
   await fastify.register(driverProfileRoutes,    { prefix: "/api" });
   await fastify.register(passengerProfileRoutes, { prefix: "/api" });
   await fastify.register(walletRoutes,           { prefix: "/api" });
+  await fastify.register(touristRoutes,          { prefix: "/api" });
 
   return fastify;
 }

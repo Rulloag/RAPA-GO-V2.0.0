@@ -11,3 +11,4 @@ export * from "./offline.schema.js";
 export * from "./driverProfiles.schema.js";
 export * from "./passengerProfiles.schema.js";
 export * from "./wallets.schema.js";
+export * from "./touristServices.schema.js";
