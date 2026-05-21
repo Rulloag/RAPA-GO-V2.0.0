@@ -10,3 +10,4 @@ export * from "./driverStatuses.schema.js";
 export * from "./offline.schema.js";
 export * from "./driverProfiles.schema.js";
 export * from "./passengerProfiles.schema.js";
+export * from "./wallets.schema.js";

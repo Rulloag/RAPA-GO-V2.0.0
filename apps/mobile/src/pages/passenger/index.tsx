@@ -690,11 +690,172 @@ export function PassengerRentalsPage(): JSX.Element {
 }
 
 export function PassengerWalletPage(): JSX.Element {
-  const m = meta("/passenger/wallet");
+  return <WalletPage />;
+}
+
+function WalletPage(): JSX.Element {
+  const { session } = useAuth();
+  const [wallet,       setWallet]       = useState<import("../../features/wallet/wallet.service").WalletData | null>(null);
+  const [transactions, setTransactions] = useState<import("../../features/wallet/wallet.service").TransactionData[]>([]);
+  const [loading,      setLoading]      = useState(true);
+  const [loadError,    setLoadError]    = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    if (!session?.accessToken) return;
+    setLoading(true);
+    setLoadError(null);
+    try {
+      const { walletService } = await import("../../features/wallet/wallet.service.js");
+      const [w, tx] = await Promise.all([
+        walletService.getMyWallet(session.accessToken),
+        walletService.getMyTransactions(session.accessToken, 1, 20),
+      ]);
+      setWallet(w);
+      setTransactions(tx.items);
+    } catch (err) {
+      setLoadError(err instanceof Error ? err.message : "Error al cargar la billetera.");
+    } finally {
+      setLoading(false);
+    }
+  }, [session?.accessToken]);
+
+  useEffect(() => { void load(); }, [load]);
+
+  const TX_TYPE_LABEL: Record<string, string> = {
+    payment:  "Débito",
+    credit:   "Crédito",
+    refund:   "Reembolso",
+    topup:    "Crédito",
+  };
+  const TX_TYPE_COLOR: Record<string, string> = {
+    payment:  "danger",
+    credit:   "success",
+    refund:   "tertiary",
+    topup:    "success",
+  };
+  const TX_STATUS_COLOR: Record<string, string> = {
+    completed: "success",
+    pending:   "warning",
+    failed:    "danger",
+    cancelled: "medium",
+  };
+
   return (
     <IonPage>
-      <IonHeader><IonToolbar color="primary"><IonTitle>{m.label}</IonTitle></IonToolbar></IonHeader>
-      <IonContent className="ion-padding"><ModulePlaceholderPage title={m.label} role="passenger" plannedFeatures={m.plannedFeatures} /></IonContent>
+      <IonHeader>
+        <IonToolbar color="primary">
+          <IonTitle>Mi Billetera</IonTitle>
+        </IonToolbar>
+      </IonHeader>
+      <IonContent className="ion-padding">
+        <IonRefresher slot="fixed" onIonRefresh={(e) => { void load().then(() => e.detail.complete()); }}>
+          <IonRefresherContent />
+        </IonRefresher>
+
+        {loading && (
+          <div style={{ display: "flex", justifyContent: "center", paddingTop: "40px" }}>
+            <IonSpinner name="crescent" />
+          </div>
+        )}
+
+        {loadError && <IonText color="danger"><p>{loadError}</p></IonText>}
+
+        {!loading && wallet && (
+          <>
+            {/* Balance card */}
+            <IonCard style={{ margin: "0 0 16px", background: "var(--ion-color-primary)", color: "#fff" }}>
+              <IonCardContent style={{ padding: "20px 24px" }}>
+                <div style={{ fontSize: "0.8rem", opacity: 0.85, marginBottom: "4px" }}>Saldo disponible</div>
+                <div style={{ fontSize: "2rem", fontWeight: 700, marginBottom: "8px" }}>
+                  ${(wallet.balance / 100).toLocaleString("es-CL")} {wallet.currency}
+                </div>
+                <IonBadge color={wallet.status === "active" ? "success" : "medium"} style={{ fontSize: "0.7rem" }}>
+                  {wallet.status === "active" ? "Activa" : wallet.status}
+                </IonBadge>
+              </IonCardContent>
+            </IonCard>
+
+            {/* Quick actions */}
+            <IonCard style={{ margin: "0 0 16px" }}>
+              <IonCardContent style={{ padding: "14px 16px" }}>
+                <div style={{ fontWeight: 600, marginBottom: "10px", fontSize: "0.9rem" }}>Acciones rápidas</div>
+                <div style={{ display: "flex", gap: "12px" }}>
+                  <IonButton expand="block" fill="outline" disabled style={{ flex: 1 }}>
+                    Recargar
+                  </IonButton>
+                  <IonButton expand="block" fill="outline" disabled style={{ flex: 1 }}>
+                    Retirar
+                  </IonButton>
+                </div>
+                <IonNote style={{ fontSize: "0.72rem", color: "var(--ion-color-medium)", display: "block", marginTop: "6px" }}>
+                  Próximamente disponible
+                </IonNote>
+              </IonCardContent>
+            </IonCard>
+
+            {/* Payment methods */}
+            <IonCard style={{ margin: "0 0 16px" }}>
+              <IonCardContent style={{ padding: "14px 16px" }}>
+                <div style={{ fontWeight: 600, marginBottom: "6px", fontSize: "0.9rem" }}>Métodos de pago</div>
+                <IonText color="medium">
+                  <p style={{ margin: 0, fontSize: "0.82rem" }}>Métodos de pago disponibles próximamente</p>
+                </IonText>
+              </IonCardContent>
+            </IonCard>
+
+            {/* Transactions */}
+            <IonList>
+              <IonListHeader>
+                <IonLabel><strong>Movimientos</strong></IonLabel>
+              </IonListHeader>
+
+              {transactions.length === 0 && (
+                <IonItem lines="none">
+                  <IonText color="medium">
+                    <p style={{ fontSize: "0.85rem", margin: "8px 0" }}>No hay movimientos todavía.</p>
+                  </IonText>
+                </IonItem>
+              )}
+
+              {transactions.map((tx) => (
+                <IonItem key={tx.id} lines="full">
+                  <IonLabel>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                      <div>
+                        <div style={{ fontSize: "0.75rem", color: "var(--ion-color-medium)" }}>
+                          {new Date(tx.createdAt).toLocaleString("es-CL", { dateStyle: "short", timeStyle: "short" })}
+                        </div>
+                        <div style={{ display: "flex", gap: "6px", alignItems: "center", marginTop: "2px" }}>
+                          <IonBadge color={TX_TYPE_COLOR[tx.type] ?? "medium"} style={{ fontSize: "0.65rem" }}>
+                            {TX_TYPE_LABEL[tx.type] ?? tx.type}
+                          </IonBadge>
+                          <IonBadge color={TX_STATUS_COLOR[tx.status] ?? "medium"} style={{ fontSize: "0.65rem" }}>
+                            {tx.status}
+                          </IonBadge>
+                        </div>
+                        {tx.description && (
+                          <div style={{ fontSize: "0.78rem", color: "var(--ion-color-medium)", marginTop: "2px" }}>
+                            {tx.description}
+                          </div>
+                        )}
+                      </div>
+                      <div style={{
+                        fontWeight: 700,
+                        fontSize: "0.95rem",
+                        color: tx.type === "payment" ? "var(--ion-color-danger)" : "var(--ion-color-success)",
+                        marginLeft: "12px",
+                        flexShrink: 0,
+                      }}>
+                        {tx.type === "payment" ? "-" : "+"}${(tx.amount / 100).toLocaleString("es-CL")}
+                      </div>
+                    </div>
+                  </IonLabel>
+                </IonItem>
+              ))}
+            </IonList>
+          </>
+        )}
+      </IonContent>
     </IonPage>
   );
 }

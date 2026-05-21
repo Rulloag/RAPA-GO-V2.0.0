@@ -1697,11 +1697,52 @@ export function AdminOfflineBookingsPage(): JSX.Element {
 }
 
 export function AdminPaymentsPage(): JSX.Element {
-  const m = meta("/admin/payments");
   return (
     <IonPage>
-      <IonHeader><IonToolbar color="danger"><IonTitle>{m.label}</IonTitle></IonToolbar></IonHeader>
-      <IonContent className="ion-padding"><ModulePlaceholderPage title={m.label} role="admin" plannedFeatures={m.plannedFeatures} /></IonContent>
+      <IonHeader>
+        <IonToolbar color="danger">
+          <IonTitle>Pagos</IonTitle>
+        </IonToolbar>
+      </IonHeader>
+      <IonContent className="ion-padding">
+        {/* Stats */}
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "10px", marginBottom: "16px" }}>
+          {[
+            { label: "Total órdenes",     value: "—", color: "primary" },
+            { label: "Pendientes",        value: "—", color: "warning" },
+            { label: "Pagadas",           value: "—", color: "success" },
+          ].map((stat) => (
+            <IonCard key={stat.label} style={{ margin: 0 }}>
+              <IonCardContent style={{ padding: "12px 10px", textAlign: "center" }}>
+                <div style={{ fontSize: "1.4rem", fontWeight: 700, color: `var(--ion-color-${stat.color})` }}>
+                  {stat.value}
+                </div>
+                <div style={{ fontSize: "0.7rem", color: "var(--ion-color-medium)", marginTop: "2px" }}>
+                  {stat.label}
+                </div>
+              </IonCardContent>
+            </IonCard>
+          ))}
+        </div>
+
+        <IonCard>
+          <IonCardContent style={{ padding: "16px" }}>
+            <div style={{ fontWeight: 600, marginBottom: "8px" }}>Estado de integración de pagos</div>
+            <IonText color="medium">
+              <p style={{ margin: 0, fontSize: "0.85rem" }}>
+                Los pagos se procesarán cuando se integre el proveedor de pagos.
+                Esta sección mostrará órdenes, estados y detalles de transacciones una vez habilitada la integración.
+              </p>
+            </IonText>
+            <div style={{ marginTop: "12px", display: "flex", gap: "8px", flexWrap: "wrap" }}>
+              {["pending", "paid", "failed", "cancelled"].map((s) => {
+                const color = s === "pending" ? "warning" : s === "paid" ? "success" : s === "failed" ? "danger" : "medium";
+                return <IonBadge key={s} color={color} style={{ fontSize: "0.72rem" }}>{s}</IonBadge>;
+              })}
+            </div>
+          </IonCardContent>
+        </IonCard>
+      </IonContent>
     </IonPage>
   );
 }
