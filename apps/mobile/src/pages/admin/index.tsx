@@ -42,7 +42,8 @@ import { ROUTES } from "../../navigation/routes";
 import { useAuth } from "../../features/auth";
 import { adminService, type AdminUserData, type AdminDocumentData, type AdminRideData, type ActiveDriverData } from "../../features/admin/admin.service";
 import { offlineService, type OfflineBooking } from "../../features/offline/offline.service";
-import { inferZoneFromText, getZoneLabel, RAPA_NUI_ZONES, type RapaNuiZoneId } from "@rapa-go/shared";
+import { inferZoneFromText, getZoneLabel, RAPA_NUI_ZONES, type RapaNuiZoneId, RAPAGO_CONTACT, WA_MESSAGES } from "@rapa-go/shared";
+import { WhatsAppButton } from "../../components/WhatsAppButton";
 
 function meta(path: string) {
   return ROUTE_METADATA.find((r) => r.path === path)!;
@@ -1228,6 +1229,28 @@ export function AdminTripsPage(): JSX.Element {
                       );
                     })()}
 
+                    {/* WhatsApp contacts */}
+                    {ride.driverUserId && ride.driverName && (
+                      <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", marginTop: "6px" }}>
+                        <WhatsAppButton
+                          phone={RAPAGO_CONTACT.adminPhone}
+                          message={WA_MESSAGES.adminToDriver({
+                            driverName:    ride.driverName,
+                            origin:        ride.originText,
+                            destination:   ride.destinationText,
+                            passengerName: ride.passengerName,
+                            passengerPhone: "",
+                          })}
+                          label="WhatsApp conductor"
+                        />
+                        <WhatsAppButton
+                          phone={RAPAGO_CONTACT.adminPhone}
+                          message={WA_MESSAGES.passengerToAdmin({ origin: ride.originText, destination: ride.destinationText, name: ride.passengerName })}
+                          label="WhatsApp pasajero"
+                        />
+                      </div>
+                    )}
+
                     {/* Cancel — for cancelable statuses */}
                     {CANCELABLE_STATUSES.has(ride.status) && (
                       <div style={{ marginTop: "6px" }}>
@@ -1540,27 +1563,34 @@ export function AdminOfflineBookingsPage(): JSX.Element {
                     Creado: {fmtDateTime(b.createdAt)}
                   </IonNote>
 
-                  {b.status === "pending_sync" && (
-                    <div style={{ display: "flex", gap: "8px", marginTop: "10px", flexWrap: "wrap" }}>
-                      <IonButton
-                        size="small"
-                        color="success"
-                        onClick={() => void handleSync(b.id)}
-                        disabled={syncingId === b.id}
-                      >
-                        {syncingId === b.id ? <IonSpinner name="dots" /> : "Sincronizar a viaje"}
-                      </IonButton>
-                      <IonButton
-                        size="small"
-                        fill="outline"
-                        color="danger"
-                        onClick={() => void handleCancel(b.id)}
-                        disabled={syncingId === b.id}
-                      >
-                        Cancelar
-                      </IonButton>
-                    </div>
-                  )}
+                  <div style={{ display: "flex", gap: "8px", marginTop: "10px", flexWrap: "wrap" }}>
+                    <WhatsAppButton
+                      phone={b.passengerPhone}
+                      message={WA_MESSAGES.adminToOfflinePassenger({ passengerName: b.passengerName })}
+                      label="WhatsApp pasajero"
+                    />
+                    {b.status === "pending_sync" && (
+                      <>
+                        <IonButton
+                          size="small"
+                          color="success"
+                          onClick={() => void handleSync(b.id)}
+                          disabled={syncingId === b.id}
+                        >
+                          {syncingId === b.id ? <IonSpinner name="dots" /> : "Sincronizar a viaje"}
+                        </IonButton>
+                        <IonButton
+                          size="small"
+                          fill="outline"
+                          color="danger"
+                          onClick={() => void handleCancel(b.id)}
+                          disabled={syncingId === b.id}
+                        >
+                          Cancelar
+                        </IonButton>
+                      </>
+                    )}
+                  </div>
                 </IonCardContent>
               </IonCard>
             ))}

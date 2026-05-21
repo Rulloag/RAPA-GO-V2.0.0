@@ -39,7 +39,8 @@ import { useAuth } from "../../features/auth";
 import { ridesService } from "../../features/rides/rides.service";
 import { MapPlaceholder } from "../../components/MapPlaceholder";
 import { driverStatusService } from "../../features/drivers/driverStatus.service";
-import { RAPA_NUI_ZONES, getZoneLabel } from "@rapa-go/shared";
+import { RAPA_NUI_ZONES, getZoneLabel, RAPAGO_CONTACT, WA_MESSAGES } from "@rapa-go/shared";
+import { WhatsAppButton } from "../../components/WhatsAppButton";
 
 function StarRatingInput({ value, onChange }: { value: number; onChange: (v: number) => void }) {
   return (
@@ -622,6 +623,13 @@ function DriverMyRidesPage(): JSX.Element {
                         )}
                         {ride.status === "completed" && ratedIds.has(ride.id) && (
                           <IonText color="success" style={{ fontSize: "0.75rem" }}>✓ Calificado</IonText>
+                        )}
+                        {["accepted", "driver_en_route", "driver_arrived", "in_progress"].includes(ride.status) && (
+                          <WhatsAppButton
+                            phone={RAPAGO_CONTACT.adminPhone}
+                            message={WA_MESSAGES.driverToPassenger({ passengerName: "pasajero", driverName: "conductor", origin: ride.originText })}
+                            label="Contactar operador"
+                          />
                         )}
                       </div>
                     </div>

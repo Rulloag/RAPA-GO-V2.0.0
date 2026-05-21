@@ -38,7 +38,8 @@ import { useAuth } from "../../features/auth";
 import { ridesService, type RideRequestData } from "../../features/rides/rides.service";
 import { MapPlaceholder } from "../../components/MapPlaceholder";
 import { DriverSummaryCard } from "../../components/DriverSummaryCard";
-import { RAPA_NUI_PLACES } from "@rapa-go/shared";
+import { RAPA_NUI_PLACES, RAPAGO_CONTACT, WA_MESSAGES } from "@rapa-go/shared";
+import { WhatsAppButton } from "../../components/WhatsAppButton";
 
 function StarRatingInput({ value, onChange }: { value: number; onChange: (v: number) => void }) {
   return (
@@ -93,9 +94,16 @@ export function PassengerHomePage(): JSX.Element {
               <IonText>
                 <p style={{ margin: 0, fontSize: "0.82rem", color: "#6b4700" }}>
                   Modo offline — tus viajes se sincronizarán cuando recuperes conexión.
-                  Si necesitas un viaje urgente, contacta al operador por teléfono.
                 </p>
               </IonText>
+              <WhatsAppButton
+                phone={RAPAGO_CONTACT.adminPhone}
+                message={WA_MESSAGES.passengerToAdmin({ origin: "mi ubicación", destination: "mi destino", name: "pasajero" })}
+                label="Contactar operador por WhatsApp"
+                size="small"
+                fill="solid"
+                style={{ marginTop: "8px" }}
+              />
             </IonCardContent>
           </IonCard>
         )}
@@ -559,6 +567,20 @@ function TripsPage(): JSX.Element {
                         )}
                         {ride.status === "completed" && ratedIds.has(ride.id) && (
                           <IonText color="success" style={{ fontSize: "0.75rem" }}>✓ Calificado</IonText>
+                        )}
+                        {ride.status === "completed" && (
+                          <WhatsAppButton
+                            phone={RAPAGO_CONTACT.adminPhone}
+                            message={WA_MESSAGES.passengerToAdmin({ origin: ride.originText, destination: ride.destinationText, name: "pasajero" })}
+                            label="Soporte"
+                          />
+                        )}
+                        {ride.driverName && ["accepted", "driver_en_route", "driver_arrived", "in_progress"].includes(ride.status) && (
+                          <WhatsAppButton
+                            phone={RAPAGO_CONTACT.adminPhone}
+                            message={WA_MESSAGES.passengerToAdmin({ origin: ride.originText, destination: ride.destinationText, name: "pasajero" })}
+                            label="Operador"
+                          />
                         )}
                       </div>
                     </div>
