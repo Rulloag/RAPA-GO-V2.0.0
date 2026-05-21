@@ -84,7 +84,7 @@ export function AdminHomePage(): JSX.Element {
           <ActionCard
             icon={keyOutline}
             title="Rent a Car"
-            subtitle={PENDING}
+            subtitle="Operadores y servicios de arriendo"
             route={ROUTES.ADMIN.RENTALS}
             color="danger"
           />
@@ -722,11 +722,196 @@ export function AdminGuidesPage(): JSX.Element {
 }
 
 export function AdminRentalsPage(): JSX.Element {
-  const m = meta("/admin/rentals");
+  const { session } = useAuth();
+  const token = session?.accessToken ?? "";
+
+  const [operators,      setOperators]      = useState<AdminUserData[]>([]);
+  const [loading,        setLoading]        = useState(true);
+  const [filterStatus,   setFilterStatus]   = useState<string>("all");
+  const [filterVerified, setFilterVerified] = useState<string>("all");
+
+  const loadOperators = useCallback(async () => {
+    if (!token) return;
+    setLoading(true);
+    try {
+      const data = await adminService.listUsers(token, { role: "rental" });
+      setOperators(data);
+    } catch (_) {
+      setOperators([]);
+    } finally {
+      setLoading(false);
+    }
+  }, [token]);
+
+  useEffect(() => { void loadOperators(); }, [loadOperators]);
+
+  const filtered = operators.filter((o) => {
+    if (filterStatus !== "all" && o.status !== filterStatus) return false;
+    if (filterVerified === "verified"   && !o.isVerified) return false;
+    if (filterVerified === "unverified" &&  o.isVerified) return false;
+    return true;
+  });
+
+  const totalOperators = operators.length;
+  const verified       = operators.filter((o) => o.isVerified).length;
+  const pending        = operators.filter((o) => o.status === "pending").length;
+  const active         = operators.filter((o) => o.status === "active").length;
+
+  function fmtDate(iso: string | null | undefined): string {
+    if (!iso) return "—";
+    return new Date(iso).toLocaleString("es-CL", { day: "2-digit", month: "2-digit", year: "numeric" });
+  }
+
   return (
     <IonPage>
-      <IonHeader><IonToolbar color="danger"><IonTitle>{m.label}</IonTitle></IonToolbar></IonHeader>
-      <IonContent className="ion-padding"><ModulePlaceholderPage title={m.label} role="admin" plannedFeatures={m.plannedFeatures} /></IonContent>
+      <IonHeader>
+        <IonToolbar color="danger">
+          <IonTitle>Rent a Car</IonTitle>
+          <div slot="end" style={{ paddingRight: "8px" }}>
+            <IonButton fill="clear" color="light" onClick={() => void loadOperators()} disabled={loading}>
+              Actualizar
+            </IonButton>
+          </div>
+        </IonToolbar>
+      </IonHeader>
+      <IonContent>
+        <IonRefresher slot="fixed" onIonRefresh={async (e) => { await loadOperators(); e.detail.complete(); }}>
+          <IonRefresherContent />
+        </IonRefresher>
+
+        <div style={{ padding: "12px 16px 4px" }}>
+          <p style={{ color: "var(--ion-color-medium)", margin: 0, fontSize: "0.9rem" }}>
+            Gestión operacional de operadores de arriendo de vehículos.
+          </p>
+        </div>
+
+        {/* Resumen superior */}
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, padding: "8px 16px" }}>
+          {([
+            { label: "Total",      value: totalOperators, color: "primary"  },
+            { label: "Activos",    value: active,         color: "tertiary" },
+            { label: "Pendientes", value: pending,        color: "warning"  },
+            { label: "Verificados",value: verified,       color: "success"  },
+          ] as { label: string; value: number; color: string }[]).map((stat) => (
+            <IonCard key={stat.label} style={{ margin: 0, textAlign: "center" }}>
+              <IonCardContent style={{ padding: "8px" }}>
+                <div style={{ fontSize: "1.5rem", fontWeight: "bold", color: `var(--ion-color-${stat.color})` }}>{stat.value}</div>
+                <div style={{ fontSize: "0.75rem", color: "var(--ion-color-medium)" }}>{stat.label}</div>
+              </IonCardContent>
+            </IonCard>
+          ))}
+        </div>
+
+        {/* Filtros */}
+        <IonCard style={{ margin: "0 16px 8px" }}>
+          <IonCardContent style={{ padding: "8px 12px" }}>
+            <div style={{ display: "flex", gap: "8px" }}>
+              <IonItem lines="none" style={{ flex: 1 }}>
+                <IonLabel position="stacked" style={{ fontSize: "0.78rem" }}>Estado</IonLabel>
+                <IonSelect
+                  interface="action-sheet"
+                  value={filterStatus}
+                  onIonChange={(e) => setFilterStatus(String(e.detail.value ?? "all"))}
+                >
+                  <IonSelectOption value="all">Todos</IonSelectOption>
+                  <IonSelectOption value="active">Activos</IonSelectOption>
+                  <IonSelectOption value="pending">Pendientes</IonSelectOption>
+                  <IonSelectOption value="suspended">Suspendidos</IonSelectOption>
+                </IonSelect>
+              </IonItem>
+              <IonItem lines="none" style={{ flex: 1 }}>
+                <IonLabel position="stacked" style={{ fontSize: "0.78rem" }}>Verificación</IonLabel>
+                <IonSelect
+                  interface="action-sheet"
+                  value={filterVerified}
+                  onIonChange={(e) => setFilterVerified(String(e.detail.value ?? "all"))}
+                >
+                  <IonSelectOption value="all">Todos</IonSelectOption>
+                  <IonSelectOption value="verified">Verificados</IonSelectOption>
+                  <IonSelectOption value="unverified">No verificados</IonSelectOption>
+                </IonSelect>
+              </IonItem>
+            </div>
+          </IonCardContent>
+        </IonCard>
+
+        {!loading && (
+          <IonText color="medium">
+            <p style={{ fontSize: "0.78rem", margin: "0 16px 8px" }}>
+              {filtered.length} operador{filtered.length !== 1 ? "es" : ""} encontrado{filtered.length !== 1 ? "s" : ""}
+            </p>
+          </IonText>
+        )}
+
+        {/* Lista de operadores */}
+        {loading ? (
+          <div style={{ display: "flex", justifyContent: "center", paddingTop: "40px" }}>
+            <IonSpinner name="crescent" />
+          </div>
+        ) : filtered.length > 0 ? (
+          <div style={{ display: "flex", flexDirection: "column", gap: "10px", padding: "0 16px" }}>
+            {filtered.map((op) => (
+              <IonCard key={op.id} style={{ margin: 0 }}>
+                <IonCardContent style={{ padding: "12px 14px" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 6 }}>
+                    <strong style={{ fontSize: "0.95rem" }}>{op.name}</strong>
+                    <div style={{ display: "flex", gap: 4, flexWrap: "wrap", justifyContent: "flex-end" }}>
+                      <IonBadge color={op.status === "active" ? "success" : op.status === "pending" ? "warning" : "danger"} style={{ fontSize: "0.68rem" }}>
+                        {op.status === "active" ? "Activo" : op.status === "pending" ? "Pendiente" : "Suspendido"}
+                      </IonBadge>
+                      {op.isVerified && <IonBadge color="primary" style={{ fontSize: "0.68rem" }}>Verificado</IonBadge>}
+                    </div>
+                  </div>
+                  <IonNote style={{ display: "block", marginBottom: 4, fontSize: "0.8rem" }}>{op.email}</IonNote>
+                  <IonNote style={{ display: "block", marginBottom: 4, fontSize: "0.78rem" }}>
+                    Tipo de servicio: <em>Arriendo de vehículos</em>
+                  </IonNote>
+                  <IonNote style={{ display: "block", fontSize: "0.78rem" }}>
+                    Estado operativo: <em>Operación por configurar</em>
+                  </IonNote>
+                  <IonNote style={{ display: "block", fontSize: "0.72rem", marginTop: 6 }}>
+                    Registrado: {fmtDate(op.createdAt)}
+                  </IonNote>
+                </IonCardContent>
+              </IonCard>
+            ))}
+          </div>
+        ) : (
+          <div style={{ padding: "32px 24px", textAlign: "center" }}>
+            <p style={{ color: "var(--ion-color-medium)", fontSize: "1rem", fontWeight: 500 }}>
+              Aún no hay operadores de arriendo registrados.
+            </p>
+            <p style={{ color: "var(--ion-color-medium)", fontSize: "0.85rem" }}>
+              Este módulo permitirá administrar operadores, flota disponible, documentación y servicios de arriendo.
+            </p>
+          </div>
+        )}
+
+        {/* Próximas fases */}
+        <IonCard style={{ margin: "16px" }}>
+          <IonCardContent>
+            <strong style={{ display: "block", marginBottom: 8 }}>Próximas fases del módulo</strong>
+            {[
+              "Perfiles de operador de arriendo",
+              "Flota de vehículos por operador",
+              "Disponibilidad de vehículos",
+              "Documentación comercial y habilitante",
+              "Asignación de reservas de arriendo",
+              "Tarifas por categoría de vehículo",
+            ].map((item) => (
+              <IonNote key={item} style={{ display: "block", padding: "3px 0", fontSize: "0.85rem" }}>
+                · {item}
+              </IonNote>
+            ))}
+          </IonCardContent>
+        </IonCard>
+
+        <IonItem lines="none">
+          <IonLabel color="medium" style={{ fontSize: "0.8rem", whiteSpace: "normal" }}>
+            La gestión de flota y reservas de arriendo se implementará en el módulo de Arriendos.
+          </IonLabel>
+        </IonItem>
+      </IonContent>
     </IonPage>
   );
 }
