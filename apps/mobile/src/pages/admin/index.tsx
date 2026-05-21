@@ -734,7 +734,7 @@ export function AdminRentalsPage(): JSX.Element {
     if (!token) return;
     setLoading(true);
     try {
-      const data = await adminService.listUsers(token, { role: "rental" });
+      const data = await adminService.listUsers(token, { role: "rental_operator" });
       setOperators(data);
     } catch (_) {
       setOperators([]);
