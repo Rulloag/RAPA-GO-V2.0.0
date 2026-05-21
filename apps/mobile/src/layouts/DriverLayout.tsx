@@ -1,4 +1,4 @@
-import { homeOutline, carOutline, listOutline, cashOutline } from "ionicons/icons";
+import { homeOutline, carOutline, listOutline, cashOutline, personOutline } from "ionicons/icons";
 import { Route, Switch } from "react-router-dom";
 import { RoleLayout } from "./RoleLayout";
 import { ROUTES } from "../navigation/routes";
@@ -15,6 +15,7 @@ const TABS = [
   { path: ROUTES.DRIVER.REQUESTS, label: "Solicitudes", icon: listOutline },
   { path: ROUTES.DRIVER.TRIPS, label: "Viajes", icon: carOutline },
   { path: ROUTES.DRIVER.EARNINGS, label: "Ganancias", icon: cashOutline },
+  { path: ROUTES.DRIVER.PROFILE,  label: "Perfil",    icon: personOutline },
 ];
 
 export function DriverLayout(): JSX.Element {

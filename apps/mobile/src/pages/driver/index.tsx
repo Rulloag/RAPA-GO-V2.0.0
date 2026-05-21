@@ -3,8 +3,10 @@ import {
   IonButton,
   IonCard,
   IonCardContent,
+  IonChip,
   IonContent,
   IonHeader,
+  IonInput,
   IonItem,
   IonLabel,
   IonNote,
@@ -30,6 +32,7 @@ import {
 } from "ionicons/icons";
 import { IonIcon } from "@ionic/react";
 import { ModulePlaceholderPage } from "../../components/ModulePlaceholderPage";
+import { driverProfileService } from "../../features/drivers/driverProfile.service";
 import { HomeHeader } from "../../components/HomeHeader";
 import { ActionCard } from "../../components/ActionCard";
 import { useConnectivity } from "../../hooks/useConnectivity";
@@ -680,12 +683,352 @@ export function DriverEarningsPage(): JSX.Element {
   );
 }
 
+const LANGUAGE_OPTIONS: { value: string; label: string }[] = [
+  { value: "es",       label: "Español" },
+  { value: "en",       label: "Inglés" },
+  { value: "rapa_nui", label: "Rapa Nui" },
+  { value: "fr",       label: "Francés" },
+];
+
+function isLicenseExpiringSoon(expiry: string | null): boolean {
+  if (!expiry) return false;
+  const expiryDate = new Date(expiry);
+  const diff = expiryDate.getTime() - Date.now();
+  return diff >= 0 && diff < 30 * 24 * 60 * 60 * 1000;
+}
+
+function isLicenseExpired(expiry: string | null): boolean {
+  if (!expiry) return false;
+  return new Date(expiry).getTime() < Date.now();
+}
+
 export function DriverProfilePage(): JSX.Element {
-  const m = meta("/driver/profile");
+  const { session } = useAuth();
+
+  // Form fields
+  const [phone,           setPhone]           = useState("");
+  const [vehicleBrand,    setVehicleBrand]    = useState("");
+  const [vehicleModel,    setVehicleModel]    = useState("");
+  const [vehicleYear,     setVehicleYear]     = useState("");
+  const [vehiclePlate,    setVehiclePlate]    = useState("");
+  const [vehicleColor,    setVehicleColor]    = useState("");
+  const [licenseNumber,   setLicenseNumber]   = useState("");
+  const [licenseExpiry,   setLicenseExpiry]   = useState("");
+  const [profilePhotoUrl, setProfilePhotoUrl] = useState("");
+  const [bio,             setBio]             = useState("");
+  const [languages,       setLanguages]       = useState<string[]>([]);
+
+  const [loading, setLoading]   = useState(true);
+  const [saving,  setSaving]    = useState(false);
+  const [error,   setError]     = useState<string | null>(null);
+  const [success, setSuccess]   = useState(false);
+
+  const loadProfile = useCallback(async () => {
+    if (!session?.accessToken) return;
+    setLoading(true);
+    setError(null);
+    try {
+      const profile = await driverProfileService.getMyProfile(session.accessToken);
+      if (profile) {
+        setPhone(profile.phone ?? "");
+        setVehicleBrand(profile.vehicleBrand ?? "");
+        setVehicleModel(profile.vehicleModel ?? "");
+        setVehicleYear(profile.vehicleYear != null ? String(profile.vehicleYear) : "");
+        setVehiclePlate(profile.vehiclePlate ?? "");
+        setVehicleColor(profile.vehicleColor ?? "");
+        setLicenseNumber(profile.licenseNumber ?? "");
+        setLicenseExpiry(profile.licenseExpiry ?? "");
+        setProfilePhotoUrl(profile.profilePhotoUrl ?? "");
+        setBio(profile.bio ?? "");
+        setLanguages(profile.languages ?? []);
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Error al cargar perfil.");
+    } finally {
+      setLoading(false);
+    }
+  }, [session?.accessToken]);
+
+  useEffect(() => { void loadProfile(); }, [loadProfile]);
+
+  async function handleSave() {
+    if (!session?.accessToken) return;
+    setSaving(true);
+    setError(null);
+    setSuccess(false);
+    try {
+      const payload: Parameters<typeof driverProfileService.upsertMyProfile>[1] = {};
+      if (phone)           payload.phone           = phone;
+      if (vehicleBrand)    payload.vehicleBrand    = vehicleBrand;
+      if (vehicleModel)    payload.vehicleModel    = vehicleModel;
+      if (vehicleYear)     payload.vehicleYear     = parseInt(vehicleYear, 10);
+      if (vehiclePlate)    payload.vehiclePlate    = vehiclePlate;
+      if (vehicleColor)    payload.vehicleColor    = vehicleColor;
+      if (licenseNumber)   payload.licenseNumber   = licenseNumber;
+      if (licenseExpiry)   payload.licenseExpiry   = licenseExpiry;
+      if (profilePhotoUrl) payload.profilePhotoUrl = profilePhotoUrl;
+      if (bio)             payload.bio             = bio;
+      if (languages.length > 0) payload.languages  = languages;
+
+      await driverProfileService.upsertMyProfile(session.accessToken, payload);
+      setSuccess(true);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Error al guardar perfil.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  function toggleLanguage(lang: string) {
+    setLanguages((prev) =>
+      prev.includes(lang) ? prev.filter((l) => l !== lang) : [...prev, lang]
+    );
+  }
+
+  const licenseExpiringSoon = isLicenseExpiringSoon(licenseExpiry || null);
+  const licenseExpiredNow   = isLicenseExpired(licenseExpiry || null);
+
   return (
     <IonPage>
-      <IonHeader><IonToolbar color="success"><IonTitle>{m.label}</IonTitle></IonToolbar></IonHeader>
-      <IonContent className="ion-padding"><ModulePlaceholderPage title={m.label} role="driver" plannedFeatures={m.plannedFeatures} /></IonContent>
+      <IonHeader>
+        <IonToolbar color="success">
+          <IonTitle>Mi Perfil</IonTitle>
+        </IonToolbar>
+      </IonHeader>
+      <IonContent className="ion-padding">
+        {loading && (
+          <div style={{ display: "flex", justifyContent: "center", paddingTop: "40px" }}>
+            <IonSpinner name="crescent" />
+          </div>
+        )}
+
+        {!loading && (
+          <>
+            {/* Missing phone warning */}
+            {!phone && (
+              <div style={{
+                background:   "var(--ion-color-warning-tint)",
+                border:       "1px solid var(--ion-color-warning)",
+                borderRadius: "8px",
+                padding:      "10px 14px",
+                marginBottom: "16px",
+                fontSize:     "0.85rem",
+                color:        "var(--ion-color-warning-shade)",
+              }}>
+                Agrega tu número de teléfono para que los pasajeros puedan contactarte.
+              </div>
+            )}
+
+            {/* License warnings */}
+            {licenseExpiredNow && (
+              <div style={{
+                background:   "var(--ion-color-danger-tint)",
+                border:       "1px solid var(--ion-color-danger)",
+                borderRadius: "8px",
+                padding:      "10px 14px",
+                marginBottom: "16px",
+                fontSize:     "0.85rem",
+                color:        "var(--ion-color-danger-shade)",
+              }}>
+                Tu licencia de conducir ha vencido. Actualiza la fecha de vencimiento.
+              </div>
+            )}
+            {!licenseExpiredNow && licenseExpiringSoon && (
+              <div style={{
+                background:   "var(--ion-color-warning-tint)",
+                border:       "1px solid var(--ion-color-warning)",
+                borderRadius: "8px",
+                padding:      "10px 14px",
+                marginBottom: "16px",
+                fontSize:     "0.85rem",
+                color:        "var(--ion-color-warning-shade)",
+              }}>
+                Tu licencia vence en menos de 30 días. Renuévala pronto.
+              </div>
+            )}
+
+            {/* Personal data */}
+            <IonCard style={{ margin: "0 0 16px" }}>
+              <IonCardContent>
+                <div style={{ fontWeight: 700, fontSize: "0.95rem", marginBottom: "8px" }}>Datos personales</div>
+                <IonItem lines="full">
+                  <IonLabel position="stacked">Nombre</IonLabel>
+                  <IonInput value={session?.user?.name ?? ""} readonly disabled />
+                </IonItem>
+                <IonItem lines="full">
+                  <IonLabel position="stacked">Correo electrónico</IonLabel>
+                  <IonInput value={session?.user?.email ?? ""} readonly disabled />
+                </IonItem>
+                <IonItem lines="none">
+                  <IonLabel position="stacked">Teléfono</IonLabel>
+                  <IonInput
+                    type="tel"
+                    placeholder="+56 9 1234 5678"
+                    value={phone}
+                    onIonInput={(e) => setPhone(String(e.detail.value ?? ""))}
+                    maxlength={20}
+                  />
+                </IonItem>
+              </IonCardContent>
+            </IonCard>
+
+            {/* Profile photo */}
+            <IonCard style={{ margin: "0 0 16px" }}>
+              <IonCardContent>
+                <div style={{ fontWeight: 700, fontSize: "0.95rem", marginBottom: "8px" }}>Foto de perfil</div>
+                <IonItem lines="none">
+                  <IonLabel position="stacked">URL de foto</IonLabel>
+                  <IonInput
+                    type="url"
+                    placeholder="https://ejemplo.com/foto.jpg"
+                    value={profilePhotoUrl}
+                    onIonInput={(e) => setProfilePhotoUrl(String(e.detail.value ?? ""))}
+                  />
+                </IonItem>
+                {profilePhotoUrl && (
+                  <div style={{ textAlign: "center", marginTop: "8px" }}>
+                    <img
+                      src={profilePhotoUrl}
+                      alt="Foto de perfil"
+                      style={{ width: "80px", height: "80px", borderRadius: "50%", objectFit: "cover" }}
+                      onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
+                    />
+                  </div>
+                )}
+              </IonCardContent>
+            </IonCard>
+
+            {/* Vehicle */}
+            <IonCard style={{ margin: "0 0 16px" }}>
+              <IonCardContent>
+                <div style={{ fontWeight: 700, fontSize: "0.95rem", marginBottom: "8px" }}>Vehículo</div>
+                <IonItem lines="full">
+                  <IonLabel position="stacked">Marca</IonLabel>
+                  <IonInput
+                    placeholder="Toyota"
+                    value={vehicleBrand}
+                    onIonInput={(e) => setVehicleBrand(String(e.detail.value ?? ""))}
+                    maxlength={50}
+                  />
+                </IonItem>
+                <IonItem lines="full">
+                  <IonLabel position="stacked">Modelo</IonLabel>
+                  <IonInput
+                    placeholder="Yaris"
+                    value={vehicleModel}
+                    onIonInput={(e) => setVehicleModel(String(e.detail.value ?? ""))}
+                    maxlength={50}
+                  />
+                </IonItem>
+                <IonItem lines="full">
+                  <IonLabel position="stacked">Año</IonLabel>
+                  <IonInput
+                    type="number"
+                    placeholder="2020"
+                    value={vehicleYear}
+                    onIonInput={(e) => setVehicleYear(String(e.detail.value ?? ""))}
+                    min="1990"
+                    max="2030"
+                  />
+                </IonItem>
+                <IonItem lines="full">
+                  <IonLabel position="stacked">Patente</IonLabel>
+                  <IonInput
+                    placeholder="ABCD12"
+                    value={vehiclePlate}
+                    onIonInput={(e) => setVehiclePlate(String(e.detail.value ?? "").toUpperCase())}
+                    maxlength={10}
+                  />
+                </IonItem>
+                <IonItem lines="none">
+                  <IonLabel position="stacked">Color</IonLabel>
+                  <IonInput
+                    placeholder="Blanco"
+                    value={vehicleColor}
+                    onIonInput={(e) => setVehicleColor(String(e.detail.value ?? ""))}
+                    maxlength={30}
+                  />
+                </IonItem>
+              </IonCardContent>
+            </IonCard>
+
+            {/* License */}
+            <IonCard style={{ margin: "0 0 16px" }}>
+              <IonCardContent>
+                <div style={{ fontWeight: 700, fontSize: "0.95rem", marginBottom: "8px" }}>Licencia de conducir</div>
+                <IonItem lines="full">
+                  <IonLabel position="stacked">Número de licencia</IonLabel>
+                  <IonInput
+                    placeholder="12345678-9"
+                    value={licenseNumber}
+                    onIonInput={(e) => setLicenseNumber(String(e.detail.value ?? ""))}
+                    maxlength={30}
+                  />
+                </IonItem>
+                <IonItem lines="none">
+                  <IonLabel position="stacked">
+                    Vencimiento
+                    {licenseExpiredNow && <span style={{ color: "var(--ion-color-danger)", marginLeft: "6px" }}>VENCIDA</span>}
+                    {!licenseExpiredNow && licenseExpiringSoon && <span style={{ color: "var(--ion-color-warning)", marginLeft: "6px" }}>Próxima a vencer</span>}
+                  </IonLabel>
+                  <IonInput
+                    type="date"
+                    value={licenseExpiry}
+                    onIonInput={(e) => setLicenseExpiry(String(e.detail.value ?? ""))}
+                  />
+                </IonItem>
+              </IonCardContent>
+            </IonCard>
+
+            {/* Bio */}
+            <IonCard style={{ margin: "0 0 16px" }}>
+              <IonCardContent>
+                <div style={{ fontWeight: 700, fontSize: "0.95rem", marginBottom: "8px" }}>Biografía</div>
+                <IonItem lines="none">
+                  <IonTextarea
+                    placeholder="Cuéntanos sobre ti..."
+                    value={bio}
+                    onIonInput={(e) => setBio(String(e.detail.value ?? ""))}
+                    maxlength={500}
+                    rows={3}
+                  />
+                </IonItem>
+              </IonCardContent>
+            </IonCard>
+
+            {/* Languages */}
+            <IonCard style={{ margin: "0 0 16px" }}>
+              <IonCardContent>
+                <div style={{ fontWeight: 700, fontSize: "0.95rem", marginBottom: "8px" }}>Idiomas</div>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: "8px", padding: "4px 0" }}>
+                  {LANGUAGE_OPTIONS.map((lang) => (
+                    <IonChip
+                      key={lang.value}
+                      color={languages.includes(lang.value) ? "success" : "medium"}
+                      onClick={() => toggleLanguage(lang.value)}
+                    >
+                      <IonLabel>{lang.label}</IonLabel>
+                    </IonChip>
+                  ))}
+                </div>
+              </IonCardContent>
+            </IonCard>
+
+            {error && <IonText color="danger"><p style={{ fontSize: "0.88rem" }}>{error}</p></IonText>}
+            {success && <IonText color="success"><p style={{ fontSize: "0.88rem" }}>Perfil guardado correctamente.</p></IonText>}
+
+            <IonButton
+              expand="block"
+              color="success"
+              disabled={saving}
+              onClick={() => void handleSave()}
+              style={{ marginTop: "8px" }}
+            >
+              {saving ? <IonSpinner name="dots" /> : "Guardar cambios"}
+            </IonButton>
+          </>
+        )}
+      </IonContent>
     </IonPage>
   );
 }

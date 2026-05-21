@@ -10,6 +10,7 @@ import {
   IonInput,
   IonItem,
   IonLabel,
+  IonModal,
   IonNote,
   IonPage,
   IonRefresher,
@@ -42,6 +43,7 @@ import { ROUTES } from "../../navigation/routes";
 import { useAuth } from "../../features/auth";
 import { adminService, type AdminUserData, type AdminDocumentData, type AdminRideData, type ActiveDriverData } from "../../features/admin/admin.service";
 import { offlineService, type OfflineBooking } from "../../features/offline/offline.service";
+import { driverProfileService, type DriverProfileData } from "../../features/drivers/driverProfile.service";
 import { inferZoneFromText, getZoneLabel, RAPA_NUI_ZONES, type RapaNuiZoneId, RAPAGO_CONTACT, WA_MESSAGES } from "@rapa-go/shared";
 import { WhatsAppButton } from "../../components/WhatsAppButton";
 import { MapFallback } from "../../components/MapFallback";
@@ -402,6 +404,10 @@ export function AdminDriversPage(): JSX.Element {
   const [loadError,           setLoadError]           = useState<string | null>(null);
   const [filterAvailability,  setFilterAvailability]  = useState<string>("all");
   const [filterZone,          setFilterZone]          = useState<string>("all");
+  const [profileModal,        setProfileModal]        = useState<{ driverId: string; driverName: string } | null>(null);
+  const [driverProfile,       setDriverProfile]       = useState<DriverProfileData | null>(null);
+  const [profileLoading,      setProfileLoading]      = useState(false);
+  const [profileError,        setProfileError]        = useState<string | null>(null);
 
   const loadDrivers = useCallback(async () => {
     if (!token) return;
@@ -521,6 +527,30 @@ export function AdminDriversPage(): JSX.Element {
                   <IonNote style={{ display: "block", fontSize: "0.75rem" }}>
                     Última actividad: {fmtDate(driver.lastSeenAt)}
                   </IonNote>
+                  <div style={{ marginTop: "8px" }}>
+                    <IonButton
+                      size="small"
+                      fill="outline"
+                      color="primary"
+                      onClick={async () => {
+                        if (!token) return;
+                        setProfileModal({ driverId: driver.id, driverName: driver.name });
+                        setDriverProfile(null);
+                        setProfileError(null);
+                        setProfileLoading(true);
+                        try {
+                          const p = await driverProfileService.getMyProfile(token);
+                          setDriverProfile(p);
+                        } catch (err) {
+                          setProfileError(err instanceof Error ? err.message : "Error al cargar perfil.");
+                        } finally {
+                          setProfileLoading(false);
+                        }
+                      }}
+                    >
+                      Ver perfil
+                    </IonButton>
+                  </div>
                 </IonCardContent>
               </IonCard>
             ))}
@@ -532,6 +562,56 @@ export function AdminDriversPage(): JSX.Element {
             La asignación de viajes se realiza desde el módulo Viajes.
           </IonLabel>
         </IonItem>
+
+        {/* Driver profile modal */}
+        <IonModal isOpen={profileModal !== null} onDidDismiss={() => { setProfileModal(null); setDriverProfile(null); }}>
+          <IonHeader>
+            <IonToolbar color="danger">
+              <IonTitle>{profileModal?.driverName ?? "Perfil conductor"}</IonTitle>
+              <div slot="end" style={{ paddingRight: "8px" }}>
+                <IonButton fill="clear" color="light" onClick={() => setProfileModal(null)}>Cerrar</IonButton>
+              </div>
+            </IonToolbar>
+          </IonHeader>
+          <IonContent className="ion-padding">
+            {profileLoading && (
+              <div style={{ display: "flex", justifyContent: "center", paddingTop: "40px" }}>
+                <IonSpinner name="crescent" />
+              </div>
+            )}
+            {profileError && <IonText color="danger"><p>{profileError}</p></IonText>}
+            {!profileLoading && !profileError && !driverProfile && (
+              <IonText color="medium"><p>Este conductor no tiene perfil completo todavía.</p></IonText>
+            )}
+            {!profileLoading && driverProfile && (
+              <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+                {driverProfile.phone && <IonItem lines="full"><IonLabel><b>Teléfono:</b> {driverProfile.phone}</IonLabel></IonItem>}
+                {driverProfile.vehicleBrand && <IonItem lines="full"><IonLabel><b>Marca:</b> {driverProfile.vehicleBrand}</IonLabel></IonItem>}
+                {driverProfile.vehicleModel && <IonItem lines="full"><IonLabel><b>Modelo:</b> {driverProfile.vehicleModel}</IonLabel></IonItem>}
+                {driverProfile.vehicleYear != null && <IonItem lines="full"><IonLabel><b>Año:</b> {driverProfile.vehicleYear}</IonLabel></IonItem>}
+                {driverProfile.vehiclePlate && <IonItem lines="full"><IonLabel><b>Patente:</b> {driverProfile.vehiclePlate}</IonLabel></IonItem>}
+                {driverProfile.vehicleColor && <IonItem lines="full"><IonLabel><b>Color:</b> {driverProfile.vehicleColor}</IonLabel></IonItem>}
+                {driverProfile.licenseExpiry && <IonItem lines="full"><IonLabel><b>Venc. licencia:</b> {driverProfile.licenseExpiry}</IonLabel></IonItem>}
+                {driverProfile.bio && <IonItem lines="full"><IonLabel style={{ whiteSpace: "normal" }}><b>Bio:</b> {driverProfile.bio}</IonLabel></IonItem>}
+                {driverProfile.profilePhotoUrl && (
+                  <IonItem lines="full">
+                    <IonLabel>
+                      <b>Foto:</b><br />
+                      <img src={driverProfile.profilePhotoUrl} alt="Foto" style={{ width: "80px", height: "80px", borderRadius: "50%", objectFit: "cover", marginTop: "4px" }} />
+                    </IonLabel>
+                  </IonItem>
+                )}
+                {driverProfile.languages.length > 0 && (
+                  <IonItem lines="none">
+                    <IonLabel>
+                      <b>Idiomas:</b> {driverProfile.languages.join(", ")}
+                    </IonLabel>
+                  </IonItem>
+                )}
+              </div>
+            )}
+          </IonContent>
+        </IonModal>
       </IonContent>
     </IonPage>
   );
