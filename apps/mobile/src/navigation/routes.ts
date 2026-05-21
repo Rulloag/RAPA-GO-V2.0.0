@@ -74,6 +74,7 @@ export const ROUTES = {
     PAYMENTS: "/admin/payments",
     SETTINGS: "/admin/settings",
     DOCUMENTS: "/admin/documents",
+    OFFLINE_BOOKINGS: "/admin/offline-bookings",
   },
 
   PROFILE: {

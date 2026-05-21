@@ -31,6 +31,7 @@ import {
 import { ModulePlaceholderPage } from "../../components/ModulePlaceholderPage";
 import { HomeHeader } from "../../components/HomeHeader";
 import { ActionCard } from "../../components/ActionCard";
+import { useConnectivity } from "../../hooks/useConnectivity";
 import { ROUTE_METADATA } from "../../navigation/routeConfig";
 import { ROUTES } from "../../navigation/routes";
 import { useAuth } from "../../features/auth";
@@ -80,10 +81,24 @@ const RIDE_STATUS_COLOR: Record<string, string> = {
 };
 
 export function PassengerHomePage(): JSX.Element {
+  const isOnline = useConnectivity();
+
   return (
     <IonPage>
       <HomeHeader title="Inicio" />
       <IonContent className="ion-padding">
+        {!isOnline && (
+          <IonCard style={{ margin: "0 0 12px", background: "#fff3cd", border: "1px solid #ffc107" }}>
+            <IonCardContent style={{ padding: "8px 14px" }}>
+              <IonText>
+                <p style={{ margin: 0, fontSize: "0.82rem", color: "#6b4700" }}>
+                  Modo offline — tus viajes se sincronizarán cuando recuperes conexión.
+                  Si necesitas un viaje urgente, contacta al operador por teléfono.
+                </p>
+              </IonText>
+            </IonCardContent>
+          </IonCard>
+        )}
         <div
           style={{
             display: "grid",

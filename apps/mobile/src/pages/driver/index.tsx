@@ -32,6 +32,7 @@ import { IonIcon } from "@ionic/react";
 import { ModulePlaceholderPage } from "../../components/ModulePlaceholderPage";
 import { HomeHeader } from "../../components/HomeHeader";
 import { ActionCard } from "../../components/ActionCard";
+import { useConnectivity } from "../../hooks/useConnectivity";
 import { ROUTE_METADATA } from "../../navigation/routeConfig";
 import { ROUTES } from "../../navigation/routes";
 import { useAuth } from "../../features/auth";
@@ -62,6 +63,7 @@ function meta(path: string) {
 
 export function DriverHomePage(): JSX.Element {
   const { session } = useAuth();
+  const isOnline = useConnectivity();
   const [driverAvailability, setDriverAvailability] = useState<"available" | "unavailable" | "busy">("unavailable");
   const [availabilityLoading, setAvailabilityLoading] = useState(false);
   const [availabilityError, setAvailabilityError] = useState<string | null>(null);
@@ -104,6 +106,19 @@ export function DriverHomePage(): JSX.Element {
     <IonPage>
       <HomeHeader title="Inicio" />
       <IonContent className="ion-padding">
+        {/* Connectivity indicator */}
+        <div style={{ display: "flex", alignItems: "center", gap: "6px", marginBottom: "10px" }}>
+          <div style={{
+            width: "10px", height: "10px", borderRadius: "50%",
+            background: isOnline ? "var(--ion-color-success)" : "var(--ion-color-danger)",
+            flexShrink: 0,
+          }} />
+          <IonText color={isOnline ? "success" : "danger"}>
+            <small style={{ fontSize: "0.78rem" }}>
+              {isOnline ? "Conectado" : "Sin conexión — los estados se sincronizarán cuando haya señal"}
+            </small>
+          </IonText>
+        </div>
         {/* Availability toggle */}
         <IonCard color={availabilityColor} style={{ margin: "0 0 12px" }}>
           <IonCardContent>

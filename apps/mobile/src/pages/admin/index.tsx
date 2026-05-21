@@ -4,6 +4,7 @@ import {
   IonButton,
   IonCard,
   IonCardContent,
+  IonChip,
   IonContent,
   IonHeader,
   IonInput,
@@ -25,6 +26,7 @@ import { useEffect, useState, useCallback } from "react";
 import {
   cardOutline,
   carOutline,
+  cloudOfflineOutline,
   compassOutline,
   documentTextOutline,
   keyOutline,
@@ -39,6 +41,7 @@ import { ROUTE_METADATA } from "../../navigation/routeConfig";
 import { ROUTES } from "../../navigation/routes";
 import { useAuth } from "../../features/auth";
 import { adminService, type AdminUserData, type AdminDocumentData, type AdminRideData, type ActiveDriverData } from "../../features/admin/admin.service";
+import { offlineService, type OfflineBooking } from "../../features/offline/offline.service";
 import { inferZoneFromText, getZoneLabel, RAPA_NUI_ZONES, type RapaNuiZoneId } from "@rapa-go/shared";
 
 function meta(path: string) {
@@ -106,6 +109,13 @@ export function AdminHomePage(): JSX.Element {
             subtitle="Revisar y aprobar documentos de usuarios."
             route={ROUTES.ADMIN.DOCUMENTS}
             color="danger"
+          />
+          <ActionCard
+            icon={cloudOfflineOutline}
+            title="Viajes Offline"
+            subtitle="Reservas sin conectividad"
+            route={ROUTES.ADMIN.OFFLINE_BOOKINGS}
+            color="warning"
           />
           <ActionCard
             icon={settingsOutline}
@@ -1283,6 +1293,265 @@ export function AdminTripsPage(): JSX.Element {
           onDidDismiss={() => { if (cancellingId === null) setCancelAlertId(null); }}
         />
 
+      </IonContent>
+    </IonPage>
+  );
+}
+
+const OFFLINE_STATUS_LABEL: Record<string, string> = {
+  pending_sync: "Pendiente",
+  synced:       "Sincronizado",
+  cancelled:    "Cancelado",
+};
+const OFFLINE_STATUS_COLOR: Record<string, string> = {
+  pending_sync: "warning",
+  synced:       "success",
+  cancelled:    "medium",
+};
+
+function fmtDateTime(iso: string): string {
+  return new Date(iso).toLocaleString("es-CL", { dateStyle: "short", timeStyle: "short" });
+}
+
+export function AdminOfflineBookingsPage(): JSX.Element {
+  const { session } = useAuth();
+  const token = session?.accessToken ?? "";
+
+  const [bookings,     setBookings]     = useState<OfflineBooking[]>([]);
+  const [loading,      setLoading]      = useState(true);
+  const [loadError,    setLoadError]    = useState<string | null>(null);
+  const [filterStatus, setFilterStatus] = useState<string>("all");
+  const [actionError,  setActionError]  = useState<string | null>(null);
+  const [toast,        setToast]        = useState<string | null>(null);
+
+  // Create form state
+  const [showForm,     setShowForm]     = useState(false);
+  const [form,         setForm]         = useState({ passengerName: "", passengerPhone: "", originText: "", destinationText: "", notes: "" });
+  const [submitting,   setSubmitting]   = useState(false);
+  const [formError,    setFormError]    = useState<string | null>(null);
+
+  const loadBookings = useCallback(async () => {
+    if (!token) return;
+    setLoading(true);
+    setLoadError(null);
+    try {
+      const status = filterStatus !== "all" ? filterStatus : undefined;
+      const data = await offlineService.listOfflineBookings(token, status);
+      setBookings(data);
+    } catch (err) {
+      setLoadError(err instanceof Error ? err.message : "Error al cargar reservas offline.");
+    } finally {
+      setLoading(false);
+    }
+  }, [token, filterStatus]);
+
+  useEffect(() => { void loadBookings(); }, [loadBookings]);
+
+  async function handleCreate() {
+    if (!form.passengerName.trim() || !form.passengerPhone.trim() || !form.originText.trim() || !form.destinationText.trim()) {
+      setFormError("Nombre, teléfono, origen y destino son obligatorios.");
+      return;
+    }
+    setSubmitting(true);
+    setFormError(null);
+    try {
+      await offlineService.createOfflineBooking(token, {
+        passengerName:   form.passengerName.trim(),
+        passengerPhone:  form.passengerPhone.trim(),
+        originText:      form.originText.trim(),
+        destinationText: form.destinationText.trim(),
+        ...(form.notes.trim() ? { notes: form.notes.trim() } : {}),
+      });
+      setToast("Reserva offline creada.");
+      setShowForm(false);
+      setForm({ passengerName: "", passengerPhone: "", originText: "", destinationText: "", notes: "" });
+      await loadBookings();
+    } catch (err) {
+      setFormError(err instanceof Error ? err.message : "Error al crear reserva.");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  async function handleCancel(id: string) {
+    setActionError(null);
+    try {
+      await offlineService.cancelOfflineBooking(token, id);
+      setToast("Reserva cancelada.");
+      await loadBookings();
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : "Error al cancelar.");
+    }
+  }
+
+  const filtered = bookings.filter((b) => filterStatus === "all" || b.status === filterStatus);
+
+  return (
+    <IonPage>
+      <IonHeader>
+        <IonToolbar color="warning">
+          <IonTitle style={{ color: "#000" }}>Viajes Offline</IonTitle>
+          <div slot="end" style={{ paddingRight: "8px", display: "flex", gap: "4px" }}>
+            <IonButton fill="clear" style={{ color: "#000" }} onClick={() => setShowForm((v) => !v)}>
+              {showForm ? "Cerrar" : "+ Nueva"}
+            </IonButton>
+            <IonButton fill="clear" style={{ color: "#000" }} onClick={() => void loadBookings()} disabled={loading}>
+              Actualizar
+            </IonButton>
+          </div>
+        </IonToolbar>
+      </IonHeader>
+
+      <IonContent className="ion-padding">
+        <IonRefresher slot="fixed" onIonRefresh={async (e) => { await loadBookings(); e.detail.complete(); }}>
+          <IonRefresherContent />
+        </IonRefresher>
+
+        {/* Info banner */}
+        <IonCard style={{ margin: "0 0 12px", background: "var(--ion-color-warning-tint)" }}>
+          <IonCardContent style={{ padding: "10px 14px" }}>
+            <IonText>
+              <p style={{ fontSize: "0.82rem", margin: 0, color: "#6b4700" }}>
+                Registra viajes coordinados por teléfono o WhatsApp cuando el pasajero no tiene conectividad.
+                Sincroniza cada reserva con un viaje real cuando la conectividad se restablezca.
+              </p>
+            </IonText>
+          </IonCardContent>
+        </IonCard>
+
+        {/* Create form */}
+        {showForm && (
+          <IonCard style={{ margin: "0 0 12px" }}>
+            <IonCardContent style={{ padding: "12px 14px" }}>
+              <strong style={{ fontSize: "0.95rem", display: "block", marginBottom: 10 }}>Nueva Reserva Offline</strong>
+              <IonItem lines="full">
+                <IonLabel position="stacked">Nombre del pasajero *</IonLabel>
+                <IonInput value={form.passengerName} onIonInput={(e) => setForm((f) => ({ ...f, passengerName: String(e.detail.value ?? "") }))} placeholder="Ej: María González" />
+              </IonItem>
+              <IonItem lines="full">
+                <IonLabel position="stacked">Teléfono *</IonLabel>
+                <IonInput value={form.passengerPhone} onIonInput={(e) => setForm((f) => ({ ...f, passengerPhone: String(e.detail.value ?? "") }))} placeholder="+56 9 xxxx xxxx" inputmode="tel" />
+              </IonItem>
+              <IonItem lines="full">
+                <IonLabel position="stacked">Origen *</IonLabel>
+                <IonInput value={form.originText} onIonInput={(e) => setForm((f) => ({ ...f, originText: String(e.detail.value ?? "") }))} placeholder="Punto de recogida" />
+              </IonItem>
+              <IonItem lines="full">
+                <IonLabel position="stacked">Destino *</IonLabel>
+                <IonInput value={form.destinationText} onIonInput={(e) => setForm((f) => ({ ...f, destinationText: String(e.detail.value ?? "") }))} placeholder="Destino final" />
+              </IonItem>
+              <IonItem lines="none">
+                <IonLabel position="stacked">Notas</IonLabel>
+                <IonInput value={form.notes} onIonInput={(e) => setForm((f) => ({ ...f, notes: String(e.detail.value ?? "") }))} placeholder="Opcional" />
+              </IonItem>
+              {formError && <IonText color="danger"><p style={{ fontSize: "0.8rem", margin: "6px 0 0" }}>{formError}</p></IonText>}
+              <div style={{ display: "flex", gap: "8px", marginTop: "10px" }}>
+                <IonButton expand="block" style={{ flex: 1 }} onClick={() => void handleCreate()} disabled={submitting}>
+                  {submitting ? <IonSpinner name="crescent" /> : "Crear reserva"}
+                </IonButton>
+                <IonButton expand="block" fill="outline" color="medium" style={{ flex: 1 }} onClick={() => { setShowForm(false); setFormError(null); }}>
+                  Cancelar
+                </IonButton>
+              </div>
+            </IonCardContent>
+          </IonCard>
+        )}
+
+        {/* Filter */}
+        <IonCard style={{ margin: "0 0 12px" }}>
+          <IonCardContent style={{ padding: "8px 12px" }}>
+            <IonItem lines="none">
+              <IonLabel>Estado</IonLabel>
+              <IonSelect interface="action-sheet" value={filterStatus} onIonChange={(e) => setFilterStatus(String(e.detail.value ?? "all"))}>
+                <IonSelectOption value="all">Todos</IonSelectOption>
+                <IonSelectOption value="pending_sync">Pendientes</IonSelectOption>
+                <IonSelectOption value="synced">Sincronizados</IonSelectOption>
+                <IonSelectOption value="cancelled">Cancelados</IonSelectOption>
+              </IonSelect>
+            </IonItem>
+          </IonCardContent>
+        </IonCard>
+
+        {actionError && <IonText color="danger"><p style={{ fontSize: "0.82rem" }}>{actionError}</p></IonText>}
+
+        {!loading && !loadError && (
+          <IonText color="medium">
+            <p style={{ fontSize: "0.78rem", margin: "0 0 10px" }}>
+              {filtered.length} reserva{filtered.length !== 1 ? "s" : ""} encontrada{filtered.length !== 1 ? "s" : ""}
+            </p>
+          </IonText>
+        )}
+
+        {loading && <div style={{ display: "flex", justifyContent: "center", paddingTop: "40px" }}><IonSpinner name="crescent" /></div>}
+        {loadError && <IonText color="danger"><p>{loadError}</p></IonText>}
+
+        {filtered.length === 0 && !loading && !loadError && (
+          <IonItem lines="none">
+            <IonLabel color="medium" className="ion-text-center">
+              No hay reservas offline {filterStatus !== "all" ? `con estado "${OFFLINE_STATUS_LABEL[filterStatus] ?? filterStatus}"` : ""}.
+            </IonLabel>
+          </IonItem>
+        )}
+
+        {!loading && filtered.length > 0 && (
+          <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+            {filtered.map((b) => (
+              <IonCard key={b.id} style={{ margin: 0 }}>
+                <IonCardContent style={{ padding: "12px 14px" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 6 }}>
+                    <div>
+                      <strong style={{ fontSize: "1rem" }}>{b.passengerName}</strong>
+                      <IonNote style={{ display: "block", fontSize: "0.8rem" }}>{b.passengerPhone}</IonNote>
+                    </div>
+                    <IonBadge color={OFFLINE_STATUS_COLOR[b.status] ?? "medium"}>
+                      {OFFLINE_STATUS_LABEL[b.status] ?? b.status}
+                    </IonBadge>
+                  </div>
+
+                  <IonNote style={{ display: "block", marginBottom: 2 }}>
+                    <strong>Origen:</strong> {b.originText}
+                  </IonNote>
+                  <IonNote style={{ display: "block", marginBottom: 2 }}>
+                    <strong>Destino:</strong> {b.destinationText}
+                  </IonNote>
+                  {b.notes && <IonNote style={{ display: "block", marginBottom: 2 }}>Notas: {b.notes}</IonNote>}
+                  {b.syncedToRideId && (
+                    <IonChip color="success" style={{ marginTop: 4, height: "20px", fontSize: "0.72rem" }}>
+                      Viaje: {b.syncedToRideId.slice(0, 8)}...
+                    </IonChip>
+                  )}
+                  <IonNote style={{ display: "block", fontSize: "0.73rem", marginTop: 6 }}>
+                    Creado: {fmtDateTime(b.createdAt)}
+                  </IonNote>
+
+                  {b.status === "pending_sync" && (
+                    <div style={{ display: "flex", gap: "8px", marginTop: "10px" }}>
+                      <IonButton
+                        size="small"
+                        fill="outline"
+                        color="danger"
+                        onClick={() => void handleCancel(b.id)}
+                      >
+                        Cancelar
+                      </IonButton>
+                      <IonNote style={{ alignSelf: "center", fontSize: "0.75rem", color: "var(--ion-color-medium)" }}>
+                        Para sincronizar: crea el viaje en "Viajes" y usa el ID generado.
+                      </IonNote>
+                    </div>
+                  )}
+                </IonCardContent>
+              </IonCard>
+            ))}
+          </div>
+        )}
+
+        <IonToast
+          isOpen={toast !== null}
+          message={toast ?? ""}
+          duration={2500}
+          onDidDismiss={() => setToast(null)}
+          color="success"
+        />
       </IonContent>
     </IonPage>
   );
