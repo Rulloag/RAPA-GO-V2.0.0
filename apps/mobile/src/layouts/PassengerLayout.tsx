@@ -18,6 +18,7 @@ const TABS = [
   { path: ROUTES.PASSENGER.GUIDES, label: "Guías", icon: mapOutline },
   { path: ROUTES.PASSENGER.RENTALS, label: "Arriendo", icon: carOutline },
   { path: ROUTES.PASSENGER.WALLET, label: "Billetera", icon: walletOutline },
+  { path: ROUTES.PASSENGER.PROFILE, label: "Perfil", icon: personOutline },
 ];
 
 export function PassengerLayout(): JSX.Element {
