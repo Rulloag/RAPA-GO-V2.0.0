@@ -77,7 +77,7 @@ export function AdminHomePage(): JSX.Element {
           <ActionCard
             icon={compassOutline}
             title="Guías"
-            subtitle={PENDING}
+            subtitle="Gestión de guías locales"
             route={ROUTES.ADMIN.GUIDES}
             color="danger"
           />
@@ -528,11 +528,195 @@ export function AdminDriversPage(): JSX.Element {
 }
 
 export function AdminGuidesPage(): JSX.Element {
-  const m = meta("/admin/guides");
+  const { session } = useAuth();
+  const token = session?.accessToken ?? "";
+
+  const [guides,        setGuides]        = useState<AdminUserData[]>([]);
+  const [loading,       setLoading]       = useState(true);
+  const [filterStatus,  setFilterStatus]  = useState<string>("all");
+  const [filterVerified,setFilterVerified]= useState<string>("all");
+
+  const loadGuides = useCallback(async () => {
+    if (!token) return;
+    setLoading(true);
+    try {
+      const data = await adminService.listUsers(token, { role: "guide" });
+      setGuides(data);
+    } catch (_) {
+      setGuides([]);
+    } finally {
+      setLoading(false);
+    }
+  }, [token]);
+
+  useEffect(() => { void loadGuides(); }, [loadGuides]);
+
+  const filtered = guides.filter((g) => {
+    if (filterStatus !== "all" && g.status !== filterStatus) return false;
+    if (filterVerified === "verified"   && !g.isVerified) return false;
+    if (filterVerified === "unverified" &&  g.isVerified) return false;
+    return true;
+  });
+
+  const totalGuides = guides.length;
+  const verified    = guides.filter((g) => g.isVerified).length;
+  const pending     = guides.filter((g) => g.status === "pending").length;
+  const active      = guides.filter((g) => g.status === "active").length;
+
+  function fmtGuideDate(iso: string | null | undefined): string {
+    if (!iso) return "—";
+    return new Date(iso).toLocaleString("es-CL", { day: "2-digit", month: "2-digit", year: "numeric" });
+  }
+
   return (
     <IonPage>
-      <IonHeader><IonToolbar color="danger"><IonTitle>{m.label}</IonTitle></IonToolbar></IonHeader>
-      <IonContent className="ion-padding"><ModulePlaceholderPage title={m.label} role="admin" plannedFeatures={m.plannedFeatures} /></IonContent>
+      <IonHeader>
+        <IonToolbar color="danger">
+          <IonTitle>Guías</IonTitle>
+          <div slot="end" style={{ paddingRight: "8px" }}>
+            <IonButton fill="clear" color="light" onClick={() => void loadGuides()} disabled={loading}>
+              Actualizar
+            </IonButton>
+          </div>
+        </IonToolbar>
+      </IonHeader>
+      <IonContent>
+        <IonRefresher slot="fixed" onIonRefresh={async (e) => { await loadGuides(); e.detail.complete(); }}>
+          <IonRefresherContent />
+        </IonRefresher>
+
+        <div style={{ padding: "12px 16px 4px" }}>
+          <p style={{ color: "var(--ion-color-medium)", margin: 0, fontSize: "0.9rem" }}>
+            Gestión operacional de guías locales y servicios turísticos.
+          </p>
+        </div>
+
+        {/* Resumen superior */}
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, padding: "8px 16px" }}>
+          {([
+            { label: "Total",      value: totalGuides, color: "primary"  },
+            { label: "Verificados",value: verified,    color: "success"  },
+            { label: "Pendientes", value: pending,     color: "warning"  },
+            { label: "Activos",    value: active,      color: "tertiary" },
+          ] as { label: string; value: number; color: string }[]).map((stat) => (
+            <IonCard key={stat.label} style={{ margin: 0, textAlign: "center" }}>
+              <IonCardContent style={{ padding: "8px" }}>
+                <div style={{ fontSize: "1.5rem", fontWeight: "bold", color: `var(--ion-color-${stat.color})` }}>{stat.value}</div>
+                <div style={{ fontSize: "0.75rem", color: "var(--ion-color-medium)" }}>{stat.label}</div>
+              </IonCardContent>
+            </IonCard>
+          ))}
+        </div>
+
+        {/* Filtros */}
+        <IonCard style={{ margin: "0 16px 8px" }}>
+          <IonCardContent style={{ padding: "8px 12px" }}>
+            <div style={{ display: "flex", gap: "8px" }}>
+              <IonItem lines="none" style={{ flex: 1 }}>
+                <IonLabel position="stacked" style={{ fontSize: "0.78rem" }}>Estado</IonLabel>
+                <IonSelect
+                  interface="action-sheet"
+                  value={filterStatus}
+                  onIonChange={(e) => setFilterStatus(String(e.detail.value ?? "all"))}
+                >
+                  <IonSelectOption value="all">Todos</IonSelectOption>
+                  <IonSelectOption value="active">Activos</IonSelectOption>
+                  <IonSelectOption value="pending">Pendientes</IonSelectOption>
+                  <IonSelectOption value="suspended">Suspendidos</IonSelectOption>
+                </IonSelect>
+              </IonItem>
+              <IonItem lines="none" style={{ flex: 1 }}>
+                <IonLabel position="stacked" style={{ fontSize: "0.78rem" }}>Verificación</IonLabel>
+                <IonSelect
+                  interface="action-sheet"
+                  value={filterVerified}
+                  onIonChange={(e) => setFilterVerified(String(e.detail.value ?? "all"))}
+                >
+                  <IonSelectOption value="all">Todos</IonSelectOption>
+                  <IonSelectOption value="verified">Verificados</IonSelectOption>
+                  <IonSelectOption value="unverified">No verificados</IonSelectOption>
+                </IonSelect>
+              </IonItem>
+            </div>
+          </IonCardContent>
+        </IonCard>
+
+        {!loading && (
+          <IonText color="medium">
+            <p style={{ fontSize: "0.78rem", margin: "0 16px 8px" }}>
+              {filtered.length} guía{filtered.length !== 1 ? "s" : ""} encontrado{filtered.length !== 1 ? "s" : ""}
+            </p>
+          </IonText>
+        )}
+
+        {/* Lista de guías */}
+        {loading ? (
+          <div style={{ display: "flex", justifyContent: "center", paddingTop: "40px" }}>
+            <IonSpinner name="crescent" />
+          </div>
+        ) : filtered.length > 0 ? (
+          <div style={{ display: "flex", flexDirection: "column", gap: "10px", padding: "0 16px" }}>
+            {filtered.map((guide) => (
+              <IonCard key={guide.id} style={{ margin: 0 }}>
+                <IonCardContent style={{ padding: "12px 14px" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 6 }}>
+                    <strong style={{ fontSize: "0.95rem" }}>{guide.name}</strong>
+                    <div style={{ display: "flex", gap: 4, flexWrap: "wrap", justifyContent: "flex-end" }}>
+                      <IonBadge color={guide.status === "active" ? "success" : guide.status === "pending" ? "warning" : "danger"} style={{ fontSize: "0.68rem" }}>
+                        {guide.status === "active" ? "Activo" : guide.status === "pending" ? "Pendiente" : "Suspendido"}
+                      </IonBadge>
+                      {guide.isVerified && <IonBadge color="primary" style={{ fontSize: "0.68rem" }}>Verificado</IonBadge>}
+                    </div>
+                  </div>
+                  <IonNote style={{ display: "block", marginBottom: 4, fontSize: "0.8rem" }}>{guide.email}</IonNote>
+                  <IonNote style={{ display: "block", marginBottom: 4, fontSize: "0.78rem" }}>
+                    Especialidad: <em>por definir</em>
+                  </IonNote>
+                  <IonNote style={{ display: "block", fontSize: "0.78rem" }}>
+                    Idiomas: <em>por registrar</em>
+                  </IonNote>
+                  <IonNote style={{ display: "block", fontSize: "0.72rem", marginTop: 6 }}>
+                    Registrado: {fmtGuideDate(guide.createdAt)}
+                  </IonNote>
+                </IonCardContent>
+              </IonCard>
+            ))}
+          </div>
+        ) : (
+          <div style={{ padding: "32px 24px", textAlign: "center" }}>
+            <p style={{ color: "var(--ion-color-medium)", fontSize: "1rem", fontWeight: 500 }}>
+              Aún no hay guías registrados.
+            </p>
+            <p style={{ color: "var(--ion-color-medium)", fontSize: "0.85rem" }}>
+              Este módulo permitirá administrar guías locales, especialidades, idiomas y disponibilidad para servicios turísticos.
+            </p>
+          </div>
+        )}
+
+        {/* Próximas fases */}
+        <IonCard style={{ margin: "16px" }}>
+          <IonCardContent>
+            <strong style={{ display: "block", marginBottom: 8 }}>Próximas fases del módulo</strong>
+            {[
+              "Perfiles de guía con especialidades",
+              "Idiomas y certificaciones",
+              "Zonas y rutas turísticas",
+              "Disponibilidad operacional",
+              "Asignación a servicios y tours",
+            ].map((item) => (
+              <IonNote key={item} style={{ display: "block", padding: "3px 0", fontSize: "0.85rem" }}>
+                · {item}
+              </IonNote>
+            ))}
+          </IonCardContent>
+        </IonCard>
+
+        <IonItem lines="none">
+          <IonLabel color="medium" style={{ fontSize: "0.8rem", whiteSpace: "normal" }}>
+            La asignación de guías a servicios se realizará desde el módulo Servicios Turísticos.
+          </IonLabel>
+        </IonItem>
+      </IonContent>
     </IonPage>
   );
 }
