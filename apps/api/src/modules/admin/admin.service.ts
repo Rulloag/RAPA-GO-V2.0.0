@@ -4,8 +4,10 @@ import { UsersRepository } from "../users/users.repository.js";
 import { AdminRepository } from "./admin.repository.js";
 import { AuditService } from "../audit/audit.service.js";
 import { DriverStatusRepository } from "../drivers/driverStatus.repository.js";
+import { OfflineRepository } from "../offline/offline.repository.js";
+import { RidesRepository } from "../rides/rides.repository.js";
 import { AppError } from "../../shared/errors/AppError.js";
-import type { ListUsersQuery, UpdateUserStatusInput, ListDocumentsQuery, ReviewDocumentInput, AdminListRidesQuery, AdminAssignDriverInput, AdminCancelRideInput } from "./admin.schemas.js";
+import type { ListUsersQuery, UpdateUserStatusInput, ListDocumentsQuery, ReviewDocumentInput, AdminListRidesQuery, AdminAssignDriverInput, AdminCancelRideInput, AdminSyncToRideInput } from "./admin.schemas.js";
 import type { AdminUsersListResult, AdminUserResult, AdminUserResponse, AdminDocumentResponse, AdminDocumentsListResult, AdminDocumentResult, AdminRidesListResult, AdminRideResult, AdminRideResponse, ActiveDriversListResult, ActiveDriverResponse } from "./admin.types.js";
 import type { AdminDocumentRow, AdminRideRow } from "./admin.repository.js";
 import type { User } from "../users/users.types.js";
@@ -16,6 +18,8 @@ const usersRepo        = new UsersRepository();
 const adminRepo        = new AdminRepository();
 const auditService     = new AuditService();
 const driverStatusRepo = new DriverStatusRepository();
+const offlineRepo      = new OfflineRepository();
+const ridesRepo        = new RidesRepository();
 
 function toRideResponse(r: AdminRideRow): AdminRideResponse {
   return {
@@ -359,6 +363,68 @@ export class AdminService {
 
     const ride = await adminRepo.findRideById(rideId);
     if (!ride) return { ok: false, code: "NOT_FOUND", message: "Ride not found after update.", statusCode: 404 };
+    return { ok: true, ride: toRideResponse(ride) };
+  }
+
+  async syncToRide(
+    accessToken: string,
+    offlineBookingId: string,
+    input: AdminSyncToRideInput,
+  ): Promise<AdminRideResult> {
+    const auth = await authenticate(accessToken);
+    if (!auth.ok) return auth;
+    if (auth.role !== "admin") {
+      return { ok: false, code: "AUTH_FORBIDDEN", message: "Admin access required.", statusCode: 403 };
+    }
+
+    const booking = await offlineRepo.findOfflineBookingById(offlineBookingId);
+    if (!booking) {
+      return { ok: false, code: "NOT_FOUND", message: "Offline booking not found.", statusCode: 404 };
+    }
+    if (booking.status !== "pending_sync") {
+      return { ok: false, code: "BOOKING_NOT_PENDING", message: `Booking is already ${booking.status}.`, statusCode: 409 };
+    }
+
+    const placeholderPassengerId = auth.userId;
+    const newRide = await ridesRepo.createOfflineRide({
+      passengerUserId:       placeholderPassengerId,
+      originText:            booking.originText,
+      destinationText:       booking.destinationText,
+      notes:                 input.notes ?? booking.notes ?? null,
+      estimatedFareClp:      0,
+      offlinePassengerName:  booking.passengerName,
+      offlinePassengerPhone: booking.passengerPhone,
+      offlinePassengerEmail: (booking as any).passengerEmail ?? null,
+    });
+
+    await offlineRepo.syncOfflineBooking(offlineBookingId, newRide.id);
+
+    if (input.driverUserId) {
+      const driver = await adminRepo.findById(input.driverUserId);
+      if (!driver || driver.role !== "driver" || driver.status !== "active") {
+        const ride = await adminRepo.findRideById(newRide.id);
+        if (!ride) return { ok: false, code: "NOT_FOUND", message: "Ride not found.", statusCode: 404 };
+        return { ok: true, ride: toRideResponse(ride) };
+      }
+
+      const driverStatus = await driverStatusRepo.findByDriverId(input.driverUserId);
+      if (driverStatus?.availability === "available") {
+        await adminRepo.assignDriver(newRide.id, input.driverUserId);
+        await driverStatusRepo.setBusy(input.driverUserId, newRide.id);
+        auditService.recordSafe({
+          eventType: "admin.ride_driver_assigned",
+          metadata:  { adminUserId: auth.userId, rideId: newRide.id, driverUserId: input.driverUserId, previousStatus: "requested", newStatus: "accepted" },
+        });
+      }
+    }
+
+    auditService.recordSafe({
+      eventType: "admin.offline_booking_synced",
+      metadata:  { adminUserId: auth.userId, offlineBookingId, rideId: newRide.id },
+    });
+
+    const ride = await adminRepo.findRideById(newRide.id);
+    if (!ride) return { ok: false, code: "NOT_FOUND", message: "Ride not found after sync.", statusCode: 404 };
     return { ok: true, ride: toRideResponse(ride) };
   }
 }

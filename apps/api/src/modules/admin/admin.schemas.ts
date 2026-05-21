@@ -59,10 +59,19 @@ export type AdminListRidesQuery = z.infer<typeof adminListRidesQuerySchema>;
 
 // POST /admin/rides/:id/assign body
 export const adminAssignDriverSchema = z.object({
-  driverUserId: z.string().uuid({ message: "driverUserId must be a valid UUID." }),
+  driverUserId:     z.string().uuid({ message: "driverUserId must be a valid UUID." }),
+  offlineBookingId: z.string().uuid().optional(),
 });
 
 export type AdminAssignDriverInput = z.infer<typeof adminAssignDriverSchema>;
+
+// POST /admin/offline-bookings/:id/sync-to-ride body
+export const adminSyncToRideSchema = z.object({
+  driverUserId: z.string().uuid({ message: "driverUserId must be a valid UUID." }).optional(),
+  notes:        z.string().trim().max(500).optional(),
+});
+
+export type AdminSyncToRideInput = z.infer<typeof adminSyncToRideSchema>;
 
 // POST /admin/rides/:id/cancel body
 export const adminCancelRideSchema = z.object({

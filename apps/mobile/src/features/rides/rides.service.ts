@@ -25,8 +25,9 @@ export interface RideRequestData {
   cancelledByRole:    string | null;
   createdAt:          string;
   updatedAt:          string;
-  driverRatingAverage: number | null;
-  driverRatingCount:   number;
+  driverRatingAverage:  number | null;
+  driverRatingCount:    number;
+  isOfflineBooking?:    boolean;
 }
 
 /** Subset returned to drivers for their own rides. */

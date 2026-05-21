@@ -175,4 +175,23 @@ export const adminService = {
     if (!result.ok) throw new Error(result.message ?? "Failed to cancel ride.");
     return (result.data as Envelope).data;
   },
+
+  async syncOfflineBookingToRide(
+    accessToken: string,
+    offlineBookingId: string,
+    driverUserId?: string,
+    notes?: string,
+  ): Promise<AdminRideData> {
+    type Envelope = { ok: true; data: AdminRideData; statusCode: number };
+    const body: Record<string, string> = {};
+    if (driverUserId) body["driverUserId"] = driverUserId;
+    if (notes)        body["notes"]        = notes;
+    const result = await apiClient.post<Envelope>(
+      `/admin/offline-bookings/${offlineBookingId}/sync-to-ride`,
+      body,
+      { token: accessToken },
+    );
+    if (!result.ok) throw new Error((result as any).message ?? "Failed to sync booking.");
+    return (result.data as Envelope).data;
+  },
 };

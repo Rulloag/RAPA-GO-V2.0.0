@@ -502,6 +502,9 @@ function TripsPage(): JSX.Element {
                           {ride.originText} → {ride.destinationText}
                         </div>
                         <IonBadge color={color} style={{ fontSize: "0.7rem" }}>{label}</IonBadge>
+                        {ride.isOfflineBooking && (
+                          <IonBadge color="warning" style={{ fontSize: "0.7rem", marginLeft: "6px" }}>Reserva telefónica</IonBadge>
+                        )}
                         {ride.estimatedFareClp != null && (
                           <div style={{ marginTop: "4px", fontSize: "0.78rem", color: "var(--ion-color-dark)", fontWeight: 500 }}>
                             Tarifa est.: ${ride.estimatedFareClp.toLocaleString("es-CL")} CLP

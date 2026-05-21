@@ -25,3 +25,14 @@ export const connectivityCheckSchema = z.object({
   locationZone:    z.string().trim().max(50).optional(),
 });
 export type ConnectivityCheckInput = z.infer<typeof connectivityCheckSchema>;
+
+export const confirmSyncItemSchema = z.object({
+  success:    z.boolean(),
+  syncError:  z.string().trim().max(500).optional(),
+});
+export type ConfirmSyncItemInput = z.infer<typeof confirmSyncItemSchema>;
+
+export const createOfflineBookingWithEmailSchema = createOfflineBookingSchema.extend({
+  passengerEmail: z.string().email().optional(),
+});
+export type CreateOfflineBookingWithEmailInput = z.infer<typeof createOfflineBookingWithEmailSchema>;

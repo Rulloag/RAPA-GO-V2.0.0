@@ -3,7 +3,7 @@ import { SessionService } from "../auth/session.service.js";
 import { UsersRepository } from "../users/users.repository.js";
 import { OfflineRepository } from "./offline.repository.js";
 import { AppError } from "../../shared/errors/AppError.js";
-import type { CreateOfflineBookingInput, SyncOfflineBookingInput, ListOfflineBookingsQuery, ConnectivityCheckInput } from "./offline.schemas.js";
+import type { CreateOfflineBookingInput, SyncOfflineBookingInput, ListOfflineBookingsQuery, ConnectivityCheckInput, ConfirmSyncItemInput } from "./offline.schemas.js";
 import type { OfflineBooking, SyncQueueItem, ConnectivityLog } from "../../db/schema/index.js";
 
 const tokenService   = new TokenService();
@@ -142,11 +142,11 @@ export class OfflineService {
     return { ok: true, items };
   }
 
-  async confirmSyncItem(accessToken: string, id: string): Promise<{ ok: true; item: SyncQueueItem } | { ok: false; code: string; message: string; statusCode: number }> {
+  async confirmSyncItem(accessToken: string, id: string, input: ConfirmSyncItemInput): Promise<{ ok: true; item: SyncQueueItem } | { ok: false; code: string; message: string; statusCode: number }> {
     const auth = await authenticate(accessToken);
     if (!auth.ok) return auth;
 
-    const item = await offlineRepo.confirmSyncItem(id, auth.userId);
+    const item = await offlineRepo.confirmSyncItem(id, auth.userId, input.success, input.syncError);
     if (!item) {
       return { ok: false, code: "NOT_FOUND", message: "Sync item not found.", statusCode: 404 };
     }

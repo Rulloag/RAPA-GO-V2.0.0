@@ -24,9 +24,10 @@ export const offlineBookings = pgTable("offline_bookings", {
   destinationText:  text("destination_text").notNull(),
   assignedDriverId: uuid("assigned_driver_id").references(() => users.id, { onDelete: "set null" }),
   status:           text("status").notNull().default("pending_sync"),
-  notes:            text("notes"),
-  createdAt:        timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-  syncedToRideId:   uuid("synced_to_ride_id").references(() => rideRequests.id, { onDelete: "set null" }),
+  notes:              text("notes"),
+  passengerEmail:     text("passenger_email"),
+  createdAt:          timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  syncedToRideId:     uuid("synced_to_ride_id").references(() => rideRequests.id, { onDelete: "set null" }),
 });
 
 export const connectivityLogs = pgTable("connectivity_logs", {

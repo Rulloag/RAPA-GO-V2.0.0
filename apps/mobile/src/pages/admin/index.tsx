@@ -1384,6 +1384,22 @@ export function AdminOfflineBookingsPage(): JSX.Element {
     }
   }
 
+  const [syncingId, setSyncingId] = useState<string | null>(null);
+
+  async function handleSync(bookingId: string) {
+    setSyncingId(bookingId);
+    setActionError(null);
+    try {
+      const ride = await adminService.syncOfflineBookingToRide(token, bookingId);
+      setToast(`Viaje creado: #${ride.id.slice(0, 8)}`);
+      await loadBookings();
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : "Error al sincronizar.");
+    } finally {
+      setSyncingId(null);
+    }
+  }
+
   const filtered = bookings.filter((b) => filterStatus === "all" || b.status === filterStatus);
 
   return (
@@ -1525,18 +1541,24 @@ export function AdminOfflineBookingsPage(): JSX.Element {
                   </IonNote>
 
                   {b.status === "pending_sync" && (
-                    <div style={{ display: "flex", gap: "8px", marginTop: "10px" }}>
+                    <div style={{ display: "flex", gap: "8px", marginTop: "10px", flexWrap: "wrap" }}>
+                      <IonButton
+                        size="small"
+                        color="success"
+                        onClick={() => void handleSync(b.id)}
+                        disabled={syncingId === b.id}
+                      >
+                        {syncingId === b.id ? <IonSpinner name="dots" /> : "Sincronizar a viaje"}
+                      </IonButton>
                       <IonButton
                         size="small"
                         fill="outline"
                         color="danger"
                         onClick={() => void handleCancel(b.id)}
+                        disabled={syncingId === b.id}
                       >
                         Cancelar
                       </IonButton>
-                      <IonNote style={{ alignSelf: "center", fontSize: "0.75rem", color: "var(--ion-color-medium)" }}>
-                        Para sincronizar: crea el viaje en "Viajes" y usa el ID generado.
-                      </IonNote>
                     </div>
                   )}
                 </IonCardContent>

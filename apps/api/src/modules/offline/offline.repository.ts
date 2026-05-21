@@ -1,4 +1,4 @@
-import { desc, eq, and, isNull } from "drizzle-orm";
+import { asc, desc, eq, and, isNull, sql } from "drizzle-orm";
 import { db } from "../../db/client.js";
 import { offlineBookings, syncQueue, connectivityLogs } from "../../db/schema/index.js";
 import { AppError } from "../../shared/errors/AppError.js";
@@ -79,22 +79,35 @@ export class OfflineRepository {
         .select()
         .from(syncQueue)
         .where(and(eq(syncQueue.userId, userId), isNull(syncQueue.syncedAt)))
-        .orderBy(desc(syncQueue.createdAt));
+        .orderBy(asc(syncQueue.createdAt));
     } catch (err) {
       throw AppError.internal(`Failed to get sync queue: ${String(err)}`);
     }
   }
 
-  async confirmSyncItem(id: string, userId: string): Promise<SyncQueueItem | null> {
+  async confirmSyncItem(id: string, userId: string, success: boolean, error?: string): Promise<SyncQueueItem | null> {
     try {
       const rows = await db
         .update(syncQueue)
-        .set({ syncedAt: new Date() })
+        .set(
+          success
+            ? { syncedAt: new Date(), syncError: null }
+            : { retryCount: sql`${syncQueue.retryCount} + 1`, syncError: error ?? "Unknown error" },
+        )
         .where(and(eq(syncQueue.id, id), eq(syncQueue.userId, userId)))
         .returning();
       return rows[0] ?? null;
     } catch (err) {
       throw AppError.internal(`Failed to confirm sync item: ${String(err)}`);
+    }
+  }
+
+  async addToSyncQueue(userId: string, entityType: string, entityId: string | null, action: string, payload: object): Promise<SyncQueueItem> {
+    try {
+      const rows = await db.insert(syncQueue).values({ userId, entityType, entityId, action, payload }).returning();
+      return rows[0]!;
+    } catch (err) {
+      throw AppError.internal(`Failed to add to sync queue: ${String(err)}`);
     }
   }
 }

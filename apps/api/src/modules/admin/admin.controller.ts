@@ -1,6 +1,6 @@
 import type { FastifyRequest, FastifyReply } from "fastify";
 import { AdminService } from "./admin.service.js";
-import { listUsersQuerySchema, updateUserStatusSchema, listDocumentsQuerySchema, reviewDocumentSchema, adminListRidesQuerySchema, adminAssignDriverSchema, adminCancelRideSchema } from "./admin.schemas.js";
+import { listUsersQuerySchema, updateUserStatusSchema, listDocumentsQuerySchema, reviewDocumentSchema, adminListRidesQuerySchema, adminAssignDriverSchema, adminCancelRideSchema, adminSyncToRideSchema } from "./admin.schemas.js";
 import { sendOk, sendError } from "../../shared/http/apiResponse.js";
 
 const adminService = new AdminService();
@@ -111,5 +111,19 @@ export const adminController = {
     const result = await adminService.adminCancelRide(token, req.params.id, parsed.data);
     if (!result.ok) return sendError(reply, { statusCode: result.statusCode, code: result.code, message: result.message });
     return sendOk(reply, result.ride);
+  },
+
+  async syncToRide(req: FastifyRequest<{ Params: { id: string } }>, reply: FastifyReply) {
+    const token = req.headers.authorization?.replace("Bearer ", "");
+    if (!token) return sendError(reply, { statusCode: 401, code: "UNAUTHORIZED", message: "Missing access token." });
+
+    const parsed = adminSyncToRideSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return sendError(reply, { statusCode: 400, code: "VALIDATION_ERROR", message: parsed.error.errors[0]?.message ?? "Invalid body." });
+    }
+
+    const result = await adminService.syncToRide(token, req.params.id, parsed.data);
+    if (!result.ok) return sendError(reply, { statusCode: result.statusCode, code: result.code, message: result.message });
+    return sendOk(reply, result.ride, 201);
   },
 };

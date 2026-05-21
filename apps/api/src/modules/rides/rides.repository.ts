@@ -300,6 +300,41 @@ export class RidesRepository {
     }
   }
 
+  async createOfflineRide(data: {
+    passengerUserId:      string;
+    originText:           string;
+    destinationText:      string;
+    notes:                string | null;
+    estimatedFareClp:     number;
+    offlinePassengerName: string;
+    offlinePassengerPhone: string;
+    offlinePassengerEmail?: string | null;
+  }): Promise<RideRequest> {
+    try {
+      const rows = await db
+        .insert(rideRequests)
+        .values({
+          passengerUserId:      data.passengerUserId,
+          originText:           data.originText,
+          destinationText:      data.destinationText,
+          notes:                data.notes,
+          estimatedFareClp:     data.estimatedFareClp,
+          status:               "requested",
+          isOfflineBooking:     true,
+          offlinePassengerName:  data.offlinePassengerName,
+          offlinePassengerPhone: data.offlinePassengerPhone,
+          offlinePassengerEmail: data.offlinePassengerEmail ?? null,
+        })
+        .returning();
+      const row = rows[0];
+      if (!row) throw AppError.internal("Insert returned no rows.");
+      return row;
+    } catch (err) {
+      if (err instanceof AppError) throw err;
+      throw AppError.internal(`Failed to create offline ride request: ${String(err)}`);
+    }
+  }
+
   async cancel(id: string): Promise<RideRequest> {
     try {
       const rows = await db

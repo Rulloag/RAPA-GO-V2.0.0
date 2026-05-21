@@ -1,4 +1,4 @@
-import { pgTable, uuid, varchar, text, timestamp, integer } from "drizzle-orm/pg-core";
+import { pgTable, uuid, varchar, text, timestamp, integer, boolean } from "drizzle-orm/pg-core";
 import { users } from "./users.schema.js";
 
 export const rideRequests = pgTable("ride_requests", {
@@ -21,7 +21,11 @@ export const rideRequests = pgTable("ride_requests", {
   cancelledByUserId:    uuid("cancelled_by_user_id").references(() => users.id, { onDelete: "set null" }),
   cancelledByRole:      varchar("cancelled_by_role", { length: 30 }),
   createdAt:            timestamp("created_at",    { withTimezone: true }).notNull().defaultNow(),
-  updatedAt:         timestamp("updated_at",    { withTimezone: true }).notNull().defaultNow(),
+  updatedAt:            timestamp("updated_at",    { withTimezone: true }).notNull().defaultNow(),
+  isOfflineBooking:     boolean("is_offline_booking").notNull().default(false),
+  offlinePassengerName: varchar("offline_passenger_name", { length: 120 }),
+  offlinePassengerPhone: varchar("offline_passenger_phone", { length: 30 }),
+  offlinePassengerEmail: varchar("offline_passenger_email", { length: 200 }),
 });
 
 export type RideRequest    = typeof rideRequests.$inferSelect;
