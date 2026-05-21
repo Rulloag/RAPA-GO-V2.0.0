@@ -91,3 +91,4 @@ export const RIDE_STATUS_COLOR: Record<RideStatus, string> = {
 export * from "./rapaNuiPlaces.js";
 export * from "./rapaNuiZones.js";
 export * from "./contact.js";
+export * from "./rapaNuiDistances.js";

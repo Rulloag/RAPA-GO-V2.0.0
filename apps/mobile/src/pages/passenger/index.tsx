@@ -36,7 +36,7 @@ import { ROUTE_METADATA } from "../../navigation/routeConfig";
 import { ROUTES } from "../../navigation/routes";
 import { useAuth } from "../../features/auth";
 import { ridesService, type RideRequestData } from "../../features/rides/rides.service";
-import { MapPlaceholder } from "../../components/MapPlaceholder";
+import { MapFallback } from "../../components/MapFallback";
 import { DriverSummaryCard } from "../../components/DriverSummaryCard";
 import { RAPA_NUI_PLACES, RAPAGO_CONTACT, WA_MESSAGES } from "@rapa-go/shared";
 import { WhatsAppButton } from "../../components/WhatsAppButton";
@@ -241,22 +241,9 @@ function RequestRidePage(): JSX.Element {
         </IonToolbar>
       </IonHeader>
       <IonContent className="ion-padding">
-        <div style={{
-          background:   "var(--ion-color-warning-tint)",
-          border:       "1px solid var(--ion-color-warning)",
-          borderRadius: "8px",
-          padding:      "10px 14px",
-          marginBottom: "16px",
-          fontSize:     "0.82rem",
-          color:        "var(--ion-color-warning-shade)",
-        }}>
-          <strong>Ubicación en mapa se implementará en fase futura.</strong><br />
-          La tarifa estimada se mostrará al solicitar. Tarifa referencial — el cálculo real con distancia se implementará en fase futura.
-        </div>
-
-        <MapPlaceholder
-          {...(originInput.trim() ? { originText: originInput.trim() } : {})}
-          {...(destInput.trim() ? { destinationText: destInput.trim() } : {})}
+        <MapFallback
+          origin={{ ...(selectedOriginId ? { id: selectedOriginId } : {}), text: originInput.trim() || "Origen" }}
+          destination={{ ...(selectedDestId ? { id: selectedDestId } : {}), text: destInput.trim() || "Destino" }}
           height={180}
         />
 
@@ -486,9 +473,9 @@ function TripsPage(): JSX.Element {
               return (
                 <IonCard key={ride.id} style={{ margin: 0 }}>
                   <IonCardContent style={{ padding: "14px 16px" }}>
-                    <MapPlaceholder
-                      originText={ride.originText}
-                      destinationText={ride.destinationText}
+                    <MapFallback
+                      origin={{ text: ride.originText }}
+                      destination={{ text: ride.destinationText }}
                       height={130}
                     />
                     {ride.driverName && ["accepted", "driver_en_route", "driver_arrived", "in_progress", "completed"].includes(ride.status) && (

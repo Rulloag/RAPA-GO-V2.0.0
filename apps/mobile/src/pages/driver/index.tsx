@@ -37,7 +37,7 @@ import { ROUTE_METADATA } from "../../navigation/routeConfig";
 import { ROUTES } from "../../navigation/routes";
 import { useAuth } from "../../features/auth";
 import { ridesService } from "../../features/rides/rides.service";
-import { MapPlaceholder } from "../../components/MapPlaceholder";
+import { MapFallback } from "../../components/MapFallback";
 import { driverStatusService } from "../../features/drivers/driverStatus.service";
 import { RAPA_NUI_ZONES, getZoneLabel, RAPAGO_CONTACT, WA_MESSAGES } from "@rapa-go/shared";
 import { WhatsAppButton } from "../../components/WhatsAppButton";
@@ -294,9 +294,9 @@ function AssignedRidesPage(): JSX.Element {
             {rides.map((ride) => (
               <IonCard key={ride.id} style={{ margin: 0 }}>
                 <IonCardContent style={{ padding: "14px 16px" }}>
-                  <MapPlaceholder
-                    originText={ride.originText}
-                    destinationText={ride.destinationText}
+                  <MapFallback
+                    origin={{ text: ride.originText }}
+                    destination={{ text: ride.destinationText }}
                     height={130}
                   />
                   <div style={{ marginTop: "10px" }}>
@@ -519,9 +519,9 @@ function DriverMyRidesPage(): JSX.Element {
               return (
                 <IonCard key={ride.id} style={{ margin: 0 }}>
                   <IonCardContent style={{ padding: "14px 16px" }}>
-                    <MapPlaceholder
-                      originText={ride.originText}
-                      destinationText={ride.destinationText}
+                    <MapFallback
+                      origin={{ text: ride.originText }}
+                      destination={{ text: ride.destinationText }}
                       height={130}
                     />
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "8px", marginTop: "10px" }}>

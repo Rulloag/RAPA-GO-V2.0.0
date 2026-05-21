@@ -44,6 +44,7 @@ import { adminService, type AdminUserData, type AdminDocumentData, type AdminRid
 import { offlineService, type OfflineBooking } from "../../features/offline/offline.service";
 import { inferZoneFromText, getZoneLabel, RAPA_NUI_ZONES, type RapaNuiZoneId, RAPAGO_CONTACT, WA_MESSAGES } from "@rapa-go/shared";
 import { WhatsAppButton } from "../../components/WhatsAppButton";
+import { MapFallback } from "../../components/MapFallback";
 
 function meta(path: string) {
   return ROUTE_METADATA.find((r) => r.path === path)!;
@@ -1117,9 +1118,15 @@ export function AdminTripsPage(): JSX.Element {
               return (
                 <IonCard key={ride.id} style={{ margin: 0 }}>
                   <IonCardContent style={{ padding: "12px 14px" }}>
+                    <MapFallback
+                      origin={{ text: ride.originText }}
+                      destination={{ text: ride.destinationText }}
+                      height={110}
+                      showRoute={false}
+                    />
 
                     {/* Header */}
-                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "8px", marginBottom: "8px" }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "8px", marginBottom: "8px", marginTop: "8px" }}>
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <div style={{ fontWeight: 600, fontSize: "0.88rem", marginBottom: "2px" }}>
                           {ride.originText} → {ride.destinationText}
