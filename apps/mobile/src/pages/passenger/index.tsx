@@ -86,12 +86,54 @@ const RIDE_STATUS_COLOR: Record<string, string> = {
 };
 
 export function PassengerHomePage(): JSX.Element {
-  const isOnline = useConnectivity();
+  const isOnline  = useConnectivity();
+  const { session } = useAuth();
+  const [profile, setProfile] = useState<PassengerProfileData | null>(null);
+
+  useEffect(() => {
+    if (!session?.accessToken) return;
+    void passengerProfileService.getMyProfile(session.accessToken)
+      .then(setProfile)
+      .catch(() => {/* silently ignore */});
+  }, [session?.accessToken]);
+
+  const name     = session?.user?.name ?? "";
+  const initials = name.trim().split(/\s+/).map((p: string) => p[0] ?? "").slice(0, 2).join("").toUpperCase() || "P";
+  const hasPhone = !!profile?.phone;
 
   return (
     <IonPage>
       <HomeHeader title="Inicio" />
       <IonContent className="ion-padding">
+        {/* Avatar + greeting */}
+        <div style={{ display: "flex", alignItems: "center", gap: "12px", marginBottom: "12px" }}>
+          <div style={{
+            width: "44px", height: "44px", borderRadius: "50%",
+            background: "var(--ion-color-primary)",
+            display: "flex", alignItems: "center", justifyContent: "center",
+            color: "#fff", fontWeight: 700, fontSize: "1rem", flexShrink: 0, overflow: "hidden",
+          }}>
+            {initials}
+          </div>
+          <div>
+            <div style={{ fontWeight: 600, fontSize: "0.95rem" }}>Hola, {name.split(" ")[0] || "pasajero"}</div>
+            <div style={{ fontSize: "0.75rem", color: "var(--ion-color-medium)" }}>Bienvenido a Rapa Go</div>
+          </div>
+        </div>
+
+        {/* Phone warning */}
+        {profile !== null && !hasPhone && (
+          <IonCard style={{ margin: "0 0 12px", background: "#fff3cd", border: "1px solid #ffc107" }}>
+            <IonCardContent style={{ padding: "8px 14px" }}>
+              <IonText>
+                <p style={{ margin: 0, fontSize: "0.82rem", color: "#6b4700" }}>
+                  ⚠️ Complete su teléfono en el perfil para solicitar viajes.
+                </p>
+              </IonText>
+            </IonCardContent>
+          </IonCard>
+        )}
+
         {!isOnline && (
           <IonCard style={{ margin: "0 0 12px", background: "#fff3cd", border: "1px solid #ffc107" }}>
             <IonCardContent style={{ padding: "8px 14px" }}>
@@ -567,11 +609,19 @@ function TripsPage(): JSX.Element {
                           />
                         )}
                         {ride.driverName && ["accepted", "driver_en_route", "driver_arrived", "in_progress"].includes(ride.status) && (
-                          <WhatsAppButton
-                            phone={RAPAGO_CONTACT.adminPhone}
-                            message={WA_MESSAGES.passengerToAdmin({ origin: ride.originText, destination: ride.destinationText, name: "pasajero" })}
-                            label="Operador"
-                          />
+                          ride.driverPhone ? (
+                            <WhatsAppButton
+                              phone={ride.driverPhone}
+                              message={WA_MESSAGES.passengerToDriver({ driverName: ride.driverName, passengerName: "pasajero", origin: ride.originText })}
+                              label="Conductor"
+                            />
+                          ) : (
+                            <WhatsAppButton
+                              phone={RAPAGO_CONTACT.adminPhone}
+                              message={WA_MESSAGES.passengerToAdmin({ origin: ride.originText, destination: ride.destinationText, name: "pasajero" })}
+                              label="Operador"
+                            />
+                          )
                         )}
                       </div>
                     </div>

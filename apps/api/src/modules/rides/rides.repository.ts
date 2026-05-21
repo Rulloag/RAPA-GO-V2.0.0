@@ -1,12 +1,13 @@
 import { and, avg, count, desc, eq, inArray } from "drizzle-orm";
 import { db } from "../../db/client.js";
-import { rideRequests, users, rideRatings } from "../../db/schema/index.js";
+import { rideRequests, users, rideRatings, driverProfiles } from "../../db/schema/index.js";
 import { alias } from "drizzle-orm/pg-core";
 import { AppError } from "../../shared/errors/AppError.js";
 import type { RideRequest } from "../../db/schema/index.js";
 
 export interface RideWithDriverName extends RideRequest {
   driverName:          string | null;
+  driverPhone:         string | null;
   driverRatingAverage: number | null;
   driverRatingCount:   number;
 }
@@ -49,10 +50,13 @@ export class RidesRepository {
           cancelledByRole:    rideRequests.cancelledByRole,
           createdAt:          rideRequests.createdAt,
           updatedAt:          rideRequests.updatedAt,
+          isOfflineBooking:   rideRequests.isOfflineBooking,
           driverName:         driver.name,
+          driverPhone:        driverProfiles.phone,
         })
         .from(rideRequests)
         .leftJoin(driver, eq(rideRequests.driverUserId, driver.id))
+        .leftJoin(driverProfiles, eq(rideRequests.driverUserId, driverProfiles.userId))
         .where(eq(rideRequests.passengerUserId, passengerUserId))
         .orderBy(desc(rideRequests.requestedAt));
 
