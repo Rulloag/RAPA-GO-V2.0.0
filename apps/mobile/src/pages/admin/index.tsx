@@ -45,8 +45,6 @@ function meta(path: string) {
   return ROUTE_METADATA.find((r) => r.path === path)!;
 }
 
-const PENDING = "Módulo preparado, implementación funcional pendiente.";
-
 export function AdminHomePage(): JSX.Element {
   return (
     <IonPage>
@@ -63,7 +61,7 @@ export function AdminHomePage(): JSX.Element {
           <ActionCard
             icon={peopleOutline}
             title="Usuarios"
-            subtitle={PENDING}
+            subtitle="Gestión de cuentas y roles"
             route={ROUTES.ADMIN.USERS}
             color="danger"
           />
@@ -91,14 +89,14 @@ export function AdminHomePage(): JSX.Element {
           <ActionCard
             icon={personOutline}
             title="Viajes"
-            subtitle={PENDING}
+            subtitle="Despacho manual y monitor de viajes"
             route={ROUTES.ADMIN.TRIPS}
             color="danger"
           />
           <ActionCard
             icon={cardOutline}
             title="Pagos"
-            subtitle={PENDING}
+            subtitle="Transacciones y conciliación"
             route={ROUTES.ADMIN.PAYMENTS}
             color="danger"
           />
@@ -112,7 +110,7 @@ export function AdminHomePage(): JSX.Element {
           <ActionCard
             icon={settingsOutline}
             title="Configuración"
-            subtitle={PENDING}
+            subtitle="Parámetros y tarifas del sistema"
             route={ROUTES.ADMIN.SETTINGS}
             color="medium"
           />

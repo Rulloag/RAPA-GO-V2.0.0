@@ -60,8 +60,6 @@ function meta(path: string) {
   return ROUTE_METADATA.find((r) => r.path === path)!;
 }
 
-const PENDING = "Módulo preparado, implementación funcional pendiente.";
-
 export function DriverHomePage(): JSX.Element {
   const { session } = useAuth();
   const [driverAvailability, setDriverAvailability] = useState<"available" | "unavailable" | "busy">("unavailable");
@@ -172,28 +170,28 @@ export function DriverHomePage(): JSX.Element {
           <ActionCard
             icon={listOutline}
             title="Solicitudes"
-            subtitle={PENDING}
+            subtitle="Viajes asignados activos"
             route={ROUTES.DRIVER.REQUESTS}
             color="success"
           />
           <ActionCard
             icon={carOutline}
             title="Mis Viajes"
-            subtitle={PENDING}
+            subtitle="Historial de viajes completados"
             route={ROUTES.DRIVER.TRIPS}
             color="success"
           />
           <ActionCard
             icon={cashOutline}
             title="Ganancias"
-            subtitle={PENDING}
+            subtitle="Resumen de ingresos"
             route={ROUTES.DRIVER.EARNINGS}
             color="success"
           />
           <ActionCard
             icon={personOutline}
             title="Perfil"
-            subtitle={PENDING}
+            subtitle="Datos personales y documentos"
             route={ROUTES.PROFILE.INDEX}
             color="medium"
           />

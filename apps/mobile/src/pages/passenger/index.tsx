@@ -59,8 +59,6 @@ function meta(path: string) {
   return ROUTE_METADATA.find((r) => r.path === path)!;
 }
 
-const PENDING = "Módulo preparado, implementación funcional pendiente.";
-
 const RIDE_STATUS_LABEL: Record<string, string> = {
   requested:       "Solicitado",
   accepted:        "Conductor asignado",
@@ -97,42 +95,42 @@ export function PassengerHomePage(): JSX.Element {
           <ActionCard
             icon={carOutline}
             title="Solicitar Viaje"
-            subtitle={PENDING}
+            subtitle="Reserva tu traslado en Rapa Nui"
             route={ROUTES.PASSENGER.REQUEST_RIDE}
             color="primary"
           />
           <ActionCard
             icon={carOutline}
             title="Mis Viajes"
-            subtitle={PENDING}
+            subtitle="Historial y viajes activos"
             route={ROUTES.PASSENGER.TRIPS}
             color="primary"
           />
           <ActionCard
             icon={compassOutline}
             title="Guías Turísticos"
-            subtitle={PENDING}
+            subtitle="Tours y guías locales"
             route={ROUTES.PASSENGER.GUIDES}
             color="primary"
           />
           <ActionCard
             icon={keyOutline}
             title="Arriendo"
-            subtitle={PENDING}
+            subtitle="Vehículos disponibles"
             route={ROUTES.PASSENGER.RENTALS}
             color="primary"
           />
           <ActionCard
             icon={walletOutline}
             title="Wallet"
-            subtitle={PENDING}
+            subtitle="Saldo y transacciones"
             route={ROUTES.PASSENGER.WALLET}
             color="primary"
           />
           <ActionCard
             icon={personOutline}
             title="Perfil"
-            subtitle={PENDING}
+            subtitle="Datos personales y documentos"
             route={ROUTES.PROFILE.INDEX}
             color="medium"
           />
