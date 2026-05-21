@@ -39,7 +39,7 @@ import { ROUTE_METADATA } from "../../navigation/routeConfig";
 import { ROUTES } from "../../navigation/routes";
 import { useAuth } from "../../features/auth";
 import { adminService, type AdminUserData, type AdminDocumentData, type AdminRideData, type ActiveDriverData } from "../../features/admin/admin.service";
-import { inferZoneFromText, getZoneLabel } from "@rapa-go/shared";
+import { inferZoneFromText, getZoneLabel, RAPA_NUI_ZONES, type RapaNuiZoneId } from "@rapa-go/shared";
 
 function meta(path: string) {
   return ROUTE_METADATA.find((r) => r.path === path)!;
@@ -70,7 +70,7 @@ export function AdminHomePage(): JSX.Element {
           <ActionCard
             icon={carOutline}
             title="Conductores"
-            subtitle={PENDING}
+            subtitle="Estado operacional de conductores"
             route={ROUTES.ADMIN.DRIVERS}
             color="danger"
           />
@@ -363,12 +363,166 @@ export function AdminUsersPage(): JSX.Element {
   );
 }
 
+function availabilityLabel(a: string): string {
+  if (a === "available") return "Disponible";
+  if (a === "busy")      return "Ocupado";
+  return "No disponible";
+}
+
+function availabilityColor(a: string): string {
+  if (a === "available") return "success";
+  if (a === "busy")      return "warning";
+  return "medium";
+}
+
+function fmtDate(iso: string | null): string {
+  if (!iso) return "Sin actividad reciente";
+  return new Date(iso).toLocaleString("es-CL", {
+    day: "2-digit", month: "2-digit", year: "numeric",
+    hour: "2-digit", minute: "2-digit",
+  });
+}
+
 export function AdminDriversPage(): JSX.Element {
-  const m = meta("/admin/drivers");
+  const { session } = useAuth();
+  const token = session?.accessToken;
+
+  const [drivers,             setDrivers]             = useState<ActiveDriverData[]>([]);
+  const [loading,             setLoading]             = useState(true);
+  const [loadError,           setLoadError]           = useState<string | null>(null);
+  const [filterAvailability,  setFilterAvailability]  = useState<string>("all");
+  const [filterZone,          setFilterZone]          = useState<string>("all");
+
+  const loadDrivers = useCallback(async () => {
+    if (!token) return;
+    setLoading(true);
+    setLoadError(null);
+    try {
+      const data = await adminService.listActiveDrivers(token);
+      setDrivers(data);
+    } catch (err) {
+      setLoadError(err instanceof Error ? err.message : "Error al cargar conductores.");
+    } finally {
+      setLoading(false);
+    }
+  }, [token]);
+
+  useEffect(() => { void loadDrivers(); }, [loadDrivers]);
+
+  const filtered = drivers.filter((d) => {
+    if (filterAvailability !== "all" && d.availability !== filterAvailability) return false;
+    if (filterZone !== "all" && d.currentZone !== filterZone) return false;
+    return true;
+  });
+
   return (
     <IonPage>
-      <IonHeader><IonToolbar color="danger"><IonTitle>{m.label}</IonTitle></IonToolbar></IonHeader>
-      <IonContent className="ion-padding"><ModulePlaceholderPage title={m.label} role="admin" plannedFeatures={m.plannedFeatures} /></IonContent>
+      <IonHeader>
+        <IonToolbar color="danger">
+          <IonTitle>Conductores</IonTitle>
+          <div slot="end" style={{ paddingRight: "8px" }}>
+            <IonButton fill="clear" color="light" onClick={() => void loadDrivers()} disabled={loading}>
+              Actualizar
+            </IonButton>
+          </div>
+        </IonToolbar>
+      </IonHeader>
+      <IonContent className="ion-padding">
+        <IonRefresher slot="fixed" onIonRefresh={async (e) => { await loadDrivers(); e.detail.complete(); }}>
+          <IonRefresherContent />
+        </IonRefresher>
+
+        {/* Filters */}
+        <IonCard style={{ margin: "0 0 12px" }}>
+          <IonCardContent style={{ padding: "10px 12px" }}>
+            <IonItem lines="full">
+              <IonLabel>Disponibilidad</IonLabel>
+              <IonSelect
+                interface="action-sheet"
+                value={filterAvailability}
+                onIonChange={(e) => setFilterAvailability(String(e.detail.value ?? "all"))}
+              >
+                <IonSelectOption value="all">Todas</IonSelectOption>
+                <IonSelectOption value="available">Disponibles</IonSelectOption>
+                <IonSelectOption value="unavailable">No disponibles</IonSelectOption>
+                <IonSelectOption value="busy">Ocupados</IonSelectOption>
+              </IonSelect>
+            </IonItem>
+            <IonItem lines="none">
+              <IonLabel>Zona</IonLabel>
+              <IonSelect
+                interface="action-sheet"
+                value={filterZone}
+                onIonChange={(e) => setFilterZone(String(e.detail.value ?? "all"))}
+              >
+                <IonSelectOption value="all">Todas las zonas</IonSelectOption>
+                {RAPA_NUI_ZONES.filter((z) => z.id !== "desconocida").map((z) => (
+                  <IonSelectOption key={z.id} value={z.id}>{z.label}</IonSelectOption>
+                ))}
+              </IonSelect>
+            </IonItem>
+          </IonCardContent>
+        </IonCard>
+
+        {!loading && !loadError && (
+          <IonText color="medium">
+            <p style={{ fontSize: "0.78rem", margin: "0 0 10px" }}>
+              {filtered.length} conductor{filtered.length !== 1 ? "es" : ""} encontrado{filtered.length !== 1 ? "s" : ""}
+            </p>
+          </IonText>
+        )}
+
+        {loading && (
+          <div style={{ display: "flex", justifyContent: "center", paddingTop: "40px" }}>
+            <IonSpinner name="crescent" />
+          </div>
+        )}
+
+        {loadError && <IonText color="danger"><p>{loadError}</p></IonText>}
+
+        {filtered.length === 0 && !loading && !loadError && (
+          <IonItem lines="none">
+            <IonLabel color="medium" className="ion-text-center">
+              No hay conductores que coincidan con el filtro.
+            </IonLabel>
+          </IonItem>
+        )}
+
+        {!loading && filtered.length > 0 && (
+          <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+            {filtered.map((driver) => (
+              <IonCard key={driver.id} style={{ margin: 0 }}>
+                <IonCardContent style={{ padding: "12px 14px" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+                    <strong style={{ fontSize: "1rem" }}>{driver.name}</strong>
+                    <IonBadge color={availabilityColor(driver.availability)}>
+                      {availabilityLabel(driver.availability)}
+                    </IonBadge>
+                  </div>
+                  <IonNote style={{ display: "block", marginBottom: 4 }}>{driver.email}</IonNote>
+                  <IonNote style={{ display: "block", marginBottom: 4 }}>
+                    Zona: {driver.currentZone ? getZoneLabel(driver.currentZone as RapaNuiZoneId) : "Zona no informada"}
+                  </IonNote>
+                  {driver.availability === "busy" && driver.currentRideId && (
+                    <IonNote color="warning" style={{ display: "block", marginBottom: 4 }}>
+                      En viaje activo
+                    </IonNote>
+                  )}
+                  <IonNote style={{ display: "block", fontSize: "0.75rem" }}>
+                    Última actividad: {fmtDate(driver.lastSeenAt)}
+                  </IonNote>
+                </IonCardContent>
+              </IonCard>
+            ))}
+          </div>
+        )}
+
+        <IonItem lines="none" style={{ marginTop: "16px" }}>
+          <IonLabel color="medium" style={{ fontSize: "0.8rem", whiteSpace: "normal" }}>
+            La asignación de viajes se realiza desde el módulo Viajes.
+          </IonLabel>
+        </IonItem>
+      </IonContent>
     </IonPage>
   );
 }
