@@ -52,6 +52,8 @@ import { RAPA_NUI_PLACES, RAPAGO_CONTACT, WA_MESSAGES } from "@rapa-go/shared";
 import { WhatsAppButton } from "../../components/WhatsAppButton";
 import { touristService, type GuidePublicData, type TouristServiceData, type ServiceBookingData } from "../../features/tourist/tourist.service.js";
 import { useIonViewWillEnter } from "@ionic/react";
+import { rentalService } from "../../features/rental/rental.service.js";
+import type { RentalVehicleData as RentalVehicleDataType, RentalBookingData as RentalBookingDataType } from "../../features/rental/rental.service.js";
 
 function StarRatingInput({ value, onChange }: { value: number; onChange: (v: number) => void }) {
   return (
@@ -1177,12 +1179,533 @@ export function PassengerServiceBookingsPage(): JSX.Element {
   );
 }
 
+const VEHICLE_TYPE_LABEL: Record<string, string> = {
+  car:        "Auto",
+  suv:        "SUV",
+  van:        "Van",
+  motorcycle: "Moto",
+  bicycle:    "Bicicleta",
+  quad:       "Quad",
+};
+
+const RENTAL_STATUS_COLOR: Record<string, string> = {
+  pending:   "warning",
+  confirmed: "success",
+  active:    "primary",
+  completed: "medium",
+  cancelled: "danger",
+};
+
+const RENTAL_STATUS_LABEL: Record<string, string> = {
+  pending:   "Pendiente",
+  confirmed: "Confirmada",
+  active:    "Activa",
+  completed: "Completada",
+  cancelled: "Cancelada",
+};
+
 export function PassengerRentalsPage(): JSX.Element {
-  const m = meta("/passenger/rentals");
+  const { session } = useAuth();
+  const [vehicles,       setVehicles]       = useState<RentalVehicleDataType[]>([]);
+  const [loading,        setLoading]        = useState(true);
+  const [loadError,      setLoadError]      = useState<string | null>(null);
+  const [searchText,     setSearchText]     = useState("");
+  const [filterType,     setFilterType]     = useState("");
+  const [selectedId,     setSelectedId]     = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    if (!session?.accessToken) return;
+    setLoading(true);
+    setLoadError(null);
+    try {
+      const filters: { type?: string } = {};
+      if (filterType) filters.type = filterType;
+      const data = await rentalService.listAvailableVehicles(session.accessToken, filters);
+      setVehicles(data.items);
+    } catch (err) {
+      setLoadError(err instanceof Error ? err.message : "Error al cargar vehículos.");
+    } finally {
+      setLoading(false);
+    }
+  }, [session?.accessToken, filterType]);
+
+  useIonViewWillEnter(() => { void load(); });
+  useEffect(() => { void load(); }, [load]);
+
+  const filtered = vehicles.filter((v) => {
+    if (!searchText.trim()) return true;
+    const q = searchText.trim().toLowerCase();
+    return v.brand.toLowerCase().includes(q) || v.model.toLowerCase().includes(q);
+  });
+
+  if (selectedId) {
+    return <PassengerRentalDetailPage vehicleId={selectedId} onBack={() => setSelectedId(null)} />;
+  }
+
   return (
     <IonPage>
-      <IonHeader><IonToolbar color="primary"><IonTitle>{m.label}</IonTitle></IonToolbar></IonHeader>
-      <IonContent className="ion-padding"><ModulePlaceholderPage title={m.label} role="passenger" plannedFeatures={m.plannedFeatures} /></IonContent>
+      <IonHeader>
+        <IonToolbar color="primary">
+          <IonTitle>Arriendo de Vehículos</IonTitle>
+        </IonToolbar>
+      </IonHeader>
+      <IonContent className="ion-padding">
+        <IonRefresher slot="fixed" onIonRefresh={(e) => { void load().then(() => e.detail.complete()); }}>
+          <IonRefresherContent />
+        </IonRefresher>
+
+        <IonSearchbar
+          value={searchText}
+          onIonInput={(e) => setSearchText(String(e.detail.value ?? ""))}
+          placeholder="Buscar por marca o modelo..."
+          debounce={300}
+        />
+
+        <IonItem lines="none" style={{ marginBottom: "8px" }}>
+          <IonLabel>Tipo</IonLabel>
+          <IonSelect
+            interface="action-sheet"
+            value={filterType}
+            onIonChange={(e) => setFilterType(String(e.detail.value ?? ""))}
+            placeholder="Todos"
+          >
+            <IonSelectOption value="">Todos</IonSelectOption>
+            <IonSelectOption value="car">Auto</IonSelectOption>
+            <IonSelectOption value="suv">SUV</IonSelectOption>
+            <IonSelectOption value="van">Van</IonSelectOption>
+            <IonSelectOption value="motorcycle">Moto</IonSelectOption>
+            <IonSelectOption value="bicycle">Bicicleta</IonSelectOption>
+            <IonSelectOption value="quad">Quad</IonSelectOption>
+          </IonSelect>
+        </IonItem>
+
+        {loading && (
+          <div style={{ display: "flex", justifyContent: "center", paddingTop: "40px" }}>
+            <IonSpinner name="crescent" />
+          </div>
+        )}
+
+        {loadError && <IonText color="danger"><p>{loadError}</p></IonText>}
+
+        {!loading && filtered.length === 0 && (
+          <IonText color="medium"><p>No hay vehículos disponibles.</p></IonText>
+        )}
+
+        {!loading && filtered.length > 0 && (
+          <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+            {filtered.map((v) => (
+              <IonCard key={v.id} style={{ margin: 0 }}>
+                <IonCardContent style={{ padding: "14px 16px" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "8px" }}>
+                    <div style={{ fontWeight: 700, fontSize: "1rem" }}>
+                      {v.brand} {v.model}{v.year ? ` (${v.year})` : ""}
+                    </div>
+                    <IonBadge color="tertiary" style={{ fontSize: "0.68rem", flexShrink: 0, marginLeft: "6px" }}>
+                      {VEHICLE_TYPE_LABEL[v.type] ?? v.type}
+                    </IonBadge>
+                  </div>
+
+                  {v.photos && v.photos.length > 0 ? (
+                    <img
+                      src={v.photos[0]}
+                      alt={`${v.brand} ${v.model}`}
+                      style={{ width: "100%", height: "140px", objectFit: "cover", borderRadius: "6px", marginBottom: "8px" }}
+                    />
+                  ) : (
+                    <div style={{
+                      width: "100%", height: "100px", borderRadius: "6px",
+                      background: "var(--ion-color-light)",
+                      display: "flex", alignItems: "center", justifyContent: "center",
+                      marginBottom: "8px", color: "var(--ion-color-medium)", fontSize: "0.85rem",
+                    }}>
+                      Sin foto
+                    </div>
+                  )}
+
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "4px", marginBottom: "8px", fontSize: "0.78rem", color: "var(--ion-color-medium)" }}>
+                    {v.seats    && <span>{v.seats} asientos</span>}
+                    {v.transmission && <span>{v.transmission === "manual" ? "Manual" : "Automático"}</span>}
+                    {v.fuelType && <span>{v.fuelType === "gasoline" ? "Bencina" : v.fuelType === "diesel" ? "Diésel" : v.fuelType === "electric" ? "Eléctrico" : "Híbrido"}</span>}
+                  </div>
+
+                  {(v.features ?? []).length > 0 && (
+                    <div style={{ display: "flex", gap: "4px", flexWrap: "wrap", marginBottom: "8px" }}>
+                      {(v.features ?? []).slice(0, 3).map((f) => (
+                        <IonChip key={f} style={{ fontSize: "0.68rem", height: "20px", margin: 0 }}>
+                          <IonLabel>{f}</IonLabel>
+                        </IonChip>
+                      ))}
+                      {(v.features ?? []).length > 3 && (
+                        <IonChip style={{ fontSize: "0.68rem", height: "20px", margin: 0 }}>
+                          <IonLabel>+{(v.features ?? []).length - 3}</IonLabel>
+                        </IonChip>
+                      )}
+                    </div>
+                  )}
+
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                    <div style={{ fontWeight: 700, fontSize: "1rem", color: "var(--ion-color-success)" }}>
+                      ${(v.dailyPrice / 100).toLocaleString("es-CL")}/día
+                    </div>
+                    <IonButton size="small" onClick={() => setSelectedId(v.id)}>Ver detalles</IonButton>
+                  </div>
+                </IonCardContent>
+              </IonCard>
+            ))}
+          </div>
+        )}
+      </IonContent>
+    </IonPage>
+  );
+}
+
+function PassengerRentalDetailPage({ vehicleId, onBack }: { vehicleId: string; onBack: () => void }): JSX.Element {
+  const { session } = useAuth();
+  const [vehicle,   setVehicle]   = useState<RentalVehicleDataType | null>(null);
+  const [loading,   setLoading]   = useState(true);
+  const [startDate, setStartDate] = useState("");
+  const [endDate,   setEndDate]   = useState("");
+  const [pickupTime, setPickupTime] = useState("");
+  const [returnTime, setReturnTime] = useState("");
+  const [pickupLocation, setPickupLocation] = useState("");
+  const [returnLocation, setReturnLocation] = useState("");
+  const [notes,     setNotes]     = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [toastMsg,  setToastMsg]  = useState<string | null>(null);
+
+  const today = new Date().toISOString().slice(0, 10);
+
+  useEffect(() => {
+    if (!session?.accessToken) return;
+    void rentalService.getVehicle(session.accessToken, vehicleId)
+      .then(setVehicle)
+      .catch(() => setVehicle(null))
+      .finally(() => setLoading(false));
+  }, [session?.accessToken, vehicleId]);
+
+  const days = (startDate && endDate && endDate > startDate)
+    ? Math.max(1, Math.round((new Date(endDate).getTime() - new Date(startDate).getTime()) / (1000 * 60 * 60 * 24)))
+    : null;
+
+  async function handleBook() {
+    if (!session?.accessToken || !vehicle) return;
+    if (!startDate || !endDate) { setToastMsg("Selecciona fechas de inicio y fin."); return; }
+    setSubmitting(true);
+    try {
+      const input: import("../../features/rental/rental.service.js").CreateBookingInput = {
+        vehicleId: vehicle.id,
+        startDate,
+        endDate,
+      };
+      if (pickupTime)     input.pickupTime     = pickupTime;
+      if (returnTime)     input.returnTime     = returnTime;
+      if (pickupLocation.trim()) input.pickupLocation = pickupLocation.trim();
+      if (returnLocation.trim()) input.returnLocation = returnLocation.trim();
+      if (notes.trim())   input.notes          = notes.trim();
+      await rentalService.createRentalBooking(session.accessToken, input);
+      setToastMsg("Reserva creada correctamente.");
+      setStartDate(""); setEndDate(""); setNotes(""); setPickupTime(""); setReturnTime("");
+      setPickupLocation(""); setReturnLocation("");
+    } catch (err) {
+      setToastMsg(err instanceof Error ? err.message : "Error al reservar.");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  if (loading) {
+    return (
+      <IonPage>
+        <IonHeader><IonToolbar color="primary"><IonButton slot="start" fill="clear" color="light" onClick={onBack}>← Volver</IonButton><IonTitle>Vehículo</IonTitle></IonToolbar></IonHeader>
+        <IonContent><div style={{ display: "flex", justifyContent: "center", paddingTop: "40px" }}><IonSpinner name="crescent" /></div></IonContent>
+      </IonPage>
+    );
+  }
+
+  if (!vehicle) {
+    return (
+      <IonPage>
+        <IonHeader><IonToolbar color="primary"><IonButton slot="start" fill="clear" color="light" onClick={onBack}>← Volver</IonButton><IonTitle>Vehículo</IonTitle></IonToolbar></IonHeader>
+        <IonContent className="ion-padding"><IonText color="danger"><p>No se pudo cargar el vehículo.</p></IonText></IonContent>
+      </IonPage>
+    );
+  }
+
+  return (
+    <IonPage>
+      <IonHeader>
+        <IonToolbar color="primary">
+          <IonButton slot="start" fill="clear" color="light" onClick={onBack}>← Volver</IonButton>
+          <IonTitle>{vehicle.brand} {vehicle.model}</IonTitle>
+        </IonToolbar>
+      </IonHeader>
+      <IonContent className="ion-padding">
+        {vehicle.photos && vehicle.photos.length > 0 ? (
+          <img
+            src={vehicle.photos[0]}
+            alt={`${vehicle.brand} ${vehicle.model}`}
+            style={{ width: "100%", height: "180px", objectFit: "cover", borderRadius: "8px", marginBottom: "12px" }}
+          />
+        ) : (
+          <div style={{
+            width: "100%", height: "120px", borderRadius: "8px",
+            background: "var(--ion-color-light)",
+            display: "flex", alignItems: "center", justifyContent: "center",
+            marginBottom: "12px", color: "var(--ion-color-medium)",
+          }}>
+            Sin foto
+          </div>
+        )}
+
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
+          <div>
+            <div style={{ fontWeight: 700, fontSize: "1.1rem" }}>{vehicle.brand} {vehicle.model}</div>
+            <IonBadge color="tertiary" style={{ fontSize: "0.68rem" }}>{VEHICLE_TYPE_LABEL[vehicle.type] ?? vehicle.type}</IonBadge>
+          </div>
+          <div style={{ fontWeight: 700, fontSize: "1.1rem", color: "var(--ion-color-success)" }}>
+            ${(vehicle.dailyPrice / 100).toLocaleString("es-CL")}/día
+          </div>
+        </div>
+
+        <IonCard style={{ margin: "0 0 12px" }}>
+          <IonCardContent style={{ padding: "12px 14px" }}>
+            <div style={{ fontWeight: 600, marginBottom: "8px", fontSize: "0.9rem" }}>Especificaciones</div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "6px", fontSize: "0.82rem" }}>
+              {vehicle.year         && <span><strong>Año:</strong> {vehicle.year}</span>}
+              {vehicle.plate        && <span><strong>Patente:</strong> {vehicle.plate}</span>}
+              {vehicle.color        && <span><strong>Color:</strong> {vehicle.color}</span>}
+              {vehicle.seats        && <span><strong>Asientos:</strong> {vehicle.seats}</span>}
+              {vehicle.transmission && <span><strong>Trans.:</strong> {vehicle.transmission === "manual" ? "Manual" : "Automático"}</span>}
+              {vehicle.fuelType     && <span><strong>Combustible:</strong> {vehicle.fuelType === "gasoline" ? "Bencina" : vehicle.fuelType === "diesel" ? "Diésel" : vehicle.fuelType === "electric" ? "Eléctrico" : "Híbrido"}</span>}
+            </div>
+          </IonCardContent>
+        </IonCard>
+
+        {vehicle.description && (
+          <IonCard style={{ margin: "0 0 12px" }}>
+            <IonCardContent style={{ padding: "12px 14px", fontSize: "0.85rem" }}>
+              {vehicle.description}
+            </IonCardContent>
+          </IonCard>
+        )}
+
+        {(vehicle.features ?? []).length > 0 && (
+          <div style={{ display: "flex", gap: "6px", flexWrap: "wrap", marginBottom: "12px" }}>
+            {(vehicle.features ?? []).map((f) => (
+              <IonChip key={f} color="primary" style={{ fontSize: "0.72rem", height: "24px" }}>
+                <IonLabel>{f}</IonLabel>
+              </IonChip>
+            ))}
+          </div>
+        )}
+
+        {(vehicle.operatorName || vehicle.operatorPhone) && (
+          <IonCard style={{ margin: "0 0 12px" }}>
+            <IonCardContent style={{ padding: "12px 14px" }}>
+              <div style={{ fontWeight: 600, marginBottom: "4px", fontSize: "0.9rem" }}>Operador</div>
+              {vehicle.operatorName  && <div style={{ fontSize: "0.85rem" }}>{vehicle.operatorName}</div>}
+              {vehicle.operatorPhone && <div style={{ fontSize: "0.82rem", color: "var(--ion-color-medium)" }}>{vehicle.operatorPhone}</div>}
+            </IonCardContent>
+          </IonCard>
+        )}
+
+        <IonCard style={{ margin: "0 0 12px" }}>
+          <IonCardContent style={{ padding: "12px 14px" }}>
+            <div style={{ fontWeight: 600, marginBottom: "10px", fontSize: "0.9rem" }}>Reservar</div>
+
+            <IonItem lines="full">
+              <IonLabel position="stacked">Fecha inicio</IonLabel>
+              <IonInput
+                type="date"
+                value={startDate}
+                min={today}
+                onIonInput={(e) => { setStartDate(String(e.detail.value ?? "")); }}
+              />
+            </IonItem>
+
+            <IonItem lines="full">
+              <IonLabel position="stacked">Fecha fin</IonLabel>
+              <IonInput
+                type="date"
+                value={endDate}
+                min={startDate || today}
+                onIonInput={(e) => setEndDate(String(e.detail.value ?? ""))}
+              />
+            </IonItem>
+
+            <IonItem lines="full">
+              <IonLabel position="stacked">Hora recogida (opcional)</IonLabel>
+              <IonInput type="time" value={pickupTime} onIonInput={(e) => setPickupTime(String(e.detail.value ?? ""))} />
+            </IonItem>
+
+            <IonItem lines="full">
+              <IonLabel position="stacked">Hora devolución (opcional)</IonLabel>
+              <IonInput type="time" value={returnTime} onIonInput={(e) => setReturnTime(String(e.detail.value ?? ""))} />
+            </IonItem>
+
+            <IonItem lines="full">
+              <IonLabel position="stacked">Lugar recogida (opcional)</IonLabel>
+              <IonInput value={pickupLocation} onIonInput={(e) => setPickupLocation(String(e.detail.value ?? ""))} placeholder="Ej: Aeropuerto" maxlength={200} clearInput />
+            </IonItem>
+
+            <IonItem lines="full">
+              <IonLabel position="stacked">Lugar devolución (opcional)</IonLabel>
+              <IonInput value={returnLocation} onIonInput={(e) => setReturnLocation(String(e.detail.value ?? ""))} placeholder="Ej: Hotel" maxlength={200} clearInput />
+            </IonItem>
+
+            <IonItem lines="none">
+              <IonLabel position="stacked">Notas (opcional)</IonLabel>
+              <IonTextarea value={notes} onIonInput={(e) => setNotes(String(e.detail.value ?? ""))} placeholder="Indicaciones especiales..." rows={2} maxlength={500} />
+            </IonItem>
+
+            {days !== null && (
+              <div style={{ padding: "10px 0", fontWeight: 600, fontSize: "0.9rem" }}>
+                {days} día{days !== 1 ? "s" : ""} × ${(vehicle.dailyPrice / 100).toLocaleString("es-CL")} = ${((vehicle.dailyPrice * days) / 100).toLocaleString("es-CL")} total
+              </div>
+            )}
+
+            <IonButton expand="block" style={{ marginTop: "8px" }} onClick={() => void handleBook()} disabled={submitting}>
+              {submitting ? <IonSpinner name="dots" /> : "Confirmar reserva"}
+            </IonButton>
+          </IonCardContent>
+        </IonCard>
+
+        <IonToast
+          isOpen={toastMsg !== null}
+          message={toastMsg ?? ""}
+          duration={3000}
+          onDidDismiss={() => setToastMsg(null)}
+          color={toastMsg?.includes("Error") || toastMsg?.includes("error") ? "danger" : "success"}
+        />
+      </IonContent>
+    </IonPage>
+  );
+}
+
+export function PassengerRentalBookingsPage(): JSX.Element {
+  const { session } = useAuth();
+  const [bookings,   setBookings]   = useState<RentalBookingDataType[]>([]);
+  const [loading,    setLoading]    = useState(true);
+  const [loadError,  setLoadError]  = useState<string | null>(null);
+  const [cancelling, setCancelling] = useState<string | null>(null);
+  const [confirmId,  setConfirmId]  = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    if (!session?.accessToken) return;
+    setLoading(true);
+    setLoadError(null);
+    try {
+      const data = await rentalService.getMyRentalBookings(session.accessToken);
+      setBookings(data.items);
+    } catch (err) {
+      setLoadError(err instanceof Error ? err.message : "Error al cargar reservas.");
+    } finally {
+      setLoading(false);
+    }
+  }, [session?.accessToken]);
+
+  useIonViewWillEnter(() => { void load(); });
+  useEffect(() => { void load(); }, [load]);
+
+  async function handleCancel(bookingId: string) {
+    if (!session?.accessToken) return;
+    setCancelling(bookingId);
+    try {
+      const updated = await rentalService.cancelRentalBooking(session.accessToken, bookingId);
+      setBookings((prev) => prev.map((b) => (b.id === bookingId ? updated : b)));
+    } catch (err) {
+      setLoadError(err instanceof Error ? err.message : "Error al cancelar.");
+    } finally {
+      setCancelling(null);
+      setConfirmId(null);
+    }
+  }
+
+  return (
+    <IonPage>
+      <IonHeader>
+        <IonToolbar color="primary">
+          <IonTitle>Mis Arriendos</IonTitle>
+        </IonToolbar>
+      </IonHeader>
+      <IonContent className="ion-padding">
+        <IonRefresher slot="fixed" onIonRefresh={(e) => { void load().then(() => e.detail.complete()); }}>
+          <IonRefresherContent />
+        </IonRefresher>
+
+        {loading && (
+          <div style={{ display: "flex", justifyContent: "center", paddingTop: "40px" }}>
+            <IonSpinner name="crescent" />
+          </div>
+        )}
+
+        {loadError && <IonText color="danger"><p>{loadError}</p></IonText>}
+
+        {!loading && bookings.length === 0 && (
+          <IonText color="medium"><p>No tienes reservas de arriendo.</p></IonText>
+        )}
+
+        {!loading && bookings.length > 0 && (
+          <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+            {bookings.map((b) => {
+              const days = Math.max(1, Math.round((new Date(b.endDate).getTime() - new Date(b.startDate).getTime()) / (1000 * 60 * 60 * 24)));
+              return (
+                <IonCard key={b.id} style={{ margin: 0 }}>
+                  <IonCardContent style={{ padding: "14px 16px" }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontWeight: 600, fontSize: "0.9rem" }}>
+                          {b.vehicleBrand ?? ""} {b.vehicleModel ?? ""} {b.vehiclePlate ? `(${b.vehiclePlate})` : ""}
+                        </div>
+                        <div style={{ fontSize: "0.78rem", color: "var(--ion-color-medium)", marginTop: "2px" }}>
+                          {b.startDate} → {b.endDate} · {days} día{days !== 1 ? "s" : ""}
+                        </div>
+                        {b.totalPrice !== null && (
+                          <div style={{ fontSize: "0.82rem", fontWeight: 600, color: "var(--ion-color-success)", marginTop: "2px" }}>
+                            ${(b.totalPrice / 100).toLocaleString("es-CL")} total
+                          </div>
+                        )}
+                        <div style={{ marginTop: "6px" }}>
+                          <IonBadge color={RENTAL_STATUS_COLOR[b.status] ?? "medium"} style={{ fontSize: "0.7rem" }}>
+                            {RENTAL_STATUS_LABEL[b.status] ?? b.status}
+                          </IonBadge>
+                        </div>
+                        {b.cancellationReason && (
+                          <div style={{ fontSize: "0.72rem", color: "var(--ion-color-danger)", marginTop: "4px" }}>
+                            Motivo: {b.cancellationReason}
+                          </div>
+                        )}
+                      </div>
+                      {b.status === "pending" && (
+                        <IonButton
+                          size="small"
+                          fill="outline"
+                          color="danger"
+                          disabled={cancelling === b.id}
+                          onClick={() => setConfirmId(b.id)}
+                        >
+                          {cancelling === b.id ? <IonSpinner name="dots" /> : "Cancelar"}
+                        </IonButton>
+                      )}
+                    </div>
+                  </IonCardContent>
+                </IonCard>
+              );
+            })}
+          </div>
+        )}
+
+        <IonAlert
+          isOpen={confirmId !== null}
+          header="¿Cancelar reserva?"
+          message="Esta acción no se puede deshacer."
+          buttons={[
+            { text: "No", role: "cancel", handler: () => setConfirmId(null) },
+            { text: "Sí, cancelar", role: "confirm", handler: () => { if (confirmId) void handleCancel(confirmId); } },
+          ]}
+          onDidDismiss={() => setConfirmId(null)}
+        />
+      </IonContent>
     </IonPage>
   );
 }

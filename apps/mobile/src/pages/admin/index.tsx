@@ -27,6 +27,7 @@ import {
 } from "@ionic/react";
 import { useEffect, useState, useCallback } from "react";
 import { touristService, type TouristServiceData, type ServiceBookingData } from "../../features/tourist/tourist.service.js";
+import { rentalService, type RentalVehicleData, type RentalBookingData } from "../../features/rental/rental.service.js";
 import {
   cardOutline,
   carOutline,
@@ -888,7 +889,10 @@ export function AdminRentalsPage(): JSX.Element {
   const { session } = useAuth();
   const token = session?.accessToken ?? "";
 
+  const [tab,            setTab]            = useState<"operators" | "vehicles" | "bookings">("operators");
   const [operators,      setOperators]      = useState<AdminUserData[]>([]);
+  const [vehicles,       setVehicles]       = useState<RentalVehicleData[]>([]);
+  const [allBookings,    setAllBookings]    = useState<RentalBookingData[]>([]);
   const [loading,        setLoading]        = useState(true);
   const [filterStatus,   setFilterStatus]   = useState<string>("all");
   const [filterVerified, setFilterVerified] = useState<string>("all");
@@ -906,7 +910,38 @@ export function AdminRentalsPage(): JSX.Element {
     }
   }, [token]);
 
+  const loadVehicles = useCallback(async () => {
+    if (!token) return;
+    setLoading(true);
+    try {
+      const data = await rentalService.listAvailableVehicles(token, {});
+      setVehicles(data.items);
+    } catch (_) {
+      setVehicles([]);
+    } finally {
+      setLoading(false);
+    }
+  }, [token]);
+
+  const loadBookings = useCallback(async () => {
+    if (!token) return;
+    setLoading(true);
+    try {
+      const data = await rentalService.getMyRentalBookings(token, 1, 100);
+      setAllBookings(data.items);
+    } catch (_) {
+      setAllBookings([]);
+    } finally {
+      setLoading(false);
+    }
+  }, [token]);
+
   useEffect(() => { void loadOperators(); }, [loadOperators]);
+
+  useEffect(() => {
+    if (tab === "vehicles") void loadVehicles();
+    if (tab === "bookings") void loadBookings();
+  }, [tab, loadVehicles, loadBookings]);
 
   const filtered = operators.filter((o) => {
     if (filterStatus !== "all" && o.status !== filterStatus) return false;
@@ -925,155 +960,187 @@ export function AdminRentalsPage(): JSX.Element {
     return new Date(iso).toLocaleString("es-CL", { day: "2-digit", month: "2-digit", year: "numeric" });
   }
 
+  const VEHICLE_TYPE_LABEL_ADMIN: Record<string, string> = {
+    car: "Auto", suv: "SUV", van: "Van", motorcycle: "Moto", bicycle: "Bicicleta", quad: "Quad",
+  };
+
+  const BOOKING_STATUS_COLOR_ADMIN: Record<string, string> = {
+    pending: "warning", confirmed: "success", active: "primary", completed: "medium", cancelled: "danger",
+  };
+
+  const BOOKING_STATUS_LABEL_ADMIN: Record<string, string> = {
+    pending: "Pendiente", confirmed: "Confirmada", active: "Activa", completed: "Completada", cancelled: "Cancelada",
+  };
+
   return (
     <IonPage>
       <IonHeader>
         <IonToolbar color="danger">
           <IonTitle>Rent a Car</IonTitle>
           <div slot="end" style={{ paddingRight: "8px" }}>
-            <IonButton fill="clear" color="light" onClick={() => void loadOperators()} disabled={loading}>
+            <IonButton fill="clear" color="light" onClick={() => {
+              if (tab === "operators") void loadOperators();
+              if (tab === "vehicles")  void loadVehicles();
+              if (tab === "bookings")  void loadBookings();
+            }} disabled={loading}>
               Actualizar
             </IonButton>
           </div>
         </IonToolbar>
       </IonHeader>
       <IonContent>
-        <IonRefresher slot="fixed" onIonRefresh={async (e) => { await loadOperators(); e.detail.complete(); }}>
+        <IonRefresher slot="fixed" onIonRefresh={async (e) => {
+          if (tab === "operators") await loadOperators();
+          if (tab === "vehicles")  await loadVehicles();
+          if (tab === "bookings")  await loadBookings();
+          e.detail.complete();
+        }}>
           <IonRefresherContent />
         </IonRefresher>
 
-        <div style={{ padding: "12px 16px 4px" }}>
-          <p style={{ color: "var(--ion-color-medium)", margin: 0, fontSize: "0.9rem" }}>
-            Gestión operacional de operadores de arriendo de vehículos.
-          </p>
-        </div>
+        <IonSegment value={tab} onIonChange={(e) => setTab(e.detail.value as typeof tab)} style={{ padding: "8px" }}>
+          <IonSegmentButton value="operators"><IonLabel>Operadores</IonLabel></IonSegmentButton>
+          <IonSegmentButton value="vehicles"><IonLabel>Vehículos</IonLabel></IonSegmentButton>
+          <IonSegmentButton value="bookings"><IonLabel>Reservas</IonLabel></IonSegmentButton>
+        </IonSegment>
 
-        {/* Resumen superior */}
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, padding: "8px 16px" }}>
-          {([
-            { label: "Total",      value: totalOperators, color: "primary"  },
-            { label: "Activos",    value: active,         color: "tertiary" },
-            { label: "Pendientes", value: pending,        color: "warning"  },
-            { label: "Verificados",value: verified,       color: "success"  },
-          ] as { label: string; value: number; color: string }[]).map((stat) => (
-            <IonCard key={stat.label} style={{ margin: 0, textAlign: "center" }}>
-              <IonCardContent style={{ padding: "8px" }}>
-                <div style={{ fontSize: "1.5rem", fontWeight: "bold", color: `var(--ion-color-${stat.color})` }}>{stat.value}</div>
-                <div style={{ fontSize: "0.75rem", color: "var(--ion-color-medium)" }}>{stat.label}</div>
-              </IonCardContent>
-            </IonCard>
-          ))}
-        </div>
-
-        {/* Filtros */}
-        <IonCard style={{ margin: "0 16px 8px" }}>
-          <IonCardContent style={{ padding: "8px 12px" }}>
-            <div style={{ display: "flex", gap: "8px" }}>
-              <IonItem lines="none" style={{ flex: 1 }}>
-                <IonLabel position="stacked" style={{ fontSize: "0.78rem" }}>Estado</IonLabel>
-                <IonSelect
-                  interface="action-sheet"
-                  value={filterStatus}
-                  onIonChange={(e) => setFilterStatus(String(e.detail.value ?? "all"))}
-                >
-                  <IonSelectOption value="all">Todos</IonSelectOption>
-                  <IonSelectOption value="active">Activos</IonSelectOption>
-                  <IonSelectOption value="pending">Pendientes</IonSelectOption>
-                  <IonSelectOption value="suspended">Suspendidos</IonSelectOption>
-                </IonSelect>
-              </IonItem>
-              <IonItem lines="none" style={{ flex: 1 }}>
-                <IonLabel position="stacked" style={{ fontSize: "0.78rem" }}>Verificación</IonLabel>
-                <IonSelect
-                  interface="action-sheet"
-                  value={filterVerified}
-                  onIonChange={(e) => setFilterVerified(String(e.detail.value ?? "all"))}
-                >
-                  <IonSelectOption value="all">Todos</IonSelectOption>
-                  <IonSelectOption value="verified">Verificados</IonSelectOption>
-                  <IonSelectOption value="unverified">No verificados</IonSelectOption>
-                </IonSelect>
-              </IonItem>
-            </div>
-          </IonCardContent>
-        </IonCard>
-
-        {!loading && (
-          <IonText color="medium">
-            <p style={{ fontSize: "0.78rem", margin: "0 16px 8px" }}>
-              {filtered.length} operador{filtered.length !== 1 ? "es" : ""} encontrado{filtered.length !== 1 ? "s" : ""}
-            </p>
-          </IonText>
-        )}
-
-        {/* Lista de operadores */}
-        {loading ? (
+        {loading && (
           <div style={{ display: "flex", justifyContent: "center", paddingTop: "40px" }}>
             <IonSpinner name="crescent" />
           </div>
-        ) : filtered.length > 0 ? (
-          <div style={{ display: "flex", flexDirection: "column", gap: "10px", padding: "0 16px" }}>
-            {filtered.map((op) => (
-              <IonCard key={op.id} style={{ margin: 0 }}>
-                <IonCardContent style={{ padding: "12px 14px" }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 6 }}>
-                    <strong style={{ fontSize: "0.95rem" }}>{op.name}</strong>
-                    <div style={{ display: "flex", gap: 4, flexWrap: "wrap", justifyContent: "flex-end" }}>
-                      <IonBadge color={op.status === "active" ? "success" : op.status === "pending" ? "warning" : "danger"} style={{ fontSize: "0.68rem" }}>
-                        {op.status === "active" ? "Activo" : op.status === "pending" ? "Pendiente" : "Suspendido"}
-                      </IonBadge>
-                      {op.isVerified && <IonBadge color="primary" style={{ fontSize: "0.68rem" }}>Verificado</IonBadge>}
-                    </div>
-                  </div>
-                  <IonNote style={{ display: "block", marginBottom: 4, fontSize: "0.8rem" }}>{op.email}</IonNote>
-                  <IonNote style={{ display: "block", marginBottom: 4, fontSize: "0.78rem" }}>
-                    Tipo de servicio: <em>Arriendo de vehículos</em>
-                  </IonNote>
-                  <IonNote style={{ display: "block", fontSize: "0.78rem" }}>
-                    Estado operativo: <em>Operación por configurar</em>
-                  </IonNote>
-                  <IonNote style={{ display: "block", fontSize: "0.72rem", marginTop: 6 }}>
-                    Registrado: {fmtDate(op.createdAt)}
-                  </IonNote>
-                </IonCardContent>
-              </IonCard>
-            ))}
-          </div>
-        ) : (
-          <div style={{ padding: "32px 24px", textAlign: "center" }}>
-            <p style={{ color: "var(--ion-color-medium)", fontSize: "1rem", fontWeight: 500 }}>
-              Aún no hay operadores de arriendo registrados.
-            </p>
-            <p style={{ color: "var(--ion-color-medium)", fontSize: "0.85rem" }}>
-              Este módulo permitirá administrar operadores, flota disponible, documentación y servicios de arriendo.
-            </p>
+        )}
+
+        {!loading && tab === "operators" && (
+          <>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, padding: "8px 16px" }}>
+              {([
+                { label: "Total",       value: operators.length,                                      color: "primary"  },
+                { label: "Activos",     value: operators.filter((o) => o.status === "active").length, color: "tertiary" },
+                { label: "Pendientes",  value: operators.filter((o) => o.status === "pending").length, color: "warning" },
+                { label: "Verificados", value: operators.filter((o) => o.isVerified).length,           color: "success" },
+              ] as { label: string; value: number; color: string }[]).map((stat) => (
+                <IonCard key={stat.label} style={{ margin: 0, textAlign: "center" }}>
+                  <IonCardContent style={{ padding: "8px" }}>
+                    <div style={{ fontSize: "1.5rem", fontWeight: "bold", color: `var(--ion-color-${stat.color})` }}>{stat.value}</div>
+                    <div style={{ fontSize: "0.75rem", color: "var(--ion-color-medium)" }}>{stat.label}</div>
+                  </IonCardContent>
+                </IonCard>
+              ))}
+            </div>
+
+            <IonCard style={{ margin: "0 16px 8px" }}>
+              <IonCardContent style={{ padding: "8px 12px" }}>
+                <div style={{ display: "flex", gap: "8px" }}>
+                  <IonItem lines="none" style={{ flex: 1 }}>
+                    <IonLabel position="stacked" style={{ fontSize: "0.78rem" }}>Estado</IonLabel>
+                    <IonSelect interface="action-sheet" value={filterStatus} onIonChange={(e) => setFilterStatus(String(e.detail.value ?? "all"))}>
+                      <IonSelectOption value="all">Todos</IonSelectOption>
+                      <IonSelectOption value="active">Activos</IonSelectOption>
+                      <IonSelectOption value="pending">Pendientes</IonSelectOption>
+                      <IonSelectOption value="suspended">Suspendidos</IonSelectOption>
+                    </IonSelect>
+                  </IonItem>
+                  <IonItem lines="none" style={{ flex: 1 }}>
+                    <IonLabel position="stacked" style={{ fontSize: "0.78rem" }}>Verificación</IonLabel>
+                    <IonSelect interface="action-sheet" value={filterVerified} onIonChange={(e) => setFilterVerified(String(e.detail.value ?? "all"))}>
+                      <IonSelectOption value="all">Todos</IonSelectOption>
+                      <IonSelectOption value="verified">Verificados</IonSelectOption>
+                      <IonSelectOption value="unverified">No verificados</IonSelectOption>
+                    </IonSelect>
+                  </IonItem>
+                </div>
+              </IonCardContent>
+            </IonCard>
+
+            {filtered.length === 0 ? (
+              <IonText color="medium"><p style={{ padding: "0 16px" }}>Sin operadores registrados.</p></IonText>
+            ) : (
+              <div style={{ display: "flex", flexDirection: "column", gap: "10px", padding: "0 16px 16px" }}>
+                {filtered.map((op) => (
+                  <IonCard key={op.id} style={{ margin: 0 }}>
+                    <IonCardContent style={{ padding: "12px 14px" }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 6 }}>
+                        <strong style={{ fontSize: "0.95rem" }}>{op.name}</strong>
+                        <div style={{ display: "flex", gap: 4 }}>
+                          <IonBadge color={op.status === "active" ? "success" : op.status === "pending" ? "warning" : "danger"} style={{ fontSize: "0.68rem" }}>
+                            {op.status === "active" ? "Activo" : op.status === "pending" ? "Pendiente" : "Suspendido"}
+                          </IonBadge>
+                          {op.isVerified && <IonBadge color="primary" style={{ fontSize: "0.68rem" }}>Verificado</IonBadge>}
+                        </div>
+                      </div>
+                      <IonNote style={{ display: "block", fontSize: "0.8rem" }}>{op.email}</IonNote>
+                    </IonCardContent>
+                  </IonCard>
+                ))}
+              </div>
+            )}
+          </>
+        )}
+
+        {!loading && tab === "vehicles" && (
+          <div style={{ padding: "8px 16px" }}>
+            {vehicles.length === 0 ? (
+              <IonText color="medium"><p>No hay vehículos disponibles registrados.</p></IonText>
+            ) : (
+              <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+                {vehicles.map((v) => (
+                  <IonCard key={v.id} style={{ margin: 0 }}>
+                    <IonCardContent style={{ padding: "12px 14px" }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+                        <div>
+                          <div style={{ fontWeight: 700, fontSize: "0.9rem" }}>{v.brand} {v.model}{v.year ? ` (${v.year})` : ""}</div>
+                          <div style={{ fontSize: "0.78rem", color: "var(--ion-color-medium)" }}>{v.plate} · {VEHICLE_TYPE_LABEL_ADMIN[v.type] ?? v.type}</div>
+                          <div style={{ fontSize: "0.82rem", fontWeight: 600, color: "var(--ion-color-success)", marginTop: "2px" }}>
+                            ${(v.dailyPrice / 100).toLocaleString("es-CL")}/día
+                          </div>
+                        </div>
+                        <IonBadge color="success" style={{ fontSize: "0.68rem" }}>Disponible</IonBadge>
+                      </div>
+                    </IonCardContent>
+                  </IonCard>
+                ))}
+              </div>
+            )}
           </div>
         )}
 
-        {/* Próximas fases */}
-        <IonCard style={{ margin: "16px" }}>
-          <IonCardContent>
-            <strong style={{ display: "block", marginBottom: 8 }}>Próximas fases del módulo</strong>
-            {[
-              "Perfiles de operador de arriendo",
-              "Flota de vehículos por operador",
-              "Disponibilidad de vehículos",
-              "Documentación comercial y habilitante",
-              "Asignación de reservas de arriendo",
-              "Tarifas por categoría de vehículo",
-            ].map((item) => (
-              <IonNote key={item} style={{ display: "block", padding: "3px 0", fontSize: "0.85rem" }}>
-                · {item}
-              </IonNote>
-            ))}
-          </IonCardContent>
-        </IonCard>
-
-        <IonItem lines="none">
-          <IonLabel color="medium" style={{ fontSize: "0.8rem", whiteSpace: "normal" }}>
-            La gestión de flota y reservas de arriendo se implementará en el módulo de Arriendos.
-          </IonLabel>
-        </IonItem>
+        {!loading && tab === "bookings" && (
+          <div style={{ padding: "8px 16px" }}>
+            {allBookings.length === 0 ? (
+              <IonText color="medium"><p>No hay reservas de arriendo.</p></IonText>
+            ) : (
+              <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+                {allBookings.map((b) => {
+                  const days = Math.max(1, Math.round((new Date(b.endDate).getTime() - new Date(b.startDate).getTime()) / (1000 * 60 * 60 * 24)));
+                  return (
+                    <IonCard key={b.id} style={{ margin: 0 }}>
+                      <IonCardContent style={{ padding: "12px 14px" }}>
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+                          <div>
+                            <div style={{ fontWeight: 600, fontSize: "0.9rem" }}>
+                              {b.vehicleBrand ?? ""} {b.vehicleModel ?? ""} ({b.vehiclePlate ?? ""})
+                            </div>
+                            <div style={{ fontSize: "0.78rem", color: "var(--ion-color-medium)" }}>
+                              {b.startDate} → {b.endDate} · {days} día{days !== 1 ? "s" : ""}
+                            </div>
+                            {b.totalPrice !== null && (
+                              <div style={{ fontSize: "0.82rem", fontWeight: 600, color: "var(--ion-color-success)" }}>
+                                ${(b.totalPrice / 100).toLocaleString("es-CL")}
+                              </div>
+                            )}
+                          </div>
+                          <IonBadge color={BOOKING_STATUS_COLOR_ADMIN[b.status] ?? "medium"} style={{ fontSize: "0.68rem" }}>
+                            {BOOKING_STATUS_LABEL_ADMIN[b.status] ?? b.status}
+                          </IonBadge>
+                        </div>
+                      </IonCardContent>
+                    </IonCard>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
       </IonContent>
     </IonPage>
   );
