@@ -13,6 +13,8 @@ import {
   AdminSettingsPage,
   AdminDocumentsPage,
   AdminOfflineBookingsPage,
+  AdminActivityPage,
+  AdminAlertsPage,
 } from "../pages/admin";
 
 const TABS = [
@@ -38,6 +40,8 @@ export function AdminLayout(): JSX.Element {
         <Route exact path={ROUTES.ADMIN.SETTINGS}   component={AdminSettingsPage} />
         <Route exact path={ROUTES.ADMIN.DOCUMENTS}        component={AdminDocumentsPage} />
         <Route exact path={ROUTES.ADMIN.OFFLINE_BOOKINGS} component={AdminOfflineBookingsPage} />
+        <Route exact path="/admin/activity" component={AdminActivityPage} />
+        <Route exact path="/admin/alerts" component={AdminAlertsPage} />
       </Switch>
     </RoleLayout>
   );

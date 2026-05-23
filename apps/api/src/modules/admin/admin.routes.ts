@@ -1,7 +1,10 @@
 import type { FastifyInstance } from "fastify";
 import { adminController } from "./admin.controller.js";
+import { dashboardRoutes } from "./dashboard.routes.js";
 
 export async function adminRoutes(app: FastifyInstance) {
+  await app.register(dashboardRoutes);
+
   app.get("/users",                       adminController.listUsers);
   app.patch("/users/:id/status",          adminController.updateUserStatus);
   app.get("/documents",                   adminController.listDocuments);

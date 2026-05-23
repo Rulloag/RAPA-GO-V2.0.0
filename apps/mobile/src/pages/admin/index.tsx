@@ -4,17 +4,27 @@ import {
   IonButton,
   IonCard,
   IonCardContent,
+  IonCardHeader,
+  IonCardSubtitle,
+  IonCardTitle,
   IonChip,
+  IonCol,
   IonContent,
+  IonGrid,
   IonHeader,
+  IonIcon,
+  IonInfiniteScroll,
+  IonInfiniteScrollContent,
   IonInput,
   IonItem,
   IonLabel,
+  IonList,
   IonModal,
   IonNote,
   IonPage,
   IonRefresher,
   IonRefresherContent,
+  IonRow,
   IonSegment,
   IonSegmentButton,
   IonSelect,
@@ -26,6 +36,8 @@ import {
   IonToolbar,
 } from "@ionic/react";
 import { useEffect, useState, useCallback } from "react";
+import { alertCircleOutline, bicycleOutline, bookOutline, carOutline as carIcon, warningOutline } from "ionicons/icons";
+import { dashboardService, type DashboardData, type ActivityItem as DashActivityItem } from "../../features/admin/dashboard.service.js";
 import { touristService, type TouristServiceData, type ServiceBookingData } from "../../features/tourist/tourist.service.js";
 import { rentalService, type RentalVehicleData, type RentalBookingData } from "../../features/rental/rental.service.js";
 import {
@@ -56,83 +68,258 @@ function meta(path: string) {
   return ROUTE_METADATA.find((r) => r.path === path)!;
 }
 
+function timeAgo(isoString: string): string {
+  const diff = Date.now() - new Date(isoString).getTime();
+  const mins = Math.floor(diff / 60000);
+  if (mins < 1) return "Ahora";
+  if (mins < 60) return `Hace ${mins} min`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `Hace ${hours}h`;
+  return `Hace ${Math.floor(hours / 24)}d`;
+}
+
 export function AdminHomePage(): JSX.Element {
+  const { session } = useAuth();
+  const [loading, setLoading] = useState(true);
+  const [data, setData] = useState<DashboardData | null>(null);
+  const [activity, setActivity] = useState<DashActivityItem[]>([]);
+  const [error, setError] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    if (!session?.accessToken) return;
+    setLoading(true);
+    setError(null);
+    try {
+      const [dash, acts] = await Promise.all([
+        dashboardService.getDashboard(session.accessToken),
+        dashboardService.getActivity(session.accessToken, 5),
+      ]);
+      setData(dash);
+      setActivity(acts);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Error al cargar dashboard.");
+    } finally {
+      setLoading(false);
+    }
+  }, [session?.accessToken]);
+
+  useEffect(() => { void load(); }, [load]);
+
+  const dateStr = new Date().toLocaleDateString("es-CL", { weekday: "long", day: "numeric", month: "long" });
+
   return (
     <IonPage>
-      <HomeHeader title="Panel Admin" />
+      <IonHeader>
+        <IonToolbar>
+          <IonTitle>Panel de Control</IonTitle>
+        </IonToolbar>
+        <IonToolbar>
+          <IonTitle size="small">{dateStr}</IonTitle>
+        </IonToolbar>
+      </IonHeader>
       <IonContent className="ion-padding">
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "1fr 1fr",
-            gap: "12px",
-            marginTop: "8px",
-          }}
-        >
-          <ActionCard
-            icon={peopleOutline}
-            title="Usuarios"
-            subtitle="Gestión de cuentas y roles"
-            route={ROUTES.ADMIN.USERS}
-            color="danger"
-          />
-          <ActionCard
-            icon={carOutline}
-            title="Conductores"
-            subtitle="Estado operacional de conductores"
-            route={ROUTES.ADMIN.DRIVERS}
-            color="danger"
-          />
-          <ActionCard
-            icon={compassOutline}
-            title="Guías"
-            subtitle="Gestión de guías locales"
-            route={ROUTES.ADMIN.GUIDES}
-            color="danger"
-          />
-          <ActionCard
-            icon={keyOutline}
-            title="Rent a Car"
-            subtitle="Operadores y servicios de arriendo"
-            route={ROUTES.ADMIN.RENTALS}
-            color="danger"
-          />
-          <ActionCard
-            icon={personOutline}
-            title="Viajes"
-            subtitle="Despacho manual y monitor de viajes"
-            route={ROUTES.ADMIN.TRIPS}
-            color="danger"
-          />
-          <ActionCard
-            icon={cardOutline}
-            title="Pagos"
-            subtitle="Transacciones y conciliación"
-            route={ROUTES.ADMIN.PAYMENTS}
-            color="danger"
-          />
-          <ActionCard
-            icon={documentTextOutline}
-            title="Documentos"
-            subtitle="Revisar y aprobar documentos de usuarios."
-            route={ROUTES.ADMIN.DOCUMENTS}
-            color="danger"
-          />
-          <ActionCard
-            icon={cloudOfflineOutline}
-            title="Viajes Offline"
-            subtitle="Reservas sin conectividad"
-            route={ROUTES.ADMIN.OFFLINE_BOOKINGS}
-            color="warning"
-          />
-          <ActionCard
-            icon={settingsOutline}
-            title="Configuración"
-            subtitle="Parámetros y tarifas del sistema"
-            route={ROUTES.ADMIN.SETTINGS}
-            color="medium"
-          />
-        </div>
+        <IonRefresher slot="fixed" onIonRefresh={(e) => { void load().then(() => e.detail.complete()); }}>
+          <IonRefresherContent />
+        </IonRefresher>
+
+        {loading && (
+          <div style={{ display: "flex", justifyContent: "center", padding: "32px" }}>
+            <IonSpinner />
+          </div>
+        )}
+
+        {error && (
+          <IonCard color="danger">
+            <IonCardContent>{error}</IonCardContent>
+          </IonCard>
+        )}
+
+        {!loading && data && (
+          <>
+            {data.alerts.length > 0 && (
+              <div>
+                {data.alerts.slice(0, 3).map((alert, i) => (
+                  <IonCard key={i} color={alert.type === "critical" ? "danger" : "warning"}>
+                    <IonCardContent>
+                      <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                        <IonIcon icon={alert.type === "critical" ? alertCircleOutline : warningOutline} />
+                        <span>{alert.message}</span>
+                      </div>
+                    </IonCardContent>
+                  </IonCard>
+                ))}
+              </div>
+            )}
+
+            <IonGrid>
+              <IonRow>
+                <IonCol size="6">
+                  <IonCard color="primary">
+                    <IonCardHeader>
+                      <IonCardTitle style={{ fontSize: "2rem", fontWeight: "bold" }}>
+                        {data.today.rides.total}
+                      </IonCardTitle>
+                      <IonCardSubtitle>Viajes Hoy</IonCardSubtitle>
+                    </IonCardHeader>
+                    <IonCardContent>
+                      <div style={{ display: "flex", flexWrap: "wrap", gap: "4px" }}>
+                        <IonBadge color="success">{data.today.rides.completed} completados</IonBadge>
+                        <IonBadge color="warning">{data.today.rides.inProgress} en curso</IonBadge>
+                        <IonBadge color="medium">{data.today.rides.pending} pendientes</IonBadge>
+                      </div>
+                    </IonCardContent>
+                  </IonCard>
+                </IonCol>
+                <IonCol size="6">
+                  <IonCard color="success">
+                    <IonCardHeader>
+                      <IonCardTitle style={{ fontSize: "1.4rem", fontWeight: "bold" }}>
+                        ${(data.today.revenue / 100).toLocaleString("es-CL")}
+                      </IonCardTitle>
+                      <IonCardSubtitle>Ingresos Hoy</IonCardSubtitle>
+                    </IonCardHeader>
+                    <IonCardContent>
+                      <IonNote>Esta semana: ${(data.thisWeek.revenue / 100).toLocaleString("es-CL")}</IonNote>
+                    </IonCardContent>
+                  </IonCard>
+                </IonCol>
+              </IonRow>
+              <IonRow>
+                <IonCol size="6">
+                  <IonCard color={data.operational.activeDrivers === 0 ? ("warning" as const) : ("tertiary" as const)}>
+                    <IonCardHeader>
+                      <IonCardTitle style={{ fontSize: "2rem", fontWeight: "bold" }}>
+                        {data.operational.activeDrivers}
+                      </IonCardTitle>
+                      <IonCardSubtitle>Conductores Disponibles</IonCardSubtitle>
+                    </IonCardHeader>
+                    <IonCardContent>
+                      <IonNote>{data.operational.busyDrivers} ocupados · {data.operational.unavailableDrivers} no disp.</IonNote>
+                    </IonCardContent>
+                  </IonCard>
+                </IonCol>
+                <IonCol size="6">
+                  <IonCard color="secondary">
+                    <IonCardHeader>
+                      <IonCardTitle style={{ fontSize: "2rem", fontWeight: "bold" }}>
+                        {data.today.newUsers}
+                      </IonCardTitle>
+                      <IonCardSubtitle>Nuevos Hoy</IonCardSubtitle>
+                    </IonCardHeader>
+                    <IonCardContent>
+                      <IonNote>usuarios registrados hoy</IonNote>
+                    </IonCardContent>
+                  </IonCard>
+                </IonCol>
+              </IonRow>
+            </IonGrid>
+
+            {(data.operational.pendingDocuments > 0 ||
+              data.operational.pendingOfflineBookings > 0 ||
+              data.operational.pendingServiceBookings > 0 ||
+              data.operational.pendingRentalBookings > 0) && (
+              <IonCard>
+                <IonCardHeader>
+                  <IonCardTitle>Pendientes Operacionales</IonCardTitle>
+                </IonCardHeader>
+                <IonList>
+                  {data.operational.pendingDocuments > 0 && (
+                    <IonItem routerLink={ROUTES.ADMIN.DOCUMENTS} detail>
+                      <IonLabel>Documentos pendientes</IonLabel>
+                      <IonBadge slot="end" color="warning">{data.operational.pendingDocuments}</IonBadge>
+                    </IonItem>
+                  )}
+                  {data.operational.pendingOfflineBookings > 0 && (
+                    <IonItem routerLink={ROUTES.ADMIN.OFFLINE_BOOKINGS} detail>
+                      <IonLabel>Reservas offline sin sincronizar</IonLabel>
+                      <IonBadge slot="end" color="warning">{data.operational.pendingOfflineBookings}</IonBadge>
+                    </IonItem>
+                  )}
+                  {data.operational.pendingServiceBookings > 0 && (
+                    <IonItem detail>
+                      <IonLabel>Reservas de servicios</IonLabel>
+                      <IonBadge slot="end" color="medium">{data.operational.pendingServiceBookings}</IonBadge>
+                    </IonItem>
+                  )}
+                  {data.operational.pendingRentalBookings > 0 && (
+                    <IonItem detail>
+                      <IonLabel>Reservas de arriendo</IonLabel>
+                      <IonBadge slot="end" color="medium">{data.operational.pendingRentalBookings}</IonBadge>
+                    </IonItem>
+                  )}
+                </IonList>
+              </IonCard>
+            )}
+
+            {data.thisWeek.topDrivers.length > 0 && (
+              <IonCard>
+                <IonCardHeader>
+                  <IonCardTitle>Top Conductores — Semana</IonCardTitle>
+                </IonCardHeader>
+                <IonList>
+                  {data.thisWeek.topDrivers.map((driver) => (
+                    <IonItem key={driver.driverId}>
+                      <IonLabel>
+                        <h3>{driver.name}</h3>
+                        <p>{driver.trips} viajes · ${(driver.revenue / 100).toLocaleString("es-CL")}</p>
+                      </IonLabel>
+                    </IonItem>
+                  ))}
+                </IonList>
+              </IonCard>
+            )}
+
+            {activity.length > 0 && (
+              <IonCard>
+                <IonCardHeader>
+                  <IonCardTitle>Actividad Reciente</IonCardTitle>
+                </IonCardHeader>
+                <IonList>
+                  {activity.map((item, i) => (
+                    <IonItem key={i}>
+                      <IonIcon icon={item.type === "ride" ? carIcon : bookOutline} slot="start" />
+                      <IonLabel>
+                        <h3>{item.description}</h3>
+                        <p>{item.userName} · {timeAgo(item.timestamp)}</p>
+                      </IonLabel>
+                    </IonItem>
+                  ))}
+                </IonList>
+                <div style={{ padding: "8px" }}>
+                  <IonButton expand="block" fill="outline" routerLink="/admin/activity">
+                    Ver toda la actividad
+                  </IonButton>
+                </div>
+              </IonCard>
+            )}
+
+            <IonCard>
+              <IonCardHeader>
+                <IonCardTitle>Accesos Rápidos</IonCardTitle>
+              </IonCardHeader>
+              <IonCardContent>
+                <IonGrid>
+                  <IonRow>
+                    <IonCol size="6">
+                      <IonButton expand="block" routerLink={ROUTES.ADMIN.DRIVERS}>Conductores</IonButton>
+                    </IonCol>
+                    <IonCol size="6">
+                      <IonButton expand="block" routerLink={ROUTES.ADMIN.DOCUMENTS}>Documentos</IonButton>
+                    </IonCol>
+                  </IonRow>
+                  <IonRow>
+                    <IonCol size="6">
+                      <IonButton expand="block" routerLink={ROUTES.ADMIN.TRIPS}>Viajes</IonButton>
+                    </IonCol>
+                    <IonCol size="6">
+                      <IonButton expand="block" routerLink={ROUTES.ADMIN.OFFLINE_BOOKINGS}>Offline</IonButton>
+                    </IonCol>
+                  </IonRow>
+                </IonGrid>
+              </IonCardContent>
+            </IonCard>
+          </>
+        )}
       </IonContent>
     </IonPage>
   );
@@ -2182,6 +2369,151 @@ export function AdminDocumentsPage(): JSX.Element {
           ]}
           onDidDismiss={() => { if (!actioning) { setActionId(null); setActionType(null); } }}
         />
+      </IonContent>
+    </IonPage>
+  );
+}
+
+export function AdminActivityPage(): JSX.Element {
+  const { session } = useAuth();
+  const [items, setItems] = useState<DashActivityItem[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [filter, setFilter] = useState("all");
+  const [page, setPage] = useState(1);
+  const PAGE_SIZE = 20;
+
+  const load = useCallback(async (reset = false) => {
+    if (!session?.accessToken) return;
+    if (reset) setLoading(true);
+    try {
+      const limit = PAGE_SIZE * (reset ? 1 : page);
+      const data = await dashboardService.getActivity(session.accessToken, limit);
+      setItems(data);
+      if (!reset) setPage((p) => p + 1);
+    } catch {
+      /* noop */
+    } finally {
+      if (reset) setLoading(false);
+    }
+  }, [session?.accessToken, page]);
+
+  useEffect(() => { void load(true); }, [session?.accessToken]);
+
+  const filtered = filter === "all" ? items : items.filter((i) => i.type === filter);
+
+  return (
+    <IonPage>
+      <IonHeader>
+        <IonToolbar>
+          <IonTitle>Actividad Reciente</IonTitle>
+        </IonToolbar>
+        <IonToolbar>
+          <IonSegment value={filter} onIonChange={(e) => setFilter(String(e.detail.value ?? "all"))}>
+            <IonSegmentButton value="all"><IonLabel>Todos</IonLabel></IonSegmentButton>
+            <IonSegmentButton value="ride"><IonLabel>Viajes</IonLabel></IonSegmentButton>
+            <IonSegmentButton value="booking"><IonLabel>Reservas</IonLabel></IonSegmentButton>
+            <IonSegmentButton value="document"><IonLabel>Docs</IonLabel></IonSegmentButton>
+          </IonSegment>
+        </IonToolbar>
+      </IonHeader>
+      <IonContent>
+        <IonRefresher slot="fixed" onIonRefresh={(e) => { void load(true).then(() => e.detail.complete()); }}>
+          <IonRefresherContent />
+        </IonRefresher>
+        {loading && (
+          <div style={{ display: "flex", justifyContent: "center", padding: "32px" }}>
+            <IonSpinner />
+          </div>
+        )}
+        {!loading && (
+          <IonList>
+            {filtered.map((item, i) => (
+              <IonItem key={i}>
+                <IonIcon
+                  icon={item.type === "ride" ? carIcon : bookOutline}
+                  slot="start"
+                  color={item.type === "ride" ? "primary" : "tertiary"}
+                />
+                <IonLabel>
+                  <h3>{item.description}</h3>
+                  <p>{item.userName} · {timeAgo(item.timestamp)}</p>
+                </IonLabel>
+                {item.status && <IonBadge slot="end" color="medium">{item.status}</IonBadge>}
+              </IonItem>
+            ))}
+          </IonList>
+        )}
+        <IonInfiniteScroll onIonInfinite={(e) => { void load().then(() => (e.target as HTMLIonInfiniteScrollElement).complete()); }}>
+          <IonInfiniteScrollContent />
+        </IonInfiniteScroll>
+      </IonContent>
+    </IonPage>
+  );
+}
+
+export function AdminAlertsPage(): JSX.Element {
+  const { session } = useAuth();
+  const [alerts, setAlerts] = useState<DashboardData["alerts"]>([]);
+  const [loading, setLoading] = useState(true);
+
+  const load = useCallback(async () => {
+    if (!session?.accessToken) return;
+    setLoading(true);
+    try {
+      const data = await dashboardService.getDashboard(session.accessToken);
+      setAlerts(data.alerts);
+    } catch {
+      /* noop */
+    } finally {
+      setLoading(false);
+    }
+  }, [session?.accessToken]);
+
+  useEffect(() => { void load(); }, [load]);
+
+  function dismiss(index: number) {
+    setAlerts((prev) => prev.filter((_, i) => i !== index));
+  }
+
+  return (
+    <IonPage>
+      <IonHeader>
+        <IonToolbar>
+          <IonTitle>Alertas</IonTitle>
+        </IonToolbar>
+      </IonHeader>
+      <IonContent className="ion-padding">
+        <IonRefresher slot="fixed" onIonRefresh={(e) => { void load().then(() => e.detail.complete()); }}>
+          <IonRefresherContent />
+        </IonRefresher>
+        {loading && (
+          <div style={{ display: "flex", justifyContent: "center", padding: "32px" }}>
+            <IonSpinner />
+          </div>
+        )}
+        {!loading && alerts.length === 0 && (
+          <div style={{ textAlign: "center", padding: "48px 16px" }}>
+            <IonText color="medium">No hay alertas activas</IonText>
+          </div>
+        )}
+        {!loading && alerts.map((alert, i) => (
+          <IonCard key={i} color={alert.type === "critical" ? "danger" : "warning"}>
+            <IonCardContent>
+              <div style={{ display: "flex", alignItems: "flex-start", gap: "8px" }}>
+                <IonIcon icon={alert.type === "critical" ? alertCircleOutline : warningOutline} style={{ flexShrink: 0, marginTop: "2px" }} />
+                <div style={{ flex: 1 }}>
+                  <div>{alert.message}</div>
+                  {alert.action && <div style={{ marginTop: "4px", fontSize: "0.85rem", opacity: 0.8 }}>{alert.action}</div>}
+                </div>
+              </div>
+              <div style={{ marginTop: "8px" }}>
+                <IonButton fill="outline" size="small" onClick={() => dismiss(i)}>
+                  Marcar resuelta
+                </IonButton>
+              </div>
+            </IonCardContent>
+          </IonCard>
+        ))}
       </IonContent>
     </IonPage>
   );
