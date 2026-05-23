@@ -65,6 +65,14 @@ export class NotificationsService {
     return { ok: true };
   }
 
+  async markAllRead(accessToken: string): Promise<VoidResult> {
+    const auth = await authenticate(accessToken);
+    if (!auth.ok) return auth;
+
+    await repo.markAllRead(auth.userId);
+    return { ok: true };
+  }
+
   async dismiss(accessToken: string, notificationId: string): Promise<VoidResult> {
     const auth = await authenticate(accessToken);
     if (!auth.ok) return auth;

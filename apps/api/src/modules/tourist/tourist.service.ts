@@ -233,16 +233,18 @@ export class TouristService {
       ...(input.bookingTime !== undefined ? { bookingTime: input.bookingTime } : {}),
       ...(input.notes       !== undefined ? { notes:       input.notes       } : {}),
     });
-    const notifRepo = new NotificationsRepository();
     const expiresAt = new Date(Date.now() + 4 * 60 * 60 * 1000);
-    notifRepo.create({
-      userId: booking.guideId,
-      type: "service_booking",
-      title: "Nueva reserva recibida",
-      message: `Tienes una nueva reserva para ${service.title}. Confirma antes de ${expiresAt.toLocaleTimeString("es-CL")}`,
-      entityType: "service_booking",
-      entityId: booking.id,
-      expiresAt,
+    const passengerUser = await usersRepo.findById(auth.userId);
+    import("../notifications/notifications.helpers.js").then(({ notifyGuideNewBooking }) => {
+      notifyGuideNewBooking({
+        guideUserId: booking.guideId,
+        guidePhone: null,
+        serviceTitle: service.title,
+        bookingId: booking.id,
+        passengerName: passengerUser?.name ?? "Un pasajero",
+        bookingDate: input.bookingDate,
+        expiresAt,
+      });
     }).catch(() => {});
 
     return { ok: true, booking: toBookingResponse(booking) };
@@ -267,6 +269,20 @@ export class TouristService {
 
     const cancelled = await repo.cancelBooking(bookingId, input.reason ?? null);
     if (!cancelled) return { ok: false, code: "NOT_FOUND", message: "Booking not found.", statusCode: 404 };
+
+    if (isOwner) {
+      const passengerUser = await usersRepo.findById(auth.userId);
+      const svc = await repo.findServiceById(existing.serviceId);
+      import("../notifications/notifications.helpers.js").then(({ notifyGuideCancellation }) => {
+        notifyGuideCancellation({
+          guideUserId: existing.guideId,
+          serviceTitle: svc?.title ?? "servicio",
+          bookingId: existing.id,
+          passengerName: passengerUser?.name ?? "Un pasajero",
+        });
+      }).catch(() => {});
+    }
+
     return { ok: true, booking: toBookingResponse(cancelled) };
   }
 
@@ -356,6 +372,17 @@ export class TouristService {
       if (!existing) return { ok: false, code: "NOT_FOUND", message: "Booking not found.", statusCode: 404 };
       return { ok: false, code: "AUTH_FORBIDDEN", message: "You can only confirm bookings for your services.", statusCode: 403 };
     }
+
+    const svc = await repo.findServiceById(confirmed.serviceId);
+    import("../notifications/notifications.helpers.js").then(({ notifyPassengerBookingConfirmed }) => {
+      notifyPassengerBookingConfirmed({
+        passengerUserId: confirmed.passengerId,
+        serviceTitle: svc?.title ?? "servicio",
+        bookingId: confirmed.id,
+        bookingDate: confirmed.bookingDate,
+      });
+    }).catch(() => {});
+
     return { ok: true, booking: toBookingResponse(confirmed) };
   }
 

@@ -11,6 +11,7 @@ import { useHistory } from "react-router-dom";
 import { useAuth } from "../features/auth";
 import { ROUTES } from "../navigation/routes";
 import { StatusBadge } from "./StatusBadge";
+import { NotificationBell } from "./NotificationBell.js";
 import type { UserRole } from "@rapa-go/shared";
 
 const ROLE_LABEL: Record<UserRole, string> = {
@@ -50,6 +51,7 @@ export function HomeHeader({ title }: HomeHeaderProps): JSX.Element {
       <IonToolbar color={color}>
         <IonTitle>{title}</IonTitle>
         <IonButtons slot="end">
+          <NotificationBell />
           <IonButton onClick={() => void handleLogout()} title="Cerrar sesión">
             <IonIcon slot="icon-only" icon={logOutOutline} />
           </IonButton>

@@ -209,6 +209,18 @@ export class RidesService {
       };
     }
 
+    const acceptedResp = toResponse(accepted);
+    import("../notifications/notifications.helpers.js").then(({ notifyPassengerDriverAssigned }) => {
+      notifyPassengerDriverAssigned({
+        passengerUserId: acceptedResp.passengerUserId,
+        driverName: acceptedResp.driverName ?? "Tu conductor",
+        driverPhone: acceptedResp.driverPhone ?? null,
+        rideId: acceptedResp.id,
+        origin: acceptedResp.originText,
+        destination: acceptedResp.destinationText,
+      });
+    }).catch(() => {});
+
     return { ok: true, ride: toResponse(accepted) };
   }
 
@@ -242,6 +254,15 @@ export class RidesService {
       await new DriverStatusRepository().setAvailable(completed.driverUserId);
     }
 
+    import("../notifications/notifications.helpers.js").then(({ notifyPassengerRideCompleted }) => {
+      notifyPassengerRideCompleted({
+        passengerUserId: completed.passengerUserId,
+        rideId: completed.id,
+        origin: completed.originText,
+        destination: completed.destinationText,
+      });
+    }).catch(() => {});
+
     return { ok: true, ride: toResponse(completed) };
   }
 
@@ -274,6 +295,15 @@ export class RidesService {
     const auditService = new (await import("../audit/audit.service.js")).AuditService();
     auditService.recordSafe({ eventType: "ride.driver_en_route", metadata: { driverUserId: auth.userId, rideId } });
 
+    const enRouteResp = toResponse(updated);
+    import("../notifications/notifications.helpers.js").then(({ notifyPassengerDriverEnRoute }) => {
+      notifyPassengerDriverEnRoute({
+        passengerUserId: enRouteResp.passengerUserId,
+        driverName: enRouteResp.driverName ?? "Tu conductor",
+        rideId: enRouteResp.id,
+      });
+    }).catch(() => {});
+
     return { ok: true, ride: toResponse(updated) };
   }
 
@@ -304,6 +334,15 @@ export class RidesService {
 
     const auditService = new (await import("../audit/audit.service.js")).AuditService();
     auditService.recordSafe({ eventType: "ride.driver_arrived", metadata: { driverUserId: auth.userId, rideId } });
+
+    const arrivedResp = toResponse(updated);
+    import("../notifications/notifications.helpers.js").then(({ notifyPassengerDriverArrived }) => {
+      notifyPassengerDriverArrived({
+        passengerUserId: arrivedResp.passengerUserId,
+        driverName: arrivedResp.driverName ?? "Tu conductor",
+        rideId: arrivedResp.id,
+      });
+    }).catch(() => {});
 
     return { ok: true, ride: toResponse(updated) };
   }

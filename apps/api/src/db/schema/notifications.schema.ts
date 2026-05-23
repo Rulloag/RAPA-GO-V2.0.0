@@ -11,6 +11,7 @@ export const notifications = pgTable("notifications", {
   entityId:   uuid("entity_id"),
   read:       boolean("read").default(false).notNull(),
   actionUrl:  text("action_url"),
+  waMeUrl:    text("wa_me_url"),
   createdAt:  timestamp("created_at").defaultNow().notNull(),
   expiresAt:  timestamp("expires_at"),
 });

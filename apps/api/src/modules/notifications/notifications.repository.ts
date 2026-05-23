@@ -13,6 +13,7 @@ export class NotificationsRepository {
     entityId?: string;
     actionUrl?: string;
     expiresAt?: Date;
+    waMeUrl?: string;
   }): Promise<Notification> {
     const rows = await db.insert(notifications).values({
       userId: data.userId,
@@ -23,9 +24,16 @@ export class NotificationsRepository {
       ...(data.entityId   !== undefined ? { entityId:   data.entityId   } : {}),
       ...(data.actionUrl  !== undefined ? { actionUrl:  data.actionUrl  } : {}),
       ...(data.expiresAt  !== undefined ? { expiresAt:  data.expiresAt  } : {}),
+      ...(data.waMeUrl    !== undefined ? { waMeUrl:    data.waMeUrl    } : {}),
     }).returning();
     if (!rows[0]) throw new Error("Insert returned no rows.");
     return rows[0];
+  }
+
+  async markAllRead(userId: string): Promise<void> {
+    await db.update(notifications)
+      .set({ read: true })
+      .where(and(eq(notifications.userId, userId), eq(notifications.read, false)));
   }
 
   async findByUser(userId: string): Promise<Notification[]> {

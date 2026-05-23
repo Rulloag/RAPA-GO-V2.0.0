@@ -27,6 +27,14 @@ export const notificationsController = {
     sendOk(reply, {});
   },
 
+  async markAllRead(request: FastifyRequest, reply: FastifyReply): Promise<void> {
+    const token = extractBearer(request);
+    if (!token) { sendError(reply, { code: "UNAUTHORIZED", message: "Missing Bearer token.", statusCode: 401 }); return; }
+    const result = await notificationsService.markAllRead(token);
+    if (!result.ok) { sendError(reply, result); return; }
+    sendOk(reply, {});
+  },
+
   async dismiss(request: FastifyRequest<{ Params: { id: string } }>, reply: FastifyReply): Promise<void> {
     const token = extractBearer(request);
     if (!token) { sendError(reply, { code: "UNAUTHORIZED", message: "Missing Bearer token.", statusCode: 401 }); return; }

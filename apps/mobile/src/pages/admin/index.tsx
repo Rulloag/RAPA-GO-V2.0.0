@@ -63,6 +63,7 @@ import { driverProfileService, type DriverProfileData } from "../../features/dri
 import { inferZoneFromText, getZoneLabel, RAPA_NUI_ZONES, type RapaNuiZoneId, RAPAGO_CONTACT, WA_MESSAGES } from "@rapa-go/shared";
 import { WhatsAppButton } from "../../components/WhatsAppButton";
 import { MapFallback } from "../../components/MapFallback";
+import { NotificationBell } from "../../components/NotificationBell.js";
 
 function meta(path: string) {
   return ROUTE_METADATA.find((r) => r.path === path)!;
@@ -112,6 +113,7 @@ export function AdminHomePage(): JSX.Element {
       <IonHeader>
         <IonToolbar>
           <IonTitle>Panel de Control</IonTitle>
+          <div slot="end"><NotificationBell /></div>
         </IonToolbar>
         <IonToolbar>
           <IonTitle size="small">{dateStr}</IonTitle>

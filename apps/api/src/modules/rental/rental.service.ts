@@ -190,6 +190,16 @@ export class RentalService {
 
     const updated = await repo.updateBookingStatus(bookingId, "confirmed", auth.userId);
     if (!updated) return { ok: false, code: "NOT_FOUND", message: "Booking not found.", statusCode: 404 };
+
+    import("../notifications/notifications.helpers.js").then(({ notifyPassengerRentalConfirmed }) => {
+      notifyPassengerRentalConfirmed({
+        passengerUserId: existing.passengerId,
+        vehicleName: existing.vehicleId,
+        bookingId: existing.id,
+        startDate: existing.startDate,
+      });
+    }).catch(() => {});
+
     return { ok: true, booking: toBookingResponse(updated) };
   }
 
@@ -292,6 +302,20 @@ export class RentalService {
       ...(input.returnLocation !== undefined ? { returnLocation: input.returnLocation } : {}),
       ...(input.notes          !== undefined ? { notes:          input.notes          } : {}),
     });
+
+    const passengerUser = await usersRepo.findById(auth.userId);
+    import("../notifications/notifications.helpers.js").then(({ notifyOperatorNewRentalBooking }) => {
+      notifyOperatorNewRentalBooking({
+        operatorUserId: vehicle.operatorId,
+        operatorPhone: null,
+        vehicleName: vehicle.model,
+        bookingId: booking.id,
+        passengerName: passengerUser?.name ?? "Un pasajero",
+        startDate: input.startDate,
+        endDate: input.endDate,
+      });
+    }).catch(() => {});
+
     return { ok: true, booking: toBookingResponse(booking) };
   }
 

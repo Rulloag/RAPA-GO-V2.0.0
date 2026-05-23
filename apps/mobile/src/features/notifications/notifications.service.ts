@@ -10,6 +10,7 @@ export interface NotificationData {
   entityId: string | null;
   read: boolean;
   actionUrl: string | null;
+  waMeUrl: string | null;
   createdAt: string;
   expiresAt: string | null;
 }
@@ -29,5 +30,9 @@ export const notificationsService = {
 
   async dismiss(token: string, id: string): Promise<void> {
     await apiClient.patch<unknown>(`/notifications/${id}/dismiss`, {}, { token });
+  },
+
+  async markAllRead(token: string): Promise<void> {
+    await apiClient.post<unknown>("/notifications/mark-all-read", {}, { token });
   },
 };

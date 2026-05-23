@@ -18,6 +18,7 @@ import {
   ProfileSecurityPage,
   ProfileNotificationsPage,
 } from "../pages/profile";
+import { NotificationPage } from "../pages/notifications/NotificationPage.js";
 
 /** Wraps a private route: passes the current path to RouteGuard for role checking. */
 function PrivateRoute({
@@ -93,6 +94,7 @@ export function AppRouter(): JSX.Element {
         <PrivateRoute exact path={ROUTES.PROFILE.BANK_ACCOUNT}  component={ProfileBankAccountPage} />
         <PrivateRoute exact path={ROUTES.PROFILE.SECURITY}      component={ProfileSecurityPage} />
         <PrivateRoute exact path={ROUTES.PROFILE.NOTIFICATIONS} component={ProfileNotificationsPage} />
+        <PrivateRoute exact path="/notifications" component={NotificationPage} />
 
         {/* Catch-all */}
         <Route render={() => <Redirect to={ROUTES.NOT_FOUND} />} />
