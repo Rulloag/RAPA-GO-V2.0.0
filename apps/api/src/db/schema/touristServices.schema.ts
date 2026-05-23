@@ -1,4 +1,4 @@
-import { pgTable, uuid, text, integer, timestamp } from "drizzle-orm/pg-core";
+import { pgTable, uuid, text, integer, boolean, timestamp } from "drizzle-orm/pg-core";
 import { users } from "./users.schema.js";
 
 export const touristServices = pgTable("tourist_services", {
@@ -13,6 +13,9 @@ export const touristServices = pgTable("tourist_services", {
   includes:        text("includes").array(),
   languages:       text("languages").array(),
   meetingPoint:    text("meeting_point"),
+  includesVehicle:    boolean("includes_vehicle").default(false).notNull(),
+  conditions:         text("conditions"),
+  cancellationPolicy: text("cancellation_policy"),
   status:          text("status").default("active").notNull(),
   createdAt:       timestamp("created_at").defaultNow().notNull(),
   updatedAt:       timestamp("updated_at").defaultNow().notNull(),

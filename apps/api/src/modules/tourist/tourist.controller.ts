@@ -153,4 +153,12 @@ export const touristController = {
     if (!result.ok) { sendError(reply, result); return; }
     sendOk(reply, result.booking);
   },
+
+  async getServicePricing(request: FastifyRequest<{ Params: { id: string } }>, reply: FastifyReply): Promise<void> {
+    const token = extractBearer(request);
+    if (!token) { sendError(reply, { code: "UNAUTHORIZED", message: "Missing Bearer token.", statusCode: 401 }); return; }
+    const result = await touristService.getServicePricing(token, request.params.id);
+    if (!result.ok) { sendError(reply, result); return; }
+    sendOk(reply, result.pricing);
+  },
 };

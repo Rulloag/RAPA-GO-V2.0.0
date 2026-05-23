@@ -12,6 +12,9 @@ export interface TouristServiceData {
   includes: string[] | null;
   languages: string[] | null;
   meetingPoint: string | null;
+  includesVehicle: boolean;
+  conditions: string | null;
+  cancellationPolicy: string | null;
   status: string;
   createdAt: string;
   updatedAt: string;
@@ -46,6 +49,21 @@ export interface GuidePublicData {
   services?: TouristServiceData[];
 }
 
+export interface PricingTierData {
+  id: string;
+  serviceId: string;
+  minPeople: number;
+  maxPeople: number;
+  price: number;
+}
+
+export interface ServicePricingData {
+  tiers: PricingTierData[];
+  includesVehicle: boolean;
+  conditions: string | null;
+  cancellationPolicy: string | null;
+}
+
 export interface CreateBookingInput {
   serviceId: string;
   bookingDate: string;
@@ -64,14 +82,19 @@ export interface CreateServiceInput {
   includes?: string[];
   languages?: string[];
   meetingPoint?: string;
+  includesVehicle?: boolean;
+  conditions?: string;
+  cancellationPolicy?: string;
+  pricingTiers?: Array<{ minPeople: number; maxPeople: number; price: number }>;
 }
 
-type GuidesEnvelope = { ok: true; data: { items: GuidePublicData[]; total: number; page: number }; statusCode: number };
-type GuideEnvelope  = { ok: true; data: GuidePublicData; statusCode: number };
+type GuidesEnvelope   = { ok: true; data: { items: GuidePublicData[]; total: number; page: number }; statusCode: number };
+type GuideEnvelope    = { ok: true; data: GuidePublicData; statusCode: number };
 type ServicesEnvelope = { ok: true; data: { items: TouristServiceData[]; total: number; page: number }; statusCode: number };
 type ServiceEnvelope  = { ok: true; data: TouristServiceData; statusCode: number };
 type BookingEnvelope  = { ok: true; data: ServiceBookingData; statusCode: number };
 type BookingsEnvelope = { ok: true; data: { items: ServiceBookingData[]; total: number; page: number }; statusCode: number };
+type PricingEnvelope  = { ok: true; data: ServicePricingData; statusCode: number };
 
 export const touristService = {
   async listGuides(accessToken: string, filters: { name?: string; language?: string } = {}): Promise<GuidePublicData[]> {
@@ -150,5 +173,11 @@ export const touristService = {
     const result = await apiClient.patch<BookingEnvelope>(`/guides/me/bookings/${bookingId}/complete`, {}, { token: accessToken });
     if (!result.ok) throw new Error((result as { message?: string }).message ?? "Failed to complete booking.");
     return (result.data as BookingEnvelope).data;
+  },
+
+  async getServicePricing(accessToken: string, serviceId: string): Promise<ServicePricingData> {
+    const result = await apiClient.get<PricingEnvelope>(`/services/${serviceId}/pricing`, { token: accessToken });
+    if (!result.ok) throw new Error((result as { message?: string }).message ?? "Failed to load service pricing.");
+    return (result.data as PricingEnvelope).data;
   },
 };

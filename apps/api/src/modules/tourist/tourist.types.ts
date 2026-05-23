@@ -1,3 +1,18 @@
+export interface PricingTierResponse {
+  id: string;
+  serviceId: string;
+  minPeople: number;
+  maxPeople: number;
+  price: number;
+}
+
+export interface ServicePricingResponse {
+  tiers: PricingTierResponse[];
+  includesVehicle: boolean;
+  conditions: string | null;
+  cancellationPolicy: string | null;
+}
+
 export interface TouristServiceResponse {
   id: string;
   guideId: string;
@@ -10,9 +25,13 @@ export interface TouristServiceResponse {
   includes: string[] | null;
   languages: string[] | null;
   meetingPoint: string | null;
+  includesVehicle: boolean;
+  conditions: string | null;
+  cancellationPolicy: string | null;
   status: string;
   createdAt: string;
   updatedAt: string;
+  pricingTiers?: PricingTierResponse[];
 }
 
 export interface ServiceBookingResponse {
@@ -66,4 +85,8 @@ export type GuidesResult =
 
 export type GuideResult =
   | { ok: true; guide: GuidePublicProfile }
+  | { ok: false; code: string; message: string; statusCode: number };
+
+export type ServicePricingResult =
+  | { ok: true; pricing: ServicePricingResponse }
   | { ok: false; code: string; message: string; statusCode: number };

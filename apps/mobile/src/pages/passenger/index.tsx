@@ -846,6 +846,7 @@ function PassengerGuideDetailPage({ guide, onBack }: { guide: GuidePublicData; o
   const [notes,        setNotes]        = useState("");
   const [submitting,   setSubmitting]   = useState(false);
   const [toastMsg,     setToastMsg]     = useState<string | null>(null);
+  const [pricingData,  setPricingData]  = useState<import("../../features/tourist/tourist.service.js").ServicePricingData | null>(null);
 
   useEffect(() => {
     if (guide.services) return;
@@ -857,8 +858,28 @@ function PassengerGuideDetailPage({ guide, onBack }: { guide: GuidePublicData; o
       .finally(() => setLoading(false));
   }, [guide.id, guide.services, session?.accessToken]);
 
+  useEffect(() => {
+    if (!bookingService || !session?.accessToken) return;
+    touristService.getServicePricing(session.accessToken, bookingService.id)
+      .then((data) => setPricingData(data))
+      .catch(() => setPricingData(null));
+  }, [bookingService?.id, session?.accessToken]);
+
   const initials = guide.name.trim().split(/\s+/).map((p) => p[0] ?? "").slice(0, 2).join("").toUpperCase();
   const stars = guide.ratingAverage ? Math.round(guide.ratingAverage) : 0;
+
+  function computePrice(): { display: string; valid: boolean } {
+    if (!bookingService) return { display: "", valid: false };
+    if (pricingData && pricingData.tiers.length > 0) {
+      const tier = pricingData.tiers.find((t) => t.minPeople <= numPeople && t.maxPeople >= numPeople);
+      if (tier) return { display: `$${(tier.price / 100).toLocaleString("es-CL")} CLP`, valid: true };
+      return { display: `Contactar operador para grupos de ${numPeople} personas`, valid: false };
+    }
+    if (bookingService.price !== null) {
+      return { display: `$${((bookingService.price * numPeople) / 100).toLocaleString("es-CL")} CLP`, valid: true };
+    }
+    return { display: "", valid: true };
+  }
 
   async function handleBook() {
     if (!session?.accessToken || !bookingService) return;
@@ -876,6 +897,7 @@ function PassengerGuideDetailPage({ guide, onBack }: { guide: GuidePublicData; o
       setBookingService(null);
       setNotes("");
       setNumPeople(1);
+      setPricingData(null);
     } catch (err) {
       setToastMsg(err instanceof Error ? err.message : "Error al reservar.");
     } finally {
@@ -951,6 +973,12 @@ function PassengerGuideDetailPage({ guide, onBack }: { guide: GuidePublicData; o
                     {svc.maxPeople && <span>Máx {svc.maxPeople} personas · </span>}
                     {svc.meetingPoint && <span>📍 {svc.meetingPoint}</span>}
                   </div>
+                  {svc.includesVehicle && (
+                    <div style={{ fontSize: "0.78rem", color: "var(--ion-color-primary)", marginTop: "4px" }}>✓ Incluye vehículo</div>
+                  )}
+                  {!svc.includesVehicle && (
+                    <div style={{ fontSize: "0.78rem", color: "var(--ion-color-medium)", marginTop: "4px" }}>Sin vehículo incluido</div>
+                  )}
                   {svc.price !== null && (
                     <div style={{ fontWeight: 700, fontSize: "0.95rem", marginTop: "6px", color: "var(--ion-color-success)" }}>
                       ${(svc.price / 100).toLocaleString("es-CL")} CLP / persona
@@ -1029,12 +1057,30 @@ function PassengerGuideDetailPage({ guide, onBack }: { guide: GuidePublicData; o
                     maxlength={500}
                   />
                 </IonItem>
-                {bookingService.price !== null && (
-                  <div style={{ padding: "12px 0", fontWeight: 600 }}>
-                    Total estimado: ${((bookingService.price * numPeople) / 100).toLocaleString("es-CL")} CLP
+                {(() => {
+                  const pr = computePrice();
+                  return pr.display ? (
+                    <div style={{ padding: "12px 0", fontWeight: 600, color: pr.valid ? "inherit" : "var(--ion-color-warning)" }}>
+                      {pr.valid ? `Total estimado: ${pr.display}` : pr.display}
+                    </div>
+                  ) : null;
+                })()}
+                {pricingData?.conditions && (
+                  <div style={{ fontSize: "0.78rem", color: "var(--ion-color-medium)", marginBottom: "6px" }}>
+                    <strong>Condiciones:</strong> {pricingData.conditions}
                   </div>
                 )}
-                <IonButton expand="block" onClick={() => void handleBook()} disabled={submitting} style={{ marginTop: "8px" }}>
+                {pricingData?.cancellationPolicy && (
+                  <div style={{ fontSize: "0.78rem", color: "var(--ion-color-medium)", marginBottom: "8px" }}>
+                    <strong>Cancelación:</strong> {pricingData.cancellationPolicy}
+                  </div>
+                )}
+                <IonButton
+                  expand="block"
+                  onClick={() => void handleBook()}
+                  disabled={submitting || (pricingData !== null && pricingData.tiers.length > 0 && !pricingData.tiers.find((t) => t.minPeople <= numPeople && t.maxPeople >= numPeople))}
+                  style={{ marginTop: "8px" }}
+                >
                   {submitting ? <IonSpinner name="dots" /> : "Confirmar reserva"}
                 </IonButton>
               </>
@@ -1052,6 +1098,15 @@ function PassengerGuideDetailPage({ guide, onBack }: { guide: GuidePublicData; o
       </IonContent>
     </IonPage>
   );
+}
+
+function getBookingCountdown(createdAt: string): string {
+  const expires  = new Date(createdAt).getTime() + 4 * 60 * 60 * 1000;
+  const remaining = expires - Date.now();
+  if (remaining <= 0) return "expired";
+  const h = Math.floor(remaining / 3600000);
+  const m = Math.floor((remaining % 3600000) / 60000);
+  return `${h}h ${m}m`;
 }
 
 export function PassengerServiceBookingsPage(): JSX.Element {
@@ -1135,10 +1190,16 @@ export function PassengerServiceBookingsPage(): JSX.Element {
                       {b.notes && (
                         <div style={{ fontSize: "0.75rem", color: "var(--ion-color-medium)", marginTop: "2px" }}>{b.notes}</div>
                       )}
-                      <div style={{ marginTop: "6px" }}>
+                      <div style={{ marginTop: "6px", display: "flex", gap: "6px", flexWrap: "wrap" }}>
                         <IonBadge color={BOOKING_STATUS_COLOR[b.status] ?? "medium"} style={{ fontSize: "0.7rem" }}>
                           {BOOKING_STATUS_LABEL[b.status] ?? b.status}
                         </IonBadge>
+                        {b.status === "pending" && (() => {
+                          const cd = getBookingCountdown(b.createdAt);
+                          return cd === "expired"
+                            ? <IonBadge color="danger" style={{ fontSize: "0.7rem" }}>Expirada</IonBadge>
+                            : <IonBadge color="warning" style={{ fontSize: "0.7rem" }}>Confirmar antes: {cd}</IonBadge>;
+                        })()}
                       </div>
                       {b.cancellationReason && (
                         <div style={{ fontSize: "0.72rem", color: "var(--ion-color-danger)", marginTop: "4px" }}>

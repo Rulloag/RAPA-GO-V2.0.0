@@ -1,7 +1,7 @@
-import { and, avg, count, desc, eq, sql } from "drizzle-orm";
+import { and, avg, count, desc, eq, lte, gte, sql } from "drizzle-orm";
 import { db } from "../../db/client.js";
-import { users, driverProfiles, rideRatings, touristServices, serviceBookings } from "../../db/schema/index.js";
-import type { TouristService, ServiceBooking } from "../../db/schema/index.js";
+import { users, driverProfiles, rideRatings, touristServices, serviceBookings, servicePricingTiers } from "../../db/schema/index.js";
+import type { TouristService, ServiceBooking, ServicePricingTier } from "../../db/schema/index.js";
 import type { CreateServiceInput, UpdateServiceInput } from "./tourist.schemas.js";
 
 export interface GuideRow {
@@ -118,6 +118,30 @@ export class TouristRepository {
     return rows[0] ?? null;
   }
 
+  async findPricingTiersByService(serviceId: string): Promise<ServicePricingTier[]> {
+    return db.select().from(servicePricingTiers).where(eq(servicePricingTiers.serviceId, serviceId));
+  }
+
+  async setPricingTiers(serviceId: string, tiers: Array<{ minPeople: number; maxPeople: number; price: number }>): Promise<void> {
+    await db.delete(servicePricingTiers).where(eq(servicePricingTiers.serviceId, serviceId));
+    if (tiers.length > 0) {
+      await db.insert(servicePricingTiers).values(tiers.map((t) => ({ serviceId, ...t })));
+    }
+  }
+
+  async findMatchingPricingTier(serviceId: string, numberOfPeople: number): Promise<ServicePricingTier | null> {
+    const rows = await db
+      .select()
+      .from(servicePricingTiers)
+      .where(and(
+        eq(servicePricingTiers.serviceId, serviceId),
+        lte(servicePricingTiers.minPeople, numberOfPeople),
+        gte(servicePricingTiers.maxPeople, numberOfPeople),
+      ))
+      .limit(1);
+    return rows[0] ?? null;
+  }
+
   async createService(guideId: string, input: CreateServiceInput): Promise<TouristService> {
     const rows = await db
       .insert(touristServices)
@@ -125,13 +149,16 @@ export class TouristRepository {
         guideId,
         title:       input.title,
         type:        input.type,
-        ...(input.description  !== undefined ? { description:     input.description  } : {}),
-        ...(input.durationMinutes !== undefined ? { durationMinutes: input.durationMinutes } : {}),
-        ...(input.maxPeople    !== undefined ? { maxPeople:       input.maxPeople    } : {}),
-        ...(input.price        !== undefined ? { price:           input.price        } : {}),
-        ...(input.includes     !== undefined ? { includes:        input.includes     } : {}),
-        ...(input.languages    !== undefined ? { languages:       input.languages    } : {}),
-        ...(input.meetingPoint !== undefined ? { meetingPoint:    input.meetingPoint } : {}),
+        ...(input.description       !== undefined ? { description:       input.description       } : {}),
+        ...(input.durationMinutes   !== undefined ? { durationMinutes:   input.durationMinutes   } : {}),
+        ...(input.maxPeople         !== undefined ? { maxPeople:         input.maxPeople         } : {}),
+        ...(input.price             !== undefined ? { price:             input.price             } : {}),
+        ...(input.includes          !== undefined ? { includes:          input.includes          } : {}),
+        ...(input.languages         !== undefined ? { languages:         input.languages         } : {}),
+        ...(input.meetingPoint      !== undefined ? { meetingPoint:      input.meetingPoint      } : {}),
+        ...(input.includesVehicle   !== undefined ? { includesVehicle:   input.includesVehicle   } : {}),
+        ...(input.conditions        !== undefined ? { conditions:        input.conditions        } : {}),
+        ...(input.cancellationPolicy !== undefined ? { cancellationPolicy: input.cancellationPolicy } : {}),
       })
       .returning();
     return rows[0]!;
@@ -139,15 +166,18 @@ export class TouristRepository {
 
   async updateService(id: string, guideId: string, input: UpdateServiceInput): Promise<TouristService | null> {
     const values: Record<string, unknown> = { updatedAt: new Date() };
-    if (input.title           !== undefined) values["title"]           = input.title;
-    if (input.description     !== undefined) values["description"]     = input.description;
-    if (input.type            !== undefined) values["type"]            = input.type;
-    if (input.durationMinutes !== undefined) values["durationMinutes"] = input.durationMinutes;
-    if (input.maxPeople       !== undefined) values["maxPeople"]       = input.maxPeople;
-    if (input.price           !== undefined) values["price"]           = input.price;
-    if (input.includes        !== undefined) values["includes"]        = input.includes;
-    if (input.languages       !== undefined) values["languages"]       = input.languages;
-    if (input.meetingPoint    !== undefined) values["meetingPoint"]    = input.meetingPoint;
+    if (input.title              !== undefined) values["title"]              = input.title;
+    if (input.description        !== undefined) values["description"]        = input.description;
+    if (input.type               !== undefined) values["type"]               = input.type;
+    if (input.durationMinutes    !== undefined) values["durationMinutes"]    = input.durationMinutes;
+    if (input.maxPeople          !== undefined) values["maxPeople"]          = input.maxPeople;
+    if (input.price              !== undefined) values["price"]              = input.price;
+    if (input.includes           !== undefined) values["includes"]           = input.includes;
+    if (input.languages          !== undefined) values["languages"]          = input.languages;
+    if (input.meetingPoint       !== undefined) values["meetingPoint"]       = input.meetingPoint;
+    if (input.includesVehicle    !== undefined) values["includesVehicle"]    = input.includesVehicle;
+    if (input.conditions         !== undefined) values["conditions"]         = input.conditions;
+    if (input.cancellationPolicy !== undefined) values["cancellationPolicy"] = input.cancellationPolicy;
 
     const rows = await db
       .update(touristServices)

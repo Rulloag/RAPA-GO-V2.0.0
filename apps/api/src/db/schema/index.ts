@@ -13,3 +13,5 @@ export * from "./passengerProfiles.schema.js";
 export * from "./wallets.schema.js";
 export * from "./touristServices.schema.js";
 export * from "./rentalVehicles.schema.js";
+export * from "./servicePricingTiers.schema.js";
+export * from "./notifications.schema.js";

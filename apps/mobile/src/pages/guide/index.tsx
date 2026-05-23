@@ -3,7 +3,6 @@ import {
   IonButton,
   IonCard,
   IonCardContent,
-  IonChip,
   IonContent,
   IonHeader,
   IonInput,
@@ -13,7 +12,6 @@ import {
   IonPage,
   IonRefresher,
   IonRefresherContent,
-  IonSearchbar,
   IonSegment,
   IonSegmentButton,
   IonSelect,
@@ -22,6 +20,7 @@ import {
   IonText,
   IonTextarea,
   IonTitle,
+  IonToggle,
   IonToolbar,
   useIonViewWillEnter,
 } from "@ionic/react";
@@ -39,6 +38,7 @@ import { ROUTE_METADATA } from "../../navigation/routeConfig";
 import { ROUTES } from "../../navigation/routes";
 import { useAuth } from "../../features/auth";
 import { touristService, type TouristServiceData, type ServiceBookingData, type CreateServiceInput } from "../../features/tourist/tourist.service.js";
+import { NotificationBell } from "../../components/NotificationBell.js";
 
 function meta(path: string) {
   return ROUTE_METADATA.find((r) => r.path === path)!;
@@ -124,13 +124,20 @@ export function GuideToursPage(): JSX.Element {
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
 
-  const [fTitle,    setFTitle]    = useState("");
-  const [fDesc,     setFDesc]     = useState("");
-  const [fType,     setFType]     = useState<"tour"|"transfer"|"workshop"|"custom">("tour");
-  const [fDuration, setFDuration] = useState("");
-  const [fMaxPeople,setFMaxPeople]= useState("");
-  const [fPrice,    setFPrice]    = useState("");
-  const [fMeeting,  setFMeeting]  = useState("");
+  const [fTitle,              setFTitle]              = useState("");
+  const [fDesc,               setFDesc]               = useState("");
+  const [fType,               setFType]               = useState<"tour"|"transfer"|"workshop"|"custom">("tour");
+  const [fDuration,           setFDuration]           = useState("");
+  const [fMaxPeople,          setFMaxPeople]          = useState("");
+  const [fPrice,              setFPrice]              = useState("");
+  const [fMeeting,            setFMeeting]            = useState("");
+  const [fIncludesVehicle,    setFIncludesVehicle]    = useState(false);
+  const [fConditions,         setFConditions]         = useState("");
+  const [fCancellationPolicy, setFCancellationPolicy] = useState("");
+  const [fPricingTiers,       setFPricingTiers]       = useState<Array<{minPeople: number; maxPeople: number; price: number}>>([]);
+  const [tierMin,             setTierMin]             = useState("");
+  const [tierMax,             setTierMax]             = useState("");
+  const [tierPrice,           setTierPrice]           = useState("");
 
   const load = useCallback(async () => {
     if (!session?.accessToken) return;
@@ -149,11 +156,17 @@ export function GuideToursPage(): JSX.Element {
   useIonViewWillEnter(() => { void load(); });
   useEffect(() => { void load(); }, [load]);
 
-  function openCreate() {
-    setEditService(null);
+  function resetForm() {
     setFTitle(""); setFDesc(""); setFType("tour");
     setFDuration(""); setFMaxPeople(""); setFPrice(""); setFMeeting("");
+    setFIncludesVehicle(false); setFConditions(""); setFCancellationPolicy("");
+    setFPricingTiers([]); setTierMin(""); setTierMax(""); setTierPrice("");
     setSaveError(null);
+  }
+
+  function openCreate() {
+    setEditService(null);
+    resetForm();
     setShowModal(true);
   }
 
@@ -166,6 +179,11 @@ export function GuideToursPage(): JSX.Element {
     setFMaxPeople(svc.maxPeople?.toString() ?? "");
     setFPrice(svc.price !== null ? (svc.price / 100).toString() : "");
     setFMeeting(svc.meetingPoint ?? "");
+    setFIncludesVehicle(svc.includesVehicle);
+    setFConditions(svc.conditions ?? "");
+    setFCancellationPolicy(svc.cancellationPolicy ?? "");
+    setFPricingTiers([]);
+    setTierMin(""); setTierMax(""); setTierPrice("");
     setSaveError(null);
     setShowModal(true);
   }
@@ -175,15 +193,19 @@ export function GuideToursPage(): JSX.Element {
     setSaving(true);
     setSaveError(null);
     try {
-      const input: CreateServiceInput & { description?: string; durationMinutes?: number; maxPeople?: number; price?: number; meetingPoint?: string } = {
+      const input: CreateServiceInput = {
         title: fTitle.trim(),
         type:  fType,
       };
-      if (fDesc.trim()) input.description = fDesc.trim();
-      if (fDuration)    input.durationMinutes = parseInt(fDuration, 10);
-      if (fMaxPeople)   input.maxPeople = parseInt(fMaxPeople, 10);
-      if (fPrice)       input.price = Math.round(parseFloat(fPrice) * 100);
-      if (fMeeting.trim()) input.meetingPoint = fMeeting.trim();
+      if (fDesc.trim())               input.description         = fDesc.trim();
+      if (fDuration)                  input.durationMinutes     = parseInt(fDuration, 10);
+      if (fMaxPeople)                 input.maxPeople           = parseInt(fMaxPeople, 10);
+      if (fPrice)                     input.price               = Math.round(parseFloat(fPrice) * 100);
+      if (fMeeting.trim())            input.meetingPoint        = fMeeting.trim();
+      input.includesVehicle           = fIncludesVehicle;
+      if (fConditions.trim())         input.conditions          = fConditions.trim();
+      if (fCancellationPolicy.trim()) input.cancellationPolicy  = fCancellationPolicy.trim();
+      if (fPricingTiers.length > 0)   input.pricingTiers        = fPricingTiers;
 
       if (editService) {
         await touristService.updateService(session.accessToken, editService.id, input);
@@ -292,10 +314,60 @@ export function GuideToursPage(): JSX.Element {
               <IonLabel position="stacked">Precio por persona (CLP)</IonLabel>
               <IonInput type="number" value={fPrice} onIonInput={(e) => setFPrice(String(e.detail.value ?? ""))} placeholder="25000" />
             </IonItem>
-            <IonItem lines="none">
+            <IonItem lines="full">
               <IonLabel position="stacked">Punto de encuentro</IonLabel>
               <IonInput value={fMeeting} onIonInput={(e) => setFMeeting(String(e.detail.value ?? ""))} placeholder="Ej: Plaza de Hanga Roa" maxlength={150} />
             </IonItem>
+            <IonItem lines="full">
+              <IonLabel>Incluye vehículo</IonLabel>
+              <IonToggle checked={fIncludesVehicle} onIonChange={(e) => setFIncludesVehicle(e.detail.checked)} slot="end" />
+            </IonItem>
+            <IonItem lines="full">
+              <IonLabel position="stacked">Condiciones generales</IonLabel>
+              <IonTextarea value={fConditions} onIonInput={(e) => setFConditions(String(e.detail.value ?? ""))} rows={2} maxlength={500} placeholder="Ej: Requiere calzado cómodo..." />
+            </IonItem>
+            <IonItem lines="full">
+              <IonLabel position="stacked">Política de cancelación</IonLabel>
+              <IonTextarea value={fCancellationPolicy} onIonInput={(e) => setFCancellationPolicy(String(e.detail.value ?? ""))} rows={2} maxlength={500} placeholder="Ej: Cancelación gratuita hasta 24h..." />
+            </IonItem>
+            <div style={{ padding: "8px 0 4px" }}>
+              <div style={{ fontWeight: 600, fontSize: "0.85rem", marginBottom: "6px" }}>Precios por cantidad de personas</div>
+              {fPricingTiers.map((t, i) => (
+                <IonItem key={i} lines="full">
+                  <IonLabel>{t.minPeople}–{t.maxPeople} personas: ${(t.price / 100).toLocaleString("es-CL")} CLP</IonLabel>
+                  <IonButton slot="end" fill="clear" color="danger" size="small" onClick={() => setFPricingTiers((prev) => prev.filter((_, idx) => idx !== i))}>✕</IonButton>
+                </IonItem>
+              ))}
+              <div style={{ display: "flex", gap: "6px", alignItems: "flex-end", marginTop: "6px" }}>
+                <IonInput
+                  type="number" placeholder="Mín" value={tierMin}
+                  onIonInput={(e) => setTierMin(String(e.detail.value ?? ""))}
+                  style={{ flex: 1, border: "1px solid var(--ion-color-light-shade)", borderRadius: "4px", padding: "4px" }}
+                />
+                <IonInput
+                  type="number" placeholder="Máx" value={tierMax}
+                  onIonInput={(e) => setTierMax(String(e.detail.value ?? ""))}
+                  style={{ flex: 1, border: "1px solid var(--ion-color-light-shade)", borderRadius: "4px", padding: "4px" }}
+                />
+                <IonInput
+                  type="number" placeholder="Precio CLP" value={tierPrice}
+                  onIonInput={(e) => setTierPrice(String(e.detail.value ?? ""))}
+                  style={{ flex: 2, border: "1px solid var(--ion-color-light-shade)", borderRadius: "4px", padding: "4px" }}
+                />
+                <IonButton
+                  size="small"
+                  onClick={() => {
+                    const mn = parseInt(tierMin, 10);
+                    const mx = parseInt(tierMax, 10);
+                    const pr = Math.round(parseFloat(tierPrice) * 100);
+                    if (!isNaN(mn) && !isNaN(mx) && !isNaN(pr) && mn > 0 && mx >= mn && pr >= 0) {
+                      setFPricingTiers((prev) => [...prev, { minPeople: mn, maxPeople: mx, price: pr }]);
+                      setTierMin(""); setTierMax(""); setTierPrice("");
+                    }
+                  }}
+                >+</IonButton>
+              </div>
+            </div>
             {saveError && <IonText color="danger"><p style={{ fontSize: "0.85rem" }}>{saveError}</p></IonText>}
             <IonButton expand="block" style={{ marginTop: "16px" }} onClick={() => void handleSave()} disabled={saving || !fTitle.trim()}>
               {saving ? <IonSpinner name="dots" /> : (editService ? "Guardar cambios" : "Crear servicio")}
@@ -305,6 +377,15 @@ export function GuideToursPage(): JSX.Element {
       </IonContent>
     </IonPage>
   );
+}
+
+function getBookingCountdown(createdAt: string): string {
+  const expires   = new Date(createdAt).getTime() + 4 * 60 * 60 * 1000;
+  const remaining = expires - Date.now();
+  if (remaining <= 0) return "expired";
+  const h = Math.floor(remaining / 3600000);
+  const m = Math.floor((remaining % 3600000) / 60000);
+  return `${h}h ${m}m`;
 }
 
 export function GuideBookingsPage(): JSX.Element {
@@ -361,6 +442,7 @@ export function GuideBookingsPage(): JSX.Element {
       <IonHeader>
         <IonToolbar color="warning">
           <IonTitle>Mis Reservas</IonTitle>
+          <div slot="end"><NotificationBell /></div>
         </IonToolbar>
       </IonHeader>
       <IonContent>
@@ -387,7 +469,12 @@ export function GuideBookingsPage(): JSX.Element {
               {filtered.map((b) => (
                 <IonCard key={b.id} style={{ margin: 0 }}>
                   <IonCardContent style={{ padding: "14px 16px" }}>
-                    <div style={{ fontWeight: 600, fontSize: "0.85rem", marginBottom: "4px" }}>Reserva #{b.id.slice(0, 8)}</div>
+                    <div style={{ display: "flex", alignItems: "center", gap: "6px", marginBottom: "4px" }}>
+                      <span style={{ fontWeight: 600, fontSize: "0.85rem" }}>Reserva #{b.id.slice(0, 8)}</span>
+                      {Date.now() - new Date(b.createdAt).getTime() < 3600000 && b.status === "pending" && (
+                        <IonBadge color="secondary" style={{ fontSize: "0.65rem" }}>Nueva</IonBadge>
+                      )}
+                    </div>
                     <div style={{ fontSize: "0.78rem", color: "var(--ion-color-medium)" }}>
                       Fecha: {b.bookingDate}{b.bookingTime ? ` ${b.bookingTime}` : ""}
                     </div>
@@ -396,17 +483,26 @@ export function GuideBookingsPage(): JSX.Element {
                       {b.totalPrice !== null && ` · $${(b.totalPrice / 100).toLocaleString("es-CL")} CLP`}
                     </div>
                     {b.notes && <div style={{ fontSize: "0.75rem", marginTop: "4px" }}>{b.notes}</div>}
-                    <div style={{ marginTop: "6px" }}>
+                    <div style={{ marginTop: "6px", display: "flex", gap: "6px", flexWrap: "wrap" }}>
                       <IonBadge color={BOOKING_STATUS_COLOR[b.status] ?? "medium"} style={{ fontSize: "0.68rem" }}>
                         {BOOKING_STATUS_LABEL[b.status] ?? b.status}
                       </IonBadge>
+                      {b.status === "pending" && (() => {
+                        const cd = getBookingCountdown(b.createdAt);
+                        return cd === "expired"
+                          ? <IonBadge color="danger" style={{ fontSize: "0.68rem" }}>Expirada</IonBadge>
+                          : <IonBadge color="warning" style={{ fontSize: "0.68rem" }}>Confirmar antes: {cd}</IonBadge>;
+                      })()}
                     </div>
                     <div style={{ display: "flex", gap: "8px", marginTop: "10px" }}>
-                      {b.status === "pending" && (
-                        <IonButton size="small" color="success" disabled={processing === b.id} onClick={() => void handleConfirm(b.id)}>
-                          {processing === b.id ? <IonSpinner name="dots" /> : "Confirmar"}
-                        </IonButton>
-                      )}
+                      {b.status === "pending" && (() => {
+                        const expired = getBookingCountdown(b.createdAt) === "expired";
+                        return (
+                          <IonButton size="small" color="success" disabled={processing === b.id || expired} onClick={() => void handleConfirm(b.id)}>
+                            {processing === b.id ? <IonSpinner name="dots" /> : "Confirmar"}
+                          </IonButton>
+                        );
+                      })()}
                       {b.status === "confirmed" && (
                         <IonButton size="small" color="tertiary" disabled={processing === b.id} onClick={() => void handleComplete(b.id)}>
                           {processing === b.id ? <IonSpinner name="dots" /> : "Completar"}

@@ -1,15 +1,23 @@
 import { z } from "zod";
 
 export const createServiceSchema = z.object({
-  title:           z.string().min(1),
-  description:     z.string().optional(),
-  type:            z.enum(["tour", "transfer", "workshop", "custom"]),
-  durationMinutes: z.number().int().positive().optional(),
-  maxPeople:       z.number().int().positive().optional(),
-  price:           z.number().int().nonnegative().optional(),
-  includes:        z.array(z.string()).optional(),
-  languages:       z.array(z.string()).optional(),
-  meetingPoint:    z.string().optional(),
+  title:              z.string().min(1),
+  description:        z.string().optional(),
+  type:               z.enum(["tour", "transfer", "workshop", "custom"]),
+  durationMinutes:    z.number().int().positive().optional(),
+  maxPeople:          z.number().int().positive().optional(),
+  price:              z.number().int().nonnegative().optional(),
+  includes:           z.array(z.string()).optional(),
+  languages:          z.array(z.string()).optional(),
+  meetingPoint:       z.string().optional(),
+  includesVehicle:    z.boolean().optional(),
+  conditions:         z.string().optional(),
+  cancellationPolicy: z.string().optional(),
+  pricingTiers:       z.array(z.object({
+    minPeople: z.number().int().positive(),
+    maxPeople: z.number().int().positive(),
+    price:     z.number().int().nonnegative(),
+  })).optional(),
 });
 export type CreateServiceInput = z.infer<typeof createServiceSchema>;
 

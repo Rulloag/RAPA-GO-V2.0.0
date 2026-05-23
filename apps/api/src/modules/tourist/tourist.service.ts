@@ -7,8 +7,9 @@ import type {
   TouristServiceResponse, ServiceBookingResponse, GuidePublicProfile,
   TouristServiceResult, TouristServicesResult,
   ServiceBookingResult, ServiceBookingsResult,
-  GuidesResult, GuideResult,
+  GuidesResult, GuideResult, ServicePricingResult,
 } from "./tourist.types.js";
+import { NotificationsRepository } from "../notifications/notifications.repository.js";
 import type { TouristService as TouristServiceRow, ServiceBooking } from "../../db/schema/index.js";
 import type { CreateServiceInput, UpdateServiceInput, CreateBookingInput, CancelBookingInput } from "./tourist.schemas.js";
 
@@ -48,20 +49,23 @@ async function authenticate(accessToken: string): Promise<AuthResult> {
 
 function toServiceResponse(s: TouristServiceRow): TouristServiceResponse {
   return {
-    id:              s.id,
-    guideId:         s.guideId,
-    title:           s.title,
-    description:     s.description ?? null,
-    type:            s.type,
-    durationMinutes: s.durationMinutes ?? null,
-    maxPeople:       s.maxPeople ?? null,
-    price:           s.price ?? null,
-    includes:        s.includes ?? null,
-    languages:       s.languages ?? null,
-    meetingPoint:    s.meetingPoint ?? null,
-    status:          s.status,
-    createdAt:       s.createdAt.toISOString(),
-    updatedAt:       s.updatedAt.toISOString(),
+    id:                 s.id,
+    guideId:            s.guideId,
+    title:              s.title,
+    description:        s.description ?? null,
+    type:               s.type,
+    durationMinutes:    s.durationMinutes ?? null,
+    maxPeople:          s.maxPeople ?? null,
+    price:              s.price ?? null,
+    includes:           s.includes ?? null,
+    languages:          s.languages ?? null,
+    meetingPoint:       s.meetingPoint ?? null,
+    includesVehicle:    s.includesVehicle,
+    conditions:         s.conditions ?? null,
+    cancellationPolicy: s.cancellationPolicy ?? null,
+    status:             s.status,
+    createdAt:          s.createdAt.toISOString(),
+    updatedAt:          s.updatedAt.toISOString(),
   };
 }
 
@@ -143,6 +147,9 @@ export class TouristService {
     }
 
     const service = await repo.createService(auth.userId, input);
+    if (input.pricingTiers && input.pricingTiers.length > 0) {
+      await repo.setPricingTiers(service.id, input.pricingTiers);
+    }
     return { ok: true, service: toServiceResponse(service) };
   }
 
@@ -156,6 +163,9 @@ export class TouristService {
 
     const updated = await repo.updateService(serviceId, auth.userId, input);
     if (!updated) return { ok: false, code: "NOT_FOUND", message: "Service not found or not yours.", statusCode: 404 };
+    if (input.pricingTiers !== undefined) {
+      await repo.setPricingTiers(serviceId, input.pricingTiers);
+    }
     return { ok: true, service: toServiceResponse(updated) };
   }
 
@@ -201,7 +211,17 @@ export class TouristService {
     if (!service) return { ok: false, code: "NOT_FOUND", message: "Service not found.", statusCode: 404 };
     if (service.status !== "active") return { ok: false, code: "SERVICE_NOT_ACTIVE", message: "This service is not available.", statusCode: 409 };
 
-    const totalPrice = service.price !== null ? service.price * input.numberOfPeople : null;
+    const tiers = await repo.findPricingTiersByService(input.serviceId);
+    let totalPrice: number | null;
+    if (tiers.length > 0) {
+      const tier = await repo.findMatchingPricingTier(input.serviceId, input.numberOfPeople);
+      if (!tier) {
+        return { ok: false, code: "PRICING_TIER_NOT_FOUND", message: `No hay precio para ${input.numberOfPeople} personas. Contacta al operador.`, statusCode: 422 };
+      }
+      totalPrice = tier.price;
+    } else {
+      totalPrice = service.price !== null ? service.price * input.numberOfPeople : null;
+    }
 
     const booking = await repo.createBooking({
       serviceId:      input.serviceId,
@@ -213,6 +233,18 @@ export class TouristService {
       ...(input.bookingTime !== undefined ? { bookingTime: input.bookingTime } : {}),
       ...(input.notes       !== undefined ? { notes:       input.notes       } : {}),
     });
+    const notifRepo = new NotificationsRepository();
+    const expiresAt = new Date(Date.now() + 4 * 60 * 60 * 1000);
+    notifRepo.create({
+      userId: booking.guideId,
+      type: "service_booking",
+      title: "Nueva reserva recibida",
+      message: `Tienes una nueva reserva para ${service.title}. Confirma antes de ${expiresAt.toLocaleTimeString("es-CL")}`,
+      entityType: "service_booking",
+      entityId: booking.id,
+      expiresAt,
+    }).catch(() => {});
+
     return { ok: true, booking: toBookingResponse(booking) };
   }
 
@@ -250,6 +282,31 @@ export class TouristService {
     return { ok: true, items: items.map(toBookingResponse), total, page };
   }
 
+  async getServicePricing(accessToken: string, serviceId: string): Promise<ServicePricingResult> {
+    const auth = await authenticate(accessToken);
+    if (!auth.ok) return auth;
+
+    const service = await repo.findServiceById(serviceId);
+    if (!service) return { ok: false, code: "NOT_FOUND", message: "Service not found.", statusCode: 404 };
+
+    const tiers = await repo.findPricingTiersByService(serviceId);
+    return {
+      ok: true,
+      pricing: {
+        tiers: tiers.map((t) => ({
+          id:        t.id,
+          serviceId: t.serviceId,
+          minPeople: t.minPeople,
+          maxPeople: t.maxPeople,
+          price:     t.price,
+        })),
+        includesVehicle:    service.includesVehicle,
+        conditions:         service.conditions ?? null,
+        cancellationPolicy: service.cancellationPolicy ?? null,
+      },
+    };
+  }
+
   async getMyGuideBookings(accessToken: string, page: number, limit: number): Promise<ServiceBookingsResult> {
     const auth = await authenticate(accessToken);
     if (!auth.ok) return auth;
@@ -259,6 +316,29 @@ export class TouristService {
     }
 
     const { items, total } = await repo.findBookingsByGuide(auth.userId, page, limit);
+
+    const now = Date.now();
+    const notifRepo = new NotificationsRepository();
+    for (const b of items) {
+      if (b.status === "pending") {
+        const expiresAt = new Date(b.createdAt).getTime() + 4 * 60 * 60 * 1000;
+        if (expiresAt <= now) {
+          repo.cancelBooking(b.id, "expired").then((cancelled) => {
+            if (cancelled) {
+              notifRepo.create({
+                userId: b.passengerId,
+                type: "booking_expired",
+                title: "Reserva expirada",
+                message: "Tu reserva expiró porque el guía no la confirmó a tiempo.",
+                entityType: "service_booking",
+                entityId: b.id,
+              }).catch(() => {});
+            }
+          }).catch(() => {});
+        }
+      }
+    }
+
     return { ok: true, items: items.map(toBookingResponse), total, page };
   }
 

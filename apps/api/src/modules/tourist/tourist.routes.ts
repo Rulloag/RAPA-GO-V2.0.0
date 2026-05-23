@@ -10,6 +10,7 @@ export async function touristRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.patch("/guides/me/services/:serviceId/status", touristController.setServiceStatus);
   fastify.get("/guides/:id",                          touristController.getGuide);
   fastify.get("/guides/:id/services",                 touristController.listGuideServices);
+  fastify.get("/services/:id/pricing",                touristController.getServicePricing);
   fastify.post("/service-bookings",                   touristController.createBooking);
   fastify.get("/service-bookings/me",                 touristController.getMyBookings);
   fastify.patch("/service-bookings/:id/cancel",       touristController.cancelBooking);
