@@ -28,6 +28,11 @@ export interface RideRequestData {
   updatedAt:          string;
   driverRatingAverage:  number | null;
   driverRatingCount:    number;
+  driverVehicleBrand:   string | null;
+  driverVehicleModel:   string | null;
+  driverVehicleYear:    number | null;
+  driverVehiclePlate:   string | null;
+  driverVehicleColor:   string | null;
   isOfflineBooking?:    boolean;
 }
 

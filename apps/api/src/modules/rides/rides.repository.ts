@@ -10,6 +10,11 @@ export interface RideWithDriverName extends RideRequest {
   driverPhone:         string | null;
   driverRatingAverage: number | null;
   driverRatingCount:   number;
+  driverVehicleBrand:  string | null;
+  driverVehicleModel:  string | null;
+  driverVehicleYear:   number | null;
+  driverVehiclePlate:  string | null;
+  driverVehicleColor:  string | null;
 }
 
 export class RidesRepository {
@@ -53,6 +58,11 @@ export class RidesRepository {
           isOfflineBooking:   rideRequests.isOfflineBooking,
           driverName:         driver.name,
           driverPhone:        driverProfiles.phone,
+          driverVehicleBrand: driverProfiles.vehicleBrand,
+          driverVehicleModel: driverProfiles.vehicleModel,
+          driverVehicleYear:  driverProfiles.vehicleYear,
+          driverVehiclePlate: driverProfiles.vehiclePlate,
+          driverVehicleColor: driverProfiles.vehicleColor,
         })
         .from(rideRequests)
         .leftJoin(driver, eq(rideRequests.driverUserId, driver.id))
@@ -90,6 +100,11 @@ export class RidesRepository {
           ...r,
           driverRatingAverage: ratingInfo.average,
           driverRatingCount:   ratingInfo.count,
+          driverVehicleBrand:  r.driverVehicleBrand ?? null,
+          driverVehicleModel:  r.driverVehicleModel ?? null,
+          driverVehicleYear:   r.driverVehicleYear ?? null,
+          driverVehiclePlate:  r.driverVehiclePlate ?? null,
+          driverVehicleColor:  r.driverVehicleColor ?? null,
         } as RideWithDriverName;
       });
     } catch (err) {

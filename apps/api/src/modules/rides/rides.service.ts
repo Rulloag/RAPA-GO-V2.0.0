@@ -46,6 +46,11 @@ function toResponse(r: RideRequest | RideWithDriverName): RideRequestResponse {
     updatedAt:          r.updatedAt.toISOString(),
     driverRatingAverage: ("driverRatingAverage" in r ? r.driverRatingAverage : null) ?? null,
     driverRatingCount:   ("driverRatingCount"   in r ? r.driverRatingCount   : 0) ?? 0,
+    driverVehicleBrand:  ("driverVehicleBrand"  in r ? r.driverVehicleBrand  : null) ?? null,
+    driverVehicleModel:  ("driverVehicleModel"  in r ? r.driverVehicleModel  : null) ?? null,
+    driverVehicleYear:   ("driverVehicleYear"   in r ? r.driverVehicleYear   : null) ?? null,
+    driverVehiclePlate:  ("driverVehiclePlate"  in r ? r.driverVehiclePlate  : null) ?? null,
+    driverVehicleColor:  ("driverVehicleColor"  in r ? r.driverVehicleColor  : null) ?? null,
   };
 }
 

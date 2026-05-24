@@ -627,6 +627,23 @@ function TripsPage(): JSX.Element {
                         status={ride.status}
                       />
                     )}
+                    {ride.driverUserId && (ride.driverVehicleBrand || ride.driverVehiclePlate) && ["accepted", "driver_en_route", "driver_arrived", "in_progress"].includes(ride.status) && (
+                      <div style={{ background: "var(--ion-color-light)", borderRadius: "10px", padding: "10px 14px", marginTop: "8px", display: "flex", alignItems: "center", gap: "12px" }}>
+                        <IonIcon icon={carOutline} style={{ fontSize: "1.6rem", color: "var(--ion-color-medium)", flexShrink: 0 }} />
+                        <div>
+                          {(ride.driverVehicleBrand || ride.driverVehicleModel) && (
+                            <div style={{ fontWeight: 600, fontSize: "0.92rem" }}>
+                              {[ride.driverVehicleBrand, ride.driverVehicleModel].filter(Boolean).join(" ")}
+                              {ride.driverVehicleYear ? ` (${ride.driverVehicleYear})` : ""}
+                            </div>
+                          )}
+                          <div style={{ fontSize: "0.82rem", color: "var(--ion-color-medium)", marginTop: "2px" }}>
+                            {ride.driverVehicleColor && <span>{ride.driverVehicleColor} · </span>}
+                            {ride.driverVehiclePlate && <span style={{ fontFamily: "monospace", fontWeight: 700 }}>{ride.driverVehiclePlate}</span>}
+                          </div>
+                        </div>
+                      </div>
+                    )}
                     {!ride.driverName && ride.status === "requested" && (
                       <div style={{ marginTop: "10px", fontSize: "0.82rem", color: "var(--ion-color-medium)", fontStyle: "italic" }}>
                         Esperando asignación de conductor.

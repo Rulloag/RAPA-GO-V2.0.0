@@ -20,8 +20,13 @@ export interface RideRequestResponse {
   cancelledByRole:     string | null;
   createdAt:           string;
   updatedAt:           string;
-  driverRatingAverage: number | null;
-  driverRatingCount:   number;
+  driverRatingAverage:  number | null;
+  driverRatingCount:    number;
+  driverVehicleBrand:   string | null;
+  driverVehicleModel:   string | null;
+  driverVehicleYear:    number | null;
+  driverVehiclePlate:   string | null;
+  driverVehicleColor:   string | null;
 }
 
 /** Subset exposed to driver for their own rides — no passenger identity. */
