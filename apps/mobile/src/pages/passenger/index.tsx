@@ -52,7 +52,8 @@ import { useAuth } from "../../features/auth";
 import { ridesService, type RideRequestData } from "../../features/rides/rides.service";
 import { MapFallback } from "../../components/MapFallback";
 import { DriverSummaryCard } from "../../components/DriverSummaryCard";
-import { RAPA_NUI_PLACES, RAPAGO_CONTACT, WA_MESSAGES } from "@rapa-go/shared";
+import { RAPA_NUI_PLACES, RAPAGO_CONTACT, WA_MESSAGES, getDistanceBetween, getEstimatedFare } from "@rapa-go/shared";
+import { fareSettingsService } from "../../features/fareSettings/fareSettings.service.js";
 import { WhatsAppButton } from "../../components/WhatsAppButton";
 import { touristService, type GuidePublicData, type TouristServiceData, type ServiceBookingData } from "../../features/tourist/tourist.service.js";
 import { useIonViewWillEnter } from "@ionic/react";
@@ -319,6 +320,26 @@ function RequestRidePage(): JSX.Element {
   const [submitting,        setSubmitting]        = useState(false);
   const [submitError,       setSubmitError]       = useState<string | null>(null);
   const [submitted,         setSubmitted]         = useState<RideRequestData | null>(null);
+  const [farePreview,       setFarePreview]       = useState<{ km: number; minutes: number; fare: number; isZoneFare: boolean } | null>(null);
+
+  useEffect(() => {
+    if (!selectedOriginId || !selectedDestId) { setFarePreview(null); return; }
+    const dist = getDistanceBetween(selectedOriginId, selectedDestId);
+    if (!dist) { setFarePreview(null); return; }
+    // Check zone_fare first, then calculate by km
+    const originName = RAPA_NUI_PLACES.find(p => p.id === selectedOriginId)?.name ?? originInput;
+    const destName   = RAPA_NUI_PLACES.find(p => p.id === selectedDestId)?.name ?? destInput;
+    fareSettingsService.getZoneFares({ zoneFrom: originName, zoneTo: destName }).then(zones => {
+      const zone = zones.find(z => z.isActive);
+      if (zone) {
+        setFarePreview({ km: dist.km, minutes: dist.minutes, fare: zone.fare, isZoneFare: true });
+      } else {
+        setFarePreview({ km: dist.km, minutes: dist.minutes, fare: getEstimatedFare(dist.km), isZoneFare: false });
+      }
+    }).catch(() => {
+      setFarePreview({ km: dist.km, minutes: dist.minutes, fare: getEstimatedFare(dist.km), isZoneFare: false });
+    });
+  }, [selectedOriginId, selectedDestId, originInput, destInput]);
 
   const sortedPlaces = [...RAPA_NUI_PLACES].sort((a, b) => {
     if (a.isPopular && !b.isPopular) return -1;
@@ -479,6 +500,28 @@ function RequestRidePage(): JSX.Element {
                 )}
               </div>
             )}
+            {farePreview && !submitted && (
+              <div style={{
+                margin: "12px 0 0",
+                padding: "10px 14px",
+                background: "var(--ion-color-light)",
+                borderRadius: "8px",
+                fontSize: "0.85rem",
+              }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <span style={{ color: "var(--ion-color-medium)" }}>
+                    {farePreview.km.toFixed(1)} km · ~{farePreview.minutes} min
+                  </span>
+                  <strong style={{ fontSize: "1rem" }}>
+                    ${farePreview.fare.toLocaleString("es-CL")} CLP
+                  </strong>
+                </div>
+                <div style={{ fontSize: "0.72rem", color: "var(--ion-color-medium)", marginTop: "3px" }}>
+                  {farePreview.isZoneFare ? "Tarifa fija de ruta" : "Tarifa estimada por km"}
+                </div>
+              </div>
+            )}
+
             {submitError && (
               <IonText color="danger">
                 <p style={{ margin: "8px 0 0", fontSize: "0.85rem" }}>{submitError}</p>
