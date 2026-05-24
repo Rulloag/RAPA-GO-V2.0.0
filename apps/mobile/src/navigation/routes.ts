@@ -81,6 +81,7 @@ export const ROUTES = {
     APPLICATIONS: "/admin/applications",
     EVENT_TICKETS: "/admin/event-tickets",
     LEGAL_DOCUMENTS: "/admin/legal-documents",
+    FARE_SETTINGS: "/admin/fare-settings",
   },
 
   APPLY: {

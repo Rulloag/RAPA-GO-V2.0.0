@@ -16,9 +16,24 @@ const sessionService = new SessionService();
 const usersRepo      = new UsersRepository();
 const ridesRepo      = new RidesRepository();
 
-function estimateFare(originText: string, destinationText: string): number {
-  const raw = 3000 + (originText.length + destinationText.length) * 50;
-  return Math.min(Math.max(raw, 3000), 50000);
+async function estimateFare(originText: string, destinationText: string): Promise<number> {
+  let perKmCentavos = 230000;
+  let minFareCentavos = 300000;
+
+  try {
+    const fareRepo = new (await import("../fareSettings/fareSettings.repository.js")).FareSettingsRepository();
+    const [perKmSetting, minSetting] = await Promise.all([
+      fareRepo.findByType("mobility_per_km"),
+      fareRepo.findByType("minimum_fare"),
+    ]);
+    if (perKmSetting) perKmCentavos = perKmSetting.value;
+    if (minSetting)   minFareCentavos = minSetting.value;
+  } catch { }
+
+  const estimatedKm = Math.max(1, (originText.length + destinationText.length) / 10);
+  const minFareCLP = Math.round(minFareCentavos / 100);
+  const raw = minFareCLP + Math.round(estimatedKm * perKmCentavos / 10000);
+  return Math.min(Math.max(raw, minFareCLP), 50000);
 }
 
 function toResponse(r: RideRequest | RideWithDriverName): RideRequestResponse {
@@ -138,7 +153,7 @@ export class RidesService {
       return { ok: false, code: "AUTH_FORBIDDEN", message: "Only passengers can create ride requests.", statusCode: 403 };
     }
 
-    const fare = estimateFare(input.originText, input.destinationText);
+    const fare = await estimateFare(input.originText, input.destinationText);
     const row = await ridesRepo.create(
       auth.userId,
       input.originText,

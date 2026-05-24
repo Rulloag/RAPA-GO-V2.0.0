@@ -1,4 +1,4 @@
-import { homeOutline, peopleOutline, carOutline, settingsOutline, documentTextOutline, personAddOutline, ticketOutline, shieldCheckmarkOutline } from "ionicons/icons";
+import { homeOutline, peopleOutline, carOutline, settingsOutline, documentTextOutline, personAddOutline, ticketOutline, shieldCheckmarkOutline, cashOutline } from "ionicons/icons";
 import { Route, Switch } from "react-router-dom";
 import { RoleLayout } from "./RoleLayout";
 import { ROUTES } from "../navigation/routes";
@@ -19,6 +19,7 @@ import {
 } from "../pages/admin";
 import { AdminApplicationsPage } from "../pages/admin/applications/index.js";
 import { AdminLegalDocumentsPage } from "../pages/admin/legal/index.js";
+import { AdminFareSettingsPage } from "../pages/admin/fare/index.js";
 
 const TABS = [
   { path: ROUTES.ADMIN.HOME,             label: "Panel",    icon: homeOutline },
@@ -28,6 +29,7 @@ const TABS = [
   { path: ROUTES.ADMIN.TRIPS,            label: "Viajes",   icon: carOutline },
   { path: ROUTES.ADMIN.EVENT_TICKETS,    label: "Entradas", icon: ticketOutline },
   { path: ROUTES.ADMIN.LEGAL_DOCUMENTS,  label: "Legales",  icon: shieldCheckmarkOutline },
+  { path: ROUTES.ADMIN.FARE_SETTINGS,    label: "Tarifas",  icon: cashOutline },
   { path: ROUTES.ADMIN.SETTINGS,         label: "Config",   icon: settingsOutline },
 ];
 
@@ -50,6 +52,7 @@ export function AdminLayout(): JSX.Element {
         <Route exact path="/admin/activity"        component={AdminActivityPage} />
         <Route exact path="/admin/alerts"           component={AdminAlertsPage} />
         <Route exact path="/admin/legal-documents"  component={AdminLegalDocumentsPage} />
+        <Route exact path={ROUTES.ADMIN.FARE_SETTINGS} component={AdminFareSettingsPage} />
       </Switch>
     </RoleLayout>
   );
