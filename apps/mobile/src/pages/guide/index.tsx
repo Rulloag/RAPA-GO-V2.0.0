@@ -39,6 +39,7 @@ import { ROUTES } from "../../navigation/routes";
 import { useAuth } from "../../features/auth";
 import { touristService, type TouristServiceData, type ServiceBookingData, type CreateServiceInput } from "../../features/tourist/tourist.service.js";
 import { NotificationBell } from "../../components/NotificationBell.js";
+import { legalService, type LegalDocumentData, type UserAcceptanceData } from "../../features/legal/legal.service.js";
 
 function meta(path: string) {
   return ROUTE_METADATA.find((r) => r.path === path)!;
@@ -530,12 +531,77 @@ export function GuideEarningsPage(): JSX.Element {
   );
 }
 
+function GuideLegalStatusSection({ token }: { token: string }): React.ReactElement {
+  const [docs,        setDocs]        = useState<LegalDocumentData[]>([]);
+  const [acceptances, setAcceptances] = useState<UserAcceptanceData[]>([]);
+  const [loading,     setLoading]     = useState(true);
+
+  useEffect(() => {
+    Promise.all([legalService.getActive(), legalService.getMyAcceptances(token)])
+      .then(([d, a]) => { setDocs(d); setAcceptances(a); })
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, [token]);
+
+  const getStatus = (doc: LegalDocumentData) => {
+    const acc = acceptances.find((a) => a.legalDocumentId === doc.id);
+    if (!acc) return "not_accepted";
+    if (acc.versionAccepted !== doc.version) return "new_version";
+    return "accepted";
+  };
+
+  const handleAccept = (doc: LegalDocumentData) => {
+    void legalService.accept(token, doc.id, doc.version).then(() => {
+      legalService.getMyAcceptances(token).then(setAcceptances).catch(() => {});
+    });
+  };
+
+  return (
+    <IonCard>
+      <IonCardContent>
+        <div style={{ fontWeight: 700, fontSize: "0.95rem", marginBottom: "8px" }}>Documentos Legales</div>
+        {loading ? (
+          <div style={{ display: "flex", justifyContent: "center", padding: "8px" }}>
+            <IonSpinner name="dots" />
+          </div>
+        ) : (
+          docs.map((doc) => {
+            const status = getStatus(doc);
+            return (
+              <div key={doc.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "6px 0" }}>
+                <div>
+                  <div style={{ fontSize: "0.9rem" }}>{doc.title}</div>
+                  <div style={{ fontSize: "0.75rem", color: "gray" }}>v{doc.version}</div>
+                </div>
+                <div style={{ display: "flex", alignItems: "center", gap: "4px" }}>
+                  {status === "accepted" && <IonBadge color="success">Aceptado</IonBadge>}
+                  {status === "new_version" && <IonBadge color="warning">Nueva versión</IonBadge>}
+                  {status === "not_accepted" && <IonBadge color="danger">Pendiente</IonBadge>}
+                  {(status === "not_accepted" || status === "new_version") && (
+                    <IonButton fill="clear" size="small" onClick={() => handleAccept(doc)}>
+                      Aceptar
+                    </IonButton>
+                  )}
+                </div>
+              </div>
+            );
+          })
+        )}
+      </IonCardContent>
+    </IonCard>
+  );
+}
+
 export function GuideProfilePage(): JSX.Element {
   const m = meta("/guide/profile");
+  const { session } = useAuth();
   return (
     <IonPage>
       <IonHeader><IonToolbar color="warning"><IonTitle>{m.label}</IonTitle></IonToolbar></IonHeader>
-      <IonContent className="ion-padding"><ModulePlaceholderPage title={m.label} role="guide" plannedFeatures={m.plannedFeatures} /></IonContent>
+      <IonContent className="ion-padding">
+        <ModulePlaceholderPage title={m.label} role="guide" plannedFeatures={m.plannedFeatures} />
+        {session?.accessToken && <GuideLegalStatusSection token={session.accessToken} />}
+      </IonContent>
     </IonPage>
   );
 }

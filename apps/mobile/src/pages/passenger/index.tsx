@@ -58,6 +58,70 @@ import { touristService, type GuidePublicData, type TouristServiceData, type Ser
 import { useIonViewWillEnter } from "@ionic/react";
 import { rentalService } from "../../features/rental/rental.service.js";
 import type { RentalVehicleData as RentalVehicleDataType, RentalBookingData as RentalBookingDataType } from "../../features/rental/rental.service.js";
+import { legalService, type LegalDocumentData, type UserAcceptanceData } from "../../features/legal/legal.service.js";
+
+function LegalStatusSection({ token }: { token: string }): React.ReactElement {
+  const [docs,        setDocs]        = useState<LegalDocumentData[]>([]);
+  const [acceptances, setAcceptances] = useState<UserAcceptanceData[]>([]);
+  const [loading,     setLoading]     = useState(true);
+
+  useEffect(() => {
+    Promise.all([legalService.getActive(), legalService.getMyAcceptances(token)])
+      .then(([d, a]) => { setDocs(d); setAcceptances(a); })
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, [token]);
+
+  const getStatus = (doc: LegalDocumentData) => {
+    const acc = acceptances.find((a) => a.legalDocumentId === doc.id);
+    if (!acc) return "not_accepted";
+    if (acc.versionAccepted !== doc.version) return "new_version";
+    return "accepted";
+  };
+
+  const handleAccept = (doc: LegalDocumentData) => {
+    void legalService.accept(token, doc.id, doc.version).then(() => {
+      legalService.getMyAcceptances(token).then(setAcceptances).catch(() => {});
+    });
+  };
+
+  return (
+    <IonCard style={{ marginTop: "24px" }}>
+      <IonCardHeader>
+        <IonCardTitle style={{ fontSize: "1rem" }}>Documentos Legales</IonCardTitle>
+      </IonCardHeader>
+      <IonCardContent style={{ padding: 0 }}>
+        {loading ? (
+          <div style={{ display: "flex", justifyContent: "center", padding: "16px" }}>
+            <IonSpinner name="dots" />
+          </div>
+        ) : (
+          <IonList>
+            {docs.map((doc) => {
+              const status = getStatus(doc);
+              return (
+                <IonItem key={doc.id}>
+                  <IonLabel>
+                    <h3>{doc.title}</h3>
+                    <p>v{doc.version}</p>
+                  </IonLabel>
+                  {status === "accepted" && <IonBadge color="success" slot="end">Aceptado</IonBadge>}
+                  {status === "new_version" && <IonBadge color="warning" slot="end">Nueva versión</IonBadge>}
+                  {status === "not_accepted" && <IonBadge color="danger" slot="end">Pendiente</IonBadge>}
+                  {(status === "not_accepted" || status === "new_version") && (
+                    <IonButton fill="clear" size="small" slot="end" onClick={() => handleAccept(doc)}>
+                      Aceptar
+                    </IonButton>
+                  )}
+                </IonItem>
+              );
+            })}
+          </IonList>
+        )}
+      </IonCardContent>
+    </IonCard>
+  );
+}
 
 function StarRatingInput({ value, onChange }: { value: number; onChange: (v: number) => void }) {
   return (
@@ -2214,35 +2278,7 @@ export function PassengerProfilePage(): JSX.Element {
               {saving ? <IonSpinner name="dots" /> : "Guardar cambios"}
             </IonButton>
 
-            <IonCard style={{ marginTop: "24px" }}>
-              <IonCardHeader>
-                <IonCardTitle style={{ fontSize: "1rem" }}>Documentos Legales</IonCardTitle>
-              </IonCardHeader>
-              <IonCardContent style={{ padding: 0 }}>
-                <IonList>
-                  <IonItem button routerLink="/legal/terms-and-conditions">
-                    <IonLabel>Términos y Condiciones</IonLabel>
-                    <IonIcon icon={chevronForwardOutline} slot="end" />
-                  </IonItem>
-                  <IonItem button routerLink="/legal/privacy-policy">
-                    <IonLabel>Política de Privacidad</IonLabel>
-                    <IonIcon icon={chevronForwardOutline} slot="end" />
-                  </IonItem>
-                  <IonItem button routerLink="/legal/user-conditions">
-                    <IonLabel>Condiciones para Usuarios</IonLabel>
-                    <IonIcon icon={chevronForwardOutline} slot="end" />
-                  </IonItem>
-                  <IonItem button routerLink="/legal/intellectual-property">
-                    <IonLabel>Propiedad Intelectual</IonLabel>
-                    <IonIcon icon={chevronForwardOutline} slot="end" />
-                  </IonItem>
-                  <IonItem button routerLink="/legal/data-providers">
-                    <IonLabel>Proveedores de Datos</IonLabel>
-                    <IonIcon icon={chevronForwardOutline} slot="end" />
-                  </IonItem>
-                </IonList>
-              </IonCardContent>
-            </IonCard>
+            {session?.accessToken && <LegalStatusSection token={session.accessToken} />}
           </>
         )}
       </IonContent>

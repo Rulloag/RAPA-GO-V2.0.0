@@ -1,5 +1,8 @@
 import type { FastifyInstance } from "fastify";
 import { rentalController } from "./rental.controller.js";
+import { requireLegalAcceptance } from "../../shared/middleware/requireLegalAcceptance.js";
+
+const legalCheck = requireLegalAcceptance(["terms_and_conditions", "privacy_policy"]);
 
 export async function rentalRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.get("/rental-operator/me/vehicles",                    rentalController.getMyVehicles);
@@ -13,7 +16,7 @@ export async function rentalRoutes(fastify: FastifyInstance): Promise<void> {
 
   fastify.get("/rental-vehicles",                                rentalController.listAvailableVehicles);
   fastify.get("/rental-vehicles/:id",                            rentalController.getVehicle);
-  fastify.post("/rental-bookings",                               rentalController.createRentalBooking);
+  fastify.post("/rental-bookings", { preHandler: legalCheck },  rentalController.createRentalBooking);
   fastify.get("/rental-bookings/me",                             rentalController.getMyRentalBookings);
   fastify.patch("/rental-bookings/:id/cancel",                   rentalController.cancelRentalBooking);
 }
