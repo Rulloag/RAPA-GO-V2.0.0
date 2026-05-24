@@ -52,12 +52,12 @@ export const applicationsController = {
       return;
     }
     const query = request.query as Record<string, string | undefined>;
-    const result = await service.listApplications(token, {
-      ...(query["type"]   ? { type:   query["type"] }              : {}),
-      ...(query["status"] ? { status: query["status"] }            : {}),
-      ...(query["page"]   ? { page:   Number(query["page"]) }      : {}),
-      ...(query["limit"]  ? { limit:  Number(query["limit"]) }     : {}),
-    });
+    const filters: { type?: string; status?: string; page?: number; limit?: number } = {};
+    if (query["type"])   filters.type   = query["type"];
+    if (query["status"]) filters.status = query["status"];
+    if (query["page"])   filters.page   = Number(query["page"]);
+    if (query["limit"])  filters.limit  = Number(query["limit"]);
+    const result = await service.listApplications(token, filters);
     if (!result.ok) {
       sendError(reply, { code: result.code, message: result.message, statusCode: result.statusCode });
       return;
