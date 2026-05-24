@@ -35,6 +35,7 @@ import {
   STATUS_COLOR as DOC_STATUS_COLOR,
   STATUS_LABEL as DOC_STATUS_LABEL,
 } from "../../features/documents/documents.constants";
+import { referralsService, type ReferralSummary } from "../../features/referrals/referrals.service.js";
 
 function meta(path: string) {
   return ROUTE_METADATA.find((r) => r.path === path)!;
@@ -69,6 +70,10 @@ export function ProfileIndexPage(): JSX.Element {
   const [saveError,      setSaveError]      = useState<string | null>(null);
   const [saveSuccess,    setSaveSuccess]    = useState(false);
 
+  const [referral,       setReferral]       = useState<ReferralSummary | null>(null);
+  const [generatingCode, setGeneratingCode] = useState(false);
+  const [copiedCode,     setCopiedCode]     = useState(false);
+
   const loadProfile = useCallback(async () => {
     if (!session?.accessToken) return;
     setLoading(true);
@@ -78,6 +83,7 @@ export function ProfileIndexPage(): JSX.Element {
       setProfile(data);
       setNameInput(data.name);
       setAvatarInput(data.avatarUrl ?? "");
+      referralsService.getMyReferral(session.accessToken).then(setReferral).catch(() => {});
     } catch (err) {
       setLoadError(err instanceof Error ? err.message : "Error al cargar el perfil.");
     } finally {
@@ -121,6 +127,28 @@ export function ProfileIndexPage(): JSX.Element {
     } finally {
       setSaving(false);
     }
+  }
+
+  async function handleGenerateCode() {
+    if (!session?.accessToken) return;
+    setGeneratingCode(true);
+    try {
+      const result = await referralsService.generateCode(session.accessToken);
+      setReferral(prev => prev
+        ? { ...prev, code: result.code, link: result.link }
+        : { code: result.code, link: result.link, usedCount: 0, totalReward: 0, pendingReward: 0 }
+      );
+    } catch { } finally {
+      setGeneratingCode(false);
+    }
+  }
+
+  async function handleCopyCode(text: string) {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopiedCode(true);
+      setTimeout(() => setCopiedCode(false), 2000);
+    } catch { }
   }
 
   const roleHome = profile?.role ? ROLE_HOME[profile.role as keyof typeof ROLE_HOME] : undefined;
@@ -231,6 +259,55 @@ export function ProfileIndexPage(): JSX.Element {
                 >
                   {saving ? <IonSpinner name="dots" /> : "Guardar cambios"}
                 </IonButton>
+              </IonCardContent>
+            </IonCard>
+
+            {/* Invita y Gana */}
+            <IonCard style={{ marginTop: "16px" }}>
+              <IonCardHeader>
+                <IonCardTitle style={{ fontSize: "1rem" }}>Invita y Gana</IonCardTitle>
+              </IonCardHeader>
+              <IonCardContent style={{ paddingTop: 0 }}>
+                {referral && referral.code ? (
+                  <>
+                    <div style={{ fontSize: "0.85rem", marginBottom: "8px" }}>
+                      <strong>Tu código:</strong>{" "}
+                      <span style={{ fontFamily: "monospace", fontSize: "1rem" }}>{referral.code}</span>
+                    </div>
+                    <div style={{ fontSize: "0.78rem", color: "var(--ion-color-medium)", marginBottom: "12px" }}>
+                      Has invitado a <strong>{referral.usedCount}</strong> persona{referral.usedCount !== 1 ? "s" : ""}{" "}
+                      · Has ganado <strong>${referral.totalReward.toLocaleString("es-CL")} CLP</strong>
+                    </div>
+                    <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
+                      <IonButton size="small" onClick={() => void handleCopyCode(referral.code)}>
+                        {copiedCode ? "¡Copiado!" : "Copiar código"}
+                      </IonButton>
+                      <IonButton size="small" fill="outline" onClick={() => {
+                        const shareData = { title: "RAPA GO", text: "Usa mi código para tu primer viaje", url: referral.link };
+                        if (navigator.share) {
+                          void navigator.share(shareData);
+                        } else {
+                          void handleCopyCode(referral.link);
+                        }
+                      }}>
+                        Compartir link
+                      </IonButton>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <p style={{ fontSize: "0.85rem", color: "var(--ion-color-medium)", margin: "0 0 12px" }}>
+                      Genera tu código único y compártelo. Cuando alguien complete su primer viaje usando tu código, recibirás un beneficio en tu billetera.
+                    </p>
+                    <IonButton
+                      expand="block"
+                      onClick={() => void handleGenerateCode()}
+                      disabled={generatingCode}
+                    >
+                      {generatingCode ? <IonSpinner name="dots" /> : "Generar mi código"}
+                    </IonButton>
+                  </>
+                )}
               </IonCardContent>
             </IonCard>
           </>

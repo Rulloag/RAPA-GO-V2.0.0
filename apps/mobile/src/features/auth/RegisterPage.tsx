@@ -22,6 +22,7 @@ import { registerRequestSchema } from "@rapa-go/shared";
 import { useAuth } from "./useAuth.js";
 import { ROUTES } from "../../navigation/routes.js";
 import { legalService } from "../../features/legal/legal.service.js";
+import { referralsService } from "../../features/referrals/referrals.service.js";
 import type { UserRole } from "@rapa-go/shared";
 
 const ROLE_HOME: Record<UserRole, string> = {
@@ -53,6 +54,9 @@ export function RegisterPage(): JSX.Element {
   const [loading, setLoading]         = useState(false);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [serverError, setServerError] = useState("");
+
+  const [referralCode, setReferralCode]             = useState("");
+  const [referralMsg,  setReferralMsg]              = useState<string | null>(null);
 
   const [acceptTerms, setAcceptTerms]               = useState(false);
   const [acceptPrivacy, setAcceptPrivacy]             = useState(false);
@@ -102,6 +106,13 @@ export function RegisterPage(): JSX.Element {
       const result = await register(parsed.data);
       if (result.ok) {
         const tok = result.session.accessToken;
+        const newUserId = result.session.user.id;
+
+        if (referralCode.trim()) {
+          referralsService.applyCode(referralCode.trim(), newUserId).then(r => {
+            setReferralMsg(r.message);
+          }).catch(() => {});;
+        }
         const typesToAccept = ["terms_and_conditions", "privacy_policy", "user_conditions"];
         if (role === "driver") typesToAccept.push("driver_conditions");
         if (role === "guide")  typesToAccept.push("guide_conditions");
@@ -240,6 +251,23 @@ export function RegisterPage(): JSX.Element {
               <IonNote slot="error">{fieldErrors["role"]}</IonNote>
             )}
           </IonItem>
+
+          <IonItem style={{ marginTop: "1rem" }}>
+            <IonLabel position="stacked">¿Tienes un código de referido? (opcional)</IonLabel>
+            <IonInput
+              value={referralCode}
+              onIonInput={(e) => { setReferralCode(String(e.detail.value ?? "")); }}
+              placeholder="Ej: RODRIGO2024"
+              maxlength={20}
+              clearInput
+              disabled={loading}
+            />
+          </IonItem>
+          {referralMsg && (
+            <IonText color="success">
+              <p style={{ margin: "4px 12px", fontSize: "0.8rem" }}>{referralMsg}</p>
+            </IonText>
+          )}
 
           <IonList style={{ marginTop: "1rem" }}>
             <IonItem>

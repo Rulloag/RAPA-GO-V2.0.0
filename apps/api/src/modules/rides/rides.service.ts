@@ -22,12 +22,14 @@ async function estimateFare(originText: string, destinationText: string): Promis
 
   try {
     const fareRepo = new (await import("../fareSettings/fareSettings.repository.js")).FareSettingsRepository();
-    const [perKmSetting, minSetting] = await Promise.all([
+    const [perKmSetting, minSetting, zoneFare] = await Promise.all([
       fareRepo.findByType("mobility_per_km"),
       fareRepo.findByType("minimum_fare"),
+      fareRepo.findZoneFareByRoute(originText, destinationText),
     ]);
     if (perKmSetting) perKmCentavos = perKmSetting.value;
     if (minSetting)   minFareCentavos = minSetting.value;
+    if (zoneFare)     return zoneFare.fare;
   } catch { }
 
   const estimatedKm = Math.max(1, (originText.length + destinationText.length) / 10);

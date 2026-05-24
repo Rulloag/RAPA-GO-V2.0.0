@@ -22,6 +22,7 @@ import { applicationsRoutes }    from "./modules/applications/applications.route
 import { eventTicketsRoutes, adminEventTicketsRoutes } from "./modules/eventTickets/eventTickets.routes.js";
 import { legalDocumentsRoutes, adminLegalRoutes } from "./modules/legal/legal.routes.js";
 import { fareSettingsPublicRoutes, fareSettingsAdminRoutes } from "./modules/fareSettings/fareSettings.routes.js";
+import { referralsRoutes, adminReferralsRoutes } from "./modules/referrals/referrals.routes.js";
 
 /**
  * buildApp — constructs and configures the Fastify instance.
@@ -78,6 +79,8 @@ export async function buildApp(): Promise<FastifyInstance> {
   await fastify.register(adminLegalRoutes,        { prefix: "/api/admin" });
   await fastify.register(fareSettingsPublicRoutes, { prefix: "/api" });
   await fastify.register(fareSettingsAdminRoutes,  { prefix: "/api/admin" });
+  await fastify.register(referralsRoutes,          { prefix: "/api" });
+  await fastify.register(adminReferralsRoutes,     { prefix: "/api/admin" });
 
   return fastify;
 }
