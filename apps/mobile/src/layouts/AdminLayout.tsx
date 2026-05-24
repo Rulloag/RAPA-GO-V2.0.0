@@ -1,4 +1,4 @@
-import { homeOutline, peopleOutline, carOutline, settingsOutline, documentTextOutline, personAddOutline, ticketOutline } from "ionicons/icons";
+import { homeOutline, peopleOutline, carOutline, settingsOutline, documentTextOutline, personAddOutline, ticketOutline, shieldCheckmarkOutline } from "ionicons/icons";
 import { Route, Switch } from "react-router-dom";
 import { RoleLayout } from "./RoleLayout";
 import { ROUTES } from "../navigation/routes";
@@ -18,6 +18,7 @@ import {
   AdminEventTicketsPage,
 } from "../pages/admin";
 import { AdminApplicationsPage } from "../pages/admin/applications/index.js";
+import { AdminLegalDocumentsPage } from "../pages/admin/legal/index.js";
 
 const TABS = [
   { path: ROUTES.ADMIN.HOME,             label: "Panel",    icon: homeOutline },
@@ -26,6 +27,7 @@ const TABS = [
   { path: ROUTES.ADMIN.APPLICATIONS,     label: "Postul.",  icon: personAddOutline },
   { path: ROUTES.ADMIN.TRIPS,            label: "Viajes",   icon: carOutline },
   { path: ROUTES.ADMIN.EVENT_TICKETS,    label: "Entradas", icon: ticketOutline },
+  { path: ROUTES.ADMIN.LEGAL_DOCUMENTS,  label: "Legales",  icon: shieldCheckmarkOutline },
   { path: ROUTES.ADMIN.SETTINGS,         label: "Config",   icon: settingsOutline },
 ];
 
@@ -45,8 +47,9 @@ export function AdminLayout(): JSX.Element {
         <Route exact path={ROUTES.ADMIN.OFFLINE_BOOKINGS}  component={AdminOfflineBookingsPage} />
         <Route exact path={ROUTES.ADMIN.APPLICATIONS}      component={AdminApplicationsPage} />
         <Route exact path={ROUTES.ADMIN.EVENT_TICKETS}     component={AdminEventTicketsPage} />
-        <Route exact path="/admin/activity" component={AdminActivityPage} />
-        <Route exact path="/admin/alerts"   component={AdminAlertsPage} />
+        <Route exact path="/admin/activity"        component={AdminActivityPage} />
+        <Route exact path="/admin/alerts"           component={AdminAlertsPage} />
+        <Route exact path="/admin/legal-documents"  component={AdminLegalDocumentsPage} />
       </Switch>
     </RoleLayout>
   );

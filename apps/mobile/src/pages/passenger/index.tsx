@@ -10,6 +10,7 @@ import {
   IonContent,
   IonDatetime,
   IonHeader,
+  IonIcon,
   IonInput,
   IonItem,
   IonLabel,
@@ -34,6 +35,7 @@ import {
 import { useEffect, useState, useCallback } from "react";
 import {
   carOutline,
+  chevronForwardOutline,
   compassOutline,
   keyOutline,
   personOutline,
@@ -2211,6 +2213,36 @@ export function PassengerProfilePage(): JSX.Element {
             >
               {saving ? <IonSpinner name="dots" /> : "Guardar cambios"}
             </IonButton>
+
+            <IonCard style={{ marginTop: "24px" }}>
+              <IonCardHeader>
+                <IonCardTitle style={{ fontSize: "1rem" }}>Documentos Legales</IonCardTitle>
+              </IonCardHeader>
+              <IonCardContent style={{ padding: 0 }}>
+                <IonList>
+                  <IonItem button routerLink="/legal/terms-and-conditions">
+                    <IonLabel>Términos y Condiciones</IonLabel>
+                    <IonIcon icon={chevronForwardOutline} slot="end" />
+                  </IonItem>
+                  <IonItem button routerLink="/legal/privacy-policy">
+                    <IonLabel>Política de Privacidad</IonLabel>
+                    <IonIcon icon={chevronForwardOutline} slot="end" />
+                  </IonItem>
+                  <IonItem button routerLink="/legal/user-conditions">
+                    <IonLabel>Condiciones para Usuarios</IonLabel>
+                    <IonIcon icon={chevronForwardOutline} slot="end" />
+                  </IonItem>
+                  <IonItem button routerLink="/legal/intellectual-property">
+                    <IonLabel>Propiedad Intelectual</IonLabel>
+                    <IonIcon icon={chevronForwardOutline} slot="end" />
+                  </IonItem>
+                  <IonItem button routerLink="/legal/data-providers">
+                    <IonLabel>Proveedores de Datos</IonLabel>
+                    <IonIcon icon={chevronForwardOutline} slot="end" />
+                  </IonItem>
+                </IonList>
+              </IonCardContent>
+            </IonCard>
           </>
         )}
       </IonContent>

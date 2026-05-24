@@ -80,6 +80,7 @@ export const ROUTES = {
     OFFLINE_BOOKINGS: "/admin/offline-bookings",
     APPLICATIONS: "/admin/applications",
     EVENT_TICKETS: "/admin/event-tickets",
+    LEGAL_DOCUMENTS: "/admin/legal-documents",
   },
 
   APPLY: {

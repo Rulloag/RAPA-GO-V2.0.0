@@ -1,11 +1,13 @@
 import { useState } from "react";
 import {
   IonButton,
+  IonCheckbox,
   IonContent,
   IonHeader,
   IonInput,
   IonItem,
   IonLabel,
+  IonList,
   IonNote,
   IonPage,
   IonSelect,
@@ -19,6 +21,7 @@ import { useHistory } from "react-router-dom";
 import { registerRequestSchema } from "@rapa-go/shared";
 import { useAuth } from "./useAuth.js";
 import { ROUTES } from "../../navigation/routes.js";
+import { legalService } from "../../features/legal/legal.service.js";
 import type { UserRole } from "@rapa-go/shared";
 
 const ROLE_HOME: Record<UserRole, string> = {
@@ -50,6 +53,18 @@ export function RegisterPage(): JSX.Element {
   const [loading, setLoading]         = useState(false);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [serverError, setServerError] = useState("");
+
+  const [acceptTerms, setAcceptTerms]               = useState(false);
+  const [acceptPrivacy, setAcceptPrivacy]             = useState(false);
+  const [acceptUserConditions, setAcceptUserConditions] = useState(false);
+  const [acceptDriverConditions, setAcceptDriverConditions] = useState(false);
+  const [acceptGuideConditions, setAcceptGuideConditions]   = useState(false);
+
+  const baseAccepted = acceptTerms && acceptPrivacy && acceptUserConditions;
+  const roleAccepted =
+    role === "driver" ? acceptDriverConditions :
+    role === "guide"  ? acceptGuideConditions  : true;
+  const canSubmit = baseAccepted && roleAccepted;
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -86,6 +101,20 @@ export function RegisterPage(): JSX.Element {
     try {
       const result = await register(parsed.data);
       if (result.ok) {
+        const tok = result.session.accessToken;
+        const typesToAccept = ["terms_and_conditions", "privacy_policy", "user_conditions"];
+        if (role === "driver") typesToAccept.push("driver_conditions");
+        if (role === "guide")  typesToAccept.push("guide_conditions");
+
+        legalService.getActive().then(docs => {
+          typesToAccept.forEach(type => {
+            const doc = docs.find(d => d.type === type && d.isActive);
+            if (doc) {
+              legalService.accept(tok, doc.id, doc.version).catch(() => {});
+            }
+          });
+        }).catch(() => {});
+
         const home = ROLE_HOME[result.session.user.role] ?? ROUTES.WELCOME;
         history.replace(home);
       } else {
@@ -195,6 +224,7 @@ export function RegisterPage(): JSX.Element {
           <IonItem className={fieldErrors["role"] ? "ion-invalid" : ""}>
             <IonLabel position="stacked">Tipo de cuenta</IonLabel>
             <IonSelect
+              interface="action-sheet"
               value={role}
               placeholder="Selecciona un tipo"
               onIonChange={(e) => { setRole(e.detail.value as PublicRole); }}
@@ -211,10 +241,87 @@ export function RegisterPage(): JSX.Element {
             )}
           </IonItem>
 
+          <IonList style={{ marginTop: "1rem" }}>
+            <IonItem>
+              <IonCheckbox
+                checked={acceptTerms}
+                onIonChange={e => setAcceptTerms(e.detail.checked)}
+                slot="start"
+                disabled={loading}
+              />
+              <IonLabel style={{ whiteSpace: "normal" }}>
+                He leído y acepto los{" "}
+                <a href="/legal/terms-and-conditions" target="_blank" rel="noopener noreferrer">
+                  Términos y Condiciones
+                </a>
+              </IonLabel>
+            </IonItem>
+            <IonItem>
+              <IonCheckbox
+                checked={acceptPrivacy}
+                onIonChange={e => setAcceptPrivacy(e.detail.checked)}
+                slot="start"
+                disabled={loading}
+              />
+              <IonLabel style={{ whiteSpace: "normal" }}>
+                He leído y acepto la{" "}
+                <a href="/legal/privacy-policy" target="_blank" rel="noopener noreferrer">
+                  Política de Privacidad
+                </a>
+              </IonLabel>
+            </IonItem>
+            <IonItem>
+              <IonCheckbox
+                checked={acceptUserConditions}
+                onIonChange={e => setAcceptUserConditions(e.detail.checked)}
+                slot="start"
+                disabled={loading}
+              />
+              <IonLabel style={{ whiteSpace: "normal" }}>
+                Acepto las{" "}
+                <a href="/legal/user-conditions" target="_blank" rel="noopener noreferrer">
+                  Condiciones para Usuarios
+                </a>
+              </IonLabel>
+            </IonItem>
+            {role === "driver" && (
+              <IonItem>
+                <IonCheckbox
+                  checked={acceptDriverConditions}
+                  onIonChange={e => setAcceptDriverConditions(e.detail.checked)}
+                  slot="start"
+                  disabled={loading}
+                />
+                <IonLabel style={{ whiteSpace: "normal" }}>
+                  Acepto las{" "}
+                  <a href="/legal/driver-conditions" target="_blank" rel="noopener noreferrer">
+                    Condiciones para Conductores
+                  </a>
+                </IonLabel>
+              </IonItem>
+            )}
+            {role === "guide" && (
+              <IonItem>
+                <IonCheckbox
+                  checked={acceptGuideConditions}
+                  onIonChange={e => setAcceptGuideConditions(e.detail.checked)}
+                  slot="start"
+                  disabled={loading}
+                />
+                <IonLabel style={{ whiteSpace: "normal" }}>
+                  Acepto las{" "}
+                  <a href="/legal/guide-conditions" target="_blank" rel="noopener noreferrer">
+                    Condiciones para Guías
+                  </a>
+                </IonLabel>
+              </IonItem>
+            )}
+          </IonList>
+
           <IonButton
             expand="block"
             type="submit"
-            disabled={loading}
+            disabled={loading || !canSubmit}
             style={{ marginTop: "1rem" }}
           >
             {loading ? <IonSpinner name="crescent" /> : "Crear cuenta"}
