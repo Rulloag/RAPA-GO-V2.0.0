@@ -32,6 +32,8 @@ export const ROUTES = {
     WALLET: "/passenger/wallet",
     PROFILE: "/passenger/profile",
     SERVICE_BOOKINGS: "/passenger/service-bookings",
+    EVENTS: "/passenger/events",
+    EVENT_TICKETS: "/passenger/event-tickets",
   },
 
   DRIVER: {
@@ -77,6 +79,7 @@ export const ROUTES = {
     DOCUMENTS: "/admin/documents",
     OFFLINE_BOOKINGS: "/admin/offline-bookings",
     APPLICATIONS: "/admin/applications",
+    EVENT_TICKETS: "/admin/event-tickets",
   },
 
   APPLY: {

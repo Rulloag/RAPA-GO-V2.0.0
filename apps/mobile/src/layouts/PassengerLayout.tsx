@@ -1,4 +1,4 @@
-import { homeOutline, carOutline, personOutline, walletOutline, mapOutline, calendarOutline } from "ionicons/icons";
+import { homeOutline, carOutline, personOutline, walletOutline, mapOutline, calendarOutline, ticketOutline } from "ionicons/icons";
 import { Route, Switch } from "react-router-dom";
 import { RoleLayout } from "./RoleLayout";
 import { ROUTES } from "../navigation/routes";
@@ -12,12 +12,14 @@ import {
   PassengerProfilePage,
   PassengerServiceBookingsPage,
 } from "../pages/passenger";
+import { PassengerEventsPage, PassengerEventTicketsPage } from "../pages/passenger/events/index.js";
 
 const TABS = [
   { path: ROUTES.PASSENGER.HOME,             label: "Inicio",    icon: homeOutline },
   { path: ROUTES.PASSENGER.TRIPS,            label: "Viajes",    icon: carOutline },
   { path: ROUTES.PASSENGER.GUIDES,           label: "Servicios", icon: mapOutline },
   { path: ROUTES.PASSENGER.SERVICE_BOOKINGS, label: "Reservas",  icon: calendarOutline },
+  { path: ROUTES.PASSENGER.EVENTS,           label: "Eventos",   icon: ticketOutline },
   { path: ROUTES.PASSENGER.WALLET,           label: "Billetera", icon: walletOutline },
   { path: ROUTES.PASSENGER.PROFILE,          label: "Perfil",    icon: personOutline },
 ];
@@ -37,6 +39,8 @@ export function PassengerLayout(): JSX.Element {
         <Route exact path={ROUTES.PASSENGER.WALLET}              component={PassengerWalletPage} />
         <Route exact path={ROUTES.PASSENGER.PROFILE}             component={PassengerProfilePage} />
         <Route exact path={ROUTES.PASSENGER.SERVICE_BOOKINGS}    component={PassengerServiceBookingsPage} />
+        <Route exact path={ROUTES.PASSENGER.EVENTS}              component={PassengerEventsPage} />
+        <Route exact path={ROUTES.PASSENGER.EVENT_TICKETS}       component={PassengerEventTicketsPage} />
       </Switch>
     </RoleLayout>
   );

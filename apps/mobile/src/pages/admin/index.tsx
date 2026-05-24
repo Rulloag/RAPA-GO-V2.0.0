@@ -34,6 +34,7 @@ import {
   IonTitle,
   IonToast,
   IonToolbar,
+  useIonViewWillEnter,
 } from "@ionic/react";
 import { useEffect, useState, useCallback } from "react";
 import { alertCircleOutline, bicycleOutline, bookOutline, carOutline as carIcon, warningOutline } from "ionicons/icons";
@@ -2516,6 +2517,127 @@ export function AdminAlertsPage(): JSX.Element {
             </IonCardContent>
           </IonCard>
         ))}
+      </IonContent>
+    </IonPage>
+  );
+}
+
+export function AdminEventTicketsPage(): JSX.Element {
+  const { session } = useAuth();
+  const [code, setCode] = useState("");
+  const [validating, setValidating] = useState(false);
+  const [validationResult, setValidationResult] = useState<{ ok: boolean; message: string; id?: string; validatedAt?: string } | null>(null);
+  const [recentValidations, setRecentValidations] = useState<import("../../features/eventTickets/eventTickets.service.js").EventTicketData[]>([]);
+  const [loadingHistory, setLoadingHistory] = useState(false);
+  const [toast, setToast] = useState<string | null>(null);
+
+  const loadHistory = async () => {
+    if (!session?.accessToken) return;
+    setLoadingHistory(true);
+    try {
+      const items = await (await import("../../features/eventTickets/eventTickets.service.js")).eventTicketsService.getRecentValidations(session.accessToken);
+      setRecentValidations(items);
+    } catch {
+      setToast("Error al cargar historial");
+    } finally {
+      setLoadingHistory(false);
+    }
+  };
+
+  useIonViewWillEnter(() => { void loadHistory(); });
+
+  const handleValidate = async () => {
+    if (!session?.accessToken || !code.trim()) { setToast("Ingresa un código"); return; }
+    setValidating(true);
+    setValidationResult(null);
+    try {
+      const { eventTicketsService } = await import("../../features/eventTickets/eventTickets.service.js");
+      const res = await eventTicketsService.validateByCode(session.accessToken, code.trim().toUpperCase());
+      setValidationResult({ ok: true, message: res.message, id: res.id, validatedAt: res.validatedAt });
+      setCode("");
+      void loadHistory();
+    } catch (e) {
+      setValidationResult({ ok: false, message: e instanceof Error ? e.message : "Error al validar" });
+    } finally {
+      setValidating(false);
+    }
+  };
+
+  return (
+    <IonPage>
+      <IonHeader>
+        <IonToolbar>
+          <IonTitle>Validar Entradas</IonTitle>
+        </IonToolbar>
+      </IonHeader>
+      <IonContent className="ion-padding">
+        <IonRefresher slot="fixed" onIonRefresh={(e) => { void loadHistory().then(() => e.detail.complete()); }}>
+          <IonRefresherContent />
+        </IonRefresher>
+
+        <IonCard>
+          <IonCardContent>
+            <IonList>
+              <IonItem>
+                <IonLabel position="stacked">Código de entrada</IonLabel>
+                <IonInput
+                  value={code}
+                  onIonInput={(e) => setCode(e.detail.value ?? "")}
+                  placeholder="RAPA-XXXXXXXX"
+                  style={{ fontFamily: "monospace", textTransform: "uppercase" }}
+                />
+              </IonItem>
+            </IonList>
+            <IonButton expand="block" style={{ marginTop: "1rem" }} onClick={handleValidate} disabled={validating || !code.trim()}>
+              {validating ? <IonSpinner name="crescent" /> : "Validar"}
+            </IonButton>
+          </IonCardContent>
+        </IonCard>
+
+        {validationResult && (
+          <IonCard color={validationResult.ok ? "success" : "danger"}>
+            <IonCardContent>
+              <p style={{ color: "white", fontWeight: "bold" }}>
+                {validationResult.ok ? "✓" : "✗"} {validationResult.message}
+              </p>
+              {validationResult.validatedAt && (
+                <p style={{ color: "rgba(255,255,255,0.85)", fontSize: "0.9rem" }}>
+                  Validada: {new Date(validationResult.validatedAt).toLocaleString("es-CL")}
+                </p>
+              )}
+            </IonCardContent>
+          </IonCard>
+        )}
+
+        <IonCard>
+          <IonCardHeader>
+            <IonCardTitle>Historial de validaciones</IonCardTitle>
+          </IonCardHeader>
+          <IonCardContent>
+            {loadingHistory && <div style={{ textAlign: "center" }}><IonSpinner /></div>}
+            {!loadingHistory && recentValidations.length === 0 && (
+              <IonNote>No hay validaciones recientes</IonNote>
+            )}
+            {recentValidations.map((t) => (
+              <div key={t.id} style={{ borderBottom: "1px solid var(--ion-color-light)", padding: "0.5rem 0" }}>
+                <strong style={{ fontSize: "0.95rem" }}>{t.eventName}</strong>
+                <p style={{ margin: "0.15rem 0", fontFamily: "monospace", fontSize: "0.85rem" }}>{t.ticketCode}</p>
+                {t.validatedAt && (
+                  <p style={{ margin: 0, color: "var(--ion-color-medium)", fontSize: "0.8rem" }}>
+                    {new Date(t.validatedAt).toLocaleString("es-CL")}
+                  </p>
+                )}
+              </div>
+            ))}
+          </IonCardContent>
+        </IonCard>
+
+        <IonToast
+          isOpen={toast !== null}
+          message={toast ?? ""}
+          duration={3000}
+          onDidDismiss={() => setToast(null)}
+        />
       </IonContent>
     </IonPage>
   );

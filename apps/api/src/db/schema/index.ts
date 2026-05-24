@@ -16,3 +16,4 @@ export * from "./rentalVehicles.schema.js";
 export * from "./servicePricingTiers.schema.js";
 export * from "./notifications.schema.js";
 export { applications, type Application } from "./applications.schema.js";
+export { eventTickets, type EventTicket } from "./eventTickets.schema.js";
