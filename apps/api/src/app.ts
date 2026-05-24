@@ -17,7 +17,8 @@ import { offlineRoutes }       from "./modules/offline/offline.routes.js";
 import { walletRoutes }        from "./modules/wallet/wallet.routes.js";
 import { touristRoutes }       from "./modules/tourist/tourist.routes.js";
 import { rentalRoutes }        from "./modules/rental/rental.routes.js";
-import { notificationsRoutes } from "./modules/notifications/notifications.routes.js";
+import { notificationsRoutes }   from "./modules/notifications/notifications.routes.js";
+import { applicationsRoutes }    from "./modules/applications/applications.routes.js";
 
 /**
  * buildApp — constructs and configures the Fastify instance.
@@ -67,6 +68,7 @@ export async function buildApp(): Promise<FastifyInstance> {
   await fastify.register(touristRoutes,          { prefix: "/api" });
   await fastify.register(rentalRoutes,           { prefix: "/api" });
   await fastify.register(notificationsRoutes,    { prefix: "/api" });
+  await fastify.register(applicationsRoutes,     { prefix: "/api" });
 
   return fastify;
 }

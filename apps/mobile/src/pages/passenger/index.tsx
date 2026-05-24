@@ -4,6 +4,8 @@ import {
   IonButton,
   IonCard,
   IonCardContent,
+  IonCardHeader,
+  IonCardTitle,
   IonChip,
   IonContent,
   IonDatetime,
@@ -214,6 +216,23 @@ export function PassengerHomePage(): JSX.Element {
             color="medium"
           />
         </div>
+
+        <IonCard style={{ marginTop: "20px" }}>
+          <IonCardHeader>
+            <IonCardTitle style={{ fontSize: "1rem" }}>¿Quieres unirte a Rapa Go?</IonCardTitle>
+          </IonCardHeader>
+          <IonCardContent>
+            <IonButton expand="block" routerLink="/apply/driver" color="primary">
+              Inscríbete como conductor
+            </IonButton>
+            <IonButton expand="block" routerLink="/apply/guide" color="secondary" style={{ marginTop: "8px" }}>
+              Inscríbete como guía
+            </IonButton>
+            <IonButton expand="block" fill="outline" routerLink="/apply/status" color="medium" style={{ marginTop: "8px" }}>
+              Estado de mi postulación
+            </IonButton>
+          </IonCardContent>
+        </IonCard>
       </IonContent>
     </IonPage>
   );

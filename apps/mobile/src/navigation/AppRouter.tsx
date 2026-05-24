@@ -19,6 +19,7 @@ import {
   ProfileNotificationsPage,
 } from "../pages/profile";
 import { NotificationPage } from "../pages/notifications/NotificationPage.js";
+import { ApplicationDriverPage, ApplicationGuidePage, ApplicationStatusPage } from "../pages/apply/index.js";
 
 /** Wraps a private route: passes the current path to RouteGuard for role checking. */
 function PrivateRoute({
@@ -76,6 +77,9 @@ export function AppRouter(): JSX.Element {
         {/* Public */}
         <Route exact path={ROUTES.WELCOME} component={WelcomePage} />
         <Route exact path={ROUTES.NOT_FOUND} component={NotFoundPage} />
+        <Route exact path={ROUTES.APPLY.DRIVER} component={ApplicationDriverPage} />
+        <Route exact path={ROUTES.APPLY.GUIDE}  component={ApplicationGuidePage} />
+        <Route exact path={ROUTES.APPLY.STATUS} component={ApplicationStatusPage} />
 
         {/* Auth — redirect to role home if already authenticated */}
         <AuthRoute path={ROUTES.AUTH.LOGIN}    component={LoginPage} />

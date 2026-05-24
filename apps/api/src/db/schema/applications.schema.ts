@@ -1,0 +1,56 @@
+import { pgTable, uuid, text, integer, boolean, timestamp } from "drizzle-orm/pg-core";
+import { users } from "./users.schema.js";
+
+export const applications = pgTable("applications", {
+  id:           uuid("id").primaryKey().defaultRandom(),
+  userId:       uuid("user_id").references(() => users.id),
+  type:         text("type").notNull(),
+  status:       text("status").default("pending").notNull(),
+
+  firstName:    text("first_name").notNull(),
+  lastName:     text("last_name").notNull(),
+  email:        text("email").notNull(),
+  phone:        text("phone").notNull(),
+  rut:          text("rut"),
+  birthDate:    text("birth_date"),
+  city:         text("city"),
+  emergencyContactName:  text("emergency_contact_name"),
+  emergencyContactPhone: text("emergency_contact_phone"),
+
+  vehicleBrand:  text("vehicle_brand"),
+  vehicleModel:  text("vehicle_model"),
+  vehicleYear:   integer("vehicle_year"),
+  vehiclePlate:  text("vehicle_plate"),
+  vehicleColor:  text("vehicle_color"),
+  licenseNumber: text("license_number"),
+  licenseExpiry: text("license_expiry"),
+  hasOwnVehicle: boolean("has_own_vehicle").default(false),
+
+  experienceYears:    integer("experience_years"),
+  specialties:        text("specialties").array(),
+  offeredTours:       text("offered_tours").array(),
+  hasVehicle:         boolean("has_vehicle").default(false),
+  vehicleDescription: text("vehicle_description"),
+  maxGroupSize:       integer("max_group_size"),
+  languages:          text("languages").array(),
+
+  companyName: text("company_name"),
+  companyRut:  text("company_rut"),
+
+  idFrontUrl:      text("id_front_url"),
+  idBackUrl:       text("id_back_url"),
+  licenseFrontUrl: text("license_front_url"),
+  licenseBackUrl:  text("license_back_url"),
+  certificateUrl:  text("certificate_url"),
+  profilePhotoUrl: text("profile_photo_url"),
+
+  reviewedBy:      uuid("reviewed_by").references(() => users.id),
+  reviewedAt:      timestamp("reviewed_at"),
+  rejectionReason: text("rejection_reason"),
+  notes:           text("notes"),
+
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export type Application = typeof applications.$inferSelect;

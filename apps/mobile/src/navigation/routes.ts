@@ -76,6 +76,14 @@ export const ROUTES = {
     SETTINGS: "/admin/settings",
     DOCUMENTS: "/admin/documents",
     OFFLINE_BOOKINGS: "/admin/offline-bookings",
+    APPLICATIONS: "/admin/applications",
+  },
+
+  APPLY: {
+    BASE: "/apply",
+    DRIVER: "/apply/driver",
+    GUIDE: "/apply/guide",
+    STATUS: "/apply/status",
   },
 
   PROFILE: {

@@ -15,3 +15,4 @@ export * from "./touristServices.schema.js";
 export * from "./rentalVehicles.schema.js";
 export * from "./servicePricingTiers.schema.js";
 export * from "./notifications.schema.js";
+export { applications, type Application } from "./applications.schema.js";
