@@ -91,6 +91,8 @@ function OfflineFallback({
   );
 }
 
+const GOOGLE_MAPS_API_KEY = import.meta.env["VITE_GOOGLE_MAPS_API_KEY"] as string | undefined;
+
 function OnlineMap({
   origin,
   destination,
@@ -102,7 +104,7 @@ function OnlineMap({
 }) {
   const q = encodeURIComponent(`${origin.text}, Isla de Pascua, Chile`);
   const dq = encodeURIComponent(`${destination.text}, Isla de Pascua, Chile`);
-  const src = `https://www.google.com/maps/embed/v1/directions?key=AIzaSyBFw0Ygcm6fd6bVoFFxmThLRvVDNwFUgj4&origin=${q}&destination=${dq}&mode=driving`;
+  const src = `https://www.google.com/maps/embed/v1/directions?key=${GOOGLE_MAPS_API_KEY}&origin=${q}&destination=${dq}&mode=driving`;
 
   return (
     <div style={{ height, borderRadius: "10px", overflow: "hidden", border: "1px solid var(--ion-color-medium-shade)", position: "relative" }}>
@@ -128,13 +130,7 @@ export function MapFallback({
 }: MapFallbackProps): JSX.Element {
   const isOnline = useConnectivity();
 
-  if (!showRoute) {
-    return (
-      <OfflineFallback origin={origin} destination={destination} height={height} />
-    );
-  }
-
-  if (!isOnline) {
+  if (!showRoute || !isOnline || !GOOGLE_MAPS_API_KEY) {
     return <OfflineFallback origin={origin} destination={destination} height={height} />;
   }
 
