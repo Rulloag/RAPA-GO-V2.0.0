@@ -38,7 +38,10 @@ async function estimateFare(originText: string, destinationText: string): Promis
   return Math.min(Math.max(raw, minFareCLP), 50000);
 }
 
-function toResponse(r: RideRequest | RideWithDriverName): RideRequestResponse {
+function toResponse(
+  r: RideRequest | RideWithDriverName,
+  discountInfo?: { discountPercent: number; originalFare: number },
+): RideRequestResponse {
   return {
     id:              r.id,
     passengerUserId: r.passengerUserId,
@@ -68,6 +71,9 @@ function toResponse(r: RideRequest | RideWithDriverName): RideRequestResponse {
     driverVehicleYear:   ("driverVehicleYear"   in r ? r.driverVehicleYear   : null) ?? null,
     driverVehiclePlate:  ("driverVehiclePlate"  in r ? r.driverVehiclePlate  : null) ?? null,
     driverVehicleColor:  ("driverVehicleColor"  in r ? r.driverVehicleColor  : null) ?? null,
+    discountApplied:  discountInfo != null,
+    discountPercent:  discountInfo?.discountPercent ?? null,
+    originalFareClp:  discountInfo?.originalFare ?? null,
   };
 }
 
@@ -144,7 +150,7 @@ export class RidesService {
     }
 
     const rows = await ridesRepo.findByPassengerIdWithDriver(auth.userId);
-    return { ok: true, rides: rows.map(toResponse) };
+    return { ok: true, rides: rows.map(r => toResponse(r)) };
   }
 
   async createRideRequest(accessToken: string, input: CreateRideRequestInput): Promise<RideResult> {
@@ -155,15 +161,36 @@ export class RidesService {
       return { ok: false, code: "AUTH_FORBIDDEN", message: "Only passengers can create ride requests.", statusCode: 403 };
     }
 
-    const fare = await estimateFare(input.originText, input.destinationText);
+    const baseFare = await estimateFare(input.originText, input.destinationText);
+
+    let finalFare    = baseFare;
+    let discountInfo: { discountPercent: number; originalFare: number } | undefined;
+    try {
+      const { ReferralsRepository } = await import("../referrals/referrals.repository.js");
+      const referralsRepo = new ReferralsRepository();
+      const referralUse = await referralsRepo.findUseByReferredUserId(auth.userId);
+      if (referralUse && !referralUse.convertedAt) {
+        const { referralCodes } = await import("../../db/schema/index.js");
+        const { db } = await import("../../db/client.js");
+        const { eq } = await import("drizzle-orm");
+        const codeRows = await db.select().from(referralCodes).where(eq(referralCodes.id, referralUse.referralCodeId)).limit(1);
+        const refCode = codeRows[0] ?? null;
+        if (refCode?.isActive && refCode.discountType === "percentage" && refCode.discountAmount) {
+          const discountPercent = refCode.discountAmount;
+          finalFare = Math.round(baseFare * (1 - discountPercent / 100));
+          discountInfo = { discountPercent, originalFare: baseFare };
+        }
+      }
+    } catch { }
+
     const row = await ridesRepo.create(
       auth.userId,
       input.originText,
       input.destinationText,
       input.notes ?? null,
-      fare,
+      finalFare,
     );
-    return { ok: true, ride: toResponse(row) };
+    return { ok: true, ride: toResponse(row, discountInfo) };
   }
 
   async cancelRideRequest(accessToken: string, rideId: string): Promise<RideResult> {

@@ -492,9 +492,29 @@ function RequestRidePage(): JSX.Element {
                     borderRadius: "6px",
                     fontSize: "0.85rem",
                   }}>
-                    <strong>Tarifa estimada: ${submitted.estimatedFareClp.toLocaleString("es-CL")} CLP</strong>
+                    {submitted.discountApplied && submitted.originalFareClp != null ? (
+                      <>
+                        <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+                          <strong>${submitted.estimatedFareClp.toLocaleString("es-CL")} CLP</strong>
+                          <span style={{
+                            background: "var(--ion-color-success)",
+                            color: "#fff",
+                            borderRadius: "4px",
+                            padding: "1px 6px",
+                            fontSize: "0.72rem",
+                          }}>
+                            -{submitted.discountPercent}% referido
+                          </span>
+                        </div>
+                        <div style={{ fontSize: "0.72rem", color: "var(--ion-color-medium)", marginTop: "2px" }}>
+                          Precio original: ${submitted.originalFareClp.toLocaleString("es-CL")} CLP
+                        </div>
+                      </>
+                    ) : (
+                      <strong>Tarifa estimada: ${submitted.estimatedFareClp.toLocaleString("es-CL")} CLP</strong>
+                    )}
                     <div style={{ fontSize: "0.72rem", color: "var(--ion-color-medium)", marginTop: "2px" }}>
-                      Tarifa referencial. El cálculo real se implementará en fase futura.
+                      Tarifa referencial. El precio final lo acuerda con el conductor.
                     </div>
                   </div>
                 )}

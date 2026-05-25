@@ -34,6 +34,9 @@ export interface RideRequestData {
   driverVehiclePlate:   string | null;
   driverVehicleColor:   string | null;
   isOfflineBooking?:    boolean;
+  discountApplied:      boolean;
+  discountPercent:      number | null;
+  originalFareClp:      number | null;
 }
 
 /** Subset returned to drivers for their own rides. */

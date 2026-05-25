@@ -223,6 +223,24 @@ export class TouristService {
       totalPrice = service.price !== null ? service.price * input.numberOfPeople : null;
     }
 
+    if (totalPrice !== null) {
+      try {
+        const { ReferralsRepository } = await import("../referrals/referrals.repository.js");
+        const referralsRepo = new ReferralsRepository();
+        const referralUse = await referralsRepo.findUseByReferredUserId(auth.userId);
+        if (referralUse && !referralUse.convertedAt) {
+          const { referralCodes } = await import("../../db/schema/index.js");
+          const { db } = await import("../../db/client.js");
+          const { eq } = await import("drizzle-orm");
+          const rows = await db.select().from(referralCodes).where(eq(referralCodes.id, referralUse.referralCodeId)).limit(1);
+          const refCode = rows[0] ?? null;
+          if (refCode?.isActive && refCode.discountType === "percentage" && refCode.discountAmount) {
+            totalPrice = Math.round(totalPrice * (1 - refCode.discountAmount / 100));
+          }
+        }
+      } catch { }
+    }
+
     const booking = await repo.createBooking({
       serviceId:      input.serviceId,
       passengerId:    auth.userId,

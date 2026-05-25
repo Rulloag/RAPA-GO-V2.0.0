@@ -27,6 +27,9 @@ export interface RideRequestResponse {
   driverVehicleYear:    number | null;
   driverVehiclePlate:   string | null;
   driverVehicleColor:   string | null;
+  discountApplied:      boolean;
+  discountPercent:      number | null;
+  originalFareClp:      number | null;
 }
 
 /** Subset exposed to driver for their own rides — no passenger identity. */
