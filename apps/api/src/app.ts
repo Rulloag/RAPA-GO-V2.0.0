@@ -23,6 +23,17 @@ import { eventTicketsRoutes, adminEventTicketsRoutes } from "./modules/eventTick
 import { legalDocumentsRoutes, adminLegalRoutes } from "./modules/legal/legal.routes.js";
 import { fareSettingsPublicRoutes, fareSettingsAdminRoutes } from "./modules/fareSettings/fareSettings.routes.js";
 import { referralsRoutes, adminReferralsRoutes } from "./modules/referrals/referrals.routes.js";
+import { sql } from "drizzle-orm";
+import { db } from "./db/client.js";
+
+async function checkDbConnection(): Promise<"connected" | "disconnected"> {
+  try {
+    await db.execute(sql`SELECT 1`);
+    return "connected";
+  } catch {
+    return "disconnected";
+  }
+}
 
 /**
  * buildApp — constructs and configures the Fastify instance.
@@ -45,14 +56,37 @@ export async function buildApp(): Promise<FastifyInstance> {
   // ── Global error handler ──────────────────────────────────────────────────
   fastify.setErrorHandler(globalErrorHandler);
 
-  // ── Health check ──────────────────────────────────────────────────────────
-  fastify.get("/health", {
-    config: { rateLimit: { max: 200, timeWindow: "1 minute" } },
-  }, async () => ({
-    ok: true,
-    service: "rapa-go-api",
-    version: "2.0.0",
-    status: "healthy",
+  // ── Health checks ─────────────────────────────────────────────────────────
+  const RL_HEALTH = { config: { rateLimit: { max: 300, timeWindow: "1 minute" } } } as const;
+
+  fastify.get("/health", RL_HEALTH, async (_req, reply) => {
+    const dbStatus = await checkDbConnection();
+    const mem      = process.memoryUsage();
+    const memMb    = Math.round(mem.rss / 1024 / 1024);
+    reply.status(dbStatus === "connected" ? 200 : 503);
+    return {
+      ok:        dbStatus === "connected",
+      service:   "rapa-go-api",
+      version:   "2.0.0",
+      status:    dbStatus === "connected" ? "healthy" : "degraded",
+      timestamp: new Date().toISOString(),
+      checks: {
+        database: dbStatus,
+        memory:   memMb < 512 ? "ok" : "critical",
+        memoryMb: memMb,
+      },
+    };
+  });
+
+  fastify.get("/health/ready", RL_HEALTH, async (_req, reply) => {
+    const dbStatus = await checkDbConnection();
+    const ready    = dbStatus === "connected";
+    reply.status(ready ? 200 : 503);
+    return { ready, timestamp: new Date().toISOString() };
+  });
+
+  fastify.get("/health/live", RL_HEALTH, async () => ({
+    alive:     true,
     timestamp: new Date().toISOString(),
   }));
 

@@ -14,7 +14,8 @@
     "test": "vitest run",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
-    "db:studio": "drizzle-kit studio"
+    "db:studio": "drizzle-kit studio",
+    "migrate:prod": "tsx scripts/migrate-prod.ts"
   },
   "dependencies": {
     "@fastify/cors": "9.0.1",
