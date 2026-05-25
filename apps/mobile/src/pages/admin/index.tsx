@@ -37,7 +37,8 @@ import {
   useIonViewWillEnter,
 } from "@ionic/react";
 import { useEffect, useState, useCallback } from "react";
-import { alertCircleOutline, bicycleOutline, bookOutline, carOutline as carIcon, warningOutline } from "ionicons/icons";
+import { alertCircleOutline, bicycleOutline, bookOutline, carOutline as carIcon, warningOutline, cashOutline, giftOutline, shieldCheckmarkOutline, chevronForwardOutline as chevronForward } from "ionicons/icons";
+import { useHistory } from "react-router-dom";
 import { dashboardService, type DashboardData, type ActivityItem as DashActivityItem } from "../../features/admin/dashboard.service.js";
 import { touristService, type TouristServiceData, type ServiceBookingData } from "../../features/tourist/tourist.service.js";
 import { rentalService, type RentalVehicleData, type RentalBookingData } from "../../features/rental/rental.service.js";
@@ -52,10 +53,8 @@ import {
   personOutline,
   settingsOutline,
 } from "ionicons/icons";
-import { ModulePlaceholderPage } from "../../components/ModulePlaceholderPage";
 import { HomeHeader } from "../../components/HomeHeader";
 import { ActionCard } from "../../components/ActionCard";
-import { ROUTE_METADATA } from "../../navigation/routeConfig";
 import { ROUTES } from "../../navigation/routes";
 import { useAuth } from "../../features/auth";
 import { adminService, type AdminUserData, type AdminDocumentData, type AdminRideData, type ActiveDriverData } from "../../features/admin/admin.service";
@@ -66,9 +65,6 @@ import { WhatsAppButton } from "../../components/WhatsAppButton";
 import { MapFallback } from "../../components/MapFallback";
 import { NotificationBell } from "../../components/NotificationBell.js";
 
-function meta(path: string) {
-  return ROUTE_METADATA.find((r) => r.path === path)!;
-}
 
 function timeAgo(isoString: string): string {
   const diff = Date.now() - new Date(isoString).getTime();
@@ -2078,11 +2074,83 @@ export function AdminPaymentsPage(): JSX.Element {
 }
 
 export function AdminSettingsPage(): JSX.Element {
-  const m = meta("/admin/settings");
+  const history = useHistory();
+
+  const sections = [
+    {
+      title:       "Tarifas",
+      description: "Configura precios por km, tarifa mínima y tarifas fijas por ruta.",
+      icon:        cashOutline,
+      route:       ROUTES.ADMIN.FARE_SETTINGS,
+      color:       "primary",
+    },
+    {
+      title:       "Referidos y Campañas",
+      description: "Gestiona códigos de referido, descuentos y campañas promocionales.",
+      icon:        giftOutline,
+      route:       ROUTES.ADMIN.REFERRALS,
+      color:       "success",
+    },
+    {
+      title:       "Documentos Legales",
+      description: "Términos, política de privacidad y condiciones por rol.",
+      icon:        shieldCheckmarkOutline,
+      route:       ROUTES.ADMIN.LEGAL_DOCUMENTS,
+      color:       "warning",
+    },
+  ] as const;
+
   return (
     <IonPage>
-      <IonHeader><IonToolbar color="danger"><IonTitle>{m.label}</IonTitle></IonToolbar></IonHeader>
-      <IonContent className="ion-padding"><ModulePlaceholderPage title={m.label} role="admin" plannedFeatures={m.plannedFeatures} /></IonContent>
+      <IonHeader>
+        <IonToolbar color="primary">
+          <IonTitle>Configuración</IonTitle>
+        </IonToolbar>
+      </IonHeader>
+      <IonContent className="ion-padding">
+        <p style={{ fontSize: "0.85rem", color: "var(--ion-color-medium)", marginBottom: "16px" }}>
+          Ajustes del sistema RAPA GO. Cambios aplicados de forma inmediata.
+        </p>
+
+        {sections.map(s => (
+          <IonCard
+            key={s.route}
+            button
+            onClick={() => history.push(s.route)}
+            style={{ marginBottom: "12px" }}
+          >
+            <IonCardContent>
+              <div style={{ display: "flex", alignItems: "center", gap: "14px" }}>
+                <div style={{
+                  width: "44px", height: "44px", borderRadius: "10px",
+                  background: `var(--ion-color-${s.color}-tint)`,
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                  flexShrink: 0,
+                }}>
+                  <IonIcon icon={s.icon} style={{ fontSize: "22px", color: `var(--ion-color-${s.color})` }} />
+                </div>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontWeight: "600", fontSize: "0.95rem" }}>{s.title}</div>
+                  <div style={{ fontSize: "0.78rem", color: "var(--ion-color-medium)", marginTop: "2px" }}>{s.description}</div>
+                </div>
+                <IonIcon icon={chevronForward} style={{ color: "var(--ion-color-medium)", fontSize: "18px" }} />
+              </div>
+            </IonCardContent>
+          </IonCard>
+        ))}
+
+        <div style={{ marginTop: "24px" }}>
+          <IonCard style={{ background: "var(--ion-color-light)" }}>
+            <IonCardContent style={{ fontSize: "0.78rem", color: "var(--ion-color-medium)" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "6px" }}>
+                <IonIcon icon={settingsOutline} />
+                <strong>Próximamente</strong>
+              </div>
+              Parámetros del sistema · Integraciones de pago · Notificaciones globales · Comisiones de plataforma
+            </IonCardContent>
+          </IonCard>
+        </div>
+      </IonContent>
     </IonPage>
   );
 }
