@@ -314,6 +314,14 @@ export function AdminHomePage(): JSX.Element {
                       <IonButton expand="block" routerLink={ROUTES.ADMIN.OFFLINE_BOOKINGS}>Offline</IonButton>
                     </IonCol>
                   </IonRow>
+                  <IonRow>
+                    <IonCol size="6">
+                      <IonButton expand="block" fill="outline" routerLink={ROUTES.ADMIN.SETTINGS}>Configuración</IonButton>
+                    </IonCol>
+                    <IonCol size="6">
+                      <IonButton expand="block" fill="outline" routerLink={ROUTES.ADMIN.PAYMENTS}>Pagos</IonButton>
+                    </IonCol>
+                  </IonRow>
                 </IonGrid>
               </IonCardContent>
             </IonCard>
@@ -2079,17 +2087,11 @@ export function AdminSettingsPage(): JSX.Element {
   const sections = [
     {
       title:       "Tarifas",
-      description: "Configura precios por km, tarifa mínima y tarifas fijas por ruta.",
+      description: "Precios por km, tarifa mínima y tarifas fijas por ruta.",
       icon:        cashOutline,
       route:       ROUTES.ADMIN.FARE_SETTINGS,
       color:       "primary",
-    },
-    {
-      title:       "Referidos y Campañas",
-      description: "Gestiona códigos de referido, descuentos y campañas promocionales.",
-      icon:        giftOutline,
-      route:       ROUTES.ADMIN.REFERRALS,
-      color:       "success",
+      disabled:    false,
     },
     {
       title:       "Documentos Legales",
@@ -2097,6 +2099,23 @@ export function AdminSettingsPage(): JSX.Element {
       icon:        shieldCheckmarkOutline,
       route:       ROUTES.ADMIN.LEGAL_DOCUMENTS,
       color:       "warning",
+      disabled:    false,
+    },
+    {
+      title:       "Pagos y Transacciones",
+      description: "Órdenes de pago, wallets y conciliación.",
+      icon:        cardOutline,
+      route:       ROUTES.ADMIN.PAYMENTS,
+      color:       "success",
+      disabled:    false,
+    },
+    {
+      title:       "Referidos y Campañas",
+      description: "Códigos de referido, descuentos y campañas promocionales.",
+      icon:        giftOutline,
+      route:       ROUTES.ADMIN.REFERRALS,
+      color:       "tertiary",
+      disabled:    false,
     },
   ] as const;
 
@@ -2115,9 +2134,9 @@ export function AdminSettingsPage(): JSX.Element {
         {sections.map(s => (
           <IonCard
             key={s.route}
-            button
-            onClick={() => history.push(s.route)}
-            style={{ marginBottom: "12px" }}
+            button={!s.disabled}
+            onClick={() => { if (!s.disabled) history.push(s.route); }}
+            style={{ marginBottom: "12px", opacity: s.disabled ? 0.55 : 1 }}
           >
             <IonCardContent>
               <div style={{ display: "flex", alignItems: "center", gap: "14px" }}>
