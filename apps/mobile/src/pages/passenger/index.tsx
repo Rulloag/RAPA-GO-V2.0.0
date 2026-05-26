@@ -35,23 +35,27 @@ import {
 import { useEffect, useState, useCallback } from "react";
 import {
   carOutline,
+  carSportOutline,
   chevronForwardOutline,
-  compassOutline,
-  keyOutline,
-  personOutline,
+  ellipseOutline,
+  giftOutline,
+  locationOutline,
+  mapOutline,
+  ticketOutline,
   walletOutline,
 } from "ionicons/icons";
+import { ServiceCard } from "../../components/ServiceCard.js";
+import { EmptyState } from "../../components/EmptyState.js";
+import { TripTimeline } from "../../components/TripTimeline.js";
+import { DriverInfoCard } from "../../components/DriverInfoCard.js";
 import { ModulePlaceholderPage } from "../../components/ModulePlaceholderPage";
 import { passengerProfileService, type PassengerProfileData } from "../../features/passengers/passengerProfile.service.js";
-import { HomeHeader } from "../../components/HomeHeader";
-import { ActionCard } from "../../components/ActionCard";
 import { useConnectivity } from "../../hooks/useConnectivity";
 import { ROUTE_METADATA } from "../../navigation/routeConfig";
 import { ROUTES } from "../../navigation/routes";
 import { useAuth } from "../../features/auth";
 import { ridesService, type RideRequestData } from "../../features/rides/rides.service";
 import { MapFallback } from "../../components/MapFallback";
-import { DriverSummaryCard } from "../../components/DriverSummaryCard";
 import { RAPA_NUI_PLACES, RAPAGO_CONTACT, WA_MESSAGES, getDistanceBetween, getEstimatedFare } from "@rapa-go/shared";
 import { fareSettingsService } from "../../features/fareSettings/fareSettings.service.js";
 import { WhatsAppButton } from "../../components/WhatsAppButton";
@@ -164,6 +168,8 @@ const RIDE_STATUS_COLOR: Record<string, string> = {
   cancelled:       "danger",
 };
 
+const FREQUENT_DESTINATIONS = ["Aeropuerto", "Anakena", "Tongariki", "Ahu Akivi", "Orongo", "Rano Raraku"];
+
 export function PassengerHomePage(): JSX.Element {
   const isOnline  = useConnectivity();
   const { session } = useAuth();
@@ -177,45 +183,64 @@ export function PassengerHomePage(): JSX.Element {
   }, [session?.accessToken]);
 
   const name     = session?.user?.name ?? "";
-  const initials = name.trim().split(/\s+/).map((p: string) => p[0] ?? "").slice(0, 2).join("").toUpperCase() || "P";
-  const hasPhone = !!profile?.phone;
+  const firstName = name.split(" ")[0] || "pasajero";
+  const initials  = name.trim().split(/\s+/).map((p: string) => p[0] ?? "").slice(0, 2).join("").toUpperCase() || "P";
+  const hasPhone  = !!profile?.phone;
 
   return (
     <IonPage>
-      <HomeHeader title="Inicio" />
-      <IonContent className="ion-padding">
-        {/* Avatar + greeting */}
-        <div style={{ display: "flex", alignItems: "center", gap: "12px", marginBottom: "12px" }}>
-          <div style={{
-            width: "44px", height: "44px", borderRadius: "50%",
-            background: "var(--ion-color-primary)",
-            display: "flex", alignItems: "center", justifyContent: "center",
-            color: "#fff", fontWeight: 700, fontSize: "1rem", flexShrink: 0, overflow: "hidden",
-          }}>
-            {initials}
+      {/* Branded header — no IonHeader to allow full custom gradient */}
+      <div style={{
+        background: "linear-gradient(145deg, var(--ion-color-primary) 0%, var(--ion-color-primary-shade) 100%)",
+        padding: "calc(env(safe-area-inset-top) + 12px) 16px 20px",
+      }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+            {/* Avatar */}
+            <div style={{
+              width: "48px", height: "48px", borderRadius: "50%",
+              background: "rgba(255,255,255,0.2)",
+              border: "2px solid rgba(255,255,255,0.5)",
+              display: "flex", alignItems: "center", justifyContent: "center",
+              color: "#fff", fontWeight: 800, fontSize: "1.1rem", flexShrink: 0,
+              overflow: "hidden",
+            }}>
+              {initials}
+            </div>
+            <div>
+              <div style={{ color: "#fff", fontWeight: 700, fontSize: "1.05rem", lineHeight: 1.2 }}>
+                Hola, {firstName} 👋
+              </div>
+              <div style={{ color: "rgba(255,255,255,0.8)", fontSize: "0.8rem", marginTop: "2px" }}>
+                ¿A dónde vamos hoy?
+              </div>
+            </div>
           </div>
-          <div>
-            <div style={{ fontWeight: 600, fontSize: "0.95rem" }}>Hola, {name.split(" ")[0] || "pasajero"}</div>
-            <div style={{ fontSize: "0.75rem", color: "var(--ion-color-medium)" }}>Bienvenido a Rapa Go</div>
+          {/* Notification bell */}
+          <div style={{ color: "#fff" }}>
+            <IonIcon
+              icon={ellipseOutline}
+              style={{ fontSize: "1.6rem", opacity: 0.7 }}
+            />
           </div>
         </div>
+      </div>
 
-        {/* Phone warning */}
-        {profile !== null && !hasPhone && (
-          <IonCard style={{ margin: "0 0 12px", background: "#fff3cd", border: "1px solid #ffc107" }}>
-            <IonCardContent style={{ padding: "8px 14px" }}>
+      <IonContent>
+        <div style={{ padding: "0 16px 80px" }}>
+
+          {/* Offline / phone warnings */}
+          {profile !== null && !hasPhone && (
+            <div style={{ margin: "12px 0 0", background: "#fff3cd", border: "1px solid #ffc107", borderRadius: "12px", padding: "10px 14px" }}>
               <IonText>
                 <p style={{ margin: 0, fontSize: "0.82rem", color: "#6b4700" }}>
-                  ⚠️ Complete su teléfono en el perfil para solicitar viajes.
+                  ⚠️ Completa tu teléfono en el perfil para solicitar viajes.
                 </p>
               </IonText>
-            </IonCardContent>
-          </IonCard>
-        )}
-
-        {!isOnline && (
-          <IonCard style={{ margin: "0 0 12px", background: "#fff3cd", border: "1px solid #ffc107" }}>
-            <IonCardContent style={{ padding: "8px 14px" }}>
+            </div>
+          )}
+          {!isOnline && (
+            <div style={{ margin: "12px 0 0", background: "#fff3cd", border: "1px solid #ffc107", borderRadius: "12px", padding: "10px 14px" }}>
               <IonText>
                 <p style={{ margin: 0, fontSize: "0.82rem", color: "#6b4700" }}>
                   Modo offline — tus viajes se sincronizarán cuando recuperes conexión.
@@ -224,82 +249,147 @@ export function PassengerHomePage(): JSX.Element {
               <WhatsAppButton
                 phone={RAPAGO_CONTACT.adminPhone}
                 message={WA_MESSAGES.passengerToAdmin({ origin: "mi ubicación", destination: "mi destino", name: "pasajero" })}
-                label="Contactar operador por WhatsApp"
+                label="Contactar operador"
                 size="small"
                 fill="solid"
                 style={{ marginTop: "8px" }}
               />
+            </div>
+          )}
+
+          {/* ── Servicios rápidos ── */}
+          <div style={{ marginTop: "20px" }}>
+            <div style={{ fontWeight: 700, fontSize: "1rem", marginBottom: "12px", color: "var(--ion-text-color)" }}>
+              Servicios
+            </div>
+            <div style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(4, 1fr)",
+              gap: "10px",
+            }}>
+              <ServiceCard
+                icon={carOutline}
+                title="Viaje"
+                subtitle="Solicitar ahora"
+                color="primary"
+                onClick={() => { window.location.href = ROUTES.PASSENGER.REQUEST_RIDE; }}
+              />
+              <ServiceCard
+                icon={mapOutline}
+                title="Tours"
+                subtitle="Con guías locales"
+                color="secondary"
+                onClick={() => { window.location.href = ROUTES.PASSENGER.GUIDES; }}
+              />
+              <ServiceCard
+                icon={carSportOutline}
+                title="Arriendo"
+                subtitle="Vehículos"
+                color="tertiary"
+                onClick={() => { window.location.href = ROUTES.PASSENGER.RENTALS; }}
+              />
+              <ServiceCard
+                icon={ticketOutline}
+                title="Eventos"
+                subtitle="Cultura"
+                color="warning"
+                onClick={() => { window.location.href = ROUTES.PASSENGER.EVENTS; }}
+              />
+            </div>
+          </div>
+
+          {/* ── Destinos frecuentes ── */}
+          <div style={{ marginTop: "24px" }}>
+            <div style={{ fontWeight: 700, fontSize: "1rem", marginBottom: "10px", color: "var(--ion-text-color)" }}>
+              Destinos frecuentes
+            </div>
+            <div style={{ display: "flex", gap: "8px", overflowX: "auto", paddingBottom: "4px" }}>
+              {FREQUENT_DESTINATIONS.map((dest) => (
+                <IonChip
+                  key={dest}
+                  style={{ flexShrink: 0, "--background": "var(--ion-color-light)", fontSize: "0.8rem" }}
+                  onClick={() => { window.location.href = ROUTES.PASSENGER.REQUEST_RIDE; }}
+                >
+                  <IonIcon icon={locationOutline} style={{ marginRight: "4px", fontSize: "0.9rem" }} />
+                  <IonLabel>{dest}</IonLabel>
+                </IonChip>
+              ))}
+            </div>
+          </div>
+
+          {/* ── Accesos secundarios ── */}
+          <div style={{ marginTop: "24px", display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px" }}>
+            <IonCard
+              className="ion-activatable"
+              style={{ margin: 0, borderRadius: "14px", cursor: "pointer" }}
+              routerLink={ROUTES.PASSENGER.TRIPS}
+            >
+              <IonCardContent style={{ padding: "14px 16px", display: "flex", alignItems: "center", gap: "10px" }}>
+                <IonIcon icon={carOutline} style={{ fontSize: "1.4rem", color: "var(--ion-color-primary)", flexShrink: 0 }} />
+                <div>
+                  <div style={{ fontWeight: 600, fontSize: "0.85rem" }}>Mis Viajes</div>
+                  <div style={{ fontSize: "0.72rem", color: "var(--ion-color-medium)" }}>Historial</div>
+                </div>
+              </IonCardContent>
+            </IonCard>
+            <IonCard
+              className="ion-activatable"
+              style={{ margin: 0, borderRadius: "14px", cursor: "pointer" }}
+              routerLink={ROUTES.PASSENGER.WALLET}
+            >
+              <IonCardContent style={{ padding: "14px 16px", display: "flex", alignItems: "center", gap: "10px" }}>
+                <IonIcon icon={walletOutline} style={{ fontSize: "1.4rem", color: "var(--ion-color-success)", flexShrink: 0 }} />
+                <div>
+                  <div style={{ fontWeight: 600, fontSize: "0.85rem" }}>Wallet</div>
+                  <div style={{ fontSize: "0.72rem", color: "var(--ion-color-medium)" }}>Saldo y pagos</div>
+                </div>
+              </IonCardContent>
+            </IonCard>
+          </div>
+
+          {/* ── Banner referidos ── */}
+          <div
+            style={{
+              marginTop: "20px",
+              background: "linear-gradient(135deg, var(--ion-color-secondary) 0%, var(--ion-color-secondary-shade) 100%)",
+              borderRadius: "16px",
+              padding: "16px 18px",
+              display: "flex",
+              alignItems: "center",
+              gap: "14px",
+              cursor: "pointer",
+            }}
+            onClick={() => { window.location.href = ROUTES.PROFILE.INDEX; }}
+          >
+            <IonIcon icon={giftOutline} style={{ fontSize: "2rem", color: "#fff", flexShrink: 0 }} />
+            <div style={{ flex: 1 }}>
+              <div style={{ color: "#fff", fontWeight: 700, fontSize: "0.95rem" }}>Invita amigos y gana</div>
+              <div style={{ color: "rgba(255,255,255,0.85)", fontSize: "0.78rem", marginTop: "2px" }}>
+                Comparte tu código y obtén descuentos en tus próximos viajes
+              </div>
+            </div>
+            <IonIcon icon={chevronForwardOutline} style={{ color: "rgba(255,255,255,0.7)", fontSize: "1.2rem", flexShrink: 0 }} />
+          </div>
+
+          {/* ── Unirse a Rapa Go ── */}
+          <IonCard style={{ marginTop: "20px", borderRadius: "14px" }}>
+            <IonCardHeader>
+              <IonCardTitle style={{ fontSize: "0.95rem" }}>¿Quieres unirte a Rapa Go?</IonCardTitle>
+            </IonCardHeader>
+            <IonCardContent>
+              <IonButton expand="block" routerLink="/apply/driver" color="primary">
+                Inscríbete como conductor
+              </IonButton>
+              <IonButton expand="block" routerLink="/apply/guide" color="secondary" style={{ marginTop: "8px" }}>
+                Inscríbete como guía
+              </IonButton>
+              <IonButton expand="block" fill="outline" routerLink="/apply/status" color="medium" style={{ marginTop: "8px" }}>
+                Estado de mi postulación
+              </IonButton>
             </IonCardContent>
           </IonCard>
-        )}
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "1fr 1fr",
-            gap: "12px",
-            marginTop: "8px",
-          }}
-        >
-          <ActionCard
-            icon={carOutline}
-            title="Solicitar Viaje"
-            subtitle="Reserva tu traslado en Rapa Nui"
-            route={ROUTES.PASSENGER.REQUEST_RIDE}
-            color="primary"
-          />
-          <ActionCard
-            icon={carOutline}
-            title="Mis Viajes"
-            subtitle="Historial y viajes activos"
-            route={ROUTES.PASSENGER.TRIPS}
-            color="primary"
-          />
-          <ActionCard
-            icon={compassOutline}
-            title="Guías Turísticos"
-            subtitle="Tours y guías locales"
-            route={ROUTES.PASSENGER.GUIDES}
-            color="primary"
-          />
-          <ActionCard
-            icon={keyOutline}
-            title="Arriendo"
-            subtitle="Vehículos disponibles"
-            route={ROUTES.PASSENGER.RENTALS}
-            color="primary"
-          />
-          <ActionCard
-            icon={walletOutline}
-            title="Wallet"
-            subtitle="Saldo y transacciones"
-            route={ROUTES.PASSENGER.WALLET}
-            color="primary"
-          />
-          <ActionCard
-            icon={personOutline}
-            title="Perfil"
-            subtitle="Datos personales y documentos"
-            route={ROUTES.PROFILE.INDEX}
-            color="medium"
-          />
-        </div>
 
-        <IonCard style={{ marginTop: "20px" }}>
-          <IonCardHeader>
-            <IonCardTitle style={{ fontSize: "1rem" }}>¿Quieres unirte a Rapa Go?</IonCardTitle>
-          </IonCardHeader>
-          <IonCardContent>
-            <IonButton expand="block" routerLink="/apply/driver" color="primary">
-              Inscríbete como conductor
-            </IonButton>
-            <IonButton expand="block" routerLink="/apply/guide" color="secondary" style={{ marginTop: "8px" }}>
-              Inscríbete como guía
-            </IonButton>
-            <IonButton expand="block" fill="outline" routerLink="/apply/status" color="medium" style={{ marginTop: "8px" }}>
-              Estado de mi postulación
-            </IonButton>
-          </IonCardContent>
-        </IonCard>
+        </div>
       </IonContent>
     </IonPage>
   );
@@ -582,6 +672,7 @@ function TripsPage(): JSX.Element {
   const [submittingRating, setSubmittingRating] = useState(false);
   const [ratingError,   setRatingError]   = useState<string | null>(null);
   const [ratedIds,      setRatedIds]      = useState<Set<string>>(new Set());
+  const [statusFilter,  setStatusFilter]  = useState<"all" | "active" | "completed" | "cancelled">("all");
 
   const loadRides = useCallback(async () => {
     if (!session?.accessToken) return;
@@ -644,161 +735,260 @@ function TripsPage(): JSX.Element {
     }
   }
 
+  const ACTIVE_STATUSES   = ["requested", "accepted", "driver_en_route", "driver_arrived", "in_progress"];
+  const filtered = rides.filter((r) => {
+    if (statusFilter === "all")       return true;
+    if (statusFilter === "active")    return ACTIVE_STATUSES.includes(r.status);
+    if (statusFilter === "completed") return r.status === "completed";
+    if (statusFilter === "cancelled") return r.status === "cancelled";
+    return true;
+  });
+
+  const counts = {
+    all:       rides.length,
+    active:    rides.filter((r) => ACTIVE_STATUSES.includes(r.status)).length,
+    completed: rides.filter((r) => r.status === "completed").length,
+    cancelled: rides.filter((r) => r.status === "cancelled").length,
+  };
+
   return (
     <IonPage>
       <IonHeader>
         <IonToolbar color="primary">
           <IonTitle>Mis Viajes</IonTitle>
         </IonToolbar>
+        {/* Filter chips */}
+        <IonToolbar style={{ "--background": "var(--ion-color-primary)", "--border-width": "0" }}>
+          <div style={{ display: "flex", gap: "8px", padding: "0 12px 10px", overflowX: "auto" }}>
+            {(["all", "active", "completed", "cancelled"] as const).map((f) => {
+              const labels = { all: "Todos", active: "En curso", completed: "Completados", cancelled: "Cancelados" };
+              const active = statusFilter === f;
+              return (
+                <IonChip
+                  key={f}
+                  style={{
+                    flexShrink: 0,
+                    "--background": active ? "#fff" : "rgba(255,255,255,0.2)",
+                    "--color": active ? "var(--ion-color-primary)" : "#fff",
+                    fontSize: "0.78rem",
+                    height: "28px",
+                    fontWeight: active ? 700 : 400,
+                  }}
+                  onClick={() => setStatusFilter(f)}
+                >
+                  {labels[f]}{counts[f] > 0 ? ` (${counts[f]})` : ""}
+                </IonChip>
+              );
+            })}
+          </div>
+        </IonToolbar>
       </IonHeader>
-      <IonContent className="ion-padding">
+      <IonContent>
         <IonRefresher slot="fixed" onIonRefresh={(e) => { void loadRides().then(() => e.detail.complete()); }}>
           <IonRefresherContent />
         </IonRefresher>
+
         {loading && (
           <div style={{ display: "flex", justifyContent: "center", paddingTop: "40px" }}>
             <IonSpinner name="crescent" />
           </div>
         )}
 
-        {loadError && <IonText color="danger"><p>{loadError}</p></IonText>}
-
-        {!loading && rides.length === 0 && (
-          <IonText color="medium"><p>No tienes solicitudes de viaje todavía.</p></IonText>
+        {loadError && (
+          <div style={{ padding: "16px" }}>
+            <IonText color="danger"><p>{loadError}</p></IonText>
+          </div>
         )}
 
-        {!loading && rides.length > 0 && (
-          <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
-            {rides.map((ride) => {
+        {!loading && rides.length === 0 && (
+          <EmptyState
+            icon={carOutline}
+            title="Sin viajes todavía"
+            subtitle="Solicita tu primer traslado en Rapa Nui"
+            actionLabel="Solicitar viaje"
+            onAction={() => { window.location.href = ROUTES.PASSENGER.REQUEST_RIDE; }}
+          />
+        )}
+
+        {!loading && rides.length > 0 && filtered.length === 0 && (
+          <EmptyState
+            icon={carOutline}
+            title="Sin resultados"
+            subtitle="No hay viajes en esta categoría"
+          />
+        )}
+
+        {!loading && filtered.length > 0 && (
+          <div style={{ display: "flex", flexDirection: "column", gap: "12px", padding: "12px 16px 80px" }}>
+            {filtered.map((ride) => {
               const color = RIDE_STATUS_COLOR[ride.status] ?? "medium";
               const label = RIDE_STATUS_LABEL[ride.status] ?? ride.status;
-              const ts = (label: string, iso: string | null) =>
-                iso ? <div style={{ fontSize: "0.72rem", color: "var(--ion-color-medium)", marginTop: "3px" }}>{label}: {new Date(iso).toLocaleString("es-CL")}</div> : null;
+              const isActive = ACTIVE_STATUSES.includes(ride.status);
+
+              const timelineSteps = [
+                { status: "requested",       label: "Solicitado",            time: ride.requestedAt,  completed: !!ride.requestedAt,  active: ride.status === "requested" },
+                { status: "accepted",        label: "Conductor asignado",    time: ride.acceptedAt,   completed: !!ride.acceptedAt,   active: ride.status === "accepted" },
+                { status: "driver_en_route", label: "Conductor en camino",   time: ride.enRouteAt,    completed: !!ride.enRouteAt,    active: ride.status === "driver_en_route" },
+                { status: "driver_arrived",  label: "Conductor llegó",       time: ride.arrivedAt,    completed: !!ride.arrivedAt,    active: ride.status === "driver_arrived" },
+                { status: "in_progress",     label: "Viaje en curso",        time: ride.startedAt,    completed: !!ride.startedAt,    active: ride.status === "in_progress" },
+                { status: "completed",       label: "Completado",            time: ride.completedAt,  completed: !!ride.completedAt,  active: false },
+              ];
+
               return (
-                <IonCard key={ride.id} style={{ margin: 0 }}>
+                <IonCard key={ride.id} style={{ margin: 0, borderRadius: "16px", overflow: "hidden", boxShadow: "0 2px 12px rgba(0,0,0,0.08)" }}>
+                  {/* Status bar */}
+                  <div style={{
+                    height: "4px",
+                    background: `var(--ion-color-${color})`,
+                  }} />
                   <IonCardContent style={{ padding: "14px 16px" }}>
-                    <MapFallback
-                      origin={{ text: ride.originText }}
-                      destination={{ text: ride.destinationText }}
-                      height={130}
-                    />
-                    {ride.driverName && ["accepted", "driver_en_route", "driver_arrived", "in_progress", "completed"].includes(ride.status) && (
-                      <DriverSummaryCard
-                        driverName={ride.driverName}
-                        driverRatingAverage={ride.driverRatingAverage}
-                        driverRatingCount={ride.driverRatingCount}
-                        status={ride.status}
-                      />
-                    )}
-                    {ride.driverUserId && (ride.driverVehicleBrand || ride.driverVehiclePlate) && ["accepted", "driver_en_route", "driver_arrived", "in_progress"].includes(ride.status) && (
-                      <div style={{ background: "var(--ion-color-light)", borderRadius: "10px", padding: "10px 14px", marginTop: "8px", display: "flex", alignItems: "center", gap: "12px" }}>
-                        <IonIcon icon={carOutline} style={{ fontSize: "1.6rem", color: "var(--ion-color-medium)", flexShrink: 0 }} />
-                        <div>
-                          {(ride.driverVehicleBrand || ride.driverVehicleModel) && (
-                            <div style={{ fontWeight: 600, fontSize: "0.92rem" }}>
-                              {[ride.driverVehicleBrand, ride.driverVehicleModel].filter(Boolean).join(" ")}
-                              {ride.driverVehicleYear ? ` (${ride.driverVehicleYear})` : ""}
-                            </div>
-                          )}
-                          <div style={{ fontSize: "0.82rem", color: "var(--ion-color-medium)", marginTop: "2px" }}>
-                            {ride.driverVehicleColor && <span>{ride.driverVehicleColor} · </span>}
-                            {ride.driverVehiclePlate && <span style={{ fontFamily: "monospace", fontWeight: 700 }}>{ride.driverVehiclePlate}</span>}
-                          </div>
+
+                    {/* Route header */}
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "10px" }}>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: "6px", marginBottom: "4px" }}>
+                          <div style={{ width: "8px", height: "8px", borderRadius: "50%", background: "var(--ion-color-success)", flexShrink: 0 }} />
+                          <span style={{ fontSize: "0.88rem", fontWeight: 600, color: "var(--ion-text-color)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                            {ride.originText}
+                          </span>
+                        </div>
+                        <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                          <div style={{ width: "8px", height: "8px", borderRadius: "2px", background: "var(--ion-color-danger)", flexShrink: 0 }} />
+                          <span style={{ fontSize: "0.88rem", fontWeight: 600, color: "var(--ion-text-color)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                            {ride.destinationText}
+                          </span>
                         </div>
                       </div>
-                    )}
-                    {!ride.driverName && ride.status === "requested" && (
-                      <div style={{ marginTop: "10px", fontSize: "0.82rem", color: "var(--ion-color-medium)", fontStyle: "italic" }}>
-                        Esperando asignación de conductor.
-                      </div>
-                    )}
-                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "8px", marginTop: "10px" }}>
-                      <div style={{ flex: 1 }}>
-                        <div style={{ fontWeight: 600, fontSize: "0.9rem", marginBottom: "4px" }}>
-                          {ride.originText} → {ride.destinationText}
-                        </div>
+                      <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: "4px", flexShrink: 0, marginLeft: "8px" }}>
                         <IonBadge color={color} style={{ fontSize: "0.7rem" }}>{label}</IonBadge>
                         {ride.isOfflineBooking && (
-                          <IonBadge color="warning" style={{ fontSize: "0.7rem", marginLeft: "6px" }}>Reserva telefónica</IonBadge>
+                          <IonBadge color="warning" style={{ fontSize: "0.68rem" }}>Telefónica</IonBadge>
                         )}
-                        {ride.estimatedFareClp != null && (
-                          <div style={{ marginTop: "4px", fontSize: "0.78rem", color: "var(--ion-color-dark)", fontWeight: 500 }}>
-                            Tarifa est.: ${ride.estimatedFareClp.toLocaleString("es-CL")} CLP
-                          </div>
+                      </div>
+                    </div>
+
+                    {/* Fare */}
+                    {ride.estimatedFareClp != null && (
+                      <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "10px" }}>
+                        <span style={{ fontSize: "1rem", fontWeight: 700, color: "var(--ion-color-primary)" }}>
+                          ${ride.estimatedFareClp.toLocaleString("es-CL")} CLP
+                        </span>
+                        {ride.discountApplied && ride.originalFareClp != null && (
+                          <>
+                            <IonBadge color="success" style={{ fontSize: "0.65rem" }}>-{ride.discountPercent}%</IonBadge>
+                            <span style={{ fontSize: "0.72rem", color: "var(--ion-color-medium)", textDecoration: "line-through" }}>
+                              ${ride.originalFareClp.toLocaleString("es-CL")}
+                            </span>
+                          </>
                         )}
-                        {ride.notes && (
-                          <div style={{ marginTop: "5px", fontSize: "0.8rem", color: "var(--ion-color-medium)" }}>
-                            {ride.notes}
-                          </div>
-                        )}
-                        <div style={{ marginTop: "5px" }}>
-                          {ts("Solicitado", ride.requestedAt)}
-                          {ride.acceptedAt && ts("Conductor asignado", ride.acceptedAt)}
-                          {ride.enRouteAt  && ts("Conductor en camino", ride.enRouteAt)}
-                          {ride.arrivedAt  && ts("Conductor llegó", ride.arrivedAt)}
-                          {(ride.status === "in_progress" || ride.status === "completed") && ts("Iniciado", ride.startedAt)}
-                          {ride.status === "completed" && ts("Completado", ride.completedAt)}
-                          {ride.status === "cancelled" && ts("Cancelado", ride.cancelledAt)}
-                        </div>
-                        {ride.status === "cancelled" && ride.cancellationReason && (
-                          <div style={{ marginTop: "5px", fontSize: "0.75rem", color: "var(--ion-color-danger)" }}>
+                      </div>
+                    )}
+
+                    {/* Driver card */}
+                    {ride.driverName && ["accepted", "driver_en_route", "driver_arrived", "in_progress", "completed"].includes(ride.status) && (
+                      <div style={{ marginBottom: "10px" }}>
+                        <DriverInfoCard
+                          name={ride.driverName}
+                          rating={ride.driverRatingAverage}
+                          ratingCount={ride.driverRatingCount}
+                          vehicleBrand={ride.driverVehicleBrand}
+                          vehicleModel={ride.driverVehicleModel}
+                          vehicleColor={ride.driverVehicleColor}
+                          vehiclePlate={ride.driverVehiclePlate}
+                          vehicleYear={ride.driverVehicleYear}
+                          phone={isActive ? ride.driverPhone : null}
+                          waMessage={isActive && ride.driverPhone && ride.driverName
+                            ? WA_MESSAGES.passengerToDriver({ driverName: ride.driverName, passengerName: "pasajero", origin: ride.originText })
+                            : null
+                          }
+                        />
+                      </div>
+                    )}
+
+                    {!ride.driverName && ride.status === "requested" && (
+                      <div style={{ marginBottom: "10px", fontSize: "0.82rem", color: "var(--ion-color-medium)", fontStyle: "italic", display: "flex", alignItems: "center", gap: "6px" }}>
+                        <IonSpinner name="dots" style={{ width: "16px", height: "16px" }} />
+                        Esperando asignación de conductor...
+                      </div>
+                    )}
+
+                    {/* Timeline — solo si activo o completado */}
+                    {(isActive || ride.status === "completed") && (
+                      <div style={{ marginBottom: "10px", borderTop: "1px solid var(--ion-color-light-shade)", paddingTop: "10px" }}>
+                        <TripTimeline steps={timelineSteps} />
+                      </div>
+                    )}
+
+                    {/* Cancellation info */}
+                    {ride.status === "cancelled" && (
+                      <div style={{ background: "var(--ion-color-danger-tint)", borderRadius: "8px", padding: "8px 12px", marginBottom: "10px" }}>
+                        {ride.cancellationReason && (
+                          <div style={{ fontSize: "0.78rem", color: "var(--ion-color-danger-shade)", fontWeight: 500 }}>
                             Motivo: {ride.cancellationReason}
                           </div>
                         )}
-                        {ride.status === "cancelled" && ride.cancelledByRole && (
-                          <div style={{ fontSize: "0.72rem", color: "var(--ion-color-medium)" }}>
+                        {ride.cancelledByRole && (
+                          <div style={{ fontSize: "0.72rem", color: "var(--ion-color-danger-shade)", marginTop: "2px" }}>
                             Cancelado por: {ride.cancelledByRole === "passenger" ? "pasajero" : "conductor"}
                           </div>
                         )}
-                      </div>
-                      <div style={{ display: "flex", flexDirection: "column", gap: "6px", flexShrink: 0 }}>
-                        {(ride.status === "requested" || ride.status === "accepted") && (
-                          <IonButton
-                            size="small"
-                            fill="outline"
-                            color="danger"
-                            disabled={cancelling === ride.id}
-                            onClick={() => void (ride.status === "requested" ? handleCancel(ride.id) : handleCancelAccepted(ride.id))}
-                          >
-                            {cancelling === ride.id ? <IonSpinner name="dots" /> : "Cancelar"}
-                          </IonButton>
-                        )}
-                        {ride.status === "completed" && !ratedIds.has(ride.id) && ratingRideId !== ride.id && (
-                          <IonButton
-                            size="small"
-                            fill="outline"
-                            color="warning"
-                            onClick={() => { setRatingRideId(ride.id); setRatingStars(5); setRatingComment(""); setRatingError(null); }}
-                          >
-                            Calificar
-                          </IonButton>
-                        )}
-                        {ride.status === "completed" && ratedIds.has(ride.id) && (
-                          <IonText color="success" style={{ fontSize: "0.75rem" }}>✓ Calificado</IonText>
-                        )}
-                        {ride.status === "completed" && (
-                          <WhatsAppButton
-                            phone={RAPAGO_CONTACT.adminPhone}
-                            message={WA_MESSAGES.passengerToAdmin({ origin: ride.originText, destination: ride.destinationText, name: "pasajero" })}
-                            label="Soporte"
-                          />
-                        )}
-                        {ride.driverName && ["accepted", "driver_en_route", "driver_arrived", "in_progress"].includes(ride.status) && (
-                          ride.driverPhone ? (
-                            <WhatsAppButton
-                              phone={ride.driverPhone}
-                              message={WA_MESSAGES.passengerToDriver({ driverName: ride.driverName, passengerName: "pasajero", origin: ride.originText })}
-                              label="Conductor"
-                            />
-                          ) : (
-                            <WhatsAppButton
-                              phone={RAPAGO_CONTACT.adminPhone}
-                              message={WA_MESSAGES.passengerToAdmin({ origin: ride.originText, destination: ride.destinationText, name: "pasajero" })}
-                              label="Operador"
-                            />
-                          )
+                        {ride.cancelledAt && (
+                          <div style={{ fontSize: "0.7rem", color: "var(--ion-color-medium)", marginTop: "2px" }}>
+                            {new Date(ride.cancelledAt).toLocaleString("es-CL")}
+                          </div>
                         )}
                       </div>
+                    )}
+
+                    {/* Notes */}
+                    {ride.notes && (
+                      <div style={{ fontSize: "0.8rem", color: "var(--ion-color-medium)", marginBottom: "8px" }}>
+                        {ride.notes}
+                      </div>
+                    )}
+
+                    {/* Actions */}
+                    <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", marginTop: "4px" }}>
+                      {(ride.status === "requested" || ride.status === "accepted") && (
+                        <IonButton
+                          size="small"
+                          fill="outline"
+                          color="danger"
+                          disabled={cancelling === ride.id}
+                          onClick={() => void (ride.status === "requested" ? handleCancel(ride.id) : handleCancelAccepted(ride.id))}
+                        >
+                          {cancelling === ride.id ? <IonSpinner name="dots" /> : "Cancelar"}
+                        </IonButton>
+                      )}
+                      {ride.status === "completed" && !ratedIds.has(ride.id) && ratingRideId !== ride.id && (
+                        <IonButton
+                          size="small"
+                          fill="outline"
+                          color="warning"
+                          onClick={() => { setRatingRideId(ride.id); setRatingStars(5); setRatingComment(""); setRatingError(null); }}
+                        >
+                          ⭐ Calificar
+                        </IonButton>
+                      )}
+                      {ride.status === "completed" && ratedIds.has(ride.id) && (
+                        <IonBadge color="success" style={{ fontSize: "0.72rem", padding: "4px 8px" }}>✓ Calificado</IonBadge>
+                      )}
+                      {ride.status === "completed" && (
+                        <WhatsAppButton
+                          phone={RAPAGO_CONTACT.adminPhone}
+                          message={WA_MESSAGES.passengerToAdmin({ origin: ride.originText, destination: ride.destinationText, name: "pasajero" })}
+                          label="Soporte"
+                          size="small"
+                        />
+                      )}
+                      {ride.driverName && isActive && !ride.driverPhone && (
+                        <WhatsAppButton
+                          phone={RAPAGO_CONTACT.adminPhone}
+                          message={WA_MESSAGES.passengerToAdmin({ origin: ride.originText, destination: ride.destinationText, name: "pasajero" })}
+                          label="Operador"
+                          size="small"
+                        />
+                      )}
                     </div>
                   </IonCardContent>
                 </IonCard>
@@ -808,17 +998,19 @@ function TripsPage(): JSX.Element {
         )}
 
         {cancelError && (
-          <IonText color="danger">
-            <p style={{ marginTop: "12px", fontSize: "0.85rem" }}>{cancelError}</p>
-          </IonText>
+          <div style={{ padding: "0 16px" }}>
+            <IonText color="danger">
+              <p style={{ fontSize: "0.85rem" }}>{cancelError}</p>
+            </IonText>
+          </div>
         )}
 
         {ratingRideId && (
-          <IonCard style={{ margin: "12px 0 0" }}>
+          <IonCard style={{ margin: "12px 16px" }}>
             <IonCardContent style={{ padding: "14px 16px" }}>
-              <div style={{ fontWeight: 600, marginBottom: "4px" }}>Calificar conductor</div>
+              <div style={{ fontWeight: 600, marginBottom: "8px" }}>⭐ Calificar conductor</div>
               <StarRatingInput value={ratingStars} onChange={setRatingStars} />
-              <IonItem lines="none" style={{ "--padding-start": "0" }}>
+              <IonItem lines="none" style={{ "--padding-start": "0", marginTop: "8px" }}>
                 <IonTextarea
                   value={ratingComment}
                   onIonInput={(e) => setRatingComment(String(e.detail.value ?? ""))}
