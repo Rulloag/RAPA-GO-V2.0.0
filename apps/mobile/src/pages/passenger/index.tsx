@@ -37,6 +37,7 @@ import {
   carOutline,
   carSportOutline,
   chevronForwardOutline,
+  compassOutline,
   ellipseOutline,
   giftOutline,
   locationOutline,
@@ -1095,91 +1096,117 @@ export function PassengerGuidesPage(): JSX.Element {
     );
   }
 
+  const LANG_LABEL: Record<string, string> = { es: "🇨🇱 ES", en: "🇺🇸 EN", rapa_nui: "🗿 RP" };
+
   return (
     <IonPage>
       <IonHeader>
         <IonToolbar color="primary">
-          <IonTitle>Guías Turísticos</IonTitle>
+          <IonTitle>Guías locales</IonTitle>
+        </IonToolbar>
+        <IonToolbar style={{ "--background": "var(--ion-color-primary)", "--border-width": "0" }}>
+          <div style={{ padding: "0 12px 10px" }}>
+            <IonSearchbar
+              value={searchName}
+              onIonInput={(e) => setSearchName(String(e.detail.value ?? ""))}
+              onIonChange={() => void load()}
+              placeholder="Buscar guía..."
+              debounce={400}
+              style={{ "--background": "rgba(255,255,255,0.15)", "--color": "#fff", "--placeholder-color": "rgba(255,255,255,0.7)", "--icon-color": "rgba(255,255,255,0.8)", padding: 0 }}
+            />
+            <div style={{ display: "flex", gap: "8px", overflowX: "auto", paddingBottom: "2px" }}>
+              {(["", "es", "en", "rapa_nui"] as const).map((lang) => (
+                <IonChip
+                  key={lang}
+                  style={{
+                    flexShrink: 0,
+                    "--background": filterLang === lang ? "#fff" : "rgba(255,255,255,0.2)",
+                    "--color": filterLang === lang ? "var(--ion-color-primary)" : "#fff",
+                    fontSize: "0.76rem", height: "26px",
+                    fontWeight: filterLang === lang ? 700 : 400,
+                  }}
+                  onClick={() => setFilterLang(lang)}
+                >
+                  {lang === "" ? "Todos" : LANG_LABEL[lang] ?? lang}
+                </IonChip>
+              ))}
+            </div>
+          </div>
         </IonToolbar>
       </IonHeader>
-      <IonContent className="ion-padding">
+      <IonContent>
         <IonRefresher slot="fixed" onIonRefresh={(e) => { void load().then(() => e.detail.complete()); }}>
           <IonRefresherContent />
         </IonRefresher>
-
-        <IonSearchbar
-          value={searchName}
-          onIonInput={(e) => setSearchName(String(e.detail.value ?? ""))}
-          onIonChange={() => void load()}
-          placeholder="Buscar por nombre..."
-          debounce={400}
-        />
-
-        <IonItem lines="none" style={{ marginBottom: "8px" }}>
-          <IonLabel>Idioma</IonLabel>
-          <IonSelect
-            interface="action-sheet"
-            value={filterLang}
-            onIonChange={(e) => setFilterLang(String(e.detail.value ?? ""))}
-            placeholder="Todos"
-          >
-            <IonSelectOption value="">Todos</IonSelectOption>
-            <IonSelectOption value="es">Español</IonSelectOption>
-            <IonSelectOption value="en">English</IonSelectOption>
-            <IonSelectOption value="rapa_nui">Rapa Nui</IonSelectOption>
-          </IonSelect>
-        </IonItem>
 
         {loading && (
           <div style={{ display: "flex", justifyContent: "center", paddingTop: "40px" }}>
             <IonSpinner name="crescent" />
           </div>
         )}
-
-        {loadError && <IonText color="danger"><p>{loadError}</p></IonText>}
+        {loadError && <div style={{ padding: "16px" }}><IonText color="danger"><p>{loadError}</p></IonText></div>}
 
         {!loading && guides.length === 0 && (
-          <IonText color="medium"><p>No hay guías disponibles.</p></IonText>
+          <EmptyState icon={compassOutline} title="Sin guías disponibles" subtitle="Vuelve a intentarlo más tarde" />
         )}
 
         {!loading && guides.length > 0 && (
-          <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: "12px", padding: "12px 16px 80px" }}>
             {guides.map((guide) => {
               const initials = guide.name.trim().split(/\s+/).map((p) => p[0] ?? "").slice(0, 2).join("").toUpperCase();
-              const stars = guide.ratingAverage ? Math.round(guide.ratingAverage) : 0;
+              const rating = guide.ratingAverage ?? 0;
               return (
-                <IonCard key={guide.id} style={{ margin: 0, cursor: "pointer" }} onClick={() => setSelectedGuide(guide)}>
-                  <IonCardContent style={{ padding: "14px 16px" }}>
-                    <div style={{ display: "flex", gap: "12px", alignItems: "flex-start" }}>
+                <IonCard
+                  key={guide.id}
+                  className="ion-activatable"
+                  style={{ margin: 0, borderRadius: "16px", boxShadow: "0 2px 12px rgba(0,0,0,0.08)", cursor: "pointer", overflow: "hidden" }}
+                  onClick={() => setSelectedGuide(guide)}
+                >
+                  <IonCardContent style={{ padding: "16px" }}>
+                    <div style={{ display: "flex", gap: "14px", alignItems: "flex-start" }}>
+                      {/* Avatar */}
                       <div style={{
-                        width: "48px", height: "48px", borderRadius: "50%",
-                        background: "var(--ion-color-warning)",
+                        width: "60px", height: "60px", borderRadius: "50%", flexShrink: 0,
+                        background: "var(--ion-color-warning-tint)",
                         display: "flex", alignItems: "center", justifyContent: "center",
-                        color: "#fff", fontWeight: 700, fontSize: "1rem", flexShrink: 0,
+                        border: "2px solid var(--ion-color-warning)",
                       }}>
-                        {initials || "G"}
+                        <span style={{ fontWeight: 800, fontSize: "1.2rem", color: "var(--ion-color-warning-shade)" }}>
+                          {initials || "G"}
+                        </span>
                       </div>
-                      <div style={{ flex: 1 }}>
-                        <div style={{ fontWeight: 600, fontSize: "0.95rem" }}>{guide.name}</div>
-                        {guide.bio && (
-                          <div style={{ fontSize: "0.78rem", color: "var(--ion-color-medium)", marginTop: "2px" }}>
-                            {guide.bio.slice(0, 80)}{guide.bio.length > 80 ? "…" : ""}
-                          </div>
-                        )}
-                        <div style={{ display: "flex", gap: "4px", flexWrap: "wrap", marginTop: "6px" }}>
-                          {(guide.languages ?? []).map((lang) => (
-                            <IonChip key={lang} style={{ fontSize: "0.7rem", height: "22px", margin: 0 }}>
-                              <IonLabel>{lang.toUpperCase()}</IonLabel>
-                            </IonChip>
-                          ))}
+                      {/* Info */}
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: "6px", flexWrap: "wrap" }}>
+                          <span style={{ fontWeight: 700, fontSize: "1rem" }}>{guide.name}</span>
                         </div>
-                        <div style={{ marginTop: "4px", fontSize: "0.78rem", color: "#f4c430" }}>
-                          {"★".repeat(stars)}{"☆".repeat(5 - stars)}
-                          <span style={{ color: "var(--ion-color-medium)", marginLeft: "4px" }}>
-                            ({guide.ratingCount})
+                        {/* Rating */}
+                        <div style={{ display: "flex", alignItems: "center", gap: "4px", marginTop: "4px" }}>
+                          {[1,2,3,4,5].map((n) => (
+                            <span key={n} style={{ fontSize: "0.85rem", color: n <= Math.round(rating) ? "#f4c430" : "var(--ion-color-light-shade)" }}>★</span>
+                          ))}
+                          <span style={{ fontSize: "0.72rem", color: "var(--ion-color-medium)", marginLeft: "4px" }}>
+                            {rating > 0 ? rating.toFixed(1) : "Sin calificaciones"}{guide.ratingCount ? ` (${guide.ratingCount})` : ""}
                           </span>
                         </div>
+                        {/* Bio */}
+                        {guide.bio && (
+                          <div style={{ fontSize: "0.78rem", color: "var(--ion-color-medium)", marginTop: "4px", lineHeight: 1.4 }}>
+                            {guide.bio.slice(0, 90)}{guide.bio.length > 90 ? "…" : ""}
+                          </div>
+                        )}
+                        {/* Languages */}
+                        {(guide.languages ?? []).length > 0 && (
+                          <div style={{ display: "flex", gap: "4px", flexWrap: "wrap", marginTop: "6px" }}>
+                            {(guide.languages ?? []).map((lang) => (
+                              <IonChip key={lang} color="warning" style={{ fontSize: "0.68rem", height: "20px", margin: 0 }}>
+                                <IonLabel>{LANG_LABEL[lang] ?? lang.toUpperCase()}</IonLabel>
+                              </IonChip>
+                            ))}
+                          </div>
+                        )}
                       </div>
+                      <IonIcon icon={chevronForwardOutline} style={{ color: "var(--ion-color-medium)", fontSize: "1.1rem", flexShrink: 0, marginTop: "4px" }} />
                     </div>
                   </IonCardContent>
                 </IonCard>
@@ -1262,103 +1289,147 @@ function PassengerGuideDetailPage({ guide, onBack }: { guide: GuidePublicData; o
     }
   }
 
+  const LANG_LABEL_DETAIL: Record<string, string> = { es: "🇨🇱 Español", en: "🇺🇸 English", rapa_nui: "🗿 Rapa Nui" };
+
   return (
     <IonPage>
       <IonHeader>
         <IonToolbar color="primary">
-          <IonButton slot="start" fill="clear" color="light" onClick={onBack}>← Volver</IonButton>
-          <IonTitle>{guide.name}</IonTitle>
+          <IonButton slot="start" fill="clear" color="light" onClick={onBack}>
+            <IonIcon slot="icon-only" icon={chevronForwardOutline} style={{ transform: "rotate(180deg)" }} />
+          </IonButton>
+          <IonTitle>Perfil del guía</IonTitle>
         </IonToolbar>
       </IonHeader>
-      <IonContent className="ion-padding">
-        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", marginBottom: "16px" }}>
+      <IonContent>
+        {/* Cover / hero */}
+        <div style={{
+          background: "linear-gradient(145deg, var(--ion-color-warning-shade) 0%, var(--ion-color-warning) 100%)",
+          padding: "28px 20px 24px",
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+          gap: "10px",
+        }}>
           <div style={{
-            width: "72px", height: "72px", borderRadius: "50%",
-            background: "var(--ion-color-warning)",
+            width: "84px", height: "84px", borderRadius: "50%",
+            background: "rgba(255,255,255,0.25)",
+            border: "3px solid rgba(255,255,255,0.7)",
             display: "flex", alignItems: "center", justifyContent: "center",
-            color: "#fff", fontWeight: 700, fontSize: "1.6rem",
+            color: "#fff", fontWeight: 800, fontSize: "1.8rem",
           }}>
             {initials || "G"}
           </div>
-          <div style={{ fontWeight: 700, fontSize: "1.1rem", marginTop: "8px" }}>{guide.name}</div>
-          <div style={{ fontSize: "0.82rem", color: "#f4c430", margin: "4px 0" }}>
-            {"★".repeat(stars)}{"☆".repeat(5 - stars)}
-            <span style={{ color: "var(--ion-color-medium)", marginLeft: "4px" }}>({guide.ratingCount} valoraciones)</span>
+          <div style={{ textAlign: "center" }}>
+            <div style={{ color: "#fff", fontWeight: 800, fontSize: "1.15rem" }}>{guide.name}</div>
           </div>
-          {guide.bio && (
-            <div style={{ fontSize: "0.85rem", color: "var(--ion-color-medium)", textAlign: "center", marginTop: "4px" }}>
-              {guide.bio}
-            </div>
-          )}
+          {/* Rating row */}
+          <div style={{ display: "flex", alignItems: "center", gap: "4px" }}>
+            {[1,2,3,4,5].map((n) => (
+              <span key={n} style={{ fontSize: "1rem", color: n <= stars ? "#fff" : "rgba(255,255,255,0.4)" }}>★</span>
+            ))}
+            <span style={{ color: "rgba(255,255,255,0.85)", fontSize: "0.8rem", marginLeft: "4px" }}>
+              {guide.ratingAverage ? guide.ratingAverage.toFixed(1) : "Sin calificaciones"}
+              {guide.ratingCount ? ` · ${guide.ratingCount} valoraciones` : ""}
+            </span>
+          </div>
+          {/* Languages */}
           {(guide.languages ?? []).length > 0 && (
-            <div style={{ display: "flex", gap: "6px", flexWrap: "wrap", justifyContent: "center", marginTop: "8px" }}>
+            <div style={{ display: "flex", gap: "6px", flexWrap: "wrap", justifyContent: "center" }}>
               {(guide.languages ?? []).map((lang) => (
-                <IonChip key={lang} color="primary" style={{ fontSize: "0.72rem", height: "22px" }}>
-                  <IonLabel>{lang.toUpperCase()}</IonLabel>
-                </IonChip>
+                <span key={lang} style={{
+                  background: "rgba(255,255,255,0.2)",
+                  color: "#fff",
+                  borderRadius: "12px",
+                  padding: "2px 10px",
+                  fontSize: "0.72rem",
+                  fontWeight: 600,
+                }}>
+                  {LANG_LABEL_DETAIL[lang] ?? lang.toUpperCase()}
+                </span>
               ))}
             </div>
           )}
         </div>
 
-        <div style={{ fontWeight: 600, fontSize: "0.95rem", marginBottom: "10px" }}>Servicios disponibles</div>
+        <div style={{ padding: "16px 16px 80px" }}>
+          {/* Bio */}
+          {guide.bio && (
+            <IonCard style={{ margin: "0 0 16px", borderRadius: "14px" }}>
+              <IonCardContent style={{ padding: "14px 16px" }}>
+                <div style={{ fontWeight: 600, fontSize: "0.82rem", color: "var(--ion-color-medium)", marginBottom: "6px", textTransform: "uppercase", letterSpacing: "0.5px" }}>Sobre mí</div>
+                <div style={{ fontSize: "0.88rem", lineHeight: 1.6, color: "var(--ion-text-color)" }}>{guide.bio}</div>
+              </IonCardContent>
+            </IonCard>
+          )}
 
-        {loading && <IonSpinner name="crescent" />}
+          <div style={{ fontWeight: 700, fontSize: "1rem", marginBottom: "12px" }}>Servicios disponibles</div>
 
-        {!loading && services.length === 0 && (
-          <IonText color="medium"><p>Este guía no tiene servicios activos.</p></IonText>
-        )}
+          {loading && <div style={{ display: "flex", justifyContent: "center", padding: "20px" }}><IonSpinner name="crescent" /></div>}
 
-        {!loading && services.length > 0 && (
-          <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
-            {services.map((svc) => (
-              <IonCard key={svc.id} style={{ margin: 0 }}>
-                <IonCardContent style={{ padding: "14px 16px" }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "6px" }}>
-                    <div style={{ fontWeight: 600, fontSize: "0.9rem", flex: 1 }}>{svc.title}</div>
-                    <IonBadge color="tertiary" style={{ fontSize: "0.68rem", marginLeft: "8px", flexShrink: 0 }}>
-                      {SERVICE_TYPE_LABEL[svc.type] ?? svc.type}
-                    </IonBadge>
-                  </div>
-                  {svc.description && (
-                    <div style={{ fontSize: "0.8rem", color: "var(--ion-color-medium)", marginBottom: "6px" }}>
-                      {svc.description}
-                    </div>
-                  )}
-                  <div style={{ fontSize: "0.78rem", color: "var(--ion-color-medium)" }}>
-                    {svc.durationMinutes && <span>{svc.durationMinutes} min · </span>}
-                    {svc.maxPeople && <span>Máx {svc.maxPeople} personas · </span>}
-                    {svc.meetingPoint && <span>📍 {svc.meetingPoint}</span>}
-                  </div>
-                  {svc.includesVehicle && (
-                    <div style={{ fontSize: "0.78rem", color: "var(--ion-color-primary)", marginTop: "4px" }}>✓ Incluye vehículo</div>
-                  )}
-                  {!svc.includesVehicle && (
-                    <div style={{ fontSize: "0.78rem", color: "var(--ion-color-medium)", marginTop: "4px" }}>Sin vehículo incluido</div>
-                  )}
-                  {svc.price !== null && (
-                    <div style={{ fontWeight: 700, fontSize: "0.95rem", marginTop: "6px", color: "var(--ion-color-success)" }}>
-                      ${(svc.price / 100).toLocaleString("es-CL")} CLP / persona
-                    </div>
-                  )}
-                  {(svc.includes ?? []).length > 0 && (
-                    <div style={{ marginTop: "6px", fontSize: "0.78rem" }}>
-                      <strong>Incluye:</strong> {(svc.includes ?? []).join(", ")}
-                    </div>
-                  )}
-                  <IonButton
-                    expand="block"
-                    size="small"
-                    style={{ marginTop: "10px" }}
-                    onClick={() => { setBookingService(svc); setBookingDate(new Date().toISOString().slice(0, 10)); }}
-                  >
-                    Reservar
-                  </IonButton>
-                </IonCardContent>
-              </IonCard>
-            ))}
-          </div>
-        )}
+          {!loading && services.length === 0 && (
+            <EmptyState icon={compassOutline} title="Sin servicios activos" subtitle="Este guía no tiene servicios publicados aún" />
+          )}
+
+          {!loading && services.length > 0 && (
+            <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+              {services.map((svc) => {
+                const priceDisplay = svc.price !== null
+                  ? `$${(svc.price / 100).toLocaleString("es-CL")} CLP/persona`
+                  : "Consultar precio";
+                return (
+                  <IonCard key={svc.id} style={{ margin: 0, borderRadius: "16px", boxShadow: "0 2px 12px rgba(0,0,0,0.07)" }}>
+                    <IonCardContent style={{ padding: "16px" }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "8px" }}>
+                        <div style={{ fontWeight: 700, fontSize: "0.95rem", flex: 1 }}>{svc.title}</div>
+                        <IonBadge color="tertiary" style={{ fontSize: "0.65rem", marginLeft: "8px", flexShrink: 0 }}>
+                          {SERVICE_TYPE_LABEL[svc.type] ?? svc.type}
+                        </IonBadge>
+                      </div>
+                      {svc.description && (
+                        <div style={{ fontSize: "0.8rem", color: "var(--ion-color-medium)", marginBottom: "10px", lineHeight: 1.4 }}>
+                          {svc.description}
+                        </div>
+                      )}
+                      {/* Meta row */}
+                      <div style={{ display: "flex", gap: "12px", flexWrap: "wrap", fontSize: "0.78rem", color: "var(--ion-color-medium)", marginBottom: "8px" }}>
+                        {svc.durationMinutes && <span>⏱ {svc.durationMinutes} min</span>}
+                        {svc.maxPeople && <span>👥 Máx {svc.maxPeople}</span>}
+                        {svc.meetingPoint && <span>📍 {svc.meetingPoint}</span>}
+                        <span style={{ color: svc.includesVehicle ? "var(--ion-color-primary)" : "var(--ion-color-medium)" }}>
+                          🚗 {svc.includesVehicle ? "Incluye vehículo" : "Sin vehículo"}
+                        </span>
+                      </div>
+                      {/* Includes */}
+                      {(svc.includes ?? []).length > 0 && (
+                        <div style={{ display: "flex", gap: "4px", flexWrap: "wrap", marginBottom: "10px" }}>
+                          {(svc.includes ?? []).map((inc) => (
+                            <span key={inc} style={{ background: "var(--ion-color-success-tint)", color: "var(--ion-color-success-shade)", borderRadius: "10px", padding: "2px 8px", fontSize: "0.7rem" }}>
+                              ✓ {inc}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                      {/* Price + CTA */}
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: "4px" }}>
+                        <div style={{ fontWeight: 800, fontSize: "1.05rem", color: "var(--ion-color-success)" }}>
+                          {priceDisplay}
+                        </div>
+                        <IonButton
+                          size="small"
+                          style={{ "--border-radius": "10px" }}
+                          onClick={() => { setBookingService(svc); setBookingDate(new Date().toISOString().slice(0, 10)); }}
+                        >
+                          Reservar
+                        </IonButton>
+                      </div>
+                    </IonCardContent>
+                  </IonCard>
+                );
+              })}
+            </div>
+          )}
+        </div>
 
         <IonModal isOpen={bookingService !== null} onDidDismiss={() => setBookingService(null)}>
           <IonHeader>
@@ -1702,70 +1773,75 @@ export function PassengerRentalsPage(): JSX.Element {
             <IonSpinner name="crescent" />
           </div>
         )}
-
-        {loadError && <IonText color="danger"><p>{loadError}</p></IonText>}
-
+        {loadError && <div style={{ padding: "16px" }}><IonText color="danger"><p>{loadError}</p></IonText></div>}
         {!loading && filtered.length === 0 && (
-          <IonText color="medium"><p>No hay vehículos disponibles.</p></IonText>
+          <EmptyState icon={carSportOutline} title="Sin vehículos disponibles" subtitle="Vuelve a intentarlo más tarde" />
         )}
-
         {!loading && filtered.length > 0 && (
-          <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: "14px", padding: "12px 16px 80px" }}>
             {filtered.map((v) => (
-              <IonCard key={v.id} style={{ margin: 0 }}>
+              <IonCard
+                key={v.id}
+                className="ion-activatable"
+                style={{ margin: 0, borderRadius: "16px", boxShadow: "0 2px 12px rgba(0,0,0,0.08)", overflow: "hidden", cursor: "pointer" }}
+                onClick={() => setSelectedId(v.id)}
+              >
+                {/* Photo */}
+                {v.photos && v.photos.length > 0 ? (
+                  <img
+                    src={v.photos[0]}
+                    alt={`${v.brand} ${v.model}`}
+                    style={{ width: "100%", height: "160px", objectFit: "cover", display: "block" }}
+                  />
+                ) : (
+                  <div style={{
+                    width: "100%", height: "120px",
+                    background: "linear-gradient(135deg, var(--ion-color-tertiary-tint) 0%, var(--ion-color-tertiary-shade) 100%)",
+                    display: "flex", alignItems: "center", justifyContent: "center",
+                  }}>
+                    <IonIcon icon={carSportOutline} style={{ fontSize: "3rem", color: "rgba(255,255,255,0.6)" }} />
+                  </div>
+                )}
                 <IonCardContent style={{ padding: "14px 16px" }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "8px" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "6px" }}>
                     <div style={{ fontWeight: 700, fontSize: "1rem" }}>
                       {v.brand} {v.model}{v.year ? ` (${v.year})` : ""}
                     </div>
-                    <IonBadge color="tertiary" style={{ fontSize: "0.68rem", flexShrink: 0, marginLeft: "6px" }}>
+                    <IonBadge color="tertiary" style={{ fontSize: "0.65rem", flexShrink: 0, marginLeft: "6px" }}>
                       {VEHICLE_TYPE_LABEL[v.type] ?? v.type}
                     </IonBadge>
                   </div>
-
-                  {v.photos && v.photos.length > 0 ? (
-                    <img
-                      src={v.photos[0]}
-                      alt={`${v.brand} ${v.model}`}
-                      style={{ width: "100%", height: "140px", objectFit: "cover", borderRadius: "6px", marginBottom: "8px" }}
-                    />
-                  ) : (
-                    <div style={{
-                      width: "100%", height: "100px", borderRadius: "6px",
-                      background: "var(--ion-color-light)",
-                      display: "flex", alignItems: "center", justifyContent: "center",
-                      marginBottom: "8px", color: "var(--ion-color-medium)", fontSize: "0.85rem",
-                    }}>
-                      Sin foto
-                    </div>
-                  )}
-
-                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "4px", marginBottom: "8px", fontSize: "0.78rem", color: "var(--ion-color-medium)" }}>
-                    {v.seats    && <span>{v.seats} asientos</span>}
-                    {v.transmission && <span>{v.transmission === "manual" ? "Manual" : "Automático"}</span>}
-                    {v.fuelType && <span>{v.fuelType === "gasoline" ? "Bencina" : v.fuelType === "diesel" ? "Diésel" : v.fuelType === "electric" ? "Eléctrico" : "Híbrido"}</span>}
+                  {/* Specs row */}
+                  <div style={{ display: "flex", gap: "10px", fontSize: "0.76rem", color: "var(--ion-color-medium)", marginBottom: "8px", flexWrap: "wrap" }}>
+                    {v.seats    && <span>💺 {v.seats} asientos</span>}
+                    {v.transmission && <span>⚙️ {v.transmission === "manual" ? "Manual" : "Auto"}</span>}
+                    {v.fuelType && <span>⛽ {v.fuelType === "gasoline" ? "Bencina" : v.fuelType === "diesel" ? "Diésel" : v.fuelType === "electric" ? "Eléctrico" : "Híbrido"}</span>}
+                    {v.color && <span>🎨 {v.color}</span>}
                   </div>
-
+                  {/* Features */}
                   {(v.features ?? []).length > 0 && (
-                    <div style={{ display: "flex", gap: "4px", flexWrap: "wrap", marginBottom: "8px" }}>
-                      {(v.features ?? []).slice(0, 3).map((f) => (
-                        <IonChip key={f} style={{ fontSize: "0.68rem", height: "20px", margin: 0 }}>
-                          <IonLabel>{f}</IonLabel>
-                        </IonChip>
+                    <div style={{ display: "flex", gap: "4px", flexWrap: "wrap", marginBottom: "10px" }}>
+                      {(v.features ?? []).slice(0, 4).map((f) => (
+                        <span key={f} style={{ background: "var(--ion-color-light)", borderRadius: "8px", padding: "2px 8px", fontSize: "0.68rem", color: "var(--ion-color-dark)" }}>
+                          {f}
+                        </span>
                       ))}
-                      {(v.features ?? []).length > 3 && (
-                        <IonChip style={{ fontSize: "0.68rem", height: "20px", margin: 0 }}>
-                          <IonLabel>+{(v.features ?? []).length - 3}</IonLabel>
-                        </IonChip>
+                      {(v.features ?? []).length > 4 && (
+                        <span style={{ background: "var(--ion-color-light)", borderRadius: "8px", padding: "2px 8px", fontSize: "0.68rem", color: "var(--ion-color-medium)" }}>
+                          +{(v.features ?? []).length - 4}
+                        </span>
                       )}
                     </div>
                   )}
-
+                  {/* Price + CTA */}
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                    <div style={{ fontWeight: 700, fontSize: "1rem", color: "var(--ion-color-success)" }}>
-                      ${(v.dailyPrice / 100).toLocaleString("es-CL")}/día
+                    <div>
+                      <span style={{ fontWeight: 800, fontSize: "1.1rem", color: "var(--ion-color-success)" }}>
+                        ${(v.dailyPrice / 100).toLocaleString("es-CL")}
+                      </span>
+                      <span style={{ fontSize: "0.78rem", color: "var(--ion-color-medium)" }}> /día</span>
                     </div>
-                    <IonButton size="small" onClick={() => setSelectedId(v.id)}>Ver detalles</IonButton>
+                    <IonButton size="small" style={{ "--border-radius": "10px" }}>Ver detalles</IonButton>
                   </div>
                 </IonCardContent>
               </IonCard>
@@ -2200,99 +2276,103 @@ function WalletPage(): JSX.Element {
         {loadError && <IonText color="danger"><p>{loadError}</p></IonText>}
 
         {!loading && wallet && (
-          <>
-            {/* Balance card */}
-            <IonCard style={{ margin: "0 0 16px", background: "var(--ion-color-primary)", color: "#fff" }}>
-              <IonCardContent style={{ padding: "20px 24px" }}>
-                <div style={{ fontSize: "0.8rem", opacity: 0.85, marginBottom: "4px" }}>Saldo disponible</div>
-                <div style={{ fontSize: "2rem", fontWeight: 700, marginBottom: "8px" }}>
-                  ${(wallet.balance / 100).toLocaleString("es-CL")} {wallet.currency}
-                </div>
-                <IonBadge color={wallet.status === "active" ? "success" : "medium"} style={{ fontSize: "0.7rem" }}>
-                  {wallet.status === "active" ? "Activa" : wallet.status}
+          <div style={{ paddingBottom: "80px" }}>
+            {/* Balance hero */}
+            <div style={{
+              background: "linear-gradient(145deg, var(--ion-color-primary) 0%, var(--ion-color-primary-shade) 100%)",
+              padding: "32px 24px 28px",
+              textAlign: "center",
+            }}>
+              <div style={{ color: "rgba(255,255,255,0.8)", fontSize: "0.82rem", marginBottom: "6px" }}>Saldo disponible</div>
+              <div style={{ color: "#fff", fontSize: "2.4rem", fontWeight: 800, letterSpacing: "-1px" }}>
+                ${(wallet.balance / 100).toLocaleString("es-CL")}
+                <span style={{ fontSize: "1rem", fontWeight: 400, marginLeft: "6px", opacity: 0.8 }}>{wallet.currency}</span>
+              </div>
+              <div style={{ marginTop: "10px" }}>
+                <IonBadge
+                  color={wallet.status === "active" ? "success" : "medium"}
+                  style={{ fontSize: "0.72rem" }}
+                >
+                  {wallet.status === "active" ? "✓ Billetera activa" : wallet.status}
                 </IonBadge>
-              </IonCardContent>
-            </IonCard>
+              </div>
+            </div>
 
             {/* Quick actions */}
-            <IonCard style={{ margin: "0 0 16px" }}>
-              <IonCardContent style={{ padding: "14px 16px" }}>
-                <div style={{ fontWeight: 600, marginBottom: "10px", fontSize: "0.9rem" }}>Acciones rápidas</div>
-                <div style={{ display: "flex", gap: "12px" }}>
-                  <IonButton expand="block" fill="outline" disabled style={{ flex: 1 }}>
-                    Recargar
-                  </IonButton>
-                  <IonButton expand="block" fill="outline" disabled style={{ flex: 1 }}>
-                    Retirar
-                  </IonButton>
-                </div>
-                <IonNote style={{ fontSize: "0.72rem", color: "var(--ion-color-medium)", display: "block", marginTop: "6px" }}>
-                  Próximamente disponible
-                </IonNote>
-              </IonCardContent>
-            </IonCard>
+            <div style={{ padding: "16px 16px 0" }}>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px", marginBottom: "6px" }}>
+                <IonButton expand="block" fill="outline" disabled style={{ "--border-radius": "12px" }}>
+                  ↑ Recargar
+                </IonButton>
+                <IonButton expand="block" fill="outline" disabled style={{ "--border-radius": "12px" }}>
+                  ↓ Retirar
+                </IonButton>
+              </div>
+              <IonNote style={{ fontSize: "0.72rem", color: "var(--ion-color-medium)", display: "block", marginBottom: "20px", textAlign: "center" }}>
+                Recarga y retiro disponibles próximamente
+              </IonNote>
 
-            {/* Payment methods */}
-            <IonCard style={{ margin: "0 0 16px" }}>
-              <IonCardContent style={{ padding: "14px 16px" }}>
-                <div style={{ fontWeight: 600, marginBottom: "6px", fontSize: "0.9rem" }}>Métodos de pago</div>
-                <IonText color="medium">
-                  <p style={{ margin: 0, fontSize: "0.82rem" }}>Métodos de pago disponibles próximamente</p>
-                </IonText>
-              </IonCardContent>
-            </IonCard>
-
-            {/* Transactions */}
-            <IonList>
-              <IonListHeader>
-                <IonLabel><strong>Movimientos</strong></IonLabel>
-              </IonListHeader>
+              <div style={{ fontWeight: 700, fontSize: "1rem", marginBottom: "12px" }}>Movimientos</div>
 
               {transactions.length === 0 && (
-                <IonItem lines="none">
-                  <IonText color="medium">
-                    <p style={{ fontSize: "0.85rem", margin: "8px 0" }}>No hay movimientos todavía.</p>
-                  </IonText>
-                </IonItem>
+                <EmptyState icon={walletOutline} title="Sin movimientos" subtitle="Tus transacciones aparecerán aquí" />
               )}
 
-              {transactions.map((tx) => (
-                <IonItem key={tx.id} lines="full">
-                  <IonLabel>
-                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                      <div>
-                        <div style={{ fontSize: "0.75rem", color: "var(--ion-color-medium)" }}>
-                          {new Date(tx.createdAt).toLocaleString("es-CL", { dateStyle: "short", timeStyle: "short" })}
+              {transactions.length > 0 && (
+                <div style={{ display: "flex", flexDirection: "column", gap: "1px", background: "var(--ion-color-light-shade)", borderRadius: "14px", overflow: "hidden" }}>
+                  {transactions.map((tx, idx) => {
+                    const isDebit = tx.type === "payment";
+                    const txIcon = tx.type === "payment" ? "🚗" : tx.type === "refund" ? "↩️" : "💰";
+                    return (
+                      <div
+                        key={tx.id}
+                        style={{
+                          background: "var(--ion-card-background, #fff)",
+                          padding: "12px 16px",
+                          display: "flex",
+                          alignItems: "center",
+                          gap: "12px",
+                          borderBottom: idx < transactions.length - 1 ? "1px solid var(--ion-color-light-shade)" : "none",
+                        }}
+                      >
+                        <div style={{
+                          width: "40px", height: "40px", borderRadius: "50%", flexShrink: 0,
+                          background: isDebit ? "var(--ion-color-danger-tint)" : "var(--ion-color-success-tint)",
+                          display: "flex", alignItems: "center", justifyContent: "center",
+                          fontSize: "1.1rem",
+                        }}>
+                          {txIcon}
                         </div>
-                        <div style={{ display: "flex", gap: "6px", alignItems: "center", marginTop: "2px" }}>
-                          <IonBadge color={TX_TYPE_COLOR[tx.type] ?? "medium"} style={{ fontSize: "0.65rem" }}>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontWeight: 600, fontSize: "0.85rem", color: "var(--ion-text-color)" }}>
                             {TX_TYPE_LABEL[tx.type] ?? tx.type}
-                          </IonBadge>
-                          <IonBadge color={TX_STATUS_COLOR[tx.status] ?? "medium"} style={{ fontSize: "0.65rem" }}>
-                            {tx.status}
-                          </IonBadge>
-                        </div>
-                        {tx.description && (
-                          <div style={{ fontSize: "0.78rem", color: "var(--ion-color-medium)", marginTop: "2px" }}>
-                            {tx.description}
                           </div>
-                        )}
+                          {tx.description && (
+                            <div style={{ fontSize: "0.72rem", color: "var(--ion-color-medium)", marginTop: "1px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                              {tx.description}
+                            </div>
+                          )}
+                          <div style={{ fontSize: "0.68rem", color: "var(--ion-color-medium)", marginTop: "2px", display: "flex", alignItems: "center", gap: "4px" }}>
+                            {new Date(tx.createdAt).toLocaleString("es-CL", { dateStyle: "short", timeStyle: "short" })}
+                            <IonBadge color={TX_STATUS_COLOR[tx.status] ?? "medium"} style={{ fontSize: "0.6rem" }}>
+                              {tx.status}
+                            </IonBadge>
+                          </div>
+                        </div>
+                        <div style={{
+                          fontWeight: 800, fontSize: "0.95rem",
+                          color: isDebit ? "var(--ion-color-danger)" : "var(--ion-color-success)",
+                          flexShrink: 0,
+                        }}>
+                          {isDebit ? "−" : "+"}${(tx.amount / 100).toLocaleString("es-CL")}
+                        </div>
                       </div>
-                      <div style={{
-                        fontWeight: 700,
-                        fontSize: "0.95rem",
-                        color: tx.type === "payment" ? "var(--ion-color-danger)" : "var(--ion-color-success)",
-                        marginLeft: "12px",
-                        flexShrink: 0,
-                      }}>
-                        {tx.type === "payment" ? "-" : "+"}${(tx.amount / 100).toLocaleString("es-CL")}
-                      </div>
-                    </div>
-                  </IonLabel>
-                </IonItem>
-              ))}
-            </IonList>
-          </>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </div>
         )}
       </IonContent>
     </IonPage>
