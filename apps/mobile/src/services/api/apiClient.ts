@@ -5,7 +5,9 @@ import {
   timeoutError,
   invalidResponseError,
   parseErrorBody,
+  authExpiredError,
 } from "./apiErrors.js";
+import { sessionStorageService } from "../../features/auth/sessionStorage.service.js";
 
 const BASE_URL = (import.meta.env["VITE_API_BASE_URL"] as string | undefined) ?? "";
 
@@ -67,6 +69,13 @@ async function request<T>(
     clearTimeout(timerId);
   }
 
+  // 401 — session expired; clear storage and signal the app
+  if (response.status === 401) {
+    void sessionStorageService.clearSession();
+    window.dispatchEvent(new CustomEvent("auth:expired"));
+    return authExpiredError();
+  }
+
   // Handle empty body responses (204 No Content, 205 Reset Content)
   if (response.status === 204 || response.status === 205) {
     return { ok: true, data: undefined as T, statusCode: response.status };
@@ -86,24 +95,46 @@ async function request<T>(
   return { ok: true, data: parsed as T, statusCode: response.status };
 }
 
+const RETRYABLE_CODES = new Set(["NETWORK_ERROR", "TIMEOUT"]);
+
+async function requestWithRetry<T>(
+  method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE",
+  path: string,
+  body: unknown,
+  options: RequestOptions = {},
+  retries = 2,
+): Promise<ApiResponse<T>> {
+  const result = await request<T>(method, path, body, options);
+
+  if (!result.ok && RETRYABLE_CODES.has(result.code) && retries > 0) {
+    const delayMs = (3 - retries) * 1000; // 1 s, then 2 s
+    await new Promise<void>((resolve) => setTimeout(resolve, delayMs));
+    return requestWithRetry<T>(method, path, body, options, retries - 1);
+  }
+
+  return result;
+}
+
 export const apiClient = {
+  /** GET with automatic retry on transient failures (×2). */
   get<T>(path: string, options?: RequestOptions): Promise<ApiResponse<T>> {
-    return request<T>("GET", path, undefined, options);
+    return requestWithRetry<T>("GET", path, undefined, options, 2);
   },
 
-  post<T>(path: string, body?: unknown, options?: RequestOptions): Promise<ApiResponse<T>> {
-    return request<T>("POST", path, body, options);
+  /** POST — retry once for critical actions; pass retries=0 for non-idempotent calls. */
+  post<T>(path: string, body?: unknown, options?: RequestOptions, retries = 1): Promise<ApiResponse<T>> {
+    return requestWithRetry<T>("POST", path, body, options, retries);
   },
 
   patch<T>(path: string, body?: unknown, options?: RequestOptions): Promise<ApiResponse<T>> {
-    return request<T>("PATCH", path, body, options);
+    return requestWithRetry<T>("PATCH", path, body, options, 1);
   },
 
   put<T>(path: string, body?: unknown, options?: RequestOptions): Promise<ApiResponse<T>> {
-    return request<T>("PUT", path, body, options);
+    return requestWithRetry<T>("PUT", path, body, options, 1);
   },
 
   delete<T>(path: string, options?: RequestOptions): Promise<ApiResponse<T>> {
-    return request<T>("DELETE", path, undefined, options);
+    return requestWithRetry<T>("DELETE", path, undefined, options, 1);
   },
 };

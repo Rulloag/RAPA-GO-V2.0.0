@@ -14,6 +14,7 @@ const config: CapacitorConfig = {
     Geolocation: {
       // Permissions requested at runtime, not here
     },
+    Network: {},
   },
 };
 

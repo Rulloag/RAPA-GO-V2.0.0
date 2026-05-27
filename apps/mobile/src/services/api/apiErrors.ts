@@ -1,6 +1,6 @@
 import type { ApiErrorResponse } from "./apiTypes.js";
 
-const DEFAULT_TIMEOUT_MS = 10_000;
+const DEFAULT_TIMEOUT_MS = 25_000;
 
 export { DEFAULT_TIMEOUT_MS };
 
@@ -31,6 +31,15 @@ export function invalidResponseError(detail?: string): ApiErrorResponse {
  * Backend errors follow: { error: { code, message, statusCode } }
  * or the flat auth shape: { ok: false, code, message }
  */
+export function authExpiredError(): ApiErrorResponse {
+  return {
+    ok: false,
+    code: "AUTH_EXPIRED",
+    message: "Tu sesión expiró. Inicia sesión nuevamente.",
+    statusCode: 401,
+  };
+}
+
 export function parseErrorBody(body: unknown, statusCode: number): ApiErrorResponse {
   if (body !== null && typeof body === "object") {
     const b = body as Record<string, unknown>;

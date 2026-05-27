@@ -1,18 +1,23 @@
+import { Network } from "@capacitor/network";
 import { useState, useEffect } from "react";
 
 export function useConnectivity(): boolean {
-  const [isOnline, setIsOnline] = useState<boolean>(navigator.onLine);
+  const [isOnline, setIsOnline] = useState(true);
 
   useEffect(() => {
-    const onOnline  = () => setIsOnline(true);
-    const onOffline = () => setIsOnline(false);
+    let listenerHandle: Awaited<ReturnType<typeof Network.addListener>> | undefined;
 
-    window.addEventListener("online",  onOnline);
-    window.addEventListener("offline", onOffline);
+    void (async () => {
+      const status = await Network.getStatus();
+      setIsOnline(status.connected);
+
+      listenerHandle = await Network.addListener("networkStatusChange", (s) => {
+        setIsOnline(s.connected);
+      });
+    })();
 
     return () => {
-      window.removeEventListener("online",  onOnline);
-      window.removeEventListener("offline", onOffline);
+      void listenerHandle?.remove();
     };
   }, []);
 

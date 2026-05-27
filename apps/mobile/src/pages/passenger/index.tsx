@@ -11,6 +11,8 @@ import {
   IonDatetime,
   IonHeader,
   IonIcon,
+  IonInfiniteScroll,
+  IonInfiniteScrollContent,
   IonInput,
   IonItem,
   IonLabel,
@@ -33,6 +35,7 @@ import {
   IonToolbar,
 } from "@ionic/react";
 import { useEffect, useState, useCallback } from "react";
+import { useHistory } from "react-router-dom";
 import {
   carOutline,
   carSportOutline,
@@ -172,6 +175,7 @@ const RIDE_STATUS_COLOR: Record<string, string> = {
 const FREQUENT_DESTINATIONS = ["Aeropuerto", "Anakena", "Tongariki", "Ahu Akivi", "Orongo", "Rano Raraku"];
 
 export function PassengerHomePage(): JSX.Element {
+  const history = useHistory();
   const isOnline  = useConnectivity();
   const { session } = useAuth();
   const [profile, setProfile] = useState<PassengerProfileData | null>(null);
@@ -273,28 +277,28 @@ export function PassengerHomePage(): JSX.Element {
                 title="Viaje"
                 subtitle="Solicitar ahora"
                 color="primary"
-                onClick={() => { window.location.href = ROUTES.PASSENGER.REQUEST_RIDE; }}
+                onClick={() => history.push(ROUTES.PASSENGER.REQUEST_RIDE)}
               />
               <ServiceCard
                 icon={mapOutline}
                 title="Tours"
                 subtitle="Con guías locales"
                 color="secondary"
-                onClick={() => { window.location.href = ROUTES.PASSENGER.GUIDES; }}
+                onClick={() => history.push(ROUTES.PASSENGER.GUIDES)}
               />
               <ServiceCard
                 icon={carSportOutline}
                 title="Arriendo"
                 subtitle="Vehículos"
                 color="tertiary"
-                onClick={() => { window.location.href = ROUTES.PASSENGER.RENTALS; }}
+                onClick={() => history.push(ROUTES.PASSENGER.RENTALS)}
               />
               <ServiceCard
                 icon={ticketOutline}
                 title="Eventos"
                 subtitle="Cultura"
                 color="warning"
-                onClick={() => { window.location.href = ROUTES.PASSENGER.EVENTS; }}
+                onClick={() => history.push(ROUTES.PASSENGER.EVENTS)}
               />
             </div>
           </div>
@@ -309,7 +313,7 @@ export function PassengerHomePage(): JSX.Element {
                 <IonChip
                   key={dest}
                   style={{ flexShrink: 0, "--background": "var(--ion-color-light)", fontSize: "0.8rem" }}
-                  onClick={() => { window.location.href = ROUTES.PASSENGER.REQUEST_RIDE; }}
+                  onClick={() => history.push(ROUTES.PASSENGER.REQUEST_RIDE)}
                 >
                   <IonIcon icon={locationOutline} style={{ marginRight: "4px", fontSize: "0.9rem" }} />
                   <IonLabel>{dest}</IonLabel>
@@ -360,7 +364,7 @@ export function PassengerHomePage(): JSX.Element {
               gap: "14px",
               cursor: "pointer",
             }}
-            onClick={() => { window.location.href = ROUTES.PROFILE.INDEX; }}
+            onClick={() => history.push(ROUTES.PROFILE.INDEX)}
           >
             <IonIcon icon={giftOutline} style={{ fontSize: "2rem", color: "#fff", flexShrink: 0 }} />
             <div style={{ flex: 1 }}>
@@ -658,10 +662,14 @@ export function PassengerTripsPage(): JSX.Element {
   return <TripsPage />;
 }
 
+const PAGE_SIZE = 20;
+
 function TripsPage(): JSX.Element {
+  const history = useHistory();
   const { session } = useAuth();
 
-  const [rides,       setRides]       = useState<RideRequestData[]>([]);
+  const [allRides,    setAllRides]    = useState<RideRequestData[]>([]);
+  const [page,        setPage]        = useState(1);
   const [loading,     setLoading]     = useState(true);
   const [loadError,   setLoadError]   = useState<string | null>(null);
   const [cancelling,  setCancelling]  = useState<string | null>(null);
@@ -681,7 +689,8 @@ function TripsPage(): JSX.Element {
     setLoadError(null);
     try {
       const data = await ridesService.listMyRides(session.accessToken);
-      setRides(data);
+      setAllRides(data);
+      setPage(1);
     } catch (err) {
       setLoadError(err instanceof Error ? err.message : "Error al cargar tus viajes.");
     } finally {
@@ -691,13 +700,16 @@ function TripsPage(): JSX.Element {
 
   useEffect(() => { void loadRides(); }, [loadRides]);
 
+  // Client-side pagination slice
+  const rides = allRides.slice(0, page * PAGE_SIZE);
+
   async function handleCancel(rideId: string) {
     if (!session?.accessToken) return;
     setCancelling(rideId);
     setCancelError(null);
     try {
       const updated = await ridesService.cancelRideRequest(session.accessToken, rideId);
-      setRides((prev) => prev.map((r) => (r.id === rideId ? updated : r)));
+      setAllRides((prev) => prev.map((r) => (r.id === rideId ? updated : r)));
     } catch (err) {
       setCancelError(err instanceof Error ? err.message : "Error al cancelar el viaje.");
     } finally {
@@ -728,7 +740,7 @@ function TripsPage(): JSX.Element {
     setCancelError(null);
     try {
       const updated = await ridesService.cancelAcceptedRide(session.accessToken, rideId);
-      setRides((prev) => prev.map((r) => (r.id === rideId ? updated : r)));
+      setAllRides((prev) => prev.map((r) => (r.id === rideId ? updated : r)));
     } catch (err) {
       setCancelError(err instanceof Error ? err.message : "Error al cancelar el viaje.");
     } finally {
@@ -745,12 +757,15 @@ function TripsPage(): JSX.Element {
     return true;
   });
 
+  // Counts use the full dataset so chips always show accurate numbers
   const counts = {
-    all:       rides.length,
-    active:    rides.filter((r) => ACTIVE_STATUSES.includes(r.status)).length,
-    completed: rides.filter((r) => r.status === "completed").length,
-    cancelled: rides.filter((r) => r.status === "cancelled").length,
+    all:       allRides.length,
+    active:    allRides.filter((r) => ACTIVE_STATUSES.includes(r.status)).length,
+    completed: allRides.filter((r) => r.status === "completed").length,
+    cancelled: allRides.filter((r) => r.status === "cancelled").length,
   };
+
+  const hasMore = page * PAGE_SIZE < allRides.length;
 
   return (
     <IonPage>
@@ -801,17 +816,17 @@ function TripsPage(): JSX.Element {
           </div>
         )}
 
-        {!loading && rides.length === 0 && (
+        {!loading && allRides.length === 0 && (
           <EmptyState
             icon={carOutline}
             title="Sin viajes todavía"
             subtitle="Solicita tu primer traslado en Rapa Nui"
             actionLabel="Solicitar viaje"
-            onAction={() => { window.location.href = ROUTES.PASSENGER.REQUEST_RIDE; }}
+            onAction={() => history.push(ROUTES.PASSENGER.REQUEST_RIDE)}
           />
         )}
 
-        {!loading && rides.length > 0 && filtered.length === 0 && (
+        {!loading && allRides.length > 0 && filtered.length === 0 && (
           <EmptyState
             icon={carOutline}
             title="Sin resultados"
@@ -820,7 +835,7 @@ function TripsPage(): JSX.Element {
         )}
 
         {!loading && filtered.length > 0 && (
-          <div style={{ display: "flex", flexDirection: "column", gap: "12px", padding: "12px 16px 80px" }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: "12px", padding: "12px 16px 16px" }}>
             {filtered.map((ride) => {
               const color = RIDE_STATUS_COLOR[ride.status] ?? "medium";
               const label = RIDE_STATUS_LABEL[ride.status] ?? ride.status;
@@ -997,6 +1012,17 @@ function TripsPage(): JSX.Element {
             })}
           </div>
         )}
+
+        <IonInfiniteScroll
+          threshold="100px"
+          disabled={!hasMore || loading}
+          onIonInfinite={(ev) => {
+            setPage((p) => p + 1);
+            void (ev.target as HTMLIonInfiniteScrollElement).complete();
+          }}
+        >
+          <IonInfiniteScrollContent loadingText="Cargando más viajes..." />
+        </IonInfiniteScroll>
 
         {cancelError && (
           <div style={{ padding: "0 16px" }}>

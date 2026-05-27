@@ -1,5 +1,7 @@
+import { useEffect } from "react";
 import { IonApp, setupIonicReact } from "@ionic/react";
 import { IonReactRouter } from "@ionic/react-router";
+import { SplashScreen } from "@capacitor/splash-screen";
 
 /* Ionic core CSS */
 import "@ionic/react/css/core.css";
@@ -27,6 +29,10 @@ setupIonicReact({
  * Provider-level concerns belong in AppProviders.
  */
 export function App(): JSX.Element {
+  useEffect(() => {
+    void SplashScreen.hide();
+  }, []);
+
   return (
     <IonApp>
       <IonReactRouter>

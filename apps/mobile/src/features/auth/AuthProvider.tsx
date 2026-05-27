@@ -1,6 +1,9 @@
 import { createContext, useState, useCallback, useEffect, type ReactNode } from "react";
+import { useHistory } from "react-router-dom";
+import { useIonToast } from "@ionic/react";
 import { authService } from "./auth.service.js";
 import { sessionStorageService } from "./sessionStorage.service.js";
+import { ROUTES } from "../../navigation/routes.js";
 import type {
   AuthContextValue,
   AuthUser,
@@ -36,6 +39,8 @@ interface AuthProviderProps {
  *  - accessToken is in memory only (current implementation).
  */
 export function AuthProvider({ children }: AuthProviderProps): JSX.Element {
+  const history = useHistory();
+  const [presentToast] = useIonToast();
   const [status, setStatus]   = useState<AuthStatus>("loading");
   const [user, setUser]       = useState<AuthUser | null>(null);
   const [session, setSession] = useState<AuthSession | null>(null);
@@ -77,6 +82,24 @@ export function AuthProvider({ children }: AuthProviderProps): JSX.Element {
     void restore();
     return () => { cancelled = true; };
   }, []);
+
+  // ── Auth-expired event listener ─────────────────────────────────────────────
+  useEffect(() => {
+    const handler = () => {
+      setSession(null);
+      setUser(null);
+      setStatus("unauthenticated");
+      history.push(ROUTES.AUTH.LOGIN);
+      void presentToast({
+        message: "Tu sesión expiró. Inicia sesión nuevamente.",
+        duration: 3000,
+        color: "warning",
+        position: "top",
+      });
+    };
+    window.addEventListener("auth:expired", handler);
+    return () => window.removeEventListener("auth:expired", handler);
+  }, [history, presentToast]);
 
   // ── Login ────────────────────────────────────────────────────────────────────
   const login = useCallback(async (payload: LoginRequest): Promise<AuthResponse> => {
