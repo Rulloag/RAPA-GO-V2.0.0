@@ -1,18 +1,19 @@
+import { lazy, Suspense } from "react";
 import { homeOutline, carOutline, personOutline, walletOutline, mapOutline, calendarOutline, ticketOutline } from "ionicons/icons";
 import { Route, Switch } from "react-router-dom";
+import { IonSpinner } from "@ionic/react";
 import { RoleLayout } from "./RoleLayout";
 import { ROUTES } from "../navigation/routes";
-import {
-  PassengerHomePage,
-  PassengerRequestRidePage,
-  PassengerTripsPage,
-  PassengerGuidesPage,
-  PassengerRentalsPage,
-  PassengerWalletPage,
-  PassengerProfilePage,
-  PassengerServiceBookingsPage,
-} from "../pages/passenger";
 import { PassengerEventsPage, PassengerEventTicketsPage } from "../pages/passenger/events/index.js";
+import { PassengerServiceBookingsPage, PassengerRentalBookingsPage } from "../pages/passenger/index.js";
+
+const HomePage       = lazy(() => import("../pages/passenger/pages/HomePage.js"));
+const RequestRidePage = lazy(() => import("../pages/passenger/pages/RequestRidePage.js"));
+const TripsPage      = lazy(() => import("../pages/passenger/pages/TripsPage.js"));
+const GuidesPage     = lazy(() => import("../pages/passenger/pages/GuidesPage.js"));
+const RentalsPage    = lazy(() => import("../pages/passenger/pages/RentalsPage.js"));
+const WalletPage     = lazy(() => import("../pages/passenger/pages/WalletPage.js"));
+const ProfilePage    = lazy(() => import("../pages/passenger/pages/ProfilePage.js"));
 
 const TABS = [
   { path: ROUTES.PASSENGER.HOME,             label: "Inicio",    icon: homeOutline },
@@ -24,23 +25,36 @@ const TABS = [
   { path: ROUTES.PASSENGER.PROFILE,          label: "Perfil",    icon: personOutline },
 ];
 
+function PageSuspense({ children }: { children: React.ReactNode }): JSX.Element {
+  return (
+    <Suspense fallback={
+      <div style={{ display: "flex", justifyContent: "center", alignItems: "center", height: "60vh" }}>
+        <IonSpinner name="crescent" />
+      </div>
+    }>
+      {children}
+    </Suspense>
+  );
+}
+
 export function PassengerLayout(): JSX.Element {
   return (
     <RoleLayout tabs={TABS}>
       <Switch>
-        <Route exact path={ROUTES.PASSENGER.HOME}                component={PassengerHomePage} />
-        <Route exact path={ROUTES.PASSENGER.REQUEST_RIDE}        component={PassengerRequestRidePage} />
-        <Route exact path={ROUTES.PASSENGER.TRIPS}               component={PassengerTripsPage} />
-        <Route exact path={ROUTES.PASSENGER.TRIP_DETAIL_PATTERN} component={PassengerTripsPage} />
-        <Route exact path={ROUTES.PASSENGER.GUIDES}              component={PassengerGuidesPage} />
-        <Route exact path={ROUTES.PASSENGER.GUIDE_DETAIL_PATTERN} component={PassengerGuidesPage} />
-        <Route exact path={ROUTES.PASSENGER.RENTALS}             component={PassengerRentalsPage} />
-        <Route exact path={ROUTES.PASSENGER.RENTAL_DETAIL_PATTERN} component={PassengerRentalsPage} />
-        <Route exact path={ROUTES.PASSENGER.WALLET}              component={PassengerWalletPage} />
-        <Route exact path={ROUTES.PASSENGER.PROFILE}             component={PassengerProfilePage} />
-        <Route exact path={ROUTES.PASSENGER.SERVICE_BOOKINGS}    component={PassengerServiceBookingsPage} />
-        <Route exact path={ROUTES.PASSENGER.EVENTS}              component={PassengerEventsPage} />
-        <Route exact path={ROUTES.PASSENGER.EVENT_TICKETS}       component={PassengerEventTicketsPage} />
+        <Route exact path={ROUTES.PASSENGER.HOME}                 render={() => <PageSuspense><HomePage /></PageSuspense>} />
+        <Route exact path={ROUTES.PASSENGER.REQUEST_RIDE}         render={() => <PageSuspense><RequestRidePage /></PageSuspense>} />
+        <Route exact path={ROUTES.PASSENGER.TRIPS}                render={() => <PageSuspense><TripsPage /></PageSuspense>} />
+        <Route exact path={ROUTES.PASSENGER.TRIP_DETAIL_PATTERN}  render={() => <PageSuspense><TripsPage /></PageSuspense>} />
+        <Route exact path={ROUTES.PASSENGER.GUIDES}               render={() => <PageSuspense><GuidesPage /></PageSuspense>} />
+        <Route exact path={ROUTES.PASSENGER.GUIDE_DETAIL_PATTERN} render={() => <PageSuspense><GuidesPage /></PageSuspense>} />
+        <Route exact path={ROUTES.PASSENGER.RENTALS}              render={() => <PageSuspense><RentalsPage /></PageSuspense>} />
+        <Route exact path={ROUTES.PASSENGER.RENTAL_DETAIL_PATTERN} render={() => <PageSuspense><RentalsPage /></PageSuspense>} />
+        <Route exact path={ROUTES.PASSENGER.WALLET}               render={() => <PageSuspense><WalletPage /></PageSuspense>} />
+        <Route exact path={ROUTES.PASSENGER.PROFILE}              render={() => <PageSuspense><ProfilePage /></PageSuspense>} />
+        <Route exact path={ROUTES.PASSENGER.SERVICE_BOOKINGS}     component={PassengerServiceBookingsPage} />
+        <Route exact path="/passenger/rental-bookings"             component={PassengerRentalBookingsPage} />
+        <Route exact path={ROUTES.PASSENGER.EVENTS}               component={PassengerEventsPage} />
+        <Route exact path={ROUTES.PASSENGER.EVENT_TICKETS}        component={PassengerEventTicketsPage} />
       </Switch>
     </RoleLayout>
   );
