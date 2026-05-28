@@ -16,26 +16,15 @@ const sessionService = new SessionService();
 const usersRepo      = new UsersRepository();
 const ridesRepo      = new RidesRepository();
 
-async function estimateFare(originText: string, destinationText: string): Promise<number> {
-  let perKmCentavos = 230000;
-  let minFareCentavos = 300000;
+type FareResult = { fareClp: number; source: "google_maps" | "zone_fare" };
 
-  try {
-    const fareRepo = new (await import("../fareSettings/fareSettings.repository.js")).FareSettingsRepository();
-    const [perKmSetting, minSetting, zoneFare] = await Promise.all([
-      fareRepo.findByType("mobility_per_km"),
-      fareRepo.findByType("minimum_fare"),
-      fareRepo.findZoneFareByRoute(originText, destinationText),
-    ]);
-    if (perKmSetting) perKmCentavos = perKmSetting.value;
-    if (minSetting)   minFareCentavos = minSetting.value;
-    if (zoneFare)     return zoneFare.fare;
-  } catch { }
-
-  const estimatedKm = Math.max(1, (originText.length + destinationText.length) / 10);
-  const minFareCLP = Math.round(minFareCentavos / 100);
-  const raw = minFareCLP + Math.round(estimatedKm * perKmCentavos / 10000);
-  return Math.min(Math.max(raw, minFareCLP), 50000);
+function estimateFare(distanceMeters: number): FareResult {
+  const perKmCentavos   = 230_000;  // centavos CLP per km → 2 300 CLP/km
+  const minFareCentavos = 300_000;  // centavos CLP minimum  → 3 000 CLP
+  const km     = distanceMeters / 1000;
+  const minCLP = Math.round(minFareCentavos / 100);
+  const rawCLP = Math.round(km * (perKmCentavos / 100));
+  return { fareClp: Math.max(rawCLP, minCLP), source: "google_maps" };
 }
 
 function toResponse(
@@ -51,7 +40,14 @@ function toResponse(
     originText:      r.originText,
     destinationText: r.destinationText,
     notes:           r.notes,
-    estimatedFareClp: r.estimatedFareClp ?? null,
+    estimatedFareClp:      r.estimatedFareClp ?? null,
+    originLat:             r.originLat ?? null,
+    originLng:             r.originLng ?? null,
+    destinationLat:        r.destinationLat ?? null,
+    destinationLng:        r.destinationLng ?? null,
+    distanceMeters:        r.distanceMeters ?? null,
+    durationSeconds:       r.durationSeconds ?? null,
+    fareCalculationSource: r.fareCalculationSource,
     status:          r.status,
     requestedAt:     r.requestedAt.toISOString(),
     acceptedAt:      r.acceptedAt?.toISOString() ?? null,
@@ -79,35 +75,41 @@ function toResponse(
 
 function toDriverRideResponse(r: RideRequest): DriverRideResponse {
   return {
-    id:                 r.id,
-    originText:         r.originText,
-    destinationText:    r.destinationText,
-    notes:              r.notes,
-    estimatedFareClp:   r.estimatedFareClp ?? null,
-    status:             r.status,
-    requestedAt:        r.requestedAt.toISOString(),
-    acceptedAt:         r.acceptedAt?.toISOString() ?? null,
-    enRouteAt:          r.enRouteAt?.toISOString() ?? null,
-    arrivedAt:          r.arrivedAt?.toISOString() ?? null,
-    startedAt:          r.startedAt?.toISOString() ?? null,
-    completedAt:        r.completedAt?.toISOString() ?? null,
-    cancelledAt:        r.cancelledAt?.toISOString() ?? null,
-    cancellationReason: r.cancellationReason ?? null,
-    cancelledByRole:    r.cancelledByRole ?? null,
-    createdAt:          r.createdAt.toISOString(),
+    id:                    r.id,
+    originText:            r.originText,
+    destinationText:       r.destinationText,
+    notes:                 r.notes,
+    estimatedFareClp:      r.estimatedFareClp ?? null,
+    distanceMeters:        r.distanceMeters ?? null,
+    durationSeconds:       r.durationSeconds ?? null,
+    fareCalculationSource: r.fareCalculationSource,
+    status:                r.status,
+    requestedAt:           r.requestedAt.toISOString(),
+    acceptedAt:            r.acceptedAt?.toISOString() ?? null,
+    enRouteAt:             r.enRouteAt?.toISOString() ?? null,
+    arrivedAt:             r.arrivedAt?.toISOString() ?? null,
+    startedAt:             r.startedAt?.toISOString() ?? null,
+    completedAt:           r.completedAt?.toISOString() ?? null,
+    cancelledAt:           r.cancelledAt?.toISOString() ?? null,
+    cancellationReason:    r.cancellationReason ?? null,
+    cancelledByRole:       r.cancelledByRole ?? null,
+    createdAt:             r.createdAt.toISOString(),
   };
 }
 
 function toAvailableResponse(r: RideRequest): AvailableRideResponse {
   return {
-    id:               r.id,
-    originText:       r.originText,
-    destinationText:  r.destinationText,
-    notes:            r.notes,
-    estimatedFareClp: r.estimatedFareClp ?? null,
-    status:           r.status,
-    requestedAt:     r.requestedAt.toISOString(),
-    createdAt:       r.createdAt.toISOString(),
+    id:                    r.id,
+    originText:            r.originText,
+    destinationText:       r.destinationText,
+    notes:                 r.notes,
+    estimatedFareClp:      r.estimatedFareClp ?? null,
+    distanceMeters:        r.distanceMeters ?? null,
+    durationSeconds:       r.durationSeconds ?? null,
+    fareCalculationSource: r.fareCalculationSource,
+    status:                r.status,
+    requestedAt:           r.requestedAt.toISOString(),
+    createdAt:             r.createdAt.toISOString(),
   };
 }
 
@@ -161,9 +163,10 @@ export class RidesService {
       return { ok: false, code: "AUTH_FORBIDDEN", message: "Only passengers can create ride requests.", statusCode: 403 };
     }
 
-    const baseFare = await estimateFare(input.originText, input.destinationText);
+    const { fareClp: baseFare, source: fareSource } = estimateFare(input.distanceMeters);
 
     let finalFare    = baseFare;
+    let finalSource  = fareSource as string;
     let discountInfo: { discountPercent: number; originalFare: number } | undefined;
     try {
       const { ReferralsRepository } = await import("../referrals/referrals.repository.js");
@@ -177,19 +180,27 @@ export class RidesService {
         const refCode = codeRows[0] ?? null;
         if (refCode?.isActive && refCode.discountType === "percentage" && refCode.discountAmount) {
           const discountPercent = refCode.discountAmount;
-          finalFare = Math.round(baseFare * (1 - discountPercent / 100));
+          finalFare   = Math.max(Math.round(baseFare * (1 - discountPercent / 100)), 0);
+          finalSource = `${fareSource}_with_referral`;
           discountInfo = { discountPercent, originalFare: baseFare };
         }
       }
     } catch { }
 
-    const row = await ridesRepo.create(
-      auth.userId,
-      input.originText,
-      input.destinationText,
-      input.notes ?? null,
-      finalFare,
-    );
+    const row = await ridesRepo.create({
+      passengerUserId:       auth.userId,
+      originText:            input.originText,
+      destinationText:       input.destinationText,
+      originLat:             input.originLat,
+      originLng:             input.originLng,
+      destinationLat:        input.destinationLat,
+      destinationLng:        input.destinationLng,
+      distanceMeters:        input.distanceMeters,
+      durationSeconds:       input.durationSeconds,
+      notes:                 input.notes ?? null,
+      estimatedFareClp:      finalFare,
+      fareCalculationSource: finalSource,
+    });
     return { ok: true, ride: toResponse(row, discountInfo) };
   }
 
@@ -239,8 +250,6 @@ export class RidesService {
       return { ok: false, code: "AUTH_FORBIDDEN", message: "Only drivers can accept ride requests.", statusCode: 403 };
     }
 
-    // Atomic accept: UPDATE WHERE id=? AND status='requested'
-    // If 0 rows updated, determine whether the ride doesn't exist or was already taken.
     const accepted = await ridesRepo.accept(rideId, auth.userId);
     if (!accepted) {
       const existing = await ridesRepo.findById(rideId);
@@ -257,18 +266,6 @@ export class RidesService {
         statusCode: 409,
       };
     }
-
-    const acceptedResp = toResponse(accepted);
-    import("../notifications/notifications.helpers.js").then(({ notifyPassengerDriverAssigned }) => {
-      notifyPassengerDriverAssigned({
-        passengerUserId: acceptedResp.passengerUserId,
-        driverName: acceptedResp.driverName ?? "Tu conductor",
-        driverPhone: acceptedResp.driverPhone ?? null,
-        rideId: acceptedResp.id,
-        origin: acceptedResp.originText,
-        destination: acceptedResp.destinationText,
-      });
-    }).catch(() => {});
 
     return { ok: true, ride: toResponse(accepted) };
   }
@@ -298,102 +295,7 @@ export class RidesService {
       return { ok: false, code: "AUTH_FORBIDDEN", message: "You can only complete rides assigned to you.", statusCode: 403 };
     }
 
-    if (completed.driverUserId) {
-      const { DriverStatusRepository } = await import("../drivers/driverStatus.repository.js");
-      await new DriverStatusRepository().setAvailable(completed.driverUserId);
-    }
-
-    import("../notifications/notifications.helpers.js").then(({ notifyPassengerRideCompleted }) => {
-      notifyPassengerRideCompleted({
-        passengerUserId: completed.passengerUserId,
-        rideId: completed.id,
-        origin: completed.originText,
-        destination: completed.destinationText,
-      });
-    }).catch(() => {});
-
     return { ok: true, ride: toResponse(completed) };
-  }
-
-  async markEnRoute(accessToken: string, rideId: string): Promise<RideResult> {
-    const auth = await authenticate(accessToken);
-    if (!auth.ok) return auth;
-
-    if (auth.role !== "driver") {
-      return { ok: false, code: "AUTH_FORBIDDEN", message: "Only drivers can mark rides en-route.", statusCode: 403 };
-    }
-
-    const updated = await ridesRepo.markEnRoute(rideId, auth.userId);
-    if (!updated) {
-      const existing = await ridesRepo.findById(rideId);
-      if (!existing) {
-        return { ok: false, code: "NOT_FOUND", message: "Ride request not found.", statusCode: 404 };
-      }
-      if (existing.driverUserId !== auth.userId) {
-        return { ok: false, code: "AUTH_FORBIDDEN", message: "You can only update rides assigned to you.", statusCode: 403 };
-      }
-      return {
-        ok: false,
-        code: "RIDE_CANNOT_MARK_EN_ROUTE",
-        message: `Ride cannot be marked en-route — current status is '${existing.status}'.`,
-        statusCode: 409,
-      };
-    }
-
-    void ridesRepo.findById(rideId); // no-op; audit below is fire-and-forget
-    const auditService = new (await import("../audit/audit.service.js")).AuditService();
-    auditService.recordSafe({ eventType: "ride.driver_en_route", metadata: { driverUserId: auth.userId, rideId } });
-
-    const enRouteResp = toResponse(updated);
-    import("../notifications/notifications.helpers.js").then(({ notifyPassengerDriverEnRoute }) => {
-      notifyPassengerDriverEnRoute({
-        passengerUserId: enRouteResp.passengerUserId,
-        driverName: enRouteResp.driverName ?? "Tu conductor",
-        rideId: enRouteResp.id,
-      });
-    }).catch(() => {});
-
-    return { ok: true, ride: toResponse(updated) };
-  }
-
-  async markArrived(accessToken: string, rideId: string): Promise<RideResult> {
-    const auth = await authenticate(accessToken);
-    if (!auth.ok) return auth;
-
-    if (auth.role !== "driver") {
-      return { ok: false, code: "AUTH_FORBIDDEN", message: "Only drivers can mark arrival.", statusCode: 403 };
-    }
-
-    const updated = await ridesRepo.markArrived(rideId, auth.userId);
-    if (!updated) {
-      const existing = await ridesRepo.findById(rideId);
-      if (!existing) {
-        return { ok: false, code: "NOT_FOUND", message: "Ride request not found.", statusCode: 404 };
-      }
-      if (existing.driverUserId !== auth.userId) {
-        return { ok: false, code: "AUTH_FORBIDDEN", message: "You can only update rides assigned to you.", statusCode: 403 };
-      }
-      return {
-        ok: false,
-        code: "RIDE_CANNOT_MARK_ARRIVED",
-        message: `Ride cannot be marked arrived — current status is '${existing.status}'.`,
-        statusCode: 409,
-      };
-    }
-
-    const auditService = new (await import("../audit/audit.service.js")).AuditService();
-    auditService.recordSafe({ eventType: "ride.driver_arrived", metadata: { driverUserId: auth.userId, rideId } });
-
-    const arrivedResp = toResponse(updated);
-    import("../notifications/notifications.helpers.js").then(({ notifyPassengerDriverArrived }) => {
-      notifyPassengerDriverArrived({
-        passengerUserId: arrivedResp.passengerUserId,
-        driverName: arrivedResp.driverName ?? "Tu conductor",
-        rideId: arrivedResp.id,
-      });
-    }).catch(() => {});
-
-    return { ok: true, ride: toResponse(updated) };
   }
 
   async startRide(accessToken: string, rideId: string): Promise<RideResult> {
@@ -404,22 +306,20 @@ export class RidesService {
       return { ok: false, code: "AUTH_FORBIDDEN", message: "Only drivers can start rides.", statusCode: 403 };
     }
 
-    // Atomic: UPDATE WHERE id=? AND status='driver_arrived' AND driver_user_id=?
     const started = await ridesRepo.start(rideId, auth.userId);
     if (!started) {
       const existing = await ridesRepo.findById(rideId);
       if (!existing) {
         return { ok: false, code: "NOT_FOUND", message: "Ride request not found.", statusCode: 404 };
       }
-      if (existing.status !== "driver_arrived") {
+      if (existing.status !== "accepted") {
         return {
           ok: false,
           code: "RIDE_CANNOT_START",
-          message: "Driver must mark arrival before starting the ride.",
+          message: `Ride cannot be started — current status is '${existing.status}'.`,
           statusCode: 409,
         };
       }
-      // Status is 'driver_arrived' but this driver is not the assigned one
       return { ok: false, code: "AUTH_FORBIDDEN", message: "You can only start rides assigned to you.", statusCode: 403 };
     }
 
@@ -467,11 +367,6 @@ export class RidesService {
         message: `Ride request cannot be cancelled — current status is '${refetch.status}'.`,
         statusCode: 409,
       };
-    }
-
-    if (cancelled.driverUserId) {
-      const { DriverStatusRepository } = await import("../drivers/driverStatus.repository.js");
-      await new DriverStatusRepository().setAvailable(cancelled.driverUserId);
     }
 
     return { ok: true, ride: toResponse(cancelled) };

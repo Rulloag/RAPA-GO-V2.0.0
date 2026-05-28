@@ -125,17 +125,24 @@ export class RidesRepository {
     }
   }
 
-  async create(
-    passengerUserId: string,
-    originText: string,
-    destinationText: string,
-    notes: string | null,
-    estimatedFareClp: number,
-  ): Promise<RideRequest> {
+  async create(data: {
+    passengerUserId:       string;
+    originText:            string;
+    destinationText:       string;
+    originLat:             number;
+    originLng:             number;
+    destinationLat:        number;
+    destinationLng:        number;
+    distanceMeters:        number;
+    durationSeconds:       number;
+    notes:                 string | null;
+    estimatedFareClp:      number;
+    fareCalculationSource: string;
+  }): Promise<RideRequest> {
     try {
       const rows = await db
         .insert(rideRequests)
-        .values({ passengerUserId, originText, destinationText, notes, estimatedFareClp, status: "requested" })
+        .values({ ...data, status: "requested" })
         .returning();
       const row = rows[0];
       if (!row) throw AppError.internal("Insert returned no rows.");
