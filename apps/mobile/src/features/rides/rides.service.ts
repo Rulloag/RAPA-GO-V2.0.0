@@ -86,6 +86,12 @@ export interface RatingData {
 export interface CreateRideInput {
   originText:      string;
   destinationText: string;
+  originLat:       number;
+  originLng:       number;
+  destinationLat:  number;
+  destinationLng:  number;
+  distanceMeters:  number;
+  durationSeconds: number;
   notes?:          string;
 }
 
