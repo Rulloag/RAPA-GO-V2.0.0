@@ -1,3 +1,13 @@
 export { MapView } from "./MapView.js";
 export { useGoogleMaps } from "./useGoogleMaps.js";
-export type { LatLng, MapMarkerOptions, MapViewOptions, MapLoadStatus, GoogleMapInstance } from "./maps.types.js";
+export { useCurrentLocation } from "./useCurrentLocation.js";
+export type {
+  LatLng,
+  MapMarkerOptions,
+  MapViewOptions,
+  MapLoadStatus,
+  GoogleMapInstance,
+  GoogleMarkerInstance,
+  LocationStatus,
+  LocationState,
+} from "./maps.types.js";
