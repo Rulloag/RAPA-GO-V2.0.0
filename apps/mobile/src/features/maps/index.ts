@@ -1,7 +1,9 @@
-export { MapView }            from "./MapView.js";
-export { useGoogleMaps }      from "./useGoogleMaps.js";
-export { useCurrentLocation } from "./useCurrentLocation.js";
-export { useDirectionsRoute } from "./useDirectionsRoute.js";
+export { MapView }                  from "./MapView.js";
+export { useGoogleMaps }            from "./useGoogleMaps.js";
+export { useCurrentLocation }       from "./useCurrentLocation.js";
+export { useDirectionsRoute }       from "./useDirectionsRoute.js";
+export { PlaceAutocompleteInput }   from "./PlaceAutocompleteInput.js";
+export type { PlaceAutocompleteInputProps } from "./PlaceAutocompleteInput.js";
 export type {
   LatLng,
   MapMarkerOptions,
@@ -10,6 +12,8 @@ export type {
   MapLoadStatus,
   GoogleMapInstance,
   GoogleMarkerInstance,
+  GoogleAutocomplete,
+  GooglePlace,
   GoogleDirectionsService,
   GoogleDirectionsRenderer,
   GoogleDirectionsResult,
@@ -18,4 +22,6 @@ export type {
   RouteStatus,
   RouteSummary,
   RouteState,
+  PlaceAutocompleteStatus,
+  PlaceAutocompleteResult,
 } from "./maps.types.js";

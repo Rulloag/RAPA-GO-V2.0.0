@@ -59,7 +59,21 @@ export interface RouteState {
   error:   string | null;
 }
 
-// ── Google Maps instance types (minimal ambient, no @types/google.maps) ──────
+// ── Places Autocomplete ──────────────────────────────────────────────────────
+
+export type PlaceAutocompleteStatus =
+  | "idle"
+  | "searching"
+  | "selected"
+  | "no_results"
+  | "error";
+
+export interface PlaceAutocompleteResult {
+  label:    string;
+  position: LatLng;
+}
+
+// ── Google Maps ambient instance types (no @types/google.maps needed) ────────
 
 export interface GoogleMapInstance {
   setCenter(latLng: unknown): void;
@@ -89,20 +103,48 @@ export interface GoogleDirectionsRenderer {
   setDirections(result: GoogleDirectionsResult): void;
 }
 
+export interface GooglePlace {
+  name?:              string;
+  formatted_address?: string;
+  geometry?: {
+    location: {
+      lat(): number;
+      lng(): number;
+    };
+  };
+}
+
+export interface GoogleAutocomplete {
+  addListener(event: string, handler: () => void): { remove(): void };
+  getPlace(): GooglePlace;
+  setBounds(bounds: unknown): void;
+}
+
+// ── Ambient window augmentation ──────────────────────────────────────────────
+
 declare global {
   interface Window {
     google?: {
       maps?: {
-        Map:               new (container: HTMLElement, opts: Record<string, unknown>) => GoogleMapInstance;
-        Marker:            new (opts: Record<string, unknown>) => GoogleMarkerInstance;
-        LatLng:            new (lat: number, lng: number) => unknown;
-        DirectionsService: new () => GoogleDirectionsService;
+        Map:                new (container: HTMLElement, opts: Record<string, unknown>) => GoogleMapInstance;
+        Marker:             new (opts: Record<string, unknown>) => GoogleMarkerInstance;
+        LatLng:             new (lat: number, lng: number) => unknown;
+        DirectionsService:  new () => GoogleDirectionsService;
         DirectionsRenderer: new (opts?: Record<string, unknown>) => GoogleDirectionsRenderer;
         TravelMode: {
           DRIVING:   string;
           WALKING:   string;
           BICYCLING: string;
           TRANSIT:   string;
+        };
+        event: {
+          clearInstanceListeners(instance: unknown): void;
+        };
+        places: {
+          Autocomplete: new (
+            input: HTMLInputElement,
+            opts?: Record<string, unknown>,
+          ) => GoogleAutocomplete;
         };
       };
     };

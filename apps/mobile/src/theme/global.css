@@ -30,6 +30,25 @@
   margin: 0;
 }
 
+/* Google Places Autocomplete dropdown — must render above Ionic stack */
+.pac-container {
+  z-index: 99999 !important;
+  font-family: var(--ion-font-family, inherit);
+  border-radius: 0 0 10px 10px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
+}
+
+.pac-item {
+  padding: 8px 12px;
+  font-size: 0.875rem;
+  cursor: pointer;
+}
+
+.pac-item:hover,
+.pac-item-selected {
+  background: var(--ion-color-light);
+}
+
 /* NotFound page */
 .not-found-container {
   display: flex;
