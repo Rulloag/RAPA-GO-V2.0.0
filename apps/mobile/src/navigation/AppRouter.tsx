@@ -21,6 +21,7 @@ import {
 import { NotificationPage } from "../pages/notifications/NotificationPage.js";
 import { ApplicationDriverPage, ApplicationGuidePage, ApplicationStatusPage } from "../pages/apply/index.js";
 import { LegalPage } from "../pages/legal/index.js";
+import { MapTestPage } from "../pages/maps/MapTestPage.js";
 
 /** Wraps a private route: passes the current path to RouteGuard for role checking. */
 function PrivateRoute({
@@ -84,6 +85,9 @@ export function AppRouter(): JSX.Element {
 
         {/* Legal — public, no auth required */}
         <Route exact path="/legal/:type" component={LegalPage} />
+
+        {/* Maps integration test — public, remove or protect before production */}
+        <Route exact path={ROUTES.MAPS.TEST} component={MapTestPage} />
 
         {/* Auth — redirect to role home if already authenticated */}
         <AuthRoute path={ROUTES.AUTH.LOGIN}    component={LoginPage} />
