@@ -55,6 +55,20 @@ export class DriverStatusRepository {
     }
   }
 
+  async updateLocation(driverUserId: string, lat: number, lng: number): Promise<void> {
+    try {
+      await db
+        .insert(driverStatuses)
+        .values({ driverUserId, availability: "unavailable", currentLat: lat, currentLng: lng, locationUpdatedAt: new Date() })
+        .onConflictDoUpdate({
+          target: driverStatuses.driverUserId,
+          set: { currentLat: lat, currentLng: lng, locationUpdatedAt: new Date(), updatedAt: new Date() },
+        });
+    } catch (err) {
+      throw AppError.internal(`Failed to update driver location: ${String(err)}`);
+    }
+  }
+
   async setAvailable(driverUserId: string): Promise<void> {
     try {
       await db

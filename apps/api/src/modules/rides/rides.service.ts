@@ -2,6 +2,7 @@ import { TokenService } from "../auth/token.service.js";
 import { SessionService } from "../auth/session.service.js";
 import { UsersRepository } from "../users/users.repository.js";
 import { RidesRepository, type RideWithDriverName } from "./rides.repository.js";
+import { DriverStatusRepository } from "../drivers/driverStatus.repository.js";
 import { AppError } from "../../shared/errors/AppError.js";
 import type {
   RideRequestResponse, RidesListResult, RideResult,
@@ -14,7 +15,8 @@ import type { CreateRideRequestInput, CancelAcceptedInput } from "./rides.schema
 const tokenService   = new TokenService();
 const sessionService = new SessionService();
 const usersRepo      = new UsersRepository();
-const ridesRepo      = new RidesRepository();
+const ridesRepo           = new RidesRepository();
+const driverStatusRepo    = new DriverStatusRepository();
 
 type FareResult = { fareClp: number; source: "google_maps" | "zone_fare" };
 
@@ -80,6 +82,10 @@ function toDriverRideResponse(r: RideRequest): DriverRideResponse {
     destinationText:       r.destinationText,
     notes:                 r.notes,
     estimatedFareClp:      r.estimatedFareClp ?? null,
+    originLat:             r.originLat ?? null,
+    originLng:             r.originLng ?? null,
+    destinationLat:        r.destinationLat ?? null,
+    destinationLng:        r.destinationLng ?? null,
     distanceMeters:        r.distanceMeters ?? null,
     durationSeconds:       r.durationSeconds ?? null,
     fareCalculationSource: r.fareCalculationSource,
@@ -295,7 +301,66 @@ export class RidesService {
       return { ok: false, code: "AUTH_FORBIDDEN", message: "You can only complete rides assigned to you.", statusCode: 403 };
     }
 
+    // Free the driver so they can accept new rides
+    await driverStatusRepo.setAvailable(auth.userId);
+
     return { ok: true, ride: toResponse(completed) };
+  }
+
+  async markEnRoute(accessToken: string, rideId: string): Promise<RideResult> {
+    const auth = await authenticate(accessToken);
+    if (!auth.ok) return auth;
+
+    if (auth.role !== "driver") {
+      return { ok: false, code: "AUTH_FORBIDDEN", message: "Only drivers can mark rides en-route.", statusCode: 403 };
+    }
+
+    const updated = await ridesRepo.markEnRoute(rideId, auth.userId);
+    if (!updated) {
+      const existing = await ridesRepo.findById(rideId);
+      if (!existing) {
+        return { ok: false, code: "NOT_FOUND", message: "Ride request not found.", statusCode: 404 };
+      }
+      if (existing.driverUserId !== auth.userId) {
+        return { ok: false, code: "AUTH_FORBIDDEN", message: "You can only update rides assigned to you.", statusCode: 403 };
+      }
+      return {
+        ok: false,
+        code: "RIDE_CANNOT_MARK_EN_ROUTE",
+        message: `Ride cannot be marked en-route — current status is '${existing.status}'.`,
+        statusCode: 409,
+      };
+    }
+
+    return { ok: true, ride: toResponse(updated) };
+  }
+
+  async markArrived(accessToken: string, rideId: string): Promise<RideResult> {
+    const auth = await authenticate(accessToken);
+    if (!auth.ok) return auth;
+
+    if (auth.role !== "driver") {
+      return { ok: false, code: "AUTH_FORBIDDEN", message: "Only drivers can mark rides arrived.", statusCode: 403 };
+    }
+
+    const updated = await ridesRepo.markArrived(rideId, auth.userId);
+    if (!updated) {
+      const existing = await ridesRepo.findById(rideId);
+      if (!existing) {
+        return { ok: false, code: "NOT_FOUND", message: "Ride request not found.", statusCode: 404 };
+      }
+      if (existing.driverUserId !== auth.userId) {
+        return { ok: false, code: "AUTH_FORBIDDEN", message: "You can only update rides assigned to you.", statusCode: 403 };
+      }
+      return {
+        ok: false,
+        code: "RIDE_CANNOT_MARK_ARRIVED",
+        message: `Ride cannot be marked arrived — current status is '${existing.status}'.`,
+        statusCode: 409,
+      };
+    }
+
+    return { ok: true, ride: toResponse(updated) };
   }
 
   async startRide(accessToken: string, rideId: string): Promise<RideResult> {
@@ -312,7 +377,7 @@ export class RidesService {
       if (!existing) {
         return { ok: false, code: "NOT_FOUND", message: "Ride request not found.", statusCode: 404 };
       }
-      if (existing.status !== "accepted") {
+      if (existing.status !== "driver_arrived") {
         return {
           ok: false,
           code: "RIDE_CANNOT_START",
@@ -369,6 +434,11 @@ export class RidesService {
       };
     }
 
+    // Free the driver if the cancellation came from their side or from passenger
+    if (cancelled.driverUserId) {
+      await driverStatusRepo.setAvailable(cancelled.driverUserId);
+    }
+
     return { ok: true, ride: toResponse(cancelled) };
   }
 
@@ -382,5 +452,40 @@ export class RidesService {
 
     const rows = await ridesRepo.findByDriverId(auth.userId);
     return { ok: true, rides: rows.map(toDriverRideResponse) };
+  }
+
+  async getDriverLocation(accessToken: string, rideId: string) {
+    const auth = await authenticate(accessToken);
+    if (!auth.ok) return auth;
+
+    if (!["passenger", "admin"].includes(auth.role)) {
+      return { ok: false as const, code: "AUTH_FORBIDDEN", message: "Acceso no autorizado.", statusCode: 403 };
+    }
+
+    const ride = await ridesRepo.findById(rideId);
+    if (!ride) return { ok: false as const, code: "NOT_FOUND", message: "Viaje no encontrado.", statusCode: 404 };
+
+    if (auth.role === "passenger" && ride.passengerUserId !== auth.userId) {
+      return { ok: false as const, code: "AUTH_FORBIDDEN", message: "No puedes ver la ubicación de este viaje.", statusCode: 403 };
+    }
+
+    if (!ride.driverUserId) {
+      return { ok: true as const, location: null };
+    }
+
+    const status = await driverStatusRepo.findByDriverId(ride.driverUserId);
+    if (!status?.currentLat || !status?.currentLng) {
+      return { ok: true as const, location: null };
+    }
+
+    return {
+      ok: true as const,
+      location: {
+        driverUserId: ride.driverUserId,
+        lat:          status.currentLat,
+        lng:          status.currentLng,
+        updatedAt:    status.locationUpdatedAt?.toISOString() ?? null,
+      },
+    };
   }
 }

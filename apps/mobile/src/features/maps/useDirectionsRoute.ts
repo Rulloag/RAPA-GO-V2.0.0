@@ -40,8 +40,8 @@ export function useDirectionsRoute(): RouteState & {
     map:         GoogleMapInstance,
   ): Promise<void> => {
     const mapsApi = window.google?.maps;
-    if (!mapsApi) {
-      setState(set("error", null, "Google Maps SDK no está disponible."));
+    if (!mapsApi?.DirectionsService || !mapsApi.DirectionsRenderer) {
+      setState(set("error", null, "Google Maps SDK no está disponible o las clases de rutas no cargaron."));
       return;
     }
 
@@ -67,9 +67,9 @@ export function useDirectionsRoute(): RouteState & {
 
     try {
       const result = await serviceRef.current.route({
-        origin:      new mapsApi.LatLng(origin.lat, origin.lng),
-        destination: new mapsApi.LatLng(destination.lat, destination.lng),
-        travelMode:  mapsApi.TravelMode.DRIVING,
+        origin:      new mapsApi.LatLng!(origin.lat, origin.lng),
+        destination: new mapsApi.LatLng!(destination.lat, destination.lng),
+        travelMode:  mapsApi.TravelMode!.DRIVING,
       });
 
       rendererRef.current.setDirections(result);

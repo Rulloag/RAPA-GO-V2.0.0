@@ -46,6 +46,10 @@ export interface DriverRideResponse {
   destinationText:       string;
   notes:                 string | null;
   estimatedFareClp:      number | null;
+  originLat:             number | null;
+  originLng:             number | null;
+  destinationLat:        number | null;
+  destinationLng:        number | null;
   distanceMeters:        number | null;
   durationSeconds:       number | null;
   fareCalculationSource: string;

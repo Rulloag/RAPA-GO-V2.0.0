@@ -5,6 +5,7 @@
  * All configuration, plugins and routes live in app.ts.
  */
 
+import "dotenv/config";
 import { buildApp } from "./app.js";
 
 const app = await buildApp();

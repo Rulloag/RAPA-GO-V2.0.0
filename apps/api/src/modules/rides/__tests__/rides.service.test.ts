@@ -6,8 +6,11 @@ const mockCreate         = vi.fn();
 const mockFindById       = vi.fn();
 const mockFindByPassenger = vi.fn();
 const mockFindByPassengerWithDriver = vi.fn();
+const mockMarkEnRoute    = vi.fn();
+const mockMarkArrived    = vi.fn();
 const mockIsSessionValid = vi.fn().mockResolvedValue(true);
 const mockFindUserById   = vi.fn();
+const mockFindDriverStatusById = vi.fn();
 
 vi.mock("../rides.repository.js", () => ({
   RidesRepository: vi.fn().mockImplementation(() => ({
@@ -23,6 +26,8 @@ vi.mock("../rides.repository.js", () => ({
     start:                        vi.fn(),
     cancel:                       vi.fn(),
     cancelAccepted:               vi.fn(),
+    markEnRoute:                  mockMarkEnRoute,
+    markArrived:                  mockMarkArrived,
   })),
 }));
 
@@ -42,6 +47,15 @@ vi.mock("../../auth/session.service.js", () => ({
 vi.mock("../../users/users.repository.js", () => ({
   UsersRepository: vi.fn().mockImplementation(() => ({
     findById: mockFindUserById,
+  })),
+}));
+
+vi.mock("../../drivers/driverStatus.repository.js", () => ({
+  DriverStatusRepository: vi.fn().mockImplementation(() => ({
+    findByDriverId: mockFindDriverStatusById,
+    setBusy:        vi.fn(),
+    setAvailable:   vi.fn(),
+    updateLocation: vi.fn(),
   })),
 }));
 
@@ -195,5 +209,218 @@ describe("RidesService.createRideRequest", () => {
     expect(callArg["destinationLat"]).toBe(VALID_INPUT.destinationLat);
     expect(callArg["destinationLng"]).toBe(VALID_INPUT.destinationLng);
     expect(callArg["durationSeconds"]).toBe(VALID_INPUT.durationSeconds);
+  });
+});
+
+// ── markEnRoute ───────────────────────────────────────────────────────────────
+
+describe("RidesService.markEnRoute", () => {
+  let service: InstanceType<typeof RidesService>;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockIsSessionValid.mockResolvedValue(true);
+    service = new RidesService();
+  });
+
+  it("driver can mark en-route an accepted ride assigned to them", async () => {
+    mockFindUserById.mockResolvedValue({ id: "driver-1", role: "driver" });
+    const ride = makeRide({ status: "driver_en_route", driverUserId: "driver-1", enRouteAt: new Date() });
+    mockMarkEnRoute.mockResolvedValue(ride);
+
+    const result = await service.markEnRoute("token", "ride-1");
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.ride.status).toBe("driver_en_route");
+    expect(mockMarkEnRoute).toHaveBeenCalledWith("ride-1", "driver-1");
+  });
+
+  it("passenger role returns 403", async () => {
+    mockFindUserById.mockResolvedValue({ id: "user-123", role: "passenger" });
+
+    const result = await service.markEnRoute("token", "ride-1");
+
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.statusCode).toBe(403);
+    expect(mockMarkEnRoute).not.toHaveBeenCalled();
+  });
+
+  it("returns 409 when ride is not in accepted status", async () => {
+    mockFindUserById.mockResolvedValue({ id: "driver-1", role: "driver" });
+    mockMarkEnRoute.mockResolvedValue(null);
+    mockFindById.mockResolvedValue(makeRide({ status: "in_progress", driverUserId: "driver-1" }));
+
+    const result = await service.markEnRoute("token", "ride-1");
+
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.statusCode).toBe(409);
+    expect(result.code).toBe("RIDE_CANNOT_MARK_EN_ROUTE");
+  });
+
+  it("returns 403 when ride belongs to a different driver", async () => {
+    mockFindUserById.mockResolvedValue({ id: "driver-1", role: "driver" });
+    mockMarkEnRoute.mockResolvedValue(null);
+    mockFindById.mockResolvedValue(makeRide({ status: "accepted", driverUserId: "driver-99" }));
+
+    const result = await service.markEnRoute("token", "ride-1");
+
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.statusCode).toBe(403);
+  });
+});
+
+// ── markArrived ───────────────────────────────────────────────────────────────
+
+describe("RidesService.markArrived", () => {
+  let service: InstanceType<typeof RidesService>;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockIsSessionValid.mockResolvedValue(true);
+    service = new RidesService();
+  });
+
+  it("driver can mark arrived after driver_en_route", async () => {
+    mockFindUserById.mockResolvedValue({ id: "driver-1", role: "driver" });
+    const ride = makeRide({ status: "driver_arrived", driverUserId: "driver-1", arrivedAt: new Date() });
+    mockMarkArrived.mockResolvedValue(ride);
+
+    const result = await service.markArrived("token", "ride-1");
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.ride.status).toBe("driver_arrived");
+    expect(mockMarkArrived).toHaveBeenCalledWith("ride-1", "driver-1");
+  });
+
+  it("passenger role returns 403", async () => {
+    mockFindUserById.mockResolvedValue({ id: "user-123", role: "passenger" });
+
+    const result = await service.markArrived("token", "ride-1");
+
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.statusCode).toBe(403);
+    expect(mockMarkArrived).not.toHaveBeenCalled();
+  });
+
+  it("returns 409 when ride is not in driver_en_route status", async () => {
+    mockFindUserById.mockResolvedValue({ id: "driver-1", role: "driver" });
+    mockMarkArrived.mockResolvedValue(null);
+    mockFindById.mockResolvedValue(makeRide({ status: "accepted", driverUserId: "driver-1" }));
+
+    const result = await service.markArrived("token", "ride-1");
+
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.statusCode).toBe(409);
+    expect(result.code).toBe("RIDE_CANNOT_MARK_ARRIVED");
+  });
+
+  it("returns 403 when ride belongs to a different driver", async () => {
+    mockFindUserById.mockResolvedValue({ id: "driver-1", role: "driver" });
+    mockMarkArrived.mockResolvedValue(null);
+    mockFindById.mockResolvedValue(makeRide({ status: "driver_en_route", driverUserId: "driver-99" }));
+
+    const result = await service.markArrived("token", "ride-1");
+
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.statusCode).toBe(403);
+  });
+});
+
+describe("RidesService.getDriverLocation", () => {
+  let service: InstanceType<typeof RidesService>;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockIsSessionValid.mockResolvedValue(true);
+    service = new RidesService();
+  });
+
+  it("returns location when passenger owns the ride and driver shared location", async () => {
+    mockFindUserById.mockResolvedValue({ id: "user-123", role: "passenger" });
+    mockFindById.mockResolvedValue(makeRide({ driverUserId: "driver-1", passengerUserId: "user-123" }));
+    mockFindDriverStatusById.mockResolvedValue({ currentLat: -27.15, currentLng: -109.43, locationUpdatedAt: new Date() });
+
+    const result = await service.getDriverLocation("token", "ride-1");
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.location).not.toBeNull();
+    expect(result.location!.lat).toBe(-27.15);
+    expect(result.location!.lng).toBe(-109.43);
+  });
+
+  it("returns null location when driver has not shared location", async () => {
+    mockFindUserById.mockResolvedValue({ id: "user-123", role: "passenger" });
+    mockFindById.mockResolvedValue(makeRide({ driverUserId: "driver-1", passengerUserId: "user-123" }));
+    mockFindDriverStatusById.mockResolvedValue({ currentLat: null, currentLng: null, locationUpdatedAt: null });
+
+    const result = await service.getDriverLocation("token", "ride-1");
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.location).toBeNull();
+  });
+
+  it("returns null location when no driver assigned to ride", async () => {
+    mockFindUserById.mockResolvedValue({ id: "user-123", role: "passenger" });
+    mockFindById.mockResolvedValue(makeRide({ driverUserId: null, passengerUserId: "user-123" }));
+
+    const result = await service.getDriverLocation("token", "ride-1");
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.location).toBeNull();
+  });
+
+  it("returns 403 when passenger does not own the ride", async () => {
+    mockFindUserById.mockResolvedValue({ id: "user-123", role: "passenger" });
+    mockFindById.mockResolvedValue(makeRide({ driverUserId: "driver-1", passengerUserId: "other-user" }));
+
+    const result = await service.getDriverLocation("token", "ride-1");
+
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.statusCode).toBe(403);
+  });
+
+  it("returns 404 when ride not found", async () => {
+    mockFindUserById.mockResolvedValue({ id: "user-123", role: "passenger" });
+    mockFindById.mockResolvedValue(null);
+
+    const result = await service.getDriverLocation("token", "nonexistent");
+
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.statusCode).toBe(404);
+  });
+
+  it("returns 403 when driver tries to call this endpoint", async () => {
+    mockFindUserById.mockResolvedValue({ id: "driver-1", role: "driver" });
+
+    const result = await service.getDriverLocation("token", "ride-1");
+
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.statusCode).toBe(403);
+  });
+
+  it("admin can view location of any ride", async () => {
+    mockFindUserById.mockResolvedValue({ id: "admin-1", role: "admin" });
+    mockFindById.mockResolvedValue(makeRide({ driverUserId: "driver-1", passengerUserId: "other-user" }));
+    mockFindDriverStatusById.mockResolvedValue({ currentLat: -27.15, currentLng: -109.43, locationUpdatedAt: new Date() });
+
+    const result = await service.getDriverLocation("token", "ride-1");
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.location).not.toBeNull();
   });
 });

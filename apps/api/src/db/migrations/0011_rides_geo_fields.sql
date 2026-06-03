@@ -7,7 +7,7 @@ ALTER TABLE "ride_requests" ADD COLUMN IF NOT EXISTS "duration_seconds" integer;
 ALTER TABLE "ride_requests" ADD COLUMN IF NOT EXISTS "fare_calculation_source" varchar(30) NOT NULL DEFAULT 'text';
 ALTER TABLE "ride_requests" ADD COLUMN IF NOT EXISTS "en_route_at" timestamptz;
 ALTER TABLE "ride_requests" ADD COLUMN IF NOT EXISTS "arrived_at" timestamptz;
-ALTER TABLE "ride_requests" ADD COLUMN IF NOT EXISTS "is_offline_booking" integer DEFAULT 0;
+ALTER TABLE "ride_requests" ADD COLUMN IF NOT EXISTS "is_offline_booking" boolean NOT NULL DEFAULT false;
 ALTER TABLE "ride_requests" ADD COLUMN IF NOT EXISTS "offline_passenger_name" varchar(150);
 ALTER TABLE "ride_requests" ADD COLUMN IF NOT EXISTS "offline_passenger_phone" varchar(30);
 ALTER TABLE "ride_requests" ADD COLUMN IF NOT EXISTS "offline_passenger_email" varchar(150);

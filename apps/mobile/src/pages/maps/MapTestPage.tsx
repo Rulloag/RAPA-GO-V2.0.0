@@ -88,7 +88,7 @@ export function MapTestPage(): JSX.Element {
   useEffect(() => {
     if (location.status !== "success" || !location.location) return;
     const mapsApi = window.google?.maps;
-    if (!mapsApi || !mapRef.current) return;
+    if (!mapsApi?.LatLng || !mapsApi.Marker || !mapRef.current) return;
 
     const latLng = new mapsApi.LatLng(location.location.lat, location.location.lng);
     mapRef.current.setCenter(latLng);

@@ -1,4 +1,4 @@
-import { and, avg, count, desc, eq, inArray } from "drizzle-orm";
+import { and, avg, count, desc, eq, gte, inArray, lt } from "drizzle-orm";
 import { db } from "../../db/client.js";
 import { rideRequests, users, rideRatings, driverProfiles } from "../../db/schema/index.js";
 import { alias } from "drizzle-orm/pg-core";
@@ -41,9 +41,16 @@ export class RidesRepository {
           originText:         rideRequests.originText,
           destinationText:    rideRequests.destinationText,
           notes:              rideRequests.notes,
-          estimatedFareClp:   rideRequests.estimatedFareClp,
-          status:             rideRequests.status,
-          requestedAt:        rideRequests.requestedAt,
+          estimatedFareClp:      rideRequests.estimatedFareClp,
+          originLat:             rideRequests.originLat,
+          originLng:             rideRequests.originLng,
+          destinationLat:        rideRequests.destinationLat,
+          destinationLng:        rideRequests.destinationLng,
+          distanceMeters:        rideRequests.distanceMeters,
+          durationSeconds:       rideRequests.durationSeconds,
+          fareCalculationSource: rideRequests.fareCalculationSource,
+          status:                rideRequests.status,
+          requestedAt:           rideRequests.requestedAt,
           acceptedAt:         rideRequests.acceptedAt,
           enRouteAt:          rideRequests.enRouteAt,
           arrivedAt:          rideRequests.arrivedAt,
@@ -374,6 +381,31 @@ export class RidesRepository {
     } catch (err) {
       if (err instanceof AppError) throw err;
       throw AppError.internal(`Failed to cancel ride request: ${String(err)}`);
+    }
+  }
+
+  /**
+   * Returns rides completed by the driver on the given UTC calendar day.
+   * We filter on completedAt using UTC midnight boundaries so the result is
+   * deterministic regardless of the server's local timezone.
+   */
+  async findCompletedByDriverIdOnDate(driverUserId: string, utcDate: Date): Promise<RideRequest[]> {
+    const dayStart = new Date(Date.UTC(utcDate.getUTCFullYear(), utcDate.getUTCMonth(), utcDate.getUTCDate()));
+    const dayEnd   = new Date(dayStart.getTime() + 24 * 60 * 60 * 1000);
+    try {
+      return await db
+        .select()
+        .from(rideRequests)
+        .where(
+          and(
+            eq(rideRequests.driverUserId, driverUserId),
+            eq(rideRequests.status, "completed"),
+            gte(rideRequests.completedAt, dayStart),
+            lt(rideRequests.completedAt, dayEnd),
+          ),
+        );
+    } catch (err) {
+      throw AppError.internal(`Failed to query driver earnings: ${String(err)}`);
     }
   }
 }

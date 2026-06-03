@@ -21,8 +21,9 @@ import {
   IonTitle,
   IonToggle,
   IonToolbar,
+  useIonViewWillEnter,
 } from "@ionic/react";
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import {
   carOutline,
   cashOutline,
@@ -45,6 +46,11 @@ import { driverStatusService } from "../../features/drivers/driverStatus.service
 import { RAPA_NUI_ZONES, getZoneLabel, RAPAGO_CONTACT, WA_MESSAGES } from "@rapa-go/shared";
 import { WhatsAppButton } from "../../components/WhatsAppButton";
 import { legalService, type LegalDocumentData, type UserAcceptanceData } from "../../features/legal/legal.service.js";
+import { earningsService, type TodayEarnings } from "../../features/drivers/earnings.service.js";
+import { Geolocation } from "@capacitor/geolocation";
+import { useDirectionsRoute } from "../../features/maps/useDirectionsRoute.js";
+import { MapView } from "../../features/maps/MapView.js";
+import type { GoogleMapInstance, LatLng } from "../../features/maps/maps.types.js";
 
 function LegalStatusSection({ token }: { token: string }): React.ReactElement {
   const [docs,        setDocs]        = useState<LegalDocumentData[]>([]);
@@ -134,6 +140,19 @@ export function DriverHomePage(): JSX.Element {
   const [availabilityLoading, setAvailabilityLoading] = useState(false);
   const [availabilityError, setAvailabilityError] = useState<string | null>(null);
   const [currentZone, setCurrentZone] = useState<string | null>(null);
+  const [todayEarnings, setTodayEarnings] = useState<TodayEarnings | null>(null);
+
+  const loadEarnings = useCallback(() => {
+    if (!session?.accessToken) return;
+    void earningsService.getTodayEarnings(session.accessToken)
+      .then(setTodayEarnings)
+      .catch(() => {});
+  }, [session?.accessToken]);
+
+  useEffect(() => { loadEarnings(); }, [loadEarnings]);
+
+  // Re-fetch earnings each time the home tab comes into view (e.g. after completing a ride).
+  useIonViewWillEnter(() => { loadEarnings(); });
 
   useEffect(() => {
     if (!session?.accessToken) return;
@@ -239,6 +258,23 @@ export function DriverHomePage(): JSX.Element {
             )}
           </IonCardContent>
         </IonCard>
+
+        {todayEarnings && (
+          <IonCard style={{ margin: "0 0 12px", borderRadius: "14px" }} routerLink={ROUTES.DRIVER.EARNINGS}>
+            <IonCardContent style={{ padding: "12px 16px" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <div>
+                  <div style={{ fontWeight: 700, fontSize: "0.88rem", color: "var(--ion-color-dark)" }}>Ganancias de hoy</div>
+                  <div style={{ fontSize: "0.72rem", color: "var(--ion-color-medium)", marginTop: "2px" }}>{todayEarnings.completedRides} viaje{todayEarnings.completedRides !== 1 ? "s" : ""} completado{todayEarnings.completedRides !== 1 ? "s" : ""}</div>
+                </div>
+                <div style={{ textAlign: "right" }}>
+                  <div style={{ fontWeight: 800, fontSize: "1.1rem", color: "var(--ion-color-success-shade)" }}>{clp(todayEarnings.netEarningsClp)}</div>
+                  <div style={{ fontSize: "0.7rem", color: "var(--ion-color-medium)" }}>neto · ver detalle →</div>
+                </div>
+              </div>
+            </IonCardContent>
+          </IonCard>
+        )}
 
         <div
           style={{
@@ -396,6 +432,88 @@ function AssignedRidesPage(): JSX.Element {
   );
 }
 
+// ── DriverRideRouteMap ────────────────────────────────────────────────────────
+// Shows a driving route from the driver's current position to origin (pre-pickup)
+// or destination (in_progress). Requires driver position from Geolocation.
+
+const DRIVER_ROUTE_LABEL: Record<string, string> = {
+  accepted:        "Ruta hacia el pasajero",
+  driver_en_route: "Ruta hacia el pasajero",
+  in_progress:     "Ruta hacia el destino",
+};
+
+function DriverRideRouteMap({ status, driverPos, originLat, originLng, destinationLat, destinationLng }: {
+  status: string;
+  driverPos: LatLng | null;
+  originLat: number | null; originLng: number | null;
+  destinationLat: number | null; destinationLng: number | null;
+}): JSX.Element | null {
+  const route  = useDirectionsRoute();
+  const mapRef = useRef<GoogleMapInstance | null>(null);
+
+  if (!["accepted", "driver_en_route", "driver_arrived", "in_progress"].includes(status)) return null;
+
+  if (status === "driver_arrived") {
+    return (
+      <div style={{ marginTop: "8px", padding: "8px 10px", background: "var(--ion-color-secondary-tint)", borderRadius: "8px", fontSize: "0.8rem", color: "var(--ion-color-secondary-shade)" }}>
+        Ya llegaste al punto de recogida. Inicia el viaje cuando el pasajero esté a bordo.
+      </div>
+    );
+  }
+
+  if (!driverPos) {
+    return (
+      <div style={{ marginTop: "8px", fontSize: "0.78rem", color: "var(--ion-color-medium)", fontStyle: "italic" }}>
+        Actualiza tu ubicación para ver la ruta.
+      </div>
+    );
+  }
+
+  const target: LatLng | null = status === "in_progress"
+    ? (destinationLat && destinationLng ? { lat: destinationLat, lng: destinationLng } : null)
+    : (originLat && originLng ? { lat: originLat, lng: originLng } : null);
+
+  if (!target) {
+    return (
+      <div style={{ marginTop: "8px", fontSize: "0.78rem", color: "var(--ion-color-medium)", fontStyle: "italic" }}>
+        Sin coordenadas suficientes para mostrar ruta.
+      </div>
+    );
+  }
+
+  function handleMapReady(map: GoogleMapInstance) {
+    mapRef.current = map;
+    void route.calculate(driverPos!, target!, map);
+  }
+
+  return (
+    <div style={{ marginTop: "8px" }}>
+      <div style={{ fontSize: "0.78rem", fontWeight: 600, color: "var(--ion-color-dark)", marginBottom: "6px" }}>
+        {DRIVER_ROUTE_LABEL[status] ?? "Ruta"}
+      </div>
+      <MapView
+        center={driverPos}
+        zoom={13}
+        height="160px"
+        onMapReady={handleMapReady}
+      />
+      {route.status === "loading" && (
+        <div style={{ fontSize: "0.72rem", color: "var(--ion-color-medium)", marginTop: "4px", display: "flex", alignItems: "center", gap: "6px" }}>
+          <IonSpinner name="dots" style={{ width: "12px", height: "12px" }} /> Calculando ruta…
+        </div>
+      )}
+      {route.status === "success" && route.summary && (
+        <div style={{ fontSize: "0.75rem", color: "var(--ion-color-primary)", marginTop: "4px", fontWeight: 600 }}>
+          {route.summary.distanceText} · {route.summary.durationText}
+        </div>
+      )}
+      {route.status === "error" && route.error && (
+        <div style={{ fontSize: "0.72rem", color: "var(--ion-color-danger)", marginTop: "4px" }}>{route.error}</div>
+      )}
+    </div>
+  );
+}
+
 export function DriverTripsPage(): JSX.Element {
   return <DriverMyRidesPage />;
 }
@@ -441,6 +559,39 @@ function DriverMyRidesPage(): JSX.Element {
   const [submittingRating, setSubmittingRating] = useState(false);
   const [ratingError,      setRatingError]      = useState<string | null>(null);
   const [ratedIds,         setRatedIds]         = useState<Set<string>>(new Set());
+
+  const [sharingLocation,    setSharingLocation]    = useState(false);
+  const [locationSharedAt,   setLocationSharedAt]   = useState<string | null>(null);
+  const [locationShareError, setLocationShareError] = useState<string | null>(null);
+  const [driverPos,          setDriverPos]          = useState<LatLng | null>(null);
+
+  async function handleShareLocation() {
+    if (!session?.accessToken) return;
+    setSharingLocation(true);
+    setLocationShareError(null);
+    setLocationSharedAt(null);
+    try {
+      let perm = await Geolocation.checkPermissions();
+      if (perm.location === "prompt" || perm.location === "prompt-with-rationale") {
+        perm = await Geolocation.requestPermissions({ permissions: ["location"] });
+      }
+      if (perm.location === "denied") {
+        setLocationShareError("Permiso de ubicación denegado. Habilítalo en Ajustes del dispositivo.");
+        return;
+      }
+      const pos = await Geolocation.getCurrentPosition({ enableHighAccuracy: true, timeout: 10_000 });
+      const newPos: LatLng = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+      const res = await ridesService.updateDriverLocation(session.accessToken, newPos.lat, newPos.lng);
+      setDriverPos(newPos);
+      setLocationSharedAt(res.updatedAt);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Error al obtener ubicación.";
+      const isDenied = /denied|permission|not allowed/i.test(msg);
+      setLocationShareError(isDenied ? "Permiso de ubicación denegado." : `Error: ${msg}`);
+    } finally {
+      setSharingLocation(false);
+    }
+  }
 
   const loadRides = useCallback(async () => {
     if (!session?.accessToken) return;
@@ -550,6 +701,11 @@ function DriverMyRidesPage(): JSX.Element {
       <IonHeader>
         <IonToolbar color="success">
           <IonTitle>Mis Viajes</IonTitle>
+          <div slot="end" style={{ paddingRight: "8px" }}>
+            <IonButton fill="clear" color="light" disabled={loading} onClick={() => void loadRides()}>
+              <IonIcon icon={refreshOutline} slot="icon-only" />
+            </IonButton>
+          </div>
         </IonToolbar>
       </IonHeader>
       <IonContent className="ion-padding">
@@ -569,6 +725,8 @@ function DriverMyRidesPage(): JSX.Element {
         {startError && <IonText color="danger"><p style={{ fontSize: "0.85rem" }}>{startError}</p></IonText>}
         {completeError && <IonText color="danger"><p style={{ fontSize: "0.85rem" }}>{completeError}</p></IonText>}
         {ratingError && <IonText color="danger"><p style={{ fontSize: "0.85rem" }}>{ratingError}</p></IonText>}
+        {locationShareError && <IonText color="danger"><p style={{ fontSize: "0.85rem" }}>{locationShareError}</p></IonText>}
+        {locationSharedAt && <IonText color="success"><p style={{ fontSize: "0.82rem" }}>✓ Ubicación compartida a las {new Date(locationSharedAt).toLocaleTimeString("es-CL")}</p></IonText>}
 
         {!loading && rides.length === 0 && (
           <IonText color="medium"><p>No tienes viajes todavía.</p></IonText>
@@ -584,10 +742,13 @@ function DriverMyRidesPage(): JSX.Element {
               return (
                 <IonCard key={ride.id} style={{ margin: 0 }}>
                   <IonCardContent style={{ padding: "14px 16px" }}>
-                    <MapFallback
-                      origin={{ text: ride.originText }}
-                      destination={{ text: ride.destinationText }}
-                      height={130}
+                    <DriverRideRouteMap
+                      status={ride.status}
+                      driverPos={driverPos}
+                      originLat={ride.originLat}
+                      originLng={ride.originLng}
+                      destinationLat={ride.destinationLat}
+                      destinationLng={ride.destinationLng}
                     />
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "8px", marginTop: "10px" }}>
                       <div style={{ flex: 1 }}>
@@ -690,11 +851,22 @@ function DriverMyRidesPage(): JSX.Element {
                           <IonText color="success" style={{ fontSize: "0.75rem" }}>✓ Calificado</IonText>
                         )}
                         {["accepted", "driver_en_route", "driver_arrived", "in_progress"].includes(ride.status) && (
-                          <WhatsAppButton
-                            phone={RAPAGO_CONTACT.adminPhone}
-                            message={WA_MESSAGES.driverToPassenger({ passengerName: "pasajero", driverName: "conductor", origin: ride.originText })}
-                            label="Contactar operador"
-                          />
+                          <>
+                            <IonButton
+                              size="small"
+                              fill="outline"
+                              color="medium"
+                              disabled={sharingLocation}
+                              onClick={() => void handleShareLocation()}
+                            >
+                              {sharingLocation ? <IonSpinner name="dots" /> : "📍 Mi ubicación"}
+                            </IonButton>
+                            <WhatsAppButton
+                              phone={RAPAGO_CONTACT.adminPhone}
+                              message={WA_MESSAGES.driverToPassenger({ passengerName: "pasajero", driverName: "conductor", origin: ride.originText })}
+                              label="Contactar operador"
+                            />
+                          </>
                         )}
                       </div>
                     </div>
@@ -735,12 +907,105 @@ function DriverMyRidesPage(): JSX.Element {
   );
 }
 
+function clp(amount: number): string {
+  return `$${amount.toLocaleString("es-CL")} CLP`;
+}
+
 export function DriverEarningsPage(): JSX.Element {
-  const m = meta("/driver/earnings");
+  const { session } = useAuth();
+  const [earnings, setEarnings] = useState<TodayEarnings | null>(null);
+  const [loading,  setLoading]  = useState(true);
+  const [error,    setError]    = useState<string | null>(null);
+
+  const loadEarnings = useCallback(async () => {
+    if (!session?.accessToken) return;
+    setLoading(true);
+    setError(null);
+    try {
+      const data = await earningsService.getTodayEarnings(session.accessToken);
+      setEarnings(data);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Error al cargar ganancias.");
+    } finally {
+      setLoading(false);
+    }
+  }, [session?.accessToken]);
+
+  useEffect(() => { void loadEarnings(); }, [loadEarnings]);
+
   return (
     <IonPage>
-      <IonHeader><IonToolbar color="success"><IonTitle>{m.label}</IonTitle></IonToolbar></IonHeader>
-      <IonContent className="ion-padding"><ModulePlaceholderPage title={m.label} role="driver" plannedFeatures={m.plannedFeatures} /></IonContent>
+      <IonHeader>
+        <IonToolbar color="success">
+          <IonTitle>Ganancias</IonTitle>
+          <IonButton slot="end" fill="clear" color="light" disabled={loading} onClick={() => void loadEarnings()}>
+            {loading ? <IonSpinner name="dots" style={{ width: "18px", height: "18px" }} /> : <IonIcon icon={refreshOutline} />}
+          </IonButton>
+        </IonToolbar>
+      </IonHeader>
+      <IonContent className="ion-padding">
+        {loading && !earnings && (
+          <div style={{ display: "flex", justifyContent: "center", paddingTop: "40px" }}>
+            <IonSpinner name="crescent" />
+          </div>
+        )}
+
+        {error && <IonText color="danger"><p>{error}</p></IonText>}
+
+        {earnings && (
+          <>
+            <IonCard style={{ margin: "0 0 16px", borderRadius: "16px" }}>
+              <div style={{ height: "5px", background: "var(--ion-color-success)" }} />
+              <IonCardContent style={{ padding: "16px 18px" }}>
+                <div style={{ fontWeight: 700, fontSize: "1rem", marginBottom: "14px", color: "var(--ion-color-dark)" }}>
+                  Ganancias de hoy — {earnings.date}
+                </div>
+
+                <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                    <IonText color="medium"><span style={{ fontSize: "0.85rem" }}>Viajes completados</span></IonText>
+                    <IonBadge color="success" style={{ fontSize: "0.85rem", padding: "4px 10px" }}>{earnings.completedRides}</IonBadge>
+                  </div>
+
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderTop: "1px solid var(--ion-color-light-shade)", paddingTop: "10px" }}>
+                    <IonText color="medium"><span style={{ fontSize: "0.85rem" }}>Total bruto</span></IonText>
+                    <span style={{ fontWeight: 600, fontSize: "0.95rem" }}>{clp(earnings.grossFareClp)}</span>
+                  </div>
+
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                    <IonText color="danger"><span style={{ fontSize: "0.85rem" }}>Comisión app ({earnings.appCommissionPercent}%)</span></IonText>
+                    <IonText color="danger"><span style={{ fontWeight: 600, fontSize: "0.95rem" }}>−{clp(earnings.appCommissionClp)}</span></IonText>
+                  </div>
+
+                  <div style={{
+                    display: "flex", justifyContent: "space-between", alignItems: "center",
+                    borderTop: "2px solid var(--ion-color-success)", paddingTop: "10px",
+                  }}>
+                    <span style={{ fontWeight: 700, fontSize: "0.95rem", color: "var(--ion-color-success-shade)" }}>Ganancia neta</span>
+                    <span style={{ fontWeight: 800, fontSize: "1.15rem", color: "var(--ion-color-success-shade)" }}>{clp(earnings.netEarningsClp)}</span>
+                  </div>
+                </div>
+
+                <div style={{ marginTop: "14px", padding: "8px 10px", background: "var(--ion-color-warning-tint)", borderRadius: "8px" }}>
+                  <IonText color="warning">
+                    <p style={{ margin: 0, fontSize: "0.72rem" }}>
+                      ⚠️ Monto referencial. No corresponde a liquidación ni pago real.
+                    </p>
+                  </IonText>
+                </div>
+              </IonCardContent>
+            </IonCard>
+
+            {earnings.completedRides === 0 && (
+              <IonText color="medium">
+                <p style={{ textAlign: "center", fontStyle: "italic", marginTop: "8px" }}>
+                  Aún no tienes viajes completados hoy.
+                </p>
+              </IonText>
+            )}
+          </>
+        )}
+      </IonContent>
     </IonPage>
   );
 }

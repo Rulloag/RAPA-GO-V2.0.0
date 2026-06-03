@@ -84,7 +84,7 @@ export function PlaceAutocompleteInput({
     if (acRef.current)          return; // guard against double-init
 
     const mapsApi = window.google?.maps;
-    if (!mapsApi?.places)       return;
+    if (!mapsApi?.places?.Autocomplete) return; // Autocomplete class must be available
 
     const instance = new mapsApi.places.Autocomplete(inputRef.current, {
       bounds:       RAPA_NUI_BOUNDS,

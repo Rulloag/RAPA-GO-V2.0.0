@@ -126,26 +126,28 @@ declare global {
   interface Window {
     google?: {
       maps?: {
-        Map:                new (container: HTMLElement, opts: Record<string, unknown>) => GoogleMapInstance;
-        Marker:             new (opts: Record<string, unknown>) => GoogleMarkerInstance;
-        LatLng:             new (lat: number, lng: number) => unknown;
-        DirectionsService:  new () => GoogleDirectionsService;
-        DirectionsRenderer: new (opts?: Record<string, unknown>) => GoogleDirectionsRenderer;
-        TravelMode: {
+        Map?:                new (container: HTMLElement, opts: Record<string, unknown>) => GoogleMapInstance;
+        Marker?:             new (opts: Record<string, unknown>) => GoogleMarkerInstance;
+        LatLng?:             new (lat: number, lng: number) => unknown;
+        DirectionsService?:  new () => GoogleDirectionsService;
+        DirectionsRenderer?: new (opts?: Record<string, unknown>) => GoogleDirectionsRenderer;
+        TravelMode?: {
           DRIVING:   string;
           WALKING:   string;
           BICYCLING: string;
           TRANSIT:   string;
         };
-        event: {
+        event?: {
           clearInstanceListeners(instance: unknown): void;
         };
-        places: {
-          Autocomplete: new (
+        places?: {
+          Autocomplete?: new (
             input: HTMLInputElement,
             opts?: Record<string, unknown>,
           ) => GoogleAutocomplete;
         };
+        /** Available when SDK loaded with loading=async */
+        importLibrary?: (libraryName: string) => Promise<Record<string, unknown>>;
       };
     };
   }

@@ -4,9 +4,12 @@ import {
   IonRefresher, IonRefresherContent, IonSpinner, IonText, IonTextarea, IonTitle,
   IonToolbar, IonItem, IonToast,
 } from "@ionic/react";
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import { useHistory } from "react-router-dom";
-import { carOutline } from "ionicons/icons";
+import { carOutline, refreshOutline, locationOutline } from "ionicons/icons";
+import { MapView } from "../../../features/maps/MapView.js";
+import { useDirectionsRoute } from "../../../features/maps/useDirectionsRoute.js";
+import type { GoogleMapInstance } from "../../../features/maps/maps.types.js";
 import { EmptyState } from "../../../components/EmptyState.js";
 import { TripTimeline } from "../../../components/TripTimeline.js";
 import { DriverInfoCard } from "../../../components/DriverInfoCard.js";
@@ -30,6 +33,131 @@ function StarRatingInput({ value, onChange }: { value: number; onChange: (v: num
           ★
         </span>
       ))}
+    </div>
+  );
+}
+
+const ACTIVE_FOR_LOCATION = ["accepted", "driver_en_route", "driver_arrived", "in_progress"];
+
+interface DriverLocation { driverUserId: string; lat: number; lng: number; updatedAt: string | null }
+
+const ROUTE_LABEL: Record<string, string> = {
+  accepted:        "Ruta hacia tu punto de recogida",
+  driver_en_route: "Tu conductor va hacia tu ubicación",
+  driver_arrived:  "El conductor llegó al punto de recogida",
+  in_progress:     "Ruta hacia tu destino",
+};
+
+function DriverLocationSection({ rideId, token, status, originLat, originLng, destinationLat, destinationLng }: {
+  rideId: string; token: string; status: string;
+  originLat?: number | null; originLng?: number | null;
+  destinationLat?: number | null; destinationLng?: number | null;
+}): JSX.Element {
+  const [loading,  setLoading]  = useState(false);
+  const [error,    setError]    = useState<string | null>(null);
+  const [location, setLocation] = useState<DriverLocation | null | undefined>(undefined);
+
+  const route   = useDirectionsRoute();
+  const mapRef  = useRef<GoogleMapInstance | null>(null);
+  const locRef  = useRef<DriverLocation | null>(null);
+
+  function getRouteTarget() {
+    if (status === "in_progress") {
+      if (destinationLat && destinationLng) return { lat: destinationLat, lng: destinationLng };
+    } else {
+      if (originLat && originLng) return { lat: originLat, lng: originLng };
+    }
+    return null;
+  }
+
+  function tryCalculateRoute(loc: DriverLocation, map: GoogleMapInstance) {
+    if (status === "driver_arrived") return; // no route needed — driver already there
+    const target = getRouteTarget();
+    if (!target) return;
+    void route.calculate({ lat: loc.lat, lng: loc.lng }, target, map);
+  }
+
+  function handleMapReady(map: GoogleMapInstance) {
+    mapRef.current = map;
+    if (locRef.current) tryCalculateRoute(locRef.current, map);
+  }
+
+  async function fetchLocation() {
+    setLoading(true);
+    setError(null);
+    route.clear();
+    try {
+      const loc = await ridesService.getDriverLocation(token, rideId);
+      setLocation(loc);
+      locRef.current = loc;
+      if (loc && mapRef.current) tryCalculateRoute(loc, mapRef.current);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Error al obtener ubicación.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  const missingCoords = status === "in_progress"
+    ? (!destinationLat || !destinationLng)
+    : (!originLat || !originLng);
+
+  const routeLabel = ROUTE_LABEL[status];
+
+  return (
+    <div style={{ marginTop: "10px", borderTop: "1px solid var(--ion-color-light-shade)", paddingTop: "10px" }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "8px" }}>
+        <span style={{ fontSize: "0.82rem", fontWeight: 600, color: "var(--ion-color-dark)" }}>
+          <IonIcon icon={locationOutline} style={{ fontSize: "0.9rem", verticalAlign: "middle", marginRight: "4px" }} />
+          {routeLabel ?? "Ubicación del conductor"}
+        </span>
+        <IonButton size="small" fill="outline" disabled={loading} onClick={() => void fetchLocation()}>
+          {loading ? <IonSpinner name="dots" style={{ width: "14px", height: "14px" }} /> : "Actualizar"}
+        </IonButton>
+      </div>
+
+      {missingCoords && (
+        <IonText color="medium"><p style={{ fontSize: "0.78rem", margin: "4px 0", fontStyle: "italic" }}>Este viaje no tiene coordenadas suficientes para mostrar ruta.</p></IonText>
+      )}
+
+      {error && <IonText color="danger"><p style={{ fontSize: "0.78rem", margin: "4px 0" }}>{error}</p></IonText>}
+
+      {location === undefined && !loading && (
+        <IonText color="medium"><p style={{ fontSize: "0.78rem", margin: "4px 0", fontStyle: "italic" }}>Presiona "Actualizar" para ver la ubicación del conductor.</p></IonText>
+      )}
+
+      {location === null && !loading && (
+        <IonText color="medium"><p style={{ fontSize: "0.78rem", margin: "4px 0", fontStyle: "italic" }}>El conductor aún no ha compartido su ubicación. Presiona actualizar más tarde.</p></IonText>
+      )}
+
+      {location && (
+        <>
+          <MapView
+            center={{ lat: location.lat, lng: location.lng }}
+            zoom={13}
+            height="170px"
+            onMapReady={handleMapReady}
+          />
+          {route.status === "loading" && (
+            <div style={{ fontSize: "0.72rem", color: "var(--ion-color-medium)", marginTop: "4px", display: "flex", alignItems: "center", gap: "6px" }}>
+              <IonSpinner name="dots" style={{ width: "12px", height: "12px" }} /> Calculando ruta…
+            </div>
+          )}
+          {route.status === "success" && route.summary && (
+            <div style={{ fontSize: "0.75rem", color: "var(--ion-color-primary)", marginTop: "4px", fontWeight: 600 }}>
+              {route.summary.distanceText} · {route.summary.durationText}
+            </div>
+          )}
+          {route.status === "error" && route.error && (
+            <IonText color="danger"><p style={{ fontSize: "0.72rem", margin: "4px 0" }}>{route.error}</p></IonText>
+          )}
+          {location.updatedAt && (
+            <div style={{ fontSize: "0.66rem", color: "var(--ion-color-medium)", marginTop: "2px" }}>
+              Conductor: {new Date(location.updatedAt).toLocaleTimeString("es-CL")}
+            </div>
+          )}
+        </>
+      )}
     </div>
   );
 }
@@ -69,7 +197,14 @@ export default function TripsPage(): JSX.Element {
 
   useEffect(() => { void loadRides(); }, [loadRides]);
 
-  const rides = allRides.slice(0, page * PAGE_SIZE);
+  // Active rides sorted to top, then by most recent first
+  const sorted = [...allRides].sort((a, b) => {
+    const aActive = ACTIVE_STATUSES.includes(a.status) ? 1 : 0;
+    const bActive = ACTIVE_STATUSES.includes(b.status) ? 1 : 0;
+    if (bActive !== aActive) return bActive - aActive;
+    return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+  });
+  const rides = sorted.slice(0, page * PAGE_SIZE);
 
   async function handleCancel(rideId: string) {
     if (!session?.accessToken) return;
@@ -138,6 +273,9 @@ export default function TripsPage(): JSX.Element {
       <IonHeader>
         <IonToolbar color="primary">
           <IonTitle>Mis Viajes</IonTitle>
+          <IonButton slot="end" fill="clear" color="light" disabled={loading} onClick={() => void loadRides()} aria-label="Actualizar">
+            {loading ? <IonSpinner name="dots" style={{ width: "18px", height: "18px" }} /> : <IonIcon icon={refreshOutline} />}
+          </IonButton>
         </IonToolbar>
         <IonToolbar style={{ "--background": "var(--ion-color-primary)", "--border-width": "0" }}>
           <div style={{ display: "flex", gap: "8px", padding: "0 12px 10px", overflowX: "auto" }}>
@@ -278,6 +416,18 @@ export default function TripsPage(): JSX.Element {
                       <div style={{ marginBottom: "10px", borderTop: "1px solid var(--ion-color-light-shade)", paddingTop: "10px" }}>
                         <TripTimeline steps={timelineSteps} />
                       </div>
+                    )}
+
+                    {ACTIVE_FOR_LOCATION.includes(ride.status) && session?.accessToken && (
+                      <DriverLocationSection
+                        rideId={ride.id}
+                        token={session.accessToken}
+                        status={ride.status}
+                        originLat={ride.originLat}
+                        originLng={ride.originLng}
+                        destinationLat={ride.destinationLat}
+                        destinationLng={ride.destinationLng}
+                      />
                     )}
 
                     {ride.status === "cancelled" && (

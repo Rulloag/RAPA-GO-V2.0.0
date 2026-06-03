@@ -73,13 +73,15 @@ export function MapView({
   useEffect(() => {
     if (mapStatus !== "loaded") return;
     if (!containerRef.current)  return;
-    if (!window.google?.maps)   return;
+    if (!window.google?.maps?.Map) return; // Map class must be available
     // Avoid re-initializing on fast re-renders
     if (mapRef.current)         return;
 
-    const mapsApi = window.google.maps;
+    // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+    const mapsApi = window.google!.maps!; // guarded above: Map is present
 
-    const map = new mapsApi.Map(containerRef.current, {
+    // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+    const map = new mapsApi.Map!(containerRef.current, {
       center,
       zoom,
       disableDefaultUI:    false,
@@ -94,11 +96,13 @@ export function MapView({
 
     // Drop markers
     for (const m of markers) {
-      new mapsApi.Marker({
-        position: new mapsApi.LatLng(m.position.lat, m.position.lng),
-        map,
-        title: m.title,
-      });
+      if (mapsApi.Marker && mapsApi.LatLng) {
+        new mapsApi.Marker({
+          position: new mapsApi.LatLng(m.position.lat, m.position.lng),
+          map,
+          title: m.title,
+        });
+      }
     }
 
     onMapReady?.(map);

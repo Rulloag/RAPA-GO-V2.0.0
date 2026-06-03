@@ -14,6 +14,12 @@ export interface RideRequestData {
   destinationText:  string;
   notes:            string | null;
   estimatedFareClp: number | null;
+  originLat:        number | null;
+  originLng:        number | null;
+  destinationLat:   number | null;
+  destinationLng:   number | null;
+  distanceMeters:   number | null;
+  durationSeconds:  number | null;
   status:           string;
   requestedAt:     string;
   acceptedAt:      string | null;
@@ -46,6 +52,10 @@ export interface DriverRideData {
   destinationText:    string;
   notes:              string | null;
   estimatedFareClp:   number | null;
+  originLat:          number | null;
+  originLng:          number | null;
+  destinationLat:     number | null;
+  destinationLng:     number | null;
   status:             string;
   requestedAt:        string;
   acceptedAt:         string | null;
@@ -164,6 +174,20 @@ export const ridesService = {
     const result = await apiClient.get<DriverRidesEnvelope>("/rides/driver/me", { token: accessToken });
     if (!result.ok) throw new Error(result.message ?? "Failed to load driver rides.");
     return (result.data as DriverRidesEnvelope).data;
+  },
+
+  async getDriverLocation(accessToken: string, rideId: string): Promise<{ driverUserId: string; lat: number; lng: number; updatedAt: string | null } | null> {
+    type Envelope = { ok: true; data: { location: { driverUserId: string; lat: number; lng: number; updatedAt: string | null } | null }; statusCode: number };
+    const result = await apiClient.get<Envelope>(`/rides/${rideId}/driver-location`, { token: accessToken });
+    if (!result.ok) throw new Error(result.message ?? "Failed to get driver location.");
+    return (result.data as Envelope).data.location;
+  },
+
+  async updateDriverLocation(accessToken: string, lat: number, lng: number): Promise<{ updatedAt: string }> {
+    type Envelope = { ok: true; data: { updatedAt: string }; statusCode: number };
+    const result = await apiClient.patch<Envelope>("/drivers/me/location", { lat, lng }, { token: accessToken });
+    if (!result.ok) throw new Error(result.message ?? "Failed to update location.");
+    return (result.data as Envelope).data;
   },
 
   async rateRide(accessToken: string, rideId: string, rating: number, comment?: string): Promise<RatingData> {

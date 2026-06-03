@@ -86,8 +86,10 @@ export function AppRouter(): JSX.Element {
         {/* Legal — public, no auth required */}
         <Route exact path="/legal/:type" component={LegalPage} />
 
-        {/* Maps integration test — public, remove or protect before production */}
-        <Route exact path={ROUTES.MAPS.TEST} component={MapTestPage} />
+        {/* Maps integration test — only available in development */}
+        {import.meta.env.MODE === "development" && (
+          <Route exact path={ROUTES.MAPS.TEST} component={MapTestPage} />
+        )}
 
         {/* Auth — redirect to role home if already authenticated */}
         <AuthRoute path={ROUTES.AUTH.LOGIN}    component={LoginPage} />
