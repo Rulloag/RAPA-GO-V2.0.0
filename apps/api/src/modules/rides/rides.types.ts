@@ -37,6 +37,11 @@ export interface RideRequestResponse {
   discountApplied:       boolean;
   discountPercent:       number | null;
   originalFareClp:       number | null;
+  autoAssigned?:         boolean;
+  rideType:              string;
+  scheduledPickupAt:     string | null;
+  priorityFeeClp:        number | null;
+  flightNumber:          string | null;
 }
 
 /** Subset exposed to driver for their own rides — no passenger identity. */
@@ -64,6 +69,10 @@ export interface DriverRideResponse {
   cancellationReason:    string | null;
   cancelledByRole:       string | null;
   createdAt:             string;
+  rideType:              string;
+  scheduledPickupAt:     string | null;
+  priorityFeeClp:        number | null;
+  flightNumber:          string | null;
 }
 
 export type DriverRidesListResult =

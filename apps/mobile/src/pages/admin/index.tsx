@@ -1362,6 +1362,21 @@ const RIDE_STATUS_COLOR_ADMIN: Record<string, string> = {
 
 const CANCELABLE_STATUSES = new Set(["requested", "accepted", "driver_en_route", "driver_arrived"]);
 
+// ── Scheduled helpers ─────────────────────────────────────────────────────────
+
+function fmtScheduledDate(iso: string): string {
+  return new Date(iso).toLocaleString("es-CL", {
+    day: "2-digit", month: "2-digit", year: "numeric",
+    hour: "2-digit", minute: "2-digit",
+  });
+}
+
+function isPickupSoon(iso: string): boolean {
+  return new Date(iso).getTime() <= Date.now() + 2 * 60 * 60 * 1000;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+
 export function AdminTripsPage(): JSX.Element {
   const { session } = useAuth();
 
@@ -1370,6 +1385,7 @@ export function AdminTripsPage(): JSX.Element {
   const [loading,       setLoading]       = useState(true);
   const [loadError,     setLoadError]     = useState<string | null>(null);
   const [filterStatus,  setFilterStatus]  = useState("");
+  const [viewMode,      setViewMode]      = useState<"all" | "scheduled">("all");
 
   // Assign state per-ride
   const [assigningId,   setAssigningId]   = useState<string | null>(null);
@@ -1467,7 +1483,17 @@ export function AdminTripsPage(): JSX.Element {
           <IonRefresherContent />
         </IonRefresher>
 
-        {/* Filter */}
+        {/* Segmento Todos / Programados */}
+        <IonSegment
+          value={viewMode}
+          onIonChange={(e) => setViewMode(e.detail.value as "all" | "scheduled")}
+          style={{ margin: "0 0 10px" }}
+        >
+          <IonSegmentButton value="all"><IonLabel>Todos</IonLabel></IonSegmentButton>
+          <IonSegmentButton value="scheduled"><IonLabel>⚡ Programados</IonLabel></IonSegmentButton>
+        </IonSegment>
+
+        {/* Filter by status */}
         <IonCard style={{ margin: "0 0 12px" }}>
           <IonCardContent style={{ padding: "10px 12px" }}>
             <IonItem lines="none">
@@ -1502,13 +1528,25 @@ export function AdminTripsPage(): JSX.Element {
           </IonCardContent>
         </IonCard>
 
-        {!loading && !loadError && (
-          <IonText color="medium">
-            <p style={{ fontSize: "0.78rem", margin: "0 0 10px" }}>
-              {rides.length} viaje{rides.length !== 1 ? "s" : ""} encontrado{rides.length !== 1 ? "s" : ""}
-            </p>
-          </IonText>
-        )}
+        {!loading && !loadError && (() => {
+          const displayed = viewMode === "scheduled"
+            ? [...rides]
+                .filter((r) => r.rideType === "scheduled")
+                .sort((a, b) => {
+                  if (!a.scheduledPickupAt) return 1;
+                  if (!b.scheduledPickupAt) return -1;
+                  return new Date(a.scheduledPickupAt).getTime() - new Date(b.scheduledPickupAt).getTime();
+                })
+            : rides;
+          return (
+            <IonText color="medium">
+              <p style={{ fontSize: "0.78rem", margin: "0 0 10px" }}>
+                {displayed.length} viaje{displayed.length !== 1 ? "s" : ""} encontrado{displayed.length !== 1 ? "s" : ""}
+                {viewMode === "scheduled" ? " programados" : ""}
+              </p>
+            </IonText>
+          );
+        })()}
 
         {loading && (
           <div style={{ display: "flex", justifyContent: "center", paddingTop: "40px" }}>
@@ -1524,13 +1562,42 @@ export function AdminTripsPage(): JSX.Element {
           <IonText color="medium"><p>No se encontraron viajes.</p></IonText>
         )}
 
-        {!loading && rides.length > 0 && (
+        {!loading && rides.length > 0 && (() => {
+          const displayed = viewMode === "scheduled"
+            ? [...rides]
+                .filter((r) => r.rideType === "scheduled")
+                .sort((a, b) => {
+                  if (!a.scheduledPickupAt) return 1;
+                  if (!b.scheduledPickupAt) return -1;
+                  return new Date(a.scheduledPickupAt).getTime() - new Date(b.scheduledPickupAt).getTime();
+                })
+            : rides;
+
+          if (displayed.length === 0) {
+            return (
+              <IonText color="medium">
+                <p>{viewMode === "scheduled" ? "No hay viajes programados." : "No se encontraron viajes."}</p>
+              </IonText>
+            );
+          }
+
+          return (
           <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
-            {rides.map((ride) => {
+            {displayed.map((ride) => {
               const statusColor = RIDE_STATUS_COLOR_ADMIN[ride.status] ?? "medium";
               const statusLabel = RIDE_STATUS_LABEL_ADMIN[ride.status] ?? ride.status;
+              const isScheduled = ride.rideType === "scheduled";
+              const alertaSoon  = isScheduled && ride.status === "requested" && ride.scheduledPickupAt
+                ? isPickupSoon(ride.scheduledPickupAt)
+                : false;
               return (
-                <IonCard key={ride.id} style={{ margin: 0 }}>
+                <IonCard
+                  key={ride.id}
+                  style={{
+                    margin: 0,
+                    ...(isScheduled ? { border: "2px solid var(--ion-color-warning)" } : {}),
+                  }}
+                >
                   <IonCardContent style={{ padding: "12px 14px" }}>
                     <MapFallback
                       origin={{ text: ride.originText }}
@@ -1538,6 +1605,25 @@ export function AdminTripsPage(): JSX.Element {
                       height={110}
                       showRoute={false}
                     />
+
+                    {/* Alerta reserva próxima sin conductor */}
+                    {alertaSoon && (
+                      <div style={{
+                        display:      "flex",
+                        alignItems:   "center",
+                        gap:          "6px",
+                        padding:      "8px 10px",
+                        background:   "var(--ion-color-danger-tint, #fde8e8)",
+                        borderRadius: "8px",
+                        marginTop:    "8px",
+                        fontSize:     "0.8rem",
+                        color:        "var(--ion-color-danger)",
+                        fontWeight:   600,
+                      }}>
+                        <IonIcon icon={warningOutline} style={{ fontSize: "1rem", flexShrink: 0 }} />
+                        Reserva próxima sin conductor asignado
+                      </div>
+                    )}
 
                     {/* Header */}
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "8px", marginBottom: "8px", marginTop: "8px" }}>
@@ -1550,12 +1636,40 @@ export function AdminTripsPage(): JSX.Element {
                         </div>
                         <div style={{ display: "flex", flexWrap: "wrap", gap: "4px" }}>
                           <IonBadge color={statusColor} style={{ fontSize: "0.68rem" }}>{statusLabel}</IonBadge>
+                          {isScheduled && (
+                            <IonBadge color="warning" style={{ fontSize: "0.68rem", fontWeight: 700 }}>PRIORITARIO</IonBadge>
+                          )}
                         </div>
                       </div>
                       <div style={{ fontSize: "0.68rem", color: "var(--ion-color-medium)", flexShrink: 0, textAlign: "right" }}>
                         {new Date(ride.requestedAt).toLocaleString("es-CL")}
                       </div>
                     </div>
+
+                    {/* Datos scheduled */}
+                    {isScheduled && ride.scheduledPickupAt && (
+                      <div style={{
+                        padding:      "8px 10px",
+                        background:   "var(--ion-color-warning-tint, #fff8e1)",
+                        borderRadius: "8px",
+                        marginBottom: "8px",
+                        fontSize:     "0.8rem",
+                      }}>
+                        <div style={{ fontWeight: 600, marginBottom: "2px" }}>
+                          Recogida programada: {fmtScheduledDate(ride.scheduledPickupAt)}
+                        </div>
+                        {ride.flightNumber && (
+                          <div style={{ color: "var(--ion-color-dark)" }}>
+                            Vuelo: <strong>{ride.flightNumber}</strong>
+                          </div>
+                        )}
+                        {ride.priorityFeeClp != null && ride.priorityFeeClp > 0 && (
+                          <div style={{ color: "var(--ion-color-warning-shade)", marginTop: "2px" }}>
+                            Recargo prioritario: <strong>${ride.priorityFeeClp.toLocaleString("es-CL")} CLP</strong>
+                          </div>
+                        )}
+                      </div>
+                    )}
 
                     {/* Details */}
                     {ride.notes && (
@@ -1693,7 +1807,8 @@ export function AdminTripsPage(): JSX.Element {
               );
             })}
           </div>
-        )}
+          );
+        })()}
 
         {/* Driver not available toast */}
         <IonToast

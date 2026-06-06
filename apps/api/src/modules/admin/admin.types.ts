@@ -46,6 +46,10 @@ export interface AdminRideResponse {
   cancellationReason: string | null;
   cancelledByRole:    string | null;
   createdAt:          string;
+  rideType:           string;
+  scheduledPickupAt:  string | null;
+  priorityFeeClp:     number | null;
+  flightNumber:       string | null;
 }
 
 export interface ActiveDriverResponse {

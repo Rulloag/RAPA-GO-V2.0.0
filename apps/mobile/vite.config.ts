@@ -29,5 +29,15 @@ export default defineConfig({
   build: {
     outDir: "dist",
     sourcemap: true,
+    rollupOptions: {
+      // These packages are not installed locally; they are provided by the native
+      // Capacitor layer at runtime. Externalize so the web build succeeds.
+      external: [
+        "@sentry/capacitor",
+        "@sentry/react",
+        "@capacitor/splash-screen",
+        "@aparajita/capacitor-secure-storage",
+      ],
+    },
   },
 });

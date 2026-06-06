@@ -1,6 +1,7 @@
 import {
   IonButton, IonCard, IonCardContent, IonContent, IonHeader,
-  IonIcon, IonNote, IonPage, IonSpinner, IonText, IonTitle, IonToolbar,
+  IonIcon, IonLabel, IonNote, IonPage, IonSegment, IonSegmentButton,
+  IonSpinner, IonText, IonTitle, IonToolbar,
 } from "@ionic/react";
 import { flagOutline, locateOutline, locationOutline } from "ionicons/icons";
 import { useState, useEffect, useCallback } from "react";
@@ -19,9 +20,27 @@ import { RIDE_STATUS_LABEL } from "../shared.js";
 // ── Constants ─────────────────────────────────────────────────────────────────
 
 const HANGA_ROA = { lat: -27.15, lng: -109.4333 };
+const MIN_SCHEDULED_MINUTES = 30;
+const MAX_SCHEDULED_DAYS    = 30;
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+function toDatetimeLocalValue(d: Date): string {
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+function minScheduledDate(): Date {
+  return new Date(Date.now() + MIN_SCHEDULED_MINUTES * 60 * 1000);
+}
+
+function maxScheduledDate(): Date {
+  return new Date(Date.now() + MAX_SCHEDULED_DAYS * 24 * 60 * 60 * 1000);
+}
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
+type RideMode  = "immediate" | "scheduled";
 type PageStatus =
   | "idle"
   | "calculating_route"
@@ -35,6 +54,7 @@ type PageStatus =
 export default function RequestRidePage(): JSX.Element {
   const { session } = useAuth();
 
+  // ── Route / map state ───────────────────────────────────────────────────────
   const [origin,      setOrigin]      = useState<MapPoint | null>(null);
   const [destination, setDestination] = useState<MapPoint | null>(null);
   const [notes,       setNotes]       = useState("");
@@ -43,10 +63,15 @@ export default function RequestRidePage(): JSX.Element {
   const [submitted,   setSubmitted]   = useState<RideRequestData | null>(null);
   const [mapInstance, setMapInstance] = useState<GoogleMapInstance | null>(null);
 
+  // ── Scheduled-ride state ────────────────────────────────────────────────────
+  const [rideMode,          setRideMode]         = useState<RideMode>("immediate");
+  const [scheduledPickupAt, setScheduledPickupAt] = useState<string>("");
+  const [flightNumber,      setFlightNumber]      = useState<string>("");
+  const [scheduleError,     setScheduleError]     = useState<string | null>(null);
+
   const route = useDirectionsRoute();
   const geo   = useCurrentLocation();
 
-  // Stable references to avoid stale closures in callbacks
   const { calculate: calcRoute, clear: clearRoute } = route;
 
   // ── Map ready ───────────────────────────────────────────────────────────────
@@ -110,6 +135,17 @@ export default function RequestRidePage(): JSX.Element {
     setSubmitError(null);
   }, [clearRoute]);
 
+  function handleRideModeChange(mode: RideMode) {
+    setRideMode(mode);
+    setScheduleError(null);
+    setSubmitError(null);
+    setSubmitted(null);
+    if (mode === "immediate") {
+      setScheduledPickupAt("");
+      setFlightNumber("");
+    }
+  }
+
   function handleReset() {
     setOrigin(null);
     setDestination(null);
@@ -118,6 +154,38 @@ export default function RequestRidePage(): JSX.Element {
     setSubmitted(null);
     setSubmitError(null);
     setPageStatus("idle");
+    setRideMode("immediate");
+    setScheduledPickupAt("");
+    setFlightNumber("");
+    setScheduleError(null);
+  }
+
+  // ── Validate scheduled fields before submit ─────────────────────────────────
+
+  function validateScheduled(): boolean {
+    if (!scheduledPickupAt) {
+      setScheduleError("Selecciona la fecha y hora del viaje programado.");
+      return false;
+    }
+    const pickup = new Date(scheduledPickupAt);
+    if (isNaN(pickup.getTime())) {
+      setScheduleError("Fecha y hora no válidas.");
+      return false;
+    }
+    if (pickup < minScheduledDate()) {
+      setScheduleError(`La fecha debe ser al menos ${MIN_SCHEDULED_MINUTES} minutos desde ahora.`);
+      return false;
+    }
+    if (pickup > maxScheduledDate()) {
+      setScheduleError(`La fecha no puede superar ${MAX_SCHEDULED_DAYS} días desde hoy.`);
+      return false;
+    }
+    if (flightNumber.trim().length > 20) {
+      setScheduleError("El número de vuelo no puede superar 20 caracteres.");
+      return false;
+    }
+    setScheduleError(null);
+    return true;
   }
 
   async function handleSubmit() {
@@ -135,12 +203,15 @@ export default function RequestRidePage(): JSX.Element {
       setSubmitError("La distancia debe ser mayor a 0.");
       return;
     }
+    if (rideMode === "scheduled" && !validateScheduled()) return;
 
     setPageStatus("submitting");
     setSubmitError(null);
 
     try {
-      const trimmedNotes = notes.trim();
+      const trimmedNotes    = notes.trim();
+      const trimmedFlight   = flightNumber.trim().toUpperCase();
+
       const ride = await ridesService.createRideRequest(session.accessToken, {
         originText:      origin.label,
         destinationText: destination.label,
@@ -150,8 +221,14 @@ export default function RequestRidePage(): JSX.Element {
         destinationLng:  destination.position.lng,
         distanceMeters:  route.summary.distanceValue,
         durationSeconds: route.summary.durationValue,
-        ...(trimmedNotes ? { notes: trimmedNotes } : {}),
+        ...(trimmedNotes  ? { notes: trimmedNotes }                               : {}),
+        ...(rideMode === "scheduled" ? {
+          rideType:          "scheduled",
+          scheduledPickupAt: new Date(scheduledPickupAt).toISOString(),
+          ...(trimmedFlight ? { flightNumber: trimmedFlight } : {}),
+        } : {}),
       });
+
       setSubmitted(ride);
       setPageStatus("success");
     } catch (err) {
@@ -163,12 +240,38 @@ export default function RequestRidePage(): JSX.Element {
   // ── Derived UI state ────────────────────────────────────────────────────────
 
   const isSubmitDisabled =
-    pageStatus === "submitting"       ||
+    pageStatus === "submitting"        ||
     pageStatus === "calculating_route" ||
-    pageStatus === "success"          ||
-    !origin                           ||
-    !destination                      ||
+    pageStatus === "success"           ||
+    !origin                            ||
+    !destination                       ||
     route.status !== "success";
+
+  // ── Styles ──────────────────────────────────────────────────────────────────
+
+  const inputStyle: React.CSSProperties = {
+    width:        "100%",
+    border:       "1.5px solid var(--ion-color-light-shade)",
+    borderRadius: "10px",
+    padding:      "10px 12px",
+    fontSize:     "0.9rem",
+    background:   "var(--ion-card-background, #fff)",
+    color:        "var(--ion-color-dark)",
+    outline:      "none",
+    boxSizing:    "border-box",
+    fontFamily:   "inherit",
+  };
+
+  const labelStyle: React.CSSProperties = {
+    fontSize:      "0.72rem",
+    fontWeight:    600,
+    color:         "var(--ion-color-medium)",
+    marginBottom:  "4px",
+    paddingLeft:   "4px",
+    letterSpacing: "0.03em",
+    textTransform: "uppercase",
+    display:       "block",
+  };
 
   // ── Render ──────────────────────────────────────────────────────────────────
 
@@ -264,7 +367,7 @@ export default function RequestRidePage(): JSX.Element {
                 background: "var(--ion-color-light)",
                 borderRadius: "8px",
                 fontSize: "0.85rem",
-                marginBottom: "12px",
+                marginBottom: "14px",
                 display: "flex",
                 justifyContent: "space-between",
                 alignItems: "center",
@@ -275,11 +378,7 @@ export default function RequestRidePage(): JSX.Element {
                     · {route.summary.durationText}
                   </span>
                 </span>
-                <span style={{
-                  fontSize: "0.72rem",
-                  color: "var(--ion-color-medium)",
-                  fontStyle: "italic",
-                }}>
+                <span style={{ fontSize: "0.72rem", color: "var(--ion-color-medium)", fontStyle: "italic" }}>
                   Ruta calculada
                 </span>
               </div>
@@ -291,16 +390,104 @@ export default function RequestRidePage(): JSX.Element {
               </IonText>
             )}
 
+            {/* ── Ahora / Programar selector ─────────────────────────────── */}
+            <div style={{ marginBottom: "16px" }}>
+              <span style={labelStyle}>Tipo de viaje</span>
+              <IonSegment
+                value={rideMode}
+                onIonChange={(e) => handleRideModeChange(e.detail.value as RideMode)}
+                disabled={pageStatus === "submitting" || pageStatus === "success"}
+              >
+                <IonSegmentButton value="immediate">
+                  <IonLabel>Ahora</IonLabel>
+                </IonSegmentButton>
+                <IonSegmentButton value="scheduled">
+                  <IonLabel>Programar</IonLabel>
+                </IonSegmentButton>
+              </IonSegment>
+            </div>
+
+            {/* ── Scheduled fields ───────────────────────────────────────── */}
+            {rideMode === "scheduled" && (
+              <div style={{
+                padding:      "14px",
+                border:       "1.5px solid var(--ion-color-primary-tint)",
+                borderRadius: "10px",
+                marginBottom: "14px",
+                background:   "var(--ion-color-light)",
+              }}>
+
+                {/* Fecha y hora */}
+                <div style={{ marginBottom: "12px" }}>
+                  <label style={labelStyle} htmlFor="scheduled-pickup-at">
+                    Fecha y hora de recogida
+                  </label>
+                  <input
+                    id="scheduled-pickup-at"
+                    type="datetime-local"
+                    value={scheduledPickupAt}
+                    min={toDatetimeLocalValue(minScheduledDate())}
+                    max={toDatetimeLocalValue(maxScheduledDate())}
+                    onChange={(e) => {
+                      setScheduledPickupAt(e.target.value);
+                      setScheduleError(null);
+                    }}
+                    disabled={pageStatus === "submitting" || pageStatus === "success"}
+                    style={{ ...inputStyle, colorScheme: "light" }}
+                  />
+                  <IonNote style={{ fontSize: "0.72rem", paddingLeft: "4px", marginTop: "3px", display: "block" }}>
+                    Mínimo {MIN_SCHEDULED_MINUTES} min desde ahora · Máximo {MAX_SCHEDULED_DAYS} días
+                  </IonNote>
+                </div>
+
+                {/* Número de vuelo (opcional) */}
+                <div style={{ marginBottom: "12px" }}>
+                  <label style={labelStyle} htmlFor="flight-number">
+                    Número de vuelo (opcional)
+                  </label>
+                  <input
+                    id="flight-number"
+                    type="text"
+                    value={flightNumber}
+                    maxLength={20}
+                    placeholder="Ej: LA800"
+                    onChange={(e) => setFlightNumber(e.target.value)}
+                    disabled={pageStatus === "submitting" || pageStatus === "success"}
+                    style={inputStyle}
+                  />
+                </div>
+
+                {/* Aviso recargo prioritario */}
+                <div style={{
+                  display:      "flex",
+                  alignItems:   "flex-start",
+                  gap:          "8px",
+                  padding:      "10px 12px",
+                  background:   "var(--ion-color-warning-tint, #fff8e1)",
+                  borderRadius: "8px",
+                  fontSize:     "0.8rem",
+                  color:        "var(--ion-color-dark)",
+                }}>
+                  <span style={{ fontSize: "1rem" }}>⚡</span>
+                  <span>
+                    <strong>Reserva con prioridad.</strong>{" "}
+                    El sistema aplica un recargo por programación prioritaria.
+                    El monto se mostrará en la tarifa al confirmar.
+                  </span>
+                </div>
+
+                {/* Error de validación scheduled */}
+                {scheduleError && (
+                  <IonText color="danger">
+                    <p style={{ margin: "8px 0 0", fontSize: "0.82rem" }}>{scheduleError}</p>
+                  </IonText>
+                )}
+              </div>
+            )}
+
             {/* ── Notes ──────────────────────────────────────────────────── */}
             <div style={{ marginBottom: "12px" }}>
-              <div style={{
-                fontSize: "0.72rem", fontWeight: 600,
-                color: "var(--ion-color-medium)",
-                marginBottom: "4px", paddingLeft: "4px",
-                letterSpacing: "0.03em", textTransform: "uppercase",
-              }}>
-                Notas (opcional)
-              </div>
+              <span style={labelStyle}>Notas (opcional)</span>
               <textarea
                 value={notes}
                 onChange={(e) => setNotes(e.target.value)}
@@ -309,17 +496,8 @@ export default function RequestRidePage(): JSX.Element {
                 rows={2}
                 disabled={pageStatus === "submitting" || pageStatus === "success"}
                 style={{
-                  width: "100%",
-                  border: "1.5px solid var(--ion-color-light-shade)",
-                  borderRadius: "10px",
-                  padding: "10px 12px",
-                  fontSize: "0.9rem",
+                  ...inputStyle,
                   resize: "none",
-                  background: "var(--ion-card-background, #fff)",
-                  color: "var(--ion-color-dark)",
-                  outline: "none",
-                  boxSizing: "border-box",
-                  fontFamily: "inherit",
                 }}
               />
             </div>
@@ -333,12 +511,34 @@ export default function RequestRidePage(): JSX.Element {
                   </p>
                 </IonText>
 
+                {/* Mensaje según tipo de viaje */}
+                {(submitted.rideType === "scheduled") ? (
+                  <IonText color="primary">
+                    <p style={{ margin: "0 0 6px", fontSize: "0.82rem" }}>
+                      Reserva programada recibida con prioridad. Te avisaremos cuando se asigne un conductor.
+                    </p>
+                  </IonText>
+                ) : (submitted.autoAssigned || submitted.status === "accepted") ? (
+                  <IonText color="success">
+                    <p style={{ margin: "0 0 6px", fontSize: "0.82rem" }}>
+                      Conductor asignado automáticamente.
+                    </p>
+                  </IonText>
+                ) : (
+                  <IonText color="medium">
+                    <p style={{ margin: "0 0 6px", fontSize: "0.82rem" }}>
+                      Estamos buscando un conductor disponible. Un administrador podrá asignarlo si es necesario.
+                    </p>
+                  </IonText>
+                )}
+
+                {/* Tarifa estimada */}
                 {submitted.estimatedFareClp != null && (
                   <div style={{
-                    padding: "10px 14px",
-                    background: "var(--ion-color-light)",
+                    padding:      "10px 14px",
+                    background:   "var(--ion-color-light)",
                     borderRadius: "8px",
-                    fontSize: "0.85rem",
+                    fontSize:     "0.85rem",
                   }}>
                     {submitted.discountApplied && submitted.originalFareClp != null ? (
                       <>
@@ -356,11 +556,43 @@ export default function RequestRidePage(): JSX.Element {
                         </div>
                       </>
                     ) : (
-                      <strong>Tarifa estimada: ${submitted.estimatedFareClp.toLocaleString("es-CL")} CLP</strong>
+                      <>
+                        <strong>Tarifa estimada: ${submitted.estimatedFareClp.toLocaleString("es-CL")} CLP</strong>
+                        {submitted.priorityFeeClp != null && submitted.priorityFeeClp > 0 && (
+                          <div style={{ fontSize: "0.72rem", color: "var(--ion-color-medium)", marginTop: "2px" }}>
+                            Incluye recargo prioritario: ${submitted.priorityFeeClp.toLocaleString("es-CL")} CLP
+                          </div>
+                        )}
+                      </>
                     )}
                     <div style={{ fontSize: "0.72rem", color: "var(--ion-color-medium)", marginTop: "4px" }}>
                       Tarifa referencial. El precio final lo acuerda con el conductor.
                     </div>
+                  </div>
+                )}
+
+                {/* Detalle viaje programado en éxito */}
+                {submitted.rideType === "scheduled" && submitted.scheduledPickupAt && (
+                  <div style={{
+                    marginTop:    "8px",
+                    padding:      "8px 12px",
+                    background:   "var(--ion-color-light)",
+                    borderRadius: "8px",
+                    fontSize:     "0.8rem",
+                    color:        "var(--ion-color-dark)",
+                  }}>
+                    <div>
+                      <strong>Fecha programada:</strong>{" "}
+                      {new Date(submitted.scheduledPickupAt).toLocaleString("es-CL", {
+                        day: "2-digit", month: "2-digit", year: "numeric",
+                        hour: "2-digit", minute: "2-digit",
+                      })}
+                    </div>
+                    {submitted.flightNumber && (
+                      <div style={{ marginTop: "2px" }}>
+                        <strong>Vuelo:</strong> {submitted.flightNumber}
+                      </div>
+                    )}
                   </div>
                 )}
 
@@ -396,7 +628,9 @@ export default function RequestRidePage(): JSX.Element {
                     ? "Calculando ruta…"
                     : route.status !== "success" && (origin != null || destination != null)
                       ? "Selecciona origen y destino"
-                      : "Solicitar viaje"
+                      : rideMode === "scheduled"
+                        ? "Confirmar reserva programada"
+                        : "Solicitar viaje"
                 }
               </IonButton>
             )}

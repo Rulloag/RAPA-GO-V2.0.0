@@ -52,6 +52,13 @@ const DEV_USERS = [
     password: "Test1234!",
   },
   {
+    email:    "driver2@rapago.local",
+    name:     "Conductor Demo 2",
+    role:     "driver"  as const,
+    status:   "active"  as const,
+    password: "Test1234!",
+  },
+  {
     email:    "guide@rapago.local",
     name:     "Guía Demo",
     role:     "guide"   as const,
@@ -88,8 +95,7 @@ const ARGON_OPTIONS: argon2.Options = {
 async function seed() {
   console.log("Creando usuarios de desarrollo...\n");
 
-  const createdDriverId: string | null = null;
-  let driverUserId: string | null = null;
+  const driverUserIds: string[] = [];
 
   for (const u of DEV_USERS) {
     const existing = await db
@@ -100,7 +106,7 @@ async function seed() {
 
     if (existing.length > 0 && existing[0]) {
       console.log(`  ↳ ${u.email} — ya existe (status: ${existing[0].status}), omitiendo.`);
-      if (u.role === "driver") driverUserId = existing[0].id;
+      if (u.role === "driver") driverUserIds.push(existing[0].id);
       continue;
     }
 
@@ -125,22 +131,21 @@ async function seed() {
       .insert(schema.authCredentials)
       .values({ userId: user.id, passwordHash: hash });
 
-    if (u.role === "driver") driverUserId = user.id;
+    if (u.role === "driver") driverUserIds.push(user.id);
     console.log(`  ✓ ${u.email} (${u.role} / ${u.status}) creado`);
   }
 
-  // ── Resetear disponibilidad del conductor demo ────────────────────────────
-  // Si el conductor quedó en estado "busy" con un viaje completado o cancelado,
-  // lo devolvemos a "available" para que el admin pueda asignarle viajes nuevos.
-  if (driverUserId) {
+  // ── Resetear disponibilidad de todos los conductores demo ─────────────────
+  for (const driverId of driverUserIds) {
+    const now = new Date();
     await db
       .insert(schema.driverStatuses)
       .values({
-        driverUserId,
+        driverUserId:  driverId,
         availability:  "available",
         currentRideId: null,
         currentZone:   "hanga_roa",
-        lastSeenAt:    new Date(),
+        lastSeenAt:    now,
       })
       .onConflictDoUpdate({
         target: schema.driverStatuses.driverUserId,
@@ -148,24 +153,27 @@ async function seed() {
           availability:  "available",
           currentRideId: null,
           currentZone:   "hanga_roa",
-          lastSeenAt:    new Date(),
-          updatedAt:     new Date(),
+          lastSeenAt:    now,
+          updatedAt:     now,
         },
       });
-    console.log(`  ✓ driver@rapago.local — disponibilidad reseteada a "available" en zona hanga_roa`);
-    void createdDriverId; // suppress unused-var warning
+  }
+  if (driverUserIds.length > 0) {
+    console.log(`  ✓ ${driverUserIds.length} conductor(es) reseteados a "available" en zona hanga_roa`);
   }
 
   console.log("\nSeed completo.");
   console.log("\nCredenciales de prueba:");
   console.log("  Email:    passenger@rapago.local");
   console.log("  Email:    driver@rapago.local");
+  console.log("  Email:    driver2@rapago.local");
   console.log("  Email:    guide@rapago.local");
   console.log("  Email:    rental@rapago.local");
   console.log("  Email:    admin@rapago.local");
   console.log("  Password: Test1234!  (todos)");
-  console.log("\nEstado conductor demo:");
-  console.log("  driver@rapago.local → availability: available | zone: hanga_roa");
+  console.log("\nEstado conductores demo:");
+  console.log("  driver@rapago.local  → availability: available | zone: hanga_roa");
+  console.log("  driver2@rapago.local → availability: available | zone: hanga_roa");
 }
 
 seed()

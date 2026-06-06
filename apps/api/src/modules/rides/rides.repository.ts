@@ -1,4 +1,4 @@
-import { and, avg, count, desc, eq, gte, inArray, lt } from "drizzle-orm";
+import { and, avg, count, desc, eq, gte, inArray, lt, ne } from "drizzle-orm";
 import { db } from "../../db/client.js";
 import { rideRequests, users, rideRatings, driverProfiles } from "../../db/schema/index.js";
 import { alias } from "drizzle-orm/pg-core";
@@ -63,6 +63,10 @@ export class RidesRepository {
           createdAt:          rideRequests.createdAt,
           updatedAt:          rideRequests.updatedAt,
           isOfflineBooking:   rideRequests.isOfflineBooking,
+          rideType:           rideRequests.rideType,
+          scheduledPickupAt:  rideRequests.scheduledPickupAt,
+          priorityFeeClp:     rideRequests.priorityFeeClp,
+          flightNumber:       rideRequests.flightNumber,
           driverName:         driver.name,
           driverPhone:        driverProfiles.phone,
           driverVehicleBrand: driverProfiles.vehicleBrand,
@@ -145,6 +149,10 @@ export class RidesRepository {
     notes:                 string | null;
     estimatedFareClp:      number;
     fareCalculationSource: string;
+    rideType?:             string;
+    scheduledPickupAt?:    Date | null;
+    priorityFeeClp?:       number | null;
+    flightNumber?:         string | null;
   }): Promise<RideRequest> {
     try {
       const rows = await db
@@ -190,7 +198,10 @@ export class RidesRepository {
       return await db
         .select()
         .from(rideRequests)
-        .where(eq(rideRequests.status, "requested"))
+        .where(and(
+          eq(rideRequests.status, "requested"),
+          ne(rideRequests.rideType, "scheduled"),
+        ))
         .orderBy(desc(rideRequests.requestedAt));
     } catch (err) {
       throw AppError.internal(`Failed to query available rides: ${String(err)}`);

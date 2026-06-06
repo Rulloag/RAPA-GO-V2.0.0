@@ -60,4 +60,17 @@ export const authController = {
     const result = await authService.getMe(token);
     reply.status(result.ok ? 200 : (result.statusCode ?? 401)).send(result);
   },
+
+  async refresh(
+    request: FastifyRequest<{ Body: { refreshToken: string } }>,
+    reply: FastifyReply,
+  ): Promise<void> {
+    const raw = request.body?.refreshToken;
+    if (!raw || typeof raw !== "string") {
+      sendError(reply, { code: "VALIDATION_ERROR", message: "refreshToken is required.", statusCode: 400 });
+      return;
+    }
+    const result = await authService.refreshSession(raw);
+    reply.status(result.ok ? 200 : (result.statusCode ?? 401)).send(result);
+  },
 };

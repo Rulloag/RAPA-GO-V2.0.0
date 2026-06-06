@@ -6,6 +6,10 @@ const MAX_DISTANCE_METERS = 100_000;
 // ~55 m — prevents trivially same origin/destination
 const MIN_COORD_DIFF = 0.0005;
 
+// Scheduled ride constraints
+const MIN_SCHEDULED_MINUTES = 30;
+const MAX_SCHEDULED_DAYS    = 30;
+
 export const createRideRequestSchema = z
   .object({
     originText:      z.string().trim().min(3,  "Origin must be at least 3 characters.").max(150),
@@ -29,6 +33,21 @@ export const createRideRequestSchema = z
       .max(500, "Notes must not exceed 500 characters.")
       .optional()
       .transform((v) => (v === "" ? undefined : v)),
+    rideType: z
+      .enum(["immediate", "scheduled"])
+      .optional()
+      .default("immediate"),
+    scheduledPickupAt: z
+      .string()
+      .datetime({ message: "scheduledPickupAt must be a valid ISO 8601 datetime." })
+      .optional(),
+    flightNumber: z
+      .string()
+      .trim()
+      .toUpperCase()
+      .max(20, "flightNumber must not exceed 20 characters.")
+      .optional()
+      .transform((v) => (v === "" ? undefined : v)),
   })
   .refine(
     (data) => {
@@ -39,6 +58,58 @@ export const createRideRequestSchema = z
     {
       message: "Origin and destination are too close — please choose different locations.",
       path:    ["destinationLat"],
+    },
+  )
+  .refine(
+    (data) => {
+      if (data.rideType === "scheduled") {
+        return data.scheduledPickupAt !== undefined;
+      }
+      return true;
+    },
+    {
+      message: "scheduledPickupAt is required for scheduled rides.",
+      path:    ["scheduledPickupAt"],
+    },
+  )
+  .refine(
+    (data) => {
+      if (data.rideType === "scheduled" && data.scheduledPickupAt) {
+        const pickup = new Date(data.scheduledPickupAt);
+        const minPickup = new Date(Date.now() + MIN_SCHEDULED_MINUTES * 60 * 1000);
+        return pickup >= minPickup;
+      }
+      return true;
+    },
+    {
+      message: `scheduledPickupAt must be at least ${MIN_SCHEDULED_MINUTES} minutes in the future.`,
+      path:    ["scheduledPickupAt"],
+    },
+  )
+  .refine(
+    (data) => {
+      if (data.rideType === "scheduled" && data.scheduledPickupAt) {
+        const pickup = new Date(data.scheduledPickupAt);
+        const maxPickup = new Date(Date.now() + MAX_SCHEDULED_DAYS * 24 * 60 * 60 * 1000);
+        return pickup <= maxPickup;
+      }
+      return true;
+    },
+    {
+      message: `scheduledPickupAt must be within ${MAX_SCHEDULED_DAYS} days from now.`,
+      path:    ["scheduledPickupAt"],
+    },
+  )
+  .refine(
+    (data) => {
+      if (data.rideType === "immediate" && data.scheduledPickupAt) {
+        return false;
+      }
+      return true;
+    },
+    {
+      message: "scheduledPickupAt must not be provided for immediate rides.",
+      path:    ["scheduledPickupAt"],
     },
   );
 

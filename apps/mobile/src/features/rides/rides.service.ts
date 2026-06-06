@@ -43,6 +43,11 @@ export interface RideRequestData {
   discountApplied:      boolean;
   discountPercent:      number | null;
   originalFareClp:      number | null;
+  autoAssigned?:        boolean;
+  rideType?:            "immediate" | "scheduled";
+  scheduledPickupAt?:   string | null;
+  priorityFeeClp?:      number | null;
+  flightNumber?:        string | null;
 }
 
 /** Subset returned to drivers for their own rides. */
@@ -67,6 +72,10 @@ export interface DriverRideData {
   cancellationReason: string | null;
   cancelledByRole:    string | null;
   createdAt:          string;
+  rideType:           string;
+  scheduledPickupAt:  string | null;
+  priorityFeeClp:     number | null;
+  flightNumber:       string | null;
 }
 
 /** Subset returned to drivers — no passenger identity. */
@@ -102,7 +111,10 @@ export interface CreateRideInput {
   destinationLng:  number;
   distanceMeters:  number;
   durationSeconds: number;
-  notes?:          string;
+  notes?:           string;
+  rideType?:        "immediate" | "scheduled";
+  scheduledPickupAt?: string;
+  flightNumber?:    string;
 }
 
 export const ridesService = {

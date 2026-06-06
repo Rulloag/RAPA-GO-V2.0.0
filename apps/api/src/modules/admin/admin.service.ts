@@ -45,6 +45,10 @@ function toRideResponse(r: AdminRideRow): AdminRideResponse {
     cancellationReason: r.cancellationReason ?? null,
     cancelledByRole:    r.cancelledByRole ?? null,
     createdAt:          r.createdAt.toISOString(),
+    rideType:           r.rideType ?? "immediate",
+    scheduledPickupAt:  r.scheduledPickupAt?.toISOString() ?? null,
+    priorityFeeClp:     r.priorityFeeClp ?? null,
+    flightNumber:       r.flightNumber ?? null,
   };
 }
 
@@ -296,7 +300,10 @@ export class AdminService {
       };
     }
 
-    await driverStatusRepo.setBusy(input.driverUserId, rideId);
+    // Scheduled rides keep driver available until they press "Voy en camino"
+    if (existing.rideType !== "scheduled") {
+      await driverStatusRepo.setBusy(input.driverUserId, rideId);
+    }
 
     auditService.recordSafe({
       eventType: "admin.ride_driver_assigned",

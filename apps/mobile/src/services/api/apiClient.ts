@@ -9,6 +9,9 @@ import {
 } from "./apiErrors.js";
 import { sessionStorageService } from "../../features/auth/sessionStorage.service.js";
 
+// Set to true while a refresh is in flight — prevents concurrent refresh storms
+let refreshInProgress = false;
+
 const BASE_URL = (import.meta.env["VITE_API_BASE_URL"] as string | undefined) ?? "";
 
 /**
@@ -69,8 +72,40 @@ async function request<T>(
     clearTimeout(timerId);
   }
 
-  // 401 — session expired; clear storage and signal the app
+  // 401 — attempt silent token refresh before signalling expiry
   if (response.status === 401) {
+    // Never try to refresh the refresh endpoint itself (would loop)
+    if (!path.includes("/auth/refresh") && !refreshInProgress) {
+      refreshInProgress = true;
+      try {
+        const storedRefresh = await sessionStorageService.loadRefreshToken();
+        if (storedRefresh) {
+          // Inline raw fetch to avoid going through this same interceptor
+          const refreshUrl = `${BASE_URL}/auth/refresh`;
+          const refreshResp = await fetch(refreshUrl, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ refreshToken: storedRefresh }),
+          });
+          if (refreshResp.ok) {
+            type RefreshBody = { ok: true; session: { accessToken: string; expiresAt: string; user: unknown }; refreshToken?: string };
+            const refreshBody = await refreshResp.json() as RefreshBody;
+            if (refreshBody.ok && refreshBody.session) {
+              // Persist new tokens and notify the app to update in-memory state
+              await sessionStorageService.saveSession(refreshBody.session as Parameters<typeof sessionStorageService.saveSession>[0], refreshBody.refreshToken);
+              window.dispatchEvent(new CustomEvent("auth:refreshed", { detail: refreshBody }));
+              // Retry the original request with the new access token
+              const retryOptions: RequestOptions = { ...options, token: refreshBody.session.accessToken };
+              return request<T>(method, path, body, retryOptions);
+            }
+          }
+        }
+      } catch {
+        // refresh failed — fall through to expiry
+      } finally {
+        refreshInProgress = false;
+      }
+    }
     void sessionStorageService.clearSession();
     window.dispatchEvent(new CustomEvent("auth:expired"));
     return authExpiredError();

@@ -101,12 +101,25 @@ export function AuthProvider({ children }: AuthProviderProps): JSX.Element {
     return () => window.removeEventListener("auth:expired", handler);
   }, [history, presentToast]);
 
+  // ── Auth-refreshed event listener (silent token rotation) ──────────────────
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent<{ session: AuthSession }>).detail;
+      if (!detail?.session) return;
+      setSession(detail.session);
+      setUser(detail.session.user as AuthUser);
+      setStatus("authenticated");
+    };
+    window.addEventListener("auth:refreshed", handler);
+    return () => window.removeEventListener("auth:refreshed", handler);
+  }, []);
+
   // ── Login ────────────────────────────────────────────────────────────────────
   const login = useCallback(async (payload: LoginRequest): Promise<AuthResponse> => {
     setStatus("loading");
     const response = await authService.login(payload);
     if (response.ok) {
-      await sessionStorageService.saveSession(response.session);
+      await sessionStorageService.saveSession(response.session, response.refreshToken);
       setSession(response.session);
       setUser(response.session.user);
       setStatus("authenticated");
@@ -121,7 +134,7 @@ export function AuthProvider({ children }: AuthProviderProps): JSX.Element {
     setStatus("loading");
     const response = await authService.register(payload);
     if (response.ok) {
-      await sessionStorageService.saveSession(response.session);
+      await sessionStorageService.saveSession(response.session, response.refreshToken);
       setSession(response.session);
       setUser(response.session.user);
       setStatus("authenticated");

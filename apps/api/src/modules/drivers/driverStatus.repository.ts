@@ -1,8 +1,17 @@
-import { eq } from "drizzle-orm";
+import { eq, and, isNull, isNotNull, gte } from "drizzle-orm";
 import { db } from "../../db/client.js";
-import { driverStatuses } from "../../db/schema/index.js";
+import { driverStatuses, users } from "../../db/schema/index.js";
 import { AppError } from "../../shared/errors/AppError.js";
 import type { DriverStatus } from "../../db/schema/index.js";
+
+export interface AvailableDriverCandidate {
+  driverUserId:       string;
+  currentLat:         number;
+  currentLng:         number;
+  locationUpdatedAt:  Date;
+  lastSeenAt:         Date;
+  currentZone:        string | null;
+}
 
 export class DriverStatusRepository {
   async findByDriverId(driverUserId: string): Promise<DriverStatus | null> {
@@ -71,15 +80,58 @@ export class DriverStatusRepository {
 
   async setAvailable(driverUserId: string): Promise<void> {
     try {
+      const now = new Date();
       await db
         .insert(driverStatuses)
-        .values({ driverUserId, availability: "available", currentRideId: null, lastSeenAt: new Date() })
+        .values({ driverUserId, availability: "available", currentRideId: null, lastSeenAt: now })
         .onConflictDoUpdate({
           target: driverStatuses.driverUserId,
-          set: { availability: "available", currentRideId: null, updatedAt: new Date() },
+          set: { availability: "available", currentRideId: null, lastSeenAt: now, updatedAt: now },
         });
     } catch (err) {
       throw AppError.internal(`Failed to set driver available: ${String(err)}`);
+    }
+  }
+
+  async findAvailableWithLocation(opts: {
+    locationCutoff: Date;
+    lastSeenCutoff: Date;
+  }): Promise<AvailableDriverCandidate[]> {
+    try {
+      const rows = await db
+        .select({
+          driverUserId:      driverStatuses.driverUserId,
+          currentLat:        driverStatuses.currentLat,
+          currentLng:        driverStatuses.currentLng,
+          locationUpdatedAt: driverStatuses.locationUpdatedAt,
+          lastSeenAt:        driverStatuses.lastSeenAt,
+          currentZone:       driverStatuses.currentZone,
+        })
+        .from(driverStatuses)
+        .innerJoin(users, eq(driverStatuses.driverUserId, users.id))
+        .where(
+          and(
+            eq(driverStatuses.availability, "available"),
+            isNull(driverStatuses.currentRideId),
+            isNotNull(driverStatuses.currentLat),
+            isNotNull(driverStatuses.currentLng),
+            isNotNull(driverStatuses.locationUpdatedAt),
+            gte(driverStatuses.locationUpdatedAt, opts.locationCutoff),
+            gte(driverStatuses.lastSeenAt, opts.lastSeenCutoff),
+            eq(users.role, "driver"),
+            eq(users.status, "active"),
+          ),
+        );
+
+      return rows.filter(
+        (r): r is AvailableDriverCandidate =>
+          r.currentLat !== null &&
+          r.currentLng !== null &&
+          r.locationUpdatedAt !== null &&
+          r.lastSeenAt !== null,
+      );
+    } catch (err) {
+      throw AppError.internal(`Failed to query available drivers: ${String(err)}`);
     }
   }
 }

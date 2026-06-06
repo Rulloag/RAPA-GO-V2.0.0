@@ -246,4 +246,59 @@ export class AuthService {
       },
     };
   }
+
+  async refreshSession(rawRefreshToken: string): Promise<AuthServiceResult> {
+    const { createHash } = await import("node:crypto");
+    const tokenHash = createHash("sha256").update(rawRefreshToken).digest("hex");
+
+    const stored = await sessionService.findValidRefreshToken(tokenHash);
+    if (!stored) {
+      return { ok: false, code: "AUTH_REFRESH_INVALID", message: "Refresh token is invalid or expired.", statusCode: 401 };
+    }
+
+    const user = await usersRepository.findById(stored.userId);
+    if (!user) {
+      return { ok: false, code: "UNAUTHORIZED", message: "User not found.", statusCode: 401 };
+    }
+    if (user.status === "suspended" || user.status === "banned") {
+      return { ok: false, code: "AUTH_ACCOUNT_SUSPENDED", message: "Account is suspended.", statusCode: 403 };
+    }
+
+    const authUser: AuthUser = {
+      id:         user.id,
+      email:      user.email,
+      name:       user.name,
+      role:       toUserRole(user.role),
+      avatarUrl:  user.avatarUrl,
+      isVerified: user.isVerified,
+    };
+
+    // Rotate: revoke old refresh token, issue new pair
+    await sessionService.revokeRefreshToken(stored.id);
+
+    const newAccessToken  = tokenService.issueAccessToken(authUser);
+    const newRefreshToken = tokenService.issueRefreshToken();
+
+    await sessionService.createSession({
+      userId:          user.id,
+      accessTokenHash: newAccessToken.hash,
+      expiresAt:       newAccessToken.expiresAt,
+    });
+    await sessionService.createRefreshToken({
+      userId:              user.id,
+      tokenHash:           newRefreshToken.hash,
+      expiresAt:           newRefreshToken.expiresAt,
+      rotatedFromTokenId:  stored.id,
+    });
+
+    return {
+      ok: true,
+      session: {
+        accessToken:  newAccessToken.token,
+        expiresAt:    newAccessToken.expiresAt.toISOString(),
+        user:         authUser,
+      },
+      refreshToken: newRefreshToken.token,
+    };
+  }
 }

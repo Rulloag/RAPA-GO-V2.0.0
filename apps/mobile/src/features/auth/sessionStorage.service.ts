@@ -13,20 +13,21 @@ import type { AuthSession } from "./auth.types.js";
  */
 
 const SESSION_KEY = "rapa_go_session";
+const REFRESH_KEY  = "rapa_go_refresh";
 
 export interface PersistedSession {
-  accessToken: string;
-  expiresAt:   string;    // ISO 8601
-  userId:      string;
-  email:       string;
-  name:        string;
-  role:        string;
-  avatarUrl:   string | null;
-  isVerified:  boolean;
+  accessToken:  string;
+  expiresAt:    string;    // ISO 8601
+  userId:       string;
+  email:        string;
+  name:         string;
+  role:         string;
+  avatarUrl:    string | null;
+  isVerified:   boolean;
 }
 
 class SessionStorageService {
-  async saveSession(session: AuthSession): Promise<void> {
+  async saveSession(session: AuthSession, refreshToken?: string): Promise<void> {
     const persisted: PersistedSession = {
       accessToken: session.accessToken,
       expiresAt:   session.expiresAt,
@@ -38,6 +39,9 @@ class SessionStorageService {
       isVerified:  session.user.isVerified,
     };
     await SecureStorage.set(SESSION_KEY, JSON.stringify(persisted));
+    if (refreshToken) {
+      await SecureStorage.set(REFRESH_KEY, refreshToken);
+    }
   }
 
   async loadSession(): Promise<PersistedSession | null> {
@@ -58,11 +62,25 @@ class SessionStorageService {
     }
   }
 
+  async loadRefreshToken(): Promise<string | null> {
+    try {
+      const raw = await SecureStorage.get(REFRESH_KEY);
+      return raw ? (raw as string) : null;
+    } catch {
+      return null;
+    }
+  }
+
   async clearSession(): Promise<void> {
     try {
       await SecureStorage.remove(SESSION_KEY);
     } catch {
-      // ignore — key may not exist
+      // ignore
+    }
+    try {
+      await SecureStorage.remove(REFRESH_KEY);
+    } catch {
+      // ignore
     }
   }
 }

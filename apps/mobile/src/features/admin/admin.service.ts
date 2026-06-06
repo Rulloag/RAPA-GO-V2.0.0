@@ -60,6 +60,10 @@ export interface AdminRideData {
   cancellationReason: string | null;
   cancelledByRole:    string | null;
   createdAt:          string;
+  rideType?:          "immediate" | "scheduled";
+  scheduledPickupAt?: string | null;
+  priorityFeeClp?:    number | null;
+  flightNumber?:      string | null;
 }
 
 export interface ActiveDriverData {

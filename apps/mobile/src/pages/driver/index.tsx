@@ -30,6 +30,7 @@ import {
   listOutline,
   personOutline,
   refreshOutline,
+  warningOutline,
 } from "ionicons/icons";
 import { IonIcon } from "@ionic/react";
 import { ModulePlaceholderPage } from "../../components/ModulePlaceholderPage";
@@ -514,6 +515,21 @@ function DriverRideRouteMap({ status, driverPos, originLat, originLng, destinati
   );
 }
 
+// ── Scheduled helpers ─────────────────────────────────────────────────────────
+
+function fmtScheduledPickup(iso: string): string {
+  return new Date(iso).toLocaleString("es-CL", {
+    day: "2-digit", month: "2-digit", year: "numeric",
+    hour: "2-digit", minute: "2-digit",
+  });
+}
+
+function isPickupSoon(iso: string): boolean {
+  return new Date(iso).getTime() <= Date.now() + 2 * 60 * 60 * 1000;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+
 export function DriverTripsPage(): JSX.Element {
   return <DriverMyRidesPage />;
 }
@@ -732,9 +748,150 @@ function DriverMyRidesPage(): JSX.Element {
           <IonText color="medium"><p>No tienes viajes todavía.</p></IonText>
         )}
 
-        {!loading && rides.length > 0 && (
+        {/* ── Próximos viajes programados ───────────────────────────────── */}
+        {!loading && rides.some(r => r.rideType === "scheduled" && r.status === "accepted") && (
+          <div style={{ marginBottom: "20px" }}>
+            <div style={{
+              fontWeight:  700, fontSize: "0.9rem", marginBottom: "10px",
+              color:       "var(--ion-color-warning-shade)",
+              display:     "flex", alignItems: "center", gap: "6px",
+            }}>
+              <IonIcon icon={warningOutline} /> Próximos viajes programados
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+              {[...rides]
+                .filter(r => r.rideType === "scheduled" && r.status === "accepted")
+                .sort((a, b) => {
+                  if (!a.scheduledPickupAt) return 1;
+                  if (!b.scheduledPickupAt) return -1;
+                  return new Date(a.scheduledPickupAt).getTime() - new Date(b.scheduledPickupAt).getTime();
+                })
+                .map((ride) => {
+                  const soon = ride.scheduledPickupAt ? isPickupSoon(ride.scheduledPickupAt) : false;
+                  return (
+                    <IonCard key={ride.id} style={{ margin: 0, border: "2px solid var(--ion-color-warning)" }}>
+                      <IonCardContent style={{ padding: "14px 16px" }}>
+
+                        {/* Alerta / aviso horario */}
+                        {soon ? (
+                          <div style={{
+                            display: "flex", alignItems: "center", gap: "6px",
+                            padding: "8px 10px",
+                            background: "var(--ion-color-danger-tint, #fde8e8)",
+                            borderRadius: "8px", marginBottom: "10px",
+                            fontSize: "0.8rem", color: "var(--ion-color-danger)", fontWeight: 600,
+                          }}>
+                            <IonIcon icon={warningOutline} style={{ fontSize: "1rem", flexShrink: 0 }} />
+                            Reserva próxima: prepárate para ir al punto de recogida.
+                          </div>
+                        ) : (
+                          <div style={{
+                            padding: "6px 10px", background: "var(--ion-color-light)",
+                            borderRadius: "8px", marginBottom: "10px",
+                            fontSize: "0.78rem", color: "var(--ion-color-medium)",
+                          }}>
+                            Viaje programado para más tarde.
+                          </div>
+                        )}
+
+                        {/* Badges */}
+                        <div style={{ display: "flex", flexWrap: "wrap", gap: "4px", marginBottom: "8px" }}>
+                          <IonBadge color="primary" style={{ fontSize: "0.7rem" }}>Programado asignado</IonBadge>
+                          <IonBadge color="warning" style={{ fontSize: "0.7rem", fontWeight: 700 }}>PRIORITARIO</IonBadge>
+                        </div>
+
+                        {/* Origen → Destino */}
+                        <div style={{ fontWeight: 600, fontSize: "0.9rem", marginBottom: "8px" }}>
+                          {ride.originText} → {ride.destinationText}
+                        </div>
+
+                        {/* Bloque scheduled */}
+                        <div style={{
+                          padding: "8px 10px",
+                          background: "var(--ion-color-warning-tint, #fff8e1)",
+                          borderRadius: "8px", marginBottom: "8px", fontSize: "0.8rem",
+                        }}>
+                          {ride.scheduledPickupAt && (
+                            <div style={{ fontWeight: 600, marginBottom: "2px" }}>
+                              Recogida: {fmtScheduledPickup(ride.scheduledPickupAt)}
+                            </div>
+                          )}
+                          {ride.flightNumber && (
+                            <div>Vuelo: <strong>{ride.flightNumber}</strong></div>
+                          )}
+                          {ride.priorityFeeClp != null && ride.priorityFeeClp > 0 && (
+                            <div style={{ color: "var(--ion-color-warning-shade)", marginTop: "2px" }}>
+                              Recargo prioritario incluido: <strong>${ride.priorityFeeClp.toLocaleString("es-CL")} CLP</strong>
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Tarifa */}
+                        {ride.estimatedFareClp != null && (
+                          <div style={{ fontSize: "0.78rem", fontWeight: 500, marginBottom: "6px" }}>
+                            Tarifa est.: ${ride.estimatedFareClp.toLocaleString("es-CL")} CLP
+                          </div>
+                        )}
+
+                        {/* Advertencia de horario */}
+                        {ride.scheduledPickupAt && (
+                          <div style={{ fontSize: "0.75rem", color: "var(--ion-color-medium)", marginBottom: "8px", fontStyle: "italic" }}>
+                            Programado para {fmtScheduledPickup(ride.scheduledPickupAt)}. Inicia el traslado cuando corresponda.
+                          </div>
+                        )}
+
+                        {ride.notes && (
+                          <div style={{ fontSize: "0.8rem", color: "var(--ion-color-medium)", marginBottom: "8px" }}>{ride.notes}</div>
+                        )}
+
+                        {/* Acciones */}
+                        <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+                          <IonButton size="small" color="tertiary" expand="block"
+                            disabled={enRouting === ride.id}
+                            onClick={() => void handleEnRoute(ride.id)}
+                          >
+                            {enRouting === ride.id ? <IonSpinner name="dots" /> : "Voy en camino"}
+                          </IonButton>
+                          <IonButton size="small" fill="outline" color="danger" expand="block"
+                            disabled={cancelling === ride.id}
+                            onClick={() => void handleCancelAccepted(ride.id)}
+                          >
+                            {cancelling === ride.id ? <IonSpinner name="dots" /> : "Cancelar reserva"}
+                          </IonButton>
+                          <IonButton size="small" fill="outline" color="medium" expand="block"
+                            disabled={sharingLocation}
+                            onClick={() => void handleShareLocation()}
+                          >
+                            {sharingLocation ? <IonSpinner name="dots" /> : "📍 Mi ubicación"}
+                          </IonButton>
+                          <WhatsAppButton
+                            phone={RAPAGO_CONTACT.adminPhone}
+                            message={WA_MESSAGES.driverToPassenger({ passengerName: "pasajero", driverName: "conductor", origin: ride.originText })}
+                            label="Contactar operador"
+                          />
+                        </div>
+
+                      </IonCardContent>
+                    </IonCard>
+                  );
+                })}
+            </div>
+          </div>
+        )}
+
+        {/* Separador "Otros viajes" si hay ambos tipos */}
+        {!loading &&
+         rides.some(r => r.rideType === "scheduled" && r.status === "accepted") &&
+         rides.some(r => !(r.rideType === "scheduled" && r.status === "accepted")) && (
+          <div style={{ fontWeight: 600, fontSize: "0.85rem", marginBottom: "10px", color: "var(--ion-color-dark)" }}>
+            Otros viajes
+          </div>
+        )}
+
+        {/* ── Lista principal (excluye scheduled accepted) ──────────────── */}
+        {!loading && rides.filter(r => !(r.rideType === "scheduled" && r.status === "accepted")).length > 0 && (
           <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
-            {rides.map((ride) => {
+            {rides.filter(r => !(r.rideType === "scheduled" && r.status === "accepted")).map((ride) => {
               const color = DRIVER_STATUS_COLOR[ride.status] ?? "medium";
               const label = DRIVER_STATUS_LABEL[ride.status] ?? ride.status;
               const ts = (lbl: string, iso: string | null) =>

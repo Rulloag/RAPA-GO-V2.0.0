@@ -80,4 +80,34 @@ export class SessionService {
       throw AppError.internal(`Failed to validate session: ${String(err)}`);
     }
   }
+
+  async findValidRefreshToken(tokenHash: string): Promise<{ id: string; userId: string } | null> {
+    try {
+      const rows = await db
+        .select({ id: refreshTokens.id, userId: refreshTokens.userId })
+        .from(refreshTokens)
+        .where(
+          and(
+            eq(refreshTokens.tokenHash, tokenHash),
+            isNull(refreshTokens.revokedAt),
+            gt(refreshTokens.expiresAt, new Date()),
+          ),
+        )
+        .limit(1);
+      return rows[0] ?? null;
+    } catch (err) {
+      throw AppError.internal(`Failed to find refresh token: ${String(err)}`);
+    }
+  }
+
+  async revokeRefreshToken(tokenId: string): Promise<void> {
+    try {
+      await db
+        .update(refreshTokens)
+        .set({ revokedAt: new Date() })
+        .where(eq(refreshTokens.id, tokenId));
+    } catch (err) {
+      throw AppError.internal(`Failed to revoke refresh token: ${String(err)}`);
+    }
+  }
 }

@@ -3,6 +3,7 @@ import { SessionService } from "../auth/session.service.js";
 import { UsersRepository } from "../users/users.repository.js";
 import { RidesRepository, type RideWithDriverName } from "./rides.repository.js";
 import { DriverStatusRepository } from "../drivers/driverStatus.repository.js";
+import { FareSettingsRepository } from "../fareSettings/fareSettings.repository.js";
 import { AppError } from "../../shared/errors/AppError.js";
 import type {
   RideRequestResponse, RidesListResult, RideResult,
@@ -12,11 +13,31 @@ import type {
 import type { RideRequest } from "../../db/schema/index.js";
 import type { CreateRideRequestInput, CancelAcceptedInput } from "./rides.schemas.js";
 
-const tokenService   = new TokenService();
-const sessionService = new SessionService();
-const usersRepo      = new UsersRepository();
-const ridesRepo           = new RidesRepository();
-const driverStatusRepo    = new DriverStatusRepository();
+const tokenService      = new TokenService();
+const sessionService    = new SessionService();
+const usersRepo         = new UsersRepository();
+const ridesRepo         = new RidesRepository();
+const driverStatusRepo  = new DriverStatusRepository();
+const fareSettingsRepo  = new FareSettingsRepository();
+
+const DEFAULT_PRIORITY_SURCHARGE_CLP = 2000;
+
+// ── Auto-assignment parameters ────────────────────────────────────────────────
+const MAX_DRIVER_LOCATION_AGE_MINUTES = 10;
+const MAX_DRIVER_LAST_SEEN_AGE_MINUTES = 60;
+const MAX_PICKUP_DISTANCE_KM = 15;
+
+function haversineKm(lat1: number, lng1: number, lat2: number, lng2: number): number {
+  const R = 6371;
+  const dLat = ((lat2 - lat1) * Math.PI) / 180;
+  const dLng = ((lng2 - lng1) * Math.PI) / 180;
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos((lat1 * Math.PI) / 180) *
+    Math.cos((lat2 * Math.PI) / 180) *
+    Math.sin(dLng / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
 
 type FareResult = { fareClp: number; source: "google_maps" | "zone_fare" };
 
@@ -72,6 +93,10 @@ function toResponse(
     discountApplied:  discountInfo != null,
     discountPercent:  discountInfo?.discountPercent ?? null,
     originalFareClp:  discountInfo?.originalFare ?? null,
+    rideType:         r.rideType ?? "immediate",
+    scheduledPickupAt: r.scheduledPickupAt?.toISOString() ?? null,
+    priorityFeeClp:   r.priorityFeeClp ?? null,
+    flightNumber:     r.flightNumber ?? null,
   };
 }
 
@@ -100,6 +125,10 @@ function toDriverRideResponse(r: RideRequest): DriverRideResponse {
     cancellationReason:    r.cancellationReason ?? null,
     cancelledByRole:       r.cancelledByRole ?? null,
     createdAt:             r.createdAt.toISOString(),
+    rideType:              r.rideType ?? "immediate",
+    scheduledPickupAt:     r.scheduledPickupAt?.toISOString() ?? null,
+    priorityFeeClp:        r.priorityFeeClp ?? null,
+    flightNumber:          r.flightNumber ?? null,
   };
 }
 
@@ -148,6 +177,34 @@ async function authenticate(accessToken: string): Promise<AuthResult> {
   return { ok: true, userId: user.id, role: user.role };
 }
 
+async function autoAssignNearestDriver(
+  rideId: string,
+  originLat: number,
+  originLng: number,
+): Promise<(import("../../db/schema/index.js").RideRequest) | null> {
+  const now = new Date();
+  const locationCutoff = new Date(now.getTime() - MAX_DRIVER_LOCATION_AGE_MINUTES * 60 * 1000);
+  const lastSeenCutoff  = new Date(now.getTime() - MAX_DRIVER_LAST_SEEN_AGE_MINUTES * 60 * 1000);
+
+  const candidates = await driverStatusRepo.findAvailableWithLocation({ locationCutoff, lastSeenCutoff });
+
+  const ranked = candidates
+    .map(c => ({ ...c, distanceKm: haversineKm(originLat, originLng, c.currentLat, c.currentLng) }))
+    .filter(c => c.distanceKm <= MAX_PICKUP_DISTANCE_KM)
+    .sort((a, b) => a.distanceKm - b.distanceKm);
+
+  for (const candidate of ranked) {
+    const assigned = await ridesRepo.accept(rideId, candidate.driverUserId);
+    if (assigned) {
+      await driverStatusRepo.setBusy(candidate.driverUserId, rideId);
+      return assigned;
+    }
+    // Race condition — another request grabbed this driver; try next
+  }
+
+  return null;
+}
+
 export class RidesService {
   async listMyRides(accessToken: string): Promise<RidesListResult> {
     const auth = await authenticate(accessToken);
@@ -170,28 +227,46 @@ export class RidesService {
     }
 
     const { fareClp: baseFare, source: fareSource } = estimateFare(input.distanceMeters);
+    const rideType = input.rideType ?? "immediate";
 
-    let finalFare    = baseFare;
-    let finalSource  = fareSource as string;
-    let discountInfo: { discountPercent: number; originalFare: number } | undefined;
-    try {
-      const { ReferralsRepository } = await import("../referrals/referrals.repository.js");
-      const referralsRepo = new ReferralsRepository();
-      const referralUse = await referralsRepo.findUseByReferredUserId(auth.userId);
-      if (referralUse && !referralUse.convertedAt) {
-        const { referralCodes } = await import("../../db/schema/index.js");
-        const { db } = await import("../../db/client.js");
-        const { eq } = await import("drizzle-orm");
-        const codeRows = await db.select().from(referralCodes).where(eq(referralCodes.id, referralUse.referralCodeId)).limit(1);
-        const refCode = codeRows[0] ?? null;
-        if (refCode?.isActive && refCode.discountType === "percentage" && refCode.discountAmount) {
-          const discountPercent = refCode.discountAmount;
-          finalFare   = Math.max(Math.round(baseFare * (1 - discountPercent / 100)), 0);
-          finalSource = `${fareSource}_with_referral`;
-          discountInfo = { discountPercent, originalFare: baseFare };
-        }
+    // ── Priority surcharge for scheduled rides ──────────────────────────────
+    let priorityFeeClp: number | null = null;
+    if (rideType === "scheduled") {
+      try {
+        const setting = await fareSettingsRepo.findByType("priority_surcharge");
+        priorityFeeClp = (setting?.isActive ? setting.value : null) ?? DEFAULT_PRIORITY_SURCHARGE_CLP;
+      } catch {
+        priorityFeeClp = DEFAULT_PRIORITY_SURCHARGE_CLP;
       }
-    } catch { }
+    }
+
+    let finalFare    = baseFare + (priorityFeeClp ?? 0);
+    let finalSource  = rideType === "scheduled" ? `${fareSource}_scheduled` : (fareSource as string);
+    let discountInfo: { discountPercent: number; originalFare: number } | undefined;
+
+    // ── Referral discount (immediate rides only — not stacked with priority) ─
+    if (rideType === "immediate") {
+      try {
+        const { ReferralsRepository } = await import("../referrals/referrals.repository.js");
+        const referralsRepo = new ReferralsRepository();
+        const referralUse = await referralsRepo.findUseByReferredUserId(auth.userId);
+        if (referralUse && !referralUse.convertedAt) {
+          const { referralCodes } = await import("../../db/schema/index.js");
+          const { db } = await import("../../db/client.js");
+          const { eq } = await import("drizzle-orm");
+          const codeRows = await db.select().from(referralCodes).where(eq(referralCodes.id, referralUse.referralCodeId)).limit(1);
+          const refCode = codeRows[0] ?? null;
+          if (refCode?.isActive && refCode.discountType === "percentage" && refCode.discountAmount) {
+            const discountPercent = refCode.discountAmount;
+            finalFare   = Math.max(Math.round(baseFare * (1 - discountPercent / 100)), 0);
+            finalSource = `${fareSource}_with_referral`;
+            discountInfo = { discountPercent, originalFare: baseFare };
+          }
+        }
+      } catch { }
+    }
+
+    const scheduledPickupAt = input.scheduledPickupAt ? new Date(input.scheduledPickupAt) : null;
 
     const row = await ridesRepo.create({
       passengerUserId:       auth.userId,
@@ -206,7 +281,24 @@ export class RidesService {
       notes:                 input.notes ?? null,
       estimatedFareClp:      finalFare,
       fareCalculationSource: finalSource,
+      rideType,
+      scheduledPickupAt,
+      priorityFeeClp,
+      flightNumber:          input.flightNumber ?? null,
     });
+
+    // ── Auto-assignment: only for immediate rides ───────────────────────────
+    if (rideType === "immediate" && input.originLat != null && input.originLng != null) {
+      try {
+        const assigned = await autoAssignNearestDriver(row.id, input.originLat, input.originLng);
+        if (assigned) {
+          return { ok: true, ride: { ...toResponse(assigned, discountInfo), autoAssigned: true } };
+        }
+      } catch {
+        // Auto-assignment failure is non-fatal — ride stays in requested for admin
+      }
+    }
+
     return { ok: true, ride: toResponse(row, discountInfo) };
   }
 

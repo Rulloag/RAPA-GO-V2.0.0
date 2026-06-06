@@ -39,4 +39,12 @@ export const authService = {
     }
     return result.data;
   },
+
+  async refresh(refreshToken: string): Promise<AuthResponse> {
+    const result = await apiClient.post<AuthResponse>("/auth/refresh", { refreshToken }, undefined, 0);
+    if (!result.ok) {
+      return { ok: false, code: result.code, message: result.message };
+    }
+    return result.data;
+  },
 };

@@ -3,7 +3,7 @@ import { randomBytes, createHash } from "node:crypto";
 import { AppError } from "../../shared/errors/AppError.js";
 import type { AuthUser } from "./auth.types.js";
 
-const ACCESS_TOKEN_TTL_SECONDS = 15 * 60; // 15 minutes
+const ACCESS_TOKEN_TTL_SECONDS = 8 * 60 * 60; // 8 hours
 const REFRESH_TOKEN_BYTES = 48;
 
 export interface AccessTokenPayload {

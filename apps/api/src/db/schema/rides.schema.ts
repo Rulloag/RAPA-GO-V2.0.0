@@ -31,6 +31,10 @@ export const rideRequests = pgTable("ride_requests", {
   offlinePassengerName:  varchar("offline_passenger_name",  { length: 120 }),
   offlinePassengerPhone: varchar("offline_passenger_phone", { length: 30 }),
   offlinePassengerEmail: varchar("offline_passenger_email", { length: 200 }),
+  rideType:             varchar("ride_type", { length: 20 }).notNull().default("immediate"),
+  scheduledPickupAt:    timestamp("scheduled_pickup_at",  { withTimezone: true }),
+  priorityFeeClp:       integer("priority_fee_clp"),
+  flightNumber:         varchar("flight_number", { length: 20 }),
   createdAt:            timestamp("created_at",    { withTimezone: true }).notNull().defaultNow(),
   updatedAt:            timestamp("updated_at",    { withTimezone: true }).notNull().defaultNow(),
 });
