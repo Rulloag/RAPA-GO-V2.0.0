@@ -417,23 +417,40 @@ function RequestRidePage(): JSX.Element {
   const [submitted,         setSubmitted]         = useState<RideRequestData | null>(null);
   const [farePreview,       setFarePreview]       = useState<{ km: number; minutes: number; fare: number; isZoneFare: boolean } | null>(null);
 
+  const [currentLat,        setCurrentLat]        = useState<number | null>(null);
+  const [currentLng,        setCurrentLng]        = useState<number | null>(null);
+  const [locating,          setLocating]          = useState(false);
+  const [locationError,     setLocationError]     = useState<string | null>(null);
+  const [pickupConfirmed,   setPickupConfirmed]   = useState(false);
+
   useEffect(() => {
-    if (!selectedOriginId || !selectedDestId) { setFarePreview(null); return; }
+    if (!selectedOriginId || !selectedDestId) {
+      setFarePreview(null);
+      return;
+    }
+
     const dist = getDistanceBetween(selectedOriginId, selectedDestId);
-    if (!dist) { setFarePreview(null); return; }
-    // Check zone_fare first, then calculate by km
-    const originName = RAPA_NUI_PLACES.find(p => p.id === selectedOriginId)?.name ?? originInput;
-    const destName   = RAPA_NUI_PLACES.find(p => p.id === selectedDestId)?.name ?? destInput;
-    fareSettingsService.getZoneFares({ zoneFrom: originName, zoneTo: destName }).then(zones => {
-      const zone = zones.find(z => z.isActive);
-      if (zone) {
-        setFarePreview({ km: dist.km, minutes: dist.minutes, fare: zone.fare, isZoneFare: true });
-      } else {
+    if (!dist) {
+      setFarePreview(null);
+      return;
+    }
+
+    const originName = RAPA_NUI_PLACES.find((p) => p.id === selectedOriginId)?.name ?? originInput;
+    const destName   = RAPA_NUI_PLACES.find((p) => p.id === selectedDestId)?.name ?? destInput;
+
+    fareSettingsService
+      .getZoneFares({ zoneFrom: originName, zoneTo: destName })
+      .then((zones) => {
+        const zone = zones.find((z) => z.isActive);
+        if (zone) {
+          setFarePreview({ km: dist.km, minutes: dist.minutes, fare: zone.fare, isZoneFare: true });
+        } else {
+          setFarePreview({ km: dist.km, minutes: dist.minutes, fare: getEstimatedFare(dist.km), isZoneFare: false });
+        }
+      })
+      .catch(() => {
         setFarePreview({ km: dist.km, minutes: dist.minutes, fare: getEstimatedFare(dist.km), isZoneFare: false });
-      }
-    }).catch(() => {
-      setFarePreview({ km: dist.km, minutes: dist.minutes, fare: getEstimatedFare(dist.km), isZoneFare: false });
-    });
+      });
   }, [selectedOriginId, selectedDestId, originInput, destInput]);
 
   const sortedPlaces = [...RAPA_NUI_PLACES].sort((a, b) => {
@@ -442,53 +459,139 @@ function RequestRidePage(): JSX.Element {
     return a.sortOrder - b.sortOrder;
   });
 
+  function getPlaceCoordinates(placeId: string): { lat?: number | null; lng?: number | null } {
+    const place = RAPA_NUI_PLACES.find((p) => p.id === placeId) as
+      | ({ lat?: number | null; lng?: number | null; latitude?: number | null; longitude?: number | null })
+      | undefined;
+
+    if (!place) return {};
+
+    return {
+      lat: place.lat ?? place.latitude ?? null,
+      lng: place.lng ?? place.longitude ?? null,
+    };
+  }
+
   function handleOriginPlaceSelect(placeId: string) {
-    const place = RAPA_NUI_PLACES.find(p => p.id === placeId);
+    const place = RAPA_NUI_PLACES.find((p) => p.id === placeId);
     if (place) {
       setOriginInput(place.name);
       setSelectedOriginId(placeId);
+      setPickupConfirmed(false);
     }
   }
 
   function handleDestPlaceSelect(placeId: string) {
-    const place = RAPA_NUI_PLACES.find(p => p.id === placeId);
+    const place = RAPA_NUI_PLACES.find((p) => p.id === placeId);
     if (place) {
       setDestInput(place.name);
       setSelectedDestId(placeId);
     }
   }
 
+  function handleUseCurrentLocation() {
+    setLocationError(null);
+
+    if (!navigator.geolocation) {
+      setLocationError("Tu navegador no permite obtener ubicación.");
+      return;
+    }
+
+    setLocating(true);
+
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        setCurrentLat(position.coords.latitude);
+        setCurrentLng(position.coords.longitude);
+        setOriginInput("Mi ubicación actual");
+        setSelectedOriginId("");
+        setPickupConfirmed(false);
+        setLocating(false);
+      },
+      () => {
+        setLocationError("No se pudo obtener tu ubicación. Activa el GPS y vuelve a intentar.");
+        setLocating(false);
+      },
+      {
+        enableHighAccuracy: true,
+        timeout: 12000,
+        maximumAge: 30000,
+      },
+    );
+  }
+
   async function handleRequest() {
     if (!session?.accessToken) return;
+
     const origin = originInput.trim();
     const dest   = destInput.trim();
+
     if (!origin || !dest) {
       setSubmitError("Origen y destino son requeridos.");
       return;
     }
 
+    if (!pickupConfirmed) {
+      setSubmitError("Confirma primero el punto de partida recomendado.");
+      return;
+    }
+
     setSubmitting(true);
     setSubmitError(null);
+
     try {
       const input: import("../../features/rides/rides.service").CreateRideInput = {
         originText:      origin,
         destinationText: dest,
       };
+
+      const notes: string[] = [];
+
+      if (currentLat !== null && currentLng !== null) {
+        notes.push(`Ubicación GPS pasajero: ${currentLat.toFixed(6)}, ${currentLng.toFixed(6)}.`);
+      }
+
+      notes.push("Punto de partida confirmado por pasajero. Si la calle no es accesible, recoger en el punto recomendado por la app.");
+
       const trimNotes = notesInput.trim();
-      if (trimNotes) input.notes = trimNotes;
+      if (trimNotes) notes.push(trimNotes);
+
+      input.notes = notes.join(" ");
+
       const ride = await ridesService.createRideRequest(session.accessToken, input);
+
       setSubmitted(ride);
       setOriginInput("");
       setDestInput("");
       setNotesInput("");
       setSelectedOriginId("");
       setSelectedDestId("");
+      setCurrentLat(null);
+      setCurrentLng(null);
+      setPickupConfirmed(false);
     } catch (err) {
       setSubmitError(err instanceof Error ? err.message : "Error al solicitar el viaje.");
     } finally {
       setSubmitting(false);
     }
   }
+
+  const originCoords = selectedOriginId ? getPlaceCoordinates(selectedOriginId) : {};
+  const destCoords   = selectedDestId ? getPlaceCoordinates(selectedDestId) : {};
+
+  const mapOrigin = {
+    ...(selectedOriginId ? { id: selectedOriginId } : {}),
+    text: originInput.trim() || "Mi ubicación",
+    lat: currentLat ?? originCoords.lat ?? null,
+    lng: currentLng ?? originCoords.lng ?? null,
+  };
+
+  const mapDestination = {
+    ...(selectedDestId ? { id: selectedDestId } : {}),
+    text: destInput.trim() || "Destino",
+    lat: destCoords.lat ?? null,
+    lng: destCoords.lng ?? null,
+  };
 
   return (
     <IonPage>
@@ -497,167 +600,262 @@ function RequestRidePage(): JSX.Element {
           <IonTitle>Solicitar Viaje</IonTitle>
         </IonToolbar>
       </IonHeader>
+
       <IonContent className="ion-padding">
-        <MapFallback
-          origin={{ ...(selectedOriginId ? { id: selectedOriginId } : {}), text: originInput.trim() || "Origen" }}
-          destination={{ ...(selectedDestId ? { id: selectedDestId } : {}), text: destInput.trim() || "Destino" }}
-          height={180}
-        />
-
-        <IonCard style={{ marginTop: "12px" }}>
-          <IonCardContent style={{ paddingTop: "12px" }}>
-            <IonItem lines="full">
-              <IonLabel>Lugar frecuente (origen)</IonLabel>
-              <IonSelect
-                interface="action-sheet"
-                placeholder="Seleccionar origen frecuente"
-                value={selectedOriginId}
-                onIonChange={(e) => handleOriginPlaceSelect(e.detail.value as string)}
-              >
-                {sortedPlaces.map(place => (
-                  <IonSelectOption key={place.id} value={place.id}>
-                    {place.name}
-                  </IonSelectOption>
-                ))}
-              </IonSelect>
-            </IonItem>
-
-            <IonItem lines="full">
-              <IonLabel position="stacked">Origen</IonLabel>
-              <IonInput
-                value={originInput}
-                onIonInput={(e) => { setOriginInput(String(e.detail.value ?? "")); setSelectedOriginId(""); }}
-                placeholder="Ej: Hotel Hanga Roa Eco Village"
-                maxlength={150}
-                clearInput
+        <div style={{ display: "flex", flexDirection: "column", gap: "14px", paddingBottom: "90px" }}>
+          <IonCard style={{ margin: 0, borderRadius: "24px", overflow: "hidden" }}>
+            <IonCardContent style={{ padding: 0 }}>
+              <MapFallback
+                origin={mapOrigin}
+                destination={mapDestination}
+                height={320}
+                showRoute
               />
-            </IonItem>
 
-            <IonItem lines="full" style={{ marginTop: "8px" }}>
-              <IonLabel>Lugar frecuente (destino)</IonLabel>
-              <IonSelect
-                interface="action-sheet"
-                placeholder="Seleccionar destino frecuente"
-                value={selectedDestId}
-                onIonChange={(e) => handleDestPlaceSelect(e.detail.value as string)}
-              >
-                {sortedPlaces.map(place => (
-                  <IonSelectOption key={place.id} value={place.id}>
-                    {place.name}
-                  </IonSelectOption>
-                ))}
-              </IonSelect>
-            </IonItem>
-
-            <IonItem lines="full" style={{ marginTop: "8px" }}>
-              <IonLabel position="stacked">Destino</IonLabel>
-              <IonInput
-                value={destInput}
-                onIonInput={(e) => { setDestInput(String(e.detail.value ?? "")); setSelectedDestId(""); }}
-                placeholder="Ej: Aeropuerto Mataveri"
-                maxlength={150}
-                clearInput
-              />
-            </IonItem>
-
-            <IonItem lines="none" style={{ marginTop: "8px" }}>
-              <IonLabel position="stacked">Notas (opcional)</IonLabel>
-              <IonTextarea
-                value={notesInput}
-                onIonInput={(e) => setNotesInput(String(e.detail.value ?? ""))}
-                placeholder="Ej: Llevar maletas grandes"
-                maxlength={500}
-                rows={3}
-              />
-              <IonNote slot="helper" style={{ fontSize: "0.7rem" }}>Máximo 500 caracteres.</IonNote>
-            </IonItem>
-
-            {submitted && (
-              <div style={{ margin: "10px 0 0" }}>
-                <IonText color="success">
-                  <p style={{ margin: 0, fontSize: "0.85rem" }}>
-                    ✓ Solicitud enviada — Estado: {RIDE_STATUS_LABEL[submitted.status] ?? submitted.status}
-                  </p>
-                </IonText>
-                {submitted.estimatedFareClp != null && (
-                  <div style={{
-                    marginTop: "8px",
-                    padding: "8px 12px",
-                    background: "var(--ion-color-light)",
-                    borderRadius: "6px",
-                    fontSize: "0.85rem",
-                  }}>
-                    {submitted.discountApplied && submitted.originalFareClp != null ? (
-                      <>
-                        <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
-                          <strong>${submitted.estimatedFareClp.toLocaleString("es-CL")} CLP</strong>
-                          <span style={{
-                            background: "var(--ion-color-success)",
-                            color: "#fff",
-                            borderRadius: "4px",
-                            padding: "1px 6px",
-                            fontSize: "0.72rem",
-                          }}>
-                            -{submitted.discountPercent}% referido
-                          </span>
-                        </div>
-                        <div style={{ fontSize: "0.72rem", color: "var(--ion-color-medium)", marginTop: "2px" }}>
-                          Precio original: ${submitted.originalFareClp.toLocaleString("es-CL")} CLP
-                        </div>
-                      </>
-                    ) : (
-                      <strong>Tarifa estimada: ${submitted.estimatedFareClp.toLocaleString("es-CL")} CLP</strong>
-                    )}
-                    <div style={{ fontSize: "0.72rem", color: "var(--ion-color-medium)", marginTop: "2px" }}>
-                      Tarifa referencial. El precio final lo acuerda con el conductor.
+              <div style={{ padding: "14px" }}>
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "10px",
+                    padding: "12px",
+                    borderRadius: "16px",
+                    background: pickupConfirmed
+                      ? "rgba(42, 168, 74, 0.12)"
+                      : "rgba(200, 155, 60, 0.14)",
+                    border: pickupConfirmed
+                      ? "1px solid rgba(42, 168, 74, 0.28)"
+                      : "1px solid rgba(200, 155, 60, 0.28)",
+                  }}
+                >
+                  <div style={{ fontSize: "1.3rem" }}>{pickupConfirmed ? "✅" : "🚶"}</div>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontWeight: 900, fontSize: "0.88rem", color: "#1A1A1A" }}>
+                      {pickupConfirmed ? "Punto de partida confirmado" : "Confirma el punto de partida"}
+                    </div>
+                    <div style={{ fontSize: "0.72rem", color: "rgba(26,26,26,.68)", marginTop: "2px", lineHeight: 1.35 }}>
+                      En sectores con pasajes, condominios o calles interiores, Rapa Go recomendará una calle principal accesible para el conductor.
                     </div>
                   </div>
+                </div>
+
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px", marginTop: "12px" }}>
+                  <IonButton
+                    expand="block"
+                    fill="outline"
+                    onClick={handleUseCurrentLocation}
+                    disabled={locating}
+                    style={{ margin: 0 }}
+                  >
+                    {locating ? <IonSpinner name="dots" /> : "Usar GPS"}
+                  </IonButton>
+
+                  <IonButton
+                    expand="block"
+                    color={pickupConfirmed ? "success" : "primary"}
+                    onClick={() => setPickupConfirmed(true)}
+                    disabled={!originInput.trim()}
+                    style={{ margin: 0 }}
+                  >
+                    Confirmar punto
+                  </IonButton>
+                </div>
+
+                {locationError && (
+                  <IonText color="danger">
+                    <p style={{ margin: "8px 0 0", fontSize: "0.78rem" }}>{locationError}</p>
+                  </IonText>
                 )}
               </div>
-            )}
-            {farePreview && !submitted && (
-              <div style={{
-                margin: "12px 0 0",
-                padding: "10px 14px",
-                background: "var(--ion-color-light)",
-                borderRadius: "8px",
-                fontSize: "0.85rem",
-              }}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                  <span style={{ color: "var(--ion-color-medium)" }}>
-                    {farePreview.km.toFixed(1)} km · ~{farePreview.minutes} min
-                  </span>
-                  <strong style={{ fontSize: "1rem" }}>
-                    ${farePreview.fare.toLocaleString("es-CL")} CLP
-                  </strong>
-                </div>
-                <div style={{ fontSize: "0.72rem", color: "var(--ion-color-medium)", marginTop: "3px" }}>
-                  {farePreview.isZoneFare ? "Tarifa fija de ruta" : "Tarifa estimada por km"}
-                </div>
-              </div>
-            )}
+            </IonCardContent>
+          </IonCard>
 
-            {submitError && (
-              <IonText color="danger">
-                <p style={{ margin: "8px 0 0", fontSize: "0.85rem" }}>{submitError}</p>
-              </IonText>
-            )}
+          <IonCard style={{ margin: 0, borderRadius: "24px" }}>
+            <IonCardContent style={{ padding: "16px" }}>
+              <IonItem lines="full">
+                <IonLabel>Lugar frecuente (origen)</IonLabel>
+                <IonSelect
+                  interface="action-sheet"
+                  placeholder="Seleccionar origen frecuente"
+                  value={selectedOriginId}
+                  onIonChange={(e) => handleOriginPlaceSelect(e.detail.value as string)}
+                >
+                  {sortedPlaces.map((place) => (
+                    <IonSelectOption key={place.id} value={place.id}>
+                      {place.name}
+                    </IonSelectOption>
+                  ))}
+                </IonSelect>
+              </IonItem>
 
-            <IonButton
-              expand="block"
-              style={{ marginTop: "16px" }}
-              onClick={() => void handleRequest()}
-              disabled={submitting}
-            >
-              {submitting ? <IonSpinner name="dots" /> : "Solicitar viaje"}
-            </IonButton>
-          </IonCardContent>
-        </IonCard>
+              <IonItem lines="full">
+                <IonLabel position="stacked">Origen</IonLabel>
+                <IonInput
+                  value={originInput}
+                  onIonInput={(e) => {
+                    setOriginInput(String(e.detail.value ?? ""));
+                    setSelectedOriginId("");
+                    setPickupConfirmed(false);
+                  }}
+                  placeholder="Ej: Hotel Hanga Roa Eco Village"
+                  maxlength={150}
+                  clearInput
+                />
+              </IonItem>
+
+              <IonItem lines="full" style={{ marginTop: "8px" }}>
+                <IonLabel>Lugar frecuente (destino)</IonLabel>
+                <IonSelect
+                  interface="action-sheet"
+                  placeholder="Seleccionar destino frecuente"
+                  value={selectedDestId}
+                  onIonChange={(e) => handleDestPlaceSelect(e.detail.value as string)}
+                >
+                  {sortedPlaces.map((place) => (
+                    <IonSelectOption key={place.id} value={place.id}>
+                      {place.name}
+                    </IonSelectOption>
+                  ))}
+                </IonSelect>
+              </IonItem>
+
+              <IonItem lines="full" style={{ marginTop: "8px" }}>
+                <IonLabel position="stacked">Destino</IonLabel>
+                <IonInput
+                  value={destInput}
+                  onIonInput={(e) => {
+                    setDestInput(String(e.detail.value ?? ""));
+                    setSelectedDestId("");
+                  }}
+                  placeholder="Ej: Aeropuerto Mataveri"
+                  maxlength={150}
+                  clearInput
+                />
+              </IonItem>
+
+              <IonItem lines="none" style={{ marginTop: "8px" }}>
+                <IonLabel position="stacked">Notas (opcional)</IonLabel>
+                <IonTextarea
+                  value={notesInput}
+                  onIonInput={(e) => setNotesInput(String(e.detail.value ?? ""))}
+                  placeholder="Ej: Llevar maletas grandes"
+                  maxlength={500}
+                  rows={3}
+                />
+                <IonNote slot="helper" style={{ fontSize: "0.7rem" }}>
+                  Máximo 500 caracteres.
+                </IonNote>
+              </IonItem>
+
+              {farePreview && !submitted && (
+                <div
+                  style={{
+                    margin: "12px 0 0",
+                    padding: "12px 14px",
+                    background: "linear-gradient(135deg, rgba(246,242,236,.96), rgba(217,195,160,.72))",
+                    border: "1px solid rgba(200,155,60,.28)",
+                    borderRadius: "16px",
+                    fontSize: "0.85rem",
+                  }}
+                >
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                    <span style={{ color: "rgba(26,26,26,.72)", fontWeight: 800 }}>
+                      {farePreview.km.toFixed(1)} km · ~{farePreview.minutes} min
+                    </span>
+                    <strong style={{ fontSize: "1rem", color: "#1A1A1A" }}>
+                      ${farePreview.fare.toLocaleString("es-CL")} CLP
+                    </strong>
+                  </div>
+
+                  <div style={{ fontSize: "0.72rem", color: "rgba(26,26,26,.64)", marginTop: "4px" }}>
+                    {farePreview.isZoneFare ? "Tarifa fija de ruta" : "Tarifa estimada por km"}
+                  </div>
+                </div>
+              )}
+
+              {submitted && (
+                <div style={{ margin: "12px 0 0" }}>
+                  <IonText color="success">
+                    <p style={{ margin: 0, fontSize: "0.85rem", fontWeight: 800 }}>
+                      ✓ Solicitud enviada — Estado: {RIDE_STATUS_LABEL[submitted.status] ?? submitted.status}
+                    </p>
+                  </IonText>
+
+                  {submitted.estimatedFareClp != null && (
+                    <div
+                      style={{
+                        marginTop: "8px",
+                        padding: "10px 12px",
+                        background: "var(--ion-color-light)",
+                        borderRadius: "12px",
+                        fontSize: "0.85rem",
+                      }}
+                    >
+                      {submitted.discountApplied && submitted.originalFareClp != null ? (
+                        <>
+                          <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+                            <strong>${submitted.estimatedFareClp.toLocaleString("es-CL")} CLP</strong>
+                            <span
+                              style={{
+                                background: "var(--ion-color-success)",
+                                color: "#fff",
+                                borderRadius: "999px",
+                                padding: "2px 7px",
+                                fontSize: "0.72rem",
+                                fontWeight: 800,
+                              }}
+                            >
+                              -{submitted.discountPercent}% referido
+                            </span>
+                          </div>
+
+                          <div style={{ fontSize: "0.72rem", color: "var(--ion-color-medium)", marginTop: "2px" }}>
+                            Precio original: ${submitted.originalFareClp.toLocaleString("es-CL")} CLP
+                          </div>
+                        </>
+                      ) : (
+                        <strong>Tarifa estimada: ${submitted.estimatedFareClp.toLocaleString("es-CL")} CLP</strong>
+                      )}
+
+                      <div style={{ fontSize: "0.72rem", color: "var(--ion-color-medium)", marginTop: "2px" }}>
+                        Tarifa referencial. El precio final lo acuerda con el conductor.
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {session?.accessToken && (
+                <LegalStatusSection token={session.accessToken} />
+              )}
+
+              {submitError && (
+                <IonText color="danger">
+                  <p style={{ margin: "10px 0 0", fontSize: "0.85rem" }}>{submitError}</p>
+                </IonText>
+              )}
+
+              <IonButton
+                expand="block"
+                style={{ marginTop: "16px" }}
+                onClick={() => void handleRequest()}
+                disabled={submitting}
+              >
+                {submitting ? <IonSpinner name="dots" /> : "Solicitar viaje"}
+              </IonButton>
+
+              {!pickupConfirmed && (
+                <IonNote style={{ display: "block", marginTop: "8px", fontSize: "0.72rem", textAlign: "center" }}>
+                  Debes confirmar el punto de partida antes de solicitar el viaje.
+                </IonNote>
+              )}
+            </IonCardContent>
+          </IonCard>
+        </div>
       </IonContent>
     </IonPage>
   );
 }
-
 export function PassengerTripsPage(): JSX.Element {
   return <TripsPage />;
 }

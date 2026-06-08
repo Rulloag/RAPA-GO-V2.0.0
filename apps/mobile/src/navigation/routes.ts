@@ -17,6 +17,7 @@ export const ROUTES = {
     BASE: "/auth",
     LOGIN: "/auth/login",
     REGISTER: "/auth/register",
+    FACEBOOK_CALLBACK: "/auth/facebook/callback",
   },
 
   PASSENGER: {
@@ -82,7 +83,7 @@ export const ROUTES = {
     EVENT_TICKETS: "/admin/event-tickets",
     LEGAL_DOCUMENTS: "/admin/legal-documents",
     FARE_SETTINGS: "/admin/fare-settings",
-    REFERRALS:     "/admin/referrals",
+    REFERRALS: "/admin/referrals",
   },
 
   APPLY: {
@@ -106,14 +107,19 @@ export const ROUTES = {
 export const buildRoute = {
   passengerTripDetail: (tripId: string): string =>
     `/passenger/trips/${tripId}`,
+
   passengerGuideDetail: (guideId: string): string =>
     `/passenger/guides/${guideId}`,
+
   passengerRentalDetail: (vehicleId: string): string =>
     `/passenger/rentals/${vehicleId}`,
+
   driverTripDetail: (tripId: string): string =>
     `/driver/trips/${tripId}`,
+
   guideTourDetail: (tourId: string): string =>
     `/guide/tours/${tourId}`,
+
   rentalVehicleDetail: (vehicleId: string): string =>
     `/rental/vehicles/${vehicleId}`,
 };

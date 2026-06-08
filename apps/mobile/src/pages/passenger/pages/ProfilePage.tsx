@@ -1,64 +1,28 @@
-import { IonBadge, IonButton, IonCard, IonCardContent, IonCardHeader, IonCardTitle, IonContent, IonHeader, IonInput, IonItem, IonLabel, IonList, IonListHeader, IonPage, IonRefresher, IonRefresherContent, IonSelect, IonSelectOption, IonSpinner, IonText, IonTitle, IonToggle, IonToolbar } from "@ionic/react";
+import { 
+  IonButton, 
+  IonCard, 
+  IonCardContent, 
+  IonContent, 
+  IonHeader, 
+  IonInput, 
+  IonItem, 
+  IonLabel, 
+  IonList, 
+  IonListHeader, 
+  IonPage, 
+  IonRefresher, 
+  IonRefresherContent, 
+  IonSelect, 
+  IonSelectOption, 
+  IonSpinner, 
+  IonText, 
+  IonTitle, 
+  IonToggle, 
+  IonToolbar 
+} from "@ionic/react";
 import { useState, useCallback, useEffect } from "react";
 import { useAuth } from "../../../features/auth/index.js";
 import { passengerProfileService, type PassengerProfileData, type UpsertPassengerProfilePayload } from "../../../features/passengers/passengerProfile.service.js";
-import { legalService, type LegalDocumentData, type UserAcceptanceData } from "../../../features/legal/legal.service.js";
-
-function LegalStatusSection({ token }: { token: string }): React.ReactElement {
-  const [docs,        setDocs]        = useState<LegalDocumentData[]>([]);
-  const [acceptances, setAcceptances] = useState<UserAcceptanceData[]>([]);
-  const [loading,     setLoading]     = useState(true);
-
-  useEffect(() => {
-    Promise.all([legalService.getActive(), legalService.getMyAcceptances(token)])
-      .then(([d, a]) => { setDocs(d); setAcceptances(a); })
-      .catch(() => {})
-      .finally(() => setLoading(false));
-  }, [token]);
-
-  const getStatus = (doc: LegalDocumentData) => {
-    const acc = acceptances.find((a) => a.legalDocumentId === doc.id);
-    if (!acc) return "not_accepted";
-    if (acc.versionAccepted !== doc.version) return "new_version";
-    return "accepted";
-  };
-
-  const handleAccept = (doc: LegalDocumentData) => {
-    void legalService.accept(token, doc.id, doc.version).then(() => {
-      legalService.getMyAcceptances(token).then(setAcceptances).catch(() => {});
-    });
-  };
-
-  return (
-    <IonCard style={{ marginTop: "24px" }}>
-      <IonCardHeader>
-        <IonCardTitle style={{ fontSize: "1rem" }}>Documentos Legales</IonCardTitle>
-      </IonCardHeader>
-      <IonCardContent style={{ padding: 0 }}>
-        {loading ? (
-          <div style={{ display: "flex", justifyContent: "center", padding: "16px" }}><IonSpinner name="dots" /></div>
-        ) : (
-          <IonList>
-            {docs.map((doc) => {
-              const status = getStatus(doc);
-              return (
-                <IonItem key={doc.id}>
-                  <IonLabel><h3>{doc.title}</h3><p>v{doc.version}</p></IonLabel>
-                  {status === "accepted"     && <IonBadge color="success" slot="end">Aceptado</IonBadge>}
-                  {status === "new_version"  && <IonBadge color="warning" slot="end">Nueva versión</IonBadge>}
-                  {status === "not_accepted" && <IonBadge color="danger"  slot="end">Pendiente</IonBadge>}
-                  {(status === "not_accepted" || status === "new_version") && (
-                    <IonButton fill="clear" size="small" slot="end" onClick={() => handleAccept(doc)}>Aceptar</IonButton>
-                  )}
-                </IonItem>
-              );
-            })}
-          </IonList>
-        )}
-      </IonCardContent>
-    </IonCard>
-  );
-}
 
 export default function ProfilePage(): JSX.Element {
   const { session } = useAuth();
@@ -68,12 +32,12 @@ export default function ProfilePage(): JSX.Element {
   const [saving,    setSaving]    = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [saveOk,    setSaveOk]    = useState(false);
-  const [phone,                 setPhone]                 = useState("");
-  const [preferredLanguage,     setPreferredLanguage]     = useState("es");
-  const [notificationEnabled,   setNotificationEnabled]   = useState(true);
-  const [emailNotifications,    setEmailNotifications]    = useState(true);
-  const [smsNotifications,      setSmsNotifications]      = useState(false);
-  const [emergencyContactName,  setEmergencyContactName]  = useState("");
+  const [phone, setPhone] = useState("");
+  const [preferredLanguage, setPreferredLanguage] = useState("es");
+  const [notificationEnabled, setNotificationEnabled] = useState(true);
+  const [emailNotifications, setEmailNotifications] = useState(true);
+  const [smsNotifications, setSmsNotifications] = useState(false);
+  const [emergencyContactName, setEmergencyContactName] = useState("");
   const [emergencyContactPhone, setEmergencyContactPhone] = useState("");
 
   const loadProfile = useCallback(async () => {
@@ -106,7 +70,7 @@ export default function ProfilePage(): JSX.Element {
       const trimPhone   = phone.trim();
       const trimEmName  = emergencyContactName.trim();
       const trimEmPhone = emergencyContactPhone.trim();
-      if (trimPhone)   payload.phone                = trimPhone;
+      if (trimPhone)   payload.phone               = trimPhone;
       if (trimEmName)  payload.emergencyContactName = trimEmName;
       if (trimEmPhone) payload.emergencyContactPhone = trimEmPhone;
       const updated = await passengerProfileService.upsertMyProfile(session.accessToken, payload);
@@ -149,6 +113,7 @@ export default function ProfilePage(): JSX.Element {
                 {initials || "?"}
               </div>
             </div>
+            
             <IonList>
               <IonListHeader><IonLabel><strong>Datos personales</strong></IonLabel></IonListHeader>
               <IonItem lines="full"><IonLabel position="stacked">Nombre</IonLabel><IonInput value={userName} readonly /></IonItem>
@@ -158,6 +123,9 @@ export default function ProfilePage(): JSX.Element {
                 <IonInput value={phone} onIonInput={(e) => setPhone(String(e.detail.value ?? ""))} placeholder="+56 9 1234 5678" type="tel" maxlength={20} clearInput />
               </IonItem>
             </IonList>
+
+            {/* LA SECCIÓN DE DOCUMENTOS LEGALES FUE ELIMINADA DE AQUÍ */}
+
             <IonList style={{ marginTop: "16px" }}>
               <IonListHeader><IonLabel><strong>Idioma preferido</strong></IonLabel></IonListHeader>
               <IonItem lines="none">
@@ -169,23 +137,26 @@ export default function ProfilePage(): JSX.Element {
                 </IonSelect>
               </IonItem>
             </IonList>
+
             <IonList style={{ marginTop: "16px" }}>
               <IonListHeader><IonLabel><strong>Notificaciones</strong></IonLabel></IonListHeader>
               <IonItem lines="full"><IonLabel>Notificaciones activas</IonLabel><IonToggle slot="end" checked={notificationEnabled} onIonChange={(e) => setNotificationEnabled(e.detail.checked)} /></IonItem>
               <IonItem lines="full"><IonLabel>Notificaciones por email</IonLabel><IonToggle slot="end" checked={emailNotifications} onIonChange={(e) => setEmailNotifications(e.detail.checked)} /></IonItem>
               <IonItem lines="none"><IonLabel>Notificaciones por SMS</IonLabel><IonToggle slot="end" checked={smsNotifications} onIonChange={(e) => setSmsNotifications(e.detail.checked)} /></IonItem>
             </IonList>
+
             <IonList style={{ marginTop: "16px" }}>
               <IonListHeader><IonLabel><strong>Contacto de emergencia</strong></IonLabel></IonListHeader>
               <IonItem lines="full"><IonLabel position="stacked">Nombre</IonLabel><IonInput value={emergencyContactName} onIonInput={(e) => setEmergencyContactName(String(e.detail.value ?? ""))} placeholder="Nombre del contacto" maxlength={100} clearInput /></IonItem>
               <IonItem lines="none"><IonLabel position="stacked">Teléfono</IonLabel><IonInput value={emergencyContactPhone} onIonInput={(e) => setEmergencyContactPhone(String(e.detail.value ?? ""))} placeholder="+56 9 1234 5678" type="tel" maxlength={20} clearInput /></IonItem>
             </IonList>
-            {saveOk    && <IonText color="success"><p style={{ margin: "12px 0 0", fontSize: "0.85rem" }}>Perfil guardado correctamente.</p></IonText>}
+
+            {saveOk && <IonText color="success"><p style={{ margin: "12px 0 0", fontSize: "0.85rem" }}>Perfil guardado correctamente.</p></IonText>}
             {saveError && <IonText color="danger"><p style={{ margin: "12px 0 0", fontSize: "0.85rem" }}>{saveError}</p></IonText>}
+            
             <IonButton expand="block" style={{ marginTop: "20px" }} onClick={() => void handleSave()} disabled={saving}>
               {saving ? <IonSpinner name="dots" /> : "Guardar cambios"}
             </IonButton>
-            {session?.accessToken && <LegalStatusSection token={session.accessToken} />}
           </>
         )}
       </IonContent>

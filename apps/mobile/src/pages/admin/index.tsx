@@ -85,253 +85,478 @@ export function AdminHomePage(): JSX.Element {
 
   const load = useCallback(async () => {
     if (!session?.accessToken) return;
+
     setLoading(true);
     setError(null);
+
     try {
       const [dash, acts] = await Promise.all([
         dashboardService.getDashboard(session.accessToken),
         dashboardService.getActivity(session.accessToken, 5),
       ]);
+
       setData(dash);
       setActivity(acts);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Error al cargar dashboard.");
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Error al cargar dashboard.",
+      );
     } finally {
       setLoading(false);
     }
   }, [session?.accessToken]);
 
-  useEffect(() => { void load(); }, [load]);
+  useEffect(() => {
+    void load();
+  }, [load]);
 
-  const dateStr = new Date().toLocaleDateString("es-CL", { weekday: "long", day: "numeric", month: "long" });
+  const dateStr = new Date().toLocaleDateString("es-CL", {
+    weekday: "long",
+    day: "numeric",
+    month: "long",
+  });
+
+  const alerts = data?.alerts ?? [];
+
+  const today = data?.today ?? {
+    rides: {
+      total: 0,
+      completed: 0,
+      inProgress: 0,
+      pending: 0,
+    },
+    revenue: 0,
+    newUsers: 0,
+  };
+
+  const thisWeek = data?.thisWeek ?? {
+    revenue: 0,
+    topDrivers: [],
+  };
+
+  const operational = data?.operational ?? {
+    activeDrivers: 0,
+    busyDrivers: 0,
+    unavailableDrivers: 0,
+    pendingDocuments: 0,
+    pendingOfflineBookings: 0,
+    pendingServiceBookings: 0,
+    pendingRentalBookings: 0,
+  };
+
+  const pendingTotal =
+    operational.pendingDocuments +
+    operational.pendingOfflineBookings +
+    operational.pendingServiceBookings +
+    operational.pendingRentalBookings;
+
+  const kpis = [
+    {
+      label: "Viajes hoy",
+      value: today.rides.total.toString(),
+      helper: `${today.rides.completed} completados · ${today.rides.pending} pendientes`,
+      icon: carOutline,
+      tone: "gold",
+    },
+    {
+      label: "Ingresos hoy",
+      value: `$${(today.revenue / 100).toLocaleString("es-CL")}`,
+      helper: `Semana: $${(thisWeek.revenue / 100).toLocaleString("es-CL")}`,
+      icon: cashOutline,
+      tone: "terracotta",
+    },
+    {
+      label: "Conductores",
+      value: operational.activeDrivers.toString(),
+      helper: `${operational.busyDrivers} ocupados · ${operational.unavailableDrivers} no disponibles`,
+      icon: peopleOutline,
+      tone: operational.activeDrivers === 0 ? "warning" : "sand",
+    },
+    {
+      label: "Nuevos usuarios",
+      value: today.newUsers.toString(),
+      helper: "Usuarios registrados hoy",
+      icon: personOutline,
+      tone: "ivory",
+    },
+  ];
+
+  const primaryActions = [
+    {
+      label: "Usuarios",
+      description: "Cuentas y estados",
+      icon: peopleOutline,
+      route: ROUTES.ADMIN.DRIVERS,
+    },
+    {
+      label: "Viajes",
+      description: "Asignar y monitorear",
+      icon: carOutline,
+      route: ROUTES.ADMIN.TRIPS,
+    },
+    {
+      label: "Docs",
+      description: "Revisión pendiente",
+      icon: documentTextOutline,
+      route: ROUTES.ADMIN.DOCUMENTS,
+    },
+    {
+      label: "Config",
+      description: "Ajustes del sistema",
+      icon: settingsOutline,
+      route: ROUTES.ADMIN.SETTINGS,
+    },
+  ];
+
+  const secondaryActions = [
+    {
+      label: "Offline",
+      description: "Solicitudes sin conexión",
+      icon: cloudOfflineOutline,
+      route: ROUTES.ADMIN.OFFLINE_BOOKINGS,
+    },
+    {
+      label: "Tarifas",
+      description: "Precios y zonas",
+      icon: cashOutline,
+      route: ROUTES.ADMIN.FARE_SETTINGS,
+    },
+    {
+      label: "Legales",
+      description: "Políticas y términos",
+      icon: shieldCheckmarkOutline,
+      route: ROUTES.ADMIN.LEGAL_DOCUMENTS,
+    },
+    {
+      label: "Referidos",
+      description: "Invitaciones y premios",
+      icon: giftOutline,
+      route: ROUTES.ADMIN.REFERRALS,
+    },
+    {
+      label: "Pagos",
+      description: "Ingresos y cobros",
+      icon: cardOutline,
+      route: ROUTES.ADMIN.PAYMENTS,
+    },
+  ];
 
   return (
     <IonPage>
-      <IonHeader>
-        <IonToolbar>
-          <IonTitle>Panel de Control</IonTitle>
-          <div slot="end"><NotificationBell /></div>
-        </IonToolbar>
-        <IonToolbar>
-          <IonTitle size="small">{dateStr}</IonTitle>
+      <IonHeader className="admin-header">
+        <IonToolbar className="admin-toolbar">
+          <IonTitle>RAPA GO Admin</IonTitle>
+          <div slot="end" className="admin-notification">
+            <NotificationBell />
+          </div>
         </IonToolbar>
       </IonHeader>
-      <IonContent className="ion-padding">
-        <IonRefresher slot="fixed" onIonRefresh={(e) => { void load().then(() => e.detail.complete()); }}>
+
+      <IonContent className="admin-dashboard-content">
+        <IonRefresher
+          slot="fixed"
+          onIonRefresh={(event) => {
+            void load().then(() => event.detail.complete());
+          }}
+        >
           <IonRefresherContent />
         </IonRefresher>
 
-        {loading && (
-          <div style={{ display: "flex", justifyContent: "center", padding: "32px" }}>
-            <IonSpinner />
-          </div>
-        )}
+        <div className="admin-dashboard-shell">
+          <section className="admin-hero-card">
+            <div>
+              <p className="admin-eyebrow">Panel de Control</p>
+              <h1 className="admin-hero-title">Operación Rapa Go</h1>
+              <p className="admin-hero-date">{dateStr}</p>
+            </div>
 
-        {error && (
-          <IonCard color="danger">
-            <IonCardContent>{error}</IonCardContent>
-          </IonCard>
-        )}
+            <div className="admin-status-pill">
+              <span className="admin-status-dot" />
+              Sistema online
+            </div>
+          </section>
 
-        {!loading && data && (
-          <>
-            {data.alerts.length > 0 && (
-              <div>
-                {data.alerts.slice(0, 3).map((alert, i) => (
-                  <IonCard key={i} color={alert.type === "critical" ? "danger" : "warning"}>
+          {loading && (
+            <div className="admin-loading-card">
+              <IonSpinner name="crescent" />
+              <span>Cargando información...</span>
+            </div>
+          )}
+
+          {error && (
+            <IonCard className="admin-error-card">
+              <IonCardContent>{error}</IonCardContent>
+            </IonCard>
+          )}
+
+          {!loading && data && (
+            <>
+              {alerts.length > 0 && (
+                <section className="admin-alerts">
+                  {alerts.slice(0, 3).map((alert, index) => (
+                    <IonCard
+                      key={`${alert.message}-${index}`}
+                      className={
+                        alert.type === "critical"
+                          ? "admin-alert-card critical"
+                          : "admin-alert-card warning"
+                      }
+                    >
+                      <IonCardContent>
+                        <div className="admin-alert-row">
+                          <IonIcon
+                            icon={
+                              alert.type === "critical"
+                                ? alertCircleOutline
+                                : warningOutline
+                            }
+                          />
+                          <span>{alert.message}</span>
+                        </div>
+                      </IonCardContent>
+                    </IonCard>
+                  ))}
+                </section>
+              )}
+
+              <section className="admin-kpi-grid">
+                {kpis.map((kpi) => (
+                  <IonCard key={kpi.label} className={`admin-kpi-card ${kpi.tone}`}>
                     <IonCardContent>
-                      <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                        <IonIcon icon={alert.type === "critical" ? alertCircleOutline : warningOutline} />
-                        <span>{alert.message}</span>
+                      <div className="admin-kpi-top">
+                        <div className="admin-kpi-icon">
+                          <IonIcon icon={kpi.icon} />
+                        </div>
                       </div>
+
+                      <div className="admin-kpi-value">{kpi.value}</div>
+                      <div className="admin-kpi-label">{kpi.label}</div>
+                      <div className="admin-kpi-helper">{kpi.helper}</div>
+
+                      {kpi.label === "Viajes hoy" && (
+                        <div className="admin-kpi-badges">
+                          <IonBadge color="success">
+                            {today.rides.completed} completados
+                          </IonBadge>
+                          <IonBadge color="warning">
+                            {today.rides.inProgress} en curso
+                          </IonBadge>
+                          <IonBadge color="medium">
+                            {today.rides.pending} pendientes
+                          </IonBadge>
+                        </div>
+                      )}
                     </IonCardContent>
                   </IonCard>
                 ))}
-              </div>
-            )}
+              </section>
 
-            <IonGrid>
-              <IonRow>
-                <IonCol size="6">
-                  <IonCard color="primary">
-                    <IonCardHeader>
-                      <IonCardTitle style={{ fontSize: "2rem", fontWeight: "bold" }}>
-                        {data.today.rides.total}
-                      </IonCardTitle>
-                      <IonCardSubtitle>Viajes Hoy</IonCardSubtitle>
-                    </IonCardHeader>
-                    <IonCardContent>
-                      <div style={{ display: "flex", flexWrap: "wrap", gap: "4px" }}>
-                        <IonBadge color="success">{data.today.rides.completed} completados</IonBadge>
-                        <IonBadge color="warning">{data.today.rides.inProgress} en curso</IonBadge>
-                        <IonBadge color="medium">{data.today.rides.pending} pendientes</IonBadge>
+              <IonCard className="admin-section-card admin-quick-card">
+                <IonCardHeader>
+                  <IonCardTitle>Accesos principales</IonCardTitle>
+                  <IonCardSubtitle>
+                    Lo más usado en celular
+                  </IonCardSubtitle>
+                </IonCardHeader>
+
+                <IonCardContent>
+                  <div className="admin-quick-grid">
+                    {primaryActions.map((action) => (
+                      <IonButton
+                        key={action.label}
+                        routerLink={action.route}
+                        fill="clear"
+                        className="admin-quick-action"
+                      >
+                        <div className="admin-quick-action-inner">
+                          <div className="admin-quick-icon">
+                            <IonIcon icon={action.icon} />
+                          </div>
+
+                          <div>
+                            <strong>{action.label}</strong>
+                            <span>{action.description}</span>
+                          </div>
+
+                          <IonIcon
+                            icon={chevronForward}
+                            className="admin-quick-arrow"
+                          />
+                        </div>
+                      </IonButton>
+                    ))}
+                  </div>
+                </IonCardContent>
+              </IonCard>
+
+              {pendingTotal > 0 && (
+                <IonCard className="admin-section-card">
+                  <IonCardHeader>
+                    <div className="admin-section-title-row">
+                      <div>
+                        <IonCardTitle>Pendientes operacionales</IonCardTitle>
+                        <IonCardSubtitle>
+                          Requieren revisión del administrador
+                        </IonCardSubtitle>
                       </div>
-                    </IonCardContent>
-                  </IonCard>
-                </IonCol>
-                <IonCol size="6">
-                  <IonCard color="success">
-                    <IonCardHeader>
-                      <IonCardTitle style={{ fontSize: "1.4rem", fontWeight: "bold" }}>
-                        ${(data.today.revenue / 100).toLocaleString("es-CL")}
-                      </IonCardTitle>
-                      <IonCardSubtitle>Ingresos Hoy</IonCardSubtitle>
-                    </IonCardHeader>
-                    <IonCardContent>
-                      <IonNote>Esta semana: ${(data.thisWeek.revenue / 100).toLocaleString("es-CL")}</IonNote>
-                    </IonCardContent>
-                  </IonCard>
-                </IonCol>
-              </IonRow>
-              <IonRow>
-                <IonCol size="6">
-                  <IonCard color={data.operational.activeDrivers === 0 ? ("warning" as const) : ("tertiary" as const)}>
-                    <IonCardHeader>
-                      <IonCardTitle style={{ fontSize: "2rem", fontWeight: "bold" }}>
-                        {data.operational.activeDrivers}
-                      </IonCardTitle>
-                      <IonCardSubtitle>Conductores Disponibles</IonCardSubtitle>
-                    </IonCardHeader>
-                    <IonCardContent>
-                      <IonNote>{data.operational.busyDrivers} ocupados · {data.operational.unavailableDrivers} no disp.</IonNote>
-                    </IonCardContent>
-                  </IonCard>
-                </IonCol>
-                <IonCol size="6">
-                  <IonCard color="secondary">
-                    <IonCardHeader>
-                      <IonCardTitle style={{ fontSize: "2rem", fontWeight: "bold" }}>
-                        {data.today.newUsers}
-                      </IonCardTitle>
-                      <IonCardSubtitle>Nuevos Hoy</IonCardSubtitle>
-                    </IonCardHeader>
-                    <IonCardContent>
-                      <IonNote>usuarios registrados hoy</IonNote>
-                    </IonCardContent>
-                  </IonCard>
-                </IonCol>
-              </IonRow>
-            </IonGrid>
+                      <IonBadge color="warning">{pendingTotal}</IonBadge>
+                    </div>
+                  </IonCardHeader>
 
-            {(data.operational.pendingDocuments > 0 ||
-              data.operational.pendingOfflineBookings > 0 ||
-              data.operational.pendingServiceBookings > 0 ||
-              data.operational.pendingRentalBookings > 0) && (
-              <IonCard>
+                  <IonList className="admin-clean-list">
+                    {operational.pendingDocuments > 0 && (
+                      <IonItem routerLink={ROUTES.ADMIN.DOCUMENTS} detail>
+                        <IonIcon icon={documentTextOutline} slot="start" />
+                        <IonLabel>Documentos pendientes</IonLabel>
+                        <IonBadge slot="end" color="warning">
+                          {operational.pendingDocuments}
+                        </IonBadge>
+                      </IonItem>
+                    )}
+
+                    {operational.pendingOfflineBookings > 0 && (
+                      <IonItem routerLink={ROUTES.ADMIN.OFFLINE_BOOKINGS} detail>
+                        <IonIcon icon={cloudOfflineOutline} slot="start" />
+                        <IonLabel>Reservas offline sin sincronizar</IonLabel>
+                        <IonBadge slot="end" color="warning">
+                          {operational.pendingOfflineBookings}
+                        </IonBadge>
+                      </IonItem>
+                    )}
+
+                    {operational.pendingServiceBookings > 0 && (
+                      <IonItem detail>
+                        <IonIcon icon={compassOutline} slot="start" />
+                        <IonLabel>Reservas de servicios</IonLabel>
+                        <IonBadge slot="end" color="medium">
+                          {operational.pendingServiceBookings}
+                        </IonBadge>
+                      </IonItem>
+                    )}
+
+                    {operational.pendingRentalBookings > 0 && (
+                      <IonItem detail>
+                        <IonIcon icon={keyOutline} slot="start" />
+                        <IonLabel>Reservas de arriendo</IonLabel>
+                        <IonBadge slot="end" color="medium">
+                          {operational.pendingRentalBookings}
+                        </IonBadge>
+                      </IonItem>
+                    )}
+                  </IonList>
+                </IonCard>
+              )}
+
+              {thisWeek.topDrivers.length > 0 && (
+                <IonCard className="admin-section-card">
+                  <IonCardHeader>
+                    <IonCardTitle>Top conductores</IonCardTitle>
+                    <IonCardSubtitle>Mejor rendimiento semanal</IonCardSubtitle>
+                  </IonCardHeader>
+
+                  <IonList className="admin-clean-list">
+                    {thisWeek.topDrivers.map((driver, index) => (
+                      <IonItem key={driver.driverId}>
+                        <div slot="start" className="admin-rank-badge">
+                          {index + 1}
+                        </div>
+                        <IonLabel>
+                          <h3>{driver.name}</h3>
+                          <p>
+                            {driver.trips} viajes · $
+                            {(driver.revenue / 100).toLocaleString("es-CL")}
+                          </p>
+                        </IonLabel>
+                      </IonItem>
+                    ))}
+                  </IonList>
+                </IonCard>
+              )}
+
+              {activity.length > 0 && (
+                <IonCard className="admin-section-card">
+                  <IonCardHeader>
+                    <div className="admin-section-title-row">
+                      <div>
+                        <IonCardTitle>Actividad reciente</IonCardTitle>
+                        <IonCardSubtitle>Últimos movimientos</IonCardSubtitle>
+                      </div>
+                      <IonButton
+                        fill="clear"
+                        size="small"
+                        routerLink="/admin/activity"
+                      >
+                        Ver todo
+                      </IonButton>
+                    </div>
+                  </IonCardHeader>
+
+                  <IonList className="admin-clean-list">
+                    {activity.map((item, index) => (
+                      <IonItem key={`${item.timestamp}-${index}`}>
+                        <div slot="start" className="admin-activity-icon">
+                          <IonIcon
+                            icon={item.type === "ride" ? carIcon : bookOutline}
+                          />
+                        </div>
+                        <IonLabel>
+                          <h3>{item.description}</h3>
+                          <p>
+                            {item.userName} · {timeAgo(item.timestamp)}
+                          </p>
+                        </IonLabel>
+                      </IonItem>
+                    ))}
+                  </IonList>
+                </IonCard>
+              )}
+
+              <IonCard className="admin-section-card admin-quick-card">
                 <IonCardHeader>
-                  <IonCardTitle>Pendientes Operacionales</IonCardTitle>
+                  <IonCardTitle>Más herramientas</IonCardTitle>
+                  <IonCardSubtitle>
+                    Opciones que no necesitan estar abajo
+                  </IonCardSubtitle>
                 </IonCardHeader>
-                <IonList>
-                  {data.operational.pendingDocuments > 0 && (
-                    <IonItem routerLink={ROUTES.ADMIN.DOCUMENTS} detail>
-                      <IonLabel>Documentos pendientes</IonLabel>
-                      <IonBadge slot="end" color="warning">{data.operational.pendingDocuments}</IonBadge>
-                    </IonItem>
-                  )}
-                  {data.operational.pendingOfflineBookings > 0 && (
-                    <IonItem routerLink={ROUTES.ADMIN.OFFLINE_BOOKINGS} detail>
-                      <IonLabel>Reservas offline sin sincronizar</IonLabel>
-                      <IonBadge slot="end" color="warning">{data.operational.pendingOfflineBookings}</IonBadge>
-                    </IonItem>
-                  )}
-                  {data.operational.pendingServiceBookings > 0 && (
-                    <IonItem detail>
-                      <IonLabel>Reservas de servicios</IonLabel>
-                      <IonBadge slot="end" color="medium">{data.operational.pendingServiceBookings}</IonBadge>
-                    </IonItem>
-                  )}
-                  {data.operational.pendingRentalBookings > 0 && (
-                    <IonItem detail>
-                      <IonLabel>Reservas de arriendo</IonLabel>
-                      <IonBadge slot="end" color="medium">{data.operational.pendingRentalBookings}</IonBadge>
-                    </IonItem>
-                  )}
-                </IonList>
-              </IonCard>
-            )}
 
-            {data.thisWeek.topDrivers.length > 0 && (
-              <IonCard>
-                <IonCardHeader>
-                  <IonCardTitle>Top Conductores — Semana</IonCardTitle>
-                </IonCardHeader>
-                <IonList>
-                  {data.thisWeek.topDrivers.map((driver) => (
-                    <IonItem key={driver.driverId}>
-                      <IonLabel>
-                        <h3>{driver.name}</h3>
-                        <p>{driver.trips} viajes · ${(driver.revenue / 100).toLocaleString("es-CL")}</p>
-                      </IonLabel>
-                    </IonItem>
-                  ))}
-                </IonList>
-              </IonCard>
-            )}
+                <IonCardContent>
+                  <div className="admin-quick-grid">
+                    {secondaryActions.map((action) => (
+                      <IonButton
+                        key={action.label}
+                        routerLink={action.route}
+                        fill="clear"
+                        className="admin-quick-action"
+                      >
+                        <div className="admin-quick-action-inner">
+                          <div className="admin-quick-icon">
+                            <IonIcon icon={action.icon} />
+                          </div>
 
-            {activity.length > 0 && (
-              <IonCard>
-                <IonCardHeader>
-                  <IonCardTitle>Actividad Reciente</IonCardTitle>
-                </IonCardHeader>
-                <IonList>
-                  {activity.map((item, i) => (
-                    <IonItem key={i}>
-                      <IonIcon icon={item.type === "ride" ? carIcon : bookOutline} slot="start" />
-                      <IonLabel>
-                        <h3>{item.description}</h3>
-                        <p>{item.userName} · {timeAgo(item.timestamp)}</p>
-                      </IonLabel>
-                    </IonItem>
-                  ))}
-                </IonList>
-                <div style={{ padding: "8px" }}>
-                  <IonButton expand="block" fill="outline" routerLink="/admin/activity">
-                    Ver toda la actividad
-                  </IonButton>
-                </div>
-              </IonCard>
-            )}
+                          <div>
+                            <strong>{action.label}</strong>
+                            <span>{action.description}</span>
+                          </div>
 
-            <IonCard>
-              <IonCardHeader>
-                <IonCardTitle>Accesos Rápidos</IonCardTitle>
-              </IonCardHeader>
-              <IonCardContent>
-                <IonGrid>
-                  <IonRow>
-                    <IonCol size="6">
-                      <IonButton expand="block" routerLink={ROUTES.ADMIN.DRIVERS}>Conductores</IonButton>
-                    </IonCol>
-                    <IonCol size="6">
-                      <IonButton expand="block" routerLink={ROUTES.ADMIN.DOCUMENTS}>Documentos</IonButton>
-                    </IonCol>
-                  </IonRow>
-                  <IonRow>
-                    <IonCol size="6">
-                      <IonButton expand="block" routerLink={ROUTES.ADMIN.TRIPS}>Viajes</IonButton>
-                    </IonCol>
-                    <IonCol size="6">
-                      <IonButton expand="block" routerLink={ROUTES.ADMIN.OFFLINE_BOOKINGS}>Offline</IonButton>
-                    </IonCol>
-                  </IonRow>
-                  <IonRow>
-                    <IonCol size="6">
-                      <IonButton expand="block" fill="outline" routerLink={ROUTES.ADMIN.SETTINGS}>Configuración</IonButton>
-                    </IonCol>
-                    <IonCol size="6">
-                      <IonButton expand="block" fill="outline" routerLink={ROUTES.ADMIN.PAYMENTS}>Pagos</IonButton>
-                    </IonCol>
-                  </IonRow>
-                </IonGrid>
-              </IonCardContent>
-            </IonCard>
-          </>
-        )}
+                          <IonIcon
+                            icon={chevronForward}
+                            className="admin-quick-arrow"
+                          />
+                        </div>
+                      </IonButton>
+                    ))}
+                  </div>
+                </IonCardContent>
+              </IonCard>
+            </>
+          )}
+        </div>
       </IonContent>
     </IonPage>
   );
 }
-
 const ROLE_LABEL: Record<string, string> = {
   passenger: "Pasajero",
   driver:    "Conductor",
@@ -799,10 +1024,10 @@ export function AdminDriversPage(): JSX.Element {
                     </IonLabel>
                   </IonItem>
                 )}
-                {driverProfile.languages.length > 0 && (
+                {(driverProfile.languages ?? []).length > 0 && (
                   <IonItem lines="none">
                     <IonLabel>
-                      <b>Idiomas:</b> {driverProfile.languages.join(", ")}
+                      <b>Idiomas:</b> {(driverProfile.languages ?? []).join(", ")}
                     </IonLabel>
                   </IonItem>
                 )}

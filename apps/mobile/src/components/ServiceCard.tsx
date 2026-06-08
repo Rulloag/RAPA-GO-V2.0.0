@@ -8,7 +8,13 @@ interface ServiceCardProps {
   onClick: () => void;
 }
 
-export function ServiceCard({ icon, title, subtitle, color, onClick }: ServiceCardProps): JSX.Element {
+export function ServiceCard({
+  icon,
+  title,
+  subtitle,
+  color,
+  onClick,
+}: ServiceCardProps): JSX.Element {
   return (
     <div
       className="ion-activatable"
@@ -18,33 +24,64 @@ export function ServiceCard({ icon, title, subtitle, color, onClick }: ServiceCa
         display: "flex",
         flexDirection: "column",
         alignItems: "center",
-        gap: "8px",
-        padding: "16px 8px 14px",
-        background: "var(--ion-card-background, #fff)",
-        borderRadius: "16px",
-        boxShadow: "0 2px 12px rgba(0,0,0,0.08)",
+        gap: "10px",
+        padding: "18px 10px 16px",
+        background: "#ffffff",
+        borderRadius: "18px",
+        boxShadow: "0 10px 24px rgba(0,0,0,0.15)",
         cursor: "pointer",
-        minWidth: "80px",
+        minWidth: "90px",
         textAlign: "center",
         overflow: "hidden",
         userSelect: "none",
+        transition: "all .25s ease",
       }}
     >
       <IonRippleEffect />
-      <div style={{
-        width: "52px",
-        height: "52px",
-        borderRadius: "14px",
-        background: `var(--ion-color-${color})`,
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        flexShrink: 0,
-      }}>
-        <IonIcon icon={icon} style={{ fontSize: "1.5rem", color: `var(--ion-color-${color}-contrast)` }} />
+
+      <div
+        style={{
+          width: "56px",
+          height: "56px",
+          borderRadius: "16px",
+          background: `var(--ion-color-${color})`,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          flexShrink: 0,
+          boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
+        }}
+      >
+        <IonIcon
+          icon={icon}
+          style={{
+            fontSize: "1.6rem",
+            color: `var(--ion-color-${color}-contrast)`,
+          }}
+        />
       </div>
-      <div style={{ fontWeight: 700, fontSize: "0.82rem", color: "var(--ion-text-color)", lineHeight: 1.2 }}>{title}</div>
-      <div style={{ fontSize: "0.68rem", color: "var(--ion-color-medium)", lineHeight: 1.3 }}>{subtitle}</div>
+
+      <div
+        style={{
+          fontWeight: 800,
+          fontSize: "0.95rem",
+          color: "#111827",
+          lineHeight: 1.2,
+        }}
+      >
+        {title}
+      </div>
+
+      <div
+        style={{
+          fontSize: "0.78rem",
+          color: "#4b5563",
+          lineHeight: 1.35,
+          fontWeight: 500,
+        }}
+      >
+        {subtitle}
+      </div>
     </div>
   );
 }
