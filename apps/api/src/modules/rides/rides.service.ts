@@ -2,6 +2,7 @@ import { TokenService } from "../auth/token.service.js";
 import { SessionService } from "../auth/session.service.js";
 import { UsersRepository } from "../users/users.repository.js";
 import { RidesRepository, type RideWithDriverName } from "./rides.repository.js";
+import { RideStopsRepository } from "./rideStops.repository.js";
 import { DriverStatusRepository } from "../drivers/driverStatus.repository.js";
 import { FareSettingsRepository } from "../fareSettings/fareSettings.repository.js";
 import { AppError } from "../../shared/errors/AppError.js";
@@ -9,6 +10,7 @@ import type {
   RideRequestResponse, RidesListResult, RideResult,
   AvailableRideResponse, AvailableRidesResult,
   DriverRideResponse, DriverRidesListResult,
+  RideStopResponse,
 } from "./rides.types.js";
 import type { RideRequest } from "../../db/schema/index.js";
 import type { CreateRideRequestInput, CancelAcceptedInput } from "./rides.schemas.js";
@@ -17,6 +19,7 @@ const tokenService      = new TokenService();
 const sessionService    = new SessionService();
 const usersRepo         = new UsersRepository();
 const ridesRepo         = new RidesRepository();
+const rideStopsRepo     = new RideStopsRepository();
 const driverStatusRepo  = new DriverStatusRepository();
 const fareSettingsRepo  = new FareSettingsRepository();
 
@@ -50,9 +53,26 @@ function estimateFare(distanceMeters: number): FareResult {
   return { fareClp: Math.max(rawCLP, minCLP), source: "google_maps" };
 }
 
+function toStopResponse(s: import("../../db/schema/index.js").RideStop): RideStopResponse {
+  return {
+    id:                     s.id,
+    rideRequestId:          s.rideRequestId,
+    stopOrder:              s.stopOrder,
+    label:                  s.label,
+    lat:                    s.lat,
+    lng:                    s.lng,
+    segmentDistanceMeters:  s.segmentDistanceMeters ?? null,
+    segmentDurationSeconds: s.segmentDurationSeconds ?? null,
+    segmentFareClp:         s.segmentFareClp ?? null,
+    arrivedAt:              s.arrivedAt?.toISOString() ?? null,
+    completedAt:            s.completedAt?.toISOString() ?? null,
+  };
+}
+
 function toResponse(
   r: RideRequest | RideWithDriverName,
   discountInfo?: { discountPercent: number; originalFare: number },
+  stops?: RideStopResponse[],
 ): RideRequestResponse {
   return {
     id:              r.id,
@@ -97,6 +117,7 @@ function toResponse(
     scheduledPickupAt: r.scheduledPickupAt?.toISOString() ?? null,
     priorityFeeClp:   r.priorityFeeClp ?? null,
     flightNumber:     r.flightNumber ?? null,
+    stops:            stops,
   };
 }
 
@@ -226,8 +247,34 @@ export class RidesService {
       return { ok: false, code: "AUTH_FORBIDDEN", message: "Only passengers can create ride requests.", statusCode: 403 };
     }
 
-    const { fareClp: baseFare, source: fareSource } = estimateFare(input.distanceMeters);
     const rideType = input.rideType ?? "immediate";
+    const hasMultiDestinations = (input.destinations?.length ?? 0) > 0;
+
+    // ── Resolve effective distance, duration, and destination fields ──────────
+    let effectiveDistanceMeters:  number;
+    let effectiveDurationSeconds: number;
+    let effectiveDestinationText: string;
+    let effectiveDestinationLat:  number;
+    let effectiveDestinationLng:  number;
+
+    if (hasMultiDestinations) {
+      const segs = input.segments!;
+      effectiveDistanceMeters  = segs.reduce((sum, s) => sum + s.distanceMeters,  0);
+      effectiveDurationSeconds = segs.reduce((sum, s) => sum + s.durationSeconds, 0);
+      const sortedDests = [...input.destinations!].sort((a, b) => a.order - b.order);
+      const lastDest = sortedDests[sortedDests.length - 1]!;
+      effectiveDestinationText = lastDest.text;
+      effectiveDestinationLat  = lastDest.lat;
+      effectiveDestinationLng  = lastDest.lng;
+    } else {
+      effectiveDistanceMeters  = input.distanceMeters!;
+      effectiveDurationSeconds = input.durationSeconds!;
+      effectiveDestinationText = input.destinationText!;
+      effectiveDestinationLat  = input.destinationLat!;
+      effectiveDestinationLng  = input.destinationLng!;
+    }
+
+    const { fareClp: baseFare, source: fareSource } = estimateFare(effectiveDistanceMeters);
 
     // ── Priority surcharge for scheduled rides ──────────────────────────────
     let priorityFeeClp: number | null = null;
@@ -240,12 +287,28 @@ export class RidesService {
       }
     }
 
-    let finalFare    = baseFare + (priorityFeeClp ?? 0);
-    let finalSource  = rideType === "scheduled" ? `${fareSource}_scheduled` : (fareSource as string);
+    // ── Extra stop fee (multi-destination only, inactive by default) ─────────
+    let extraStopFeeTotal = 0;
+    if (hasMultiDestinations) {
+      const additionalStops = input.destinations!.length - 1;
+      if (additionalStops > 0) {
+        try {
+          const setting = await fareSettingsRepo.findByType("extra_stop_fee");
+          if (setting?.isActive && setting.value) {
+            extraStopFeeTotal = setting.value * additionalStops;
+          }
+        } catch {
+          extraStopFeeTotal = 0;
+        }
+      }
+    }
+
+    let finalFare   = baseFare + (priorityFeeClp ?? 0) + extraStopFeeTotal;
+    let finalSource = rideType === "scheduled" ? `${fareSource}_scheduled` : (fareSource as string);
     let discountInfo: { discountPercent: number; originalFare: number } | undefined;
 
-    // ── Referral discount (immediate rides only — not stacked with priority) ─
-    if (rideType === "immediate") {
+    // ── Referral discount (immediate simple rides only) ───────────────────────
+    if (rideType === "immediate" && !hasMultiDestinations) {
       try {
         const { ReferralsRepository } = await import("../referrals/referrals.repository.js");
         const referralsRepo = new ReferralsRepository();
@@ -271,13 +334,13 @@ export class RidesService {
     const row = await ridesRepo.create({
       passengerUserId:       auth.userId,
       originText:            input.originText,
-      destinationText:       input.destinationText,
+      destinationText:       effectiveDestinationText,
       originLat:             input.originLat,
       originLng:             input.originLng,
-      destinationLat:        input.destinationLat,
-      destinationLng:        input.destinationLng,
-      distanceMeters:        input.distanceMeters,
-      durationSeconds:       input.durationSeconds,
+      destinationLat:        effectiveDestinationLat,
+      destinationLng:        effectiveDestinationLng,
+      distanceMeters:        effectiveDistanceMeters,
+      durationSeconds:       effectiveDurationSeconds,
       notes:                 input.notes ?? null,
       estimatedFareClp:      finalFare,
       fareCalculationSource: finalSource,
@@ -287,19 +350,50 @@ export class RidesService {
       flightNumber:          input.flightNumber ?? null,
     });
 
-    // ── Auto-assignment: only for immediate rides ───────────────────────────
+    // ── Create ride_stops for multi-destination rides ─────────────────────────
+    let createdStops: RideStopResponse[] = [];
+    if (hasMultiDestinations) {
+      const sortedDests = [...input.destinations!].sort((a, b) => a.order - b.order);
+      const sortedSegs  = [...input.segments!].sort((a, b) => a.fromOrder - b.fromOrder);
+
+      // Distribute baseFare proportionally by segment distance
+      const segFares: number[] = sortedSegs.map((seg) =>
+        Math.round((seg.distanceMeters / effectiveDistanceMeters) * baseFare),
+      );
+      // Last segment absorbs rounding diff
+      const fareSum = segFares.reduce((s, f) => s + f, 0);
+      segFares[segFares.length - 1]! += baseFare - fareSum;
+
+      const stopInputs = sortedDests.map((dest, i) => ({
+        stopOrder:              dest.order,
+        label:                  dest.text,
+        lat:                    dest.lat,
+        lng:                    dest.lng,
+        segmentDistanceMeters:  sortedSegs[i]!.distanceMeters,
+        segmentDurationSeconds: sortedSegs[i]!.durationSeconds,
+        segmentFareClp:         segFares[i]!,
+      }));
+
+      const dbStops = await rideStopsRepo.createMany(row.id, stopInputs);
+      createdStops = dbStops.map(toStopResponse);
+    }
+
+    // ── Auto-assignment: immediate rides only (multi or simple) ──────────────
     if (rideType === "immediate" && input.originLat != null && input.originLng != null) {
       try {
         const assigned = await autoAssignNearestDriver(row.id, input.originLat, input.originLng);
         if (assigned) {
-          return { ok: true, ride: { ...toResponse(assigned, discountInfo), autoAssigned: true } };
+          return {
+            ok: true,
+            ride: { ...toResponse(assigned, discountInfo, createdStops), autoAssigned: true },
+          };
         }
       } catch {
         // Auto-assignment failure is non-fatal — ride stays in requested for admin
       }
     }
 
-    return { ok: true, ride: toResponse(row, discountInfo) };
+    return { ok: true, ride: toResponse(row, discountInfo, createdStops) };
   }
 
   async cancelRideRequest(accessToken: string, rideId: string): Promise<RideResult> {

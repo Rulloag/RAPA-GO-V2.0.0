@@ -1,3 +1,31 @@
+export interface RideDestinationInput {
+  text:  string;
+  lat:   number;
+  lng:   number;
+  order: number;
+}
+
+export interface RideSegmentInput {
+  fromOrder:       number;
+  toOrder:         number;
+  distanceMeters:  number;
+  durationSeconds: number;
+}
+
+export interface RideStopResponse {
+  id:                     string;
+  rideRequestId:          string;
+  stopOrder:              number;
+  label:                  string;
+  lat:                    number;
+  lng:                    number;
+  segmentDistanceMeters:  number | null;
+  segmentDurationSeconds: number | null;
+  segmentFareClp:         number | null;
+  arrivedAt:              string | null;
+  completedAt:            string | null;
+}
+
 export interface RideRequestResponse {
   id:                    string;
   passengerUserId:       string;
@@ -42,6 +70,7 @@ export interface RideRequestResponse {
   scheduledPickupAt:     string | null;
   priorityFeeClp:        number | null;
   flightNumber:          string | null;
+  stops?:                RideStopResponse[] | undefined;
 }
 
 /** Subset exposed to driver for their own rides — no passenger identity. */

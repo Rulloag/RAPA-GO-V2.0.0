@@ -35,6 +35,8 @@ export const rideRequests = pgTable("ride_requests", {
   scheduledPickupAt:    timestamp("scheduled_pickup_at",  { withTimezone: true }),
   priorityFeeClp:       integer("priority_fee_clp"),
   flightNumber:         varchar("flight_number", { length: 20 }),
+  // Multi-destination: tracks which stop the ride is currently heading to (1-indexed)
+  currentStopOrder:     integer("current_stop_order").notNull().default(1),
   createdAt:            timestamp("created_at",    { withTimezone: true }).notNull().defaultNow(),
   updatedAt:            timestamp("updated_at",    { withTimezone: true }).notNull().defaultNow(),
 });
