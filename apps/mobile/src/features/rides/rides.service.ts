@@ -90,6 +90,34 @@ export interface AvailableRideData {
   createdAt:       string;
 }
 
+export interface ActiveRideOfferRideData {
+  id:               string;
+  originText:       string;
+  destinationText:  string;
+  estimatedFareClp: number | null;
+  distanceMeters:   number | null;
+  durationSeconds:  number | null;
+  rideType:         string;
+  scheduledPickupAt: string | null;
+  priorityFeeClp:   number | null;
+  flightNumber:     string | null;
+}
+
+export interface ActiveRideOfferData {
+  offer: {
+    id:             string;
+    rideRequestId:  string;
+    driverUserId:   string;
+    status:         string;
+    offeredAt:      string;
+    expiresAt:      string;
+    respondedAt:    string | null;
+    responseSource: string | null;
+    attemptOrder:   number;
+  };
+  ride: ActiveRideOfferRideData;
+}
+
 export interface RatingData {
   id:            string;
   rideRequestId: string;
@@ -200,6 +228,26 @@ export const ridesService = {
     const result = await apiClient.patch<Envelope>("/drivers/me/location", { lat, lng }, { token: accessToken });
     if (!result.ok) throw new Error(result.message ?? "Failed to update location.");
     return (result.data as Envelope).data;
+  },
+
+  async getActiveDriverOffer(accessToken: string): Promise<ActiveRideOfferData | null> {
+    type Envelope = { ok: true; data: ActiveRideOfferData | null; statusCode: number };
+    const result = await apiClient.get<Envelope>("/drivers/me/offers/active", { token: accessToken });
+    if (!result.ok) return null;
+    return (result.data as Envelope).data;
+  },
+
+  async acceptDriverOffer(accessToken: string, offerId: string): Promise<RideRequestData> {
+    const result = await apiClient.post<RideEnvelope>(`/drivers/me/offers/${offerId}/accept`, {}, { token: accessToken });
+    if (!result.ok) throw new Error(result.message ?? "Error al aceptar oferta.");
+    return (result.data as RideEnvelope).data;
+  },
+
+  async rejectDriverOffer(accessToken: string, offerId: string): Promise<void> {
+    const result = await apiClient.post<{ ok: true; data: { rejected: boolean }; statusCode: number }>(
+      `/drivers/me/offers/${offerId}/reject`, {}, { token: accessToken },
+    );
+    if (!result.ok) throw new Error(result.message ?? "Error al rechazar oferta.");
   },
 
   async rateRide(accessToken: string, rideId: string, rating: number, comment?: string): Promise<RatingData> {

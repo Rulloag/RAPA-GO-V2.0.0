@@ -37,6 +37,10 @@ export const rideRequests = pgTable("ride_requests", {
   flightNumber:         varchar("flight_number", { length: 20 }),
   // Multi-destination: tracks which stop the ride is currently heading to (1-indexed)
   currentStopOrder:     integer("current_stop_order").notNull().default(1),
+  // Queued offer: driver who accepted an offer for this ride before being assigned
+  queuedOfferDriverId:  uuid("queued_offer_driver_id").references(() => users.id, { onDelete: "set null" }),
+  // How this ride was assigned: automatic | manual | queued_offer
+  assignmentMode:       varchar("assignment_mode", { length: 20 }).notNull().default("automatic"),
   createdAt:            timestamp("created_at",    { withTimezone: true }).notNull().defaultNow(),
   updatedAt:            timestamp("updated_at",    { withTimezone: true }).notNull().defaultNow(),
 });

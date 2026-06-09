@@ -6,6 +6,7 @@ import { AuditService } from "../audit/audit.service.js";
 import { DriverStatusRepository } from "../drivers/driverStatus.repository.js";
 import { OfflineRepository } from "../offline/offline.repository.js";
 import { RidesRepository } from "../rides/rides.repository.js";
+import { RideAssignmentOffersRepository } from "../rides/rideAssignmentOffers.repository.js";
 import { AppError } from "../../shared/errors/AppError.js";
 import type { ListUsersQuery, UpdateUserStatusInput, ListDocumentsQuery, ReviewDocumentInput, AdminListRidesQuery, AdminAssignDriverInput, AdminCancelRideInput, AdminSyncToRideInput } from "./admin.schemas.js";
 import type { AdminUsersListResult, AdminUserResult, AdminUserResponse, AdminDocumentResponse, AdminDocumentsListResult, AdminDocumentResult, AdminRidesListResult, AdminRideResult, AdminRideResponse, ActiveDriversListResult, ActiveDriverResponse } from "./admin.types.js";
@@ -20,6 +21,7 @@ const auditService     = new AuditService();
 const driverStatusRepo = new DriverStatusRepository();
 const offlineRepo      = new OfflineRepository();
 const ridesRepo        = new RidesRepository();
+const offersRepo       = new RideAssignmentOffersRepository();
 
 function toRideResponse(r: AdminRideRow): AdminRideResponse {
   return {
@@ -288,6 +290,9 @@ export class AdminService {
         statusCode: 409,
       };
     }
+
+    // Cancel any pending queued offer for this ride before assigning manually
+    await offersRepo.markCancelledByRideId(rideId).catch(() => {});
 
     const updated = await adminRepo.assignDriver(rideId, input.driverUserId);
     if (!updated) {

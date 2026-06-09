@@ -21,3 +21,4 @@ export { legalDocuments, userAcceptances, type LegalDocument, type UserAcceptanc
 export { fareSettings, zoneFares, type FareSetting, type ZoneFare } from "./fareSettings.schema.js";
 export { referralCodes, referralUses, type ReferralCode, type NewReferralCode, type ReferralUse, type NewReferralUse } from "./referrals.schema.js";
 export { rideStops, type RideStop, type NewRideStop } from "./rideStops.schema.js";
+export { rideAssignmentOffers, type RideAssignmentOffer, type NewRideAssignmentOffer } from "./rideAssignmentOffers.schema.js";

@@ -71,6 +71,8 @@ export interface RideRequestResponse {
   priorityFeeClp:        number | null;
   flightNumber:          string | null;
   stops?:                RideStopResponse[] | undefined;
+  queuedOfferPending?:   boolean | undefined;
+  queuedOfferExpiresAt?: string | null | undefined;
 }
 
 /** Subset exposed to driver for their own rides — no passenger identity. */

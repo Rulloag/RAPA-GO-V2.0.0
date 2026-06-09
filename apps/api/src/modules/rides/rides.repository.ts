@@ -209,6 +209,32 @@ export class RidesRepository {
   }
 
   /**
+   * Atomically accept a ride as a queued offer (driver is still on current ride).
+   * Sets assignmentMode='queued_offer' and queuedOfferDriverId.
+   * Returns null if the ride is no longer 'requested' (race condition).
+   */
+  async acceptAsQueued(id: string, driverUserId: string): Promise<RideRequest | null> {
+    try {
+      const rows = await db
+        .update(rideRequests)
+        .set({
+          status:              "accepted",
+          driverUserId,
+          acceptedAt:          new Date(),
+          assignmentMode:      "queued_offer",
+          queuedOfferDriverId: driverUserId,
+          updatedAt:           new Date(),
+        })
+        .where(and(eq(rideRequests.id, id), eq(rideRequests.status, "requested")))
+        .returning();
+      return rows[0] ?? null;
+    } catch (err) {
+      if (err instanceof AppError) throw err;
+      throw AppError.internal(`Failed to accept ride as queued: ${String(err)}`);
+    }
+  }
+
+  /**
    * Atomically accept a ride only when it is still in 'requested' status.
    * Returns null if no row was updated (status already changed — race condition).
    */

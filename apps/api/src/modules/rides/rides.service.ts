@@ -1,15 +1,16 @@
 import { TokenService } from "../auth/token.service.js";
 import { SessionService } from "../auth/session.service.js";
 import { UsersRepository } from "../users/users.repository.js";
-import { RidesRepository, type RideWithDriverName } from "./rides.repository.js";
+import { RidesRepository } from "./rides.repository.js";
 import { RideStopsRepository } from "./rideStops.repository.js";
+import { RideAssignmentOffersRepository } from "./rideAssignmentOffers.repository.js";
 import { DriverStatusRepository } from "../drivers/driverStatus.repository.js";
 import { FareSettingsRepository } from "../fareSettings/fareSettings.repository.js";
 import { AppError } from "../../shared/errors/AppError.js";
+import { toResponse, toStopResponse, toDriverRideResponse, toAvailableResponse } from "./rides.responseMapper.js";
 import type {
-  RideRequestResponse, RidesListResult, RideResult,
-  AvailableRideResponse, AvailableRidesResult,
-  DriverRideResponse, DriverRidesListResult,
+  RidesListResult, RideResult,
+  AvailableRidesResult, DriverRidesListResult,
   RideStopResponse,
 } from "./rides.types.js";
 import type { RideRequest } from "../../db/schema/index.js";
@@ -20,6 +21,7 @@ const sessionService    = new SessionService();
 const usersRepo         = new UsersRepository();
 const ridesRepo         = new RidesRepository();
 const rideStopsRepo     = new RideStopsRepository();
+const offersRepo        = new RideAssignmentOffersRepository();
 const driverStatusRepo  = new DriverStatusRepository();
 const fareSettingsRepo  = new FareSettingsRepository();
 
@@ -51,122 +53,6 @@ function estimateFare(distanceMeters: number): FareResult {
   const minCLP = Math.round(minFareCentavos / 100);
   const rawCLP = Math.round(km * (perKmCentavos / 100));
   return { fareClp: Math.max(rawCLP, minCLP), source: "google_maps" };
-}
-
-function toStopResponse(s: import("../../db/schema/index.js").RideStop): RideStopResponse {
-  return {
-    id:                     s.id,
-    rideRequestId:          s.rideRequestId,
-    stopOrder:              s.stopOrder,
-    label:                  s.label,
-    lat:                    s.lat,
-    lng:                    s.lng,
-    segmentDistanceMeters:  s.segmentDistanceMeters ?? null,
-    segmentDurationSeconds: s.segmentDurationSeconds ?? null,
-    segmentFareClp:         s.segmentFareClp ?? null,
-    arrivedAt:              s.arrivedAt?.toISOString() ?? null,
-    completedAt:            s.completedAt?.toISOString() ?? null,
-  };
-}
-
-function toResponse(
-  r: RideRequest | RideWithDriverName,
-  discountInfo?: { discountPercent: number; originalFare: number },
-  stops?: RideStopResponse[],
-): RideRequestResponse {
-  return {
-    id:              r.id,
-    passengerUserId: r.passengerUserId,
-    driverUserId:    r.driverUserId ?? null,
-    driverName:      ("driverName"  in r ? r.driverName  : null) ?? null,
-    driverPhone:     ("driverPhone" in r ? r.driverPhone : null) ?? null,
-    originText:      r.originText,
-    destinationText: r.destinationText,
-    notes:           r.notes,
-    estimatedFareClp:      r.estimatedFareClp ?? null,
-    originLat:             r.originLat ?? null,
-    originLng:             r.originLng ?? null,
-    destinationLat:        r.destinationLat ?? null,
-    destinationLng:        r.destinationLng ?? null,
-    distanceMeters:        r.distanceMeters ?? null,
-    durationSeconds:       r.durationSeconds ?? null,
-    fareCalculationSource: r.fareCalculationSource,
-    status:          r.status,
-    requestedAt:     r.requestedAt.toISOString(),
-    acceptedAt:      r.acceptedAt?.toISOString() ?? null,
-    enRouteAt:       r.enRouteAt?.toISOString() ?? null,
-    arrivedAt:       r.arrivedAt?.toISOString() ?? null,
-    startedAt:       r.startedAt?.toISOString() ?? null,
-    completedAt:     r.completedAt?.toISOString() ?? null,
-    cancelledAt:        r.cancelledAt?.toISOString() ?? null,
-    cancellationReason: r.cancellationReason ?? null,
-    cancelledByRole:    r.cancelledByRole ?? null,
-    createdAt:          r.createdAt.toISOString(),
-    updatedAt:          r.updatedAt.toISOString(),
-    driverRatingAverage: ("driverRatingAverage" in r ? r.driverRatingAverage : null) ?? null,
-    driverRatingCount:   ("driverRatingCount"   in r ? r.driverRatingCount   : 0) ?? 0,
-    driverVehicleBrand:  ("driverVehicleBrand"  in r ? r.driverVehicleBrand  : null) ?? null,
-    driverVehicleModel:  ("driverVehicleModel"  in r ? r.driverVehicleModel  : null) ?? null,
-    driverVehicleYear:   ("driverVehicleYear"   in r ? r.driverVehicleYear   : null) ?? null,
-    driverVehiclePlate:  ("driverVehiclePlate"  in r ? r.driverVehiclePlate  : null) ?? null,
-    driverVehicleColor:  ("driverVehicleColor"  in r ? r.driverVehicleColor  : null) ?? null,
-    discountApplied:  discountInfo != null,
-    discountPercent:  discountInfo?.discountPercent ?? null,
-    originalFareClp:  discountInfo?.originalFare ?? null,
-    rideType:         r.rideType ?? "immediate",
-    scheduledPickupAt: r.scheduledPickupAt?.toISOString() ?? null,
-    priorityFeeClp:   r.priorityFeeClp ?? null,
-    flightNumber:     r.flightNumber ?? null,
-    stops:            stops,
-  };
-}
-
-function toDriverRideResponse(r: RideRequest): DriverRideResponse {
-  return {
-    id:                    r.id,
-    originText:            r.originText,
-    destinationText:       r.destinationText,
-    notes:                 r.notes,
-    estimatedFareClp:      r.estimatedFareClp ?? null,
-    originLat:             r.originLat ?? null,
-    originLng:             r.originLng ?? null,
-    destinationLat:        r.destinationLat ?? null,
-    destinationLng:        r.destinationLng ?? null,
-    distanceMeters:        r.distanceMeters ?? null,
-    durationSeconds:       r.durationSeconds ?? null,
-    fareCalculationSource: r.fareCalculationSource,
-    status:                r.status,
-    requestedAt:           r.requestedAt.toISOString(),
-    acceptedAt:            r.acceptedAt?.toISOString() ?? null,
-    enRouteAt:             r.enRouteAt?.toISOString() ?? null,
-    arrivedAt:             r.arrivedAt?.toISOString() ?? null,
-    startedAt:             r.startedAt?.toISOString() ?? null,
-    completedAt:           r.completedAt?.toISOString() ?? null,
-    cancelledAt:           r.cancelledAt?.toISOString() ?? null,
-    cancellationReason:    r.cancellationReason ?? null,
-    cancelledByRole:       r.cancelledByRole ?? null,
-    createdAt:             r.createdAt.toISOString(),
-    rideType:              r.rideType ?? "immediate",
-    scheduledPickupAt:     r.scheduledPickupAt?.toISOString() ?? null,
-    priorityFeeClp:        r.priorityFeeClp ?? null,
-    flightNumber:          r.flightNumber ?? null,
-  };
-}
-
-function toAvailableResponse(r: RideRequest): AvailableRideResponse {
-  return {
-    id:                    r.id,
-    originText:            r.originText,
-    destinationText:       r.destinationText,
-    notes:                 r.notes,
-    estimatedFareClp:      r.estimatedFareClp ?? null,
-    distanceMeters:        r.distanceMeters ?? null,
-    durationSeconds:       r.durationSeconds ?? null,
-    fareCalculationSource: r.fareCalculationSource,
-    status:                r.status,
-    requestedAt:           r.requestedAt.toISOString(),
-    createdAt:             r.createdAt.toISOString(),
-  };
 }
 
 type AuthResult =
@@ -391,6 +277,41 @@ export class RidesService {
       } catch {
         // Auto-assignment failure is non-fatal — ride stays in requested for admin
       }
+
+      // ── Queued offer fallback: try busy drivers when no available found ──────
+      try {
+        await offersRepo.expireStale(); // lazy cleanup of stale offers
+        const now = new Date();
+        const locationCutoffBusy = new Date(now.getTime() - MAX_DRIVER_LOCATION_AGE_MINUTES * 60 * 1000);
+        const lastSeenCutoffBusy  = new Date(now.getTime() - MAX_DRIVER_LAST_SEEN_AGE_MINUTES * 60 * 1000);
+        const busyCandidates = await driverStatusRepo.findBusyEligibleForQueuedOffer({
+          locationCutoff: locationCutoffBusy,
+          lastSeenCutoff: lastSeenCutoffBusy,
+        });
+        const rankedBusy = busyCandidates
+          .map(c => ({ ...c, distanceKm: haversineKm(input.originLat, input.originLng, c.currentLat, c.currentLng) }))
+          .filter(c => c.distanceKm <= MAX_PICKUP_DISTANCE_KM)
+          .sort((a, b) => a.distanceKm - b.distanceKm);
+
+        if (rankedBusy.length > 0 && rankedBusy[0]) {
+          const offer = await offersRepo.createOffer({
+            rideRequestId: row.id,
+            driverUserId:  rankedBusy[0].driverUserId,
+            expiresAt:     new Date(now.getTime() + 20 * 1000),
+            attemptOrder:  1,
+          });
+          return {
+            ok: true,
+            ride: {
+              ...toResponse(row, discountInfo, createdStops),
+              queuedOfferPending:   true,
+              queuedOfferExpiresAt: offer.expiresAt.toISOString(),
+            },
+          };
+        }
+      } catch {
+        // Queued offer creation failure is non-fatal — ride stays requested for admin
+      }
     }
 
     return { ok: true, ride: toResponse(row, discountInfo, createdStops) };
@@ -487,8 +408,14 @@ export class RidesService {
       return { ok: false, code: "AUTH_FORBIDDEN", message: "You can only complete rides assigned to you.", statusCode: 403 };
     }
 
-    // Free the driver so they can accept new rides
-    await driverStatusRepo.setAvailable(auth.userId);
+    // If driver has a queued next ride, activate it instead of going available
+    const driverStatus = await driverStatusRepo.findByDriverId(auth.userId);
+    if (driverStatus?.queuedRideId) {
+      await driverStatusRepo.setBusy(auth.userId, driverStatus.queuedRideId);
+      await driverStatusRepo.clearQueuedRide(auth.userId);
+    } else {
+      await driverStatusRepo.setAvailable(auth.userId);
+    }
 
     return { ok: true, ride: toResponse(completed) };
   }

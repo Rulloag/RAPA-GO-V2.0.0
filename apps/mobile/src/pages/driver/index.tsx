@@ -9,6 +9,7 @@ import {
   IonInput,
   IonItem,
   IonLabel,
+  IonModal,
   IonNote,
   IonPage,
   IonRefresher,
@@ -41,7 +42,7 @@ import { useConnectivity } from "../../hooks/useConnectivity";
 import { ROUTE_METADATA } from "../../navigation/routeConfig";
 import { ROUTES } from "../../navigation/routes";
 import { useAuth } from "../../features/auth";
-import { ridesService } from "../../features/rides/rides.service";
+import { ridesService, type ActiveRideOfferData } from "../../features/rides/rides.service";
 import { MapFallback } from "../../components/MapFallback";
 import { driverStatusService } from "../../features/drivers/driverStatus.service";
 import { RAPA_NUI_ZONES, getZoneLabel, RAPAGO_CONTACT, WA_MESSAGES } from "@rapa-go/shared";
@@ -528,6 +529,143 @@ function isPickupSoon(iso: string): boolean {
   return new Date(iso).getTime() <= Date.now() + 2 * 60 * 60 * 1000;
 }
 
+// ── QueuedOfferModal ──────────────────────────────────────────────────────────
+
+function useCountdown(expiresAt: string | null): number {
+  const [seconds, setSeconds] = useState<number>(() =>
+    expiresAt ? Math.max(0, Math.floor((new Date(expiresAt).getTime() - Date.now()) / 1000)) : 0,
+  );
+
+  useEffect(() => {
+    if (!expiresAt) return;
+    const tick = () => {
+      const remaining = Math.max(0, Math.floor((new Date(expiresAt).getTime() - Date.now()) / 1000));
+      setSeconds(remaining);
+    };
+    tick();
+    const id = setInterval(tick, 1000);
+    return () => clearInterval(id);
+  }, [expiresAt]);
+
+  return seconds;
+}
+
+function QueuedOfferModal({ offer, onAccept, onReject, onExpire, loading }: {
+  offer: ActiveRideOfferData;
+  onAccept: () => void;
+  onReject: () => void;
+  onExpire: () => void;
+  loading: boolean;
+}): JSX.Element {
+  const countdown = useCountdown(offer.offer.expiresAt);
+  const { ride } = offer;
+
+  useEffect(() => {
+    if (countdown === 0) onExpire();
+  }, [countdown, onExpire]);
+
+  const countdownColor = countdown <= 5 ? "var(--ion-color-danger)" : countdown <= 10 ? "var(--ion-color-warning-shade)" : "var(--ion-color-success-shade)";
+
+  return (
+    <div style={{ padding: "16px" }}>
+      {/* Header */}
+      <div style={{
+        background:   "var(--ion-color-success)",
+        color:        "white",
+        borderRadius: "12px 12px 0 0",
+        padding:      "14px 16px",
+        margin:       "-16px -16px 0",
+      }}>
+        <div style={{ fontWeight: 700, fontSize: "1rem" }}>Próximo viaje disponible</div>
+        <div style={{ fontSize: "0.8rem", opacity: 0.9, marginTop: "2px" }}>
+          Este viaje comenzará después de terminar tu viaje actual.
+        </div>
+      </div>
+
+      {/* Countdown */}
+      <div style={{
+        textAlign: "center", padding: "14px 0 8px",
+        fontWeight: 800, fontSize: "2.2rem", color: countdownColor,
+        letterSpacing: "-1px",
+      }}>
+        {countdown}s
+      </div>
+
+      {/* Ride details */}
+      <div style={{
+        background: "var(--ion-color-light)", borderRadius: "10px",
+        padding: "12px 14px", marginBottom: "12px",
+      }}>
+        <div style={{ fontWeight: 600, fontSize: "0.92rem", marginBottom: "6px" }}>
+          {ride.originText} → {ride.destinationText}
+        </div>
+
+        <div style={{ display: "flex", flexWrap: "wrap", gap: "10px", fontSize: "0.8rem", color: "var(--ion-color-medium-shade)" }}>
+          {ride.estimatedFareClp != null && (
+            <span style={{ fontWeight: 600, color: "var(--ion-color-success-shade)" }}>
+              ${ride.estimatedFareClp.toLocaleString("es-CL")} CLP
+            </span>
+          )}
+          {ride.distanceMeters != null && (
+            <span>{(ride.distanceMeters / 1000).toFixed(1)} km</span>
+          )}
+          {ride.durationSeconds != null && (
+            <span>~{Math.round(ride.durationSeconds / 60)} min</span>
+          )}
+        </div>
+
+        {ride.rideType === "scheduled" && ride.scheduledPickupAt && (
+          <div style={{
+            marginTop: "8px", padding: "6px 10px",
+            background: "var(--ion-color-warning-tint)", borderRadius: "6px",
+            fontSize: "0.78rem", color: "var(--ion-color-warning-shade)", fontWeight: 600,
+          }}>
+            Programado: {fmtScheduledPickup(ride.scheduledPickupAt)}
+          </div>
+        )}
+
+        {ride.priorityFeeClp != null && ride.priorityFeeClp > 0 && (
+          <div style={{
+            marginTop: "6px", fontSize: "0.78rem",
+            color: "var(--ion-color-warning-shade)", fontWeight: 600,
+          }}>
+            Recargo prioritario: ${ride.priorityFeeClp.toLocaleString("es-CL")} CLP
+          </div>
+        )}
+
+        {ride.flightNumber && (
+          <div style={{ marginTop: "4px", fontSize: "0.78rem", color: "var(--ion-color-medium)" }}>
+            Vuelo: {ride.flightNumber}
+          </div>
+        )}
+      </div>
+
+      {/* Actions */}
+      <div style={{ display: "flex", gap: "8px" }}>
+        <IonButton
+          expand="block"
+          fill="outline"
+          color="medium"
+          style={{ flex: 1 }}
+          disabled={loading}
+          onClick={onReject}
+        >
+          Rechazar
+        </IonButton>
+        <IonButton
+          expand="block"
+          color="success"
+          style={{ flex: 1 }}
+          disabled={loading || countdown === 0}
+          onClick={onAccept}
+        >
+          {loading ? <IonSpinner name="dots" style={{ width: "18px", height: "18px" }} /> : "Aceptar"}
+        </IonButton>
+      </div>
+    </div>
+  );
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 
 export function DriverTripsPage(): JSX.Element {
@@ -581,6 +719,11 @@ function DriverMyRidesPage(): JSX.Element {
   const [locationShareError, setLocationShareError] = useState<string | null>(null);
   const [driverPos,          setDriverPos]          = useState<LatLng | null>(null);
 
+  // Queued offer state
+  const [activeOffer,        setActiveOffer]        = useState<ActiveRideOfferData | null>(null);
+  const [offerActionLoading, setOfferActionLoading] = useState(false);
+  const [offerMsg,           setOfferMsg]           = useState<string | null>(null);
+
   async function handleShareLocation() {
     if (!session?.accessToken) return;
     setSharingLocation(true);
@@ -624,6 +767,55 @@ function DriverMyRidesPage(): JSX.Element {
   }, [session?.accessToken]);
 
   useEffect(() => { void loadRides(); }, [loadRides]);
+
+  // Polling: check for active queued offer every 3s while driver is in_progress and no modal open
+  const hasInProgressRide = rides.some(r => r.status === "in_progress");
+  useEffect(() => {
+    if (!session?.accessToken || !hasInProgressRide || activeOffer !== null) return;
+    const poll = async () => {
+      try {
+        const offer = await ridesService.getActiveDriverOffer(session.accessToken!);
+        if (offer) setActiveOffer(offer);
+      } catch { /* non-fatal */ }
+    };
+    const id = setInterval(() => { void poll(); }, 3000);
+    return () => clearInterval(id);
+  }, [session?.accessToken, hasInProgressRide, activeOffer]);
+
+  // Offer handlers
+  async function handleAcceptOffer() {
+    if (!session?.accessToken || !activeOffer) return;
+    setOfferActionLoading(true);
+    try {
+      await ridesService.acceptDriverOffer(session.accessToken, activeOffer.offer.id);
+      setActiveOffer(null);
+      setOfferMsg("Próximo viaje asignado. Finaliza primero tu viaje actual.");
+      void loadRides();
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Error al aceptar oferta.";
+      const isExpired = /expired|no longer|409/i.test(msg);
+      setOfferMsg(isExpired ? "La oferta ya expiró o no está disponible." : msg);
+      setActiveOffer(null);
+    } finally {
+      setOfferActionLoading(false);
+    }
+  }
+
+  function handleRejectOffer() {
+    if (!session?.accessToken || !activeOffer) { setActiveOffer(null); return; }
+    void ridesService.rejectDriverOffer(session.accessToken, activeOffer.offer.id).catch(() => {});
+    setActiveOffer(null);
+    setOfferMsg("Oferta rechazada.");
+  }
+
+  function handleExpireOffer() {
+    setActiveOffer(null);
+    setOfferMsg("La oferta expiró.");
+    // Trigger a lazy expiry check on next poll cycle — no endpoint called here
+    if (session?.accessToken) {
+      void ridesService.getActiveDriverOffer(session.accessToken).catch(() => {});
+    }
+  }
 
   async function handleComplete(rideId: string) {
     if (!session?.accessToken) return;
@@ -712,8 +904,29 @@ function DriverMyRidesPage(): JSX.Element {
     }
   }
 
+  const hasAcceptedQueuedRide = hasInProgressRide && rides.some(r => r.status === "accepted");
+
   return (
     <IonPage>
+      {/* Queued offer modal — appears over current ride while in_progress */}
+      <IonModal
+        isOpen={activeOffer !== null}
+        onDidDismiss={() => setActiveOffer(null)}
+        breakpoints={[0, 1]}
+        initialBreakpoint={1}
+        style={{ "--height": "auto" }}
+      >
+        {activeOffer && (
+          <QueuedOfferModal
+            offer={activeOffer}
+            onAccept={() => void handleAcceptOffer()}
+            onReject={handleRejectOffer}
+            onExpire={handleExpireOffer}
+            loading={offerActionLoading}
+          />
+        )}
+      </IonModal>
+
       <IonHeader>
         <IonToolbar color="success">
           <IonTitle>Mis Viajes</IonTitle>
@@ -728,6 +941,47 @@ function DriverMyRidesPage(): JSX.Element {
         <IonRefresher slot="fixed" onIonRefresh={(e) => { void loadRides().then(() => e.detail.complete()); }}>
           <IonRefresherContent />
         </IonRefresher>
+
+        {/* Offer result message */}
+        {offerMsg && (
+          <div style={{
+            display:      "flex",
+            alignItems:   "center",
+            justifyContent: "space-between",
+            gap:          "8px",
+            padding:      "10px 14px",
+            marginBottom: "12px",
+            borderRadius: "8px",
+            background:   offerMsg.includes("asignado") ? "var(--ion-color-success-tint)" : offerMsg.includes("rechazada") ? "var(--ion-color-light)" : "var(--ion-color-danger-tint)",
+            border:       `1px solid ${offerMsg.includes("asignado") ? "var(--ion-color-success)" : offerMsg.includes("rechazada") ? "var(--ion-color-medium-tint)" : "var(--ion-color-danger)"}`,
+            fontSize:     "0.83rem",
+            color:        offerMsg.includes("asignado") ? "var(--ion-color-success-shade)" : offerMsg.includes("rechazada") ? "var(--ion-color-medium-shade)" : "var(--ion-color-danger-shade)",
+          }}>
+            <span>{offerMsg}</span>
+            <IonButton fill="clear" size="small" color="medium" onClick={() => setOfferMsg(null)} style={{ margin: 0, height: "auto", "--padding-start": "4px", "--padding-end": "4px" }}>✕</IonButton>
+          </div>
+        )}
+
+        {/* Banner: queued next ride accepted */}
+        {hasAcceptedQueuedRide && (
+          <div style={{
+            display:      "flex",
+            alignItems:   "center",
+            gap:          "8px",
+            padding:      "10px 14px",
+            marginBottom: "12px",
+            borderRadius: "8px",
+            background:   "var(--ion-color-primary-tint)",
+            border:       "1px solid var(--ion-color-primary)",
+            fontSize:     "0.83rem",
+            color:        "var(--ion-color-primary-shade)",
+            fontWeight:   600,
+          }}>
+            <span style={{ fontSize: "1rem" }}>🔵</span>
+            Próximo viaje asignado. Termina primero tu viaje actual.
+          </div>
+        )}
+
         {loading && (
           <div style={{ display: "flex", justifyContent: "center", paddingTop: "40px" }}>
             <IonSpinner name="crescent" />
@@ -975,14 +1229,20 @@ function DriverMyRidesPage(): JSX.Element {
                         )}
                         {ride.status === "accepted" && (
                           <>
-                            <IonButton
-                              size="small"
-                              color="tertiary"
-                              disabled={enRouting === ride.id}
-                              onClick={() => void handleEnRoute(ride.id)}
-                            >
-                              {enRouting === ride.id ? <IonSpinner name="dots" /> : "Voy en camino"}
-                            </IonButton>
+                            {hasInProgressRide ? (
+                              <IonButton size="small" color="tertiary" disabled style={{ opacity: 0.6 }}>
+                                Disponible al finalizar<br />tu viaje actual
+                              </IonButton>
+                            ) : (
+                              <IonButton
+                                size="small"
+                                color="tertiary"
+                                disabled={enRouting === ride.id}
+                                onClick={() => void handleEnRoute(ride.id)}
+                              >
+                                {enRouting === ride.id ? <IonSpinner name="dots" /> : "Voy en camino"}
+                              </IonButton>
+                            )}
                             <IonButton
                               size="small"
                               fill="outline"

@@ -1,6 +1,6 @@
 import { eq, and, isNull, isNotNull, gte } from "drizzle-orm";
 import { db } from "../../db/client.js";
-import { driverStatuses, users } from "../../db/schema/index.js";
+import { driverStatuses, rideRequests, users } from "../../db/schema/index.js";
 import { AppError } from "../../shared/errors/AppError.js";
 import type { DriverStatus } from "../../db/schema/index.js";
 
@@ -11,6 +11,15 @@ export interface AvailableDriverCandidate {
   locationUpdatedAt:  Date;
   lastSeenAt:         Date;
   currentZone:        string | null;
+}
+
+export interface BusyDriverCandidate {
+  driverUserId:       string;
+  currentLat:         number;
+  currentLng:         number;
+  locationUpdatedAt:  Date;
+  lastSeenAt:         Date;
+  currentRideId:      string;
 }
 
 export class DriverStatusRepository {
@@ -90,6 +99,95 @@ export class DriverStatusRepository {
         });
     } catch (err) {
       throw AppError.internal(`Failed to set driver available: ${String(err)}`);
+    }
+  }
+
+  async setQueuedRide(driverUserId: string, rideId: string): Promise<void> {
+    try {
+      await db
+        .insert(driverStatuses)
+        .values({ driverUserId, availability: "busy", queuedRideId: rideId, lastSeenAt: new Date() })
+        .onConflictDoUpdate({
+          target: driverStatuses.driverUserId,
+          set: { queuedRideId: rideId, updatedAt: new Date() },
+        });
+    } catch (err) {
+      throw AppError.internal(`Failed to set queued ride: ${String(err)}`);
+    }
+  }
+
+  async clearQueuedRide(driverUserId: string): Promise<void> {
+    try {
+      await db
+        .insert(driverStatuses)
+        .values({ driverUserId, availability: "busy", queuedRideId: null, lastSeenAt: new Date() })
+        .onConflictDoUpdate({
+          target: driverStatuses.driverUserId,
+          set: { queuedRideId: null, updatedAt: new Date() },
+        });
+    } catch (err) {
+      throw AppError.internal(`Failed to clear queued ride: ${String(err)}`);
+    }
+  }
+
+  /**
+   * Returns busy drivers eligible to receive a queued ride offer.
+   *
+   * Criteria:
+   * - availability = 'busy'
+   * - currentRideId IS NOT NULL (actively on a ride)
+   * - queuedRideId IS NULL (no next ride already committed)
+   * - currentLat/Lng present and fresh (locationCutoff)
+   * - lastSeenAt fresh (lastSeenCutoff)
+   * - their currentRide has status = 'in_progress' (already picked up passenger)
+   * - user role = 'driver' AND status = 'active'
+   *
+   * Results are returned unsorted — the service layer applies haversine distance
+   * ranking so it can reuse the same haversineKm utility already in rides.service.ts.
+   */
+  async findBusyEligibleForQueuedOffer(opts: {
+    locationCutoff: Date;
+    lastSeenCutoff: Date;
+  }): Promise<BusyDriverCandidate[]> {
+    try {
+      const rows = await db
+        .select({
+          driverUserId:      driverStatuses.driverUserId,
+          currentLat:        driverStatuses.currentLat,
+          currentLng:        driverStatuses.currentLng,
+          locationUpdatedAt: driverStatuses.locationUpdatedAt,
+          lastSeenAt:        driverStatuses.lastSeenAt,
+          currentRideId:     driverStatuses.currentRideId,
+        })
+        .from(driverStatuses)
+        .innerJoin(users, eq(driverStatuses.driverUserId, users.id))
+        .innerJoin(rideRequests, eq(driverStatuses.currentRideId, rideRequests.id))
+        .where(
+          and(
+            eq(driverStatuses.availability, "busy"),
+            isNotNull(driverStatuses.currentRideId),
+            isNull(driverStatuses.queuedRideId),
+            isNotNull(driverStatuses.currentLat),
+            isNotNull(driverStatuses.currentLng),
+            isNotNull(driverStatuses.locationUpdatedAt),
+            gte(driverStatuses.locationUpdatedAt, opts.locationCutoff),
+            gte(driverStatuses.lastSeenAt, opts.lastSeenCutoff),
+            eq(users.role, "driver"),
+            eq(users.status, "active"),
+            eq(rideRequests.status, "in_progress"),
+          ),
+        );
+
+      return rows.filter(
+        (r): r is BusyDriverCandidate =>
+          r.currentLat        !== null &&
+          r.currentLng        !== null &&
+          r.locationUpdatedAt !== null &&
+          r.lastSeenAt        !== null &&
+          r.currentRideId     !== null,
+      );
+    } catch (err) {
+      throw AppError.internal(`Failed to query busy eligible drivers: ${String(err)}`);
     }
   }
 

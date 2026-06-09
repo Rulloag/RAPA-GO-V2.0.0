@@ -10,12 +10,20 @@ const mockMarkEnRoute    = vi.fn();
 const mockMarkArrived    = vi.fn();
 const mockIsSessionValid = vi.fn().mockResolvedValue(true);
 const mockFindUserById   = vi.fn();
-const mockFindDriverStatusById      = vi.fn();
-const mockFindAvailableWithLocation = vi.fn().mockResolvedValue([]);
-const mockAccept                    = vi.fn();
-const mockSetBusy                   = vi.fn();
-const mockFareSettingsFindByType    = vi.fn().mockResolvedValue(null);
-const mockStopsCreateMany           = vi.fn().mockResolvedValue([]);
+const mockFindDriverStatusById         = vi.fn();
+const mockFindAvailableWithLocation    = vi.fn().mockResolvedValue([]);
+const mockFindBusyEligibleForQueuedOffer = vi.fn().mockResolvedValue([]);
+const mockAccept                       = vi.fn();
+const mockSetBusy                      = vi.fn();
+const mockSetAvailable                 = vi.fn();
+const mockSetQueuedRide                = vi.fn();
+const mockClearQueuedRide              = vi.fn();
+const mockFareSettingsFindByType       = vi.fn().mockResolvedValue(null);
+const mockStopsCreateMany              = vi.fn().mockResolvedValue([]);
+const mockOffersExpireStale            = vi.fn().mockResolvedValue(undefined);
+const mockOffersCreateOffer            = vi.fn();
+const mockOffersMarkCancelledByRide    = vi.fn();
+const mockRidesComplete                = vi.fn();
 
 vi.mock("../rides.repository.js", () => ({
   RidesRepository: vi.fn().mockImplementation(() => ({
@@ -27,7 +35,7 @@ vi.mock("../rides.repository.js", () => ({
     findAvailable:                vi.fn().mockResolvedValue([]),
     findByDriverId:               vi.fn().mockResolvedValue([]),
     accept:                       mockAccept,
-    complete:                     vi.fn(),
+    complete:                     mockRidesComplete,
     start:                        vi.fn(),
     cancel:                       vi.fn(),
     cancelAccepted:               vi.fn(),
@@ -57,11 +65,22 @@ vi.mock("../../users/users.repository.js", () => ({
 
 vi.mock("../../drivers/driverStatus.repository.js", () => ({
   DriverStatusRepository: vi.fn().mockImplementation(() => ({
-    findByDriverId:            mockFindDriverStatusById,
-    findAvailableWithLocation: mockFindAvailableWithLocation,
-    setBusy:                   mockSetBusy,
-    setAvailable:              vi.fn(),
-    updateLocation:            vi.fn(),
+    findByDriverId:                  mockFindDriverStatusById,
+    findAvailableWithLocation:       mockFindAvailableWithLocation,
+    findBusyEligibleForQueuedOffer:  mockFindBusyEligibleForQueuedOffer,
+    setBusy:                         mockSetBusy,
+    setAvailable:                    mockSetAvailable,
+    setQueuedRide:                   mockSetQueuedRide,
+    clearQueuedRide:                 mockClearQueuedRide,
+    updateLocation:                  vi.fn(),
+  })),
+}));
+
+vi.mock("../rideAssignmentOffers.repository.js", () => ({
+  RideAssignmentOffersRepository: vi.fn().mockImplementation(() => ({
+    expireStale:          mockOffersExpireStale,
+    createOffer:          mockOffersCreateOffer,
+    markCancelledByRideId: mockOffersMarkCancelledByRide,
   })),
 }));
 
@@ -1237,5 +1256,141 @@ describe("RidesService.createRideRequest — multi-destination", () => {
     // 4600 + 2000 = 6600
     expect(result.ride.estimatedFareClp).toBe(6600);
     expect(mockStopsCreateMany).not.toHaveBeenCalled();
+  });
+});
+
+// ── Tests: queued offer fallback + completeRide ───────────────────────────────
+
+describe("RidesService — queued offer fallback + completeRide", () => {
+  let service: InstanceType<typeof RidesService>;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockIsSessionValid.mockResolvedValue(true);
+    mockFindAvailableWithLocation.mockResolvedValue([]);
+    mockFindBusyEligibleForQueuedOffer.mockResolvedValue([]);
+    mockOffersExpireStale.mockResolvedValue(undefined);
+    mockOffersCreateOffer.mockResolvedValue(null);
+    service = new RidesService();
+  });
+
+  // Test 11 — immediate without available → queued offer created for busy eligible
+  it("createRideRequest immediate: creates queued offer when busy driver eligible", async () => {
+    mockFindUserById.mockResolvedValue({ id: "user-123", role: "passenger" });
+    mockCreate.mockResolvedValue(makeRide({ id: "ride-new" }));
+    // No available drivers
+    mockFindAvailableWithLocation.mockResolvedValue([]);
+    mockAccept.mockResolvedValue(null);
+    // One busy eligible driver near the pickup
+    mockFindBusyEligibleForQueuedOffer.mockResolvedValue([{
+      driverUserId:  "driver-busy",
+      currentLat:    -27.151,
+      currentLng:    -109.431,
+      currentRideId: "current-ride",
+    }]);
+    const futureExpiry = new Date(Date.now() + 20000);
+    mockOffersCreateOffer.mockResolvedValue({
+      id: "offer-new", rideRequestId: "ride-new", driverUserId: "driver-busy",
+      status: "pending", offeredAt: new Date(), expiresAt: futureExpiry,
+      respondedAt: null, responseSource: null, attemptOrder: 1,
+      createdAt: new Date(), updatedAt: new Date(),
+    });
+
+    const result = await service.createRideRequest("token", VALID_INPUT);
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(mockOffersCreateOffer).toHaveBeenCalledOnce();
+    expect((result.ride as unknown as Record<string, unknown>)["queuedOfferPending"]).toBe(true);
+  });
+
+  // Test 12 — scheduled ride → no queued offer
+  it("createRideRequest scheduled: does NOT create queued offer", async () => {
+    mockFindUserById.mockResolvedValue({ id: "user-123", role: "passenger" });
+    mockFareSettingsFindByType.mockResolvedValue({ isActive: true, value: 2000 });
+    mockCreate.mockResolvedValue(makeRide({ rideType: "scheduled" }));
+    // Even if there are busy eligible drivers, should not create offer for scheduled
+    mockFindBusyEligibleForQueuedOffer.mockResolvedValue([{
+      driverUserId:  "driver-busy",
+      currentLat:    -27.151,
+      currentLng:    -109.431,
+      currentRideId: "current-ride",
+    }]);
+
+    const result = await service.createRideRequest("token", SCHEDULED_INPUT);
+
+    expect(result.ok).toBe(true);
+    expect(mockOffersCreateOffer).not.toHaveBeenCalled();
+  });
+
+  // Test 13 — immediate with available driver → auto-assigns, no queued offer
+  it("createRideRequest immediate: auto-assigns available driver, skips queued offer", async () => {
+    mockFindUserById.mockResolvedValue({ id: "user-123", role: "passenger" });
+    const availableDriver = {
+      driverUserId: "driver-avail",
+      currentLat:   -27.151,
+      currentLng:   -109.431,
+      lastSeenAt:   new Date(),
+      locationUpdatedAt: new Date(),
+      vehicleBrand: null, vehicleModel: null, vehicleYear: null,
+      vehiclePlate: null, vehicleColor: null,
+      ratingAverage: null, ratingCount: 0,
+    };
+    mockFindAvailableWithLocation.mockResolvedValue([availableDriver]);
+    const acceptedRide = makeRide({ status: "accepted", driverUserId: "driver-avail" });
+    mockCreate.mockResolvedValue(makeRide());
+    mockAccept.mockResolvedValue(acceptedRide);
+    mockSetBusy.mockResolvedValue(undefined);
+
+    const result = await service.createRideRequest("token", VALID_INPUT);
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(mockAccept).toHaveBeenCalledOnce();
+    expect(mockOffersCreateOffer).not.toHaveBeenCalled();
+  });
+
+  // Test 14 — completeRide with queuedRideId → moves queuedRideId to currentRideId, no setAvailable
+  it("completeRide with queuedRideId: sets busy with queued ride, no setAvailable", async () => {
+    mockFindUserById.mockResolvedValue({ id: "driver-1", role: "driver" });
+    const completedRide = makeRide({
+      id: "ride-1", status: "completed", driverUserId: "driver-1",
+      startedAt: new Date(), completedAt: new Date(),
+    });
+    mockRidesComplete.mockResolvedValue(completedRide);
+    mockFindDriverStatusById.mockResolvedValue({
+      driverUserId: "driver-1", availability: "busy",
+      currentRideId: "ride-1", queuedRideId: "queued-ride-99",
+      driverLat: null, driverLng: null, lastSeenAt: null, locationUpdatedAt: null,
+      createdAt: new Date(), updatedAt: new Date(),
+    });
+
+    await service.completeRide("token", "ride-1");
+
+    expect(mockSetBusy).toHaveBeenCalledWith("driver-1", "queued-ride-99");
+    expect(mockClearQueuedRide).toHaveBeenCalledWith("driver-1");
+    expect(mockSetAvailable).not.toHaveBeenCalled();
+  });
+
+  // Test 15 — completeRide without queuedRideId → setAvailable (current behavior)
+  it("completeRide without queuedRideId: sets driver available", async () => {
+    mockFindUserById.mockResolvedValue({ id: "driver-1", role: "driver" });
+    const completedRide = makeRide({
+      id: "ride-1", status: "completed", driverUserId: "driver-1",
+      startedAt: new Date(), completedAt: new Date(),
+    });
+    mockRidesComplete.mockResolvedValue(completedRide);
+    mockFindDriverStatusById.mockResolvedValue({
+      driverUserId: "driver-1", availability: "busy",
+      currentRideId: "ride-1", queuedRideId: null,
+      driverLat: null, driverLng: null, lastSeenAt: null, locationUpdatedAt: null,
+      createdAt: new Date(), updatedAt: new Date(),
+    });
+
+    await service.completeRide("token", "ride-1");
+
+    expect(mockSetAvailable).toHaveBeenCalledWith("driver-1");
+    expect(mockSetBusy).not.toHaveBeenCalled();
+    expect(mockClearQueuedRide).not.toHaveBeenCalled();
   });
 });
