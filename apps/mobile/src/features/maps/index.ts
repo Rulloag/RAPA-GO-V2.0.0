@@ -2,6 +2,8 @@ export { MapView }                  from "./MapView.js";
 export { useGoogleMaps }            from "./useGoogleMaps.js";
 export { useCurrentLocation }       from "./useCurrentLocation.js";
 export { useDirectionsRoute }       from "./useDirectionsRoute.js";
+export { useMultiStopRoute }        from "./useMultiStopRoute.js";
+export type { RouteSegmentResult, MultiStopStatus, MultiStopState } from "./useMultiStopRoute.js";
 export { PlaceAutocompleteInput }   from "./PlaceAutocompleteInput.js";
 export type { PlaceAutocompleteInputProps } from "./PlaceAutocompleteInput.js";
 export type {

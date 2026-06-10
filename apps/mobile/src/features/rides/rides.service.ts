@@ -48,6 +48,12 @@ export interface RideRequestData {
   scheduledPickupAt?:   string | null;
   priorityFeeClp?:      number | null;
   flightNumber?:        string | null;
+  stops?: Array<{
+    id:              string;
+    order:           number;
+    destinationText: string;
+    segmentFareClp:  number | null;
+  }>;
 }
 
 /** Subset returned to drivers for their own rides. */
@@ -130,15 +136,31 @@ export interface RatingData {
   updatedAt:     string;
 }
 
-export interface CreateRideInput {
-  originText:      string;
-  destinationText: string;
-  originLat:       number;
-  originLng:       number;
-  destinationLat:  number;
-  destinationLng:  number;
+export interface RideDestinationInput {
+  text:  string;
+  lat:   number;
+  lng:   number;
+  order: number;
+}
+
+export interface RideSegmentInput {
+  fromOrder:       number;
+  toOrder:         number;
   distanceMeters:  number;
   durationSeconds: number;
+}
+
+export interface CreateRideInput {
+  originText:       string;
+  originLat:        number;
+  originLng:        number;
+  destinationText?: string;
+  destinationLat?:  number;
+  destinationLng?:  number;
+  distanceMeters:   number;
+  durationSeconds:  number;
+  destinations?:    RideDestinationInput[];
+  segments?:        RideSegmentInput[];
   notes?:           string;
   rideType?:        "immediate" | "scheduled";
   scheduledPickupAt?: string;

@@ -3,15 +3,20 @@ import {
   IonIcon, IonLabel, IonNote, IonPage, IonSegment, IonSegmentButton,
   IonSpinner, IonText, IonTitle, IonToolbar,
 } from "@ionic/react";
-import { flagOutline, locateOutline, locationOutline } from "ionicons/icons";
+import { addOutline, flagOutline, locateOutline, locationOutline, trashOutline } from "ionicons/icons";
 import { useState, useEffect, useCallback } from "react";
 import { useAuth } from "../../../features/auth/index.js";
-import { ridesService, type RideRequestData } from "../../../features/rides/rides.service.js";
+import {
+  ridesService,
+  type RideRequestData,
+  type RideDestinationInput,
+  type RideSegmentInput,
+} from "../../../features/rides/rides.service.js";
 import {
   MapView,
   PlaceAutocompleteInput,
   useCurrentLocation,
-  useDirectionsRoute,
+  useMultiStopRoute,
   type MapPoint,
   type GoogleMapInstance,
 } from "../../../features/maps/index.js";
@@ -19,9 +24,10 @@ import { RIDE_STATUS_LABEL } from "../shared.js";
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
-const HANGA_ROA = { lat: -27.15, lng: -109.4333 };
+const HANGA_ROA          = { lat: -27.15, lng: -109.4333 };
 const MIN_SCHEDULED_MINUTES = 30;
 const MAX_SCHEDULED_DAYS    = 30;
+const MAX_DESTINATIONS      = 3;
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -36,6 +42,27 @@ function minScheduledDate(): Date {
 
 function maxScheduledDate(): Date {
   return new Date(Date.now() + MAX_SCHEDULED_DAYS * 24 * 60 * 60 * 1000);
+}
+
+function formatDistance(meters: number): string {
+  if (meters >= 1000) return `${(meters / 1000).toFixed(1)} km`;
+  return `${meters} m`;
+}
+
+function formatDuration(seconds: number): string {
+  const mins = Math.round(seconds / 60);
+  if (mins >= 60) {
+    const h = Math.floor(mins / 60);
+    const m = mins % 60;
+    return m > 0 ? `${h} h ${m} min` : `${h} h`;
+  }
+  return `${mins} min`;
+}
+
+function hasDuplicatePoints(origin: MapPoint, dests: MapPoint[]): boolean {
+  const all    = [origin, ...dests];
+  const coords = all.map(p => `${p.position.lat.toFixed(6)},${p.position.lng.toFixed(6)}`);
+  return new Set(coords).size < coords.length;
 }
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -55,13 +82,13 @@ export default function RequestRidePage(): JSX.Element {
   const { session } = useAuth();
 
   // ── Route / map state ───────────────────────────────────────────────────────
-  const [origin,      setOrigin]      = useState<MapPoint | null>(null);
-  const [destination, setDestination] = useState<MapPoint | null>(null);
-  const [notes,       setNotes]       = useState("");
-  const [pageStatus,  setPageStatus]  = useState<PageStatus>("idle");
-  const [submitError, setSubmitError] = useState<string | null>(null);
-  const [submitted,   setSubmitted]   = useState<RideRequestData | null>(null);
-  const [mapInstance, setMapInstance] = useState<GoogleMapInstance | null>(null);
+  const [origin,       setOrigin]       = useState<MapPoint | null>(null);
+  const [destinations, setDestinations] = useState<(MapPoint | null)[]>([null]);
+  const [notes,        setNotes]        = useState("");
+  const [pageStatus,   setPageStatus]   = useState<PageStatus>("idle");
+  const [submitError,  setSubmitError]  = useState<string | null>(null);
+  const [submitted,    setSubmitted]    = useState<RideRequestData | null>(null);
+  const [mapInstance,  setMapInstance]  = useState<GoogleMapInstance | null>(null);
 
   // ── Scheduled-ride state ────────────────────────────────────────────────────
   const [rideMode,          setRideMode]         = useState<RideMode>("immediate");
@@ -69,7 +96,7 @@ export default function RequestRidePage(): JSX.Element {
   const [flightNumber,      setFlightNumber]      = useState<string>("");
   const [scheduleError,     setScheduleError]     = useState<string | null>(null);
 
-  const route = useDirectionsRoute();
+  const route = useMultiStopRoute();
   const geo   = useCurrentLocation();
 
   const { calculate: calcRoute, clear: clearRoute } = route;
@@ -80,13 +107,15 @@ export default function RequestRidePage(): JSX.Element {
     setMapInstance(map);
   }, []);
 
-  // ── Auto-calculate route when both points + map are ready ──────────────────
+  // ── Auto-calculate route when all points + map are ready ───────────────────
 
   useEffect(() => {
-    if (!origin || !destination || !mapInstance) return;
+    const filledDests = destinations.filter((d): d is MapPoint => d !== null);
+    const allFilled   = filledDests.length === destinations.length && destinations.length >= 1;
+    if (!origin || !allFilled || !mapInstance) return;
     setPageStatus("calculating_route");
-    void calcRoute(origin.position, destination.position, mapInstance);
-  }, [origin, destination, mapInstance, calcRoute]);
+    void calcRoute(origin, filledDests, mapInstance);
+  }, [origin, destinations, mapInstance, calcRoute]);
 
   // ── Sync pageStatus with route result ──────────────────────────────────────
 
@@ -103,18 +132,10 @@ export default function RequestRidePage(): JSX.Element {
     }
   }, [geo.status, geo.location]);
 
-  // ── Handlers ────────────────────────────────────────────────────────────────
+  // ── Handlers — origin ───────────────────────────────────────────────────────
 
   const handleOriginSelect = useCallback((point: MapPoint) => {
     setOrigin(point);
-    clearRoute();
-    setSubmitted(null);
-    setSubmitError(null);
-    setPageStatus("idle");
-  }, [clearRoute]);
-
-  const handleDestinationSelect = useCallback((point: MapPoint) => {
-    setDestination(point);
     clearRoute();
     setSubmitted(null);
     setSubmitError(null);
@@ -128,12 +149,49 @@ export default function RequestRidePage(): JSX.Element {
     setSubmitError(null);
   }, [clearRoute]);
 
-  const handleClearDestination = useCallback(() => {
-    setDestination(null);
+  // ── Handlers — destinations ─────────────────────────────────────────────────
+
+  const handleDestinationSelect = useCallback((index: number, point: MapPoint) => {
+    setDestinations(prev => {
+      const next = [...prev];
+      next[index] = point;
+      return next;
+    });
+    clearRoute();
+    setSubmitted(null);
+    setSubmitError(null);
+    setPageStatus("idle");
+  }, [clearRoute]);
+
+  const handleClearDestination = useCallback((index: number) => {
+    setDestinations(prev => {
+      const next = [...prev];
+      next[index] = null;
+      return next;
+    });
     clearRoute();
     setPageStatus("idle");
     setSubmitError(null);
   }, [clearRoute]);
+
+  const handleAddDestination = useCallback(() => {
+    setDestinations(prev => prev.length < MAX_DESTINATIONS ? [...prev, null] : prev);
+    clearRoute();
+    setPageStatus("idle");
+    setSubmitError(null);
+  }, [clearRoute]);
+
+  const handleRemoveDestination = useCallback((index: number) => {
+    setDestinations(prev => {
+      if (prev.length <= 1) return prev;
+      return prev.filter((_, i) => i !== index);
+    });
+    clearRoute();
+    setPageStatus("idle");
+    setSubmitError(null);
+  }, [clearRoute]);
+
+  // ── Handlers — mode / misc ──────────────────────────────────────────────────
 
   function handleRideModeChange(mode: RideMode) {
     setRideMode(mode);
@@ -148,7 +206,7 @@ export default function RequestRidePage(): JSX.Element {
 
   function handleReset() {
     setOrigin(null);
-    setDestination(null);
+    setDestinations([null]);
     setNotes("");
     clearRoute();
     setSubmitted(null);
@@ -160,7 +218,7 @@ export default function RequestRidePage(): JSX.Element {
     setScheduleError(null);
   }
 
-  // ── Validate scheduled fields before submit ─────────────────────────────────
+  // ── Validate scheduled fields ───────────────────────────────────────────────
 
   function validateScheduled(): boolean {
     if (!scheduledPickupAt) {
@@ -188,18 +246,33 @@ export default function RequestRidePage(): JSX.Element {
     return true;
   }
 
+  // ── Submit ──────────────────────────────────────────────────────────────────
+
   async function handleSubmit() {
     if (!session?.accessToken) return;
-
-    if (!origin || !destination) {
-      setSubmitError("Selecciona origen y destino.");
+    if (!origin) {
+      setSubmitError("Selecciona el origen.");
       return;
     }
-    if (route.status !== "success" || !route.summary) {
+
+    const filledDests = destinations.filter((d): d is MapPoint => d !== null);
+    if (filledDests.length === 0) {
+      setSubmitError("Selecciona al menos un destino.");
+      return;
+    }
+    if (filledDests.length !== destinations.length) {
+      setSubmitError("Completa todos los destinos o elimina los vacíos.");
+      return;
+    }
+    if (hasDuplicatePoints(origin, filledDests)) {
+      setSubmitError("Hay puntos duplicados. Verifica origen y destinos.");
+      return;
+    }
+    if (route.status !== "success" || route.segments.length === 0) {
       setSubmitError("Espera a que se calcule la ruta.");
       return;
     }
-    if (route.summary.distanceValue <= 0) {
+    if (route.totalDistanceMeters <= 0) {
       setSubmitError("La distancia debe ser mayor a 0.");
       return;
     }
@@ -209,21 +282,34 @@ export default function RequestRidePage(): JSX.Element {
     setSubmitError(null);
 
     try {
-      const trimmedNotes    = notes.trim();
-      const trimmedFlight   = flightNumber.trim().toUpperCase();
+      const trimmedNotes  = notes.trim();
+      const trimmedFlight = flightNumber.trim().toUpperCase();
+
+      const destInputs: RideDestinationInput[] = filledDests.map((d, i) => ({
+        text:  d.label,
+        lat:   d.position.lat,
+        lng:   d.position.lng,
+        order: i + 1,
+      }));
+
+      const segInputs: RideSegmentInput[] = route.segments.map(s => ({
+        fromOrder:       s.fromOrder,
+        toOrder:         s.toOrder,
+        distanceMeters:  s.distanceMeters,
+        durationSeconds: s.durationSeconds,
+      }));
 
       const ride = await ridesService.createRideRequest(session.accessToken, {
         originText:      origin.label,
-        destinationText: destination.label,
         originLat:       origin.position.lat,
         originLng:       origin.position.lng,
-        destinationLat:  destination.position.lat,
-        destinationLng:  destination.position.lng,
-        distanceMeters:  route.summary.distanceValue,
-        durationSeconds: route.summary.durationValue,
-        ...(trimmedNotes  ? { notes: trimmedNotes }                               : {}),
+        destinations:    destInputs,
+        segments:        segInputs,
+        distanceMeters:  route.totalDistanceMeters,
+        durationSeconds: route.totalDurationSeconds,
+        ...(trimmedNotes ? { notes: trimmedNotes } : {}),
         ...(rideMode === "scheduled" ? {
-          rideType:          "scheduled",
+          rideType:          "scheduled" as const,
           scheduledPickupAt: new Date(scheduledPickupAt).toISOString(),
           ...(trimmedFlight ? { flightNumber: trimmedFlight } : {}),
         } : {}),
@@ -239,12 +325,14 @@ export default function RequestRidePage(): JSX.Element {
 
   // ── Derived UI state ────────────────────────────────────────────────────────
 
+  const allDestsFilled = destinations.length >= 1 && destinations.every(d => d !== null);
+
   const isSubmitDisabled =
     pageStatus === "submitting"        ||
     pageStatus === "calculating_route" ||
     pageStatus === "success"           ||
     !origin                            ||
-    !destination                       ||
+    !allDestsFilled                    ||
     route.status !== "success";
 
   // ── Styles ──────────────────────────────────────────────────────────────────
@@ -337,17 +425,53 @@ export default function RequestRidePage(): JSX.Element {
               )}
             </div>
 
-            {/* ── Destination ────────────────────────────────────────────── */}
-            <div style={{ marginBottom: "14px" }}>
-              <PlaceAutocompleteInput
-                label="Destino"
-                placeholder="¿A dónde vas?"
-                displayValue={destination?.label ?? ""}
-                onSelect={handleDestinationSelect}
-                onClear={handleClearDestination}
-                iconSlot={flagOutline}
-              />
-            </div>
+            {/* ── Destinations ───────────────────────────────────────────── */}
+            {destinations.map((dest, i) => (
+              <div key={i} style={{ marginBottom: "14px" }}>
+                <div style={{ display: "flex", alignItems: "flex-start", gap: "6px" }}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <PlaceAutocompleteInput
+                      label={destinations.length === 1 ? "Destino" : `Destino ${i + 1}`}
+                      placeholder="¿A dónde vas?"
+                      displayValue={dest?.label ?? ""}
+                      onSelect={(point) => handleDestinationSelect(i, point)}
+                      onClear={() => handleClearDestination(i)}
+                      iconSlot={flagOutline}
+                    />
+                  </div>
+                  {destinations.length > 1 && (
+                    <button
+                      onClick={() => handleRemoveDestination(i)}
+                      aria-label={`Eliminar Destino ${i + 1}`}
+                      style={{
+                        background: "none",
+                        border:     "none",
+                        padding:    "4px 6px",
+                        cursor:     "pointer",
+                        color:      "var(--ion-color-danger)",
+                        marginTop:  "18px",
+                        flexShrink: 0,
+                      }}
+                    >
+                      <IonIcon icon={trashOutline} style={{ fontSize: "1.1rem" }} />
+                    </button>
+                  )}
+                </div>
+              </div>
+            ))}
+
+            {/* ── Add destination button ──────────────────────────────────── */}
+            {destinations.length < MAX_DESTINATIONS && (
+              <IonButton
+                fill="outline"
+                size="small"
+                style={{ marginBottom: "14px", height: "34px", fontSize: "0.8rem" }}
+                onClick={handleAddDestination}
+              >
+                <IonIcon icon={addOutline} slot="start" />
+                Agregar destino
+              </IonButton>
+            )}
 
             {/* ── Route summary ──────────────────────────────────────────── */}
             {route.status === "loading" && (
@@ -361,26 +485,62 @@ export default function RequestRidePage(): JSX.Element {
               </div>
             )}
 
-            {route.status === "success" && route.summary && (
+            {route.status === "success" && route.segments.length > 0 && (
               <div style={{
-                padding: "10px 14px",
-                background: "var(--ion-color-light)",
+                padding:      "12px 14px",
+                background:   "var(--ion-color-light)",
                 borderRadius: "8px",
-                fontSize: "0.85rem",
+                fontSize:     "0.85rem",
                 marginBottom: "14px",
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "center",
               }}>
-                <span style={{ color: "var(--ion-color-dark)" }}>
-                  <strong>{route.summary.distanceText}</strong>
-                  <span style={{ color: "var(--ion-color-medium)", marginLeft: "6px" }}>
-                    · {route.summary.durationText}
+                {/* Totals row */}
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "6px" }}>
+                  <span style={{ color: "var(--ion-color-dark)" }}>
+                    <strong>{formatDistance(route.totalDistanceMeters)}</strong>
+                    <span style={{ color: "var(--ion-color-medium)", marginLeft: "6px" }}>
+                      · {formatDuration(route.totalDurationSeconds)}
+                    </span>
                   </span>
-                </span>
-                <span style={{ fontSize: "0.72rem", color: "var(--ion-color-medium)", fontStyle: "italic" }}>
-                  Ruta calculada
-                </span>
+                  <span style={{ fontSize: "0.72rem", color: "var(--ion-color-medium)", fontStyle: "italic" }}>
+                    {route.segments.length === 1 ? "1 tramo" : `${route.segments.length} tramos`}
+                  </span>
+                </div>
+
+                {/* Per-segment breakdown */}
+                {route.segments.map((seg, i) => {
+                  const fromLabel = i === 0
+                    ? (origin?.label ?? "Origen")
+                    : (destinations[i - 1]?.label ?? `Destino ${i}`);
+                  const toLabel = destinations[i]?.label ?? `Destino ${i + 1}`;
+                  return (
+                    <div key={i} style={{
+                      fontSize: "0.78rem",
+                      color:    "var(--ion-color-medium)",
+                      marginTop: "4px",
+                      paddingLeft: "4px",
+                      borderLeft: `3px solid ${["#3880ff", "#2dd36f", "#ffc409"][i] ?? "#3880ff"}`,
+                      paddingTop: "2px",
+                      paddingBottom: "2px",
+                    }}>
+                      <span style={{ color: "var(--ion-color-dark)", fontWeight: 500 }}>{fromLabel}</span>
+                      {" → "}
+                      <span style={{ color: "var(--ion-color-dark)", fontWeight: 500 }}>{toLabel}</span>
+                      <span style={{ marginLeft: "6px" }}>
+                        · {seg.distanceText} · {seg.durationText}
+                      </span>
+                    </div>
+                  );
+                })}
+
+                {/* Fare note */}
+                <div style={{
+                  marginTop:  "8px",
+                  fontSize:   "0.72rem",
+                  color:      "var(--ion-color-medium)",
+                  fontStyle:  "italic",
+                }}>
+                  La tarifa final se calcula en el servidor.
+                </div>
               </div>
             )}
 
@@ -476,7 +636,6 @@ export default function RequestRidePage(): JSX.Element {
                   </span>
                 </div>
 
-                {/* Error de validación scheduled */}
                 {scheduleError && (
                   <IonText color="danger">
                     <p style={{ margin: "8px 0 0", fontSize: "0.82rem" }}>{scheduleError}</p>
@@ -495,10 +654,7 @@ export default function RequestRidePage(): JSX.Element {
                 maxLength={500}
                 rows={2}
                 disabled={pageStatus === "submitting" || pageStatus === "success"}
-                style={{
-                  ...inputStyle,
-                  resize: "none",
-                }}
+                style={{ ...inputStyle, resize: "none" }}
               />
             </div>
 
@@ -512,7 +668,7 @@ export default function RequestRidePage(): JSX.Element {
                 </IonText>
 
                 {/* Mensaje según tipo de viaje */}
-                {(submitted.rideType === "scheduled") ? (
+                {submitted.rideType === "scheduled" ? (
                   <IonText color="primary">
                     <p style={{ margin: "0 0 6px", fontSize: "0.82rem" }}>
                       Reserva programada recibida con prioridad. Te avisaremos cuando se asigne un conductor.
@@ -571,6 +727,30 @@ export default function RequestRidePage(): JSX.Element {
                   </div>
                 )}
 
+                {/* Paradas confirmadas */}
+                {submitted.stops && submitted.stops.length > 0 && (
+                  <div style={{
+                    marginTop:    "8px",
+                    padding:      "8px 12px",
+                    background:   "var(--ion-color-light)",
+                    borderRadius: "8px",
+                    fontSize:     "0.8rem",
+                    color:        "var(--ion-color-dark)",
+                  }}>
+                    <strong>{submitted.stops.length} parada{submitted.stops.length > 1 ? "s" : ""} confirmadas:</strong>
+                    {submitted.stops.map((stop) => (
+                      <div key={stop.id} style={{ marginTop: "4px", color: "var(--ion-color-medium)" }}>
+                        {stop.order}. {stop.destinationText}
+                        {stop.segmentFareClp != null && (
+                          <span style={{ marginLeft: "6px" }}>
+                            — ${stop.segmentFareClp.toLocaleString("es-CL")} CLP
+                          </span>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+
                 {/* Detalle viaje programado en éxito */}
                 {submitted.rideType === "scheduled" && submitted.scheduledPickupAt && (
                   <div style={{
@@ -626,7 +806,7 @@ export default function RequestRidePage(): JSX.Element {
                   ? <IonSpinner name="dots" />
                   : pageStatus === "calculating_route"
                     ? "Calculando ruta…"
-                    : route.status !== "success" && (origin != null || destination != null)
+                    : route.status !== "success" && (origin != null || destinations.some(d => d !== null))
                       ? "Selecciona origen y destino"
                       : rideMode === "scheduled"
                         ? "Confirmar reserva programada"
