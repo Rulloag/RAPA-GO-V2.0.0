@@ -49,7 +49,8 @@ export interface AdminRideResponse {
   rideType:           string;
   scheduledPickupAt:  string | null;
   priorityFeeClp:     number | null;
-  flightNumber:       string | null;
+  flightNumber:           string | null;
+  preferredDriverGender?: "female" | null;
 }
 
 export interface ActiveDriverResponse {

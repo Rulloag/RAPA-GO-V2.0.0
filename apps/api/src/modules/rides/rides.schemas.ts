@@ -64,6 +64,10 @@ export const createRideRequestSchema = z
       .max(20, "flightNumber must not exceed 20 characters.")
       .optional()
       .transform((v) => (v === "" ? undefined : v)),
+    preferredDriverGender: z
+      .enum(["female"])
+      .optional()
+      .nullable(),
     destinations: z
       .array(destinationItemSchema)
       .min(1, "destinations must have at least 1 item.")

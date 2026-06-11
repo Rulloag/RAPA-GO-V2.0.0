@@ -32,7 +32,8 @@ export interface AdminRideRow {
   rideType:           string;
   scheduledPickupAt:  Date | null;
   priorityFeeClp:     number | null;
-  flightNumber:       string | null;
+  flightNumber:          string | null;
+  preferredDriverGender: string | null;
 }
 
 export interface ListRidesFilter {
@@ -227,8 +228,9 @@ export class AdminRepository {
           createdAt:          rideRequests.createdAt,
           rideType:           rideRequests.rideType,
           scheduledPickupAt:  rideRequests.scheduledPickupAt,
-          priorityFeeClp:     rideRequests.priorityFeeClp,
-          flightNumber:       rideRequests.flightNumber,
+          priorityFeeClp:        rideRequests.priorityFeeClp,
+          flightNumber:          rideRequests.flightNumber,
+          preferredDriverGender: rideRequests.preferredDriverGender,
         })
         .from(rideRequests)
         .innerJoin(passenger, eq(rideRequests.passengerUserId, passenger.id))
@@ -275,8 +277,9 @@ export class AdminRepository {
           createdAt:          rideRequests.createdAt,
           rideType:           rideRequests.rideType,
           scheduledPickupAt:  rideRequests.scheduledPickupAt,
-          priorityFeeClp:     rideRequests.priorityFeeClp,
-          flightNumber:       rideRequests.flightNumber,
+          priorityFeeClp:        rideRequests.priorityFeeClp,
+          flightNumber:          rideRequests.flightNumber,
+          preferredDriverGender: rideRequests.preferredDriverGender,
         })
         .from(rideRequests)
         .innerJoin(passenger, eq(rideRequests.passengerUserId, passenger.id))

@@ -1510,3 +1510,66 @@ describe("RidesService.markEnRoute — setBusy", () => {
     expect(mockSetBusy).not.toHaveBeenCalled();
   });
 });
+
+describe("RidesService.createRideRequest — preferredDriverGender", () => {
+  let service: InstanceType<typeof RidesService>;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockIsSessionValid.mockResolvedValue(true);
+    mockFindAvailableWithLocation.mockResolvedValue([]);
+    mockAccept.mockResolvedValue(null);
+    service = new RidesService();
+  });
+
+  it("persists preferredDriverGender='female' when provided", async () => {
+    mockFindUserById.mockResolvedValue({ id: "user-123", role: "passenger" });
+    mockCreate.mockResolvedValue(makeRide({ preferredDriverGender: "female" }));
+
+    const result = await service.createRideRequest("token", {
+      ...VALID_INPUT,
+      preferredDriverGender: "female",
+    });
+
+    expect(result.ok).toBe(true);
+    expect(mockCreate).toHaveBeenCalledWith(
+      expect.objectContaining({ preferredDriverGender: "female" }),
+    );
+  });
+
+  it("persists preferredDriverGender=null when not provided", async () => {
+    mockFindUserById.mockResolvedValue({ id: "user-123", role: "passenger" });
+    mockCreate.mockResolvedValue(makeRide({ preferredDriverGender: null }));
+
+    const result = await service.createRideRequest("token", VALID_INPUT);
+
+    expect(result.ok).toBe(true);
+    expect(mockCreate).toHaveBeenCalledWith(
+      expect.objectContaining({ preferredDriverGender: null }),
+    );
+  });
+
+  it("Zod schema rejects an invalid gender value", () => {
+    const parsed = createRideRequestSchema.safeParse({
+      ...VALID_INPUT,
+      preferredDriverGender: "male",
+    });
+    expect(parsed.success).toBe(false);
+  });
+
+  it("Zod schema accepts preferredDriverGender='female'", () => {
+    const parsed = createRideRequestSchema.safeParse({
+      ...VALID_INPUT,
+      preferredDriverGender: "female",
+    });
+    expect(parsed.success).toBe(true);
+  });
+
+  it("Zod schema accepts missing preferredDriverGender (no preference)", () => {
+    const parsed = createRideRequestSchema.safeParse(VALID_INPUT);
+    expect(parsed.success).toBe(true);
+    if (parsed.success) {
+      expect(parsed.data.preferredDriverGender).toBeUndefined();
+    }
+  });
+});

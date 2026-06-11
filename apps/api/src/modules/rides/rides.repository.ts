@@ -149,10 +149,11 @@ export class RidesRepository {
     notes:                 string | null;
     estimatedFareClp:      number;
     fareCalculationSource: string;
-    rideType?:             string;
-    scheduledPickupAt?:    Date | null;
-    priorityFeeClp?:       number | null;
-    flightNumber?:         string | null;
+    rideType?:              string;
+    scheduledPickupAt?:     Date | null;
+    priorityFeeClp?:        number | null;
+    flightNumber?:          string | null;
+    preferredDriverGender?: string | null;
   }): Promise<RideRequest> {
     try {
       const rows = await db

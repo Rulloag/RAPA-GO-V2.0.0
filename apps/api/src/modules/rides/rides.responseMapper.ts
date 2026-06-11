@@ -67,11 +67,12 @@ export function toResponse(
     discountApplied:  discountInfo != null,
     discountPercent:  discountInfo?.discountPercent ?? null,
     originalFareClp:  discountInfo?.originalFare ?? null,
-    rideType:         r.rideType ?? "immediate",
-    scheduledPickupAt: r.scheduledPickupAt?.toISOString() ?? null,
-    priorityFeeClp:   r.priorityFeeClp ?? null,
-    flightNumber:     r.flightNumber ?? null,
-    stops:            stops,
+    rideType:              r.rideType ?? "immediate",
+    scheduledPickupAt:     r.scheduledPickupAt?.toISOString() ?? null,
+    priorityFeeClp:        r.priorityFeeClp ?? null,
+    flightNumber:          r.flightNumber ?? null,
+    preferredDriverGender: (r.preferredDriverGender as "female" | null | undefined) ?? null,
+    stops:                 stops,
   };
 }
 

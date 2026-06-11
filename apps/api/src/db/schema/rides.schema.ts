@@ -41,6 +41,8 @@ export const rideRequests = pgTable("ride_requests", {
   queuedOfferDriverId:  uuid("queued_offer_driver_id").references(() => users.id, { onDelete: "set null" }),
   // How this ride was assigned: automatic | manual | queued_offer
   assignmentMode:       varchar("assignment_mode", { length: 20 }).notNull().default("automatic"),
+  // Passenger preference: "female" requests a female driver; null means no preference
+  preferredDriverGender: varchar("preferred_driver_gender", { length: 10 }),
   createdAt:            timestamp("created_at",    { withTimezone: true }).notNull().defaultNow(),
   updatedAt:            timestamp("updated_at",    { withTimezone: true }).notNull().defaultNow(),
 });

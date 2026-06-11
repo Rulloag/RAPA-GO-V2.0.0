@@ -49,8 +49,9 @@ function toRideResponse(r: AdminRideRow): AdminRideResponse {
     createdAt:          r.createdAt.toISOString(),
     rideType:           r.rideType ?? "immediate",
     scheduledPickupAt:  r.scheduledPickupAt?.toISOString() ?? null,
-    priorityFeeClp:     r.priorityFeeClp ?? null,
-    flightNumber:       r.flightNumber ?? null,
+    priorityFeeClp:         r.priorityFeeClp ?? null,
+    flightNumber:           r.flightNumber ?? null,
+    preferredDriverGender:  (r.preferredDriverGender as "female" | null | undefined) ?? null,
   };
 }
 

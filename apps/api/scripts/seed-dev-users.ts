@@ -162,6 +162,30 @@ async function seed() {
     console.log(`  ✓ ${driverUserIds.length} conductor(es) reseteados a "available" en zona hanga_roa`);
   }
 
+  // ── Seed driver_profiles gender (driver → male, driver2 → female) ─────────
+  const driverGenderMap: Record<string, string> = {
+    "driver@rapago.local":  "male",
+    "driver2@rapago.local": "female",
+  };
+  for (const [email, gender] of Object.entries(driverGenderMap)) {
+    const rows = await db
+      .select({ id: schema.users.id })
+      .from(schema.users)
+      .where(eq(schema.users.email, email))
+      .limit(1);
+    const userId = rows[0]?.id;
+    if (!userId) continue;
+    const now = new Date();
+    await db
+      .insert(schema.driverProfiles)
+      .values({ userId, gender })
+      .onConflictDoUpdate({
+        target: schema.driverProfiles.userId,
+        set: { gender, updatedAt: now },
+      });
+    console.log(`  ✓ driver_profiles.gender="${gender}" upserted for ${email}`);
+  }
+
   console.log("\nSeed completo.");
   console.log("\nCredenciales de prueba:");
   console.log("  Email:    passenger@rapago.local");

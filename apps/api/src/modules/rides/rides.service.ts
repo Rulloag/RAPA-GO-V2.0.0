@@ -243,7 +243,8 @@ export class RidesService {
       rideType,
       scheduledPickupAt,
       priorityFeeClp,
-      flightNumber:          input.flightNumber ?? null,
+      flightNumber:           input.flightNumber ?? null,
+      preferredDriverGender:  input.preferredDriverGender ?? null,
     });
 
     // ── Create ride_stops for multi-destination rides ─────────────────────────

@@ -70,6 +70,7 @@ export interface RideRequestResponse {
   scheduledPickupAt:     string | null;
   priorityFeeClp:        number | null;
   flightNumber:          string | null;
+  preferredDriverGender?: "female" | null;
   stops?:                RideStopResponse[] | undefined;
   queuedOfferPending?:   boolean | undefined;
   queuedOfferExpiresAt?: string | null | undefined;
