@@ -75,7 +75,7 @@ export function toResponse(
   };
 }
 
-export function toDriverRideResponse(r: RideRequest): DriverRideResponse {
+export function toDriverRideResponse(r: RideRequest, stops?: RideStopResponse[]): DriverRideResponse {
   return {
     id:                    r.id,
     originText:            r.originText,
@@ -104,6 +104,7 @@ export function toDriverRideResponse(r: RideRequest): DriverRideResponse {
     scheduledPickupAt:     r.scheduledPickupAt?.toISOString() ?? null,
     priorityFeeClp:        r.priorityFeeClp ?? null,
     flightNumber:          r.flightNumber ?? null,
+    ...(stops && stops.length > 0 ? { stops } : {}),
   };
 }
 

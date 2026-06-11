@@ -104,6 +104,7 @@ export interface DriverRideResponse {
   scheduledPickupAt:     string | null;
   priorityFeeClp:        number | null;
   flightNumber:          string | null;
+  stops?:                RideStopResponse[];
 }
 
 export type DriverRidesListResult =

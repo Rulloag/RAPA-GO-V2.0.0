@@ -56,6 +56,19 @@ export interface RideRequestData {
   }>;
 }
 
+export interface RideStopData {
+  id:                     string;
+  stopOrder:              number;
+  label:                  string;
+  lat:                    number;
+  lng:                    number;
+  segmentDistanceMeters:  number | null;
+  segmentDurationSeconds: number | null;
+  segmentFareClp:         number | null;
+  arrivedAt:              string | null;
+  completedAt:            string | null;
+}
+
 /** Subset returned to drivers for their own rides. */
 export interface DriverRideData {
   id:                 string;
@@ -82,6 +95,7 @@ export interface DriverRideData {
   scheduledPickupAt:  string | null;
   priorityFeeClp:     number | null;
   flightNumber:       string | null;
+  stops?:             RideStopData[];
 }
 
 /** Subset returned to drivers — no passenger identity. */

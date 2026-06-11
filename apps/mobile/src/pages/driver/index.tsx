@@ -42,7 +42,7 @@ import { useConnectivity } from "../../hooks/useConnectivity";
 import { ROUTE_METADATA } from "../../navigation/routeConfig";
 import { ROUTES } from "../../navigation/routes";
 import { useAuth } from "../../features/auth";
-import { ridesService, type ActiveRideOfferData } from "../../features/rides/rides.service";
+import { ridesService, type ActiveRideOfferData, type RideStopData } from "../../features/rides/rides.service";
 import { MapFallback } from "../../components/MapFallback";
 import { driverStatusService } from "../../features/drivers/driverStatus.service";
 import { RAPA_NUI_ZONES, getZoneLabel, RAPAGO_CONTACT, WA_MESSAGES } from "@rapa-go/shared";
@@ -320,6 +320,66 @@ export function DriverHomePage(): JSX.Element {
   );
 }
 
+// ── RideStopsList ─────────────────────────────────────────────────────────────
+
+function fmtStopDist(m: number | null): string {
+  if (m == null) return "";
+  return m >= 1000 ? `${(m / 1000).toFixed(1)} km` : `${m} m`;
+}
+
+function fmtStopDur(s: number | null): string {
+  if (s == null) return "";
+  const mins = Math.round(s / 60);
+  return mins < 60 ? `${mins} min` : `${Math.floor(mins / 60)}h ${mins % 60}min`;
+}
+
+const STOP_COLORS = ["#3880ff", "#2dd36f", "#ffc409"] as const;
+
+function RideStopsList({ stops, status }: { stops: RideStopData[]; status: string }): JSX.Element {
+  const sorted = [...stops].sort((a, b) => a.stopOrder - b.stopOrder);
+  return (
+    <div style={{ marginTop: "10px" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: "6px", marginBottom: "6px" }}>
+        <span style={{ fontWeight: 600, fontSize: "0.82rem" }}>Paradas del viaje</span>
+        {sorted.length > 1 && (
+          <IonBadge color="secondary" style={{ fontSize: "0.65rem" }}>Multi-destino</IonBadge>
+        )}
+      </div>
+      {status === "accepted" && (
+        <div style={{ fontSize: "0.78rem", color: "var(--ion-color-primary)", marginBottom: "6px", fontStyle: "italic" }}>
+          Primero debes ir al punto de partida.
+        </div>
+      )}
+      {status === "in_progress" && (
+        <div style={{ fontSize: "0.78rem", color: "var(--ion-color-success)", marginBottom: "6px", fontStyle: "italic" }}>
+          Sigue las paradas en orden hasta el destino final.
+        </div>
+      )}
+      <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+        {sorted.map((stop, i) => {
+          const isLast = i === sorted.length - 1;
+          const color  = STOP_COLORS[i % STOP_COLORS.length] ?? "#3880ff";
+          const meta   = [fmtStopDist(stop.segmentDistanceMeters), fmtStopDur(stop.segmentDurationSeconds)].filter(Boolean).join(" · ");
+          return (
+            <div key={stop.id} style={{ borderLeft: `3px solid ${color}`, paddingLeft: "8px", fontSize: "0.78rem" }}>
+              <div style={{ fontWeight: 600 }}>
+                {i + 1}. {stop.label}
+                {isLast && <span style={{ marginLeft: "6px", color: "var(--ion-color-medium)", fontWeight: 400 }}>Destino final</span>}
+              </div>
+              {meta && <div style={{ color: "var(--ion-color-medium)" }}>{meta}</div>}
+              {stop.segmentFareClp != null && (
+                <div style={{ color: "var(--ion-color-dark)" }}>
+                  Tramo: ${stop.segmentFareClp.toLocaleString("es-CL")} CLP
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 export function DriverRequestsPage(): JSX.Element {
   return <AssignedRidesPage />;
 }
@@ -406,6 +466,9 @@ function AssignedRidesPage(): JSX.Element {
                     <div style={{ fontWeight: 600, fontSize: "0.9rem", marginBottom: "6px" }}>
                       {ride.originText} → {ride.destinationText}
                     </div>
+                    {ride.stops && ride.stops.length > 0 && (
+                      <RideStopsList stops={ride.stops} status={ride.status} />
+                    )}
                     <IonBadge color="primary" style={{ fontSize: "0.7rem" }}>Asignado</IonBadge>
                     {ride.estimatedFareClp != null && (
                       <div style={{ marginTop: "4px", fontSize: "0.78rem", fontWeight: 500 }}>
@@ -1058,6 +1121,9 @@ function DriverMyRidesPage(): JSX.Element {
                         <div style={{ fontWeight: 600, fontSize: "0.9rem", marginBottom: "8px" }}>
                           {ride.originText} → {ride.destinationText}
                         </div>
+                        {ride.stops && ride.stops.length > 0 && (
+                          <RideStopsList stops={ride.stops} status={ride.status} />
+                        )}
 
                         {/* Bloque scheduled */}
                         <div style={{
@@ -1166,6 +1232,9 @@ function DriverMyRidesPage(): JSX.Element {
                         <div style={{ fontWeight: 600, fontSize: "0.9rem", marginBottom: "4px" }}>
                           {ride.originText} → {ride.destinationText}
                         </div>
+                        {ride.stops && ride.stops.length > 0 && (
+                          <RideStopsList stops={ride.stops} status={ride.status} />
+                        )}
                         <IonBadge color={color} style={{ fontSize: "0.7rem" }}>{label}</IonBadge>
                         {ride.estimatedFareClp != null && (
                           <div style={{ marginTop: "4px", fontSize: "0.78rem", fontWeight: 500 }}>

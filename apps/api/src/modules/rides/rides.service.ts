@@ -564,7 +564,18 @@ export class RidesService {
     }
 
     const rows = await ridesRepo.findByDriverId(auth.userId);
-    return { ok: true, rides: rows.map(toDriverRideResponse) };
+    if (rows.length === 0) return { ok: true, rides: [] };
+
+    // Bulk-fetch stops for all rides in a single query, then group by rideId
+    const allStopRows = await rideStopsRepo.findManyByRideIds(rows.map(r => r.id));
+    const stopsByRideId = new Map<string, RideStopResponse[]>();
+    for (const s of allStopRows) {
+      const bucket = stopsByRideId.get(s.rideRequestId) ?? [];
+      bucket.push(toStopResponse(s));
+      stopsByRideId.set(s.rideRequestId, bucket);
+    }
+
+    return { ok: true, rides: rows.map(r => toDriverRideResponse(r, stopsByRideId.get(r.id))) };
   }
 
   async getDriverLocation(accessToken: string, rideId: string) {
