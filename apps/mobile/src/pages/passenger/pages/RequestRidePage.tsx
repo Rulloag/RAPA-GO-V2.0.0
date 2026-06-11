@@ -1,7 +1,7 @@
 import {
-  IonButton, IonCard, IonCardContent, IonContent, IonHeader,
+  IonAlert, IonButton, IonCard, IonCardContent, IonContent, IonHeader,
   IonIcon, IonLabel, IonNote, IonPage, IonSegment, IonSegmentButton,
-  IonSpinner, IonText, IonTitle, IonToolbar,
+  IonSpinner, IonText, IonTitle, IonToggle, IonToolbar,
 } from "@ionic/react";
 import { addOutline, flagOutline, locateOutline, locationOutline, trashOutline } from "ionicons/icons";
 import { useState, useEffect, useCallback } from "react";
@@ -95,6 +95,13 @@ export default function RequestRidePage(): JSX.Element {
   const [scheduledPickupAt, setScheduledPickupAt] = useState<string>("");
   const [flightNumber,      setFlightNumber]      = useState<string>("");
   const [scheduleError,     setScheduleError]     = useState<string | null>(null);
+
+  // ── Female driver preference state ──────────────────────────────────────────
+  const [preferFemaleDriver, setPreferFemaleDriver] = useState(false);
+  const [femaleAlertRide,    setFemaleAlertRide]    = useState<RideRequestData | null>(null);
+  const [waitingForFemale,   setWaitingForFemale]   = useState(false);
+  const [acceptAnyMessage,   setAcceptAnyMessage]   = useState<string | null>(null);
+  const [acceptAnyLoading,   setAcceptAnyLoading]   = useState(false);
 
   const route = useMultiStopRoute();
   const geo   = useCurrentLocation();
@@ -216,6 +223,11 @@ export default function RequestRidePage(): JSX.Element {
     setScheduledPickupAt("");
     setFlightNumber("");
     setScheduleError(null);
+    setPreferFemaleDriver(false);
+    setFemaleAlertRide(null);
+    setWaitingForFemale(false);
+    setAcceptAnyMessage(null);
+    setAcceptAnyLoading(false);
   }
 
   // ── Validate scheduled fields ───────────────────────────────────────────────
@@ -244,6 +256,28 @@ export default function RequestRidePage(): JSX.Element {
     }
     setScheduleError(null);
     return true;
+  }
+
+  // ── Accept any driver (after female preference unavailable) ────────────────
+
+  async function handleAcceptAnyDriver() {
+    if (!session?.accessToken || !submitted) return;
+    setAcceptAnyLoading(true);
+    try {
+      const updated = await ridesService.acceptAnyDriver(session.accessToken, submitted.id);
+      setSubmitted(updated);
+      if (updated.status === "accepted" || updated.autoAssigned) {
+        setAcceptAnyMessage("Conductor asignado.");
+      } else if (updated.queuedOfferPending) {
+        setAcceptAnyMessage("Estamos consultando a un conductor cercano.");
+      } else {
+        setAcceptAnyMessage("Seguimos buscando conductor disponible.");
+      }
+    } catch {
+      setAcceptAnyMessage("Seguimos buscando conductor disponible.");
+    } finally {
+      setAcceptAnyLoading(false);
+    }
   }
 
   // ── Submit ──────────────────────────────────────────────────────────────────
@@ -308,6 +342,7 @@ export default function RequestRidePage(): JSX.Element {
         distanceMeters:  route.totalDistanceMeters,
         durationSeconds: route.totalDurationSeconds,
         ...(trimmedNotes ? { notes: trimmedNotes } : {}),
+        ...(preferFemaleDriver ? { preferredDriverGender: "female" as const } : {}),
         ...(rideMode === "scheduled" ? {
           rideType:          "scheduled" as const,
           scheduledPickupAt: new Date(scheduledPickupAt).toISOString(),
@@ -317,6 +352,10 @@ export default function RequestRidePage(): JSX.Element {
 
       setSubmitted(ride);
       setPageStatus("success");
+
+      if (ride.preferredDriverUnavailable) {
+        setFemaleAlertRide(ride);
+      }
     } catch (err) {
       setSubmitError(err instanceof Error ? err.message : "Error al solicitar el viaje.");
       setPageStatus("error");
@@ -658,6 +697,36 @@ export default function RequestRidePage(): JSX.Element {
               />
             </div>
 
+            {/* ── Female driver preference ────────────────────────────────── */}
+            <div style={{
+              display:        "flex",
+              alignItems:     "center",
+              justifyContent: "space-between",
+              gap:            "12px",
+              padding:        "12px 14px",
+              border:         "1.5px solid var(--ion-color-light-shade)",
+              borderRadius:   "10px",
+              marginBottom:   "14px",
+              background:     preferFemaleDriver
+                ? "var(--ion-color-primary-tint, #ebf2ff)"
+                : "var(--ion-card-background, #fff)",
+            }}>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: "0.85rem", fontWeight: 600, color: "var(--ion-color-dark)" }}>
+                  Prefiero conductora mujer
+                </div>
+                <div style={{ fontSize: "0.72rem", color: "var(--ion-color-medium)", marginTop: "3px", lineHeight: 1.4 }}>
+                  Intentaremos asignarte una conductora si hay una disponible y conectada.
+                  No podemos garantizar disponibilidad.
+                </div>
+              </div>
+              <IonToggle
+                checked={preferFemaleDriver}
+                onIonChange={(e) => setPreferFemaleDriver(e.detail.checked)}
+                disabled={pageStatus === "submitting" || pageStatus === "success"}
+              />
+            </div>
+
             {/* ── Success result ─────────────────────────────────────────── */}
             {pageStatus === "success" && submitted && (
               <div style={{ margin: "10px 0 8px" }}>
@@ -667,17 +736,38 @@ export default function RequestRidePage(): JSX.Element {
                   </p>
                 </IonText>
 
-                {/* Mensaje según tipo de viaje */}
-                {submitted.rideType === "scheduled" ? (
+                {/* Mensaje según tipo de viaje y preferencia de conductora */}
+                {acceptAnyLoading ? (
+                  <div style={{ display: "flex", alignItems: "center", gap: "8px", margin: "0 0 6px", fontSize: "0.82rem", color: "var(--ion-color-medium)" }}>
+                    <IonSpinner name="dots" style={{ width: "14px", height: "14px" }} />
+                    Buscando conductor…
+                  </div>
+                ) : acceptAnyMessage ? (
+                  <IonText color={acceptAnyMessage === "Conductor asignado." ? "success" : "medium"}>
+                    <p style={{ margin: "0 0 6px", fontSize: "0.82rem" }}>{acceptAnyMessage}</p>
+                  </IonText>
+                ) : waitingForFemale ? (
                   <IonText color="primary">
                     <p style={{ margin: "0 0 6px", fontSize: "0.82rem" }}>
-                      Reserva programada recibida con prioridad. Te avisaremos cuando se asigne un conductor.
+                      Te avisaremos cuando una conductora esté disponible.
+                    </p>
+                  </IonText>
+                ) : submitted.rideType === "scheduled" ? (
+                  <IonText color="primary">
+                    <p style={{ margin: "0 0 6px", fontSize: "0.82rem" }}>
+                      {submitted.preferredDriverGender === "female"
+                        ? "Reserva programada creada. El equipo intentará asignar una conductora si está disponible."
+                        : "Reserva programada recibida con prioridad. Te avisaremos cuando se asigne un conductor."
+                      }
                     </p>
                   </IonText>
                 ) : (submitted.autoAssigned || submitted.status === "accepted") ? (
                   <IonText color="success">
                     <p style={{ margin: "0 0 6px", fontSize: "0.82rem" }}>
-                      Conductor asignado automáticamente.
+                      {submitted.preferredDriverGender === "female"
+                        ? "Conductora asignada."
+                        : "Conductor asignado automáticamente."
+                      }
                     </p>
                   </IonText>
                 ) : (
@@ -817,6 +907,30 @@ export default function RequestRidePage(): JSX.Element {
 
           </IonCardContent>
         </IonCard>
+
+        {/* ── Female driver unavailable alert ─────────────────────────── */}
+        <IonAlert
+          isOpen={femaleAlertRide !== null}
+          header="No hay conductoras disponibles"
+          message="En este momento no hay conductoras disponibles cerca de tu ubicación. Puedes esperar o continuar con cualquier conductor disponible."
+          buttons={[
+            {
+              text:    "Esperar conductora",
+              role:    "cancel",
+              handler: () => {
+                setFemaleAlertRide(null);
+                setWaitingForFemale(true);
+              },
+            },
+            {
+              text:    "Continuar con cualquier conductor",
+              handler: () => {
+                setFemaleAlertRide(null);
+                void handleAcceptAnyDriver();
+              },
+            },
+          ]}
+        />
 
       </IonContent>
     </IonPage>

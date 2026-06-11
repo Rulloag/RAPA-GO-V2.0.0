@@ -43,11 +43,15 @@ export interface RideRequestData {
   discountApplied:      boolean;
   discountPercent:      number | null;
   originalFareClp:      number | null;
-  autoAssigned?:        boolean;
-  rideType?:            "immediate" | "scheduled";
-  scheduledPickupAt?:   string | null;
-  priorityFeeClp?:      number | null;
-  flightNumber?:        string | null;
+  autoAssigned?:             boolean;
+  rideType?:                 "immediate" | "scheduled";
+  scheduledPickupAt?:        string | null;
+  priorityFeeClp?:           number | null;
+  flightNumber?:             string | null;
+  preferredDriverGender?:    "female" | null;
+  preferredDriverUnavailable?: boolean;
+  queuedOfferPending?:       boolean;
+  queuedOfferExpiresAt?:     string | null;
   stops?: Array<{
     id:              string;
     order:           number;
@@ -165,20 +169,21 @@ export interface RideSegmentInput {
 }
 
 export interface CreateRideInput {
-  originText:       string;
-  originLat:        number;
-  originLng:        number;
-  destinationText?: string;
-  destinationLat?:  number;
-  destinationLng?:  number;
-  distanceMeters:   number;
-  durationSeconds:  number;
-  destinations?:    RideDestinationInput[];
-  segments?:        RideSegmentInput[];
-  notes?:           string;
-  rideType?:        "immediate" | "scheduled";
-  scheduledPickupAt?: string;
-  flightNumber?:    string;
+  originText:            string;
+  originLat:             number;
+  originLng:             number;
+  destinationText?:      string;
+  destinationLat?:       number;
+  destinationLng?:       number;
+  distanceMeters:        number;
+  durationSeconds:       number;
+  destinations?:         RideDestinationInput[];
+  segments?:             RideSegmentInput[];
+  notes?:                string;
+  rideType?:             "immediate" | "scheduled";
+  scheduledPickupAt?:    string;
+  flightNumber?:         string;
+  preferredDriverGender?: "female" | null;
 }
 
 export const ridesService = {
@@ -284,6 +289,12 @@ export const ridesService = {
       `/drivers/me/offers/${offerId}/reject`, {}, { token: accessToken },
     );
     if (!result.ok) throw new Error(result.message ?? "Error al rechazar oferta.");
+  },
+
+  async acceptAnyDriver(accessToken: string, rideId: string): Promise<RideRequestData> {
+    const result = await apiClient.patch<RideEnvelope>(`/rides/${rideId}/accept-any-driver`, {}, { token: accessToken });
+    if (!result.ok) throw new Error(result.message ?? "Failed to accept any driver.");
+    return (result.data as RideEnvelope).data;
   },
 
   async rateRide(accessToken: string, rideId: string, rating: number, comment?: string): Promise<RatingData> {
