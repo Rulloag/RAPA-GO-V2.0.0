@@ -24,7 +24,8 @@ const mockStopsFindManyByRideIds       = vi.fn().mockResolvedValue([]);
 const mockOffersExpireStale            = vi.fn().mockResolvedValue(undefined);
 const mockOffersCreateOffer            = vi.fn();
 const mockOffersMarkCancelledByRide    = vi.fn();
-const mockRidesComplete                = vi.fn();
+const mockRidesComplete                    = vi.fn();
+const mockClearPreferredDriverGender       = vi.fn();
 
 vi.mock("../rides.repository.js", () => ({
   RidesRepository: vi.fn().mockImplementation(() => ({
@@ -42,6 +43,7 @@ vi.mock("../rides.repository.js", () => ({
     cancelAccepted:               vi.fn(),
     markEnRoute:                  mockMarkEnRoute,
     markArrived:                  mockMarkArrived,
+    clearPreferredDriverGender:   mockClearPreferredDriverGender,
   })),
 }));
 
@@ -1571,5 +1573,258 @@ describe("RidesService.createRideRequest — preferredDriverGender", () => {
     if (parsed.success) {
       expect(parsed.data.preferredDriverGender).toBeUndefined();
     }
+  });
+});
+
+// ── Gender preference: auto-assignment filtering ───────────────────────────────
+
+function makeDriverCandidate(overrides: Partial<Record<string, unknown>> = {}) {
+  return {
+    driverUserId:       "driver-female-1",
+    currentLat:         -27.16,
+    currentLng:         -109.43,
+    locationUpdatedAt:  new Date(),
+    lastSeenAt:         new Date(),
+    currentZone:        "hanga_roa",
+    ...overrides,
+  };
+}
+
+describe("RidesService.createRideRequest — genderFilter auto-assignment", () => {
+  let service: InstanceType<typeof RidesService>;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockIsSessionValid.mockResolvedValue(true);
+    mockFindAvailableWithLocation.mockResolvedValue([]);
+    mockFindBusyEligibleForQueuedOffer.mockResolvedValue([]);
+    mockAccept.mockResolvedValue(null);
+    service = new RidesService();
+  });
+
+  it("no preference: auto-assigns any available driver, genderFilter not passed", async () => {
+    mockFindUserById.mockResolvedValue({ id: "user-123", role: "passenger" });
+    const candidate = makeDriverCandidate({ driverUserId: "driver-any" });
+    mockFindAvailableWithLocation.mockResolvedValue([candidate]);
+    const assigned = makeRide({ driverUserId: "driver-any", status: "accepted" });
+    mockCreate.mockResolvedValue(makeRide());
+    mockAccept.mockResolvedValue(assigned);
+
+    const result = await service.createRideRequest("token", VALID_INPUT);
+
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.ride.autoAssigned).toBe(true);
+    // genderFilter not passed — called without genderFilter key
+    expect(mockFindAvailableWithLocation).toHaveBeenCalledWith(
+      expect.not.objectContaining({ genderFilter: expect.anything() }),
+    );
+  });
+
+  it("preferredDriverGender=female + female available: assigns female driver", async () => {
+    mockFindUserById.mockResolvedValue({ id: "user-123", role: "passenger" });
+    const femaleCandidate = makeDriverCandidate({ driverUserId: "driver-f" });
+    mockFindAvailableWithLocation.mockResolvedValue([femaleCandidate]);
+    mockCreate.mockResolvedValue(makeRide({ preferredDriverGender: "female" }));
+    mockAccept.mockResolvedValue(makeRide({ driverUserId: "driver-f", status: "accepted", preferredDriverGender: "female" }));
+
+    const result = await service.createRideRequest("token", { ...VALID_INPUT, preferredDriverGender: "female" });
+
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.ride.autoAssigned).toBe(true);
+    expect(mockFindAvailableWithLocation).toHaveBeenCalledWith(
+      expect.objectContaining({ genderFilter: "female" }),
+    );
+  });
+
+  it("preferredDriverGender=female + only male available: does NOT assign male driver", async () => {
+    mockFindUserById.mockResolvedValue({ id: "user-123", role: "passenger" });
+    // findAvailableWithLocation returns empty when genderFilter=female (no female drivers)
+    mockFindAvailableWithLocation.mockResolvedValue([]);
+    mockFindBusyEligibleForQueuedOffer.mockResolvedValue([]);
+    mockCreate.mockResolvedValue(makeRide({ preferredDriverGender: "female" }));
+
+    const result = await service.createRideRequest("token", { ...VALID_INPUT, preferredDriverGender: "female" });
+
+    expect(result.ok).toBe(true);
+    expect(mockAccept).not.toHaveBeenCalled();
+  });
+
+  it("preferredDriverGender=female + no driver available: returns preferredDriverUnavailable=true", async () => {
+    mockFindUserById.mockResolvedValue({ id: "user-123", role: "passenger" });
+    mockFindAvailableWithLocation.mockResolvedValue([]);
+    mockFindBusyEligibleForQueuedOffer.mockResolvedValue([]);
+    mockCreate.mockResolvedValue(makeRide({ preferredDriverGender: "female" }));
+
+    const result = await service.createRideRequest("token", { ...VALID_INPUT, preferredDriverGender: "female" });
+
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.ride.preferredDriverUnavailable).toBe(true);
+  });
+
+  it("preferredDriverGender=female + female busy eligible: creates queued offer with genderFilter", async () => {
+    mockFindUserById.mockResolvedValue({ id: "user-123", role: "passenger" });
+    mockFindAvailableWithLocation.mockResolvedValue([]);
+    const busyFemale = {
+      driverUserId: "driver-f-busy",
+      currentLat: -27.16, currentLng: -109.43,
+      locationUpdatedAt: new Date(), lastSeenAt: new Date(),
+      currentRideId: "other-ride",
+    };
+    mockFindBusyEligibleForQueuedOffer.mockResolvedValue([busyFemale]);
+    mockCreate.mockResolvedValue(makeRide({ preferredDriverGender: "female" }));
+    mockOffersCreateOffer.mockResolvedValue({ expiresAt: new Date(Date.now() + 20000) });
+
+    const result = await service.createRideRequest("token", { ...VALID_INPUT, preferredDriverGender: "female" });
+
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.ride.queuedOfferPending).toBe(true);
+    expect(mockFindBusyEligibleForQueuedOffer).toHaveBeenCalledWith(
+      expect.objectContaining({ genderFilter: "female" }),
+    );
+  });
+
+  it("preferredDriverGender=female + only male busy eligible: does NOT create queued offer", async () => {
+    mockFindUserById.mockResolvedValue({ id: "user-123", role: "passenger" });
+    mockFindAvailableWithLocation.mockResolvedValue([]);
+    // findBusyEligibleForQueuedOffer returns empty when genderFilter=female
+    mockFindBusyEligibleForQueuedOffer.mockResolvedValue([]);
+    mockCreate.mockResolvedValue(makeRide({ preferredDriverGender: "female" }));
+
+    const result = await service.createRideRequest("token", { ...VALID_INPUT, preferredDriverGender: "female" });
+
+    expect(result.ok).toBe(true);
+    expect(mockOffersCreateOffer).not.toHaveBeenCalled();
+  });
+
+  it("scheduled + preferredDriverGender=female: saves preference, no auto-assign, no preferredDriverUnavailable", async () => {
+    mockFindUserById.mockResolvedValue({ id: "user-123", role: "passenger" });
+    mockCreate.mockResolvedValue(makeRide({ preferredDriverGender: "female", rideType: "scheduled" }));
+
+    const result = await service.createRideRequest("token", {
+      ...SCHEDULED_INPUT,
+      preferredDriverGender: "female",
+    });
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.ride.rideType).toBe("scheduled");
+      expect(result.ride.preferredDriverUnavailable).toBeFalsy();
+    }
+    expect(mockFindAvailableWithLocation).not.toHaveBeenCalled();
+    expect(mockAccept).not.toHaveBeenCalled();
+  });
+});
+
+// ── acceptAnyDriver ───────────────────────────────────────────────────────────
+
+describe("RidesService.acceptAnyDriver", () => {
+  let service: InstanceType<typeof RidesService>;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockIsSessionValid.mockResolvedValue(true);
+    mockFindAvailableWithLocation.mockResolvedValue([]);
+    mockFindBusyEligibleForQueuedOffer.mockResolvedValue([]);
+    mockAccept.mockResolvedValue(null);
+    service = new RidesService();
+  });
+
+  it("clears preferredDriverGender on the ride", async () => {
+    mockFindUserById.mockResolvedValue({ id: "user-123", role: "passenger" });
+    const rideWithPref = makeRide({ passengerUserId: "user-123", status: "requested", preferredDriverGender: "female" });
+    mockFindById.mockResolvedValue(rideWithPref);
+    mockClearPreferredDriverGender.mockResolvedValue(makeRide({ passengerUserId: "user-123", status: "requested", preferredDriverGender: null }));
+
+    await service.acceptAnyDriver("token", "ride-1");
+
+    expect(mockClearPreferredDriverGender).toHaveBeenCalledWith("ride-1");
+  });
+
+  it("retries auto-assignment without genderFilter", async () => {
+    mockFindUserById.mockResolvedValue({ id: "user-123", role: "passenger" });
+    const rideWithPref = makeRide({ passengerUserId: "user-123", status: "requested", preferredDriverGender: "female", originLat: -27.15, originLng: -109.43 });
+    mockFindById.mockResolvedValue(rideWithPref);
+    mockClearPreferredDriverGender.mockResolvedValue(makeRide({ passengerUserId: "user-123", status: "requested", preferredDriverGender: null, originLat: -27.15, originLng: -109.43 }));
+
+    await service.acceptAnyDriver("token", "ride-1");
+
+    expect(mockFindAvailableWithLocation).toHaveBeenCalledWith(
+      expect.not.objectContaining({ genderFilter: expect.anything() }),
+    );
+  });
+
+  it("assigns available driver after clearing preference", async () => {
+    mockFindUserById.mockResolvedValue({ id: "user-123", role: "passenger" });
+    const rideWithPref = makeRide({ passengerUserId: "user-123", status: "requested", preferredDriverGender: "female", originLat: -27.15, originLng: -109.43 });
+    mockFindById.mockResolvedValue(rideWithPref);
+    mockClearPreferredDriverGender.mockResolvedValue(makeRide({ passengerUserId: "user-123", status: "requested", preferredDriverGender: null, originLat: -27.15, originLng: -109.43 }));
+    mockFindAvailableWithLocation.mockResolvedValue([makeDriverCandidate({ driverUserId: "driver-m" })]);
+    mockAccept.mockResolvedValue(makeRide({ driverUserId: "driver-m", status: "accepted" }));
+
+    const result = await service.acceptAnyDriver("token", "ride-1");
+
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.ride.autoAssigned).toBe(true);
+  });
+
+  it("rejects if ride does not belong to passenger", async () => {
+    mockFindUserById.mockResolvedValue({ id: "user-123", role: "passenger" });
+    mockFindById.mockResolvedValue(makeRide({ passengerUserId: "other-user", status: "requested", preferredDriverGender: "female" }));
+
+    const result = await service.acceptAnyDriver("token", "ride-1");
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.code).toBe("AUTH_FORBIDDEN");
+  });
+
+  it("rejects if ride status is not requested", async () => {
+    mockFindUserById.mockResolvedValue({ id: "user-123", role: "passenger" });
+    mockFindById.mockResolvedValue(makeRide({ passengerUserId: "user-123", status: "accepted", preferredDriverGender: "female" }));
+
+    const result = await service.acceptAnyDriver("token", "ride-1");
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.code).toBe("RIDE_CANNOT_ACCEPT_ANY");
+  });
+
+  it("rejects if ride has no gender preference", async () => {
+    mockFindUserById.mockResolvedValue({ id: "user-123", role: "passenger" });
+    mockFindById.mockResolvedValue(makeRide({ passengerUserId: "user-123", status: "requested", preferredDriverGender: null }));
+
+    const result = await service.acceptAnyDriver("token", "ride-1");
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.code).toBe("RIDE_NO_GENDER_PREFERENCE");
+  });
+
+  it("creates queued offer without genderFilter if no available driver", async () => {
+    mockFindUserById.mockResolvedValue({ id: "user-123", role: "passenger" });
+    const rideWithPref = makeRide({ passengerUserId: "user-123", status: "requested", preferredDriverGender: "female", originLat: -27.15, originLng: -109.43 });
+    mockFindById.mockResolvedValue(rideWithPref);
+    mockClearPreferredDriverGender.mockResolvedValue(makeRide({ passengerUserId: "user-123", status: "requested", preferredDriverGender: null, originLat: -27.15, originLng: -109.43 }));
+    mockFindAvailableWithLocation.mockResolvedValue([]);
+    const busyAny = { driverUserId: "driver-m-busy", currentLat: -27.16, currentLng: -109.43, locationUpdatedAt: new Date(), lastSeenAt: new Date(), currentRideId: "r2" };
+    mockFindBusyEligibleForQueuedOffer.mockResolvedValue([busyAny]);
+    mockOffersCreateOffer.mockResolvedValue({ expiresAt: new Date(Date.now() + 20000) });
+
+    const result = await service.acceptAnyDriver("token", "ride-1");
+
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.ride.queuedOfferPending).toBe(true);
+    expect(mockFindBusyEligibleForQueuedOffer).toHaveBeenCalledWith(
+      expect.not.objectContaining({ genderFilter: expect.anything() }),
+    );
+  });
+
+  it("genderFilter undefined/null: does not filter drivers", async () => {
+    mockFindUserById.mockResolvedValue({ id: "user-123", role: "passenger" });
+    mockCreate.mockResolvedValue(makeRide({ preferredDriverGender: null }));
+
+    const result = await service.createRideRequest("token", VALID_INPUT);
+
+    expect(result.ok).toBe(true);
+    expect(mockFindAvailableWithLocation).toHaveBeenCalledWith(
+      expect.not.objectContaining({ genderFilter: expect.anything() }),
+    );
   });
 });

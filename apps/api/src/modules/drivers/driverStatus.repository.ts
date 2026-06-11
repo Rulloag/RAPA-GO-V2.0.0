@@ -1,6 +1,6 @@
 import { eq, and, isNull, isNotNull, gte } from "drizzle-orm";
 import { db } from "../../db/client.js";
-import { driverStatuses, rideRequests, users } from "../../db/schema/index.js";
+import { driverStatuses, driverProfiles, rideRequests, users } from "../../db/schema/index.js";
 import { AppError } from "../../shared/errors/AppError.js";
 import type { DriverStatus } from "../../db/schema/index.js";
 
@@ -148,8 +148,24 @@ export class DriverStatusRepository {
   async findBusyEligibleForQueuedOffer(opts: {
     locationCutoff: Date;
     lastSeenCutoff: Date;
+    genderFilter?:  "female" | "male";
   }): Promise<BusyDriverCandidate[]> {
     try {
+      const conditions = [
+        eq(driverStatuses.availability, "busy"),
+        isNotNull(driverStatuses.currentRideId),
+        isNull(driverStatuses.queuedRideId),
+        isNotNull(driverStatuses.currentLat),
+        isNotNull(driverStatuses.currentLng),
+        isNotNull(driverStatuses.locationUpdatedAt),
+        gte(driverStatuses.locationUpdatedAt, opts.locationCutoff),
+        gte(driverStatuses.lastSeenAt, opts.lastSeenCutoff),
+        eq(users.role, "driver"),
+        eq(users.status, "active"),
+        eq(rideRequests.status, "in_progress"),
+        ...(opts.genderFilter ? [eq(driverProfiles.gender, opts.genderFilter)] : []),
+      ];
+
       const rows = await db
         .select({
           driverUserId:      driverStatuses.driverUserId,
@@ -162,21 +178,8 @@ export class DriverStatusRepository {
         .from(driverStatuses)
         .innerJoin(users, eq(driverStatuses.driverUserId, users.id))
         .innerJoin(rideRequests, eq(driverStatuses.currentRideId, rideRequests.id))
-        .where(
-          and(
-            eq(driverStatuses.availability, "busy"),
-            isNotNull(driverStatuses.currentRideId),
-            isNull(driverStatuses.queuedRideId),
-            isNotNull(driverStatuses.currentLat),
-            isNotNull(driverStatuses.currentLng),
-            isNotNull(driverStatuses.locationUpdatedAt),
-            gte(driverStatuses.locationUpdatedAt, opts.locationCutoff),
-            gte(driverStatuses.lastSeenAt, opts.lastSeenCutoff),
-            eq(users.role, "driver"),
-            eq(users.status, "active"),
-            eq(rideRequests.status, "in_progress"),
-          ),
-        );
+        .leftJoin(driverProfiles, eq(driverStatuses.driverUserId, driverProfiles.userId))
+        .where(and(...conditions));
 
       return rows.filter(
         (r): r is BusyDriverCandidate =>
@@ -194,8 +197,22 @@ export class DriverStatusRepository {
   async findAvailableWithLocation(opts: {
     locationCutoff: Date;
     lastSeenCutoff: Date;
+    genderFilter?:  "female" | "male";
   }): Promise<AvailableDriverCandidate[]> {
     try {
+      const conditions = [
+        eq(driverStatuses.availability, "available"),
+        isNull(driverStatuses.currentRideId),
+        isNotNull(driverStatuses.currentLat),
+        isNotNull(driverStatuses.currentLng),
+        isNotNull(driverStatuses.locationUpdatedAt),
+        gte(driverStatuses.locationUpdatedAt, opts.locationCutoff),
+        gte(driverStatuses.lastSeenAt, opts.lastSeenCutoff),
+        eq(users.role, "driver"),
+        eq(users.status, "active"),
+        ...(opts.genderFilter ? [eq(driverProfiles.gender, opts.genderFilter)] : []),
+      ];
+
       const rows = await db
         .select({
           driverUserId:      driverStatuses.driverUserId,
@@ -207,19 +224,8 @@ export class DriverStatusRepository {
         })
         .from(driverStatuses)
         .innerJoin(users, eq(driverStatuses.driverUserId, users.id))
-        .where(
-          and(
-            eq(driverStatuses.availability, "available"),
-            isNull(driverStatuses.currentRideId),
-            isNotNull(driverStatuses.currentLat),
-            isNotNull(driverStatuses.currentLng),
-            isNotNull(driverStatuses.locationUpdatedAt),
-            gte(driverStatuses.locationUpdatedAt, opts.locationCutoff),
-            gte(driverStatuses.lastSeenAt, opts.lastSeenCutoff),
-            eq(users.role, "driver"),
-            eq(users.status, "active"),
-          ),
-        );
+        .leftJoin(driverProfiles, eq(driverStatuses.driverUserId, driverProfiles.userId))
+        .where(and(...conditions));
 
       return rows.filter(
         (r): r is AvailableDriverCandidate =>

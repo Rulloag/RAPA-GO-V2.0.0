@@ -88,12 +88,17 @@ async function autoAssignNearestDriver(
   rideId: string,
   originLat: number,
   originLng: number,
+  genderFilter?: "female" | "male",
 ): Promise<(import("../../db/schema/index.js").RideRequest) | null> {
   const now = new Date();
   const locationCutoff = new Date(now.getTime() - MAX_DRIVER_LOCATION_AGE_MINUTES * 60 * 1000);
   const lastSeenCutoff  = new Date(now.getTime() - MAX_DRIVER_LAST_SEEN_AGE_MINUTES * 60 * 1000);
 
-  const candidates = await driverStatusRepo.findAvailableWithLocation({ locationCutoff, lastSeenCutoff });
+  const candidates = await driverStatusRepo.findAvailableWithLocation({
+    locationCutoff,
+    lastSeenCutoff,
+    ...(genderFilter ? { genderFilter } : {}),
+  });
 
   const ranked = candidates
     .map(c => ({ ...c, distanceKm: haversineKm(originLat, originLng, c.currentLat, c.currentLng) }))
@@ -110,6 +115,42 @@ async function autoAssignNearestDriver(
   }
 
   return null;
+}
+
+type QueuedOfferResult =
+  | { created: true;  expiresAt: string }
+  | { created: false };
+
+async function tryCreateQueuedOffer(
+  rideId: string,
+  originLat: number,
+  originLng: number,
+  genderFilter?: "female" | "male",
+): Promise<QueuedOfferResult> {
+  await offersRepo.expireStale();
+  const now = new Date();
+  const locationCutoff = new Date(now.getTime() - MAX_DRIVER_LOCATION_AGE_MINUTES * 60 * 1000);
+  const lastSeenCutoff  = new Date(now.getTime() - MAX_DRIVER_LAST_SEEN_AGE_MINUTES * 60 * 1000);
+  const busyCandidates = await driverStatusRepo.findBusyEligibleForQueuedOffer({
+    locationCutoff,
+    lastSeenCutoff,
+    ...(genderFilter ? { genderFilter } : {}),
+  });
+  const ranked = busyCandidates
+    .map(c => ({ ...c, distanceKm: haversineKm(originLat, originLng, c.currentLat, c.currentLng) }))
+    .filter(c => c.distanceKm <= MAX_PICKUP_DISTANCE_KM)
+    .sort((a, b) => a.distanceKm - b.distanceKm);
+
+  if (ranked.length > 0 && ranked[0]) {
+    const offer = await offersRepo.createOffer({
+      rideRequestId: rideId,
+      driverUserId:  ranked[0].driverUserId,
+      expiresAt:     new Date(now.getTime() + 20 * 1000),
+      attemptOrder:  1,
+    });
+    return { created: true, expiresAt: offer.expiresAt.toISOString() };
+  }
+  return { created: false };
 }
 
 export class RidesService {
@@ -276,9 +317,11 @@ export class RidesService {
     }
 
     // ── Auto-assignment: immediate rides only (multi or simple) ──────────────
+    const genderFilter = input.preferredDriverGender === "female" ? "female" as const : undefined;
+
     if (rideType === "immediate" && input.originLat != null && input.originLng != null) {
       try {
-        const assigned = await autoAssignNearestDriver(row.id, input.originLat, input.originLng);
+        const assigned = await autoAssignNearestDriver(row.id, input.originLat, input.originLng, genderFilter);
         if (assigned) {
           return {
             ok: true,
@@ -291,37 +334,27 @@ export class RidesService {
 
       // ── Queued offer fallback: try busy drivers when no available found ──────
       try {
-        await offersRepo.expireStale(); // lazy cleanup of stale offers
-        const now = new Date();
-        const locationCutoffBusy = new Date(now.getTime() - MAX_DRIVER_LOCATION_AGE_MINUTES * 60 * 1000);
-        const lastSeenCutoffBusy  = new Date(now.getTime() - MAX_DRIVER_LAST_SEEN_AGE_MINUTES * 60 * 1000);
-        const busyCandidates = await driverStatusRepo.findBusyEligibleForQueuedOffer({
-          locationCutoff: locationCutoffBusy,
-          lastSeenCutoff: lastSeenCutoffBusy,
-        });
-        const rankedBusy = busyCandidates
-          .map(c => ({ ...c, distanceKm: haversineKm(input.originLat, input.originLng, c.currentLat, c.currentLng) }))
-          .filter(c => c.distanceKm <= MAX_PICKUP_DISTANCE_KM)
-          .sort((a, b) => a.distanceKm - b.distanceKm);
-
-        if (rankedBusy.length > 0 && rankedBusy[0]) {
-          const offer = await offersRepo.createOffer({
-            rideRequestId: row.id,
-            driverUserId:  rankedBusy[0].driverUserId,
-            expiresAt:     new Date(now.getTime() + 20 * 1000),
-            attemptOrder:  1,
-          });
+        const offerResult = await tryCreateQueuedOffer(row.id, input.originLat, input.originLng, genderFilter);
+        if (offerResult.created) {
           return {
             ok: true,
             ride: {
               ...toResponse(row, discountInfo, createdStops),
               queuedOfferPending:   true,
-              queuedOfferExpiresAt: offer.expiresAt.toISOString(),
+              queuedOfferExpiresAt: offerResult.expiresAt,
             },
           };
         }
       } catch {
         // Queued offer creation failure is non-fatal — ride stays requested for admin
+      }
+
+      // ── If female preference and no driver found, signal passenger ───────────
+      if (genderFilter === "female") {
+        return {
+          ok: true,
+          ride: { ...toResponse(row, discountInfo, createdStops), preferredDriverUnavailable: true },
+        };
       }
     }
 
@@ -627,5 +660,80 @@ export class RidesService {
         updatedAt:    status.locationUpdatedAt?.toISOString() ?? null,
       },
     };
+  }
+
+  async acceptAnyDriver(accessToken: string, rideId: string): Promise<RideResult> {
+    const auth = await authenticate(accessToken);
+    if (!auth.ok) return auth;
+
+    if (auth.role !== "passenger") {
+      return { ok: false, code: "AUTH_FORBIDDEN", message: "Only passengers can use this action.", statusCode: 403 };
+    }
+
+    const existing = await ridesRepo.findById(rideId);
+    if (!existing) {
+      return { ok: false, code: "NOT_FOUND", message: "Ride request not found.", statusCode: 404 };
+    }
+    if (existing.passengerUserId !== auth.userId) {
+      return { ok: false, code: "AUTH_FORBIDDEN", message: "You can only modify your own rides.", statusCode: 403 };
+    }
+    if (existing.status !== "requested") {
+      return {
+        ok: false,
+        code: "RIDE_CANNOT_ACCEPT_ANY",
+        message: `Ride is not in 'requested' status — current status is '${existing.status}'.`,
+        statusCode: 409,
+      };
+    }
+    if (!existing.preferredDriverGender) {
+      return {
+        ok: false,
+        code: "RIDE_NO_GENDER_PREFERENCE",
+        message: "This ride has no gender preference to remove.",
+        statusCode: 409,
+      };
+    }
+
+    // Clear preference first so subsequent logic is idempotent on re-entry
+    const cleared = await ridesRepo.clearPreferredDriverGender(rideId);
+    if (!cleared) {
+      return { ok: false, code: "NOT_FOUND", message: "Ride request not found.", statusCode: 404 };
+    }
+
+    if (cleared.originLat == null || cleared.originLng == null) {
+      return { ok: true, ride: toResponse(cleared) };
+    }
+
+    // Retry auto-assignment without gender filter
+    try {
+      const assigned = await autoAssignNearestDriver(rideId, cleared.originLat, cleared.originLng);
+      if (assigned) {
+        return {
+          ok: true,
+          ride: { ...toResponse(assigned), autoAssigned: true },
+        };
+      }
+    } catch {
+      // Non-fatal — fall through to queued offer
+    }
+
+    // Retry queued offer without gender filter
+    try {
+      const offerResult = await tryCreateQueuedOffer(rideId, cleared.originLat, cleared.originLng);
+      if (offerResult.created) {
+        return {
+          ok: true,
+          ride: {
+            ...toResponse(cleared),
+            queuedOfferPending:   true,
+            queuedOfferExpiresAt: offerResult.expiresAt,
+          },
+        };
+      }
+    } catch {
+      // Non-fatal — ride stays requested
+    }
+
+    return { ok: true, ride: toResponse(cleared) };
   }
 }

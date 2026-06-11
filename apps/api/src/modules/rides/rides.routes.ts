@@ -16,5 +16,6 @@ export async function ridesRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.post("/:id/complete",        ridesController.completeRide);
   fastify.post("/:id/cancel",          ridesController.cancelRideRequest);
   fastify.post("/:id/cancel-accepted",    ridesController.cancelAcceptedRide);
+  fastify.patch("/:id/accept-any-driver", ridesController.acceptAnyDriver);
   fastify.get("/:id/driver-location",     ridesController.getDriverLocation);
 }

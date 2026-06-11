@@ -427,6 +427,19 @@ export class RidesRepository {
    * We filter on completedAt using UTC midnight boundaries so the result is
    * deterministic regardless of the server's local timezone.
    */
+  async clearPreferredDriverGender(rideId: string): Promise<RideRequest | null> {
+    try {
+      const rows = await db
+        .update(rideRequests)
+        .set({ preferredDriverGender: null, updatedAt: new Date() })
+        .where(eq(rideRequests.id, rideId))
+        .returning();
+      return rows[0] ?? null;
+    } catch (err) {
+      throw AppError.internal(`Failed to clear preferred driver gender: ${String(err)}`);
+    }
+  }
+
   async findCompletedByDriverIdOnDate(driverUserId: string, utcDate: Date): Promise<RideRequest[]> {
     const dayStart = new Date(Date.UTC(utcDate.getUTCFullYear(), utcDate.getUTCMonth(), utcDate.getUTCDate()));
     const dayEnd   = new Date(dayStart.getTime() + 24 * 60 * 60 * 1000);

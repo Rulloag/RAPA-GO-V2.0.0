@@ -70,10 +70,11 @@ export interface RideRequestResponse {
   scheduledPickupAt:     string | null;
   priorityFeeClp:        number | null;
   flightNumber:          string | null;
-  preferredDriverGender?: "female" | null;
-  stops?:                RideStopResponse[] | undefined;
-  queuedOfferPending?:   boolean | undefined;
-  queuedOfferExpiresAt?: string | null | undefined;
+  preferredDriverGender?:    "female" | null;
+  preferredDriverUnavailable?: boolean | undefined;
+  stops?:                    RideStopResponse[] | undefined;
+  queuedOfferPending?:       boolean | undefined;
+  queuedOfferExpiresAt?:     string | null | undefined;
 }
 
 /** Subset exposed to driver for their own rides — no passenger identity. */
