@@ -20,6 +20,7 @@ const mockSetQueuedRide                = vi.fn();
 const mockClearQueuedRide              = vi.fn();
 const mockFareSettingsFindByType       = vi.fn().mockResolvedValue(null);
 const mockStopsCreateMany              = vi.fn().mockResolvedValue([]);
+const mockStopsFindManyByRideIds       = vi.fn().mockResolvedValue([]);
 const mockOffersExpireStale            = vi.fn().mockResolvedValue(undefined);
 const mockOffersCreateOffer            = vi.fn();
 const mockOffersMarkCancelledByRide    = vi.fn();
@@ -92,7 +93,8 @@ vi.mock("../../fareSettings/fareSettings.repository.js", () => ({
 
 vi.mock("../rideStops.repository.js", () => ({
   RideStopsRepository: vi.fn().mockImplementation(() => ({
-    createMany: mockStopsCreateMany,
+    createMany:          mockStopsCreateMany,
+    findManyByRideIds:   mockStopsFindManyByRideIds,
   })),
 }));
 
@@ -1392,5 +1394,119 @@ describe("RidesService — queued offer fallback + completeRide", () => {
     expect(mockSetAvailable).toHaveBeenCalledWith("driver-1");
     expect(mockSetBusy).not.toHaveBeenCalled();
     expect(mockClearQueuedRide).not.toHaveBeenCalled();
+  });
+});
+
+// ── listMyRides — stops (B2 fix) ──────────────────────────────────────────────
+
+describe("RidesService.listMyRides — stops", () => {
+  let service: InstanceType<typeof RidesService>;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockIsSessionValid.mockResolvedValue(true);
+    service = new RidesService();
+  });
+
+  it("returns stops for multi-destination rides", async () => {
+    mockFindUserById.mockResolvedValue({ id: "user-123", role: "passenger" });
+    const ride = makeRide({ id: "ride-1", status: "accepted" });
+    mockFindByPassengerWithDriver.mockResolvedValue([ride]);
+    mockStopsFindManyByRideIds.mockResolvedValue([
+      {
+        id: "stop-1", rideRequestId: "ride-1", stopOrder: 1, label: "Parada 1",
+        lat: -27.12, lng: -109.28,
+        segmentDistanceMeters: 3100, segmentDurationSeconds: 460, segmentFareClp: 7130,
+        arrivedAt: null, completedAt: null, createdAt: new Date(), updatedAt: new Date(),
+      },
+      {
+        id: "stop-2", rideRequestId: "ride-1", stopOrder: 2, label: "Parada 2",
+        lat: -27.13, lng: -109.29,
+        segmentDistanceMeters: 2100, segmentDurationSeconds: 320, segmentFareClp: 4830,
+        arrivedAt: null, completedAt: null, createdAt: new Date(), updatedAt: new Date(),
+      },
+    ]);
+
+    const result = await service.listMyRides("token");
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.rides).toHaveLength(1);
+    expect(result.rides[0]?.stops).toHaveLength(2);
+    expect(result.rides[0]?.stops?.[0]?.stopOrder).toBe(1);
+    expect(result.rides[0]?.stops?.[1]?.stopOrder).toBe(2);
+    expect(mockStopsFindManyByRideIds).toHaveBeenCalledWith(["ride-1"]);
+  });
+
+  it("simple ride has no stops key when no stops exist", async () => {
+    mockFindUserById.mockResolvedValue({ id: "user-123", role: "passenger" });
+    const ride = makeRide({ id: "ride-1", status: "completed" });
+    mockFindByPassengerWithDriver.mockResolvedValue([ride]);
+    mockStopsFindManyByRideIds.mockResolvedValue([]);
+
+    const result = await service.listMyRides("token");
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.rides[0]?.stops).toBeUndefined();
+  });
+
+  it("returns empty rides list without querying stops", async () => {
+    mockFindUserById.mockResolvedValue({ id: "user-123", role: "passenger" });
+    mockFindByPassengerWithDriver.mockResolvedValue([]);
+
+    const result = await service.listMyRides("token");
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.rides).toHaveLength(0);
+    expect(mockStopsFindManyByRideIds).not.toHaveBeenCalled();
+  });
+});
+
+// ── markEnRoute — setBusy (B3 fix) ────────────────────────────────────────────
+
+describe("RidesService.markEnRoute — setBusy", () => {
+  let service: InstanceType<typeof RidesService>;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockIsSessionValid.mockResolvedValue(true);
+    service = new RidesService();
+  });
+
+  it("calls setBusy after marking immediate ride en-route", async () => {
+    mockFindUserById.mockResolvedValue({ id: "driver-1", role: "driver" });
+    const ride = makeRide({ status: "driver_en_route", driverUserId: "driver-1", enRouteAt: new Date() });
+    mockMarkEnRoute.mockResolvedValue(ride);
+    mockSetBusy.mockResolvedValue(undefined);
+
+    const result = await service.markEnRoute("token", "ride-1");
+
+    expect(result.ok).toBe(true);
+    expect(mockSetBusy).toHaveBeenCalledWith("driver-1", "ride-1");
+  });
+
+  it("calls setBusy after marking scheduled ride en-route (deferred from admin assign)", async () => {
+    mockFindUserById.mockResolvedValue({ id: "driver-1", role: "driver" });
+    const ride = makeRide({ status: "driver_en_route", driverUserId: "driver-1", rideType: "scheduled", enRouteAt: new Date() });
+    mockMarkEnRoute.mockResolvedValue(ride);
+    mockSetBusy.mockResolvedValue(undefined);
+
+    const result = await service.markEnRoute("token", "ride-1");
+
+    expect(result.ok).toBe(true);
+    expect(mockSetBusy).toHaveBeenCalledWith("driver-1", "ride-1");
+  });
+
+  it("does not call setBusy when markEnRoute fails", async () => {
+    mockFindUserById.mockResolvedValue({ id: "driver-1", role: "driver" });
+    mockMarkEnRoute.mockResolvedValue(null);
+    mockFindById.mockResolvedValue(makeRide({ status: "in_progress", driverUserId: "driver-1" }));
+
+    const result = await service.markEnRoute("token", "ride-1");
+
+    expect(result.ok).toBe(false);
+    expect(mockSetBusy).not.toHaveBeenCalled();
   });
 });

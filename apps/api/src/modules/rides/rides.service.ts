@@ -122,7 +122,17 @@ export class RidesService {
     }
 
     const rows = await ridesRepo.findByPassengerIdWithDriver(auth.userId);
-    return { ok: true, rides: rows.map(r => toResponse(r)) };
+    if (rows.length === 0) return { ok: true, rides: [] };
+
+    const allStopRows = await rideStopsRepo.findManyByRideIds(rows.map(r => r.id));
+    const stopsByRideId = new Map<string, RideStopResponse[]>();
+    for (const s of allStopRows) {
+      const bucket = stopsByRideId.get(s.rideRequestId) ?? [];
+      bucket.push(toStopResponse(s));
+      stopsByRideId.set(s.rideRequestId, bucket);
+    }
+
+    return { ok: true, rides: rows.map(r => toResponse(r, undefined, stopsByRideId.get(r.id))) };
   }
 
   async createRideRequest(accessToken: string, input: CreateRideRequestInput): Promise<RideResult> {
@@ -444,6 +454,11 @@ export class RidesService {
         statusCode: 409,
       };
     }
+
+    // Ensure driver is marked busy when they start driving.
+    // Auto-assign already calls setBusy; this handles scheduled rides assigned
+    // by admin where setBusy is intentionally deferred until the driver moves.
+    await driverStatusRepo.setBusy(auth.userId, rideId);
 
     return { ok: true, ride: toResponse(updated) };
   }
