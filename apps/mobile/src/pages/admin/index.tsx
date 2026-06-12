@@ -1400,6 +1400,9 @@ export function AdminTripsPage(): JSX.Element {
   // Toast for DRIVER_NOT_AVAILABLE feedback
   const [toastMsg, setToastMsg] = useState<string | null>(null);
 
+  // Female-preference warning alert
+  const [femaleWarnRideId, setFemaleWarnRideId] = useState<string | null>(null);
+
   const loadData = useCallback(async () => {
     if (!session?.accessToken) return;
     setLoading(true);
@@ -1639,6 +1642,9 @@ export function AdminTripsPage(): JSX.Element {
                           {isScheduled && (
                             <IonBadge color="warning" style={{ fontSize: "0.68rem", fontWeight: 700 }}>PRIORITARIO</IonBadge>
                           )}
+                          {ride.preferredDriverGender === "female" && (
+                            <IonBadge color="secondary" style={{ fontSize: "0.68rem" }}>♀ Prefiere conductora mujer</IonBadge>
+                          )}
                         </div>
                       </div>
                       <div style={{ fontSize: "0.68rem", color: "var(--ion-color-medium)", flexShrink: 0, textAlign: "right" }}>
@@ -1753,7 +1759,13 @@ export function AdminTripsPage(): JSX.Element {
                                 size="small"
                                 color="primary"
                                 disabled={assigningId === ride.id || !assignDriverId[ride.id]}
-                                onClick={() => void handleAssign(ride.id)}
+                                onClick={() => {
+                                  if (ride.preferredDriverGender === "female") {
+                                    setFemaleWarnRideId(ride.id);
+                                  } else {
+                                    void handleAssign(ride.id);
+                                  }
+                                }}
                                 style={{ marginTop: "6px" }}
                               >
                                 {assigningId === ride.id ? <IonSpinner name="dots" /> : "Asignar conductor"}
@@ -1809,6 +1821,29 @@ export function AdminTripsPage(): JSX.Element {
           </div>
           );
         })()}
+
+        {/* Female preference warning alert */}
+        <IonAlert
+          isOpen={femaleWarnRideId !== null}
+          header="Preferencia de conductora"
+          message="Este pasajero solicitó una conductora mujer. No se puede verificar el género del conductor seleccionado desde este panel. ¿Deseas asignar de todas formas?"
+          buttons={[
+            {
+              text: "Volver",
+              role: "cancel",
+              handler: () => setFemaleWarnRideId(null),
+            },
+            {
+              text: "Asignar de todas formas",
+              handler: () => {
+                const rideId = femaleWarnRideId;
+                setFemaleWarnRideId(null);
+                if (rideId) void handleAssign(rideId);
+              },
+            },
+          ]}
+          onDidDismiss={() => setFemaleWarnRideId(null)}
+        />
 
         {/* Driver not available toast */}
         <IonToast
