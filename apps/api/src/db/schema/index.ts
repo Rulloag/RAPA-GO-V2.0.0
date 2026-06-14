@@ -22,3 +22,4 @@ export { fareSettings, zoneFares, type FareSetting, type ZoneFare } from "./fare
 export { referralCodes, referralUses, type ReferralCode, type NewReferralCode, type ReferralUse, type NewReferralUse } from "./referrals.schema.js";
 export { rideStops, type RideStop, type NewRideStop } from "./rideStops.schema.js";
 export { rideAssignmentOffers, type RideAssignmentOffer, type NewRideAssignmentOffer } from "./rideAssignmentOffers.schema.js";
+export { whatsappMessages, type WhatsappMessage, type NewWhatsappMessage } from "./whatsappMessages.schema.js";
