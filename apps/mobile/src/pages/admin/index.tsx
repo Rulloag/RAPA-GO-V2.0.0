@@ -192,7 +192,7 @@ export function AdminHomePage(): JSX.Element {
     },
     {
       label: "Viajes",
-      description: "Asignar y monitorear",
+      description: "Monitorear operación",
       icon: carOutline,
       route: ROUTES.ADMIN.TRIPS,
     },
@@ -982,7 +982,7 @@ export function AdminDriversPage(): JSX.Element {
 
         <IonItem lines="none" style={{ marginTop: "16px" }}>
           <IonLabel color="medium" style={{ fontSize: "0.8rem", whiteSpace: "normal" }}>
-            La asignación de viajes se realiza desde el módulo Viajes.
+            Los viajes se toman automáticamente desde la app del conductor. El admin solo monitorea.
           </IonLabel>
         </IonItem>
 
@@ -1587,78 +1587,99 @@ const RIDE_STATUS_COLOR_ADMIN: Record<string, string> = {
 
 const CANCELABLE_STATUSES = new Set(["requested", "accepted", "driver_en_route", "driver_arrived"]);
 
+
+function getAdminRideTimeValue(ride: AdminRideData): number {
+  const candidates = [
+    ride.createdAt,
+    ride.requestedAt,
+    ride.acceptedAt,
+    ride.startedAt,
+    ride.completedAt,
+    ride.cancelledAt,
+  ].filter(Boolean) as string[];
+
+  const value = candidates
+    .map((date) => new Date(date).getTime())
+    .filter((time) => Number.isFinite(time))
+    .sort((a, b) => b - a)[0];
+
+  return value ?? 0;
+}
+
+function getAdminRidePriority(status: string): number {
+  if (status === "requested") return 0;
+  if (status === "accepted") return 1;
+  if (status === "driver_en_route") return 2;
+  if (status === "driver_arrived") return 3;
+  if (status === "in_progress") return 4;
+  if (status === "completed") return 5;
+  if (status === "cancelled") return 6;
+  return 7;
+}
+
+function sortAdminRidesForOperations(rides: AdminRideData[]): AdminRideData[] {
+  return [...rides].sort((a, b) => {
+    const priorityDiff = getAdminRidePriority(a.status) - getAdminRidePriority(b.status);
+    if (priorityDiff !== 0) return priorityDiff;
+    return getAdminRideTimeValue(b) - getAdminRideTimeValue(a);
+  });
+}
+
 export function AdminTripsPage(): JSX.Element {
   const { session } = useAuth();
 
   const [rides,         setRides]         = useState<AdminRideData[]>([]);
-  const [drivers,       setDrivers]       = useState<ActiveDriverData[]>([]);
   const [loading,       setLoading]       = useState(true);
   const [loadError,     setLoadError]     = useState<string | null>(null);
   const [filterStatus,  setFilterStatus]  = useState("");
-
-  // Assign state per-ride
-  const [assigningId,   setAssigningId]   = useState<string | null>(null);
-  const [assignDriverId,setAssignDriverId]= useState<Record<string, string>>({});
-  const [assignError,   setAssignError]   = useState<string | null>(null);
+  const [autoRefreshing, setAutoRefreshing] = useState(false);
 
   // Cancel state per-ride
   const [cancellingId,  setCancellingId]  = useState<string | null>(null);
   const [cancelAlertId, setCancelAlertId] = useState<string | null>(null);
   const [cancelError,   setCancelError]   = useState<string | null>(null);
 
-  // Toast for DRIVER_NOT_AVAILABLE feedback
-  const [toastMsg, setToastMsg] = useState<string | null>(null);
-
-  const loadData = useCallback(async () => {
+  const loadData = useCallback(async (silent = false) => {
     if (!session?.accessToken) return;
-    setLoading(true);
+
+    if (silent) {
+      setAutoRefreshing(true);
+    } else {
+      setLoading(true);
+    }
+
     setLoadError(null);
+
     try {
       const params: { status?: string } = {};
       if (filterStatus) params.status = filterStatus;
-      const [ridesData, driversData] = await Promise.all([
-        adminService.listRides(session.accessToken, params),
-        adminService.listActiveDrivers(session.accessToken),
-      ]);
-      setRides(ridesData);
-      setDrivers(driversData);
+
+      const ridesData = await adminService.listRides(session.accessToken, params);
+
+      setRides(sortAdminRidesForOperations(ridesData));
     } catch (err) {
       setLoadError(err instanceof Error ? err.message : "Error al cargar datos.");
     } finally {
-      setLoading(false);
+      if (silent) {
+        setAutoRefreshing(false);
+      } else {
+        setLoading(false);
+      }
     }
   }, [session?.accessToken, filterStatus]);
 
-  useEffect(() => { void loadData(); }, [loadData]);
+  useEffect(() => {
+    void loadData(false);
+  }, [loadData]);
 
-  async function handleAssign(rideId: string) {
-    if (!session?.accessToken) return;
-    const driverUserId = assignDriverId[rideId];
-    if (!driverUserId) {
-      setAssignError("Selecciona un conductor antes de asignar.");
-      return;
-    }
-    setAssigningId(rideId);
-    setAssignError(null);
-    try {
-      const updated = await adminService.assignDriver(session.accessToken, rideId, driverUserId);
-      setRides((prev) => prev.map((r) => (r.id === rideId ? updated : r)));
-      setAssignDriverId((prev) => {
-        const next = { ...prev };
-        delete next[rideId];
-        return next;
-      });
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : "Error al asignar conductor.";
-      if (msg.includes("disponible") || msg.toLowerCase().includes("not available")) {
-        setToastMsg("El conductor no está disponible en este momento. Selecciona otro conductor.");
-      } else {
-        setAssignError(msg);
-      }
-    } finally {
-      setAssigningId(null);
-    }
-  }
+  useEffect(() => {
+    const interval = window.setInterval(() => {
+      void loadData(true);
+    }, 3000);
+
+    return () => window.clearInterval(interval);
+  }, [loadData]);
+
 
   async function handleCancel(rideId: string, reason: string) {
     if (!session?.accessToken) return;
@@ -1667,6 +1688,7 @@ export function AdminTripsPage(): JSX.Element {
     try {
       const updated = await adminService.adminCancelRide(session.accessToken, rideId, reason);
       setRides((prev) => prev.map((r) => (r.id === rideId ? updated : r)));
+      void loadData(true);
     } catch (err) {
       setCancelError(err instanceof Error ? err.message : "Error al cancelar viaje.");
     } finally {
@@ -1680,15 +1702,16 @@ export function AdminTripsPage(): JSX.Element {
       <IonHeader>
         <IonToolbar color="danger">
           <IonTitle>Viajes</IonTitle>
-          <div slot="end" style={{ paddingRight: "8px" }}>
-            <IonButton fill="clear" color="light" onClick={() => void loadData()} disabled={loading}>
+          <div slot="end" style={{ paddingRight: "8px", display: "flex", alignItems: "center", gap: "8px" }}>
+            {autoRefreshing && <IonSpinner name="dots" color="light" style={{ width: "18px", height: "18px" }} />}
+            <IonButton fill="clear" color="light" onClick={() => void loadData(false)} disabled={loading}>
               Actualizar
             </IonButton>
           </div>
         </IonToolbar>
       </IonHeader>
       <IonContent className="ion-padding">
-        <IonRefresher slot="fixed" onIonRefresh={async (e) => { await loadData(); e.detail.complete(); }}>
+        <IonRefresher slot="fixed" onIonRefresh={async (e) => { await loadData(false); e.detail.complete(); }}>
           <IonRefresherContent />
         </IonRefresher>
 
@@ -1719,7 +1742,7 @@ export function AdminTripsPage(): JSX.Element {
               fill="outline"
               color="danger"
               style={{ marginTop: "8px" }}
-              onClick={() => void loadData()}
+              onClick={() => void loadData(false)}
               disabled={loading}
             >
               {loading ? <IonSpinner name="dots" /> : "Aplicar filtro"}
@@ -1742,8 +1765,7 @@ export function AdminTripsPage(): JSX.Element {
         )}
 
         {loadError && <IonText color="danger"><p>{loadError}</p></IonText>}
-        {assignError && <IonText color="danger"><p style={{ fontSize: "0.85rem" }}>{assignError}</p></IonText>}
-        {cancelError && <IonText color="danger"><p style={{ fontSize: "0.85rem" }}>{cancelError}</p></IonText>}
+{cancelError && <IonText color="danger"><p style={{ fontSize: "0.85rem" }}>{cancelError}</p></IonText>}
 
         {!loading && !loadError && rides.length === 0 && (
           <IonText color="medium"><p>No se encontraron viajes.</p></IonText>
@@ -1812,69 +1834,6 @@ export function AdminTripsPage(): JSX.Element {
                       )}
                     </div>
 
-                    {/* Assign driver — only for 'requested' */}
-                    {ride.status === "requested" && (() => {
-                      const availableDrivers = drivers.filter((d) => d.availability === "available");
-                      const originZone = inferZoneFromText(ride.originText);
-                      const sortedDrivers = [...availableDrivers].sort((a, b) => {
-                        const aMatch = originZone && a.currentZone === originZone ? -1 : 0;
-                        const bMatch = originZone && b.currentZone === originZone ? -1 : 0;
-                        if (aMatch !== bMatch) return aMatch - bMatch;
-                        return (a.name ?? "").localeCompare(b.name ?? "");
-                      });
-                      return (
-                        <div style={{ borderTop: "1px solid var(--ion-color-light-shade)", paddingTop: "8px" }}>
-                          {availableDrivers.length === 0 ? (
-                            <IonItem lines="none" style={{ "--padding-start": "0", "--inner-padding-end": "0" }}>
-                              <IonLabel style={{ fontSize: "0.75rem" }} color="warning">
-                                No hay conductores disponibles en este momento.
-                              </IonLabel>
-                            </IonItem>
-                          ) : (
-                            <>
-                              <IonItem lines="none" style={{ "--padding-start": "0", "--inner-padding-end": "0", "--min-height": "44px" }}>
-                                <IonLabel style={{ fontSize: "0.75rem", flexShrink: 0, marginRight: "8px" }}>Conductor:</IonLabel>
-                                <IonSelect
-                                  value={assignDriverId[ride.id] ?? ""}
-                                  interface="action-sheet"
-                                  placeholder="Seleccionar conductor..."
-                                  style={{ fontSize: "0.78rem" }}
-                                  onIonChange={(e) => {
-                                    const val = String(e.detail.value ?? "");
-                                    setAssignDriverId((prev) => ({ ...prev, [ride.id]: val }));
-                                  }}
-                                >
-                                  {sortedDrivers.map((d) => {
-                                    const isSuggested = originZone && d.currentZone === originZone;
-                                    return (
-                                      <IonSelectOption key={d.id} value={d.id}>
-                                        {d.name} · {getZoneLabel(d.currentZone as any)} {isSuggested ? "★" : ""}
-                                      </IonSelectOption>
-                                    );
-                                  })}
-                                </IonSelect>
-                              </IonItem>
-                              {originZone && availableDrivers.some(d => d.currentZone === originZone) && (
-                                <IonNote color="success" style={{ fontSize: "0.8rem", paddingLeft: "16px", display: "block" }}>
-                                  ★ Sugerido por zona: {getZoneLabel(originZone)}
-                                </IonNote>
-                              )}
-                              <IonButton
-                                expand="block"
-                                size="small"
-                                color="primary"
-                                disabled={assigningId === ride.id || !assignDriverId[ride.id]}
-                                onClick={() => void handleAssign(ride.id)}
-                                style={{ marginTop: "6px" }}
-                              >
-                                {assigningId === ride.id ? <IonSpinner name="dots" /> : "Asignar conductor"}
-                              </IonButton>
-                            </>
-                          )}
-                        </div>
-                      );
-                    })()}
-
                     {/* WhatsApp contacts */}
                     {ride.driverUserId && ride.driverName && (
                       <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", marginTop: "6px" }}>
@@ -1920,14 +1879,6 @@ export function AdminTripsPage(): JSX.Element {
           </div>
         )}
 
-        {/* Driver not available toast */}
-        <IonToast
-          isOpen={toastMsg !== null}
-          message={toastMsg ?? ""}
-          duration={3500}
-          color="warning"
-          onDidDismiss={() => setToastMsg(null)}
-        />
 
         {/* Cancel alert */}
         <IonAlert

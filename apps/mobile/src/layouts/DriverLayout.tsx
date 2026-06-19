@@ -2,20 +2,26 @@ import { homeOutline, carOutline, listOutline, cashOutline, personOutline } from
 import { Route, Switch } from "react-router-dom";
 import { RoleLayout } from "./RoleLayout";
 import { ROUTES } from "../navigation/routes";
-import {
-  DriverHomePage,
-  DriverRequestsPage,
-  DriverTripsPage,
-  DriverEarningsPage,
-  DriverProfilePage,
-} from "../pages/driver";
+import * as DriverPages from "../pages/driver";
+
+const DriverHomePage = DriverPages.DriverHomePage;
+const DriverRequestsPage = DriverPages.DriverRequestsPage;
+const DriverTripsPage = DriverPages.DriverTripsPage;
+const DriverProfilePage = DriverPages.DriverProfilePage;
+
+const DriverEarningsPage =
+  "DriverEarningsPage" in DriverPages
+    ? (DriverPages as typeof DriverPages & {
+        DriverEarningsPage: () => JSX.Element;
+      }).DriverEarningsPage
+    : DriverPages.DriverHomePage;
 
 const TABS = [
   { path: ROUTES.DRIVER.HOME, label: "Inicio", icon: homeOutline },
   { path: ROUTES.DRIVER.REQUESTS, label: "Solicitudes", icon: listOutline },
   { path: ROUTES.DRIVER.TRIPS, label: "Viajes", icon: carOutline },
   { path: ROUTES.DRIVER.EARNINGS, label: "Ganancias", icon: cashOutline },
-  { path: ROUTES.DRIVER.PROFILE,  label: "Perfil",    icon: personOutline },
+  { path: ROUTES.DRIVER.PROFILE, label: "Perfil", icon: personOutline },
 ];
 
 export function DriverLayout(): JSX.Element {
@@ -32,3 +38,5 @@ export function DriverLayout(): JSX.Element {
     </RoleLayout>
   );
 }
+
+export default DriverLayout;

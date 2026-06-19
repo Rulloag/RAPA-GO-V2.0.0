@@ -173,7 +173,7 @@ export default function HomePage(): JSX.Element {
             <div className="passenger-warning-box">
               <IonText>
                 <p className="passenger-warning-text">
-                  ⚠️ Completa tu teléfono en el perfil para solicitar viajes.
+               
                 </p>
               </IonText>
             </div>

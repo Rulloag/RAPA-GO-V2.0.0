@@ -2363,4 +2363,469 @@ ion-content,
     max-width: 58px !important;
     font-size: 8px !important;
   }
+  
 }
+
+
+/* ==========================================================================
+   RAPA GO — FIX FINAL FORMULARIOS E INSCRIPCIÓN CONDUCTOR
+   IMPORTANTE: este bloque debe quedar SIEMPRE al final del global.css.
+   Soluciona letras claras/invisibles en tarjetas claras, inputs, labels,
+   botones Sí/No, checkbox, selects y formularios de inscripción.
+   ========================================================================== */
+
+/* Contenedor recomendado en TSX:
+   <IonPage className="driver-registration-page">
+   o
+   <IonContent className="driver-registration-page">
+*/
+
+.driver-registration-page,
+.driver-registration-page * {
+  box-sizing: border-box;
+}
+
+/* Fondo de la pantalla de inscripción */
+.driver-registration-page ion-content,
+ion-content.driver-registration-page {
+  --background:
+    linear-gradient(
+      180deg,
+      rgba(26, 26, 26, 0.72) 0%,
+      rgba(26, 26, 26, 0.84) 48%,
+      rgba(26, 26, 26, 0.96) 100%
+    ),
+    url("./img/imgen-rapanui2.jpeg") no-repeat center center / cover fixed !important;
+}
+
+/* Tarjetas claras */
+.driver-registration-page ion-card {
+  background: #F6F2EC !important;
+  color: #1A1A1A !important;
+  border: 2px solid rgba(200, 155, 60, 0.26) !important;
+  border-radius: 22px !important;
+  box-shadow: 0 14px 34px rgba(0, 0, 0, 0.26) !important;
+}
+
+/* Contenido de tarjetas */
+.driver-registration-page ion-card-content,
+.driver-registration-page ion-card-header {
+  color: #1A1A1A !important;
+}
+
+/* Títulos */
+.driver-registration-page ion-card-title,
+.driver-registration-page h1,
+.driver-registration-page h2,
+.driver-registration-page h3,
+.driver-registration-page h4,
+.driver-registration-page strong {
+  color: #111111 !important;
+  font-weight: 950 !important;
+  letter-spacing: 0.1px !important;
+}
+
+/* Textos descriptivos */
+.driver-registration-page p,
+.driver-registration-page ion-note,
+.driver-registration-page ion-text,
+.driver-registration-page .helper-text {
+  color: #404040 !important;
+  font-weight: 650 !important;
+  line-height: 1.45 !important;
+}
+
+/* Items / cajas de input dentro de la inscripción */
+.driver-registration-page ion-item {
+  --background: #FFFFFF !important;
+  --color: #111111 !important;
+  --border-color: transparent !important;
+  --highlight-color-focused: #C89B3C !important;
+  --highlight-color-valid: #C89B3C !important;
+  --highlight-color-invalid: #B84F2E !important;
+  --padding-start: 14px !important;
+  --inner-padding-end: 14px !important;
+
+  background: #FFFFFF !important;
+  color: #111111 !important;
+  border: 2px solid #E6D4B4 !important;
+  border-radius: 18px !important;
+  margin-bottom: 12px !important;
+  box-shadow: 0 5px 14px rgba(26, 26, 26, 0.04) !important;
+}
+
+/* Focus */
+.driver-registration-page ion-item.item-has-focus,
+.driver-registration-page ion-item:focus-within {
+  border-color: #C89B3C !important;
+  box-shadow:
+    0 0 0 3px rgba(200, 155, 60, 0.16),
+    0 8px 18px rgba(26, 26, 26, 0.08) !important;
+}
+
+/* Labels */
+.driver-registration-page ion-label,
+.driver-registration-page label {
+  color: #111111 !important;
+  font-size: 0.92rem !important;
+  font-weight: 950 !important;
+  letter-spacing: 0.1px !important;
+  opacity: 1 !important;
+}
+
+/* Inputs */
+.driver-registration-page ion-input,
+.driver-registration-page ion-textarea,
+.driver-registration-page ion-select,
+.driver-registration-page input,
+.driver-registration-page textarea {
+  --color: #111111 !important;
+  --placeholder-color: #777777 !important;
+  --placeholder-opacity: 1 !important;
+
+  color: #111111 !important;
+  font-size: 1rem !important;
+  font-weight: 800 !important;
+  opacity: 1 !important;
+}
+
+/* Texto interno del shadow/input nativo */
+.driver-registration-page ion-input input,
+.driver-registration-page ion-textarea textarea {
+  color: #111111 !important;
+  font-weight: 800 !important;
+  opacity: 1 !important;
+}
+
+/* Placeholder más visible */
+.driver-registration-page ion-input::part(native),
+.driver-registration-page ion-textarea::part(native) {
+  color: #111111 !important;
+  font-weight: 800 !important;
+}
+
+.driver-registration-page input::placeholder,
+.driver-registration-page textarea::placeholder {
+  color: #777777 !important;
+  opacity: 1 !important;
+  font-weight: 750 !important;
+}
+
+/* Select */
+.driver-registration-page ion-select::part(text),
+.driver-registration-page ion-select::part(placeholder),
+.driver-registration-page ion-select::part(icon) {
+  color: #111111 !important;
+  opacity: 1 !important;
+  font-weight: 850 !important;
+}
+
+/* Botones Sí / No usados como IonButton outline */
+.driver-registration-page ion-button[fill="outline"] {
+  --border-color: #5F5F5F !important;
+  --color: #111111 !important;
+  --background: #FFFFFF !important;
+  --background-activated: #F0E3CA !important;
+  --background-focused: #F0E3CA !important;
+  --background-hover: #F0E3CA !important;
+  color: #111111 !important;
+  font-weight: 950 !important;
+}
+
+/* Botones activos */
+.driver-registration-page ion-button[color="success"],
+.driver-registration-page ion-button[color="warning"],
+.driver-registration-page ion-button[color="primary"] {
+  --background: linear-gradient(135deg, #C89B3C 0%, #D9C3A0 100%) !important;
+  --color: #111111 !important;
+  color: #111111 !important;
+  font-weight: 950 !important;
+}
+
+/* Segmentos, si los usas para Sí/No */
+.driver-registration-page ion-segment {
+  background: #F0E3CA !important;
+  border: 1px solid rgba(200, 155, 60, 0.42) !important;
+  border-radius: 16px !important;
+  padding: 4px !important;
+}
+
+.driver-registration-page ion-segment-button {
+  --color: #111111 !important;
+  --color-checked: #111111 !important;
+  --background: transparent !important;
+  --background-checked: linear-gradient(135deg, #C89B3C, #D9C3A0) !important;
+  --indicator-color: transparent !important;
+  color: #111111 !important;
+  font-size: 0.95rem !important;
+  font-weight: 950 !important;
+  border-radius: 13px !important;
+}
+
+.driver-registration-page ion-segment-button::part(native) {
+  color: #111111 !important;
+  font-weight: 950 !important;
+}
+
+/* Checkbox */
+.driver-registration-page ion-checkbox {
+  --checkbox-background: #FFFFFF !important;
+  --checkbox-background-checked: #C89B3C !important;
+  --border-color: #6B6B6B !important;
+  --border-color-checked: #C89B3C !important;
+  --checkmark-color: #111111 !important;
+}
+
+/* Texto de checkbox */
+.driver-registration-page ion-checkbox + ion-label,
+.driver-registration-page .terms-text {
+  color: #111111 !important;
+  font-weight: 800 !important;
+  line-height: 1.42 !important;
+  white-space: normal !important;
+}
+
+/* Links legales */
+.driver-registration-page a {
+  color: #8A5A00 !important;
+  font-weight: 950 !important;
+  text-decoration: underline !important;
+}
+
+/* Cajas de subida de archivo */
+.driver-registration-page input[type="file"] {
+  color: #111111 !important;
+}
+
+.driver-registration-page .file-upload-box,
+.driver-registration-page .upload-box,
+.driver-registration-page label.file-upload-box,
+.driver-registration-page label.upload-box {
+  display: block;
+  width: 100%;
+  background: #FFFFFF !important;
+  color: #111111 !important;
+  border: 2px dashed rgba(200, 155, 60, 0.85) !important;
+  border-radius: 18px !important;
+  padding: 14px !important;
+  font-weight: 950 !important;
+}
+
+.driver-registration-page .file-upload-box small,
+.driver-registration-page .upload-box small,
+.driver-registration-page .file-name,
+.driver-registration-page .selected-file {
+  color: #4A4A4A !important;
+  font-weight: 800 !important;
+}
+
+/* Alertas y errores dentro del formulario */
+.driver-registration-page ion-text[color="danger"],
+.driver-registration-page ion-text[color="danger"] p,
+.driver-registration-page .error-text {
+  color: #B84F2E !important;
+  font-weight: 900 !important;
+}
+
+.driver-registration-page ion-note[slot="error"] {
+  color: #B84F2E !important;
+  font-weight: 900 !important;
+}
+
+/* Botón principal del formulario */
+.driver-registration-page ion-button[type="submit"],
+.driver-registration-page .submit-button {
+  --background: linear-gradient(135deg, #C89B3C 0%, #D9C3A0 100%) !important;
+  --color: #111111 !important;
+  --border-radius: 16px !important;
+  height: 52px !important;
+  font-weight: 950 !important;
+  letter-spacing: 0.2px !important;
+}
+
+/* Botón deshabilitado */
+.driver-registration-page ion-button[disabled] {
+  opacity: 0.55 !important;
+}
+
+/* Corrección general para IonCard claro en formularios:
+   evita texto blanco dentro de tarjetas claras aunque otra regla global lo pise. */
+ion-card.form-card,
+ion-card.registration-card,
+.driver-registration-page ion-card {
+  --color: #111111 !important;
+}
+
+ion-card.form-card ion-label,
+ion-card.registration-card ion-label,
+.driver-registration-page ion-card ion-label {
+  color: #111111 !important;
+}
+
+ion-card.form-card ion-input,
+ion-card.registration-card ion-input,
+.driver-registration-page ion-card ion-input {
+  --color: #111111 !important;
+  color: #111111 !important;
+  --placeholder-color: #777777 !important;
+  --placeholder-opacity: 1 !important;
+}
+
+/* Responsive */
+@media (max-width: 480px) {
+  .driver-registration-page ion-card {
+    border-radius: 20px !important;
+  }
+
+  .driver-registration-page ion-label,
+  .driver-registration-page label {
+    font-size: 0.88rem !important;
+  }
+
+  .driver-registration-page ion-input,
+  .driver-registration-page ion-textarea,
+  .driver-registration-page ion-select,
+  .driver-registration-page input,
+  .driver-registration-page textarea {
+    font-size: 0.96rem !important;
+  }
+}
+
+
+
+/* ==========================================================================
+   RAPA GO — FIX FINAL INPUTS PERFIL / FORMULARIOS
+   Pegar SIEMPRE al final del global.css.
+   Corrige letras blancas/grises dentro de cuadros claros de Ionic Shadow DOM.
+   ========================================================================== */
+
+/* Tarjetas claras: texto realmente negro */
+ion-card,
+ion-card *,
+ion-card ion-card-content,
+ion-card ion-label,
+ion-card ion-note,
+ion-card p,
+ion-card div,
+ion-card span,
+ion-card strong {
+  color: #111111 !important;
+  opacity: 1 !important;
+}
+
+/* Inputs dentro de tarjetas claras */
+ion-card ion-item,
+ion-card .driver-profile-card ion-item,
+ion-card .profile-form-card ion-item {
+  --background: #ffffff !important;
+  --color: #111111 !important;
+  --border-color: rgba(200, 155, 60, 0.55) !important;
+  --highlight-color-focused: #C89B3C !important;
+  background: #ffffff !important;
+  color: #111111 !important;
+  border: 1.5px solid rgba(200, 155, 60, 0.55) !important;
+  border-radius: 16px !important;
+}
+
+/* Labels arriba del input */
+ion-card ion-label,
+ion-card ion-item ion-label,
+ion-item ion-label {
+  color: #111111 !important;
+  font-weight: 950 !important;
+  opacity: 1 !important;
+}
+
+/* Variables Ionic del input */
+ion-card ion-input,
+ion-card ion-textarea,
+ion-card ion-select,
+ion-item ion-input,
+ion-item ion-textarea,
+ion-item ion-select {
+  --color: #111111 !important;
+  --placeholder-color: #6b6b6b !important;
+  --placeholder-opacity: 1 !important;
+  color: #111111 !important;
+  font-size: 16px !important;
+  font-weight: 900 !important;
+  opacity: 1 !important;
+}
+
+/* Shadow parts de Ionic moderno */
+ion-input::part(native),
+ion-textarea::part(native),
+ion-select::part(text),
+ion-select::part(placeholder) {
+  color: #111111 !important;
+  -webkit-text-fill-color: #111111 !important;
+  opacity: 1 !important;
+  font-size: 16px !important;
+  font-weight: 900 !important;
+}
+
+ion-input::part(placeholder),
+ion-textarea::part(placeholder) {
+  color: #6b6b6b !important;
+  -webkit-text-fill-color: #6b6b6b !important;
+  opacity: 1 !important;
+  font-weight: 800 !important;
+}
+
+/* Fallback por si el navegador expone input/textarea interno */
+ion-input input,
+ion-textarea textarea,
+ion-card ion-input input,
+ion-card ion-textarea textarea {
+  color: #111111 !important;
+  -webkit-text-fill-color: #111111 !important;
+  opacity: 1 !important;
+  font-size: 16px !important;
+  font-weight: 900 !important;
+}
+
+ion-input input::placeholder,
+ion-textarea textarea::placeholder {
+  color: #6b6b6b !important;
+  -webkit-text-fill-color: #6b6b6b !important;
+  opacity: 1 !important;
+  font-weight: 800 !important;
+}
+
+/* Evita selección azul permanente cuando haces click o inspeccionas */
+::selection {
+  background: rgba(200, 155, 60, 0.35) !important;
+  color: #111111 !important;
+}
+
+/* Perfil conductor: ancho móvil bonito también en PC */
+.driver-profile-shell,
+.profile-shell {
+  max-width: 560px !important;
+  margin: 0 auto !important;
+}
+
+/* Botón cerrar sesión visible y limpio */
+ion-button[color="danger"][fill="outline"] {
+  --border-color: #e11d48 !important;
+  --color: #e11d48 !important;
+  --background: rgba(225, 29, 72, 0.06) !important;
+  font-weight: 950 !important;
+}
+
+/* Fechas y números: que se vean negros */
+input[type="date"],
+input[type="number"],
+input[type="tel"] {
+  color: #111111 !important;
+  -webkit-text-fill-color: #111111 !important;
+  font-weight: 900 !important;
+}
+
+/* Corrige icono de calendario/clear en inputs claros */
+ion-card ion-input,
+ion-card ion-textarea {
+  caret-color: #111111 !important;
+}
+
+

@@ -14,10 +14,9 @@ import {
   IonToolbar,
 } from "@ionic/react";
 import { useHistory } from "react-router-dom";
-import { loginRequestSchema } from "@rapa-go/shared";
+import { loginRequestSchema, type UserRole } from "@rapa-go/shared";
 import { useAuth } from "./useAuth.js";
 import { ROUTES } from "../../navigation/routes.js";
-import type { UserRole } from "@rapa-go/shared";
 
 const ROLE_HOME: Record<UserRole, string> = {
   passenger: ROUTES.PASSENGER.HOME,
@@ -27,7 +26,9 @@ const ROLE_HOME: Record<UserRole, string> = {
   admin: ROUTES.ADMIN.HOME,
 };
 
-const API_URL = "https://consortium-medication-desktops-brisbane.trycloudflare.com";
+const API_URL =
+  import.meta.env.VITE_API_URL ??
+  "https://consortium-medication-desktops-brisbane.trycloudflare.com";
 
 export function LoginPage(): JSX.Element {
   const history = useHistory();
@@ -35,23 +36,30 @@ export function LoginPage(): JSX.Element {
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+
   const [loading, setLoading] = useState(false);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [serverError, setServerError] = useState("");
 
-  async function handleSubmit(e: React.FormEvent) {
+  async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
+
     setFieldErrors({});
     setServerError("");
 
-    const parsed = loginRequestSchema.safeParse({ email, password });
+    const parsed = loginRequestSchema.safeParse({
+      email: email.trim().toLowerCase(),
+      password,
+    });
 
     if (!parsed.success) {
       const errors: Record<string, string> = {};
 
       for (const issue of parsed.error.issues) {
         const field = issue.path[0];
-        if (typeof field === "string") errors[field] = issue.message;
+        if (typeof field === "string") {
+          errors[field] = issue.message;
+        }
       }
 
       setFieldErrors(errors);
@@ -63,16 +71,19 @@ export function LoginPage(): JSX.Element {
     try {
       const result = await login(parsed.data);
 
-      if (result.ok) {
-        const home = ROLE_HOME[result.session.user.role] ?? ROUTES.WELCOME;
-        history.replace(home);
-      } else {
+      if (!result.ok) {
         setServerError(
-          result.message ?? "No se pudo iniciar sesión. Inténtalo de nuevo.",
+          result.message ?? "Correo o contraseña incorrectos.",
         );
+        return;
       }
+
+      const role = result.session.user.role;
+      const home = ROLE_HOME[role] ?? ROUTES.WELCOME;
+
+      history.replace(home);
     } catch {
-      setServerError("Error de conexión. Verifica tu red e inténtalo de nuevo.");
+      setServerError("Error de conexión. Verifica tu internet e inténtalo nuevamente.");
     } finally {
       setLoading(false);
     }
@@ -82,11 +93,15 @@ export function LoginPage(): JSX.Element {
     window.location.href = `${API_URL}/api/auth/facebook`;
   }
 
+  function goToRegister(): void {
+    history.push(ROUTES.AUTH.REGISTER);
+  }
+
   return (
     <IonPage>
       <IonHeader>
         <IonToolbar color="primary">
-          <IonTitle>Iniciar Sesión</IonTitle>
+          <IonTitle>Iniciar sesión</IonTitle>
         </IonToolbar>
       </IonHeader>
 
@@ -99,7 +114,7 @@ export function LoginPage(): JSX.Element {
           noValidate
         >
           <IonText color="primary">
-            <h2 className="auth-title">Bienvenido</h2>
+            <h2 className="auth-title">Bienvenido a Rapa Go</h2>
           </IonText>
 
           {serverError && (
@@ -108,7 +123,7 @@ export function LoginPage(): JSX.Element {
             </IonText>
           )}
 
-          <IonItem className={fieldErrors["email"] ? "ion-invalid" : ""}>
+          <IonItem className={fieldErrors.email ? "ion-invalid" : ""}>
             <IonLabel position="stacked">Correo electrónico</IonLabel>
             <IonInput
               type="email"
@@ -118,15 +133,16 @@ export function LoginPage(): JSX.Element {
               }}
               placeholder="tu@correo.com"
               autocomplete="email"
+              inputmode="email"
               disabled={loading}
               required
             />
-            {fieldErrors["email"] && (
-              <IonNote slot="error">{fieldErrors["email"]}</IonNote>
+            {fieldErrors.email && (
+              <IonNote slot="error">{fieldErrors.email}</IonNote>
             )}
           </IonItem>
 
-          <IonItem className={fieldErrors["password"] ? "ion-invalid" : ""}>
+          <IonItem className={fieldErrors.password ? "ion-invalid" : ""}>
             <IonLabel position="stacked">Contraseña</IonLabel>
             <IonInput
               type="password"
@@ -139,12 +155,17 @@ export function LoginPage(): JSX.Element {
               disabled={loading}
               required
             />
-            {fieldErrors["password"] && (
-              <IonNote slot="error">{fieldErrors["password"]}</IonNote>
+            {fieldErrors.password && (
+              <IonNote slot="error">{fieldErrors.password}</IonNote>
             )}
           </IonItem>
 
-          <IonButton expand="block" type="submit" disabled={loading}>
+          <IonButton
+            expand="block"
+            type="submit"
+            disabled={loading}
+            style={{ marginTop: "18px" }}
+          >
             {loading ? <IonSpinner name="crescent" /> : "Iniciar sesión"}
           </IonButton>
 
@@ -162,9 +183,7 @@ export function LoginPage(): JSX.Element {
             expand="block"
             fill="clear"
             disabled={loading}
-            onClick={() => {
-              history.push(ROUTES.AUTH.REGISTER);
-            }}
+            onClick={goToRegister}
           >
             ¿No tienes cuenta? Crear cuenta
           </IonButton>
@@ -173,9 +192,7 @@ export function LoginPage(): JSX.Element {
             expand="block"
             fill="outline"
             disabled={loading}
-            onClick={() => {
-              history.replace(ROUTES.WELCOME);
-            }}
+            onClick={() => history.replace(ROUTES.WELCOME)}
           >
             Volver al inicio
           </IonButton>

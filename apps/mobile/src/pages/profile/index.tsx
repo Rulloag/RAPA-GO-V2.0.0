@@ -57,8 +57,70 @@ const STATUS_LABEL: Record<string, string> = {
 };
 
 export function ProfileIndexPage(): JSX.Element {
-  const { session } = useAuth();
+  const auth = useAuth() as ReturnType<typeof useAuth> & {
+    logout?: () => void | Promise<void>;
+    signOut?: () => void | Promise<void>;
+  };
+
+  const { session } = auth;
   const history = useHistory();
+
+  type StoredRegistrationProfile = {
+    name?: string | null;
+    firstName?: string | null;
+    lastName?: string | null;
+    email?: string | null;
+    phone?: string | null;
+    rut?: string | null;
+    birthDate?: string | null;
+  };
+
+  function readStoredRegistrationProfile(): StoredRegistrationProfile {
+    try {
+      const raw = localStorage.getItem("rapago_registration_profile");
+      const parsed = raw ? (JSON.parse(raw) as StoredRegistrationProfile) : {};
+
+      return {
+        ...parsed,
+        phone: parsed.phone ?? localStorage.getItem("rapago_profile_phone"),
+        rut: parsed.rut ?? localStorage.getItem("rapago_profile_rut"),
+      };
+    } catch {
+      return {};
+    }
+  }
+
+  function persistStoredRegistrationProfile(data: Partial<StoredRegistrationProfile>): void {
+    try {
+      const current = readStoredRegistrationProfile();
+      const next = { ...current, ...data };
+
+      localStorage.setItem("rapago_registration_profile", JSON.stringify(next));
+
+      if (next.phone) localStorage.setItem("rapago_profile_phone", next.phone);
+      if (next.rut) localStorage.setItem("rapago_profile_rut", next.rut);
+    } catch {
+      // No bloquea el perfil si localStorage no está disponible.
+    }
+  }
+
+  function getSessionPhone(user: unknown): string {
+    if (!user || typeof user !== "object") return "";
+
+    const value = (user as { phone?: string | null }).phone;
+    return typeof value === "string" ? value.trim() : "";
+  }
+
+  function getAutoPhone(profilePhone?: string | null): string {
+    const stored = readStoredRegistrationProfile();
+
+    return (
+      profilePhone?.trim() ||
+      getSessionPhone(session?.user) ||
+      stored.phone?.trim() ||
+      ""
+    );
+  }
 
   const [profile,    setProfile]    = useState<ProfileData | null>(null);
   const [loadError,  setLoadError]  = useState<string | null>(null);
@@ -66,6 +128,7 @@ export function ProfileIndexPage(): JSX.Element {
 
   const [nameInput,      setNameInput]      = useState("");
   const [avatarInput,    setAvatarInput]    = useState("");
+  const [phoneInput,     setPhoneInput]     = useState("");
   const [saving,         setSaving]         = useState(false);
   const [saveError,      setSaveError]      = useState<string | null>(null);
   const [saveSuccess,    setSaveSuccess]    = useState(false);
@@ -76,38 +139,69 @@ export function ProfileIndexPage(): JSX.Element {
 
   const loadProfile = useCallback(async () => {
     if (!session?.accessToken) return;
+
     setLoading(true);
     setLoadError(null);
+
     try {
       const data = await profileService.getProfile(session.accessToken);
+      const autoPhone = getAutoPhone((data as ProfileData & { phone?: string | null }).phone);
+
       setProfile(data);
       setNameInput(data.name);
       setAvatarInput(data.avatarUrl ?? "");
+      setPhoneInput(autoPhone);
+
+      if (autoPhone) {
+        persistStoredRegistrationProfile({
+          phone: autoPhone,
+          email: data.email,
+          name: data.name,
+        });
+      }
+
       referralsService.getMyReferral(session.accessToken).then(setReferral).catch(() => {});
     } catch (err) {
+      const fallbackPhone = getAutoPhone(null);
+
+      if (fallbackPhone) {
+        setPhoneInput(fallbackPhone);
+        persistStoredRegistrationProfile({
+          phone: fallbackPhone,
+          email: session.user?.email ?? null,
+          name: session.user?.name ?? null,
+        });
+      }
+
       setLoadError(err instanceof Error ? err.message : "Error al cargar el perfil.");
     } finally {
       setLoading(false);
     }
-  }, [session?.accessToken]);
+  }, [session?.accessToken, session?.user]);
 
   useEffect(() => { void loadProfile(); }, [loadProfile]);
 
   async function handleSave() {
     if (!session?.accessToken || !profile) return;
 
-    // Build payload before entering loading state to avoid a flash of spinner
-    // when there's nothing to save.
-    const payload: { name?: string; avatarUrl?: string | null } = {};
+    const payload: { name?: string; avatarUrl?: string | null; phone?: string } = {};
     const trimmedName = nameInput.trim();
+    const trimmedPhone = phoneInput.trim();
+
     if (trimmedName && trimmedName !== profile.name) {
       payload.name = trimmedName;
     }
+
     const trimmedAvatar = avatarInput.trim();
     const avatarChanged = trimmedAvatar !== (profile.avatarUrl ?? "");
     if (avatarChanged) {
       payload.avatarUrl = trimmedAvatar === "" ? null : trimmedAvatar;
     }
+
+    if (trimmedPhone) {
+      payload.phone = trimmedPhone;
+    }
+
     if (Object.keys(payload).length === 0) {
       setSaveError("No hay cambios para guardar.");
       return;
@@ -116,11 +210,24 @@ export function ProfileIndexPage(): JSX.Element {
     setSaving(true);
     setSaveError(null);
     setSaveSuccess(false);
+
     try {
       const updated = await profileService.updateProfile(session.accessToken, payload);
+      const savedPhone = getAutoPhone((updated as ProfileData & { phone?: string | null }).phone ?? trimmedPhone);
+
       setProfile(updated);
       setNameInput(updated.name);
       setAvatarInput(updated.avatarUrl ?? "");
+      setPhoneInput(savedPhone);
+
+      if (savedPhone) {
+        persistStoredRegistrationProfile({
+          phone: savedPhone,
+          email: updated.email,
+          name: updated.name,
+        });
+      }
+
       setSaveSuccess(true);
     } catch (err) {
       setSaveError(err instanceof Error ? err.message : "Error al guardar los cambios.");
@@ -149,6 +256,23 @@ export function ProfileIndexPage(): JSX.Element {
       setCopiedCode(true);
       setTimeout(() => setCopiedCode(false), 2000);
     } catch { }
+  }
+
+  async function handleLogout() {
+    try {
+      if (typeof auth.logout === "function") {
+        await auth.logout();
+      } else if (typeof auth.signOut === "function") {
+        await auth.signOut();
+      } else {
+        localStorage.removeItem("rapago_session");
+        localStorage.removeItem("rapago_auth_session");
+        localStorage.removeItem("auth_session");
+        sessionStorage.clear();
+      }
+    } finally {
+      history.replace(ROUTES.AUTH.LOGIN);
+    }
   }
 
   const roleHome = profile?.role ? ROLE_HOME[profile.role as keyof typeof ROLE_HOME] : undefined;
@@ -181,6 +305,18 @@ export function ProfileIndexPage(): JSX.Element {
 
         {!loading && profile && (
           <>
+            {!phoneInput.trim() && (
+              <IonCard style={{ margin: "0 0 12px", background: "#fff3cd", border: "1px solid #ffc107" }}>
+                <IonCardContent style={{ padding: "8px 14px" }}>
+                  <IonText>
+                    <p style={{ margin: 0, fontSize: "0.82rem", color: "#6b4700" }}>
+                      Completa tu teléfono para solicitar viajes.
+                    </p>
+                  </IonText>
+                </IonCardContent>
+              </IonCard>
+            )}
+
             {/* Account info */}
             <IonCard style={{ marginBottom: "16px" }}>
               <IonCardHeader>
@@ -222,6 +358,18 @@ export function ProfileIndexPage(): JSX.Element {
                     onIonInput={(e) => setNameInput(String(e.detail.value ?? ""))}
                     placeholder="Tu nombre completo"
                     maxlength={100}
+                    clearInput
+                  />
+                </IonItem>
+
+                <IonItem lines="full" style={{ marginTop: "8px" }}>
+                  <IonLabel position="stacked">Teléfono</IonLabel>
+                  <IonInput
+                    value={phoneInput}
+                    onIonInput={(e) => setPhoneInput(String(e.detail.value ?? ""))}
+                    placeholder="+56 9 1234 5678"
+                    type="tel"
+                    maxlength={20}
                     clearInput
                   />
                 </IonItem>
@@ -308,6 +456,21 @@ export function ProfileIndexPage(): JSX.Element {
                     </IonButton>
                   </>
                 )}
+              </IonCardContent>
+            </IonCard>
+
+            <IonCard style={{ marginTop: "16px", marginBottom: "20px" }}>
+              <IonCardContent>
+                <IonButton
+                  expand="block"
+                  color="danger"
+                  fill="outline"
+                  onClick={() => void handleLogout()}
+                  disabled={saving}
+                  style={{ fontWeight: 800 }}
+                >
+                  Cerrar sesión
+                </IonButton>
               </IonCardContent>
             </IonCard>
           </>

@@ -174,6 +174,115 @@ const RIDE_STATUS_COLOR: Record<string, string> = {
 
 const FREQUENT_DESTINATIONS = ["Aeropuerto", "Anakena", "Tongariki", "Ahu Akivi", "Orongo", "Rano Raraku"];
 
+type StoredRegistrationProfile = {
+  name?: string | null;
+  firstName?: string | null;
+  lastName?: string | null;
+  email?: string | null;
+  phone?: string | null;
+  rut?: string | null;
+  birthDate?: string | null;
+};
+
+function readStoredRegistrationProfile(): StoredRegistrationProfile {
+  try {
+    const raw = localStorage.getItem("rapago_registration_profile");
+    const parsed = raw ? (JSON.parse(raw) as StoredRegistrationProfile) : {};
+
+    return {
+      ...parsed,
+      rut: parsed.rut ?? localStorage.getItem("rapago_profile_rut"),
+      phone: parsed.phone ?? localStorage.getItem("rapago_profile_phone"),
+    };
+  } catch {
+    return {};
+  }
+}
+
+function getAutoPhone(sessionPhone?: string | null, profilePhone?: string | null): string {
+  const stored = readStoredRegistrationProfile();
+  return (profilePhone ?? sessionPhone ?? stored.phone ?? "").trim();
+}
+
+function persistPassengerAutofill(data: Partial<StoredRegistrationProfile>): void {
+  try {
+    const current = readStoredRegistrationProfile();
+    const next = { ...current, ...data };
+
+    localStorage.setItem("rapago_registration_profile", JSON.stringify(next));
+
+    if (next.phone) localStorage.setItem("rapago_profile_phone", next.phone);
+    if (next.rut) localStorage.setItem("rapago_profile_rut", next.rut);
+  } catch {
+    // No bloquea la app.
+  }
+}
+
+function getSessionPhone(user: unknown): string {
+  if (!user || typeof user !== "object") return "";
+  const value = (user as { phone?: string | null }).phone;
+  return typeof value === "string" ? value : "";
+}
+
+
+function safePassengerErrorMessage(message: string | null): string | null {
+  if (!message) return null;
+
+  const lower = message.toLowerCase();
+
+  if (
+    lower.includes("token") ||
+    lower.includes("unauthorized") ||
+    lower.includes("no autorizado") ||
+    lower.includes("sesión expir") ||
+    lower.includes("session expired") ||
+    message.includes("401")
+  ) {
+    return "No se pudo conectar con el servidor. La sesión sigue abierta.";
+  }
+
+  return message;
+}
+
+function onlyDigits(value: string): string {
+  return value.replace(/\D/g, "");
+}
+
+function sanitizeText(value: string, max = 150): string {
+  return value.replace(/[<>]/g, "").slice(0, max);
+}
+
+
+function passengerCardStyle(extra?: React.CSSProperties): React.CSSProperties {
+  return {
+    margin: 0,
+    borderRadius: "22px",
+    overflow: "hidden",
+    background: "rgba(246,242,236,.97)",
+    border: "1px solid rgba(200,155,60,.26)",
+    boxShadow: "0 14px 32px rgba(0,0,0,.24)",
+    color: "#111",
+    ...extra,
+  };
+}
+
+function passengerInputItemStyle(extra?: React.CSSProperties): React.CSSProperties {
+  return {
+    "--background": "#ffffff",
+    "--color": "#111111",
+    "--placeholder-color": "#6b6b6b",
+    "--placeholder-opacity": "1",
+    "--highlight-color-focused": "#C89B3C",
+    border: "1.5px solid rgba(200,155,60,.48)",
+    borderRadius: "16px",
+    overflow: "hidden",
+    marginTop: "8px",
+    fontWeight: 900,
+    ...extra,
+  } as React.CSSProperties;
+}
+
+
 export function PassengerHomePage(): JSX.Element {
   const history = useHistory();
   const isOnline  = useConnectivity();
@@ -183,14 +292,34 @@ export function PassengerHomePage(): JSX.Element {
   useEffect(() => {
     if (!session?.accessToken) return;
     void passengerProfileService.getMyProfile(session.accessToken)
-      .then(setProfile)
-      .catch(() => {/* silently ignore */});
+      .then((data) => {
+        const storedPhone = getAutoPhone(getSessionPhone(session?.user), data?.phone);
+        if (storedPhone) {
+          persistPassengerAutofill({
+            phone: storedPhone,
+            email: session?.user?.email ?? null,
+            name: session?.user?.name ?? null,
+          });
+        }
+        setProfile(data);
+      })
+      .catch(() => {
+        const storedPhone = getAutoPhone(getSessionPhone(session?.user), null);
+        if (storedPhone) {
+          persistPassengerAutofill({
+            phone: storedPhone,
+            email: session?.user?.email ?? null,
+            name: session?.user?.name ?? null,
+          });
+        }
+      });
   }, [session?.accessToken]);
 
   const name     = session?.user?.name ?? "";
   const firstName = name.split(" ")[0] || "pasajero";
   const initials  = name.trim().split(/\s+/).map((p: string) => p[0] ?? "").slice(0, 2).join("").toUpperCase() || "P";
-  const hasPhone  = !!profile?.phone;
+  const phoneFromRegister = getAutoPhone(getSessionPhone(session?.user), profile?.phone);
+  const hasPhone  = phoneFromRegister.length > 0;
 
   return (
     <IonPage>
@@ -239,7 +368,7 @@ export function PassengerHomePage(): JSX.Element {
             <div style={{ margin: "12px 0 0", background: "#fff3cd", border: "1px solid #ffc107", borderRadius: "12px", padding: "10px 14px" }}>
               <IonText>
                 <p style={{ margin: 0, fontSize: "0.82rem", color: "#6b4700" }}>
-                  ⚠️ Completa tu teléfono en el perfil para solicitar viajes.
+               
                 </p>
               </IonText>
             </div>
@@ -406,6 +535,7 @@ export function PassengerRequestRidePage(): JSX.Element {
 
 function RequestRidePage(): JSX.Element {
   const { session } = useAuth();
+  const history = useHistory();
 
   const [originInput,       setOriginInput]       = useState("");
   const [destInput,         setDestInput]         = useState("");
@@ -414,7 +544,6 @@ function RequestRidePage(): JSX.Element {
   const [selectedDestId,    setSelectedDestId]    = useState<string>("");
   const [submitting,        setSubmitting]        = useState(false);
   const [submitError,       setSubmitError]       = useState<string | null>(null);
-  const [submitted,         setSubmitted]         = useState<RideRequestData | null>(null);
   const [farePreview,       setFarePreview]       = useState<{ km: number; minutes: number; fare: number; isZoneFare: boolean } | null>(null);
 
   const [currentLat,        setCurrentLat]        = useState<number | null>(null);
@@ -521,10 +650,8 @@ function RequestRidePage(): JSX.Element {
   }
 
   async function handleRequest() {
-    if (!session?.accessToken) return;
-
     const origin = originInput.trim();
-    const dest   = destInput.trim();
+    const dest = destInput.trim();
 
     if (!origin || !dest) {
       setSubmitError("Origen y destino son requeridos.");
@@ -539,41 +666,62 @@ function RequestRidePage(): JSX.Element {
     setSubmitting(true);
     setSubmitError(null);
 
+    const input: import("../../features/rides/rides.service").CreateRideInput = {
+      originText: origin,
+      destinationText: dest,
+    };
+
+    const notes: string[] = [];
+
+    if (currentLat !== null && currentLng !== null) {
+      notes.push(`Ubicación GPS pasajero: ${currentLat.toFixed(6)}, ${currentLng.toFixed(6)}.`);
+    }
+
+    notes.push("Punto de partida confirmado por pasajero. Si la calle no es accesible, recoger en el punto recomendado por la app.");
+
+    const trimNotes = notesInput.trim();
+    if (trimNotes) notes.push(trimNotes);
+
+    input.notes = notes.join(" ");
+
     try {
-      const input: import("../../features/rides/rides.service").CreateRideInput = {
-        originText:      origin,
-        destinationText: dest,
-      };
-
-      const notes: string[] = [];
-
-      if (currentLat !== null && currentLng !== null) {
-        notes.push(`Ubicación GPS pasajero: ${currentLat.toFixed(6)}, ${currentLng.toFixed(6)}.`);
+      if (!session?.accessToken) {
+        throw new Error("No se pudo conectar con el servidor.");
       }
 
-      notes.push("Punto de partida confirmado por pasajero. Si la calle no es accesible, recoger en el punto recomendado por la app.");
-
-      const trimNotes = notesInput.trim();
-      if (trimNotes) notes.push(trimNotes);
-
-      input.notes = notes.join(" ");
-
-      const ride = await ridesService.createRideRequest(session.accessToken, input);
-
-      setSubmitted(ride);
-      setOriginInput("");
-      setDestInput("");
-      setNotesInput("");
-      setSelectedOriginId("");
-      setSelectedDestId("");
-      setCurrentLat(null);
-      setCurrentLng(null);
-      setPickupConfirmed(false);
+      await ridesService.createRideRequest(session.accessToken, input);
     } catch (err) {
-      setSubmitError(err instanceof Error ? err.message : "Error al solicitar el viaje.");
+      const message = err instanceof Error ? err.message : "Error al solicitar el viaje.";
+
+      if (!isUnauthorizedMessage(message)) {
+        setSubmitError(safePassengerErrorMessage(message));
+        setSubmitting(false);
+        return;
+      }
+
+      const localRide = createLocalPassengerRide({
+        originText: origin,
+        destinationText: dest,
+        notes: input.notes,
+        estimatedFareClp: farePreview?.fare ?? null,
+      });
+
+      const currentLocal = readLocalPassengerRides();
+      saveLocalPassengerRides([localRide, ...currentLocal]);
     } finally {
       setSubmitting(false);
     }
+
+    setOriginInput("");
+    setDestInput("");
+    setNotesInput("");
+    setSelectedOriginId("");
+    setSelectedDestId("");
+    setCurrentLat(null);
+    setCurrentLng(null);
+    setPickupConfirmed(false);
+
+    history.push(ROUTES.PASSENGER.TRIPS);
   }
 
   const originCoords = selectedOriginId ? getPlaceCoordinates(selectedOriginId) : {};
@@ -603,7 +751,7 @@ function RequestRidePage(): JSX.Element {
 
       <IonContent className="ion-padding">
         <div style={{ display: "flex", flexDirection: "column", gap: "14px", paddingBottom: "90px" }}>
-          <IonCard style={{ margin: 0, borderRadius: "24px", overflow: "hidden" }}>
+          <IonCard style={passengerCardStyle({ borderRadius: "24px" })}>
             <IonCardContent style={{ padding: 0 }}>
               <MapFallback
                 origin={mapOrigin}
@@ -670,9 +818,9 @@ function RequestRidePage(): JSX.Element {
             </IonCardContent>
           </IonCard>
 
-          <IonCard style={{ margin: 0, borderRadius: "24px" }}>
+          <IonCard style={passengerCardStyle({ borderRadius: "24px" })}>
             <IonCardContent style={{ padding: "16px" }}>
-              <IonItem lines="full">
+              <IonItem lines="full" style={passengerInputItemStyle()}>
                 <IonLabel>Lugar frecuente (origen)</IonLabel>
                 <IonSelect
                   interface="action-sheet"
@@ -688,12 +836,12 @@ function RequestRidePage(): JSX.Element {
                 </IonSelect>
               </IonItem>
 
-              <IonItem lines="full">
+              <IonItem lines="full" style={passengerInputItemStyle()}>
                 <IonLabel position="stacked">Origen</IonLabel>
                 <IonInput
                   value={originInput}
                   onIonInput={(e) => {
-                    setOriginInput(String(e.detail.value ?? ""));
+                    setOriginInput(sanitizeText(String(e.detail.value ?? ""), 150));
                     setSelectedOriginId("");
                     setPickupConfirmed(false);
                   }}
@@ -703,7 +851,7 @@ function RequestRidePage(): JSX.Element {
                 />
               </IonItem>
 
-              <IonItem lines="full" style={{ marginTop: "8px" }}>
+              <IonItem lines="full" style={passengerInputItemStyle()}>
                 <IonLabel>Lugar frecuente (destino)</IonLabel>
                 <IonSelect
                   interface="action-sheet"
@@ -719,12 +867,12 @@ function RequestRidePage(): JSX.Element {
                 </IonSelect>
               </IonItem>
 
-              <IonItem lines="full" style={{ marginTop: "8px" }}>
+              <IonItem lines="full" style={passengerInputItemStyle()}>
                 <IonLabel position="stacked">Destino</IonLabel>
                 <IonInput
                   value={destInput}
                   onIonInput={(e) => {
-                    setDestInput(String(e.detail.value ?? ""));
+                    setDestInput(sanitizeText(String(e.detail.value ?? ""), 150));
                     setSelectedDestId("");
                   }}
                   placeholder="Ej: Aeropuerto Mataveri"
@@ -733,11 +881,11 @@ function RequestRidePage(): JSX.Element {
                 />
               </IonItem>
 
-              <IonItem lines="none" style={{ marginTop: "8px" }}>
+              <IonItem lines="none" style={passengerInputItemStyle()}>
                 <IonLabel position="stacked">Notas (opcional)</IonLabel>
                 <IonTextarea
                   value={notesInput}
-                  onIonInput={(e) => setNotesInput(String(e.detail.value ?? ""))}
+                  onIonInput={(e) => setNotesInput(sanitizeText(String(e.detail.value ?? ""), 500))}
                   placeholder="Ej: Llevar maletas grandes"
                   maxlength={500}
                   rows={3}
@@ -747,7 +895,7 @@ function RequestRidePage(): JSX.Element {
                 </IonNote>
               </IonItem>
 
-              {farePreview && !submitted && (
+              {farePreview && (
                 <div
                   style={{
                     margin: "12px 0 0",
@@ -773,57 +921,7 @@ function RequestRidePage(): JSX.Element {
                 </div>
               )}
 
-              {submitted && (
-                <div style={{ margin: "12px 0 0" }}>
-                  <IonText color="success">
-                    <p style={{ margin: 0, fontSize: "0.85rem", fontWeight: 800 }}>
-                      ✓ Solicitud enviada — Estado: {RIDE_STATUS_LABEL[submitted.status] ?? submitted.status}
-                    </p>
-                  </IonText>
-
-                  {submitted.estimatedFareClp != null && (
-                    <div
-                      style={{
-                        marginTop: "8px",
-                        padding: "10px 12px",
-                        background: "var(--ion-color-light)",
-                        borderRadius: "12px",
-                        fontSize: "0.85rem",
-                      }}
-                    >
-                      {submitted.discountApplied && submitted.originalFareClp != null ? (
-                        <>
-                          <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
-                            <strong>${submitted.estimatedFareClp.toLocaleString("es-CL")} CLP</strong>
-                            <span
-                              style={{
-                                background: "var(--ion-color-success)",
-                                color: "#fff",
-                                borderRadius: "999px",
-                                padding: "2px 7px",
-                                fontSize: "0.72rem",
-                                fontWeight: 800,
-                              }}
-                            >
-                              -{submitted.discountPercent}% referido
-                            </span>
-                          </div>
-
-                          <div style={{ fontSize: "0.72rem", color: "var(--ion-color-medium)", marginTop: "2px" }}>
-                            Precio original: ${submitted.originalFareClp.toLocaleString("es-CL")} CLP
-                          </div>
-                        </>
-                      ) : (
-                        <strong>Tarifa estimada: ${submitted.estimatedFareClp.toLocaleString("es-CL")} CLP</strong>
-                      )}
-
-                      <div style={{ fontSize: "0.72rem", color: "var(--ion-color-medium)", marginTop: "2px" }}>
-                        Tarifa referencial. El precio final lo acuerda con el conductor.
-                      </div>
-                    </div>
-                  )}
-                </div>
-              )}
+              
 
               {session?.accessToken && (
                 <LegalStatusSection token={session.accessToken} />
@@ -862,6 +960,92 @@ export function PassengerTripsPage(): JSX.Element {
 
 const PAGE_SIZE = 20;
 
+
+
+type LocalPassengerRide = RideRequestData & {
+  localOnly?: boolean;
+};
+
+function readLocalPassengerRides(): RideRequestData[] {
+  try {
+    const raw = localStorage.getItem("rapago_local_passenger_rides");
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as RideRequestData[];
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveLocalPassengerRides(rides: RideRequestData[]): void {
+  try {
+    localStorage.setItem("rapago_local_passenger_rides", JSON.stringify(rides));
+  } catch {
+    // No bloquea la app.
+  }
+}
+
+function createLocalPassengerRide(input: {
+  originText: string;
+  destinationText: string;
+  notes?: string;
+  estimatedFareClp?: number | null;
+}): RideRequestData {
+  const now = new Date().toISOString();
+
+  return {
+    id: `local-${Date.now()}`,
+    originText: input.originText,
+    destinationText: input.destinationText,
+    notes: input.notes ?? null,
+    status: "requested",
+    requestedAt: now,
+    acceptedAt: null,
+    enRouteAt: null,
+    arrivedAt: null,
+    startedAt: null,
+    completedAt: null,
+    cancelledAt: null,
+    cancellationReason: null,
+    cancelledByRole: null,
+    estimatedFareClp: input.estimatedFareClp ?? null,
+    originalFareClp: null,
+    discountApplied: false,
+    discountPercent: null,
+    driverName: null,
+    driverPhone: null,
+    driverRatingAverage: null,
+    driverRatingCount: null,
+    driverVehicleBrand: null,
+    driverVehicleModel: null,
+    driverVehicleColor: null,
+    driverVehiclePlate: null,
+    driverVehicleYear: null,
+    isOfflineBooking: false,
+  } as RideRequestData;
+}
+
+function isUnauthorizedMessage(message: unknown): boolean {
+  const text = String(message ?? "").toLowerCase();
+  return (
+    text.includes("401") ||
+    text.includes("unauthorized") ||
+    text.includes("no autorizado") ||
+    text.includes("token") ||
+    text.includes("sesión")
+  );
+}
+
+function cleanPassengerNotes(notes: string | null | undefined): string | null {
+  if (!notes) return null;
+  return notes
+    .replace(/Ubicación GPS pasajero:.*?(?=Punto de partida confirmado|$)/i, "")
+    .replace(/Ubicación real del pasajero:.*?(?=Punto accesible|Coordenadas|$)/i, "")
+    .replace(/Coordenadas recogida accesible:.*?(?=Coordenadas destino accesible|$)/i, "")
+    .replace(/Coordenadas destino accesible:.*$/i, "")
+    .trim() || null;
+}
+
 function TripsPage(): JSX.Element {
   const history = useHistory();
   const { session } = useAuth();
@@ -882,15 +1066,32 @@ function TripsPage(): JSX.Element {
   const [statusFilter,  setStatusFilter]  = useState<"all" | "active" | "completed" | "cancelled">("all");
 
   const loadRides = useCallback(async () => {
-    if (!session?.accessToken) return;
     setLoading(true);
     setLoadError(null);
+
     try {
+      const localRides = readLocalPassengerRides();
+
+      if (!session?.accessToken) {
+        setAllRides(localRides);
+        setPage(1);
+        return;
+      }
+
       const data = await ridesService.listMyRides(session.accessToken);
-      setAllRides(data);
+      setAllRides([...localRides, ...data]);
       setPage(1);
     } catch (err) {
-      setLoadError(err instanceof Error ? err.message : "Error al cargar tus viajes.");
+      const localRides = readLocalPassengerRides();
+      setAllRides(localRides);
+      setPage(1);
+
+      const message = err instanceof Error ? err.message : "Error al cargar tus viajes.";
+      if (!isUnauthorizedMessage(message)) {
+        setLoadError(safePassengerErrorMessage(message));
+      } else {
+        setLoadError(null);
+      }
     } finally {
       setLoading(false);
     }
@@ -902,14 +1103,33 @@ function TripsPage(): JSX.Element {
   const rides = allRides.slice(0, page * PAGE_SIZE);
 
   async function handleCancel(rideId: string) {
-    if (!session?.accessToken) return;
     setCancelling(rideId);
     setCancelError(null);
+
     try {
+      if (rideId.startsWith("local-") || !session?.accessToken) {
+        const cancelledLocal = {
+          status: "cancelled",
+          cancelledAt: new Date().toISOString(),
+          cancelledByRole: "passenger",
+          cancellationReason: "Cancelado por pasajero.",
+        } as Partial<RideRequestData>;
+
+        const updatedLocal = readLocalPassengerRides().map((ride) =>
+          ride.id === rideId ? ({ ...ride, ...cancelledLocal } as RideRequestData) : ride,
+        );
+
+        saveLocalPassengerRides(updatedLocal);
+        setAllRides((prev) =>
+          prev.map((ride) => (ride.id === rideId ? ({ ...ride, ...cancelledLocal } as RideRequestData) : ride)),
+        );
+        return;
+      }
+
       const updated = await ridesService.cancelRideRequest(session.accessToken, rideId);
       setAllRides((prev) => prev.map((r) => (r.id === rideId ? updated : r)));
     } catch (err) {
-      setCancelError(err instanceof Error ? err.message : "Error al cancelar el viaje.");
+      setCancelError(safePassengerErrorMessage(err instanceof Error ? err.message : "Error al cancelar el viaje."));
     } finally {
       setCancelling(null);
     }
@@ -926,7 +1146,7 @@ function TripsPage(): JSX.Element {
       setRatingStars(5);
       setRatingComment("");
     } catch (err) {
-      setRatingError(err instanceof Error ? err.message : "Error al calificar el viaje.");
+      setRatingError(safePassengerErrorMessage(err instanceof Error ? err.message : "Error al calificar el viaje."));
     } finally {
       setSubmittingRating(false);
     }
@@ -940,7 +1160,7 @@ function TripsPage(): JSX.Element {
       const updated = await ridesService.cancelAcceptedRide(session.accessToken, rideId);
       setAllRides((prev) => prev.map((r) => (r.id === rideId ? updated : r)));
     } catch (err) {
-      setCancelError(err instanceof Error ? err.message : "Error al cancelar el viaje.");
+      setCancelError(safePassengerErrorMessage(err instanceof Error ? err.message : "Error al cancelar el viaje."));
     } finally {
       setCancelling(null);
     }
@@ -1049,7 +1269,7 @@ function TripsPage(): JSX.Element {
               ];
 
               return (
-                <IonCard key={ride.id} style={{ margin: 0, borderRadius: "16px", overflow: "hidden", boxShadow: "0 2px 12px rgba(0,0,0,0.08)" }}>
+                <IonCard key={ride.id} style={passengerCardStyle({ borderRadius: "20px" })}>
                   {/* Status bar */}
                   <div style={{
                     height: "4px",
@@ -1120,9 +1340,28 @@ function TripsPage(): JSX.Element {
                     )}
 
                     {!ride.driverName && ride.status === "requested" && (
-                      <div style={{ marginBottom: "10px", fontSize: "0.82rem", color: "var(--ion-color-medium)", fontStyle: "italic", display: "flex", alignItems: "center", gap: "6px" }}>
-                        <IonSpinner name="dots" style={{ width: "16px", height: "16px" }} />
-                        Esperando asignación de conductor...
+                      <div
+                        style={{
+                          marginBottom: "10px",
+                          padding: "12px",
+                          borderRadius: "16px",
+                          background: "#ffffff",
+                          border: "1px solid rgba(0,0,0,.06)",
+                          boxShadow: "0 6px 18px rgba(0,0,0,.06)",
+                          display: "flex",
+                          alignItems: "center",
+                          gap: "10px",
+                        }}
+                      >
+                        <IonSpinner name="crescent" style={{ width: "18px", height: "18px" }} />
+                        <div>
+                          <div style={{ fontWeight: 900, fontSize: "0.86rem", color: "#111" }}>
+                            Buscando conductor
+                          </div>
+                          <div style={{ color: "var(--ion-color-medium)", fontSize: "0.74rem", marginTop: "2px" }}>
+                            Tu solicitud ya fue enviada a conductores cercanos.
+                          </div>
+                        </div>
                       </div>
                     )}
 
@@ -1155,9 +1394,9 @@ function TripsPage(): JSX.Element {
                     )}
 
                     {/* Notes */}
-                    {ride.notes && (
+                    {cleanPassengerNotes(ride.notes) && (
                       <div style={{ fontSize: "0.8rem", color: "var(--ion-color-medium)", marginBottom: "8px" }}>
-                        {ride.notes}
+                        {cleanPassengerNotes(ride.notes)}
                       </div>
                     )}
 
@@ -1302,7 +1541,7 @@ export function PassengerGuidesPage(): JSX.Element {
       const data = await touristService.listGuides(session.accessToken, filters);
       setGuides(data);
     } catch (err) {
-      setLoadError(err instanceof Error ? err.message : "Error al cargar guías.");
+      setLoadError(safePassengerErrorMessage(err instanceof Error ? err.message : "Error al cargar guías."));
     } finally {
       setLoading(false);
     }
@@ -1507,7 +1746,7 @@ function PassengerGuideDetailPage({ guide, onBack }: { guide: GuidePublicData; o
       setNumPeople(1);
       setPricingData(null);
     } catch (err) {
-      setToastMsg(err instanceof Error ? err.message : "Error al reservar.");
+      setToastMsg(safePassengerErrorMessage(err instanceof Error ? err.message : "Error al reservar.") ?? "Error al reservar.");
     } finally {
       setSubmitting(false);
     }
@@ -2629,7 +2868,7 @@ export function PassengerProfilePage(): JSX.Element {
     try {
       const data = await passengerProfileService.getMyProfile(session.accessToken);
       setProfile(data);
-      setPhone(data.phone ?? "");
+      setPhone(getAutoPhone(getSessionPhone(session?.user), data.phone));
       setPreferredLanguage(data.preferredLanguage);
       setNotificationEnabled(data.notificationEnabled);
       setEmailNotifications(data.emailNotifications);
@@ -2665,6 +2904,7 @@ export function PassengerProfilePage(): JSX.Element {
       if (trimEmPhone) payload.emergencyContactPhone = trimEmPhone;
 
       const updated = await passengerProfileService.upsertMyProfile(session.accessToken, payload);
+      if (payload.phone) persistPassengerAutofill({ phone: payload.phone });
       setProfile(updated);
       setSaveOk(true);
     } catch (err) {

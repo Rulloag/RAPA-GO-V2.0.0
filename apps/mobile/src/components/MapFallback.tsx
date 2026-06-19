@@ -1,31 +1,27 @@
 import {
-  IonButton,
   IonCard,
   IonCardContent,
   IonIcon,
   IonNote,
 } from "@ionic/react";
-import {
-  carOutline,
-  navigateOutline,
-  walkOutline,
-  warningOutline,
-} from "ionicons/icons";
-import {
-  GoogleMap,
-  MarkerF,
-  PolylineF,
-  useJsApiLoader,
-} from "@react-google-maps/api";
-import { useMemo, useState } from "react";
-import { useConnectivity } from "../hooks/useConnectivity.js";
+import { carOutline } from "ionicons/icons";
+import { useEffect, useRef, useState } from "react";
 import { getDistanceBetween, getEstimatedFare } from "@rapa-go/shared";
 
-interface MapPoint {
+export interface MapPoint {
   id?: string;
   text: string;
   lat?: number | null;
   lng?: number | null;
+  placeId?: string | null;
+}
+
+export interface MapPointMovedPayload {
+  point: "origin" | "destination";
+  lat: number;
+  lng: number;
+  text: string;
+  address?: string;
 }
 
 interface MapFallbackProps {
@@ -33,95 +29,175 @@ interface MapFallbackProps {
   destination: MapPoint;
   height?: number;
   showRoute?: boolean;
+
+  /*
+    Permite mover el punto azul de origen.
+    El padre puede usar onOriginChange para actualizar su estado.
+  */
+  originDraggable?: boolean;
+  onOriginChange?: (point: MapPointMovedPayload) => void;
 }
 
-const RAPA_NUI_CENTER = {
+type LatLng = {
+  lat: number;
+  lng: number;
+};
+
+type RouteInfo = {
+  distanceText: string;
+  durationText: string;
+};
+
+declare global {
+  interface Window {
+    google?: typeof google;
+    initRapaGoGoogleMap?: () => void;
+  }
+
+  interface WindowEventMap {
+    "rapago:origin-point-moved": CustomEvent<MapPointMovedPayload>;
+  }
+}
+
+const RAPA_NUI_CENTER: LatLng = {
   lat: -27.1505,
   lng: -109.4325,
 };
 
-const ISLAND_BOUNDS = {
-  north: -27.045,
-  south: -27.205,
-  east: -109.250,
-  west: -109.500,
-};
+const GOOGLE_MAPS_SCRIPT_ID = "rapa-go-google-maps-script";
+const GOOGLE_MAPS_CALLBACK_NAME = "initRapaGoGoogleMap";
 
-const PICKUP_POINTS = [
-  {
-    id: "hanga-roa-centro",
-    name: "Hanga Roa Centro",
-    address: "Atamu Tekena",
-    lat: -27.1505,
-    lng: -109.4325,
-  },
-  {
-    id: "ara-piki",
-    name: "Ara Piki",
-    address: "Calle principal accesible",
-    lat: -27.1489,
-    lng: -109.4258,
-  },
-  {
-    id: "aeropuerto-mataveri",
-    name: "Aeropuerto Mataveri",
-    address: "Acceso principal",
-    lat: -27.1648,
-    lng: -109.4218,
-  },
-  {
-    id: "tahai",
-    name: "Tahai",
-    address: "Punto turístico accesible",
-    lat: -27.1417,
-    lng: -109.4305,
-  },
-];
-
-const GOOGLE_MAPS_API_KEY = import.meta.env[
-  "VITE_GOOGLE_MAPS_API_KEY"
-] as string | undefined;
-
-function toRad(value: number): number {
-  return (value * Math.PI) / 180;
+function getGoogleMapsApiKey(): string {
+  const envKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY as string | undefined;
+  return (envKey || "AIzaSyDZvqVcZBGFPbdHYPM4sYZuIvejDm1ZaOc").trim();
 }
 
-function distanceMeters(
-  a: { lat: number; lng: number },
-  b: { lat: number; lng: number },
-): number {
-  const earth = 6371000;
-  const dLat = toRad(b.lat - a.lat);
-  const dLng = toRad(b.lng - a.lng);
-  const lat1 = toRad(a.lat);
-  const lat2 = toRad(b.lat);
-
-  const x =
-    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-    Math.sin(dLng / 2) *
-      Math.sin(dLng / 2) *
-      Math.cos(lat1) *
-      Math.cos(lat2);
-
-  return earth * 2 * Math.atan2(Math.sqrt(x), Math.sqrt(1 - x));
+function isGoogleMapsReady(): boolean {
+  return Boolean(
+    window.google?.maps?.Map &&
+      window.google?.maps?.DirectionsService &&
+      window.google?.maps?.DirectionsRenderer &&
+      window.google?.maps?.Geocoder,
+  );
 }
 
-function getRecommendedPickup(origin: MapPoint) {
-  if (origin.lat == null || origin.lng == null) return null;
+function waitForGoogleMapsReady(): Promise<void> {
+  if (isGoogleMapsReady()) return Promise.resolve();
 
-  const current = { lat: origin.lat, lng: origin.lng };
+  return new Promise((resolve, reject) => {
+    const startedAt = Date.now();
 
-  const sorted = [...PICKUP_POINTS].sort((a, b) => {
-    return distanceMeters(current, a) - distanceMeters(current, b);
+    const check = () => {
+      if (isGoogleMapsReady()) {
+        resolve();
+        return;
+      }
+
+      if (Date.now() - startedAt > 15000) {
+        reject(new Error("Google Maps cargó incompleto. Recarga la página."));
+        return;
+      }
+
+      window.setTimeout(check, 50);
+    };
+
+    check();
   });
+}
 
-  const pickup = sorted[0];
-  const meters = Math.round(distanceMeters(current, pickup));
+export function loadRapaGoGoogleMaps(): Promise<void> {
+  const apiKey = getGoogleMapsApiKey();
+
+  if (!apiKey) {
+    return Promise.reject(
+      new Error("Falta VITE_GOOGLE_MAPS_API_KEY en apps/mobile/.env"),
+    );
+  }
+
+  if (isGoogleMapsReady()) return Promise.resolve();
+
+  const oldScripts = Array.from(
+    document.querySelectorAll<HTMLScriptElement>(
+      'script[src*="maps.googleapis.com/maps/api/js"]',
+    ),
+  );
+
+  const scriptUrl =
+    `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(apiKey)}` +
+    `&libraries=places,geometry&callback=${GOOGLE_MAPS_CALLBACK_NAME}`;
+
+  for (const script of oldScripts) {
+    const hasCurrentKey = script.src.includes(encodeURIComponent(apiKey));
+
+    if (!hasCurrentKey) {
+      script.remove();
+    }
+  }
+
+  const existingScript = document.getElementById(
+    GOOGLE_MAPS_SCRIPT_ID,
+  ) as HTMLScriptElement | null;
+
+  if (existingScript) {
+    return waitForGoogleMapsReady();
+  }
+
+  return new Promise((resolve, reject) => {
+    let settled = false;
+
+    window.initRapaGoGoogleMap = () => {
+      void waitForGoogleMapsReady()
+        .then(() => {
+          if (settled) return;
+          settled = true;
+          resolve();
+        })
+        .catch((err) => {
+          if (settled) return;
+          settled = true;
+          reject(err);
+        });
+    };
+
+    const script = document.createElement("script");
+    script.id = GOOGLE_MAPS_SCRIPT_ID;
+    script.async = true;
+    script.defer = true;
+    script.src = scriptUrl;
+
+    script.onerror = () => {
+      if (settled) return;
+      settled = true;
+      reject(new Error("No se pudo cargar Google Maps."));
+    };
+
+    document.head.appendChild(script);
+
+    void waitForGoogleMapsReady()
+      .then(() => {
+        if (settled) return;
+        settled = true;
+        resolve();
+      })
+      .catch(() => {
+        // El callback resolverá cuando Google termine de cargar.
+      });
+  });
+}
+
+function getPointFromMapPoint(point: MapPoint): LatLng | null {
+  if (
+    point.lat == null ||
+    point.lng == null ||
+    !Number.isFinite(point.lat) ||
+    !Number.isFinite(point.lng)
+  ) {
+    return null;
+  }
 
   return {
-    ...pickup,
-    meters,
-    minutes: Math.max(1, Math.round(meters / 80)),
+    lat: Number(point.lat),
+    lng: Number(point.lng),
   };
 }
 
@@ -143,16 +219,15 @@ function OfflineFallback({
     <div
       style={{
         height,
-        borderRadius: "18px",
-        overflow: "hidden",
-        background: "#F6F2EC",
-        border: "1px solid rgba(200,155,60,.35)",
-        padding: "14px",
+        background: "#e8eef4",
+        color: "#172033",
+        padding: "18px",
       }}
     >
       <strong>Mapa no disponible</strong>
-      <p style={{ fontSize: ".78rem" }}>
-        El operador confirmará el punto de recogida.
+
+      <p style={{ fontSize: ".78rem", color: "#6b4700" }}>
+        Selecciona origen y destino para calcular la ruta.
       </p>
 
       {dist && (
@@ -165,172 +240,477 @@ function OfflineFallback({
   );
 }
 
-function InteractiveMap({
+function makeCircleIcon(
+  color: string,
+  scale = 12,
+  strokeColor = "#ffffff",
+): google.maps.Symbol {
+  return {
+    path: google.maps.SymbolPath.CIRCLE,
+    scale,
+    fillColor: color,
+    fillOpacity: 1,
+    strokeColor,
+    strokeWeight: 3,
+  };
+}
+
+function makeUserCircle(center: LatLng): google.maps.CircleOptions {
+  return {
+    center,
+    radius: 25,
+    fillColor: "#2563eb",
+    fillOpacity: 0.18,
+    strokeColor: "#2563eb",
+    strokeOpacity: 0.28,
+    strokeWeight: 1,
+    clickable: false,
+  };
+}
+
+async function reverseGeocodeLatLng(point: LatLng): Promise<string | undefined> {
+  if (!window.google?.maps?.Geocoder) return undefined;
+
+  return new Promise((resolve) => {
+    const geocoder = new google.maps.Geocoder();
+
+    geocoder.geocode(
+      {
+        location: point,
+        region: "CL",
+      },
+      (results, status) => {
+        if (status !== google.maps.GeocoderStatus.OK || !results?.[0]) {
+          resolve(undefined);
+          return;
+        }
+
+        resolve(results[0].formatted_address);
+      },
+    );
+  });
+}
+
+function GoogleRapaMap({
   origin,
   destination,
   height,
+  originDraggable = true,
+  onOriginChange,
 }: {
   origin: MapPoint;
   destination: MapPoint;
   height: number;
+  originDraggable?: boolean;
+  onOriginChange?: (point: MapPointMovedPayload) => void;
 }) {
-  const [selectedPoint, setSelectedPoint] = useState<{
-    lat: number;
-    lng: number;
-  } | null>(
-    origin.lat != null && origin.lng != null
-      ? { lat: origin.lat, lng: origin.lng }
-      : null,
+  const mapElementRef = useRef<HTMLDivElement | null>(null);
+  const mapRef = useRef<google.maps.Map | null>(null);
+  const directionsRendererRef = useRef<google.maps.DirectionsRenderer | null>(
+    null,
   );
+  const originMarkerRef = useRef<google.maps.Marker | null>(null);
+  const destinationMarkerRef = useRef<google.maps.Marker | null>(null);
+  const originCircleRef = useRef<google.maps.Circle | null>(null);
+  const fallbackLineRef = useRef<google.maps.Polyline | null>(null);
+  const lastRouteKeyRef = useRef<string>("");
 
-  const originPoint =
-    selectedPoint ??
-    (origin.lat != null && origin.lng != null
-      ? { lat: origin.lat, lng: origin.lng }
-      : null);
+  const [routeInfo, setRouteInfo] = useState<RouteInfo | null>(null);
+  const [mapError, setMapError] = useState<string | null>(null);
+  const [movingOrigin, setMovingOrigin] = useState(false);
+  const [localOrigin, setLocalOrigin] = useState<MapPoint>(origin);
 
-  const pickup = originPoint
-    ? getRecommendedPickup({
-        text: origin.text,
-        lat: originPoint.lat,
-        lng: originPoint.lng,
+  useEffect(() => {
+    setLocalOrigin(origin);
+  }, [
+    origin.id,
+    origin.text,
+    origin.lat,
+    origin.lng,
+    origin.placeId,
+  ]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    void loadRapaGoGoogleMaps()
+      .then(() => {
+        if (cancelled || !mapElementRef.current || !window.google?.maps) return;
+
+        const map = new google.maps.Map(mapElementRef.current, {
+          center: RAPA_NUI_CENTER,
+          zoom: 14,
+          mapTypeControl: false,
+          fullscreenControl: true,
+          streetViewControl: false,
+          clickableIcons: true,
+          gestureHandling: "greedy",
+          styles: [
+            { elementType: "geometry", stylers: [{ color: "#f2eee9" }] },
+            { featureType: "road", elementType: "geometry", stylers: [{ color: "#ffffff" }] },
+            { featureType: "road", elementType: "labels.text.fill", stylers: [{ color: "#334155" }] },
+            { featureType: "water", elementType: "geometry", stylers: [{ color: "#bde7f2" }] },
+            { featureType: "poi.business", stylers: [{ visibility: "on" }] },
+          ],
+        });
+
+        const renderer = new google.maps.DirectionsRenderer({
+          map,
+          suppressMarkers: true,
+          preserveViewport: false,
+          polylineOptions: {
+            strokeColor: "#2563eb",
+            strokeOpacity: 1,
+            strokeWeight: 7,
+          },
+        });
+
+        mapRef.current = map;
+        directionsRendererRef.current = renderer;
       })
-    : null;
+      .catch((err) => {
+        setMapError(
+          err instanceof Error ? err.message : "No se pudo cargar Google Maps.",
+        );
+      });
 
-  const destinationPoint =
-    destination.lat != null && destination.lng != null
-      ? { lat: destination.lat, lng: destination.lng }
-      : null;
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
-  const routePath = useMemo(() => {
-    const path: Array<{ lat: number; lng: number }> = [];
+  function clearMapObjects(renderer: google.maps.DirectionsRenderer) {
+    originMarkerRef.current?.setMap(null);
+    destinationMarkerRef.current?.setMap(null);
+    originCircleRef.current?.setMap(null);
+    fallbackLineRef.current?.setMap(null);
 
-    if (originPoint) path.push(originPoint);
-    if (pickup) path.push({ lat: pickup.lat, lng: pickup.lng });
-    if (destinationPoint) path.push(destinationPoint);
+    originMarkerRef.current = null;
+    destinationMarkerRef.current = null;
+    originCircleRef.current = null;
+    fallbackLineRef.current = null;
 
-    return path;
-  }, [originPoint, pickup, destinationPoint]);
+    renderer.set("directions", null);
+  }
+
+  async function notifyOriginMoved(point: LatLng) {
+    const address = await reverseGeocodeLatLng(point);
+    const text = address || "Punto elegido en el mapa";
+
+    const payload: MapPointMovedPayload = {
+      point: "origin",
+      lat: point.lat,
+      lng: point.lng,
+      text,
+      address,
+    };
+
+    onOriginChange?.(payload);
+
+    window.dispatchEvent(
+      new CustomEvent("rapago:origin-point-moved", {
+        detail: payload,
+      }),
+    );
+  }
+
+  useEffect(() => {
+    const map = mapRef.current;
+    const renderer = directionsRendererRef.current;
+
+    if (!map || !renderer || !window.google?.maps) return;
+
+    const originPoint = getPointFromMapPoint(localOrigin);
+    const destinationPoint = getPointFromMapPoint(destination);
+
+    const routeKey = JSON.stringify({
+      originText: localOrigin.text,
+      originLat: originPoint?.lat ?? null,
+      originLng: originPoint?.lng ?? null,
+      destinationText: destination.text,
+      destinationLat: destinationPoint?.lat ?? null,
+      destinationLng: destinationPoint?.lng ?? null,
+      originDraggable,
+    });
+
+    if (lastRouteKeyRef.current === routeKey) {
+      return;
+    }
+
+    lastRouteKeyRef.current = routeKey;
+
+    setMapError(null);
+    setRouteInfo(null);
+
+    clearMapObjects(renderer);
+
+    if (!originPoint && !destinationPoint) {
+      map.setCenter(RAPA_NUI_CENTER);
+      map.setZoom(14);
+      return;
+    }
+
+    const bounds = new google.maps.LatLngBounds();
+
+    if (originPoint) {
+      originMarkerRef.current = new google.maps.Marker({
+        map,
+        position: originPoint,
+        title: originDraggable
+          ? "Mantén presionado y mueve tu punto de partida"
+          : localOrigin.text || "Origen",
+        draggable: originDraggable,
+        cursor: originDraggable ? "grab" : undefined,
+        label: {
+          text: "●",
+          color: "#ffffff",
+          fontSize: "16px",
+          fontWeight: "900",
+        },
+        icon: makeCircleIcon("#2563eb", 13),
+        zIndex: 30,
+      });
+
+      originCircleRef.current = new google.maps.Circle({
+        map,
+        ...makeUserCircle(originPoint),
+      });
+
+      if (originDraggable) {
+        originMarkerRef.current.addListener("dragstart", () => {
+          setMovingOrigin(true);
+          map.setOptions({ draggableCursor: "grabbing" });
+        });
+
+        originMarkerRef.current.addListener("drag", () => {
+          const position = originMarkerRef.current?.getPosition();
+          if (!position || !originCircleRef.current) return;
+
+          originCircleRef.current.setCenter({
+            lat: position.lat(),
+            lng: position.lng(),
+          });
+        });
+
+        originMarkerRef.current.addListener("dragend", () => {
+          const position = originMarkerRef.current?.getPosition();
+          setMovingOrigin(false);
+          map.setOptions({ draggableCursor: undefined });
+
+          if (!position) return;
+
+          const movedPoint = {
+            lat: position.lat(),
+            lng: position.lng(),
+          };
+
+          setLocalOrigin((current) => ({
+            ...current,
+            text: "Punto elegido en el mapa",
+            lat: movedPoint.lat,
+            lng: movedPoint.lng,
+            placeId: null,
+          }));
+
+          void notifyOriginMoved(movedPoint);
+        });
+      }
+
+      bounds.extend(originPoint);
+    }
+
+    if (destinationPoint) {
+      destinationMarkerRef.current = new google.maps.Marker({
+        map,
+        position: destinationPoint,
+        title: destination.text || "Destino",
+        label: {
+          text: "●",
+          color: "#ffffff",
+          fontSize: "16px",
+          fontWeight: "900",
+        },
+        icon: makeCircleIcon("#e53935", 12),
+        zIndex: 19,
+      });
+
+      bounds.extend(destinationPoint);
+    }
+
+    if (!originPoint || !destinationPoint) {
+      const single = originPoint ?? destinationPoint;
+
+      if (single) {
+        map.setCenter(single);
+        map.setZoom(16);
+      }
+
+      return;
+    }
+
+    const service = new google.maps.DirectionsService();
+
+    service.route(
+      {
+        origin: originPoint,
+        destination: destinationPoint,
+        travelMode: google.maps.TravelMode.DRIVING,
+        provideRouteAlternatives: false,
+        region: "CL",
+      },
+      (result, status) => {
+        if (status !== google.maps.DirectionsStatus.OK || !result) {
+          renderer.set("directions", null);
+
+          fallbackLineRef.current = new google.maps.Polyline({
+            map,
+            path: [originPoint, destinationPoint],
+            strokeColor: "#2563eb",
+            strokeOpacity: 0.95,
+            strokeWeight: 6,
+            icons: [
+              {
+                icon: {
+                  path: "M 0,-1 0,1",
+                  strokeOpacity: 1,
+                  scale: 4,
+                },
+                offset: "0",
+                repeat: "18px",
+              },
+            ],
+          });
+
+          const fallbackBounds = new google.maps.LatLngBounds();
+          fallbackBounds.extend(originPoint);
+          fallbackBounds.extend(destinationPoint);
+          map.fitBounds(fallbackBounds, 72);
+
+          setRouteInfo({
+            durationText: "Ruta referencial",
+            distanceText: "Origen → destino",
+          });
+
+          setMapError(null);
+          return;
+        }
+
+        renderer.setDirections(result);
+
+        const leg = result.routes[0]?.legs[0];
+
+        if (leg) {
+          const routeBounds = new google.maps.LatLngBounds();
+          routeBounds.extend(leg.start_location);
+          routeBounds.extend(leg.end_location);
+
+          for (const step of leg.steps) {
+            if (step.start_location) routeBounds.extend(step.start_location);
+            if (step.end_location) routeBounds.extend(step.end_location);
+          }
+
+          map.fitBounds(routeBounds, 72);
+        } else if (!bounds.isEmpty()) {
+          map.fitBounds(bounds, 72);
+        }
+
+        setRouteInfo({
+          distanceText: leg?.distance?.text ?? "",
+          durationText: leg?.duration?.text ?? "",
+        });
+      },
+    );
+  }, [
+    localOrigin.text,
+    localOrigin.lat,
+    localOrigin.lng,
+    localOrigin.placeId,
+    destination.text,
+    destination.lat,
+    destination.lng,
+    destination.placeId,
+    originDraggable,
+    onOriginChange,
+  ]);
 
   return (
     <div
       style={{
-        borderRadius: "18px",
+        background: "#e8eef4",
         overflow: "hidden",
-        background: "#1A1A1A",
-        border: "1px solid rgba(200,155,60,.35)",
+        position: "relative",
       }}
     >
       <div style={{ height, position: "relative" }}>
-        <GoogleMap
-          mapContainerStyle={{
-            width: "100%",
-            height: "100%",
-          }}
-          center={originPoint ?? RAPA_NUI_CENTER}
-          zoom={originPoint ? 16 : 13}
-          options={{
-            restriction: {
-              latLngBounds: ISLAND_BOUNDS,
-              strictBounds: false,
-            },
-            mapTypeControl: false,
-            streetViewControl: false,
-            fullscreenControl: false,
-            clickableIcons: false,
-            gestureHandling: "greedy",
-            styles: [
-              {
-                featureType: "poi",
-                stylers: [{ visibility: "off" }],
-              },
-            ],
-          }}
-          onClick={(e) => {
-            const lat = e.latLng?.lat();
-            const lng = e.latLng?.lng();
-
-            if (lat == null || lng == null) return;
-
-            setSelectedPoint({ lat, lng });
-          }}
-        >
-          {originPoint && (
-            <MarkerF
-              position={originPoint}
-              label={{
-                text: "●",
-                color: "#2563eb",
-                fontSize: "24px",
-              }}
-            />
-          )}
-
-          {pickup && (
-            <MarkerF
-              position={{ lat: pickup.lat, lng: pickup.lng }}
-              label={{
-                text: "🚗",
-                fontSize: "22px",
-              }}
-            />
-          )}
-
-          {destinationPoint && (
-            <MarkerF
-              position={destinationPoint}
-              label={{
-                text: "📍",
-                fontSize: "22px",
-              }}
-            />
-          )}
-
-          {routePath.length >= 2 && (
-            <PolylineF
-              path={routePath}
-              options={{
-                strokeColor: "#2563eb",
-                strokeOpacity: 0.95,
-                strokeWeight: 5,
-              }}
-            />
-          )}
-        </GoogleMap>
-
         <div
+          ref={mapElementRef}
           style={{
-            position: "absolute",
-            left: "14px",
-            right: "14px",
-            top: "14px",
-            background: "rgba(255,255,255,.95)",
-            borderRadius: "18px",
-            padding: "12px",
-            boxShadow: "0 8px 25px rgba(0,0,0,.25)",
+            height: "100%",
+            width: "100%",
+            background: "#e8eef4",
           }}
-        >
-          <div style={{ fontWeight: 900, color: "#1A1A1A" }}>
-            Confirma el punto de partida
-          </div>
-          <div style={{ fontSize: ".78rem", color: "#555", marginTop: "4px" }}>
-            Mueve el mapa o toca un punto dentro de Rapa Nui.
-          </div>
-        </div>
+        />
 
-        {pickup && (
+        {originDraggable && (
           <div
             style={{
               position: "absolute",
-              left: "14px",
-              right: "14px",
-              bottom: "14px",
-              background: "rgba(26,26,26,.94)",
+              left: "12px",
+              right: "12px",
+              top: "12px",
+              background: movingOrigin
+                ? "rgba(37,99,235,.96)"
+                : "rgba(17,17,17,.90)",
               color: "#F6F2EC",
-              borderRadius: "18px",
-              padding: "14px",
-              border: "1px solid rgba(200,155,60,.45)",
-              boxShadow: "0 10px 30px rgba(0,0,0,.35)",
+              borderRadius: "999px",
+              padding: "8px 12px",
+              fontSize: ".76rem",
+              fontWeight: 900,
+              border: "1px solid rgba(255,255,255,.22)",
+              zIndex: 6,
+              textAlign: "center",
+              pointerEvents: "none",
+            }}
+          >
+            {movingOrigin
+              ? "Suelta el punto azul donde quieres partir"
+              : "Mantén presionado el punto azul y muévelo"}
+          </div>
+        )}
+
+        {mapError && (
+          <div
+            style={{
+              position: "absolute",
+              left: "16px",
+              right: "16px",
+              top: originDraggable ? "58px" : "16px",
+              background: "rgba(17,17,17,.94)",
+              color: "#F6F2EC",
+              borderRadius: "14px",
+              padding: "10px 12px",
+              fontSize: ".76rem",
+              border: "1px solid rgba(200,155,60,.35)",
+              zIndex: 5,
+            }}
+          >
+            {mapError}
+          </div>
+        )}
+
+        {routeInfo && (
+          <div
+            style={{
+              position: "absolute",
+              left: "12px",
+              right: "12px",
+              bottom: "12px",
+              background: "rgba(17,17,17,.92)",
+              color: "#F6F2EC",
+              borderRadius: "16px",
+              padding: "10px 12px",
+              boxShadow: "0 12px 28px rgba(0,0,0,.30)",
+              zIndex: 4,
             }}
           >
             <div
@@ -339,85 +719,27 @@ function InteractiveMap({
                 gap: "8px",
                 alignItems: "center",
                 fontWeight: 900,
+                fontSize: ".82rem",
               }}
             >
-              <IonIcon icon={warningOutline} style={{ color: "#C89B3C" }} />
-              Punto recomendado
+              <IonIcon icon={carOutline} style={{ color: "#C89B3C" }} />
+              Ruta del viaje
             </div>
 
-            <div style={{ marginTop: "6px", fontWeight: 900 }}>
-              {pickup.name}
-            </div>
-
-            <div style={{ fontSize: ".76rem", color: "#D9C3A0" }}>
-              Camina {pickup.meters} m ({pickup.minutes} min) hasta el punto
-              donde el auto puede llegar.
+            <div
+              style={{
+                marginTop: "4px",
+                color: "#D9C3A0",
+                fontSize: ".76rem",
+              }}
+            >
+              {routeInfo.durationText}
+              {routeInfo.durationText && routeInfo.distanceText ? " · " : ""}
+              {routeInfo.distanceText}
             </div>
           </div>
         )}
       </div>
-
-      {pickup && (
-        <IonCard style={{ margin: 0, borderRadius: 0 }}>
-          <IonCardContent style={{ padding: "14px" }}>
-            <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
-              <div
-                style={{
-                  width: "46px",
-                  height: "46px",
-                  borderRadius: "16px",
-                  background: "linear-gradient(135deg,#C89B3C,#D9C3A0)",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  flexShrink: 0,
-                }}
-              >
-                <IonIcon
-                  icon={carOutline}
-                  style={{ color: "#1A1A1A", fontSize: "1.4rem" }}
-                />
-              </div>
-
-              <div style={{ flex: 1 }}>
-                <div style={{ fontWeight: 900, color: "#1A1A1A" }}>
-                  {pickup.name}
-                </div>
-                <div style={{ fontSize: ".74rem", color: "#666" }}>
-                  {pickup.address}
-                </div>
-              </div>
-
-              <div
-                style={{
-                  fontSize: ".72rem",
-                  color: "#1A1A1A",
-                  fontWeight: 900,
-                  textAlign: "right",
-                }}
-              >
-                🚶 {pickup.meters} m
-                <br />
-                {pickup.minutes} min
-              </div>
-            </div>
-
-            <IonButton
-              expand="block"
-              style={{ marginTop: "12px" }}
-              onClick={() => {
-                window.open(
-                  `https://www.google.com/maps/dir/?api=1&destination=${pickup.lat},${pickup.lng}&travelmode=walking`,
-                  "_blank",
-                );
-              }}
-            >
-              <IonIcon icon={navigateOutline} slot="start" />
-              Iniciar navegación peatonal
-            </IonButton>
-          </IonCardContent>
-        </IonCard>
-      )}
     </div>
   );
 }
@@ -425,16 +747,12 @@ function InteractiveMap({
 export function MapFallback({
   origin,
   destination,
-  height = 360,
+  height = 300,
   showRoute = true,
+  originDraggable = true,
+  onOriginChange,
 }: MapFallbackProps): JSX.Element {
-  const isOnline = useConnectivity();
-
-  const { isLoaded } = useJsApiLoader({
-    googleMapsApiKey: GOOGLE_MAPS_API_KEY ?? "",
-  });
-
-  if (!showRoute || !isOnline || !GOOGLE_MAPS_API_KEY || !isLoaded) {
+  if (!showRoute) {
     return (
       <OfflineFallback
         origin={origin}
@@ -445,10 +763,12 @@ export function MapFallback({
   }
 
   return (
-    <InteractiveMap
+    <GoogleRapaMap
       origin={origin}
       destination={destination}
       height={height}
+      originDraggable={originDraggable}
+      onOriginChange={onOriginChange}
     />
   );
 }
