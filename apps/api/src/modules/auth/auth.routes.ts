@@ -18,4 +18,5 @@ export async function authRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.post("/logout", authController.logout);
   fastify.get("/me", authController.me);
   fastify.post("/refresh", authController.refresh);
+  fastify.post("/google", authController.googleLogin);
 }

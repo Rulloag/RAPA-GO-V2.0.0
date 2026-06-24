@@ -1,10 +1,12 @@
 import type { FastifyRequest, FastifyReply } from "fastify";
 import { AuthService } from "./auth.service.js";
+import { GoogleAuthService } from "./googleAuth.service.js";
 import { loginRequestSchema, registerRequestSchema } from "./auth.schemas.js";
 import type { LoginRequest, RegisterRequest } from "./auth.types.js";
 import { sendError } from "../../shared/http/apiResponse.js";
 
-const authService = new AuthService();
+const authService       = new AuthService();
+const googleAuthService = new GoogleAuthService();
 
 export const authController = {
   async login(
@@ -71,6 +73,20 @@ export const authController = {
       return;
     }
     const result = await authService.refreshSession(raw);
+    reply.status(result.ok ? 200 : (result.statusCode ?? 401)).send(result);
+  },
+
+  async googleLogin(
+    request: FastifyRequest,
+    reply: FastifyReply,
+  ): Promise<void> {
+    const body    = request.body as { idToken?: unknown } | undefined;
+    const idToken = body?.idToken;
+    if (!idToken || typeof idToken !== "string") {
+      sendError(reply, { code: "VALIDATION_ERROR", message: "idToken is required.", statusCode: 400 });
+      return;
+    }
+    const result = await googleAuthService.loginWithGoogle(idToken);
     reply.status(result.ok ? 200 : (result.statusCode ?? 401)).send(result);
   },
 };
