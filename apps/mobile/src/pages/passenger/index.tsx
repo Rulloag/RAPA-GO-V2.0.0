@@ -391,7 +391,7 @@ export function PassengerHomePage(): JSX.Element {
             </div>
           )}
 
-          {/* ── Servicios rápidos ── */}
+          {/* ── Servicios Rapa Go rápidos ── */}
           <div style={{ marginTop: "20px" }}>
             <div style={{ fontWeight: 700, fontSize: "1rem", marginBottom: "12px", color: "var(--ion-text-color)" }}>
               Servicios
@@ -480,48 +480,8 @@ export function PassengerHomePage(): JSX.Element {
               </IonCardContent>
             </IonCard>
           </div>
-
-          {/* ── Banner referidos ── */}
-          <div
-            style={{
-              marginTop: "20px",
-              background: "linear-gradient(135deg, var(--ion-color-secondary) 0%, var(--ion-color-secondary-shade) 100%)",
-              borderRadius: "16px",
-              padding: "16px 18px",
-              display: "flex",
-              alignItems: "center",
-              gap: "14px",
-              cursor: "pointer",
-            }}
-            onClick={() => history.push(ROUTES.PROFILE.INDEX)}
-          >
-            <IonIcon icon={giftOutline} style={{ fontSize: "2rem", color: "#fff", flexShrink: 0 }} />
-            <div style={{ flex: 1 }}>
-              <div style={{ color: "#fff", fontWeight: 700, fontSize: "0.95rem" }}>Invita amigos y gana</div>
-              <div style={{ color: "rgba(255,255,255,0.85)", fontSize: "0.78rem", marginTop: "2px" }}>
-                Comparte tu código y obtén descuentos en tus próximos viajes
-              </div>
-            </div>
-            <IonIcon icon={chevronForwardOutline} style={{ color: "rgba(255,255,255,0.7)", fontSize: "1.2rem", flexShrink: 0 }} />
-          </div>
-
-          {/* ── Unirse a Rapa Go ── */}
-          <IonCard style={{ marginTop: "20px", borderRadius: "14px" }}>
-            <IonCardHeader>
-              <IonCardTitle style={{ fontSize: "0.95rem" }}>¿Quieres unirte a Rapa Go?</IonCardTitle>
-            </IonCardHeader>
-            <IonCardContent>
-              <IonButton expand="block" routerLink="/apply/driver" color="primary">
-                Inscríbete como conductor
-              </IonButton>
-              <IonButton expand="block" routerLink="/apply/guide" color="secondary" style={{ marginTop: "8px" }}>
-                Inscríbete como guía
-              </IonButton>
-              <IonButton expand="block" fill="outline" routerLink="/apply/status" color="medium" style={{ marginTop: "8px" }}>
-                Estado de mi postulación
-              </IonButton>
-            </IonCardContent>
-          </IonCard>
+          {/* Producción: banner de referidos eliminado. */}
+          {/* Producción: postulaciones desde módulo dedicado. */}
 
         </div>
       </IonContent>
@@ -674,10 +634,17 @@ function RequestRidePage(): JSX.Element {
     const notes: string[] = [];
 
     if (currentLat !== null && currentLng !== null) {
-      notes.push(`Ubicación GPS pasajero: ${currentLat.toFixed(6)}, ${currentLng.toFixed(6)}.`);
+      notes.push(`Ubicación real del pasajero: ${currentLat.toFixed(6)}, ${currentLng.toFixed(6)}.`);
+      notes.push(`Coordenadas recogida accesible: ${currentLat.toFixed(6)}, ${currentLng.toFixed(6)}.`);
+    } else if (originCoords.lat != null && originCoords.lng != null) {
+      notes.push(`Coordenadas recogida accesible: ${Number(originCoords.lat).toFixed(6)}, ${Number(originCoords.lng).toFixed(6)}.`);
     }
 
-    notes.push("Punto de partida confirmado por pasajero. Si la calle no es accesible, recoger en el punto recomendado por la app.");
+    if (destCoords.lat != null && destCoords.lng != null) {
+      notes.push(`Coordenadas destino accesible: ${Number(destCoords.lat).toFixed(6)}, ${Number(destCoords.lng).toFixed(6)}.`);
+    }
+
+    notes.push("Punto de partida confirmado por pasajero.");
 
     const trimNotes = notesInput.trim();
     if (trimNotes) notes.push(trimNotes);
@@ -692,22 +659,9 @@ function RequestRidePage(): JSX.Element {
       await ridesService.createRideRequest(session.accessToken, input);
     } catch (err) {
       const message = err instanceof Error ? err.message : "Error al solicitar el viaje.";
-
-      if (!isUnauthorizedMessage(message)) {
-        setSubmitError(safePassengerErrorMessage(message));
-        setSubmitting(false);
-        return;
-      }
-
-      const localRide = createLocalPassengerRide({
-        originText: origin,
-        destinationText: dest,
-        notes: input.notes,
-        estimatedFareClp: farePreview?.fare ?? null,
-      });
-
-      const currentLocal = readLocalPassengerRides();
-      saveLocalPassengerRides([localRide, ...currentLocal]);
+      setSubmitError(safePassengerErrorMessage(message));
+      setSubmitting(false);
+      return;
     } finally {
       setSubmitting(false);
     }

@@ -20,7 +20,7 @@ import {
   IonTextarea,
   IonTitle,  IonToolbar,
 } from "@ionic/react";
-import { useEffect, useState, useCallback, type CSSProperties } from "react";
+import { useEffect, useState, useCallback, useRef, type CSSProperties } from "react";
 import { useHistory } from "react-router-dom";
 import {
   carOutline,
@@ -212,27 +212,14 @@ function isInsideRapaNui(point: { lat: number; lng: number } | null): boolean {
 }
 
 
-function getSimulatedDriverPoint(
-  pickup: { lat: number; lng: number } | null,
-  destination: { lat: number; lng: number } | null,
-): { lat: number; lng: number } | null {
-  if (pickup) {
-    // Punto simulado dentro de Hanga Roa para desarrollo cuando el GPS real no está en Isla de Pascua.
-    return {
-      lat: pickup.lat - 0.0065,
-      lng: pickup.lng - 0.0045,
-    };
+function getDriverLocationMessage(): string {
+  if (!navigator.geolocation) {
+    return "Tu navegador no permite usar GPS. Activa ubicación para tomar viajes reales.";
   }
 
-  if (destination) {
-    return {
-      lat: destination.lat - 0.0065,
-      lng: destination.lng - 0.0045,
-    };
-  }
-
-  return null;
+  return "Activa el permiso de ubicación para ver rutas reales del conductor.";
 }
+
 
 function getCurrentLocationForNavigation(
   destination: { lat: number; lng: number },
@@ -285,69 +272,248 @@ function UberDriverNavigationMap({
   };
   height?: number;
 }): JSX.Element {
-  const mapRef = useState<{ current: google.maps.Map | null }>({ current: null })[0];
-  const mapElementRef = useState<{ current: HTMLDivElement | null }>({ current: null })[0];
-  const directionsRendererRef = useState<{ current: google.maps.DirectionsRenderer | null }>({ current: null })[0];
-  const driverMarkerRef = useState<{ current: google.maps.Marker | null }>({ current: null })[0];
-  const pickupMarkerRef = useState<{ current: google.maps.Marker | null }>({ current: null })[0];
-  const destinationMarkerRef = useState<{ current: google.maps.Marker | null }>({ current: null })[0];
-  const fallbackLineRef = useState<{ current: google.maps.Polyline | null }>({ current: null })[0];
+  const mapElementRef = useRef<HTMLDivElement | null>(null);
+  const mapRef = useRef<google.maps.Map | null>(null);
+  const directionsRendererRef = useRef<google.maps.DirectionsRenderer | null>(null);
+  const directionsServiceRef = useRef<google.maps.DirectionsService | null>(null);
+  const driverMarkerRef = useRef<google.maps.Marker | null>(null);
+  const pickupMarkerRef = useRef<google.maps.Marker | null>(null);
+  const destinationMarkerRef = useRef<google.maps.Marker | null>(null);
+  const fallbackLineRef = useRef<google.maps.Polyline | null>(null);
 
-  const [driverPoint, setDriverPoint] = useState<{ lat: number; lng: number } | null>(null);
+  const driverPointRef = useRef<{ lat: number; lng: number } | null>(null);
+  const lastGpsPointRef = useRef<{ lat: number; lng: number } | null>(null);
+  const headingRef = useRef(0);
+  const lastCameraAtRef = useRef(0);
+  const routeRequestIdRef = useRef(0);
+  const routeKeyRef = useRef("");
+  const didInitialCameraRef = useRef(false);
+  const mapReadyRef = useRef(false);
+
+  const [driverGpsReady, setDriverGpsReady] = useState(false);
+  const [driverOutsideRapaNui, setDriverOutsideRapaNui] = useState(false);
   const [routeInfo, setRouteInfo] = useState<{ duration: string; distance: string } | null>(null);
   const [mapError, setMapError] = useState<string | null>(null);
   const [mapReady, setMapReady] = useState(false);
 
   const nav = extractRideNavigationPoints(ride.notes);
+
   const pickup =
     nav.pickupLat != null && nav.pickupLng != null
       ? { lat: nav.pickupLat, lng: nav.pickupLng }
       : null;
+
   const destination =
     nav.destinationLat != null && nav.destinationLng != null
       ? { lat: nav.destinationLat, lng: nav.destinationLng }
       : null;
 
   const goingToPickup = ["accepted", "driver_en_route"].includes(ride.status);
-  const target = goingToPickup ? pickup : destination;
-  const targetLabel = goingToPickup ? ride.originText : ride.destinationText;
+  const waitingPassenger = ride.status === "driver_arrived";
+  const goingToDestination = ride.status === "in_progress";
 
-  // En desarrollo el PC puede estar fuera de Isla de Pascua.
-  // Si el GPS no está dentro de Rapa Nui, simulamos el auto dentro de la isla.
-  const usingSimulatedDriver = !isInsideRapaNui(driverPoint);
-  const effectiveDriverPoint =
-    isInsideRapaNui(driverPoint) ? driverPoint : getSimulatedDriverPoint(pickup, destination);
+  const target = goingToDestination ? destination : goingToPickup ? pickup : null;
+  const targetLabel = goingToDestination
+    ? ride.destinationText
+    : goingToPickup || waitingPassenger
+      ? ride.originText
+      : ride.destinationText;
 
-  useEffect(() => {
-    let watchId: number | null = null;
+  function toRad(value: number): number {
+    return (value * Math.PI) / 180;
+  }
 
-    if (navigator.geolocation) {
-      watchId = navigator.geolocation.watchPosition(
-        (position) => {
-          setDriverPoint({
-            lat: position.coords.latitude,
-            lng: position.coords.longitude,
-          });
-        },
-        () => {
-          // Modo desarrollo: si el navegador no entrega GPS,
-          // usamos el conductor simulado dentro de Rapa Nui.
-          setMapError(null);
-        },
-        {
-          enableHighAccuracy: true,
-          maximumAge: 5000,
-          timeout: 12000,
-        },
-      );
+  function distanceMeters(a: { lat: number; lng: number }, b: { lat: number; lng: number }): number {
+    const R = 6371000;
+    const dLat = toRad(b.lat - a.lat);
+    const dLng = toRad(b.lng - a.lng);
+    const lat1 = toRad(a.lat);
+    const lat2 = toRad(b.lat);
+    const h =
+      Math.sin(dLat / 2) ** 2 +
+      Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLng / 2) ** 2;
+    return 2 * R * Math.asin(Math.sqrt(h));
+  }
+
+  function bearingDegrees(from: { lat: number; lng: number }, to: { lat: number; lng: number }): number {
+    const lat1 = toRad(from.lat);
+    const lat2 = toRad(to.lat);
+    const dLng = toRad(to.lng - from.lng);
+    const y = Math.sin(dLng) * Math.cos(lat2);
+    const x =
+      Math.cos(lat1) * Math.sin(lat2) -
+      Math.sin(lat1) * Math.cos(lat2) * Math.cos(dLng);
+    return (((Math.atan2(y, x) * 180) / Math.PI) + 360) % 360;
+  }
+
+  function makeDriverIcon(heading: number): google.maps.Symbol {
+    return {
+      path: google.maps.SymbolPath.FORWARD_CLOSED_ARROW,
+      scale: 8,
+      fillColor: "#2382ff",
+      fillOpacity: 1,
+      strokeColor: "#ffffff",
+      strokeWeight: 4,
+      rotation: heading,
+    };
+  }
+
+  function makeCircleIcon(color: string, strokeColor = "#ffffff", scale = 15): google.maps.Symbol {
+    return {
+      path: google.maps.SymbolPath.CIRCLE,
+      scale,
+      fillColor: color,
+      fillOpacity: 1,
+      strokeColor,
+      strokeWeight: 4,
+    };
+  }
+
+  function setMarker(
+    markerRef: { current: google.maps.Marker | null },
+    point: { lat: number; lng: number } | null,
+    options: google.maps.MarkerOptions,
+  ): void {
+    const map = mapRef.current;
+
+    if (!map || !window.google?.maps || !point) {
+      markerRef.current?.setMap(null);
+      markerRef.current = null;
+      return;
     }
 
-    return () => {
-      if (watchId != null && navigator.geolocation) {
-        navigator.geolocation.clearWatch(watchId);
-      }
-    };
-  }, []);
+    if (!markerRef.current) {
+      markerRef.current = new google.maps.Marker({
+        ...options,
+        map,
+        position: point,
+      });
+      return;
+    }
+
+    markerRef.current.setMap(map);
+    markerRef.current.setPosition(point);
+    markerRef.current.setOptions(options);
+  }
+
+  function followDriverCamera(point: { lat: number; lng: number }, heading: number, force = false): void {
+    const map = mapRef.current;
+    if (!map) return;
+
+    const now = Date.now();
+    if (!force && now - lastCameraAtRef.current < 1400) return;
+    lastCameraAtRef.current = now;
+
+    if (!didInitialCameraRef.current || force) {
+      map.setZoom(18);
+      didInitialCameraRef.current = true;
+    }
+
+    map.panTo(point);
+
+    try {
+      map.setHeading(heading);
+      map.setTilt(45);
+    } catch {
+      // Algunos navegadores no soportan heading/tilt en mapas raster.
+    }
+  }
+
+  function moveDriverOnly(point: { lat: number; lng: number }, heading: number): void {
+    const map = mapRef.current;
+    if (!map || !window.google?.maps) return;
+
+    setMarker(driverMarkerRef, point, {
+      title: "Conductor",
+      icon: makeDriverIcon(heading),
+      zIndex: 50,
+    });
+
+    followDriverCamera(point, heading);
+  }
+
+  function drawStaticMarkers(): void {
+    if (!mapRef.current || !window.google?.maps) return;
+
+    setMarker(pickupMarkerRef, pickup, {
+      title: "Punto de recogida",
+      icon: makeCircleIcon("#22c55e", "#ffffff", 17),
+      zIndex: 40,
+    });
+
+    setMarker(destinationMarkerRef, destination, {
+      title: "Destino",
+      icon: makeCircleIcon("#ef4444", "#ffffff", 15),
+      zIndex: 35,
+    });
+  }
+
+  function calculateRouteOnce(force = false): void {
+    const map = mapRef.current;
+    const renderer = directionsRendererRef.current;
+    const service = directionsServiceRef.current;
+    const driverPoint = driverPointRef.current;
+
+    if (!map || !renderer || !service || !window.google?.maps) return;
+
+    const currentTarget = goingToDestination ? destination : goingToPickup ? pickup : null;
+    const currentKey = `${ride.status}:${currentTarget?.lat ?? "none"},${currentTarget?.lng ?? "none"}`;
+
+    if (!force && routeKeyRef.current === currentKey) return;
+    routeKeyRef.current = currentKey;
+
+    fallbackLineRef.current?.setMap(null);
+    fallbackLineRef.current = null;
+
+    if (!driverPoint || !currentTarget) {
+      renderer.set("directions", null);
+      setRouteInfo(null);
+      return;
+    }
+
+    const requestId = routeRequestIdRef.current + 1;
+    routeRequestIdRef.current = requestId;
+
+    service.route(
+      {
+        origin: driverPoint,
+        destination: currentTarget,
+        travelMode: google.maps.TravelMode.DRIVING,
+        provideRouteAlternatives: false,
+        optimizeWaypoints: false,
+        region: "CL",
+      },
+      (result, status) => {
+        if (requestId !== routeRequestIdRef.current) return;
+
+        if (status === google.maps.DirectionsStatus.OK && result) {
+          fallbackLineRef.current?.setMap(null);
+          fallbackLineRef.current = null;
+          renderer.setDirections(result);
+
+          const leg = result.routes[0]?.legs[0];
+          setRouteInfo({
+            duration: leg?.duration?.text ?? "",
+            distance: leg?.distance?.text ?? "",
+          });
+          return;
+        }
+
+        renderer.set("directions", null);
+        fallbackLineRef.current?.setMap(null);
+        fallbackLineRef.current = new google.maps.Polyline({
+          map,
+          path: [driverPoint, currentTarget],
+          strokeColor: "#00b7ff",
+          strokeOpacity: 1,
+          strokeWeight: 7,
+          zIndex: 20,
+        });
+
+        setRouteInfo({ duration: "Ruta referencial", distance: "" });
+      },
+    );
+  }
 
   useEffect(() => {
     let cancelled = false;
@@ -356,201 +522,134 @@ function UberDriverNavigationMap({
       .then(() => {
         if (cancelled || !mapElementRef.current || !window.google?.maps) return;
 
-        const center = effectiveDriverPoint ?? pickup ?? destination ?? { lat: -27.1505, lng: -109.4325 };
+        const center = driverPointRef.current ?? pickup ?? destination ?? { lat: -27.1505, lng: -109.4325 };
 
         const map = new google.maps.Map(mapElementRef.current, {
           center,
-          zoom: 15,
+          zoom: driverPointRef.current ? 18 : 14,
+          mapTypeId: google.maps.MapTypeId.ROADMAP,
           disableDefaultUI: true,
           zoomControl: false,
+          fullscreenControl: false,
+          streetViewControl: false,
+          mapTypeControl: false,
+          clickableIcons: false,
           gestureHandling: "greedy",
           styles: [
-            { elementType: "geometry", stylers: [{ color: "#1d2633" }] },
-            { elementType: "labels.text.stroke", stylers: [{ color: "#1d2633" }] },
-            { elementType: "labels.text.fill", stylers: [{ color: "#d7dde8" }] },
-            { featureType: "road", elementType: "geometry", stylers: [{ color: "#334155" }] },
-            { featureType: "road", elementType: "labels.text.fill", stylers: [{ color: "#ffffff" }] },
-            { featureType: "poi", elementType: "labels.text.fill", stylers: [{ color: "#cbd5e1" }] },
-            { featureType: "water", elementType: "geometry", stylers: [{ color: "#0f172a" }] },
+            { featureType: "poi", elementType: "labels", stylers: [{ visibility: "on" }] },
+            { featureType: "road", elementType: "geometry", stylers: [{ color: "#d4dbe7" }] },
+            { featureType: "road", elementType: "labels.text.fill", stylers: [{ color: "#334155" }] },
+            { featureType: "water", elementType: "geometry", stylers: [{ color: "#a8d7e8" }] },
+            { featureType: "landscape", elementType: "geometry", stylers: [{ color: "#f3f4ef" }] },
           ],
         });
 
         mapRef.current = map;
-        setMapReady(true);
-
+        mapReadyRef.current = true;
+        directionsServiceRef.current = new google.maps.DirectionsService();
         directionsRendererRef.current = new google.maps.DirectionsRenderer({
           map,
           suppressMarkers: true,
-          preserveViewport: false,
+          preserveViewport: true,
           polylineOptions: {
-            strokeColor: "#2382ff",
+            strokeColor: "#00b7ff",
             strokeOpacity: 1,
-            strokeWeight: 7,
+            strokeWeight: 8,
           },
         });
+
+        drawStaticMarkers();
+        setMapReady(true);
+
+        if (driverPointRef.current) {
+          moveDriverOnly(driverPointRef.current, headingRef.current);
+          calculateRouteOnce(true);
+        } else {
+          const bounds = new google.maps.LatLngBounds();
+          if (pickup) bounds.extend(pickup);
+          if (destination) bounds.extend(destination);
+          if (!bounds.isEmpty()) map.fitBounds(bounds, 80);
+        }
       })
       .catch(() => setMapError("No se pudo cargar Google Maps."));
 
     return () => {
       cancelled = true;
+      mapReadyRef.current = false;
     };
+    // El mapa se crea una sola vez. No depende del GPS para evitar remounts/parpadeos.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
-    const map = mapRef.current;
-    const renderer = directionsRendererRef.current;
+    drawStaticMarkers();
+    calculateRouteOnce(true);
+    // Solo recalcula cuando cambia el estado o el destino. Nunca en cada punto GPS.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ride.status, pickup?.lat, pickup?.lng, destination?.lat, destination?.lng]);
 
-    if (!mapReady || !map || !window.google?.maps) return;
-
-    driverMarkerRef.current?.setMap(null);
-    pickupMarkerRef.current?.setMap(null);
-    destinationMarkerRef.current?.setMap(null);
-    fallbackLineRef.current?.setMap(null);
-
-    if (effectiveDriverPoint) {
-      driverMarkerRef.current = new google.maps.Marker({
-        map,
-        position: effectiveDriverPoint,
-        title: "Tu ubicación",
-        label: { text: "▲", color: "#ffffff", fontSize: "18px", fontWeight: "900" },
-        icon: {
-          path: google.maps.SymbolPath.CIRCLE,
-          scale: 18,
-          fillColor: "#2382ff",
-          fillOpacity: 1,
-          strokeColor: "#ffffff",
-          strokeWeight: 4,
-        },
-        zIndex: 30,
-      });
-    }
-
-    if (pickup) {
-      pickupMarkerRef.current = new google.maps.Marker({
-        map,
-        position: pickup,
-        title: "Punto de recogida",
-        label: { text: "●", color: "#ffffff", fontSize: "18px" },
-        icon: {
-          path: google.maps.SymbolPath.CIRCLE,
-          scale: 17,
-          fillColor: "#22c55e",
-          fillOpacity: 1,
-          strokeColor: "#0b3d16",
-          strokeWeight: 5,
-        },
-        zIndex: 25,
-      });
-    }
-
-    if (destination) {
-      destinationMarkerRef.current = new google.maps.Marker({
-        map,
-        position: destination,
-        title: "Destino",
-        label: { text: "●", color: "#ffffff", fontSize: "18px" },
-        icon: {
-          path: google.maps.SymbolPath.CIRCLE,
-          scale: 16,
-          fillColor: "#ef4444",
-          fillOpacity: 1,
-          strokeColor: "#ffffff",
-          strokeWeight: 3,
-        },
-        zIndex: 24,
-      });
-    }
-
-    if (!renderer || !target) {
-      const bounds = new google.maps.LatLngBounds();
-      if (effectiveDriverPoint) bounds.extend(effectiveDriverPoint);
-      if (pickup) bounds.extend(pickup);
-      if (destination) bounds.extend(destination);
-      if (!bounds.isEmpty()) map.fitBounds(bounds);
+  useEffect(() => {
+    if (!navigator.geolocation) {
+      setMapError(getDriverLocationMessage());
       return;
     }
 
-    const origin = goingToPickup
-      ? effectiveDriverPoint
-      : effectiveDriverPoint ?? pickup;
+    const watchId = navigator.geolocation.watchPosition(
+      (position) => {
+        const next = {
+          lat: position.coords.latitude,
+          lng: position.coords.longitude,
+        };
 
-    if (!origin) {
-      const bounds = new google.maps.LatLngBounds();
-      if (pickup) bounds.extend(pickup);
-      if (destination) bounds.extend(destination);
-      if (!bounds.isEmpty()) map.fitBounds(bounds, 60);
-      setRouteInfo(null);
-      setMapError(null);
-      return;
-    }
+        const previous = lastGpsPointRef.current;
+        const moved = previous ? distanceMeters(previous, next) : Number.POSITIVE_INFINITY;
 
-    const service = new google.maps.DirectionsService();
+        // Filtra ruido del GPS. Evita que el mapa tiemble por cambios mínimos.
+        if (previous && moved < 8) return;
 
-    service.route(
-      {
-        origin,
-        destination: target,
-        travelMode: google.maps.TravelMode.DRIVING,
-        provideRouteAlternatives: false,
-        region: "CL",
-      },
-      (result, status) => {
-        if (status !== google.maps.DirectionsStatus.OK || !result) {
-          renderer.set("directions", null);
-
-          fallbackLineRef.current?.setMap(null);
-          fallbackLineRef.current = new google.maps.Polyline({
-            map,
-            path: [origin, target],
-            strokeColor: "#2382ff",
-            strokeOpacity: 0.95,
-            strokeWeight: 6,
-            icons: [
-              {
-                icon: {
-                  path: "M 0,-1 0,1",
-                  strokeOpacity: 1,
-                  scale: 4,
-                },
-                offset: "0",
-                repeat: "18px",
-              },
-            ],
-          });
-
-          const bounds = new google.maps.LatLngBounds();
-          bounds.extend(origin);
-          bounds.extend(target);
-          map.fitBounds(bounds, 70);
-
-          setRouteInfo({
-            duration: "Ruta referencial",
-            distance: "Abrir navegación",
-          });
-          setMapError(null);
-          return;
+        if (previous && moved >= 8) {
+          headingRef.current = bearingDegrees(previous, next);
+        } else if (typeof position.coords.heading === "number" && Number.isFinite(position.coords.heading)) {
+          headingRef.current = position.coords.heading;
         }
 
-        fallbackLineRef.current?.setMap(null);
-        renderer.setDirections(result);
+        lastGpsPointRef.current = next;
+        driverPointRef.current = next;
 
-        const leg = result.routes[0]?.legs[0];
-        setRouteInfo({
-          duration: leg?.duration?.text ?? "",
-          distance: leg?.distance?.text ?? "",
-        });
+        const ready = true;
+        if (!driverGpsReady) setDriverGpsReady(ready);
+
+        const outside = !isInsideRapaNui(next);
+        if (outside !== driverOutsideRapaNui) setDriverOutsideRapaNui(outside);
+
+        setMapError(null);
+
+        // Punto azul + cámara. No recalcula ruta aquí.
+        if (mapReadyRef.current) {
+          moveDriverOnly(next, headingRef.current);
+
+          // La ruta se dibuja una sola vez cuando aparece el primer GPS.
+          if (!routeKeyRef.current) {
+            calculateRouteOnce(true);
+          }
+        }
+      },
+      () => {
+        setMapError(getDriverLocationMessage());
+      },
+      {
+        enableHighAccuracy: true,
+        maximumAge: 5000,
+        timeout: 15000,
       },
     );
-  }, [
-    mapReady,
-    driverPoint?.lat,
-    driverPoint?.lng,
-    pickup?.lat,
-    pickup?.lng,
-    destination?.lat,
-    destination?.lng,
-    ride.status,
-  ]);
+
+    return () => {
+      navigator.geolocation.clearWatch(watchId);
+    };
+    // No incluimos driverGpsReady/driverOutsideRapaNui para no reiniciar watchPosition.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   return (
     <div
@@ -559,7 +658,7 @@ function UberDriverNavigationMap({
         height,
         overflow: "hidden",
         borderRadius: "22px",
-        background: "#111827",
+        background: "#f3f4ef",
       }}
     >
       <div
@@ -569,22 +668,23 @@ function UberDriverNavigationMap({
         style={{ width: "100%", height: "100%" }}
       />
 
-      {usingSimulatedDriver && (
+      {driverOutsideRapaNui && (
         <div
           style={{
             position: "absolute",
             left: "14px",
             top: "76px",
-            background: "rgba(210,164,58,.96)",
-            color: "#111",
+            background: "rgba(239,68,68,.96)",
+            color: "#ffffff",
             borderRadius: "999px",
             padding: "6px 10px",
             fontSize: ".72rem",
             fontWeight: 950,
             boxShadow: "0 8px 18px rgba(0,0,0,.25)",
+            zIndex: 5,
           }}
         >
-          Modo prueba GPS
+          GPS real fuera de Rapa Nui
         </div>
       )}
 
@@ -595,24 +695,49 @@ function UberDriverNavigationMap({
           right: "14px",
           top: "14px",
           ...uberPanelStyle({
-            borderRadius: "14px",
-            padding: "12px 14px",
+            background: "rgba(0, 91, 86, .96)",
+            borderRadius: "20px",
+            padding: "14px 16px",
             display: "flex",
-            gap: "10px",
+            gap: "12px",
             alignItems: "center",
           }),
         }}
       >
-        <IonIcon icon={arrowUpOutline} style={{ fontSize: 24, color: "#ffffff" }} />
+        <IonIcon icon={arrowUpOutline} style={{ fontSize: 30, color: "#ffffff" }} />
         <div>
-          <div style={{ fontWeight: 950, fontSize: ".92rem" }}>
-            {goingToPickup ? "Dirígete al punto de recogida" : "Dirígete al destino"}
+          <div style={{ fontWeight: 950, fontSize: "1rem" }}>
+            {goingToPickup
+              ? "Dirígete al punto de recogida"
+              : waitingPassenger
+                ? "Espera al pasajero"
+                : "Dirígete al destino"}
           </div>
-          <div style={{ color: "rgba(246,242,236,.68)", fontSize: ".78rem", marginTop: 2 }}>
-            {targetLabel} {routeInfo ? `• ${routeInfo.distance}` : ""}
+          <div style={{ color: "rgba(246,242,236,.78)", fontSize: ".82rem", marginTop: 3 }}>
+            {targetLabel} {routeInfo?.distance ? `• ${routeInfo.distance}` : ""}
           </div>
         </div>
       </div>
+
+      {!driverGpsReady && (
+        <div
+          style={{
+            position: "absolute",
+            left: "14px",
+            right: "14px",
+            bottom: "88px",
+            ...uberPanelStyle({
+              padding: "10px 12px",
+              border: "1px solid rgba(239,68,68,.45)",
+            }),
+            color: "#F6F2EC",
+            fontSize: ".78rem",
+            fontWeight: 900,
+          }}
+        >
+          📍 Esperando ubicación real del conductor. Activa el GPS para iniciar rutas reales.
+        </div>
+      )}
 
       {routeInfo && (
         <div
@@ -626,7 +751,7 @@ function UberDriverNavigationMap({
             }),
           }}
         >
-          <div style={{ color: "#22c55e", fontSize: "1.35rem", fontWeight: 950 }}>
+          <div style={{ color: "#22c55e", fontSize: "1.25rem", fontWeight: 950 }}>
             {routeInfo.duration}
           </div>
           <div style={{ color: "rgba(246,242,236,.72)", fontSize: ".78rem" }}>
@@ -637,10 +762,7 @@ function UberDriverNavigationMap({
 
       <button
         type="button"
-        onClick={() => {
-          if (!target) return;
-          getCurrentLocationForNavigation(target);
-        }}
+        onClick={() => calculateRouteOnce(true)}
         style={{
           position: "absolute",
           right: "16px",
@@ -657,6 +779,7 @@ function UberDriverNavigationMap({
           alignItems: "center",
           justifyContent: "center",
         }}
+        aria-label="Recalcular ruta"
       >
         <IonIcon icon={navigateOutline} />
       </button>
@@ -675,7 +798,7 @@ function UberDriverNavigationMap({
             fontSize: ".76rem",
           }}
         >
-          Modo prueba activo: usando ubicación simulada en Rapa Nui.
+          {mapError}
         </div>
       )}
     </div>
@@ -980,20 +1103,20 @@ function getRequestCardStyles(): Record<string, CSSProperties> {
     card: {
       position: "relative",
       margin: 0,
-      borderRadius: "26px",
+      borderRadius: "28px",
       overflow: "hidden",
-      background: "#101010",
-      color: "#F6F2EC",
-      border: "1px solid rgba(255,255,255,.12)",
-      boxShadow: "0 24px 64px rgba(0,0,0,.55)",
-      "--background": "#101010",
-      "--color": "#F6F2EC",
+      background: "linear-gradient(145deg, #F6F2EC 0%, #EFE6D8 100%)",
+      color: "#111111",
+      border: "1px solid rgba(210,164,58,.42)",
+      boxShadow: "0 24px 64px rgba(0,0,0,.34)",
+      "--background": "#F6F2EC",
+      "--color": "#111111",
     } as CSSProperties,
     darkLayer: {
       position: "absolute",
       inset: 0,
       background:
-        "radial-gradient(circle at 10% 0%, rgba(45,211,111,.20), transparent 34%), radial-gradient(circle at 95% 100%, rgba(210,164,58,.22), transparent 38%), linear-gradient(180deg, #151515, #090909)",
+        "radial-gradient(circle at 10% 0%, rgba(45,211,111,.16), transparent 34%), radial-gradient(circle at 95% 100%, rgba(210,164,58,.18), transparent 36%)",
       pointerEvents: "none",
     },
     pill: {
@@ -1002,44 +1125,50 @@ function getRequestCardStyles(): Record<string, CSSProperties> {
       gap: "6px",
       padding: "7px 10px",
       borderRadius: "999px",
-      background: "rgba(255,255,255,.08)",
-      border: "1px solid rgba(255,255,255,.12)",
-      color: "#F6F2EC",
+      background: "rgba(17,17,17,.06)",
+      border: "1px solid rgba(17,17,17,.10)",
+      color: "#111111",
       fontSize: ".72rem",
-      fontWeight: 900,
+      fontWeight: 950,
     },
     routeBox: {
       marginTop: "16px",
       padding: "14px",
       borderRadius: "20px",
-      background: "rgba(0,0,0,.38)",
-      border: "1px solid rgba(255,255,255,.12)",
-      boxShadow: "inset 0 1px 0 rgba(255,255,255,.05)",
+      background: "#FFFFFF",
+      border: "1px solid rgba(210,164,58,.30)",
+      boxShadow: "0 10px 26px rgba(0,0,0,.08)",
+      color: "#111111",
     },
     routeDot: {
       width: 13,
       height: 13,
       borderRadius: 999,
       marginTop: 5,
-      boxShadow: "0 0 0 5px rgba(255,255,255,.06)",
+      boxShadow: "0 0 0 5px rgba(17,17,17,.05)",
       flexShrink: 0,
     },
     primaryButton: {
       "--border-radius": "17px",
       height: "56px",
-      "--background": "linear-gradient(135deg, #ffd33d, #ffb800)",
-      "--background-activated": "#e8a900",
-      "--color": "#111",
+      "--background": "linear-gradient(135deg, #D8A83E 0%, #F0D9AA 100%)",
+      "--background-activated": "#d2a43a",
+      "--color": "#111111",
       fontWeight: 950,
       letterSpacing: ".2px",
-      boxShadow: "0 14px 30px rgba(255,184,0,.30)",
+      boxShadow: "0 14px 30px rgba(210,164,58,.30)",
     } as CSSProperties,
     secondaryButton: {
       "--border-radius": "17px",
       height: "56px",
-      "--border-color": "rgba(255,255,255,.24)",
-      "--color": "#F6F2EC",
-      fontWeight: 900,
+      "--background": "linear-gradient(135deg, #2A1A18 0%, #8F3F25 52%, #C5532F 100%)",
+      "--background-activated": "#6f2f1e",
+      "--background-hover": "linear-gradient(135deg, #351f1b 0%, #9f472b 52%, #d26037 100%)",
+      "--color": "#FFFFFF",
+      "--box-shadow": "0 14px 30px rgba(143,63,37,.32)",
+      "--border-color": "rgba(255,255,255,.18)",
+      fontWeight: 950,
+      letterSpacing: ".2px",
     } as CSSProperties,
   };
 }
@@ -1055,8 +1184,51 @@ function AssignedRidesPage(): JSX.Element {
   const [loading, setLoading] = useState(true);
   const [acceptingId, setAcceptingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [driverLocation, setDriverLocation] = useState<{ lat: number; lng: number } | null>(null);
+  const driverLocationRef = useRef<{ lat: number; lng: number } | null>(null);
+  const [locationError, setLocationError] = useState<string | null>(null);
 
   const activeRide = assignedRides[0] ?? null;
+
+  useEffect(() => {
+    if (!navigator.geolocation) {
+      setLocationError("Este dispositivo no permite GPS. No puedes tomar viajes reales sin ubicación.");
+      return;
+    }
+
+    const watchId = navigator.geolocation.watchPosition(
+      (position) => {
+        const nextLocation = {
+          lat: position.coords.latitude,
+          lng: position.coords.longitude,
+        };
+
+        driverLocationRef.current = nextLocation;
+
+        // Cuando hay viaje activo NO actualizamos estado en cada GPS,
+        // porque eso remonta la pantalla y provoca el bucle visual del mapa.
+        if (activeRide) {
+          return;
+        }
+
+        setDriverLocation(nextLocation);
+        setLocationError(null);
+      },
+      () => {
+        setDriverLocation(null);
+        setLocationError("Activa el permiso de ubicación para tomar viajes reales.");
+      },
+      {
+        enableHighAccuracy: true,
+        maximumAge: 5000,
+        timeout: 12000,
+      },
+    );
+
+    return () => {
+      navigator.geolocation.clearWatch(watchId);
+    };
+  }, [activeRide?.id]);
 
   const loadRides = useCallback(async () => {
     if (!session?.accessToken) return;
@@ -1092,6 +1264,11 @@ function AssignedRidesPage(): JSX.Element {
   async function handleAcceptRide(rideId: string): Promise<void> {
     if (!session?.accessToken) return;
 
+    if (!driverLocation) {
+      setError("Activa tu ubicación real para tomar este viaje.");
+      return;
+    }
+
     setAcceptingId(rideId);
     setError(null);
 
@@ -1100,6 +1277,20 @@ function AssignedRidesPage(): JSX.Element {
         session.accessToken,
         rideId,
       );
+
+      try {
+        localStorage.setItem(
+          "rapago_current_driver_location",
+          JSON.stringify({
+            rideId,
+            lat: driverLocation.lat,
+            lng: driverLocation.lng,
+            updatedAt: new Date().toISOString(),
+          }),
+        );
+      } catch {
+        // No bloquea la aceptación del viaje.
+      }
 
       setAvailableRides((prev) => prev.filter((ride) => ride.id !== rideId));
       setAssignedRides([accepted as DriverRideData]);
@@ -1201,9 +1392,9 @@ function AssignedRidesPage(): JSX.Element {
                   gap: 8,
                   padding: "7px 11px",
                   borderRadius: "999px",
-                  background: "rgba(45,211,111,.16)",
-                  border: "1px solid rgba(45,211,111,.32)",
-                  color: "#47f285",
+                  background: "rgba(45,211,111,.18)",
+                  border: "1px solid rgba(15,138,58,.22)",
+                  color: "#0F8A3A",
                   fontSize: ".72rem",
                   fontWeight: 950,
                   marginBottom: 10,
@@ -1223,10 +1414,10 @@ function AssignedRidesPage(): JSX.Element {
                 Nuevo viaje
               </div>
 
-              <div style={{ fontWeight: 950, fontSize: "1.22rem", lineHeight: 1.08, color: "#F6F2EC" }}>
+              <div style={{ fontWeight: 950, fontSize: "1.22rem", lineHeight: 1.08, color: "#111111" }}>
                 Solicitud cercana
               </div>
-              <div style={{ marginTop: 5, color: "rgba(246,242,236,.70)", fontSize: ".78rem", lineHeight: 1.35 }}>
+              <div style={{ marginTop: 5, color: "rgba(17,17,17,.66)", fontSize: ".78rem", lineHeight: 1.35 }}>
                 Revisa origen, destino y pago antes de aceptar.
               </div>
             </div>
@@ -1240,7 +1431,7 @@ function AssignedRidesPage(): JSX.Element {
                 borderRadius: 999,
                 border: "1px solid rgba(255,255,255,.16)",
                 background: "rgba(255,255,255,.08)",
-                color: "#F6F2EC",
+                color: "#111111",
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
@@ -1276,10 +1467,10 @@ function AssignedRidesPage(): JSX.Element {
                 <div style={{ color: "#22c55e", fontSize: ".72rem", fontWeight: 950, letterSpacing: ".35px" }}>
                   RECOGER EN
                 </div>
-                <div style={{ fontWeight: 950, fontSize: "1.02rem", marginTop: 3, lineHeight: 1.25, color: "#FFFFFF" }}>
+                <div style={{ fontWeight: 950, fontSize: "1.02rem", marginTop: 3, lineHeight: 1.25, color: "#111111" }}>
                   {ride.originText}
                 </div>
-                <div style={{ color: "rgba(246,242,236,.74)", fontSize: ".78rem", marginTop: 5, lineHeight: 1.35 }}>
+                <div style={{ color: "rgba(17,17,17,.66)", fontSize: ".78rem", marginTop: 5, lineHeight: 1.35 }}>
                   <IonIcon icon={walkOutline} style={{ fontSize: 14, marginRight: 4, verticalAlign: "-2px", color: "#d2a43a" }} />
                   {pickupWalkText}
                 </div>
@@ -1301,7 +1492,7 @@ function AssignedRidesPage(): JSX.Element {
                 <div style={{ color: "#ef4444", fontSize: ".72rem", fontWeight: 950, letterSpacing: ".35px" }}>
                   DESTINO
                 </div>
-                <div style={{ fontWeight: 950, fontSize: "1.02rem", marginTop: 3, lineHeight: 1.25, color: "#FFFFFF" }}>
+                <div style={{ fontWeight: 950, fontSize: "1.02rem", marginTop: 3, lineHeight: 1.25, color: "#111111" }}>
                   {ride.destinationText}
                 </div>
               </div>
@@ -1314,8 +1505,8 @@ function AssignedRidesPage(): JSX.Element {
               marginTop: 14,
               padding: "14px 15px",
               borderRadius: "20px",
-              background: "linear-gradient(135deg, rgba(34,197,94,.18), rgba(210,164,58,.10))",
-              border: "1px solid rgba(34,197,94,.26)",
+              background: "linear-gradient(135deg, rgba(34,197,94,.16), rgba(210,164,58,.20))",
+              border: "1px solid rgba(15,138,58,.22)",
               display: "flex",
               alignItems: "center",
               justifyContent: "space-between",
@@ -1323,13 +1514,13 @@ function AssignedRidesPage(): JSX.Element {
             }}
           >
             <div>
-              <div style={{ color: "rgba(246,242,236,.62)", fontSize: ".72rem", fontWeight: 900 }}>
+              <div style={{ color: "rgba(17,17,17,.62)", fontSize: ".72rem", fontWeight: 900 }}>
                 GANANCIA ESTIMADA
               </div>
-              <div style={{ color: "#35e978", fontWeight: 950, fontSize: "1.48rem", lineHeight: 1.05, marginTop: 4 }}>
+              <div style={{ color: "#0F8A3A", fontWeight: 950, fontSize: "1.48rem", lineHeight: 1.05, marginTop: 4 }}>
                 {formatClp(ride.estimatedFareClp)}
               </div>
-              <div style={{ color: "rgba(246,242,236,.70)", fontSize: ".74rem", marginTop: 4 }}>
+              <div style={{ color: "rgba(17,17,17,.66)", fontSize: ".74rem", marginTop: 4 }}>
                 Pago en efectivo al finalizar
               </div>
             </div>
@@ -1339,12 +1530,12 @@ function AssignedRidesPage(): JSX.Element {
                 width: 50,
                 height: 50,
                 borderRadius: "17px",
-                background: "rgba(53,233,120,.14)",
-                border: "1px solid rgba(53,233,120,.22)",
+                background: "rgba(15,138,58,.10)",
+                border: "1px solid rgba(15,138,58,.20)",
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
-                color: "#35e978",
+                color: "#0F8A3A",
                 fontWeight: 950,
                 fontSize: "1.22rem",
                 flexShrink: 0,
@@ -1358,8 +1549,7 @@ function AssignedRidesPage(): JSX.Element {
           <div style={{ display: "grid", gridTemplateColumns: "0.86fr 1.14fr", gap: 12, marginTop: 16 }}>
             <IonButton
               expand="block"
-              fill="outline"
-              color="light"
+              fill="solid"
               style={styles.secondaryButton}
               onClick={() => setAvailableRides((prev) => prev.filter((item) => item.id !== ride.id))}
             >
@@ -1368,11 +1558,11 @@ function AssignedRidesPage(): JSX.Element {
 
             <IonButton
               expand="block"
-              disabled={acceptingId === ride.id || activeRide != null}
+              disabled={acceptingId === ride.id || activeRide != null || !driverLocation}
               style={styles.primaryButton}
               onClick={() => void handleAcceptRide(ride.id)}
             >
-              {acceptingId === ride.id ? <IonSpinner name="dots" /> : "Aceptar viaje"}
+              {acceptingId === ride.id ? <IonSpinner name="dots" /> : driverLocation ? "Aceptar viaje" : "Activa GPS"}
             </IonButton>
           </div>
         </IonCardContent>
@@ -1500,7 +1690,12 @@ function AssignedRidesPage(): JSX.Element {
           </div>
         </IonToolbar>
         {!activeRide && (
-          <IonToolbar style={{ "--background": "#111111", "--border-width": "0" } as CSSProperties}>
+          <IonToolbar
+            style={{
+              "--background": "linear-gradient(135deg, #1f1f1f, #8f3f25)",
+              "--border-width": "0",
+            } as CSSProperties}
+          >
             <div style={{ padding: "9px 16px 12px", color: "#F6F2EC" }}>
               <div style={{ fontWeight: 950, fontSize: ".92rem" }}>Viajes disponibles</div>
               <div style={{ color: "rgba(246,242,236,.62)", fontSize: ".74rem", marginTop: 2 }}>
@@ -1511,7 +1706,13 @@ function AssignedRidesPage(): JSX.Element {
         )}
       </IonHeader>
 
-      <IonContent className={activeRide ? "" : "ion-padding"} style={{ "--background": "#151515" } as CSSProperties}>
+      <IonContent
+        className={activeRide ? "" : "ion-padding"}
+        style={{
+          "--background":
+            "linear-gradient(180deg, rgba(246,242,236,.86), rgba(217,195,160,.72)), url('/assets/rapa-go-bg.jpg') center/cover no-repeat",
+        } as CSSProperties}
+      >
         {activeRide ? (
           <ActiveRideScreen ride={activeRide} />
         ) : (
@@ -1531,7 +1732,23 @@ function AssignedRidesPage(): JSX.Element {
               </div>
             )}
 
-            {error && <IonText color="danger"><p>{error}</p></IonText>}
+            {error && <IonText color="danger"><p style={{ fontWeight: 900 }}>{error}</p></IonText>}
+
+            {locationError && (
+              <IonCard
+                style={{
+                  margin: "0 0 14px",
+                  borderRadius: "18px",
+                  background: "#fff3cd",
+                  color: "#111",
+                  border: "1px solid rgba(210,164,58,.45)",
+                }}
+              >
+                <IonCardContent style={{ padding: "12px 14px", fontWeight: 900, fontSize: ".82rem" }}>
+                  📍 {locationError}
+                </IonCardContent>
+              </IonCard>
+            )}
 
             {!loading && availableRides.length === 0 && (
               <div style={{ textAlign: "center", paddingTop: 40 }}>

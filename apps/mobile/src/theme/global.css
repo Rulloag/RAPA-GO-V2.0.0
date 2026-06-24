@@ -2829,3 +2829,236 @@ ion-card ion-textarea {
 }
 
 
+/* ==========================================================================
+   RAPA GO — FIX FINAL CONTRASTE / LEGIBILIDAD
+   Pegar al FINAL de global.css.
+   ========================================================================== */
+
+ion-content {
+  --background:
+    linear-gradient(180deg, rgba(26,26,26,.54) 0%, rgba(26,26,26,.68) 50%, rgba(26,26,26,.82) 100%),
+    url("./img/imgen-rapanui2.jpeg") no-repeat center center / cover fixed !important;
+}
+
+ion-content,
+ion-page,
+.ion-page {
+  color: #F6F2EC !important;
+}
+
+ion-item:not(ion-card ion-item),
+ion-list:not(ion-card ion-list) ion-item {
+  --background: rgba(36,36,36,.96) !important;
+  --color: #F6F2EC !important;
+  --placeholder-color: rgba(246,242,236,.70) !important;
+  border: 1px solid rgba(200,155,60,.32) !important;
+}
+
+ion-item:not(ion-card ion-item) ion-label,
+ion-list:not(ion-card ion-list) ion-label {
+  color: #D9C3A0 !important;
+  font-weight: 950 !important;
+}
+
+ion-item:not(ion-card ion-item) ion-input,
+ion-item:not(ion-card ion-item) ion-textarea,
+ion-item:not(ion-card ion-item) ion-select,
+ion-item:not(ion-card ion-item) input,
+ion-item:not(ion-card ion-item) textarea {
+  --color: #F6F2EC !important;
+  color: #F6F2EC !important;
+  font-weight: 900 !important;
+}
+
+ion-card {
+  background: rgba(246,242,236,.98) !important;
+  color: #111111 !important;
+}
+
+ion-card *,
+ion-card ion-label,
+ion-card ion-text,
+ion-card ion-card-title,
+ion-card ion-card-subtitle,
+ion-card ion-card-content,
+ion-card h1,
+ion-card h2,
+ion-card h3,
+ion-card p,
+ion-card span,
+ion-card strong {
+  color: #111111 !important;
+}
+
+ion-card ion-note,
+ion-card small {
+  color: rgba(17,17,17,.68) !important;
+}
+
+/* Tarjetas oscuras de solicitudes */
+.driver-request-card,
+.ride-request-card,
+.request-card,
+.request-modal-card,
+.rapago-dark-card,
+.driver-request-modal,
+.driver-request-modal *,
+.ride-request-card *,
+.request-card *,
+.request-modal-card *,
+.rapago-dark-card * {
+  color: #F6F2EC !important;
+}
+
+.driver-request-modal,
+.request-modal-card,
+.ride-request-card,
+.request-card {
+  background:
+    radial-gradient(circle at top left, rgba(34,197,94,.18), transparent 34%),
+    linear-gradient(145deg, rgba(17,17,17,.98), rgba(30,23,18,.98)) !important;
+  border: 1px solid rgba(217,195,160,.72) !important;
+  box-shadow: 0 26px 70px rgba(0,0,0,.42) !important;
+}
+
+/* Overlay menos oscuro */
+ion-modal::part(backdrop),
+ion-alert::part(backdrop),
+ion-action-sheet::part(backdrop) {
+  background: rgba(0,0,0,.46) !important;
+  opacity: 1 !important;
+}
+
+.driver-requests-content,
+.passenger-trips-content,
+.passenger-request-content {
+  --background:
+    linear-gradient(180deg, rgba(26,26,26,.50) 0%, rgba(26,26,26,.66) 55%, rgba(26,26,26,.82) 100%),
+    url("./img/imgen-rapanui2.jpeg") no-repeat center center / cover fixed !important;
+}
+
+.driver-requests-content h1,
+.driver-requests-content h2,
+.driver-requests-content h3,
+.driver-requests-content p,
+.passenger-trips-content h1,
+.passenger-trips-content h2,
+.passenger-trips-content h3,
+.passenger-trips-content p,
+.passenger-request-content h1,
+.passenger-request-content h2,
+.passenger-request-content h3,
+.passenger-request-content p {
+  color: #F6F2EC !important;
+  text-shadow: 0 2px 8px rgba(0,0,0,.55);
+}
+
+.route-box,
+.route-box *,
+.trip-detail-box,
+.trip-detail-box *,
+.ride-detail-box,
+.ride-detail-box * {
+  color: #111111 !important;
+}
+
+.route-box-dark,
+.route-box-dark *,
+.driver-route-box,
+.driver-route-box * {
+  color: #F6F2EC !important;
+}
+
+ion-button:not([fill="clear"]):not([fill="outline"]),
+ion-button[color="primary"] {
+  --background: linear-gradient(135deg, #D8A83E 0%, #F0D9AA 100%) !important;
+  --color: #111111 !important;
+  --box-shadow: 0 14px 30px rgba(216,168,62,.30) !important;
+}
+
+ion-button[color="danger"],
+button.danger,
+.btn-danger {
+  --background: #B84F2E !important;
+  --color: #F6F2EC !important;
+  color: #F6F2EC !important;
+}
+
+ion-tab-bar {
+  background: rgba(17,17,17,.98) !important;
+  --background: rgba(17,17,17,.98) !important;
+}
+
+ion-tab-button,
+ion-tab-button ion-label,
+ion-tab-button ion-icon {
+  color: #D9C3A0 !important;
+}
+
+ion-tab-button.tab-selected,
+ion-tab-button[aria-selected="true"],
+ion-tab-button.tab-selected ion-label,
+ion-tab-button.tab-selected ion-icon,
+ion-tab-button[aria-selected="true"] ion-label,
+ion-tab-button[aria-selected="true"] ion-icon {
+  color: #C89B3C !important;
+}
+
+[style*="background: #111"],
+[style*="background:#111"],
+[style*="background: #1f1f1f"],
+[style*="background:#1f1f1f"],
+[style*="background: #171717"],
+[style*="background:#171717"] {
+  color: #F6F2EC !important;
+}
+
+ion-button[style*="#D2A43A"],
+button[style*="#D2A43A"] {
+  color: #111111 !important;
+}
+
+.passenger-request-content ion-item,
+.request-ride-page ion-item {
+  --background: rgba(36,36,36,.98) !important;
+  --color: #F6F2EC !important;
+  border-color: rgba(200,155,60,.35) !important;
+  box-shadow: 0 10px 24px rgba(0,0,0,.18);
+}
+
+.driver-requests-content ion-card,
+.driver-requests-content .request-card,
+.driver-requests-content .ride-request-card {
+  filter: none !important;
+  opacity: 1 !important;
+}
+
+.driver-requests-content *,
+.passenger-request-content *,
+.passenger-trips-content * {
+  opacity: unset;
+}
+
+.dark-muted,
+.rapago-muted,
+.driver-requests-content ion-note,
+.passenger-request-content ion-note {
+  color: rgba(246,242,236,.72) !important;
+}
+
+@media (max-width: 480px) {
+  ion-content {
+    --background:
+      linear-gradient(180deg, rgba(26,26,26,.46) 0%, rgba(26,26,26,.64) 48%, rgba(26,26,26,.86) 100%),
+      url("./img/imgen-rapanui2.jpeg") no-repeat center center / cover fixed !important;
+  }
+
+  ion-card {
+    border-radius: 22px !important;
+  }
+
+  ion-item {
+    min-height: 54px !important;
+  }
+}
+

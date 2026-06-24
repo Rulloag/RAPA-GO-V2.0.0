@@ -99,6 +99,8 @@ type MapPointMovedPayload = {
   address?: string;
 };
 
+type PaymentMethod = "cash" | "card" | null;
+
 declare global {
   interface Window {
     google?: typeof google;
@@ -1448,7 +1450,7 @@ function LegalCompactSection({ token }: { token: string }): JSX.Element {
         }}
       >
         <IonIcon icon={shieldCheckmarkOutline} style={{ color: "#2BA84A" }} />
-        Documentos legales aceptados
+        Forma de pago
       </div>
     );
   }
@@ -1509,6 +1511,14 @@ function LegalCompactSection({ token }: { token: string }): JSX.Element {
   );
 }
 
+
+function limitRideNotes(value: string): string {
+  return value
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 500);
+}
+
 export default function RequestRidePage(): JSX.Element {
   const { session } = useAuth();
   const history = useHistory();
@@ -1532,6 +1542,8 @@ export default function RequestRidePage(): JSX.Element {
   const [pickerTarget, setPickerTarget] = useState<PickerTarget | null>(null);
 
   const [notesInput, setNotesInput] = useState("");
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>(null);
+  const [showPaymentBox, setShowPaymentBox] = useState(false);
   const [rideMode, setRideMode] = useState<RideMode>("now");
   const [scheduledAt, setScheduledAt] = useState("");
   const [flightNumber, setFlightNumber] = useState("");
@@ -1790,6 +1802,30 @@ export default function RequestRidePage(): JSX.Element {
     };
   }
 
+
+  function getPaymentLabel(method: PaymentMethod): string {
+    if (method === "cash") return "Efectivo";
+    if (method === "card") return "Tarjeta / Webpay";
+    return "Pendiente";
+  }
+
+  function handleOpenPaymentBox(): void {
+    setSubmitError(null);
+    setShowPaymentBox(true);
+  }
+
+  function handleSelectPayment(method: Exclude<PaymentMethod, null>): void {
+    setPaymentMethod(method);
+    setShowPaymentBox(false);
+
+    if (method === "card") {
+      setSubmitError("Pago con tarjeta / Webpay estará disponible en la siguiente etapa. Por ahora selecciona efectivo para solicitar el viaje.");
+      return;
+    }
+
+    setSubmitError(null);
+  }
+
   async function handleRequest(): Promise<void> {
     if (!session?.accessToken) return;
 
@@ -1805,11 +1841,19 @@ export default function RequestRidePage(): JSX.Element {
       return;
     }
 
+    if (paymentMethod !== "cash") {
+      setShowPaymentBox(true);
+      setSubmitError("Antes de solicitar el viaje debes elegir la forma de pago. Por ahora solo efectivo permite continuar.");
+      return;
+    }
+
     setSubmitting(true);
     setSubmitError(null);
 
     try {
       const notes: string[] = [];
+
+      notes.push(`Forma de pago seleccionada: ${getPaymentLabel(paymentMethod)}.`);
 
       if (rideMode === "scheduled") {
         notes.push(`Viaje programado para: ${scheduledAt}.`);
@@ -1853,7 +1897,7 @@ export default function RequestRidePage(): JSX.Element {
       };
 
       if (notes.length > 0) {
-        input.notes = notes.join(" ");
+        input.notes = limitRideNotes(notes.join(" "));
       }
 
       await ridesService.createRideRequest(
@@ -1871,6 +1915,8 @@ export default function RequestRidePage(): JSX.Element {
       setOriginSuggestions([]);
       setDestSuggestions([]);
       setRideMode("now");
+      setPaymentMethod(null);
+      setShowPaymentBox(false);
 
       history.push("/passenger/trips");
     } catch (err) {
@@ -1882,11 +1928,10 @@ export default function RequestRidePage(): JSX.Element {
     }
   }
 
-  const canRequest =
-    (!!originPoint || !!originInput.trim()) &&
+  const canRequest = ((!!originPoint || !!originInput.trim()) &&
     (!!destinationPoint || !!destInput.trim()) &&
     (rideMode === "now" || !!scheduledAt) &&
-    !submitting;
+    !submitting) && paymentMethod === "cash";
 
   const mapOrigin = useMemo(
     () => ({
@@ -2234,9 +2279,9 @@ return (
             >
               <IonTextarea
                 value={notesInput}
-                placeholder="Ej: Llevar maletas grandes"
+                placeholder="Ej: Maletas grandes"
                 rows={3}
-                maxlength={500}
+                maxlength={180}
                 onIonInput={(event) =>
                   setNotesInput(String(event.detail.value ?? ""))
                 }
@@ -2247,6 +2292,109 @@ return (
               <LegalCompactSection token={session.accessToken} />
             )}
 
+            <div
+              style={{
+                margin: "8px 0 16px",
+                borderRadius: "18px",
+                border: "1px solid rgba(200,155,60,.38)",
+                background: "rgba(31,31,31,.96)",
+                boxShadow: "0 14px 34px rgba(0,0,0,.22)",
+                overflow: "hidden",
+              }}
+            >
+              <div
+                style={{
+                  padding: "14px",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  gap: "12px",
+                }}
+              >
+                <div>
+                  <div style={{ color: "#D9C3A0", fontWeight: 950, fontSize: ".82rem", letterSpacing: ".25px" }}>
+                    FORMA DE PAGO
+                  </div>
+                  <div style={{ color: "#F6F2EC", fontWeight: 950, fontSize: "1rem", marginTop: 4 }}>
+                    {getPaymentLabel(paymentMethod)}
+                  </div>
+                  <div style={{ color: "rgba(246,242,236,.62)", fontSize: ".75rem", marginTop: 3, lineHeight: 1.35 }}>
+                    Debes elegir pago antes de solicitar el viaje.
+                  </div>
+                </div>
+
+                <IonButton
+                  size="small"
+                  onClick={handleOpenPaymentBox}
+                  style={
+                    {
+                      "--background": "linear-gradient(135deg, #D8A83E, #F0D9AA)",
+                      "--color": "#111111",
+                      "--border-radius": "999px",
+                      fontWeight: 950,
+                    } as CSSProperties
+                  }
+                >
+                  Pagar viaje
+                </IonButton>
+              </div>
+
+              {showPaymentBox && (
+                <div
+                  style={{
+                    margin: "0 12px 12px",
+                    padding: "12px",
+                    borderRadius: "16px",
+                    background: "rgba(246,242,236,.98)",
+                    border: "1px solid rgba(200,155,60,.30)",
+                    color: "#111111",
+                  }}
+                >
+                  <div style={{ fontWeight: 950, fontSize: ".95rem", marginBottom: 6 }}>
+                    ¿Cómo quieres pagar?
+                  </div>
+                  <div style={{ color: "#555", fontSize: ".78rem", fontWeight: 800, lineHeight: 1.35, marginBottom: 12 }}>
+                   Proxima version
+                  </div>
+
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                    <IonButton
+                      expand="block"
+                      onClick={() => handleSelectPayment("cash")}
+                      style={
+                        {
+                          "--background": "#22c55e",
+                          "--color": "#111111",
+                          "--border-radius": "14px",
+                          height: "46px",
+                          fontWeight: 950,
+                        } as CSSProperties
+                      }
+                    >
+                      Efectivo
+                    </IonButton>
+
+                    <IonButton
+                      expand="block"
+                      fill="outline"
+                      onClick={() => handleSelectPayment("card")}
+                      style={
+                        {
+                          "--border-color": "rgba(17,17,17,.28)",
+                          "--color": "#111111",
+                          "--border-radius": "14px",
+                          height: "46px",
+                          fontWeight: 950,
+                        } as CSSProperties
+                      }
+                    >
+                      Tarjeta
+                    </IonButton>
+                  </div>
+                </div>
+              )}
+            </div>
+
             {submitError && (
               <IonText color="danger">
                 <p style={{ fontWeight: 700, fontSize: ".84rem" }}>
@@ -2255,10 +2403,16 @@ return (
               </IonText>
             )}
 
-            <IonButton
+                        {paymentMethod !== "cash" && (
+              <div style={{ color: "#D9C3A0", fontSize: ".76rem", fontWeight: 900, margin: "0 2px 10px" }}>
+                Selecciona efectivo en “Pagar viaje” para activar la solicitud.
+              </div>
+            )}
+
+<IonButton
               expand="block"
               onClick={() => void handleRequest()}
-              disabled={!canRequest}
+              disabled={!canRequest || paymentMethod !== "cash" || submitting}
               style={
                 {
                   "--background": "#D2A43A",

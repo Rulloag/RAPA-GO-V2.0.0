@@ -79,20 +79,89 @@ function cleanRideNotes(notes: string | null | undefined): string | null {
     .trim() || null;
 }
 
-function getDemoDriverPoint(pickup: { lat: number; lng: number } | null): { lat: number; lng: number } | null {
-  if (!pickup) return null;
+type DriverLivePoint = {
+  lat: number;
+  lng: number;
+  heading: number | null;
+  speed: number | null;
+  accuracy: number | null;
+  updatedAt: string | null;
+};
 
-  // Simulación visual para desarrollo hasta persistir GPS real del conductor en backend.
+type RideLiveResponse = {
+  rideId: string;
+  status: string;
+  driver: DriverLivePoint | null;
+};
+
+function getApiBaseUrl(): string {
+  return (import.meta.env["VITE_API_BASE_URL"] as string | undefined) ?? "/api";
+}
+
+function buildApiUrl(path: string): string {
+  const baseUrl = getApiBaseUrl().replace(/\/$/, "");
+  const cleanPath = path.startsWith("/") ? path : `/${path}`;
+
+  if (baseUrl.endsWith("/api") && cleanPath.startsWith("/api/")) {
+    return `${baseUrl}${cleanPath.slice(4)}`;
+  }
+
+  return `${baseUrl}${cleanPath}`;
+}
+
+async function fetchRideLiveDriverPoint(
+  token: string,
+  rideId: string,
+): Promise<DriverLivePoint | null> {
+  const response = await fetch(buildApiUrl(`/api/rides/${encodeURIComponent(rideId)}/live`), {
+    method: "GET",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+  });
+
+  if (response.status === 404 || response.status === 204) return null;
+
+  if (!response.ok) {
+    throw new Error("No se pudo obtener la ubicación real del conductor.");
+  }
+
+  const data = (await response.json()) as RideLiveResponse;
+
+  if (!data.driver) return null;
+
+  const lat = Number(data.driver.lat);
+  const lng = Number(data.driver.lng);
+
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+
   return {
-    lat: pickup.lat - 0.0048,
-    lng: pickup.lng - 0.0038,
+    lat,
+    lng,
+    heading: data.driver.heading ?? null,
+    speed: data.driver.speed ?? null,
+    accuracy: data.driver.accuracy ?? null,
+    updatedAt: data.driver.updatedAt ?? null,
   };
 }
 
+function isValidDriverPoint(point: DriverLivePoint | null): point is DriverLivePoint {
+  return Boolean(point && Number.isFinite(point.lat) && Number.isFinite(point.lng));
+}
+
+
 function getDriverPointForPassengerMap(
   ride: RideRequestData,
-  pickup: { lat: number; lng: number } | null,
+  liveDriverPoint: DriverLivePoint | null,
 ): { lat: number; lng: number } | null {
+  if (isValidDriverPoint(liveDriverPoint)) {
+    return {
+      lat: liveDriverPoint.lat,
+      lng: liveDriverPoint.lng,
+    };
+  }
+
   const withLocation = ride as RideRequestData & {
     driverLat?: number | null;
     driverLng?: number | null;
@@ -103,18 +172,14 @@ function getDriverPointForPassengerMap(
   const lat = withLocation.driverLat ?? withLocation.driverLatitude ?? null;
   const lng = withLocation.driverLng ?? withLocation.driverLongitude ?? null;
 
-  if (lat != null && lng != null && Number.isFinite(lat) && Number.isFinite(lng)) {
+  if (lat != null && lng != null && Number.isFinite(Number(lat)) && Number.isFinite(Number(lng))) {
     return {
       lat: Number(lat),
       lng: Number(lng),
     };
   }
 
-  if (ride.status === "driver_arrived") {
-    return pickup;
-  }
-
-  return getDemoDriverPoint(pickup);
+  return null;
 }
 
 function rideStatusTitle(status: string): string {
@@ -142,9 +207,11 @@ function rideStatusSubtitle(ride: RideRequestData): string {
 
 function PassengerLiveRouteMap({
   ride,
+  token,
   height = 300,
 }: {
   ride: RideRequestData;
+  token: string;
   height?: number;
 }): JSX.Element {
   const mapElementRef = useRef<HTMLDivElement | null>(null);
@@ -163,6 +230,9 @@ function PassengerLiveRouteMap({
   const lastDriverPointRef = useRef<{ lat: number; lng: number } | null>(null);
 
   const [mapReady, setMapReady] = useState(false);
+  const [liveDriverPoint, setLiveDriverPoint] = useState<DriverLivePoint | null>(null);
+  const [liveDriverError, setLiveDriverError] = useState<string | null>(null);
+  const [lastLiveUpdate, setLastLiveUpdate] = useState<Date | null>(null);
 
   const nav = extractPassengerRideNav(ride.notes);
 
@@ -181,7 +251,7 @@ function PassengerLiveRouteMap({
       ? { lat: nav.destinationLat, lng: nav.destinationLng }
       : null;
 
-  const driverPoint = getDriverPointForPassengerMap(ride, pickup);
+  const driverPoint = getDriverPointForPassengerMap(ride, liveDriverPoint);
 
   const routeOrigin = ride.status === "in_progress" ? pickup : driverPoint;
   const routeDestination = ride.status === "in_progress" ? destination : pickup;
@@ -293,6 +363,55 @@ function PassengerLiveRouteMap({
       didFitBoundsRef.current = true;
     }
   }
+
+
+  useEffect(() => {
+    const shouldTrackDriver = ["accepted", "driver_en_route", "driver_arrived", "in_progress"].includes(ride.status);
+
+    if (!token || !shouldTrackDriver) {
+      setLiveDriverPoint(null);
+      setLiveDriverError(null);
+      setLastLiveUpdate(null);
+      return;
+    }
+
+    let stopped = false;
+
+    async function loadLiveDriver() {
+      try {
+        const point = await fetchRideLiveDriverPoint(token, ride.id);
+
+        if (stopped) return;
+
+        setLiveDriverPoint(point);
+        setLastLiveUpdate(point ? new Date() : null);
+        setLiveDriverError(point ? null : "Esperando señal GPS real del conductor.");
+      } catch (err) {
+        if (stopped) return;
+
+        setLiveDriverPoint(null);
+        setLastLiveUpdate(null);
+        setLiveDriverError(
+          err instanceof Error
+            ? err.message
+            : "No se pudo ver la ubicación real del conductor.",
+        );
+      }
+    }
+
+    void loadLiveDriver();
+
+    // Producción: actualizamos solo la posición del conductor.
+    // La ruta NO se recalcula en cada actualización para evitar el parpadeo del mapa.
+    const timerId = window.setInterval(() => {
+      void loadLiveDriver();
+    }, 6000);
+
+    return () => {
+      stopped = true;
+      window.clearInterval(timerId);
+    };
+  }, [token, ride.id, ride.status]);
 
   useEffect(() => {
     let cancelled = false;
@@ -426,20 +545,20 @@ function PassengerLiveRouteMap({
     }
 
     const icon = {
-      path: google.maps.SymbolPath.CIRCLE,
-      scale: 17,
+      path: google.maps.SymbolPath.FORWARD_CLOSED_ARROW,
+      scale: 7,
       fillColor: "#2382ff",
       fillOpacity: 1,
       strokeColor: "#ffffff",
       strokeWeight: 4,
+      rotation: liveDriverPoint?.heading ?? 0,
     };
 
     if (!driverMarkerRef.current) {
       driverMarkerRef.current = new google.maps.Marker({
         map,
         position: driverPoint,
-        title: "Conductor",
-        label: { text: "▲", color: "#ffffff", fontSize: "18px", fontWeight: "900" },
+        title: "Conductor en tiempo real",
         icon,
         zIndex: 40,
       });
@@ -452,14 +571,9 @@ function PassengerLiveRouteMap({
     const previous = lastDriverPointRef.current;
 
     driverMarkerRef.current.setMap(map);
-    driverMarkerRef.current.setTitle("Conductor");
+    driverMarkerRef.current.setTitle("Conductor en tiempo real");
     driverMarkerRef.current.setIcon(icon);
-    driverMarkerRef.current.setLabel({
-      text: "▲",
-      color: "#ffffff",
-      fontSize: "18px",
-      fontWeight: "900",
-    });
+    driverMarkerRef.current.setLabel(null);
 
     if (previous) {
       smoothMoveDriverMarker(driverMarkerRef.current, previous, driverPoint);
@@ -483,8 +597,8 @@ function PassengerLiveRouteMap({
 
     const routeKey = JSON.stringify({
       status: ride.status,
-      originLat: routeOrigin?.lat ?? null,
-      originLng: routeOrigin?.lng ?? null,
+      // Importante: no incluimos la posición viva del conductor en la llave.
+      // Así el marcador se mueve, pero la ruta no se redibuja a cada actualización.
       destinationLat: routeDestination?.lat ?? null,
       destinationLng: routeDestination?.lng ?? null,
     });
@@ -583,7 +697,7 @@ function PassengerLiveRouteMap({
         }}
       >
         <strong>Ruta del viaje</strong>
-        <div><span style={{ color: "#2382ff" }}>●</span> Conductor acercándose</div>
+        <div><span style={{ color: "#2382ff" }}>▲</span> GPS real conductor</div>
         <div><span style={{ color: "#8b5cf6" }}>●</span> Tu ubicación real</div>
         <div><span style={{ color: "#22c55e" }}>●</span> Punto de recogida</div>
         <div><span style={{ color: "#ef4444" }}>●</span> Destino</div>
@@ -594,6 +708,7 @@ function PassengerLiveRouteMap({
 
 function PassengerRideCard({
   ride,
+  token,
   cancelling,
   rated,
   onCancel,
@@ -601,6 +716,7 @@ function PassengerRideCard({
   onRate,
 }: {
   ride: RideRequestData;
+  token: string;
   cancelling: boolean;
   rated: boolean;
   onCancel: (rideId: string) => void;
@@ -628,7 +744,7 @@ const color = RIDE_STATUS_COLOR[ride.status] ?? "medium";
       <IonCardContent style={{ padding: 0 }}>
         <div style={{ position: "relative", background: "#111827" }}>
           {showMap && (
-            <PassengerLiveRouteMap ride={ride} height={300} />
+            <PassengerLiveRouteMap ride={ride} token={token} height={300} />
           )}
 
           {showMap && (
@@ -1082,6 +1198,7 @@ export default function TripsPage(): JSX.Element {
               <PassengerRideCard
                 key={ride.id}
                 ride={ride}
+                token={session?.accessToken ?? ""}
                 cancelling={cancelling === ride.id}
                 rated={ratedIds.has(ride.id)}
                 onCancel={(rideId) => void handleCancel(rideId)}
