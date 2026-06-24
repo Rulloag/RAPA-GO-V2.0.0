@@ -32,11 +32,12 @@ export class UsersRepository {
       const rows = await db
         .insert(users)
         .values({
-          email:     input.email,
-          name:      input.name,
-          role:      input.role,
-          status:    input.status ?? "pending",
-          avatarUrl: input.avatarUrl ?? null,
+          email:      input.email,
+          name:       input.name,
+          role:       input.role,
+          status:     input.status ?? "pending",
+          avatarUrl:  input.avatarUrl ?? null,
+          isVerified: input.isVerified ?? false,
         })
         .returning();
 
@@ -45,6 +46,10 @@ export class UsersRepository {
       return created;
     } catch (err) {
       if (err instanceof AppError) throw err;
+      // PostgreSQL unique_violation — caller can retry with findByEmail
+      if ((err as { code?: string }).code === "23505") {
+        throw new AppError({ code: "AUTH_EMAIL_TAKEN", message: "Email is already registered.", statusCode: 409 });
+      }
       throw AppError.internal(`Failed to create user: ${String(err)}`);
     }
   }

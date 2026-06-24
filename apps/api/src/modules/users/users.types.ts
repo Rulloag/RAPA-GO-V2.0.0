@@ -13,6 +13,7 @@ export interface CreateUserInput {
   role: UserRole;
   status?: UserStatus;
   avatarUrl?: string;
+  isVerified?: boolean;
 }
 
 /** Input for updating user status. */
