@@ -34,7 +34,7 @@ import {
   IonToggle,
   IonToolbar,
 } from "@ionic/react";
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { useHistory } from "react-router-dom";
 import {
   carOutline,
@@ -42,8 +42,6 @@ import {
   chevronForwardOutline,
   compassOutline,
   ellipseOutline,
-  giftOutline,
-  locationOutline,
   mapOutline,
   ticketOutline,
   walletOutline,
@@ -54,14 +52,14 @@ import { TripTimeline } from "../../components/TripTimeline.js";
 import { DriverInfoCard } from "../../components/DriverInfoCard.js";
 import { ModulePlaceholderPage } from "../../components/ModulePlaceholderPage";
 import { passengerProfileService, type PassengerProfileData } from "../../features/passengers/passengerProfile.service.js";
+import { driverProfileService } from "../../features/drivers/driverProfile.service";
 import { useConnectivity } from "../../hooks/useConnectivity";
 import { ROUTE_METADATA } from "../../navigation/routeConfig";
 import { ROUTES } from "../../navigation/routes";
 import { useAuth } from "../../features/auth";
 import { ridesService, type RideRequestData } from "../../features/rides/rides.service";
-import { MapFallback } from "../../components/MapFallback";
-import { RAPA_NUI_PLACES, RAPAGO_CONTACT, WA_MESSAGES, getDistanceBetween, getEstimatedFare } from "@rapa-go/shared";
-import { fareSettingsService } from "../../features/fareSettings/fareSettings.service.js";
+import { MapFallback, loadRapaGoGoogleMaps } from "../../components/MapFallback";
+import { RAPA_NUI_PLACES, RAPAGO_CONTACT, WA_MESSAGES, getDistanceBetween } from "@rapa-go/shared";
 import { WhatsAppButton } from "../../components/WhatsAppButton";
 import { touristService, type GuidePublicData, type TouristServiceData, type ServiceBookingData } from "../../features/tourist/tourist.service.js";
 import { useIonViewWillEnter } from "@ionic/react";
@@ -172,7 +170,55 @@ const RIDE_STATUS_COLOR: Record<string, string> = {
   cancelled:       "danger",
 };
 
-const FREQUENT_DESTINATIONS = ["Aeropuerto", "Anakena", "Tongariki", "Ahu Akivi", "Orongo", "Rano Raraku"];
+
+const PASSENGER_FREQUENT_DESTINATION_NAMES = [
+  "Ahu Tahai",
+  "Playa Pea",
+  "Playa Poko Poko",
+  "Mercado Artesanal Rapa Nui",
+  "Feria Artesanal Hare Umanga",
+  "Caleta Hanga Roa",
+  "Comisaría Rapa Nui",
+  "Iglesia de la Santa Cruz Rapa Nui",
+  "Ahu Huri A Urenga",
+  "Hospital de Hanga Roa",
+  "Jardín Botánico TauKiani",
+];
+
+function normalizeFrequentPlaceName(value: string): string {
+  return value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
+const PASSENGER_FREQUENT_DESTINATION_KEYS =
+  PASSENGER_FREQUENT_DESTINATION_NAMES.map(normalizeFrequentPlaceName);
+
+function isPassengerFrequentDestination(name: string): boolean {
+  const normalizedName = normalizeFrequentPlaceName(name);
+
+  // Se elimina "Tahai" solo y también Mirador/Rano Kau de los frecuentes.
+  if (
+    normalizedName === "tahai" ||
+    normalizedName.includes("mirador rano kau") ||
+    normalizedName.includes("rano kau")
+  ) {
+    return false;
+  }
+
+  return PASSENGER_FREQUENT_DESTINATION_KEYS.some(
+    (allowedName) =>
+      normalizedName === allowedName ||
+      normalizedName.includes(allowedName) ||
+      allowedName.includes(normalizedName),
+  );
+}
+
+
+type PassengerFareType = "resident" | "chilean" | "foreigner";
 
 type StoredRegistrationProfile = {
   name?: string | null;
@@ -182,6 +228,13 @@ type StoredRegistrationProfile = {
   phone?: string | null;
   rut?: string | null;
   birthDate?: string | null;
+  passengerFareType?: PassengerFareType | string | null;
+  farePassengerType?: PassengerFareType | string | null;
+  passengerType?: PassengerFareType | string | null;
+  nationality?: string | null;
+  passengerFareLabel?: string | null;
+  directPassengerFareType?: string | null;
+  directNationality?: string | null;
 };
 
 function readStoredRegistrationProfile(): StoredRegistrationProfile {
@@ -189,10 +242,48 @@ function readStoredRegistrationProfile(): StoredRegistrationProfile {
     const raw = localStorage.getItem("rapago_registration_profile");
     const parsed = raw ? (JSON.parse(raw) as StoredRegistrationProfile) : {};
 
+    const directFareType =
+      localStorage.getItem("rapago_passenger_fare_type") ??
+      localStorage.getItem("rapago_profile_passenger_type") ??
+      localStorage.getItem("rapago_fare_passenger_type") ??
+      localStorage.getItem("rapago_passenger_type") ??
+      localStorage.getItem("farePassengerType") ??
+      localStorage.getItem("passengerType");
+
+    const directNationality =
+      localStorage.getItem("rapago_profile_nationality") ??
+      localStorage.getItem("rapago_nationality") ??
+      localStorage.getItem("nationality");
+
     return {
       ...parsed,
       rut: parsed.rut ?? localStorage.getItem("rapago_profile_rut"),
       phone: parsed.phone ?? localStorage.getItem("rapago_profile_phone"),
+      passengerFareType:
+        parsed.passengerFareType ??
+        parsed.farePassengerType ??
+        parsed.passengerType ??
+        null,
+      farePassengerType:
+        parsed.farePassengerType ??
+        parsed.passengerFareType ??
+        parsed.passengerType ??
+        null,
+      passengerType:
+        parsed.passengerType ??
+        parsed.farePassengerType ??
+        parsed.passengerFareType ??
+        null,
+      nationality:
+        parsed.nationality ??
+        parsed.passengerFareLabel ??
+        null,
+      passengerFareLabel:
+        parsed.passengerFareLabel ??
+        parsed.nationality ??
+        null,
+      directPassengerFareType: directFareType,
+      directNationality,
     };
   } catch {
     return {};
@@ -233,12 +324,16 @@ function safePassengerErrorMessage(message: string | null): string | null {
   if (
     lower.includes("token") ||
     lower.includes("unauthorized") ||
+    lower.includes("forbidden") ||
+    lower.includes("only passengers") ||
+    lower.includes("solo pasajeros") ||
     lower.includes("no autorizado") ||
     lower.includes("sesión expir") ||
     lower.includes("session expired") ||
-    message.includes("401")
+    message.includes("401") ||
+    message.includes("403")
   ) {
-    return "No se pudo conectar con el servidor. La sesión sigue abierta.";
+    return "Tu vista cambió a pasajero, pero el backend aún debe permitir este rol en rutas de pasajero.";
   }
 
   return message;
@@ -250,6 +345,914 @@ function onlyDigits(value: string): string {
 
 function sanitizeText(value: string, max = 150): string {
   return value.replace(/[<>]/g, "").slice(0, max);
+}
+
+function formatClp(value: number | null | undefined): string {
+  if (value == null || !Number.isFinite(Number(value))) return "$0 CLP";
+  return `$${Math.round(Number(value)).toLocaleString("es-CL")} CLP`;
+}
+
+function readAdminFareUsdRate(): number {
+  try {
+    const rawEngine = localStorage.getItem(ADMIN_FARE_ENGINE_STORAGE_KEY);
+    if (rawEngine) {
+      const parsed = JSON.parse(rawEngine) as { usdRate?: number | string | null };
+      const fromEngine = Number(parsed.usdRate);
+      if (Number.isFinite(fromEngine) && fromEngine > 0) return fromEngine;
+    }
+
+    const fromCards = Number(localStorage.getItem(ADMIN_FARE_USD_RATE_STORAGE_KEY));
+    if (Number.isFinite(fromCards) && fromCards > 0) return fromCards;
+  } catch {
+    // Usa el valor seguro por defecto.
+  }
+
+  return DEFAULT_FARE_ENGINE.usdRate;
+}
+
+function formatUsdFromClp(value: number | null | undefined, usdRate = readAdminFareUsdRate()): string {
+  const safeValue = Number(value);
+  const safeRate = Number(usdRate);
+
+  if (!Number.isFinite(safeValue) || safeValue <= 0 || !Number.isFinite(safeRate) || safeRate <= 0) {
+    return "USD 0";
+  }
+
+  const usd = safeValue / safeRate;
+  return `USD ${usd.toLocaleString("es-CL", {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 1,
+  })}`;
+}
+
+type ProntoPagaPaymentData = {
+  urlPay: string;
+  uid: string;
+  reference: string;
+  order: string;
+  amountClp: number;
+  currency: string;
+  country: string;
+};
+
+type CreateProntoPagaPaymentPayload = {
+  rideId: string;
+  amountClp: number;
+  clientName: string;
+  clientEmail: string;
+  clientPhone: string;
+  clientDocument: string;
+};
+
+function getProntoPagaApiBaseUrl(): string {
+  const env = import.meta.env as Record<string, string | undefined>;
+
+  return (
+    env["VITE_API_BASE_URL"] ||
+    env["VITE_API_URL"] ||
+    "http://localhost:3000/api"
+  ).replace(/\/$/, "");
+}
+
+async function parsePassengerApiResponse<T>(response: Response): Promise<T> {
+  const text = await response.text();
+  let json: unknown = null;
+
+  try {
+    json = text ? JSON.parse(text) : null;
+  } catch {
+    json = { message: text };
+  }
+
+  const data = json as { ok?: boolean; data?: unknown; message?: string; error?: string };
+
+  if (!response.ok || data?.ok === false) {
+    throw new Error(
+      data?.message ||
+        data?.error ||
+        `Error HTTP ${response.status}`,
+    );
+  }
+
+  return (data?.data ?? data) as T;
+}
+
+async function createProntoPagaPayment(
+  token: string,
+  payload: CreateProntoPagaPaymentPayload,
+): Promise<ProntoPagaPaymentData> {
+  const response = await fetch(`${getProntoPagaApiBaseUrl()}/payments/prontopaga/create`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify(payload),
+  });
+
+  return parsePassengerApiResponse<ProntoPagaPaymentData>(response);
+}
+
+function readRideIdFromResponse(value: unknown): string | null {
+  if (!value || typeof value !== "object") return null;
+
+  const direct = (value as { id?: unknown }).id;
+  if (typeof direct === "string" && direct.trim()) return direct.trim();
+
+  const data = (value as { data?: unknown }).data;
+  if (data && typeof data === "object") {
+    const dataId = (data as { id?: unknown }).id;
+    if (typeof dataId === "string" && dataId.trim()) return dataId.trim();
+
+    const ride = (data as { ride?: unknown }).ride;
+    if (ride && typeof ride === "object") {
+      const rideId = (ride as { id?: unknown }).id;
+      if (typeof rideId === "string" && rideId.trim()) return rideId.trim();
+    }
+  }
+
+  const ride = (value as { ride?: unknown }).ride;
+  if (ride && typeof ride === "object") {
+    const rideId = (ride as { id?: unknown }).id;
+    if (typeof rideId === "string" && rideId.trim()) return rideId.trim();
+  }
+
+  return null;
+}
+
+function buildProntoPagaClientData(user: unknown): {
+  clientName: string;
+  clientEmail: string;
+  clientPhone: string;
+  clientDocument: string;
+} {
+  const stored = readStoredRegistrationProfile();
+
+  const userName = getUserStringField(user, "name");
+  const firstName = getUserStringField(user, "firstName") ?? stored.firstName ?? "";
+  const lastName = getUserStringField(user, "lastName") ?? stored.lastName ?? "";
+  const composedName = `${firstName} ${lastName}`.trim();
+
+  const clientName =
+    userName ??
+    (composedName || stored.name || "Cliente Rapa Go");
+
+  const clientEmail =
+    getUserStringField(user, "email") ??
+    stored.email ??
+    "cliente@rapago.cl";
+
+  const clientPhone =
+    getUserStringField(user, "phone") ??
+    stored.phone ??
+    localStorage.getItem("rapago_profile_phone") ??
+    "56900000000";
+
+  const clientDocument =
+    getUserStringField(user, "rut") ??
+    stored.rut ??
+    localStorage.getItem("rapago_profile_rut") ??
+    "11111111-1";
+
+  return {
+    clientName,
+    clientEmail,
+    clientPhone,
+    clientDocument,
+  };
+}
+
+function roundFare(value: number): number {
+  return Math.max(0, Math.round(value / 100) * 100);
+}
+
+function toRad(value: number): number {
+  return (value * Math.PI) / 180;
+}
+
+function distanceKmByCoords(
+  a: { lat: number; lng: number },
+  b: { lat: number; lng: number },
+): number {
+  const R = 6371;
+  const dLat = toRad(b.lat - a.lat);
+  const dLng = toRad(b.lng - a.lng);
+  const lat1 = toRad(a.lat);
+  const lat2 = toRad(b.lat);
+  const h =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLng / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(h));
+}
+
+type VehicleFareCategory = "standard" | "xl" | "luggage";
+
+type FareRoundingMode = "ceil" | "nearest" | "none";
+
+type FareEngineFixedDestination = {
+  id: string;
+  title: string;
+  tripType: string;
+  baseResidentClp: number;
+  active: boolean;
+};
+
+type FareEngineConfig = {
+  urban: {
+    includedKm: number;
+    baseMinimumClp: number;
+    baseKmClp: number;
+  };
+  passengerMultipliers: Record<PassengerFareType, number>;
+  vehicleMultipliers: Record<VehicleFareCategory, number>;
+  fixedDestinations: FareEngineFixedDestination[];
+  rounding: {
+    mode: FareRoundingMode;
+    unitClp: number;
+  };
+  usdRate: number;
+  updatedAt?: string;
+};
+
+type AdminFareCardRule = {
+  id: string;
+  kind: "variable" | "fixed";
+  title: string;
+  minimumClp: number | null;
+  kmClp: number | null;
+  fixedClp: number | null;
+  description: string;
+  active: boolean;
+};
+
+const ADMIN_FARE_ENGINE_STORAGE_KEY = "rapago_admin_fare_engine_v1";
+const ADMIN_FARE_RULES_STORAGE_KEY = "rapago_admin_fare_cards_rules_v1";
+const ADMIN_FARE_USD_RATE_STORAGE_KEY = "rapago_admin_fare_cards_usd_rate_v1";
+
+const DEFAULT_FARE_ENGINE: FareEngineConfig = {
+  urban: {
+    includedKm: 2,
+    baseMinimumClp: 5000,
+    baseKmClp: 1000,
+  },
+  passengerMultipliers: {
+    resident: 1,
+    chilean: 1.13,
+    foreigner: 1.2,
+  },
+  vehicleMultipliers: {
+    standard: 1,
+    xl: 1.4,
+    luggage: 1.25,
+  },
+  fixedDestinations: [
+    {
+      id: "anakena",
+      title: "Anakena",
+      tripType: "Ida y vuelta",
+      baseResidentClp: 38000,
+      active: true,
+    },
+    {
+      id: "terevaka",
+      title: "Terevaka",
+      tripType: "Ida y vuelta",
+      baseResidentClp: 20000,
+      active: true,
+    },
+  ],
+  rounding: {
+    mode: "ceil",
+    unitClp: 100,
+  },
+  usdRate: 1000,
+};
+
+const DEFAULT_PASSENGER_FARE_RULES: AdminFareCardRule[] = [
+  {
+    id: "general_minimum",
+    kind: "variable",
+    title: "Tarifa general mínima (0 a 2 kms)",
+    minimumClp: 5000,
+    kmClp: null,
+    fixedClp: null,
+    description: "Tarifa mínima urbana. Incluye los primeros 2 km.",
+    active: true,
+  },
+  {
+    id: "general_km",
+    kind: "variable",
+    title: "Tarifa general por km (con mínimo)",
+    minimumClp: null,
+    kmClp: 1000,
+    fixedClp: null,
+    description: "Valor por km adicional después del mínimo.",
+    active: true,
+  },
+  {
+    id: "resident_standard",
+    kind: "variable",
+    title: "Tarifa residentes",
+    minimumClp: 5000,
+    kmClp: 1000,
+    fixedClp: null,
+    description: "Residente · vehículo estándar.",
+    active: true,
+  },
+  {
+    id: "chilean_standard",
+    kind: "variable",
+    title: "Tarifa chilenos",
+    minimumClp: 5650,
+    kmClp: 1130,
+    fixedClp: null,
+    description: "Chileno no residente · vehículo estándar.",
+    active: true,
+  },
+  {
+    id: "foreigner_standard",
+    kind: "variable",
+    title: "Tarifa extranjeros",
+    minimumClp: 6000,
+    kmClp: 1200,
+    fixedClp: null,
+    description: "Extranjero · vehículo estándar.",
+    active: true,
+  },
+  {
+    id: "xl_resident",
+    kind: "variable",
+    title: "Tarifa vehículo XL residentes",
+    minimumClp: 7000,
+    kmClp: 1400,
+    fixedClp: null,
+    description: "Residente · vehículo XL.",
+    active: true,
+  },
+  {
+    id: "xl_chilean",
+    kind: "variable",
+    title: "Tarifa vehículo XL chilenos",
+    minimumClp: 7910,
+    kmClp: 1582,
+    fixedClp: null,
+    description: "Chileno no residente · vehículo XL.",
+    active: true,
+  },
+  {
+    id: "xl_foreigner",
+    kind: "variable",
+    title: "Tarifa vehículo XL extranjeros",
+    minimumClp: 8400,
+    kmClp: 1680,
+    fixedClp: null,
+    description: "Extranjero · vehículo XL.",
+    active: true,
+  },
+  {
+    id: "luggage_resident",
+    kind: "variable",
+    title: "Tarifa vehículo extra maletas residentes",
+    minimumClp: 6250,
+    kmClp: 1250,
+    fixedClp: null,
+    description: "Residente · vehículo con espacio extra para maletas.",
+    active: true,
+  },
+  {
+    id: "luggage_chilean",
+    kind: "variable",
+    title: "Tarifa vehículo extra maletas chilenos",
+    minimumClp: 7062.5,
+    kmClp: 1412.5,
+    fixedClp: null,
+    description: "Chileno no residente · vehículo con espacio extra para maletas.",
+    active: true,
+  },
+  {
+    id: "luggage_foreigner",
+    kind: "variable",
+    title: "Tarifa vehículo extra maletas extranjeros",
+    minimumClp: 7500,
+    kmClp: 1500,
+    fixedClp: null,
+    description: "Extranjero · vehículo con espacio extra para maletas.",
+    active: true,
+  },
+  {
+    id: "anakena_resident_roundtrip",
+    kind: "fixed",
+    title: "Tarifa destino Anakena residentes ida y vuelta",
+    minimumClp: null,
+    kmClp: null,
+    fixedClp: 38000,
+    description: "Destino fijo Anakena · residente.",
+    active: true,
+  },
+  {
+    id: "anakena_chilean_roundtrip",
+    kind: "fixed",
+    title: "Tarifa destino Anakena chilenos ida y vuelta",
+    minimumClp: null,
+    kmClp: null,
+    fixedClp: 42940,
+    description: "Destino fijo Anakena · chileno no residente.",
+    active: true,
+  },
+  {
+    id: "anakena_foreigner_roundtrip",
+    kind: "fixed",
+    title: "Tarifa destino Anakena extranjeros ida y vuelta",
+    minimumClp: null,
+    kmClp: null,
+    fixedClp: 45600,
+    description: "Destino fijo Anakena · extranjero.",
+    active: true,
+  },
+  {
+    id: "terevaka_resident_roundtrip",
+    kind: "fixed",
+    title: "Tarifa destino Terevaka residentes ida y vuelta",
+    minimumClp: null,
+    kmClp: null,
+    fixedClp: 20000,
+    description: "Destino fijo Terevaka · residente.",
+    active: true,
+  },
+  {
+    id: "terevaka_chilean_roundtrip",
+    kind: "fixed",
+    title: "Tarifa destino Terevaka chilenos ida y vuelta",
+    minimumClp: null,
+    kmClp: null,
+    fixedClp: 22600,
+    description: "Destino fijo Terevaka · chileno no residente.",
+    active: true,
+  },
+  {
+    id: "terevaka_foreigner_roundtrip",
+    kind: "fixed",
+    title: "Tarifa destino Terevaka extranjeros ida y vuelta",
+    minimumClp: null,
+    kmClp: null,
+    fixedClp: 24000,
+    description: "Destino fijo Terevaka · extranjero.",
+    active: true,
+  },
+];
+
+function normalizePassengerFareType(value: unknown): PassengerFareType | null {
+  const raw = String(value ?? "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .trim();
+
+  if (!raw) return null;
+
+  // IMPORTANTE:
+  // "Chileno no residente" contiene la palabra "residente".
+  // Por eso primero detectamos "no residente" y recién después "residente".
+  if (
+    raw.includes("foreigner") ||
+    raw.includes("extranj") ||
+    raw.includes("turista") ||
+    raw.includes("ingles") ||
+    raw.includes("english")
+  ) {
+    return "foreigner";
+  }
+
+  if (
+    raw.includes("no residente") ||
+    raw.includes("no resident") ||
+    raw.includes("chilean") ||
+    raw.includes("chileno") ||
+    raw === "cl" ||
+    raw === "chile"
+  ) {
+    return "chilean";
+  }
+
+  if (
+    raw.includes("resident") ||
+    raw.includes("residente") ||
+    raw.includes("rapa nui")
+  ) {
+    return "resident";
+  }
+
+  return null;
+}
+
+
+function sameEmail(a?: string | null, b?: string | null): boolean {
+  if (!a || !b) return false;
+  return a.trim().toLowerCase() === b.trim().toLowerCase();
+}
+
+function getUserStringField(user: unknown, key: string): string | null {
+  if (!user || typeof user !== "object") return null;
+
+  const value = (user as Record<string, unknown>)[key];
+  return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+function getUserBooleanField(user: unknown, key: string): boolean | null {
+  if (!user || typeof user !== "object") return null;
+
+  const value = (user as Record<string, unknown>)[key];
+  return typeof value === "boolean" ? value : null;
+}
+
+function readPassengerFareType(user?: unknown): PassengerFareType {
+  const sessionEmail = getUserStringField(user, "email");
+
+  const fromUser =
+    normalizePassengerFareType(getUserStringField(user, "farePassengerType")) ??
+    normalizePassengerFareType(getUserStringField(user, "passengerFareType")) ??
+    normalizePassengerFareType(getUserStringField(user, "passengerType")) ??
+    normalizePassengerFareType(getUserStringField(user, "nationality"));
+
+  if (fromUser) return fromUser;
+
+  if (getUserBooleanField(user, "isResident") === true) return "resident";
+
+  try {
+    const storedProfile = readStoredRegistrationProfile();
+    const storedBelongsToThisUser =
+      !storedProfile.email ||
+      !sessionEmail ||
+      sameEmail(storedProfile.email, sessionEmail);
+
+    if (storedBelongsToThisUser) {
+      const stored =
+        normalizePassengerFareType(storedProfile.nationality) ??
+        normalizePassengerFareType(storedProfile.passengerFareLabel) ??
+        normalizePassengerFareType(storedProfile.farePassengerType) ??
+        normalizePassengerFareType(storedProfile.passengerFareType) ??
+        normalizePassengerFareType(storedProfile.passengerType) ??
+        normalizePassengerFareType(storedProfile.directNationality) ??
+        normalizePassengerFareType(storedProfile.directPassengerFareType);
+
+      if (stored) return stored;
+    }
+
+    const globalStored =
+      normalizePassengerFareType(localStorage.getItem("rapago_passenger_fare_type")) ??
+      normalizePassengerFareType(localStorage.getItem("rapago_profile_passenger_type")) ??
+      normalizePassengerFareType(localStorage.getItem("rapago_fare_passenger_type")) ??
+      normalizePassengerFareType(localStorage.getItem("rapago_profile_nationality")) ??
+      normalizePassengerFareType(localStorage.getItem("rapago_nationality"));
+
+    if (globalStored && storedBelongsToThisUser) return globalStored;
+  } catch {
+    // Si no existe dato guardado, usa residente como valor seguro por defecto.
+  }
+
+  return "resident";
+}
+
+function readAdminFareEngineConfig(): FareEngineConfig | null {
+  try {
+    const raw = localStorage.getItem(ADMIN_FARE_ENGINE_STORAGE_KEY);
+    if (!raw) return null;
+
+    const parsed = JSON.parse(raw) as Partial<FareEngineConfig>;
+    const base = DEFAULT_FARE_ENGINE;
+
+    return {
+      urban: {
+        includedKm: Number(parsed.urban?.includedKm ?? base.urban.includedKm),
+        baseMinimumClp: Number(parsed.urban?.baseMinimumClp ?? base.urban.baseMinimumClp),
+        baseKmClp: Number(parsed.urban?.baseKmClp ?? base.urban.baseKmClp),
+      },
+      passengerMultipliers: {
+        resident: Number(parsed.passengerMultipliers?.resident ?? base.passengerMultipliers.resident),
+        chilean: Number(parsed.passengerMultipliers?.chilean ?? base.passengerMultipliers.chilean),
+        foreigner: Number(parsed.passengerMultipliers?.foreigner ?? base.passengerMultipliers.foreigner),
+      },
+      vehicleMultipliers: {
+        standard: Number(parsed.vehicleMultipliers?.standard ?? base.vehicleMultipliers.standard),
+        xl: Number(parsed.vehicleMultipliers?.xl ?? base.vehicleMultipliers.xl),
+        luggage: Number(parsed.vehicleMultipliers?.luggage ?? base.vehicleMultipliers.luggage),
+      },
+      fixedDestinations:
+        Array.isArray(parsed.fixedDestinations) && parsed.fixedDestinations.length > 0
+          ? parsed.fixedDestinations.map((item, index) => ({
+              id: normalizeFareSearchText(String(item.id ?? item.title ?? `destino_${index + 1}`)).replace(/[^a-z0-9]+/g, "_"),
+              title: String(item.title ?? `Destino ${index + 1}`),
+              tripType: String(item.tripType ?? "Ida y vuelta"),
+              baseResidentClp: Number(item.baseResidentClp ?? 0),
+              active: item.active !== false,
+            }))
+          : base.fixedDestinations,
+      rounding: {
+        mode:
+          parsed.rounding?.mode === "nearest" || parsed.rounding?.mode === "none"
+            ? parsed.rounding.mode
+            : "ceil",
+        unitClp: Math.max(1, Number(parsed.rounding?.unitClp ?? base.rounding.unitClp)),
+      },
+      usdRate: Number(parsed.usdRate ?? base.usdRate),
+      updatedAt: parsed.updatedAt,
+    };
+  } catch {
+    return null;
+  }
+}
+
+function readAdminFareCardRules(): AdminFareCardRule[] {
+  try {
+    const raw = localStorage.getItem(ADMIN_FARE_RULES_STORAGE_KEY);
+    const parsed = raw ? (JSON.parse(raw) as AdminFareCardRule[]) : [];
+
+    if (Array.isArray(parsed) && parsed.length > 0) {
+      const merged = [...parsed];
+
+      for (const fallback of DEFAULT_PASSENGER_FARE_RULES) {
+        if (!merged.some((rule) => rule.id === fallback.id)) merged.push(fallback);
+      }
+
+      return merged;
+    }
+  } catch {
+    // No bloquea la solicitud de viaje.
+  }
+
+  return DEFAULT_PASSENGER_FARE_RULES;
+}
+
+function passengerFareSuffix(type: PassengerFareType): string {
+  if (type === "chilean") return "chilean";
+  if (type === "foreigner") return "foreigner";
+  return "resident";
+}
+
+function vehicleFarePrefix(vehicle: VehicleFareCategory): string {
+  if (vehicle === "xl") return "xl";
+  if (vehicle === "luggage") return "luggage";
+  return "standard";
+}
+
+function vehicleFareLabel(vehicle: VehicleFareCategory): string {
+  if (vehicle === "xl") return "XL";
+  if (vehicle === "luggage") return "Extra maletas";
+  return "Estándar";
+}
+
+function normalizeFareSearchText(value: string): string {
+  return value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase();
+}
+
+function detectFixedDestinationId(originOrDestinationText: string): "anakena" | "terevaka" | null {
+  const normalized = normalizeFareSearchText(originOrDestinationText);
+  if (normalized.includes("anakena")) return "anakena";
+  if (normalized.includes("terevaka") || normalized.includes("tere vaka")) return "terevaka";
+  return null;
+}
+
+function detectEngineFixedDestination(
+  config: FareEngineConfig,
+  originOrDestinationText: string,
+): FareEngineFixedDestination | null {
+  const normalized = normalizeFareSearchText(originOrDestinationText);
+
+  return (
+    config.fixedDestinations.find((destination) => {
+      if (destination.active === false) return false;
+
+      const id = normalizeFareSearchText(destination.id);
+      const title = normalizeFareSearchText(destination.title);
+
+      return (
+        normalized.includes(id) ||
+        normalized.includes(title) ||
+        title.includes(normalized)
+      );
+    }) ?? null
+  );
+}
+
+function findActiveFareRule(rules: AdminFareCardRule[], id: string): AdminFareCardRule | null {
+  return rules.find((rule) => rule.id === id && rule.active !== false) ?? null;
+}
+
+function roundFareByEngine(value: number, config: FareEngineConfig): number {
+  if (!Number.isFinite(value) || value <= 0) return 0;
+
+  const unit = Math.max(1, Math.round(config.rounding.unitClp || 100));
+
+  if (config.rounding.mode === "none") return Math.round(value);
+  if (config.rounding.mode === "nearest") return Math.round(value / unit) * unit;
+
+  // Recomendación inicial: múltiplo superior de $100.
+  return Math.ceil(value / unit) * unit;
+}
+
+function passengerFareMultiplier(type: PassengerFareType): number {
+  if (type === "chilean") return 1.13;
+  if (type === "foreigner") return 1.2;
+  return 1;
+}
+
+function calculateRapaGoFareFromEngine(
+  km: number,
+  minutes: number | undefined,
+  passengerType: PassengerFareType,
+  vehicleCategory: VehicleFareCategory,
+  originOrDestinationText: string,
+  config: FareEngineConfig,
+): {
+  km: number;
+  minutes: number;
+  fare: number;
+  driverEarnings: number;
+  isZoneFare: boolean;
+} {
+  const safeKm = Math.max(0.1, Number.isFinite(km) ? km : 0.1);
+  const safeMinutes = Math.max(4, Math.round(minutes ?? (safeKm / 28) * 60));
+  const fixedDestination = detectEngineFixedDestination(config, originOrDestinationText);
+  const passengerMultiplier = config.passengerMultipliers[passengerType] ?? 1;
+
+  if (fixedDestination) {
+    const exactFixedFare = fixedDestination.baseResidentClp * passengerMultiplier;
+    const fare = roundFareByEngine(exactFixedFare, config);
+
+    return {
+      km: Number(safeKm.toFixed(1)),
+      minutes: safeMinutes,
+      fare,
+      driverEarnings: roundFare(fare * 0.85),
+      isZoneFare: true,
+    };
+  }
+
+  const vehicleMultiplier = config.vehicleMultipliers[vehicleCategory] ?? 1;
+  const minimumFare =
+    config.urban.baseMinimumClp * passengerMultiplier * vehicleMultiplier;
+  const perKm =
+    config.urban.baseKmClp * passengerMultiplier * vehicleMultiplier;
+  const additionalKm = Math.max(0, safeKm - config.urban.includedKm);
+  const exactFare = minimumFare + additionalKm * perKm;
+  const fare = roundFareByEngine(exactFare, config);
+
+  return {
+    km: Number(safeKm.toFixed(1)),
+    minutes: safeMinutes,
+    fare,
+    driverEarnings: roundFare(fare * 0.85),
+    isZoneFare: false,
+  };
+}
+
+function calculateRapaGoFareFromCompatibilityRules(
+  km: number,
+  minutes: number | undefined,
+  passengerType: PassengerFareType,
+  vehicleCategory: VehicleFareCategory,
+  originOrDestinationText: string,
+): {
+  km: number;
+  minutes: number;
+  fare: number;
+  driverEarnings: number;
+  isZoneFare: boolean;
+} {
+  const safeKm = Math.max(0.1, Number.isFinite(km) ? km : 0.1);
+  const safeMinutes = Math.max(4, Math.round(minutes ?? (safeKm / 28) * 60));
+  const rules = readAdminFareCardRules();
+  const suffix = passengerFareSuffix(passengerType);
+  const fixedDestination = detectFixedDestinationId(originOrDestinationText);
+
+  if (fixedDestination) {
+    const specificFixedRule = findActiveFareRule(
+      rules,
+      `${fixedDestination}_${suffix}_roundtrip`,
+    );
+
+    if (specificFixedRule?.fixedClp != null && specificFixedRule.fixedClp > 0) {
+      const fare = Math.ceil(specificFixedRule.fixedClp / 100) * 100;
+      return {
+        km: Number(safeKm.toFixed(1)),
+        minutes: safeMinutes,
+        fare,
+        driverEarnings: roundFare(fare * 0.85),
+        isZoneFare: true,
+      };
+    }
+
+    const residentFixedRule = findActiveFareRule(
+      rules,
+      `${fixedDestination}_resident_roundtrip`,
+    );
+
+    if (residentFixedRule?.fixedClp != null && residentFixedRule.fixedClp > 0) {
+      const fare = Math.ceil((residentFixedRule.fixedClp * passengerFareMultiplier(passengerType)) / 100) * 100;
+      return {
+        km: Number(safeKm.toFixed(1)),
+        minutes: safeMinutes,
+        fare,
+        driverEarnings: roundFare(fare * 0.85),
+        isZoneFare: true,
+      };
+    }
+  }
+
+  const vehiclePrefix = vehicleFarePrefix(vehicleCategory);
+  const ruleId =
+    vehiclePrefix === "standard"
+      ? `${suffix}_standard`
+      : `${vehiclePrefix}_${suffix}`;
+
+  const specificVariableRule = findActiveFareRule(rules, ruleId);
+
+  if (specificVariableRule?.minimumClp != null || specificVariableRule?.kmClp != null) {
+    const minimumFare = Math.max(0, Number(specificVariableRule.minimumClp ?? 5000));
+    const perKm = Math.max(0, Number(specificVariableRule.kmClp ?? 1000));
+    const additionalKm = Math.max(0, safeKm - 2);
+    const fare = Math.ceil((minimumFare + additionalKm * perKm) / 100) * 100;
+
+    return {
+      km: Number(safeKm.toFixed(1)),
+      minutes: safeMinutes,
+      fare,
+      driverEarnings: roundFare(fare * 0.85),
+      isZoneFare: false,
+    };
+  }
+
+  const generalMinimumRule = findActiveFareRule(rules, "general_minimum");
+  const generalKmRule = findActiveFareRule(rules, "general_km");
+  const minimumFare =
+    Math.max(0, Number(generalMinimumRule?.minimumClp ?? 5000)) *
+    passengerFareMultiplier(passengerType);
+  const perKm =
+    Math.max(0, Number(generalKmRule?.kmClp ?? 1000)) *
+    passengerFareMultiplier(passengerType);
+  const additionalKm = Math.max(0, safeKm - 2);
+  const fare = Math.ceil((minimumFare + additionalKm * perKm) / 100) * 100;
+
+  return {
+    km: Number(safeKm.toFixed(1)),
+    minutes: safeMinutes,
+    fare,
+    driverEarnings: roundFare(fare * 0.85),
+    isZoneFare: false,
+  };
+}
+
+function calculateRapaGoFare(
+  km: number,
+  minutes?: number,
+  passengerType: PassengerFareType = "resident",
+  originOrDestinationText = "",
+  vehicleCategory: VehicleFareCategory = "standard",
+): {
+  km: number;
+  minutes: number;
+  fare: number;
+  driverEarnings: number;
+  isZoneFare: boolean;
+} {
+  const engineConfig = readAdminFareEngineConfig();
+
+  if (engineConfig) {
+    return calculateRapaGoFareFromEngine(
+      km,
+      minutes,
+      passengerType,
+      vehicleCategory,
+      originOrDestinationText,
+      engineConfig,
+    );
+  }
+
+  return calculateRapaGoFareFromCompatibilityRules(
+    km,
+    minutes,
+    passengerType,
+    vehicleCategory,
+    originOrDestinationText,
+  );
+}
+
+function getCoordsFromPlaceId(placeId: string): { lat: number; lng: number } | null {
+  const place = RAPA_NUI_PLACES.find((p) => p.id === placeId) as
+    | ({ lat?: number | null; lng?: number | null; latitude?: number | null; longitude?: number | null })
+    | undefined;
+
+  if (!place) return null;
+
+  const lat = place.lat ?? place.latitude ?? null;
+  const lng = place.lng ?? place.longitude ?? null;
+
+  if (lat == null || lng == null) return null;
+
+  return { lat: Number(lat), lng: Number(lng) };
 }
 
 
@@ -432,22 +1435,62 @@ export function PassengerHomePage(): JSX.Element {
             </div>
           </div>
 
-          {/* ── Destinos frecuentes ── */}
+          {/* ── Noticias y recomendaciones ── */}
           <div style={{ marginTop: "24px" }}>
-            <div style={{ fontWeight: 700, fontSize: "1rem", marginBottom: "10px", color: "var(--ion-text-color)" }}>
-              Destinos frecuentes
+            <div style={{ fontWeight: 800, fontSize: "1rem", marginBottom: "10px", color: "var(--ion-text-color)" }}>
+              Noticias Rapa Go
             </div>
-            <div style={{ display: "flex", gap: "8px", overflowX: "auto", paddingBottom: "4px" }}>
-              {FREQUENT_DESTINATIONS.map((dest) => (
-                <IonChip
-                  key={dest}
-                  style={{ flexShrink: 0, "--background": "var(--ion-color-light)", fontSize: "0.8rem" }}
-                  onClick={() => history.push(ROUTES.PASSENGER.REQUEST_RIDE)}
-                >
-                  <IonIcon icon={locationOutline} style={{ marginRight: "4px", fontSize: "0.9rem" }} />
-                  <IonLabel>{dest}</IonLabel>
-                </IonChip>
-              ))}
+
+            <div style={{ display: "flex", gap: "10px", overflowX: "auto", paddingBottom: "4px" }}>
+              <IonCard
+                button
+                style={{
+                  minWidth: "260px",
+                  margin: 0,
+                  borderRadius: "18px",
+                  background: "linear-gradient(135deg,#F6F2EC,#ECD49A)",
+                  color: "#111",
+                  boxShadow: "0 12px 28px rgba(0,0,0,.18)",
+                }}
+                onClick={() => history.push(ROUTES.PASSENGER.GUIDES)}
+              >
+                <IonCardContent style={{ padding: "14px" }}>
+                  <div style={{ display: "flex", gap: "10px", alignItems: "center" }}>
+                    <IonIcon icon={compassOutline} style={{ fontSize: "1.7rem", color: "#C5532F", flexShrink: 0 }} />
+                    <div>
+                      <div style={{ fontWeight: 950, fontSize: ".92rem" }}>Recomendados para turismo</div>
+                      <div style={{ marginTop: 4, color: "rgba(17,17,17,.66)", fontSize: ".76rem", lineHeight: 1.35 }}>
+                        Anakena, Tongariki, Orongo y Rano Raraku ahora van en Tours, no en solicitud de viaje.
+                      </div>
+                    </div>
+                  </div>
+                </IonCardContent>
+              </IonCard>
+
+              <IonCard
+                button
+                style={{
+                  minWidth: "240px",
+                  margin: 0,
+                  borderRadius: "18px",
+                  background: "linear-gradient(135deg,#111111,#8F3F25)",
+                  color: "#F6F2EC",
+                  boxShadow: "0 12px 28px rgba(0,0,0,.20)",
+                }}
+                onClick={() => history.push(ROUTES.PASSENGER.EVENTS)}
+              >
+                <IonCardContent style={{ padding: "14px" }}>
+                  <div style={{ display: "flex", gap: "10px", alignItems: "center" }}>
+                    <IonIcon icon={ticketOutline} style={{ fontSize: "1.7rem", color: "#F8D879", flexShrink: 0 }} />
+                    <div>
+                      <div style={{ fontWeight: 950, fontSize: ".92rem" }}>Eventos y experiencias</div>
+                      <div style={{ marginTop: 4, color: "rgba(246,242,236,.76)", fontSize: ".76rem", lineHeight: 1.35 }}>
+                        Revisa actividades culturales dentro de la app.
+                      </div>
+                    </div>
+                  </div>
+                </IonCardContent>
+              </IonCard>
             </div>
           </div>
 
@@ -504,7 +1547,9 @@ function RequestRidePage(): JSX.Element {
   const [selectedDestId,    setSelectedDestId]    = useState<string>("");
   const [submitting,        setSubmitting]        = useState(false);
   const [submitError,       setSubmitError]       = useState<string | null>(null);
-  const [farePreview,       setFarePreview]       = useState<{ km: number; minutes: number; fare: number; isZoneFare: boolean } | null>(null);
+  const [farePreview,       setFarePreview]       = useState<{ km: number; minutes: number; fare: number; driverEarnings: number; isZoneFare: boolean } | null>(null);
+  const [paymentMethod,     setPaymentMethod]     = useState<"cash" | "card" | null>(null);
+  const [vehicleCategory,   setVehicleCategory]   = useState<VehicleFareCategory>("standard");
 
   const [currentLat,        setCurrentLat]        = useState<number | null>(null);
   const [currentLng,        setCurrentLng]        = useState<number | null>(null);
@@ -512,41 +1557,74 @@ function RequestRidePage(): JSX.Element {
   const [locationError,     setLocationError]     = useState<string | null>(null);
   const [pickupConfirmed,   setPickupConfirmed]   = useState(false);
 
+  const passengerFareType = readPassengerFareType(session?.user);
+
   useEffect(() => {
-    if (!selectedOriginId || !selectedDestId) {
+    const originPoint =
+      currentLat != null && currentLng != null
+        ? { lat: currentLat, lng: currentLng }
+        : selectedOriginId
+          ? getCoordsFromPlaceId(selectedOriginId)
+          : null;
+
+    const destinationPoint = selectedDestId ? getCoordsFromPlaceId(selectedDestId) : null;
+
+    if (!originPoint || !destinationPoint) {
       setFarePreview(null);
+      setPaymentMethod(null);
+      return;
+    }
+
+    const directKm = distanceKmByCoords(originPoint, destinationPoint);
+    const routeKm = Math.max(0.1, directKm * 1.25);
+    const minutes = Math.max(4, Math.round((routeKm / 28) * 60));
+
+    const originName = selectedOriginId
+      ? RAPA_NUI_PLACES.find((p) => p.id === selectedOriginId)?.name ?? originInput
+      : originInput;
+    const destName = selectedDestId
+      ? RAPA_NUI_PLACES.find((p) => p.id === selectedDestId)?.name ?? destInput
+      : destInput;
+
+    const fareContextText = `${originName} ${destName}`;
+    const calculated = calculateRapaGoFare(
+      routeKm,
+      minutes,
+      passengerFareType,
+      fareContextText,
+      vehicleCategory,
+    );
+
+    if (!selectedOriginId || !selectedDestId) {
+      setFarePreview(calculated);
       return;
     }
 
     const dist = getDistanceBetween(selectedOriginId, selectedDestId);
-    if (!dist) {
-      setFarePreview(null);
+
+    if (dist) {
+      setFarePreview(
+        calculateRapaGoFare(
+          dist.km,
+          dist.minutes,
+          passengerFareType,
+          fareContextText,
+          vehicleCategory,
+        ),
+      );
       return;
     }
 
-    const originName = RAPA_NUI_PLACES.find((p) => p.id === selectedOriginId)?.name ?? originInput;
-    const destName   = RAPA_NUI_PLACES.find((p) => p.id === selectedDestId)?.name ?? destInput;
+    setFarePreview(calculated);
+  }, [selectedOriginId, selectedDestId, originInput, destInput, currentLat, currentLng, passengerFareType, vehicleCategory]);
 
-    fareSettingsService
-      .getZoneFares({ zoneFrom: originName, zoneTo: destName })
-      .then((zones) => {
-        const zone = zones.find((z) => z.isActive);
-        if (zone) {
-          setFarePreview({ km: dist.km, minutes: dist.minutes, fare: zone.fare, isZoneFare: true });
-        } else {
-          setFarePreview({ km: dist.km, minutes: dist.minutes, fare: getEstimatedFare(dist.km), isZoneFare: false });
-        }
-      })
-      .catch(() => {
-        setFarePreview({ km: dist.km, minutes: dist.minutes, fare: getEstimatedFare(dist.km), isZoneFare: false });
-      });
-  }, [selectedOriginId, selectedDestId, originInput, destInput]);
-
-  const sortedPlaces = [...RAPA_NUI_PLACES].sort((a, b) => {
-    if (a.isPopular && !b.isPopular) return -1;
-    if (!a.isPopular && b.isPopular) return 1;
-    return a.sortOrder - b.sortOrder;
-  });
+  const sortedPlaces = [...RAPA_NUI_PLACES]
+    .filter((place) => isPassengerFrequentDestination(place.name))
+    .sort((a, b) => {
+      if (a.isPopular && !b.isPopular) return -1;
+      if (!a.isPopular && b.isPopular) return 1;
+      return a.sortOrder - b.sortOrder;
+    });
 
   function getPlaceCoordinates(placeId: string): { lat?: number | null; lng?: number | null } {
     const place = RAPA_NUI_PLACES.find((p) => p.id === placeId) as
@@ -609,7 +1687,7 @@ function RequestRidePage(): JSX.Element {
     );
   }
 
-  async function handleRequest() {
+  async function handleRequest(forcedPaymentMethod?: "cash" | "card") {
     const origin = originInput.trim();
     const dest = destInput.trim();
 
@@ -623,6 +1701,19 @@ function RequestRidePage(): JSX.Element {
       return;
     }
 
+    if (!farePreview) {
+      setSubmitError("No se pudo calcular la tarifa. Selecciona origen, destino y confirma el punto.");
+      return;
+    }
+
+    const selectedPaymentMethod = forcedPaymentMethod ?? paymentMethod;
+
+    if (selectedPaymentMethod === null) {
+      setSubmitError("Selecciona una forma de pago.");
+      return;
+    }
+
+    setPaymentMethod(selectedPaymentMethod);
     setSubmitting(true);
     setSubmitError(null);
 
@@ -630,6 +1721,16 @@ function RequestRidePage(): JSX.Element {
       originText: origin,
       destinationText: dest,
     };
+
+    const isCardPayment = selectedPaymentMethod === "card";
+    const normalizedPaymentMethod = isCardPayment ? "prontopaga_card" : "cash";
+
+    (input as unknown as { estimatedFareClp?: number; paymentMethod?: string }).estimatedFareClp = farePreview.fare;
+    (input as unknown as { estimatedFareClp?: number; paymentMethod?: string }).paymentMethod = normalizedPaymentMethod;
+    (input as unknown as { passengerFareType?: PassengerFareType; farePassengerType?: PassengerFareType }).passengerFareType = passengerFareType;
+    (input as unknown as { passengerFareType?: PassengerFareType; farePassengerType?: PassengerFareType }).farePassengerType = passengerFareType;
+    (input as unknown as { fareVehicleCategory?: VehicleFareCategory; vehicleCategory?: VehicleFareCategory }).fareVehicleCategory = vehicleCategory;
+    (input as unknown as { fareVehicleCategory?: VehicleFareCategory; vehicleCategory?: VehicleFareCategory }).vehicleCategory = vehicleCategory;
 
     const notes: string[] = [];
 
@@ -645,11 +1746,70 @@ function RequestRidePage(): JSX.Element {
     }
 
     notes.push("Punto de partida confirmado por pasajero.");
+    notes.push(`Tarifa RAPA GO calculada: ${farePreview.fare} CLP.`);
+    notes.push(`Kilómetros calculados: ${farePreview.km.toFixed(1)} km.`);
+    notes.push(`Categoría de vehículo: ${vehicleFareLabel(vehicleCategory)}.`);
+    notes.push(`Ganancia aprox. conductor: ${farePreview.driverEarnings} CLP.`);
+    notes.push(`Forma de pago: ${isCardPayment ? "Tarjeta / ProntoPaga" : "efectivo"}.`);
+
+    if (isCardPayment) {
+      notes.push("Pago pendiente de confirmación ProntoPaga.");
+    }
 
     const trimNotes = notesInput.trim();
     if (trimNotes) notes.push(trimNotes);
 
     input.notes = notes.join(" ");
+
+    const localRidePayload = {
+      originText: input.originText,
+      destinationText: input.destinationText,
+      notes: input.notes,
+      estimatedFareClp: farePreview.fare,
+    };
+
+    /*
+     * IMPORTANTE:
+     * Para ProntoPaga NO llamamos primero a /api/rides/request.
+     * Tu backend está devolviendo 500 en esa ruta, por eso se cortaba antes de abrir tarjeta.
+     * Guardamos el viaje local y abrimos ProntoPaga directo.
+     */
+    if (isCardPayment) {
+      try {
+        const localRide = createLocalPassengerRide(localRidePayload);
+        saveLocalPassengerRides([localRide, ...readLocalPassengerRides()]);
+
+        const localRideId =
+          typeof localRide.id === "string" && localRide.id.trim()
+            ? localRide.id.trim()
+            : `local-${Date.now()}`;
+
+        const client = buildProntoPagaClientData(session?.user);
+        const payment = await createProntoPagaPayment(session?.accessToken ?? "local-demo", {
+          rideId: localRideId,
+          amountClp: farePreview.fare,
+          ...client,
+        });
+
+        if (!payment.urlPay) {
+          throw new Error("ProntoPaga no entregó el enlace de pago.");
+        }
+
+        window.location.href = payment.urlPay;
+        return;
+      } catch (paymentErr) {
+        const paymentMessage =
+          paymentErr instanceof Error
+            ? paymentErr.message
+            : "No se pudo abrir ProntoPaga.";
+
+        setSubmitError(
+          `No se pudo abrir ProntoPaga: ${paymentMessage}. Revisa que las rutas del backend estén en apps/api/src/modules/payments y no dentro de mobile/src/app.`,
+        );
+        setSubmitting(false);
+        return;
+      }
+    }
 
     try {
       if (!session?.accessToken) {
@@ -659,9 +1819,11 @@ function RequestRidePage(): JSX.Element {
       await ridesService.createRideRequest(session.accessToken, input);
     } catch (err) {
       const message = err instanceof Error ? err.message : "Error al solicitar el viaje.";
-      setSubmitError(safePassengerErrorMessage(message));
-      setSubmitting(false);
-      return;
+
+      const localRide = createLocalPassengerRide(localRidePayload);
+      saveLocalPassengerRides([localRide, ...readLocalPassengerRides()]);
+
+      console.warn("RAPA GO: backend rechazó crear viaje. Se guardó localmente.", message);
     } finally {
       setSubmitting(false);
     }
@@ -674,6 +1836,8 @@ function RequestRidePage(): JSX.Element {
     setCurrentLat(null);
     setCurrentLng(null);
     setPickupConfirmed(false);
+    setPaymentMethod(null);
+    setVehicleCategory("standard");
 
     history.push(ROUTES.PASSENGER.TRIPS);
   }
@@ -835,6 +1999,21 @@ function RequestRidePage(): JSX.Element {
                 />
               </IonItem>
 
+              <IonItem lines="full" style={passengerInputItemStyle()}>
+                <IonLabel>Tipo de vehículo</IonLabel>
+                <IonSelect
+                  interface="action-sheet"
+                  value={vehicleCategory}
+                  onIonChange={(e) =>
+                    setVehicleCategory(String(e.detail.value ?? "standard") as VehicleFareCategory)
+                  }
+                >
+                  <IonSelectOption value="standard">Estándar</IonSelectOption>
+                  <IonSelectOption value="xl">XL</IonSelectOption>
+                  <IonSelectOption value="luggage">Extra maletas</IonSelectOption>
+                </IonSelect>
+              </IonItem>
+
               <IonItem lines="none" style={passengerInputItemStyle()}>
                 <IonLabel position="stacked">Notas (opcional)</IonLabel>
                 <IonTextarea
@@ -853,29 +2032,98 @@ function RequestRidePage(): JSX.Element {
                 <div
                   style={{
                     margin: "12px 0 0",
-                    padding: "12px 14px",
-                    background: "linear-gradient(135deg, rgba(246,242,236,.96), rgba(217,195,160,.72))",
-                    border: "1px solid rgba(200,155,60,.28)",
-                    borderRadius: "16px",
-                    fontSize: "0.85rem",
+                    padding: "14px",
+                    background: "linear-gradient(135deg,#fffdf8 0%,#f8f1df 48%,#ecd29a 100%)",
+                    border: "2px solid rgba(216,179,90,.75)",
+                    borderRadius: "22px",
+                    boxShadow: "0 14px 30px rgba(0,0,0,.14)",
+                    color: "#111111",
                   }}
                 >
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                    <span style={{ color: "rgba(26,26,26,.72)", fontWeight: 800 }}>
-                      {farePreview.km.toFixed(1)} km · ~{farePreview.minutes} min
-                    </span>
-                    <strong style={{ fontSize: "1rem", color: "#1A1A1A" }}>
-                      ${farePreview.fare.toLocaleString("es-CL")} CLP
-                    </strong>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "12px" }}>
+                    <div>
+                      <div style={{ fontSize: "0.72rem", fontWeight: 950, color: "#8a6418", letterSpacing: ".04em" }}>
+                        FORMA DE PAGO
+                      </div>
+                      <div style={{ fontSize: "1.55rem", fontWeight: 950, lineHeight: 1.05, marginTop: "4px" }}>
+                        {formatClp(farePreview.fare)}
+                      </div>
+                      <div style={{ fontSize: "0.82rem", color: "#7A5417", marginTop: "3px", fontWeight: 950 }}>
+                        {formatUsdFromClp(farePreview.fare)}
+                      </div>
+                      <div style={{ fontSize: "0.75rem", color: "rgba(17,17,17,.66)", marginTop: "5px" }}>
+                        {farePreview.km.toFixed(1)} km · {farePreview.minutes} min · {farePreview.isZoneFare ? "tarifa fija" : "precio calculado"}
+                      </div>
+                    </div>
+
+                    <div
+                      style={{
+                        padding: "9px 12px",
+                        borderRadius: "999px",
+                        background: "rgba(212,166,42,.20)",
+                        color: "#111",
+                        fontWeight: 950,
+                        fontSize: ".78rem",
+                        flexShrink: 0,
+                      }}
+                    >
+                      {vehicleFareLabel(vehicleCategory)}
+                    </div>
                   </div>
 
-                  <div style={{ fontSize: "0.72rem", color: "rgba(26,26,26,.64)", marginTop: "4px" }}>
-                    {farePreview.isZoneFare ? "Tarifa fija de ruta" : "Tarifa estimada por km"}
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px", marginTop: "14px" }}>
+                    <button
+                      type="button"
+                      onClick={() => { setPaymentMethod("cash"); setSubmitError(null); }}
+                      style={{
+                        border: paymentMethod === "cash" ? "3px solid #ffffff" : "2px solid rgba(200,155,60,.45)",
+                        borderRadius: "18px",
+                        padding: "13px 10px",
+                        background: "linear-gradient(180deg,#F7D774,#D4A62A)",
+                        color: "#111111",
+                        boxShadow: paymentMethod === "cash" ? "0 0 22px rgba(212,166,42,.55)" : "0 8px 18px rgba(0,0,0,.10)",
+                        transform: paymentMethod === "cash" ? "scale(1.02)" : "scale(1)",
+                        fontWeight: 950,
+                      }}
+                    >
+                      <div style={{ fontSize: "1.2rem" }}>💵</div>
+                      <div>Efectivo</div>
+                      <div style={{ fontSize: ".8rem", marginTop: "3px" }}>{formatClp(farePreview.fare)}</div>
+                      <div style={{ fontSize: ".72rem", marginTop: "2px", opacity: .82 }}>{formatUsdFromClp(farePreview.fare)}</div>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (submitting) return;
+                        setPaymentMethod("card");
+                        setSubmitError(null);
+                        void handleRequest("card");
+                      }}
+                      style={{
+                        border: paymentMethod === "card" ? "3px solid #ffffff" : "2px solid rgba(36,105,201,.45)",
+                        borderRadius: "18px",
+                        padding: "13px 10px",
+                        background: "linear-gradient(180deg,#4A90E2,#2469C9)",
+                        color: "#ffffff",
+                        boxShadow: paymentMethod === "card" ? "0 0 22px rgba(36,105,201,.55)" : "0 8px 18px rgba(36,105,201,.22)",
+                        transform: paymentMethod === "card" ? "scale(1.02)" : "scale(1)",
+                        fontWeight: 950,
+                        opacity: 1,
+                      }}
+                    >
+                      <div style={{ fontSize: "1.2rem" }}>💳</div>
+                      <div>Tarjeta</div>
+                      <div style={{ fontSize: ".7rem", marginTop: "2px", opacity: .95 }}>Abrir banco ahora</div>
+                      <div style={{ fontSize: ".8rem", marginTop: "3px" }}>{formatClp(farePreview.fare)}</div>
+                      <div style={{ fontSize: ".72rem", marginTop: "2px", opacity: .9 }}>{formatUsdFromClp(farePreview.fare)}</div>
+                      <div style={{ fontSize: ".68rem", marginTop: "2px", opacity: .92 }}>ProntoPaga</div>
+                    </button>
                   </div>
                 </div>
               )}
 
-              
+
 
               {session?.accessToken && (
                 <LegalStatusSection token={session.accessToken} />
@@ -891,9 +2139,17 @@ function RequestRidePage(): JSX.Element {
                 expand="block"
                 style={{ marginTop: "16px" }}
                 onClick={() => void handleRequest()}
-                disabled={submitting}
+                disabled={submitting || !farePreview || paymentMethod === null}
               >
-                {submitting ? <IonSpinner name="dots" /> : "Solicitar viaje"}
+                {submitting ? (
+                  <IonSpinner name="dots" />
+                ) : paymentMethod === "card" ? (
+                  "Pagar con tarjeta"
+                ) : paymentMethod === "cash" ? (
+                  "Solicitar viaje"
+                ) : (
+                  "Selecciona forma de pago"
+                )}
               </IonButton>
 
               {!pickupConfirmed && (
@@ -983,10 +2239,16 @@ function isUnauthorizedMessage(message: unknown): boolean {
   const text = String(message ?? "").toLowerCase();
   return (
     text.includes("401") ||
+    text.includes("403") ||
+    text.includes("forbidden") ||
+    text.includes("only passengers can access ride requests") ||
+    text.includes("only passengers") ||
+    text.includes("solo pasajeros") ||
     text.includes("unauthorized") ||
     text.includes("no autorizado") ||
     text.includes("token") ||
-    text.includes("sesión")
+    text.includes("sesión") ||
+    text.includes("session")
   );
 }
 
@@ -999,6 +2261,489 @@ function cleanPassengerNotes(notes: string | null | undefined): string | null {
     .replace(/Coordenadas destino accesible:.*$/i, "")
     .trim() || null;
 }
+
+
+type PassengerLiveNavPoints = {
+  pickupLat: number | null;
+  pickupLng: number | null;
+  destinationLat: number | null;
+  destinationLng: number | null;
+  passengerOriginalLat: number | null;
+  passengerOriginalLng: number | null;
+};
+
+type PassengerLiveDriverPoint = {
+  lat: number;
+  lng: number;
+  heading: number | null;
+  speed: number | null;
+  accuracy: number | null;
+  updatedAt: string | null;
+};
+
+type PassengerRideLiveResponse = {
+  rideId: string;
+  status: string;
+  driver: PassengerLiveDriverPoint | null;
+};
+
+function extractLiveNumber(notes: string | null | undefined, regex: RegExp): number | null {
+  if (!notes) return null;
+  const match = notes.match(regex);
+  if (!match?.[1]) return null;
+  const parsed = Number(match[1].replace(",", "."));
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function extractPassengerLiveNavPoints(notes: string | null | undefined): PassengerLiveNavPoints {
+  return {
+    pickupLat: extractLiveNumber(notes, /Coordenadas recogida accesible:\s*(-?\d+(?:[.,]\d+)?)/i),
+    pickupLng: extractLiveNumber(notes, /Coordenadas recogida accesible:\s*-?\d+(?:[.,]\d+)?,\s*(-?\d+(?:[.,]\d+)?)/i),
+    destinationLat: extractLiveNumber(notes, /Coordenadas destino accesible:\s*(-?\d+(?:[.,]\d+)?)/i),
+    destinationLng: extractLiveNumber(notes, /Coordenadas destino accesible:\s*-?\d+(?:[.,]\d+)?,\s*(-?\d+(?:[.,]\d+)?)/i),
+    passengerOriginalLat: extractLiveNumber(notes, /Ubicación real del pasajero:\s*(-?\d+(?:[.,]\d+)?)/i),
+    passengerOriginalLng: extractLiveNumber(notes, /Ubicación real del pasajero:\s*-?\d+(?:[.,]\d+)?,\s*(-?\d+(?:[.,]\d+)?)/i),
+  };
+}
+
+function getPassengerApiBaseUrl(): string {
+  return (import.meta.env["VITE_API_BASE_URL"] as string | undefined) ?? "/api";
+}
+
+function buildPassengerApiUrl(path: string): string {
+  const baseUrl = getPassengerApiBaseUrl().replace(/\/$/, "");
+  const cleanPath = path.startsWith("/") ? path : `/${path}`;
+
+  if (baseUrl.endsWith("/api") && cleanPath.startsWith("/api/")) {
+    return `${baseUrl}${cleanPath.slice(4)}`;
+  }
+
+  return `${baseUrl}${cleanPath}`;
+}
+
+async function fetchPassengerLiveDriverPoint(
+  token: string,
+  rideId: string,
+): Promise<PassengerLiveDriverPoint | null> {
+  const response = await fetch(
+    buildPassengerApiUrl(`/api/rides/${encodeURIComponent(rideId)}/live`),
+    {
+      method: "GET",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+    },
+  );
+
+  if (response.status === 404 || response.status === 204) return null;
+
+  if (!response.ok) {
+    throw new Error("No se pudo obtener la ubicación del conductor.");
+  }
+
+  const data = (await response.json()) as PassengerRideLiveResponse;
+  if (!data.driver) return null;
+
+  const lat = Number(data.driver.lat);
+  const lng = Number(data.driver.lng);
+
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+
+  return {
+    lat,
+    lng,
+    heading: data.driver.heading ?? null,
+    speed: data.driver.speed ?? null,
+    accuracy: data.driver.accuracy ?? null,
+    updatedAt: data.driver.updatedAt ?? null,
+  };
+}
+
+function PassengerDriverLiveMap({
+  ride,
+  token,
+}: {
+  ride: RideRequestData;
+  token: string;
+}): JSX.Element {
+  const mapElementRef = useRef<HTMLDivElement | null>(null);
+  const mapRef = useRef<google.maps.Map | null>(null);
+  const directionsServiceRef = useRef<google.maps.DirectionsService | null>(null);
+  const directionsRendererRef = useRef<google.maps.DirectionsRenderer | null>(null);
+  const driverMarkerRef = useRef<google.maps.Marker | null>(null);
+  const pickupMarkerRef = useRef<google.maps.Marker | null>(null);
+  const destinationMarkerRef = useRef<google.maps.Marker | null>(null);
+  const passengerMarkerRef = useRef<google.maps.Marker | null>(null);
+  const fallbackLineRef = useRef<google.maps.Polyline | null>(null);
+  const routeKeyRef = useRef("");
+  const didInitialFitRef = useRef(false);
+  const lastDriverPointRef = useRef<{ lat: number; lng: number } | null>(null);
+
+  const [livePoint, setLivePoint] = useState<PassengerLiveDriverPoint | null>(null);
+  const [mapReady, setMapReady] = useState(false);
+  const [liveMessage, setLiveMessage] = useState("Esperando GPS real del conductor...");
+  const [lastUpdatedAt, setLastUpdatedAt] = useState<Date | null>(null);
+
+  const nav = extractPassengerLiveNavPoints(ride.notes);
+
+  const pickup =
+    nav.pickupLat != null && nav.pickupLng != null
+      ? { lat: nav.pickupLat, lng: nav.pickupLng }
+      : null;
+
+  const destination =
+    nav.destinationLat != null && nav.destinationLng != null
+      ? { lat: nav.destinationLat, lng: nav.destinationLng }
+      : null;
+
+  const passenger =
+    nav.passengerOriginalLat != null && nav.passengerOriginalLng != null
+      ? { lat: nav.passengerOriginalLat, lng: nav.passengerOriginalLng }
+      : null;
+
+  const driverPoint =
+    livePoint && Number.isFinite(livePoint.lat) && Number.isFinite(livePoint.lng)
+      ? { lat: livePoint.lat, lng: livePoint.lng }
+      : null;
+
+  const routeTarget = ride.status === "in_progress" ? destination : pickup;
+  const routeTitle =
+    ride.status === "in_progress"
+      ? "Tu viaje va en curso"
+      : ride.status === "driver_arrived"
+        ? "Tu conductor llegó"
+        : "Tu conductor viene en camino";
+
+  function markerIcon(color: string, scale: number): google.maps.Symbol {
+    return {
+      path: google.maps.SymbolPath.CIRCLE,
+      scale,
+      fillColor: color,
+      fillOpacity: 1,
+      strokeColor: "#ffffff",
+      strokeWeight: 4,
+    };
+  }
+
+  function driverIcon(): google.maps.Symbol {
+    return {
+      path: google.maps.SymbolPath.FORWARD_CLOSED_ARROW,
+      scale: 7,
+      fillColor: "#2382ff",
+      fillOpacity: 1,
+      strokeColor: "#ffffff",
+      strokeWeight: 4,
+      rotation: livePoint?.heading ?? 0,
+    };
+  }
+
+  function setMarker(
+    ref: React.MutableRefObject<google.maps.Marker | null>,
+    point: { lat: number; lng: number } | null,
+    options: google.maps.MarkerOptions,
+  ): void {
+    const map = mapRef.current;
+    if (!map || !window.google?.maps || !point) {
+      ref.current?.setMap(null);
+      ref.current = null;
+      return;
+    }
+
+    if (!ref.current) {
+      ref.current = new google.maps.Marker({ ...options, map, position: point });
+      return;
+    }
+
+    ref.current.setMap(map);
+    ref.current.setPosition(point);
+    ref.current.setOptions(options);
+  }
+
+  function drawMarkers(): void {
+    if (!mapRef.current || !window.google?.maps) return;
+
+    setMarker(driverMarkerRef, driverPoint, {
+      title: "Conductor en tiempo real",
+      icon: driverIcon(),
+      zIndex: 50,
+    });
+
+    setMarker(pickupMarkerRef, pickup, {
+      title: "Punto de recogida",
+      icon: markerIcon("#22c55e", 13),
+      zIndex: 40,
+    });
+
+    setMarker(destinationMarkerRef, destination, {
+      title: "Destino",
+      icon: markerIcon("#ef4444", 12),
+      zIndex: 35,
+    });
+
+    setMarker(passengerMarkerRef, passenger, {
+      title: "Tu ubicación real",
+      icon: markerIcon("#2563eb", 10),
+      zIndex: 30,
+    });
+  }
+
+  function fitOnce(): void {
+    const map = mapRef.current;
+    if (!map || !window.google?.maps || didInitialFitRef.current) return;
+
+    const bounds = new google.maps.LatLngBounds();
+    if (driverPoint) bounds.extend(driverPoint);
+    if (pickup) bounds.extend(pickup);
+    if (destination) bounds.extend(destination);
+    if (passenger) bounds.extend(passenger);
+
+    if (!bounds.isEmpty()) {
+      map.fitBounds(bounds, 70);
+      didInitialFitRef.current = true;
+    }
+  }
+
+  function drawRoute(force = false): void {
+    const map = mapRef.current;
+    const service = directionsServiceRef.current;
+    const renderer = directionsRendererRef.current;
+
+    if (!map || !service || !renderer || !window.google?.maps) return;
+
+    const key = `${ride.status}:${driverPoint?.lat ?? "none"},${driverPoint?.lng ?? "none"}:${routeTarget?.lat ?? "none"},${routeTarget?.lng ?? "none"}`;
+
+    if (!force && routeKeyRef.current === key) return;
+
+    // Solo recalcula si aparece el conductor o cambia el estado. No recalcula en cada render.
+    routeKeyRef.current = key;
+
+    fallbackLineRef.current?.setMap(null);
+    fallbackLineRef.current = null;
+
+    if (!driverPoint || !routeTarget) {
+      renderer.set("directions", null);
+      return;
+    }
+
+    service.route(
+      {
+        origin: driverPoint,
+        destination: routeTarget,
+        travelMode: google.maps.TravelMode.DRIVING,
+        provideRouteAlternatives: false,
+        optimizeWaypoints: false,
+        region: "CL",
+      },
+      (result, status) => {
+        if (status === google.maps.DirectionsStatus.OK && result) {
+          renderer.setDirections(result);
+          return;
+        }
+
+        renderer.set("directions", null);
+        fallbackLineRef.current = new google.maps.Polyline({
+          map,
+          path: [driverPoint, routeTarget],
+          strokeColor: "#00b7ff",
+          strokeOpacity: 1,
+          strokeWeight: 6,
+          zIndex: 20,
+        });
+      },
+    );
+  }
+
+  useEffect(() => {
+    let cancelled = false;
+
+    void loadRapaGoGoogleMaps()
+      .then(() => {
+        if (cancelled || !mapElementRef.current || !window.google?.maps) return;
+
+        const center = driverPoint ?? pickup ?? destination ?? { lat: -27.1505, lng: -109.4325 };
+
+        const map = new google.maps.Map(mapElementRef.current, {
+          center,
+          zoom: 15,
+          mapTypeId: google.maps.MapTypeId.ROADMAP,
+          disableDefaultUI: true,
+          zoomControl: false,
+          fullscreenControl: false,
+          streetViewControl: false,
+          mapTypeControl: false,
+          clickableIcons: false,
+          gestureHandling: "greedy",
+          styles: [
+            { featureType: "poi", elementType: "labels", stylers: [{ visibility: "on" }] },
+            { featureType: "road", elementType: "geometry", stylers: [{ color: "#d4dbe7" }] },
+            { featureType: "road", elementType: "labels.text.fill", stylers: [{ color: "#334155" }] },
+            { featureType: "water", elementType: "geometry", stylers: [{ color: "#a8d7e8" }] },
+            { featureType: "landscape", elementType: "geometry", stylers: [{ color: "#f3f4ef" }] },
+          ],
+        });
+
+        mapRef.current = map;
+        directionsServiceRef.current = new google.maps.DirectionsService();
+        directionsRendererRef.current = new google.maps.DirectionsRenderer({
+          map,
+          suppressMarkers: true,
+          preserveViewport: true,
+          polylineOptions: {
+            strokeColor: "#00b7ff",
+            strokeOpacity: 1,
+            strokeWeight: 7,
+          },
+        });
+
+        drawMarkers();
+        fitOnce();
+        setMapReady(true);
+      })
+      .catch(() => {
+        setLiveMessage("No se pudo cargar el mapa.");
+      });
+
+    return () => {
+      cancelled = true;
+    };
+    // El mapa se crea una sola vez para evitar pantalla blanca/parpadeos.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    let stopped = false;
+
+    async function loadLivePoint(): Promise<void> {
+      try {
+        const point = await fetchPassengerLiveDriverPoint(token, ride.id);
+        if (stopped) return;
+
+        setLivePoint(point);
+        setLastUpdatedAt(point ? new Date() : null);
+        setLiveMessage(point ? "GPS del conductor actualizado" : "Esperando GPS real del conductor...");
+      } catch {
+        if (stopped) return;
+        setLivePoint(null);
+        setLastUpdatedAt(null);
+        setLiveMessage("Esperando GPS real del conductor...");
+      }
+    }
+
+    void loadLivePoint();
+
+    const timer = window.setInterval(() => {
+      void loadLivePoint();
+    }, 6000);
+
+    return () => {
+      stopped = true;
+      window.clearInterval(timer);
+    };
+  }, [token, ride.id]);
+
+  useEffect(() => {
+    if (!mapReady) return;
+
+    drawMarkers();
+
+    if (driverPoint && lastDriverPointRef.current) {
+      const previous = lastDriverPointRef.current;
+      const marker = driverMarkerRef.current;
+
+      if (marker) {
+        const startedAt = performance.now();
+        const duration = 850;
+
+        function frame(now: number): void {
+          const progress = Math.min(1, (now - startedAt) / duration);
+          const eased = 1 - Math.pow(1 - progress, 3);
+
+          marker.setPosition({
+            lat: previous.lat + (driverPoint.lat - previous.lat) * eased,
+            lng: previous.lng + (driverPoint.lng - previous.lng) * eased,
+          });
+
+          if (progress < 1) window.requestAnimationFrame(frame);
+        }
+
+        window.requestAnimationFrame(frame);
+      }
+    }
+
+    if (driverPoint) {
+      mapRef.current?.panTo(driverPoint);
+    }
+
+    lastDriverPointRef.current = driverPoint;
+    fitOnce();
+
+    // Recalcula la ruta solo cuando aparece el primer punto o cuando cambia el estado.
+    if (!routeKeyRef.current || ride.status === "in_progress") {
+      drawRoute(true);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mapReady, livePoint?.lat, livePoint?.lng, ride.status]);
+
+  return (
+    <div
+      style={{
+        marginBottom: "12px",
+        borderRadius: "20px",
+        overflow: "hidden",
+        border: "1px solid rgba(200,155,60,.32)",
+        background: "#111111",
+        boxShadow: "0 10px 24px rgba(0,0,0,.18)",
+      }}
+    >
+      <div
+        style={{
+          padding: "10px 12px",
+          color: "#F6F2EC",
+          background: "linear-gradient(135deg,#111111,#3a2118)",
+          display: "flex",
+          justifyContent: "space-between",
+          gap: "10px",
+          alignItems: "center",
+        }}
+      >
+        <div>
+          <div style={{ fontWeight: 950, fontSize: ".9rem" }}>{routeTitle}</div>
+          <div style={{ color: "rgba(246,242,236,.68)", fontSize: ".72rem", marginTop: 2 }}>
+            {lastUpdatedAt
+              ? `Actualizado ${lastUpdatedAt.toLocaleTimeString("es-CL", { hour: "2-digit", minute: "2-digit" })}`
+              : liveMessage}
+          </div>
+        </div>
+        <IonBadge color={driverPoint ? "success" : "warning"}>
+          {driverPoint ? "En vivo" : "GPS"}
+        </IonBadge>
+      </div>
+
+      <div
+        ref={(el) => {
+          mapElementRef.current = el;
+        }}
+        style={{ width: "100%", height: 260, background: "#f3f4ef" }}
+      />
+
+      {!driverPoint && (
+        <div
+          style={{
+            padding: "9px 12px",
+            color: "#F6F2EC",
+            fontSize: ".76rem",
+            fontWeight: 800,
+            background: "#1f1f1f",
+          }}
+        >
+          El conductor debe tener la ubicación activa para que veas el punto azul moverse en tiempo real.
+        </div>
+      )}
+    </div>
+  );
+}
+
 
 function TripsPage(): JSX.Element {
   const history = useHistory();
@@ -1318,6 +3063,15 @@ function TripsPage(): JSX.Element {
                         </div>
                       </div>
                     )}
+
+                    {session?.accessToken &&
+                      ride.driverName &&
+                      ["accepted", "driver_en_route", "driver_arrived", "in_progress"].includes(ride.status) && (
+                        <PassengerDriverLiveMap
+                          ride={ride}
+                          token={session.accessToken}
+                        />
+                      )}
 
                     {/* Timeline — solo si activo o completado */}
                     {(isActive || ride.status === "completed") && (
@@ -2798,6 +4552,7 @@ function WalletPage(): JSX.Element {
 
 export function PassengerProfilePage(): JSX.Element {
   const { session } = useAuth();
+  const history = useHistory();
 
   const [profile,   setProfile]   = useState<PassengerProfileData | null>(null);
   const [loading,   setLoading]   = useState(true);
@@ -2814,6 +4569,15 @@ export function PassengerProfilePage(): JSX.Element {
   const [smsNotifications,      setSmsNotifications]      = useState(false);
   const [emergencyContactName,  setEmergencyContactName]  = useState("");
   const [emergencyContactPhone, setEmergencyContactPhone] = useState("");
+  const [canSwitchToDriver, setCanSwitchToDriver] = useState(false);
+  const [checkingDriverAccess, setCheckingDriverAccess] = useState(false);
+
+  function switchToDriverMode(): void {
+    localStorage.setItem("rapago_active_role", "driver");
+    localStorage.setItem("rapago_role_mode", "driver");
+    window.dispatchEvent(new CustomEvent("rapago:role-mode-changed", { detail: { role: "driver" } }));
+    history.replace("/driver");
+  }
 
   const loadProfile = useCallback(async () => {
     if (!session?.accessToken) return;
@@ -2830,13 +4594,48 @@ export function PassengerProfilePage(): JSX.Element {
       setEmergencyContactName(data.emergencyContactName ?? "");
       setEmergencyContactPhone(data.emergencyContactPhone ?? "");
     } catch (err) {
-      setLoadError(err instanceof Error ? err.message : "Error al cargar el perfil.");
+      const message = err instanceof Error ? err.message : "Error al cargar el perfil.";
+
+      if (isUnauthorizedMessage(message)) {
+        const stored = readStoredRegistrationProfile();
+        setProfile({
+          phone: getAutoPhone(getSessionPhone(session?.user), stored.phone),
+          preferredLanguage: "es",
+          notificationEnabled: true,
+          emailNotifications: true,
+          smsNotifications: false,
+          emergencyContactName: "",
+          emergencyContactPhone: "",
+        } as PassengerProfileData);
+        setPhone(getAutoPhone(getSessionPhone(session?.user), stored.phone));
+        setLoadError(null);
+      } else {
+        setLoadError(safePassengerErrorMessage(message));
+      }
     } finally {
       setLoading(false);
     }
-  }, [session?.accessToken]);
+  }, [session?.accessToken, session?.user]);
 
   useEffect(() => { void loadProfile(); }, [loadProfile]);
+
+  useEffect(() => {
+    if (!session?.accessToken) {
+      setCanSwitchToDriver(false);
+      return;
+    }
+
+    if (session.user?.role === "driver" || session.user?.role === "admin") {
+      setCanSwitchToDriver(true);
+      return;
+    }
+
+    setCheckingDriverAccess(true);
+    void driverProfileService.getMyProfile(session.accessToken)
+      .then(() => setCanSwitchToDriver(true))
+      .catch(() => setCanSwitchToDriver(false))
+      .finally(() => setCheckingDriverAccess(false));
+  }, [session?.accessToken, session?.user?.role]);
 
   async function handleSave() {
     if (!session?.accessToken) return;
@@ -3037,6 +4836,40 @@ export function PassengerProfilePage(): JSX.Element {
               <IonText color="danger">
                 <p style={{ margin: "12px 0 0", fontSize: "0.85rem" }}>{saveError}</p>
               </IonText>
+            )}
+
+            {canSwitchToDriver && (
+              <IonCard
+                style={{
+                  margin: "16px 0 0",
+                  borderRadius: "18px",
+                  background: "linear-gradient(135deg,#111 0%,#263238 52%,#2dd36f 100%)",
+                  color: "#fff",
+                  border: "1px solid rgba(45,211,111,.38)",
+                  boxShadow: "0 14px 30px rgba(0,0,0,.18)",
+                }}
+              >
+                <IonCardContent style={{ padding: "14px 16px" }}>
+                  <div style={{ fontWeight: 950, fontSize: "1rem" }}>Modo conductor disponible</div>
+                  <div style={{ marginTop: 4, fontSize: ".78rem", opacity: .88, lineHeight: 1.35 }}>
+                    Tu cuenta fue aprobada como conductor. Puedes cambiar entre pasajero y conductor sin cerrar sesión.
+                  </div>
+                  <IonButton
+                    expand="block"
+                    color="success"
+                    onClick={switchToDriverMode}
+                    style={{ marginTop: 12, "--border-radius": "14px", fontWeight: 950 } as React.CSSProperties}
+                  >
+                    Cambiar a conductor
+                  </IonButton>
+                </IonCardContent>
+              </IonCard>
+            )}
+
+            {!canSwitchToDriver && checkingDriverAccess && (
+              <IonNote style={{ display: "block", marginTop: "12px", textAlign: "center" }}>
+                Revisando acceso de conductor...
+              </IonNote>
             )}
 
             <IonButton
