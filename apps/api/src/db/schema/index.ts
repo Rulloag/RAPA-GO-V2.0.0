@@ -23,3 +23,4 @@ export { referralCodes, referralUses, type ReferralCode, type NewReferralCode, t
 export { rideStops, type RideStop, type NewRideStop } from "./rideStops.schema.js";
 export { rideAssignmentOffers, type RideAssignmentOffer, type NewRideAssignmentOffer } from "./rideAssignmentOffers.schema.js";
 export { whatsappMessages, type WhatsappMessage, type NewWhatsappMessage } from "./whatsappMessages.schema.js";
+export { payments, type Payment, type NewPayment } from "./payments.schema.js";
