@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, type CSSProperties, type FormEvent } from "react";
 import {
   IonButton,
   IonCheckbox,
@@ -11,6 +11,8 @@ import {
   IonNote,
   IonPage,
   IonSpinner,
+  IonSelect,
+  IonSelectOption,
   IonText,
   IonTitle,
   IonToolbar,
@@ -36,9 +38,47 @@ type RegisterField =
   | "rut"
   | "phone"
   | "email"
+  | "passengerType"
   | "password"
   | "confirmPassword"
   | "terms";
+
+
+type PassengerFareType = "resident" | "chilean" | "foreigner";
+
+const PASSENGER_FARE_TYPES: Array<{
+  value: PassengerFareType;
+  label: string;
+  helper: string;
+  multiplier: string;
+}> = [
+  {
+    value: "resident",
+    label: "Residente",
+    helper: "Perfil residente.",
+    multiplier: "1,00",
+  },
+  {
+    value: "chilean",
+    label: "Chileno no residente",
+    helper: "Perfil chileno no residente.",
+    multiplier: "1,13",
+  },
+  {
+    value: "foreigner",
+    label: "Extranjero / turista",
+    helper: "Perfil extranjero.",
+    multiplier: "1,20",
+  },
+];
+
+function getPassengerFareTypeLabel(value: PassengerFareType): string {
+  return PASSENGER_FARE_TYPES.find((item) => item.value === value)?.label ?? value;
+}
+
+function isPassengerFareType(value: string): value is PassengerFareType {
+  return value === "resident" || value === "chilean" || value === "foreigner";
+}
 
 function normalizeEmail(value: string): string {
   return value.trim().toLowerCase();
@@ -106,11 +146,16 @@ function persistRegistrationProfile(data: {
   rut: string;
   phone: string;
   email: string;
+  passengerFareType: PassengerFareType;
+  passengerFareLabel: string;
 }): void {
   try {
     localStorage.setItem("rapago_registration_profile", JSON.stringify(data));
     localStorage.setItem("rapago_profile_phone", data.phone);
     localStorage.setItem("rapago_profile_rut", data.rut);
+    localStorage.setItem("rapago_passenger_fare_type", data.passengerFareType);
+    localStorage.setItem("rapago_profile_passenger_type", data.passengerFareType);
+    localStorage.setItem("rapago_profile_nationality", data.passengerFareLabel);
   } catch {
     // No bloquea el registro si localStorage no está disponible.
   }
@@ -147,6 +192,63 @@ function getFirstFieldError(
   return errors;
 }
 
+const pageContentStyle = {
+  "--background":
+    "linear-gradient(180deg, #fff7e8 0%, #f9ead0 48%, #edd2a0 100%)",
+} as CSSProperties;
+
+const formShellStyle: CSSProperties = {
+  maxWidth: 540,
+  margin: "1.25rem auto 2rem",
+  display: "flex",
+  flexDirection: "column",
+  gap: "0.75rem",
+  padding: "20px 16px 22px",
+  borderRadius: 26,
+  background: "rgba(255, 252, 244, 0.96)",
+  border: "1px solid rgba(205, 157, 60, 0.36)",
+  boxShadow: "0 18px 44px rgba(66, 43, 16, 0.18)",
+};
+
+const registerItemStyle = {
+  "--background": "#fffaf0",
+  "--color": "#1f1711",
+  "--border-color": "transparent",
+  "--highlight-color-focused": "#c99a32",
+  "--highlight-color-valid": "#c99a32",
+  "--highlight-color-invalid": "#d33b32",
+  "--padding-start": "16px",
+  "--inner-padding-end": "12px",
+  "--min-height": "64px",
+  border: "1px solid rgba(198, 151, 54, 0.42)",
+  borderRadius: 18,
+  boxShadow: "0 8px 20px rgba(78, 52, 18, 0.06)",
+  overflow: "hidden",
+} as CSSProperties;
+
+const labelStyle: CSSProperties = {
+  color: "#3a2a1b",
+  fontWeight: 900,
+};
+
+const inputStyle = {
+  "--color": "#1f1711",
+  "--placeholder-color": "#8a765e",
+  "--placeholder-opacity": "1",
+  fontWeight: 850,
+} as CSSProperties;
+
+const softNoteStyle: CSSProperties = {
+  display: "block",
+  padding: "10px 12px",
+  borderRadius: 14,
+  background: "#fff3dc",
+  border: "1px solid rgba(198, 151, 54, 0.25)",
+  color: "#5a4528",
+  lineHeight: 1.35,
+  fontWeight: 750,
+};
+
 export function RegisterPage(): JSX.Element {
   const history = useHistory();
   const { register } = useAuth();
@@ -158,6 +260,7 @@ export function RegisterPage(): JSX.Element {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
+  const [passengerFareType, setPassengerFareType] = useState<PassengerFareType | "">("");
 
   const [referralCode, setReferralCode] = useState("");
   const [referralMsg, setReferralMsg] = useState<string | null>(null);
@@ -174,6 +277,7 @@ export function RegisterPage(): JSX.Element {
     acceptTerms &&
     acceptPrivacy &&
     acceptUserConditions &&
+    passengerFareType !== "" &&
     !loading;
 
   function clearFieldError(field: RegisterField): void {
@@ -219,7 +323,7 @@ export function RegisterPage(): JSX.Element {
     }
   }
 
-  async function handleSubmit(e: React.FormEvent<HTMLFormElement>): Promise<void> {
+  async function handleSubmit(e: FormEvent<HTMLFormElement>): Promise<void> {
     e.preventDefault();
 
     setFieldErrors({});
@@ -231,6 +335,9 @@ export function RegisterPage(): JSX.Element {
     const cleanRutValue = normalizeRut(rut);
     const cleanPhoneValue = normalizePhone(phone);
     const cleanEmailValue = normalizeEmail(email);
+    const cleanPassengerFareType = isPassengerFareType(passengerFareType)
+      ? passengerFareType
+      : "";
     const fullName = `${cleanName} ${cleanLastName}`.trim();
 
     const nextErrors: Record<string, string> = {};
@@ -253,6 +360,10 @@ export function RegisterPage(): JSX.Element {
       nextErrors.phone = "Ingresa tu teléfono.";
     } else if (!validatePhone(cleanPhoneValue)) {
       nextErrors.phone = "Teléfono inválido. Usa 912345678 o 56912345678.";
+    }
+
+    if (!cleanPassengerFareType) {
+      nextErrors.passengerType = "Selecciona tu nacionalidad o residencia.";
     }
 
     if (!cleanEmailValue) {
@@ -290,6 +401,8 @@ export function RegisterPage(): JSX.Element {
       return;
     }
 
+    const selectedPassengerFareType = cleanPassengerFareType as PassengerFareType;
+
     setLoading(true);
 
     try {
@@ -299,11 +412,19 @@ export function RegisterPage(): JSX.Element {
         lastName: cleanLastName,
         rut: cleanRutValue,
         phone: cleanPhoneValue,
+        passengerType: selectedPassengerFareType,
+        farePassengerType: selectedPassengerFareType,
+        nationality: getPassengerFareTypeLabel(selectedPassengerFareType),
+        isResident: selectedPassengerFareType === "resident",
       } as typeof parsed.data & {
         firstName: string;
         lastName: string;
         rut: string;
         phone: string;
+        passengerType: PassengerFareType;
+        farePassengerType: PassengerFareType;
+        nationality: string;
+        isResident: boolean;
       });
 
       if (!result.ok) {
@@ -327,6 +448,8 @@ export function RegisterPage(): JSX.Element {
         rut: cleanRutValue,
         phone: cleanPhoneValue,
         email: cleanEmailValue,
+        passengerFareType: selectedPassengerFareType,
+        passengerFareLabel: getPassengerFareTypeLabel(selectedPassengerFareType),
       });
 
       await Promise.all([
@@ -345,34 +468,28 @@ export function RegisterPage(): JSX.Element {
   return (
     <IonPage>
       <IonHeader>
-        <IonToolbar color="primary">
-          <IonTitle>Crear cuenta</IonTitle>
+        <IonToolbar color="warning">
+          <IonTitle style={{ color: "#111", fontWeight: 950 }}>Crear cuenta</IonTitle>
         </IonToolbar>
       </IonHeader>
 
-      <IonContent className="ion-padding">
+      <IonContent className="ion-padding" style={pageContentStyle}>
         <form
           onSubmit={(event) => {
             void handleSubmit(event);
           }}
-          style={{
-            maxWidth: 520,
-            margin: "1.25rem auto 2rem",
-            display: "flex",
-            flexDirection: "column",
-            gap: "0.65rem",
-          }}
+          style={formShellStyle}
           noValidate
         >
-          <IonText color="primary">
-            <h2 style={{ margin: "0 0 0.25rem", fontWeight: 900 }}>
+          <IonText>
+            <h2 style={{ margin: "0 0 0.25rem", fontWeight: 950, color: "#1f1711" }}>
               Crea tu cuenta Rapa Go
             </h2>
           </IonText>
 
-          <IonText color="medium">
-            <p style={{ margin: "0 0 0.75rem", fontSize: "0.88rem", lineHeight: 1.35 }}>
-              La cuenta se crea como pasajero. Desde la página principal podrás inscribirte como conductor, guía o arriendo cuando lo necesites.
+          <IonText>
+            <p style={{ margin: "0 0 0.75rem", fontSize: "0.9rem", lineHeight: 1.45, color: "#5a4528", fontWeight: 700 }}>
+              La cuenta se crea como pasajero. Selecciona tu nacionalidad o residencia para completar tu perfil.
             </p>
           </IonText>
 
@@ -392,8 +509,8 @@ export function RegisterPage(): JSX.Element {
             </IonText>
           )}
 
-          <IonItem className={fieldErrors.name ? "ion-invalid" : ""}>
-            <IonLabel position="stacked">Nombre *</IonLabel>
+          <IonItem className={fieldErrors.name ? "ion-invalid" : ""} style={registerItemStyle}>
+            <IonLabel position="stacked" style={labelStyle}>Nombre *</IonLabel>
             <IonInput
               type="text"
               value={name}
@@ -402,6 +519,7 @@ export function RegisterPage(): JSX.Element {
                 clearFieldError("name");
               }}
               placeholder="Ej: Leandro"
+              style={inputStyle}
               autocomplete="given-name"
               disabled={loading}
               required
@@ -409,8 +527,8 @@ export function RegisterPage(): JSX.Element {
             {fieldErrors.name && <IonNote slot="error">{fieldErrors.name}</IonNote>}
           </IonItem>
 
-          <IonItem className={fieldErrors.lastName ? "ion-invalid" : ""}>
-            <IonLabel position="stacked">Apellido *</IonLabel>
+          <IonItem className={fieldErrors.lastName ? "ion-invalid" : ""} style={registerItemStyle}>
+            <IonLabel position="stacked" style={labelStyle}>Apellido *</IonLabel>
             <IonInput
               type="text"
               value={lastName}
@@ -419,6 +537,7 @@ export function RegisterPage(): JSX.Element {
                 clearFieldError("lastName");
               }}
               placeholder="Ej: Favio"
+              style={inputStyle}
               autocomplete="family-name"
               disabled={loading}
               required
@@ -426,8 +545,8 @@ export function RegisterPage(): JSX.Element {
             {fieldErrors.lastName && <IonNote slot="error">{fieldErrors.lastName}</IonNote>}
           </IonItem>
 
-          <IonItem className={fieldErrors.rut ? "ion-invalid" : ""}>
-            <IonLabel position="stacked">RUT *</IonLabel>
+          <IonItem className={fieldErrors.rut ? "ion-invalid" : ""} style={registerItemStyle}>
+            <IonLabel position="stacked" style={labelStyle}>RUT *</IonLabel>
             <IonInput
               type="tel"
               value={rut}
@@ -436,6 +555,7 @@ export function RegisterPage(): JSX.Element {
                 clearFieldError("rut");
               }}
               placeholder="123456789"
+              style={inputStyle}
               autocomplete="off"
               inputmode="numeric"
               pattern="[0-9]*"
@@ -446,8 +566,33 @@ export function RegisterPage(): JSX.Element {
             {fieldErrors.rut && <IonNote slot="error">{fieldErrors.rut}</IonNote>}
           </IonItem>
 
-          <IonItem className={fieldErrors.phone ? "ion-invalid" : ""}>
-            <IonLabel position="stacked">Teléfono *</IonLabel>
+          <IonItem className={fieldErrors.passengerType ? "ion-invalid" : ""} style={registerItemStyle}>
+            <IonLabel position="stacked" style={labelStyle}>Nacionalidad / residencia *</IonLabel>
+            <IonSelect
+              value={passengerFareType}
+              placeholder="Seleccionar"
+              interface="action-sheet"
+              style={inputStyle}
+              disabled={loading}
+              onIonChange={(event) => {
+                const value = String(event.detail.value ?? "");
+                setPassengerFareType(isPassengerFareType(value) ? value : "");
+                clearFieldError("passengerType");
+              }}
+            >
+              {PASSENGER_FARE_TYPES.map((item) => (
+                <IonSelectOption key={item.value} value={item.value}>
+                  {item.label}
+                </IonSelectOption>
+              ))}
+            </IonSelect>
+            {fieldErrors.passengerType && (
+              <IonNote slot="error">{fieldErrors.passengerType}</IonNote>
+            )}
+          </IonItem>
+
+<IonItem className={fieldErrors.phone ? "ion-invalid" : ""} style={registerItemStyle}>
+            <IonLabel position="stacked" style={labelStyle}>Teléfono *</IonLabel>
             <IonInput
               type="tel"
               value={phone}
@@ -456,6 +601,7 @@ export function RegisterPage(): JSX.Element {
                 clearFieldError("phone");
               }}
               placeholder="56912345678"
+              style={inputStyle}
               autocomplete="tel"
               inputmode="numeric"
               pattern="[0-9]*"
@@ -466,8 +612,8 @@ export function RegisterPage(): JSX.Element {
             {fieldErrors.phone && <IonNote slot="error">{fieldErrors.phone}</IonNote>}
           </IonItem>
 
-          <IonItem className={fieldErrors.email ? "ion-invalid" : ""}>
-            <IonLabel position="stacked">Correo electrónico *</IonLabel>
+          <IonItem className={fieldErrors.email ? "ion-invalid" : ""} style={registerItemStyle}>
+            <IonLabel position="stacked" style={labelStyle}>Correo electrónico *</IonLabel>
             <IonInput
               type="email"
               value={email}
@@ -476,6 +622,7 @@ export function RegisterPage(): JSX.Element {
                 clearFieldError("email");
               }}
               placeholder="tu@correo.com"
+              style={inputStyle}
               autocomplete="email"
               inputmode="email"
               disabled={loading}
@@ -484,8 +631,8 @@ export function RegisterPage(): JSX.Element {
             {fieldErrors.email && <IonNote slot="error">{fieldErrors.email}</IonNote>}
           </IonItem>
 
-          <IonItem className={fieldErrors.password ? "ion-invalid" : ""}>
-            <IonLabel position="stacked">Contraseña *</IonLabel>
+          <IonItem className={fieldErrors.password ? "ion-invalid" : ""} style={registerItemStyle}>
+            <IonLabel position="stacked" style={labelStyle}>Contraseña *</IonLabel>
             <IonInput
               type="password"
               value={password}
@@ -494,6 +641,7 @@ export function RegisterPage(): JSX.Element {
                 clearFieldError("password");
               }}
               placeholder="Mínimo 8 caracteres"
+              style={inputStyle}
               autocomplete="new-password"
               disabled={loading}
               required
@@ -501,8 +649,8 @@ export function RegisterPage(): JSX.Element {
             {fieldErrors.password && <IonNote slot="error">{fieldErrors.password}</IonNote>}
           </IonItem>
 
-          <IonItem className={fieldErrors.confirmPassword ? "ion-invalid" : ""}>
-            <IonLabel position="stacked">Confirmar contraseña *</IonLabel>
+          <IonItem className={fieldErrors.confirmPassword ? "ion-invalid" : ""} style={registerItemStyle}>
+            <IonLabel position="stacked" style={labelStyle}>Confirmar contraseña *</IonLabel>
             <IonInput
               type="password"
               value={confirmPassword}
@@ -511,6 +659,7 @@ export function RegisterPage(): JSX.Element {
                 clearFieldError("confirmPassword");
               }}
               placeholder="Repite tu contraseña"
+              style={inputStyle}
               autocomplete="new-password"
               disabled={loading}
               required
@@ -520,25 +669,15 @@ export function RegisterPage(): JSX.Element {
             )}
           </IonItem>
 
-          <IonNote
-            color="medium"
-            style={{
-              display: "block",
-              padding: "10px 12px",
-              borderRadius: 10,
-              background: "rgba(0,0,0,.04)",
-              lineHeight: 1.35,
-            }}
-          >
-            Después de crear tu cuenta, entra a Inicio y usa la opción de inscripción para postular como conductor, guía o arriendo.
-          </IonNote>
+         
 
-          <IonItem style={{ marginTop: "0.5rem" }}>
-            <IonLabel position="stacked">Código de referido (opcional)</IonLabel>
+          <IonItem style={{ ...registerItemStyle, marginTop: "0.5rem" } as CSSProperties}>
+            <IonLabel position="stacked" style={labelStyle}>Código de referido (opcional)</IonLabel>
             <IonInput
               value={referralCode}
               onIonInput={(event) => setReferralCode(cleanReferralCode(String(event.detail.value ?? "")))}
               placeholder="Ej: RODRIGO2024"
+              style={inputStyle}
               maxlength={20}
               clearInput
               disabled={loading}
@@ -551,8 +690,8 @@ export function RegisterPage(): JSX.Element {
             </IonText>
           )}
 
-          <IonList style={{ marginTop: "0.75rem", borderRadius: 12, overflow: "hidden" }}>
-            <IonItem>
+          <IonList style={{ marginTop: "0.75rem", borderRadius: 18, overflow: "hidden", background: "transparent", border: "1px solid rgba(198,151,54,.30)" }}>
+            <IonItem style={{ ...registerItemStyle, borderRadius: 0, boxShadow: "none", borderLeft: 0, borderRight: 0, borderTop: 0 } as CSSProperties}>
               <IonCheckbox
                 checked={acceptTerms}
                 onIonChange={(event) => {
@@ -562,7 +701,7 @@ export function RegisterPage(): JSX.Element {
                 slot="start"
                 disabled={loading}
               />
-              <IonLabel style={{ whiteSpace: "normal" }}>
+              <IonLabel style={{ whiteSpace: "normal", color: "#2f2217", fontWeight: 750, lineHeight: 1.35 }}>
                 He leído y acepto los{" "}
                 <a href="/legal/terms-and-conditions" target="_blank" rel="noopener noreferrer">
                   Términos y Condiciones
@@ -570,7 +709,7 @@ export function RegisterPage(): JSX.Element {
               </IonLabel>
             </IonItem>
 
-            <IonItem>
+            <IonItem style={{ ...registerItemStyle, borderRadius: 0, boxShadow: "none", borderLeft: 0, borderRight: 0, borderTop: 0 } as CSSProperties}>
               <IonCheckbox
                 checked={acceptPrivacy}
                 onIonChange={(event) => {
@@ -580,7 +719,7 @@ export function RegisterPage(): JSX.Element {
                 slot="start"
                 disabled={loading}
               />
-              <IonLabel style={{ whiteSpace: "normal" }}>
+              <IonLabel style={{ whiteSpace: "normal", color: "#2f2217", fontWeight: 750, lineHeight: 1.35 }}>
                 He leído y acepto la{" "}
                 <a href="/legal/privacy-policy" target="_blank" rel="noopener noreferrer">
                   Política de Privacidad
@@ -588,7 +727,7 @@ export function RegisterPage(): JSX.Element {
               </IonLabel>
             </IonItem>
 
-            <IonItem>
+            <IonItem style={{ ...registerItemStyle, borderRadius: 0, boxShadow: "none", borderLeft: 0, borderRight: 0, borderTop: 0 } as CSSProperties}>
               <IonCheckbox
                 checked={acceptUserConditions}
                 onIonChange={(event) => {
@@ -598,7 +737,7 @@ export function RegisterPage(): JSX.Element {
                 slot="start"
                 disabled={loading}
               />
-              <IonLabel style={{ whiteSpace: "normal" }}>
+              <IonLabel style={{ whiteSpace: "normal", color: "#2f2217", fontWeight: 750, lineHeight: 1.35 }}>
                 Acepto las{" "}
                 <a href="/legal/user-conditions" target="_blank" rel="noopener noreferrer">
                   Condiciones para Usuarios
@@ -619,7 +758,7 @@ export function RegisterPage(): JSX.Element {
             expand="block"
             type="submit"
             disabled={!canSubmit}
-            style={{ marginTop: "1rem", height: "48px", fontWeight: 800 }}
+            style={{ marginTop: "1rem", height: "52px", fontWeight: 950, "--border-radius": "18px", "--background": "linear-gradient(135deg, #d2a43a, #f4d782)", "--color": "#111" } as CSSProperties}
           >
             {loading ? <IonSpinner name="crescent" /> : "Crear cuenta"}
           </IonButton>
@@ -636,6 +775,7 @@ export function RegisterPage(): JSX.Element {
           <IonButton
             expand="block"
             fill="outline"
+            color="warning"
             disabled={loading}
             onClick={() => history.replace(ROUTES.WELCOME)}
           >

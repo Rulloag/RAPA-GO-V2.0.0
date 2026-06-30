@@ -75,9 +75,7 @@ export function HomeHeader({ title }: HomeHeaderProps): JSX.Element {
               label={role ? ROLE_LABEL[role] : ""}
               color="light"
             />
-            {!user.isVerified && (
-              <StatusBadge label="Sin verificar" color="warning" />
-            )}
+            
           </div>
         </IonToolbar>
       )}

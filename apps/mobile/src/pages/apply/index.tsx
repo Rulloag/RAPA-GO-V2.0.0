@@ -291,6 +291,24 @@ function isRutValid(value: string): boolean {
     };
   }
 
+  type DriverVehicleForm = {
+    id: string;
+    description: string;
+    photoFile: File | null;
+  };
+
+  function createDriverVehicle(index: number): DriverVehicleForm {
+    return {
+      id: `vehicle-${Date.now()}-${index}`,
+      description: "",
+      photoFile: null,
+    };
+  }
+
+  function isVehicleComplete(vehicle: DriverVehicleForm): boolean {
+    return vehicle.description.trim().length > 0 && vehicle.photoFile != null;
+  }
+
   export function ApplicationDriverPage(): JSX.Element {
     const { session } = useAuth();
     const history = useHistory();
@@ -310,6 +328,11 @@ function isRutValid(value: string): boolean {
     const [identityFrontFile, setIdentityFrontFile] = useState<File | null>(null);
     const [identityBackFile,  setIdentityBackFile]  = useState<File | null>(null);
     const [driverLicenseFile, setDriverLicenseFile] = useState<File | null>(null);
+
+    const [vehicles, setVehicles] = useState<DriverVehicleForm[]>([
+      { id: "vehicle-primary", description: "", photoFile: null },
+    ]);
+    const [confirmOwnVehicle, setConfirmOwnVehicle] = useState(false);
 
     const [acceptDataTreatment, setAcceptDataTreatment] = useState(false);
     const [acceptDeclaration,   setAcceptDeclaration]   = useState(false);
@@ -338,6 +361,35 @@ function isRutValid(value: string): boolean {
       sessionUser?.birthDate,
     ]);
 
+    function updateVehicle(
+      vehicleId: string,
+      changes: Partial<Pick<DriverVehicleForm, "description" | "photoFile">>,
+    ): void {
+      setVehicles((current) =>
+        current.map((vehicle) =>
+          vehicle.id === vehicleId ? { ...vehicle, ...changes } : vehicle,
+        ),
+      );
+    }
+
+    function addVehicle(): void {
+      setVehicles((current) => [...current, createDriverVehicle(current.length + 1)]);
+    }
+
+    function removeVehicle(vehicleId: string): void {
+      setVehicles((current) =>
+        current.length <= 1
+          ? current
+          : current.filter((vehicle) => vehicle.id !== vehicleId),
+      );
+    }
+
+    const primaryVehicle = vehicles[0];
+    const primaryVehicleReady = primaryVehicle ? isVehicleComplete(primaryVehicle) : false;
+    const vehiclesReady = vehicles.length > 0 && vehicles.every(isVehicleComplete);
+    const vehicleReady = confirmOwnVehicle && primaryVehicleReady && vehiclesReady;
+    const termsAccepted = acceptDataTreatment && acceptDeclaration;
+
     const canSubmit =
       firstName.trim().length > 0 &&
       lastName.trim().length > 0 &&
@@ -348,12 +400,32 @@ function isRutValid(value: string): boolean {
       identityFrontFile != null &&
       identityBackFile != null &&
       driverLicenseFile != null &&
-      acceptDataTreatment &&
-      acceptDeclaration &&
+      vehicleReady &&
+      termsAccepted &&
       !loading;
 
     async function handleSubmit() {
       if (!canSubmit) {
+        if (!acceptDataTreatment || !acceptDeclaration) {
+          setError("Debes aceptar los términos y la declaración antes de enviar la solicitud.");
+          return;
+        }
+
+        if (!confirmOwnVehicle) {
+          setError("Debes confirmar que cuentas con vehículo propio para prestar servicios en Rapa Go.");
+          return;
+        }
+
+        if (!primaryVehicleReady) {
+          setError("Debes completar el vehículo principal con descripción y foto clara.");
+          return;
+        }
+
+        if (!vehiclesReady) {
+          setError("Completa o elimina los vehículos adicionales. Cada vehículo agregado debe tener descripción y foto.");
+          return;
+        }
+
         setError("Completa los datos requeridos. Teléfono y RUT se toman automáticamente desde el registro, pero deben ser válidos.");
         return;
       }
@@ -371,6 +443,16 @@ function isRutValid(value: string): boolean {
           birthDate,
         });
 
+        const normalizedVehicles = vehicles.map((vehicle, index) => ({
+          order: index + 1,
+          primary: index === 0,
+          description: vehicle.description.trim(),
+          photoProvided: vehicle.photoFile != null,
+          photoFileName: vehicle.photoFile?.name,
+          photoFileType: vehicle.photoFile?.type,
+          photoFileSize: vehicle.photoFile?.size,
+        }));
+
         const input: Record<string, unknown> = {
           type: "driver",
           firstName: firstName.trim(),
@@ -382,6 +464,14 @@ function isRutValid(value: string): boolean {
 
           belongsToRapaNuiEthnicity: belongsToRapaNuiEthnicity === "yes",
           ethnicityDeclaration: belongsToRapaNuiEthnicity,
+
+          vehicle: {
+            hasOwnVehicle: confirmOwnVehicle,
+            description: normalizedVehicles[0]?.description ?? "",
+            photoProvided: normalizedVehicles[0]?.photoProvided ?? false,
+            totalVehicles: normalizedVehicles.length,
+            vehicles: normalizedVehicles,
+          },
 
           documents: {
             identityCardFront: {
@@ -402,13 +492,28 @@ function isRutValid(value: string): boolean {
               fileType: driverLicenseFile?.type,
               fileSize: driverLicenseFile?.size,
             },
+            vehiclePhoto: {
+              provided: normalizedVehicles[0]?.photoProvided ?? false,
+              fileName: primaryVehicle?.photoFile?.name,
+              fileType: primaryVehicle?.photoFile?.type,
+              fileSize: primaryVehicle?.photoFile?.size,
+            },
+            vehiclePhotos: normalizedVehicles.map((vehicle) => ({
+              provided: vehicle.photoProvided,
+              fileName: vehicle.photoFileName,
+              fileType: vehicle.photoFileType,
+              fileSize: vehicle.photoFileSize,
+              primary: vehicle.primary,
+              order: vehicle.order,
+            })),
           },
 
           legalAcceptance: {
             acceptedDataTreatment: acceptDataTreatment,
             acceptedTruthDeclaration: acceptDeclaration,
+            acceptedVehicleOwnership: confirmOwnVehicle,
             acceptedAt: new Date().toISOString(),
-            text: "Autorizo a Rapa Go a revisar mi cédula de identidad y licencia de conducir únicamente para validar mi inscripción como conductor.",
+            text: "Autorizo a Rapa Go a revisar mi cédula de identidad, licencia de conducir y foto del vehículo únicamente para validar mi inscripción como conductor. Declaro que cuento con vehículo propio para prestar servicios en Rapa Go.",
           },
         };
 
@@ -544,6 +649,180 @@ function isRutValid(value: string): boolean {
             </IonCardContent>
           </IonCard>
 
+          <IonCard
+            style={{
+              ...styles.cardStyle,
+              border: vehicleReady
+                ? "2px solid rgba(34,197,94,.55)"
+                : "2px solid rgba(200,155,60,.38)",
+            }}
+          >
+            <IonCardHeader>
+              <IonCardTitle style={styles.cardTitleStyle}>Vehículo propio</IonCardTitle>
+              <IonNote style={styles.noteStyle}>
+                Para validar tu inscripción como conductor, debes indicar tu vehículo principal y adjuntar una foto clara. Si tienes más vehículos, puedes agregarlos de forma opcional.
+              </IonNote>
+            </IonCardHeader>
+
+            <IonCardContent>
+              {vehicles.map((vehicle, index) => {
+                const complete = isVehicleComplete(vehicle);
+                const isPrimary = index === 0;
+
+                return (
+                  <div
+                    key={vehicle.id}
+                    style={{
+                      marginBottom: "14px",
+                      padding: "12px",
+                      borderRadius: "20px",
+                      background: complete
+                        ? "linear-gradient(135deg,#ecfdf3,#ffffff)"
+                        : "#FFFDF7",
+                      border: complete
+                        ? "2px solid rgba(34,197,94,.55)"
+                        : "2px solid rgba(200,155,60,.32)",
+                    }}
+                  >
+                    <div
+                      style={{
+                        display: "flex",
+                        justifyContent: "space-between",
+                        gap: "10px",
+                        alignItems: "center",
+                        marginBottom: "10px",
+                      }}
+                    >
+                      <div>
+                        <strong style={{ color: "#111", fontWeight: 950 }}>
+                          {isPrimary ? "Vehículo principal" : `Vehículo adicional ${index}`}
+                        </strong>
+                        <IonNote style={{ ...styles.noteStyle, marginTop: 2 }}>
+                          {isPrimary ? "Obligatorio para enviar la solicitud." : "Opcional. Complétalo o elimínalo si no lo usarás."}
+                        </IonNote>
+                      </div>
+
+                      {!isPrimary && (
+                        <IonButton
+                          size="small"
+                          fill="outline"
+                          color="danger"
+                          onClick={() => removeVehicle(vehicle.id)}
+                          style={{ "--border-radius": "999px", fontWeight: 900 } as CSSProperties}
+                        >
+                          Eliminar
+                        </IonButton>
+                      )}
+                    </div>
+
+                    <IonItem lines="full" style={styles.itemStyle}>
+                      <IonLabel position="stacked" style={styles.labelStyle}>
+                        Descripción del vehículo {isPrimary ? "*" : ""}
+                      </IonLabel>
+                      <IonTextarea
+                        style={styles.inputStyle}
+                        value={vehicle.description}
+                        onIonInput={(e) =>
+                          updateVehicle(vehicle.id, {
+                            description: String(e.detail.value ?? ""),
+                          })
+                        }
+                        placeholder="Ej: Toyota Corolla blanco, año 2018, patente AB-CD-12"
+                        rows={3}
+                        maxlength={220}
+                      />
+                      <IonNote slot="helper" style={{ fontWeight: 700 }}>
+                        Escribe marca, modelo, color, año y patente si corresponde.
+                      </IonNote>
+                    </IonItem>
+
+                    <label
+                      className="upload-box"
+                      style={{
+                        ...styles.fileButtonStyle,
+                        border: vehicle.photoFile
+                          ? "2px solid rgba(34,197,94,.75)"
+                          : "2px dashed rgba(200,155,60,.85)",
+                        background: vehicle.photoFile
+                          ? "linear-gradient(135deg,#ecfdf3,#ffffff)"
+                          : "#ffffff",
+                      }}
+                    >
+                      Foto del vehículo {isPrimary ? "*" : ""}
+                      <input
+                        type="file"
+                        accept="image/*"
+                        capture="environment"
+                        style={{ display: "none" }}
+                        onChange={(e) =>
+                          updateVehicle(vehicle.id, {
+                            photoFile: getSelectedFile(e.nativeEvent),
+                          })
+                        }
+                      />
+                      <div
+                        className="selected-file"
+                        style={{
+                          color: vehicle.photoFile ? "#167A35" : "#4A4A4A",
+                          marginTop: "6px",
+                          fontSize: ".78rem",
+                          fontWeight: 900,
+                        }}
+                      >
+                        {fileLabel(vehicle.photoFile)}
+                      </div>
+                    </label>
+                  </div>
+                );
+              })}
+
+              <IonButton
+                expand="block"
+                fill="outline"
+                color="warning"
+                onClick={addVehicle}
+                style={{
+                  "--border-radius": "18px",
+                  height: "48px",
+                  fontWeight: 950,
+                  marginBottom: "12px",
+                } as CSSProperties}
+              >
+                + Agregar otro vehículo opcional
+              </IonButton>
+
+              <IonItem
+                lines="none"
+                style={{
+                  ...styles.itemStyle,
+                  alignItems: "flex-start",
+                  marginTop: "12px",
+                  border: confirmOwnVehicle
+                    ? "2px solid rgba(34,197,94,.75)"
+                    : "2px solid rgba(184,79,46,.38)",
+                  "--background": confirmOwnVehicle ? "#ECFDF3" : "#FFF8F2",
+                } as CSSProperties}
+              >
+                <IonCheckbox
+                  color="warning"
+                  checked={confirmOwnVehicle}
+                  onIonChange={(e) => setConfirmOwnVehicle(e.detail.checked)}
+                  slot="start"
+                />
+                <IonLabel
+                  style={{
+                    ...styles.labelStyle,
+                    marginLeft: "12px",
+                    whiteSpace: "normal",
+                    lineHeight: 1.35,
+                  }}
+                >
+                  Confirmo que cuento con vehículo propio para prestar servicios en Rapa Go.
+                </IonLabel>
+              </IonItem>
+            </IonCardContent>
+          </IonCard>
+
           <IonCard style={styles.cardStyle}>
             <IonCardHeader>
               <IonCardTitle style={styles.cardTitleStyle}>Documentación requerida</IonCardTitle>
@@ -598,33 +877,78 @@ function isRutValid(value: string): boolean {
             </IonCardContent>
           </IonCard>
 
-          <IonCard style={styles.cardStyle}>
+          <IonCard
+            style={{
+              ...styles.cardStyle,
+              border: termsAccepted
+                ? "2px solid rgba(34,197,94,.65)"
+                : "2px solid rgba(184,79,46,.34)",
+            }}
+          >
             <IonCardHeader>
               <IonCardTitle style={styles.cardTitleStyle}>Términos y autorización</IonCardTitle>
+              <IonNote style={styles.noteStyle}>
+                Debes aceptar ambos puntos para habilitar el botón de envío.
+              </IonNote>
             </IonCardHeader>
 
             <IonCardContent>
-              <IonItem lines="none" style={{ ...styles.itemStyle, alignItems: "flex-start" }}>
+              <IonItem
+                lines="none"
+                style={{
+                  ...styles.itemStyle,
+                  alignItems: "flex-start",
+                  border: acceptDataTreatment
+                    ? "2px solid rgba(34,197,94,.75)"
+                    : "2px solid rgba(200,155,60,.5)",
+                  "--background": acceptDataTreatment ? "#ECFDF3" : "#FFFDF7",
+                } as CSSProperties}
+              >
                 <IonCheckbox
+                  color="warning"
                   checked={acceptDataTreatment}
                   onIonChange={(e) => setAcceptDataTreatment(e.detail.checked)}
                   slot="start"
                 />
                 <IonLabel style={{ ...styles.labelStyle, marginLeft: "12px", whiteSpace: "normal", lineHeight: 1.35 }}>
-                  Autorizo a Rapa Go a revisar mi cédula de identidad y licencia de conducir únicamente para validar mi inscripción como conductor.
+                  Autorizo a Rapa Go a revisar mi cédula de identidad, licencia de conducir y foto de cada vehículo registrado únicamente para validar mi inscripción como conductor.
                 </IonLabel>
               </IonItem>
 
-              <IonItem lines="none" style={{ ...styles.itemStyle, alignItems: "flex-start" }}>
+              <IonItem
+                lines="none"
+                style={{
+                  ...styles.itemStyle,
+                  alignItems: "flex-start",
+                  border: acceptDeclaration
+                    ? "2px solid rgba(34,197,94,.75)"
+                    : "2px solid rgba(200,155,60,.5)",
+                  "--background": acceptDeclaration ? "#ECFDF3" : "#FFFDF7",
+                } as CSSProperties}
+              >
                 <IonCheckbox
+                  color="warning"
                   checked={acceptDeclaration}
                   onIonChange={(e) => setAcceptDeclaration(e.detail.checked)}
                   slot="start"
                 />
                 <IonLabel style={{ ...styles.labelStyle, marginLeft: "12px", whiteSpace: "normal", lineHeight: 1.35 }}>
-                  Declaro que la información y documentación enviada es verdadera y corresponde a mi identidad.
+                  Declaro que la información, documentación enviada y fotos de los vehículos son verdaderas y corresponden a mi identidad.
                 </IonLabel>
               </IonItem>
+
+              {!termsAccepted && (
+                <IonNote
+                  style={{
+                    display: "block",
+                    marginTop: "8px",
+                    color: "#B84F2E",
+                    fontWeight: 950,
+                  }}
+                >
+                  Sin aceptar los términos y condiciones no se puede enviar la solicitud.
+                </IonNote>
+              )}
             </IonCardContent>
           </IonCard>
 
@@ -637,12 +961,28 @@ function isRutValid(value: string): boolean {
           <div style={{ padding: "8px 0 18px" }}>
             <IonButton
               expand="block"
-              color="warning"
               disabled={!canSubmit}
               onClick={() => void handleSubmit()}
-              style={{ "--border-radius": "16px", height: "52px", fontWeight: 950 } as CSSProperties}
+              style={{
+                "--border-radius": "18px",
+                "--background": canSubmit
+                  ? "linear-gradient(135deg,#F8D879 0%,#C89B3C 45%,#C5532F 100%)"
+                  : "linear-gradient(135deg,#C9C2B5,#8D877D)",
+                "--background-activated": "linear-gradient(135deg,#C5532F,#C89B3C)",
+                "--box-shadow": canSubmit
+                  ? "0 16px 32px rgba(200,155,60,.42)"
+                  : "none",
+                height: "56px",
+                fontWeight: 950,
+                color: "#111111",
+                letterSpacing: ".01em",
+              } as CSSProperties}
             >
-              {loading ? <IonSpinner name="crescent" /> : "Enviar solicitud"}
+              {loading
+                ? <IonSpinner name="crescent" />
+                : canSubmit
+                  ? "Enviar solicitud"
+                  : "Acepta términos y completa vehículo"}
             </IonButton>
 
             <IonButton

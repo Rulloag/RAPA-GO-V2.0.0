@@ -27,6 +27,20 @@ import {
 } from "../pages/apply/index.js";
 import { LegalPage } from "../pages/legal/index.js";
 
+function getPreferredHome(role: string): string {
+  const mode = localStorage.getItem("rapago_active_mode");
+
+  if (role === "driver" && mode === "passenger") {
+    return ROUTES.PASSENGER.HOME;
+  }
+
+  if (role === "driver" && mode === "driver") {
+    return ROUTES.DRIVER.HOME;
+  }
+
+  return ROLE_HOME[role as keyof typeof ROLE_HOME] ?? ROUTES.WELCOME;
+}
+
 function PrivateRoute({
   path,
   component: Component,
@@ -64,7 +78,7 @@ function AuthRoute({
       path={path}
       render={() => {
         if (status === "authenticated" && user) {
-          return <Redirect to={ROLE_HOME[user.role]} />;
+          return <Redirect to={getPreferredHome(user.role)} />;
         }
 
         return <Component />;
@@ -79,63 +93,36 @@ export function AppRouter(): JSX.Element {
       <Switch>
         <Redirect exact from={ROUTES.ROOT} to={ROUTES.WELCOME} />
 
-        {/* Public */}
         <Route exact path={ROUTES.WELCOME} component={WelcomePage} />
         <Route exact path={ROUTES.NOT_FOUND} component={NotFoundPage} />
         <Route exact path={ROUTES.APPLY.DRIVER} component={ApplicationDriverPage} />
         <Route exact path={ROUTES.APPLY.GUIDE} component={ApplicationGuidePage} />
         <Route exact path={ROUTES.APPLY.STATUS} component={ApplicationStatusPage} />
 
-        {/* Legal */}
         <Route exact path="/legal/:type" component={LegalPage} />
 
-        {/* Auth */}
         <AuthRoute path={ROUTES.AUTH.LOGIN} component={LoginPage} />
         <AuthRoute path={ROUTES.AUTH.REGISTER} component={RegisterPage} />
 
-        {/* Facebook Login callback */}
         <Route
           exact
           path={ROUTES.AUTH.FACEBOOK_CALLBACK}
           component={FacebookCallbackPage}
         />
 
-        {/* Role sections */}
         <PrivateRoute path={ROUTES.PASSENGER.BASE} component={PassengerLayout} />
         <PrivateRoute path={ROUTES.DRIVER.BASE} component={DriverLayout} />
         <PrivateRoute path={ROUTES.GUIDE.BASE} component={GuideLayout} />
         <PrivateRoute path={ROUTES.RENTAL.BASE} component={RentalLayout} />
         <PrivateRoute path={ROUTES.ADMIN.BASE} component={AdminLayout} />
 
-        {/* Shared profile */}
-        <PrivateRoute
-          exact
-          path={ROUTES.PROFILE.INDEX}
-          component={ProfileIndexPage}
-        />
-        <PrivateRoute
-          exact
-          path={ROUTES.PROFILE.DOCUMENTS}
-          component={ProfileDocumentsPage}
-        />
-        <PrivateRoute
-          exact
-          path={ROUTES.PROFILE.BANK_ACCOUNT}
-          component={ProfileBankAccountPage}
-        />
-        <PrivateRoute
-          exact
-          path={ROUTES.PROFILE.SECURITY}
-          component={ProfileSecurityPage}
-        />
-        <PrivateRoute
-          exact
-          path={ROUTES.PROFILE.NOTIFICATIONS}
-          component={ProfileNotificationsPage}
-        />
+        <PrivateRoute exact path={ROUTES.PROFILE.INDEX} component={ProfileIndexPage} />
+        <PrivateRoute exact path={ROUTES.PROFILE.DOCUMENTS} component={ProfileDocumentsPage} />
+        <PrivateRoute exact path={ROUTES.PROFILE.BANK_ACCOUNT} component={ProfileBankAccountPage} />
+        <PrivateRoute exact path={ROUTES.PROFILE.SECURITY} component={ProfileSecurityPage} />
+        <PrivateRoute exact path={ROUTES.PROFILE.NOTIFICATIONS} component={ProfileNotificationsPage} />
         <PrivateRoute exact path="/notifications" component={NotificationPage} />
 
-        {/* Catch-all */}
         <Route render={() => <Redirect to={ROUTES.NOT_FOUND} />} />
       </Switch>
     </IonRouterOutlet>

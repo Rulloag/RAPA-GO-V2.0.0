@@ -5,25 +5,22 @@ import { useAuth } from "../features/auth";
 import { ROUTES } from "./routes";
 import type { UserRole } from "@rapa-go/shared";
 
-/** Maps each role to its home route after login. */
 export const ROLE_HOME: Record<UserRole, string> = {
-  passenger:       ROUTES.PASSENGER.HOME,
-  driver:          ROUTES.DRIVER.HOME,
-  guide:           ROUTES.GUIDE.HOME,
+  passenger: ROUTES.PASSENGER.HOME,
+  driver: ROUTES.DRIVER.HOME,
+  guide: ROUTES.GUIDE.HOME,
   rental_operator: ROUTES.RENTAL.HOME,
-  admin:           ROUTES.ADMIN.HOME,
+  admin: ROUTES.ADMIN.HOME,
 };
 
-/** Route prefixes each role is allowed to access (beyond /profile). */
 const ROLE_ALLOWED_BASE: Record<UserRole, string> = {
-  passenger:       ROUTES.PASSENGER.BASE,
-  driver:          ROUTES.DRIVER.BASE,
-  guide:           ROUTES.GUIDE.BASE,
+  passenger: ROUTES.PASSENGER.BASE,
+  driver: ROUTES.DRIVER.BASE,
+  guide: ROUTES.GUIDE.BASE,
   rental_operator: ROUTES.RENTAL.BASE,
-  admin:           ROUTES.ADMIN.BASE,
+  admin: ROUTES.ADMIN.BASE,
 };
 
-/** All private base prefixes — used to detect role mismatch. */
 const PRIVATE_BASES = [
   ROUTES.PASSENGER.BASE,
   ROUTES.DRIVER.BASE,
@@ -34,22 +31,28 @@ const PRIVATE_BASES = [
 
 interface RouteGuardProps {
   children: ReactNode;
-  /** Current path being rendered — used to detect role mismatch. */
   path: string;
 }
 
-/**
- * RouteGuard — enforces authentication and role-based access.
- *
- * Rules:
- *  - unauthenticated → /auth/login
- *  - loading → spinner (avoids flash-of-redirect during initial mount)
- *  - wrong role for a private section → redirect to own role's home
- *  - /profile/* → allowed for all authenticated roles
- *
- * Security note: this guard only hides UI. All data access authorization
- * is enforced server-side. Never trust client-side role for data security.
- */
+function getActiveMode(): "passenger" | "driver" | null {
+  const mode = localStorage.getItem("rapago_active_mode");
+  return mode === "passenger" || mode === "driver" ? mode : null;
+}
+
+function getRedirectHome(role: UserRole): string {
+  const mode = getActiveMode();
+
+  if (role === "driver" && mode === "passenger") {
+    return ROUTES.PASSENGER.HOME;
+  }
+
+  if (role === "driver" && mode === "driver") {
+    return ROUTES.DRIVER.HOME;
+  }
+
+  return ROLE_HOME[role];
+}
+
 export function RouteGuard({ children, path }: RouteGuardProps): JSX.Element {
   const { status, user } = useAuth();
 
@@ -65,17 +68,49 @@ export function RouteGuard({ children, path }: RouteGuardProps): JSX.Element {
     return <Redirect to={ROUTES.AUTH.LOGIN} />;
   }
 
-  // /profile/* is accessible to any authenticated user
   if (path.startsWith(ROUTES.PROFILE.BASE)) {
     return <>{children}</>;
   }
 
-  // For role sections: check if user's role matches the requested base
+  const activeMode = getActiveMode();
+
+  if (
+    user.role === "driver" &&
+    activeMode === "passenger" &&
+    path.startsWith(ROUTES.PASSENGER.BASE)
+  ) {
+    return <>{children}</>;
+  }
+
+  if (
+    user.role === "driver" &&
+    activeMode === "driver" &&
+    path.startsWith(ROUTES.DRIVER.BASE)
+  ) {
+    return <>{children}</>;
+  }
+
+  if (
+    user.role === "driver" &&
+    activeMode === "passenger" &&
+    path.startsWith(ROUTES.DRIVER.BASE)
+  ) {
+    return <Redirect to={ROUTES.PASSENGER.HOME} />;
+  }
+
+  if (
+    user.role === "driver" &&
+    activeMode === "driver" &&
+    path.startsWith(ROUTES.PASSENGER.BASE)
+  ) {
+    return <Redirect to={ROUTES.DRIVER.HOME} />;
+  }
+
   const allowedBase = ROLE_ALLOWED_BASE[user.role];
   const isPrivateBase = PRIVATE_BASES.some((base) => path.startsWith(base));
 
   if (isPrivateBase && !path.startsWith(allowedBase)) {
-    return <Redirect to={ROLE_HOME[user.role]} />;
+    return <Redirect to={getRedirectHome(user.role)} />;
   }
 
   return <>{children}</>;

@@ -4,10 +4,8 @@ import {
   IonCardContent,
   IonCardHeader,
   IonCardTitle,
-  IonChip,
   IonContent,
   IonIcon,
-  IonLabel,
   IonPage,
   IonText,
 } from "@ionic/react";
@@ -18,8 +16,8 @@ import {
   carSportOutline,
   chevronForwardOutline,
   giftOutline,
-  locationOutline,
   mapOutline,
+  newspaperOutline,
   ticketOutline,
   walletOutline,
 } from "ionicons/icons";
@@ -34,7 +32,6 @@ import { useConnectivity } from "../../../hooks/useConnectivity.js";
 import { ROUTES } from "../../../navigation/routes.js";
 import { useAuth } from "../../../features/auth/index.js";
 import { RAPAGO_CONTACT, WA_MESSAGES } from "@rapa-go/shared";
-import { FREQUENT_DESTINATIONS } from "../shared.js";
 
 import rapaNuiMain from "../../../theme/img/rapanui.jpg";
 import rapaNuiOne from "../../../theme/img/imgen-rapuni1.jpeg";
@@ -56,6 +53,30 @@ const HOME_CAROUSEL_IMAGES = [
     src: rapaNuiTwo,
     title: "Cultura y aventura",
     subtitle: "Conecta con guías y conductores locales",
+  },
+];
+
+const RAPA_NUI_NEWS = [
+  {
+    title: "Noticias y avisos locales",
+    subtitle: "Información útil para moverte mejor por Hanga Roa y sectores turísticos.",
+    tag: "Actualidad",
+    icon: newspaperOutline,
+    route: ROUTES.PASSENGER.EVENTS,
+  },
+  {
+    title: "Actividades culturales",
+    subtitle: "Revisa eventos, experiencias y panoramas disponibles en Rapa Nui.",
+    tag: "Cultura",
+    icon: ticketOutline,
+    route: ROUTES.PASSENGER.EVENTS,
+  },
+  {
+    title: "Consejos para visitantes",
+    subtitle: "Planifica tus traslados con anticipación y respeta los espacios patrimoniales.",
+    tag: "Turismo",
+    icon: mapOutline,
+    route: ROUTES.PASSENGER.GUIDES,
   },
 ];
 
@@ -241,18 +262,99 @@ export default function HomePage(): JSX.Element {
           </section>
 
           <section className="passenger-home-section">
-            <h2 className="passenger-home-section-title">Destinos frecuentes</h2>
+            <h2 className="passenger-home-section-title">Noticias de Rapa Nui</h2>
 
-            <div className="frequent-destinations-row">
-              {FREQUENT_DESTINATIONS.map((dest) => (
-                <IonChip
-                  key={dest}
-                  className="frequent-destination-chip"
-                  onClick={() => history.push(ROUTES.PASSENGER.REQUEST_RIDE)}
+            <div
+              style={{
+                display: "flex",
+                gap: "12px",
+                overflowX: "auto",
+                padding: "2px 2px 8px",
+                scrollSnapType: "x mandatory",
+              }}
+            >
+              {RAPA_NUI_NEWS.map((news) => (
+                <IonCard
+                  key={news.title}
+                  button
+                  className="ion-activatable"
+                  onClick={() => history.push(news.route)}
+                  style={{
+                    minWidth: "255px",
+                    maxWidth: "280px",
+                    margin: 0,
+                    borderRadius: "22px",
+                    background: "linear-gradient(135deg, rgba(255,255,255,.96), rgba(244,226,185,.96))",
+                    color: "#181818",
+                    boxShadow: "0 14px 28px rgba(0,0,0,.18)",
+                    scrollSnapAlign: "start",
+                  }}
                 >
-                  <IonIcon icon={locationOutline} className="frequent-destination-icon" />
-                  <IonLabel>{dest}</IonLabel>
-                </IonChip>
+                  <IonCardContent
+                    style={{
+                      padding: "16px",
+                      display: "flex",
+                      alignItems: "flex-start",
+                      gap: "12px",
+                    }}
+                  >
+                    <div
+                      style={{
+                        width: "44px",
+                        height: "44px",
+                        borderRadius: "16px",
+                        background: "linear-gradient(135deg,#C89B3C,#F3D891)",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        flexShrink: 0,
+                        boxShadow: "0 10px 22px rgba(200,155,60,.28)",
+                      }}
+                    >
+                      <IonIcon
+                        icon={news.icon}
+                        style={{ fontSize: "1.35rem", color: "#111" }}
+                      />
+                    </div>
+
+                    <div style={{ minWidth: 0 }}>
+                      <div
+                        style={{
+                          fontSize: ".68rem",
+                          fontWeight: 950,
+                          letterSpacing: ".05em",
+                          textTransform: "uppercase",
+                          color: "#9A6A16",
+                          marginBottom: "5px",
+                        }}
+                      >
+                        {news.tag}
+                      </div>
+
+                      <div
+                        style={{
+                          fontSize: ".92rem",
+                          fontWeight: 950,
+                          lineHeight: 1.15,
+                          color: "#151515",
+                        }}
+                      >
+                        {news.title}
+                      </div>
+
+                      <div
+                        style={{
+                          marginTop: "6px",
+                          fontSize: ".74rem",
+                          lineHeight: 1.35,
+                          color: "rgba(20,20,20,.68)",
+                        }}
+                      >
+                        {news.subtitle}
+                      </div>
+                    </div>
+                  </IonCardContent>
+                </IonCard>
               ))}
             </div>
           </section>

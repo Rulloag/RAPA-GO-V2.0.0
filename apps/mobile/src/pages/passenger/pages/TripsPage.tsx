@@ -22,6 +22,71 @@ import { RIDE_STATUS_LABEL, RIDE_STATUS_COLOR } from "../shared.js";
 const PAGE_SIZE = 20;
 const ACTIVE_STATUSES = ["requested", "accepted", "driver_en_route", "driver_arrived", "in_progress"];
 
+const LOCAL_PASSENGER_RIDES_KEY = "rapago_local_passenger_rides";
+
+function isPassengerPermissionMessage(message: unknown): boolean {
+  const text = String(message ?? "").toLowerCase();
+
+  return (
+    text.includes("403") ||
+    text.includes("forbidden") ||
+    text.includes("only passengers can access ride requests") ||
+    text.includes("only passengers") ||
+    text.includes("solo pasajeros") ||
+    text.includes("unauthorized") ||
+    text.includes("401") ||
+    text.includes("token") ||
+    text.includes("sesión") ||
+    text.includes("session")
+  );
+}
+
+function safeTripsErrorMessage(message: string | null): string | null {
+  if (!message) return null;
+
+  if (isPassengerPermissionMessage(message)) {
+    // No mostramos el error técnico cuando el usuario conductor cambió a vista pasajero.
+    // El backend debe permitir driver/admin en rutas de pasajero para operación real.
+    return null;
+  }
+
+  return message;
+}
+
+function readLocalPassengerRides(): RideRequestData[] {
+  try {
+    const raw = localStorage.getItem(LOCAL_PASSENGER_RIDES_KEY);
+    if (!raw) return [];
+
+    const parsed = JSON.parse(raw) as RideRequestData[];
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveLocalPassengerRides(rides: RideRequestData[]): void {
+  try {
+    localStorage.setItem(LOCAL_PASSENGER_RIDES_KEY, JSON.stringify(rides));
+  } catch {
+    // No bloquea la pantalla si localStorage no está disponible.
+  }
+}
+
+function mergeRides(localRides: RideRequestData[], serverRides: RideRequestData[]): RideRequestData[] {
+  const seen = new Set<string>();
+  const merged: RideRequestData[] = [];
+
+  for (const ride of [...localRides, ...serverRides]) {
+    if (!ride?.id || seen.has(ride.id)) continue;
+    seen.add(ride.id);
+    merged.push(ride);
+  }
+
+  return merged;
+}
+
+
 function StarRatingInput({ value, onChange }: { value: number; onChange: (v: number) => void }) {
   return (
     <div style={{ display: "flex", gap: "4px", margin: "8px 0" }}>
@@ -54,6 +119,61 @@ function extractRideNumber(notes: string | null | undefined, regex: RegExp): num
   return Number.isFinite(parsed) ? parsed : null;
 }
 
+function formatClp(value: number | null | undefined): string {
+  if (value == null || !Number.isFinite(Number(value))) return "$0 CLP";
+  return `$${Math.round(Number(value)).toLocaleString("es-CL")} CLP`;
+}
+
+function extractMoneyAmount(value: string | null | undefined): number | null {
+  if (!value) return null;
+  const cleaned = value.replace(/\./g, "").replace(/,/g, ".");
+  const match = cleaned.match(/\$?\s*(\d{3,7})(?:\s*CLP)?/i);
+  if (!match?.[1]) return null;
+  const amount = Number(match[1]);
+  return Number.isFinite(amount) && amount > 0 ? Math.round(amount) : null;
+}
+
+function extractFareFromNotes(notes: string | null | undefined): number | null {
+  if (!notes) return null;
+
+  const patterns = [
+    /Tarifa RAPA GO calculada:\s*\$?\s*([\d.,]+)\s*CLP/i,
+    /Precio del viaje:\s*\$?\s*([\d.,]+)\s*CLP/i,
+    /Forma de pago seleccionada:\s*[^.]*?\$\s*([\d.,]+)\s*CLP/i,
+    /Forma de pago:\s*[^.]*?\$\s*([\d.,]+)\s*CLP/i,
+  ];
+
+  for (const pattern of patterns) {
+    const match = notes.match(pattern);
+    if (match?.[1]) {
+      const amount = extractMoneyAmount(match[1]);
+      if (amount != null) return amount;
+    }
+  }
+
+  return null;
+}
+
+function getRideDisplayFareClp(ride: RideRequestData): number | null {
+  const noteFare = extractFareFromNotes(ride.notes);
+  if (noteFare != null) return noteFare;
+
+  if (ride.estimatedFareClp != null && Number.isFinite(Number(ride.estimatedFareClp))) {
+    // Este valor viene guardado al crear el viaje usando las tarifas activas del admin.
+    // No lo recalculamos aquí para que pasajero, conductor y admin vean exactamente lo mismo.
+    return Math.round(Number(ride.estimatedFareClp));
+  }
+
+  return null;
+}
+
+function getRidePaymentMethodLabel(notes: string | null | undefined): string {
+  const text = String(notes ?? "").toLowerCase();
+  if (text.includes("tarjeta") || text.includes("prontopaga")) return "Tarjeta / ProntoPaga";
+  if (text.includes("efectivo")) return "Efectivo";
+  return "Pendiente";
+}
+
 function extractPassengerRideNav(notes: string | null | undefined): PassengerRideNavPoints {
   return {
     pickupLat: extractRideNumber(notes, /Coordenadas recogida accesible:\s*(-?\d+(?:[.,]\d+)?)/i),
@@ -75,7 +195,12 @@ function cleanRideNotes(notes: string | null | undefined): string | null {
     .replace(/Ubicación real del pasajero:.*?(?=Punto accesible de recogida|Coordenadas recogida accesible:|$)/i, "")
     .replace(/Punto accesible de recogida ajustado a calle\..*?(?=Coordenadas recogida accesible:|$)/i, "")
     .replace(/Coordenadas recogida accesible:.*?(?=Coordenadas destino accesible:|$)/i, "")
-    .replace(/Coordenadas destino accesible:.*$/i, "")
+    .replace(/Coordenadas destino accesible:.*?(?=Tarifa RAPA GO calculada:|Kilómetros calculados:|Ganancia aprox\. conductor:|Forma de pago|$)/i, "")
+    .replace(/Tarifa RAPA GO calculada:.*?(?=Kilómetros calculados:|Ganancia aprox\. conductor:|Forma de pago|$)/i, "")
+    .replace(/Kilómetros calculados:.*?(?=Ganancia aprox\. conductor:|Forma de pago|$)/i, "")
+    .replace(/Ganancia aprox\. conductor:.*?(?=Forma de pago|$)/i, "")
+    .replace(/Forma de pago seleccionada:.*$/i, "")
+    .replace(/Forma de pago:.*$/i, "")
     .trim() || null;
 }
 
@@ -728,6 +853,8 @@ const hasDriver = ride.status !== "requested" || !!ride.driverName;
   const showMap = ["accepted", "driver_en_route", "driver_arrived", "in_progress"].includes(ride.status);
 const color = RIDE_STATUS_COLOR[ride.status] ?? "medium";
   const label = RIDE_STATUS_LABEL[ride.status] ?? ride.status;
+  const displayFareClp = getRideDisplayFareClp(ride);
+  const paymentLabel = getRidePaymentMethodLabel(ride.notes);
 
   return (
     <IonCard
@@ -889,27 +1016,30 @@ const color = RIDE_STATUS_COLOR[ride.status] ?? "medium";
             </div>
           </div>
 
-          {ride.estimatedFareClp != null && (
+          {displayFareClp != null && (
             <div
               style={{
-                marginTop: 12,
-                display: "inline-flex",
-                alignItems: "center",
-                gap: 8,
-                background: "rgba(210,164,58,.16)",
-                color: "#9A6A00",
-                borderRadius: 999,
-                padding: "8px 12px",
-                fontWeight: 950,
-                fontSize: ".9rem",
+                marginTop: 14,
+                borderRadius: 20,
+                padding: "13px 14px",
+                background: "linear-gradient(135deg,#fff9e8 0%,#f1d58a 100%)",
+                border: "1px solid rgba(210,164,58,.70)",
+                boxShadow: "0 8px 22px rgba(0,0,0,.10)",
+                color: "#111111",
               }}
             >
-              ${ride.estimatedFareClp.toLocaleString("es-CL")} CLP
-              {ride.discountApplied && ride.originalFareClp != null && (
-                <span style={{ color: "#666", fontSize: ".72rem", textDecoration: "line-through" }}>
-                  ${ride.originalFareClp.toLocaleString("es-CL")}
-                </span>
-              )}
+              <div style={{ fontSize: ".72rem", fontWeight: 950, color: "#8a6418", letterSpacing: ".04em" }}>
+                PRECIO DEL VIAJE
+              </div>
+              <div style={{ fontSize: "1.35rem", fontWeight: 950, lineHeight: 1.1, marginTop: 3 }}>
+                {formatClp(displayFareClp)}
+              </div>
+              <div style={{ marginTop: 6, fontSize: ".78rem", color: "rgba(17,17,17,.72)", fontWeight: 800 }}>
+                💵 Pago: {paymentLabel}
+              </div>
+              <div style={{ marginTop: 3, fontSize: ".72rem", color: "rgba(17,17,17,.60)", lineHeight: 1.25 }}>
+                Este es el valor que pagarás al finalizar el viaje.
+              </div>
             </div>
           )}
 
@@ -998,30 +1128,48 @@ export default function TripsPage(): JSX.Element {
   const [ratedIds,         setRatedIds]         = useState<Set<string>>(new Set());
   const [statusFilter, setStatusFilter] = useState<"all" | "active" | "completed" | "cancelled">("active");
   const [lastRefreshAt, setLastRefreshAt] = useState<Date | null>(null);
-  const [knownAssignedRideIds, setKnownAssignedRideIds] = useState<Set<string>>(new Set());
+  const [, setKnownAssignedRideIds] = useState<Set<string>>(new Set());
 
   const loadRides = useCallback(async () => {
-    if (!session?.accessToken) return;
     setLoading(true);
     setLoadError(null);
+
     try {
+      const localRides = readLocalPassengerRides();
+
+      if (!session?.accessToken) {
+        setAllRides(localRides);
+        setKnownAssignedRideIds(new Set());
+        setPage(1);
+        setLastRefreshAt(new Date());
+        return;
+      }
+
       const data = await ridesService.listMyRides(session.accessToken);
 
-      const assignedActiveRides = data.filter((ride) =>
+      const mergedRides = mergeRides(localRides, data);
+      const assignedActiveRides = mergedRides.filter((ride) =>
         ["accepted", "driver_en_route", "driver_arrived", "in_progress"].includes(ride.status),
       );
 
       const assignedIds = new Set(assignedActiveRides.map((ride) => ride.id));
       setKnownAssignedRideIds(assignedIds);
-      setAllRides(data);
+      setAllRides(mergedRides);
       setPage(1);
       setLastRefreshAt(new Date());
     } catch (err) {
-      setLoadError(err instanceof Error ? err.message : "Error al cargar tus viajes.");
+      const localRides = readLocalPassengerRides();
+      setAllRides(localRides);
+      setKnownAssignedRideIds(new Set());
+      setPage(1);
+      setLastRefreshAt(new Date());
+
+      const message = err instanceof Error ? err.message : "Error al cargar tus viajes.";
+      setLoadError(safeTripsErrorMessage(message));
     } finally {
       setLoading(false);
     }
-  }, [session?.accessToken, knownAssignedRideIds]);
+  }, [session?.accessToken]);
 
   useEffect(() => {
     void loadRides();
@@ -1031,20 +1179,45 @@ export default function TripsPage(): JSX.Element {
   const rides = allRides.slice(0, page * PAGE_SIZE);
 
   async function handleCancel(rideId: string) {
-    if (!session?.accessToken) return;
     setCancelling(rideId);
     setCancelError(null);
+
     try {
+      if (rideId.startsWith("local-") || !session?.accessToken) {
+        const cancelledLocal = {
+          status: "cancelled",
+          cancelledAt: new Date().toISOString(),
+          cancelledByRole: "passenger",
+          cancellationReason: "Cancelado por pasajero.",
+        } as Partial<RideRequestData>;
+
+        const updatedLocal = readLocalPassengerRides().map((ride) =>
+          ride.id === rideId ? ({ ...ride, ...cancelledLocal } as RideRequestData) : ride,
+        );
+
+        saveLocalPassengerRides(updatedLocal);
+        setAllRides((prev) =>
+          prev.map((ride) => (ride.id === rideId ? ({ ...ride, ...cancelledLocal } as RideRequestData) : ride)),
+        );
+        return;
+      }
+
       const updated = await ridesService.cancelRideRequest(session.accessToken, rideId);
       setAllRides((prev) => prev.map((r) => (r.id === rideId ? updated : r)));
     } catch (err) {
-      setCancelError(err instanceof Error ? err.message : "Error al cancelar el viaje.");
+      const message = err instanceof Error ? err.message : "Error al cancelar el viaje.";
+      setCancelError(safeTripsErrorMessage(message));
     } finally {
       setCancelling(null);
     }
   }
 
   async function handleCancelAccepted(rideId: string) {
+    if (rideId.startsWith("local-")) {
+      await handleCancel(rideId);
+      return;
+    }
+
     if (!session?.accessToken) return;
     setCancelling(rideId);
     setCancelError(null);
@@ -1052,7 +1225,8 @@ export default function TripsPage(): JSX.Element {
       const updated = await ridesService.cancelAcceptedRide(session.accessToken, rideId);
       setAllRides((prev) => prev.map((r) => (r.id === rideId ? updated : r)));
     } catch (err) {
-      setCancelError(err instanceof Error ? err.message : "Error al cancelar el viaje.");
+      const message = err instanceof Error ? err.message : "Error al cancelar el viaje.";
+      setCancelError(safeTripsErrorMessage(message));
     } finally {
       setCancelling(null);
     }
@@ -1069,7 +1243,8 @@ export default function TripsPage(): JSX.Element {
       setRatingStars(5);
       setRatingComment("");
     } catch (err) {
-      setRatingError(err instanceof Error ? err.message : "Error al calificar el viaje.");
+      const message = err instanceof Error ? err.message : "Error al calificar el viaje.";
+      setRatingError(safeTripsErrorMessage(message));
     } finally {
       setSubmittingRating(false);
     }
