@@ -6,7 +6,7 @@ import { useAuth } from "../features/auth";
 import { WelcomePage } from "../pages/WelcomePage";
 import { NotFoundPage } from "../pages/NotFoundPage";
 import { LoginPage, RegisterPage } from "../features/auth";
-import { FacebookCallbackPage } from "../features/auth/FacebookCallbackPage.js";
+import { FacebookCallbackPage } from "../features/auth/FacebookCallbackPage";
 import { PassengerLayout } from "../layouts/PassengerLayout";
 import { DriverLayout } from "../layouts/DriverLayout";
 import { GuideLayout } from "../layouts/GuideLayout";
@@ -19,16 +19,20 @@ import {
   ProfileSecurityPage,
   ProfileNotificationsPage,
 } from "../pages/profile";
-import { NotificationPage } from "../pages/notifications/NotificationPage.js";
+import { NotificationPage } from "../pages/notifications/NotificationPage";
 import {
   ApplicationDriverPage,
   ApplicationGuidePage,
   ApplicationStatusPage,
-} from "../pages/apply/index.js";
-import { LegalPage } from "../pages/legal/index.js";
+} from "../pages/apply/index";
+import { LegalPage } from "../pages/legal/index";
 
 function getPreferredHome(role: string): string {
-  const mode = localStorage.getItem("rapago_active_mode");
+  const mode =
+    localStorage.getItem("rapago_active_role") ??
+    localStorage.getItem("rapago_selected_role") ??
+    localStorage.getItem("rapago_view_mode") ??
+    localStorage.getItem("rapago_active_mode");
 
   if (role === "driver" && mode === "passenger") {
     return ROUTES.PASSENGER.HOME;
@@ -91,10 +95,18 @@ export function AppRouter(): JSX.Element {
   return (
     <IonRouterOutlet>
       <Switch>
+        {/* Facebook callback debe ir arriba para que no lo tome otra ruta */}
+        <Route
+          exact
+          path={ROUTES.AUTH.FACEBOOK_CALLBACK}
+          component={FacebookCallbackPage}
+        />
+
         <Redirect exact from={ROUTES.ROOT} to={ROUTES.WELCOME} />
 
         <Route exact path={ROUTES.WELCOME} component={WelcomePage} />
         <Route exact path={ROUTES.NOT_FOUND} component={NotFoundPage} />
+
         <Route exact path={ROUTES.APPLY.DRIVER} component={ApplicationDriverPage} />
         <Route exact path={ROUTES.APPLY.GUIDE} component={ApplicationGuidePage} />
         <Route exact path={ROUTES.APPLY.STATUS} component={ApplicationStatusPage} />
@@ -103,12 +115,6 @@ export function AppRouter(): JSX.Element {
 
         <AuthRoute path={ROUTES.AUTH.LOGIN} component={LoginPage} />
         <AuthRoute path={ROUTES.AUTH.REGISTER} component={RegisterPage} />
-
-        <Route
-          exact
-          path={ROUTES.AUTH.FACEBOOK_CALLBACK}
-          component={FacebookCallbackPage}
-        />
 
         <PrivateRoute path={ROUTES.PASSENGER.BASE} component={PassengerLayout} />
         <PrivateRoute path={ROUTES.DRIVER.BASE} component={DriverLayout} />
