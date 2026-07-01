@@ -37,8 +37,6 @@ import {
   adminReferralsRoutes,
 } from "./modules/referrals/referrals.routes.js";
 
-import { paymentsRoutes } from "./modules/payments/payments.routes.js";
-
 import { sql } from "drizzle-orm";
 import { db } from "./db/client.js";
 
@@ -145,9 +143,6 @@ export async function buildApp(): Promise<FastifyInstance> {
   await fastify.register(fareSettingsAdminRoutes, { prefix: "/api/admin" });
   await fastify.register(referralsRoutes, { prefix: "/api" });
   await fastify.register(adminReferralsRoutes, { prefix: "/api/admin" });
-
-  // ── Payments / ProntoPaga ─────────────────────────────────────────────────
-  await fastify.register(paymentsRoutes, { prefix: "/api/payments" });
 
   return fastify;
 }

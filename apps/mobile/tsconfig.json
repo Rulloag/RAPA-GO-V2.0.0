@@ -23,6 +23,6 @@
     "allowImportingTsExtensions": true,
     "types": ["vite/client"]
   },
-  "include": ["src"],
+  "include": ["src", "../api/src/protopaga", "../api/protopaga"],
   "exclude": ["node_modules", "dist"]
 }

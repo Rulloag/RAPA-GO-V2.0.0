@@ -385,143 +385,6 @@ function formatUsdFromClp(value: number | null | undefined, usdRate = readAdminF
   })}`;
 }
 
-type ProntoPagaPaymentData = {
-  urlPay: string;
-  uid: string;
-  reference: string;
-  order: string;
-  amountClp: number;
-  currency: string;
-  country: string;
-};
-
-type CreateProntoPagaPaymentPayload = {
-  rideId: string;
-  amountClp: number;
-  clientName: string;
-  clientEmail: string;
-  clientPhone: string;
-  clientDocument: string;
-};
-
-function getProntoPagaApiBaseUrl(): string {
-  const env = import.meta.env as Record<string, string | undefined>;
-
-  return (
-    env["VITE_API_BASE_URL"] ||
-    env["VITE_API_URL"] ||
-    "http://localhost:3000/api"
-  ).replace(/\/$/, "");
-}
-
-async function parsePassengerApiResponse<T>(response: Response): Promise<T> {
-  const text = await response.text();
-  let json: unknown = null;
-
-  try {
-    json = text ? JSON.parse(text) : null;
-  } catch {
-    json = { message: text };
-  }
-
-  const data = json as { ok?: boolean; data?: unknown; message?: string; error?: string };
-
-  if (!response.ok || data?.ok === false) {
-    throw new Error(
-      data?.message ||
-        data?.error ||
-        `Error HTTP ${response.status}`,
-    );
-  }
-
-  return (data?.data ?? data) as T;
-}
-
-async function createProntoPagaPayment(
-  token: string,
-  payload: CreateProntoPagaPaymentPayload,
-): Promise<ProntoPagaPaymentData> {
-  const response = await fetch(`${getProntoPagaApiBaseUrl()}/payments/prontopaga/create`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${token}`,
-    },
-    body: JSON.stringify(payload),
-  });
-
-  return parsePassengerApiResponse<ProntoPagaPaymentData>(response);
-}
-
-function readRideIdFromResponse(value: unknown): string | null {
-  if (!value || typeof value !== "object") return null;
-
-  const direct = (value as { id?: unknown }).id;
-  if (typeof direct === "string" && direct.trim()) return direct.trim();
-
-  const data = (value as { data?: unknown }).data;
-  if (data && typeof data === "object") {
-    const dataId = (data as { id?: unknown }).id;
-    if (typeof dataId === "string" && dataId.trim()) return dataId.trim();
-
-    const ride = (data as { ride?: unknown }).ride;
-    if (ride && typeof ride === "object") {
-      const rideId = (ride as { id?: unknown }).id;
-      if (typeof rideId === "string" && rideId.trim()) return rideId.trim();
-    }
-  }
-
-  const ride = (value as { ride?: unknown }).ride;
-  if (ride && typeof ride === "object") {
-    const rideId = (ride as { id?: unknown }).id;
-    if (typeof rideId === "string" && rideId.trim()) return rideId.trim();
-  }
-
-  return null;
-}
-
-function buildProntoPagaClientData(user: unknown): {
-  clientName: string;
-  clientEmail: string;
-  clientPhone: string;
-  clientDocument: string;
-} {
-  const stored = readStoredRegistrationProfile();
-
-  const userName = getUserStringField(user, "name");
-  const firstName = getUserStringField(user, "firstName") ?? stored.firstName ?? "";
-  const lastName = getUserStringField(user, "lastName") ?? stored.lastName ?? "";
-  const composedName = `${firstName} ${lastName}`.trim();
-
-  const clientName =
-    userName ??
-    (composedName || stored.name || "Cliente Rapa Go");
-
-  const clientEmail =
-    getUserStringField(user, "email") ??
-    stored.email ??
-    "cliente@rapago.cl";
-
-  const clientPhone =
-    getUserStringField(user, "phone") ??
-    stored.phone ??
-    localStorage.getItem("rapago_profile_phone") ??
-    "56900000000";
-
-  const clientDocument =
-    getUserStringField(user, "rut") ??
-    stored.rut ??
-    localStorage.getItem("rapago_profile_rut") ??
-    "11111111-1";
-
-  return {
-    clientName,
-    clientEmail,
-    clientPhone,
-    clientDocument,
-  };
-}
-
 function roundFare(value: number): number {
   return Math.max(0, Math.round(value / 100) * 100);
 }
@@ -1687,7 +1550,7 @@ function RequestRidePage(): JSX.Element {
     );
   }
 
-  async function handleRequest(forcedPaymentMethod?: "cash" | "card") {
+  async function handleRequest() {
     const origin = originInput.trim();
     const dest = destInput.trim();
 
@@ -1706,14 +1569,16 @@ function RequestRidePage(): JSX.Element {
       return;
     }
 
-    const selectedPaymentMethod = forcedPaymentMethod ?? paymentMethod;
-
-    if (selectedPaymentMethod === null) {
-      setSubmitError("Selecciona una forma de pago.");
+    if (paymentMethod === "card") {
+      setSubmitError("El pago con tarjeta estará disponible próximamente. Por ahora selecciona efectivo.");
       return;
     }
 
-    setPaymentMethod(selectedPaymentMethod);
+    if (paymentMethod !== "cash") {
+      setSubmitError("Selecciona una forma de pago para solicitar el viaje.");
+      return;
+    }
+
     setSubmitting(true);
     setSubmitError(null);
 
@@ -1722,11 +1587,9 @@ function RequestRidePage(): JSX.Element {
       destinationText: dest,
     };
 
-    const isCardPayment = selectedPaymentMethod === "card";
-    const normalizedPaymentMethod = isCardPayment ? "prontopaga_card" : "cash";
-
+    // Guardamos el precio real calculado para que lo vea pasajero, conductor y admin.
     (input as unknown as { estimatedFareClp?: number; paymentMethod?: string }).estimatedFareClp = farePreview.fare;
-    (input as unknown as { estimatedFareClp?: number; paymentMethod?: string }).paymentMethod = normalizedPaymentMethod;
+    (input as unknown as { estimatedFareClp?: number; paymentMethod?: string }).paymentMethod = "cash";
     (input as unknown as { passengerFareType?: PassengerFareType; farePassengerType?: PassengerFareType }).passengerFareType = passengerFareType;
     (input as unknown as { passengerFareType?: PassengerFareType; farePassengerType?: PassengerFareType }).farePassengerType = passengerFareType;
     (input as unknown as { fareVehicleCategory?: VehicleFareCategory; vehicleCategory?: VehicleFareCategory }).fareVehicleCategory = vehicleCategory;
@@ -1750,66 +1613,12 @@ function RequestRidePage(): JSX.Element {
     notes.push(`Kilómetros calculados: ${farePreview.km.toFixed(1)} km.`);
     notes.push(`Categoría de vehículo: ${vehicleFareLabel(vehicleCategory)}.`);
     notes.push(`Ganancia aprox. conductor: ${farePreview.driverEarnings} CLP.`);
-    notes.push(`Forma de pago: ${isCardPayment ? "Tarjeta / ProntoPaga" : "efectivo"}.`);
-
-    if (isCardPayment) {
-      notes.push("Pago pendiente de confirmación ProntoPaga.");
-    }
+    notes.push("Forma de pago: efectivo.");
 
     const trimNotes = notesInput.trim();
     if (trimNotes) notes.push(trimNotes);
 
     input.notes = notes.join(" ");
-
-    const localRidePayload = {
-      originText: input.originText,
-      destinationText: input.destinationText,
-      notes: input.notes,
-      estimatedFareClp: farePreview.fare,
-    };
-
-    /*
-     * IMPORTANTE:
-     * Para ProntoPaga NO llamamos primero a /api/rides/request.
-     * Tu backend está devolviendo 500 en esa ruta, por eso se cortaba antes de abrir tarjeta.
-     * Guardamos el viaje local y abrimos ProntoPaga directo.
-     */
-    if (isCardPayment) {
-      try {
-        const localRide = createLocalPassengerRide(localRidePayload);
-        saveLocalPassengerRides([localRide, ...readLocalPassengerRides()]);
-
-        const localRideId =
-          typeof localRide.id === "string" && localRide.id.trim()
-            ? localRide.id.trim()
-            : `local-${Date.now()}`;
-
-        const client = buildProntoPagaClientData(session?.user);
-        const payment = await createProntoPagaPayment(session?.accessToken ?? "local-demo", {
-          rideId: localRideId,
-          amountClp: farePreview.fare,
-          ...client,
-        });
-
-        if (!payment.urlPay) {
-          throw new Error("ProntoPaga no entregó el enlace de pago.");
-        }
-
-        window.location.href = payment.urlPay;
-        return;
-      } catch (paymentErr) {
-        const paymentMessage =
-          paymentErr instanceof Error
-            ? paymentErr.message
-            : "No se pudo abrir ProntoPaga.";
-
-        setSubmitError(
-          `No se pudo abrir ProntoPaga: ${paymentMessage}. Revisa que las rutas del backend estén en apps/api/src/modules/payments y no dentro de mobile/src/app.`,
-        );
-        setSubmitting(false);
-        return;
-      }
-    }
 
     try {
       if (!session?.accessToken) {
@@ -1820,10 +1629,20 @@ function RequestRidePage(): JSX.Element {
     } catch (err) {
       const message = err instanceof Error ? err.message : "Error al solicitar el viaje.";
 
-      const localRide = createLocalPassengerRide(localRidePayload);
-      saveLocalPassengerRides([localRide, ...readLocalPassengerRides()]);
+      if (isUnauthorizedMessage(message)) {
+        const localRide = createLocalPassengerRide({
+          originText: input.originText,
+          destinationText: input.destinationText,
+          notes: input.notes,
+          estimatedFareClp: farePreview.fare,
+        });
 
-      console.warn("RAPA GO: backend rechazó crear viaje. Se guardó localmente.", message);
+        saveLocalPassengerRides([localRide, ...readLocalPassengerRides()]);
+      } else {
+        setSubmitError(safePassengerErrorMessage(message));
+        setSubmitting(false);
+        return;
+      }
     } finally {
       setSubmitting(false);
     }
@@ -2071,7 +1890,7 @@ function RequestRidePage(): JSX.Element {
                     </div>
                   </div>
 
-                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px", marginTop: "14px" }}>
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: "10px", marginTop: "14px" }}>
                     <button
                       type="button"
                       onClick={() => { setPaymentMethod("cash"); setSubmitError(null); }}
@@ -2095,29 +1914,26 @@ function RequestRidePage(): JSX.Element {
                     <button
                       type="button"
                       onClick={() => {
-                        if (submitting) return;
                         setPaymentMethod("card");
-                        setSubmitError(null);
-                        void handleRequest("card");
+                        setSubmitError("El pago con tarjeta estará disponible próximamente. Por ahora puedes solicitar el viaje en efectivo.");
                       }}
                       style={{
-                        border: paymentMethod === "card" ? "3px solid #ffffff" : "2px solid rgba(36,105,201,.45)",
+                        border: paymentMethod === "card" ? "3px solid #ffffff" : "2px solid rgba(120,120,120,.28)",
                         borderRadius: "18px",
                         padding: "13px 10px",
-                        background: "linear-gradient(180deg,#4A90E2,#2469C9)",
-                        color: "#ffffff",
-                        boxShadow: paymentMethod === "card" ? "0 0 22px rgba(36,105,201,.55)" : "0 8px 18px rgba(36,105,201,.22)",
+                        background: "linear-gradient(180deg,#F2F2F2,#D7D7D7)",
+                        color: "#444444",
+                        boxShadow: paymentMethod === "card" ? "0 0 18px rgba(120,120,120,.35)" : "0 8px 18px rgba(0,0,0,.08)",
                         transform: paymentMethod === "card" ? "scale(1.02)" : "scale(1)",
                         fontWeight: 950,
-                        opacity: 1,
+                        position: "relative",
+                        overflow: "hidden",
                       }}
                     >
                       <div style={{ fontSize: "1.2rem" }}>💳</div>
                       <div>Tarjeta</div>
-                      <div style={{ fontSize: ".7rem", marginTop: "2px", opacity: .95 }}>Abrir banco ahora</div>
-                      <div style={{ fontSize: ".8rem", marginTop: "3px" }}>{formatClp(farePreview.fare)}</div>
-                      <div style={{ fontSize: ".72rem", marginTop: "2px", opacity: .9 }}>{formatUsdFromClp(farePreview.fare)}</div>
-                      <div style={{ fontSize: ".68rem", marginTop: "2px", opacity: .92 }}>ProntoPaga</div>
+                      <div style={{ fontSize: ".78rem", marginTop: "3px" }}>Próximamente</div>
+                      <div style={{ fontSize: ".68rem", marginTop: "2px", opacity: .72 }}>No disponible aún</div>
                     </button>
                   </div>
                 </div>
@@ -2139,14 +1955,14 @@ function RequestRidePage(): JSX.Element {
                 expand="block"
                 style={{ marginTop: "16px" }}
                 onClick={() => void handleRequest()}
-                disabled={submitting || !farePreview || paymentMethod === null}
+                disabled={submitting || !farePreview || paymentMethod !== "cash"}
               >
                 {submitting ? (
                   <IonSpinner name="dots" />
-                ) : paymentMethod === "card" ? (
-                  "Pagar con tarjeta"
                 ) : paymentMethod === "cash" ? (
                   "Solicitar viaje"
+                ) : paymentMethod === "card" ? (
+                  "Tarjeta próximamente"
                 ) : (
                   "Selecciona forma de pago"
                 )}
