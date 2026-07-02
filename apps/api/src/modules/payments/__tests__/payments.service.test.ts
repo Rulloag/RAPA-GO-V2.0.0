@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
-// ── vi.hoisted ensures these fns exist before vi.mock factories run ────────────
+// ── vi.hoisted: all mock fns must exist before vi.mock factories run ───────────
 const {
   mockVerifyAccessToken,
   mockHashToken,
@@ -15,8 +15,9 @@ const {
   mockMarkRejected,
   mockFindById,
   mockRecordSafe,
-  mockCreateProntoPagaPayment,
+  mockCreatePayment,
   mockVerifyWebhookSignature,
+  mockNormalizeWebhook,
 } = vi.hoisted(() => ({
   mockVerifyAccessToken:      vi.fn(),
   mockHashToken:              vi.fn().mockReturnValue("hashed-token"),
@@ -31,9 +32,17 @@ const {
   mockMarkRejected:           vi.fn(),
   mockFindById:               vi.fn(),
   mockRecordSafe:             vi.fn(),
-  mockCreateProntoPagaPayment: vi.fn(),
-  mockVerifyWebhookSignature:  vi.fn(),
+  mockCreatePayment:          vi.fn(),
+  mockVerifyWebhookSignature: vi.fn(),
+  mockNormalizeWebhook:       vi.fn(),
 }));
+
+const mockProvider = {
+  name:                    "prontopaga",
+  createPayment:           mockCreatePayment,
+  verifyWebhookSignature:  mockVerifyWebhookSignature,
+  normalizeWebhook:        mockNormalizeWebhook,
+};
 
 vi.mock("../../../modules/auth/token.service.js", () => ({
   TokenService: vi.fn().mockImplementation(() => ({
@@ -62,9 +71,9 @@ vi.mock("../payments.repository.js", () => ({
     findById:           mockFindById,
   })),
 }));
-vi.mock("../prontopaga.service.js", () => ({
-  createProntoPagaPayment:           mockCreateProntoPagaPayment,
-  verifyProntoPagaWebhookSignature:  mockVerifyWebhookSignature,
+vi.mock("../provider.registry.js", () => ({
+  getActiveProvider: () => mockProvider,
+  getProvider:       (_name: string) => mockProvider,
 }));
 vi.mock("../../../modules/audit/audit.service.js", () => ({
   AuditService: vi.fn().mockImplementation(() => ({ recordSafe: mockRecordSafe })),
@@ -77,7 +86,7 @@ vi.mock("../../../modules/rides/rides.repository.js", () => ({
 
 import { PaymentsService } from "../payments.service.js";
 
-// ── Shared fixtures ────────────────────────────────────────────────────────────
+// ── Fixtures ───────────────────────────────────────────────────────────────────
 
 const PASSENGER_ID = "user-passenger-uuid";
 const RIDE_ID      = "ride-uuid";
@@ -145,12 +154,12 @@ describe("PaymentsService.createPayment", () => {
     }
   });
 
-  it("marks payment as failed (not pending) when ProntoPaga call throws, so passenger can retry", async () => {
+  it("marks payment as failed when provider throws, so passenger can retry", async () => {
     setupPassengerAuth();
     mockFindRideById.mockResolvedValue(completedRide);
     mockFindActiveByRideId.mockResolvedValue(null);
     mockCreate.mockResolvedValue({ id: PAYMENT_ID, amountClp: 5000 });
-    mockCreateProntoPagaPayment.mockRejectedValue(new Error("Network timeout"));
+    mockCreatePayment.mockRejectedValue(new Error("Network timeout"));
 
     const result = await service.createPayment("tok", { rideRequestId: RIDE_ID });
 
@@ -163,12 +172,11 @@ describe("PaymentsService.createPayment", () => {
   it("allows retry after a failed payment (findActiveByRideId returns null for failed)", async () => {
     setupPassengerAuth();
     mockFindRideById.mockResolvedValue(completedRide);
-    // failed payments are excluded from findActiveByRideId (partial index in DB)
     mockFindActiveByRideId.mockResolvedValue(null);
     mockCreate.mockResolvedValue({ id: "new-payment-uuid", amountClp: 5000 });
-    mockCreateProntoPagaPayment.mockResolvedValue({
-      providerOrderId: "PP-999",
-      urlPay: "https://checkout.prontopaga.cl/pay/PP-999",
+    mockCreatePayment.mockResolvedValue({
+      providerOrderId: "MP-PREF-999",
+      urlPay: "https://sandbox.mercadopago.com/checkout?pref=MP-PREF-999",
     });
     mockMarkProcessing.mockResolvedValue({ id: "new-payment-uuid", status: "processing" });
 
@@ -176,7 +184,7 @@ describe("PaymentsService.createPayment", () => {
 
     expect(result.ok).toBe(true);
     if (result.ok) {
-      expect(result.urlPay).toBe("https://checkout.prontopaga.cl/pay/PP-999");
+      expect(result.urlPay).toBe("https://sandbox.mercadopago.com/checkout?pref=MP-PREF-999");
     }
   });
 
@@ -185,9 +193,9 @@ describe("PaymentsService.createPayment", () => {
     mockFindRideById.mockResolvedValue(completedRide);
     mockFindActiveByRideId.mockResolvedValue(null);
     mockCreate.mockResolvedValue({ id: PAYMENT_ID, amountClp: 5000 });
-    mockCreateProntoPagaPayment.mockResolvedValue({
-      providerOrderId: "PP-777",
-      urlPay: "https://checkout.prontopaga.cl/pay/PP-777",
+    mockCreatePayment.mockResolvedValue({
+      providerOrderId: "MP-PREF-777",
+      urlPay: "https://sandbox.mercadopago.com/checkout?pref=MP-PREF-777",
     });
     mockMarkProcessing.mockResolvedValue({ id: PAYMENT_ID, status: "processing" });
 
@@ -196,8 +204,8 @@ describe("PaymentsService.createPayment", () => {
     expect(mockMarkProcessing).toHaveBeenCalledOnce();
     expect(mockMarkProcessing).toHaveBeenCalledWith(
       PAYMENT_ID,
-      "https://checkout.prontopaga.cl/pay/PP-777",
-      "PP-777",
+      "https://sandbox.mercadopago.com/checkout?pref=MP-PREF-777",
+      "MP-PREF-777",
     );
   });
 });
@@ -219,6 +227,12 @@ describe("PaymentsService.handleWebhook", () => {
     vi.clearAllMocks();
     service = new PaymentsService();
     mockVerifyWebhookSignature.mockReturnValue(true);
+    mockNormalizeWebhook.mockResolvedValue({
+      orderId:    PAYMENT_ID,
+      status:     "success",
+      externalId: "ext-123",
+      rawPayload: {},
+    });
     mockFindById.mockResolvedValue(storedPayment);
     mockMarkSuccess.mockResolvedValue({ ...storedPayment, status: "success" });
     mockMarkRejected.mockResolvedValue({ ...storedPayment, status: "rejected" });
@@ -227,7 +241,7 @@ describe("PaymentsService.handleWebhook", () => {
   it("returns 401 when signature is invalid", async () => {
     mockVerifyWebhookSignature.mockReturnValue(false);
 
-    const result = await service.handleWebhook({ order: PAYMENT_ID, status: "success" }, "bad-sig");
+    const result = await service.handleWebhook("prontopaga", { order: PAYMENT_ID, status: "success" }, {});
 
     expect(result.ok).toBe(false);
     if (!result.ok) {
@@ -237,21 +251,43 @@ describe("PaymentsService.handleWebhook", () => {
     expect(mockMarkSuccess).not.toHaveBeenCalled();
   });
 
-  it("processes success status using field 'order'", async () => {
+  it("processes success status from normalizeWebhook", async () => {
+    mockNormalizeWebhook.mockResolvedValue({
+      orderId: PAYMENT_ID, status: "success", externalId: "ext-1", rawPayload: {},
+    });
+
+    const result = await service.handleWebhook("prontopaga", { order: PAYMENT_ID, status: "success" }, {});
+
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.processed).toBe(true);
+    expect(mockMarkSuccess).toHaveBeenCalledWith(PAYMENT_ID, "ext-1", expect.any(Object));
+  });
+
+  it("processes success using 'order' field (prontopaga payload)", async () => {
+    mockNormalizeWebhook.mockResolvedValue({
+      orderId: PAYMENT_ID, status: "success", externalId: "", rawPayload: {},
+    });
+
     const result = await service.handleWebhook(
+      "prontopaga",
       { order: PAYMENT_ID, status: "success", amount: 5000 },
-      "valid-sig",
+      {},
     );
 
     expect(result.ok).toBe(true);
     if (result.ok) expect(result.processed).toBe(true);
-    expect(mockMarkSuccess).toHaveBeenCalledWith(PAYMENT_ID, expect.any(String), expect.any(Object));
+    expect(mockMarkSuccess).toHaveBeenCalled();
   });
 
-  it("processes success status using field 'order_id'", async () => {
+  it("processes success using 'order_id' field (prontopaga fallback)", async () => {
+    mockNormalizeWebhook.mockResolvedValue({
+      orderId: PAYMENT_ID, status: "success", externalId: "", rawPayload: {},
+    });
+
     const result = await service.handleWebhook(
+      "prontopaga",
       { order_id: PAYMENT_ID, status: "success", amount: 5000 },
-      "valid-sig",
+      {},
     );
 
     expect(result.ok).toBe(true);
@@ -260,10 +296,11 @@ describe("PaymentsService.handleWebhook", () => {
   });
 
   it("processes rejected status correctly", async () => {
-    const result = await service.handleWebhook(
-      { order: PAYMENT_ID, status: "rejected" },
-      "valid-sig",
-    );
+    mockNormalizeWebhook.mockResolvedValue({
+      orderId: PAYMENT_ID, status: "rejected", externalId: "", rawPayload: {},
+    });
+
+    const result = await service.handleWebhook("prontopaga", { order: PAYMENT_ID, status: "rejected" }, {});
 
     expect(result.ok).toBe(true);
     if (result.ok) expect(result.processed).toBe(true);
@@ -274,10 +311,7 @@ describe("PaymentsService.handleWebhook", () => {
   it("is idempotent: does not re-process a duplicate success webhook", async () => {
     mockFindById.mockResolvedValue({ ...storedPayment, status: "success" });
 
-    const result = await service.handleWebhook(
-      { order: PAYMENT_ID, status: "success" },
-      "valid-sig",
-    );
+    const result = await service.handleWebhook("prontopaga", { order: PAYMENT_ID, status: "success" }, {});
 
     expect(result.ok).toBe(true);
     if (result.ok) expect(result.processed).toBe(false);
@@ -286,11 +320,11 @@ describe("PaymentsService.handleWebhook", () => {
 
   it("is idempotent: does not re-process a duplicate rejected webhook", async () => {
     mockFindById.mockResolvedValue({ ...storedPayment, status: "rejected" });
+    mockNormalizeWebhook.mockResolvedValue({
+      orderId: PAYMENT_ID, status: "rejected", externalId: "", rawPayload: {},
+    });
 
-    const result = await service.handleWebhook(
-      { order: PAYMENT_ID, status: "rejected" },
-      "valid-sig",
-    );
+    const result = await service.handleWebhook("prontopaga", { order: PAYMENT_ID, status: "rejected" }, {});
 
     expect(result.ok).toBe(true);
     if (result.ok) expect(result.processed).toBe(false);
@@ -298,10 +332,11 @@ describe("PaymentsService.handleWebhook", () => {
   });
 
   it("acknowledges unknown status without erroring (avoids provider retry storm)", async () => {
-    const result = await service.handleWebhook(
-      { order: PAYMENT_ID, status: "chargeback" },
-      "valid-sig",
-    );
+    mockNormalizeWebhook.mockResolvedValue({
+      orderId: PAYMENT_ID, status: "unknown", externalId: "", rawPayload: {},
+    });
+
+    const result = await service.handleWebhook("prontopaga", { order: PAYMENT_ID, status: "chargeback" }, {});
 
     expect(result.ok).toBe(true);
     if (result.ok) expect(result.processed).toBe(false);
@@ -309,13 +344,39 @@ describe("PaymentsService.handleWebhook", () => {
     expect(mockMarkRejected).not.toHaveBeenCalled();
   });
 
-  it("returns 400 when neither 'order' nor 'order_id' is present in payload", async () => {
-    const result = await service.handleWebhook({ status: "success" }, "valid-sig");
+  it("acknowledges pending status without state change", async () => {
+    mockNormalizeWebhook.mockResolvedValue({
+      orderId: PAYMENT_ID, status: "pending", externalId: "", rawPayload: {},
+    });
+
+    const result = await service.handleWebhook("mercadopago", { type: "payment", data: { id: "123" } }, {});
+
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.processed).toBe(false);
+    expect(mockMarkSuccess).not.toHaveBeenCalled();
+  });
+
+  it("silently acknowledges non-payment MP notifications (empty orderId)", async () => {
+    mockNormalizeWebhook.mockResolvedValue({
+      orderId: "", status: "unknown", externalId: "", rawPayload: {},
+    });
+
+    const result = await service.handleWebhook("mercadopago", { type: "subscription_preapproval" }, {});
+
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.processed).toBe(false);
+    expect(mockFindById).not.toHaveBeenCalled();
+  });
+
+  it("returns 502 when normalizeWebhook throws (provider API error)", async () => {
+    mockNormalizeWebhook.mockRejectedValue(new Error("MP API down"));
+
+    const result = await service.handleWebhook("mercadopago", { type: "payment", data: { id: "999" } }, {});
 
     expect(result.ok).toBe(false);
     if (!result.ok) {
-      expect(result.code).toBe("WEBHOOK_MISSING_ORDER");
-      expect(result.statusCode).toBe(400);
+      expect(result.code).toBe("WEBHOOK_PROVIDER_ERROR");
+      expect(result.statusCode).toBe(502);
     }
   });
 });

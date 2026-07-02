@@ -1,12 +1,12 @@
-import { TokenService }    from "../auth/token.service.js";
-import { SessionService }  from "../auth/session.service.js";
-import { UsersRepository } from "../users/users.repository.js";
+import { TokenService }      from "../auth/token.service.js";
+import { SessionService }    from "../auth/session.service.js";
+import { UsersRepository }   from "../users/users.repository.js";
 import { PaymentsRepository } from "./payments.repository.js";
-import { createProntoPagaPayment, verifyProntoPagaWebhookSignature } from "./prontopaga.service.js";
-import { AuditService }   from "../audit/audit.service.js";
-import { AppError }       from "../../shared/errors/AppError.js";
-import { extractOrderId } from "./payments.schemas.js";
+import { getActiveProvider, getProvider } from "./provider.registry.js";
+import { AuditService }      from "../audit/audit.service.js";
+import { AppError }          from "../../shared/errors/AppError.js";
 import type { CreatePaymentInput } from "./payments.schemas.js";
+import type { NormalizedWebhook }  from "./payment.provider.js";
 
 const tokenService   = new TokenService();
 const sessionService = new SessionService();
@@ -74,8 +74,6 @@ export class PaymentsService {
       };
     }
 
-    // Guard: block only if there is an active (pending|processing) payment.
-    // Failed/rejected payments are excluded from the index so retries are allowed.
     const active = await paymentsRepo.findActiveByRideId(input.rideRequestId);
     if (active) {
       return {
@@ -91,15 +89,15 @@ export class PaymentsService {
       return { ok: false, code: "PAYMENT_INVALID_AMOUNT", message: "Ride has no valid fare amount.", statusCode: 422 };
     }
 
-    const user = await usersRepo.findById(auth.userId);
+    const user     = await usersRepo.findById(auth.userId);
+    const provider = getActiveProvider();
 
-    // Insert in pending state first so we have an ID to use as orderId.
     const payment = await paymentsRepo.create({
       rideRequestId:   ride.id,
       passengerUserId: auth.userId,
       amountClp,
-      status: "pending",
-      provider: "prontopaga",
+      status:   "pending",
+      provider: provider.name,
     });
 
     const webhookBaseUrl = process.env["PAYMENT_WEBHOOK_BASE_URL"] ?? "";
@@ -109,19 +107,18 @@ export class PaymentsService {
     let urlPay: string;
 
     try {
-      const result = await createProntoPagaPayment({
+      const result = await provider.createPayment({
         orderId:        payment.id,
         amountClp,
         description:    `Viaje Rapa Go — ${ride.originText} → ${ride.destinationText}`,
         passengerEmail: user?.email ?? "",
         passengerName:  user?.name  ?? "Pasajero",
         returnUrl:      `${returnUrl}payment/result`,
-        webhookUrl:     `${webhookBaseUrl}/api/payments/webhook/prontopaga`,
+        webhookUrl:     `${webhookBaseUrl}/api/payments/webhook/${provider.name}`,
       });
       providerOrderId = result.providerOrderId;
       urlPay          = result.urlPay;
     } catch (err) {
-      // Mark as failed so the passenger can retry without hitting the anti-duplicate guard.
       await paymentsRepo.markFailed(payment.id);
 
       auditService.recordSafe({
@@ -129,7 +126,7 @@ export class PaymentsService {
         eventType:   "payment.provider_error",
         entityType:  "payment",
         entityId:    payment.id,
-        metadata:    { error: String(err), rideId: ride.id } as Record<string, string>,
+        metadata:    { error: String(err), rideId: ride.id, provider: provider.name } as Record<string, string>,
       });
 
       return {
@@ -140,7 +137,6 @@ export class PaymentsService {
       };
     }
 
-    // Atomic single UPDATE: status=processing + urlPay + providerOrderId.
     await paymentsRepo.markProcessing(payment.id, urlPay, providerOrderId);
 
     auditService.recordSafe({
@@ -148,34 +144,73 @@ export class PaymentsService {
       eventType:   "payment.created",
       entityType:  "payment",
       entityId:    payment.id,
-      metadata:    { rideId: ride.id, amountClp, provider: "prontopaga" },
+      metadata:    { rideId: ride.id, amountClp, provider: provider.name },
     });
 
     return { ok: true, urlPay, paymentId: payment.id };
   }
 
+  /**
+   * Handle an incoming webhook from any payment provider.
+   * @param providerName  The provider slug derived from the route (e.g. "mercadopago", "prontopaga")
+   * @param payload       Parsed JSON body
+   * @param headers       Relevant HTTP headers forwarded from the controller
+   */
   async handleWebhook(
-    payload: Record<string, unknown>,
-    receivedSignature: string,
+    providerName: string,
+    payload:      Record<string, unknown>,
+    headers:      Record<string, string>,
   ): Promise<Result<{ processed: boolean }>> {
-    if (!verifyProntoPagaWebhookSignature(payload, receivedSignature)) {
+    let provider;
+    try {
+      provider = getProvider(providerName);
+    } catch {
+      return {
+        ok: false,
+        code: "WEBHOOK_UNKNOWN_PROVIDER",
+        message: `Unknown payment provider: "${providerName}".`,
+        statusCode: 400,
+      };
+    }
+
+    if (!provider.verifyWebhookSignature(payload, headers)) {
       auditService.recordSafe({
         eventType:  "payment.webhook_invalid_signature",
         entityType: "payment",
+        metadata:   { provider: providerName } as Record<string, string>,
       });
       return { ok: false, code: "WEBHOOK_INVALID_SIGNATURE", message: "Invalid webhook signature.", statusCode: 401 };
     }
 
-    // Normalise: ProntoPaga may send "order" or "order_id"
-    const orderId    = extractOrderId(payload);
-    const status     = String(payload["status"]  ?? "");
-    const externalId = String(payload["external_id"] ?? payload["transaction_id"] ?? "");
+    let normalized: NormalizedWebhook;
+    try {
+      normalized = await provider.normalizeWebhook(payload, headers);
+    } catch (err) {
+      auditService.recordSafe({
+        eventType:  "payment.webhook_normalize_error",
+        entityType: "payment",
+        metadata:   { provider: providerName, error: String(err) } as Record<string, string>,
+      });
+      return {
+        ok: false,
+        code: "WEBHOOK_PROVIDER_ERROR",
+        message: "Could not fetch payment details from provider.",
+        statusCode: 502,
+      };
+    }
+
+    const { orderId, status, externalId, rawPayload } = normalized;
+
+    // Non-payment events (e.g. MercadoPago subscription notifications) — acknowledge silently.
+    if (!orderId) {
+      return { ok: true, processed: false };
+    }
 
     if (!orderId) {
       return {
         ok: false,
         code: "WEBHOOK_MISSING_ORDER",
-        message: "Webhook payload must include 'order' or 'order_id'.",
+        message: "Webhook payload must include a payment reference.",
         statusCode: 400,
       };
     }
@@ -190,14 +225,18 @@ export class PaymentsService {
       return { ok: true, processed: false };
     }
 
-    if (status === "success" || status === "approved" || status === "paid") {
-      await paymentsRepo.markSuccess(payment.id, externalId, payload);
+    // Provider is still processing — no state change yet.
+    if (status === "pending" || status === "unknown") {
+      return { ok: true, processed: false };
+    }
 
-      // Touch ride updated_at so listeners know payment was confirmed.
+    if (status === "success") {
+      await paymentsRepo.markSuccess(payment.id, externalId, rawPayload);
+
       try {
-        const { db }          = await import("../../db/client.js");
+        const { db }           = await import("../../db/client.js");
         const { rideRequests } = await import("../../db/schema/rides.schema.js");
-        const { eq }          = await import("drizzle-orm");
+        const { eq }           = await import("drizzle-orm");
         await db.update(rideRequests).set({ updatedAt: new Date() }).where(eq(rideRequests.id, payment.rideRequestId));
       } catch { }
 
@@ -206,33 +245,25 @@ export class PaymentsService {
         eventType:   "payment.success",
         entityType:  "payment",
         entityId:    payment.id,
-        metadata:    { rideId: payment.rideRequestId, amountClp: payment.amountClp, externalId },
+        metadata:    { rideId: payment.rideRequestId, amountClp: payment.amountClp, externalId, provider: providerName },
       });
 
       return { ok: true, processed: true };
     }
 
-    if (status === "rejected" || status === "failed" || status === "cancelled") {
-      await paymentsRepo.markRejected(payment.id, payload);
+    if (status === "rejected") {
+      await paymentsRepo.markRejected(payment.id, rawPayload);
 
       auditService.recordSafe({
         actorUserId: payment.passengerUserId,
         eventType:   "payment.rejected",
         entityType:  "payment",
         entityId:    payment.id,
-        metadata:    { rideId: payment.rideRequestId, status },
+        metadata:    { rideId: payment.rideRequestId, provider: providerName },
       });
 
       return { ok: true, processed: true };
     }
-
-    // Unknown status — log and acknowledge without erroring (avoids provider retry storms).
-    auditService.recordSafe({
-      eventType:  "payment.webhook_unknown_status",
-      entityType: "payment",
-      entityId:   payment.id,
-      metadata:   { status },
-    });
 
     return { ok: true, processed: false };
   }

@@ -1,6 +1,10 @@
 import type { FastifyRequest, FastifyReply } from "fastify";
 import { PaymentsService } from "./payments.service.js";
-import { createPaymentSchema, prontoPagaWebhookSchema } from "./payments.schemas.js";
+import {
+  createPaymentSchema,
+  prontoPagaWebhookSchema,
+  mercadoPagoWebhookSchema,
+} from "./payments.schemas.js";
 import { sendOk, sendError } from "../../shared/http/apiResponse.js";
 
 const paymentsService = new PaymentsService();
@@ -49,10 +53,42 @@ export const paymentsController = {
       return;
     }
 
-    const { signature, ...rest } = parsed.data;
+    // ProntoPaga embeds the signature in the body — headers are not needed.
     const result = await paymentsService.handleWebhook(
-      rest as Record<string, unknown>,
-      signature,
+      "prontopaga",
+      parsed.data as Record<string, unknown>,
+      {},
+    );
+
+    if (!result.ok) {
+      sendError(reply, { code: result.code, message: result.message, statusCode: result.statusCode });
+      return;
+    }
+
+    sendOk(reply, { processed: result.processed });
+  },
+
+  async mercadoPagoWebhook(request: FastifyRequest, reply: FastifyReply): Promise<void> {
+    const parsed = mercadoPagoWebhookSchema.safeParse(request.body);
+    if (!parsed.success) {
+      sendError(reply, {
+        code:       "VALIDATION_ERROR",
+        message:    parsed.error.errors[0]?.message ?? "Invalid webhook payload.",
+        statusCode: 400,
+      });
+      return;
+    }
+
+    // MercadoPago signs via x-signature and x-request-id headers.
+    const headers: Record<string, string> = {
+      "x-signature":   String(request.headers["x-signature"]   ?? ""),
+      "x-request-id":  String(request.headers["x-request-id"]  ?? ""),
+    };
+
+    const result = await paymentsService.handleWebhook(
+      "mercadopago",
+      parsed.data as Record<string, unknown>,
+      headers,
     );
 
     if (!result.ok) {
