@@ -151,6 +151,8 @@ function meta(path: string) {
 }
 
 const RIDE_STATUS_LABEL: Record<string, string> = {
+  scheduled:       "Agendado",
+  driver_scheduled: "Conductor agendado",
   requested:       "Solicitado",
   accepted:        "Conductor asignado",
   driver_en_route: "Conductor en camino",
@@ -161,6 +163,8 @@ const RIDE_STATUS_LABEL: Record<string, string> = {
 };
 
 const RIDE_STATUS_COLOR: Record<string, string> = {
+  scheduled:       "warning",
+  driver_scheduled: "success",
   requested:       "warning",
   accepted:        "primary",
   driver_en_route: "tertiary",
@@ -409,6 +413,8 @@ function distanceKmByCoords(
 }
 
 type VehicleFareCategory = "standard" | "xl" | "luggage";
+type RideMode = "now" | "scheduled";
+type TripFareMode = "one_way" | "round_trip";
 
 type FareRoundingMode = "ceil" | "nearest" | "none";
 
@@ -669,28 +675,29 @@ function normalizePassengerFareType(value: unknown): PassengerFareType | null {
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
     .toLowerCase()
+    .replace(/[_-]+/g, " ")
+    .replace(/\s{2,}/g, " ")
     .trim();
 
   if (!raw) return null;
 
-  // IMPORTANTE:
-  // "Chileno no residente" contiene la palabra "residente".
-  // Por eso primero detectamos "no residente" y recién después "residente".
+  // Orden seguro:
+  // 1) Turista chileno / chileno no residente.
+  // 2) Turista extranjero / extranjero.
+  // 3) Residente Rapa Nui.
+  // "Turista chileno" contiene la palabra "turista", por eso debe ir antes
+  // de la detección genérica de turista/extranjero.
   if (
-    raw.includes("foreigner") ||
-    raw.includes("extranj") ||
-    raw.includes("turista") ||
-    raw.includes("ingles") ||
-    raw.includes("english")
-  ) {
-    return "foreigner";
-  }
-
-  if (
+    raw.includes("turista chileno") ||
+    raw.includes("chileno turista") ||
+    raw.includes("chilena turista") ||
+    raw.includes("chilena") ||
+    raw.includes("chileno") ||
+    raw.includes("chilean") ||
+    raw.includes("chilean non resident") ||
     raw.includes("no residente") ||
     raw.includes("no resident") ||
-    raw.includes("chilean") ||
-    raw.includes("chileno") ||
+    raw.includes("non resident") ||
     raw === "cl" ||
     raw === "chile"
   ) {
@@ -698,11 +705,36 @@ function normalizePassengerFareType(value: unknown): PassengerFareType | null {
   }
 
   if (
+    raw.includes("turista extranjero") ||
+    raw.includes("extranjero turista") ||
+    raw.includes("extranjera turista") ||
+    raw.includes("extranj") ||
+    raw.includes("foreigner") ||
+    raw.includes("foreign") ||
+    raw.includes("visitor foreign") ||
+    raw.includes("tourist foreign") ||
+    raw.includes("ingles") ||
+    raw.includes("english")
+  ) {
+    return "foreigner";
+  }
+
+  if (
+    raw.includes("residente rapa nui") ||
+    raw.includes("rapa nui") ||
+    raw.includes("rapanui") ||
     raw.includes("resident") ||
     raw.includes("residente") ||
-    raw.includes("rapa nui")
+    raw.includes("local") ||
+    raw === "true" ||
+    raw === "1"
   ) {
     return "resident";
+  }
+
+  // Si solo dice "turista" y no especifica chileno, se cobra como extranjero.
+  if (raw.includes("turista") || raw.includes("tourist") || raw.includes("visitor")) {
+    return "foreigner";
   }
 
   return null;
@@ -851,6 +883,13 @@ function passengerFareSuffix(type: PassengerFareType): string {
   if (type === "foreigner") return "foreigner";
   return "resident";
 }
+
+function passengerFareTypeLabel(type: PassengerFareType): string {
+  if (type === "resident") return "Residente Rapa Nui";
+  if (type === "chilean") return "Turista chileno";
+  return "Turista extranjero";
+}
+
 
 function vehicleFarePrefix(vehicle: VehicleFareCategory): string {
   if (vehicle === "xl") return "xl";
@@ -1395,6 +1434,152 @@ export function PassengerHomePage(): JSX.Element {
   );
 }
 
+const LOCAL_ADMIN_SCHEDULED_RIDES_KEY = "rapago_admin_scheduled_rides";
+const SCHEDULE_MIN_MINUTES = 30;
+const SCHEDULE_MAX_DAYS = 30;
+const SCHEDULE_ACTIVATION_MINUTES = 10;
+
+function parseScheduleInput(value: string | null | undefined): Date | null {
+  if (!value) return null;
+  const parsed = new Date(value);
+  return Number.isFinite(parsed.getTime()) ? parsed : null;
+}
+
+function toDateTimeLocalValue(date: Date): string {
+  const pad = (value: number) => value.toString().padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
+function formatScheduleDateTime(value: string | null | undefined): string {
+  const parsed = parseScheduleInput(value);
+  if (!parsed) return "Sin hora";
+  return parsed.toLocaleString("es-CL", {
+    weekday: "short",
+    day: "2-digit",
+    month: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+function getScheduleValidationError(input: {
+  rideMode: RideMode;
+  tripFareMode: TripFareMode;
+  scheduledAt: string;
+  returnScheduledAt: string;
+}): string | null {
+  if (input.rideMode !== "scheduled") return null;
+
+  const pickup = parseScheduleInput(input.scheduledAt);
+  if (!pickup) return "Debes seleccionar fecha y hora de recogida.";
+
+  const now = new Date();
+  const min = new Date(now.getTime() + SCHEDULE_MIN_MINUTES * 60_000);
+  const max = new Date(now.getTime() + SCHEDULE_MAX_DAYS * 24 * 60 * 60_000);
+
+  if (pickup.getTime() < min.getTime()) return `La reserva debe ser mínimo ${SCHEDULE_MIN_MINUTES} minutos desde ahora.`;
+  if (pickup.getTime() > max.getTime()) return `La reserva no puede superar ${SCHEDULE_MAX_DAYS} días.`;
+
+  if (input.tripFareMode === "round_trip") {
+    const back = parseScheduleInput(input.returnScheduledAt);
+    if (!back) return "Para ida y vuelta debes seleccionar la hora de regreso.";
+    if (back.getTime() <= pickup.getTime()) return "La hora de regreso debe ser posterior a la hora de recogida.";
+    if (back.getTime() > max.getTime()) return `La hora de regreso no puede superar ${SCHEDULE_MAX_DAYS} días.`;
+  }
+
+  return null;
+}
+
+function buildRideScheduleFields(input: {
+  rideMode: RideMode;
+  tripFareMode: TripFareMode;
+  scheduledAt: string;
+  returnScheduledAt: string;
+}): Record<string, unknown> {
+  const pickup = input.rideMode === "scheduled" ? parseScheduleInput(input.scheduledAt) : null;
+  const back = input.rideMode === "scheduled" && input.tripFareMode === "round_trip" ? parseScheduleInput(input.returnScheduledAt) : null;
+  const activation = pickup ? new Date(pickup.getTime() - SCHEDULE_ACTIVATION_MINUTES * 60_000) : null;
+
+  return {
+    rideMode: input.rideMode,
+    requestMode: input.rideMode,
+    isScheduled: input.rideMode === "scheduled" && !!pickup,
+    scheduleStatus: input.rideMode === "scheduled" && !!pickup ? "pending_activation" : "immediate",
+    scheduledAt: pickup?.toISOString() ?? null,
+    scheduledPickupAt: pickup?.toISOString() ?? null,
+    pickupScheduledAt: pickup?.toISOString() ?? null,
+    returnScheduledAt: back?.toISOString() ?? null,
+    scheduledReturnAt: back?.toISOString() ?? null,
+    scheduleActivationAt: activation?.toISOString() ?? null,
+    dispatchAt: activation?.toISOString() ?? null,
+    autoAssignAt: activation?.toISOString() ?? null,
+    autoDispatchMinutesBefore: SCHEDULE_ACTIVATION_MINUTES,
+    tripFareMode: input.tripFareMode,
+    tripType: input.tripFareMode,
+    isRoundTrip: input.tripFareMode === "round_trip",
+  };
+}
+
+function tripFareModeLabel(mode: TripFareMode): string {
+  return mode === "round_trip" ? "Ida y vuelta" : "Solo ida";
+}
+
+function tripFareModeDescription(mode: TripFareMode): string {
+  return mode === "round_trip" ? "Agenda hora de regreso" : "Un solo tramo";
+}
+
+function readLocalAdminScheduledRides(): RideRequestData[] {
+  try {
+    const raw = localStorage.getItem(LOCAL_ADMIN_SCHEDULED_RIDES_KEY);
+    const parsed = raw ? (JSON.parse(raw) as RideRequestData[]) : [];
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveLocalAdminScheduledRides(rides: RideRequestData[]): void {
+  try {
+    localStorage.setItem(LOCAL_ADMIN_SCHEDULED_RIDES_KEY, JSON.stringify(rides));
+    window.dispatchEvent(new CustomEvent("rapago:admin-scheduled-rides-updated"));
+  } catch {
+    // No bloquea la app.
+  }
+}
+
+function getScheduledRideKey(ride: Partial<RideRequestData> & Record<string, unknown>): string {
+  return [
+    ride.scheduledAt ?? ride.scheduledPickupAt ?? "",
+    ride.originText ?? "",
+    ride.destinationText ?? "",
+    ride.passengerEmail ?? "",
+  ]
+    .map((value) => String(value).trim().toLowerCase())
+    .join("|");
+}
+
+function upsertLocalAdminScheduledRide(ride: RideRequestData): void {
+  if ((ride as unknown as Record<string, unknown>).isScheduled !== true) return;
+  const key = getScheduledRideKey(ride as unknown as Record<string, unknown>);
+  const withoutDuplicate = readLocalAdminScheduledRides().filter(
+    (item) => getScheduledRideKey(item as unknown as Record<string, unknown>) !== key,
+  );
+  saveLocalAdminScheduledRides([ride, ...withoutDuplicate]);
+}
+
+function getUserDisplayName(user: unknown): string | null {
+  if (!user || typeof user !== "object") return null;
+  const data = user as Record<string, unknown>;
+  const value = data.name ?? data.fullName ?? data.firstName;
+  return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+function getUserEmail(user: unknown): string | null {
+  if (!user || typeof user !== "object") return null;
+  const value = (user as Record<string, unknown>).email;
+  return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
 export function PassengerRequestRidePage(): JSX.Element {
   return <RequestRidePage />;
 }
@@ -1413,6 +1598,10 @@ function RequestRidePage(): JSX.Element {
   const [farePreview,       setFarePreview]       = useState<{ km: number; minutes: number; fare: number; driverEarnings: number; isZoneFare: boolean } | null>(null);
   const [paymentMethod,     setPaymentMethod]     = useState<"cash" | "card" | null>(null);
   const [vehicleCategory,   setVehicleCategory]   = useState<VehicleFareCategory>("standard");
+  const [rideMode,          setRideMode]          = useState<RideMode>("now");
+  const [tripFareMode,      setTripFareMode]      = useState<TripFareMode>("one_way");
+  const [scheduledAt,       setScheduledAt]       = useState("");
+  const [returnScheduledAt, setReturnScheduledAt] = useState("");
 
   const [currentLat,        setCurrentLat]        = useState<number | null>(null);
   const [currentLng,        setCurrentLng]        = useState<number | null>(null);
@@ -1421,6 +1610,19 @@ function RequestRidePage(): JSX.Element {
   const [pickupConfirmed,   setPickupConfirmed]   = useState(false);
 
   const passengerFareType = readPassengerFareType(session?.user);
+  const [blockingRide, setBlockingRide] = useState<RideRequestData | null>(() => findBlockingPassengerRide());
+
+  useEffect(() => {
+    const refreshBlockingRide = () => setBlockingRide(findBlockingPassengerRide());
+    refreshBlockingRide();
+    window.addEventListener("storage", refreshBlockingRide);
+    window.addEventListener("rapago:passenger-rides-updated", refreshBlockingRide as EventListener);
+
+    return () => {
+      window.removeEventListener("storage", refreshBlockingRide);
+      window.removeEventListener("rapago:passenger-rides-updated", refreshBlockingRide as EventListener);
+    };
+  }, []);
 
   useEffect(() => {
     const originPoint =
@@ -1559,6 +1761,13 @@ function RequestRidePage(): JSX.Element {
       return;
     }
 
+    const currentBlockingRide = findBlockingPassengerRide();
+    if (currentBlockingRide) {
+      setBlockingRide(currentBlockingRide);
+      setSubmitError("Ya tienes un viaje o una reserva activa. Revísala en Mis Viajes antes de solicitar otra.");
+      return;
+    }
+
     if (!pickupConfirmed) {
       setSubmitError("Confirma primero el punto de partida recomendado.");
       return;
@@ -1566,6 +1775,20 @@ function RequestRidePage(): JSX.Element {
 
     if (!farePreview) {
       setSubmitError("No se pudo calcular la tarifa. Selecciona origen, destino y confirma el punto.");
+      return;
+    }
+
+    const scheduleError = getScheduleValidationError({
+      rideMode,
+      tripFareMode,
+      scheduledAt,
+      returnScheduledAt,
+      passengerFareType,
+      passengerFareLabel: passengerFareTypeLabel(passengerFareType),
+    });
+
+    if (scheduleError) {
+      setSubmitError(scheduleError);
       return;
     }
 
@@ -1588,12 +1811,24 @@ function RequestRidePage(): JSX.Element {
     };
 
     // Guardamos el precio real calculado para que lo vea pasajero, conductor y admin.
-    (input as unknown as { estimatedFareClp?: number; paymentMethod?: string }).estimatedFareClp = farePreview.fare;
+    (input as unknown as { estimatedFareClp?: number; paymentMethod?: string }).estimatedFareClp = tripFareMode === "round_trip" ? farePreview.fare * 2 : farePreview.fare;
     (input as unknown as { estimatedFareClp?: number; paymentMethod?: string }).paymentMethod = "cash";
     (input as unknown as { passengerFareType?: PassengerFareType; farePassengerType?: PassengerFareType }).passengerFareType = passengerFareType;
     (input as unknown as { passengerFareType?: PassengerFareType; farePassengerType?: PassengerFareType }).farePassengerType = passengerFareType;
+    (input as unknown as { passengerFareLabel?: string; nationality?: string; isResident?: boolean; requestedByRole?: string; requesterRole?: string }).passengerFareLabel = passengerFareTypeLabel(passengerFareType);
+    (input as unknown as { passengerFareLabel?: string; nationality?: string; isResident?: boolean; requestedByRole?: string; requesterRole?: string }).nationality = passengerFareTypeLabel(passengerFareType);
+    (input as unknown as { passengerFareLabel?: string; nationality?: string; isResident?: boolean; requestedByRole?: string; requesterRole?: string }).isResident = passengerFareType === "resident";
+    (input as unknown as { requestedByRole?: string; requesterRole?: string }).requestedByRole = "passenger";
+    (input as unknown as { requestedByRole?: string; requesterRole?: string }).requesterRole = "passenger";
     (input as unknown as { fareVehicleCategory?: VehicleFareCategory; vehicleCategory?: VehicleFareCategory }).fareVehicleCategory = vehicleCategory;
     (input as unknown as { fareVehicleCategory?: VehicleFareCategory; vehicleCategory?: VehicleFareCategory }).vehicleCategory = vehicleCategory;
+    (input as unknown as { tripFareMode?: TripFareMode; tripType?: string; isRoundTrip?: boolean }).tripFareMode = tripFareMode;
+    (input as unknown as { tripFareMode?: TripFareMode; tripType?: string; isRoundTrip?: boolean }).tripType = tripFareMode;
+    (input as unknown as { tripFareMode?: TripFareMode; tripType?: string; isRoundTrip?: boolean }).isRoundTrip = tripFareMode === "round_trip";
+    Object.assign(input as unknown as Record<string, unknown>, buildRideScheduleFields({ rideMode, tripFareMode, scheduledAt, returnScheduledAt }));
+
+    const selectedFare = tripFareMode === "round_trip" ? farePreview.fare * 2 : farePreview.fare;
+    const selectedDriverEarnings = tripFareMode === "round_trip" ? farePreview.driverEarnings * 2 : farePreview.driverEarnings;
 
     const notes: string[] = [];
 
@@ -1609,16 +1844,38 @@ function RequestRidePage(): JSX.Element {
     }
 
     notes.push("Punto de partida confirmado por pasajero.");
-    notes.push(`Tarifa RAPA GO calculada: ${farePreview.fare} CLP.`);
+    notes.push(`Tarifa RAPA GO calculada: ${selectedFare} CLP.`);
     notes.push(`Kilómetros calculados: ${farePreview.km.toFixed(1)} km.`);
     notes.push(`Categoría de vehículo: ${vehicleFareLabel(vehicleCategory)}.`);
-    notes.push(`Ganancia aprox. conductor: ${farePreview.driverEarnings} CLP.`);
+    notes.push(`Tipo de pasajero tarifario: ${passengerFareTypeLabel(passengerFareType)}.`);
+    notes.push(`Tipo de viaje seleccionado: ${tripFareModeLabel(tripFareMode)}.`);
+    notes.push(`Ganancia aprox. conductor: ${selectedDriverEarnings} CLP.`);
     notes.push("Forma de pago: efectivo.");
+
+    const scheduleFields = buildRideScheduleFields({ rideMode, tripFareMode, scheduledAt, returnScheduledAt });
+    if (rideMode === "scheduled") {
+      notes.push(`Viaje agendado para: ${formatScheduleDateTime(String(scheduleFields.scheduledAt ?? scheduledAt))}.`);
+      notes.push(`La solicitud se activa automáticamente ${SCHEDULE_ACTIVATION_MINUTES} minutos antes: ${formatScheduleDateTime(String(scheduleFields.scheduleActivationAt ?? ""))}.`);
+      if (tripFareMode === "round_trip") {
+        notes.push(`Regreso agendado para: ${formatScheduleDateTime(String(scheduleFields.returnScheduledAt ?? returnScheduledAt))}.`);
+      }
+    }
 
     const trimNotes = notesInput.trim();
     if (trimNotes) notes.push(trimNotes);
 
     input.notes = notes.join(" ");
+
+    const localPassengerMirror = createLocalPassengerRide({
+      originText: input.originText,
+      destinationText: input.destinationText,
+      notes: input.notes,
+      estimatedFareClp: selectedFare,
+      rideMode,
+      tripFareMode,
+      scheduledAt,
+      returnScheduledAt,
+    });
 
     try {
       if (!session?.accessToken) {
@@ -1626,18 +1883,35 @@ function RequestRidePage(): JSX.Element {
       }
 
       await ridesService.createRideRequest(session.accessToken, input);
+
+      // Guardamos espejo local para que Mis Viajes muestre inmediatamente el viaje/reserva.
+      // Así el pasajero no queda con pantalla vacía ni solicita otro por error.
+      upsertLocalPassengerRideMirror(localPassengerMirror);
+
+      if (rideMode === "scheduled") {
+        upsertLocalAdminScheduledRide({
+          ...(localPassengerMirror as RideRequestData),
+          id: `admin-local-${Date.now()}`,
+          createdAt: new Date().toISOString(),
+          passengerName: getUserDisplayName(session?.user) ?? "Pasajero agendado",
+          passengerEmail: getUserEmail(session?.user) ?? "sin-correo-local",
+        } as unknown as RideRequestData);
+      }
     } catch (err) {
       const message = err instanceof Error ? err.message : "Error al solicitar el viaje.";
 
       if (isUnauthorizedMessage(message)) {
-        const localRide = createLocalPassengerRide({
-          originText: input.originText,
-          destinationText: input.destinationText,
-          notes: input.notes,
-          estimatedFareClp: farePreview.fare,
-        });
+        upsertLocalPassengerRideMirror(localPassengerMirror);
 
-        saveLocalPassengerRides([localRide, ...readLocalPassengerRides()]);
+        if (rideMode === "scheduled") {
+          upsertLocalAdminScheduledRide({
+            ...(localPassengerMirror as RideRequestData),
+            id: `admin-local-${Date.now()}`,
+            createdAt: new Date().toISOString(),
+            passengerName: getUserDisplayName(session?.user) ?? "Pasajero agendado",
+            passengerEmail: getUserEmail(session?.user) ?? "sin-correo-local",
+          } as unknown as RideRequestData);
+        }
       } else {
         setSubmitError(safePassengerErrorMessage(message));
         setSubmitting(false);
@@ -1657,6 +1931,10 @@ function RequestRidePage(): JSX.Element {
     setPickupConfirmed(false);
     setPaymentMethod(null);
     setVehicleCategory("standard");
+    setRideMode("now");
+    setTripFareMode("one_way");
+    setScheduledAt("");
+    setReturnScheduledAt("");
 
     history.push(ROUTES.PASSENGER.TRIPS);
   }
@@ -1678,6 +1956,8 @@ function RequestRidePage(): JSX.Element {
     lng: destCoords.lng ?? null,
   };
 
+  const fareDisplayAmount = farePreview ? (tripFareMode === "round_trip" ? farePreview.fare * 2 : farePreview.fare) : null;
+
   return (
     <IonPage>
       <IonHeader>
@@ -1688,6 +1968,38 @@ function RequestRidePage(): JSX.Element {
 
       <IonContent className="ion-padding">
         <div style={{ display: "flex", flexDirection: "column", gap: "14px", paddingBottom: "90px" }}>
+          {blockingRide && (
+            <IonCard
+              style={passengerCardStyle({
+                borderRadius: "22px",
+                background: "linear-gradient(135deg,#fff8dc,#ffffff)",
+                border: "1.5px solid rgba(255,201,40,.58)",
+              })}
+            >
+              <IonCardContent style={{ padding: "14px 16px" }}>
+                <div style={{ fontWeight: 950, color: "#111", marginBottom: 4 }}>
+                  ⚠️ Ya tienes un viaje o reserva activa
+                </div>
+                <div style={{ fontSize: ".82rem", color: "#333", lineHeight: 1.35 }}>
+                  {blockingRide.originText} → {blockingRide.destinationText}
+                </div>
+                {getPassengerRideScheduleInfo(blockingRide).isScheduled && (
+                  <div style={{ fontSize: ".78rem", color: "#555", marginTop: 4 }}>
+                    Recogida: {formatScheduleDateTime(getPassengerRideScheduleInfo(blockingRide).scheduledAt)}
+                  </div>
+                )}
+                <IonButton
+                  expand="block"
+                  color="warning"
+                  style={{ marginTop: 10, fontWeight: 900 }}
+                  onClick={() => history.push(ROUTES.PASSENGER.TRIPS)}
+                >
+                  Ver en Mis Viajes
+                </IonButton>
+              </IonCardContent>
+            </IonCard>
+          )}
+
           <IonCard style={passengerCardStyle({ borderRadius: "24px" })}>
             <IonCardContent style={{ padding: 0 }}>
               <MapFallback
@@ -1833,6 +2145,89 @@ function RequestRidePage(): JSX.Element {
                 </IonSelect>
               </IonItem>
 
+              <div style={{ margin: "12px 0", display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px" }}>
+                <IonButton
+                  expand="block"
+                  fill={rideMode === "now" ? "solid" : "outline"}
+                  onClick={() => {
+                    setRideMode("now");
+                    setScheduledAt("");
+                    setReturnScheduledAt("");
+                    setSubmitError(null);
+                  }}
+                >
+                  Ahora
+                </IonButton>
+                <IonButton
+                  expand="block"
+                  fill={rideMode === "scheduled" ? "solid" : "outline"}
+                  onClick={() => {
+                    setRideMode("scheduled");
+                    setSubmitError(null);
+                  }}
+                >
+                  Agendar
+                </IonButton>
+              </div>
+
+              <div style={{ margin: "6px 0 12px", display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px" }}>
+                {(["one_way", "round_trip"] as TripFareMode[]).map((mode) => (
+                  <button
+                    key={mode}
+                    type="button"
+                    onClick={() => {
+                      setTripFareMode(mode);
+                      if (mode === "one_way") setReturnScheduledAt("");
+                      setSubmitError(null);
+                    }}
+                    style={{
+                      border: tripFareMode === mode ? "2px solid #D2A43A" : "1px solid rgba(0,0,0,.14)",
+                      borderRadius: "16px",
+                      padding: "12px 8px",
+                      background: tripFareMode === mode ? "#F8D879" : "#fff",
+                      color: "#111",
+                      fontWeight: 950,
+                      textAlign: "center",
+                    }}
+                  >
+                    <div>{mode === "round_trip" ? "🔁" : "➡️"} {tripFareModeLabel(mode)}</div>
+                    <div style={{ fontSize: ".68rem", opacity: .72, marginTop: 3 }}>{tripFareModeDescription(mode)}</div>
+                  </button>
+                ))}
+              </div>
+
+              {rideMode === "scheduled" && (
+                <div style={{ background: "#f4f6fb", borderRadius: "18px", padding: "12px", marginBottom: "12px" }}>
+                  <IonItem lines="full" style={passengerInputItemStyle()}>
+                    <IonLabel position="stacked">Fecha y hora de recogida</IonLabel>
+                    <IonInput
+                      type="datetime-local"
+                      value={scheduledAt}
+                      min={toDateTimeLocalValue(new Date(Date.now() + SCHEDULE_MIN_MINUTES * 60_000))}
+                      max={toDateTimeLocalValue(new Date(Date.now() + SCHEDULE_MAX_DAYS * 24 * 60 * 60_000))}
+                      onIonInput={(e) => setScheduledAt(String(e.detail.value ?? ""))}
+                    />
+                  </IonItem>
+
+                  {tripFareMode === "round_trip" && (
+                    <IonItem lines="full" style={passengerInputItemStyle()}>
+                      <IonLabel position="stacked">Hora de regreso</IonLabel>
+                      <IonInput
+                        type="datetime-local"
+                        value={returnScheduledAt}
+                        min={scheduledAt || toDateTimeLocalValue(new Date(Date.now() + SCHEDULE_MIN_MINUTES * 60_000))}
+                        max={toDateTimeLocalValue(new Date(Date.now() + SCHEDULE_MAX_DAYS * 24 * 60 * 60_000))}
+                        onIonInput={(e) => setReturnScheduledAt(String(e.detail.value ?? ""))}
+                      />
+                    </IonItem>
+                  )}
+
+                  <IonNote style={{ display: "block", fontSize: ".72rem", marginTop: "4px" }}>
+                    Se guarda en Mis Viajes y se activa para buscar conductores {SCHEDULE_ACTIVATION_MINUTES} minutos antes de la reserva.
+                  </IonNote>
+                </div>
+              )}
+
               <IonItem lines="none" style={passengerInputItemStyle()}>
                 <IonLabel position="stacked">Notas (opcional)</IonLabel>
                 <IonTextarea
@@ -1865,13 +2260,16 @@ function RequestRidePage(): JSX.Element {
                         FORMA DE PAGO
                       </div>
                       <div style={{ fontSize: "1.55rem", fontWeight: 950, lineHeight: 1.05, marginTop: "4px" }}>
-                        {formatClp(farePreview.fare)}
+                        {formatClp(fareDisplayAmount ?? farePreview.fare)}
                       </div>
                       <div style={{ fontSize: "0.82rem", color: "#7A5417", marginTop: "3px", fontWeight: 950 }}>
-                        {formatUsdFromClp(farePreview.fare)}
+                        {formatUsdFromClp(fareDisplayAmount ?? farePreview.fare)}
                       </div>
                       <div style={{ fontSize: "0.75rem", color: "rgba(17,17,17,.66)", marginTop: "5px" }}>
                         {farePreview.km.toFixed(1)} km · {farePreview.minutes} min · {farePreview.isZoneFare ? "tarifa fija" : "precio calculado"}
+                      </div>
+                      <div style={{ fontSize: "0.75rem", color: "rgba(17,17,17,.66)", marginTop: "3px", fontWeight: 850 }}>
+                        Tarifa pasajero: {passengerFareTypeLabel(passengerFareType)}
                       </div>
                     </div>
 
@@ -1907,8 +2305,8 @@ function RequestRidePage(): JSX.Element {
                     >
                       <div style={{ fontSize: "1.2rem" }}>💵</div>
                       <div>Efectivo</div>
-                      <div style={{ fontSize: ".8rem", marginTop: "3px" }}>{formatClp(farePreview.fare)}</div>
-                      <div style={{ fontSize: ".72rem", marginTop: "2px", opacity: .82 }}>{formatUsdFromClp(farePreview.fare)}</div>
+                      <div style={{ fontSize: ".8rem", marginTop: "3px" }}>{formatClp(fareDisplayAmount ?? farePreview.fare)}</div>
+                      <div style={{ fontSize: ".72rem", marginTop: "2px", opacity: .82 }}>{formatUsdFromClp(fareDisplayAmount ?? farePreview.fare)}</div>
                     </button>
 
                     <button
@@ -1955,10 +2353,12 @@ function RequestRidePage(): JSX.Element {
                 expand="block"
                 style={{ marginTop: "16px" }}
                 onClick={() => void handleRequest()}
-                disabled={submitting || !farePreview || paymentMethod !== "cash"}
+                disabled={!!blockingRide || submitting || !farePreview || paymentMethod !== "cash" || (rideMode === "scheduled" && (!scheduledAt || (tripFareMode === "round_trip" && !returnScheduledAt)))}
               >
                 {submitting ? (
                   <IonSpinner name="dots" />
+                ) : blockingRide ? (
+                  "Ya tienes un viaje activo"
                 ) : paymentMethod === "cash" ? (
                   "Solicitar viaje"
                 ) : paymentMethod === "card" ? (
@@ -1986,6 +2386,9 @@ export function PassengerTripsPage(): JSX.Element {
 
 const PAGE_SIZE = 20;
 
+const RAPAGO_REQUEUED_RIDES_KEY = "rapago_requeued_available_rides_v1";
+const RAPAGO_REQUEUED_PASSENGER_FORCE_KEY = "rapago_requeued_passenger_visible_rides_v1";
+const RAPAGO_REQUEUED_RIDES_EVENT = "rapago:ride-requeued-after-driver-cancel";
 
 
 type LocalPassengerRide = RideRequestData & {
@@ -2006,9 +2409,343 @@ function readLocalPassengerRides(): RideRequestData[] {
 function saveLocalPassengerRides(rides: RideRequestData[]): void {
   try {
     localStorage.setItem("rapago_local_passenger_rides", JSON.stringify(rides));
+    window.dispatchEvent(new CustomEvent("rapago:passenger-rides-updated"));
   } catch {
     // No bloquea la app.
   }
+}
+
+function readPassengerRequeuedRides(): RideRequestData[] {
+  try {
+    const all: Array<RideRequestData & Record<string, unknown>> = [];
+
+    for (const key of [RAPAGO_REQUEUED_RIDES_KEY, RAPAGO_REQUEUED_PASSENGER_FORCE_KEY]) {
+      const raw = localStorage.getItem(key);
+      const parsed = raw ? (JSON.parse(raw) as Array<RideRequestData & Record<string, unknown>>) : [];
+      if (Array.isArray(parsed)) all.push(...parsed);
+    }
+
+    const byRide = new Map<string, RideRequestData & Record<string, unknown>>();
+    for (const ride of all) {
+      const id = String(ride.originalRideId ?? ride.rideId ?? ride.id ?? "").trim();
+      const routeKey = [
+        String(ride.originText ?? "").trim().toLowerCase(),
+        String(ride.destinationText ?? "").trim().toLowerCase(),
+        String(ride.passengerEmail ?? "").trim().toLowerCase(),
+        String(ride.requestedAt ?? ride.createdAt ?? "").trim(),
+      ].join("|");
+      const key = id || routeKey;
+      if (!key) continue;
+      byRide.set(key, ride);
+    }
+
+    return Array.from(byRide.values()).map((ride) => ({
+      ...(ride as RideRequestData & Record<string, unknown>),
+      id: String((ride as Record<string, unknown>).id ?? (ride as Record<string, unknown>).originalRideId ?? `requeued-${Date.now()}`),
+      originalRideId: (ride as Record<string, unknown>).originalRideId ?? (ride as Record<string, unknown>).id ?? null,
+      status: "requested",
+      cancelledAt: null,
+      cancelledByRole: null,
+      cancellationReason: null,
+      driverName: null,
+      driverPhone: null,
+      driverVehicleBrand: null,
+      driverVehicleModel: null,
+      driverVehicleColor: null,
+      driverVehiclePlate: null,
+      driverVehicleYear: null,
+      acceptedAt: null,
+      enRouteAt: null,
+      arrivedAt: null,
+      startedAt: null,
+      passengerNotice:
+        (ride as RideRequestData & Record<string, unknown>).passengerNotice ??
+        "Tu conductor canceló el viaje, estamos buscando uno nuevo.",
+      passengerNotification:
+        (ride as RideRequestData & Record<string, unknown>).passengerNotification ??
+        "Tu conductor canceló el viaje, estamos buscando uno nuevo.",
+      requeuedReason: "driver_cancelled",
+      forceActiveAfterDriverCancel: true,
+    })) as RideRequestData[];
+  } catch {
+    return [];
+  }
+}
+
+function isPassengerDriverCancelledRequeue(ride: RideRequestData): boolean {
+  const record = ride as RideRequestData & Record<string, unknown>;
+  const status = String(record.status ?? "").toLowerCase();
+  const cancelledBy = String(record.cancelledByRole ?? record.cancelledBy ?? "").toLowerCase();
+  const reason = String(record.requeuedReason ?? record.requeueReason ?? record.cancellationReason ?? "").toLowerCase();
+  const notice = String(record.passengerNotice ?? record.passengerNotification ?? record.notes ?? "").toLowerCase();
+
+  if (cancelledBy.includes("passenger") || cancelledBy.includes("pasajero")) return false;
+  if (hasPassengerCancelledRideMarker(record)) return false;
+
+  return (
+    record.forceActiveAfterDriverCancel === true ||
+    reason.includes("driver_cancelled") ||
+    reason.includes("conductor_cancel") ||
+    notice.includes("tu conductor cancel") ||
+    notice.includes("estamos buscando uno nuevo") ||
+    (status === "cancelled" && (
+      cancelledBy.includes("driver") ||
+      cancelledBy.includes("conductor") ||
+      reason.includes("driver") ||
+      reason.includes("conductor")
+    ))
+  );
+}
+
+function syncRequeuedRidesIntoLocalPassengerRides(): RideRequestData[] {
+  const requeued = readPassengerRequeuedRides();
+  if (requeued.length === 0) return [];
+
+  const current = readLocalPassengerRides();
+  const next = mergePassengerRidesForDisplay([...current, ...requeued]).slice(0, 200);
+  saveLocalPassengerRides(next);
+  return requeued;
+}
+
+function getPassengerRideStorageKey(ride: Partial<RideRequestData> & Record<string, unknown>): string {
+  const scheduledAt =
+    ride.scheduledAt ??
+    ride.scheduledPickupAt ??
+    ride.pickupScheduledAt ??
+    ride.requestedAt ??
+    ride.createdAt ??
+    "";
+
+  return [
+    ride.id?.startsWith?.("local-") || ride.id?.startsWith?.("admin-local-") ? "local-mirror" : ride.id,
+    scheduledAt,
+    ride.originText ?? "",
+    ride.destinationText ?? "",
+    ride.passengerEmail ?? "",
+  ]
+    .map((value) => String(value ?? "").trim().toLowerCase())
+    .join("|");
+}
+
+
+const PASSENGER_CANCEL_STORAGE_KEYS = [
+  "rapago_local_passenger_rides",
+  RAPAGO_REQUEUED_RIDES_KEY,
+  RAPAGO_REQUEUED_PASSENGER_FORCE_KEY,
+  "rapago_admin_scheduled_rides",
+  "rapago_admin_scheduled_rides_v1",
+  "rapago_admin_scheduled_rides_v2",
+  "rapago_admin_scheduled_rides_force_v1",
+  "rapago_bridge_scheduled_rides_v1",
+] as const;
+
+function getPassengerCancelIds(ride: Partial<RideRequestData> & Record<string, unknown>): Set<string> {
+  return new Set(
+    [ride.id, ride.originalRideId, ride.rideId, ride.serverRideId]
+      .map((value) => String(value ?? "").trim())
+      .filter(Boolean),
+  );
+}
+
+function normalizePassengerCancelText(value: unknown): string {
+  return String(value ?? "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .trim();
+}
+
+function getPassengerCancelRouteKey(ride: Partial<RideRequestData> & Record<string, unknown>): string {
+  return [
+    normalizePassengerCancelText(ride.originText),
+    normalizePassengerCancelText(ride.destinationText),
+    String(ride.estimatedFareClp ?? ride.fareClp ?? ride.priceClp ?? "").trim(),
+  ].join("|");
+}
+
+function getPassengerCancelScheduleKey(ride: Partial<RideRequestData> & Record<string, unknown>): string {
+  return String(
+    ride.scheduledAt ??
+      ride.scheduledPickupAt ??
+      ride.pickupScheduledAt ??
+      ride.returnScheduledAt ??
+      ride.requestedAt ??
+      ride.createdAt ??
+      "",
+  ).trim();
+}
+
+function isSamePassengerRideCancelTarget(
+  candidate: Partial<RideRequestData> & Record<string, unknown>,
+  target: Partial<RideRequestData> & Record<string, unknown>,
+): boolean {
+  const candidateIds = getPassengerCancelIds(candidate);
+  const targetIds = getPassengerCancelIds(target);
+
+  for (const id of candidateIds) {
+    if (targetIds.has(id)) return true;
+  }
+
+  const candidateRoute = getPassengerCancelRouteKey(candidate);
+  const targetRoute = getPassengerCancelRouteKey(target);
+
+  if (!candidateRoute || !targetRoute || candidateRoute !== targetRoute) return false;
+
+  const candidateEmail = normalizePassengerCancelText(candidate.passengerEmail);
+  const targetEmail = normalizePassengerCancelText(target.passengerEmail);
+  if (candidateEmail && targetEmail && candidateEmail === targetEmail) return true;
+
+  const candidateSchedule = getPassengerCancelScheduleKey(candidate);
+  const targetSchedule = getPassengerCancelScheduleKey(target);
+  if (candidateSchedule && targetSchedule && candidateSchedule === targetSchedule) return true;
+
+  // En desarrollo local a veces no viene email ni fecha estable, pero sí se duplica la
+  // misma solicitud con mismo origen, destino y tarifa. En ese caso también la limpiamos.
+  return true;
+}
+
+function isPassengerRideCancelledByPassenger(ride: Partial<RideRequestData> & Record<string, unknown>): boolean {
+  const status = String(ride.status ?? "").toLowerCase();
+  const cancelledBy = normalizePassengerCancelText(ride.cancelledByRole ?? ride.cancelledBy);
+  const reason = normalizePassengerCancelText(ride.cancellationReason ?? ride.cancelReason ?? ride.notes);
+
+  return (
+    status === "cancelled" &&
+    (
+      cancelledBy.includes("passenger") ||
+      cancelledBy.includes("pasajero") ||
+      reason.includes("cancelado por pasajero") ||
+      reason.includes("cancelado por usuario") ||
+      reason.includes("usuario cancelo") ||
+      reason.includes("pasajero cancelo")
+    )
+  );
+}
+
+function hasPassengerCancelledRideMarker(target: Partial<RideRequestData> & Record<string, unknown>): boolean {
+  try {
+    return readLocalPassengerRides().some((ride) =>
+      isPassengerRideCancelledByPassenger(ride as RideRequestData & Record<string, unknown>) &&
+      isSamePassengerRideCancelTarget(ride as RideRequestData & Record<string, unknown>, target),
+    );
+  } catch {
+    return false;
+  }
+}
+
+function buildPassengerCancelledRide(ride: RideRequestData): RideRequestData {
+  const now = new Date().toISOString();
+
+  return {
+    ...(ride as RideRequestData & Record<string, unknown>),
+    status: "cancelled",
+    cancelledAt: now,
+    cancelledByRole: "passenger",
+    cancelledBy: "passenger",
+    cancellationReason: "Cancelado por pasajero.",
+    requeuedReason: null,
+    forceActiveAfterDriverCancel: false,
+    passengerNotice: null,
+    passengerNotification: null,
+    driverName: null,
+    driverPhone: null,
+    driverVehicleBrand: null,
+    driverVehicleModel: null,
+    driverVehicleColor: null,
+    driverVehiclePlate: null,
+    driverVehicleYear: null,
+  } as RideRequestData;
+}
+
+function removePassengerRideFromArrayStorage(
+  key: string,
+  target: Partial<RideRequestData> & Record<string, unknown>,
+): void {
+  try {
+    const raw = localStorage.getItem(key);
+    const parsed = raw ? (JSON.parse(raw) as Array<RideRequestData & Record<string, unknown>>) : [];
+    if (!Array.isArray(parsed)) return;
+
+    const next = parsed.filter((ride) => !isSamePassengerRideCancelTarget(ride, target));
+    localStorage.setItem(key, JSON.stringify(next));
+  } catch {
+    // No bloquea la cancelación local.
+  }
+}
+
+function cancelPassengerRideEverywhere(target: RideRequestData): RideRequestData {
+  const cancelled = buildPassengerCancelledRide(target);
+
+  for (const key of PASSENGER_CANCEL_STORAGE_KEYS) {
+    if (key !== "rapago_local_passenger_rides") {
+      removePassengerRideFromArrayStorage(key, cancelled as RideRequestData & Record<string, unknown>);
+    }
+  }
+
+  const local = readLocalPassengerRides();
+  let found = false;
+
+  const nextLocal = local.map((ride) => {
+    if (!isSamePassengerRideCancelTarget(ride as RideRequestData & Record<string, unknown>, cancelled as RideRequestData & Record<string, unknown>)) {
+      return ride;
+    }
+
+    found = true;
+    return {
+      ...ride,
+      ...cancelled,
+      id: ride.id || cancelled.id,
+      originalRideId: (ride as RideRequestData & Record<string, unknown>).originalRideId ?? (cancelled as RideRequestData & Record<string, unknown>).originalRideId ?? cancelled.id,
+    } as RideRequestData;
+  });
+
+  if (!found) {
+    nextLocal.unshift(cancelled);
+  }
+
+  saveLocalPassengerRides(nextLocal.slice(0, 200));
+
+  window.dispatchEvent(new CustomEvent("rapago:driver-available-rides-updated", { detail: { cancelled } }));
+  window.dispatchEvent(new CustomEvent(RAPAGO_REQUEUED_RIDES_EVENT, { detail: { cancelled } }));
+
+  return cancelled;
+}
+
+function applyPassengerCancelledRideToList(
+  rides: RideRequestData[],
+  target: RideRequestData,
+  cancelled: RideRequestData,
+): RideRequestData[] {
+  let found = false;
+
+  const next = rides.map((ride) => {
+    if (!isSamePassengerRideCancelTarget(ride as RideRequestData & Record<string, unknown>, target as RideRequestData & Record<string, unknown>)) {
+      return ride;
+    }
+
+    found = true;
+    return {
+      ...ride,
+      ...cancelled,
+      id: ride.id || cancelled.id,
+      originalRideId: (ride as RideRequestData & Record<string, unknown>).originalRideId ?? (cancelled as RideRequestData & Record<string, unknown>).originalRideId ?? cancelled.id,
+    } as RideRequestData;
+  });
+
+  if (!found) next.unshift(cancelled);
+
+  return sortPassengerRidesForDisplay(mergePassengerRidesForDisplay(next));
+}
+
+function upsertLocalPassengerRideMirror(ride: RideRequestData): void {
+  const key = getPassengerRideStorageKey(ride as Partial<RideRequestData> & Record<string, unknown>);
+  const current = readLocalPassengerRides();
+  const withoutDuplicate = current.filter((item) => {
+    const itemKey = getPassengerRideStorageKey(item as Partial<RideRequestData> & Record<string, unknown>);
+    return itemKey !== key && item.id !== ride.id;
+  });
+
+  saveLocalPassengerRides([ride, ...withoutDuplicate].slice(0, 150));
 }
 
 function createLocalPassengerRide(input: {
@@ -2016,15 +2753,34 @@ function createLocalPassengerRide(input: {
   destinationText: string;
   notes?: string;
   estimatedFareClp?: number | null;
+  rideMode?: RideMode | null;
+  tripFareMode?: TripFareMode | null;
+  scheduledAt?: string | null;
+  returnScheduledAt?: string | null;
+  passengerFareType?: PassengerFareType | null;
+  passengerFareLabel?: string | null;
 }): RideRequestData {
   const now = new Date().toISOString();
+  const scheduleFields = buildRideScheduleFields({
+    rideMode: input.rideMode ?? "now",
+    tripFareMode: input.tripFareMode ?? "one_way",
+    scheduledAt: input.scheduledAt ?? "",
+    returnScheduledAt: input.returnScheduledAt ?? "",
+  });
+  const isScheduled = scheduleFields.isScheduled === true;
 
   return {
     id: `local-${Date.now()}`,
     originText: input.originText,
     destinationText: input.destinationText,
     notes: input.notes ?? null,
-    status: "requested",
+    passengerFareType: input.passengerFareType ?? null,
+    farePassengerType: input.passengerFareType ?? null,
+    passengerType: input.passengerFareType ?? null,
+    passengerFareLabel: input.passengerFareLabel ?? (input.passengerFareType ? passengerFareTypeLabel(input.passengerFareType) : null),
+    nationality: input.passengerFareLabel ?? (input.passengerFareType ? passengerFareTypeLabel(input.passengerFareType) : null),
+    isResident: input.passengerFareType === "resident",
+    status: isScheduled ? "scheduled" : "requested",
     requestedAt: now,
     acceptedAt: null,
     enRouteAt: null,
@@ -2047,8 +2803,13 @@ function createLocalPassengerRide(input: {
     driverVehicleColor: null,
     driverVehiclePlate: null,
     driverVehicleYear: null,
+    driverVehicleImageDataUrl: null,
+    driverVehiclePhotoDataUrl: null,
+    driverProfileImageDataUrl: null,
+    driverProfilePhotoUrl: null,
     isOfflineBooking: false,
-  } as RideRequestData;
+    ...scheduleFields,
+  } as unknown as RideRequestData;
 }
 
 function isUnauthorizedMessage(message: unknown): boolean {
@@ -2071,11 +2832,786 @@ function isUnauthorizedMessage(message: unknown): boolean {
 function cleanPassengerNotes(notes: string | null | undefined): string | null {
   if (!notes) return null;
   return notes
+    .replace(/\bRAPAGO_[A-Z_]+:\s*[^.]+\.?/gi, "")
     .replace(/Ubicación GPS pasajero:.*?(?=Punto de partida confirmado|$)/i, "")
     .replace(/Ubicación real del pasajero:.*?(?=Punto accesible|Coordenadas|$)/i, "")
     .replace(/Coordenadas recogida accesible:.*?(?=Coordenadas destino accesible|$)/i, "")
     .replace(/Coordenadas destino accesible:.*$/i, "")
+    .replace(/Tipo de pasajero tarifario:\s*[^.]+\.?/gi, "")
+    .replace(/Tipo de viaje seleccionado:\s*[^.]+\.?/gi, "")
+    .replace(/La solicitud se activa automáticamente.*?\./gi, "")
+    .replace(/Estado de agenda admin:\s*[^.]+\.?/gi, "")
+    .replace(/Solicitado por rol:\s*[^.]+\.?/gi, "")
+    .replace(/\s{2,}/g, " ")
     .trim() || null;
+}
+
+
+function getRidePassengerFareType(ride: RideRequestData): PassengerFareType | null {
+  const record = ride as RideRequestData & Record<string, unknown>;
+  const notes = String(record.notes ?? "");
+  const fromNotes =
+    notes.match(/Tipo de pasajero tarifario:\s*([^.]*)\./i)?.[1] ??
+    notes.match(/Tarifa pasajero:\s*([^.]*)\./i)?.[1] ??
+    notes.match(/Nacionalidad:\s*([^.]*)\./i)?.[1];
+
+  return (
+    normalizePassengerFareType(record.passengerFareType) ??
+    normalizePassengerFareType(record.farePassengerType) ??
+    normalizePassengerFareType(record.passengerType) ??
+    normalizePassengerFareType(record.passengerFareLabel) ??
+    normalizePassengerFareType(record.nationality) ??
+    normalizePassengerFareType(record.isResident) ??
+    normalizePassengerFareType(fromNotes)
+  );
+}
+
+type PassengerRideScheduleInfo = {
+  isScheduled: boolean;
+  scheduledAt: string | null;
+  returnScheduledAt: string | null;
+  activationAt: string | null;
+  isActiveWindow: boolean;
+};
+
+function getRideAnyField(ride: RideRequestData, key: string): unknown {
+  return (ride as unknown as Record<string, unknown>)[key];
+}
+
+
+
+type PassengerIndexVehicleDisplayData = {
+  brand: string;
+  model: string;
+  color: string;
+  plate: string;
+  imageDataUrl: string | null;
+  score: number;
+};
+
+function passengerIndexLooksLikeFareText(value: unknown): boolean {
+  const raw = String(value ?? "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .trim();
+
+  if (!raw) return false;
+
+  return (
+    raw.includes("tarifa ") ||
+    raw.includes("tarifa general") ||
+    raw.includes("tarifa destino") ||
+    raw.includes("tarifa vehiculo") ||
+    raw.includes("tarifa vehículo") ||
+    raw.includes("valor por km") ||
+    raw.includes("km adicional") ||
+    raw.includes("clp") ||
+    raw.includes("usd") ||
+    raw.includes("residentes") ||
+    raw.includes("chilenos") ||
+    raw.includes("extranjeros")
+  );
+}
+
+function passengerIndexStringValue(value: unknown): string {
+  if (value == null) return "";
+  if (typeof value === "string" || typeof value === "number") {
+    const text = String(value).trim();
+    const lower = text.toLowerCase();
+    if (
+      !text ||
+      lower === "null" ||
+      lower === "undefined" ||
+      lower === "modelo no informado" ||
+      lower === "patente no informada" ||
+      lower === "color no informado" ||
+      lower === "imagen no informada" ||
+      passengerIndexLooksLikeFareText(text)
+    ) {
+      return "";
+    }
+    return text;
+  }
+  return "";
+}
+
+function passengerIndexFirstValue(...values: unknown[]): string {
+  for (const value of values) {
+    const text = passengerIndexStringValue(value);
+    if (text) return text;
+  }
+  return "";
+}
+
+function passengerIndexImageValue(...values: unknown[]): string | null {
+  for (const value of values) {
+    const text = passengerIndexStringValue(value);
+    if (
+      text &&
+      (text.startsWith("data:image/") ||
+        text.startsWith("blob:") ||
+        text.startsWith("http://") ||
+        text.startsWith("https://"))
+    ) {
+      return text;
+    }
+  }
+  return null;
+}
+
+function passengerIndexReadJsonStorageValue(key: string): unknown {
+  try {
+    const raw = localStorage.getItem(key);
+    if (!raw) return null;
+    try {
+      return JSON.parse(raw) as unknown;
+    } catch {
+      return raw;
+    }
+  } catch {
+    return null;
+  }
+}
+
+function passengerIndexFlattenObjects(value: unknown, depth = 0): Array<Record<string, unknown>> {
+  if (!value || depth > 7) return [];
+  if (Array.isArray(value)) return value.flatMap((item) => passengerIndexFlattenObjects(item, depth + 1));
+  if (typeof value !== "object") return [];
+
+  const obj = value as Record<string, unknown>;
+  const result: Array<Record<string, unknown>> = [obj];
+
+  for (const nested of Object.values(obj)) {
+    if (nested && typeof nested === "object") {
+      result.push(...passengerIndexFlattenObjects(nested, depth + 1));
+    }
+  }
+
+  return result;
+}
+
+function passengerIndexParseVehicleLabel(label: unknown): Partial<PassengerIndexVehicleDisplayData> {
+  const clean = passengerIndexStringValue(label)
+    .replace(/\b(propio|prestado|borrowed|own|activo|veh[ií]culo activo)\b/gi, "")
+    .replace(/\s{2,}/g, " ")
+    .trim();
+  if (!clean) return {};
+
+  const parts = clean
+    .split(/\s*[·•|,;-]\s*/g)
+    .map((part) => part.trim())
+    .filter(Boolean);
+
+  const main = parts[0] ?? clean;
+  const tokens = main.split(/\s+/).filter(Boolean);
+  const parsed: Partial<PassengerIndexVehicleDisplayData> = {};
+
+  if (tokens.length >= 2) {
+    parsed.brand = tokens[0];
+    parsed.model = tokens.slice(1).join(" ");
+  } else if (tokens.length === 1) {
+    parsed.brand = tokens[0];
+  }
+
+  parsed.plate =
+    parts.slice(1).find((part) => /(?=.*\d)[A-Z0-9-]{3,}/i.test(part) && !/color|propio|prestado/i.test(part)) ??
+    clean.split(/\s+/).find((part) => /(?=.*\d)[A-Z0-9-]{3,}/i.test(part) && !/color|propio|prestado/i.test(part));
+
+  const colorPart = parts.find((part) => /^color\s*:/i.test(part));
+  if (colorPart) parsed.color = colorPart.replace(/^color\s*:/i, "").trim();
+
+  return parsed;
+}
+
+function passengerIndexFindImageInObject(obj: Record<string, unknown>): string | null {
+  const direct = passengerIndexImageValue(
+    obj.driverVehicleImageDataUrl,
+    obj.driverVehiclePhotoDataUrl,
+    obj.vehicleImageDataUrl,
+    obj.vehiclePhotoDataUrl,
+    obj.vehicleImageUrl,
+    obj.vehiclePhotoUrl,
+    obj.imageDataUrl,
+    obj.photoDataUrl,
+    obj.imageUrl,
+    obj.photoUrl,
+    obj.imagePreviewUrl,
+    obj.photoPreviewUrl,
+    obj.previewDataUrl,
+    obj.previewUrl,
+    obj.driverVehicleImage,
+    obj.driverVehiclePhoto,
+    obj.vehicleImage,
+    obj.vehiclePhoto,
+    obj.fotoVehiculo,
+    obj.foto,
+    obj.image,
+    obj.photo,
+    obj.url,
+    obj.src,
+    obj.dataUrl,
+    obj.base64,
+  );
+
+  if (direct) return direct;
+
+  for (const [key, value] of Object.entries(obj)) {
+    const lowerKey = key.toLowerCase();
+    if (
+      (lowerKey.includes("image") || lowerKey.includes("photo") || lowerKey.includes("foto") || lowerKey.includes("vehicle") || lowerKey.includes("vehiculo")) &&
+      passengerIndexImageValue(value)
+    ) {
+      return passengerIndexImageValue(value);
+    }
+  }
+
+  return null;
+}
+
+function passengerIndexNormalizeForCompare(value: unknown): string {
+  return String(value ?? "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .trim();
+}
+
+function passengerIndexIsFareRuleObject(obj: Record<string, unknown>, sourceKey = ""): boolean {
+  const lowerKey = sourceKey.toLowerCase();
+  if (lowerKey.includes("fare") || lowerKey.includes("tarifa") || lowerKey.includes("price") || lowerKey.includes("rate")) return true;
+
+  const kind = passengerIndexNormalizeForCompare(obj.kind);
+  const title = passengerIndexNormalizeForCompare(obj.title);
+  const description = passengerIndexNormalizeForCompare(obj.description);
+  const id = passengerIndexNormalizeForCompare(obj.id);
+
+  if (kind === "variable" || kind === "fixed") return true;
+  if ("minimumClp" in obj || "kmClp" in obj || "fixedClp" in obj || "baseResidentClp" in obj) return true;
+  if (title.includes("tarifa") || description.includes("tarifa") || id.includes("fare") || id.includes("tarifa")) return true;
+
+  return false;
+}
+
+function passengerIndexBuildVehicleCandidate(obj: Record<string, unknown>, sourceKey = ""): PassengerIndexVehicleDisplayData | null {
+  if (passengerIndexIsFareRuleObject(obj, sourceKey)) return null;
+
+  const label = passengerIndexFirstValue(
+    obj.label,
+    obj.vehicleLabel,
+    obj.driverVehicleLabel,
+    obj.activeVehicleLabel,
+    obj.selectedVehicleLabel,
+    obj.name,
+    obj.title,
+    obj.displayName,
+    obj.text,
+    obj.description,
+  );
+  const parsed = passengerIndexParseVehicleLabel(label);
+
+  const brand = passengerIndexFirstValue(
+    obj.driverVehicleBrand,
+    obj.vehicleBrand,
+    obj.brand,
+    obj.make,
+    obj.marca,
+    obj.vehicleMake,
+    obj.carBrand,
+    obj.driverVehicleMarca,
+    parsed.brand,
+  );
+  const model = passengerIndexFirstValue(
+    obj.driverVehicleModel,
+    obj.vehicleModel,
+    obj.model,
+    obj.modelo,
+    obj.vehicleModelo,
+    obj.carModel,
+    obj.driverVehicleModelo,
+    parsed.model,
+  );
+  const plate = passengerIndexFirstValue(
+    obj.driverVehiclePlate,
+    obj.vehiclePlate,
+    obj.plate,
+    obj.patente,
+    obj.patenteVehiculo,
+    obj.vehiclePatente,
+    obj.vehiclePatent,
+    obj.patent,
+    obj.placa,
+    obj.matricula,
+    obj["matrícula"],
+    obj.licensePlate,
+    obj.registrationPlate,
+    obj.plateNumber,
+    parsed.plate,
+  );
+  const color = passengerIndexFirstValue(
+    obj.driverVehicleColor,
+    obj.vehicleColor,
+    obj.color,
+    obj.colour,
+    obj.vehicleColour,
+    obj.driverVehicleColour,
+    obj.carColor,
+    parsed.color,
+  );
+  const imageDataUrl = passengerIndexFindImageInObject(obj);
+
+  if (!brand && !model && !plate && !color && !imageDataUrl) return null;
+
+  const lowerKey = sourceKey.toLowerCase();
+  let score = 0;
+  if (brand) score += 10;
+  if (model) score += 10;
+  if (plate) score += 14;
+  if (color) score += 8;
+  if (imageDataUrl) score += 30;
+  if (lowerKey.includes("active") || lowerKey.includes("activo") || lowerKey.includes("selected")) score += 35;
+  if (lowerKey.includes("driver_active_vehicle")) score += 45;
+  if (lowerKey.includes("current_driver") || lowerKey.includes("live")) score += 12;
+
+  const updatedTime = new Date(String(obj.updatedAt ?? obj.createdAt ?? obj.selectedAt ?? "")).getTime();
+  if (Number.isFinite(updatedTime)) {
+    const ageDays = Math.max(0, (Date.now() - updatedTime) / (1000 * 60 * 60 * 24));
+    score += ageDays < 7 ? 10 : 2;
+  }
+
+  return { brand, model, color, plate, imageDataUrl, score };
+}
+
+function passengerIndexCandidateFromString(value: unknown, sourceKey = ""): PassengerIndexVehicleDisplayData | null {
+  const parsed = passengerIndexParseVehicleLabel(value);
+  const imageDataUrl = passengerIndexImageValue(value);
+  const brand = passengerIndexFirstValue(parsed.brand);
+  const model = passengerIndexFirstValue(parsed.model);
+  const plate = passengerIndexFirstValue(parsed.plate);
+  const color = passengerIndexFirstValue(parsed.color);
+  if (!brand && !model && !plate && !color && !imageDataUrl) return null;
+
+  let score = 1;
+  const lowerKey = sourceKey.toLowerCase();
+  if (brand) score += 6;
+  if (model) score += 6;
+  if (plate) score += 8;
+  if (color) score += 4;
+  if (imageDataUrl) score += 20;
+  if (lowerKey.includes("active") || lowerKey.includes("selected")) score += 25;
+
+  return { brand, model, color, plate, imageDataUrl, score };
+}
+
+function passengerIndexReadVehicleFromFlatKeys(): PassengerIndexVehicleDisplayData | null {
+  try {
+    const data: Partial<PassengerIndexVehicleDisplayData> = {};
+    let score = 0;
+
+    for (let index = 0; index < localStorage.length; index += 1) {
+      const key = localStorage.key(index);
+      if (!key) continue;
+      const lower = key.toLowerCase();
+      if (!lower.includes("rapago")) continue;
+      if (lower.includes("fare") || lower.includes("tarifa") || lower.includes("price") || lower.includes("rate")) continue;
+      if (!/(vehicle|vehiculo|driver|conductor|auto|(^|[_-])car([_-]|$))/i.test(lower)) continue;
+
+      const text = passengerIndexStringValue(localStorage.getItem(key));
+      if (!text) continue;
+
+      if ((lower.includes("brand") || lower.includes("marca")) && !data.brand) {
+        data.brand = text;
+        score += 10;
+      } else if ((lower.includes("model") || lower.includes("modelo")) && !data.model) {
+        data.model = text;
+        score += 10;
+      } else if ((lower.includes("plate") || lower.includes("patente") || lower.includes("placa") || lower.includes("matricula")) && !data.plate) {
+        data.plate = text;
+        score += 14;
+      } else if ((lower.includes("color") || lower.includes("colour")) && !data.color) {
+        data.color = text;
+        score += 8;
+      } else if ((lower.includes("image") || lower.includes("photo") || lower.includes("foto")) && !data.imageDataUrl) {
+        const image = passengerIndexImageValue(text);
+        if (image) {
+          data.imageDataUrl = image;
+          score += 30;
+        }
+      }
+    }
+
+    if (!data.brand && !data.model && !data.plate && !data.color && !data.imageDataUrl) return null;
+    return {
+      brand: passengerIndexFirstValue(data.brand),
+      model: passengerIndexFirstValue(data.model),
+      color: passengerIndexFirstValue(data.color),
+      plate: passengerIndexFirstValue(data.plate),
+      imageDataUrl: passengerIndexImageValue(data.imageDataUrl),
+      score,
+    };
+  } catch {
+    return null;
+  }
+}
+
+function passengerIndexReadBestVehicleFromEverywhere(): PassengerIndexVehicleDisplayData | null {
+  const candidates: PassengerIndexVehicleDisplayData[] = [];
+  const priorityKeys = [
+    "rapago_driver_active_vehicle_v1",
+    "rapago_driver_active_vehicle",
+    "rapago_active_driver_vehicle_v1",
+    "rapago_active_vehicle_v1",
+    "rapago_driver_public_profile_v1",
+    "rapago_driver_profile_v1",
+    "rapago_current_driver_location",
+    "rapago_driver_vehicles_v1",
+    "rapago_driver_vehicles",
+    "rapago_driver_selected_vehicle_v1",
+    "rapago_driver_selected_vehicle",
+    "rapago_last_accepted_ride",
+    "rapago_driver_live_locations_v1",
+  ];
+
+  try {
+    const flat = passengerIndexReadVehicleFromFlatKeys();
+    if (flat) candidates.push(flat);
+
+    const keys = new Set<string>(priorityKeys);
+    for (let index = 0; index < localStorage.length; index += 1) {
+      const key = localStorage.key(index);
+      if (!key) continue;
+      const lower = key.toLowerCase();
+      if (lower.includes("fare") || lower.includes("tarifa") || lower.includes("price") || lower.includes("rate")) continue;
+      if (
+        lower.includes("vehicle") ||
+        lower.includes("vehiculo") ||
+        lower.includes("driver") ||
+        lower.includes("conductor") ||
+        /(^|[_-])(car|auto)([_-]|$)/i.test(lower) ||
+        lower.includes("ride")
+      ) {
+        keys.add(key);
+      }
+    }
+
+    for (const key of keys) {
+      const value = passengerIndexReadJsonStorageValue(key);
+      const fromString = typeof value === "string" ? passengerIndexCandidateFromString(value, key) : null;
+      if (fromString) candidates.push(fromString);
+
+      for (const obj of passengerIndexFlattenObjects(value)) {
+        const candidate = passengerIndexBuildVehicleCandidate(obj, key);
+        if (!candidate) continue;
+
+        const ownership = passengerIndexFirstValue(obj.ownership, obj.driverVehicleOwnership).toLowerCase();
+        if (ownership.includes("borrow") || ownership.includes("prestado")) {
+          const expires = new Date(String(obj.expiresAt ?? "")).getTime();
+          if (Number.isFinite(expires) && expires <= Date.now()) continue;
+        }
+
+        candidates.push(candidate);
+      }
+    }
+  } catch {
+    // No bloquea Mis Viajes.
+  }
+
+  if (candidates.length === 0) return null;
+  return candidates.sort((a, b) => b.score - a.score)[0] ?? null;
+}
+
+function passengerIndexGetDriverVehiclePublicData(ride: RideRequestData & Record<string, unknown>): PassengerIndexVehicleDisplayData {
+  const fallback = passengerIndexReadBestVehicleFromEverywhere();
+
+  return {
+    brand: passengerIndexFirstValue(ride.driverVehicleBrand, ride.vehicleBrand, fallback?.brand),
+    model: passengerIndexFirstValue(ride.driverVehicleModel, ride.vehicleModel, fallback?.model),
+    color: passengerIndexFirstValue(ride.driverVehicleColor, ride.vehicleColor, fallback?.color),
+    plate: passengerIndexFirstValue(ride.driverVehiclePlate, ride.vehiclePlate, ride.plate, fallback?.plate),
+    imageDataUrl: passengerIndexImageValue(
+      ride.driverVehicleImageDataUrl,
+      ride.driverVehiclePhotoDataUrl,
+      ride.vehicleImageDataUrl,
+      ride.vehiclePhotoDataUrl,
+      fallback?.imageDataUrl,
+    ),
+    score: fallback?.score ?? 0,
+  };
+}
+
+function passengerIndexGetDriverName(ride: RideRequestData & Record<string, unknown>): string {
+  const direct = passengerIndexFirstValue(ride.driverName, ride.driverFullName);
+  if (direct) return direct;
+
+  try {
+    for (const key of [
+      "rapago_driver_availability_name",
+      "rapago_driver_profile_name",
+      "rapago_driver_name",
+      "rapago_user_name",
+      "rapago_driver_public_profile_v1",
+      "rapago_driver_profile_v1",
+      "rapago_current_driver_location",
+    ]) {
+      const value = passengerIndexReadJsonStorageValue(key);
+      const asString = passengerIndexStringValue(value);
+      if (typeof value === "string" && asString && !asString.startsWith("{") && !asString.startsWith("[")) return asString;
+
+      for (const obj of passengerIndexFlattenObjects(value)) {
+        const name = passengerIndexFirstValue(obj.driverFullName, obj.driverName, obj.fullName, obj.name, obj.firstName);
+        if (name) return name;
+      }
+    }
+  } catch {
+    // No bloquea Mis Viajes.
+  }
+
+  return "";
+}
+
+function enrichPassengerRideWithDriverVehicleData(ride: RideRequestData): RideRequestData {
+  const record = ride as RideRequestData & Record<string, unknown>;
+  const vehicle = passengerIndexGetDriverVehiclePublicData(record);
+  const driverName = passengerIndexGetDriverName(record);
+
+  return {
+    ...record,
+    driverName: passengerIndexFirstValue(record.driverName, driverName) || record.driverName || null,
+    driverFullName: passengerIndexFirstValue(record.driverFullName, driverName) || record.driverFullName || null,
+    driverVehicleBrand: passengerIndexFirstValue(record.driverVehicleBrand, vehicle.brand) || null,
+    driverVehicleModel: passengerIndexFirstValue(record.driverVehicleModel, vehicle.model) || null,
+    driverVehicleColor: passengerIndexFirstValue(record.driverVehicleColor, vehicle.color) || null,
+    driverVehiclePlate: passengerIndexFirstValue(record.driverVehiclePlate, vehicle.plate) || null,
+    driverVehicleImageDataUrl: passengerIndexImageValue(record.driverVehicleImageDataUrl, vehicle.imageDataUrl),
+  } as RideRequestData;
+}
+
+function getRideScheduleString(ride: RideRequestData, keys: string[]): string | null {
+  for (const key of keys) {
+    const value = getRideAnyField(ride, key);
+    if (typeof value === "string" && value.trim()) return value.trim();
+  }
+  return null;
+}
+
+function toPassengerIso(value: string | null | undefined): string | null {
+  if (!value) return null;
+  const parsed = new Date(value);
+  return Number.isFinite(parsed.getTime()) ? parsed.toISOString() : null;
+}
+
+function extractPassengerIsoByKeywords(notes: string | null | undefined, keywords: string[]): string | null {
+  if (!notes) return null;
+  const isoPattern =
+    "([0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}(?::[0-9]{2}(?:\\.[0-9]{1,3})?)?(?:Z|[+-][0-9]{2}:?[0-9]{2})?)";
+
+  for (const keyword of keywords) {
+    const safeKeyword = keyword.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const match = notes.match(new RegExp(`${safeKeyword}\\s*[:=]\\s*${isoPattern}`, "i"));
+    const parsed = toPassengerIso(match?.[1] ?? null);
+    if (parsed) return parsed;
+  }
+
+  return null;
+}
+
+function extractPassengerScheduleIsoFromNotes(notes: string | null | undefined): string | null {
+  return extractPassengerIsoByKeywords(notes, [
+    "RAPAGO_SCHEDULED_AT",
+    "Fecha y hora de recogida agendada",
+    "scheduledAt",
+    "scheduledPickupAt",
+    "pickupScheduledAt",
+  ]);
+}
+
+function extractPassengerReturnIsoFromNotes(notes: string | null | undefined): string | null {
+  return extractPassengerIsoByKeywords(notes, [
+    "RAPAGO_RETURN_SCHEDULED_AT",
+    "RAPAGO_RETURN_AT",
+    "Fecha y hora de regreso agendada",
+    "returnScheduledAt",
+    "scheduledReturnAt",
+  ]);
+}
+
+function getPassengerRideScheduleInfo(ride: RideRequestData): PassengerRideScheduleInfo {
+  const scheduledAt =
+    toPassengerIso(getRideScheduleString(ride, ["scheduledAt", "scheduledPickupAt", "pickupScheduledAt", "pickupAt", "reservedAt"])) ??
+    extractPassengerScheduleIsoFromNotes(ride.notes);
+
+  const returnScheduledAt =
+    toPassengerIso(getRideScheduleString(ride, ["returnScheduledAt", "scheduledReturnAt", "returnAt"])) ??
+    extractPassengerReturnIsoFromNotes(ride.notes);
+
+  const activationAt =
+    toPassengerIso(getRideScheduleString(ride, ["scheduleActivationAt", "dispatchAt", "autoAssignAt", "autoDispatchAt"])) ??
+    (scheduledAt ? new Date(new Date(scheduledAt).getTime() - SCHEDULE_ACTIVATION_MINUTES * 60_000).toISOString() : null);
+
+  const isScheduled =
+    getRideAnyField(ride, "isScheduled") === true ||
+    ride.status === "scheduled" ||
+    !!scheduledAt ||
+    /Viaje (?:agendado|programado) para:/i.test(ride.notes ?? "");
+
+  const isActiveWindow = !!activationAt && Date.now() >= new Date(activationAt).getTime();
+
+  return { isScheduled, scheduledAt, returnScheduledAt, activationAt, isActiveWindow };
+}
+
+function isPassengerRideDriverScheduled(ride: RideRequestData): boolean {
+  const status = String(
+    getRideAnyField(ride, "scheduleStatus") ??
+      getRideAnyField(ride, "adminScheduleStatus") ??
+      getRideAnyField(ride, "reservationStatus") ??
+      "",
+  )
+    .toLowerCase()
+    .trim();
+
+  return ["driver_scheduled", "assigned_driver", "driver_assigned", "scheduled_driver"].includes(status);
+}
+
+function getPassengerRideNotification(ride: RideRequestData): string | null {
+  const value = getRideAnyField(ride, "passengerNotification");
+  return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+function getEffectivePassengerRideStatus(ride: RideRequestData): string {
+  if (isPassengerRideCancelledByPassenger(ride as RideRequestData & Record<string, unknown>)) return "cancelled";
+  if (isPassengerDriverCancelledRequeue(ride)) return "requested";
+  const schedule = getPassengerRideScheduleInfo(ride);
+  if (schedule.isScheduled && isPassengerRideDriverScheduled(ride) && ride.driverName) {
+    return "driver_scheduled";
+  }
+  if (schedule.isScheduled && !schedule.isActiveWindow && ["requested", "scheduled"].includes(ride.status)) {
+    return "scheduled";
+  }
+  if (ride.status === "scheduled" && schedule.isActiveWindow) return "requested";
+  return ride.status;
+}
+
+const PASSENGER_ACTIVE_STATUSES = [
+  "scheduled",
+  "driver_scheduled",
+  "requested",
+  "accepted",
+  "driver_en_route",
+  "driver_arrived",
+  "in_progress",
+];
+
+function getPassengerRideTimeValue(ride: RideRequestData): number {
+  const schedule = getPassengerRideScheduleInfo(ride);
+  const candidates = [
+    schedule.scheduledAt,
+    ride.createdAt,
+    ride.requestedAt,
+    ride.acceptedAt,
+    ride.startedAt,
+    ride.completedAt,
+    ride.cancelledAt,
+  ].filter(Boolean) as string[];
+
+  const value = candidates
+    .map((date) => new Date(date).getTime())
+    .filter((time) => Number.isFinite(time))
+    .sort((a, b) => b - a)[0];
+
+  return value ?? 0;
+}
+
+function getPassengerRidePriority(ride: RideRequestData): number {
+  const status = getEffectivePassengerRideStatus(ride);
+  if (status === "driver_en_route") return 0;
+  if (status === "driver_arrived") return 1;
+  if (status === "in_progress") return 2;
+  if (status === "accepted") return 3;
+  if (status === "requested") return 4;
+  if (status === "driver_scheduled") return 5;
+  if (status === "scheduled") return 6;
+  if (status === "completed") return 7;
+  if (status === "cancelled") return 8;
+  return 9;
+}
+
+function mergePassengerRidesForDisplay(rides: RideRequestData[]): RideRequestData[] {
+  const byKey = new Map<string, RideRequestData>();
+
+  for (const ride of rides) {
+    const key = getPassengerRideStorageKey(ride as Partial<RideRequestData> & Record<string, unknown>);
+    const current = byKey.get(key);
+    const incomingHasDriver = Boolean(ride.driverName);
+    const currentHasDriver = Boolean(current?.driverName);
+    const incomingIsLocal = ride.id.startsWith("local-") || ride.id.startsWith("admin-local-");
+    const currentIsLocal = Boolean(current?.id.startsWith("local-") || current?.id.startsWith("admin-local-"));
+
+    if (!current) {
+      byKey.set(key, ride);
+      continue;
+    }
+
+    const incomingIsDriverRequeued = isPassengerDriverCancelledRequeue(ride);
+    const currentIsDriverRequeued = isPassengerDriverCancelledRequeue(current);
+    const incomingEffectiveStatus = getEffectivePassengerRideStatus(ride);
+    const currentEffectiveStatus = getEffectivePassengerRideStatus(current);
+
+    const incomingIsPassengerCancelled = isPassengerRideCancelledByPassenger(ride as RideRequestData & Record<string, unknown>);
+    const currentIsPassengerCancelled = isPassengerRideCancelledByPassenger(current as RideRequestData & Record<string, unknown>);
+
+    // Si el pasajero tocó Cancelar, esa decisión gana sobre cualquier reencolado
+    // o sobre el cancelled del backend por conductor. Así desaparece de Activos.
+    if (incomingIsPassengerCancelled && currentIsDriverRequeued) {
+      byKey.set(key, ride);
+      continue;
+    }
+
+    if (currentIsPassengerCancelled && incomingIsDriverRequeued) {
+      continue;
+    }
+
+    // Cuando el conductor cancela, el backend puede devolver el mismo viaje como cancelled.
+    // Para el pasajero debe seguir siendo activo/requested, así que esa copia gana
+    // sobre el cancelled hasta que otro conductor lo tome o el pasajero lo cancele.
+    if (incomingIsDriverRequeued && currentEffectiveStatus === "cancelled" && !currentIsPassengerCancelled) {
+      byKey.set(key, { ...current, ...ride, status: "requested" } as RideRequestData);
+      continue;
+    }
+
+    if (currentIsDriverRequeued && incomingEffectiveStatus === "cancelled" && !incomingIsPassengerCancelled) {
+      continue;
+    }
+
+    if (incomingHasDriver && !currentHasDriver && incomingEffectiveStatus !== "cancelled") {
+      byKey.set(key, ride);
+      continue;
+    }
+
+    if (incomingIsLocal && !currentIsLocal && getPassengerRideScheduleInfo(ride).isScheduled) {
+      byKey.set(key, { ...current, ...ride } as RideRequestData);
+      continue;
+    }
+
+    if (getPassengerRideTimeValue(ride) > getPassengerRideTimeValue(current)) {
+      byKey.set(key, { ...current, ...ride } as RideRequestData);
+    }
+  }
+
+  return Array.from(byKey.values()).map(enrichPassengerRideWithDriverVehicleData);
+}
+
+function sortPassengerRidesForDisplay(rides: RideRequestData[]): RideRequestData[] {
+  return [...rides].sort((a, b) => {
+    const priorityDiff = getPassengerRidePriority(a) - getPassengerRidePriority(b);
+    if (priorityDiff !== 0) return priorityDiff;
+    return getPassengerRideTimeValue(b) - getPassengerRideTimeValue(a);
+  });
+}
+
+function findBlockingPassengerRide(): RideRequestData | null {
+  const requeued = syncRequeuedRidesIntoLocalPassengerRides();
+  const rides = sortPassengerRidesForDisplay(mergePassengerRidesForDisplay([...readLocalPassengerRides(), ...requeued]));
+  return rides.find((ride) => PASSENGER_ACTIVE_STATUSES.includes(getEffectivePassengerRideStatus(ride))) ?? null;
 }
 
 
@@ -2578,7 +4114,7 @@ function TripsPage(): JSX.Element {
   const [submittingRating, setSubmittingRating] = useState(false);
   const [ratingError,   setRatingError]   = useState<string | null>(null);
   const [ratedIds,      setRatedIds]      = useState<Set<string>>(new Set());
-  const [statusFilter,  setStatusFilter]  = useState<"all" | "active" | "completed" | "cancelled">("all");
+  const [statusFilter,  setStatusFilter]  = useState<"all" | "active" | "completed" | "cancelled">("active");
 
   const loadRides = useCallback(async () => {
     setLoading(true);
@@ -2586,19 +4122,21 @@ function TripsPage(): JSX.Element {
 
     try {
       const localRides = readLocalPassengerRides();
+      const requeuedRides = syncRequeuedRidesIntoLocalPassengerRides();
 
       if (!session?.accessToken) {
-        setAllRides(localRides);
+        setAllRides(sortPassengerRidesForDisplay(mergePassengerRidesForDisplay([...localRides, ...requeuedRides])));
         setPage(1);
         return;
       }
 
       const data = await ridesService.listMyRides(session.accessToken);
-      setAllRides([...localRides, ...data]);
+      setAllRides(sortPassengerRidesForDisplay(mergePassengerRidesForDisplay([...localRides, ...data, ...requeuedRides])));
       setPage(1);
     } catch (err) {
       const localRides = readLocalPassengerRides();
-      setAllRides(localRides);
+      const requeuedRides = syncRequeuedRidesIntoLocalPassengerRides();
+      setAllRides(sortPassengerRidesForDisplay(mergePassengerRidesForDisplay([...localRides, ...requeuedRides])));
       setPage(1);
 
       const message = err instanceof Error ? err.message : "Error al cargar tus viajes.";
@@ -2614,39 +4152,56 @@ function TripsPage(): JSX.Element {
 
   useEffect(() => { void loadRides(); }, [loadRides]);
 
-  // Client-side pagination slice
-  const rides = allRides.slice(0, page * PAGE_SIZE);
+  useEffect(() => {
+    const refreshPassengerRides = () => { void loadRides(); };
+    window.addEventListener("storage", refreshPassengerRides);
+    window.addEventListener(RAPAGO_REQUEUED_RIDES_EVENT, refreshPassengerRides as EventListener);
+    window.addEventListener("rapago:passenger-rides-updated", refreshPassengerRides as EventListener);
+
+    return () => {
+      window.removeEventListener("storage", refreshPassengerRides);
+      window.removeEventListener(RAPAGO_REQUEUED_RIDES_EVENT, refreshPassengerRides as EventListener);
+      window.removeEventListener("rapago:passenger-rides-updated", refreshPassengerRides as EventListener);
+    };
+  }, [loadRides]);
+
+  useEffect(() => {
+    setPage(1);
+  }, [statusFilter]);
 
   async function handleCancel(rideId: string) {
+    const target =
+      allRides.find((ride) => ride.id === rideId) ??
+      readLocalPassengerRides().find((ride) => ride.id === rideId) ??
+      readPassengerRequeuedRides().find((ride) => ride.id === rideId);
+
+    if (!target) return;
+
     setCancelling(rideId);
     setCancelError(null);
 
+    const cancelledLocal = cancelPassengerRideEverywhere(target);
+    setAllRides((prev) => applyPassengerCancelledRideToList(prev, target, cancelledLocal));
+
     try {
-      if (rideId.startsWith("local-") || !session?.accessToken) {
-        const cancelledLocal = {
-          status: "cancelled",
-          cancelledAt: new Date().toISOString(),
-          cancelledByRole: "passenger",
-          cancellationReason: "Cancelado por pasajero.",
-        } as Partial<RideRequestData>;
+      const shouldTryBackend =
+        Boolean(session?.accessToken) &&
+        !rideId.startsWith("local-") &&
+        !rideId.startsWith("admin-local-") &&
+        !isPassengerDriverCancelledRequeue(target);
 
-        const updatedLocal = readLocalPassengerRides().map((ride) =>
-          ride.id === rideId ? ({ ...ride, ...cancelledLocal } as RideRequestData) : ride,
-        );
-
-        saveLocalPassengerRides(updatedLocal);
-        setAllRides((prev) =>
-          prev.map((ride) => (ride.id === rideId ? ({ ...ride, ...cancelledLocal } as RideRequestData) : ride)),
-        );
-        return;
+      if (shouldTryBackend) {
+        await ridesService.cancelRideRequest(session!.accessToken, rideId);
       }
 
-      const updated = await ridesService.cancelRideRequest(session.accessToken, rideId);
-      setAllRides((prev) => prev.map((r) => (r.id === rideId ? updated : r)));
-    } catch (err) {
-      setCancelError(safePassengerErrorMessage(err instanceof Error ? err.message : "Error al cancelar el viaje."));
+      setCancelError(null);
+    } catch {
+      // Aunque el backend responda 404/409/500, ya cancelamos en localStorage
+      // para que el pasajero no quede atrapado con el viaje reencolado activo.
+      setCancelError(null);
     } finally {
       setCancelling(null);
+      void loadRides();
     }
   }
 
@@ -2668,37 +4223,62 @@ function TripsPage(): JSX.Element {
   }
 
   async function handleCancelAccepted(rideId: string) {
-    if (!session?.accessToken) return;
+    const target =
+      allRides.find((ride) => ride.id === rideId) ??
+      readLocalPassengerRides().find((ride) => ride.id === rideId) ??
+      readPassengerRequeuedRides().find((ride) => ride.id === rideId);
+
+    if (!target) return;
+
     setCancelling(rideId);
     setCancelError(null);
+
+    const cancelledLocal = cancelPassengerRideEverywhere(target);
+    setAllRides((prev) => applyPassengerCancelledRideToList(prev, target, cancelledLocal));
+
     try {
-      const updated = await ridesService.cancelAcceptedRide(session.accessToken, rideId);
-      setAllRides((prev) => prev.map((r) => (r.id === rideId ? updated : r)));
-    } catch (err) {
-      setCancelError(safePassengerErrorMessage(err instanceof Error ? err.message : "Error al cancelar el viaje."));
+      const shouldTryBackend =
+        Boolean(session?.accessToken) &&
+        !rideId.startsWith("local-") &&
+        !rideId.startsWith("admin-local-");
+
+      if (shouldTryBackend) {
+        await ridesService.cancelAcceptedRide(session!.accessToken, rideId);
+      }
+
+      setCancelError(null);
+    } catch {
+      // El viaje ya quedó cancelado localmente. No mostramos error técnico al pasajero.
+      setCancelError(null);
     } finally {
       setCancelling(null);
+      void loadRides();
     }
   }
 
-  const ACTIVE_STATUSES   = ["requested", "accepted", "driver_en_route", "driver_arrived", "in_progress"];
-  const filtered = rides.filter((r) => {
+  const ACTIVE_STATUSES = PASSENGER_ACTIVE_STATUSES;
+  const filteredAllRides = allRides.filter((r) => {
+    const effectiveStatus = getEffectivePassengerRideStatus(r);
     if (statusFilter === "all")       return true;
-    if (statusFilter === "active")    return ACTIVE_STATUSES.includes(r.status);
-    if (statusFilter === "completed") return r.status === "completed";
-    if (statusFilter === "cancelled") return r.status === "cancelled";
+    if (statusFilter === "active")    return ACTIVE_STATUSES.includes(effectiveStatus);
+    if (statusFilter === "completed") return effectiveStatus === "completed";
+    if (statusFilter === "cancelled") return effectiveStatus === "cancelled";
     return true;
   });
+
+  // Primero filtramos y recién después paginamos.
+  // Este era el problema de la captura: había Activos, pero quedaban fuera de la primera página.
+  const filtered = filteredAllRides.slice(0, page * PAGE_SIZE);
 
   // Counts use the full dataset so chips always show accurate numbers
   const counts = {
     all:       allRides.length,
-    active:    allRides.filter((r) => ACTIVE_STATUSES.includes(r.status)).length,
-    completed: allRides.filter((r) => r.status === "completed").length,
-    cancelled: allRides.filter((r) => r.status === "cancelled").length,
+    active:    allRides.filter((r) => ACTIVE_STATUSES.includes(getEffectivePassengerRideStatus(r))).length,
+    completed: allRides.filter((r) => getEffectivePassengerRideStatus(r) === "completed").length,
+    cancelled: allRides.filter((r) => getEffectivePassengerRideStatus(r) === "cancelled").length,
   };
 
-  const hasMore = page * PAGE_SIZE < allRides.length;
+  const hasMore = page * PAGE_SIZE < filteredAllRides.length;
 
   return (
     <IonPage>
@@ -2710,7 +4290,7 @@ function TripsPage(): JSX.Element {
         <IonToolbar style={{ "--background": "var(--ion-color-primary)", "--border-width": "0" }}>
           <div style={{ display: "flex", gap: "8px", padding: "0 12px 10px", overflowX: "auto" }}>
             {(["all", "active", "completed", "cancelled"] as const).map((f) => {
-              const labels = { all: "Todos", active: "En curso", completed: "Completados", cancelled: "Cancelados" };
+              const labels = { all: "Todos", active: "Activos", completed: "Completados", cancelled: "Cancelados" };
               const active = statusFilter === f;
               return (
                 <IonChip
@@ -2770,16 +4350,22 @@ function TripsPage(): JSX.Element {
         {!loading && filtered.length > 0 && (
           <div style={{ display: "flex", flexDirection: "column", gap: "12px", padding: "12px 16px 16px" }}>
             {filtered.map((ride) => {
-              const color = RIDE_STATUS_COLOR[ride.status] ?? "medium";
-              const label = RIDE_STATUS_LABEL[ride.status] ?? ride.status;
-              const isActive = ACTIVE_STATUSES.includes(ride.status);
+              const scheduleInfo = getPassengerRideScheduleInfo(ride);
+              const effectiveStatus = getEffectivePassengerRideStatus(ride);
+              const color = RIDE_STATUS_COLOR[effectiveStatus] ?? "medium";
+              const label = RIDE_STATUS_LABEL[effectiveStatus] ?? effectiveStatus;
+              const isActive = ACTIVE_STATUSES.includes(effectiveStatus);
+              const driverDisplayRide = enrichPassengerRideWithDriverVehicleData(ride);
+              const driverDisplayRecord = driverDisplayRide as RideRequestData & Record<string, unknown>;
+              const driverDisplayName = passengerIndexFirstValue(driverDisplayRecord.driverName, driverDisplayRecord.driverFullName);
+              const driverDisplayVehicle = passengerIndexGetDriverVehiclePublicData(driverDisplayRecord);
 
               const timelineSteps = [
-                { status: "requested",       label: "Solicitado",            time: ride.requestedAt,  completed: !!ride.requestedAt,  active: ride.status === "requested" },
-                { status: "accepted",        label: "Conductor asignado",    time: ride.acceptedAt,   completed: !!ride.acceptedAt,   active: ride.status === "accepted" },
-                { status: "driver_en_route", label: "Conductor en camino",   time: ride.enRouteAt,    completed: !!ride.enRouteAt,    active: ride.status === "driver_en_route" },
-                { status: "driver_arrived",  label: "Conductor llegó",       time: ride.arrivedAt,    completed: !!ride.arrivedAt,    active: ride.status === "driver_arrived" },
-                { status: "in_progress",     label: "Viaje en curso",        time: ride.startedAt,    completed: !!ride.startedAt,    active: ride.status === "in_progress" },
+                { status: "requested",       label: "Solicitado",            time: ride.requestedAt,  completed: !!ride.requestedAt,  active: effectiveStatus === "requested" },
+                { status: "accepted",        label: "Conductor asignado",    time: ride.acceptedAt,   completed: !!ride.acceptedAt,   active: effectiveStatus === "accepted" },
+                { status: "driver_en_route", label: "Conductor en camino",   time: ride.enRouteAt,    completed: !!ride.enRouteAt,    active: effectiveStatus === "driver_en_route" },
+                { status: "driver_arrived",  label: "Conductor llegó",       time: ride.arrivedAt,    completed: !!ride.arrivedAt,    active: effectiveStatus === "driver_arrived" },
+                { status: "in_progress",     label: "Viaje en curso",        time: ride.startedAt,    completed: !!ride.startedAt,    active: effectiveStatus === "in_progress" },
                 { status: "completed",       label: "Completado",            time: ride.completedAt,  completed: !!ride.completedAt,  active: false },
               ];
 
@@ -2816,12 +4402,56 @@ function TripsPage(): JSX.Element {
                       </div>
                     </div>
 
+                    {scheduleInfo.isScheduled && (
+                      <div
+                        style={{
+                          marginBottom: "10px",
+                          padding: "12px",
+                          borderRadius: "16px",
+                          background: scheduleInfo.isActiveWindow ? "rgba(42,168,74,.12)" : "rgba(255,201,40,.16)",
+                          border: scheduleInfo.isActiveWindow ? "1px solid rgba(42,168,74,.30)" : "1px solid rgba(255,201,40,.40)",
+                          color: "#111",
+                          fontSize: "0.78rem",
+                          lineHeight: 1.35,
+                        }}
+                      >
+                        <strong>📅 Viaje agendado</strong>
+                        <div>Recogida: {formatScheduleDateTime(scheduleInfo.scheduledAt)}</div>
+                        {scheduleInfo.returnScheduledAt && <div>Regreso: {formatScheduleDateTime(scheduleInfo.returnScheduledAt)}</div>}
+                        <div>{scheduleInfo.isActiveWindow ? "Ya se activó para buscar conductor." : `Se activará ${SCHEDULE_ACTIVATION_MINUTES} min antes de la hora reservada.`}</div>
+                      </div>
+                    )}
+
+                    {scheduleInfo.isScheduled && isPassengerRideDriverScheduled(ride) && ride.driverName && (
+                      <div
+                        style={{
+                          marginBottom: "10px",
+                          padding: "12px",
+                          borderRadius: "16px",
+                          background: "rgba(42,168,74,.14)",
+                          border: "1px solid rgba(42,168,74,.35)",
+                          color: "#111",
+                          fontSize: "0.8rem",
+                          lineHeight: 1.35,
+                        }}
+                      >
+                        <strong>✅ Conductor agendado correctamente</strong>
+                        <div>{getPassengerRideNotification(ride) ?? `Tu conductor ${ride.driverName} fue agendado para este viaje.`}</div>
+                        <div style={{ marginTop: 4 }}>El viaje se mantiene reservado y se activa automáticamente 10 minutos antes.</div>
+                      </div>
+                    )}
+
                     {/* Fare */}
                     {ride.estimatedFareClp != null && (
                       <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "10px" }}>
                         <span style={{ fontSize: "1rem", fontWeight: 700, color: "var(--ion-color-primary)" }}>
                           ${ride.estimatedFareClp.toLocaleString("es-CL")} CLP
                         </span>
+                        {getRidePassengerFareType(ride) && (
+                          <IonBadge color="warning" style={{ fontSize: "0.65rem" }}>
+                            {passengerFareTypeLabel(getRidePassengerFareType(ride) as PassengerFareType)}
+                          </IonBadge>
+                        )}
                         {ride.discountApplied && ride.originalFareClp != null && (
                           <>
                             <IonBadge color="success" style={{ fontSize: "0.65rem" }}>-{ride.discountPercent}%</IonBadge>
@@ -2834,27 +4464,42 @@ function TripsPage(): JSX.Element {
                     )}
 
                     {/* Driver card */}
-                    {ride.driverName && ["accepted", "driver_en_route", "driver_arrived", "in_progress", "completed"].includes(ride.status) && (
+                    {driverDisplayName && (["accepted", "driver_en_route", "driver_arrived", "in_progress", "completed"].includes(effectiveStatus) || effectiveStatus === "driver_scheduled") && (
                       <div style={{ marginBottom: "10px" }}>
                         <DriverInfoCard
-                          name={ride.driverName}
-                          rating={ride.driverRatingAverage}
-                          ratingCount={ride.driverRatingCount}
-                          vehicleBrand={ride.driverVehicleBrand}
-                          vehicleModel={ride.driverVehicleModel}
-                          vehicleColor={ride.driverVehicleColor}
-                          vehiclePlate={ride.driverVehiclePlate}
-                          vehicleYear={ride.driverVehicleYear}
-                          phone={isActive ? ride.driverPhone : null}
-                          waMessage={isActive && ride.driverPhone && ride.driverName
-                            ? WA_MESSAGES.passengerToDriver({ driverName: ride.driverName, passengerName: "pasajero", origin: ride.originText })
+                          name={driverDisplayName}
+                          rating={driverDisplayRide.driverRatingAverage}
+                          ratingCount={driverDisplayRide.driverRatingCount}
+                          vehicleBrand={driverDisplayVehicle.brand || driverDisplayRide.driverVehicleBrand}
+                          vehicleModel={driverDisplayVehicle.model || driverDisplayRide.driverVehicleModel}
+                          vehicleColor={driverDisplayVehicle.color || driverDisplayRide.driverVehicleColor}
+                          vehiclePlate={driverDisplayVehicle.plate || driverDisplayRide.driverVehiclePlate}
+                          vehicleYear={driverDisplayRide.driverVehicleYear}
+                          phone={driverDisplayRide.driverPhone ?? null}
+                          waMessage={driverDisplayRide.driverPhone && driverDisplayName
+                            ? WA_MESSAGES.passengerToDriver({ driverName: driverDisplayName, passengerName: "pasajero", origin: ride.originText })
                             : null
                           }
                         />
+
+                        {driverDisplayVehicle.imageDataUrl && (
+                          <img
+                            src={driverDisplayVehicle.imageDataUrl}
+                            alt={`Imagen del vehículo de ${driverDisplayName}`}
+                            style={{
+                              width: "100%",
+                              height: "190px",
+                              objectFit: "cover",
+                              borderRadius: "16px",
+                              marginTop: "10px",
+                              border: "1px solid rgba(0,0,0,.08)",
+                            }}
+                          />
+                        )}
                       </div>
                     )}
 
-                    {!ride.driverName && ride.status === "requested" && (
+                    {!ride.driverName && effectiveStatus === "requested" && (
                       <div
                         style={{
                           marginBottom: "10px",
@@ -2882,7 +4527,8 @@ function TripsPage(): JSX.Element {
 
                     {session?.accessToken &&
                       ride.driverName &&
-                      ["accepted", "driver_en_route", "driver_arrived", "in_progress"].includes(ride.status) && (
+                      ["accepted", "driver_en_route", "driver_arrived", "in_progress"].includes(ride.status) &&
+                      (!scheduleInfo.isScheduled || scheduleInfo.isActiveWindow) && (
                         <PassengerDriverLiveMap
                           ride={ride}
                           token={session.accessToken}
@@ -2890,7 +4536,7 @@ function TripsPage(): JSX.Element {
                       )}
 
                     {/* Timeline — solo si activo o completado */}
-                    {(isActive || ride.status === "completed") && (
+                    {((isActive && effectiveStatus !== "scheduled") || ride.status === "completed") && (
                       <div style={{ marginBottom: "10px", borderTop: "1px solid var(--ion-color-light-shade)", paddingTop: "10px" }}>
                         <TripTimeline steps={timelineSteps} />
                       </div>
@@ -2926,13 +4572,13 @@ function TripsPage(): JSX.Element {
 
                     {/* Actions */}
                     <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", marginTop: "4px" }}>
-                      {(ride.status === "requested" || ride.status === "accepted") && (
+                      {(effectiveStatus === "scheduled" || effectiveStatus === "requested" || effectiveStatus === "accepted") && (
                         <IonButton
                           size="small"
                           fill="outline"
                           color="danger"
                           disabled={cancelling === ride.id}
-                          onClick={() => void (ride.status === "requested" ? handleCancel(ride.id) : handleCancelAccepted(ride.id))}
+                          onClick={() => void (effectiveStatus === "scheduled" || effectiveStatus === "requested" ? handleCancel(ride.id) : handleCancelAccepted(ride.id))}
                         >
                           {cancelling === ride.id ? <IonSpinner name="dots" /> : "Cancelar"}
                         </IonButton>

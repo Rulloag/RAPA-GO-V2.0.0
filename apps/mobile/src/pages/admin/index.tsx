@@ -96,6 +96,16 @@ import { MapFallback } from "../../components/MapFallback";
 
 const ADMIN_DRIVERS_ROUTE = "/admin/drivers";
 const ADMIN_DRIVERS_REFRESH_EVENT = "rapago:admin-refresh-drivers";
+const LOCAL_ADMIN_SCHEDULED_RIDES_KEY = "rapago_admin_scheduled_rides";
+const LOCAL_PASSENGER_RIDES_KEY_ADMIN = "rapago_local_passenger_rides";
+const LOCAL_DRIVER_ASSIGNED_RIDES_KEY = "rapago_local_driver_assigned_rides";
+const LOCAL_DRIVER_SCHEDULED_QUEUE_KEY = "rapago_driver_scheduled_queue";
+const LOCAL_DRIVER_RESERVATION_INBOX_KEY = "rapago_driver_reservation_inbox_v1";
+const LOCAL_DRIVER_RESERVATION_INBOX_BY_DRIVER_KEY = "rapago_driver_reservation_inbox_by_driver_v1";
+const ADMIN_DRIVER_ASSIGNMENT_SELECTION_KEY = "rapago_admin_selected_ride_for_driver_assignment";
+const ADMIN_DRIVER_ASSIGNMENT_EVENT = "rapago:admin-driver-assignment-updated";
+const DRIVER_ASSIGNED_RIDE_EVENT = "rapago:driver-assigned-scheduled-ride";
+const SCHEDULE_ACTIVATION_MINUTES_ADMIN = 10;
 
 function cleanPath(path: string): string {
   return path.replace(/\/+$/, "") || "/";
@@ -1584,6 +1594,9 @@ export function AdminDriversPage(): JSX.Element {
   const [selectedDriver, setSelectedDriver] = useState<ActiveDriverData | null>(
     null,
   );
+  const [assignmentRide, setAssignmentRide] = useState<AdminRideData | null>(null);
+  const [assignmentToast, setAssignmentToast] = useState<string | null>(null);
+  const [assignmentError, setAssignmentError] = useState<string | null>(null);
   const [driverRides, setDriverRides] = useState<AdminRideData[]>([]);
   const [, setAvailabilityRevision] = useState(0);
 
@@ -1615,7 +1628,23 @@ export function AdminDriversPage(): JSX.Element {
     void loadDrivers();
   }, [loadDrivers]);
 
+  useEffect(() => {
+    const refreshPendingAssignment = () => {
+      setAssignmentRide(readPendingAdminDriverAssignmentRide());
+    };
+
+    refreshPendingAssignment();
+    window.addEventListener("storage", refreshPendingAssignment);
+    window.addEventListener(ADMIN_DRIVER_ASSIGNMENT_EVENT, refreshPendingAssignment as EventListener);
+
+    return () => {
+      window.removeEventListener("storage", refreshPendingAssignment);
+      window.removeEventListener(ADMIN_DRIVER_ASSIGNMENT_EVENT, refreshPendingAssignment as EventListener);
+    };
+  }, []);
+
   useIonViewWillEnter(() => {
+    setAssignmentRide(readPendingAdminDriverAssignmentRide());
     setAvailabilityRevision((current) => current + 1);
     void loadDrivers(false);
   });
@@ -1695,6 +1724,26 @@ export function AdminDriversPage(): JSX.Element {
     return `$${Math.round(Number(value)).toLocaleString("es-CL")} CLP`;
   }
 
+  function handleAssignDriverToPendingRide(driver: ActiveDriverData): void {
+    if (!assignmentRide) return;
+
+    const availability = getNormalizedDriverAvailability(driver);
+    if (availability !== "available") {
+      setAssignmentError("Ese conductor no está disponible. Selecciona uno con estado Disponible.");
+      return;
+    }
+
+    try {
+      const assigned = assignScheduledRideToDriverLocally(assignmentRide, driver);
+      setDriverRides((prev) => mergeAdminRides([assigned, ...prev]));
+      setAssignmentRide(null);
+      setAssignmentError(null);
+      setAssignmentToast(`Conductor ${driver.name} agendado correctamente. Solo ese conductor recibirá la reserva. El pasajero verá los datos cuando el conductor acepte.`);
+    } catch (err) {
+      setAssignmentError(err instanceof Error ? err.message : "No se pudo agendar el conductor.");
+    }
+  }
+
   return (
     <IonPage>
       <IonHeader>
@@ -1722,6 +1771,44 @@ export function AdminDriversPage(): JSX.Element {
         >
           <IonRefresherContent />
         </IonRefresher>
+
+        {assignmentRide && (
+          <IonCard style={{ margin: "0 0 12px", borderRadius: 18, border: "1px solid rgba(255,201,40,.60)", background: "rgba(255,201,40,.16)" }}>
+            <IonCardContent style={{ padding: "12px 14px" }}>
+              <div style={{ fontWeight: 950, fontSize: "0.96rem", color: "#111" }}>
+                Agendar conductor para esta reserva
+              </div>
+              <div style={{ marginTop: 4, fontSize: "0.82rem", color: "#222", lineHeight: 1.35 }}>
+                {assignmentRide.originText} → {assignmentRide.destinationText}
+              </div>
+              <div style={{ marginTop: 4, fontSize: "0.78rem", color: "#333" }}>
+                Recogida: {formatAdminScheduleDate(getAdminRideScheduleInfo(assignmentRide).scheduledAt)}
+                {getAdminRideScheduleInfo(assignmentRide).returnScheduledAt ? ` · Regreso: ${formatAdminScheduleDate(getAdminRideScheduleInfo(assignmentRide).returnScheduledAt)}` : ""}
+              </div>
+              <IonNote style={{ display: "block", marginTop: 6, color: "#333" }}>
+                Elige un conductor Disponible. Se guardará como conductor agendado y el viaje se activará 10 minutos antes.
+              </IonNote>
+              <IonButton
+                size="small"
+                fill="outline"
+                color="medium"
+                style={{ marginTop: 8 }}
+                onClick={() => {
+                  clearPendingAdminDriverAssignmentRide();
+                  setAssignmentRide(null);
+                }}
+              >
+                Cerrar selección
+              </IonButton>
+            </IonCardContent>
+          </IonCard>
+        )}
+
+        {assignmentError && (
+          <IonText color="danger">
+            <p style={{ fontSize: "0.85rem" }}>{assignmentError}</p>
+          </IonText>
+        )}
 
         {/* Filters */}
         <IonCard style={{ margin: "0 0 12px", borderRadius: "18px" }}>
@@ -1848,7 +1935,17 @@ export function AdminDriversPage(): JSX.Element {
                     <IonNote style={{ display: "block", fontSize: "0.75rem" }}>
                       Última actividad: {fmtDate(driver.lastSeenAt)}
                     </IonNote>
-                    <div style={{ marginTop: "8px" }}>
+                    <div style={{ marginTop: "8px", display: "flex", flexWrap: "wrap", gap: "8px" }}>
+                      {assignmentRide && (
+                        <IonButton
+                          size="small"
+                          color="success"
+                          disabled={availability !== "available"}
+                          onClick={() => handleAssignDriverToPendingRide(driver)}
+                        >
+                          Agendar este conductor
+                        </IonButton>
+                      )}
                       <IonButton
                         size="small"
                         fill="outline"
@@ -2158,15 +2255,21 @@ export function AdminDriversPage(): JSX.Element {
                   <IonCardContent
                     style={{ fontSize: ".84rem", lineHeight: 1.45 }}
                   >
-                    Los viajes se aceptan únicamente desde la app del conductor.
-                    El administrador solo monitorea solicitudes, conductor
-                    asignado y estado del viaje.
+                    El administrador puede monitorear conductores y también agendar
+                    un conductor disponible para una reserva programada.
                   </IonCardContent>
                 </IonCard>
               </div>
             )}
           </IonContent>
         </IonModal>
+        <IonToast
+          isOpen={assignmentToast !== null}
+          message={assignmentToast ?? ""}
+          duration={3200}
+          color="success"
+          onDidDismiss={() => setAssignmentToast(null)}
+        />
       </IonContent>
     </IonPage>
   );
@@ -3178,7 +3281,611 @@ export function AdminRentalsPage(): JSX.Element {
   );
 }
 
+type AdminRideScheduleInfo = {
+  isScheduled: boolean;
+  scheduledAt: string | null;
+  returnScheduledAt: string | null;
+  activationAt: string | null;
+  isActiveWindow: boolean;
+};
+
+function getRideUnknownField(ride: AdminRideData, key: string): unknown {
+  return (ride as unknown as Record<string, unknown>)[key];
+}
+
+function getRideStringField(ride: AdminRideData, keys: string[]): string | null {
+  for (const key of keys) {
+    const value = getRideUnknownField(ride, key);
+    if (typeof value === "string" && value.trim()) return value.trim();
+  }
+  return null;
+}
+
+function getRideBooleanField(ride: AdminRideData, keys: string[]): boolean {
+  return keys.some((key) => getRideUnknownField(ride, key) === true);
+}
+
+function toIsoOrNull(value: string | null | undefined): string | null {
+  if (!value) return null;
+  const parsed = new Date(value);
+  return Number.isFinite(parsed.getTime()) ? parsed.toISOString() : null;
+}
+
+function formatAdminScheduleDate(value: string | null | undefined): string {
+  if (!value) return "Sin hora";
+  const parsed = new Date(value);
+  if (!Number.isFinite(parsed.getTime())) return "Sin hora";
+  return parsed.toLocaleString("es-CL", {
+    weekday: "short",
+    day: "2-digit",
+    month: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+function extractAdminIsoByKeywords(
+  notes: string | null | undefined,
+  keywords: string[],
+): string | null {
+  if (!notes) return null;
+
+  const isoPattern =
+    "([0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}(?::[0-9]{2}(?:\\.[0-9]{1,3})?)?(?:Z|[+-][0-9]{2}:?[0-9]{2})?)";
+
+  for (const keyword of keywords) {
+    const safeKeyword = keyword.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const match = notes.match(new RegExp(`${safeKeyword}\\s*[:=]\\s*${isoPattern}`, "i"));
+    const parsed = toIsoOrNull(match?.[1] ?? null);
+    if (parsed) return parsed;
+  }
+
+  return null;
+}
+
+function extractScheduleIsoFromNotes(notes: string | null | undefined): string | null {
+  return extractAdminIsoByKeywords(notes, [
+    "RAPAGO_SCHEDULED_AT",
+    "Fecha y hora de recogida agendada",
+    "Fecha recogida agendada",
+    "scheduledAt",
+    "scheduledPickupAt",
+    "pickupScheduledAt",
+  ]);
+}
+
+function extractReturnIsoFromNotes(notes: string | null | undefined): string | null {
+  return extractAdminIsoByKeywords(notes, [
+    "RAPAGO_RETURN_SCHEDULED_AT",
+    "RAPAGO_RETURN_AT",
+    "Fecha y hora de regreso agendada",
+    "Fecha regreso agendada",
+    "returnScheduledAt",
+    "scheduledReturnAt",
+  ]);
+}
+
+function extractActivationIsoFromNotes(notes: string | null | undefined): string | null {
+  return extractAdminIsoByKeywords(notes, [
+    "RAPAGO_ACTIVATION_AT",
+    "Activación automática recogida",
+    "Activacion automatica recogida",
+    "scheduleActivationAt",
+    "dispatchAt",
+    "autoAssignAt",
+  ]);
+}
+
+function isScheduleActivatedByAdmin(ride: AdminRideData): boolean {
+  const status = String(
+    getRideUnknownField(ride, "scheduleStatus") ??
+      getRideUnknownField(ride, "adminScheduleStatus") ??
+      getRideUnknownField(ride, "reservationStatus") ??
+      "",
+  )
+    .toLowerCase()
+    .trim();
+
+  return [
+    "active",
+    "activated",
+    "enabled",
+    "released",
+    "dispatching",
+    "searching_drivers",
+  ].includes(status);
+}
+
+function getAdminRideScheduleInfo(ride: AdminRideData): AdminRideScheduleInfo {
+  const scheduledAt =
+    toIsoOrNull(getRideStringField(ride, [
+      "scheduledAt",
+      "scheduledPickupAt",
+      "pickupScheduledAt",
+      "pickupAt",
+      "reservedAt",
+    ])) ?? extractScheduleIsoFromNotes(ride.notes);
+
+  const returnScheduledAt =
+    toIsoOrNull(getRideStringField(ride, [
+      "returnScheduledAt",
+      "scheduledReturnAt",
+      "returnAt",
+    ])) ?? extractReturnIsoFromNotes(ride.notes);
+
+  const activationAt =
+    toIsoOrNull(getRideStringField(ride, [
+      "scheduleActivationAt",
+      "dispatchAt",
+      "autoAssignAt",
+      "autoDispatchAt",
+    ])) ??
+    extractActivationIsoFromNotes(ride.notes) ??
+    (scheduledAt
+      ? new Date(new Date(scheduledAt).getTime() - SCHEDULE_ACTIVATION_MINUTES_ADMIN * 60_000).toISOString()
+      : null);
+
+  const isScheduled =
+    getRideBooleanField(ride, ["isScheduled", "scheduled", "isReservation"]) ||
+    ride.status === "scheduled" ||
+    !!scheduledAt ||
+    /Viaje (?:agendado|programado) para:/i.test(ride.notes ?? "");
+
+  const activationTime = activationAt ? new Date(activationAt).getTime() : 0;
+  const isActiveWindow =
+    isScheduleActivatedByAdmin(ride) ||
+    (!!activationAt && Number.isFinite(activationTime) && Date.now() >= activationTime);
+
+  return {
+    isScheduled,
+    scheduledAt,
+    returnScheduledAt,
+    activationAt,
+    isActiveWindow,
+  };
+}
+
+function getEffectiveAdminRideStatus(ride: AdminRideData): string {
+  const schedule = getAdminRideScheduleInfo(ride);
+
+  if (
+    schedule.isScheduled &&
+    !schedule.isActiveWindow &&
+    ["requested", "scheduled"].includes(ride.status)
+  ) {
+    return "scheduled";
+  }
+
+  if (ride.status === "scheduled" && schedule.isActiveWindow) return "requested";
+
+  return ride.status;
+}
+
+function readLocalAdminScheduledRides(): AdminRideData[] {
+  try {
+    const raw = localStorage.getItem(LOCAL_ADMIN_SCHEDULED_RIDES_KEY);
+    const parsed = raw ? (JSON.parse(raw) as AdminRideData[]) : [];
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveLocalAdminScheduledRidesForAdmin(rides: AdminRideData[]): void {
+  try {
+    localStorage.setItem(LOCAL_ADMIN_SCHEDULED_RIDES_KEY, JSON.stringify(rides));
+    window.dispatchEvent(new CustomEvent("rapago:admin-scheduled-rides-updated"));
+  } catch {
+    // No bloquea la administración local.
+  }
+}
+
+function readLocalPassengerRidesForAdmin(): Array<Record<string, unknown>> {
+  try {
+    const raw = localStorage.getItem(LOCAL_PASSENGER_RIDES_KEY_ADMIN);
+    const parsed = raw ? (JSON.parse(raw) as Array<Record<string, unknown>>) : [];
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveLocalPassengerRidesForAdmin(rides: Array<Record<string, unknown>>): void {
+  try {
+    localStorage.setItem(LOCAL_PASSENGER_RIDES_KEY_ADMIN, JSON.stringify(rides));
+    window.dispatchEvent(new CustomEvent("rapago:passenger-rides-updated"));
+  } catch {
+    // No bloquea la administración local.
+  }
+}
+
+function getAdminRideMergeKey(ride: AdminRideData): string {
+  const schedule = getAdminRideScheduleInfo(ride);
+  return [
+    ride.id?.startsWith("admin-local-") ? "scheduled-shadow" : ride.id,
+    schedule.scheduledAt ?? "",
+    ride.originText ?? "",
+    ride.destinationText ?? "",
+    ride.passengerEmail ?? "",
+  ]
+    .map((value) => String(value ?? "").trim().toLowerCase())
+    .join("|");
+}
+
+function getScheduledPassengerMirrorKey(ride: Record<string, unknown>): string {
+  return [
+    ride.scheduledAt ?? ride.scheduledPickupAt ?? ride.pickupScheduledAt ?? "",
+    ride.originText ?? "",
+    ride.destinationText ?? "",
+    ride.passengerEmail ?? "",
+  ]
+    .map((value) => String(value ?? "").trim().toLowerCase())
+    .join("|");
+}
+
+function buildActivatedScheduledRide(ride: AdminRideData): AdminRideData {
+  const nowIso = new Date().toISOString();
+  const schedule = getAdminRideScheduleInfo(ride);
+
+  return {
+    ...(ride as AdminRideData & Record<string, unknown>),
+    status: "requested",
+    requestedAt: ride.requestedAt ?? nowIso,
+    scheduleActivationAt: schedule.activationAt ?? nowIso,
+    dispatchAt: schedule.activationAt ?? nowIso,
+    autoAssignAt: schedule.activationAt ?? nowIso,
+    scheduleStatus: "active",
+    adminScheduleStatus: "active",
+    activatedAt: nowIso,
+    localAdminOverride: true,
+  } as AdminRideData;
+}
+
+function mergeAdminRides(rides: AdminRideData[]): AdminRideData[] {
+  const byKey = new Map<string, AdminRideData>();
+
+  rides.forEach((ride) => {
+    const key = getAdminRideMergeKey(ride);
+    const current = byKey.get(key);
+    const incomingIsLocalOverride = getRideUnknownField(ride, "localAdminOverride") === true;
+    const currentIsLocalOverride = current
+      ? getRideUnknownField(current, "localAdminOverride") === true
+      : false;
+
+    if (!current || incomingIsLocalOverride || !currentIsLocalOverride) {
+      byKey.set(key, ride);
+    }
+  });
+
+  return Array.from(byKey.values());
+}
+
+function getDriverStringField(driver: ActiveDriverData, keys: string[]): string | null {
+  const data = driver as unknown as Record<string, unknown>;
+  for (const key of keys) {
+    const value = data[key];
+    if (typeof value === "string" && value.trim()) return value.trim();
+  }
+  return null;
+}
+
+function readPendingAdminDriverAssignmentRide(): AdminRideData | null {
+  try {
+    const raw = localStorage.getItem(ADMIN_DRIVER_ASSIGNMENT_SELECTION_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as AdminRideData;
+    if (!parsed || typeof parsed !== "object" || !parsed.id) return null;
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+function clearPendingAdminDriverAssignmentRide(): void {
+  try {
+    localStorage.removeItem(ADMIN_DRIVER_ASSIGNMENT_SELECTION_KEY);
+    window.dispatchEvent(new CustomEvent(ADMIN_DRIVER_ASSIGNMENT_EVENT));
+  } catch {
+    // No bloquea la UI.
+  }
+}
+
+function normalizeAdminDriverQueueKey(value: unknown): string | null {
+  const normalized = String(value ?? "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .trim();
+
+  return normalized || null;
+}
+
+function getDriverScheduledQueueKeys(driver: ActiveDriverData): string[] {
+  const data = driver as unknown as Record<string, unknown>;
+
+  const values = [
+    driver.id,
+    data.userId,
+    data.driverId,
+    data.driverUserId,
+    driver.email,
+    data.emailAddress,
+    data.driverEmail,
+    driver.name,
+    data.fullName,
+    data.displayName,
+    data.driverName,
+    data.phone,
+    data.driverPhone,
+    data.mobile,
+    data.phoneNumber,
+  ];
+
+  const keys = new Set<string>();
+
+  values.forEach((value) => {
+    const raw = String(value ?? "").trim();
+    const normalized = normalizeAdminDriverQueueKey(value);
+
+    if (raw) keys.add(raw);
+    if (normalized) keys.add(normalized);
+  });
+
+  return Array.from(keys);
+}
+
+function readDriverScheduledQueue(): Record<string, AdminRideData[]> {
+  try {
+    const raw = localStorage.getItem(LOCAL_DRIVER_SCHEDULED_QUEUE_KEY);
+    const parsed = raw ? (JSON.parse(raw) as Record<string, AdminRideData[]>) : {};
+    return parsed && typeof parsed === "object" ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function saveDriverScheduledQueue(queue: Record<string, AdminRideData[]>): void {
+  try {
+    localStorage.setItem(LOCAL_DRIVER_SCHEDULED_QUEUE_KEY, JSON.stringify(queue));
+    window.dispatchEvent(new CustomEvent(DRIVER_ASSIGNED_RIDE_EVENT));
+  } catch {
+    // No bloquea la asignación.
+  }
+}
+
+function readDriverReservationInbox(): AdminRideData[] {
+  try {
+    const raw = localStorage.getItem(LOCAL_DRIVER_RESERVATION_INBOX_KEY);
+    const parsed = raw ? (JSON.parse(raw) as AdminRideData[]) : [];
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveDriverReservationInbox(rides: AdminRideData[]): void {
+  try {
+    localStorage.setItem(
+      LOCAL_DRIVER_RESERVATION_INBOX_KEY,
+      JSON.stringify(rides.slice(0, 160)),
+    );
+  } catch {
+    // No bloquea la asignación.
+  }
+}
+
+function readDriverReservationInboxByDriver(): Record<string, AdminRideData[]> {
+  try {
+    const raw = localStorage.getItem(LOCAL_DRIVER_RESERVATION_INBOX_BY_DRIVER_KEY);
+    const parsed = raw ? (JSON.parse(raw) as Record<string, AdminRideData[]>) : {};
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function saveDriverReservationInboxByDriver(queue: Record<string, AdminRideData[]>): void {
+  try {
+    localStorage.setItem(LOCAL_DRIVER_RESERVATION_INBOX_BY_DRIVER_KEY, JSON.stringify(queue));
+  } catch {
+    // No bloquea la asignación.
+  }
+}
+
+function upsertDriverScheduledRideForNotification(ride: AdminRideData, driver: ActiveDriverData): void {
+  try {
+    const keys = getDriverScheduledQueueKeys(driver);
+    const rideKey = getAdminRideMergeKey(ride);
+
+    const queue = readDriverScheduledQueue();
+    const inboxByDriver = readDriverReservationInboxByDriver();
+
+    const inboxRide = {
+      ...(ride as AdminRideData & Record<string, unknown>),
+      assignedDriverKeys: keys,
+      assignedDriverQueueKeys: keys,
+      driverReservationInboxOnly: true,
+      reservationInboxOnly: true,
+      assignedOnlyToDriver: true,
+      visibleInDriverReservations: true,
+      hiddenFromNormalRequests: true,
+    } as AdminRideData;
+
+    for (const key of keys) {
+      const normalizedKey = normalizeAdminDriverQueueKey(key) ?? key;
+      const targetKeys = Array.from(new Set([key, normalizedKey].filter(Boolean)));
+
+      for (const targetKey of targetKeys) {
+        const current = Array.isArray(queue[targetKey]) ? queue[targetKey] : [];
+        queue[targetKey] = [
+          inboxRide,
+          ...current.filter((item) => getAdminRideMergeKey(item) !== rideKey && item.id !== ride.id),
+        ].slice(0, 80);
+
+        const inboxCurrent = Array.isArray(inboxByDriver[targetKey]) ? inboxByDriver[targetKey] : [];
+        inboxByDriver[targetKey] = [
+          inboxRide,
+          ...inboxCurrent.filter((item) => getAdminRideMergeKey(item) !== rideKey && item.id !== ride.id),
+        ].slice(0, 80);
+      }
+    }
+
+    saveDriverScheduledQueue(queue);
+    saveDriverReservationInboxByDriver(inboxByDriver);
+
+    const flatCurrentRaw = localStorage.getItem(LOCAL_DRIVER_ASSIGNED_RIDES_KEY);
+    const flatCurrent = flatCurrentRaw ? (JSON.parse(flatCurrentRaw) as AdminRideData[]) : [];
+    const flat = Array.isArray(flatCurrent) ? flatCurrent : [];
+    localStorage.setItem(
+      LOCAL_DRIVER_ASSIGNED_RIDES_KEY,
+      JSON.stringify([inboxRide, ...flat.filter((item) => getAdminRideMergeKey(item) !== rideKey && item.id !== ride.id)].slice(0, 120)),
+    );
+
+    const inbox = readDriverReservationInbox();
+    saveDriverReservationInbox([
+      inboxRide,
+      ...inbox.filter((item) => getAdminRideMergeKey(item) !== rideKey && item.id !== ride.id),
+    ]);
+
+    window.dispatchEvent(new CustomEvent(DRIVER_ASSIGNED_RIDE_EVENT, { detail: { rideId: ride.id, driverId: driver.id, keys } }));
+    window.dispatchEvent(new CustomEvent("rapago:driver-reservation-inbox-updated", { detail: { rideId: ride.id, driverId: driver.id, keys } }));
+  } catch {
+    // No bloquea al admin.
+  }
+}
+
+function buildAssignedScheduledRide(ride: AdminRideData, driver: ActiveDriverData): AdminRideData {
+  const nowIso = new Date().toISOString();
+  const driverPhone = getDriverStringField(driver, ["phone", "driverPhone", "mobile", "phoneNumber"]);
+  const driverVehicleBrand = getDriverStringField(driver, ["vehicleBrand", "driverVehicleBrand", "carBrand"]);
+  const driverVehicleModel = getDriverStringField(driver, ["vehicleModel", "driverVehicleModel", "carModel"]);
+  const driverVehicleColor = getDriverStringField(driver, ["vehicleColor", "driverVehicleColor", "carColor"]);
+  const driverVehiclePlate = getDriverStringField(driver, ["vehiclePlate", "driverVehiclePlate", "plate"]);
+  const driverVehicleYear = getDriverStringField(driver, ["vehicleYear", "driverVehicleYear", "carYear"]);
+  const schedule = getAdminRideScheduleInfo(ride);
+
+  return {
+    ...(ride as AdminRideData & Record<string, unknown>),
+    status: "scheduled",
+    acceptedAt: null,
+    driverUserId: null,
+    driverName: null,
+    driverEmail: null,
+    driverPhone: null,
+    assignedDriverId: driver.id,
+    assignedDriverUserId: driver.id,
+    assignedDriverName: driver.name,
+    assignedDriverEmail: driver.email,
+    assignedDriverPhone: driverPhone,
+    assignedDriverKeys: getDriverScheduledQueueKeys(driver),
+    assignedDriverQueueKeys: getDriverScheduledQueueKeys(driver),
+    driverReservationInboxOnly: true,
+    reservationInboxOnly: true,
+    visibleInDriverReservations: true,
+    hiddenFromNormalRequests: true,
+    driverVehicleBrand,
+    driverVehicleModel,
+    driverVehicleColor,
+    driverVehiclePlate,
+    driverVehicleYear,
+    isScheduled: schedule.isScheduled,
+    scheduledAt: schedule.scheduledAt,
+    scheduledPickupAt: schedule.scheduledAt,
+    pickupScheduledAt: schedule.scheduledAt,
+    returnScheduledAt: schedule.returnScheduledAt,
+    scheduledReturnAt: schedule.returnScheduledAt,
+    scheduleActivationAt: schedule.activationAt,
+    dispatchAt: schedule.activationAt,
+    autoAssignAt: schedule.activationAt,
+    scheduleStatus: "pending_driver_confirmation",
+    adminScheduleStatus: "pending_driver_confirmation",
+    reservationStatus: "assigned_waiting_driver_acceptance",
+    driverAssignmentStatus: "pending_driver_acceptance",
+    assignedByAdminAt: nowIso,
+    availableForDrivers: false,
+    visibleToDrivers: false,
+    driverQueueBlocked: true,
+    assignedOnlyToDriver: true,
+    passengerNotification: "Tu reserva sigue agendada. Estamos esperando que el conductor asignado confirme.",
+    driverNotification: `Tenemos agendado tu viaje. Ve a buscar al usuario en ${ride.originText} y confirma esta reserva.`,
+    localAdminOverride: true,
+  } as AdminRideData;
+}
+
+function syncPassengerRideAssignment(ride: AdminRideData, assigned: AdminRideData): void {
+  const passengerKey = getScheduledPassengerMirrorKey(ride as unknown as Record<string, unknown>);
+  const assignedRecord = assigned as unknown as Record<string, unknown>;
+  const nowIso = new Date().toISOString();
+  const current = readLocalPassengerRidesForAdmin();
+
+  const updated = current.map((item) => {
+    if (getScheduledPassengerMirrorKey(item) !== passengerKey && item.id !== ride.id) return item;
+    return {
+      ...item,
+      status: "scheduled",
+      acceptedAt: null,
+      driverUserId: null,
+      driverName: null,
+      driverEmail: null,
+      driverPhone: null,
+      driverVehicleBrand: null,
+      driverVehicleModel: null,
+      driverVehicleColor: null,
+      driverVehiclePlate: null,
+      driverVehicleYear: null,
+      assignedDriverId: assignedRecord.assignedDriverId ?? assignedRecord.driverUserId ?? null,
+      assignedDriverUserId: assignedRecord.assignedDriverUserId ?? assignedRecord.driverUserId ?? null,
+      assignedDriverName: assignedRecord.assignedDriverName ?? null,
+      assignedDriverEmail: assignedRecord.assignedDriverEmail ?? null,
+      assignedDriverPhone: assignedRecord.assignedDriverPhone ?? null,
+      scheduleStatus: "pending_driver_confirmation",
+      adminScheduleStatus: "pending_driver_confirmation",
+      reservationStatus: "assigned_waiting_driver_acceptance",
+      driverAssignmentStatus: "pending_driver_acceptance",
+      assignedByAdminAt: nowIso,
+      passengerNotification: assignedRecord.passengerNotification ?? "Tu reserva sigue agendada. Estamos esperando confirmación del conductor asignado.",
+    };
+  });
+
+  saveLocalPassengerRidesForAdmin(updated);
+}
+
+function assignScheduledRideToDriverLocally(ride: AdminRideData, driver: ActiveDriverData): AdminRideData {
+  const assigned = buildAssignedScheduledRide(ride, driver);
+  const originalMergeKey = getAdminRideMergeKey(ride);
+  const assignedMergeKey = getAdminRideMergeKey(assigned);
+
+  const localAdminRides = readLocalAdminScheduledRides();
+  const localAdminWithoutCurrent = localAdminRides.filter((item) => {
+    const itemKey = getAdminRideMergeKey(item);
+    return itemKey !== originalMergeKey && itemKey !== assignedMergeKey && item.id !== ride.id;
+  });
+
+  saveLocalAdminScheduledRidesForAdmin([assigned, ...localAdminWithoutCurrent]);
+  syncPassengerRideAssignment(ride, assigned);
+  upsertDriverScheduledRideForNotification(assigned, driver);
+  clearPendingAdminDriverAssignmentRide();
+
+  return assigned;
+}
+
+function cleanAdminRideNotes(notes: string | null | undefined): string | null {
+  if (!notes) return null;
+  const cleaned = notes
+    .replace(/\bRAPAGO_[A-Z_]+:\s*[^.]+\.?/gi, "")
+    .replace(/Fecha y hora de recogida agendada:\s*[^.]+\.?/gi, "")
+    .replace(/Fecha y hora de regreso agendada:\s*[^.]+\.?/gi, "")
+    .replace(/Activaci[oó]n autom[aá]tica recogida:\s*[^.]+\.?/gi, "")
+    .replace(/Activaci[oó]n autom[aá]tica regreso:\s*[^.]+\.?/gi, "")
+    .replace(/Estado de agenda admin:\s*[^.]+\.?/gi, "")
+    .replace(/Solicitado por rol:\s*[^.]+\.?/gi, "")
+    .replace(/\s{2,}/g, " ")
+    .trim();
+  return cleaned || null;
+}
+
 const RIDE_STATUS_LABEL_ADMIN: Record<string, string> = {
+  scheduled: "Agendado",
   requested: "Solicitado",
   accepted: "Conductor asignado",
   driver_en_route: "Conductor en camino",
@@ -3189,6 +3896,7 @@ const RIDE_STATUS_LABEL_ADMIN: Record<string, string> = {
 };
 
 const RIDE_STATUS_COLOR_ADMIN: Record<string, string> = {
+  scheduled: "warning",
   requested: "warning",
   accepted: "primary",
   driver_en_route: "tertiary",
@@ -3199,11 +3907,121 @@ const RIDE_STATUS_COLOR_ADMIN: Record<string, string> = {
 };
 
 const CANCELABLE_STATUSES = new Set([
+  "scheduled",
   "requested",
   "accepted",
   "driver_en_route",
   "driver_arrived",
 ]);
+
+function isAdminCancelledRideConflictMessage(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error ?? "");
+  const lower = message.toLowerCase();
+
+  return (
+    lower.includes("409") ||
+    lower.includes("conflict") ||
+    lower.includes("current status is 'cancelled'") ||
+    lower.includes('current status is "cancelled"') ||
+    lower.includes("status is cancelled") ||
+    lower.includes("ride cannot be cancelled") ||
+    lower.includes("estado actual es cancel") ||
+    lower.includes("estado cancelado")
+  );
+}
+
+function buildAdminCancelledRide(ride: AdminRideData, reason: string): AdminRideData {
+  return {
+    ...(ride as AdminRideData & Record<string, unknown>),
+    status: "cancelled",
+    cancelledAt: ride.cancelledAt ?? new Date().toISOString(),
+    cancelledByRole: "admin",
+    cancelledBy: "admin",
+    cancellationReason: reason.trim() || ride.cancellationReason || "Cancelado por administrador.",
+    adminScheduleStatus: "cancelled",
+    reservationStatus: "cancelled",
+    scheduleStatus: "cancelled",
+    localAdminOverride: true,
+  } as AdminRideData;
+}
+
+function upsertAdminRideArrayStorage(key: string, ride: AdminRideData): void {
+  try {
+    const raw = localStorage.getItem(key);
+    const parsed = raw ? (JSON.parse(raw) as AdminRideData[]) : [];
+    const current = Array.isArray(parsed) ? parsed : [];
+    const rideKey = getAdminRideMergeKey(ride);
+
+    localStorage.setItem(
+      key,
+      JSON.stringify([
+        ride,
+        ...current.filter((item) => getAdminRideMergeKey(item) !== rideKey && item.id !== ride.id),
+      ].slice(0, 200)),
+    );
+  } catch {
+    // No bloquea el panel si localStorage no está disponible.
+  }
+}
+
+function removeAdminRideFromArrayStorage(key: string, ride: AdminRideData): void {
+  try {
+    const raw = localStorage.getItem(key);
+    const parsed = raw ? (JSON.parse(raw) as AdminRideData[]) : [];
+    if (!Array.isArray(parsed)) return;
+
+    const rideKey = getAdminRideMergeKey(ride);
+    localStorage.setItem(
+      key,
+      JSON.stringify(parsed.filter((item) => getAdminRideMergeKey(item) !== rideKey && item.id !== ride.id)),
+    );
+  } catch {
+    // No bloquea el panel si localStorage no está disponible.
+  }
+}
+
+function syncAdminCancelledRideLocally(original: AdminRideData, cancelled: AdminRideData): void {
+  const originalKey = getAdminRideMergeKey(original);
+  const cancelledKey = getAdminRideMergeKey(cancelled);
+
+  const localAdminRides = readLocalAdminScheduledRides();
+  const localWithoutCurrent = localAdminRides.filter((item) => {
+    const itemKey = getAdminRideMergeKey(item);
+    return itemKey !== originalKey && itemKey !== cancelledKey && item.id !== original.id;
+  });
+
+  saveLocalAdminScheduledRidesForAdmin([cancelled, ...localWithoutCurrent].slice(0, 120));
+
+  const passengerKey = getScheduledPassengerMirrorKey(original as unknown as Record<string, unknown>);
+  const passengerRides = readLocalPassengerRidesForAdmin();
+  const nextPassengerRides = passengerRides.map((item) => {
+    const itemKey = getScheduledPassengerMirrorKey(item);
+    const sameRide = item.id === original.id || itemKey === passengerKey;
+    if (!sameRide) return item;
+
+    return {
+      ...item,
+      status: "cancelled",
+      cancelledAt: cancelled.cancelledAt ?? new Date().toISOString(),
+      cancelledByRole: "admin",
+      cancelledBy: "admin",
+      cancellationReason: cancelled.cancellationReason ?? "Cancelado por administrador.",
+      adminScheduleStatus: "cancelled",
+      reservationStatus: "cancelled",
+      scheduleStatus: "cancelled",
+      passengerNotification: "Tu reserva fue cancelada por administración.",
+    };
+  });
+
+  saveLocalPassengerRidesForAdmin(nextPassengerRides);
+
+  upsertAdminRideArrayStorage(LOCAL_DRIVER_ASSIGNED_RIDES_KEY, cancelled);
+  removeAdminRideFromArrayStorage(LOCAL_DRIVER_SCHEDULED_QUEUE_KEY, original);
+
+  window.dispatchEvent(new CustomEvent("rapago:passenger-rides-updated"));
+  window.dispatchEvent(new CustomEvent("rapago:admin-scheduled-rides-updated"));
+  window.dispatchEvent(new CustomEvent(DRIVER_ASSIGNED_RIDE_EVENT, { detail: { rideId: cancelled.id, cancelled: true } }));
+}
 
 function getAdminRideTimeValue(ride: AdminRideData): number {
   const candidates = [
@@ -3224,20 +4042,22 @@ function getAdminRideTimeValue(ride: AdminRideData): number {
 }
 
 function getAdminRidePriority(status: string): number {
-  if (status === "requested") return 0;
-  if (status === "accepted") return 1;
-  if (status === "driver_en_route") return 2;
-  if (status === "driver_arrived") return 3;
-  if (status === "in_progress") return 4;
-  if (status === "completed") return 5;
-  if (status === "cancelled") return 6;
-  return 7;
+  if (status === "scheduled") return 0;
+  if (status === "requested") return 1;
+  if (status === "accepted") return 2;
+  if (status === "driver_en_route") return 3;
+  if (status === "driver_arrived") return 4;
+  if (status === "in_progress") return 5;
+  if (status === "completed") return 6;
+  if (status === "cancelled") return 7;
+  return 8;
 }
 
 function sortAdminRidesForOperations(rides: AdminRideData[]): AdminRideData[] {
   return [...rides].sort((a, b) => {
     const priorityDiff =
-      getAdminRidePriority(a.status) - getAdminRidePriority(b.status);
+      getAdminRidePriority(getEffectiveAdminRideStatus(a)) -
+      getAdminRidePriority(getEffectiveAdminRideStatus(b));
     if (priorityDiff !== 0) return priorityDiff;
     return getAdminRideTimeValue(b) - getAdminRideTimeValue(a);
   });
@@ -3245,6 +4065,7 @@ function sortAdminRidesForOperations(rides: AdminRideData[]): AdminRideData[] {
 
 export function AdminTripsPage(): JSX.Element {
   const { session } = useAuth();
+  const history = useHistory();
 
   const [rides, setRides] = useState<AdminRideData[]>([]);
   const [loading, setLoading] = useState(true);
@@ -3256,6 +4077,7 @@ export function AdminTripsPage(): JSX.Element {
   const [cancellingId, setCancellingId] = useState<string | null>(null);
   const [cancelAlertId, setCancelAlertId] = useState<string | null>(null);
   const [cancelError, setCancelError] = useState<string | null>(null);
+  const [activatingId, setActivatingId] = useState<string | null>(null);
 
   const loadData = useCallback(
     async (silent = false) => {
@@ -3271,14 +4093,20 @@ export function AdminTripsPage(): JSX.Element {
 
       try {
         const params: { status?: string } = {};
-        if (filterStatus) params.status = filterStatus;
+        if (filterStatus && filterStatus !== "scheduled") params.status = filterStatus;
 
         const ridesData = await adminService.listRides(
           session.accessToken,
           params,
         );
 
-        setRides(sortAdminRidesForOperations(ridesData));
+        const localScheduled = readLocalAdminScheduledRides();
+        const merged = mergeAdminRides([...localScheduled, ...ridesData]);
+        const visible = filterStatus
+          ? merged.filter((ride) => getEffectiveAdminRideStatus(ride) === filterStatus)
+          : merged;
+
+        setRides(sortAdminRidesForOperations(visible));
       } catch (err) {
         setLoadError(
           err instanceof Error ? err.message : "Error al cargar datos.",
@@ -3299,26 +4127,98 @@ export function AdminTripsPage(): JSX.Element {
   }, [loadData]);
 
   useEffect(() => {
-    const interval = window.setInterval(() => {
-      void loadData(true);
-    }, 3000);
+    const refreshScheduled = () => void loadData(true);
+    const interval = window.setInterval(refreshScheduled, 3000);
 
-    return () => window.clearInterval(interval);
+    window.addEventListener("storage", refreshScheduled);
+    window.addEventListener("rapago:admin-scheduled-rides-updated", refreshScheduled);
+
+    return () => {
+      window.clearInterval(interval);
+      window.removeEventListener("storage", refreshScheduled);
+      window.removeEventListener("rapago:admin-scheduled-rides-updated", refreshScheduled);
+    };
   }, [loadData]);
 
   async function handleCancel(rideId: string, reason: string) {
     if (!session?.accessToken) return;
+
+    const target =
+      rides.find((ride) => ride.id === rideId) ??
+      readLocalAdminScheduledRides().find((ride) => ride.id === rideId);
+
+    const effectiveStatus = target ? getEffectiveAdminRideStatus(target) : "";
+
+    // Evita el error rojo del backend cuando el viaje ya viene cancelado.
+    // Si ya está cancelado, no se vuelve a llamar a adminCancelRide.
+    if (effectiveStatus === "cancelled") {
+      setCancelError(null);
+      setCancelAlertId(null);
+      setCancellingId(null);
+      return;
+    }
+
+    const isLocalOnlyRide =
+      rideId.startsWith("local-") ||
+      rideId.startsWith("admin-local-") ||
+      Boolean(target && getRideUnknownField(target, "localOnly") === true);
+
     setCancellingId(rideId);
     setCancelError(null);
+
     try {
-      const updated = await adminService.adminCancelRide(
-        session.accessToken,
-        rideId,
-        reason,
-      );
-      setRides((prev) => prev.map((r) => (r.id === rideId ? updated : r)));
+      const cancelledLocal = target ? buildAdminCancelledRide(target, reason) : null;
+
+      if (cancelledLocal) {
+        syncAdminCancelledRideLocally(target!, cancelledLocal);
+        setRides((prev) =>
+          sortAdminRidesForOperations(
+            mergeAdminRides(prev.map((ride) => (ride.id === rideId ? cancelledLocal : ride))),
+          ),
+        );
+      }
+
+      if (!isLocalOnlyRide) {
+        const updated = await adminService.adminCancelRide(
+          session.accessToken,
+          rideId,
+          reason,
+        );
+
+        const finalUpdated = {
+          ...(cancelledLocal ?? {}),
+          ...updated,
+          status: "cancelled",
+          cancellationReason: updated.cancellationReason ?? reason,
+        } as AdminRideData;
+
+        setRides((prev) =>
+          sortAdminRidesForOperations(
+            mergeAdminRides(prev.map((ride) => (ride.id === rideId ? finalUpdated : ride))),
+          ),
+        );
+      }
+
+      setCancelError(null);
       void loadData(true);
     } catch (err) {
+      if (isAdminCancelledRideConflictMessage(err)) {
+        // El backend dice que ya estaba cancelado: lo tratamos como éxito para no ensuciar el admin.
+        if (target) {
+          const cancelledLocal = buildAdminCancelledRide(target, reason);
+          syncAdminCancelledRideLocally(target, cancelledLocal);
+          setRides((prev) =>
+            sortAdminRidesForOperations(
+              mergeAdminRides(prev.map((ride) => (ride.id === rideId ? cancelledLocal : ride))),
+            ),
+          );
+        }
+
+        setCancelError(null);
+        void loadData(true);
+        return;
+      }
+
       setCancelError(
         err instanceof Error ? err.message : "Error al cancelar viaje.",
       );
@@ -3326,6 +4226,78 @@ export function AdminTripsPage(): JSX.Element {
       setCancellingId(null);
       setCancelAlertId(null);
     }
+  }
+
+  function handleActivateScheduledRide(ride: AdminRideData): void {
+    setActivatingId(ride.id);
+    setCancelError(null);
+
+    try {
+      const activated = buildActivatedScheduledRide(ride);
+      const originalMergeKey = getAdminRideMergeKey(ride);
+      const activatedMergeKey = getAdminRideMergeKey(activated);
+
+      const localAdminRides = readLocalAdminScheduledRides();
+      const localAdminWithoutCurrent = localAdminRides.filter((item) => {
+        const itemKey = getAdminRideMergeKey(item);
+        return itemKey !== originalMergeKey && itemKey !== activatedMergeKey && item.id !== ride.id;
+      });
+
+      saveLocalAdminScheduledRidesForAdmin([activated, ...localAdminWithoutCurrent]);
+
+      const passengerKey = getScheduledPassengerMirrorKey(ride as unknown as Record<string, unknown>);
+      const localPassengerRides = readLocalPassengerRidesForAdmin();
+      const updatedPassengerRides = localPassengerRides.map((item) => {
+        if (getScheduledPassengerMirrorKey(item) !== passengerKey && item.id !== ride.id) {
+          return item;
+        }
+
+        return {
+          ...item,
+          status: "requested",
+          requestedAt: String(item.requestedAt ?? new Date().toISOString()),
+          scheduleStatus: "active",
+          adminScheduleStatus: "active",
+          activatedAt: new Date().toISOString(),
+        };
+      });
+
+      saveLocalPassengerRidesForAdmin(updatedPassengerRides);
+
+      setRides((prev) =>
+        sortAdminRidesForOperations(
+          prev.map((item) =>
+            getAdminRideMergeKey(item) === originalMergeKey || item.id === ride.id
+              ? activated
+              : item,
+          ),
+        ),
+      );
+    } finally {
+      window.setTimeout(() => setActivatingId(null), 350);
+    }
+  }
+
+  function goToAvailableDriversFromRide(ride: AdminRideData): void {
+    try {
+      localStorage.setItem(
+        ADMIN_DRIVER_ASSIGNMENT_SELECTION_KEY,
+        JSON.stringify({
+          ...(ride as AdminRideData & Record<string, unknown>),
+          scheduledAt: getAdminRideScheduleInfo(ride).scheduledAt,
+          scheduledPickupAt: getAdminRideScheduleInfo(ride).scheduledAt,
+          returnScheduledAt: getAdminRideScheduleInfo(ride).returnScheduledAt,
+          scheduledReturnAt: getAdminRideScheduleInfo(ride).returnScheduledAt,
+          scheduleActivationAt: getAdminRideScheduleInfo(ride).activationAt,
+        }),
+      );
+      window.dispatchEvent(new CustomEvent(ADMIN_DRIVER_ASSIGNMENT_EVENT));
+      window.dispatchEvent(new CustomEvent(ADMIN_DRIVERS_REFRESH_EVENT));
+    } catch {
+      // No bloquea navegación.
+    }
+
+    history.push(ADMIN_DRIVERS_ROUTE);
   }
 
   return (
@@ -3387,6 +4359,7 @@ export function AdminTripsPage(): JSX.Element {
                 interface="popover"
               >
                 <IonSelectOption value="">Todos</IonSelectOption>
+                <IonSelectOption value="scheduled">Agendados</IonSelectOption>
                 <IonSelectOption value="requested">Solicitado</IonSelectOption>
                 <IonSelectOption value="accepted">
                   Conductor asignado
@@ -3459,10 +4432,13 @@ export function AdminTripsPage(): JSX.Element {
             style={{ display: "flex", flexDirection: "column", gap: "12px" }}
           >
             {rides.map((ride) => {
+              const scheduleInfo = getAdminRideScheduleInfo(ride);
+              const effectiveStatus = getEffectiveAdminRideStatus(ride);
               const statusColor =
-                RIDE_STATUS_COLOR_ADMIN[ride.status] ?? "medium";
+                RIDE_STATUS_COLOR_ADMIN[effectiveStatus] ?? "medium";
               const statusLabel =
-                RIDE_STATUS_LABEL_ADMIN[ride.status] ?? ride.status;
+                RIDE_STATUS_LABEL_ADMIN[effectiveStatus] ?? effectiveStatus;
+              const adminCleanNotes = cleanAdminRideNotes(ride.notes);
               return (
                 <IonCard key={ride.id} style={{ margin: 0 }}>
                   <IonCardContent style={{ padding: "12px 14px" }}>
@@ -3516,6 +4492,11 @@ export function AdminTripsPage(): JSX.Element {
                           >
                             {statusLabel}
                           </IonBadge>
+                          {scheduleInfo.isScheduled && (
+                            <IonBadge color={scheduleInfo.isActiveWindow ? "success" : "warning"} style={{ fontSize: "0.68rem" }}>
+                              {scheduleInfo.isActiveWindow ? "Activar ahora" : "Reserva"}
+                            </IonBadge>
+                          )}
                         </div>
                       </div>
                       <div
@@ -3526,12 +4507,75 @@ export function AdminTripsPage(): JSX.Element {
                           textAlign: "right",
                         }}
                       >
-                        {new Date(ride.requestedAt).toLocaleString("es-CL")}
+                        {formatAdminScheduleDate(scheduleInfo.scheduledAt ?? ride.requestedAt)}
                       </div>
                     </div>
 
+                    {scheduleInfo.isScheduled && (
+                      <div
+                        style={{
+                          background: scheduleInfo.isActiveWindow ? "rgba(42,168,74,.12)" : "rgba(255,201,40,.18)",
+                          border: scheduleInfo.isActiveWindow ? "1px solid rgba(42,168,74,.30)" : "1px solid rgba(255,201,40,.45)",
+                          borderRadius: "14px",
+                          padding: "10px 12px",
+                          marginBottom: "8px",
+                          fontSize: "0.78rem",
+                          lineHeight: 1.35,
+                          color: "#111",
+                        }}
+                      >
+                        <strong>📅 Reserva agendada</strong>
+                        <div>Recogida: {formatAdminScheduleDate(scheduleInfo.scheduledAt)}</div>
+                        {scheduleInfo.returnScheduledAt && (
+                          <div>Regreso: {formatAdminScheduleDate(scheduleInfo.returnScheduledAt)}</div>
+                        )}
+                        <div>
+                          Activación: {formatAdminScheduleDate(scheduleInfo.activationAt)} · {scheduleInfo.isActiveWindow
+                            ? "habilitada para buscar conductores disponibles."
+                            : "se buscarán conductores 10 min antes."}
+                        </div>
+                      </div>
+                    )}
+
+                    {scheduleInfo.isScheduled && !ride.driverName && (
+                      <IonButton
+                        expand="block"
+                        size="small"
+                        color="primary"
+                        style={{ marginBottom: "8px", fontWeight: 900 }}
+                        onClick={() => goToAvailableDriversFromRide(ride)}
+                      >
+                        Administrar y agendar conductor disponible
+                      </IonButton>
+                    )}
+
+                    {scheduleInfo.isScheduled && effectiveStatus === "scheduled" && (
+                      <IonButton
+                        expand="block"
+                        size="small"
+                        color="warning"
+                        style={{ marginBottom: "8px", fontWeight: 900 }}
+                        disabled={activatingId === ride.id}
+                        onClick={() => handleActivateScheduledRide(ride)}
+                      >
+                        {activatingId === ride.id ? <IonSpinner name="dots" /> : "Activar solicitud ahora"}
+                      </IonButton>
+                    )}
+
+                    {scheduleInfo.isScheduled && effectiveStatus === "requested" && (
+                      <IonButton
+                        expand="block"
+                        size="small"
+                        color="success"
+                        style={{ marginBottom: "8px", fontWeight: 900 }}
+                        onClick={() => goToAvailableDriversFromRide(ride)}
+                      >
+                        Buscar conductores disponibles
+                      </IonButton>
+                    )}
+
                     {/* Details */}
-                    {ride.notes && (
+                    {adminCleanNotes && (
                       <div
                         style={{
                           fontSize: "0.78rem",
@@ -3539,7 +4583,7 @@ export function AdminTripsPage(): JSX.Element {
                           marginBottom: "4px",
                         }}
                       >
-                        Notas: {ride.notes}
+                        Notas: {adminCleanNotes}
                       </div>
                     )}
                     {ride.estimatedFareClp != null && (
@@ -3645,7 +4689,7 @@ export function AdminTripsPage(): JSX.Element {
                     )}
 
                     {/* Cancel — for cancelable statuses */}
-                    {CANCELABLE_STATUSES.has(ride.status) && (
+                    {CANCELABLE_STATUSES.has(effectiveStatus) && (
                       <div style={{ marginTop: "6px" }}>
                         <IonButton
                           expand="block"

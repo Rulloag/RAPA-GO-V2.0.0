@@ -9,6 +9,7 @@ import { profileRoutes } from "./modules/profile/profile.routes.js";
 import { documentsRoutes } from "./modules/documents/documents.routes.js";
 import { bankAccountsRoutes } from "./modules/bankAccounts/bankAccounts.routes.js";
 import { ridesRoutes } from "./modules/rides/rides.routes.js";
+import { paymentsRoutes } from "./modules/payments/payments.routes.js";
 import { ratingsRoutes } from "./modules/ratings/ratings.routes.js";
 import { adminRoutes } from "./modules/admin/admin.routes.js";
 import { driverStatusRoutes } from "./modules/drivers/driverStatus.routes.js";
@@ -124,6 +125,13 @@ export async function buildApp(): Promise<FastifyInstance> {
   await fastify.register(documentsRoutes, { prefix: "/api/documents" });
   await fastify.register(bankAccountsRoutes, { prefix: "/api/bank-account" });
   await fastify.register(ridesRoutes, { prefix: "/api/rides" });
+
+  // Pagos:
+  // payments.routes.ts define /payments/create y /payments/webhook/...
+  // Con este prefix, la ruta final queda:
+  // POST /api/payments/create
+  await fastify.register(paymentsRoutes, { prefix: "/api" });
+
   await fastify.register(ratingsRoutes, { prefix: "/api" });
   await fastify.register(adminRoutes, { prefix: "/api/admin" });
   await fastify.register(driverStatusRoutes, { prefix: "/api/drivers" });

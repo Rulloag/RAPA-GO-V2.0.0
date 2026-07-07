@@ -52,6 +52,19 @@ import { RIDE_STATUS_LABEL } from "../shared.js";
 
 
 const LOCAL_PASSENGER_RIDES_KEY = "rapago_local_passenger_rides";
+const LOCAL_ADMIN_SCHEDULED_RIDES_KEY = "rapago_admin_scheduled_rides";
+const LOCAL_ADMIN_SCHEDULED_RIDE_MIRROR_KEYS = [
+  LOCAL_ADMIN_SCHEDULED_RIDES_KEY,
+  "rapago_admin_scheduled_rides_v1",
+  "rapago_admin_scheduled_rides_v2",
+  "rapago_admin_scheduled_rides_force_v1",
+  "rapago_bridge_scheduled_rides_v1",
+] as const;
+const LOCAL_PASSENGER_RIDE_LIMIT = 40;
+const LOCAL_ADMIN_SCHEDULED_RIDE_LIMIT = 80;
+const RAPAGO_REQUEUED_RIDES_KEY = "rapago_requeued_available_rides_v1";
+const RAPAGO_REQUEUED_PASSENGER_FORCE_KEY = "rapago_requeued_passenger_visible_rides_v1";
+const RAPAGO_REQUEUED_RIDES_EVENT = "rapago:ride-requeued-after-driver-cancel";
 
 type LocalPassengerRideData = Record<string, unknown>;
 
@@ -80,12 +93,254 @@ function readLocalPassengerRides(): LocalPassengerRideData[] {
   }
 }
 
+function compactRideForLocalStorage(ride: LocalPassengerRideData): LocalPassengerRideData {
+  const copy: LocalPassengerRideData = { ...ride };
+
+  // Las fotos grandes no deben repetirse dentro de cada viaje.
+  // Se consultan desde el perfil público del conductor para evitar lentitud en celular.
+  delete copy.driverVehicleImageDataUrl;
+  delete copy.driverVehiclePhotoDataUrl;
+  delete copy.vehicleImageDataUrl;
+  delete copy.vehiclePhotoDataUrl;
+  delete copy.driverProfileImageDataUrl;
+  delete copy.profileImageDataUrl;
+  delete copy.driverPhotoBase64;
+  delete copy.vehiclePhotoBase64;
+  delete copy.profilePhotoBase64;
+  delete copy.carPhotoBase64;
+
+  for (const key of [
+    "driverProfilePhotoUrl",
+    "profilePhotoUrl",
+    "vehiclePhotoUrl",
+    "driverVehiclePhotoUrl",
+  ]) {
+    const value = copy[key];
+
+    if (typeof value === "string" && value.startsWith("data:") && value.length > 1500) {
+      delete copy[key];
+    }
+  }
+
+  return copy;
+}
+
 function saveLocalPassengerRides(rides: LocalPassengerRideData[]): void {
   try {
-    localStorage.setItem(LOCAL_PASSENGER_RIDES_KEY, JSON.stringify(rides));
+    const compacted = rides
+      .map(compactRideForLocalStorage)
+      .slice(0, LOCAL_PASSENGER_RIDE_LIMIT);
+
+    localStorage.setItem(LOCAL_PASSENGER_RIDES_KEY, JSON.stringify(compacted));
+    window.dispatchEvent(new CustomEvent("rapago:passenger-rides-updated"));
   } catch {
     // No bloquea la pantalla si el navegador no permite guardar localmente.
   }
+}
+
+const REQUEST_ACTIVE_STATUSES = [
+  "scheduled",
+  "driver_scheduled",
+  "accepted",
+  "driver_en_route",
+  "driver_arrived",
+  "in_progress",
+];
+
+const REQUEST_TERMINAL_STATUSES = [
+  "completed",
+  "complete",
+  "finished",
+  "done",
+  "cancelled",
+  "canceled",
+  "driver_cancelled",
+  "passenger_cancelled",
+  "rejected",
+  "expired",
+  "no_driver",
+  "no_driver_available",
+];
+
+const IMMEDIATE_RIDE_ACTIVE_WINDOW_MS = 12 * 60 * 60 * 1000;
+const REQUEUED_RIDE_ACTIVE_WINDOW_MS = 6 * 60 * 60 * 1000;
+const SCHEDULED_RIDE_GRACE_AFTER_PICKUP_MS = 4 * 60 * 60 * 1000;
+const SCHEDULED_RIDE_MAX_FUTURE_MS = 31 * 24 * 60 * 60 * 1000;
+
+function normalizeRideStatus(status: unknown): string {
+  return String(status ?? "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .trim();
+}
+
+function readRideDateMs(ride: LocalPassengerRideData, keys: string[]): number | null {
+  for (const key of keys) {
+    const value = ride[key];
+    if (!value) continue;
+
+    const parsed = new Date(String(value)).getTime();
+    if (Number.isFinite(parsed)) return parsed;
+  }
+
+  return null;
+}
+
+function readRideScheduledMs(ride: LocalPassengerRideData): number | null {
+  return readRideDateMs(ride, [
+    "scheduledAt",
+    "scheduledPickupAt",
+    "pickupScheduledAt",
+    "scheduleActivationAt",
+    "dispatchAt",
+    "autoAssignAt",
+  ]);
+}
+
+function readRideActivityMs(ride: LocalPassengerRideData): number | null {
+  return readRideDateMs(ride, [
+    "updatedAt",
+    "acceptedAt",
+    "enRouteAt",
+    "arrivedAt",
+    "startedAt",
+    "requestedAt",
+    "createdAt",
+    "requeuedAt",
+    "cancelledAt",
+  ]);
+}
+
+function getNestedString(source: unknown, path: string[]): string | null {
+  let current: unknown = source;
+
+  for (const key of path) {
+    if (!current || typeof current !== "object") return null;
+    current = (current as Record<string, unknown>)[key];
+  }
+
+  return typeof current === "string" && current.trim() ? current.trim() : null;
+}
+
+function rideBelongsToSessionPassenger(ride: LocalPassengerRideData, user?: unknown): boolean {
+  const currentEmail = getSessionEmail(user)?.toLowerCase();
+  if (!currentEmail) return true;
+
+  const rideEmail =
+    getNestedString(ride, ["passengerEmail"]) ??
+    getNestedString(ride, ["userEmail"]) ??
+    getNestedString(ride, ["email"]) ??
+    getNestedString(ride, ["passenger", "email"]) ??
+    getNestedString(ride, ["user", "email"]);
+
+  if (!rideEmail) return true;
+
+  return rideEmail.toLowerCase() === currentEmail;
+}
+
+function readRequeuedPassengerRidesForRequest(): LocalPassengerRideData[] {
+  try {
+    const all: LocalPassengerRideData[] = [];
+
+    for (const key of [RAPAGO_REQUEUED_RIDES_KEY, RAPAGO_REQUEUED_PASSENGER_FORCE_KEY]) {
+      const raw = localStorage.getItem(key);
+      const parsed = raw ? (JSON.parse(raw) as LocalPassengerRideData[]) : [];
+      if (Array.isArray(parsed)) all.push(...parsed);
+    }
+
+    return all.map((ride) => ({
+      ...ride,
+      status: "requested",
+      cancelledAt: null,
+      cancelledByRole: null,
+      cancellationReason: null,
+      driverName: null,
+      driverPhone: null,
+      requeuedAt: ride.requeuedAt ?? ride.cancelledAt ?? ride.updatedAt ?? ride.requestedAt ?? ride.createdAt ?? null,
+      requeuedReason: "driver_cancelled",
+      forceActiveAfterDriverCancel: true,
+      passengerNotice: "Tu conductor canceló el viaje, estamos buscando uno nuevo.",
+    }));
+  } catch {
+    return [];
+  }
+}
+
+function isRequestDriverCancelledRequeuedRide(ride: LocalPassengerRideData): boolean {
+  const status = normalizeRideStatus(ride.status);
+  const cancelledBy = normalizeRideStatus(ride.cancelledByRole ?? ride.cancelledBy);
+  const reason = normalizeRideStatus(ride.requeuedReason ?? ride.requeueReason ?? ride.cancellationReason);
+  const notice = normalizeRideStatus(ride.passengerNotice ?? ride.passengerNotification ?? ride.notes);
+
+  if (cancelledBy.includes("passenger") || cancelledBy.includes("pasajero")) return false;
+
+  return (
+    ride.forceActiveAfterDriverCancel === true ||
+    reason.includes("driver_cancelled") ||
+    reason.includes("conductor_cancel") ||
+    notice.includes("tu conductor cancel") ||
+    notice.includes("estamos buscando uno nuevo") ||
+    (status === "cancelled" && (
+      cancelledBy.includes("driver") ||
+      cancelledBy.includes("conductor") ||
+      reason.includes("driver") ||
+      reason.includes("conductor")
+    ))
+  );
+}
+
+function isPassengerRideActiveForNewRequest(
+  ride: LocalPassengerRideData,
+  user?: unknown,
+  nowMs = Date.now(),
+): boolean {
+  if (!rideBelongsToSessionPassenger(ride, user)) return false;
+
+  const status = normalizeRideStatus(ride.status);
+
+  if (!status || REQUEST_TERMINAL_STATUSES.includes(status)) return false;
+
+  const isRequeued = isRequestDriverCancelledRequeuedRide(ride);
+
+  // No bloqueamos por solicitudes "requested" guardadas localmente.
+  // Esas son las que más se quedan pegadas cuando se prueba la app o falla el navegador.
+  // Si realmente existe una solicitud activa, el backend la validará al crear el viaje.
+  if (status === "requested" && !isRequeued) return false;
+
+  const isKnownActiveStatus = REQUEST_ACTIVE_STATUSES.includes(status);
+
+  if (!isRequeued && !isKnownActiveStatus) return false;
+
+  if (status === "scheduled" || status === "driver_scheduled") {
+    const scheduledMs = readRideScheduledMs(ride);
+
+    // Si una reserva antigua quedó pegada sin fecha válida, no debe bloquear nuevas solicitudes.
+    if (scheduledMs == null) return false;
+
+    return (
+      scheduledMs >= nowMs - SCHEDULED_RIDE_GRACE_AFTER_PICKUP_MS &&
+      scheduledMs <= nowMs + SCHEDULED_RIDE_MAX_FUTURE_MS
+    );
+  }
+
+  const activityMs = readRideActivityMs(ride);
+
+  // Evita el error permanente: viajes viejos/pegados sin fecha no bloquean el botón.
+  if (activityMs == null) return false;
+
+  const activeWindow = isRequeued
+    ? REQUEUED_RIDE_ACTIVE_WINDOW_MS
+    : IMMEDIATE_RIDE_ACTIVE_WINDOW_MS;
+
+  return activityMs >= nowMs - activeWindow && activityMs <= nowMs + 5 * 60 * 1000;
+}
+
+function hasPassengerActiveRideForRequest(user?: unknown): boolean {
+  const rides = [...readLocalPassengerRides(), ...readRequeuedPassengerRidesForRequest()];
+  const nowMs = Date.now();
+
+  return rides.some((ride) => isPassengerRideActiveForNewRequest(ride, user, nowMs));
 }
 
 function createLocalPassengerRide(input: {
@@ -93,15 +348,40 @@ function createLocalPassengerRide(input: {
   destinationText: string;
   notes?: string | null;
   estimatedFareClp?: number | null;
+  rideMode?: RideMode | null;
+  tripFareMode?: TripFareMode | null;
+  scheduledAt?: string | null;
+  returnScheduledAt?: string | null;
+  passengerName?: string | null;
+  passengerEmail?: string | null;
+  passengerFareType?: PassengerFareType | null;
+  passengerFareLabel?: string | null;
+  airportWelcomeOption?: AirportWelcomeOption | null;
+  flowerLeiRequested?: boolean | null;
 }): LocalPassengerRideData {
   const now = new Date().toISOString();
+  const scheduleFields = buildRideScheduleFields({
+    rideMode: input.rideMode ?? "now",
+    tripFareMode: input.tripFareMode ?? "one_way",
+    scheduledAt: input.scheduledAt ?? "",
+    returnScheduledAt: input.returnScheduledAt ?? "",
+  });
+  const isScheduled = scheduleFields.isScheduled === true;
 
   return {
     id: `local-${Date.now()}`,
     originText: input.originText,
     destinationText: input.destinationText,
     notes: input.notes ?? null,
-    status: "requested",
+    passengerName: input.passengerName ?? null,
+    passengerEmail: input.passengerEmail ?? null,
+    passengerFareType: input.passengerFareType ?? null,
+    farePassengerType: input.passengerFareType ?? null,
+    passengerType: input.passengerFareType ?? null,
+    passengerFareLabel: input.passengerFareLabel ?? (input.passengerFareType ? passengerFareTypeLabel(input.passengerFareType) : null),
+    nationality: input.passengerFareLabel ?? (input.passengerFareType ? passengerFareTypeLabel(input.passengerFareType) : null),
+    isResident: input.passengerFareType === "resident",
+    status: isScheduled ? "scheduled" : "requested",
     requestedAt: now,
     acceptedAt: null,
     enRouteAt: null,
@@ -124,8 +404,133 @@ function createLocalPassengerRide(input: {
     driverVehicleColor: null,
     driverVehiclePlate: null,
     driverVehicleYear: null,
+    driverVehicleImageDataUrl: null,
+    driverVehiclePhotoDataUrl: null,
+    driverProfileImageDataUrl: null,
+    driverProfilePhotoUrl: null,
     isOfflineBooking: false,
+    airportWelcomeOption: input.airportWelcomeOption ?? null,
+    flowerLeiRequested: input.flowerLeiRequested ?? false,
+    ...scheduleFields,
   };
+}
+
+function readLocalAdminScheduledRides(): LocalPassengerRideData[] {
+  try {
+    const all: LocalPassengerRideData[] = [];
+
+    for (const key of LOCAL_ADMIN_SCHEDULED_RIDE_MIRROR_KEYS) {
+      const raw = localStorage.getItem(key);
+      const parsed = raw ? (JSON.parse(raw) as LocalPassengerRideData[]) : [];
+      if (Array.isArray(parsed)) all.push(...parsed);
+    }
+
+    const seen = new Set<string>();
+
+    return all.filter((ride) => {
+      const key = getLocalAdminScheduledRideKey(ride);
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+  } catch {
+    return [];
+  }
+}
+
+function saveLocalAdminScheduledRides(rides: LocalPassengerRideData[]): void {
+  try {
+    const compacted = rides
+      .map(compactRideForLocalStorage)
+      .slice(0, LOCAL_ADMIN_SCHEDULED_RIDE_LIMIT);
+
+    for (const key of LOCAL_ADMIN_SCHEDULED_RIDE_MIRROR_KEYS) {
+      localStorage.setItem(key, JSON.stringify(compacted));
+    }
+
+    if (compacted[0]) {
+      localStorage.setItem("rapago_last_scheduled_ride_for_admin", JSON.stringify(compacted[0]));
+    }
+
+    window.dispatchEvent(new CustomEvent("rapago:admin-scheduled-rides-updated", { detail: { rides: compacted } }));
+  } catch {
+    // No bloquea la pantalla si el navegador no permite guardar localmente.
+  }
+}
+
+function upsertLocalAdminScheduledRide(ride: LocalPassengerRideData): void {
+  if (ride.isScheduled !== true) return;
+  const current = readLocalAdminScheduledRides();
+  const key = getLocalAdminScheduledRideKey(ride);
+  const withoutDuplicate = current.filter((item) => getLocalAdminScheduledRideKey(item) !== key);
+  saveLocalAdminScheduledRides([ride, ...withoutDuplicate]);
+}
+
+function getLocalAdminScheduledRideKey(ride: LocalPassengerRideData): string {
+  return [
+    ride.scheduledAt ?? ride.scheduledPickupAt ?? "",
+    ride.originText ?? "",
+    ride.destinationText ?? "",
+    ride.passengerEmail ?? "",
+  ]
+    .map((value) => String(value).trim().toLowerCase())
+    .join("|");
+}
+
+function createLocalAdminScheduledRide(input: {
+  originText: string;
+  destinationText: string;
+  notes?: string | null;
+  estimatedFareClp?: number | null;
+  rideMode: RideMode;
+  tripFareMode: TripFareMode;
+  scheduledAt: string;
+  returnScheduledAt: string;
+  passengerName?: string | null;
+  passengerEmail?: string | null;
+  passengerFareType?: PassengerFareType | null;
+  passengerFareLabel?: string | null;
+  airportWelcomeOption?: AirportWelcomeOption | null;
+  flowerLeiRequested?: boolean | null;
+}): LocalPassengerRideData {
+  const base = createLocalPassengerRide(input);
+  return {
+    ...base,
+    id: `admin-local-${Date.now()}`,
+    createdAt: new Date().toISOString(),
+    status: "scheduled",
+    scheduleStatus: "frozen_until_activation",
+    adminScheduleStatus: "pending_admin_airport_pickup",
+    reservationStatus: "airport_pickup_reserved",
+    passengerName: input.passengerName || "Pasajero agendado",
+    passengerEmail: input.passengerEmail || "sin-correo-local",
+    passengerPhone: null,
+    driverUserId: null,
+    availableForDrivers: false,
+    visibleToDrivers: false,
+    driverQueueBlocked: true,
+    frozenForDrivers: true,
+    driverFrozenUntil: base.scheduleActivationAt ?? base.dispatchAt ?? null,
+    adminVisibleNow: true,
+    adminRequiresReview: true,
+    airportPickupBooking: true,
+    bookingPurpose: "airport_pickup",
+    serviceType: "airport_pickup",
+    localOnly: true,
+  };
+}
+
+function getSessionDisplayName(user: unknown): string | null {
+  if (!user || typeof user !== "object") return null;
+  const data = user as Record<string, unknown>;
+  const name = data.name ?? data.fullName ?? data.firstName;
+  return typeof name === "string" && name.trim() ? name.trim() : null;
+}
+
+function getSessionEmail(user: unknown): string | null {
+  if (!user || typeof user !== "object") return null;
+  const email = (user as Record<string, unknown>).email;
+  return typeof email === "string" && email.trim() ? email.trim() : null;
 }
 
 function saveLocalPassengerRide(input: {
@@ -133,12 +538,117 @@ function saveLocalPassengerRide(input: {
   destinationText: string;
   notes?: string | null;
   estimatedFareClp?: number | null;
+  rideMode?: RideMode | null;
+  tripFareMode?: TripFareMode | null;
+  scheduledAt?: string | null;
+  returnScheduledAt?: string | null;
+  passengerName?: string | null;
+  passengerEmail?: string | null;
+  passengerFareType?: PassengerFareType | null;
+  passengerFareLabel?: string | null;
+  airportWelcomeOption?: AirportWelcomeOption | null;
+  flowerLeiRequested?: boolean | null;
 }): void {
   const localRide = createLocalPassengerRide(input);
   saveLocalPassengerRides([localRide, ...readLocalPassengerRides()]);
 }
 
+function getRapaGoApiBaseUrl(): string {
+  const envValue =
+    typeof import.meta !== "undefined"
+      ? String(import.meta.env?.VITE_API_URL ?? "")
+      : "";
+
+  return (envValue || "http://localhost:3000").replace(/\/+$/, "");
+}
+
+function getNestedUnknown(source: unknown, path: string[]): unknown {
+  let current = source;
+
+  for (const key of path) {
+    if (!current || typeof current !== "object") return null;
+    current = (current as Record<string, unknown>)[key];
+  }
+
+  return current;
+}
+
+function extractRideRequestIdFromResponse(response: unknown): string | null {
+  const directCandidates = [
+    getNestedUnknown(response, ["id"]),
+    getNestedUnknown(response, ["rideRequestId"]),
+    getNestedUnknown(response, ["rideId"]),
+    getNestedUnknown(response, ["data", "id"]),
+    getNestedUnknown(response, ["data", "rideRequestId"]),
+    getNestedUnknown(response, ["data", "rideId"]),
+    getNestedUnknown(response, ["ride", "id"]),
+    getNestedUnknown(response, ["rideRequest", "id"]),
+    getNestedUnknown(response, ["request", "id"]),
+  ];
+
+  for (const value of directCandidates) {
+    if (typeof value === "string" && value.trim()) return value.trim();
+    if (typeof value === "number" && Number.isFinite(value)) return String(value);
+  }
+
+  return null;
+}
+
+async function createMercadoPagoCheckout(input: {
+  accessToken: string;
+  rideRequestId: string;
+}): Promise<{ urlPay: string; paymentId: string | null }> {
+  const response = await fetch(`${getRapaGoApiBaseUrl()}/api/payments/create`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${input.accessToken}`,
+    },
+    body: JSON.stringify({
+      rideRequestId: input.rideRequestId,
+    }),
+  });
+
+  const payload = (await response.json().catch(() => ({}))) as Record<string, unknown>;
+
+  if (!response.ok) {
+    const message =
+      typeof payload.message === "string"
+        ? payload.message
+        : typeof payload.error === "string"
+          ? payload.error
+          : "No se pudo iniciar el pago con MercadoPago.";
+    throw new Error(message);
+  }
+
+  const urlPay =
+    (typeof payload.urlPay === "string" && payload.urlPay.trim()) ||
+    (typeof getNestedUnknown(payload, ["data", "urlPay"]) === "string" &&
+      String(getNestedUnknown(payload, ["data", "urlPay"])).trim()) ||
+    (typeof getNestedUnknown(payload, ["result", "urlPay"]) === "string" &&
+      String(getNestedUnknown(payload, ["result", "urlPay"])).trim()) ||
+    "";
+
+  if (!urlPay) {
+    throw new Error("MercadoPago no devolvió URL de pago.");
+  }
+
+  const paymentIdValue =
+    payload.paymentId ??
+    getNestedUnknown(payload, ["data", "paymentId"]) ??
+    getNestedUnknown(payload, ["result", "paymentId"]);
+
+  return {
+    urlPay,
+    paymentId:
+      typeof paymentIdValue === "string" && paymentIdValue.trim()
+        ? paymentIdValue.trim()
+        : null,
+  };
+}
+
 type RideMode = "now" | "scheduled";
+type TripFareMode = "one_way" | "round_trip";
 type PickerTarget = "origin" | "destination";
 
 type Coords = {
@@ -188,6 +698,7 @@ type MapPointMovedPayload = {
 };
 
 type PaymentMethod = "cash" | "card" | null;
+type AirportWelcomeOption = "none" | "flower_lei";
 
 declare global {
   interface Window {
@@ -363,6 +874,24 @@ type FareQuote = {
   vehicleCategory: VehicleCategory;
   isFixedFare: boolean;
   usdRate: number;
+
+  // Nuevo motor urbano/rural:
+  // Primero se aplica pasajero + vehículo al KM urbano.
+  // Luego se aplica descuento rural sobre ese KM urbano ya ajustado.
+  urbanKm: number;
+  ruralKm: number;
+  urbanLimitKm: number;
+  urbanKmFare: number;
+  ruralKmFare: number;
+  ruralDiscountPercent: number;
+  ruralFactor: number;
+  calculationType: "fixed" | "urban" | "urban_rural";
+
+  // Tipo de viaje elegido por el pasajero.
+  // one_way: solo ida. round_trip: ida y vuelta.
+  tripFareMode: TripFareMode;
+  tripMultiplier: number;
+  oneWayFare: number;
 };
 
 type FixedDestinationRule = {
@@ -373,14 +902,174 @@ type FixedDestinationRule = {
   active: boolean;
 };
 
+type RoundTripPromotion = {
+  id: string;
+  destinationId: string;
+  destinationName: string;
+  search: string;
+  fixedPoint: PickerResult | null;
+  passengerFareType: PassengerFareType;
+  passengerLabel: string;
+  title: string;
+  baseFareClp: number;
+  fareClp: number;
+  usdLabel: string;
+  chargeLabel?: string;
+  detail: string;
+};
+
+const ROUND_TRIP_DESTINATION_SEARCH: Record<string, string> = {
+  anakena: "Anakena, Rapa Nui, Chile",
+  terevaka: "Maunga Terevaka, Rapa Nui, Chile",
+};
+
+// Puntos fijos usados solo para promociones ida y vuelta.
+// No dependemos de Google geocode porque a veces Anakena cae en Ahu Ature Huki
+// o en una etiqueta cercana y el pin queda corrido en el mapa.
+const ROUND_TRIP_DESTINATION_FIXED_POINTS: Record<string, Omit<PickerResult, "originalLat" | "originalLng" | "walkMeters" | "isAccessiblePickup">> = {
+  anakena: {
+    text: "Anakena",
+    address: "Playa Anakena, Rapa Nui, Chile",
+    lat: -27.0732,
+    lng: -109.3233,
+    placeId: "rapago-fixed-anakena",
+  },
+  terevaka: {
+    text: "Terevaka",
+    address: "Maunga Terevaka, Rapa Nui, Chile",
+    lat: -27.0917,
+    lng: -109.382,
+    placeId: "rapago-fixed-terevaka",
+  },
+};
+
+const RAPA_NUI_AIRPORT_DESTINATION: PickerResult = {
+  text: "Aeropuerto Internacional Mataveri",
+  address: "Zona de llegada / terminal Mataveri, Hanga Roa, Rapa Nui, Chile",
+  // Punto de recogida del pasajero en la zona pública/terminal del aeropuerto.
+  // No usamos el centroide oficial del aeródromo porque Google lo muestra corrido
+  // hacia la pista/camino interior, lejos del punto real de espera del pasajero.
+  lat: -27.16395,
+  lng: -109.42465,
+  placeId: "rapago-fixed-mataveri-airport-terminal",
+  originalLat: null,
+  originalLng: null,
+  walkMeters: 0,
+  isAccessiblePickup: false,
+};
+
+function isRapaNuiAirportPoint(point: ConfirmedPoint | PickerResult | null | undefined): boolean {
+  if (!point) return false;
+
+  const placeId = String(point.placeId ?? "").toLowerCase();
+  const text = normalizeAdminDestinationId(`${point.text ?? ""} ${point.address ?? ""}`);
+
+  return (
+    placeId === RAPA_NUI_AIRPORT_DESTINATION.placeId ||
+    text.includes("aeropuerto") ||
+    text.includes("mataveri") ||
+    text.includes("airport")
+  );
+}
+
+function normalizeAdminDestinationId(value: unknown): string {
+  return String(value ?? "")
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "") || "destino";
+}
+
+function getRoundTripDestinationKey(destination: FixedDestinationRule): string {
+  const normalized = normalizeAdminDestinationId(`${destination.id ?? ""} ${destination.title ?? ""}`);
+
+  if (normalized.includes("anakena")) return "anakena";
+  if (normalized.includes("terevaka") || normalized.includes("tere_vaka")) return "terevaka";
+
+  return normalizeAdminDestinationId(destination.id || destination.title);
+}
+
+function getRoundTripDestinationSearch(destination: FixedDestinationRule): string {
+  const id = getRoundTripDestinationKey(destination);
+  return ROUND_TRIP_DESTINATION_SEARCH[id] ?? `${destination.title} Rapa Nui Chile`;
+}
+
+function getRoundTripDestinationFixedPoint(destination: FixedDestinationRule): PickerResult | null {
+  const id = getRoundTripDestinationKey(destination);
+  const fixed = ROUND_TRIP_DESTINATION_FIXED_POINTS[id];
+
+  if (!fixed) return null;
+
+  return {
+    ...fixed,
+    text: destination.title || fixed.text,
+    originalLat: null,
+    originalLng: null,
+    walkMeters: 0,
+    isAccessiblePickup: false,
+  };
+}
+
+function buildAdminRoundTripPromotions(
+  rules: RapaGoFareRules,
+  passengerFareType: PassengerFareType,
+): RoundTripPromotion[] {
+  if (rules.passengerActive?.[passengerFareType] === false) return [];
+
+  const passengerLabel = passengerFareTypeLabel(passengerFareType);
+  const multiplier = rules.passengerMultipliers[passengerFareType] ?? 1;
+
+  return rules.fixedDestinations
+    .filter((destination) => destination.active !== false)
+    .filter((destination) =>
+      String(destination.tripType ?? "")
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .toLowerCase()
+        .includes("vuelta"),
+    )
+    .map((destination) => {
+      const destinationId = getRoundTripDestinationKey(destination);
+      const rawFare = Math.max(0, Number(destination.baseResidentClp || 0) * multiplier);
+      const fareClp = roundByAdminRule(rawFare, rules);
+      const roundedChanged = Math.round(rawFare) !== fareClp;
+
+      return {
+        id: `${destinationId}_${passengerFareType}_roundtrip`,
+        destinationId,
+        destinationName: destination.title,
+        search: getRoundTripDestinationSearch(destination),
+        fixedPoint: getRoundTripDestinationFixedPoint(destination),
+        passengerFareType,
+        passengerLabel,
+        title: `${destination.title} · Ida y vuelta`,
+        baseFareClp: Math.round(rawFare),
+        fareClp,
+        usdLabel: formatUSDFromCLP(fareClp, rules.usdRate),
+        chargeLabel: roundedChanged
+          ? `Cobra ${formatCLP(fareClp)} · ${formatUSDFromCLP(fareClp, rules.usdRate)}`
+          : undefined,
+        detail: `${destination.title} · ${passengerLabel} · ida y vuelta con precio cerrado.`,
+      };
+    });
+}
+
 type RoundingMode = "ceil" | "nearest" | "none";
 
 type RapaGoFareRules = {
   includedKm: number;
   baseMinimumClp: number;
   baseKmClp: number;
+
+  // Zona urbana/rural configurable desde Admin Tarifas.
+  ruralUrbanLimitKm: number;
+  ruralDiscountPercent: number;
+  ruralFactor: number;
+
   passengerMultipliers: Record<PassengerFareType, number>;
   vehicleMultipliers: Record<VehicleCategory, number>;
+  passengerActive: Record<PassengerFareType, boolean>;
   fixedDestinations: FixedDestinationRule[];
   roundingMode: RoundingMode;
   roundingUnitClp: number;
@@ -393,9 +1082,13 @@ type StoredRegistrationProfile = {
   passengerFareType?: PassengerFareType | string | null;
   farePassengerType?: PassengerFareType | string | null;
   passengerType?: PassengerFareType | string | null;
+  passengerCondition?: string | null;
+  condition?: string | null;
   nationality?: string | null;
   passengerFareLabel?: string | null;
-  isResident?: boolean | null;
+  directPassengerFareType?: string | null;
+  directNationality?: string | null;
+  isResident?: boolean | string | null;
 };
 
 const ADMIN_FARE_ENGINE_STORAGE_KEY = "rapago_admin_fare_engine_v1";
@@ -403,9 +1096,17 @@ const ADMIN_FARE_CARDS_STORAGE_KEY = "rapago_admin_fare_cards_rules_v1";
 const USD_RATE_STORAGE_KEY = "rapago_admin_fare_cards_usd_rate_v1";
 
 const DEFAULT_RAPAGO_FARE_RULES: RapaGoFareRules = {
+  // Tarifa mínima urbana: $5.000 incluye de 0 a 2 km, según tabla tarifaria.
   includedKm: 2,
   baseMinimumClp: 5000,
   baseKmClp: 1000,
+
+  // Nuevo anexo técnico rural:
+  // desde 6,01 km, el excedente se cobra como tramo rural con descuento sobre
+  // el KM urbano ya ajustado por pasajero y vehículo.
+  ruralUrbanLimitKm: 6,
+  ruralDiscountPercent: 25,
+  ruralFactor: 0.75,
   passengerMultipliers: {
     resident: 1,
     chilean: 1.13,
@@ -415,6 +1116,11 @@ const DEFAULT_RAPAGO_FARE_RULES: RapaGoFareRules = {
     standard: 1,
     xl: 1.4,
     luggage: 1.25,
+  },
+  passengerActive: {
+    resident: true,
+    chilean: true,
+    foreigner: true,
   },
   fixedDestinations: [
     {
@@ -442,7 +1148,62 @@ const DEFAULT_RAPAGO_FARE_RULES: RapaGoFareRules = {
 function readStoredRegistrationProfile(): StoredRegistrationProfile {
   try {
     const raw = localStorage.getItem("rapago_registration_profile");
-    return raw ? (JSON.parse(raw) as StoredRegistrationProfile) : {};
+    const parsed = raw ? (JSON.parse(raw) as StoredRegistrationProfile) : {};
+
+    const directFareType =
+      localStorage.getItem("rapago_passenger_fare_type") ??
+      localStorage.getItem("rapago_passenger_condition") ??
+      localStorage.getItem("rapago_profile_passenger_type") ??
+      localStorage.getItem("rapago_fare_passenger_type") ??
+      localStorage.getItem("rapago_passenger_type") ??
+      localStorage.getItem("farePassengerType") ??
+      localStorage.getItem("passengerType") ??
+      localStorage.getItem("condition");
+
+    const directNationality =
+      localStorage.getItem("rapago_profile_nationality") ??
+      localStorage.getItem("rapago_nationality") ??
+      localStorage.getItem("nationality");
+
+    return {
+      ...parsed,
+      phone: parsed.phone ?? localStorage.getItem("rapago_profile_phone"),
+      rut: parsed.rut ?? localStorage.getItem("rapago_profile_rut"),
+      passengerFareType:
+        parsed.passengerFareType ??
+        parsed.farePassengerType ??
+        parsed.passengerType ??
+        directFareType ??
+        null,
+      farePassengerType:
+        parsed.farePassengerType ??
+        parsed.passengerFareType ??
+        parsed.passengerType ??
+        directFareType ??
+        null,
+      passengerType:
+        parsed.passengerType ??
+        parsed.farePassengerType ??
+        parsed.passengerFareType ??
+        directFareType ??
+        null,
+      nationality:
+        parsed.nationality ??
+        parsed.passengerFareLabel ??
+        directNationality ??
+        null,
+      passengerFareLabel:
+        parsed.passengerFareLabel ??
+        parsed.nationality ??
+        directNationality ??
+        null,
+      directPassengerFareType: parsed.directPassengerFareType ?? directFareType,
+      directNationality: parsed.directNationality ?? directNationality,
+      isResident:
+        parsed.isResident ??
+        localStorage.getItem("rapago_is_resident") ??
+        null,
+    };
   } catch {
     return {};
   }
@@ -453,27 +1214,29 @@ function normalizePassengerFareType(value: unknown): PassengerFareType | null {
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
     .toLowerCase()
+    .replace(/[_-]+/g, " ")
+    .replace(/\s{2,}/g, " ")
     .trim();
 
   if (!raw) return null;
 
-  // Ojo: "Chileno no residente" contiene la palabra "residente".
-  // Por eso primero detectamos extranjero, después chileno no residente y al final residente.
+  // Orden seguro:
+  // 1) Turista chileno / chileno no residente.
+  // 2) Turista extranjero / extranjero.
+  // 3) Residente Rapa Nui.
+  // "Turista chileno" contiene la palabra "turista", por eso debe ir antes
+  // de la detección genérica de turista/extranjero.
   if (
-    raw.includes("foreigner") ||
-    raw.includes("extranj") ||
-    raw.includes("turista") ||
-    raw.includes("ingles") ||
-    raw.includes("english")
-  ) {
-    return "foreigner";
-  }
-
-  if (
+    raw.includes("turista chileno") ||
+    raw.includes("chileno turista") ||
+    raw.includes("chilena turista") ||
+    raw.includes("chilena") ||
+    raw.includes("chileno") ||
+    raw.includes("chilean") ||
+    raw.includes("chilean non resident") ||
     raw.includes("no residente") ||
     raw.includes("no resident") ||
-    raw.includes("chilean") ||
-    raw.includes("chileno") ||
+    raw.includes("non resident") ||
     raw === "cl" ||
     raw === "chile"
   ) {
@@ -481,50 +1244,100 @@ function normalizePassengerFareType(value: unknown): PassengerFareType | null {
   }
 
   if (
+    raw.includes("turista extranjero") ||
+    raw.includes("extranjero turista") ||
+    raw.includes("extranjera turista") ||
+    raw.includes("extranj") ||
+    raw.includes("foreigner") ||
+    raw.includes("foreign") ||
+    raw.includes("visitor foreign") ||
+    raw.includes("tourist foreign") ||
+    raw.includes("ingles") ||
+    raw.includes("english")
+  ) {
+    return "foreigner";
+  }
+
+  if (
+    raw.includes("residente rapa nui") ||
+    raw.includes("rapa nui") ||
+    raw.includes("rapanui") ||
     raw.includes("resident") ||
     raw.includes("residente") ||
-    raw.includes("rapa nui")
+    raw.includes("local") ||
+    raw === "true" ||
+    raw === "1"
   ) {
     return "resident";
+  }
+
+  // Si solo dice "turista" y no especifica chileno, se cobra como extranjero.
+  if (raw.includes("turista") || raw.includes("tourist") || raw.includes("visitor")) {
+    return "foreigner";
   }
 
   return null;
 }
 
-function readPassengerFareType(user?: unknown): PassengerFareType {
-  const userData = user as
-    | {
-        passengerType?: string | null;
-        farePassengerType?: string | null;
-        passengerFareType?: string | null;
-        nationality?: string | null;
-        isResident?: boolean | null;
-      }
-    | undefined;
+function sameEmail(a?: string | null, b?: string | null): boolean {
+  if (!a || !b) return false;
+  return a.trim().toLowerCase() === b.trim().toLowerCase();
+}
 
-  if (userData?.isResident === true) return "resident";
+function getUserStringField(user: unknown, key: string): string | null {
+  if (!user || typeof user !== "object") return null;
+  const value = (user as Record<string, unknown>)[key];
+  return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+function getUserBooleanField(user: unknown, key: string): boolean | null {
+  if (!user || typeof user !== "object") return null;
+  const value = (user as Record<string, unknown>)[key];
+  return typeof value === "boolean" ? value : null;
+}
+
+function readPassengerFareType(user?: unknown): PassengerFareType {
+  const sessionEmail = getUserStringField(user, "email");
 
   const fromUser =
-    normalizePassengerFareType(userData?.farePassengerType) ??
-    normalizePassengerFareType(userData?.passengerFareType) ??
-    normalizePassengerFareType(userData?.passengerType) ??
-    normalizePassengerFareType(userData?.nationality);
+    normalizePassengerFareType(getUserStringField(user, "farePassengerType")) ??
+    normalizePassengerFareType(getUserStringField(user, "passengerFareType")) ??
+    normalizePassengerFareType(getUserStringField(user, "passengerType")) ??
+    normalizePassengerFareType(getUserStringField(user, "passengerCondition")) ??
+    normalizePassengerFareType(getUserStringField(user, "condition")) ??
+    normalizePassengerFareType(getUserStringField(user, "nationality"));
 
   if (fromUser) return fromUser;
+  if (getUserBooleanField(user, "isResident") === true) return "resident";
 
   try {
     const storedProfile = readStoredRegistrationProfile();
-    const stored =
-      normalizePassengerFareType(storedProfile.farePassengerType) ??
-      normalizePassengerFareType(storedProfile.passengerFareType) ??
-      normalizePassengerFareType(storedProfile.passengerType) ??
-      normalizePassengerFareType(storedProfile.nationality) ??
-      normalizePassengerFareType(storedProfile.passengerFareLabel) ??
-      normalizePassengerFareType(localStorage.getItem("rapago_passenger_fare_type")) ??
-      normalizePassengerFareType(localStorage.getItem("rapago_profile_passenger_type")) ??
-      normalizePassengerFareType(localStorage.getItem("rapago_profile_nationality"));
+    const storedBelongsToThisUser =
+      !storedProfile.email ||
+      !sessionEmail ||
+      sameEmail(storedProfile.email, sessionEmail);
 
-    if (stored) return stored;
+    if (storedBelongsToThisUser) {
+      const stored =
+        normalizePassengerFareType(storedProfile.farePassengerType) ??
+        normalizePassengerFareType(storedProfile.passengerFareType) ??
+        normalizePassengerFareType(storedProfile.passengerType) ??
+        normalizePassengerFareType(storedProfile.passengerCondition) ??
+        normalizePassengerFareType(storedProfile.condition) ??
+        normalizePassengerFareType(storedProfile.directPassengerFareType) ??
+        normalizePassengerFareType(storedProfile.directNationality) ??
+        normalizePassengerFareType(storedProfile.nationality) ??
+        normalizePassengerFareType(storedProfile.passengerFareLabel) ??
+        normalizePassengerFareType(storedProfile.isResident) ??
+        normalizePassengerFareType(localStorage.getItem("rapago_passenger_fare_type")) ??
+        normalizePassengerFareType(localStorage.getItem("rapago_passenger_condition")) ??
+        normalizePassengerFareType(localStorage.getItem("rapago_fare_passenger_type")) ??
+        normalizePassengerFareType(localStorage.getItem("rapago_profile_passenger_type")) ??
+        normalizePassengerFareType(localStorage.getItem("rapago_profile_nationality")) ??
+        normalizePassengerFareType(localStorage.getItem("rapago_nationality"));
+
+      if (stored) return stored;
+    }
   } catch {
     // Si no existe dato guardado, se usa residente como valor seguro por defecto.
   }
@@ -548,6 +1361,24 @@ function vehicleCategoryDescription(category: VehicleCategory): string {
   if (category === "xl") return "Más espacio y comodidad";
   if (category === "luggage") return "Ideal si llevas equipaje";
   return "Viaje normal urbano";
+}
+
+function tripFareModeLabel(mode: TripFareMode): string {
+  return mode === "round_trip" ? "Ida y vuelta" : "Solo ida";
+}
+
+function tripFareModeDescription(mode: TripFareMode): string {
+  if (mode === "round_trip") {
+    return "Regreso incluido en el precio";
+  }
+
+  return "Un solo tramo";
+}
+
+function passengerFareTypeLabel(type: PassengerFareType): string {
+  if (type === "resident") return "Residente Rapa Nui";
+  if (type === "chilean") return "Turista chileno";
+  return "Turista extranjero";
 }
 
 function fareSearchText(value: string): string {
@@ -633,8 +1464,14 @@ async function fetchRapaGoFareRules(): Promise<RapaGoFareRules> {
         baseMinimumClp?: number;
         baseKmClp?: number;
       };
+      rural?: {
+        urbanLimitKm?: number;
+        ruralDiscountPercent?: number;
+        ruralFactor?: number;
+      };
       passengerMultipliers?: Partial<Record<PassengerFareType, number>>;
       vehicleMultipliers?: Partial<Record<VehicleCategory, number>>;
+      passengerActive?: Partial<Record<PassengerFareType, boolean>>;
       fixedDestinations?: FixedDestinationRule[];
       rounding?: {
         mode?: RoundingMode;
@@ -657,6 +1494,27 @@ async function fetchRapaGoFareRules(): Promise<RapaGoFareRules> {
       baseKmClp: parseStoredNumber(
         parsed.urban?.baseKmClp ?? legacy.baseKmClp,
         fallback.baseKmClp,
+      ),
+      ruralUrbanLimitKm: Math.max(
+        fallback.includedKm,
+        parseStoredNumber(parsed.rural?.urbanLimitKm, fallback.ruralUrbanLimitKm),
+      ),
+      ruralDiscountPercent: Math.max(
+        0,
+        Math.min(
+          99,
+          parseStoredNumber(parsed.rural?.ruralDiscountPercent, fallback.ruralDiscountPercent),
+        ),
+      ),
+      ruralFactor: Math.max(
+        0.01,
+        parseStoredNumber(
+          parsed.rural?.ruralFactor ??
+            (1 -
+              parseStoredNumber(parsed.rural?.ruralDiscountPercent, fallback.ruralDiscountPercent) /
+                100),
+          fallback.ruralFactor,
+        ),
       ),
       passengerMultipliers: {
         resident: parseStoredNumber(
@@ -686,6 +1544,11 @@ async function fetchRapaGoFareRules(): Promise<RapaGoFareRules> {
           fallback.vehicleMultipliers.luggage,
         ),
       },
+      passengerActive: {
+        resident: parsed.passengerActive?.resident !== false,
+        chilean: parsed.passengerActive?.chilean !== false,
+        foreigner: parsed.passengerActive?.foreigner !== false,
+      },
       fixedDestinations:
         Array.isArray(parsed.fixedDestinations) &&
         parsed.fixedDestinations.length > 0
@@ -697,12 +1560,11 @@ async function fetchRapaGoFareRules(): Promise<RapaGoFareRules> {
               active: item.active !== false,
             }))
           : legacy.fixedDestinations ?? fallback.fixedDestinations,
-      roundingMode:
-        parsed.rounding?.mode === "nearest" || parsed.rounding?.mode === "none"
-          ? parsed.rounding.mode
-          : "ceil",
+      // Redondeo final obligatorio.
+      // Se ignora cualquier configuración antigua "none" o "nearest" guardada en localStorage.
+      roundingMode: "ceil",
       roundingUnitClp: Math.max(
-        1,
+        100,
         Math.round(parseStoredNumber(parsed.rounding?.unitClp, fallback.roundingUnitClp)),
       ),
       usdRate: Math.max(
@@ -725,12 +1587,11 @@ async function fetchRapaGoFareRules(): Promise<RapaGoFareRules> {
 
 function roundByAdminRule(value: number, rules: RapaGoFareRules): number {
   const safe = Number.isFinite(value) ? Math.max(0, value) : 0;
-  const unit = Math.max(1, Math.round(rules.roundingUnitClp || 1));
 
-  if (rules.roundingMode === "none") return Math.round(safe);
-  if (rules.roundingMode === "nearest") {
-    return Math.round(safe / unit) * unit;
-  }
+  // REDONDEO FINAL OBLIGATORIO
+  // Se aplica solo al total final del viaje.
+  // No se aplica por km, ni por tramo urbano, ni por tramo rural.
+  const unit = Math.max(100, Math.round(rules.roundingUnitClp || 100));
 
   return Math.ceil(safe / unit) * unit;
 }
@@ -794,6 +1655,69 @@ function detectFixedDestination(
   );
 }
 
+function getRuralFactor(rules: RapaGoFareRules): number {
+  const discount = Math.max(0, Math.min(99, Number(rules.ruralDiscountPercent ?? 25)));
+  const factorFromDiscount = 1 - discount / 100;
+  const configuredFactor = Number(rules.ruralFactor ?? factorFromDiscount);
+
+  return Number.isFinite(configuredFactor) && configuredFactor > 0
+    ? configuredFactor
+    : factorFromDiscount;
+}
+
+function calculateUrbanRuralRawFare(input: {
+  km: number;
+  rules: RapaGoFareRules;
+  passengerMultiplier: number;
+  vehicleMultiplier: number;
+}): {
+  rawCash: number;
+  urbanKm: number;
+  ruralKm: number;
+  urbanLimitKm: number;
+  urbanKmFare: number;
+  ruralKmFare: number;
+  ruralFactor: number;
+  ruralDiscountPercent: number;
+  calculationType: "urban" | "urban_rural";
+} {
+  const { km, rules, passengerMultiplier, vehicleMultiplier } = input;
+
+  const urbanLimitKm = Math.max(
+    rules.includedKm,
+    Number.isFinite(Number(rules.ruralUrbanLimitKm))
+      ? Number(rules.ruralUrbanLimitKm)
+      : 6,
+  );
+
+  const urbanKm = Math.min(km, urbanLimitKm);
+  const ruralKm = Math.max(0, km - urbanLimitKm);
+  const urbanKmFare = rules.baseKmClp * passengerMultiplier * vehicleMultiplier;
+  const ruralFactor = getRuralFactor(rules);
+
+  // Regla corregida:
+  // 1) KM urbano base
+  // 2) multiplicador pasajero
+  // 3) multiplicador vehículo
+  // 4) descuento rural del 25% sobre el KM ya ajustado
+  const ruralKmFare = urbanKmFare * ruralFactor;
+  const adjustedMinimum = rules.baseMinimumClp * passengerMultiplier * vehicleMultiplier;
+  const urbanAdditionalKm = Math.max(0, urbanKm - rules.includedKm);
+  const urbanFare = adjustedMinimum + urbanAdditionalKm * urbanKmFare;
+
+  return {
+    rawCash: urbanFare + ruralKm * ruralKmFare,
+    urbanKm,
+    ruralKm,
+    urbanLimitKm,
+    urbanKmFare,
+    ruralKmFare,
+    ruralFactor,
+    ruralDiscountPercent: Math.max(0, Math.min(99, Number(rules.ruralDiscountPercent ?? 25))),
+    calculationType: ruralKm > 0 ? "urban_rural" : "urban",
+  };
+}
+
 function calculateRapaGoFare(
   km: number,
   minutes: number,
@@ -801,6 +1725,7 @@ function calculateRapaGoFare(
   passengerType: PassengerFareType = "resident",
   vehicleCategory: VehicleCategory = "standard",
   destinationText = "",
+  tripFareMode: TripFareMode = "one_way",
 ): FareQuote {
   const safeKm = Math.max(0.1, Number.isFinite(km) ? km : 0.1);
   const safeMinutes = Math.max(1, Number.isFinite(minutes) ? minutes : 1);
@@ -811,24 +1736,31 @@ function calculateRapaGoFare(
   let rawCash: number;
   let isFixedFare = false;
 
-  if (fixedDestination) {
+  const ruralBreakdown = calculateUrbanRuralRawFare({
+    km: safeKm,
+    rules,
+    passengerMultiplier,
+    vehicleMultiplier,
+  });
+
+  if (fixedDestination && tripFareMode === "round_trip") {
+    // Las tarifas fijas de destinos como Anakena/Terevaka están definidas
+    // como IDA Y VUELTA en el admin. Se aplica multiplicador de pasajero,
+    // pero no se vuelve a multiplicar por 2.
     rawCash = fixedDestination.baseResidentClp * passengerMultiplier;
     isFixedFare = true;
   } else {
-    const additionalKm = Math.max(0, safeKm - rules.includedKm);
-    const adjustedMinimum =
-      rules.baseMinimumClp * passengerMultiplier * vehicleMultiplier;
-    const adjustedKm =
-      rules.baseKmClp * passengerMultiplier * vehicleMultiplier;
-
-    rawCash = adjustedMinimum + additionalKm * adjustedKm;
+    // Viaje variable. Para ida y vuelta se cobra el tramo de ida x2.
+    rawCash = ruralBreakdown.rawCash * (tripFareMode === "round_trip" ? 2 : 1);
   }
 
+  // Primero calculamos todo exacto: mínimo, pasajero, vehículo, urbano/rural.
+  // Recién aquí se redondea el total final.
   const cashFare = roundByAdminRule(rawCash, rules);
-  const cardFare = roundByAdminRule(
-    cashFare * (1 + rules.cardPaymentPercent / 100),
-    rules,
-  );
+
+  const rawCardFare = rawCash * (1 + rules.cardPaymentPercent / 100);
+  const cardFare = roundByAdminRule(rawCardFare, rules);
+
   const driverEarning = Math.round((cashFare * rules.driverPercent) / 100);
   const platformFee = cashFare - driverEarning;
 
@@ -844,6 +1776,19 @@ function calculateRapaGoFare(
     vehicleCategory,
     isFixedFare,
     usdRate: rules.usdRate,
+    urbanKm: Number(ruralBreakdown.urbanKm.toFixed(2)),
+    ruralKm: Number(ruralBreakdown.ruralKm.toFixed(2)),
+    urbanLimitKm: ruralBreakdown.urbanLimitKm,
+    urbanKmFare: ruralBreakdown.urbanKmFare,
+    ruralKmFare: ruralBreakdown.ruralKmFare,
+    ruralDiscountPercent: ruralBreakdown.ruralDiscountPercent,
+    ruralFactor: ruralBreakdown.ruralFactor,
+    calculationType: isFixedFare
+      ? "fixed"
+      : ruralBreakdown.calculationType,
+    tripFareMode,
+    tripMultiplier: tripFareMode === "round_trip" && !isFixedFare ? 2 : 1,
+    oneWayFare: roundByAdminRule(ruralBreakdown.rawCash, rules),
   };
 }
 
@@ -854,6 +1799,7 @@ function calculateEstimatedFareFromPoints(
   passengerType: PassengerFareType = "resident",
   vehicleCategory: VehicleCategory = "standard",
   destinationText = "",
+  tripFareMode: TripFareMode = "one_way",
 ): FareQuote {
   const straightKm = distanceMeters(origin, destination) / 1000;
   const roadKm = straightKm * 1.28;
@@ -866,6 +1812,7 @@ function calculateEstimatedFareFromPoints(
     passengerType,
     vehicleCategory,
     destinationText,
+    tripFareMode,
   );
 }
 
@@ -2365,6 +3312,129 @@ function limitRideNotes(value: string): string {
     .slice(0, 500);
 }
 
+// MODO PRUEBA:
+ // Permite agendar reservas más cerca para testear rápido.
+ // Producción recomendado: SCHEDULE_MIN_MINUTES = 30 y SCHEDULE_ACTIVATION_MINUTES = 10.
+const SCHEDULE_MIN_MINUTES = 5;
+const SCHEDULE_MAX_DAYS = 30;
+const SCHEDULE_ACTIVATION_MINUTES = 1;
+
+function parseScheduleInput(value: string | null | undefined): Date | null {
+  if (!value) return null;
+  const parsed = new Date(value);
+  return Number.isFinite(parsed.getTime()) ? parsed : null;
+}
+
+function toDateTimeLocalValue(date: Date): string {
+  const pad = (value: number) => value.toString().padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
+function formatScheduleDateTime(value: string | null | undefined): string {
+  const parsed = parseScheduleInput(value);
+  if (!parsed) return "Sin hora";
+  return parsed.toLocaleString("es-CL", {
+    weekday: "short",
+    day: "2-digit",
+    month: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+function getScheduleValidationError(input: {
+  rideMode: RideMode;
+  tripFareMode: TripFareMode;
+  scheduledAt: string;
+  returnScheduledAt: string;
+  requireReturnScheduledAt?: boolean;
+}): string | null {
+  if (input.rideMode !== "scheduled") return null;
+
+  const pickup = parseScheduleInput(input.scheduledAt);
+  if (!pickup) return "Debes seleccionar fecha y hora de recogida.";
+
+  const now = new Date();
+  const min = new Date(now.getTime() + SCHEDULE_MIN_MINUTES * 60_000);
+  const max = new Date(now.getTime() + SCHEDULE_MAX_DAYS * 24 * 60 * 60_000);
+
+  if (pickup.getTime() < min.getTime()) {
+    return `La reserva debe ser mínimo ${SCHEDULE_MIN_MINUTES} minutos desde ahora.`;
+  }
+
+  if (pickup.getTime() > max.getTime()) {
+    return `La reserva no puede superar ${SCHEDULE_MAX_DAYS} días.`;
+  }
+
+  if (input.tripFareMode === "round_trip" && input.requireReturnScheduledAt !== false) {
+    const back = parseScheduleInput(input.returnScheduledAt);
+    if (!back) return "Para ida y vuelta debes seleccionar la hora de regreso.";
+    if (back.getTime() <= pickup.getTime()) {
+      return "La hora de regreso debe ser posterior a la hora de recogida.";
+    }
+    if (back.getTime() > max.getTime()) {
+      return `La hora de regreso no puede superar ${SCHEDULE_MAX_DAYS} días.`;
+    }
+  }
+
+  return null;
+}
+
+function buildRideScheduleFields(input: {
+  rideMode: RideMode;
+  tripFareMode: TripFareMode;
+  scheduledAt: string;
+  returnScheduledAt: string;
+}): Record<string, unknown> {
+  const pickup = input.rideMode === "scheduled" ? parseScheduleInput(input.scheduledAt) : null;
+  const back =
+    input.rideMode === "scheduled" && input.tripFareMode === "round_trip"
+      ? parseScheduleInput(input.returnScheduledAt)
+      : null;
+  const activation = pickup
+    ? new Date(pickup.getTime() - SCHEDULE_ACTIVATION_MINUTES * 60_000)
+    : null;
+
+  const isScheduled = input.rideMode === "scheduled" && !!pickup;
+  const activationIso = activation?.toISOString() ?? null;
+
+  return {
+    rideMode: input.rideMode,
+    requestMode: input.rideMode,
+    isScheduled,
+    status: isScheduled ? "scheduled" : "requested",
+    scheduleStatus: isScheduled ? "frozen_until_activation" : "immediate",
+    adminScheduleStatus: isScheduled ? "pending_admin_airport_pickup" : null,
+    reservationStatus: isScheduled ? "airport_pickup_reserved" : null,
+    scheduledAt: pickup?.toISOString() ?? null,
+    scheduledPickupAt: pickup?.toISOString() ?? null,
+    pickupScheduledAt: pickup?.toISOString() ?? null,
+    returnScheduledAt: back?.toISOString() ?? null,
+    scheduledReturnAt: back?.toISOString() ?? null,
+    scheduleActivationAt: activationIso,
+    scheduledActivationAt: activationIso,
+    scheduledPickupActivationAt: activationIso,
+    dispatchAt: activationIso,
+    autoAssignAt: activationIso,
+    driverVisibleAt: activationIso,
+    driverFrozenUntil: activationIso,
+    frozenUntil: activationIso,
+    autoDispatchMinutesBefore: SCHEDULE_ACTIVATION_MINUTES,
+    availableForDrivers: !isScheduled,
+    visibleToDrivers: !isScheduled,
+    driverQueueBlocked: isScheduled,
+    frozenForDrivers: isScheduled,
+    adminVisibleNow: isScheduled,
+    adminRequiresReview: isScheduled,
+    airportPickupBooking: isScheduled,
+    bookingPurpose: isScheduled ? "airport_pickup" : "standard_ride",
+    serviceType: isScheduled ? "airport_pickup" : "standard_ride",
+    tripFareMode: input.tripFareMode,
+    tripType: input.tripFareMode,
+    isRoundTrip: input.tripFareMode === "round_trip",
+  };
+}
+
 export default function RequestRidePage(): JSX.Element {
   const { session } = useAuth();
   const history = useHistory();
@@ -2391,8 +3461,12 @@ export default function RequestRidePage(): JSX.Element {
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>(null);
   const [showPaymentBox, setShowPaymentBox] = useState(false);
   const [rideMode, setRideMode] = useState<RideMode>("now");
+  const [tripFareMode, setTripFareMode] = useState<TripFareMode>("one_way");
+  const [selectedRoundTripPromotionId, setSelectedRoundTripPromotionId] = useState<string | null>(null);
   const [scheduledAt, setScheduledAt] = useState("");
+  const [returnScheduledAt, setReturnScheduledAt] = useState("");
   const [flightNumber, setFlightNumber] = useState("");
+  const [airportWelcomeOption, setAirportWelcomeOption] = useState<AirportWelcomeOption>("none");
   const [locating, setLocating] = useState(false);
 
   const [submitting, setSubmitting] = useState(false);
@@ -2405,6 +3479,20 @@ export default function RequestRidePage(): JSX.Element {
     () => readPassengerFareType(session?.user),
     [session?.user],
   );
+  const roundTripPromotions = useMemo(
+    () => buildAdminRoundTripPromotions(fareRules, passengerFareType),
+    [fareRules, passengerFareType],
+  );
+  const selectedRoundTripPromotion = useMemo(
+    () =>
+      roundTripPromotions.find(
+        (promotion) => promotion.id === selectedRoundTripPromotionId,
+      ) ?? null,
+    [roundTripPromotions, selectedRoundTripPromotionId],
+  );
+  const effectivePassengerFareType = selectedRoundTripPromotion?.passengerFareType ?? passengerFareType;
+  const effectiveTripFareMode: TripFareMode = selectedRoundTripPromotion ? "round_trip" : tripFareMode;
+  const requireReturnScheduledAt = tripFareMode === "round_trip" && !selectedRoundTripPromotion;
 
   useEffect(() => {
     let cancelled = false;
@@ -2434,9 +3522,10 @@ export default function RequestRidePage(): JSX.Element {
       origin,
       destination,
       fareRules,
-      passengerFareType,
+      effectivePassengerFareType,
       vehicleCategory,
       destinationPoint.text,
+      effectiveTripFareMode,
     );
     setFareQuote(fallback);
     setFareLoading(true);
@@ -2467,9 +3556,10 @@ export default function RequestRidePage(): JSX.Element {
                   km,
                   minutes,
                   fareRules,
-                  passengerFareType,
+                  effectivePassengerFareType,
                   vehicleCategory,
                   destinationPoint.text,
+                  effectiveTripFareMode,
                 ),
                 source: "google",
               });
@@ -2496,8 +3586,9 @@ export default function RequestRidePage(): JSX.Element {
     destinationPoint?.lng,
     destinationPoint?.text,
     fareRules,
-    passengerFareType,
+    effectivePassengerFareType,
     vehicleCategory,
+    effectiveTripFareMode,
   ]);
 
   useEffect(() => {
@@ -2514,9 +3605,30 @@ export default function RequestRidePage(): JSX.Element {
   }, []);
 
   useEffect(() => {
+    if (rideMode !== "scheduled") return;
+
+    setSelectedRoundTripPromotionId(null);
+    setTripFareMode("one_way");
+    setReturnScheduledAt("");
+
+    // Agendar aeropuerto = el viaje parte desde el Aeropuerto Mataveri.
+    // Siempre forzamos el origen exacto de la terminal, aunque haya quedado
+    // guardado un punto anterior del aeropuerto con coordenadas corridas.
+    applyRapaNuiAirportOrigin();
+
+    if (isRapaNuiAirportPoint(destinationPoint)) {
+      setDestinationPoint(null);
+      setDestInput("");
+    }
+
+    setOriginSuggestions([]);
+    setDestSuggestions([]);
+  }, [rideMode]);
+
+  useEffect(() => {
     const value = originInput.trim();
 
-    if (value.length < 3 || originPoint?.text === value) {
+    if (rideMode === "scheduled" || value.length < 3 || originPoint?.text === value) {
       setOriginSuggestions([]);
       setSearchingOrigin(false);
       return;
@@ -2537,7 +3649,7 @@ export default function RequestRidePage(): JSX.Element {
     }, 300);
 
     return () => window.clearTimeout(timeout);
-  }, [originInput, originPoint?.text]);
+  }, [rideMode, originInput, originPoint?.text]);
 
   useEffect(() => {
     const value = destInput.trim();
@@ -2614,7 +3726,13 @@ export default function RequestRidePage(): JSX.Element {
     }
   }
 
-  function applyDestination(point: PickerResult): void {
+  function applyDestination(point: PickerResult, options?: { keepRoundTripPromotion?: boolean }): void {
+    if (!options?.keepRoundTripPromotion) {
+      setSelectedRoundTripPromotionId(null);
+      setTripFareMode("one_way");
+      setReturnScheduledAt("");
+    }
+
     const confirmed = {
       text: point.text.replace("Recogida en ", ""),
       address: point.address,
@@ -2632,6 +3750,25 @@ export default function RequestRidePage(): JSX.Element {
     setDestSuggestions([]);
   }
 
+  function applyRapaNuiAirportOrigin(): void {
+    setSelectedRoundTripPromotionId(null);
+    setTripFareMode("one_way");
+    setReturnScheduledAt("");
+    setOriginPoint({
+      text: RAPA_NUI_AIRPORT_DESTINATION.text,
+      address: RAPA_NUI_AIRPORT_DESTINATION.address,
+      lat: RAPA_NUI_AIRPORT_DESTINATION.lat,
+      lng: RAPA_NUI_AIRPORT_DESTINATION.lng,
+      placeId: RAPA_NUI_AIRPORT_DESTINATION.placeId ?? null,
+      originalLat: null,
+      originalLng: null,
+      walkMeters: 0,
+      isAccessiblePickup: false,
+    });
+    setOriginInput(RAPA_NUI_AIRPORT_DESTINATION.text);
+    setOriginSuggestions([]);
+  }
+
   async function pickOrigin(suggestion: GoogleSuggestion): Promise<void> {
     const details = await getPlaceDetails(suggestion.placeId);
     if (!details) return;
@@ -2644,6 +3781,58 @@ export default function RequestRidePage(): JSX.Element {
     if (!details) return;
 
     applyDestination(details);
+  }
+
+
+  async function handleSelectRoundTripPromotion(promotion: RoundTripPromotion): Promise<void> {
+    setSubmitError(null);
+    setRideMode("now");
+    setScheduledAt("");
+    setAirportWelcomeOption("none");
+    setSelectedRoundTripPromotionId(promotion.id);
+    setTripFareMode("round_trip");
+    setReturnScheduledAt("");
+    setOriginPoint(null);
+    setOriginInput("");
+    setOriginSuggestions([]);
+    setDestInput(promotion.destinationName);
+    setDestSuggestions([]);
+
+    if (promotion.fixedPoint) {
+      applyDestination(
+        {
+          ...promotion.fixedPoint,
+          text: promotion.destinationName,
+        },
+        { keepRoundTripPromotion: true },
+      );
+      return;
+    }
+
+    try {
+      const details = await geocodeTextExact(promotion.search);
+      if (!details) {
+        setDestinationPoint(null);
+        return;
+      }
+
+      applyDestination(
+        {
+          ...details,
+          text: promotion.destinationName,
+        },
+        { keepRoundTripPromotion: true },
+      );
+    } catch {
+      setDestinationPoint(null);
+    }
+  }
+
+  function clearRoundTripPromotion(): void {
+    setSelectedRoundTripPromotionId(null);
+    setTripFareMode("one_way");
+    setReturnScheduledAt("");
+    setSubmitError(null);
   }
 
   function handleUseCurrentLocation(): void {
@@ -2706,6 +3895,22 @@ export default function RequestRidePage(): JSX.Element {
     let resolvedOrigin = originPoint;
     let resolvedDestination = destinationPoint;
 
+    if (rideMode === "scheduled") {
+      resolvedOrigin = {
+        text: RAPA_NUI_AIRPORT_DESTINATION.text,
+        address: RAPA_NUI_AIRPORT_DESTINATION.address,
+        lat: RAPA_NUI_AIRPORT_DESTINATION.lat,
+        lng: RAPA_NUI_AIRPORT_DESTINATION.lng,
+        placeId: RAPA_NUI_AIRPORT_DESTINATION.placeId ?? null,
+        originalLat: null,
+        originalLng: null,
+        walkMeters: 0,
+        isAccessiblePickup: false,
+      };
+      setOriginPoint(resolvedOrigin);
+      setOriginInput(RAPA_NUI_AIRPORT_DESTINATION.text);
+    }
+
     if (!resolvedOrigin && originInput.trim()) {
       const geocoded = await geocodeText(originInput.trim());
 
@@ -2752,29 +3957,47 @@ export default function RequestRidePage(): JSX.Element {
 
 
   function getPaymentLabel(method: PaymentMethod): string {
-    if (method === "cash") return fareQuote ? `Efectivo · ${formatCLP(fareQuote.cashFare)}` : "Efectivo";
-    if (method === "card") return "Tarjeta · Próximamente";
+    if (method === "cash") {
+      if (selectedRoundTripPromotion) return `Efectivo · ${formatCLP(selectedRoundTripPromotion.fareClp)}`;
+      return fareQuote ? `Efectivo · ${formatCLP(fareQuote.cashFare)}` : "Efectivo";
+    }
+    if (method === "card") return "Tarjeta · MercadoPago";
     return "Pendiente";
   }
 
-  const cashPaymentLabel = fareQuote ? formatCLP(fareQuote.cashFare) : "Calculando";
-  const cashPaymentUsdLabel = fareQuote
-    ? formatUSDFromCLP(fareQuote.cashFare, fareQuote.usdRate)
-    : "Calculando";
+  const cashPaymentLabel = selectedRoundTripPromotion
+    ? formatCLP(selectedRoundTripPromotion.fareClp)
+    : fareQuote
+      ? formatCLP(fareQuote.cashFare)
+      : "Calculando";
+  const cashPaymentUsdLabel = selectedRoundTripPromotion
+    ? selectedRoundTripPromotion.chargeLabel?.replace(/^Cobra\s+\$[\d.]+\s+·\s+/i, "") ?? selectedRoundTripPromotion.usdLabel
+    : fareQuote
+      ? formatUSDFromCLP(fareQuote.cashFare, fareQuote.usdRate)
+      : "Calculando";
 
-  const cardPaymentLabel = fareQuote ? formatCLP(fareQuote.cardFare) : "Calculando";
-  const cardPaymentUsdLabel = fareQuote
-    ? formatUSDFromCLP(fareQuote.cardFare, fareQuote.usdRate)
-    : "Calculando";
+  const cardPaymentLabel = selectedRoundTripPromotion
+    ? formatCLP(selectedRoundTripPromotion.fareClp)
+    : fareQuote
+      ? formatCLP(fareQuote.cardFare)
+      : "Calculando";
+  const cardPaymentUsdLabel = selectedRoundTripPromotion
+    ? selectedRoundTripPromotion.chargeLabel?.replace(/^Cobra\s+\$[\d.]+\s+·\s+/i, "") ?? selectedRoundTripPromotion.usdLabel
+    : fareQuote
+      ? formatUSDFromCLP(fareQuote.cardFare, fareQuote.usdRate)
+      : "Calculando";
 
   function getSelectedFareAmount(method: PaymentMethod = paymentMethod): number | null {
-    if (!fareQuote || !method) return null;
-    return fareQuote.cashFare;
+    if (!method) return null;
+    if (selectedRoundTripPromotion) return selectedRoundTripPromotion.fareClp;
+    if (!fareQuote) return null;
+    return method === "card" ? fareQuote.cardFare : fareQuote.cashFare;
   }
 
-  function getSelectedDriverEarning(): number | null {
-    if (!fareQuote) return null;
-    return fareQuote.driverEarning;
+  function getSelectedDriverEarning(method: PaymentMethod = paymentMethod): number | null {
+    const fare = getSelectedFareAmount(method);
+    if (fare == null) return null;
+    return Math.round((fare * fareRules.driverPercent) / 100);
   }
 
   function handleOpenPaymentBox(): void {
@@ -2785,17 +4008,16 @@ export default function RequestRidePage(): JSX.Element {
   function handleSelectPayment(method: Exclude<PaymentMethod, null>): void {
     setPaymentMethod(method);
     setShowPaymentBox(false);
-
-    if (method === "card") {
-      setSubmitError("El pago con tarjeta estará disponible próximamente. Por ahora selecciona efectivo.");
-      return;
-    }
-
     setSubmitError(null);
   }
 
   async function handleRequest(): Promise<void> {
     if (!session?.accessToken) return;
+
+    if (hasPassengerActiveRideForRequest(session.user)) {
+      setSubmitError("Ya tienes un viaje o una reserva activa reciente. Revisa Mis Viajes antes de solicitar otra.");
+      return;
+    }
 
     const activePaymentMethod: PaymentMethod = paymentMethod;
 
@@ -2806,25 +4028,27 @@ export default function RequestRidePage(): JSX.Element {
       return;
     }
 
-    if (rideMode === "scheduled" && !scheduledAt) {
-      setSubmitError("Debes seleccionar fecha y hora de recogida.");
+    const scheduleError = getScheduleValidationError({
+      rideMode,
+      tripFareMode: effectiveTripFareMode,
+      scheduledAt,
+      returnScheduledAt,
+      requireReturnScheduledAt,
+    });
+
+    if (scheduleError) {
+      setSubmitError(scheduleError);
       return;
     }
 
-    if (activePaymentMethod === "card") {
+    if (activePaymentMethod !== "cash" && activePaymentMethod !== "card") {
       setShowPaymentBox(true);
-      setSubmitError("El pago con tarjeta estará disponible próximamente. Por ahora selecciona efectivo.");
-      return;
-    }
-
-    if (activePaymentMethod !== "cash") {
-      setShowPaymentBox(true);
-      setSubmitError("Antes de solicitar el viaje debes elegir pago en efectivo.");
+      setSubmitError("Antes de solicitar el viaje debes elegir forma de pago.");
       return;
     }
 
     const selectedFareAmount = getSelectedFareAmount(activePaymentMethod);
-    const selectedDriverEarning = getSelectedDriverEarning();
+    const selectedDriverEarning = getSelectedDriverEarning(activePaymentMethod);
 
     if (selectedFareAmount == null || selectedFareAmount <= 0) {
       setSubmitError("No se pudo calcular el monto del viaje.");
@@ -2841,12 +4065,52 @@ export default function RequestRidePage(): JSX.Element {
 
       notes.push(`Forma de pago seleccionada: ${getPaymentLabel(activePaymentMethod)}.`);
       notes.push(`Categoría de vehículo seleccionada: ${vehicleCategoryLabel(vehicleCategory)}.`);
+      notes.push(`Tipo de viaje seleccionado: ${tripFareModeLabel(effectiveTripFareMode)}.`);
+      if (selectedRoundTripPromotion) {
+        notes.push(`Promoción ida y vuelta seleccionada: ${selectedRoundTripPromotion.title}.`);
+        notes.push(`Destino promocional: ${selectedRoundTripPromotion.destinationName}.`);
+        notes.push(`Tarifa fija base promoción: ${formatCLP(selectedRoundTripPromotion.baseFareClp)} (${selectedRoundTripPromotion.usdLabel}).`);
+        notes.push(`Tarifa RAPA GO calculada: ${formatCLP(selectedRoundTripPromotion.fareClp)}.`);
+        notes.push(`Tarifa estimada pasajero: ${formatCLP(selectedRoundTripPromotion.fareClp)}.`);
+        if (selectedRoundTripPromotion.chargeLabel) notes.push(selectedRoundTripPromotion.chargeLabel + ".");
+        notes.push(selectedRoundTripPromotion.detail);
+      }
+
+      const scheduleFields = buildRideScheduleFields({
+        rideMode,
+        tripFareMode: effectiveTripFareMode,
+        scheduledAt,
+        returnScheduledAt,
+      });
 
       if (rideMode === "scheduled") {
-        notes.push(`Viaje programado para: ${scheduledAt}.`);
+        notes.push(`RAPAGO_SCHEDULED_AT: ${String(scheduleFields.scheduledAt ?? "")}.`);
+        notes.push(`RAPAGO_ACTIVATION_AT: ${String(scheduleFields.scheduleActivationAt ?? "")}.`);
+        notes.push(`Fecha y hora de recogida agendada: ${String(scheduleFields.scheduledAt ?? "")}.`);
+        notes.push(`Viaje agendado para: ${formatScheduleDateTime(String(scheduleFields.scheduledAt ?? scheduledAt))}.`);
+        notes.push(`La solicitud se activa automáticamente ${SCHEDULE_ACTIVATION_MINUTES} minutos antes: ${formatScheduleDateTime(String(scheduleFields.scheduleActivationAt ?? ""))}.`);
+        notes.push(`Reserva congelada para conductores hasta: ${String(scheduleFields.scheduleActivationAt ?? "")}.`);
+        notes.push(`Gestión administrador: visible desde ahora, activar conductor ${SCHEDULE_ACTIVATION_MINUTES} minutos antes.`);
+        notes.push(`Tipo de reserva: recogida aeropuerto.`);
+        notes.push(`Origen automático aeropuerto: ${RAPA_NUI_AIRPORT_DESTINATION.text}.`);
+        notes.push(`RAPAGO_AIRPORT_ORIGIN_LAT: ${RAPA_NUI_AIRPORT_DESTINATION.lat}.`);
+        notes.push(`RAPAGO_AIRPORT_ORIGIN_LNG: ${RAPA_NUI_AIRPORT_DESTINATION.lng}.`);
+
+        if (effectiveTripFareMode === "round_trip" && returnScheduledAt) {
+          notes.push(`RAPAGO_RETURN_SCHEDULED_AT: ${String(scheduleFields.returnScheduledAt ?? "")}.`);
+          notes.push(`Fecha y hora de regreso agendada: ${String(scheduleFields.returnScheduledAt ?? "")}.`);
+          notes.push(`Regreso agendado para: ${formatScheduleDateTime(String(scheduleFields.returnScheduledAt ?? returnScheduledAt))}.`);
+        }
 
         if (flightNumber.trim()) {
           notes.push(`Número de vuelo: ${flightNumber.trim()}.`);
+        }
+
+        if (airportWelcomeOption === "flower_lei") {
+          notes.push("Servicio opcional aeropuerto: collar de flores Rapa Nui solicitado.");
+          notes.push("Recibimiento solicitado: collar de flores al llegar.");
+        } else {
+          notes.push("Servicio opcional aeropuerto: solo recogida, sin collar de flores.");
         }
       }
 
@@ -2878,11 +4142,22 @@ export default function RequestRidePage(): JSX.Element {
         notes.push(notesInput.trim());
       }
 
-      if (fareQuote && selectedFareAmount != null) {
+      if (!selectedRoundTripPromotion && fareQuote && selectedFareAmount != null) {
         notes.push(`Tarifa RAPA GO calculada: ${formatCLP(selectedFareAmount)}.`);
         notes.push(`Tarifa estimada pasajero: ${formatCLP(selectedFareAmount)}.`);
         notes.push(`Distancia estimada: ${fareQuote.km.toFixed(1)} km.`);
         notes.push(`Duración estimada: ${fareQuote.minutes} min.`);
+        notes.push(`Tipo de cálculo tarifario: ${fareQuote.calculationType === "fixed" ? "tarifa fija" : fareQuote.ruralKm > 0 ? "urbano/rural" : "urbano"}.`);
+        notes.push(`Tipo de viaje tarifario: ${tripFareModeLabel(effectiveTripFareMode)}.`);
+        notes.push(`Tipo de pasajero tarifario: ${passengerFareTypeLabel(fareQuote.passengerFareType)}.`);
+        if (fareQuote.tripMultiplier > 1) {
+          notes.push(`Ida y vuelta variable: tarifa ida ${formatCLP(fareQuote.oneWayFare)} x ${fareQuote.tripMultiplier}.`);
+        }
+        notes.push(`Tramo urbano calculado: ${fareQuote.urbanKm.toFixed(1)} km hasta límite ${fareQuote.urbanLimitKm.toFixed(1)} km.`);
+        if (fareQuote.ruralKm > 0) {
+          notes.push(`Tramo rural calculado: ${fareQuote.ruralKm.toFixed(1)} km con descuento rural ${fareQuote.ruralDiscountPercent}%.`);
+          notes.push(`KM urbano ajustado: ${formatCLP(fareQuote.urbanKmFare)}. KM rural corregido: ${formatCLP(fareQuote.ruralKmFare)}.`);
+        }
         if (selectedDriverEarning != null) {
           notes.push(`Ganancia estimada conductor: ${formatCLP(selectedDriverEarning)}.`);
         }
@@ -2901,15 +4176,41 @@ export default function RequestRidePage(): JSX.Element {
           fareVehicleCategory?: VehicleCategory;
           vehicleCategory?: VehicleCategory;
           paymentMethod?: string;
+          tripFareMode?: TripFareMode;
+          tripType?: string;
+          isRoundTrip?: boolean;
         }).estimatedFareClp = selectedFareAmount;
         (input as CreateRideInput & {
           passengerFareType?: PassengerFareType;
           farePassengerType?: PassengerFareType;
-        }).passengerFareType = passengerFareType;
+        }).passengerFareType = effectivePassengerFareType;
         (input as CreateRideInput & {
           passengerFareType?: PassengerFareType;
           farePassengerType?: PassengerFareType;
-        }).farePassengerType = passengerFareType;
+        }).farePassengerType = effectivePassengerFareType;
+        (input as CreateRideInput & {
+          passengerFareLabel?: string;
+          nationality?: string;
+          isResident?: boolean;
+          requestedByRole?: string;
+          requesterRole?: string;
+        }).passengerFareLabel = passengerFareTypeLabel(effectivePassengerFareType);
+        (input as CreateRideInput & {
+          passengerFareLabel?: string;
+          nationality?: string;
+          isResident?: boolean;
+          requestedByRole?: string;
+          requesterRole?: string;
+        }).nationality = passengerFareTypeLabel(effectivePassengerFareType);
+        (input as CreateRideInput & {
+          passengerFareLabel?: string;
+          nationality?: string;
+          isResident?: boolean;
+          requestedByRole?: string;
+          requesterRole?: string;
+        }).isResident = effectivePassengerFareType === "resident";
+        (input as CreateRideInput & { requestedByRole?: string; requesterRole?: string }).requestedByRole = "passenger";
+        (input as CreateRideInput & { requestedByRole?: string; requesterRole?: string }).requesterRole = "passenger";
         (input as CreateRideInput & {
           fareVehicleCategory?: VehicleCategory;
           vehicleCategory?: VehicleCategory;
@@ -2918,17 +4219,78 @@ export default function RequestRidePage(): JSX.Element {
           fareVehicleCategory?: VehicleCategory;
           vehicleCategory?: VehicleCategory;
         }).vehicleCategory = vehicleCategory;
-        (input as CreateRideInput & { paymentMethod?: string }).paymentMethod = "cash";
+        (input as CreateRideInput & { paymentMethod?: string }).paymentMethod = activePaymentMethod;
+        (input as CreateRideInput & { tripFareMode?: TripFareMode }).tripFareMode = effectiveTripFareMode;
+        (input as CreateRideInput & { tripType?: string }).tripType = effectiveTripFareMode;
+        (input as CreateRideInput & { isRoundTrip?: boolean }).isRoundTrip = effectiveTripFareMode === "round_trip";
+      }
+
+      Object.assign(input as CreateRideInput & Record<string, unknown>, scheduleFields);
+      if (rideMode === "scheduled") {
+        (input as CreateRideInput & Record<string, unknown>).airportWelcomeOption = airportWelcomeOption;
+        (input as CreateRideInput & Record<string, unknown>).flowerLeiRequested = airportWelcomeOption === "flower_lei";
       }
 
       if (notes.length > 0) {
         input.notes = limitRideNotes(notes.join(" "));
       }
 
-      await ridesService.createRideRequest(
+      const createdRideResponse = await ridesService.createRideRequest(
         session.accessToken,
         input,
       );
+
+      const createdRideId = extractRideRequestIdFromResponse(createdRideResponse);
+
+      if (rideMode === "scheduled") {
+        upsertLocalAdminScheduledRide(createLocalAdminScheduledRide({
+          originText: resolved.origin.text,
+          destinationText: resolved.destination.text,
+          notes: input.notes ?? null,
+          estimatedFareClp: selectedFareAmount ?? null,
+          rideMode,
+          tripFareMode: effectiveTripFareMode,
+          scheduledAt,
+          returnScheduledAt,
+          passengerName: getSessionDisplayName(session.user),
+          passengerEmail: getSessionEmail(session.user),
+          passengerFareType: effectivePassengerFareType,
+          passengerFareLabel: passengerFareTypeLabel(effectivePassengerFareType),
+          airportWelcomeOption: rideMode === "scheduled" ? airportWelcomeOption : null,
+          flowerLeiRequested: rideMode === "scheduled" && airportWelcomeOption === "flower_lei",
+        }));
+      }
+
+      if (activePaymentMethod === "card") {
+        if (!createdRideId) {
+          throw new Error("El viaje se creó, pero no se pudo obtener el ID para iniciar MercadoPago.");
+        }
+
+        const payment = await createMercadoPagoCheckout({
+          accessToken: session.accessToken,
+          rideRequestId: createdRideId,
+        });
+
+        try {
+          localStorage.setItem(
+            "rapago_pending_card_payment_v1",
+            JSON.stringify({
+              rideRequestId: createdRideId,
+              paymentId: payment.paymentId,
+              amountClp: selectedFareAmount,
+              provider: "mercadopago",
+              createdAt: new Date().toISOString(),
+              originText: resolved.origin.text,
+              destinationText: resolved.destination.text,
+            }),
+          );
+        } catch {
+          // No bloquea la redirección a MercadoPago.
+        }
+
+        window.location.href = payment.urlPay;
+        return;
+      }
 
       setOriginPoint(null);
       setDestinationPoint(null);
@@ -2936,10 +4298,14 @@ export default function RequestRidePage(): JSX.Element {
       setDestInput("");
       setNotesInput("");
       setScheduledAt("");
+      setReturnScheduledAt("");
       setFlightNumber("");
+      setAirportWelcomeOption("none");
       setOriginSuggestions([]);
       setDestSuggestions([]);
       setRideMode("now");
+      setTripFareMode("one_way");
+      setSelectedRoundTripPromotionId(null);
       setPaymentMethod(null);
       setShowPaymentBox(false);
       setVehicleCategory("standard");
@@ -2949,16 +4315,61 @@ export default function RequestRidePage(): JSX.Element {
       const message = err instanceof Error ? err.message : "Error al solicitar el viaje.";
 
       if (isPassengerRolePermissionMessage(message)) {
+        if (activePaymentMethod === "card") {
+          setSubmitError("Para pagar con tarjeta debes estar conectado como pasajero real en la API. Inicia sesión de nuevo y vuelve a intentar.");
+          return;
+        }
+
         const localNotes: string[] = [];
 
         localNotes.push(`Forma de pago seleccionada: ${getPaymentLabel(activePaymentMethod)}.`);
         localNotes.push(`Categoría de vehículo seleccionada: ${vehicleCategoryLabel(vehicleCategory)}.`);
+        localNotes.push(`Tipo de viaje seleccionado: ${tripFareModeLabel(effectiveTripFareMode)}.`);
+        if (selectedRoundTripPromotion) {
+          localNotes.push(`Promoción ida y vuelta seleccionada: ${selectedRoundTripPromotion.title}.`);
+          localNotes.push(`Destino promocional: ${selectedRoundTripPromotion.destinationName}.`);
+          localNotes.push(`Tarifa fija base promoción: ${formatCLP(selectedRoundTripPromotion.baseFareClp)} (${selectedRoundTripPromotion.usdLabel}).`);
+          localNotes.push(`Tarifa RAPA GO calculada: ${formatCLP(selectedRoundTripPromotion.fareClp)}.`);
+          localNotes.push(`Tarifa estimada pasajero: ${formatCLP(selectedRoundTripPromotion.fareClp)}.`);
+          if (selectedRoundTripPromotion.chargeLabel) localNotes.push(selectedRoundTripPromotion.chargeLabel + ".");
+          localNotes.push(selectedRoundTripPromotion.detail);
+        }
+
+        const localScheduleFields = buildRideScheduleFields({
+          rideMode,
+          tripFareMode: effectiveTripFareMode,
+          scheduledAt,
+          returnScheduledAt,
+        });
 
         if (rideMode === "scheduled") {
-          localNotes.push(`Viaje programado para: ${scheduledAt}.`);
+          localNotes.push(`RAPAGO_SCHEDULED_AT: ${String(localScheduleFields.scheduledAt ?? "")}.`);
+          localNotes.push(`RAPAGO_ACTIVATION_AT: ${String(localScheduleFields.scheduleActivationAt ?? "")}.`);
+          localNotes.push(`Fecha y hora de recogida agendada: ${String(localScheduleFields.scheduledAt ?? "")}.`);
+          localNotes.push(`Viaje agendado para: ${formatScheduleDateTime(String(localScheduleFields.scheduledAt ?? scheduledAt))}.`);
+          localNotes.push(`La solicitud se activa automáticamente ${SCHEDULE_ACTIVATION_MINUTES} minutos antes: ${formatScheduleDateTime(String(localScheduleFields.scheduleActivationAt ?? ""))}.`);
+          localNotes.push(`Reserva congelada para conductores hasta: ${String(localScheduleFields.scheduleActivationAt ?? "")}.`);
+          localNotes.push(`Gestión administrador: visible desde ahora, activar conductor ${SCHEDULE_ACTIVATION_MINUTES} minutos antes.`);
+          localNotes.push(`Tipo de reserva: recogida aeropuerto.`);
+          localNotes.push(`Origen automático aeropuerto: ${RAPA_NUI_AIRPORT_DESTINATION.text}.`);
+          localNotes.push(`RAPAGO_AIRPORT_ORIGIN_LAT: ${RAPA_NUI_AIRPORT_DESTINATION.lat}.`);
+          localNotes.push(`RAPAGO_AIRPORT_ORIGIN_LNG: ${RAPA_NUI_AIRPORT_DESTINATION.lng}.`);
+
+          if (effectiveTripFareMode === "round_trip" && returnScheduledAt) {
+            localNotes.push(`RAPAGO_RETURN_SCHEDULED_AT: ${String(localScheduleFields.returnScheduledAt ?? "")}.`);
+            localNotes.push(`Fecha y hora de regreso agendada: ${String(localScheduleFields.returnScheduledAt ?? "")}.`);
+            localNotes.push(`Regreso agendado para: ${formatScheduleDateTime(String(localScheduleFields.returnScheduledAt ?? returnScheduledAt))}.`);
+          }
 
           if (flightNumber.trim()) {
             localNotes.push(`Número de vuelo: ${flightNumber.trim()}.`);
+          }
+
+          if (airportWelcomeOption === "flower_lei") {
+            localNotes.push("Servicio opcional aeropuerto: collar de flores Rapa Nui solicitado.");
+            localNotes.push("Recibimiento solicitado: collar de flores al llegar.");
+          } else {
+            localNotes.push("Servicio opcional aeropuerto: solo recogida, sin collar de flores.");
           }
         }
 
@@ -2990,11 +4401,16 @@ export default function RequestRidePage(): JSX.Element {
           localNotes.push(notesInput.trim());
         }
 
-        if (fareQuote && selectedFareAmount != null) {
+        if (!selectedRoundTripPromotion && fareQuote && selectedFareAmount != null) {
           localNotes.push(`Tarifa RAPA GO calculada: ${formatCLP(selectedFareAmount)}.`);
           localNotes.push(`Tarifa estimada pasajero: ${formatCLP(selectedFareAmount)}.`);
           localNotes.push(`Distancia estimada: ${fareQuote.km.toFixed(1)} km.`);
           localNotes.push(`Duración estimada: ${fareQuote.minutes} min.`);
+          localNotes.push(`Tipo de viaje tarifario: ${tripFareModeLabel(effectiveTripFareMode)}.`);
+          localNotes.push(`Tipo de pasajero tarifario: ${passengerFareTypeLabel(fareQuote.passengerFareType)}.`);
+          if (fareQuote.tripMultiplier > 1) {
+            localNotes.push(`Ida y vuelta variable: tarifa ida ${formatCLP(fareQuote.oneWayFare)} x ${fareQuote.tripMultiplier}.`);
+          }
 
           if (selectedDriverEarning != null) {
             localNotes.push(`Ganancia estimada conductor: ${formatCLP(selectedDriverEarning)}.`);
@@ -3006,9 +4422,38 @@ export default function RequestRidePage(): JSX.Element {
           destinationText: resolved.destination.text,
           notes: limitRideNotes(localNotes.join(" ")),
           estimatedFareClp: selectedFareAmount ?? null,
+          rideMode,
+          tripFareMode: effectiveTripFareMode,
+          scheduledAt,
+          returnScheduledAt,
+          passengerName: getSessionDisplayName(session.user),
+          passengerEmail: getSessionEmail(session.user),
+          passengerFareType: effectivePassengerFareType,
+          passengerFareLabel: passengerFareTypeLabel(effectivePassengerFareType),
+          airportWelcomeOption: rideMode === "scheduled" ? airportWelcomeOption : null,
+          flowerLeiRequested: rideMode === "scheduled" && airportWelcomeOption === "flower_lei",
         });
 
         saveLocalPassengerRides([localRide, ...readLocalPassengerRides()]);
+
+        if (rideMode === "scheduled") {
+          upsertLocalAdminScheduledRide(createLocalAdminScheduledRide({
+            originText: resolved.origin.text,
+            destinationText: resolved.destination.text,
+            notes: limitRideNotes(localNotes.join(" ")),
+            estimatedFareClp: selectedFareAmount ?? null,
+            rideMode,
+            tripFareMode: effectiveTripFareMode,
+            scheduledAt,
+            returnScheduledAt,
+            passengerName: getSessionDisplayName(session.user),
+            passengerEmail: getSessionEmail(session.user),
+            passengerFareType: effectivePassengerFareType,
+            passengerFareLabel: passengerFareTypeLabel(effectivePassengerFareType),
+            airportWelcomeOption: rideMode === "scheduled" ? airportWelcomeOption : null,
+            flowerLeiRequested: rideMode === "scheduled" && airportWelcomeOption === "flower_lei",
+          }));
+        }
 
         setOriginPoint(null);
         setDestinationPoint(null);
@@ -3016,10 +4461,14 @@ export default function RequestRidePage(): JSX.Element {
         setDestInput("");
         setNotesInput("");
         setScheduledAt("");
+        setReturnScheduledAt("");
         setFlightNumber("");
+        setAirportWelcomeOption("none");
         setOriginSuggestions([]);
         setDestSuggestions([]);
         setRideMode("now");
+        setTripFareMode("one_way");
+        setSelectedRoundTripPromotionId(null);
         setPaymentMethod(null);
         setShowPaymentBox(false);
         setVehicleCategory("standard");
@@ -3036,21 +4485,36 @@ export default function RequestRidePage(): JSX.Element {
 
   const canRequest = ((!!originPoint || !!originInput.trim()) &&
     (!!destinationPoint || !!destInput.trim()) &&
-    (rideMode === "now" || !!scheduledAt) &&
-    !submitting) && paymentMethod === "cash";
+    (rideMode === "now" || (!!scheduledAt && (!requireReturnScheduledAt || !!returnScheduledAt))) &&
+    !submitting) && paymentMethod !== null;
 
   const mapOrigin = useMemo(
-    () => ({
-      text: originPoint?.text ?? originInput.trim() ?? "Origen",
-      lat: originPoint?.lat ?? null,
-      lng: originPoint?.lng ?? null,
-      placeId: originPoint?.placeId ?? null,
-      originalLat: originPoint?.originalLat ?? null,
-      originalLng: originPoint?.originalLng ?? null,
-      walkMeters: originPoint?.walkMeters ?? null,
-      isAccessiblePickup: originPoint?.isAccessiblePickup ?? null,
-    }),
-    [originInput, originPoint],
+    () => {
+      if (rideMode === "scheduled") {
+        return {
+          text: RAPA_NUI_AIRPORT_DESTINATION.text,
+          lat: RAPA_NUI_AIRPORT_DESTINATION.lat,
+          lng: RAPA_NUI_AIRPORT_DESTINATION.lng,
+          placeId: RAPA_NUI_AIRPORT_DESTINATION.placeId ?? null,
+          originalLat: null,
+          originalLng: null,
+          walkMeters: 0,
+          isAccessiblePickup: false,
+        };
+      }
+
+      return {
+        text: originPoint?.text ?? originInput.trim() ?? "Origen",
+        lat: originPoint?.lat ?? null,
+        lng: originPoint?.lng ?? null,
+        placeId: originPoint?.placeId ?? null,
+        originalLat: originPoint?.originalLat ?? null,
+        originalLng: originPoint?.originalLng ?? null,
+        walkMeters: originPoint?.walkMeters ?? null,
+        isAccessiblePickup: originPoint?.isAccessiblePickup ?? null,
+      };
+    },
+    [rideMode, originInput, originPoint],
   );
 
   const mapDestination = useMemo(
@@ -3069,6 +4533,14 @@ export default function RequestRidePage(): JSX.Element {
       : pickerTarget === "destination"
         ? destinationPoint
         : null;
+
+  const scheduleMinInput = toDateTimeLocalValue(
+    new Date(Date.now() + SCHEDULE_MIN_MINUTES * 60_000),
+  );
+  const scheduleMaxInput = toDateTimeLocalValue(
+    new Date(Date.now() + SCHEDULE_MAX_DAYS * 24 * 60 * 60_000),
+  );
+
 return (
     <IonPage>
       <IonHeader>
@@ -3092,7 +4564,7 @@ return (
             destination={mapDestination}
             height={320}
             showRoute
-            originDraggable
+            originDraggable={rideMode !== "scheduled"}
             onOriginChange={(payload) => {
               void applyMovedOriginFromMap(payload);
             }}
@@ -3112,14 +4584,21 @@ return (
                 value={originInput}
                 placeholder="¿Dónde te recogemos?"
                 onIonFocus={() => {
+                  if (rideMode === "scheduled") return;
                   if (suppressPickerOpenRef.current) return;
                   setPickerTarget("origin");
                 }}
                 onIonInput={(event) => {
+                  if (rideMode === "scheduled") {
+                    applyRapaNuiAirportOrigin();
+                    return;
+                  }
+
                   setOriginInput(String(event.detail.value ?? ""));
                   setOriginPoint(null);
-                              }}
-                clearInput
+                }}
+                readonly={rideMode === "scheduled"}
+                clearInput={rideMode !== "scheduled"}
               />
               {searchingOrigin && <IonSpinner name="dots" slot="end" />}
             </IonItem>
@@ -3149,49 +4628,65 @@ return (
               </div>
             )}
 
-            <IonButton
-              fill="clear"
-              size="small"
-              onClick={() => {
-                if (suppressPickerOpenRef.current) return;
-                setPickerTarget("origin");
-              }}
-              style={
-                {
-                  margin: "-4px 0 10px",
-                  "--color": "#D2A43A",
-                  fontWeight: 900,
-                  letterSpacing: ".02em",
-                } as CSSProperties
-              }
-            >
-              <IonIcon icon={navigateOutline} slot="start" />
-              Elegir punto en el mapa
-            </IonButton>
-
-            <IonButton
-              fill="clear"
-              size="small"
-              onClick={handleUseCurrentLocation}
-              disabled={locating}
-              style={
-                {
+            {rideMode === "scheduled" ? (
+              <div
+                style={{
                   margin: "-4px 0 22px",
-                  "--color": "#D2A43A",
-                  fontWeight: 900,
-                  letterSpacing: ".02em",
-                } as CSSProperties
-              }
-            >
-              {locating ? (
-                <IonSpinner name="dots" />
-              ) : (
-                <>
-                  <IonIcon icon={locateOutline} slot="start" />
-                  Usar mi ubicación actual
-                </>
-              )}
-            </IonButton>
+                  color: "#D2A43A",
+                  fontSize: ".78rem",
+                  fontWeight: 950,
+                  lineHeight: 1.35,
+                }}
+              >
+                ✈️ Origen fijo: Aeropuerto Rapa Nui. El pasajero elige el destino.
+              </div>
+            ) : (
+              <>
+                <IonButton
+                  fill="clear"
+                  size="small"
+                  onClick={() => {
+                    if (suppressPickerOpenRef.current) return;
+                    setPickerTarget("origin");
+                  }}
+                  style={
+                    {
+                      margin: "-4px 0 10px",
+                      "--color": "#D2A43A",
+                      fontWeight: 900,
+                      letterSpacing: ".02em",
+                    } as CSSProperties
+                  }
+                >
+                  <IonIcon icon={navigateOutline} slot="start" />
+                  Elegir punto en el mapa
+                </IonButton>
+
+                <IonButton
+                  fill="clear"
+                  size="small"
+                  onClick={handleUseCurrentLocation}
+                  disabled={locating}
+                  style={
+                    {
+                      margin: "-4px 0 22px",
+                      "--color": "#D2A43A",
+                      fontWeight: 900,
+                      letterSpacing: ".02em",
+                    } as CSSProperties
+                  }
+                >
+                  {locating ? (
+                    <IonSpinner name="dots" />
+                  ) : (
+                    <>
+                      <IonIcon icon={locateOutline} slot="start" />
+                      Usar mi ubicación actual
+                    </>
+                  )}
+                </IonButton>
+              </>
+            )}
 
             <div style={sectionLabelStyle()}>Destino</div>
 
@@ -3207,7 +4702,7 @@ return (
                 onIonInput={(event) => {
                   setDestInput(String(event.detail.value ?? ""));
                   setDestinationPoint(null);
-                              }}
+                }}
                 clearInput
               />
               {searchingDest && <IonSpinner name="dots" slot="end" />}
@@ -3235,15 +4730,15 @@ return (
               }
             >
               <IonIcon icon={flagOutline} slot="start" />
-              Elegir destino en el mapa
+              {rideMode === "scheduled" ? "Elegir destino desde el aeropuerto" : "Elegir destino en el mapa"}
             </IonButton>
 
-            <div style={sectionLabelStyle()}>Tipo de viaje</div>
+            <div style={sectionLabelStyle()}>Cuándo viajas</div>
 
             <div
               style={{
                 display: "grid",
-                gridTemplateColumns: "1fr",
+                gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
                 marginBottom: "18px",
               }}
             >
@@ -3251,6 +4746,9 @@ return (
                 type="button"
                 onClick={() => {
                   setRideMode("now");
+                  setScheduledAt("");
+                  setReturnScheduledAt("");
+                  setAirportWelcomeOption("none");
                   setSubmitError(null);
                 }}
                 style={{
@@ -3271,6 +4769,12 @@ return (
                 type="button"
                 onClick={() => {
                   setRideMode("scheduled");
+                  clearRoundTripPromotion();
+                  setTripFareMode("one_way");
+                  applyRapaNuiAirportOrigin();
+                  setDestinationPoint(null);
+                  setDestInput("");
+                  setDestSuggestions([]);
                   setSubmitError(null);
                 }}
                 style={{
@@ -3287,7 +4791,58 @@ return (
                   letterSpacing: ".03em",
                 }}
               >
-                PROGRAMAR
+                AGENDAR
+              </button>
+            </div>
+
+            <div style={sectionLabelStyle()}>Tipo de viaje opcional</div>
+
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "1fr",
+                gap: "8px",
+                marginBottom: "18px",
+              }}
+            >
+              <button
+                type="button"
+                onClick={() => {
+                  clearRoundTripPromotion();
+                }}
+                style={{
+                  border: !selectedRoundTripPromotion
+                    ? "2.5px solid #F8D879"
+                    : "1.5px solid rgba(210,164,58,.28)",
+                  borderRadius: "16px",
+                  minHeight: "72px",
+                  padding: "10px 12px",
+                  background: !selectedRoundTripPromotion
+                    ? "linear-gradient(135deg,#D2A43A 0%,#F8D879 100%)"
+                    : "linear-gradient(135deg,#242424 0%,#171717 100%)",
+                  color: !selectedRoundTripPromotion ? "#111111" : "#F6F2EC",
+                  boxShadow: !selectedRoundTripPromotion
+                    ? "0 12px 24px rgba(210,164,58,.28)"
+                    : "0 8px 16px rgba(0,0,0,.18)",
+                  fontWeight: 950,
+                  textAlign: "center",
+                }}
+              >
+                <div style={{ fontSize: "1.25rem", lineHeight: 1 }}>➡️</div>
+                <div style={{ marginTop: 6, fontSize: ".86rem", lineHeight: 1.15 }}>
+                  Solo ida
+                </div>
+                <div
+                  style={{
+                    marginTop: 4,
+                    fontSize: ".68rem",
+                    lineHeight: 1.18,
+                    opacity: !selectedRoundTripPromotion ? 0.82 : 0.62,
+                    fontWeight: 800,
+                  }}
+                >
+                  Viaje normal. Las promociones ida y vuelta están abajo.
+                </div>
               </button>
             </div>
 
@@ -3352,6 +4907,339 @@ return (
               })}
             </div>
 
+            {rideMode === "now" && (
+              <>
+            <div style={sectionLabelStyle()}>Promociones ida y vuelta</div>
+
+            <div
+              style={{
+                margin: "0 0 18px",
+                border: "1.5px solid rgba(248,216,121,.32)",
+                borderRadius: "24px",
+                background:
+                  "radial-gradient(circle at top left, rgba(248,216,121,.20), transparent 34%), linear-gradient(145deg,#191919 0%,#0d0d0d 72%)",
+                padding: "14px",
+                boxShadow: "0 18px 42px rgba(0,0,0,.34)",
+                overflow: "hidden",
+                position: "relative",
+              }}
+            >
+              <div
+                style={{
+                  position: "absolute",
+                  right: -28,
+                  top: -34,
+                  width: 120,
+                  height: 120,
+                  borderRadius: "50%",
+                  background: "rgba(248,216,121,.12)",
+                  filter: "blur(2px)",
+                  pointerEvents: "none",
+                }}
+              />
+
+              <div
+                style={{
+                  position: "relative",
+                  display: "flex",
+                  justifyContent: "space-between",
+                  gap: 12,
+                  alignItems: "flex-start",
+                  marginBottom: 12,
+                }}
+              >
+                <div style={{ minWidth: 0 }}>
+                  <div
+                    style={{
+                      color: "#F8D879",
+                      fontSize: ".72rem",
+                      fontWeight: 950,
+                      letterSpacing: ".06em",
+                      textTransform: "uppercase",
+                    }}
+                  >
+                    Ofertas destacadas
+                  </div>
+                  <div
+                    style={{
+                      color: "#F6F2EC",
+                      fontSize: "1.08rem",
+                      fontWeight: 950,
+                      lineHeight: 1.1,
+                      marginTop: 4,
+                    }}
+                  >
+                    Ida y vuelta con precio cerrado
+                  </div>
+                  <div
+                    style={{
+                      color: "rgba(246,242,236,.70)",
+                      fontSize: ".73rem",
+                      lineHeight: 1.35,
+                      fontWeight: 800,
+                      marginTop: 6,
+                    }}
+                  >
+                    Promociones disponibles para {passengerFareTypeLabel(passengerFareType)}. El destino se completa solo y tú eliges el punto de recogida.
+                  </div>
+                </div>
+
+                <span
+                  style={{
+                    flex: "0 0 auto",
+                    borderRadius: 999,
+                    padding: "6px 10px",
+                    background: "linear-gradient(135deg,#F8D879 0%,#D2A43A 100%)",
+                    color: "#111111",
+                    fontSize: ".66rem",
+                    fontWeight: 950,
+                    boxShadow: "0 8px 18px rgba(210,164,58,.28)",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  Tarifa fija
+                </span>
+              </div>
+
+              {roundTripPromotions.length === 0 ? (
+                <div
+                  style={{
+                    position: "relative",
+                    border: "1px dashed rgba(248,216,121,.28)",
+                    borderRadius: "18px",
+                    padding: "14px",
+                    color: "rgba(246,242,236,.72)",
+                    fontSize: ".76rem",
+                    lineHeight: 1.35,
+                    fontWeight: 850,
+                    background: "rgba(255,255,255,.035)",
+                  }}
+                >
+                  Por ahora no hay promociones ida y vuelta activas para tu perfil.
+                </div>
+              ) : (
+                <div style={{ position: "relative", display: "grid", gridTemplateColumns: "1fr", gap: 11 }}>
+                  {roundTripPromotions.map((promotion) => {
+                    const active = selectedRoundTripPromotion?.id === promotion.id;
+                    const destinationKey = String(promotion.destinationName ?? "").toLowerCase();
+                    const promoIcon = destinationKey.includes("anakena")
+                      ? "🏝️"
+                      : destinationKey.includes("terevaka")
+                        ? "⛰️"
+                        : "🚗";
+                    const promoTitle = destinationKey.includes("anakena")
+                      ? "Escapada a Anakena"
+                      : destinationKey.includes("terevaka")
+                        ? "Subida a Terevaka"
+                        : promotion.destinationName;
+                    const priceChanged = Number(promotion.baseFareClp) !== Number(promotion.fareClp);
+
+                    return (
+                      <button
+                        key={promotion.id}
+                        type="button"
+                        onClick={() => void handleSelectRoundTripPromotion(promotion)}
+                        style={{
+                          width: "100%",
+                          border: active
+                            ? "2.5px solid #F8D879"
+                            : "1.5px solid rgba(248,216,121,.28)",
+                          borderRadius: "22px",
+                          background: active
+                            ? "linear-gradient(135deg,#F8D879 0%,#E7BC50 55%,#C99320 100%)"
+                            : "linear-gradient(135deg,rgba(255,255,255,.08) 0%,rgba(255,255,255,.035) 100%)",
+                          color: active ? "#111111" : "#F6F2EC",
+                          padding: "14px",
+                          textAlign: "left",
+                          boxShadow: active
+                            ? "0 18px 34px rgba(210,164,58,.36)"
+                            : "0 10px 24px rgba(0,0,0,.24)",
+                          fontWeight: 900,
+                          overflow: "hidden",
+                          position: "relative",
+                        }}
+                      >
+                        <div
+                          style={{
+                            position: "absolute",
+                            right: -18,
+                            bottom: -24,
+                            fontSize: "4.8rem",
+                            opacity: active ? .16 : .10,
+                            transform: "rotate(-8deg)",
+                            pointerEvents: "none",
+                          }}
+                        >
+                          {promoIcon}
+                        </div>
+
+                        <div
+                          style={{
+                            position: "relative",
+                            display: "flex",
+                            justifyContent: "space-between",
+                            gap: 12,
+                            alignItems: "flex-start",
+                          }}
+                        >
+                          <div style={{ display: "flex", gap: 10, minWidth: 0 }}>
+                            <div
+                              style={{
+                                width: 42,
+                                height: 42,
+                                borderRadius: 16,
+                                background: active ? "rgba(17,17,17,.12)" : "rgba(248,216,121,.12)",
+                                display: "flex",
+                                alignItems: "center",
+                                justifyContent: "center",
+                                fontSize: "1.35rem",
+                                flex: "0 0 auto",
+                              }}
+                            >
+                              {promoIcon}
+                            </div>
+
+                            <div style={{ minWidth: 0 }}>
+                              <div style={{ fontSize: "1.02rem", lineHeight: 1.05, fontWeight: 950 }}>
+                                {promoTitle}
+                              </div>
+                              <div
+                                style={{
+                                  marginTop: 5,
+                                  fontSize: ".72rem",
+                                  lineHeight: 1.25,
+                                  fontWeight: 850,
+                                  opacity: active ? .82 : .70,
+                                }}
+                              >
+                                {promotion.destinationName} · Ida y vuelta
+                              </div>
+                              <div
+                                style={{
+                                  marginTop: 4,
+                                  fontSize: ".68rem",
+                                  lineHeight: 1.2,
+                                  fontWeight: 850,
+                                  opacity: active ? .76 : .58,
+                                }}
+                              >
+                                Especial para {promotion.passengerLabel}
+                              </div>
+                            </div>
+                          </div>
+
+                          <div
+                            style={{
+                              textAlign: "right",
+                              flex: "0 0 auto",
+                              padding: "4px 0 0",
+                            }}
+                          >
+                            <div style={{ fontSize: "1.15rem", fontWeight: 950, lineHeight: 1 }}>
+                              {formatCLP(promotion.fareClp)}
+                            </div>
+                            <div style={{ fontSize: ".70rem", fontWeight: 900, opacity: .78, marginTop: 3 }}>
+                              {promotion.usdLabel}
+                            </div>
+                          </div>
+                        </div>
+
+                        <div
+                          style={{
+                            position: "relative",
+                            marginTop: 12,
+                            display: "flex",
+                            gap: 7,
+                            flexWrap: "wrap",
+                            alignItems: "center",
+                          }}
+                        >
+                          <span
+                            style={{
+                              borderRadius: 999,
+                              padding: "5px 8px",
+                              fontSize: ".63rem",
+                              background: active ? "rgba(17,17,17,.14)" : "rgba(34,197,94,.14)",
+                              color: active ? "#111111" : "#86efac",
+                              fontWeight: 950,
+                            }}
+                          >
+                            Destino automático
+                          </span>
+                          <span
+                            style={{
+                              borderRadius: 999,
+                              padding: "5px 8px",
+                              fontSize: ".63rem",
+                              background: active ? "rgba(17,17,17,.12)" : "rgba(248,216,121,.12)",
+                              color: active ? "#111111" : "#F8D879",
+                              fontWeight: 950,
+                            }}
+                          >
+                            Recogida a elección
+                          </span>
+                          {priceChanged && (
+                            <span
+                              style={{
+                                borderRadius: 999,
+                                padding: "5px 8px",
+                                fontSize: ".63rem",
+                                background: active ? "rgba(17,17,17,.10)" : "rgba(255,255,255,.06)",
+                                color: active ? "#111111" : "rgba(246,242,236,.75)",
+                                fontWeight: 950,
+                              }}
+                            >
+                              Precio final aplicado
+                            </span>
+                          )}
+                        </div>
+
+                        <div
+                          style={{
+                            position: "relative",
+                            marginTop: 12,
+                            borderTop: active ? "1px solid rgba(17,17,17,.16)" : "1px solid rgba(255,255,255,.08)",
+                            paddingTop: 10,
+                            display: "flex",
+                            justifyContent: "space-between",
+                            gap: 10,
+                            alignItems: "center",
+                            fontSize: ".72rem",
+                            fontWeight: 950,
+                            opacity: active ? .86 : .72,
+                          }}
+                        >
+                          <span>
+                            {active ? "Promoción seleccionada" : "Toca para elegir esta promo"}
+                          </span>
+                          <span aria-hidden="true">→</span>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+
+              {selectedRoundTripPromotion && (
+                <IonButton
+                  expand="block"
+                  fill="clear"
+                  onClick={clearRoundTripPromotion}
+                  style={
+                    {
+                      "--color": "#F8D879",
+                      marginTop: "12px",
+                      fontWeight: 950,
+                    } as CSSProperties
+                  }
+                >
+                  Quitar promoción y volver a solo ida
+                </IonButton>
+              )}
+            </div>
+              </>
+            )}
+
             {rideMode === "scheduled" && (
               <div
                 style={{
@@ -3370,7 +5258,7 @@ return (
                     textTransform: "uppercase",
                   }}
                 >
-                  Fecha y hora de recogida
+                  Agenda tu recogida para aeropuerto
                 </div>
 
                 <IonItem
@@ -3390,6 +5278,8 @@ return (
                   <IonInput
                     type="datetime-local"
                     value={scheduledAt}
+                    min={scheduleMinInput}
+                    max={scheduleMaxInput}
                     onIonInput={(event) =>
                       setScheduledAt(String(event.detail.value ?? ""))
                     }
@@ -3403,8 +5293,49 @@ return (
                     marginBottom: "14px",
                   }}
                 >
-                  Mínimo 30 min desde ahora · Máximo 30 días
+                  Al agendar, el origen queda automático en Aeropuerto Internacional Mataveri de Rapa Nui. El pasajero elige el destino final. La reserva queda congelada para conductores y se libera {SCHEDULE_ACTIVATION_MINUTES} min antes.
                 </IonNote>
+
+                {requireReturnScheduledAt && (
+                  <>
+                    <div
+                      style={{
+                        color: "#666",
+                        fontSize: "0.72rem",
+                        fontWeight: 900,
+                        marginBottom: "6px",
+                        textTransform: "uppercase",
+                      }}
+                    >
+                      Hora de regreso
+                    </div>
+
+                    <IonItem
+                      lines="none"
+                      style={
+                        {
+                          "--background": "#ffffff",
+                          "--border-radius": "12px",
+                          "--padding-start": "14px",
+                          "--inner-padding-end": "12px",
+                          "--min-height": "48px",
+                          marginBottom: "14px",
+                        } as CSSProperties
+                      }
+                    >
+                      <IonIcon icon={calendarOutline} slot="end" color="medium" />
+                      <IonInput
+                        type="datetime-local"
+                        value={returnScheduledAt}
+                        min={scheduledAt || scheduleMinInput}
+                        max={scheduleMaxInput}
+                        onIonInput={(event) =>
+                          setReturnScheduledAt(String(event.detail.value ?? ""))
+                        }
+                      />
+                    </IonItem>
+                  </>
+                )}
 
                 <div
                   style={{
@@ -3441,6 +5372,106 @@ return (
                   />
                 </IonItem>
 
+
+                <div
+                  style={{
+                    color: "#666",
+                    fontSize: "0.72rem",
+                    fontWeight: 900,
+                    marginBottom: "8px",
+                    textTransform: "uppercase",
+                  }}
+                >
+                  Recibimiento opcional
+                </div>
+
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+                    gap: "8px",
+                    marginBottom: "12px",
+                  }}
+                >
+                  {([
+                    {
+                      id: "none" as AirportWelcomeOption,
+                      emoji: "🚕",
+                      title: "Solo recogida",
+                      text: "El conductor te espera y te lleva directo.",
+                    },
+                    {
+                      id: "flower_lei" as AirportWelcomeOption,
+                      emoji: "🌺",
+                      title: "Collar de flores",
+                      text: "Recibimiento Rapa Nui al llegar.",
+                    },
+                  ]).map((option) => {
+                    const active = airportWelcomeOption === option.id;
+
+                    return (
+                      <button
+                        key={option.id}
+                        type="button"
+                        onClick={() => setAirportWelcomeOption(option.id)}
+                        style={{
+                          border: active
+                            ? "2px solid #D2A43A"
+                            : "1px solid rgba(210,164,58,.32)",
+                          borderRadius: "14px",
+                          minHeight: "82px",
+                          padding: "10px 8px",
+                          background: active
+                            ? "linear-gradient(135deg,#D2A43A 0%,#F8D879 100%)"
+                            : "#ffffff",
+                          color: "#111111",
+                          boxShadow: active
+                            ? "0 10px 22px rgba(210,164,58,.28)"
+                            : "0 6px 14px rgba(0,0,0,.08)",
+                          textAlign: "left",
+                          fontWeight: 950,
+                        }}
+                      >
+                        <div style={{ fontSize: "1.35rem", lineHeight: 1 }}>
+                          {option.emoji}
+                        </div>
+                        <div style={{ marginTop: 5, fontSize: ".78rem", lineHeight: 1.15 }}>
+                          {option.title}
+                        </div>
+                        <div
+                          style={{
+                            marginTop: 4,
+                            color: "rgba(17,17,17,.62)",
+                            fontSize: ".64rem",
+                            lineHeight: 1.22,
+                            fontWeight: 850,
+                          }}
+                        >
+                          {option.text}
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {airportWelcomeOption === "flower_lei" && (
+                  <div
+                    style={{
+                      background: "rgba(210,164,58,.14)",
+                      border: "1px solid rgba(210,164,58,.36)",
+                      color: "#6b4a12",
+                      borderRadius: "10px",
+                      padding: "9px 10px",
+                      fontSize: "0.72rem",
+                      lineHeight: 1.35,
+                      fontWeight: 850,
+                      marginBottom: "12px",
+                    }}
+                  >
+                    🌺 El administrador verá que el pasajero pidió recibimiento con collar de flores Rapa Nui.
+                  </div>
+                )}
+
                 <div
                   style={{
                     background: "#ffc928",
@@ -3451,9 +5482,7 @@ return (
                     lineHeight: 1.45,
                   }}
                 >
-                  ⚡ <strong>Reserva con prioridad.</strong> El sistema aplica un
-                  recargo por programación prioritaria. El monto se mostrará en la
-                  tarifa al confirmar.
+                  ✈️ <strong>Recogida agendada desde el aeropuerto.</strong> El origen queda fijo en Mataveri y el pasajero elige su destino. Queda guardada en Mis Viajes y en el panel del administrador. No aparece para conductores todavía: se libera {SCHEDULE_ACTIVATION_MINUTES} minutos antes de la hora reservada.
                 </div>
               </div>
             )}
@@ -3481,119 +5510,321 @@ return (
 
             <div
               style={{
-                margin: "10px 0 18px",
-                borderRadius: "22px",
-                border: "1.5px solid rgba(210,164,58,.45)",
-                background: "linear-gradient(135deg,#fffdf8 0%,#f7edd2 52%,#eac46b 100%)",
-                boxShadow: "0 16px 35px rgba(210,164,58,.22)",
+                margin: "12px 0 20px",
+                borderRadius: "28px",
+                border: "1.5px solid rgba(248,216,121,.46)",
+                background: "linear-gradient(145deg,#101010 0%,#1E1608 58%,#D2A43A 155%)",
+                boxShadow: "0 22px 48px rgba(0,0,0,.32), 0 0 0 1px rgba(255,255,255,.04) inset",
                 overflow: "hidden",
-                color: "#111111",
+                color: "#F6F2EC",
+                position: "relative",
               }}
             >
               <div
                 style={{
-                  padding: "15px",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "space-between",
-                  gap: "12px",
+                  position: "absolute",
+                  right: -46,
+                  top: -52,
+                  width: 160,
+                  height: 160,
+                  borderRadius: "50%",
+                  background: "radial-gradient(circle, rgba(248,216,121,.42), rgba(248,216,121,0) 68%)",
+                  pointerEvents: "none",
                 }}
-              >
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ color: "#7A5417", fontWeight: 950, fontSize: ".76rem", letterSpacing: ".06em" }}>
-                    FORMA DE PAGO
+              />
+              <div
+                style={{
+                  position: "absolute",
+                  left: -42,
+                  bottom: -56,
+                  width: 140,
+                  height: 140,
+                  borderRadius: "50%",
+                  background: "radial-gradient(circle, rgba(210,164,58,.28), rgba(210,164,58,0) 70%)",
+                  pointerEvents: "none",
+                }}
+              />
+
+              <div style={{ position: "relative", padding: "18px 16px 16px" }}>
+                <div
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    gap: 14,
+                    alignItems: "flex-start",
+                  }}
+                >
+                  <div style={{ minWidth: 0, flex: 1 }}>
+                    <div
+                      style={{
+                        color: "#F8D879",
+                        fontSize: ".7rem",
+                        fontWeight: 950,
+                        letterSpacing: ".08em",
+                        textTransform: "uppercase",
+                      }}
+                    >
+                      {selectedRoundTripPromotion ? "Oferta especial RAPA GO" : "Tu viaje RAPA GO"}
+                    </div>
+                    <div
+                      style={{
+                        marginTop: 5,
+                        color: "#FFFFFF",
+                        fontSize: "1.22rem",
+                        lineHeight: 1.05,
+                        fontWeight: 950,
+                      }}
+                    >
+                      {selectedRoundTripPromotion
+                        ? `${selectedRoundTripPromotion.destinationName} ida y vuelta`
+                        : paymentMethod === "cash"
+                          ? "Listo para solicitar"
+                          : "Elige tu forma de pago"}
+                    </div>
+                    <div
+                      style={{
+                        marginTop: 7,
+                        color: "rgba(246,242,236,.76)",
+                        fontSize: ".76rem",
+                        lineHeight: 1.35,
+                        fontWeight: 800,
+                      }}
+                    >
+                      {selectedRoundTripPromotion
+                        ? "Precio cerrado, destino cargado automáticamente y recogida a elección."
+                        : fareQuote
+                          ? "Precio estimado transparente para moverte por Rapa Nui."
+                          : "El precio aparecerá cuando selecciones origen y destino."}
+                    </div>
                   </div>
-                  <div style={{ color: "#111111", fontWeight: 950, fontSize: "1.08rem", marginTop: 4 }}>
-                    {getPaymentLabel(paymentMethod)}
-                  </div>
-                  <div style={{ color: "rgba(17,17,17,.65)", fontSize: ".76rem", marginTop: 4, lineHeight: 1.35, fontWeight: 700 }}>
-                    {fareQuote
-                      ? `${fareQuote.km.toFixed(1)} km · ${fareQuote.minutes} min · ${fareQuote.isFixedFare ? "tarifa fija" : "calculado por distancia"}`
-                      : originPoint && destinationPoint
-                        ? "Calculando precio real del viaje..."
-                        : "El precio aparece al elegir origen y destino."}
-                  </div>
-                  <div style={{ color: "rgba(17,17,17,.72)", fontSize: ".72rem", marginTop: 4, lineHeight: 1.3, fontWeight: 900 }}>
-                    Vehículo: {vehicleCategoryTitle(vehicleCategory)}
+
+                  <div
+                    style={{
+                      flex: "0 0 auto",
+                      minWidth: 118,
+                      borderRadius: "22px",
+                      padding: "11px 12px",
+                      background: "linear-gradient(180deg,#FFF3B0 0%,#D2A43A 100%)",
+                      color: "#111111",
+                      textAlign: "right",
+                      boxShadow: "0 16px 30px rgba(210,164,58,.32)",
+                    }}
+                  >
+                    <div style={{ fontSize: ".62rem", fontWeight: 950, letterSpacing: ".06em", textTransform: "uppercase", color: "#6E4B12" }}>
+                      Total
+                    </div>
+                    <div style={{ marginTop: 2, fontSize: "1.02rem", lineHeight: 1.05, fontWeight: 950 }}>
+                      {cashPaymentLabel}
+                    </div>
+                    <div style={{ marginTop: 2, fontSize: ".72rem", fontWeight: 950, color: "#4F350D" }}>
+                      {cashPaymentUsdLabel}
+                    </div>
                   </div>
                 </div>
 
+                <div
+                  style={{
+                    display: "flex",
+                    flexWrap: "wrap",
+                    gap: 7,
+                    marginTop: 14,
+                  }}
+                >
+                  <span style={{ borderRadius: 999, padding: "6px 9px", background: "rgba(248,216,121,.16)", border: "1px solid rgba(248,216,121,.24)", color: "#F8D879", fontSize: ".66rem", fontWeight: 950 }}>
+                    {selectedRoundTripPromotion ? "Precio cerrado" : "Precio claro"}
+                  </span>
+                  <span style={{ borderRadius: 999, padding: "6px 9px", background: "rgba(255,255,255,.08)", border: "1px solid rgba(255,255,255,.10)", color: "#F6F2EC", fontSize: ".66rem", fontWeight: 900 }}>
+                    {fareQuote ? `${fareQuote.km.toFixed(1)} km · ${fareQuote.minutes} min` : "Calculando ruta"}
+                  </span>
+                  <span style={{ borderRadius: 999, padding: "6px 9px", background: "rgba(255,255,255,.08)", border: "1px solid rgba(255,255,255,.10)", color: "#F6F2EC", fontSize: ".66rem", fontWeight: 900 }}>
+                    {vehicleCategoryTitle(vehicleCategory)}
+                  </span>
+                </div>
+
+                <div
+                  style={{
+                    marginTop: 14,
+                    display: "grid",
+                    gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
+                    gap: 8,
+                  }}
+                >
+                  <div style={{ borderRadius: 18, padding: "10px 9px", background: "rgba(255,255,255,.08)", border: "1px solid rgba(255,255,255,.08)" }}>
+                    <div style={{ color: "rgba(246,242,236,.58)", fontSize: ".62rem", fontWeight: 950, textTransform: "uppercase" }}>
+                      Pasajero
+                    </div>
+                    <div style={{ marginTop: 4, color: "#FFFFFF", fontSize: ".72rem", fontWeight: 950, lineHeight: 1.15 }}>
+                      {passengerFareTypeLabel(effectivePassengerFareType)}
+                    </div>
+                  </div>
+                  <div style={{ borderRadius: 18, padding: "10px 9px", background: "rgba(255,255,255,.08)", border: "1px solid rgba(255,255,255,.08)" }}>
+                    <div style={{ color: "rgba(246,242,236,.58)", fontSize: ".62rem", fontWeight: 950, textTransform: "uppercase" }}>
+                      Viaje
+                    </div>
+                    <div style={{ marginTop: 4, color: "#FFFFFF", fontSize: ".72rem", fontWeight: 950, lineHeight: 1.15 }}>
+                      {selectedRoundTripPromotion ? "Promo ida y vuelta" : tripFareModeLabel(tripFareMode)}
+                    </div>
+                  </div>
+                  <div style={{ borderRadius: 18, padding: "10px 9px", background: "rgba(255,255,255,.08)", border: "1px solid rgba(255,255,255,.08)" }}>
+                    <div style={{ color: "rgba(246,242,236,.58)", fontSize: ".62rem", fontWeight: 950, textTransform: "uppercase" }}>
+                      Pago
+                    </div>
+                    <div style={{ marginTop: 4, color: "#FFFFFF", fontSize: ".72rem", fontWeight: 950, lineHeight: 1.15 }}>
+                      {paymentMethod === "cash" ? "Efectivo listo" : paymentMethod === "card" ? "Tarjeta lista" : "Pendiente"}
+                    </div>
+                  </div>
+                </div>
+
+                {rideMode === "scheduled" && scheduledAt && (
+                  <div
+                    style={{
+                      marginTop: 12,
+                      borderRadius: 18,
+                      padding: "10px 12px",
+                      background: "rgba(248,216,121,.12)",
+                      border: "1px solid rgba(248,216,121,.20)",
+                      color: "#F8D879",
+                      fontSize: ".73rem",
+                      lineHeight: 1.35,
+                      fontWeight: 900,
+                    }}
+                  >
+                    📅 Agendado para {formatScheduleDateTime(scheduledAt)}{requireReturnScheduledAt && returnScheduledAt ? ` · regreso ${formatScheduleDateTime(returnScheduledAt)}` : ""}
+                  </div>
+                )}
+
+                {fareQuote && (
+                  <div
+                    style={{
+                      marginTop: 13,
+                      borderRadius: "20px",
+                      padding: "12px",
+                      background: "rgba(255,255,255,.96)",
+                      color: "#111111",
+                      boxShadow: "0 10px 24px rgba(0,0,0,.16)",
+                    }}
+                  >
+                    <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "flex-start" }}>
+                      <div style={{ minWidth: 0 }}>
+                        <div style={{ color: "#7A5417", fontSize: ".68rem", fontWeight: 950, letterSpacing: ".06em", textTransform: "uppercase" }}>
+                          Resumen de tarifa
+                        </div>
+                        <div style={{ marginTop: 4, fontSize: ".86rem", lineHeight: 1.28, fontWeight: 950 }}>
+                          {selectedRoundTripPromotion
+                            ? `${selectedRoundTripPromotion.destinationName} con ida y vuelta incluida`
+                            : fareQuote.calculationType === "fixed"
+                              ? "Destino con tarifa fija"
+                              : fareQuote.ruralKm > 0
+                                ? `${fareQuote.urbanKm.toFixed(1)} km urbanos + ${fareQuote.ruralKm.toFixed(1)} km rurales`
+                                : `${fareQuote.urbanKm.toFixed(1)} km urbanos`}
+                        </div>
+                        <div style={{ marginTop: 5, color: "rgba(17,17,17,.64)", fontSize: ".72rem", lineHeight: 1.35, fontWeight: 800 }}>
+                          {selectedRoundTripPromotion
+                            ? "Promoción activa para tu perfil. Solo elige dónde pasamos a buscarte."
+                            : fareQuote.ruralKm > 0
+                              ? "El sistema combina tramo urbano y rural según la ruta seleccionada."
+                              : "Tarifa calculada con las reglas activas de RAPA GO."}
+                        </div>
+                      </div>
+                      <div style={{ flex: "0 0 auto", textAlign: "right" }}>
+                        <div style={{ color: "#111111", fontSize: ".94rem", fontWeight: 950 }}>
+                          {cashPaymentLabel}
+                        </div>
+                        <div style={{ color: "#7A5417", fontSize: ".72rem", fontWeight: 950 }}>
+                          {cashPaymentUsdLabel}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
                 <IonButton
-                  size="small"
+                  expand="block"
                   onClick={handleOpenPaymentBox}
                   style={
                     {
-                      "--background": "linear-gradient(135deg, #111111, #3B2A10)",
-                      "--color": "#F8D879",
-                      "--border-radius": "999px",
+                      marginTop: "14px",
+                      "--background": paymentMethod === "cash"
+                        ? "linear-gradient(135deg,#F8D879 0%,#D2A43A 100%)"
+                        : "linear-gradient(135deg,#FFFFFF 0%,#F8D879 100%)",
+                      "--background-activated": "#D2A43A",
+                      "--color": "#111111",
+                      "--border-radius": "18px",
+                      height: "48px",
                       fontWeight: 950,
-                      minWidth: "106px",
+                      letterSpacing: ".02em",
+                      boxShadow: "0 16px 30px rgba(210,164,58,.26)",
                     } as CSSProperties
                   }
                 >
-                  Pagar viaje
+                  {paymentMethod === "cash" ? "Efectivo seleccionado · continuar" : paymentMethod === "card" ? "Tarjeta seleccionada · MercadoPago" : "Elegir forma de pago"}
                 </IonButton>
               </div>
-
-              {fareQuote && (
-                <div
-                  style={{
-                    margin: "0 14px 14px",
-                    padding: "12px",
-                    borderRadius: "16px",
-                    background: "rgba(255,255,255,.58)",
-                    border: "1px solid rgba(122,84,23,.12)",
-                    display: "grid",
-                    gridTemplateColumns: "1fr",
-                    gap: 10,
-                  }}
-                >
-                </div>
-              )}
 
               {showPaymentBox && (
                 <div
                   style={{
-                    margin: "0 12px 12px",
-                    padding: "13px",
-                    borderRadius: "18px",
-                    background: "#fffaf0",
-                    border: "1.5px solid rgba(210,164,58,.36)",
+                    margin: "0 12px 14px",
+                    padding: "14px",
+                    borderRadius: "22px",
+                    background: "linear-gradient(180deg,#FFFDF7 0%,#F7E7B6 100%)",
+                    border: "1.5px solid rgba(248,216,121,.54)",
                     color: "#111111",
-                    boxShadow: "inset 0 1px 0 rgba(255,255,255,.8)",
+                    boxShadow: "0 18px 35px rgba(0,0,0,.22)",
                   }}
                 >
-                  <div style={{ fontWeight: 950, fontSize: "1rem", marginBottom: 4 }}>
-                    ¿Cómo quieres pagar?
-                  </div>
-                  <div style={{ color: "#5e4a22", fontSize: ".76rem", fontWeight: 800, lineHeight: 1.35, marginBottom: 12 }}>
-                    Efectivo disponible ahora. Tarjeta estará disponible próximamente.
+                  <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "flex-start" }}>
+                    <div>
+                      <div style={{ color: "#7A5417", fontSize: ".7rem", fontWeight: 950, letterSpacing: ".06em", textTransform: "uppercase" }}>
+                        Pago seguro
+                      </div>
+                      <div style={{ marginTop: 3, fontWeight: 950, fontSize: "1.08rem", lineHeight: 1.05 }}>
+                        ¿Cómo quieres pagar?
+                      </div>
+                      <div style={{ marginTop: 6, color: "rgba(17,17,17,.66)", fontSize: ".74rem", lineHeight: 1.35, fontWeight: 800 }}>
+                        Elige efectivo al conductor o paga con tarjeta mediante MercadoPago Checkout Pro.
+                      </div>
+                    </div>
+                    <span style={{ borderRadius: 999, padding: "6px 9px", background: "#111111", color: "#F8D879", fontSize: ".66rem", fontWeight: 950, whiteSpace: "nowrap" }}>
+                      MercadoPago activo
+                    </span>
                   </div>
 
-                  <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 10 }}>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 10, marginTop: 13 }}>
                     <button
                       type="button"
                       onClick={() => handleSelectPayment("cash")}
                       style={{
                         border: paymentMethod === "cash" ? "3px solid #111111" : "2px solid rgba(17,17,17,.10)",
-                        borderRadius: "16px",
-                        padding: "12px 8px",
-                        minHeight: "82px",
-                        background: "linear-gradient(180deg,#F8DB83 0%,#D6A736 100%)",
+                        borderRadius: "20px",
+                        padding: "14px 13px",
+                        minHeight: "92px",
+                        background: "linear-gradient(135deg,#21C55D 0%,#F8D879 42%,#D2A43A 100%)",
                         color: "#111111",
-                        boxShadow: paymentMethod === "cash" ? "0 12px 24px rgba(214,167,54,.36)" : "0 8px 18px rgba(0,0,0,.08)",
-                        transform: paymentMethod === "cash" ? "scale(1.02)" : "scale(1)",
+                        boxShadow: paymentMethod === "cash" ? "0 16px 30px rgba(34,197,94,.26)" : "0 10px 22px rgba(0,0,0,.10)",
+                        transform: paymentMethod === "cash" ? "scale(1.015)" : "scale(1)",
                         transition: "all .18s ease",
                         fontWeight: 950,
+                        textAlign: "left",
+                        width: "100%",
                       }}
                     >
-                      <div style={{ fontSize: "1.35rem", lineHeight: 1 }}>💵</div>
-                      <div style={{ marginTop: 5 }}>Efectivo</div>
-                      <div style={{ marginTop: 4, fontSize: ".82rem", fontWeight: 950 }}>
-                        {cashPaymentLabel}
-                      </div>
-                      <div style={{ marginTop: 2, fontSize: ".72rem", fontWeight: 850, opacity: .78 }}>
-                        {cashPaymentUsdLabel}
+                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+                        <div>
+                          <div style={{ fontSize: "1.35rem", lineHeight: 1 }}>💵</div>
+                          <div style={{ marginTop: 5, fontSize: ".94rem" }}>Efectivo al conductor</div>
+                          <div style={{ marginTop: 3, fontSize: ".72rem", fontWeight: 850, opacity: .78 }}>
+                            Confirmación inmediata
+                          </div>
+                        </div>
+                        <div style={{ textAlign: "right" }}>
+                          <div style={{ fontSize: "1.04rem", lineHeight: 1.05, fontWeight: 950 }}>
+                            {cashPaymentLabel}
+                          </div>
+                          <div style={{ marginTop: 2, fontSize: ".74rem", fontWeight: 950, color: "#4F350D" }}>
+                            {cashPaymentUsdLabel}
+                          </div>
+                        </div>
                       </div>
                     </button>
 
@@ -3601,28 +5832,37 @@ return (
                       type="button"
                       onClick={() => handleSelectPayment("card")}
                       style={{
-                        border: paymentMethod === "card" ? "3px solid #111111" : "2px dashed rgba(17,17,17,.22)",
-                        borderRadius: "16px",
-                        padding: "12px 8px",
+                        border: paymentMethod === "card" ? "3px solid #111111" : "2px solid rgba(17,17,17,.12)",
+                        borderRadius: "20px",
+                        padding: "14px 13px",
                         minHeight: "82px",
-                        background: paymentMethod === "card"
-                          ? "linear-gradient(180deg,#E8E8E8 0%,#CFCFCF 100%)"
-                          : "linear-gradient(180deg,#FFFFFF 0%,#EFEFEF 100%)",
+                        background: "linear-gradient(135deg,#FFFFFF 0%,#E8F2FF 50%,#DDEBFF 100%)",
                         color: "#111111",
                         boxShadow: paymentMethod === "card" ? "0 12px 24px rgba(0,0,0,.18)" : "0 8px 18px rgba(0,0,0,.06)",
-                        transform: paymentMethod === "card" ? "scale(1.02)" : "scale(1)",
+                        transform: paymentMethod === "card" ? "scale(1.015)" : "scale(1)",
                         transition: "all .18s ease",
                         fontWeight: 950,
-                        opacity: 0.92,
+                        textAlign: "left",
+                        width: "100%",
+                        opacity: 1,
                       }}
                     >
-                      <div style={{ fontSize: "1.35rem", lineHeight: 1 }}>💳</div>
-                      <div style={{ marginTop: 5 }}>Tarjeta</div>
-                      <div style={{ marginTop: 4, fontSize: ".82rem", fontWeight: 950 }}>
-                        Próximamente
-                      </div>
-                      <div style={{ marginTop: 2, fontSize: ".72rem", fontWeight: 850, opacity: .72 }}>
-                        {cardPaymentLabel} · {cardPaymentUsdLabel}
+                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+                        <div>
+                          <div style={{ fontSize: "1.25rem", lineHeight: 1 }}>💳</div>
+                          <div style={{ marginTop: 5, fontSize: ".9rem" }}>Tarjeta</div>
+                          <div style={{ marginTop: 3, fontSize: ".72rem", fontWeight: 850, opacity: .72 }}>
+                            MercadoPago seguro
+                          </div>
+                        </div>
+                        <div style={{ textAlign: "right" }}>
+                          <div style={{ fontSize: ".92rem", lineHeight: 1.05, fontWeight: 950 }}>
+                            {cardPaymentLabel}
+                          </div>
+                          <div style={{ marginTop: 2, fontSize: ".72rem", fontWeight: 850, opacity: .72 }}>
+                            {cardPaymentUsdLabel}
+                          </div>
+                        </div>
                       </div>
                     </button>
                   </div>
@@ -3658,7 +5898,7 @@ return (
               {submitting ? (
                   <IonSpinner name="dots" />
                 ) : paymentMethod === "card" ? (
-                  "TARJETA PRÓXIMAMENTE"
+                  "PAGAR CON TARJETA"
                 ) : paymentMethod === null ? (
                   "ELIGE FORMA DE PAGO"
                 ) : (

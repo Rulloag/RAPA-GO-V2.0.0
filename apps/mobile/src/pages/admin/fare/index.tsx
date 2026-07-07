@@ -41,6 +41,12 @@ type PassengerKey = "resident" | "chilean" | "foreigner";
 type VehicleKey = "standard" | "xl" | "luggage";
 type RoundingMode = "ceil" | "nearest" | "none";
 
+type RuralConfig = {
+  urbanLimitKm: number;
+  ruralDiscountPercent: number;
+  ruralFactor: number;
+};
+
 type FixedDestinationRule = {
   id: string;
   title: string;
@@ -55,6 +61,7 @@ type FareEngineConfig = {
     baseMinimumClp: number;
     baseKmClp: number;
   };
+  rural: RuralConfig;
   passengerMultipliers: Record<PassengerKey, number>;
   vehicleMultipliers: Record<VehicleKey, number>;
   passengerActive: Record<PassengerKey, boolean>;
@@ -74,6 +81,7 @@ type CompatibilityFareRule = {
   title: string;
   minimumClp: number | null;
   kmClp: number | null;
+  ruralKmClp?: number | null;
   fixedClp: number | null;
   description: string;
   active: boolean;
@@ -91,6 +99,8 @@ type EditorKind =
   | "base_minimum"
   | "base_km"
   | "included_km"
+  | "rural_limit"
+  | "rural_discount"
   | "rounding"
   | "usd_rate"
   | "passenger"
@@ -137,9 +147,9 @@ const USD_RATE_STORAGE_KEY = "rapago_admin_fare_cards_usd_rate_v1";
 const AUDIT_STORAGE_KEY = "rapago_admin_fare_engine_audit_v1";
 
 const PASSENGER_LABEL: Record<PassengerKey, string> = {
-  resident: "Residente",
-  chilean: "Chileno no residente",
-  foreigner: "Extranjero",
+  resident: "Residente Rapa Nui",
+  chilean: "Turista chileno",
+  foreigner: "Turista extranjero",
 };
 
 const VEHICLE_LABEL: Record<VehicleKey, string> = {
@@ -159,6 +169,11 @@ const DEFAULT_CONFIG: FareEngineConfig = {
     includedKm: 2,
     baseMinimumClp: 5000,
     baseKmClp: 1000,
+  },
+  rural: {
+    urbanLimitKm: 6,
+    ruralDiscountPercent: 25,
+    ruralFactor: 0.75,
   },
   passengerMultipliers: {
     resident: 1,
@@ -197,6 +212,8 @@ const DEFAULT_CONFIG: FareEngineConfig = {
     },
   ],
   rounding: {
+    // Redondeo final obligatorio: siempre hacia arriba a múltiplos de $100.
+    // No se redondea por kilómetro ni por tramo.
     mode: "ceil",
     unitClp: 100,
   },
@@ -327,10 +344,11 @@ function getActiveRecord<T extends string>(
 
 function roundByRule(value: number, config: FareEngineConfig): number {
   const safe = Number.isFinite(value) ? Math.max(0, value) : 0;
-  const unit = Math.max(1, Math.round(config.rounding.unitClp || 1));
 
-  if (config.rounding.mode === "none") return safe;
-  if (config.rounding.mode === "nearest") return Math.round(safe / unit) * unit;
+  // REDONDEO FINAL OBLIGATORIO
+  // Se aplica solamente al total final que se mostrará/cobrará.
+  // No se aplica por kilómetro, por tramo urbano ni por tramo rural.
+  const unit = Math.max(100, Math.round(config.rounding.unitClp || 100));
 
   return Math.ceil(safe / unit) * unit;
 }
@@ -357,6 +375,49 @@ function getUrbanKm(
     (config.passengerMultipliers[passenger] ?? 1) *
     (config.vehicleMultipliers[vehicle] ?? 1)
   );
+}
+
+function getRuralFactor(config: FareEngineConfig): number {
+  const discount = Number(config.rural?.ruralDiscountPercent ?? 25);
+  const factorFromDiscount = 1 - Math.max(0, Math.min(100, discount)) / 100;
+  const configuredFactor = Number(config.rural?.ruralFactor ?? factorFromDiscount);
+
+  return Number.isFinite(configuredFactor) && configuredFactor > 0
+    ? configuredFactor
+    : factorFromDiscount;
+}
+
+function getRuralKm(
+  config: FareEngineConfig,
+  passenger: PassengerKey,
+  vehicle: VehicleKey,
+): number {
+  // Regla corregida:
+  // 1) KM urbano base
+  // 2) multiplicador pasajero
+  // 3) multiplicador vehículo
+  // 4) descuento rural del 25%
+  return getUrbanKm(config, passenger, vehicle) * getRuralFactor(config);
+}
+
+function calculateUrbanRuralExact(
+  config: FareEngineConfig,
+  passenger: PassengerKey,
+  vehicle: VehicleKey,
+  distanceKm: number,
+): number {
+  const safeDistance = Math.max(0, Number(distanceKm) || 0);
+  const urbanLimitKm = Math.max(0, Number(config.rural?.urbanLimitKm ?? 6));
+
+  if (safeDistance <= urbanLimitKm) {
+    return calculateUrbanExact(config, passenger, vehicle, safeDistance);
+  }
+
+  const urbanFareUpToLimit = calculateUrbanExact(config, passenger, vehicle, urbanLimitKm);
+  const ruralKm = safeDistance - urbanLimitKm;
+  const ruralKmFare = getRuralKm(config, passenger, vehicle);
+
+  return urbanFareUpToLimit + ruralKm * ruralKmFare;
 }
 
 function calculateUrbanExact(
@@ -392,6 +453,20 @@ function readStoredConfig(): FareEngineConfig {
         baseMinimumClp: Number(parsed.urban?.baseMinimumClp ?? fallback.urban.baseMinimumClp),
         baseKmClp: Number(parsed.urban?.baseKmClp ?? fallback.urban.baseKmClp),
       },
+      rural: {
+        urbanLimitKm: Math.max(0, Number(parsed.rural?.urbanLimitKm ?? fallback.rural.urbanLimitKm)),
+        ruralDiscountPercent: Math.max(
+          0,
+          Math.min(100, Number(parsed.rural?.ruralDiscountPercent ?? fallback.rural.ruralDiscountPercent)),
+        ),
+        ruralFactor: Math.max(
+          0,
+          Number(
+            parsed.rural?.ruralFactor ??
+              1 - Number(parsed.rural?.ruralDiscountPercent ?? fallback.rural.ruralDiscountPercent) / 100,
+          ),
+        ),
+      },
       passengerMultipliers: {
         resident: Number(parsed.passengerMultipliers?.resident ?? fallback.passengerMultipliers.resident),
         chilean: Number(parsed.passengerMultipliers?.chilean ?? fallback.passengerMultipliers.chilean),
@@ -421,11 +496,9 @@ function readStoredConfig(): FareEngineConfig {
             }))
           : fallback.fixedDestinations,
       rounding: {
-        mode:
-          parsed.rounding?.mode === "nearest" || parsed.rounding?.mode === "none"
-            ? parsed.rounding.mode
-            : "ceil",
-        unitClp: Math.max(1, Number(parsed.rounding?.unitClp ?? fallback.rounding.unitClp)),
+        // Forzamos redondeo final superior a $100 aunque existan reglas antiguas en localStorage.
+        mode: "ceil",
+        unitClp: Math.max(100, Number(parsed.rounding?.unitClp ?? fallback.rounding.unitClp)),
       },
       usdRate: Math.max(1, Number(parsed.usdRate ?? fallback.usdRate)),
       updatedAt: parsed.updatedAt ?? fallback.updatedAt,
@@ -443,6 +516,7 @@ function buildCompatibilityRules(config: FareEngineConfig): CompatibilityFareRul
       title: `Tarifa general mínima (0 a ${config.urban.includedKm} kms)`,
       minimumClp: config.urban.baseMinimumClp,
       kmClp: null,
+      ruralKmClp: null,
       fixedClp: null,
       description: `Tarifa mínima urbana. Incluye los primeros ${config.urban.includedKm} km.`,
       active: true,
@@ -454,8 +528,9 @@ function buildCompatibilityRules(config: FareEngineConfig): CompatibilityFareRul
       title: "Tarifa general por km (con mínimo)",
       minimumClp: null,
       kmClp: config.urban.baseKmClp,
+      ruralKmClp: config.urban.baseKmClp * getRuralFactor(config),
       fixedClp: null,
-      description: "Valor base por km adicional después del mínimo.",
+      description: `Valor base por km adicional urbano. El KM rural Residente Rapa Nui estándar queda en ${formatClp(config.urban.baseKmClp * getRuralFactor(config))}.`,
       active: true,
       editableKind: "base_km",
     },
@@ -486,8 +561,9 @@ function buildCompatibilityRules(config: FareEngineConfig): CompatibilityFareRul
         title: `Tarifa ${VEHICLE_LABEL[vehicle].toLowerCase()} · ${PASSENGER_LABEL[passenger]}`,
         minimumClp: getUrbanMinimum(config, passenger, vehicle),
         kmClp: getUrbanKm(config, passenger, vehicle),
+        ruralKmClp: getRuralKm(config, passenger, vehicle),
         fixedClp: null,
-        description: `${PASSENGER_LABEL[passenger]} · ${VEHICLE_LABEL[vehicle]}.`,
+        description: `${PASSENGER_LABEL[passenger]} · ${VEHICLE_LABEL[vehicle]}. Rural: KM urbano ajustado x ${formatMultiplier(getRuralFactor(config))}.`,
         active: config.passengerActive[passenger] !== false && config.vehicleActive[vehicle] !== false,
         passenger,
         vehicle,
@@ -504,6 +580,7 @@ function buildCompatibilityRules(config: FareEngineConfig): CompatibilityFareRul
         title: `Tarifa destino ${destination.title} (${PASSENGER_LABEL[passenger]}) ${destination.tripType}`,
         minimumClp: null,
         kmClp: null,
+        ruralKmClp: null,
         fixedClp: getFixedFare(config, destination, passenger),
         description: `Destino fijo ${destination.title} · ${PASSENGER_LABEL[passenger]} · ${destination.tripType}.`,
         active: destination.active !== false && config.passengerActive[passenger] !== false,
@@ -562,12 +639,8 @@ function saveConfig(config: FareEngineConfig, action = "Actualización de tarifa
 }
 
 function getRoundingLabel(config: FareEngineConfig): string {
-  if (config.rounding.mode === "none") return "Sin redondeo";
-  if (config.rounding.mode === "nearest") {
-    return `Múltiplo de $${config.rounding.unitClp.toLocaleString("es-CL")} más cercano`;
-  }
-
-  return `Múltiplo de $${config.rounding.unitClp.toLocaleString("es-CL")} superior`;
+  const unit = Math.max(100, Math.round(config.rounding.unitClp || 100));
+  return `Final obligatorio: múltiplo de $${unit.toLocaleString("es-CL")} superior`;
 }
 
 function getRuleEditTitle(rule: CompatibilityFareRule): string {
@@ -593,10 +666,37 @@ export function AdminFareSettingsPage(): React.ReactElement {
 
     return distances.map((km) => ({
       km,
-      resident: roundByRule(calculateUrbanExact(config, "resident", "standard", km), config),
-      chilean: roundByRule(calculateUrbanExact(config, "chilean", "standard", km), config),
-      foreigner: roundByRule(calculateUrbanExact(config, "foreigner", "standard", km), config),
+      resident: roundByRule(calculateUrbanRuralExact(config, "resident", "standard", km), config),
+      chilean: roundByRule(calculateUrbanRuralExact(config, "chilean", "standard", km), config),
+      foreigner: roundByRule(calculateUrbanRuralExact(config, "foreigner", "standard", km), config),
     }));
+  }, [config]);
+
+  const ruralTests = useMemo(() => {
+    const examples = [
+      {
+        title: "Anakena ida y vuelta",
+        km: 44,
+      },
+      {
+        title: "Ejemplo rural 10 km",
+        km: 10,
+      },
+    ];
+
+    return examples.map((row) => {
+      const urbanKm = Math.min(row.km, config.rural.urbanLimitKm);
+      const ruralKm = Math.max(0, row.km - config.rural.urbanLimitKm);
+
+      return {
+        ...row,
+        urbanKm,
+        ruralKm,
+        resident: roundByRule(calculateUrbanRuralExact(config, "resident", "standard", row.km), config),
+        chilean: roundByRule(calculateUrbanRuralExact(config, "chilean", "standard", row.km), config),
+        foreigner: roundByRule(calculateUrbanRuralExact(config, "foreigner", "standard", row.km), config),
+      };
+    });
   }, [config]);
 
   const load = useCallback(async () => {
@@ -656,12 +756,32 @@ export function AdminFareSettingsPage(): React.ReactElement {
     });
   }
 
+  function openRuralLimitEditor(): void {
+    setError(null);
+    setEditor({
+      kind: "rural_limit",
+      title: "Editar límite de zona urbana",
+      helper: "Desde este kilometraje en adelante se activa el cálculo rural. Ejemplo: 6 km urbanos y el excedente como rural.",
+      value: String(config.rural.urbanLimitKm).replace(".", ","),
+    });
+  }
+
+  function openRuralDiscountEditor(): void {
+    setError(null);
+    setEditor({
+      kind: "rural_discount",
+      title: "Editar descuento rural",
+      helper: "El descuento se aplica después de multiplicador pasajero y multiplicador vehículo.",
+      value: String(config.rural.ruralDiscountPercent).replace(".", ","),
+    });
+  }
+
   function openRoundingEditor(): void {
     setError(null);
     setEditor({
       kind: "rounding",
       title: "Editar regla de redondeo",
-      helper: "La regla se aplica solo al final del cálculo.",
+      helper: "Obligatorio: se aplica solo al total final del viaje.",
       value: formatClpInput(config.rounding.unitClp),
       roundingMode: config.rounding.mode,
     });
@@ -696,7 +816,7 @@ export function AdminFareSettingsPage(): React.ReactElement {
     setEditor({
       kind: "fixed_destination",
       title: destination ? "Editar destino fijo" : "Agregar destino fijo",
-      helper: "La tarifa base corresponde al precio residente. Chileno no residente y extranjero se calculan automáticamente.",
+      helper: "La tarifa base corresponde al precio Residente Rapa Nui. Turista chileno y Turista extranjero se calculan automáticamente.",
       destinationId: destination?.id ?? null,
       name: destination?.title ?? "",
       tripType: destination?.tripType ?? "Ida y vuelta",
@@ -733,7 +853,7 @@ export function AdminFareSettingsPage(): React.ReactElement {
     setEditor({
       kind: "generated_fixed",
       title: `Editar ${destination.title} · ${PASSENGER_LABEL[rule.passenger]}`,
-      helper: "Esta tarifa fija se genera con tarifa base residente x multiplicador del pasajero.",
+      helper: "Esta tarifa fija se genera con tarifa base Residente Rapa Nui x multiplicador del pasajero.",
       destinationId: destination.id,
       passenger: rule.passenger,
       name: destination.title,
@@ -751,7 +871,7 @@ export function AdminFareSettingsPage(): React.ReactElement {
       openCurrencyEditor(
         "base_minimum",
         "Editar tarifa mínima base",
-        "Valor base residente para vehículo estándar. También puedes editarlo en USD.",
+        "Valor base Residente Rapa Nui para vehículo estándar. También puedes editarlo en USD.",
         config.urban.baseMinimumClp,
       );
       return;
@@ -883,22 +1003,59 @@ export function AdminFareSettingsPage(): React.ReactElement {
         return;
       }
 
-      if (editor.kind === "rounding") {
-        const unit = Math.round(parseMoney(editor.value, config.rounding.unitClp));
-        if (unit <= 0) {
-          setError("El múltiplo de redondeo debe ser mayor que cero.");
+      if (editor.kind === "rural_limit") {
+        const parsed = parseMoney(editor.value, config.rural.urbanLimitKm);
+        if (!Number.isFinite(parsed) || parsed <= config.urban.includedKm) {
+          setError(`El límite rural debe ser mayor que los ${config.urban.includedKm} km incluidos.`);
           return;
         }
 
         persist(
           {
             ...config,
+            rural: { ...config.rural, urbanLimitKm: parsed },
+          },
+          "Límite de zona urbana actualizado.",
+        );
+        closeEditor();
+        return;
+      }
+
+      if (editor.kind === "rural_discount") {
+        const parsed = parseMoney(editor.value, config.rural.ruralDiscountPercent);
+        if (!Number.isFinite(parsed) || parsed < 0 || parsed >= 100) {
+          setError("El descuento rural debe estar entre 0 y 99.");
+          return;
+        }
+
+        persist(
+          {
+            ...config,
+            rural: {
+              ...config.rural,
+              ruralDiscountPercent: parsed,
+              ruralFactor: 1 - parsed / 100,
+            },
+          },
+          "Descuento rural actualizado.",
+        );
+        closeEditor();
+        return;
+      }
+
+      if (editor.kind === "rounding") {
+        const unit = Math.max(100, Math.round(parseMoney(editor.value, config.rounding.unitClp)));
+
+        persist(
+          {
+            ...config,
             rounding: {
-              mode: editor.roundingMode ?? "ceil",
+              // Redondeo final obligatorio: no permitimos "none" ni "nearest".
+              mode: "ceil",
               unitClp: unit,
             },
           },
-          "Regla de redondeo actualizada.",
+          "Regla de redondeo final actualizada.",
         );
         closeEditor();
         return;
@@ -1020,7 +1177,7 @@ export function AdminFareSettingsPage(): React.ReactElement {
         }
 
         if (baseResidentClp <= 0) {
-          setError("La tarifa base residente debe ser mayor que cero.");
+          setError("La tarifa base Residente Rapa Nui debe ser mayor que cero.");
           return;
         }
 
@@ -1310,7 +1467,8 @@ export function AdminFareSettingsPage(): React.ReactElement {
 
             <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 8 }}>
               {rule.kind === "variable" && renderValueBlock("Tarifa mínima", rule.minimumClp)}
-              {rule.kind === "variable" && renderValueBlock("Tarifa KM", rule.kmClp)}
+              {rule.kind === "variable" && renderValueBlock("KM urbano", rule.kmClp)}
+              {rule.kind === "variable" && renderValueBlock("KM rural", rule.ruralKmClp)}
               {rule.kind === "fixed" && renderValueBlock("Tarifa fija", rule.fixedClp)}
             </div>
 
@@ -1400,20 +1558,46 @@ export function AdminFareSettingsPage(): React.ReactElement {
           </IonItem>
         )}
 
+        {editor.kind === "rural_limit" && (
+          <IonItem lines="full" style={{ marginTop: 12 }}>
+            <IonLabel position="stacked">Límite zona urbana en km</IonLabel>
+            <IonInput
+              inputmode="decimal"
+              value={editor.value}
+              placeholder="Ej: 6"
+              onIonInput={(event) => updateEditor({ value: String(event.detail.value ?? "") })}
+            />
+            <IonNote slot="helper">
+              Desde 6,01 km se cobra tramo rural sobre el excedente.
+            </IonNote>
+          </IonItem>
+        )}
+
+        {editor.kind === "rural_discount" && (
+          <IonItem lines="full" style={{ marginTop: 12 }}>
+            <IonLabel position="stacked">Descuento rural (%)</IonLabel>
+            <IonInput
+              inputmode="decimal"
+              value={editor.value}
+              placeholder="Ej: 25"
+              onIonInput={(event) => updateEditor({ value: String(event.detail.value ?? "") })}
+            />
+            <IonNote slot="helper">
+              Factor actual: {formatMultiplier(1 - parseMoney(editor.value, config.rural.ruralDiscountPercent) / 100)}.
+            </IonNote>
+          </IonItem>
+        )}
+
         {editor.kind === "rounding" && (
           <>
             <IonItem lines="full" style={{ marginTop: 12 }}>
               <IonLabel position="stacked">Modo de redondeo</IonLabel>
               <IonSelect
-                value={editor.roundingMode ?? "ceil"}
+                value="ceil"
                 interface="action-sheet"
-                onIonChange={(event) =>
-                  updateEditor({ roundingMode: String(event.detail.value ?? "ceil") as RoundingMode })
-                }
+                disabled
               >
-                <IonSelectOption value="ceil">Múltiplo superior</IonSelectOption>
-                <IonSelectOption value="nearest">Múltiplo más cercano</IonSelectOption>
-                <IonSelectOption value="none">Sin redondeo</IonSelectOption>
+                <IonSelectOption value="ceil">Múltiplo superior obligatorio</IonSelectOption>
               </IonSelect>
             </IonItem>
 
@@ -1538,7 +1722,7 @@ export function AdminFareSettingsPage(): React.ReactElement {
             </IonItem>
 
             <IonItem lines="full">
-              <IonLabel position="stacked">Tarifa base residente CLP</IonLabel>
+              <IonLabel position="stacked">Tarifa base Residente Rapa Nui CLP</IonLabel>
               <IonInput
                 inputmode="numeric"
                 value={editor.baseResidentClp}
@@ -1550,7 +1734,7 @@ export function AdminFareSettingsPage(): React.ReactElement {
             </IonItem>
 
             <IonItem lines="full">
-              <IonLabel position="stacked">Tarifa base residente USD</IonLabel>
+              <IonLabel position="stacked">Tarifa base Residente Rapa Nui USD</IonLabel>
               <IonInput
                 inputmode="decimal"
                 value={editor.baseResidentUsd}
@@ -1648,7 +1832,7 @@ export function AdminFareSettingsPage(): React.ReactElement {
                 Motor de tarifas Rapa Go
               </div>
               <div style={{ marginTop: 6, fontSize: ".86rem", color: "#333", fontWeight: 800, lineHeight: 1.35 }}>
-                Todo queda editable desde el panel: CLP, USD referencial, multiplicadores, redondeo, kilómetros incluidos, categorías de vehículo y destinos fijos.
+                Todo queda editable desde el panel: CLP, USD referencial, multiplicadores de Residente Rapa Nui, Turista chileno y Turista extranjero, zona urbana/rural, descuento rural, redondeo final, categorías de vehículo y destinos fijos.
               </div>
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 12 }}>
                 <IonButton
@@ -1705,7 +1889,7 @@ export function AdminFareSettingsPage(): React.ReactElement {
                     openCurrencyEditor(
                       "base_minimum",
                       "Editar tarifa mínima base",
-                      "Valor base residente para vehículo estándar.",
+                      "Valor base Residente Rapa Nui para vehículo estándar.",
                       config.urban.baseMinimumClp,
                     ),
                 )}
@@ -1720,7 +1904,7 @@ export function AdminFareSettingsPage(): React.ReactElement {
                     openCurrencyEditor(
                       "base_km",
                       "Editar tarifa por km adicional",
-                      "Valor base por kilómetro adicional para residente estándar.",
+                      "Valor base por kilómetro adicional para Residente Rapa Nui estándar.",
                       config.urban.baseKmClp,
                     ),
                 )}
@@ -1732,6 +1916,24 @@ export function AdminFareSettingsPage(): React.ReactElement {
                   "Viajes hasta este tramo cobran solo tarifa mínima.",
                   mapOutline,
                   openIncludedKmEditor,
+                )}
+
+                {renderParameterCard(
+                  "Límite zona urbana",
+                  `${formatClpInput(config.rural.urbanLimitKm)} km`,
+                  "Rural desde el excedente",
+                  "Hasta este límite se calcula tarifa urbana. Sobre el excedente se aplica KM rural.",
+                  mapOutline,
+                  openRuralLimitEditor,
+                )}
+
+                {renderParameterCard(
+                  "Descuento rural",
+                  `${formatClpInput(config.rural.ruralDiscountPercent)}%`,
+                  `Factor ${formatMultiplier(getRuralFactor(config))}`,
+                  "Se aplica después del recargo por pasajero y categoría de vehículo.",
+                  speedometerOutline,
+                  openRuralDiscountEditor,
                 )}
 
                 {renderParameterCard(
@@ -1837,9 +2039,9 @@ export function AdminFareSettingsPage(): React.ReactElement {
                           </div>
 
                           <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 10 }}>
-                            {renderValueBlock("Residente", getFixedFare(config, destination, "resident"))}
-                            {renderValueBlock("Chileno", getFixedFare(config, destination, "chilean"))}
-                            {renderValueBlock("Extranjero", getFixedFare(config, destination, "foreigner"))}
+                            {renderValueBlock("Residente Rapa Nui", getFixedFare(config, destination, "resident"))}
+                            {renderValueBlock("Turista chileno", getFixedFare(config, destination, "chilean"))}
+                            {renderValueBlock("Turista extranjero", getFixedFare(config, destination, "foreigner"))}
                           </div>
 
                           <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 10 }}>
@@ -1888,7 +2090,7 @@ export function AdminFareSettingsPage(): React.ReactElement {
                   </div>
 
                   <div style={{ color: "#555", fontSize: ".78rem", fontWeight: 800, marginBottom: 10 }}>
-                    Vehículo estándar. Valores redondeados según regla actual y con referencia USD.
+                    Vehículo estándar. Valores con redondeo aplicado solo al final.
                   </div>
 
                   <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
@@ -1908,9 +2110,45 @@ export function AdminFareSettingsPage(): React.ReactElement {
                       >
                         <strong>{row.km} km</strong>
                         <div style={{ display: "flex", gap: 7, flexWrap: "wrap", fontSize: ".78rem", fontWeight: 900 }}>
-                          <span>Res: {formatClp(row.resident)} / USD {formatUsd(row.resident, config.usdRate)}</span>
-                          <span>Chi: {formatClp(row.chilean)} / USD {formatUsd(row.chilean, config.usdRate)}</span>
-                          <span>Ext: {formatClp(row.foreigner)} / USD {formatUsd(row.foreigner, config.usdRate)}</span>
+                          <span>Rapa Nui: {formatClp(row.resident)} / USD {formatUsd(row.resident, config.usdRate)}</span>
+                          <span>Turista chileno: {formatClp(row.chilean)} / USD {formatUsd(row.chilean, config.usdRate)}</span>
+                          <span>Turista extranjero: {formatClp(row.foreigner)} / USD {formatUsd(row.foreigner, config.usdRate)}</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </IonCardContent>
+              </IonCard>
+
+              <IonCard style={cardStyle}>
+                <IonCardContent style={{ padding: "14px 12px 12px" }}>
+                  <div style={{ fontSize: "1rem", fontWeight: 950, marginBottom: 10 }}>
+                    Casos de prueba rurales
+                  </div>
+
+                  <div style={{ color: "#555", fontSize: ".78rem", fontWeight: 800, marginBottom: 10 }}>
+                    Fórmula: KM rural = KM urbano base x pasajero x vehículo x {formatMultiplier(getRuralFactor(config))}. No se usa un KM rural único para todos.
+                  </div>
+
+                  <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                    {ruralTests.map((row) => (
+                      <div
+                        key={row.title}
+                        style={{
+                          background: "#fff",
+                          border: "1px solid rgba(210,164,58,.28)",
+                          borderRadius: 14,
+                          padding: 10,
+                        }}
+                      >
+                        <strong>{row.title}</strong>
+                        <div style={{ color: "#555", fontSize: ".75rem", fontWeight: 800, marginTop: 3 }}>
+                          {row.km} km total · {formatClpInput(row.urbanKm)} km urbanos · {formatClpInput(row.ruralKm)} km rurales
+                        </div>
+                        <div style={{ display: "flex", gap: 7, flexWrap: "wrap", fontSize: ".78rem", fontWeight: 900, marginTop: 7 }}>
+                          <span>Rapa Nui: {formatClp(row.resident)} / USD {formatUsd(row.resident, config.usdRate)}</span>
+                          <span>Turista chileno: {formatClp(row.chilean)} / USD {formatUsd(row.chilean, config.usdRate)}</span>
+                          <span>Turista extranjero: {formatClp(row.foreigner)} / USD {formatUsd(row.foreigner, config.usdRate)}</span>
                         </div>
                       </div>
                     ))}
