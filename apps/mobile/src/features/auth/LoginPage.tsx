@@ -1002,7 +1002,11 @@ export function LoginPage(): JSX.Element {
             expand="block"
             fill="outline"
             disabled={loading}
-            onClick={openFacebookStep}
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              openFacebookStep();
+            }}
             type="button"
             style={outlineButtonStyle}
           >
@@ -1035,10 +1039,11 @@ export function LoginPage(): JSX.Element {
         <IonModal
           isOpen={showFacebookStep}
           onDidDismiss={() => setShowFacebookStep(false)}
+          keepContentsMounted={true}
           style={
             {
               "--width": "min(94vw, 620px)",
-              "--height": "auto",
+              "--height": "92vh",
               "--max-height": "92vh",
               "--border-radius": "30px",
             } as CSSProperties
@@ -1307,7 +1312,9 @@ export function LoginPage(): JSX.Element {
                   <IonButton
                     expand="block"
                     style={primaryButtonStyle}
-                    onClick={() => {
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
                       void continueWithFacebook();
                     }}
                     type="button"
