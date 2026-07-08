@@ -33,6 +33,21 @@ export class PaymentsRepository {
     return row ?? null;
   }
 
+  async findSuccessfulByRideId(rideRequestId: string): Promise<Payment | null> {
+    const [row] = await db
+      .select()
+      .from(payments)
+      .where(
+        and(
+          eq(payments.rideRequestId, rideRequestId),
+          eq(payments.status, "success"),
+        ),
+      )
+      .limit(1);
+
+    return row ?? null;
+  }
+
   async findActiveByRideId(rideRequestId: string): Promise<Payment | null> {
     const [row] = await db
       .select()
@@ -58,9 +73,6 @@ export class PaymentsRepository {
     return row ?? null;
   }
 
-  /**
-   * Marca el pago como processing y guarda la URL de pago + orden del proveedor.
-   */
   async markProcessing(
     id: string,
     urlPay: string,
@@ -80,9 +92,6 @@ export class PaymentsRepository {
     return row!;
   }
 
-  /**
-   * Marca failed para permitir reintento del pasajero.
-   */
   async markFailed(id: string): Promise<Payment> {
     const [row] = await db
       .update(payments)
@@ -124,6 +133,41 @@ export class PaymentsRepository {
         status: "rejected",
         rawProviderPayload: webhookPayload as Record<string, unknown>,
         rejectedAt: new Date(),
+        updatedAt: new Date(),
+      })
+      .where(eq(payments.id, id))
+      .returning();
+
+    return row!;
+  }
+
+  async markRefunded(id: string, refundPayload: unknown): Promise<Payment> {
+    const [row] = await db
+      .update(payments)
+      .set({
+        status: "refunded",
+        rawProviderPayload: {
+          refundStatus: "approved",
+          refundedAt: new Date().toISOString(),
+          refundPayload,
+        } as Record<string, unknown>,
+        updatedAt: new Date(),
+      })
+      .where(eq(payments.id, id))
+      .returning();
+
+    return row!;
+  }
+
+  async markRefundFailed(id: string, refundPayload: unknown): Promise<Payment> {
+    const [row] = await db
+      .update(payments)
+      .set({
+        rawProviderPayload: {
+          refundStatus: "failed",
+          refundFailedAt: new Date().toISOString(),
+          refundPayload,
+        } as Record<string, unknown>,
         updatedAt: new Date(),
       })
       .where(eq(payments.id, id))

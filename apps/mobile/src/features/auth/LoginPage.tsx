@@ -1,5 +1,6 @@
-import { useState, type FormEvent } from "react";
+import { useState, type ChangeEvent, type FormEvent, type CSSProperties } from "react";
 import {
+  IonAlert,
   IonButton,
   IonContent,
   IonHeader,
@@ -34,43 +35,396 @@ const API_URL = (
   "https://api.rapago.cl"
 ).replace(/\/$/, "");
 
-type FacebookPassengerCondition =
-  | "chileno_no_residente"
-  | "extranjero"
-  | "residente"
+/**
+ * IMPORTANTE:
+ * No guardamos documentos grandes en localStorage porque eso vuelve lenta la app
+ * y puede tirar error de cuota en móvil.
+ */
+const MAX_RESIDENCE_DOCUMENT_SIZE_BYTES = 1.5 * 1024 * 1024;
+const RESIDENT_VERIFICATION_REQUESTS_KEY = "rapago_resident_verification_requests_v1";
+
+type ResidenceVerificationStatus = "pending" | "approved" | "rejected" | "not_required";
+
+type PassengerCondition =
+  | "turista_chileno"
+  | "turista_extranjero"
+  | "residente_rapa_nui"
   | "";
 
-type RapaNuiEthnicity = "si" | "no" | "";
 type PassengerFareType = "resident" | "chilean" | "foreigner";
 
-function getPassengerFareType(
-  condition: FacebookPassengerCondition,
-  rapaNuiEthnicity: RapaNuiEthnicity,
-): PassengerFareType {
-  if (condition === "residente") return "resident";
-  if (rapaNuiEthnicity === "si") return "resident";
-  if (condition === "chileno_no_residente") return "chilean";
+type ResidenceDocumentMeta = {
+  name: string;
+  type: string;
+  size: number;
+  lastModified: number;
+  uploadedAt: string;
+};
+
+type ResidentVerificationDocumentData = ResidenceDocumentMeta & {
+  dataUrl: string;
+};
+
+type PassengerRegistrationProfile = {
+  email?: string;
+  phone?: string;
+  rut?: string;
+  nationality?: string;
+  passengerFareLabel?: string;
+  passengerFareType?: PassengerFareType;
+  farePassengerType?: PassengerFareType;
+  passengerType?: PassengerFareType;
+  passengerCondition?: PassengerCondition;
+  passengerConditionLegacy?: string;
+  belongsToRapaNuiEthnicity?: boolean;
+  residenceDocumentRequired?: boolean;
+  residenceDocumentUploaded?: boolean;
+  residenceDocumentMeta?: ResidenceDocumentMeta | null;
+  residenceVerificationStatus?: ResidenceVerificationStatus;
+  residenceVerificationMessage?: string;
+  facebookLoginPrecheck?: boolean;
+};
+
+function getPassengerFareType(condition: PassengerCondition): PassengerFareType {
+  if (condition === "residente_rapa_nui") return "resident";
+  if (condition === "turista_chileno") return "chilean";
   return "foreigner";
 }
 
-function getConditionLabel(value: FacebookPassengerCondition): string {
-  if (value === "residente") return "Residente";
-  if (value === "chileno_no_residente") return "Chileno no residente";
-  if (value === "extranjero") return "Extranjero";
+function getConditionLabel(value: PassengerCondition): string {
+  if (value === "residente_rapa_nui") return "Residente Rapa Nui";
+  if (value === "turista_chileno") return "Turista chileno";
+  if (value === "turista_extranjero") return "Turista extranjero";
   return "";
 }
 
 function getPassengerFareLabel(value: PassengerFareType): string {
   if (value === "resident") return "Residente Rapa Nui";
-  if (value === "chilean") return "Chileno no residente";
-  return "Extranjero";
+  if (value === "chilean") return "Turista chileno";
+  return "Turista extranjero";
+}
+
+function getLegacyPassengerCondition(value: PassengerCondition): string {
+  if (value === "residente_rapa_nui") return "residente";
+  if (value === "turista_chileno") return "chileno_no_residente";
+  if (value === "turista_extranjero") return "extranjero";
+  return "";
+}
+
+function getStoredValue(key: string): string {
+  try {
+    return localStorage.getItem(key) ?? "";
+  } catch {
+    return "";
+  }
+}
+
+function getStoredPassengerCondition(): PassengerCondition {
+  const value = getStoredValue("rapago_passenger_condition");
+
+  if (
+    value === "turista_chileno" ||
+    value === "turista_extranjero" ||
+    value === "residente_rapa_nui"
+  ) {
+    return value;
+  }
+
+  /**
+   * Compatibilidad con datos antiguos que ya tenías guardados.
+   */
+  if (value === "chileno_no_residente") return "turista_chileno";
+  if (value === "extranjero") return "turista_extranjero";
+  if (value === "residente") return "residente_rapa_nui";
+
+  return "";
+}
+
+function normalizeEmail(value: string): string {
+  return value.trim().toLowerCase();
+}
+
+function isValidEmail(value: string): boolean {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim());
+}
+
+function normalizePhone(value: string): string {
+  return value.replace(/[^\d+]/g, "").trim();
+}
+
+function isValidPhone(value: string): boolean {
+  const normalized = normalizePhone(value);
+  return normalized.length >= 8 && normalized.length <= 15;
+}
+
+function cleanRut(value: string): string {
+  return value.replace(/\./g, "").replace(/-/g, "").trim().toUpperCase();
+}
+
+function formatRut(value: string): string {
+  const cleaned = cleanRut(value);
+
+  if (cleaned.length <= 1) return cleaned;
+
+  const body = cleaned.slice(0, -1);
+  const dv = cleaned.slice(-1);
+
+  return `${body}-${dv}`;
+}
+
+function isValidRut(value: string): boolean {
+  const cleaned = cleanRut(value);
+
+  if (!/^\d{7,8}[0-9K]$/.test(cleaned)) return false;
+
+  const body = cleaned.slice(0, -1);
+  const dv = cleaned.slice(-1);
+
+  let sum = 0;
+  let multiplier = 2;
+
+  for (let i = body.length - 1; i >= 0; i -= 1) {
+    sum += Number(body[i]) * multiplier;
+    multiplier = multiplier === 7 ? 2 : multiplier + 1;
+  }
+
+  const expectedNumber = 11 - (sum % 11);
+  const expectedDv =
+    expectedNumber === 11 ? "0" : expectedNumber === 10 ? "K" : String(expectedNumber);
+
+  return dv === expectedDv;
+}
+
+function readFileAsDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+
+    reader.onload = () => {
+      resolve(String(reader.result ?? ""));
+    };
+
+    reader.onerror = () => {
+      reject(new Error("No se pudo leer el documento."));
+    };
+
+    reader.readAsDataURL(file);
+  });
+}
+
+function readResidentVerificationRequests(): Array<Record<string, unknown>> {
+  try {
+    const raw = localStorage.getItem(RESIDENT_VERIFICATION_REQUESTS_KEY);
+    const parsed = raw ? (JSON.parse(raw) as Array<Record<string, unknown>>) : [];
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+function getResidentVerificationStatusForPassenger(
+  email: string,
+  rut: string,
+): ResidenceVerificationStatus | null {
+  const cleanEmail = normalizeEmail(email);
+  const cleanRutValue = formatRut(rut).trim().toUpperCase();
+
+  const request = readResidentVerificationRequests().find((item) => {
+    const itemEmail = String(item.email ?? "").trim().toLowerCase();
+    const itemRut = String(item.rut ?? "").trim().toUpperCase();
+
+    return Boolean(
+      (cleanEmail && itemEmail === cleanEmail) ||
+        (cleanRutValue && itemRut === cleanRutValue),
+    );
+  });
+
+  const status = String(request?.status ?? "").trim().toLowerCase();
+
+  if (status === "approved") return "approved";
+  if (status === "rejected") return "rejected";
+  if (status === "pending" || status === "under_review" || status === "on_hold") {
+    return "pending";
+  }
+
+  return null;
+}
+
+
+function persistResidentVerificationRequest(input: {
+  userId: string;
+  name: string;
+  firstName: string;
+  lastName: string;
+  rut: string;
+  phone: string;
+  email: string;
+  document: ResidentVerificationDocumentData;
+  authProvider: "facebook" | "email";
+}): void {
+  try {
+    const now = new Date().toISOString();
+    const current = readResidentVerificationRequests();
+
+    const emailKey = input.email.trim().toLowerCase();
+    const rutKey = input.rut.trim().toUpperCase();
+
+    const withoutSameUser = current.filter((item) => {
+      const itemUserId = String(item.userId ?? "");
+      const itemEmail = String(item.email ?? "").trim().toLowerCase();
+      const itemRut = String(item.rut ?? "").trim().toUpperCase();
+
+      return (
+        itemUserId !== input.userId &&
+        itemEmail !== emailKey &&
+        itemRut !== rutKey
+      );
+    });
+
+    const request = {
+      id: `resident-validation-${Date.now()}`,
+      userId: input.userId,
+      status: "pending",
+      createdAt: now,
+      updatedAt: now,
+      name: input.name,
+      firstName: input.firstName,
+      lastName: input.lastName,
+      rut: input.rut,
+      phone: input.phone,
+      email: input.email,
+      passengerFareType: "resident",
+      passengerFareLabel: "Residente Rapa Nui",
+      nationality: "Residente Rapa Nui",
+      registrationProvider: input.authProvider,
+      authProvider: input.authProvider,
+      documentName: input.document.name,
+      documentType: input.document.type,
+      documentSizeBytes: input.document.size,
+      documentUploadedAt: input.document.uploadedAt,
+      documentDataUrl: input.document.dataUrl,
+      reason: "Validación de residencia Rapa Nui",
+      userMessage:
+        "Tu documento de Residente Rapa Nui está pendiente de revisión por el administrador.",
+    };
+
+    localStorage.setItem(
+      RESIDENT_VERIFICATION_REQUESTS_KEY,
+      JSON.stringify([request, ...withoutSameUser].slice(0, 100)),
+    );
+
+    window.dispatchEvent(new CustomEvent("rapago:resident-verification-updated"));
+  } catch {
+    // No bloquea Facebook si localStorage no está disponible.
+  }
+}
+
+
+function persistPassengerProfile(profile: PassengerRegistrationProfile): void {
+  try {
+    const currentRaw = localStorage.getItem("rapago_registration_profile");
+    const current = currentRaw ? JSON.parse(currentRaw) : {};
+
+    const nextProfile: PassengerRegistrationProfile = {
+      ...current,
+      ...profile,
+    };
+
+    localStorage.setItem(
+      "rapago_registration_profile",
+      JSON.stringify(nextProfile),
+    );
+
+    if (profile.email) {
+      localStorage.setItem("rapago_passenger_email", profile.email);
+      localStorage.setItem("rapago_profile_email", profile.email);
+    }
+
+    if (profile.phone) {
+      localStorage.setItem("rapago_passenger_phone", profile.phone);
+      localStorage.setItem("rapago_profile_phone", profile.phone);
+    }
+
+    if (profile.rut) {
+      localStorage.setItem("rapago_passenger_rut", profile.rut);
+      localStorage.setItem("rapago_profile_rut", profile.rut);
+    }
+
+    if (profile.nationality) {
+      localStorage.setItem("rapago_profile_nationality", profile.nationality);
+      localStorage.setItem("rapago_nationality", profile.nationality);
+    }
+
+    if (profile.passengerCondition) {
+      localStorage.setItem("rapago_passenger_condition", profile.passengerCondition);
+    }
+
+    if (profile.passengerConditionLegacy) {
+      localStorage.setItem(
+        "rapago_passenger_condition_legacy",
+        profile.passengerConditionLegacy,
+      );
+    }
+
+    if (profile.passengerFareType) {
+      localStorage.setItem("rapago_passenger_fare_type", profile.passengerFareType);
+      localStorage.setItem("rapago_fare_passenger_type", profile.passengerFareType);
+      localStorage.setItem("rapago_passenger_type", profile.passengerFareType);
+    }
+
+    if (typeof profile.belongsToRapaNuiEthnicity === "boolean") {
+      localStorage.setItem(
+        "rapago_belongs_to_rapa_nui_ethnicity",
+        profile.belongsToRapaNuiEthnicity ? "si" : "no",
+      );
+    }
+
+    if (profile.residenceVerificationStatus) {
+      localStorage.setItem(
+        "rapago_residence_verification_status",
+        profile.residenceVerificationStatus,
+      );
+    }
+
+    if (profile.residenceVerificationMessage) {
+      localStorage.setItem(
+        "rapago_residence_verification_user_message",
+        profile.residenceVerificationMessage,
+      );
+    } else if (profile.residenceVerificationStatus === "not_required") {
+      localStorage.removeItem("rapago_residence_verification_user_message");
+    }
+
+    localStorage.setItem(
+      "rapago_residence_document_required",
+      profile.residenceDocumentRequired ? "true" : "false",
+    );
+
+    localStorage.setItem(
+      "rapago_residence_document_uploaded",
+      profile.residenceDocumentUploaded ? "true" : "false",
+    );
+
+    if (profile.residenceDocumentMeta) {
+      localStorage.setItem(
+        "rapago_passenger_residence_document_meta",
+        JSON.stringify(profile.residenceDocumentMeta),
+      );
+    } else if (profile.residenceDocumentRequired === false) {
+      localStorage.removeItem("rapago_passenger_residence_document_meta");
+      sessionStorage.removeItem("rapago_passenger_residence_document_data_url");
+    }
+  } catch {
+    /**
+     * No bloqueamos el login si el navegador tiene restringido el storage.
+     */
+  }
 }
 
 export function LoginPage(): JSX.Element {
   const history = useHistory();
   const { login } = useAuth();
 
-  const [email, setEmail] = useState("");
+  const [email, setEmail] = useState(getStoredValue("rapago_passenger_email"));
   const [password, setPassword] = useState("");
 
   const [loading, setLoading] = useState(false);
@@ -78,11 +432,27 @@ export function LoginPage(): JSX.Element {
   const [serverError, setServerError] = useState("");
 
   const [showFacebookStep, setShowFacebookStep] = useState(false);
-  const [facebookPassengerCondition, setFacebookPassengerCondition] =
-    useState<FacebookPassengerCondition>("");
-  const [rapaNuiEthnicity, setRapaNuiEthnicity] =
-    useState<RapaNuiEthnicity>("");
+  const [passengerCondition, setPassengerCondition] =
+    useState<PassengerCondition>(getStoredPassengerCondition());
+
+  const [passengerEmail, setPassengerEmail] = useState(
+    getStoredValue("rapago_passenger_email"),
+  );
+
+  const [passengerPhone, setPassengerPhone] = useState(
+    getStoredValue("rapago_passenger_phone"),
+  );
+
+  const [passengerRut, setPassengerRut] = useState(
+    getStoredValue("rapago_passenger_rut"),
+  );
+
+  const [residenceDocument, setResidenceDocument] = useState<File | null>(null);
+  const [residenceDocumentName, setResidenceDocumentName] = useState("");
   const [facebookStepError, setFacebookStepError] = useState("");
+  const [showResidentPendingAlert, setShowResidentPendingAlert] = useState(false);
+
+  const isResidentRapaNui = passengerCondition === "residente_rapa_nui";
 
   async function handleSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -91,7 +461,7 @@ export function LoginPage(): JSX.Element {
     setServerError("");
 
     const parsed = loginRequestSchema.safeParse({
-      email: email.trim().toLowerCase(),
+      email: normalizeEmail(email),
       password,
     });
 
@@ -120,6 +490,10 @@ export function LoginPage(): JSX.Element {
         return;
       }
 
+      persistPassengerProfile({
+        email: parsed.data.email,
+      });
+
       const role = result.session.user.role;
       const home = ROLE_HOME[role] ?? ROUTES.WELCOME;
 
@@ -133,69 +507,226 @@ export function LoginPage(): JSX.Element {
 
   function openFacebookStep(): void {
     setFacebookStepError("");
+
+    if (!passengerEmail && email.trim()) {
+      setPassengerEmail(normalizeEmail(email));
+    }
+
     setShowFacebookStep(true);
   }
 
-  function continueWithFacebook(): void {
+  function handlePassengerConditionChange(value: PassengerCondition): void {
+    setPassengerCondition(value);
     setFacebookStepError("");
 
-    if (!facebookPassengerCondition) {
-      setFacebookStepError("Selecciona si eres chileno no residente, extranjero o residente.");
+    if (value !== "residente_rapa_nui") {
+      setResidenceDocument(null);
+      setResidenceDocumentName("");
+
+      try {
+        localStorage.removeItem("rapago_passenger_residence_document_meta");
+        sessionStorage.removeItem("rapago_passenger_residence_document_data_url");
+      } catch {
+        /**
+         * No bloquea la app.
+         */
+      }
+    }
+  }
+
+  function handleResidenceDocumentChange(e: ChangeEvent<HTMLInputElement>): void {
+    setFacebookStepError("");
+
+    const file = e.target.files?.[0] ?? null;
+
+    if (!file) {
+      setResidenceDocument(null);
+      setResidenceDocumentName("");
       return;
     }
 
-    if (!rapaNuiEthnicity) {
-      setFacebookStepError("Indica si perteneces a la etnia Rapa Nui.");
+    const allowedTypes = [
+      "application/pdf",
+      "image/jpeg",
+      "image/png",
+      "image/webp",
+    ];
+
+    if (!allowedTypes.includes(file.type)) {
+      setResidenceDocument(null);
+      setResidenceDocumentName("");
+      setFacebookStepError("El documento debe ser PDF, JPG, PNG o WEBP.");
       return;
     }
 
-    const passengerFareType = getPassengerFareType(
-      facebookPassengerCondition,
-      rapaNuiEthnicity,
-    );
+    if (file.size > MAX_RESIDENCE_DOCUMENT_SIZE_BYTES) {
+      setResidenceDocument(null);
+      setResidenceDocumentName("");
+      setFacebookStepError(
+        "El documento pesa demasiado. Sube una imagen o PDF de máximo 1.5 MB para que funcione rápido en celular.",
+      );
+      return;
+    }
 
-    const conditionLabel = getConditionLabel(facebookPassengerCondition);
+    setResidenceDocument(file);
+    setResidenceDocumentName(file.name);
+  }
+
+  async function continueWithFacebook(): Promise<void> {
+    setFacebookStepError("");
+
+    const cleanEmail = normalizeEmail(passengerEmail);
+    const cleanPhone = normalizePhone(passengerPhone);
+    const cleanPassengerRut = formatRut(passengerRut);
+
+    if (!passengerCondition) {
+      setFacebookStepError("Selecciona si eres turista chileno, turista extranjero o residente Rapa Nui.");
+      return;
+    }
+
+    if (!cleanEmail) {
+      setFacebookStepError("Ingresa tu correo electrónico.");
+      return;
+    }
+
+    if (!isValidEmail(cleanEmail)) {
+      setFacebookStepError("Ingresa un correo electrónico válido.");
+      return;
+    }
+
+    if (!cleanPhone) {
+      setFacebookStepError("Ingresa tu celular.");
+      return;
+    }
+
+    if (!isValidPhone(cleanPhone)) {
+      setFacebookStepError("Ingresa un celular válido.");
+      return;
+    }
+
+    if (!cleanPassengerRut) {
+      setFacebookStepError("Ingresa tu RUT.");
+      return;
+    }
+
+    if (!isValidRut(cleanPassengerRut)) {
+      setFacebookStepError("Ingresa un RUT válido.");
+      return;
+    }
+
+    const currentResidenceStatus = isResidentRapaNui
+      ? getResidentVerificationStatusForPassenger(cleanEmail, cleanPassengerRut)
+      : null;
+    const isResidentAlreadyApproved = currentResidenceStatus === "approved";
+
+    if (isResidentRapaNui && !isResidentAlreadyApproved && !residenceDocument) {
+      setFacebookStepError(
+        currentResidenceStatus === "pending"
+          ? "Tu documento de Residente Rapa Nui ya está pendiente de revisión. Debe aprobarlo el administrador antes de entrar con Facebook."
+          : "Para Residente Rapa Nui debes adjuntar un documento de residencia.",
+      );
+      return;
+    }
+
+    const passengerFareType = getPassengerFareType(passengerCondition);
+    const conditionLabel = getConditionLabel(passengerCondition);
     const passengerFareLabel = getPassengerFareLabel(passengerFareType);
+    const legacyCondition = getLegacyPassengerCondition(passengerCondition);
+
+    let residenceDocumentMeta: ResidenceDocumentMeta | null = null;
+    let residenceDocumentDataUrl = "";
 
     try {
-      const currentRaw = localStorage.getItem("rapago_registration_profile");
-      const current = currentRaw ? JSON.parse(currentRaw) : {};
+      if (isResidentRapaNui && residenceDocument) {
+        residenceDocumentMeta = {
+          name: residenceDocument.name,
+          type: residenceDocument.type,
+          size: residenceDocument.size,
+          lastModified: residenceDocument.lastModified,
+          uploadedAt: new Date().toISOString(),
+        };
 
-      const nextProfile = {
-        ...current,
+        /**
+         * Guardamos temporalmente el documento en sessionStorage para que la página
+         * del pasajero pueda leerlo después del login.
+         *
+         * localStorage NO se usa para el archivo completo porque puede romper la app
+         * por límite de espacio, especialmente en móvil.
+         */
+        residenceDocumentDataUrl = await readFileAsDataUrl(residenceDocument);
+        sessionStorage.setItem("rapago_passenger_residence_document_data_url", residenceDocumentDataUrl);
+      }
+
+      persistPassengerProfile({
+        email: cleanEmail,
+        phone: cleanPhone,
+        rut: cleanPassengerRut,
         nationality: conditionLabel,
         passengerFareLabel,
         passengerFareType,
         farePassengerType: passengerFareType,
         passengerType: passengerFareType,
-        passengerCondition: facebookPassengerCondition,
-        belongsToRapaNuiEthnicity: rapaNuiEthnicity === "si",
+        passengerCondition,
+        passengerConditionLegacy: legacyCondition,
+        belongsToRapaNuiEthnicity: isResidentRapaNui,
+        residenceDocumentRequired: isResidentRapaNui,
+        residenceDocumentUploaded: isResidentRapaNui ? Boolean(residenceDocumentMeta) : false,
+        residenceDocumentMeta,
+        residenceVerificationStatus: isResidentRapaNui
+          ? isResidentAlreadyApproved
+            ? "approved"
+            : "pending"
+          : "not_required",
+        residenceVerificationMessage: isResidentRapaNui
+          ? isResidentAlreadyApproved
+            ? "Tu residencia Rapa Nui ya fue aprobada por el administrador."
+            : "Tu documento de Residente Rapa Nui está pendiente de revisión por el administrador."
+          : "",
         facebookLoginPrecheck: true,
-      };
+      });
 
-      localStorage.setItem(
-        "rapago_registration_profile",
-        JSON.stringify(nextProfile),
-      );
-
-      localStorage.setItem("rapago_profile_nationality", conditionLabel);
-      localStorage.setItem("rapago_nationality", conditionLabel);
-      localStorage.setItem("rapago_passenger_condition", facebookPassengerCondition);
-      localStorage.setItem("rapago_passenger_fare_type", passengerFareType);
-      localStorage.setItem("rapago_fare_passenger_type", passengerFareType);
-      localStorage.setItem("rapago_passenger_type", passengerFareType);
-      localStorage.setItem(
-        "rapago_belongs_to_rapa_nui_ethnicity",
-        rapaNuiEthnicity,
-      );
+      if (isResidentRapaNui && !isResidentAlreadyApproved && residenceDocumentMeta && residenceDocumentDataUrl) {
+        persistResidentVerificationRequest({
+          userId: `facebook-${cleanEmail}`,
+          name: "Pasajero Facebook",
+          firstName: "Pasajero",
+          lastName: "Facebook",
+          rut: cleanPassengerRut,
+          phone: cleanPhone,
+          email: cleanEmail,
+          document: {
+            ...residenceDocumentMeta,
+            dataUrl: residenceDocumentDataUrl,
+          },
+          authProvider: "facebook",
+        });
+      }
     } catch {
-      // No bloquea el login si el navegador no permite localStorage.
+      setFacebookStepError(
+        "No se pudo guardar el documento en este dispositivo. Intenta con un archivo más liviano.",
+      );
+      return;
+    }
+
+    if (isResidentRapaNui && !isResidentAlreadyApproved) {
+      setShowResidentPendingAlert(true);
+      return;
     }
 
     const params = new URLSearchParams({
-      condition: facebookPassengerCondition,
-      rapaNuiEthnicity,
+      condition: legacyCondition,
+      passengerCondition,
       passengerFareType,
+      passengerFareLabel,
+      email: cleanEmail,
+      phone: cleanPhone,
+      rut: cleanPassengerRut,
+      residenceDocumentRequired: isResidentRapaNui ? "true" : "false",
+      residenceDocumentUploaded: isResidentRapaNui ? "true" : "false",
+      residenceVerificationStatus: isResidentRapaNui
+        ? "approved"
+        : "not_required",
+      rapaNuiEthnicity: isResidentRapaNui ? "si" : "no",
     });
 
     window.location.href = `${API_URL}/api/auth/facebook?${params.toString()}`;
@@ -205,39 +736,235 @@ export function LoginPage(): JSX.Element {
     history.push(ROUTES.AUTH.REGISTER);
   }
 
+  const pageStyle = {
+    "--background": "linear-gradient(180deg, rgba(20,16,12,.72), rgba(20,16,12,.86)), url('/assets/rapa-go-bg.jpg') center / cover no-repeat fixed",
+  } as CSSProperties;
+
+  const formShellStyle: CSSProperties = {
+    width: "min(92vw, 470px)",
+    margin: "34px auto 22px",
+    padding: "22px",
+    borderRadius: "30px",
+    background: "linear-gradient(180deg, rgba(26,26,25,.96), rgba(15,15,15,.98))",
+    border: "1px solid rgba(214,166,64,.34)",
+    boxShadow: "0 24px 70px rgba(0,0,0,.48), inset 0 1px 0 rgba(255,255,255,.08)",
+    color: "#F6F2EC",
+  };
+
+  const brandBadgeStyle: CSSProperties = {
+    width: 58,
+    height: 58,
+    borderRadius: 20,
+    display: "grid",
+    placeItems: "center",
+    background: "linear-gradient(135deg,#F8D879,#C89B3C 48%,#8F3C24)",
+    boxShadow: "0 12px 28px rgba(200,155,60,.35)",
+    color: "#111",
+    fontSize: "1.7rem",
+    fontWeight: 950,
+    marginBottom: 14,
+  };
+
+  const authInputStyle = {
+    "--background": "rgba(255,255,255,.065)",
+    "--color": "#F6F2EC",
+    "--border-color": "rgba(214,166,64,.30)",
+    "--highlight-color-focused": "#D6A640",
+    "--padding-start": "16px",
+    "--inner-padding-end": "16px",
+    border: "1px solid rgba(214,166,64,.30)",
+    borderRadius: "18px",
+    marginBottom: "12px",
+    overflow: "hidden",
+  } as CSSProperties;
+
+  const inputTextStyle = {
+    "--color": "#F6F2EC",
+    "--placeholder-color": "rgba(246,242,236,.52)",
+    "--placeholder-opacity": "1",
+    fontWeight: 850,
+  } as CSSProperties;
+
+  const primaryButtonStyle = {
+    "--border-radius": "18px",
+    "--background": "linear-gradient(135deg,#F8D879 0%,#D6A640 48%,#B84F2E 100%)",
+    "--background-activated": "linear-gradient(135deg,#C89B3C,#B84F2E)",
+    "--box-shadow": "0 16px 32px rgba(214,166,64,.35)",
+    color: "#111",
+    height: "54px",
+    fontWeight: 950,
+    marginTop: "14px",
+  } as CSSProperties;
+
+  const outlineButtonStyle = {
+    "--border-radius": "18px",
+    "--border-color": "rgba(214,166,64,.72)",
+    "--color": "#F8D879",
+    height: "50px",
+    fontWeight: 900,
+    marginTop: "10px",
+  } as CSSProperties;
+
+  const modalPageStyle = {
+    "--background": "linear-gradient(180deg, rgba(16,14,12,.86), rgba(16,14,12,.96)), url('/assets/rapa-go-bg.jpg') center / cover no-repeat",
+  } as CSSProperties;
+
+  const modalCardStyle: CSSProperties = {
+    width: "min(92vw, 560px)",
+    margin: "18px auto 24px",
+    borderRadius: "30px",
+    overflow: "hidden",
+    background: "linear-gradient(180deg, rgba(246,242,236,.98), rgba(232,221,202,.98))",
+    border: "1px solid rgba(214,166,64,.38)",
+    boxShadow: "0 30px 80px rgba(0,0,0,.48)",
+    color: "#111",
+  };
+
+  const modalHeaderStyle: CSSProperties = {
+    padding: "18px 20px",
+    color: "#fff",
+    background: "linear-gradient(135deg,#171717 0%,#5A241A 48%,#C89B3C 120%)",
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    gap: 12,
+  };
+
+  const modalBodyStyle: CSSProperties = {
+    padding: "18px",
+  };
+
+  const modalItemStyle = {
+    "--background": "rgba(17,17,17,.93)",
+    "--color": "#F6F2EC",
+    "--border-color": "transparent",
+    "--highlight-color-focused": "#D6A640",
+    "--padding-start": "16px",
+    "--inner-padding-end": "16px",
+    border: "1px solid rgba(200,155,60,.35)",
+    borderRadius: "18px",
+    marginBottom: "12px",
+    overflow: "hidden",
+  } as CSSProperties;
+
+  const modalInputStyle = {
+    "--color": "#F6F2EC",
+    "--placeholder-color": "rgba(246,242,236,.55)",
+    "--placeholder-opacity": "1",
+    fontWeight: 850,
+  } as CSSProperties;
+
+  const conditionOptions: Array<{
+    value: Exclude<PassengerCondition, "">;
+    title: string;
+    subtitle: string;
+    icon: string;
+  }> = [
+    {
+      value: "turista_chileno",
+      title: "Turista chileno",
+      subtitle: "Tarifa nacional para visitantes de Chile.",
+      icon: "🇨🇱",
+    },
+    {
+      value: "turista_extranjero",
+      title: "Turista extranjero",
+      subtitle: "Tarifa internacional para visitantes.",
+      icon: "🌎",
+    },
+    {
+      value: "residente_rapa_nui",
+      title: "Residente Rapa Nui",
+      subtitle: "Requiere documento para validación admin.",
+      icon: "🗿",
+    },
+  ];
+
   return (
     <IonPage>
       <IonHeader>
-        <IonToolbar color="primary">
-          <IonTitle>Iniciar sesión</IonTitle>
+        <IonToolbar
+          style={
+            {
+              "--background": "linear-gradient(135deg,#111 0%,#5A241A 56%,#C89B3C 130%)",
+              "--color": "#fff",
+              "--min-height": "72px",
+            } as CSSProperties
+          }
+        >
+          <IonTitle style={{ fontWeight: 950, letterSpacing: ".01em" }}>
+            Iniciar sesión
+          </IonTitle>
         </IonToolbar>
       </IonHeader>
 
-      <IonContent className="ion-padding">
+      <IonContent className="ion-padding" style={pageStyle}>
         <form
           onSubmit={(e) => {
             void handleSubmit(e);
           }}
-          className="auth-form"
           noValidate
+          style={formShellStyle}
         >
-          <IonText color="primary">
-            <h2 className="auth-title">Bienvenido a Rapa Go</h2>
+          <div style={brandBadgeStyle}>🗿</div>
+
+          <IonText>
+            <h2
+              style={{
+                margin: "0 0 6px",
+                fontSize: "2rem",
+                lineHeight: 1.05,
+                fontWeight: 950,
+                color: "#D6A640",
+              }}
+            >
+              Bienvenido a Rapa Go
+            </h2>
           </IonText>
+
+          <p
+            style={{
+              margin: "0 0 18px",
+              color: "rgba(246,242,236,.72)",
+              fontWeight: 750,
+              lineHeight: 1.35,
+            }}
+          >
+            Movilidad local, turismo y viajes seguros en Rapa Nui.
+          </p>
 
           {serverError && (
             <IonText color="danger">
-              <p className="auth-error">{serverError}</p>
+              <p
+                className="auth-error"
+                style={{
+                  background: "rgba(239,68,68,.14)",
+                  border: "1px solid rgba(239,68,68,.28)",
+                  padding: "10px 12px",
+                  borderRadius: 14,
+                  fontWeight: 900,
+                }}
+              >
+                {serverError}
+              </p>
             </IonText>
           )}
 
-          <IonItem className={fieldErrors.email ? "ion-invalid" : ""}>
-            <IonLabel position="stacked">Correo electrónico</IonLabel>
+          <IonItem className={fieldErrors.email ? "ion-invalid" : ""} style={authInputStyle}>
+            <IonLabel position="stacked" style={{ color: "#F8D879", fontWeight: 900 }}>
+              Correo electrónico
+            </IonLabel>
             <IonInput
+              style={inputTextStyle}
               type="email"
               value={email}
               onIonInput={(e) => {
-                setEmail(String(e.detail.value ?? ""));
+                const nextEmail = String(e.detail.value ?? "");
+                setEmail(nextEmail);
+
+                if (!passengerEmail) {
+                  setPassengerEmail(nextEmail);
+                }
               }}
               placeholder="tu@correo.com"
               autocomplete="email"
@@ -245,14 +972,15 @@ export function LoginPage(): JSX.Element {
               disabled={loading}
               required
             />
-            {fieldErrors.email && (
-              <IonNote slot="error">{fieldErrors.email}</IonNote>
-            )}
+            {fieldErrors.email && <IonNote slot="error">{fieldErrors.email}</IonNote>}
           </IonItem>
 
-          <IonItem className={fieldErrors.password ? "ion-invalid" : ""}>
-            <IonLabel position="stacked">Contraseña</IonLabel>
+          <IonItem className={fieldErrors.password ? "ion-invalid" : ""} style={authInputStyle}>
+            <IonLabel position="stacked" style={{ color: "#F8D879", fontWeight: 900 }}>
+              Contraseña
+            </IonLabel>
             <IonInput
+              style={inputTextStyle}
               type="password"
               value={password}
               onIonInput={(e) => {
@@ -263,27 +991,20 @@ export function LoginPage(): JSX.Element {
               disabled={loading}
               required
             />
-            {fieldErrors.password && (
-              <IonNote slot="error">{fieldErrors.password}</IonNote>
-            )}
+            {fieldErrors.password && <IonNote slot="error">{fieldErrors.password}</IonNote>}
           </IonItem>
 
-          <IonButton
-            expand="block"
-            type="submit"
-            disabled={loading}
-            style={{ marginTop: "18px" }}
-          >
+          <IonButton expand="block" type="submit" disabled={loading} style={primaryButtonStyle}>
             {loading ? <IonSpinner name="crescent" /> : "Iniciar sesión"}
           </IonButton>
 
           <IonButton
             expand="block"
             fill="outline"
-            color="primary"
             disabled={loading}
             onClick={openFacebookStep}
             type="button"
+            style={outlineButtonStyle}
           >
             Continuar con Facebook
           </IonButton>
@@ -294,6 +1015,7 @@ export function LoginPage(): JSX.Element {
             disabled={loading}
             onClick={goToRegister}
             type="button"
+            style={{ color: "#F8D879", fontWeight: 900, marginTop: 8 } as CSSProperties}
           >
             ¿No tienes cuenta? Crear cuenta
           </IonButton>
@@ -304,6 +1026,7 @@ export function LoginPage(): JSX.Element {
             disabled={loading}
             onClick={() => history.replace(ROUTES.WELCOME)}
             type="button"
+            style={outlineButtonStyle}
           >
             Volver al inicio
           </IonButton>
@@ -312,99 +1035,320 @@ export function LoginPage(): JSX.Element {
         <IonModal
           isOpen={showFacebookStep}
           onDidDismiss={() => setShowFacebookStep(false)}
+          style={
+            {
+              "--width": "min(94vw, 620px)",
+              "--height": "auto",
+              "--max-height": "92vh",
+              "--border-radius": "30px",
+            } as CSSProperties
+          }
         >
-          <IonPage>
-            <IonHeader>
-              <IonToolbar color="primary">
-                <IonTitle>Antes de continuar</IonTitle>
-              </IonToolbar>
-            </IonHeader>
+          <IonPage style={modalPageStyle}>
+            <IonContent className="ion-padding" style={modalPageStyle}>
+              <div style={modalCardStyle}>
+                <div style={modalHeaderStyle}>
+                  <div>
+                    <div
+                      style={{
+                        fontSize: ".72rem",
+                        textTransform: "uppercase",
+                        letterSpacing: ".08em",
+                        color: "rgba(248,216,121,.95)",
+                        fontWeight: 950,
+                        marginBottom: 4,
+                      }}
+                    >
+                      Antes de continuar
+                    </div>
+                    <h2 style={{ margin: 0, fontSize: "1.35rem", fontWeight: 950 }}>
+                      Datos del pasajero
+                    </h2>
+                  </div>
 
-            <IonContent className="ion-padding">
-              <div className="auth-form">
-                <IonText color="primary">
-                  <h2 className="auth-title">Datos del pasajero</h2>
-                </IonText>
+                  <button
+                    type="button"
+                    onClick={() => setShowFacebookStep(false)}
+                    style={{
+                      width: 42,
+                      height: 42,
+                      borderRadius: 999,
+                      border: "1px solid rgba(255,255,255,.26)",
+                      background: "rgba(255,255,255,.10)",
+                      color: "#fff",
+                      fontWeight: 950,
+                      fontSize: "1.25rem",
+                    }}
+                    aria-label="Cerrar"
+                  >
+                    ×
+                  </button>
+                </div>
 
-                <IonText color="medium">
-                  <p style={{ fontSize: "0.9rem", marginTop: 0 }}>
-                    Completa estos datos antes de iniciar sesión con Facebook.
+                <div style={modalBodyStyle}>
+                  <p
+                    style={{
+                      margin: "0 0 14px",
+                      color: "#4A4237",
+                      fontSize: ".92rem",
+                      lineHeight: 1.38,
+                      fontWeight: 760,
+                    }}
+                  >
+                    Selecciona tu tipo de pasajero para aplicar la tarifa correcta antes de entrar con Facebook.
                   </p>
-                </IonText>
 
-                {facebookStepError && (
-                  <IonText color="danger">
-                    <p className="auth-error">{facebookStepError}</p>
-                  </IonText>
-                )}
+                  {facebookStepError && (
+                    <IonText color="danger">
+                      <p
+                        className="auth-error"
+                        style={{
+                          background: "rgba(239,68,68,.12)",
+                          border: "1px solid rgba(239,68,68,.30)",
+                          padding: "10px 12px",
+                          borderRadius: 14,
+                          fontWeight: 950,
+                          margin: "0 0 12px",
+                        }}
+                      >
+                        {facebookStepError}
+                      </p>
+                    </IonText>
+                  )}
 
-                <IonItem>
-                  <IonLabel position="stacked">
-                    Tipo de pasajero *
-                  </IonLabel>
-                  <IonSelect
-                    value={facebookPassengerCondition}
-                    placeholder="Selecciona una opción"
-                    interface="action-sheet"
-                    onIonChange={(e) =>
-                      setFacebookPassengerCondition(
-                        String(e.detail.value ?? "") as FacebookPassengerCondition,
-                      )
-                    }
+                  <div
+                    style={{
+                      display: "grid",
+                      gap: 10,
+                      marginBottom: 14,
+                    }}
                   >
-                    <IonSelectOption value="chileno_no_residente">
-                      Chileno no residente
-                    </IonSelectOption>
-                    <IonSelectOption value="extranjero">
-                      Extranjero
-                    </IonSelectOption>
-                    <IonSelectOption value="residente">
-                      Residente
-                    </IonSelectOption>
-                  </IonSelect>
-                </IonItem>
+                    {conditionOptions.map((option) => {
+                      const active = passengerCondition === option.value;
 
-                <IonItem>
-                  <IonLabel position="stacked">
-                    ¿Perteneces a la etnia Rapa Nui? *
-                  </IonLabel>
-                  <IonSelect
-                    value={rapaNuiEthnicity}
-                    placeholder="Selecciona una opción"
-                    interface="action-sheet"
-                    onIonChange={(e) =>
-                      setRapaNuiEthnicity(
-                        String(e.detail.value ?? "") as RapaNuiEthnicity,
-                      )
-                    }
+                      return (
+                        <button
+                          key={option.value}
+                          type="button"
+                          onClick={() => handlePassengerConditionChange(option.value)}
+                          style={{
+                            width: "100%",
+                            display: "grid",
+                            gridTemplateColumns: "46px 1fr 26px",
+                            alignItems: "center",
+                            gap: 12,
+                            borderRadius: 20,
+                            padding: "12px",
+                            textAlign: "left",
+                            border: active
+                              ? "2px solid rgba(34,197,94,.72)"
+                              : "1px solid rgba(200,155,60,.38)",
+                            background: active
+                              ? "linear-gradient(135deg,#ECFDF3,#FFFFFF)"
+                              : "rgba(255,255,255,.74)",
+                            boxShadow: active
+                              ? "0 12px 28px rgba(34,197,94,.16)"
+                              : "0 8px 20px rgba(0,0,0,.07)",
+                            color: "#111",
+                          }}
+                        >
+                          <span
+                            style={{
+                              width: 46,
+                              height: 46,
+                              borderRadius: 16,
+                              display: "grid",
+                              placeItems: "center",
+                              background: active ? "#22C55E" : "#1D1D1B",
+                              color: "#fff",
+                              fontSize: "1.25rem",
+                            }}
+                          >
+                            {option.icon}
+                          </span>
+
+                          <span style={{ minWidth: 0 }}>
+                            <strong style={{ display: "block", fontSize: ".95rem", fontWeight: 950 }}>
+                              {option.title}
+                            </strong>
+                            <span style={{ display: "block", color: "#675A4A", fontSize: ".76rem", fontWeight: 760, marginTop: 2 }}>
+                              {option.subtitle}
+                            </span>
+                          </span>
+
+                          <span
+                            style={{
+                              width: 24,
+                              height: 24,
+                              borderRadius: 999,
+                              display: "grid",
+                              placeItems: "center",
+                              background: active ? "#22C55E" : "rgba(17,17,17,.10)",
+                              color: active ? "#fff" : "#777",
+                              fontWeight: 950,
+                            }}
+                          >
+                            {active ? "✓" : ""}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  <div
+                    style={{
+                      margin: "2px 0 12px",
+                      padding: "12px",
+                      borderRadius: 18,
+                      background: "rgba(17,17,17,.08)",
+                      border: "1px solid rgba(200,155,60,.30)",
+                      color: "#372F28",
+                      fontWeight: 850,
+                      fontSize: ".82rem",
+                      lineHeight: 1.35,
+                    }}
                   >
-                    <IonSelectOption value="si">Sí</IonSelectOption>
-                    <IonSelectOption value="no">No</IonSelectOption>
-                  </IonSelect>
-                </IonItem>
+                    🗿 Si eres Residente Rapa Nui, el documento quedará pendiente para revisión del administrador antes de aprobar la tarifa.
+                  </div>
 
-                <IonButton
-                  expand="block"
-                  color="primary"
-                  style={{ marginTop: "18px" }}
-                  onClick={continueWithFacebook}
-                  type="button"
-                >
-                  Continuar con Facebook
-                </IonButton>
+                  <IonItem style={modalItemStyle}>
+                    <IonLabel position="stacked" style={{ color: "#F8D879", fontWeight: 950 }}>
+                      Correo electrónico *
+                    </IonLabel>
+                    <IonInput
+                      style={modalInputStyle}
+                      type="email"
+                      value={passengerEmail}
+                      onIonInput={(e) => {
+                        setPassengerEmail(String(e.detail.value ?? ""));
+                      }}
+                      placeholder="tu@correo.com"
+                      autocomplete="email"
+                      inputmode="email"
+                      required
+                    />
+                  </IonItem>
 
-                <IonButton
-                  expand="block"
-                  fill="outline"
-                  onClick={() => setShowFacebookStep(false)}
-                  type="button"
-                >
-                  Volver
-                </IonButton>
+                  <IonItem style={modalItemStyle}>
+                    <IonLabel position="stacked" style={{ color: "#F8D879", fontWeight: 950 }}>
+                      Celular *
+                    </IonLabel>
+                    <IonInput
+                      style={modalInputStyle}
+                      type="tel"
+                      value={passengerPhone}
+                      onIonInput={(e) => {
+                        setPassengerPhone(String(e.detail.value ?? ""));
+                      }}
+                      placeholder="+56 9 1234 5678"
+                      autocomplete="tel"
+                      inputmode="tel"
+                      required
+                    />
+                  </IonItem>
+
+                  <IonItem style={modalItemStyle}>
+                    <IonLabel position="stacked" style={{ color: "#F8D879", fontWeight: 950 }}>
+                      RUT *
+                    </IonLabel>
+                    <IonInput
+                      style={modalInputStyle}
+                      type="text"
+                      value={passengerRut}
+                      onIonInput={(e) => {
+                        setPassengerRut(String(e.detail.value ?? ""));
+                      }}
+                      onIonBlur={() => {
+                        setPassengerRut(formatRut(passengerRut));
+                      }}
+                      placeholder="12345678-9"
+                      autocomplete="off"
+                      inputmode="text"
+                      required
+                    />
+                  </IonItem>
+
+                  {isResidentRapaNui && (
+                    <div
+                      style={{
+                        borderRadius: 20,
+                        padding: 14,
+                        background: "linear-gradient(135deg,#FFF8E6,#FFFFFF)",
+                        border: residenceDocumentName
+                          ? "2px solid rgba(34,197,94,.62)"
+                          : "2px dashed rgba(200,155,60,.72)",
+                        marginBottom: 12,
+                      }}
+                    >
+                      <strong style={{ display: "block", fontSize: ".9rem", color: "#111", fontWeight: 950 }}>
+                        Documento de residencia *
+                      </strong>
+                      <p style={{ margin: "4px 0 10px", color: "#675A4A", fontSize: ".78rem", fontWeight: 760 }}>
+                        PDF, JPG, PNG o WEBP. Máximo 1.5 MB para que funcione rápido en celular.
+                      </p>
+
+                      <input
+                        type="file"
+                        accept="application/pdf,image/jpeg,image/png,image/webp"
+                        onChange={handleResidenceDocumentChange}
+                        style={{ width: "100%", fontWeight: 850, color: "#111" }}
+                      />
+
+                      {residenceDocumentName && (
+                        <IonText color="success">
+                          <p style={{ fontSize: "0.84rem", margin: "8px 0 0", fontWeight: 950 }}>
+                            ✓ Documento cargado: {residenceDocumentName}
+                          </p>
+                        </IonText>
+                      )}
+                    </div>
+                  )}
+
+                  <IonButton
+                    expand="block"
+                    style={primaryButtonStyle}
+                    onClick={() => {
+                      void continueWithFacebook();
+                    }}
+                    type="button"
+                  >
+                    Continuar con Facebook
+                  </IonButton>
+
+                  <IonButton
+                    expand="block"
+                    fill="outline"
+                    onClick={() => setShowFacebookStep(false)}
+                    type="button"
+                    style={{
+                      ...outlineButtonStyle,
+                      "--color": "#1D1D1B",
+                      "--border-color": "rgba(29,29,27,.42)",
+                    } as CSSProperties}
+                  >
+                    Volver
+                  </IonButton>
+                </div>
               </div>
             </IonContent>
           </IonPage>
         </IonModal>
+
+        <IonAlert
+          isOpen={showResidentPendingAlert}
+          header="Solicitud enviada a revisión"
+          message="Tu documento de Residente Rapa Nui fue enviado al administrador. Cuando sea aprobado, podrás continuar con Facebook y entrar a RAPA GO con tarifa de residente."
+          buttons={[
+            {
+              text: "Entendido",
+              handler: () => {
+                setShowResidentPendingAlert(false);
+                setShowFacebookStep(false);
+              },
+            },
+          ]}
+          onDidDismiss={() => setShowResidentPendingAlert(false)}
+        />
       </IonContent>
     </IonPage>
   );

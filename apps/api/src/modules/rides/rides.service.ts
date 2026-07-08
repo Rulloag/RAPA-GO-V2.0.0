@@ -991,6 +991,7 @@ export class RidesService {
     input: CancelAcceptedInput,
   ): Promise<RideResult> {
     const auth = await authenticate(accessToken);
+
     if (!auth.ok) return auth;
 
     if (auth.role !== "passenger" && auth.role !== "driver") {
@@ -1062,10 +1063,63 @@ export class RidesService {
       const { DriverStatusRepository } = await import(
         "../drivers/driverStatus.repository.js"
       );
+
       await new DriverStatusRepository().setAvailable(cancelled.driverUserId);
     }
 
-    return { ok: true, ride: toResponse(cancelled) };
+    let paymentRefund: Record<string, unknown> | null = null;
+
+    try {
+      const { PaymentsService } = await import(
+        "../payments/payments.service.js"
+      );
+
+      const refundResult =
+        await new PaymentsService().refundCardPaymentForCancelledRide({
+          rideRequestId: rideId,
+          cancelledByUserId: auth.userId,
+          cancelledByRole: auth.role,
+          reason: input.reason ?? null,
+        });
+
+      if (refundResult.ok) {
+        paymentRefund = {
+          processed: refundResult.processed,
+          refunded: refundResult.refunded,
+          skippedReason: refundResult.skippedReason ?? null,
+          paymentId: refundResult.paymentId ?? null,
+          mercadoPagoPaymentId: refundResult.mercadoPagoPaymentId ?? null,
+        };
+      } else {
+        paymentRefund = {
+          processed: true,
+          refunded: false,
+          failed: true,
+          code: refundResult.code,
+          message: refundResult.message,
+        };
+      }
+    } catch (err) {
+      paymentRefund = {
+        processed: true,
+        refunded: false,
+        failed: true,
+        message:
+          err instanceof Error
+            ? err.message
+            : "Error interno al devolver el pago con tarjeta.",
+      };
+    }
+
+    const responseRide = toResponse(cancelled) as RideRequestResponse &
+      Record<string, unknown>;
+
+    responseRide.paymentRefund = paymentRefund;
+
+    return {
+      ok: true,
+      ride: responseRide,
+    };
   }
 
   async listDriverRides(accessToken: string): Promise<DriverRidesListResult> {

@@ -1,3 +1,4 @@
+import crypto from "node:crypto";
 import { TokenService } from "../auth/token.service.js";
 import { SessionService } from "../auth/session.service.js";
 import { UsersRepository } from "../users/users.repository.js";
@@ -18,6 +19,24 @@ type Ok<T> = { ok: true } & T;
 type Fail = { ok: false; code: string; message: string; statusCode: number };
 type Result<T> = Ok<T> | Fail;
 
+type PaymentAuthUser = {
+  id: string;
+  role: string;
+  status?: string | null;
+  isVerified?: boolean | null;
+  verified?: boolean | null;
+  driverStatus?: string | null;
+  driverApplicationStatus?: string | null;
+  applicationStatus?: string | null;
+  isDriverApproved?: boolean | null;
+  driverApproved?: boolean | null;
+  approvedAt?: string | null;
+  email?: string | null;
+  name?: string | null;
+  metadata?: Record<string, unknown> | null;
+  profile?: Record<string, unknown> | null;
+};
+
 const PAYMENT_ALLOWED_RIDE_STATUSES = new Set([
   "requested",
   "scheduled",
@@ -29,7 +48,147 @@ const PAYMENT_ALLOWED_RIDE_STATUSES = new Set([
   "completed",
 ]);
 
-async function authenticate(accessToken: string): Promise<Result<{ userId: string; role: string }>> {
+function normalizePaymentText(value: unknown): string {
+  return String(value ?? "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .trim();
+}
+
+function getRecordString(
+  source: Record<string, unknown> | null | undefined,
+  keys: string[],
+): string {
+  if (!source) return "";
+
+  for (const key of keys) {
+    const value = source[key];
+
+    if (typeof value === "string" && value.trim()) {
+      return value.trim();
+    }
+
+    if (typeof value === "number" && Number.isFinite(value)) {
+      return String(value);
+    }
+
+    if (typeof value === "boolean") {
+      return value ? "true" : "false";
+    }
+  }
+
+  return "";
+}
+
+function getRecordBoolean(
+  source: Record<string, unknown> | null | undefined,
+  keys: string[],
+): boolean | null {
+  if (!source) return null;
+
+  for (const key of keys) {
+    const value = source[key];
+
+    if (typeof value === "boolean") return value;
+
+    if (typeof value === "string") {
+      const normalized = normalizePaymentText(value);
+
+      if (["true", "si", "sí", "yes", "1", "approved", "aprobado"].includes(normalized)) {
+        return true;
+      }
+
+      if (["false", "no", "0", "rejected", "rechazado"].includes(normalized)) {
+        return false;
+      }
+    }
+  }
+
+  return null;
+}
+
+function getUserText(user: PaymentAuthUser, keys: string[]): string {
+  const base = user as unknown as Record<string, unknown>;
+
+  return (
+    getRecordString(base, keys) ||
+    getRecordString(user.profile, keys) ||
+    getRecordString(user.metadata, keys)
+  );
+}
+
+function getUserBoolean(user: PaymentAuthUser, keys: string[]): boolean | null {
+  const base = user as unknown as Record<string, unknown>;
+
+  return (
+    getRecordBoolean(base, keys) ??
+    getRecordBoolean(user.profile, keys) ??
+    getRecordBoolean(user.metadata, keys)
+  );
+}
+
+function isDriverApprovedForPassengerPayments(user: PaymentAuthUser): boolean {
+  const role = normalizePaymentText(user.role);
+
+  if (role !== "driver" && role !== "conductor") {
+    return false;
+  }
+
+  const status = normalizePaymentText(
+    getUserText(user, [
+      "status",
+      "driverStatus",
+      "driverApplicationStatus",
+      "applicationStatus",
+      "approvalStatus",
+    ]),
+  );
+
+  const approvedBoolean =
+    getUserBoolean(user, [
+      "isVerified",
+      "verified",
+      "isDriverApproved",
+      "driverApproved",
+      "approved",
+      "canDrive",
+      "canReceiveRides",
+    ]) === true;
+
+  const hasApprovedDate = Boolean(
+    getUserText(user, [
+      "approvedAt",
+      "driverApprovedAt",
+      "verifiedAt",
+      "activatedAt",
+    ]),
+  );
+
+  return (
+    approvedBoolean ||
+    hasApprovedDate ||
+    status === "active" ||
+    status === "approved" ||
+    status === "aprobado" ||
+    status === "verified" ||
+    status === "verificado"
+  );
+}
+
+function canCreatePassengerPayment(user: PaymentAuthUser): boolean {
+  const role = normalizePaymentText(user.role);
+
+  if (role === "passenger" || role === "pasajero") return true;
+  if (role === "admin" || role === "administrator") return true;
+  if (isDriverApprovedForPassengerPayments(user)) return true;
+
+  return false;
+}
+
+async function authenticate(
+  accessToken: string,
+): Promise<Result<{ userId: string; role: string; user: PaymentAuthUser }>> {
   let payload;
 
   try {
@@ -64,7 +223,7 @@ async function authenticate(accessToken: string): Promise<Result<{ userId: strin
     };
   }
 
-  const user = await usersRepo.findById(payload.sub);
+  const user = (await usersRepo.findById(payload.sub)) as PaymentAuthUser | null;
 
   if (!user) {
     return {
@@ -75,20 +234,183 @@ async function authenticate(accessToken: string): Promise<Result<{ userId: strin
     };
   }
 
-  return { ok: true, userId: user.id, role: user.role };
+  return {
+    ok: true,
+    userId: user.id,
+    role: user.role,
+    user,
+  };
 }
 
 function buildPaymentReturnUrl(): string {
   const successUrl = process.env["PAYMENT_SUCCESS_URL"];
-  if (successUrl?.trim()) return successUrl.trim();
+
+  if (successUrl?.trim()) {
+    return successUrl.trim();
+  }
 
   const frontendUrl = process.env["FRONTEND_URL"];
+
   if (frontendUrl?.trim()) {
     return `${frontendUrl.replace(/\/+$/, "")}/passenger/trips?payment=success`;
   }
 
   const mobileDeepLink = process.env["MOBILE_APP_DEEP_LINK"] ?? "rapago://";
+
   return `${mobileDeepLink}payment/result`;
+}
+
+function isPaymentRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value && typeof value === "object");
+}
+
+function getPaymentRecordValue(source: unknown, keys: string[]): unknown {
+  let current = source;
+
+  for (const key of keys) {
+    if (!isPaymentRecord(current)) return null;
+    current = current[key];
+  }
+
+  return current;
+}
+
+function getPaymentStringValue(source: unknown, keys: string[]): string {
+  const value = getPaymentRecordValue(source, keys);
+
+  if (typeof value === "string" && value.trim()) {
+    return value.trim();
+  }
+
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return String(value);
+  }
+
+  return "";
+}
+
+function getStoredRefundStatus(payment: Record<string, unknown>): string {
+  const rawPayload = payment.rawProviderPayload;
+
+  return normalizePaymentText(
+    getPaymentStringValue(rawPayload, ["rapagoRefund", "status"]) ||
+      getPaymentStringValue(rawPayload, ["refundStatus"]) ||
+      getPaymentStringValue(rawPayload, ["refund", "status"]),
+  );
+}
+
+function extractMercadoPagoPaymentId(payment: Record<string, unknown>): string {
+  return (
+    getPaymentStringValue(payment, ["providerPaymentId"]) ||
+    getPaymentStringValue(payment, ["externalId"]) ||
+    getPaymentStringValue(payment.rawProviderPayload, ["id"]) ||
+    getPaymentStringValue(payment.rawProviderPayload, ["data", "id"]) ||
+    getPaymentStringValue(payment.rawProviderPayload, ["payment_id"]) ||
+    getPaymentStringValue(payment.rawProviderPayload, ["paymentId"]) ||
+    getPaymentStringValue(payment.rawProviderPayload, ["externalId"])
+  );
+}
+
+async function findSuccessfulPaymentByRideRequestId(
+  rideRequestId: string,
+): Promise<Record<string, unknown> | null> {
+  try {
+    const { db } = await import("../../db/client.js");
+    const { payments } = await import("../../db/schema/payments.schema.js");
+    const { and, eq } = await import("drizzle-orm");
+
+    const [row] = await db
+      .select()
+      .from(payments)
+      .where(
+        and(
+          eq(payments.rideRequestId, rideRequestId),
+          eq(payments.status, "success"),
+        ),
+      )
+      .limit(1);
+
+    return (row ?? null) as Record<string, unknown> | null;
+  } catch {
+    return null;
+  }
+}
+
+async function saveRefundStateOnPayment(input: {
+  paymentId: string;
+  status: "approved" | "failed";
+  mercadoPagoPaymentId: string;
+  refundPayload: unknown;
+}): Promise<void> {
+  try {
+    const { db } = await import("../../db/client.js");
+    const { payments } = await import("../../db/schema/payments.schema.js");
+    const { eq } = await import("drizzle-orm");
+
+    const existing = await paymentsRepo.findById(input.paymentId);
+    const previousPayload = isPaymentRecord(existing?.rawProviderPayload)
+      ? existing?.rawProviderPayload
+      : {};
+
+    await db
+      .update(payments)
+      .set({
+        rawProviderPayload: {
+          ...previousPayload,
+          rapagoRefund: {
+            status: input.status,
+            mercadoPagoPaymentId: input.mercadoPagoPaymentId,
+            at: new Date().toISOString(),
+            payload: input.refundPayload,
+          },
+        } as Record<string, unknown>,
+        updatedAt: new Date(),
+      })
+      .where(eq(payments.id, input.paymentId));
+  } catch {
+    // No rompe la cancelación si no se pudo guardar el detalle local.
+  }
+}
+
+async function refundMercadoPagoPayment(input: {
+  mercadoPagoPaymentId: string;
+}): Promise<{
+  ok: boolean;
+  statusCode: number;
+  data: unknown;
+}> {
+  const accessToken = process.env["MERCADOPAGO_ACCESS_TOKEN"];
+
+  if (!accessToken) {
+    return {
+      ok: false,
+      statusCode: 500,
+      data: {
+        message: "Falta MERCADOPAGO_ACCESS_TOKEN en el backend.",
+      },
+    };
+  }
+
+  const response = await fetch(
+    `https://api.mercadopago.com/v1/payments/${input.mercadoPagoPaymentId}/refunds`,
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "Content-Type": "application/json",
+        "X-Idempotency-Key": crypto.randomUUID(),
+      },
+      body: JSON.stringify({}),
+    },
+  );
+
+  const data = await response.json().catch(() => ({}));
+
+  return {
+    ok: response.ok,
+    statusCode: response.status,
+    data,
+  };
 }
 
 export class PaymentsService {
@@ -97,13 +419,15 @@ export class PaymentsService {
     input: CreatePaymentInput,
   ): Promise<Result<{ urlPay: string; paymentId: string }>> {
     const auth = await authenticate(accessToken);
+
     if (!auth.ok) return auth;
 
-    if (auth.role !== "passenger") {
+    if (!canCreatePassengerPayment(auth.user)) {
       return {
         ok: false,
         code: "AUTH_FORBIDDEN",
-        message: "Only passengers can create payments.",
+        message:
+          "Solo pasajeros, conductores aprobados usando vista pasajero o administradores pueden crear pagos.",
         statusCode: 403,
       };
     }
@@ -121,7 +445,11 @@ export class PaymentsService {
       };
     }
 
-    if (ride.passengerUserId !== auth.userId) {
+    const isAdmin =
+      normalizePaymentText(auth.role) === "admin" ||
+      normalizePaymentText(auth.role) === "administrator";
+
+    if (!isAdmin && ride.passengerUserId !== auth.userId) {
       return {
         ok: false,
         code: "AUTH_FORBIDDEN",
@@ -134,7 +462,8 @@ export class PaymentsService {
       return {
         ok: false,
         code: "PAYMENT_RIDE_STATUS_NOT_ALLOWED",
-        message: "Payment can only be initiated for an active, scheduled, in-progress or completed ride.",
+        message:
+          "Payment can only be initiated for an active, scheduled, in-progress or completed ride.",
         statusCode: 409,
       };
     }
@@ -220,18 +549,147 @@ export class PaymentsService {
       eventType: "payment.created",
       entityType: "payment",
       entityId: payment.id,
-      metadata: { rideId: ride.id, amountClp, provider: provider.name },
+      metadata: {
+        rideId: ride.id,
+        amountClp,
+        provider: provider.name,
+        actorRole: auth.role,
+      },
     });
 
-    return { ok: true, urlPay, paymentId: payment.id };
+    return {
+      ok: true,
+      urlPay,
+      paymentId: payment.id,
+    };
   }
 
-  /**
-   * Handle an incoming webhook from any payment provider.
-   * @param providerName The provider slug derived from the route, e.g. "mercadopago" or "prontopaga".
-   * @param payload Parsed JSON body.
-   * @param headers Relevant HTTP headers forwarded from the controller.
-   */
+  async refundCardPaymentForCancelledRide(input: {
+    rideRequestId: string;
+    cancelledByUserId: string;
+    cancelledByRole: string;
+    reason?: string | null;
+  }): Promise<Result<{
+    processed: boolean;
+    refunded: boolean;
+    skippedReason?: string;
+    paymentId?: string;
+    mercadoPagoPaymentId?: string;
+    refund?: unknown;
+  }>> {
+    const payment = await findSuccessfulPaymentByRideRequestId(input.rideRequestId);
+
+    if (!payment) {
+      return {
+        ok: true,
+        processed: false,
+        refunded: false,
+        skippedReason: "No existe un pago aprobado para devolver en este viaje.",
+      };
+    }
+
+    const providerName = normalizePaymentText(payment.provider);
+
+    if (providerName !== "mercadopago") {
+      return {
+        ok: true,
+        processed: false,
+        refunded: false,
+        skippedReason: "El pago aprobado no fue realizado con MercadoPago.",
+        paymentId: String(payment.id ?? ""),
+      };
+    }
+
+    const storedRefundStatus = getStoredRefundStatus(payment);
+
+    if (storedRefundStatus === "approved" || storedRefundStatus === "aprobado") {
+      return {
+        ok: true,
+        processed: true,
+        refunded: true,
+        skippedReason: "Este pago ya fue devuelto anteriormente.",
+        paymentId: String(payment.id ?? ""),
+        mercadoPagoPaymentId: extractMercadoPagoPaymentId(payment),
+      };
+    }
+
+    const mercadoPagoPaymentId = extractMercadoPagoPaymentId(payment);
+
+    if (!mercadoPagoPaymentId) {
+      return {
+        ok: false,
+        code: "REFUND_MISSING_MERCADOPAGO_ID",
+        message: "El pago no tiene providerPaymentId de MercadoPago para devolver.",
+        statusCode: 409,
+      };
+    }
+
+    const refundResult = await refundMercadoPagoPayment({
+      mercadoPagoPaymentId,
+    });
+
+    if (!refundResult.ok) {
+      await saveRefundStateOnPayment({
+        paymentId: String(payment.id),
+        status: "failed",
+        mercadoPagoPaymentId,
+        refundPayload: refundResult.data,
+      });
+
+      auditService.recordSafe({
+        actorUserId: input.cancelledByUserId,
+        eventType: "payment.refund_failed_on_cancel",
+        entityType: "payment",
+        entityId: String(payment.id ?? ""),
+        metadata: {
+          rideId: input.rideRequestId,
+          provider: "mercadopago",
+          mercadoPagoPaymentId,
+          statusCode: String(refundResult.statusCode),
+          cancelledByRole: input.cancelledByRole,
+          reason: input.reason ?? "",
+        } as Record<string, string>,
+      });
+
+      return {
+        ok: false,
+        code: "MERCADOPAGO_REFUND_ERROR",
+        message: "El viaje fue cancelado, pero MercadoPago no pudo procesar la devolución.",
+        statusCode: refundResult.statusCode,
+      };
+    }
+
+    await saveRefundStateOnPayment({
+      paymentId: String(payment.id),
+      status: "approved",
+      mercadoPagoPaymentId,
+      refundPayload: refundResult.data,
+    });
+
+    auditService.recordSafe({
+      actorUserId: input.cancelledByUserId,
+      eventType: "payment.refunded_on_cancel",
+      entityType: "payment",
+      entityId: String(payment.id ?? ""),
+      metadata: {
+        rideId: input.rideRequestId,
+        provider: "mercadopago",
+        mercadoPagoPaymentId,
+        cancelledByRole: input.cancelledByRole,
+        reason: input.reason ?? "",
+      } as Record<string, string>,
+    });
+
+    return {
+      ok: true,
+      processed: true,
+      refunded: true,
+      paymentId: String(payment.id ?? ""),
+      mercadoPagoPaymentId,
+      refund: refundResult.data,
+    };
+  }
+
   async handleWebhook(
     providerName: string,
     payload: Record<string, unknown>,
@@ -254,7 +712,9 @@ export class PaymentsService {
       auditService.recordSafe({
         eventType: "payment.webhook_invalid_signature",
         entityType: "payment",
-        metadata: { provider: providerName } as Record<string, string>,
+        metadata: {
+          provider: providerName,
+        } as Record<string, string>,
       });
 
       return {
@@ -289,9 +749,11 @@ export class PaymentsService {
 
     const { orderId, status, externalId, rawPayload } = normalized;
 
-    // Non-payment events, e.g. MercadoPago subscription notifications.
     if (!orderId) {
-      return { ok: true, processed: false };
+      return {
+        ok: true,
+        processed: false,
+      };
     }
 
     const payment = await paymentsRepo.findById(orderId);
@@ -305,18 +767,23 @@ export class PaymentsService {
       };
     }
 
-    // Idempotency: skip silently if already in a terminal state.
     if (
       payment.status === "success" ||
       payment.status === "rejected" ||
-      payment.status === "failed"
+      payment.status === "failed" ||
+      payment.status === "refunded"
     ) {
-      return { ok: true, processed: false };
+      return {
+        ok: true,
+        processed: false,
+      };
     }
 
-    // Provider is still processing — no state change yet.
     if (status === "pending" || status === "unknown") {
-      return { ok: true, processed: false };
+      return {
+        ok: true,
+        processed: false,
+      };
     }
 
     if (status === "success") {
@@ -329,7 +796,9 @@ export class PaymentsService {
 
         await db
           .update(rideRequests)
-          .set({ updatedAt: new Date() })
+          .set({
+            updatedAt: new Date(),
+          })
           .where(eq(rideRequests.id, payment.rideRequestId));
       } catch {
         // No bloquea el webhook si la actualización auxiliar del viaje falla.
@@ -348,7 +817,10 @@ export class PaymentsService {
         },
       });
 
-      return { ok: true, processed: true };
+      return {
+        ok: true,
+        processed: true,
+      };
     }
 
     if (status === "rejected") {
@@ -365,9 +837,15 @@ export class PaymentsService {
         },
       });
 
-      return { ok: true, processed: true };
+      return {
+        ok: true,
+        processed: true,
+      };
     }
 
-    return { ok: true, processed: false };
+    return {
+      ok: true,
+      processed: false,
+    };
   }
 }

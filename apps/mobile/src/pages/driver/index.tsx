@@ -72,6 +72,256 @@ type AvailableRideData =
 type DriverRideData =
   import("../../features/rides/rides.service").DriverRideData;
 
+type RapaGoConnectivityMode = "checking" | "online" | "poor" | "offline";
+type RapaGoConnectivityRole = "driver" | "passenger" | "admin";
+
+const RAPAGO_CONNECTIVITY_STATUS_KEY = "rapago_connectivity_status_v1";
+const RAPAGO_CONNECTIVITY_EVENT = "rapago:connectivity-status-changed";
+
+function getRapaGoConnectivityProbeUrl(): string {
+  const env = import.meta.env as Record<string, string | undefined>;
+  const raw = String(env.VITE_API_BASE_URL || env.VITE_API_URL || "/api").trim();
+
+  if (!raw || raw === "/") return "/api/health";
+
+  if (/^https?:\/\//i.test(raw)) {
+    const base = raw.replace(/\/api\/?$/i, "").replace(/\/+$/, "");
+    return `${base}/api/health`;
+  }
+
+  const clean = raw.replace(/\/+$/, "");
+  return clean.endsWith("/api") ? `${clean}/health` : `${clean}/api/health`;
+}
+
+function getBrowserNetworkInfo(): {
+  effectiveType: string;
+  downlink: number | null;
+  rtt: number | null;
+} {
+  const nav = navigator as Navigator & {
+    connection?: {
+      effectiveType?: string;
+      downlink?: number;
+      rtt?: number;
+    };
+  };
+
+  return {
+    effectiveType: String(nav.connection?.effectiveType ?? "").toLowerCase(),
+    downlink: Number.isFinite(Number(nav.connection?.downlink))
+      ? Number(nav.connection?.downlink)
+      : null,
+    rtt: Number.isFinite(Number(nav.connection?.rtt))
+      ? Number(nav.connection?.rtt)
+      : null,
+  };
+}
+
+function browserLooksLikePoorConnection(): boolean {
+  const info = getBrowserNetworkInfo();
+
+  return (
+    info.effectiveType === "slow-2g" ||
+    info.effectiveType === "2g" ||
+    (info.downlink != null && info.downlink > 0 && info.downlink < 0.45) ||
+    (info.rtt != null && info.rtt > 1800)
+  );
+}
+
+async function detectRapaGoConnectivityMode(): Promise<RapaGoConnectivityMode> {
+  if (navigator.onLine === false) return "offline";
+
+  const browserPoor = browserLooksLikePoorConnection();
+  const controller = new AbortController();
+  const timeoutId = window.setTimeout(() => controller.abort(), browserPoor ? 4500 : 7000);
+
+  try {
+    await fetch(getRapaGoConnectivityProbeUrl(), {
+      method: "GET",
+      cache: "no-store",
+      signal: controller.signal,
+    });
+
+    return browserPoor ? "poor" : "online";
+  } catch {
+    return navigator.onLine === false ? "offline" : "poor";
+  } finally {
+    window.clearTimeout(timeoutId);
+  }
+}
+
+function getRapaGoConnectivityMessage(
+  role: RapaGoConnectivityRole,
+  status: RapaGoConnectivityMode,
+): string {
+  if (status === "checking") return "Revisando conexión de Rapa Go...";
+  if (status === "online") return "Conexión estable.";
+
+  if (role === "driver") {
+    if (status === "offline") {
+      return "Sin internet: quedaste No disponible. Busca una zona con conexión para volver a recibir viajes reales.";
+    }
+
+    return "Conexión baja: quedaste No disponible para evitar viajes fallidos. Busca una zona con mejor internet para volver a estar disponible.";
+  }
+
+  if (role === "admin") {
+    return "Modo conexión baja: algunas acciones pueden quedar pendientes hasta recuperar internet.";
+  }
+
+  if (status === "offline") {
+    return "Sin internet: puedes revisar lo último cargado, pero para solicitar, pagar o cancelar viajes necesitas conexión.";
+  }
+
+  return "Modo conexión baja: algunas acciones pueden tardar. Para solicitar viajes usa una zona con mejor señal.";
+}
+
+function publishRapaGoConnectivityStatus(status: RapaGoConnectivityMode): void {
+  try {
+    localStorage.setItem(RAPAGO_CONNECTIVITY_STATUS_KEY, status);
+  } catch {
+    // No bloquea el flujo.
+  }
+
+  window.dispatchEvent(
+    new CustomEvent(RAPAGO_CONNECTIVITY_EVENT, {
+      detail: {
+        status,
+        blocked: status === "offline" || status === "poor",
+      },
+    }),
+  );
+}
+
+function useRapaGoConnectivityMonitor(role: RapaGoConnectivityRole): {
+  status: RapaGoConnectivityMode;
+  blocked: boolean;
+  message: string;
+} {
+  const [status, setStatus] = useState<RapaGoConnectivityMode>(() => {
+    try {
+      const stored = localStorage.getItem(RAPAGO_CONNECTIVITY_STATUS_KEY);
+      if (stored === "online" || stored === "offline" || stored === "poor") {
+        return stored;
+      }
+    } catch {
+      // Usa checking.
+    }
+
+    return navigator.onLine === false ? "offline" : "checking";
+  });
+
+  useEffect(() => {
+    let cancelled = false;
+    let timerId: number | undefined;
+
+    const refresh = async () => {
+      const nextStatus = await detectRapaGoConnectivityMode();
+      if (cancelled) return;
+
+      setStatus(nextStatus);
+      publishRapaGoConnectivityStatus(nextStatus);
+    };
+
+    const schedule = () => {
+      window.clearInterval(timerId);
+      timerId = window.setInterval(() => {
+        void refresh();
+      }, 8500);
+    };
+
+    void refresh();
+    schedule();
+
+    window.addEventListener("online", refresh);
+    window.addEventListener("offline", refresh);
+    window.addEventListener("focus", refresh);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(timerId);
+      window.removeEventListener("online", refresh);
+      window.removeEventListener("offline", refresh);
+      window.removeEventListener("focus", refresh);
+    };
+  }, []);
+
+  return {
+    status,
+    blocked: status === "offline" || status === "poor",
+    message: getRapaGoConnectivityMessage(role, status),
+  };
+}
+
+function RapaGoConnectivityBanner({
+  role,
+  status,
+  style,
+}: {
+  role: RapaGoConnectivityRole;
+  status: RapaGoConnectivityMode;
+  style?: CSSProperties;
+}): JSX.Element | null {
+  if (status === "online") return null;
+
+  const isChecking = status === "checking";
+  const isOffline = status === "offline";
+
+  return (
+    <IonCard
+      style={{
+        margin: "0 0 14px",
+        borderRadius: "20px",
+        background: isChecking
+          ? "linear-gradient(135deg,#1f2937,#334155)"
+          : isOffline
+            ? "linear-gradient(135deg,#2A1A18,#7f1d1d)"
+            : "linear-gradient(135deg,#2A1A18,#8F3F25)",
+        color: "#ffffff",
+        border: "1px solid rgba(255,255,255,.12)",
+        boxShadow: "0 16px 34px rgba(0,0,0,.24)",
+        ...style,
+      }}
+    >
+      <IonCardContent
+        style={{
+          padding: "13px 14px",
+          display: "grid",
+          gridTemplateColumns: "38px 1fr",
+          gap: 11,
+          alignItems: "center",
+        }}
+      >
+        <div
+          style={{
+            width: 38,
+            height: 38,
+            borderRadius: 999,
+            background: isChecking ? "rgba(255,255,255,.14)" : "rgba(245,158,11,.20)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            fontSize: "1.25rem",
+            fontWeight: 950,
+          }}
+        >
+          {isChecking ? "…" : isOffline ? "⌁" : "!"}
+        </div>
+        <div style={{ minWidth: 0 }}>
+          <div style={{ fontWeight: 950, fontSize: ".92rem" }}>
+            {isChecking ? "Revisando conexión" : isOffline ? "Modo sin internet" : "Modo conexión baja"}
+          </div>
+          <div style={{ marginTop: 3, fontSize: ".78rem", fontWeight: 800, lineHeight: 1.35, opacity: .9 }}>
+            {getRapaGoConnectivityMessage(role, status)}
+          </div>
+        </div>
+      </IonCardContent>
+    </IonCard>
+  );
+}
+
+
+
 function StarRatingInput({
   value,
   onChange,
@@ -227,20 +477,24 @@ function openGoogleNavigation(
   destination: { lat: number; lng: number },
 ): void {
   const destinationParam = `${destination.lat},${destination.lng}`;
+  const params = new URLSearchParams({
+    api: "1",
+    destination: destinationParam,
+    travelmode: "driving",
+    dir_action: "navigate",
+  });
 
   if (origin) {
-    const originParam = `${origin.lat},${origin.lng}`;
-    window.open(
-      `https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(originParam)}&destination=${encodeURIComponent(destinationParam)}&travelmode=driving`,
-      "_blank",
-    );
-    return;
+    params.set("origin", `${origin.lat},${origin.lng}`);
   }
 
-  window.open(
-    `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(destinationParam)}&travelmode=driving`,
-    "_blank",
-  );
+  const url = `https://www.google.com/maps/dir/?${params.toString()}`;
+
+  try {
+    window.location.assign(url);
+  } catch {
+    window.open(url, "_blank", "noopener,noreferrer");
+  }
 }
 
 function isInsideRapaNui(point: { lat: number; lng: number } | null): boolean {
@@ -266,7 +520,7 @@ const RAPA_NUI_ZONE_REFERENCES: RapaNuiZoneReference[] = [
   { zone: "Ara Piki", aliases: ["ara piki", "arapiki"], point: { lat: -27.1456, lng: -109.4149 } },
   { zone: "Orito / Camino a Anakena", aliases: ["orito", "camino anakena", "panaquena", "panakena", "inla", "la inla"], point: { lat: -27.1028, lng: -109.3716 } },
   { zone: "Hospital / Centro de Hanga Roa", aliases: ["hospital", "hanga roa hospital", "hospital de hanga roa"], point: { lat: -27.1502, lng: -109.4216 } },
-  { zone: "Centro de Hanga Roa", aliases: ["centro", "hanga roa", "caleta", "mercado artesanal", "feria artesanal", "iglesia", "comisaria", "comisaría"], point: { lat: -27.1505, lng: -109.4325 } },
+  { zone: "Centro de Hanga Roa", aliases: ["centro", "hanga roa", "caleta", "mercado artesanal", "feria artesanal", "iglesia", "comisaria", "comisaría", "hotel taha tai", "taha tai", "taha-tai", "hanga roa centro"], point: { lat: -27.1505, lng: -109.4325 } },
   { zone: "Tahai", aliases: ["tahai", "ahu tahai"], point: { lat: -27.1398, lng: -109.4298 } },
   { zone: "Mataveri / Aeropuerto", aliases: ["mataveri", "aeropuerto", "airport"], point: { lat: -27.1648, lng: -109.4210 } },
   { zone: "Hanga Piko", aliases: ["hanga piko", "puerto hanga piko"], point: { lat: -27.1561, lng: -109.4440 } },
@@ -303,6 +557,51 @@ function pointDistanceMetersForZone(
     Math.sin(dLat / 2) ** 2 +
     Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLng / 2) ** 2;
   return 2 * r * Math.asin(Math.sqrt(h));
+}
+
+function resolveRapaNuiPointFromText(
+  textValues: Array<string | null | undefined>,
+): { lat: number; lng: number } | null {
+  const combinedText = normalizeRapaNuiZoneText(textValues.filter(Boolean).join(" "));
+  if (!combinedText) return null;
+
+  const direct = RAPA_NUI_ZONE_REFERENCES.find((reference) =>
+    Boolean(reference.point) &&
+    reference.aliases.some((alias) => {
+      const normalizedAlias = normalizeRapaNuiZoneText(alias);
+      return combinedText.includes(normalizedAlias) || normalizedAlias.includes(combinedText);
+    }),
+  );
+
+  if (direct?.point) return direct.point;
+
+  return null;
+}
+
+function getRapaNuiFallbackDriverPointForMap(
+  target: { lat: number; lng: number } | null,
+): { lat: number; lng: number } {
+  const center = { lat: -27.1505, lng: -109.4325 };
+
+  if (!target || !isInsideRapaNui(target)) return center;
+
+  // Si el destino está en el centro, alejamos un poco el punto inicial para
+  // que Google dibuje una ruta visible en vez de una línea de 0 metros.
+  if (pointDistanceMetersForZone(center, target) <= 260) {
+    return { lat: target.lat - 0.0042, lng: target.lng + 0.0042 };
+  }
+
+  return center;
+}
+
+function getDriverMapPointForRoute(
+  realPoint: { lat: number; lng: number } | null,
+  _target: { lat: number; lng: number } | null,
+): { lat: number; lng: number } | null {
+  // Navegación 100% real: nunca inventamos coordenadas del conductor.
+  // Si el GPS está fuera de Rapa Nui en pruebas, se muestra esa ubicación real.
+  // En producción, al estar en la isla, Google calculará la ruta real desde el GPS real.
+  return realPoint;
 }
 
 function getRapaNuiZoneName(
@@ -482,21 +781,22 @@ function UberDriverNavigationMap({
   const [targetDistanceMeters, setTargetDistanceMeters] = useState<number | null>(null);
   const [mapError, setMapError] = useState<string | null>(null);
   const [mapReady, setMapReady] = useState(false);
+  const [googlePickupPoint, setGooglePickupPoint] = useState<{ lat: number; lng: number } | null>(null);
+  const [googleDestinationPoint, setGoogleDestinationPoint] = useState<{ lat: number; lng: number } | null>(null);
 
   const nav = extractRideNavigationPoints(ride.notes);
+  const pickupAddress = extractConfirmedRideAddress(ride.notes, "origin");
+  const destinationAddress = extractConfirmedRideAddress(ride.notes, "destination");
 
   const pickup =
     nav.pickupLat != null && nav.pickupLng != null
       ? { lat: nav.pickupLat, lng: nav.pickupLng }
-      : null;
+      : googlePickupPoint;
 
   const destination =
     nav.destinationLat != null && nav.destinationLng != null
       ? { lat: nav.destinationLat, lng: nav.destinationLng }
-      : null;
-
-  const pickupAddress = extractConfirmedRideAddress(ride.notes, "origin");
-  const destinationAddress = extractConfirmedRideAddress(ride.notes, "destination");
+      : googleDestinationPoint;
   const pickupDisplay = buildDriverPointDisplay({
     label: "Punto de recogida",
     text: ride.originText,
@@ -528,6 +828,58 @@ function UberDriverNavigationMap({
   const targetZoneLabel = currentPointDisplay.zone;
   const finalDestinationLabel = destinationDisplay.name;
   const finalDestinationZoneLabel = destinationDisplay.zone;
+
+  function buildGoogleMapsGeocodeQuery(
+    textValue: string | null | undefined,
+    confirmedAddress: string | null | undefined,
+  ): string | null {
+    const base = String(confirmedAddress || textValue || "").trim();
+    if (!base) return null;
+
+    const normalized = normalizeRapaNuiZoneText(base);
+    const alreadyHasIsland =
+      normalized.includes("rapa nui") ||
+      normalized.includes("isla de pascua") ||
+      normalized.includes("easter island") ||
+      normalized.includes("hanga roa") ||
+      normalized.includes("mataveri");
+
+    return alreadyHasIsland
+      ? `${base}, Chile`
+      : `${base}, Hanga Roa, Rapa Nui, Valparaíso, Chile`;
+  }
+
+  async function resolvePointWithGoogleMaps(
+    textValue: string | null | undefined,
+    confirmedAddress: string | null | undefined,
+  ): Promise<{ lat: number; lng: number } | null> {
+    const query = buildGoogleMapsGeocodeQuery(textValue, confirmedAddress);
+    if (!query) return null;
+
+    await loadRapaGoGoogleMaps();
+    if (!window.google?.maps?.Geocoder) return null;
+
+    const geocoder = new google.maps.Geocoder();
+
+    return new Promise((resolve) => {
+      geocoder.geocode(
+        {
+          address: query,
+          region: "CL",
+          componentRestrictions: { country: "CL" },
+        },
+        (results, status) => {
+          if (status !== google.maps.GeocoderStatus.OK || !results?.[0]) {
+            resolve(null);
+            return;
+          }
+
+          const location = results[0].geometry.location;
+          resolve({ lat: location.lat(), lng: location.lng() });
+        },
+      );
+    });
+  }
 
   function toRad(value: number): number {
     return (value * Math.PI) / 180;
@@ -803,16 +1155,15 @@ function UberDriverNavigationMap({
     const map = mapRef.current;
     const renderer = directionsRendererRef.current;
     const service = directionsServiceRef.current;
-    const driverPoint = driverPointRef.current;
-
-    if (!map || !renderer || !service || !window.google?.maps) return;
-
     const currentTarget = goingToDestination
       ? destination
       : goingToPickup
         ? pickup
         : null;
-    const currentKey = `${ride.status}:${currentTarget?.lat ?? "none"},${currentTarget?.lng ?? "none"}`;
+    const driverPoint = driverPointRef.current;
+
+    if (!map || !renderer || !service || !window.google?.maps) return;
+    const currentKey = `${ride.status}:${driverPoint?.lat?.toFixed(5) ?? "none"},${driverPoint?.lng?.toFixed(5) ?? "none"}:${currentTarget?.lat ?? "none"},${currentTarget?.lng ?? "none"}`;
 
     if (!force && routeKeyRef.current === currentKey) return;
     routeKeyRef.current = currentKey;
@@ -839,6 +1190,10 @@ function UberDriverNavigationMap({
         provideRouteAlternatives: false,
         optimizeWaypoints: false,
         region: "CL",
+        drivingOptions: {
+          departureTime: new Date(),
+          trafficModel: google.maps.TrafficModel.BEST_GUESS,
+        },
       },
       (result, status) => {
         if (requestId !== routeRequestIdRef.current) return;
@@ -881,32 +1236,75 @@ function UberDriverNavigationMap({
           return;
         }
 
+        // Si Google Maps no entrega ruta por calles, no dibujamos línea ficticia.
+        // Así evitamos navegación falsa: el conductor debe abrir Google Maps oficial.
         renderer.set("directions", null);
         fallbackLineRef.current?.setMap(null);
-        fallbackLineRef.current = new google.maps.Polyline({
-          map,
-          path: [driverPoint, currentTarget],
-          strokeColor: "#00b7ff",
-          strokeOpacity: 1,
-          strokeWeight: 7,
-          zIndex: 20,
-        });
-
-        const straightMeters = distanceMeters(driverPoint, currentTarget);
-        const arrivalText = arrivalInstructionText(straightMeters);
+        fallbackLineRef.current = null;
 
         lastRouteOriginRef.current = driverPoint;
         lastRouteRecalculateAtRef.current = Date.now();
-        setRouteInfo({ duration: "Ruta referencial", distance: formatNavigationMeters(straightMeters) });
-        setTargetDistanceMeters(straightMeters);
+        setRouteInfo(null);
+        setTargetDistanceMeters(null);
         setNextInstruction({
-          text: arrivalText ?? "Sigue la línea azul hacia el destino.",
-          distance: formatNavigationMeters(straightMeters),
-          maneuver: arrivalText ? "arrive" : null,
+          text: "Ruta no disponible. Abre Google Maps.",
+          distance: "Sin ruta",
+          maneuver: null,
         });
       },
     );
   }
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function resolveMissingRoutePoints(): Promise<void> {
+      try {
+        const [resolvedPickup, resolvedDestination] = await Promise.all([
+          nav.pickupLat != null && nav.pickupLng != null
+            ? Promise.resolve(null)
+            : resolvePointWithGoogleMaps(ride.originText, pickupAddress),
+          nav.destinationLat != null && nav.destinationLng != null
+            ? Promise.resolve(null)
+            : resolvePointWithGoogleMaps(ride.destinationText, destinationAddress),
+        ]);
+
+        if (cancelled) return;
+
+        if (resolvedPickup) setGooglePickupPoint(resolvedPickup);
+        if (resolvedDestination) setGoogleDestinationPoint(resolvedDestination);
+
+        if (!resolvedPickup && nav.pickupLat == null && nav.pickupLng == null) {
+          setGooglePickupPoint(null);
+        }
+        if (!resolvedDestination && nav.destinationLat == null && nav.destinationLng == null) {
+          setGoogleDestinationPoint(null);
+        }
+      } catch {
+        if (!cancelled) {
+          if (nav.pickupLat == null && nav.pickupLng == null) setGooglePickupPoint(null);
+          if (nav.destinationLat == null && nav.destinationLng == null) setGoogleDestinationPoint(null);
+        }
+      }
+    }
+
+    void resolveMissingRoutePoints();
+
+    return () => {
+      cancelled = true;
+    };
+    // Geocodifica con Google Maps solo cuando faltan coordenadas en notes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    ride.originText,
+    ride.destinationText,
+    pickupAddress,
+    destinationAddress,
+    nav.pickupLat,
+    nav.pickupLng,
+    nav.destinationLat,
+    nav.destinationLng,
+  ]);
 
   useEffect(() => {
     let cancelled = false;
@@ -1067,8 +1465,9 @@ function UberDriverNavigationMap({
 
         setMapError(null);
 
-        // Punto azul + cámara: el conductor siempre avanza en el mapa.
-        // La ruta se recalcula si se mueve lo suficiente o toma otra calle.
+        // Punto azul + cámara: siempre usa el GPS real del conductor.
+        // No se usa ninguna coordenada ficticia para simular que está en Rapa Nui.
+        // Si Google Maps no puede calcular una ruta real, se muestra aviso y queda el botón de Google Maps.
         if (mapReadyRef.current) {
           moveDriverOnly(next, headingRef.current);
 
@@ -1111,104 +1510,114 @@ function UberDriverNavigationMap({
         style={{ width: "100%", height: "100%" }}
       />
 
+      {/* Overlay limpio: deja el mapa visible para el conductor */}
+      <div
+        style={{
+          position: "absolute",
+          left: "10px",
+          right: "78px",
+          top: "10px",
+          ...uberPanelStyle({
+            background: "rgba(7, 95, 87, .92)",
+            borderRadius: "16px",
+            padding: "9px 12px",
+            display: "flex",
+            gap: "9px",
+            alignItems: "center",
+          }),
+          zIndex: 8,
+          pointerEvents: "none",
+        }}
+      >
+        <IonIcon icon={arrowUpOutline} style={{ fontSize: 24, color: "#ffffff", flex: "0 0 auto" }} />
+        <div style={{ minWidth: 0 }}>
+          <div
+            style={{
+              fontWeight: 950,
+              fontSize: ".88rem",
+              color: "#ffffff",
+              whiteSpace: "nowrap",
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+            }}
+          >
+            {goingToPickup
+              ? "Ir a recogida"
+              : waitingPassenger
+                ? "Esperando pasajero"
+                : "Ir al destino"}
+          </div>
+          <div
+            style={{
+              color: "rgba(246,242,236,.82)",
+              fontSize: ".72rem",
+              marginTop: 1,
+              whiteSpace: "nowrap",
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              fontWeight: 800,
+            }}
+          >
+            {targetLabel || "Punto de ruta"}
+            {routeInfo?.distance ? ` · ${routeInfo.distance}` : ""}
+            {routeInfo?.duration ? ` · ${routeInfo.duration}` : ""}
+          </div>
+        </div>
+      </div>
+
       {driverOutsideRapaNui && (
         <div
           style={{
             position: "absolute",
-            left: "14px",
-            top: "76px",
-            background: "rgba(239,68,68,.96)",
+            left: "10px",
+            top: "68px",
+            background: "rgba(239,68,68,.90)",
             color: "#ffffff",
             borderRadius: "999px",
-            padding: "6px 10px",
-            fontSize: ".72rem",
+            padding: "4px 8px",
+            fontSize: ".62rem",
             fontWeight: 950,
-            boxShadow: "0 8px 18px rgba(0,0,0,.25)",
-            zIndex: 5,
+            boxShadow: "0 6px 14px rgba(0,0,0,.20)",
+            zIndex: 8,
+            pointerEvents: "none",
           }}
         >
-          GPS real fuera de Rapa Nui
+          GPS fuera de Rapa Nui
         </div>
       )}
-
-      <div
-        style={{
-          position: "absolute",
-          left: "14px",
-          right: "14px",
-          top: "14px",
-          ...uberPanelStyle({
-            background: "rgba(0, 91, 86, .96)",
-            borderRadius: "20px",
-            padding: "14px 16px",
-            display: "flex",
-            gap: "12px",
-            alignItems: "center",
-          }),
-        }}
-      >
-        <IonIcon
-          icon={arrowUpOutline}
-          style={{ fontSize: 30, color: "#ffffff" }}
-        />
-        <div>
-          <div style={{ fontWeight: 950, fontSize: "1rem" }}>
-            {goingToPickup
-              ? "Dirígete al punto de recogida"
-              : waitingPassenger
-                ? "Espera al pasajero"
-                : "Dirígete al destino"}
-          </div>
-          <div
-            style={{
-              color: "rgba(246,242,236,.78)",
-              fontSize: ".82rem",
-              marginTop: 3,
-              lineHeight: 1.28,
-            }}
-          >
-            Ahora: <strong>{targetLabel || "Punto de ruta"}</strong>
-            {routeInfo?.distance ? ` • ${routeInfo.distance}` : ""}
-            <br />
-            Zona: <strong>{targetZoneLabel || "Rapa Nui"}</strong>
-            <br />
-            Destino final: <strong>{finalDestinationLabel || "No informado"}</strong>
-            {finalDestinationZoneLabel ? ` · zona ${finalDestinationZoneLabel}` : ""}
-          </div>
-        </div>
-      </div>
 
       {nextInstruction && (
         <div
           style={{
             position: "absolute",
-            left: "14px",
-            right: "14px",
-            top: "112px",
+            left: "10px",
+            right: "78px",
+            bottom: "12px",
             ...uberPanelStyle({
-              background: "rgba(17,17,17,.95)",
-              borderRadius: "18px",
-              padding: "11px 13px",
-              border: "1px solid rgba(34,197,94,.34)",
+              background: "rgba(17,17,17,.90)",
+              borderRadius: "16px",
+              padding: "9px 11px",
+              border: "1px solid rgba(34,197,94,.30)",
               display: "grid",
-              gridTemplateColumns: "56px 1fr",
-              gap: "12px",
+              gridTemplateColumns: "38px 1fr",
+              gap: "9px",
               alignItems: "center",
             }),
-            zIndex: 6,
+            zIndex: 8,
+            pointerEvents: "none",
           }}
         >
           <div
             style={{
-              width: 54,
-              height: 54,
-              borderRadius: 16,
+              width: 38,
+              height: 38,
+              borderRadius: 13,
               background: nextInstruction.maneuver === "arrive" ? "#22c55e" : "#ffffff",
               color: nextInstruction.maneuver === "arrive" ? "#ffffff" : "#111111",
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
-              fontSize: "2rem",
+              fontSize: "1.45rem",
               fontWeight: 950,
               lineHeight: 1,
             }}
@@ -1220,115 +1629,60 @@ function UberDriverNavigationMap({
             <div
               style={{
                 color: "#22c55e",
-                fontSize: ".68rem",
+                fontSize: ".64rem",
                 fontWeight: 950,
                 letterSpacing: ".04em",
                 textTransform: "uppercase",
+                whiteSpace: "nowrap",
+                overflow: "hidden",
+                textOverflow: "ellipsis",
               }}
             >
               {nextInstruction.distance ? `En ${nextInstruction.distance}` : "Próxima indicación"}
               {targetDistanceMeters != null && targetDistanceMeters > 500
-                ? ` • faltan ${formatNavigationMeters(targetDistanceMeters)}`
+                ? ` · faltan ${formatNavigationMeters(targetDistanceMeters)}`
                 : ""}
             </div>
             <div
               style={{
-                marginTop: 3,
-                fontSize: ".95rem",
+                marginTop: 2,
+                fontSize: ".80rem",
                 fontWeight: 950,
-                lineHeight: 1.24,
+                lineHeight: 1.2,
                 color: "#F6F2EC",
+                display: "-webkit-box",
+                WebkitLineClamp: 2,
+                WebkitBoxOrient: "vertical",
+                overflow: "hidden",
               }}
             >
               {nextInstruction.text}
             </div>
-            <div
-              style={{
-                marginTop: 4,
-                color: "rgba(246,242,236,.66)",
-                fontSize: ".72rem",
-                fontWeight: 850,
-                lineHeight: 1.25,
-              }}
-            >
-              Destino final: {finalDestinationLabel || "No informado"}
-              {finalDestinationZoneLabel ? ` · zona ${finalDestinationZoneLabel}` : ""}
-            </div>
           </div>
         </div>
       )}
-
-      <div
-        style={{
-          position: "absolute",
-          left: "14px",
-          right: "14px",
-          top: nextInstruction ? "238px" : "112px",
-          ...uberPanelStyle({
-            background: "rgba(246,242,236,.96)",
-            color: "#111111",
-            borderRadius: "16px",
-            padding: "10px 12px",
-            border: "1px solid rgba(210,164,58,.55)",
-          }),
-          zIndex: 5,
-        }}
-      >
-        <div style={{ fontSize: ".70rem", fontWeight: 950, color: "#8a6418", letterSpacing: ".04em", textTransform: "uppercase" }}>
-          Punto del viaje
-        </div>
-        <div style={{ marginTop: 4, fontSize: ".86rem", fontWeight: 950, lineHeight: 1.25 }}>
-          {goingToPickup || waitingPassenger ? "Recogida" : "Destino"}: {currentPointDisplay.name}
-        </div>
-        <div style={{ marginTop: 2, fontSize: ".76rem", fontWeight: 850, color: "rgba(17,17,17,.68)", lineHeight: 1.25 }}>
-          Zona: {currentPointDisplay.zone}
-          {currentPointDisplay.detail && currentPointDisplay.detail !== currentPointDisplay.zone
-            ? ` · ${currentPointDisplay.detail}`
-            : ""}
-        </div>
-      </div>
 
       {!driverGpsReady && (
         <div
           style={{
             position: "absolute",
-            left: "14px",
-            right: "14px",
-            bottom: "88px",
+            left: "10px",
+            right: "78px",
+            bottom: nextInstruction ? "82px" : "14px",
             ...uberPanelStyle({
-              padding: "10px 12px",
-              border: "1px solid rgba(239,68,68,.45)",
+              background: "rgba(17,17,17,.82)",
+              padding: "7px 10px",
+              borderRadius: "999px",
+              border: "1px solid rgba(239,68,68,.35)",
             }),
             color: "#F6F2EC",
-            fontSize: ".78rem",
+            fontSize: ".70rem",
             fontWeight: 900,
+            zIndex: 8,
+            pointerEvents: "none",
           }}
         >
-          📍 Esperando ubicación real del conductor. Activa el GPS para iniciar
-          rutas reales.
-        </div>
-      )}
-
-      {routeInfo && (
-        <div
-          style={{
-            position: "absolute",
-            left: "14px",
-            bottom: "14px",
-            ...uberPanelStyle({
-              minWidth: 130,
-              padding: "12px 14px",
-            }),
-          }}
-        >
-          <div
-            style={{ color: "#22c55e", fontSize: "1.25rem", fontWeight: 950 }}
-          >
-            {routeInfo.duration}
-          </div>
-          <div style={{ color: "rgba(246,242,236,.72)", fontSize: ".78rem" }}>
-            {routeInfo.distance}
-          </div>
+          📍 Activando GPS real...
         </div>
       )}
 
@@ -1337,19 +1691,20 @@ function UberDriverNavigationMap({
         onClick={() => calculateRouteOnce(true)}
         style={{
           position: "absolute",
-          right: "16px",
-          bottom: "84px",
-          width: 52,
-          height: 52,
+          right: "14px",
+          bottom: "82px",
+          width: 50,
+          height: 50,
           borderRadius: 999,
           border: "0",
-          background: "#111111",
+          background: "rgba(17,17,17,.88)",
           color: "#ffffff",
-          boxShadow: "0 12px 28px rgba(0,0,0,.45)",
-          fontSize: 23,
+          boxShadow: "0 12px 28px rgba(0,0,0,.40)",
+          fontSize: 22,
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
+          zIndex: 10,
         }}
         aria-label="Recalcular ruta"
       >
@@ -1361,19 +1716,20 @@ function UberDriverNavigationMap({
         onClick={openExternalNavigationToTarget}
         style={{
           position: "absolute",
-          right: "16px",
+          right: "14px",
           bottom: "16px",
-          width: 58,
-          height: 58,
+          width: 56,
+          height: 56,
           borderRadius: 999,
           border: "0",
           background: "#00a884",
           color: "#ffffff",
-          boxShadow: "0 12px 28px rgba(0,0,0,.45)",
+          boxShadow: "0 12px 28px rgba(0,0,0,.42)",
           fontSize: 24,
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
+          zIndex: 10,
         }}
         aria-label="Abrir navegación en Google Maps"
       >
@@ -1384,14 +1740,19 @@ function UberDriverNavigationMap({
         <div
           style={{
             position: "absolute",
-            left: 14,
-            right: 14,
-            bottom: 82,
-            background: "rgba(17,17,17,.88)",
+            left: 10,
+            right: 78,
+            bottom: nextInstruction ? 82 : 14,
+            background: "rgba(17,17,17,.82)",
             color: "#fff",
-            borderRadius: 12,
-            padding: "9px 12px",
-            fontSize: ".76rem",
+            borderRadius: 999,
+            padding: "7px 10px",
+            fontSize: ".68rem",
+            fontWeight: 900,
+            whiteSpace: "nowrap",
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+            zIndex: 9,
           }}
         >
           {mapError}
@@ -2059,34 +2420,19 @@ function DriverAvailabilityControl({
         boxShadow: "0 16px 34px rgba(0,0,0,.26)",
       }}
     >
-      <IonCardContent style={{ padding: "14px" }}>
+      <IonCardContent style={{ padding: "12px 14px" }}>
         <div
           style={{
             display: "flex",
             justifyContent: "space-between",
             alignItems: "center",
             gap: 12,
+            marginBottom: 10,
           }}
         >
-          <div style={{ minWidth: 0 }}>
-            <div style={{ fontWeight: 950, fontSize: "1rem" }}>
-              Estado del conductor
-            </div>
-            <div
-              style={{
-                marginTop: 3,
-                fontSize: ".78rem",
-                fontWeight: 800,
-                opacity: 0.92,
-                lineHeight: 1.35,
-              }}
-            >
-              {isAvailable
-                ? "Disponible: te pueden llegar solicitudes de viaje. Mantén la app abierta o instalada como PWA para recibir alertas."
-                : "No disponible: no se mostrarán solicitudes hasta que vuelvas a estar disponible."}
-            </div>
+          <div style={{ fontWeight: 950, fontSize: "1rem" }}>
+            Estado del conductor
           </div>
-
           <div
             style={{
               width: 12,
@@ -2106,13 +2452,12 @@ function DriverAvailabilityControl({
             display: "grid",
             gridTemplateColumns: "1fr 1fr",
             gap: 10,
-            marginTop: 12,
           }}
         >
           <IonButton
             expand="block"
             fill={isAvailable ? "solid" : "outline"}
-            color={isAvailable ? "light" : "light"}
+            color="light"
             onClick={() => onChange("available")}
             style={
               {
@@ -2130,7 +2475,7 @@ function DriverAvailabilityControl({
           <IonButton
             expand="block"
             fill={!isAvailable ? "solid" : "outline"}
-            color={!isAvailable ? "light" : "light"}
+            color="light"
             onClick={() => onChange("unavailable")}
             style={
               {
@@ -2150,7 +2495,6 @@ function DriverAvailabilityControl({
   );
 }
 
-
 type DriverVehicleOwnership = "own" | "borrowed";
 
 type DriverVehicleRecord = {
@@ -2161,11 +2505,14 @@ type DriverVehicleRecord = {
   model: string;
   plate: string;
   color: string;
+  year?: string | null;
   label: string;
   imageDataUrl?: string | null;
   imageName?: string | null;
   createdAt: string;
   expiresAt: string | null;
+  primary?: boolean | null;
+  applicationStatus?: string | null;
 };
 
 const DRIVER_VEHICLES_STORAGE_KEY = "rapago_driver_vehicles_v1";
@@ -2555,6 +2902,152 @@ function sanitizeDriverVehicleValue(value: string, max = 40): string {
   return value.replace(/[<>]/g, "").trim().slice(0, max);
 }
 
+function normalizeDriverVehicleOwnership(value: unknown): DriverVehicleOwnership {
+  const raw = String(value ?? "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .trim();
+
+  if (
+    raw === "borrowed" ||
+    raw === "optional" ||
+    raw === "opcional" ||
+    raw === "prestado" ||
+    raw === "temporal"
+  ) {
+    return "borrowed";
+  }
+
+  return "own";
+}
+
+function cleanDriverVehiclePlate(value: unknown): string {
+  return sanitizeDriverVehicleValue(String(value ?? "").toUpperCase(), 14);
+}
+
+function normalizeDriverVehicleRecord(
+  value: unknown,
+  user?: unknown,
+  fallbackIndex = 0,
+): DriverVehicleRecord | null {
+  if (!value || typeof value !== "object") return null;
+
+  const record = value as Record<string, unknown>;
+  const ownerKey = String(
+    record.ownerKey ??
+      record.driverOwnerKey ??
+      record.vehicleOwnerKey ??
+      getDriverVehicleOwnerKey(user),
+  ).trim() || getDriverVehicleOwnerKey(user);
+
+  const brand = sanitizeDriverVehicleValue(
+    String(record.brand ?? record.vehicleBrand ?? record.driverVehicleBrand ?? record.marca ?? ""),
+    32,
+  );
+  const model = sanitizeDriverVehicleValue(
+    String(record.model ?? record.vehicleModel ?? record.driverVehicleModel ?? record.modelo ?? ""),
+    32,
+  );
+  const plate = cleanDriverVehiclePlate(
+    record.plate ?? record.vehiclePlate ?? record.driverVehiclePlate ?? record.patente ?? "",
+  );
+  const color = sanitizeDriverVehicleValue(
+    String(record.color ?? record.vehicleColor ?? record.driverVehicleColor ?? ""),
+    24,
+  );
+  const year = sanitizeDriverVehicleValue(
+    String(record.year ?? record.vehicleYear ?? record.driverVehicleYear ?? ""),
+    4,
+  );
+
+  if (!brand && !model && !plate) return null;
+
+  const id = String(record.id ?? record.vehicleId ?? record.selectedVehicleId ?? "").trim()
+    || `vehicle-imported-${ownerKey}-${plate || fallbackIndex}`;
+  const imageDataUrl = String(
+    record.imageDataUrl ??
+      record.photoDataUrl ??
+      record.vehicleImageDataUrl ??
+      record.vehiclePhotoDataUrl ??
+      record.driverVehicleImageDataUrl ??
+      record.driverVehiclePhotoDataUrl ??
+      "",
+  ).trim() || null;
+  const imageName = String(
+    record.imageName ?? record.photoFileName ?? record.vehicleImageName ?? record.driverVehicleImageName ?? "",
+  ).trim() || null;
+  const ownership = normalizeDriverVehicleOwnership(record.ownership ?? record.kind);
+  const label = sanitizeDriverVehicleValue(
+    String(record.label ?? [brand, model, year, color].filter(Boolean).join(" ")),
+    90,
+  ) || `${brand} ${model}`.trim() || plate || "Vehículo Rapa Go";
+
+  return {
+    id,
+    ownerKey,
+    ownership,
+    brand,
+    model,
+    plate,
+    color,
+    year: year || null,
+    label,
+    imageDataUrl,
+    imageName,
+    createdAt: String(record.createdAt ?? record.updatedAt ?? new Date().toISOString()),
+    expiresAt: ownership === "borrowed" ? String(record.expiresAt ?? "").trim() || null : null,
+    primary: Boolean(record.primary),
+    applicationStatus: String(record.applicationStatus ?? record.approvedStatus ?? "").trim() || null,
+  };
+}
+
+function dedupeDriverVehicleRecords(vehicles: DriverVehicleRecord[]): DriverVehicleRecord[] {
+  const byKey = new Map<string, DriverVehicleRecord>();
+
+  for (const vehicle of vehicles) {
+    const key = `${vehicle.ownerKey}:${vehicle.id || vehicle.plate}`;
+    const current = byKey.get(key);
+    if (!current) {
+      byKey.set(key, vehicle);
+      continue;
+    }
+
+    byKey.set(key, {
+      ...current,
+      ...vehicle,
+      imageDataUrl: vehicle.imageDataUrl ?? current.imageDataUrl ?? null,
+      imageName: vehicle.imageName ?? current.imageName ?? null,
+      primary: current.primary || vehicle.primary,
+    });
+  }
+
+  return Array.from(byKey.values());
+}
+
+function parseDriverVehicleArrayFromRaw(raw: string | null, user?: unknown): DriverVehicleRecord[] {
+  if (!raw?.trim()) return [];
+
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    if (Array.isArray(parsed)) {
+      return parsed
+        .map((item, index) => normalizeDriverVehicleRecord(item, user, index))
+        .filter((item): item is DriverVehicleRecord => item != null);
+    }
+
+    const normalized = normalizeDriverVehicleRecord(parsed, user, 0);
+    return normalized ? [normalized] : [];
+  } catch {
+    return [];
+  }
+}
+
+function getDefaultBorrowedVehicleExpiry(): string {
+  const date = new Date(Date.now() + BORROWED_VEHICLE_DAYS * 24 * 60 * 60_000);
+  return date.toISOString().slice(0, 10);
+}
+
 function resizeDriverVehicleImage(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
     if (!file.type.startsWith("image/")) {
@@ -2636,20 +3129,56 @@ function resizeDriverProfileImage(file: File): Promise<string> {
   });
 }
 
-function readAllDriverVehicles(): DriverVehicleRecord[] {
+function readAllDriverVehicles(user?: unknown): DriverVehicleRecord[] {
+  const ownerKey = getDriverVehicleOwnerKey(user);
+  const rawCandidates: Array<string | null> = [];
+
   try {
-    const raw = localStorage.getItem(DRIVER_VEHICLES_STORAGE_KEY);
-    const parsed = raw ? (JSON.parse(raw) as DriverVehicleRecord[]) : [];
-    return Array.isArray(parsed) ? parsed : [];
+    rawCandidates.push(localStorage.getItem(DRIVER_VEHICLES_STORAGE_KEY));
+    rawCandidates.push(sessionStorage.getItem(DRIVER_VEHICLES_STORAGE_KEY));
+    rawCandidates.push(readDriverScopedStorageItem(DRIVER_VEHICLES_STORAGE_KEY, user));
+    rawCandidates.push(readDriverScopedStorageItem("rapago_driver_registered_vehicles_v1", user));
+    rawCandidates.push(readDriverScopedStorageItem("rapago_driver_vehicle_records_v1", user));
+    rawCandidates.push(readDriverScopedStorageItem("rapago_driver_active_vehicle_v1", user));
+    rawCandidates.push(readDriverScopedStorageItem("rapago_driver_public_vehicle_v1", user));
+    rawCandidates.push(readDriverScopedStorageItem("rapago_selected_vehicle_v1", user));
+    rawCandidates.push(readDriverScopedStorageItem("rapago_selected_driver_vehicle_v1", user));
   } catch {
-    return [];
+    // No bloquea lectura local.
   }
+
+  const vehicles = rawCandidates.flatMap((raw) => parseDriverVehicleArrayFromRaw(raw, user));
+
+  // Compatibilidad: si la postulación solo dejó datos sueltos del vehículo, lo reconstruimos.
+  const looseVehicle = normalizeDriverVehicleRecord(
+    {
+      id: "vehicle-from-application-profile",
+      ownerKey,
+      ownership: "own",
+      brand: readDriverScopedStorageItem("rapago_driver_vehicle_brand", user),
+      model: readDriverScopedStorageItem("rapago_driver_vehicle_model", user),
+      year: readDriverScopedStorageItem("rapago_driver_vehicle_year", user),
+      plate: readDriverScopedStorageItem("rapago_driver_vehicle_plate", user),
+      color: readDriverScopedStorageItem("rapago_driver_vehicle_color", user),
+      imageDataUrl: getStoredDriverVehicleImageDataUrl(user),
+      imageName: getStoredDriverVehicleImageName(user),
+      primary: true,
+      applicationStatus: "pending_admin_review",
+    },
+    user,
+    vehicles.length,
+  );
+
+  if (looseVehicle) vehicles.push(looseVehicle);
+
+  return dedupeDriverVehicleRecords(vehicles);
 }
 
 function saveAllDriverVehicles(vehicles: DriverVehicleRecord[]): void {
   try {
-    const payload = JSON.stringify(vehicles);
-    const lightPayload = JSON.stringify(stripDriverLargeImageFields(vehicles));
+    const normalized = dedupeDriverVehicleRecords(vehicles);
+    const payload = JSON.stringify(normalized);
+    const lightPayload = JSON.stringify(stripDriverLargeImageFields(normalized));
 
     // Guardamos la versión completa solo una vez. Las copias de compatibilidad van sin foto.
     safeSetDriverLocalStorageItem(DRIVER_VEHICLES_STORAGE_KEY, payload);
@@ -2672,7 +3201,7 @@ function isBorrowedVehicleExpired(vehicle: DriverVehicleRecord, now = Date.now()
 
 function purgeExpiredDriverVehicles(user?: unknown): DriverVehicleRecord[] {
   const ownerKey = getDriverVehicleOwnerKey(user);
-  const all = readAllDriverVehicles();
+  const all = readAllDriverVehicles(user);
   const valid = all.filter((vehicle) => !isBorrowedVehicleExpired(vehicle));
 
   if (valid.length !== all.length) {
@@ -2694,30 +3223,75 @@ function readDriverVehicles(user?: unknown): DriverVehicleRecord[] {
 }
 
 function readSelectedDriverVehicleId(user?: unknown): string | null {
+  const ownerKey = getDriverVehicleOwnerKey(user);
+  const rawCandidates: Array<string | null> = [];
+
   try {
-    const ownerKey = getDriverVehicleOwnerKey(user);
-    const raw = localStorage.getItem(DRIVER_SELECTED_VEHICLE_STORAGE_KEY);
-    const map = raw ? (JSON.parse(raw) as Record<string, string | null>) : {};
-    const value = map[ownerKey];
-    return typeof value === "string" && value.trim() ? value.trim() : null;
+    rawCandidates.push(readDriverScopedStorageItem(DRIVER_SELECTED_VEHICLE_STORAGE_KEY, user));
+    rawCandidates.push(localStorage.getItem(DRIVER_SELECTED_VEHICLE_STORAGE_KEY));
+    rawCandidates.push(sessionStorage.getItem(DRIVER_SELECTED_VEHICLE_STORAGE_KEY));
   } catch {
-    return null;
+    // No bloquea lectura local.
   }
+
+  for (const raw of rawCandidates) {
+    if (!raw?.trim()) continue;
+
+    try {
+      const parsed = JSON.parse(raw) as unknown;
+      if (typeof parsed === "string" && parsed.trim()) return parsed.trim();
+      if (parsed && typeof parsed === "object") {
+        const map = parsed as Record<string, unknown>;
+        const value = map[ownerKey];
+        if (typeof value === "string" && value.trim()) return value.trim();
+      }
+    } catch {
+      const value = raw.trim();
+      if (value && !value.startsWith("{") && !value.startsWith("[")) return value;
+    }
+  }
+
+  // Si viene desde el formulario de inscripción, seleccionamos automáticamente el principal.
+  const vehicles = readAllDriverVehicles(user).filter(
+    (vehicle) => vehicle.ownerKey === ownerKey && !isBorrowedVehicleExpired(vehicle),
+  );
+  const inferred = vehicles.find((vehicle) => vehicle.primary) ?? vehicles[0] ?? null;
+
+  if (inferred) {
+    try {
+      const raw = localStorage.getItem(DRIVER_SELECTED_VEHICLE_STORAGE_KEY);
+      const map = raw?.trim().startsWith("{")
+        ? (JSON.parse(raw) as Record<string, string | null>)
+        : {};
+      map[ownerKey] = inferred.id;
+      safeSetDriverLocalStorageItem(DRIVER_SELECTED_VEHICLE_STORAGE_KEY, JSON.stringify(map));
+      writeDriverScopedStorageItem(DRIVER_SELECTED_VEHICLE_STORAGE_KEY, inferred.id, user);
+    } catch {
+      // No bloquea.
+    }
+
+    return inferred.id;
+  }
+
+  return null;
 }
 
 function writeSelectedDriverVehicleId(vehicleId: string | null, user?: unknown): void {
   try {
     const ownerKey = getDriverVehicleOwnerKey(user);
     const raw = localStorage.getItem(DRIVER_SELECTED_VEHICLE_STORAGE_KEY);
-    const map = raw ? (JSON.parse(raw) as Record<string, string | null>) : {};
+    const map = raw?.trim().startsWith("{")
+      ? (JSON.parse(raw) as Record<string, string | null>)
+      : {};
 
     if (vehicleId) map[ownerKey] = vehicleId;
     else delete map[ownerKey];
 
-    localStorage.setItem(DRIVER_SELECTED_VEHICLE_STORAGE_KEY, JSON.stringify(map));
+    safeSetDriverLocalStorageItem(DRIVER_SELECTED_VEHICLE_STORAGE_KEY, JSON.stringify(map));
+    writeDriverScopedStorageItem(DRIVER_SELECTED_VEHICLE_STORAGE_KEY, vehicleId ?? "", user);
 
     const selectedVehicle = vehicleId
-      ? readAllDriverVehicles().find((vehicle) => vehicle.id === vehicleId) ?? null
+      ? readAllDriverVehicles(user).find((vehicle) => vehicle.id === vehicleId) ?? null
       : null;
 
     if (selectedVehicle) {
@@ -2745,15 +3319,7 @@ function readSelectedDriverVehicle(user?: unknown): DriverVehicleRecord | null {
     if (selected) return selected;
   }
 
-  // Fallback seguro para pruebas: si el conductor tiene un solo vehículo válido,
-  // lo publicamos igualmente para que el pasajero vea modelo, patente, color e imagen.
-  if (vehicles.length === 1) return vehicles[0];
-
-  return [...vehicles].sort((a, b) => {
-    const at = new Date(String(a.createdAt ?? "")).getTime() || 0;
-    const bt = new Date(String(b.createdAt ?? "")).getTime() || 0;
-    return bt - at;
-  })[0] ?? null;
+  return vehicles.find((vehicle) => vehicle.primary) ?? vehicles[0] ?? null;
 }
 
 function getDriverVehicleLabel(vehicle: DriverVehicleRecord | null): string {
@@ -4195,6 +4761,8 @@ function addDriverVehicle(input: {
   model: string;
   plate: string;
   color: string;
+  year?: string | null;
+  expiresAt?: string | null;
   imageDataUrl?: string | null;
   imageName?: string | null;
 }): DriverVehicleRecord | null {
@@ -4203,13 +4771,16 @@ function addDriverVehicle(input: {
   const model = sanitizeDriverVehicleValue(input.model, 32);
   const plate = sanitizeDriverVehicleValue(input.plate.toUpperCase(), 14);
   const color = sanitizeDriverVehicleValue(input.color, 24);
+  const year = sanitizeDriverVehicleValue(String(input.year ?? ""), 4);
 
   if (!brand || !model || !plate) return null;
 
   const now = new Date();
   const expiresAt =
     input.ownership === "borrowed"
-      ? new Date(now.getTime() + BORROWED_VEHICLE_DAYS * 24 * 60 * 60_000).toISOString()
+      ? input.expiresAt
+        ? new Date(input.expiresAt).toISOString()
+        : new Date(now.getTime() + BORROWED_VEHICLE_DAYS * 24 * 60 * 60_000).toISOString()
       : null;
 
   const vehicle: DriverVehicleRecord = {
@@ -4220,11 +4791,13 @@ function addDriverVehicle(input: {
     model,
     plate,
     color,
-    label: `${brand} ${model}`.trim(),
+    year: year || null,
+    label: [brand, model, year, color].filter(Boolean).join(" ").trim(),
     imageDataUrl: input.imageDataUrl ?? null,
     imageName: input.imageName ?? null,
     createdAt: now.toISOString(),
     expiresAt,
+    primary: input.ownership === "own",
   };
 
   const all = purgeExpiredDriverVehicles(input.user).filter(
@@ -4263,6 +4836,7 @@ export function DriverHomePage(): JSX.Element {
   const { session } = useAuth();
   const driverAvailabilityUser = session?.user as
     DriverAvailabilityUser | undefined;
+  const driverConnection = useRapaGoConnectivityMonitor("driver");
   const [driverAvailability, setDriverAvailability] =
     useState<DriverAvailability>(() =>
       readDriverAvailability(driverAvailabilityUser),
@@ -4276,7 +4850,22 @@ export function DriverHomePage(): JSX.Element {
     driverAvailabilityUser?.name,
   ]);
 
-  const isDriverAvailable = driverAvailability === "available";
+  useEffect(() => {
+    if (!driverConnection.blocked) return;
+    if (driverAvailability !== "available") return;
+
+    setDriverAvailability("unavailable");
+    saveDriverAvailability("unavailable", driverAvailabilityUser);
+  }, [
+    driverAvailability,
+    driverAvailabilityUser?.id,
+    driverAvailabilityUser?.userId,
+    driverAvailabilityUser?.email,
+    driverAvailabilityUser?.name,
+    driverConnection.blocked,
+  ]);
+
+  const isDriverAvailable = driverAvailability === "available" && !driverConnection.blocked;
   const [pendingReservationCount, setPendingReservationCount] = useState(() =>
     readDriverScheduledReservationOffers(driverAvailabilityUser, isDriverAvailable).length,
   );
@@ -4307,6 +4896,12 @@ export function DriverHomePage(): JSX.Element {
   ]);
 
   function handleAvailabilityChange(value: DriverAvailability): void {
+    if (value === "available" && driverConnection.blocked) {
+      setDriverAvailability("unavailable");
+      saveDriverAvailability("unavailable", driverAvailabilityUser);
+      return;
+    }
+
     setDriverAvailability(value);
     saveDriverAvailability(value, driverAvailabilityUser);
 
@@ -4355,8 +4950,13 @@ export function DriverHomePage(): JSX.Element {
           } as CSSProperties
         }
       >
+        <RapaGoConnectivityBanner
+          role="driver"
+          status={driverConnection.status}
+        />
+
         <DriverAvailabilityControl
-          value={driverAvailability}
+          value={isDriverAvailable ? "available" : "unavailable"}
           onChange={handleAvailabilityChange}
         />
 
@@ -5769,6 +6369,7 @@ function DriverGlobalRideAlert(): JSX.Element | null {
   const location = useLocation();
   const driverAvailabilityUser = session?.user as
     DriverAvailabilityUser | undefined;
+  const driverConnection = useRapaGoConnectivityMonitor("driver");
 
   const [driverAvailability, setDriverAvailability] =
     useState<DriverAvailability>(() =>
@@ -5786,7 +6387,7 @@ function DriverGlobalRideAlert(): JSX.Element | null {
   const alertedRideIdsRef = useRef<Set<string>>(new Set());
   const alertedScheduledReservationKeysRef = useRef<Set<string>>(new Set());
 
-  const isDriverAvailable = driverAvailability === "available";
+  const isDriverAvailable = driverAvailability === "available" && !driverConnection.blocked;
   const isRequestsPage =
     location.pathname === ROUTES.DRIVER.REQUESTS ||
     location.pathname.includes("/driver/requests");
@@ -5835,7 +6436,8 @@ function DriverGlobalRideAlert(): JSX.Element | null {
     if (
       !session?.accessToken ||
       !isDriverAvailable ||
-      accepting
+      accepting ||
+      !readSelectedDriverVehicleId(session?.user)
     ) {
       return;
     }
@@ -6708,6 +7310,7 @@ function AssignedRidesPage(): JSX.Element {
   const location = useLocation();
   const driverAvailabilityUser = session?.user as
     DriverAvailabilityUser | undefined;
+  const driverConnection = useRapaGoConnectivityMonitor("driver");
 
   const requestView = new URLSearchParams(location.search).get("view");
   const showOnlyReservations = requestView === "reservations";
@@ -6757,13 +7360,27 @@ function AssignedRidesPage(): JSX.Element {
     driverAvailabilityUser?.name,
   ]);
 
-  const isDriverAvailable = driverAvailability === "available";
-  const activeRide = showOnlyReservations
-    ? null
-    : assignedRides.find((ride) =>
-        driverScheduledReservationNavigationStarted(ride as unknown as Record<string, unknown>) ||
-        !driverRideLooksLikeScheduledReservation(ride as unknown as Record<string, unknown>),
-      ) ?? null;
+  useEffect(() => {
+    if (!driverConnection.blocked) return;
+    if (driverAvailability !== "available") return;
+
+    setDriverAvailability("unavailable");
+    saveDriverAvailability("unavailable", driverAvailabilityUser);
+    setAvailableRides([]);
+  }, [
+    driverAvailability,
+    driverAvailabilityUser?.id,
+    driverAvailabilityUser?.userId,
+    driverAvailabilityUser?.email,
+    driverAvailabilityUser?.name,
+    driverConnection.blocked,
+  ]);
+
+  const isDriverAvailable = driverAvailability === "available" && !driverConnection.blocked;
+  const activeRide = assignedRides.find((ride) =>
+    driverScheduledReservationNavigationStarted(ride as unknown as Record<string, unknown>) ||
+    !driverRideLooksLikeScheduledReservation(ride as unknown as Record<string, unknown>),
+  ) ?? null;
   const displayedAvailableRides = showOnlyReservations ? [] : availableRides;
   const reservationsTotal = reservationOffers.length + confirmedReservationOffers.length;
 
@@ -7070,6 +7687,15 @@ function AssignedRidesPage(): JSX.Element {
       }
       setAssignedRides(Array.from(activeByKey.values()));
 
+      const hasSelectedVehicleForWork = Boolean(readSelectedDriverVehicleId(session?.user));
+      if (!hasSelectedVehicleForWork) {
+        setReservationOffers([]);
+        setConfirmedReservationOffers([]);
+        setAvailableRides([]);
+        setError("Debes elegir un vehículo activo en tu perfil para ver solicitudes o reservas.");
+        return;
+      }
+
       setReservationOffers(
         readDriverScheduledReservationOffers(session?.user, isDriverAvailable),
       );
@@ -7104,6 +7730,12 @@ function AssignedRidesPage(): JSX.Element {
       setConfirmedReservationOffers(
         readConfirmedWaitingScheduledReservationsForDriver(session?.user),
       );
+
+      if (isDriverAvailable && !readSelectedDriverVehicleId(session?.user)) {
+        setAvailableRides([]);
+        setError("Debes elegir un vehículo activo en tu perfil para ver solicitudes o reservas.");
+        return;
+      }
 
       if (isDriverAvailable) {
         setAvailableRides(
@@ -8730,6 +9362,11 @@ function AssignedRidesPage(): JSX.Element {
               <IonRefresherContent />
             </IonRefresher>
 
+            <RapaGoConnectivityBanner
+              role="driver"
+              status={driverConnection.status}
+            />
+
             {loading && (
               <div
                 style={{
@@ -10231,6 +10868,14 @@ export function DriverProfilePage(): JSX.Element {
   const profilePhotoFileRef = useRef<HTMLInputElement | null>(null);
   const [bio, setBio] = useState("");
   const [languages, setLanguages] = useState<string[]>(["es"]);
+  const [driverVehicles, setDriverVehicles] = useState<DriverVehicleRecord[]>(() =>
+    readDriverVehicles(session?.user),
+  );
+  const [selectedVehicleId, setSelectedVehicleId] = useState<string | null>(() =>
+    readSelectedDriverVehicleId(session?.user),
+  );
+  const [vehicleOwnership, setVehicleOwnership] = useState<DriverVehicleOwnership>("own");
+  const [vehicleExpiresAt, setVehicleExpiresAt] = useState("");
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -10254,8 +10899,29 @@ export function DriverProfilePage(): JSX.Element {
       );
       const autoPhone = getAutoDriverPhone(session.user, profile?.phone);
 
-      if (profile) {
-        setPhone(autoPhone);
+      const selectedVehicle = readSelectedDriverVehicle(session.user);
+      const currentVehicles = readDriverVehicles(session.user);
+      setDriverVehicles(currentVehicles);
+      setSelectedVehicleId(readSelectedDriverVehicleId(session.user));
+
+      if (selectedVehicle) {
+        setVehicleBrand(selectedVehicle.brand);
+        setVehicleModel(selectedVehicle.model);
+        setVehicleYear(String(selectedVehicle.year ?? ""));
+        setVehiclePlate(selectedVehicle.plate);
+        setVehicleColor(selectedVehicle.color);
+        setVehicleImageDataUrl(
+          selectedVehicle.imageDataUrl ??
+            String(storedProfile.vehicleImageDataUrl ?? getStoredDriverVehicleImageDataUrl(session?.user)),
+        );
+        setVehicleImageName(
+          selectedVehicle.imageName ?? String(storedProfile.vehicleImageName ?? ""),
+        );
+        setVehicleOwnership(selectedVehicle.ownership);
+        setVehicleExpiresAt(
+          selectedVehicle.expiresAt ? selectedVehicle.expiresAt.slice(0, 10) : "",
+        );
+      } else if (profile) {
         setVehicleBrand(
           profile.vehicleBrand ?? String(storedProfile.vehicleBrand ?? ""),
         );
@@ -10273,38 +10939,27 @@ export function DriverProfilePage(): JSX.Element {
         setVehicleColor(
           profile.vehicleColor ?? String(storedProfile.vehicleColor ?? ""),
         );
-        {
-          const selectedVehicle = readSelectedDriverVehicle(session.user);
-          setVehicleImageDataUrl(
-            selectedVehicle?.imageDataUrl ??
-              String(storedProfile.vehicleImageDataUrl ?? getStoredDriverVehicleImageDataUrl(session?.user)),
-          );
-          setVehicleImageName(
-            selectedVehicle?.imageName ?? String(storedProfile.vehicleImageName ?? ""),
-          );
-        }
-        setLicenseNumber(
-          profile.licenseNumber ?? String(storedProfile.licenseNumber ?? ""),
-        );
-        setLicenseExpiry(profile.licenseExpiry ?? "");
-        setProfilePhotoUrl(
-          profile.profilePhotoUrl ?? getStoredDriverProfilePhotoUrl(session?.user),
-        );
-        setBio(profile.bio ?? "");
-        setLanguages(normalizeDriverLanguages(profile.languages));
-      } else {
-        const selectedVehicle = readSelectedDriverVehicle(session.user);
-        setPhone(autoPhone);
         setVehicleImageDataUrl(
-          selectedVehicle?.imageDataUrl ??
-            String(storedProfile.vehicleImageDataUrl ?? getStoredDriverVehicleImageDataUrl(session?.user)),
+          String(storedProfile.vehicleImageDataUrl ?? getStoredDriverVehicleImageDataUrl(session?.user)),
         );
-        setVehicleImageName(
-          selectedVehicle?.imageName ?? String(storedProfile.vehicleImageName ?? ""),
+        setVehicleImageName(String(storedProfile.vehicleImageName ?? ""));
+      } else {
+        setVehicleImageDataUrl(
+          String(storedProfile.vehicleImageDataUrl ?? getStoredDriverVehicleImageDataUrl(session?.user)),
         );
-        setProfilePhotoUrl(getStoredDriverProfilePhotoUrl(session?.user));
-        setLanguages(["es"]);
+        setVehicleImageName(String(storedProfile.vehicleImageName ?? ""));
       }
+
+      setPhone(autoPhone);
+      setLicenseNumber(
+        profile?.licenseNumber ?? String(storedProfile.licenseNumber ?? ""),
+      );
+      setLicenseExpiry(profile?.licenseExpiry ?? "");
+      setProfilePhotoUrl(
+        profile?.profilePhotoUrl ?? getStoredDriverProfilePhotoUrl(session?.user),
+      );
+      setBio(profile?.bio ?? "");
+      setLanguages(profile ? normalizeDriverLanguages(profile.languages) : ["es"]);
 
       if (autoPhone) {
         persistStoredDriverRegistrationProfile({
@@ -10355,6 +11010,12 @@ export function DriverProfilePage(): JSX.Element {
     const cleanBio = bio.trim();
     const cleanLanguages = normalizeDriverLanguages(languages);
 
+    if (vehicleOwnership === "borrowed" && !vehicleExpiresAt.trim()) {
+      setError("El vehículo opcional o prestado debe tener fecha de expiración.");
+      setSaving(false);
+      return;
+    }
+
     try {
       persistDriverResidentFareForDriver(session?.user);
 
@@ -10397,11 +11058,13 @@ export function DriverProfilePage(): JSX.Element {
       if (cleanVehicleBrand && cleanVehicleModel && cleanVehiclePlate) {
         savedVehicle = addDriverVehicle({
           user: session?.user,
-          ownership: "own",
+          ownership: vehicleOwnership,
           brand: cleanVehicleBrand,
           model: cleanVehicleModel,
+          year: cleanVehicleYear,
           plate: cleanVehiclePlate,
           color: cleanVehicleColor,
+          expiresAt: vehicleOwnership === "borrowed" ? vehicleExpiresAt : null,
           imageDataUrl: cleanVehicleImageDataUrl || null,
           imageName: cleanVehicleImageName || null,
         });
@@ -10456,6 +11119,8 @@ export function DriverProfilePage(): JSX.Element {
       setLicenseNumber(cleanLicenseNumber);
       setBio(cleanBio);
       setLanguages(cleanLanguages);
+      setDriverVehicles(readDriverVehicles(session?.user));
+      setSelectedVehicleId(readSelectedDriverVehicleId(session?.user));
 
       setSuccess(true);
 
@@ -10615,6 +11280,61 @@ export function DriverProfilePage(): JSX.Element {
     setVehicleImageName("");
     setVehiclePhotoError(null);
     persistStoredDriverVehicleImageDataUrl("", null, session?.user);
+  }
+
+  function refreshDriverVehicleList(): void {
+    setDriverVehicles(readDriverVehicles(session?.user));
+    setSelectedVehicleId(readSelectedDriverVehicleId(session?.user));
+  }
+
+  function handleSelectDriverVehicle(vehicle: DriverVehicleRecord): void {
+    writeSelectedDriverVehicleId(vehicle.id, session?.user);
+    setSelectedVehicleId(vehicle.id);
+    setVehicleBrand(vehicle.brand);
+    setVehicleModel(vehicle.model);
+    setVehicleYear(String(vehicle.year ?? ""));
+    setVehiclePlate(vehicle.plate);
+    setVehicleColor(vehicle.color);
+    setVehicleImageDataUrl(vehicle.imageDataUrl ?? "");
+    setVehicleImageName(vehicle.imageName ?? "");
+    setVehicleOwnership(vehicle.ownership);
+    setVehicleExpiresAt(vehicle.expiresAt ? vehicle.expiresAt.slice(0, 10) : "");
+    publishDriverProfileVehicleSnapshot({
+      user: session?.user,
+      phone: phone.trim(),
+      vehicle,
+    });
+    refreshDriverVehicleList();
+    setSuccess(true);
+  }
+
+  function handleEditDriverVehicle(vehicle: DriverVehicleRecord): void {
+    setVehicleBrand(vehicle.brand);
+    setVehicleModel(vehicle.model);
+    setVehicleYear(String(vehicle.year ?? ""));
+    setVehiclePlate(vehicle.plate);
+    setVehicleColor(vehicle.color);
+    setVehicleImageDataUrl(vehicle.imageDataUrl ?? "");
+    setVehicleImageName(vehicle.imageName ?? "");
+    setVehicleOwnership(vehicle.ownership);
+    setVehicleExpiresAt(vehicle.expiresAt ? vehicle.expiresAt.slice(0, 10) : "");
+  }
+
+  function handleRemoveDriverVehicle(vehicleId: string): void {
+    removeDriverVehicle(vehicleId, session?.user);
+    refreshDriverVehicleList();
+  }
+
+  function handlePrepareNewVehicle(ownership: DriverVehicleOwnership): void {
+    setVehicleOwnership(ownership);
+    setVehicleBrand("");
+    setVehicleModel("");
+    setVehicleYear("");
+    setVehiclePlate("");
+    setVehicleColor("");
+    setVehicleImageDataUrl("");
+    setVehicleImageName("");
+    setVehicleExpiresAt(ownership === "borrowed" ? getDefaultBorrowedVehicleExpiry() : "");
   }
 
   const displayName = session?.user?.name ?? "Conductor";
@@ -11041,8 +11761,153 @@ export function DriverProfilePage(): JSX.Element {
                 <div
                   style={{ fontWeight: 950, fontSize: "1rem", marginBottom: 4 }}
                 >
-                  Vehículo
+                  Vehículos del conductor
                 </div>
+                <div
+                  style={{
+                    color: "#333",
+                    fontSize: ".78rem",
+                    fontWeight: 800,
+                    marginBottom: 10,
+                    lineHeight: 1.35,
+                  }}
+                >
+                  Aquí se toman los vehículos enviados en la inscripción. Puedes agregar todos los vehículos que tengas y elegir cuál queda activo para recibir solicitudes y reservas.
+                </div>
+
+                <div
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 6,
+                    marginBottom: 12,
+                    padding: "6px 10px",
+                    borderRadius: 999,
+                    background: "rgba(34,197,94,.12)",
+                    color: "#166534",
+                    fontSize: ".74rem",
+                    fontWeight: 950,
+                  }}
+                >
+                  {driverVehicles.length} vehículo{driverVehicles.length !== 1 ? "s" : ""} registrado{driverVehicles.length !== 1 ? "s" : ""}
+                </div>
+
+                {driverVehicles.length > 0 && (
+                  <div style={{ display: "grid", gap: 10, marginBottom: 14 }}>
+                    {driverVehicles.map((vehicle) => {
+                      const selected = selectedVehicleId === vehicle.id;
+                      const borrowedText = getBorrowedVehicleRemainingText(vehicle);
+
+                      return (
+                        <div
+                          key={vehicle.id}
+                          style={{
+                            display: "grid",
+                            gridTemplateColumns: vehicle.imageDataUrl ? "82px 1fr" : "1fr",
+                            gap: 10,
+                            padding: 10,
+                            borderRadius: 18,
+                            background: selected ? "#ECFDF3" : "#FFFDF7",
+                            border: selected
+                              ? "2px solid rgba(34,197,94,.70)"
+                              : "1.5px solid rgba(210,164,58,.42)",
+                          }}
+                        >
+                          {vehicle.imageDataUrl && (
+                            <img
+                              src={vehicle.imageDataUrl}
+                              alt={vehicle.label}
+                              style={{
+                                width: 82,
+                                height: 82,
+                                borderRadius: 14,
+                                objectFit: "cover",
+                                background: "#111",
+                              }}
+                            />
+                          )}
+
+                          <div style={{ minWidth: 0 }}>
+                            <div style={{ fontWeight: 950, color: "#111", fontSize: ".92rem" }}>
+                              {vehicle.brand} {vehicle.model} {vehicle.year ? `· ${vehicle.year}` : ""}
+                            </div>
+                            <div style={{ color: "#333", fontSize: ".78rem", fontWeight: 850, marginTop: 2 }}>
+                              Patente {vehicle.plate || "sin patente"} · {vehicle.color || "sin color"}
+                            </div>
+                            <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 8 }}>
+                              <IonBadge color={vehicle.ownership === "borrowed" ? "warning" : "success"}>
+                                {vehicle.ownership === "borrowed" ? "Opcional / temporal" : "Vehículo propio"}
+                              </IonBadge>
+                              {selected && <IonBadge color="success">Activo</IonBadge>}
+                              {borrowedText && <IonBadge color="medium">{borrowedText}</IonBadge>}
+                            </div>
+
+                            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginTop: 10 }}>
+                              <IonButton
+                                size="small"
+                                color={selected ? "success" : "warning"}
+                                fill={selected ? "solid" : "outline"}
+                                onClick={() => handleSelectDriverVehicle(vehicle)}
+                                style={{ "--border-radius": "14px", fontWeight: 950 } as CSSProperties}
+                              >
+                                {selected ? "Vehículo activo" : "Usar este"}
+                              </IonButton>
+                              <IonButton
+                                size="small"
+                                fill="outline"
+                                color="medium"
+                                onClick={() => handleEditDriverVehicle(vehicle)}
+                                style={{ "--border-radius": "14px", fontWeight: 950 } as CSSProperties}
+                              >
+                                Editar abajo
+                              </IonButton>
+                            </div>
+
+                            {vehicle.ownership === "borrowed" && (
+                              <IonButton
+                                size="small"
+                                fill="clear"
+                                color="danger"
+                                onClick={() => handleRemoveDriverVehicle(vehicle.id)}
+                                style={{ marginTop: 4, fontWeight: 900 }}
+                              >
+                                Eliminar opcional
+                              </IonButton>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+
+                {driverVehicles.length === 0 && (
+                  <IonNote style={{ display: "block", marginBottom: 12, color: "#8f3c24", fontWeight: 900 }}>
+                    No hay vehículos cargados desde la inscripción. Completa los datos abajo y guarda tu vehículo principal. Después podrás agregar más vehículos si tienes.
+                  </IonNote>
+                )}
+
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 12 }}>
+                  <IonButton
+                    expand="block"
+                    color={vehicleOwnership === "own" ? "success" : "medium"}
+                    fill={vehicleOwnership === "own" ? "solid" : "outline"}
+                    onClick={() => handlePrepareNewVehicle("own")}
+                    style={{ "--border-radius": "16px", height: "46px", fontWeight: 950 } as CSSProperties}
+                  >
+                    Vehículo propio
+                  </IonButton>
+                  <IonButton
+                    expand="block"
+                    color={vehicleOwnership === "borrowed" ? "warning" : "medium"}
+                    fill={vehicleOwnership === "borrowed" ? "solid" : "outline"}
+                    onClick={() => handlePrepareNewVehicle("borrowed")}
+                    style={{ "--border-radius": "16px", height: "46px", fontWeight: 950 } as CSSProperties}
+                  >
+                    Agregar vehículo opcional
+                  </IonButton>
+                </div>
+
                 <div
                   style={{
                     color: "#333",
@@ -11051,7 +11916,9 @@ export function DriverProfilePage(): JSX.Element {
                     marginBottom: 10,
                   }}
                 >
-                  Estos datos ayudan al pasajero a reconocerte.
+                  {vehicleOwnership === "borrowed"
+                    ? "Vehículo opcional/temporal: puedes agregar más de uno. Cada opcional exige fecha de expiración y luego se borra automáticamente."
+                    : "Vehículo propio: puedes guardar tu principal y también agregar más vehículos propios si los usas en Rapa Go."}
                 </div>
 
                 <IonItem lines="none" style={driverInputItemStyle()}>
@@ -11094,7 +11961,7 @@ export function DriverProfilePage(): JSX.Element {
                     onIonInput={(event) =>
                       setVehicleYear(String(event.detail.value ?? ""))
                     }
-                    placeholder="2020"
+                    placeholder="2025"
                     inputmode="numeric"
                     clearInput
                   />
@@ -11127,10 +11994,24 @@ export function DriverProfilePage(): JSX.Element {
                     onIonInput={(event) =>
                       setVehicleColor(String(event.detail.value ?? ""))
                     }
-                    placeholder="Blanco"
+                    placeholder="Rojo"
                     clearInput
                   />
                 </IonItem>
+
+                {vehicleOwnership === "borrowed" && (
+                  <IonItem lines="none" style={driverInputItemStyle()}>
+                    <IonLabel position="stacked" style={driverFieldLabelStyle()}>
+                      Fecha de expiración del vehículo opcional *
+                    </IonLabel>
+                    <IonInput
+                      style={driverFieldTextStyle()}
+                      type="date"
+                      value={vehicleExpiresAt}
+                      onIonInput={(event) => setVehicleExpiresAt(String(event.detail.value ?? ""))}
+                    />
+                  </IonItem>
+                )}
 
                 <div
                   style={{

@@ -15,19 +15,12 @@ import "../theme/global.css";
 
 import { AppRouter } from "../navigation/AppRouter";
 import { AppProviders } from "./AppProviders";
+import { RapaGoLanguageRuntime } from "../i18n/rapagoI18n";
 
 setupIonicReact({
-  mode: "md", // Material Design on all platforms for consistency
+  mode: "md",
 });
 
-/**
- * App — root component.
- *
- * Renders: IonApp > IonReactRouter > AppProviders > AppRouter
- *
- * Do NOT add business logic here. Route-level concerns belong in AppRouter.
- * Provider-level concerns belong in AppProviders.
- */
 export function App(): JSX.Element {
   useEffect(() => {
     void SplashScreen.hide();
@@ -35,6 +28,8 @@ export function App(): JSX.Element {
 
   return (
     <IonApp>
+      <RapaGoLanguageRuntime />
+
       <IonReactRouter>
         <AppProviders>
           <AppRouter />

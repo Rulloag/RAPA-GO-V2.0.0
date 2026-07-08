@@ -121,6 +121,329 @@ function timeAgo(isoString: string): string {
   return `Hace ${Math.floor(hours / 24)}d`;
 }
 
+
+type AdminCashPaymentDecision = "exact" | "wallet_credit" | "refund_whatsapp";
+
+type AdminCashPaymentReview = {
+  id: string;
+  rideId: string;
+  rideKey: string;
+  originText: string;
+  destinationText: string;
+  fareClp: number;
+  paidClp: number;
+  overpaidClp: number;
+  decision: AdminCashPaymentDecision;
+  status: "completed" | "pending_refund" | "wallet_available" | string;
+  adminReviewStatus?: "not_required" | "pending_admin" | "admin_approved" | "refund_requested" | "refund_completed" | string;
+  createdAt: string;
+  passengerEmail?: string | null;
+  passengerName?: string | null;
+};
+
+type AdminWalletBenefit = {
+  id: string;
+  rideId?: string | null;
+  passengerEmail?: string | null;
+  ownerKey?: string | null;
+  amountClp: number;
+  status: "pending_admin" | "available" | "used" | "rejected" | string;
+  source?: string | null;
+  title?: string | null;
+  description?: string | null;
+  createdAt?: string | null;
+  approvedAt?: string | null;
+  approvedBy?: string | null;
+  adminReviewStatus?: string | null;
+  fareClp?: number | null;
+  paidClp?: number | null;
+};
+
+type AdminPassengerPendingCharge = {
+  id: string;
+  rideId?: string | null;
+  rideKey?: string | null;
+  passengerEmail?: string | null;
+  passengerName?: string | null;
+  originText?: string | null;
+  destinationText?: string | null;
+  amountClp: number;
+  minimumFareClp?: number | null;
+  type?: "late_cancel" | "no_show" | string | null;
+  paymentMethod?: string | null;
+  status: "pending_next_ride" | "applied_to_next_ride" | "paid" | "waived" | string;
+  adminReviewStatus?: string | null;
+  title?: string | null;
+  description?: string | null;
+  createdAt?: string | null;
+  appliedRideId?: string | null;
+  appliedAt?: string | null;
+  cardRefundRequested?: boolean | null;
+  mercadoPagoRefundStatus?: string | null;
+  cardRefundNotice?: string | null;
+};
+
+const RAPAGO_CASH_PAYMENT_REVIEWS_KEY_ADMIN = "rapago_cash_payment_reviews_v1";
+const RAPAGO_WALLET_BENEFITS_KEY_ADMIN = "rapago_wallet_benefits_v1";
+const RAPAGO_PASSENGER_PENDING_CHARGES_KEY_ADMIN = "rapago_passenger_pending_charges_v1";
+const RAPAGO_PASSENGER_PENDING_CHARGE_EVENT_ADMIN = "rapago:passenger-pending-charge-updated";
+
+function formatAdminCashClp(value: number | null | undefined): string {
+  const amount = Number(value ?? 0);
+  if (!Number.isFinite(amount)) return "$0 CLP";
+  return `$${Math.max(0, Math.round(amount)).toLocaleString("es-CL")} CLP`;
+}
+
+function readAdminCashPaymentReviews(): AdminCashPaymentReview[] {
+  try {
+    const raw = localStorage.getItem(RAPAGO_CASH_PAYMENT_REVIEWS_KEY_ADMIN);
+    const parsed = raw ? (JSON.parse(raw) as Record<string, AdminCashPaymentReview> | AdminCashPaymentReview[]) : {};
+    const list = Array.isArray(parsed) ? parsed : Object.values(parsed);
+
+    return list
+      .filter((item) => item && typeof item === "object")
+      .map((item, index) => ({
+        ...item,
+        id: String(item.id ?? `cash-review-${index}`),
+        rideId: String(item.rideId ?? ""),
+        rideKey: String(item.rideKey ?? item.rideId ?? `cash-review-${index}`),
+        originText: String(item.originText ?? ""),
+        destinationText: String(item.destinationText ?? ""),
+        fareClp: Math.max(0, Math.round(Number(item.fareClp ?? 0))),
+        paidClp: Math.max(0, Math.round(Number(item.paidClp ?? 0))),
+        overpaidClp: Math.max(0, Math.round(Number(item.overpaidClp ?? 0))),
+        decision: (String(item.decision ?? "exact") as AdminCashPaymentDecision),
+        status: String(item.status ?? "completed"),
+        adminReviewStatus: String(item.adminReviewStatus ?? (item.decision === "wallet_credit" ? "pending_admin" : item.decision === "refund_whatsapp" ? "refund_requested" : "not_required")),
+        createdAt: String(item.createdAt ?? new Date().toISOString()),
+        passengerEmail: item.passengerEmail ?? null,
+        passengerName: item.passengerName ?? null,
+      }))
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  } catch {
+    return [];
+  }
+}
+
+function writeAdminCashPaymentReviews(reviews: AdminCashPaymentReview[]): void {
+  try {
+    const map = reviews.reduce<Record<string, AdminCashPaymentReview>>((acc, review) => {
+      acc[review.rideKey || review.rideId || review.id] = review;
+      return acc;
+    }, {});
+    localStorage.setItem(RAPAGO_CASH_PAYMENT_REVIEWS_KEY_ADMIN, JSON.stringify(map));
+    window.dispatchEvent(new CustomEvent("rapago:cash-payment-review-updated", { detail: { reviews } }));
+  } catch {
+    // No bloquea el panel admin.
+  }
+}
+
+function readAdminWalletBenefits(): AdminWalletBenefit[] {
+  try {
+    const raw = localStorage.getItem(RAPAGO_WALLET_BENEFITS_KEY_ADMIN);
+    const parsed = raw ? (JSON.parse(raw) as Array<Record<string, unknown>>) : [];
+    if (!Array.isArray(parsed)) return [];
+
+    return parsed.map((item, index) => ({
+      id: String(item.id ?? `wallet-benefit-${index}`),
+      rideId: typeof item.rideId === "string" ? item.rideId : null,
+      passengerEmail: typeof item.passengerEmail === "string" ? item.passengerEmail : null,
+      ownerKey: typeof item.ownerKey === "string" ? item.ownerKey : null,
+      amountClp: Math.max(0, Math.round(Number(item.amountClp ?? item.amount ?? 0))),
+      status: String(item.status ?? "pending_admin"),
+      source: typeof item.source === "string" ? item.source : null,
+      title: typeof item.title === "string" ? item.title : null,
+      description: typeof item.description === "string" ? item.description : null,
+      createdAt: typeof item.createdAt === "string" ? item.createdAt : null,
+      approvedAt: typeof item.approvedAt === "string" ? item.approvedAt : null,
+      approvedBy: typeof item.approvedBy === "string" ? item.approvedBy : null,
+      adminReviewStatus: typeof item.adminReviewStatus === "string" ? item.adminReviewStatus : null,
+      fareClp: Number.isFinite(Number(item.fareClp)) ? Math.round(Number(item.fareClp)) : null,
+      paidClp: Number.isFinite(Number(item.paidClp)) ? Math.round(Number(item.paidClp)) : null,
+    }));
+  } catch {
+    return [];
+  }
+}
+
+function writeAdminWalletBenefits(benefits: AdminWalletBenefit[]): void {
+  try {
+    localStorage.setItem(RAPAGO_WALLET_BENEFITS_KEY_ADMIN, JSON.stringify(benefits.slice(0, 250)));
+    window.dispatchEvent(new CustomEvent("rapago:wallet-benefit-updated", { detail: { benefits } }));
+    window.dispatchEvent(new CustomEvent("rapago:wallet-updated", { detail: { benefits } }));
+  } catch {
+    // No bloquea el panel admin.
+  }
+}
+
+
+function readAdminPassengerPendingCharges(): AdminPassengerPendingCharge[] {
+  try {
+    const raw = localStorage.getItem(RAPAGO_PASSENGER_PENDING_CHARGES_KEY_ADMIN);
+    const parsed = raw ? (JSON.parse(raw) as Array<Record<string, unknown>>) : [];
+    if (!Array.isArray(parsed)) return [];
+
+    return parsed
+      .map((item, index): AdminPassengerPendingCharge => ({
+        id: String(item.id ?? `pending-charge-${index}`),
+        rideId: typeof item.rideId === "string" ? item.rideId : null,
+        rideKey: typeof item.rideKey === "string" ? item.rideKey : null,
+        passengerEmail: typeof item.passengerEmail === "string" ? item.passengerEmail : null,
+        passengerName: typeof item.passengerName === "string" ? item.passengerName : null,
+        originText: typeof item.originText === "string" ? item.originText : null,
+        destinationText: typeof item.destinationText === "string" ? item.destinationText : null,
+        amountClp: Math.max(0, Math.round(Number(item.amountClp ?? item.amount ?? 0))),
+        minimumFareClp: Number.isFinite(Number(item.minimumFareClp)) ? Math.round(Number(item.minimumFareClp)) : null,
+        type: typeof item.type === "string" ? item.type : null,
+        paymentMethod: typeof item.paymentMethod === "string" ? item.paymentMethod : null,
+        status: String(item.status ?? "pending_next_ride"),
+        adminReviewStatus: typeof item.adminReviewStatus === "string" ? item.adminReviewStatus : null,
+        title: typeof item.title === "string" ? item.title : null,
+        description: typeof item.description === "string" ? item.description : null,
+        createdAt: typeof item.createdAt === "string" ? item.createdAt : null,
+        appliedRideId: typeof item.appliedRideId === "string" ? item.appliedRideId : null,
+        appliedAt: typeof item.appliedAt === "string" ? item.appliedAt : null,
+        cardRefundRequested: Boolean(item.cardRefundRequested || item.mercadoPagoRefundRequested),
+        mercadoPagoRefundStatus: typeof item.mercadoPagoRefundStatus === "string" ? item.mercadoPagoRefundStatus : null,
+        cardRefundNotice: typeof item.cardRefundNotice === "string" ? item.cardRefundNotice : null,
+      }))
+      .filter((charge) => charge.amountClp > 0)
+      .sort((a, b) => new Date(String(b.createdAt ?? 0)).getTime() - new Date(String(a.createdAt ?? 0)).getTime());
+  } catch {
+    return [];
+  }
+}
+
+function writeAdminPassengerPendingCharges(charges: AdminPassengerPendingCharge[]): void {
+  try {
+    localStorage.setItem(RAPAGO_PASSENGER_PENDING_CHARGES_KEY_ADMIN, JSON.stringify(charges.slice(0, 250)));
+    window.dispatchEvent(new CustomEvent(RAPAGO_PASSENGER_PENDING_CHARGE_EVENT_ADMIN, { detail: { charges } }));
+    window.dispatchEvent(new CustomEvent("rapago:wallet-updated", { detail: { charges } }));
+  } catch {
+    // No bloquea el panel admin.
+  }
+}
+
+function isAdminPassengerChargePending(charge: AdminPassengerPendingCharge): boolean {
+  return String(charge.status ?? "").toLowerCase() === "pending_next_ride";
+}
+
+function adminPassengerChargeStatusLabel(charge: AdminPassengerPendingCharge): string {
+  const status = String(charge.status ?? "").toLowerCase();
+  if (status === "pending_next_ride") return "Pendiente próximo viaje";
+  if (status === "applied_to_next_ride") return "Agregado a próximo viaje";
+  if (status === "paid") return "Pagado";
+  if (status === "waived") return "Anulado";
+  return charge.status || "Pendiente";
+}
+
+function adminPassengerChargeStatusColor(charge: AdminPassengerPendingCharge): string {
+  const status = String(charge.status ?? "").toLowerCase();
+  if (status === "pending_next_ride") return "danger";
+  if (status === "applied_to_next_ride" || status === "paid") return "success";
+  if (status === "waived") return "medium";
+  return "warning";
+}
+
+function markAdminPassengerChargeStatus(charge: AdminPassengerPendingCharge, status: "paid" | "waived"): void {
+  const now = new Date().toISOString();
+  const next = readAdminPassengerPendingCharges().map((item) => {
+    if (item.id !== charge.id) return item;
+    return {
+      ...item,
+      status,
+      adminReviewStatus: status,
+      appliedAt: status === "paid" ? (item.appliedAt ?? now) : item.appliedAt,
+    };
+  });
+
+  writeAdminPassengerPendingCharges(next);
+}
+
+function isAdminCashWalletApproved(review: AdminCashPaymentReview): boolean {
+  const status = String(review.adminReviewStatus ?? review.status ?? "").toLowerCase();
+  return status === "admin_approved" || status === "approved" || status === "available";
+}
+
+function isAdminCashRefundCompleted(review: AdminCashPaymentReview): boolean {
+  const status = String(review.adminReviewStatus ?? review.status ?? "").toLowerCase();
+  return status === "refund_completed" || status === "completed";
+}
+
+function adminCashReviewDecisionLabel(review: AdminCashPaymentReview): string {
+  if (review.decision === "wallet_credit") return "Saldo a favor";
+  if (review.decision === "refund_whatsapp") return "Devolución por WhatsApp";
+  return "Pagó justo";
+}
+
+function adminCashReviewStatusLabel(review: AdminCashPaymentReview): string {
+  if (review.decision === "wallet_credit") {
+    return isAdminCashWalletApproved(review) ? "Saldo aprobado" : "Pendiente aprobar saldo";
+  }
+  if (review.decision === "refund_whatsapp") {
+    return isAdminCashRefundCompleted(review) ? "Devolución gestionada" : "Pendiente devolución";
+  }
+  return "Sin diferencia";
+}
+
+function adminCashReviewStatusColor(review: AdminCashPaymentReview): string {
+  if (review.decision === "wallet_credit") return isAdminCashWalletApproved(review) ? "success" : "warning";
+  if (review.decision === "refund_whatsapp") return isAdminCashRefundCompleted(review) ? "success" : "danger";
+  return "medium";
+}
+
+function approveAdminCashWalletCredit(review: AdminCashPaymentReview): void {
+  const now = new Date().toISOString();
+  const updatedReviews = readAdminCashPaymentReviews().map((item) => {
+    if ((item.rideKey || item.rideId || item.id) !== (review.rideKey || review.rideId || review.id)) return item;
+    return {
+      ...item,
+      adminReviewStatus: "admin_approved",
+      status: "wallet_available",
+    };
+  });
+
+  writeAdminCashPaymentReviews(updatedReviews);
+
+  const benefits = readAdminWalletBenefits();
+  const benefitId = `cash-overpayment-${review.rideId || review.rideKey}`;
+  const nextBenefit: AdminWalletBenefit = {
+    id: benefitId,
+    rideId: review.rideId || null,
+    passengerEmail: review.passengerEmail ?? null,
+    ownerKey: review.passengerEmail ?? null,
+    amountClp: review.overpaidClp,
+    status: "available",
+    source: "cash_overpayment",
+    title: "Pago de más en efectivo",
+    description: `Saldo aprobado por admin. Viaje ${review.originText} → ${review.destinationText}.`,
+    createdAt: review.createdAt,
+    approvedAt: now,
+    approvedBy: "admin",
+    adminReviewStatus: "admin_approved",
+    fareClp: review.fareClp,
+    paidClp: review.paidClp,
+  };
+
+  writeAdminWalletBenefits([
+    nextBenefit,
+    ...benefits.filter((item) => String(item.id ?? "") !== benefitId),
+  ]);
+}
+
+function markAdminCashRefundCompleted(review: AdminCashPaymentReview): void {
+  const updatedReviews = readAdminCashPaymentReviews().map((item) => {
+    if ((item.rideKey || item.rideId || item.id) !== (review.rideKey || review.rideId || review.id)) return item;
+    return {
+      ...item,
+      adminReviewStatus: "refund_completed",
+      status: "completed",
+    };
+  });
+
+  writeAdminCashPaymentReviews(updatedReviews);
+}
+
 export function AdminHomePage(): JSX.Element {
   const { session } = useAuth();
   const history = useHistory();
@@ -137,6 +460,8 @@ export function AdminHomePage(): JSX.Element {
   const [adminDrivers, setAdminDrivers] = useState<ActiveDriverData[]>([]);
   const [adminUsers, setAdminUsers] = useState<AdminUserData[]>([]);
   const [, setAdminAvailabilityRevision] = useState(0);
+  const [cashReviewsRevision, setCashReviewsRevision] = useState(0);
+  const [adminCashToast, setAdminCashToast] = useState<string | null>(null);
 
   const load = useCallback(
     async (silent = false) => {
@@ -213,6 +538,24 @@ export function AdminHomePage(): JSX.Element {
       window.clearInterval(timerId);
     };
   }, [load]);
+
+  useEffect(() => {
+    const refreshCashReviews = () => setCashReviewsRevision((current) => current + 1);
+
+    window.addEventListener("storage", refreshCashReviews);
+    window.addEventListener("rapago:cash-payment-review-updated", refreshCashReviews as EventListener);
+    window.addEventListener("rapago:wallet-benefit-updated", refreshCashReviews as EventListener);
+    window.addEventListener("rapago:wallet-updated", refreshCashReviews as EventListener);
+    window.addEventListener(RAPAGO_PASSENGER_PENDING_CHARGE_EVENT_ADMIN, refreshCashReviews as EventListener);
+
+    return () => {
+      window.removeEventListener("storage", refreshCashReviews);
+      window.removeEventListener("rapago:cash-payment-review-updated", refreshCashReviews as EventListener);
+      window.removeEventListener("rapago:wallet-benefit-updated", refreshCashReviews as EventListener);
+      window.removeEventListener("rapago:wallet-updated", refreshCashReviews as EventListener);
+      window.removeEventListener(RAPAGO_PASSENGER_PENDING_CHARGE_EVENT_ADMIN, refreshCashReviews as EventListener);
+    };
+  }, []);
 
   function goToAdminDrivers(): void {
     setSelectedKpi(null);
@@ -365,6 +708,17 @@ export function AdminHomePage(): JSX.Element {
     operational.pendingOfflineBookings +
     operational.pendingServiceBookings +
     operational.pendingRentalBookings;
+
+  const cashPaymentReviews = cashReviewsRevision >= 0 ? readAdminCashPaymentReviews() : [];
+  const pendingCashPaymentReviews = cashPaymentReviews.filter((review) => {
+    if (review.decision === "wallet_credit") return !isAdminCashWalletApproved(review);
+    if (review.decision === "refund_whatsapp") return !isAdminCashRefundCompleted(review);
+    return false;
+  });
+  const pendingCashAmountClp = pendingCashPaymentReviews.reduce((sum, review) => sum + Math.max(0, review.overpaidClp), 0);
+  const passengerPendingCharges = cashReviewsRevision >= 0 ? readAdminPassengerPendingCharges() : [];
+  const passengerChargesPendingNextRide = passengerPendingCharges.filter(isAdminPassengerChargePending);
+  const pendingPassengerChargeAmountClp = passengerChargesPendingNextRide.reduce((sum, charge) => sum + Math.max(0, charge.amountClp), 0);
 
   const kpis: Array<{
     id: "rides" | "revenue" | "drivers" | "users";
@@ -920,6 +1274,302 @@ export function AdminHomePage(): JSX.Element {
                 </IonCard>
               )}
 
+              {passengerPendingCharges.length > 0 && (
+                <IonCard
+                  className="admin-section-card"
+                  style={{
+                    borderRadius: 22,
+                    border: "1px solid rgba(220,38,38,.28)",
+                    boxShadow: "0 16px 36px rgba(0,0,0,.10)",
+                  }}
+                >
+                  <IonCardHeader>
+                    <div className="admin-section-title-row">
+                      <div>
+                        <IonCardTitle>Cargos por cancelación / no show</IonCardTitle>
+                        <IonCardSubtitle>
+                          Cargos que se suman al próximo viaje; si fue tarjeta, revisar devolución a la tarjeta
+                        </IonCardSubtitle>
+                      </div>
+                      <IonBadge color={passengerChargesPendingNextRide.length > 0 ? "danger" : "success"}>
+                        {passengerChargesPendingNextRide.length > 0
+                          ? `${passengerChargesPendingNextRide.length} por cobrar`
+                          : "Al día"}
+                      </IonBadge>
+                    </div>
+                  </IonCardHeader>
+
+                  <IonCardContent>
+                    {pendingPassengerChargeAmountClp > 0 && (
+                      <div
+                        style={{
+                          marginBottom: 12,
+                          padding: 12,
+                          borderRadius: 16,
+                          background: "rgba(220,38,38,.10)",
+                          border: "1px solid rgba(220,38,38,.26)",
+                          color: "#7f1d1d",
+                          fontWeight: 850,
+                          fontSize: ".82rem",
+                          lineHeight: 1.35,
+                        }}
+                      >
+                        Hay {formatAdminCashClp(pendingPassengerChargeAmountClp)} pendiente por cancelaciones o no show. La app lo sumará al próximo viaje del pasajero. Si el viaje original fue con tarjeta, el backend debe procesar la devolución del pago a la misma tarjeta.
+                      </div>
+                    )}
+
+                    <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                      {passengerPendingCharges.slice(0, 8).map((charge) => {
+                        const passengerLabel = charge.passengerName || charge.passengerEmail || "Pasajero";
+                        const typeLabel = charge.type === "no_show" ? "No show" : "Cancelación fuera de plazo";
+
+                        return (
+                          <div
+                            key={charge.id}
+                            style={{
+                              padding: 12,
+                              borderRadius: 18,
+                              background: "#fff7ed",
+                              border: "1px solid rgba(0,0,0,.07)",
+                            }}
+                          >
+                            <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "flex-start" }}>
+                              <div style={{ minWidth: 0 }}>
+                                <div style={{ fontWeight: 950, color: "#111", fontSize: ".92rem" }}>
+                                  {typeLabel} · {formatAdminCashClp(charge.amountClp)}
+                                </div>
+                                <div style={{ marginTop: 2, fontSize: ".76rem", color: "#555", fontWeight: 750, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                                  {passengerLabel} · {charge.originText || "Origen"} → {charge.destinationText || "Destino"}
+                                </div>
+                              </div>
+                              <IonBadge color={adminPassengerChargeStatusColor(charge)}>
+                                {adminPassengerChargeStatusLabel(charge)}
+                              </IonBadge>
+                            </div>
+
+                            <div style={{ marginTop: 10, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                              <div style={{ background: "rgba(0,0,0,.035)", borderRadius: 12, padding: 8 }}>
+                                <div style={{ fontSize: ".66rem", color: "#666", fontWeight: 900 }}>Cargo</div>
+                                <div style={{ fontWeight: 950, color: "#111", fontSize: ".82rem" }}>{formatAdminCashClp(charge.amountClp)}</div>
+                              </div>
+                              <div style={{ background: "rgba(0,0,0,.035)", borderRadius: 12, padding: 8 }}>
+                                <div style={{ fontSize: ".66rem", color: "#666", fontWeight: 900 }}>Cobro</div>
+                                <div style={{ fontWeight: 950, color: "#111", fontSize: ".82rem" }}>
+                                  {charge.appliedRideId ? "Ya fue sumado" : "Próximo viaje"}
+                                </div>
+                              </div>
+                            </div>
+
+                            {charge.paymentMethod && (
+                              <div style={{ marginTop: 8, padding: 9, borderRadius: 12, background: "rgba(255,255,255,.68)", color: "#111", fontSize: ".76rem", fontWeight: 850 }}>
+                                Método original: <strong>{charge.paymentMethod}</strong>
+                                {String(charge.paymentMethod).toLowerCase().includes("tarjeta") || String(charge.paymentMethod).toLowerCase().includes("mercado") || String(charge.paymentMethod).toLowerCase().includes("pronto") ? (
+                                  <><br />💳 Revisar devolución del pago original a la misma tarjeta. El cargo queda para el próximo viaje.</>
+                                ) : (
+                                  <><br />💵 Efectivo: el cargo queda pendiente para el próximo viaje.</>
+                                )}
+                              </div>
+                            )}
+
+                            {charge.description && (
+                              <p style={{ margin: "8px 0 0", fontSize: ".76rem", color: "#7c2d12", lineHeight: 1.35, fontWeight: 800 }}>
+                                {charge.description}
+                              </p>
+                            )}
+
+                            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 10 }}>
+                              {isAdminPassengerChargePending(charge) && (
+                                <IonButton
+                                  size="small"
+                                  color="medium"
+                                  fill="outline"
+                                  onClick={() => {
+                                    markAdminPassengerChargeStatus(charge, "waived");
+                                    setCashReviewsRevision((current) => current + 1);
+                                    setAdminCashToast("Cargo anulado por administración.");
+                                  }}
+                                >
+                                  Anular cargo
+                                </IonButton>
+                              )}
+                              {String(charge.status).toLowerCase() === "applied_to_next_ride" && (
+                                <IonButton
+                                  size="small"
+                                  color="success"
+                                  onClick={() => {
+                                    markAdminPassengerChargeStatus(charge, "paid");
+                                    setCashReviewsRevision((current) => current + 1);
+                                    setAdminCashToast("Cargo marcado como pagado.");
+                                  }}
+                                >
+                                  Marcar pagado
+                                </IonButton>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </IonCardContent>
+                </IonCard>
+              )}
+
+              {cashPaymentReviews.length > 0 && (
+                <IonCard
+                  className="admin-section-card"
+                  style={{
+                    borderRadius: 22,
+                    border: "1px solid rgba(218,170,65,.32)",
+                    boxShadow: "0 16px 36px rgba(0,0,0,.10)",
+                  }}
+                >
+                  <IonCardHeader>
+                    <div className="admin-section-title-row">
+                      <div>
+                        <IonCardTitle>Pagos en efectivo</IonCardTitle>
+                        <IonCardSubtitle>
+                          Saldos a favor y devoluciones solicitadas por pasajeros
+                        </IonCardSubtitle>
+                      </div>
+                      <IonBadge color={pendingCashPaymentReviews.length > 0 ? "warning" : "success"}>
+                        {pendingCashPaymentReviews.length > 0
+                          ? `${pendingCashPaymentReviews.length} pendiente${pendingCashPaymentReviews.length !== 1 ? "s" : ""}`
+                          : "Al día"}
+                      </IonBadge>
+                    </div>
+                  </IonCardHeader>
+
+                  <IonCardContent>
+                    {pendingCashPaymentReviews.length > 0 && (
+                      <div
+                        style={{
+                          marginBottom: 12,
+                          padding: 12,
+                          borderRadius: 16,
+                          background: "rgba(255,196,9,.14)",
+                          border: "1px solid rgba(255,196,9,.35)",
+                          fontWeight: 850,
+                          fontSize: ".82rem",
+                          lineHeight: 1.35,
+                        }}
+                      >
+                        Hay {formatAdminCashClp(pendingCashAmountClp)} por revisar entre saldos a favor y devoluciones.
+                      </div>
+                    )}
+
+                    <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                      {cashPaymentReviews.slice(0, 8).map((review) => {
+                        const isWallet = review.decision === "wallet_credit";
+                        const isRefund = review.decision === "refund_whatsapp";
+                        const passengerLabel = review.passengerName || review.passengerEmail || "Pasajero";
+
+                        return (
+                          <div
+                            key={review.rideKey || review.rideId || review.id}
+                            style={{
+                              padding: 12,
+                              borderRadius: 18,
+                              background: "#fffaf1",
+                              border: "1px solid rgba(0,0,0,.07)",
+                            }}
+                          >
+                            <div
+                              style={{
+                                display: "flex",
+                                justifyContent: "space-between",
+                                gap: 8,
+                                alignItems: "flex-start",
+                              }}
+                            >
+                              <div style={{ minWidth: 0 }}>
+                                <div style={{ fontWeight: 950, color: "#111", fontSize: ".92rem" }}>
+                                  {adminCashReviewDecisionLabel(review)} · {formatAdminCashClp(review.overpaidClp)}
+                                </div>
+                                <div
+                                  style={{
+                                    marginTop: 2,
+                                    fontSize: ".76rem",
+                                    color: "#555",
+                                    fontWeight: 750,
+                                    overflow: "hidden",
+                                    textOverflow: "ellipsis",
+                                    whiteSpace: "nowrap",
+                                  }}
+                                >
+                                  {passengerLabel} · {review.originText || "Origen"} → {review.destinationText || "Destino"}
+                                </div>
+                              </div>
+
+                              <IonBadge color={adminCashReviewStatusColor(review)}>
+                                {adminCashReviewStatusLabel(review)}
+                              </IonBadge>
+                            </div>
+
+                            <div
+                              style={{
+                                marginTop: 10,
+                                display: "grid",
+                                gridTemplateColumns: "1fr 1fr 1fr",
+                                gap: 8,
+                              }}
+                            >
+                              <div style={{ background: "rgba(0,0,0,.035)", borderRadius: 12, padding: 8 }}>
+                                <div style={{ fontSize: ".66rem", color: "#666", fontWeight: 900 }}>Precio</div>
+                                <div style={{ fontWeight: 950, color: "#111", fontSize: ".82rem" }}>{formatAdminCashClp(review.fareClp)}</div>
+                              </div>
+                              <div style={{ background: "rgba(0,0,0,.035)", borderRadius: 12, padding: 8 }}>
+                                <div style={{ fontSize: ".66rem", color: "#666", fontWeight: 900 }}>Pagó</div>
+                                <div style={{ fontWeight: 950, color: "#111", fontSize: ".82rem" }}>{formatAdminCashClp(review.paidClp)}</div>
+                              </div>
+                              <div style={{ background: "rgba(0,0,0,.035)", borderRadius: 12, padding: 8 }}>
+                                <div style={{ fontSize: ".66rem", color: "#666", fontWeight: 900 }}>Diferencia</div>
+                                <div style={{ fontWeight: 950, color: "#111", fontSize: ".82rem" }}>{formatAdminCashClp(review.overpaidClp)}</div>
+                              </div>
+                            </div>
+
+                            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 10 }}>
+                              {isWallet && !isAdminCashWalletApproved(review) && (
+                                <IonButton
+                                  size="small"
+                                  color="success"
+                                  onClick={() => {
+                                    approveAdminCashWalletCredit(review);
+                                    setCashReviewsRevision((current) => current + 1);
+                                    setAdminCashToast("Saldo a favor aprobado. Ya queda disponible en la billetera del pasajero.");
+                                  }}
+                                >
+                                  Aprobar saldo
+                                </IonButton>
+                              )}
+
+                              {isRefund && !isAdminCashRefundCompleted(review) && (
+                                <IonButton
+                                  size="small"
+                                  color="warning"
+                                  onClick={() => {
+                                    markAdminCashRefundCompleted(review);
+                                    setCashReviewsRevision((current) => current + 1);
+                                    setAdminCashToast("Devolución marcada como gestionada.");
+                                  }}
+                                >
+                                  Marcar devolución gestionada
+                                </IonButton>
+                              )}
+
+                              {review.rideId && (
+                                <IonButton size="small" fill="clear" color="medium" routerLink={ROUTES.ADMIN.TRIPS}>
+                                  Ver viajes
+                                </IonButton>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </IonCardContent>
+                </IonCard>
+              )}
+
               {thisWeek.topDrivers.length > 0 && (
                 <IonCard className="admin-section-card">
                   <IonCardHeader>
@@ -1025,6 +1675,14 @@ export function AdminHomePage(): JSX.Element {
           )}
         </div>
       </IonContent>
+
+      <IonToast
+        isOpen={Boolean(adminCashToast)}
+        message={adminCashToast ?? ""}
+        duration={2200}
+        color="success"
+        onDidDismiss={() => setAdminCashToast(null)}
+      />
     </IonPage>
   );
 }
@@ -1050,10 +1708,421 @@ const STATUS_LABEL: Record<string, string> = {
   banned: "Bloqueado",
 };
 
+type PassengerVerificationStatus =
+  | "not_required"
+  | "missing_document"
+  | "pending"
+  | "approved"
+  | "rejected";
+
+type ExtendedAdminUserData = AdminUserData & {
+  phone?: string | null;
+  cellphone?: string | null;
+  mobile?: string | null;
+  rut?: string | null;
+  nationalId?: string | null;
+  passengerCondition?: string | null;
+  passengerConditionLegacy?: string | null;
+  passengerFareType?: string | null;
+  farePassengerType?: string | null;
+  passengerType?: string | null;
+  passengerFareLabel?: string | null;
+  nationality?: string | null;
+  registrationProvider?: string | null;
+  authProvider?: string | null;
+  provider?: string | null;
+  isFacebookUser?: boolean | null;
+  belongsToRapaNuiEthnicity?: boolean | null;
+  residenceDocumentRequired?: boolean | null;
+  residenceDocumentUploaded?: boolean | null;
+  residenceVerificationStatus?: string | null;
+  residenceDocumentStatus?: string | null;
+  residenceDocumentUrl?: string | null;
+  residenceDocumentName?: string | null;
+  metadata?: Record<string, unknown> | null;
+  profile?: Record<string, unknown> | null;
+};
+
+type ExtendedAdminDocumentData = AdminDocumentData & {
+  userId?: string | null;
+  userEmail?: string | null;
+  userName?: string | null;
+  documentType?: string | null;
+  fileUrl?: string | null;
+  fileName?: string | null;
+  originalName?: string | null;
+  status?: string | null;
+  reviewedAt?: string | null;
+};
+
+const RESIDENCE_DOCUMENT_TYPES = new Set([
+  "residence_document",
+  "rapa_nui_residence",
+  "rapanui_residence",
+  "resident_certificate",
+  "rapa_nui_resident_certificate",
+  "residente_rapa_nui_document",
+]);
+
+const RAPANUI_RESIDENCE_REJECTION_USER_MESSAGE =
+  "Tu documento de Residente Rapa Nui fue rechazado. Por favor elige otro tipo de usuario, como Turista chileno o Turista extranjero, o vuelve a adjuntar un documento de residencia válido.";
+
+function valueFromRecord(
+  source: Record<string, unknown> | null | undefined,
+  keys: string[],
+): string {
+  if (!source) return "";
+
+  for (const key of keys) {
+    const value = source[key];
+    if (typeof value === "string" && value.trim()) return value.trim();
+    if (typeof value === "number" && Number.isFinite(value)) return String(value);
+    if (typeof value === "boolean") return value ? "true" : "false";
+  }
+
+  return "";
+}
+
+function boolFromRecord(
+  source: Record<string, unknown> | null | undefined,
+  keys: string[],
+): boolean | null {
+  if (!source) return null;
+
+  for (const key of keys) {
+    const value = source[key];
+
+    if (typeof value === "boolean") return value;
+
+    if (typeof value === "string") {
+      const normalized = value.toLowerCase().trim();
+      if (["true", "si", "sí", "yes", "1"].includes(normalized)) return true;
+      if (["false", "no", "0"].includes(normalized)) return false;
+    }
+  }
+
+  return null;
+}
+
+function getUserMetaValue(user: AdminUserData, keys: string[]): string {
+  const extended = user as ExtendedAdminUserData;
+
+  return (
+    valueFromRecord(extended as unknown as Record<string, unknown>, keys) ||
+    valueFromRecord(extended.profile, keys) ||
+    valueFromRecord(extended.metadata, keys)
+  );
+}
+
+function getUserMetaBoolean(user: AdminUserData, keys: string[]): boolean | null {
+  const extended = user as ExtendedAdminUserData;
+
+  return (
+    boolFromRecord(extended as unknown as Record<string, unknown>, keys) ??
+    boolFromRecord(extended.profile, keys) ??
+    boolFromRecord(extended.metadata, keys)
+  );
+}
+
+function normalizeAdminText(value: unknown): string {
+  return String(value ?? "")
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .trim();
+}
+
+function getPassengerConditionText(user: AdminUserData): string {
+  return getUserMetaValue(user, [
+    "passengerCondition",
+    "passengerConditionLegacy",
+    "nationality",
+    "passengerFareLabel",
+    "passengerFareType",
+    "farePassengerType",
+    "passengerType",
+  ]);
+}
+
+function isRapaNuiResidentUser(user: AdminUserData): boolean {
+  const text = normalizeAdminText(getPassengerConditionText(user));
+  const belongs = getUserMetaBoolean(user, [
+    "belongsToRapaNuiEthnicity",
+    "isRapaNui",
+    "rapaNuiResident",
+  ]);
+
+  return (
+    belongs === true ||
+    text.includes("residente_rapa_nui") ||
+    text.includes("residente rapa nui") ||
+    text.includes("rapa nui") ||
+    text === "resident" ||
+    text === "residente"
+  );
+}
+
+function getPassengerLabel(user: AdminUserData): string {
+  const text = normalizeAdminText(getPassengerConditionText(user));
+
+  if (isRapaNuiResidentUser(user)) return "Residente Rapa Nui";
+  if (text.includes("turista_chileno") || text.includes("chileno")) return "Turista chileno";
+  if (text.includes("turista_extranjero") || text.includes("extranjero") || text.includes("foreigner")) return "Turista extranjero";
+
+  return "Pasajero sin tipo";
+}
+
+function getRegistrationProviderLabel(user: AdminUserData): string {
+  const extended = user as ExtendedAdminUserData;
+  const raw =
+    extended.registrationProvider ??
+    extended.authProvider ??
+    extended.provider ??
+    getUserMetaValue(user, ["registrationProvider", "authProvider", "provider"]);
+
+  if (extended.isFacebookUser || normalizeAdminText(raw).includes("facebook")) {
+    return "Facebook";
+  }
+
+  return raw ? raw : "Registro normal";
+}
+
+function getPassengerPhone(user: AdminUserData): string {
+  return getUserMetaValue(user, ["phone", "cellphone", "mobile", "celular"]);
+}
+
+function getPassengerRut(user: AdminUserData): string {
+  return getUserMetaValue(user, ["rut", "nationalId", "documentNumber"]);
+}
+
+function isResidenceDocument(doc: AdminDocumentData): boolean {
+  const extended = doc as ExtendedAdminDocumentData;
+  const type = normalizeAdminText(extended.documentType);
+  return RESIDENCE_DOCUMENT_TYPES.has(type) || type.includes("residence") || type.includes("residencia") || type.includes("rapa");
+}
+
+function sameUserForDocument(user: AdminUserData, doc: AdminDocumentData): boolean {
+  const extendedDoc = doc as ExtendedAdminDocumentData;
+  const userEmail = normalizeAdminText(user.email);
+  const docEmail = normalizeAdminText(extendedDoc.userEmail);
+  const docUserId = String(extendedDoc.userId ?? "").trim();
+
+  return Boolean(
+    (docUserId && docUserId === user.id) ||
+      (userEmail && docEmail && userEmail === docEmail),
+  );
+}
+
+function getResidenceDocsForUser(
+  user: AdminUserData,
+  docs: AdminDocumentData[],
+): AdminDocumentData[] {
+  return docs.filter((doc) => isResidenceDocument(doc) && sameUserForDocument(user, doc));
+}
+
+function getBestResidenceDocForUser(
+  user: AdminUserData,
+  docs: AdminDocumentData[],
+): AdminDocumentData | null {
+  const userDocs = getResidenceDocsForUser(user, docs);
+
+  return (
+    userDocs.find((doc) => ["pending", "uploaded"].includes(String(doc.status))) ??
+    userDocs.find((doc) => String(doc.status) === "approved") ??
+    userDocs.find((doc) => String(doc.status) === "rejected") ??
+    null
+  );
+}
+
+function getResidenceVerificationStatus(
+  user: AdminUserData,
+  docs: AdminDocumentData[],
+): PassengerVerificationStatus {
+  if (!isRapaNuiResidentUser(user)) return "not_required";
+
+  const extended = user as ExtendedAdminUserData;
+  const backendStatus = normalizeAdminText(
+    extended.residenceVerificationStatus ??
+      extended.residenceDocumentStatus ??
+      getUserMetaValue(user, ["residenceVerificationStatus", "residenceDocumentStatus"]),
+  );
+
+  if (backendStatus.includes("approved") || backendStatus.includes("aprobado")) return "approved";
+  if (backendStatus.includes("rejected") || backendStatus.includes("rechazado")) return "rejected";
+  if (backendStatus.includes("pending") || backendStatus.includes("uploaded") || backendStatus.includes("pendiente")) return "pending";
+
+  const doc = getBestResidenceDocForUser(user, docs);
+
+  if (!doc) {
+    const uploaded = getUserMetaBoolean(user, ["residenceDocumentUploaded"]);
+    return uploaded ? "pending" : "missing_document";
+  }
+
+  if (String(doc.status) === "approved") return "approved";
+  if (String(doc.status) === "rejected") return "rejected";
+  return "pending";
+}
+
+function residenceStatusLabel(status: PassengerVerificationStatus): string {
+  if (status === "approved") return "Residencia aprobada";
+  if (status === "rejected") return "Residencia rechazada";
+  if (status === "pending") return "Documento pendiente";
+  if (status === "missing_document") return "Falta documento";
+  return "No requiere validación";
+}
+
+function residenceStatusColor(status: PassengerVerificationStatus): string {
+  if (status === "approved") return "success";
+  if (status === "rejected") return "danger";
+  if (status === "pending") return "warning";
+  if (status === "missing_document") return "danger";
+  return "medium";
+}
+
+function getDocumentFileName(doc: AdminDocumentData): string {
+  const extended = doc as ExtendedAdminDocumentData;
+  return extended.fileName ?? extended.originalName ?? extended.fileUrl ?? "Documento";
+}
+
+function getLocalResidenceDocumentPreview(user: AdminUserData): string {
+  const extended = user as ExtendedAdminUserData;
+
+  return (
+    extended.residenceDocumentUrl ||
+    valueFromRecord(extended.profile, ["residenceDocumentUrl", "residenceDocumentDataUrl"]) ||
+    valueFromRecord(extended.metadata, ["residenceDocumentUrl", "residenceDocumentDataUrl"])
+  );
+}
+
+
+const RESIDENT_VERIFICATION_REQUESTS_KEY_ADMIN = "rapago_resident_verification_requests_v1";
+
+type LocalResidentVerificationRequest = {
+  id: string;
+  userId?: string | null;
+  status: "pending" | "approved" | "rejected";
+  createdAt?: string | null;
+  updatedAt?: string | null;
+  name?: string | null;
+  firstName?: string | null;
+  lastName?: string | null;
+  rut?: string | null;
+  phone?: string | null;
+  email?: string | null;
+  passengerFareType?: string | null;
+  passengerFareLabel?: string | null;
+  nationality?: string | null;
+  registrationProvider?: string | null;
+  authProvider?: string | null;
+  documentName?: string | null;
+  documentType?: string | null;
+  documentSizeBytes?: number | null;
+  documentUploadedAt?: string | null;
+  documentDataUrl?: string | null;
+  reason?: string | null;
+  userMessage?: string | null;
+  adminMessage?: string | null;
+  rejectionReason?: string | null;
+};
+
+function normalizeLocalResidentStatus(value: unknown): LocalResidentVerificationRequest["status"] {
+  const raw = normalizeAdminText(value);
+  if (raw.includes("approved") || raw.includes("aprobado")) return "approved";
+  if (raw.includes("rejected") || raw.includes("rechazado")) return "rejected";
+  return "pending";
+}
+
+function readLocalResidentVerificationRequestsForAdmin(): LocalResidentVerificationRequest[] {
+  try {
+    const raw = localStorage.getItem(RESIDENT_VERIFICATION_REQUESTS_KEY_ADMIN);
+    const parsed = raw ? (JSON.parse(raw) as Array<Record<string, unknown>>) : [];
+
+    if (!Array.isArray(parsed)) return [];
+
+    return parsed.map((item, index) => ({
+      id: String(item.id ?? `resident-validation-${index}`),
+      userId: typeof item.userId === "string" ? item.userId : null,
+      status: normalizeLocalResidentStatus(item.status),
+      createdAt: typeof item.createdAt === "string" ? item.createdAt : null,
+      updatedAt: typeof item.updatedAt === "string" ? item.updatedAt : null,
+      name: typeof item.name === "string" ? item.name : null,
+      firstName: typeof item.firstName === "string" ? item.firstName : null,
+      lastName: typeof item.lastName === "string" ? item.lastName : null,
+      rut: typeof item.rut === "string" ? item.rut : null,
+      phone: typeof item.phone === "string" ? item.phone : null,
+      email: typeof item.email === "string" ? item.email : null,
+      passengerFareType: typeof item.passengerFareType === "string" ? item.passengerFareType : null,
+      passengerFareLabel: typeof item.passengerFareLabel === "string" ? item.passengerFareLabel : null,
+      nationality: typeof item.nationality === "string" ? item.nationality : null,
+      registrationProvider: typeof item.registrationProvider === "string" ? item.registrationProvider : null,
+      authProvider: typeof item.authProvider === "string" ? item.authProvider : null,
+      documentName: typeof item.documentName === "string" ? item.documentName : null,
+      documentType: typeof item.documentType === "string" ? item.documentType : null,
+      documentSizeBytes:
+        typeof item.documentSizeBytes === "number" && Number.isFinite(item.documentSizeBytes)
+          ? item.documentSizeBytes
+          : null,
+      documentUploadedAt: typeof item.documentUploadedAt === "string" ? item.documentUploadedAt : null,
+      documentDataUrl: typeof item.documentDataUrl === "string" ? item.documentDataUrl : null,
+      reason: typeof item.reason === "string" ? item.reason : null,
+      userMessage: typeof item.userMessage === "string" ? item.userMessage : null,
+      adminMessage: typeof item.adminMessage === "string" ? item.adminMessage : null,
+      rejectionReason: typeof item.rejectionReason === "string" ? item.rejectionReason : null,
+    }));
+  } catch {
+    return [];
+  }
+}
+
+function saveLocalResidentVerificationRequestsForAdmin(
+  requests: LocalResidentVerificationRequest[],
+): void {
+  try {
+    localStorage.setItem(
+      RESIDENT_VERIFICATION_REQUESTS_KEY_ADMIN,
+      JSON.stringify(requests),
+    );
+    window.dispatchEvent(new CustomEvent("rapago:resident-verification-updated"));
+  } catch {
+    // No bloquea el panel admin.
+  }
+}
+
+function reviewLocalResidentVerificationRequestForAdmin(
+  requestId: string,
+  status: "approved" | "rejected",
+  rejectionReason?: string,
+): LocalResidentVerificationRequest[] {
+  const updated = readLocalResidentVerificationRequestsForAdmin().map((request) => {
+    if (request.id !== requestId) return request;
+
+    return {
+      ...request,
+      status,
+      updatedAt: new Date().toISOString(),
+      rejectionReason: status === "rejected"
+        ? rejectionReason || RAPANUI_RESIDENCE_REJECTION_USER_MESSAGE
+        : "",
+      adminMessage: status === "approved"
+        ? "Residencia Rapa Nui aprobada por el administrador."
+        : rejectionReason || RAPANUI_RESIDENCE_REJECTION_USER_MESSAGE,
+      userMessage: status === "approved"
+        ? "Tu residencia Rapa Nui fue aprobada. Ya puedes continuar con Rapa Go."
+        : rejectionReason || RAPANUI_RESIDENCE_REJECTION_USER_MESSAGE,
+    };
+  });
+
+  saveLocalResidentVerificationRequestsForAdmin(updated);
+  return updated;
+}
+
+
 export function AdminUsersPage(): JSX.Element {
   const { session } = useAuth();
 
   const [users, setUsers] = useState<AdminUserData[]>([]);
+  const [docs, setDocs] = useState<AdminDocumentData[]>([]);
+  const [residentRequests, setResidentRequests] = useState<LocalResidentVerificationRequest[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
 
@@ -1063,18 +2132,30 @@ export function AdminUsersPage(): JSX.Element {
 
   const [updatingId, setUpdatingId] = useState<string | null>(null);
   const [updateError, setUpdateError] = useState<string | null>(null);
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
 
   const loadUsers = useCallback(async () => {
     if (!session?.accessToken) return;
     setLoading(true);
     setLoadError(null);
+
     try {
       const params: { role?: string; status?: string; search?: string } = {};
+
       if (filterRole) params.role = filterRole;
       if (filterStatus) params.status = filterStatus;
       if (filterSearch.trim()) params.search = filterSearch.trim();
-      const data = await adminService.listUsers(session.accessToken, params);
-      setUsers(data);
+
+      const [userData, documentData] = await Promise.all([
+        adminService.listUsers(session.accessToken, params),
+        adminService
+          .listDocuments(session.accessToken, {})
+          .catch(() => [] as AdminDocumentData[]),
+      ]);
+
+      setUsers(userData);
+      setDocs(documentData);
+      setResidentRequests(readLocalResidentVerificationRequestsForAdmin());
     } catch (err) {
       setLoadError(
         err instanceof Error ? err.message : "Error al cargar usuarios.",
@@ -1088,17 +2169,60 @@ export function AdminUsersPage(): JSX.Element {
     void loadUsers();
   }, [loadUsers]);
 
+  useEffect(() => {
+    const refreshLocalResidentRequests = () => {
+      setResidentRequests(readLocalResidentVerificationRequestsForAdmin());
+    };
+
+    refreshLocalResidentRequests();
+
+    window.addEventListener("storage", refreshLocalResidentRequests);
+    window.addEventListener(
+      "rapago:resident-verification-updated",
+      refreshLocalResidentRequests as EventListener,
+    );
+
+    return () => {
+      window.removeEventListener("storage", refreshLocalResidentRequests);
+      window.removeEventListener(
+        "rapago:resident-verification-updated",
+        refreshLocalResidentRequests as EventListener,
+      );
+    };
+  }, []);
+
   async function handleStatusChange(userId: string, newStatus: string) {
     if (!session?.accessToken) return;
+
+    const user = users.find((item) => item.id === userId);
+    const residenceStatus = user
+      ? getResidenceVerificationStatus(user, docs)
+      : "not_required";
+
+    if (
+      user &&
+      newStatus === "active" &&
+      isRapaNuiResidentUser(user) &&
+      residenceStatus !== "approved"
+    ) {
+      setUpdateError(
+        "No puedes activar este usuario como Residente Rapa Nui hasta aprobar su documento de residencia.",
+      );
+      return;
+    }
+
     setUpdatingId(userId);
     setUpdateError(null);
+
     try {
       const updated = await adminService.updateUserStatus(
         session.accessToken,
         userId,
         newStatus,
       );
+
       setUsers((prev) => prev.map((u) => (u.id === userId ? updated : u)));
+      setToastMessage("Estado del usuario actualizado.");
     } catch (err) {
       setUpdateError(
         err instanceof Error ? err.message : "Error al actualizar estado.",
@@ -1108,6 +2232,136 @@ export function AdminUsersPage(): JSX.Element {
     }
   }
 
+  function approveLocalResidentRequest(requestId: string): void {
+    setResidentRequests(
+      reviewLocalResidentVerificationRequestForAdmin(requestId, "approved"),
+    );
+    setToastMessage("Residencia Rapa Nui aprobada. El pasajero podrá continuar cuando vuelva a abrir Facebook.");
+  }
+
+  function rejectLocalResidentRequest(requestId: string): void {
+    setResidentRequests(
+      reviewLocalResidentVerificationRequestForAdmin(
+        requestId,
+        "rejected",
+        RAPANUI_RESIDENCE_REJECTION_USER_MESSAGE,
+      ),
+    );
+    setToastMessage("Documento Rapa Nui rechazado. El pasajero verá el aviso para corregir su registro.");
+  }
+
+  async function approveRapaNuiUser(user: AdminUserData) {
+    if (!session?.accessToken) return;
+
+    const doc = getBestResidenceDocForUser(user, docs);
+
+    if (!doc) {
+      setUpdateError(
+        "Este residente Rapa Nui todavía no tiene documento adjunto para revisar.",
+      );
+      return;
+    }
+
+    if (!isResidenceDocument(doc)) {
+      setUpdateError("El documento encontrado no corresponde a residencia Rapa Nui.");
+      return;
+    }
+
+    setUpdatingId(user.id);
+    setUpdateError(null);
+
+    try {
+      const approvedDoc =
+        String(doc.status) === "approved"
+          ? doc
+          : await adminService.reviewDocument(
+              session.accessToken,
+              doc.id,
+              "approved",
+            );
+
+      const updatedUser = await adminService.updateUserStatus(
+        session.accessToken,
+        user.id,
+        "active",
+      );
+
+      setDocs((prev) =>
+        prev.map((item) => (item.id === approvedDoc.id ? approvedDoc : item)),
+      );
+      setUsers((prev) =>
+        prev.map((item) => (item.id === user.id ? updatedUser : item)),
+      );
+
+      setToastMessage(
+        "Residencia Rapa Nui aprobada. La cuenta quedó habilitada.",
+      );
+    } catch (err) {
+      setUpdateError(
+        err instanceof Error
+          ? err.message
+          : "No se pudo aprobar la residencia y activar la cuenta.",
+      );
+    } finally {
+      setUpdatingId(null);
+    }
+  }
+
+  async function rejectRapaNuiUser(user: AdminUserData) {
+    if (!session?.accessToken) return;
+
+    const doc = getBestResidenceDocForUser(user, docs);
+
+    if (!doc) {
+      setUpdateError("No hay documento de residencia para rechazar.");
+      return;
+    }
+
+    setUpdatingId(user.id);
+    setUpdateError(null);
+
+    try {
+      const rejectedDoc = await adminService.reviewDocument(
+        session.accessToken,
+        doc.id,
+        "rejected",
+        RAPANUI_RESIDENCE_REJECTION_USER_MESSAGE,
+      );
+
+      const updatedUser = await adminService.updateUserStatus(
+        session.accessToken,
+        user.id,
+        "pending",
+      );
+
+      setDocs((prev) =>
+        prev.map((item) => (item.id === rejectedDoc.id ? rejectedDoc : item)),
+      );
+      setUsers((prev) =>
+        prev.map((item) => (item.id === user.id ? updatedUser : item)),
+      );
+
+      setToastMessage(
+        "Documento rechazado. El pasajero verá el aviso para elegir otro tipo de usuario o subir otro documento.",
+      );
+    } catch (err) {
+      setUpdateError(
+        err instanceof Error
+          ? err.message
+          : "No se pudo rechazar el documento.",
+      );
+    } finally {
+      setUpdatingId(null);
+    }
+  }
+
+  const pendingRapaNuiCount =
+    users.filter((user) => {
+      const status = getResidenceVerificationStatus(user, docs);
+      return isRapaNuiResidentUser(user) && status !== "approved";
+    }).length +
+    residentRequests.filter((request) => request.status === "pending").length;
+
   return (
     <IonPage>
       <IonHeader>
@@ -1115,8 +2369,183 @@ export function AdminUsersPage(): JSX.Element {
           <IonTitle>Usuarios</IonTitle>
         </IonToolbar>
       </IonHeader>
+
       <IonContent className="ion-padding">
-        {/* Filters */}
+        <IonCard
+          style={{
+            margin: "0 0 12px",
+            borderRadius: 18,
+            background: "linear-gradient(135deg, #2b120f, #8f1d18)",
+            color: "#fff",
+          }}
+        >
+          <IonCardContent style={{ padding: "14px 16px" }}>
+            <div style={{ fontWeight: 950, fontSize: "1rem" }}>
+              Validación Rapa Nui
+            </div>
+            <p style={{ margin: "6px 0 0", fontSize: ".84rem", lineHeight: 1.35 }}>
+              El admin revisa registros normales y registros con Facebook. Si el
+              pasajero seleccionó Residente Rapa Nui, debe tener documento
+              aprobado para activar la cuenta.
+            </p>
+            <IonBadge color={pendingRapaNuiCount > 0 ? "warning" : "success"} style={{ marginTop: 10 }}>
+              {pendingRapaNuiCount} pendiente{pendingRapaNuiCount !== 1 ? "s" : ""}
+            </IonBadge>
+          </IonCardContent>
+        </IonCard>
+
+        {residentRequests.length > 0 && (
+          <IonCard
+            style={{
+              margin: "0 0 12px",
+              borderRadius: 18,
+              border: "1px solid rgba(200,155,60,.40)",
+              background: "#fff8ed",
+            }}
+          >
+            <IonCardHeader>
+              <IonCardTitle style={{ color: "#111", fontWeight: 950 }}>
+                Registros Rapa Nui por Facebook
+              </IonCardTitle>
+              <IonCardSubtitle>
+                Documentos enviados antes de iniciar sesión con Facebook.
+              </IonCardSubtitle>
+            </IonCardHeader>
+
+            <IonCardContent>
+              {residentRequests.map((request) => {
+                const status = request.status;
+                const statusAsPassenger = status as PassengerVerificationStatus;
+                const provider = request.authProvider || request.registrationProvider || "facebook";
+
+                return (
+                  <div
+                    key={request.id}
+                    style={{
+                      marginBottom: 10,
+                      padding: 12,
+                      borderRadius: 16,
+                      background: "#ffffff",
+                      border:
+                        status === "approved"
+                          ? "1px solid rgba(45,211,111,.45)"
+                          : status === "rejected"
+                            ? "1px solid rgba(235,68,90,.45)"
+                            : "1px solid rgba(255,196,9,.55)",
+                    }}
+                  >
+                    <div
+                      style={{
+                        display: "flex",
+                        justifyContent: "space-between",
+                        gap: 8,
+                        alignItems: "flex-start",
+                      }}
+                    >
+                      <div style={{ minWidth: 0 }}>
+                        <div style={{ fontWeight: 950, color: "#111" }}>
+                          {request.name || `${request.firstName ?? ""} ${request.lastName ?? ""}`.trim() || "Pasajero Facebook"}
+                        </div>
+                        <div style={{ fontSize: ".78rem", color: "#555", fontWeight: 750 }}>
+                          {request.email || "Sin correo"} · {request.phone || "Sin celular"}
+                        </div>
+                      </div>
+
+                      <IonBadge color={residenceStatusColor(statusAsPassenger)}>
+                        {residenceStatusLabel(statusAsPassenger)}
+                      </IonBadge>
+                    </div>
+
+                    <div
+                      style={{
+                        marginTop: 8,
+                        display: "grid",
+                        gridTemplateColumns: "1fr 1fr",
+                        gap: 8,
+                      }}
+                    >
+                      <div style={{ background: "#f6f2ec", borderRadius: 12, padding: 9 }}>
+                        <div style={{ fontSize: ".68rem", color: "#666", fontWeight: 800 }}>
+                          RUT
+                        </div>
+                        <div style={{ fontSize: ".82rem", fontWeight: 900, color: "#111" }}>
+                          {request.rut || "No informado"}
+                        </div>
+                      </div>
+
+                      <div style={{ background: "#f6f2ec", borderRadius: 12, padding: 9 }}>
+                        <div style={{ fontSize: ".68rem", color: "#666", fontWeight: 800 }}>
+                          Origen
+                        </div>
+                        <div style={{ fontSize: ".82rem", fontWeight: 900, color: "#111" }}>
+                          {String(provider).toLowerCase().includes("facebook") ? "Facebook" : provider}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div
+                      style={{
+                        marginTop: 8,
+                        padding: 10,
+                        borderRadius: 14,
+                        background: "rgba(0,0,0,.035)",
+                      }}
+                    >
+                      <strong style={{ fontSize: ".82rem", color: "#111" }}>
+                        Documento Residente Rapa Nui
+                      </strong>
+                      <p style={{ margin: "4px 0 0", color: "#555", fontSize: ".76rem" }}>
+                        {request.documentName || "Documento adjunto"}
+                      </p>
+
+                      {request.documentDataUrl && (
+                        <IonButton
+                          size="small"
+                          fill="clear"
+                          color="primary"
+                          onClick={() => window.open(request.documentDataUrl ?? "", "_blank")}
+                          style={{ marginTop: 4 }}
+                        >
+                          Ver documento
+                        </IonButton>
+                      )}
+                    </div>
+
+                    {status === "rejected" && request.rejectionReason && (
+                      <IonText color="danger">
+                        <p style={{ margin: "8px 0 0", fontSize: ".78rem", fontWeight: 850 }}>
+                          {request.rejectionReason}
+                        </p>
+                      </IonText>
+                    )}
+
+                    <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 10 }}>
+                      <IonButton
+                        size="small"
+                        color="success"
+                        disabled={status === "approved"}
+                        onClick={() => approveLocalResidentRequest(request.id)}
+                      >
+                        Aprobar residencia
+                      </IonButton>
+
+                      <IonButton
+                        size="small"
+                        color="danger"
+                        fill="outline"
+                        disabled={status === "rejected"}
+                        onClick={() => rejectLocalResidentRequest(request.id)}
+                      >
+                        Rechazar documento
+                      </IonButton>
+                    </div>
+                  </div>
+                );
+              })}
+            </IonCardContent>
+          </IonCard>
+        )}
+
         <IonCard style={{ margin: "0 0 12px" }}>
           <IonCardContent style={{ padding: "10px 12px" }}>
             <IonItem lines="full">
@@ -1128,7 +2557,7 @@ export function AdminUsersPage(): JSX.Element {
                 onIonInput={(e) =>
                   setFilterSearch(String(e.detail.value ?? ""))
                 }
-                placeholder="Nombre o email..."
+                placeholder="Nombre, email, celular o RUT..."
                 clearInput
               />
             </IonItem>
@@ -1192,7 +2621,6 @@ export function AdminUsersPage(): JSX.Element {
           </IonCardContent>
         </IonCard>
 
-        {/* Summary count */}
         {!loading && !loadError && (
           <IonText color="medium">
             <p style={{ fontSize: "0.78rem", margin: "0 0 10px" }}>
@@ -1202,7 +2630,6 @@ export function AdminUsersPage(): JSX.Element {
           </IonText>
         )}
 
-        {/* Loading */}
         {loading && (
           <div
             style={{
@@ -1215,21 +2642,18 @@ export function AdminUsersPage(): JSX.Element {
           </div>
         )}
 
-        {/* Error */}
         {loadError && (
           <IonText color="danger">
             <p>{loadError}</p>
           </IonText>
         )}
 
-        {/* Empty */}
         {!loading && !loadError && users.length === 0 && (
           <IonText color="medium">
             <p>No se encontraron usuarios.</p>
           </IonText>
         )}
 
-        {/* User cards */}
         {!loading && users.length > 0 && (
           <div
             style={{ display: "flex", flexDirection: "column", gap: "10px" }}
@@ -1238,8 +2662,29 @@ export function AdminUsersPage(): JSX.Element {
               const statusColor = STATUS_COLOR[user.status] ?? "medium";
               const statusLabel = STATUS_LABEL[user.status] ?? user.status;
               const roleLabel = ROLE_LABEL[user.role] ?? user.role;
+              const passengerLabel = getPassengerLabel(user);
+              const providerLabel = getRegistrationProviderLabel(user);
+              const passengerPhone = getPassengerPhone(user);
+              const passengerRut = getPassengerRut(user);
+              const residenceStatus = getResidenceVerificationStatus(user, docs);
+              const residenceDoc = getBestResidenceDocForUser(user, docs);
+              const residenceFilePreview =
+                residenceDoc?.fileUrl ?? getLocalResidenceDocumentPreview(user);
+              const isResident = isRapaNuiResidentUser(user);
+              const isProcessing = updatingId === user.id;
+
               return (
-                <IonCard key={user.id} style={{ margin: 0 }}>
+                <IonCard
+                  key={user.id}
+                  style={{
+                    margin: 0,
+                    borderRadius: 18,
+                    border:
+                      isResident && residenceStatus !== "approved"
+                        ? "1px solid rgba(235, 68, 90, .45)"
+                        : "1px solid rgba(0,0,0,.07)",
+                  }}
+                >
                   <IonCardContent style={{ padding: "12px 14px" }}>
                     <div
                       style={{
@@ -1252,8 +2697,8 @@ export function AdminUsersPage(): JSX.Element {
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <div
                           style={{
-                            fontWeight: 600,
-                            fontSize: "0.9rem",
+                            fontWeight: 850,
+                            fontSize: "0.94rem",
                             marginBottom: "4px",
                             overflow: "hidden",
                             textOverflow: "ellipsis",
@@ -1262,6 +2707,7 @@ export function AdminUsersPage(): JSX.Element {
                         >
                           {user.name}
                         </div>
+
                         <div
                           style={{
                             fontSize: "0.75rem",
@@ -1274,6 +2720,7 @@ export function AdminUsersPage(): JSX.Element {
                         >
                           {user.email}
                         </div>
+
                         <div
                           style={{
                             display: "flex",
@@ -1281,28 +2728,33 @@ export function AdminUsersPage(): JSX.Element {
                             gap: "4px",
                           }}
                         >
-                          <IonBadge
-                            color="primary"
-                            style={{ fontSize: "0.68rem" }}
-                          >
+                          <IonBadge color="primary" style={{ fontSize: "0.68rem" }}>
                             {roleLabel}
                           </IonBadge>
-                          <IonBadge
-                            color={statusColor}
-                            style={{ fontSize: "0.68rem" }}
-                          >
+
+                          <IonBadge color={statusColor} style={{ fontSize: "0.68rem" }}>
                             {statusLabel}
                           </IonBadge>
+
+                          <IonBadge
+                            color={isResident ? "warning" : "medium"}
+                            style={{ fontSize: "0.68rem" }}
+                          >
+                            {passengerLabel}
+                          </IonBadge>
+
+                          <IonBadge color="tertiary" style={{ fontSize: "0.68rem" }}>
+                            {providerLabel}
+                          </IonBadge>
+
                           {user.isVerified && (
-                            <IonBadge
-                              color="tertiary"
-                              style={{ fontSize: "0.68rem" }}
-                            >
+                            <IonBadge color="success" style={{ fontSize: "0.68rem" }}>
                               Verificado
                             </IonBadge>
                           )}
                         </div>
                       </div>
+
                       <div
                         style={{
                           fontSize: "0.68rem",
@@ -1315,7 +2767,153 @@ export function AdminUsersPage(): JSX.Element {
                       </div>
                     </div>
 
-                    {/* Status selector */}
+                    <div
+                      style={{
+                        marginTop: 10,
+                        display: "grid",
+                        gridTemplateColumns: "1fr 1fr",
+                        gap: 8,
+                      }}
+                    >
+                      <div
+                        style={{
+                          background: "#f6f2ec",
+                          borderRadius: 12,
+                          padding: 10,
+                        }}
+                      >
+                        <div style={{ fontSize: ".68rem", color: "#666", fontWeight: 800 }}>
+                          Celular
+                        </div>
+                        <div style={{ fontSize: ".82rem", fontWeight: 900, color: "#111" }}>
+                          {passengerPhone || "No informado"}
+                        </div>
+                      </div>
+
+                      <div
+                        style={{
+                          background: "#f6f2ec",
+                          borderRadius: 12,
+                          padding: 10,
+                        }}
+                      >
+                        <div style={{ fontSize: ".68rem", color: "#666", fontWeight: 800 }}>
+                          RUT
+                        </div>
+                        <div style={{ fontSize: ".82rem", fontWeight: 900, color: "#111" }}>
+                          {passengerRut || "No informado"}
+                        </div>
+                      </div>
+                    </div>
+
+                    {isResident && (
+                      <div
+                        style={{
+                          marginTop: 10,
+                          border: "1px solid rgba(0,0,0,.08)",
+                          borderRadius: 14,
+                          padding: 10,
+                          background:
+                            residenceStatus === "approved"
+                              ? "rgba(45, 211, 111, .10)"
+                              : "rgba(255, 196, 9, .12)",
+                        }}
+                      >
+                        <div
+                          style={{
+                            display: "flex",
+                            justifyContent: "space-between",
+                            gap: 8,
+                            alignItems: "center",
+                          }}
+                        >
+                          <div>
+                            <strong style={{ fontSize: ".86rem" }}>
+                              Documento Residente Rapa Nui
+                            </strong>
+                            <p
+                              style={{
+                                margin: "2px 0 0",
+                                color: "var(--ion-color-medium)",
+                                fontSize: ".76rem",
+                              }}
+                            >
+                              {residenceDoc
+                                ? getDocumentFileName(residenceDoc)
+                                : "Documento no adjuntado"}
+                            </p>
+                          </div>
+
+                          <IonBadge color={residenceStatusColor(residenceStatus)}>
+                            {residenceStatusLabel(residenceStatus)}
+                          </IonBadge>
+                        </div>
+
+                        {residenceFilePreview && (
+                          <IonButton
+                            size="small"
+                            fill="clear"
+                            color="primary"
+                            onClick={() => window.open(residenceFilePreview, "_blank")}
+                            style={{ marginTop: 6 }}
+                          >
+                            Ver documento
+                          </IonButton>
+                        )}
+
+                        {residenceStatus === "rejected" && (
+                          <IonText color="danger">
+                            <p
+                              style={{
+                                margin: "8px 0 0",
+                                fontSize: ".78rem",
+                                lineHeight: 1.35,
+                                fontWeight: 800,
+                              }}
+                            >
+                              {RAPANUI_RESIDENCE_REJECTION_USER_MESSAGE}
+                            </p>
+                          </IonText>
+                        )}
+
+                        <div
+                          style={{
+                            display: "flex",
+                            gap: 8,
+                            marginTop: 8,
+                            flexWrap: "wrap",
+                          }}
+                        >
+                          <IonButton
+                            size="small"
+                            color="success"
+                            disabled={
+                              isProcessing ||
+                              residenceStatus === "approved" ||
+                              !residenceDoc
+                            }
+                            onClick={() => void approveRapaNuiUser(user)}
+                          >
+                            {isProcessing ? <IonSpinner name="dots" /> : "Aprobar y activar"}
+                          </IonButton>
+
+                          <IonButton
+                            size="small"
+                            color="danger"
+                            fill="outline"
+                            disabled={
+                              isProcessing ||
+                              residenceStatus === "rejected" ||
+                              !residenceDoc
+                            }
+                            onClick={() => void rejectRapaNuiUser(user)}
+                          >
+                            Rechazar documento
+                          </IonButton>
+                        </div>
+                      </div>
+                    )}
+
                     <div
                       style={{
                         marginTop: "10px",
@@ -1341,7 +2939,8 @@ export function AdminUsersPage(): JSX.Element {
                         >
                           Estado:
                         </IonLabel>
-                        {updatingId === user.id ? (
+
+                        {isProcessing ? (
                           <IonSpinner
                             name="dots"
                             style={{ width: "20px", height: "20px" }}
@@ -1388,6 +2987,14 @@ export function AdminUsersPage(): JSX.Element {
             </p>
           </IonText>
         )}
+
+        <IonToast
+          isOpen={toastMessage !== null}
+          message={toastMessage ?? ""}
+          duration={2800}
+          color="success"
+          onDidDismiss={() => setToastMessage(null)}
+        />
       </IonContent>
     </IonPage>
   );
@@ -6496,6 +8103,289 @@ export function AdminFareSettingsPage(): JSX.Element {
   );
 }
 
+
+type AdminDriverApplicationReviewStatus =
+  | "pending"
+  | "under_review"
+  | "approved"
+  | "rejected"
+  | "on_hold";
+
+type AdminDriverApplicationFile = {
+  provided?: boolean;
+  fileName?: string | null;
+  fileType?: string | null;
+  fileSize?: number | null;
+  dataUrl?: string | null;
+};
+
+type AdminDriverApplicationVehicle = {
+  id?: string | null;
+  order?: number | null;
+  primary?: boolean | null;
+  ownership?: string | null;
+  brand?: string | null;
+  model?: string | null;
+  year?: string | null;
+  plate?: string | null;
+  color?: string | null;
+  label?: string | null;
+  imageDataUrl?: string | null;
+  imageName?: string | null;
+  expiresAt?: string | null;
+  approvedStatus?: string | null;
+  photoProvided?: boolean | null;
+  photoFileName?: string | null;
+  photoFileType?: string | null;
+  photoFileSize?: number | null;
+};
+
+type AdminDriverApplicationRecord = {
+  id: string;
+  type: "driver";
+  status: AdminDriverApplicationReviewStatus;
+  firstName?: string | null;
+  lastName?: string | null;
+  name?: string | null;
+  email?: string | null;
+  phone?: string | null;
+  rut?: string | null;
+  birthDate?: string | null;
+  belongsToRapaNuiEthnicity?: boolean | null;
+  ethnicityDeclaration?: string | null;
+  submittedAt?: string | null;
+  updatedAt?: string | null;
+  reviewedAt?: string | null;
+  reviewedBy?: string | null;
+  rejectionReason?: string | null;
+  holdReason?: string | null;
+  documents?: {
+    identityCardFront?: AdminDriverApplicationFile | null;
+    identityCardBack?: AdminDriverApplicationFile | null;
+    driverLicense?: AdminDriverApplicationFile | null;
+    vehiclePhoto?: AdminDriverApplicationFile | null;
+    vehiclePhotos?: AdminDriverApplicationFile[] | null;
+  } | null;
+  vehicle?: {
+    hasOwnVehicle?: boolean | null;
+    principalVehicleRequired?: boolean | null;
+    selectedVehicleId?: string | null;
+    description?: string | null;
+    brand?: string | null;
+    model?: string | null;
+    year?: string | null;
+    plate?: string | null;
+    color?: string | null;
+    photoDataUrl?: string | null;
+    totalVehicles?: number | null;
+    vehicles?: AdminDriverApplicationVehicle[] | null;
+  } | null;
+  legalAcceptance?: Record<string, unknown> | null;
+};
+
+const LOCAL_ADMIN_DRIVER_APPLICATIONS_KEY = "rapago_admin_driver_applications_v1";
+const LOCAL_ADMIN_DRIVER_APPLICATION_EVENT = "rapago:admin-driver-application-updated";
+
+const DRIVER_APP_STATUS_LABEL: Record<AdminDriverApplicationReviewStatus, string> = {
+  pending: "Pendiente",
+  under_review: "En revisión",
+  approved: "Aprobada",
+  rejected: "Rechazada",
+  on_hold: "En espera",
+};
+
+const DRIVER_APP_STATUS_COLOR: Record<AdminDriverApplicationReviewStatus, string> = {
+  pending: "warning",
+  under_review: "tertiary",
+  approved: "success",
+  rejected: "danger",
+  on_hold: "medium",
+};
+
+function readAdminDriverApplicationRecords(): AdminDriverApplicationRecord[] {
+  try {
+    const raw = localStorage.getItem(LOCAL_ADMIN_DRIVER_APPLICATIONS_KEY);
+    const parsed = raw ? (JSON.parse(raw) as AdminDriverApplicationRecord[]) : [];
+    return Array.isArray(parsed) ? parsed.filter((item) => item?.type === "driver") : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveAdminDriverApplicationRecords(items: AdminDriverApplicationRecord[]): void {
+  try {
+    localStorage.setItem(LOCAL_ADMIN_DRIVER_APPLICATIONS_KEY, JSON.stringify(items));
+    window.dispatchEvent(new CustomEvent(LOCAL_ADMIN_DRIVER_APPLICATION_EVENT));
+  } catch {
+    // No bloquea el panel admin.
+  }
+}
+
+function getDriverApplicationFullName(item: AdminDriverApplicationRecord): string {
+  const full = String(item.name ?? "").trim();
+  if (full) return full;
+
+  return `${String(item.firstName ?? "").trim()} ${String(item.lastName ?? "").trim()}`.trim() || "Conductor sin nombre";
+}
+
+function getDriverApplicationVehicles(item: AdminDriverApplicationRecord): AdminDriverApplicationVehicle[] {
+  const vehicles = item.vehicle?.vehicles;
+  if (Array.isArray(vehicles) && vehicles.length > 0) return vehicles;
+
+  if (!item.vehicle) return [];
+
+  return [
+    {
+      id: item.vehicle.selectedVehicleId ?? "vehicle-primary",
+      order: 1,
+      primary: true,
+      ownership: "own",
+      brand: item.vehicle.brand ?? "",
+      model: item.vehicle.model ?? "",
+      year: item.vehicle.year ?? "",
+      plate: item.vehicle.plate ?? "",
+      color: item.vehicle.color ?? "",
+      label: item.vehicle.description ?? "",
+      imageDataUrl: item.vehicle.photoDataUrl ?? item.documents?.vehiclePhoto?.dataUrl ?? null,
+      imageName: item.documents?.vehiclePhoto?.fileName ?? null,
+      photoProvided: Boolean(item.vehicle.photoDataUrl ?? item.documents?.vehiclePhoto?.dataUrl),
+    },
+  ].filter((vehicle) => Boolean(vehicle.brand || vehicle.model || vehicle.plate || vehicle.imageDataUrl));
+}
+
+function getDriverApplicationVehicleLabel(vehicle: AdminDriverApplicationVehicle): string {
+  return (
+    vehicle.label ||
+    [vehicle.brand, vehicle.model, vehicle.year, vehicle.color, vehicle.plate]
+      .map((value) => String(value ?? "").trim())
+      .filter(Boolean)
+      .join(" ") ||
+    "Vehículo sin datos"
+  );
+}
+
+function getDriverApplicationFileLabel(file: AdminDriverApplicationFile | null | undefined): string {
+  if (!file?.provided && !file?.dataUrl && !file?.fileName) return "No adjuntado";
+  return file.fileName || "Archivo adjunto";
+}
+
+function openDriverApplicationFile(file: AdminDriverApplicationFile | null | undefined): void {
+  const url = file?.dataUrl;
+  if (!url) return;
+
+  try {
+    const tab = window.open();
+    if (tab) {
+      tab.document.write(`<iframe src="${url}" style="border:0;width:100%;height:100vh"></iframe>`);
+      tab.document.title = file?.fileName || "Documento RAPA GO";
+      return;
+    }
+  } catch {
+    // Si el navegador bloquea popup, intenta abrir directo.
+  }
+
+  try {
+    window.open(url, "_blank");
+  } catch {
+    // No bloquea el panel admin.
+  }
+}
+
+function isImageDataUrl(value: string | null | undefined): boolean {
+  return String(value ?? "").startsWith("data:image/");
+}
+
+function publishApprovedDriverApplicationToProfile(item: AdminDriverApplicationRecord): void {
+  const vehicles = getDriverApplicationVehicles(item).map((vehicle, index) => ({
+    ...vehicle,
+    approvedStatus: "approved",
+    primary: index === 0 ? true : Boolean(vehicle.primary),
+  }));
+
+  const primaryVehicle = vehicles[0] ?? null;
+  const ownerKey = String(item.email ?? item.id ?? "driver-global").toLowerCase().trim();
+  const fullName = getDriverApplicationFullName(item);
+  const now = new Date().toISOString();
+
+  const profile = {
+    ownerKey,
+    driverOwnerKey: ownerKey,
+    name: fullName,
+    firstName: item.firstName ?? "",
+    lastName: item.lastName ?? "",
+    email: item.email ?? "",
+    phone: item.phone ?? "",
+    rut: item.rut ?? "",
+    birthDate: item.birthDate ?? "",
+    driverApplicationStatus: "approved",
+    vehicleBrand: primaryVehicle?.brand ?? "",
+    vehicleModel: primaryVehicle?.model ?? "",
+    vehicleYear: primaryVehicle?.year ?? "",
+    vehiclePlate: primaryVehicle?.plate ?? "",
+    vehicleColor: primaryVehicle?.color ?? "",
+    vehicleImageDataUrl: primaryVehicle?.imageDataUrl ?? item.vehicle?.photoDataUrl ?? "",
+    vehicleImageName: primaryVehicle?.imageName ?? "",
+    updatedAt: now,
+  };
+
+  const publicVehicle = {
+    ...(primaryVehicle ?? {}),
+    ownerKey,
+    driverOwnerKey: ownerKey,
+    driverName: fullName,
+    driverFullName: fullName,
+    driverEmail: item.email ?? "",
+    driverPhone: item.phone ?? "",
+    driverVehicleBrand: primaryVehicle?.brand ?? null,
+    driverVehicleModel: primaryVehicle?.model ?? null,
+    driverVehicleYear: primaryVehicle?.year ?? null,
+    driverVehicleColor: primaryVehicle?.color ?? null,
+    driverVehiclePlate: primaryVehicle?.plate ?? null,
+    driverVehicleOwnership: primaryVehicle?.ownership ?? "own",
+    driverVehicleImageDataUrl: primaryVehicle?.imageDataUrl ?? item.vehicle?.photoDataUrl ?? null,
+    driverVehicleImageName: primaryVehicle?.imageName ?? null,
+    vehicleBrand: primaryVehicle?.brand ?? null,
+    vehicleModel: primaryVehicle?.model ?? null,
+    vehicleYear: primaryVehicle?.year ?? null,
+    vehicleColor: primaryVehicle?.color ?? null,
+    vehiclePlate: primaryVehicle?.plate ?? null,
+    vehicleImageDataUrl: primaryVehicle?.imageDataUrl ?? item.vehicle?.photoDataUrl ?? null,
+    vehiclePhotoDataUrl: primaryVehicle?.imageDataUrl ?? item.vehicle?.photoDataUrl ?? null,
+    applicationStatus: "approved",
+    updatedAt: now,
+  };
+
+  try {
+    const profileJson = JSON.stringify(profile);
+    const vehiclesJson = JSON.stringify(vehicles);
+    const publicJson = JSON.stringify(publicVehicle);
+
+    localStorage.setItem("rapago_registration_profile", profileJson);
+    localStorage.setItem("rapago_driver_registration_profile", profileJson);
+    localStorage.setItem("rapago_driver_vehicles_v1", vehiclesJson);
+    localStorage.setItem("rapago_driver_selected_vehicle_v1", primaryVehicle?.id ?? "vehicle-primary");
+    localStorage.setItem("rapago_driver_active_vehicle_v1", publicJson);
+    localStorage.setItem("rapago_driver_public_vehicle_v1", publicJson);
+    localStorage.setItem("rapago_driver_public_profile_v1", publicJson);
+    localStorage.setItem("rapago_driver_public_snapshot_v1", publicJson);
+    localStorage.setItem("rapago_selected_vehicle_v1", publicJson);
+    localStorage.setItem("rapago_selected_driver_vehicle_v1", publicJson);
+
+    if (item.phone) localStorage.setItem("rapago_driver_phone", item.phone);
+    if (item.rut) localStorage.setItem("rapago_driver_rut", item.rut);
+
+    const profilesRaw = localStorage.getItem("rapago_driver_public_profiles_v1");
+    const profiles = profilesRaw ? (JSON.parse(profilesRaw) as Record<string, unknown>) : {};
+    profiles[ownerKey] = publicVehicle;
+    localStorage.setItem("rapago_driver_public_profiles_v1", JSON.stringify(profiles));
+
+    window.dispatchEvent(new CustomEvent("rapago:driver-public-profile-updated", { detail: publicVehicle }));
+    window.dispatchEvent(new CustomEvent("rapago:driver-selected-vehicle-updated", { detail: publicVehicle }));
+    window.dispatchEvent(new CustomEvent("rapago:admin-refresh-drivers"));
+  } catch {
+    // No bloquea la aprobación si localStorage está lleno.
+  }
+}
 const DOC_STATUS_COLOR: Record<string, string> = {
   pending: "warning",
   uploaded: "primary",
@@ -6511,6 +8401,10 @@ const DOC_STATUS_LABEL: Record<string, string> = {
 };
 
 const DOC_TYPE_LABEL: Record<string, string> = {
+  residence_document: "Residencia Rapa Nui",
+  rapa_nui_residence: "Residencia Rapa Nui",
+  rapanui_residence: "Residencia Rapa Nui",
+  resident_certificate: "Certificado de residencia",
   identity_document: "Cédula de identidad",
   driver_license: "Licencia de conducir",
   vehicle_registration: "Registro de vehículo",
@@ -6524,6 +8418,7 @@ export function AdminDocumentsPage(): JSX.Element {
   const { session } = useAuth();
 
   const [docs, setDocs] = useState<AdminDocumentData[]>([]);
+  const [users, setUsers] = useState<AdminUserData[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
 
@@ -6537,20 +8432,39 @@ export function AdminDocumentsPage(): JSX.Element {
   const [rejectReason, setRejectReason] = useState("");
   const [actioning, setActioning] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
+
+  const [driverApplications, setDriverApplications] = useState<AdminDriverApplicationRecord[]>([]);
+  const [filterApplicationStatus, setFilterApplicationStatus] = useState<AdminDriverApplicationReviewStatus | "all">("all");
+  const [selectedDriverApplication, setSelectedDriverApplication] = useState<AdminDriverApplicationRecord | null>(null);
+  const [applicationReviewReason, setApplicationReviewReason] = useState("");
+
+  const refreshDriverApplications = useCallback(() => {
+    setDriverApplications(readAdminDriverApplicationRecords());
+  }, []);
 
   const loadDocs = useCallback(async () => {
     if (!session?.accessToken) return;
+
     setLoading(true);
     setLoadError(null);
+
     try {
       const params: { status?: string; documentType?: string } = {};
+
       if (filterStatus) params.status = filterStatus;
       if (filterType) params.documentType = filterType;
-      const data = await adminService.listDocuments(
-        session.accessToken,
-        params,
-      );
-      setDocs(data);
+
+      const [documentData, userData] = await Promise.all([
+        adminService.listDocuments(session.accessToken, params),
+        adminService
+          .listUsers(session.accessToken, {})
+          .catch(() => [] as AdminUserData[]),
+      ]);
+
+      setDocs(documentData);
+      setUsers(userData);
+      setDriverApplications(readAdminDriverApplicationRecords());
     } catch (err) {
       setLoadError(
         err instanceof Error ? err.message : "Error al cargar documentos.",
@@ -6564,19 +8478,105 @@ export function AdminDocumentsPage(): JSX.Element {
     void loadDocs();
   }, [loadDocs]);
 
+  useEffect(() => {
+    refreshDriverApplications();
+
+    window.addEventListener("storage", refreshDriverApplications);
+    window.addEventListener(LOCAL_ADMIN_DRIVER_APPLICATION_EVENT, refreshDriverApplications as EventListener);
+
+    return () => {
+      window.removeEventListener("storage", refreshDriverApplications);
+      window.removeEventListener(LOCAL_ADMIN_DRIVER_APPLICATION_EVENT, refreshDriverApplications as EventListener);
+    };
+  }, [refreshDriverApplications]);
+
+  function findDocumentUser(doc: AdminDocumentData): AdminUserData | null {
+    const extendedDoc = doc as ExtendedAdminDocumentData;
+    const docUserId = String(extendedDoc.userId ?? "").trim();
+    const docEmail = normalizeAdminText(extendedDoc.userEmail);
+
+    return (
+      users.find((user) => user.id === docUserId) ??
+      users.find((user) => normalizeAdminText(user.email) === docEmail) ??
+      null
+    );
+  }
+
+  async function activateUserIfResidenceDocument(doc: AdminDocumentData) {
+    if (!session?.accessToken || !isResidenceDocument(doc)) return null;
+
+    const user = findDocumentUser(doc);
+
+    if (!user) {
+      throw new Error(
+        "Documento aprobado, pero no encontré el usuario para activar la cuenta.",
+      );
+    }
+
+    const updatedUser = await adminService.updateUserStatus(
+      session.accessToken,
+      user.id,
+      "active",
+    );
+
+    setUsers((prev) =>
+      prev.map((item) => (item.id === updatedUser.id ? updatedUser : item)),
+    );
+
+    return updatedUser;
+  }
+
+  async function keepUserPendingIfResidenceRejected(doc: AdminDocumentData) {
+    if (!session?.accessToken || !isResidenceDocument(doc)) return null;
+
+    const user = findDocumentUser(doc);
+    if (!user) return null;
+
+    const updatedUser = await adminService.updateUserStatus(
+      session.accessToken,
+      user.id,
+      "pending",
+    );
+
+    setUsers((prev) =>
+      prev.map((item) => (item.id === updatedUser.id ? updatedUser : item)),
+    );
+
+    return updatedUser;
+  }
+
   async function handleApprove(docId: string) {
     if (!session?.accessToken) return;
+
+    const doc = docs.find((item) => item.id === docId);
+    if (!doc) return;
+
     setActioning(true);
     setActionError(null);
+
     try {
       const updated = await adminService.reviewDocument(
         session.accessToken,
         docId,
         "approved",
       );
+
       setDocs((prev) => prev.map((d) => (d.id === docId ? updated : d)));
+
+      if (isResidenceDocument(updated)) {
+        await activateUserIfResidenceDocument(updated);
+        setToastMessage(
+          "Documento Rapa Nui aprobado. La cuenta del pasajero quedó activa.",
+        );
+      } else {
+        setToastMessage("Documento aprobado.");
+      }
     } catch (err) {
-      setActionError(err instanceof Error ? err.message : "Error al aprobar.");
+      setActionError(
+        err instanceof Error
+          ? err.message
+          : "Error al aprobar documento y activar cuenta.",
+      );
     } finally {
       setActioning(false);
       setActionId(null);
@@ -6586,20 +8586,39 @@ export function AdminDocumentsPage(): JSX.Element {
 
   async function handleReject() {
     if (!session?.accessToken || !actionId) return;
+
     if (!rejectReason.trim()) {
       setActionError("El motivo de rechazo es obligatorio.");
       return;
     }
+
+    const doc = docs.find((item) => item.id === actionId);
+    if (!doc) return;
+
     setActioning(true);
     setActionError(null);
+
     try {
+      const passengerRejectMessage = `${RAPANUI_RESIDENCE_REJECTION_USER_MESSAGE} Motivo: ${rejectReason.trim()}`;
+
       const updated = await adminService.reviewDocument(
         session.accessToken,
         actionId,
         "rejected",
-        rejectReason.trim(),
+        isResidenceDocument(doc) ? passengerRejectMessage : rejectReason.trim(),
       );
+
       setDocs((prev) => prev.map((d) => (d.id === actionId ? updated : d)));
+
+      if (isResidenceDocument(updated)) {
+        await keepUserPendingIfResidenceRejected(updated);
+        setToastMessage(
+          "Documento Rapa Nui rechazado. El pasajero verá el aviso para elegir otro tipo de usuario o subir otro documento.",
+        );
+      } else {
+        setToastMessage("Documento rechazado.");
+      }
+
       setRejectReason("");
       setActionId(null);
       setActionType(null);
@@ -6610,6 +8629,114 @@ export function AdminDocumentsPage(): JSX.Element {
     }
   }
 
+  async function handleDriverApplicationReview(
+    applicationId: string,
+    status: AdminDriverApplicationReviewStatus,
+  ): Promise<void> {
+    const now = new Date().toISOString();
+    const currentItems = readAdminDriverApplicationRecords();
+    const item = currentItems.find((application) => application.id === applicationId);
+    if (!item) return;
+
+    if ((status === "rejected" || status === "on_hold") && !applicationReviewReason.trim()) {
+      setActionError(
+        status === "rejected"
+          ? "Debes escribir el motivo de rechazo."
+          : "Debes escribir qué falta para dejarla en espera.",
+      );
+      return;
+    }
+
+    setActioning(true);
+    setActionError(null);
+
+    try {
+      const reviewed: AdminDriverApplicationRecord = {
+        ...item,
+        status,
+        updatedAt: now,
+        reviewedAt: now,
+        reviewedBy: (() => {
+          const currentUser = session?.user && typeof session.user === "object"
+            ? (session.user as Record<string, unknown>)
+            : {};
+          return String(currentUser.email ?? currentUser.name ?? "admin");
+        })(),
+        rejectionReason: status === "rejected" ? applicationReviewReason.trim() : item.rejectionReason ?? null,
+        holdReason: status === "on_hold" ? applicationReviewReason.trim() : item.holdReason ?? null,
+        vehicle: item.vehicle
+          ? {
+              ...item.vehicle,
+              vehicles: getDriverApplicationVehicles(item).map((vehicle) => ({
+                ...vehicle,
+                approvedStatus: status,
+              })),
+            }
+          : item.vehicle,
+      };
+
+      const nextItems = currentItems.map((application) =>
+        application.id === applicationId ? reviewed : application,
+      );
+
+      saveAdminDriverApplicationRecords(nextItems);
+      setDriverApplications(nextItems);
+
+      if (status === "approved") {
+        publishApprovedDriverApplicationToProfile(reviewed);
+
+        const matchedUser = users.find(
+          (user) => normalizeAdminText(user.email) === normalizeAdminText(reviewed.email),
+        );
+
+        if (matchedUser && session?.accessToken) {
+          try {
+            const updatedUser = await adminService.updateUserStatus(
+              session.accessToken,
+              matchedUser.id,
+              "active",
+            );
+
+            setUsers((prev) =>
+              prev.map((user) => (user.id === updatedUser.id ? updatedUser : user)),
+            );
+          } catch {
+            // Si el backend no permite activar desde aquí, igual queda aprobada localmente.
+          }
+        }
+
+        setToastMessage("Postulación de conductor aprobada. El perfil y vehículo quedaron habilitados.");
+      } else if (status === "rejected") {
+        setToastMessage("Postulación de conductor rechazada.");
+      } else if (status === "on_hold") {
+        setToastMessage("Postulación de conductor dejada en espera.");
+      } else {
+        setToastMessage("Postulación actualizada.");
+      }
+
+      setSelectedDriverApplication(null);
+      setApplicationReviewReason("");
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : "No se pudo revisar la postulación.");
+    } finally {
+      setActioning(false);
+    }
+  }
+
+  const pendingResidenceDocs = docs.filter(
+    (doc) =>
+      isResidenceDocument(doc) &&
+      ["pending", "uploaded"].includes(String(doc.status)),
+  ).length;
+
+  const filteredDriverApplications = driverApplications.filter((item) =>
+    filterApplicationStatus === "all" ? true : item.status === filterApplicationStatus,
+  );
+
+  const pendingDriverApplications = driverApplications.filter((item) =>
+    ["pending", "under_review", "on_hold"].includes(item.status),
+  ).length;
+
   return (
     <IonPage>
       <IonHeader>
@@ -6617,8 +8744,194 @@ export function AdminDocumentsPage(): JSX.Element {
           <IonTitle>Documentos</IonTitle>
         </IonToolbar>
       </IonHeader>
+
       <IonContent className="ion-padding">
-        {/* Filters */}
+        <IonCard
+          style={{
+            margin: "0 0 12px",
+            borderRadius: 18,
+            background: "linear-gradient(135deg, #2b120f, #8f1d18)",
+            color: "#fff",
+          }}
+        >
+          <IonCardContent style={{ padding: "14px 16px" }}>
+            <div style={{ fontWeight: 950, fontSize: "1rem" }}>
+              Documentos Rapa Nui
+            </div>
+            <p style={{ margin: "6px 0 0", fontSize: ".84rem", lineHeight: 1.35 }}>
+              Al aprobar un documento de residencia Rapa Nui, la cuenta del
+              pasajero queda automáticamente habilitada.
+            </p>
+            <IonBadge color={pendingResidenceDocs > 0 ? "warning" : "success"} style={{ marginTop: 10 }}>
+              {pendingResidenceDocs} residencia{pendingResidenceDocs !== 1 ? "s" : ""} pendiente{pendingResidenceDocs !== 1 ? "s" : ""}
+            </IonBadge>
+          </IonCardContent>
+        </IonCard>
+
+
+        <IonCard
+          style={{
+            margin: "0 0 12px",
+            borderRadius: 18,
+            background: "linear-gradient(135deg,#0f172a,#173f39)",
+            color: "#fff",
+          }}
+        >
+          <IonCardContent style={{ padding: "14px 16px" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "flex-start" }}>
+              <div>
+                <div style={{ fontWeight: 950, fontSize: "1rem" }}>
+                  Postulaciones de conductores
+                </div>
+                <p style={{ margin: "6px 0 0", fontSize: ".84rem", lineHeight: 1.35 }}>
+                  Revisa cédula, licencia, vehículos, fotos y datos enviados desde inscripción.
+                </p>
+              </div>
+              <IonBadge color={pendingDriverApplications > 0 ? "warning" : "success"}>
+                {pendingDriverApplications} pendiente{pendingDriverApplications !== 1 ? "s" : ""}
+              </IonBadge>
+            </div>
+
+            <IonItem
+              lines="none"
+              style={{
+                marginTop: 12,
+                borderRadius: 14,
+                "--background": "rgba(255,255,255,.08)",
+                "--color": "#fff",
+              } as CSSProperties}
+            >
+              <IonLabel position="stacked" style={{ fontSize: ".76rem", fontWeight: 850 }}>
+                Filtro de postulación
+              </IonLabel>
+              <IonSelect
+                value={filterApplicationStatus}
+                interface="popover"
+                onIonChange={(e) =>
+                  setFilterApplicationStatus(String(e.detail.value ?? "all") as AdminDriverApplicationReviewStatus | "all")
+                }
+              >
+                <IonSelectOption value="all">Todas</IonSelectOption>
+                <IonSelectOption value="pending">Pendientes</IonSelectOption>
+                <IonSelectOption value="under_review">En revisión</IonSelectOption>
+                <IonSelectOption value="on_hold">En espera</IonSelectOption>
+                <IonSelectOption value="approved">Aprobadas</IonSelectOption>
+                <IonSelectOption value="rejected">Rechazadas</IonSelectOption>
+              </IonSelect>
+            </IonItem>
+
+            {filteredDriverApplications.length === 0 && (
+              <div
+                style={{
+                  marginTop: 12,
+                  background: "rgba(255,255,255,.08)",
+                  borderRadius: 14,
+                  padding: 12,
+                  fontWeight: 850,
+                }}
+              >
+                No hay postulaciones de conductor en este estado.
+              </div>
+            )}
+
+            {filteredDriverApplications.length > 0 && (
+              <div style={{ display: "flex", flexDirection: "column", gap: 10, marginTop: 12 }}>
+                {filteredDriverApplications.map((application) => {
+                  const vehicles = getDriverApplicationVehicles(application);
+                  const primaryVehicle = vehicles[0] ?? null;
+                  const status = application.status || "pending";
+
+                  return (
+                    <IonCard key={application.id} style={{ margin: 0, borderRadius: 16, background: "#F6F2EC", color: "#111" }}>
+                      <IonCardContent style={{ padding: 12 }}>
+                        <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "flex-start" }}>
+                          <div style={{ minWidth: 0 }}>
+                            <div style={{ fontWeight: 950, fontSize: ".95rem" }}>
+                              {getDriverApplicationFullName(application)}
+                            </div>
+                            <div style={{ fontSize: ".76rem", color: "#555", fontWeight: 750, marginTop: 2 }}>
+                              {application.email || "Email no informado"} · {application.phone || "Teléfono no informado"}
+                            </div>
+                            <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginTop: 8 }}>
+                              <IonBadge color={DRIVER_APP_STATUS_COLOR[status]}>
+                                {DRIVER_APP_STATUS_LABEL[status]}
+                              </IonBadge>
+                              <IonBadge color="primary">
+                                {vehicles.length} vehículo{vehicles.length !== 1 ? "s" : ""}
+                              </IonBadge>
+                              {application.belongsToRapaNuiEthnicity && (
+                                <IonBadge color="warning">Etnia Rapa Nui</IonBadge>
+                              )}
+                            </div>
+                          </div>
+                          <div style={{ fontSize: ".68rem", color: "#666", textAlign: "right", flexShrink: 0 }}>
+                            {application.submittedAt
+                              ? new Date(application.submittedAt).toLocaleDateString("es-CL")
+                              : "Sin fecha"}
+                          </div>
+                        </div>
+
+                        {primaryVehicle && (
+                          <div
+                            style={{
+                              marginTop: 10,
+                              display: "grid",
+                              gridTemplateColumns: primaryVehicle.imageDataUrl ? "92px 1fr" : "1fr",
+                              gap: 10,
+                              alignItems: "center",
+                              background: "#fff",
+                              borderRadius: 14,
+                              padding: 10,
+                              border: "1px solid rgba(200,155,60,.25)",
+                            }}
+                          >
+                            {primaryVehicle.imageDataUrl && isImageDataUrl(primaryVehicle.imageDataUrl) && (
+                              <img
+                                src={primaryVehicle.imageDataUrl}
+                                alt="Vehículo principal"
+                                style={{
+                                  width: 92,
+                                  height: 68,
+                                  objectFit: "cover",
+                                  borderRadius: 12,
+                                  border: "1px solid rgba(0,0,0,.12)",
+                                }}
+                              />
+                            )}
+                            <div>
+                              <div style={{ fontSize: ".68rem", color: "#8a6418", fontWeight: 950, textTransform: "uppercase" }}>
+                                Vehículo principal
+                              </div>
+                              <div style={{ fontWeight: 950, marginTop: 2 }}>
+                                {getDriverApplicationVehicleLabel(primaryVehicle)}
+                              </div>
+                              <div style={{ fontSize: ".76rem", color: "#555", fontWeight: 800, marginTop: 2 }}>
+                                Patente: {primaryVehicle.plate || "No informada"} · Color: {primaryVehicle.color || "No informado"}
+                              </div>
+                            </div>
+                          </div>
+                        )}
+
+                        <IonButton
+                          expand="block"
+                          color="warning"
+                          onClick={() => {
+                            setSelectedDriverApplication(application);
+                            setApplicationReviewReason(application.rejectionReason ?? application.holdReason ?? "");
+                            setActionError(null);
+                          }}
+                          style={{ marginTop: 10, "--border-radius": "14px", fontWeight: 950 } as CSSProperties}
+                        >
+                          Revisar postulación completa
+                        </IonButton>
+                      </IonCardContent>
+                    </IonCard>
+                  );
+                })}
+              </div>
+            )}
+          </IonCardContent>
+        </IonCard>
         <IonCard style={{ margin: "0 0 12px" }}>
           <IonCardContent style={{ padding: "10px 12px" }}>
             <div style={{ display: "flex", gap: "8px" }}>
@@ -6655,6 +8968,9 @@ export function AdminDocumentsPage(): JSX.Element {
                   interface="popover"
                 >
                   <IonSelectOption value="">Todos</IonSelectOption>
+                  <IonSelectOption value="residence_document">
+                    Residencia Rapa Nui
+                  </IonSelectOption>
                   <IonSelectOption value="identity_document">
                     Cédula
                   </IonSelectOption>
@@ -6732,12 +9048,27 @@ export function AdminDocumentsPage(): JSX.Element {
             style={{ display: "flex", flexDirection: "column", gap: "10px" }}
           >
             {docs.map((doc) => {
-              const statusColor = DOC_STATUS_COLOR[doc.status] ?? "medium";
-              const statusLabel = DOC_STATUS_LABEL[doc.status] ?? doc.status;
+              const extendedDoc = doc as ExtendedAdminDocumentData;
+              const statusColor = DOC_STATUS_COLOR[String(doc.status)] ?? "medium";
+              const statusLabel = DOC_STATUS_LABEL[String(doc.status)] ?? doc.status;
               const typeLabel =
-                DOC_TYPE_LABEL[doc.documentType] ?? doc.documentType;
+                DOC_TYPE_LABEL[String(extendedDoc.documentType)] ??
+                extendedDoc.documentType;
+              const residentDoc = isResidenceDocument(doc);
+              const linkedUser = findDocumentUser(doc);
+              const actioningThis = actioning && actionId === doc.id;
+
               return (
-                <IonCard key={doc.id} style={{ margin: 0 }}>
+                <IonCard
+                  key={doc.id}
+                  style={{
+                    margin: 0,
+                    borderRadius: 18,
+                    border: residentDoc
+                      ? "1px solid rgba(255, 196, 9, .60)"
+                      : "1px solid rgba(0,0,0,.07)",
+                  }}
+                >
                   <IonCardContent style={{ padding: "12px 14px" }}>
                     <div
                       style={{
@@ -6750,7 +9081,7 @@ export function AdminDocumentsPage(): JSX.Element {
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <div
                           style={{
-                            fontWeight: 600,
+                            fontWeight: 850,
                             fontSize: "0.9rem",
                             marginBottom: "2px",
                             overflow: "hidden",
@@ -6758,8 +9089,9 @@ export function AdminDocumentsPage(): JSX.Element {
                             whiteSpace: "nowrap",
                           }}
                         >
-                          {doc.userName}
+                          {extendedDoc.userName ?? linkedUser?.name ?? "Usuario no informado"}
                         </div>
+
                         <div
                           style={{
                             fontSize: "0.75rem",
@@ -6770,8 +9102,9 @@ export function AdminDocumentsPage(): JSX.Element {
                             whiteSpace: "nowrap",
                           }}
                         >
-                          {doc.userEmail}
+                          {extendedDoc.userEmail ?? linkedUser?.email ?? "Email no informado"}
                         </div>
+
                         <div
                           style={{
                             display: "flex",
@@ -6780,37 +9113,82 @@ export function AdminDocumentsPage(): JSX.Element {
                             marginBottom: "4px",
                           }}
                         >
-                          <IonBadge
-                            color="primary"
-                            style={{ fontSize: "0.68rem" }}
-                          >
-                            {doc.userRole}
+                          <IonBadge color="primary" style={{ fontSize: "0.68rem" }}>
+                            {extendedDoc.userRole ?? linkedUser?.role ?? "usuario"}
                           </IonBadge>
-                          <IonBadge
-                            color={statusColor}
-                            style={{ fontSize: "0.68rem" }}
-                          >
+
+                          <IonBadge color={statusColor} style={{ fontSize: "0.68rem" }}>
                             {statusLabel}
                           </IonBadge>
+
                           <IonBadge
-                            color="secondary"
+                            color={residentDoc ? "warning" : "secondary"}
                             style={{ fontSize: "0.68rem" }}
                           >
                             {typeLabel}
                           </IonBadge>
+
+                          {residentDoc && (
+                            <IonBadge color="tertiary" style={{ fontSize: "0.68rem" }}>
+                              Activa cuenta al aprobar
+                            </IonBadge>
+                          )}
                         </div>
-                        {doc.fileUrl && (
+
+                        {linkedUser && (
                           <div
                             style={{
-                              fontSize: "0.72rem",
-                              color: "var(--ion-color-medium)",
-                              wordBreak: "break-all",
+                              marginTop: 8,
+                              display: "grid",
+                              gridTemplateColumns: "1fr 1fr",
+                              gap: 8,
                             }}
                           >
-                            {doc.fileUrl}
+                            <div
+                              style={{
+                                background: "#f6f2ec",
+                                borderRadius: 12,
+                                padding: 8,
+                              }}
+                            >
+                              <div style={{ fontSize: ".66rem", color: "#666", fontWeight: 800 }}>
+                                Celular
+                              </div>
+                              <div style={{ fontSize: ".78rem", fontWeight: 900, color: "#111" }}>
+                                {getPassengerPhone(linkedUser) || "No informado"}
+                              </div>
+                            </div>
+
+                            <div
+                              style={{
+                                background: "#f6f2ec",
+                                borderRadius: 12,
+                                padding: 8,
+                              }}
+                            >
+                              <div style={{ fontSize: ".66rem", color: "#666", fontWeight: 800 }}>
+                                RUT
+                              </div>
+                              <div style={{ fontSize: ".78rem", fontWeight: 900, color: "#111" }}>
+                                {getPassengerRut(linkedUser) || "No informado"}
+                              </div>
+                            </div>
                           </div>
                         )}
-                        {doc.rejectionReason && (
+
+                        {extendedDoc.fileUrl && (
+                          <IonButton
+                            size="small"
+                            fill="clear"
+                            color="primary"
+                            onClick={() => window.open(String(extendedDoc.fileUrl), "_blank")}
+                            style={{ marginTop: 6 }}
+                          >
+                            Ver documento
+                          </IonButton>
+                        )}
+
+                        {extendedDoc.rejectionReason && (
                           <div
                             style={{
                               fontSize: "0.72rem",
@@ -6818,10 +9196,11 @@ export function AdminDocumentsPage(): JSX.Element {
                               marginTop: "4px",
                             }}
                           >
-                            Motivo: {doc.rejectionReason}
+                            Motivo: {extendedDoc.rejectionReason}
                           </div>
                         )}
-                        {doc.reviewedAt && (
+
+                        {extendedDoc.reviewedAt && (
                           <div
                             style={{
                               fontSize: "0.68rem",
@@ -6830,12 +9209,13 @@ export function AdminDocumentsPage(): JSX.Element {
                             }}
                           >
                             Revisado:{" "}
-                            {new Date(doc.reviewedAt).toLocaleDateString(
+                            {new Date(extendedDoc.reviewedAt).toLocaleDateString(
                               "es-CL",
                             )}
                           </div>
                         )}
                       </div>
+
                       <div
                         style={{
                           fontSize: "0.68rem",
@@ -6848,7 +9228,6 @@ export function AdminDocumentsPage(): JSX.Element {
                       </div>
                     </div>
 
-                    {/* Actions */}
                     <div
                       style={{
                         marginTop: "10px",
@@ -6866,8 +9245,15 @@ export function AdminDocumentsPage(): JSX.Element {
                         onClick={() => void handleApprove(doc.id)}
                         style={{ flex: 1 }}
                       >
-                        Aprobar
+                        {actioningThis ? (
+                          <IonSpinner name="dots" />
+                        ) : residentDoc ? (
+                          "Aprobar y activar"
+                        ) : (
+                          "Aprobar"
+                        )}
                       </IonButton>
+
                       <IonButton
                         size="small"
                         color="danger"
@@ -6891,6 +9277,257 @@ export function AdminDocumentsPage(): JSX.Element {
           </div>
         )}
 
+
+        <IonModal
+          isOpen={selectedDriverApplication !== null}
+          onDidDismiss={() => {
+            setSelectedDriverApplication(null);
+            setApplicationReviewReason("");
+          }}
+          breakpoints={[0, 0.72, 0.96]}
+          initialBreakpoint={0.96}
+        >
+          <IonHeader>
+            <IonToolbar color="dark">
+              <IonTitle>Revisión conductor</IonTitle>
+              <div slot="end" style={{ paddingRight: 8 }}>
+                <IonButton
+                  fill="clear"
+                  color="light"
+                  onClick={() => {
+                    setSelectedDriverApplication(null);
+                    setApplicationReviewReason("");
+                  }}
+                >
+                  Cerrar
+                </IonButton>
+              </div>
+            </IonToolbar>
+          </IonHeader>
+
+          <IonContent className="ion-padding">
+            {selectedDriverApplication && (() => {
+              const application = selectedDriverApplication;
+              const vehicles = getDriverApplicationVehicles(application);
+              const status = application.status || "pending";
+              const docFront = application.documents?.identityCardFront ?? null;
+              const docBack = application.documents?.identityCardBack ?? null;
+              const license = application.documents?.driverLicense ?? null;
+
+              return (
+                <>
+                  <IonCard style={{ margin: "0 0 12px", borderRadius: 18 }}>
+                    <IonCardContent>
+                      <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "flex-start" }}>
+                        <div>
+                          <h2 style={{ margin: 0, fontWeight: 950 }}>
+                            {getDriverApplicationFullName(application)}
+                          </h2>
+                          <p style={{ margin: "6px 0 0", color: "var(--ion-color-medium)", fontWeight: 750 }}>
+                            {application.email || "Email no informado"} · {application.phone || "Teléfono no informado"}
+                          </p>
+                        </div>
+                        <IonBadge color={DRIVER_APP_STATUS_COLOR[status]}>
+                          {DRIVER_APP_STATUS_LABEL[status]}
+                        </IonBadge>
+                      </div>
+
+                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginTop: 12 }}>
+                        <div style={{ background: "#f6f2ec", borderRadius: 12, padding: 10 }}>
+                          <div style={{ fontSize: ".68rem", color: "#666", fontWeight: 850 }}>RUT</div>
+                          <div style={{ fontWeight: 950, color: "#111" }}>{application.rut || "No informado"}</div>
+                        </div>
+                        <div style={{ background: "#f6f2ec", borderRadius: 12, padding: 10 }}>
+                          <div style={{ fontSize: ".68rem", color: "#666", fontWeight: 850 }}>Nacimiento</div>
+                          <div style={{ fontWeight: 950, color: "#111" }}>{application.birthDate || "No informado"}</div>
+                        </div>
+                      </div>
+                    </IonCardContent>
+                  </IonCard>
+
+                  <IonCard style={{ margin: "0 0 12px", borderRadius: 18 }}>
+                    <IonCardHeader>
+                      <IonCardTitle style={{ fontSize: "1rem", fontWeight: 950 }}>
+                        Documentación requerida
+                      </IonCardTitle>
+                      <IonCardSubtitle>Revisa frente, reverso y licencia de conducir.</IonCardSubtitle>
+                    </IonCardHeader>
+                    <IonCardContent>
+                      {[
+                        ["Cédula frente", docFront],
+                        ["Cédula reverso", docBack],
+                        ["Licencia de conducir", license],
+                      ].map(([label, file]) => {
+                        const typedFile = file as AdminDriverApplicationFile | null;
+                        const preview = typedFile?.dataUrl ?? null;
+
+                        return (
+                          <div
+                            key={String(label)}
+                            style={{
+                              background: "#fff",
+                              borderRadius: 14,
+                              border: "1px solid rgba(0,0,0,.08)",
+                              padding: 10,
+                              marginBottom: 10,
+                            }}
+                          >
+                            <div style={{ fontSize: ".72rem", color: "#8a6418", fontWeight: 950, textTransform: "uppercase" }}>
+                              {String(label)}
+                            </div>
+                            <div style={{ fontWeight: 900, marginTop: 3 }}>
+                              {getDriverApplicationFileLabel(typedFile)}
+                            </div>
+
+                            {preview && isImageDataUrl(preview) && (
+                              <img
+                                src={preview}
+                                alt={String(label)}
+                                style={{
+                                  width: "100%",
+                                  maxHeight: 220,
+                                  objectFit: "cover",
+                                  borderRadius: 12,
+                                  border: "1px solid rgba(0,0,0,.12)",
+                                  marginTop: 8,
+                                }}
+                              />
+                            )}
+
+                            <IonButton
+                              size="small"
+                              fill="outline"
+                              color="primary"
+                              disabled={!preview}
+                              onClick={() => openDriverApplicationFile(typedFile)}
+                              style={{ marginTop: 8 }}
+                            >
+                              Ver archivo
+                            </IonButton>
+                          </div>
+                        );
+                      })}
+                    </IonCardContent>
+                  </IonCard>
+
+                  <IonCard style={{ margin: "0 0 12px", borderRadius: 18 }}>
+                    <IonCardHeader>
+                      <IonCardTitle style={{ fontSize: "1rem", fontWeight: 950 }}>
+                        Vehículos enviados
+                      </IonCardTitle>
+                      <IonCardSubtitle>El vehículo principal es obligatorio. Los opcionales pueden quedar aprobados o en revisión.</IonCardSubtitle>
+                    </IonCardHeader>
+                    <IonCardContent>
+                      {vehicles.length === 0 && (
+                        <IonText color="danger">
+                          <p style={{ fontWeight: 900 }}>No hay vehículos adjuntos.</p>
+                        </IonText>
+                      )}
+
+                      {vehicles.map((vehicle, index) => (
+                        <div
+                          key={vehicle.id ?? `${vehicle.plate}-${index}`}
+                          style={{
+                            background: "#fff",
+                            borderRadius: 16,
+                            border: "1px solid rgba(200,155,60,.32)",
+                            padding: 12,
+                            marginBottom: 12,
+                          }}
+                        >
+                          <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "flex-start" }}>
+                            <div>
+                              <div style={{ fontSize: ".72rem", color: "#8a6418", fontWeight: 950, textTransform: "uppercase" }}>
+                                {index === 0 || vehicle.primary ? "Vehículo principal" : "Vehículo opcional"}
+                              </div>
+                              <div style={{ fontWeight: 950, fontSize: "1rem", marginTop: 3 }}>
+                                {getDriverApplicationVehicleLabel(vehicle)}
+                              </div>
+                              <div style={{ color: "#555", fontSize: ".8rem", fontWeight: 800, marginTop: 3 }}>
+                                Patente: {vehicle.plate || "No informada"} · Año: {vehicle.year || "No informado"}
+                              </div>
+                              <div style={{ color: "#555", fontSize: ".8rem", fontWeight: 800, marginTop: 3 }}>
+                                Tipo: {vehicle.ownership === "optional" ? "Opcional / temporal" : "Propio principal"}
+                                {vehicle.expiresAt ? ` · Expira: ${vehicle.expiresAt}` : ""}
+                              </div>
+                            </div>
+                            <IonBadge color={vehicle.approvedStatus === "approved" ? "success" : "warning"}>
+                              {vehicle.approvedStatus === "approved" ? "Aprobado" : "Revisión"}
+                            </IonBadge>
+                          </div>
+
+                          {vehicle.imageDataUrl && isImageDataUrl(vehicle.imageDataUrl) && (
+                            <img
+                              src={vehicle.imageDataUrl}
+                              alt="Foto vehículo"
+                              style={{
+                                width: "100%",
+                                maxHeight: 230,
+                                objectFit: "cover",
+                                borderRadius: 14,
+                                border: "1px solid rgba(0,0,0,.12)",
+                                marginTop: 10,
+                              }}
+                            />
+                          )}
+                        </div>
+                      ))}
+                    </IonCardContent>
+                  </IonCard>
+
+                  <IonCard style={{ margin: "0 0 12px", borderRadius: 18 }}>
+                    <IonCardHeader>
+                      <IonCardTitle style={{ fontSize: "1rem", fontWeight: 950 }}>
+                        Decisión del administrador
+                      </IonCardTitle>
+                    </IonCardHeader>
+                    <IonCardContent>
+                      <IonItem lines="full" style={{ "--background": "#fff", borderRadius: 14, marginBottom: 12 } as CSSProperties}>
+                        <IonLabel position="stacked">Motivo si queda en espera o rechazada</IonLabel>
+                        <IonInput
+                          value={applicationReviewReason}
+                          placeholder="Ej: licencia borrosa, patente no coincide, falta foto clara..."
+                          onIonInput={(e) => setApplicationReviewReason(String(e.detail.value ?? ""))}
+                        />
+                      </IonItem>
+
+                      <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 8 }}>
+                        <IonButton
+                          expand="block"
+                          color="success"
+                          disabled={actioning || application.status === "approved"}
+                          onClick={() => void handleDriverApplicationReview(application.id, "approved")}
+                        >
+                          {actioning ? <IonSpinner name="dots" /> : "Aprobar conductor"}
+                        </IonButton>
+
+                        <IonButton
+                          expand="block"
+                          color="warning"
+                          fill="outline"
+                          disabled={actioning}
+                          onClick={() => void handleDriverApplicationReview(application.id, "on_hold")}
+                        >
+                          Dejar en espera
+                        </IonButton>
+
+                        <IonButton
+                          expand="block"
+                          color="danger"
+                          fill="outline"
+                          disabled={actioning || application.status === "rejected"}
+                          onClick={() => void handleDriverApplicationReview(application.id, "rejected")}
+                        >
+                          Rechazar postulación
+                        </IonButton>
+                      </div>
+                    </IonCardContent>
+                  </IonCard>
+                </>
+              );
+            })()}
+          </IonContent>
+        </IonModal>
         {actionError && (
           <IonText color="danger">
             <p style={{ fontSize: "0.85rem", marginTop: "10px" }}>
@@ -6899,7 +9536,6 @@ export function AdminDocumentsPage(): JSX.Element {
           </IonText>
         )}
 
-        {/* Reject modal */}
         <IonAlert
           isOpen={actionType === "reject" && actionId !== null}
           header="Rechazar documento"
@@ -6908,7 +9544,7 @@ export function AdminDocumentsPage(): JSX.Element {
             {
               name: "reason",
               type: "textarea",
-              placeholder: "Motivo del rechazo...",
+              placeholder: "Ej: Documento ilegible. El pasajero verá el aviso y deberá elegir otro tipo de usuario o subir otro documento.",
               value: rejectReason,
               handler: (e: { value?: string }) =>
                 setRejectReason(e.value ?? ""),
@@ -6937,6 +9573,14 @@ export function AdminDocumentsPage(): JSX.Element {
               setActionType(null);
             }
           }}
+        />
+
+        <IonToast
+          isOpen={toastMessage !== null}
+          message={toastMessage ?? ""}
+          duration={3000}
+          color="success"
+          onDidDismiss={() => setToastMessage(null)}
         />
       </IonContent>
     </IonPage>

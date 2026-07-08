@@ -37,6 +37,7 @@ import {
   STATUS_LABEL as DOC_STATUS_LABEL,
 } from "../../features/documents/documents.constants";
 import { referralsService, type ReferralSummary } from "../../features/referrals/referrals.service.js";
+import { RapaGoLanguageRuntime, RapaGoLanguageCard } from "../../i18n/rapagoI18n";
 
 function meta(path: string) {
   return ROUTE_METADATA.find((r) => r.path === path)!;
@@ -465,6 +466,7 @@ export function ProfileIndexPage(): JSX.Element {
 
   return (
     <IonPage>
+      <RapaGoLanguageRuntime />
       <IonHeader>
         <IonToolbar color="primary">
           <IonTitle>Mi Perfil</IonTitle>
@@ -491,6 +493,8 @@ export function ProfileIndexPage(): JSX.Element {
 
         {!loading && profile && (
           <>
+            <RapaGoLanguageCard />
+
             {!phoneInput.trim() && (
               <IonCard style={{ margin: "0 0 12px", background: "#fff3cd", border: "1px solid #ffc107" }}>
                 <IonCardContent style={{ padding: "8px 14px" }}>

@@ -9,7 +9,7 @@ import {
   IonPage,
   IonText,
 } from "@ionic/react";
-import { useEffect, useState } from "react";
+import { useEffect, useState, type CSSProperties } from "react";
 import { useHistory } from "react-router-dom";
 import {
   carOutline,
@@ -42,7 +42,7 @@ const HOME_CAROUSEL_IMAGES = [
   {
     src: rapaNuiMain,
     title: "Rapa Nui",
-    subtitle: "Viajes, tours y experiencias locales",
+    subtitle: "Viajes seguros y servicios locales",
   },
   {
     src: rapaNuiOne,
@@ -52,33 +52,365 @@ const HOME_CAROUSEL_IMAGES = [
   {
     src: rapaNuiTwo,
     title: "Cultura y aventura",
-    subtitle: "Conecta con guías y conductores locales",
+    subtitle: "Conecta con la cultura y el transporte local",
   },
 ];
 
 const RAPA_NUI_NEWS = [
   {
     title: "Noticias y avisos locales",
-    subtitle: "Información útil para moverte mejor por Hanga Roa y sectores turísticos.",
-    tag: "Actualidad",
+    subtitle: "Próximamente: avisos oficiales, horarios y recomendaciones para moverte mejor en Rapa Nui.",
+    tag: "Próximamente",
     icon: newspaperOutline,
-    route: ROUTES.PASSENGER.EVENTS,
   },
   {
     title: "Actividades culturales",
-    subtitle: "Revisa eventos, experiencias y panoramas disponibles en Rapa Nui.",
-    tag: "Cultura",
+    subtitle: "Próximamente: eventos, panoramas y experiencias culturales dentro de Rapa Go.",
+    tag: "Próximamente",
     icon: ticketOutline,
-    route: ROUTES.PASSENGER.EVENTS,
   },
   {
-    title: "Consejos para visitantes",
-    subtitle: "Planifica tus traslados con anticipación y respeta los espacios patrimoniales.",
-    tag: "Turismo",
+    title: "Turismo local",
+    subtitle: "Próximamente: guías locales, rutas turísticas y experiencias protegidas por la plataforma.",
+    tag: "Próximamente",
     icon: mapOutline,
-    route: ROUTES.PASSENGER.GUIDES,
   },
 ];
+
+const RAPAGO_WALLET_BALANCE_KEY = "rapago_wallet_balance_clp_v1";
+const RAPAGO_WALLET_APPLIED_BENEFITS_KEY = "rapago_wallet_applied_benefits_v1";
+const RAPAGO_WALLET_EVENT = "rapago:wallet-balance-updated";
+
+const RAPAGO_WALLET_BENEFIT_SOURCE_KEYS = [
+  "rapago_admin_wallet_benefit_requests_v1",
+  "rapago_admin_wallet_credits_v1",
+  "rapago_wallet_pending_benefits_v1",
+  "rapago_passenger_wallet_benefits_v1",
+  "rapago_admin_passenger_credit_adjustments_v1",
+] as const;
+
+type WalletBenefitRecord = Record<string, unknown>;
+
+function getHomeUserStringField(user: unknown, key: string): string {
+  if (!user || typeof user !== "object") return "";
+  const value = (user as Record<string, unknown>)[key];
+  return typeof value === "string" ? value.trim() : "";
+}
+
+function normalizeWalletIdentity(value: unknown): string {
+  return String(value ?? "").trim().toLowerCase();
+}
+
+function getPassengerWalletIdentityKeys(user: unknown): string[] {
+  const keys = [
+    getHomeUserStringField(user, "id"),
+    getHomeUserStringField(user, "userId"),
+    getHomeUserStringField(user, "email"),
+    getHomeUserStringField(user, "phone"),
+    getHomeUserStringField(user, "phoneNumber"),
+  ]
+    .map(normalizeWalletIdentity)
+    .filter(Boolean);
+
+  try {
+    const stored = localStorage.getItem("rapago_registration_profile");
+    const parsed = stored ? (JSON.parse(stored) as Record<string, unknown>) : {};
+    keys.push(
+      normalizeWalletIdentity(parsed.id),
+      normalizeWalletIdentity(parsed.userId),
+      normalizeWalletIdentity(parsed.email),
+      normalizeWalletIdentity(parsed.phone),
+      normalizeWalletIdentity(localStorage.getItem("rapago_profile_phone")),
+      normalizeWalletIdentity(localStorage.getItem("rapago_passenger_email")),
+    );
+  } catch {
+    // No bloquea el saldo local.
+  }
+
+  return Array.from(new Set(keys.filter(Boolean)));
+}
+
+function walletBenefitMatchesPassenger(
+  record: WalletBenefitRecord,
+  user: unknown,
+): boolean {
+  const userKeys = getPassengerWalletIdentityKeys(user);
+  if (userKeys.length === 0) return true;
+
+  const recordKeys = [
+    record.passengerId,
+    record.passengerUserId,
+    record.userId,
+    record.user_id,
+    record.email,
+    record.passengerEmail,
+    record.passengerPhone,
+    record.phone,
+    record.phoneNumber,
+  ]
+    .map(normalizeWalletIdentity)
+    .filter(Boolean);
+
+  if (recordKeys.length === 0) return true;
+
+  return recordKeys.some((key) => userKeys.includes(key));
+}
+
+function readWalletAppliedBenefitIds(): Set<string> {
+  try {
+    const raw = localStorage.getItem(RAPAGO_WALLET_APPLIED_BENEFITS_KEY);
+    const parsed = raw ? (JSON.parse(raw) as string[]) : [];
+    return new Set(Array.isArray(parsed) ? parsed.map(String) : []);
+  } catch {
+    return new Set();
+  }
+}
+
+function saveWalletAppliedBenefitIds(ids: Set<string>): void {
+  try {
+    localStorage.setItem(
+      RAPAGO_WALLET_APPLIED_BENEFITS_KEY,
+      JSON.stringify(Array.from(ids).slice(-500)),
+    );
+  } catch {
+    // No bloquea.
+  }
+}
+
+function readPassengerWalletBalance(): number {
+  try {
+    const value = Number(localStorage.getItem(RAPAGO_WALLET_BALANCE_KEY));
+    return Number.isFinite(value) && value > 0 ? Math.round(value) : 0;
+  } catch {
+    return 0;
+  }
+}
+
+function writePassengerWalletBalance(value: number): void {
+  try {
+    const safeValue = Math.max(0, Math.round(value));
+    localStorage.setItem(RAPAGO_WALLET_BALANCE_KEY, String(safeValue));
+    localStorage.setItem("rapago_passenger_wallet_balance_clp", String(safeValue));
+    localStorage.setItem("rapago_wallet_available_balance_clp", String(safeValue));
+
+    window.dispatchEvent(
+      new CustomEvent(RAPAGO_WALLET_EVENT, {
+        detail: { balanceClp: safeValue },
+      }),
+    );
+  } catch {
+    // No bloquea la app.
+  }
+}
+
+function normalizeWalletBenefitStatus(value: unknown): string {
+  return String(value ?? "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .trim();
+}
+
+function walletBenefitIsApproved(record: WalletBenefitRecord): boolean {
+  const status = normalizeWalletBenefitStatus(
+    record.status ??
+      record.adminStatus ??
+      record.approvalStatus ??
+      record.walletStatus,
+  );
+
+  return (
+    status === "approved" ||
+    status === "aprobado" ||
+    status === "approved_by_admin" ||
+    status === "wallet_approved" ||
+    status === "credit_approved" ||
+    status === "ready_to_credit"
+  );
+}
+
+function readWalletBenefitAmount(record: WalletBenefitRecord): number {
+  const candidates = [
+    record.amountClp,
+    record.creditClp,
+    record.benefitClp,
+    record.refundClp,
+    record.balanceClp,
+    record.walletCreditClp,
+    record.extraPaidClp,
+  ];
+
+  for (const value of candidates) {
+    const amount = Number(value);
+    if (Number.isFinite(amount) && amount > 0) return Math.round(amount);
+  }
+
+  return 0;
+}
+
+function readWalletBenefitId(record: WalletBenefitRecord, fallbackIndex: number): string {
+  const raw = String(
+    record.id ??
+      record.benefitId ??
+      record.creditId ??
+      record.rideId ??
+      record.paymentId ??
+      "",
+  ).trim();
+
+  if (raw) return raw;
+
+  return [
+    normalizeWalletIdentity(record.passengerEmail),
+    normalizeWalletIdentity(record.passengerPhone),
+    readWalletBenefitAmount(record),
+    normalizeWalletIdentity(record.reason),
+    fallbackIndex,
+  ].join("|");
+}
+
+function readWalletBenefitRecordsFromStorage(): WalletBenefitRecord[] {
+  const records: WalletBenefitRecord[] = [];
+
+  for (const key of RAPAGO_WALLET_BENEFIT_SOURCE_KEYS) {
+    try {
+      const raw = localStorage.getItem(key);
+      if (!raw) continue;
+
+      const parsed = JSON.parse(raw) as unknown;
+
+      if (Array.isArray(parsed)) {
+        records.push(...parsed.filter((item): item is WalletBenefitRecord => Boolean(item && typeof item === "object")));
+        continue;
+      }
+
+      if (parsed && typeof parsed === "object") {
+        for (const value of Object.values(parsed as Record<string, unknown>)) {
+          if (Array.isArray(value)) {
+            records.push(
+              ...value.filter((item): item is WalletBenefitRecord => Boolean(item && typeof item === "object")),
+            );
+          } else if (value && typeof value === "object") {
+            records.push(value as WalletBenefitRecord);
+          }
+        }
+      }
+    } catch {
+      // Ignora datos locales dañados.
+    }
+  }
+
+  return records;
+}
+
+function syncApprovedWalletBenefits(user: unknown): number {
+  const appliedIds = readWalletAppliedBenefitIds();
+  const records = readWalletBenefitRecordsFromStorage();
+  let balance = readPassengerWalletBalance();
+  let changed = false;
+
+  records.forEach((record, index) => {
+    if (!walletBenefitIsApproved(record)) return;
+    if (!walletBenefitMatchesPassenger(record, user)) return;
+
+    const amount = readWalletBenefitAmount(record);
+    if (amount <= 0) return;
+
+    const id = readWalletBenefitId(record, index);
+    if (appliedIds.has(id)) return;
+
+    balance += amount;
+    appliedIds.add(id);
+    changed = true;
+  });
+
+  if (changed) {
+    writePassengerWalletBalance(balance);
+    saveWalletAppliedBenefitIds(appliedIds);
+  }
+
+  return balance;
+}
+
+function formatWalletClp(value: number): string {
+  return `$${Math.max(0, Math.round(value)).toLocaleString("es-CL")} CLP`;
+}
+
+function ComingSoonServiceCard({
+  icon,
+  title,
+  subtitle,
+}: {
+  icon: string;
+  title: string;
+  subtitle: string;
+}): JSX.Element {
+  const cardStyle: CSSProperties = {
+    minHeight: "132px",
+    borderRadius: "22px",
+    margin: 0,
+    background: "linear-gradient(145deg, rgba(246,242,236,.72), rgba(226,213,187,.62))",
+    color: "#111",
+    border: "1px dashed rgba(200,155,60,.62)",
+    boxShadow: "0 12px 26px rgba(0,0,0,.14)",
+    opacity: 0.82,
+    cursor: "not-allowed",
+  };
+
+  return (
+    <IonCard style={cardStyle} aria-disabled="true">
+      <IonCardContent
+        style={{
+          minHeight: 132,
+          padding: "14px 10px",
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+          justifyContent: "center",
+          textAlign: "center",
+          gap: 7,
+        }}
+      >
+        <div
+          style={{
+            width: 54,
+            height: 54,
+            borderRadius: 18,
+            background: "linear-gradient(135deg,#e2c98f,#f6f2ec)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            boxShadow: "0 12px 22px rgba(0,0,0,.12)",
+          }}
+        >
+          <IonIcon icon={icon} style={{ fontSize: "1.55rem", color: "#111" }} />
+        </div>
+
+        <div style={{ fontWeight: 950, fontSize: ".92rem", lineHeight: 1.05 }}>
+          {title}
+        </div>
+        <div style={{ color: "#6b7280", fontSize: ".72rem", fontWeight: 850, lineHeight: 1.2 }}>
+          {subtitle}
+        </div>
+        <div
+          style={{
+            marginTop: 2,
+            padding: "5px 9px",
+            borderRadius: 999,
+            background: "rgba(200,155,60,.20)",
+            color: "#7a5512",
+            fontSize: ".62rem",
+            fontWeight: 950,
+            letterSpacing: ".04em",
+            textTransform: "uppercase",
+          }}
+        >
+          Próximamente
+        </div>
+      </IonCardContent>
+    </IonCard>
+  );
+}
 
 export default function HomePage(): JSX.Element {
   const history = useHistory();
@@ -87,6 +419,9 @@ export default function HomePage(): JSX.Element {
 
   const [profile, setProfile] = useState<PassengerProfileData | null>(null);
   const [carouselIndex, setCarouselIndex] = useState(0);
+  const [walletBalanceClp, setWalletBalanceClp] = useState(() =>
+    syncApprovedWalletBenefits(session?.user),
+  );
 
   useEffect(() => {
     if (!session?.accessToken) return;
@@ -96,6 +431,28 @@ export default function HomePage(): JSX.Element {
       .then(setProfile)
       .catch(() => {});
   }, [session?.accessToken]);
+
+  useEffect(() => {
+    const refreshWalletBalance = () => {
+      setWalletBalanceClp(syncApprovedWalletBenefits(session?.user));
+    };
+
+    refreshWalletBalance();
+
+    window.addEventListener("storage", refreshWalletBalance);
+    window.addEventListener("focus", refreshWalletBalance);
+    window.addEventListener(RAPAGO_WALLET_EVENT, refreshWalletBalance as EventListener);
+    window.addEventListener("rapago:admin-wallet-benefit-approved", refreshWalletBalance as EventListener);
+    window.addEventListener("rapago:wallet-benefit-approved", refreshWalletBalance as EventListener);
+
+    return () => {
+      window.removeEventListener("storage", refreshWalletBalance);
+      window.removeEventListener("focus", refreshWalletBalance);
+      window.removeEventListener(RAPAGO_WALLET_EVENT, refreshWalletBalance as EventListener);
+      window.removeEventListener("rapago:admin-wallet-benefit-approved", refreshWalletBalance as EventListener);
+      window.removeEventListener("rapago:wallet-benefit-approved", refreshWalletBalance as EventListener);
+    };
+  }, [session?.user]);
 
   useEffect(() => {
     const interval = window.setInterval(() => {
@@ -124,6 +481,11 @@ export default function HomePage(): JSX.Element {
 
   const goToProfile = () => {
     history.push(ROUTES.PASSENGER.PROFILE);
+  };
+
+  const openWallet = () => {
+    setWalletBalanceClp(syncApprovedWalletBenefits(session?.user));
+    history.push(ROUTES.PASSENGER.WALLET);
   };
 
   return (
@@ -235,34 +597,28 @@ export default function HomePage(): JSX.Element {
                 onClick={() => history.push(ROUTES.PASSENGER.REQUEST_RIDE)}
               />
 
-              <ServiceCard
+              <ComingSoonServiceCard
                 icon={mapOutline}
-                title="Tours"
-                subtitle="Con guías locales"
-                color="secondary"
-                onClick={() => history.push(ROUTES.PASSENGER.GUIDES)}
+                title="Turismo local"
+                subtitle="Guías y tours"
               />
 
-              <ServiceCard
+              <ComingSoonServiceCard
                 icon={carSportOutline}
-                title="Arriendo"
-                subtitle="Vehículos"
-                color="tertiary"
-                onClick={() => history.push(ROUTES.PASSENGER.RENTALS)}
+                title="Reserva vehículo"
+                subtitle="Arriendos"
               />
 
-              <ServiceCard
+              <ComingSoonServiceCard
                 icon={ticketOutline}
                 title="Eventos"
                 subtitle="Cultura"
-                color="warning"
-                onClick={() => history.push(ROUTES.PASSENGER.EVENTS)}
               />
             </div>
           </section>
 
           <section className="passenger-home-section">
-            <h2 className="passenger-home-section-title">Noticias de Rapa Nui</h2>
+            <h2 className="passenger-home-section-title">Módulos próximos</h2>
 
             <div
               style={{
@@ -276,9 +632,7 @@ export default function HomePage(): JSX.Element {
               {RAPA_NUI_NEWS.map((news) => (
                 <IonCard
                   key={news.title}
-                  button
-                  className="ion-activatable"
-                  onClick={() => history.push(news.route)}
+                  aria-disabled="true"
                   style={{
                     minWidth: "255px",
                     maxWidth: "280px",
@@ -370,12 +724,25 @@ export default function HomePage(): JSX.Element {
               </IonCardContent>
             </IonCard>
 
-            <IonCard className="quick-access-card ion-activatable" routerLink={ROUTES.PASSENGER.WALLET}>
+            <IonCard
+              className="quick-access-card ion-activatable"
+              button
+              onClick={openWallet}
+              style={{
+                background: walletBalanceClp > 0
+                  ? "linear-gradient(135deg,#fff7dc,#e8fff1)"
+                  : undefined,
+              }}
+            >
               <IonCardContent className="quick-access-content">
                 <IonIcon icon={walletOutline} className="quick-access-icon wallet" />
                 <div>
                   <div className="quick-access-title">Wallet</div>
-                  <div className="quick-access-subtitle">Saldo y pagos</div>
+                  <div className="quick-access-subtitle">
+                    {walletBalanceClp > 0
+                      ? `Saldo a favor: ${formatWalletClp(walletBalanceClp)}`
+                      : "Saldo y beneficios"}
+                  </div>
                 </div>
               </IonCardContent>
             </IonCard>

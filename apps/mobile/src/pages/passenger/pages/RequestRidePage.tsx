@@ -65,8 +65,110 @@ const LOCAL_ADMIN_SCHEDULED_RIDE_LIMIT = 80;
 const RAPAGO_REQUEUED_RIDES_KEY = "rapago_requeued_available_rides_v1";
 const RAPAGO_REQUEUED_PASSENGER_FORCE_KEY = "rapago_requeued_passenger_visible_rides_v1";
 const RAPAGO_REQUEUED_RIDES_EVENT = "rapago:ride-requeued-after-driver-cancel";
+const RAPAGO_PASSENGER_PENDING_CHARGES_KEY = "rapago_passenger_pending_charges_v1";
+const RAPAGO_PASSENGER_PENDING_CHARGE_EVENT = "rapago:passenger-pending-charge-updated";
 
 type LocalPassengerRideData = Record<string, unknown>;
+
+type PassengerPendingChargeForRequest = {
+  id: string;
+  rideId?: string | null;
+  rideKey?: string | null;
+  passengerEmail?: string | null;
+  ownerKey?: string | null;
+  amountClp: number;
+  type?: string | null;
+  status: string;
+  adminReviewStatus?: string | null;
+  title?: string | null;
+  description?: string | null;
+  createdAt?: string | null;
+  appliedRideId?: string | null;
+  appliedAt?: string | null;
+};
+
+function normalizePendingChargeEmail(value: unknown): string {
+  return String(value ?? "").trim().toLowerCase();
+}
+
+function getPendingChargeSessionEmail(user: unknown): string {
+  if (!user || typeof user !== "object") return "";
+  return normalizePendingChargeEmail((user as Record<string, unknown>).email);
+}
+
+function readPassengerPendingChargesForRequest(user: unknown): PassengerPendingChargeForRequest[] {
+  try {
+    const sessionEmail = getPendingChargeSessionEmail(user);
+    const raw = localStorage.getItem(RAPAGO_PASSENGER_PENDING_CHARGES_KEY);
+    const parsed = raw ? (JSON.parse(raw) as Array<Record<string, unknown>>) : [];
+    if (!Array.isArray(parsed)) return [];
+
+    return parsed
+      .map((item, index): PassengerPendingChargeForRequest => ({
+        id: String(item.id ?? `pending-charge-${index}`),
+        rideId: typeof item.rideId === "string" ? item.rideId : null,
+        rideKey: typeof item.rideKey === "string" ? item.rideKey : null,
+        passengerEmail: typeof item.passengerEmail === "string" ? item.passengerEmail : null,
+        ownerKey: typeof item.ownerKey === "string" ? item.ownerKey : null,
+        amountClp: Math.max(0, Math.round(Number(item.amountClp ?? item.amount ?? 0))),
+        type: typeof item.type === "string" ? item.type : null,
+        status: String(item.status ?? "pending_next_ride"),
+        adminReviewStatus: typeof item.adminReviewStatus === "string" ? item.adminReviewStatus : null,
+        title: typeof item.title === "string" ? item.title : null,
+        description: typeof item.description === "string" ? item.description : null,
+        createdAt: typeof item.createdAt === "string" ? item.createdAt : null,
+        appliedRideId: typeof item.appliedRideId === "string" ? item.appliedRideId : null,
+        appliedAt: typeof item.appliedAt === "string" ? item.appliedAt : null,
+      }))
+      .filter((charge) => {
+        if (charge.amountClp <= 0) return false;
+        if (charge.status !== "pending_next_ride") return false;
+        const owner = normalizePendingChargeEmail(charge.passengerEmail || charge.ownerKey);
+        return !sessionEmail || !owner || owner === sessionEmail;
+      });
+  } catch {
+    return [];
+  }
+}
+
+function writePassengerPendingChargesForRequest(charges: PassengerPendingChargeForRequest[]): void {
+  try {
+    localStorage.setItem(RAPAGO_PASSENGER_PENDING_CHARGES_KEY, JSON.stringify(charges.slice(0, 250)));
+    window.dispatchEvent(new CustomEvent(RAPAGO_PASSENGER_PENDING_CHARGE_EVENT, { detail: { charges } }));
+    window.dispatchEvent(new CustomEvent("rapago:wallet-updated", { detail: { charges } }));
+  } catch {
+    // No bloquea la solicitud.
+  }
+}
+
+function markPassengerPendingChargesAppliedToRide(user: unknown, rideId: string | null): void {
+  const sessionEmail = getPendingChargeSessionEmail(user);
+  const now = new Date().toISOString();
+
+  try {
+    const raw = localStorage.getItem(RAPAGO_PASSENGER_PENDING_CHARGES_KEY);
+    const parsed = raw ? (JSON.parse(raw) as PassengerPendingChargeForRequest[]) : [];
+    const current = Array.isArray(parsed) ? parsed : [];
+
+    const next = current.map((charge) => {
+      const owner = normalizePendingChargeEmail(charge.passengerEmail || charge.ownerKey);
+      const belongsToUser = !sessionEmail || !owner || owner === sessionEmail;
+      if (!belongsToUser || String(charge.status ?? "") !== "pending_next_ride") return charge;
+
+      return {
+        ...charge,
+        status: "applied_to_next_ride",
+        adminReviewStatus: "charged_in_next_ride",
+        appliedRideId: rideId,
+        appliedAt: now,
+      };
+    });
+
+    writePassengerPendingChargesForRequest(next);
+  } catch {
+    // No bloquea la solicitud si storage falla.
+  }
+}
 
 function isPassengerRolePermissionMessage(message: unknown): boolean {
   const text = String(message ?? "").toLowerCase();
@@ -358,6 +460,10 @@ function createLocalPassengerRide(input: {
   passengerFareLabel?: string | null;
   airportWelcomeOption?: AirportWelcomeOption | null;
   flowerLeiRequested?: boolean | null;
+  airportWelcomeSurchargeClp?: number | null;
+  optionalServicesTotalClp?: number | null;
+  baseFareBeforeExtrasClp?: number | null;
+  airportWelcomeLabel?: string | null;
 }): LocalPassengerRideData {
   const now = new Date().toISOString();
   const scheduleFields = buildRideScheduleFields({
@@ -410,7 +516,20 @@ function createLocalPassengerRide(input: {
     driverProfilePhotoUrl: null,
     isOfflineBooking: false,
     airportWelcomeOption: input.airportWelcomeOption ?? null,
+    airportWelcomeLabel:
+      input.airportWelcomeLabel ??
+      (input.airportWelcomeOption === "flower_lei"
+        ? "Collar de flores Rapa Nui"
+        : input.airportWelcomeOption === "none"
+          ? "Solo recogida"
+          : null),
     flowerLeiRequested: input.flowerLeiRequested ?? false,
+    flowerLeiSurchargeClp: input.airportWelcomeSurchargeClp ?? 0,
+    airportWelcomeSurchargeClp: input.airportWelcomeSurchargeClp ?? 0,
+    optionalServicesTotalClp:
+      input.optionalServicesTotalClp ?? input.airportWelcomeSurchargeClp ?? 0,
+    baseFareBeforeExtrasClp:
+      input.baseFareBeforeExtrasClp ?? input.estimatedFareClp ?? null,
     ...scheduleFields,
   };
 }
@@ -492,6 +611,10 @@ function createLocalAdminScheduledRide(input: {
   passengerFareLabel?: string | null;
   airportWelcomeOption?: AirportWelcomeOption | null;
   flowerLeiRequested?: boolean | null;
+  airportWelcomeSurchargeClp?: number | null;
+  optionalServicesTotalClp?: number | null;
+  baseFareBeforeExtrasClp?: number | null;
+  airportWelcomeLabel?: string | null;
 }): LocalPassengerRideData {
   const base = createLocalPassengerRide(input);
   return {
@@ -548,6 +671,10 @@ function saveLocalPassengerRide(input: {
   passengerFareLabel?: string | null;
   airportWelcomeOption?: AirportWelcomeOption | null;
   flowerLeiRequested?: boolean | null;
+  airportWelcomeSurchargeClp?: number | null;
+  optionalServicesTotalClp?: number | null;
+  baseFareBeforeExtrasClp?: number | null;
+  airportWelcomeLabel?: string | null;
 }): void {
   const localRide = createLocalPassengerRide(input);
   saveLocalPassengerRides([localRide, ...readLocalPassengerRides()]);
@@ -699,6 +826,10 @@ type MapPointMovedPayload = {
 
 type PaymentMethod = "cash" | "card" | null;
 type AirportWelcomeOption = "none" | "flower_lei";
+
+const AIRPORT_FLOWER_LEI_SURCHARGE_CLP = 800;
+const AIRPORT_FLOWER_LEI_LABEL = "Collar de flores Rapa Nui";
+
 
 declare global {
   interface Window {
@@ -3956,46 +4087,90 @@ export default function RequestRidePage(): JSX.Element {
   }
 
 
-  function getPaymentLabel(method: PaymentMethod): string {
-    if (method === "cash") {
-      if (selectedRoundTripPromotion) return `Efectivo · ${formatCLP(selectedRoundTripPromotion.fareClp)}`;
-      return fareQuote ? `Efectivo · ${formatCLP(fareQuote.cashFare)}` : "Efectivo";
-    }
-    if (method === "card") return "Tarjeta · MercadoPago";
-    return "Pendiente";
-  }
+  const airportWelcomeSurchargeClp =
+    rideMode === "scheduled" && airportWelcomeOption === "flower_lei"
+      ? AIRPORT_FLOWER_LEI_SURCHARGE_CLP
+      : 0;
+  const hasAirportFlowerLei = airportWelcomeSurchargeClp > 0;
+  const pendingPassengerCharges = readPassengerPendingChargesForRequest(session?.user);
+  const pendingPassengerChargeTotalClp = pendingPassengerCharges.reduce(
+    (sum, charge) => sum + Math.max(0, Math.round(Number(charge.amountClp ?? 0))),
+    0,
+  );
 
-  const cashPaymentLabel = selectedRoundTripPromotion
-    ? formatCLP(selectedRoundTripPromotion.fareClp)
-    : fareQuote
-      ? formatCLP(fareQuote.cashFare)
-      : "Calculando";
-  const cashPaymentUsdLabel = selectedRoundTripPromotion
-    ? selectedRoundTripPromotion.chargeLabel?.replace(/^Cobra\s+\$[\d.]+\s+·\s+/i, "") ?? selectedRoundTripPromotion.usdLabel
-    : fareQuote
-      ? formatUSDFromCLP(fareQuote.cashFare, fareQuote.usdRate)
-      : "Calculando";
-
-  const cardPaymentLabel = selectedRoundTripPromotion
-    ? formatCLP(selectedRoundTripPromotion.fareClp)
-    : fareQuote
-      ? formatCLP(fareQuote.cardFare)
-      : "Calculando";
-  const cardPaymentUsdLabel = selectedRoundTripPromotion
-    ? selectedRoundTripPromotion.chargeLabel?.replace(/^Cobra\s+\$[\d.]+\s+·\s+/i, "") ?? selectedRoundTripPromotion.usdLabel
-    : fareQuote
-      ? formatUSDFromCLP(fareQuote.cardFare, fareQuote.usdRate)
-      : "Calculando";
-
-  function getSelectedFareAmount(method: PaymentMethod = paymentMethod): number | null {
+  function getBaseSelectedFareAmount(method: PaymentMethod = paymentMethod): number | null {
     if (!method) return null;
     if (selectedRoundTripPromotion) return selectedRoundTripPromotion.fareClp;
     if (!fareQuote) return null;
     return method === "card" ? fareQuote.cardFare : fareQuote.cashFare;
   }
 
+  function addAirportWelcomeExtras(amount: number | null): number | null {
+    if (amount == null) return null;
+    return Math.max(0, Math.round(amount + airportWelcomeSurchargeClp));
+  }
+
+  function addPendingPassengerCharges(amount: number | null): number | null {
+    if (amount == null) return null;
+    return Math.max(0, Math.round(amount + pendingPassengerChargeTotalClp));
+  }
+
+  const cashPaymentAmount = addPendingPassengerCharges(addAirportWelcomeExtras(
+    selectedRoundTripPromotion
+      ? selectedRoundTripPromotion.fareClp
+      : fareQuote
+        ? fareQuote.cashFare
+        : null,
+  ));
+  const cardPaymentAmount = addPendingPassengerCharges(addAirportWelcomeExtras(
+    selectedRoundTripPromotion
+      ? selectedRoundTripPromotion.fareClp
+      : fareQuote
+        ? fareQuote.cardFare
+        : null,
+  ));
+
+  function getPaymentLabel(method: PaymentMethod): string {
+    if (method === "cash") {
+      return cashPaymentAmount != null
+        ? `Efectivo · ${formatCLP(cashPaymentAmount)}`
+        : "Efectivo";
+    }
+    if (method === "card") {
+      return cardPaymentAmount != null
+        ? `Tarjeta · ${formatCLP(cardPaymentAmount)}`
+        : "Tarjeta · MercadoPago";
+    }
+    return "Pendiente";
+  }
+
+  const cashPaymentLabel = cashPaymentAmount != null
+    ? formatCLP(cashPaymentAmount)
+    : "Calculando";
+  const cashPaymentUsdLabel = cashPaymentAmount != null
+    ? formatUSDFromCLP(
+        cashPaymentAmount,
+        selectedRoundTripPromotion?.usdLabel ? fareRules.usdRate : fareQuote?.usdRate,
+      )
+    : "Calculando";
+
+  const cardPaymentLabel = cardPaymentAmount != null
+    ? formatCLP(cardPaymentAmount)
+    : "Calculando";
+  const cardPaymentUsdLabel = cardPaymentAmount != null
+    ? formatUSDFromCLP(
+        cardPaymentAmount,
+        selectedRoundTripPromotion?.usdLabel ? fareRules.usdRate : fareQuote?.usdRate,
+      )
+    : "Calculando";
+
+  function getSelectedFareAmount(method: PaymentMethod = paymentMethod): number | null {
+    return addPendingPassengerCharges(addAirportWelcomeExtras(getBaseSelectedFareAmount(method)));
+  }
+
   function getSelectedDriverEarning(method: PaymentMethod = paymentMethod): number | null {
-    const fare = getSelectedFareAmount(method);
+    // La ganancia del conductor se calcula sobre el viaje actual, no sobre deudas anteriores del pasajero.
+    const fare = addAirportWelcomeExtras(getBaseSelectedFareAmount(method));
     if (fare == null) return null;
     return Math.round((fare * fareRules.driverPercent) / 100);
   }
@@ -4048,6 +4223,7 @@ export default function RequestRidePage(): JSX.Element {
     }
 
     const selectedFareAmount = getSelectedFareAmount(activePaymentMethod);
+    const selectedBaseFareAmount = getBaseSelectedFareAmount(activePaymentMethod);
     const selectedDriverEarning = getSelectedDriverEarning(activePaymentMethod);
 
     if (selectedFareAmount == null || selectedFareAmount <= 0) {
@@ -4064,15 +4240,22 @@ export default function RequestRidePage(): JSX.Element {
       const notes: string[] = [];
 
       notes.push(`Forma de pago seleccionada: ${getPaymentLabel(activePaymentMethod)}.`);
+      if (pendingPassengerChargeTotalClp > 0) {
+        notes.push(`Cargo pendiente anterior por cancelación/no show aplicado al próximo viaje: ${formatCLP(pendingPassengerChargeTotalClp)}.`);
+        notes.push(`Total final del viaje actual incluyendo cargo pendiente anterior: ${formatCLP(selectedFareAmount)}.`);
+      }
       notes.push(`Categoría de vehículo seleccionada: ${vehicleCategoryLabel(vehicleCategory)}.`);
       notes.push(`Tipo de viaje seleccionado: ${tripFareModeLabel(effectiveTripFareMode)}.`);
       if (selectedRoundTripPromotion) {
         notes.push(`Promoción ida y vuelta seleccionada: ${selectedRoundTripPromotion.title}.`);
         notes.push(`Destino promocional: ${selectedRoundTripPromotion.destinationName}.`);
         notes.push(`Tarifa fija base promoción: ${formatCLP(selectedRoundTripPromotion.baseFareClp)} (${selectedRoundTripPromotion.usdLabel}).`);
-        notes.push(`Tarifa RAPA GO calculada: ${formatCLP(selectedRoundTripPromotion.fareClp)}.`);
-        notes.push(`Tarifa estimada pasajero: ${formatCLP(selectedRoundTripPromotion.fareClp)}.`);
-        if (selectedRoundTripPromotion.chargeLabel) notes.push(selectedRoundTripPromotion.chargeLabel + ".");
+        if (selectedBaseFareAmount != null) {
+          notes.push(`Tarifa base antes de servicios opcionales: ${formatCLP(selectedBaseFareAmount)}.`);
+        }
+        notes.push(`Tarifa RAPA GO calculada: ${formatCLP(selectedFareAmount)}.`);
+        notes.push(`Tarifa estimada pasajero: ${formatCLP(selectedFareAmount)}.`);
+        if (selectedRoundTripPromotion.chargeLabel && airportWelcomeSurchargeClp === 0) notes.push(selectedRoundTripPromotion.chargeLabel + ".");
         notes.push(selectedRoundTripPromotion.detail);
       }
 
@@ -4090,7 +4273,6 @@ export default function RequestRidePage(): JSX.Element {
         notes.push(`Viaje agendado para: ${formatScheduleDateTime(String(scheduleFields.scheduledAt ?? scheduledAt))}.`);
         notes.push(`La solicitud se activa automáticamente ${SCHEDULE_ACTIVATION_MINUTES} minutos antes: ${formatScheduleDateTime(String(scheduleFields.scheduleActivationAt ?? ""))}.`);
         notes.push(`Reserva congelada para conductores hasta: ${String(scheduleFields.scheduleActivationAt ?? "")}.`);
-        notes.push(`Gestión administrador: visible desde ahora, activar conductor ${SCHEDULE_ACTIVATION_MINUTES} minutos antes.`);
         notes.push(`Tipo de reserva: recogida aeropuerto.`);
         notes.push(`Origen automático aeropuerto: ${RAPA_NUI_AIRPORT_DESTINATION.text}.`);
         notes.push(`RAPAGO_AIRPORT_ORIGIN_LAT: ${RAPA_NUI_AIRPORT_DESTINATION.lat}.`);
@@ -4107,10 +4289,11 @@ export default function RequestRidePage(): JSX.Element {
         }
 
         if (airportWelcomeOption === "flower_lei") {
-          notes.push("Servicio opcional aeropuerto: collar de flores Rapa Nui solicitado.");
-          notes.push("Recibimiento solicitado: collar de flores al llegar.");
+          notes.push(`Recibimiento aeropuerto: ${AIRPORT_FLOWER_LEI_LABEL} solicitado.`);
+          notes.push(`Recargo recibimiento ${AIRPORT_FLOWER_LEI_LABEL}: ${formatCLP(AIRPORT_FLOWER_LEI_SURCHARGE_CLP)}.`);
+          notes.push(`Total final con recibimiento: ${formatCLP(selectedFareAmount)}.`);
         } else {
-          notes.push("Servicio opcional aeropuerto: solo recogida, sin collar de flores.");
+          notes.push("Recibimiento aeropuerto: solo recogida.");
         }
       }
 
@@ -4143,6 +4326,9 @@ export default function RequestRidePage(): JSX.Element {
       }
 
       if (!selectedRoundTripPromotion && fareQuote && selectedFareAmount != null) {
+        if (selectedBaseFareAmount != null && airportWelcomeSurchargeClp > 0) {
+          notes.push(`Tarifa base antes de servicios opcionales: ${formatCLP(selectedBaseFareAmount)}.`);
+        }
         notes.push(`Tarifa RAPA GO calculada: ${formatCLP(selectedFareAmount)}.`);
         notes.push(`Tarifa estimada pasajero: ${formatCLP(selectedFareAmount)}.`);
         notes.push(`Distancia estimada: ${fareQuote.km.toFixed(1)} km.`);
@@ -4220,6 +4406,13 @@ export default function RequestRidePage(): JSX.Element {
           vehicleCategory?: VehicleCategory;
         }).vehicleCategory = vehicleCategory;
         (input as CreateRideInput & { paymentMethod?: string }).paymentMethod = activePaymentMethod;
+        if (pendingPassengerChargeTotalClp > 0) {
+          Object.assign(input as CreateRideInput & Record<string, unknown>, {
+            passengerPendingChargeClp: pendingPassengerChargeTotalClp,
+            passengerPendingChargeReason: "cancelacion_no_show_anterior",
+            finalFareWithPendingChargesClp: selectedFareAmount,
+          });
+        }
         (input as CreateRideInput & { tripFareMode?: TripFareMode }).tripFareMode = effectiveTripFareMode;
         (input as CreateRideInput & { tripType?: string }).tripType = effectiveTripFareMode;
         (input as CreateRideInput & { isRoundTrip?: boolean }).isRoundTrip = effectiveTripFareMode === "round_trip";
@@ -4227,8 +4420,16 @@ export default function RequestRidePage(): JSX.Element {
 
       Object.assign(input as CreateRideInput & Record<string, unknown>, scheduleFields);
       if (rideMode === "scheduled") {
-        (input as CreateRideInput & Record<string, unknown>).airportWelcomeOption = airportWelcomeOption;
-        (input as CreateRideInput & Record<string, unknown>).flowerLeiRequested = airportWelcomeOption === "flower_lei";
+        Object.assign(input as CreateRideInput & Record<string, unknown>, {
+          airportWelcomeOption,
+          airportWelcomeLabel: hasAirportFlowerLei ? AIRPORT_FLOWER_LEI_LABEL : "Solo recogida",
+          flowerLeiRequested: hasAirportFlowerLei,
+          flowerLeiSurchargeClp: airportWelcomeSurchargeClp,
+          airportWelcomeSurchargeClp,
+          optionalServicesTotalClp: airportWelcomeSurchargeClp,
+          baseFareBeforeExtrasClp: selectedBaseFareAmount,
+          finalFareWithExtrasClp: selectedFareAmount,
+        });
       }
 
       if (notes.length > 0) {
@@ -4241,6 +4442,10 @@ export default function RequestRidePage(): JSX.Element {
       );
 
       const createdRideId = extractRideRequestIdFromResponse(createdRideResponse);
+
+      if (pendingPassengerChargeTotalClp > 0) {
+        markPassengerPendingChargesAppliedToRide(session.user, createdRideId ?? `ride-${Date.now()}`);
+      }
 
       if (rideMode === "scheduled") {
         upsertLocalAdminScheduledRide(createLocalAdminScheduledRide({
@@ -4257,7 +4462,14 @@ export default function RequestRidePage(): JSX.Element {
           passengerFareType: effectivePassengerFareType,
           passengerFareLabel: passengerFareTypeLabel(effectivePassengerFareType),
           airportWelcomeOption: rideMode === "scheduled" ? airportWelcomeOption : null,
-          flowerLeiRequested: rideMode === "scheduled" && airportWelcomeOption === "flower_lei",
+          airportWelcomeLabel: hasAirportFlowerLei ? AIRPORT_FLOWER_LEI_LABEL : "Solo recogida",
+          flowerLeiRequested: hasAirportFlowerLei,
+          airportWelcomeSurchargeClp,
+          optionalServicesTotalClp: airportWelcomeSurchargeClp,
+          baseFareBeforeExtrasClp: selectedBaseFareAmount,
+          passengerPendingChargeClp: pendingPassengerChargeTotalClp,
+          passengerPendingChargeReason: pendingPassengerChargeTotalClp > 0 ? "cancelacion_no_show_anterior" : null,
+          finalFareWithPendingChargesClp: selectedFareAmount,
         }));
       }
 
@@ -4323,14 +4535,18 @@ export default function RequestRidePage(): JSX.Element {
         const localNotes: string[] = [];
 
         localNotes.push(`Forma de pago seleccionada: ${getPaymentLabel(activePaymentMethod)}.`);
+        if (pendingPassengerChargeTotalClp > 0) {
+          localNotes.push(`Cargo pendiente anterior por cancelación/no show aplicado al próximo viaje: ${formatCLP(pendingPassengerChargeTotalClp)}.`);
+          localNotes.push(`Total final del viaje actual incluyendo cargo pendiente anterior: ${formatCLP(selectedFareAmount)}.`);
+        }
         localNotes.push(`Categoría de vehículo seleccionada: ${vehicleCategoryLabel(vehicleCategory)}.`);
         localNotes.push(`Tipo de viaje seleccionado: ${tripFareModeLabel(effectiveTripFareMode)}.`);
         if (selectedRoundTripPromotion) {
           localNotes.push(`Promoción ida y vuelta seleccionada: ${selectedRoundTripPromotion.title}.`);
           localNotes.push(`Destino promocional: ${selectedRoundTripPromotion.destinationName}.`);
           localNotes.push(`Tarifa fija base promoción: ${formatCLP(selectedRoundTripPromotion.baseFareClp)} (${selectedRoundTripPromotion.usdLabel}).`);
-          localNotes.push(`Tarifa RAPA GO calculada: ${formatCLP(selectedRoundTripPromotion.fareClp)}.`);
-          localNotes.push(`Tarifa estimada pasajero: ${formatCLP(selectedRoundTripPromotion.fareClp)}.`);
+          localNotes.push(`Tarifa RAPA GO calculada: ${formatCLP(selectedFareAmount)}.`);
+          localNotes.push(`Tarifa estimada pasajero: ${formatCLP(selectedFareAmount)}.`);
           if (selectedRoundTripPromotion.chargeLabel) localNotes.push(selectedRoundTripPromotion.chargeLabel + ".");
           localNotes.push(selectedRoundTripPromotion.detail);
         }
@@ -4349,7 +4565,6 @@ export default function RequestRidePage(): JSX.Element {
           localNotes.push(`Viaje agendado para: ${formatScheduleDateTime(String(localScheduleFields.scheduledAt ?? scheduledAt))}.`);
           localNotes.push(`La solicitud se activa automáticamente ${SCHEDULE_ACTIVATION_MINUTES} minutos antes: ${formatScheduleDateTime(String(localScheduleFields.scheduleActivationAt ?? ""))}.`);
           localNotes.push(`Reserva congelada para conductores hasta: ${String(localScheduleFields.scheduleActivationAt ?? "")}.`);
-          localNotes.push(`Gestión administrador: visible desde ahora, activar conductor ${SCHEDULE_ACTIVATION_MINUTES} minutos antes.`);
           localNotes.push(`Tipo de reserva: recogida aeropuerto.`);
           localNotes.push(`Origen automático aeropuerto: ${RAPA_NUI_AIRPORT_DESTINATION.text}.`);
           localNotes.push(`RAPAGO_AIRPORT_ORIGIN_LAT: ${RAPA_NUI_AIRPORT_DESTINATION.lat}.`);
@@ -4366,10 +4581,11 @@ export default function RequestRidePage(): JSX.Element {
           }
 
           if (airportWelcomeOption === "flower_lei") {
-            localNotes.push("Servicio opcional aeropuerto: collar de flores Rapa Nui solicitado.");
-            localNotes.push("Recibimiento solicitado: collar de flores al llegar.");
+            localNotes.push(`Recibimiento aeropuerto: ${AIRPORT_FLOWER_LEI_LABEL} solicitado.`);
+            localNotes.push(`Recargo recibimiento ${AIRPORT_FLOWER_LEI_LABEL}: ${formatCLP(AIRPORT_FLOWER_LEI_SURCHARGE_CLP)}.`);
+            localNotes.push(`Total final con recibimiento: ${formatCLP(selectedFareAmount)}.`);
           } else {
-            localNotes.push("Servicio opcional aeropuerto: solo recogida, sin collar de flores.");
+            localNotes.push("Recibimiento aeropuerto: solo recogida.");
           }
         }
 
@@ -4402,6 +4618,9 @@ export default function RequestRidePage(): JSX.Element {
         }
 
         if (!selectedRoundTripPromotion && fareQuote && selectedFareAmount != null) {
+          if (selectedBaseFareAmount != null && airportWelcomeSurchargeClp > 0) {
+            localNotes.push(`Tarifa base antes de servicios opcionales: ${formatCLP(selectedBaseFareAmount)}.`);
+          }
           localNotes.push(`Tarifa RAPA GO calculada: ${formatCLP(selectedFareAmount)}.`);
           localNotes.push(`Tarifa estimada pasajero: ${formatCLP(selectedFareAmount)}.`);
           localNotes.push(`Distancia estimada: ${fareQuote.km.toFixed(1)} km.`);
@@ -4431,10 +4650,20 @@ export default function RequestRidePage(): JSX.Element {
           passengerFareType: effectivePassengerFareType,
           passengerFareLabel: passengerFareTypeLabel(effectivePassengerFareType),
           airportWelcomeOption: rideMode === "scheduled" ? airportWelcomeOption : null,
-          flowerLeiRequested: rideMode === "scheduled" && airportWelcomeOption === "flower_lei",
+          airportWelcomeLabel: hasAirportFlowerLei ? AIRPORT_FLOWER_LEI_LABEL : "Solo recogida",
+          flowerLeiRequested: hasAirportFlowerLei,
+          airportWelcomeSurchargeClp,
+          optionalServicesTotalClp: airportWelcomeSurchargeClp,
+          baseFareBeforeExtrasClp: selectedBaseFareAmount,
+          passengerPendingChargeClp: pendingPassengerChargeTotalClp,
+          passengerPendingChargeReason: pendingPassengerChargeTotalClp > 0 ? "cancelacion_no_show_anterior" : null,
+          finalFareWithPendingChargesClp: selectedFareAmount,
         });
 
         saveLocalPassengerRides([localRide, ...readLocalPassengerRides()]);
+        if (pendingPassengerChargeTotalClp > 0) {
+          markPassengerPendingChargesAppliedToRide(session.user, String(localRide.id ?? `local-${Date.now()}`));
+        }
 
         if (rideMode === "scheduled") {
           upsertLocalAdminScheduledRide(createLocalAdminScheduledRide({
@@ -4451,7 +4680,11 @@ export default function RequestRidePage(): JSX.Element {
             passengerFareType: effectivePassengerFareType,
             passengerFareLabel: passengerFareTypeLabel(effectivePassengerFareType),
             airportWelcomeOption: rideMode === "scheduled" ? airportWelcomeOption : null,
-            flowerLeiRequested: rideMode === "scheduled" && airportWelcomeOption === "flower_lei",
+            airportWelcomeLabel: hasAirportFlowerLei ? AIRPORT_FLOWER_LEI_LABEL : "Solo recogida",
+            flowerLeiRequested: hasAirportFlowerLei,
+            airportWelcomeSurchargeClp,
+            optionalServicesTotalClp: airportWelcomeSurchargeClp,
+            baseFareBeforeExtrasClp: selectedBaseFareAmount,
           }));
         }
 
@@ -5404,7 +5637,7 @@ return (
                       id: "flower_lei" as AirportWelcomeOption,
                       emoji: "🌺",
                       title: "Collar de flores",
-                      text: "Recibimiento Rapa Nui al llegar.",
+                      text: `Bienvenida Rapa Nui al llegar · +${formatCLP(AIRPORT_FLOWER_LEI_SURCHARGE_CLP)}`,
                     },
                   ]).map((option) => {
                     const active = airportWelcomeOption === option.id;
@@ -5457,32 +5690,35 @@ return (
                 {airportWelcomeOption === "flower_lei" && (
                   <div
                     style={{
-                      background: "rgba(210,164,58,.14)",
-                      border: "1px solid rgba(210,164,58,.36)",
-                      color: "#6b4a12",
-                      borderRadius: "10px",
-                      padding: "9px 10px",
-                      fontSize: "0.72rem",
+                      background: "linear-gradient(135deg,rgba(255,246,214,.98),rgba(255,232,166,.98))",
+                      border: "1px solid rgba(210,164,58,.42)",
+                      color: "#4F350D",
+                      borderRadius: "14px",
+                      padding: "10px 12px",
+                      fontSize: "0.74rem",
                       lineHeight: 1.35,
-                      fontWeight: 850,
+                      fontWeight: 900,
                       marginBottom: "12px",
+                      boxShadow: "0 10px 22px rgba(210,164,58,.14)",
                     }}
                   >
-                    🌺 El administrador verá que el pasajero pidió recibimiento con collar de flores Rapa Nui.
+                    🌺 <strong>Collar de flores agregado.</strong> Sumamos {formatCLP(AIRPORT_FLOWER_LEI_SURCHARGE_CLP)} al total para preparar tu bienvenida Rapa Nui al llegar.
                   </div>
                 )}
 
                 <div
                   style={{
-                    background: "#ffc928",
+                    background: "linear-gradient(135deg,#fff7d6 0%,#ffe39a 100%)",
                     color: "#111",
-                    borderRadius: "8px",
-                    padding: "12px",
+                    borderRadius: "14px",
+                    padding: "13px 14px",
                     fontSize: "0.8rem",
                     lineHeight: 1.45,
+                    border: "1px solid rgba(210,164,58,.36)",
+                    boxShadow: "0 12px 24px rgba(210,164,58,.16)",
                   }}
                 >
-                  ✈️ <strong>Recogida agendada desde el aeropuerto.</strong> El origen queda fijo en Mataveri y el pasajero elige su destino. Queda guardada en Mis Viajes y en el panel del administrador. No aparece para conductores todavía: se libera {SCHEDULE_ACTIVATION_MINUTES} minutos antes de la hora reservada.
+                  ✈️ <strong>Recogida programada desde Mataveri.</strong> Tú eliges el destino, la hora y el recibimiento. Prepararemos tu viaje y te avisaremos cuando tu RapaGo esté listo para ir por ti.
                 </div>
               </div>
             )}
@@ -5639,6 +5875,11 @@ return (
                   <span style={{ borderRadius: 999, padding: "6px 9px", background: "rgba(255,255,255,.08)", border: "1px solid rgba(255,255,255,.10)", color: "#F6F2EC", fontSize: ".66rem", fontWeight: 900 }}>
                     {vehicleCategoryTitle(vehicleCategory)}
                   </span>
+                  {hasAirportFlowerLei && (
+                    <span style={{ borderRadius: 999, padding: "6px 9px", background: "rgba(248,216,121,.16)", border: "1px solid rgba(248,216,121,.28)", color: "#F8D879", fontSize: ".66rem", fontWeight: 950 }}>
+                      🌺 Collar +{formatCLP(AIRPORT_FLOWER_LEI_SURCHARGE_CLP)}
+                    </span>
+                  )}
                 </div>
 
                 <div
@@ -5690,6 +5931,25 @@ return (
                     }}
                   >
                     📅 Agendado para {formatScheduleDateTime(scheduledAt)}{requireReturnScheduledAt && returnScheduledAt ? ` · regreso ${formatScheduleDateTime(returnScheduledAt)}` : ""}
+                  </div>
+                )}
+
+                {pendingPassengerChargeTotalClp > 0 && (
+                  <div
+                    style={{
+                      marginTop: 12,
+                      borderRadius: 18,
+                      padding: "11px 12px",
+                      background: "rgba(255,196,9,.16)",
+                      border: "1px solid rgba(255,196,9,.34)",
+                      color: "#F8D879",
+                      fontSize: ".75rem",
+                      lineHeight: 1.35,
+                      fontWeight: 900,
+                    }}
+                  >
+                    ⚠️ Cargo pendiente anterior por cancelación/no show: <strong>{formatCLP(pendingPassengerChargeTotalClp)}</strong>.
+                    <br />Se suma automáticamente al precio final de este viaje.
                   </div>
                 )}
 

@@ -34,7 +34,7 @@ import {
   IonToggle,
   IonToolbar,
 } from "@ionic/react";
-import { useEffect, useState, useCallback, useRef } from "react";
+import { useEffect, useState, useCallback, useRef, type CSSProperties } from "react";
 import { useHistory } from "react-router-dom";
 import {
   carOutline,
@@ -46,14 +46,12 @@ import {
   ticketOutline,
   walletOutline,
 } from "ionicons/icons";
-import { ServiceCard } from "../../components/ServiceCard.js";
 import { EmptyState } from "../../components/EmptyState.js";
 import { TripTimeline } from "../../components/TripTimeline.js";
 import { DriverInfoCard } from "../../components/DriverInfoCard.js";
 import { ModulePlaceholderPage } from "../../components/ModulePlaceholderPage";
 import { passengerProfileService, type PassengerProfileData } from "../../features/passengers/passengerProfile.service.js";
 import { driverProfileService } from "../../features/drivers/driverProfile.service";
-import { useConnectivity } from "../../hooks/useConnectivity";
 import { ROUTE_METADATA } from "../../navigation/routeConfig";
 import { ROUTES } from "../../navigation/routes";
 import { useAuth } from "../../features/auth";
@@ -66,6 +64,257 @@ import { useIonViewWillEnter } from "@ionic/react";
 import { rentalService } from "../../features/rental/rental.service.js";
 import type { RentalVehicleData as RentalVehicleDataType, RentalBookingData as RentalBookingDataType } from "../../features/rental/rental.service.js";
 import { legalService, type LegalDocumentData, type UserAcceptanceData } from "../../features/legal/legal.service.js";
+import { RapaGoLanguageRuntime } from "../../i18n/rapagoI18n";
+
+type RapaGoConnectivityMode = "checking" | "online" | "poor" | "offline";
+type RapaGoConnectivityRole = "driver" | "passenger" | "admin";
+
+const RAPAGO_CONNECTIVITY_STATUS_KEY = "rapago_connectivity_status_v1";
+const RAPAGO_CONNECTIVITY_EVENT = "rapago:connectivity-status-changed";
+
+function getRapaGoConnectivityProbeUrl(): string {
+  const env = import.meta.env as Record<string, string | undefined>;
+  const raw = String(env.VITE_API_BASE_URL || env.VITE_API_URL || "/api").trim();
+
+  if (!raw || raw === "/") return "/api/health";
+
+  if (/^https?:\/\//i.test(raw)) {
+    const base = raw.replace(/\/api\/?$/i, "").replace(/\/+$/, "");
+    return `${base}/api/health`;
+  }
+
+  const clean = raw.replace(/\/+$/, "");
+  return clean.endsWith("/api") ? `${clean}/health` : `${clean}/api/health`;
+}
+
+function getBrowserNetworkInfo(): {
+  effectiveType: string;
+  downlink: number | null;
+  rtt: number | null;
+} {
+  const nav = navigator as Navigator & {
+    connection?: {
+      effectiveType?: string;
+      downlink?: number;
+      rtt?: number;
+    };
+  };
+
+  return {
+    effectiveType: String(nav.connection?.effectiveType ?? "").toLowerCase(),
+    downlink: Number.isFinite(Number(nav.connection?.downlink))
+      ? Number(nav.connection?.downlink)
+      : null,
+    rtt: Number.isFinite(Number(nav.connection?.rtt))
+      ? Number(nav.connection?.rtt)
+      : null,
+  };
+}
+
+function browserLooksLikePoorConnection(): boolean {
+  const info = getBrowserNetworkInfo();
+
+  return (
+    info.effectiveType === "slow-2g" ||
+    info.effectiveType === "2g" ||
+    (info.downlink != null && info.downlink > 0 && info.downlink < 0.45) ||
+    (info.rtt != null && info.rtt > 1800)
+  );
+}
+
+async function detectRapaGoConnectivityMode(): Promise<RapaGoConnectivityMode> {
+  if (navigator.onLine === false) return "offline";
+
+  const browserPoor = browserLooksLikePoorConnection();
+  const controller = new AbortController();
+  const timeoutId = window.setTimeout(() => controller.abort(), browserPoor ? 4500 : 7000);
+
+  try {
+    await fetch(getRapaGoConnectivityProbeUrl(), {
+      method: "GET",
+      cache: "no-store",
+      signal: controller.signal,
+    });
+
+    return browserPoor ? "poor" : "online";
+  } catch {
+    return navigator.onLine === false ? "offline" : "poor";
+  } finally {
+    window.clearTimeout(timeoutId);
+  }
+}
+
+function getRapaGoConnectivityMessage(
+  role: RapaGoConnectivityRole,
+  status: RapaGoConnectivityMode,
+): string {
+  if (status === "checking") return "Revisando conexión de Rapa Go...";
+  if (status === "online") return "Conexión estable.";
+
+  if (role === "driver") {
+    if (status === "offline") {
+      return "Sin internet: quedaste No disponible. Busca una zona con conexión para volver a recibir viajes reales.";
+    }
+
+    return "Conexión baja: quedaste No disponible para evitar viajes fallidos. Busca una zona con mejor internet para volver a estar disponible.";
+  }
+
+  if (role === "admin") {
+    return "Modo conexión baja: algunas acciones pueden quedar pendientes hasta recuperar internet.";
+  }
+
+  if (status === "offline") {
+    return "Sin internet: puedes revisar lo último cargado, pero para solicitar, pagar o cancelar viajes necesitas conexión.";
+  }
+
+  return "Modo conexión baja: algunas acciones pueden tardar. Para solicitar viajes usa una zona con mejor señal.";
+}
+
+function publishRapaGoConnectivityStatus(status: RapaGoConnectivityMode): void {
+  try {
+    localStorage.setItem(RAPAGO_CONNECTIVITY_STATUS_KEY, status);
+  } catch {
+    // No bloquea el flujo.
+  }
+
+  window.dispatchEvent(
+    new CustomEvent(RAPAGO_CONNECTIVITY_EVENT, {
+      detail: {
+        status,
+        blocked: status === "offline" || status === "poor",
+      },
+    }),
+  );
+}
+
+function useRapaGoConnectivityMonitor(role: RapaGoConnectivityRole): {
+  status: RapaGoConnectivityMode;
+  blocked: boolean;
+  message: string;
+} {
+  const [status, setStatus] = useState<RapaGoConnectivityMode>(() => {
+    try {
+      const stored = localStorage.getItem(RAPAGO_CONNECTIVITY_STATUS_KEY);
+      if (stored === "online" || stored === "offline" || stored === "poor") {
+        return stored;
+      }
+    } catch {
+      // Usa checking.
+    }
+
+    return navigator.onLine === false ? "offline" : "checking";
+  });
+
+  useEffect(() => {
+    let cancelled = false;
+    let timerId: number | undefined;
+
+    const refresh = async () => {
+      const nextStatus = await detectRapaGoConnectivityMode();
+      if (cancelled) return;
+
+      setStatus(nextStatus);
+      publishRapaGoConnectivityStatus(nextStatus);
+    };
+
+    const schedule = () => {
+      window.clearInterval(timerId);
+      timerId = window.setInterval(() => {
+        void refresh();
+      }, 8500);
+    };
+
+    void refresh();
+    schedule();
+
+    window.addEventListener("online", refresh);
+    window.addEventListener("offline", refresh);
+    window.addEventListener("focus", refresh);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(timerId);
+      window.removeEventListener("online", refresh);
+      window.removeEventListener("offline", refresh);
+      window.removeEventListener("focus", refresh);
+    };
+  }, []);
+
+  return {
+    status,
+    blocked: status === "offline" || status === "poor",
+    message: getRapaGoConnectivityMessage(role, status),
+  };
+}
+
+function RapaGoConnectivityBanner({
+  role,
+  status,
+  style,
+}: {
+  role: RapaGoConnectivityRole;
+  status: RapaGoConnectivityMode;
+  style?: CSSProperties;
+}): JSX.Element | null {
+  if (status === "online") return null;
+
+  const isChecking = status === "checking";
+  const isOffline = status === "offline";
+
+  return (
+    <IonCard
+      style={{
+        margin: "0 0 14px",
+        borderRadius: "20px",
+        background: isChecking
+          ? "linear-gradient(135deg,#1f2937,#334155)"
+          : isOffline
+            ? "linear-gradient(135deg,#2A1A18,#7f1d1d)"
+            : "linear-gradient(135deg,#2A1A18,#8F3F25)",
+        color: "#ffffff",
+        border: "1px solid rgba(255,255,255,.12)",
+        boxShadow: "0 16px 34px rgba(0,0,0,.24)",
+        ...style,
+      }}
+    >
+      <IonCardContent
+        style={{
+          padding: "13px 14px",
+          display: "grid",
+          gridTemplateColumns: "38px 1fr",
+          gap: 11,
+          alignItems: "center",
+        }}
+      >
+        <div
+          style={{
+            width: 38,
+            height: 38,
+            borderRadius: 999,
+            background: isChecking ? "rgba(255,255,255,.14)" : "rgba(245,158,11,.20)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            fontSize: "1.25rem",
+            fontWeight: 950,
+          }}
+        >
+          {isChecking ? "…" : isOffline ? "⌁" : "!"}
+        </div>
+        <div style={{ minWidth: 0 }}>
+          <div style={{ fontWeight: 950, fontSize: ".92rem" }}>
+            {isChecking ? "Revisando conexión" : isOffline ? "Modo sin internet" : "Modo conexión baja"}
+          </div>
+          <div style={{ marginTop: 3, fontSize: ".78rem", fontWeight: 800, lineHeight: 1.35, opacity: .9 }}>
+            {getRapaGoConnectivityMessage(role, status)}
+          </div>
+        </div>
+      </IonCardContent>
+    </IonCard>
+  );
+}
+
+
 
 function LegalStatusSection({ token }: { token: string }): React.ReactElement {
   const [docs,        setDocs]        = useState<LegalDocumentData[]>([]);
@@ -237,6 +486,9 @@ type StoredRegistrationProfile = {
   passengerType?: PassengerFareType | string | null;
   nationality?: string | null;
   passengerFareLabel?: string | null;
+  residenceVerificationStatus?: string | null;
+  residenceVerificationMessage?: string | null;
+  residentDocumentName?: string | null;
   directPassengerFareType?: string | null;
   directNationality?: string | null;
 };
@@ -258,6 +510,16 @@ function readStoredRegistrationProfile(): StoredRegistrationProfile {
       localStorage.getItem("rapago_profile_nationality") ??
       localStorage.getItem("rapago_nationality") ??
       localStorage.getItem("nationality");
+
+    const directResidenceVerificationStatus =
+      localStorage.getItem("rapago_residence_verification_status") ??
+      localStorage.getItem("rapago_resident_verification_status") ??
+      localStorage.getItem("residenceVerificationStatus");
+
+    const directResidenceVerificationMessage =
+      localStorage.getItem("rapago_residence_verification_user_message") ??
+      localStorage.getItem("rapago_resident_verification_user_message") ??
+      localStorage.getItem("residenceVerificationMessage");
 
     return {
       ...parsed,
@@ -285,6 +547,19 @@ function readStoredRegistrationProfile(): StoredRegistrationProfile {
       passengerFareLabel:
         parsed.passengerFareLabel ??
         parsed.nationality ??
+        null,
+      residenceVerificationStatus:
+        parsed.residenceVerificationStatus ??
+        directResidenceVerificationStatus ??
+        null,
+      residenceVerificationMessage:
+        parsed.residenceVerificationMessage ??
+        directResidenceVerificationMessage ??
+        null,
+      residentDocumentName:
+        parsed.residentDocumentName ??
+        localStorage.getItem("rapago_resident_document_name") ??
+        localStorage.getItem("rapago_passenger_residence_document_meta") ??
         null,
       directPassengerFareType: directFareType,
       directNationality,
@@ -891,6 +1166,496 @@ function passengerFareTypeLabel(type: PassengerFareType): string {
 }
 
 
+
+type ResidenceVerificationStatus =
+  | "not_required"
+  | "missing_document"
+  | "pending"
+  | "approved"
+  | "rejected";
+
+type ResidentVerificationState = {
+  status: ResidenceVerificationStatus;
+  message: string;
+  passengerFareType: PassengerFareType;
+  documentName: string;
+  rejectionReason: string;
+};
+
+const RESIDENT_VERIFICATION_REQUESTS_KEY = "rapago_resident_verification_requests_v1";
+
+const DEFAULT_RESIDENT_REJECTION_MESSAGE =
+  "Tu documento de Residente Rapa Nui fue rechazado. Por favor elige otro tipo de usuario: Turista chileno o Turista extranjero, o vuelve a adjuntar un documento de residencia válido.";
+
+function normalizeResidenceVerificationStatus(value: unknown): ResidenceVerificationStatus | null {
+  const raw = String(value ?? "")
+    .toLowerCase()
+    .trim();
+
+  if (!raw) return null;
+
+  if (
+    raw === "approved" ||
+    raw === "aprobado" ||
+    raw === "active" ||
+    raw === "activo" ||
+    raw === "validated" ||
+    raw === "validado"
+  ) {
+    return "approved";
+  }
+
+  if (
+    raw === "rejected" ||
+    raw === "rechazado" ||
+    raw === "denied" ||
+    raw === "denegado"
+  ) {
+    return "rejected";
+  }
+
+  if (
+    raw === "pending" ||
+    raw === "pendiente" ||
+    raw === "in_review" ||
+    raw === "review" ||
+    raw === "en_revision"
+  ) {
+    return "pending";
+  }
+
+  if (
+    raw === "missing_document" ||
+    raw === "document_missing" ||
+    raw === "sin_documento"
+  ) {
+    return "missing_document";
+  }
+
+  if (
+    raw === "not_required" ||
+    raw === "no_requiere" ||
+    raw === "user_changed_type" ||
+    raw === "changed_to_chilean" ||
+    raw === "changed_to_foreigner"
+  ) {
+    return "not_required";
+  }
+
+  return null;
+}
+
+function readResidentVerificationRequests(): Array<Record<string, unknown>> {
+  try {
+    const raw = localStorage.getItem(RESIDENT_VERIFICATION_REQUESTS_KEY);
+    const parsed = raw ? (JSON.parse(raw) as Array<Record<string, unknown>>) : [];
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+function getCurrentUserIdentity(user?: unknown): {
+  userId: string;
+  email: string;
+  rut: string;
+} {
+  const stored = readStoredRegistrationProfile();
+
+  return {
+    userId: getUserStringField(user, "id") ?? "",
+    email: (
+      getUserStringField(user, "email") ??
+      stored.email ??
+      localStorage.getItem("rapago_passenger_email") ??
+      localStorage.getItem("rapago_profile_email") ??
+      ""
+    )
+      .trim()
+      .toLowerCase(),
+    rut: (
+      getUserStringField(user, "rut") ??
+      stored.rut ??
+      localStorage.getItem("rapago_profile_rut") ??
+      localStorage.getItem("rapago_passenger_rut") ??
+      ""
+    )
+      .trim()
+      .toUpperCase(),
+  };
+}
+
+function findCurrentResidentVerificationRequest(
+  user?: unknown,
+): Record<string, unknown> | null {
+  const identity = getCurrentUserIdentity(user);
+  const requests = readResidentVerificationRequests();
+
+  return (
+    requests.find((item) => {
+      const userId = String(item.userId ?? "");
+      const email = String(item.email ?? "").trim().toLowerCase();
+      const rut = String(item.rut ?? "").trim().toUpperCase();
+
+      return (
+        Boolean(identity.userId && userId && identity.userId === userId) ||
+        Boolean(identity.email && email && identity.email === email) ||
+        Boolean(identity.rut && rut && identity.rut === rut)
+      );
+    }) ?? null
+  );
+}
+
+function getResidentRequestMessage(
+  request: Record<string, unknown> | null,
+  stored: StoredRegistrationProfile,
+  status: ResidenceVerificationStatus,
+): string {
+  const requestMessage =
+    String(
+      request?.userMessage ??
+        request?.reviewMessage ??
+        request?.adminMessage ??
+        request?.message ??
+        request?.rejectionReason ??
+        request?.reason ??
+        "",
+    ).trim();
+
+  if (requestMessage) return requestMessage;
+
+  if (stored.residenceVerificationMessage) {
+    return stored.residenceVerificationMessage;
+  }
+
+  if (status === "approved") {
+    return "Tu documento fue aprobado. Tu tarifa de Residente Rapa Nui ya está habilitada.";
+  }
+
+  if (status === "rejected") {
+    return DEFAULT_RESIDENT_REJECTION_MESSAGE;
+  }
+
+  if (status === "missing_document") {
+    return "Para usar tarifa de Residente Rapa Nui debes adjuntar un documento de residencia.";
+  }
+
+  if (status === "pending") {
+    return "Tu documento de Residente Rapa Nui está pendiente de revisión por el administrador.";
+  }
+
+  return "";
+}
+
+function syncResidentVerificationStorage(
+  state: ResidentVerificationState,
+): void {
+  try {
+    localStorage.setItem("rapago_residence_verification_status", state.status);
+
+    if (state.message) {
+      localStorage.setItem("rapago_residence_verification_user_message", state.message);
+    } else {
+      localStorage.removeItem("rapago_residence_verification_user_message");
+    }
+
+    if (state.status === "approved") {
+      localStorage.setItem("rapago_passenger_fare_type", "resident");
+      localStorage.setItem("rapago_profile_passenger_type", "resident");
+      localStorage.setItem("rapago_fare_passenger_type", "resident");
+      localStorage.setItem("rapago_passenger_type", "resident");
+      localStorage.setItem("rapago_profile_nationality", "Residente Rapa Nui");
+      localStorage.setItem("rapago_nationality", "Residente Rapa Nui");
+    }
+  } catch {
+    // No bloquea la vista del pasajero.
+  }
+}
+
+function readResidentVerificationState(user?: unknown): ResidentVerificationState {
+  const stored = readStoredRegistrationProfile();
+  const request = findCurrentResidentVerificationRequest(user);
+  const passengerFareType = readPassengerFareType(user);
+
+  const statusFromRequest = normalizeResidenceVerificationStatus(request?.status);
+  const statusFromUser =
+    normalizeResidenceVerificationStatus(getUserStringField(user, "residenceVerificationStatus")) ??
+    normalizeResidenceVerificationStatus(getUserStringField(user, "residentVerificationStatus")) ??
+    normalizeResidenceVerificationStatus(getUserStringField(user, "rapaNuiVerificationStatus"));
+  const statusFromStored = normalizeResidenceVerificationStatus(
+    stored.residenceVerificationStatus ??
+      localStorage.getItem("rapago_residence_verification_status"),
+  );
+
+  const isResident =
+    passengerFareType === "resident" ||
+    normalizePassengerFareType(stored.passengerFareLabel) === "resident" ||
+    normalizePassengerFareType(stored.nationality) === "resident";
+
+  const status =
+    statusFromRequest ??
+    statusFromUser ??
+    statusFromStored ??
+    (isResident ? "pending" : "not_required");
+
+  const documentName = String(
+    request?.documentName ??
+      stored.residentDocumentName ??
+      localStorage.getItem("rapago_resident_document_name") ??
+      "",
+  );
+
+  const rejectionReason = String(
+    request?.rejectionReason ??
+      request?.reason ??
+      request?.reviewMessage ??
+      "",
+  ).trim();
+
+  const state: ResidentVerificationState = {
+    status,
+    message: getResidentRequestMessage(request, stored, status),
+    passengerFareType,
+    documentName,
+    rejectionReason,
+  };
+
+  syncResidentVerificationStorage(state);
+
+  return state;
+}
+
+function setPassengerTypeAfterResidentRejection(
+  user: unknown,
+  nextType: Exclude<PassengerFareType, "resident">,
+): void {
+  const label = passengerFareTypeLabel(nextType);
+  const identity = getCurrentUserIdentity(user);
+
+  try {
+    const current = readStoredRegistrationProfile();
+    const nextProfile: StoredRegistrationProfile = {
+      ...current,
+      passengerFareType: nextType,
+      farePassengerType: nextType,
+      passengerType: nextType,
+      nationality: label,
+      passengerFareLabel: label,
+      residenceVerificationStatus: "not_required",
+      residenceVerificationMessage: "",
+    };
+
+    localStorage.setItem("rapago_registration_profile", JSON.stringify(nextProfile));
+    localStorage.setItem("rapago_passenger_fare_type", nextType);
+    localStorage.setItem("rapago_profile_passenger_type", nextType);
+    localStorage.setItem("rapago_fare_passenger_type", nextType);
+    localStorage.setItem("rapago_passenger_type", nextType);
+    localStorage.setItem("rapago_profile_nationality", label);
+    localStorage.setItem("rapago_nationality", label);
+    localStorage.setItem("rapago_residence_verification_status", "not_required");
+    localStorage.removeItem("rapago_residence_verification_user_message");
+
+    const requests = readResidentVerificationRequests();
+    const updated = requests.map((item) => {
+      const userId = String(item.userId ?? "");
+      const email = String(item.email ?? "").trim().toLowerCase();
+      const rut = String(item.rut ?? "").trim().toUpperCase();
+
+      const same =
+        Boolean(identity.userId && userId && identity.userId === userId) ||
+        Boolean(identity.email && email && identity.email === email) ||
+        Boolean(identity.rut && rut && identity.rut === rut);
+
+      if (!same) return item;
+
+      return {
+        ...item,
+        status: nextType === "chilean" ? "changed_to_chilean" : "changed_to_foreigner",
+        selectedPassengerFareType: nextType,
+        selectedPassengerFareLabel: label,
+        passengerFareType: nextType,
+        passengerFareLabel: label,
+        nationality: label,
+        updatedAt: new Date().toISOString(),
+        userMessage: `Elegiste ${label}. Ya no necesitas validación de residencia Rapa Nui.`,
+      };
+    });
+
+    localStorage.setItem(RESIDENT_VERIFICATION_REQUESTS_KEY, JSON.stringify(updated));
+    window.dispatchEvent(new CustomEvent("rapago:resident-verification-updated"));
+  } catch {
+    // No bloquea la app.
+  }
+}
+
+function ResidentVerificationStatusCard({
+  user,
+  onChanged,
+}: {
+  user?: unknown;
+  onChanged?: () => void;
+}): JSX.Element | null {
+  const [state, setState] = useState<ResidentVerificationState>(() =>
+    readResidentVerificationState(user),
+  );
+
+  useEffect(() => {
+    const refresh = () => {
+      setState(readResidentVerificationState(user));
+    };
+
+    refresh();
+
+    window.addEventListener("storage", refresh);
+    window.addEventListener("focus", refresh);
+    window.addEventListener(
+      "rapago:resident-verification-updated",
+      refresh as EventListener,
+    );
+
+    return () => {
+      window.removeEventListener("storage", refresh);
+      window.removeEventListener("focus", refresh);
+      window.removeEventListener(
+        "rapago:resident-verification-updated",
+        refresh as EventListener,
+      );
+    };
+  }, [user]);
+
+  if (state.status === "not_required") return null;
+
+  const tone =
+    state.status === "approved"
+      ? {
+          border: "#2dd36f",
+          bg: "#e9fbef",
+          title: "Residencia Rapa Nui aprobada",
+          badge: "Aprobado",
+          color: "success",
+        }
+      : state.status === "rejected"
+        ? {
+            border: "#eb445a",
+            bg: "#fff0f2",
+            title: "Documento rechazado",
+            badge: "Rechazado",
+            color: "danger",
+          }
+        : {
+            border: "#ffc409",
+            bg: "#fff7df",
+            title: "Validación pendiente",
+            badge: state.status === "missing_document" ? "Falta documento" : "Pendiente",
+            color: "warning",
+          };
+
+  return (
+    <IonCard
+      style={{
+        margin: "12px 0 0",
+        borderRadius: 18,
+        border: `1.5px solid ${tone.border}`,
+        background: tone.bg,
+        color: "#111",
+      }}
+    >
+      <IonCardContent style={{ padding: "14px" }}>
+        <div
+          style={{
+            display: "flex",
+            alignItems: "flex-start",
+            justifyContent: "space-between",
+            gap: 10,
+          }}
+        >
+          <div style={{ minWidth: 0 }}>
+            <div style={{ fontWeight: 950, fontSize: ".96rem" }}>
+              {tone.title}
+            </div>
+            <p
+              style={{
+                margin: "6px 0 0",
+                fontSize: ".84rem",
+                lineHeight: 1.35,
+                color: "#3a2a1b",
+                fontWeight: 750,
+              }}
+            >
+              {state.message}
+            </p>
+            {state.documentName && (
+              <IonNote style={{ display: "block", marginTop: 6 }}>
+                Documento: {state.documentName}
+              </IonNote>
+            )}
+          </div>
+
+          <IonBadge color={tone.color}>{tone.badge}</IonBadge>
+        </div>
+
+        {state.status === "rejected" && (
+          <div style={{ marginTop: 12, display: "grid", gap: 8 }}>
+            <IonText color="danger">
+              <p style={{ margin: 0, fontSize: ".82rem", fontWeight: 900 }}>
+                Elige otro tipo de usuario para seguir usando Rapa Go:
+              </p>
+            </IonText>
+
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+              <IonButton
+                size="small"
+                color="warning"
+                onClick={() => {
+                  setPassengerTypeAfterResidentRejection(user, "chilean");
+                  setState(readResidentVerificationState(user));
+                  onChanged?.();
+                }}
+              >
+                Turista chileno
+              </IonButton>
+
+              <IonButton
+                size="small"
+                color="medium"
+                onClick={() => {
+                  setPassengerTypeAfterResidentRejection(user, "foreigner");
+                  setState(readResidentVerificationState(user));
+                  onChanged?.();
+                }}
+              >
+                Turista extranjero
+              </IonButton>
+            </div>
+
+            <IonButton
+              size="small"
+              fill="outline"
+              color="primary"
+              onClick={() => {
+                try {
+                  localStorage.setItem("rapago_residence_verification_status", "missing_document");
+                  localStorage.setItem(
+                    "rapago_residence_verification_user_message",
+                    "Vuelve a adjuntar un documento de residencia válido desde tu perfil o registro.",
+                  );
+                  window.dispatchEvent(new CustomEvent("rapago:resident-verification-updated"));
+                } catch {
+                  // No bloquea.
+                }
+                setState(readResidentVerificationState(user));
+                onChanged?.();
+              }}
+            >
+              Volver a adjuntar documento
+            </IonButton>
+          </div>
+        )}
+      </IonCardContent>
+    </IonCard>
+  );
+}
+
 function vehicleFarePrefix(vehicle: VehicleFareCategory): string {
   if (vehicle === "xl") return "xl";
   if (vehicle === "luggage") return "luggage";
@@ -1188,11 +1953,205 @@ function passengerInputItemStyle(extra?: React.CSSProperties): React.CSSProperti
 }
 
 
+
+type RapaGoPassengerTileProps = {
+  icon: string;
+  title: string;
+  subtitle: string;
+  statusLabel?: string;
+  accent: string;
+  muted?: boolean;
+  onClick?: () => void;
+};
+
+function RapaGoPassengerHomeTile({
+  icon,
+  title,
+  subtitle,
+  statusLabel,
+  accent,
+  muted = false,
+  onClick,
+}: RapaGoPassengerTileProps): JSX.Element {
+  return (
+    <IonCard
+      button={Boolean(onClick)}
+      onClick={onClick}
+      style={{
+        margin: 0,
+        borderRadius: "24px",
+        background: muted
+          ? "linear-gradient(145deg, rgba(246,242,236,.78), rgba(236,222,194,.86))"
+          : "linear-gradient(145deg, #ffffff 0%, #F6F2EC 100%)",
+        color: "#111827",
+        border: muted
+          ? "1.5px dashed rgba(210,164,58,.58)"
+          : "1.5px solid rgba(210,164,58,.32)",
+        boxShadow: muted
+          ? "0 10px 24px rgba(0,0,0,.14)"
+          : "0 18px 38px rgba(0,0,0,.22)",
+        overflow: "hidden",
+        minHeight: 154,
+        opacity: muted ? .88 : 1,
+      }}
+    >
+      <IonCardContent
+        style={{
+          padding: "16px 13px",
+          minHeight: 154,
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+          justifyContent: "center",
+          textAlign: "center",
+          gap: 8,
+        }}
+      >
+        <div
+          style={{
+            width: 58,
+            height: 58,
+            borderRadius: 20,
+            background: muted
+              ? "linear-gradient(135deg,#e5dac5,#cdb68a)"
+              : accent,
+            color: "#111827",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            boxShadow: muted
+              ? "0 10px 22px rgba(0,0,0,.12)"
+              : "0 12px 28px rgba(210,164,58,.24)",
+          }}
+        >
+          <IonIcon icon={icon} style={{ fontSize: 30 }} />
+        </div>
+
+        {statusLabel && (
+          <span
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              justifyContent: "center",
+              padding: "4px 8px",
+              borderRadius: 999,
+              background: muted ? "rgba(143,63,37,.12)" : "rgba(34,197,94,.12)",
+              color: muted ? "#8F3F25" : "#166534",
+              fontSize: ".60rem",
+              fontWeight: 950,
+              letterSpacing: ".04em",
+              textTransform: "uppercase",
+            }}
+          >
+            {statusLabel}
+          </span>
+        )}
+
+        <div style={{ fontWeight: 950, fontSize: "1.02rem", lineHeight: 1.1 }}>
+          {title}
+        </div>
+        <div
+          style={{
+            color: "#4b5563",
+            fontSize: ".78rem",
+            fontWeight: 850,
+            lineHeight: 1.25,
+          }}
+        >
+          {subtitle}
+        </div>
+      </IonCardContent>
+    </IonCard>
+  );
+}
+
+function RapaGoPassengerInfoCard({
+  icon,
+  eyebrow,
+  title,
+  body,
+  onClick,
+  dark = false,
+}: {
+  icon: string;
+  eyebrow: string;
+  title: string;
+  body: string;
+  onClick?: () => void;
+  dark?: boolean;
+}): JSX.Element {
+  return (
+    <IonCard
+      button={Boolean(onClick)}
+      onClick={onClick}
+      style={{
+        minWidth: 270,
+        margin: 0,
+        borderRadius: 22,
+        background: dark
+          ? "linear-gradient(135deg,#111827,#8F3F25)"
+          : "linear-gradient(135deg,#F6F2EC,#ECD49A)",
+        color: dark ? "#F6F2EC" : "#111827",
+        border: "1px solid rgba(210,164,58,.32)",
+        boxShadow: "0 14px 32px rgba(0,0,0,.20)",
+      }}
+    >
+      <IonCardContent style={{ padding: "15px" }}>
+        <div style={{ display: "flex", gap: 11, alignItems: "flex-start" }}>
+          <div
+            style={{
+              width: 48,
+              height: 48,
+              borderRadius: 18,
+              background: dark ? "rgba(248,216,121,.18)" : "rgba(210,164,58,.22)",
+              color: dark ? "#F8D879" : "#8F3F25",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              flexShrink: 0,
+            }}
+          >
+            <IonIcon icon={icon} style={{ fontSize: 26 }} />
+          </div>
+          <div style={{ minWidth: 0 }}>
+            <div
+              style={{
+                fontSize: ".68rem",
+                fontWeight: 950,
+                textTransform: "uppercase",
+                letterSpacing: ".05em",
+                opacity: .82,
+              }}
+            >
+              {eyebrow}
+            </div>
+            <div style={{ marginTop: 4, fontWeight: 950, fontSize: "1rem", lineHeight: 1.15 }}>
+              {title}
+            </div>
+            <div
+              style={{
+                marginTop: 6,
+                color: dark ? "rgba(246,242,236,.78)" : "rgba(17,24,39,.72)",
+                fontSize: ".78rem",
+                fontWeight: 800,
+                lineHeight: 1.35,
+              }}
+            >
+              {body}
+            </div>
+          </div>
+        </div>
+      </IonCardContent>
+    </IonCard>
+  );
+}
+
 export function PassengerHomePage(): JSX.Element {
   const history = useHistory();
-  const isOnline  = useConnectivity();
+  const passengerConnection = useRapaGoConnectivityMonitor("passenger");
   const { session } = useAuth();
   const [profile, setProfile] = useState<PassengerProfileData | null>(null);
+  const [residentVerificationRevision, setResidentVerificationRevision] = useState(0);
 
   useEffect(() => {
     if (!session?.accessToken) return;
@@ -1220,6 +2179,26 @@ export function PassengerHomePage(): JSX.Element {
       });
   }, [session?.accessToken]);
 
+  useEffect(() => {
+    const refresh = () => setResidentVerificationRevision((current) => current + 1);
+
+    window.addEventListener("storage", refresh);
+    window.addEventListener("focus", refresh);
+    window.addEventListener(
+      "rapago:resident-verification-updated",
+      refresh as EventListener,
+    );
+
+    return () => {
+      window.removeEventListener("storage", refresh);
+      window.removeEventListener("focus", refresh);
+      window.removeEventListener(
+        "rapago:resident-verification-updated",
+        refresh as EventListener,
+      );
+    };
+  }, []);
+
   const name     = session?.user?.name ?? "";
   const firstName = name.split(" ")[0] || "pasajero";
   const initials  = name.trim().split(/\s+/).map((p: string) => p[0] ?? "").slice(0, 2).join("").toUpperCase() || "P";
@@ -1228,6 +2207,7 @@ export function PassengerHomePage(): JSX.Element {
 
   return (
     <IonPage>
+      <RapaGoLanguageRuntime />
       {/* Branded header — no IonHeader to allow full custom gradient */}
       <div style={{
         background: "linear-gradient(145deg, var(--ion-color-primary) 0%, var(--ion-color-primary-shade) 100%)",
@@ -1268,6 +2248,14 @@ export function PassengerHomePage(): JSX.Element {
       <IonContent>
         <div style={{ padding: "0 16px 80px" }}>
 
+          <ResidentVerificationStatusCard
+            key={residentVerificationRevision}
+            user={session?.user}
+            onChanged={() =>
+              setResidentVerificationRevision((current) => current + 1)
+            }
+          />
+
           {/* Offline / phone warnings */}
           {profile !== null && !hasPhone && (
             <div style={{ margin: "12px 0 0", background: "#fff3cd", border: "1px solid #ffc107", borderRadius: "12px", padding: "10px 14px" }}>
@@ -1278,121 +2266,90 @@ export function PassengerHomePage(): JSX.Element {
               </IonText>
             </div>
           )}
-          {!isOnline && (
-            <div style={{ margin: "12px 0 0", background: "#fff3cd", border: "1px solid #ffc107", borderRadius: "12px", padding: "10px 14px" }}>
-              <IonText>
-                <p style={{ margin: 0, fontSize: "0.82rem", color: "#6b4700" }}>
-                  Modo offline — tus viajes se sincronizarán cuando recuperes conexión.
-                </p>
-              </IonText>
-              <WhatsAppButton
-                phone={RAPAGO_CONTACT.adminPhone}
-                message={WA_MESSAGES.passengerToAdmin({ origin: "mi ubicación", destination: "mi destino", name: "pasajero" })}
-                label="Contactar operador"
-                size="small"
-                fill="solid"
-                style={{ marginTop: "8px" }}
-              />
-            </div>
-          )}
+          <RapaGoConnectivityBanner
+            role="passenger"
+            status={passengerConnection.status}
+            style={{ marginTop: 12 }}
+          />
 
-          {/* ── Servicios Rapa Go rápidos ── */}
+          {/* ── Servicios principales de lanzamiento ── */}
           <div style={{ marginTop: "20px" }}>
-            <div style={{ fontWeight: 700, fontSize: "1rem", marginBottom: "12px", color: "var(--ion-text-color)" }}>
-              Servicios
+            <div style={{ fontWeight: 950, fontSize: "1.05rem", marginBottom: "12px", color: "var(--ion-text-color)" }}>
+              Servicios Rapa Go
             </div>
             <div style={{
               display: "grid",
-              gridTemplateColumns: "repeat(4, 1fr)",
-              gap: "10px",
+              gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+              gap: "12px",
             }}>
-              <ServiceCard
+              <RapaGoPassengerHomeTile
                 icon={carOutline}
                 title="Viaje"
-                subtitle="Solicitar ahora"
-                color="primary"
+                subtitle="Solicitar o agendar"
+                statusLabel="Disponible"
+                accent="linear-gradient(135deg,#D2A43A,#F8D879)"
                 onClick={() => history.push(ROUTES.PASSENGER.REQUEST_RIDE)}
               />
-              <ServiceCard
-                icon={mapOutline}
-                title="Tours"
-                subtitle="Con guías locales"
-                color="secondary"
-                onClick={() => history.push(ROUTES.PASSENGER.GUIDES)}
-              />
-              <ServiceCard
+              <RapaGoPassengerHomeTile
                 icon={carSportOutline}
-                title="Arriendo"
-                subtitle="Vehículos"
-                color="tertiary"
+                title="Reserva vehículo"
+                subtitle="Arriendo en Rapa Nui"
+                statusLabel="Disponible"
+                accent="linear-gradient(135deg,#22c55e,#D2A43A)"
                 onClick={() => history.push(ROUTES.PASSENGER.RENTALS)}
               />
-              <ServiceCard
+              <RapaGoPassengerHomeTile
+                icon={mapOutline}
+                title="Turismo local"
+                subtitle="Guías y tours pronto"
+                statusLabel="Próximamente"
+                accent="linear-gradient(135deg,#C5532F,#F8D879)"
+                muted
+                onClick={() => history.push(ROUTES.PASSENGER.GUIDES)}
+              />
+              <RapaGoPassengerHomeTile
                 icon={ticketOutline}
                 title="Eventos"
-                subtitle="Cultura"
-                color="warning"
+                subtitle="Cultura y panoramas"
+                statusLabel="Próximamente"
+                accent="linear-gradient(135deg,#111827,#D2A43A)"
+                muted
                 onClick={() => history.push(ROUTES.PASSENGER.EVENTS)}
               />
             </div>
           </div>
 
-          {/* ── Noticias y recomendaciones ── */}
+          {/* ── Próximamente y billetera ── */}
           <div style={{ marginTop: "24px" }}>
-            <div style={{ fontWeight: 800, fontSize: "1rem", marginBottom: "10px", color: "var(--ion-text-color)" }}>
-              Noticias Rapa Go
+            <div style={{ fontWeight: 950, fontSize: "1.05rem", marginBottom: "10px", color: "var(--ion-text-color)" }}>
+              Próximamente en Rapa Go
             </div>
 
-            <div style={{ display: "flex", gap: "10px", overflowX: "auto", paddingBottom: "4px" }}>
-              <IonCard
-                button
-                style={{
-                  minWidth: "260px",
-                  margin: 0,
-                  borderRadius: "18px",
-                  background: "linear-gradient(135deg,#F6F2EC,#ECD49A)",
-                  color: "#111",
-                  boxShadow: "0 12px 28px rgba(0,0,0,.18)",
-                }}
+            <div style={{ display: "flex", gap: "12px", overflowX: "auto", paddingBottom: "4px" }}>
+              <RapaGoPassengerInfoCard
+                icon={compassOutline}
+                eyebrow="Turismo"
+                title="Guías locales"
+                body="Estamos preparando perfiles de guías, rutas y experiencias turísticas aprobadas para Rapa Nui."
                 onClick={() => history.push(ROUTES.PASSENGER.GUIDES)}
-              >
-                <IonCardContent style={{ padding: "14px" }}>
-                  <div style={{ display: "flex", gap: "10px", alignItems: "center" }}>
-                    <IonIcon icon={compassOutline} style={{ fontSize: "1.7rem", color: "#C5532F", flexShrink: 0 }} />
-                    <div>
-                      <div style={{ fontWeight: 950, fontSize: ".92rem" }}>Recomendados para turismo</div>
-                      <div style={{ marginTop: 4, color: "rgba(17,17,17,.66)", fontSize: ".76rem", lineHeight: 1.35 }}>
-                        Anakena, Tongariki, Orongo y Rano Raraku ahora van en Tours, no en solicitud de viaje.
-                      </div>
-                    </div>
-                  </div>
-                </IonCardContent>
-              </IonCard>
+              />
 
-              <IonCard
-                button
-                style={{
-                  minWidth: "240px",
-                  margin: 0,
-                  borderRadius: "18px",
-                  background: "linear-gradient(135deg,#111111,#8F3F25)",
-                  color: "#F6F2EC",
-                  boxShadow: "0 12px 28px rgba(0,0,0,.20)",
-                }}
+              <RapaGoPassengerInfoCard
+                icon={ticketOutline}
+                eyebrow="Eventos"
+                title="Actividades culturales"
+                body="Los eventos quedarán disponibles cuando el administrador publique experiencias y entradas oficiales."
                 onClick={() => history.push(ROUTES.PASSENGER.EVENTS)}
-              >
-                <IonCardContent style={{ padding: "14px" }}>
-                  <div style={{ display: "flex", gap: "10px", alignItems: "center" }}>
-                    <IonIcon icon={ticketOutline} style={{ fontSize: "1.7rem", color: "#F8D879", flexShrink: 0 }} />
-                    <div>
-                      <div style={{ fontWeight: 950, fontSize: ".92rem" }}>Eventos y experiencias</div>
-                      <div style={{ marginTop: 4, color: "rgba(246,242,236,.76)", fontSize: ".76rem", lineHeight: 1.35 }}>
-                        Revisa actividades culturales dentro de la app.
-                      </div>
-                    </div>
-                  </div>
-                </IonCardContent>
-              </IonCard>
+                dark
+              />
+
+              <RapaGoPassengerInfoCard
+                icon={walletOutline}
+                eyebrow="Billetera"
+                title="Saldo a favor"
+                body="Si pagas de más o queda una diferencia, el administrador podrá revisarlo y dejarlo como saldo para próximos viajes si corresponde."
+                onClick={() => history.push(ROUTES.PASSENGER.WALLET)}
+              />
             </div>
           </div>
 
@@ -1587,6 +2544,7 @@ export function PassengerRequestRidePage(): JSX.Element {
 function RequestRidePage(): JSX.Element {
   const { session } = useAuth();
   const history = useHistory();
+  const passengerConnection = useRapaGoConnectivityMonitor("passenger");
 
   const [originInput,       setOriginInput]       = useState("");
   const [destInput,         setDestInput]         = useState("");
@@ -1755,6 +2713,11 @@ function RequestRidePage(): JSX.Element {
   async function handleRequest() {
     const origin = originInput.trim();
     const dest = destInput.trim();
+
+    if (passengerConnection.blocked) {
+      setSubmitError(passengerConnection.message);
+      return;
+    }
 
     if (!origin || !dest) {
       setSubmitError("Origen y destino son requeridos.");
@@ -1960,6 +2923,7 @@ function RequestRidePage(): JSX.Element {
 
   return (
     <IonPage>
+      <RapaGoLanguageRuntime />
       <IonHeader>
         <IonToolbar color="primary">
           <IonTitle>Solicitar Viaje</IonTitle>
@@ -1968,6 +2932,11 @@ function RequestRidePage(): JSX.Element {
 
       <IonContent className="ion-padding">
         <div style={{ display: "flex", flexDirection: "column", gap: "14px", paddingBottom: "90px" }}>
+          <RapaGoConnectivityBanner
+            role="passenger"
+            status={passengerConnection.status}
+          />
+
           {blockingRide && (
             <IonCard
               style={passengerCardStyle({
@@ -2353,10 +3322,12 @@ function RequestRidePage(): JSX.Element {
                 expand="block"
                 style={{ marginTop: "16px" }}
                 onClick={() => void handleRequest()}
-                disabled={!!blockingRide || submitting || !farePreview || paymentMethod !== "cash" || (rideMode === "scheduled" && (!scheduledAt || (tripFareMode === "round_trip" && !returnScheduledAt)))}
+                disabled={passengerConnection.blocked || !!blockingRide || submitting || !farePreview || paymentMethod !== "cash" || (rideMode === "scheduled" && (!scheduledAt || (tripFareMode === "round_trip" && !returnScheduledAt)))}
               >
                 {submitting ? (
                   <IonSpinner name="dots" />
+                ) : passengerConnection.blocked ? (
+                  "Sin conexión estable"
                 ) : blockingRide ? (
                   "Ya tienes un viaje activo"
                 ) : paymentMethod === "cash" ? (
@@ -4100,6 +5071,7 @@ function PassengerDriverLiveMap({
 function TripsPage(): JSX.Element {
   const history = useHistory();
   const { session } = useAuth();
+  const passengerConnection = useRapaGoConnectivityMonitor("passenger");
 
   const [allRides,    setAllRides]    = useState<RideRequestData[]>([]);
   const [page,        setPage]        = useState(1);
@@ -4124,7 +5096,7 @@ function TripsPage(): JSX.Element {
       const localRides = readLocalPassengerRides();
       const requeuedRides = syncRequeuedRidesIntoLocalPassengerRides();
 
-      if (!session?.accessToken) {
+      if (passengerConnection.blocked || !session?.accessToken) {
         setAllRides(sortPassengerRidesForDisplay(mergePassengerRidesForDisplay([...localRides, ...requeuedRides])));
         setPage(1);
         return;
@@ -4148,7 +5120,7 @@ function TripsPage(): JSX.Element {
     } finally {
       setLoading(false);
     }
-  }, [session?.accessToken]);
+  }, [passengerConnection.blocked, session?.accessToken]);
 
   useEffect(() => { void loadRides(); }, [loadRides]);
 
@@ -4170,6 +5142,11 @@ function TripsPage(): JSX.Element {
   }, [statusFilter]);
 
   async function handleCancel(rideId: string) {
+    if (passengerConnection.blocked) {
+      setCancelError(passengerConnection.message);
+      return;
+    }
+
     const target =
       allRides.find((ride) => ride.id === rideId) ??
       readLocalPassengerRides().find((ride) => ride.id === rideId) ??
@@ -4223,6 +5200,11 @@ function TripsPage(): JSX.Element {
   }
 
   async function handleCancelAccepted(rideId: string) {
+    if (passengerConnection.blocked) {
+      setCancelError(passengerConnection.message);
+      return;
+    }
+
     const target =
       allRides.find((ride) => ride.id === rideId) ??
       readLocalPassengerRides().find((ride) => ride.id === rideId) ??
@@ -4282,6 +5264,7 @@ function TripsPage(): JSX.Element {
 
   return (
     <IonPage>
+      <RapaGoLanguageRuntime />
       <IonHeader>
         <IonToolbar color="primary">
           <IonTitle>Mis Viajes</IonTitle>
@@ -4316,6 +5299,13 @@ function TripsPage(): JSX.Element {
         <IonRefresher slot="fixed" onIonRefresh={(e) => { void loadRides().then(() => e.detail.complete()); }}>
           <IonRefresherContent />
         </IonRefresher>
+
+        <div style={{ padding: "12px 16px 0" }}>
+          <RapaGoConnectivityBanner
+            role="passenger"
+            status={passengerConnection.status}
+          />
+        </div>
 
         {loading && (
           <div style={{ display: "flex", justifyContent: "center", paddingTop: "40px" }}>
@@ -4733,6 +5723,7 @@ export function PassengerGuidesPage(): JSX.Element {
 
   return (
     <IonPage>
+      <RapaGoLanguageRuntime />
       <IonHeader>
         <IonToolbar color="primary">
           <IonTitle>Guías locales</IonTitle>
@@ -4780,7 +5771,7 @@ export function PassengerGuidesPage(): JSX.Element {
         {loadError && <div style={{ padding: "16px" }}><IonText color="danger"><p>{loadError}</p></IonText></div>}
 
         {!loading && guides.length === 0 && (
-          <EmptyState icon={compassOutline} title="Sin guías disponibles" subtitle="Vuelve a intentarlo más tarde" />
+          <EmptyState icon={compassOutline} title="Guías locales próximamente" subtitle="Estamos preparando perfiles, rutas turísticas y experiencias aprobadas para Rapa Nui." />
         )}
 
         {!loading && guides.length > 0 && (
@@ -4926,6 +5917,7 @@ function PassengerGuideDetailPage({ guide, onBack }: { guide: GuidePublicData; o
 
   return (
     <IonPage>
+      <RapaGoLanguageRuntime />
       <IonHeader>
         <IonToolbar color="primary">
           <IonButton slot="start" fill="clear" color="light" onClick={onBack}>
@@ -5211,6 +6203,7 @@ export function PassengerServiceBookingsPage(): JSX.Element {
 
   return (
     <IonPage>
+      <RapaGoLanguageRuntime />
       <IonHeader>
         <IonToolbar color="primary">
           <IonTitle>Mis Reservas de Servicios</IonTitle>
@@ -5366,6 +6359,7 @@ export function PassengerRentalsPage(): JSX.Element {
 
   return (
     <IonPage>
+      <RapaGoLanguageRuntime />
       <IonHeader>
         <IonToolbar color="primary">
           <IonTitle>Arriendo de Vehículos</IonTitle>
@@ -5543,6 +6537,7 @@ function PassengerRentalDetailPage({ vehicleId, onBack }: { vehicleId: string; o
   if (loading) {
     return (
       <IonPage>
+      <RapaGoLanguageRuntime />
         <IonHeader><IonToolbar color="primary"><IonButton slot="start" fill="clear" color="light" onClick={onBack}>← Volver</IonButton><IonTitle>Vehículo</IonTitle></IonToolbar></IonHeader>
         <IonContent><div style={{ display: "flex", justifyContent: "center", paddingTop: "40px" }}><IonSpinner name="crescent" /></div></IonContent>
       </IonPage>
@@ -5552,6 +6547,7 @@ function PassengerRentalDetailPage({ vehicleId, onBack }: { vehicleId: string; o
   if (!vehicle) {
     return (
       <IonPage>
+      <RapaGoLanguageRuntime />
         <IonHeader><IonToolbar color="primary"><IonButton slot="start" fill="clear" color="light" onClick={onBack}>← Volver</IonButton><IonTitle>Vehículo</IonTitle></IonToolbar></IonHeader>
         <IonContent className="ion-padding"><IonText color="danger"><p>No se pudo cargar el vehículo.</p></IonText></IonContent>
       </IonPage>
@@ -5560,6 +6556,7 @@ function PassengerRentalDetailPage({ vehicleId, onBack }: { vehicleId: string; o
 
   return (
     <IonPage>
+      <RapaGoLanguageRuntime />
       <IonHeader>
         <IonToolbar color="primary">
           <IonButton slot="start" fill="clear" color="light" onClick={onBack}>← Volver</IonButton>
@@ -5750,6 +6747,7 @@ export function PassengerRentalBookingsPage(): JSX.Element {
 
   return (
     <IonPage>
+      <RapaGoLanguageRuntime />
       <IonHeader>
         <IonToolbar color="primary">
           <IonTitle>Mis Arriendos</IonTitle>
@@ -5890,6 +6888,7 @@ function WalletPage(): JSX.Element {
 
   return (
     <IonPage>
+      <RapaGoLanguageRuntime />
       <IonHeader>
         <IonToolbar color="primary">
           <IonTitle>Mi Billetera</IonTitle>
@@ -5941,9 +6940,29 @@ function WalletPage(): JSX.Element {
                   ↓ Retirar
                 </IonButton>
               </div>
-              <IonNote style={{ fontSize: "0.72rem", color: "var(--ion-color-medium)", display: "block", marginBottom: "20px", textAlign: "center" }}>
+              <IonNote style={{ fontSize: "0.72rem", color: "var(--ion-color-medium)", display: "block", marginBottom: "14px", textAlign: "center" }}>
                 Recarga y retiro disponibles próximamente
               </IonNote>
+
+              <IonCard
+                style={{
+                  margin: "0 0 18px",
+                  borderRadius: "18px",
+                  background: "linear-gradient(135deg,#fff7dd,#F6F2EC)",
+                  color: "#111827",
+                  border: "1px solid rgba(210,164,58,.38)",
+                  boxShadow: "0 10px 24px rgba(0,0,0,.12)",
+                }}
+              >
+                <IonCardContent style={{ padding: "14px" }}>
+                  <div style={{ fontWeight: 950, fontSize: ".95rem" }}>
+                    Saldo para próximos viajes
+                  </div>
+                  <div style={{ marginTop: 6, color: "rgba(17,24,39,.72)", fontSize: ".80rem", fontWeight: 800, lineHeight: 1.35 }}>
+                    Si un pasajero paga de más o existe una diferencia, el administrador podrá revisar el caso y confirmar si ese monto queda como saldo para usar en viajes futuros.
+                  </div>
+                </IonCardContent>
+              </IonCard>
 
               <div style={{ fontWeight: 700, fontSize: "1rem", marginBottom: "12px" }}>Movimientos</div>
 
@@ -6139,6 +7158,7 @@ export function PassengerProfilePage(): JSX.Element {
 
   return (
     <IonPage>
+      <RapaGoLanguageRuntime />
       <IonHeader>
         <IonToolbar color="primary">
           <IonTitle>Mi Perfil</IonTitle>

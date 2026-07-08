@@ -24,7 +24,7 @@
     IonToolbar,
     useIonViewWillEnter,
   } from "@ionic/react";
-  import { useEffect, useState, type CSSProperties } from "react";
+  import { useEffect, useState, type CSSProperties, type Dispatch, type SetStateAction } from "react";
   import { useHistory } from "react-router-dom";
   import { useAuth } from "../../features/auth/index.js";
   import { applicationsService, type ApplicationData } from "../../features/applications/applications.service.js";
@@ -291,22 +291,362 @@ function isRutValid(value: string): boolean {
     };
   }
 
+  type DriverVehicleKind = "own" | "optional";
+
   type DriverVehicleForm = {
     id: string;
-    description: string;
+    kind: DriverVehicleKind;
+    brand: string;
+    model: string;
+    year: string;
+    plate: string;
+    color: string;
     photoFile: File | null;
+    expiresAt: string;
   };
 
-  function createDriverVehicle(index: number): DriverVehicleForm {
+  type DriverApplicationVehiclePayload = {
+    id: string;
+    order: number;
+    primary: boolean;
+    ownership: DriverVehicleKind;
+    brand: string;
+    model: string;
+    year: string;
+    plate: string;
+    color: string;
+    label: string;
+    imageDataUrl: string | null;
+    imageName: string | null;
+    expiresAt: string | null;
+    createdAt: string;
+    approvedStatus: "pending_admin_review";
+    photoProvided: boolean;
+    photoFileName?: string;
+    photoFileType?: string;
+    photoFileSize?: number;
+  };
+
+  function createDriverVehicle(index: number, kind: DriverVehicleKind = "optional"): DriverVehicleForm {
     return {
       id: `vehicle-${Date.now()}-${index}`,
-      description: "",
+      kind,
+      brand: "",
+      model: "",
+      year: "",
+      plate: "",
+      color: "",
       photoFile: null,
+      expiresAt: "",
     };
   }
 
+  function cleanVehicleText(value: string, maxLength = 40): string {
+    return value.replace(/\s+/g, " ").trim().slice(0, maxLength);
+  }
+
+  function cleanVehicleYear(value: string): string {
+    return onlyNumbers(value, 4);
+  }
+
+  function cleanVehiclePlate(value: string): string {
+    return value
+      .toUpperCase()
+      .replace(/[^A-Z0-9-]/g, "")
+      .slice(0, 12);
+  }
+
   function isVehicleComplete(vehicle: DriverVehicleForm): boolean {
-    return vehicle.description.trim().length > 0 && vehicle.photoFile != null;
+    const requiredFieldsReady =
+      cleanVehicleText(vehicle.brand).length > 0 &&
+      cleanVehicleText(vehicle.model).length > 0 &&
+      cleanVehicleYear(vehicle.year).length === 4 &&
+      cleanVehiclePlate(vehicle.plate).length >= 5 &&
+      cleanVehicleText(vehicle.color).length > 0 &&
+      vehicle.photoFile != null;
+
+    if (!requiredFieldsReady) return false;
+
+    if (vehicle.kind === "optional") {
+      return vehicle.expiresAt.trim().length > 0;
+    }
+
+    return true;
+  }
+
+  function vehicleLabel(vehicle: Pick<DriverVehicleForm, "brand" | "model" | "year" | "color" | "plate">): string {
+    return [
+      cleanVehicleText(vehicle.brand),
+      cleanVehicleText(vehicle.model),
+      cleanVehicleYear(vehicle.year),
+      cleanVehicleText(vehicle.color),
+      cleanVehiclePlate(vehicle.plate),
+    ]
+      .filter(Boolean)
+      .join(" ");
+  }
+
+  function getApplicationOwnerKey(source?: unknown): string {
+    if (!source || typeof source !== "object") return "driver-global";
+
+    const data = source as Record<string, unknown>;
+    const candidates = [
+      data.ownerKey,
+      data.driverOwnerKey,
+      data.driverEmail,
+      data.email,
+      data.userEmail,
+      data.driverUserEmail,
+      data.id,
+      data.userId,
+      data.driverId,
+      data.driverUserId,
+      data.driverFullName,
+      data.driverName,
+      data.fullName,
+      data.name,
+    ];
+
+    for (const value of candidates) {
+      const text = String(value ?? "").trim();
+      if (text) return text.toLowerCase();
+    }
+
+    return "driver-global";
+  }
+
+  function getApplicationScopedStorageKey(baseKey: string, source?: unknown): string {
+    return `${baseKey}__${encodeURIComponent(getApplicationOwnerKey(source))}`;
+  }
+
+  function safeSetApplicationStorageItem(key: string, value: string): void {
+    try {
+      localStorage.setItem(key, value);
+    } catch {
+      // No bloquea la postulación si el navegador no permite guardar.
+    }
+
+    try {
+      sessionStorage.setItem(key, value);
+    } catch {
+      // No bloquea la postulación.
+    }
+  }
+
+  function writeApplicationScopedStorageItem(baseKey: string, value: string, source?: unknown): void {
+    const clean = value.trim();
+    const scopedKey = getApplicationScopedStorageKey(baseKey, source);
+    const ownerKey = getApplicationOwnerKey(source);
+
+    if (!clean) return;
+
+    safeSetApplicationStorageItem(scopedKey, clean);
+    safeSetApplicationStorageItem(baseKey, clean);
+    safeSetApplicationStorageItem(`${baseKey}_owner_key`, ownerKey);
+  }
+
+  function readImageFileAsDataUrl(file: File | null, maxSide = 900, quality = 0.78): Promise<string | null> {
+    return new Promise((resolve) => {
+      if (!file) {
+        resolve(null);
+        return;
+      }
+
+      try {
+        const reader = new FileReader();
+
+        reader.onload = () => {
+          const raw = typeof reader.result === "string" ? reader.result : "";
+          if (!raw.startsWith("data:image/")) {
+            resolve(raw || null);
+            return;
+          }
+
+          const img = new Image();
+
+          img.onload = () => {
+            try {
+              const ratio = Math.min(1, maxSide / Math.max(img.width, img.height));
+              const width = Math.max(1, Math.round(img.width * ratio));
+              const height = Math.max(1, Math.round(img.height * ratio));
+
+              const canvas = document.createElement("canvas");
+              canvas.width = width;
+              canvas.height = height;
+
+              const ctx = canvas.getContext("2d");
+              if (!ctx) {
+                resolve(raw);
+                return;
+              }
+
+              ctx.drawImage(img, 0, 0, width, height);
+              resolve(canvas.toDataURL("image/jpeg", quality));
+            } catch {
+              resolve(raw);
+            }
+          };
+
+          img.onerror = () => resolve(raw);
+          img.src = raw;
+        };
+
+        reader.onerror = () => resolve(null);
+        reader.readAsDataURL(file);
+      } catch {
+        resolve(null);
+      }
+    });
+  }
+
+  async function buildDriverVehiclePayloads(
+    vehicles: DriverVehicleForm[],
+  ): Promise<DriverApplicationVehiclePayload[]> {
+    const now = new Date().toISOString();
+
+    return Promise.all(
+      vehicles.map(async (vehicle, index) => {
+        const imageDataUrl = await readImageFileAsDataUrl(vehicle.photoFile);
+
+        return {
+          id: vehicle.id,
+          order: index + 1,
+          primary: index === 0,
+          ownership: vehicle.kind,
+          brand: cleanVehicleText(vehicle.brand),
+          model: cleanVehicleText(vehicle.model),
+          year: cleanVehicleYear(vehicle.year),
+          plate: cleanVehiclePlate(vehicle.plate),
+          color: cleanVehicleText(vehicle.color),
+          label: vehicleLabel(vehicle),
+          imageDataUrl,
+          imageName: vehicle.photoFile?.name ?? null,
+          expiresAt: vehicle.kind === "optional" ? vehicle.expiresAt || null : null,
+          createdAt: now,
+          approvedStatus: "pending_admin_review",
+          photoProvided: vehicle.photoFile != null,
+          photoFileName: vehicle.photoFile?.name,
+          photoFileType: vehicle.photoFile?.type,
+          photoFileSize: vehicle.photoFile?.size,
+        };
+      }),
+    );
+  }
+
+  function persistDriverApplicationToProfile(input: {
+    user?: unknown;
+    firstName: string;
+    lastName: string;
+    email: string;
+    phone: string;
+    rut: string;
+    birthDate?: string;
+    vehicles: DriverApplicationVehiclePayload[];
+  }): void {
+    const ownerKey = getApplicationOwnerKey(input.user);
+    const primaryVehicle = input.vehicles[0] ?? null;
+    const fullName = `${input.firstName} ${input.lastName}`.trim();
+    const now = new Date().toISOString();
+
+    const registrationProfile = {
+      ownerKey,
+      driverOwnerKey: ownerKey,
+      name: fullName,
+      firstName: input.firstName,
+      lastName: input.lastName,
+      email: input.email,
+      phone: input.phone,
+      rut: input.rut,
+      birthDate: input.birthDate ?? "",
+      vehicleBrand: primaryVehicle?.brand ?? "",
+      vehicleModel: primaryVehicle?.model ?? "",
+      vehicleYear: primaryVehicle?.year ?? "",
+      vehiclePlate: primaryVehicle?.plate ?? "",
+      vehicleColor: primaryVehicle?.color ?? "",
+      vehicleImageDataUrl: primaryVehicle?.imageDataUrl ?? "",
+      vehicleImageName: primaryVehicle?.imageName ?? "",
+      driverApplicationStatus: "pending_admin_review",
+      updatedAt: now,
+    };
+
+    const publicVehicleSnapshot = {
+      ...(primaryVehicle ?? {}),
+      ownerKey,
+      driverOwnerKey: ownerKey,
+      driverName: fullName,
+      driverFullName: fullName,
+      driverEmail: input.email,
+      driverPhone: input.phone,
+      driverVehicleBrand: primaryVehicle?.brand ?? null,
+      driverVehicleModel: primaryVehicle?.model ?? null,
+      driverVehicleYear: primaryVehicle?.year ?? null,
+      driverVehicleColor: primaryVehicle?.color ?? null,
+      driverVehiclePlate: primaryVehicle?.plate ?? null,
+      driverVehicleOwnership: primaryVehicle?.ownership ?? "own",
+      driverVehicleImageDataUrl: primaryVehicle?.imageDataUrl ?? null,
+      driverVehicleImageName: primaryVehicle?.imageName ?? null,
+      vehicleBrand: primaryVehicle?.brand ?? null,
+      vehicleModel: primaryVehicle?.model ?? null,
+      vehicleYear: primaryVehicle?.year ?? null,
+      vehicleColor: primaryVehicle?.color ?? null,
+      vehiclePlate: primaryVehicle?.plate ?? null,
+      vehicleImageDataUrl: primaryVehicle?.imageDataUrl ?? null,
+      vehiclePhotoDataUrl: primaryVehicle?.imageDataUrl ?? null,
+      applicationStatus: "pending_admin_review",
+      updatedAt: now,
+    };
+
+    try {
+      const registrationJson = JSON.stringify(registrationProfile);
+      const vehiclesJson = JSON.stringify(input.vehicles);
+      const publicVehicleJson = JSON.stringify(publicVehicleSnapshot);
+
+      writeApplicationScopedStorageItem("rapago_registration_profile", registrationJson, input.user);
+      writeApplicationScopedStorageItem("rapago_driver_registration_profile", registrationJson, input.user);
+
+      writeApplicationScopedStorageItem("rapago_profile_phone", input.phone, input.user);
+      writeApplicationScopedStorageItem("rapago_driver_phone", input.phone, input.user);
+      writeApplicationScopedStorageItem("rapago_profile_rut", input.rut, input.user);
+      writeApplicationScopedStorageItem("rapago_driver_rut", input.rut, input.user);
+
+      if (primaryVehicle) {
+        writeApplicationScopedStorageItem("rapago_driver_vehicle_brand", primaryVehicle.brand, input.user);
+        writeApplicationScopedStorageItem("rapago_driver_vehicle_model", primaryVehicle.model, input.user);
+        writeApplicationScopedStorageItem("rapago_driver_vehicle_year", primaryVehicle.year, input.user);
+        writeApplicationScopedStorageItem("rapago_driver_vehicle_plate", primaryVehicle.plate, input.user);
+        writeApplicationScopedStorageItem("rapago_driver_vehicle_color", primaryVehicle.color, input.user);
+
+        if (primaryVehicle.imageDataUrl) {
+          writeApplicationScopedStorageItem("rapago_driver_vehicle_photo", primaryVehicle.imageDataUrl, input.user);
+          writeApplicationScopedStorageItem("rapago_vehicle_photo_data_url", primaryVehicle.imageDataUrl, input.user);
+          writeApplicationScopedStorageItem("rapago_driver_vehicle_image_data_url", primaryVehicle.imageDataUrl, input.user);
+        }
+
+        if (primaryVehicle.imageName) {
+          writeApplicationScopedStorageItem("rapago_driver_vehicle_image_name", primaryVehicle.imageName, input.user);
+        }
+      }
+
+      writeApplicationScopedStorageItem("rapago_driver_vehicles_v1", vehiclesJson, input.user);
+      writeApplicationScopedStorageItem("rapago_driver_selected_vehicle_v1", primaryVehicle?.id ?? "", input.user);
+      writeApplicationScopedStorageItem("rapago_driver_active_vehicle_v1", publicVehicleJson, input.user);
+      writeApplicationScopedStorageItem("rapago_driver_public_vehicle_v1", publicVehicleJson, input.user);
+      writeApplicationScopedStorageItem("rapago_driver_public_profile_v1", publicVehicleJson, input.user);
+      writeApplicationScopedStorageItem("rapago_driver_public_snapshot_v1", publicVehicleJson, input.user);
+      writeApplicationScopedStorageItem("rapago_selected_vehicle_v1", publicVehicleJson, input.user);
+      writeApplicationScopedStorageItem("rapago_selected_driver_vehicle_v1", publicVehicleJson, input.user);
+
+      const profilesRaw = localStorage.getItem("rapago_driver_public_profiles_v1");
+      const profiles = profilesRaw ? (JSON.parse(profilesRaw) as Record<string, unknown>) : {};
+      profiles[ownerKey] = publicVehicleSnapshot;
+      safeSetApplicationStorageItem("rapago_driver_public_profiles_v1", JSON.stringify(profiles));
+
+      window.dispatchEvent(new CustomEvent("rapago:driver-public-profile-updated", { detail: publicVehicleSnapshot }));
+      window.dispatchEvent(new CustomEvent("rapago:driver-selected-vehicle-updated", { detail: publicVehicleSnapshot }));
+      window.dispatchEvent(new CustomEvent("rapago:passenger-rides-updated"));
+    } catch {
+      // No bloquea el envío al admin.
+    }
   }
 
   export function ApplicationDriverPage(): JSX.Element {
@@ -330,7 +670,17 @@ function isRutValid(value: string): boolean {
     const [driverLicenseFile, setDriverLicenseFile] = useState<File | null>(null);
 
     const [vehicles, setVehicles] = useState<DriverVehicleForm[]>([
-      { id: "vehicle-primary", description: "", photoFile: null },
+      {
+        id: "vehicle-primary",
+        kind: "own",
+        brand: "",
+        model: "",
+        year: "",
+        plate: "",
+        color: "",
+        photoFile: null,
+        expiresAt: "",
+      },
     ]);
     const [confirmOwnVehicle, setConfirmOwnVehicle] = useState(false);
 
@@ -361,10 +711,7 @@ function isRutValid(value: string): boolean {
       sessionUser?.birthDate,
     ]);
 
-    function updateVehicle(
-      vehicleId: string,
-      changes: Partial<Pick<DriverVehicleForm, "description" | "photoFile">>,
-    ): void {
+    function updateVehicle(vehicleId: string, changes: Partial<DriverVehicleForm>): void {
       setVehicles((current) =>
         current.map((vehicle) =>
           vehicle.id === vehicleId ? { ...vehicle, ...changes } : vehicle,
@@ -372,8 +719,8 @@ function isRutValid(value: string): boolean {
       );
     }
 
-    function addVehicle(): void {
-      setVehicles((current) => [...current, createDriverVehicle(current.length + 1)]);
+    function addOptionalVehicle(): void {
+      setVehicles((current) => [...current, createDriverVehicle(current.length + 1, "optional")]);
     }
 
     function removeVehicle(vehicleId: string): void {
@@ -417,12 +764,12 @@ function isRutValid(value: string): boolean {
         }
 
         if (!primaryVehicleReady) {
-          setError("Debes completar el vehículo principal con descripción y foto clara.");
+          setError("Debes completar el vehículo principal con marca, modelo, año, patente, color y foto clara.");
           return;
         }
 
         if (!vehiclesReady) {
-          setError("Completa o elimina los vehículos adicionales. Cada vehículo agregado debe tener descripción y foto.");
+          setError("Completa o elimina los vehículos opcionales. Cada vehículo opcional debe tener todos los datos y fecha de expiración.");
           return;
         }
 
@@ -434,31 +781,40 @@ function isRutValid(value: string): boolean {
       setError(null);
 
       try {
+        const cleanFirstName = firstName.trim();
+        const cleanLastName = lastName.trim();
+        const cleanEmail = email.trim().toLowerCase();
+        const cleanPhoneValue = cleanPhone(phone);
+        const cleanRutValue = formatRut(rut);
+
         persistApplicationAutofill({
-          firstName: firstName.trim(),
-          lastName: lastName.trim(),
-          email: email.trim().toLowerCase(),
-          phone: cleanPhone(phone),
-          rut: formatRut(rut),
+          firstName: cleanFirstName,
+          lastName: cleanLastName,
+          email: cleanEmail,
+          phone: cleanPhoneValue,
+          rut: cleanRutValue,
           birthDate,
         });
 
-        const normalizedVehicles = vehicles.map((vehicle, index) => ({
-          order: index + 1,
-          primary: index === 0,
-          description: vehicle.description.trim(),
-          photoProvided: vehicle.photoFile != null,
-          photoFileName: vehicle.photoFile?.name,
-          photoFileType: vehicle.photoFile?.type,
-          photoFileSize: vehicle.photoFile?.size,
-        }));
+        const vehiclePayloads = await buildDriverVehiclePayloads(vehicles);
+
+        persistDriverApplicationToProfile({
+          user: session?.user,
+          firstName: cleanFirstName,
+          lastName: cleanLastName,
+          email: cleanEmail,
+          phone: cleanPhoneValue,
+          rut: cleanRutValue,
+          birthDate,
+          vehicles: vehiclePayloads,
+        });
 
         const input: Record<string, unknown> = {
           type: "driver",
-          firstName: firstName.trim(),
-          lastName: lastName.trim(),
-          email: email.trim().toLowerCase(),
-          phone: cleanPhone(phone),
+          firstName: cleanFirstName,
+          lastName: cleanLastName,
+          email: cleanEmail,
+          phone: cleanPhoneValue,
           rut: normalizeRut(rut),
           ...(birthDate ? { birthDate } : {}),
 
@@ -467,10 +823,21 @@ function isRutValid(value: string): boolean {
 
           vehicle: {
             hasOwnVehicle: confirmOwnVehicle,
-            description: normalizedVehicles[0]?.description ?? "",
-            photoProvided: normalizedVehicles[0]?.photoProvided ?? false,
-            totalVehicles: normalizedVehicles.length,
-            vehicles: normalizedVehicles,
+            principalVehicleRequired: true,
+            selectedVehicleId: vehiclePayloads[0]?.id ?? null,
+            description: vehiclePayloads[0]?.label ?? "",
+            brand: vehiclePayloads[0]?.brand ?? "",
+            model: vehiclePayloads[0]?.model ?? "",
+            year: vehiclePayloads[0]?.year ?? "",
+            plate: vehiclePayloads[0]?.plate ?? "",
+            color: vehiclePayloads[0]?.color ?? "",
+            photoProvided: vehiclePayloads[0]?.photoProvided ?? false,
+            photoFileName: vehiclePayloads[0]?.photoFileName,
+            photoFileType: vehiclePayloads[0]?.photoFileType,
+            photoFileSize: vehiclePayloads[0]?.photoFileSize,
+            photoDataUrl: vehiclePayloads[0]?.imageDataUrl ?? null,
+            totalVehicles: vehiclePayloads.length,
+            vehicles: vehiclePayloads,
           },
 
           documents: {
@@ -493,18 +860,22 @@ function isRutValid(value: string): boolean {
               fileSize: driverLicenseFile?.size,
             },
             vehiclePhoto: {
-              provided: normalizedVehicles[0]?.photoProvided ?? false,
-              fileName: primaryVehicle?.photoFile?.name,
-              fileType: primaryVehicle?.photoFile?.type,
-              fileSize: primaryVehicle?.photoFile?.size,
+              provided: vehiclePayloads[0]?.photoProvided ?? false,
+              fileName: vehiclePayloads[0]?.photoFileName,
+              fileType: vehiclePayloads[0]?.photoFileType,
+              fileSize: vehiclePayloads[0]?.photoFileSize,
+              dataUrl: vehiclePayloads[0]?.imageDataUrl ?? null,
             },
-            vehiclePhotos: normalizedVehicles.map((vehicle) => ({
+            vehiclePhotos: vehiclePayloads.map((vehicle) => ({
               provided: vehicle.photoProvided,
               fileName: vehicle.photoFileName,
               fileType: vehicle.photoFileType,
               fileSize: vehicle.photoFileSize,
               primary: vehicle.primary,
               order: vehicle.order,
+              ownership: vehicle.ownership,
+              expiresAt: vehicle.expiresAt,
+              dataUrl: vehicle.imageDataUrl,
             })),
           },
 
@@ -513,12 +884,12 @@ function isRutValid(value: string): boolean {
             acceptedTruthDeclaration: acceptDeclaration,
             acceptedVehicleOwnership: confirmOwnVehicle,
             acceptedAt: new Date().toISOString(),
-            text: "Autorizo a Rapa Go a revisar mi cédula de identidad, licencia de conducir y foto del vehículo únicamente para validar mi inscripción como conductor. Declaro que cuento con vehículo propio para prestar servicios en Rapa Go.",
+            text: "Autorizo a Rapa Go a revisar mi cédula de identidad, licencia de conducir y foto de cada vehículo únicamente para validar mi inscripción como conductor. Declaro que cuento con vehículo propio principal para prestar servicios en Rapa Go y que los vehículos opcionales registrados serán usados solo si se encuentran vigentes y aprobados.",
           },
         };
 
         const result = await applicationsService.createApplication(input, session?.accessToken);
-        setSuccessMessage(result.message || "Tu solicitud fue enviada correctamente.");
+        setSuccessMessage(result.message || "Tu solicitud fue enviada correctamente. Cuando el admin la apruebe, tu perfil de conductor quedará listo con estos datos.");
         setShowSuccess(true);
       } catch (err) {
         setError(err instanceof Error ? err.message : "Error inesperado al enviar la postulación.");
@@ -540,7 +911,7 @@ function isRutValid(value: string): boolean {
             <IonCardHeader>
               <IonCardTitle style={styles.cardTitleStyle}>Datos de tu cuenta</IonCardTitle>
               <IonNote style={styles.noteStyle}>
-                Estos datos se completan automáticamente desde tu perfil. Revisa que estén correctos.
+                Estos datos se completan automáticamente desde tu perfil. Revisa que estén correctos antes de enviar.
               </IonNote>
             </IonCardHeader>
 
@@ -649,6 +1020,60 @@ function isRutValid(value: string): boolean {
             </IonCardContent>
           </IonCard>
 
+          <IonCard style={styles.cardStyle}>
+            <IonCardHeader>
+              <IonCardTitle style={styles.cardTitleStyle}>Documentación requerida</IonCardTitle>
+              <IonNote style={styles.noteStyle}>
+                Adjunta documentos claros. Se usarán solo para validar tu inscripción.
+              </IonNote>
+            </IonCardHeader>
+
+            <IonCardContent>
+              <label className="upload-box" style={styles.fileButtonStyle}>
+                Cédula de identidad — Frente *
+                <input
+                  type="file"
+                  accept="image/*,.pdf"
+                  style={{ display: "none" }}
+                  onChange={(e) => setIdentityFrontFile(getSelectedFile(e.nativeEvent))}
+                />
+                <div className="selected-file" style={{ color: identityFrontFile ? "#167A35" : "#4A4A4A", marginTop: "6px", fontSize: ".78rem", fontWeight: 900 }}>
+                  {fileLabel(identityFrontFile)}
+                </div>
+              </label>
+
+              <div style={{ height: "10px" }} />
+
+              <label className="upload-box" style={styles.fileButtonStyle}>
+                Cédula de identidad — Reverso *
+                <input
+                  type="file"
+                  accept="image/*,.pdf"
+                  style={{ display: "none" }}
+                  onChange={(e) => setIdentityBackFile(getSelectedFile(e.nativeEvent))}
+                />
+                <div className="selected-file" style={{ color: identityBackFile ? "#167A35" : "#4A4A4A", marginTop: "6px", fontSize: ".78rem", fontWeight: 900 }}>
+                  {fileLabel(identityBackFile)}
+                </div>
+              </label>
+
+              <div style={{ height: "10px" }} />
+
+              <label className="upload-box" style={styles.fileButtonStyle}>
+                Licencia de conducir *
+                <input
+                  type="file"
+                  accept="image/*,.pdf"
+                  style={{ display: "none" }}
+                  onChange={(e) => setDriverLicenseFile(getSelectedFile(e.nativeEvent))}
+                />
+                <div className="selected-file" style={{ color: driverLicenseFile ? "#167A35" : "#4A4A4A", marginTop: "6px", fontSize: ".78rem", fontWeight: 900 }}>
+                  {fileLabel(driverLicenseFile)}
+                </div>
+              </label>
+            </IonCardContent>
+          </IonCard>
+
           <IonCard
             style={{
               ...styles.cardStyle,
@@ -695,10 +1120,12 @@ function isRutValid(value: string): boolean {
                     >
                       <div>
                         <strong style={{ color: "#111", fontWeight: 950 }}>
-                          {isPrimary ? "Vehículo principal" : `Vehículo adicional ${index}`}
+                          {isPrimary ? "Vehículo principal" : `Vehículo opcional ${index}`}
                         </strong>
                         <IonNote style={{ ...styles.noteStyle, marginTop: 2 }}>
-                          {isPrimary ? "Obligatorio para enviar la solicitud." : "Opcional. Complétalo o elimínalo si no lo usarás."}
+                          {isPrimary
+                            ? "Obligatorio para enviar la solicitud."
+                            : "Opcional. Si lo agregas, debes completar todos los datos y una fecha de expiración."}
                         </IonNote>
                       </div>
 
@@ -717,24 +1144,86 @@ function isRutValid(value: string): boolean {
 
                     <IonItem lines="full" style={styles.itemStyle}>
                       <IonLabel position="stacked" style={styles.labelStyle}>
-                        Descripción del vehículo {isPrimary ? "*" : ""}
+                        Marca *
                       </IonLabel>
-                      <IonTextarea
+                      <IonInput
                         style={styles.inputStyle}
-                        value={vehicle.description}
-                        onIonInput={(e) =>
-                          updateVehicle(vehicle.id, {
-                            description: String(e.detail.value ?? ""),
-                          })
-                        }
-                        placeholder="Ej: Toyota Corolla blanco, año 2018, patente AB-CD-12"
-                        rows={3}
-                        maxlength={220}
+                        value={vehicle.brand}
+                        onIonInput={(e) => updateVehicle(vehicle.id, { brand: cleanVehicleText(String(e.detail.value ?? ""), 32) })}
+                        placeholder="Toyota"
                       />
-                      <IonNote slot="helper" style={{ fontWeight: 700 }}>
-                        Escribe marca, modelo, color, año y patente si corresponde.
-                      </IonNote>
                     </IonItem>
+
+                    <IonItem lines="full" style={styles.itemStyle}>
+                      <IonLabel position="stacked" style={styles.labelStyle}>
+                        Modelo *
+                      </IonLabel>
+                      <IonInput
+                        style={styles.inputStyle}
+                        value={vehicle.model}
+                        onIonInput={(e) => updateVehicle(vehicle.id, { model: cleanVehicleText(String(e.detail.value ?? ""), 32) })}
+                        placeholder="Yaris, Corolla, Hilux..."
+                      />
+                    </IonItem>
+
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px" }}>
+                      <IonItem lines="full" style={styles.itemStyle}>
+                        <IonLabel position="stacked" style={styles.labelStyle}>
+                          Año *
+                        </IonLabel>
+                        <IonInput
+                          style={styles.inputStyle}
+                          type="tel"
+                          inputmode="numeric"
+                          value={vehicle.year}
+                          onIonInput={(e) => updateVehicle(vehicle.id, { year: cleanVehicleYear(String(e.detail.value ?? "")) })}
+                          placeholder="2020"
+                          maxlength={4}
+                        />
+                      </IonItem>
+
+                      <IonItem lines="full" style={styles.itemStyle}>
+                        <IonLabel position="stacked" style={styles.labelStyle}>
+                          Patente *
+                        </IonLabel>
+                        <IonInput
+                          style={styles.inputStyle}
+                          value={vehicle.plate}
+                          onIonInput={(e) => updateVehicle(vehicle.id, { plate: cleanVehiclePlate(String(e.detail.value ?? "")) })}
+                          placeholder="ABCD12"
+                          maxlength={12}
+                        />
+                      </IonItem>
+                    </div>
+
+                    <IonItem lines="full" style={styles.itemStyle}>
+                      <IonLabel position="stacked" style={styles.labelStyle}>
+                        Color *
+                      </IonLabel>
+                      <IonInput
+                        style={styles.inputStyle}
+                        value={vehicle.color}
+                        onIonInput={(e) => updateVehicle(vehicle.id, { color: cleanVehicleText(String(e.detail.value ?? ""), 24) })}
+                        placeholder="Blanco, rojo, gris..."
+                      />
+                    </IonItem>
+
+                    {!isPrimary && (
+                      <IonItem lines="full" style={styles.itemStyle}>
+                        <IonLabel position="stacked" style={styles.labelStyle}>
+                          Fecha de expiración del vehículo opcional *
+                        </IonLabel>
+                        <IonInput
+                          style={styles.inputStyle}
+                          type="date"
+                          value={vehicle.expiresAt}
+                          onIonInput={(e) => updateVehicle(vehicle.id, { expiresAt: String(e.detail.value ?? "") })}
+                        />
+                        <IonNote slot="helper" style={{ fontWeight: 750 }}>
+                          Al vencer esta fecha, el vehículo opcional debe dejar de aparecer para solicitudes o reservas hasta renovarlo.
+                        </IonNote>
+                      </IonItem>
+                    )}
 
                     <label
                       className="upload-box"
@@ -748,7 +1237,7 @@ function isRutValid(value: string): boolean {
                           : "#ffffff",
                       }}
                     >
-                      Foto del vehículo {isPrimary ? "*" : ""}
+                      Foto del vehículo *
                       <input
                         type="file"
                         accept="image/*"
@@ -780,7 +1269,7 @@ function isRutValid(value: string): boolean {
                 expand="block"
                 fill="outline"
                 color="warning"
-                onClick={addVehicle}
+                onClick={addOptionalVehicle}
                 style={{
                   "--border-radius": "18px",
                   height: "48px",
@@ -788,7 +1277,7 @@ function isRutValid(value: string): boolean {
                   marginBottom: "12px",
                 } as CSSProperties}
               >
-                + Agregar otro vehículo opcional
+                + Agregar vehículo opcional
               </IonButton>
 
               <IonItem
@@ -820,60 +1309,10 @@ function isRutValid(value: string): boolean {
                   Confirmo que cuento con vehículo propio para prestar servicios en Rapa Go.
                 </IonLabel>
               </IonItem>
-            </IonCardContent>
-          </IonCard>
 
-          <IonCard style={styles.cardStyle}>
-            <IonCardHeader>
-              <IonCardTitle style={styles.cardTitleStyle}>Documentación requerida</IonCardTitle>
-              <IonNote style={styles.noteStyle}>
-                Adjunta documentos claros. Se usarán solo para validar tu inscripción.
+              <IonNote style={{ ...styles.noteStyle, marginTop: 8 }}>
+                El vehículo principal quedará precargado automáticamente en el perfil del conductor. Los vehículos opcionales solo se mostrarán si están completos, vigentes y aprobados.
               </IonNote>
-            </IonCardHeader>
-
-            <IonCardContent>
-              <label className="upload-box" style={styles.fileButtonStyle}>
-                Cédula de identidad — Frente *
-                <input
-                  type="file"
-                  accept="image/*,.pdf"
-                  style={{ display: "none" }}
-                  onChange={(e) => setIdentityFrontFile(getSelectedFile(e.nativeEvent))}
-                />
-                <div className="selected-file" style={{ color: "#4A4A4A", marginTop: "6px", fontSize: ".78rem", fontWeight: 800 }}>
-                  {fileLabel(identityFrontFile)}
-                </div>
-              </label>
-
-              <div style={{ height: "10px" }} />
-
-              <label className="upload-box" style={styles.fileButtonStyle}>
-                Cédula de identidad — Reverso *
-                <input
-                  type="file"
-                  accept="image/*,.pdf"
-                  style={{ display: "none" }}
-                  onChange={(e) => setIdentityBackFile(getSelectedFile(e.nativeEvent))}
-                />
-                <div className="selected-file" style={{ color: "#4A4A4A", marginTop: "6px", fontSize: ".78rem", fontWeight: 800 }}>
-                  {fileLabel(identityBackFile)}
-                </div>
-              </label>
-
-              <div style={{ height: "10px" }} />
-
-              <label className="upload-box" style={styles.fileButtonStyle}>
-                Licencia de conducir *
-                <input
-                  type="file"
-                  accept="image/*,.pdf"
-                  style={{ display: "none" }}
-                  onChange={(e) => setDriverLicenseFile(getSelectedFile(e.nativeEvent))}
-                />
-                <div className="selected-file" style={{ color: "#4A4A4A", marginTop: "6px", fontSize: ".78rem", fontWeight: 800 }}>
-                  {fileLabel(driverLicenseFile)}
-                </div>
-              </label>
             </IonCardContent>
           </IonCard>
 
@@ -982,7 +1421,7 @@ function isRutValid(value: string): boolean {
                 ? <IonSpinner name="crescent" />
                 : canSubmit
                   ? "Enviar solicitud"
-                  : "Acepta términos y completa vehículo"}
+                  : "Completa documentos, vehículo y términos"}
             </IonButton>
 
             <IonButton
@@ -1303,7 +1742,7 @@ function isRutValid(value: string): boolean {
                     type="file"
                     accept="image/*,.pdf"
                     style={{ display: "none" }}
-                    onChange={(e) => (setter as React.Dispatch<React.SetStateAction<File | null>>)(getSelectedFile(e.nativeEvent))}
+                    onChange={(e) => (setter as Dispatch<SetStateAction<File | null>>)(getSelectedFile(e.nativeEvent))}
                   />
                   <div className="selected-file" style={{ color: "#4A4A4A", marginTop: "6px", fontSize: ".78rem", fontWeight: 800 }}>
                     {fileLabel(file as File | null)}

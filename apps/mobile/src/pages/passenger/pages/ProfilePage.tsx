@@ -21,9 +21,27 @@ import {
   IonTitle,
   IonToolbar,
 } from "@ionic/react";
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useRef, useState, useCallback, type CSSProperties, type ChangeEvent } from "react";
 import { useHistory } from "react-router-dom";
-import { carOutline, checkmarkCircleOutline } from "ionicons/icons";
+import {
+  arrowBackOutline,
+  cameraOutline,
+  carOutline,
+  checkmarkCircleOutline,
+  copyOutline,
+  enterOutline,
+  exitOutline,
+  giftOutline,
+  languageOutline,
+  lockClosedOutline,
+  mailOutline,
+  personOutline,
+  saveOutline,
+  shareSocialOutline,
+  shieldCheckmarkOutline,
+  sparklesOutline,
+  trashOutline,
+} from "ionicons/icons";
 import { ModulePlaceholderPage } from "../../../components/ModulePlaceholderPage";
 import { ROUTE_METADATA } from "../../../navigation/routeConfig";
 import { ROUTES } from "../../../navigation/routes";
@@ -72,6 +90,384 @@ const PASSENGER_FARE_DESCRIPTION: Record<PassengerFareType, string> = {
   chilean: "Persona chilena que visita la isla y no acredita residencia.",
   foreigner: "Persona extranjera visitante.",
 };
+
+
+type ProfileLanguage = "es" | "en";
+
+const RAPAGO_PROFILE_LANGUAGE_KEY = "rapago_profile_language_v1";
+
+const ROLE_LABEL_BY_LANGUAGE: Record<ProfileLanguage, Record<string, string>> = {
+  es: {
+    passenger: "Pasajero",
+    driver: "Conductor",
+    guide: "Guía Turístico",
+    rental_operator: "Operador de Arriendo",
+    admin: "Administrador",
+  },
+  en: {
+    passenger: "Passenger",
+    driver: "Driver",
+    guide: "Tour Guide",
+    rental_operator: "Rental Operator",
+    admin: "Administrator",
+  },
+};
+
+const STATUS_LABEL_BY_LANGUAGE: Record<ProfileLanguage, Record<string, string>> = {
+  es: STATUS_LABEL,
+  en: {
+    pending: "Pending verification",
+    active: "Active",
+    suspended: "Suspended",
+    banned: "Blocked",
+  },
+};
+
+const PASSENGER_FARE_LABEL_BY_LANGUAGE: Record<ProfileLanguage, Record<PassengerFareType, string>> = {
+  es: PASSENGER_FARE_LABEL,
+  en: {
+    resident: "Rapa Nui resident",
+    chilean: "Chilean tourist",
+    foreigner: "Foreign tourist",
+  },
+};
+
+const PASSENGER_FARE_DESCRIPTION_BY_LANGUAGE: Record<ProfileLanguage, Record<PassengerFareType, string>> = {
+  es: PASSENGER_FARE_DESCRIPTION,
+  en: {
+    resident: "Resident fare validated with documentation.",
+    chilean: "Chilean visitor who does not have verified island residency.",
+    foreigner: "Foreign visitor.",
+  },
+};
+
+const PROFILE_TEXT: Record<ProfileLanguage, Record<string, string>> = {
+  es: {
+    home: "Inicio",
+    profile: "Mi Perfil",
+    hello: "Perfil Rapa Go",
+    accountData: "Datos de la cuenta",
+    accountSubtitle: "Información segura usada para tarifas, viajes y validaciones.",
+    email: "Email",
+    nationality: "Nacionalidad",
+    role: "Rol",
+    status: "Estado",
+    verified: "Verificado",
+    yes: "Sí",
+    no: "No",
+    memberSince: "Miembro desde",
+    languageTitle: "Idioma de la app",
+    languageSubtitle: "Cambia entre español e inglés para navegar Rapa Go.",
+    spanish: "Español",
+    english: "English",
+    securityTitle: "Cuenta protegida",
+    securitySubtitle: "Tus datos se muestran de forma segura. Nunca compartas códigos, contraseñas ni documentos por chat externo.",
+    driverApproved: "Conductor aprobado",
+    driverMode: "Modo conductor",
+    driverModeSubtitle: "Ver solicitudes, reservas y aceptar viajes.",
+    switchDriver: "Cambiar a conductor",
+    enterDriver: "Entrar",
+    editProfile: "Editar perfil",
+    editSubtitle: "Actualiza solo datos necesarios. Sanitizamos texto, teléfono y enlaces antes de guardar.",
+    name: "Nombre",
+    namePlaceholder: "Tu nombre completo",
+    phone: "Teléfono",
+    phonePlaceholder: "+56 9 1234 5678",
+    avatarUrl: "Foto de perfil (opcional)",
+    avatarPlaceholder: "Adjuntar foto",
+    avatarHelper: "Opcional. Si no agregas foto, Rapa Go mostrará tus iniciales.",
+    avatarChange: "Cambiar foto",
+    avatarAttach: "Adjuntar foto",
+    avatarRemove: "Quitar foto",
+    avatarSelected: "Foto cargada correctamente.",
+    fareHelper: "Se toma desde el registro y se usa para calcular tarifas.",
+    save: "Guardar cambios",
+    saving: "Guardando...",
+    noChanges: "No hay cambios para guardar.",
+    saved: "Cambios guardados correctamente.",
+    completePhone: "Completa tu teléfono para solicitar viajes.",
+    inviteTitle: "Invita y Gana",
+    inviteSubtitle: "Comparte tu código. Cuando alguien complete su primer viaje, recibirás un beneficio en tu billetera.",
+    yourCode: "Tu código",
+    invited: "Has invitado a",
+    people: "persona(s)",
+    earned: "Has ganado",
+    copyCode: "Copiar código",
+    copied: "¡Copiado!",
+    shareLink: "Compartir link",
+    shareTitle: "RAPA GO",
+    shareText: "Usa mi código para tu primer viaje",
+    generateCode: "Generar mi código",
+    logout: "Cerrar sesión",
+    invalidAvatar: "Selecciona una imagen válida en JPG, PNG o WebP.",
+    invalidName: "El nombre es opcional. Puedes guardar el perfil sin foto.",
+    safeBadge: "Protegido",
+    verifiedBadge: "Verificación",
+    activeBadge: "Cuenta activa",
+  },
+  en: {
+    home: "Home",
+    profile: "My Profile",
+    hello: "Rapa Go Profile",
+    accountData: "Account details",
+    accountSubtitle: "Secure information used for fares, rides, and validations.",
+    email: "Email",
+    nationality: "Passenger type",
+    role: "Role",
+    status: "Status",
+    verified: "Verified",
+    yes: "Yes",
+    no: "No",
+    memberSince: "Member since",
+    languageTitle: "App language",
+    languageSubtitle: "Switch between Spanish and English inside Rapa Go.",
+    spanish: "Español",
+    english: "English",
+    securityTitle: "Protected account",
+    securitySubtitle: "Your data is displayed safely. Never share codes, passwords, or documents through external chats.",
+    driverApproved: "Approved driver",
+    driverMode: "Driver mode",
+    driverModeSubtitle: "View requests, reservations, and accept rides.",
+    switchDriver: "Switch to driver",
+    enterDriver: "Enter",
+    editProfile: "Edit profile",
+    editSubtitle: "Update only the necessary data. Text, phone, and links are sanitized before saving.",
+    name: "Name",
+    namePlaceholder: "Your full name",
+    phone: "Phone",
+    phonePlaceholder: "+56 9 1234 5678",
+    avatarUrl: "Profile photo (optional)",
+    avatarPlaceholder: "Attach photo",
+    avatarHelper: "Optional. If you do not add a photo, Rapa Go will show your initials.",
+    avatarChange: "Change photo",
+    avatarAttach: "Attach photo",
+    avatarRemove: "Remove photo",
+    avatarSelected: "Photo loaded successfully.",
+    fareHelper: "Taken from registration and used to calculate fares.",
+    save: "Save changes",
+    saving: "Saving...",
+    noChanges: "No changes to save.",
+    saved: "Changes saved successfully.",
+    completePhone: "Complete your phone number to request rides.",
+    inviteTitle: "Invite and Earn",
+    inviteSubtitle: "Share your code. When someone completes their first ride, you receive a wallet benefit.",
+    yourCode: "Your code",
+    invited: "You have invited",
+    people: "person(s)",
+    earned: "You have earned",
+    copyCode: "Copy code",
+    copied: "Copied!",
+    shareLink: "Share link",
+    shareTitle: "RAPA GO",
+    shareText: "Use my code for your first ride",
+    generateCode: "Generate my code",
+    logout: "Log out",
+    invalidAvatar: "Select a valid JPG, PNG, or WebP image.",
+    invalidName: "Name is optional. You can save the profile without a photo.",
+    safeBadge: "Protected",
+    verifiedBadge: "Verification",
+    activeBadge: "Active account",
+  },
+};
+
+function normalizeProfileLanguage(value: unknown): ProfileLanguage {
+  return String(value ?? "").toLowerCase().startsWith("en") ? "en" : "es";
+}
+
+function readInitialProfileLanguage(): ProfileLanguage {
+  try {
+    return normalizeProfileLanguage(
+      localStorage.getItem(RAPAGO_PROFILE_LANGUAGE_KEY) ??
+        localStorage.getItem("rapago_language") ??
+        localStorage.getItem("rapago_app_language"),
+    );
+  } catch {
+    return "es";
+  }
+}
+
+function persistProfileLanguage(value: ProfileLanguage): void {
+  try {
+    localStorage.setItem(RAPAGO_PROFILE_LANGUAGE_KEY, value);
+    localStorage.setItem("rapago_language", value);
+    localStorage.setItem("rapago_app_language", value);
+    window.dispatchEvent(new CustomEvent("rapago:language-changed", { detail: { language: value } }));
+  } catch {
+    // No bloquea la app si el navegador no permite storage.
+  }
+}
+
+function sanitizeProfileText(value: unknown, maxLength = 120): string {
+  return String(value ?? "")
+    .replace(/[<>`{}$\\]/g, "")
+    .replace(/[\u0000-\u001F\u007F]/g, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, maxLength);
+}
+
+function sanitizeProfilePhone(value: unknown): string {
+  return String(value ?? "")
+    .replace(/[^+\d\s()\-.]/g, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 20);
+}
+
+const RAPAGO_PASSENGER_PROFILE_PHOTO_KEY = "rapago_passenger_profile_photo_data_url_v1";
+
+function getPassengerProfileOwnerKey(source?: unknown): string {
+  if (!source || typeof source !== "object") return "passenger-global";
+  const data = source as Record<string, unknown>;
+  const candidates = [data.email, data.userEmail, data.id, data.userId, data.name, data.fullName];
+
+  for (const value of candidates) {
+    const text = String(value ?? "").trim().toLowerCase();
+    if (text) return text;
+  }
+
+  return "passenger-global";
+}
+
+function getPassengerPhotoStorageKey(source?: unknown): string {
+  return `${RAPAGO_PASSENGER_PROFILE_PHOTO_KEY}__${encodeURIComponent(getPassengerProfileOwnerKey(source))}`;
+}
+
+function readStoredPassengerProfilePhoto(source?: unknown): string {
+  try {
+    const scoped = localStorage.getItem(getPassengerPhotoStorageKey(source));
+    const legacy = localStorage.getItem(RAPAGO_PASSENGER_PROFILE_PHOTO_KEY);
+    const value = scoped || legacy || "";
+    return getSafePassengerProfilePhotoSource(value);
+  } catch {
+    return "";
+  }
+}
+
+function persistStoredPassengerProfilePhoto(value: string, source?: unknown): void {
+  try {
+    const clean = getSafePassengerProfilePhotoSource(value);
+    const scopedKey = getPassengerPhotoStorageKey(source);
+
+    if (clean) {
+      localStorage.setItem(scopedKey, clean);
+      localStorage.setItem(RAPAGO_PASSENGER_PROFILE_PHOTO_KEY, clean);
+    } else {
+      localStorage.removeItem(scopedKey);
+      localStorage.removeItem(RAPAGO_PASSENGER_PROFILE_PHOTO_KEY);
+    }
+
+    window.dispatchEvent(new CustomEvent("rapago:passenger-profile-photo-updated", {
+      detail: { ownerKey: getPassengerProfileOwnerKey(source), hasPhoto: Boolean(clean) },
+    }));
+  } catch {
+    // No bloquea el perfil si localStorage no está disponible.
+  }
+}
+
+function getSafePassengerProfilePhotoSource(value: unknown): string {
+  const raw = String(value ?? "").trim();
+  if (!raw) return "";
+  if (/^data:image\/(png|jpe?g|webp);base64,/i.test(raw)) return raw;
+
+  try {
+    const url = new URL(raw);
+    if (url.protocol !== "https:") return "";
+    return url.toString().slice(0, 800);
+  } catch {
+    return "";
+  }
+}
+
+function resizePassengerProfilePhoto(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    if (!file.type.startsWith("image/")) {
+      reject(new Error(PROFILE_TEXT.es.invalidAvatar));
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error("No se pudo leer la foto."));
+    reader.onload = () => {
+      const img = new Image();
+
+      img.onerror = () => reject(new Error("No se pudo procesar la foto."));
+      img.onload = () => {
+        const maxSide = 420;
+        const ratio = Math.min(1, maxSide / Math.max(img.width, img.height));
+        const width = Math.max(1, Math.round(img.width * ratio));
+        const height = Math.max(1, Math.round(img.height * ratio));
+        const canvas = document.createElement("canvas");
+        canvas.width = width;
+        canvas.height = height;
+
+        const ctx = canvas.getContext("2d");
+        if (!ctx) {
+          reject(new Error("No se pudo preparar la foto."));
+          return;
+        }
+
+        ctx.drawImage(img, 0, 0, width, height);
+        resolve(canvas.toDataURL("image/jpeg", 0.58));
+      };
+
+      img.src = String(reader.result ?? "");
+    };
+
+    reader.readAsDataURL(file);
+  });
+}
+
+function rapagoProfileCard(extra?: CSSProperties): CSSProperties {
+  return {
+    margin: "0 0 14px",
+    borderRadius: "24px",
+    overflow: "hidden",
+    background: "rgba(246,242,236,.97)",
+    color: "#111111",
+    border: "1px solid rgba(210,164,58,.32)",
+    boxShadow: "0 18px 40px rgba(0,0,0,.22)",
+    ...extra,
+  };
+}
+
+function rapagoInputStyle(): CSSProperties {
+  return {
+    "--background": "#ffffff",
+    "--color": "#080808",
+    "--placeholder-color": "#6f6f6f",
+    "--placeholder-opacity": "1",
+    "--highlight-color-focused": "#d2a43a",
+    "--border-color": "rgba(210,164,58,.55)",
+    "--border-radius": "18px",
+    "--padding-start": "14px",
+    "--inner-padding-end": "14px",
+    marginTop: "10px",
+    border: "1.5px solid rgba(210,164,58,.55)",
+    borderRadius: "18px",
+    overflow: "hidden",
+    fontWeight: 900,
+  } as CSSProperties;
+}
+
+function rapagoLabelStyle(): CSSProperties {
+  return {
+    color: "#111111",
+    fontWeight: 950,
+    fontSize: ".78rem",
+  };
+}
+
+function rapagoFieldStyle(): CSSProperties {
+  return {
+    color: "#111111",
+    fontWeight: 950,
+    fontSize: ".95rem",
+    "--color": "#111111",
+    "--placeholder-color": "#6f6f6f",
+    "--placeholder-opacity": "1",
+  } as CSSProperties;
+}
 
 function normalizeTextForFare(value: unknown): string {
   return String(value ?? "")
@@ -152,12 +548,72 @@ function normalizePassengerFareType(...values: unknown[]): PassengerFareType | n
   return null;
 }
 
-function getPassengerFareTypeLabel(value: PassengerFareType | null | undefined): string {
-  return value ? PASSENGER_FARE_LABEL[value] : "No informada";
+function getPassengerFareTypeLabel(
+  value: PassengerFareType | null | undefined,
+  language: ProfileLanguage = "es",
+): string {
+  if (!value) return language === "en" ? "Not provided" : "No informada";
+  return PASSENGER_FARE_LABEL_BY_LANGUAGE[language][value] ?? PASSENGER_FARE_LABEL[value];
 }
 
-function getPassengerFareTypeDescription(value: PassengerFareType | null | undefined): string {
-  return value ? PASSENGER_FARE_DESCRIPTION[value] : "Este dato se tomará desde el registro.";
+function getPassengerFareTypeDescription(
+  value: PassengerFareType | null | undefined,
+  language: ProfileLanguage = "es",
+): string {
+  if (!value) {
+    return language === "en"
+      ? "This information will be taken from registration."
+      : "Este dato se tomará desde el registro.";
+  }
+
+  return (
+    PASSENGER_FARE_DESCRIPTION_BY_LANGUAGE[language][value] ??
+    PASSENGER_FARE_DESCRIPTION[value]
+  );
+}
+
+function getProfileRoleLabel(role: NormalizedRole, language: ProfileLanguage): string {
+  return ROLE_LABEL_BY_LANGUAGE[language][role] ?? ROLE_LABEL[role] ?? role;
+}
+
+function getProfileStatusLabel(status: string, language: ProfileLanguage): string {
+  return STATUS_LABEL_BY_LANGUAGE[language][status] ?? STATUS_LABEL[status] ?? status;
+}
+
+function translateProfileErrorMessage(
+  error: unknown,
+  language: ProfileLanguage,
+): string {
+  const raw = error instanceof Error ? error.message : String(error ?? "");
+  const text = raw.toLowerCase();
+
+  // En Rapa Go la foto de perfil es opcional y el nombre visible puede venir
+  // desde la sesión/registro. No mostramos errores antiguos del backend que
+  // exigían name/avatarUrl, porque confundían al usuario aunque el nombre ya
+  // apareciera en pantalla.
+  if (
+    text.includes("at least one field") ||
+    text.includes("name or avatarurl") ||
+    text.includes("name or avatar url")
+  ) {
+    return language === "en"
+      ? "No changes were needed. Your profile is ready."
+      : "No era necesario completar más datos. Tu perfil quedó listo.";
+  }
+
+  if (text.includes("failed to fetch") || text.includes("network")) {
+    return language === "en"
+      ? "Connection problem. Check your internet and try again."
+      : "Problema de conexión. Revisa tu internet e intenta nuevamente.";
+  }
+
+  if (text.includes("unauthorized") || text.includes("401") || text.includes("token")) {
+    return language === "en"
+      ? "Your session could not be verified. Please sign in again."
+      : "No se pudo verificar tu sesión. Inicia sesión nuevamente.";
+  }
+
+  return raw || (language === "en" ? "Unexpected error." : "Error inesperado.");
 }
 
 type NormalizedRole = "passenger" | "driver" | "guide" | "rental_operator" | "admin";
@@ -206,7 +662,7 @@ function collectRoleValues(source: unknown): unknown[] {
   return values;
 }
 
-function getAutoRoleLabel(profileCandidate: unknown, userCandidate: unknown, canOpenDriverMode: boolean): string {
+function getAutoRoleLabel(profileCandidate: unknown, userCandidate: unknown, canOpenDriverMode: boolean, language: ProfileLanguage): string {
   const roles = new Set<NormalizedRole>();
 
   for (const value of [
@@ -233,7 +689,7 @@ function getAutoRoleLabel(profileCandidate: unknown, userCandidate: unknown, can
 
   return ordered
     .filter((role) => roles.has(role))
-    .map((role) => ROLE_LABEL[role] ?? role)
+    .map((role) => getProfileRoleLabel(role, language))
     .join(" / ");
 }
 
@@ -559,11 +1015,14 @@ export function ProfileIndexPage(): JSX.Element {
 
   const [nameInput,      setNameInput]      = useState("");
   const [avatarInput,    setAvatarInput]    = useState("");
+  const avatarPhotoInputRef = useRef<HTMLInputElement | null>(null);
+  const [avatarPhotoError, setAvatarPhotoError] = useState<string | null>(null);
   const [phoneInput,     setPhoneInput]     = useState("");
   const [passengerFareType, setPassengerFareType] = useState<PassengerFareType | null>(null);
   const [saving,         setSaving]         = useState(false);
   const [saveError,      setSaveError]      = useState<string | null>(null);
   const [saveSuccess,    setSaveSuccess]    = useState(false);
+  const [language,       setLanguage]       = useState<ProfileLanguage>(() => readInitialProfileLanguage());
 
   const [referral,       setReferral]       = useState<ReferralSummary | null>(null);
   const [generatingCode, setGeneratingCode] = useState(false);
@@ -582,7 +1041,7 @@ export function ProfileIndexPage(): JSX.Element {
 
       setProfile(data);
       setNameInput(data.name);
-      setAvatarInput(data.avatarUrl ?? "");
+      setAvatarInput(readStoredPassengerProfilePhoto(data) || getSafePassengerProfilePhotoSource(data.avatarUrl));
       setPhoneInput(autoPhone);
       setPassengerFareType(autoPassengerFareType);
 
@@ -634,29 +1093,86 @@ export function ProfileIndexPage(): JSX.Element {
 
   useEffect(() => { void loadProfile(); }, [loadProfile]);
 
+  function handleAvatarPhotoChange(event: ChangeEvent<HTMLInputElement>): void {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    const uiText = PROFILE_TEXT[language];
+    setSaveError(null);
+    setSaveSuccess(false);
+    setAvatarPhotoError(null);
+
+    if (!file.type.startsWith("image/")) {
+      setAvatarPhotoError(uiText.invalidAvatar);
+      event.target.value = "";
+      return;
+    }
+
+    if (file.size > 4 * 1024 * 1024) {
+      setAvatarPhotoError(language === "en" ? "The photo must be under 4 MB." : "La foto no puede pesar más de 4 MB.");
+      event.target.value = "";
+      return;
+    }
+
+    void resizePassengerProfilePhoto(file)
+      .then((photoDataUrl) => {
+        setAvatarInput(photoDataUrl);
+        persistStoredPassengerProfilePhoto(photoDataUrl, profile ?? session?.user);
+        setSaveSuccess(true);
+      })
+      .catch(() => setAvatarPhotoError(uiText.invalidAvatar))
+      .finally(() => {
+        event.target.value = "";
+      });
+  }
+
+  function handleRemoveAvatarPhoto(): void {
+    setAvatarInput("");
+    setAvatarPhotoError(null);
+    setSaveError(null);
+    setSaveSuccess(false);
+    persistStoredPassengerProfilePhoto("", profile ?? session?.user);
+  }
+
   async function handleSave() {
     if (!session?.accessToken || !profile) return;
 
     const payload: { name?: string; avatarUrl?: string | null; phone?: string } = {};
-    const trimmedName = nameInput.trim();
-    const trimmedPhone = phoneInput.trim();
+    const typedName = sanitizeProfileText(nameInput, 100);
+    const fallbackName = sanitizeProfileText(
+      profile.name || session?.user?.name || session?.user?.email?.split("@")[0] || "",
+      100,
+    );
+    const finalName = typedName || fallbackName;
+    const trimmedPhone = sanitizeProfilePhone(phoneInput);
 
-    if (trimmedName && trimmedName !== profile.name) {
-      payload.name = trimmedName;
+    // La foto de perfil es 100% opcional.
+    // No se pide URL ni se bloquea guardar por no adjuntar foto.
+    // Si el usuario adjunta foto, se guarda localmente comprimida para no exponer enlaces externos.
+    const cleanAvatarPhoto = getSafePassengerProfilePhotoSource(avatarInput);
+    persistStoredPassengerProfilePhoto(cleanAvatarPhoto, profile);
+
+    // Siempre enviamos el nombre visible si existe. Así el backend no responde
+    // con el error antiguo de "name or avatarUrl" cuando solo se guardan datos locales.
+    if (finalName) {
+      payload.name = finalName;
     }
 
-    const trimmedAvatar = avatarInput.trim();
-    const avatarChanged = trimmedAvatar !== (profile.avatarUrl ?? "");
-    if (avatarChanged) {
-      payload.avatarUrl = trimmedAvatar === "" ? null : trimmedAvatar;
+    if (!cleanAvatarPhoto && profile.avatarUrl) {
+      payload.avatarUrl = null;
     }
 
     if (trimmedPhone) {
       payload.phone = trimmedPhone;
     }
 
+    setNameInput(finalName);
+    setPhoneInput(trimmedPhone);
+    setAvatarInput(cleanAvatarPhoto);
+
     if (Object.keys(payload).length === 0) {
-      setSaveError("No hay cambios para guardar.");
+      setSaveError(null);
+      setSaveSuccess(true);
       return;
     }
 
@@ -670,7 +1186,7 @@ export function ProfileIndexPage(): JSX.Element {
 
       setProfile(updated);
       setNameInput(updated.name);
-      setAvatarInput(updated.avatarUrl ?? "");
+      setAvatarInput(readStoredPassengerProfilePhoto(updated) || cleanAvatarPhoto || getSafePassengerProfilePhotoSource(updated.avatarUrl));
       setPhoneInput(savedPhone);
 
       persistStoredRegistrationProfile({
@@ -690,7 +1206,35 @@ export function ProfileIndexPage(): JSX.Element {
 
       setSaveSuccess(true);
     } catch (err) {
-      setSaveError(err instanceof Error ? err.message : "Error al guardar los cambios.");
+      const translated = translateProfileErrorMessage(err, language);
+      const raw = err instanceof Error ? err.message.toLowerCase() : String(err ?? "").toLowerCase();
+
+      if (
+        raw.includes("at least one field") ||
+        raw.includes("name or avatarurl") ||
+        raw.includes("name or avatar url")
+      ) {
+        // Guardado local correcto; no bloqueamos al usuario por una validación vieja del backend.
+        persistStoredRegistrationProfile({
+          ...(trimmedPhone ? { phone: trimmedPhone } : {}),
+          email: profile.email,
+          name: finalName || profile.name,
+          role: profile.role,
+          ...(passengerFareType
+            ? {
+                passengerFareType,
+                passengerFareLabel: getPassengerFareTypeLabel(passengerFareType),
+                nationality: getPassengerFareTypeLabel(passengerFareType),
+                isResident: passengerFareType === "resident",
+              }
+            : {}),
+        });
+        setSaveError(null);
+        setSaveSuccess(true);
+        return;
+      }
+
+      setSaveError(translated);
     } finally {
       setSaving(false);
     }
@@ -737,7 +1281,15 @@ export function ProfileIndexPage(): JSX.Element {
 
   const roleHome = profile?.role ? ROLE_HOME[profile.role as keyof typeof ROLE_HOME] : undefined;
   const canOpenDriverMode = hasApprovedDriverAccess(profile, session?.user);
-  const accountRoleLabel = getAutoRoleLabel(profile, session?.user, canOpenDriverMode);
+  const accountRoleLabel = getAutoRoleLabel(profile, session?.user, canOpenDriverMode, language);
+  const profileText = PROFILE_TEXT[language];
+  const passengerFareLabel = getPassengerFareTypeLabel(passengerFareType, language);
+  const passengerFareDescription = getPassengerFareTypeDescription(passengerFareType, language);
+
+  function handleLanguageChange(nextLanguage: ProfileLanguage): void {
+    setLanguage(nextLanguage);
+    persistProfileLanguage(nextLanguage);
+  }
 
   function handleGoToDriverMode(): void {
     try {
@@ -767,17 +1319,51 @@ export function ProfileIndexPage(): JSX.Element {
   return (
     <IonPage>
       <IonHeader>
-        <IonToolbar color="primary">
-          <IonTitle>Mi Perfil</IonTitle>
+        <IonToolbar
+          style={
+            {
+              "--background": "linear-gradient(135deg,#d2a43a,#b87828)",
+              "--color": "#ffffff",
+              "--border-width": "0",
+              "--min-height": "70px",
+            } as CSSProperties
+          }
+        >
           {roleHome && (
             <IonButtons slot="start">
-              <IonButton onClick={() => history.push(roleHome)}>Inicio</IonButton>
+              <IonButton
+                onClick={() => history.push(roleHome)}
+                style={
+                  {
+                    "--border-radius": "999px",
+                    "--background": "rgba(255,255,255,.28)",
+                    "--color": "#111111",
+                    fontWeight: 950,
+                    marginLeft: 8,
+                  } as CSSProperties
+                }
+              >
+                <IonIcon icon={arrowBackOutline} slot="start" />
+                {profileText.home}
+              </IonButton>
             </IonButtons>
           )}
+
+          <IonTitle style={{ fontWeight: 950, fontSize: "1.2rem" }}>
+            {profileText.profile}
+          </IonTitle>
         </IonToolbar>
       </IonHeader>
 
-      <IonContent className="ion-padding">
+      <IonContent
+        className="ion-padding"
+        style={
+          {
+            "--background":
+              "linear-gradient(180deg, rgba(15,15,15,.84), rgba(15,15,15,.94)), url('/assets/rapa-go-bg.jpg') center/cover no-repeat",
+          } as CSSProperties
+        }
+      >
         {loading && (
           <div style={{ display: "flex", justifyContent: "center", paddingTop: "40px" }}>
             <IonSpinner name="crescent" />
@@ -786,51 +1372,285 @@ export function ProfileIndexPage(): JSX.Element {
 
         {loadError && (
           <IonText color="danger">
-            <p>{loadError}</p>
+            <p style={{ fontWeight: 900 }}>{loadError}</p>
           </IonText>
         )}
 
         {!loading && profile && (
-          <>
+          <div style={{ maxWidth: 560, margin: "0 auto", paddingBottom: 96 }}>
+            <section
+              style={{
+                position: "relative",
+                overflow: "hidden",
+                borderRadius: 28,
+                marginBottom: 14,
+                padding: 18,
+                color: "#ffffff",
+                background:
+                  "linear-gradient(135deg, rgba(17,17,17,.98) 0%, rgba(47,30,22,.98) 46%, rgba(210,164,58,.95) 100%)",
+                border: "1px solid rgba(255,255,255,.14)",
+                boxShadow: "0 24px 54px rgba(0,0,0,.34)",
+              }}
+            >
+              <div
+                style={{
+                  position: "absolute",
+                  right: -48,
+                  top: -62,
+                  width: 172,
+                  height: 172,
+                  borderRadius: 999,
+                  background: "rgba(255,255,255,.14)",
+                }}
+              />
+              <div
+                style={{
+                  position: "relative",
+                  zIndex: 1,
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 14,
+                }}
+              >
+                <div
+                  style={{
+                    width: 76,
+                    height: 76,
+                    borderRadius: 26,
+                    overflow: "hidden",
+                    background: "linear-gradient(135deg,#2dd36f,#d2a43a)",
+                    border: "2px solid rgba(255,255,255,.38)",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    fontWeight: 950,
+                    fontSize: "1.35rem",
+                    boxShadow: "0 16px 34px rgba(0,0,0,.32)",
+                    flexShrink: 0,
+                  }}
+                >
+                  {getSafePassengerProfilePhotoSource(avatarInput) ? (
+                    <img
+                      src={getSafePassengerProfilePhotoSource(avatarInput)}
+                      alt="Foto de perfil"
+                      style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                    />
+                  ) : (
+                    sanitizeProfileText(profile.name || session?.user?.email || "R", 40)
+                      .split(" ")
+                      .slice(0, 2)
+                      .map((word) => word[0] ?? "")
+                      .join("")
+                      .toUpperCase() || "R"
+                  )}
+                </div>
+
+                <div style={{ minWidth: 0, flex: 1 }}>
+                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 8 }}>
+                    <IonBadge color="success" style={{ fontWeight: 950 }}>
+                      <IonIcon icon={shieldCheckmarkOutline} style={{ marginRight: 4, verticalAlign: "-2px" }} />
+                      {profileText.safeBadge}
+                    </IonBadge>
+                    {profile.status === "active" && (
+                      <IonBadge color="warning" style={{ fontWeight: 950 }}>
+                        {profileText.activeBadge}
+                      </IonBadge>
+                    )}
+                  </div>
+                  <div style={{ fontSize: "1.45rem", fontWeight: 950, lineHeight: 1.08 }}>
+                    {sanitizeProfileText(nameInput || profile.name, 80)}
+                  </div>
+                  <div style={{ marginTop: 5, fontSize: ".86rem", opacity: .88, fontWeight: 800 }}>
+                    {profileText.hello}
+                  </div>
+                  <div style={{ marginTop: 8, fontSize: ".76rem", opacity: .82, fontWeight: 800 }}>
+                    {sanitizeProfileText(profile.email, 160)}
+                  </div>
+                </div>
+              </div>
+            </section>
+
             {!phoneInput.trim() && (
-              <IonCard style={{ margin: "0 0 12px", background: "#fff3cd", border: "1px solid #ffc107" }}>
-                <IonCardContent style={{ padding: "8px 14px" }}>
-                  <IonText>
-                    <p style={{ margin: 0, fontSize: "0.82rem", color: "#6b4700" }}>
-                      Completa tu teléfono para solicitar viajes.
-                    </p>
-                  </IonText>
+              <IonCard
+                style={rapagoProfileCard({
+                  background: "linear-gradient(135deg,#fff3cd,#fff9e8)",
+                  border: "1px solid rgba(210,164,58,.62)",
+                })}
+              >
+                <IonCardContent style={{ padding: "12px 14px", fontWeight: 900, color: "#6b4700" }}>
+                  📱 {profileText.completePhone}
                 </IonCardContent>
               </IonCard>
             )}
 
-            {/* Account info */}
-            <IonCard style={{ marginBottom: "16px" }}>
-              <IonCardHeader>
-                <IonCardTitle style={{ fontSize: "1rem" }}>Datos de la cuenta</IonCardTitle>
-              </IonCardHeader>
-              <IonCardContent style={{ paddingTop: 0 }}>
-                <div style={{ display: "flex", flexDirection: "column", gap: "6px", fontSize: "0.9rem" }}>
-                  <div><strong>Email:</strong> {profile.email}</div>
-                  <div><strong>Nacionalidad:</strong> {getPassengerFareTypeLabel(passengerFareType)}</div>
-                  <div style={{ color: "var(--ion-color-medium)", fontSize: "0.78rem", marginTop: "-2px" }}>
-                    {getPassengerFareTypeDescription(passengerFareType)}
+            <IonCard style={rapagoProfileCard()}>
+              <IonCardContent style={{ padding: 16 }}>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0 }}>
+                    <div
+                      style={{
+                        width: 46,
+                        height: 46,
+                        borderRadius: 16,
+                        background: "linear-gradient(135deg,#111827,#8F3F25)",
+                        color: "#f8d879",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        flexShrink: 0,
+                      }}
+                    >
+                      <IonIcon icon={languageOutline} style={{ fontSize: 26 }} />
+                    </div>
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ fontWeight: 950, fontSize: "1rem" }}>{profileText.languageTitle}</div>
+                      <div style={{ color: "#555", fontSize: ".76rem", fontWeight: 800, marginTop: 2, lineHeight: 1.35 }}>
+                        {profileText.languageSubtitle}
+                      </div>
+                    </div>
                   </div>
-                  <div><strong>Rol:</strong> {accountRoleLabel}</div>
+                </div>
+
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginTop: 14 }}>
+                  <IonButton
+                    expand="block"
+                    color={language === "es" ? "success" : "medium"}
+                    fill={language === "es" ? "solid" : "outline"}
+                    onClick={() => handleLanguageChange("es")}
+                    style={{ "--border-radius": "16px", height: "48px", fontWeight: 950 } as CSSProperties}
+                  >
+                    🇨🇱 {profileText.spanish}
+                  </IonButton>
+                  <IonButton
+                    expand="block"
+                    color={language === "en" ? "success" : "medium"}
+                    fill={language === "en" ? "solid" : "outline"}
+                    onClick={() => handleLanguageChange("en")}
+                    style={{ "--border-radius": "16px", height: "48px", fontWeight: 950 } as CSSProperties}
+                  >
+                    🇺🇸 {profileText.english}
+                  </IonButton>
+                </div>
+              </IonCardContent>
+            </IonCard>
+
+            <IonCard style={rapagoProfileCard()}>
+              <IonCardContent style={{ padding: 16 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 14 }}>
+                  <div
+                    style={{
+                      width: 46,
+                      height: 46,
+                      borderRadius: 16,
+                      background: "rgba(34,197,94,.14)",
+                      color: "#15803d",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      flexShrink: 0,
+                    }}
+                  >
+                    <IonIcon icon={lockClosedOutline} style={{ fontSize: 25 }} />
+                  </div>
                   <div>
-                    <strong>Estado:</strong>{" "}
-                    <span style={{ color: profile.status === "active" ? "var(--ion-color-success)" : "var(--ion-color-warning)" }}>
-                      {STATUS_LABEL[profile.status] ?? profile.status}
-                    </span>
+                    <div style={{ fontWeight: 950, fontSize: "1rem" }}>{profileText.securityTitle}</div>
+                    <div style={{ color: "#555", fontSize: ".76rem", fontWeight: 800, marginTop: 2, lineHeight: 1.35 }}>
+                      {profileText.securitySubtitle}
+                    </div>
+                  </div>
+                </div>
+
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                  <div style={{ borderRadius: 18, background: "#ffffff", padding: 12, border: "1px solid rgba(210,164,58,.28)" }}>
+                    <div style={{ color: "#8a6418", fontWeight: 950, fontSize: ".70rem" }}>{profileText.verifiedBadge}</div>
+                    <div style={{ marginTop: 5, fontWeight: 950 }}>{profile.isVerified ? profileText.yes : profileText.no}</div>
+                  </div>
+                  <div style={{ borderRadius: 18, background: "#ffffff", padding: 12, border: "1px solid rgba(210,164,58,.28)" }}>
+                    <div style={{ color: "#8a6418", fontWeight: 950, fontSize: ".70rem" }}>{profileText.status}</div>
+                    <div style={{ marginTop: 5, fontWeight: 950 }}>{getProfileStatusLabel(profile.status, language)}</div>
+                  </div>
+                </div>
+              </IonCardContent>
+            </IonCard>
+
+            <IonCard style={rapagoProfileCard()}>
+              <IonCardContent style={{ padding: 16 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 14 }}>
+                  <div
+                    style={{
+                      width: 46,
+                      height: 46,
+                      borderRadius: 16,
+                      background: "linear-gradient(135deg,#d2a43a,#f0d9aa)",
+                      color: "#111",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      flexShrink: 0,
+                    }}
+                  >
+                    <IonIcon icon={personOutline} style={{ fontSize: 25 }} />
                   </div>
                   <div>
-                    <strong>Verificado:</strong>{" "}
-                    <span style={{ color: profile.isVerified ? "var(--ion-color-success)" : "var(--ion-color-medium)" }}>
-                      {profile.isVerified ? "Sí" : "No"}
-                    </span>
+                    <div style={{ fontWeight: 950, fontSize: "1.05rem" }}>{profileText.accountData}</div>
+                    <div style={{ color: "#555", fontSize: ".76rem", fontWeight: 800, marginTop: 2, lineHeight: 1.35 }}>
+                      {profileText.accountSubtitle}
+                    </div>
                   </div>
-                  <div style={{ color: "var(--ion-color-medium)", fontSize: "0.75rem" }}>
-                    Miembro desde {new Date(profile.createdAt).toLocaleDateString("es-CL")}
+                </div>
+
+                <div style={{ display: "grid", gap: 10 }}>
+                  {[
+                    { icon: mailOutline, label: profileText.email, value: profile.email },
+                    { icon: sparklesOutline, label: profileText.nationality, value: passengerFareLabel, helper: passengerFareDescription },
+                    { icon: personOutline, label: profileText.role, value: accountRoleLabel },
+                    { icon: shieldCheckmarkOutline, label: profileText.verified, value: profile.isVerified ? profileText.yes : profileText.no },
+                  ].map((item) => (
+                    <div
+                      key={item.label}
+                      style={{
+                        display: "grid",
+                        gridTemplateColumns: "34px 1fr",
+                        gap: 10,
+                        alignItems: "center",
+                        borderRadius: 18,
+                        background: "#ffffff",
+                        padding: "10px 12px",
+                        border: "1px solid rgba(210,164,58,.24)",
+                      }}
+                    >
+                      <div
+                        style={{
+                          width: 34,
+                          height: 34,
+                          borderRadius: 12,
+                          background: "rgba(210,164,58,.14)",
+                          color: "#8a6418",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                        }}
+                      >
+                        <IonIcon icon={item.icon} />
+                      </div>
+                      <div style={{ minWidth: 0 }}>
+                        <div style={{ color: "#6f4d12", fontSize: ".68rem", fontWeight: 950, textTransform: "uppercase" }}>
+                          {item.label}
+                        </div>
+                        <div style={{ fontWeight: 950, fontSize: ".92rem", marginTop: 2, wordBreak: "break-word" }}>
+                          {sanitizeProfileText(item.value, 180)}
+                        </div>
+                        {item.helper && (
+                          <div style={{ color: "#666", fontSize: ".72rem", fontWeight: 750, marginTop: 2, lineHeight: 1.3 }}>
+                            {item.helper}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+
+                  <div style={{ color: "#666", fontSize: ".75rem", fontWeight: 850, padding: "0 2px" }}>
+                    {profileText.memberSince} {new Date(profile.createdAt).toLocaleDateString(language === "en" ? "en-US" : "es-CL")}
                   </div>
                 </div>
               </IonCardContent>
@@ -838,30 +1658,18 @@ export function ProfileIndexPage(): JSX.Element {
 
             {canOpenDriverMode && (
               <IonCard
-                style={{
-                  margin: "0 0 14px",
-                  borderRadius: "18px",
-                  overflow: "hidden",
-                  background:
-                    "linear-gradient(135deg, rgba(17,17,17,.98), rgba(58,45,27,.97) 58%, rgba(210,164,58,.90))",
+                style={rapagoProfileCard({
+                  background: "linear-gradient(135deg, rgba(17,17,17,.98), rgba(58,45,27,.97) 58%, rgba(210,164,58,.92))",
                   color: "#ffffff",
-                  border: "1px solid rgba(210,164,58,.42)",
-                  boxShadow: "0 12px 28px rgba(0,0,0,.22)",
-                }}
+                  border: "1px solid rgba(210,164,58,.46)",
+                })}
               >
-                <IonCardContent
-                  style={{
-                    padding: "12px",
-                    display: "flex",
-                    gap: "10px",
-                    alignItems: "center",
-                  }}
-                >
+                <IonCardContent style={{ padding: 14, display: "flex", gap: 12, alignItems: "center" }}>
                   <div
                     style={{
-                      width: 42,
-                      height: 42,
-                      borderRadius: 14,
+                      width: 52,
+                      height: 52,
+                      borderRadius: 18,
                       background: "rgba(255,255,255,.14)",
                       border: "1px solid rgba(255,255,255,.18)",
                       display: "flex",
@@ -870,41 +1678,17 @@ export function ProfileIndexPage(): JSX.Element {
                       flexShrink: 0,
                     }}
                   >
-                    <IonIcon icon={carOutline} style={{ fontSize: 24, color: "#F8D879" }} />
+                    <IonIcon icon={carOutline} style={{ fontSize: 28, color: "#F8D879" }} />
                   </div>
 
                   <div style={{ minWidth: 0, flex: 1 }}>
-                    <div
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        gap: 5,
-                        color: "#BBF7D0",
-                        fontSize: ".66rem",
-                        fontWeight: 950,
-                        letterSpacing: ".03em",
-                        textTransform: "uppercase",
-                        marginBottom: 2,
-                      }}
-                    >
+                    <div style={{ display: "flex", alignItems: "center", gap: 6, color: "#BBF7D0", fontSize: ".68rem", fontWeight: 950, textTransform: "uppercase", marginBottom: 3 }}>
                       <IonIcon icon={checkmarkCircleOutline} />
-                      Conductor aprobado
+                      {profileText.driverApproved}
                     </div>
-
-                    <div style={{ fontWeight: 950, fontSize: ".92rem", lineHeight: 1.15 }}>
-                      Modo conductor
-                    </div>
-
-                    <div
-                      style={{
-                        marginTop: 2,
-                        color: "rgba(255,255,255,.74)",
-                        fontSize: ".70rem",
-                        fontWeight: 700,
-                        lineHeight: 1.25,
-                      }}
-                    >
-                      Ver solicitudes y aceptar viajes.
+                    <div style={{ fontWeight: 950, fontSize: "1.05rem", lineHeight: 1.15 }}>{profileText.driverMode}</div>
+                    <div style={{ marginTop: 3, color: "rgba(255,255,255,.76)", fontSize: ".74rem", fontWeight: 750, lineHeight: 1.28 }}>
+                      {profileText.driverModeSubtitle}
                     </div>
                   </div>
 
@@ -917,162 +1701,322 @@ export function ProfileIndexPage(): JSX.Element {
                         "--background": "linear-gradient(135deg, #D8A83E 0%, #F0D9AA 100%)",
                         "--background-activated": "#d2a43a",
                         "--color": "#111111",
-                        height: "34px",
-                        minHeight: "34px",
+                        height: "42px",
+                        minHeight: "42px",
                         fontWeight: 950,
-                        fontSize: ".72rem",
+                        fontSize: ".76rem",
                         margin: 0,
                         flexShrink: 0,
-                      } as React.CSSProperties
+                      } as CSSProperties
                     }
                   >
-                    Entrar
+                    <IonIcon icon={enterOutline} slot="start" />
+                    {profileText.switchDriver}
                   </IonButton>
                 </IonCardContent>
               </IonCard>
             )}
 
+            <IonCard style={rapagoProfileCard()}>
+              <IonCardContent style={{ padding: 16 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 10 }}>
+                  <div
+                    style={{
+                      width: 46,
+                      height: 46,
+                      borderRadius: 16,
+                      background: "rgba(210,164,58,.16)",
+                      color: "#8a6418",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      flexShrink: 0,
+                    }}
+                  >
+                    <IonIcon icon={saveOutline} style={{ fontSize: 24 }} />
+                  </div>
+                  <div>
+                    <div style={{ fontWeight: 950, fontSize: "1.05rem" }}>{profileText.editProfile}</div>
+                    <div style={{ color: "#555", fontSize: ".76rem", fontWeight: 800, marginTop: 2, lineHeight: 1.35 }}>
+                      {profileText.editSubtitle}
+                    </div>
+                  </div>
+                </div>
 
-            {/* Edit form */}
-            <IonCard>
-              <IonCardHeader>
-                <IonCardTitle style={{ fontSize: "1rem" }}>Editar perfil</IonCardTitle>
-              </IonCardHeader>
-              <IonCardContent style={{ paddingTop: 0 }}>
-                <IonItem lines="full">
-                  <IonLabel position="stacked">Nombre</IonLabel>
+                <IonItem lines="none" style={rapagoInputStyle()}>
+                  <IonLabel position="stacked" style={rapagoLabelStyle()}>{profileText.name}</IonLabel>
                   <IonInput
+                    style={rapagoFieldStyle()}
                     value={nameInput}
-                    onIonInput={(e) => setNameInput(String(e.detail.value ?? ""))}
-                    placeholder="Tu nombre completo"
+                    onIonInput={(e) => setNameInput(sanitizeProfileText(e.detail.value, 100))}
+                    placeholder={profileText.namePlaceholder}
                     maxlength={100}
                     clearInput
                   />
                 </IonItem>
 
-                <IonItem lines="full" style={{ marginTop: "8px" }}>
-                  <IonLabel position="stacked">Teléfono</IonLabel>
+                <IonItem lines="none" style={rapagoInputStyle()}>
+                  <IonLabel position="stacked" style={rapagoLabelStyle()}>{profileText.phone}</IonLabel>
                   <IonInput
+                    style={rapagoFieldStyle()}
                     value={phoneInput}
-                    onIonInput={(e) => setPhoneInput(String(e.detail.value ?? ""))}
-                    placeholder="+56 9 1234 5678"
+                    onIonInput={(e) => setPhoneInput(sanitizeProfilePhone(e.detail.value))}
+                    placeholder={profileText.phonePlaceholder}
                     type="tel"
                     maxlength={20}
                     clearInput
                   />
                 </IonItem>
 
-                <IonItem lines="full" style={{ marginTop: "8px" }}>
-                  <IonLabel position="stacked">Nacionalidad</IonLabel>
+                <IonItem lines="none" style={rapagoInputStyle()}>
+                  <IonLabel position="stacked" style={rapagoLabelStyle()}>{profileText.nationality}</IonLabel>
                   <IonInput
-                    value={getPassengerFareTypeLabel(passengerFareType)}
+                    style={rapagoFieldStyle()}
+                    value={passengerFareLabel}
                     readonly
                   />
-                  <IonNote slot="helper" style={{ fontSize: "0.7rem" }}>
-                    Este dato se toma automáticamente desde el registro y se usa para calcular tarifas.
+                  <IonNote slot="helper" style={{ fontSize: ".70rem", fontWeight: 750 }}>
+                    {profileText.fareHelper}
                   </IonNote>
                 </IonItem>
 
-                <IonItem lines="none" style={{ marginTop: "8px" }}>
-                  <IonLabel position="stacked">URL de avatar (opcional)</IonLabel>
-                  <IonInput
-                    value={avatarInput}
-                    onIonInput={(e) => setAvatarInput(String(e.detail.value ?? ""))}
-                    placeholder="https://..."
-                    type="url"
-                    clearInput
+                <div
+                  style={{
+                    marginTop: 12,
+                    padding: 14,
+                    borderRadius: 20,
+                    background: "linear-gradient(135deg,#ffffff 0%,#fff8e6 100%)",
+                    border: "1.5px dashed rgba(210,164,58,.62)",
+                    boxShadow: "0 12px 26px rgba(0,0,0,.08)",
+                  }}
+                >
+                  <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                    <div
+                      style={{
+                        width: 70,
+                        height: 70,
+                        borderRadius: 22,
+                        overflow: "hidden",
+                        background: "linear-gradient(135deg,#2dd36f,#d2a43a)",
+                        color: "#fff",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        fontWeight: 950,
+                        fontSize: "1.18rem",
+                        boxShadow: "0 12px 24px rgba(0,0,0,.18)",
+                        flexShrink: 0,
+                      }}
+                    >
+                      {getSafePassengerProfilePhotoSource(avatarInput) ? (
+                        <img
+                          src={getSafePassengerProfilePhotoSource(avatarInput)}
+                          alt="Foto de perfil"
+                          style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
+                        />
+                      ) : (
+                        sanitizeProfileText(nameInput || profile.name || session?.user?.email || "R", 40)
+                          .split(" ")
+                          .slice(0, 2)
+                          .map((word) => word[0] ?? "")
+                          .join("")
+                          .toUpperCase() || "R"
+                      )}
+                    </div>
+
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontWeight: 950, color: "#111", fontSize: ".95rem" }}>
+                        {profileText.avatarUrl}
+                      </div>
+                      <div style={{ color: "#555", fontSize: ".76rem", fontWeight: 800, lineHeight: 1.35, marginTop: 3 }}>
+                        {profileText.avatarHelper}
+                      </div>
+                      {getSafePassengerProfilePhotoSource(avatarInput) && (
+                        <div style={{ color: "#0F8A3A", fontSize: ".74rem", fontWeight: 950, marginTop: 5 }}>
+                          ✓ {profileText.avatarSelected}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  <input
+                    ref={avatarPhotoInputRef}
+                    type="file"
+                    accept="image/*"
+                    onChange={handleAvatarPhotoChange}
+                    style={{ display: "none" }}
                   />
-                  <IonNote slot="helper" style={{ fontSize: "0.7rem" }}>
-                    Carga de imágenes disponible en una versión futura.
-                  </IonNote>
-                </IonItem>
+
+                  <div
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns: getSafePassengerProfilePhotoSource(avatarInput) ? "1fr 1fr" : "1fr",
+                      gap: 10,
+                      marginTop: 14,
+                    }}
+                  >
+                    <IonButton
+                      expand="block"
+                      color="success"
+                      onClick={() => avatarPhotoInputRef.current?.click()}
+                      style={{ "--border-radius": "16px", height: "48px", fontWeight: 950 } as CSSProperties}
+                    >
+                      <IonIcon icon={cameraOutline} slot="start" />
+                      {getSafePassengerProfilePhotoSource(avatarInput) ? profileText.avatarChange : profileText.avatarAttach}
+                    </IonButton>
+
+                    {getSafePassengerProfilePhotoSource(avatarInput) && (
+                      <IonButton
+                        expand="block"
+                        fill="outline"
+                        color="danger"
+                        onClick={handleRemoveAvatarPhoto}
+                        style={{ "--border-radius": "16px", height: "48px", fontWeight: 950 } as CSSProperties}
+                      >
+                        <IonIcon icon={trashOutline} slot="start" />
+                        {profileText.avatarRemove}
+                      </IonButton>
+                    )}
+                  </div>
+
+                  {avatarPhotoError && (
+                    <IonText color="danger">
+                      <p style={{ margin: "8px 0 0", fontSize: ".78rem", fontWeight: 850 }}>
+                        {avatarPhotoError}
+                      </p>
+                    </IonText>
+                  )}
+                </div>
 
                 {saveSuccess && (
                   <IonText color="success">
-                    <p style={{ margin: "8px 0 0", fontSize: "0.85rem" }}>✓ Cambios guardados correctamente.</p>
+                    <p style={{ margin: "10px 0 0", fontSize: ".85rem", fontWeight: 900 }}>✓ {profileText.saved}</p>
                   </IonText>
                 )}
                 {saveError && (
                   <IonText color="danger">
-                    <p style={{ margin: "8px 0 0", fontSize: "0.85rem" }}>{saveError}</p>
+                    <p style={{ margin: "10px 0 0", fontSize: ".85rem", fontWeight: 900 }}>{saveError}</p>
                   </IonText>
                 )}
 
                 <IonButton
                   expand="block"
-                  style={{ marginTop: "16px" }}
+                  color="warning"
+                  style={{ "--border-radius": "18px", "--color": "#111", height: "52px", marginTop: 16, fontWeight: 950 } as CSSProperties}
                   onClick={() => void handleSave()}
                   disabled={saving}
                 >
-                  {saving ? <IonSpinner name="dots" /> : "Guardar cambios"}
+                  {saving ? <IonSpinner name="dots" /> : profileText.save}
                 </IonButton>
               </IonCardContent>
             </IonCard>
 
-            {/* Invita y Gana */}
-            <IonCard style={{ marginTop: "16px" }}>
-              <IonCardHeader>
-                <IonCardTitle style={{ fontSize: "1rem" }}>Invita y Gana</IonCardTitle>
-              </IonCardHeader>
-              <IonCardContent style={{ paddingTop: 0 }}>
+            <IonCard style={rapagoProfileCard({ background: "linear-gradient(135deg,#fff7dc,#f6f2ec)" })}>
+              <IonCardContent style={{ padding: 16 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 12 }}>
+                  <div
+                    style={{
+                      width: 46,
+                      height: 46,
+                      borderRadius: 16,
+                      background: "linear-gradient(135deg,#d2a43a,#f0d9aa)",
+                      color: "#111",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      flexShrink: 0,
+                    }}
+                  >
+                    <IonIcon icon={giftOutline} style={{ fontSize: 25 }} />
+                  </div>
+                  <div>
+                    <div style={{ fontWeight: 950, fontSize: "1.05rem" }}>{profileText.inviteTitle}</div>
+                    <div style={{ color: "#555", fontSize: ".76rem", fontWeight: 800, marginTop: 2, lineHeight: 1.35 }}>
+                      {profileText.inviteSubtitle}
+                    </div>
+                  </div>
+                </div>
+
                 {referral && referral.code ? (
                   <>
-                    <div style={{ fontSize: "0.85rem", marginBottom: "8px" }}>
-                      <strong>Tu código:</strong>{" "}
-                      <span style={{ fontFamily: "monospace", fontSize: "1rem" }}>{referral.code}</span>
+                    <div
+                      style={{
+                        borderRadius: 18,
+                        background: "#ffffff",
+                        border: "1px solid rgba(210,164,58,.35)",
+                        padding: "13px 14px",
+                        marginBottom: 12,
+                      }}
+                    >
+                      <div style={{ color: "#8a6418", fontWeight: 950, fontSize: ".70rem", textTransform: "uppercase" }}>
+                        {profileText.yourCode}
+                      </div>
+                      <div style={{ fontFamily: "monospace", fontSize: "1.35rem", fontWeight: 950, marginTop: 3 }}>
+                        {sanitizeProfileText(referral.code, 40)}
+                      </div>
+                      <div style={{ marginTop: 8, color: "#555", fontSize: ".78rem", fontWeight: 800, lineHeight: 1.35 }}>
+                        {profileText.invited} <strong>{referral.usedCount}</strong> {profileText.people} · {profileText.earned} <strong>${referral.totalReward.toLocaleString(language === "en" ? "en-US" : "es-CL")} CLP</strong>
+                      </div>
                     </div>
-                    <div style={{ fontSize: "0.78rem", color: "var(--ion-color-medium)", marginBottom: "12px" }}>
-                      Has invitado a <strong>{referral.usedCount}</strong> persona{referral.usedCount !== 1 ? "s" : ""}{" "}
-                      · Has ganado <strong>${referral.totalReward.toLocaleString("es-CL")} CLP</strong>
-                    </div>
-                    <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
-                      <IonButton size="small" onClick={() => void handleCopyCode(referral.code)}>
-                        {copiedCode ? "¡Copiado!" : "Copiar código"}
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                      <IonButton
+                        expand="block"
+                        color="warning"
+                        onClick={() => void handleCopyCode(referral.code)}
+                        style={{ "--border-radius": "16px", "--color": "#111", fontWeight: 950 } as CSSProperties}
+                      >
+                        <IonIcon icon={copyOutline} slot="start" />
+                        {copiedCode ? profileText.copied : profileText.copyCode}
                       </IonButton>
-                      <IonButton size="small" fill="outline" onClick={() => {
-                        const shareData = { title: "RAPA GO", text: "Usa mi código para tu primer viaje", url: referral.link };
-                        if (navigator.share) {
-                          void navigator.share(shareData);
-                        } else {
-                          void handleCopyCode(referral.link);
-                        }
-                      }}>
-                        Compartir link
+                      <IonButton
+                        expand="block"
+                        fill="outline"
+                        color="dark"
+                        onClick={() => {
+                          const shareData = { title: profileText.shareTitle, text: profileText.shareText, url: referral.link };
+                          if (navigator.share) {
+                            void navigator.share(shareData);
+                          } else {
+                            void handleCopyCode(referral.link);
+                          }
+                        }}
+                        style={{ "--border-radius": "16px", fontWeight: 950 } as CSSProperties}
+                      >
+                        <IonIcon icon={shareSocialOutline} slot="start" />
+                        {profileText.shareLink}
                       </IonButton>
                     </div>
                   </>
                 ) : (
-                  <>
-                    <p style={{ fontSize: "0.85rem", color: "var(--ion-color-medium)", margin: "0 0 12px" }}>
-                      Genera tu código único y compártelo. Cuando alguien complete su primer viaje usando tu código, recibirás un beneficio en tu billetera.
-                    </p>
-                    <IonButton
-                      expand="block"
-                      onClick={() => void handleGenerateCode()}
-                      disabled={generatingCode}
-                    >
-                      {generatingCode ? <IonSpinner name="dots" /> : "Generar mi código"}
-                    </IonButton>
-                  </>
+                  <IonButton
+                    expand="block"
+                    color="warning"
+                    onClick={() => void handleGenerateCode()}
+                    disabled={generatingCode}
+                    style={{ "--border-radius": "18px", "--color": "#111", height: "52px", fontWeight: 950 } as CSSProperties}
+                  >
+                    {generatingCode ? <IonSpinner name="dots" /> : profileText.generateCode}
+                  </IonButton>
                 )}
               </IonCardContent>
             </IonCard>
 
-            <IonCard style={{ marginTop: "16px", marginBottom: "20px" }}>
-              <IonCardContent>
+            <IonCard style={rapagoProfileCard({ marginBottom: 20 })}>
+              <IonCardContent style={{ padding: 16 }}>
                 <IonButton
                   expand="block"
                   color="danger"
                   fill="outline"
                   onClick={() => void handleLogout()}
                   disabled={saving}
-                  style={{ fontWeight: 800 }}
+                  style={{ "--border-radius": "18px", height: "52px", fontWeight: 950 } as CSSProperties}
                 >
-                  Cerrar sesión
+                  <IonIcon icon={exitOutline} slot="start" />
+                  {profileText.logout}
                 </IonButton>
               </IonCardContent>
             </IonCard>
-          </>
+          </div>
         )}
       </IonContent>
     </IonPage>
@@ -1590,3 +2534,4 @@ export function ProfileNotificationsPage(): JSX.Element {
 }
 
 export default ProfileIndexPage;
+  

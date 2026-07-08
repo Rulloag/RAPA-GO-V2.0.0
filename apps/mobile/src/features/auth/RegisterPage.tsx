@@ -44,6 +44,7 @@ type RegisterField =
 
 
 type PassengerFareType = "resident" | "chilean" | "foreigner";
+type ResidenceVerificationStatus = "pending" | "approved" | "rejected" | "not_required";
 
 const PASSENGER_FARE_TYPES: Array<{
   value: PassengerFareType;
@@ -205,7 +206,8 @@ function persistRegistrationProfile(data: {
   email: string;
   passengerFareType: PassengerFareType;
   passengerFareLabel: string;
-  residenceVerificationStatus: "pending" | "not_required";
+  residenceVerificationStatus: ResidenceVerificationStatus;
+  residenceVerificationMessage?: string;
   residentDocument?: ResidentDocumentData | null;
 }): void {
   try {
@@ -217,6 +219,15 @@ function persistRegistrationProfile(data: {
     localStorage.setItem("rapago_fare_passenger_type", data.passengerFareType);
     localStorage.setItem("rapago_profile_nationality", data.passengerFareLabel);
     localStorage.setItem("rapago_residence_verification_status", data.residenceVerificationStatus);
+
+    if (data.residenceVerificationMessage) {
+      localStorage.setItem(
+        "rapago_residence_verification_user_message",
+        data.residenceVerificationMessage,
+      );
+    } else if (data.residenceVerificationStatus === "not_required") {
+      localStorage.removeItem("rapago_residence_verification_user_message");
+    }
 
     // Compatibilidad conductor: si después se inscribe como conductor,
     // mantiene su tipo tarifario; si es residente, queda como Residente Rapa Nui.
@@ -280,6 +291,8 @@ function persistResidentVerificationRequest(input: {
       documentUploadedAt: input.document.uploadedAt,
       documentDataUrl: input.document.dataUrl,
       reason: "Validación de residencia Rapa Nui",
+      userMessage:
+        "Tu documento de Residente Rapa Nui está pendiente de revisión por el administrador.",
     };
 
     localStorage.setItem(
@@ -742,7 +755,7 @@ export function RegisterPage(): JSX.Element {
         farePassengerType: PassengerFareType;
         nationality: string;
         isResident: boolean;
-        residenceVerificationStatus: "pending" | "not_required";
+        residenceVerificationStatus: ResidenceVerificationStatus;
         residentDocumentName: string | null;
       });
 
@@ -771,6 +784,10 @@ export function RegisterPage(): JSX.Element {
         passengerFareLabel: getPassengerFareTypeLabel(selectedPassengerFareType),
         residenceVerificationStatus:
           selectedPassengerFareType === "resident" ? "pending" : "not_required",
+        residenceVerificationMessage:
+          selectedPassengerFareType === "resident"
+            ? "Tu documento de Residente Rapa Nui está pendiente de revisión por el administrador."
+            : "",
         residentDocument:
           selectedPassengerFareType === "resident" ? residentDocument : null,
       });
