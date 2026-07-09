@@ -60,6 +60,184 @@ const RAPAGO_REQUEUED_RIDES_KEY = "rapago_requeued_available_rides_v1";
 const RAPAGO_REQUEUED_PASSENGER_FORCE_KEY = "rapago_requeued_passenger_visible_rides_v1";
 const RAPAGO_REQUEUED_RIDES_EVENT = "rapago:ride-requeued-after-driver-cancel";
 
+
+type RapaGoDriverRatingRecord = {
+  id: string;
+  rideId: string;
+  rideKey: string;
+  driverKey: string;
+  driverId?: string | null;
+  driverUserId?: string | null;
+  driverEmail?: string | null;
+  driverPhone?: string | null;
+  driverName?: string | null;
+  passengerKey: string;
+  passengerEmail?: string | null;
+  passengerName?: string | null;
+  stars: number;
+  comment?: string | null;
+  originText?: string | null;
+  destinationText?: string | null;
+  createdAt: string;
+};
+
+const RAPAGO_DRIVER_RATINGS_KEY = "rapago_driver_ratings_v1";
+const RAPAGO_DRIVER_RATINGS_EVENT = "rapago:driver-ratings-updated";
+
+function normalizeRatingIdentity(value: unknown): string {
+  return String(value ?? "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .trim();
+}
+
+function ratingStringValue(value: unknown): string {
+  return String(value ?? "").trim();
+}
+
+function getRatingObjectString(source: unknown, keys: string[]): string {
+  if (!source || typeof source !== "object") return "";
+  const record = source as Record<string, unknown>;
+
+  for (const key of keys) {
+    const value = ratingStringValue(record[key]);
+    if (value) return value;
+  }
+
+  return "";
+}
+
+function getPassengerRatingKey(user: unknown, ride?: Partial<RideRequestData> & Record<string, unknown>): string {
+  const email = getRatingObjectString(user, ["email", "mail"])
+    || ratingStringValue(ride?.passengerEmail)
+    || ratingStringValue(ride?.email);
+  if (email) return `email:${normalizeRatingIdentity(email)}`;
+
+  const id = getRatingObjectString(user, ["id", "userId", "uid"])
+    || ratingStringValue(ride?.passengerId)
+    || ratingStringValue(ride?.userId);
+  if (id) return `id:${normalizeRatingIdentity(id)}`;
+
+  const name = getRatingObjectString(user, ["name", "fullName", "displayName"])
+    || ratingStringValue(ride?.passengerName)
+    || ratingStringValue(ride?.userName);
+  if (name) return `name:${normalizeRatingIdentity(name)}`;
+
+  return "passenger:local";
+}
+
+function getPassengerRatingRideKey(ride: Partial<RideRequestData> & Record<string, unknown>): string {
+  const id = ratingStringValue(ride.id ?? ride.rideId ?? ride.originalRideId ?? ride.serverRideId);
+  if (id) return `ride:${id}`;
+
+  return `route:${getRideDedupeKey(ride as RideRequestData & Record<string, unknown>)}`;
+}
+
+function getRideDriverRatingKey(ride: Partial<RideRequestData> & Record<string, unknown>): string {
+  const driverId = ratingStringValue(ride.driverId ?? ride.driverUserId ?? ride.driverOwnerKey ?? ride.ownerKey);
+  if (driverId) return `id:${normalizeRatingIdentity(driverId)}`;
+
+  const email = ratingStringValue(ride.driverEmail ?? ride.driverMail);
+  if (email) return `email:${normalizeRatingIdentity(email)}`;
+
+  const phone = ratingStringValue(ride.driverPhone ?? ride.driverPhoneNumber ?? ride.driverMobile);
+  if (phone) return `phone:${normalizeRatingIdentity(phone)}`;
+
+  const name = ratingStringValue(ride.driverName ?? ride.driverFullName);
+  if (name) return `name:${normalizeRatingIdentity(name)}`;
+
+  const vehicle = ratingStringValue(ride.driverVehiclePlate ?? ride.vehiclePlate);
+  if (vehicle) return `plate:${normalizeRatingIdentity(vehicle)}`;
+
+  return "driver:unknown";
+}
+
+function readRapaGoDriverRatings(): RapaGoDriverRatingRecord[] {
+  try {
+    const raw = localStorage.getItem(RAPAGO_DRIVER_RATINGS_KEY);
+    const parsed = raw ? (JSON.parse(raw) as RapaGoDriverRatingRecord[]) : [];
+    return Array.isArray(parsed)
+      ? parsed.filter((item) => item && typeof item === "object" && Number.isFinite(Number(item.stars)))
+      : [];
+  } catch {
+    return [];
+  }
+}
+
+function writeRapaGoDriverRatings(records: RapaGoDriverRatingRecord[]): void {
+  try {
+    localStorage.setItem(RAPAGO_DRIVER_RATINGS_KEY, JSON.stringify(records.slice(0, 600)));
+    window.dispatchEvent(new CustomEvent(RAPAGO_DRIVER_RATINGS_EVENT, { detail: { ratings: records } }));
+    window.dispatchEvent(new CustomEvent("rapago:driver-profile-updated", { detail: { ratings: records } }));
+  } catch {
+    // No bloquea la calificación si el navegador no permite guardar.
+  }
+}
+
+function upsertPassengerDriverRating(
+  ride: RideRequestData,
+  stars: number,
+  comment: string,
+  user: unknown,
+): RapaGoDriverRatingRecord {
+  const rideRecord = ride as RideRequestData & Record<string, unknown>;
+  const rideKey = getPassengerRatingRideKey(rideRecord);
+  const passengerKey = getPassengerRatingKey(user, rideRecord);
+  const driverKey = getRideDriverRatingKey(rideRecord);
+  const now = new Date().toISOString();
+  const safeStars = Math.min(5, Math.max(1, Math.round(Number(stars) || 5)));
+  const current = readRapaGoDriverRatings();
+
+  const nextRecord: RapaGoDriverRatingRecord = {
+    id: `rating-${rideKey}-${passengerKey}`,
+    rideId: ratingStringValue(rideRecord.id ?? rideRecord.rideId ?? rideRecord.originalRideId ?? rideKey),
+    rideKey,
+    driverKey,
+    driverId: ratingStringValue(rideRecord.driverId ?? rideRecord.driverUserId) || null,
+    driverUserId: ratingStringValue(rideRecord.driverUserId) || null,
+    driverEmail: ratingStringValue(rideRecord.driverEmail) || null,
+    driverPhone: ratingStringValue(rideRecord.driverPhone ?? rideRecord.driverPhoneNumber ?? rideRecord.driverMobile) || null,
+    driverName: ratingStringValue(rideRecord.driverName ?? rideRecord.driverFullName) || null,
+    passengerKey,
+    passengerEmail: ratingStringValue((user as Record<string, unknown> | null)?.email ?? rideRecord.passengerEmail) || null,
+    passengerName: ratingStringValue((user as Record<string, unknown> | null)?.name ?? rideRecord.passengerName ?? rideRecord.userName) || null,
+    stars: safeStars,
+    comment: comment.trim() || null,
+    originText: ratingStringValue(rideRecord.originText) || null,
+    destinationText: ratingStringValue(rideRecord.destinationText) || null,
+    createdAt: now,
+  };
+
+  const next = [
+    nextRecord,
+    ...current.filter((item) => !(item.rideKey === rideKey && item.passengerKey === passengerKey)),
+  ];
+
+  writeRapaGoDriverRatings(next);
+  return nextRecord;
+}
+
+function passengerHasRatedRide(ride: RideRequestData, user: unknown): boolean {
+  const record = ride as RideRequestData & Record<string, unknown>;
+  const rideKey = getPassengerRatingRideKey(record);
+  const passengerKey = getPassengerRatingKey(user, record);
+
+  return readRapaGoDriverRatings().some((item) =>
+    item.rideKey === rideKey && (!item.passengerKey || item.passengerKey === passengerKey),
+  );
+}
+
+function readPassengerRatedRideIds(rides: RideRequestData[], user: unknown): Set<string> {
+  const ids = new Set<string>();
+
+  for (const ride of rides) {
+    if (passengerHasRatedRide(ride, user)) ids.add(ride.id);
+  }
+
+  return ids;
+}
+
 function readPassengerNotifications(): PassengerNotificationPayload[] {
   try {
     const raw = localStorage.getItem(RAPAGO_PASSENGER_NOTIFICATIONS_KEY);
@@ -252,6 +430,14 @@ function addFastSearchFeeToBaseFare(ride: RideRequestData, baseFare: number | nu
 function getPassengerRideStartedAtMs(ride: RideRequestData & Record<string, unknown>): number | null {
   const schedule = getPassengerRideScheduleInfo(ride);
   const effectiveStatus = getEffectivePassengerRideStatus(ride);
+  const requeueMirror = isDriverCancelledRequeuedRide(ride)
+    ? ride
+    : findPassengerDriverCancelledRequeueMirror(ride);
+
+  if (requeueMirror) {
+    const requeueMs = getPassengerDriverRequeueTimestampMs(requeueMirror);
+    if (requeueMs != null) return requeueMs;
+  }
 
   if (schedule.isScheduled && effectiveStatus === "requested" && schedule.pickupActivationAt) {
     const activationMs = new Date(schedule.pickupActivationAt).getTime();
@@ -596,7 +782,7 @@ function isDriverCancelledRequeuedRide(ride: RideRequestData & Record<string, un
   if (hasPassengerCancelledRideMarker(ride)) return false;
 
   return (
-    (status === "requested" || status === "cancelled") &&
+    ["requested", "scheduled", "driver_scheduled", "accepted", "cancelled", "canceled"].includes(status) &&
     (
       (ride as Record<string, unknown>).forceActiveAfterDriverCancel === true ||
       reason.includes("driver_cancelled") ||
@@ -611,15 +797,233 @@ function isDriverCancelledRequeuedRide(ride: RideRequestData & Record<string, un
   );
 }
 
+
+function getPassengerRideTimestampMs(
+  ride: Partial<RideRequestData> & Record<string, unknown>,
+  keys: string[],
+): number | null {
+  for (const key of keys) {
+    const raw = ride[key];
+    if (!raw) continue;
+
+    const parsed = new Date(String(raw)).getTime();
+    if (Number.isFinite(parsed)) return parsed;
+  }
+
+  return null;
+}
+
+function getDriverRequeueSearchStartedAtIso(
+  ride: Partial<RideRequestData> & Record<string, unknown>,
+): string {
+  const candidates = [
+    "searchStartedAt",
+    "requeuedAt",
+    "driverCancelledAt",
+    "cancelledAt",
+    "canceledAt",
+    "updatedAt",
+    "requestedAt",
+    "createdAt",
+  ];
+
+  const parsed = getPassengerRideTimestampMs(ride, candidates);
+  return new Date(parsed ?? Date.now()).toISOString();
+}
+
+function getPassengerDriverRequeueTimestampMs(
+  ride: Partial<RideRequestData> & Record<string, unknown>,
+): number | null {
+  return getPassengerRideTimestampMs(ride, [
+    "requeuedAt",
+    "searchStartedAt",
+    "driverCancelledAt",
+    "cancelledAt",
+    "canceledAt",
+    "updatedAt",
+    "requestedAt",
+    "createdAt",
+  ]);
+}
+
+function getPassengerDriverAcceptedTimestampMs(
+  ride: Partial<RideRequestData> & Record<string, unknown>,
+): number | null {
+  return getPassengerRideTimestampMs(ride, [
+    "acceptedAt",
+    "driverAcceptedAt",
+    "driverAcceptedScheduleAt",
+    "driverScheduleAcceptedAt",
+    "scheduledDriverAcceptedAt",
+    "driverConfirmedAt",
+    "navigationStartedAt",
+    "driverStartedScheduledReservationAt",
+    "enRouteAt",
+  ]);
+}
+
+function passengerRecordLooksAcceptedByDriver(
+  ride: Partial<RideRequestData> & Record<string, unknown>,
+): boolean {
+  const status = passengerBridgeClean(ride.status);
+  const response = passengerBridgeClean(
+    ride.driverScheduleResponse ??
+      ride.scheduledDriverResponse ??
+      ride.driverReservationResponse ??
+      ride.driverAssignmentStatus,
+  );
+
+  return (
+    ["accepted", "driver_scheduled", "driver_en_route", "driver_arrived", "in_progress"].includes(status) ||
+    response.includes("accepted") ||
+    response.includes("confirm") ||
+    Boolean(ride.acceptedAt) ||
+    Boolean(ride.driverAcceptedAt) ||
+    Boolean(ride.driverAcceptedScheduleAt)
+  );
+}
+
+function passengerAcceptedDriverIsNewerThanRequeue(
+  candidate: Partial<RideRequestData> & Record<string, unknown>,
+  requeued: Partial<RideRequestData> & Record<string, unknown>,
+): boolean {
+  if (!passengerRecordLooksAcceptedByDriver(candidate)) return false;
+
+  const requeuedMs = getPassengerDriverRequeueTimestampMs(requeued);
+  const acceptedMs = getPassengerDriverAcceptedTimestampMs(candidate);
+
+  // Para evitar que vuelva a aparecer el conductor antiguo, solo aceptamos
+  // un puente de conductor si fue confirmado DESPUÉS de la re-encolación.
+  if (requeuedMs == null || acceptedMs == null) return false;
+  return acceptedMs > requeuedMs + 500;
+}
+
+function buildPassengerSearchingAfterDriverCancelRide<T extends RideRequestData & Record<string, unknown>>(ride: T): T {
+  const searchStartedAt = getDriverRequeueSearchStartedAtIso(ride);
+
+  return {
+    ...ride,
+    status: "requested",
+    cancelledAt: null,
+    canceledAt: null,
+    cancelledByRole: null,
+    cancelledBy: null,
+    cancellationReason: null,
+    cancelReason: null,
+    forceActiveAfterDriverCancel: true,
+    requeuedReason: "driver_cancelled",
+    requeueReason: "driver_cancelled",
+    requeuedAt: searchStartedAt,
+    searchStartedAt,
+    passengerNotice: "Tu conductor canceló el viaje. Estamos buscando un nuevo conductor disponible.",
+    passengerNotification: "Tu conductor canceló el viaje. Estamos buscando un nuevo conductor disponible.",
+    driverName: null,
+    driverFullName: null,
+    driverPhone: null,
+    driverEmail: null,
+    driverPhotoUrl: null,
+    driverProfileImageDataUrl: null,
+    driverProfilePhotoUrl: null,
+    driverVehicleBrand: null,
+    driverVehicleModel: null,
+    driverVehicleColor: null,
+    driverVehiclePlate: null,
+    driverVehicleYear: null,
+    driverVehicleImageDataUrl: null,
+    driverVehiclePhotoDataUrl: null,
+    vehicleBrand: null,
+    vehicleModel: null,
+    vehicleColor: null,
+    vehiclePlate: null,
+    vehicleImageDataUrl: null,
+    vehiclePhotoDataUrl: null,
+    acceptedAt: null,
+    driverAcceptedAt: null,
+    driverAcceptedScheduleAt: null,
+    driverScheduleAcceptedAt: null,
+    scheduledDriverAcceptedAt: null,
+    enRouteAt: null,
+    arrivedAt: null,
+    startedAt: null,
+    navigationStartedAt: null,
+    driverStartedScheduledReservationAt: null,
+    driverStartedScheduledReservation: false,
+    scheduledReservationNavigationStarted: false,
+    driverScheduleResponse: null,
+    scheduledDriverResponse: null,
+    driverAssignmentStatus: "searching_next_driver",
+    scheduleStatus: "searching_next_driver",
+    adminScheduleStatus: "searching_next_driver",
+    reservationStatus: "searching_next_driver",
+    dispatchStatus: "searching_next_driver",
+  } as T;
+}
+
+function readPassengerDriverCancelledRequeueMirrors(): Array<RideRequestData & Record<string, unknown>> {
+  const all: Array<RideRequestData & Record<string, unknown>> = [];
+
+  for (const key of [
+    RAPAGO_REQUEUED_RIDES_KEY,
+    RAPAGO_REQUEUED_PASSENGER_FORCE_KEY,
+    LOCAL_PASSENGER_RIDES_KEY,
+    "rapago_admin_scheduled_rides",
+    "rapago_admin_scheduled_rides_v1",
+    "rapago_admin_scheduled_rides_v2",
+    "rapago_admin_scheduled_rides_force_v1",
+    "rapago_bridge_scheduled_rides_v1",
+  ]) {
+    try {
+      const raw = localStorage.getItem(key);
+      if (!raw) continue;
+
+      const parsed = JSON.parse(raw) as unknown;
+      if (Array.isArray(parsed)) {
+        all.push(...parsed.filter((item): item is RideRequestData & Record<string, unknown> =>
+          Boolean(item && typeof item === "object"),
+        ));
+      } else if (parsed && typeof parsed === "object") {
+        all.push(parsed as RideRequestData & Record<string, unknown>);
+      }
+    } catch {
+      // No bloquea Mis Viajes si un storage antiguo está corrupto.
+    }
+  }
+
+  return all.filter((ride) => isDriverCancelledRequeuedRide(ride));
+}
+
+function findPassengerDriverCancelledRequeueMirror(
+  target: Partial<RideRequestData> & Record<string, unknown>,
+): (RideRequestData & Record<string, unknown>) | null {
+  const matches = readPassengerDriverCancelledRequeueMirrors()
+    .filter((ride) => isSamePassengerRideCancelTarget(ride, target))
+    .sort((a, b) => {
+      const aMs = getPassengerDriverRequeueTimestampMs(a) ?? 0;
+      const bMs = getPassengerDriverRequeueTimestampMs(b) ?? 0;
+      return bMs - aMs;
+    });
+
+  return matches[0] ?? null;
+}
+
 function shouldUseNextRideForDedupe(
   previous: RideRequestData & Record<string, unknown>,
   next: RideRequestData & Record<string, unknown>,
 ): boolean {
+  const previousRequeued = isDriverCancelledRequeuedRide(previous);
+  const nextRequeued = isDriverCancelledRequeuedRide(next);
+
   // Si el conductor canceló, el viaje queda re-encolado como requested.
-  // El backend puede seguir devolviendo el mismo viaje como cancelled; no debe ganar
-  // sobre la copia re-encolada, porque el pasajero debe volver a ver "Buscando conductor".
-  if (isDriverCancelledRequeuedRide(next)) return true;
-  if (isDriverCancelledRequeuedRide(previous) && String(next.status ?? "") === "cancelled") return false;
+  // El backend y los puentes locales pueden seguir devolviendo el conductor antiguo.
+  // Esa copia antigua NO debe ganar, porque el pasajero debe volver a ver
+  // "Buscando conductor" con el contador reiniciado desde la cancelación.
+  if (nextRequeued) {
+    return !passengerAcceptedDriverIsNewerThanRequeue(previous, next);
+  }
+
+  if (previousRequeued) {
+    return passengerAcceptedDriverIsNewerThanRequeue(next, previous);
+  }
 
   return true;
 }
@@ -729,33 +1133,11 @@ function readPassengerVisibleRequeuedRides(user: unknown): RideRequestData[] {
         const passengerEmail = normalizePassengerEmail(ride.passengerEmail);
         return !sessionEmail || !passengerEmail || passengerEmail === sessionEmail;
       })
-      .map((ride) => ({
-        ...(ride as RideRequestData & Record<string, unknown>),
-        status: "requested",
-        cancelledAt: null,
-        cancelledByRole: null,
-        cancellationReason: null,
-        forceActiveAfterDriverCancel: true,
-        driverName: null,
-        driverPhone: null,
-        driverVehicleBrand: null,
-        driverVehicleModel: null,
-        driverVehicleColor: null,
-        driverVehiclePlate: null,
-        driverVehicleYear: null,
-        driverVehicleImageDataUrl: null,
-        acceptedAt: null,
-        enRouteAt: null,
-        arrivedAt: null,
-        startedAt: null,
-        passengerNotice:
-          (ride as RideRequestData & Record<string, unknown>).passengerNotice ??
-          "Tu conductor canceló el viaje, estamos buscando uno nuevo.",
-        passengerNotification:
-          (ride as RideRequestData & Record<string, unknown>).passengerNotification ??
-          "Tu conductor canceló el viaje, estamos buscando uno nuevo.",
-        requeuedReason: "driver_cancelled",
-      })) as RideRequestData[];
+      .map((ride) =>
+        buildPassengerSearchingAfterDriverCancelRide(
+          ride as RideRequestData & Record<string, unknown>,
+        ),
+      ) as RideRequestData[];
   } catch {
     return [];
   }
@@ -968,6 +1350,10 @@ function readPassengerPendingCharges(): PassengerPendingCharge[] {
         appliedAt: typeof item.appliedAt === "string" ? item.appliedAt : null,
         title: String(item.title ?? "Cargo pendiente"),
         description: String(item.description ?? "Cargo pendiente para el próximo viaje."),
+        cardRefundRequested: Boolean(item.cardRefundRequested || item.mercadoPagoRefundRequested),
+        mercadoPagoRefundRequested: Boolean(item.mercadoPagoRefundRequested || item.cardRefundRequested),
+        mercadoPagoRefundStatus: typeof item.mercadoPagoRefundStatus === "string" ? item.mercadoPagoRefundStatus : null,
+        cardRefundNotice: typeof item.cardRefundNotice === "string" ? item.cardRefundNotice : null,
       }))
       .filter((charge) => charge.amountClp > 0);
   } catch {
@@ -995,8 +1381,13 @@ function savePassengerPendingChargeFromCancellation(
   const rideKey = getPassengerPendingChargeRideKey(record);
   const chargeId = `cancel-charge-${rideKey}`;
   const paymentLabel = getRidePaymentMethodLabel(ride.notes);
+  const isCardPayment = isPassengerCancellationCardPayment(record);
   const minimumFareClp = getPassengerRideMinimumFareClp(ride);
   const now = new Date().toISOString();
+  const chargeNextRideNotice = `Cargo ${formatClp(policy.feeClp)} pendiente para el próximo viaje.`;
+  const cardRefundNextRideNotice = isCardPayment
+    ? `El pago original se solicitará como devolución a MercadoPago/tarjeta, pero el cargo de cancelación/no show de ${formatClp(policy.feeClp)} NO se descuenta de esa devolución: queda pendiente y se sumará automáticamente al próximo viaje.`
+    : null;
 
   const nextCharge: PassengerPendingCharge = {
     id: chargeId,
@@ -1018,8 +1409,12 @@ function savePassengerPendingChargeFromCancellation(
     title: policy.type === "no_show" ? "Cargo por no show" : "Cargo por cancelación",
     description:
       policy.type === "no_show"
-        ? `No show: el conductor llegó y pasaron 5 minutos. Cargo ${formatClp(policy.feeClp)} para el próximo viaje.`
-        : `Cancelación fuera del tiempo gratuito. Cargo ${formatClp(policy.feeClp)} para el próximo viaje.`,
+        ? `No show: el conductor llegó y pasaron 5 minutos. ${chargeNextRideNotice}${cardRefundNextRideNotice ? ` ${cardRefundNextRideNotice}` : ""}`
+        : `Cancelación fuera del tiempo gratuito. ${chargeNextRideNotice}${cardRefundNextRideNotice ? ` ${cardRefundNextRideNotice}` : ""}`,
+    cardRefundRequested: isCardPayment,
+    mercadoPagoRefundRequested: isCardPayment,
+    mercadoPagoRefundStatus: isCardPayment ? "pending_backend_refund" : null,
+    cardRefundNotice: cardRefundNextRideNotice,
   };
 
   const current = readPassengerPendingCharges();
@@ -1082,7 +1477,9 @@ function buildPassengerCancelledRide(ride: RideRequestData): RideRequestData {
     passengerPendingChargeNextRide: policy.feeClp > 0,
     passengerPendingChargeNotice:
       policy.feeClp > 0
-        ? `Tienes un cargo pendiente de ${formatClp(policy.feeClp)}. Se sumará automáticamente a tu próximo viaje.`
+        ? isCardPayment
+          ? `Tienes un cargo pendiente de ${formatClp(policy.feeClp)}. Aunque se solicite devolución del pago original a la tarjeta, este cargo se sumará automáticamente a tu próximo viaje.`
+          : `Tienes un cargo pendiente de ${formatClp(policy.feeClp)}. Se sumará automáticamente a tu próximo viaje.`
         : null,
     // Si el viaje fue pagado con tarjeta, el reembolso real debe ejecutarlo el backend
     // usando el paymentId del proveedor. El frontend solo deja la solicitud marcada
@@ -1091,7 +1488,9 @@ function buildPassengerCancelledRide(ride: RideRequestData): RideRequestData {
     mercadoPagoRefundRequested: isCardPayment,
     mercadoPagoRefundStatus: isCardPayment ? "pending_backend_refund" : null,
     cardRefundNotice: isCardPayment
-      ? "Se solicitará la devolución a la misma tarjeta usada en el pago. El cargo de cancelación queda para el próximo viaje."
+      ? policy.feeClp > 0
+        ? `Tu viaje fue cancelado. Si el pago fue confirmado, MercadoPago devolverá el pago original al mismo medio usado para pagar. El cargo pendiente de ${formatClp(policy.feeClp)} se cobrará automáticamente en tu próximo viaje.`
+        : "Tu viaje fue cancelado. Si el pago fue confirmado, MercadoPago devolverá el dinero al mismo medio usado para pagar. No debes ingresar tarjeta ni datos bancarios. Si el pago aún está pendiente, quedará como revisión pendiente."
       : null,
     requeuedReason: null,
     forceActiveAfterDriverCancel: false,
@@ -1497,8 +1896,34 @@ function bridgeHasDriverData(bridge: PassengerAcceptedDriverBridgeRecord | null)
 }
 
 function enrichPassengerRideWithAcceptedDriverBridge<T extends RideRequestData & Record<string, unknown>>(ride: T): T {
+  const requeueMirror = isDriverCancelledRequeuedRide(ride)
+    ? ride
+    : findPassengerDriverCancelledRequeueMirror(ride);
+
   const bridge = findPassengerAcceptedDriverBridgeForRide(ride);
-  if (!bridge || !bridgeHasDriverData(bridge)) return ride;
+
+  if (requeueMirror && !passengerAcceptedDriverIsNewerThanRequeue(bridge ?? {}, requeueMirror)) {
+    return buildPassengerSearchingAfterDriverCancelRide({
+      ...ride,
+      ...requeueMirror,
+      id: ride.id ?? requeueMirror.id,
+      originalRideId:
+        (ride as Record<string, unknown>).originalRideId ??
+        requeueMirror.originalRideId ??
+        requeueMirror.id ??
+        ride.id,
+    } as T);
+  }
+
+  if (!bridge || !bridgeHasDriverData(bridge)) {
+    return requeueMirror
+      ? buildPassengerSearchingAfterDriverCancelRide({
+          ...ride,
+          ...requeueMirror,
+          id: ride.id ?? requeueMirror.id,
+        } as T)
+      : ride;
+  }
 
   const bridgeStatus = passengerBridgeClean(bridge.status);
   const started =
@@ -1533,6 +1958,16 @@ function enrichPassengerRideWithAcceptedDriverBridge<T extends RideRequestData &
       bridge.id ??
       ride.id,
     status: nextStatus,
+    // Cuando ya aceptó un nuevo conductor, se apagan las marcas de re-encolado.
+    cancelledAt: null,
+    canceledAt: null,
+    cancelledByRole: null,
+    cancelledBy: null,
+    cancellationReason: null,
+    cancelReason: null,
+    requeuedReason: null,
+    requeueReason: null,
+    forceActiveAfterDriverCancel: false,
     driverName: bridge.driverName ?? bridge.driverFullName ?? ride.driverName,
     driverFullName: bridge.driverFullName ?? bridge.driverName ?? (ride as Record<string, unknown>).driverFullName,
     driverPhone: bridge.driverPhone ?? (ride as Record<string, unknown>).driverPhone,
@@ -1848,7 +2283,16 @@ const RAPAGO_DRIVER_LIVE_LOCATION_KEY = "rapago_driver_live_locations_v1";
 const RAPAGO_DRIVER_LIVE_LOCATION_EVENT = "rapago:driver-live-location-updated";
 
 type PassengerLocalDriverLivePayload = {
+  id?: string | null;
   rideId?: string | null;
+  originalRideId?: string | null;
+  serverRideId?: string | null;
+  ownerKey?: string | null;
+  driverOwnerKey?: string | null;
+  vehicleOwnerKey?: string | null;
+  driverId?: string | null;
+  driverUserId?: string | null;
+  selectedVehicleId?: string | null;
   lat?: number | string | null;
   lng?: number | string | null;
   heading?: number | string | null;
@@ -1936,6 +2380,50 @@ function passengerNormalizeKey(value: unknown): string {
     .toLowerCase();
 }
 
+function passengerLivePayloadRideMatches(
+  payload: (PassengerLocalDriverLivePayload & Record<string, unknown>) | null | undefined,
+  rideId: string,
+): boolean {
+  const cleanRideId = passengerCleanString(rideId);
+  if (!payload || !cleanRideId) return false;
+
+  return [payload.rideId, payload.id, payload.originalRideId, payload.serverRideId]
+    .map((value) => passengerCleanString(value))
+    .filter(Boolean)
+    .includes(cleanRideId);
+}
+
+function passengerLiveIdentityKeys(payload: PassengerLocalDriverLivePayload | null | undefined): string[] {
+  return [
+    payload?.ownerKey,
+    payload?.driverOwnerKey,
+    payload?.vehicleOwnerKey,
+    payload?.driverEmail,
+    payload?.driverId,
+    payload?.driverUserId,
+    payload?.driverName,
+    payload?.driverFullName,
+  ]
+    .map(passengerNormalizeKey)
+    .filter(Boolean);
+}
+
+function passengerLivePayloadMatchesDriver(
+  candidate: PassengerLocalDriverLivePayload | null | undefined,
+  target: PassengerLocalDriverLivePayload | null | undefined,
+): boolean {
+  if (!candidate || !target) return false;
+
+  const candidateRideId = passengerCleanString(candidate.rideId);
+  const targetRideId = passengerCleanString(target.rideId);
+  if (candidateRideId && targetRideId && candidateRideId === targetRideId) return true;
+
+  const candidateKeys = new Set(passengerLiveIdentityKeys(candidate));
+  if (candidateKeys.size === 0) return false;
+
+  return passengerLiveIdentityKeys(target).some((key) => candidateKeys.has(key));
+}
+
 function readPassengerStoredDriverVehicles(): PassengerStoredDriverVehicle[] {
   try {
     const raw = localStorage.getItem(PASSENGER_DRIVER_VEHICLES_STORAGE_KEY);
@@ -1982,13 +2470,15 @@ function getPassengerStoredDriverVehicle(live?: PassengerLocalDriverLivePayload 
   });
   if (byOwner) return byOwner;
 
-  if (selectedVehicles.length === 1) return selectedVehicles[0];
-
   const anyByOwner = vehicles.find((vehicle) => {
     const owner = passengerNormalizeKey(vehicle.ownerKey);
     return Boolean(owner && liveKeys.includes(owner));
   });
   if (anyByOwner) return anyByOwner;
+
+  if (liveKeys.length > 0) return null;
+
+  if (selectedVehicles.length === 1) return selectedVehicles[0];
 
   if (selectedVehicles.length > 0) return selectedVehicles[0];
 
@@ -2017,6 +2507,16 @@ function getPassengerLivePayloadScore(payload: PassengerLocalDriverLivePayload |
   return score;
 }
 
+function readPassengerAcceptedDriverLivePayload(rideId: string): PassengerLocalDriverLivePayload | null {
+  const cleanRideId = passengerCleanString(rideId);
+  if (!cleanRideId) return null;
+
+  const bridge = readPassengerAcceptedDriverBridgeRecords()
+    .find((record) => passengerLivePayloadRideMatches(record as PassengerLocalDriverLivePayload & Record<string, unknown>, cleanRideId));
+
+  return bridge ? (bridge as PassengerLocalDriverLivePayload) : null;
+}
+
 function mergePassengerLivePayloads(
   primary: PassengerLocalDriverLivePayload | null | undefined,
   secondary: PassengerLocalDriverLivePayload | null | undefined,
@@ -2025,6 +2525,12 @@ function mergePassengerLivePayloads(
   return {
     ...(secondary ?? {}),
     ...(primary ?? {}),
+    ownerKey: primary?.ownerKey ?? secondary?.ownerKey ?? null,
+    driverOwnerKey: primary?.driverOwnerKey ?? secondary?.driverOwnerKey ?? null,
+    vehicleOwnerKey: primary?.vehicleOwnerKey ?? secondary?.vehicleOwnerKey ?? null,
+    driverId: primary?.driverId ?? secondary?.driverId ?? null,
+    driverUserId: primary?.driverUserId ?? secondary?.driverUserId ?? null,
+    selectedVehicleId: primary?.selectedVehicleId ?? secondary?.selectedVehicleId ?? null,
     driverName: primary?.driverName ?? primary?.driverFullName ?? secondary?.driverName ?? secondary?.driverFullName ?? null,
     driverFullName: primary?.driverFullName ?? primary?.driverName ?? secondary?.driverFullName ?? secondary?.driverName ?? null,
     driverProfileImageDataUrl:
@@ -2099,24 +2605,41 @@ function readPassengerLocalDriverLivePoint(rideId: string): DriverLivePoint | nu
 
 function readPassengerLiveVehiclePayload(rideId: string): PassengerLocalDriverLivePayload | null {
   try {
+    const cleanRideId = passengerCleanString(rideId);
+    if (!cleanRideId) return null;
+
     const rawMap = localStorage.getItem(RAPAGO_DRIVER_LIVE_LOCATION_KEY);
     const map = rawMap ? (JSON.parse(rawMap) as Record<string, PassengerLocalDriverLivePayload>) : {};
-    const fromMap = map?.[rideId] ?? null;
-
     const candidates = Object.values(map ?? {}).filter(Boolean);
+    const fromMap =
+      map?.[cleanRideId] ??
+      candidates
+        .filter((candidate) => passengerLivePayloadRideMatches(candidate as PassengerLocalDriverLivePayload & Record<string, unknown>, cleanRideId))
+        .sort((a, b) => getPassengerLivePayloadScore(b) - getPassengerLivePayloadScore(a))[0] ??
+      null;
 
     const currentRaw = localStorage.getItem("rapago_current_driver_location");
     const current = currentRaw ? (JSON.parse(currentRaw) as PassengerLocalDriverLivePayload) : null;
 
-    const sameRideCurrent = String(current?.rideId ?? "") === rideId || !current?.rideId ? current : null;
-    const bestCandidate = [...candidates, current].filter(Boolean).sort(
-      (a, b) => getPassengerLivePayloadScore(b) - getPassengerLivePayloadScore(a),
-    )[0] ?? null;
+    const acceptedBridge = readPassengerAcceptedDriverLivePayload(cleanRideId);
+    const sameRideCurrent = passengerLivePayloadRideMatches(current as PassengerLocalDriverLivePayload & Record<string, unknown>, cleanRideId)
+      ? current
+      : null;
+    const primary = acceptedBridge ?? fromMap ?? sameRideCurrent;
+    const sameDriverCandidate = primary
+      ? [...candidates, current]
+          .filter((candidate): candidate is PassengerLocalDriverLivePayload => Boolean(candidate))
+          .filter((candidate) => candidate !== primary && passengerLivePayloadMatchesDriver(candidate, primary))
+          .sort((a, b) => getPassengerLivePayloadScore(b) - getPassengerLivePayloadScore(a))[0] ?? null
+      : null;
 
-    // Si el payload exacto del viaje trae GPS pero no trae vehículo, se fusiona con el
-    // payload más completo del conductor. Esto evita que la ficha quede con "no informado".
-    const merged = mergePassengerLivePayloads(fromMap ?? sameRideCurrent ?? bestCandidate, bestCandidate);
-    return merged;
+    if (primary) return mergePassengerLivePayloads(primary, sameDriverCandidate);
+
+    // Fallback de desarrollo: si solo hay un conductor publicado en este navegador,
+    // se permite usarlo. Con varios conductores, no se mezcla información ajena.
+    if (candidates.length === 1 && !current) return candidates[0] ?? null;
+
+    return null;
   } catch {
     return null;
   }
@@ -2795,30 +3318,62 @@ function passengerMergeVehicleData(
   };
 }
 
+function passengerRideHasAssignedDriver(
+  ride: RideRequestData & Record<string, unknown>,
+  live?: PassengerLocalDriverLivePayload | null,
+): boolean {
+  return Boolean(
+    passengerFirstValue(
+      ride.driverEmail,
+      ride.driverName,
+      ride.driverFullName,
+      ride.driverPhone,
+      ride.driverPhoneNumber,
+      live?.driverEmail,
+      live?.driverName,
+      live?.driverFullName,
+      live?.driverPhone,
+      live?.driverPhoneNumber,
+    ),
+  );
+}
+
+function passengerRideIsAssignedOrActive(ride: RideRequestData & Record<string, unknown>): boolean {
+  return [
+    "accepted",
+    "driver_scheduled",
+    "driver_en_route",
+    "driver_arrived",
+    "in_progress",
+  ].includes(String(ride.status ?? "").toLowerCase());
+}
+
 function getPassengerDriverVehicleImageDataUrl(ride: RideRequestData & Record<string, unknown>): string | null {
   const live = readPassengerLiveVehiclePayload(String(ride.id ?? ""));
   const storedVehicle = getPassengerStoredDriverVehicle(live);
-  const anyVehicle = passengerReadBestVehicleFromEverywhere();
+  const useGlobalFallback = !passengerRideHasAssignedDriver(ride, live) && !passengerRideIsAssignedOrActive(ride);
+  const anyVehicle = useGlobalFallback ? passengerReadBestVehicleFromEverywhere() : null;
+  const canonicalVehicleImage = useGlobalFallback ? passengerReadCanonicalVehicleImageDataUrl() : null;
 
   const latestPublicImage = passengerImageWithVersion(
-    anyVehicle?.imageDataUrl ?? passengerReadCanonicalVehicleImageDataUrl(),
+    anyVehicle?.imageDataUrl ?? canonicalVehicleImage,
     anyVehicle?.score,
   );
 
   return passengerImageValue(
-    latestPublicImage,
-    anyVehicle?.imageDataUrl,
     live?.driverVehicleImageDataUrl,
     live?.driverVehiclePhotoDataUrl,
     live?.vehicleImageDataUrl,
     live?.vehiclePhotoDataUrl,
     storedVehicle?.imageDataUrl,
-    passengerReadCanonicalVehicleImageDataUrl(),
     // Últimos respaldos: datos antiguos pegados al viaje aceptado.
     ride.driverVehicleImageDataUrl,
     ride.driverVehiclePhotoDataUrl,
     ride.vehicleImageDataUrl,
     ride.vehiclePhotoDataUrl,
+    latestPublicImage,
+    anyVehicle?.imageDataUrl,
+    canonicalVehicleImage,
   );
 }
 
@@ -2844,6 +3399,8 @@ function getPassengerDriverFullName(ride: RideRequestData & Record<string, unkno
   const name = String(direct ?? "").trim();
   if (name) return name;
 
+  if (passengerRideHasAssignedDriver(ride, live) || passengerRideIsAssignedOrActive(ride)) return "Conductor asignado";
+
   try {
     const storedName =
       localStorage.getItem("rapago_driver_availability_name") ??
@@ -2860,11 +3417,7 @@ function getPassengerDriverFullName(ride: RideRequestData & Record<string, unkno
 
 function getPassengerDriverProfileImageDataUrl(ride: RideRequestData & Record<string, unknown>): string | null {
   const live = readPassengerLiveVehiclePayload(String(ride.id ?? ""));
-  const fromEverywhere = passengerReadBestProfilePhotoFromEverywhere();
-
-  if (fromEverywhere) return fromEverywhere;
-
-  return passengerImageValue(
+  const specificImage = passengerImageValue(
     live?.driverProfileImageDataUrl,
     live?.driverProfilePhotoUrl,
     live?.driverPhotoUrl,
@@ -2877,6 +3430,11 @@ function getPassengerDriverProfileImageDataUrl(ride: RideRequestData & Record<st
     ride.profileImageDataUrl,
     ride.profilePhotoDataUrl,
   );
+
+  if (specificImage) return specificImage;
+  if (passengerRideHasAssignedDriver(ride, live) || passengerRideIsAssignedOrActive(ride)) return null;
+
+  return passengerReadBestProfilePhotoFromEverywhere();
 }
 
 
@@ -2889,44 +3447,45 @@ function getPassengerDriverVehiclePublicData(ride: RideRequestData & Record<stri
 } {
   const live = readPassengerLiveVehiclePayload(String(ride.id ?? ""));
   const storedVehicle = getPassengerStoredDriverVehicle(live);
-  const anyVehicle = passengerReadBestVehicleFromEverywhere();
+  const useGlobalFallback = !passengerRideHasAssignedDriver(ride, live) && !passengerRideIsAssignedOrActive(ride);
+  const anyVehicle = useGlobalFallback ? passengerReadBestVehicleFromEverywhere() : null;
 
-  // Primero se usan los datos públicos más recientes publicados por el conductor.
-  // Lo que viene pegado al viaje queda solo como respaldo para no mostrar fotos antiguas.
+  // Primero se usan datos del viaje aceptado/live. Los respaldos globales quedan al final
+  // para no mostrar la foto o vehículo de otro conductor guardado en este navegador.
   const directVehicle = passengerMergeVehicleData(
     {
       brand: passengerFirstValue(
-        anyVehicle?.brand,
         live?.driverVehicleBrand,
         live?.vehicleBrand,
         storedVehicle?.brand,
         ride.driverVehicleBrand,
         ride.vehicleBrand,
+        anyVehicle?.brand,
       ),
       model: passengerFirstValue(
-        anyVehicle?.model,
         live?.driverVehicleModel,
         live?.vehicleModel,
         storedVehicle?.model,
         ride.driverVehicleModel,
         ride.vehicleModel,
+        anyVehicle?.model,
       ),
       color: passengerFirstValue(
-        anyVehicle?.color,
         live?.driverVehicleColor,
         live?.vehicleColor,
         storedVehicle?.color,
         ride.driverVehicleColor,
         ride.vehicleColor,
+        anyVehicle?.color,
       ),
       plate: passengerFirstValue(
-        anyVehicle?.plate,
         live?.driverVehiclePlate,
         live?.vehiclePlate,
         storedVehicle?.plate,
         ride.driverVehiclePlate,
         ride.vehiclePlate,
         ride.plate,
+        anyVehicle?.plate,
       ),
       imageDataUrl: getPassengerDriverVehicleImageDataUrl(ride),
     },
@@ -3740,7 +4299,11 @@ function getEffectivePassengerRideStatus(ride: RideRequestData): string {
   const rawStatus = String(ride.status ?? "requested");
 
   if (isPassengerRideCancelledByPassenger(rideRecord) || hasPassengerCancelledRideMarker(rideRecord)) return "cancelled";
-  if (isDriverCancelledRequeuedRide(rideRecord)) return "requested";
+
+  const requeueMirror = isDriverCancelledRequeuedRide(rideRecord)
+    ? rideRecord
+    : findPassengerDriverCancelledRequeueMirror(rideRecord);
+  if (requeueMirror && !passengerAcceptedDriverIsNewerThanRequeue(rideRecord, requeueMirror)) return "requested";
 
   if (rawStatus === "cancelled" || rawStatus === "completed") return rawStatus;
 
@@ -4600,6 +5163,10 @@ type PassengerPendingCharge = {
   appliedAt?: string | null;
   title: string;
   description: string;
+  cardRefundRequested?: boolean | null;
+  mercadoPagoRefundRequested?: boolean | null;
+  mercadoPagoRefundStatus?: string | null;
+  cardRefundNotice?: string | null;
 };
 
 function sanitizePassengerMoneyInput(value: unknown): number {
@@ -5066,7 +5633,17 @@ function PassengerRideCard({
 }): JSX.Element {
   const nav = extractPassengerRideNav(ride.notes);
   const effectiveStatus = getEffectivePassengerRideStatus(ride);
-  const hasDriver = !["requested", "scheduled"].includes(effectiveStatus) || !!ride.driverName;
+  const driverRequeueMirror = findPassengerDriverCancelledRequeueMirror(ride as RideRequestData & Record<string, unknown>);
+  const isDriverRequeuedSearch =
+    isDriverCancelledRequeuedRide(ride as RideRequestData & Record<string, unknown>) ||
+    Boolean(
+      driverRequeueMirror &&
+        !passengerAcceptedDriverIsNewerThanRequeue(
+          ride as RideRequestData & Record<string, unknown>,
+          driverRequeueMirror,
+        ),
+    );
+  const hasDriver = !["requested", "scheduled"].includes(effectiveStatus) || (!!ride.driverName && !isDriverRequeuedSearch);
   const navHasMapPoints =
     (nav.pickupLat != null && nav.pickupLng != null) ||
     (nav.destinationLat != null && nav.destinationLng != null) ||
@@ -5085,7 +5662,7 @@ function PassengerRideCard({
   const scheduleInfo = getPassengerRideScheduleInfo(ride as RideRequestData & Record<string, unknown>);
   const vehicleImageDataUrl = getPassengerDriverVehicleImageDataUrl(ride as RideRequestData & Record<string, unknown>);
   const vehicleLine = getPassengerDriverVehicleLine(ride as RideRequestData & Record<string, unknown>);
-  const isScheduledPending = scheduleInfo.isScheduled && effectiveStatus === "scheduled";
+  const isScheduledPending = scheduleInfo.isScheduled && effectiveStatus === "scheduled" && !isDriverRequeuedSearch;
   const [nowMs, setNowMs] = useState(() => Date.now());
 
   useEffect(() => {
@@ -5098,7 +5675,14 @@ function PassengerRideCard({
     return () => window.clearInterval(interval);
   }, [effectiveStatus, ride.id]);
 
-  const searchStartedAtMs = getPassengerRideStartedAtMs(ride as RideRequestData & Record<string, unknown>);
+  const searchStartedAtMs = getPassengerRideStartedAtMs(
+    (isDriverRequeuedSearch && driverRequeueMirror
+      ? buildPassengerSearchingAfterDriverCancelRide({
+          ...(ride as RideRequestData & Record<string, unknown>),
+          ...driverRequeueMirror,
+        })
+      : ride) as RideRequestData & Record<string, unknown>,
+  );
   const searchingElapsedMs = searchStartedAtMs == null ? 0 : Math.max(0, nowMs - searchStartedAtMs);
   const searchingElapsedLabel = formatPassengerElapsedTime(searchingElapsedMs);
   const fastSearchRecord = getPassengerFastSearchRecord(ride as RideRequestData & Record<string, unknown>);
@@ -5110,6 +5694,7 @@ function PassengerRideCard({
     Math.round(Number((ride as RideRequestData & Record<string, unknown>).passengerCancellationFeeClp ?? (ride as RideRequestData & Record<string, unknown>).paymentPendingClp ?? 0)),
   );
   const passengerCancelledPolicyText = String((ride as RideRequestData & Record<string, unknown>).passengerCancellationPolicyText ?? "").trim();
+  const passengerCancelledCardRefundNotice = String((ride as RideRequestData & Record<string, unknown>).cardRefundNotice ?? "").trim();
 
   return (
     <IonCard
@@ -5132,7 +5717,7 @@ function PassengerRideCard({
         </div>
 
         <div style={{ padding: showMap ? "16px" : "12px 16px", color: "#111111" }}>
-          {String((ride as RideRequestData & Record<string, unknown>).requeuedReason ?? "") === "driver_cancelled" && (
+          {isDriverRequeuedSearch && (
             <div
               style={{
                 marginBottom: 12,
@@ -5146,6 +5731,7 @@ function PassengerRideCard({
               }}
             >
               ⚠️ Tu conductor canceló el viaje. Estamos buscando un nuevo conductor disponible.
+              <br />Tiempo buscando nuevamente: <strong>{searchingElapsedLabel}</strong>
             </div>
           )}
 
@@ -5164,6 +5750,11 @@ function PassengerRideCard({
             >
               ⚠️ Cargo pendiente: <strong>{formatClp(passengerCancelledChargeClp)}</strong>.
               <br />Este monto se sumará automáticamente a cualquier próximo viaje que solicites.
+              {passengerCancelledCardRefundNotice && (
+                <>
+                  <br /><span style={{ fontSize: ".76rem" }}>{passengerCancelledCardRefundNotice}</span>
+                </>
+              )}
               {passengerCancelledPolicyText && (
                 <>
                   <br /><span style={{ fontSize: ".76rem" }}>{passengerCancelledPolicyText}</span>
@@ -5487,7 +6078,7 @@ function PassengerRideCard({
                 color="warning"
                 onClick={() => onRate(ride.id)}
               >
-                ⭐ Calificar
+                ⭐ Calificar viaje
               </IonButton>
             )}
 
@@ -5538,7 +6129,9 @@ export default function TripsPage(): JSX.Element {
     readPassengerNotifications().find((item) => !item.read) ?? null,
   );
   const [pendingCancelAction, setPendingCancelAction] = useState<PendingPassengerCancelAction | null>(null);
+  const [refundMercadoPagoAlert, setRefundMercadoPagoAlert] = useState<{ header: string; message: string } | null>(null);
   const [, setKnownAssignedRideIds] = useState<Set<string>>(new Set());
+  const promptedRatingRideIdsRef = useRef<Set<string>>(new Set());
 
   const loadRides = useCallback(async () => {
     setLoading(true);
@@ -5555,6 +6148,7 @@ export default function TripsPage(): JSX.Element {
       if (!session?.accessToken) {
         const merged = mergeRides(passengerLocalRides, requeuedRides);
         setAllRides(merged);
+        setRatedIds(readPassengerRatedRideIds(merged, session?.user));
         setKnownAssignedRideIds(new Set());
         setPage(1);
         setLastRefreshAt(new Date());
@@ -5571,6 +6165,7 @@ export default function TripsPage(): JSX.Element {
       const assignedIds = new Set(assignedActiveRides.map((ride) => ride.id));
       setKnownAssignedRideIds(assignedIds);
       setAllRides(mergedRides);
+      setRatedIds(readPassengerRatedRideIds(mergedRides, session?.user));
       setPage(1);
       setLastRefreshAt(new Date());
     } catch (err) {
@@ -5580,6 +6175,7 @@ export default function TripsPage(): JSX.Element {
       requeuedRides.forEach(upsertRequeuedRideIntoPassengerLocalStorage);
       const merged = mergeRides([...localRides, ...bridgeRides, ...requeuedRides], requeuedRides);
       setAllRides(merged);
+      setRatedIds(readPassengerRatedRideIds(merged, session?.user));
       setKnownAssignedRideIds(new Set());
       setPage(1);
       setLastRefreshAt(new Date());
@@ -5589,7 +6185,7 @@ export default function TripsPage(): JSX.Element {
     } finally {
       setLoading(false);
     }
-  }, [session?.accessToken]);
+  }, [session?.accessToken, session?.user]);
 
   useEffect(() => {
     const refreshPassengerNotice = () => {
@@ -5649,6 +6245,32 @@ export default function TripsPage(): JSX.Element {
     };
   }, [loadRides]);
 
+
+
+  useEffect(() => {
+    const completedWithoutRating = allRides.find((ride) => {
+      const effectiveStatus = getEffectivePassengerRideStatus(ride);
+      if (effectiveStatus !== "completed") return false;
+      if (ratedIds.has(ride.id)) return false;
+      if (passengerHasRatedRide(ride, session?.user)) return false;
+      return true;
+    });
+
+    if (!completedWithoutRating) return;
+
+    const promptKey = getPassengerRatingRideKey(
+      completedWithoutRating as RideRequestData & Record<string, unknown>,
+    );
+
+    if (promptedRatingRideIdsRef.current.has(promptKey)) return;
+
+    promptedRatingRideIdsRef.current.add(promptKey);
+    setRatingRideId(completedWithoutRating.id);
+    setRatingStars(5);
+    setRatingComment("");
+    setRatingError(null);
+  }, [allRides, ratedIds, session?.user]);
+
   const filteredBeforePagination = allRides.filter((r) => {
     const effectiveStatus = getEffectivePassengerRideStatus(r);
 
@@ -5660,6 +6282,24 @@ export default function TripsPage(): JSX.Element {
   });
 
   const filtered = filteredBeforePagination.slice(0, page * PAGE_SIZE);
+
+  function showMercadoPagoRefundAlert(ride: RideRequestData): void {
+    const record = ride as RideRequestData & Record<string, unknown>;
+    if (!isPassengerCancellationCardPayment(record)) return;
+
+    setRefundMercadoPagoAlert({
+      header: "Devolución MercadoPago",
+      message: [
+        "Tu viaje fue cancelado correctamente.",
+        "",
+        "Si el pago fue confirmado, MercadoPago devolverá el dinero al mismo medio usado para pagar.",
+        "",
+        "No debes ingresar tarjeta ni datos bancarios.",
+        "",
+        "Si MercadoPago todavía no confirmó el pago, no existe cobro confirmado para devolver y quedará como revisión pendiente.",
+      ].join("\n"),
+    });
+  }
 
   async function performPassengerCancel(
     targetRide: RideRequestData,
@@ -5689,10 +6329,12 @@ export default function TripsPage(): JSX.Element {
         }
       }
 
+      showMercadoPagoRefundAlert(targetRide);
       setCancelError(null);
     } catch {
       // Aunque el backend responda 404/409/500, ya cancelamos en localStorage
       // para que el pasajero no quede atrapado con el viaje reencolado activo.
+      showMercadoPagoRefundAlert(targetRide);
       setCancelError(null);
     } finally {
       setCancelling(null);
@@ -5730,18 +6372,60 @@ export default function TripsPage(): JSX.Element {
   }
 
   async function handleSubmitRating() {
-    if (!session?.accessToken || !ratingRideId) return;
+    if (!ratingRideId) return;
+
+    const targetRide =
+      allRides.find((ride) => ride.id === ratingRideId) ??
+      readLocalPassengerRides().find((ride) => ride.id === ratingRideId);
+
+    if (!targetRide) {
+      setRatingError("No encontramos el viaje para calificar.");
+      return;
+    }
+
     setSubmittingRating(true);
     setRatingError(null);
+
     try {
-      await ridesService.rateRide(session.accessToken, ratingRideId, ratingStars, ratingComment.trim() || undefined);
+      // Primero guardamos localmente para que el conductor vea sus estrellas al instante.
+      upsertPassengerDriverRating(targetRide, ratingStars, ratingComment.trim(), session?.user);
+
+      if (
+        session?.accessToken &&
+        !ratingRideId.startsWith("local-") &&
+        !ratingRideId.startsWith("admin-local-")
+      ) {
+        try {
+          await ridesService.rateRide(
+            session.accessToken,
+            ratingRideId,
+            ratingStars,
+            ratingComment.trim() || undefined,
+          );
+        } catch {
+          // Si el backend todavía no guarda rating, el respaldo local mantiene la experiencia tipo Uber.
+        }
+      }
+
       setRatedIds((prev) => new Set([...prev, ratingRideId]));
+      setAllRides((prev) =>
+        prev.map((ride) =>
+          ride.id === ratingRideId
+            ? ({
+                ...(ride as RideRequestData & Record<string, unknown>),
+                passengerRatedDriver: true,
+                passengerDriverRatingStars: ratingStars,
+                passengerDriverRatingComment: ratingComment.trim() || null,
+              } as RideRequestData)
+            : ride,
+        ),
+      );
       setRatingRideId(null);
       setRatingStars(5);
       setRatingComment("");
     } catch (err) {
       const message = err instanceof Error ? err.message : "Error al calificar el viaje.";
-      setRatingError(safeTripsErrorMessage(message));
+      setRatingError(safeTripsErrorMessage(message) ?? "No se pudo guardar la calificación.");
     } finally {
       setSubmittingRating(false);
     }
@@ -5925,7 +6609,8 @@ export default function TripsPage(): JSX.Element {
         {ratingRideId && (
           <IonCard style={{ margin: "12px 16px" }}>
             <IonCardContent style={{ padding: "14px 16px" }}>
-              <div style={{ fontWeight: 600, marginBottom: "8px" }}>⭐ Calificar conductor</div>
+              <div style={{ fontWeight: 950, marginBottom: "4px", fontSize: "1rem" }}>⭐ ¿Cuántas estrellas fue tu viaje?</div>
+              <div style={{ color: "#666", fontSize: ".8rem", marginBottom: 8 }}>Elige de 1 a 5 estrellas. Esta calificación se reflejará en el perfil del conductor.</div>
               <StarRatingInput value={ratingStars} onChange={setRatingStars} />
               <IonItem lines="none" style={{ "--padding-start": "0", marginTop: "8px" }}>
                 <IonTextarea value={ratingComment} onIonInput={(e) => setRatingComment(String(e.detail.value ?? ""))}
@@ -5934,7 +6619,7 @@ export default function TripsPage(): JSX.Element {
               {ratingError && <IonText color="danger"><p style={{ fontSize: "0.82rem", margin: "4px 0" }}>{ratingError}</p></IonText>}
               <div style={{ display: "flex", gap: "8px", marginTop: "8px" }}>
                 <IonButton size="small" onClick={() => void handleSubmitRating()} disabled={submittingRating}>
-                  {submittingRating ? <IonSpinner name="dots" /> : "Enviar"}
+                  {submittingRating ? <IonSpinner name="dots" /> : "Enviar calificación"}
                 </IonButton>
                 <IonButton size="small" fill="outline" color="medium" onClick={() => setRatingRideId(null)}>Cancelar</IonButton>
               </div>
@@ -5970,6 +6655,19 @@ export default function TripsPage(): JSX.Element {
             },
           ]}
           onDidDismiss={() => setPendingCancelAction(null)}
+        />
+
+        <IonAlert
+          isOpen={refundMercadoPagoAlert !== null}
+          header={refundMercadoPagoAlert?.header ?? "Devolución MercadoPago"}
+          message={refundMercadoPagoAlert?.message ?? ""}
+          buttons={[
+            {
+              text: "Entendido",
+              handler: () => setRefundMercadoPagoAlert(null),
+            },
+          ]}
+          onDidDismiss={() => setRefundMercadoPagoAlert(null)}
         />
 </IonContent>
     </IonPage>

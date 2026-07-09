@@ -43,7 +43,7 @@ type RegisterField =
   | "terms";
 
 
-type PassengerFareType = "resident" | "chilean" | "foreigner";
+type PassengerFareType = "resident" | "rapanui" | "chilean" | "foreigner";
 type ResidenceVerificationStatus = "pending" | "approved" | "rejected" | "not_required";
 
 const PASSENGER_FARE_TYPES: Array<{
@@ -58,6 +58,13 @@ const PASSENGER_FARE_TYPES: Array<{
     label: "Residente Rapa Nui",
     helper: "Requiere documento de residencia para validación del equipo Rapa Go.",
     badge: "Rapa Nui",
+    multiplier: "1,00",
+  },
+  {
+    value: "rapanui",
+    label: "Rapanui normal",
+    helper: "Persona Rapanui/local. No requiere documento de residencia.",
+    badge: "Rapanui",
     multiplier: "1,00",
   },
   {
@@ -103,7 +110,7 @@ function getPassengerFareTypeLabel(value: PassengerFareType): string {
 }
 
 function isPassengerFareType(value: string): value is PassengerFareType {
-  return value === "resident" || value === "chilean" || value === "foreigner";
+  return value === "resident" || value === "rapanui" || value === "chilean" || value === "foreigner";
 }
 
 function cleanEmailInput(value: string): string {
@@ -235,6 +242,8 @@ function persistRegistrationProfile(data: {
     localStorage.setItem("rapago_driver_fare_passenger_type", data.passengerFareType);
     localStorage.setItem("rapago_driver_nationality", data.passengerFareLabel);
     localStorage.setItem("rapago_driver_is_resident", String(data.passengerFareType === "resident"));
+// Rapanui normal es tipo propio/local, pero NO queda como residente pendiente de documento.
+localStorage.setItem("rapago_driver_is_rapanui_normal", String(data.passengerFareType === "rapanui"));
 
     if (data.residentDocument) {
       localStorage.setItem("rapago_resident_document_name", data.residentDocument.name);
@@ -842,7 +851,7 @@ export function RegisterPage(): JSX.Element {
 
           <IonText>
             <p style={{ margin: "0 0 0.75rem", fontSize: "0.9rem", lineHeight: 1.45, color: "#5a4528", fontWeight: 700 }}>
-              La cuenta se crea como pasajero. Selecciona tu nacionalidad para aplicar la tarifa correcta. Si eres residente Rapa Nui, debes adjuntar un documento para validación.
+              La cuenta se crea como pasajero. Selecciona tu tipo de pasajero para aplicar la tarifa correcta. Rapanui normal no requiere documento; Residente Rapa Nui sí debe adjuntar documento para validación.
             </p>
           </IonText>
 

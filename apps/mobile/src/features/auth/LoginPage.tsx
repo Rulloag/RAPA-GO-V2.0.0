@@ -48,10 +48,11 @@ type ResidenceVerificationStatus = "pending" | "approved" | "rejected" | "not_re
 type PassengerCondition =
   | "turista_chileno"
   | "turista_extranjero"
+  | "rapanui_normal"
   | "residente_rapa_nui"
   | "";
 
-type PassengerFareType = "resident" | "chilean" | "foreigner";
+type PassengerFareType = "resident" | "rapanui" | "chilean" | "foreigner";
 
 type ResidenceDocumentMeta = {
   name: string;
@@ -87,12 +88,14 @@ type PassengerRegistrationProfile = {
 
 function getPassengerFareType(condition: PassengerCondition): PassengerFareType {
   if (condition === "residente_rapa_nui") return "resident";
+  if (condition === "rapanui_normal") return "rapanui";
   if (condition === "turista_chileno") return "chilean";
   return "foreigner";
 }
 
 function getConditionLabel(value: PassengerCondition): string {
   if (value === "residente_rapa_nui") return "Residente Rapa Nui";
+  if (value === "rapanui_normal") return "Rapanui normal";
   if (value === "turista_chileno") return "Turista chileno";
   if (value === "turista_extranjero") return "Turista extranjero";
   return "";
@@ -100,12 +103,14 @@ function getConditionLabel(value: PassengerCondition): string {
 
 function getPassengerFareLabel(value: PassengerFareType): string {
   if (value === "resident") return "Residente Rapa Nui";
+  if (value === "rapanui") return "Rapanui normal";
   if (value === "chilean") return "Turista chileno";
   return "Turista extranjero";
 }
 
 function getLegacyPassengerCondition(value: PassengerCondition): string {
   if (value === "residente_rapa_nui") return "residente";
+  if (value === "rapanui_normal") return "rapanui_normal";
   if (value === "turista_chileno") return "chileno_no_residente";
   if (value === "turista_extranjero") return "extranjero";
   return "";
@@ -125,6 +130,7 @@ function getStoredPassengerCondition(): PassengerCondition {
   if (
     value === "turista_chileno" ||
     value === "turista_extranjero" ||
+    value === "rapanui_normal" ||
     value === "residente_rapa_nui"
   ) {
     return value;
@@ -135,6 +141,7 @@ function getStoredPassengerCondition(): PassengerCondition {
    */
   if (value === "chileno_no_residente") return "turista_chileno";
   if (value === "extranjero") return "turista_extranjero";
+  if (value === "rapanui" || value === "rapanui_normal") return "rapanui_normal";
   if (value === "residente") return "residente_rapa_nui";
 
   return "";
@@ -873,6 +880,12 @@ export function LoginPage(): JSX.Element {
       icon: "🌎",
     },
     {
+      value: "rapanui_normal",
+      title: "Rapanui normal",
+      subtitle: "Tarifa local Rapanui. No requiere documento.",
+      icon: "🌺",
+    },
+    {
       value: "residente_rapa_nui",
       title: "Residente Rapa Nui",
       subtitle: "Requiere documento para validación admin.",
@@ -1100,7 +1113,7 @@ export function LoginPage(): JSX.Element {
                       fontWeight: 760,
                     }}
                   >
-                    Selecciona tu tipo de pasajero para aplicar la tarifa correcta antes de entrar con Facebook.
+                    Selecciona tu tipo de pasajero para aplicar la tarifa correcta antes de entrar con Facebook. Rapanui normal no requiere documento.
                   </p>
 
                   {facebookStepError && (

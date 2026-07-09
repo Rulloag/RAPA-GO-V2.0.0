@@ -462,6 +462,7 @@ export function AdminHomePage(): JSX.Element {
   const [, setAdminAvailabilityRevision] = useState(0);
   const [cashReviewsRevision, setCashReviewsRevision] = useState(0);
   const [adminCashToast, setAdminCashToast] = useState<string | null>(null);
+  const [showAdminChargesModal, setShowAdminChargesModal] = useState(false);
 
   const load = useCallback(
     async (silent = false) => {
@@ -789,6 +790,12 @@ export function AdminHomePage(): JSX.Element {
       description: "Revisión pendiente",
       icon: documentTextOutline,
       route: ROUTES.ADMIN.DOCUMENTS,
+    },
+    {
+      label: "Cobranza",
+      description: `${passengerChargesPendingNextRide.length + pendingCashPaymentReviews.length} pendiente${passengerChargesPendingNextRide.length + pendingCashPaymentReviews.length !== 1 ? "s" : ""}`,
+      icon: cardOutline,
+      route: "__admin_charges__",
     },
     {
       label: "Config",
@@ -1180,13 +1187,19 @@ export function AdminHomePage(): JSX.Element {
                       <IonButton
                         key={action.label}
                         routerLink={
-                          action.route === ROUTES.ADMIN.DRIVERS
+                          action.route === ROUTES.ADMIN.DRIVERS ||
+                          action.route === "__admin_charges__"
                             ? undefined
                             : action.route
                         }
                         onClick={() => {
                           if (action.route === ROUTES.ADMIN.DRIVERS) {
                             goToAdminDrivers();
+                            return;
+                          }
+
+                          if (action.route === "__admin_charges__") {
+                            setShowAdminChargesModal(true);
                           }
                         }}
                         fill="clear"
@@ -1273,6 +1286,90 @@ export function AdminHomePage(): JSX.Element {
                   </IonList>
                 </IonCard>
               )}
+
+              <IonModal
+                isOpen={showAdminChargesModal}
+                onDidDismiss={() => setShowAdminChargesModal(false)}
+                breakpoints={[0, 0.72, 0.95]}
+                initialBreakpoint={0.95}
+              >
+                <IonHeader>
+                  <IonToolbar color="dark">
+                    <IonTitle>Cobranza y validación</IonTitle>
+                    <div slot="end" style={{ paddingRight: 8 }}>
+                      <IonButton
+                        fill="clear"
+                        color="light"
+                        onClick={() => setShowAdminChargesModal(false)}
+                      >
+                        Cerrar
+                      </IonButton>
+                    </div>
+                  </IonToolbar>
+                </IonHeader>
+
+                <IonContent className="ion-padding">
+                  <IonCard
+                    className="admin-section-card"
+                    style={{
+                      borderRadius: 22,
+                      border: "1px solid rgba(218,170,65,.32)",
+                      boxShadow: "0 16px 36px rgba(0,0,0,.10)",
+                    }}
+                  >
+                    <IonCardHeader>
+                      <div className="admin-section-title-row">
+                        <div>
+                          <IonCardTitle>Validación de cobranza</IonCardTitle>
+                          <IonCardSubtitle>
+                            Revisa cargos por cancelación, no show, pagos en efectivo, saldos a favor y devoluciones.
+                          </IonCardSubtitle>
+                        </div>
+                        <IonBadge color={passengerChargesPendingNextRide.length + pendingCashPaymentReviews.length > 0 ? "warning" : "success"}>
+                          {passengerChargesPendingNextRide.length + pendingCashPaymentReviews.length > 0
+                            ? `${passengerChargesPendingNextRide.length + pendingCashPaymentReviews.length} pendiente${passengerChargesPendingNextRide.length + pendingCashPaymentReviews.length !== 1 ? "s" : ""}`
+                            : "Al día"}
+                        </IonBadge>
+                      </div>
+                    </IonCardHeader>
+                    <IonCardContent>
+                      <div
+                        style={{
+                          display: "grid",
+                          gridTemplateColumns: "1fr 1fr",
+                          gap: 10,
+                        }}
+                      >
+                        <div style={{ background: "#fff7ed", borderRadius: 16, padding: 12 }}>
+                          <div style={{ fontSize: ".72rem", color: "#666", fontWeight: 900 }}>
+                            Pendiente por cobrar
+                          </div>
+                          <div style={{ fontWeight: 950, color: "#111", fontSize: "1rem" }}>
+                            {formatAdminCashClp(pendingPassengerChargeAmountClp)}
+                          </div>
+                        </div>
+                        <div style={{ background: "#fffaf1", borderRadius: 16, padding: 12 }}>
+                          <div style={{ fontSize: ".72rem", color: "#666", fontWeight: 900 }}>
+                            Efectivo por revisar
+                          </div>
+                          <div style={{ fontWeight: 950, color: "#111", fontSize: "1rem" }}>
+                            {formatAdminCashClp(pendingCashAmountClp)}
+                          </div>
+                        </div>
+                      </div>
+                    </IonCardContent>
+                  </IonCard>
+
+                  {passengerPendingCharges.length === 0 && cashPaymentReviews.length === 0 && (
+                    <IonCard className="admin-section-card" style={{ borderRadius: 22 }}>
+                      <IonCardContent>
+                        <h2 style={{ margin: "0 0 6px", fontWeight: 950 }}>Sin cobranzas pendientes</h2>
+                        <p style={{ margin: 0, color: "var(--ion-color-medium)", fontSize: ".86rem" }}>
+                          Cuando existan cancelaciones fuera de plazo, no show, pagos en efectivo con diferencia o devoluciones, aparecerán aquí para validarlas.
+                        </p>
+                      </IonCardContent>
+                    </IonCard>
+                  )}
 
               {passengerPendingCharges.length > 0 && (
                 <IonCard
@@ -1569,6 +1666,8 @@ export function AdminHomePage(): JSX.Element {
                   </IonCardContent>
                 </IonCard>
               )}
+                </IonContent>
+              </IonModal>
 
               {thisWeek.topDrivers.length > 0 && (
                 <IonCard className="admin-section-card">
@@ -1699,6 +1798,7 @@ const STATUS_COLOR: Record<string, string> = {
   active: "success",
   suspended: "medium",
   banned: "danger",
+  deleted: "dark",
 };
 
 const STATUS_LABEL: Record<string, string> = {
@@ -1706,7 +1806,128 @@ const STATUS_LABEL: Record<string, string> = {
   active: "Activo",
   suspended: "Suspendido",
   banned: "Bloqueado",
+  deleted: "Eliminado/desactivado",
 };
+
+type AdminUserAccountStatus = "pending" | "active" | "suspended" | "banned" | "deleted";
+
+type AdminUserAccountControl = {
+  userId: string;
+  status: AdminUserAccountStatus;
+  reason?: string | null;
+  updatedAt: string;
+  blockedAt?: string | null;
+  deletedAt?: string | null;
+  restoredAt?: string | null;
+};
+
+type AdminUserAccountAction = "block" | "unblock" | "suspend" | "delete" | "restore";
+
+type AdminUserAccountActionState = {
+  user: AdminUserData;
+  action: AdminUserAccountAction;
+};
+
+const ADMIN_USER_ACCOUNT_CONTROLS_KEY = "rapago_admin_user_account_controls_v1";
+const ADMIN_USER_ACCOUNT_CONTROL_EVENT = "rapago:admin-user-account-control-updated";
+
+function normalizeAdminUserAccountStatus(value: unknown): AdminUserAccountStatus {
+  const raw = String(value ?? "").toLowerCase().trim();
+
+  if (raw === "deleted" || raw === "removed" || raw === "inactive" || raw === "eliminado") {
+    return "deleted";
+  }
+
+  if (raw === "banned" || raw === "blocked" || raw === "bloqueado") {
+    return "banned";
+  }
+
+  if (raw === "suspended" || raw === "suspendido") {
+    return "suspended";
+  }
+
+  if (raw === "pending" || raw === "pendiente") {
+    return "pending";
+  }
+
+  return "active";
+}
+
+function readAdminUserAccountControls(): Record<string, AdminUserAccountControl> {
+  try {
+    const raw = localStorage.getItem(ADMIN_USER_ACCOUNT_CONTROLS_KEY);
+    const parsed = raw ? (JSON.parse(raw) as Record<string, Partial<AdminUserAccountControl>>) : {};
+
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {};
+
+    return Object.entries(parsed).reduce<Record<string, AdminUserAccountControl>>((acc, [userId, value]) => {
+      if (!userId || !value || typeof value !== "object") return acc;
+
+      acc[userId] = {
+        userId,
+        status: normalizeAdminUserAccountStatus(value.status),
+        reason: typeof value.reason === "string" ? value.reason : null,
+        updatedAt: typeof value.updatedAt === "string" ? value.updatedAt : new Date().toISOString(),
+        blockedAt: typeof value.blockedAt === "string" ? value.blockedAt : null,
+        deletedAt: typeof value.deletedAt === "string" ? value.deletedAt : null,
+        restoredAt: typeof value.restoredAt === "string" ? value.restoredAt : null,
+      };
+
+      return acc;
+    }, {});
+  } catch {
+    return {};
+  }
+}
+
+function writeAdminUserAccountControls(controls: Record<string, AdminUserAccountControl>): void {
+  try {
+    localStorage.setItem(ADMIN_USER_ACCOUNT_CONTROLS_KEY, JSON.stringify(controls));
+    window.dispatchEvent(new CustomEvent(ADMIN_USER_ACCOUNT_CONTROL_EVENT, { detail: { controls } }));
+  } catch {
+    // No bloquea el panel admin si el navegador no permite localStorage.
+  }
+}
+
+function getEffectiveAdminUserStatus(
+  user: AdminUserData,
+  controls: Record<string, AdminUserAccountControl>,
+): AdminUserAccountStatus {
+  const controlledStatus = controls[user.id]?.status;
+  if (controlledStatus) return controlledStatus;
+
+  return normalizeAdminUserAccountStatus(user.status);
+}
+
+function adminUserAccountActionLabel(action: AdminUserAccountAction): string {
+  if (action === "block") return "Bloquear cuenta";
+  if (action === "unblock") return "Desbloquear cuenta";
+  if (action === "suspend") return "Suspender cuenta";
+  if (action === "delete") return "Eliminar/desactivar cuenta";
+  return "Restaurar cuenta";
+}
+
+function adminUserAccountActionMessage(action: AdminUserAccountAction, user: AdminUserData): string {
+  const name = user.name || user.email || "este usuario";
+
+  if (action === "delete") {
+    return `¿Seguro que quieres eliminar/desactivar la cuenta de ${name}? No se borran viajes ni pagos; queda bloqueada y marcada como eliminada.`;
+  }
+
+  if (action === "block") {
+    return `¿Seguro que quieres bloquear la cuenta de ${name}? No podrá usar la app hasta que el admin la desbloquee.`;
+  }
+
+  if (action === "suspend") {
+    return `¿Suspender la cuenta de ${name}? Quedará pausada hasta que la actives nuevamente.`;
+  }
+
+  if (action === "unblock") {
+    return `¿Desbloquear y activar la cuenta de ${name}?`;
+  }
+
+  return `¿Restaurar y activar la cuenta de ${name}?`;
+}
 
 type PassengerVerificationStatus =
   | "not_required"
@@ -2133,6 +2354,11 @@ export function AdminUsersPage(): JSX.Element {
   const [updatingId, setUpdatingId] = useState<string | null>(null);
   const [updateError, setUpdateError] = useState<string | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [accountControls, setAccountControls] = useState<Record<string, AdminUserAccountControl>>(
+    () => readAdminUserAccountControls(),
+  );
+  const [confirmAccountAction, setConfirmAccountAction] =
+    useState<AdminUserAccountActionState | null>(null);
 
   const loadUsers = useCallback(async () => {
     if (!session?.accessToken) return;
@@ -2143,7 +2369,7 @@ export function AdminUsersPage(): JSX.Element {
       const params: { role?: string; status?: string; search?: string } = {};
 
       if (filterRole) params.role = filterRole;
-      if (filterStatus) params.status = filterStatus;
+      if (filterStatus && filterStatus !== "deleted") params.status = filterStatus;
       if (filterSearch.trim()) params.search = filterSearch.trim();
 
       const [userData, documentData] = await Promise.all([
@@ -2153,9 +2379,16 @@ export function AdminUsersPage(): JSX.Element {
           .catch(() => [] as AdminDocumentData[]),
       ]);
 
-      setUsers(userData);
+      const controls = readAdminUserAccountControls();
+
+      setUsers(
+        filterStatus === "deleted"
+          ? userData.filter((user) => getEffectiveAdminUserStatus(user, controls) === "deleted")
+          : userData,
+      );
       setDocs(documentData);
       setResidentRequests(readLocalResidentVerificationRequestsForAdmin());
+      setAccountControls(controls);
     } catch (err) {
       setLoadError(
         err instanceof Error ? err.message : "Error al cargar usuarios.",
@@ -2191,17 +2424,43 @@ export function AdminUsersPage(): JSX.Element {
     };
   }, []);
 
+  useEffect(() => {
+    const refreshAccountControls = () => {
+      setAccountControls(readAdminUserAccountControls());
+    };
+
+    window.addEventListener("storage", refreshAccountControls);
+    window.addEventListener(
+      ADMIN_USER_ACCOUNT_CONTROL_EVENT,
+      refreshAccountControls as EventListener,
+    );
+
+    return () => {
+      window.removeEventListener("storage", refreshAccountControls);
+      window.removeEventListener(
+        ADMIN_USER_ACCOUNT_CONTROL_EVENT,
+        refreshAccountControls as EventListener,
+      );
+    };
+  }, []);
+
   async function handleStatusChange(userId: string, newStatus: string) {
     if (!session?.accessToken) return;
 
     const user = users.find((item) => item.id === userId);
+    const normalizedNewStatus = normalizeAdminUserAccountStatus(newStatus);
     const residenceStatus = user
       ? getResidenceVerificationStatus(user, docs)
       : "not_required";
 
+    if (user && normalizedNewStatus === "deleted") {
+      setConfirmAccountAction({ user, action: "delete" });
+      return;
+    }
+
     if (
       user &&
-      newStatus === "active" &&
+      normalizedNewStatus === "active" &&
       isRapaNuiResidentUser(user) &&
       residenceStatus !== "approved"
     ) {
@@ -2218,8 +2477,36 @@ export function AdminUsersPage(): JSX.Element {
       const updated = await adminService.updateUserStatus(
         session.accessToken,
         userId,
-        newStatus,
+        normalizedNewStatus === "deleted" ? "banned" : normalizedNewStatus,
       );
+
+      const now = new Date().toISOString();
+
+      setAccountControls((current) => {
+        const next = { ...current };
+
+        if (normalizedNewStatus === "active") {
+          delete next[userId];
+        } else {
+          next[userId] = {
+            userId,
+            status: normalizedNewStatus,
+            reason:
+              normalizedNewStatus === "banned"
+                ? "Cuenta bloqueada por administración."
+                : normalizedNewStatus === "suspended"
+                  ? "Cuenta suspendida por administración."
+                  : "Estado actualizado por administración.",
+            updatedAt: now,
+            blockedAt: normalizedNewStatus === "banned" ? now : current[userId]?.blockedAt ?? null,
+            deletedAt: current[userId]?.deletedAt ?? null,
+            restoredAt: current[userId]?.restoredAt ?? null,
+          };
+        }
+
+        writeAdminUserAccountControls(next);
+        return next;
+      });
 
       setUsers((prev) => prev.map((u) => (u.id === userId ? updated : u)));
       setToastMessage("Estado del usuario actualizado.");
@@ -2229,6 +2516,93 @@ export function AdminUsersPage(): JSX.Element {
       );
     } finally {
       setUpdatingId(null);
+    }
+  }
+
+  async function handleConfirmedAccountAction(): Promise<void> {
+    if (!session?.accessToken || !confirmAccountAction) return;
+
+    const { user, action } = confirmAccountAction;
+    const now = new Date().toISOString();
+
+    const backendStatus =
+      action === "delete" || action === "block"
+        ? "banned"
+        : action === "suspend"
+          ? "suspended"
+          : "active";
+
+    if (
+      (action === "unblock" || action === "restore") &&
+      isRapaNuiResidentUser(user) &&
+      getResidenceVerificationStatus(user, docs) !== "approved"
+    ) {
+      setUpdateError(
+        "No puedes restaurar/activar este usuario como Residente Rapa Nui hasta aprobar su documento.",
+      );
+      setConfirmAccountAction(null);
+      return;
+    }
+
+    setUpdatingId(user.id);
+    setUpdateError(null);
+
+    try {
+      const updated = await adminService.updateUserStatus(
+        session.accessToken,
+        user.id,
+        backendStatus,
+      );
+
+      setAccountControls((current) => {
+        const next = { ...current };
+
+        if (action === "unblock" || action === "restore") {
+          delete next[user.id];
+        } else {
+          next[user.id] = {
+            userId: user.id,
+            status:
+              action === "delete"
+                ? "deleted"
+                : action === "block"
+                  ? "banned"
+                  : "suspended",
+            reason:
+              action === "delete"
+                ? "Cuenta eliminada/desactivada por administración."
+                : action === "block"
+                  ? "Cuenta bloqueada por administración."
+                  : "Cuenta suspendida por administración.",
+            updatedAt: now,
+            blockedAt: action === "delete" || action === "block" ? now : current[user.id]?.blockedAt ?? null,
+            deletedAt: action === "delete" ? now : current[user.id]?.deletedAt ?? null,
+            restoredAt: null,
+          };
+        }
+
+        writeAdminUserAccountControls(next);
+        return next;
+      });
+
+      setUsers((prev) => prev.map((item) => (item.id === user.id ? updated : item)));
+
+      setToastMessage(
+        action === "delete"
+          ? "Cuenta eliminada/desactivada. Quedó bloqueada y no se borró su historial."
+          : action === "block"
+            ? "Cuenta bloqueada."
+            : action === "suspend"
+              ? "Cuenta suspendida."
+              : "Cuenta restaurada y activa.",
+      );
+    } catch (err) {
+      setUpdateError(
+        err instanceof Error ? err.message : "No se pudo actualizar la cuenta.",
+      );
+    } finally {
+      setUpdatingId(null);
+      setConfirmAccountAction(null);
     }
   }
 
@@ -2603,6 +2977,7 @@ export function AdminUsersPage(): JSX.Element {
                     Suspendido
                   </IonSelectOption>
                   <IonSelectOption value="banned">Bloqueado</IonSelectOption>
+                  <IonSelectOption value="deleted">Eliminado/desactivado</IonSelectOption>
                 </IonSelect>
               </IonItem>
             </div>
@@ -2659,8 +3034,10 @@ export function AdminUsersPage(): JSX.Element {
             style={{ display: "flex", flexDirection: "column", gap: "10px" }}
           >
             {users.map((user) => {
-              const statusColor = STATUS_COLOR[user.status] ?? "medium";
-              const statusLabel = STATUS_LABEL[user.status] ?? user.status;
+              const accountControl = accountControls[user.id];
+              const effectiveStatus = getEffectiveAdminUserStatus(user, accountControls);
+              const statusColor = STATUS_COLOR[effectiveStatus] ?? "medium";
+              const statusLabel = STATUS_LABEL[effectiveStatus] ?? effectiveStatus;
               const roleLabel = ROLE_LABEL[user.role] ?? user.role;
               const passengerLabel = getPassengerLabel(user);
               const providerLabel = getRegistrationProviderLabel(user);
@@ -2947,12 +3324,12 @@ export function AdminUsersPage(): JSX.Element {
                           />
                         ) : (
                           <IonSelect
-                            value={user.status}
+                            value={effectiveStatus}
                             interface="popover"
                             style={{ fontSize: "0.8rem" }}
                             onIonChange={(e) => {
                               const val = String(e.detail.value ?? "");
-                              if (val && val !== user.status) {
+                              if (val && val !== effectiveStatus) {
                                 void handleStatusChange(user.id, val);
                               }
                             }}
@@ -2969,9 +3346,108 @@ export function AdminUsersPage(): JSX.Element {
                             <IonSelectOption value="banned">
                               Bloqueado
                             </IonSelectOption>
+                            <IonSelectOption value="deleted">
+                              Eliminado/desactivado
+                            </IonSelectOption>
                           </IonSelect>
                         )}
                       </IonItem>
+                    </div>
+
+                    {accountControl && (
+                      <div
+                        style={{
+                          marginTop: 8,
+                          padding: 10,
+                          borderRadius: 14,
+                          background:
+                            effectiveStatus === "deleted"
+                              ? "rgba(17,24,39,.10)"
+                              : effectiveStatus === "banned"
+                                ? "rgba(235,68,90,.12)"
+                                : "rgba(255,196,9,.14)",
+                          border: "1px solid rgba(0,0,0,.08)",
+                          fontSize: ".75rem",
+                          lineHeight: 1.35,
+                          color: "#111",
+                          fontWeight: 800,
+                        }}
+                      >
+                        {accountControl.reason ?? "Cuenta modificada por administración."}
+                        {accountControl.deletedAt && (
+                          <><br />Eliminada/desactivada: {new Date(accountControl.deletedAt).toLocaleString("es-CL")}</>
+                        )}
+                        {accountControl.blockedAt && !accountControl.deletedAt && (
+                          <><br />Bloqueada: {new Date(accountControl.blockedAt).toLocaleString("es-CL")}</>
+                        )}
+                      </div>
+                    )}
+
+                    <div
+                      style={{
+                        display: "grid",
+                        gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+                        gap: 8,
+                        marginTop: 10,
+                      }}
+                    >
+                      {effectiveStatus !== "banned" && effectiveStatus !== "deleted" && (
+                        <IonButton
+                          size="small"
+                          color="danger"
+                          fill="outline"
+                          disabled={isProcessing}
+                          onClick={() => setConfirmAccountAction({ user, action: "block" })}
+                        >
+                          Bloquear
+                        </IonButton>
+                      )}
+
+                      {effectiveStatus === "banned" && (
+                        <IonButton
+                          size="small"
+                          color="success"
+                          disabled={isProcessing}
+                          onClick={() => setConfirmAccountAction({ user, action: "unblock" })}
+                        >
+                          Desbloquear
+                        </IonButton>
+                      )}
+
+                      {effectiveStatus !== "suspended" && effectiveStatus !== "deleted" && (
+                        <IonButton
+                          size="small"
+                          color="medium"
+                          fill="outline"
+                          disabled={isProcessing}
+                          onClick={() => setConfirmAccountAction({ user, action: "suspend" })}
+                        >
+                          Suspender
+                        </IonButton>
+                      )}
+
+                      {(effectiveStatus === "suspended" || effectiveStatus === "deleted") && (
+                        <IonButton
+                          size="small"
+                          color="success"
+                          disabled={isProcessing}
+                          onClick={() => setConfirmAccountAction({ user, action: "restore" })}
+                        >
+                          Restaurar
+                        </IonButton>
+                      )}
+
+                      {effectiveStatus !== "deleted" && (
+                        <IonButton
+                          size="small"
+                          color="danger"
+                          disabled={isProcessing}
+                          onClick={() => setConfirmAccountAction({ user, action: "delete" })}
+                          style={{ gridColumn: "1 / -1" }}
+                        >
+                          Eliminar/desactivar cuenta
+                        </IonButton>
+                      )}
                     </div>
                   </IonCardContent>
                 </IonCard>
@@ -2987,6 +3463,33 @@ export function AdminUsersPage(): JSX.Element {
             </p>
           </IonText>
         )}
+
+        <IonAlert
+          isOpen={confirmAccountAction !== null}
+          header={confirmAccountAction ? adminUserAccountActionLabel(confirmAccountAction.action) : "Confirmar acción"}
+          message={
+            confirmAccountAction
+              ? adminUserAccountActionMessage(confirmAccountAction.action, confirmAccountAction.user)
+              : ""
+          }
+          buttons={[
+            {
+              text: "Cancelar",
+              role: "cancel",
+              handler: () => setConfirmAccountAction(null),
+            },
+            {
+              text: confirmAccountAction?.action === "delete" ? "Sí, desactivar" : "Confirmar",
+              role: "destructive",
+              handler: () => {
+                void handleConfirmedAccountAction();
+              },
+            },
+          ]}
+          onDidDismiss={() => {
+            if (updatingId === null) setConfirmAccountAction(null);
+          }}
+        />
 
         <IonToast
           isOpen={toastMessage !== null}
@@ -3345,7 +3848,11 @@ export function AdminDriversPage(): JSX.Element {
       setDriverRides((prev) => mergeAdminRides([assigned, ...prev]));
       setAssignmentRide(null);
       setAssignmentError(null);
-      setAssignmentToast(`Conductor ${driver.name} agendado correctamente. Solo ese conductor recibirá la reserva. El pasajero verá los datos cuando el conductor acepte.`);
+      setAssignmentToast(
+        getAdminRideScheduleInfo(assignmentRide).isReturnOnlyPromotion
+          ? `Conductor ${driver.name} asignado al regreso. Solo ese conductor recibirá la reserva de vuelta.`
+          : `Conductor ${driver.name} agendado correctamente. Solo ese conductor recibirá la reserva. El pasajero verá los datos cuando el conductor acepte.`,
+      );
     } catch (err) {
       setAssignmentError(err instanceof Error ? err.message : "No se pudo agendar el conductor.");
     }
@@ -3383,17 +3890,39 @@ export function AdminDriversPage(): JSX.Element {
           <IonCard style={{ margin: "0 0 12px", borderRadius: 18, border: "1px solid rgba(255,201,40,.60)", background: "rgba(255,201,40,.16)" }}>
             <IonCardContent style={{ padding: "12px 14px" }}>
               <div style={{ fontWeight: 950, fontSize: "0.96rem", color: "#111" }}>
-                Agendar conductor para esta reserva
+                {getAdminRideScheduleInfo(assignmentRide).isReturnOnlyPromotion
+                  ? "Gestionar conductor para regreso"
+                  : "Agendar conductor para esta reserva"}
               </div>
               <div style={{ marginTop: 4, fontSize: "0.82rem", color: "#222", lineHeight: 1.35 }}>
                 {assignmentRide.originText} → {assignmentRide.destinationText}
               </div>
               <div style={{ marginTop: 4, fontSize: "0.78rem", color: "#333" }}>
-                Recogida: {formatAdminScheduleDate(getAdminRideScheduleInfo(assignmentRide).scheduledAt)}
-                {getAdminRideScheduleInfo(assignmentRide).returnScheduledAt ? ` · Regreso: ${formatAdminScheduleDate(getAdminRideScheduleInfo(assignmentRide).returnScheduledAt)}` : ""}
+                {getAdminRideScheduleInfo(assignmentRide).isReturnOnlyPromotion
+                  ? `Regreso: ${formatAdminScheduleDate(getAdminRideScheduleInfo(assignmentRide).returnScheduledAt ?? getAdminRideScheduleInfo(assignmentRide).displayScheduledAt)}`
+                  : `Recogida: ${formatAdminScheduleDate(getAdminRideScheduleInfo(assignmentRide).scheduledAt)}`}
               </div>
+              {getAdminRideAirportWelcomeInfo(assignmentRide) && (
+                <div
+                  style={{
+                    marginTop: 8,
+                    padding: "9px 10px",
+                    borderRadius: 14,
+                    background: "rgba(236,72,153,.12)",
+                    border: "1px solid rgba(236,72,153,.28)",
+                    color: "#831843",
+                    fontSize: "0.78rem",
+                    lineHeight: 1.35,
+                    fontWeight: 900,
+                  }}
+                >
+                  🌺 Collar de flores solicitado · {formatAdminCashClp(getAdminRideAirportWelcomeInfo(assignmentRide)?.amountClp ?? 4000)} incluido en la tarifa. Admin debe gestionarlo para la llegada en Mataveri.
+                </div>
+              )}
               <IonNote style={{ display: "block", marginTop: 6, color: "#333" }}>
-                Elige un conductor Disponible. Se guardará como conductor agendado y el viaje se activará 10 minutos antes.
+                {getAdminRideScheduleInfo(assignmentRide).isReturnOnlyPromotion
+                  ? "Elige un conductor Disponible. Solo ese conductor recibirá el regreso en Reservas."
+                  : "Elige un conductor Disponible. Se guardará como conductor agendado y el viaje se activará 10 minutos antes."}
               </IonNote>
               <IonButton
                 size="small"
@@ -4894,6 +5423,8 @@ type AdminRideScheduleInfo = {
   returnScheduledAt: string | null;
   activationAt: string | null;
   isActiveWindow: boolean;
+  isReturnOnlyPromotion: boolean;
+  displayScheduledAt: string | null;
 };
 
 function getRideUnknownField(ride: AdminRideData, key: string): unknown {
@@ -4910,6 +5441,66 @@ function getRideStringField(ride: AdminRideData, keys: string[]): string | null 
 
 function getRideBooleanField(ride: AdminRideData, keys: string[]): boolean {
   return keys.some((key) => getRideUnknownField(ride, key) === true);
+}
+
+function getRideNumberField(ride: AdminRideData, keys: string[]): number | null {
+  for (const key of keys) {
+    const value = getRideUnknownField(ride, key);
+
+    if (typeof value === "number" && Number.isFinite(value)) {
+      return Math.max(0, Math.round(value));
+    }
+
+    if (typeof value === "string" && value.trim()) {
+      const parsed = Number(value.replace(/[^0-9.-]/g, ""));
+      if (Number.isFinite(parsed)) return Math.max(0, Math.round(parsed));
+    }
+  }
+
+  return null;
+}
+
+function extractAdminRideFlowerLeiAmountFromNotes(notes: string | null | undefined): number | null {
+  if (!notes) return null;
+
+  const match = notes.match(/(?:recargo recibimiento|collar[^.]*\+|collar[^.]*:)[^0-9]*(\$?\s*[0-9]{1,3}(?:\.[0-9]{3})*|[0-9]+)/i);
+  if (!match?.[1]) return null;
+
+  const parsed = Number(match[1].replace(/[^0-9]/g, ""));
+  return Number.isFinite(parsed) && parsed > 0 ? Math.round(parsed) : null;
+}
+
+function getAdminRideAirportWelcomeInfo(ride: AdminRideData): { label: string; amountClp: number } | null {
+  const rawNotes = typeof ride.notes === "string" ? ride.notes : "";
+  const normalizedNotes = normalizeAdminText(rawNotes);
+  const option = normalizeAdminText(getRideStringField(ride, ["airportWelcomeOption", "airport_welcome_option"]));
+  const label =
+    getRideStringField(ride, ["airportWelcomeLabel", "airport_welcome_label", "flowerLeiLabel"]) ??
+    "Collar de flores Rapa Nui";
+
+  const requested =
+    getRideBooleanField(ride, ["flowerLeiRequested", "airportFlowerLeiRequested", "hasAirportFlowerLei"]) ||
+    option === "flower_lei" ||
+    normalizedNotes.includes("collar de flores") ||
+    normalizedNotes.includes("recibimiento aeropuerto: collar") ||
+    normalizedNotes.includes("recargo recibimiento collar");
+
+  if (!requested) return null;
+
+  const amountClp =
+    getRideNumberField(ride, [
+      "flowerLeiSurchargeClp",
+      "airportWelcomeSurchargeClp",
+      "optionalServicesTotalClp",
+      "airport_welcome_surcharge_clp",
+    ]) ??
+    extractAdminRideFlowerLeiAmountFromNotes(rawNotes) ??
+    4000;
+
+  return {
+    label,
+    amountClp,
+  };
 }
 
 function toIsoOrNull(value: string | null | undefined): string | null {
@@ -4983,6 +5574,186 @@ function extractActivationIsoFromNotes(notes: string | null | undefined): string
   ]);
 }
 
+function extractReturnActivationIsoFromNotes(notes: string | null | undefined): string | null {
+  return extractAdminIsoByKeywords(notes, [
+    "RAPAGO_RETURN_ACTIVATION_AT",
+    "RAPAGO_RETURN_DISPATCH_AT",
+    "scheduledReturnActivationAt",
+    "returnActivationAt",
+    "returnDispatchAt",
+  ]);
+}
+
+function getRideLowerTextField(ride: AdminRideData, keys: string[]): string {
+  return keys
+    .map((key) => String(getRideUnknownField(ride, key) ?? ""))
+    .join(" ")
+    .toLowerCase()
+    .trim();
+}
+
+function isAdminReturnOnlyPromotionRide(ride: AdminRideData): boolean {
+  const notes = String(ride.notes ?? "").toLowerCase();
+  const metaText = getRideLowerTextField(ride, [
+    "bookingPurpose",
+    "serviceType",
+    "reservationStatus",
+    "adminScheduleStatus",
+    "scheduleStatus",
+    "tripType",
+    "tripFareMode",
+  ]);
+
+  return (
+    getRideUnknownField(ride, "roundTripReturnOnly") === true ||
+    getRideUnknownField(ride, "returnOnly") === true ||
+    getRideUnknownField(ride, "isReturnOnlyPromotion") === true ||
+    metaText.includes("round_trip_return_only") ||
+    metaText.includes("round_trip_return") ||
+    metaText.includes("return_pending_admin_round_trip_promotion") ||
+    metaText.includes("round_trip_return_reserved") ||
+    notes.includes("solo se agenda el regreso") ||
+    notes.includes("promoción con regreso agendado") ||
+    notes.includes("promocion con regreso agendado") ||
+    notes.includes("promoción regreso") ||
+    notes.includes("promocion regreso")
+  );
+}
+
+function isAdminReturnReservationCard(ride: AdminRideData): boolean {
+  const id = String(ride.id ?? "").toLowerCase();
+  return (
+    id.startsWith("admin-return-") ||
+    getRideUnknownField(ride, "returnReservationCard") === true ||
+    getRideUnknownField(ride, "managedByAdminForReturn") === true
+  );
+}
+
+function getAdminReturnOriginalRideId(ride: AdminRideData): string {
+  return String(
+    getRideUnknownField(ride, "returnTripParentRideId") ??
+      getRideUnknownField(ride, "originalRideId") ??
+      getRideUnknownField(ride, "parentRideId") ??
+      getRideUnknownField(ride, "sourceRideId") ??
+      ride.id ??
+      "",
+  ).trim();
+}
+
+function getAdminReturnActivationAt(ride: AdminRideData, returnScheduledAt: string | null): string | null {
+  return (
+    toIsoOrNull(getRideStringField(ride, [
+      "scheduledReturnActivationAt",
+      "returnActivationAt",
+      "returnDispatchAt",
+      "returnAutoAssignAt",
+    ])) ??
+    extractReturnActivationIsoFromNotes(ride.notes) ??
+    (returnScheduledAt
+      ? new Date(new Date(returnScheduledAt).getTime() - SCHEDULE_ACTIVATION_MINUTES_ADMIN * 60_000).toISOString()
+      : null)
+  );
+}
+
+function buildAdminReturnReservationFromRide(ride: AdminRideData): AdminRideData | null {
+  if (!isAdminReturnOnlyPromotionRide(ride)) return null;
+
+  const schedule = getAdminRideScheduleInfo(ride);
+  const returnAt = schedule.returnScheduledAt;
+  if (!returnAt) return null;
+
+  const originalId = getAdminReturnOriginalRideId(ride);
+  const returnId = `admin-return-${originalId || ride.id}`;
+  const returnActivationAt = getAdminReturnActivationAt(ride, returnAt);
+  const originText = String(ride.destinationText ?? "Punto de regreso").trim() || "Punto de regreso";
+  const destinationText = String(ride.originText ?? "Destino regreso").trim() || "Destino regreso";
+
+  return {
+    ...(ride as AdminRideData & Record<string, unknown>),
+    id: returnId,
+    originalRideId: originalId || ride.id,
+    returnTripParentRideId: originalId || ride.id,
+    originText,
+    destinationText,
+    status: "scheduled",
+    isScheduled: true,
+    roundTripReturnOnly: true,
+    isReturnOnlyPromotion: true,
+    returnReservationCard: true,
+    managedByAdminForReturn: true,
+    roundTripPromotionBooking: true,
+    bookingPurpose: "round_trip_return_only",
+    serviceType: "round_trip_return_only",
+    adminScheduleStatus:
+      String(getRideUnknownField(ride, "returnDriverAssignmentStatus") ?? "") === "pending_driver_acceptance"
+        ? "return_pending_driver_confirmation"
+        : "return_pending_admin_round_trip_promotion",
+    reservationStatus: "round_trip_return_reserved",
+    scheduleStatus: "frozen_until_return_activation",
+    scheduledAt: returnAt,
+    scheduledPickupAt: returnAt,
+    pickupScheduledAt: returnAt,
+    returnScheduledAt: returnAt,
+    scheduledReturnAt: returnAt,
+    scheduledReturnActivationAt: returnActivationAt,
+    returnActivationAt: returnActivationAt,
+    returnDispatchAt: returnActivationAt,
+    scheduleActivationAt: returnActivationAt,
+    dispatchAt: returnActivationAt,
+    autoAssignAt: returnActivationAt,
+    driverVisibleAt: returnActivationAt,
+    driverFrozenUntil: returnActivationAt,
+    frozenUntil: returnActivationAt,
+    availableForDrivers: false,
+    visibleToDrivers: false,
+    driverQueueBlocked: true,
+    frozenForDrivers: true,
+    adminVisibleNow: true,
+    adminRequiresReview: true,
+    passengerNotification:
+      getRideUnknownField(ride, "returnPassengerNotification") ??
+      "Tu regreso está agendado. RAPA GO asignará un conductor para la vuelta.",
+    notes: `${String(ride.notes ?? "").trim()} Gestión admin: regreso promocional. El admin debe asignar conductor para el regreso ${originText} → ${destinationText}.`.trim(),
+    localAdminOverride: true,
+  } as AdminRideData;
+}
+
+function readLocalPassengerReturnReservationsForAdmin(): AdminRideData[] {
+  try {
+    return readLocalPassengerRidesForAdmin()
+      .map((item) => buildAdminReturnReservationFromRide(item as unknown as AdminRideData))
+      .filter((ride): ride is AdminRideData => Boolean(ride));
+  } catch {
+    return [];
+  }
+}
+
+function buildAdminReturnReservationsFromRides(rides: AdminRideData[]): AdminRideData[] {
+  const seen = new Set<string>();
+  const result: AdminRideData[] = [];
+
+  rides.forEach((ride) => {
+    const returnRide = buildAdminReturnReservationFromRide(ride);
+    if (!returnRide) return;
+    const key = getAdminRideMergeKey(returnRide);
+    if (seen.has(key)) return;
+    seen.add(key);
+    result.push(returnRide);
+  });
+
+  return result;
+}
+
+function hasAdminAssignedDriver(ride: AdminRideData): boolean {
+  return Boolean(
+    ride.driverUserId ||
+      ride.driverName ||
+      getRideUnknownField(ride, "assignedDriverId") ||
+      getRideUnknownField(ride, "assignedDriverUserId") ||
+      getRideUnknownField(ride, "assignedDriverName"),
+  );
+}
+
 function isScheduleActivatedByAdmin(ride: AdminRideData): boolean {
   const status = String(
     getRideUnknownField(ride, "scheduleStatus") ??
@@ -5004,6 +5775,15 @@ function isScheduleActivatedByAdmin(ride: AdminRideData): boolean {
 }
 
 function getAdminRideScheduleInfo(ride: AdminRideData): AdminRideScheduleInfo {
+  const returnScheduledAt =
+    toIsoOrNull(getRideStringField(ride, [
+      "returnScheduledAt",
+      "scheduledReturnAt",
+      "returnAt",
+    ])) ?? extractReturnIsoFromNotes(ride.notes);
+
+  const isReturnOnlyPromotion = isAdminReturnReservationCard(ride);
+
   const scheduledAt =
     toIsoOrNull(getRideStringField(ride, [
       "scheduledAt",
@@ -5013,14 +5793,12 @@ function getAdminRideScheduleInfo(ride: AdminRideData): AdminRideScheduleInfo {
       "reservedAt",
     ])) ?? extractScheduleIsoFromNotes(ride.notes);
 
-  const returnScheduledAt =
-    toIsoOrNull(getRideStringField(ride, [
-      "returnScheduledAt",
-      "scheduledReturnAt",
-      "returnAt",
-    ])) ?? extractReturnIsoFromNotes(ride.notes);
+  const displayScheduledAt = isReturnOnlyPromotion
+    ? returnScheduledAt ?? scheduledAt
+    : scheduledAt;
 
   const activationAt =
+    (isReturnOnlyPromotion ? getAdminReturnActivationAt(ride, returnScheduledAt ?? scheduledAt) : null) ??
     toIsoOrNull(getRideStringField(ride, [
       "scheduleActivationAt",
       "dispatchAt",
@@ -5028,14 +5806,15 @@ function getAdminRideScheduleInfo(ride: AdminRideData): AdminRideScheduleInfo {
       "autoDispatchAt",
     ])) ??
     extractActivationIsoFromNotes(ride.notes) ??
-    (scheduledAt
-      ? new Date(new Date(scheduledAt).getTime() - SCHEDULE_ACTIVATION_MINUTES_ADMIN * 60_000).toISOString()
+    (displayScheduledAt
+      ? new Date(new Date(displayScheduledAt).getTime() - SCHEDULE_ACTIVATION_MINUTES_ADMIN * 60_000).toISOString()
       : null);
 
   const isScheduled =
     getRideBooleanField(ride, ["isScheduled", "scheduled", "isReservation"]) ||
     ride.status === "scheduled" ||
     !!scheduledAt ||
+    (isReturnOnlyPromotion && !!returnScheduledAt) ||
     /Viaje (?:agendado|programado) para:/i.test(ride.notes ?? "");
 
   const activationTime = activationAt ? new Date(activationAt).getTime() : 0;
@@ -5049,6 +5828,8 @@ function getAdminRideScheduleInfo(ride: AdminRideData): AdminRideScheduleInfo {
     returnScheduledAt,
     activationAt,
     isActiveWindow,
+    isReturnOnlyPromotion,
+    displayScheduledAt,
   };
 }
 
@@ -5138,11 +5919,15 @@ function buildActivatedScheduledRide(ride: AdminRideData): AdminRideData {
     ...(ride as AdminRideData & Record<string, unknown>),
     status: "requested",
     requestedAt: ride.requestedAt ?? nowIso,
+    scheduledAt: schedule.displayScheduledAt ?? schedule.scheduledAt,
+    scheduledPickupAt: schedule.displayScheduledAt ?? schedule.scheduledAt,
+    pickupScheduledAt: schedule.displayScheduledAt ?? schedule.scheduledAt,
     scheduleActivationAt: schedule.activationAt ?? nowIso,
     dispatchAt: schedule.activationAt ?? nowIso,
     autoAssignAt: schedule.activationAt ?? nowIso,
-    scheduleStatus: "active",
-    adminScheduleStatus: "active",
+    scheduleStatus: schedule.isReturnOnlyPromotion ? "return_active" : "active",
+    adminScheduleStatus: schedule.isReturnOnlyPromotion ? "return_active" : "active",
+    reservationStatus: schedule.isReturnOnlyPromotion ? "round_trip_return_active" : getRideUnknownField(ride, "reservationStatus"),
     activatedAt: nowIso,
     localAdminOverride: true,
   } as AdminRideData;
@@ -5316,6 +6101,8 @@ function upsertDriverScheduledRideForNotification(ride: AdminRideData, driver: A
       assignedOnlyToDriver: true,
       visibleInDriverReservations: true,
       hiddenFromNormalRequests: true,
+      roundTripReturnOnly: isAdminReturnOnlyPromotionRide(ride),
+      isReturnOnlyPromotion: isAdminReturnOnlyPromotionRide(ride),
     } as AdminRideData;
 
     for (const key of keys) {
@@ -5370,6 +6157,15 @@ function buildAssignedScheduledRide(ride: AdminRideData, driver: ActiveDriverDat
   const driverVehiclePlate = getDriverStringField(driver, ["vehiclePlate", "driverVehiclePlate", "plate"]);
   const driverVehicleYear = getDriverStringField(driver, ["vehicleYear", "driverVehicleYear", "carYear"]);
   const schedule = getAdminRideScheduleInfo(ride);
+  const isReturnOnlyPromotion = schedule.isReturnOnlyPromotion;
+  const scheduleDisplayAt = schedule.displayScheduledAt ?? schedule.scheduledAt ?? schedule.returnScheduledAt;
+  const airportWelcomeInfo = getAdminRideAirportWelcomeInfo(ride);
+  const driverNotification = isReturnOnlyPromotion
+    ? `Tenemos agendado el regreso de este pasajero. Recógelo en ${ride.originText} y llévalo a ${ride.destinationText}.`
+    : `Tenemos agendado tu viaje. Ve a buscar al usuario en ${ride.originText} y confirma esta reserva.${airportWelcomeInfo ? " Incluye collar de flores solicitado; admin gestiona el recibimiento en Mataveri." : ""}`;
+  const passengerNotification = isReturnOnlyPromotion
+    ? "Tu regreso quedó agendado. Estamos esperando que el conductor asignado confirme la vuelta."
+    : "Tu reserva sigue agendada. Estamos esperando que el conductor asignado confirme.";
 
   return {
     ...(ride as AdminRideData & Record<string, unknown>),
@@ -5395,26 +6191,32 @@ function buildAssignedScheduledRide(ride: AdminRideData, driver: ActiveDriverDat
     driverVehicleColor,
     driverVehiclePlate,
     driverVehicleYear,
-    isScheduled: schedule.isScheduled,
-    scheduledAt: schedule.scheduledAt,
-    scheduledPickupAt: schedule.scheduledAt,
-    pickupScheduledAt: schedule.scheduledAt,
+    isScheduled: true,
+    scheduledAt: scheduleDisplayAt,
+    scheduledPickupAt: scheduleDisplayAt,
+    pickupScheduledAt: scheduleDisplayAt,
     returnScheduledAt: schedule.returnScheduledAt,
     scheduledReturnAt: schedule.returnScheduledAt,
     scheduleActivationAt: schedule.activationAt,
     dispatchAt: schedule.activationAt,
     autoAssignAt: schedule.activationAt,
-    scheduleStatus: "pending_driver_confirmation",
-    adminScheduleStatus: "pending_driver_confirmation",
-    reservationStatus: "assigned_waiting_driver_acceptance",
+    roundTripReturnOnly: isReturnOnlyPromotion,
+    isReturnOnlyPromotion,
+    roundTripPromotionBooking: isReturnOnlyPromotion || getRideUnknownField(ride, "roundTripPromotionBooking") === true,
+    bookingPurpose: isReturnOnlyPromotion ? "round_trip_return_only" : getRideUnknownField(ride, "bookingPurpose"),
+    serviceType: isReturnOnlyPromotion ? "round_trip_return_only" : getRideUnknownField(ride, "serviceType"),
+    scheduleStatus: isReturnOnlyPromotion ? "return_pending_driver_confirmation" : "pending_driver_confirmation",
+    adminScheduleStatus: isReturnOnlyPromotion ? "return_pending_driver_confirmation" : "pending_driver_confirmation",
+    reservationStatus: isReturnOnlyPromotion ? "round_trip_return_assigned_waiting_driver_acceptance" : "assigned_waiting_driver_acceptance",
     driverAssignmentStatus: "pending_driver_acceptance",
+    returnDriverAssignmentStatus: isReturnOnlyPromotion ? "pending_driver_acceptance" : getRideUnknownField(ride, "returnDriverAssignmentStatus"),
     assignedByAdminAt: nowIso,
     availableForDrivers: false,
     visibleToDrivers: false,
     driverQueueBlocked: true,
     assignedOnlyToDriver: true,
-    passengerNotification: "Tu reserva sigue agendada. Estamos esperando que el conductor asignado confirme.",
-    driverNotification: `Tenemos agendado tu viaje. Ve a buscar al usuario en ${ride.originText} y confirma esta reserva.`,
+    passengerNotification,
+    driverNotification,
     localAdminOverride: true,
   } as AdminRideData;
 }
@@ -5424,8 +6226,38 @@ function syncPassengerRideAssignment(ride: AdminRideData, assigned: AdminRideDat
   const assignedRecord = assigned as unknown as Record<string, unknown>;
   const nowIso = new Date().toISOString();
   const current = readLocalPassengerRidesForAdmin();
+  const isReturnOnlyPromotion = isAdminReturnOnlyPromotionRide(assigned);
+  const originalRideId = getAdminReturnOriginalRideId(assigned);
 
   const updated = current.map((item) => {
+    const itemId = String(item.id ?? item.rideId ?? item.originalRideId ?? "").trim();
+    const itemOriginalId = String(item.originalRideId ?? item.returnTripParentRideId ?? "").trim();
+
+    if (isReturnOnlyPromotion) {
+      const isSameReturnParent =
+        Boolean(originalRideId && (itemId === originalRideId || itemOriginalId === originalRideId)) ||
+        getScheduledPassengerMirrorKey(item) === passengerKey;
+
+      if (!isSameReturnParent) return item;
+
+      return {
+        ...item,
+        returnReservationStatus: "assigned_waiting_driver_acceptance",
+        returnDriverAssignmentStatus: "pending_driver_acceptance",
+        returnScheduledAt: assignedRecord.returnScheduledAt ?? assignedRecord.scheduledReturnAt ?? item.returnScheduledAt ?? null,
+        scheduledReturnAt: assignedRecord.scheduledReturnAt ?? assignedRecord.returnScheduledAt ?? item.scheduledReturnAt ?? null,
+        assignedReturnDriverId: assignedRecord.assignedDriverId ?? assignedRecord.driverUserId ?? null,
+        assignedReturnDriverUserId: assignedRecord.assignedDriverUserId ?? assignedRecord.driverUserId ?? null,
+        assignedReturnDriverName: assignedRecord.assignedDriverName ?? null,
+        assignedReturnDriverEmail: assignedRecord.assignedDriverEmail ?? null,
+        assignedReturnDriverPhone: assignedRecord.assignedDriverPhone ?? null,
+        returnAssignedByAdminAt: nowIso,
+        passengerNotification:
+          assignedRecord.passengerNotification ??
+          "Tu regreso quedó agendado. Estamos esperando confirmación del conductor asignado.",
+      };
+    }
+
     if (getScheduledPassengerMirrorKey(item) !== passengerKey && item.id !== ride.id) return item;
     return {
       ...item,
@@ -5708,7 +6540,12 @@ export function AdminTripsPage(): JSX.Element {
         );
 
         const localScheduled = readLocalAdminScheduledRides();
-        const merged = mergeAdminRides([...localScheduled, ...ridesData]);
+        const returnReservations = [
+          ...readLocalPassengerReturnReservationsForAdmin(),
+          ...buildAdminReturnReservationsFromRides(ridesData),
+          ...buildAdminReturnReservationsFromRides(localScheduled),
+        ];
+        const merged = mergeAdminRides([...localScheduled, ...returnReservations, ...ridesData]);
         const visible = filterStatus
           ? merged.filter((ride) => getEffectiveAdminRideStatus(ride) === filterStatus)
           : merged;
@@ -5891,11 +6728,19 @@ export function AdminTripsPage(): JSX.Element {
         ADMIN_DRIVER_ASSIGNMENT_SELECTION_KEY,
         JSON.stringify({
           ...(ride as AdminRideData & Record<string, unknown>),
-          scheduledAt: getAdminRideScheduleInfo(ride).scheduledAt,
-          scheduledPickupAt: getAdminRideScheduleInfo(ride).scheduledAt,
+          scheduledAt: getAdminRideScheduleInfo(ride).displayScheduledAt ?? getAdminRideScheduleInfo(ride).scheduledAt,
+          scheduledPickupAt: getAdminRideScheduleInfo(ride).displayScheduledAt ?? getAdminRideScheduleInfo(ride).scheduledAt,
           returnScheduledAt: getAdminRideScheduleInfo(ride).returnScheduledAt,
           scheduledReturnAt: getAdminRideScheduleInfo(ride).returnScheduledAt,
           scheduleActivationAt: getAdminRideScheduleInfo(ride).activationAt,
+          roundTripReturnOnly: getAdminRideScheduleInfo(ride).isReturnOnlyPromotion,
+          isReturnOnlyPromotion: getAdminRideScheduleInfo(ride).isReturnOnlyPromotion,
+          bookingPurpose: getAdminRideScheduleInfo(ride).isReturnOnlyPromotion
+            ? "round_trip_return_only"
+            : getRideUnknownField(ride, "bookingPurpose"),
+          serviceType: getAdminRideScheduleInfo(ride).isReturnOnlyPromotion
+            ? "round_trip_return_only"
+            : getRideUnknownField(ride, "serviceType"),
         }),
       );
       window.dispatchEvent(new CustomEvent(ADMIN_DRIVER_ASSIGNMENT_EVENT));
@@ -6046,6 +6891,7 @@ export function AdminTripsPage(): JSX.Element {
               const statusLabel =
                 RIDE_STATUS_LABEL_ADMIN[effectiveStatus] ?? effectiveStatus;
               const adminCleanNotes = cleanAdminRideNotes(ride.notes);
+              const airportWelcomeInfo = getAdminRideAirportWelcomeInfo(ride);
               return (
                 <IonCard key={ride.id} style={{ margin: 0 }}>
                   <IonCardContent style={{ padding: "12px 14px" }}>
@@ -6131,20 +6977,46 @@ export function AdminTripsPage(): JSX.Element {
                           color: "#111",
                         }}
                       >
-                        <strong>📅 Reserva agendada</strong>
-                        <div>Recogida: {formatAdminScheduleDate(scheduleInfo.scheduledAt)}</div>
-                        {scheduleInfo.returnScheduledAt && (
+                        <strong>{scheduleInfo.isReturnOnlyPromotion ? "🔁 Regreso promocional" : "📅 Reserva agendada"}</strong>
+                        {scheduleInfo.isReturnOnlyPromotion ? (
+                          <div>Regreso: {formatAdminScheduleDate(scheduleInfo.returnScheduledAt ?? scheduleInfo.displayScheduledAt)}</div>
+                        ) : (
+                          <div>Recogida: {formatAdminScheduleDate(scheduleInfo.scheduledAt)}</div>
+                        )}
+                        {!scheduleInfo.isReturnOnlyPromotion && scheduleInfo.returnScheduledAt && (
                           <div>Regreso: {formatAdminScheduleDate(scheduleInfo.returnScheduledAt)}</div>
                         )}
                         <div>
                           Activación: {formatAdminScheduleDate(scheduleInfo.activationAt)} · {scheduleInfo.isActiveWindow
                             ? "habilitada para buscar conductores disponibles."
-                            : "se buscarán conductores 10 min antes."}
+                            : scheduleInfo.isReturnOnlyPromotion
+                              ? "el admin debe asignar conductor para el regreso."
+                              : "se buscarán conductores 10 min antes."}
                         </div>
                       </div>
                     )}
 
-                    {scheduleInfo.isScheduled && !ride.driverName && (
+                    {airportWelcomeInfo && (
+                      <div
+                        style={{
+                          background: "linear-gradient(135deg,rgba(255,240,246,.98),rgba(255,228,238,.98))",
+                          border: "1px solid rgba(236,72,153,.30)",
+                          borderRadius: "14px",
+                          padding: "10px 12px",
+                          marginBottom: "8px",
+                          fontSize: "0.78rem",
+                          lineHeight: 1.35,
+                          color: "#831843",
+                          fontWeight: 850,
+                        }}
+                      >
+                        <strong>🌺 {airportWelcomeInfo.label} solicitado</strong>
+                        <div>Admin debe gestionar el recibimiento del pasajero en Mataveri.</div>
+                        <div>Recargo incluido en tarifa: <strong>{formatAdminCashClp(airportWelcomeInfo.amountClp)}</strong>.</div>
+                      </div>
+                    )}
+
+                    {scheduleInfo.isScheduled && !hasAdminAssignedDriver(ride) && (
                       <IonButton
                         expand="block"
                         size="small"
@@ -6152,7 +7024,9 @@ export function AdminTripsPage(): JSX.Element {
                         style={{ marginBottom: "8px", fontWeight: 900 }}
                         onClick={() => goToAvailableDriversFromRide(ride)}
                       >
-                        Administrar y agendar conductor disponible
+                        {scheduleInfo.isReturnOnlyPromotion
+                          ? "Gestionar regreso con conductor"
+                          : "Administrar y agendar conductor disponible"}
                       </IonButton>
                     )}
 
@@ -6169,7 +7043,7 @@ export function AdminTripsPage(): JSX.Element {
                       </IonButton>
                     )}
 
-                    {scheduleInfo.isScheduled && effectiveStatus === "requested" && (
+                    {scheduleInfo.isScheduled && effectiveStatus === "requested" && !hasAdminAssignedDriver(ride) && (
                       <IonButton
                         expand="block"
                         size="small"
@@ -6177,7 +7051,9 @@ export function AdminTripsPage(): JSX.Element {
                         style={{ marginBottom: "8px", fontWeight: 900 }}
                         onClick={() => goToAvailableDriversFromRide(ride)}
                       >
-                        Buscar conductores disponibles
+                        {scheduleInfo.isReturnOnlyPromotion
+                          ? "Buscar conductor para regreso"
+                          : "Buscar conductores disponibles"}
                       </IonButton>
                     )}
 
@@ -6205,9 +7081,9 @@ export function AdminTripsPage(): JSX.Element {
                         {ride.estimatedFareClp.toLocaleString("es-CL")} CLP
                       </div>
                     )}
-                    {ride.driverName && (
+                    {(ride.driverName || getRideUnknownField(ride, "assignedDriverName")) && (
                       <div style={{ fontSize: "0.78rem", marginBottom: "4px" }}>
-                        Conductor: <strong>{ride.driverName}</strong>
+                        Conductor: <strong>{ride.driverName || String(getRideUnknownField(ride, "assignedDriverName") ?? "")}</strong>
                       </div>
                     )}
 

@@ -37,7 +37,7 @@ import {
   trashOutline,
 } from "ionicons/icons";
 
-type PassengerKey = "resident" | "chilean" | "foreigner";
+type PassengerKey = "resident" | "rapanui" | "chilean" | "foreigner";
 type VehicleKey = "standard" | "xl" | "luggage";
 type RoundingMode = "ceil" | "nearest" | "none";
 
@@ -148,6 +148,7 @@ const AUDIT_STORAGE_KEY = "rapago_admin_fare_engine_audit_v1";
 
 const PASSENGER_LABEL: Record<PassengerKey, string> = {
   resident: "Residente Rapa Nui",
+  rapanui: "Rapanui normal",
   chilean: "Turista chileno",
   foreigner: "Turista extranjero",
 };
@@ -177,6 +178,7 @@ const DEFAULT_CONFIG: FareEngineConfig = {
   },
   passengerMultipliers: {
     resident: 1,
+    rapanui: 1,
     chilean: 1.13,
     foreigner: 1.2,
   },
@@ -187,6 +189,7 @@ const DEFAULT_CONFIG: FareEngineConfig = {
   },
   passengerActive: {
     resident: true,
+    rapanui: true,
     chilean: true,
     foreigner: true,
   },
@@ -469,6 +472,13 @@ function readStoredConfig(): FareEngineConfig {
       },
       passengerMultipliers: {
         resident: Number(parsed.passengerMultipliers?.resident ?? fallback.passengerMultipliers.resident),
+        // Rapanui normal cobra lo mismo que Residente Rapa Nui por defecto.
+        // Si el admin lo edita, queda independiente; si no existe en configuraciones antiguas, usa resident.
+        rapanui: Number(
+          parsed.passengerMultipliers?.rapanui ??
+            parsed.passengerMultipliers?.resident ??
+            fallback.passengerMultipliers.rapanui,
+        ),
         chilean: Number(parsed.passengerMultipliers?.chilean ?? fallback.passengerMultipliers.chilean),
         foreigner: Number(parsed.passengerMultipliers?.foreigner ?? fallback.passengerMultipliers.foreigner),
       },
@@ -479,7 +489,7 @@ function readStoredConfig(): FareEngineConfig {
       },
       passengerActive: getActiveRecord<PassengerKey>(
         parsed.passengerActive,
-        ["resident", "chilean", "foreigner"],
+        ["resident", "rapanui", "chilean", "foreigner"],
       ),
       vehicleActive: getActiveRecord<VehicleKey>(
         parsed.vehicleActive,
@@ -538,6 +548,7 @@ function buildCompatibilityRules(config: FareEngineConfig): CompatibilityFareRul
 
   const passengerIds: Record<PassengerKey, string> = {
     resident: "resident",
+    rapanui: "rapanui",
     chilean: "chilean",
     foreigner: "foreigner",
   };
@@ -667,6 +678,7 @@ export function AdminFareSettingsPage(): React.ReactElement {
     return distances.map((km) => ({
       km,
       resident: roundByRule(calculateUrbanRuralExact(config, "resident", "standard", km), config),
+      rapanui: roundByRule(calculateUrbanRuralExact(config, "rapanui", "standard", km), config),
       chilean: roundByRule(calculateUrbanRuralExact(config, "chilean", "standard", km), config),
       foreigner: roundByRule(calculateUrbanRuralExact(config, "foreigner", "standard", km), config),
     }));
@@ -693,6 +705,7 @@ export function AdminFareSettingsPage(): React.ReactElement {
         urbanKm,
         ruralKm,
         resident: roundByRule(calculateUrbanRuralExact(config, "resident", "standard", row.km), config),
+        rapanui: roundByRule(calculateUrbanRuralExact(config, "rapanui", "standard", row.km), config),
         chilean: roundByRule(calculateUrbanRuralExact(config, "chilean", "standard", row.km), config),
         foreigner: roundByRule(calculateUrbanRuralExact(config, "foreigner", "standard", row.km), config),
       };
@@ -816,7 +829,7 @@ export function AdminFareSettingsPage(): React.ReactElement {
     setEditor({
       kind: "fixed_destination",
       title: destination ? "Editar destino fijo" : "Agregar destino fijo",
-      helper: "La tarifa base corresponde al precio Residente Rapa Nui. Turista chileno y Turista extranjero se calculan automáticamente.",
+      helper: "La tarifa base corresponde al precio Residente Rapa Nui. Rapanui normal cobra el mismo valor por defecto. Turista chileno y Turista extranjero se calculan automáticamente.",
       destinationId: destination?.id ?? null,
       name: destination?.title ?? "",
       tripType: destination?.tripType ?? "Ida y vuelta",
@@ -871,7 +884,7 @@ export function AdminFareSettingsPage(): React.ReactElement {
       openCurrencyEditor(
         "base_minimum",
         "Editar tarifa mínima base",
-        "Valor base Residente Rapa Nui para vehículo estándar. También puedes editarlo en USD.",
+        "Valor base Residente Rapa Nui para vehículo estándar. Rapanui normal usa este mismo valor. También puedes editarlo en USD.",
         config.urban.baseMinimumClp,
       );
       return;
@@ -1722,7 +1735,7 @@ export function AdminFareSettingsPage(): React.ReactElement {
             </IonItem>
 
             <IonItem lines="full">
-              <IonLabel position="stacked">Tarifa base Residente Rapa Nui CLP</IonLabel>
+              <IonLabel position="stacked">Tarifa base Residente Rapa Nui / Rapanui normal CLP</IonLabel>
               <IonInput
                 inputmode="numeric"
                 value={editor.baseResidentClp}
@@ -1734,7 +1747,7 @@ export function AdminFareSettingsPage(): React.ReactElement {
             </IonItem>
 
             <IonItem lines="full">
-              <IonLabel position="stacked">Tarifa base Residente Rapa Nui USD</IonLabel>
+              <IonLabel position="stacked">Tarifa base Residente Rapa Nui / Rapanui normal USD</IonLabel>
               <IonInput
                 inputmode="decimal"
                 value={editor.baseResidentUsd}
@@ -1832,7 +1845,7 @@ export function AdminFareSettingsPage(): React.ReactElement {
                 Motor de tarifas Rapa Go
               </div>
               <div style={{ marginTop: 6, fontSize: ".86rem", color: "#333", fontWeight: 800, lineHeight: 1.35 }}>
-                Todo queda editable desde el panel: CLP, USD referencial, multiplicadores de Residente Rapa Nui, Turista chileno y Turista extranjero, zona urbana/rural, descuento rural, redondeo final, categorías de vehículo y destinos fijos.
+                Todo queda editable desde el panel: CLP, USD referencial, multiplicadores de Residente Rapa Nui, Rapanui normal, Turista chileno y Turista extranjero, zona urbana/rural, descuento rural, redondeo final, categorías de vehículo y destinos fijos.
               </div>
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 12 }}>
                 <IonButton
@@ -1889,7 +1902,7 @@ export function AdminFareSettingsPage(): React.ReactElement {
                     openCurrencyEditor(
                       "base_minimum",
                       "Editar tarifa mínima base",
-                      "Valor base Residente Rapa Nui para vehículo estándar.",
+                      "Valor base Residente Rapa Nui para vehículo estándar. Rapanui normal usa este mismo valor.",
                       config.urban.baseMinimumClp,
                     ),
                 )}
@@ -1904,7 +1917,7 @@ export function AdminFareSettingsPage(): React.ReactElement {
                     openCurrencyEditor(
                       "base_km",
                       "Editar tarifa por km adicional",
-                      "Valor base por kilómetro adicional para Residente Rapa Nui estándar.",
+                      "Valor base por kilómetro adicional para Residente Rapa Nui/Rapanui normal estándar.",
                       config.urban.baseKmClp,
                     ),
                 )}
@@ -2040,6 +2053,7 @@ export function AdminFareSettingsPage(): React.ReactElement {
 
                           <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 10 }}>
                             {renderValueBlock("Residente Rapa Nui", getFixedFare(config, destination, "resident"))}
+                            {renderValueBlock("Rapanui normal", getFixedFare(config, destination, "rapanui"))}
                             {renderValueBlock("Turista chileno", getFixedFare(config, destination, "chilean"))}
                             {renderValueBlock("Turista extranjero", getFixedFare(config, destination, "foreigner"))}
                           </div>
@@ -2110,7 +2124,8 @@ export function AdminFareSettingsPage(): React.ReactElement {
                       >
                         <strong>{row.km} km</strong>
                         <div style={{ display: "flex", gap: 7, flexWrap: "wrap", fontSize: ".78rem", fontWeight: 900 }}>
-                          <span>Rapa Nui: {formatClp(row.resident)} / USD {formatUsd(row.resident, config.usdRate)}</span>
+                          <span>Residente Rapa Nui: {formatClp(row.resident)} / USD {formatUsd(row.resident, config.usdRate)}</span>
+                          <span>Rapanui normal: {formatClp(row.rapanui)} / USD {formatUsd(row.rapanui, config.usdRate)}</span>
                           <span>Turista chileno: {formatClp(row.chilean)} / USD {formatUsd(row.chilean, config.usdRate)}</span>
                           <span>Turista extranjero: {formatClp(row.foreigner)} / USD {formatUsd(row.foreigner, config.usdRate)}</span>
                         </div>
@@ -2146,7 +2161,8 @@ export function AdminFareSettingsPage(): React.ReactElement {
                           {row.km} km total · {formatClpInput(row.urbanKm)} km urbanos · {formatClpInput(row.ruralKm)} km rurales
                         </div>
                         <div style={{ display: "flex", gap: 7, flexWrap: "wrap", fontSize: ".78rem", fontWeight: 900, marginTop: 7 }}>
-                          <span>Rapa Nui: {formatClp(row.resident)} / USD {formatUsd(row.resident, config.usdRate)}</span>
+                          <span>Residente Rapa Nui: {formatClp(row.resident)} / USD {formatUsd(row.resident, config.usdRate)}</span>
+                          <span>Rapanui normal: {formatClp(row.rapanui)} / USD {formatUsd(row.rapanui, config.usdRate)}</span>
                           <span>Turista chileno: {formatClp(row.chilean)} / USD {formatUsd(row.chilean, config.usdRate)}</span>
                           <span>Turista extranjero: {formatClp(row.foreigner)} / USD {formatUsd(row.foreigner, config.usdRate)}</span>
                         </div>
