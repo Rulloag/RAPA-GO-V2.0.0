@@ -2,6 +2,7 @@ import { createContext, useState, useCallback, useEffect, type ReactNode } from 
 import { useHistory } from "react-router-dom";
 import { authService } from "./auth.service.js";
 import { sessionStorageService } from "./sessionStorage.service.js";
+import { ROUTES } from "../../navigation/routes";
 import type {
   AuthContextValue,
   AuthUser,

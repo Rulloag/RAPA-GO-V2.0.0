@@ -99,6 +99,80 @@ const APPLICATION_LOCAL_KEYS = [
   "rapago_driver_applications",
   "rapago_applications_cache",
   "rapago_registration_driver_application",
+  "rapago_driver_application_v1",
+  "rapago_driver_application_draft_v1",
+  "rapago_admin_driver_applications_v1",
+  "rapago_driver_apply_form_v1",
+  "rapago_driver_apply_documents_v1",
+  "rapago_driver_documents_v1",
+  "rapago_driver_document_images_v1",
+  "rapago_driver_vehicle_images_v1",
+  "rapago_driver_vehicle_photo_v1",
+  "rapago_driver_profile_v1",
+  "rapago_driver_public_profile_v1",
+  "rapago_current_user",
+  "rapago_auth_user",
+  "rapago_user",
+  "rapago_session",
+];
+
+const APPLICATION_LOCAL_KEY_HINTS = [
+  "rapago",
+  "driver",
+  "conductor",
+  "application",
+  "postulacion",
+  "postulacion",
+  "documents",
+  "documentos",
+  "images",
+  "imagenes",
+  "photo",
+  "foto",
+  "vehicle",
+  "vehiculo",
+  "profile",
+  "perfil",
+  "register",
+  "registro",
+];
+
+const APPLICATION_FILE_KEY_HINTS = [
+  "idfront",
+  "idback",
+  "identityfront",
+  "identityback",
+  "identitycardfront",
+  "identitycardback",
+  "identitycardfrontdataurl",
+  "identitycardbackdataurl",
+  "carnetfrente",
+  "carnetreverso",
+  "cedulafrente",
+  "cedulareverso",
+  "dnifrente",
+  "dnireverso",
+  "licensefront",
+  "licenseback",
+  "driverlicenseback",
+  "drivinglicenseback",
+  "licensereverso",
+  "licensetrasera",
+  "licenseposterior",
+  "licenciafrente",
+  "licenciareverso",
+  "licenciaback",
+  "licenciatrasera",
+  "licenciaposterior",
+  "profilephoto",
+  "profileimage",
+  "fotoperfil",
+  "vehiclephoto",
+  "vehicleimage",
+  "carphoto",
+  "autophoto",
+  "fotovehiculo",
+  "vehiculofoto",
 ];
 
 const detailSectionStyle: CSSProperties = {
@@ -144,6 +218,27 @@ function normalizeString(value: unknown): string | null {
 }
 
 function normalizeUrl(value: unknown): string | null {
+  if (value && typeof value === "object") {
+    const record = value as AnyRecord;
+    const nested =
+      record.url ??
+      record.fileUrl ??
+      record.publicUrl ??
+      record.downloadUrl ??
+      record.dataUrl ??
+      record.previewUrl ??
+      record.imageUrl ??
+      record.photoUrl ??
+      record.src ??
+      record.href ??
+      record.base64 ??
+      record.data ??
+      record.value;
+
+    const normalizedNested = normalizeUrl(nested);
+    if (normalizedNested) return normalizedNested;
+  }
+
   const raw = normalizeString(value);
   if (!raw) return null;
 
@@ -240,6 +335,380 @@ function readArrayByKeys(source: unknown, keys: string[], depth = 0): unknown[] 
   return null;
 }
 
+
+function normalizeLooseKey(value: string): string {
+  return value
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]/g, "");
+}
+
+function buildFileKeyCandidates(keys: string[]): string[] {
+  const suffixes = [
+    "",
+    "Url",
+    "URL",
+    "DataUrl",
+    "dataUrl",
+    "Base64",
+    "base64",
+    "PreviewUrl",
+    "previewUrl",
+    "FileUrl",
+    "fileUrl",
+    "ImageUrl",
+    "imageUrl",
+    "PhotoUrl",
+    "photoUrl",
+    "File",
+    "file",
+    "Image",
+    "image",
+    "Photo",
+    "photo",
+    "Src",
+    "src",
+  ];
+
+  const seen = new Set<string>();
+
+  for (const key of keys) {
+    seen.add(key);
+    for (const suffix of suffixes) {
+      seen.add(`${key}${suffix}`);
+    }
+  }
+
+  return Array.from(seen);
+}
+
+function localStorageKeyLooksUsefulForApplication(key: string): boolean {
+  const normalized = normalizeLooseKey(key);
+  if (!normalized.includes("rapago")) return false;
+
+  return APPLICATION_LOCAL_KEY_HINTS.some((hint) =>
+    normalized.includes(normalizeLooseKey(hint)),
+  );
+}
+
+function valueLooksLikeStoredFile(value: unknown): boolean {
+  if (typeof value !== "string") return false;
+
+  const trimmed = value.trim();
+
+  return (
+    trimmed.startsWith("data:image/") ||
+    trimmed.startsWith("data:application/") ||
+    trimmed.startsWith("blob:") ||
+    trimmed.startsWith("http://") ||
+    trimmed.startsWith("https://") ||
+    /^[A-Za-z0-9+/=]+$/.test(trimmed) && trimmed.length > 120
+  );
+}
+
+function sourceContainsUploadedFiles(source: unknown, depth = 0): boolean {
+  if (depth > 6) return false;
+
+  if (valueLooksLikeStoredFile(source)) return true;
+
+  if (Array.isArray(source)) {
+    return source.some((item) => sourceContainsUploadedFiles(item, depth + 1));
+  }
+
+  const record = asRecord(source);
+  if (!record) return false;
+
+  for (const [key, value] of Object.entries(record)) {
+    const normalizedKey = normalizeLooseKey(key);
+
+    if (
+      APPLICATION_FILE_KEY_HINTS.some((hint) => normalizedKey.includes(hint)) &&
+      (valueLooksLikeStoredFile(value) || Boolean(normalizeUrl(value)))
+    ) {
+      return true;
+    }
+
+    if (typeof value === "object" && value !== null && sourceContainsUploadedFiles(value, depth + 1)) {
+      return true;
+    }
+
+    if (Array.isArray(value) && value.some((item) => sourceContainsUploadedFiles(item, depth + 1))) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+
+const DOCUMENT_DIRECT_KEY_HINTS: Record<string, string[]> = {
+  idFront: [
+    "idfront",
+    "identityfront",
+    "identitycardfront",
+    "documentfront",
+    "documentofrente",
+    "cedulafrente",
+    "cedulafront",
+    "carnetfrente",
+    "carnetfront",
+    "dnifrente",
+    "dnifront",
+  ],
+  idBack: [
+    "idback",
+    "identityback",
+    "identitycardback",
+    "documentback",
+    "documentoreverso",
+    "cedulareverso",
+    "cedulaback",
+    "carnetreverso",
+    "carnetback",
+    "dnireverso",
+    "dniback",
+  ],
+  licenseFront: [
+    "licensefront",
+    "driverlicensefront",
+    "drivinglicensefront",
+    "licenciafrente",
+    "licenciafront",
+    "licenciaconducirfrente",
+  ],
+  licenseBack: [
+    "licenseback",
+    "driverlicenseback",
+    "drivinglicenseback",
+    "licenciareverso",
+    "licenciaback",
+    "licenciaconducirreverso",
+    "licenciatrasera",
+    "licenciaposterior",
+    "licensereverso",
+    "licensetrasera",
+    "licenseposterior",
+  ],
+  profilePhoto: [
+    "profilephoto",
+    "profileimage",
+    "profilepicture",
+    "avatar",
+    "fotoperfil",
+    "driverprofilephoto",
+    "personalphoto",
+    "selfie",
+  ],
+  vehiclePhoto: [
+    "vehiclephoto",
+    "vehicleimage",
+    "drivervehiclephoto",
+    "drivervehicleimage",
+    "mainvehiclephoto",
+    "carphoto",
+    "autophoto",
+    "fotovehiculo",
+    "vehiculofoto",
+    "fotoauto",
+  ],
+  certificate: [
+    "certificate",
+    "certification",
+    "guidecertificate",
+    "certificacion",
+    "certificadoguia",
+  ],
+};
+
+function documentKeyMatchesTarget(key: string, target: string): boolean {
+  const normalized = normalizeLooseKey(key);
+  const hints = DOCUMENT_DIRECT_KEY_HINTS[target] ?? [];
+
+  if (!normalized.includes("rapago")) return false;
+  if (!hints.some((hint) => normalized.includes(normalizeLooseKey(hint)))) return false;
+
+  // Evita que una foto de vehículo caiga como carnet/licencia/perfil.
+  if (target !== "vehiclePhoto") {
+    const vehicleHints = DOCUMENT_DIRECT_KEY_HINTS.vehiclePhoto ?? [];
+    if (vehicleHints.some((hint) => normalized.includes(normalizeLooseKey(hint)))) return false;
+  }
+
+  if (target !== "profilePhoto") {
+    const profileHints = DOCUMENT_DIRECT_KEY_HINTS.profilePhoto ?? [];
+    if (profileHints.some((hint) => normalized.includes(normalizeLooseKey(hint))) && target !== "profilePhoto") return false;
+  }
+
+  if (target === "idFront") {
+    return !/(back|reverso|trasera|posterior)/i.test(normalized);
+  }
+
+  if (target === "idBack") {
+    return /(back|reverso|trasera|posterior)/i.test(normalized) || hints.some((hint) => normalized.includes(normalizeLooseKey(hint)));
+  }
+
+  if (target === "licenseFront") {
+    return !/(back|reverso|trasera|posterior)/i.test(normalized);
+  }
+
+  if (target === "licenseBack") {
+    return /(back|reverso|trasera|posterior)/i.test(normalized) || hints.some((hint) => normalized.includes(normalizeLooseKey(hint)));
+  }
+
+  return true;
+}
+
+function readLocalStorageDirectFile(target: string, item: ApplicationData, candidateKeys: string[]): string | null {
+  if (typeof window === "undefined" || !window.localStorage) return null;
+
+  const identity = getApplicationIdentity(item);
+  const identityHints = [identity.email, identity.rut, identity.phone, identity.id]
+    .filter((value): value is string => Boolean(value))
+    .map((value) => normalizeLooseKey(value));
+
+  const fallbackMatches: string[] = [];
+
+  try {
+    for (let index = 0; index < localStorage.length; index += 1) {
+      const key = localStorage.key(index);
+      if (!key || !documentKeyMatchesTarget(key, target)) continue;
+
+      const raw = localStorage.getItem(key);
+      if (!raw) continue;
+
+      const normalizedKey = normalizeLooseKey(key);
+      const matchesIdentity = identityHints.length === 0 || identityHints.some((hint) => normalizedKey.includes(hint));
+
+      const rawUrl = normalizeUrl(raw);
+      if (rawUrl && valueLooksLikeStoredFile(rawUrl)) {
+        if (matchesIdentity || normalizedKey.includes("latest") || normalizedKey.includes("actual")) return rawUrl;
+        fallbackMatches.push(rawUrl);
+        continue;
+      }
+
+      try {
+        const parsed = JSON.parse(raw) as unknown;
+        const parsedSources = flattenApplicationContainers(parsed);
+        for (const source of parsedSources) {
+          const parsedUrl = readUrlByKeys(source, candidateKeys);
+          if (!parsedUrl) continue;
+          if (matchesIdentity || applicationCandidateMatches(source, item) || normalizedKey.includes("latest") || normalizedKey.includes("actual")) return parsedUrl;
+          fallbackMatches.push(parsedUrl);
+        }
+      } catch {
+        // Raw que no es JSON y no era URL válida.
+      }
+    }
+  } catch {
+    return null;
+  }
+
+  return fallbackMatches[0] ?? null;
+}
+
+function readLocalStorageDirectFileName(target: string): string | null {
+  if (typeof window === "undefined" || !window.localStorage) return null;
+
+  try {
+    for (let index = 0; index < localStorage.length; index += 1) {
+      const key = localStorage.key(index);
+      if (!key || !documentKeyMatchesTarget(key, target)) continue;
+
+      if (!/(name|filename|nombre|archivo)/i.test(key)) continue;
+
+      const raw = localStorage.getItem(key);
+      const name = normalizeString(raw);
+      if (name && !valueLooksLikeStoredFile(name)) return name;
+    }
+  } catch {
+    return null;
+  }
+
+  return null;
+}
+
+function flattenApplicationContainers(source: unknown): unknown[] {
+  const record = asRecord(source);
+  if (!record) return Array.isArray(source) ? source : [source];
+
+  const containers: unknown[] = [source];
+
+  for (const key of [
+    "items",
+    "applications",
+    "data",
+    "rows",
+    "results",
+    "documents",
+    "documentos",
+    "files",
+    "uploads",
+    "vehicles",
+    "vehicle",
+    "profile",
+    "metadata",
+    "payload",
+    "formData",
+  ]) {
+    const value = record[key];
+
+    if (Array.isArray(value)) {
+      containers.push(...value);
+      continue;
+    }
+
+    if (value && typeof value === "object") {
+      containers.push(value);
+    }
+  }
+
+  return containers;
+}
+
+function collectAllLocalApplicationSources(item: ApplicationData): unknown[] {
+  if (typeof window === "undefined" || !window.localStorage) return [];
+
+  const matched: unknown[] = [];
+  const fallbackWithFiles: unknown[] = [];
+
+  try {
+    for (let index = 0; index < localStorage.length; index += 1) {
+      const key = localStorage.key(index);
+      if (!key || !localStorageKeyLooksUsefulForApplication(key)) continue;
+
+      const raw = localStorage.getItem(key);
+      if (!raw) continue;
+
+      let parsed: unknown;
+
+      try {
+        parsed = JSON.parse(raw) as unknown;
+      } catch {
+        parsed = raw;
+      }
+
+      const candidates = flattenApplicationContainers(parsed);
+
+      const directMatches = candidates.filter((candidate) =>
+        applicationCandidateMatches(candidate, item),
+      );
+
+      if (directMatches.length > 0) {
+        matched.push(...directMatches, parsed);
+        continue;
+      }
+
+      if (sourceContainsUploadedFiles(parsed)) {
+        fallbackWithFiles.push(parsed);
+      }
+    }
+  } catch {
+    // No bloquea la vista si localStorage está restringido.
+  }
+
+  return matched.length > 0 ? matched : fallbackWithFiles.slice(0, 8);
+}
+
 function getApplicationIdentity(item: ApplicationData): {
   id: string | null;
   email: string | null;
@@ -269,17 +738,26 @@ function applicationCandidateMatches(candidate: unknown, item: ApplicationData):
   const candidateEmail =
     normalizeString(candidateRecord.email) ??
     normalizeString(candidateRecord.userEmail) ??
-    normalizeString(candidateRecord.contactEmail);
+    normalizeString(candidateRecord.contactEmail) ??
+    normalizeString(candidateRecord.passengerEmail) ??
+    normalizeString(candidateRecord.driverEmail) ??
+    readStringByKeys(candidateRecord, ["email", "userEmail", "contactEmail", "driverEmail"]);
 
   const candidateRut =
     normalizeString(candidateRecord.rut) ??
     normalizeString(candidateRecord.RUT) ??
-    normalizeString(candidateRecord.documentNumber);
+    normalizeString(candidateRecord.documentNumber) ??
+    normalizeString(candidateRecord.nationalId) ??
+    normalizeString(candidateRecord.identityNumber) ??
+    readStringByKeys(candidateRecord, ["rut", "RUT", "documentNumber", "nationalId", "identityNumber"]);
 
   const candidatePhone =
     normalizeString(candidateRecord.phone) ??
     normalizeString(candidateRecord.telefono) ??
-    normalizeString(candidateRecord.phoneNumber);
+    normalizeString(candidateRecord.phoneNumber) ??
+    normalizeString(candidateRecord.cellphone) ??
+    normalizeString(candidateRecord.mobile) ??
+    readStringByKeys(candidateRecord, ["phone", "telefono", "phoneNumber", "cellphone", "mobile"]);
 
   if (identity.id && candidateId === identity.id) return true;
   if (identity.email && candidateEmail?.toLowerCase() === identity.email) return true;
@@ -301,9 +779,15 @@ function collectLocalApplicationSources(item: ApplicationData): unknown[] {
   const exactKeys = [
     ...APPLICATION_LOCAL_KEYS,
     identity.id ? `rapago_driver_application_${identity.id}` : null,
+    identity.id ? `rapago_driver_documents_${identity.id}` : null,
+    identity.id ? `rapago_driver_vehicle_${identity.id}` : null,
     identity.email ? `rapago_driver_application_${identity.email}` : null,
     identity.email ? `rapago_application_driver_${identity.email}` : null,
+    identity.email ? `rapago_driver_documents_${identity.email}` : null,
+    identity.email ? `rapago_driver_vehicle_${identity.email}` : null,
+    identity.email ? `rapago_driver_public_profile_${identity.email}` : null,
     identity.rut ? `rapago_driver_application_${identity.rut}` : null,
+    identity.rut ? `rapago_driver_documents_${identity.rut}` : null,
   ].filter((key): key is string => Boolean(key));
 
   try {
@@ -351,6 +835,7 @@ function collectLocalApplicationSources(item: ApplicationData): unknown[] {
 function getApplicationSources(item: ApplicationData): unknown[] {
   const record = item as unknown as AnyRecord;
   const localSources = collectLocalApplicationSources(item);
+  const allLocalSources = collectAllLocalApplicationSources(item);
 
   return [
     record,
@@ -361,9 +846,23 @@ function getApplicationSources(item: ApplicationData): unknown[] {
     record.extraData,
     record.formData,
     record.documents,
+    record.documentos,
+    record.documentImages,
+    record.driverDocuments,
+    record.identityDocuments,
+    record.files,
+    record.uploads,
+    record.attachments,
+    record.profile,
+    record.user,
+    record.driver,
+    record.driverProfile,
     record.vehicle,
     record.vehicles,
+    record.vehiclePhotos,
+    record.vehicleImages,
     ...localSources,
+    ...allLocalSources,
   ].filter(Boolean);
 }
 
@@ -385,6 +884,135 @@ function readFirstUrl(sources: unknown[], keys: string[]): string | null {
   return null;
 }
 
+
+function readLicenseBackFromKnownSources(sources: unknown[]): { url: string | null; fileName: string | null } {
+  const containers: unknown[] = [];
+
+  const pushContainer = (value: unknown): void => {
+    if (!value) return;
+    containers.push(value);
+
+    const record = asRecord(value);
+    if (!record) return;
+
+    for (const key of [
+      "documents",
+      "documentos",
+      "driverLicense",
+      "drivingLicense",
+      "license",
+      "licencia",
+      "licenseBack",
+      "driverLicenseBack",
+      "drivingLicenseBack",
+      "licenciaReverso",
+      "licenciaBack",
+      "licenciaTrasera",
+      "licenciaPosterior",
+      "payload",
+      "data",
+      "formData",
+      "metadata",
+      "application",
+    ]) {
+      if (record[key]) containers.push(record[key]);
+    }
+
+    const docs = asRecord(record.documents) ?? asRecord(record.documentos);
+    if (docs) {
+      for (const key of [
+        "licenseBack",
+        "driverLicenseBack",
+        "drivingLicenseBack",
+        "licenciaReverso",
+        "licenciaBack",
+        "licenciaTrasera",
+        "licenciaPosterior",
+        "driverLicense",
+        "drivingLicense",
+        "license",
+        "licencia",
+      ]) {
+        if (docs[key]) containers.push(docs[key]);
+      }
+
+      const nestedDriverLicense = asRecord(docs.driverLicense) ?? asRecord(docs.drivingLicense) ?? asRecord(docs.license) ?? asRecord(docs.licencia);
+      if (nestedDriverLicense) containers.push(nestedDriverLicense);
+    }
+  };
+
+  sources.forEach(pushContainer);
+
+  const urlKeys = buildFileKeyCandidates([
+    "licenseBackUrl",
+    "driverLicenseBackUrl",
+    "drivingLicenseBackUrl",
+    "licenciaReversoUrl",
+    "licenciaBackUrl",
+    "licenciaTraseraUrl",
+    "licenciaPosteriorUrl",
+    "licenseReversoUrl",
+    "licenseTraseraUrl",
+    "licensePosteriorUrl",
+    "licenseBackDataUrl",
+    "driverLicenseBackDataUrl",
+    "drivingLicenseBackDataUrl",
+    "licenciaReversoDataUrl",
+    "licenciaTraseraDataUrl",
+    "licenseBack",
+    "driverLicenseBack",
+    "drivingLicenseBack",
+    "driverLicenseReverso",
+    "licenciaReverso",
+    "licenciaBack",
+    "licenciaTrasera",
+    "licenciaPosterior",
+    "backUrl",
+    "backDataUrl",
+    "reverseUrl",
+    "reverseDataUrl",
+    "reversoUrl",
+    "reversoDataUrl",
+    "traseraUrl",
+    "traseraDataUrl",
+    "posteriorUrl",
+    "posteriorDataUrl",
+    "back",
+    "reverse",
+    "reverso",
+    "trasera",
+    "posterior",
+  ]);
+
+  const nameKeys = [
+    "licenseBackFileName",
+    "driverLicenseBackFileName",
+    "drivingLicenseBackFileName",
+    "licenciaReversoFileName",
+    "licenciaTraseraFileName",
+    "backFileName",
+    "reversoFileName",
+    "traseraFileName",
+    "fileNameBack",
+    "fileName",
+    "name",
+    "originalName",
+  ];
+
+  for (const container of containers) {
+    const url = readUrlByKeys(container, urlKeys);
+    if (!url) continue;
+
+    return {
+      url,
+      fileName: readStringByKeys(container, nameKeys),
+    };
+  }
+
+  return { url: null, fileName: null };
+}
+
+
 function readFirstArray(sources: unknown[], keys: string[]): unknown[] | null {
   for (const source of sources) {
     const value = readArrayByKeys(source, keys);
@@ -405,6 +1033,80 @@ function isImageUrl(url: string | null): boolean {
   );
 }
 
+
+function readStorageValueForAdmin(key: string): string | null {
+  try {
+    const local = localStorage.getItem(key);
+    if (local && local.trim()) return local;
+  } catch {
+    // No bloquea el detalle.
+  }
+
+  try {
+    const session = sessionStorage.getItem(key);
+    if (session && session.trim()) return session;
+  } catch {
+    // No bloquea el detalle.
+  }
+
+  return null;
+}
+
+function getDirectDocumentIdentityParts(item: ApplicationData): string[] {
+  const identity = getApplicationIdentity(item);
+  const parts = new Set<string>();
+
+  // Primero busca por identidad real del postulante. "latest" queda solo como
+  // respaldo para pruebas locales y evita mezclar documentos entre conductores.
+  if (identity.email) {
+    parts.add(`email_${identity.email}`);
+    parts.add(`email_${encodeURIComponent(identity.email)}`);
+  }
+
+  if (identity.rut) parts.add(`rut_${identity.rut}`);
+  if (identity.phone) parts.add(`phone_${identity.phone}`);
+  if (identity.id) parts.add(`id_${identity.id}`);
+  parts.add("latest");
+
+  return Array.from(parts).filter(Boolean);
+}
+
+function readDirectApplicationFile(item: ApplicationData, suffixes: string[]): { url: string | null; fileName: string | null } {
+  for (const suffix of suffixes) {
+    for (const identityPart of getDirectDocumentIdentityParts(item)) {
+      const directKey = `rapago_driver_document_${suffix}_${identityPart}`;
+      const directUrl = normalizeUrl(readStorageValueForAdmin(directKey));
+      if (directUrl) {
+        return {
+          url: directUrl,
+          fileName: readStorageValueForAdmin(`${directKey}_fileName`),
+        };
+      }
+
+      const bundleKey = `rapago_driver_documents_bundle_${identityPart}`;
+      const bundleRaw = readStorageValueForAdmin(bundleKey);
+      if (bundleRaw) {
+        try {
+          const bundle = JSON.parse(bundleRaw) as AnyRecord;
+          const documents = asRecord(bundle.documents);
+          const doc = documents ? asRecord(documents[suffix]) : null;
+          const bundleUrl = normalizeUrl(doc?.url ?? doc?.dataUrl ?? doc?.previewUrl);
+          if (bundleUrl) {
+            return {
+              url: bundleUrl,
+              fileName: normalizeString(doc?.fileName),
+            };
+          }
+        } catch {
+          // Ignora bundle corrupto.
+        }
+      }
+    }
+  }
+
+  return { url: null, fileName: null };
+}
+
 function buildDocumentViews(item: ApplicationData): DocumentView[] {
   const sources = getApplicationSources(item);
 
@@ -412,97 +1114,219 @@ function buildDocumentViews(item: ApplicationData): DocumentView[] {
     key: string;
     label: string;
     helper: string;
+    directSuffixes: string[];
     keys: string[];
   }> = [
     {
       key: "idFront",
       label: "Carnet frente",
       helper: "Cédula de identidad por el frente.",
+      directSuffixes: ["identity_front", "id_front", "carnet_frente", "cedula_frente"],
       keys: [
         "idFrontUrl",
         "identityFrontUrl",
         "identityDocumentFrontUrl",
+        "identityCardFrontUrl",
+        "identityCardFrontDataUrl",
+        "identityCardFrontFile",
+        "identityCardFrontImage",
+        "identityCardFrontPhoto",
+        "identityFrontFile",
+        "identityFrontDataUrl",
+        "documentFrontUrl",
+        "documentoFrenteUrl",
         "cedulaFrenteUrl",
+        "cedulaFrontUrl",
         "carnetFrenteUrl",
+        "carnetFrontUrl",
+        "dniFrontUrl",
+        "dniFrenteUrl",
         "idFront",
         "identityFront",
         "identityDocumentFront",
+        "identityCardFront",
+        "identityCardFrontFile",
+        "documentFront",
+        "documentoFrente",
         "cedulaFrente",
+        "cedulaFront",
         "carnetFrente",
+        "carnetFront",
+        "dniFront",
+        "dniFrente",
+        "idCardFrontPhoto",
+        "carnetFrentePhoto",
+        "cedulaFrentePhoto",
       ],
     },
     {
       key: "idBack",
       label: "Carnet reverso",
       helper: "Cédula de identidad por el reverso.",
+      directSuffixes: ["identity_back", "id_back", "carnet_reverso", "cedula_reverso"],
       keys: [
         "idBackUrl",
         "identityBackUrl",
         "identityDocumentBackUrl",
+        "identityCardBackUrl",
+        "identityCardBackDataUrl",
+        "identityCardBackFile",
+        "identityCardBackImage",
+        "identityCardBackPhoto",
+        "identityBackFile",
+        "identityBackDataUrl",
+        "documentBackUrl",
+        "documentoReversoUrl",
         "cedulaReversoUrl",
+        "cedulaBackUrl",
         "carnetReversoUrl",
+        "carnetBackUrl",
+        "dniBackUrl",
+        "dniReversoUrl",
         "idBack",
         "identityBack",
         "identityDocumentBack",
+        "identityCardBack",
+        "identityCardBackFile",
+        "documentBack",
+        "documentoReverso",
         "cedulaReverso",
+        "cedulaBack",
         "carnetReverso",
+        "carnetBack",
+        "dniBack",
+        "dniReverso",
+        "idCardBackPhoto",
+        "carnetReversoPhoto",
+        "cedulaReversoPhoto",
       ],
     },
     {
       key: "licenseFront",
       label: "Licencia frente",
       helper: "Licencia de conducir por el frente.",
+      directSuffixes: ["license_front", "licencia_frente", "driver_license_front"],
       keys: [
         "licenseFrontUrl",
         "driverLicenseFrontUrl",
+        "drivingLicenseFrontUrl",
         "licenciaFrenteUrl",
+        "licenciaFrontUrl",
         "licenseFront",
         "driverLicenseFront",
+        "driverLicense",
+        "drivingLicenseFront",
         "licenciaFrente",
+        "licenciaFront",
+        "licenseFrontPhoto",
+        "driverLicenseFrontPhoto",
       ],
     },
     {
       key: "licenseBack",
       label: "Licencia reverso",
       helper: "Licencia de conducir por el reverso.",
+      directSuffixes: [
+        "license_back",
+        "driver_license_back",
+        "driving_license_back",
+        "licencia_reverso",
+        "licencia_back",
+        "licencia_trasera",
+        "licencia_posterior",
+        "license_reverso",
+        "license_trasera",
+        "license_posterior",
+        "driver_license_reverso",
+        "driver_license_trasera",
+        "driver_license_posterior",
+      ],
       keys: [
         "licenseBackUrl",
         "driverLicenseBackUrl",
+        "drivingLicenseBackUrl",
         "licenciaReversoUrl",
+        "licenciaBackUrl",
+        "licenciaTraseraUrl",
+        "licenciaPosteriorUrl",
+        "licenseBackDataUrl",
+        "driverLicenseBackDataUrl",
+        "drivingLicenseBackDataUrl",
+        "licenciaReversoDataUrl",
+        "licenciaTraseraDataUrl",
+        "licenseBackFile",
+        "driverLicenseBackFile",
         "licenseBack",
         "driverLicenseBack",
+        "driverLicenseReverso",
+        "drivingLicenseBack",
         "licenciaReverso",
+        "licenciaBack",
+        "licenciaTrasera",
+        "licenciaPosterior",
+        "licenseBackPhoto",
+        "driverLicenseBackPhoto",
+        // Soporta estructuras tipo documents.driverLicense.back/backUrl.
+        "backUrl",
+        "backDataUrl",
+        "backFile",
+        "back",
+        "reverso",
+        "trasera",
+        "posterior",
       ],
     },
     {
       key: "profilePhoto",
       label: "Foto de perfil",
       helper: "Foto personal del postulante.",
+      directSuffixes: ["profile_photo", "foto_perfil"],
       keys: [
         "profilePhotoUrl",
         "profileImageUrl",
+        "profilePictureUrl",
         "avatarUrl",
         "photoUrl",
+        "fotoPerfilUrl",
+        "driverProfilePhotoUrl",
         "profilePhoto",
         "profileImage",
+        "profilePicture",
         "avatar",
         "photo",
+        "fotoPerfil",
+        "driverProfilePhoto",
+        "selfie",
+        "personalPhoto",
       ],
     },
     {
       key: "vehiclePhoto",
       label: "Foto del vehículo principal",
       helper: "Foto del auto propio para validar la inscripción.",
+      directSuffixes: ["vehicle_photo", "foto_vehiculo"],
       keys: [
         "vehiclePhotoUrl",
+        "mainVehiclePhotoUrl",
+        "driverVehiclePhotoUrl",
         "vehicleImageUrl",
         "carPhotoUrl",
         "autoPhotoUrl",
+        "fotoVehiculoUrl",
+        "vehiculoFotoUrl",
+        "fotoAutoUrl",
         "vehiclePhoto",
+        "mainVehiclePhoto",
+        "driverVehiclePhoto",
         "vehicleImage",
         "carPhoto",
         "autoPhoto",
         "fotoVehiculo",
+        "vehiculoFoto",
+        "fotoAuto",
+        "vehicleFrontPhoto",
+        "vehiclePhotoDataUrl",
+        "driverVehicleImage",
       ],
     },
   ];
@@ -512,6 +1336,7 @@ function buildDocumentViews(item: ApplicationData): DocumentView[] {
       key: "certificate",
       label: "Certificación guía",
       helper: "Certificado o respaldo de guía.",
+      directSuffixes: ["certificate", "guide_certificate"],
       keys: [
         "certificateUrl",
         "guideCertificateUrl",
@@ -524,10 +1349,44 @@ function buildDocumentViews(item: ApplicationData): DocumentView[] {
   }
 
   return documentDefinitions.map((definition) => {
-    const url = readFirstUrl(sources, definition.keys);
+    const candidateKeys = buildFileKeyCandidates(definition.keys);
+    const directFile = readDirectApplicationFile(item, definition.directSuffixes);
+    const licenseBackKnown =
+      definition.key === "licenseBack"
+        ? readLicenseBackFromKnownSources(sources)
+        : { url: null, fileName: null };
+
+    const url =
+      definition.key === "licenseBack"
+        ? (
+            directFile.url ??
+            licenseBackKnown.url ??
+            readFirstUrl(sources, candidateKeys) ??
+            readLocalStorageDirectFile(definition.key, item, candidateKeys)
+          )
+        : (
+            readFirstUrl(sources, candidateKeys) ??
+            directFile.url ??
+            readLocalStorageDirectFile(definition.key, item, candidateKeys)
+          );
+
     const fileName =
-      readFirstString(sources, definition.keys.map((key) => `${key}Name`)) ??
-      readFirstString(sources, definition.keys.map((key) => `${key}FileName`));
+      definition.key === "licenseBack"
+        ? (
+            directFile.fileName ??
+            licenseBackKnown.fileName ??
+            readFirstString(sources, candidateKeys.map((key) => `${key}Name`)) ??
+            readFirstString(sources, candidateKeys.map((key) => `${key}FileName`)) ??
+            readFirstString(sources, candidateKeys.map((key) => `${key}OriginalName`)) ??
+            readLocalStorageDirectFileName(definition.key)
+          )
+        : (
+            readFirstString(sources, candidateKeys.map((key) => `${key}Name`)) ??
+            readFirstString(sources, candidateKeys.map((key) => `${key}FileName`)) ??
+            readFirstString(sources, candidateKeys.map((key) => `${key}OriginalName`)) ??
+            directFile.fileName ??
+            readLocalStorageDirectFileName(definition.key)
+          );
 
     return {
       key: definition.key,
@@ -571,18 +1430,27 @@ function buildVehicleViews(item: ApplicationData): DriverVehicleView[] {
     const year = readFirstString(vehicleSources, ["year", "vehicleYear", "anio", "año"]);
     const plate = readFirstString(vehicleSources, ["plate", "vehiclePlate", "patente"]);
     const color = readFirstString(vehicleSources, ["color", "vehicleColor"]);
-    const photoUrl = readFirstUrl(vehicleSources, [
+    const photoUrl = readFirstUrl(vehicleSources, buildFileKeyCandidates([
       "photoUrl",
       "vehiclePhotoUrl",
+      "mainVehiclePhotoUrl",
+      "driverVehiclePhotoUrl",
       "vehicleImageUrl",
       "carPhotoUrl",
       "autoPhotoUrl",
+      "fotoVehiculoUrl",
+      "vehiculoFotoUrl",
       "photo",
       "vehiclePhoto",
+      "mainVehiclePhoto",
+      "driverVehiclePhoto",
       "vehicleImage",
       "carPhoto",
+      "autoPhoto",
       "fotoVehiculo",
-    ]);
+      "vehiculoFoto",
+      "vehiclePhotoDataUrl",
+    ]));
 
     const composed = [brand, model, year ? `año ${year}` : null, plate ? `patente ${plate}` : null]
       .filter(Boolean)
@@ -621,18 +1489,30 @@ function buildVehicleViews(item: ApplicationData): DriverVehicleView[] {
       .filter(Boolean)
       .join(", ");
 
-  const mainPhoto = readFirstUrl(sources, [
-    "vehiclePhotoUrl",
-    "mainVehiclePhotoUrl",
-    "vehicleImageUrl",
-    "carPhotoUrl",
-    "autoPhotoUrl",
-    "vehiclePhoto",
-    "mainVehiclePhoto",
-    "vehicleImage",
-    "carPhoto",
-    "fotoVehiculo",
-  ]);
+  const mainPhoto =
+    readFirstUrl(sources, buildFileKeyCandidates([
+      "vehiclePhotoUrl",
+      "mainVehiclePhotoUrl",
+      "driverVehiclePhotoUrl",
+      "vehicleImageUrl",
+      "driverVehicleImageUrl",
+      "carPhotoUrl",
+      "autoPhotoUrl",
+      "fotoVehiculoUrl",
+      "vehiculoFotoUrl",
+      "vehiclePhoto",
+      "mainVehiclePhoto",
+      "driverVehiclePhoto",
+      "vehicleImage",
+      "driverVehicleImage",
+      "carPhoto",
+      "autoPhoto",
+      "fotoVehiculo",
+      "vehiculoFoto",
+      "vehiclePhotoDataUrl",
+      "driverVehicleImageDataUrl",
+    ])) ??
+    readDirectApplicationFile(item, ["vehicle_photo", "foto_vehiculo"]).url;
 
   if (mainDescription || mainPhoto) {
     vehicles.push({
@@ -657,8 +1537,12 @@ function buildVehicleViews(item: ApplicationData): DriverVehicleView[] {
   const photoArrays = [
     readFirstArray(sources, ["vehiclePhotos"]),
     readFirstArray(sources, ["vehiclePhotoUrls"]),
+    readFirstArray(sources, ["driverVehiclePhotos"]),
     readFirstArray(sources, ["carPhotos"]),
+    readFirstArray(sources, ["autoPhotos"]),
     readFirstArray(sources, ["vehicleImages"]),
+    readFirstArray(sources, ["fotoVehiculo"]),
+    readFirstArray(sources, ["fotosVehiculo"]),
   ].filter((value): value is unknown[] => Array.isArray(value));
 
   for (const photoArray of photoArrays) {
@@ -666,7 +1550,7 @@ function buildVehicleViews(item: ApplicationData): DriverVehicleView[] {
       const photoUrl = normalizeUrl(
         typeof entry === "string"
           ? entry
-          : readStringByKeys(entry, ["url", "fileUrl", "dataUrl", "previewUrl", "base64", "photoUrl"]),
+          : readStringByKeys(entry, ["url", "fileUrl", "publicUrl", "downloadUrl", "dataUrl", "previewUrl", "imageUrl", "photoUrl", "src", "base64", "data", "value"]),
       );
 
       if (!photoUrl) return;
@@ -1022,6 +1906,12 @@ function AdminApplicationDetailModal({
                 </IonBadge>
               )}
             </div>
+
+            {uploadedDocuments === 0 && vehicles.length === 0 && (
+              <IonNote color="warning" style={{ display: "block", marginTop: "10px", fontWeight: 850 }}>
+                No se encontraron archivos en esta respuesta del backend. El panel también revisa copias locales de registro, documentos, perfil y vehículo del postulante para mostrarlas automáticamente.
+              </IonNote>
+            )}
 
             {item.rejectionReason && (
               <IonNote color="danger" style={{ display: "block", marginTop: "12px", fontWeight: 800 }}>

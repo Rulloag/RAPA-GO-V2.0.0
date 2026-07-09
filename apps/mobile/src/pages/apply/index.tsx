@@ -317,6 +317,10 @@ function isRutValid(value: string): boolean {
     color: string;
     label: string;
     imageDataUrl: string | null;
+    photoDataUrl: string | null;
+    photoUrl: string | null;
+    vehiclePhotoUrl: string | null;
+    vehicleImageUrl: string | null;
     imageName: string | null;
     expiresAt: string | null;
     createdAt: string;
@@ -325,6 +329,17 @@ function isRutValid(value: string): boolean {
     photoFileName?: string;
     photoFileType?: string;
     photoFileSize?: number;
+  };
+
+  type ApplicationFilePayload = {
+    provided: boolean;
+    fileName?: string;
+    fileType?: string;
+    fileSize?: number;
+    dataUrl: string | null;
+    url: string | null;
+    previewUrl: string | null;
+    uploadedAt: string | null;
   };
 
   function createDriverVehicle(index: number, kind: DriverVehicleKind = "optional"): DriverVehicleForm {
@@ -445,7 +460,7 @@ function isRutValid(value: string): boolean {
     safeSetApplicationStorageItem(`${baseKey}_owner_key`, ownerKey);
   }
 
-  function readImageFileAsDataUrl(file: File | null, maxSide = 900, quality = 0.78): Promise<string | null> {
+  function readImageFileAsDataUrl(file: File | null, maxSide = 520, quality = 0.5): Promise<string | null> {
     return new Promise((resolve) => {
       if (!file) {
         resolve(null);
@@ -499,6 +514,514 @@ function isRutValid(value: string): boolean {
     });
   }
 
+  async function buildApplicationFilePayload(
+    file: File | null,
+    options: { maxSide?: number; quality?: number } = {},
+  ): Promise<ApplicationFilePayload> {
+    const dataUrl = await readImageFileAsDataUrl(
+      file,
+      options.maxSide ?? 520,
+      options.quality ?? 0.48,
+    );
+
+    return {
+      provided: file != null,
+      fileName: file?.name,
+      fileType: file?.type,
+      fileSize: file?.size,
+      dataUrl,
+      url: dataUrl,
+      previewUrl: dataUrl,
+      uploadedAt: file ? new Date().toISOString() : null,
+    };
+  }
+
+  function applicationFileUrl(file: ApplicationFilePayload | null | undefined): string | null {
+    return file?.dataUrl ?? file?.url ?? file?.previewUrl ?? null;
+  }
+
+  function safeRemoveApplicationStorageItem(key: string): void {
+    try {
+      localStorage.removeItem(key);
+    } catch {
+      // No bloquea la postulación.
+    }
+
+    try {
+      sessionStorage.removeItem(key);
+    } catch {
+      // No bloquea la postulación.
+    }
+  }
+
+  function cleanupOldApplicationMirrors(): void {
+    try {
+      const keysToRemove: string[] = [];
+
+      for (let index = 0; index < localStorage.length; index += 1) {
+        const key = localStorage.key(index);
+        if (!key) continue;
+
+        if (
+          key.startsWith("rapago_driver_application") ||
+          key.startsWith("rapago_application_driver") ||
+          key.startsWith("rapago_applications_driver") ||
+          key.startsWith("rapago_pending_driver_application") ||
+          key.startsWith("rapago_registration_driver_application") ||
+          key.startsWith("rapago_driver_document_") ||
+          key.startsWith("rapago_driver_documents_bundle_") ||
+          key === "rapago_driver_public_profile_v1" ||
+          key === "rapago_driver_profile_v1" ||
+          key === "rapago_driver_document_images_v1" ||
+          key === "rapago_driver_vehicle_images_v1" ||
+          key === "rapago_driver_vehicle_photo_v1"
+        ) {
+          keysToRemove.push(key);
+        }
+      }
+
+      keysToRemove.forEach(safeRemoveApplicationStorageItem);
+    } catch {
+      // No bloquea la postulación.
+    }
+  }
+
+  function stripUndefinedDeep(value: unknown, depth = 0): unknown {
+    if (depth > 8) return undefined;
+    if (value === undefined) return undefined;
+    if (value === null) return null;
+
+    if (Array.isArray(value)) {
+      return value
+        .map((entry) => stripUndefinedDeep(entry, depth + 1))
+        .filter((entry) => entry !== undefined);
+    }
+
+    if (typeof value === "object") {
+      const source = value as Record<string, unknown>;
+      const output: Record<string, unknown> = {};
+
+      for (const [key, entry] of Object.entries(source)) {
+        const cleaned = stripUndefinedDeep(entry, depth + 1);
+        if (cleaned !== undefined) output[key] = cleaned;
+      }
+
+      return output;
+    }
+
+    return value;
+  }
+
+  function buildLocalAdminApplicationMirror(application: Record<string, unknown>, user?: unknown): Record<string, unknown> {
+    const ownerKey = getApplicationOwnerKey(user ?? application);
+    const now = new Date().toISOString();
+    const record = application as Record<string, unknown>;
+    const vehicle = record.vehicle && typeof record.vehicle === "object"
+      ? (record.vehicle as Record<string, unknown>)
+      : {};
+    const documents = record.documents && typeof record.documents === "object"
+      ? (record.documents as Record<string, unknown>)
+      : {};
+
+    return stripUndefinedDeep({
+      id: record.id,
+      applicationId: record.applicationId ?? record.id,
+      type: record.type ?? "driver",
+      status: record.status ?? "pending",
+      firstName: record.firstName,
+      lastName: record.lastName,
+      email: record.email,
+      userEmail: record.email,
+      contactEmail: record.email,
+      driverEmail: record.email,
+      phone: record.phone,
+      rut: record.rut,
+      birthDate: record.birthDate,
+      createdAt: record.createdAt ?? now,
+      updatedAt: record.updatedAt ?? now,
+      ownerKey,
+      driverOwnerKey: ownerKey,
+      localMirrorUpdatedAt: now,
+      localMirrorForAdmin: true,
+
+      idFrontUrl: record.idFrontUrl,
+      identityFrontUrl: record.identityFrontUrl,
+      carnetFrenteUrl: record.carnetFrenteUrl,
+      idFrontFileName: record.idFrontFileName,
+      identityFrontFileName: record.identityFrontFileName,
+
+      idBackUrl: record.idBackUrl,
+      identityBackUrl: record.identityBackUrl,
+      carnetReversoUrl: record.carnetReversoUrl,
+      idBackFileName: record.idBackFileName,
+      identityBackFileName: record.identityBackFileName,
+
+      licenseFrontUrl: record.licenseFrontUrl,
+      driverLicenseFrontUrl: record.driverLicenseFrontUrl,
+      licenciaFrenteUrl: record.licenciaFrenteUrl,
+      licenseFrontFileName: record.licenseFrontFileName,
+      driverLicenseFrontFileName: record.driverLicenseFrontFileName,
+
+      licenseBackUrl: record.licenseBackUrl,
+      driverLicenseBackUrl: record.driverLicenseBackUrl,
+      licenciaReversoUrl: record.licenciaReversoUrl,
+      licenseBackFileName: record.licenseBackFileName,
+      driverLicenseBackFileName: record.driverLicenseBackFileName,
+
+      profilePhotoUrl: record.profilePhotoUrl,
+      profileImageUrl: record.profileImageUrl,
+      avatarUrl: record.avatarUrl,
+      photoUrl: record.photoUrl,
+      profilePhotoFileName: record.profilePhotoFileName,
+
+      vehiclePhotoUrl: record.vehiclePhotoUrl,
+      vehicleImageUrl: record.vehicleImageUrl,
+      carPhotoUrl: record.carPhotoUrl,
+      autoPhotoUrl: record.autoPhotoUrl,
+      vehiclePhotoFileName: record.vehiclePhotoFileName,
+
+      vehicle: {
+        ...vehicle,
+        photoDataUrl: vehicle.photoDataUrl ?? record.vehiclePhotoUrl,
+        imageDataUrl: vehicle.imageDataUrl ?? record.vehicleImageUrl,
+        photoUrl: vehicle.photoUrl ?? record.vehiclePhotoUrl,
+        vehiclePhotoUrl: vehicle.vehiclePhotoUrl ?? record.vehiclePhotoUrl,
+        vehicleImageUrl: vehicle.vehicleImageUrl ?? record.vehicleImageUrl,
+      },
+      vehicles: record.vehicles,
+      driverVehicles: record.driverVehicles,
+      documents,
+      localDocumentKeys: Object.keys(documents),
+    }, 0) as Record<string, unknown>;
+  }
+
+
+  function collectDirectApplicationFileEntries(mirror: Record<string, unknown>): Array<{
+    suffix: string;
+    url: string;
+    fileName?: string;
+  }> {
+    const documents = mirror.documents && typeof mirror.documents === "object"
+      ? (mirror.documents as Record<string, unknown>)
+      : {};
+
+    function getUrl(...values: unknown[]): string | null {
+      for (const value of values) {
+        if (typeof value === "string" && value.trim().startsWith("data:")) return value.trim();
+        if (value && typeof value === "object") {
+          const record = value as Record<string, unknown>;
+          const nested = getUrl(
+            record.dataUrl,
+            record.url,
+            record.previewUrl,
+            record.fileUrl,
+            record.imageUrl,
+            record.photoUrl,
+            record.base64,
+            record.value,
+          );
+          if (nested) return nested;
+        }
+      }
+      return null;
+    }
+
+    function getName(...values: unknown[]): string | undefined {
+      for (const value of values) {
+        if (typeof value === "string" && value.trim() && !value.startsWith("data:")) return value.trim();
+        if (value && typeof value === "object") {
+          const record = value as Record<string, unknown>;
+          const nested = getName(record.fileName, record.name, record.originalName, record.imageName);
+          if (nested) return nested;
+        }
+      }
+      return undefined;
+    }
+
+    const identityFront = documents.identityFront ?? documents.identityCardFront ?? documents.idFront ?? documents.carnetFrente ?? documents.cedulaFrente;
+    const identityBack = documents.identityBack ?? documents.identityCardBack ?? documents.idBack ?? documents.carnetReverso ?? documents.cedulaReverso;
+    const licenseFront = documents.licenseFront ?? documents.driverLicenseFront ?? documents.licenciaFrente ?? (documents.driverLicense as Record<string, unknown> | undefined)?.front;
+    const licenseBack = documents.licenseBack ?? documents.driverLicenseBack ?? documents.licenciaReverso ?? (documents.driverLicense as Record<string, unknown> | undefined)?.back;
+    const profilePhoto = documents.profilePhoto ?? documents.profileImage ?? documents.avatar ?? documents.photo;
+    const vehiclePhoto = documents.vehiclePhoto ?? documents.vehicleImage ?? mirror.vehiclePhotoUrl ?? (mirror.vehicle as Record<string, unknown> | undefined)?.vehiclePhotoUrl;
+
+    const entries = [
+      {
+        suffix: "identity_front",
+        url: getUrl(mirror.idFrontUrl, mirror.identityFrontUrl, mirror.carnetFrenteUrl, identityFront),
+        fileName: getName(mirror.idFrontFileName, mirror.identityFrontFileName, identityFront),
+      },
+      {
+        suffix: "identity_back",
+        url: getUrl(mirror.idBackUrl, mirror.identityBackUrl, mirror.carnetReversoUrl, identityBack),
+        fileName: getName(mirror.idBackFileName, mirror.identityBackFileName, identityBack),
+      },
+      {
+        suffix: "license_front",
+        url: getUrl(mirror.licenseFrontUrl, mirror.driverLicenseFrontUrl, mirror.licenciaFrenteUrl, licenseFront),
+        fileName: getName(mirror.licenseFrontFileName, mirror.driverLicenseFrontFileName, licenseFront),
+      },
+      {
+        suffix: "license_back",
+        url: getUrl(mirror.licenseBackUrl, mirror.driverLicenseBackUrl, mirror.licenciaReversoUrl, licenseBack),
+        fileName: getName(mirror.licenseBackFileName, mirror.driverLicenseBackFileName, licenseBack),
+      },
+      {
+        suffix: "profile_photo",
+        url: getUrl(mirror.profilePhotoUrl, mirror.profileImageUrl, mirror.avatarUrl, mirror.photoUrl, profilePhoto),
+        fileName: getName(mirror.profilePhotoFileName, profilePhoto),
+      },
+      {
+        suffix: "vehicle_photo",
+        url: getUrl(mirror.vehiclePhotoUrl, mirror.vehicleImageUrl, mirror.carPhotoUrl, mirror.autoPhotoUrl, vehiclePhoto),
+        fileName: getName(mirror.vehiclePhotoFileName, vehiclePhoto),
+      },
+    ];
+
+    return entries.filter((entry): entry is { suffix: string; url: string; fileName?: string } => Boolean(entry.url));
+  }
+
+  function persistDirectApplicationFilesForAdmin(mirror: Record<string, unknown>): void {
+    const email = String(mirror.email ?? "").trim().toLowerCase();
+    const rut = String(mirror.rut ?? "").replace(/[.\s-]/g, "").toLowerCase();
+    const phone = String(mirror.phone ?? "").replace(/\D/g, "");
+    const id = String(mirror.id ?? mirror.applicationId ?? "").trim();
+    const identityParts = [
+      "latest",
+      email ? `email_${email}` : "",
+      email ? `email_${encodeURIComponent(email)}` : "",
+      rut ? `rut_${rut}` : "",
+      phone ? `phone_${phone}` : "",
+      id ? `id_${id}` : "",
+    ].filter(Boolean);
+
+    const entries = collectDirectApplicationFileEntries(mirror);
+    const bundle: Record<string, unknown> = {
+      id,
+      email,
+      rut,
+      phone,
+      type: mirror.type ?? "driver",
+      firstName: mirror.firstName,
+      lastName: mirror.lastName,
+      updatedAt: new Date().toISOString(),
+      documents: {},
+    };
+
+    for (const entry of entries) {
+      (bundle.documents as Record<string, unknown>)[entry.suffix] = {
+        url: entry.url,
+        dataUrl: entry.url,
+        previewUrl: entry.url,
+        fileName: entry.fileName ?? "archivo-adjunto.jpg",
+      };
+
+      for (const identityPart of identityParts) {
+        const baseKey = `rapago_driver_document_${entry.suffix}_${identityPart}`;
+        try {
+          localStorage.setItem(baseKey, entry.url);
+          sessionStorage.setItem(baseKey, entry.url);
+          if (entry.fileName) {
+            localStorage.setItem(`${baseKey}_fileName`, entry.fileName);
+            sessionStorage.setItem(`${baseKey}_fileName`, entry.fileName);
+          }
+        } catch {
+          // Si el navegador está lleno, igual intentamos con el siguiente documento.
+        }
+      }
+    }
+
+    const bundleJson = JSON.stringify(bundle);
+    for (const identityPart of identityParts) {
+      const bundleKey = `rapago_driver_documents_bundle_${identityPart}`;
+      try {
+        localStorage.setItem(bundleKey, bundleJson);
+        sessionStorage.setItem(bundleKey, bundleJson);
+      } catch {
+        // No bloquea la postulación.
+      }
+    }
+  }
+
+  function persistSubmittedDriverApplicationForAdmin(
+    application: Record<string, unknown>,
+    user?: unknown,
+  ): void {
+    try {
+      cleanupOldApplicationMirrors();
+
+      const mirror = buildLocalAdminApplicationMirror(application, user);
+
+      // Primero guardamos cada documento por separado. Así no se pierden si el
+      // JSON completo queda muy pesado para localStorage.
+      persistDirectApplicationFilesForAdmin(mirror);
+
+      const email = String(mirror.email ?? "").trim().toLowerCase();
+      const rut = String(mirror.rut ?? "").replace(/[.\s-]/g, "").toLowerCase();
+      const phone = String(mirror.phone ?? "").replace(/\D/g, "");
+      const lightMirror = {
+        ...(buildApiSafeApplicationInput(mirror) as Record<string, unknown>),
+        id: mirror.id,
+        applicationId: mirror.applicationId ?? mirror.id,
+        type: mirror.type ?? "driver",
+        status: mirror.status ?? "pending",
+        firstName: mirror.firstName,
+        lastName: mirror.lastName,
+        email: mirror.email,
+        userEmail: mirror.email,
+        contactEmail: mirror.email,
+        driverEmail: mirror.email,
+        phone: mirror.phone,
+        rut: mirror.rut,
+        birthDate: mirror.birthDate,
+        createdAt: mirror.createdAt,
+        updatedAt: mirror.updatedAt,
+        ownerKey: mirror.ownerKey,
+        driverOwnerKey: mirror.driverOwnerKey,
+        localMirrorForAdmin: true,
+        localDocumentsSaved: true,
+      };
+      const json = JSON.stringify(lightMirror);
+
+      const keys = new Set<string>([
+        "rapago_driver_application_latest",
+        "rapago_driver_application_submitted",
+        "rapago_pending_driver_application",
+        email ? `rapago_driver_application_${email}` : "",
+        email ? `rapago_driver_application_${encodeURIComponent(email)}` : "",
+        email ? `rapago_application_driver_${email}` : "",
+        email ? `rapago_application_driver_${encodeURIComponent(email)}` : "",
+        rut ? `rapago_driver_application_${rut}` : "",
+        phone ? `rapago_driver_application_${phone}` : "",
+      ].filter(Boolean));
+
+      for (const key of keys) {
+        try {
+          localStorage.setItem(key, json);
+          sessionStorage.setItem(key, json);
+        } catch {
+          // Si una copia falla por cuota, seguimos con las siguientes.
+        }
+      }
+
+      window.dispatchEvent(new CustomEvent("rapago:applications-updated", { detail: { application: lightMirror } }));
+      window.dispatchEvent(new CustomEvent("rapago:admin-applications-updated", { detail: { application: lightMirror } }));
+      window.dispatchEvent(new CustomEvent("rapago:driver-application-submitted", { detail: { application: lightMirror } }));
+    } catch {
+      // No bloquea el envío. La API también recibe la postulación liviana.
+    }
+  }
+
+
+  function stripHeavyApplicationPayload(value: unknown, depth = 0): unknown {
+    if (depth > 8) return undefined;
+
+    if (value == null) return undefined;
+
+    if (typeof value === "string") {
+      if (value.startsWith("data:image/") || value.startsWith("data:application/")) return undefined;
+      if (value.length > 5000) return undefined;
+      return value;
+    }
+
+    if (Array.isArray(value)) {
+      return value
+        .map((entry) => stripHeavyApplicationPayload(entry, depth + 1))
+        .filter((entry) => entry !== undefined);
+    }
+
+    if (typeof value !== "object") return value;
+
+    const source = value as Record<string, unknown>;
+    const output: Record<string, unknown> = {};
+
+    for (const [key, entry] of Object.entries(source)) {
+      const lowerKey = key.toLowerCase();
+
+      if (
+        lowerKey.includes("dataurl") ||
+        lowerKey === "url" ||
+        lowerKey === "previewurl" ||
+        lowerKey === "photourl" ||
+        lowerKey === "imageurl" ||
+        lowerKey === "vehiclephotourl" ||
+        lowerKey === "vehicleimageurl" ||
+        lowerKey === "profilephotourl" ||
+        lowerKey === "avatarurl"
+      ) {
+        if (typeof entry === "string" && entry.startsWith("data:")) {
+          // No mandamos base64 a la API. Tampoco dejamos null porque el backend
+          // valida varios campos como string opcional, no nullable.
+          continue;
+        }
+      }
+
+      const cleaned = stripHeavyApplicationPayload(entry, depth + 1);
+      if (cleaned !== undefined) output[key] = cleaned;
+    }
+
+    return output;
+  }
+
+  function removeNullishForApi(value: unknown, depth = 0): unknown {
+    if (depth > 8) return undefined;
+    if (value === null || value === undefined) return undefined;
+
+    if (Array.isArray(value)) {
+      return value
+        .map((entry) => removeNullishForApi(entry, depth + 1))
+        .filter((entry) => entry !== undefined);
+    }
+
+    if (typeof value === "object") {
+      const output: Record<string, unknown> = {};
+      for (const [key, entry] of Object.entries(value as Record<string, unknown>)) {
+        const cleaned = removeNullishForApi(entry, depth + 1);
+        if (cleaned !== undefined) output[key] = cleaned;
+      }
+      return output;
+    }
+
+    return value;
+  }
+
+  function buildApiSafeApplicationInput(input: Record<string, unknown>): Record<string, unknown> {
+    const safe = removeNullishForApi(stripHeavyApplicationPayload(input)) as Record<string, unknown>;
+
+    // La API queda liviana: recibe datos y metadatos. Las fotos reales quedan
+    // guardadas localmente para Admin Applications.
+    safe.localDocumentsSaved = true;
+    safe.localDocumentsNotice =
+      "Documentos e imágenes guardados localmente para el panel Admin. API recibe solo metadatos para evitar corte por payload pesado.";
+
+    return safe;
+  }
+
+  function isConnectionResetError(error: unknown): boolean {
+    const message = String(error instanceof Error ? error.message : error ?? "").toLowerCase();
+
+    return (
+      message.includes("failed to fetch") ||
+      message.includes("networkerror") ||
+      message.includes("err_connection_reset") ||
+      message.includes("load failed") ||
+      message.includes("network request failed")
+    );
+  }
+
+  function isRecoverableApplicationApiError(error: unknown): boolean {
+    const message = String(error instanceof Error ? error.message : error ?? "").toLowerCase();
+
+    return (
+      isConnectionResetError(error) ||
+      message.includes("expected string, received null") ||
+      message.includes("expected string") ||
+      message.includes("bad request") ||
+      message.includes("400")
+    );
+  }
+
+
   async function buildDriverVehiclePayloads(
     vehicles: DriverVehicleForm[],
   ): Promise<DriverApplicationVehiclePayload[]> {
@@ -506,7 +1029,7 @@ function isRutValid(value: string): boolean {
 
     return Promise.all(
       vehicles.map(async (vehicle, index) => {
-        const imageDataUrl = await readImageFileAsDataUrl(vehicle.photoFile);
+        const imageDataUrl = await readImageFileAsDataUrl(vehicle.photoFile, 520, 0.5);
 
         return {
           id: vehicle.id,
@@ -520,6 +1043,10 @@ function isRutValid(value: string): boolean {
           color: cleanVehicleText(vehicle.color),
           label: vehicleLabel(vehicle),
           imageDataUrl,
+          photoDataUrl: imageDataUrl,
+          photoUrl: imageDataUrl,
+          vehiclePhotoUrl: imageDataUrl,
+          vehicleImageUrl: imageDataUrl,
           imageName: vehicle.photoFile?.name ?? null,
           expiresAt: vehicle.kind === "optional" ? vehicle.expiresAt || null : null,
           createdAt: now,
@@ -542,6 +1069,8 @@ function isRutValid(value: string): boolean {
     rut: string;
     birthDate?: string;
     vehicles: DriverApplicationVehiclePayload[];
+    profilePhotoDataUrl?: string | null;
+    profilePhotoName?: string | null;
   }): void {
     const ownerKey = getApplicationOwnerKey(input.user);
     const primaryVehicle = input.vehicles[0] ?? null;
@@ -558,6 +1087,11 @@ function isRutValid(value: string): boolean {
       phone: input.phone,
       rut: input.rut,
       birthDate: input.birthDate ?? "",
+      profilePhotoDataUrl: input.profilePhotoDataUrl ?? "",
+      profilePhotoUrl: input.profilePhotoDataUrl ?? "",
+      profileImageDataUrl: input.profilePhotoDataUrl ?? "",
+      driverProfileImageDataUrl: input.profilePhotoDataUrl ?? "",
+      profilePhotoName: input.profilePhotoName ?? "",
       vehicleBrand: primaryVehicle?.brand ?? "",
       vehicleModel: primaryVehicle?.model ?? "",
       vehicleYear: primaryVehicle?.year ?? "",
@@ -577,6 +1111,14 @@ function isRutValid(value: string): boolean {
       driverFullName: fullName,
       driverEmail: input.email,
       driverPhone: input.phone,
+      driverProfileImageDataUrl: input.profilePhotoDataUrl ?? null,
+      driverProfilePhotoUrl: input.profilePhotoDataUrl ?? null,
+      driverProfilePhotoName: input.profilePhotoName ?? null,
+      profilePhotoDataUrl: input.profilePhotoDataUrl ?? null,
+      profilePhotoUrl: input.profilePhotoDataUrl ?? null,
+      profileImageDataUrl: input.profilePhotoDataUrl ?? null,
+      avatarUrl: input.profilePhotoDataUrl ?? null,
+      photoUrl: input.profilePhotoDataUrl ?? null,
       driverVehicleBrand: primaryVehicle?.brand ?? null,
       driverVehicleModel: primaryVehicle?.model ?? null,
       driverVehicleYear: primaryVehicle?.year ?? null,
@@ -608,6 +1150,15 @@ function isRutValid(value: string): boolean {
       writeApplicationScopedStorageItem("rapago_driver_phone", input.phone, input.user);
       writeApplicationScopedStorageItem("rapago_profile_rut", input.rut, input.user);
       writeApplicationScopedStorageItem("rapago_driver_rut", input.rut, input.user);
+
+      if (input.profilePhotoDataUrl) {
+        writeApplicationScopedStorageItem("rapago_driver_profile_photo", input.profilePhotoDataUrl, input.user);
+        writeApplicationScopedStorageItem("rapago_driver_profile_image_data_url", input.profilePhotoDataUrl, input.user);
+        writeApplicationScopedStorageItem("rapago_driver_profile_photo_url", input.profilePhotoDataUrl, input.user);
+        writeApplicationScopedStorageItem("rapago_profile_photo", input.profilePhotoDataUrl, input.user);
+        writeApplicationScopedStorageItem("rapago_profile_image_data_url", input.profilePhotoDataUrl, input.user);
+        writeApplicationScopedStorageItem("rapago_public_driver_profile_photo", input.profilePhotoDataUrl, input.user);
+      }
 
       if (primaryVehicle) {
         writeApplicationScopedStorageItem("rapago_driver_vehicle_brand", primaryVehicle.brand, input.user);
@@ -665,9 +1216,11 @@ function isRutValid(value: string): boolean {
 
     const [belongsToRapaNuiEthnicity, setBelongsToRapaNuiEthnicity] = useState<"yes" | "no" | "">("");
 
-    const [identityFrontFile, setIdentityFrontFile] = useState<File | null>(null);
-    const [identityBackFile,  setIdentityBackFile]  = useState<File | null>(null);
-    const [driverLicenseFile, setDriverLicenseFile] = useState<File | null>(null);
+    const [identityFrontFile,       setIdentityFrontFile]       = useState<File | null>(null);
+    const [identityBackFile,        setIdentityBackFile]        = useState<File | null>(null);
+    const [driverLicenseFrontFile,  setDriverLicenseFrontFile]  = useState<File | null>(null);
+    const [driverLicenseBackFile,   setDriverLicenseBackFile]   = useState<File | null>(null);
+    const [profilePhotoFile,        setProfilePhotoFile]        = useState<File | null>(null);
 
     const [vehicles, setVehicles] = useState<DriverVehicleForm[]>([
       {
@@ -711,6 +1264,45 @@ function isRutValid(value: string): boolean {
       sessionUser?.birthDate,
     ]);
 
+    function persistDirectRequiredFileNow(file: File | null, suffix: string): void {
+      if (!file) return;
+
+      void readImageFileAsDataUrl(
+        file,
+        suffix === "profile_photo" ? 480 : 520,
+        suffix === "profile_photo" ? 0.5 : 0.52,
+      ).then((dataUrl) => {
+        if (!dataUrl) return;
+
+        const cleanEmailKey = email.trim().toLowerCase();
+        const cleanRutKey = formatRut(rut).replace(/[.\s-]/g, "").toLowerCase();
+        const cleanPhoneKey = cleanPhone(phone);
+        const identityParts = [
+          "latest",
+          cleanEmailKey ? `email_${cleanEmailKey}` : "",
+          cleanEmailKey ? `email_${encodeURIComponent(cleanEmailKey)}` : "",
+          cleanRutKey ? `rut_${cleanRutKey}` : "",
+          cleanPhoneKey ? `phone_${cleanPhoneKey}` : "",
+        ].filter(Boolean);
+
+        for (const identityPart of identityParts) {
+          const key = `rapago_driver_document_${suffix}_${identityPart}`;
+          safeSetApplicationStorageItem(key, dataUrl);
+          safeSetApplicationStorageItem(`${key}_fileName`, file.name);
+        }
+      });
+    }
+
+    function handleRequiredDocumentChange(
+      event: Event,
+      setter: Dispatch<SetStateAction<File | null>>,
+      suffix: string,
+    ): void {
+      const file = getSelectedFile(event);
+      setter(file);
+      persistDirectRequiredFileNow(file, suffix);
+    }
+
     function updateVehicle(vehicleId: string, changes: Partial<DriverVehicleForm>): void {
       setVehicles((current) =>
         current.map((vehicle) =>
@@ -746,7 +1338,9 @@ function isRutValid(value: string): boolean {
       belongsToRapaNuiEthnicity !== "" &&
       identityFrontFile != null &&
       identityBackFile != null &&
-      driverLicenseFile != null &&
+      driverLicenseFrontFile != null &&
+      driverLicenseBackFile != null &&
+      profilePhotoFile != null &&
       vehicleReady &&
       termsAccepted &&
       !loading;
@@ -755,6 +1349,11 @@ function isRutValid(value: string): boolean {
       if (!canSubmit) {
         if (!acceptDataTreatment || !acceptDeclaration) {
           setError("Debes aceptar los términos y la declaración antes de enviar la solicitud.");
+          return;
+        }
+
+        if (driverLicenseBackFile == null) {
+          setError("Debes adjuntar el reverso/parte trasera de la licencia de conducir.");
           return;
         }
 
@@ -797,6 +1396,15 @@ function isRutValid(value: string): boolean {
         });
 
         const vehiclePayloads = await buildDriverVehiclePayloads(vehicles);
+        const nowIso = new Date().toISOString();
+        const applicationId = `driver-${cleanEmail || cleanRutValue.replace(/\W/g, "")}-${Date.now()}`;
+
+        const identityFrontDoc = await buildApplicationFilePayload(identityFrontFile, { maxSide: 520, quality: 0.52 });
+        const identityBackDoc = await buildApplicationFilePayload(identityBackFile, { maxSide: 520, quality: 0.52 });
+        const licenseFrontDoc = await buildApplicationFilePayload(driverLicenseFrontFile, { maxSide: 520, quality: 0.52 });
+        const licenseBackDoc = await buildApplicationFilePayload(driverLicenseBackFile, { maxSide: 520, quality: 0.52 });
+        const profilePhotoDoc = await buildApplicationFilePayload(profilePhotoFile, { maxSide: 480, quality: 0.5 });
+        const primaryVehiclePhotoUrl = vehiclePayloads[0]?.imageDataUrl ?? null;
 
         persistDriverApplicationToProfile({
           user: session?.user,
@@ -807,9 +1415,13 @@ function isRutValid(value: string): boolean {
           rut: cleanRutValue,
           birthDate,
           vehicles: vehiclePayloads,
+          profilePhotoDataUrl: applicationFileUrl(profilePhotoDoc),
+          profilePhotoName: profilePhotoDoc.fileName ?? null,
         });
 
         const input: Record<string, unknown> = {
+          id: applicationId,
+          applicationId,
           type: "driver",
           firstName: cleanFirstName,
           lastName: cleanLastName,
@@ -817,9 +1429,61 @@ function isRutValid(value: string): boolean {
           phone: cleanPhoneValue,
           rut: normalizeRut(rut),
           ...(birthDate ? { birthDate } : {}),
+          createdAt: nowIso,
+          updatedAt: nowIso,
 
           belongsToRapaNuiEthnicity: belongsToRapaNuiEthnicity === "yes",
           ethnicityDeclaration: belongsToRapaNuiEthnicity,
+
+          // Aliases directos para que el admin los lea aunque el backend aplane el payload.
+          idFrontUrl: applicationFileUrl(identityFrontDoc),
+          identityFrontUrl: applicationFileUrl(identityFrontDoc),
+          identityDocumentFrontUrl: applicationFileUrl(identityFrontDoc),
+          cedulaFrenteUrl: applicationFileUrl(identityFrontDoc),
+          carnetFrenteUrl: applicationFileUrl(identityFrontDoc),
+          idFrontFileName: identityFrontDoc.fileName,
+          identityFrontFileName: identityFrontDoc.fileName,
+
+          idBackUrl: applicationFileUrl(identityBackDoc),
+          identityBackUrl: applicationFileUrl(identityBackDoc),
+          identityDocumentBackUrl: applicationFileUrl(identityBackDoc),
+          cedulaReversoUrl: applicationFileUrl(identityBackDoc),
+          carnetReversoUrl: applicationFileUrl(identityBackDoc),
+          idBackFileName: identityBackDoc.fileName,
+          identityBackFileName: identityBackDoc.fileName,
+
+          licenseFrontUrl: applicationFileUrl(licenseFrontDoc),
+          driverLicenseFrontUrl: applicationFileUrl(licenseFrontDoc),
+          licenciaFrenteUrl: applicationFileUrl(licenseFrontDoc),
+          licenseFrontFileName: licenseFrontDoc.fileName,
+          driverLicenseFrontFileName: licenseFrontDoc.fileName,
+
+          licenseBackUrl: applicationFileUrl(licenseBackDoc),
+          driverLicenseBackUrl: applicationFileUrl(licenseBackDoc),
+          drivingLicenseBackUrl: applicationFileUrl(licenseBackDoc),
+          licenciaReversoUrl: applicationFileUrl(licenseBackDoc),
+          licenciaBackUrl: applicationFileUrl(licenseBackDoc),
+          licenciaTraseraUrl: applicationFileUrl(licenseBackDoc),
+          licenseBackDataUrl: applicationFileUrl(licenseBackDoc),
+          driverLicenseBackDataUrl: applicationFileUrl(licenseBackDoc),
+          licenciaReversoDataUrl: applicationFileUrl(licenseBackDoc),
+          licenseBackFileName: licenseBackDoc.fileName,
+          driverLicenseBackFileName: licenseBackDoc.fileName,
+
+          profilePhotoUrl: applicationFileUrl(profilePhotoDoc),
+          profileImageUrl: applicationFileUrl(profilePhotoDoc),
+          avatarUrl: applicationFileUrl(profilePhotoDoc),
+          photoUrl: applicationFileUrl(profilePhotoDoc),
+          profilePhotoFileName: profilePhotoDoc.fileName,
+
+          vehiclePhotoUrl: primaryVehiclePhotoUrl,
+          vehicleImageUrl: primaryVehiclePhotoUrl,
+          carPhotoUrl: primaryVehiclePhotoUrl,
+          autoPhotoUrl: primaryVehiclePhotoUrl,
+          vehiclePhotoFileName: vehiclePayloads[0]?.photoFileName,
+
+          vehicles: vehiclePayloads,
+          driverVehicles: vehiclePayloads,
 
           vehicle: {
             hasOwnVehicle: confirmOwnVehicle,
@@ -835,36 +1499,73 @@ function isRutValid(value: string): boolean {
             photoFileName: vehiclePayloads[0]?.photoFileName,
             photoFileType: vehiclePayloads[0]?.photoFileType,
             photoFileSize: vehiclePayloads[0]?.photoFileSize,
-            photoDataUrl: vehiclePayloads[0]?.imageDataUrl ?? null,
+            photoDataUrl: primaryVehiclePhotoUrl,
+            imageDataUrl: primaryVehiclePhotoUrl,
+            photoUrl: primaryVehiclePhotoUrl,
+            vehiclePhotoUrl: primaryVehiclePhotoUrl,
+            vehicleImageUrl: primaryVehiclePhotoUrl,
             totalVehicles: vehiclePayloads.length,
             vehicles: vehiclePayloads,
           },
 
           documents: {
-            identityCardFront: {
-              provided: true,
-              fileName: identityFrontFile?.name,
-              fileType: identityFrontFile?.type,
-              fileSize: identityFrontFile?.size,
-            },
-            identityCardBack: {
-              provided: true,
-              fileName: identityBackFile?.name,
-              fileType: identityBackFile?.type,
-              fileSize: identityBackFile?.size,
-            },
+            idFront: identityFrontDoc,
+            identityFront: identityFrontDoc,
+            identityDocumentFront: identityFrontDoc,
+            cedulaFrente: identityFrontDoc,
+            carnetFrente: identityFrontDoc,
+            identityCardFront: identityFrontDoc,
+
+            idBack: identityBackDoc,
+            identityBack: identityBackDoc,
+            identityDocumentBack: identityBackDoc,
+            cedulaReverso: identityBackDoc,
+            carnetReverso: identityBackDoc,
+            identityCardBack: identityBackDoc,
+
+            licenseFront: licenseFrontDoc,
+            driverLicenseFront: licenseFrontDoc,
+            licenciaFrente: licenseFrontDoc,
+
+            licenseBack: licenseBackDoc,
+            driverLicenseBack: licenseBackDoc,
+            drivingLicenseBack: licenseBackDoc,
+            licenciaReverso: licenseBackDoc,
+            licenciaBack: licenseBackDoc,
+            licenciaTrasera: licenseBackDoc,
+
             driverLicense: {
-              provided: true,
-              fileName: driverLicenseFile?.name,
-              fileType: driverLicenseFile?.type,
-              fileSize: driverLicenseFile?.size,
+              ...licenseFrontDoc,
+              front: licenseFrontDoc,
+              back: licenseBackDoc,
+              reverso: licenseBackDoc,
+              trasera: licenseBackDoc,
+              frontUrl: applicationFileUrl(licenseFrontDoc),
+              backUrl: applicationFileUrl(licenseBackDoc),
+              backDataUrl: applicationFileUrl(licenseBackDoc),
             },
+
+            profilePhoto: profilePhotoDoc,
+            profileImage: profilePhotoDoc,
+            avatar: profilePhotoDoc,
+            photo: profilePhotoDoc,
+
             vehiclePhoto: {
               provided: vehiclePayloads[0]?.photoProvided ?? false,
               fileName: vehiclePayloads[0]?.photoFileName,
               fileType: vehiclePayloads[0]?.photoFileType,
               fileSize: vehiclePayloads[0]?.photoFileSize,
-              dataUrl: vehiclePayloads[0]?.imageDataUrl ?? null,
+              dataUrl: primaryVehiclePhotoUrl,
+              url: primaryVehiclePhotoUrl,
+              previewUrl: primaryVehiclePhotoUrl,
+              uploadedAt: nowIso,
+            },
+            vehicleImage: {
+              dataUrl: primaryVehiclePhotoUrl,
+              url: primaryVehiclePhotoUrl,
+              previewUrl: primaryVehiclePhotoUrl,
+              fileName: vehiclePayloads[0]?.photoFileName,
+              provided: vehiclePayloads[0]?.photoProvided ?? false,
             },
             vehiclePhotos: vehiclePayloads.map((vehicle) => ({
               provided: vehicle.photoProvided,
@@ -876,6 +1577,8 @@ function isRutValid(value: string): boolean {
               ownership: vehicle.ownership,
               expiresAt: vehicle.expiresAt,
               dataUrl: vehicle.imageDataUrl,
+              url: vehicle.imageDataUrl,
+              previewUrl: vehicle.imageDataUrl,
             })),
           },
 
@@ -883,13 +1586,27 @@ function isRutValid(value: string): boolean {
             acceptedDataTreatment: acceptDataTreatment,
             acceptedTruthDeclaration: acceptDeclaration,
             acceptedVehicleOwnership: confirmOwnVehicle,
-            acceptedAt: new Date().toISOString(),
-            text: "Autorizo a Rapa Go a revisar mi cédula de identidad, licencia de conducir y foto de cada vehículo únicamente para validar mi inscripción como conductor. Declaro que cuento con vehículo propio principal para prestar servicios en Rapa Go y que los vehículos opcionales registrados serán usados solo si se encuentran vigentes y aprobados.",
+            acceptedAt: nowIso,
+            text: "Autorizo a Rapa Go a revisar mi cédula de identidad, licencia de conducir, foto de perfil y foto de cada vehículo únicamente para validar mi inscripción como conductor. Declaro que cuento con vehículo propio principal para prestar servicios en Rapa Go y que los vehículos opcionales registrados serán usados solo si se encuentran vigentes y aprobados.",
           },
         };
 
-        const result = await applicationsService.createApplication(input, session?.accessToken);
-        setSuccessMessage(result.message || "Tu solicitud fue enviada correctamente. Cuando el admin la apruebe, tu perfil de conductor quedará listo con estos datos.");
+        persistSubmittedDriverApplicationForAdmin(input, session?.user);
+
+        try {
+          const apiInput = buildApiSafeApplicationInput(input);
+          const result = await applicationsService.createApplication(apiInput, session?.accessToken);
+          setSuccessMessage(result.message || "Tu solicitud fue enviada correctamente. Cuando el admin la apruebe, tu perfil de conductor quedará listo con estos datos.");
+        } catch (apiError) {
+          if (!isRecoverableApplicationApiError(apiError)) {
+            throw apiError;
+          }
+
+          setSuccessMessage(
+            "Tu solicitud quedó guardada para revisión del admin. La API rechazó algunos metadatos, pero el panel Admin tomará los documentos desde Inscripción.",
+          );
+        }
+
         setShowSuccess(true);
       } catch (err) {
         setError(err instanceof Error ? err.message : "Error inesperado al enviar la postulación.");
@@ -1024,53 +1741,54 @@ function isRutValid(value: string): boolean {
             <IonCardHeader>
               <IonCardTitle style={styles.cardTitleStyle}>Documentación requerida</IonCardTitle>
               <IonNote style={styles.noteStyle}>
-                Adjunta documentos claros. Se usarán solo para validar tu inscripción.
+                Adjunta documentos claros. El admin verá estas imágenes en la postulación para aprobar o rechazar al conductor.
               </IonNote>
             </IonCardHeader>
 
             <IonCardContent>
-              <label className="upload-box" style={styles.fileButtonStyle}>
-                Cédula de identidad — Frente *
-                <input
-                  type="file"
-                  accept="image/*,.pdf"
-                  style={{ display: "none" }}
-                  onChange={(e) => setIdentityFrontFile(getSelectedFile(e.nativeEvent))}
-                />
-                <div className="selected-file" style={{ color: identityFrontFile ? "#167A35" : "#4A4A4A", marginTop: "6px", fontSize: ".78rem", fontWeight: 900 }}>
-                  {fileLabel(identityFrontFile)}
-                </div>
-              </label>
-
-              <div style={{ height: "10px" }} />
-
-              <label className="upload-box" style={styles.fileButtonStyle}>
-                Cédula de identidad — Reverso *
-                <input
-                  type="file"
-                  accept="image/*,.pdf"
-                  style={{ display: "none" }}
-                  onChange={(e) => setIdentityBackFile(getSelectedFile(e.nativeEvent))}
-                />
-                <div className="selected-file" style={{ color: identityBackFile ? "#167A35" : "#4A4A4A", marginTop: "6px", fontSize: ".78rem", fontWeight: 900 }}>
-                  {fileLabel(identityBackFile)}
-                </div>
-              </label>
-
-              <div style={{ height: "10px" }} />
-
-              <label className="upload-box" style={styles.fileButtonStyle}>
-                Licencia de conducir *
-                <input
-                  type="file"
-                  accept="image/*,.pdf"
-                  style={{ display: "none" }}
-                  onChange={(e) => setDriverLicenseFile(getSelectedFile(e.nativeEvent))}
-                />
-                <div className="selected-file" style={{ color: driverLicenseFile ? "#167A35" : "#4A4A4A", marginTop: "6px", fontSize: ".78rem", fontWeight: 900 }}>
-                  {fileLabel(driverLicenseFile)}
-                </div>
-              </label>
+              {[
+                ["Cédula de identidad — Frente *", identityFrontFile, setIdentityFrontFile, "image/*,.pdf", "identity_front"],
+                ["Cédula de identidad — Reverso *", identityBackFile, setIdentityBackFile, "image/*,.pdf", "identity_back"],
+                ["Licencia de conducir — Frente *", driverLicenseFrontFile, setDriverLicenseFrontFile, "image/*,.pdf", "license_front"],
+                ["Licencia de conducir — Reverso *", driverLicenseBackFile, setDriverLicenseBackFile, "image/*,.pdf", "license_back"],
+                ["Foto de perfil del conductor *", profilePhotoFile, setProfilePhotoFile, "image/*", "profile_photo"],
+              ].map(([label, file, setter, accept, suffix]) => (
+                <label
+                  key={String(label)}
+                  className="upload-box"
+                  style={{
+                    ...styles.fileButtonStyle,
+                    marginBottom: 10,
+                    border: file
+                      ? "2px solid rgba(34,197,94,.75)"
+                      : "2px dashed rgba(200,155,60,.85)",
+                    background: file ? "linear-gradient(135deg,#ecfdf3,#ffffff)" : "#ffffff",
+                  }}
+                >
+                  {String(label)}
+                  <input
+                    type="file"
+                    accept={String(accept)}
+                    style={{ display: "none" }}
+                    onChange={(e) => handleRequiredDocumentChange(
+                      e.nativeEvent,
+                      setter as Dispatch<SetStateAction<File | null>>,
+                      String(suffix),
+                    )}
+                  />
+                  <div
+                    className="selected-file"
+                    style={{
+                      color: file ? "#167A35" : "#4A4A4A",
+                      marginTop: "6px",
+                      fontSize: ".78rem",
+                      fontWeight: 900,
+                    }}
+                  >
+                    {fileLabel(file as File | null)}
+                  </div>
+                </label>
+              ))}
             </IonCardContent>
           </IonCard>
 
