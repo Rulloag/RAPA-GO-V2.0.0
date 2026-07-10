@@ -913,6 +913,7 @@ function UberDriverNavigationMap({
     text: string;
     distance: string;
     maneuver: string | null;
+    street?: string | null;
   } | null>(null);
   const [targetDistanceMeters, setTargetDistanceMeters] = useState<number | null>(null);
   const [mapError, setMapError] = useState<string | null>(null);
@@ -1066,6 +1067,30 @@ function UberDriverNavigationMap({
       .trim();
   }
 
+  function extractStreetFromDirectionInstruction(value: string | null | undefined): string | null {
+    const text = cleanDirectionInstruction(value);
+    if (!text || text === "Sigue la ruta marcada.") return null;
+
+    const patterns = [
+      /(?:hacia|en dirección a|por|en|toma|contin[uú]a por|mantente en)\s+([^.,;]+)/i,
+      /(?:gira|dobla|incorp[oó]rate)\s+(?:a la derecha|a la izquierda|ligeramente a la derecha|ligeramente a la izquierda)?\s*(?:hacia|en)?\s*([^.,;]+)/i,
+    ];
+
+    for (const pattern of patterns) {
+      const match = text.match(pattern);
+      const street = match?.[1]?.trim();
+      if (street && street.length >= 3) return street.replace(/^la\s+/i, "").trim();
+    }
+
+    const afterArrow = text.split(" hacia ").pop()?.trim();
+    if (afterArrow && afterArrow !== text && afterArrow.length >= 3) {
+      return afterArrow.split(/[.,;]/)[0]?.trim() ?? null;
+    }
+
+    return null;
+  }
+
+
   function formatNavigationMeters(value: number | null): string {
     if (value == null || !Number.isFinite(value)) return "";
     if (value < 1000) return `${Math.max(10, Math.round(value / 10) * 10)} m`;
@@ -1135,6 +1160,7 @@ function UberDriverNavigationMap({
       text: cleanDirectionInstruction(step.instructions),
       distance: step.distance?.text ?? "",
       maneuver: step.maneuver ?? null,
+      street: extractStreetFromDirectionInstruction(step.instructions),
     };
   }
 
@@ -1159,7 +1185,7 @@ function UberDriverNavigationMap({
 
     // Recalcula si el conductor se movió o tomó otro camino.
     // Mantiene el trazado vivo sin esperar demasiado en celular.
-    return movedSinceRoute >= 12 && secondsSinceRoute >= 4;
+    return movedSinceRoute >= 6 && secondsSinceRoute >= 2;
   }
 
   function openExternalNavigationToTarget(): void {
@@ -1235,11 +1261,11 @@ function UberDriverNavigationMap({
     if (!map) return;
 
     const now = Date.now();
-    if (!force && now - lastCameraAtRef.current < 1400) return;
+    if (!force && now - lastCameraAtRef.current < 500) return;
     lastCameraAtRef.current = now;
 
     if (!didInitialCameraRef.current || force) {
-      map.setZoom(18);
+      map.setZoom(19);
       didInitialCameraRef.current = true;
     }
 
@@ -1362,6 +1388,7 @@ function UberDriverNavigationMap({
                   text: arrivalText,
                   distance: formatNavigationMeters(safeRemainingMeters),
                   maneuver: "arrive",
+                  street: null,
                 }
               : instruction,
           );
@@ -1557,10 +1584,10 @@ function UberDriverNavigationMap({
           ? distanceMeters(previous, next)
           : Number.POSITIVE_INFINITY;
 
-        // Filtra ruido del GPS. Evita que el mapa tiemble por cambios mínimos.
-        if (previous && moved < 8) return;
+        // Filtra solo ruido mínimo del GPS. En Rapa Nui las calles son cortas, por eso seguimos movimientos desde 2 m.
+        if (previous && moved < 2) return;
 
-        if (previous && moved >= 8) {
+        if (previous && moved >= 2) {
           headingRef.current = bearingDegrees(previous, next);
         } else if (
           typeof position.coords.heading === "number" &&
@@ -1790,6 +1817,22 @@ function UberDriverNavigationMap({
             >
               {nextInstruction.text}
             </div>
+
+            {nextInstruction.street && (
+              <div
+                style={{
+                  marginTop: 4,
+                  color: "rgba(246,242,236,.78)",
+                  fontSize: ".68rem",
+                  fontWeight: 900,
+                  whiteSpace: "nowrap",
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                }}
+              >
+                Calle/referencia: {nextInstruction.street}
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -6306,6 +6349,149 @@ function saveDriverActiveRideLocalMirror(
   return activeRide;
 }
 
+
+const RAPAGO_DRIVER_NEXT_RIDES_KEY = "rapago_driver_next_rides_v1";
+const RAPAGO_DRIVER_NEXT_RIDES_EVENT = "rapago:driver-next-rides-updated";
+
+type DriverNextRideQueueRecord = DriverRideData & {
+  queuedAfterRideId?: string | null;
+  queuedAt?: string | null;
+  queuedStatus?: "waiting_current_trip" | "promoted_to_active";
+};
+
+function removeDriverActiveRideLocalMirror(
+  ride: DriverRideData | Record<string, unknown> | string,
+  user?: unknown,
+): void {
+  const target = typeof ride === "string" ? { id: ride } : ride;
+  const keys = [
+    "rapago_driver_active_rides_v1",
+    "rapago_local_driver_assigned_rides",
+    "rapago_driver_my_rides_v1",
+  ];
+
+  for (const key of keys) {
+    try {
+      const raw = localStorage.getItem(key);
+      const parsed = raw ? (JSON.parse(raw) as Array<Record<string, unknown>>) : [];
+      if (!Array.isArray(parsed)) continue;
+
+      const next = parsed.filter((item) => !driverRideIdentityMatches(item, target as Record<string, unknown>));
+      localStorage.setItem(key, JSON.stringify(next.slice(0, 200)));
+    } catch {
+      // No bloquea el cierre.
+    }
+  }
+
+  try {
+    const raw = localStorage.getItem("rapago_last_accepted_ride");
+    const parsed = raw ? (JSON.parse(raw) as { ride?: Record<string, unknown> } | Record<string, unknown>) : null;
+    const lastRide = parsed && typeof parsed === "object" && "ride" in parsed ? parsed.ride : parsed;
+
+    if (lastRide && typeof lastRide === "object" && driverRideIdentityMatches(lastRide, target as Record<string, unknown>)) {
+      localStorage.removeItem("rapago_last_accepted_ride");
+    }
+  } catch {
+    // No bloquea el cierre.
+  }
+
+  window.dispatchEvent(new CustomEvent("rapago:driver-rides-updated", { detail: { ride, status: "completed" } }));
+}
+
+function readDriverNextRideQueue(user?: unknown): DriverNextRideQueueRecord[] {
+  try {
+    const raw = localStorage.getItem(RAPAGO_DRIVER_NEXT_RIDES_KEY);
+    const parsed = raw ? (JSON.parse(raw) as DriverNextRideQueueRecord[]) : [];
+    if (!Array.isArray(parsed)) return [];
+
+    return parsed
+      .filter((ride) => ride && typeof ride === "object")
+      .filter((ride) => activeDriverRideBelongsToCurrentDriver(ride as unknown as Record<string, unknown>, user))
+      .sort((a, b) => new Date(String(a.queuedAt ?? a.acceptedAt ?? 0)).getTime() - new Date(String(b.queuedAt ?? b.acceptedAt ?? 0)).getTime());
+  } catch {
+    return [];
+  }
+}
+
+function writeDriverNextRideQueue(queue: DriverNextRideQueueRecord[]): void {
+  try {
+    localStorage.setItem(RAPAGO_DRIVER_NEXT_RIDES_KEY, JSON.stringify(queue.slice(0, 20)));
+    window.dispatchEvent(new CustomEvent(RAPAGO_DRIVER_NEXT_RIDES_EVENT, { detail: { queue } }));
+    window.dispatchEvent(new CustomEvent("rapago:driver-rides-updated", { detail: { queue } }));
+  } catch {
+    // No bloquea el viaje en cola.
+  }
+}
+
+function saveDriverNextRideAfterCurrent(
+  ride: DriverRideData | Record<string, unknown>,
+  currentRide: DriverRideData | Record<string, unknown>,
+  user?: unknown,
+): DriverNextRideQueueRecord {
+  const now = new Date().toISOString();
+  const queuedRide = normalizeActiveDriverRideForLocalMirror(
+    {
+      ...(ride as Record<string, unknown>),
+      status: "accepted",
+      queuedAfterRideId: String((currentRide as Record<string, unknown>).id ?? ""),
+      queuedAt: now,
+      queuedStatus: "waiting_current_trip",
+      driverHasCurrentRide: true,
+      passengerNotice: "Tu conductor aceptó tu viaje y lo iniciará cuando termine su viaje actual.",
+      passengerNotification: "Tu conductor está terminando un viaje anterior. Te avisaremos cuando vaya en camino.",
+    },
+    user,
+  ) as DriverNextRideQueueRecord;
+
+  const currentQueue = readDriverNextRideQueue(user);
+  const nextQueue = [
+    queuedRide,
+    ...currentQueue.filter((item) => !driverRideIdentityMatches(item as unknown as Record<string, unknown>, queuedRide as unknown as Record<string, unknown>)),
+  ];
+
+  writeDriverNextRideQueue(nextQueue);
+  return queuedRide;
+}
+
+function getDriverNextRideForActiveRide(
+  activeRide: DriverRideData | Record<string, unknown> | null,
+  user?: unknown,
+): DriverNextRideQueueRecord | null {
+  if (!activeRide) return readDriverNextRideQueue(user)[0] ?? null;
+
+  const activeId = String((activeRide as Record<string, unknown>).id ?? "").trim();
+  const queue = readDriverNextRideQueue(user);
+
+  return queue.find((ride) => String(ride.queuedAfterRideId ?? "") === activeId) ?? queue[0] ?? null;
+}
+
+function promoteDriverNextRideAfterCompletion(
+  completedRideId: string,
+  user?: unknown,
+): DriverRideData | null {
+  const queue = readDriverNextRideQueue(user);
+  if (queue.length === 0) return null;
+
+  const index = queue.findIndex((ride) => String(ride.queuedAfterRideId ?? "") === completedRideId);
+  const chosenIndex = index >= 0 ? index : 0;
+  const chosen = queue[chosenIndex];
+  const remaining = queue.filter((_, itemIndex) => itemIndex !== chosenIndex);
+  writeDriverNextRideQueue(remaining);
+
+  return saveDriverActiveRideLocalMirror(
+    {
+      ...(chosen as Record<string, unknown>),
+      status: "accepted",
+      queuedStatus: "promoted_to_active",
+      queuedAfterRideId: null,
+      previousRideCompletedAt: new Date().toISOString(),
+      passengerNotice: "Tu conductor ya terminó su viaje anterior y va en camino.",
+      passengerNotification: "Tu conductor va en camino.",
+    },
+    user,
+  );
+}
+
 function readActiveDriverLocalRideMirrorsForDriver(user?: unknown): DriverRideData[] {
   const output: DriverRideData[] = [];
   const keys = [
@@ -6346,6 +6532,161 @@ function readActiveDriverLocalRideMirrorsForDriver(user?: unknown): DriverRideDa
 
   return Array.from(byKey.values());
 }
+
+const RAPAGO_DRIVER_HANDLED_RIDE_REQUESTS_KEY = "rapago_driver_handled_ride_requests_v1";
+const RAPAGO_DRIVER_RIDE_ALERT_STOP_EVENT = "rapago:driver-ride-alert-stop";
+
+type DriverHandledRideRequestRecord = {
+  key: string;
+  rideId: string | null;
+  driverKey: string;
+  reason: "accepted" | "accepted_next" | "rejected" | "dismissed";
+  handledAt: string;
+  expiresAt: string;
+};
+
+function getDriverHandledRequestDriverKey(user?: unknown): string {
+  const raw =
+    getDriverLiveUserField(user, "id") ??
+    getDriverLiveUserField(user, "userId") ??
+    getDriverLiveUserField(user, "email") ??
+    getDriverLiveUserField(user, "name") ??
+    "driver-local";
+
+  return normalizeDriverReservationKey(raw) ?? "driver-local";
+}
+
+function getDriverRideRequestStableKeys(ride: Partial<AvailableRideData> & Record<string, unknown>): string[] {
+  const keys = new Set<string>();
+  const id = String(ride.id ?? ride.rideId ?? ride.originalRideId ?? ride.serverRideId ?? "").trim();
+  if (id) {
+    keys.add(`id:${id}`);
+    keys.add(id);
+  }
+
+  const dedupe = getDriverScheduledReservationDedupeKey(ride as unknown as DriverAcceptedRideBridgeRecord);
+  if (dedupe) keys.add(`dedupe:${dedupe}`);
+
+  const routeKey = [
+    String(ride.passengerEmail ?? ride.email ?? "").trim().toLowerCase(),
+    String(ride.originText ?? "").trim().toLowerCase(),
+    String(ride.destinationText ?? "").trim().toLowerCase(),
+    String(ride.requestedAt ?? ride.createdAt ?? ride.scheduledAt ?? "").trim(),
+  ].join("|");
+  if (routeKey.replace(/\|/g, "").trim()) keys.add(`route:${routeKey}`);
+
+  return Array.from(keys).filter(Boolean);
+}
+
+function readDriverHandledRideRequests(): DriverHandledRideRequestRecord[] {
+  try {
+    const raw = localStorage.getItem(RAPAGO_DRIVER_HANDLED_RIDE_REQUESTS_KEY);
+    const parsed = raw ? (JSON.parse(raw) as DriverHandledRideRequestRecord[]) : [];
+    if (!Array.isArray(parsed)) return [];
+
+    const now = Date.now();
+    return parsed.filter((item) => {
+      const expiresAt = new Date(String(item.expiresAt ?? "")).getTime();
+      return item && typeof item === "object" && item.key && (!Number.isFinite(expiresAt) || expiresAt > now);
+    });
+  } catch {
+    return [];
+  }
+}
+
+function writeDriverHandledRideRequests(records: DriverHandledRideRequestRecord[]): void {
+  try {
+    const byKey = new Map<string, DriverHandledRideRequestRecord>();
+    for (const record of records) {
+      if (!record?.key) continue;
+      byKey.set(`${record.driverKey}|${record.key}`, record);
+    }
+
+    localStorage.setItem(
+      RAPAGO_DRIVER_HANDLED_RIDE_REQUESTS_KEY,
+      JSON.stringify(Array.from(byKey.values()).slice(0, 260)),
+    );
+  } catch {
+    // No bloquea la app.
+  }
+}
+
+function markDriverRideRequestHandled(
+  ride: Partial<AvailableRideData> & Record<string, unknown> | string,
+  user?: unknown,
+  reason: DriverHandledRideRequestRecord["reason"] = "accepted",
+): void {
+  const driverKey = getDriverHandledRequestDriverKey(user);
+  const recordRide = typeof ride === "string" ? ({ id: ride } as Record<string, unknown>) : ride;
+  const keys = getDriverRideRequestStableKeys(recordRide as Partial<AvailableRideData> & Record<string, unknown>);
+  const rideId = String(recordRide.id ?? recordRide.rideId ?? recordRide.originalRideId ?? "").trim() || null;
+  const now = new Date();
+  const expiresAt = new Date(now.getTime() + 6 * 60 * 60 * 1000).toISOString();
+  const current = readDriverHandledRideRequests();
+  const nextRecords = keys.map((key) => ({
+    key,
+    rideId,
+    driverKey,
+    reason,
+    handledAt: now.toISOString(),
+    expiresAt,
+  }));
+
+  writeDriverHandledRideRequests([...nextRecords, ...current]);
+}
+
+function driverRideRequestIsHandled(
+  ride: Partial<AvailableRideData> & Record<string, unknown>,
+  user?: unknown,
+): boolean {
+  const driverKey = getDriverHandledRequestDriverKey(user);
+  const rideKeys = new Set(getDriverRideRequestStableKeys(ride));
+  if (rideKeys.size === 0) return false;
+
+  const handled = readDriverHandledRideRequests();
+  if (handled.some((record) => record.driverKey === driverKey && rideKeys.has(record.key))) return true;
+
+  // Si ya está como próximo servicio aceptado, no puede volver a sonar como solicitud nueva.
+  if (readDriverNextRideQueue(user).some((queued) => driverRideIdentityMatches(queued as unknown as Record<string, unknown>, ride))) {
+    return true;
+  }
+
+  // Si ya está activo para este conductor, tampoco debe volver a entrar a la cola.
+  if (readActiveDriverLocalRideMirrorsForDriver(user).some((active) => driverRideIdentityMatches(active as unknown as Record<string, unknown>, ride))) {
+    return true;
+  }
+
+  return false;
+}
+
+function stopAllDriverRideRequestAlerts(rideId?: string): void {
+  window.dispatchEvent(
+    new CustomEvent(RAPAGO_DRIVER_RIDE_ALERT_STOP_EVENT, {
+      detail: { rideId, stoppedAt: new Date().toISOString() },
+    }),
+  );
+
+  try {
+    if ("vibrate" in navigator) navigator.vibrate(0);
+  } catch {
+    // noop
+  }
+
+  try {
+    window.speechSynthesis?.cancel();
+  } catch {
+    // noop
+  }
+}
+
+function removeHandledRideFromAvailableList<T extends { id?: string }>(
+  rides: T[],
+  target: Partial<AvailableRideData> & Record<string, unknown> | string,
+): T[] {
+  const record = typeof target === "string" ? ({ id: target } as Record<string, unknown>) : target;
+  return rides.filter((item) => !driverRideIdentityMatches(item as unknown as Record<string, unknown>, record));
+}
+
 
 
 export function DriverRequestsPage(): JSX.Element {
@@ -6900,15 +7241,15 @@ type RideRequestAlertController = {
   stop: () => void;
 };
 
-function speakRideRequestAlert(): void {
+function speakRideRequestAlert(
+  message = "Hay una solicitud de viaje nueva disponible.",
+): void {
   try {
     if (!("speechSynthesis" in window)) return;
 
     window.speechSynthesis.cancel();
 
-    const utterance = new SpeechSynthesisUtterance(
-      "Hay una solicitud de viaje nueva disponible.",
-    );
+    const utterance = new SpeechSynthesisUtterance(message);
 
     utterance.lang = "es-CL";
     utterance.rate = 0.96;
@@ -7083,7 +7424,7 @@ function showRideRequestSystemNotification(): void {
   }
 }
 
-function startRideRequestAlertSound(): RideRequestAlertController {
+function startRideRequestAlertSound(message?: string): RideRequestAlertController {
   let stopped = false;
   const intervals: number[] = [];
   const audioContext = getAlertAudioContext();
@@ -7113,13 +7454,15 @@ function startRideRequestAlertSound(): RideRequestAlertController {
     }
   }
 
+  const voiceMessage = message || "Hay una solicitud de viaje nueva disponible.";
+
   playAlarmCycle();
-  speakRideRequestAlert();
+  speakRideRequestAlert(voiceMessage);
   showRideRequestSystemNotification();
 
   // Alerta persistente mientras la solicitud siga disponible.
   intervals.push(window.setInterval(playAlarmCycle, 1200));
-  intervals.push(window.setInterval(speakRideRequestAlert, 9000));
+  intervals.push(window.setInterval(() => speakRideRequestAlert(voiceMessage), 9000));
   intervals.push(window.setInterval(showRideRequestSystemNotification, 18000));
 
   return {
@@ -7206,9 +7549,15 @@ function DriverGlobalRideAlert(): JSX.Element | null {
       setRideAlert(ride);
       setSecondsLeft(60);
       setAlertError(null);
-      rideAlertControllerRef.current = startRideRequestAlertSound();
+      const hasActiveRide =
+        readActiveDriverLocalRideMirrorsForDriver(session?.user).length > 0;
+      rideAlertControllerRef.current = startRideRequestAlertSound(
+        hasActiveRide
+          ? "Nuevo servicio disponible para continuar cuando cierres tu viaje actual."
+          : "Hay una solicitud de viaje nueva disponible.",
+      );
     },
-    [stopRideAlert],
+    [session?.user, stopRideAlert],
   );
 
   const startScheduledReservationAlert = useCallback(
@@ -7226,6 +7575,17 @@ function DriverGlobalRideAlert(): JSX.Element | null {
     [stopRideAlert],
   );
 
+  useEffect(() => {
+    const stopFromAnywhere = (event: Event) => {
+      const rideId = String((event as CustomEvent<{ rideId?: string }>).detail?.rideId ?? "").trim();
+      if (rideId) alertedRideIdsRef.current.add(rideId);
+      stopRideAlert(true);
+    };
+
+    window.addEventListener(RAPAGO_DRIVER_RIDE_ALERT_STOP_EVENT, stopFromAnywhere as EventListener);
+    return () => window.removeEventListener(RAPAGO_DRIVER_RIDE_ALERT_STOP_EVENT, stopFromAnywhere as EventListener);
+  }, [stopRideAlert]);
+
   const loadAvailableRideForAlert = useCallback(async (): Promise<void> => {
     if (
       !session?.accessToken ||
@@ -7237,6 +7597,10 @@ function DriverGlobalRideAlert(): JSX.Element | null {
     }
 
     try {
+      // Global en toda la app del conductor:
+      // si ya va en un viaje activo, igual debe sonar y aparecer el próximo servicio.
+      // Al aceptarlo se guarda como "Próximo servicio aceptado", sin reemplazar el viaje actual.
+
       // PRIORIDAD ABSOLUTA: reservas agendadas asignadas por admin.
       // Esto debe correr también si el conductor está en /driver/requests?view=reservations.
       // Si lo bloqueamos por shouldRunGlobalAlert, la reserva queda aceptada pero nunca suena.
@@ -7282,6 +7646,7 @@ function DriverGlobalRideAlert(): JSX.Element | null {
           ride.status === "requested" &&
           !driverRideWasSkippedByCurrentDriver(ride as unknown as Record<string, unknown>, session?.user) &&
           !shouldHideFromNormalDriverRequestQueue(ride as unknown as Record<string, unknown>) &&
+          !driverRideRequestIsHandled(ride as unknown as Record<string, unknown>, session?.user) &&
           !driverAvailableRideMatchesScheduledReservationForDriver(
             ride as unknown as Record<string, unknown>,
             session?.user,
@@ -7417,6 +7782,8 @@ function DriverGlobalRideAlert(): JSX.Element | null {
   function dismissRideAlert(ride: AvailableRideData | string): void {
     const rideId = typeof ride === "string" ? ride : ride.id;
     alertedRideIdsRef.current.add(rideId);
+    markDriverRideRequestHandled(ride as AvailableRideData | string, session?.user, "rejected");
+    stopAllDriverRideRequestAlerts(rideId);
 
     if (typeof ride !== "string") {
       requeueAvailableRideForNextDriver(ride, session?.user, "driver_rejected");
@@ -7531,6 +7898,9 @@ function DriverGlobalRideAlert(): JSX.Element | null {
     const acceptWithLocation = async (
       location: { lat: number; lng: number } | null,
     ): Promise<void> => {
+      const currentActiveRide =
+        readActiveDriverLocalRideMirrorsForDriver(session?.user)[0] ?? null;
+
       let acceptedPayload: Record<string, unknown>;
 
       try {
@@ -7561,13 +7931,46 @@ function DriverGlobalRideAlert(): JSX.Element | null {
         acceptedPayload,
         session?.user,
       );
-      const activeAccepted = saveDriverActiveRideLocalMirror(accepted, session?.user);
 
-      publishAcceptedDriverVehicleToPassenger(activeAccepted, session?.user);
+      const acceptedForDriver = currentActiveRide
+        ? saveDriverNextRideAfterCurrent(accepted, currentActiveRide, session?.user)
+        : saveDriverActiveRideLocalMirror(accepted, session?.user);
+
+      publishAcceptedDriverVehicleToPassenger(acceptedForDriver, session?.user);
+      markDriverRideRequestHandled(
+        acceptedForDriver as unknown as Record<string, unknown>,
+        session?.user,
+        currentActiveRide ? "accepted_next" : "accepted",
+      );
+      markDriverRideRequestHandled(
+        ride as unknown as Record<string, unknown>,
+        session?.user,
+        currentActiveRide ? "accepted_next" : "accepted",
+      );
+      stopAllDriverRideRequestAlerts(ride.id);
+      removeRequeuedRide(ride.id);
+
+      if (currentActiveRide) {
+        pushPassengerNotification({
+          rideId: String(ride.id),
+          type: "driver_assigned",
+          title: "Tu conductor aceptó tu viaje",
+          body: "El conductor está terminando un viaje anterior. Cuando cierre esa carrera iniciará tu servicio.",
+        });
+
+        stopRideAlert(true);
+        setAccepting(false);
+        setAlertError(null);
+
+        // No cambiamos de pantalla: la navegación actual sigue intacta.
+        window.dispatchEvent(new CustomEvent(RAPAGO_DRIVER_NEXT_RIDES_EVENT, { detail: { ride: acceptedForDriver } }));
+        window.dispatchEvent(new CustomEvent("rapago:driver-rides-updated", { detail: { ride: acceptedForDriver } }));
+        return;
+      }
 
       if (location) {
         publishDriverLiveLocationForPassenger(
-          activeAccepted as DriverRideData,
+          acceptedForDriver as DriverRideData,
           {
             lat: location.lat,
             lng: location.lng,
@@ -7595,7 +7998,6 @@ function DriverGlobalRideAlert(): JSX.Element | null {
         }
       }
 
-      removeRequeuedRide(ride.id);
       stopRideAlert(true);
       history.push(ROUTES.DRIVER.REQUESTS);
     };
@@ -7847,6 +8249,10 @@ function DriverGlobalRideAlert(): JSX.Element | null {
 
   if (!rideAlert || !shouldRunGlobalAlert) return null;
 
+  const activeRideForGlobalAlert =
+    readActiveDriverLocalRideMirrorsForDriver(session?.user)[0] ?? null;
+  const isNextServiceAlert = Boolean(activeRideForGlobalAlert);
+
   const fareClp = getRideDisplayFareClp(rideAlert as RideWithFarePayload);
   const paymentLabel = getRidePaymentMethodLabel(rideAlert.notes);
   const paymentIcon = getRidePaymentIcon(rideAlert.notes);
@@ -7919,11 +8325,12 @@ function DriverGlobalRideAlert(): JSX.Element | null {
               <div
                 style={{ fontSize: "1.1rem", fontWeight: 950, lineHeight: 1.1 }}
               >
-                Nueva solicitud de viaje
+                {isNextServiceAlert ? "Nuevo servicio para continuar" : "Nueva solicitud de viaje"}
               </div>
               <div style={{ fontSize: ".78rem", opacity: 0.84, marginTop: 3 }}>
-                Sonando por {formatRideAlertSeconds(secondsLeft)} · disponible
-                ahora
+                {isNextServiceAlert
+                  ? `Sonando por ${formatRideAlertSeconds(secondsLeft)} · queda como próximo servicio`
+                  : `Sonando por ${formatRideAlertSeconds(secondsLeft)} · disponible ahora`}
               </div>
             </div>
           </div>
@@ -8090,7 +8497,7 @@ function DriverGlobalRideAlert(): JSX.Element | null {
                 } as CSSProperties
               }
             >
-              {accepting ? <IonSpinner name="dots" /> : "Aceptar viaje"}
+              {accepting ? <IonSpinner name="dots" /> : isNextServiceAlert ? "Aceptar próximo" : "Aceptar viaje"}
             </IonButton>
           </div>
 
@@ -8156,6 +8563,8 @@ function AssignedRidesPage(): JSX.Element {
   const [scheduledReservationAlertSecondsLeft, setScheduledReservationAlertSecondsLeft] =
     useState(60);
   const [cancelConfirmRide, setCancelConfirmRide] = useState<DriverRideData | null>(null);
+  const [completeConfirmRide, setCompleteConfirmRide] = useState<DriverRideData | null>(null);
+  const [nextRideQueueVersion, setNextRideQueueVersion] = useState(0);
   const rideAlertControllerRef = useRef<RideRequestAlertController | null>(
     null,
   );
@@ -8194,7 +8603,19 @@ function AssignedRidesPage(): JSX.Element {
     !driverRideLooksLikeScheduledReservation(ride as unknown as Record<string, unknown>),
   ) ?? null;
   const displayedAvailableRides = showOnlyReservations ? [] : availableRides;
+  const nextQueuedRide = getDriverNextRideForActiveRide(activeRide, session?.user);
   const reservationsTotal = reservationOffers.length + confirmedReservationOffers.length;
+
+  useEffect(() => {
+    const refreshNextQueue = () => setNextRideQueueVersion((value) => value + 1);
+    window.addEventListener(RAPAGO_DRIVER_NEXT_RIDES_EVENT, refreshNextQueue as EventListener);
+    window.addEventListener("storage", refreshNextQueue as EventListener);
+    return () => {
+      window.removeEventListener(RAPAGO_DRIVER_NEXT_RIDES_EVENT, refreshNextQueue as EventListener);
+      window.removeEventListener("storage", refreshNextQueue as EventListener);
+    };
+  }, []);
+  void nextRideQueueVersion;
 
   const stopRideRequestAlert = useCallback((clearCurrentRide = true): void => {
     rideAlertControllerRef.current?.stop();
@@ -8205,6 +8626,17 @@ function AssignedRidesPage(): JSX.Element {
     }
   }, []);
 
+  useEffect(() => {
+    const stopFromAnywhere = (event: Event) => {
+      const rideId = String((event as CustomEvent<{ rideId?: string }>).detail?.rideId ?? "").trim();
+      if (rideId) alertedRideIdsRef.current.add(rideId);
+      stopRideRequestAlert(true);
+    };
+
+    window.addEventListener(RAPAGO_DRIVER_RIDE_ALERT_STOP_EVENT, stopFromAnywhere as EventListener);
+    return () => window.removeEventListener(RAPAGO_DRIVER_RIDE_ALERT_STOP_EVENT, stopFromAnywhere as EventListener);
+  }, [stopRideRequestAlert]);
+
   const startRideRequestAlert = useCallback(
     (ride: AvailableRideData): void => {
       stopRideRequestAlert(false);
@@ -8212,9 +8644,13 @@ function AssignedRidesPage(): JSX.Element {
       alertedRideIdsRef.current.add(ride.id);
       setRideAlert(ride);
       setRideAlertSecondsLeft(60);
-      rideAlertControllerRef.current = startRideRequestAlertSound();
+      rideAlertControllerRef.current = startRideRequestAlertSound(
+        activeRide
+          ? "Nuevo servicio disponible para continuar cuando cierres tu viaje actual."
+          : "Hay una solicitud de viaje nueva disponible.",
+      );
     },
-    [stopRideRequestAlert],
+    [activeRide, stopRideRequestAlert],
   );
 
   const stopScheduledReservationReadyAlert = useCallback((clearAlert = true): void => {
@@ -8245,6 +8681,8 @@ function AssignedRidesPage(): JSX.Element {
   function dismissAvailableRide(ride: AvailableRideData | string): void {
     const rideId = typeof ride === "string" ? ride : ride.id;
     alertedRideIdsRef.current.add(rideId);
+    markDriverRideRequestHandled(ride as AvailableRideData | string, session?.user, "rejected");
+    stopAllDriverRideRequestAlerts(rideId);
 
     if (rideAlert?.id === rideId) {
       stopRideRequestAlert(true);
@@ -8254,7 +8692,7 @@ function AssignedRidesPage(): JSX.Element {
       requeueAvailableRideForNextDriver(ride, session?.user, "driver_rejected");
     }
 
-    setAvailableRides((prev) => prev.filter((item) => item.id !== rideId));
+    setAvailableRides((prev) => removeHandledRideFromAvailableList(prev, ride as AvailableRideData | string));
   }
 
   useEffect(() => {
@@ -8348,7 +8786,7 @@ function AssignedRidesPage(): JSX.Element {
   ]);
 
   useEffect(() => {
-    if (activeRide || !isDriverAvailable) {
+    if (!isDriverAvailable) {
       stopRideRequestAlert(true);
       return;
     }
@@ -8362,12 +8800,15 @@ function AssignedRidesPage(): JSX.Element {
 
     const nextRide = availableRides.find(
       (ride) =>
-        ride.status === "requested" && !alertedRideIdsRef.current.has(ride.id),
+        ride.status === "requested" &&
+        !alertedRideIdsRef.current.has(ride.id) &&
+        !driverRideRequestIsHandled(ride as unknown as Record<string, unknown>, session?.user),
     );
 
-    if (nextRide) {
-      // La alerta sonora tipo Uber NO vive dentro de Solicitudes.
-      // En esta pantalla solo se muestran las tarjetas normales para aceptar/rechazar.
+    if (nextRide && activeRide) {
+      // Tipo Uber: si el conductor va en un viaje, la nueva solicitud aparece
+      // encima del mapa/trayecto como "próximo servicio" y la alerta se apaga al aceptar/rechazar.
+      startRideRequestAlert(nextRide);
       return;
     }
   }, [
@@ -8573,7 +9014,8 @@ function AssignedRidesPage(): JSX.Element {
         Array.from(byId.values()).filter(
           (ride) =>
             !driverRideWasSkippedByCurrentDriver(ride as unknown as Record<string, unknown>, session?.user) &&
-            !shouldHideFromNormalDriverRequestQueue(ride as unknown as Record<string, unknown>),
+            !shouldHideFromNormalDriverRequestQueue(ride as unknown as Record<string, unknown>) &&
+            !driverRideRequestIsHandled(ride as unknown as Record<string, unknown>, session?.user),
         ),
       );
     } catch (err) {
@@ -8598,6 +9040,7 @@ function AssignedRidesPage(): JSX.Element {
               ride.status === "requested" &&
               !driverRideWasSkippedByCurrentDriver(ride as unknown as Record<string, unknown>, session?.user) &&
               !shouldHideFromNormalDriverRequestQueue(ride as unknown as Record<string, unknown>) &&
+              !driverRideRequestIsHandled(ride as unknown as Record<string, unknown>, session?.user) &&
               !driverAvailableRideMatchesScheduledReservationForDriver(
                 ride as unknown as Record<string, unknown>,
                 session?.user,
@@ -8645,6 +9088,7 @@ function AssignedRidesPage(): JSX.Element {
     if (!session?.accessToken) return;
 
     alertedRideIdsRef.current.add(rideId);
+    stopAllDriverRideRequestAlerts(rideId);
     if (rideAlert?.id === rideId) {
       stopRideRequestAlert(true);
     }
@@ -8673,9 +9117,20 @@ function AssignedRidesPage(): JSX.Element {
         ) as unknown as Record<string, unknown>,
         session?.user,
       );
-      const activeAccepted = saveDriverActiveRideLocalMirror(accepted, session?.user);
+      const activeAccepted = activeRide
+        ? saveDriverNextRideAfterCurrent(accepted, activeRide, session?.user)
+        : saveDriverActiveRideLocalMirror(accepted, session?.user);
 
       publishAcceptedDriverVehicleToPassenger(activeAccepted, session?.user);
+      markDriverRideRequestHandled(activeAccepted as unknown as Record<string, unknown>, session?.user, activeRide ? "accepted_next" : "accepted");
+      stopAllDriverRideRequestAlerts(rideId);
+
+      if (activeRide) {
+        setAvailableRides((prev) => removeHandledRideFromAvailableList(prev, activeAccepted as unknown as Record<string, unknown>));
+        setRideAlert(null);
+        setError("Próximo servicio aceptado. Se activará cuando cierres el viaje actual.");
+        return;
+      }
 
       publishDriverLiveLocationForPassenger(
         activeAccepted as DriverRideData,
@@ -8706,7 +9161,7 @@ function AssignedRidesPage(): JSX.Element {
       }
 
       removeRequeuedRide(rideId);
-      setAvailableRides((prev) => prev.filter((ride) => ride.id !== rideId));
+      setAvailableRides((prev) => removeHandledRideFromAvailableList(prev, activeAccepted as unknown as Record<string, unknown>));
       setAssignedRides([activeAccepted as DriverRideData]);
 
       // Forzamos recarga para traer notes/coordenadas completas y renderizar ruta.
@@ -8725,9 +9180,21 @@ function AssignedRidesPage(): JSX.Element {
           fallbackAvailable,
           session?.user,
         );
-        const activeAcceptedLocal = saveDriverActiveRideLocalMirror(acceptedLocal, session?.user);
+        const activeAcceptedLocal = activeRide
+          ? saveDriverNextRideAfterCurrent(acceptedLocal, activeRide, session?.user)
+          : saveDriverActiveRideLocalMirror(acceptedLocal, session?.user);
 
         publishAcceptedDriverVehicleToPassenger(activeAcceptedLocal as unknown as Record<string, unknown>, session?.user);
+        markDriverRideRequestHandled(activeAcceptedLocal as unknown as Record<string, unknown>, session?.user, activeRide ? "accepted_next" : "accepted");
+        stopAllDriverRideRequestAlerts(rideId);
+
+        if (activeRide) {
+          removeRequeuedRide(rideId);
+          setAvailableRides((prev) => removeHandledRideFromAvailableList(prev, activeAcceptedLocal as unknown as Record<string, unknown>));
+          setRideAlert(null);
+          setError("Próximo servicio aceptado. Se activará cuando cierres el viaje actual.");
+          return;
+        }
 
         publishDriverLiveLocationForPassenger(
           activeAcceptedLocal,
@@ -8758,7 +9225,7 @@ function AssignedRidesPage(): JSX.Element {
         }
 
         removeRequeuedRide(rideId);
-        setAvailableRides((prev) => prev.filter((ride) => ride.id !== rideId));
+        setAvailableRides((prev) => removeHandledRideFromAvailableList(prev, activeAcceptedLocal as unknown as Record<string, unknown>));
         setAssignedRides([activeAcceptedLocal]);
         setError(null);
         return;
@@ -8820,28 +9287,77 @@ function AssignedRidesPage(): JSX.Element {
     }
   }
 
-  async function handleCompleteRide(rideId: string): Promise<void> {
+  function requestCompleteRide(ride: DriverRideData): void {
+    if (ride.status !== "in_progress") return;
+    setCompleteConfirmRide(ride);
+  }
+
+  async function performCompleteRide(ride: DriverRideData): Promise<void> {
     if (!session?.accessToken) return;
+
+    const rideId = String(ride.id ?? "").trim();
+    if (!rideId) return;
+
     try {
       const completed = await ridesService.completeRide(session.accessToken, rideId);
-      const currentRide = assignedRides.find((ride) => ride.id === rideId);
+      const currentRide = assignedRides.find((item) => item.id === rideId) ?? ride;
+      const completedAt = new Date().toISOString();
+
       saveDriverCompletedRideForEarnings(
         {
           ...(currentRide as DriverEarningsRide | undefined),
           ...((completed ?? {}) as Record<string, unknown>),
           id: rideId,
           status: "completed",
-          completedAt: new Date().toISOString(),
+          completedAt,
+          closedByDriverAt: completedAt,
+          destinationConfirmedByDriver: true,
         } as DriverEarningsRide,
         session?.user,
       );
+
       clearDriverLiveLocationForPassenger(rideId);
+      removeDriverActiveRideLocalMirror(currentRide as unknown as Record<string, unknown>, session?.user);
+
+      const nextActive = promoteDriverNextRideAfterCompletion(rideId, session?.user);
+      const currentLocation = driverLocationRef.current ?? driverLocation;
+
+      if (nextActive && currentLocation) {
+        publishAcceptedDriverVehicleToPassenger(nextActive as unknown as Record<string, unknown>, session?.user);
+        publishDriverLiveLocationForPassenger(
+          nextActive,
+          {
+            lat: currentLocation.lat,
+            lng: currentLocation.lng,
+            heading: liveDriverHeadingRef.current,
+            speed: null,
+            accuracy: null,
+          },
+          liveDriverHeadingRef.current,
+          session?.user,
+        );
+        setAssignedRides([nextActive]);
+        setError("Viaje cerrado correctamente. Se activó tu próximo servicio aceptado.");
+      } else {
+        setAssignedRides((prev) => prev.filter((item) => item.id !== rideId));
+        setError(null);
+      }
+
+      window.dispatchEvent(new CustomEvent("rapago:passenger-rides-updated", { detail: { rideId, status: "completed" } }));
       await loadRides();
     } catch (err) {
       setError(
         err instanceof Error ? err.message : "No se pudo finalizar el viaje.",
       );
+    } finally {
+      setCompleteConfirmRide(null);
     }
+  }
+
+  async function handleCompleteRide(rideId: string): Promise<void> {
+    const ride = assignedRides.find((item) => item.id === rideId);
+    if (!ride) return;
+    requestCompleteRide(ride);
   }
 
   async function handleCancelRide(ride: DriverRideData): Promise<void> {
@@ -9143,12 +9659,12 @@ function AssignedRidesPage(): JSX.Element {
                     lineHeight: 1.1,
                   }}
                 >
-                  Nueva solicitud de viaje
+                  {activeRide ? "Nuevo servicio para continuar" : "Nueva solicitud de viaje"}
                 </div>
                 <div
                   style={{ fontSize: ".78rem", opacity: 0.82, marginTop: 3 }}
                 >
-                  Alerta sonora activa por{" "}
+                  {activeRide ? "Aparece sobre tu trayecto actual · " : "Alerta sonora activa por "}
                   {formatRideAlertSeconds(rideAlertSecondsLeft)}
                 </div>
               </div>
@@ -9314,7 +9830,6 @@ function AssignedRidesPage(): JSX.Element {
                 color="warning"
                 disabled={
                   acceptingId === ride.id ||
-                  activeRide != null ||
                   !driverLocation ||
                   !isDriverAvailable
                 }
@@ -9331,7 +9846,7 @@ function AssignedRidesPage(): JSX.Element {
                 {acceptingId === ride.id ? (
                   <IonSpinner name="dots" />
                 ) : driverLocation ? (
-                  "Aceptar viaje"
+                  activeRide ? "Aceptar próximo" : "Aceptar viaje"
                 ) : (
                   "Activa GPS"
                 )}
@@ -9982,7 +10497,6 @@ function AssignedRidesPage(): JSX.Element {
               expand="block"
               disabled={
                 acceptingId === ride.id ||
-                activeRide != null ||
                 !driverLocation ||
                 !isDriverAvailable
               }
@@ -9994,7 +10508,7 @@ function AssignedRidesPage(): JSX.Element {
               ) : !isDriverAvailable ? (
                 "No disponible"
               ) : driverLocation ? (
-                "Aceptar viaje"
+                activeRide ? "Aceptar próximo" : "Aceptar viaje"
               ) : (
                 "Activa GPS"
               )}
@@ -10006,6 +10520,14 @@ function AssignedRidesPage(): JSX.Element {
   }
 
   function ActiveRideScreen({ ride }: { ride: DriverRideData }): JSX.Element {
+    const nextOfferWhileActive = !nextQueuedRide
+      ? availableRides.find(
+          (item) =>
+            item.status === "requested" &&
+            item.id !== ride.id &&
+            !driverRideRequestIsHandled(item as unknown as Record<string, unknown>, session?.user),
+        ) ?? null
+      : null;
     const statusText =
       ride.status === "driver_arrived"
         ? "Esperando pasajero"
@@ -10087,6 +10609,70 @@ function AssignedRidesPage(): JSX.Element {
               </div>
             </div>
 
+            {nextQueuedRide && (
+              <div
+                style={{
+                  marginBottom: 12,
+                  borderRadius: 16,
+                  background: "rgba(250,204,21,.16)",
+                  border: "1px solid rgba(250,204,21,.45)",
+                  padding: "10px 12px",
+                  color: "#fff7cc",
+                  fontWeight: 900,
+                  lineHeight: 1.35,
+                }}
+              >
+                <div style={{ fontSize: ".80rem", opacity: .86 }}>Próximo servicio aceptado</div>
+                <div style={{ fontSize: ".92rem", marginTop: 2 }}>
+                  {nextQueuedRide.originText} → {nextQueuedRide.destinationText}
+                </div>
+                <div style={{ fontSize: ".74rem", opacity: .78, marginTop: 3 }}>
+                  Se activará automáticamente cuando confirmes que llegaste al destino actual.
+                </div>
+              </div>
+            )}
+
+            {!nextQueuedRide && nextOfferWhileActive && (
+              <div
+                style={{
+                  marginBottom: 12,
+                  borderRadius: 16,
+                  background: "rgba(59,130,246,.16)",
+                  border: "1px solid rgba(59,130,246,.42)",
+                  padding: "10px 12px",
+                  color: "#dbeafe",
+                  fontWeight: 900,
+                  lineHeight: 1.35,
+                }}
+              >
+                <div style={{ fontSize: ".78rem", opacity: .86 }}>Nuevo servicio para continuar</div>
+                <div style={{ fontSize: ".92rem", marginTop: 2 }}>
+                  {nextOfferWhileActive.originText} → {nextOfferWhileActive.destinationText}
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: "0.85fr 1.15fr", gap: 8, marginTop: 9 }}>
+                  <IonButton
+                    size="small"
+                    fill="outline"
+                    color="light"
+                    disabled={acceptingId === nextOfferWhileActive.id}
+                    onClick={() => dismissAvailableRide(nextOfferWhileActive)}
+                    style={{ "--border-radius": "999px", fontWeight: 950 } as CSSProperties}
+                  >
+                    Rechazar
+                  </IonButton>
+                  <IonButton
+                    size="small"
+                    color="warning"
+                    disabled={acceptingId === nextOfferWhileActive.id || !driverLocation}
+                    onClick={() => void handleAcceptRide(nextOfferWhileActive.id)}
+                    style={{ "--border-radius": "999px", "--color": "#111", fontWeight: 950 } as CSSProperties}
+                  >
+                    {acceptingId === nextOfferWhileActive.id ? <IonSpinner name="dots" /> : "Aceptar próximo"}
+                  </IonButton>
+                </div>
+              </div>
+            )}
+
             {ride.status === "driver_arrived" && (
               <>
                 <style>{`@keyframes rapago-driver-waiting-pulse { 0% { opacity: .62; transform: scale(.985); } 50% { opacity: 1; transform: scale(1); } 100% { opacity: .62; transform: scale(.985); } }`}</style>
@@ -10157,7 +10743,7 @@ function AssignedRidesPage(): JSX.Element {
                   style={
                     { "--border-radius": "14px", height: "52px" } as CSSProperties
                   }
-                  onClick={() => void handleCompleteRide(ride.id)}
+                  onClick={() => requestCompleteRide(ride)}
                 >
                   Finalizar viaje
                 </IonButton>
@@ -10634,7 +11220,30 @@ function AssignedRidesPage(): JSX.Element {
         )}
       </IonContent>
 
-      <style>{`.rapago-danger-alert { --background: #2A1A18; --color: #ffffff; --button-color: #ff6467; } .rapago-danger-alert .alert-title { color: #fecaca; font-weight: 950; } .rapago-danger-alert .alert-message { color: rgba(255,255,255,.82); }`}</style>
+      <style>{`.rapago-danger-alert { --background: #2A1A18; --color: #ffffff; --button-color: #ff6467; } .rapago-danger-alert .alert-title { color: #fecaca; font-weight: 950; } .rapago-danger-alert .alert-message { color: rgba(255,255,255,.82); } .rapago-complete-alert { --background: #F6F2EC; --color: #111111; } .rapago-complete-alert .alert-title { color: #14532d; font-weight: 950; }`}</style>
+
+      <IonAlert
+        isOpen={Boolean(completeConfirmRide)}
+        header="¿Llegaste bien al destino?"
+        message="Confirma solo cuando el pasajero ya bajó y la carrera quedó cerrada. Después se guardará como completada y, si aceptaste otro servicio, se activará como próximo viaje."
+        cssClass="rapago-complete-alert"
+        onDidDismiss={() => setCompleteConfirmRide(null)}
+        buttons={[
+          {
+            text: "No, seguir viaje",
+            role: "cancel",
+          },
+          {
+            text: "Sí, cerrar carrera",
+            role: "confirm",
+            handler: () => {
+              if (completeConfirmRide) {
+                void performCompleteRide(completeConfirmRide);
+              }
+            },
+          },
+        ]}
+      />
 
       <IonAlert
         isOpen={Boolean(cancelConfirmRide)}
@@ -10663,7 +11272,12 @@ function AssignedRidesPage(): JSX.Element {
 }
 
 export function DriverTripsPage(): JSX.Element {
-  return <DriverMyRidesPage />;
+  return (
+    <>
+      <DriverMyRidesPage />
+      <DriverGlobalRideAlert />
+    </>
+  );
 }
 
 function DriverHistoryRideCard({
@@ -10773,6 +11387,7 @@ function DriverMyRidesPage(): JSX.Element {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
+  const [completeConfirmRide, setCompleteConfirmRide] = useState<DriverRideData | null>(null);
 
   const loadRides = useCallback(async () => {
     if (!session?.accessToken) return;
@@ -10903,6 +11518,53 @@ function DriverMyRidesPage(): JSX.Element {
       setLoadError(null);
     } finally {
       setActionLoading(null);
+    }
+  }
+
+  async function completeActiveRideFromMyRides(ride: DriverRideData): Promise<void> {
+    if (!session?.accessToken || !ride?.id) return;
+
+    setActionLoading(ride.id);
+    setLoadError(null);
+
+    try {
+      const completed = await ridesService.completeRide(session.accessToken, ride.id);
+      const completedAt = new Date().toISOString();
+
+      saveDriverCompletedRideForEarnings(
+        {
+          ...(ride as DriverEarningsRide),
+          ...((completed ?? {}) as Record<string, unknown>),
+          status: "completed",
+          completedAt,
+          closedByDriverAt: completedAt,
+          destinationConfirmedByDriver: true,
+        } as DriverEarningsRide,
+        session?.user,
+      );
+
+      clearDriverLiveLocationForPassenger(ride.id);
+      removeDriverActiveRideLocalMirror(ride as unknown as Record<string, unknown>, session?.user);
+
+      const nextActive = promoteDriverNextRideAfterCompletion(ride.id, session?.user);
+      setRides((prev) => {
+        const completedRide = {
+          ...ride,
+          ...((completed ?? {}) as Record<string, unknown>),
+          status: "completed",
+          completedAt,
+        } as DriverRideData;
+        const withoutCurrent = prev.filter((item) => item.id !== ride.id);
+        return nextActive ? [nextActive, completedRide, ...withoutCurrent] : [completedRide, ...withoutCurrent];
+      });
+
+      window.dispatchEvent(new CustomEvent("rapago:passenger-rides-updated", { detail: { rideId: ride.id, status: "completed" } }));
+      if (!nextActive) await loadRides();
+    } catch (err) {
+      setLoadError(err instanceof Error ? err.message : "No se pudo finalizar el viaje.");
+    } finally {
+      setActionLoading(null);
+      setCompleteConfirmRide(null);
     }
   }
 
@@ -11151,26 +11813,7 @@ function DriverMyRidesPage(): JSX.Element {
                     expand="block"
                     color="success"
                     disabled={actionLoading === activeRide.id}
-                    onClick={() =>
-                      void runRideAction(activeRide.id, async () => {
-                        const completed = await ridesService.completeRide(
-                          session!.accessToken,
-                          activeRide.id,
-                        );
-
-                        saveDriverCompletedRideForEarnings(
-                          {
-                            ...(activeRide as DriverEarningsRide),
-                            ...((completed ?? {}) as Record<string, unknown>),
-                            status: "completed",
-                            completedAt: new Date().toISOString(),
-                          } as DriverEarningsRide,
-                          session?.user,
-                        );
-
-                        return completed;
-                      })
-                    }
+                    onClick={() => setCompleteConfirmRide(activeRide)}
                   >
                     {actionLoading === activeRide.id ? (
                       <IonSpinner name="dots" />
@@ -11268,6 +11911,23 @@ function DriverMyRidesPage(): JSX.Element {
 
         )}
       </IonContent>
+
+      <IonAlert
+        isOpen={Boolean(completeConfirmRide)}
+        header="¿Llegaste bien al destino?"
+        message="Confirma solo cuando el pasajero ya bajó y la carrera quedó cerrada. Así no se reinicia el viaje y queda guardado como completado."
+        onDidDismiss={() => setCompleteConfirmRide(null)}
+        buttons={[
+          { text: "No, seguir viaje", role: "cancel" },
+          {
+            text: "Sí, cerrar carrera",
+            role: "confirm",
+            handler: () => {
+              if (completeConfirmRide) void completeActiveRideFromMyRides(completeConfirmRide);
+            },
+          },
+        ]}
+      />
     </IonPage>
   );
 }
@@ -11343,7 +12003,8 @@ export function DriverEarningsPage(): JSX.Element {
   };
 
   return (
-    <IonPage>
+    <>
+      <IonPage>
       <IonHeader>
         <IonToolbar color="success">
           <IonTitle>{m.label}</IonTitle>
@@ -11529,7 +12190,9 @@ export function DriverEarningsPage(): JSX.Element {
           </div>
         )}
       </IonContent>
-    </IonPage>
+      </IonPage>
+      <DriverGlobalRideAlert />
+    </>
   );
 }
 
@@ -12573,7 +13236,8 @@ export function DriverProfilePage(): JSX.Element {
   const hasVehiclePhoto = cleanVehicleImageDataUrl.length > 0;
 
   return (
-    <IonPage>
+    <>
+      <IonPage>
       <IonHeader>
         <IonToolbar color="success">
           <IonTitle>Mi Perfil</IonTitle>
@@ -13679,6 +14343,8 @@ export function DriverProfilePage(): JSX.Element {
           </div>
         )}
       </IonContent>
-    </IonPage>
+      </IonPage>
+      <DriverGlobalRideAlert />
+    </>
   );
 }

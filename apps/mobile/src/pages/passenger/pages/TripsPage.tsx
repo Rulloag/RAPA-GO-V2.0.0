@@ -4421,6 +4421,7 @@ function PassengerLiveRouteMap({
   const routeKeyRef = useRef<string>("");
   const didFitBoundsRef = useRef(false);
   const lastDriverPointRef = useRef<{ lat: number; lng: number } | null>(null);
+  const lastPassengerMapFollowAtRef = useRef(0);
 
   const [mapReady, setMapReady] = useState(false);
   const [liveDriverPoint, setLiveDriverPoint] = useState<DriverLivePoint | null>(null);
@@ -4778,7 +4779,7 @@ function PassengerLiveRouteMap({
 
     const timerId = window.setInterval(() => {
       void loadLiveDriver();
-    }, 6000);
+    }, 2000);
 
     return () => {
       stopped = true;
@@ -4941,12 +4942,29 @@ function PassengerLiveRouteMap({
     nav.pickupWalkMeters,
   ]);
 
+  function followPassengerDriverCamera(
+    point: { lat: number; lng: number },
+    force = false,
+  ): void {
+    const map = mapRef.current;
+    if (!map) return;
+
+    const now = Date.now();
+    if (!force && now - lastPassengerMapFollowAtRef.current < 900) return;
+    lastPassengerMapFollowAtRef.current = now;
+
+    map.panTo(point);
+    if (force || (map.getZoom() ?? 0) < 17) {
+      map.setZoom(17);
+    }
+  }
+
   useEffect(() => {
     const map = mapRef.current;
     if (!mapReady || !map || !window.google?.maps) return;
 
     const shouldShowDriver =
-      driverPoint && ["accepted", "driver_en_route", "driver_arrived", "in_progress"].includes(effectiveMapStatus);
+      driverPoint && ["driver_scheduled", "accepted", "driver_en_route", "driver_arrived", "in_progress"].includes(effectiveMapStatus);
 
     if (!shouldShowDriver || !driverPoint) {
       driverMarkerRef.current?.setMap(null);
@@ -4983,6 +5001,7 @@ function PassengerLiveRouteMap({
       });
 
       lastDriverPointRef.current = driverPoint;
+      followPassengerDriverCamera(driverPoint, true);
       fitMapOnce(map);
       return;
     }
@@ -4998,6 +5017,7 @@ function PassengerLiveRouteMap({
       driverMarkerRef.current.setPosition(driverPoint);
     }
 
+    followPassengerDriverCamera(driverPoint);
     lastDriverPointRef.current = driverPoint;
   }, [
     mapReady,
@@ -5660,8 +5680,6 @@ function PassengerRideCard({
   const ridePassengerFareType = getRidePassengerFareType(ride);
   const fareBreakdown = extractRideFareBreakdown(ride.notes);
   const scheduleInfo = getPassengerRideScheduleInfo(ride as RideRequestData & Record<string, unknown>);
-  const vehicleImageDataUrl = getPassengerDriverVehicleImageDataUrl(ride as RideRequestData & Record<string, unknown>);
-  const vehicleLine = getPassengerDriverVehicleLine(ride as RideRequestData & Record<string, unknown>);
   const isScheduledPending = scheduleInfo.isScheduled && effectiveStatus === "scheduled" && !isDriverRequeuedSearch;
   const [nowMs, setNowMs] = useState(() => Date.now());
 
@@ -5869,48 +5887,41 @@ function PassengerRideCard({
             <div
               style={{
                 marginBottom: 14,
-                background: "#eafff1",
+                background: "#ffffff",
                 borderRadius: 18,
                 padding: "12px",
-                border: "1px solid rgba(34,197,94,.45)",
+                border: "1px solid rgba(34,197,94,.30)",
                 boxShadow: "0 6px 18px rgba(0,0,0,.06)",
               }}
             >
               <div style={{ display: "flex", alignItems: "flex-start", gap: 10 }}>
-                <span style={{ fontSize: "1.25rem" }}>✅</span>
-                <div>
+                <span style={{ fontSize: "1.25rem" }}>🚕</span>
+                <div style={{ minWidth: 0 }}>
                   <div style={{ fontWeight: 950, fontSize: ".92rem", color: "#14532d" }}>
-                    Conductor agendado correctamente
+                    Tu conductor fue asignado
                   </div>
                   <div style={{ color: "#166534", fontSize: ".78rem", marginTop: 3, lineHeight: 1.35 }}>
-                    {ride.driverName ?? "Tu conductor"} quedó reservado para tu viaje.
-                    {scheduleInfo.pickupAt && (
-                      <>
-                        <br />Recogida: <strong>{formatPassengerScheduleDate(scheduleInfo.pickupAt)}</strong>.
-                      </>
-                    )}
-                    {scheduleInfo.returnAt && (
-                      <>
-                        <br />Regreso: <strong>{formatPassengerScheduleDate(scheduleInfo.returnAt)}</strong>.
-                      </>
-                    )}
-                    <br />Cuando falten 10 minutos se activará el seguimiento en el mapa.
+                    {ride.driverName ?? "Tu conductor"} aceptó tu viaje.
+                    <br />Sigue su GPS real en tiempo real en el mapa.
                   </div>
                 </div>
               </div>
-              {vehicleImageDataUrl && (
-                <div style={{ marginTop: 12 }}>
-                  <img
-                    key={vehicleImageDataUrl}
-                    src={vehicleImageDataUrl}
-                    loading="lazy"
-                    decoding="async"
-                    alt="Foto del vehículo asignado"
-                    style={{ width: "100%", height: 165, objectFit: "cover", borderRadius: 16, border: "1px solid rgba(22,101,52,.20)" }}
-                  />
-                  <div style={{ marginTop: 6, color: "#166534", fontSize: ".76rem", fontWeight: 900 }}>
-                    {vehicleLine}
-                  </div>
+
+              {!showMap && (
+                <div
+                  style={{
+                    marginTop: 10,
+                    background: "#f0fdf4",
+                    color: "#14532d",
+                    borderRadius: 14,
+                    padding: "9px 10px",
+                    fontSize: ".76rem",
+                    fontWeight: 900,
+                    lineHeight: 1.35,
+                    border: "1px solid rgba(34,197,94,.24)",
+                  }}
+                >
+                  Cargando mapa y señal GPS del conductor asignado...
                 </div>
               )}
             </div>
