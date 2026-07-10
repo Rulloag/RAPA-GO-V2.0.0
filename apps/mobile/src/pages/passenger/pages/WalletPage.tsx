@@ -1,12 +1,10 @@
 import {
   IonBadge,
-  IonButton,
   IonCard,
   IonCardContent,
   IonContent,
   IonHeader,
   IonIcon,
-  IonNote,
   IonPage,
   IonRefresher,
   IonRefresherContent,
@@ -19,35 +17,13 @@ import { useState, useCallback, useEffect, type CSSProperties } from "react";
 import {
   walletOutline,
   giftOutline,
-  shieldCheckmarkOutline,
-  cashOutline,
-  cardOutline,
-  refreshOutline,
   timeOutline,
   checkmarkCircleOutline,
   alertCircleOutline,
 } from "ionicons/icons";
-import { EmptyState } from "../../../components/EmptyState.js";
 import { SkeletonList } from "../../../components/SkeletonCard.js";
 import { useAuth } from "../../../features/auth/index.js";
-import type {
-  WalletData,
-  TransactionData,
-} from "../../../features/wallet/wallet.service.js";
-
-const TX_TYPE_LABEL: Record<string, string> = {
-  payment: "Pago de viaje",
-  credit: "Crédito",
-  refund: "Reembolso",
-  topup: "Crédito",
-};
-
-const TX_STATUS_COLOR: Record<string, string> = {
-  completed: "success",
-  pending: "warning",
-  failed: "danger",
-  cancelled: "medium",
-};
+import type { WalletData } from "../../../features/wallet/wallet.service.js";
 
 const RAPAGO_WALLET_BENEFITS_KEY = "rapago_wallet_benefits_v1";
 const RAPAGO_WALLET_BENEFIT_EVENT = "rapago:wallet-benefit-updated";
@@ -123,8 +99,8 @@ function readLocalWalletBenefits(user: unknown): LocalWalletBenefit[] {
       })
       .sort(
         (a, b) =>
-          new Date(String(b.createdAt ?? 0)).getTime() -
-          new Date(String(a.createdAt ?? 0)).getTime(),
+          new Date(String(b.createdAt ?? b.approvedAt ?? 0)).getTime() -
+          new Date(String(a.createdAt ?? a.approvedAt ?? 0)).getTime(),
       );
   } catch {
     return [];
@@ -141,22 +117,6 @@ function isWalletBenefitPending(benefit: LocalWalletBenefit): boolean {
   const status = String(benefit.status ?? "").toLowerCase();
   const adminStatus = String(benefit.adminReviewStatus ?? "").toLowerCase();
   return status === "pending_admin" || adminStatus === "pending_admin";
-}
-
-function walletBenefitStatusLabel(benefit: LocalWalletBenefit): string {
-  if (isWalletBenefitAvailable(benefit)) return "Disponible";
-  if (isWalletBenefitPending(benefit)) return "Pendiente admin";
-  if (String(benefit.status).toLowerCase() === "used") return "Usado";
-  if (String(benefit.status).toLowerCase() === "rejected") return "Rechazado";
-  return benefit.status || "Pendiente";
-}
-
-function walletBenefitStatusColor(benefit: LocalWalletBenefit): string {
-  if (isWalletBenefitAvailable(benefit)) return "success";
-  if (isWalletBenefitPending(benefit)) return "warning";
-  if (String(benefit.status).toLowerCase() === "used") return "medium";
-  if (String(benefit.status).toLowerCase() === "rejected") return "danger";
-  return "medium";
 }
 
 function walletCardStyle(extra?: CSSProperties): CSSProperties {
@@ -181,7 +141,7 @@ function MiniStatCard({
   icon: string;
   label: string;
   value: string;
-  tone: "green" | "gold" | "dark";
+  tone: "green" | "gold";
 }): JSX.Element {
   const colors = {
     green: {
@@ -195,12 +155,6 @@ function MiniStatCard({
       iconBg: "rgba(214,168,62,.22)",
       iconColor: "#8A5A12",
       value: "#7A4E10",
-    },
-    dark: {
-      bg: "linear-gradient(135deg,#2B2116,#4B2B1E)",
-      iconBg: "rgba(255,255,255,.14)",
-      iconColor: "#F8D78B",
-      value: "#FFFFFF",
     },
   }[tone];
 
@@ -229,13 +183,14 @@ function MiniStatCard({
       >
         <IonIcon icon={icon} style={{ fontSize: 22 }} />
       </div>
+
       <div
         style={{
           fontSize: ".68rem",
           fontWeight: 950,
           textTransform: "uppercase",
           letterSpacing: ".035em",
-          color: tone === "dark" ? "rgba(255,255,255,.72)" : "#6B5A3E",
+          color: "#6B5A3E",
           whiteSpace: "nowrap",
           overflow: "hidden",
           textOverflow: "ellipsis",
@@ -243,6 +198,7 @@ function MiniStatCard({
       >
         {label}
       </div>
+
       <div
         style={{
           marginTop: 5,
@@ -263,7 +219,6 @@ function MiniStatCard({
 export default function WalletPage(): JSX.Element {
   const { session } = useAuth();
   const [wallet, setWallet] = useState<WalletData | null>(null);
-  const [transactions, setTransactions] = useState<TransactionData[]>([]);
   const [localBenefits, setLocalBenefits] = useState<LocalWalletBenefit[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -274,21 +229,18 @@ export default function WalletPage(): JSX.Element {
 
   const load = useCallback(async () => {
     if (!session?.accessToken) return;
+
     setLoading(true);
     setLoadError(null);
 
     try {
       const { walletService } = await import("../../../features/wallet/wallet.service.js");
-      const [walletResponse, transactionsResponse] = await Promise.all([
-        walletService.getMyWallet(session.accessToken),
-        walletService.getMyTransactions(session.accessToken, 1, 20),
-      ]);
+      const walletResponse = await walletService.getMyWallet(session.accessToken);
 
       setWallet(walletResponse);
-      setTransactions(transactionsResponse.items);
       setLocalBenefits(readLocalWalletBenefits(session.user));
     } catch (err) {
-      setLoadError(err instanceof Error ? err.message : "Error al cargar la billetera.");
+      setLoadError(err instanceof Error ? err.message : "No se pudo sincronizar la billetera. Mostrando beneficios locales.");
       setLocalBenefits(readLocalWalletBenefits(session.user));
     } finally {
       setLoading(false);
@@ -314,18 +266,11 @@ export default function WalletPage(): JSX.Element {
     };
   }, [refreshLocalBenefits]);
 
-  const backendBalanceClp = wallet ? Math.round(Number(wallet.balance ?? 0) / 100) : 0;
-  const availableBenefitClp = localBenefits
-    .filter(isWalletBenefitAvailable)
-    .reduce((sum, benefit) => sum + benefit.amountClp, 0);
-  const pendingBenefitClp = localBenefits
-    .filter(isWalletBenefitPending)
-    .reduce((sum, benefit) => sum + benefit.amountClp, 0);
-  const usedBenefitClp = localBenefits
-    .filter((benefit) => String(benefit.status).toLowerCase() === "used")
-    .reduce((sum, benefit) => sum + benefit.amountClp, 0);
-  const displayBalanceClp = backendBalanceClp + availableBenefitClp;
-  const hasMovements = transactions.length > 0 || localBenefits.length > 0;
+  const approvedBenefits = localBenefits.filter(isWalletBenefitAvailable);
+  const pendingBenefits = localBenefits.filter(isWalletBenefitPending);
+
+  const approvedBenefitClp = approvedBenefits.reduce((sum, benefit) => sum + benefit.amountClp, 0);
+  const pendingBenefitClp = pendingBenefits.reduce((sum, benefit) => sum + benefit.amountClp, 0);
 
   return (
     <IonPage>
@@ -354,7 +299,7 @@ export default function WalletPage(): JSX.Element {
           <IonRefresherContent />
         </IonRefresher>
 
-        {loading && <SkeletonList count={4} height="74px" />}
+        {loading && <SkeletonList count={3} height="74px" />}
 
         {!loading && (
           <div style={{ maxWidth: 620, margin: "0 auto", paddingBottom: 96 }}>
@@ -400,6 +345,7 @@ export default function WalletPage(): JSX.Element {
                   background: "rgba(255,255,255,.16)",
                 }}
               />
+
               <div
                 style={{
                   position: "absolute",
@@ -416,18 +362,21 @@ export default function WalletPage(): JSX.Element {
                 <div style={{ display: "flex", justifyContent: "space-between", gap: 14, alignItems: "flex-start" }}>
                   <div>
                     <div style={{ fontSize: ".78rem", fontWeight: 900, color: "rgba(255,255,255,.78)", textTransform: "uppercase", letterSpacing: ".04em" }}>
-                      Saldo disponible
+                      Beneficio aprobado por admin
                     </div>
+
                     <div style={{ marginTop: 8, fontSize: "2.55rem", fontWeight: 950, lineHeight: 1, letterSpacing: "-1.5px" }}>
-                      {formatWalletClp(displayBalanceClp).replace(" CLP", "")}
+                      {formatWalletClp(approvedBenefitClp).replace(" CLP", "")}
                       <span style={{ fontSize: "1rem", marginLeft: 6, opacity: .86 }}>CLP</span>
                     </div>
+
                     <div style={{ marginTop: 12, display: "flex", gap: 8, flexWrap: "wrap" }}>
                       <IonBadge color={wallet?.status === "active" ? "success" : "medium"} style={{ fontSize: ".70rem", fontWeight: 950, padding: "7px 10px" }}>
                         {wallet?.status === "active" ? "✓ Billetera activa" : wallet?.status ?? "Billetera activa"}
                       </IonBadge>
-                      <IonBadge color="warning" style={{ fontSize: ".70rem", fontWeight: 950, padding: "7px 10px" }}>
-                        Uso automático
+
+                      <IonBadge color="success" style={{ fontSize: ".70rem", fontWeight: 950, padding: "7px 10px" }}>
+                        Descuento automático
                       </IonBadge>
                     </div>
                   </div>
@@ -451,7 +400,7 @@ export default function WalletPage(): JSX.Element {
                 </div>
 
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginTop: 22 }}>
-                  <MiniStatCard icon={giftOutline} label="Beneficios" value={formatWalletClp(availableBenefitClp)} tone="green" />
+                  <MiniStatCard icon={giftOutline} label="Beneficios" value={formatWalletClp(approvedBenefitClp)} tone="green" />
                   <MiniStatCard icon={timeOutline} label="Pendiente admin" value={formatWalletClp(pendingBenefitClp)} tone="gold" />
                 </div>
               </div>
@@ -465,8 +414,8 @@ export default function WalletPage(): JSX.Element {
                       width: 52,
                       height: 52,
                       borderRadius: 19,
-                      background: "rgba(34,197,94,.15)",
-                      color: "#15803D",
+                      background: approvedBenefitClp > 0 ? "rgba(34,197,94,.15)" : "rgba(214,168,62,.18)",
+                      color: approvedBenefitClp > 0 ? "#15803D" : "#B7791F",
                       display: "flex",
                       alignItems: "center",
                       justifyContent: "center",
@@ -475,29 +424,74 @@ export default function WalletPage(): JSX.Element {
                   >
                     <IonIcon icon={checkmarkCircleOutline} style={{ fontSize: 29 }} />
                   </div>
+
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "flex-start" }}>
                       <div>
-                        <div style={{ fontWeight: 950, fontSize: "1rem" }}>Saldo a favor Rapa Go</div>
+                        <div style={{ fontWeight: 950, fontSize: "1rem" }}>
+                          A favor para próximo viaje
+                        </div>
                         <div style={{ marginTop: 4, color: "#4B3B28", fontSize: ".82rem", fontWeight: 760, lineHeight: 1.38 }}>
-                          El saldo aprobado se descuenta automáticamente en tus próximos viajes.
+                          El monto aprobado por administración se descontará automáticamente en tu próximo viaje Rapa Go.
                         </div>
                       </div>
-                      <IonBadge color={pendingBenefitClp > 0 ? "warning" : "success"} style={{ fontWeight: 950, flexShrink: 0 }}>
-                        {pendingBenefitClp > 0 ? "En revisión" : "Al día"}
+
+                      <IonBadge color={approvedBenefitClp > 0 ? "success" : pendingBenefitClp > 0 ? "warning" : "medium"} style={{ fontWeight: 950, flexShrink: 0 }}>
+                        {approvedBenefitClp > 0 ? "Aprobado admin" : pendingBenefitClp > 0 ? "Pendiente admin" : "Sin saldo"}
                       </IonBadge>
+                    </div>
+
+                    <div
+                      style={{
+                        marginTop: 12,
+                        display: "grid",
+                        gridTemplateColumns: "1fr 1fr",
+                        gap: 10,
+                      }}
+                    >
+                      <div
+                        style={{
+                          padding: 12,
+                          borderRadius: 18,
+                          background: "rgba(34,197,94,.12)",
+                          border: "1px solid rgba(34,197,94,.22)",
+                        }}
+                      >
+                        <div style={{ color: "#166534", fontSize: ".70rem", fontWeight: 950, textTransform: "uppercase" }}>
+                          A favor
+                        </div>
+                        <div style={{ marginTop: 4, color: "#166534", fontSize: "1.05rem", fontWeight: 950 }}>
+                          {formatWalletClp(approvedBenefitClp)}
+                        </div>
+                      </div>
+
+                      <div
+                        style={{
+                          padding: 12,
+                          borderRadius: 18,
+                          background: "rgba(255,196,9,.16)",
+                          border: "1px solid rgba(214,168,62,.26)",
+                        }}
+                      >
+                        <div style={{ color: "#7A4E10", fontSize: ".70rem", fontWeight: 950, textTransform: "uppercase" }}>
+                          Pendiente
+                        </div>
+                        <div style={{ marginTop: 4, color: "#7A4E10", fontSize: "1.05rem", fontWeight: 950 }}>
+                          {formatWalletClp(pendingBenefitClp)}
+                        </div>
+                      </div>
                     </div>
 
                     {pendingBenefitClp > 0 && (
                       <div
                         style={{
                           marginTop: 12,
-                          padding: 12,
-                          borderRadius: 18,
+                          padding: 11,
+                          borderRadius: 16,
                           background: "rgba(255,196,9,.16)",
                           border: "1px solid rgba(214,168,62,.26)",
                           color: "#5A3515",
-                          fontSize: ".80rem",
+                          fontSize: ".78rem",
                           fontWeight: 850,
                           lineHeight: 1.35,
                         }}
@@ -509,190 +503,6 @@ export default function WalletPage(): JSX.Element {
                 </div>
               </IonCardContent>
             </IonCard>
-
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10, marginBottom: 14 }}>
-              <MiniStatCard icon={cashOutline} label="Cuenta" value={formatWalletClp(backendBalanceClp)} tone="dark" />
-              <MiniStatCard icon={giftOutline} label="A favor" value={formatWalletClp(availableBenefitClp)} tone="green" />
-              <MiniStatCard icon={shieldCheckmarkOutline} label="Usado" value={formatWalletClp(usedBenefitClp)} tone="gold" />
-            </div>
-
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 8 }}>
-              <IonButton
-                expand="block"
-                fill="outline"
-                disabled
-                style={
-                  {
-                    "--border-radius": "18px",
-                    "--border-color": "rgba(214,168,62,.85)",
-                    "--color": "#F8D78B",
-                    height: "50px",
-                    fontWeight: 950,
-                    opacity: .78,
-                  } as CSSProperties
-                }
-              >
-                ↑ Recargar
-              </IonButton>
-              <IonButton
-                expand="block"
-                fill="outline"
-                disabled
-                style={
-                  {
-                    "--border-radius": "18px",
-                    "--border-color": "rgba(214,168,62,.85)",
-                    "--color": "#F8D78B",
-                    height: "50px",
-                    fontWeight: 950,
-                    opacity: .78,
-                  } as CSSProperties
-                }
-              >
-                ↓ Retirar
-              </IonButton>
-            </div>
-
-            <IonNote
-              style={{
-                display: "block",
-                color: "rgba(246,242,236,.72)",
-                textAlign: "center",
-                fontSize: ".74rem",
-                fontWeight: 780,
-                lineHeight: 1.35,
-                marginBottom: 18,
-              }}
-            >
-              Recarga y retiro estarán disponibles próximamente. Los saldos por pago de más se validan con administración.
-            </IonNote>
-
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, marginBottom: 12 }}>
-              <div style={{ color: "#F6F2EC", fontWeight: 950, fontSize: "1.1rem" }}>Movimientos</div>
-              <IonButton size="small" fill="clear" color="warning" onClick={() => void load()} style={{ fontWeight: 950 }}>
-                <IonIcon icon={refreshOutline} slot="start" />
-                Actualizar
-              </IonButton>
-            </div>
-
-            {!hasMovements && (
-              <IonCard style={walletCardStyle()}>
-                <IonCardContent>
-                  <EmptyState icon={walletOutline} title="Sin movimientos" subtitle="Tus transacciones y beneficios aparecerán aquí" />
-                </IonCardContent>
-              </IonCard>
-            )}
-
-            {localBenefits.length > 0 && (
-              <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: transactions.length > 0 ? 14 : 0 }}>
-                {localBenefits.slice(0, 8).map((benefit) => {
-                  const available = isWalletBenefitAvailable(benefit);
-                  const pending = isWalletBenefitPending(benefit);
-
-                  return (
-                    <IonCard key={benefit.id} style={walletCardStyle({ margin: 0 })}>
-                      <IonCardContent style={{ padding: "13px 14px", display: "flex", alignItems: "center", gap: 12 }}>
-                        <div
-                          style={{
-                            width: 48,
-                            height: 48,
-                            borderRadius: 18,
-                            background: available
-                              ? "rgba(34,197,94,.15)"
-                              : pending
-                                ? "rgba(214,168,62,.18)"
-                                : "rgba(120,120,120,.12)",
-                            color: available ? "#15803D" : pending ? "#B7791F" : "#555",
-                            display: "flex",
-                            alignItems: "center",
-                            justifyContent: "center",
-                            flexShrink: 0,
-                          }}
-                        >
-                          <IonIcon icon={benefit.source === "cash_overpayment" ? cashOutline : giftOutline} style={{ fontSize: 25 }} />
-                        </div>
-
-                        <div style={{ flex: 1, minWidth: 0 }}>
-                          <div style={{ fontWeight: 950, color: "#111", fontSize: ".91rem", lineHeight: 1.25 }}>
-                            {benefit.title || "Saldo a favor"}
-                          </div>
-                          <div style={{ marginTop: 3, color: "#5D5143", fontSize: ".73rem", fontWeight: 760, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                            {benefit.description || "Beneficio para próximo viaje"}
-                          </div>
-                          <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 7, flexWrap: "wrap" }}>
-                            <IonBadge color={walletBenefitStatusColor(benefit)} style={{ fontSize: ".62rem", fontWeight: 950 }}>
-                              {walletBenefitStatusLabel(benefit)}
-                            </IonBadge>
-                            {benefit.createdAt && (
-                              <span style={{ color: "#777", fontSize: ".66rem", fontWeight: 800 }}>
-                                {new Date(benefit.createdAt).toLocaleString("es-CL", { dateStyle: "short", timeStyle: "short" })}
-                              </span>
-                            )}
-                          </div>
-                        </div>
-
-                        <div style={{ fontWeight: 950, color: available ? "#16A34A" : "#B7791F", fontSize: ".95rem", whiteSpace: "nowrap" }}>
-                          +{formatWalletClp(benefit.amountClp).replace(" CLP", "")}
-                        </div>
-                      </IonCardContent>
-                    </IonCard>
-                  );
-                })}
-              </div>
-            )}
-
-            {transactions.length > 0 && (
-              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                {transactions.map((tx) => {
-                  const isDebit = tx.type === "payment";
-                  const txIcon = tx.type === "payment" ? cardOutline : tx.type === "refund" ? refreshOutline : walletOutline;
-                  const amount = Math.round(Number(tx.amount ?? 0) / 100);
-
-                  return (
-                    <IonCard key={tx.id} style={walletCardStyle({ margin: 0 })}>
-                      <IonCardContent style={{ padding: "13px 14px", display: "flex", alignItems: "center", gap: 12 }}>
-                        <div
-                          style={{
-                            width: 48,
-                            height: 48,
-                            borderRadius: 18,
-                            flexShrink: 0,
-                            background: isDebit ? "rgba(239,68,68,.14)" : "rgba(34,197,94,.15)",
-                            color: isDebit ? "#DC2626" : "#15803D",
-                            display: "flex",
-                            alignItems: "center",
-                            justifyContent: "center",
-                          }}
-                        >
-                          <IonIcon icon={txIcon} style={{ fontSize: 25 }} />
-                        </div>
-
-                        <div style={{ flex: 1, minWidth: 0 }}>
-                          <div style={{ fontWeight: 950, fontSize: ".91rem", color: "#111" }}>
-                            {TX_TYPE_LABEL[tx.type] ?? tx.type}
-                          </div>
-                          {tx.description && (
-                            <div style={{ fontSize: ".73rem", color: "#5D5143", marginTop: 3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontWeight: 760 }}>
-                              {tx.description}
-                            </div>
-                          )}
-                          <div style={{ fontSize: ".68rem", color: "#777", marginTop: 7, display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", fontWeight: 800 }}>
-                            {new Date(tx.createdAt).toLocaleString("es-CL", { dateStyle: "short", timeStyle: "short" })}
-                            <IonBadge color={TX_STATUS_COLOR[tx.status] ?? "medium"} style={{ fontSize: ".60rem", fontWeight: 950 }}>
-                              {tx.status}
-                            </IonBadge>
-                          </div>
-                        </div>
-
-                        <div style={{ fontWeight: 950, fontSize: ".95rem", color: isDebit ? "#DC2626" : "#16A34A", flexShrink: 0 }}>
-                          {isDebit ? "−" : "+"}{formatWalletClp(amount).replace(" CLP", "")}
-                        </div>
-                      </IonCardContent>
-                    </IonCard>
-                  );
-                })}
-              </div>
-            )}
           </div>
         )}
 

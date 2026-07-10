@@ -5151,11 +5151,17 @@ type PassengerCashPaymentReview = {
   paidClp: number;
   overpaidClp: number;
   decision: PassengerCashPaymentDecision;
-  status: "completed" | "pending_refund" | "wallet_available";
+  status: "completed" | "pending_refund" | "wallet_available" | "pending_wallet_admin";
   adminReviewStatus: "not_required" | "pending_admin" | "admin_approved" | "refund_requested" | "refund_completed";
   createdAt: string;
   passengerEmail?: string | null;
   passengerName?: string | null;
+  source?: "passenger_cash_overpayment" | "passenger_cash_exact" | string | null;
+  passengerPaidClp?: number | null;
+  passengerOverpaidClp?: number | null;
+  passengerDecision?: PassengerCashPaymentDecision | string | null;
+  passengerWantsWalletCredit?: boolean | null;
+  passengerWantsRefund?: boolean | null;
 };
 
 const RAPAGO_CASH_PAYMENT_REVIEWS_KEY = "rapago_cash_payment_reviews_v1";
@@ -5228,8 +5234,20 @@ function isPassengerCashPaymentRide(ride: RideRequestData): boolean {
 function readPassengerCashPaymentReviews(): Record<string, PassengerCashPaymentReview> {
   try {
     const raw = localStorage.getItem(RAPAGO_CASH_PAYMENT_REVIEWS_KEY);
-    const parsed = raw ? (JSON.parse(raw) as Record<string, PassengerCashPaymentReview>) : {};
-    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : {};
+    const parsed = raw ? (JSON.parse(raw) as unknown) : {};
+
+    if (Array.isArray(parsed)) {
+      return parsed.reduce<Record<string, PassengerCashPaymentReview>>((acc, item, index) => {
+        if (!item || typeof item !== "object") return acc;
+        const record = item as PassengerCashPaymentReview & Record<string, unknown>;
+        const prefix = String(record.id ?? "").startsWith("driver-cash-close") ? "driver" : "passenger";
+        const key = `${prefix}:${String(record.rideKey ?? record.rideId ?? `cash-${index}`)}`;
+        acc[key] = record;
+        return acc;
+      }, {});
+    }
+
+    return parsed && typeof parsed === "object" ? (parsed as Record<string, PassengerCashPaymentReview>) : {};
   } catch {
     return {};
   }
@@ -5245,7 +5263,8 @@ function writePassengerCashPaymentReviews(reviews: Record<string, PassengerCashP
 
 function getPassengerCashPaymentReview(ride: RideRequestData): PassengerCashPaymentReview | null {
   const key = getPassengerCashPaymentRideKey(ride as RideRequestData & Record<string, unknown>);
-  return readPassengerCashPaymentReviews()[key] ?? null;
+  const reviews = readPassengerCashPaymentReviews();
+  return reviews[`passenger:${key}`] ?? reviews[key] ?? null;
 }
 
 function savePassengerCashPaymentReview(
@@ -5257,7 +5276,7 @@ function savePassengerCashPaymentReview(
   const now = new Date().toISOString();
 
   const review: PassengerCashPaymentReview = {
-    id: `cash-review-${String(record.id ?? "local")}-${Date.now()}`,
+    id: `passenger-cash-review-${String(record.id ?? "local")}-${Date.now()}`,
     rideId: String(record.id ?? record.rideId ?? record.originalRideId ?? ""),
     rideKey: key,
     originText: String(ride.originText ?? ""),
@@ -5271,10 +5290,18 @@ function savePassengerCashPaymentReview(
     createdAt: now,
     passengerEmail: String(record.passengerEmail ?? record.email ?? "").trim() || null,
     passengerName: String(record.passengerName ?? record.userName ?? record.name ?? "").trim() || null,
+    source: input.decision === "exact" ? "passenger_cash_exact" : "passenger_cash_overpayment",
+    passengerPaidClp: input.paidClp,
+    passengerOverpaidClp: input.overpaidClp,
+    passengerDecision: input.decision,
+    passengerWantsWalletCredit: input.decision === "wallet_credit",
+    passengerWantsRefund: input.decision === "refund_whatsapp",
   };
 
   const reviews = readPassengerCashPaymentReviews();
-  reviews[key] = review;
+  // Importante: se guarda separado como passenger:<rideKey> para no pisar
+  // el cierre del conductor. Así admin puede comparar conductor vs usuario.
+  reviews[`passenger:${key}`] = review;
   writePassengerCashPaymentReviews(reviews);
 
   try {
@@ -5308,11 +5335,14 @@ function savePassengerWalletBenefitFromCashOverpayment(
       status: "pending_admin",
       source: "cash_overpayment",
       title: "Pago de más en efectivo",
-      description: `Saldo a favor por pago de más. Viaje ${review.originText} → ${review.destinationText}.`,
+      description: `Pendiente de aprobación del admin. Si se aprueba, descontamos ${formatClp(review.overpaidClp)} en el próximo viaje del pasajero. Viaje ${review.originText} → ${review.destinationText}.`,
       createdAt: review.createdAt,
       approvedBy: null,
       fareClp: review.fareClp,
       paidClp: review.paidClp,
+      passengerPaidClp: review.paidClp,
+      passengerOverpaidClp: review.overpaidClp,
+      passengerWantsWalletCredit: true,
       driverId: record.assignedDriverId ?? record.driverId ?? null,
       adminReviewStatus: "pending_admin",
     };
@@ -5338,7 +5368,7 @@ function buildRapaGoRefundWhatsAppUrl(ride: RideRequestData, review: PassengerCa
   const phone = rawPhone.startsWith("56") ? rawPhone : `56${rawPhone}`;
 
   const message = [
-    "Hola RAPA GO, necesito solicitar devolución por pago de más en efectivo.",
+    "Hola RAPA GO, no quiero usar el saldo en mi próximo viaje. Necesito solicitar devolución por pago de más en efectivo.",
     `Viaje: ${review.originText} → ${review.destinationText}`,
     `Precio del viaje: ${formatClp(review.fareClp)}`,
     `Pagué: ${formatClp(review.paidClp)}`,
@@ -5409,7 +5439,7 @@ function PassengerCashPaymentAfterRideCard({
       paidClp: paidAmountClp,
       overpaidClp,
       decision: "wallet_credit",
-      status: "wallet_available",
+      status: "pending_wallet_admin",
       adminReviewStatus: "pending_admin",
     });
 
@@ -5452,7 +5482,7 @@ function PassengerCashPaymentAfterRideCard({
       >
         <div style={{ fontWeight: 950, fontSize: ".9rem" }}>
           {review.decision === "exact" && "✅ Pago en efectivo confirmado"}
-          {isWallet && "💚 Saldo a favor enviado a revisión"}
+          {isWallet && "💚 Saldo para próximo viaje enviado a revisión"}
           {isRefund && "📲 Devolución solicitada por WhatsApp"}
         </div>
 
@@ -5460,12 +5490,12 @@ function PassengerCashPaymentAfterRideCard({
           {review.decision === "exact" && "Registramos que pagaste el monto justo de tu viaje."}
           {isWallet && (
             <>
-              Tienes <strong>{formatClp(review.overpaidClp)}</strong> como saldo a favor pendiente de aprobación del administrador. Cuando se apruebe, aparecerá disponible en tu billetera.
+              Tienes <strong>{formatClp(review.overpaidClp)}</strong> como saldo a favor pendiente de aprobación del administrador. Cuando se apruebe, aparecerá en tu billetera y en tu próximo viaje te descontamos ese monto.
             </>
           )}
           {isRefund && (
             <>
-              Abrimos WhatsApp con el detalle de tu devolución por <strong>{formatClp(review.overpaidClp)}</strong>.
+              Abrimos WhatsApp con el detalle de tu devolución por <strong>{formatClp(review.overpaidClp)}</strong>, porque elegiste no usarlo en tu próximo viaje.
             </>
           )}
         </div>
@@ -5500,10 +5530,10 @@ function PassengerCashPaymentAfterRideCard({
         <span style={{ fontSize: "1.35rem" }}>💵</span>
         <div style={{ flex: 1 }}>
           <div style={{ fontWeight: 950, fontSize: ".95rem" }}>
-            ¿Cómo pagaste en efectivo?
+            ¿Pagaste de más en efectivo?
           </div>
           <div style={{ marginTop: 4, color: "rgba(255,255,255,.78)", fontSize: ".78rem", lineHeight: 1.35, fontWeight: 800 }}>
-            Precio del viaje: <strong>{formatClp(displayFareClp)}</strong>. Dinos si pagaste justo o si pagaste de más.
+            Precio del viaje: <strong>{formatClp(displayFareClp)}</strong>. Si pagaste de más, te diremos cuánto es la diferencia.
           </div>
         </div>
       </div>
@@ -5516,7 +5546,7 @@ function PassengerCashPaymentAfterRideCard({
             style={{ "--border-radius": "999px", fontWeight: 950 } as React.CSSProperties}
             onClick={markPaidExact}
           >
-            Pagué justo
+            No, pagué justo
           </IonButton>
           <IonButton
             size="small"
@@ -5524,7 +5554,7 @@ function PassengerCashPaymentAfterRideCard({
             style={{ "--border-radius": "999px", fontWeight: 950 } as React.CSSProperties}
             onClick={() => setShowOverpaidForm(true)}
           >
-            Pagué de más
+            Sí, pagué de más
           </IonButton>
         </div>
       )}
@@ -5549,7 +5579,7 @@ function PassengerCashPaymentAfterRideCard({
               min="0"
               value={paidAmountText}
               placeholder="Ej: 10000"
-              label="Monto total que pagaste"
+              label="¿Cuánto pagaste en total?"
               labelPlacement="stacked"
               onIonInput={(event) => setPaidAmountText(String(event.detail.value ?? ""))}
             />
@@ -5558,7 +5588,7 @@ function PassengerCashPaymentAfterRideCard({
           <div style={{ color: "rgba(255,255,255,.82)", fontSize: ".76rem", lineHeight: 1.35, fontWeight: 800 }}>
             {canConfirmOverpay ? (
               <>
-                Diferencia detectada: <strong>{formatClp(overpaidClp)}</strong>. Puedes dejarla como saldo para tu próximo viaje o pedir devolución.
+                Has pagado de más: <strong>{formatClp(overpaidClp)}</strong>. ¿Quieres dejar esa devolución como descuento para tu próximo viaje?
               </>
             ) : (
               <>
@@ -5575,7 +5605,7 @@ function PassengerCashPaymentAfterRideCard({
               style={{ "--border-radius": "999px", fontWeight: 950 } as React.CSSProperties}
               onClick={saveAsWalletCredit}
             >
-              Usar como saldo en mi próximo viaje
+              Sí, usar en mi próximo viaje
             </IonButton>
 
             <IonButton
@@ -5585,7 +5615,7 @@ function PassengerCashPaymentAfterRideCard({
               style={{ "--border-radius": "999px", fontWeight: 950 } as React.CSSProperties}
               onClick={requestRefund}
             >
-              Solicitar devolución por WhatsApp
+              No, pedir devolución por WhatsApp
             </IonButton>
 
             <IonButton

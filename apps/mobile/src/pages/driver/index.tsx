@@ -902,6 +902,7 @@ function UberDriverNavigationMap({
   const lastRouteOriginRef = useRef<{ lat: number; lng: number } | null>(null);
   const lastRouteRecalculateAtRef = useRef(0);
   const lastSpokenInstructionRef = useRef("");
+  const navigationCameraLockedRef = useRef(true);
 
   const [driverGpsReady, setDriverGpsReady] = useState(false);
   const [driverOutsideRapaNui, setDriverOutsideRapaNui] = useState(false);
@@ -918,6 +919,9 @@ function UberDriverNavigationMap({
   const [targetDistanceMeters, setTargetDistanceMeters] = useState<number | null>(null);
   const [mapError, setMapError] = useState<string | null>(null);
   const [mapReady, setMapReady] = useState(false);
+  const [isNavigationCameraLocked, setIsNavigationCameraLocked] = useState(true);
+  const [mapVoiceMuted, setMapVoiceMuted] = useState(true);
+  const [speedKmh, setSpeedKmh] = useState<number | null>(null);
   const [googlePickupPoint, setGooglePickupPoint] = useState<{ lat: number; lng: number } | null>(null);
   const [googleDestinationPoint, setGoogleDestinationPoint] = useState<{ lat: number; lng: number } | null>(null);
 
@@ -965,6 +969,11 @@ function UberDriverNavigationMap({
   const targetZoneLabel = currentPointDisplay.zone;
   const finalDestinationLabel = destinationDisplay.name;
   const finalDestinationZoneLabel = destinationDisplay.zone;
+
+  function updateNavigationCameraLock(next: boolean): void {
+    navigationCameraLockedRef.current = next;
+    setIsNavigationCameraLocked(next);
+  }
 
   function buildGoogleMapsGeocodeQuery(
     textValue: string | null | undefined,
@@ -1188,14 +1197,57 @@ function UberDriverNavigationMap({
     return movedSinceRoute >= 6 && secondsSinceRoute >= 2;
   }
 
-  function openExternalNavigationToTarget(): void {
+  function focusNavigationCameraInsideApp(force = true): void {
+    const map = mapRef.current;
+    if (!map) return;
+
     const targetPoint = goingToDestination
       ? destination
       : goingToPickup || waitingPassenger
         ? pickup
         : destination;
-    if (!targetPoint) return;
-    openGoogleNavigation(driverPointRef.current, targetPoint);
+
+    const driverPoint = driverPointRef.current;
+    const focusPoint = driverPoint ?? targetPoint ?? pickup ?? destination;
+
+    if (!focusPoint) return;
+
+    updateNavigationCameraLock(true);
+    didInitialCameraRef.current = true;
+    lastCameraAtRef.current = Date.now();
+
+    const cameraHeading =
+      driverPoint && targetPoint
+        ? bearingDegrees(driverPoint, targetPoint)
+        : headingRef.current;
+
+    try {
+      map.setZoom(20);
+      map.panTo(focusPoint);
+
+      // Efecto Google Maps: deja el conductor más abajo y muestra más ruta hacia adelante.
+      window.setTimeout(() => {
+        try {
+          map.panBy(0, Math.round(height * 0.16));
+        } catch {
+          // No bloquea la cámara si el navegador no soporta panBy en ese momento.
+        }
+      }, 90);
+
+      map.setHeading(cameraHeading);
+      map.setTilt(45);
+    } catch {
+      map.setZoom(19);
+      map.panTo(focusPoint);
+    }
+
+    calculateRouteOnce(true);
+  }
+
+  function openExternalNavigationToTarget(): void {
+    // La flecha verde ahora NO abre Google Maps externo.
+    // Solo acerca y bloquea la cámara dentro del mapa de RAPA GO.
+    focusNavigationCameraInsideApp(true);
   }
 
   function makeDriverIcon(heading: number): google.maps.Symbol {
@@ -1260,16 +1312,32 @@ function UberDriverNavigationMap({
     const map = mapRef.current;
     if (!map) return;
 
+    if (!force && !navigationCameraLockedRef.current) return;
+
     const now = Date.now();
-    if (!force && now - lastCameraAtRef.current < 500) return;
+    if (!force && now - lastCameraAtRef.current < 420) return;
     lastCameraAtRef.current = now;
 
-    if (!didInitialCameraRef.current || force) {
-      map.setZoom(19);
+    const currentZoom = map.getZoom() ?? 18;
+    const navigationZoom = force ? 20 : Math.max(19, Math.min(20, currentZoom));
+
+    if (!didInitialCameraRef.current || force || currentZoom < 18) {
+      map.setZoom(navigationZoom);
       didInitialCameraRef.current = true;
     }
 
     map.panTo(point);
+
+    // Igual que Google Maps: la flecha queda más abajo y se ve más camino por delante.
+    window.setTimeout(() => {
+      try {
+        if (navigationCameraLockedRef.current || force) {
+          map.panBy(0, Math.round(height * 0.14));
+        }
+      } catch {
+        // No bloquea seguimiento.
+      }
+    }, 70);
 
     try {
       map.setHeading(heading);
@@ -1363,6 +1431,16 @@ function UberDriverNavigationMap({
         if (status === google.maps.DirectionsStatus.OK && result) {
           fallbackLineRef.current?.setMap(null);
           fallbackLineRef.current = null;
+
+          renderer.setOptions({
+            suppressMarkers: true,
+            preserveViewport: true,
+            polylineOptions: {
+              strokeColor: goingToPickup ? "#06B6D4" : "#4F46E5",
+              strokeOpacity: 1,
+              strokeWeight: 9,
+            },
+          });
           renderer.setDirections(result);
 
           const leg = result.routes[0]?.legs[0];
@@ -1517,6 +1595,7 @@ function UberDriverNavigationMap({
         });
 
         mapRef.current = map;
+        map.addListener("dragstart", () => updateNavigationCameraLock(false));
         mapReadyRef.current = true;
         directionsServiceRef.current = new google.maps.DirectionsService();
         directionsRendererRef.current = new google.maps.DirectionsRenderer({
@@ -1599,6 +1678,9 @@ function UberDriverNavigationMap({
         lastGpsPointRef.current = next;
         driverPointRef.current = next;
 
+        const rawSpeed = Number(position.coords.speed);
+        setSpeedKmh(Number.isFinite(rawSpeed) && rawSpeed >= 0 ? Math.round(rawSpeed * 3.6) : null);
+
         publishDriverLiveLocationForPassenger(
           ride,
           {
@@ -1669,75 +1751,135 @@ function UberDriverNavigationMap({
         style={{ width: "100%", height: "100%" }}
       />
 
-      {/* Overlay limpio: deja el mapa visible para el conductor */}
+      {/* Panel superior estilo Google Maps: instrucción principal + siguiente maniobra */}
       <div
         style={{
           position: "absolute",
-          left: "10px",
-          right: "78px",
+          left: "12px",
+          right: "12px",
           top: "10px",
-          ...uberPanelStyle({
-            background: "rgba(7, 95, 87, .92)",
-            borderRadius: "16px",
-            padding: "9px 12px",
-            display: "flex",
-            gap: "9px",
-            alignItems: "center",
-          }),
-          zIndex: 8,
+          background: "rgba(0, 105, 96, .96)",
+          color: "#ffffff",
+          borderRadius: "22px",
+          boxShadow: "0 14px 34px rgba(0,0,0,.26)",
+          overflow: "hidden",
+          zIndex: 12,
           pointerEvents: "none",
         }}
       >
-        <IonIcon icon={arrowUpOutline} style={{ fontSize: 24, color: "#ffffff", flex: "0 0 auto" }} />
-        <div style={{ minWidth: 0 }}>
+        <div
+          style={{
+            minHeight: 74,
+            padding: "12px 16px",
+            display: "grid",
+            gridTemplateColumns: "48px 1fr",
+            gap: 12,
+            alignItems: "center",
+          }}
+        >
           <div
             style={{
+              fontSize: "2.25rem",
               fontWeight: 950,
-              fontSize: ".88rem",
-              color: "#ffffff",
-              whiteSpace: "nowrap",
-              overflow: "hidden",
-              textOverflow: "ellipsis",
+              lineHeight: 1,
+              textAlign: "center",
             }}
           >
-            {goingToPickup
-              ? "Ir a recogida"
-              : waitingPassenger
-                ? "Esperando pasajero"
-                : "Ir al destino"}
+            {nextInstruction?.maneuver === "arrive" ? "🏁" : maneuverArrow(nextInstruction?.maneuver)}
           </div>
-          <div
-            style={{
-              color: "rgba(246,242,236,.82)",
-              fontSize: ".72rem",
-              marginTop: 1,
-              whiteSpace: "nowrap",
-              overflow: "hidden",
-              textOverflow: "ellipsis",
-              fontWeight: 800,
-            }}
-          >
-            {targetLabel || "Punto de ruta"}
-            {routeInfo?.distance ? ` · ${routeInfo.distance}` : ""}
-            {routeInfo?.duration ? ` · ${routeInfo.duration}` : ""}
+
+          <div style={{ minWidth: 0 }}>
+            <div
+              style={{
+                fontSize: ".82rem",
+                fontWeight: 850,
+                color: "rgba(255,255,255,.82)",
+                lineHeight: 1.1,
+              }}
+            >
+              {goingToPickup
+                ? "en dirección a la recogida"
+                : waitingPassenger
+                  ? "esperando en"
+                  : "en dirección a"}
+            </div>
+            <div
+              style={{
+                marginTop: 2,
+                fontSize: "1.38rem",
+                lineHeight: 1.05,
+                fontWeight: 950,
+                whiteSpace: "nowrap",
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                letterSpacing: "-.02em",
+              }}
+            >
+              {nextInstruction?.street || targetLabel || "Punto de ruta"}
+            </div>
+            <div
+              style={{
+                marginTop: 4,
+                fontSize: ".78rem",
+                fontWeight: 850,
+                color: "rgba(255,255,255,.78)",
+                whiteSpace: "nowrap",
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+              }}
+            >
+              {routeInfo?.duration ? `${routeInfo.duration}` : "Calculando ruta"}
+              {routeInfo?.distance ? ` · ${routeInfo.distance}` : ""}
+            </div>
           </div>
         </div>
+
+        {nextInstruction && nextInstruction.maneuver !== "arrive" && (
+          <div
+            style={{
+              background: "rgba(0, 72, 68, .92)",
+              padding: "10px 16px",
+              display: "flex",
+              alignItems: "center",
+              gap: 12,
+              minHeight: 48,
+            }}
+          >
+            <span style={{ fontSize: "1.42rem", fontWeight: 950, lineHeight: 1 }}>
+              Luego {maneuverArrow(nextInstruction.maneuver)}
+            </span>
+            <span
+              style={{
+                minWidth: 0,
+                flex: 1,
+                fontSize: ".86rem",
+                fontWeight: 800,
+                color: "rgba(255,255,255,.84)",
+                whiteSpace: "nowrap",
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+              }}
+            >
+              {nextInstruction.text}
+            </span>
+          </div>
+        )}
       </div>
 
       {driverOutsideRapaNui && (
         <div
           style={{
             position: "absolute",
-            left: "10px",
-            top: "68px",
-            background: "rgba(239,68,68,.90)",
+            left: "14px",
+            top: nextInstruction ? "146px" : "96px",
+            background: "rgba(239,68,68,.92)",
             color: "#ffffff",
             borderRadius: "999px",
-            padding: "4px 8px",
-            fontSize: ".62rem",
+            padding: "5px 9px",
+            fontSize: ".64rem",
             fontWeight: 950,
             boxShadow: "0 6px 14px rgba(0,0,0,.20)",
-            zIndex: 8,
+            zIndex: 12,
             pointerEvents: "none",
           }}
         >
@@ -1745,105 +1887,13 @@ function UberDriverNavigationMap({
         </div>
       )}
 
-      {nextInstruction && (
-        <div
-          style={{
-            position: "absolute",
-            left: "10px",
-            right: "78px",
-            top: driverOutsideRapaNui ? "100px" : "66px",
-            ...uberPanelStyle({
-              background: "rgba(17,17,17,.90)",
-              borderRadius: "16px",
-              padding: "9px 11px",
-              border: "1px solid rgba(34,197,94,.30)",
-              display: "grid",
-              gridTemplateColumns: "38px 1fr",
-              gap: "9px",
-              alignItems: "center",
-            }),
-            zIndex: 8,
-            pointerEvents: "none",
-          }}
-        >
-          <div
-            style={{
-              width: 38,
-              height: 38,
-              borderRadius: 13,
-              background: nextInstruction.maneuver === "arrive" ? "#22c55e" : "#ffffff",
-              color: nextInstruction.maneuver === "arrive" ? "#ffffff" : "#111111",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              fontSize: "1.45rem",
-              fontWeight: 950,
-              lineHeight: 1,
-            }}
-          >
-            {nextInstruction.maneuver === "arrive" ? "🏁" : maneuverArrow(nextInstruction.maneuver)}
-          </div>
-
-          <div style={{ minWidth: 0 }}>
-            <div
-              style={{
-                color: "#22c55e",
-                fontSize: ".64rem",
-                fontWeight: 950,
-                letterSpacing: ".04em",
-                textTransform: "uppercase",
-                whiteSpace: "nowrap",
-                overflow: "hidden",
-                textOverflow: "ellipsis",
-              }}
-            >
-              {nextInstruction.distance ? `En ${nextInstruction.distance}` : "Próxima indicación"}
-              {targetDistanceMeters != null && targetDistanceMeters > 500
-                ? ` · faltan ${formatNavigationMeters(targetDistanceMeters)}`
-                : ""}
-            </div>
-            <div
-              style={{
-                marginTop: 2,
-                fontSize: ".80rem",
-                fontWeight: 950,
-                lineHeight: 1.2,
-                color: "#F6F2EC",
-                display: "-webkit-box",
-                WebkitLineClamp: 2,
-                WebkitBoxOrient: "vertical",
-                overflow: "hidden",
-              }}
-            >
-              {nextInstruction.text}
-            </div>
-
-            {nextInstruction.street && (
-              <div
-                style={{
-                  marginTop: 4,
-                  color: "rgba(246,242,236,.78)",
-                  fontSize: ".68rem",
-                  fontWeight: 900,
-                  whiteSpace: "nowrap",
-                  overflow: "hidden",
-                  textOverflow: "ellipsis",
-                }}
-              >
-                Calle/referencia: {nextInstruction.street}
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-
       {!driverGpsReady && (
         <div
           style={{
             position: "absolute",
-            left: "10px",
+            left: "14px",
             right: "78px",
-            top: nextInstruction ? (driverOutsideRapaNui ? "178px" : "144px") : (driverOutsideRapaNui ? "100px" : "66px"),
+            top: nextInstruction ? (driverOutsideRapaNui ? "178px" : "146px") : (driverOutsideRapaNui ? "128px" : "96px"),
             ...uberPanelStyle({
               background: "rgba(17,17,17,.82)",
               padding: "7px 10px",
@@ -1853,7 +1903,7 @@ function UberDriverNavigationMap({
             color: "#F6F2EC",
             fontSize: ".70rem",
             fontWeight: 900,
-            zIndex: 8,
+            zIndex: 12,
             pointerEvents: "none",
           }}
         >
@@ -1861,25 +1911,29 @@ function UberDriverNavigationMap({
         </div>
       )}
 
+      {/* Botones laterales internos: ninguno abre Google Maps externo */}
       <button
         type="button"
-        onClick={() => calculateRouteOnce(true)}
+        onClick={() => {
+          calculateRouteOnce(true);
+          focusNavigationCameraInsideApp(true);
+        }}
         style={{
           position: "absolute",
           right: "14px",
-          top: "14px",
-          width: 50,
-          height: 50,
+          top: "130px",
+          width: 52,
+          height: 52,
           borderRadius: 999,
           border: "0",
-          background: "rgba(17,17,17,.88)",
-          color: "#ffffff",
-          boxShadow: "0 12px 28px rgba(0,0,0,.40)",
+          background: "rgba(255,255,255,.96)",
+          color: "#111111",
+          boxShadow: "0 12px 28px rgba(0,0,0,.30)",
           fontSize: 22,
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
-          zIndex: 10,
+          zIndex: 14,
         }}
         aria-label="Recalcular ruta"
       >
@@ -1892,32 +1946,218 @@ function UberDriverNavigationMap({
         style={{
           position: "absolute",
           right: "14px",
-          top: "76px",
-          width: 56,
-          height: 56,
+          top: "194px",
+          width: 58,
+          height: 58,
           borderRadius: 999,
           border: "0",
           background: "#00a884",
           color: "#ffffff",
           boxShadow: "0 12px 28px rgba(0,0,0,.42)",
-          fontSize: 24,
+          fontSize: 25,
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
-          zIndex: 10,
+          zIndex: 14,
         }}
-        aria-label="Abrir navegación en Google Maps"
+        aria-label="Acercar mapa y seguir ruta dentro de Rapa Go"
       >
         <IonIcon icon={navigateOutline} />
       </button>
+
+      <button
+        type="button"
+        onClick={() => setMapVoiceMuted((current) => !current)}
+        style={{
+          position: "absolute",
+          right: "14px",
+          top: "264px",
+          width: 52,
+          height: 52,
+          borderRadius: 999,
+          border: "0",
+          background: "rgba(255,255,255,.96)",
+          color: "#111111",
+          boxShadow: "0 12px 28px rgba(0,0,0,.26)",
+          fontSize: 21,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          zIndex: 14,
+        }}
+        aria-label={mapVoiceMuted ? "Indicaciones visuales sin voz" : "Voz activada"}
+      >
+        {mapVoiceMuted ? "🔇" : "🔊"}
+      </button>
+
+      {!isNavigationCameraLocked && (
+        <button
+          type="button"
+          onClick={() => focusNavigationCameraInsideApp(true)}
+          style={{
+            position: "absolute",
+            left: "18px",
+            bottom: "114px",
+            border: "0",
+            borderRadius: 999,
+            background: "rgba(255,255,255,.96)",
+            color: "#00796B",
+            padding: "10px 14px",
+            fontSize: ".78rem",
+            fontWeight: 950,
+            boxShadow: "0 10px 26px rgba(0,0,0,.20)",
+            zIndex: 14,
+          }}
+        >
+          △ Centrar
+        </button>
+      )}
+
+      <div
+        style={{
+          position: "absolute",
+          left: "14px",
+          bottom: "104px",
+          width: 66,
+          height: 66,
+          borderRadius: 999,
+          background: "rgba(255,255,255,.96)",
+          color: "#111",
+          boxShadow: "0 12px 28px rgba(0,0,0,.24)",
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+          justifyContent: "center",
+          zIndex: 12,
+          fontWeight: 950,
+          pointerEvents: "none",
+        }}
+      >
+        <div style={{ fontSize: "1rem", lineHeight: 1 }}>
+          {speedKmh == null ? "--" : speedKmh}
+        </div>
+        <div style={{ fontSize: ".68rem", lineHeight: 1.1 }}>km/h</div>
+      </div>
+
+      <div
+        style={{
+          position: "absolute",
+          right: "14px",
+          bottom: "104px",
+          border: "0",
+          borderRadius: 999,
+          background: "rgba(255,255,255,.96)",
+          color: "#6B4A13",
+          padding: "12px 15px",
+          boxShadow: "0 12px 28px rgba(0,0,0,.22)",
+          zIndex: 12,
+          fontSize: ".86rem",
+          fontWeight: 900,
+          pointerEvents: "none",
+        }}
+      >
+        ⚠ Informar
+      </div>
+
+      {/* Hoja inferior estilo navegación */}
+      <div
+        style={{
+          position: "absolute",
+          left: 0,
+          right: 0,
+          bottom: 0,
+          background: "rgba(255,255,255,.98)",
+          color: "#111111",
+          borderRadius: "26px 26px 0 0",
+          minHeight: 94,
+          boxShadow: "0 -12px 34px rgba(0,0,0,.24)",
+          zIndex: 13,
+          display: "grid",
+          gridTemplateColumns: "76px 1fr 76px",
+          alignItems: "center",
+          padding: "14px 12px 12px",
+        }}
+      >
+        <button
+          type="button"
+          onClick={() => updateNavigationCameraLock(false)}
+          style={{
+            width: 58,
+            height: 58,
+            borderRadius: 999,
+            border: "2px solid rgba(0,0,0,.16)",
+            background: "#ffffff",
+            color: "#444",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            fontSize: 26,
+            justifySelf: "start",
+          }}
+          aria-label="Soltar seguimiento de cámara"
+        >
+          <IonIcon icon={closeOutline} />
+        </button>
+
+        <div style={{ textAlign: "center", minWidth: 0 }}>
+          <div
+            style={{
+              fontSize: "1.95rem",
+              lineHeight: 1,
+              fontWeight: 900,
+              letterSpacing: "-.02em",
+            }}
+          >
+            {routeInfo?.duration || "--"}
+          </div>
+          <div
+            style={{
+              marginTop: 6,
+              color: "#70757A",
+              fontSize: ".92rem",
+              fontWeight: 820,
+              whiteSpace: "nowrap",
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+            }}
+          >
+            {routeInfo?.distance || "Calculando distancia"}
+            {targetLabel ? ` · ${targetLabel}` : ""}
+          </div>
+        </div>
+
+        <button
+          type="button"
+          onClick={() => {
+            calculateRouteOnce(true);
+            focusNavigationCameraInsideApp(true);
+          }}
+          style={{
+            width: 58,
+            height: 58,
+            borderRadius: 999,
+            border: "2px solid rgba(0,0,0,.16)",
+            background: "#ffffff",
+            color: "#555",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            fontSize: 24,
+            justifySelf: "end",
+          }}
+          aria-label="Recentrar ruta"
+        >
+          <IonIcon icon={navigateOutline} />
+        </button>
+      </div>
 
       {mapError && (
         <div
           style={{
             position: "absolute",
-            left: 10,
-            right: 78,
-            top: nextInstruction ? (driverOutsideRapaNui ? 178 : 144) : (driverOutsideRapaNui ? 100 : 66),
+            left: 14,
+            right: 84,
+            top: nextInstruction ? (driverOutsideRapaNui ? 178 : 146) : (driverOutsideRapaNui ? 128 : 96),
             background: "rgba(17,17,17,.82)",
             color: "#fff",
             borderRadius: 999,
@@ -1927,7 +2167,7 @@ function UberDriverNavigationMap({
             whiteSpace: "nowrap",
             overflow: "hidden",
             textOverflow: "ellipsis",
-            zIndex: 9,
+            zIndex: 14,
           }}
         >
           {mapError}
@@ -6815,6 +7055,561 @@ function getRidePaymentIcon(notes: string | null | undefined): string {
   return "⌛";
 }
 
+
+const RAPAGO_DRIVER_CASH_CLOSURES_KEY = "rapago_driver_cash_closures_v1";
+const RAPAGO_ADMIN_CASH_CLOSURES_KEY = "rapago_admin_cash_closures_v1";
+const RAPAGO_ADMIN_CASH_CLOSURES_EVENT = "rapago:admin-cash-closures-updated";
+
+type DriverCashClosureDecision = "exact" | "overpaid";
+
+type DriverCashClosurePayload = {
+  id: string;
+  rideId: string;
+  rideKey: string;
+  originText: string;
+  destinationText: string;
+  fareClp: number;
+  paidClp: number;
+  overpaidClp: number;
+  decision: DriverCashClosureDecision;
+  paymentMethod: "cash";
+  status: "completed";
+  adminReviewStatus: "not_required" | "pending_admin";
+  driverId?: string | null;
+  driverUserId?: string | null;
+  driverEmail?: string | null;
+  driverName?: string | null;
+  driverPhone?: string | null;
+  passengerName?: string | null;
+  passengerEmail?: string | null;
+  closedByDriverAt: string;
+  createdAt: string;
+  notes?: string | null;
+};
+
+function getDriverCashText(source: unknown, keys: string[]): string {
+  if (!source || typeof source !== "object") return "";
+  const record = source as Record<string, unknown>;
+
+  for (const key of keys) {
+    const value = String(record[key] ?? "").trim();
+    if (value) return value;
+  }
+
+  return "";
+}
+
+function normalizeDriverCashText(value: unknown): string {
+  return String(value ?? "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .trim();
+}
+
+function isDriverCashRide(ride: Partial<DriverRideData> & Record<string, unknown>): boolean {
+  const direct = normalizeDriverCashText(
+    ride.paymentMethod ??
+    ride.paymentType ??
+    ride.payMethod ??
+    ride.paymentLabel ??
+    ride.methodOfPayment ??
+    ride.paymentMethodLabel,
+  );
+
+  if (direct.includes("efectivo") || direct.includes("cash")) return true;
+
+  const notes = normalizeDriverCashText(ride.notes);
+  return notes.includes("efectivo") || notes.includes("cash");
+}
+
+function parseDriverCashAmountText(value: string): number | null {
+  const cleaned = value.replace(/\./g, "").replace(/,/g, ".").replace(/[^\d.]/g, "");
+  const parsed = Number(cleaned);
+  return Number.isFinite(parsed) && parsed > 0 ? Math.round(parsed) : null;
+}
+
+function getDriverCashRideKey(ride: Partial<DriverRideData> & Record<string, unknown>): string {
+  const id = String(ride.id ?? ride.rideId ?? ride.originalRideId ?? ride.serverRideId ?? "").trim();
+  if (id) return `ride:${id}`;
+
+  return [
+    String(ride.originText ?? "").trim().toLowerCase(),
+    String(ride.destinationText ?? "").trim().toLowerCase(),
+    String(ride.acceptedAt ?? ride.requestedAt ?? ride.createdAt ?? "").trim(),
+  ].join("|");
+}
+
+function appendDriverCashClosureNoteOnce(
+  notes: string | null | undefined,
+  closure: DriverCashClosurePayload,
+): string {
+  const current = String(notes ?? "").trim();
+  const marker = "Cierre efectivo conductor:";
+  const line = closure.decision === "overpaid"
+    ? `${marker} tarifa ${formatClp(closure.fareClp)}, cliente pagó ${formatClp(closure.paidClp)}, pagó demás ${formatClp(closure.overpaidClp)}. Revisión admin pendiente.`
+    : `${marker} cliente pagó justo ${formatClp(closure.fareClp)}.`;
+
+  if (current.toLowerCase().includes(marker.toLowerCase())) return current;
+  return `${current}${current ? " " : ""}${line}`.trim();
+}
+
+function buildDriverCashClosurePayload(
+  ride: DriverRideData,
+  decision: DriverCashClosureDecision,
+  paidAmountText: string,
+  user?: unknown,
+): DriverCashClosurePayload {
+  const record = ride as DriverRideData & Record<string, unknown>;
+  const fareClp = getRideDisplayFareClp(record as RideWithFarePayload) ?? 0;
+  const parsedPaid = parseDriverCashAmountText(paidAmountText);
+  const paidClp = decision === "exact"
+    ? fareClp
+    : Math.max(fareClp, parsedPaid ?? fareClp);
+  const overpaidClp = Math.max(0, paidClp - fareClp);
+  const now = new Date().toISOString();
+  const rideId = String(record.id ?? record.rideId ?? "").trim();
+  const rideKey = getDriverCashRideKey(record);
+
+  return {
+    id: `driver-cash-close-${rideId || rideKey}`,
+    rideId: rideId || rideKey,
+    rideKey,
+    originText: String(record.originText ?? "Origen no informado"),
+    destinationText: String(record.destinationText ?? "Destino no informado"),
+    fareClp,
+    paidClp,
+    overpaidClp,
+    decision,
+    paymentMethod: "cash",
+    status: "completed",
+    adminReviewStatus: overpaidClp > 0 ? "pending_admin" : "not_required",
+    driverId: getDriverCashText(user, ["id", "userId", "uid"]) || String(record.driverId ?? record.driverUserId ?? "") || null,
+    driverUserId: getDriverCashText(user, ["userId", "id", "uid"]) || String(record.driverUserId ?? "") || null,
+    driverEmail: getDriverCashText(user, ["email", "mail"]) || String(record.driverEmail ?? "") || null,
+    driverName: getDriverCashText(user, ["name", "fullName", "displayName"]) || String(record.driverName ?? record.driverFullName ?? "") || null,
+    driverPhone: getDriverCashText(user, ["phone", "phoneNumber", "mobile"]) || String(record.driverPhone ?? "") || null,
+    passengerName: String(record.passengerName ?? record.userName ?? "") || null,
+    passengerEmail: String(record.passengerEmail ?? record.email ?? "") || null,
+    closedByDriverAt: now,
+    createdAt: now,
+    notes: overpaidClp > 0
+      ? `Cliente pagó ${formatClp(paidClp)} en efectivo. Diferencia: ${formatClp(overpaidClp)}.`
+      : `Cliente pagó justo ${formatClp(fareClp)} en efectivo.`,
+  };
+}
+
+function buildDriverCashClosureRidePatch(
+  ride: DriverRideData | Record<string, unknown>,
+  closure: DriverCashClosurePayload | null | undefined,
+): Record<string, unknown> {
+  if (!closure) return {};
+
+  return {
+    cashClosure: closure,
+    cashPaymentClosure: closure,
+    driverCashClosure: closure,
+    cashPaymentConfirmedByDriver: true,
+    cashPaidClp: closure.paidClp,
+    cashFareClp: closure.fareClp,
+    cashOverpaidClp: closure.overpaidClp,
+    cashPaymentDecision: closure.decision,
+    cashClosedByDriverAt: closure.closedByDriverAt,
+    paymentReceivedByDriverClp: closure.paidClp,
+    paymentDifferenceClp: closure.overpaidClp,
+    adminCashReviewStatus: closure.adminReviewStatus,
+    adminPaymentReviewStatus: closure.adminReviewStatus,
+    paymentMethod: "cash",
+    paymentStatus: closure.overpaidClp > 0 ? "cash_overpaid_pending_admin" : "cash_paid_exact",
+    notes: appendDriverCashClosureNoteOnce(String((ride as Record<string, unknown>).notes ?? ""), closure),
+  };
+}
+
+function upsertDriverCashClosureStorage(key: string, closure: DriverCashClosurePayload): void {
+  try {
+    const raw = localStorage.getItem(key);
+    const parsed = raw ? (JSON.parse(raw) as DriverCashClosurePayload[]) : [];
+    const current = Array.isArray(parsed) ? parsed : [];
+    const next = [
+      closure,
+      ...current.filter((item) => String(item.id ?? "") !== closure.id && String(item.rideId ?? "") !== closure.rideId),
+    ].slice(0, 300);
+
+    localStorage.setItem(key, JSON.stringify(next));
+    sessionStorage.setItem(key, JSON.stringify(next));
+  } catch {
+    // No bloquea el cierre del viaje.
+  }
+}
+
+function persistDriverCashClosureForAdmin(
+  ride: DriverRideData | Record<string, unknown>,
+  closure: DriverCashClosurePayload | null | undefined,
+  user?: unknown,
+): void {
+  if (!closure) return;
+
+  const patch = buildDriverCashClosureRidePatch(ride, closure);
+  const enrichedRide = {
+    ...(ride as Record<string, unknown>),
+    ...patch,
+    status: "completed",
+    completedAt: closure.closedByDriverAt,
+    closedByDriverAt: closure.closedByDriverAt,
+  };
+
+  upsertDriverCashClosureStorage(RAPAGO_DRIVER_CASH_CLOSURES_KEY, closure);
+  upsertDriverCashClosureStorage(RAPAGO_ADMIN_CASH_CLOSURES_KEY, closure);
+  upsertDriverCashClosureStorage("rapago_admin_cash_payment_closures_v1", closure);
+  upsertDriverCashClosureStorage("rapago_cash_payment_reviews_v1", closure);
+
+  try {
+    localStorage.setItem("rapago_last_driver_cash_closure_for_admin", JSON.stringify(closure));
+    sessionStorage.setItem("rapago_last_driver_cash_closure_for_admin", JSON.stringify(closure));
+  } catch {
+    // No bloquea el cierre.
+  }
+
+  const rideKeys = [
+    "rapago_driver_my_rides_v1",
+    "rapago_driver_active_rides_v1",
+    "rapago_local_driver_assigned_rides",
+    "rapago_local_passenger_rides",
+    "rapago_admin_rides_v1",
+    "rapago_admin_driver_rides_v1",
+    "rapago_admin_scheduled_rides",
+    "rapago_admin_scheduled_rides_v1",
+    "rapago_admin_scheduled_rides_v2",
+    "rapago_admin_scheduled_rides_force_v1",
+    "rapago_bridge_scheduled_rides_v1",
+  ];
+
+  for (const key of rideKeys) {
+    try {
+      const raw = localStorage.getItem(key);
+      const parsed = raw ? (JSON.parse(raw) as Array<Record<string, unknown>>) : [];
+      if (!Array.isArray(parsed)) continue;
+
+      let found = false;
+      const next = parsed.map((item) => {
+        if (!item || typeof item !== "object") return item;
+        if (!driverRideIdentityMatches(item, ride as Record<string, unknown>)) return item;
+        found = true;
+        return { ...item, ...patch, status: "completed", completedAt: closure.closedByDriverAt, closedByDriverAt: closure.closedByDriverAt };
+      });
+
+      const finalList = found ? next : [enrichedRide, ...parsed];
+      localStorage.setItem(key, JSON.stringify(finalList.slice(0, 250)));
+    } catch {
+      // No bloquea si un storage antiguo está corrupto.
+    }
+  }
+
+  try {
+    window.dispatchEvent(new CustomEvent(RAPAGO_ADMIN_CASH_CLOSURES_EVENT, { detail: { closure, ride: enrichedRide, user } }));
+    window.dispatchEvent(new CustomEvent("rapago:driver-cash-closure-updated", { detail: { closure, ride: enrichedRide, user } }));
+    window.dispatchEvent(new CustomEvent("rapago:admin-rides-updated", { detail: { closure, ride: enrichedRide, user } }));
+    window.dispatchEvent(new CustomEvent("rapago:driver-rides-updated", { detail: { closure, ride: enrichedRide, user } }));
+    window.dispatchEvent(new CustomEvent("rapago:passenger-rides-updated", { detail: { closure, ride: enrichedRide } }));
+  } catch {
+    // Eventos opcionales.
+  }
+}
+
+function DriverCashCloseRideOverlay({
+  ride,
+  user,
+  loading = false,
+  onCancel,
+  onConfirm,
+}: {
+  ride: DriverRideData;
+  user?: unknown;
+  loading?: boolean;
+  onCancel: () => void;
+  onConfirm: (ride: DriverRideData, cashClosure?: DriverCashClosurePayload | null) => void;
+}): JSX.Element {
+  const isCash = isDriverCashRide(ride as DriverRideData & Record<string, unknown>);
+  const fareClp = getRideDisplayFareClp(ride as RideWithFarePayload) ?? 0;
+  const [destinationOk, setDestinationOk] = useState(false);
+  const [decision, setDecision] = useState<DriverCashClosureDecision>("exact");
+  const [paidAmountText, setPaidAmountText] = useState("");
+  const paidAmountClp = parseDriverCashAmountText(paidAmountText);
+  const paidForPreview = decision === "exact" ? fareClp : (paidAmountClp ?? 0);
+  const overpaidClp = Math.max(0, paidForPreview - fareClp);
+  const canConfirm = destinationOk && (
+    !isCash ||
+    decision === "exact" ||
+    (paidAmountClp != null && paidAmountClp > fareClp)
+  );
+
+  function confirmClose(): void {
+    if (!canConfirm) return;
+
+    const closure = isCash
+      ? buildDriverCashClosurePayload(ride, decision, paidAmountText, user)
+      : null;
+
+    onConfirm(ride, closure);
+  }
+
+  return (
+    <div
+      style={{
+        position: "fixed",
+        inset: 0,
+        zIndex: 2147483000,
+        background: "rgba(0,0,0,.62)",
+        display: "flex",
+        alignItems: "flex-start",
+        justifyContent: "center",
+        overflowY: "auto",
+        WebkitOverflowScrolling: "touch",
+        padding: "10px 8px calc(92px + env(safe-area-inset-bottom))",
+      }}
+    >
+      <div
+        style={{
+          width: "min(560px, calc(100vw - 16px))",
+          maxHeight: "calc(100dvh - 108px)",
+          overflow: "hidden",
+          display: "flex",
+          flexDirection: "column",
+          borderRadius: 24,
+          background: "#F6F2EC",
+          color: "#111",
+          boxShadow: "0 22px 60px rgba(0,0,0,.45)",
+          border: "1px solid rgba(210,164,58,.40)",
+        }}
+      >
+        <div
+          style={{
+            padding: "16px 18px",
+            background: "linear-gradient(135deg,#14532d,#22c55e)",
+            color: "#fff",
+            borderRadius: "24px 24px 0 0",
+          }}
+        >
+          <div style={{ fontSize: "1.05rem", fontWeight: 950 }}>
+            Cierre de carrera
+          </div>
+          <div style={{ marginTop: 3, fontSize: ".78rem", fontWeight: 800, opacity: .92 }}>
+            Antes de tomar otro servicio, confirma destino y pago.
+          </div>
+        </div>
+
+        <div
+          style={{
+            padding: 12,
+            overflowY: "auto",
+            WebkitOverflowScrolling: "touch",
+            paddingBottom: "calc(86px + env(safe-area-inset-bottom))",
+          }}
+        >
+          <div
+            style={{
+              borderRadius: 18,
+              background: "#ffffff",
+              border: "1px solid rgba(0,0,0,.08)",
+              padding: 13,
+              marginBottom: 12,
+            }}
+          >
+            <div style={{ fontSize: ".72rem", fontWeight: 950, color: "#166534", textTransform: "uppercase" }}>
+              Viaje
+            </div>
+            <div style={{ marginTop: 5, fontWeight: 950, lineHeight: 1.3 }}>
+              {ride.originText} → {ride.destinationText}
+            </div>
+            <div style={{ marginTop: 7, fontSize: ".82rem", fontWeight: 900, color: "#333" }}>
+              Tarifa: {formatClp(fareClp)} · Pago: {isCash ? "Efectivo" : getRidePaymentMethodLabel(ride.notes)}
+            </div>
+          </div>
+
+          <div
+            style={{
+              borderRadius: 18,
+              background: destinationOk ? "#ecfdf3" : "#ffffff",
+              border: destinationOk ? "1px solid rgba(34,197,94,.45)" : "1px solid rgba(0,0,0,.08)",
+              padding: 13,
+              marginBottom: 12,
+            }}
+          >
+            <div style={{ fontWeight: 950, marginBottom: 8 }}>
+              ¿Llegaste bien al destino y el pasajero ya bajó?
+            </div>
+            <IonButton
+              expand="block"
+              color={destinationOk ? "success" : "warning"}
+              onClick={() => setDestinationOk(true)}
+              style={{ "--border-radius": "14px", fontWeight: 950 } as CSSProperties}
+            >
+              Sí, llegué bien al destino
+            </IonButton>
+          </div>
+
+          {isCash && (
+            <div
+              style={{
+                borderRadius: 20,
+                background: "#ffffff",
+                border: "1px solid rgba(210,164,58,.45)",
+                padding: 13,
+                marginBottom: 12,
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 9 }}>
+                <IonIcon icon={cashOutline} style={{ color: "#166534", fontSize: 24 }} />
+                <div>
+                  <div style={{ fontWeight: 950 }}>Pago en efectivo</div>
+                  <div style={{ fontSize: ".74rem", color: "#555", fontWeight: 800 }}>
+                    Esto se enviará al panel Admin para cuadratura.
+                  </div>
+                </div>
+              </div>
+
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 8 }}>
+                <IonButton
+                  expand="block"
+                  color={decision === "exact" ? "success" : "medium"}
+                  fill={decision === "exact" ? "solid" : "outline"}
+                  onClick={() => {
+                    setDecision("exact");
+                    setPaidAmountText("");
+                  }}
+                  style={{ "--border-radius": "14px", fontWeight: 950 } as CSSProperties}
+                >
+                  Pagó justo
+                </IonButton>
+                <IonButton
+                  expand="block"
+                  color={decision === "overpaid" ? "warning" : "medium"}
+                  fill={decision === "overpaid" ? "solid" : "outline"}
+                  onClick={() => setDecision("overpaid")}
+                  style={{ "--border-radius": "14px", fontWeight: 950 } as CSSProperties}
+                >
+                  Pagó demás
+                </IonButton>
+              </div>
+
+              {decision === "overpaid" && (
+                <div style={{ marginTop: 12 }}>
+                  <IonItem
+                    lines="none"
+                    style={{
+                      "--background": "#fffdf7",
+                      "--color": "#111111",
+                      "--highlight-color-focused": "#C89B3C",
+                      "--padding-start": "12px",
+                      "--inner-padding-end": "12px",
+                      border: "1px solid rgba(210,164,58,.55)",
+                      borderRadius: 16,
+                    } as CSSProperties}
+                  >
+                    <IonLabel position="stacked" style={{ fontWeight: 950 }}>
+                      ¿Cuánto pagó el cliente?
+                    </IonLabel>
+                    <IonInput
+                      value={paidAmountText}
+                      type="tel"
+                      inputmode="numeric"
+                      placeholder="Ej: 10000"
+                      style={{
+                        "--color": "#111111",
+                        "--placeholder-color": "#8a6a2a",
+                        "--placeholder-opacity": "1",
+                        color: "#111111",
+                        fontWeight: 950,
+                        fontSize: "1rem",
+                      } as CSSProperties}
+                      onIonInput={(event) => setPaidAmountText(String(event.detail.value ?? "").replace(/[^0-9]/g, ""))}
+                    />
+                  </IonItem>
+
+                  <div
+                    style={{
+                      marginTop: 10,
+                      borderRadius: 14,
+                      padding: "10px 12px",
+                      background: paidAmountClp != null && paidAmountClp > fareClp ? "#ecfdf3" : "#fff7ed",
+                      color: paidAmountClp != null && paidAmountClp > fareClp ? "#14532d" : "#9a3412",
+                      fontSize: ".78rem",
+                      fontWeight: 900,
+                      lineHeight: 1.35,
+                    }}
+                  >
+                    {paidAmountClp == null && "Ingresa el monto recibido."}
+                    {paidAmountClp != null && paidAmountClp <= fareClp && "Para 'pagó demás', el monto recibido debe ser mayor a la tarifa."}
+                    {paidAmountClp != null && paidAmountClp > fareClp && (
+                      <>
+                        Recibido: {formatClp(paidAmountClp)} · Pagó demás: {formatClp(overpaidClp)}
+                        <br />Admin recibirá esta diferencia para revisión/cuadratura.
+                      </>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {!isCash && (
+            <div
+              style={{
+                borderRadius: 16,
+                background: "#eef2ff",
+                color: "#1e1b4b",
+                padding: "10px 12px",
+                fontSize: ".78rem",
+                fontWeight: 900,
+                lineHeight: 1.35,
+                marginBottom: 12,
+              }}
+            >
+              Este viaje no está marcado como efectivo. Se cerrará sin pedir monto recibido.
+            </div>
+          )}
+
+          <div
+            style={{
+              position: "sticky",
+              bottom: 0,
+              zIndex: 3,
+              display: "grid",
+              gridTemplateColumns: "1fr 1.35fr",
+              gap: 8,
+              margin: "12px -12px -12px",
+              padding: "10px 12px calc(12px + env(safe-area-inset-bottom))",
+              background: "linear-gradient(180deg,rgba(246,242,236,.88),#F6F2EC 34%)",
+              borderTop: "1px solid rgba(210,164,58,.24)",
+              boxShadow: "0 -12px 28px rgba(0,0,0,.08)",
+            }}
+          >
+            <IonButton
+              expand="block"
+              color="medium"
+              fill="outline"
+              disabled={loading}
+              onClick={onCancel}
+              style={{ "--border-radius": "14px", fontWeight: 950 } as CSSProperties}
+            >
+              Seguir viaje
+            </IonButton>
+            <IonButton
+              expand="block"
+              color="success"
+              disabled={!canConfirm || loading}
+              onClick={confirmClose}
+              style={{ "--border-radius": "14px", fontWeight: 950 } as CSSProperties}
+            >
+              {loading ? <IonSpinner name="dots" /> : isCash ? "Cerrar y enviar al admin" : "Cerrar carrera"}
+            </IonButton>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function normalizeTripTypeText(value: unknown): string {
   return String(value ?? "")
     .normalize("NFD")
@@ -9292,7 +10087,10 @@ function AssignedRidesPage(): JSX.Element {
     setCompleteConfirmRide(ride);
   }
 
-  async function performCompleteRide(ride: DriverRideData): Promise<void> {
+  async function performCompleteRide(
+    ride: DriverRideData,
+    cashClosure?: DriverCashClosurePayload | null,
+  ): Promise<void> {
     if (!session?.accessToken) return;
 
     const rideId = String(ride.id ?? "").trim();
@@ -9302,11 +10100,21 @@ function AssignedRidesPage(): JSX.Element {
       const completed = await ridesService.completeRide(session.accessToken, rideId);
       const currentRide = assignedRides.find((item) => item.id === rideId) ?? ride;
       const completedAt = new Date().toISOString();
+      const cashPatch = buildDriverCashClosureRidePatch(currentRide, cashClosure);
+
+      if (cashClosure) {
+        persistDriverCashClosureForAdmin(
+          { ...(currentRide as unknown as Record<string, unknown>), ...cashPatch, completedAt, closedByDriverAt: completedAt },
+          cashClosure,
+          session?.user,
+        );
+      }
 
       saveDriverCompletedRideForEarnings(
         {
           ...(currentRide as DriverEarningsRide | undefined),
           ...((completed ?? {}) as Record<string, unknown>),
+          ...cashPatch,
           id: rideId,
           status: "completed",
           completedAt,
@@ -9317,7 +10125,7 @@ function AssignedRidesPage(): JSX.Element {
       );
 
       clearDriverLiveLocationForPassenger(rideId);
-      removeDriverActiveRideLocalMirror(currentRide as unknown as Record<string, unknown>, session?.user);
+      removeDriverActiveRideLocalMirror({ ...(currentRide as unknown as Record<string, unknown>), ...cashPatch }, session?.user);
 
       const nextActive = promoteDriverNextRideAfterCompletion(rideId, session?.user);
       const currentLocation = driverLocationRef.current ?? driverLocation;
@@ -9343,7 +10151,7 @@ function AssignedRidesPage(): JSX.Element {
         setError(null);
       }
 
-      window.dispatchEvent(new CustomEvent("rapago:passenger-rides-updated", { detail: { rideId, status: "completed" } }));
+      window.dispatchEvent(new CustomEvent("rapago:passenger-rides-updated", { detail: { rideId, status: "completed", cashClosure } }));
       await loadRides();
     } catch (err) {
       setError(
@@ -10535,6 +11343,14 @@ function AssignedRidesPage(): JSX.Element {
           ? "Navegando al destino"
           : "Navegando al punto de recogida";
 
+    // El mapa debe quedar visible: los botones de acción van debajo,
+    // no encima del mapa. En celular se reduce la altura para que
+    // "Llegué al punto / Cancelar" quede siempre a la vista.
+    const activeMapHeight =
+      typeof window !== "undefined"
+        ? Math.max(310, Math.min(430, window.innerHeight - 280))
+        : 390;
+
     return (
       <div
         style={{
@@ -10544,25 +11360,27 @@ function AssignedRidesPage(): JSX.Element {
           color: "#F6F2EC",
           display: "flex",
           flexDirection: "column",
+          paddingBottom: 92,
         }}
       >
-        <div style={{ flex: 1, position: "relative", minHeight: 420 }}>
+        <div style={{ flex: "0 0 auto", position: "relative", minHeight: activeMapHeight }}>
           <UberDriverNavigationMap
             ride={ride}
-            height={520}
+            height={activeMapHeight}
             driverUser={session?.user}
           />
+        </div>
 
+        {/* Panel de acciones separado del mapa: visible pero sin tapar la navegación */}
+        <div style={{ padding: "12px 14px 18px", flex: "0 0 auto" }}>
           <div
             style={{
-              position: "absolute",
-              left: 16,
-              right: 16,
-              bottom: 16,
-              zIndex: 30,
+              position: "relative",
+              zIndex: 3,
               pointerEvents: "auto",
               ...uberPanelStyle({
-                padding: 18,
+                padding: 16,
+                borderRadius: "22px",
               }),
             }}
           >
@@ -11222,28 +12040,16 @@ function AssignedRidesPage(): JSX.Element {
 
       <style>{`.rapago-danger-alert { --background: #2A1A18; --color: #ffffff; --button-color: #ff6467; } .rapago-danger-alert .alert-title { color: #fecaca; font-weight: 950; } .rapago-danger-alert .alert-message { color: rgba(255,255,255,.82); } .rapago-complete-alert { --background: #F6F2EC; --color: #111111; } .rapago-complete-alert .alert-title { color: #14532d; font-weight: 950; }`}</style>
 
-      <IonAlert
-        isOpen={Boolean(completeConfirmRide)}
-        header="¿Llegaste bien al destino?"
-        message="Confirma solo cuando el pasajero ya bajó y la carrera quedó cerrada. Después se guardará como completada y, si aceptaste otro servicio, se activará como próximo viaje."
-        cssClass="rapago-complete-alert"
-        onDidDismiss={() => setCompleteConfirmRide(null)}
-        buttons={[
-          {
-            text: "No, seguir viaje",
-            role: "cancel",
-          },
-          {
-            text: "Sí, cerrar carrera",
-            role: "confirm",
-            handler: () => {
-              if (completeConfirmRide) {
-                void performCompleteRide(completeConfirmRide);
-              }
-            },
-          },
-        ]}
-      />
+      {completeConfirmRide && (
+        <DriverCashCloseRideOverlay
+          ride={completeConfirmRide}
+          user={session?.user}
+          onCancel={() => setCompleteConfirmRide(null)}
+          onConfirm={(ride, cashClosure) => {
+            void performCompleteRide(ride, cashClosure);
+          }}
+        />
+      )}
 
       <IonAlert
         isOpen={Boolean(cancelConfirmRide)}
@@ -11346,6 +12152,13 @@ function DriverHistoryRideCard({
                 style={{ marginTop: 8, fontWeight: 800, fontSize: ".82rem" }}
               >
                 Precio: {formatClp(displayFareClp)} · Pago: {paymentLabel}
+                {((ride as Record<string, unknown>).cashPaymentConfirmedByDriver === true || (ride as Record<string, unknown>).cashPaymentClosure) && (
+                  <>
+                    <br />
+                    Efectivo recibido: {formatClp(Number((ride as Record<string, unknown>).cashPaidClp ?? (ride as Record<string, unknown>).paymentReceivedByDriverClp ?? 0))}
+                    {Number((ride as Record<string, unknown>).cashOverpaidClp ?? 0) > 0 && ` · Pagó demás: ${formatClp(Number((ride as Record<string, unknown>).cashOverpaidClp))}`}
+                  </>
+                )}
               </div>
             )}
 
@@ -11521,7 +12334,10 @@ function DriverMyRidesPage(): JSX.Element {
     }
   }
 
-  async function completeActiveRideFromMyRides(ride: DriverRideData): Promise<void> {
+  async function completeActiveRideFromMyRides(
+    ride: DriverRideData,
+    cashClosure?: DriverCashClosurePayload | null,
+  ): Promise<void> {
     if (!session?.accessToken || !ride?.id) return;
 
     setActionLoading(ride.id);
@@ -11530,11 +12346,21 @@ function DriverMyRidesPage(): JSX.Element {
     try {
       const completed = await ridesService.completeRide(session.accessToken, ride.id);
       const completedAt = new Date().toISOString();
+      const cashPatch = buildDriverCashClosureRidePatch(ride, cashClosure);
+
+      if (cashClosure) {
+        persistDriverCashClosureForAdmin(
+          { ...(ride as unknown as Record<string, unknown>), ...cashPatch, completedAt, closedByDriverAt: completedAt },
+          cashClosure,
+          session?.user,
+        );
+      }
 
       saveDriverCompletedRideForEarnings(
         {
           ...(ride as DriverEarningsRide),
           ...((completed ?? {}) as Record<string, unknown>),
+          ...cashPatch,
           status: "completed",
           completedAt,
           closedByDriverAt: completedAt,
@@ -11544,21 +12370,23 @@ function DriverMyRidesPage(): JSX.Element {
       );
 
       clearDriverLiveLocationForPassenger(ride.id);
-      removeDriverActiveRideLocalMirror(ride as unknown as Record<string, unknown>, session?.user);
+      removeDriverActiveRideLocalMirror({ ...(ride as unknown as Record<string, unknown>), ...cashPatch }, session?.user);
 
       const nextActive = promoteDriverNextRideAfterCompletion(ride.id, session?.user);
       setRides((prev) => {
         const completedRide = {
           ...ride,
           ...((completed ?? {}) as Record<string, unknown>),
+          ...cashPatch,
           status: "completed",
           completedAt,
+          closedByDriverAt: completedAt,
         } as DriverRideData;
         const withoutCurrent = prev.filter((item) => item.id !== ride.id);
         return nextActive ? [nextActive, completedRide, ...withoutCurrent] : [completedRide, ...withoutCurrent];
       });
 
-      window.dispatchEvent(new CustomEvent("rapago:passenger-rides-updated", { detail: { rideId: ride.id, status: "completed" } }));
+      window.dispatchEvent(new CustomEvent("rapago:passenger-rides-updated", { detail: { rideId: ride.id, status: "completed", cashClosure } }));
       if (!nextActive) await loadRides();
     } catch (err) {
       setLoadError(err instanceof Error ? err.message : "No se pudo finalizar el viaje.");
@@ -11897,6 +12725,13 @@ function DriverMyRidesPage(): JSX.Element {
                           >
                             Precio: {formatClp(getRideDisplayFareClp(ride))} ·
                             Pago: {getRidePaymentMethodLabel(ride.notes)}
+                            {((ride as Record<string, unknown>).cashPaymentConfirmedByDriver === true || (ride as Record<string, unknown>).cashPaymentClosure) && (
+                              <>
+                                <br />
+                                Efectivo recibido: {formatClp(Number((ride as Record<string, unknown>).cashPaidClp ?? (ride as Record<string, unknown>).paymentReceivedByDriverClp ?? 0))}
+                                {Number((ride as Record<string, unknown>).cashOverpaidClp ?? 0) > 0 && ` · Pagó demás: ${formatClp(Number((ride as Record<string, unknown>).cashOverpaidClp))}`}
+                              </>
+                            )}
                             <br />
                             Vehículo: {rideVehicleEmoji} {rideVehicleLabel}
                           </div>
@@ -11912,22 +12747,17 @@ function DriverMyRidesPage(): JSX.Element {
         )}
       </IonContent>
 
-      <IonAlert
-        isOpen={Boolean(completeConfirmRide)}
-        header="¿Llegaste bien al destino?"
-        message="Confirma solo cuando el pasajero ya bajó y la carrera quedó cerrada. Así no se reinicia el viaje y queda guardado como completado."
-        onDidDismiss={() => setCompleteConfirmRide(null)}
-        buttons={[
-          { text: "No, seguir viaje", role: "cancel" },
-          {
-            text: "Sí, cerrar carrera",
-            role: "confirm",
-            handler: () => {
-              if (completeConfirmRide) void completeActiveRideFromMyRides(completeConfirmRide);
-            },
-          },
-        ]}
-      />
+      {completeConfirmRide && (
+        <DriverCashCloseRideOverlay
+          ride={completeConfirmRide}
+          user={session?.user}
+          loading={actionLoading === completeConfirmRide.id}
+          onCancel={() => setCompleteConfirmRide(null)}
+          onConfirm={(ride, cashClosure) => {
+            void completeActiveRideFromMyRides(ride, cashClosure);
+          }}
+        />
+      )}
     </IonPage>
   );
 }

@@ -122,7 +122,7 @@ function timeAgo(isoString: string): string {
 }
 
 
-type AdminCashPaymentDecision = "exact" | "wallet_credit" | "refund_whatsapp";
+type AdminCashPaymentDecision = "exact" | "wallet_credit" | "refund_whatsapp" | "driver_overpaid";
 
 type AdminCashPaymentReview = {
   id: string;
@@ -134,11 +134,24 @@ type AdminCashPaymentReview = {
   paidClp: number;
   overpaidClp: number;
   decision: AdminCashPaymentDecision;
-  status: "completed" | "pending_refund" | "wallet_available" | string;
+  status: "completed" | "pending_refund" | "wallet_available" | "pending_driver_review" | string;
   adminReviewStatus?: "not_required" | "pending_admin" | "admin_approved" | "refund_requested" | "refund_completed" | string;
   createdAt: string;
   passengerEmail?: string | null;
   passengerName?: string | null;
+  driverPaidClp?: number | null;
+  driverOverpaidClp?: number | null;
+  driverDecision?: "exact" | "overpaid" | string | null;
+  driverReportedAt?: string | null;
+  driverName?: string | null;
+  driverEmail?: string | null;
+  passengerPaidClp?: number | null;
+  passengerOverpaidClp?: number | null;
+  passengerDecision?: AdminCashPaymentDecision | string | null;
+  passengerReportedAt?: string | null;
+  passengerWantsWalletCredit?: boolean | null;
+  passengerWantsRefund?: boolean | null;
+  versionDifferenceClp?: number | null;
 };
 
 type AdminWalletBenefit = {
@@ -157,6 +170,8 @@ type AdminWalletBenefit = {
   adminReviewStatus?: string | null;
   fareClp?: number | null;
   paidClp?: number | null;
+  driverPaidClp?: number | null;
+  passengerPaidClp?: number | null;
 };
 
 type AdminPassengerPendingCharge = {
@@ -188,41 +203,191 @@ const RAPAGO_WALLET_BENEFITS_KEY_ADMIN = "rapago_wallet_benefits_v1";
 const RAPAGO_PASSENGER_PENDING_CHARGES_KEY_ADMIN = "rapago_passenger_pending_charges_v1";
 const RAPAGO_PASSENGER_PENDING_CHARGE_EVENT_ADMIN = "rapago:passenger-pending-charge-updated";
 
+const RAPAGO_ADMIN_CASH_REVIEW_SOURCE_KEYS = [
+  RAPAGO_CASH_PAYMENT_REVIEWS_KEY_ADMIN,
+  "rapago_driver_cash_closures_v1",
+  "rapago_admin_cash_closures_v1",
+  "rapago_admin_cash_payment_closures_v1",
+  "rapago_last_driver_cash_closure_for_admin",
+] as const;
+
 function formatAdminCashClp(value: number | null | undefined): string {
   const amount = Number(value ?? 0);
   if (!Number.isFinite(amount)) return "$0 CLP";
   return `$${Math.max(0, Math.round(amount)).toLocaleString("es-CL")} CLP`;
 }
 
-function readAdminCashPaymentReviews(): AdminCashPaymentReview[] {
+function readAdminCashStorageRows(key: string): Array<Record<string, unknown>> {
   try {
-    const raw = localStorage.getItem(RAPAGO_CASH_PAYMENT_REVIEWS_KEY_ADMIN);
-    const parsed = raw ? (JSON.parse(raw) as Record<string, AdminCashPaymentReview> | AdminCashPaymentReview[]) : {};
-    const list = Array.isArray(parsed) ? parsed : Object.values(parsed);
+    const raw = localStorage.getItem(key) || sessionStorage.getItem(key);
+    if (!raw) return [];
 
-    return list
-      .filter((item) => item && typeof item === "object")
-      .map((item, index) => ({
-        ...item,
-        id: String(item.id ?? `cash-review-${index}`),
-        rideId: String(item.rideId ?? ""),
-        rideKey: String(item.rideKey ?? item.rideId ?? `cash-review-${index}`),
-        originText: String(item.originText ?? ""),
-        destinationText: String(item.destinationText ?? ""),
-        fareClp: Math.max(0, Math.round(Number(item.fareClp ?? 0))),
-        paidClp: Math.max(0, Math.round(Number(item.paidClp ?? 0))),
-        overpaidClp: Math.max(0, Math.round(Number(item.overpaidClp ?? 0))),
-        decision: (String(item.decision ?? "exact") as AdminCashPaymentDecision),
-        status: String(item.status ?? "completed"),
-        adminReviewStatus: String(item.adminReviewStatus ?? (item.decision === "wallet_credit" ? "pending_admin" : item.decision === "refund_whatsapp" ? "refund_requested" : "not_required")),
-        createdAt: String(item.createdAt ?? new Date().toISOString()),
-        passengerEmail: item.passengerEmail ?? null,
-        passengerName: item.passengerName ?? null,
-      }))
-      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    const parsed = JSON.parse(raw) as unknown;
+    if (Array.isArray(parsed)) return parsed.filter((item): item is Record<string, unknown> => Boolean(item && typeof item === "object"));
+    if (parsed && typeof parsed === "object") {
+      const record = parsed as Record<string, unknown>;
+      const looksLikeSingle = Boolean(record.rideId || record.rideKey || record.paidClp || record.cashPaidClp || record.paymentReceivedByDriverClp);
+      if (looksLikeSingle) return [record];
+      return Object.values(record).filter((item): item is Record<string, unknown> => Boolean(item && typeof item === "object"));
+    }
   } catch {
     return [];
   }
+
+  return [];
+}
+
+function adminCashNumber(...values: unknown[]): number {
+  for (const value of values) {
+    const parsed = Number(value);
+    if (Number.isFinite(parsed) && parsed > 0) return Math.round(parsed);
+  }
+  return 0;
+}
+
+function adminCashString(...values: unknown[]): string {
+  for (const value of values) {
+    const text = String(value ?? "").trim();
+    if (text) return text;
+  }
+  return "";
+}
+
+function getAdminCashRideMergeKey(item: Record<string, unknown>): string {
+  const rideId = adminCashString(item.rideId, item.idRide, item.originalRideId, item.serverRideId);
+  const rideKey = adminCashString(item.rideKey);
+  if (rideKey) return rideKey;
+  if (rideId) return `ride:${rideId}`;
+
+  return [
+    adminCashString(item.passengerEmail).toLowerCase(),
+    adminCashString(item.originText).toLowerCase(),
+    adminCashString(item.destinationText).toLowerCase(),
+    adminCashString(item.completedAt, item.closedByDriverAt, item.createdAt),
+  ].join("|");
+}
+
+function cashReviewSourceIsDriver(key: string, item: Record<string, unknown>): boolean {
+  const decision = String(item.decision ?? item.cashPaymentDecision ?? "").toLowerCase();
+  return (
+    key.includes("driver_cash") ||
+    key.includes("admin_cash_closures") ||
+    String(item.id ?? "").startsWith("driver-cash-close") ||
+    item.cashPaymentConfirmedByDriver === true ||
+    item.driverCashClosure != null ||
+    decision === "overpaid"
+  );
+}
+
+function normalizeAdminCashDecision(value: unknown): AdminCashPaymentDecision {
+  const raw = String(value ?? "").toLowerCase().trim();
+  if (raw === "wallet_credit") return "wallet_credit";
+  if (raw === "refund_whatsapp") return "refund_whatsapp";
+  if (raw === "overpaid" || raw === "driver_overpaid") return "driver_overpaid";
+  return "exact";
+}
+
+function readAdminCashPaymentReviews(): AdminCashPaymentReview[] {
+  const byRideKey: Record<string, AdminCashPaymentReview> = {};
+
+  for (const storageKey of RAPAGO_ADMIN_CASH_REVIEW_SOURCE_KEYS) {
+    for (const item of readAdminCashStorageRows(storageKey)) {
+      const rideKey = getAdminCashRideMergeKey(item);
+      if (!rideKey) continue;
+
+      const rideId = adminCashString(item.rideId, item.originalRideId, rideKey);
+      const fareClp = adminCashNumber(item.fareClp, item.cashFareClp, item.priceClp, item.estimatedFareClp);
+      const paidClp = adminCashNumber(item.paidClp, item.cashPaidClp, item.paymentReceivedByDriverClp);
+      const explicitOverpaid = adminCashNumber(item.overpaidClp, item.cashOverpaidClp, item.paymentDifferenceClp);
+      const calculatedOverpaid = paidClp > 0 && fareClp > 0 ? Math.max(0, paidClp - fareClp) : 0;
+      const overpaidClp = Math.max(explicitOverpaid, calculatedOverpaid);
+      const isDriverSource = cashReviewSourceIsDriver(storageKey, item);
+      const decision = normalizeAdminCashDecision(item.decision ?? item.cashPaymentDecision);
+      const createdAt = adminCashString(item.createdAt, item.closedByDriverAt, item.completedAt, new Date().toISOString());
+
+      const current = byRideKey[rideKey] ?? {
+        id: `cash-review-${rideKey}`,
+        rideId: rideId || rideKey,
+        rideKey,
+        originText: adminCashString(item.originText, "Origen"),
+        destinationText: adminCashString(item.destinationText, "Destino"),
+        fareClp,
+        paidClp,
+        overpaidClp,
+        decision: "exact" as AdminCashPaymentDecision,
+        status: "completed",
+        adminReviewStatus: "not_required",
+        createdAt,
+        passengerEmail: adminCashString(item.passengerEmail, item.email) || null,
+        passengerName: adminCashString(item.passengerName, item.userName, item.name) || null,
+      };
+
+      current.rideId = current.rideId || rideId || rideKey;
+      current.originText = current.originText || adminCashString(item.originText, "Origen");
+      current.destinationText = current.destinationText || adminCashString(item.destinationText, "Destino");
+      current.fareClp = Math.max(current.fareClp || 0, fareClp || 0);
+      current.passengerEmail = current.passengerEmail || adminCashString(item.passengerEmail, item.email) || null;
+      current.passengerName = current.passengerName || adminCashString(item.passengerName, item.userName, item.name) || null;
+      current.createdAt = new Date(createdAt).getTime() > new Date(current.createdAt).getTime() ? createdAt : current.createdAt;
+
+      if (isDriverSource) {
+        current.driverPaidClp = paidClp || current.driverPaidClp || null;
+        current.driverOverpaidClp = overpaidClp || current.driverOverpaidClp || 0;
+        current.driverDecision = overpaidClp > 0 || decision === "driver_overpaid" ? "overpaid" : "exact";
+        current.driverReportedAt = adminCashString(item.closedByDriverAt, item.createdAt, item.completedAt) || current.driverReportedAt || null;
+        current.driverName = adminCashString(item.driverName, item.driverFullName) || current.driverName || null;
+        current.driverEmail = adminCashString(item.driverEmail) || current.driverEmail || null;
+      } else {
+        current.passengerPaidClp = paidClp || current.passengerPaidClp || null;
+        current.passengerOverpaidClp = overpaidClp || current.passengerOverpaidClp || 0;
+        current.passengerDecision = decision;
+        current.passengerReportedAt = adminCashString(item.createdAt, item.updatedAt) || current.passengerReportedAt || null;
+        current.passengerWantsWalletCredit = decision === "wallet_credit" || current.passengerWantsWalletCredit || false;
+        current.passengerWantsRefund = decision === "refund_whatsapp" || current.passengerWantsRefund || false;
+      }
+
+      byRideKey[rideKey] = current;
+    }
+  }
+
+  return Object.values(byRideKey)
+    .map((review) => {
+      const driverPaid = Number(review.driverPaidClp ?? 0);
+      const passengerPaid = Number(review.passengerPaidClp ?? 0);
+      const driverOverpaid = Number(review.driverOverpaidClp ?? 0);
+      const passengerOverpaid = Number(review.passengerOverpaidClp ?? 0);
+      const versionDifferenceClp = driverPaid > 0 && passengerPaid > 0 ? Math.abs(passengerPaid - driverPaid) : 0;
+
+      const decision: AdminCashPaymentDecision = review.passengerWantsWalletCredit
+        ? "wallet_credit"
+        : review.passengerWantsRefund
+          ? "refund_whatsapp"
+          : driverOverpaid > 0 || passengerOverpaid > 0
+            ? "driver_overpaid"
+            : "exact";
+
+      const adminReviewStatus = review.adminReviewStatus && review.adminReviewStatus !== "not_required"
+        ? review.adminReviewStatus
+        : decision === "wallet_credit"
+          ? "pending_admin"
+          : decision === "refund_whatsapp"
+            ? "refund_requested"
+            : decision === "driver_overpaid"
+              ? "pending_admin"
+              : "not_required";
+
+      return {
+        ...review,
+        paidClp: passengerPaid || driverPaid || review.paidClp || 0,
+        overpaidClp: Math.max(passengerOverpaid, driverOverpaid, review.overpaidClp || 0),
+        decision,
+        status: decision === "wallet_credit" ? "wallet_available" : decision === "refund_whatsapp" ? "pending_refund" : decision === "driver_overpaid" ? "pending_driver_review" : "completed",
+        adminReviewStatus,
+        versionDifferenceClp,
+      };
+    })
+    .filter((review) => review.rideKey || review.rideId)
+    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 }
 
 function writeAdminCashPaymentReviews(reviews: AdminCashPaymentReview[]): void {
@@ -371,8 +536,9 @@ function isAdminCashRefundCompleted(review: AdminCashPaymentReview): boolean {
 }
 
 function adminCashReviewDecisionLabel(review: AdminCashPaymentReview): string {
-  if (review.decision === "wallet_credit") return "Saldo a favor";
+  if (review.decision === "wallet_credit") return "Saldo a favor solicitado";
   if (review.decision === "refund_whatsapp") return "Devolución por WhatsApp";
+  if (review.decision === "driver_overpaid") return "Pago de más informado";
   return "Pagó justo";
 }
 
@@ -383,17 +549,24 @@ function adminCashReviewStatusLabel(review: AdminCashPaymentReview): string {
   if (review.decision === "refund_whatsapp") {
     return isAdminCashRefundCompleted(review) ? "Devolución gestionada" : "Pendiente devolución";
   }
+  if (review.decision === "driver_overpaid") {
+    return isAdminCashWalletApproved(review) ? "Diferencia revisada" : "Revisar conductor/usuario";
+  }
   return "Sin diferencia";
 }
 
 function adminCashReviewStatusColor(review: AdminCashPaymentReview): string {
   if (review.decision === "wallet_credit") return isAdminCashWalletApproved(review) ? "success" : "warning";
   if (review.decision === "refund_whatsapp") return isAdminCashRefundCompleted(review) ? "success" : "danger";
+  if (review.decision === "driver_overpaid") return isAdminCashWalletApproved(review) ? "success" : "tertiary";
   return "medium";
 }
 
 function approveAdminCashWalletCredit(review: AdminCashPaymentReview): void {
   const now = new Date().toISOString();
+  const creditAmount = Math.max(0, Math.round(Number(review.passengerOverpaidClp ?? review.overpaidClp ?? 0)));
+  if (creditAmount <= 0) return;
+
   const updatedReviews = readAdminCashPaymentReviews().map((item) => {
     if ((item.rideKey || item.rideId || item.id) !== (review.rideKey || review.rideId || review.id)) return item;
     return {
@@ -412,17 +585,19 @@ function approveAdminCashWalletCredit(review: AdminCashPaymentReview): void {
     rideId: review.rideId || null,
     passengerEmail: review.passengerEmail ?? null,
     ownerKey: review.passengerEmail ?? null,
-    amountClp: review.overpaidClp,
+    amountClp: creditAmount,
     status: "available",
     source: "cash_overpayment",
     title: "Pago de más en efectivo",
-    description: `Saldo aprobado por admin. Viaje ${review.originText} → ${review.destinationText}.`,
+    description: `Saldo aprobado por admin para próximo viaje. Usuario declaró ${formatAdminCashClp(review.passengerPaidClp ?? review.paidClp)} y conductor declaró ${formatAdminCashClp(review.driverPaidClp ?? 0)}. Viaje ${review.originText} → ${review.destinationText}.`,
     createdAt: review.createdAt,
     approvedAt: now,
     approvedBy: "admin",
     adminReviewStatus: "admin_approved",
     fareClp: review.fareClp,
     paidClp: review.paidClp,
+    driverPaidClp: review.driverPaidClp ?? null,
+    passengerPaidClp: review.passengerPaidClp ?? review.paidClp,
   };
 
   writeAdminWalletBenefits([
@@ -437,6 +612,19 @@ function markAdminCashRefundCompleted(review: AdminCashPaymentReview): void {
     return {
       ...item,
       adminReviewStatus: "refund_completed",
+      status: "completed",
+    };
+  });
+
+  writeAdminCashPaymentReviews(updatedReviews);
+}
+
+function markAdminCashDriverReviewCompleted(review: AdminCashPaymentReview): void {
+  const updatedReviews = readAdminCashPaymentReviews().map((item) => {
+    if ((item.rideKey || item.rideId || item.id) !== (review.rideKey || review.rideId || review.id)) return item;
+    return {
+      ...item,
+      adminReviewStatus: "admin_approved",
       status: "completed",
     };
   });
@@ -714,6 +902,7 @@ export function AdminHomePage(): JSX.Element {
   const pendingCashPaymentReviews = cashPaymentReviews.filter((review) => {
     if (review.decision === "wallet_credit") return !isAdminCashWalletApproved(review);
     if (review.decision === "refund_whatsapp") return !isAdminCashRefundCompleted(review);
+    if (review.decision === "driver_overpaid") return !isAdminCashWalletApproved(review);
     return false;
   });
   const pendingCashAmountClp = pendingCashPaymentReviews.reduce((sum, review) => sum + Math.max(0, review.overpaidClp), 0);
@@ -795,6 +984,12 @@ export function AdminHomePage(): JSX.Element {
       label: "Cobranza",
       description: `${passengerChargesPendingNextRide.length + pendingCashPaymentReviews.length} pendiente${passengerChargesPendingNextRide.length + pendingCashPaymentReviews.length !== 1 ? "s" : ""}`,
       icon: cardOutline,
+      route: "__admin_charges__",
+    },
+    {
+      label: "Efectivo",
+      description: `${cashPaymentReviews.length} revisión${cashPaymentReviews.length !== 1 ? "es" : ""}`,
+      icon: cashOutline,
       route: "__admin_charges__",
     },
     {
@@ -1558,7 +1753,20 @@ export function AdminHomePage(): JSX.Element {
                       {cashPaymentReviews.slice(0, 8).map((review) => {
                         const isWallet = review.decision === "wallet_credit";
                         const isRefund = review.decision === "refund_whatsapp";
+                        const isDriverReview = review.decision === "driver_overpaid";
                         const passengerLabel = review.passengerName || review.passengerEmail || "Pasajero";
+                        const driverPaidClp = Number(review.driverPaidClp ?? 0);
+                        const passengerPaidClp = Number(review.passengerPaidClp ?? 0);
+                        const driverOverpaidClp = Number(review.driverOverpaidClp ?? 0);
+                        const passengerOverpaidClp = Number(review.passengerOverpaidClp ?? 0);
+                        const versionDifferenceClp = Number(review.versionDifferenceClp ?? 0);
+                        const passengerChoice = review.passengerWantsWalletCredit
+                          ? "Quiere saldo para próximo viaje"
+                          : review.passengerWantsRefund
+                            ? "Pidió devolución"
+                            : passengerPaidClp > 0
+                              ? "Declaró pago"
+                              : "Sin declaración de usuario";
 
                         return (
                           <div
@@ -1606,24 +1814,50 @@ export function AdminHomePage(): JSX.Element {
                               style={{
                                 marginTop: 10,
                                 display: "grid",
-                                gridTemplateColumns: "1fr 1fr 1fr",
+                                gridTemplateColumns: "repeat(auto-fit, minmax(112px, 1fr))",
                                 gap: 8,
                               }}
                             >
                               <div style={{ background: "rgba(0,0,0,.035)", borderRadius: 12, padding: 8 }}>
-                                <div style={{ fontSize: ".66rem", color: "#666", fontWeight: 900 }}>Precio</div>
+                                <div style={{ fontSize: ".66rem", color: "#666", fontWeight: 900 }}>Precio app</div>
                                 <div style={{ fontWeight: 950, color: "#111", fontSize: ".82rem" }}>{formatAdminCashClp(review.fareClp)}</div>
                               </div>
-                              <div style={{ background: "rgba(0,0,0,.035)", borderRadius: 12, padding: 8 }}>
-                                <div style={{ fontSize: ".66rem", color: "#666", fontWeight: 900 }}>Pagó</div>
-                                <div style={{ fontWeight: 950, color: "#111", fontSize: ".82rem" }}>{formatAdminCashClp(review.paidClp)}</div>
+                              <div style={{ background: "rgba(22,101,52,.08)", borderRadius: 12, padding: 8 }}>
+                                <div style={{ fontSize: ".66rem", color: "#166534", fontWeight: 900 }}>Conductor declaró</div>
+                                <div style={{ fontWeight: 950, color: "#111", fontSize: ".82rem" }}>{driverPaidClp > 0 ? formatAdminCashClp(driverPaidClp) : "No informado"}</div>
+                                {driverOverpaidClp > 0 && <div style={{ marginTop: 2, fontSize: ".66rem", color: "#166534", fontWeight: 900 }}>Pagó demás: {formatAdminCashClp(driverOverpaidClp)}</div>}
                               </div>
-                              <div style={{ background: "rgba(0,0,0,.035)", borderRadius: 12, padding: 8 }}>
-                                <div style={{ fontSize: ".66rem", color: "#666", fontWeight: 900 }}>Diferencia</div>
-                                <div style={{ fontWeight: 950, color: "#111", fontSize: ".82rem" }}>{formatAdminCashClp(review.overpaidClp)}</div>
+                              <div style={{ background: "rgba(37,99,235,.08)", borderRadius: 12, padding: 8 }}>
+                                <div style={{ fontSize: ".66rem", color: "#1d4ed8", fontWeight: 900 }}>Usuario declaró</div>
+                                <div style={{ fontWeight: 950, color: "#111", fontSize: ".82rem" }}>{passengerPaidClp > 0 ? formatAdminCashClp(passengerPaidClp) : "No informado"}</div>
+                                {passengerOverpaidClp > 0 && <div style={{ marginTop: 2, fontSize: ".66rem", color: "#1d4ed8", fontWeight: 900 }}>Pagó demás: {formatAdminCashClp(passengerOverpaidClp)}</div>}
+                              </div>
+                              <div style={{ background: versionDifferenceClp > 0 ? "rgba(245,158,11,.16)" : "rgba(0,0,0,.035)", borderRadius: 12, padding: 8 }}>
+                                <div style={{ fontSize: ".66rem", color: "#92400e", fontWeight: 900 }}>Diferencia versiones</div>
+                                <div style={{ fontWeight: 950, color: "#111", fontSize: ".82rem" }}>{versionDifferenceClp > 0 ? formatAdminCashClp(versionDifferenceClp) : "Sin diferencia"}</div>
                               </div>
                             </div>
 
+                            <div
+                              style={{
+                                marginTop: 10,
+                                padding: 10,
+                                borderRadius: 14,
+                                background: "rgba(255,255,255,.76)",
+                                border: "1px solid rgba(0,0,0,.06)",
+                                color: "#111",
+                                fontSize: ".76rem",
+                                fontWeight: 850,
+                                lineHeight: 1.36,
+                              }}
+                            >
+                              <strong>Revisión separada:</strong><br />
+                              Conductor: {driverPaidClp > 0 ? formatAdminCashClp(driverPaidClp) : "sin monto"} · Usuario: {passengerPaidClp > 0 ? formatAdminCashClp(passengerPaidClp) : "sin monto"}.
+                              <br />Decisión usuario: <strong>{passengerChoice}</strong>.
+                              {review.passengerWantsWalletCredit && passengerOverpaidClp > 0 && (
+                                <><br />Si apruebas, {formatAdminCashClp(passengerOverpaidClp)} quedará disponible en la billetera del usuario para su próximo viaje.</>
+                              )}
+                            </div>
                             <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 10 }}>
                               {isWallet && !isAdminCashWalletApproved(review) && (
                                 <IonButton
@@ -1650,6 +1884,20 @@ export function AdminHomePage(): JSX.Element {
                                   }}
                                 >
                                   Marcar devolución gestionada
+                                </IonButton>
+                              )}
+
+                              {isDriverReview && !isAdminCashWalletApproved(review) && (
+                                <IonButton
+                                  size="small"
+                                  color="tertiary"
+                                  onClick={() => {
+                                    markAdminCashDriverReviewCompleted(review);
+                                    setCashReviewsRevision((current) => current + 1);
+                                    setAdminCashToast("Diferencia de efectivo marcada como revisada.");
+                                  }}
+                                >
+                                  Marcar revisado
                                 </IonButton>
                               )}
 

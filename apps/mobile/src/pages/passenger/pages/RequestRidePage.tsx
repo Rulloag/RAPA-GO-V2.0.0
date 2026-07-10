@@ -170,6 +170,180 @@ function markPassengerPendingChargesAppliedToRide(user: unknown, rideId: string 
   }
 }
 
+const RAPAGO_WALLET_BENEFITS_KEY_REQUEST = "rapago_wallet_benefits_v1";
+const RAPAGO_WALLET_BENEFIT_EVENT_REQUEST = "rapago:wallet-benefit-updated";
+
+type PassengerWalletBenefitForRequest = {
+  id: string;
+  rideId?: string | null;
+  passengerEmail?: string | null;
+  ownerKey?: string | null;
+  amountClp: number;
+  status: "pending_admin" | "available" | "used" | "rejected" | string;
+  source?: string | null;
+  title?: string | null;
+  description?: string | null;
+  createdAt?: string | null;
+  approvedAt?: string | null;
+  approvedBy?: string | null;
+  adminReviewStatus?: string | null;
+  fareClp?: number | null;
+  paidClp?: number | null;
+  appliedRideId?: string | null;
+  appliedAt?: string | null;
+  usedAmountClp?: number | null;
+};
+
+function normalizeWalletBenefitEmailForRequest(value: unknown): string {
+  return String(value ?? "").trim().toLowerCase();
+}
+
+function getWalletBenefitSessionEmailForRequest(user: unknown): string {
+  if (!user || typeof user !== "object") return "";
+  return normalizeWalletBenefitEmailForRequest((user as Record<string, unknown>).email);
+}
+
+function isPassengerWalletBenefitAvailableForRequest(benefit: PassengerWalletBenefitForRequest): boolean {
+  const status = String(benefit.status ?? "").toLowerCase();
+  const adminStatus = String(benefit.adminReviewStatus ?? "").toLowerCase();
+
+  return (status === "available" || status === "approved" || adminStatus === "admin_approved") && benefit.amountClp > 0;
+}
+
+function readPassengerWalletBenefitsForRequest(user: unknown): PassengerWalletBenefitForRequest[] {
+  try {
+    const sessionEmail = getWalletBenefitSessionEmailForRequest(user);
+    const raw = localStorage.getItem(RAPAGO_WALLET_BENEFITS_KEY_REQUEST);
+    const parsed = raw ? (JSON.parse(raw) as Array<Record<string, unknown>>) : [];
+    if (!Array.isArray(parsed)) return [];
+
+    return parsed
+      .map((item, index): PassengerWalletBenefitForRequest => ({
+        id: String(item.id ?? `wallet-benefit-${index}`),
+        rideId: typeof item.rideId === "string" ? item.rideId : null,
+        passengerEmail: typeof item.passengerEmail === "string" ? item.passengerEmail : null,
+        ownerKey: typeof item.ownerKey === "string" ? item.ownerKey : null,
+        amountClp: Math.max(0, Math.round(Number(item.amountClp ?? item.amount ?? 0))),
+        status: String(item.status ?? "pending_admin"),
+        source: typeof item.source === "string" ? item.source : null,
+        title: typeof item.title === "string" ? item.title : null,
+        description: typeof item.description === "string" ? item.description : null,
+        createdAt: typeof item.createdAt === "string" ? item.createdAt : null,
+        approvedAt: typeof item.approvedAt === "string" ? item.approvedAt : null,
+        approvedBy: typeof item.approvedBy === "string" ? item.approvedBy : null,
+        adminReviewStatus: typeof item.adminReviewStatus === "string" ? item.adminReviewStatus : null,
+        fareClp: Number.isFinite(Number(item.fareClp)) ? Math.round(Number(item.fareClp)) : null,
+        paidClp: Number.isFinite(Number(item.paidClp)) ? Math.round(Number(item.paidClp)) : null,
+        appliedRideId: typeof item.appliedRideId === "string" ? item.appliedRideId : null,
+        appliedAt: typeof item.appliedAt === "string" ? item.appliedAt : null,
+        usedAmountClp: Number.isFinite(Number(item.usedAmountClp)) ? Math.round(Number(item.usedAmountClp)) : null,
+      }))
+      .filter((benefit) => {
+        if (!isPassengerWalletBenefitAvailableForRequest(benefit)) return false;
+        const owner = normalizeWalletBenefitEmailForRequest(benefit.passengerEmail || benefit.ownerKey);
+        return !sessionEmail || !owner || owner === sessionEmail;
+      })
+      .sort((a, b) => new Date(String(a.createdAt ?? 0)).getTime() - new Date(String(b.createdAt ?? 0)).getTime());
+  } catch {
+    return [];
+  }
+}
+
+function getPassengerWalletBenefitTotalForRequest(user: unknown): number {
+  return readPassengerWalletBenefitsForRequest(user).reduce(
+    (sum, benefit) => sum + Math.max(0, Math.round(Number(benefit.amountClp ?? 0))),
+    0,
+  );
+}
+
+function markPassengerWalletBenefitsUsedForRide(input: {
+  user: unknown;
+  rideId: string | null;
+  amountToUseClp: number;
+  originText: string;
+  destinationText: string;
+  fareBeforeWalletClp: number;
+  fareAfterWalletClp: number;
+}): void {
+  const amountToUse = Math.max(0, Math.round(Number(input.amountToUseClp ?? 0)));
+  if (amountToUse <= 0) return;
+
+  try {
+    const sessionEmail = getWalletBenefitSessionEmailForRequest(input.user);
+    const raw = localStorage.getItem(RAPAGO_WALLET_BENEFITS_KEY_REQUEST);
+    const parsed = raw ? (JSON.parse(raw) as Array<Record<string, unknown>>) : [];
+    if (!Array.isArray(parsed)) return;
+
+    let remaining = amountToUse;
+    const now = new Date().toISOString();
+    const rideId = input.rideId || `local-${Date.now()}`;
+    const extraAvailableBenefits: Array<Record<string, unknown>> = [];
+
+    const next = parsed.map((item, index) => {
+      const benefit: PassengerWalletBenefitForRequest = {
+        id: String(item.id ?? `wallet-benefit-${index}`),
+        passengerEmail: typeof item.passengerEmail === "string" ? item.passengerEmail : null,
+        ownerKey: typeof item.ownerKey === "string" ? item.ownerKey : null,
+        amountClp: Math.max(0, Math.round(Number(item.amountClp ?? item.amount ?? 0))),
+        status: String(item.status ?? "pending_admin"),
+        adminReviewStatus: typeof item.adminReviewStatus === "string" ? item.adminReviewStatus : null,
+      };
+      const owner = normalizeWalletBenefitEmailForRequest(benefit.passengerEmail || benefit.ownerKey);
+      const belongsToUser = !sessionEmail || !owner || owner === sessionEmail;
+
+      if (!belongsToUser || remaining <= 0 || !isPassengerWalletBenefitAvailableForRequest(benefit)) {
+        return item;
+      }
+
+      const benefitAmount = Math.max(0, Math.round(Number(benefit.amountClp ?? 0)));
+      const usedAmount = Math.min(benefitAmount, remaining);
+      remaining -= usedAmount;
+
+      if (benefitAmount > usedAmount) {
+        extraAvailableBenefits.push({
+          ...item,
+          id: `${String(item.id ?? benefit.id)}-saldo-${Date.now()}`,
+          amountClp: benefitAmount - usedAmount,
+          status: "available",
+          adminReviewStatus: "admin_approved",
+          title: item.title ?? "Saldo a favor",
+          description: `Saldo restante disponible después de usar ${formatCLP(usedAmount)} en un viaje.`,
+          createdAt: now,
+          appliedRideId: null,
+          appliedAt: null,
+          usedAmountClp: null,
+        });
+      }
+
+      return {
+        ...item,
+        amountClp: usedAmount,
+        status: "used",
+        adminReviewStatus: "used_in_ride",
+        appliedRideId: rideId,
+        appliedAt: now,
+        usedAt: now,
+        usedAmountClp: usedAmount,
+        originText: input.originText,
+        destinationText: input.destinationText,
+        fareBeforeWalletClp: input.fareBeforeWalletClp,
+        fareAfterWalletClp: input.fareAfterWalletClp,
+        title: item.title ?? "Beneficio usado",
+        description: `Usaste ${formatCLP(usedAmount)} como descuento en ${input.originText} → ${input.destinationText}.`,
+      };
+    });
+
+    localStorage.setItem(
+      RAPAGO_WALLET_BENEFITS_KEY_REQUEST,
+      JSON.stringify([...extraAvailableBenefits, ...next].slice(0, 250)),
+    );
+    window.dispatchEvent(new CustomEvent(RAPAGO_WALLET_BENEFIT_EVENT_REQUEST));
+    window.dispatchEvent(new CustomEvent("rapago:wallet-updated"));
+  } catch {
+    // No bloquea la solicitud si localStorage falla.
+  }
+}
+
 function isPassengerRolePermissionMessage(message: unknown): boolean {
   const text = String(message ?? "").toLowerCase();
 
@@ -3649,6 +3823,8 @@ export default function RequestRidePage(): JSX.Element {
   const [notesInput, setNotesInput] = useState("");
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>(null);
   const [showPaymentBox, setShowPaymentBox] = useState(false);
+  const [useWalletBenefit, setUseWalletBenefit] = useState<boolean | null>(null);
+  const [walletBenefitRevision, setWalletBenefitRevision] = useState(0);
   const [rideMode, setRideMode] = useState<RideMode>("now");
   const [tripFareMode, setTripFareMode] = useState<TripFareMode>("one_way");
   const [selectedRoundTripPromotionId, setSelectedRoundTripPromotionId] = useState<string | null>(null);
@@ -3696,6 +3872,21 @@ export default function RequestRidePage(): JSX.Element {
 
     return () => {
       cancelled = true;
+    };
+  }, []);
+
+
+  useEffect(() => {
+    const refreshWalletBenefits = () => setWalletBenefitRevision((current) => current + 1);
+
+    window.addEventListener("storage", refreshWalletBenefits);
+    window.addEventListener("rapago:wallet-updated", refreshWalletBenefits as EventListener);
+    window.addEventListener(RAPAGO_WALLET_BENEFIT_EVENT_REQUEST, refreshWalletBenefits as EventListener);
+
+    return () => {
+      window.removeEventListener("storage", refreshWalletBenefits);
+      window.removeEventListener("rapago:wallet-updated", refreshWalletBenefits as EventListener);
+      window.removeEventListener(RAPAGO_WALLET_BENEFIT_EVENT_REQUEST, refreshWalletBenefits as EventListener);
     };
   }, []);
 
@@ -4165,6 +4356,14 @@ export default function RequestRidePage(): JSX.Element {
     (sum, charge) => sum + Math.max(0, Math.round(Number(charge.amountClp ?? 0))),
     0,
   );
+  const availableWalletBenefits = walletBenefitRevision >= 0
+    ? readPassengerWalletBenefitsForRequest(session?.user)
+    : [];
+  const availableWalletBenefitTotalClp = availableWalletBenefits.reduce(
+    (sum, benefit) => sum + Math.max(0, Math.round(Number(benefit.amountClp ?? 0))),
+    0,
+  );
+  const hasAvailableWalletBenefit = availableWalletBenefitTotalClp > 0;
 
   function getBaseSelectedFareAmount(method: PaymentMethod = paymentMethod): number | null {
     if (!method) return null;
@@ -4183,20 +4382,43 @@ export default function RequestRidePage(): JSX.Element {
     return Math.max(0, Math.round(amount + pendingPassengerChargeTotalClp));
   }
 
-  const cashPaymentAmount = addPendingPassengerCharges(addAirportWelcomeExtras(
+  function applyWalletBenefitDiscount(amount: number | null): number | null {
+    if (amount == null) return null;
+    const discount = getWalletBenefitDiscountForAmount(amount);
+    return Math.max(0, Math.round(amount - discount));
+  }
+
+  function getWalletBenefitDiscountForAmount(amount: number | null): number {
+    if (amount == null || useWalletBenefit !== true || availableWalletBenefitTotalClp <= 0) return 0;
+    return Math.min(Math.max(0, Math.round(amount)), availableWalletBenefitTotalClp);
+  }
+
+  function getSelectedFareAmountBeforeWallet(method: PaymentMethod = paymentMethod): number | null {
+    return addPendingPassengerCharges(addAirportWelcomeExtras(getBaseSelectedFareAmount(method)));
+  }
+
+  function getSelectedWalletBenefitDiscount(method: PaymentMethod = paymentMethod): number {
+    return getWalletBenefitDiscountForAmount(getSelectedFareAmountBeforeWallet(method));
+  }
+
+  const cashPaymentAmountBeforeWallet = addPendingPassengerCharges(addAirportWelcomeExtras(
     selectedRoundTripPromotion
       ? selectedRoundTripPromotion.fareClp
       : fareQuote
         ? fareQuote.cashFare
         : null,
   ));
-  const cardPaymentAmount = addPendingPassengerCharges(addAirportWelcomeExtras(
+  const cardPaymentAmountBeforeWallet = addPendingPassengerCharges(addAirportWelcomeExtras(
     selectedRoundTripPromotion
       ? selectedRoundTripPromotion.fareClp
       : fareQuote
         ? fareQuote.cardFare
         : null,
   ));
+  const cashWalletBenefitDiscountClp = getWalletBenefitDiscountForAmount(cashPaymentAmountBeforeWallet);
+  const cardWalletBenefitDiscountClp = getWalletBenefitDiscountForAmount(cardPaymentAmountBeforeWallet);
+  const cashPaymentAmount = applyWalletBenefitDiscount(cashPaymentAmountBeforeWallet);
+  const cardPaymentAmount = applyWalletBenefitDiscount(cardPaymentAmountBeforeWallet);
 
   function getPaymentLabel(method: PaymentMethod): string {
     if (method === "cash") {
@@ -4232,12 +4454,28 @@ export default function RequestRidePage(): JSX.Element {
       )
     : "Calculando";
 
+  const activePaymentAmountBeforeWallet = paymentMethod === "card"
+    ? cardPaymentAmountBeforeWallet
+    : paymentMethod === "cash"
+      ? cashPaymentAmountBeforeWallet
+      : null;
+  const activeWalletBenefitDiscountClp = paymentMethod === "card"
+    ? cardWalletBenefitDiscountClp
+    : paymentMethod === "cash"
+      ? cashWalletBenefitDiscountClp
+      : 0;
+  const activePaymentAmountAfterWallet = paymentMethod === "card"
+    ? cardPaymentAmount
+    : paymentMethod === "cash"
+      ? cashPaymentAmount
+      : null;
+
   function getSelectedFareAmount(method: PaymentMethod = paymentMethod): number | null {
-    return addPendingPassengerCharges(addAirportWelcomeExtras(getBaseSelectedFareAmount(method)));
+    return applyWalletBenefitDiscount(getSelectedFareAmountBeforeWallet(method));
   }
 
   function getSelectedDriverEarning(method: PaymentMethod = paymentMethod): number | null {
-    // La ganancia del conductor se calcula sobre el viaje actual, no sobre deudas anteriores del pasajero.
+    // La ganancia del conductor se calcula sobre el viaje actual, no sobre deudas anteriores ni descuentos de billetera.
     const fare = addAirportWelcomeExtras(getBaseSelectedFareAmount(method));
     if (fare == null) return null;
     return Math.round((fare * fareRules.driverPercent) / 100);
@@ -4291,11 +4529,18 @@ export default function RequestRidePage(): JSX.Element {
       return;
     }
 
+    if (hasAvailableWalletBenefit && useWalletBenefit === null) {
+      setSubmitError(`Tienes ${formatCLP(availableWalletBenefitTotalClp)} a favor. Elige si quieres usar tu beneficio en este viaje.`);
+      return;
+    }
+
+    const selectedFareAmountBeforeWallet = getSelectedFareAmountBeforeWallet(activePaymentMethod);
+    const selectedWalletBenefitDiscountClp = getSelectedWalletBenefitDiscount(activePaymentMethod);
     const selectedFareAmount = getSelectedFareAmount(activePaymentMethod);
     const selectedBaseFareAmount = getBaseSelectedFareAmount(activePaymentMethod);
     const selectedDriverEarning = getSelectedDriverEarning(activePaymentMethod);
 
-    if (selectedFareAmount == null || selectedFareAmount <= 0) {
+    if (selectedFareAmount == null || selectedFareAmount < 0 || selectedFareAmountBeforeWallet == null) {
       setSubmitError("No se pudo calcular el monto del viaje.");
       return;
     }
@@ -4311,7 +4556,14 @@ export default function RequestRidePage(): JSX.Element {
       notes.push(`Forma de pago seleccionada: ${getPaymentLabel(activePaymentMethod)}.`);
       if (pendingPassengerChargeTotalClp > 0) {
         notes.push(`Cargo pendiente anterior por cancelación/no show aplicado al próximo viaje: ${formatCLP(pendingPassengerChargeTotalClp)}.`);
-        notes.push(`Total final del viaje actual incluyendo cargo pendiente anterior: ${formatCLP(selectedFareAmount)}.`);
+        notes.push(`Total antes de beneficio billetera incluyendo cargo pendiente anterior: ${formatCLP(selectedFareAmountBeforeWallet)}.`);
+      }
+      if (selectedWalletBenefitDiscountClp > 0) {
+        notes.push(`Beneficio billetera usado en este viaje: ${formatCLP(selectedWalletBenefitDiscountClp)}.`);
+        notes.push(`Tarifa antes de beneficio billetera: ${formatCLP(selectedFareAmountBeforeWallet)}.`);
+        notes.push(`Total final con descuento beneficio: ${formatCLP(selectedFareAmount)}.`);
+      } else if (hasAvailableWalletBenefit && useWalletBenefit === false) {
+        notes.push(`Beneficio billetera disponible no usado por el pasajero en este viaje: ${formatCLP(availableWalletBenefitTotalClp)}.`);
       }
       notes.push(`Categoría de vehículo seleccionada: ${vehicleCategoryLabel(vehicleCategory)}.`);
       notes.push(`Tipo de viaje seleccionado: ${tripFareModeLabel(effectiveTripFareMode)}.`);
@@ -4499,7 +4751,25 @@ export default function RequestRidePage(): JSX.Element {
           Object.assign(input as CreateRideInput & Record<string, unknown>, {
             passengerPendingChargeClp: pendingPassengerChargeTotalClp,
             passengerPendingChargeReason: "cancelacion_no_show_anterior",
-            finalFareWithPendingChargesClp: selectedFareAmount,
+            finalFareWithPendingChargesClp: selectedFareAmountBeforeWallet,
+          });
+        }
+        if (selectedWalletBenefitDiscountClp > 0) {
+          Object.assign(input as CreateRideInput & Record<string, unknown>, {
+            walletBenefitRequested: true,
+            walletBenefitApplied: true,
+            walletBenefitAppliedClp: selectedWalletBenefitDiscountClp,
+            walletBenefitDiscountClp: selectedWalletBenefitDiscountClp,
+            walletBenefitOriginalFareClp: selectedFareAmountBeforeWallet,
+            originalFareBeforeWalletBenefitClp: selectedFareAmountBeforeWallet,
+            finalFareAfterWalletBenefitClp: selectedFareAmount,
+            walletBenefitSource: "admin_approved_cash_overpayment",
+          });
+        } else if (hasAvailableWalletBenefit && useWalletBenefit === false) {
+          Object.assign(input as CreateRideInput & Record<string, unknown>, {
+            walletBenefitRequested: false,
+            walletBenefitApplied: false,
+            walletBenefitAvailableClp: availableWalletBenefitTotalClp,
           });
         }
         (input as CreateRideInput & { tripFareMode?: TripFareMode }).tripFareMode = effectiveTripFareMode;
@@ -4548,6 +4818,18 @@ export default function RequestRidePage(): JSX.Element {
       if (pendingPassengerChargeTotalClp > 0) {
         markPassengerPendingChargesAppliedToRide(session.user, createdRideId ?? `ride-${Date.now()}`);
       }
+      if (selectedWalletBenefitDiscountClp > 0) {
+        markPassengerWalletBenefitsUsedForRide({
+          user: session.user,
+          rideId: createdRideId ?? `ride-${Date.now()}`,
+          amountToUseClp: selectedWalletBenefitDiscountClp,
+          originText: resolved.origin.text,
+          destinationText: resolved.destination.text,
+          fareBeforeWalletClp: selectedFareAmountBeforeWallet,
+          fareAfterWalletClp: selectedFareAmount,
+        });
+        setWalletBenefitRevision((current) => current + 1);
+      }
 
       if (rideMode === "scheduled") {
         upsertLocalAdminScheduledRide(createLocalAdminScheduledRide({
@@ -4572,11 +4854,19 @@ export default function RequestRidePage(): JSX.Element {
           baseFareBeforeExtrasClp: selectedBaseFareAmount,
           passengerPendingChargeClp: pendingPassengerChargeTotalClp,
           passengerPendingChargeReason: pendingPassengerChargeTotalClp > 0 ? "cancelacion_no_show_anterior" : null,
-          finalFareWithPendingChargesClp: selectedFareAmount,
+          finalFareWithPendingChargesClp: selectedFareAmountBeforeWallet,
+          walletBenefitRequested: selectedWalletBenefitDiscountClp > 0,
+          walletBenefitApplied: selectedWalletBenefitDiscountClp > 0,
+          walletBenefitAppliedClp: selectedWalletBenefitDiscountClp,
+          walletBenefitDiscountClp: selectedWalletBenefitDiscountClp,
+          walletBenefitOriginalFareClp: selectedFareAmountBeforeWallet,
+          originalFareBeforeWalletBenefitClp: selectedFareAmountBeforeWallet,
+          finalFareAfterWalletBenefitClp: selectedFareAmount,
+          walletBenefitAvailableButNotUsedClp: hasAvailableWalletBenefit && useWalletBenefit === false ? availableWalletBenefitTotalClp : 0,
         }));
       }
 
-      if (activePaymentMethod === "card") {
+      if (activePaymentMethod === "card" && selectedFareAmount > 0) {
         if (!createdRideId) {
           throw new Error("El viaje se creó, pero no se pudo obtener el ID para iniciar MercadoPago.");
         }
@@ -4624,6 +4914,7 @@ export default function RequestRidePage(): JSX.Element {
       setPaymentMethod(null);
       setShowPaymentBox(false);
       setVehicleCategory("standard");
+      setUseWalletBenefit(null);
 
       history.push("/passenger/trips");
     } catch (err) {
@@ -4640,7 +4931,14 @@ export default function RequestRidePage(): JSX.Element {
         localNotes.push(`Forma de pago seleccionada: ${getPaymentLabel(activePaymentMethod)}.`);
         if (pendingPassengerChargeTotalClp > 0) {
           localNotes.push(`Cargo pendiente anterior por cancelación/no show aplicado al próximo viaje: ${formatCLP(pendingPassengerChargeTotalClp)}.`);
-          localNotes.push(`Total final del viaje actual incluyendo cargo pendiente anterior: ${formatCLP(selectedFareAmount)}.`);
+          localNotes.push(`Total antes de beneficio billetera incluyendo cargo pendiente anterior: ${formatCLP(selectedFareAmountBeforeWallet)}.`);
+        }
+        if (selectedWalletBenefitDiscountClp > 0) {
+          localNotes.push(`Beneficio billetera usado en este viaje: ${formatCLP(selectedWalletBenefitDiscountClp)}.`);
+          localNotes.push(`Tarifa antes de beneficio billetera: ${formatCLP(selectedFareAmountBeforeWallet)}.`);
+          localNotes.push(`Total final con descuento beneficio: ${formatCLP(selectedFareAmount)}.`);
+        } else if (hasAvailableWalletBenefit && useWalletBenefit === false) {
+          localNotes.push(`Beneficio billetera disponible no usado por el pasajero en este viaje: ${formatCLP(availableWalletBenefitTotalClp)}.`);
         }
         localNotes.push(`Categoría de vehículo seleccionada: ${vehicleCategoryLabel(vehicleCategory)}.`);
         localNotes.push(`Tipo de viaje seleccionado: ${tripFareModeLabel(effectiveTripFareMode)}.`);
@@ -4759,34 +5057,56 @@ export default function RequestRidePage(): JSX.Element {
           }
         }
 
-        const localRide = createLocalPassengerRide({
-          originText: resolved.origin.text,
-          destinationText: resolved.destination.text,
-          notes: limitRideNotes(localNotes.join(" ")),
-          estimatedFareClp: selectedFareAmount ?? null,
-          rideMode,
-          tripFareMode: effectiveTripFareMode,
-          scheduledAt,
-          returnScheduledAt,
-          scheduleKind: selectedRoundTripPromotion ? "round_trip_promotion" : "airport_pickup",
-          passengerName: getSessionDisplayName(session.user),
-          passengerEmail: getSessionEmail(session.user),
-          passengerFareType: effectivePassengerFareType,
-          passengerFareLabel: passengerFareTypeLabel(effectivePassengerFareType),
-          airportWelcomeOption: rideMode === "scheduled" ? airportWelcomeOption : null,
-          airportWelcomeLabel: hasAirportFlowerLei ? AIRPORT_FLOWER_LEI_LABEL : "Solo recogida",
-          flowerLeiRequested: hasAirportFlowerLei,
-          airportWelcomeSurchargeClp,
-          optionalServicesTotalClp: airportWelcomeSurchargeClp,
-          baseFareBeforeExtrasClp: selectedBaseFareAmount,
+        const localRide = {
+          ...createLocalPassengerRide({
+            originText: resolved.origin.text,
+            destinationText: resolved.destination.text,
+            notes: limitRideNotes(localNotes.join(" ")),
+            estimatedFareClp: selectedFareAmount ?? null,
+            rideMode,
+            tripFareMode: effectiveTripFareMode,
+            scheduledAt,
+            returnScheduledAt,
+            scheduleKind: selectedRoundTripPromotion ? "round_trip_promotion" : "airport_pickup",
+            passengerName: getSessionDisplayName(session.user),
+            passengerEmail: getSessionEmail(session.user),
+            passengerFareType: effectivePassengerFareType,
+            passengerFareLabel: passengerFareTypeLabel(effectivePassengerFareType),
+            airportWelcomeOption: rideMode === "scheduled" ? airportWelcomeOption : null,
+            airportWelcomeLabel: hasAirportFlowerLei ? AIRPORT_FLOWER_LEI_LABEL : "Solo recogida",
+            flowerLeiRequested: hasAirportFlowerLei,
+            airportWelcomeSurchargeClp,
+            optionalServicesTotalClp: airportWelcomeSurchargeClp,
+            baseFareBeforeExtrasClp: selectedBaseFareAmount,
+          }),
           passengerPendingChargeClp: pendingPassengerChargeTotalClp,
           passengerPendingChargeReason: pendingPassengerChargeTotalClp > 0 ? "cancelacion_no_show_anterior" : null,
-          finalFareWithPendingChargesClp: selectedFareAmount,
-        });
+          finalFareWithPendingChargesClp: selectedFareAmountBeforeWallet,
+          walletBenefitRequested: selectedWalletBenefitDiscountClp > 0,
+          walletBenefitApplied: selectedWalletBenefitDiscountClp > 0,
+          walletBenefitAppliedClp: selectedWalletBenefitDiscountClp,
+          walletBenefitDiscountClp: selectedWalletBenefitDiscountClp,
+          walletBenefitOriginalFareClp: selectedFareAmountBeforeWallet,
+          originalFareBeforeWalletBenefitClp: selectedFareAmountBeforeWallet,
+          finalFareAfterWalletBenefitClp: selectedFareAmount,
+          walletBenefitAvailableButNotUsedClp: hasAvailableWalletBenefit && useWalletBenefit === false ? availableWalletBenefitTotalClp : 0,
+        } as LocalPassengerRideData;
 
         saveLocalPassengerRides([localRide, ...readLocalPassengerRides()]);
         if (pendingPassengerChargeTotalClp > 0) {
           markPassengerPendingChargesAppliedToRide(session.user, String(localRide.id ?? `local-${Date.now()}`));
+        }
+        if (selectedWalletBenefitDiscountClp > 0) {
+          markPassengerWalletBenefitsUsedForRide({
+            user: session.user,
+            rideId: String(localRide.id ?? `local-${Date.now()}`),
+            amountToUseClp: selectedWalletBenefitDiscountClp,
+            originText: resolved.origin.text,
+            destinationText: resolved.destination.text,
+            fareBeforeWalletClp: selectedFareAmountBeforeWallet,
+            fareAfterWalletClp: selectedFareAmount,
+          });
+          setWalletBenefitRevision((current) => current + 1);
         }
 
         if (rideMode === "scheduled") {
@@ -4830,6 +5150,7 @@ export default function RequestRidePage(): JSX.Element {
         setPaymentMethod(null);
         setShowPaymentBox(false);
         setVehicleCategory("standard");
+        setUseWalletBenefit(null);
 
         history.push("/passenger/trips");
         return;
@@ -6314,6 +6635,111 @@ return (
                 </div>
               )}
             </div>
+
+            {hasAvailableWalletBenefit && paymentMethod && activePaymentAmountBeforeWallet != null && (
+              <IonCard
+                style={{
+                  margin: "0 0 14px",
+                  borderRadius: 24,
+                  background: "linear-gradient(135deg,#EAFBF0 0%,#FFF7D6 100%)",
+                  border: "1.5px solid rgba(34,197,94,.28)",
+                  boxShadow: "0 16px 34px rgba(0,0,0,.18)",
+                  color: "#111111",
+                }}
+              >
+                <IonCardContent style={{ padding: "15px 16px" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "flex-start" }}>
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ color: "#15803D", fontSize: ".72rem", fontWeight: 950, textTransform: "uppercase", letterSpacing: ".05em" }}>
+                        Beneficio disponible
+                      </div>
+                      <div style={{ marginTop: 4, fontSize: "1rem", fontWeight: 950, lineHeight: 1.22 }}>
+                        ¿Quieres usar tu saldo a favor en este viaje?
+                      </div>
+                      <div style={{ marginTop: 5, color: "#36543B", fontSize: ".78rem", fontWeight: 820, lineHeight: 1.35 }}>
+                        Tienes {formatCLP(availableWalletBenefitTotalClp)} aprobado por admin.
+                        Si lo usas, se descuenta del total final de este viaje.
+                      </div>
+                    </div>
+                    <IonBadge color="success" style={{ fontWeight: 950, flexShrink: 0 }}>
+                      A favor
+                    </IonBadge>
+                  </div>
+
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 9, marginTop: 13 }}>
+                    <IonButton
+                      expand="block"
+                      color="success"
+                      fill={useWalletBenefit === true ? "solid" : "outline"}
+                      onClick={() => {
+                        setUseWalletBenefit(true);
+                        setSubmitError(null);
+                      }}
+                      style={{
+                        "--border-radius": "16px",
+                        height: "44px",
+                        fontWeight: 950,
+                      } as CSSProperties}
+                    >
+                      Sí, usar
+                    </IonButton>
+                    <IonButton
+                      expand="block"
+                      color="medium"
+                      fill={useWalletBenefit === false ? "solid" : "outline"}
+                      onClick={() => {
+                        setUseWalletBenefit(false);
+                        setSubmitError(null);
+                      }}
+                      style={{
+                        "--border-radius": "16px",
+                        height: "44px",
+                        fontWeight: 950,
+                      } as CSSProperties}
+                    >
+                      No usar
+                    </IonButton>
+                  </div>
+
+                  {useWalletBenefit === true && activeWalletBenefitDiscountClp > 0 && activePaymentAmountAfterWallet != null && (
+                    <div
+                      style={{
+                        marginTop: 12,
+                        padding: 12,
+                        borderRadius: 18,
+                        background: "rgba(34,197,94,.13)",
+                        border: "1px solid rgba(34,197,94,.24)",
+                        color: "#14532D",
+                        fontSize: ".82rem",
+                        fontWeight: 900,
+                        lineHeight: 1.4,
+                      }}
+                    >
+                      Total original: {formatCLP(activePaymentAmountBeforeWallet)}
+                      <br />Descuento beneficio: -{formatCLP(activeWalletBenefitDiscountClp)}
+                      <br />Total a pagar ahora: {formatCLP(activePaymentAmountAfterWallet)}
+                    </div>
+                  )}
+
+                  {useWalletBenefit === false && (
+                    <div
+                      style={{
+                        marginTop: 12,
+                        padding: 11,
+                        borderRadius: 18,
+                        background: "rgba(255,255,255,.58)",
+                        color: "#4B3B28",
+                        fontSize: ".78rem",
+                        fontWeight: 830,
+                        lineHeight: 1.35,
+                      }}
+                    >
+                      No se aplicará descuento. Tu saldo seguirá disponible para otro viaje.
+                    </div>
+                  )}
+                </IonCardContent>
+              </IonCard>
+            )}
 
             {submitError && (
               <IonText color="danger">
