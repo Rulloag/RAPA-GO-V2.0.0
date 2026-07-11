@@ -903,6 +903,10 @@ function UberDriverNavigationMap({
   const lastRouteRecalculateAtRef = useRef(0);
   const lastSpokenInstructionRef = useRef("");
   const navigationCameraLockedRef = useRef(true);
+  const manualCameraUnlockUntilRef = useRef(0);
+  const routePathRef = useRef<Array<{ lat: number; lng: number }>>([]);
+  const routeHeadingRef = useRef<number | null>(null);
+  const lastOffRouteRecalculationAtRef = useRef(0);
 
   const [driverGpsReady, setDriverGpsReady] = useState(false);
   const [driverOutsideRapaNui, setDriverOutsideRapaNui] = useState(false);
@@ -951,15 +955,33 @@ function UberDriverNavigationMap({
     point: destination,
   });
 
-  const goingToPickup = ["accepted", "driver_en_route"].includes(ride.status);
-  const waitingPassenger = ride.status === "driver_arrived";
-  const goingToDestination = ride.status === "in_progress";
+  const rideNavigationRecord = ride as unknown as Record<string, unknown>;
+  const rideStatus = String(rideNavigationRecord.status ?? ride.status ?? "").toLowerCase();
+
+  // Estado efectivo para el mapa:
+  // - Antes de iniciar viaje: ruta al punto de recogida.
+  // - Después de iniciar viaje: ruta SIEMPRE al destino final.
+  // Esto evita que el conductor tome la carrera y el mapa siga apuntando a la recogida.
+  const tripAlreadyStarted =
+    rideStatus === "in_progress" ||
+    Boolean(rideNavigationRecord.startedAt) ||
+    Boolean(rideNavigationRecord.tripStartedAt) ||
+    Boolean(rideNavigationRecord.inProgressAt) ||
+    Boolean(rideNavigationRecord.driverStartedTripAt) ||
+    rideNavigationRecord.driverStartedTrip === true ||
+    rideNavigationRecord.tripStarted === true;
+
+  const goingToPickup = !tripAlreadyStarted && ["accepted", "driver_en_route"].includes(rideStatus);
+  const waitingPassenger = !tripAlreadyStarted && rideStatus === "driver_arrived";
+  const goingToDestination = tripAlreadyStarted;
 
   const target = goingToDestination
     ? destination
     : goingToPickup
       ? pickup
-      : null;
+      : waitingPassenger
+        ? pickup
+        : destination;
   const currentPointDisplay = goingToDestination
     ? destinationDisplay
     : goingToPickup || waitingPassenger
@@ -972,6 +994,7 @@ function UberDriverNavigationMap({
 
   function updateNavigationCameraLock(next: boolean): void {
     navigationCameraLockedRef.current = next;
+    if (next) manualCameraUnlockUntilRef.current = 0;
     setIsNavigationCameraLocked(next);
   }
 
@@ -1159,17 +1182,130 @@ function UberDriverNavigationMap({
     }
   }
 
-  function getNextDirectionInstruction(
+  function latLngToPlainPoint(
+    value: google.maps.LatLng | google.maps.LatLngLiteral | null | undefined,
+  ): { lat: number; lng: number } | null {
+    if (!value) return null;
+
+    const raw = value as google.maps.LatLng & google.maps.LatLngLiteral;
+    const lat = typeof raw.lat === "function" ? raw.lat() : Number(raw.lat);
+    const lng = typeof raw.lng === "function" ? raw.lng() : Number(raw.lng);
+
+    return Number.isFinite(lat) && Number.isFinite(lng) ? { lat, lng } : null;
+  }
+
+  function buildRoutePathFromLeg(
     leg: google.maps.DirectionsLeg | undefined,
-  ): { text: string; distance: string; maneuver: string | null } | null {
-    const step = leg?.steps?.[0];
-    if (!step) return null;
+  ): Array<{ lat: number; lng: number }> {
+    const path: Array<{ lat: number; lng: number }> = [];
+
+    for (const step of leg?.steps ?? []) {
+      const points = step.path?.length
+        ? step.path
+        : [step.start_location, step.end_location];
+
+      for (const point of points) {
+        const plain = latLngToPlainPoint(point);
+        if (!plain) continue;
+
+        const last = path[path.length - 1];
+        if (!last || distanceMeters(last, plain) >= 1) path.push(plain);
+      }
+    }
+
+    return path;
+  }
+
+  function distancePointToSegmentMeters(
+    point: { lat: number; lng: number },
+    a: { lat: number; lng: number },
+    b: { lat: number; lng: number },
+  ): number {
+    const latScale = 111_320;
+    const lngScale = 111_320 * Math.cos(toRad(point.lat));
+
+    const px = point.lng * lngScale;
+    const py = point.lat * latScale;
+    const ax = a.lng * lngScale;
+    const ay = a.lat * latScale;
+    const bx = b.lng * lngScale;
+    const by = b.lat * latScale;
+
+    const dx = bx - ax;
+    const dy = by - ay;
+    const lengthSquared = dx * dx + dy * dy;
+
+    if (lengthSquared <= 0) return distanceMeters(point, a);
+
+    const t = Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / lengthSquared));
+    const closest = {
+      lat: (ay + t * dy) / latScale,
+      lng: (ax + t * dx) / lngScale,
+    };
+
+    return distanceMeters(point, closest);
+  }
+
+  function getDistanceToCurrentRouteMeters(point: { lat: number; lng: number }): number | null {
+    const path = routePathRef.current;
+    if (path.length < 2) return null;
+
+    let best = Number.POSITIVE_INFINITY;
+    for (let index = 0; index < path.length - 1; index += 1) {
+      best = Math.min(best, distancePointToSegmentMeters(point, path[index], path[index + 1]));
+    }
+
+    return Number.isFinite(best) ? best : null;
+  }
+
+  function getRouteHeadingForPoint(point: { lat: number; lng: number }): number | null {
+    const path = routePathRef.current;
+    if (path.length < 2) return null;
+
+    let bestIndex = 0;
+    let best = Number.POSITIVE_INFINITY;
+
+    for (let index = 0; index < path.length - 1; index += 1) {
+      const meters = distancePointToSegmentMeters(point, path[index], path[index + 1]);
+      if (meters < best) {
+        best = meters;
+        bestIndex = index;
+      }
+    }
+
+    const from = path[bestIndex];
+    const to = path[Math.min(path.length - 1, bestIndex + 1)];
+    if (!from || !to || distanceMeters(from, to) < 1) return null;
+
+    return bearingDegrees(from, to);
+  }
+
+  function getLiveDirectionInstruction(
+    leg: google.maps.DirectionsLeg | undefined,
+    driverPoint: { lat: number; lng: number },
+  ): { text: string; distance: string; maneuver: string | null; street?: string | null } | null {
+    const steps = leg?.steps ?? [];
+    if (steps.length === 0) return null;
+
+    let selectedStep = steps[0];
+
+    // No nos quedamos pegados en la primera instrucción si el conductor ya la pasó.
+    for (const step of steps) {
+      const end = latLngToPlainPoint(step.end_location);
+      if (!end || distanceMeters(driverPoint, end) > 18) {
+        selectedStep = step;
+        break;
+      }
+    }
+
+    const stepEnd = latLngToPlainPoint(selectedStep.end_location);
+    const liveDistance = stepEnd ? formatNavigationMeters(distanceMeters(driverPoint, stepEnd)) : selectedStep.distance?.text ?? "";
 
     return {
-      text: cleanDirectionInstruction(step.instructions),
-      distance: step.distance?.text ?? "",
-      maneuver: step.maneuver ?? null,
-      street: extractStreetFromDirectionInstruction(step.instructions),
+      text: cleanDirectionInstruction(selectedStep.instructions),
+      distance: liveDistance,
+      maneuver: selectedStep.maneuver ?? null,
+      street: extractStreetFromDirectionInstruction(selectedStep.instructions),
     };
   }
 
@@ -1181,7 +1317,9 @@ function UberDriverNavigationMap({
       ? destination
       : goingToPickup
         ? pickup
-        : null;
+        : waitingPassenger
+          ? destination ?? pickup
+          : null;
     if (!targetPoint) return false;
 
     const lastRouteOrigin = lastRouteOriginRef.current;
@@ -1193,8 +1331,8 @@ function UberDriverNavigationMap({
     const secondsSinceRoute = (now - lastRouteRecalculateAtRef.current) / 1000;
 
     // Recalcula si el conductor se movió o tomó otro camino.
-    // Mantiene el trazado vivo sin esperar demasiado en celular.
-    return movedSinceRoute >= 6 && secondsSinceRoute >= 2;
+    // En celular no esperamos tanto: así el mapa no queda "pegado" y la distancia baja en vivo.
+    return movedSinceRoute >= 3 && secondsSinceRoute >= 1.2;
   }
 
   function focusNavigationCameraInsideApp(force = true): void {
@@ -1217,12 +1355,12 @@ function UberDriverNavigationMap({
     lastCameraAtRef.current = Date.now();
 
     const cameraHeading =
-      driverPoint && targetPoint
-        ? bearingDegrees(driverPoint, targetPoint)
+      driverPoint
+        ? routeHeadingRef.current ?? getRouteHeadingForPoint(driverPoint) ?? (targetPoint ? bearingDegrees(driverPoint, targetPoint) : headingRef.current)
         : headingRef.current;
 
     try {
-      map.setZoom(20);
+      map.setZoom(18);
       map.panTo(focusPoint);
 
       // Efecto Google Maps: deja el conductor más abajo y muestra más ruta hacia adelante.
@@ -1237,7 +1375,7 @@ function UberDriverNavigationMap({
       map.setHeading(cameraHeading);
       map.setTilt(45);
     } catch {
-      map.setZoom(19);
+      map.setZoom(18);
       map.panTo(focusPoint);
     }
 
@@ -1312,16 +1450,25 @@ function UberDriverNavigationMap({
     const map = mapRef.current;
     if (!map) return;
 
-    if (!force && !navigationCameraLockedRef.current) return;
-
     const now = Date.now();
-    if (!force && now - lastCameraAtRef.current < 420) return;
+
+    if (!force && !navigationCameraLockedRef.current) {
+      // Si el conductor tocó/arrastró el mapa, dejamos revisar unos segundos.
+      // Luego se vuelve a centrar solo para que no parezca pegado.
+      if (manualCameraUnlockUntilRef.current && now >= manualCameraUnlockUntilRef.current) {
+        updateNavigationCameraLock(true);
+      } else {
+        return;
+      }
+    }
+
+    if (!force && now - lastCameraAtRef.current < 650) return;
     lastCameraAtRef.current = now;
 
     const currentZoom = map.getZoom() ?? 18;
-    const navigationZoom = force ? 20 : Math.max(19, Math.min(20, currentZoom));
+    const navigationZoom = force ? 18 : Math.max(17, Math.min(19, currentZoom));
 
-    if (!didInitialCameraRef.current || force || currentZoom < 18) {
+    if (!didInitialCameraRef.current || force || currentZoom < 17) {
       map.setZoom(navigationZoom);
       didInitialCameraRef.current = true;
     }
@@ -1339,8 +1486,10 @@ function UberDriverNavigationMap({
       }
     }, 70);
 
+    const roadHeading = routeHeadingRef.current ?? getRouteHeadingForPoint(point) ?? heading;
+
     try {
-      map.setHeading(heading);
+      map.setHeading(roadHeading);
       map.setTilt(45);
     } catch {
       // Algunos navegadores no soportan heading/tilt en mapas raster.
@@ -1354,13 +1503,15 @@ function UberDriverNavigationMap({
     const map = mapRef.current;
     if (!map || !window.google?.maps) return;
 
+    const roadHeading = routeHeadingRef.current ?? getRouteHeadingForPoint(point) ?? heading;
+
     setMarker(driverMarkerRef, point, {
       title: "Conductor",
-      icon: makeDriverIcon(heading),
+      icon: makeDriverIcon(roadHeading),
       zIndex: 50,
     });
 
-    followDriverCamera(point, heading);
+    followDriverCamera(point, roadHeading);
   }
 
   function drawStaticMarkers(): void {
@@ -1389,11 +1540,13 @@ function UberDriverNavigationMap({
       ? destination
       : goingToPickup
         ? pickup
-        : null;
+        : waitingPassenger
+          ? destination ?? pickup
+          : null;
     const driverPoint = driverPointRef.current;
 
     if (!map || !renderer || !service || !window.google?.maps) return;
-    const currentKey = `${ride.status}:${driverPoint?.lat?.toFixed(5) ?? "none"},${driverPoint?.lng?.toFixed(5) ?? "none"}:${currentTarget?.lat ?? "none"},${currentTarget?.lng ?? "none"}`;
+    const currentKey = `${rideStatus}:${goingToDestination ? "destination" : "pickup"}:${driverPoint?.lat?.toFixed(6) ?? "none"},${driverPoint?.lng?.toFixed(6) ?? "none"}:${currentTarget?.lat ?? "none"},${currentTarget?.lng ?? "none"}`;
 
     if (!force && routeKeyRef.current === currentKey) return;
     routeKeyRef.current = currentKey;
@@ -1403,6 +1556,8 @@ function UberDriverNavigationMap({
 
     if (!driverPoint || !currentTarget) {
       renderer.set("directions", null);
+      routePathRef.current = [];
+      routeHeadingRef.current = null;
       setRouteInfo(null);
       setNextInstruction(null);
       setTargetDistanceMeters(null);
@@ -1443,8 +1598,22 @@ function UberDriverNavigationMap({
           });
           renderer.setDirections(result);
 
+          // Al recalcular, Google entrega los bounds reales de la ruta.
+          // Si todavía no estamos siguiendo el GPS, mostramos toda la ruta automáticamente.
+          const routeBounds = result.routes[0]?.bounds;
+          if (routeBounds && (!driverPointRef.current || !didInitialCameraRef.current)) {
+            try {
+              map.fitBounds(routeBounds, 64);
+            } catch {
+              // No bloquea la navegación.
+            }
+          }
+
           const leg = result.routes[0]?.legs[0];
-          const instruction = getNextDirectionInstruction(leg);
+          routePathRef.current = buildRoutePathFromLeg(leg);
+          routeHeadingRef.current = getRouteHeadingForPoint(driverPoint) ?? routeHeadingRef.current;
+          if (routeHeadingRef.current != null) headingRef.current = routeHeadingRef.current;
+          const instruction = getLiveDirectionInstruction(leg, driverPoint);
 
           lastRouteOriginRef.current = driverPoint;
           lastRouteRecalculateAtRef.current = Date.now();
@@ -1482,6 +1651,8 @@ function UberDriverNavigationMap({
         renderer.set("directions", null);
         fallbackLineRef.current?.setMap(null);
         fallbackLineRef.current = null;
+        routePathRef.current = [];
+        routeHeadingRef.current = null;
 
         lastRouteOriginRef.current = driverPoint;
         lastRouteRecalculateAtRef.current = Date.now();
@@ -1559,7 +1730,10 @@ function UberDriverNavigationMap({
           zoom: driverPointRef.current ? 18 : 14,
           mapTypeId: google.maps.MapTypeId.ROADMAP,
           disableDefaultUI: true,
-          zoomControl: false,
+          zoomControl: true,
+          zoomControlOptions: {
+            position: google.maps.ControlPosition.RIGHT_CENTER,
+          },
           fullscreenControl: false,
           streetViewControl: false,
           mapTypeControl: false,
@@ -1595,7 +1769,10 @@ function UberDriverNavigationMap({
         });
 
         mapRef.current = map;
-        map.addListener("dragstart", () => updateNavigationCameraLock(false));
+        map.addListener("dragstart", () => {
+          manualCameraUnlockUntilRef.current = Date.now() + 7000;
+          updateNavigationCameraLock(false);
+        });
         mapReadyRef.current = true;
         directionsServiceRef.current = new google.maps.DirectionsService();
         directionsRendererRef.current = new google.maps.DirectionsRenderer({
@@ -1710,7 +1887,19 @@ function UberDriverNavigationMap({
         // No se usa ninguna coordenada ficticia para simular que está en Rapa Nui.
         // Si Google Maps no puede calcular una ruta real, se muestra aviso y queda el botón de Google Maps.
         if (mapReadyRef.current) {
-          moveDriverOnly(next, headingRef.current);
+          const distanceToRoute = getDistanceToCurrentRouteMeters(next);
+          const now = Date.now();
+          const isOffRoute = distanceToRoute != null && distanceToRoute > 28;
+          const canRecalculateOffRoute = now - lastOffRouteRecalculationAtRef.current > 1600;
+
+          if (isOffRoute && canRecalculateOffRoute) {
+            lastOffRouteRecalculationAtRef.current = now;
+            routeKeyRef.current = "";
+            calculateRouteOnce(true);
+          }
+
+          const roadHeading = routeHeadingRef.current ?? getRouteHeadingForPoint(next) ?? headingRef.current;
+          moveDriverOnly(next, roadHeading);
 
           if (!routeKeyRef.current || shouldRecalculateRouteFrom(next)) {
             calculateRouteOnce(true);

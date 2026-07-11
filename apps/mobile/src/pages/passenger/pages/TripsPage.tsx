@@ -1365,6 +1365,8 @@ function writePassengerPendingCharges(charges: PassengerPendingCharge[]): void {
   try {
     localStorage.setItem(RAPAGO_PASSENGER_PENDING_CHARGES_KEY, JSON.stringify(charges.slice(0, 250)));
     window.dispatchEvent(new CustomEvent(RAPAGO_PASSENGER_PENDING_CHARGE_EVENT, { detail: { charges } }));
+    window.dispatchEvent(new CustomEvent("rapago:admin-passenger-pending-charge-updated", { detail: { charges } }));
+    window.dispatchEvent(new CustomEvent("rapago:admin-rides-updated", { detail: { charges } }));
     window.dispatchEvent(new CustomEvent("rapago:wallet-updated", { detail: { charges } }));
   } catch {
     // No bloquea la cancelación si el navegador no permite guardar.
@@ -1386,7 +1388,7 @@ function savePassengerPendingChargeFromCancellation(
   const now = new Date().toISOString();
   const chargeNextRideNotice = `Cargo ${formatClp(policy.feeClp)} pendiente para el próximo viaje.`;
   const cardRefundNextRideNotice = isCardPayment
-    ? `El pago original se solicitará como devolución a MercadoPago/tarjeta, pero el cargo de cancelación/no show de ${formatClp(policy.feeClp)} NO se descuenta de esa devolución: queda pendiente y se sumará automáticamente al próximo viaje.`
+    ? `El pago original completo se solicitará como devolución a MercadoPago/tarjeta. El cargo de cancelación/no show de ${formatClp(policy.feeClp)} es separado, NO se descuenta de esa devolución y se sumará automáticamente al próximo viaje.`
     : null;
 
   const nextCharge: PassengerPendingCharge = {
@@ -1478,7 +1480,7 @@ function buildPassengerCancelledRide(ride: RideRequestData): RideRequestData {
     passengerPendingChargeNotice:
       policy.feeClp > 0
         ? isCardPayment
-          ? `Tienes un cargo pendiente de ${formatClp(policy.feeClp)}. Aunque se solicite devolución del pago original a la tarjeta, este cargo se sumará automáticamente a tu próximo viaje.`
+          ? `Tienes un cargo pendiente de ${formatClp(policy.feeClp)}. Aunque MercadoPago devuelva el pago original completo a la tarjeta, este cargo es separado y se sumará automáticamente a tu próximo viaje.`
           : `Tienes un cargo pendiente de ${formatClp(policy.feeClp)}. Se sumará automáticamente a tu próximo viaje.`
         : null,
     // Si el viaje fue pagado con tarjeta, el reembolso real debe ejecutarlo el backend
@@ -1489,7 +1491,7 @@ function buildPassengerCancelledRide(ride: RideRequestData): RideRequestData {
     mercadoPagoRefundStatus: isCardPayment ? "pending_backend_refund" : null,
     cardRefundNotice: isCardPayment
       ? policy.feeClp > 0
-        ? `Tu viaje fue cancelado. Si el pago fue confirmado, MercadoPago devolverá el pago original al mismo medio usado para pagar. El cargo pendiente de ${formatClp(policy.feeClp)} se cobrará automáticamente en tu próximo viaje.`
+        ? `Tu viaje fue cancelado. Si el pago fue confirmado, MercadoPago devolverá el pago original completo al mismo medio usado para pagar. El cargo pendiente de ${formatClp(policy.feeClp)} es separado y se cobrará automáticamente en tu próximo viaje.`
         : "Tu viaje fue cancelado. Si el pago fue confirmado, MercadoPago devolverá el dinero al mismo medio usado para pagar. No debes ingresar tarjeta ni datos bancarios. Si el pago aún está pendiente, quedará como revisión pendiente."
       : null,
     requeuedReason: null,
@@ -2245,9 +2247,16 @@ function extractPassengerRideNav(notes: string | null | undefined): PassengerRid
 }
 
 function cleanRideNotes(notes: string | null | undefined): string | null {
-  if (!notes) return null;
+  const raw = String(notes ?? "").trim();
+  if (!raw) return null;
 
-  return notes
+  // No mostramos textos técnicos largos generados por RAPA GO en la tarjeta del pasajero.
+  // La información importante ya se muestra arriba como origen, destino, monto, pago y estado.
+  const isSystemNote = /Forma de pago seleccionada:|Categor[ií]a de veh[ií]culo seleccionada:|Tipo de viaje seleccionado:|Promoci[oó]n con regreso seleccionado:|Destino promocional:|Tarifa RAPA GO calculada:|Tarifa estimada pasajero:|RAPAGO_|Coordenadas recogida accesible:|Coordenadas destino accesible:|Fecha y hora de recogida agendada:|Fecha y hora de regreso agendada:|Tipo de solicitud:|Tipo de reserva:|Tipo de servicio:|Recogida de regreso elegida por el pasajero:/i.test(raw);
+
+  if (isSystemNote) return null;
+
+  return raw
     .replace(/Dirección origen confirmada:.*?(?=Dirección destino confirmada:|$)/i, "")
     .replace(/Dirección destino confirmada:.*?(?=Ubicación real del pasajero:|Coordenadas recogida accesible:|$)/i, "")
     .replace(/Ubicación real del pasajero:.*?(?=Punto accesible de recogida|Coordenadas recogida accesible:|$)/i, "")
@@ -4193,6 +4202,30 @@ function formatPassengerScheduleDate(value: unknown): string {
   });
 }
 
+function isRoundTripReturnPickupRide(ride: Partial<RideRequestData> & Record<string, unknown>): boolean {
+  const notes = String(ride.notes ?? "").toLowerCase();
+  const text = [
+    ride.bookingPurpose,
+    ride.serviceType,
+    ride.reservationStatus,
+    ride.adminScheduleStatus,
+    ride.requestKind,
+    ride.dispatchStatus,
+  ]
+    .map((value) => String(value ?? "").toLowerCase())
+    .join(" ");
+
+  return (
+    ride.roundTripReturnOnly === true ||
+    ride.roundTripReturnPickup === true ||
+    ride.includedInRoundTripFare === true ||
+    text.includes("round_trip_return") ||
+    text.includes("return_pickup") ||
+    notes.includes("agendamiento de recogida de regreso") ||
+    notes.includes("ida_mas_agendamiento_recogida")
+  );
+}
+
 function getPassengerRideScheduleInfo(ride: RideRequestData & Record<string, unknown>): {
   isScheduled: boolean;
   isRoundTrip: boolean;
@@ -4361,6 +4394,7 @@ function getPassengerRideStatusColor(status: string): string {
 
 function rideStatusTitle(status: string, ride?: RideRequestData): string {
   if (status === "driver_scheduled") return "Tu conductor fue asignado";
+  if (status === "scheduled" && ride && isRoundTripReturnPickupRide(ride as RideRequestData & Record<string, unknown>)) return "Agendamiento de recogida";
   if (status === "scheduled") return "Viaje agendado";
   if (ride && getPassengerRideScheduleInfo(ride as RideRequestData & Record<string, unknown>).isScheduled && status === "requested") return "Buscando conductor";
   if (status === "requested") return "Buscando conductor";
@@ -4427,7 +4461,7 @@ function PassengerLiveRouteMap({
   const [liveDriverPoint, setLiveDriverPoint] = useState<DriverLivePoint | null>(null);
   const [, setLiveDriverError] = useState<string | null>(null);
   const [, setLastLiveUpdate] = useState<Date | null>(null);
-  const [, setRouteInfo] = useState<{ distanceText: string; durationText: string; meters: number | null } | null>(null);
+  const [routeInfo, setRouteInfo] = useState<{ distanceText: string; durationText: string; meters: number | null } | null>(null);
 
   const nav = extractPassengerRideNav(ride.notes);
   const effectiveMapStatus = getEffectivePassengerRideStatus(ride);
@@ -4665,7 +4699,7 @@ function PassengerLiveRouteMap({
 
     const bounds = new google.maps.LatLngBounds();
 
-    if (driverPoint && ["accepted", "driver_en_route", "driver_arrived", "in_progress"].includes(effectiveMapStatus)) {
+    if (driverPoint && ["driver_scheduled", "accepted", "driver_en_route", "driver_arrived", "in_progress"].includes(effectiveMapStatus)) {
       bounds.extend(driverPoint);
     }
 
@@ -4685,7 +4719,7 @@ function PassengerLiveRouteMap({
 
 
   useEffect(() => {
-    const shouldTrackDriver = ["accepted", "driver_en_route", "driver_arrived", "in_progress"].includes(effectiveMapStatus);
+    const shouldTrackDriver = ["driver_scheduled", "accepted", "driver_en_route", "driver_arrived", "in_progress"].includes(effectiveMapStatus);
 
     function loadLocalLivePoint(): void {
       const point = readPassengerLocalDriverLivePoint(ride.id);
@@ -4730,7 +4764,7 @@ function PassengerLiveRouteMap({
   }, [ride.id, effectiveMapStatus]);
 
   useEffect(() => {
-    const shouldTrackDriver = ["accepted", "driver_en_route", "driver_arrived", "in_progress"].includes(effectiveMapStatus);
+    const shouldTrackDriver = ["driver_scheduled", "accepted", "driver_en_route", "driver_arrived", "in_progress"].includes(effectiveMapStatus);
     const liveEndpointEnabled = isPassengerLiveDriverEndpointEnabled();
     const localLivePoint = readPassengerLocalDriverLivePoint(ride.id);
 
@@ -5133,6 +5167,64 @@ function PassengerLiveRouteMap({
         style={{ width: "100%", height: "100%" }}
       />
 
+      {/* Panel inferior: el pasajero ve la flecha del conductor y el avance con GPS real. */}
+      {driverPoint && ["driver_scheduled", "accepted", "driver_en_route", "driver_arrived", "in_progress"].includes(effectiveMapStatus) && (
+        <div
+          style={{
+            position: "absolute",
+            left: 12,
+            right: 12,
+            bottom: 12,
+            zIndex: 20,
+            borderRadius: 20,
+            padding: "12px 14px",
+            background: "rgba(17,17,17,.92)",
+            color: "#ffffff",
+            boxShadow: "0 14px 34px rgba(0,0,0,.28)",
+            border: "1px solid rgba(255,255,255,.10)",
+            pointerEvents: "none",
+          }}
+        >
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <div
+              style={{
+                width: 38,
+                height: 38,
+                borderRadius: 999,
+                background: "#FACC15",
+                color: "#111827",
+                display: "grid",
+                placeItems: "center",
+                fontWeight: 950,
+                boxShadow: "0 8px 18px rgba(250,204,21,.25)",
+              }}
+            >
+              ▲
+            </div>
+            <div style={{ minWidth: 0, flex: 1 }}>
+              <div style={{ fontWeight: 950, fontSize: ".92rem" }}>
+                {effectiveMapStatus === "in_progress" ? "Viaje en curso" : "Tu conductor viene en camino"}
+              </div>
+              <div
+                style={{
+                  marginTop: 2,
+                  fontSize: ".78rem",
+                  color: "rgba(255,255,255,.78)",
+                  fontWeight: 800,
+                  whiteSpace: "nowrap",
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                }}
+              >
+                {routeInfo?.durationText ? `${routeInfo.durationText}` : "GPS real activo"}
+                {routeInfo?.distanceText ? ` · ${routeInfo.distanceText}` : ""}
+                {effectiveMapStatus === "in_progress" ? " hasta tu destino" : " hasta el punto de recogida"}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Marcadores limpios: sin textos encima del mapa para no tapar la ruta. */}
     </div>
   );
@@ -5306,6 +5398,8 @@ function savePassengerCashPaymentReview(
 
   try {
     window.dispatchEvent(new CustomEvent("rapago:cash-payment-review-updated", { detail: { review, ride } }));
+    window.dispatchEvent(new CustomEvent("rapago:admin-cash-closures-updated", { detail: { review, ride } }));
+    window.dispatchEvent(new CustomEvent("rapago:admin-rides-updated", { detail: { review, ride } }));
   } catch {
     // No bloquea Mis Viajes.
   }
@@ -5357,6 +5451,8 @@ function savePassengerWalletBenefitFromCashOverpayment(
 
     window.dispatchEvent(new CustomEvent(RAPAGO_WALLET_BENEFIT_EVENT, { detail: { benefit: nextBenefit, ride } }));
     window.dispatchEvent(new CustomEvent("rapago:wallet-updated", { detail: { benefit: nextBenefit, ride } }));
+    window.dispatchEvent(new CustomEvent("rapago:admin-wallet-benefit-updated", { detail: { benefit: nextBenefit, review, ride } }));
+    window.dispatchEvent(new CustomEvent("rapago:admin-cash-closures-updated", { detail: { benefit: nextBenefit, review, ride } }));
     window.dispatchEvent(new CustomEvent("rapago:cash-payment-review-updated", { detail: { benefit: nextBenefit, review, ride } }));
   } catch {
     // El saldo se confirma también desde backend/admin en producción.
@@ -5368,7 +5464,7 @@ function buildRapaGoRefundWhatsAppUrl(ride: RideRequestData, review: PassengerCa
   const phone = rawPhone.startsWith("56") ? rawPhone : `56${rawPhone}`;
 
   const message = [
-    "Hola RAPA GO, no quiero usar el saldo en mi próximo viaje. Necesito solicitar devolución por pago de más en efectivo.",
+    "Hola RAPA GO, quiero que me devuelvan este dinero. Solicito devolución por pago de más en efectivo.",
     `Viaje: ${review.originText} → ${review.destinationText}`,
     `Precio del viaje: ${formatClp(review.fareClp)}`,
     `Pagué: ${formatClp(review.paidClp)}`,
@@ -5495,7 +5591,7 @@ function PassengerCashPaymentAfterRideCard({
           )}
           {isRefund && (
             <>
-              Abrimos WhatsApp con el detalle de tu devolución por <strong>{formatClp(review.overpaidClp)}</strong>, porque elegiste no usarlo en tu próximo viaje.
+              Abrimos WhatsApp con el detalle de la devolución por <strong>{formatClp(review.overpaidClp)}</strong>. También quedó registrado para revisión del administrador.
             </>
           )}
         </div>
@@ -5507,7 +5603,7 @@ function PassengerCashPaymentAfterRideCard({
             style={{ "--border-radius": "999px", marginTop: 8, fontWeight: 950 } as React.CSSProperties}
             onClick={() => openPassengerRefundWhatsApp(ride, review)}
           >
-            Abrir WhatsApp nuevamente
+            Abrir WhatsApp de devolución
           </IonButton>
         )}
       </div>
@@ -5588,7 +5684,7 @@ function PassengerCashPaymentAfterRideCard({
           <div style={{ color: "rgba(255,255,255,.82)", fontSize: ".76rem", lineHeight: 1.35, fontWeight: 800 }}>
             {canConfirmOverpay ? (
               <>
-                Has pagado de más: <strong>{formatClp(overpaidClp)}</strong>. ¿Quieres dejar esa devolución como descuento para tu próximo viaje?
+                Has pagado de más: <strong>{formatClp(overpaidClp)}</strong>. ¿Quieres usar ese dinero como saldo a favor o quieres que te devolvamos ese dinero por WhatsApp?
               </>
             ) : (
               <>
@@ -5605,7 +5701,7 @@ function PassengerCashPaymentAfterRideCard({
               style={{ "--border-radius": "999px", fontWeight: 950 } as React.CSSProperties}
               onClick={saveAsWalletCredit}
             >
-              Sí, usar en mi próximo viaje
+              Sí, usar como saldo a favor
             </IonButton>
 
             <IonButton
@@ -5615,7 +5711,7 @@ function PassengerCashPaymentAfterRideCard({
               style={{ "--border-radius": "999px", fontWeight: 950 } as React.CSSProperties}
               onClick={requestRefund}
             >
-              No, pedir devolución por WhatsApp
+              Quiero que me devuelvan ese dinero
             </IonButton>
 
             <IonButton
@@ -5658,7 +5754,7 @@ function buildPassengerCancellationAlertMessage(
     : false;
 
   if (isCardPayment) {
-    return `${policy.message} ${policy.detail} Si confirmas, el viaje pagado con tarjeta quedará solicitado para devolución a la misma tarjeta y el cargo de ${formatClp(policy.feeClp)} se sumará automáticamente a tu próximo viaje. ¿Confirmas cancelar?`;
+    return `${policy.message} ${policy.detail} Si confirmas, el pago original completo quedará solicitado para devolución a la misma tarjeta y el cargo de ${formatClp(policy.feeClp)} se sumará automáticamente a tu próximo viaje como cobro separado. ¿Confirmas cancelar?`;
   }
 
   return `${policy.message} ${policy.detail} Si confirmas, el cargo de ${formatClp(policy.feeClp)} se sumará automáticamente a tu próximo viaje. ¿Confirmas cancelar?`;
@@ -5698,12 +5794,12 @@ function PassengerRideCard({
     (nav.pickupLat != null && nav.pickupLng != null) ||
     (nav.destinationLat != null && nav.destinationLng != null) ||
     getDriverPointForPassengerMap(ride, null) !== null;
-  const passengerCanTrackDriver = ["accepted", "driver_en_route", "driver_arrived", "in_progress"].includes(effectiveStatus);
+  const passengerCanTrackDriver = ["driver_scheduled", "accepted", "driver_en_route", "driver_arrived", "in_progress"].includes(effectiveStatus);
 
   // Importante: el mapa debe aparecer apenas el conductor toma/acepta el viaje.
   // Si todavía no llega el GPS, se muestra el mapa igual con el aviso
   // "Esperando señal GPS del conductor" para que el usuario no vea una pantalla vacía.
-  const showMap = passengerCanTrackDriver && (hasDriver || navHasMapPoints);
+  const showMap = passengerCanTrackDriver && (hasDriver || navHasMapPoints || effectiveStatus === "driver_scheduled");
   const label = getPassengerRideStatusLabel(effectiveStatus);
   const displayFareClp = getRideDisplayFareClp(ride);
   const paymentLabel = getRidePaymentMethodLabel(ride.notes);
@@ -5825,9 +5921,15 @@ function PassengerRideCard({
                 <div style={{ display: "flex", alignItems: "flex-start", gap: 10 }}>
                   <span style={{ fontSize: "1.25rem" }}>📅</span>
                   <div>
-                    <div style={{ fontWeight: 950, fontSize: ".92rem" }}>Viaje agendado correctamente</div>
+                    <div style={{ fontWeight: 950, fontSize: ".92rem" }}>
+                      {isRoundTripReturnPickupRide(ride as RideRequestData & Record<string, unknown>)
+                        ? "Agendamiento de recogida creado"
+                        : "Viaje agendado correctamente"}
+                    </div>
                     <div style={{ color: "#5f4a18", fontSize: ".78rem", marginTop: 3, lineHeight: 1.35 }}>
-                      Has agendado tu viaje para <strong>{formatPassengerScheduleDate(scheduleInfo.pickupAt)}</strong>.
+                      {isRoundTripReturnPickupRide(ride as RideRequestData & Record<string, unknown>)
+                        ? "Tu recogida de regreso quedó agendada para "
+                        : "Has agendado tu viaje para "}<strong>{formatPassengerScheduleDate(scheduleInfo.pickupAt)}</strong>.
                       <br />Se activará para gestión a las <strong>{formatPassengerScheduleDate(scheduleInfo.pickupActivationAt)}</strong>.
                       {scheduleInfo.isRoundTrip && scheduleInfo.returnAt && (
                         <>
@@ -5835,7 +5937,7 @@ function PassengerRideCard({
                           <br />La vuelta se activará a las <strong>{formatPassengerScheduleDate(scheduleInfo.returnActivationAt)}</strong>.
                         </>
                       )}
-                      <br />Aún no estamos buscando conductor. La reserva está congelada para conductores y el administrador la gestiona 10 minutos antes.
+                      <br />Aún no estamos buscando conductor. La reserva está congelada para conductores y el administrador la gestiona antes de la hora indicada.
                     </div>
                   </div>
                 </div>
@@ -6000,6 +6102,15 @@ function PassengerRideCard({
               <div>
                 <strong>Destino:</strong> {ride.destinationText}
               </div>
+
+              {isRoundTripReturnPickupRide(ride as RideRequestData & Record<string, unknown>) && (
+                <>
+                  <span style={{ color: "#d97706", fontSize: "1rem" }}>●</span>
+                  <div>
+                    <strong>Incluido en promoción:</strong> esta recogida de regreso no se cobra nuevamente.
+                  </div>
+                </>
+              )}
             </div>
           </div>
 
@@ -6096,7 +6207,7 @@ function PassengerRideCard({
                 disabled={cancelling}
                 onClick={() => onCancel(ride.id)}
               >
-                {cancelling ? <IonSpinner name="dots" /> : scheduleInfo.isScheduled ? "Cancelar reserva" : "Cancelar"}
+                {cancelling ? <IonSpinner name="dots" /> : isRoundTripReturnPickupRide(ride as RideRequestData & Record<string, unknown>) ? "Cancelar recogida" : scheduleInfo.isScheduled ? "Cancelar reserva" : "Cancelar"}
               </IonButton>
             )}
 

@@ -827,6 +827,115 @@ function createLocalAdminScheduledRide(input: {
   };
 }
 
+function createRoundTripReturnPickupRide(input: {
+  returnOriginText: string;
+  returnOriginAddress: string;
+  returnOriginLat: number;
+  returnOriginLng: number;
+  returnDestinationText: string;
+  returnDestinationAddress: string;
+  returnDestinationLat: number;
+  returnDestinationLng: number;
+  returnScheduledAt: string;
+  promotionTitle: string;
+  promotionDestinationName: string;
+  relatedOutboundRideId?: string | null;
+  passengerName?: string | null;
+  passengerEmail?: string | null;
+  passengerFareType?: PassengerFareType | null;
+  passengerFareLabel?: string | null;
+}): LocalPassengerRideData {
+  const scheduleFields = buildRideScheduleFields({
+    rideMode: "scheduled",
+    tripFareMode: "one_way",
+    scheduledAt: input.returnScheduledAt,
+    returnScheduledAt: "",
+    scheduleKind: "round_trip_promotion",
+  });
+  const scheduledAtIso = String(scheduleFields.scheduledAt ?? "");
+  const activationAtIso = String(
+    scheduleFields.scheduleActivationAt ??
+      scheduleFields.scheduledActivationAt ??
+      scheduleFields.dispatchAt ??
+      "",
+  );
+  const notes = [
+    "Tipo de solicitud: agendamiento de recogida de regreso.",
+    "IDA_MAS_AGENDAMIENTO_RECOGIDA: true.",
+    `Promoción asociada: ${input.promotionTitle}.`,
+    `Recogida de regreso en: ${input.promotionDestinationName}.`,
+    "Este regreso está incluido en la promoción ida y vuelta. No cobrar nuevamente al pasajero.",
+    input.relatedOutboundRideId ? `Viaje de ida relacionado: ${input.relatedOutboundRideId}.` : "Viaje de ida relacionado: solicitud principal.",
+    `RAPAGO_SCHEDULED_AT: ${scheduledAtIso}.`,
+    `RAPAGO_ACTIVATION_AT: ${activationAtIso}.`,
+    `Fecha y hora de recogida agendada: ${scheduledAtIso}.`,
+    `Viaje agendado para: ${formatScheduleDateTime(scheduledAtIso || input.returnScheduledAt)}.`,
+    `La solicitud se activa automáticamente ${SCHEDULE_ACTIVATION_MINUTES} minutos antes: ${formatScheduleDateTime(activationAtIso)}.`,
+    `Reserva congelada para conductores hasta: ${activationAtIso}.`,
+    `Dirección origen confirmada: ${input.returnOriginAddress}.`,
+    `Dirección destino confirmada: ${input.returnDestinationAddress}.`,
+    `Coordenadas recogida accesible: ${input.returnOriginLat.toFixed(6)}, ${input.returnOriginLng.toFixed(6)}.`,
+    `Coordenadas destino accesible: ${input.returnDestinationLat.toFixed(6)}, ${input.returnDestinationLng.toFixed(6)}.`,
+  ];
+
+  const base = createLocalPassengerRide({
+    originText: input.returnOriginText,
+    destinationText: input.returnDestinationText,
+    notes: limitRideNotes(notes.join(" ")),
+    estimatedFareClp: null,
+    rideMode: "scheduled",
+    tripFareMode: "one_way",
+    scheduledAt: input.returnScheduledAt,
+    returnScheduledAt: "",
+    scheduleKind: "round_trip_promotion",
+    passengerName: input.passengerName,
+    passengerEmail: input.passengerEmail,
+    passengerFareType: input.passengerFareType,
+    passengerFareLabel: input.passengerFareLabel,
+  });
+
+  return {
+    ...base,
+    ...scheduleFields,
+    id: `return-pickup-${Date.now()}`,
+    status: "scheduled",
+    estimatedFareClp: null,
+    originalFareClp: null,
+    scheduleStatus: "frozen_until_activation",
+    adminScheduleStatus: "pending_admin_round_trip_return_pickup",
+    reservationStatus: "round_trip_return_pickup_reserved",
+    bookingPurpose: "round_trip_return_pickup",
+    serviceType: "round_trip_return_pickup",
+    roundTripPromotionBooking: true,
+    roundTripReturnOnly: true,
+    roundTripReturnPickup: true,
+    includedInRoundTripFare: true,
+    fareIncludedInOutboundRide: true,
+    relatedOutboundRideId: input.relatedOutboundRideId ?? null,
+    adminVisibleNow: true,
+    adminRequiresReview: true,
+    availableForDrivers: false,
+    visibleToDrivers: false,
+    driverQueueBlocked: true,
+    frozenForDrivers: true,
+    driverFrozenUntil: scheduleFields.driverFrozenUntil ?? scheduleFields.dispatchAt ?? null,
+    localOnly: true,
+  };
+}
+
+function upsertRoundTripReturnPickupRide(ride: LocalPassengerRideData): void {
+  const key = getLocalAdminScheduledRideKey(ride);
+  const currentPassengerRides = readLocalPassengerRides().filter(
+    (item) => getLocalAdminScheduledRideKey(item) !== key,
+  );
+
+  saveLocalPassengerRides([ride, ...currentPassengerRides]);
+  upsertLocalAdminScheduledRide(ride);
+
+  window.dispatchEvent(new CustomEvent("rapago:passenger-rides-updated", { detail: { ride } }));
+  window.dispatchEvent(new CustomEvent("rapago:admin-scheduled-rides-updated", { detail: { rides: readLocalAdminScheduledRides() } }));
+}
+
 function getSessionDisplayName(user: unknown): string | null {
   if (!user || typeof user !== "object") return null;
   const data = user as Record<string, unknown>;
@@ -4581,21 +4690,19 @@ export default function RequestRidePage(): JSX.Element {
       }
 
       const scheduleFields = buildRideScheduleFields({
-        rideMode,
-        tripFareMode: effectiveTripFareMode,
-        scheduledAt,
-        returnScheduledAt,
-        scheduleKind: selectedRoundTripPromotion ? "round_trip_promotion" : "airport_pickup",
+        // En promociones ida + agendamiento de recogida, la solicitud principal
+        // sale ahora y la recogida de regreso se crea como una segunda reserva.
+        rideMode: selectedRoundTripPromotion ? "now" : rideMode,
+        tripFareMode: selectedRoundTripPromotion ? "one_way" : effectiveTripFareMode,
+        scheduledAt: selectedRoundTripPromotion ? "" : scheduledAt,
+        returnScheduledAt: selectedRoundTripPromotion ? "" : returnScheduledAt,
+        scheduleKind: selectedRoundTripPromotion ? "airport_pickup" : "airport_pickup",
       });
 
       if (selectedRoundTripPromotion && returnScheduledAt) {
-        notes.push("Tipo de reserva: promoción con regreso agendado.");
-        notes.push("El viaje de ida se solicita ahora. Solo se agenda el regreso.");
+        notes.push("Tipo de servicio: ida ahora + agendamiento de recogida de regreso.");
+        notes.push(`Recogida de regreso elegida por el pasajero: ${formatScheduleDateTime(returnScheduledAt)}.`);
         notes.push(`Promoción regreso: ${selectedRoundTripPromotion.destinationName}.`);
-        notes.push(`RAPAGO_RETURN_SCHEDULED_AT: ${String(scheduleFields.returnScheduledAt ?? "")}.`);
-        notes.push(`Fecha y hora de regreso agendada: ${String(scheduleFields.returnScheduledAt ?? "")}.`);
-        notes.push(`Regreso agendado para: ${formatScheduleDateTime(String(scheduleFields.returnScheduledAt ?? returnScheduledAt))}.`);
-        notes.push(`Regreso se activa: ${formatScheduleDateTime(String(scheduleFields.scheduledReturnActivationAt ?? ""))}.`);
       }
 
       if (rideMode === "scheduled") {
@@ -4795,10 +4902,10 @@ export default function RequestRidePage(): JSX.Element {
           roundTripPromotionTitle: selectedRoundTripPromotion.title,
           roundTripPromotionDestination: selectedRoundTripPromotion.destinationName,
           roundTripPromotionBooking: true,
-          roundTripReturnOnly: true,
-          returnScheduledAt: scheduleFields.returnScheduledAt,
-          scheduledReturnAt: scheduleFields.scheduledReturnAt,
-          scheduledReturnActivationAt: scheduleFields.scheduledReturnActivationAt,
+          roundTripOutboundNow: true,
+          roundTripReturnOnly: false,
+          roundTripReturnPickupRequested: true,
+          roundTripReturnPickupAt: returnScheduledAt,
           baseFareBeforeExtrasClp: selectedBaseFareAmount,
           finalFareWithExtrasClp: selectedFareAmount,
         });
@@ -4829,6 +4936,27 @@ export default function RequestRidePage(): JSX.Element {
           fareAfterWalletClp: selectedFareAmount,
         });
         setWalletBenefitRevision((current) => current + 1);
+      }
+
+      if (selectedRoundTripPromotion && returnScheduledAt) {
+        upsertRoundTripReturnPickupRide(createRoundTripReturnPickupRide({
+          returnOriginText: selectedRoundTripPromotion.destinationName,
+          returnOriginAddress: resolved.destination.address,
+          returnOriginLat: resolved.destination.lat,
+          returnOriginLng: resolved.destination.lng,
+          returnDestinationText: resolved.origin.text,
+          returnDestinationAddress: resolved.origin.address,
+          returnDestinationLat: resolved.origin.lat,
+          returnDestinationLng: resolved.origin.lng,
+          returnScheduledAt,
+          promotionTitle: selectedRoundTripPromotion.title,
+          promotionDestinationName: selectedRoundTripPromotion.destinationName,
+          relatedOutboundRideId: createdRideId,
+          passengerName: getSessionDisplayName(session.user),
+          passengerEmail: getSessionEmail(session.user),
+          passengerFareType: effectivePassengerFareType,
+          passengerFareLabel: passengerFareTypeLabel(effectivePassengerFareType),
+        }));
       }
 
       if (rideMode === "scheduled") {
@@ -4953,21 +5081,17 @@ export default function RequestRidePage(): JSX.Element {
         }
 
         const localScheduleFields = buildRideScheduleFields({
-          rideMode,
-          tripFareMode: effectiveTripFareMode,
-          scheduledAt,
-          returnScheduledAt,
-          scheduleKind: selectedRoundTripPromotion ? "round_trip_promotion" : "airport_pickup",
+          rideMode: selectedRoundTripPromotion ? "now" : rideMode,
+          tripFareMode: selectedRoundTripPromotion ? "one_way" : effectiveTripFareMode,
+          scheduledAt: selectedRoundTripPromotion ? "" : scheduledAt,
+          returnScheduledAt: selectedRoundTripPromotion ? "" : returnScheduledAt,
+          scheduleKind: selectedRoundTripPromotion ? "airport_pickup" : "airport_pickup",
         });
 
         if (selectedRoundTripPromotion && returnScheduledAt) {
-          localNotes.push("Tipo de reserva: promoción con regreso agendado.");
-          localNotes.push("El viaje de ida se solicita ahora. Solo se agenda el regreso.");
+          localNotes.push("Tipo de servicio: ida ahora + agendamiento de recogida de regreso.");
+          localNotes.push(`Recogida de regreso elegida por el pasajero: ${formatScheduleDateTime(returnScheduledAt)}.`);
           localNotes.push(`Promoción regreso: ${selectedRoundTripPromotion.destinationName}.`);
-          localNotes.push(`RAPAGO_RETURN_SCHEDULED_AT: ${String(localScheduleFields.returnScheduledAt ?? "")}.`);
-          localNotes.push(`Fecha y hora de regreso agendada: ${String(localScheduleFields.returnScheduledAt ?? "")}.`);
-          localNotes.push(`Regreso agendado para: ${formatScheduleDateTime(String(localScheduleFields.returnScheduledAt ?? returnScheduledAt))}.`);
-          localNotes.push(`Regreso se activa: ${formatScheduleDateTime(String(localScheduleFields.scheduledReturnActivationAt ?? ""))}.`);
         }
 
         if (rideMode === "scheduled") {
@@ -5063,11 +5187,11 @@ export default function RequestRidePage(): JSX.Element {
             destinationText: resolved.destination.text,
             notes: limitRideNotes(localNotes.join(" ")),
             estimatedFareClp: selectedFareAmount ?? null,
-            rideMode,
-            tripFareMode: effectiveTripFareMode,
-            scheduledAt,
-            returnScheduledAt,
-            scheduleKind: selectedRoundTripPromotion ? "round_trip_promotion" : "airport_pickup",
+            rideMode: selectedRoundTripPromotion ? "now" : rideMode,
+            tripFareMode: selectedRoundTripPromotion ? "one_way" : effectiveTripFareMode,
+            scheduledAt: selectedRoundTripPromotion ? "" : scheduledAt,
+            returnScheduledAt: selectedRoundTripPromotion ? "" : returnScheduledAt,
+            scheduleKind: selectedRoundTripPromotion ? null : "airport_pickup",
             passengerName: getSessionDisplayName(session.user),
             passengerEmail: getSessionEmail(session.user),
             passengerFareType: effectivePassengerFareType,
@@ -5090,9 +5214,44 @@ export default function RequestRidePage(): JSX.Element {
           originalFareBeforeWalletBenefitClp: selectedFareAmountBeforeWallet,
           finalFareAfterWalletBenefitClp: selectedFareAmount,
           walletBenefitAvailableButNotUsedClp: hasAvailableWalletBenefit && useWalletBenefit === false ? availableWalletBenefitTotalClp : 0,
+          tripFareMode: effectiveTripFareMode,
+          tripType: effectiveTripFareMode,
+          isRoundTrip: effectiveTripFareMode === "round_trip",
+          roundTripPromotionBooking: Boolean(selectedRoundTripPromotion),
+          roundTripOutboundNow: Boolean(selectedRoundTripPromotion),
+          roundTripReturnPickupRequested: Boolean(selectedRoundTripPromotion && returnScheduledAt),
+          roundTripReturnPickupAt: selectedRoundTripPromotion ? returnScheduledAt : null,
         } as LocalPassengerRideData;
 
-        saveLocalPassengerRides([localRide, ...readLocalPassengerRides()]);
+        const localReturnPickupRide = selectedRoundTripPromotion && returnScheduledAt
+          ? createRoundTripReturnPickupRide({
+              returnOriginText: selectedRoundTripPromotion.destinationName,
+              returnOriginAddress: resolved.destination.address,
+              returnOriginLat: resolved.destination.lat,
+              returnOriginLng: resolved.destination.lng,
+              returnDestinationText: resolved.origin.text,
+              returnDestinationAddress: resolved.origin.address,
+              returnDestinationLat: resolved.origin.lat,
+              returnDestinationLng: resolved.origin.lng,
+              returnScheduledAt,
+              promotionTitle: selectedRoundTripPromotion.title,
+              promotionDestinationName: selectedRoundTripPromotion.destinationName,
+              relatedOutboundRideId: String(localRide.id ?? ""),
+              passengerName: getSessionDisplayName(session.user),
+              passengerEmail: getSessionEmail(session.user),
+              passengerFareType: effectivePassengerFareType,
+              passengerFareLabel: passengerFareTypeLabel(effectivePassengerFareType),
+            })
+          : null;
+
+        saveLocalPassengerRides([
+          ...(localReturnPickupRide ? [localReturnPickupRide] : []),
+          localRide,
+          ...readLocalPassengerRides(),
+        ]);
+        if (localReturnPickupRide) {
+          upsertLocalAdminScheduledRide(localReturnPickupRide);
+        }
         if (pendingPassengerChargeTotalClp > 0) {
           markPassengerPendingChargesAppliedToRide(session.user, String(localRide.id ?? `local-${Date.now()}`));
         }
@@ -5952,7 +6111,7 @@ return (
                   }}
                 >
                   {selectedRoundTripPromotion
-                    ? "Agenda tu regreso"
+                    ? "Agenda tu recogida de regreso"
                     : "Agenda tu recogida para aeropuerto"}
                 </div>
 
@@ -6003,7 +6162,7 @@ return (
                       marginBottom: "14px",
                     }}
                   >
-                    El viaje de ida sale ahora hacia {selectedRoundTripPromotion.destinationName}. Solo debes elegir la hora de regreso.
+                    El viaje de ida sale ahora. La hora que elijas quedará como recogida de regreso para que admin la gestione.
                   </IonNote>
                 )}
 
@@ -6202,7 +6361,7 @@ return (
                 >
                   {selectedRoundTripPromotion ? (
                     <>
-                      🔁 <strong>Promoción con regreso agendado.</strong> Prepararemos tu viaje a {selectedRoundTripPromotion.destinationName} con regreso agendado. El viaje de ida sale ahora y solo guardaremos la hora de regreso.
+                      🔁 <strong>Ida + agendamiento de recogida.</strong> Ida ahora y recogida de regreso agendada.
                     </>
                   ) : (
                     <>
@@ -6768,10 +6927,14 @@ return (
             >
               {submitting ? (
                   <IonSpinner name="dots" />
-                ) : paymentMethod === "card" ? (
-                  "PAGAR CON TARJETA"
                 ) : paymentMethod === null ? (
                   "ELIGE FORMA DE PAGO"
+                ) : selectedRoundTripPromotion ? (
+                  "IDA + AGENDAMIENTO DE RECOGIDA"
+                ) : rideMode === "scheduled" ? (
+                  paymentMethod === "card" ? "AGENDAR Y PAGAR CON TARJETA" : "AGENDA TU VIAJE"
+                ) : paymentMethod === "card" ? (
+                  "PAGAR CON TARJETA"
                 ) : (
                   "SOLICITAR VIAJE"
                 )}

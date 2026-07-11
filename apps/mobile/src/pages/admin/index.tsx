@@ -202,6 +202,10 @@ const RAPAGO_CASH_PAYMENT_REVIEWS_KEY_ADMIN = "rapago_cash_payment_reviews_v1";
 const RAPAGO_WALLET_BENEFITS_KEY_ADMIN = "rapago_wallet_benefits_v1";
 const RAPAGO_PASSENGER_PENDING_CHARGES_KEY_ADMIN = "rapago_passenger_pending_charges_v1";
 const RAPAGO_PASSENGER_PENDING_CHARGE_EVENT_ADMIN = "rapago:passenger-pending-charge-updated";
+const RAPAGO_ADMIN_CASH_CLOSURES_EVENT = "rapago:admin-cash-closures-updated";
+const RAPAGO_DRIVER_CASH_CLOSURE_EVENT = "rapago:driver-cash-closure-updated";
+const RAPAGO_ADMIN_WALLET_BENEFIT_EVENT = "rapago:admin-wallet-benefit-updated";
+const RAPAGO_ADMIN_RIDES_EVENT = "rapago:admin-rides-updated";
 
 const RAPAGO_ADMIN_CASH_REVIEW_SOURCE_KEYS = [
   RAPAGO_CASH_PAYMENT_REVIEWS_KEY_ADMIN,
@@ -398,6 +402,8 @@ function writeAdminCashPaymentReviews(reviews: AdminCashPaymentReview[]): void {
     }, {});
     localStorage.setItem(RAPAGO_CASH_PAYMENT_REVIEWS_KEY_ADMIN, JSON.stringify(map));
     window.dispatchEvent(new CustomEvent("rapago:cash-payment-review-updated", { detail: { reviews } }));
+    window.dispatchEvent(new CustomEvent(RAPAGO_ADMIN_CASH_CLOSURES_EVENT, { detail: { reviews } }));
+    window.dispatchEvent(new CustomEvent(RAPAGO_ADMIN_RIDES_EVENT, { detail: { reviews } }));
   } catch {
     // No bloquea el panel admin.
   }
@@ -435,7 +441,9 @@ function writeAdminWalletBenefits(benefits: AdminWalletBenefit[]): void {
   try {
     localStorage.setItem(RAPAGO_WALLET_BENEFITS_KEY_ADMIN, JSON.stringify(benefits.slice(0, 250)));
     window.dispatchEvent(new CustomEvent("rapago:wallet-benefit-updated", { detail: { benefits } }));
+    window.dispatchEvent(new CustomEvent(RAPAGO_ADMIN_WALLET_BENEFIT_EVENT, { detail: { benefits } }));
     window.dispatchEvent(new CustomEvent("rapago:wallet-updated", { detail: { benefits } }));
+    window.dispatchEvent(new CustomEvent(RAPAGO_ADMIN_RIDES_EVENT, { detail: { benefits } }));
   } catch {
     // No bloquea el panel admin.
   }
@@ -483,6 +491,7 @@ function writeAdminPassengerPendingCharges(charges: AdminPassengerPendingCharge[
   try {
     localStorage.setItem(RAPAGO_PASSENGER_PENDING_CHARGES_KEY_ADMIN, JSON.stringify(charges.slice(0, 250)));
     window.dispatchEvent(new CustomEvent(RAPAGO_PASSENGER_PENDING_CHARGE_EVENT_ADMIN, { detail: { charges } }));
+    window.dispatchEvent(new CustomEvent(RAPAGO_ADMIN_RIDES_EVENT, { detail: { charges } }));
     window.dispatchEvent(new CustomEvent("rapago:wallet-updated", { detail: { charges } }));
   } catch {
     // No bloquea el panel admin.
@@ -733,15 +742,23 @@ export function AdminHomePage(): JSX.Element {
 
     window.addEventListener("storage", refreshCashReviews);
     window.addEventListener("rapago:cash-payment-review-updated", refreshCashReviews as EventListener);
+    window.addEventListener(RAPAGO_ADMIN_CASH_CLOSURES_EVENT, refreshCashReviews as EventListener);
+    window.addEventListener(RAPAGO_DRIVER_CASH_CLOSURE_EVENT, refreshCashReviews as EventListener);
     window.addEventListener("rapago:wallet-benefit-updated", refreshCashReviews as EventListener);
+    window.addEventListener(RAPAGO_ADMIN_WALLET_BENEFIT_EVENT, refreshCashReviews as EventListener);
     window.addEventListener("rapago:wallet-updated", refreshCashReviews as EventListener);
+    window.addEventListener(RAPAGO_ADMIN_RIDES_EVENT, refreshCashReviews as EventListener);
     window.addEventListener(RAPAGO_PASSENGER_PENDING_CHARGE_EVENT_ADMIN, refreshCashReviews as EventListener);
 
     return () => {
       window.removeEventListener("storage", refreshCashReviews);
       window.removeEventListener("rapago:cash-payment-review-updated", refreshCashReviews as EventListener);
+      window.removeEventListener(RAPAGO_ADMIN_CASH_CLOSURES_EVENT, refreshCashReviews as EventListener);
+      window.removeEventListener(RAPAGO_DRIVER_CASH_CLOSURE_EVENT, refreshCashReviews as EventListener);
       window.removeEventListener("rapago:wallet-benefit-updated", refreshCashReviews as EventListener);
+      window.removeEventListener(RAPAGO_ADMIN_WALLET_BENEFIT_EVENT, refreshCashReviews as EventListener);
       window.removeEventListener("rapago:wallet-updated", refreshCashReviews as EventListener);
+      window.removeEventListener(RAPAGO_ADMIN_RIDES_EVENT, refreshCashReviews as EventListener);
       window.removeEventListener(RAPAGO_PASSENGER_PENDING_CHARGE_EVENT_ADMIN, refreshCashReviews as EventListener);
     };
   }, []);
@@ -2234,7 +2251,7 @@ const RESIDENCE_DOCUMENT_TYPES = new Set([
 ]);
 
 const RAPANUI_RESIDENCE_REJECTION_USER_MESSAGE =
-  "Tu documento de Residente Rapa Nui fue rechazado. Por favor elige otro tipo de usuario, como Turista chileno o Turista extranjero, o vuelve a adjuntar un documento de residencia válido.";
+  "Tu documento de Rapa Nui normal fue rechazado. Por favor elige otro tipo de usuario, como Turista chileno o Turista extranjero, o vuelve a adjuntar un documento de residencia válido.";
 
 function valueFromRecord(
   source: Record<string, unknown> | null | undefined,
@@ -2334,7 +2351,7 @@ function isRapaNuiResidentUser(user: AdminUserData): boolean {
 function getPassengerLabel(user: AdminUserData): string {
   const text = normalizeAdminText(getPassengerConditionText(user));
 
-  if (isRapaNuiResidentUser(user)) return "Residente Rapa Nui";
+  if (isRapaNuiResidentUser(user)) return "Rapa Nui normal";
   if (text.includes("turista_chileno") || text.includes("chileno")) return "Turista chileno";
   if (text.includes("turista_extranjero") || text.includes("extranjero") || text.includes("foreigner")) return "Turista extranjero";
 
@@ -2713,7 +2730,7 @@ export function AdminUsersPage(): JSX.Element {
       residenceStatus !== "approved"
     ) {
       setUpdateError(
-        "No puedes activar este usuario como Residente Rapa Nui hasta aprobar su documento de residencia.",
+        "No puedes activar este usuario como Rapa Nui normal hasta aprobar su documento de residencia.",
       );
       return;
     }
@@ -2786,7 +2803,7 @@ export function AdminUsersPage(): JSX.Element {
       getResidenceVerificationStatus(user, docs) !== "approved"
     ) {
       setUpdateError(
-        "No puedes restaurar/activar este usuario como Residente Rapa Nui hasta aprobar su documento.",
+        "No puedes restaurar/activar este usuario como Rapa Nui normal hasta aprobar su documento.",
       );
       setConfirmAccountAction(null);
       return;
@@ -3007,7 +3024,7 @@ export function AdminUsersPage(): JSX.Element {
             </div>
             <p style={{ margin: "6px 0 0", fontSize: ".84rem", lineHeight: 1.35 }}>
               El admin revisa registros normales y registros con Facebook. Si el
-              pasajero seleccionó Residente Rapa Nui, debe tener documento
+              pasajero seleccionó Rapa Nui normal, debe tener documento
               aprobado para activar la cuenta.
             </p>
             <IonBadge color={pendingRapaNuiCount > 0 ? "warning" : "success"} style={{ marginTop: 10 }}>
@@ -3114,7 +3131,7 @@ export function AdminUsersPage(): JSX.Element {
                       }}
                     >
                       <strong style={{ fontSize: ".82rem", color: "#111" }}>
-                        Documento Residente Rapa Nui
+                        Documento Rapa Nui normal
                       </strong>
                       <p style={{ margin: "4px 0 0", color: "#555", fontSize: ".76rem" }}>
                         {request.documentName || "Documento adjunto"}
@@ -3454,7 +3471,7 @@ export function AdminUsersPage(): JSX.Element {
                         >
                           <div>
                             <strong style={{ fontSize: ".86rem" }}>
-                              Documento Residente Rapa Nui
+                              Documento Rapa Nui normal
                             </strong>
                             <p
                               style={{
@@ -9442,6 +9459,22 @@ function publishApprovedDriverApplicationToProfile(item: AdminDriverApplicationR
     rut: item.rut ?? "",
     birthDate: item.birthDate ?? "",
     driverApplicationStatus: "approved",
+    passengerFareType: "resident",
+    farePassengerType: "resident",
+    passengerType: "resident",
+    passengerFareLabel: "Rapa Nui normal",
+    passengerTypeLabel: "Rapa Nui normal",
+    nationality: "Rapa Nui normal",
+    isResident: true,
+    is_resident: true,
+    residenceVerificationStatus: "approved",
+    driverPassengerFareType: "resident",
+    driverNationality: "Rapa Nui normal",
+    driverIsResident: true,
+    role: "driver",
+    status: "active",
+    isVerified: true,
+    is_verified: true,
     vehicleBrand: primaryVehicle?.brand ?? "",
     vehicleModel: primaryVehicle?.model ?? "",
     vehicleYear: primaryVehicle?.year ?? "",
@@ -9476,6 +9509,20 @@ function publishApprovedDriverApplicationToProfile(item: AdminDriverApplicationR
     vehicleImageDataUrl: primaryVehicle?.imageDataUrl ?? item.vehicle?.photoDataUrl ?? null,
     vehiclePhotoDataUrl: primaryVehicle?.imageDataUrl ?? item.vehicle?.photoDataUrl ?? null,
     applicationStatus: "approved",
+    driverProfileResidentStatus: "approved",
+    passengerFareType: "resident",
+    farePassengerType: "resident",
+    passengerType: "resident",
+    passengerFareLabel: "Rapa Nui normal",
+    passengerTypeLabel: "Rapa Nui normal",
+    nationality: "Rapa Nui normal",
+    isResident: true,
+    is_resident: true,
+    residenceVerificationStatus: "approved",
+    role: "driver",
+    status: "active",
+    isVerified: true,
+    is_verified: true,
     updatedAt: now,
   };
 
@@ -9510,6 +9557,219 @@ function publishApprovedDriverApplicationToProfile(item: AdminDriverApplicationR
     // No bloquea la aprobación si localStorage está lleno.
   }
 }
+
+function markApprovedDriverApplicationAsRapaNuiResident(item: AdminDriverApplicationRecord): void {
+  try {
+    const label = "Rapa Nui normal";
+    const email = String(item.email ?? "").trim().toLowerCase();
+    const ownerKey = String(item.email ?? item.id ?? "driver-global").trim().toLowerCase();
+
+    const patchResidentFields = (record: Record<string, unknown>): Record<string, unknown> => ({
+      ...record,
+      ownerKey: String(record.ownerKey ?? ownerKey),
+      driverOwnerKey: String(record.driverOwnerKey ?? ownerKey),
+      email: String(record.email ?? item.email ?? ""),
+      driverEmail: String(record.driverEmail ?? item.email ?? ""),
+      role: "driver",
+      status: "active",
+      isVerified: true,
+      is_verified: true,
+      passengerFareType: "resident",
+      farePassengerType: "resident",
+      passengerType: "resident",
+      driverPassengerFareType: "resident",
+      driverFarePassengerType: "resident",
+      passengerFareLabel: label,
+      passengerTypeLabel: label,
+      nationality: label,
+      driverNationality: label,
+      isResident: true,
+      is_resident: true,
+      driverIsResident: true,
+      residenceVerificationStatus: "approved",
+      residentVerificationStatus: "approved",
+      rapaNuiResidentApprovedByAdmin: true,
+      rapaNuiResidentApprovedAt: new Date().toISOString(),
+    });
+
+    const shouldPatchRecord = (record: Record<string, unknown>): boolean => {
+      const recordEmail = String(
+        record.email ??
+        record.userEmail ??
+        record.passengerEmail ??
+        record.driverEmail ??
+        record.profileEmail ??
+        ""
+      ).trim().toLowerCase();
+
+      const recordOwnerKey = String(record.ownerKey ?? record.driverOwnerKey ?? "").trim().toLowerCase();
+
+      return (
+        Boolean(email && recordEmail === email) ||
+        Boolean(ownerKey && recordOwnerKey === ownerKey) ||
+        Boolean(email && JSON.stringify(record).toLowerCase().includes(email))
+      );
+    };
+
+    const patchValue = (value: unknown): unknown => {
+      if (Array.isArray(value)) {
+        return value.map((entry) => patchValue(entry));
+      }
+
+      if (value && typeof value === "object") {
+        const source = value as Record<string, unknown>;
+        const next: Record<string, unknown> = {};
+
+        for (const [key, entry] of Object.entries(source)) {
+          next[key] = patchValue(entry);
+        }
+
+        if (shouldPatchRecord(next)) {
+          return patchResidentFields(next);
+        }
+
+        return next;
+      }
+
+      if (typeof value === "string") {
+        const raw = value.trim().toLowerCase();
+        if (raw === "foreigner" || raw === "tourist_foreigner" || raw.includes("turista extranjero")) {
+          return label;
+        }
+      }
+
+      return value;
+    };
+
+    const localKeysToPatch: string[] = [];
+    for (let i = 0; i < localStorage.length; i += 1) {
+      const key = localStorage.key(i);
+      if (key && key.includes("rapago")) localKeysToPatch.push(key);
+    }
+
+    localKeysToPatch.forEach((key) => {
+      const raw = localStorage.getItem(key);
+      if (!raw) return;
+
+      try {
+        const parsed = JSON.parse(raw) as unknown;
+        localStorage.setItem(key, JSON.stringify(patchValue(parsed)));
+      } catch {
+        // No todos los valores rapago son JSON.
+      }
+    });
+
+    const residentProfile = patchResidentFields({
+      ownerKey,
+      driverOwnerKey: ownerKey,
+      email: item.email ?? "",
+      driverEmail: item.email ?? "",
+      name: getDriverApplicationFullName(item),
+      firstName: item.firstName ?? "",
+      lastName: item.lastName ?? "",
+      phone: item.phone ?? "",
+      rut: item.rut ?? "",
+      driverApplicationStatus: "approved",
+      updatedAt: new Date().toISOString(),
+    });
+
+    localStorage.setItem("rapago_registration_profile", JSON.stringify(residentProfile));
+    localStorage.setItem("rapago_driver_registration_profile", JSON.stringify(residentProfile));
+    localStorage.setItem("rapago_profile_nationality", label);
+    localStorage.setItem("rapago_nationality", label);
+    localStorage.setItem("rapago_driver_nationality", label);
+    localStorage.setItem("rapago_passenger_fare_type", "resident");
+    localStorage.setItem("rapago_profile_passenger_type", "resident");
+    localStorage.setItem("rapago_fare_passenger_type", "resident");
+    localStorage.setItem("rapago_driver_passenger_fare_type", "resident");
+    localStorage.setItem("rapago_driver_fare_passenger_type", "resident");
+    localStorage.setItem("rapago_is_resident", "true");
+    localStorage.setItem("rapago_driver_is_resident", "true");
+    localStorage.setItem("rapago_residence_verification_status", "approved");
+
+    window.dispatchEvent(new CustomEvent("rapago:passenger-profile-updated", {
+      detail: {
+        email,
+        role: "driver",
+        status: "active",
+        passengerFareType: "resident",
+        farePassengerType: "resident",
+        nationality: label,
+        isResident: true,
+        isVerified: true,
+      },
+    }));
+
+    window.dispatchEvent(new CustomEvent("rapago:driver-application-approved-resident", {
+      detail: {
+        email,
+        ownerKey,
+        passengerFareType: "resident",
+        nationality: label,
+        isResident: true,
+      },
+    }));
+  } catch {
+    // No bloquea la aprobación del conductor.
+  }
+}
+
+async function trySyncApprovedDriverResidentToApi(
+  token: string | null | undefined,
+  userId: string | null | undefined,
+  item: AdminDriverApplicationRecord,
+): Promise<void> {
+  if (!token || !userId) return;
+
+  const apiBase =
+    (import.meta as unknown as { env?: Record<string, string | undefined> }).env?.VITE_API_BASE_URL ??
+    (import.meta as unknown as { env?: Record<string, string | undefined> }).env?.VITE_API_URL ??
+    "";
+
+  const base = String(apiBase || "").replace(/\/$/, "");
+  if (!base) return;
+
+  const payload = {
+    role: "driver",
+    status: "active",
+    isVerified: true,
+    is_verified: true,
+    passengerFareType: "resident",
+    farePassengerType: "resident",
+    passengerType: "resident",
+    nationality: "Rapa Nui normal",
+    isResident: true,
+    is_resident: true,
+    driverApplicationId: item.id,
+    driverApplicationStatus: "approved",
+    driverApprovedAt: new Date().toISOString(),
+  };
+
+  const endpoints = [
+    `${base}/admin/users/${userId}/approve-driver-resident`,
+    `${base}/admin/users/${userId}/driver-resident`,
+    `${base}/admin/users/${userId}`,
+    `${base}/admin/users/${userId}/status`,
+  ];
+
+  for (const url of endpoints) {
+    try {
+      const response = await fetch(url, {
+        method: url.endsWith("/status") ? "PATCH" : "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify(payload),
+      });
+
+      if (response.ok) return;
+    } catch {
+      // Prueba el siguiente endpoint.
+    }
+  }
+}
+
 const DOC_STATUS_COLOR: Record<string, string> = {
   pending: "warning",
   uploaded: "primary",
@@ -9808,6 +10068,7 @@ export function AdminDocumentsPage(): JSX.Element {
 
       if (status === "approved") {
         publishApprovedDriverApplicationToProfile(reviewed);
+        markApprovedDriverApplicationAsRapaNuiResident(reviewed);
 
         const matchedUser = users.find(
           (user) => normalizeAdminText(user.email) === normalizeAdminText(reviewed.email),
@@ -9821,15 +10082,31 @@ export function AdminDocumentsPage(): JSX.Element {
               "active",
             );
 
+            await trySyncApprovedDriverResidentToApi(session.accessToken, matchedUser.id, reviewed);
+
+            const residentDriverUser = {
+              ...updatedUser,
+              role: "driver",
+              status: "active",
+              isVerified: true,
+              passengerFareType: "resident",
+              farePassengerType: "resident",
+              passengerType: "resident",
+              passengerFareLabel: "Rapa Nui normal",
+              nationality: "Rapa Nui normal",
+              isResident: true,
+            } as AdminUserData;
+
             setUsers((prev) =>
-              prev.map((user) => (user.id === updatedUser.id ? updatedUser : user)),
+              prev.map((user) => (user.id === updatedUser.id ? residentDriverUser : user)),
             );
           } catch {
+            await trySyncApprovedDriverResidentToApi(session?.accessToken, matchedUser.id, reviewed);
             // Si el backend no permite activar desde aquí, igual queda aprobada localmente.
           }
         }
 
-        setToastMessage("Postulación de conductor aprobada. El perfil y vehículo quedaron habilitados.");
+        setToastMessage("Postulación de conductor aprobada. El perfil, vehículo y tarifa Rapa Nui normal quedaron habilitados.");
       } else if (status === "rejected") {
         setToastMessage("Postulación de conductor rechazada.");
       } else if (status === "on_hold") {
@@ -9908,7 +10185,7 @@ export function AdminDocumentsPage(): JSX.Element {
                   Postulaciones de conductores
                 </div>
                 <p style={{ margin: "6px 0 0", fontSize: ".84rem", lineHeight: 1.35 }}>
-                  Revisa cédula, licencia, vehículos, fotos y datos enviados desde inscripción.
+                  Revisa cédula, licencia, vehículos, fotos y datos enviados desde inscripción. Al aprobar, queda como Rapa Nui normal y usa tarifa Rapa Nui normal.
                 </p>
               </div>
               <IonBadge color={pendingDriverApplications > 0 ? "warning" : "success"}>
