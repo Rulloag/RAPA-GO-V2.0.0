@@ -1199,23 +1199,28 @@ const TOURIST_DESTINATION_SUGGESTIONS = [
 
 function inputItemStyle(extra?: CSSProperties): CSSProperties {
   return {
-    "--background": "#242424",
-    "--border-radius": "14px",
+    "--background": "#fffaf0",
+    "--border-radius": "18px",
     "--padding-start": "14px",
     "--inner-padding-end": "12px",
-    "--min-height": "48px",
-    "--color": "#F6F2EC",
-    "--placeholder-color": "rgba(246,242,236,.58)",
+    "--min-height": "56px",
+    "--color": "#111827",
+    "--placeholder-color": "rgba(17,24,39,.50)",
+    "--highlight-color-focused": "#D2A43A",
+    color: "#111827",
     marginBottom: "14px",
+    border: "1px solid rgba(210,164,58,.38)",
+    boxShadow: "0 12px 28px rgba(17,24,39,.10)",
+    overflow: "hidden",
     ...extra,
   } as CSSProperties;
 }
 
 function sectionLabelStyle(): CSSProperties {
   return {
-    color: "rgba(246,242,236,.52)",
-    fontSize: "0.72rem",
-    fontWeight: 900,
+    color: "#6B5A42",
+    fontSize: "0.74rem",
+    fontWeight: 950,
     letterSpacing: "0.04em",
     margin: "0 0 8px 2px",
     textTransform: "uppercase",
@@ -1225,11 +1230,165 @@ function sectionLabelStyle(): CSSProperties {
 function suggestionBoxStyle(): CSSProperties {
   return {
     margin: "-8px 0 14px",
-    border: "1px solid rgba(210,164,58,.35)",
-    borderRadius: "12px",
+    border: "1px solid rgba(210,164,58,.32)",
+    borderRadius: "18px",
     overflow: "hidden",
-    background: "#171717",
+    background: "#fffaf0",
+    boxShadow: "0 16px 34px rgba(17,24,39,.12)",
   };
+}
+
+function normalizePlaceStreetText(value: unknown): string {
+  return String(value ?? "")
+    .replace(/^Recogida\s+en\s+/i, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function normalizePlaceStreetCompare(value: unknown): string {
+  return normalizePlaceStreetText(value)
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
+function getAddressComponentValue(
+  result: google.maps.GeocoderResult | null | undefined,
+  types: string[],
+): string | null {
+  if (!result) return null;
+
+  const component = result.address_components.find((item) =>
+    types.some((type) => item.types.includes(type)),
+  );
+
+  const value = normalizePlaceStreetText(component?.long_name ?? component?.short_name ?? "");
+  return value || null;
+}
+
+function getGeocodePlaceName(result: google.maps.GeocoderResult | null | undefined): string | null {
+  const value =
+    getAddressComponentValue(result, ["premise"]) ??
+    getAddressComponentValue(result, ["establishment"]) ??
+    getAddressComponentValue(result, ["point_of_interest"]) ??
+    getAddressComponentValue(result, ["tourist_attraction"]);
+
+  return value || null;
+}
+
+function getGeocodeStreetName(result: google.maps.GeocoderResult | null | undefined): string | null {
+  return getAddressComponentValue(result, ["route"]);
+}
+
+function isGooglePlusCodeLike(value: unknown): boolean {
+  const raw = normalizePlaceStreetText(value).toUpperCase().replace(/\s+/g, "");
+  return /^[23456789CFGHJMPQRVWX]{4,}\+[23456789CFGHJMPQRVWX]{2,}/.test(raw);
+}
+
+function isUsefulPlaceStreetValue(value: unknown): boolean {
+  const text = normalizePlaceStreetText(value);
+  const key = normalizePlaceStreetCompare(text);
+
+  if (!text || key.length < 3) return false;
+  if (isGooglePlusCodeLike(text)) return false;
+
+  return ![
+    "hanga roa",
+    "rapa nui",
+    "isla de pascua",
+    "easter island",
+    "valparaiso",
+    "valparaiso chile",
+    "chile",
+  ].includes(key);
+}
+
+function buildPlaceStreetTitle(placeName: unknown, streetName: unknown): string | null {
+  const place = isUsefulPlaceStreetValue(placeName) ? normalizePlaceStreetText(placeName) : "";
+  const street = isUsefulPlaceStreetValue(streetName) ? normalizePlaceStreetText(streetName) : "";
+
+  const placeKey = normalizePlaceStreetCompare(place);
+  const streetKey = normalizePlaceStreetCompare(street);
+
+  if (place && street) {
+    if (placeKey === streetKey) return place;
+    if (placeKey.includes(streetKey) && streetKey.length >= 3) return place;
+    if (streetKey.includes(placeKey) && placeKey.length >= 3) return street;
+
+    return `${place} · ${street}`;
+  }
+
+  return place || street || null;
+}
+
+const RAPA_NUI_VISIBLE_PLACE_REFERENCES: Array<{ name: string; lat: number; lng: number }> = [
+  { name: "Hotel Taha Tai", lat: -27.15055, lng: -109.43105 },
+  { name: "Apina Tupuna", lat: -27.15125, lng: -109.43165 },
+  { name: "Ahu Tahai", lat: -27.1398, lng: -109.4298 },
+  { name: "Playa Pea", lat: -27.1482, lng: -109.4336 },
+  { name: "Playa Poko Poko", lat: -27.149, lng: -109.4319 },
+  { name: "Caleta Hanga Roa", lat: -27.1478, lng: -109.4356 },
+  { name: "Mercado Artesanal Rapa Nui", lat: -27.1508, lng: -109.4289 },
+  { name: "Feria Artesanal Hare Umanga", lat: -27.1503, lng: -109.4277 },
+  { name: "Iglesia de la Santa Cruz Rapa Nui", lat: -27.1506, lng: -109.4271 },
+  { name: "Comisaría Rapa Nui", lat: -27.1497, lng: -109.4268 },
+  { name: "Hospital de Hanga Roa", lat: -27.1502, lng: -109.4216 },
+  { name: "Aeropuerto Internacional Mataveri", lat: -27.16395, lng: -109.42465 },
+  { name: "Jardín Botánico TauKiani", lat: -27.1482, lng: -109.4069 },
+  { name: "Anakena", lat: -27.0732, lng: -109.3233 },
+  { name: "Terevaka", lat: -27.0917, lng: -109.382 },
+];
+
+function getNearestKnownRapaNuiPlaceName(point: { lat: number; lng: number }, maxMeters = 190): string | null {
+  const nearest = RAPA_NUI_VISIBLE_PLACE_REFERENCES
+    .map((item) => ({ ...item, meters: distanceMeters(point, { lat: item.lat, lng: item.lng }) }))
+    .sort((a, b) => a.meters - b.meters)[0];
+
+  return nearest && nearest.meters <= maxMeters ? nearest.name : null;
+}
+
+async function getNearbyGooglePlaceName(point: { lat: number; lng: number }): Promise<string | null> {
+  try {
+    await loadRapaGoGoogleMaps();
+    if (!window.google?.maps?.places?.PlacesService) return null;
+
+    const container = document.createElement("div");
+    const service = new google.maps.places.PlacesService(container);
+
+    return await new Promise((resolve) => {
+      service.nearbySearch(
+        {
+          location: new google.maps.LatLng(point.lat, point.lng),
+          radius: 120,
+          type: "point_of_interest",
+        } as google.maps.places.PlaceSearchRequest,
+        (results, status) => {
+          if (status !== google.maps.places.PlacesServiceStatus.OK || !results?.length) {
+            resolve(null);
+            return;
+          }
+
+          const best = results.find((item) => isUsefulPlaceStreetValue(item.name));
+          resolve(best?.name ?? null);
+        },
+      );
+    });
+  } catch {
+    return null;
+  }
+}
+
+async function getBestVisiblePlaceNameForPoint(
+  point: { lat: number; lng: number },
+  geocodePlaceName?: string | null,
+): Promise<string | null> {
+  const geocodePlace = isUsefulPlaceStreetValue(geocodePlaceName) ? normalizePlaceStreetText(geocodePlaceName) : null;
+  const knownPlace = getNearestKnownRapaNuiPlaceName(point);
+  const googlePlace = await getNearbyGooglePlaceName(point);
+
+  return knownPlace ?? googlePlace ?? geocodePlace ?? null;
 }
 
 function getShortAddress(result: google.maps.GeocoderResult | null): {
@@ -1243,17 +1402,10 @@ function getShortAddress(result: google.maps.GeocoderResult | null): {
     };
   }
 
-  const route = result.address_components.find((item) =>
-    item.types.includes("route"),
-  )?.long_name;
-
-  const premise =
-    result.address_components.find((item) => item.types.includes("premise"))
-      ?.long_name ??
-    result.address_components.find((item) => item.types.includes("establishment"))
-      ?.long_name;
-
-  const title = route || premise || result.formatted_address.split(",")[0];
+  const route = getGeocodeStreetName(result);
+  const premise = getGeocodePlaceName(result);
+  const fallback = normalizePlaceStreetText(result.formatted_address.split(",")[0]);
+  const title = buildPlaceStreetTitle(premise, route) ?? fallback ?? "Punto seleccionado";
 
   return {
     title,
@@ -2277,17 +2429,22 @@ async function reverseGeocodeExact(point: Coords): Promise<PickerResult> {
             : null;
 
         const label = getShortAddress(first);
+        const streetName = getGeocodeStreetName(first);
 
-        resolve({
-          text: label.title,
-          address: label.subtitle,
-          lat: point.lat,
-          lng: point.lng,
-          placeId: first?.place_id ?? point.placeId ?? null,
-          originalLat: null,
-          originalLng: null,
-          walkMeters: 0,
-          isAccessiblePickup: false,
+        void getBestVisiblePlaceNameForPoint(point, getGeocodePlaceName(first)).then((placeName) => {
+          const title = buildPlaceStreetTitle(placeName, streetName) ?? label.title;
+
+          resolve({
+            text: title,
+            address: label.subtitle,
+            lat: point.lat,
+            lng: point.lng,
+            placeId: first?.place_id ?? point.placeId ?? null,
+            originalLat: null,
+            originalLng: null,
+            walkMeters: 0,
+            isAccessiblePickup: false,
+          });
         });
       },
     );
@@ -2335,7 +2492,8 @@ async function reverseGeocode(point: Coords): Promise<PickerResult> {
 
         const roadResult = findNearestRoadResult(results);
         const best = roadResult ?? first;
-        const label = getShortAddress(best);
+        const roadLabel = getShortAddress(roadResult ?? best);
+        const roadName = getGeocodeStreetName(roadResult ?? best);
 
         const roadLocation = roadResult?.geometry?.location ?? null;
         const pickupPoint = roadLocation
@@ -2351,20 +2509,27 @@ async function reverseGeocode(point: Coords): Promise<PickerResult> {
         const meters = Math.round(distanceMeters(point, pickupPoint));
         const adjustedToRoad = Boolean(roadResult && meters >= 8);
 
-        resolve({
-          text: adjustedToRoad
-            ? `Recogida en ${label.title}`
-            : label.title,
-          address: adjustedToRoad
-            ? `${label.subtitle} · Camina aprox. ${meters} m hasta la calle accesible`
-            : label.subtitle,
-          lat: pickupPoint.lat,
-          lng: pickupPoint.lng,
-          placeId: best?.place_id ?? point.placeId ?? null,
-          originalLat: point.lat,
-          originalLng: point.lng,
-          walkMeters: meters,
-          isAccessiblePickup: Boolean(roadResult),
+        void getBestVisiblePlaceNameForPoint(point, getGeocodePlaceName(first)).then((placeName) => {
+          const label = {
+            title: buildPlaceStreetTitle(placeName, roadName) ?? roadLabel.title,
+            subtitle: roadLabel.subtitle,
+          };
+
+          resolve({
+            text: adjustedToRoad
+              ? `Recogida en ${label.title}`
+              : label.title,
+            address: adjustedToRoad
+              ? `${label.subtitle} · Camina aprox. ${meters} m hasta la calle accesible`
+              : label.subtitle,
+            lat: pickupPoint.lat,
+            lng: pickupPoint.lng,
+            placeId: best?.place_id ?? point.placeId ?? null,
+            originalLat: point.lat,
+            originalLng: point.lng,
+            walkMeters: meters,
+            isAccessiblePickup: Boolean(roadResult),
+          });
         });
       },
     );
@@ -2437,11 +2602,17 @@ async function geocodeText(text: string): Promise<PickerResult | null> {
           lng: result.geometry.location.lng(),
           placeId: result.place_id,
         }).then((snapped) => {
+          const searchedPlace = normalizePlaceStreetText(text.trim());
+          const snappedStreet = normalizePlaceStreetText(snapped.text);
+          const combinedTitle =
+            buildPlaceStreetTitle(searchedPlace, snappedStreet) ??
+            (searchedPlace || snappedStreet || snapped.text);
+
           resolve({
             ...snapped,
             text: snapped.isAccessiblePickup
-              ? snapped.text
-              : text.trim() || snapped.text,
+              ? `Recogida en ${combinedTitle}`
+              : combinedTitle,
           });
         });
       },
@@ -2552,11 +2723,18 @@ async function getPlaceDetails(placeId: string): Promise<PickerResult | null> {
           lng: place.geometry.location.lng(),
           placeId: place.place_id ?? placeId,
         }).then((snapped) => {
+          const placeName = normalizePlaceStreetText(place.name ?? place.formatted_address ?? "");
+          const snappedStreet = normalizePlaceStreetText(snapped.text);
+          const combinedTitle =
+            buildPlaceStreetTitle(placeName, snappedStreet) ??
+            (placeName || snappedStreet || snapped.text);
+
           resolve({
             ...snapped,
             text: snapped.isAccessiblePickup
-              ? snapped.text
-              : place.name ?? place.formatted_address ?? snapped.text,
+              ? `Recogida en ${combinedTitle}`
+              : combinedTitle,
+            address: snapped.address,
           });
         });
       },
@@ -3168,6 +3346,24 @@ function MapPointPicker({
       }}
     >
       <IonPage>
+      <style>{`
+        .rapago-request-light ion-item::part(native) {
+          background: transparent !important;
+          color: #111827 !important;
+        }
+        .rapago-request-light ion-input,
+        .rapago-request-light ion-textarea {
+          --color: #111827 !important;
+          --placeholder-color: rgba(17,24,39,.50) !important;
+        }
+        .rapago-request-light input,
+        .rapago-request-light textarea {
+          color: #111827 !important;
+        }
+        .rapago-request-light .item-native {
+          background: transparent !important;
+        }
+      `}</style>
         <IonHeader>
           <IonToolbar
             color="primary"
@@ -3190,11 +3386,11 @@ function MapPointPicker({
           </IonToolbar>
         </IonHeader>
 
-        <IonContent fullscreen>
+        <IonContent fullscreen className="rapago-request-light" style={{ "--background": "#f6ead6" } as CSSProperties}>
           <div
             style={{
               height: "100%",
-              background: "#111111",
+              background: "linear-gradient(180deg,#f6ead6,#fffaf0)",
               display: "flex",
               flexDirection: "column",
             }}
@@ -3325,9 +3521,10 @@ function MapPointPicker({
                   height: 56,
                   borderRadius: 999,
                   border: 0,
-                  background: "#111111",
-                  color: "#ffffff",
-                  boxShadow: "0 10px 24px rgba(0,0,0,.35)",
+                  background: "#fffaf0",
+                  color: "#111827",
+                  border: "1px solid rgba(210,164,58,.35)",
+                  boxShadow: "0 14px 30px rgba(17,24,39,.18)",
                   display: "flex",
                   alignItems: "center",
                   justifyContent: "center",
@@ -3356,14 +3553,14 @@ function MapPointPicker({
 
             <div
               style={{
-                background: "#111111",
-                borderTopLeftRadius: 24,
-                borderTopRightRadius: 24,
+                background: "linear-gradient(180deg,#fffaf0,#f8ead0)",
+                borderTopLeftRadius: 28,
+                borderTopRightRadius: 28,
                 marginTop: -20,
                 position: "relative",
                 zIndex: 20,
                 padding: "18px 18px max(22px, env(safe-area-inset-bottom))",
-                boxShadow: "0 -14px 30px rgba(0,0,0,.35)",
+                boxShadow: "0 -18px 38px rgba(17,24,39,.20)",
                 flex: "0 0 auto",
                 maxHeight: mode === "destination" ? "45vh" : "46vh",
                 overflowY: "auto",
@@ -3374,14 +3571,14 @@ function MapPointPicker({
                   width: 42,
                   height: 4,
                   borderRadius: 999,
-                  background: "rgba(246,242,236,.16)",
+                  background: "rgba(17,24,39,.18)",
                   margin: "0 auto 22px",
                 }}
               />
 
               <div
                 style={{
-                  color: "#F6F2EC",
+                  color: "#111827",
                   fontWeight: 950,
                   fontSize: "1.05rem",
                   lineHeight: 1.2,
@@ -3397,10 +3594,11 @@ function MapPointPicker({
                   style={{
                     margin: "0 0 14px",
                     borderRadius: 18,
-                    background: "#171717",
-                    color: "#F6F2EC",
+                    background: "#fff7e8",
+                    color: "#111827",
                     padding: "12px",
-                    border: "1px solid rgba(210,164,58,.28)",
+                    border: "1px solid rgba(210,164,58,.32)",
+                    boxShadow: "0 12px 26px rgba(17,24,39,.08)",
                   }}
                 >
                   <div
@@ -3437,8 +3635,8 @@ function MapPointPicker({
                           style={{
                             border: "1px solid rgba(210,164,58,.38)",
                             borderRadius: 14,
-                            background: "linear-gradient(135deg,#2a2118,#151515)",
-                            color: "#F6F2EC",
+                            background: "linear-gradient(135deg,#fffaf0,#f2dfb8)",
+                            color: "#111827",
                             padding: "10px",
                             textAlign: "left",
                           }}
@@ -3446,7 +3644,7 @@ function MapPointPicker({
                           <div style={{ fontWeight: 950, fontSize: ".78rem", lineHeight: 1.2 }}>
                             {item.name}
                           </div>
-                          <div style={{ color: "rgba(246,242,236,.62)", fontSize: ".68rem", marginTop: 3 }}>
+                          <div style={{ color: "rgba(17,24,39,.62)", fontSize: ".68rem", marginTop: 3 }}>
                             {item.subtitle}
                           </div>
                         </button>
@@ -3457,11 +3655,12 @@ function MapPointPicker({
 
               <div
                 style={{
-                  background: "#1f1f1f",
-                  borderRadius: 16,
+                  background: "#fffaf0",
+                  borderRadius: 18,
                   padding: "12px 14px",
                   marginBottom: 12,
-                  border: "1px solid rgba(255,255,255,.08)",
+                  border: "1px solid rgba(210,164,58,.32)",
+                  boxShadow: "0 12px 28px rgba(17,24,39,.10)",
                   display: "flex",
                   alignItems: "center",
                   gap: 12,
@@ -3480,8 +3679,8 @@ function MapPointPicker({
                 <div style={{ flex: 1 }}>
                   <div
                     style={{
-                      color: "#F6F2EC",
-                      fontWeight: 900,
+                      color: "#111827",
+                      fontWeight: 950,
                       fontSize: ".9rem",
                       marginBottom: 4,
                     }}
@@ -3496,18 +3695,18 @@ function MapPointPicker({
                   </div>
                   <div
                     style={{
-                      color: "rgba(246,242,236,.58)",
+                      color: "rgba(17,24,39,.62)",
                       fontSize: ".82rem",
                       lineHeight: 1.35,
                     }}
                   >
                     {selected?.walkMeters != null && selected.walkMeters > 8
-                      ? `A ${selected.walkMeters} m de tu ubicación`
+                      ? `${String(selected.address ?? "").split(" · ")[0] || "Calle accesible"} · A ${selected.walkMeters} m de tu ubicación`
                       : selected?.address ??
                         "Mueve el mapa. Rapa Go ajustará el punto a una calle accesible."}
                   </div>
                 </div>
-                <div style={{ color: "rgba(246,242,236,.65)", fontSize: 22 }}>✎</div>
+                <div style={{ color: "#9A6A10", fontSize: 22 }}>✎</div>
               </div>
 
               {mode === "origin" &&
@@ -3515,11 +3714,12 @@ function MapPointPicker({
                 selected.walkMeters > 8 && (
                 <div
                   style={{
-                    background: "#1f1f1f",
-                    borderRadius: 16,
+                    background: "#fff7e8",
+                    borderRadius: 18,
                     padding: "14px 16px",
                     marginBottom: 18,
-                    border: "1px solid rgba(255,255,255,.08)",
+                    border: "1px solid rgba(210,164,58,.32)",
+                    boxShadow: "0 12px 28px rgba(17,24,39,.08)",
                     display: "grid",
                     gridTemplateColumns: "42px 1fr auto",
                     gap: 12,
@@ -3530,8 +3730,8 @@ function MapPointPicker({
                   <div>
                     <div
                       style={{
-                        color: "#F6F2EC",
-                        fontWeight: 900,
+                        color: "#111827",
+                        fontWeight: 950,
                         fontSize: ".86rem",
                         marginBottom: 4,
                       }}
@@ -3540,7 +3740,7 @@ function MapPointPicker({
                     </div>
                     <div
                       style={{
-                        color: "rgba(246,242,236,.62)",
+                        color: "rgba(17,24,39,.64)",
                         fontSize: ".82rem",
                         lineHeight: 1.35,
                       }}
@@ -3559,8 +3759,8 @@ function MapPointPicker({
                     {selected.walkMeters} m
                     <div
                       style={{
-                        color: "rgba(246,242,236,.78)",
-                        fontWeight: 600,
+                        color: "rgba(17,24,39,.62)",
+                        fontWeight: 700,
                         fontSize: ".78rem",
                         marginTop: 4,
                       }}
@@ -3579,9 +3779,10 @@ function MapPointPicker({
                 }}
                 style={
                   {
-                    "--background": "#F6F2EC",
-                    "--color": "#111111",
-                    "--border-radius": "14px",
+                    "--background": "linear-gradient(135deg,#FACC15,#F2D48B)",
+                    "--color": "#111827",
+                    "--border-radius": "18px",
+                    "--box-shadow": "0 14px 30px rgba(210,164,58,.24)",
                     height: "54px",
                     minHeight: "54px",
                     fontSize: "1rem",
@@ -4745,6 +4946,10 @@ export default function RequestRidePage(): JSX.Element {
         }
       }
 
+      notes.push(`Nombre origen visible para conductor: ${resolved.origin.text}.`);
+      notes.push(`Nombre destino visible para conductor: ${resolved.destination.text}.`);
+      notes.push(`RAPAGO_ORIGIN_DISPLAY: ${resolved.origin.text}.`);
+      notes.push(`RAPAGO_DESTINATION_DISPLAY: ${resolved.destination.text}.`);
       notes.push(`Dirección origen confirmada: ${resolved.origin.address}.`);
       notes.push(`Dirección destino confirmada: ${resolved.destination.address}.`);
 
@@ -5391,13 +5596,13 @@ return (
         </IonToolbar>
       </IonHeader>
 
-      <IonContent fullscreen>
+      <IonContent fullscreen className="rapago-request-light" style={{ "--background": "#f6ead6" } as CSSProperties}>
         <div
           style={{
             maxWidth: "430px",
             minHeight: "100%",
             margin: "0 auto",
-            background: "#111111",
+            background: "linear-gradient(180deg,#f6ead6 0%,#fffaf0 34%,#f8ead0 100%)",
             paddingBottom: "90px",
           }}
         >
@@ -5415,7 +5620,7 @@ return (
           <div
             style={{
               padding: "18px 16px 20px",
-              borderTop: "1px solid rgba(255,255,255,.04)",
+              borderTop: "1px solid rgba(210,164,58,.18)",
             }}
           >
             <div style={sectionLabelStyle()}>Origen</div>
@@ -5454,10 +5659,11 @@ return (
               <div
                 style={{
                   margin: "-6px 0 14px",
-                  background: "rgba(210,164,58,.12)",
-                  border: "1px solid rgba(210,164,58,.35)",
-                  color: "#F6F2EC",
-                  borderRadius: "12px",
+                  background: "#fff7e8",
+                  border: "1px solid rgba(210,164,58,.38)",
+                  color: "#111827",
+                  borderRadius: "16px",
+                  boxShadow: "0 12px 24px rgba(17,24,39,.08)",
                   padding: "10px 12px",
                   fontSize: ".78rem",
                   lineHeight: 1.35,
@@ -6710,7 +6916,7 @@ return (
                         Elige efectivo al conductor o paga con tarjeta mediante MercadoPago Checkout Pro.
                       </div>
                     </div>
-                    <span style={{ borderRadius: 999, padding: "6px 9px", background: "#111111", color: "#F8D879", fontSize: ".66rem", fontWeight: 950, whiteSpace: "nowrap" }}>
+                    <span style={{ borderRadius: 999, padding: "6px 9px", background: "#fff7e8", color: "#9A6A10", fontSize: ".66rem", fontWeight: 950, whiteSpace: "nowrap" }}>
                       MercadoPago activo
                     </span>
                   </div>

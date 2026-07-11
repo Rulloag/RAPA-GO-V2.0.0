@@ -3062,3 +3062,221 @@ button[style*="#D2A43A"] {
   }
 }
 
+
+/* ==========================================================================
+   RAPA GO — FIX FINAL CUADROS NEGROS / FORMULARIOS CLAROS MOBILE
+   IMPORTANTE: dejar este bloque SIEMPRE al final del global.css.
+   Corrige RequestRidePage, DriverPage y modales Ionic que quedaban oscuros.
+   ========================================================================== */
+
+:root {
+  --rapago-form-bg: #fffaf0;
+  --rapago-form-bg-2: #f8ead0;
+  --rapago-form-border: rgba(200, 155, 60, 0.42);
+  --rapago-form-text: #111827;
+  --rapago-form-muted: rgba(17, 24, 39, 0.64);
+}
+
+/* Páginas donde queremos formularios claros */
+.rapago-request-light,
+.rapago-request-page,
+.rapago-driver-light-form,
+.rapago-driver-light-panel,
+.rapago-light-form-page {
+  color: var(--rapago-form-text) !important;
+}
+
+/* IonItem/IonInput/IonTextarea/IonSelect claros */
+.rapago-request-light ion-item,
+.rapago-request-page ion-item,
+.rapago-driver-light-form ion-item,
+.rapago-driver-light-panel ion-item,
+.rapago-light-form-page ion-item,
+ion-item.rapago-light-input,
+ion-item.rapago-cash-close-input {
+  --background: linear-gradient(180deg, var(--rapago-form-bg), var(--rapago-form-bg-2)) !important;
+  --color: var(--rapago-form-text) !important;
+  --placeholder-color: rgba(17, 24, 39, 0.46) !important;
+  --border-color: var(--rapago-form-border) !important;
+  --highlight-background: transparent !important;
+  --inner-border-width: 0px !important;
+  background: linear-gradient(180deg, var(--rapago-form-bg), var(--rapago-form-bg-2)) !important;
+  color: var(--rapago-form-text) !important;
+  border: 1px solid var(--rapago-form-border) !important;
+  border-radius: 18px !important;
+  box-shadow: 0 12px 24px rgba(26, 26, 26, 0.10) !important;
+}
+
+/* El native part de Ionic era el que seguía pintando negro */
+.rapago-request-light ion-item::part(native),
+.rapago-request-page ion-item::part(native),
+.rapago-driver-light-form ion-item::part(native),
+.rapago-driver-light-panel ion-item::part(native),
+.rapago-light-form-page ion-item::part(native),
+ion-item.rapago-light-input::part(native),
+ion-item.rapago-cash-close-input::part(native) {
+  background: linear-gradient(180deg, var(--rapago-form-bg), var(--rapago-form-bg-2)) !important;
+  color: var(--rapago-form-text) !important;
+  border-radius: 18px !important;
+}
+
+/* Texto e inputs dentro del item */
+.rapago-request-light ion-input,
+.rapago-request-light ion-textarea,
+.rapago-request-light ion-select,
+.rapago-request-page ion-input,
+.rapago-request-page ion-textarea,
+.rapago-request-page ion-select,
+.rapago-driver-light-form ion-input,
+.rapago-driver-light-form ion-textarea,
+.rapago-driver-light-form ion-select,
+.rapago-driver-light-panel ion-input,
+.rapago-driver-light-panel ion-textarea,
+.rapago-driver-light-panel ion-select,
+.rapago-light-form-page ion-input,
+.rapago-light-form-page ion-textarea,
+.rapago-light-form-page ion-select,
+ion-item.rapago-light-input ion-input,
+ion-item.rapago-light-input ion-textarea,
+ion-item.rapago-cash-close-input ion-input {
+  --background: transparent !important;
+  --color: var(--rapago-form-text) !important;
+  --placeholder-color: rgba(17, 24, 39, 0.48) !important;
+  color: var(--rapago-form-text) !important;
+}
+
+.rapago-request-light ion-input input,
+.rapago-request-light ion-textarea textarea,
+.rapago-request-page ion-input input,
+.rapago-request-page ion-textarea textarea,
+.rapago-driver-light-form ion-input input,
+.rapago-driver-light-form ion-textarea textarea,
+.rapago-driver-light-panel ion-input input,
+.rapago-driver-light-panel ion-textarea textarea,
+.rapago-light-form-page ion-input input,
+.rapago-light-form-page ion-textarea textarea,
+ion-item.rapago-light-input ion-input input,
+ion-item.rapago-cash-close-input ion-input input {
+  color: var(--rapago-form-text) !important;
+  -webkit-text-fill-color: var(--rapago-form-text) !important;
+  caret-color: #B84F2E !important;
+}
+
+/* Labels dentro de formularios claros */
+.rapago-request-light ion-label,
+.rapago-request-light label,
+.rapago-request-page ion-label,
+.rapago-request-page label,
+.rapago-driver-light-form ion-label,
+.rapago-driver-light-form label,
+.rapago-driver-light-panel ion-label,
+.rapago-driver-light-panel label,
+.rapago-light-form-page ion-label,
+.rapago-light-form-page label,
+ion-item.rapago-light-input ion-label,
+ion-item.rapago-cash-close-input ion-label {
+  color: rgba(17, 24, 39, 0.72) !important;
+  font-weight: 900 !important;
+}
+
+/* Tarjetas/cajas informativas claras de RequestRide */
+.rapago-request-light .rapago-info-box,
+.rapago-request-light .rapago-accessible-box,
+.rapago-request-light .rapago-picker-panel,
+.rapago-request-light .rapago-confirm-card,
+.rapago-request-light .rapago-suggestion-box,
+.rapago-request-page .rapago-info-box,
+.rapago-request-page .rapago-accessible-box,
+.rapago-request-page .rapago-picker-panel,
+.rapago-request-page .rapago-confirm-card,
+.rapago-request-page .rapago-suggestion-box {
+  background: linear-gradient(180deg, #fffaf0, #f8ead0) !important;
+  color: var(--rapago-form-text) !important;
+  border: 1px solid var(--rapago-form-border) !important;
+  box-shadow: 0 16px 32px rgba(26, 26, 26, 0.12) !important;
+}
+
+/* Fallback para cajas inline oscuras muy comunes en RequestRide/Driver */
+.rapago-request-light div[style*="background: #111"],
+.rapago-request-light div[style*="background:#111"],
+.rapago-request-light div[style*="background: #171717"],
+.rapago-request-light div[style*="background:#171717"],
+.rapago-request-light div[style*="background: #242424"],
+.rapago-request-light div[style*="background:#242424"],
+.rapago-request-page div[style*="background: #111"],
+.rapago-request-page div[style*="background:#111"],
+.rapago-request-page div[style*="background: #171717"],
+.rapago-request-page div[style*="background:#171717"],
+.rapago-request-page div[style*="background: #242424"],
+.rapago-request-page div[style*="background:#242424"],
+.rapago-driver-light-form div[style*="background: #111"],
+.rapago-driver-light-form div[style*="background:#111"],
+.rapago-driver-light-form div[style*="background: #171717"],
+.rapago-driver-light-form div[style*="background:#171717"],
+.rapago-driver-light-form div[style*="background: #242424"],
+.rapago-driver-light-form div[style*="background:#242424"] {
+  background: linear-gradient(180deg, #fffaf0, #f8ead0) !important;
+  color: var(--rapago-form-text) !important;
+  border-color: var(--rapago-form-border) !important;
+}
+
+/* Textos dentro de esos paneles claros */
+.rapago-request-light .rapago-info-box *,
+.rapago-request-light .rapago-accessible-box *,
+.rapago-request-light .rapago-picker-panel *,
+.rapago-request-light .rapago-confirm-card *,
+.rapago-request-page .rapago-info-box *,
+.rapago-request-page .rapago-accessible-box *,
+.rapago-request-page .rapago-picker-panel *,
+.rapago-request-page .rapago-confirm-card *,
+.rapago-driver-light-form .rapago-info-box *,
+.rapago-driver-light-form .rapago-accessible-box *,
+.rapago-driver-light-form .rapago-picker-panel *,
+.rapago-driver-light-form .rapago-confirm-card * {
+  color: var(--rapago-form-text) !important;
+}
+
+/* Mantener botones oscuros especiales sin romperlos */
+.rapago-request-light ion-button,
+.rapago-request-page ion-button,
+.rapago-driver-light-form ion-button {
+  color: inherit;
+}
+
+/* Alertas internas bonitas */
+.rapago-passenger-cancel-alert {
+  --background: linear-gradient(180deg,#fffaf0,#f8ead0) !important;
+  --color: #111827 !important;
+  --button-color: #111827 !important;
+  --max-width: 360px;
+  --width: calc(100vw - 42px);
+  --border-radius: 28px;
+}
+
+.rapago-passenger-cancel-alert .alert-wrapper {
+  border-radius: 28px !important;
+  border: 1px solid rgba(220,38,38,.18) !important;
+  box-shadow: 0 28px 70px rgba(0,0,0,.36) !important;
+  overflow: hidden;
+}
+
+.rapago-passenger-cancel-alert .alert-title {
+  color: #dc2626 !important;
+  font-weight: 950 !important;
+}
+
+.rapago-passenger-cancel-alert .alert-message {
+  color: #111827 !important;
+  white-space: pre-line !important;
+  font-weight: 850 !important;
+  line-height: 1.42 !important;
+}
+
+.rapago-passenger-cancel-alert .alert-button {
+  border-radius: 16px !important;
+  background: linear-gradient(135deg,#facc15,#f59e0b) !important;
+  color: #111827 !important;
+  font-weight: 950 !important;
+  justify-content: center !important;
+}
+

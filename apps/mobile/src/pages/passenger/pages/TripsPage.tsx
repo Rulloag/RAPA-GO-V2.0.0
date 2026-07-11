@@ -1383,12 +1383,12 @@ function savePassengerPendingChargeFromCancellation(
   const rideKey = getPassengerPendingChargeRideKey(record);
   const chargeId = `cancel-charge-${rideKey}`;
   const paymentLabel = getRidePaymentMethodLabel(ride.notes);
-  const isCardPayment = isPassengerCancellationCardPayment(record);
+  const isCardPayment = isPassengerCancellationCardPaymentForRefundAction(record);
   const minimumFareClp = getPassengerRideMinimumFareClp(ride);
   const now = new Date().toISOString();
   const chargeNextRideNotice = `Cargo ${formatClp(policy.feeClp)} pendiente para el próximo viaje.`;
   const cardRefundNextRideNotice = isCardPayment
-    ? `El pago original completo se solicitará como devolución a MercadoPago/tarjeta. El cargo de cancelación/no show de ${formatClp(policy.feeClp)} es separado, NO se descuenta de esa devolución y se sumará automáticamente al próximo viaje.`
+    ? `El pago original completo se gestionará por WhatsApp con RAPA GO para mayor seguridad. El cargo de cancelación/no show de ${formatClp(policy.feeClp)} es separado, NO se descuenta de esa devolución y se sumará automáticamente al próximo viaje.`
     : null;
 
   const nextCharge: PassengerPendingCharge = {
@@ -1451,11 +1451,45 @@ function isPassengerCancellationCardPayment(ride: Partial<RideRequestData> & Rec
   );
 }
 
+function isPassengerCancellationCashPaymentForRefundAction(
+  ride: Partial<RideRequestData> & Record<string, unknown>,
+): boolean {
+  const text = [
+    ride.paymentMethod,
+    ride.paymentProvider,
+    ride.paymentStatus,
+    ride.notes,
+  ]
+    .map((value) => String(value ?? "").toLowerCase())
+    .join(" ");
+
+  return (
+    text.includes("efectivo") ||
+    text.includes("cash") ||
+    text.includes("pago: efectivo") ||
+    text.includes("pago efectivo") ||
+    text.includes("forma de pago seleccionada: efectivo") ||
+    text.includes("forma de pago: efectivo")
+  );
+}
+
+function isPassengerCancellationCardPaymentForRefundAction(
+  ride: Partial<RideRequestData> & Record<string, unknown>,
+): boolean {
+  // Regla RAPA GO:
+  // El botón “Cancelar/devolución” es ÚNICAMENTE para tarjeta/MercadoPago.
+  // Si el viaje fue efectivo, jamás debe aparecer aunque un registro antiguo
+  // haya quedado con flags de refund en localStorage.
+  if (isPassengerCancellationCashPaymentForRefundAction(ride)) return false;
+
+  return isPassengerCancellationCardPayment(ride);
+}
+
 function buildPassengerCancelledRide(ride: RideRequestData): RideRequestData {
   const now = new Date().toISOString();
   const policy = getPassengerCancellationPolicyForRide(ride);
   const record = ride as RideRequestData & Record<string, unknown>;
-  const isCardPayment = isPassengerCancellationCardPayment(record);
+  const isCardPayment = isPassengerCancellationCardPaymentForRefundAction(record);
 
   if (policy.feeClp > 0) {
     savePassengerPendingChargeFromCancellation(ride, policy);
@@ -1491,8 +1525,8 @@ function buildPassengerCancelledRide(ride: RideRequestData): RideRequestData {
     mercadoPagoRefundStatus: isCardPayment ? "pending_backend_refund" : null,
     cardRefundNotice: isCardPayment
       ? policy.feeClp > 0
-        ? `Tu viaje fue cancelado. Si el pago fue confirmado, MercadoPago devolverá el pago original completo al mismo medio usado para pagar. El cargo pendiente de ${formatClp(policy.feeClp)} es separado y se cobrará automáticamente en tu próximo viaje.`
-        : "Tu viaje fue cancelado. Si el pago fue confirmado, MercadoPago devolverá el dinero al mismo medio usado para pagar. No debes ingresar tarjeta ni datos bancarios. Si el pago aún está pendiente, quedará como revisión pendiente."
+        ? `Tu viaje fue cancelado. Gestiona la devolución segura por WhatsApp con RAPA GO. El cargo pendiente de ${formatClp(policy.feeClp)} es separado y se cobrará automáticamente en tu próximo viaje.`
+        : "Tu viaje fue cancelado. Gestiona la devolución segura por WhatsApp con RAPA GO. No debes ingresar tarjeta, claves ni datos bancarios."
       : null,
     requeuedReason: null,
     forceActiveAfterDriverCancel: false,
@@ -5485,6 +5519,70 @@ function openPassengerRefundWhatsApp(ride: RideRequestData, review: PassengerCas
   }
 }
 
+function buildRapaGoCardCancelRefundWhatsAppUrl(ride: RideRequestData): string {
+  const rawPhone = String(RAPAGO_CONTACT.adminPhone ?? "").replace(/[^\d]/g, "");
+  const phone = rawPhone.startsWith("56") ? rawPhone : `56${rawPhone}`;
+  const record = ride as RideRequestData & Record<string, unknown>;
+  const amountClp =
+    getRideDisplayFareClp(ride) ??
+    addFastSearchFeeToBaseFare(ride, getPassengerRideBaseFareClp(ride)) ??
+    getPassengerRideBaseFareClp(ride);
+
+  const paymentId = String(
+    record.mercadoPagoPaymentId ??
+      record.paymentId ??
+      record.paymentExternalId ??
+      record.paymentPreferenceId ??
+      "",
+  ).trim();
+
+  const message = [
+    "Hola RAPA GO, cancelé un viaje pagado con tarjeta/MercadoPago y quiero gestionar la devolución de forma segura.",
+    `Viaje: ${ride.originText} → ${ride.destinationText}`,
+    amountClp != null ? `Monto del viaje: ${formatClp(amountClp)}` : "",
+    `Estado en la app: ${String(record.mercadoPagoRefundStatus ?? "pendiente de revisión")}`,
+    paymentId ? `ID de pago: ${paymentId}` : "",
+    String(record.id ?? record.rideId ?? "").trim() ? `ID del viaje: ${String(record.id ?? record.rideId).trim()}` : "",
+    String(record.passengerEmail ?? "").trim() ? `Correo pasajero: ${String(record.passengerEmail).trim()}` : "",
+    "No enviaré datos de tarjeta, claves ni códigos. Solo necesito que RAPA GO gestione la devolución.",
+  ].filter(Boolean).join("\n");
+
+  return `https://wa.me/${phone}?text=${encodeURIComponent(message)}`;
+}
+
+function openRapaGoCardCancelRefundWhatsApp(ride: RideRequestData): void {
+  if (!isPassengerCancellationCardPaymentForRefundAction(ride as RideRequestData & Record<string, unknown>)) {
+    return;
+  }
+
+  const url = buildRapaGoCardCancelRefundWhatsAppUrl(ride);
+
+  try {
+    window.open(url, "_blank", "noopener,noreferrer");
+  } catch {
+    window.location.href = url;
+  }
+}
+
+function shouldShowRapaGoCardCancelRefundButton(
+  ride: RideRequestData,
+  effectiveStatus?: string | null,
+): boolean {
+  const status = String(effectiveStatus ?? getEffectivePassengerRideStatus(ride)).toLowerCase();
+  if (status !== "cancelled") return false;
+
+  const record = ride as RideRequestData & Record<string, unknown>;
+
+  if (!isPassengerCancellationCardPaymentForRefundAction(record)) return false;
+
+  return (
+    Boolean(record.cardRefundRequested) ||
+    Boolean(record.mercadoPagoRefundRequested) ||
+    Boolean(record.mercadoPagoRefundStatus) ||
+    isPassengerCancellationCardPaymentForRefundAction(record)
+  );
+}
+
 function PassengerCashPaymentAfterRideCard({
   ride,
   displayFareClp,
@@ -5750,11 +5848,11 @@ function buildPassengerCancellationAlertMessage(
   }
 
   const isCardPayment = ride
-    ? isPassengerCancellationCardPayment(ride as RideRequestData & Record<string, unknown>)
+    ? isPassengerCancellationCardPaymentForRefundAction(ride as RideRequestData & Record<string, unknown>)
     : false;
 
   if (isCardPayment) {
-    return `${policy.message} ${policy.detail} Si confirmas, el pago original completo quedará solicitado para devolución a la misma tarjeta y el cargo de ${formatClp(policy.feeClp)} se sumará automáticamente a tu próximo viaje como cobro separado. ¿Confirmas cancelar?`;
+    return `${policy.message} ${policy.detail} Si confirmas, cancelaremos el viaje y podrás gestionar la devolución segura con RAPA GO por WhatsApp. El cargo de ${formatClp(policy.feeClp)} se sumará automáticamente a tu próximo viaje como cobro separado. ¿Confirmas cancelar?`;
   }
 
   return `${policy.message} ${policy.detail} Si confirmas, el cargo de ${formatClp(policy.feeClp)} se sumará automáticamente a tu próximo viaje. ¿Confirmas cancelar?`;
@@ -5839,6 +5937,7 @@ function PassengerRideCard({
   );
   const passengerCancelledPolicyText = String((ride as RideRequestData & Record<string, unknown>).passengerCancellationPolicyText ?? "").trim();
   const passengerCancelledCardRefundNotice = String((ride as RideRequestData & Record<string, unknown>).cardRefundNotice ?? "").trim();
+  const showCardCancelRefundButton = shouldShowRapaGoCardCancelRefundButton(ride, effectiveStatus);
 
   return (
     <IonCard
@@ -5904,6 +6003,43 @@ function PassengerRideCard({
                   <br /><span style={{ fontSize: ".76rem" }}>{passengerCancelledPolicyText}</span>
                 </>
               )}
+              {showCardCancelRefundButton && (
+                <IonButton
+                  size="small"
+                  color="warning"
+                  style={{ marginTop: 10, "--border-radius": "999px", fontWeight: 950 } as CSSProperties}
+                  onClick={() => openRapaGoCardCancelRefundWhatsApp(ride)}
+                >
+                  Cancelar/devolución
+                </IonButton>
+              )}
+            </div>
+          )}
+
+          {effectiveStatus === "cancelled" && showCardCancelRefundButton && passengerCancelledChargeClp <= 0 && (
+            <div
+              style={{
+                marginBottom: 12,
+                background: "linear-gradient(135deg,#fff7db,#fffaf0)",
+                borderRadius: 18,
+                padding: "12px",
+                border: "1px solid rgba(210,164,58,.62)",
+                color: "#5f3f00",
+                fontWeight: 900,
+                lineHeight: 1.35,
+              }}
+            >
+              💳 Pago con tarjeta/MercadoPago.
+              <br />Para mayor seguridad, gestiona la devolución con RAPA GO por WhatsApp. No entregues claves ni datos de tu tarjeta.
+              <IonButton
+                expand="block"
+                size="small"
+                color="warning"
+                style={{ marginTop: 10, "--border-radius": "999px", fontWeight: 950 } as CSSProperties}
+                onClick={() => openRapaGoCardCancelRefundWhatsApp(ride)}
+              >
+                Cancelar/devolución
+              </IonButton>
             </div>
           )}
 
@@ -6207,7 +6343,7 @@ function PassengerRideCard({
                 disabled={cancelling}
                 onClick={() => onCancel(ride.id)}
               >
-                {cancelling ? <IonSpinner name="dots" /> : isRoundTripReturnPickupRide(ride as RideRequestData & Record<string, unknown>) ? "Cancelar recogida" : scheduleInfo.isScheduled ? "Cancelar reserva" : "Cancelar"}
+                {cancelling ? <IonSpinner name="dots" /> : isPassengerCancellationCardPaymentForRefundAction(ride as RideRequestData & Record<string, unknown>) ? "Cancelar/devolución" : isRoundTripReturnPickupRide(ride as RideRequestData & Record<string, unknown>) ? "Cancelar recogida" : scheduleInfo.isScheduled ? "Cancelar reserva" : "Cancelar"}
               </IonButton>
             )}
 
@@ -6219,7 +6355,7 @@ function PassengerRideCard({
                 disabled={cancelling}
                 onClick={() => onCancelAccepted(ride.id)}
               >
-                {cancelling ? <IonSpinner name="dots" /> : "Cancelar viaje"}
+                {cancelling ? <IonSpinner name="dots" /> : isPassengerCancellationCardPaymentForRefundAction(ride as RideRequestData & Record<string, unknown>) ? "Cancelar/devolución" : "Cancelar viaje"}
               </IonButton>
             )}
 
@@ -6281,7 +6417,7 @@ export default function TripsPage(): JSX.Element {
     readPassengerNotifications().find((item) => !item.read) ?? null,
   );
   const [pendingCancelAction, setPendingCancelAction] = useState<PendingPassengerCancelAction | null>(null);
-  const [refundMercadoPagoAlert, setRefundMercadoPagoAlert] = useState<{ header: string; message: string } | null>(null);
+  const [refundMercadoPagoAlert, setRefundMercadoPagoAlert] = useState<{ header: string; message: string; ride: RideRequestData | null } | null>(null);
   const [, setKnownAssignedRideIds] = useState<Set<string>>(new Set());
   const promptedRatingRideIdsRef = useRef<Set<string>>(new Set());
 
@@ -6437,18 +6573,19 @@ export default function TripsPage(): JSX.Element {
 
   function showMercadoPagoRefundAlert(ride: RideRequestData): void {
     const record = ride as RideRequestData & Record<string, unknown>;
-    if (!isPassengerCancellationCardPayment(record)) return;
+    if (!isPassengerCancellationCardPaymentForRefundAction(record)) return;
 
     setRefundMercadoPagoAlert({
-      header: "Devolución MercadoPago",
+      header: "Cancelar/devolución",
+      ride,
       message: [
         "Tu viaje fue cancelado correctamente.",
         "",
-        "Si el pago fue confirmado, MercadoPago devolverá el dinero al mismo medio usado para pagar.",
+        "Como el pago fue con tarjeta/MercadoPago, la devolución se gestionará por WhatsApp con RAPA GO para mayor seguridad. Esta opción no aplica para efectivo.",
         "",
-        "No debes ingresar tarjeta ni datos bancarios.",
+        "No debes ingresar tarjeta, claves ni códigos bancarios.",
         "",
-        "Si MercadoPago todavía no confirmó el pago, no existe cobro confirmado para devolver y quedará como revisión pendiente.",
+        "Presiona Cancelar/devolución para abrir WhatsApp y dejar la devolución registrada con nosotros.",
       ].join("\n"),
     });
   }
@@ -6811,12 +6948,21 @@ export default function TripsPage(): JSX.Element {
 
         <IonAlert
           isOpen={refundMercadoPagoAlert !== null}
-          header={refundMercadoPagoAlert?.header ?? "Devolución MercadoPago"}
+          header={refundMercadoPagoAlert?.header ?? "Cancelar/devolución"}
           message={refundMercadoPagoAlert?.message ?? ""}
           buttons={[
             {
-              text: "Entendido",
+              text: "Cerrar",
+              role: "cancel",
               handler: () => setRefundMercadoPagoAlert(null),
+            },
+            {
+              text: "Cancelar/devolución",
+              handler: () => {
+                const ride = refundMercadoPagoAlert?.ride;
+                setRefundMercadoPagoAlert(null);
+                if (ride) openRapaGoCardCancelRefundWhatsApp(ride);
+              },
             },
           ]}
           onDidDismiss={() => setRefundMercadoPagoAlert(null)}
