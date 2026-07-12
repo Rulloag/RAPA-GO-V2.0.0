@@ -1,7 +1,7 @@
 import {
   IonAlert,
   IonBadge, IonButton, IonCard, IonCardContent, IonChip, IonContent, IonHeader,
-IonInfiniteScroll, IonInfiniteScrollContent, IonLabel, IonPage,
+IonInfiniteScroll, IonInfiniteScrollContent, IonLabel, IonModal, IonPage,
   IonRefresher, IonRefresherContent, IonSpinner, IonText, IonTextarea, IonTitle,
   IonToolbar, IonItem, IonToast, IonInput,
 } from "@ionic/react";
@@ -20,6 +20,8 @@ import { RAPAGO_CONTACT, WA_MESSAGES } from "@rapa-go/shared";
 import { RIDE_STATUS_LABEL, RIDE_STATUS_COLOR } from "../shared.js";
 
 const PAGE_SIZE = 20;
+const RAPAGO_SUPPORT_WHATSAPP_PHONE = "56947964171";
+const RAPAGO_SUPPORT_WHATSAPP_DISPLAY = "+56 9 4796 4171";
 // Los viajes cancelados solo viven 30 minutos en Mis Viajes.
 // Así no se acumulan ni se repiten indefinidamente en Todos/Cancelados durante pruebas o uso real.
 const CANCELLED_RIDE_EXPIRATION_MS = 30 * 60 * 1000;
@@ -40,10 +42,11 @@ const RAPAGO_FAST_SEARCH_STORAGE_KEY = "rapago_passenger_fast_search_rides_v1";
 const RAPAGO_FAST_SEARCH_EVENT = "rapago:passenger-fast-search-updated";
 const RAPAGO_FAST_SEARCH_FEE_CLP = 800;
 const RAPAGO_FAST_SEARCH_PROMPT_AFTER_MS = 2 * 60 * 1000;
-const RAPAGO_FREE_CANCEL_AFTER_ACCEPTANCE_MS = 2 * 60 * 1000;
+const RAPAGO_FREE_CANCEL_AFTER_ACCEPTANCE_MS = 3 * 60 * 1000;
 const RAPAGO_NO_SHOW_AFTER_ARRIVAL_MS = 5 * 60 * 1000;
+const RAPAGO_SCHEDULED_CANCEL_CHARGE_WINDOW_MS = 15 * 60 * 1000;
 const RAPAGO_CANCEL_FEE_CAP_CLP = 3000;
-const RAPAGO_NO_SHOW_FEE_CAP_CLP = 5000;
+const RAPAGO_NO_SHOW_FULL_SERVICE_CHARGE = true;
 
 type PassengerNotificationPayload = {
   id: string;
@@ -76,6 +79,7 @@ type RapaGoDriverRatingRecord = {
   passengerName?: string | null;
   stars: number;
   comment?: string | null;
+  extras?: string[];
   originText?: string | null;
   destinationText?: string | null;
   createdAt: string;
@@ -180,6 +184,7 @@ function upsertPassengerDriverRating(
   stars: number,
   comment: string,
   user: unknown,
+  extras: string[] = [],
 ): RapaGoDriverRatingRecord {
   const rideRecord = ride as RideRequestData & Record<string, unknown>;
   const rideKey = getPassengerRatingRideKey(rideRecord);
@@ -204,6 +209,7 @@ function upsertPassengerDriverRating(
     passengerName: ratingStringValue((user as Record<string, unknown> | null)?.name ?? rideRecord.passengerName ?? rideRecord.userName) || null,
     stars: safeStars,
     comment: comment.trim() || null,
+    extras: Array.from(new Set(extras.map((item) => item.trim()).filter(Boolean))).slice(0, 12),
     originText: ratingStringValue(rideRecord.originText) || null,
     destinationText: ratingStringValue(rideRecord.destinationText) || null,
     createdAt: now,
@@ -259,6 +265,293 @@ function markPassengerNotificationsRead(): void {
     // No bloquea Mis Viajes.
   }
 }
+
+const RAPAGO_PASSENGER_DRIVER_ARRIVED_TIMER_KEY = "rapago_passenger_driver_arrived_timer_v1";
+
+function getPassengerDriverArrivedRideKey(
+  ride: Partial<RideRequestData> & Record<string, unknown>,
+): string {
+  const id = String(ride.id ?? ride.rideId ?? ride.originalRideId ?? ride.serverRideId ?? "").trim();
+  if (id) return `ride:${id}`;
+
+  return [
+    String(ride.passengerEmail ?? ride.email ?? "").trim().toLowerCase(),
+    String(ride.originText ?? "").trim().toLowerCase(),
+    String(ride.destinationText ?? "").trim().toLowerCase(),
+    String(ride.scheduledAt ?? ride.scheduledPickupAt ?? ride.requestedAt ?? ride.createdAt ?? "").trim(),
+  ].filter(Boolean).join("|");
+}
+
+function readPassengerDriverArrivedTimerMap(): Record<string, number> {
+  try {
+    const raw = localStorage.getItem(RAPAGO_PASSENGER_DRIVER_ARRIVED_TIMER_KEY);
+    const parsed = raw ? (JSON.parse(raw) as Record<string, unknown>) : {};
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {};
+
+    return Object.fromEntries(
+      Object.entries(parsed)
+        .map(([key, value]) => [key, Number(value)])
+        .filter(([, value]) => Number.isFinite(value) && value > 0),
+    );
+  } catch {
+    return {};
+  }
+}
+
+function writePassengerDriverArrivedTimerMap(map: Record<string, number>): void {
+  try {
+    localStorage.setItem(RAPAGO_PASSENGER_DRIVER_ARRIVED_TIMER_KEY, JSON.stringify(map));
+  } catch {
+    // No bloquea Mis Viajes.
+  }
+}
+
+function getPassengerDriverArrivedTimestampMs(
+  ride: Partial<RideRequestData> & Record<string, unknown>,
+): number | null {
+  const candidates = [
+    ride.driverArrivedAt,
+    ride.arrivedAt,
+    ride.driverReachedPickupAt,
+    ride.noShowCountdownStartedAt,
+    ride.updatedAt,
+  ];
+
+  for (const candidate of candidates) {
+    const parsed = new Date(String(candidate ?? "")).getTime();
+    if (Number.isFinite(parsed)) return parsed;
+  }
+
+  return null;
+}
+
+function ensurePassengerDriverArrivedTimerStartMs(
+  ride: Partial<RideRequestData> & Record<string, unknown>,
+  nowMs = Date.now(),
+): number {
+  const key = getPassengerDriverArrivedRideKey(ride);
+  const current = readPassengerDriverArrivedTimerMap();
+  const stored = Number(current[key]);
+
+  if (Number.isFinite(stored) && stored > 0) return stored;
+
+  const fromRide = getPassengerDriverArrivedTimestampMs(ride);
+  const startAt = fromRide ?? nowMs;
+
+  writePassengerDriverArrivedTimerMap({
+    ...current,
+    [key]: startAt,
+  });
+
+  return startAt;
+}
+
+function getPassengerDriverArrivedCountdownState(
+  ride: Partial<RideRequestData> & Record<string, unknown>,
+  nowMs = Date.now(),
+): {
+  remainingMs: number;
+  elapsedMs: number;
+  finished: boolean;
+} {
+  const startAt = ensurePassengerDriverArrivedTimerStartMs(ride, nowMs);
+  const elapsedMs = Math.max(0, nowMs - startAt);
+  const remainingMs = Math.max(0, RAPAGO_NO_SHOW_AFTER_ARRIVAL_MS - elapsedMs);
+
+  return {
+    remainingMs,
+    elapsedMs,
+    finished: remainingMs <= 0,
+  };
+}
+
+function passengerNotificationBelongsToRide(
+  item: PassengerNotificationPayload,
+  ride: Partial<RideRequestData> & Record<string, unknown>,
+): boolean {
+  const notificationRideId = String(item.rideId ?? "").trim();
+  const rideIds = [
+    ride.id,
+    ride.rideId,
+    ride.originalRideId,
+    ride.serverRideId,
+  ].map((value) => String(value ?? "").trim()).filter(Boolean);
+
+  return Boolean(notificationRideId && rideIds.includes(notificationRideId));
+}
+
+function addPassengerDriverArrivedNotification(ride: RideRequestData): void {
+  const record = ride as RideRequestData & Record<string, unknown>;
+  const rideId = String(record.id ?? record.rideId ?? getPassengerDriverArrivedRideKey(record));
+  const id = `driver-arrived-${rideId}`;
+
+  try {
+    const current = readPassengerNotifications();
+    if (current.some((item) => item.id === id)) return;
+
+    const notification: PassengerNotificationPayload = {
+      id,
+      rideId,
+      type: "driver_arrived",
+      title: "Tu conductor llegó",
+      body: `Sal ahora al punto de recogida: ${String(ride.originText ?? "punto indicado")}. Tienes 5 minutos antes de que pueda aplicar No show.`,
+      createdAt: new Date().toISOString(),
+      read: false,
+    };
+
+    localStorage.setItem(
+      RAPAGO_PASSENGER_NOTIFICATIONS_KEY,
+      JSON.stringify([notification, ...current].slice(0, 100)),
+    );
+
+    window.dispatchEvent(new CustomEvent("rapago:passenger-notifications-updated", { detail: { notification } }));
+    window.dispatchEvent(new CustomEvent("rapago:passenger-rides-updated", { detail: { ride, notification } }));
+  } catch {
+    // No bloquea Mis Viajes.
+  }
+}
+
+function getLatestPassengerNoShowNotificationForRide(ride: RideRequestData): PassengerNotificationPayload | null {
+  const record = ride as RideRequestData & Record<string, unknown>;
+  const notices = readPassengerNotifications()
+    .filter((item) =>
+      (
+        item.type === "no_show_warning" ||
+        item.type === "driver_arrived" ||
+        String(item.title ?? "").toLowerCase().includes("conductor llegó")
+      ) &&
+      (
+        passengerNotificationBelongsToRide(item, record) ||
+        !String(item.rideId ?? "").trim()
+      ),
+    )
+    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+
+  return notices[0] ?? null;
+}
+
+const RAPAGO_PASSENGER_DRIVER_ACCEPTED_TIMER_KEY = "rapago_passenger_driver_accepted_timer_v1";
+
+function passengerAcceptedTimerStatus(value: unknown): string {
+  return String(value ?? "").trim().toLowerCase();
+}
+
+function passengerStatusStartsAcceptedTimer(status: string): boolean {
+  return ["accepted", "driver_en_route", "driver_arrived", "in_progress"].includes(status);
+}
+
+function getPassengerDriverAcceptedTimerRideKey(
+  ride: Partial<RideRequestData> & Record<string, unknown>,
+): string {
+  const id = String(ride.id ?? ride.rideId ?? ride.originalRideId ?? ride.serverRideId ?? "").trim();
+  if (id) return `ride:${id}`;
+
+  return [
+    String(ride.passengerEmail ?? ride.email ?? "").trim().toLowerCase(),
+    String(ride.originText ?? "").trim().toLowerCase(),
+    String(ride.destinationText ?? "").trim().toLowerCase(),
+    String(ride.scheduledAt ?? ride.scheduledPickupAt ?? ride.requestedAt ?? ride.createdAt ?? "").trim(),
+  ].filter(Boolean).join("|");
+}
+
+function readPassengerDriverAcceptedTimerMap(): Record<string, number> {
+  try {
+    const raw = localStorage.getItem(RAPAGO_PASSENGER_DRIVER_ACCEPTED_TIMER_KEY);
+    const parsed = raw ? (JSON.parse(raw) as Record<string, unknown>) : {};
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {};
+
+    return Object.fromEntries(
+      Object.entries(parsed)
+        .map(([key, value]) => [key, Number(value)])
+        .filter(([, value]) => Number.isFinite(value) && value > 0),
+    );
+  } catch {
+    return {};
+  }
+}
+
+function writePassengerDriverAcceptedTimerMap(map: Record<string, number>): void {
+  try {
+    localStorage.setItem(RAPAGO_PASSENGER_DRIVER_ACCEPTED_TIMER_KEY, JSON.stringify(map));
+  } catch {
+    // No bloquea Mis Viajes.
+  }
+}
+
+function getPassengerDriverAcceptedExplicitTimestampMs(
+  ride: Partial<RideRequestData> & Record<string, unknown>,
+): number | null {
+  const candidates = [
+    ride.acceptedAt,
+    ride.driverAcceptedAt,
+    ride.driverAcceptedScheduleAt,
+    ride.driverScheduleAcceptedAt,
+    ride.scheduledDriverAcceptedAt,
+    ride.driverConfirmedAt,
+    ride.enRouteAt,
+  ];
+
+  for (const candidate of candidates) {
+    const parsed = new Date(String(candidate ?? "")).getTime();
+    if (Number.isFinite(parsed)) return parsed;
+  }
+
+  return null;
+}
+
+function ensurePassengerDriverAcceptedTimerStartMs(
+  ride: Partial<RideRequestData> & Record<string, unknown>,
+  nowMs = Date.now(),
+): number {
+  const key = getPassengerDriverAcceptedTimerRideKey(ride);
+  const current = readPassengerDriverAcceptedTimerMap();
+  const stored = Number(current[key]);
+
+  if (Number.isFinite(stored) && stored > 0) return stored;
+
+  const fromRide = getPassengerDriverAcceptedExplicitTimestampMs(ride);
+  const startAt = fromRide ?? nowMs;
+
+  writePassengerDriverAcceptedTimerMap({
+    ...current,
+    [key]: startAt,
+  });
+
+  return startAt;
+}
+
+function getPassengerDriverAcceptedPolicyTimestampMs(
+  ride: Partial<RideRequestData> & Record<string, unknown>,
+  nowMs = Date.now(),
+): number | null {
+  const explicit = getPassengerDriverAcceptedExplicitTimestampMs(ride);
+  if (explicit != null) return explicit;
+
+  const status = passengerAcceptedTimerStatus(ride.status);
+  if (!passengerStatusStartsAcceptedTimer(status)) return null;
+
+  return ensurePassengerDriverAcceptedTimerStartMs(ride, nowMs);
+}
+
+function getPassengerDriverAcceptedCountdownState(
+  ride: Partial<RideRequestData> & Record<string, unknown>,
+  nowMs = Date.now(),
+): {
+  elapsedMs: number;
+  remainingFreeMs: number;
+  isFree: boolean;
+} {
+  const acceptedAtMs = getPassengerDriverAcceptedPolicyTimestampMs(ride, nowMs);
+  const elapsedMs = acceptedAtMs == null ? 0 : Math.max(0, nowMs - acceptedAtMs);
+  const remainingFreeMs = Math.max(0, RAPAGO_FREE_CANCEL_AFTER_ACCEPTANCE_MS - elapsedMs);
+
+  return {
+    elapsedMs,
+    remainingFreeMs,
+    isFree: remainingFreeMs > 0,
+  };
+}
+
 
 const RAPAGO_ADMIN_SCHEDULED_RIDES_KEY = "rapago_admin_scheduled_rides_v1";
 const RAPAGO_ADMIN_SCHEDULED_RIDES_EVENT = "rapago:admin-scheduled-rides-updated";
@@ -663,24 +956,88 @@ function getPassengerCancellationTimeMs(ride: RideRequestData & Record<string, u
   return null;
 }
 
+function getPassengerScheduledPickupTimestampMs(
+  ride: Partial<RideRequestData> & Record<string, unknown>,
+): number | null {
+  return getPassengerCancellationTimeMs(ride as RideRequestData & Record<string, unknown>, [
+    "scheduledPickupAt",
+    "scheduledAt",
+    "pickupScheduledAt",
+    "dispatchAt",
+    "autoAssignAt",
+  ]);
+}
+
+function isPassengerScheduledCancellationChargeWindow(
+  ride: Partial<RideRequestData> & Record<string, unknown>,
+  nowMs = Date.now(),
+): boolean {
+  const status = String(ride.status ?? "").toLowerCase();
+  const scheduleStatus = String(
+    ride.scheduleStatus ??
+      ride.adminScheduleStatus ??
+      ride.reservationStatus ??
+      ride.bookingPurpose ??
+      ride.serviceType ??
+      "",
+  ).toLowerCase();
+
+  const isScheduled =
+    ride.isScheduled === true ||
+    status === "scheduled" ||
+    status === "driver_scheduled" ||
+    Boolean(ride.scheduledAt) ||
+    Boolean(ride.scheduledPickupAt) ||
+    scheduleStatus.includes("scheduled") ||
+    scheduleStatus.includes("reservation") ||
+    scheduleStatus.includes("airport") ||
+    scheduleStatus.includes("reserva");
+
+  if (!isScheduled) return false;
+
+  const pickupMs = getPassengerScheduledPickupTimestampMs(ride);
+  if (pickupMs == null) return false;
+
+  return nowMs >= pickupMs - RAPAGO_SCHEDULED_CANCEL_CHARGE_WINDOW_MS;
+}
+
 function getPassengerCancellationPolicyForRide(ride: RideRequestData): PassengerCancellationPolicy {
   const record = ride as RideRequestData & Record<string, unknown>;
   const effectiveStatus = getEffectivePassengerRideStatus(ride);
   const nowMs = Date.now();
-  const acceptedAtMs = getPassengerCancellationTimeMs(record, ["acceptedAt", "driverAcceptedAt", "driverAcceptedScheduleAt"]);
+  const acceptedAtMs = getPassengerDriverAcceptedPolicyTimestampMs(record, nowMs);
   const arrivedAtMs = getPassengerCancellationTimeMs(record, ["arrivedAt", "driverArrivedAt", "driverReachedPickupAt"]);
   const acceptedElapsedMs = acceptedAtMs == null ? null : Math.max(0, nowMs - acceptedAtMs);
   const arrivedElapsedMs = arrivedAtMs == null ? null : Math.max(0, nowMs - arrivedAtMs);
   const minimumFare = getPassengerRideMinimumFareClp(ride);
+  const totalServiceFare =
+    getPassengerCardCancellationCreditAmountClp(record) ||
+    getPassengerRideBaseFareClp(ride) ||
+    minimumFare;
+  const charge30WithCap = () => Math.min(RAPAGO_CANCEL_FEE_CAP_CLP, Math.round(minimumFare * 0.3));
+  const scheduledChargeWindow = isPassengerScheduledCancellationChargeWindow(record, nowMs);
 
   if (effectiveStatus === "driver_arrived" && arrivedElapsedMs != null && arrivedElapsedMs >= RAPAGO_NO_SHOW_AFTER_ARRIVAL_MS) {
-    const fee = Math.min(RAPAGO_NO_SHOW_FEE_CAP_CLP, Math.round(minimumFare * 0.5));
+    const fee = Math.max(0, Math.round(totalServiceFare));
     return {
       type: "no_show",
       feeClp: fee,
-      title: "Cargo por no show",
-      message: `El conductor llegó al punto de origen y pasaron más de 5 minutos. Se aplicará un cargo de ${formatClp(fee)}.`,
-      detail: `No show: 50% de la tarifa mínima aplicable, con tope de ${formatClp(RAPAGO_NO_SHOW_FEE_CAP_CLP)}.`,
+      title: "Cobro total por no show",
+      message: `El conductor llegó al punto, notificó al cliente y esperó más de 5 minutos. Se aplicará el cobro total del servicio: ${formatClp(fee)}.`,
+      detail: "No show: cobro íntegro del servicio tras 5 minutos de espera y notificación por app/WhatsApp.",
+      acceptedElapsedMs,
+      arrivedElapsedMs,
+    };
+  }
+
+  if (scheduledChargeWindow) {
+    const fee = charge30WithCap();
+    return {
+      type: "late_cancel",
+      feeClp: fee,
+      title: "Cancelación de reserva dentro de últimos 15 min",
+      message: `La reserva está dentro de los últimos 15 minutos antes del inicio del servicio. Se aplicará un cargo de ${formatClp(fee)}.`,
+      detail: `Reserva: desde los últimos 15 minutos previos al inicio, 30% de la tarifa mínima aplicable, con tope de ${formatClp(RAPAGO_CANCEL_FEE_CAP_CLP)}.`,
       acceptedElapsedMs,
       arrivedElapsedMs,
     };
@@ -691,20 +1048,20 @@ function getPassengerCancellationPolicyForRide(ride: RideRequestData): Passenger
       type: "free",
       feeClp: 0,
       title: "Cancelación gratuita",
-      message: "Puedes cancelar gratis hasta 2 minutos desde que el conductor acepta el viaje.",
-      detail: "Cancelación gratuita del pasajero: hasta 2 minutos desde la aceptación del viaje.",
+      message: "Puedes cancelar gratis hasta 3 minutos desde que el conductor acepta el viaje.",
+      detail: "Cancelación gratuita del pasajero: hasta 3 minutos desde la aceptación del viaje.",
       acceptedElapsedMs,
       arrivedElapsedMs,
     };
   }
 
-  const fee = Math.min(RAPAGO_CANCEL_FEE_CAP_CLP, Math.round(minimumFare * 0.3));
+  const fee = charge30WithCap();
   return {
     type: "late_cancel",
     feeClp: fee,
     title: "Cancelación con cobro",
-    message: `Pasaron más de 2 minutos desde la aceptación. Se aplicará un cargo de ${formatClp(fee)}.`,
-    detail: `Desde el minuto 3: 30% de la tarifa mínima aplicable, con tope de ${formatClp(RAPAGO_CANCEL_FEE_CAP_CLP)}.`,
+    message: `Pasaron más de 3 minutos desde la aceptación. Se aplicará un cargo de ${formatClp(fee)}.`,
+    detail: `Desde el minuto 4: 30% de la tarifa mínima aplicable, con tope de ${formatClp(RAPAGO_CANCEL_FEE_CAP_CLP)}.`,
     acceptedElapsedMs,
     arrivedElapsedMs,
   };
@@ -1380,15 +1737,21 @@ function savePassengerPendingChargeFromCancellation(
   if (policy.feeClp <= 0) return;
 
   const record = ride as RideRequestData & Record<string, unknown>;
+  const isCardPayment = isPassengerCancellationCardPaymentForRefundAction(record);
+
+  // Pago con tarjeta/MercadoPago:
+  // la penalización se descuenta automáticamente del pago ya realizado.
+  // No queda como cargo pendiente para el próximo viaje.
+  if (isCardPayment) return;
+
   const rideKey = getPassengerPendingChargeRideKey(record);
   const chargeId = `cancel-charge-${rideKey}`;
   const paymentLabel = getRidePaymentMethodLabel(ride.notes);
-  const isCardPayment = isPassengerCancellationCardPaymentForRefundAction(record);
   const minimumFareClp = getPassengerRideMinimumFareClp(ride);
   const now = new Date().toISOString();
   const chargeNextRideNotice = `Cargo ${formatClp(policy.feeClp)} pendiente para el próximo viaje.`;
   const cardRefundNextRideNotice = isCardPayment
-    ? `El pago original completo se gestionará por WhatsApp con RAPA GO para mayor seguridad. El cargo de cancelación/no show de ${formatClp(policy.feeClp)} es separado, NO se descuenta de esa devolución y se sumará automáticamente al próximo viaje.`
+    ? `El pago original queda registrado como crédito a favor en tu billetera y pasa a revisión del administrador. Si necesitas devolución, puedes gestionarla por WhatsApp con RAPA GO. El cargo de cancelación/no show de ${formatClp(policy.feeClp)} es separado y se sumará automáticamente al próximo viaje.`
     : null;
 
   const nextCharge: PassengerPendingCharge = {
@@ -1509,12 +1872,12 @@ function buildPassengerCancelledRide(ride: RideRequestData): RideRequestData {
     passengerCancellationPolicyType: policy.type,
     passengerCancellationPolicyText: policy.detail,
     passengerCancellationChargedAt: policy.feeClp > 0 ? now : null,
-    paymentPendingClp: policy.feeClp,
-    passengerPendingChargeNextRide: policy.feeClp > 0,
+    paymentPendingClp: isCardPayment ? 0 : policy.feeClp,
+    passengerPendingChargeNextRide: !isCardPayment && policy.feeClp > 0,
     passengerPendingChargeNotice:
       policy.feeClp > 0
         ? isCardPayment
-          ? `Tienes un cargo pendiente de ${formatClp(policy.feeClp)}. Aunque MercadoPago devuelva el pago original completo a la tarjeta, este cargo es separado y se sumará automáticamente a tu próximo viaje.`
+          ? `La penalización de ${formatClp(policy.feeClp)} se descuenta automáticamente del pago realizado. El saldo restante queda como CRÉDITOS PARA PRÓXIMO VIAJE en tu billetera.`
           : `Tienes un cargo pendiente de ${formatClp(policy.feeClp)}. Se sumará automáticamente a tu próximo viaje.`
         : null,
     // Si el viaje fue pagado con tarjeta, el reembolso real debe ejecutarlo el backend
@@ -1525,9 +1888,12 @@ function buildPassengerCancelledRide(ride: RideRequestData): RideRequestData {
     mercadoPagoRefundStatus: isCardPayment ? "pending_backend_refund" : null,
     cardRefundNotice: isCardPayment
       ? policy.feeClp > 0
-        ? `Tu viaje fue cancelado. Gestiona la devolución segura por WhatsApp con RAPA GO. El cargo pendiente de ${formatClp(policy.feeClp)} es separado y se cobrará automáticamente en tu próximo viaje.`
-        : "Tu viaje fue cancelado. Gestiona la devolución segura por WhatsApp con RAPA GO. No debes ingresar tarjeta, claves ni datos bancarios."
+        ? `Tu viaje fue cancelado. El saldo del pago queda como CRÉDITOS PARA PRÓXIMO VIAJE en tu billetera. Si necesitas devolución, gestiona por WhatsApp con RAPA GO. El cargo pendiente de ${formatClp(policy.feeClp)} es separado y se cobrará automáticamente en tu próximo viaje.`
+        : "Tu viaje fue cancelado. El saldo del pago queda como CRÉDITOS PARA PRÓXIMO VIAJE en tu billetera. Si necesitas devolución, gestiona por WhatsApp con RAPA GO. No debes ingresar tarjeta, claves ni datos bancarios."
       : null,
+    cardWalletCreditRequested: isCardPayment,
+    cardWalletCreditClp: isCardPayment ? getPassengerCardCancellationCreditNetClp(record, policy.feeClp) : 0,
+    cardWalletCreditStatus: isCardPayment ? "pending_admin" : null,
     requeuedReason: null,
     forceActiveAfterDriverCancel: false,
     passengerNotice: null,
@@ -1615,6 +1981,7 @@ function removePassengerRideFromArrayStorage(
 
 function cancelPassengerRideEverywhere(target: RideRequestData): RideRequestData {
   const cancelled = buildPassengerCancelledRide(target);
+  savePassengerWalletCreditFromCardCancellation(target, cancelled);
 
   // Quita la solicitud de todas las colas donde aparece como reencolada/activa,
   // para que no vuelva a mostrarse como "Buscando conductor" al actualizar.
@@ -2066,15 +2433,75 @@ function mergeRides(localRides: RideRequestData[], serverRides: RideRequestData[
 }
 
 
+const RATING_EXTRA_OPTIONS = [
+  "Llegó rápido",
+  "Buen trato",
+  "Manejo seguro",
+  "Auto limpio",
+  "Me ayudó con equipaje",
+  "Buena comunicación",
+  "Conducción cómoda",
+  "Conoce bien la isla",
+] as const;
+
 function StarRatingInput({ value, onChange }: { value: number; onChange: (v: number) => void }) {
   return (
-    <div style={{ display: "flex", gap: "4px", margin: "8px 0" }}>
+    <div style={{ display: "flex", gap: "7px", margin: "10px 0 6px", alignItems: "center" }}>
       {[1, 2, 3, 4, 5].map((s) => (
-        <span key={s} onClick={() => onChange(s)}
-          style={{ fontSize: "1.6rem", cursor: "pointer", color: s <= value ? "#f4c430" : "#ccc" }}>
+        <button
+          key={s}
+          type="button"
+          onClick={() => onChange(s)}
+          aria-label={`${s} estrella${s === 1 ? "" : "s"}`}
+          style={{
+            width: 42,
+            height: 42,
+            borderRadius: 14,
+            border: s <= value ? "1px solid rgba(245,158,11,.42)" : "1px solid rgba(17,24,39,.10)",
+            background: s <= value ? "linear-gradient(135deg,#fff7d6,#facc15)" : "#ffffff",
+            color: s <= value ? "#111827" : "#9ca3af",
+            fontSize: "1.35rem",
+            fontWeight: 950,
+            cursor: "pointer",
+            boxShadow: s <= value ? "0 10px 24px rgba(245,158,11,.20)" : "none",
+          }}
+        >
           ★
-        </span>
+        </button>
       ))}
+    </div>
+  );
+}
+
+function RatingExtrasSelector({
+  selected,
+  onToggle,
+}: {
+  selected: string[];
+  onToggle: (value: string) => void;
+}): JSX.Element {
+  return (
+    <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 10 }}>
+      {RATING_EXTRA_OPTIONS.map((option) => {
+        const active = selected.includes(option);
+
+        return (
+          <IonChip
+            key={option}
+            outline={!active}
+            color={active ? "warning" : "medium"}
+            onClick={() => onToggle(option)}
+            style={{
+              margin: 0,
+              borderRadius: 999,
+              fontWeight: 900,
+              "--background": active ? "rgba(250,204,21,.22)" : "#ffffff",
+            } as CSSProperties}
+          >
+            <IonLabel>{active ? "✓ " : "+ "}{option}</IonLabel>
+          </IonChip>
+        );
+      })}
     </div>
   );
 }
@@ -3962,7 +4389,7 @@ function PassengerDriverAndVehicleDetails({
 
       <div style={{ display: "grid", gridTemplateColumns: "1fr 48px 48px", gap: 8, alignItems: "center" }}>
         <a
-          href={safePhone ? `https://wa.me/${safePhone.replace(/^\+/, "")}?text=${whatsappText}` : `https://wa.me/${RAPAGO_CONTACT.adminPhone.replace(/[^0-9]/g, "")}`}
+          href={safePhone ? `https://wa.me/${safePhone.replace(/^\+/, "")}?text=${whatsappText}` : `https://wa.me/${RAPAGO_SUPPORT_WHATSAPP_PHONE}`}
           target="_blank"
           rel="noreferrer"
           style={{
@@ -3985,7 +4412,7 @@ function PassengerDriverAndVehicleDetails({
           Enviar mensaje a {cleanFirstName}
         </a>
         <a
-          href={safePhone ? `tel:${safePhone}` : `tel:${RAPAGO_CONTACT.adminPhone.replace(/[^0-9+]/g, "")}`}
+          href={safePhone ? `tel:${safePhone}` : `tel:${RAPAGO_SUPPORT_WHATSAPP_DISPLAY.replace(/[^0-9+]/g, "")}`}
           style={{
             width: 42,
             height: 42,
@@ -4457,7 +4884,7 @@ function rideStatusSubtitle(ride: RideRequestData): string {
   if (effectiveStatus === "accepted" || effectiveStatus === "driver_en_route") {
     return `${ride.driverName ?? "El conductor"} se está acercando al punto de recogida.`;
   }
-  if (effectiveStatus === "driver_arrived") return "Mira la ruta en el mapa y espera en el punto accesible.";
+  if (effectiveStatus === "driver_arrived") return "Tu conductor llegó al punto. Sal ahora para evitar No show.";
   if (effectiveStatus === "in_progress") return `Vas hacia ${ride.destinationText}.`;
   if (effectiveStatus === "completed") return "Gracias por viajar con Rapa Go.";
   if (effectiveStatus === "cancelled") return "Este viaje fue cancelado.";
@@ -5237,7 +5664,7 @@ function PassengerLiveRouteMap({
             </div>
             <div style={{ minWidth: 0, flex: 1 }}>
               <div style={{ fontWeight: 950, fontSize: ".92rem" }}>
-                {effectiveMapStatus === "in_progress" ? "Viaje en curso" : "Tu conductor viene en camino"}
+                {effectiveMapStatus === "driver_arrived" ? "Tu conductor llegó al punto" : effectiveMapStatus === "in_progress" ? "Viaje en curso" : "Tu conductor viene en camino"}
               </div>
               <div
                 style={{
@@ -5250,9 +5677,11 @@ function PassengerLiveRouteMap({
                   textOverflow: "ellipsis",
                 }}
               >
-                {routeInfo?.durationText ? `${routeInfo.durationText}` : "GPS real activo"}
-                {routeInfo?.distanceText ? ` · ${routeInfo.distanceText}` : ""}
-                {effectiveMapStatus === "in_progress" ? " hasta tu destino" : " hasta el punto de recogida"}
+                {effectiveMapStatus === "driver_arrived"
+                  ? "Sal ahora al punto de recogida"
+                  : routeInfo?.durationText ? `${routeInfo.durationText}` : "GPS real activo"}
+                {effectiveMapStatus !== "driver_arrived" && routeInfo?.distanceText ? ` · ${routeInfo.distanceText}` : ""}
+                {effectiveMapStatus !== "driver_arrived" ? (effectiveMapStatus === "in_progress" ? " hasta tu destino" : " hasta el punto de recogida") : ""}
               </div>
             </div>
           </div>
@@ -5493,12 +5922,118 @@ function savePassengerWalletBenefitFromCashOverpayment(
   }
 }
 
+function getPassengerCardCancellationCreditAmountClp(
+  ride: Partial<RideRequestData> & Record<string, unknown>,
+): number {
+  const candidates = [
+    ride.cardPaidClp,
+    ride.mercadoPagoPaidClp,
+    ride.paymentAmountClp,
+    ride.paidClp,
+    ride.totalPaidClp,
+    ride.finalFareAfterWalletBenefitClp,
+    ride.fareAfterWalletClp,
+    ride.finalFareWithExtrasClp,
+    ride.estimatedFareClp,
+    ride.fareClp,
+    ride.priceClp,
+    ride.totalFareClp,
+    extractFareFromNotes(String(ride.notes ?? "")),
+  ];
+
+  for (const candidate of candidates) {
+    const parsed = Number(candidate);
+    if (Number.isFinite(parsed) && parsed > 0) return Math.round(parsed);
+  }
+
+  return 0;
+}
+
+function getPassengerCardCancellationCreditNetClp(
+  ride: Partial<RideRequestData> & Record<string, unknown>,
+  cancellationFeeClp: number,
+): number {
+  const paidAmount = getPassengerCardCancellationCreditAmountClp(ride);
+  const fee = Math.max(0, Math.round(Number(cancellationFeeClp ?? 0)));
+  return Math.max(0, paidAmount - fee);
+}
+
+function savePassengerWalletCreditFromCardCancellation(
+  ride: RideRequestData,
+  cancelled: RideRequestData,
+): void {
+  const record = ride as RideRequestData & Record<string, unknown>;
+  if (!isPassengerCancellationCardPaymentForRefundAction(record)) return;
+
+  const policyFee = Math.max(0, Math.round(Number((cancelled as RideRequestData & Record<string, unknown>).passengerCancellationFeeClp ?? 0)));
+  const paidAmountClp = getPassengerCardCancellationCreditAmountClp(record);
+  const creditAmountClp = getPassengerCardCancellationCreditNetClp(record, policyFee);
+
+  if (paidAmountClp <= 0 || creditAmountClp <= 0) return;
+
+  try {
+    const raw = localStorage.getItem(RAPAGO_WALLET_BENEFITS_KEY);
+    const parsed = raw ? (JSON.parse(raw) as Array<Record<string, unknown>>) : [];
+    const current = Array.isArray(parsed) ? parsed : [];
+    const rideId = String(record.id ?? record.rideId ?? record.originalRideId ?? "").trim();
+    const id = `card-cancellation-credit-${rideId || getPassengerPendingChargeRideKey(record)}`;
+    const now = new Date().toISOString();
+
+    const nextCredit = {
+      id,
+      rideId: rideId || null,
+      passengerEmail: String(record.passengerEmail ?? record.email ?? "").trim() || null,
+      ownerKey: String(record.passengerEmail ?? record.email ?? "").trim() || null,
+      amountClp: creditAmountClp,
+      status: "available",
+      source: "card_cancellation_credit",
+      title: "CRÉDITOS PARA PRÓXIMO VIAJE",
+      description:
+        `Pago con tarjeta/MercadoPago cancelado. Pago realizado: ${formatClp(paidAmountClp)}. ` +
+        `Penalización descontada automáticamente: ${formatClp(policyFee)}. ` +
+        `Saldo consignado como CRÉDITOS PARA PRÓXIMO VIAJE: ${formatClp(creditAmountClp)}. ` +
+        `Si el pasajero requiere devolución, debe solicitarla a Gerencia de Soporte RAPA GO por WhatsApp. Viaje ${String(ride.originText ?? "")} → ${String(ride.destinationText ?? "")}.`,
+      createdAt: now,
+      approvedAt: now,
+      approvedBy: "RAPA GO",
+      fareClp: creditAmountClp,
+      paidClp: paidAmountClp,
+      cancellationFeeClp: policyFee,
+      adminReviewStatus: "card_credit_available",
+      refundWhatsappAvailable: true,
+      cardRefundRequested: true,
+      mercadoPagoRefundRequested: true,
+      mercadoPagoRefundStatus: "wallet_credit_available",
+      originText: String(ride.originText ?? ""),
+      destinationText: String(ride.destinationText ?? ""),
+      paymentMethod: "card",
+      paymentProvider: "mercadopago",
+      paymentId: String(record.paymentId ?? record.mercadoPagoPaymentId ?? "").trim() || null,
+    };
+
+    localStorage.setItem(
+      RAPAGO_WALLET_BENEFITS_KEY,
+      JSON.stringify([
+        nextCredit,
+        ...current.filter((item) => String(item.id ?? "") !== id),
+      ].slice(0, 250)),
+    );
+
+    window.dispatchEvent(new CustomEvent(RAPAGO_WALLET_BENEFIT_EVENT, { detail: { benefit: nextCredit } }));
+    window.dispatchEvent(new CustomEvent("rapago:wallet-updated", { detail: { benefit: nextCredit } }));
+    window.dispatchEvent(new CustomEvent("rapago:admin-wallet-benefits-updated", { detail: { benefit: nextCredit } }));
+    window.dispatchEvent(new CustomEvent("rapago:admin-rides-updated", { detail: { benefit: nextCredit, cancelled } }));
+  } catch {
+    // No bloquea la cancelación si localStorage no permite guardar el crédito.
+  }
+}
+
+
 function buildRapaGoRefundWhatsAppUrl(ride: RideRequestData, review: PassengerCashPaymentReview): string {
-  const rawPhone = String(RAPAGO_CONTACT.adminPhone ?? "").replace(/[^\d]/g, "");
-  const phone = rawPhone.startsWith("56") ? rawPhone : `56${rawPhone}`;
+  const phone = RAPAGO_SUPPORT_WHATSAPP_PHONE;
 
   const message = [
-    "Hola RAPA GO, quiero que me devuelvan este dinero. Solicito devolución por pago de más en efectivo.",
+    "Hola Soporte RAPA GO, quiero que me devuelvan este dinero. Solicito devolución por pago de más en efectivo.",
     `Viaje: ${review.originText} → ${review.destinationText}`,
     `Precio del viaje: ${formatClp(review.fareClp)}`,
     `Pagué: ${formatClp(review.paidClp)}`,
@@ -5520,8 +6055,7 @@ function openPassengerRefundWhatsApp(ride: RideRequestData, review: PassengerCas
 }
 
 function buildRapaGoCardCancelRefundWhatsAppUrl(ride: RideRequestData): string {
-  const rawPhone = String(RAPAGO_CONTACT.adminPhone ?? "").replace(/[^\d]/g, "");
-  const phone = rawPhone.startsWith("56") ? rawPhone : `56${rawPhone}`;
+  const phone = RAPAGO_SUPPORT_WHATSAPP_PHONE;
   const record = ride as RideRequestData & Record<string, unknown>;
   const amountClp =
     getRideDisplayFareClp(ride) ??
@@ -5537,7 +6071,7 @@ function buildRapaGoCardCancelRefundWhatsAppUrl(ride: RideRequestData): string {
   ).trim();
 
   const message = [
-    "Hola RAPA GO, cancelé un viaje pagado con tarjeta/MercadoPago y quiero gestionar la devolución de forma segura.",
+    "Hola Soporte RAPA GO, cancelé un viaje pagado con tarjeta/MercadoPago y quiero gestionar la devolución de forma segura.",
     `Viaje: ${ride.originText} → ${ride.destinationText}`,
     amountClp != null ? `Monto del viaje: ${formatClp(amountClp)}` : "",
     `Estado en la app: ${String(record.mercadoPagoRefundStatus ?? "pendiente de revisión")}`,
@@ -5917,6 +6451,28 @@ function PassengerRideCard({
     return () => window.clearInterval(interval);
   }, [effectiveStatus, ride.id]);
 
+  useEffect(() => {
+    if (passengerStatusStartsAcceptedTimer(effectiveStatus)) {
+      ensurePassengerDriverAcceptedTimerStartMs(ride as RideRequestData & Record<string, unknown>);
+    }
+  }, [effectiveStatus, ride.id]);
+
+  useEffect(() => {
+    if (effectiveStatus !== "driver_arrived") return;
+
+    ensurePassengerDriverArrivedTimerStartMs(ride as RideRequestData & Record<string, unknown>);
+    addPassengerDriverArrivedNotification(ride);
+  }, [effectiveStatus, ride.id]);
+
+  const passengerDriverAcceptedState = passengerStatusStartsAcceptedTimer(effectiveStatus)
+    ? getPassengerDriverAcceptedCountdownState(ride as RideRequestData & Record<string, unknown>, nowMs)
+    : null;
+  const passengerDriverArrivedState =
+    effectiveStatus === "driver_arrived"
+      ? getPassengerDriverArrivedCountdownState(ride as RideRequestData & Record<string, unknown>, nowMs)
+      : null;
+  const passengerNoShowNotice = getLatestPassengerNoShowNotificationForRide(ride);
+
   const searchStartedAtMs = getPassengerRideStartedAtMs(
     (isDriverRequeuedSearch && driverRequeueMirror
       ? buildPassengerSearchingAfterDriverCancelRide({
@@ -5978,6 +6534,52 @@ function PassengerRideCard({
             </div>
           )}
 
+          {effectiveStatus === "driver_arrived" && passengerDriverArrivedState && (
+            <div
+              style={{
+                marginBottom: 12,
+                background: passengerDriverArrivedState.finished ? "#fff7db" : "#ecfdf5",
+                borderRadius: 18,
+                padding: "12px",
+                border: passengerDriverArrivedState.finished
+                  ? "1px solid rgba(245,158,11,.46)"
+                  : "1px solid rgba(34,197,94,.34)",
+                color: passengerDriverArrivedState.finished ? "#7c2d12" : "#064e3b",
+                fontWeight: 900,
+                lineHeight: 1.35,
+              }}
+            >
+              🚗 <strong>Tu conductor llegó.</strong>
+              <br />
+              Sal ahora al punto de recogida.
+              <br />
+              {passengerDriverArrivedState.finished ? (
+                <>Tiempo cumplido. El conductor puede marcar <strong>No show</strong>.</>
+              ) : (
+                <>Tiempo para presentarte: <strong>{formatPassengerElapsedTime(passengerDriverArrivedState.remainingMs)}</strong>.</>
+              )}
+            </div>
+          )}
+
+          {passengerNoShowNotice && passengerNoShowNotice.type === "no_show_warning" && effectiveStatus !== "cancelled" && (
+            <div
+              style={{
+                marginBottom: 12,
+                background: "#fff1f2",
+                borderRadius: 18,
+                padding: "12px",
+                border: "1px solid rgba(220,38,38,.30)",
+                color: "#7f1d1d",
+                fontWeight: 900,
+                lineHeight: 1.35,
+              }}
+            >
+              ⚠️ <strong>{passengerNoShowNotice.title}</strong>
+              <br />
+              {passengerNoShowNotice.body}
+            </div>
+          )}
+
           {effectiveStatus === "cancelled" && passengerCancelledChargeClp > 0 && (
             <div
               style={{
@@ -6030,7 +6632,7 @@ function PassengerRideCard({
               }}
             >
               💳 Pago con tarjeta/MercadoPago.
-              <br />Para mayor seguridad, gestiona la devolución con RAPA GO por WhatsApp. No entregues claves ni datos de tu tarjeta.
+              <br />El pago queda como crédito a favor en tu billetera y pasa a revisión del administrador. Si necesitas devolución, gestiona con RAPA GO por WhatsApp. No entregues claves ni datos de tu tarjeta.
               <IonButton
                 expand="block"
                 size="small"
@@ -6101,7 +6703,7 @@ function PassengerRideCard({
 
                 {!showFastSearchPrompt && !fastSearchRecord && (
                   <div style={{ marginTop: 9, color: "#8a6418", fontSize: ".74rem", fontWeight: 850, lineHeight: 1.3 }}>
-                    Si pasan 2 minutos sin conductor, podrás activar RapaGo más veloz.
+                    Si pasan 2 minutos sin conductor, podrás activar RapaGo más veloz (+$800 CLP).
                   </div>
                 )}
 
@@ -6306,25 +6908,47 @@ function PassengerRideCard({
             />
           )}
 
-          {ACTIVE_STATUSES.includes(effectiveStatus) && (
+          {passengerDriverAcceptedState && ["accepted", "driver_en_route"].includes(effectiveStatus) && (
             <div
               style={{
                 marginTop: 12,
                 borderRadius: 18,
                 padding: "11px 12px",
-                background: cancellationPolicy.feeClp > 0 ? "#fff1f2" : "#f8fafc",
-                border: cancellationPolicy.feeClp > 0 ? "1px solid rgba(220,38,38,.28)" : "1px solid rgba(15,23,42,.08)",
-                color: cancellationPolicy.feeClp > 0 ? "#7f1d1d" : "#334155",
-                fontSize: ".76rem",
+                background: passengerDriverAcceptedState.isFree ? "#ecfdf5" : "#fff1f2",
+                border: passengerDriverAcceptedState.isFree ? "1px solid rgba(34,197,94,.28)" : "1px solid rgba(220,38,38,.28)",
+                color: passengerDriverAcceptedState.isFree ? "#064e3b" : "#7f1d1d",
+                fontSize: ".78rem",
                 lineHeight: 1.35,
-                fontWeight: 850,
+                fontWeight: 900,
               }}
             >
-              <strong>{cancellationPolicy.title}.</strong> {cancellationPolicy.detail}
-              {cancellationPolicy.feeClp > 0 && (
-                <> Cargo estimado: <strong>{formatClp(cancellationPolicy.feeClp)}</strong>. Si cancelas, se sumará automáticamente a tu próximo viaje.</>
+              🚗 Conductor aceptó hace <strong>{formatPassengerElapsedTime(passengerDriverAcceptedState.elapsedMs)}</strong>.
+              <br />
+              {passengerDriverAcceptedState.isFree ? (
+                <>Cancelación gratis: <strong>{formatPassengerElapsedTime(passengerDriverAcceptedState.remainingFreeMs)}</strong> restantes.</>
+              ) : (
+                <>Si cancelas ahora: <strong>{formatClp(cancellationPolicy.feeClp)}</strong>.</>
               )}
-              <br />No show: si el conductor llega y no apareces dentro de 5 minutos, se aplica 50% de la tarifa mínima con tope {formatClp(RAPAGO_NO_SHOW_FEE_CAP_CLP)}.
+            </div>
+          )}
+
+          {["scheduled", "driver_scheduled"].includes(effectiveStatus) && cancellationPolicy.feeClp > 0 && (
+            <div
+              style={{
+                marginTop: 12,
+                borderRadius: 18,
+                padding: "11px 12px",
+                background: "#fff1f2",
+                border: "1px solid rgba(220,38,38,.28)",
+                color: "#7f1d1d",
+                fontSize: ".78rem",
+                lineHeight: 1.35,
+                fontWeight: 900,
+              }}
+            >
+              Reserva dentro de últimos 15 min.
+              <br />
+              Cargo por cancelar: <strong>{formatClp(cancellationPolicy.feeClp)}</strong>.
             </div>
           )}
 
@@ -6378,7 +7002,7 @@ function PassengerRideCard({
 
             {ride.driverName && ACTIVE_STATUSES.includes(effectiveStatus) && !ride.driverPhone && (
               <WhatsAppButton
-                phone={RAPAGO_CONTACT.adminPhone}
+                phone={RAPAGO_SUPPORT_WHATSAPP_PHONE}
                 message={WA_MESSAGES.passengerToAdmin({
                   origin: ride.originText,
                   destination: ride.destinationText,
@@ -6408,6 +7032,7 @@ export default function TripsPage(): JSX.Element {
   const [ratingRideId,     setRatingRideId]     = useState<string | null>(null);
   const [ratingStars,      setRatingStars]      = useState(5);
   const [ratingComment,    setRatingComment]    = useState("");
+  const [ratingExtras,     setRatingExtras]     = useState<string[]>([]);
   const [submittingRating, setSubmittingRating] = useState(false);
   const [ratingError,      setRatingError]      = useState<string | null>(null);
   const [ratedIds,         setRatedIds]         = useState<Set<string>>(new Set());
@@ -6481,6 +7106,7 @@ export default function TripsPage(): JSX.Element {
     };
 
     window.addEventListener("rapago:passenger-notification", refreshPassengerNotice as EventListener);
+    window.addEventListener("rapago:passenger-notifications-updated", refreshPassengerNotice as EventListener);
     window.addEventListener(RAPAGO_REQUEUED_RIDES_EVENT, refreshPassengerNotice as EventListener);
     window.addEventListener("rapago:passenger-rides-updated", refreshPassengerNotice as EventListener);
     window.addEventListener(RAPAGO_FAST_SEARCH_EVENT, refreshPassengerNotice as EventListener);
@@ -6490,6 +7116,7 @@ export default function TripsPage(): JSX.Element {
 
     return () => {
       window.removeEventListener("rapago:passenger-notification", refreshPassengerNotice as EventListener);
+      window.removeEventListener("rapago:passenger-notifications-updated", refreshPassengerNotice as EventListener);
       window.removeEventListener(RAPAGO_REQUEUED_RIDES_EVENT, refreshPassengerNotice as EventListener);
       window.removeEventListener("rapago:passenger-rides-updated", refreshPassengerNotice as EventListener);
       window.removeEventListener(RAPAGO_FAST_SEARCH_EVENT, refreshPassengerNotice as EventListener);
@@ -6521,6 +7148,7 @@ export default function TripsPage(): JSX.Element {
     window.addEventListener(RAPAGO_ADMIN_SCHEDULED_RIDES_EVENT, refresh as EventListener);
     window.addEventListener(RAPAGO_REQUEUED_RIDES_EVENT, refresh as EventListener);
     window.addEventListener("rapago:passenger-rides-updated", refresh as EventListener);
+    window.addEventListener("rapago:passenger-notifications-updated", refresh as EventListener);
     window.addEventListener(RAPAGO_FAST_SEARCH_EVENT, refresh as EventListener);
     window.addEventListener("storage", refresh);
 
@@ -6528,6 +7156,7 @@ export default function TripsPage(): JSX.Element {
       window.removeEventListener(RAPAGO_ADMIN_SCHEDULED_RIDES_EVENT, refresh as EventListener);
       window.removeEventListener(RAPAGO_REQUEUED_RIDES_EVENT, refresh as EventListener);
       window.removeEventListener("rapago:passenger-rides-updated", refresh as EventListener);
+      window.removeEventListener("rapago:passenger-notifications-updated", refresh as EventListener);
       window.removeEventListener(RAPAGO_FAST_SEARCH_EVENT, refresh as EventListener);
       window.removeEventListener("storage", refresh);
     };
@@ -6556,6 +7185,7 @@ export default function TripsPage(): JSX.Element {
     setRatingRideId(completedWithoutRating.id);
     setRatingStars(5);
     setRatingComment("");
+    setRatingExtras([]);
     setRatingError(null);
   }, [allRides, ratedIds, session?.user]);
 
@@ -6581,7 +7211,7 @@ export default function TripsPage(): JSX.Element {
       message: [
         "Tu viaje fue cancelado correctamente.",
         "",
-        "Como el pago fue con tarjeta/MercadoPago, la devolución se gestionará por WhatsApp con RAPA GO para mayor seguridad. Esta opción no aplica para efectivo.",
+        "Como el pago fue con tarjeta/MercadoPago, el saldo neto queda como CRÉDITOS PARA PRÓXIMO VIAJE en tu billetera. Si necesitas devolución, se gestiona por WhatsApp con RAPA GO. Esta opción no aplica para efectivo.",
         "",
         "No debes ingresar tarjeta, claves ni códigos bancarios.",
         "",
@@ -6676,8 +7306,13 @@ export default function TripsPage(): JSX.Element {
     setRatingError(null);
 
     try {
+      const ratingCommentWithExtras = [
+        ratingComment.trim(),
+        ratingExtras.length > 0 ? `Extras: ${ratingExtras.join(", ")}` : "",
+      ].filter(Boolean).join("\n");
+
       // Primero guardamos localmente para que el conductor vea sus estrellas al instante.
-      upsertPassengerDriverRating(targetRide, ratingStars, ratingComment.trim(), session?.user);
+      upsertPassengerDriverRating(targetRide, ratingStars, ratingCommentWithExtras, session?.user, ratingExtras);
 
       if (
         session?.accessToken &&
@@ -6689,7 +7324,7 @@ export default function TripsPage(): JSX.Element {
             session.accessToken,
             ratingRideId,
             ratingStars,
-            ratingComment.trim() || undefined,
+            ratingCommentWithExtras || undefined,
           );
         } catch {
           // Si el backend todavía no guarda rating, el respaldo local mantiene la experiencia tipo Uber.
@@ -6704,7 +7339,8 @@ export default function TripsPage(): JSX.Element {
                 ...(ride as RideRequestData & Record<string, unknown>),
                 passengerRatedDriver: true,
                 passengerDriverRatingStars: ratingStars,
-                passengerDriverRatingComment: ratingComment.trim() || null,
+                passengerDriverRatingComment: ratingCommentWithExtras || null,
+                passengerDriverRatingExtras: ratingExtras,
               } as RideRequestData)
             : ride,
         ),
@@ -6712,6 +7348,7 @@ export default function TripsPage(): JSX.Element {
       setRatingRideId(null);
       setRatingStars(5);
       setRatingComment("");
+      setRatingExtras([]);
     } catch (err) {
       const message = err instanceof Error ? err.message : "Error al calificar el viaje.";
       setRatingError(safeTripsErrorMessage(message) ?? "No se pudo guardar la calificación.");
@@ -6728,6 +7365,19 @@ export default function TripsPage(): JSX.Element {
   };
 
   const hasMore = page * PAGE_SIZE < filteredBeforePagination.length;
+  const ratingRide = ratingRideId ? allRides.find((ride) => ride.id === ratingRideId) ?? null : null;
+  const ratingDriverName =
+    ratingStringValue((ratingRide as RideRequestData & Record<string, unknown> | null)?.driverName) ||
+    ratingStringValue((ratingRide as RideRequestData & Record<string, unknown> | null)?.driverFullName) ||
+    "tu conductor";
+
+  function toggleRatingExtra(extra: string): void {
+    setRatingExtras((current) =>
+      current.includes(extra)
+        ? current.filter((item) => item !== extra)
+        : [...current, extra],
+    );
+  }
 
   return (
     <IonPage>
@@ -6874,6 +7524,7 @@ export default function TripsPage(): JSX.Element {
                   setRatingRideId(rideId);
                   setRatingStars(5);
                   setRatingComment("");
+                  setRatingExtras([]);
                   setRatingError(null);
                 }}
               />
@@ -6895,26 +7546,173 @@ export default function TripsPage(): JSX.Element {
           </div>
         )}
 
-        {ratingRideId && (
-          <IonCard style={{ margin: "12px 16px" }}>
-            <IonCardContent style={{ padding: "14px 16px" }}>
-              <div style={{ fontWeight: 950, marginBottom: "4px", fontSize: "1rem" }}>⭐ ¿Cuántas estrellas fue tu viaje?</div>
-              <div style={{ color: "#666", fontSize: ".8rem", marginBottom: 8 }}>Elige de 1 a 5 estrellas. Esta calificación se reflejará en el perfil del conductor.</div>
-              <StarRatingInput value={ratingStars} onChange={setRatingStars} />
-              <IonItem lines="none" style={{ "--padding-start": "0", marginTop: "8px" }}>
-                <IonTextarea value={ratingComment} onIonInput={(e) => setRatingComment(String(e.detail.value ?? ""))}
-                  placeholder="Comentario opcional" maxlength={500} rows={2} />
-              </IonItem>
-              {ratingError && <IonText color="danger"><p style={{ fontSize: "0.82rem", margin: "4px 0" }}>{ratingError}</p></IonText>}
-              <div style={{ display: "flex", gap: "8px", marginTop: "8px" }}>
-                <IonButton size="small" onClick={() => void handleSubmitRating()} disabled={submittingRating}>
-                  {submittingRating ? <IonSpinner name="dots" /> : "Enviar calificación"}
-                </IonButton>
-                <IonButton size="small" fill="outline" color="medium" onClick={() => setRatingRideId(null)}>Cancelar</IonButton>
-              </div>
-            </IonCardContent>
-          </IonCard>
-        )}
+        <IonModal
+          isOpen={ratingRideId !== null}
+          onDidDismiss={() => {
+            if (!submittingRating) setRatingRideId(null);
+          }}
+          cssClass="rapago-rating-modal"
+          keepContentsMounted={false}
+        >
+          <IonContent
+            className="ion-padding"
+            style={{ "--background": "rgba(17,24,39,.56)" } as CSSProperties}
+          >
+            <div
+              style={{
+                minHeight: "100%",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                padding: "18px 0",
+              }}
+            >
+              <IonCard
+                style={{
+                  width: "100%",
+                  maxWidth: 560,
+                  margin: 0,
+                  borderRadius: 28,
+                  overflow: "hidden",
+                  background: "linear-gradient(180deg,#fffaf0,#f8ead0)",
+                  color: "#111827",
+                  boxShadow: "0 28px 80px rgba(0,0,0,.45)",
+                  border: "1px solid rgba(214,168,62,.34)",
+                }}
+              >
+                <IonCardContent style={{ padding: "18px 18px 16px" }}>
+                  <div
+                    style={{
+                      display: "flex",
+                      gap: 12,
+                      alignItems: "flex-start",
+                      marginBottom: 12,
+                    }}
+                  >
+                    <div
+                      style={{
+                        width: 52,
+                        height: 52,
+                        borderRadius: 18,
+                        background: "linear-gradient(135deg,#fff7d6,#facc15)",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        fontSize: 28,
+                        boxShadow: "0 12px 30px rgba(245,158,11,.26)",
+                        flexShrink: 0,
+                      }}
+                    >
+                      ⭐
+                    </div>
+
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontWeight: 950, fontSize: "1.16rem", lineHeight: 1.16 }}>
+                        ¿Quieres calificar al conductor que te recogió?
+                      </div>
+                      <div style={{ marginTop: 5, color: "#4B5563", fontSize: ".84rem", fontWeight: 800, lineHeight: 1.35 }}>
+                        Evalúa a <strong>{ratingDriverName}</strong> y agrega extras del servicio para mejorar la experiencia RAPA GO.
+                      </div>
+                    </div>
+                  </div>
+
+                  {ratingRide && (
+                    <div
+                      style={{
+                        marginBottom: 12,
+                        padding: 11,
+                        borderRadius: 18,
+                        background: "rgba(255,255,255,.70)",
+                        border: "1px solid rgba(214,168,62,.24)",
+                        color: "#374151",
+                        fontSize: ".78rem",
+                        fontWeight: 850,
+                        lineHeight: 1.35,
+                      }}
+                    >
+                      {ratingRide.originText} → {ratingRide.destinationText}
+                    </div>
+                  )}
+
+                  <div style={{ fontWeight: 950, fontSize: ".86rem", marginBottom: 3 }}>
+                    Calificación
+                  </div>
+                  <StarRatingInput value={ratingStars} onChange={setRatingStars} />
+
+                  <div style={{ fontWeight: 950, fontSize: ".86rem", marginTop: 12 }}>
+                    Extras del conductor
+                  </div>
+                  <div style={{ color: "#6B7280", fontSize: ".76rem", fontWeight: 800, marginTop: 2 }}>
+                    Toca una o varias opciones.
+                  </div>
+                  <RatingExtrasSelector selected={ratingExtras} onToggle={toggleRatingExtra} />
+
+                  <IonItem
+                    lines="none"
+                    style={{
+                      "--padding-start": "0",
+                      "--inner-padding-end": "0",
+                      marginTop: "13px",
+                      "--background": "transparent",
+                    } as CSSProperties}
+                  >
+                    <IonTextarea
+                      value={ratingComment}
+                      onIonInput={(e) => setRatingComment(String(e.detail.value ?? ""))}
+                      placeholder="Comentario opcional: cuéntanos cómo fue el viaje"
+                      maxlength={500}
+                      rows={3}
+                      style={{
+                        background: "#ffffff",
+                        borderRadius: 18,
+                        border: "1px solid rgba(214,168,62,.34)",
+                        padding: "10px 12px",
+                        color: "#111827",
+                        fontWeight: 800,
+                      } as CSSProperties}
+                    />
+                  </IonItem>
+
+                  {ratingError && (
+                    <IonText color="danger">
+                      <p style={{ fontSize: "0.82rem", margin: "8px 0 0", fontWeight: 850 }}>
+                        {ratingError}
+                      </p>
+                    </IonText>
+                  )}
+
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginTop: 14 }}>
+                    <IonButton
+                      expand="block"
+                      fill="outline"
+                      color="medium"
+                      onClick={() => {
+                        setRatingRideId(null);
+                        setRatingExtras([]);
+                        setRatingComment("");
+                        setRatingError(null);
+                      }}
+                      disabled={submittingRating}
+                      style={{ "--border-radius": "16px", fontWeight: 950 } as CSSProperties}
+                    >
+                      Ahora no
+                    </IonButton>
+
+                    <IonButton
+                      expand="block"
+                      color="warning"
+                      onClick={() => void handleSubmitRating()}
+                      disabled={submittingRating}
+                      style={{ "--border-radius": "16px", "--color": "#111827", fontWeight: 950 } as CSSProperties}
+                    >
+                      {submittingRating ? <IonSpinner name="dots" /> : "Enviar calificación"}
+                    </IonButton>
+                  </div>
+                </IonCardContent>
+              </IonCard>
+            </div>
+          </IonContent>
+        </IonModal>
 
         <IonAlert
           isOpen={pendingCancelAction !== null}

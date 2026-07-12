@@ -105,7 +105,9 @@ const LOCAL_DRIVER_RESERVATION_INBOX_BY_DRIVER_KEY = "rapago_driver_reservation_
 const ADMIN_DRIVER_ASSIGNMENT_SELECTION_KEY = "rapago_admin_selected_ride_for_driver_assignment";
 const ADMIN_DRIVER_ASSIGNMENT_EVENT = "rapago:admin-driver-assignment-updated";
 const DRIVER_ASSIGNED_RIDE_EVENT = "rapago:driver-assigned-scheduled-ride";
-const SCHEDULE_ACTIVATION_MINUTES_ADMIN = 10;
+const ADMIN_RESERVATION_AUTO_REASSIGN_EVENT = "rapago:admin-reservation-reassign-needed";
+const SCHEDULE_ACTIVATION_MINUTES_ADMIN = 30;
+const RAPAGO_SUPPORT_WHATSAPP_PHONE = "56947964171";
 
 function cleanPath(path: string): string {
   return path.replace(/\/+$/, "") || "/";
@@ -172,6 +174,16 @@ type AdminWalletBenefit = {
   paidClp?: number | null;
   driverPaidClp?: number | null;
   passengerPaidClp?: number | null;
+  refundWhatsappAvailable?: boolean | null;
+  cardRefundRequested?: boolean | null;
+  mercadoPagoRefundRequested?: boolean | null;
+  mercadoPagoRefundStatus?: string | null;
+  cancellationFeeClp?: number | null;
+  originText?: string | null;
+  destinationText?: string | null;
+  paymentId?: string | null;
+  paymentMethod?: string | null;
+  paymentProvider?: string | null;
 };
 
 type AdminPassengerPendingCharge = {
@@ -431,6 +443,16 @@ function readAdminWalletBenefits(): AdminWalletBenefit[] {
       adminReviewStatus: typeof item.adminReviewStatus === "string" ? item.adminReviewStatus : null,
       fareClp: Number.isFinite(Number(item.fareClp)) ? Math.round(Number(item.fareClp)) : null,
       paidClp: Number.isFinite(Number(item.paidClp)) ? Math.round(Number(item.paidClp)) : null,
+      refundWhatsappAvailable: Boolean(item.refundWhatsappAvailable),
+      cardRefundRequested: Boolean(item.cardRefundRequested || item.mercadoPagoRefundRequested),
+      mercadoPagoRefundRequested: Boolean(item.mercadoPagoRefundRequested || item.cardRefundRequested),
+      mercadoPagoRefundStatus: typeof item.mercadoPagoRefundStatus === "string" ? item.mercadoPagoRefundStatus : null,
+      cancellationFeeClp: Number.isFinite(Number(item.cancellationFeeClp)) ? Math.round(Number(item.cancellationFeeClp)) : null,
+      originText: typeof item.originText === "string" ? item.originText : null,
+      destinationText: typeof item.destinationText === "string" ? item.destinationText : null,
+      paymentId: typeof item.paymentId === "string" ? item.paymentId : null,
+      paymentMethod: typeof item.paymentMethod === "string" ? item.paymentMethod : null,
+      paymentProvider: typeof item.paymentProvider === "string" ? item.paymentProvider : null,
     }));
   } catch {
     return [];
@@ -446,6 +468,136 @@ function writeAdminWalletBenefits(benefits: AdminWalletBenefit[]): void {
     window.dispatchEvent(new CustomEvent(RAPAGO_ADMIN_RIDES_EVENT, { detail: { benefits } }));
   } catch {
     // No bloquea el panel admin.
+  }
+}
+
+function isAdminWalletCardCancellationCredit(benefit: AdminWalletBenefit): boolean {
+  const text = [
+    benefit.source,
+    benefit.title,
+    benefit.description,
+    benefit.paymentMethod,
+    benefit.paymentProvider,
+    benefit.mercadoPagoRefundStatus,
+  ]
+    .map((value) => String(value ?? "").toLowerCase())
+    .join(" ");
+
+  return (
+    text.includes("card_cancellation_credit") ||
+    text.includes("cancelación con tarjeta") ||
+    text.includes("cancelacion con tarjeta") ||
+    text.includes("mercadopago") ||
+    text.includes("tarjeta") ||
+    benefit.refundWhatsappAvailable === true ||
+    benefit.cardRefundRequested === true ||
+    benefit.mercadoPagoRefundRequested === true
+  );
+}
+
+function isAdminWalletCreditAvailable(benefit: AdminWalletBenefit): boolean {
+  const status = String(benefit.status ?? "").toLowerCase();
+  const adminStatus = String(benefit.adminReviewStatus ?? "").toLowerCase();
+
+  return (
+    status === "available" ||
+    status === "approved" ||
+    adminStatus === "admin_approved" ||
+    adminStatus === "card_credit_available" ||
+    adminStatus === "available"
+  );
+}
+
+function isAdminWalletCreditPending(benefit: AdminWalletBenefit): boolean {
+  const status = String(benefit.status ?? "").toLowerCase();
+  const adminStatus = String(benefit.adminReviewStatus ?? "").toLowerCase();
+
+  return status === "pending_admin" || adminStatus === "pending_admin";
+}
+
+function isAdminWalletCreditRefundCompleted(benefit: AdminWalletBenefit): boolean {
+  const status = String(benefit.status ?? "").toLowerCase();
+  const adminStatus = String(benefit.adminReviewStatus ?? "").toLowerCase();
+
+  return status === "refund_completed" || adminStatus === "refund_completed";
+}
+
+function adminWalletCreditStatusLabel(benefit: AdminWalletBenefit): string {
+  if (isAdminWalletCreditRefundCompleted(benefit)) return "Devolución gestionada";
+  if (isAdminWalletCreditPending(benefit)) return "Pendiente admin";
+  if (isAdminWalletCreditAvailable(benefit)) return "Disponible en wallet";
+  if (String(benefit.status ?? "").toLowerCase() === "used") return "Usado";
+  return benefit.status || "Crédito";
+}
+
+function adminWalletCreditStatusColor(benefit: AdminWalletBenefit): string {
+  if (isAdminWalletCreditRefundCompleted(benefit)) return "success";
+  if (isAdminWalletCreditPending(benefit)) return "warning";
+  if (isAdminWalletCreditAvailable(benefit)) return "success";
+  if (String(benefit.status ?? "").toLowerCase() === "used") return "medium";
+  return "tertiary";
+}
+
+function markAdminWalletCreditAvailable(benefit: AdminWalletBenefit): void {
+  const now = new Date().toISOString();
+  const next = readAdminWalletBenefits().map((item) => {
+    if (item.id !== benefit.id) return item;
+
+    return {
+      ...item,
+      status: "available",
+      adminReviewStatus: "card_credit_available",
+      approvedAt: item.approvedAt ?? now,
+      approvedBy: item.approvedBy ?? "admin",
+      title: "CRÉDITOS PARA PRÓXIMO VIAJE",
+    };
+  });
+
+  writeAdminWalletBenefits(next);
+}
+
+function markAdminWalletCreditRefundCompleted(benefit: AdminWalletBenefit): void {
+  const now = new Date().toISOString();
+  const next = readAdminWalletBenefits().map((item) => {
+    if (item.id !== benefit.id) return item;
+
+    return {
+      ...item,
+      status: "refund_completed",
+      adminReviewStatus: "refund_completed",
+      approvedAt: item.approvedAt ?? now,
+      approvedBy: item.approvedBy ?? "admin",
+      refundCompletedAt: now,
+      title: "CRÉDITOS PARA PRÓXIMO VIAJE",
+    } as AdminWalletBenefit & Record<string, unknown>;
+  });
+
+  writeAdminWalletBenefits(next);
+}
+
+function buildAdminWalletCreditRefundWhatsAppUrl(benefit: AdminWalletBenefit): string {
+  const lines = [
+    "Hola Gerencia de Soporte RAPA GO.",
+    "Necesito gestionar una devolución asociada a CRÉDITOS PARA PRÓXIMO VIAJE.",
+    `Pasajero: ${benefit.passengerEmail || benefit.ownerKey || "No informado"}`,
+    `Monto crédito: ${formatAdminCashClp(benefit.amountClp)}`,
+    benefit.paidClp != null ? `Pago original: ${formatAdminCashClp(benefit.paidClp)}` : null,
+    benefit.cancellationFeeClp != null ? `Penalización descontada: ${formatAdminCashClp(benefit.cancellationFeeClp)}` : null,
+    benefit.originText || benefit.destinationText ? `Viaje: ${benefit.originText || "Origen"} → ${benefit.destinationText || "Destino"}` : null,
+    benefit.paymentId ? `ID pago: ${benefit.paymentId}` : null,
+    benefit.rideId ? `ID viaje: ${benefit.rideId}` : null,
+  ].filter(Boolean);
+
+  return `https://wa.me/${RAPAGO_SUPPORT_WHATSAPP_PHONE}?text=${encodeURIComponent(lines.join("\n"))}`;
+}
+
+function openAdminWalletCreditRefundWhatsApp(benefit: AdminWalletBenefit): void {
+  const url = buildAdminWalletCreditRefundWhatsAppUrl(benefit);
+
+  try {
+    window.open(url, "_blank", "noopener,noreferrer");
+  } catch {
+    window.location.href = url;
   }
 }
 
@@ -504,6 +656,11 @@ function isAdminPassengerChargePending(charge: AdminPassengerPendingCharge): boo
 
 function adminPassengerChargeStatusLabel(charge: AdminPassengerPendingCharge): string {
   const status = String(charge.status ?? "").toLowerCase();
+  const adminStatus = String(charge.adminReviewStatus ?? "").toLowerCase();
+
+  if (status === "charged_from_card_or_paid_amount" || adminStatus === "no_show_total_service_charged") {
+    return "Cobrado desde tarjeta/pago";
+  }
   if (status === "pending_next_ride") return "Pendiente próximo viaje";
   if (status === "applied_to_next_ride") return "Agregado a próximo viaje";
   if (status === "paid") return "Pagado";
@@ -513,10 +670,42 @@ function adminPassengerChargeStatusLabel(charge: AdminPassengerPendingCharge): s
 
 function adminPassengerChargeStatusColor(charge: AdminPassengerPendingCharge): string {
   const status = String(charge.status ?? "").toLowerCase();
+  const adminStatus = String(charge.adminReviewStatus ?? "").toLowerCase();
+
+  if (status === "charged_from_card_or_paid_amount" || adminStatus === "no_show_total_service_charged") return "success";
   if (status === "pending_next_ride") return "danger";
   if (status === "applied_to_next_ride" || status === "paid") return "success";
   if (status === "waived") return "medium";
   return "warning";
+}
+
+function isAdminPassengerChargePaidFromCard(charge: AdminPassengerPendingCharge): boolean {
+  const status = String(charge.status ?? "").toLowerCase();
+  const adminStatus = String(charge.adminReviewStatus ?? "").toLowerCase();
+  const method = String(charge.paymentMethod ?? "").toLowerCase();
+
+  return (
+    status === "charged_from_card_or_paid_amount" ||
+    adminStatus === "no_show_total_service_charged" ||
+    method.includes("tarjeta") ||
+    method.includes("mercado") ||
+    method.includes("card")
+  );
+}
+
+function adminPassengerChargeTypeLabel(charge: AdminPassengerPendingCharge): string {
+  if (String(charge.type ?? "").toLowerCase() === "no_show") return "No show · total servicio";
+  return "Cancelación fuera de plazo";
+}
+
+function adminPassengerChargeBillingLabel(charge: AdminPassengerPendingCharge): string {
+  const status = String(charge.status ?? "").toLowerCase();
+
+  if (isAdminPassengerChargePaidFromCard(charge)) return "Cobrado desde tarjeta/pago";
+  if (status === "applied_to_next_ride") return "Ya fue sumado";
+  if (status === "paid") return "Pagado";
+  if (status === "waived") return "Anulado";
+  return "Próximo viaje";
 }
 
 function markAdminPassengerChargeStatus(charge: AdminPassengerPendingCharge, status: "paid" | "waived"): void {
@@ -597,8 +786,8 @@ function approveAdminCashWalletCredit(review: AdminCashPaymentReview): void {
     amountClp: creditAmount,
     status: "available",
     source: "cash_overpayment",
-    title: "Pago de más en efectivo",
-    description: `Saldo aprobado por admin para próximo viaje. Usuario declaró ${formatAdminCashClp(review.passengerPaidClp ?? review.paidClp)} y conductor declaró ${formatAdminCashClp(review.driverPaidClp ?? 0)}. Viaje ${review.originText} → ${review.destinationText}.`,
+    title: "CRÉDITOS PARA PRÓXIMO VIAJE",
+    description: `CRÉDITOS PARA PRÓXIMO VIAJE aprobados por admin. Usuario declaró ${formatAdminCashClp(review.passengerPaidClp ?? review.paidClp)} y conductor declaró ${formatAdminCashClp(review.driverPaidClp ?? 0)}. Viaje ${review.originText} → ${review.destinationText}.`,
     createdAt: review.createdAt,
     approvedAt: now,
     approvedBy: "admin",
@@ -926,6 +1115,18 @@ export function AdminHomePage(): JSX.Element {
   const passengerPendingCharges = cashReviewsRevision >= 0 ? readAdminPassengerPendingCharges() : [];
   const passengerChargesPendingNextRide = passengerPendingCharges.filter(isAdminPassengerChargePending);
   const pendingPassengerChargeAmountClp = passengerChargesPendingNextRide.reduce((sum, charge) => sum + Math.max(0, charge.amountClp), 0);
+  const adminWalletBenefits = cashReviewsRevision >= 0 ? readAdminWalletBenefits() : [];
+  const cardCancellationCredits = adminWalletBenefits.filter(isAdminWalletCardCancellationCredit);
+  const cardCancellationCreditsAmountClp = cardCancellationCredits.reduce((sum, credit) => sum + Math.max(0, credit.amountClp), 0);
+  const cardCancellationCreditsPending = cardCancellationCredits.filter(isAdminWalletCreditPending);
+  const cardRefundRequestsPending = cardCancellationCredits.filter((credit) =>
+    credit.refundWhatsappAvailable && !isAdminWalletCreditRefundCompleted(credit),
+  );
+  const adminChargesTotalCount =
+    passengerChargesPendingNextRide.length +
+    pendingCashPaymentReviews.length +
+    cardCancellationCreditsPending.length +
+    cardRefundRequestsPending.length;
 
   const kpis: Array<{
     id: "rides" | "revenue" | "drivers" | "users";
@@ -999,7 +1200,7 @@ export function AdminHomePage(): JSX.Element {
     },
     {
       label: "Cobranza",
-      description: `${passengerChargesPendingNextRide.length + pendingCashPaymentReviews.length} pendiente${passengerChargesPendingNextRide.length + pendingCashPaymentReviews.length !== 1 ? "s" : ""}`,
+      description: `${adminChargesTotalCount} pendiente${adminChargesTotalCount !== 1 ? "s" : ""}`,
       icon: cardOutline,
       route: "__admin_charges__",
     },
@@ -1537,9 +1738,9 @@ export function AdminHomePage(): JSX.Element {
                             Revisa cargos por cancelación, no show, pagos en efectivo, saldos a favor y devoluciones.
                           </IonCardSubtitle>
                         </div>
-                        <IonBadge color={passengerChargesPendingNextRide.length + pendingCashPaymentReviews.length > 0 ? "warning" : "success"}>
-                          {passengerChargesPendingNextRide.length + pendingCashPaymentReviews.length > 0
-                            ? `${passengerChargesPendingNextRide.length + pendingCashPaymentReviews.length} pendiente${passengerChargesPendingNextRide.length + pendingCashPaymentReviews.length !== 1 ? "s" : ""}`
+                        <IonBadge color={adminChargesTotalCount > 0 ? "warning" : "success"}>
+                          {adminChargesTotalCount > 0
+                            ? `${adminChargesTotalCount} pendiente${adminChargesTotalCount !== 1 ? "s" : ""}`
                             : "Al día"}
                         </IonBadge>
                       </div>
@@ -1568,11 +1769,19 @@ export function AdminHomePage(): JSX.Element {
                             {formatAdminCashClp(pendingCashAmountClp)}
                           </div>
                         </div>
+                        <div style={{ background: "#ecfdf5", borderRadius: 16, padding: 12 }}>
+                          <div style={{ fontSize: ".72rem", color: "#166534", fontWeight: 900 }}>
+                            Créditos tarjeta
+                          </div>
+                          <div style={{ fontWeight: 950, color: "#111", fontSize: "1rem" }}>
+                            {formatAdminCashClp(cardCancellationCreditsAmountClp)}
+                          </div>
+                        </div>
                       </div>
                     </IonCardContent>
                   </IonCard>
 
-                  {passengerPendingCharges.length === 0 && cashPaymentReviews.length === 0 && (
+                  {passengerPendingCharges.length === 0 && cashPaymentReviews.length === 0 && cardCancellationCredits.length === 0 && (
                     <IonCard className="admin-section-card" style={{ borderRadius: 22 }}>
                       <IonCardContent>
                         <h2 style={{ margin: "0 0 6px", fontWeight: 950 }}>Sin cobranzas pendientes</h2>
@@ -1582,6 +1791,160 @@ export function AdminHomePage(): JSX.Element {
                       </IonCardContent>
                     </IonCard>
                   )}
+
+              {cardCancellationCredits.length > 0 && (
+                <IonCard
+                  className="admin-section-card"
+                  style={{
+                    borderRadius: 22,
+                    border: "1px solid rgba(34,197,94,.30)",
+                    boxShadow: "0 16px 36px rgba(0,0,0,.10)",
+                  }}
+                >
+                  <IonCardHeader>
+                    <div className="admin-section-title-row">
+                      <div>
+                        <IonCardTitle>CRÉDITOS PARA PRÓXIMO VIAJE</IonCardTitle>
+                        <IonCardSubtitle>
+                          Saldo neto por cancelaciones de tarjeta/reserva. Penalización descontada del pago realizado.
+                        </IonCardSubtitle>
+                      </div>
+                      <IonBadge color={cardRefundRequestsPending.length > 0 ? "warning" : "success"}>
+                        {cardRefundRequestsPending.length > 0
+                          ? `${cardRefundRequestsPending.length} devolución${cardRefundRequestsPending.length !== 1 ? "es" : ""}`
+                          : "Disponible"}
+                      </IonBadge>
+                    </div>
+                  </IonCardHeader>
+
+                  <IonCardContent>
+                    <div
+                      style={{
+                        marginBottom: 12,
+                        padding: 12,
+                        borderRadius: 16,
+                        background: "rgba(34,197,94,.10)",
+                        border: "1px solid rgba(34,197,94,.28)",
+                        color: "#14532d",
+                        fontWeight: 850,
+                        fontSize: ".82rem",
+                        lineHeight: 1.35,
+                      }}
+                    >
+                      Total consignado en wallet: <strong>{formatAdminCashClp(cardCancellationCreditsAmountClp)}</strong>.
+                      Si el pasajero solicita devolución, se gestiona por WhatsApp con Gerencia de Soporte RAPA GO.
+                    </div>
+
+                    <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                      {cardCancellationCredits.slice(0, 10).map((credit) => {
+                        const passengerLabel = credit.passengerEmail || credit.ownerKey || "Pasajero";
+                        const cancellationFee = Math.max(0, Math.round(Number(credit.cancellationFeeClp ?? 0)));
+
+                        return (
+                          <div
+                            key={credit.id}
+                            style={{
+                              padding: 12,
+                              borderRadius: 18,
+                              background: "#f0fdf4",
+                              border: "1px solid rgba(20,83,45,.14)",
+                            }}
+                          >
+                            <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "flex-start" }}>
+                              <div style={{ minWidth: 0 }}>
+                                <div style={{ fontWeight: 950, color: "#111", fontSize: ".92rem" }}>
+                                  CRÉDITOS PARA PRÓXIMO VIAJE · {formatAdminCashClp(credit.amountClp)}
+                                </div>
+                                <div style={{ marginTop: 2, fontSize: ".76rem", color: "#14532d", fontWeight: 800, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                                  {passengerLabel} · {credit.originText || "Origen"} → {credit.destinationText || "Destino"}
+                                </div>
+                              </div>
+                              <IonBadge color={adminWalletCreditStatusColor(credit)}>
+                                {adminWalletCreditStatusLabel(credit)}
+                              </IonBadge>
+                            </div>
+
+                            <div style={{ marginTop: 10, display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(112px, 1fr))", gap: 8 }}>
+                              <div style={{ background: "rgba(255,255,255,.75)", borderRadius: 12, padding: 8 }}>
+                                <div style={{ fontSize: ".66rem", color: "#166534", fontWeight: 900 }}>Pago original</div>
+                                <div style={{ fontWeight: 950, color: "#111", fontSize: ".82rem" }}>
+                                  {credit.paidClp != null ? formatAdminCashClp(credit.paidClp) : "No informado"}
+                                </div>
+                              </div>
+                              <div style={{ background: "rgba(255,255,255,.75)", borderRadius: 12, padding: 8 }}>
+                                <div style={{ fontSize: ".66rem", color: "#166534", fontWeight: 900 }}>Penalización</div>
+                                <div style={{ fontWeight: 950, color: "#111", fontSize: ".82rem" }}>
+                                  {formatAdminCashClp(cancellationFee)}
+                                </div>
+                              </div>
+                              <div style={{ background: "rgba(255,255,255,.75)", borderRadius: 12, padding: 8 }}>
+                                <div style={{ fontSize: ".66rem", color: "#166534", fontWeight: 900 }}>Crédito neto</div>
+                                <div style={{ fontWeight: 950, color: "#111", fontSize: ".82rem" }}>
+                                  {formatAdminCashClp(credit.amountClp)}
+                                </div>
+                              </div>
+                            </div>
+
+                            {credit.paymentId && (
+                              <div style={{ marginTop: 8, padding: 9, borderRadius: 12, background: "rgba(255,255,255,.72)", color: "#111", fontSize: ".75rem", fontWeight: 850 }}>
+                                ID pago: <strong>{credit.paymentId}</strong>
+                              </div>
+                            )}
+
+                            {credit.description && (
+                              <p style={{ margin: "8px 0 0", fontSize: ".76rem", color: "#14532d", lineHeight: 1.35, fontWeight: 800 }}>
+                                {credit.description}
+                              </p>
+                            )}
+
+                            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 10 }}>
+                              {isAdminWalletCreditPending(credit) && (
+                                <IonButton
+                                  size="small"
+                                  color="success"
+                                  onClick={() => {
+                                    markAdminWalletCreditAvailable(credit);
+                                    setCashReviewsRevision((current) => current + 1);
+                                    setAdminCashToast("Crédito disponible en wallet.");
+                                  }}
+                                >
+                                  Dejar disponible
+                                </IonButton>
+                              )}
+
+                              {credit.refundWhatsappAvailable && !isAdminWalletCreditRefundCompleted(credit) && (
+                                <IonButton
+                                  size="small"
+                                  color="success"
+                                  fill="outline"
+                                  onClick={() => openAdminWalletCreditRefundWhatsApp(credit)}
+                                >
+                                  WhatsApp devolución
+                                </IonButton>
+                              )}
+
+                              {credit.refundWhatsappAvailable && !isAdminWalletCreditRefundCompleted(credit) && (
+                                <IonButton
+                                  size="small"
+                                  color="medium"
+                                  fill="outline"
+                                  onClick={() => {
+                                    markAdminWalletCreditRefundCompleted(credit);
+                                    setCashReviewsRevision((current) => current + 1);
+                                    setAdminCashToast("Devolución marcada como gestionada.");
+                                  }}
+                                >
+                                  Marcar devolución gestionada
+                                </IonButton>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </IonCardContent>
+                </IonCard>
+              )}
 
               {passengerPendingCharges.length > 0 && (
                 <IonCard
@@ -1597,7 +1960,7 @@ export function AdminHomePage(): JSX.Element {
                       <div>
                         <IonCardTitle>Cargos por cancelación / no show</IonCardTitle>
                         <IonCardSubtitle>
-                          Cargos que se suman al próximo viaje; si fue tarjeta, revisar devolución a la tarjeta
+                          Efectivo se suma al próximo viaje; tarjeta/MercadoPago se cobra desde el pago realizado.
                         </IonCardSubtitle>
                       </div>
                       <IonBadge color={passengerChargesPendingNextRide.length > 0 ? "danger" : "success"}>
@@ -1623,14 +1986,14 @@ export function AdminHomePage(): JSX.Element {
                           lineHeight: 1.35,
                         }}
                       >
-                        Hay {formatAdminCashClp(pendingPassengerChargeAmountClp)} pendiente por cancelaciones o no show. La app lo sumará al próximo viaje del pasajero. Si el viaje original fue con tarjeta, el backend debe procesar la devolución del pago a la misma tarjeta.
+                        Hay {formatAdminCashClp(pendingPassengerChargeAmountClp)} pendiente por efectivo/sin pago. En tarjeta/MercadoPago la penalización se descuenta del pago realizado y el saldo va a CRÉDITOS PARA PRÓXIMO VIAJE.
                       </div>
                     )}
 
                     <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
                       {passengerPendingCharges.slice(0, 8).map((charge) => {
                         const passengerLabel = charge.passengerName || charge.passengerEmail || "Pasajero";
-                        const typeLabel = charge.type === "no_show" ? "No show" : "Cancelación fuera de plazo";
+                        const typeLabel = adminPassengerChargeTypeLabel(charge);
 
                         return (
                           <div
@@ -1664,7 +2027,7 @@ export function AdminHomePage(): JSX.Element {
                               <div style={{ background: "rgba(0,0,0,.035)", borderRadius: 12, padding: 8 }}>
                                 <div style={{ fontSize: ".66rem", color: "#666", fontWeight: 900 }}>Cobro</div>
                                 <div style={{ fontWeight: 950, color: "#111", fontSize: ".82rem" }}>
-                                  {charge.appliedRideId ? "Ya fue sumado" : "Próximo viaje"}
+                                  {adminPassengerChargeBillingLabel(charge)}
                                 </div>
                               </div>
                             </div>
@@ -1673,9 +2036,9 @@ export function AdminHomePage(): JSX.Element {
                               <div style={{ marginTop: 8, padding: 9, borderRadius: 12, background: "rgba(255,255,255,.68)", color: "#111", fontSize: ".76rem", fontWeight: 850 }}>
                                 Método original: <strong>{charge.paymentMethod}</strong>
                                 {String(charge.paymentMethod).toLowerCase().includes("tarjeta") || String(charge.paymentMethod).toLowerCase().includes("mercado") || String(charge.paymentMethod).toLowerCase().includes("pronto") ? (
-                                  <><br />💳 Revisar devolución del pago original a la misma tarjeta. El cargo queda para el próximo viaje.</>
+                                  <><br />💳 Tarjeta/MercadoPago: penalización cobrada desde el pago realizado.</>
                                 ) : (
-                                  <><br />💵 Efectivo: el cargo queda pendiente para el próximo viaje.</>
+                                  <><br />💵 Efectivo/sin pago: queda pendiente para el próximo viaje.</>
                                 )}
                               </div>
                             )}
@@ -4050,6 +4413,51 @@ export function AdminDriversPage(): JSX.Element {
   }, [loadDrivers]);
 
   useEffect(() => {
+    if (drivers.length === 0) return;
+
+    const runAutoReassign = () => {
+      const localScheduled = readLocalAdminScheduledRides();
+      const reassigned: AdminRideData[] = [];
+
+      for (const ride of localScheduled) {
+        const next = autoAssignReservationToNextAvailableDriverFromAdmin(ride, drivers);
+        if (next) reassigned.push(next);
+      }
+
+      if (reassigned.length > 0) {
+        setDriverRides((prev) => mergeAdminRides([...reassigned, ...prev]));
+        setAssignmentRide((current) => {
+          if (!current) return current;
+          return reassigned.some((ride) => getAdminRideMergeKey(ride) === getAdminRideMergeKey(current))
+            ? null
+            : current;
+        });
+        setAssignmentToast(
+          reassigned.length === 1
+            ? "Reserva reasignada automáticamente al siguiente conductor disponible."
+            : `${reassigned.length} reservas reasignadas automáticamente al siguiente conductor disponible.`,
+        );
+      }
+    };
+
+    runAutoReassign();
+
+    const onReassignNeeded = () => window.setTimeout(runAutoReassign, 80);
+
+    window.addEventListener("storage", onReassignNeeded);
+    window.addEventListener(ADMIN_RESERVATION_AUTO_REASSIGN_EVENT, onReassignNeeded as EventListener);
+    window.addEventListener("rapago:admin-scheduled-rides-updated", onReassignNeeded as EventListener);
+    window.addEventListener("rapago:driver-scheduled-reservation-updated", onReassignNeeded as EventListener);
+
+    return () => {
+      window.removeEventListener("storage", onReassignNeeded);
+      window.removeEventListener(ADMIN_RESERVATION_AUTO_REASSIGN_EVENT, onReassignNeeded as EventListener);
+      window.removeEventListener("rapago:admin-scheduled-rides-updated", onReassignNeeded as EventListener);
+      window.removeEventListener("rapago:driver-scheduled-reservation-updated", onReassignNeeded as EventListener);
+    };
+  }, [drivers]);
+
+  useEffect(() => {
     if (!selectedDriver) return;
 
     const refreshedDriver = drivers.find(
@@ -4116,7 +4524,7 @@ export function AdminDriversPage(): JSX.Element {
       setAssignmentToast(
         getAdminRideScheduleInfo(assignmentRide).isReturnOnlyPromotion
           ? `Conductor ${driver.name} asignado al regreso. Solo ese conductor recibirá la reserva de vuelta.`
-          : `Conductor ${driver.name} agendado correctamente. Solo ese conductor recibirá la reserva. El pasajero verá los datos cuando el conductor acepte.`,
+          : `Conductor ${driver.name} agendado correctamente. Solo ese conductor recibirá la reserva. Si rechaza o cancela, pasará automáticamente al siguiente conductor disponible.`,
       );
     } catch (err) {
       setAssignmentError(err instanceof Error ? err.message : "No se pudo agendar el conductor.");
@@ -5980,6 +6388,12 @@ function buildAdminReturnReservationFromRide(ride: AdminRideData): AdminRideData
       "Tu regreso está agendado. RAPA GO asignará un conductor para la vuelta.",
     notes: `${String(ride.notes ?? "").trim()} Gestión admin: regreso promocional. El admin debe asignar conductor para el regreso ${originText} → ${destinationText}.`.trim(),
     localAdminOverride: true,
+    reservationRequiresCard: true,
+    paymentRequiredProvider: "mercadopago",
+    cardCancellationCreditToWallet: true,
+    cardCancellationCreditName: "CRÉDITOS PARA PRÓXIMO VIAJE",
+    reservationCancellationWindowMinutes: 15,
+    adminAssignmentWindowMinutes: 30,
   } as AdminRideData;
 }
 
@@ -6427,10 +6841,10 @@ function buildAssignedScheduledRide(ride: AdminRideData, driver: ActiveDriverDat
   const airportWelcomeInfo = getAdminRideAirportWelcomeInfo(ride);
   const driverNotification = isReturnOnlyPromotion
     ? `Tenemos agendado el regreso de este pasajero. Recógelo en ${ride.originText} y llévalo a ${ride.destinationText}.`
-    : `Tenemos agendado tu viaje. Ve a buscar al usuario en ${ride.originText} y confirma esta reserva.${airportWelcomeInfo ? " Incluye collar de flores solicitado; admin gestiona el recibimiento en Mataveri." : ""}`;
+    : `Tenemos agendado tu viaje. El admin lo asignó 30 minutos antes. Ve a buscar al usuario en ${ride.originText} y confirma esta reserva.${airportWelcomeInfo ? " Incluye collar de flores solicitado; admin gestiona el recibimiento en Mataveri." : ""}`;
   const passengerNotification = isReturnOnlyPromotion
     ? "Tu regreso quedó agendado. Estamos esperando que el conductor asignado confirme la vuelta."
-    : "Tu reserva sigue agendada. Estamos esperando que el conductor asignado confirme.";
+    : "Tu reserva sigue agendada. El admin gestionará/asignará conductor 30 minutos antes. Todas las reservas son con tarjeta; si cancelas dentro de los últimos 15 minutos se descuenta la penalización y el saldo queda como CRÉDITOS PARA PRÓXIMO VIAJE.";
 
   return {
     ...(ride as AdminRideData & Record<string, unknown>),
@@ -6548,10 +6962,158 @@ function syncPassengerRideAssignment(ride: AdminRideData, assigned: AdminRideDat
       driverAssignmentStatus: "pending_driver_acceptance",
       assignedByAdminAt: nowIso,
       passengerNotification: assignedRecord.passengerNotification ?? "Tu reserva sigue agendada. Estamos esperando confirmación del conductor asignado.",
+      reservationRequiresCard: true,
+      paymentRequiredProvider: "mercadopago",
+      cardCancellationCreditToWallet: true,
+      cardCancellationCreditName: "CRÉDITOS PARA PRÓXIMO VIAJE",
+      reservationCancellationWindowMinutes: 15,
+      adminAssignmentWindowMinutes: 30,
     };
   });
 
   saveLocalPassengerRidesForAdmin(updated);
+}
+
+
+function getAdminRideRejectedDriverKeys(ride: AdminRideData | Record<string, unknown>): string[] {
+  const record = ride as Record<string, unknown>;
+
+  const direct = [
+    record.rejectedByDriverId,
+    record.rejectedByDriverUserId,
+    record.rejectedByDriverEmail,
+    record.rejectedByDriverName,
+    record.lastRejectedByDriverId,
+    record.lastRejectedByDriverEmail,
+    record.lastRejectedByDriverName,
+    record.cancelledByDriverEmail,
+    record.cancelledByDriverName,
+  ];
+
+  const arrays = [
+    record.skippedDriverKeys,
+    record.rejectedByDriverKeys,
+    record.rejectedDriverKeys,
+    record.rejectedDriverIds,
+    record.rejectedDriverEmails,
+    record.driverRejectionKeys,
+    record.driverRejectionEmails,
+    record.ignoredDriverKeys,
+    record.previousRejectedDriverKeys,
+  ];
+
+  return Array.from(
+    new Set(
+      [...direct, ...arrays.flatMap((value) =>
+        Array.isArray(value) ? value : typeof value === "string" ? [value] : [],
+      )]
+        .map((value) => normalizeAdminDriverQueueKey(value) ?? String(value ?? "").trim())
+        .filter(Boolean),
+    ),
+  );
+}
+
+function adminDriverMatchesRejectedRide(ride: AdminRideData, driver: ActiveDriverData): boolean {
+  const rejected = new Set(getAdminRideRejectedDriverKeys(ride));
+  if (rejected.size === 0) return false;
+
+  return getDriverScheduledQueueKeys(driver)
+    .map((key) => normalizeAdminDriverQueueKey(key) ?? key)
+    .some((key) => rejected.has(key));
+}
+
+function adminRideNeedsNextAvailableDriver(ride: AdminRideData): boolean {
+  const record = ride as AdminRideData & Record<string, unknown>;
+  const status = String(record.status ?? "").toLowerCase();
+
+  if (["completed", "cancelled", "canceled", "in_progress", "driver_arrived", "driver_en_route"].includes(status)) {
+    return false;
+  }
+
+  const assignmentStatus = String(
+    record.adminScheduleStatus ??
+      record.scheduleStatus ??
+      record.reservationStatus ??
+      record.driverAssignmentStatus ??
+      "",
+  ).toLowerCase();
+
+  return (
+    getAdminRideScheduleInfo(ride).isScheduled &&
+    (
+      record.reassignmentNeeded === true ||
+      record.needsNextAvailableDriver === true ||
+      assignmentStatus.includes("pending_next_driver") ||
+      assignmentStatus.includes("pending_driver")
+    )
+  );
+}
+
+function findNextAvailableAdminDriverForRide(
+  ride: AdminRideData,
+  drivers: ActiveDriverData[],
+): ActiveDriverData | null {
+  return (
+    drivers.find((driver) => {
+      if (getNormalizedDriverAvailability(driver) !== "available") return false;
+      if (adminDriverMatchesRejectedRide(ride, driver)) return false;
+
+      const driverKeys = getDriverScheduledQueueKeys(driver)
+        .map((key) => normalizeAdminDriverQueueKey(key) ?? key)
+        .filter(Boolean);
+
+      const assignedKeys = [
+        (ride as unknown as Record<string, unknown>).assignedDriverId,
+        (ride as unknown as Record<string, unknown>).assignedDriverUserId,
+        (ride as unknown as Record<string, unknown>).assignedDriverEmail,
+        (ride as unknown as Record<string, unknown>).assignedDriverName,
+      ]
+        .map((key) => normalizeAdminDriverQueueKey(key) ?? String(key ?? "").trim())
+        .filter(Boolean);
+
+      if (assignedKeys.length > 0 && driverKeys.some((key) => assignedKeys.includes(key))) return false;
+      return true;
+    }) ?? null
+  );
+}
+
+function autoAssignReservationToNextAvailableDriverFromAdmin(
+  ride: AdminRideData,
+  drivers: ActiveDriverData[],
+): AdminRideData | null {
+  if (!adminRideNeedsNextAvailableDriver(ride)) return null;
+
+  const nextDriver = findNextAvailableAdminDriverForRide(ride, drivers);
+  if (!nextDriver) return null;
+
+  const reassigned = assignScheduledRideToDriverLocally(
+    {
+      ...(ride as AdminRideData & Record<string, unknown>),
+      status: "scheduled",
+      adminScheduleStatus: "pending_driver_confirmation",
+      scheduleStatus: "pending_driver_confirmation",
+      reservationStatus: "assigned_waiting_driver_acceptance",
+      driverAssignmentStatus: "pending_driver_acceptance",
+      availableForDrivers: false,
+      reassignmentNeeded: false,
+      needsNextAvailableDriver: false,
+      autoReassignedAt: new Date().toISOString(),
+      autoReassignedBy: "admin_auto",
+      passengerNotification:
+        "El conductor anterior no pudo tomar tu reserva. La enviamos al siguiente conductor disponible.",
+      driverNotification:
+        "Te reasignamos esta reserva porque otro conductor no pudo tomarla. Confirma si puedes realizarla.",
+    } as AdminRideData,
+    nextDriver,
+  );
+
+  window.dispatchEvent(
+    new CustomEvent(ADMIN_RESERVATION_AUTO_REASSIGN_EVENT, {
+      detail: { ride: reassigned, nextDriverId: nextDriver.id, nextDriverEmail: nextDriver.email },
+    }),
+  );
+
+  return reassigned;
 }
 
 function assignScheduledRideToDriverLocally(ride: AdminRideData, driver: ActiveDriverData): AdminRideData {
@@ -7414,7 +7976,7 @@ export function AdminTripsPage(): JSX.Element {
                         }}
                       >
                         <WhatsAppButton
-                          phone={RAPAGO_CONTACT.adminPhone}
+                          phone={RAPAGO_SUPPORT_WHATSAPP_PHONE}
                           message={WA_MESSAGES.adminToDriver({
                             driverName: ride.driverName,
                             origin: ride.originText,
@@ -7425,7 +7987,7 @@ export function AdminTripsPage(): JSX.Element {
                           label="WhatsApp conductor"
                         />
                         <WhatsAppButton
-                          phone={RAPAGO_CONTACT.adminPhone}
+                          phone={RAPAGO_SUPPORT_WHATSAPP_PHONE}
                           message={WA_MESSAGES.passengerToAdmin({
                             origin: ride.originText,
                             destination: ride.destinationText,

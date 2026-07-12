@@ -3939,10 +3939,10 @@ function limitRideNotes(value: string): string {
 
 // MODO PRUEBA:
  // Permite agendar reservas más cerca para testear rápido.
- // Producción recomendado: SCHEDULE_MIN_MINUTES = 30 y SCHEDULE_ACTIVATION_MINUTES = 10.
-const SCHEDULE_MIN_MINUTES = 5;
+ // Producción: reservas mínimo 30 minutos y gestión/asignación admin 30 minutos antes.
+const SCHEDULE_MIN_MINUTES = 30;
 const SCHEDULE_MAX_DAYS = 30;
-const SCHEDULE_ACTIVATION_MINUTES = 1;
+const SCHEDULE_ACTIVATION_MINUTES = 30;
 
 function parseScheduleInput(value: string | null | undefined): Date | null {
   if (!value) return null;
@@ -4169,9 +4169,17 @@ export default function RequestRidePage(): JSX.Element {
   const effectiveTripFareMode: TripFareMode = selectedRoundTripPromotion ? "round_trip" : tripFareMode;
   const isRoundTripPromotionSelected = Boolean(selectedRoundTripPromotion);
   const isAirportScheduledRide = rideMode === "scheduled" && !isRoundTripPromotionSelected;
+  const reservationRequiresCard = rideMode === "scheduled" || Boolean(selectedRoundTripPromotion);
+  const airportScheduledRequiresCard = isAirportScheduledRide;
   const canChooseOrigin = rideMode !== "scheduled" || isRoundTripPromotionSelected;
   const requireReturnScheduledAt = effectiveTripFareMode === "round_trip";
   const roundTripPromotionReturnOnly = Boolean(selectedRoundTripPromotion);
+
+  useEffect(() => {
+    if (!reservationRequiresCard) return;
+    if (paymentMethod !== "card") setPaymentMethod("card");
+    setShowPaymentBox(false);
+  }, [reservationRequiresCard, paymentMethod]);
 
   useEffect(() => {
     let cancelled = false;
@@ -4797,6 +4805,13 @@ export default function RequestRidePage(): JSX.Element {
   }
 
   function handleSelectPayment(method: Exclude<PaymentMethod, null>): void {
+    if (reservationRequiresCard && method === "cash") {
+      setPaymentMethod("card");
+      setShowPaymentBox(false);
+      setSubmitError("Todas las reservas se pagan obligatoriamente con tarjeta/MercadoPago. Si cancelas dentro de los últimos 15 minutos, se descuenta 30% con tope $3.000 y el saldo queda como CRÉDITOS PARA PRÓXIMO VIAJE.");
+      return;
+    }
+
     setPaymentMethod(method);
     setShowPaymentBox(false);
     setSubmitError(null);
@@ -4839,6 +4854,13 @@ export default function RequestRidePage(): JSX.Element {
       return;
     }
 
+    if (reservationRequiresCard && activePaymentMethod !== "card") {
+      setPaymentMethod("card");
+      setShowPaymentBox(true);
+      setSubmitError("Todas las reservas deben pagarse obligatoriamente con tarjeta/MercadoPago. Si cancelas dentro de los últimos 15 minutos, se descuenta 30% con tope $3.000 y el saldo queda como CRÉDITOS PARA PRÓXIMO VIAJE.");
+      return;
+    }
+
     if (hasAvailableWalletBenefit && useWalletBenefit === null) {
       setSubmitError(`Tienes ${formatCLP(availableWalletBenefitTotalClp)} a favor. Elige si quieres usar tu beneficio en este viaje.`);
       return;
@@ -4864,6 +4886,12 @@ export default function RequestRidePage(): JSX.Element {
       const notes: string[] = [];
 
       notes.push(`Forma de pago seleccionada: ${getPaymentLabel(activePaymentMethod)}.`);
+      if (reservationRequiresCard) {
+        notes.push("Pago obligatorio para reservas: tarjeta/MercadoPago.");
+        notes.push("Gestión reserva: el administrador designa conductor 30 minutos antes del inicio del servicio.");
+        notes.push("Política cancelación reserva: desde los últimos 15 minutos previos al inicio se cobra 30% con tope $3.000.");
+        notes.push("Si se cancela con tarjeta, la penalización se descuenta del pago y el saldo queda como CRÉDITOS PARA PRÓXIMO VIAJE en billetera. Si requiere devolución, debe solicitarla a Gerencia de Soporte RAPA GO por WhatsApp.");
+      }
       if (pendingPassengerChargeTotalClp > 0) {
         notes.push(`Cargo pendiente anterior por cancelación/no show aplicado al próximo viaje: ${formatCLP(pendingPassengerChargeTotalClp)}.`);
         notes.push(`Total antes de beneficio billetera incluyendo cargo pendiente anterior: ${formatCLP(selectedFareAmountBeforeWallet)}.`);
@@ -4919,6 +4947,8 @@ export default function RequestRidePage(): JSX.Element {
           notes.push("Recogida a elección del pasajero.");
         } else {
           notes.push(`Tipo de reserva: recogida aeropuerto.`);
+          notes.push("Pago obligatorio para reservas: tarjeta/MercadoPago.");
+          notes.push("Política cancelación reserva: desde los últimos 15 minutos se cobra 30% con tope $3.000; el saldo neto queda como CRÉDITOS PARA PRÓXIMO VIAJE. Si necesitas devolución, abre WhatsApp con Gerencia de Soporte RAPA GO.");
           notes.push(`Origen automático aeropuerto: ${RAPA_NUI_AIRPORT_DESTINATION.text}.`);
           notes.push(`RAPAGO_AIRPORT_ORIGIN_LAT: ${RAPA_NUI_AIRPORT_DESTINATION.lat}.`);
           notes.push(`RAPAGO_AIRPORT_ORIGIN_LNG: ${RAPA_NUI_AIRPORT_DESTINATION.lng}.`);
@@ -5100,6 +5130,13 @@ export default function RequestRidePage(): JSX.Element {
           optionalServicesTotalClp: airportWelcomeSurchargeClp,
           baseFareBeforeExtrasClp: selectedBaseFareAmount,
           finalFareWithExtrasClp: selectedFareAmount,
+          airportReservationRequiresCard: isAirportScheduledRide,
+          reservationRequiresCard: reservationRequiresCard,
+          reservationRequiresCard: reservationRequiresCard,
+          paymentRequiredProvider: "mercadopago",
+          cardCancellationCreditToWallet: reservationRequiresCard && activePaymentMethod === "card",
+          cardCancellationAdminReviewRequired: false,
+          cardCancellationCreditName: "CRÉDITOS PARA PRÓXIMO VIAJE",
         });
       } else if (selectedRoundTripPromotion) {
         Object.assign(input as CreateRideInput & Record<string, unknown>, {
@@ -5262,6 +5299,12 @@ export default function RequestRidePage(): JSX.Element {
         const localNotes: string[] = [];
 
         localNotes.push(`Forma de pago seleccionada: ${getPaymentLabel(activePaymentMethod)}.`);
+        if (reservationRequiresCard) {
+          localNotes.push("Pago obligatorio para reservas: tarjeta/MercadoPago.");
+          localNotes.push("Gestión reserva: el administrador designa conductor 30 minutos antes del inicio del servicio.");
+          localNotes.push("Política cancelación reserva: desde los últimos 15 minutos previos al inicio se cobra 30% con tope $3.000.");
+          localNotes.push("Si se cancela con tarjeta, la penalización se descuenta del pago y el saldo queda como CRÉDITOS PARA PRÓXIMO VIAJE en billetera. Si requiere devolución, debe solicitarla a Gerencia de Soporte RAPA GO por WhatsApp.");
+        }
         if (pendingPassengerChargeTotalClp > 0) {
           localNotes.push(`Cargo pendiente anterior por cancelación/no show aplicado al próximo viaje: ${formatCLP(pendingPassengerChargeTotalClp)}.`);
           localNotes.push(`Total antes de beneficio billetera incluyendo cargo pendiente anterior: ${formatCLP(selectedFareAmountBeforeWallet)}.`);
@@ -5312,6 +5355,8 @@ export default function RequestRidePage(): JSX.Element {
             localNotes.push("Recogida a elección del pasajero.");
           } else {
             localNotes.push(`Tipo de reserva: recogida aeropuerto.`);
+            localNotes.push("Pago obligatorio para reservas: tarjeta/MercadoPago.");
+            localNotes.push("Política cancelación reserva: desde los últimos 15 minutos se cobra 30% con tope $3.000; el saldo neto queda como CRÉDITOS PARA PRÓXIMO VIAJE. Si necesitas devolución, abre WhatsApp con Gerencia de Soporte RAPA GO.");
             localNotes.push(`Origen automático aeropuerto: ${RAPA_NUI_AIRPORT_DESTINATION.text}.`);
             localNotes.push(`RAPAGO_AIRPORT_ORIGIN_LAT: ${RAPA_NUI_AIRPORT_DESTINATION.lat}.`);
             localNotes.push(`RAPAGO_AIRPORT_ORIGIN_LNG: ${RAPA_NUI_AIRPORT_DESTINATION.lng}.`);
@@ -5426,6 +5471,12 @@ export default function RequestRidePage(): JSX.Element {
           roundTripOutboundNow: Boolean(selectedRoundTripPromotion),
           roundTripReturnPickupRequested: Boolean(selectedRoundTripPromotion && returnScheduledAt),
           roundTripReturnPickupAt: selectedRoundTripPromotion ? returnScheduledAt : null,
+          airportReservationRequiresCard: isAirportScheduledRide,
+          reservationRequiresCard: reservationRequiresCard,
+          paymentRequiredProvider: isAirportScheduledRide ? "mercadopago" : null,
+          cardCancellationCreditToWallet: reservationRequiresCard && activePaymentMethod === "card",
+          cardCancellationAdminReviewRequired: false,
+          cardCancellationCreditName: reservationRequiresCard && activePaymentMethod === "card" ? "CRÉDITOS PARA PRÓXIMO VIAJE" : null,
         } as LocalPassengerRideData;
 
         const localReturnPickupRide = selectedRoundTripPromotion && returnScheduledAt
@@ -5829,6 +5880,8 @@ return (
                   setRideMode("scheduled");
                   clearRoundTripPromotion();
                   setTripFareMode("one_way");
+                  setPaymentMethod("card");
+                  setShowPaymentBox(false);
                   applyRapaNuiAirportOrigin();
                   setDestinationPoint(null);
                   setDestInput("");
@@ -6356,6 +6409,8 @@ return (
                       }}
                     >
                       Al agendar, el origen queda automático en Aeropuerto Internacional Mataveri de Rapa Nui. El pasajero elige el destino final. La reserva queda congelada para conductores y se libera {SCHEDULE_ACTIVATION_MINUTES} min antes.
+                      <br />
+                      <strong>Pago obligatorio con tarjeta:</strong> todas las reservas son con tarjeta. Si cancelas dentro de los últimos 15 minutos, se descuenta 30% con tope $3.000 y el saldo queda como <strong>CRÉDITOS PARA PRÓXIMO VIAJE</strong>. Si necesitas devolución, puedes abrir WhatsApp con Gerencia de Soporte RAPA GO.
                     </IonNote>
                   </>
                 )}
@@ -6913,7 +6968,7 @@ return (
                         ¿Cómo quieres pagar?
                       </div>
                       <div style={{ marginTop: 6, color: "rgba(17,17,17,.66)", fontSize: ".74rem", lineHeight: 1.35, fontWeight: 800 }}>
-                        Elige efectivo al conductor o paga con tarjeta mediante MercadoPago Checkout Pro.
+                        {reservationRequiresCard ? "Todas las reservas se pagan obligatoriamente con tarjeta. Si cancelas dentro de los últimos 15 minutos, se descuenta 30% tope $3.000 y el saldo queda como CRÉDITOS PARA PRÓXIMO VIAJE." : "Elige efectivo al conductor o paga con tarjeta mediante MercadoPago Checkout Pro."}
                       </div>
                     </div>
                     <span style={{ borderRadius: 999, padding: "6px 9px", background: "#fff7e8", color: "#9A6A10", fontSize: ".66rem", fontWeight: 950, whiteSpace: "nowrap" }}>
@@ -6938,14 +6993,15 @@ return (
                         fontWeight: 950,
                         textAlign: "left",
                         width: "100%",
+                        opacity: reservationRequiresCard ? .48 : 1,
                       }}
                     >
                       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
                         <div>
                           <div style={{ fontSize: "1.35rem", lineHeight: 1 }}>💵</div>
-                          <div style={{ marginTop: 5, fontSize: ".94rem" }}>Efectivo al conductor</div>
+                          <div style={{ marginTop: 5, fontSize: ".94rem" }}>{reservationRequiresCard ? "Efectivo no disponible" : "Efectivo al conductor"}</div>
                           <div style={{ marginTop: 3, fontSize: ".72rem", fontWeight: 850, opacity: .78 }}>
-                            Confirmación inmediata
+                            {reservationRequiresCard ? "Reservas: solo tarjeta" : "Confirmación inmediata"}
                           </div>
                         </div>
                         <div style={{ textAlign: "right" }}>
@@ -7138,7 +7194,7 @@ return (
                 ) : selectedRoundTripPromotion ? (
                   "IDA + AGENDAMIENTO DE RECOGIDA"
                 ) : rideMode === "scheduled" ? (
-                  paymentMethod === "card" ? "AGENDAR Y PAGAR CON TARJETA" : "AGENDA TU VIAJE"
+                  reservationRequiresCard ? "RESERVAR Y PAGAR CON TARJETA" : paymentMethod === "card" ? "AGENDAR Y PAGAR CON TARJETA" : "AGENDA TU VIAJE"
                 ) : paymentMethod === "card" ? (
                   "PAGAR CON TARJETA"
                 ) : (

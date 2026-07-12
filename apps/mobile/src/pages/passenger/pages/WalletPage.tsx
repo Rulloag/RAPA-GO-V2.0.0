@@ -1,5 +1,6 @@
 import {
   IonBadge,
+  IonButton,
   IonCard,
   IonCardContent,
   IonContent,
@@ -16,17 +17,22 @@ import {
 import { useState, useCallback, useEffect, type CSSProperties } from "react";
 import {
   walletOutline,
+  cardOutline,
+  cashOutline,
   giftOutline,
   timeOutline,
   checkmarkCircleOutline,
   alertCircleOutline,
+  logoWhatsapp,
 } from "ionicons/icons";
 import { SkeletonList } from "../../../components/SkeletonCard.js";
 import { useAuth } from "../../../features/auth/index.js";
 import type { WalletData } from "../../../features/wallet/wallet.service.js";
+import { RAPAGO_CONTACT } from "@rapa-go/shared";
 
 const RAPAGO_WALLET_BENEFITS_KEY = "rapago_wallet_benefits_v1";
 const RAPAGO_WALLET_BENEFIT_EVENT = "rapago:wallet-benefit-updated";
+const RAPAGO_SUPPORT_WHATSAPP_PHONE = "56947964171";
 
 const WALLET_BG =
   "linear-gradient(180deg, rgba(14,12,10,.92), rgba(14,12,10,.96)), url('/assets/rapa-go-bg.jpg') center/cover no-repeat";
@@ -50,6 +56,13 @@ type LocalWalletBenefit = {
   adminReviewStatus?: string | null;
   fareClp?: number | null;
   paidClp?: number | null;
+  refundWhatsappAvailable?: boolean | null;
+  cardRefundRequested?: boolean | null;
+  mercadoPagoRefundRequested?: boolean | null;
+  mercadoPagoRefundStatus?: string | null;
+  originText?: string | null;
+  destinationText?: string | null;
+  paymentId?: string | null;
 };
 
 function formatWalletClp(value: number | null | undefined): string {
@@ -91,6 +104,13 @@ function readLocalWalletBenefits(user: unknown): LocalWalletBenefit[] {
         adminReviewStatus: typeof item.adminReviewStatus === "string" ? item.adminReviewStatus : null,
         fareClp: Number.isFinite(Number(item.fareClp)) ? Math.round(Number(item.fareClp)) : null,
         paidClp: Number.isFinite(Number(item.paidClp)) ? Math.round(Number(item.paidClp)) : null,
+        refundWhatsappAvailable: Boolean(item.refundWhatsappAvailable),
+        cardRefundRequested: Boolean(item.cardRefundRequested || item.mercadoPagoRefundRequested),
+        mercadoPagoRefundRequested: Boolean(item.mercadoPagoRefundRequested || item.cardRefundRequested),
+        mercadoPagoRefundStatus: typeof item.mercadoPagoRefundStatus === "string" ? item.mercadoPagoRefundStatus : null,
+        originText: typeof item.originText === "string" ? item.originText : null,
+        destinationText: typeof item.destinationText === "string" ? item.destinationText : null,
+        paymentId: typeof item.paymentId === "string" ? item.paymentId : null,
       }))
       .filter((benefit) => {
         if (benefit.amountClp <= 0) return false;
@@ -110,13 +130,166 @@ function readLocalWalletBenefits(user: unknown): LocalWalletBenefit[] {
 function isWalletBenefitAvailable(benefit: LocalWalletBenefit): boolean {
   const status = String(benefit.status ?? "").toLowerCase();
   const adminStatus = String(benefit.adminReviewStatus ?? "").toLowerCase();
-  return status === "available" || status === "approved" || adminStatus === "admin_approved";
+  return (
+    status === "available" ||
+    status === "approved" ||
+    adminStatus === "admin_approved" ||
+    adminStatus === "card_credit_available" ||
+    adminStatus === "available"
+  );
 }
 
 function isWalletBenefitPending(benefit: LocalWalletBenefit): boolean {
   const status = String(benefit.status ?? "").toLowerCase();
   const adminStatus = String(benefit.adminReviewStatus ?? "").toLowerCase();
   return status === "pending_admin" || adminStatus === "pending_admin";
+}
+
+function isWalletCardCancellationCredit(benefit: LocalWalletBenefit): boolean {
+  const text = `${benefit.source ?? ""} ${benefit.title ?? ""} ${benefit.description ?? ""}`.toLowerCase();
+  return (
+    text.includes("card_cancellation_credit") ||
+    text.includes("cancelación con tarjeta") ||
+    text.includes("cancelacion con tarjeta") ||
+    text.includes("mercadopago") ||
+    benefit.refundWhatsappAvailable === true ||
+    benefit.cardRefundRequested === true ||
+    benefit.mercadoPagoRefundRequested === true
+  );
+}
+
+function buildWalletCreditRefundWhatsAppUrl(benefits: LocalWalletBenefit[]): string {
+  const total = benefits.reduce((sum, benefit) => sum + Math.max(0, Math.round(Number(benefit.amountClp ?? 0))), 0);
+  const lines = [
+    "Hola Soporte RAPA GO, quiero gestionar la devolución de mis CRÉDITOS PARA PRÓXIMO VIAJE por cancelación con tarjeta.",
+    `Monto CRÉDITOS PARA PRÓXIMO VIAJE: ${formatWalletClp(total)}`,
+    benefits[0]?.originText || benefits[0]?.destinationText
+      ? `Viaje: ${benefits[0]?.originText ?? "Origen"} → ${benefits[0]?.destinationText ?? "Destino"}`
+      : null,
+    benefits[0]?.paymentId ? `ID pago: ${benefits[0].paymentId}` : null,
+    "No entregaré claves ni datos de tarjeta. Quiero coordinarlo por el canal oficial.",
+  ].filter(Boolean);
+
+  return `https://wa.me/${RAPAGO_SUPPORT_WHATSAPP_PHONE}?text=${encodeURIComponent(lines.join("\n"))}`;
+}
+
+function openWalletCreditRefundWhatsApp(benefits: LocalWalletBenefit[]): void {
+  const url = buildWalletCreditRefundWhatsAppUrl(benefits);
+
+  try {
+    window.open(url, "_blank", "noopener,noreferrer");
+  } catch {
+    window.location.href = url;
+  }
+}
+
+
+function CreditSplitBox({
+  title,
+  description,
+  approvedClp,
+  pendingClp,
+  tone,
+  icon,
+  children,
+}: {
+  title: string;
+  description: string;
+  approvedClp: number;
+  pendingClp: number;
+  tone: "cash" | "card";
+  icon: string;
+  children?: React.ReactNode;
+}): JSX.Element {
+  const isCash = tone === "cash";
+  const mainColor = isCash ? "#166534" : "#7A4E10";
+  const bg = isCash
+    ? "linear-gradient(135deg,#ECFDF5,#DCFCE7)"
+    : "linear-gradient(135deg,#FFF7D6,#F7E4BA)";
+  const border = isCash ? "1px solid rgba(34,197,94,.28)" : "1px solid rgba(214,168,62,.35)";
+  const iconBg = isCash ? "rgba(34,197,94,.16)" : "rgba(214,168,62,.22)";
+
+  return (
+    <div
+      style={{
+        padding: 13,
+        borderRadius: 22,
+        background: bg,
+        border,
+        color: "#111827",
+      }}
+    >
+      <div style={{ display: "flex", gap: 10, alignItems: "flex-start" }}>
+        <div
+          style={{
+            width: 42,
+            height: 42,
+            borderRadius: 16,
+            background: iconBg,
+            color: mainColor,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            flexShrink: 0,
+          }}
+        >
+          <IonIcon icon={icon} style={{ fontSize: 24 }} />
+        </div>
+
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontWeight: 950, fontSize: ".95rem", textTransform: "uppercase", letterSpacing: ".02em" }}>
+            {title}
+          </div>
+          <div style={{ marginTop: 3, color: "#4B3B28", fontSize: ".76rem", fontWeight: 780, lineHeight: 1.32 }}>
+            {description}
+          </div>
+        </div>
+      </div>
+
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "1fr 1fr",
+          gap: 9,
+          marginTop: 12,
+        }}
+      >
+        <div
+          style={{
+            padding: 10,
+            borderRadius: 16,
+            background: "rgba(255,255,255,.66)",
+            border: "1px solid rgba(255,255,255,.58)",
+          }}
+        >
+          <div style={{ color: mainColor, fontSize: ".66rem", fontWeight: 950, textTransform: "uppercase" }}>
+            Disponible
+          </div>
+          <div style={{ marginTop: 4, color: mainColor, fontSize: "1rem", fontWeight: 950 }}>
+            {formatWalletClp(approvedClp)}
+          </div>
+        </div>
+
+        <div
+          style={{
+            padding: 10,
+            borderRadius: 16,
+            background: "rgba(255,255,255,.50)",
+            border: "1px solid rgba(255,255,255,.48)",
+          }}
+        >
+          <div style={{ color: "#7A4E10", fontSize: ".66rem", fontWeight: 950, textTransform: "uppercase" }}>
+            Pendiente
+          </div>
+          <div style={{ marginTop: 4, color: "#7A4E10", fontSize: "1rem", fontWeight: 950 }}>
+            {formatWalletClp(pendingClp)}
+          </div>
+        </div>
+      </div>
+
+      {children}
+    </div>
+  );
 }
 
 function walletCardStyle(extra?: CSSProperties): CSSProperties {
@@ -266,11 +439,21 @@ export default function WalletPage(): JSX.Element {
     };
   }, [refreshLocalBenefits]);
 
-  const approvedBenefits = localBenefits.filter(isWalletBenefitAvailable);
-  const pendingBenefits = localBenefits.filter(isWalletBenefitPending);
+  const cardCancellationCredits = localBenefits.filter(isWalletCardCancellationCredit);
+  const cashCredits = localBenefits.filter((benefit) => !isWalletCardCancellationCredit(benefit));
 
-  const approvedBenefitClp = approvedBenefits.reduce((sum, benefit) => sum + benefit.amountClp, 0);
-  const pendingBenefitClp = pendingBenefits.reduce((sum, benefit) => sum + benefit.amountClp, 0);
+  const approvedCashCredits = cashCredits.filter(isWalletBenefitAvailable);
+  const pendingCashCredits = cashCredits.filter(isWalletBenefitPending);
+  const approvedCardCredits = cardCancellationCredits.filter(isWalletBenefitAvailable);
+  const pendingCardCredits = cardCancellationCredits.filter(isWalletBenefitPending);
+
+  const cashCreditClp = approvedCashCredits.reduce((sum, benefit) => sum + benefit.amountClp, 0);
+  const pendingCashCreditClp = pendingCashCredits.reduce((sum, benefit) => sum + benefit.amountClp, 0);
+  const cardCreditClp = approvedCardCredits.reduce((sum, benefit) => sum + benefit.amountClp, 0);
+  const pendingCardCreditClp = pendingCardCredits.reduce((sum, benefit) => sum + benefit.amountClp, 0);
+
+  const approvedBenefitClp = cashCreditClp + cardCreditClp;
+  const pendingBenefitClp = pendingCashCreditClp + pendingCardCreditClp;
 
   return (
     <IonPage>
@@ -362,7 +545,7 @@ export default function WalletPage(): JSX.Element {
                 <div style={{ display: "flex", justifyContent: "space-between", gap: 14, alignItems: "flex-start" }}>
                   <div>
                     <div style={{ fontSize: ".78rem", fontWeight: 900, color: "rgba(255,255,255,.78)", textTransform: "uppercase", letterSpacing: ".04em" }}>
-                      Beneficio aprobado por admin
+                      CRÉDITOS PARA PRÓXIMO VIAJE
                     </div>
 
                     <div style={{ marginTop: 8, fontSize: "2.55rem", fontWeight: 950, lineHeight: 1, letterSpacing: "-1.5px" }}>
@@ -400,8 +583,8 @@ export default function WalletPage(): JSX.Element {
                 </div>
 
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginTop: 22 }}>
-                  <MiniStatCard icon={giftOutline} label="Beneficios" value={formatWalletClp(approvedBenefitClp)} tone="green" />
-                  <MiniStatCard icon={timeOutline} label="Pendiente admin" value={formatWalletClp(pendingBenefitClp)} tone="gold" />
+                  <MiniStatCard icon={giftOutline} label="Crédito efectivo" value={formatWalletClp(cashCreditClp)} tone="green" />
+                  <MiniStatCard icon={cardOutline} label="Crédito tarjeta" value={formatWalletClp(cardCreditClp)} tone="gold" />
                 </div>
               </div>
             </section>
@@ -429,57 +612,55 @@ export default function WalletPage(): JSX.Element {
                     <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "flex-start" }}>
                       <div>
                         <div style={{ fontWeight: 950, fontSize: "1rem" }}>
-                          A favor para próximo viaje
+                          CRÉDITOS SEPARADOS
                         </div>
                         <div style={{ marginTop: 4, color: "#4B3B28", fontSize: ".82rem", fontWeight: 760, lineHeight: 1.38 }}>
-                          El monto aprobado por administración se descontará automáticamente en tu próximo viaje Rapa Go.
+                          Para no confundirse, separamos el saldo por origen: efectivo y tarjeta/MercadoPago.
                         </div>
                       </div>
 
                       <IonBadge color={approvedBenefitClp > 0 ? "success" : pendingBenefitClp > 0 ? "warning" : "medium"} style={{ fontWeight: 950, flexShrink: 0 }}>
-                        {approvedBenefitClp > 0 ? "Aprobado admin" : pendingBenefitClp > 0 ? "Pendiente admin" : "Sin saldo"}
+                        {approvedBenefitClp > 0 ? "Disponible" : pendingBenefitClp > 0 ? "Pendiente" : "Sin saldo"}
                       </IonBadge>
                     </div>
 
                     <div
                       style={{
-                        marginTop: 12,
+                        marginTop: 13,
                         display: "grid",
-                        gridTemplateColumns: "1fr 1fr",
-                        gap: 10,
+                        gridTemplateColumns: "1fr",
+                        gap: 12,
                       }}
                     >
-                      <div
-                        style={{
-                          padding: 12,
-                          borderRadius: 18,
-                          background: "rgba(34,197,94,.12)",
-                          border: "1px solid rgba(34,197,94,.22)",
-                        }}
-                      >
-                        <div style={{ color: "#166534", fontSize: ".70rem", fontWeight: 950, textTransform: "uppercase" }}>
-                          A favor
-                        </div>
-                        <div style={{ marginTop: 4, color: "#166534", fontSize: "1.05rem", fontWeight: 950 }}>
-                          {formatWalletClp(approvedBenefitClp)}
-                        </div>
-                      </div>
+                      <CreditSplitBox
+                        title="Crédito efectivo"
+                        description="Pago de más en efectivo aprobado por administración. Se descuenta en el próximo viaje."
+                        approvedClp={cashCreditClp}
+                        pendingClp={pendingCashCreditClp}
+                        tone="cash"
+                        icon={cashOutline}
+                      />
 
-                      <div
-                        style={{
-                          padding: 12,
-                          borderRadius: 18,
-                          background: "rgba(255,196,9,.16)",
-                          border: "1px solid rgba(214,168,62,.26)",
-                        }}
+                      <CreditSplitBox
+                        title="Crédito tarjeta"
+                        description="Saldo neto por cancelación con tarjeta/MercadoPago. Si quieres devolución, solicita soporte por WhatsApp."
+                        approvedClp={cardCreditClp}
+                        pendingClp={pendingCardCreditClp}
+                        tone="card"
+                        icon={cardOutline}
                       >
-                        <div style={{ color: "#7A4E10", fontSize: ".70rem", fontWeight: 950, textTransform: "uppercase" }}>
-                          Pendiente
-                        </div>
-                        <div style={{ marginTop: 4, color: "#7A4E10", fontSize: "1.05rem", fontWeight: 950 }}>
-                          {formatWalletClp(pendingBenefitClp)}
-                        </div>
-                      </div>
+                        {cardCancellationCredits.length > 0 && (
+                          <IonButton
+                            expand="block"
+                            color="success"
+                            onClick={() => openWalletCreditRefundWhatsApp(cardCancellationCredits)}
+                            style={{ marginTop: 12, "--border-radius": "16px", fontWeight: 950 } as CSSProperties}
+                          >
+                            <IonIcon icon={logoWhatsapp} slot="start" />
+                            Solicitar devolución tarjeta por WhatsApp
+                          </IonButton>
+                        )}
+                      </CreditSplitBox>
                     </div>
 
                     {pendingBenefitClp > 0 && (
@@ -496,7 +677,7 @@ export default function WalletPage(): JSX.Element {
                           lineHeight: 1.35,
                         }}
                       >
-                        Tienes {formatWalletClp(pendingBenefitClp)} esperando aprobación del administrador.
+                        Tienes {formatWalletClp(pendingBenefitClp)} pendiente de revisión/soporte.
                       </div>
                     )}
                   </div>
