@@ -1705,8 +1705,8 @@ function readPassengerPendingCharges(): PassengerPendingCharge[] {
         createdAt: String(item.createdAt ?? new Date().toISOString()),
         appliedRideId: typeof item.appliedRideId === "string" ? item.appliedRideId : null,
         appliedAt: typeof item.appliedAt === "string" ? item.appliedAt : null,
-        title: String(item.title ?? "Cargo pendiente"),
-        description: String(item.description ?? "Cargo pendiente para el próximo viaje."),
+        title: String(item.title ?? "Revision backend pendiente"),
+        description: String(item.description ?? "Revision backend pendiente para el próximo viaje."),
         cardRefundRequested: Boolean(item.cardRefundRequested || item.mercadoPagoRefundRequested),
         mercadoPagoRefundRequested: Boolean(item.mercadoPagoRefundRequested || item.cardRefundRequested),
         mercadoPagoRefundStatus: typeof item.mercadoPagoRefundStatus === "string" ? item.mercadoPagoRefundStatus : null,
@@ -1736,59 +1736,32 @@ function savePassengerPendingChargeFromCancellation(
 ): void {
   if (policy.feeClp <= 0) return;
 
-  const record = ride as RideRequestData & Record<string, unknown>;
-  const isCardPayment = isPassengerCancellationCardPaymentForRefundAction(record);
+  try {
+    const record = ride as RideRequestData & Record<string, unknown>;
+    const rideId = String(record.id ?? record.rideId ?? record.originalRideId ?? record.serverRideId ?? "").trim();
+    const rideKey = getPassengerPendingChargeRideKey(record);
 
-  // Pago con tarjeta/MercadoPago:
-  // la penalización se descuenta automáticamente del pago ya realizado.
-  // No queda como cargo pendiente para el próximo viaje.
-  if (isCardPayment) return;
+    const notification: PassengerNotificationPayload = {
+      id: `backend-charge-review-${rideId || rideKey}-${Date.now()}`,
+      rideId: rideId || rideKey,
+      type: "backend_charge_review_required",
+      title: "Cargo sujeto a revision",
+      body: `La cancelacion/no show fue informada. El monto referencial ${formatClp(policy.feeClp)} no se carga desde este dispositivo; debe confirmarlo el backend/admin.`,
+      createdAt: new Date().toISOString(),
+      read: false,
+    };
 
-  const rideKey = getPassengerPendingChargeRideKey(record);
-  const chargeId = `cancel-charge-${rideKey}`;
-  const paymentLabel = getRidePaymentMethodLabel(ride.notes);
-  const minimumFareClp = getPassengerRideMinimumFareClp(ride);
-  const now = new Date().toISOString();
-  const chargeNextRideNotice = `Cargo ${formatClp(policy.feeClp)} pendiente para el próximo viaje.`;
-  const cardRefundNextRideNotice = isCardPayment
-    ? `El pago original queda registrado como crédito a favor en tu billetera y pasa a revisión del administrador. Si necesitas devolución, puedes gestionarla por WhatsApp con RAPA GO. El cargo de cancelación/no show de ${formatClp(policy.feeClp)} es separado y se sumará automáticamente al próximo viaje.`
-    : null;
+    const current = readPassengerNotifications();
+    localStorage.setItem(
+      RAPAGO_PASSENGER_NOTIFICATIONS_KEY,
+      JSON.stringify([notification, ...current].slice(0, 100)),
+    );
 
-  const nextCharge: PassengerPendingCharge = {
-    id: chargeId,
-    rideId: String(record.id ?? record.rideId ?? record.originalRideId ?? "").trim() || null,
-    rideKey,
-    passengerEmail: String(record.passengerEmail ?? record.email ?? "").trim() || null,
-    passengerName: String(record.passengerName ?? record.userName ?? record.name ?? "").trim() || null,
-    originText: String(ride.originText ?? ""),
-    destinationText: String(ride.destinationText ?? ""),
-    amountClp: policy.feeClp,
-    minimumFareClp,
-    type: policy.type === "no_show" ? "no_show" : "late_cancel",
-    paymentMethod: paymentLabel,
-    status: "pending_next_ride",
-    adminReviewStatus: "charge_pending_next_ride",
-    createdAt: now,
-    appliedRideId: null,
-    appliedAt: null,
-    title: policy.type === "no_show" ? "Cargo por no show" : "Cargo por cancelación",
-    description:
-      policy.type === "no_show"
-        ? `No show: el conductor llegó y pasaron 5 minutos. ${chargeNextRideNotice}${cardRefundNextRideNotice ? ` ${cardRefundNextRideNotice}` : ""}`
-        : `Cancelación fuera del tiempo gratuito. ${chargeNextRideNotice}${cardRefundNextRideNotice ? ` ${cardRefundNextRideNotice}` : ""}`,
-    cardRefundRequested: isCardPayment,
-    mercadoPagoRefundRequested: isCardPayment,
-    mercadoPagoRefundStatus: isCardPayment ? "pending_backend_refund" : null,
-    cardRefundNotice: cardRefundNextRideNotice,
-  };
-
-  const current = readPassengerPendingCharges();
-  const next = [
-    nextCharge,
-    ...current.filter((item) => item.id !== chargeId && item.rideKey !== rideKey),
-  ];
-
-  writePassengerPendingCharges(next);
+    window.dispatchEvent(new CustomEvent("rapago:passenger-notifications-updated", { detail: { notification, ride } }));
+    window.dispatchEvent(new CustomEvent("rapago:passenger-rides-updated", { detail: { ride, notification, policy } }));
+  } catch {
+    // Visual solamente. No crea cargos reales desde localStorage.
+  }
 }
 
 function isPassengerCancellationCardPayment(ride: Partial<RideRequestData> & Record<string, unknown>): boolean {
@@ -6593,7 +6566,7 @@ function PassengerRideCard({
                 lineHeight: 1.35,
               }}
             >
-              ⚠️ Cargo pendiente: <strong>{formatClp(passengerCancelledChargeClp)}</strong>.
+              ⚠️ Revision backend pendiente: <strong>{formatClp(passengerCancelledChargeClp)}</strong>.
               <br />Este monto se sumará automáticamente a cualquier próximo viaje que solicites.
               {passengerCancelledCardRefundNotice && (
                 <>
