@@ -249,11 +249,12 @@ function readPassengerWalletBenefitsForRequest(user: unknown): PassengerWalletBe
   }
 }
 
-function getPassengerWalletBenefitTotalForRequest(user: unknown): number {
-  return readPassengerWalletBenefitsForRequest(user).reduce(
-    (sum, benefit) => sum + Math.max(0, Math.round(Number(benefit.amountClp ?? 0))),
-    0,
-  );
+function getPassengerWalletBenefitTotalForRequest(_user: unknown): number {
+  // Phase 2 security:
+  // Legacy localStorage wallet benefits are visual/cache only.
+  // They must not reduce ride fares or payment amounts.
+  // Authoritative credits must come from backend wallet transactions.
+  return 0;
 }
 
 function markPassengerWalletBenefitsUsedForRide(input: {
@@ -265,7 +266,10 @@ function markPassengerWalletBenefitsUsedForRide(input: {
   fareBeforeWalletClp: number;
   fareAfterWalletClp: number;
 }): void {
-  const amountToUse = Math.max(0, Math.round(Number(input.amountToUseClp ?? 0)));
+  // Phase 2 security:
+  // Do not mutate legacy localStorage as if money was applied.
+  // Backend must approve/apply credits before any financial discount is valid.
+  const amountToUse = 0;
   if (amountToUse <= 0) return;
 
   try {
