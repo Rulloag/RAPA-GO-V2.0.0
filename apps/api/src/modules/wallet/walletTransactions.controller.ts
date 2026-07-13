@@ -5,6 +5,9 @@ import {
   adminModerateCreditSchema,
   applyCreditSchema,
   listMyCreditsQuerySchema,
+  markDebitPaidSchema,
+  cancelDebitSchema,
+  reverseTransactionSchema,
 } from "./walletTransactions.schemas.js";
 import { sendOk, sendError } from "../../shared/http/apiResponse.js";
 
@@ -29,9 +32,17 @@ export const walletTransactionsController = {
     if (!parsed.success) {
       return sendError(reply, { code: "VALIDATION_ERROR", message: parsed.error.errors.map((e) => e.message).join("; "), statusCode: 400 });
     }
-    const result = await svc.listMyCredits(getToken(req), parsed.data.status);
+    const result = await svc.listMyCredits(getToken(req), parsed.data.status, parsed.data.type);
     if (!result.ok) return fail(reply, result);
-    return sendOk(reply, { items: result.items, availableBalanceClp: result.availableBalanceClp });
+    return sendOk(reply, {
+      items: result.items,
+      availableCreditClp: result.availableCreditClp,
+      pendingCreditClp: result.pendingCreditClp,
+      pendingDebitClp: result.pendingDebitClp,
+      paidAmountClp: result.paidAmountClp,
+      refundedAmountClp: result.refundedAmountClp,
+      reversedAmountClp: result.reversedAmountClp,
+    });
   },
 
   async createCredit(req: FastifyRequest, reply: FastifyReply) {
@@ -72,5 +83,35 @@ export const walletTransactionsController = {
     const result = await svc.applyCredit(getToken(req), parsed.data);
     if (!result.ok) return fail(reply, result);
     return sendOk(reply, result.transaction, result.idempotentReplay ? 200 : 201);
+  },
+
+  async markDebitPaid(req: FastifyRequest<{ Params: { id: string } }>, reply: FastifyReply) {
+    const parsed = markDebitPaidSchema.safeParse(req.body ?? {});
+    if (!parsed.success) {
+      return sendError(reply, { code: "VALIDATION_ERROR", message: parsed.error.errors.map((e) => e.message).join("; "), statusCode: 400 });
+    }
+    const result = await svc.markDebitPaid(getToken(req), req.params.id, parsed.data);
+    if (!result.ok) return fail(reply, result);
+    return sendOk(reply, result.transaction);
+  },
+
+  async cancelDebit(req: FastifyRequest<{ Params: { id: string } }>, reply: FastifyReply) {
+    const parsed = cancelDebitSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return sendError(reply, { code: "VALIDATION_ERROR", message: parsed.error.errors.map((e) => e.message).join("; "), statusCode: 400 });
+    }
+    const result = await svc.cancelDebit(getToken(req), req.params.id, parsed.data);
+    if (!result.ok) return fail(reply, result);
+    return sendOk(reply, result.transaction);
+  },
+
+  async reverseTransaction(req: FastifyRequest<{ Params: { id: string } }>, reply: FastifyReply) {
+    const parsed = reverseTransactionSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return sendError(reply, { code: "VALIDATION_ERROR", message: parsed.error.errors.map((e) => e.message).join("; "), statusCode: 400 });
+    }
+    const result = await svc.reverseTransaction(getToken(req), req.params.id, parsed.data);
+    if (!result.ok) return fail(reply, result);
+    return sendOk(reply, { original: result.original, reversal: result.reversal });
   },
 };

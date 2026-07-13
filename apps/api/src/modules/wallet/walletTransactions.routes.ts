@@ -8,4 +8,7 @@ export async function walletTransactionsRoutes(fastify: FastifyInstance): Promis
   fastify.post("/admin/wallet-transactions", walletTransactionsController.createCredit);
   fastify.post("/admin/wallet-transactions/:id/approve", walletTransactionsController.approveCredit);
   fastify.post("/admin/wallet-transactions/:id/reject", walletTransactionsController.rejectCredit);
+  fastify.post("/admin/wallet-transactions/:id/mark-paid", walletTransactionsController.markDebitPaid);
+  fastify.post("/admin/wallet-transactions/:id/cancel", walletTransactionsController.cancelDebit);
+  fastify.post("/admin/wallet-transactions/:id/reverse", walletTransactionsController.reverseTransaction);
 }

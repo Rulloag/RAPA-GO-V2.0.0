@@ -32,10 +32,29 @@ export const applyCreditSchema = z.object({
 });
 
 export const listMyCreditsQuerySchema = z.object({
-  status: z.enum(["pending", "available", "applied", "rejected", "expired", "reversed"]).optional(),
+  status: z.enum(["pending", "available", "applied", "paid", "rejected", "expired", "reversed", "cancelled"]).optional(),
+  type: z.enum(["credit", "debit", "refund", "payment", "adjustment", "reversal"]).optional(),
 });
 
-export type AdminCreateCreditInput   = z.infer<typeof adminCreateCreditSchema>;
-export type AdminModerateCreditInput = z.infer<typeof adminModerateCreditSchema>;
-export type ApplyCreditInput         = z.infer<typeof applyCreditSchema>;
-export type ListMyCreditsQuery       = z.infer<typeof listMyCreditsQuerySchema>;
+// Fase 4B — débitos (obligaciones del pasajero). Método de cobro: solo 'admin_review' está
+// habilitado hoy (§5 del diseño); los demás quedan reservados para cuando exista un flujo de
+// cobro automático aprobado.
+export const markDebitPaidSchema = z.object({
+  collectionMethod: z.enum(["admin_review"]),
+});
+
+export const cancelDebitSchema = z.object({
+  reason: z.string().trim().min(5, "El motivo debe tener al menos 5 caracteres.").max(500),
+});
+
+export const reverseTransactionSchema = z.object({
+  reason: z.string().trim().min(5, "El motivo debe tener al menos 5 caracteres.").max(500),
+});
+
+export type AdminCreateCreditInput    = z.infer<typeof adminCreateCreditSchema>;
+export type AdminModerateCreditInput  = z.infer<typeof adminModerateCreditSchema>;
+export type ApplyCreditInput          = z.infer<typeof applyCreditSchema>;
+export type ListMyCreditsQuery        = z.infer<typeof listMyCreditsQuerySchema>;
+export type MarkDebitPaidInput        = z.infer<typeof markDebitPaidSchema>;
+export type CancelDebitInput          = z.infer<typeof cancelDebitSchema>;
+export type ReverseTransactionInput   = z.infer<typeof reverseTransactionSchema>;

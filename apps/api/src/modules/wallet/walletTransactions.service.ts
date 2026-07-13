@@ -4,10 +4,14 @@ import { UsersRepository } from "../users/users.repository.js";
 import { WalletRepository } from "./wallet.repository.js";
 import { WalletTransactionsRepository } from "./walletTransactions.repository.js";
 import { AppError } from "../../shared/errors/AppError.js";
+import { CURRENT_LEDGER_POLICY_VERSION } from "./walletPolicy.constants.js";
 import type {
   AdminCreateCreditInput,
   AdminModerateCreditInput,
   ApplyCreditInput,
+  MarkDebitPaidInput,
+  CancelDebitInput,
+  ReverseTransactionInput,
 } from "./walletTransactions.schemas.js";
 import type { WalletTransactionLedgerRow } from "../../db/schema/index.js";
 
@@ -75,14 +79,119 @@ function serialize(row: WalletTransactionLedgerRow) {
 
 export class WalletTransactionsService {
   /** GET /wallets/me/credits — el pasajero solo puede consultar su propio ledger. */
-  async listMyCredits(accessToken: string, status?: string) {
+  async listMyCredits(accessToken: string, status?: string, type?: string) {
     const auth = await authenticate(accessToken);
     if (!auth.ok) return auth;
 
-    const rows = await ledgerRepo.listByUser(auth.userId, status);
-    const availableBalanceClp = await ledgerRepo.getAvailableBalance(auth.userId);
+    const rows = await ledgerRepo.listByUser(auth.userId, status, type);
+    const balance = await ledgerRepo.getWalletBalanceSummary(auth.userId);
 
-    return { ok: true as const, items: rows.map(serialize), availableBalanceClp };
+    return { ok: true as const, items: rows.map(serialize), ...balance, availableBalanceClp: balance.availableCreditClp };
+  }
+
+  /** POST /admin/wallet-transactions/:id/mark-paid — cobro de un débito, solo admin_review hoy. */
+  async markDebitPaid(accessToken: string, id: string, input: MarkDebitPaidInput) {
+    const auth = await authenticate(accessToken);
+    if (!auth.ok) return auth;
+
+    if (!isFinancialAdmin(auth.role)) {
+      return { ok: false as const, code: "AUTH_FORBIDDEN", message: "Solo administradores pueden marcar un débito como pagado.", statusCode: 403 };
+    }
+
+    const existing = await ledgerRepo.findById(id);
+    if (!existing) {
+      return { ok: false as const, code: "NOT_FOUND", message: "Wallet transaction not found.", statusCode: 404 };
+    }
+
+    if (existing.type !== "debit") {
+      return { ok: false as const, code: "WALLET_TX_WRONG_TYPE", message: "Solo se puede marcar como pagado un movimiento type=debit.", statusCode: 409 };
+    }
+
+    if (existing.status !== "pending") {
+      return { ok: false as const, code: "WALLET_TX_INVALID_TRANSITION", message: `El débito ya no está pendiente (estado actual: ${existing.status}).`, statusCode: 409 };
+    }
+
+    const updated = await ledgerRepo.markDebitPaid(id, auth.userId, input.collectionMethod);
+    if (!updated) {
+      return { ok: false as const, code: "WALLET_TX_INVALID_TRANSITION", message: "El débito fue modificado por otra solicitud concurrente.", statusCode: 409 };
+    }
+
+    return { ok: true as const, transaction: serialize(updated) };
+  }
+
+  /** POST /admin/wallet-transactions/:id/cancel — condona un débito pendiente. */
+  async cancelDebit(accessToken: string, id: string, input: CancelDebitInput) {
+    const auth = await authenticate(accessToken);
+    if (!auth.ok) return auth;
+
+    if (!isFinancialAdmin(auth.role)) {
+      return { ok: false as const, code: "AUTH_FORBIDDEN", message: "Solo administradores pueden condonar un débito.", statusCode: 403 };
+    }
+
+    const existing = await ledgerRepo.findById(id);
+    if (!existing) {
+      return { ok: false as const, code: "NOT_FOUND", message: "Wallet transaction not found.", statusCode: 404 };
+    }
+
+    if (existing.type !== "debit") {
+      return { ok: false as const, code: "WALLET_TX_WRONG_TYPE", message: "Solo se puede condonar un movimiento type=debit.", statusCode: 409 };
+    }
+
+    if (existing.status !== "pending") {
+      return { ok: false as const, code: "WALLET_TX_INVALID_TRANSITION", message: `El débito ya no está pendiente (estado actual: ${existing.status}).`, statusCode: 409 };
+    }
+
+    const updated = await ledgerRepo.cancelDebit(id, auth.userId, input.reason);
+    if (!updated) {
+      return { ok: false as const, code: "WALLET_TX_INVALID_TRANSITION", message: "El débito fue modificado por otra solicitud concurrente.", statusCode: 409 };
+    }
+
+    return { ok: true as const, transaction: serialize(updated) };
+  }
+
+  /**
+   * POST /admin/wallet-transactions/:id/reverse — anula un movimiento ya resuelto (paid,
+   * applied, etc.) mediante un nuevo movimiento type=reversal. Nunca edita el original.
+   * Imposibilidad de autoaprobar: el admin que creó O resolvió (aprobó/pagó/canceló) el
+   * movimiento original no puede ser quien lo revierta.
+   */
+  async reverseTransaction(accessToken: string, id: string, input: ReverseTransactionInput) {
+    const auth = await authenticate(accessToken);
+    if (!auth.ok) return auth;
+
+    if (!isFinancialAdmin(auth.role)) {
+      return { ok: false as const, code: "AUTH_FORBIDDEN", message: "Solo administradores pueden revertir un movimiento.", statusCode: 403 };
+    }
+
+    const existing = await ledgerRepo.findById(id);
+    if (!existing) {
+      return { ok: false as const, code: "NOT_FOUND", message: "Wallet transaction not found.", statusCode: 404 };
+    }
+
+    if (existing.status === "reversed") {
+      return { ok: false as const, code: "WALLET_TX_INVALID_TRANSITION", message: "El movimiento ya fue revertido.", statusCode: 409 };
+    }
+
+    if (existing.createdBy === auth.userId || existing.approvedBy === auth.userId) {
+      return {
+        ok: false as const,
+        code: "AUTH_SELF_APPROVAL_FORBIDDEN",
+        message: "Un administrador no puede revertir un movimiento que él mismo creó o resolvió.",
+        statusCode: 403,
+      };
+    }
+
+    const result = await ledgerRepo.reverseTransaction({
+      originalTransactionId: id,
+      resolvedBy: auth.userId,
+      reason: input.reason,
+    });
+
+    if (!result) {
+      return { ok: false as const, code: "WALLET_TX_INVALID_TRANSITION", message: "El movimiento no se pudo revertir (ya revertido o modificado concurrentemente).", statusCode: 409 };
+    }
+
+    return { ok: true as const, original: serialize(result.original), reversal: serialize(result.reversal) };
   }
 
   /**
@@ -115,6 +224,8 @@ export class WalletTransactionsService {
       currency: "CLP",
       status: "pending",
       approvalStatus: "pending_review",
+      policyVersion: CURRENT_LEDGER_POLICY_VERSION,
+      actorRole: "admin",
       idempotencyKey: input.idempotencyKey,
       createdBy: auth.userId,
       expiresAt: input.expiresAt ? new Date(input.expiresAt) : null,
@@ -230,6 +341,6 @@ export class WalletTransactionsService {
       };
     }
 
-    return { ok: true as const, transaction: serialize(result.debit), idempotentReplay: false };
+    return { ok: true as const, transaction: serialize(result.consumptionRecord), idempotentReplay: false };
   }
 }
