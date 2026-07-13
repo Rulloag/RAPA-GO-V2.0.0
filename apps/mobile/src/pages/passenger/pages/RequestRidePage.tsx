@@ -5132,7 +5132,6 @@ export default function RequestRidePage(): JSX.Element {
           finalFareWithExtrasClp: selectedFareAmount,
           airportReservationRequiresCard: isAirportScheduledRide,
           reservationRequiresCard: reservationRequiresCard,
-          reservationRequiresCard: reservationRequiresCard,
           paymentRequiredProvider: "mercadopago",
           cardCancellationCreditToWallet: reservationRequiresCard && activePaymentMethod === "card",
           cardCancellationAdminReviewRequired: false,
@@ -5474,9 +5473,11 @@ export default function RequestRidePage(): JSX.Element {
           airportReservationRequiresCard: isAirportScheduledRide,
           reservationRequiresCard: reservationRequiresCard,
           paymentRequiredProvider: isAirportScheduledRide ? "mercadopago" : null,
-          cardCancellationCreditToWallet: reservationRequiresCard && activePaymentMethod === "card",
+          // Esta rama solo se alcanza cuando activePaymentMethod !== "card" (el caso "card" ya
+          // retornó antes, ver el bloque isPassengerRolePermissionMessage más arriba).
+          cardCancellationCreditToWallet: false,
           cardCancellationAdminReviewRequired: false,
-          cardCancellationCreditName: reservationRequiresCard && activePaymentMethod === "card" ? "CRÉDITOS PARA PRÓXIMO VIAJE" : null,
+          cardCancellationCreditName: null,
         } as LocalPassengerRideData;
 
         const localReturnPickupRide = selectedRoundTripPromotion && returnScheduledAt

@@ -6572,7 +6572,7 @@ export function DriverHomePage(): JSX.Element {
 type PassengerNotificationPayload = {
   id: string;
   rideId: string;
-  type: "driver_cancelled_requeue" | "driver_assigned" | "scheduled_driver_assigned";
+  type: "driver_cancelled_requeue" | "driver_assigned" | "scheduled_driver_assigned" | "scheduled_driver_reassigned";
   title: string;
   body: string;
   createdAt: string;
@@ -7977,7 +7977,7 @@ function readDriverNoShowTimerMap(): Record<string, number> {
 
     return Object.fromEntries(
       Object.entries(parsed)
-        .map(([key, value]) => [key, Number(value)])
+        .map(([key, value]): [string, number] => [key, Number(value)])
         .filter(([, value]) => Number.isFinite(value) && value > 0),
     );
   } catch {
@@ -11752,9 +11752,11 @@ function AssignedRidesPage(): JSX.Element {
       return;
     }
 
-    setActionLoading(rideId);
     setError(null);
 
+    // NOTA: este botón no tiene todavía un estado de loading/disabled propio en
+    // AssignedRidesPage (a diferencia de acceptingId, que es para el flujo de aceptar
+    // viajes). Riesgo residual documentado: sin protección explícita contra doble clic.
     try {
       notifyPassengerNoShowByAppAndWhatsapp(ride, noShowState.feeClp);
       const charge = saveDriverNoShowChargeForPassenger(ride, session?.user);
@@ -11776,8 +11778,8 @@ function AssignedRidesPage(): JSX.Element {
       window.dispatchEvent(new CustomEvent("rapago:driver-rides-updated", { detail: { rideId, status: "cancelled", noShow: true, charge } }));
       setError(`No show registrado. Se notificó por app/WhatsApp y se aplicó cobro total del servicio: ${formatClp(Number(charge.amountClp ?? 0))}.`);
       window.setTimeout(() => void loadRides(), 450);
-    } finally {
-      setActionLoading(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "No se pudo registrar el no show.");
     }
   }
 
@@ -14013,6 +14015,72 @@ function DriverMyRidesPage(): JSX.Element {
     } finally {
       setActionLoading(null);
     }
+  }
+
+  // Reutiliza la misma lógica autoritativa (backend) que AssignedRidesPage.handleArrivedSmart,
+  // adaptada al actionLoading/runRideAction locales de DriverMyRidesPage.
+  async function handleArrivedSmart(ride: DriverRideData): Promise<void> {
+    if (!session?.accessToken) return;
+
+    await runRideAction(ride.id, async () => {
+      if (ride.status === "accepted") {
+        await ridesService.markEnRoute(session.accessToken, ride.id);
+      }
+
+      await ridesService.markArrived(session.accessToken, ride.id);
+
+      const arrivedAt = new Date().toISOString();
+      const arrivedRide = saveDriverActiveRideLocalMirror(
+        {
+          ...(ride as DriverRideData & Record<string, unknown>),
+          status: "driver_arrived",
+          driverArrivedAt: arrivedAt,
+          arrivedAt,
+          noShowCountdownStartedAt: arrivedAt,
+          passengerNotice: "Tu conductor llegó al punto. Sal ahora para evitar No show.",
+          passengerNotification: "Tu conductor llegó al punto. Tienes 5 minutos para presentarte antes de No show.",
+        },
+        session?.user,
+      );
+
+      notifyPassengerDriverArrivedByAppAndWhatsapp(arrivedRide);
+    });
+  }
+
+  // Reutiliza la misma lógica autoritativa (backend) que AssignedRidesPage.handleDriverNoShowRide,
+  // adaptada al actionLoading/runRideAction locales de DriverMyRidesPage.
+  async function handleDriverNoShowRide(ride: DriverRideData): Promise<void> {
+    const rideId = String(ride.id ?? "").trim();
+    if (!rideId) return;
+
+    const noShowState = getDriverNoShowState(ride as DriverRideData & Record<string, unknown>);
+    if (!noShowState.allowed) {
+      setLoadError(`Debes esperar 5 minutos desde que llegaste al punto. Falta ${formatDriverNoShowRemaining(noShowState.remainingMs)}.`);
+      return;
+    }
+
+    await runRideAction(rideId, async () => {
+      notifyPassengerNoShowByAppAndWhatsapp(ride, noShowState.feeClp);
+      const charge = saveDriverNoShowChargeForPassenger(ride, session?.user);
+      markPassengerRideNoShowCancelledFromDriver(ride, charge);
+      clearDriverNoShowTimer(ride as DriverRideData & Record<string, unknown>);
+      clearDriverLiveLocationForPassenger(rideId);
+      removeDriverActiveRideLocalMirror(
+        { ...(ride as unknown as Record<string, unknown>), status: "cancelled", cancelledByRole: "driver_no_show" },
+        session?.user,
+      );
+
+      if (session?.accessToken) {
+        try {
+          await ridesService.cancelAcceptedRide(session.accessToken, rideId);
+        } catch {
+          // El cargo local y el aviso al pasajero quedan guardados aunque el backend responda distinto.
+        }
+      }
+
+      window.dispatchEvent(new CustomEvent("rapago:driver-rides-updated", { detail: { rideId, status: "cancelled", noShow: true, charge } }));
+      setLoadError(`No show registrado. Se notificó por app/WhatsApp y se aplicó cobro total del servicio: ${formatClp(Number(charge.amountClp ?? 0))}.`);
+    });
   }
 
   async function cancelActiveRideFromMyRides(ride: DriverRideData): Promise<void> {
