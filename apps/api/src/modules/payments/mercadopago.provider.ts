@@ -375,7 +375,10 @@ export class MercadoPagoProvider implements PaymentProvider {
     });
 
     if (!response.ok) {
-      const text = await response.text().catch(() => "");
+      const text =
+        typeof response.text === "function"
+          ? await response.text().catch(() => "")
+          : "";
 
       throw new Error(
         `MercadoPago API error ${response.status} fetching payment ${paymentId}: ${text}`,

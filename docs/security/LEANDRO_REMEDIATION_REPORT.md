@@ -414,3 +414,36 @@ Evidencia:
 Estado:
 CORREGIDO.
 
+
+## FASE 1 — Corrección de tests API posteriores a seguridad
+
+Se corrigieron fallas restantes de tests API.
+
+Cambios:
+- MercadoPagoProvider ahora soporta respuestas non-OK sin método response.text().
+- Se actualizó test obsoleto de PaymentsService para usar un estado realmente no pagable según la regla actual.
+
+Archivos modificados:
+- apps/api/src/modules/payments/mercadopago.provider.ts
+- apps/api/src/modules/payments/__tests__/payments.service.test.ts
+
+Evidencia:
+- docs/security/evidence/101_test_api_after_security_fixes.txt
+- docs/security/evidence/104_build_api_after_syntax_commit.txt
+- docs/security/evidence/105_mercadopago_normalize_webhook_before.txt
+- docs/security/evidence/106_mercadopago_webhook_test_before.txt
+- docs/security/evidence/107_payments_create_payment_before_test_fix.txt
+- docs/security/evidence/108_payments_service_failed_test_before.txt
+- docs/security/evidence/109_patch_api_tests_after_security_fixes.diff
+- docs/security/evidence/110_build_api_after_test_fixes.txt
+- docs/security/evidence/111_test_api_after_test_fixes.txt
+
+Resultado:
+- npm run build -w apps/api: OK
+- npm run test -w apps/api: OK
+- Test Files: 4 passed
+- Tests: 45 passed
+
+Estado:
+API BUILD Y TESTS OK.
+
