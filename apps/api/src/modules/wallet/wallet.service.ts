@@ -6,7 +6,7 @@ import { AppError } from "../../shared/errors/AppError.js";
 import { db } from "../../db/client.js";
 import { rideRequests } from "../../db/schema/index.js";
 import { eq } from "drizzle-orm";
-import type { CreatePaymentOrderInput, WebhookPayload } from "./wallet.schemas.js";
+import type { CreatePaymentOrderInput, WebhookPayload, AdminCreateWalletCreditInput } from "./wallet.schemas.js";
 import type { Wallet, Transaction, PaymentOrder } from "../../db/schema/index.js";
 
 const tokenService   = new TokenService();
@@ -139,6 +139,76 @@ export class WalletService {
       },
     });
     return { ok: true as const, order: serializePaymentOrder(order) };
+  }
+
+  async adminCreateWalletCredit(accessToken: string, input: AdminCreateWalletCreditInput) {
+    const auth = await authenticate(accessToken);
+    if (!auth.ok) return auth;
+
+    if (auth.role !== "admin") {
+      return {
+        ok: false as const,
+        code: "AUTH_FORBIDDEN",
+        message: "Only admins can approve wallet credits.",
+        statusCode: 403,
+      };
+    }
+
+    const targetUser = await usersRepo.findById(input.userId);
+    if (!targetUser) {
+      return { ok: false as const, code: "NOT_FOUND", message: "Target user not found.", statusCode: 404 };
+    }
+
+    if (targetUser.role !== "passenger") {
+      return {
+        ok: false as const,
+        code: "WALLET_CREDIT_TARGET_NOT_PASSENGER",
+        message: "Wallet credits can only be approved for passenger accounts.",
+        statusCode: 422,
+      };
+    }
+
+    if (input.rideId) {
+      const rideRows = await db.select().from(rideRequests).where(eq(rideRequests.id, input.rideId)).limit(1);
+      const ride = rideRows[0];
+
+      if (!ride) {
+        return { ok: false as const, code: "NOT_FOUND", message: "Ride not found.", statusCode: 404 };
+      }
+
+      if (ride.passengerUserId !== input.userId) {
+        return {
+          ok: false as const,
+          code: "AUTH_FORBIDDEN",
+          message: "Ride does not belong to the target passenger.",
+          statusCode: 403,
+        };
+      }
+    }
+
+    const description = input.description?.trim() || "Credito wallet aprobado por admin";
+    const reason = input.reason?.trim();
+    const externalReference = input.externalReference?.trim();
+
+    const result = await walletRepo.creditUserWallet({
+      userId: input.userId,
+      amountClp: input.amountClp,
+      ...(input.rideId ? { rideId: input.rideId } : {}),
+      description,
+      metadata: {
+        source: "admin_wallet_credit",
+        approvedByUserId: auth.userId,
+        ...(reason ? { reason } : {}),
+        ...(externalReference ? { externalReference } : {}),
+      },
+      ...(externalReference ? { providerTransactionId: "admin-credit:" + externalReference } : {}),
+    });
+
+    return {
+      ok: true as const,
+      wallet: serializeWallet(result.wallet),
+      transaction: serializeTransaction(result.transaction),
+    };
   }
 
   async handleWebhook(body: WebhookPayload) {

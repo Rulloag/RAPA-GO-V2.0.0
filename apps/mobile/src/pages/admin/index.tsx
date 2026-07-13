@@ -538,7 +538,55 @@ function adminWalletCreditStatusColor(benefit: AdminWalletBenefit): string {
   return "tertiary";
 }
 
-function markAdminWalletCreditAvailable(benefit: AdminWalletBenefit): void {
+function normalizeAdminWalletCreditExternalReference(value: unknown): string {
+  return String(value ?? "")
+    .trim()
+    .replace(/[^a-zA-Z0-9:_-]/g, "-")
+    .slice(0, 80);
+}
+
+function adminWalletCreditUuidOrUndefined(value: unknown): string | undefined {
+  const text = String(value ?? "").trim();
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(text)
+    ? text
+    : undefined;
+}
+
+async function markAdminWalletCreditAvailable(
+  accessToken: string,
+  benefit: AdminWalletBenefit,
+  targetUserId: string,
+): Promise<void> {
+  if (!accessToken) {
+    throw new Error("Sesion admin no disponible.");
+  }
+
+  if (!targetUserId) {
+    throw new Error("No se encontro el usuario del pasajero para aprobar el credito real.");
+  }
+
+  const amountClp = Math.max(0, Math.round(Number(benefit.amountClp ?? 0)));
+  if (amountClp <= 0) {
+    throw new Error("El credito no tiene un monto valido.");
+  }
+
+  const { walletService } = await import("../../features/wallet/wallet.service.js");
+
+  const rideId = adminWalletCreditUuidOrUndefined(benefit.rideId);
+  const paymentId = (benefit as AdminWalletBenefit & { paymentId?: string | null }).paymentId;
+  const externalReference = normalizeAdminWalletCreditExternalReference(paymentId || benefit.rideId || benefit.id);
+
+  await walletService.adminCreateWalletCredit(accessToken, {
+    userId: targetUserId,
+    ...(rideId ? { rideId } : {}),
+    amountClp,
+    description:
+      benefit.description ||
+      `Credito aprobado por admin: ${benefit.originText || "Origen"} -> ${benefit.destinationText || "Destino"}.`,
+    reason: "admin_approved_wallet_credit",
+    ...(externalReference ? { externalReference } : {}),
+  });
+
   const now = new Date().toISOString();
   const next = readAdminWalletBenefits().map((item) => {
     if (item.id !== benefit.id) return item;
@@ -546,16 +594,15 @@ function markAdminWalletCreditAvailable(benefit: AdminWalletBenefit): void {
     return {
       ...item,
       status: "available",
-      adminReviewStatus: "card_credit_available",
+      adminReviewStatus: "backend_credit_created",
       approvedAt: item.approvedAt ?? now,
       approvedBy: item.approvedBy ?? "admin",
-      title: "CRÉDITOS PARA PRÓXIMO VIAJE",
+      title: "CREDITOS PARA PROXIMO VIAJE",
     };
   });
 
   writeAdminWalletBenefits(next);
 }
-
 function markAdminWalletCreditRefundCompleted(benefit: AdminWalletBenefit): void {
   const now = new Date().toISOString();
   const next = readAdminWalletBenefits().map((item) => {
@@ -1903,9 +1950,31 @@ export function AdminHomePage(): JSX.Element {
                                   size="small"
                                   color="success"
                                   onClick={() => {
-                                    markAdminWalletCreditAvailable(credit);
-                                    setCashReviewsRevision((current) => current + 1);
-                                    setAdminCashToast("Crédito disponible en wallet.");
+                                    void (async () => {
+                                      try {
+                                        const ownerEmail = String(credit.passengerEmail || credit.ownerKey || "")
+                                          .trim()
+                                          .toLowerCase();
+
+                                        const targetUser = adminUsers.find((user) =>
+                                          String((user as { email?: string | null }).email ?? "")
+                                            .trim()
+                                            .toLowerCase() === ownerEmail,
+                                        );
+
+                                        const targetUserId = String((targetUser as { id?: string } | undefined)?.id ?? "");
+
+                                        if (!targetUserId) {
+                                          throw new Error("No se encontro el pasajero en Usuarios para crear el credito real.");
+                                        }
+
+                                        await markAdminWalletCreditAvailable(session?.accessToken ?? "", credit, targetUserId);
+                                        setCashReviewsRevision((current) => current + 1);
+                                        setAdminCashToast("Credito creado en backend y disponible en wallet.");
+                                      } catch (err) {
+                                        setAdminCashToast(err instanceof Error ? err.message : "No se pudo aprobar el credito real.");
+                                      }
+                                    })();
                                   }}
                                 >
                                   Dejar disponible

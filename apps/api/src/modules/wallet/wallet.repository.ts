@@ -94,6 +94,63 @@ export class WalletRepository {
     }
   }
 
+  async creditUserWallet(input: {
+    userId: string;
+    amountClp: number;
+    rideId?: string | null;
+    description: string;
+    metadata?: Record<string, unknown>;
+    providerTransactionId?: string | null;
+  }): Promise<{ wallet: Wallet; transaction: Transaction }> {
+    try {
+      return await db.transaction(async (tx) => {
+        let wallet = (await tx.select().from(wallets).where(eq(wallets.userId, input.userId)).limit(1))[0] ?? null;
+
+        if (!wallet) {
+          const walletRows = await tx.insert(wallets).values({ userId: input.userId }).returning();
+          wallet = walletRows[0] ?? null;
+          if (!wallet) throw AppError.internal("Wallet insert returned no rows.");
+        }
+
+        const nextBalance = wallet.balance + input.amountClp;
+
+        const updatedWalletRows = await tx
+          .update(wallets)
+          .set({ balance: nextBalance, updatedAt: new Date() })
+          .where(eq(wallets.id, wallet.id))
+          .returning();
+
+        const updatedWallet = updatedWalletRows[0];
+        if (!updatedWallet) throw AppError.internal("Wallet not found during credit update.");
+
+        const transactionRows = await tx
+          .insert(transactions)
+          .values({
+            walletId: wallet.id,
+            userId: input.userId,
+            ...(input.rideId ? { rideId: input.rideId } : {}),
+            type: "credit",
+            amount: input.amountClp,
+            currency: "CLP",
+            status: "completed",
+            provider: "admin",
+            ...(input.providerTransactionId ? { providerTransactionId: input.providerTransactionId } : {}),
+            description: input.description,
+            ...(input.metadata !== undefined ? { metadata: input.metadata } : {}),
+          })
+          .returning();
+
+        const transaction = transactionRows[0];
+        if (!transaction) throw AppError.internal("Transaction insert returned no rows.");
+
+        return { wallet: updatedWallet, transaction };
+      });
+    } catch (err) {
+      if (err instanceof AppError) throw err;
+      throw AppError.internal("Failed to credit wallet: " + String(err));
+    }
+  }
+
   async createPaymentOrder(data: NewPaymentOrder): Promise<PaymentOrder> {
     try {
       const rows = await db.insert(paymentOrders).values(data).returning();

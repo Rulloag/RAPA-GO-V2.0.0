@@ -21,6 +21,16 @@ export const listTransactionsQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(100).default(20),
 });
 
-export type CreatePaymentOrderInput = z.infer<typeof createPaymentOrderSchema>;
-export type WebhookPayload          = z.infer<typeof webhookPayloadSchema>;
-export type ListTransactionsQuery   = z.infer<typeof listTransactionsQuerySchema>;
+export const adminCreateWalletCreditSchema = z.object({
+  userId: z.string().uuid(),
+  rideId: z.string().uuid().optional(),
+  amountClp: z.number().int().positive().max(10_000_000),
+  description: z.string().trim().min(3).max(300).optional(),
+  reason: z.string().trim().max(200).optional(),
+  externalReference: z.string().trim().max(120).optional(),
+});
+
+export type CreatePaymentOrderInput      = z.infer<typeof createPaymentOrderSchema>;
+export type WebhookPayload               = z.infer<typeof webhookPayloadSchema>;
+export type ListTransactionsQuery        = z.infer<typeof listTransactionsQuerySchema>;
+export type AdminCreateWalletCreditInput = z.infer<typeof adminCreateWalletCreditSchema>;

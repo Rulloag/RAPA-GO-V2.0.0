@@ -493,10 +493,74 @@ type StoredRegistrationProfile = {
   directNationality?: string | null;
 };
 
+
+const RAPAGO_PASSENGER_AUTH_SESSION_PROFILE_KEY = "rapago_registration_profile_session";
+const RAPAGO_PASSENGER_RESIDENT_VERIFICATION_SESSION_KEY = "rapago_resident_verification_requests_session_v1";
+
+const RAPAGO_PASSENGER_PII_LOCAL_STORAGE_KEYS = [
+  "rapago_passenger_email",
+  "rapago_profile_email",
+  "rapago_passenger_phone",
+  "rapago_profile_phone",
+  "rapago_passenger_rut",
+  "rapago_profile_rut",
+  "rapago_resident_document_name",
+  "rapago_passenger_residence_document_meta",
+] as const;
+
+function clearPassengerLegacyPiiLocalStorage(): void {
+  try {
+    for (const key of RAPAGO_PASSENGER_PII_LOCAL_STORAGE_KEYS) {
+      localStorage.removeItem(key);
+    }
+  } catch {
+    // No bloquea Inicio pasajero.
+  }
+}
+
+function passengerSessionValue(key: string): string {
+  try {
+    return sessionStorage.getItem(key) ?? "";
+  } catch {
+    return "";
+  }
+}
+
+function readPassengerSessionRegistrationProfile(): StoredRegistrationProfile {
+  try {
+    const raw = sessionStorage.getItem(RAPAGO_PASSENGER_AUTH_SESSION_PROFILE_KEY);
+    const parsed = raw ? (JSON.parse(raw) as StoredRegistrationProfile) : {};
+    return parsed && typeof parsed === "object" ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function sanitizePassengerLocalRegistrationProfile(profile: StoredRegistrationProfile): StoredRegistrationProfile {
+  return {
+    passengerFareType: profile.passengerFareType ?? profile.farePassengerType ?? profile.passengerType ?? null,
+    farePassengerType: profile.farePassengerType ?? profile.passengerFareType ?? profile.passengerType ?? null,
+    passengerType: profile.passengerType ?? profile.farePassengerType ?? profile.passengerFareType ?? null,
+    nationality: profile.nationality ?? profile.passengerFareLabel ?? null,
+    passengerFareLabel: profile.passengerFareLabel ?? profile.nationality ?? null,
+    residenceVerificationStatus: profile.residenceVerificationStatus ?? null,
+    residenceVerificationMessage: profile.residenceVerificationMessage ?? null,
+    directPassengerFareType: profile.directPassengerFareType ?? null,
+    directNationality: profile.directNationality ?? null,
+  };
+}
+
+
 function readStoredRegistrationProfile(): StoredRegistrationProfile {
   try {
+    clearPassengerLegacyPiiLocalStorage();
+
     const raw = localStorage.getItem("rapago_registration_profile");
-    const parsed = raw ? (JSON.parse(raw) as StoredRegistrationProfile) : {};
+    const parsedRaw = raw ? (JSON.parse(raw) as StoredRegistrationProfile) : {};
+    const parsed = sanitizePassengerLocalRegistrationProfile(
+      parsedRaw && typeof parsedRaw === "object" ? parsedRaw : {},
+    );
+    const sessionProfile = readPassengerSessionRegistrationProfile();
 
     const directFareType =
       localStorage.getItem("rapago_passenger_fare_type") ??
@@ -523,49 +587,54 @@ function readStoredRegistrationProfile(): StoredRegistrationProfile {
 
     return {
       ...parsed,
-      rut: parsed.rut ?? localStorage.getItem("rapago_profile_rut"),
-      phone: parsed.phone ?? localStorage.getItem("rapago_profile_phone"),
+      ...sessionProfile,
+      email: sessionProfile.email || passengerSessionValue("rapago_passenger_email") || passengerSessionValue("rapago_profile_email"),
+      rut: sessionProfile.rut || passengerSessionValue("rapago_profile_rut") || passengerSessionValue("rapago_passenger_rut"),
+      phone: sessionProfile.phone || passengerSessionValue("rapago_profile_phone") || passengerSessionValue("rapago_passenger_phone"),
       passengerFareType:
+        sessionProfile.passengerFareType ??
         parsed.passengerFareType ??
         parsed.farePassengerType ??
         parsed.passengerType ??
         null,
       farePassengerType:
+        sessionProfile.farePassengerType ??
         parsed.farePassengerType ??
         parsed.passengerFareType ??
         parsed.passengerType ??
         null,
       passengerType:
+        sessionProfile.passengerType ??
         parsed.passengerType ??
         parsed.farePassengerType ??
         parsed.passengerFareType ??
         null,
       nationality:
+        sessionProfile.nationality ??
         parsed.nationality ??
         parsed.passengerFareLabel ??
         null,
       passengerFareLabel:
+        sessionProfile.passengerFareLabel ??
         parsed.passengerFareLabel ??
         parsed.nationality ??
         null,
       residenceVerificationStatus:
+        sessionProfile.residenceVerificationStatus ??
         parsed.residenceVerificationStatus ??
         directResidenceVerificationStatus ??
         null,
       residenceVerificationMessage:
+        sessionProfile.residenceVerificationMessage ??
         parsed.residenceVerificationMessage ??
         directResidenceVerificationMessage ??
         null,
-      residentDocumentName:
-        parsed.residentDocumentName ??
-        localStorage.getItem("rapago_resident_document_name") ??
-        localStorage.getItem("rapago_passenger_residence_document_meta") ??
-        null,
+      residentDocumentName: sessionProfile.residentDocumentName ?? null,
       directPassengerFareType: directFareType,
       directNationality,
     };
   } catch {
-    return {};
+    return readPassengerSessionRegistrationProfile();
   }
 }
 
@@ -574,15 +643,18 @@ function getAutoPhone(sessionPhone?: string | null, profilePhone?: string | null
   return (profilePhone ?? sessionPhone ?? stored.phone ?? "").trim();
 }
 
+
 function persistPassengerAutofill(data: Partial<StoredRegistrationProfile>): void {
   try {
-    const current = readStoredRegistrationProfile();
-    const next = { ...current, ...data };
+    clearPassengerLegacyPiiLocalStorage();
 
-    localStorage.setItem("rapago_registration_profile", JSON.stringify(next));
+    const currentSession = readPassengerSessionRegistrationProfile();
+    const nextSession = { ...currentSession, ...data };
+    sessionStorage.setItem(RAPAGO_PASSENGER_AUTH_SESSION_PROFILE_KEY, JSON.stringify(nextSession));
 
-    if (next.phone) localStorage.setItem("rapago_profile_phone", next.phone);
-    if (next.rut) localStorage.setItem("rapago_profile_rut", next.rut);
+    const currentLocal = sanitizePassengerLocalRegistrationProfile(readStoredRegistrationProfile());
+    const nextLocal = sanitizePassengerLocalRegistrationProfile({ ...currentLocal, ...data });
+    localStorage.setItem("rapago_registration_profile", JSON.stringify(nextLocal));
   } catch {
     // No bloquea la app.
   }
@@ -1245,15 +1317,29 @@ function normalizeResidenceVerificationStatus(value: unknown): ResidenceVerifica
   return null;
 }
 
+
 function readResidentVerificationRequests(): Array<Record<string, unknown>> {
+  const rows: Array<Record<string, unknown>> = [];
+
+  try {
+    const sessionRaw = sessionStorage.getItem(RAPAGO_PASSENGER_RESIDENT_VERIFICATION_SESSION_KEY);
+    const sessionParsed = sessionRaw ? (JSON.parse(sessionRaw) as Array<Record<string, unknown>>) : [];
+    if (Array.isArray(sessionParsed)) rows.push(...sessionParsed);
+  } catch {
+    // No bloquea la vista del pasajero.
+  }
+
   try {
     const raw = localStorage.getItem(RESIDENT_VERIFICATION_REQUESTS_KEY);
     const parsed = raw ? (JSON.parse(raw) as Array<Record<string, unknown>>) : [];
-    return Array.isArray(parsed) ? parsed : [];
+    if (Array.isArray(parsed)) rows.push(...parsed);
   } catch {
-    return [];
+    // No bloquea la vista del pasajero.
   }
+
+  return rows;
 }
+
 
 function getCurrentUserIdentity(user?: unknown): {
   userId: string;
@@ -1265,19 +1351,19 @@ function getCurrentUserIdentity(user?: unknown): {
   return {
     userId: getUserStringField(user, "id") ?? "",
     email: (
-      getUserStringField(user, "email") ??
-      stored.email ??
-      localStorage.getItem("rapago_passenger_email") ??
-      localStorage.getItem("rapago_profile_email") ??
+      getUserStringField(user, "email") ||
+      stored.email ||
+      passengerSessionValue("rapago_passenger_email") ||
+      passengerSessionValue("rapago_profile_email") ||
       ""
     )
       .trim()
       .toLowerCase(),
     rut: (
-      getUserStringField(user, "rut") ??
-      stored.rut ??
-      localStorage.getItem("rapago_profile_rut") ??
-      localStorage.getItem("rapago_passenger_rut") ??
+      getUserStringField(user, "rut") ||
+      stored.rut ||
+      passengerSessionValue("rapago_profile_rut") ||
+      passengerSessionValue("rapago_passenger_rut") ||
       ""
     )
       .trim()
@@ -1401,7 +1487,6 @@ function readResidentVerificationState(user?: unknown): ResidentVerificationStat
   const documentName = String(
     request?.documentName ??
       stored.residentDocumentName ??
-      localStorage.getItem("rapago_resident_document_name") ??
       "",
   );
 

@@ -27,7 +27,7 @@ import {
 } from "ionicons/icons";
 import { SkeletonList } from "../../../components/SkeletonCard.js";
 import { useAuth } from "../../../features/auth/index.js";
-import type { WalletData } from "../../../features/wallet/wallet.service.js";
+import type { TransactionData, WalletData } from "../../../features/wallet/wallet.service.js";
 import { RAPAGO_CONTACT } from "@rapa-go/shared";
 
 const RAPAGO_WALLET_BENEFITS_KEY = "rapago_wallet_benefits_v1";
@@ -392,6 +392,7 @@ function MiniStatCard({
 export default function WalletPage(): JSX.Element {
   const { session } = useAuth();
   const [wallet, setWallet] = useState<WalletData | null>(null);
+  const [walletTransactions, setWalletTransactions] = useState<TransactionData[]>([]);
   const [localBenefits, setLocalBenefits] = useState<LocalWalletBenefit[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -401,19 +402,31 @@ export default function WalletPage(): JSX.Element {
   }, [session?.user]);
 
   const load = useCallback(async () => {
-    if (!session?.accessToken) return;
+    if (!session?.accessToken) {
+      setWallet(null);
+      setWalletTransactions([]);
+      setLocalBenefits([]);
+      setLoading(false);
+      return;
+    }
 
     setLoading(true);
     setLoadError(null);
 
     try {
       const { walletService } = await import("../../../features/wallet/wallet.service.js");
-      const walletResponse = await walletService.getMyWallet(session.accessToken);
+      const [walletResponse, transactionsResponse] = await Promise.all([
+        walletService.getMyWallet(session.accessToken),
+        walletService.getMyTransactions(session.accessToken, 1, 50),
+      ]);
 
       setWallet(walletResponse);
+      setWalletTransactions(transactionsResponse.items);
       setLocalBenefits(readLocalWalletBenefits(session.user));
     } catch (err) {
       setLoadError(err instanceof Error ? err.message : "No se pudo sincronizar la billetera. Mostrando beneficios locales.");
+      setWallet(null);
+      setWalletTransactions([]);
       setLocalBenefits(readLocalWalletBenefits(session.user));
     } finally {
       setLoading(false);
@@ -442,17 +455,29 @@ export default function WalletPage(): JSX.Element {
   const cardCancellationCredits = localBenefits.filter(isWalletCardCancellationCredit);
   const cashCredits = localBenefits.filter((benefit) => !isWalletCardCancellationCredit(benefit));
 
-  const approvedCashCredits = cashCredits.filter(isWalletBenefitAvailable);
+  const localApprovedVisualCredits = localBenefits.filter(isWalletBenefitAvailable);
   const pendingCashCredits = cashCredits.filter(isWalletBenefitPending);
-  const approvedCardCredits = cardCancellationCredits.filter(isWalletBenefitAvailable);
   const pendingCardCredits = cardCancellationCredits.filter(isWalletBenefitPending);
 
-  const cashCreditClp = approvedCashCredits.reduce((sum, benefit) => sum + benefit.amountClp, 0);
+  const backendCompletedCredits = walletTransactions.filter((transaction) => {
+    const type = String(transaction.type ?? "").toLowerCase();
+    const status = String(transaction.status ?? "").toLowerCase();
+    return type === "credit" && status === "completed";
+  });
+
+  const backendWalletBalanceClp = Math.max(0, Math.round(Number(wallet?.balance ?? 0)));
+  const backendCreditHistoryClp = backendCompletedCredits.reduce(
+    (sum, transaction) => sum + Math.max(0, Math.round(Number(transaction.amount ?? 0))),
+    0,
+  );
+  const hasLocalApprovedVisualOnly = localApprovedVisualCredits.length > 0 && backendWalletBalanceClp <= 0;
+
+  const cashCreditClp = backendWalletBalanceClp;
   const pendingCashCreditClp = pendingCashCredits.reduce((sum, benefit) => sum + benefit.amountClp, 0);
-  const cardCreditClp = approvedCardCredits.reduce((sum, benefit) => sum + benefit.amountClp, 0);
+  const cardCreditClp = 0;
   const pendingCardCreditClp = pendingCardCredits.reduce((sum, benefit) => sum + benefit.amountClp, 0);
 
-  const approvedBenefitClp = cashCreditClp + cardCreditClp;
+  const approvedBenefitClp = backendWalletBalanceClp;
   const pendingBenefitClp = pendingCashCreditClp + pendingCardCreditClp;
 
   return (
@@ -615,12 +640,12 @@ export default function WalletPage(): JSX.Element {
                           CRÉDITOS SEPARADOS
                         </div>
                         <div style={{ marginTop: 4, color: "#4B3B28", fontSize: ".82rem", fontWeight: 760, lineHeight: 1.38 }}>
-                          Para no confundirse, separamos el saldo por origen: efectivo y tarjeta/MercadoPago.
+                          El saldo disponible viene del backend. Los registros locales se muestran solo como historial visual pendiente.
                         </div>
                       </div>
 
                       <IonBadge color={approvedBenefitClp > 0 ? "success" : pendingBenefitClp > 0 ? "warning" : "medium"} style={{ fontWeight: 950, flexShrink: 0 }}>
-                        {approvedBenefitClp > 0 ? "Disponible" : pendingBenefitClp > 0 ? "Pendiente" : "Sin saldo"}
+                        {backendCreditHistoryClp > 0 || approvedBenefitClp > 0 ? "Aprobado por admin" : hasLocalApprovedVisualOnly || pendingBenefitClp > 0 ? "Pendiente backend" : "Sin saldo"}
                       </IonBadge>
                     </div>
 

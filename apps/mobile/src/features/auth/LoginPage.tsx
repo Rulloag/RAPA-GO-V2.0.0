@@ -116,8 +116,40 @@ function getLegacyPassengerCondition(value: PassengerCondition): string {
   return "";
 }
 
+
+const RAPAGO_AUTH_PII_LOCAL_STORAGE_KEYS = [
+  "rapago_passenger_email",
+  "rapago_profile_email",
+  "rapago_passenger_phone",
+  "rapago_profile_phone",
+  "rapago_passenger_rut",
+  "rapago_profile_rut",
+  "rapago_resident_document_name",
+  "rapago_resident_document_uploaded_at",
+  "rapago_passenger_residence_document_meta",
+] as const;
+
+const RAPAGO_AUTH_SESSION_PROFILE_KEY = "rapago_registration_profile_session";
+const RAPAGO_RESIDENT_VERIFICATION_SESSION_KEY = "rapago_resident_verification_requests_session_v1";
+
+function clearLegacyAuthPiiLocalStorage(): void {
+  try {
+    for (const key of RAPAGO_AUTH_PII_LOCAL_STORAGE_KEYS) {
+      localStorage.removeItem(key);
+    }
+  } catch {
+    // No bloquea auth.
+  }
+}
+
 function getStoredValue(key: string): string {
   try {
+    clearLegacyAuthPiiLocalStorage();
+
+    if (RAPAGO_AUTH_PII_LOCAL_STORAGE_KEYS.includes(key as typeof RAPAGO_AUTH_PII_LOCAL_STORAGE_KEYS[number])) {
+      return sessionStorage.getItem(key) ?? "";
+    }
+
     return localStorage.getItem(key) ?? "";
   } catch {
     return "";
@@ -269,26 +301,13 @@ function persistResidentVerificationRequest(input: {
   authProvider: "facebook" | "email";
 }): void {
   try {
+    clearLegacyAuthPiiLocalStorage();
+
     const now = new Date().toISOString();
-    const current = readResidentVerificationRequests();
+    const requestId = "resident-validation-" + Date.now();
 
-    const emailKey = input.email.trim().toLowerCase();
-    const rutKey = input.rut.trim().toUpperCase();
-
-    const withoutSameUser = current.filter((item) => {
-      const itemUserId = String(item.userId ?? "");
-      const itemEmail = String(item.email ?? "").trim().toLowerCase();
-      const itemRut = String(item.rut ?? "").trim().toUpperCase();
-
-      return (
-        itemUserId !== input.userId &&
-        itemEmail !== emailKey &&
-        itemRut !== rutKey
-      );
-    });
-
-    const request = {
-      id: `resident-validation-${Date.now()}`,
+    const fullSessionRequest = {
+      id: requestId,
       userId: input.userId,
       status: "pending",
       createdAt: now,
@@ -306,54 +325,96 @@ function persistResidentVerificationRequest(input: {
       authProvider: input.authProvider,
       documentName: input.document.name,
       documentType: input.document.type,
-      documentSizeBytes: input.document.size,
+      documentSizeBytes: Number((input.document as ResidentVerificationDocumentData & Record<string, unknown>).size ?? 0),
       documentUploadedAt: input.document.uploadedAt,
       documentDataUrl: input.document.dataUrl,
-      reason: "Validación de residencia Rapa Nui",
-      userMessage:
-        "Tu documento de Residente Rapa Nui está pendiente de revisión por el administrador.",
+      reason: "Validacion de residencia Rapa Nui",
+      userMessage: "Tu documento de Residente Rapa Nui esta pendiente de revision por el administrador.",
+      storageScope: "session_only",
     };
 
+    const safeLocalRequest = {
+      id: requestId,
+      userId: input.userId,
+      status: "pending",
+      createdAt: now,
+      updatedAt: now,
+      passengerFareType: "resident",
+      passengerFareLabel: "Residente Rapa Nui",
+      nationality: "Residente Rapa Nui",
+      registrationProvider: input.authProvider,
+      authProvider: input.authProvider,
+      documentType: input.document.type,
+      documentSizeBytes: Number((input.document as ResidentVerificationDocumentData & Record<string, unknown>).size ?? 0),
+      documentUploadedAt: input.document.uploadedAt,
+      documentDataUrl: null,
+      documentStorage: "session_only_pending_backend_upload",
+      piiStorage: "session_only",
+      reason: "Validacion de residencia Rapa Nui",
+      userMessage: "Tu documento de Residente Rapa Nui esta pendiente de revision por el administrador.",
+    };
+
+    const sessionRaw = sessionStorage.getItem(RAPAGO_RESIDENT_VERIFICATION_SESSION_KEY);
+    const sessionParsed = sessionRaw ? (JSON.parse(sessionRaw) as Array<Record<string, unknown>>) : [];
+    const currentSession = Array.isArray(sessionParsed) ? sessionParsed : [];
+    const nextSession = currentSession.filter((item) => String(item.userId ?? "") !== input.userId);
+    sessionStorage.setItem(
+      RAPAGO_RESIDENT_VERIFICATION_SESSION_KEY,
+      JSON.stringify([fullSessionRequest, ...nextSession].slice(0, 20)),
+    );
+
+    const localRaw = localStorage.getItem(RESIDENT_VERIFICATION_REQUESTS_KEY);
+    const localParsed = localRaw ? (JSON.parse(localRaw) as Array<Record<string, unknown>>) : [];
+    const currentLocal = Array.isArray(localParsed) ? localParsed : [];
+    const nextLocal = currentLocal.filter((item) => String(item.userId ?? "") !== input.userId);
     localStorage.setItem(
       RESIDENT_VERIFICATION_REQUESTS_KEY,
-      JSON.stringify([request, ...withoutSameUser].slice(0, 100)),
+      JSON.stringify([safeLocalRequest, ...nextLocal].slice(0, 100)),
     );
 
     window.dispatchEvent(new CustomEvent("rapago:resident-verification-updated"));
   } catch {
-    // No bloquea Facebook si localStorage no está disponible.
+    // No bloquea auth si storage no esta disponible.
   }
 }
 
 
 function persistPassengerProfile(profile: PassengerRegistrationProfile): void {
   try {
-    const currentRaw = localStorage.getItem("rapago_registration_profile");
-    const current = currentRaw ? JSON.parse(currentRaw) : {};
+    clearLegacyAuthPiiLocalStorage();
 
-    const nextProfile: PassengerRegistrationProfile = {
-      ...current,
-      ...profile,
+    const safeProfile: PassengerRegistrationProfile = {
+      nationality: profile.nationality,
+      passengerFareLabel: profile.passengerFareLabel,
+      passengerFareType: profile.passengerFareType,
+      farePassengerType: profile.farePassengerType,
+      passengerType: profile.passengerType,
+      passengerCondition: profile.passengerCondition,
+      passengerConditionLegacy: profile.passengerConditionLegacy,
+      belongsToRapaNuiEthnicity: profile.belongsToRapaNuiEthnicity,
+      residenceDocumentRequired: profile.residenceDocumentRequired,
+      residenceDocumentUploaded: profile.residenceDocumentUploaded,
+      residenceVerificationStatus: profile.residenceVerificationStatus,
+      residenceVerificationMessage: profile.residenceVerificationMessage,
+      facebookLoginPrecheck: profile.facebookLoginPrecheck,
     };
 
-    localStorage.setItem(
-      "rapago_registration_profile",
-      JSON.stringify(nextProfile),
-    );
+    sessionStorage.setItem(RAPAGO_AUTH_SESSION_PROFILE_KEY, JSON.stringify(profile));
+    localStorage.setItem("rapago_registration_profile", JSON.stringify(safeProfile));
 
     if (profile.email) {
-      localStorage.setItem("rapago_passenger_email", profile.email);
-      localStorage.setItem("rapago_profile_email", profile.email);
+      sessionStorage.setItem("rapago_passenger_email", profile.email);
+      sessionStorage.setItem("rapago_profile_email", profile.email);
     }
 
     if (profile.phone) {
-      localStorage.setItem("rapago_passenger_phone", profile.phone);
-      localStorage.setItem("rapago_profile_phone", profile.phone);
+      sessionStorage.setItem("rapago_passenger_phone", profile.phone);
+      sessionStorage.setItem("rapago_profile_phone", profile.phone);
     }
 
     if (profile.rut) {
-      localStorage.setItem("rapago_passenger_rut", profile.rut);
-      localStorage.setItem("rapago_profile_rut", profile.rut);
+      sessionStorage.setItem("rapago_passenger_rut", profile.rut);
+      sessionStorage.setItem("rapago_profile_rut", profile.rut);
     }
 
     if (profile.nationality) {
@@ -366,10 +427,7 @@ function persistPassengerProfile(profile: PassengerRegistrationProfile): void {
     }
 
     if (profile.passengerConditionLegacy) {
-      localStorage.setItem(
-        "rapago_passenger_condition_legacy",
-        profile.passengerConditionLegacy,
-      );
+      localStorage.setItem("rapago_passenger_condition_legacy", profile.passengerConditionLegacy);
     }
 
     if (profile.passengerFareType) {
@@ -379,51 +437,25 @@ function persistPassengerProfile(profile: PassengerRegistrationProfile): void {
     }
 
     if (typeof profile.belongsToRapaNuiEthnicity === "boolean") {
-      localStorage.setItem(
-        "rapago_belongs_to_rapa_nui_ethnicity",
-        profile.belongsToRapaNuiEthnicity ? "si" : "no",
-      );
+      localStorage.setItem("rapago_belongs_to_rapa_nui_ethnicity", profile.belongsToRapaNuiEthnicity ? "si" : "no");
     }
 
     if (profile.residenceVerificationStatus) {
-      localStorage.setItem(
-        "rapago_residence_verification_status",
-        profile.residenceVerificationStatus,
-      );
+      localStorage.setItem("rapago_residence_verification_status", profile.residenceVerificationStatus);
     }
 
     if (profile.residenceVerificationMessage) {
-      localStorage.setItem(
-        "rapago_residence_verification_user_message",
-        profile.residenceVerificationMessage,
-      );
+      localStorage.setItem("rapago_residence_verification_user_message", profile.residenceVerificationMessage);
     } else if (profile.residenceVerificationStatus === "not_required") {
       localStorage.removeItem("rapago_residence_verification_user_message");
     }
 
-    localStorage.setItem(
-      "rapago_residence_document_required",
-      profile.residenceDocumentRequired ? "true" : "false",
-    );
-
-    localStorage.setItem(
-      "rapago_residence_document_uploaded",
-      profile.residenceDocumentUploaded ? "true" : "false",
-    );
-
-    if (profile.residenceDocumentMeta) {
-      localStorage.setItem(
-        "rapago_passenger_residence_document_meta",
-        JSON.stringify(profile.residenceDocumentMeta),
-      );
-    } else if (profile.residenceDocumentRequired === false) {
-      localStorage.removeItem("rapago_passenger_residence_document_meta");
-      sessionStorage.removeItem("rapago_passenger_residence_document_data_url");
-    }
+    localStorage.setItem("rapago_residence_document_required", profile.residenceDocumentRequired ? "true" : "false");
+    localStorage.setItem("rapago_residence_document_uploaded", profile.residenceDocumentUploaded ? "true" : "false");
+    localStorage.removeItem("rapago_passenger_residence_document_meta");
+    sessionStorage.removeItem("rapago_passenger_residence_document_data_url");
   } catch {
-    /**
-     * No bloqueamos el login si el navegador tiene restringido el storage.
-     */
+    // No bloqueamos el login si storage falla.
   }
 }
 

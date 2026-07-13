@@ -27,6 +27,21 @@ export interface PaymentOrderData {
   createdAt:       string;
 }
 
+
+export interface AdminCreateWalletCreditPayload {
+  userId: string;
+  rideId?: string;
+  amountClp: number;
+  description?: string;
+  reason?: string;
+  externalReference?: string;
+}
+
+export interface AdminCreateWalletCreditResponse {
+  wallet: WalletData;
+  transaction: TransactionData;
+}
+
 type Envelope<T> = { ok: true; data: T; statusCode: number };
 
 export const walletService = {
@@ -47,6 +62,20 @@ export const walletService = {
     );
     if (!result.ok) throw new Error((result as { message?: string }).message ?? "Error loading transactions.");
     return (result.data as Envelope<{ items: TransactionData[]; total: number }>).data;
+  },
+
+
+  async adminCreateWalletCredit(
+    accessToken: string,
+    payload: AdminCreateWalletCreditPayload,
+  ): Promise<AdminCreateWalletCreditResponse> {
+    const result = await apiClient.post<Envelope<AdminCreateWalletCreditResponse>>(
+      "/admin/wallet/credits",
+      payload,
+      { token: accessToken },
+    );
+    if (!result.ok) throw new Error((result as { message?: string }).message ?? "Error approving wallet credit.");
+    return (result.data as Envelope<AdminCreateWalletCreditResponse>).data;
   },
 
   async createPaymentOrder(

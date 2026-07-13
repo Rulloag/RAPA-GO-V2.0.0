@@ -204,6 +204,32 @@ function sanitizeFileName(value: string): string {
   return clean || "documento-residencia";
 }
 
+
+const RAPAGO_AUTH_PII_LOCAL_STORAGE_KEYS = [
+  "rapago_passenger_email",
+  "rapago_profile_email",
+  "rapago_passenger_phone",
+  "rapago_profile_phone",
+  "rapago_passenger_rut",
+  "rapago_profile_rut",
+  "rapago_resident_document_name",
+  "rapago_resident_document_uploaded_at",
+  "rapago_passenger_residence_document_meta",
+] as const;
+
+const RAPAGO_AUTH_SESSION_PROFILE_KEY = "rapago_registration_profile_session";
+const RAPAGO_RESIDENT_VERIFICATION_SESSION_KEY = "rapago_resident_verification_requests_session_v1";
+
+function clearLegacyAuthPiiLocalStorage(): void {
+  try {
+    for (const key of RAPAGO_AUTH_PII_LOCAL_STORAGE_KEYS) {
+      localStorage.removeItem(key);
+    }
+  } catch {
+    // No bloquea auth.
+  }
+}
+
 function persistRegistrationProfile(data: {
   name: string;
   firstName: string;
@@ -218,9 +244,27 @@ function persistRegistrationProfile(data: {
   residentDocument?: ResidentDocumentData | null;
 }): void {
   try {
-    localStorage.setItem("rapago_registration_profile", JSON.stringify(data));
-    localStorage.setItem("rapago_profile_phone", data.phone);
-    localStorage.setItem("rapago_profile_rut", data.rut);
+    clearLegacyAuthPiiLocalStorage();
+
+    const safeProfile = {
+      passengerFareType: data.passengerFareType,
+      passengerFareLabel: data.passengerFareLabel,
+      residenceVerificationStatus: data.residenceVerificationStatus,
+      residenceVerificationMessage: data.residenceVerificationMessage ?? "",
+      residenceDocumentRequired: data.passengerFareType === "resident",
+      residenceDocumentUploaded: Boolean(data.residentDocument),
+    };
+
+    sessionStorage.setItem(RAPAGO_AUTH_SESSION_PROFILE_KEY, JSON.stringify(data));
+    localStorage.setItem("rapago_registration_profile", JSON.stringify(safeProfile));
+
+    sessionStorage.setItem("rapago_passenger_email", data.email);
+    sessionStorage.setItem("rapago_profile_email", data.email);
+    sessionStorage.setItem("rapago_passenger_phone", data.phone);
+    sessionStorage.setItem("rapago_profile_phone", data.phone);
+    sessionStorage.setItem("rapago_passenger_rut", data.rut);
+    sessionStorage.setItem("rapago_profile_rut", data.rut);
+
     localStorage.setItem("rapago_passenger_fare_type", data.passengerFareType);
     localStorage.setItem("rapago_profile_passenger_type", data.passengerFareType);
     localStorage.setItem("rapago_fare_passenger_type", data.passengerFareType);
@@ -228,32 +272,21 @@ function persistRegistrationProfile(data: {
     localStorage.setItem("rapago_residence_verification_status", data.residenceVerificationStatus);
 
     if (data.residenceVerificationMessage) {
-      localStorage.setItem(
-        "rapago_residence_verification_user_message",
-        data.residenceVerificationMessage,
-      );
+      localStorage.setItem("rapago_residence_verification_user_message", data.residenceVerificationMessage);
     } else if (data.residenceVerificationStatus === "not_required") {
       localStorage.removeItem("rapago_residence_verification_user_message");
     }
 
-    // Compatibilidad conductor: si después se inscribe como conductor,
-    // mantiene su tipo tarifario; si es residente, queda como Residente Rapa Nui.
     localStorage.setItem("rapago_driver_passenger_fare_type", data.passengerFareType);
     localStorage.setItem("rapago_driver_fare_passenger_type", data.passengerFareType);
     localStorage.setItem("rapago_driver_nationality", data.passengerFareLabel);
     localStorage.setItem("rapago_driver_is_resident", String(data.passengerFareType === "resident"));
-// Rapanui normal es tipo propio/local, pero NO queda como residente pendiente de documento.
-localStorage.setItem("rapago_driver_is_rapanui_normal", String(data.passengerFareType === "rapanui"));
+    localStorage.setItem("rapago_driver_is_rapanui_normal", String(data.passengerFareType === "rapanui"));
 
-    if (data.residentDocument) {
-      localStorage.setItem("rapago_resident_document_name", data.residentDocument.name);
-      localStorage.setItem("rapago_resident_document_uploaded_at", data.residentDocument.uploadedAt);
-    } else {
-      localStorage.removeItem("rapago_resident_document_name");
-      localStorage.removeItem("rapago_resident_document_uploaded_at");
-    }
+    localStorage.removeItem("rapago_resident_document_name");
+    localStorage.removeItem("rapago_resident_document_uploaded_at");
   } catch {
-    // No bloquea el registro si localStorage no está disponible.
+    // No bloquea el registro si storage no esta disponible.
   }
 }
 
@@ -278,12 +311,13 @@ function persistResidentVerificationRequest(input: {
   document: ResidentDocumentData;
 }): void {
   try {
-    const now = new Date().toISOString();
-    const current = readResidentVerificationRequests();
-    const withoutSameUser = current.filter((item) => String(item.userId ?? "") !== input.userId);
+    clearLegacyAuthPiiLocalStorage();
 
-    const request = {
-      id: `resident-validation-${Date.now()}`,
+    const now = new Date().toISOString();
+    const requestId = "resident-validation-" + Date.now();
+
+    const fullSessionRequest = {
+      id: requestId,
       userId: input.userId,
       status: "pending",
       createdAt: now,
@@ -294,24 +328,63 @@ function persistResidentVerificationRequest(input: {
       rut: input.rut,
       phone: input.phone,
       email: input.email,
+      passengerFareType: "resident",
+      passengerFareLabel: "Residente Rapa Nui",
+      nationality: "Residente Rapa Nui",
+      registrationProvider: "email",
+      authProvider: "email",
       documentName: input.document.name,
       documentType: input.document.type,
       documentSizeBytes: input.document.sizeBytes,
       documentUploadedAt: input.document.uploadedAt,
       documentDataUrl: input.document.dataUrl,
-      reason: "Validación de residencia Rapa Nui",
-      userMessage:
-        "Tu documento de Residente Rapa Nui está pendiente de revisión por el administrador.",
+      reason: "Validacion de residencia Rapa Nui",
+      userMessage: "Tu documento de Residente Rapa Nui esta pendiente de revision por el administrador.",
+      storageScope: "session_only",
     };
 
+    const safeLocalRequest = {
+      id: requestId,
+      userId: input.userId,
+      status: "pending",
+      createdAt: now,
+      updatedAt: now,
+      passengerFareType: "resident",
+      passengerFareLabel: "Residente Rapa Nui",
+      nationality: "Residente Rapa Nui",
+      registrationProvider: "email",
+      authProvider: "email",
+      documentType: input.document.type,
+      documentSizeBytes: input.document.sizeBytes,
+      documentUploadedAt: input.document.uploadedAt,
+      documentDataUrl: null,
+      documentStorage: "session_only_pending_backend_upload",
+      piiStorage: "session_only",
+      reason: "Validacion de residencia Rapa Nui",
+      userMessage: "Tu documento de Residente Rapa Nui esta pendiente de revision por el administrador.",
+    };
+
+    const sessionRaw = sessionStorage.getItem(RAPAGO_RESIDENT_VERIFICATION_SESSION_KEY);
+    const sessionParsed = sessionRaw ? (JSON.parse(sessionRaw) as Array<Record<string, unknown>>) : [];
+    const currentSession = Array.isArray(sessionParsed) ? sessionParsed : [];
+    const nextSession = currentSession.filter((item) => String(item.userId ?? "") !== input.userId);
+    sessionStorage.setItem(
+      RAPAGO_RESIDENT_VERIFICATION_SESSION_KEY,
+      JSON.stringify([fullSessionRequest, ...nextSession].slice(0, 20)),
+    );
+
+    const localRaw = localStorage.getItem(RESIDENT_VERIFICATION_REQUESTS_KEY);
+    const localParsed = localRaw ? (JSON.parse(localRaw) as Array<Record<string, unknown>>) : [];
+    const currentLocal = Array.isArray(localParsed) ? localParsed : [];
+    const nextLocal = currentLocal.filter((item) => String(item.userId ?? "") !== input.userId);
     localStorage.setItem(
       RESIDENT_VERIFICATION_REQUESTS_KEY,
-      JSON.stringify([request, ...withoutSameUser].slice(0, 100)),
+      JSON.stringify([safeLocalRequest, ...nextLocal].slice(0, 100)),
     );
 
     window.dispatchEvent(new CustomEvent("rapago:resident-verification-updated"));
   } catch {
-    // No bloquea el registro si localStorage no está disponible.
+    // No bloquea auth si storage no esta disponible.
   }
 }
 
