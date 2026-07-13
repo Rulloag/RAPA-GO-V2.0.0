@@ -5849,49 +5849,40 @@ function savePassengerWalletBenefitFromCashOverpayment(
 ): void {
   if (review.overpaidClp <= 0) return;
 
+  const record = ride as RideRequestData & Record<string, unknown>;
+
+  const nextBenefit = {
+    id: `cash-overpayment-${review.rideId || review.rideKey}`,
+    rideId: review.rideId || null,
+    passengerEmail: review.passengerEmail,
+    ownerKey: review.passengerEmail,
+    amountClp: review.overpaidClp,
+    status: "backend_review_required",
+    source: "cash_overpayment_backend_review",
+    title: "Pago de mas pendiente backend/admin",
+    description:
+      `Pago de mas informado por pasajero: ${formatClp(review.overpaidClp)}. ` +
+      "No se guarda como saldo local ni se auto-aplica. El admin debe aprobarlo en backend wallet credit.",
+    createdAt: review.createdAt,
+    approvedBy: null,
+    fareClp: review.fareClp,
+    paidClp: review.paidClp,
+    passengerPaidClp: review.paidClp,
+    passengerOverpaidClp: review.overpaidClp,
+    passengerWantsWalletCredit: true,
+    driverId: record.assignedDriverId ?? record.driverId ?? null,
+    adminReviewStatus: "backend_review_required",
+    localStorageFinancialAuthority: false,
+  };
+
   try {
-    const record = ride as RideRequestData & Record<string, unknown>;
-    const raw = localStorage.getItem(RAPAGO_WALLET_BENEFITS_KEY);
-    const parsed = raw ? (JSON.parse(raw) as Array<Record<string, unknown>>) : [];
-    const current = Array.isArray(parsed) ? parsed : [];
-
-    const benefitId = `cash-overpayment-${review.rideId || review.rideKey}`;
-    const nextBenefit = {
-      id: benefitId,
-      rideId: review.rideId || null,
-      passengerEmail: review.passengerEmail,
-      ownerKey: review.passengerEmail,
-      amountClp: review.overpaidClp,
-      status: "pending_admin",
-      source: "cash_overpayment",
-      title: "Pago de más en efectivo",
-      description: `Pendiente de aprobación del admin. Si se aprueba, descontamos ${formatClp(review.overpaidClp)} en el próximo viaje del pasajero. Viaje ${review.originText} → ${review.destinationText}.`,
-      createdAt: review.createdAt,
-      approvedBy: null,
-      fareClp: review.fareClp,
-      paidClp: review.paidClp,
-      passengerPaidClp: review.paidClp,
-      passengerOverpaidClp: review.overpaidClp,
-      passengerWantsWalletCredit: true,
-      driverId: record.assignedDriverId ?? record.driverId ?? null,
-      adminReviewStatus: "pending_admin",
-    };
-
-    const next = [
-      nextBenefit,
-      ...current.filter((item) => String(item?.id ?? "") !== benefitId),
-    ].slice(0, 200);
-
-    localStorage.setItem(RAPAGO_WALLET_BENEFITS_KEY, JSON.stringify(next));
-    localStorage.setItem("rapago_wallet_auto_apply_benefits_v1", "true");
-
     window.dispatchEvent(new CustomEvent(RAPAGO_WALLET_BENEFIT_EVENT, { detail: { benefit: nextBenefit, ride } }));
     window.dispatchEvent(new CustomEvent("rapago:wallet-updated", { detail: { benefit: nextBenefit, ride } }));
     window.dispatchEvent(new CustomEvent("rapago:admin-wallet-benefit-updated", { detail: { benefit: nextBenefit, review, ride } }));
     window.dispatchEvent(new CustomEvent("rapago:admin-cash-closures-updated", { detail: { benefit: nextBenefit, review, ride } }));
     window.dispatchEvent(new CustomEvent("rapago:cash-payment-review-updated", { detail: { benefit: nextBenefit, review, ride } }));
   } catch {
-    // El saldo se confirma también desde backend/admin en producción.
+    // No bloquea Mis Viajes.
   }
 }
 
@@ -5935,70 +5926,10 @@ function savePassengerWalletCreditFromCardCancellation(
   ride: RideRequestData,
   cancelled: RideRequestData,
 ): void {
-  const record = ride as RideRequestData & Record<string, unknown>;
-  if (!isPassengerCancellationCardPaymentForRefundAction(record)) return;
-
-  const policyFee = Math.max(0, Math.round(Number((cancelled as RideRequestData & Record<string, unknown>).passengerCancellationFeeClp ?? 0)));
-  const paidAmountClp = getPassengerCardCancellationCreditAmountClp(record);
-  const creditAmountClp = getPassengerCardCancellationCreditNetClp(record, policyFee);
-
-  if (paidAmountClp <= 0 || creditAmountClp <= 0) return;
-
-  try {
-    const raw = localStorage.getItem(RAPAGO_WALLET_BENEFITS_KEY);
-    const parsed = raw ? (JSON.parse(raw) as Array<Record<string, unknown>>) : [];
-    const current = Array.isArray(parsed) ? parsed : [];
-    const rideId = String(record.id ?? record.rideId ?? record.originalRideId ?? "").trim();
-    const id = `card-cancellation-credit-${rideId || getPassengerPendingChargeRideKey(record)}`;
-    const now = new Date().toISOString();
-
-    const nextCredit = {
-      id,
-      rideId: rideId || null,
-      passengerEmail: String(record.passengerEmail ?? record.email ?? "").trim() || null,
-      ownerKey: String(record.passengerEmail ?? record.email ?? "").trim() || null,
-      amountClp: creditAmountClp,
-      status: "available",
-      source: "card_cancellation_credit",
-      title: "CRÉDITOS PARA PRÓXIMO VIAJE",
-      description:
-        `Pago con tarjeta/MercadoPago cancelado. Pago realizado: ${formatClp(paidAmountClp)}. ` +
-        `Penalización descontada automáticamente: ${formatClp(policyFee)}. ` +
-        `Saldo consignado como CRÉDITOS PARA PRÓXIMO VIAJE: ${formatClp(creditAmountClp)}. ` +
-        `Si el pasajero requiere devolución, debe solicitarla a Gerencia de Soporte RAPA GO por WhatsApp. Viaje ${String(ride.originText ?? "")} → ${String(ride.destinationText ?? "")}.`,
-      createdAt: now,
-      approvedAt: now,
-      approvedBy: "RAPA GO",
-      fareClp: creditAmountClp,
-      paidClp: paidAmountClp,
-      cancellationFeeClp: policyFee,
-      adminReviewStatus: "card_credit_available",
-      refundWhatsappAvailable: true,
-      cardRefundRequested: true,
-      mercadoPagoRefundRequested: true,
-      mercadoPagoRefundStatus: "wallet_credit_available",
-      originText: String(ride.originText ?? ""),
-      destinationText: String(ride.destinationText ?? ""),
-      paymentMethod: "card",
-      paymentProvider: "mercadopago",
-      paymentId: String(record.paymentId ?? record.mercadoPagoPaymentId ?? "").trim() || null,
-    };
-
-    localStorage.setItem(
-      RAPAGO_WALLET_BENEFITS_KEY,
-      JSON.stringify([
-        nextCredit,
-        ...current.filter((item) => String(item.id ?? "") !== id),
-      ].slice(0, 250)),
-    );
-
-    window.dispatchEvent(new CustomEvent(RAPAGO_WALLET_BENEFIT_EVENT, { detail: { benefit: nextCredit } }));
-    window.dispatchEvent(new CustomEvent("rapago:wallet-updated", { detail: { benefit: nextCredit } }));
-    window.dispatchEvent(new CustomEvent("rapago:admin-wallet-benefits-updated", { detail: { benefit: nextCredit } }));
-    window.dispatchEvent(new CustomEvent("rapago:admin-rides-updated", { detail: { benefit: nextCredit, cancelled } }));
-  } catch {
-    // No bloquea la cancelación si localStorage no permite guardar el crédito.
-  }
+  // Phase 2 security:
+  // Card/MercadoPago cancellation credits must not be created from localStorage/frontend.
+  // Real refund/credit state must come from backend payment refund or admin wallet credit.
+  return;
 }
 
 
