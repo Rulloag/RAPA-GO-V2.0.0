@@ -2,6 +2,9 @@ import { z } from "zod";
 
 export const createPaymentOrderSchema = z.object({
   rideId: z.string().uuid(),
+  // NOTA DE SEGURIDAD: este campo se acepta por compatibilidad con el cliente móvil, pero
+  // WalletService.createPaymentOrder NUNCA lo usa como monto autoritativo — el monto real
+  // se recalcula siempre desde ride.estimatedFareClp en el servidor.
   amount: z.number().int().positive(),
 });
 
