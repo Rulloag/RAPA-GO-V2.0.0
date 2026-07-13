@@ -601,3 +601,44 @@ Resultado:
 Estado:
 DRIVER TYPESCRIPT OK. Mobile sigue pendiente.
 
+
+## FASE 1 — Mobile passenger/request/trips TypeScript cleanup
+
+Se corrigieron los últimos bloqueadores TypeScript del build mobile.
+
+Cambios:
+- passenger/index.tsx:
+  - navigator.onLine normalizado con Boolean().
+  - schedule validation ajustada a los campos aceptados por el tipo actual.
+
+- RequestRidePage.tsx:
+  - StoredRegistrationProfile ahora acepta email, phone y rut.
+  - Se elimina propiedad duplicada border.
+  - Se elimina reservationRequiresCard duplicado.
+  - Payload local de agendamiento permite campos financieros/wallet usados en runtime.
+  - Comparaciones card/cash protegidas con String().
+
+- TripsPage.tsx:
+  - Timers locales convierten valores a number con type predicate.
+  - IonModal usa className en vez de cssClass.
+
+Evidencia:
+- docs/security/evidence/164_mobile_passenger_index_lines_125_160_before.txt
+- docs/security/evidence/165_mobile_passenger_index_lines_2735_2770_before.txt
+- docs/security/evidence/166_mobile_request_ride_profile_fields_before.txt
+- docs/security/evidence/167_mobile_request_ride_duplicate_3526_before.txt
+- docs/security/evidence/168_mobile_request_ride_payload_before.txt
+- docs/security/evidence/169_mobile_trips_lines_280_325_before.txt
+- docs/security/evidence/170_mobile_trips_lines_452_497_before.txt
+- docs/security/evidence/171_mobile_trips_modal_before.txt
+- docs/security/evidence/172_patch_mobile_passenger_request_trips_type_fixes.diff
+- docs/security/evidence/173_build_mobile_after_passenger_request_trips_type_fixes.txt
+
+Resultado:
+- npm run build -w apps/mobile ejecuta tsc && vite build correctamente.
+- Mobile build OK.
+- Queda solo warning de chunks grandes de Vite, no bloqueante.
+
+Estado:
+MOBILE BUILD OK.
+

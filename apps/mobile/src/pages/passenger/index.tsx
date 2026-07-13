@@ -123,7 +123,7 @@ function browserLooksLikePoorConnection(): boolean {
 }
 
 async function detectRapaGoConnectivityMode(): Promise<RapaGoConnectivityMode> {
-  if (navigator.onLine === false) return "offline";
+  if (!Boolean(navigator.onLine)) return "offline";
 
   const browserPoor = browserLooksLikePoorConnection();
   const controller = new AbortController();
@@ -138,7 +138,7 @@ async function detectRapaGoConnectivityMode(): Promise<RapaGoConnectivityMode> {
 
     return browserPoor ? "poor" : "online";
   } catch {
-    return navigator.onLine === false ? "offline" : "poor";
+    return !Boolean(navigator.onLine) ? "offline" : "poor";
   } finally {
     window.clearTimeout(timeoutId);
   }
@@ -2746,8 +2746,6 @@ function RequestRidePage(): JSX.Element {
       tripFareMode,
       scheduledAt,
       returnScheduledAt,
-      passengerFareType,
-      passengerFareLabel: passengerFareTypeLabel(passengerFareType),
     });
 
     if (scheduleError) {
