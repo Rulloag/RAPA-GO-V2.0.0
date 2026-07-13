@@ -1,0 +1,18 @@
+
+> @rapa-go/api@2.0.0 test
+> vitest run
+
+
+[7m[1m[36m RUN [39m[22m[27m [36mv1.6.0[39m [90mC:/Users/leand/OneDrive/Escritorio/RAPA-GO-V2.0.0/apps/api[39m
+
+ [32m✓[39m src/modules/payments/__tests__/mercadopago.provider.test.ts [2m ([22m[2m11 tests[22m[2m)[22m[90m 19[2mms[22m[39m
+ [32m✓[39m src/modules/payments/__tests__/prontopaga.service.test.ts [2m ([22m[2m10 tests[22m[2m)[22m[90m 10[2mms[22m[39m
+ [32m✓[39m src/modules/auth/__tests__/auth.service.test.ts [2m ([22m[2m8 tests[22m[2m)[22m[90m 17[2mms[22m[39m
+ [32m✓[39m src/modules/payments/__tests__/payments.service.test.ts [2m ([22m[2m16 tests[22m[2m)[22m[33m 1703[2mms[22m[39m
+
+[2m Test Files [22m [1m[32m4 passed[39m[22m[90m (4)[39m
+[2m      Tests [22m [1m[32m45 passed[39m[22m[90m (45)[39m
+[2m   Start at [22m 12:41:13
+[2m   Duration [22m 2.78s[2m (transform 889ms, setup 0ms, collect 941ms, tests 1.75s, environment 1ms, prepare 1.72s)[22m
+
+ExitCode=0

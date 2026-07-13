@@ -642,3 +642,34 @@ Resultado:
 Estado:
 MOBILE BUILD OK.
 
+
+## FASE 1 — Verificación final API + Mobile
+
+Se ejecutó verificación final completa después de las correcciones de seguridad, pagos, wallet, rides y build mobile.
+
+Resultados:
+- API build OK.
+- API tests OK.
+- Mobile build OK.
+
+Evidencia:
+- docs/security/evidence/174_final_git_log.txt
+- docs/security/evidence/175_final_git_status_before_verification.txt
+- docs/security/evidence/176_final_build_api.txt
+- docs/security/evidence/177_final_test_api.txt
+- docs/security/evidence/178_final_build_mobile.txt
+
+Detalle:
+- npm run build -w apps/api terminó con ExitCode=0.
+- npm test -w apps/api terminó con ExitCode=0.
+- Vitest: 4 archivos OK, 45 tests OK.
+- npm run build -w apps/mobile terminó con ExitCode=0.
+- Mobile build generó dist correctamente.
+- Queda warning de chunks grandes de Vite, no bloqueante.
+
+Estado:
+FASE 1 VERIFICADA.
+API OK.
+API TESTS OK.
+MOBILE BUILD OK.
+
