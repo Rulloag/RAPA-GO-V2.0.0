@@ -529,3 +529,32 @@ Resultado:
 Estado:
 PARCIAL. Mobile sigue pendiente.
 
+
+## FASE 1 — Mobile driver first type fixes
+
+Se corrigió el primer bloque de errores TypeScript en driver/index.tsx.
+
+Cambios:
+- navigator.onLine se normaliza con Boolean() para evitar comparación literal incompatible.
+- Google Maps LatLng/LatLngLiteral se convierte de forma segura sin intersección que genera never.
+- Limpieza de localStorage compara claves como string para evitar unión literal incompatible.
+- PassengerNotificationPayload incluye eventos scheduled usados por el flujo de reservas.
+
+Evidencia:
+- docs/security/evidence/135_mobile_driver_lines_130_175_before.txt
+- docs/security/evidence/136_mobile_driver_lines_1288_1328_before.txt
+- docs/security/evidence/137_mobile_driver_lines_3308_3343_before.txt
+- docs/security/evidence/138_mobile_driver_lines_5168_5213_before.txt
+- docs/security/evidence/139_mobile_driver_notification_types_locations.txt
+- docs/security/evidence/140_patch_mobile_driver_first_type_fixes.diff
+- docs/security/evidence/141_build_mobile_after_driver_first_type_fixes.txt
+- docs/security/evidence/142_patch_mobile_driver_notification_union.diff
+- docs/security/evidence/143_build_mobile_after_driver_notification_union.txt
+
+Resultado:
+- Desaparecen errores iniciales de driver/index.tsx.
+- Mobile build sigue fallando por otros errores en driver, passenger, RequestRidePage y TripsPage.
+
+Estado:
+PARCIAL. Mobile sigue pendiente.
+

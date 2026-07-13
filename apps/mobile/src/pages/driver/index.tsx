@@ -132,7 +132,7 @@ function browserLooksLikePoorConnection(): boolean {
 }
 
 async function detectRapaGoConnectivityMode(): Promise<RapaGoConnectivityMode> {
-  if (navigator.onLine === false) return "offline";
+  if (!Boolean(navigator.onLine)) return "offline";
 
   const browserPoor = browserLooksLikePoorConnection();
   const controller = new AbortController();
@@ -147,7 +147,7 @@ async function detectRapaGoConnectivityMode(): Promise<RapaGoConnectivityMode> {
 
     return browserPoor ? "poor" : "online";
   } catch {
-    return navigator.onLine === false ? "offline" : "poor";
+    return !Boolean(navigator.onLine) ? "offline" : "poor";
   } finally {
     window.clearTimeout(timeoutId);
   }
@@ -1308,9 +1308,15 @@ function UberDriverNavigationMap({
   ): { lat: number; lng: number } | null {
     if (!value) return null;
 
-    const raw = value as google.maps.LatLng & google.maps.LatLngLiteral;
-    const lat = typeof raw.lat === "function" ? raw.lat() : Number(raw.lat);
-    const lng = typeof raw.lng === "function" ? raw.lng() : Number(raw.lng);
+    const raw = value as {
+      lat?: number | (() => number);
+      lng?: number | (() => number);
+    };
+
+    const rawLat = raw.lat;
+    const rawLng = raw.lng;
+    const lat = typeof rawLat === "function" ? rawLat() : Number(rawLat);
+    const lng = typeof rawLng === "function" ? rawLng() : Number(rawLng);
 
     return Number.isFinite(lat) && Number.isFinite(lng) ? { lat, lng } : null;
   }
@@ -3318,9 +3324,10 @@ function removeLegacyDriverHeavyStorage(exceptKey?: string): void {
       // IMPORTANTE: no borrar la foto de perfil del conductor.
       // Antes esta limpieza eliminaba rapago_driver_profile_photo y por eso
       // el pasajero siempre veía la letra inicial en vez de la foto.
-      const lower = key.toLowerCase();
+      const keyName = String(key);
+      const lower = keyName.toLowerCase();
       if (
-        key === RAPAGO_DRIVER_CANONICAL_PROFILE_PHOTO_KEY ||
+        keyName === RAPAGO_DRIVER_CANONICAL_PROFILE_PHOTO_KEY ||
         lower.includes("profile") ||
         lower.includes("perfil") ||
         lower.includes("avatar")
@@ -3328,7 +3335,7 @@ function removeLegacyDriverHeavyStorage(exceptKey?: string): void {
         continue;
       }
 
-      localStorage.removeItem(key);
+      localStorage.removeItem(keyName);
     }
   } catch {
     // No bloquea el flujo.
@@ -6572,7 +6579,13 @@ export function DriverHomePage(): JSX.Element {
 type PassengerNotificationPayload = {
   id: string;
   rideId: string;
-  type: "driver_cancelled_requeue" | "driver_assigned" | "scheduled_driver_assigned";
+  type:
+    | "driver_cancelled_requeue"
+    | "driver_assigned"
+    | "scheduled_driver_assigned"
+    | "scheduled_reservation_released"
+    | "scheduled_driver_started_route"
+    | "scheduled_driver_reassigned";
   title: string;
   body: string;
   createdAt: string;
