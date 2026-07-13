@@ -277,7 +277,8 @@ Archivos modificados:
 Control agregado:
 - mount en el body queda solo como compatibilidad temporal.
 - El backend ignora input.amount.
-- El monto real se toma desde ide_requests.estimated_fare_clp.
+- El monto real se toma desde
+ide_requests.estimated_fare_clp.
 - Se valida ownership del ride.
 - Se rechaza si el viaje no tiene monto válido.
 - Se registra metadata no autoritativa con el monto solicitado por cliente.
