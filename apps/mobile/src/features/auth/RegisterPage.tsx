@@ -311,12 +311,13 @@ function persistResidentVerificationRequest(input: {
   document: ResidentDocumentData;
 }): void {
   try {
-    const now = new Date().toISOString();
-    const current = readResidentVerificationRequests();
-    const withoutSameUser = current.filter((item) => String(item.userId ?? "") !== input.userId);
+    clearLegacyAuthPiiLocalStorage();
 
-    const request = {
-      id: `resident-validation-${Date.now()}`,
+    const now = new Date().toISOString();
+    const requestId = "resident-validation-" + Date.now();
+
+    const fullSessionRequest = {
+      id: requestId,
       userId: input.userId,
       status: "pending",
       createdAt: now,
@@ -327,25 +328,63 @@ function persistResidentVerificationRequest(input: {
       rut: input.rut,
       phone: input.phone,
       email: input.email,
+      passengerFareType: "resident",
+      passengerFareLabel: "Residente Rapa Nui",
+      nationality: "Residente Rapa Nui",
+      registrationProvider: "email",
+      authProvider: "email",
       documentName: input.document.name,
+      documentType: input.document.type,
+      documentSizeBytes: input.document.sizeBytes,
+      documentUploadedAt: input.document.uploadedAt,
+      documentDataUrl: input.document.dataUrl,
+      reason: "Validacion de residencia Rapa Nui",
+      userMessage: "Tu documento de Residente Rapa Nui esta pendiente de revision por el administrador.",
+      storageScope: "session_only",
+    };
+
+    const safeLocalRequest = {
+      id: requestId,
+      userId: input.userId,
+      status: "pending",
+      createdAt: now,
+      updatedAt: now,
+      passengerFareType: "resident",
+      passengerFareLabel: "Residente Rapa Nui",
+      nationality: "Residente Rapa Nui",
+      registrationProvider: "email",
+      authProvider: "email",
       documentType: input.document.type,
       documentSizeBytes: input.document.sizeBytes,
       documentUploadedAt: input.document.uploadedAt,
       documentDataUrl: null,
       documentStorage: "session_only_pending_backend_upload",
-      reason: "Validación de residencia Rapa Nui",
-      userMessage:
-        "Tu documento de Residente Rapa Nui está pendiente de revisión por el administrador.",
+      piiStorage: "session_only",
+      reason: "Validacion de residencia Rapa Nui",
+      userMessage: "Tu documento de Residente Rapa Nui esta pendiente de revision por el administrador.",
     };
 
+    const sessionRaw = sessionStorage.getItem(RAPAGO_RESIDENT_VERIFICATION_SESSION_KEY);
+    const sessionParsed = sessionRaw ? (JSON.parse(sessionRaw) as Array<Record<string, unknown>>) : [];
+    const currentSession = Array.isArray(sessionParsed) ? sessionParsed : [];
+    const nextSession = currentSession.filter((item) => String(item.userId ?? "") !== input.userId);
+    sessionStorage.setItem(
+      RAPAGO_RESIDENT_VERIFICATION_SESSION_KEY,
+      JSON.stringify([fullSessionRequest, ...nextSession].slice(0, 20)),
+    );
+
+    const localRaw = localStorage.getItem(RESIDENT_VERIFICATION_REQUESTS_KEY);
+    const localParsed = localRaw ? (JSON.parse(localRaw) as Array<Record<string, unknown>>) : [];
+    const currentLocal = Array.isArray(localParsed) ? localParsed : [];
+    const nextLocal = currentLocal.filter((item) => String(item.userId ?? "") !== input.userId);
     localStorage.setItem(
       RESIDENT_VERIFICATION_REQUESTS_KEY,
-      JSON.stringify([request, ...withoutSameUser].slice(0, 100)),
+      JSON.stringify([safeLocalRequest, ...nextLocal].slice(0, 100)),
     );
 
     window.dispatchEvent(new CustomEvent("rapago:resident-verification-updated"));
   } catch {
-    // No bloquea el registro si localStorage no está disponible.
+    // No bloquea auth si storage no esta disponible.
   }
 }
 

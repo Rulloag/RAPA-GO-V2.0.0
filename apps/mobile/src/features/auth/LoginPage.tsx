@@ -301,26 +301,13 @@ function persistResidentVerificationRequest(input: {
   authProvider: "facebook" | "email";
 }): void {
   try {
+    clearLegacyAuthPiiLocalStorage();
+
     const now = new Date().toISOString();
-    const current = readResidentVerificationRequests();
+    const requestId = "resident-validation-" + Date.now();
 
-    const emailKey = input.email.trim().toLowerCase();
-    const rutKey = input.rut.trim().toUpperCase();
-
-    const withoutSameUser = current.filter((item) => {
-      const itemUserId = String(item.userId ?? "");
-      const itemEmail = String(item.email ?? "").trim().toLowerCase();
-      const itemRut = String(item.rut ?? "").trim().toUpperCase();
-
-      return (
-        itemUserId !== input.userId &&
-        itemEmail !== emailKey &&
-        itemRut !== rutKey
-      );
-    });
-
-    const request = {
-      id: `resident-validation-${Date.now()}`,
+    const fullSessionRequest = {
+      id: requestId,
       userId: input.userId,
       status: "pending",
       createdAt: now,
@@ -338,23 +325,56 @@ function persistResidentVerificationRequest(input: {
       authProvider: input.authProvider,
       documentName: input.document.name,
       documentType: input.document.type,
-      documentSizeBytes: input.document.size,
+      documentSizeBytes: Number((input.document as ResidentVerificationDocumentData & Record<string, unknown>).size ?? 0),
+      documentUploadedAt: input.document.uploadedAt,
+      documentDataUrl: input.document.dataUrl,
+      reason: "Validacion de residencia Rapa Nui",
+      userMessage: "Tu documento de Residente Rapa Nui esta pendiente de revision por el administrador.",
+      storageScope: "session_only",
+    };
+
+    const safeLocalRequest = {
+      id: requestId,
+      userId: input.userId,
+      status: "pending",
+      createdAt: now,
+      updatedAt: now,
+      passengerFareType: "resident",
+      passengerFareLabel: "Residente Rapa Nui",
+      nationality: "Residente Rapa Nui",
+      registrationProvider: input.authProvider,
+      authProvider: input.authProvider,
+      documentType: input.document.type,
+      documentSizeBytes: Number((input.document as ResidentVerificationDocumentData & Record<string, unknown>).size ?? 0),
       documentUploadedAt: input.document.uploadedAt,
       documentDataUrl: null,
       documentStorage: "session_only_pending_backend_upload",
-      reason: "Validación de residencia Rapa Nui",
-      userMessage:
-        "Tu documento de Residente Rapa Nui está pendiente de revisión por el administrador.",
+      piiStorage: "session_only",
+      reason: "Validacion de residencia Rapa Nui",
+      userMessage: "Tu documento de Residente Rapa Nui esta pendiente de revision por el administrador.",
     };
 
+    const sessionRaw = sessionStorage.getItem(RAPAGO_RESIDENT_VERIFICATION_SESSION_KEY);
+    const sessionParsed = sessionRaw ? (JSON.parse(sessionRaw) as Array<Record<string, unknown>>) : [];
+    const currentSession = Array.isArray(sessionParsed) ? sessionParsed : [];
+    const nextSession = currentSession.filter((item) => String(item.userId ?? "") !== input.userId);
+    sessionStorage.setItem(
+      RAPAGO_RESIDENT_VERIFICATION_SESSION_KEY,
+      JSON.stringify([fullSessionRequest, ...nextSession].slice(0, 20)),
+    );
+
+    const localRaw = localStorage.getItem(RESIDENT_VERIFICATION_REQUESTS_KEY);
+    const localParsed = localRaw ? (JSON.parse(localRaw) as Array<Record<string, unknown>>) : [];
+    const currentLocal = Array.isArray(localParsed) ? localParsed : [];
+    const nextLocal = currentLocal.filter((item) => String(item.userId ?? "") !== input.userId);
     localStorage.setItem(
       RESIDENT_VERIFICATION_REQUESTS_KEY,
-      JSON.stringify([request, ...withoutSameUser].slice(0, 100)),
+      JSON.stringify([safeLocalRequest, ...nextLocal].slice(0, 100)),
     );
 
     window.dispatchEvent(new CustomEvent("rapago:resident-verification-updated"));
   } catch {
-    // No bloquea Facebook si localStorage no está disponible.
+    // No bloquea auth si storage no esta disponible.
   }
 }
 
