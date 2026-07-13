@@ -1,0 +1,527 @@
+﻿apps/api/src/db/migrations/meta/0016_snapshot.json:2944:"balance": {
+apps/api/src/db/migrations/meta/0016_snapshot.json:2945:"name": "balance",
+apps/api/src/db/schema/wallets.schema.ts:8:balance:   integer("balance").notNull().default(0),
+apps/api/src/modules/referrals/referrals.service.ts:234:const newBalance = wallet.balance + rewardAmount;
+apps/api/src/modules/referrals/referrals.service.ts:235:await walletRepo.updateBalance(wallet.id, newBalance);
+apps/api/src/modules/referrals/referrals.service.ts:239:type:        "credit",
+apps/api/src/modules/wallet/wallet.repository.ts:35:async updateBalance(walletId: string, newBalance: number): Promise<Wallet> {
+apps/api/src/modules/wallet/wallet.repository.ts:39:.set({ balance: newBalance, updatedAt: new Date() })
+apps/api/src/modules/wallet/wallet.repository.ts:43:if (!row) throw AppError.internal("Wallet not found during balance update.");
+apps/api/src/modules/wallet/wallet.repository.ts:47:throw AppError.internal(`Failed to update wallet balance: ${String(err)}`);
+apps/api/src/modules/wallet/wallet.service.ts:40:balance:   w.balance,
+apps/mobile/src/features/auth/RegisterPage.tsx:73:helper: "Persona chilena que visita la isla y no acredita residencia.",
+apps/mobile/src/features/wallet/wallet.service.ts:5:balance:   number;
+apps/mobile/src/i18n/rapagoI18n.tsx:136:"Saldo a favor": "Credit balance",
+apps/mobile/src/i18n/rapagoI18n.tsx:137:"Si pagas de más o queda una diferencia, el administrador podrá revisarlo y dejarlo como saldo para próximos viajes si corresponde.": "If you overpay or there is a difference, the administrator can review it and leave it as credit for future rides if applicable.",
+apps/mobile/src/i18n/rapagoI18n.tsx:140:"Saldo para próximos viajes": "Credit for future rides",
+apps/mobile/src/i18n/rapagoI18n.tsx:141:"Si un pasajero paga de más o existe una diferencia, el administrador podrá revisar el caso y confirmar si ese monto queda como saldo para usar en viajes futuros.": "If a passenger overpays or there is a difference, the administrator can review the case and confirm whether that amount remains as credit for future rides.",
+apps/mobile/src/i18n/rapagoI18n.tsx:167:"Comparte tu código. Cuando alguien complete su primer viaje, recibirás un beneficio en tu billetera.": "Share your code. When someone completes their first ride, you will receive a benefit in your wallet.",
+apps/mobile/src/navigation/routeConfig.ts:25:{ path: "/passenger/wallet", label: "Billetera", role: "passenger", plannedFeatures: ["Saldo disponible", "Historial de transacciones", "Recargar saldo"] },
+apps/mobile/src/pages/admin/index.tsx:127:type AdminCashPaymentDecision = "exact" | "wallet_credit" | "refund_whatsapp" | "driver_overpaid";
+apps/mobile/src/pages/admin/index.tsx:154:passengerWantsWalletCredit?: boolean | null;
+apps/mobile/src/pages/admin/index.tsx:159:type AdminWalletBenefit = {
+apps/mobile/src/pages/admin/index.tsx:214:const RAPAGO_WALLET_BENEFITS_KEY_ADMIN = "rapago_wallet_benefits_v1";
+apps/mobile/src/pages/admin/index.tsx:219:const RAPAGO_ADMIN_WALLET_BENEFIT_EVENT = "rapago:admin-wallet-benefit-updated";
+apps/mobile/src/pages/admin/index.tsx:300:if (raw === "wallet_credit") return "wallet_credit";
+apps/mobile/src/pages/admin/index.tsx:361:current.passengerWantsWalletCredit = decision === "wallet_credit" || current.passengerWantsWalletCredit || false;
+apps/mobile/src/pages/admin/index.tsx:377:const decision: AdminCashPaymentDecision = review.passengerWantsWalletCredit
+apps/mobile/src/pages/admin/index.tsx:378:? "wallet_credit"
+apps/mobile/src/pages/admin/index.tsx:387:: decision === "wallet_credit"
+apps/mobile/src/pages/admin/index.tsx:400:status: decision === "wallet_credit" ? "wallet_available" : decision === "refund_whatsapp" ? "pending_refund" : decision === "driver_overpaid" ? "pending_driver_review" : "completed",
+apps/mobile/src/pages/admin/index.tsx:424:function readAdminWalletBenefits(): AdminWalletBenefit[] {
+apps/mobile/src/pages/admin/index.tsx:426:const raw = localStorage.getItem(RAPAGO_WALLET_BENEFITS_KEY_ADMIN);
+apps/mobile/src/pages/admin/index.tsx:431:id: String(item.id ?? `wallet-benefit-${index}`),
+apps/mobile/src/pages/admin/index.tsx:462:function writeAdminWalletBenefits(benefits: AdminWalletBenefit[]): void {
+apps/mobile/src/pages/admin/index.tsx:464:localStorage.setItem(RAPAGO_WALLET_BENEFITS_KEY_ADMIN, JSON.stringify(benefits.slice(0, 250)));
+apps/mobile/src/pages/admin/index.tsx:465:window.dispatchEvent(new CustomEvent("rapago:wallet-benefit-updated", { detail: { benefits } }));
+apps/mobile/src/pages/admin/index.tsx:466:window.dispatchEvent(new CustomEvent(RAPAGO_ADMIN_WALLET_BENEFIT_EVENT, { detail: { benefits } }));
+apps/mobile/src/pages/admin/index.tsx:467:window.dispatchEvent(new CustomEvent("rapago:wallet-updated", { detail: { benefits } }));
+apps/mobile/src/pages/admin/index.tsx:468:window.dispatchEvent(new CustomEvent(RAPAGO_ADMIN_RIDES_EVENT, { detail: { benefits } }));
+apps/mobile/src/pages/admin/index.tsx:474:function isAdminWalletCardCancellationCredit(benefit: AdminWalletBenefit): boolean {
+apps/mobile/src/pages/admin/index.tsx:476:benefit.source,
+apps/mobile/src/pages/admin/index.tsx:477:benefit.title,
+apps/mobile/src/pages/admin/index.tsx:478:benefit.description,
+apps/mobile/src/pages/admin/index.tsx:479:benefit.paymentMethod,
+apps/mobile/src/pages/admin/index.tsx:480:benefit.paymentProvider,
+apps/mobile/src/pages/admin/index.tsx:481:benefit.mercadoPagoRefundStatus,
+apps/mobile/src/pages/admin/index.tsx:487:text.includes("card_cancellation_credit") ||
+apps/mobile/src/pages/admin/index.tsx:492:benefit.refundWhatsappAvailable === true ||
+apps/mobile/src/pages/admin/index.tsx:493:benefit.cardRefundRequested === true ||
+apps/mobile/src/pages/admin/index.tsx:494:benefit.mercadoPagoRefundRequested === true
+apps/mobile/src/pages/admin/index.tsx:498:function isAdminWalletCreditAvailable(benefit: AdminWalletBenefit): boolean {
+apps/mobile/src/pages/admin/index.tsx:499:const status = String(benefit.status ?? "").toLowerCase();
+apps/mobile/src/pages/admin/index.tsx:500:const adminStatus = String(benefit.adminReviewStatus ?? "").toLowerCase();
+apps/mobile/src/pages/admin/index.tsx:506:adminStatus === "card_credit_available" ||
+apps/mobile/src/pages/admin/index.tsx:511:function isAdminWalletCreditPending(benefit: AdminWalletBenefit): boolean {
+apps/mobile/src/pages/admin/index.tsx:512:const status = String(benefit.status ?? "").toLowerCase();
+apps/mobile/src/pages/admin/index.tsx:513:const adminStatus = String(benefit.adminReviewStatus ?? "").toLowerCase();
+apps/mobile/src/pages/admin/index.tsx:518:function isAdminWalletCreditRefundCompleted(benefit: AdminWalletBenefit): boolean {
+apps/mobile/src/pages/admin/index.tsx:519:const status = String(benefit.status ?? "").toLowerCase();
+apps/mobile/src/pages/admin/index.tsx:520:const adminStatus = String(benefit.adminReviewStatus ?? "").toLowerCase();
+apps/mobile/src/pages/admin/index.tsx:525:function adminWalletCreditStatusLabel(benefit: AdminWalletBenefit): string {
+apps/mobile/src/pages/admin/index.tsx:526:if (isAdminWalletCreditRefundCompleted(benefit)) return "Devolución gestionada";
+apps/mobile/src/pages/admin/index.tsx:527:if (isAdminWalletCreditPending(benefit)) return "Pendiente admin";
+apps/mobile/src/pages/admin/index.tsx:528:if (isAdminWalletCreditAvailable(benefit)) return "Disponible en wallet";
+apps/mobile/src/pages/admin/index.tsx:529:if (String(benefit.status ?? "").toLowerCase() === "used") return "Usado";
+apps/mobile/src/pages/admin/index.tsx:530:return benefit.status || "Crédito";
+apps/mobile/src/pages/admin/index.tsx:533:function adminWalletCreditStatusColor(benefit: AdminWalletBenefit): string {
+apps/mobile/src/pages/admin/index.tsx:534:if (isAdminWalletCreditRefundCompleted(benefit)) return "success";
+apps/mobile/src/pages/admin/index.tsx:535:if (isAdminWalletCreditPending(benefit)) return "warning";
+apps/mobile/src/pages/admin/index.tsx:536:if (isAdminWalletCreditAvailable(benefit)) return "success";
+apps/mobile/src/pages/admin/index.tsx:537:if (String(benefit.status ?? "").toLowerCase() === "used") return "medium";
+apps/mobile/src/pages/admin/index.tsx:541:function markAdminWalletCreditAvailable(benefit: AdminWalletBenefit): void {
+apps/mobile/src/pages/admin/index.tsx:543:const next = readAdminWalletBenefits().map((item) => {
+apps/mobile/src/pages/admin/index.tsx:544:if (item.id !== benefit.id) return item;
+apps/mobile/src/pages/admin/index.tsx:549:adminReviewStatus: "card_credit_available",
+apps/mobile/src/pages/admin/index.tsx:556:writeAdminWalletBenefits(next);
+apps/mobile/src/pages/admin/index.tsx:559:function markAdminWalletCreditRefundCompleted(benefit: AdminWalletBenefit): void {
+apps/mobile/src/pages/admin/index.tsx:561:const next = readAdminWalletBenefits().map((item) => {
+apps/mobile/src/pages/admin/index.tsx:562:if (item.id !== benefit.id) return item;
+apps/mobile/src/pages/admin/index.tsx:572:} as AdminWalletBenefit & Record<string, unknown>;
+apps/mobile/src/pages/admin/index.tsx:575:writeAdminWalletBenefits(next);
+apps/mobile/src/pages/admin/index.tsx:578:function buildAdminWalletCreditRefundWhatsAppUrl(benefit: AdminWalletBenefit): string {
+apps/mobile/src/pages/admin/index.tsx:582:`Pasajero: ${benefit.passengerEmail || benefit.ownerKey || "No informado"}`,
+apps/mobile/src/pages/admin/index.tsx:583:`Monto crédito: ${formatAdminCashClp(benefit.amountClp)}`,
+apps/mobile/src/pages/admin/index.tsx:584:benefit.paidClp != null ? `Pago original: ${formatAdminCashClp(benefit.paidClp)}` : null,
+apps/mobile/src/pages/admin/index.tsx:585:benefit.cancellationFeeClp != null ? `Penalización descontada: ${formatAdminCashClp(benefit.cancellationFeeClp)}` : null,
+apps/mobile/src/pages/admin/index.tsx:586:benefit.originText || benefit.destinationText ? `Viaje: ${benefit.originText || "Origen"} → ${benefit.destinationText || "Destino"}` : null,
+apps/mobile/src/pages/admin/index.tsx:587:benefit.paymentId ? `ID pago: ${benefit.paymentId}` : null,
+apps/mobile/src/pages/admin/index.tsx:588:benefit.rideId ? `ID viaje: ${benefit.rideId}` : null,
+apps/mobile/src/pages/admin/index.tsx:594:function openAdminWalletCreditRefundWhatsApp(benefit: AdminWalletBenefit): void {
+apps/mobile/src/pages/admin/index.tsx:595:const url = buildAdminWalletCreditRefundWhatsAppUrl(benefit);
+apps/mobile/src/pages/admin/index.tsx:737:if (review.decision === "wallet_credit") return "Saldo a favor solicitado";
+apps/mobile/src/pages/admin/index.tsx:744:if (review.decision === "wallet_credit") {
+apps/mobile/src/pages/admin/index.tsx:745:return isAdminCashWalletApproved(review) ? "Saldo aprobado" : "Pendiente aprobar saldo";
+apps/mobile/src/pages/admin/index.tsx:757:if (review.decision === "wallet_credit") return isAdminCashWalletApproved(review) ? "success" : "warning";
+apps/mobile/src/pages/admin/index.tsx:763:function approveAdminCashWalletCredit(review: AdminCashPaymentReview): void {
+apps/mobile/src/pages/admin/index.tsx:765:const creditAmount = Math.max(0, Math.round(Number(review.passengerOverpaidClp ?? review.overpaidClp ?? 0)));
+apps/mobile/src/pages/admin/index.tsx:766:if (creditAmount <= 0) return;
+apps/mobile/src/pages/admin/index.tsx:779:const benefits = readAdminWalletBenefits();
+apps/mobile/src/pages/admin/index.tsx:780:const benefitId = `cash-overpayment-${review.rideId || review.rideKey}`;
+apps/mobile/src/pages/admin/index.tsx:781:const nextBenefit: AdminWalletBenefit = {
+apps/mobile/src/pages/admin/index.tsx:782:id: benefitId,
+apps/mobile/src/pages/admin/index.tsx:786:amountClp: creditAmount,
+apps/mobile/src/pages/admin/index.tsx:801:writeAdminWalletBenefits([
+apps/mobile/src/pages/admin/index.tsx:802:nextBenefit,
+apps/mobile/src/pages/admin/index.tsx:803:...benefits.filter((item) => String(item.id ?? "") !== benefitId),
+apps/mobile/src/pages/admin/index.tsx:936:window.addEventListener("rapago:wallet-benefit-updated", refreshCashReviews as EventListener);
+apps/mobile/src/pages/admin/index.tsx:937:window.addEventListener(RAPAGO_ADMIN_WALLET_BENEFIT_EVENT, refreshCashReviews as EventListener);
+apps/mobile/src/pages/admin/index.tsx:947:window.removeEventListener("rapago:wallet-benefit-updated", refreshCashReviews as EventListener);
+apps/mobile/src/pages/admin/index.tsx:948:window.removeEventListener(RAPAGO_ADMIN_WALLET_BENEFIT_EVENT, refreshCashReviews as EventListener);
+apps/mobile/src/pages/admin/index.tsx:1109:if (review.decision === "wallet_credit") return !isAdminCashWalletApproved(review);
+apps/mobile/src/pages/admin/index.tsx:1118:const adminWalletBenefits = cashReviewsRevision >= 0 ? readAdminWalletBenefits() : [];
+apps/mobile/src/pages/admin/index.tsx:1119:const cardCancellationCredits = adminWalletBenefits.filter(isAdminWalletCardCancellationCredit);
+apps/mobile/src/pages/admin/index.tsx:1120:const cardCancellationCreditsAmountClp = cardCancellationCredits.reduce((sum, credit) => sum + Math.max(0, credit.amountClp), 0);
+apps/mobile/src/pages/admin/index.tsx:1121:const cardCancellationCreditsPending = cardCancellationCredits.filter(isAdminWalletCreditPending);
+apps/mobile/src/pages/admin/index.tsx:1122:const cardRefundRequestsPending = cardCancellationCredits.filter((credit) =>
+apps/mobile/src/pages/admin/index.tsx:1123:credit.refundWhatsappAvailable && !isAdminWalletCreditRefundCompleted(credit),
+apps/mobile/src/pages/admin/index.tsx:1128:cardCancellationCreditsPending.length +
+apps/mobile/src/pages/admin/index.tsx:1738:Revisa cargos por cancelación, no show, pagos en efectivo, saldos a favor y devoluciones.
+apps/mobile/src/pages/admin/index.tsx:1777:{formatAdminCashClp(cardCancellationCreditsAmountClp)}
+apps/mobile/src/pages/admin/index.tsx:1784:{passengerPendingCharges.length === 0 && cashPaymentReviews.length === 0 && cardCancellationCredits.length === 0 && (
+apps/mobile/src/pages/admin/index.tsx:1795:{cardCancellationCredits.length > 0 && (
+apps/mobile/src/pages/admin/index.tsx:1809:Saldo neto por cancelaciones de tarjeta/reserva. Penalización descontada del pago realizado.
+apps/mobile/src/pages/admin/index.tsx:1834:Total consignado en wallet: <strong>{formatAdminCashClp(cardCancellationCreditsAmountClp)}</strong>.
+apps/mobile/src/pages/admin/index.tsx:1839:{cardCancellationCredits.slice(0, 10).map((credit) => {
+apps/mobile/src/pages/admin/index.tsx:1840:const passengerLabel = credit.passengerEmail || credit.ownerKey || "Pasajero";
+apps/mobile/src/pages/admin/index.tsx:1841:const cancellationFee = Math.max(0, Math.round(Number(credit.cancellationFeeClp ?? 0)));
+apps/mobile/src/pages/admin/index.tsx:1845:key={credit.id}
+apps/mobile/src/pages/admin/index.tsx:1856:CRÉDITOS PARA PRÓXIMO VIAJE · {formatAdminCashClp(credit.amountClp)}
+apps/mobile/src/pages/admin/index.tsx:1859:{passengerLabel} · {credit.originText || "Origen"} → {credit.destinationText || "Destino"}
+apps/mobile/src/pages/admin/index.tsx:1862:<IonBadge color={adminWalletCreditStatusColor(credit)}>
+apps/mobile/src/pages/admin/index.tsx:1863:{adminWalletCreditStatusLabel(credit)}
+apps/mobile/src/pages/admin/index.tsx:1871:{credit.paidClp != null ? formatAdminCashClp(credit.paidClp) : "No informado"}
+apps/mobile/src/pages/admin/index.tsx:1883:{formatAdminCashClp(credit.amountClp)}
+apps/mobile/src/pages/admin/index.tsx:1888:{credit.paymentId && (
+apps/mobile/src/pages/admin/index.tsx:1890:ID pago: <strong>{credit.paymentId}</strong>
+apps/mobile/src/pages/admin/index.tsx:1894:{credit.description && (
+apps/mobile/src/pages/admin/index.tsx:1896:{credit.description}
+apps/mobile/src/pages/admin/index.tsx:1901:{isAdminWalletCreditPending(credit) && (
+apps/mobile/src/pages/admin/index.tsx:1906:markAdminWalletCreditAvailable(credit);
+apps/mobile/src/pages/admin/index.tsx:1915:{credit.refundWhatsappAvailable && !isAdminWalletCreditRefundCompleted(credit) && (
+apps/mobile/src/pages/admin/index.tsx:1920:onClick={() => openAdminWalletCreditRefundWhatsApp(credit)}
+apps/mobile/src/pages/admin/index.tsx:1926:{credit.refundWhatsappAvailable && !isAdminWalletCreditRefundCompleted(credit) && (
+apps/mobile/src/pages/admin/index.tsx:1932:markAdminWalletCreditRefundCompleted(credit);
+apps/mobile/src/pages/admin/index.tsx:1989:Hay {formatAdminCashClp(pendingPassengerChargeAmountClp)} pendiente por efectivo/sin pago. En tarjeta/MercadoPago la penalización se descuenta del pago realizado y el saldo va a CRÉDITOS PARA PRÓXIMO VIAJE.
+apps/mobile/src/pages/admin/index.tsx:2103:Saldos a favor y devoluciones solicitadas por pasajeros
+apps/mobile/src/pages/admin/index.tsx:2128:Hay {formatAdminCashClp(pendingCashAmountClp)} por revisar entre saldos a favor y devoluciones.
+apps/mobile/src/pages/admin/index.tsx:2134:const isWallet = review.decision === "wallet_credit";
+apps/mobile/src/pages/admin/index.tsx:2143:const passengerChoice = review.passengerWantsWalletCredit
+apps/mobile/src/pages/admin/index.tsx:2144:? "Quiere saldo para próximo viaje"
+apps/mobile/src/pages/admin/index.tsx:2237:{review.passengerWantsWalletCredit && passengerOverpaidClp > 0 && (
+apps/mobile/src/pages/admin/index.tsx:2247:approveAdminCashWalletCredit(review);
+apps/mobile/src/pages/admin/index.tsx:2249:setAdminCashToast("Saldo a favor aprobado. Ya queda disponible en la billetera del pasajero.");
+apps/mobile/src/pages/admin/index.tsx:2252:Aprobar saldo
+apps/mobile/src/pages/admin/index.tsx:6393:cardCancellationCreditToWallet: true,
+apps/mobile/src/pages/admin/index.tsx:6394:cardCancellationCreditName: "CRÉDITOS PARA PRÓXIMO VIAJE",
+apps/mobile/src/pages/admin/index.tsx:6847:: "Tu reserva sigue agendada. El admin gestionará/asignará conductor 30 minutos antes. Todas las reservas son con tarjeta; si cancelas dentro de los últimos 15 minutos se descuenta la penalización y el saldo queda como CRÉDITOS PARA PRÓXIMO VIAJE.";
+apps/mobile/src/pages/admin/index.tsx:6967:cardCancellationCreditToWallet: true,
+apps/mobile/src/pages/admin/index.tsx:6968:cardCancellationCreditName: "CRÉDITOS PARA PRÓXIMO VIAJE",
+apps/mobile/src/pages/passenger/index.tsx:2349:title="Saldo a favor"
+apps/mobile/src/pages/passenger/index.tsx:2350:body="Si pagas de más o queda una diferencia, el administrador podrá revisarlo y dejarlo como saldo para próximos viajes si corresponde."
+apps/mobile/src/pages/passenger/index.tsx:2380:<div style={{ fontSize: "0.72rem", color: "var(--ion-color-medium)" }}>Saldo y pagos</div>
+apps/mobile/src/pages/passenger/index.tsx:6870:credit:   "Crédito",
+apps/mobile/src/pages/passenger/index.tsx:6876:credit:   "success",
+apps/mobile/src/pages/passenger/index.tsx:6910:{/* Balance hero */}
+apps/mobile/src/pages/passenger/index.tsx:6916:<div style={{ color: "rgba(255,255,255,0.8)", fontSize: "0.82rem", marginBottom: "6px" }}>Saldo disponible</div>
+apps/mobile/src/pages/passenger/index.tsx:6918:${(wallet.balance / 100).toLocaleString("es-CL")}
+apps/mobile/src/pages/passenger/index.tsx:6957:Saldo para próximos viajes
+apps/mobile/src/pages/passenger/index.tsx:6960:Si un pasajero paga de más o existe una diferencia, el administrador podrá revisar el caso y confirmar si ese monto queda como saldo para usar en viajes futuros.
+apps/mobile/src/pages/passenger/pages/HomePage.tsx:80:const RAPAGO_WALLET_BALANCE_KEY = "rapago_wallet_balance_clp_v1";
+apps/mobile/src/pages/passenger/pages/HomePage.tsx:81:const RAPAGO_WALLET_APPLIED_BENEFITS_KEY = "rapago_wallet_applied_benefits_v1";
+apps/mobile/src/pages/passenger/pages/HomePage.tsx:82:const RAPAGO_WALLET_EVENT = "rapago:wallet-balance-updated";
+apps/mobile/src/pages/passenger/pages/HomePage.tsx:84:const RAPAGO_WALLET_BENEFIT_SOURCE_KEYS = [
+apps/mobile/src/pages/passenger/pages/HomePage.tsx:85:"rapago_admin_wallet_benefit_requests_v1",
+apps/mobile/src/pages/passenger/pages/HomePage.tsx:86:"rapago_admin_wallet_credits_v1",
+apps/mobile/src/pages/passenger/pages/HomePage.tsx:87:"rapago_wallet_pending_benefits_v1",
+apps/mobile/src/pages/passenger/pages/HomePage.tsx:88:"rapago_passenger_wallet_benefits_v1",
+apps/mobile/src/pages/passenger/pages/HomePage.tsx:89:"rapago_admin_passenger_credit_adjustments_v1",
+apps/mobile/src/pages/passenger/pages/HomePage.tsx:92:type WalletBenefitRecord = Record<string, unknown>;
+apps/mobile/src/pages/passenger/pages/HomePage.tsx:123:normalizeWalletIdentity(localStorage.getItem("rapago_profile_phone")),
+apps/mobile/src/pages/passenger/pages/HomePage.tsx:124:normalizeWalletIdentity(localStorage.getItem("rapago_passenger_email")),
+apps/mobile/src/pages/passenger/pages/HomePage.tsx:127:// No bloquea el saldo local.
+apps/mobile/src/pages/passenger/pages/HomePage.tsx:133:function walletBenefitMatchesPassenger(
+apps/mobile/src/pages/passenger/pages/HomePage.tsx:134:record: WalletBenefitRecord,
+apps/mobile/src/pages/passenger/pages/HomePage.tsx:159:function readWalletAppliedBenefitIds(): Set<string> {
+apps/mobile/src/pages/passenger/pages/HomePage.tsx:161:const raw = localStorage.getItem(RAPAGO_WALLET_APPLIED_BENEFITS_KEY);
+apps/mobile/src/pages/passenger/pages/HomePage.tsx:169:function saveWalletAppliedBenefitIds(ids: Set<string>): void {
+apps/mobile/src/pages/passenger/pages/HomePage.tsx:172:RAPAGO_WALLET_APPLIED_BENEFITS_KEY,
+apps/mobile/src/pages/passenger/pages/HomePage.tsx:180:function readPassengerWalletBalance(): number {
+apps/mobile/src/pages/passenger/pages/HomePage.tsx:182:const value = Number(localStorage.getItem(RAPAGO_WALLET_BALANCE_KEY));
+apps/mobile/src/pages/passenger/pages/HomePage.tsx:189:function writePassengerWalletBalance(value: number): void {
+apps/mobile/src/pages/passenger/pages/HomePage.tsx:192:localStorage.setItem(RAPAGO_WALLET_BALANCE_KEY, String(safeValue));
+apps/mobile/src/pages/passenger/pages/HomePage.tsx:193:localStorage.setItem("rapago_passenger_wallet_balance_clp", String(safeValue));
+apps/mobile/src/pages/passenger/pages/HomePage.tsx:194:localStorage.setItem("rapago_wallet_available_balance_clp", String(safeValue));
+apps/mobile/src/pages/passenger/pages/HomePage.tsx:198:detail: { balanceClp: safeValue },
+apps/mobile/src/pages/passenger/pages/HomePage.tsx:206:function normalizeWalletBenefitStatus(value: unknown): string {
+apps/mobile/src/pages/passenger/pages/HomePage.tsx:214:function walletBenefitIsApproved(record: WalletBenefitRecord): boolean {
+apps/mobile/src/pages/passenger/pages/HomePage.tsx:215:const status = normalizeWalletBenefitStatus(
+apps/mobile/src/pages/passenger/pages/HomePage.tsx:227:status === "credit_approved" ||
+apps/mobile/src/pages/passenger/pages/HomePage.tsx:228:status === "ready_to_credit"
+apps/mobile/src/pages/passenger/pages/HomePage.tsx:232:function readWalletBenefitAmount(record: WalletBenefitRecord): number {
+apps/mobile/src/pages/passenger/pages/HomePage.tsx:235:record.creditClp,
+apps/mobile/src/pages/passenger/pages/HomePage.tsx:236:record.benefitClp,
+apps/mobile/src/pages/passenger/pages/HomePage.tsx:238:record.balanceClp,
+apps/mobile/src/pages/passenger/pages/HomePage.tsx:239:record.walletCreditClp,
+apps/mobile/src/pages/passenger/pages/HomePage.tsx:251:function readWalletBenefitId(record: WalletBenefitRecord, fallbackIndex: number): string {
+apps/mobile/src/pages/passenger/pages/HomePage.tsx:254:record.benefitId ??
+apps/mobile/src/pages/passenger/pages/HomePage.tsx:255:record.creditId ??
+apps/mobile/src/pages/passenger/pages/HomePage.tsx:266:readWalletBenefitAmount(record),
+apps/mobile/src/pages/passenger/pages/HomePage.tsx:272:function readWalletBenefitRecordsFromStorage(): WalletBenefitRecord[] {
+apps/mobile/src/pages/passenger/pages/HomePage.tsx:273:const records: WalletBenefitRecord[] = [];
+apps/mobile/src/pages/passenger/pages/HomePage.tsx:275:for (const key of RAPAGO_WALLET_BENEFIT_SOURCE_KEYS) {
+apps/mobile/src/pages/passenger/pages/HomePage.tsx:283:records.push(...parsed.filter((item): item is WalletBenefitRecord => Boolean(item && typeof item === "object")));
+apps/mobile/src/pages/passenger/pages/HomePage.tsx:291:...value.filter((item): item is WalletBenefitRecord => Boolean(item && typeof item === "object")),
+apps/mobile/src/pages/passenger/pages/HomePage.tsx:294:records.push(value as WalletBenefitRecord);
+apps/mobile/src/pages/passenger/pages/HomePage.tsx:306:function syncApprovedWalletBenefits(user: unknown): number {
+apps/mobile/src/pages/passenger/pages/HomePage.tsx:307:const appliedIds = readWalletAppliedBenefitIds();
+apps/mobile/src/pages/passenger/pages/HomePage.tsx:308:const records = readWalletBenefitRecordsFromStorage();
+apps/mobile/src/pages/passenger/pages/HomePage.tsx:309:let balance = readPassengerWalletBalance();
+apps/mobile/src/pages/passenger/pages/HomePage.tsx:313:if (!walletBenefitIsApproved(record)) return;
+apps/mobile/src/pages/passenger/pages/HomePage.tsx:314:if (!walletBenefitMatchesPassenger(record, user)) return;
+apps/mobile/src/pages/passenger/pages/HomePage.tsx:316:const amount = readWalletBenefitAmount(record);
+apps/mobile/src/pages/passenger/pages/HomePage.tsx:319:const id = readWalletBenefitId(record, index);
+apps/mobile/src/pages/passenger/pages/HomePage.tsx:322:balance += amount;
+apps/mobile/src/pages/passenger/pages/HomePage.tsx:328:writePassengerWalletBalance(balance);
+apps/mobile/src/pages/passenger/pages/HomePage.tsx:329:saveWalletAppliedBenefitIds(appliedIds);
+apps/mobile/src/pages/passenger/pages/HomePage.tsx:332:return balance;
+apps/mobile/src/pages/passenger/pages/HomePage.tsx:422:const [walletBalanceClp, setWalletBalanceClp] = useState(() =>
+apps/mobile/src/pages/passenger/pages/HomePage.tsx:423:syncApprovedWalletBenefits(session?.user),
+apps/mobile/src/pages/passenger/pages/HomePage.tsx:436:const refreshWalletBalance = () => {
+apps/mobile/src/pages/passenger/pages/HomePage.tsx:437:setWalletBalanceClp(syncApprovedWalletBenefits(session?.user));
+apps/mobile/src/pages/passenger/pages/HomePage.tsx:440:refreshWalletBalance();
+apps/mobile/src/pages/passenger/pages/HomePage.tsx:442:window.addEventListener("storage", refreshWalletBalance);
+apps/mobile/src/pages/passenger/pages/HomePage.tsx:443:window.addEventListener("focus", refreshWalletBalance);
+apps/mobile/src/pages/passenger/pages/HomePage.tsx:444:window.addEventListener(RAPAGO_WALLET_EVENT, refreshWalletBalance as EventListener);
+apps/mobile/src/pages/passenger/pages/HomePage.tsx:445:window.addEventListener("rapago:admin-wallet-benefit-approved", refreshWalletBalance as EventListener);
+apps/mobile/src/pages/passenger/pages/HomePage.tsx:446:window.addEventListener("rapago:wallet-benefit-approved", refreshWalletBalance as EventListener);
+apps/mobile/src/pages/passenger/pages/HomePage.tsx:449:window.removeEventListener("storage", refreshWalletBalance);
+apps/mobile/src/pages/passenger/pages/HomePage.tsx:450:window.removeEventListener("focus", refreshWalletBalance);
+apps/mobile/src/pages/passenger/pages/HomePage.tsx:451:window.removeEventListener(RAPAGO_WALLET_EVENT, refreshWalletBalance as EventListener);
+apps/mobile/src/pages/passenger/pages/HomePage.tsx:452:window.removeEventListener("rapago:admin-wallet-benefit-approved", refreshWalletBalance as EventListener);
+apps/mobile/src/pages/passenger/pages/HomePage.tsx:453:window.removeEventListener("rapago:wallet-benefit-approved", refreshWalletBalance as EventListener);
+apps/mobile/src/pages/passenger/pages/HomePage.tsx:487:setWalletBalanceClp(syncApprovedWalletBenefits(session?.user));
+apps/mobile/src/pages/passenger/pages/HomePage.tsx:732:background: walletBalanceClp > 0
+apps/mobile/src/pages/passenger/pages/HomePage.tsx:742:{walletBalanceClp > 0
+apps/mobile/src/pages/passenger/pages/HomePage.tsx:743:? `Saldo a favor: ${formatWalletClp(walletBalanceClp)}`
+apps/mobile/src/pages/passenger/pages/HomePage.tsx:744:: "Saldo y beneficios"}
+apps/mobile/src/pages/passenger/pages/ProfilePage.tsx:90:chilean: "Persona chilena que visita la isla y no acredita residencia.",
+apps/mobile/src/pages/passenger/pages/ProfilePage.tsx:253:inviteSubtitle: "Share your code. When someone completes their first ride, you receive a wallet benefit.",
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:173:const RAPAGO_WALLET_BENEFITS_KEY_REQUEST = "rapago_wallet_benefits_v1";
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:174:const RAPAGO_WALLET_BENEFIT_EVENT_REQUEST = "rapago:wallet-benefit-updated";
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:176:type PassengerWalletBenefitForRequest = {
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:197:function normalizeWalletBenefitEmailForRequest(value: unknown): string {
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:201:function getWalletBenefitSessionEmailForRequest(user: unknown): string {
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:203:return normalizeWalletBenefitEmailForRequest((user as Record<string, unknown>).email);
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:206:function isPassengerWalletBenefitAvailableForRequest(benefit: PassengerWalletBenefitForRequest): boolean {
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:207:const status = String(benefit.status ?? "").toLowerCase();
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:208:const adminStatus = String(benefit.adminReviewStatus ?? "").toLowerCase();
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:210:return (status === "available" || status === "approved" || adminStatus === "admin_approved") && benefit.amountClp > 0;
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:213:function readPassengerWalletBenefitsForRequest(user: unknown): PassengerWalletBenefitForRequest[] {
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:215:const sessionEmail = getWalletBenefitSessionEmailForRequest(user);
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:216:const raw = localStorage.getItem(RAPAGO_WALLET_BENEFITS_KEY_REQUEST);
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:221:.map((item, index): PassengerWalletBenefitForRequest => ({
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:222:id: String(item.id ?? `wallet-benefit-${index}`),
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:241:.filter((benefit) => {
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:242:if (!isPassengerWalletBenefitAvailableForRequest(benefit)) return false;
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:243:const owner = normalizeWalletBenefitEmailForRequest(benefit.passengerEmail || benefit.ownerKey);
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:252:function getPassengerWalletBenefitTotalForRequest(user: unknown): number {
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:253:return readPassengerWalletBenefitsForRequest(user).reduce(
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:254:(sum, benefit) => sum + Math.max(0, Math.round(Number(benefit.amountClp ?? 0))),
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:259:function markPassengerWalletBenefitsUsedForRide(input: {
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:272:const sessionEmail = getWalletBenefitSessionEmailForRequest(input.user);
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:273:const raw = localStorage.getItem(RAPAGO_WALLET_BENEFITS_KEY_REQUEST);
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:280:const extraAvailableBenefits: Array<Record<string, unknown>> = [];
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:283:const benefit: PassengerWalletBenefitForRequest = {
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:284:id: String(item.id ?? `wallet-benefit-${index}`),
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:291:const owner = normalizeWalletBenefitEmailForRequest(benefit.passengerEmail || benefit.ownerKey);
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:294:if (!belongsToUser || remaining <= 0 || !isPassengerWalletBenefitAvailableForRequest(benefit)) {
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:298:const benefitAmount = Math.max(0, Math.round(Number(benefit.amountClp ?? 0)));
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:299:const usedAmount = Math.min(benefitAmount, remaining);
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:302:if (benefitAmount > usedAmount) {
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:303:extraAvailableBenefits.push({
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:305:id: `${String(item.id ?? benefit.id)}-saldo-${Date.now()}`,
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:306:amountClp: benefitAmount - usedAmount,
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:309:title: item.title ?? "Saldo a favor",
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:310:description: `Saldo restante disponible después de usar ${formatCLP(usedAmount)} en un viaje.`,
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:337:RAPAGO_WALLET_BENEFITS_KEY_REQUEST,
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:338:JSON.stringify([...extraAvailableBenefits, ...next].slice(0, 250)),
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:340:window.dispatchEvent(new CustomEvent(RAPAGO_WALLET_BENEFIT_EVENT_REQUEST));
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:4138:const [useWalletBenefit, setUseWalletBenefit] = useState<boolean | null>(null);
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:4139:const [walletBenefitRevision, setWalletBenefitRevision] = useState(0);
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:4200:const refreshWalletBenefits = () => setWalletBenefitRevision((current) => current + 1);
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:4202:window.addEventListener("storage", refreshWalletBenefits);
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:4203:window.addEventListener("rapago:wallet-updated", refreshWalletBenefits as EventListener);
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:4204:window.addEventListener(RAPAGO_WALLET_BENEFIT_EVENT_REQUEST, refreshWalletBenefits as EventListener);
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:4207:window.removeEventListener("storage", refreshWalletBenefits);
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:4208:window.removeEventListener("rapago:wallet-updated", refreshWalletBenefits as EventListener);
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:4209:window.removeEventListener(RAPAGO_WALLET_BENEFIT_EVENT_REQUEST, refreshWalletBenefits as EventListener);
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:4679:const availableWalletBenefits = walletBenefitRevision >= 0
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:4680:? readPassengerWalletBenefitsForRequest(session?.user)
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:4682:const availableWalletBenefitTotalClp = availableWalletBenefits.reduce(
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:4683:(sum, benefit) => sum + Math.max(0, Math.round(Number(benefit.amountClp ?? 0))),
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:4686:const hasAvailableWalletBenefit = availableWalletBenefitTotalClp > 0;
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:4705:function applyWalletBenefitDiscount(amount: number | null): number | null {
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:4707:const discount = getWalletBenefitDiscountForAmount(amount);
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:4711:function getWalletBenefitDiscountForAmount(amount: number | null): number {
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:4712:if (amount == null || useWalletBenefit !== true || availableWalletBenefitTotalClp <= 0) return 0;
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:4713:return Math.min(Math.max(0, Math.round(amount)), availableWalletBenefitTotalClp);
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:4720:function getSelectedWalletBenefitDiscount(method: PaymentMethod = paymentMethod): number {
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:4721:return getWalletBenefitDiscountForAmount(getSelectedFareAmountBeforeWallet(method));
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:4738:const cashWalletBenefitDiscountClp = getWalletBenefitDiscountForAmount(cashPaymentAmountBeforeWallet);
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:4739:const cardWalletBenefitDiscountClp = getWalletBenefitDiscountForAmount(cardPaymentAmountBeforeWallet);
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:4740:const cashPaymentAmount = applyWalletBenefitDiscount(cashPaymentAmountBeforeWallet);
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:4741:const cardPaymentAmount = applyWalletBenefitDiscount(cardPaymentAmountBeforeWallet);
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:4782:const activeWalletBenefitDiscountClp = paymentMethod === "card"
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:4783:? cardWalletBenefitDiscountClp
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:4785:? cashWalletBenefitDiscountClp
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:4794:return applyWalletBenefitDiscount(getSelectedFareAmountBeforeWallet(method));
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:4813:setSubmitError("Todas las reservas se pagan obligatoriamente con tarjeta/MercadoPago. Si cancelas dentro de los últimos 15 minutos, se descuenta 30% con tope $3.000 y el saldo queda como CRÉDITOS PARA PRÓXIMO VIAJE.");
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:4862:setSubmitError("Todas las reservas deben pagarse obligatoriamente con tarjeta/MercadoPago. Si cancelas dentro de los últimos 15 minutos, se descuenta 30% con tope $3.000 y el saldo queda como CRÉDITOS PARA PRÓXIMO VIAJE.");
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:4866:if (hasAvailableWalletBenefit && useWalletBenefit === null) {
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:4867:setSubmitError(`Tienes ${formatCLP(availableWalletBenefitTotalClp)} a favor. Elige si quieres usar tu beneficio en este viaje.`);
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:4872:const selectedWalletBenefitDiscountClp = getSelectedWalletBenefitDiscount(activePaymentMethod);
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:4895:notes.push("Si se cancela con tarjeta, la penalización se descuenta del pago y el saldo queda como CRÉDITOS PARA PRÓXIMO VIAJE en billetera. Si requiere devolución, debe solicitarla a Gerencia de Soporte RAPA GO por WhatsApp.");
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:4901:if (selectedWalletBenefitDiscountClp > 0) {
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:4902:notes.push(`Beneficio billetera usado en este viaje: ${formatCLP(selectedWalletBenefitDiscountClp)}.`);
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:4905:} else if (hasAvailableWalletBenefit && useWalletBenefit === false) {
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:4906:notes.push(`Beneficio billetera disponible no usado por el pasajero en este viaje: ${formatCLP(availableWalletBenefitTotalClp)}.`);
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:4953:notes.push("Política cancelación reserva: desde los últimos 15 minutos se cobra 30% con tope $3.000; el saldo neto queda como CRÉDITOS PARA PRÓXIMO VIAJE. Si necesitas devolución, abre WhatsApp con Gerencia de Soporte RAPA GO.");
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:5101:if (selectedWalletBenefitDiscountClp > 0) {
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:5103:walletBenefitRequested: true,
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:5104:walletBenefitApplied: true,
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:5105:walletBenefitAppliedClp: selectedWalletBenefitDiscountClp,
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:5106:walletBenefitDiscountClp: selectedWalletBenefitDiscountClp,
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:5107:walletBenefitOriginalFareClp: selectedFareAmountBeforeWallet,
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:5108:originalFareBeforeWalletBenefitClp: selectedFareAmountBeforeWallet,
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:5109:finalFareAfterWalletBenefitClp: selectedFareAmount,
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:5110:walletBenefitSource: "admin_approved_cash_overpayment",
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:5112:} else if (hasAvailableWalletBenefit && useWalletBenefit === false) {
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:5114:walletBenefitRequested: false,
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:5115:walletBenefitApplied: false,
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:5116:walletBenefitAvailableClp: availableWalletBenefitTotalClp,
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:5138:cardCancellationCreditToWallet: reservationRequiresCard && String(activePaymentMethod) === "card",
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:5140:cardCancellationCreditName: "CRÉDITOS PARA PRÓXIMO VIAJE",
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:5171:if (selectedWalletBenefitDiscountClp > 0) {
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:5172:markPassengerWalletBenefitsUsedForRide({
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:5175:amountToUseClp: selectedWalletBenefitDiscountClp,
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:5181:setWalletBenefitRevision((current) => current + 1);
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:5229:walletBenefitRequested: selectedWalletBenefitDiscountClp > 0,
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:5230:walletBenefitApplied: selectedWalletBenefitDiscountClp > 0,
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:5231:walletBenefitAppliedClp: selectedWalletBenefitDiscountClp,
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:5232:walletBenefitDiscountClp: selectedWalletBenefitDiscountClp,
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:5233:walletBenefitOriginalFareClp: selectedFareAmountBeforeWallet,
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:5234:originalFareBeforeWalletBenefitClp: selectedFareAmountBeforeWallet,
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:5235:finalFareAfterWalletBenefitClp: selectedFareAmount,
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:5236:walletBenefitAvailableButNotUsedClp: hasAvailableWalletBenefit && useWalletBenefit === false ? availableWalletBenefitTotalClp : 0,
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:5288:setUseWalletBenefit(null);
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:5307:localNotes.push("Si se cancela con tarjeta, la penalización se descuenta del pago y el saldo queda como CRÉDITOS PARA PRÓXIMO VIAJE en billetera. Si requiere devolución, debe solicitarla a Gerencia de Soporte RAPA GO por WhatsApp.");
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:5313:if (selectedWalletBenefitDiscountClp > 0) {
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:5314:localNotes.push(`Beneficio billetera usado en este viaje: ${formatCLP(selectedWalletBenefitDiscountClp)}.`);
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:5317:} else if (hasAvailableWalletBenefit && useWalletBenefit === false) {
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:5318:localNotes.push(`Beneficio billetera disponible no usado por el pasajero en este viaje: ${formatCLP(availableWalletBenefitTotalClp)}.`);
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:5360:localNotes.push("Política cancelación reserva: desde los últimos 15 minutos se cobra 30% con tope $3.000; el saldo neto queda como CRÉDITOS PARA PRÓXIMO VIAJE. Si necesitas devolución, abre WhatsApp con Gerencia de Soporte RAPA GO.");
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:5460:walletBenefitRequested: selectedWalletBenefitDiscountClp > 0,
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:5461:walletBenefitApplied: selectedWalletBenefitDiscountClp > 0,
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:5462:walletBenefitAppliedClp: selectedWalletBenefitDiscountClp,
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:5463:walletBenefitDiscountClp: selectedWalletBenefitDiscountClp,
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:5464:walletBenefitOriginalFareClp: selectedFareAmountBeforeWallet,
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:5465:originalFareBeforeWalletBenefitClp: selectedFareAmountBeforeWallet,
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:5466:finalFareAfterWalletBenefitClp: selectedFareAmount,
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:5467:walletBenefitAvailableButNotUsedClp: hasAvailableWalletBenefit && useWalletBenefit === false ? availableWalletBenefitTotalClp : 0,
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:5478:cardCancellationCreditToWallet: reservationRequiresCard && String(activePaymentMethod) === "card",
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:5480:cardCancellationCreditName: reservationRequiresCard && String(activePaymentMethod) === "card" ? "CRÉDITOS PARA PRÓXIMO VIAJE" : null,
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:5515:if (selectedWalletBenefitDiscountClp > 0) {
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:5516:markPassengerWalletBenefitsUsedForRide({
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:5519:amountToUseClp: selectedWalletBenefitDiscountClp,
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:5525:setWalletBenefitRevision((current) => current + 1);
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:5569:setUseWalletBenefit(null);
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:6414:<strong>Pago obligatorio con tarjeta:</strong> todas las reservas son con tarjeta. Si cancelas dentro de los últimos 15 minutos, se descuenta 30% con tope $3.000 y el saldo queda como <strong>CRÉDITOS PARA PRÓXIMO VIAJE</strong>. Si necesitas devolución, puedes abrir WhatsApp con Gerencia de Soporte RAPA GO.
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:6972:{reservationRequiresCard ? "Todas las reservas se pagan obligatoriamente con tarjeta. Si cancelas dentro de los últimos 15 minutos, se descuenta 30% tope $3.000 y el saldo queda como CRÉDITOS PARA PRÓXIMO VIAJE." : "Elige efectivo al conductor o paga con tarjeta mediante MercadoPago Checkout Pro."}
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:7061:{hasAvailableWalletBenefit && paymentMethod && activePaymentAmountBeforeWallet != null && (
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:7079:¿Quieres usar tu saldo a favor en este viaje?
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:7082:Tienes {formatCLP(availableWalletBenefitTotalClp)} aprobado por admin.
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:7095:fill={useWalletBenefit === true ? "solid" : "outline"}
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:7097:setUseWalletBenefit(true);
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:7111:fill={useWalletBenefit === false ? "solid" : "outline"}
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:7113:setUseWalletBenefit(false);
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:7126:{useWalletBenefit === true && activeWalletBenefitDiscountClp > 0 && activePaymentAmountAfterWallet != null && (
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:7141:<br />Descuento beneficio: -{formatCLP(activeWalletBenefitDiscountClp)}
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:7146:{useWalletBenefit === false && (
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:7159:No se aplicará descuento. Tu saldo seguirá disponible para otro viaje.
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:1014:getPassengerCardCancellationCreditAmountClp(record) ||
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:1880:? `La penalización de ${formatClp(policy.feeClp)} se descuenta automáticamente del pago realizado. El saldo restante queda como CRÉDITOS PARA PRÓXIMO VIAJE en tu billetera.`
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:1891:? `Tu viaje fue cancelado. El saldo del pago queda como CRÉDITOS PARA PRÓXIMO VIAJE en tu billetera. Si necesitas devolución, gestiona por WhatsApp con RAPA GO. El cargo pendiente de ${formatClp(policy.feeClp)} es separado y se cobrará automáticamente en tu próximo viaje.`
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:1892:: "Tu viaje fue cancelado. El saldo del pago queda como CRÉDITOS PARA PRÓXIMO VIAJE en tu billetera. Si necesitas devolución, gestiona por WhatsApp con RAPA GO. No debes ingresar tarjeta, claves ni datos bancarios."
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:1894:cardWalletCreditRequested: isCardPayment,
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:1895:cardWalletCreditClp: isCardPayment ? getPassengerCardCancellationCreditNetClp(record, policy.feeClp) : 0,
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:1896:cardWalletCreditStatus: isCardPayment ? "pending_admin" : null,
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:1984:savePassengerWalletCreditFromCardCancellation(target, cancelled);
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:5697:type PassengerCashPaymentDecision = "exact" | "wallet_credit" | "refund_whatsapp";
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:5718:passengerWantsWalletCredit?: boolean | null;
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:5723:const RAPAGO_WALLET_BENEFITS_KEY = "rapago_wallet_benefits_v1";
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:5724:const RAPAGO_WALLET_BENEFIT_EVENT = "rapago:wallet-benefit-updated";
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:5852:passengerWantsWalletCredit: input.decision === "wallet_credit",
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:5873:function savePassengerWalletBenefitFromCashOverpayment(
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:5881:const raw = localStorage.getItem(RAPAGO_WALLET_BENEFITS_KEY);
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:5885:const benefitId = `cash-overpayment-${review.rideId || review.rideKey}`;
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:5886:const nextBenefit = {
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:5887:id: benefitId,
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:5902:passengerWantsWalletCredit: true,
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:5908:nextBenefit,
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:5909:...current.filter((item) => String(item?.id ?? "") !== benefitId),
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:5912:localStorage.setItem(RAPAGO_WALLET_BENEFITS_KEY, JSON.stringify(next));
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:5913:localStorage.setItem("rapago_wallet_auto_apply_benefits_v1", "true");
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:5915:window.dispatchEvent(new CustomEvent(RAPAGO_WALLET_BENEFIT_EVENT, { detail: { benefit: nextBenefit, ride } }));
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:5916:window.dispatchEvent(new CustomEvent("rapago:wallet-updated", { detail: { benefit: nextBenefit, ride } }));
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:5917:window.dispatchEvent(new CustomEvent("rapago:admin-wallet-benefit-updated", { detail: { benefit: nextBenefit, review, ride } }));
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:5918:window.dispatchEvent(new CustomEvent("rapago:admin-cash-closures-updated", { detail: { benefit: nextBenefit, review, ride } }));
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:5919:window.dispatchEvent(new CustomEvent("rapago:cash-payment-review-updated", { detail: { benefit: nextBenefit, review, ride } }));
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:5921:// El saldo se confirma también desde backend/admin en producción.
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:5925:function getPassengerCardCancellationCreditAmountClp(
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:5934:ride.finalFareAfterWalletBenefitClp,
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:5952:function getPassengerCardCancellationCreditNetClp(
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:5956:const paidAmount = getPassengerCardCancellationCreditAmountClp(ride);
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:5961:function savePassengerWalletCreditFromCardCancellation(
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:5969:const paidAmountClp = getPassengerCardCancellationCreditAmountClp(record);
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:5970:const creditAmountClp = getPassengerCardCancellationCreditNetClp(record, policyFee);
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:5972:if (paidAmountClp <= 0 || creditAmountClp <= 0) return;
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:5975:const raw = localStorage.getItem(RAPAGO_WALLET_BENEFITS_KEY);
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:5979:const id = `card-cancellation-credit-${rideId || getPassengerPendingChargeRideKey(record)}`;
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:5982:const nextCredit = {
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:5987:amountClp: creditAmountClp,
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:5989:source: "card_cancellation_credit",
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:5994:`Saldo consignado como CRÉDITOS PARA PRÓXIMO VIAJE: ${formatClp(creditAmountClp)}. ` +
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:5999:fareClp: creditAmountClp,
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:6002:adminReviewStatus: "card_credit_available",
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:6006:mercadoPagoRefundStatus: "wallet_credit_available",
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:6015:RAPAGO_WALLET_BENEFITS_KEY,
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:6017:nextCredit,
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:6022:window.dispatchEvent(new CustomEvent(RAPAGO_WALLET_BENEFIT_EVENT, { detail: { benefit: nextCredit } }));
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:6023:window.dispatchEvent(new CustomEvent("rapago:wallet-updated", { detail: { benefit: nextCredit } }));
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:6024:window.dispatchEvent(new CustomEvent("rapago:admin-wallet-benefits-updated", { detail: { benefit: nextCredit } }));
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:6025:window.dispatchEvent(new CustomEvent("rapago:admin-rides-updated", { detail: { benefit: nextCredit, cancelled } }));
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:6162:function saveAsWalletCredit(): void {
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:6169:decision: "wallet_credit",
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:6174:savePassengerWalletBenefitFromCashOverpayment(ride, saved);
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:6196:const isWallet = review.decision === "wallet_credit";
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:6213:{isWallet && "💚 Saldo para próximo viaje enviado a revisión"}
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:6221:Tienes <strong>{formatClp(review.overpaidClp)}</strong> como saldo a favor pendiente de aprobación del administrador. Cuando se apruebe, aparecerá en tu billetera y en tu próximo viaje te descontamos ese monto.
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:6319:Has pagado de más: <strong>{formatClp(overpaidClp)}</strong>. ¿Quieres usar ese dinero como saldo a favor o quieres que te devolvamos ese dinero por WhatsApp?
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:6323:Ingresa un monto mayor a <strong>{formatClp(displayFareClp)}</strong> para calcular el saldo a favor.
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:6334:onClick={saveAsWalletCredit}
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:6336:Sí, usar como saldo a favor
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:7214:"Como el pago fue con tarjeta/MercadoPago, el saldo neto queda como CRÉDITOS PARA PRÓXIMO VIAJE en tu billetera. Si necesitas devolución, se gestiona por WhatsApp con RAPA GO. Esta opción no aplica para efectivo.",
+apps/mobile/src/pages/passenger/pages/WalletPage.tsx:33:const RAPAGO_WALLET_BENEFITS_KEY = "rapago_wallet_benefits_v1";
+apps/mobile/src/pages/passenger/pages/WalletPage.tsx:34:const RAPAGO_WALLET_BENEFIT_EVENT = "rapago:wallet-benefit-updated";
+apps/mobile/src/pages/passenger/pages/WalletPage.tsx:43:type LocalWalletBenefit = {
+apps/mobile/src/pages/passenger/pages/WalletPage.tsx:83:function readLocalWalletBenefits(user: unknown): LocalWalletBenefit[] {
+apps/mobile/src/pages/passenger/pages/WalletPage.tsx:86:const raw = localStorage.getItem(RAPAGO_WALLET_BENEFITS_KEY);
+apps/mobile/src/pages/passenger/pages/WalletPage.tsx:91:.map((item, index): LocalWalletBenefit => ({
+apps/mobile/src/pages/passenger/pages/WalletPage.tsx:92:id: String(item.id ?? `wallet-benefit-${index}`),
+apps/mobile/src/pages/passenger/pages/WalletPage.tsx:115:.filter((benefit) => {
+apps/mobile/src/pages/passenger/pages/WalletPage.tsx:116:if (benefit.amountClp <= 0) return false;
+apps/mobile/src/pages/passenger/pages/WalletPage.tsx:117:const owner = normalizeWalletEmail(benefit.passengerEmail || benefit.ownerKey);
+apps/mobile/src/pages/passenger/pages/WalletPage.tsx:130:function isWalletBenefitAvailable(benefit: LocalWalletBenefit): boolean {
+apps/mobile/src/pages/passenger/pages/WalletPage.tsx:131:const status = String(benefit.status ?? "").toLowerCase();
+apps/mobile/src/pages/passenger/pages/WalletPage.tsx:132:const adminStatus = String(benefit.adminReviewStatus ?? "").toLowerCase();
+apps/mobile/src/pages/passenger/pages/WalletPage.tsx:137:adminStatus === "card_credit_available" ||
+apps/mobile/src/pages/passenger/pages/WalletPage.tsx:142:function isWalletBenefitPending(benefit: LocalWalletBenefit): boolean {
+apps/mobile/src/pages/passenger/pages/WalletPage.tsx:143:const status = String(benefit.status ?? "").toLowerCase();
+apps/mobile/src/pages/passenger/pages/WalletPage.tsx:144:const adminStatus = String(benefit.adminReviewStatus ?? "").toLowerCase();
+apps/mobile/src/pages/passenger/pages/WalletPage.tsx:148:function isWalletCardCancellationCredit(benefit: LocalWalletBenefit): boolean {
+apps/mobile/src/pages/passenger/pages/WalletPage.tsx:149:const text = `${benefit.source ?? ""} ${benefit.title ?? ""} ${benefit.description ?? ""}`.toLowerCase();
+apps/mobile/src/pages/passenger/pages/WalletPage.tsx:151:text.includes("card_cancellation_credit") ||
+apps/mobile/src/pages/passenger/pages/WalletPage.tsx:155:benefit.refundWhatsappAvailable === true ||
+apps/mobile/src/pages/passenger/pages/WalletPage.tsx:156:benefit.cardRefundRequested === true ||
+apps/mobile/src/pages/passenger/pages/WalletPage.tsx:157:benefit.mercadoPagoRefundRequested === true
+apps/mobile/src/pages/passenger/pages/WalletPage.tsx:161:function buildWalletCreditRefundWhatsAppUrl(benefits: LocalWalletBenefit[]): string {
+apps/mobile/src/pages/passenger/pages/WalletPage.tsx:162:const total = benefits.reduce((sum, benefit) => sum + Math.max(0, Math.round(Number(benefit.amountClp ?? 0))), 0);
+apps/mobile/src/pages/passenger/pages/WalletPage.tsx:166:benefits[0]?.originText || benefits[0]?.destinationText
+apps/mobile/src/pages/passenger/pages/WalletPage.tsx:167:? `Viaje: ${benefits[0]?.originText ?? "Origen"} → ${benefits[0]?.destinationText ?? "Destino"}`
+apps/mobile/src/pages/passenger/pages/WalletPage.tsx:169:benefits[0]?.paymentId ? `ID pago: ${benefits[0].paymentId}` : null,
+apps/mobile/src/pages/passenger/pages/WalletPage.tsx:176:function openWalletCreditRefundWhatsApp(benefits: LocalWalletBenefit[]): void {
+apps/mobile/src/pages/passenger/pages/WalletPage.tsx:177:const url = buildWalletCreditRefundWhatsAppUrl(benefits);
+apps/mobile/src/pages/passenger/pages/WalletPage.tsx:187:function CreditSplitBox({
+apps/mobile/src/pages/passenger/pages/WalletPage.tsx:395:const [localBenefits, setLocalBenefits] = useState<LocalWalletBenefit[]>([]);
+apps/mobile/src/pages/passenger/pages/WalletPage.tsx:399:const refreshLocalBenefits = useCallback(() => {
+apps/mobile/src/pages/passenger/pages/WalletPage.tsx:400:setLocalBenefits(readLocalWalletBenefits(session?.user));
+apps/mobile/src/pages/passenger/pages/WalletPage.tsx:414:setLocalBenefits(readLocalWalletBenefits(session.user));
+apps/mobile/src/pages/passenger/pages/WalletPage.tsx:417:setLocalBenefits(readLocalWalletBenefits(session.user));
+apps/mobile/src/pages/passenger/pages/WalletPage.tsx:428:refreshLocalBenefits();
+apps/mobile/src/pages/passenger/pages/WalletPage.tsx:430:const refresh = () => refreshLocalBenefits();
+apps/mobile/src/pages/passenger/pages/WalletPage.tsx:433:window.addEventListener(RAPAGO_WALLET_BENEFIT_EVENT, refresh as EventListener);
+apps/mobile/src/pages/passenger/pages/WalletPage.tsx:438:window.removeEventListener(RAPAGO_WALLET_BENEFIT_EVENT, refresh as EventListener);
+apps/mobile/src/pages/passenger/pages/WalletPage.tsx:440:}, [refreshLocalBenefits]);
+apps/mobile/src/pages/passenger/pages/WalletPage.tsx:442:const cardCancellationCredits = localBenefits.filter(isWalletCardCancellationCredit);
+apps/mobile/src/pages/passenger/pages/WalletPage.tsx:443:const cashCredits = localBenefits.filter((benefit) => !isWalletCardCancellationCredit(benefit));
+apps/mobile/src/pages/passenger/pages/WalletPage.tsx:445:const approvedCashCredits = cashCredits.filter(isWalletBenefitAvailable);
+apps/mobile/src/pages/passenger/pages/WalletPage.tsx:446:const pendingCashCredits = cashCredits.filter(isWalletBenefitPending);
+apps/mobile/src/pages/passenger/pages/WalletPage.tsx:447:const approvedCardCredits = cardCancellationCredits.filter(isWalletBenefitAvailable);
+apps/mobile/src/pages/passenger/pages/WalletPage.tsx:448:const pendingCardCredits = cardCancellationCredits.filter(isWalletBenefitPending);
+apps/mobile/src/pages/passenger/pages/WalletPage.tsx:450:const cashCreditClp = approvedCashCredits.reduce((sum, benefit) => sum + benefit.amountClp, 0);
+apps/mobile/src/pages/passenger/pages/WalletPage.tsx:451:const pendingCashCreditClp = pendingCashCredits.reduce((sum, benefit) => sum + benefit.amountClp, 0);
+apps/mobile/src/pages/passenger/pages/WalletPage.tsx:452:const cardCreditClp = approvedCardCredits.reduce((sum, benefit) => sum + benefit.amountClp, 0);
+apps/mobile/src/pages/passenger/pages/WalletPage.tsx:453:const pendingCardCreditClp = pendingCardCredits.reduce((sum, benefit) => sum + benefit.amountClp, 0);
+apps/mobile/src/pages/passenger/pages/WalletPage.tsx:455:const approvedBenefitClp = cashCreditClp + cardCreditClp;
+apps/mobile/src/pages/passenger/pages/WalletPage.tsx:456:const pendingBenefitClp = pendingCashCreditClp + pendingCardCreditClp;
+apps/mobile/src/pages/passenger/pages/WalletPage.tsx:552:{formatWalletClp(approvedBenefitClp).replace(" CLP", "")}
+apps/mobile/src/pages/passenger/pages/WalletPage.tsx:586:<MiniStatCard icon={giftOutline} label="Crédito efectivo" value={formatWalletClp(cashCreditClp)} tone="green" />
+apps/mobile/src/pages/passenger/pages/WalletPage.tsx:587:<MiniStatCard icon={cardOutline} label="Crédito tarjeta" value={formatWalletClp(cardCreditClp)} tone="gold" />
+apps/mobile/src/pages/passenger/pages/WalletPage.tsx:600:background: approvedBenefitClp > 0 ? "rgba(34,197,94,.15)" : "rgba(214,168,62,.18)",
+apps/mobile/src/pages/passenger/pages/WalletPage.tsx:601:color: approvedBenefitClp > 0 ? "#15803D" : "#B7791F",
+apps/mobile/src/pages/passenger/pages/WalletPage.tsx:618:Para no confundirse, separamos el saldo por origen: efectivo y tarjeta/MercadoPago.
+apps/mobile/src/pages/passenger/pages/WalletPage.tsx:622:<IonBadge color={approvedBenefitClp > 0 ? "success" : pendingBenefitClp > 0 ? "warning" : "medium"} style={{ fontWeight: 950, flexShrink: 0 }}>
+apps/mobile/src/pages/passenger/pages/WalletPage.tsx:623:{approvedBenefitClp > 0 ? "Disponible" : pendingBenefitClp > 0 ? "Pendiente" : "Sin saldo"}
+apps/mobile/src/pages/passenger/pages/WalletPage.tsx:635:<CreditSplitBox
+apps/mobile/src/pages/passenger/pages/WalletPage.tsx:638:approvedClp={cashCreditClp}
+apps/mobile/src/pages/passenger/pages/WalletPage.tsx:639:pendingClp={pendingCashCreditClp}
+apps/mobile/src/pages/passenger/pages/WalletPage.tsx:644:<CreditSplitBox
+apps/mobile/src/pages/passenger/pages/WalletPage.tsx:646:description="Saldo neto por cancelación con tarjeta/MercadoPago. Si quieres devolución, solicita soporte por WhatsApp."
+apps/mobile/src/pages/passenger/pages/WalletPage.tsx:647:approvedClp={cardCreditClp}
+apps/mobile/src/pages/passenger/pages/WalletPage.tsx:648:pendingClp={pendingCardCreditClp}
+apps/mobile/src/pages/passenger/pages/WalletPage.tsx:652:{cardCancellationCredits.length > 0 && (
+apps/mobile/src/pages/passenger/pages/WalletPage.tsx:656:onClick={() => openWalletCreditRefundWhatsApp(cardCancellationCredits)}
+apps/mobile/src/pages/passenger/pages/WalletPage.tsx:663:</CreditSplitBox>
+apps/mobile/src/pages/passenger/pages/WalletPage.tsx:666:{pendingBenefitClp > 0 && (
+apps/mobile/src/pages/passenger/pages/WalletPage.tsx:680:Tienes {formatWalletClp(pendingBenefitClp)} pendiente de revisión/soporte.

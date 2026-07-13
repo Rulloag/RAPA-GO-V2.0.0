@@ -1,0 +1,5 @@
+﻿apps/mobile/src/pages/admin/index.tsx:214:const RAPAGO_WALLET_BENEFITS_KEY_ADMIN = "rapago_wallet_benefits_v1";
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:173:const RAPAGO_WALLET_BENEFITS_KEY_REQUEST = "rapago_wallet_benefits_v1";
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:5723:const RAPAGO_WALLET_BENEFITS_KEY = "rapago_wallet_benefits_v1";
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:5913:localStorage.setItem("rapago_wallet_auto_apply_benefits_v1", "true");
+apps/mobile/src/pages/passenger/pages/WalletPage.tsx:33:const RAPAGO_WALLET_BENEFITS_KEY = "rapago_wallet_benefits_v1";

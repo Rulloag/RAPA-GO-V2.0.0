@@ -1,0 +1,369 @@
+﻿apps/api/src/modules/payments/mercadopago.provider.ts:37:case "refunded":
+apps/api/src/modules/payments/payments.repository.ts:144:async markRefunded(id: string, refundPayload: unknown): Promise<Payment> {
+apps/api/src/modules/payments/payments.repository.ts:148:status: "refunded",
+apps/api/src/modules/payments/payments.repository.ts:150:refundStatus: "approved",
+apps/api/src/modules/payments/payments.repository.ts:151:refundedAt: new Date().toISOString(),
+apps/api/src/modules/payments/payments.repository.ts:152:refundPayload,
+apps/api/src/modules/payments/payments.repository.ts:162:async markRefundFailed(id: string, refundPayload: unknown): Promise<Payment> {
+apps/api/src/modules/payments/payments.repository.ts:167:refundStatus: "failed",
+apps/api/src/modules/payments/payments.repository.ts:168:refundFailedAt: new Date().toISOString(),
+apps/api/src/modules/payments/payments.repository.ts:169:refundPayload,
+apps/api/src/modules/payments/payments.service.ts:292:function getStoredRefundStatus(payment: Record<string, unknown>): string {
+apps/api/src/modules/payments/payments.service.ts:296:getPaymentStringValue(rawPayload, ["rapagoRefund", "status"]) ||
+apps/api/src/modules/payments/payments.service.ts:297:getPaymentStringValue(rawPayload, ["refundStatus"]) ||
+apps/api/src/modules/payments/payments.service.ts:298:getPaymentStringValue(rawPayload, ["refund", "status"]),
+apps/api/src/modules/payments/payments.service.ts:339:async function saveRefundStateOnPayment(input: {
+apps/api/src/modules/payments/payments.service.ts:343:refundPayload: unknown;
+apps/api/src/modules/payments/payments.service.ts:360:rapagoRefund: {
+apps/api/src/modules/payments/payments.service.ts:364:payload: input.refundPayload,
+apps/api/src/modules/payments/payments.service.ts:375:async function refundMercadoPagoPayment(input: {
+apps/api/src/modules/payments/payments.service.ts:395:`https://api.mercadopago.com/v1/payments/${input.mercadoPagoPaymentId}/refunds`,
+apps/api/src/modules/payments/payments.service.ts:567:async refundCardPaymentForCancelledRide(input: {
+apps/api/src/modules/payments/payments.service.ts:574:refunded: boolean;
+apps/api/src/modules/payments/payments.service.ts:578:refund?: unknown;
+apps/api/src/modules/payments/payments.service.ts:586:refunded: false,
+apps/api/src/modules/payments/payments.service.ts:597:refunded: false,
+apps/api/src/modules/payments/payments.service.ts:603:const storedRefundStatus = getStoredRefundStatus(payment);
+apps/api/src/modules/payments/payments.service.ts:605:if (storedRefundStatus === "approved" || storedRefundStatus === "aprobado") {
+apps/api/src/modules/payments/payments.service.ts:609:refunded: true,
+apps/api/src/modules/payments/payments.service.ts:621:code: "REFUND_MISSING_MERCADOPAGO_ID",
+apps/api/src/modules/payments/payments.service.ts:627:const refundResult = await refundMercadoPagoPayment({
+apps/api/src/modules/payments/payments.service.ts:631:if (!refundResult.ok) {
+apps/api/src/modules/payments/payments.service.ts:632:await saveRefundStateOnPayment({
+apps/api/src/modules/payments/payments.service.ts:636:refundPayload: refundResult.data,
+apps/api/src/modules/payments/payments.service.ts:641:eventType: "payment.refund_failed_on_cancel",
+apps/api/src/modules/payments/payments.service.ts:648:statusCode: String(refundResult.statusCode),
+apps/api/src/modules/payments/payments.service.ts:656:code: "MERCADOPAGO_REFUND_ERROR",
+apps/api/src/modules/payments/payments.service.ts:658:statusCode: refundResult.statusCode,
+apps/api/src/modules/payments/payments.service.ts:662:await saveRefundStateOnPayment({
+apps/api/src/modules/payments/payments.service.ts:666:refundPayload: refundResult.data,
+apps/api/src/modules/payments/payments.service.ts:671:eventType: "payment.refunded_on_cancel",
+apps/api/src/modules/payments/payments.service.ts:686:refunded: true,
+apps/api/src/modules/payments/payments.service.ts:689:refund: refundResult.data,
+apps/api/src/modules/payments/payments.service.ts:774:payment.status === "refunded"
+apps/api/src/modules/rides/rides.service.ts:1107:let paymentRefund: Record<string, unknown> | null = null;
+apps/api/src/modules/rides/rides.service.ts:1114:const refundResult =
+apps/api/src/modules/rides/rides.service.ts:1115:await new PaymentsService().refundCardPaymentForCancelledRide({
+apps/api/src/modules/rides/rides.service.ts:1122:if (refundResult.ok) {
+apps/api/src/modules/rides/rides.service.ts:1123:paymentRefund = {
+apps/api/src/modules/rides/rides.service.ts:1124:processed: refundResult.processed,
+apps/api/src/modules/rides/rides.service.ts:1125:refunded: refundResult.refunded,
+apps/api/src/modules/rides/rides.service.ts:1126:skippedReason: refundResult.skippedReason ?? null,
+apps/api/src/modules/rides/rides.service.ts:1127:paymentId: refundResult.paymentId ?? null,
+apps/api/src/modules/rides/rides.service.ts:1128:mercadoPagoPaymentId: refundResult.mercadoPagoPaymentId ?? null,
+apps/api/src/modules/rides/rides.service.ts:1131:paymentRefund = {
+apps/api/src/modules/rides/rides.service.ts:1133:refunded: false,
+apps/api/src/modules/rides/rides.service.ts:1135:code: refundResult.code,
+apps/api/src/modules/rides/rides.service.ts:1136:message: refundResult.message,
+apps/api/src/modules/rides/rides.service.ts:1140:paymentRefund = {
+apps/api/src/modules/rides/rides.service.ts:1142:refunded: false,
+apps/api/src/modules/rides/rides.service.ts:1154:responseRide["paymentRefund"] = paymentRefund;
+apps/mobile/src/pages/admin/index.tsx:127:type AdminCashPaymentDecision = "exact" | "wallet_credit" | "refund_whatsapp" | "driver_overpaid";
+apps/mobile/src/pages/admin/index.tsx:139:status: "completed" | "pending_refund" | "wallet_available" | "pending_driver_review" | string;
+apps/mobile/src/pages/admin/index.tsx:140:adminReviewStatus?: "not_required" | "pending_admin" | "admin_approved" | "refund_requested" | "refund_completed" | string;
+apps/mobile/src/pages/admin/index.tsx:154:passengerWantsWalletCredit?: boolean | null;
+apps/mobile/src/pages/admin/index.tsx:155:passengerWantsRefund?: boolean | null;
+apps/mobile/src/pages/admin/index.tsx:177:refundWhatsappAvailable?: boolean | null;
+apps/mobile/src/pages/admin/index.tsx:178:cardRefundRequested?: boolean | null;
+apps/mobile/src/pages/admin/index.tsx:179:mercadoPagoRefundRequested?: boolean | null;
+apps/mobile/src/pages/admin/index.tsx:180:mercadoPagoRefundStatus?: string | null;
+apps/mobile/src/pages/admin/index.tsx:181:cancellationFeeClp?: number | null;
+apps/mobile/src/pages/admin/index.tsx:208:cardRefundRequested?: boolean | null;
+apps/mobile/src/pages/admin/index.tsx:209:mercadoPagoRefundStatus?: string | null;
+apps/mobile/src/pages/admin/index.tsx:210:cardRefundNotice?: string | null;
+apps/mobile/src/pages/admin/index.tsx:301:if (raw === "refund_whatsapp") return "refund_whatsapp";
+apps/mobile/src/pages/admin/index.tsx:361:current.passengerWantsWalletCredit = decision === "wallet_credit" || current.passengerWantsWalletCredit || false;
+apps/mobile/src/pages/admin/index.tsx:362:current.passengerWantsRefund = decision === "refund_whatsapp" || current.passengerWantsRefund || false;
+apps/mobile/src/pages/admin/index.tsx:377:const decision: AdminCashPaymentDecision = review.passengerWantsWalletCredit
+apps/mobile/src/pages/admin/index.tsx:379:: review.passengerWantsRefund
+apps/mobile/src/pages/admin/index.tsx:380:? "refund_whatsapp"
+apps/mobile/src/pages/admin/index.tsx:389:: decision === "refund_whatsapp"
+apps/mobile/src/pages/admin/index.tsx:390:? "refund_requested"
+apps/mobile/src/pages/admin/index.tsx:400:status: decision === "wallet_credit" ? "wallet_available" : decision === "refund_whatsapp" ? "pending_refund" : decision === "driver_overpaid" ? "pending_driver_review" : "completed",
+apps/mobile/src/pages/admin/index.tsx:446:refundWhatsappAvailable: Boolean(item.refundWhatsappAvailable),
+apps/mobile/src/pages/admin/index.tsx:447:cardRefundRequested: Boolean(item.cardRefundRequested || item.mercadoPagoRefundRequested),
+apps/mobile/src/pages/admin/index.tsx:448:mercadoPagoRefundRequested: Boolean(item.mercadoPagoRefundRequested || item.cardRefundRequested),
+apps/mobile/src/pages/admin/index.tsx:449:mercadoPagoRefundStatus: typeof item.mercadoPagoRefundStatus === "string" ? item.mercadoPagoRefundStatus : null,
+apps/mobile/src/pages/admin/index.tsx:450:cancellationFeeClp: Number.isFinite(Number(item.cancellationFeeClp)) ? Math.round(Number(item.cancellationFeeClp)) : null,
+apps/mobile/src/pages/admin/index.tsx:481:benefit.mercadoPagoRefundStatus,
+apps/mobile/src/pages/admin/index.tsx:492:benefit.refundWhatsappAvailable === true ||
+apps/mobile/src/pages/admin/index.tsx:493:benefit.cardRefundRequested === true ||
+apps/mobile/src/pages/admin/index.tsx:494:benefit.mercadoPagoRefundRequested === true
+apps/mobile/src/pages/admin/index.tsx:498:function isAdminWalletCreditAvailable(benefit: AdminWalletBenefit): boolean {
+apps/mobile/src/pages/admin/index.tsx:511:function isAdminWalletCreditPending(benefit: AdminWalletBenefit): boolean {
+apps/mobile/src/pages/admin/index.tsx:518:function isAdminWalletCreditRefundCompleted(benefit: AdminWalletBenefit): boolean {
+apps/mobile/src/pages/admin/index.tsx:522:return status === "refund_completed" || adminStatus === "refund_completed";
+apps/mobile/src/pages/admin/index.tsx:525:function adminWalletCreditStatusLabel(benefit: AdminWalletBenefit): string {
+apps/mobile/src/pages/admin/index.tsx:526:if (isAdminWalletCreditRefundCompleted(benefit)) return "Devolución gestionada";
+apps/mobile/src/pages/admin/index.tsx:527:if (isAdminWalletCreditPending(benefit)) return "Pendiente admin";
+apps/mobile/src/pages/admin/index.tsx:528:if (isAdminWalletCreditAvailable(benefit)) return "Disponible en wallet";
+apps/mobile/src/pages/admin/index.tsx:533:function adminWalletCreditStatusColor(benefit: AdminWalletBenefit): string {
+apps/mobile/src/pages/admin/index.tsx:534:if (isAdminWalletCreditRefundCompleted(benefit)) return "success";
+apps/mobile/src/pages/admin/index.tsx:535:if (isAdminWalletCreditPending(benefit)) return "warning";
+apps/mobile/src/pages/admin/index.tsx:536:if (isAdminWalletCreditAvailable(benefit)) return "success";
+apps/mobile/src/pages/admin/index.tsx:541:function markAdminWalletCreditAvailable(benefit: AdminWalletBenefit): void {
+apps/mobile/src/pages/admin/index.tsx:559:function markAdminWalletCreditRefundCompleted(benefit: AdminWalletBenefit): void {
+apps/mobile/src/pages/admin/index.tsx:566:status: "refund_completed",
+apps/mobile/src/pages/admin/index.tsx:567:adminReviewStatus: "refund_completed",
+apps/mobile/src/pages/admin/index.tsx:570:refundCompletedAt: now,
+apps/mobile/src/pages/admin/index.tsx:578:function buildAdminWalletCreditRefundWhatsAppUrl(benefit: AdminWalletBenefit): string {
+apps/mobile/src/pages/admin/index.tsx:585:benefit.cancellationFeeClp != null ? `Penalización descontada: ${formatAdminCashClp(benefit.cancellationFeeClp)}` : null,
+apps/mobile/src/pages/admin/index.tsx:594:function openAdminWalletCreditRefundWhatsApp(benefit: AdminWalletBenefit): void {
+apps/mobile/src/pages/admin/index.tsx:595:const url = buildAdminWalletCreditRefundWhatsAppUrl(benefit);
+apps/mobile/src/pages/admin/index.tsx:631:cardRefundRequested: Boolean(item.cardRefundRequested || item.mercadoPagoRefundRequested),
+apps/mobile/src/pages/admin/index.tsx:632:mercadoPagoRefundStatus: typeof item.mercadoPagoRefundStatus === "string" ? item.mercadoPagoRefundStatus : null,
+apps/mobile/src/pages/admin/index.tsx:633:cardRefundNotice: typeof item.cardRefundNotice === "string" ? item.cardRefundNotice : null,
+apps/mobile/src/pages/admin/index.tsx:731:function isAdminCashRefundCompleted(review: AdminCashPaymentReview): boolean {
+apps/mobile/src/pages/admin/index.tsx:733:return status === "refund_completed" || status === "completed";
+apps/mobile/src/pages/admin/index.tsx:738:if (review.decision === "refund_whatsapp") return "Devolución por WhatsApp";
+apps/mobile/src/pages/admin/index.tsx:747:if (review.decision === "refund_whatsapp") {
+apps/mobile/src/pages/admin/index.tsx:748:return isAdminCashRefundCompleted(review) ? "Devolución gestionada" : "Pendiente devolución";
+apps/mobile/src/pages/admin/index.tsx:758:if (review.decision === "refund_whatsapp") return isAdminCashRefundCompleted(review) ? "success" : "danger";
+apps/mobile/src/pages/admin/index.tsx:763:function approveAdminCashWalletCredit(review: AdminCashPaymentReview): void {
+apps/mobile/src/pages/admin/index.tsx:807:function markAdminCashRefundCompleted(review: AdminCashPaymentReview): void {
+apps/mobile/src/pages/admin/index.tsx:812:adminReviewStatus: "refund_completed",
+apps/mobile/src/pages/admin/index.tsx:1110:if (review.decision === "refund_whatsapp") return !isAdminCashRefundCompleted(review);
+apps/mobile/src/pages/admin/index.tsx:1121:const cardCancellationCreditsPending = cardCancellationCredits.filter(isAdminWalletCreditPending);
+apps/mobile/src/pages/admin/index.tsx:1122:const cardRefundRequestsPending = cardCancellationCredits.filter((credit) =>
+apps/mobile/src/pages/admin/index.tsx:1123:credit.refundWhatsappAvailable && !isAdminWalletCreditRefundCompleted(credit),
+apps/mobile/src/pages/admin/index.tsx:1129:cardRefundRequestsPending.length;
+apps/mobile/src/pages/admin/index.tsx:1812:<IonBadge color={cardRefundRequestsPending.length > 0 ? "warning" : "success"}>
+apps/mobile/src/pages/admin/index.tsx:1813:{cardRefundRequestsPending.length > 0
+apps/mobile/src/pages/admin/index.tsx:1814:? `${cardRefundRequestsPending.length} devolución${cardRefundRequestsPending.length !== 1 ? "es" : ""}`
+apps/mobile/src/pages/admin/index.tsx:1841:const cancellationFee = Math.max(0, Math.round(Number(credit.cancellationFeeClp ?? 0)));
+apps/mobile/src/pages/admin/index.tsx:1862:<IonBadge color={adminWalletCreditStatusColor(credit)}>
+apps/mobile/src/pages/admin/index.tsx:1863:{adminWalletCreditStatusLabel(credit)}
+apps/mobile/src/pages/admin/index.tsx:1877:{formatAdminCashClp(cancellationFee)}
+apps/mobile/src/pages/admin/index.tsx:1901:{isAdminWalletCreditPending(credit) && (
+apps/mobile/src/pages/admin/index.tsx:1906:markAdminWalletCreditAvailable(credit);
+apps/mobile/src/pages/admin/index.tsx:1915:{credit.refundWhatsappAvailable && !isAdminWalletCreditRefundCompleted(credit) && (
+apps/mobile/src/pages/admin/index.tsx:1920:onClick={() => openAdminWalletCreditRefundWhatsApp(credit)}
+apps/mobile/src/pages/admin/index.tsx:1926:{credit.refundWhatsappAvailable && !isAdminWalletCreditRefundCompleted(credit) && (
+apps/mobile/src/pages/admin/index.tsx:1932:markAdminWalletCreditRefundCompleted(credit);
+apps/mobile/src/pages/admin/index.tsx:2135:const isRefund = review.decision === "refund_whatsapp";
+apps/mobile/src/pages/admin/index.tsx:2143:const passengerChoice = review.passengerWantsWalletCredit
+apps/mobile/src/pages/admin/index.tsx:2145:: review.passengerWantsRefund
+apps/mobile/src/pages/admin/index.tsx:2237:{review.passengerWantsWalletCredit && passengerOverpaidClp > 0 && (
+apps/mobile/src/pages/admin/index.tsx:2247:approveAdminCashWalletCredit(review);
+apps/mobile/src/pages/admin/index.tsx:2256:{isRefund && !isAdminCashRefundCompleted(review) && (
+apps/mobile/src/pages/admin/index.tsx:2261:markAdminCashRefundCompleted(review);
+apps/mobile/src/pages/admin/index.tsx:6393:cardCancellationCreditToWallet: true,
+apps/mobile/src/pages/admin/index.tsx:6967:cardCancellationCreditToWallet: true,
+apps/mobile/src/pages/driver/index.tsx:1077:const [driverNoShowNowMs, setDriverNoShowNowMs] = useState(() => Date.now());
+apps/mobile/src/pages/driver/index.tsx:1084:ensureDriverNoShowTimerStartMs(ride as DriverRideData & Record<string, unknown>);
+apps/mobile/src/pages/driver/index.tsx:1085:setDriverNoShowNowMs(Date.now());
+apps/mobile/src/pages/driver/index.tsx:1087:const interval = window.setInterval(() => setDriverNoShowNowMs(Date.now()), 1000);
+apps/mobile/src/pages/driver/index.tsx:1091:const driverNoShowState = waitingPassenger
+apps/mobile/src/pages/driver/index.tsx:1092:? getDriverNoShowState(ride as DriverRideData & Record<string, unknown>, driverNoShowNowMs)
+apps/mobile/src/pages/driver/index.tsx:1096:feeClp: getDriverRideNoShowFeeClp(ride as DriverRideData & Record<string, unknown>),
+apps/mobile/src/pages/driver/index.tsx:7937:function getDriverRideMinimumFareForNoShow(ride: Partial<DriverRideData> & Record<string, unknown>): number {
+apps/mobile/src/pages/driver/index.tsx:7950:function getDriverRideNoShowFeeClp(ride: Partial<DriverRideData> & Record<string, unknown>): number {
+apps/mobile/src/pages/driver/index.tsx:7953:return Math.max(0, Math.round(getDriverRideMinimumFareForNoShow(ride)));
+apps/mobile/src/pages/driver/index.tsx:7956:function getDriverRideArrivalTimestampMsForNoShow(ride: Partial<DriverRideData> & Record<string, unknown>): number | null {
+apps/mobile/src/pages/driver/index.tsx:7965:function getDriverNoShowState(ride: Partial<DriverRideData> & Record<string, unknown>, nowMs = Date.now()): {
+apps/mobile/src/pages/driver/index.tsx:7973:return getDriverNoShowStateFromTimer(ride, nowMs);
+apps/mobile/src/pages/driver/index.tsx:7976:function formatDriverNoShowRemaining(ms: number): string {
+apps/mobile/src/pages/driver/index.tsx:7985:function readDriverNoShowTimerMap(): Record<string, number> {
+apps/mobile/src/pages/driver/index.tsx:8001:function writeDriverNoShowTimerMap(map: Record<string, number>): void {
+apps/mobile/src/pages/driver/index.tsx:8009:function ensureDriverNoShowTimerStartMs(
+apps/mobile/src/pages/driver/index.tsx:8013:const key = getDriverNoShowRideKey(ride);
+apps/mobile/src/pages/driver/index.tsx:8014:const current = readDriverNoShowTimerMap();
+apps/mobile/src/pages/driver/index.tsx:8024:writeDriverNoShowTimerMap(next);
+apps/mobile/src/pages/driver/index.tsx:8028:function clearDriverNoShowTimer(ride: Partial<DriverRideData> & Record<string, unknown>): void {
+apps/mobile/src/pages/driver/index.tsx:8029:const key = getDriverNoShowRideKey(ride);
+apps/mobile/src/pages/driver/index.tsx:8030:const current = readDriverNoShowTimerMap();
+apps/mobile/src/pages/driver/index.tsx:8035:writeDriverNoShowTimerMap(current);
+apps/mobile/src/pages/driver/index.tsx:8038:function getDriverNoShowProgressPercent(state: { remainingMs: number }): number {
+apps/mobile/src/pages/driver/index.tsx:8043:function getDriverNoShowStateFromTimer(
+apps/mobile/src/pages/driver/index.tsx:8051:const startAtMs = ensureDriverNoShowTimerStartMs(ride, nowMs);
+apps/mobile/src/pages/driver/index.tsx:8057:feeClp: getDriverRideNoShowFeeClp(ride),
+apps/mobile/src/pages/driver/index.tsx:8061:function getDriverNoShowRideKey(ride: Partial<DriverRideData> & Record<string, unknown>): string {
+apps/mobile/src/pages/driver/index.tsx:8074:function driverNoShowRideLooksCardPaid(ride: Partial<DriverRideData> & Record<string, unknown>): boolean {
+apps/mobile/src/pages/driver/index.tsx:8094:function getDriverRidePassengerPhoneForNoShow(ride: Partial<DriverRideData> & Record<string, unknown>): string {
+apps/mobile/src/pages/driver/index.tsx:8105:function buildDriverNoShowWhatsappUrl(ride: DriverRideData, feeClp: number): string | null {
+apps/mobile/src/pages/driver/index.tsx:8106:const phone = getDriverRidePassengerPhoneForNoShow(ride as DriverRideData & Record<string, unknown>);
+apps/mobile/src/pages/driver/index.tsx:8121:const phone = getDriverRidePassengerPhoneForNoShow(ride as DriverRideData & Record<string, unknown>);
+apps/mobile/src/pages/driver/index.tsx:8137:const feeClp = getDriverRideNoShowFeeClp(record);
+apps/mobile/src/pages/driver/index.tsx:8171:noShowCountdownStartedAt: record.noShowCountdownStartedAt ?? new Date().toISOString(),
+apps/mobile/src/pages/driver/index.tsx:8224:function notifyPassengerNoShowByAppAndWhatsapp(ride: DriverRideData, feeClp: number): void {
+apps/mobile/src/pages/driver/index.tsx:8228:id: `no-show-warning-${String(record.id ?? record.rideId ?? Date.now())}`,
+apps/mobile/src/pages/driver/index.tsx:8254:const url = buildDriverNoShowWhatsappUrl(ride, feeClp);
+apps/mobile/src/pages/driver/index.tsx:8264:function saveDriverNoShowChargeForPassenger(
+apps/mobile/src/pages/driver/index.tsx:8269:const rideKey = getDriverNoShowRideKey(record);
+apps/mobile/src/pages/driver/index.tsx:8270:const feeClp = getDriverRideNoShowFeeClp(record);
+apps/mobile/src/pages/driver/index.tsx:8271:const isCardPaid = driverNoShowRideLooksCardPaid(record);
+apps/mobile/src/pages/driver/index.tsx:8276:id: `driver-no-show-${rideId || rideKey}`,
+apps/mobile/src/pages/driver/index.tsx:8284:minimumFareClp: getDriverRideMinimumFareForNoShow(record),
+apps/mobile/src/pages/driver/index.tsx:8325:function markPassengerRideNoShowCancelledFromDriver(
+apps/mobile/src/pages/driver/index.tsx:8338:passengerCancellationFeeClp: Number(charge.amountClp ?? 0),
+apps/mobile/src/pages/driver/index.tsx:11588:noShowCountdownStartedAt: arrivedAt,
+apps/mobile/src/pages/driver/index.tsx:11779:async function handleDriverNoShowRide(ride: DriverRideData): Promise<void> {
+apps/mobile/src/pages/driver/index.tsx:11783:const noShowState = getDriverNoShowState(ride as DriverRideData & Record<string, unknown>);
+apps/mobile/src/pages/driver/index.tsx:11784:if (!noShowState.allowed) {
+apps/mobile/src/pages/driver/index.tsx:11785:setError(`Debes esperar 5 minutos desde que llegaste al punto. Falta ${formatDriverNoShowRemaining(noShowState.remainingMs)}.`);
+apps/mobile/src/pages/driver/index.tsx:11793:notifyPassengerNoShowByAppAndWhatsapp(ride, noShowState.feeClp);
+apps/mobile/src/pages/driver/index.tsx:11794:const charge = saveDriverNoShowChargeForPassenger(ride, session?.user);
+apps/mobile/src/pages/driver/index.tsx:11795:markPassengerRideNoShowCancelledFromDriver(ride, charge);
+apps/mobile/src/pages/driver/index.tsx:11796:clearDriverNoShowTimer(ride as DriverRideData & Record<string, unknown>);
+apps/mobile/src/pages/driver/index.tsx:11810:window.dispatchEvent(new CustomEvent("rapago:driver-rides-updated", { detail: { rideId, status: "cancelled", noShow: true, charge } }));
+apps/mobile/src/pages/driver/index.tsx:12939:const [activeRideNoShowNowMs, setActiveRideNoShowNowMs] = useState(() => Date.now());
+apps/mobile/src/pages/driver/index.tsx:12944:const interval = window.setInterval(() => setActiveRideNoShowNowMs(Date.now()), 1000);
+apps/mobile/src/pages/driver/index.tsx:12948:const driverNoShowState = getDriverNoShowState(
+apps/mobile/src/pages/driver/index.tsx:12950:activeRideNoShowNowMs,
+apps/mobile/src/pages/driver/index.tsx:13145:background: driverNoShowState.allowed
+apps/mobile/src/pages/driver/index.tsx:13148:border: driverNoShowState.allowed
+apps/mobile/src/pages/driver/index.tsx:13166:{driverNoShowState.allowed
+apps/mobile/src/pages/driver/index.tsx:13168:: formatDriverNoShowRemaining(driverNoShowState.remainingMs)}
+apps/mobile/src/pages/driver/index.tsx:13183:width: `${getDriverNoShowProgressPercent(driverNoShowState)}%`,
+apps/mobile/src/pages/driver/index.tsx:13186:background: driverNoShowState.allowed
+apps/mobile/src/pages/driver/index.tsx:13202:{driverNoShowState.allowed
+apps/mobile/src/pages/driver/index.tsx:13229:disabled={!driverNoShowState.allowed}
+apps/mobile/src/pages/driver/index.tsx:13234:"--color": driverNoShowState.allowed ? "#111111" : "#ffffff",
+apps/mobile/src/pages/driver/index.tsx:13235:"--background": driverNoShowState.allowed ? undefined : "rgba(71,85,105,.75)",
+apps/mobile/src/pages/driver/index.tsx:13236:opacity: driverNoShowState.allowed ? 1 : .68,
+apps/mobile/src/pages/driver/index.tsx:13241:onClick={() => void handleDriverNoShowRide(ride)}
+apps/mobile/src/pages/driver/index.tsx:13243:{driverNoShowState.allowed ? `No show · Total ${formatClp(driverNoShowState.feeClp)}` : `Espera ${formatDriverNoShowRemaining(driverNoShowState.remainingMs)}`}
+apps/mobile/src/pages/driver/index.tsx:14201:async function handleDriverNoShowRide(ride: DriverRideData): Promise<void> {
+apps/mobile/src/pages/driver/index.tsx:14205:const noShowState = getDriverNoShowState(ride as DriverRideData & Record<string, unknown>);
+apps/mobile/src/pages/driver/index.tsx:14206:if (!noShowState.allowed) {
+apps/mobile/src/pages/driver/index.tsx:14207:setLoadError(`Debes esperar 5 minutos desde que llegaste al punto. Falta ${formatDriverNoShowRemaining(noShowState.remainingMs)}.`);
+apps/mobile/src/pages/driver/index.tsx:14215:notifyPassengerNoShowByAppAndWhatsapp(ride, noShowState.feeClp);
+apps/mobile/src/pages/driver/index.tsx:14216:const charge = saveDriverNoShowChargeForPassenger(ride, session?.user);
+apps/mobile/src/pages/driver/index.tsx:14217:markPassengerRideNoShowCancelledFromDriver(ride, charge);
+apps/mobile/src/pages/driver/index.tsx:14218:clearDriverNoShowTimer(ride as DriverRideData & Record<string, unknown>);
+apps/mobile/src/pages/driver/index.tsx:14244:detail: { rideId, status: "cancelled", noShow: true, charge },
+apps/mobile/src/pages/driver/index.tsx:14489:disabled={actionLoading === activeRide.id || !getDriverNoShowState(activeRide as DriverRideData & Record<string, unknown>).allowed}
+apps/mobile/src/pages/driver/index.tsx:14490:onClick={() => void handleDriverNoShowRide(activeRide)}
+apps/mobile/src/pages/driver/index.tsx:14492:{actionLoading === activeRide.id ? <IonSpinner name="dots" /> : getDriverNoShowState(activeRide as DriverRideData & Record<string, unknown>).allowed ? `No show · Total ${formatClp(getDriverNoShowState(activeRide as DriverRideData & Record<string, unknown>).feeClp)}` : `Espera ${formatDriverNoShowRemaining(getDriverNoShowState(activeRide as DriverRideData & Record<string, unknown>).remainingMs)}`}
+apps/mobile/src/pages/passenger/index.tsx:6871:refund:   "Reembolso",
+apps/mobile/src/pages/passenger/index.tsx:6877:refund:   "tertiary",
+apps/mobile/src/pages/passenger/index.tsx:6975:const txIcon = tx.type === "payment" ? "🚗" : tx.type === "refund" ? "↩️" : "💰";
+apps/mobile/src/pages/passenger/pages/HomePage.tsx:237:record.refundClp,
+apps/mobile/src/pages/passenger/pages/HomePage.tsx:239:record.walletCreditClp,
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:5138:cardCancellationCreditToWallet: reservationRequiresCard && String(activePaymentMethod) === "card",
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:5478:cardCancellationCreditToWallet: reservationRequiresCard && String(activePaymentMethod) === "card",
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:316:ride.noShowCountdownStartedAt,
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:414:function getLatestPassengerNoShowNotificationForRide(ride: RideRequestData): PassengerNotificationPayload | null {
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:1710:cardRefundRequested: Boolean(item.cardRefundRequested || item.mercadoPagoRefundRequested),
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:1711:mercadoPagoRefundRequested: Boolean(item.mercadoPagoRefundRequested || item.cardRefundRequested),
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:1712:mercadoPagoRefundStatus: typeof item.mercadoPagoRefundStatus === "string" ? item.mercadoPagoRefundStatus : null,
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:1713:cardRefundNotice: typeof item.cardRefundNotice === "string" ? item.cardRefundNotice : null,
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:1740:const isCardPayment = isPassengerCancellationCardPaymentForRefundAction(record);
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:1753:const cardRefundNextRideNotice = isCardPayment
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:1777:? `No show: el conductor llegó y pasaron 5 minutos. ${chargeNextRideNotice}${cardRefundNextRideNotice ? ` ${cardRefundNextRideNotice}` : ""}`
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:1778:: `Cancelación fuera del tiempo gratuito. ${chargeNextRideNotice}${cardRefundNextRideNotice ? ` ${cardRefundNextRideNotice}` : ""}`,
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:1779:cardRefundRequested: isCardPayment,
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:1780:mercadoPagoRefundRequested: isCardPayment,
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:1781:mercadoPagoRefundStatus: isCardPayment ? "pending_backend_refund" : null,
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:1782:cardRefundNotice: cardRefundNextRideNotice,
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:1817:function isPassengerCancellationCashPaymentForRefundAction(
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:1839:function isPassengerCancellationCardPaymentForRefundAction(
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:1845:// haya quedado con flags de refund en localStorage.
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:1846:if (isPassengerCancellationCashPaymentForRefundAction(ride)) return false;
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:1855:const isCardPayment = isPassengerCancellationCardPaymentForRefundAction(record);
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:1871:passengerCancellationFeeClp: policy.feeClp,
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:1886:cardRefundRequested: isCardPayment,
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:1887:mercadoPagoRefundRequested: isCardPayment,
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:1888:mercadoPagoRefundStatus: isCardPayment ? "pending_backend_refund" : null,
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:1889:cardRefundNotice: isCardPayment
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:1894:cardWalletCreditRequested: isCardPayment,
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:1895:cardWalletCreditClp: isCardPayment ? getPassengerCardCancellationCreditNetClp(record, policy.feeClp) : 0,
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:1896:cardWalletCreditStatus: isCardPayment ? "pending_admin" : null,
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:1984:savePassengerWalletCreditFromCardCancellation(target, cancelled);
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:5697:type PassengerCashPaymentDecision = "exact" | "wallet_credit" | "refund_whatsapp";
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:5709:status: "completed" | "pending_refund" | "wallet_available" | "pending_wallet_admin";
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:5710:adminReviewStatus: "not_required" | "pending_admin" | "admin_approved" | "refund_requested" | "refund_completed";
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:5718:passengerWantsWalletCredit?: boolean | null;
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:5719:passengerWantsRefund?: boolean | null;
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:5747:cardRefundRequested?: boolean | null;
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:5748:mercadoPagoRefundRequested?: boolean | null;
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:5749:mercadoPagoRefundStatus?: string | null;
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:5750:cardRefundNotice?: string | null;
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:5852:passengerWantsWalletCredit: input.decision === "wallet_credit",
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:5853:passengerWantsRefund: input.decision === "refund_whatsapp",
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:5902:passengerWantsWalletCredit: true,
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:5954:cancellationFeeClp: number,
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:5957:const fee = Math.max(0, Math.round(Number(cancellationFeeClp ?? 0)));
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:5961:function savePassengerWalletCreditFromCardCancellation(
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:5966:if (!isPassengerCancellationCardPaymentForRefundAction(record)) return;
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:5968:const policyFee = Math.max(0, Math.round(Number((cancelled as RideRequestData & Record<string, unknown>).passengerCancellationFeeClp ?? 0)));
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:6001:cancellationFeeClp: policyFee,
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:6003:refundWhatsappAvailable: true,
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:6004:cardRefundRequested: true,
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:6005:mercadoPagoRefundRequested: true,
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:6006:mercadoPagoRefundStatus: "wallet_credit_available",
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:6032:function buildRapaGoRefundWhatsAppUrl(ride: RideRequestData, review: PassengerCashPaymentReview): string {
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:6047:function openPassengerRefundWhatsApp(ride: RideRequestData, review: PassengerCashPaymentReview): void {
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:6048:const url = buildRapaGoRefundWhatsAppUrl(ride, review);
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:6057:function buildRapaGoCardCancelRefundWhatsAppUrl(ride: RideRequestData): string {
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:6077:`Estado en la app: ${String(record.mercadoPagoRefundStatus ?? "pendiente de revisión")}`,
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:6087:function openRapaGoCardCancelRefundWhatsApp(ride: RideRequestData): void {
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:6088:if (!isPassengerCancellationCardPaymentForRefundAction(ride as RideRequestData & Record<string, unknown>)) {
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:6092:const url = buildRapaGoCardCancelRefundWhatsAppUrl(ride);
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:6101:function shouldShowRapaGoCardCancelRefundButton(
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:6110:if (!isPassengerCancellationCardPaymentForRefundAction(record)) return false;
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:6113:Boolean(record.cardRefundRequested) ||
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:6114:Boolean(record.mercadoPagoRefundRequested) ||
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:6115:Boolean(record.mercadoPagoRefundStatus) ||
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:6116:isPassengerCancellationCardPaymentForRefundAction(record)
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:6162:function saveAsWalletCredit(): void {
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:6179:function requestRefund(): void {
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:6186:decision: "refund_whatsapp",
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:6187:status: "pending_refund",
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:6188:adminReviewStatus: "refund_requested",
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:6192:openPassengerRefundWhatsApp(ride, saved);
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:6197:const isRefund = review.decision === "refund_whatsapp";
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:6205:background: isRefund ? "#fff7db" : "#ecfdf3",
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:6206:border: isRefund ? "1px solid rgba(210,164,58,.60)" : "1px solid rgba(34,197,94,.38)",
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:6207:color: isRefund ? "#5f3f00" : "#14532d",
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:6214:{isRefund && "📲 Devolución solicitada por WhatsApp"}
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:6224:{isRefund && (
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:6231:{isRefund && (
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:6236:onClick={() => openPassengerRefundWhatsApp(ride, review)}
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:6334:onClick={saveAsWalletCredit}
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:6344:onClick={requestRefund}
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:6385:? isPassengerCancellationCardPaymentForRefundAction(ride as RideRequestData & Record<string, unknown>)
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:6474:const passengerNoShowNotice = getLatestPassengerNoShowNotificationForRide(ride);
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:6492:Math.round(Number((ride as RideRequestData & Record<string, unknown>).passengerCancellationFeeClp ?? (ride as RideRequestData & Record<string, unknown>).paymentPendingClp ?? 0)),
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:6495:const passengerCancelledCardRefundNotice = String((ride as RideRequestData & Record<string, unknown>).cardRefundNotice ?? "").trim();
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:6496:const showCardCancelRefundButton = shouldShowRapaGoCardCancelRefundButton(ride, effectiveStatus);
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:6564:{passengerNoShowNotice && passengerNoShowNotice.type === "no_show_warning" && effectiveStatus !== "cancelled" && (
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:6577:⚠️ <strong>{passengerNoShowNotice.title}</strong>
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:6579:{passengerNoShowNotice.body}
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:6598:{passengerCancelledCardRefundNotice && (
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:6600:<br /><span style={{ fontSize: ".76rem" }}>{passengerCancelledCardRefundNotice}</span>
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:6608:{showCardCancelRefundButton && (
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:6613:onClick={() => openRapaGoCardCancelRefundWhatsApp(ride)}
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:6621:{effectiveStatus === "cancelled" && showCardCancelRefundButton && passengerCancelledChargeClp <= 0 && (
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:6641:onClick={() => openRapaGoCardCancelRefundWhatsApp(ride)}
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:6970:{cancelling ? <IonSpinner name="dots" /> : isPassengerCancellationCardPaymentForRefundAction(ride as RideRequestData & Record<string, unknown>) ? "Cancelar/devolución" : isRoundTripReturnPickupRide(ride as RideRequestData & Record<string, unknown>) ? "Cancelar recogida" : scheduleInfo.isScheduled ? "Cancelar reserva" : "Cancelar"}
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:6982:{cancelling ? <IonSpinner name="dots" /> : isPassengerCancellationCardPaymentForRefundAction(ride as RideRequestData & Record<string, unknown>) ? "Cancelar/devolución" : "Cancelar viaje"}
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:7045:const [refundMercadoPagoAlert, setRefundMercadoPagoAlert] = useState<{ header: string; message: string; ride: RideRequestData | null } | null>(null);
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:7204:function showMercadoPagoRefundAlert(ride: RideRequestData): void {
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:7206:if (!isPassengerCancellationCardPaymentForRefundAction(record)) return;
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:7208:setRefundMercadoPagoAlert({
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:7251:showMercadoPagoRefundAlert(targetRide);
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:7256:showMercadoPagoRefundAlert(targetRide);
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:7748:isOpen={refundMercadoPagoAlert !== null}
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:7749:header={refundMercadoPagoAlert?.header ?? "Cancelar/devolución"}
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:7750:message={refundMercadoPagoAlert?.message ?? ""}
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:7755:handler: () => setRefundMercadoPagoAlert(null),
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:7760:const ride = refundMercadoPagoAlert?.ride;
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:7761:setRefundMercadoPagoAlert(null);
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:7762:if (ride) openRapaGoCardCancelRefundWhatsApp(ride);
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:7766:onDidDismiss={() => setRefundMercadoPagoAlert(null)}
+apps/mobile/src/pages/passenger/pages/WalletPage.tsx:59:refundWhatsappAvailable?: boolean | null;
+apps/mobile/src/pages/passenger/pages/WalletPage.tsx:60:cardRefundRequested?: boolean | null;
+apps/mobile/src/pages/passenger/pages/WalletPage.tsx:61:mercadoPagoRefundRequested?: boolean | null;
+apps/mobile/src/pages/passenger/pages/WalletPage.tsx:62:mercadoPagoRefundStatus?: string | null;
+apps/mobile/src/pages/passenger/pages/WalletPage.tsx:107:refundWhatsappAvailable: Boolean(item.refundWhatsappAvailable),
+apps/mobile/src/pages/passenger/pages/WalletPage.tsx:108:cardRefundRequested: Boolean(item.cardRefundRequested || item.mercadoPagoRefundRequested),
+apps/mobile/src/pages/passenger/pages/WalletPage.tsx:109:mercadoPagoRefundRequested: Boolean(item.mercadoPagoRefundRequested || item.cardRefundRequested),
+apps/mobile/src/pages/passenger/pages/WalletPage.tsx:110:mercadoPagoRefundStatus: typeof item.mercadoPagoRefundStatus === "string" ? item.mercadoPagoRefundStatus : null,
+apps/mobile/src/pages/passenger/pages/WalletPage.tsx:155:benefit.refundWhatsappAvailable === true ||
+apps/mobile/src/pages/passenger/pages/WalletPage.tsx:156:benefit.cardRefundRequested === true ||
+apps/mobile/src/pages/passenger/pages/WalletPage.tsx:157:benefit.mercadoPagoRefundRequested === true
+apps/mobile/src/pages/passenger/pages/WalletPage.tsx:161:function buildWalletCreditRefundWhatsAppUrl(benefits: LocalWalletBenefit[]): string {
+apps/mobile/src/pages/passenger/pages/WalletPage.tsx:176:function openWalletCreditRefundWhatsApp(benefits: LocalWalletBenefit[]): void {
+apps/mobile/src/pages/passenger/pages/WalletPage.tsx:177:const url = buildWalletCreditRefundWhatsAppUrl(benefits);
+apps/mobile/src/pages/passenger/pages/WalletPage.tsx:656:onClick={() => openWalletCreditRefundWhatsApp(cardCancellationCredits)}

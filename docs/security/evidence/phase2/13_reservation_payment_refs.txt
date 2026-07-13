@@ -1,0 +1,1386 @@
+﻿apps/api/src/db/schema/wallets.schema.ts:15:export const paymentMethods = pgTable("payment_methods", {
+apps/api/src/db/schema/wallets.schema.ts:66:export type PaymentMethod = typeof paymentMethods.$inferSelect;
+apps/api/src/modules/payments/mercadopago.provider.ts:3:PaymentProvider,
+apps/api/src/modules/payments/mercadopago.provider.ts:174:export class MercadoPagoProvider implements PaymentProvider {
+apps/api/src/modules/payments/payment.provider.ts:29:export interface PaymentProvider {
+apps/api/src/modules/payments/payments.service.ts:42:"scheduled",
+apps/api/src/modules/payments/payments.service.ts:43:"driver_scheduled",
+apps/api/src/modules/payments/payments.service.ts:466:"Payment can only be initiated for an active, scheduled, in-progress or completed ride.",
+apps/api/src/modules/payments/prontopaga.provider.ts:3:PaymentProvider,
+apps/api/src/modules/payments/prontopaga.provider.ts:48:export class ProntoPagaProvider implements PaymentProvider {
+apps/api/src/modules/payments/provider.registry.ts:1:import type { PaymentProvider } from "./payment.provider.js";
+apps/api/src/modules/payments/provider.registry.ts:5:const providers: Record<string, PaymentProvider> = {
+apps/api/src/modules/payments/provider.registry.ts:11:export function getProvider(name: string): PaymentProvider {
+apps/api/src/modules/payments/provider.registry.ts:24:export function getActiveProvider(): PaymentProvider {
+apps/api/src/modules/rides/rides.schemas.ts:31:paymentMethod: z.enum(["cash", "card"]).optional(),
+apps/api/src/modules/rides/rides.schemas.ts:32:paymentProvider: z.enum(["mercadopago", "prontopaga", "transbank"]).nullable().optional(),
+apps/api/src/modules/rides/rides.schemas.ts:35:rideMode: z.enum(["now", "scheduled"]).optional(),
+apps/api/src/modules/rides/rides.schemas.ts:36:isScheduled: z.boolean().optional(),
+apps/api/src/modules/rides/rides.schemas.ts:39:scheduledAt: z.string().trim().nullable().optional(),
+apps/api/src/modules/rides/rides.schemas.ts:40:scheduledPickupAt: z.string().trim().nullable().optional(),
+apps/api/src/modules/rides/rides.schemas.ts:41:scheduledReturnAt: z.string().trim().nullable().optional(),
+apps/api/src/modules/rides/rides.schemas.ts:42:scheduledActivationAt: z.string().trim().nullable().optional(),
+apps/api/src/modules/rides/rides.schemas.ts:43:scheduledReturnActivationAt: z.string().trim().nullable().optional(),
+apps/api/src/modules/rides/rides.service.ts:65:isScheduled: boolean;
+apps/api/src/modules/rides/rides.service.ts:66:rideMode: "now" | "scheduled";
+apps/api/src/modules/rides/rides.service.ts:68:scheduledAt: string | null;
+apps/api/src/modules/rides/rides.service.ts:69:scheduledPickupAt: string | null;
+apps/api/src/modules/rides/rides.service.ts:70:scheduledReturnAt: string | null;
+apps/api/src/modules/rides/rides.service.ts:71:scheduledActivationAt: string | null;
+apps/api/src/modules/rides/rides.service.ts:72:scheduledReturnActivationAt: string | null;
+apps/api/src/modules/rides/rides.service.ts:138:const scheduledReturnAt =
+apps/api/src/modules/rides/rides.service.ts:142:const scheduledActivationAt =
+apps/api/src/modules/rides/rides.service.ts:147:const scheduledReturnActivationAt =
+apps/api/src/modules/rides/rides.service.ts:150:addMinutesIso(scheduledReturnAt, -SCHEDULE_ACTIVATION_MINUTES);
+apps/api/src/modules/rides/rides.service.ts:152:const isScheduled =
+apps/api/src/modules/rides/rides.service.ts:153:Boolean(pickup || scheduledReturnAt) ||
+apps/api/src/modules/rides/rides.service.ts:159:isScheduled,
+apps/api/src/modules/rides/rides.service.ts:160:rideMode: isScheduled ? "scheduled" : "now",
+apps/api/src/modules/rides/rides.service.ts:162:scheduledReturnAt || /ida y vuelta|round_trip/i.test(notes)
+apps/api/src/modules/rides/rides.service.ts:165:scheduledAt: pickup,
+apps/api/src/modules/rides/rides.service.ts:166:scheduledPickupAt: pickup,
+apps/api/src/modules/rides/rides.service.ts:167:scheduledReturnAt,
+apps/api/src/modules/rides/rides.service.ts:168:scheduledActivationAt,
+apps/api/src/modules/rides/rides.service.ts:169:scheduledReturnActivationAt,
+apps/api/src/modules/rides/rides.service.ts:200:const scheduledPickupAt =
+apps/api/src/modules/rides/rides.service.ts:201:toIsoOrNull(record.scheduledPickupAt) ??
+apps/api/src/modules/rides/rides.service.ts:202:toIsoOrNull(record.scheduledAt) ??
+apps/api/src/modules/rides/rides.service.ts:203:toIsoOrNull(fromNotes.scheduledPickupAt) ??
+apps/api/src/modules/rides/rides.service.ts:204:toIsoOrNull(fromNotes.scheduledAt);
+apps/api/src/modules/rides/rides.service.ts:206:const scheduledReturnAt =
+apps/api/src/modules/rides/rides.service.ts:207:toIsoOrNull(record.scheduledReturnAt) ??
+apps/api/src/modules/rides/rides.service.ts:208:toIsoOrNull(fromNotes.scheduledReturnAt);
+apps/api/src/modules/rides/rides.service.ts:210:const isScheduled =
+apps/api/src/modules/rides/rides.service.ts:211:record.isScheduled === true ||
+apps/api/src/modules/rides/rides.service.ts:212:record.rideMode === "scheduled" ||
+apps/api/src/modules/rides/rides.service.ts:213:Boolean(scheduledPickupAt || scheduledReturnAt || fromNotes.isScheduled);
+apps/api/src/modules/rides/rides.service.ts:215:if (!isScheduled) return null;
+apps/api/src/modules/rides/rides.service.ts:217:const scheduledActivationAt =
+apps/api/src/modules/rides/rides.service.ts:218:toIsoOrNull(record.scheduledActivationAt) ??
+apps/api/src/modules/rides/rides.service.ts:219:toIsoOrNull(fromNotes.scheduledActivationAt) ??
+apps/api/src/modules/rides/rides.service.ts:220:addMinutesIso(scheduledPickupAt, -SCHEDULE_ACTIVATION_MINUTES);
+apps/api/src/modules/rides/rides.service.ts:222:const scheduledReturnActivationAt =
+apps/api/src/modules/rides/rides.service.ts:223:toIsoOrNull(record.scheduledReturnActivationAt) ??
+apps/api/src/modules/rides/rides.service.ts:224:toIsoOrNull(fromNotes.scheduledReturnActivationAt) ??
+apps/api/src/modules/rides/rides.service.ts:225:addMinutesIso(scheduledReturnAt, -SCHEDULE_ACTIVATION_MINUTES);
+apps/api/src/modules/rides/rides.service.ts:230:Boolean(scheduledReturnAt)
+apps/api/src/modules/rides/rides.service.ts:237:isScheduled: true,
+apps/api/src/modules/rides/rides.service.ts:238:rideMode: "scheduled",
+apps/api/src/modules/rides/rides.service.ts:240:scheduledAt: scheduledPickupAt,
+apps/api/src/modules/rides/rides.service.ts:241:scheduledPickupAt,
+apps/api/src/modules/rides/rides.service.ts:242:scheduledReturnAt,
+apps/api/src/modules/rides/rides.service.ts:243:scheduledActivationAt,
+apps/api/src/modules/rides/rides.service.ts:244:scheduledReturnActivationAt,
+apps/api/src/modules/rides/rides.service.ts:261:if (!meta?.isScheduled) return base;
+apps/api/src/modules/rides/rides.service.ts:265:meta.scheduledPickupAt
+apps/api/src/modules/rides/rides.service.ts:266:? `Fecha y hora de recogida agendada: ${meta.scheduledPickupAt}`
+apps/api/src/modules/rides/rides.service.ts:268:meta.scheduledActivationAt
+apps/api/src/modules/rides/rides.service.ts:269:? `Activación automática recogida: ${meta.scheduledActivationAt}`
+apps/api/src/modules/rides/rides.service.ts:271:meta.scheduledReturnAt
+apps/api/src/modules/rides/rides.service.ts:272:? `Fecha y hora de regreso agendada: ${meta.scheduledReturnAt}`
+apps/api/src/modules/rides/rides.service.ts:274:meta.scheduledReturnActivationAt
+apps/api/src/modules/rides/rides.service.ts:275:? `Activación automática regreso: ${meta.scheduledReturnActivationAt}`
+apps/api/src/modules/rides/rides.service.ts:288:if (!meta.isScheduled) return null;
+apps/api/src/modules/rides/rides.service.ts:293:isScheduled: true,
+apps/api/src/modules/rides/rides.service.ts:294:rideMode: "scheduled",
+apps/api/src/modules/rides/rides.service.ts:296:scheduledAt: meta.scheduledAt ?? meta.scheduledPickupAt ?? null,
+apps/api/src/modules/rides/rides.service.ts:297:scheduledPickupAt: meta.scheduledPickupAt ?? meta.scheduledAt ?? null,
+apps/api/src/modules/rides/rides.service.ts:298:scheduledReturnAt: meta.scheduledReturnAt ?? null,
+apps/api/src/modules/rides/rides.service.ts:299:scheduledActivationAt:
+apps/api/src/modules/rides/rides.service.ts:300:meta.scheduledActivationAt ??
+apps/api/src/modules/rides/rides.service.ts:302:meta.scheduledPickupAt ?? meta.scheduledAt ?? null,
+apps/api/src/modules/rides/rides.service.ts:305:scheduledReturnActivationAt:
+apps/api/src/modules/rides/rides.service.ts:306:meta.scheduledReturnActivationAt ??
+apps/api/src/modules/rides/rides.service.ts:307:addMinutesIso(meta.scheduledReturnAt ?? null, -SCHEDULE_ACTIVATION_MINUTES),
+apps/api/src/modules/rides/rides.service.ts:323:if (!meta?.isScheduled) return true;
+apps/api/src/modules/rides/rides.service.ts:326:toIsoOrNull(meta.scheduledActivationAt) ??
+apps/api/src/modules/rides/rides.service.ts:327:addMinutesIso(meta.scheduledPickupAt, -SCHEDULE_ACTIVATION_MINUTES);
+apps/api/src/modules/rides/rides.service.ts:381:if (scheduleMeta?.isScheduled) {
+apps/api/src/modules/rides/rides.service.ts:382:response["isScheduled"] = true;
+apps/api/src/modules/rides/rides.service.ts:383:response["rideMode"] = "scheduled";
+apps/api/src/modules/rides/rides.service.ts:385:response["scheduledAt"] = scheduleMeta.scheduledAt;
+apps/api/src/modules/rides/rides.service.ts:386:response["scheduledPickupAt"] = scheduleMeta.scheduledPickupAt;
+apps/api/src/modules/rides/rides.service.ts:387:response["scheduledReturnAt"] = scheduleMeta.scheduledReturnAt;
+apps/api/src/modules/rides/rides.service.ts:388:response["scheduledActivationAt"] = scheduleMeta.scheduledActivationAt;
+apps/api/src/modules/rides/rides.service.ts:389:response["scheduledReturnActivationAt"] = scheduleMeta.scheduledReturnActivationAt;
+apps/api/src/modules/rides/rides.service.ts:527:const isScheduledRide =
+apps/api/src/modules/rides/rides.service.ts:528:scheduleMeta?.rideMode === "scheduled" ||
+apps/api/src/modules/rides/rides.service.ts:529:input.rideMode === "scheduled" ||
+apps/api/src/modules/rides/rides.service.ts:530:input.isScheduled === true ||
+apps/api/src/modules/rides/rides.service.ts:531:Boolean(input.scheduledAt || input.scheduledPickupAt || input.scheduledReturnAt);
+apps/api/src/modules/rides/rides.service.ts:533:if (isScheduledRide && input.paymentMethod !== "card") {
+apps/api/src/modules/rides/rides.service.ts:536:code: "SCHEDULED_RIDE_REQUIRES_CARD",
+apps/api/src/modules/rides/rides.service.ts:543:isScheduledRide &&
+apps/api/src/modules/rides/rides.service.ts:544:input.paymentMethod === "card" &&
+apps/api/src/modules/rides/rides.service.ts:545:input.paymentProvider &&
+apps/api/src/modules/rides/rides.service.ts:546:!["mercadopago", "prontopaga", "transbank"].includes(input.paymentProvider)
+apps/mobile/src/i18n/rapagoI18n.tsx:258:"Agendado": "Scheduled",
+apps/mobile/src/i18n/rapagoI18n.tsx:349:"Al agendar, el origen queda automático en Aeropuerto Internacional Mataveri de Rapa Nui. El pasajero elige el destino final. La reserva queda congelada para conductores y se libera 1 min antes.": "When scheduled, the origin is set automatically to Rapa Nui Mataveri International Airport. The passenger chooses the final destination. The booking stays frozen for drivers and is released 1 minute before.",
+apps/mobile/src/i18n/rapagoI18n.tsx:357:"Recogida programada desde Mataveri. Tú eliges el destino, la hora y el recibimiento. Preparamos tu viaje y te avisaremos cuando tu RapaGo esté listo para ir por ti.": "Scheduled pickup from Mataveri. You choose the destination, time and welcome. We prepare your ride and notify you when your RapaGo is ready to pick you up.",
+apps/mobile/src/i18n/rapagoI18n.tsx:358:"Recogida programada desde Mataveri": "Scheduled pickup from Mataveri",
+apps/mobile/src/i18n/rapagoI18n.tsx:456:.replace("Recogida programada desde Mataveri.", "Scheduled pickup from Mataveri.")
+apps/mobile/src/pages/admin/index.tsx:99:const LOCAL_ADMIN_SCHEDULED_RIDES_KEY = "rapago_admin_scheduled_rides";
+apps/mobile/src/pages/admin/index.tsx:102:const LOCAL_DRIVER_SCHEDULED_QUEUE_KEY = "rapago_driver_scheduled_queue";
+apps/mobile/src/pages/admin/index.tsx:107:const DRIVER_ASSIGNED_RIDE_EVENT = "rapago:driver-assigned-scheduled-ride";
+apps/mobile/src/pages/admin/index.tsx:185:paymentMethod?: string | null;
+apps/mobile/src/pages/admin/index.tsx:186:paymentProvider?: string | null;
+apps/mobile/src/pages/admin/index.tsx:200:paymentMethod?: string | null;
+apps/mobile/src/pages/admin/index.tsx:454:paymentMethod: typeof item.paymentMethod === "string" ? item.paymentMethod : null,
+apps/mobile/src/pages/admin/index.tsx:455:paymentProvider: typeof item.paymentProvider === "string" ? item.paymentProvider : null,
+apps/mobile/src/pages/admin/index.tsx:479:benefit.paymentMethod,
+apps/mobile/src/pages/admin/index.tsx:480:benefit.paymentProvider,
+apps/mobile/src/pages/admin/index.tsx:623:paymentMethod: typeof item.paymentMethod === "string" ? item.paymentMethod : null,
+apps/mobile/src/pages/admin/index.tsx:685:const method = String(charge.paymentMethod ?? "").toLowerCase();
+apps/mobile/src/pages/admin/index.tsx:2035:{charge.paymentMethod && (
+apps/mobile/src/pages/admin/index.tsx:2037:Método original: <strong>{charge.paymentMethod}</strong>
+apps/mobile/src/pages/admin/index.tsx:2038:{String(charge.paymentMethod).toLowerCase().includes("tarjeta") || String(charge.paymentMethod).toLowerCase().includes("mercado") || String(charge.paymentMethod).toLowerCase().includes("pronto") ? (
+apps/mobile/src/pages/admin/index.tsx:4419:const localScheduled = readLocalAdminScheduledRides();
+apps/mobile/src/pages/admin/index.tsx:4422:for (const ride of localScheduled) {
+apps/mobile/src/pages/admin/index.tsx:4449:window.addEventListener("rapago:admin-scheduled-rides-updated", onReassignNeeded as EventListener);
+apps/mobile/src/pages/admin/index.tsx:4450:window.addEventListener("rapago:driver-scheduled-reservation-updated", onReassignNeeded as EventListener);
+apps/mobile/src/pages/admin/index.tsx:4455:window.removeEventListener("rapago:admin-scheduled-rides-updated", onReassignNeeded as EventListener);
+apps/mobile/src/pages/admin/index.tsx:4456:window.removeEventListener("rapago:driver-scheduled-reservation-updated", onReassignNeeded as EventListener);
+apps/mobile/src/pages/admin/index.tsx:4497:function getAdminPaymentMethod(notes: string | null | undefined): string {
+apps/mobile/src/pages/admin/index.tsx:4520:const assigned = assignScheduledRideToDriverLocally(assignmentRide, driver);
+apps/mobile/src/pages/admin/index.tsx:4575:? `Regreso: ${formatAdminScheduleDate(getAdminRideScheduleInfo(assignmentRide).returnScheduledAt ?? getAdminRideScheduleInfo(assignmentRide).displayScheduledAt)}`
+apps/mobile/src/pages/admin/index.tsx:4576:: `Recogida: ${formatAdminScheduleDate(getAdminRideScheduleInfo(assignmentRide).scheduledAt)}`}
+apps/mobile/src/pages/admin/index.tsx:5003:{getAdminPaymentMethod(selectedDriverRide.notes)}
+apps/mobile/src/pages/admin/index.tsx:6094:isScheduled: boolean;
+apps/mobile/src/pages/admin/index.tsx:6095:scheduledAt: string | null;
+apps/mobile/src/pages/admin/index.tsx:6096:returnScheduledAt: string | null;
+apps/mobile/src/pages/admin/index.tsx:6100:displayScheduledAt: string | null;
+apps/mobile/src/pages/admin/index.tsx:6185:function formatAdminScheduleDate(value: string | null | undefined): string {
+apps/mobile/src/pages/admin/index.tsx:6219:"RAPAGO_SCHEDULED_AT",
+apps/mobile/src/pages/admin/index.tsx:6222:"scheduledAt",
+apps/mobile/src/pages/admin/index.tsx:6223:"scheduledPickupAt",
+apps/mobile/src/pages/admin/index.tsx:6224:"pickupScheduledAt",
+apps/mobile/src/pages/admin/index.tsx:6230:"RAPAGO_RETURN_SCHEDULED_AT",
+apps/mobile/src/pages/admin/index.tsx:6234:"returnScheduledAt",
+apps/mobile/src/pages/admin/index.tsx:6235:"scheduledReturnAt",
+apps/mobile/src/pages/admin/index.tsx:6254:"scheduledReturnActivationAt",
+apps/mobile/src/pages/admin/index.tsx:6316:function getAdminReturnActivationAt(ride: AdminRideData, returnScheduledAt: string | null): string | null {
+apps/mobile/src/pages/admin/index.tsx:6319:"scheduledReturnActivationAt",
+apps/mobile/src/pages/admin/index.tsx:6325:(returnScheduledAt
+apps/mobile/src/pages/admin/index.tsx:6326:? new Date(new Date(returnScheduledAt).getTime() - SCHEDULE_ACTIVATION_MINUTES_ADMIN * 60_000).toISOString()
+apps/mobile/src/pages/admin/index.tsx:6335:const returnAt = schedule.returnScheduledAt;
+apps/mobile/src/pages/admin/index.tsx:6351:status: "scheduled",
+apps/mobile/src/pages/admin/index.tsx:6352:isScheduled: true,
+apps/mobile/src/pages/admin/index.tsx:6366:scheduledAt: returnAt,
+apps/mobile/src/pages/admin/index.tsx:6367:scheduledPickupAt: returnAt,
+apps/mobile/src/pages/admin/index.tsx:6368:pickupScheduledAt: returnAt,
+apps/mobile/src/pages/admin/index.tsx:6369:returnScheduledAt: returnAt,
+apps/mobile/src/pages/admin/index.tsx:6370:scheduledReturnAt: returnAt,
+apps/mobile/src/pages/admin/index.tsx:6371:scheduledReturnActivationAt: returnActivationAt,
+apps/mobile/src/pages/admin/index.tsx:6391:reservationRequiresCard: true,
+apps/mobile/src/pages/admin/index.tsx:6457:const returnScheduledAt =
+apps/mobile/src/pages/admin/index.tsx:6459:"returnScheduledAt",
+apps/mobile/src/pages/admin/index.tsx:6460:"scheduledReturnAt",
+apps/mobile/src/pages/admin/index.tsx:6466:const scheduledAt =
+apps/mobile/src/pages/admin/index.tsx:6468:"scheduledAt",
+apps/mobile/src/pages/admin/index.tsx:6469:"scheduledPickupAt",
+apps/mobile/src/pages/admin/index.tsx:6470:"pickupScheduledAt",
+apps/mobile/src/pages/admin/index.tsx:6475:const displayScheduledAt = isReturnOnlyPromotion
+apps/mobile/src/pages/admin/index.tsx:6476:? returnScheduledAt ?? scheduledAt
+apps/mobile/src/pages/admin/index.tsx:6477:: scheduledAt;
+apps/mobile/src/pages/admin/index.tsx:6480:(isReturnOnlyPromotion ? getAdminReturnActivationAt(ride, returnScheduledAt ?? scheduledAt) : null) ??
+apps/mobile/src/pages/admin/index.tsx:6488:(displayScheduledAt
+apps/mobile/src/pages/admin/index.tsx:6489:? new Date(new Date(displayScheduledAt).getTime() - SCHEDULE_ACTIVATION_MINUTES_ADMIN * 60_000).toISOString()
+apps/mobile/src/pages/admin/index.tsx:6492:const isScheduled =
+apps/mobile/src/pages/admin/index.tsx:6493:getRideBooleanField(ride, ["isScheduled", "scheduled", "isReservation"]) ||
+apps/mobile/src/pages/admin/index.tsx:6494:ride.status === "scheduled" ||
+apps/mobile/src/pages/admin/index.tsx:6495:!!scheduledAt ||
+apps/mobile/src/pages/admin/index.tsx:6496:(isReturnOnlyPromotion && !!returnScheduledAt) ||
+apps/mobile/src/pages/admin/index.tsx:6505:isScheduled,
+apps/mobile/src/pages/admin/index.tsx:6506:scheduledAt,
+apps/mobile/src/pages/admin/index.tsx:6507:returnScheduledAt,
+apps/mobile/src/pages/admin/index.tsx:6511:displayScheduledAt,
+apps/mobile/src/pages/admin/index.tsx:6519:schedule.isScheduled &&
+apps/mobile/src/pages/admin/index.tsx:6521:["requested", "scheduled"].includes(ride.status)
+apps/mobile/src/pages/admin/index.tsx:6523:return "scheduled";
+apps/mobile/src/pages/admin/index.tsx:6526:if (ride.status === "scheduled" && schedule.isActiveWindow) return "requested";
+apps/mobile/src/pages/admin/index.tsx:6531:function readLocalAdminScheduledRides(): AdminRideData[] {
+apps/mobile/src/pages/admin/index.tsx:6533:const raw = localStorage.getItem(LOCAL_ADMIN_SCHEDULED_RIDES_KEY);
+apps/mobile/src/pages/admin/index.tsx:6541:function saveLocalAdminScheduledRidesForAdmin(rides: AdminRideData[]): void {
+apps/mobile/src/pages/admin/index.tsx:6543:localStorage.setItem(LOCAL_ADMIN_SCHEDULED_RIDES_KEY, JSON.stringify(rides));
+apps/mobile/src/pages/admin/index.tsx:6544:window.dispatchEvent(new CustomEvent("rapago:admin-scheduled-rides-updated"));
+apps/mobile/src/pages/admin/index.tsx:6572:ride.id?.startsWith("admin-local-") ? "scheduled-shadow" : ride.id,
+apps/mobile/src/pages/admin/index.tsx:6573:schedule.scheduledAt ?? "",
+apps/mobile/src/pages/admin/index.tsx:6582:function getScheduledPassengerMirrorKey(ride: Record<string, unknown>): string {
+apps/mobile/src/pages/admin/index.tsx:6584:ride.scheduledAt ?? ride.scheduledPickupAt ?? ride.pickupScheduledAt ?? "",
+apps/mobile/src/pages/admin/index.tsx:6593:function buildActivatedScheduledRide(ride: AdminRideData): AdminRideData {
+apps/mobile/src/pages/admin/index.tsx:6601:scheduledAt: schedule.displayScheduledAt ?? schedule.scheduledAt,
+apps/mobile/src/pages/admin/index.tsx:6602:scheduledPickupAt: schedule.displayScheduledAt ?? schedule.scheduledAt,
+apps/mobile/src/pages/admin/index.tsx:6603:pickupScheduledAt: schedule.displayScheduledAt ?? schedule.scheduledAt,
+apps/mobile/src/pages/admin/index.tsx:6674:function getDriverScheduledQueueKeys(driver: ActiveDriverData): string[] {
+apps/mobile/src/pages/admin/index.tsx:6708:function readDriverScheduledQueue(): Record<string, AdminRideData[]> {
+apps/mobile/src/pages/admin/index.tsx:6710:const raw = localStorage.getItem(LOCAL_DRIVER_SCHEDULED_QUEUE_KEY);
+apps/mobile/src/pages/admin/index.tsx:6718:function saveDriverScheduledQueue(queue: Record<string, AdminRideData[]>): void {
+apps/mobile/src/pages/admin/index.tsx:6720:localStorage.setItem(LOCAL_DRIVER_SCHEDULED_QUEUE_KEY, JSON.stringify(queue));
+apps/mobile/src/pages/admin/index.tsx:6766:function upsertDriverScheduledRideForNotification(ride: AdminRideData, driver: ActiveDriverData): void {
+apps/mobile/src/pages/admin/index.tsx:6768:const keys = getDriverScheduledQueueKeys(driver);
+apps/mobile/src/pages/admin/index.tsx:6771:const queue = readDriverScheduledQueue();
+apps/mobile/src/pages/admin/index.tsx:6806:saveDriverScheduledQueue(queue);
+apps/mobile/src/pages/admin/index.tsx:6830:function buildAssignedScheduledRide(ride: AdminRideData, driver: ActiveDriverData): AdminRideData {
+apps/mobile/src/pages/admin/index.tsx:6840:const scheduleDisplayAt = schedule.displayScheduledAt ?? schedule.scheduledAt ?? schedule.returnScheduledAt;
+apps/mobile/src/pages/admin/index.tsx:6851:status: "scheduled",
+apps/mobile/src/pages/admin/index.tsx:6862:assignedDriverKeys: getDriverScheduledQueueKeys(driver),
+apps/mobile/src/pages/admin/index.tsx:6863:assignedDriverQueueKeys: getDriverScheduledQueueKeys(driver),
+apps/mobile/src/pages/admin/index.tsx:6873:isScheduled: true,
+apps/mobile/src/pages/admin/index.tsx:6874:scheduledAt: scheduleDisplayAt,
+apps/mobile/src/pages/admin/index.tsx:6875:scheduledPickupAt: scheduleDisplayAt,
+apps/mobile/src/pages/admin/index.tsx:6876:pickupScheduledAt: scheduleDisplayAt,
+apps/mobile/src/pages/admin/index.tsx:6877:returnScheduledAt: schedule.returnScheduledAt,
+apps/mobile/src/pages/admin/index.tsx:6878:scheduledReturnAt: schedule.returnScheduledAt,
+apps/mobile/src/pages/admin/index.tsx:6904:const passengerKey = getScheduledPassengerMirrorKey(ride as unknown as Record<string, unknown>);
+apps/mobile/src/pages/admin/index.tsx:6918:getScheduledPassengerMirrorKey(item) === passengerKey;
+apps/mobile/src/pages/admin/index.tsx:6926:returnScheduledAt: assignedRecord.returnScheduledAt ?? assignedRecord.scheduledReturnAt ?? item.returnScheduledAt ?? null,
+apps/mobile/src/pages/admin/index.tsx:6927:scheduledReturnAt: assignedRecord.scheduledReturnAt ?? assignedRecord.returnScheduledAt ?? item.scheduledReturnAt ?? null,
+apps/mobile/src/pages/admin/index.tsx:6940:if (getScheduledPassengerMirrorKey(item) !== passengerKey && item.id !== ride.id) return item;
+apps/mobile/src/pages/admin/index.tsx:6943:status: "scheduled",
+apps/mobile/src/pages/admin/index.tsx:6965:reservationRequiresCard: true,
+apps/mobile/src/pages/admin/index.tsx:7020:return getDriverScheduledQueueKeys(driver)
+apps/mobile/src/pages/admin/index.tsx:7042:getAdminRideScheduleInfo(ride).isScheduled &&
+apps/mobile/src/pages/admin/index.tsx:7061:const driverKeys = getDriverScheduledQueueKeys(driver)
+apps/mobile/src/pages/admin/index.tsx:7089:const reassigned = assignScheduledRideToDriverLocally(
+apps/mobile/src/pages/admin/index.tsx:7092:status: "scheduled",
+apps/mobile/src/pages/admin/index.tsx:7119:function assignScheduledRideToDriverLocally(ride: AdminRideData, driver: ActiveDriverData): AdminRideData {
+apps/mobile/src/pages/admin/index.tsx:7120:const assigned = buildAssignedScheduledRide(ride, driver);
+apps/mobile/src/pages/admin/index.tsx:7124:const localAdminRides = readLocalAdminScheduledRides();
+apps/mobile/src/pages/admin/index.tsx:7130:saveLocalAdminScheduledRidesForAdmin([assigned, ...localAdminWithoutCurrent]);
+apps/mobile/src/pages/admin/index.tsx:7132:upsertDriverScheduledRideForNotification(assigned, driver);
+apps/mobile/src/pages/admin/index.tsx:7154:scheduled: "Agendado",
+apps/mobile/src/pages/admin/index.tsx:7165:scheduled: "warning",
+apps/mobile/src/pages/admin/index.tsx:7176:"scheduled",
+apps/mobile/src/pages/admin/index.tsx:7253:const localAdminRides = readLocalAdminScheduledRides();
+apps/mobile/src/pages/admin/index.tsx:7259:saveLocalAdminScheduledRidesForAdmin([cancelled, ...localWithoutCurrent].slice(0, 120));
+apps/mobile/src/pages/admin/index.tsx:7261:const passengerKey = getScheduledPassengerMirrorKey(original as unknown as Record<string, unknown>);
+apps/mobile/src/pages/admin/index.tsx:7264:const itemKey = getScheduledPassengerMirrorKey(item);
+apps/mobile/src/pages/admin/index.tsx:7285:removeAdminRideFromArrayStorage(LOCAL_DRIVER_SCHEDULED_QUEUE_KEY, original);
+apps/mobile/src/pages/admin/index.tsx:7288:window.dispatchEvent(new CustomEvent("rapago:admin-scheduled-rides-updated"));
+apps/mobile/src/pages/admin/index.tsx:7311:if (status === "scheduled") return 0;
+apps/mobile/src/pages/admin/index.tsx:7362:if (filterStatus && filterStatus !== "scheduled") params.status = filterStatus;
+apps/mobile/src/pages/admin/index.tsx:7369:const localScheduled = readLocalAdminScheduledRides();
+apps/mobile/src/pages/admin/index.tsx:7373:...buildAdminReturnReservationsFromRides(localScheduled),
+apps/mobile/src/pages/admin/index.tsx:7375:const merged = mergeAdminRides([...localScheduled, ...returnReservations, ...ridesData]);
+apps/mobile/src/pages/admin/index.tsx:7401:const refreshScheduled = () => void loadData(true);
+apps/mobile/src/pages/admin/index.tsx:7402:const interval = window.setInterval(refreshScheduled, 3000);
+apps/mobile/src/pages/admin/index.tsx:7404:window.addEventListener("storage", refreshScheduled);
+apps/mobile/src/pages/admin/index.tsx:7405:window.addEventListener("rapago:admin-scheduled-rides-updated", refreshScheduled);
+apps/mobile/src/pages/admin/index.tsx:7409:window.removeEventListener("storage", refreshScheduled);
+apps/mobile/src/pages/admin/index.tsx:7410:window.removeEventListener("rapago:admin-scheduled-rides-updated", refreshScheduled);
+apps/mobile/src/pages/admin/index.tsx:7419:readLocalAdminScheduledRides().find((ride) => ride.id === rideId);
+apps/mobile/src/pages/admin/index.tsx:7502:function handleActivateScheduledRide(ride: AdminRideData): void {
+apps/mobile/src/pages/admin/index.tsx:7507:const activated = buildActivatedScheduledRide(ride);
+apps/mobile/src/pages/admin/index.tsx:7511:const localAdminRides = readLocalAdminScheduledRides();
+apps/mobile/src/pages/admin/index.tsx:7517:saveLocalAdminScheduledRidesForAdmin([activated, ...localAdminWithoutCurrent]);
+apps/mobile/src/pages/admin/index.tsx:7519:const passengerKey = getScheduledPassengerMirrorKey(ride as unknown as Record<string, unknown>);
+apps/mobile/src/pages/admin/index.tsx:7522:if (getScheduledPassengerMirrorKey(item) !== passengerKey && item.id !== ride.id) {
+apps/mobile/src/pages/admin/index.tsx:7558:scheduledAt: getAdminRideScheduleInfo(ride).displayScheduledAt ?? getAdminRideScheduleInfo(ride).scheduledAt,
+apps/mobile/src/pages/admin/index.tsx:7559:scheduledPickupAt: getAdminRideScheduleInfo(ride).displayScheduledAt ?? getAdminRideScheduleInfo(ride).scheduledAt,
+apps/mobile/src/pages/admin/index.tsx:7560:returnScheduledAt: getAdminRideScheduleInfo(ride).returnScheduledAt,
+apps/mobile/src/pages/admin/index.tsx:7561:scheduledReturnAt: getAdminRideScheduleInfo(ride).returnScheduledAt,
+apps/mobile/src/pages/admin/index.tsx:7641:<IonSelectOption value="scheduled">Agendados</IonSelectOption>
+apps/mobile/src/pages/admin/index.tsx:7775:{scheduleInfo.isScheduled && (
+apps/mobile/src/pages/admin/index.tsx:7790:{formatAdminScheduleDate(scheduleInfo.scheduledAt ?? ride.requestedAt)}
+apps/mobile/src/pages/admin/index.tsx:7794:{scheduleInfo.isScheduled && (
+apps/mobile/src/pages/admin/index.tsx:7809:<div>Regreso: {formatAdminScheduleDate(scheduleInfo.returnScheduledAt ?? scheduleInfo.displayScheduledAt)}</div>
+apps/mobile/src/pages/admin/index.tsx:7811:<div>Recogida: {formatAdminScheduleDate(scheduleInfo.scheduledAt)}</div>
+apps/mobile/src/pages/admin/index.tsx:7813:{!scheduleInfo.isReturnOnlyPromotion && scheduleInfo.returnScheduledAt && (
+apps/mobile/src/pages/admin/index.tsx:7814:<div>Regreso: {formatAdminScheduleDate(scheduleInfo.returnScheduledAt)}</div>
+apps/mobile/src/pages/admin/index.tsx:7817:Activación: {formatAdminScheduleDate(scheduleInfo.activationAt)} · {scheduleInfo.isActiveWindow
+apps/mobile/src/pages/admin/index.tsx:7846:{scheduleInfo.isScheduled && !hasAdminAssignedDriver(ride) && (
+apps/mobile/src/pages/admin/index.tsx:7860:{scheduleInfo.isScheduled && effectiveStatus === "scheduled" && (
+apps/mobile/src/pages/admin/index.tsx:7867:onClick={() => handleActivateScheduledRide(ride)}
+apps/mobile/src/pages/admin/index.tsx:7873:{scheduleInfo.isScheduled && effectiveStatus === "requested" && !hasAdminAssignedDriver(ride) && (
+apps/mobile/src/pages/driver/index.tsx:4169:"rapago_admin_scheduled_rides",
+apps/mobile/src/pages/driver/index.tsx:4170:"rapago_admin_scheduled_rides_v1",
+apps/mobile/src/pages/driver/index.tsx:4171:"rapago_admin_scheduled_rides_v2",
+apps/mobile/src/pages/driver/index.tsx:4172:"rapago_admin_scheduled_rides_force_v1",
+apps/mobile/src/pages/driver/index.tsx:4173:"rapago_bridge_scheduled_rides_v1",
+apps/mobile/src/pages/driver/index.tsx:4219:candidate.scheduledAt ?? candidate.scheduledPickupAt ?? candidate.requestedAt ?? candidate.createdAt,
+apps/mobile/src/pages/driver/index.tsx:4222:accepted.scheduledAt ?? accepted.scheduledPickupAt ?? accepted.requestedAt ?? accepted.createdAt,
+apps/mobile/src/pages/driver/index.tsx:4347:type DriverScheduledReservationOffer = AvailableRideData & Record<string, unknown>;
+apps/mobile/src/pages/driver/index.tsx:4349:const DRIVER_SCHEDULED_RESERVATION_KEYS = [
+apps/mobile/src/pages/driver/index.tsx:4350:"rapago_admin_scheduled_rides",
+apps/mobile/src/pages/driver/index.tsx:4351:"rapago_admin_scheduled_rides_v1",
+apps/mobile/src/pages/driver/index.tsx:4352:"rapago_admin_scheduled_rides_v2",
+apps/mobile/src/pages/driver/index.tsx:4353:"rapago_admin_scheduled_rides_force_v1",
+apps/mobile/src/pages/driver/index.tsx:4354:"rapago_bridge_scheduled_rides_v1",
+apps/mobile/src/pages/driver/index.tsx:4360:const DRIVER_SCHEDULED_RESERVATION_QUEUE_KEY = "rapago_driver_scheduled_queue";
+apps/mobile/src/pages/driver/index.tsx:4363:const DRIVER_ASSIGNED_SCHEDULED_RIDE_EVENT = "rapago:driver-assigned-scheduled-ride";
+apps/mobile/src/pages/driver/index.tsx:4365:const DRIVER_SCHEDULED_RESERVATION_EVENT = "rapago:driver-scheduled-reservation-updated";
+apps/mobile/src/pages/driver/index.tsx:4406:function getDriverScheduledReservationIdentityKeys(user?: unknown): string[] {
+apps/mobile/src/pages/driver/index.tsx:4454:const currentKeys = getDriverScheduledReservationIdentityKeys(user)
+apps/mobile/src/pages/driver/index.tsx:4475:const currentKeys = getDriverScheduledReservationIdentityKeys(user);
+apps/mobile/src/pages/driver/index.tsx:4551:function getDriverScheduledReservationDriverKeys(ride: DriverAcceptedRideBridgeRecord): string[] {
+apps/mobile/src/pages/driver/index.tsx:4576:function getDriverScheduledRejectedKeys(ride: DriverAcceptedRideBridgeRecord): string[] {
+apps/mobile/src/pages/driver/index.tsx:4605:function isDriverScheduledReservationRide(ride: DriverAcceptedRideBridgeRecord): boolean {
+apps/mobile/src/pages/driver/index.tsx:4619:const scheduledLike =
+apps/mobile/src/pages/driver/index.tsx:4620:ride.isScheduled === true ||
+apps/mobile/src/pages/driver/index.tsx:4621:ride.rideMode === "scheduled" ||
+apps/mobile/src/pages/driver/index.tsx:4622:Boolean(ride.scheduledAt) ||
+apps/mobile/src/pages/driver/index.tsx:4623:Boolean(ride.scheduledPickupAt) ||
+apps/mobile/src/pages/driver/index.tsx:4624:Boolean(ride.pickupScheduledAt) ||
+apps/mobile/src/pages/driver/index.tsx:4626:scheduleStatus.includes("driver_scheduled") ||
+apps/mobile/src/pages/driver/index.tsx:4640:if (status === "accepted" && !scheduledLike) return false;
+apps/mobile/src/pages/driver/index.tsx:4642:return scheduledLike;
+apps/mobile/src/pages/driver/index.tsx:4645:function driverScheduledReservationIsAccepted(ride: DriverAcceptedRideBridgeRecord): boolean {
+apps/mobile/src/pages/driver/index.tsx:4648:ride.driverScheduleResponse ?? ride.scheduledDriverResponse ?? ride.driverReservationResponse,
+apps/mobile/src/pages/driver/index.tsx:4658:status === "driver_scheduled_confirmed"
+apps/mobile/src/pages/driver/index.tsx:4662:function driverScheduledReservationMatchesDriver(
+apps/mobile/src/pages/driver/index.tsx:4666:const currentKeys = getDriverScheduledReservationIdentityKeys(user);
+apps/mobile/src/pages/driver/index.tsx:4670:const assignedKeys = getDriverScheduledReservationDriverKeys(ride);
+apps/mobile/src/pages/driver/index.tsx:4703:function driverScheduledReservationRejectedByDriver(
+apps/mobile/src/pages/driver/index.tsx:4707:const currentKeys = getDriverScheduledReservationIdentityKeys(user);
+apps/mobile/src/pages/driver/index.tsx:4711:const rejectedKeys = getDriverScheduledRejectedKeys(ride);
+apps/mobile/src/pages/driver/index.tsx:4715:function driverScheduledReservationOpenForNextAvailableDriver(
+apps/mobile/src/pages/driver/index.tsx:4733:function driverScheduledReservationCanBeOffered(
+apps/mobile/src/pages/driver/index.tsx:4739:if (!isDriverScheduledReservationRide(ride)) return false;
+apps/mobile/src/pages/driver/index.tsx:4740:if (driverScheduledReservationIsAccepted(ride)) return false;
+apps/mobile/src/pages/driver/index.tsx:4741:if (driverScheduledReservationRejectedByDriver(ride, user)) return false;
+apps/mobile/src/pages/driver/index.tsx:4746:if (driverScheduledReservationOpenForNextAvailableDriver(ride)) return true;
+apps/mobile/src/pages/driver/index.tsx:4748:const assignedKeys = getDriverScheduledReservationDriverKeys(ride);
+apps/mobile/src/pages/driver/index.tsx:4751:return driverScheduledReservationMatchesDriver(ride, user);
+apps/mobile/src/pages/driver/index.tsx:4754:function getDriverScheduledReservationSortMs(ride: DriverAcceptedRideBridgeRecord): number {
+apps/mobile/src/pages/driver/index.tsx:4756:ride.scheduledAt,
+apps/mobile/src/pages/driver/index.tsx:4757:ride.scheduledPickupAt,
+apps/mobile/src/pages/driver/index.tsx:4758:ride.pickupScheduledAt,
+apps/mobile/src/pages/driver/index.tsx:4773:function getDriverScheduledReservationDedupeKey(ride: DriverAcceptedRideBridgeRecord): string {
+apps/mobile/src/pages/driver/index.tsx:4781:driverBridgeClean(ride.scheduledAt ?? ride.scheduledPickupAt ?? ride.pickupScheduledAt),
+apps/mobile/src/pages/driver/index.tsx:4802:driverScheduledReservationMatchesDriver(ride, user) ||
+apps/mobile/src/pages/driver/index.tsx:4804:driverScheduledReservationOpenForNextAvailableDriver(ride) &&
+apps/mobile/src/pages/driver/index.tsx:4805:!driverScheduledReservationRejectedByDriver(ride, user)
+apps/mobile/src/pages/driver/index.tsx:4812:const currentKeys = getDriverScheduledReservationIdentityKeys(user);
+apps/mobile/src/pages/driver/index.tsx:4831:driverScheduledReservationMatchesDriver(ride, user) ||
+apps/mobile/src/pages/driver/index.tsx:4833:driverScheduledReservationOpenForNextAvailableDriver(ride) &&
+apps/mobile/src/pages/driver/index.tsx:4834:!driverScheduledReservationRejectedByDriver(ride, user)
+apps/mobile/src/pages/driver/index.tsx:4847:function readDriverScheduledReservationQueueOffers(user?: unknown): DriverAcceptedRideBridgeRecord[] {
+apps/mobile/src/pages/driver/index.tsx:4849:...collectDriverReservationRecordsFromStorageKey(DRIVER_SCHEDULED_RESERVATION_QUEUE_KEY, user),
+apps/mobile/src/pages/driver/index.tsx:4858:const key = getDriverScheduledReservationDedupeKey(ride);
+apps/mobile/src/pages/driver/index.tsx:4869:function readDriverScheduledReservationOffers(
+apps/mobile/src/pages/driver/index.tsx:4872:): DriverScheduledReservationOffer[] {
+apps/mobile/src/pages/driver/index.tsx:4875:for (const key of DRIVER_SCHEDULED_RESERVATION_KEYS) {
+apps/mobile/src/pages/driver/index.tsx:4879:all.push(...readDriverScheduledReservationQueueOffers(user));
+apps/mobile/src/pages/driver/index.tsx:4883:if (!driverScheduledReservationCanBeOffered(ride, user, isAvailable)) continue;
+apps/mobile/src/pages/driver/index.tsx:4884:const key = getDriverScheduledReservationDedupeKey(ride);
+apps/mobile/src/pages/driver/index.tsx:4896:id: String(previous.id ?? ride.id ?? `scheduled-${Date.now()}`),
+apps/mobile/src/pages/driver/index.tsx:4901:.sort((a, b) => getDriverScheduledReservationSortMs(a) - getDriverScheduledReservationSortMs(b))
+apps/mobile/src/pages/driver/index.tsx:4902:.slice(0, 20) as DriverScheduledReservationOffer[];
+apps/mobile/src/pages/driver/index.tsx:4905:function updateDriverScheduledReservationEverywhere(
+apps/mobile/src/pages/driver/index.tsx:4909:for (const key of DRIVER_SCHEDULED_RESERVATION_KEYS) {
+apps/mobile/src/pages/driver/index.tsx:4933:DRIVER_SCHEDULED_RESERVATION_QUEUE_KEY,
+apps/mobile/src/pages/driver/index.tsx:4964:// mientras todavía estamos dentro de updateDriverScheduledReservationEverywhere().
+apps/mobile/src/pages/driver/index.tsx:4966:window.dispatchEvent(new CustomEvent(DRIVER_SCHEDULED_RESERVATION_EVENT, { detail: { ride: target } }));
+apps/mobile/src/pages/driver/index.tsx:4967:window.dispatchEvent(new CustomEvent(DRIVER_ASSIGNED_SCHEDULED_RIDE_EVENT, { detail: { ride: target } }));
+apps/mobile/src/pages/driver/index.tsx:4968:window.dispatchEvent(new CustomEvent("rapago:admin-scheduled-rides-updated", { detail: { ride: target } }));
+apps/mobile/src/pages/driver/index.tsx:4974:function getDriverScheduledReservationActivationMs(ride: DriverAcceptedRideBridgeRecord): number | null {
+apps/mobile/src/pages/driver/index.tsx:4988:const scheduled = new Date(
+apps/mobile/src/pages/driver/index.tsx:4989:String(ride.scheduledAt ?? ride.scheduledPickupAt ?? ride.pickupScheduledAt ?? ""),
+apps/mobile/src/pages/driver/index.tsx:4992:if (Number.isFinite(scheduled)) return scheduled - 10 * 60_000;
+apps/mobile/src/pages/driver/index.tsx:4997:function driverScheduledReservationIsActiveNow(ride: DriverAcceptedRideBridgeRecord): boolean {
+apps/mobile/src/pages/driver/index.tsx:5017:const activationMs = getDriverScheduledReservationActivationMs(ride);
+apps/mobile/src/pages/driver/index.tsx:5028:function driverRideLooksLikeScheduledReservation(ride: Record<string, unknown>): boolean {
+apps/mobile/src/pages/driver/index.tsx:5031:ride.rideMode,
+apps/mobile/src/pages/driver/index.tsx:5043:ride.isScheduled === true ||
+apps/mobile/src/pages/driver/index.tsx:5044:Boolean(ride.scheduledAt) ||
+apps/mobile/src/pages/driver/index.tsx:5045:Boolean(ride.scheduledPickupAt) ||
+apps/mobile/src/pages/driver/index.tsx:5046:Boolean(ride.pickupScheduledAt) ||
+apps/mobile/src/pages/driver/index.tsx:5049:text.includes("scheduled") ||
+apps/mobile/src/pages/driver/index.tsx:5060:return driverRideLooksLikeScheduledReservation(ride as unknown as Record<string, unknown>);
+apps/mobile/src/pages/driver/index.tsx:5063:function getScheduledReservationAlertKey(ride: DriverAcceptedRideBridgeRecord): string {
+apps/mobile/src/pages/driver/index.tsx:5064:return getDriverScheduledReservationDedupeKey(ride) || String(ride.id ?? ride.rideId ?? "scheduled");
+apps/mobile/src/pages/driver/index.tsx:5067:function readAllScheduledReservationsForDriver(user?: unknown): DriverAcceptedRideBridgeRecord[] {
+apps/mobile/src/pages/driver/index.tsx:5070:for (const key of DRIVER_SCHEDULED_RESERVATION_KEYS) {
+apps/mobile/src/pages/driver/index.tsx:5074:all.push(...readDriverScheduledReservationQueueOffers(user));
+apps/mobile/src/pages/driver/index.tsx:5079:if (!isDriverScheduledReservationRide(ride)) continue;
+apps/mobile/src/pages/driver/index.tsx:5080:if (!driverScheduledReservationMatchesDriver(ride, user)) continue;
+apps/mobile/src/pages/driver/index.tsx:5081:if (driverScheduledReservationRejectedByDriver(ride, user)) continue;
+apps/mobile/src/pages/driver/index.tsx:5083:const key = getDriverScheduledReservationDedupeKey(ride);
+apps/mobile/src/pages/driver/index.tsx:5093:(a, b) => getDriverScheduledReservationSortMs(a) - getDriverScheduledReservationSortMs(b),
+apps/mobile/src/pages/driver/index.tsx:5103:ride.scheduledAt ?? ride.scheduledPickupAt ?? ride.pickupScheduledAt,
+apps/mobile/src/pages/driver/index.tsx:5121:function driverAvailableRideMatchesScheduledReservationForDriver(
+apps/mobile/src/pages/driver/index.tsx:5132:return readAllScheduledReservationsForDriver(user).some((reservation) => {
+apps/mobile/src/pages/driver/index.tsx:5141:function buildScheduledReservationReleasedForPassenger(
+apps/mobile/src/pages/driver/index.tsx:5155:scheduledReservationReleasedForPassenger: true,
+apps/mobile/src/pages/driver/index.tsx:5167:function releaseScheduledReservationForPassengerSearch(
+apps/mobile/src/pages/driver/index.tsx:5168:ride: DriverScheduledReservationOffer,
+apps/mobile/src/pages/driver/index.tsx:5169:): DriverScheduledReservationOffer {
+apps/mobile/src/pages/driver/index.tsx:5172:ride.scheduledReservationReleasedForPassenger === true ||
+apps/mobile/src/pages/driver/index.tsx:5181:const released = buildScheduledReservationReleasedForPassenger(
+apps/mobile/src/pages/driver/index.tsx:5183:) as DriverScheduledReservationOffer;
+apps/mobile/src/pages/driver/index.tsx:5185:updateDriverScheduledReservationEverywhere(
+apps/mobile/src/pages/driver/index.tsx:5192:type: "scheduled_reservation_released",
+apps/mobile/src/pages/driver/index.tsx:5200:function findScheduledReservationReadyForDriver(
+apps/mobile/src/pages/driver/index.tsx:5204:): DriverScheduledReservationOffer | null {
+apps/mobile/src/pages/driver/index.tsx:5207:const ready = readAllScheduledReservationsForDriver(user).find((ride) => {
+apps/mobile/src/pages/driver/index.tsx:5208:const key = getScheduledReservationAlertKey(ride);
+apps/mobile/src/pages/driver/index.tsx:5209:return !alreadyAlerted.has(key) && driverScheduledReservationIsActiveNow(ride);
+apps/mobile/src/pages/driver/index.tsx:5216:if (!driverScheduledReservationIsAccepted(ready)) {
+apps/mobile/src/pages/driver/index.tsx:5217:return releaseScheduledReservationForPassengerSearch(
+apps/mobile/src/pages/driver/index.tsx:5218:ready as unknown as DriverScheduledReservationOffer,
+apps/mobile/src/pages/driver/index.tsx:5222:return ready as unknown as DriverScheduledReservationOffer;
+apps/mobile/src/pages/driver/index.tsx:5225:function getScheduledReservationCountdownText(ride: DriverAcceptedRideBridgeRecord): string {
+apps/mobile/src/pages/driver/index.tsx:5226:const activationMs = getDriverScheduledReservationActivationMs(ride);
+apps/mobile/src/pages/driver/index.tsx:5236:function speakScheduledReservationAlert(): void {
+apps/mobile/src/pages/driver/index.tsx:5257:function showScheduledReservationSystemNotification(): void {
+apps/mobile/src/pages/driver/index.tsx:5266:tag: "rapago-scheduled-reservation-ready",
+apps/mobile/src/pages/driver/index.tsx:5296:function startScheduledReservationAlertSound(): RideRequestAlertController {
+apps/mobile/src/pages/driver/index.tsx:5325:speakScheduledReservationAlert();
+apps/mobile/src/pages/driver/index.tsx:5326:showScheduledReservationSystemNotification();
+apps/mobile/src/pages/driver/index.tsx:5329:intervals.push(window.setInterval(speakScheduledReservationAlert, 9000));
+apps/mobile/src/pages/driver/index.tsx:5330:intervals.push(window.setInterval(showScheduledReservationSystemNotification, 18000));
+apps/mobile/src/pages/driver/index.tsx:5342:function getAcceptedScheduledReservationStatus(ride: DriverAcceptedRideBridgeRecord): string {
+apps/mobile/src/pages/driver/index.tsx:5346:if (driverScheduledReservationIsActiveNow(ride)) return "accepted";
+apps/mobile/src/pages/driver/index.tsx:5348:return "driver_scheduled";
+apps/mobile/src/pages/driver/index.tsx:5351:function driverScheduledReservationNavigationStarted(
+apps/mobile/src/pages/driver/index.tsx:5357:(ride as unknown as Record<string, unknown>).scheduledReservationNavigationStarted === true ||
+apps/mobile/src/pages/driver/index.tsx:5358:(ride as unknown as Record<string, unknown>).driverStartedScheduledReservation === true ||
+apps/mobile/src/pages/driver/index.tsx:5359:Boolean((ride as unknown as Record<string, unknown>).driverStartedScheduledReservationAt) ||
+apps/mobile/src/pages/driver/index.tsx:5360:Boolean((ride as unknown as Record<string, unknown>).scheduledReservationStartedAt) ||
+apps/mobile/src/pages/driver/index.tsx:5365:function buildDriverScheduledReservationNavigationPayload(
+apps/mobile/src/pages/driver/index.tsx:5370:const accepted = buildDriverScheduledReservationAcceptedPayload(ride, user);
+apps/mobile/src/pages/driver/index.tsx:5375:scheduleStatus: "driver_en_route_scheduled",
+apps/mobile/src/pages/driver/index.tsx:5376:adminScheduleStatus: "driver_en_route_scheduled",
+apps/mobile/src/pages/driver/index.tsx:5377:reservationStatus: "driver_en_route_scheduled",
+apps/mobile/src/pages/driver/index.tsx:5379:scheduledReservationNavigationStarted: true,
+apps/mobile/src/pages/driver/index.tsx:5380:driverStartedScheduledReservation: true,
+apps/mobile/src/pages/driver/index.tsx:5381:driverStartedScheduledReservationAt: now,
+apps/mobile/src/pages/driver/index.tsx:5382:scheduledReservationStartedAt: now,
+apps/mobile/src/pages/driver/index.tsx:5391:function startDriverScheduledReservationNavigationLocally(
+apps/mobile/src/pages/driver/index.tsx:5392:ride: DriverScheduledReservationOffer,
+apps/mobile/src/pages/driver/index.tsx:5394:): DriverScheduledReservationOffer {
+apps/mobile/src/pages/driver/index.tsx:5395:const started = buildDriverScheduledReservationNavigationPayload(
+apps/mobile/src/pages/driver/index.tsx:5398:) as DriverScheduledReservationOffer;
+apps/mobile/src/pages/driver/index.tsx:5400:updateDriverScheduledReservationEverywhere(
+apps/mobile/src/pages/driver/index.tsx:5407:type: "scheduled_driver_started_route",
+apps/mobile/src/pages/driver/index.tsx:5415:function getActiveScheduledReservationRideForDriver(
+apps/mobile/src/pages/driver/index.tsx:5419:if (!driverScheduledReservationIsAccepted(ride)) return null;
+apps/mobile/src/pages/driver/index.tsx:5420:if (!driverScheduledReservationMatchesDriver(ride, user)) return null;
+apps/mobile/src/pages/driver/index.tsx:5422:const status = getAcceptedScheduledReservationStatus(ride);
+apps/mobile/src/pages/driver/index.tsx:5428:if (!driverScheduledReservationNavigationStarted(ride)) return null;
+apps/mobile/src/pages/driver/index.tsx:5455:function readActiveScheduledReservationRidesForDriver(user?: unknown): DriverRideData[] {
+apps/mobile/src/pages/driver/index.tsx:5458:for (const key of DRIVER_SCHEDULED_RESERVATION_KEYS) {
+apps/mobile/src/pages/driver/index.tsx:5473:const active = getActiveScheduledReservationRideForDriver(ride, user);
+apps/mobile/src/pages/driver/index.tsx:5476:const key = getDriverScheduledReservationDedupeKey(active as unknown as DriverAcceptedRideBridgeRecord);
+apps/mobile/src/pages/driver/index.tsx:5486:(a, b) => getDriverScheduledReservationSortMs(a as unknown as DriverAcceptedRideBridgeRecord) - getDriverScheduledReservationSortMs(b as unknown as DriverAcceptedRideBridgeRecord),
+apps/mobile/src/pages/driver/index.tsx:5490:function getConfirmedWaitingScheduledReservationForDriver(
+apps/mobile/src/pages/driver/index.tsx:5493:): DriverScheduledReservationOffer | null {
+apps/mobile/src/pages/driver/index.tsx:5494:if (!driverScheduledReservationIsAccepted(ride)) return null;
+apps/mobile/src/pages/driver/index.tsx:5495:if (!driverScheduledReservationMatchesDriver(ride, user)) return null;
+apps/mobile/src/pages/driver/index.tsx:5496:if (driverScheduledReservationIsActiveNow(ride)) return null;
+apps/mobile/src/pages/driver/index.tsx:5501:status: "driver_scheduled",
+apps/mobile/src/pages/driver/index.tsx:5506:scheduledDriverResponse: "accepted",
+apps/mobile/src/pages/driver/index.tsx:5515:) as unknown as DriverScheduledReservationOffer;
+apps/mobile/src/pages/driver/index.tsx:5518:function readConfirmedWaitingScheduledReservationsForDriver(user?: unknown): DriverScheduledReservationOffer[] {
+apps/mobile/src/pages/driver/index.tsx:5521:for (const key of DRIVER_SCHEDULED_RESERVATION_KEYS) {
+apps/mobile/src/pages/driver/index.tsx:5525:all.push(...readDriverScheduledReservationQueueOffers(user));
+apps/mobile/src/pages/driver/index.tsx:5527:const byKey = new Map<string, DriverScheduledReservationOffer>();
+apps/mobile/src/pages/driver/index.tsx:5530:const waiting = getConfirmedWaitingScheduledReservationForDriver(ride, user);
+apps/mobile/src/pages/driver/index.tsx:5533:const key = getDriverScheduledReservationDedupeKey(waiting as unknown as DriverAcceptedRideBridgeRecord);
+apps/mobile/src/pages/driver/index.tsx:5544:getDriverScheduledReservationSortMs(a as unknown as DriverAcceptedRideBridgeRecord) -
+apps/mobile/src/pages/driver/index.tsx:5545:getDriverScheduledReservationSortMs(b as unknown as DriverAcceptedRideBridgeRecord),
+apps/mobile/src/pages/driver/index.tsx:5549:function buildDriverScheduledReservationAcceptedPayload(
+apps/mobile/src/pages/driver/index.tsx:5565:status: getAcceptedScheduledReservationStatus(ride),
+apps/mobile/src/pages/driver/index.tsx:5568:scheduledDriverResponse: "accepted",
+apps/mobile/src/pages/driver/index.tsx:5590:function buildDriverScheduledReservationRejectedPayload(
+apps/mobile/src/pages/driver/index.tsx:5595:const currentKeys = getDriverScheduledReservationIdentityKeys(user);
+apps/mobile/src/pages/driver/index.tsx:5596:const rejectedKeys = Array.from(new Set([...getDriverScheduledRejectedKeys(ride), ...currentKeys]));
+apps/mobile/src/pages/driver/index.tsx:5607:status: "scheduled",
+apps/mobile/src/pages/driver/index.tsx:5720:...getDriverScheduledRejectedKeys(ride),
+apps/mobile/src/pages/driver/index.tsx:5722:...getDriverScheduledReservationIdentityKeys(user),
+apps/mobile/src/pages/driver/index.tsx:5726:const currentAssignedKeys = getDriverScheduledReservationDriverKeys(ride)
+apps/mobile/src/pages/driver/index.tsx:5754:...getDriverScheduledRejectedKeys(ride),
+apps/mobile/src/pages/driver/index.tsx:5761:status: "scheduled",
+apps/mobile/src/pages/driver/index.tsx:5767:scheduledDriverResponse: null,
+apps/mobile/src/pages/driver/index.tsx:5806:function removeScheduledReservationFromAllDriverQueues(ride: DriverAcceptedRideBridgeRecord): void {
+apps/mobile/src/pages/driver/index.tsx:5808:DRIVER_SCHEDULED_RESERVATION_QUEUE_KEY,
+apps/mobile/src/pages/driver/index.tsx:5847:function upsertScheduledReservationForOnlyNextDriver(
+apps/mobile/src/pages/driver/index.tsx:5851:removeScheduledReservationFromAllDriverQueues(ride);
+apps/mobile/src/pages/driver/index.tsx:5853:const rideKey = getDriverScheduledReservationDedupeKey(ride);
+apps/mobile/src/pages/driver/index.tsx:5863:DRIVER_SCHEDULED_RESERVATION_QUEUE_KEY,
+apps/mobile/src/pages/driver/index.tsx:5875:const itemKey = getDriverScheduledReservationDedupeKey(item);
+apps/mobile/src/pages/driver/index.tsx:5909:function resolveScheduledReservationNextDriverAssignment(
+apps/mobile/src/pages/driver/index.tsx:5926:upsertScheduledReservationForOnlyNextDriver(nextRide, candidate);
+apps/mobile/src/pages/driver/index.tsx:5930:type: "scheduled_driver_reassigned",
+apps/mobile/src/pages/driver/index.tsx:5941:window.dispatchEvent(new CustomEvent("rapago:admin-scheduled-rides-updated", { detail: { ride: nextRide } }));
+apps/mobile/src/pages/driver/index.tsx:5947:function acceptDriverScheduledReservationLocally(
+apps/mobile/src/pages/driver/index.tsx:5948:ride: DriverScheduledReservationOffer,
+apps/mobile/src/pages/driver/index.tsx:5950:): DriverScheduledReservationOffer {
+apps/mobile/src/pages/driver/index.tsx:5951:const accepted = buildDriverScheduledReservationAcceptedPayload(ride, user) as DriverScheduledReservationOffer;
+apps/mobile/src/pages/driver/index.tsx:5953:updateDriverScheduledReservationEverywhere(ride, () => accepted);
+apps/mobile/src/pages/driver/index.tsx:5957:type: "scheduled_driver_assigned",
+apps/mobile/src/pages/driver/index.tsx:5965:function rejectDriverScheduledReservationLocally(
+apps/mobile/src/pages/driver/index.tsx:5966:ride: DriverScheduledReservationOffer,
+apps/mobile/src/pages/driver/index.tsx:5969:const rejected = buildDriverScheduledReservationRejectedPayload(ride, user);
+apps/mobile/src/pages/driver/index.tsx:5970:const nextAssignment = resolveScheduledReservationNextDriverAssignment(rejected, user, "driver_rejected");
+apps/mobile/src/pages/driver/index.tsx:5971:updateDriverScheduledReservationEverywhere(ride, () => nextAssignment);
+apps/mobile/src/pages/driver/index.tsx:5974:function formatDriverScheduledReservationDate(value: unknown): string {
+apps/mobile/src/pages/driver/index.tsx:5987:function getDriverScheduledReservationDateText(ride: DriverAcceptedRideBridgeRecord): string {
+apps/mobile/src/pages/driver/index.tsx:5988:return formatDriverScheduledReservationDate(
+apps/mobile/src/pages/driver/index.tsx:5989:ride.scheduledAt ?? ride.scheduledPickupAt ?? ride.pickupScheduledAt,
+apps/mobile/src/pages/driver/index.tsx:6106:readDriverScheduledReservationOffers(driverAvailabilityUser, isDriverAvailable).length,
+apps/mobile/src/pages/driver/index.tsx:6112:readDriverScheduledReservationOffers(driverAvailabilityUser, isDriverAvailable).length,
+apps/mobile/src/pages/driver/index.tsx:6117:window.addEventListener(DRIVER_SCHEDULED_RESERVATION_EVENT, refreshReservations as EventListener);
+apps/mobile/src/pages/driver/index.tsx:6118:window.addEventListener("rapago:admin-scheduled-rides-updated", refreshReservations as EventListener);
+apps/mobile/src/pages/driver/index.tsx:6122:window.removeEventListener(DRIVER_SCHEDULED_RESERVATION_EVENT, refreshReservations as EventListener);
+apps/mobile/src/pages/driver/index.tsx:6123:window.removeEventListener("rapago:admin-scheduled-rides-updated", refreshReservations as EventListener);
+apps/mobile/src/pages/driver/index.tsx:6585:| "scheduled_driver_assigned"
+apps/mobile/src/pages/driver/index.tsx:6586:| "scheduled_reservation_released"
+apps/mobile/src/pages/driver/index.tsx:6587:| "scheduled_driver_started_route"
+apps/mobile/src/pages/driver/index.tsx:6588:| "scheduled_driver_reassigned";
+apps/mobile/src/pages/driver/index.tsx:6636:ride.scheduledAt ?? ride.scheduledPickupAt ?? ride.requestedAt ?? ride.createdAt,
+apps/mobile/src/pages/driver/index.tsx:6790:"rapago_driver_scheduled_queue",
+apps/mobile/src/pages/driver/index.tsx:6793:...DRIVER_SCHEDULED_RESERVATION_KEYS,
+apps/mobile/src/pages/driver/index.tsx:6846:"rapago_admin_scheduled_rides",
+apps/mobile/src/pages/driver/index.tsx:6847:"rapago_admin_scheduled_rides_v1",
+apps/mobile/src/pages/driver/index.tsx:6848:"rapago_admin_scheduled_rides_v2",
+apps/mobile/src/pages/driver/index.tsx:6849:"rapago_admin_scheduled_rides_force_v1",
+apps/mobile/src/pages/driver/index.tsx:6850:"rapago_bridge_scheduled_rides_v1",
+apps/mobile/src/pages/driver/index.tsx:6962:const raw = localStorage.getItem("rapago_last_scheduled_ride_for_admin");
+apps/mobile/src/pages/driver/index.tsx:7035:"rapago_driver_scheduled_queue",
+apps/mobile/src/pages/driver/index.tsx:7038:...DRIVER_SCHEDULED_RESERVATION_KEYS,
+apps/mobile/src/pages/driver/index.tsx:7168:scheduledDriverResponse: null,
+apps/mobile/src/pages/driver/index.tsx:7170:scheduledReservationNavigationStarted: false,
+apps/mobile/src/pages/driver/index.tsx:7171:driverStartedScheduledReservation: false,
+apps/mobile/src/pages/driver/index.tsx:7172:driverStartedScheduledReservationAt: null,
+apps/mobile/src/pages/driver/index.tsx:7173:scheduledReservationStartedAt: null,
+apps/mobile/src/pages/driver/index.tsx:7198:"rapago_admin_scheduled_rides",
+apps/mobile/src/pages/driver/index.tsx:7199:"rapago_admin_scheduled_rides_v1",
+apps/mobile/src/pages/driver/index.tsx:7200:"rapago_admin_scheduled_rides_v2",
+apps/mobile/src/pages/driver/index.tsx:7201:"rapago_admin_scheduled_rides_force_v1",
+apps/mobile/src/pages/driver/index.tsx:7202:"rapago_bridge_scheduled_rides_v1",
+apps/mobile/src/pages/driver/index.tsx:7245:scheduledDriverResponse: null,
+apps/mobile/src/pages/driver/index.tsx:7247:scheduledReservationNavigationStarted: false,
+apps/mobile/src/pages/driver/index.tsx:7248:driverStartedScheduledReservation: false,
+apps/mobile/src/pages/driver/index.tsx:7249:driverStartedScheduledReservationAt: null,
+apps/mobile/src/pages/driver/index.tsx:7250:scheduledReservationStartedAt: null,
+apps/mobile/src/pages/driver/index.tsx:7371:getDriverScheduledReservationIdentityKeys(user)
+apps/mobile/src/pages/driver/index.tsx:7415:const driverKeys = getDriverScheduledReservationIdentityKeys(user);
+apps/mobile/src/pages/driver/index.tsx:7667:const key = getDriverScheduledReservationDedupeKey(ride as unknown as DriverAcceptedRideBridgeRecord) || String(ride.id);
+apps/mobile/src/pages/driver/index.tsx:7705:const dedupe = getDriverScheduledReservationDedupeKey(ride as unknown as DriverAcceptedRideBridgeRecord);
+apps/mobile/src/pages/driver/index.tsx:7712:String(ride.requestedAt ?? ride.createdAt ?? ride.scheduledAt ?? "").trim(),
+apps/mobile/src/pages/driver/index.tsx:8076:ride.paymentMethod,
+apps/mobile/src/pages/driver/index.tsx:8077:ride.paymentProvider,
+apps/mobile/src/pages/driver/index.tsx:8179:"rapago_admin_scheduled_rides",
+apps/mobile/src/pages/driver/index.tsx:8180:"rapago_admin_scheduled_rides_v1",
+apps/mobile/src/pages/driver/index.tsx:8181:"rapago_admin_scheduled_rides_v2",
+apps/mobile/src/pages/driver/index.tsx:8182:"rapago_admin_scheduled_rides_force_v1",
+apps/mobile/src/pages/driver/index.tsx:8183:"rapago_bridge_scheduled_rides_v1",
+apps/mobile/src/pages/driver/index.tsx:8286:paymentMethod: getRidePaymentMethodLabel(String(record.notes ?? "")),
+apps/mobile/src/pages/driver/index.tsx:8350:"rapago_admin_scheduled_rides",
+apps/mobile/src/pages/driver/index.tsx:8351:"rapago_admin_scheduled_rides_v1",
+apps/mobile/src/pages/driver/index.tsx:8352:"rapago_admin_scheduled_rides_v2",
+apps/mobile/src/pages/driver/index.tsx:8353:"rapago_admin_scheduled_rides_force_v1",
+apps/mobile/src/pages/driver/index.tsx:8354:"rapago_bridge_scheduled_rides_v1",
+apps/mobile/src/pages/driver/index.tsx:8387:function getRidePaymentMethodLabel(notes: string | null | undefined): string {
+apps/mobile/src/pages/driver/index.tsx:8400:const label = getRidePaymentMethodLabel(notes);
+apps/mobile/src/pages/driver/index.tsx:8423:paymentMethod: "cash";
+apps/mobile/src/pages/driver/index.tsx:8460:ride.paymentMethod ??
+apps/mobile/src/pages/driver/index.tsx:8465:ride.paymentMethodLabel,
+apps/mobile/src/pages/driver/index.tsx:8532:paymentMethod: "cash",
+apps/mobile/src/pages/driver/index.tsx:8570:paymentMethod: "cash",
+apps/mobile/src/pages/driver/index.tsx:8628:"rapago_admin_scheduled_rides",
+apps/mobile/src/pages/driver/index.tsx:8629:"rapago_admin_scheduled_rides_v1",
+apps/mobile/src/pages/driver/index.tsx:8630:"rapago_admin_scheduled_rides_v2",
+apps/mobile/src/pages/driver/index.tsx:8631:"rapago_admin_scheduled_rides_force_v1",
+apps/mobile/src/pages/driver/index.tsx:8632:"rapago_bridge_scheduled_rides_v1",
+apps/mobile/src/pages/driver/index.tsx:8807:Tarifa: {formatClp(fareClp)} · Pago: {isCash ? "Efectivo" : getRidePaymentMethodLabel(ride.notes)}
+apps/mobile/src/pages/driver/index.tsx:9188:"rapago_driver_scheduled_queue",
+apps/mobile/src/pages/driver/index.tsx:9312:getRidePaymentMethodLabel(String(ride.notes ?? "")),
+apps/mobile/src/pages/driver/index.tsx:9698:const [scheduledReservationAlert, setScheduledReservationAlert] =
+apps/mobile/src/pages/driver/index.tsx:9699:useState<DriverScheduledReservationOffer | null>(null);
+apps/mobile/src/pages/driver/index.tsx:9707:const alertedScheduledReservationKeysRef = useRef<Set<string>>(new Set());
+apps/mobile/src/pages/driver/index.tsx:9721:setScheduledReservationAlert(null);
+apps/mobile/src/pages/driver/index.tsx:9745:const startScheduledReservationAlert = useCallback(
+apps/mobile/src/pages/driver/index.tsx:9746:(ride: DriverScheduledReservationOffer): void => {
+apps/mobile/src/pages/driver/index.tsx:9748:alertedScheduledReservationKeysRef.current.add(
+apps/mobile/src/pages/driver/index.tsx:9749:getScheduledReservationAlertKey(ride as unknown as DriverAcceptedRideBridgeRecord),
+apps/mobile/src/pages/driver/index.tsx:9752:setScheduledReservationAlert(ride);
+apps/mobile/src/pages/driver/index.tsx:9755:rideAlertControllerRef.current = startScheduledReservationAlertSound();
+apps/mobile/src/pages/driver/index.tsx:9791:const readyScheduledReservation = findScheduledReservationReadyForDriver(
+apps/mobile/src/pages/driver/index.tsx:9794:alertedScheduledReservationKeysRef.current,
+apps/mobile/src/pages/driver/index.tsx:9797:if (readyScheduledReservation) {
+apps/mobile/src/pages/driver/index.tsx:9798:const nextKey = getScheduledReservationAlertKey(
+apps/mobile/src/pages/driver/index.tsx:9799:readyScheduledReservation as unknown as DriverAcceptedRideBridgeRecord,
+apps/mobile/src/pages/driver/index.tsx:9801:const currentKey = scheduledReservationAlert
+apps/mobile/src/pages/driver/index.tsx:9802:? getScheduledReservationAlertKey(
+apps/mobile/src/pages/driver/index.tsx:9803:scheduledReservationAlert as unknown as DriverAcceptedRideBridgeRecord,
+apps/mobile/src/pages/driver/index.tsx:9807:if (!scheduledReservationAlert || currentKey !== nextKey) {
+apps/mobile/src/pages/driver/index.tsx:9808:startScheduledReservationAlert(readyScheduledReservation);
+apps/mobile/src/pages/driver/index.tsx:9818:if (rideAlert || scheduledReservationAlert) return;
+apps/mobile/src/pages/driver/index.tsx:9832:!driverAvailableRideMatchesScheduledReservationForDriver(
+apps/mobile/src/pages/driver/index.tsx:9849:scheduledReservationAlert,
+apps/mobile/src/pages/driver/index.tsx:9854:startScheduledReservationAlert,
+apps/mobile/src/pages/driver/index.tsx:9922:window.addEventListener(DRIVER_SCHEDULED_RESERVATION_EVENT, tick as EventListener);
+apps/mobile/src/pages/driver/index.tsx:9923:window.addEventListener(DRIVER_ASSIGNED_SCHEDULED_RIDE_EVENT, tick as EventListener);
+apps/mobile/src/pages/driver/index.tsx:9925:window.addEventListener("rapago:admin-scheduled-rides-updated", tick as EventListener);
+apps/mobile/src/pages/driver/index.tsx:9930:window.removeEventListener(DRIVER_SCHEDULED_RESERVATION_EVENT, tick as EventListener);
+apps/mobile/src/pages/driver/index.tsx:9931:window.removeEventListener(DRIVER_ASSIGNED_SCHEDULED_RIDE_EVENT, tick as EventListener);
+apps/mobile/src/pages/driver/index.tsx:9933:window.removeEventListener("rapago:admin-scheduled-rides-updated", tick as EventListener);
+apps/mobile/src/pages/driver/index.tsx:9989:function dismissScheduledReservationAlert(ride: DriverScheduledReservationOffer): void {
+apps/mobile/src/pages/driver/index.tsx:9990:alertedScheduledReservationKeysRef.current.add(
+apps/mobile/src/pages/driver/index.tsx:9991:getScheduledReservationAlertKey(ride as unknown as DriverAcceptedRideBridgeRecord),
+apps/mobile/src/pages/driver/index.tsx:9996:function goToScheduledReservations(): void {
+apps/mobile/src/pages/driver/index.tsx:10001:async function acceptScheduledReservationFromAlert(
+apps/mobile/src/pages/driver/index.tsx:10002:ride: DriverScheduledReservationOffer,
+apps/mobile/src/pages/driver/index.tsx:10015:const accepted = startDriverScheduledReservationNavigationLocally(ride, session?.user);
+apps/mobile/src/pages/driver/index.tsx:10016:const activeAccepted = getActiveScheduledReservationRideForDriver(
+apps/mobile/src/pages/driver/index.tsx:10238:if (scheduledReservationAlert) {
+apps/mobile/src/pages/driver/index.tsx:10239:const ride = scheduledReservationAlert;
+apps/mobile/src/pages/driver/index.tsx:10241:const paymentLabel = getRidePaymentMethodLabel(String(ride.notes ?? ""));
+apps/mobile/src/pages/driver/index.tsx:10307:Tenemos agendado tu viaje · {getScheduledReservationCountdownText(ride as unknown as DriverAcceptedRideBridgeRecord)}
+apps/mobile/src/pages/driver/index.tsx:10315:onClick={() => dismissScheduledReservationAlert(ride)}
+apps/mobile/src/pages/driver/index.tsx:10407:onClick={() => dismissScheduledReservationAlert(ride)}
+apps/mobile/src/pages/driver/index.tsx:10417:onClick={() => void acceptScheduledReservationFromAlert(ride)}
+apps/mobile/src/pages/driver/index.tsx:10428:onClick={goToScheduledReservations}
+apps/mobile/src/pages/driver/index.tsx:10446:const paymentLabel = getRidePaymentMethodLabel(rideAlert.notes);
+apps/mobile/src/pages/driver/index.tsx:10730:const [reservationOffers, setReservationOffers] = useState<DriverScheduledReservationOffer[]>([]);
+apps/mobile/src/pages/driver/index.tsx:10731:const [confirmedReservationOffers, setConfirmedReservationOffers] = useState<DriverScheduledReservationOffer[]>([]);
+apps/mobile/src/pages/driver/index.tsx:10750:const [scheduledReservationReadyAlert, setScheduledReservationReadyAlert] =
+apps/mobile/src/pages/driver/index.tsx:10751:useState<DriverScheduledReservationOffer | null>(null);
+apps/mobile/src/pages/driver/index.tsx:10752:const [scheduledReservationAlertSecondsLeft, setScheduledReservationAlertSecondsLeft] =
+apps/mobile/src/pages/driver/index.tsx:10764:const scheduledReservationAlertControllerRef = useRef<RideRequestAlertController | null>(null);
+apps/mobile/src/pages/driver/index.tsx:10766:const alertedScheduledReservationKeysRef = useRef<Set<string>>(new Set());
+apps/mobile/src/pages/driver/index.tsx:10795:driverScheduledReservationNavigationStarted(ride as unknown as Record<string, unknown>) ||
+apps/mobile/src/pages/driver/index.tsx:10796:!driverRideLooksLikeScheduledReservation(ride as unknown as Record<string, unknown>),
+apps/mobile/src/pages/driver/index.tsx:10886:...(scheduledReservationReadyAlert ? [scheduledReservationReadyAlert as unknown as Record<string, unknown>] : []),
+apps/mobile/src/pages/driver/index.tsx:10931:scheduledReservationReadyAlert,
+apps/mobile/src/pages/driver/index.tsx:10951:const stopScheduledReservationReadyAlert = useCallback((clearAlert = true): void => {
+apps/mobile/src/pages/driver/index.tsx:10952:scheduledReservationAlertControllerRef.current?.stop();
+apps/mobile/src/pages/driver/index.tsx:10953:scheduledReservationAlertControllerRef.current = null;
+apps/mobile/src/pages/driver/index.tsx:10956:setScheduledReservationReadyAlert(null);
+apps/mobile/src/pages/driver/index.tsx:10957:setScheduledReservationAlertSecondsLeft(60);
+apps/mobile/src/pages/driver/index.tsx:10961:const startScheduledReservationReadyAlert = useCallback(
+apps/mobile/src/pages/driver/index.tsx:10962:(ride: DriverScheduledReservationOffer): void => {
+apps/mobile/src/pages/driver/index.tsx:10963:stopScheduledReservationReadyAlert(false);
+apps/mobile/src/pages/driver/index.tsx:10966:alertedScheduledReservationKeysRef.current.add(
+apps/mobile/src/pages/driver/index.tsx:10967:getScheduledReservationAlertKey(ride as unknown as DriverAcceptedRideBridgeRecord),
+apps/mobile/src/pages/driver/index.tsx:10969:setScheduledReservationReadyAlert(ride);
+apps/mobile/src/pages/driver/index.tsx:10970:setScheduledReservationAlertSecondsLeft(60);
+apps/mobile/src/pages/driver/index.tsx:10971:scheduledReservationAlertControllerRef.current = startScheduledReservationAlertSound();
+apps/mobile/src/pages/driver/index.tsx:10973:[stopRideRequestAlert, stopScheduledReservationReadyAlert],
+apps/mobile/src/pages/driver/index.tsx:11009:stopScheduledReservationReadyAlert(true);
+apps/mobile/src/pages/driver/index.tsx:11011:}, [stopRideRequestAlert, stopScheduledReservationReadyAlert]);
+apps/mobile/src/pages/driver/index.tsx:11031:if (!scheduledReservationReadyAlert) return;
+apps/mobile/src/pages/driver/index.tsx:11034:setScheduledReservationAlertSecondsLeft((current) => Math.max(0, current - 1));
+apps/mobile/src/pages/driver/index.tsx:11038:}, [scheduledReservationReadyAlert?.id]);
+apps/mobile/src/pages/driver/index.tsx:11042:stopScheduledReservationReadyAlert(true);
+apps/mobile/src/pages/driver/index.tsx:11047:const readyReservation = findScheduledReservationReadyForDriver(
+apps/mobile/src/pages/driver/index.tsx:11050:alertedScheduledReservationKeysRef.current,
+apps/mobile/src/pages/driver/index.tsx:11055:const nextKey = getScheduledReservationAlertKey(
+apps/mobile/src/pages/driver/index.tsx:11058:const currentKey = scheduledReservationReadyAlert
+apps/mobile/src/pages/driver/index.tsx:11059:? getScheduledReservationAlertKey(
+apps/mobile/src/pages/driver/index.tsx:11060:scheduledReservationReadyAlert as unknown as DriverAcceptedRideBridgeRecord,
+apps/mobile/src/pages/driver/index.tsx:11065:startScheduledReservationReadyAlert(readyReservation);
+apps/mobile/src/pages/driver/index.tsx:11072:window.addEventListener(DRIVER_SCHEDULED_RESERVATION_EVENT, tick as EventListener);
+apps/mobile/src/pages/driver/index.tsx:11073:window.addEventListener(DRIVER_ASSIGNED_SCHEDULED_RIDE_EVENT, tick as EventListener);
+apps/mobile/src/pages/driver/index.tsx:11075:window.addEventListener("rapago:admin-scheduled-rides-updated", tick as EventListener);
+apps/mobile/src/pages/driver/index.tsx:11080:window.removeEventListener(DRIVER_SCHEDULED_RESERVATION_EVENT, tick as EventListener);
+apps/mobile/src/pages/driver/index.tsx:11081:window.removeEventListener(DRIVER_ASSIGNED_SCHEDULED_RIDE_EVENT, tick as EventListener);
+apps/mobile/src/pages/driver/index.tsx:11083:window.removeEventListener("rapago:admin-scheduled-rides-updated", tick as EventListener);
+apps/mobile/src/pages/driver/index.tsx:11089:scheduledReservationReadyAlert,
+apps/mobile/src/pages/driver/index.tsx:11092:startScheduledReservationReadyAlert,
+apps/mobile/src/pages/driver/index.tsx:11093:stopScheduledReservationReadyAlert,
+apps/mobile/src/pages/driver/index.tsx:11261:const activeLocalScheduledRides = readActiveScheduledReservationRidesForDriver(session?.user);
+apps/mobile/src/pages/driver/index.tsx:11278:if (driverRideLooksLikeScheduledReservation(ride as unknown as Record<string, unknown>)) {
+apps/mobile/src/pages/driver/index.tsx:11279:return driverScheduledReservationNavigationStarted(ride as unknown as Record<string, unknown>);
+apps/mobile/src/pages/driver/index.tsx:11285:for (const ride of [...activeLocalScheduledRides, ...activeLocalRideMirrors, ...activeServerRides]) {
+apps/mobile/src/pages/driver/index.tsx:11286:const key = getDriverScheduledReservationDedupeKey(ride as unknown as DriverAcceptedRideBridgeRecord) || String(ride.id);
+apps/mobile/src/pages/driver/index.tsx:11301:readDriverScheduledReservationOffers(session?.user, isDriverAvailable),
+apps/mobile/src/pages/driver/index.tsx:11304:readConfirmedWaitingScheduledReservationsForDriver(session?.user),
+apps/mobile/src/pages/driver/index.tsx:11334:readDriverScheduledReservationOffers(session?.user, isDriverAvailable),
+apps/mobile/src/pages/driver/index.tsx:11337:readConfirmedWaitingScheduledReservationsForDriver(session?.user),
+apps/mobile/src/pages/driver/index.tsx:11355:!driverAvailableRideMatchesScheduledReservationForDriver(
+apps/mobile/src/pages/driver/index.tsx:11380:window.addEventListener(DRIVER_SCHEDULED_RESERVATION_EVENT, refreshAvailableAfterRequeue as EventListener);
+apps/mobile/src/pages/driver/index.tsx:11381:window.addEventListener(DRIVER_ASSIGNED_SCHEDULED_RIDE_EVENT, refreshAvailableAfterRequeue as EventListener);
+apps/mobile/src/pages/driver/index.tsx:11383:window.addEventListener("rapago:admin-scheduled-rides-updated", refreshAvailableAfterRequeue as EventListener);
+apps/mobile/src/pages/driver/index.tsx:11389:window.removeEventListener(DRIVER_SCHEDULED_RESERVATION_EVENT, refreshAvailableAfterRequeue as EventListener);
+apps/mobile/src/pages/driver/index.tsx:11390:window.removeEventListener(DRIVER_ASSIGNED_SCHEDULED_RIDE_EVENT, refreshAvailableAfterRequeue as EventListener);
+apps/mobile/src/pages/driver/index.tsx:11392:window.removeEventListener("rapago:admin-scheduled-rides-updated", refreshAvailableAfterRequeue as EventListener);
+apps/mobile/src/pages/driver/index.tsx:11734:if (driverRideLooksLikeScheduledReservation(requeued as unknown as Record<string, unknown>)) {
+apps/mobile/src/pages/driver/index.tsx:11735:const nextAssignment = resolveScheduledReservationNextDriverAssignment(
+apps/mobile/src/pages/driver/index.tsx:11740:updateDriverScheduledReservationEverywhere(
+apps/mobile/src/pages/driver/index.tsx:11818:async function handleStartReadyScheduledReservation(ride: DriverScheduledReservationOffer): Promise<void> {
+apps/mobile/src/pages/driver/index.tsx:11828:const started = startDriverScheduledReservationNavigationLocally(ride, session?.user);
+apps/mobile/src/pages/driver/index.tsx:11829:const activeStarted = getActiveScheduledReservationRideForDriver(
+apps/mobile/src/pages/driver/index.tsx:11853:stopScheduledReservationReadyAlert(true);
+apps/mobile/src/pages/driver/index.tsx:11891:async function handleAcceptScheduledReservation(ride: DriverScheduledReservationOffer): Promise<void> {
+apps/mobile/src/pages/driver/index.tsx:11903:const accepted = acceptDriverScheduledReservationLocally(ride, session?.user);
+apps/mobile/src/pages/driver/index.tsx:11911:if (driverScheduledReservationIsActiveNow(acceptedRecord)) {
+apps/mobile/src/pages/driver/index.tsx:11912:setConfirmedReservationOffers(readConfirmedWaitingScheduledReservationsForDriver(session?.user));
+apps/mobile/src/pages/driver/index.tsx:11913:await handleStartReadyScheduledReservation(accepted);
+apps/mobile/src/pages/driver/index.tsx:11917:const activeAccepted = getActiveScheduledReservationRideForDriver(
+apps/mobile/src/pages/driver/index.tsx:11922:setConfirmedReservationOffers(readConfirmedWaitingScheduledReservationsForDriver(session?.user));
+apps/mobile/src/pages/driver/index.tsx:11946:type: "scheduled_driver_assigned",
+apps/mobile/src/pages/driver/index.tsx:11959:async function handleRejectScheduledReservation(ride: DriverScheduledReservationOffer): Promise<void> {
+apps/mobile/src/pages/driver/index.tsx:11964:rejectDriverScheduledReservationLocally(ride, session?.user);
+apps/mobile/src/pages/driver/index.tsx:11981:const paymentLabel = getRidePaymentMethodLabel(ride.notes);
+apps/mobile/src/pages/driver/index.tsx:12253:function ScheduledReservationCard({
+apps/mobile/src/pages/driver/index.tsx:12256:ride: DriverScheduledReservationOffer;
+apps/mobile/src/pages/driver/index.tsx:12259:const paymentLabel = getRidePaymentMethodLabel(String(ride.notes ?? ""));
+apps/mobile/src/pages/driver/index.tsx:12264:const scheduledText = getDriverScheduledReservationDateText(ride);
+apps/mobile/src/pages/driver/index.tsx:12265:const activationText = formatDriverScheduledReservationDate(
+apps/mobile/src/pages/driver/index.tsx:12268:const assignedToThisDriver = driverScheduledReservationMatchesDriver(ride, session?.user);
+apps/mobile/src/pages/driver/index.tsx:12369:<div style={{ marginTop: 4, fontWeight: 950, lineHeight: 1.25 }}>{scheduledText}</div>
+apps/mobile/src/pages/driver/index.tsx:12419:onClick={() => void handleRejectScheduledReservation(ride)}
+apps/mobile/src/pages/driver/index.tsx:12429:onClick={() => void handleAcceptScheduledReservation(ride)}
+apps/mobile/src/pages/driver/index.tsx:12446:function ConfirmedScheduledReservationCard({
+apps/mobile/src/pages/driver/index.tsx:12449:ride: DriverScheduledReservationOffer;
+apps/mobile/src/pages/driver/index.tsx:12452:const scheduledText = getDriverScheduledReservationDateText(ride);
+apps/mobile/src/pages/driver/index.tsx:12453:const activationText = formatDriverScheduledReservationDate(
+apps/mobile/src/pages/driver/index.tsx:12456:const readyToStart = driverScheduledReservationIsActiveNow(ride as unknown as DriverAcceptedRideBridgeRecord);
+apps/mobile/src/pages/driver/index.tsx:12457:const countdownText = getScheduledReservationCountdownText(ride as unknown as DriverAcceptedRideBridgeRecord);
+apps/mobile/src/pages/driver/index.tsx:12492:<div style={{ marginTop: 3, fontWeight: 950 }}>{scheduledText}</div>
+apps/mobile/src/pages/driver/index.tsx:12509:onClick={() => void handleStartReadyScheduledReservation(ride)}
+apps/mobile/src/pages/driver/index.tsx:12533:const paymentLabel = getRidePaymentMethodLabel(ride.notes);
+apps/mobile/src/pages/driver/index.tsx:13542:<ScheduledReservationCard key={String(ride.id)} ride={ride} />
+apps/mobile/src/pages/driver/index.tsx:13573:<ConfirmedScheduledReservationCard key={String(ride.id)} ride={ride} />
+apps/mobile/src/pages/driver/index.tsx:13595:{scheduledReservationReadyAlert && isDriverAvailable && !activeRide && (
+apps/mobile/src/pages/driver/index.tsx:13648:Sonando por 0:{String(scheduledReservationAlertSecondsLeft).padStart(2, "0")} · ve a buscar al pasajero
+apps/mobile/src/pages/driver/index.tsx:13653:onClick={() => stopScheduledReservationReadyAlert(true)}
+apps/mobile/src/pages/driver/index.tsx:13694:{String(scheduledReservationReadyAlert.originText ?? "Punto de recogida")}
+apps/mobile/src/pages/driver/index.tsx:13701:{String(scheduledReservationReadyAlert.destinationText ?? "Destino")}
+apps/mobile/src/pages/driver/index.tsx:13722:{formatCLPDriver(getRideDisplayFareClp(scheduledReservationReadyAlert as RideWithFarePayload))}
+apps/mobile/src/pages/driver/index.tsx:13730:onClick={() => stopScheduledReservationReadyAlert(true)}
+apps/mobile/src/pages/driver/index.tsx:13738:disabled={acceptingId === String(scheduledReservationReadyAlert.id)}
+apps/mobile/src/pages/driver/index.tsx:13739:onClick={() => void handleStartReadyScheduledReservation(scheduledReservationReadyAlert)}
+apps/mobile/src/pages/driver/index.tsx:13907:const paymentLabel = getRidePaymentMethodLabel(
+apps/mobile/src/pages/driver/index.tsx:14088:"rapago_driver_scheduled_queue",
+apps/mobile/src/pages/driver/index.tsx:14366:Pago: {getRidePaymentMethodLabel(activeRide.notes)}
+apps/mobile/src/pages/driver/index.tsx:14585:Pago: {getRidePaymentMethodLabel(ride.notes)}
+apps/mobile/src/pages/driver/index.tsx:14861:{getRidePaymentMethodLabel(String(ride.notes ?? ""))} · {getRideTripTypeLabel(String(ride.notes ?? ""))}
+apps/mobile/src/pages/passenger/index.tsx:403:scheduled:       "Agendado",
+apps/mobile/src/pages/passenger/index.tsx:404:driver_scheduled: "Conductor agendado",
+apps/mobile/src/pages/passenger/index.tsx:415:scheduled:       "warning",
+apps/mobile/src/pages/passenger/index.tsx:416:driver_scheduled: "success",
+apps/mobile/src/pages/passenger/index.tsx:691:type RideMode = "now" | "scheduled";
+apps/mobile/src/pages/passenger/index.tsx:2394:const LOCAL_ADMIN_SCHEDULED_RIDES_KEY = "rapago_admin_scheduled_rides";
+apps/mobile/src/pages/passenger/index.tsx:2410:function formatScheduleDateTime(value: string | null | undefined): string {
+apps/mobile/src/pages/passenger/index.tsx:2423:rideMode: RideMode;
+apps/mobile/src/pages/passenger/index.tsx:2425:scheduledAt: string;
+apps/mobile/src/pages/passenger/index.tsx:2426:returnScheduledAt: string;
+apps/mobile/src/pages/passenger/index.tsx:2428:if (input.rideMode !== "scheduled") return null;
+apps/mobile/src/pages/passenger/index.tsx:2430:const pickup = parseScheduleInput(input.scheduledAt);
+apps/mobile/src/pages/passenger/index.tsx:2441:const back = parseScheduleInput(input.returnScheduledAt);
+apps/mobile/src/pages/passenger/index.tsx:2451:rideMode: RideMode;
+apps/mobile/src/pages/passenger/index.tsx:2453:scheduledAt: string;
+apps/mobile/src/pages/passenger/index.tsx:2454:returnScheduledAt: string;
+apps/mobile/src/pages/passenger/index.tsx:2456:const pickup = input.rideMode === "scheduled" ? parseScheduleInput(input.scheduledAt) : null;
+apps/mobile/src/pages/passenger/index.tsx:2457:const back = input.rideMode === "scheduled" && input.tripFareMode === "round_trip" ? parseScheduleInput(input.returnScheduledAt) : null;
+apps/mobile/src/pages/passenger/index.tsx:2461:rideMode: input.rideMode,
+apps/mobile/src/pages/passenger/index.tsx:2462:requestMode: input.rideMode,
+apps/mobile/src/pages/passenger/index.tsx:2463:isScheduled: input.rideMode === "scheduled" && !!pickup,
+apps/mobile/src/pages/passenger/index.tsx:2464:scheduleStatus: input.rideMode === "scheduled" && !!pickup ? "pending_activation" : "immediate",
+apps/mobile/src/pages/passenger/index.tsx:2465:scheduledAt: pickup?.toISOString() ?? null,
+apps/mobile/src/pages/passenger/index.tsx:2466:scheduledPickupAt: pickup?.toISOString() ?? null,
+apps/mobile/src/pages/passenger/index.tsx:2467:pickupScheduledAt: pickup?.toISOString() ?? null,
+apps/mobile/src/pages/passenger/index.tsx:2468:returnScheduledAt: back?.toISOString() ?? null,
+apps/mobile/src/pages/passenger/index.tsx:2469:scheduledReturnAt: back?.toISOString() ?? null,
+apps/mobile/src/pages/passenger/index.tsx:2488:function readLocalAdminScheduledRides(): RideRequestData[] {
+apps/mobile/src/pages/passenger/index.tsx:2490:const raw = localStorage.getItem(LOCAL_ADMIN_SCHEDULED_RIDES_KEY);
+apps/mobile/src/pages/passenger/index.tsx:2498:function saveLocalAdminScheduledRides(rides: RideRequestData[]): void {
+apps/mobile/src/pages/passenger/index.tsx:2500:localStorage.setItem(LOCAL_ADMIN_SCHEDULED_RIDES_KEY, JSON.stringify(rides));
+apps/mobile/src/pages/passenger/index.tsx:2501:window.dispatchEvent(new CustomEvent("rapago:admin-scheduled-rides-updated"));
+apps/mobile/src/pages/passenger/index.tsx:2507:function getScheduledRideKey(ride: Partial<RideRequestData> & Record<string, unknown>): string {
+apps/mobile/src/pages/passenger/index.tsx:2509:ride.scheduledAt ?? ride.scheduledPickupAt ?? "",
+apps/mobile/src/pages/passenger/index.tsx:2518:function upsertLocalAdminScheduledRide(ride: RideRequestData): void {
+apps/mobile/src/pages/passenger/index.tsx:2519:if ((ride as unknown as Record<string, unknown>).isScheduled !== true) return;
+apps/mobile/src/pages/passenger/index.tsx:2520:const key = getScheduledRideKey(ride as unknown as Record<string, unknown>);
+apps/mobile/src/pages/passenger/index.tsx:2521:const withoutDuplicate = readLocalAdminScheduledRides().filter(
+apps/mobile/src/pages/passenger/index.tsx:2522:(item) => getScheduledRideKey(item as unknown as Record<string, unknown>) !== key,
+apps/mobile/src/pages/passenger/index.tsx:2524:saveLocalAdminScheduledRides([ride, ...withoutDuplicate]);
+apps/mobile/src/pages/passenger/index.tsx:2557:const [paymentMethod,     setPaymentMethod]     = useState<"cash" | "card" | null>(null);
+apps/mobile/src/pages/passenger/index.tsx:2559:const [rideMode,          setRideMode]          = useState<RideMode>("now");
+apps/mobile/src/pages/passenger/index.tsx:2561:const [scheduledAt,       setScheduledAt]       = useState("");
+apps/mobile/src/pages/passenger/index.tsx:2562:const [returnScheduledAt, setReturnScheduledAt] = useState("");
+apps/mobile/src/pages/passenger/index.tsx:2597:setPaymentMethod(null);
+apps/mobile/src/pages/passenger/index.tsx:2745:rideMode,
+apps/mobile/src/pages/passenger/index.tsx:2747:scheduledAt,
+apps/mobile/src/pages/passenger/index.tsx:2748:returnScheduledAt,
+apps/mobile/src/pages/passenger/index.tsx:2756:if (paymentMethod === "card") {
+apps/mobile/src/pages/passenger/index.tsx:2761:if (paymentMethod !== "cash") {
+apps/mobile/src/pages/passenger/index.tsx:2775:(input as unknown as { estimatedFareClp?: number; paymentMethod?: string }).estimatedFareClp = tripFareMode === "round_trip" ? farePreview.fare * 2 : farePreview.fare;
+apps/mobile/src/pages/passenger/index.tsx:2776:(input as unknown as { estimatedFareClp?: number; paymentMethod?: string }).paymentMethod = "cash";
+apps/mobile/src/pages/passenger/index.tsx:2789:Object.assign(input as unknown as Record<string, unknown>, buildRideScheduleFields({ rideMode, tripFareMode, scheduledAt, returnScheduledAt }));
+apps/mobile/src/pages/passenger/index.tsx:2816:const scheduleFields = buildRideScheduleFields({ rideMode, tripFareMode, scheduledAt, returnScheduledAt });
+apps/mobile/src/pages/passenger/index.tsx:2817:if (rideMode === "scheduled") {
+apps/mobile/src/pages/passenger/index.tsx:2818:notes.push(`Viaje agendado para: ${formatScheduleDateTime(String(scheduleFields.scheduledAt ?? scheduledAt))}.`);
+apps/mobile/src/pages/passenger/index.tsx:2819:notes.push(`La solicitud se activa automáticamente ${SCHEDULE_ACTIVATION_MINUTES} minutos antes: ${formatScheduleDateTime(String(scheduleFields.scheduleActivationAt ?? ""))}.`);
+apps/mobile/src/pages/passenger/index.tsx:2821:notes.push(`Regreso agendado para: ${formatScheduleDateTime(String(scheduleFields.returnScheduledAt ?? returnScheduledAt))}.`);
+apps/mobile/src/pages/passenger/index.tsx:2835:rideMode,
+apps/mobile/src/pages/passenger/index.tsx:2837:scheduledAt,
+apps/mobile/src/pages/passenger/index.tsx:2838:returnScheduledAt,
+apps/mobile/src/pages/passenger/index.tsx:2852:if (rideMode === "scheduled") {
+apps/mobile/src/pages/passenger/index.tsx:2853:upsertLocalAdminScheduledRide({
+apps/mobile/src/pages/passenger/index.tsx:2867:if (rideMode === "scheduled") {
+apps/mobile/src/pages/passenger/index.tsx:2868:upsertLocalAdminScheduledRide({
+apps/mobile/src/pages/passenger/index.tsx:2893:setPaymentMethod(null);
+apps/mobile/src/pages/passenger/index.tsx:2895:setRideMode("now");
+apps/mobile/src/pages/passenger/index.tsx:2897:setScheduledAt("");
+apps/mobile/src/pages/passenger/index.tsx:2898:setReturnScheduledAt("");
+apps/mobile/src/pages/passenger/index.tsx:2953:{getPassengerRideScheduleInfo(blockingRide).isScheduled && (
+apps/mobile/src/pages/passenger/index.tsx:2955:Recogida: {formatScheduleDateTime(getPassengerRideScheduleInfo(blockingRide).scheduledAt)}
+apps/mobile/src/pages/passenger/index.tsx:3118:fill={rideMode === "now" ? "solid" : "outline"}
+apps/mobile/src/pages/passenger/index.tsx:3120:setRideMode("now");
+apps/mobile/src/pages/passenger/index.tsx:3121:setScheduledAt("");
+apps/mobile/src/pages/passenger/index.tsx:3122:setReturnScheduledAt("");
+apps/mobile/src/pages/passenger/index.tsx:3130:fill={rideMode === "scheduled" ? "solid" : "outline"}
+apps/mobile/src/pages/passenger/index.tsx:3132:setRideMode("scheduled");
+apps/mobile/src/pages/passenger/index.tsx:3147:if (mode === "one_way") setReturnScheduledAt("");
+apps/mobile/src/pages/passenger/index.tsx:3166:{rideMode === "scheduled" && (
+apps/mobile/src/pages/passenger/index.tsx:3172:value={scheduledAt}
+apps/mobile/src/pages/passenger/index.tsx:3175:onIonInput={(e) => setScheduledAt(String(e.detail.value ?? ""))}
+apps/mobile/src/pages/passenger/index.tsx:3184:value={returnScheduledAt}
+apps/mobile/src/pages/passenger/index.tsx:3185:min={scheduledAt || toDateTimeLocalValue(new Date(Date.now() + SCHEDULE_MIN_MINUTES * 60_000))}
+apps/mobile/src/pages/passenger/index.tsx:3187:onIonInput={(e) => setReturnScheduledAt(String(e.detail.value ?? ""))}
+apps/mobile/src/pages/passenger/index.tsx:3261:onClick={() => { setPaymentMethod("cash"); setSubmitError(null); }}
+apps/mobile/src/pages/passenger/index.tsx:3263:border: paymentMethod === "cash" ? "3px solid #ffffff" : "2px solid rgba(200,155,60,.45)",
+apps/mobile/src/pages/passenger/index.tsx:3268:boxShadow: paymentMethod === "cash" ? "0 0 22px rgba(212,166,42,.55)" : "0 8px 18px rgba(0,0,0,.10)",
+apps/mobile/src/pages/passenger/index.tsx:3269:transform: paymentMethod === "cash" ? "scale(1.02)" : "scale(1)",
+apps/mobile/src/pages/passenger/index.tsx:3282:setPaymentMethod("card");
+apps/mobile/src/pages/passenger/index.tsx:3286:border: paymentMethod === "card" ? "3px solid #ffffff" : "2px solid rgba(120,120,120,.28)",
+apps/mobile/src/pages/passenger/index.tsx:3291:boxShadow: paymentMethod === "card" ? "0 0 18px rgba(120,120,120,.35)" : "0 8px 18px rgba(0,0,0,.08)",
+apps/mobile/src/pages/passenger/index.tsx:3292:transform: paymentMethod === "card" ? "scale(1.02)" : "scale(1)",
+apps/mobile/src/pages/passenger/index.tsx:3323:disabled={passengerConnection.blocked || !!blockingRide || submitting || !farePreview || paymentMethod !== "cash" || (rideMode === "scheduled" && (!scheduledAt || (tripFareMode === "round_trip" && !returnScheduledAt)))}
+apps/mobile/src/pages/passenger/index.tsx:3331:) : paymentMethod === "cash" ? (
+apps/mobile/src/pages/passenger/index.tsx:3333:) : paymentMethod === "card" ? (
+apps/mobile/src/pages/passenger/index.tsx:3480:const scheduledAt =
+apps/mobile/src/pages/passenger/index.tsx:3481:ride.scheduledAt ??
+apps/mobile/src/pages/passenger/index.tsx:3482:ride.scheduledPickupAt ??
+apps/mobile/src/pages/passenger/index.tsx:3483:ride.pickupScheduledAt ??
+apps/mobile/src/pages/passenger/index.tsx:3490:scheduledAt,
+apps/mobile/src/pages/passenger/index.tsx:3504:"rapago_admin_scheduled_rides",
+apps/mobile/src/pages/passenger/index.tsx:3505:"rapago_admin_scheduled_rides_v1",
+apps/mobile/src/pages/passenger/index.tsx:3506:"rapago_admin_scheduled_rides_v2",
+apps/mobile/src/pages/passenger/index.tsx:3507:"rapago_admin_scheduled_rides_force_v1",
+apps/mobile/src/pages/passenger/index.tsx:3508:"rapago_bridge_scheduled_rides_v1",
+apps/mobile/src/pages/passenger/index.tsx:3537:ride.scheduledAt ??
+apps/mobile/src/pages/passenger/index.tsx:3538:ride.scheduledPickupAt ??
+apps/mobile/src/pages/passenger/index.tsx:3539:ride.pickupScheduledAt ??
+apps/mobile/src/pages/passenger/index.tsx:3540:ride.returnScheduledAt ??
+apps/mobile/src/pages/passenger/index.tsx:3725:rideMode?: RideMode | null;
+apps/mobile/src/pages/passenger/index.tsx:3727:scheduledAt?: string | null;
+apps/mobile/src/pages/passenger/index.tsx:3728:returnScheduledAt?: string | null;
+apps/mobile/src/pages/passenger/index.tsx:3734:rideMode: input.rideMode ?? "now",
+apps/mobile/src/pages/passenger/index.tsx:3736:scheduledAt: input.scheduledAt ?? "",
+apps/mobile/src/pages/passenger/index.tsx:3737:returnScheduledAt: input.returnScheduledAt ?? "",
+apps/mobile/src/pages/passenger/index.tsx:3739:const isScheduled = scheduleFields.isScheduled === true;
+apps/mobile/src/pages/passenger/index.tsx:3752:status: isScheduled ? "scheduled" : "requested",
+apps/mobile/src/pages/passenger/index.tsx:3839:isScheduled: boolean;
+apps/mobile/src/pages/passenger/index.tsx:3840:scheduledAt: string | null;
+apps/mobile/src/pages/passenger/index.tsx:3841:returnScheduledAt: string | null;
+apps/mobile/src/pages/passenger/index.tsx:4389:"RAPAGO_SCHEDULED_AT",
+apps/mobile/src/pages/passenger/index.tsx:4391:"scheduledAt",
+apps/mobile/src/pages/passenger/index.tsx:4392:"scheduledPickupAt",
+apps/mobile/src/pages/passenger/index.tsx:4393:"pickupScheduledAt",
+apps/mobile/src/pages/passenger/index.tsx:4399:"RAPAGO_RETURN_SCHEDULED_AT",
+apps/mobile/src/pages/passenger/index.tsx:4402:"returnScheduledAt",
+apps/mobile/src/pages/passenger/index.tsx:4403:"scheduledReturnAt",
+apps/mobile/src/pages/passenger/index.tsx:4408:const scheduledAt =
+apps/mobile/src/pages/passenger/index.tsx:4409:toPassengerIso(getRideScheduleString(ride, ["scheduledAt", "scheduledPickupAt", "pickupScheduledAt", "pickupAt", "reservedAt"])) ??
+apps/mobile/src/pages/passenger/index.tsx:4412:const returnScheduledAt =
+apps/mobile/src/pages/passenger/index.tsx:4413:toPassengerIso(getRideScheduleString(ride, ["returnScheduledAt", "scheduledReturnAt", "returnAt"])) ??
+apps/mobile/src/pages/passenger/index.tsx:4418:(scheduledAt ? new Date(new Date(scheduledAt).getTime() - SCHEDULE_ACTIVATION_MINUTES * 60_000).toISOString() : null);
+apps/mobile/src/pages/passenger/index.tsx:4420:const isScheduled =
+apps/mobile/src/pages/passenger/index.tsx:4421:getRideAnyField(ride, "isScheduled") === true ||
+apps/mobile/src/pages/passenger/index.tsx:4422:ride.status === "scheduled" ||
+apps/mobile/src/pages/passenger/index.tsx:4423:!!scheduledAt ||
+apps/mobile/src/pages/passenger/index.tsx:4428:return { isScheduled, scheduledAt, returnScheduledAt, activationAt, isActiveWindow };
+apps/mobile/src/pages/passenger/index.tsx:4431:function isPassengerRideDriverScheduled(ride: RideRequestData): boolean {
+apps/mobile/src/pages/passenger/index.tsx:4441:return ["driver_scheduled", "assigned_driver", "driver_assigned", "scheduled_driver"].includes(status);
+apps/mobile/src/pages/passenger/index.tsx:4453:if (schedule.isScheduled && isPassengerRideDriverScheduled(ride) && ride.driverName) {
+apps/mobile/src/pages/passenger/index.tsx:4454:return "driver_scheduled";
+apps/mobile/src/pages/passenger/index.tsx:4456:if (schedule.isScheduled && !schedule.isActiveWindow && ["requested", "scheduled"].includes(ride.status)) {
+apps/mobile/src/pages/passenger/index.tsx:4457:return "scheduled";
+apps/mobile/src/pages/passenger/index.tsx:4459:if (ride.status === "scheduled" && schedule.isActiveWindow) return "requested";
+apps/mobile/src/pages/passenger/index.tsx:4464:"scheduled",
+apps/mobile/src/pages/passenger/index.tsx:4465:"driver_scheduled",
+apps/mobile/src/pages/passenger/index.tsx:4476:schedule.scheduledAt,
+apps/mobile/src/pages/passenger/index.tsx:4500:if (status === "driver_scheduled") return 5;
+apps/mobile/src/pages/passenger/index.tsx:4501:if (status === "scheduled") return 6;
+apps/mobile/src/pages/passenger/index.tsx:4559:if (incomingIsLocal && !currentIsLocal && getPassengerRideScheduleInfo(ride).isScheduled) {
+apps/mobile/src/pages/passenger/index.tsx:5393:{scheduleInfo.isScheduled && (
+apps/mobile/src/pages/passenger/index.tsx:5407:<div>Recogida: {formatScheduleDateTime(scheduleInfo.scheduledAt)}</div>
+apps/mobile/src/pages/passenger/index.tsx:5408:{scheduleInfo.returnScheduledAt && <div>Regreso: {formatScheduleDateTime(scheduleInfo.returnScheduledAt)}</div>}
+apps/mobile/src/pages/passenger/index.tsx:5413:{scheduleInfo.isScheduled && isPassengerRideDriverScheduled(ride) && ride.driverName && (
+apps/mobile/src/pages/passenger/index.tsx:5455:{driverDisplayName && (["accepted", "driver_en_route", "driver_arrived", "in_progress", "completed"].includes(effectiveStatus) || effectiveStatus === "driver_scheduled") && (
+apps/mobile/src/pages/passenger/index.tsx:5519:(!scheduleInfo.isScheduled || scheduleInfo.isActiveWindow) && (
+apps/mobile/src/pages/passenger/index.tsx:5527:{((isActive && effectiveStatus !== "scheduled") || ride.status === "completed") && (
+apps/mobile/src/pages/passenger/index.tsx:5563:{(effectiveStatus === "scheduled" || effectiveStatus === "requested" || effectiveStatus === "accepted") && (
+apps/mobile/src/pages/passenger/index.tsx:5569:onClick={() => void (effectiveStatus === "scheduled" || effectiveStatus === "requested" ? handleCancel(ride.id) : handleCancelAccepted(ride.id))}
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:55:const LOCAL_ADMIN_SCHEDULED_RIDES_KEY = "rapago_admin_scheduled_rides";
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:56:const LOCAL_ADMIN_SCHEDULED_RIDE_MIRROR_KEYS = [
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:57:LOCAL_ADMIN_SCHEDULED_RIDES_KEY,
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:58:"rapago_admin_scheduled_rides_v1",
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:59:"rapago_admin_scheduled_rides_v2",
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:60:"rapago_admin_scheduled_rides_force_v1",
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:61:"rapago_bridge_scheduled_rides_v1",
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:64:const LOCAL_ADMIN_SCHEDULED_RIDE_LIMIT = 80;
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:418:"scheduled",
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:419:"driver_scheduled",
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:443:const SCHEDULED_RIDE_GRACE_AFTER_PICKUP_MS = 4 * 60 * 60 * 1000;
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:444:const SCHEDULED_RIDE_MAX_FUTURE_MS = 31 * 24 * 60 * 60 * 1000;
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:466:function readRideScheduledMs(ride: LocalPassengerRideData): number | null {
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:468:"scheduledAt",
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:469:"scheduledPickupAt",
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:470:"pickupScheduledAt",
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:591:if (status === "scheduled" || status === "driver_scheduled") {
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:592:const scheduledMs = readRideScheduledMs(ride);
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:595:if (scheduledMs == null) return false;
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:598:scheduledMs >= nowMs - SCHEDULED_RIDE_GRACE_AFTER_PICKUP_MS &&
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:599:scheduledMs <= nowMs + SCHEDULED_RIDE_MAX_FUTURE_MS
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:627:rideMode?: RideMode | null;
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:629:scheduledAt?: string | null;
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:630:returnScheduledAt?: string | null;
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:645:rideMode: input.rideMode ?? "now",
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:647:scheduledAt: input.scheduledAt ?? "",
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:648:returnScheduledAt: input.returnScheduledAt ?? "",
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:651:const isScheduled = scheduleFields.isScheduled === true;
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:666:status: isScheduled ? "scheduled" : "requested",
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:713:function readLocalAdminScheduledRides(): LocalPassengerRideData[] {
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:717:for (const key of LOCAL_ADMIN_SCHEDULED_RIDE_MIRROR_KEYS) {
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:726:const key = getLocalAdminScheduledRideKey(ride);
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:736:function saveLocalAdminScheduledRides(rides: LocalPassengerRideData[]): void {
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:740:.slice(0, LOCAL_ADMIN_SCHEDULED_RIDE_LIMIT);
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:742:for (const key of LOCAL_ADMIN_SCHEDULED_RIDE_MIRROR_KEYS) {
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:747:localStorage.setItem("rapago_last_scheduled_ride_for_admin", JSON.stringify(compacted[0]));
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:750:window.dispatchEvent(new CustomEvent("rapago:admin-scheduled-rides-updated", { detail: { rides: compacted } }));
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:756:function upsertLocalAdminScheduledRide(ride: LocalPassengerRideData): void {
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:757:if (ride.isScheduled !== true) return;
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:758:const current = readLocalAdminScheduledRides();
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:759:const key = getLocalAdminScheduledRideKey(ride);
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:760:const withoutDuplicate = current.filter((item) => getLocalAdminScheduledRideKey(item) !== key);
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:761:saveLocalAdminScheduledRides([ride, ...withoutDuplicate]);
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:764:function getLocalAdminScheduledRideKey(ride: LocalPassengerRideData): string {
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:766:ride.scheduledAt ?? ride.scheduledPickupAt ?? "",
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:775:function createLocalAdminScheduledRide(input: {
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:780:rideMode: RideMode;
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:782:scheduledAt: string;
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:783:returnScheduledAt: string;
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:803:status: "scheduled",
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:839:returnScheduledAt: string;
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:849:rideMode: "scheduled",
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:851:scheduledAt: input.returnScheduledAt,
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:852:returnScheduledAt: "",
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:855:const scheduledAtIso = String(scheduleFields.scheduledAt ?? "");
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:858:scheduleFields.scheduledActivationAt ??
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:869:`RAPAGO_SCHEDULED_AT: ${scheduledAtIso}.`,
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:871:`Fecha y hora de recogida agendada: ${scheduledAtIso}.`,
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:872:`Viaje agendado para: ${formatScheduleDateTime(scheduledAtIso || input.returnScheduledAt)}.`,
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:873:`La solicitud se activa automáticamente ${SCHEDULE_ACTIVATION_MINUTES} minutos antes: ${formatScheduleDateTime(activationAtIso)}.`,
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:886:rideMode: "scheduled",
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:888:scheduledAt: input.returnScheduledAt,
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:889:returnScheduledAt: "",
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:901:status: "scheduled",
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:927:const key = getLocalAdminScheduledRideKey(ride);
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:929:(item) => getLocalAdminScheduledRideKey(item) !== key,
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:933:upsertLocalAdminScheduledRide(ride);
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:936:window.dispatchEvent(new CustomEvent("rapago:admin-scheduled-rides-updated", { detail: { rides: readLocalAdminScheduledRides() } }));
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:957:rideMode?: RideMode | null;
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:959:scheduledAt?: string | null;
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:960:returnScheduledAt?: string | null;
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:1070:type RideMode = "now" | "scheduled";
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:1120:type PaymentMethod = "cash" | "card" | null;
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:3960:function formatScheduleDateTime(value: string | null | undefined): string {
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:3973:rideMode: RideMode;
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:3975:scheduledAt: string;
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:3976:returnScheduledAt: string;
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:3977:requireReturnScheduledAt?: boolean;
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:3987:const back = parseScheduleInput(input.returnScheduledAt);
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:3998:if (input.rideMode !== "scheduled") return null;
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:4000:const pickup = parseScheduleInput(input.scheduledAt);
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:4011:if (input.tripFareMode === "round_trip" && input.requireReturnScheduledAt !== false) {
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:4012:const back = parseScheduleInput(input.returnScheduledAt);
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:4026:rideMode: RideMode;
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:4028:scheduledAt: string;
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:4029:returnScheduledAt: string;
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:4032:const pickup = input.rideMode === "scheduled" ? parseScheduleInput(input.scheduledAt) : null;
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:4033:const back = input.tripFareMode === "round_trip" ? parseScheduleInput(input.returnScheduledAt) : null;
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:4041:const isScheduled = input.rideMode === "scheduled" && !!pickup;
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:4045:const isReturnOnlyPromotion = isRoundTripPromotion && !!back && input.rideMode !== "scheduled";
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:4048:rideMode: input.rideMode,
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:4049:requestMode: input.rideMode,
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:4050:isScheduled,
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:4051:status: isScheduled ? "scheduled" : "requested",
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:4052:scheduleStatus: isScheduled ? "frozen_until_activation" : "immediate",
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:4053:adminScheduleStatus: isScheduled
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:4060:reservationStatus: isScheduled
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:4067:scheduledAt: pickup?.toISOString() ?? null,
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:4068:scheduledPickupAt: pickup?.toISOString() ?? null,
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:4069:pickupScheduledAt: pickup?.toISOString() ?? null,
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:4070:returnScheduledAt: back?.toISOString() ?? null,
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:4071:scheduledReturnAt: back?.toISOString() ?? null,
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:4072:scheduledReturnActivationAt: returnActivationIso,
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:4076:scheduledActivationAt: activationIso,
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:4077:scheduledPickupActivationAt: activationIso,
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:4084:availableForDrivers: !isScheduled,
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:4085:visibleToDrivers: !isScheduled,
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:4086:driverQueueBlocked: isScheduled,
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:4087:frozenForDrivers: isScheduled,
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:4088:adminVisibleNow: isScheduled || isReturnOnlyPromotion,
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:4089:adminRequiresReview: isScheduled || isReturnOnlyPromotion,
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:4090:airportPickupBooking: isScheduled && !isRoundTripPromotion,
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:4091:roundTripPromotionBooking: (isScheduled || isReturnOnlyPromotion) && isRoundTripPromotion,
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:4093:bookingPurpose: isScheduled
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:4100:serviceType: isScheduled
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:4136:const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>(null);
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:4140:const [rideMode, setRideMode] = useState<RideMode>("now");
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:4143:const [scheduledAt, setScheduledAt] = useState("");
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:4144:const [returnScheduledAt, setReturnScheduledAt] = useState("");
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:4173:const isAirportScheduledRide = rideMode === "scheduled" && !isRoundTripPromotionSelected;
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:4174:const reservationRequiresCard = rideMode === "scheduled" || Boolean(selectedRoundTripPromotion);
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:4175:const airportScheduledRequiresCard = isAirportScheduledRide;
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:4176:const canChooseOrigin = rideMode !== "scheduled" || isRoundTripPromotionSelected;
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:4177:const requireReturnScheduledAt = effectiveTripFareMode === "round_trip";
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:4181:if (!reservationRequiresCard) return;
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:4182:if (paymentMethod !== "card") setPaymentMethod("card");
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:4184:}, [reservationRequiresCard, paymentMethod]);
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:4312:if (rideMode !== "scheduled") return;
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:4322:setReturnScheduledAt("");
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:4336:}, [rideMode, selectedRoundTripPromotionId]);
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:4341:if (isAirportScheduledRide || value.length < 3 || originPoint?.text === value) {
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:4362:}, [isAirportScheduledRide, originInput, originPoint?.text]);
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:4443:setReturnScheduledAt("");
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:4466:setReturnScheduledAt("");
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:4500:setRideMode("now");
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:4501:setScheduledAt("");
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:4506:setReturnScheduledAt("");
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:4544:setReturnScheduledAt("");
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:4608:if (isAirportScheduledRide) {
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:4670:isAirportScheduledRide && airportWelcomeOption === "flower_lei"
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:4688:function getBaseSelectedFareAmount(method: PaymentMethod = paymentMethod): number | null {
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:4716:function getSelectedFareAmountBeforeWallet(method: PaymentMethod = paymentMethod): number | null {
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:4720:function getSelectedWalletBenefitDiscount(method: PaymentMethod = paymentMethod): number {
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:4743:function getPaymentLabel(method: PaymentMethod): string {
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:4777:const activePaymentAmountBeforeWallet = paymentMethod === "card"
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:4779:: paymentMethod === "cash"
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:4782:const activeWalletBenefitDiscountClp = paymentMethod === "card"
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:4784:: paymentMethod === "cash"
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:4787:const activePaymentAmountAfterWallet = paymentMethod === "card"
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:4789:: paymentMethod === "cash"
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:4793:function getSelectedFareAmount(method: PaymentMethod = paymentMethod): number | null {
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:4797:function getSelectedDriverEarning(method: PaymentMethod = paymentMethod): number | null {
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:4809:function handleSelectPayment(method: Exclude<PaymentMethod, null>): void {
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:4810:if (reservationRequiresCard && method === "cash") {
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:4811:setPaymentMethod("card");
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:4817:setPaymentMethod(method);
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:4830:const activePaymentMethod: PaymentMethod = paymentMethod;
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:4840:rideMode,
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:4842:scheduledAt,
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:4843:returnScheduledAt,
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:4844:requireReturnScheduledAt,
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:4853:if (activePaymentMethod !== "cash" && String(activePaymentMethod) !== "card") {
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:4859:if (reservationRequiresCard && String(activePaymentMethod) !== "card") {
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:4860:setPaymentMethod("card");
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:4871:const selectedFareAmountBeforeWallet = getSelectedFareAmountBeforeWallet(activePaymentMethod);
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:4872:const selectedWalletBenefitDiscountClp = getSelectedWalletBenefitDiscount(activePaymentMethod);
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:4873:const selectedFareAmount = getSelectedFareAmount(activePaymentMethod);
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:4874:const selectedBaseFareAmount = getBaseSelectedFareAmount(activePaymentMethod);
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:4875:const selectedDriverEarning = getSelectedDriverEarning(activePaymentMethod);
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:4882:setPaymentMethod(activePaymentMethod);
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:4890:notes.push(`Forma de pago seleccionada: ${getPaymentLabel(activePaymentMethod)}.`);
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:4891:if (reservationRequiresCard) {
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:4926:rideMode: selectedRoundTripPromotion ? "now" : rideMode,
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:4928:scheduledAt: selectedRoundTripPromotion ? "" : scheduledAt,
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:4929:returnScheduledAt: selectedRoundTripPromotion ? "" : returnScheduledAt,
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:4933:if (selectedRoundTripPromotion && returnScheduledAt) {
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:4935:notes.push(`Recogida de regreso elegida por el pasajero: ${formatScheduleDateTime(returnScheduledAt)}.`);
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:4939:if (rideMode === "scheduled") {
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:4940:notes.push(`RAPAGO_SCHEDULED_AT: ${String(scheduleFields.scheduledAt ?? "")}.`);
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:4942:notes.push(`Fecha y hora de recogida agendada: ${String(scheduleFields.scheduledAt ?? "")}.`);
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:4943:notes.push(`Viaje agendado para: ${formatScheduleDateTime(String(scheduleFields.scheduledAt ?? scheduledAt))}.`);
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:4944:notes.push(`La solicitud se activa automáticamente ${SCHEDULE_ACTIVATION_MINUTES} minutos antes: ${formatScheduleDateTime(String(scheduleFields.scheduleActivationAt ?? ""))}.`);
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:4959:if (effectiveTripFareMode === "round_trip" && returnScheduledAt) {
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:4960:notes.push(`RAPAGO_RETURN_SCHEDULED_AT: ${String(scheduleFields.returnScheduledAt ?? "")}.`);
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:4961:notes.push(`Fecha y hora de regreso agendada: ${String(scheduleFields.returnScheduledAt ?? "")}.`);
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:4962:notes.push(`Regreso agendado para: ${formatScheduleDateTime(String(scheduleFields.returnScheduledAt ?? returnScheduledAt))}.`);
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:5049:paymentMethod?: string;
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:5093:(input as CreateRideInput & { paymentMethod?: string }).paymentMethod = activePaymentMethod;
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:5125:if (isAirportScheduledRide) {
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:5135:airportReservationRequiresCard: isAirportScheduledRide,
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:5136:reservationRequiresCard: reservationRequiresCard,
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:5138:cardCancellationCreditToWallet: reservationRequiresCard && String(activePaymentMethod) === "card",
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:5151:roundTripReturnPickupAt: returnScheduledAt,
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:5184:if (selectedRoundTripPromotion && returnScheduledAt) {
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:5194:returnScheduledAt,
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:5205:if (rideMode === "scheduled") {
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:5206:upsertLocalAdminScheduledRide(createLocalAdminScheduledRide({
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:5211:rideMode,
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:5213:scheduledAt,
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:5214:returnScheduledAt,
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:5220:airportWelcomeOption: rideMode === "scheduled" ? airportWelcomeOption : null,
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:5237:} as Parameters<typeof createLocalAdminScheduledRide>[0] & Record<string, unknown>));
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:5240:if (String(activePaymentMethod) === "card" && selectedFareAmount > 0) {
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:5276:setScheduledAt("");
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:5277:setReturnScheduledAt("");
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:5282:setRideMode("now");
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:5285:setPaymentMethod(null);
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:5295:if (String(activePaymentMethod) === "card") {
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:5302:localNotes.push(`Forma de pago seleccionada: ${getPaymentLabel(activePaymentMethod)}.`);
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:5303:if (reservationRequiresCard) {
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:5333:rideMode: selectedRoundTripPromotion ? "now" : rideMode,
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:5335:scheduledAt: selectedRoundTripPromotion ? "" : scheduledAt,
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:5336:returnScheduledAt: selectedRoundTripPromotion ? "" : returnScheduledAt,
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:5340:if (selectedRoundTripPromotion && returnScheduledAt) {
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:5342:localNotes.push(`Recogida de regreso elegida por el pasajero: ${formatScheduleDateTime(returnScheduledAt)}.`);
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:5346:if (rideMode === "scheduled") {
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:5347:localNotes.push(`RAPAGO_SCHEDULED_AT: ${String(localScheduleFields.scheduledAt ?? "")}.`);
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:5349:localNotes.push(`Fecha y hora de recogida agendada: ${String(localScheduleFields.scheduledAt ?? "")}.`);
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:5350:localNotes.push(`Viaje agendado para: ${formatScheduleDateTime(String(localScheduleFields.scheduledAt ?? scheduledAt))}.`);
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:5351:localNotes.push(`La solicitud se activa automáticamente ${SCHEDULE_ACTIVATION_MINUTES} minutos antes: ${formatScheduleDateTime(String(localScheduleFields.scheduleActivationAt ?? ""))}.`);
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:5366:if (effectiveTripFareMode === "round_trip" && returnScheduledAt) {
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:5367:localNotes.push(`RAPAGO_RETURN_SCHEDULED_AT: ${String(localScheduleFields.returnScheduledAt ?? "")}.`);
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:5368:localNotes.push(`Fecha y hora de regreso agendada: ${String(localScheduleFields.returnScheduledAt ?? "")}.`);
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:5369:localNotes.push(`Regreso agendado para: ${formatScheduleDateTime(String(localScheduleFields.returnScheduledAt ?? returnScheduledAt))}.`);
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:5441:rideMode: selectedRoundTripPromotion ? "now" : rideMode,
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:5443:scheduledAt: selectedRoundTripPromotion ? "" : scheduledAt,
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:5444:returnScheduledAt: selectedRoundTripPromotion ? "" : returnScheduledAt,
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:5450:airportWelcomeOption: rideMode === "scheduled" ? airportWelcomeOption : null,
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:5473:roundTripReturnPickupRequested: Boolean(selectedRoundTripPromotion && returnScheduledAt),
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:5474:roundTripReturnPickupAt: selectedRoundTripPromotion ? returnScheduledAt : null,
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:5475:airportReservationRequiresCard: isAirportScheduledRide,
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:5476:reservationRequiresCard: reservationRequiresCard,
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:5477:paymentRequiredProvider: isAirportScheduledRide ? "mercadopago" : null,
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:5478:cardCancellationCreditToWallet: reservationRequiresCard && String(activePaymentMethod) === "card",
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:5480:cardCancellationCreditName: reservationRequiresCard && String(activePaymentMethod) === "card" ? "CRÉDITOS PARA PRÓXIMO VIAJE" : null,
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:5483:const localReturnPickupRide = selectedRoundTripPromotion && returnScheduledAt
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:5493:returnScheduledAt,
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:5510:upsertLocalAdminScheduledRide(localReturnPickupRide);
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:5528:if (rideMode === "scheduled") {
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:5529:upsertLocalAdminScheduledRide(createLocalAdminScheduledRide({
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:5534:rideMode,
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:5536:scheduledAt,
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:5537:returnScheduledAt,
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:5543:airportWelcomeOption: rideMode === "scheduled" ? airportWelcomeOption : null,
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:5557:setScheduledAt("");
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:5558:setReturnScheduledAt("");
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:5563:setRideMode("now");
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:5566:setPaymentMethod(null);
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:5585:? !!returnScheduledAt
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:5586:: rideMode === "now" || (!!scheduledAt && (!requireReturnScheduledAt || !!returnScheduledAt))
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:5588:!submitting) && paymentMethod !== null;
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:5592:if (isAirportScheduledRide) {
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:5616:[isAirportScheduledRide, originInput, originPoint],
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:5840:: rideMode === "scheduled"
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:5857:setRideMode("now");
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:5859:setScheduledAt("");
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:5860:setReturnScheduledAt("");
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:5866:color: rideMode === "now" ? "#4fa3d9" : "rgba(246,242,236,.52)",
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:5869:rideMode === "now" ? "2px solid #4fa3d9" : "1px solid #333",
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:5881:setRideMode("scheduled");
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:5884:setPaymentMethod("card");
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:5895:rideMode === "scheduled" ? "#4fa3d9" : "rgba(246,242,236,.52)",
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:5898:rideMode === "scheduled"
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:6022:{(rideMode === "now" || selectedRoundTripPromotion) && (
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:6355:{(rideMode === "scheduled" || selectedRoundTripPromotion) && (
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:6396:value={scheduledAt}
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:6400:setScheduledAt(String(event.detail.value ?? ""))
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:6431:{requireReturnScheduledAt && (
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:6461:value={returnScheduledAt}
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:6462:min={selectedRoundTripPromotion ? scheduleMinInput : (scheduledAt || scheduleMinInput)}
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:6465:setReturnScheduledAt(String(event.detail.value ?? ""))
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:6727:: paymentMethod === "cash"
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:6825:{paymentMethod === "cash" ? "Efectivo listo" : paymentMethod === "card" ? "Tarjeta lista" : "Pendiente"}
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:6830:{selectedRoundTripPromotion && returnScheduledAt ? (
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:6844:📅 Regreso agendado para {formatScheduleDateTime(returnScheduledAt)}
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:6846:) : rideMode === "scheduled" && scheduledAt ? (
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:6860:📅 Agendado para {formatScheduleDateTime(scheduledAt)}{requireReturnScheduledAt && returnScheduledAt ? ` · regreso ${formatScheduleDateTime(returnScheduledAt)}` : ""}
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:6934:"--background": paymentMethod === "cash"
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:6947:{paymentMethod === "cash" ? "Efectivo seleccionado · continuar" : paymentMethod === "card" ? "Tarjeta seleccionada · MercadoPago" : "Elegir forma de pago"}
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:6972:{reservationRequiresCard ? "Todas las reservas se pagan obligatoriamente con tarjeta. Si cancelas dentro de los últimos 15 minutos, se descuenta 30% tope $3.000 y el saldo queda como CRÉDITOS PARA PRÓXIMO VIAJE." : "Elige efectivo al conductor o paga con tarjeta mediante MercadoPago Checkout Pro."}
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:6985:border: paymentMethod === "cash" ? "3px solid #111111" : "2px solid rgba(17,17,17,.10)",
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:6991:boxShadow: paymentMethod === "cash" ? "0 16px 30px rgba(34,197,94,.26)" : "0 10px 22px rgba(0,0,0,.10)",
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:6992:transform: paymentMethod === "cash" ? "scale(1.015)" : "scale(1)",
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:6997:opacity: reservationRequiresCard ? .48 : 1,
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:7003:<div style={{ marginTop: 5, fontSize: ".94rem" }}>{reservationRequiresCard ? "Efectivo no disponible" : "Efectivo al conductor"}</div>
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:7005:{reservationRequiresCard ? "Reservas: solo tarjeta" : "Confirmación inmediata"}
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:7023:border: paymentMethod === "card" ? "3px solid #111111" : "2px solid rgba(17,17,17,.12)",
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:7029:boxShadow: paymentMethod === "card" ? "0 12px 24px rgba(0,0,0,.18)" : "0 8px 18px rgba(0,0,0,.06)",
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:7030:transform: paymentMethod === "card" ? "scale(1.015)" : "scale(1)",
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:7061:{hasAvailableWalletBenefit && paymentMethod && activePaymentAmountBeforeWallet != null && (
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:7193:) : paymentMethod === null ? (
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:7197:) : rideMode === "scheduled" ? (
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:7198:reservationRequiresCard ? "RESERVAR Y PAGAR CON TARJETA" : paymentMethod === "card" ? "AGENDAR Y PAGAR CON TARJETA" : "AGENDA TU VIAJE"
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:7199:) : paymentMethod === "card" ? (
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:30:"scheduled",
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:31:"driver_scheduled",
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:47:const RAPAGO_SCHEDULED_CANCEL_CHARGE_WINDOW_MS = 15 * 60 * 1000;
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:281:String(ride.scheduledAt ?? ride.scheduledPickupAt ?? ride.requestedAt ?? ride.createdAt ?? "").trim(),
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:453:String(ride.scheduledAt ?? ride.scheduledPickupAt ?? ride.requestedAt ?? ride.createdAt ?? "").trim(),
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:489:ride.scheduledDriverAcceptedAt,
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:556:const RAPAGO_ADMIN_SCHEDULED_RIDES_KEY = "rapago_admin_scheduled_rides_v1";
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:557:const RAPAGO_ADMIN_SCHEDULED_RIDES_EVENT = "rapago:admin-scheduled-rides-updated";
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:559:const RAPAGO_ADMIN_SCHEDULED_EXTRA_KEYS = [
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:560:RAPAGO_ADMIN_SCHEDULED_RIDES_KEY,
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:562:// shows Activos > 0 but the scheduled card can stay invisible.
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:563:"rapago_admin_scheduled_rides",
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:564:"rapago_admin_scheduled_rides_v2",
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:565:"rapago_admin_scheduled_rides_force_v1",
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:566:"rapago_bridge_scheduled_rides_v1",
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:569:function isStoredScheduledRide(ride: RideRequestData & Record<string, unknown>): boolean {
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:572:ride.isScheduled === true ||
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:573:ride.rideMode === "scheduled" ||
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:574:Boolean(ride.scheduledAt) ||
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:575:Boolean(ride.scheduledPickupAt) ||
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:576:Boolean(ride.scheduledReturnAt) ||
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:590:const pickup = String(ride.scheduledPickupAt ?? ride.scheduledAt ?? ride.requestedAt ?? "").trim();
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:591:const ret = String(ride.scheduledReturnAt ?? "").trim();
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:735:if (schedule.isScheduled && effectiveStatus === "requested" && schedule.pickupActivationAt) {
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:818:RAPAGO_ADMIN_SCHEDULED_RIDES_KEY,
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:819:"rapago_admin_scheduled_rides",
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:820:"rapago_admin_scheduled_rides_v2",
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:821:"rapago_admin_scheduled_rides_force_v1",
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:822:"rapago_bridge_scheduled_rides_v1",
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:851:const rawLast = localStorage.getItem("rapago_last_scheduled_ride_for_admin");
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:854:localStorage.setItem("rapago_last_scheduled_ride_for_admin", JSON.stringify({ ...parsedLast, ...patch }));
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:959:function getPassengerScheduledPickupTimestampMs(
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:963:"scheduledPickupAt",
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:964:"scheduledAt",
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:965:"pickupScheduledAt",
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:971:function isPassengerScheduledCancellationChargeWindow(
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:985:const isScheduled =
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:986:ride.isScheduled === true ||
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:987:status === "scheduled" ||
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:988:status === "driver_scheduled" ||
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:989:Boolean(ride.scheduledAt) ||
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:990:Boolean(ride.scheduledPickupAt) ||
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:991:scheduleStatus.includes("scheduled") ||
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:996:if (!isScheduled) return false;
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:998:const pickupMs = getPassengerScheduledPickupTimestampMs(ride);
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:1001:return nowMs >= pickupMs - RAPAGO_SCHEDULED_CANCEL_CHARGE_WINDOW_MS;
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:1018:const scheduledChargeWindow = isPassengerScheduledCancellationChargeWindow(record, nowMs);
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:1033:if (scheduledChargeWindow) {
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:1142:["requested", "scheduled", "driver_scheduled", "accepted", "cancelled", "canceled"].includes(status) &&
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:1214:"scheduledDriverAcceptedAt",
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:1217:"driverStartedScheduledReservationAt",
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:1228:ride.scheduledDriverResponse ??
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:1234:["accepted", "driver_scheduled", "driver_en_route", "driver_arrived", "in_progress"].includes(status) ||
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:1301:scheduledDriverAcceptedAt: null,
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:1306:driverStartedScheduledReservationAt: null,
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:1307:driverStartedScheduledReservation: false,
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:1308:scheduledReservationNavigationStarted: false,
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:1310:scheduledDriverResponse: null,
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:1326:"rapago_admin_scheduled_rides",
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:1327:"rapago_admin_scheduled_rides_v1",
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:1328:"rapago_admin_scheduled_rides_v2",
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:1329:"rapago_admin_scheduled_rides_force_v1",
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:1330:"rapago_bridge_scheduled_rides_v1",
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:1415:function readAdminScheduledRideBridge(): Array<RideRequestData & Record<string, unknown>> {
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:1419:for (const key of RAPAGO_ADMIN_SCHEDULED_EXTRA_KEYS) {
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:1431:function saveAdminScheduledRideBridge(rides: Array<RideRequestData & Record<string, unknown>>): void {
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:1435:for (const key of RAPAGO_ADMIN_SCHEDULED_EXTRA_KEYS) {
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:1440:localStorage.setItem("rapago_last_scheduled_ride_for_admin", JSON.stringify(deduped[0]));
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:1443:window.dispatchEvent(new CustomEvent(RAPAGO_ADMIN_SCHEDULED_RIDES_EVENT, { detail: { rides: deduped } }));
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:1462:function readPassengerVisibleScheduledBridgeRides(user: unknown): RideRequestData[] {
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:1464:const bridge = readAdminScheduledRideBridge();
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:1527:ride.scheduledPickupAt,
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:1528:ride.scheduledAt,
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:1546:function syncScheduledRidesToAdminBridge(rides: RideRequestData[]): void {
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:1547:const scheduled = rides
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:1548:.filter((ride) => isStoredScheduledRide(ride as RideRequestData & Record<string, unknown>))
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:1551:isScheduled: true,
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:1559:if (scheduled.length === 0) return;
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:1561:saveAdminScheduledRideBridge([...scheduled, ...readAdminScheduledRideBridge()]);
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:1568:"rapago_admin_scheduled_rides",
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:1569:"rapago_admin_scheduled_rides_v1",
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:1570:"rapago_admin_scheduled_rides_v2",
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:1571:"rapago_admin_scheduled_rides_force_v1",
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:1572:"rapago_bridge_scheduled_rides_v1",
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:1573:"rapago_last_scheduled_ride_for_admin",
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:1604:ride.scheduledAt ??
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:1605:ride.scheduledPickupAt ??
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:1606:ride.pickupScheduledAt ??
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:1607:ride.returnScheduledAt ??
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:1702:paymentMethod: typeof item.paymentMethod === "string" ? item.paymentMethod : null,
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:1749:const paymentLabel = getRidePaymentMethodLabel(ride.notes);
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:1768:paymentMethod: paymentLabel,
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:1796:ride.paymentMethod,
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:1797:ride.paymentProvider,
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:1821:ride.paymentMethod,
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:1822:ride.paymentProvider,
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:1940:if (key === "rapago_last_scheduled_ride_for_admin") {
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:1966:if (key === "rapago_last_scheduled_ride_for_admin") {
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:2192:candidate.scheduledAt ?? candidate.scheduledPickupAt ?? candidate.pickupScheduledAt ?? candidate.requestedAt ?? candidate.createdAt,
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:2195:target.scheduledAt ?? target.scheduledPickupAt ?? target.pickupScheduledAt ?? target.requestedAt ?? target.createdAt,
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:2245:passengerBridgeClean(item.scheduledAt ?? item.scheduledPickupAt ?? item.requestedAt),
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:2260:if (ride.scheduledReservationNavigationStarted === true || ride.driverStartedScheduledReservation === true) score += 100;
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:2267:const updatedMs = new Date(String(ride.navigationStartedAt ?? ride.driverStartedScheduledReservationAt ?? ride.driverAcceptedScheduleAt ?? ride.updatedAt ?? ride.acceptedAt ?? ride.createdAt ?? "")).getTime();
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:2333:bridge.scheduledReservationNavigationStarted === true ||
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:2334:bridge.driverStartedScheduledReservation === true ||
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:2344:bridge.scheduledDriverResponse === "accepted" ||
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:2351:? "driver_scheduled"
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:2430:syncScheduledRidesToAdminBridge(sorted);
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:2569:function getRidePaymentMethodLabel(notes: string | null | undefined): string {
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:3814:"driver_scheduled",
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:4217:if (status === "driver_scheduled") return "Tu conductor fue asignado";
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:4614:function parsePassengerScheduleDateTime(value: unknown): string | null {
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:4648:const parsed = parsePassengerScheduleDateTime(raw);
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:4654:function formatPassengerScheduleDate(value: unknown): string {
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:4655:const iso = parsePassengerScheduleDateTime(value);
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:4691:isScheduled: boolean;
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:4701:parsePassengerScheduleDateTime(ride.scheduledPickupAt ?? ride.scheduledAt) ??
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:4709:parsePassengerScheduleDateTime(ride.scheduledReturnAt) ??
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:4717:parsePassengerScheduleDateTime(
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:4718:ride.scheduledActivationAt ??
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:4719:ride.scheduledPickupActivationAt ??
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:4736:parsePassengerScheduleDateTime(ride.scheduledReturnActivationAt) ??
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:4744:const isScheduled =
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:4745:ride.isScheduled === true ||
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:4746:ride.rideMode === "scheduled" ||
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:4761:isScheduled,
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:4771:function isPassengerRideDriverScheduled(ride: RideRequestData): boolean {
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:4783:"driver_scheduled",
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:4786:"scheduled_driver",
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:4805:schedule.isScheduled &&
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:4807:isPassengerRideDriverScheduled(ride) ||
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:4808:Boolean((rideRecord as Record<string, unknown>).driverStartedScheduledReservation) ||
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:4809:Boolean((rideRecord as Record<string, unknown>).scheduledReservationNavigationStarted) ||
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:4815:(rideRecord as Record<string, unknown>).driverStartedScheduledReservation === true ||
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:4816:(rideRecord as Record<string, unknown>).scheduledReservationNavigationStarted === true ||
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:4822:return "driver_scheduled";
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:4825:if (schedule.isScheduled && ["requested", "scheduled"].includes(rawStatus)) {
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:4833:return Date.now() < activationTime ? "scheduled" : "requested";
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:4836:if (rawStatus === "scheduled") return "scheduled";
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:4839:if (rawStatus === "scheduled") return "scheduled";
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:4845:if (status === "scheduled") return "Agendado";
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:4846:if (status === "driver_scheduled") return "Tu conductor fue asignado";
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:4851:if (status === "scheduled") return "warning";
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:4852:if (status === "driver_scheduled") return "success";
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:4857:if (status === "driver_scheduled") return "Tu conductor fue asignado";
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:4858:if (status === "scheduled" && ride && isRoundTripReturnPickupRide(ride as RideRequestData & Record<string, unknown>)) return "Agendamiento de recogida";
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:4859:if (status === "scheduled") return "Viaje agendado";
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:4860:if (ride && getPassengerRideScheduleInfo(ride as RideRequestData & Record<string, unknown>).isScheduled && status === "requested") return "Buscando conductor";
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:4873:if (effectiveStatus === "driver_scheduled") {
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:4877:if (getPassengerRideScheduleInfo(ride as RideRequestData & Record<string, unknown>).isScheduled && effectiveStatus === "scheduled") {
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:4880:if (getPassengerRideScheduleInfo(ride as RideRequestData & Record<string, unknown>).isScheduled && effectiveStatus === "requested") {
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:5163:if (driverPoint && ["driver_scheduled", "accepted", "driver_en_route", "driver_arrived", "in_progress"].includes(effectiveMapStatus)) {
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:5183:const shouldTrackDriver = ["driver_scheduled", "accepted", "driver_en_route", "driver_arrived", "in_progress"].includes(effectiveMapStatus);
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:5228:const shouldTrackDriver = ["driver_scheduled", "accepted", "driver_en_route", "driver_arrived", "in_progress"].includes(effectiveMapStatus);
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:5462:driverPoint && ["driver_scheduled", "accepted", "driver_en_route", "driver_arrived", "in_progress"].includes(effectiveMapStatus);
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:5632:{driverPoint && ["driver_scheduled", "accepted", "driver_en_route", "driver_arrived", "in_progress"].includes(effectiveMapStatus) && (
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:5739:paymentMethod?: string | null;
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:5779:const label = getRidePaymentMethodLabel(ride.notes).toLowerCase();
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:6009:paymentMethod: "card",
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:6010:paymentProvider: "mercadopago",
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:6424:const hasDriver = !["requested", "scheduled"].includes(effectiveStatus) || (!!ride.driverName && !isDriverRequeuedSearch);
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:6429:const passengerCanTrackDriver = ["driver_scheduled", "accepted", "driver_en_route", "driver_arrived", "in_progress"].includes(effectiveStatus);
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:6434:const showMap = passengerCanTrackDriver && (hasDriver || navHasMapPoints || effectiveStatus === "driver_scheduled");
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:6437:const paymentLabel = getRidePaymentMethodLabel(ride.notes);
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:6441:const isScheduledPending = scheduleInfo.isScheduled && effectiveStatus === "scheduled" && !isDriverRequeuedSearch;
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:6648:{["requested", "scheduled"].includes(effectiveStatus) && (
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:6649:isScheduledPending ? (
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:6670:: "Has agendado tu viaje para "}<strong>{formatPassengerScheduleDate(scheduleInfo.pickupAt)}</strong>.
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:6671:<br />Se activará para gestión a las <strong>{formatPassengerScheduleDate(scheduleInfo.pickupActivationAt)}</strong>.
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:6674:<br />Regreso: <strong>{formatPassengerScheduleDate(scheduleInfo.returnAt)}</strong>.
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:6675:<br />La vuelta se activará a las <strong>{formatPassengerScheduleDate(scheduleInfo.returnActivationAt)}</strong>.
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:6756:{effectiveStatus === "driver_scheduled" && (
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:6800:{hasDriver && !["requested", "scheduled", "cancelled"].includes(effectiveStatus) && (
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:6935:{["scheduled", "driver_scheduled"].includes(effectiveStatus) && cancellationPolicy.feeClp > 0 && (
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:6962:{["requested", "scheduled", "driver_scheduled"].includes(effectiveStatus) && (
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:6970:{cancelling ? <IonSpinner name="dots" /> : isPassengerCancellationCardPaymentForRefundAction(ride as RideRequestData & Record<string, unknown>) ? "Cancelar/devolución" : isRoundTripReturnPickupRide(ride as RideRequestData & Record<string, unknown>) ? "Cancelar recogida" : scheduleInfo.isScheduled ? "Cancelar reserva" : "Cancelar"}
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:7056:const bridgeRides = readPassengerVisibleScheduledBridgeRides(session?.user);
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:7075:["accepted", "driver_en_route", "driver_arrived", "in_progress", "driver_scheduled"].includes(getEffectivePassengerRideStatus(ride)),
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:7086:const bridgeRides = readPassengerVisibleScheduledBridgeRides(session?.user);
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:7148:window.addEventListener(RAPAGO_ADMIN_SCHEDULED_RIDES_EVENT, refresh as EventListener);
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:7156:window.removeEventListener(RAPAGO_ADMIN_SCHEDULED_RIDES_EVENT, refresh as EventListener);
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:7241:(mode === "accepted" || !["scheduled", "driver_scheduled"].includes(effectiveStatus));
