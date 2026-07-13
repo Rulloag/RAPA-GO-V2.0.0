@@ -326,3 +326,36 @@ Resultado build:
 Estado:
 PARCIAL. Aún falta agregar índice único/migración para providerTransactionId y envolver actualización de orden + creación de transacción en transacción DB atómica.
 
+
+## FASE 1 — Corrección de bloqueadores TS4111 en build API
+
+Se corrigieron accesos a propiedades provenientes de index signature para permitir compilación TypeScript estricta.
+
+Archivos modificados:
+- apps/api/src/db/client.ts
+- apps/api/src/modules/payments/mercadopago.provider.ts
+- apps/api/src/modules/payments/payments.service.ts
+- apps/api/src/modules/rides/rides.service.ts
+
+Control aplicado:
+- process.env["DATABASE_URL"]
+- preference["back_urls"]
+- preference["auto_return"]
+- preference["notification_url"]
+- payment["rawProviderPayload"]
+- payment["provider"]
+- payment["id"]
+- response["campoDinamico"]
+- responseRide["paymentRefund"]
+
+Evidencia:
+- docs/security/evidence/98_patch_ts4111_api_build.diff
+- docs/security/evidence/99_build_api_after_ts4111_fix.txt
+
+Resultado:
+API build corregido.
+pm run build -w apps/api finaliza sin errores.
+
+Estado:
+PARCIAL. Falta ejecutar tests API y revisar build mobile.
+

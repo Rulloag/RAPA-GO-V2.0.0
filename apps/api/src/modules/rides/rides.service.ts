@@ -379,17 +379,17 @@ function toResponse(
   };
 
   if (scheduleMeta?.isScheduled) {
-    response.isScheduled = true;
-    response.rideMode = "scheduled";
-    response.tripFareMode = scheduleMeta.tripFareMode;
-    response.scheduledAt = scheduleMeta.scheduledAt;
-    response.scheduledPickupAt = scheduleMeta.scheduledPickupAt;
-    response.scheduledReturnAt = scheduleMeta.scheduledReturnAt;
-    response.scheduledActivationAt = scheduleMeta.scheduledActivationAt;
-    response.scheduledReturnActivationAt = scheduleMeta.scheduledReturnActivationAt;
-    response.requestedByRole = scheduleMeta.requestedByRole;
-    response.requesterRoleLabel = scheduleMeta.requesterRoleLabel;
-    response.adminScheduleStatus = scheduleMeta.adminScheduleStatus;
+    response["isScheduled"] = true;
+    response["rideMode"] = "scheduled";
+    response["tripFareMode"] = scheduleMeta.tripFareMode;
+    response["scheduledAt"] = scheduleMeta.scheduledAt;
+    response["scheduledPickupAt"] = scheduleMeta.scheduledPickupAt;
+    response["scheduledReturnAt"] = scheduleMeta.scheduledReturnAt;
+    response["scheduledActivationAt"] = scheduleMeta.scheduledActivationAt;
+    response["scheduledReturnActivationAt"] = scheduleMeta.scheduledReturnActivationAt;
+    response["requestedByRole"] = scheduleMeta.requestedByRole;
+    response["requesterRoleLabel"] = scheduleMeta.requesterRoleLabel;
+    response["adminScheduleStatus"] = scheduleMeta.adminScheduleStatus;
   }
 
   return response as RideRequestResponse;
@@ -1151,7 +1151,7 @@ export class RidesService {
     const responseRide = toResponse(cancelled) as RideRequestResponse &
       Record<string, unknown>;
 
-    responseRide.paymentRefund = paymentRefund;
+    responseRide["paymentRefund"] = paymentRefund;
 
     return {
       ok: true,
