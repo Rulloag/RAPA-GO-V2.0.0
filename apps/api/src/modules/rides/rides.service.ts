@@ -528,12 +528,31 @@ export class RidesService {
       scheduleMeta,
     );
 
-    const fareFromClient = Number(input.estimatedFareClp);
+    // SEGURIDAD: la tarifa oficial siempre se calcula en el servidor. El monto que
+    // envía el cliente (input.estimatedFareClp) NUNCA se usa como precio autoritativo —
+    // solo se registra como discrepancia de auditoría si difiere del cálculo real, para
+    // detectar manipulación sin bloquear la creación del viaje.
+    const baseFare = await estimateFare(input.originText, input.destinationText);
 
-    const baseFare =
-      Number.isFinite(fareFromClient) && fareFromClient > 0
-        ? Math.round(fareFromClient)
-        : await estimateFare(input.originText, input.destinationText);
+    const fareFromClient = Number(input.estimatedFareClp);
+    if (Number.isFinite(fareFromClient) && fareFromClient > 0 && fareFromClient !== baseFare) {
+      try {
+        const auditService = new (
+          await import("../audit/audit.service.js")
+        ).AuditService();
+
+        auditService.recordSafe({
+          actorUserId: auth.userId,
+          eventType: "ride.fare_client_mismatch",
+          metadata: {
+            clientFareClp: fareFromClient,
+            serverFareClp: baseFare,
+          },
+        });
+      } catch {
+        // No bloquea la creación del viaje si el audit log falla.
+      }
+    }
 
     let finalFare = baseFare;
     let discountInfo:
