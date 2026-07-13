@@ -1,9 +1,17 @@
 import { and, avg, count, desc, eq, inArray } from "drizzle-orm";
 import { db } from "../../db/client.js";
 import { rideRequests, users, rideRatings, driverProfiles } from "../../db/schema/index.js";
-import { alias } from "drizzle-orm/pg-core";
+import { alias, type PgTransaction } from "drizzle-orm/pg-core";
 import { AppError } from "../../shared/errors/AppError.js";
 import type { RideRequest } from "../../db/schema/index.js";
+
+/**
+ * Ejecutor de queries: la conexión global `db` o el `tx` de una `db.transaction(...)` en curso.
+ * Permite que un servicio (p. ej. NoShowService) comparta una única transacción SQL entre
+ * RidesRepository y WalletTransactionsRepository — ver Fase 4A.1.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export type DbExecutor = typeof db | PgTransaction<any, any, any>;
 
 export interface RideWithDriverName extends RideRequest {
   driverName:          string | null;
@@ -296,9 +304,9 @@ export class RidesRepository {
    * anteriormente" and "prevención de doble cargo" enforceable at the DB level, not just in
    * application code.
    */
-  async cancelNoShow(id: string, driverUserId: string): Promise<RideRequest | null> {
+  async cancelNoShow(id: string, driverUserId: string, executor: DbExecutor = db): Promise<RideRequest | null> {
     try {
-      const rows = await db
+      const rows = await executor
         .update(rideRequests)
         .set({
           status: "cancelled",
@@ -318,6 +326,26 @@ export class RidesRepository {
     } catch (err) {
       if (err instanceof AppError) throw err;
       throw AppError.internal(`Failed to cancel ride as no-show: ${String(err)}`);
+    }
+  }
+
+  /**
+   * Lee el viaje con bloqueo de fila (SELECT ... FOR UPDATE), solo dentro de una transacción.
+   * Usado por NoShowService para impedir que dos confirmaciones de no-show concurrentes
+   * pasen ambas las validaciones antes de que cualquiera de las dos escriba.
+   */
+  async findByIdForUpdate(id: string, executor: DbExecutor): Promise<RideRequest | null> {
+    try {
+      const rows = await executor
+        .select()
+        .from(rideRequests)
+        .where(eq(rideRequests.id, id))
+        .for("update")
+        .limit(1);
+      return rows[0] ?? null;
+    } catch (err) {
+      if (err instanceof AppError) throw err;
+      throw AppError.internal(`Failed to lock ride for update: ${String(err)}`);
     }
   }
 

@@ -6,6 +6,8 @@ import { WalletRepository } from "../wallet/wallet.repository.js";
 import { WalletTransactionsRepository } from "../wallet/walletTransactions.repository.js";
 import { CURRENT_LEDGER_POLICY_VERSION } from "../wallet/walletPolicy.constants.js";
 import { AppError } from "../../shared/errors/AppError.js";
+import { db } from "../../db/client.js";
+import type { WalletTransactionLedgerRow } from "../../db/schema/index.js";
 import type { ConfirmNoShowInput } from "./noShow.schemas.js";
 
 const tokenService   = new TokenService();
@@ -48,13 +50,32 @@ async function authenticate(accessToken: string): Promise<AuthResult> {
   return { ok: true, userId: user.id, role: user.role };
 }
 
+type NoShowFailure = { code: string; message: string; statusCode: number };
+type NoShowTxResult =
+  | { kind: "failure"; failure: NoShowFailure }
+  | { kind: "idempotent"; transaction: WalletTransactionLedgerRow }
+  | { kind: "success"; transaction: WalletTransactionLedgerRow; passengerUserId: string; amountClp: number; rideId: string };
+
 /**
- * Flujo autoritativo de no-show del pasajero (Fase 4B, regla C de la política aprobada).
+ * Marcador interno: se lanza SOLO cuando el débito ya fue insertado dentro de la transacción
+ * pero la cancelación del viaje no pudo completarse (carrera bajo el lock FOR UPDATE, caso
+ * extremadamente improbable pero cubierto). Lanzar aquí fuerza el ROLLBACK completo —
+ * Postgres deshace el INSERT del débito junto con todo lo demás, así que nunca queda un
+ * débito huérfano sin transición de viaje (Fase 4A.1, Paso 2).
+ */
+class NoShowRideTransitionFailedError extends Error {}
+
+/**
+ * Flujo autoritativo de no-show del pasajero (Fase 4B, regla C de la política aprobada;
+ * atomicidad reforzada en Fase 4A.1).
  *
  * El cliente (app del conductor) NUNCA envía como autoritativo: noShowFee, amount, percentage,
  * minimumFare, waitingMinutes ni walletDebit — ConfirmNoShowInput solo acepta `notes`
  * (evidencia descriptiva no financiera, opcional). Todo el cálculo del cargo ocurre aquí,
  * a partir de datos ya persistidos en el servidor (ride.estimatedFareClp, ride.arrivedAt).
+ *
+ * TODA la operación (lock del viaje, validaciones, creación del débito, transición del viaje)
+ * ocurre dentro de una única db.transaction — o se confirma completa, o se revierte completa.
  */
 export class NoShowService {
   async confirmNoShow(accessToken: string, rideId: string, input: ConfirmNoShowInput) {
@@ -65,94 +86,130 @@ export class NoShowService {
       return { ok: false as const, code: "AUTH_FORBIDDEN", message: "Solo un conductor puede confirmar un no-show.", statusCode: 403 };
     }
 
-    const ride = await ridesRepo.findById(rideId);
-    if (!ride) {
-      return { ok: false as const, code: "NOT_FOUND", message: "Ride not found.", statusCode: 404 };
+    let txResult: NoShowTxResult;
+    try {
+      txResult = await db.transaction(async (tx) => {
+        // 1. Cargar el viaje CON BLOQUEO — ninguna otra transacción de no-show sobre el
+        //    mismo viaje puede leerlo hasta que esta termine (commit o rollback).
+        const ride = await ridesRepo.findByIdForUpdate(rideId, tx);
+        if (!ride) {
+          return { kind: "failure", failure: { code: "NOT_FOUND", message: "Ride not found.", statusCode: 404 } };
+        }
+
+        // 2. Conductor asignado.
+        if (ride.driverUserId !== auth.userId) {
+          return { kind: "failure", failure: { code: "AUTH_FORBIDDEN", message: "Este viaje no está asignado a ti.", statusCode: 403 } };
+        }
+
+        // 3. Estado permitido (implica: no cancelado previamente, no ya marcado no-show —
+        //    ambos dejan el viaje fuera de 'driver_arrived').
+        if (ride.status !== "driver_arrived") {
+          return {
+            kind: "failure",
+            failure: {
+              code: "RIDE_STATUS_NOT_ARRIVED",
+              message: `No se puede confirmar no-show: el viaje debe estar en 'driver_arrived' (estado actual: '${ride.status}').`,
+              statusCode: 409,
+            },
+          };
+        }
+
+        // 4. Llegada previa registrada.
+        if (!ride.arrivedAt) {
+          return { kind: "failure", failure: { code: "RIDE_ARRIVAL_NOT_REGISTERED", message: "El viaje no tiene registro de llegada.", statusCode: 409 } };
+        }
+
+        // 5. Tiempo mínimo de espera cumplido.
+        const waitedMs = Date.now() - ride.arrivedAt.getTime();
+        if (waitedMs < NO_SHOW_MIN_WAIT_MS) {
+          return {
+            kind: "failure",
+            failure: {
+              code: "NO_SHOW_WAIT_NOT_ELAPSED",
+              message: `Debes esperar ${Math.ceil((NO_SHOW_MIN_WAIT_MS - waitedMs) / 60_000)} minuto(s) más antes de confirmar no-show.`,
+              statusCode: 409,
+            },
+          };
+        }
+
+        // 6. Monto calculado exclusivamente en servidor.
+        const amountClp = ride.estimatedFareClp;
+        if (!Number.isFinite(amountClp) || amountClp === null || amountClp <= 0) {
+          return { kind: "failure", failure: { code: "INVALID_RIDE_FARE", message: "Ride has no valid fare.", statusCode: 409 } };
+        }
+
+        // 7. Idempotencia — clave determinista por viaje, consultada DENTRO de la misma
+        //    transacción que hizo el lock (ninguna solicitud concurrente puede colarse
+        //    entre el check y el insert: el lock FOR UPDATE ya serializa el acceso).
+        const idempotencyKey = `no_show:${rideId}`;
+        const existingDebit = await ledgerRepo.findByIdempotencyKey(idempotencyKey, tx);
+        if (existingDebit) {
+          return { kind: "idempotent", transaction: existingDebit };
+        }
+
+        const wallet = await walletRepo.getOrCreate(ride.passengerUserId);
+
+        // 8. Crear débito pendiente.
+        const debit = await ledgerRepo.create(
+          {
+            walletId: wallet.id,
+            userId: ride.passengerUserId,
+            rideId,
+            type: "debit",
+            source: "no_show",
+            amountClp,
+            currency: "CLP",
+            status: "pending",
+            approvalStatus: "not_required",
+            idempotencyKey,
+            policyVersion: CURRENT_LEDGER_POLICY_VERSION,
+            actorRole: "system",
+            collectionMethod: null,
+            createdBy: auth.userId,
+            metadata: {
+              confirmedByDriverId: auth.userId,
+              waitedMs,
+              driverNotes: input.notes ?? null,
+            },
+          },
+          tx,
+        );
+
+        // 9. Transición del viaje a no-show/cancelado, EN LA MISMA TRANSACCIÓN.
+        const cancelled = await ridesRepo.cancelNoShow(rideId, auth.userId, tx);
+        if (!cancelled) {
+          // Bajo el lock FOR UPDATE esto no debería ocurrir, pero si pasa, forzamos
+          // rollback del débito recién insertado — nunca debe quedar un débito sin
+          // transición de viaje.
+          throw new NoShowRideTransitionFailedError();
+        }
+
+        // 10. Auditoría: createdBy/createdAt/metadata ya quedan en la fila del ledger.
+        return { kind: "success", transaction: debit, passengerUserId: ride.passengerUserId, amountClp, rideId };
+      });
+    } catch (err) {
+      if (err instanceof NoShowRideTransitionFailedError) {
+        return {
+          ok: false as const,
+          code: "RIDE_CANNOT_CANCEL",
+          message: "El viaje cambió de estado durante la confirmación de no-show; no se aplicó ningún cargo (rollback completo).",
+          statusCode: 409,
+        };
+      }
+      throw err;
     }
 
-    if (ride.driverUserId !== auth.userId) {
-      return { ok: false as const, code: "AUTH_FORBIDDEN", message: "Este viaje no está asignado a ti.", statusCode: 403 };
+    if (txResult.kind === "failure") {
+      return { ok: false as const, ...txResult.failure };
     }
 
-    if (ride.status !== "driver_arrived") {
-      return {
-        ok: false as const,
-        code: "RIDE_STATUS_NOT_ARRIVED",
-        message: `No se puede confirmar no-show: el viaje debe estar en 'driver_arrived' (estado actual: '${ride.status}').`,
-        statusCode: 409,
-      };
+    if (txResult.kind === "idempotent") {
+      return { ok: true as const, transaction: txResult.transaction, idempotentReplay: true };
     }
 
-    if (!ride.arrivedAt) {
-      return { ok: false as const, code: "RIDE_ARRIVAL_NOT_REGISTERED", message: "El viaje no tiene registro de llegada.", statusCode: 409 };
-    }
+    notifyPassengerOfNoShowCharge(txResult.passengerUserId, txResult.rideId, txResult.amountClp);
 
-    const waitedMs = Date.now() - ride.arrivedAt.getTime();
-    if (waitedMs < NO_SHOW_MIN_WAIT_MS) {
-      return {
-        ok: false as const,
-        code: "NO_SHOW_WAIT_NOT_ELAPSED",
-        message: `Debes esperar ${Math.ceil((NO_SHOW_MIN_WAIT_MS - waitedMs) / 60_000)} minuto(s) más antes de confirmar no-show.`,
-        statusCode: 409,
-      };
-    }
-
-    const amountClp = ride.estimatedFareClp;
-    if (!Number.isFinite(amountClp) || amountClp === null || amountClp <= 0) {
-      return { ok: false as const, code: "INVALID_RIDE_FARE", message: "Ride has no valid fare.", statusCode: 409 };
-    }
-
-    // Idempotencia determinista: una sola clave por viaje — una segunda confirmación
-    // (doble clic, reintento de red, dos conductores simultáneos si hubiera bug de
-    // asignación) jamás puede generar un segundo cargo, porque idempotency_key es UNIQUE
-    // a nivel de base de datos.
-    const idempotencyKey = `no_show:${rideId}`;
-
-    const existingDebit = await ledgerRepo.findByIdempotencyKey(idempotencyKey);
-    if (existingDebit) {
-      return { ok: true as const, transaction: existingDebit, idempotentReplay: true };
-    }
-
-    const wallet = await walletRepo.getOrCreate(ride.passengerUserId);
-
-    const debit = await ledgerRepo.create({
-      walletId: wallet.id,
-      userId: ride.passengerUserId,
-      rideId,
-      type: "debit",
-      source: "no_show",
-      amountClp,
-      currency: "CLP",
-      status: "pending",
-      approvalStatus: "not_required",
-      idempotencyKey,
-      policyVersion: CURRENT_LEDGER_POLICY_VERSION,
-      actorRole: "system",
-      collectionMethod: null,
-      createdBy: auth.userId,
-      metadata: {
-        confirmedByDriverId: auth.userId,
-        waitedMs,
-        driverNotes: input.notes ?? null,
-      },
-    });
-
-    const cancelled = await ridesRepo.cancelNoShow(rideId, auth.userId);
-    if (!cancelled) {
-      // El viaje ya no estaba en driver_arrived (carrera concurrente) — el débito ya quedó
-      // registrado de forma idempotente arriba, así que no se pierde ni se duplica el cargo.
-      // Se reporta el conflicto de estado del viaje, no un error del cargo.
-      return {
-        ok: false as const,
-        code: "RIDE_CANNOT_CANCEL",
-        message: "El viaje cambió de estado antes de poder cancelarlo como no-show, pero el cargo ya quedó registrado.",
-        statusCode: 409,
-      };
-    }
-
-    notifyPassengerOfNoShowCharge(ride.passengerUserId, rideId, amountClp);
-
-    return { ok: true as const, transaction: debit, idempotentReplay: false };
+    return { ok: true as const, transaction: txResult.transaction, idempotentReplay: false };
   }
 }
 

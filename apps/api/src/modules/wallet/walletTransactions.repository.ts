@@ -4,10 +4,11 @@ import type { NewWalletTransactionLedgerRow, WalletTransactionLedgerRow } from "
 import { and, eq, sql } from "drizzle-orm";
 import { AppError } from "../../shared/errors/AppError.js";
 import { CURRENT_LEDGER_POLICY_VERSION } from "./walletPolicy.constants.js";
+import type { DbExecutor } from "../rides/rides.repository.js";
 
 export class WalletTransactionsRepository {
-  async findByIdempotencyKey(idempotencyKey: string): Promise<WalletTransactionLedgerRow | null> {
-    const rows = await db
+  async findByIdempotencyKey(idempotencyKey: string, executor: DbExecutor = db): Promise<WalletTransactionLedgerRow | null> {
+    const rows = await executor
       .select()
       .from(walletTransactionsLedger)
       .where(eq(walletTransactionsLedger.idempotencyKey, idempotencyKey))
@@ -79,9 +80,9 @@ export class WalletTransactionsRepository {
     return { availableCreditClp, pendingCreditClp, pendingDebitClp, paidAmountClp, refundedAmountClp, reversedAmountClp };
   }
 
-  async create(data: NewWalletTransactionLedgerRow): Promise<WalletTransactionLedgerRow> {
+  async create(data: NewWalletTransactionLedgerRow, executor: DbExecutor = db): Promise<WalletTransactionLedgerRow> {
     try {
-      const rows = await db.insert(walletTransactionsLedger).values(data).returning();
+      const rows = await executor.insert(walletTransactionsLedger).values(data).returning();
       const row = rows[0];
       if (!row) throw AppError.internal("Wallet transaction insert returned no rows.");
       return row;
