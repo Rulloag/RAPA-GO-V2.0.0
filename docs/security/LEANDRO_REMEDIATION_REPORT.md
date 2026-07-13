@@ -150,3 +150,59 @@ Evidencia:
 Estado:
 PARCIAL. Falta agregar prueba automatizada que envíe rideMode=scheduled y paymentMethod=cash esperando error SCHEDULED_RIDE_REQUIRES_CARD.
 
+
+## FASE 6 — Riesgo en cálculo de tarifa del viaje
+
+### Evidencia
+
+Archivos:
+- docs/security/evidence/72_estimate_fare_function.txt
+- docs/security/evidence/73_fare_sources.txt
+- docs/security/evidence/74_fare_financial_risk.txt
+
+### Hallazgo
+
+El backend posee una función estimateFare que consulta:
+- fare_settings
+- zone_fares
+
+Sin embargo, si la consulta falla, utiliza un cálculo local basado en longitud de texto de origen/destino.
+
+Además, createRideRequest aún utiliza input.estimatedFareClp enviado por el frontend como base para crear el viaje.
+
+PaymentsService usa ride.estimatedFareClp para crear pagos.
+
+### Clasificación
+
+VULNERABLE / PARCIAL.
+
+### Riesgo
+
+Un cliente manipulado podría modificar estimatedFareClp antes de crear el viaje.
+Ese valor puede terminar guardado en ride_requests.estimated_fare_clp y luego ser utilizado como monto de pago.
+
+### Decisión conservadora
+
+No se reemplaza inmediatamente estimatedFareClp por estimateFare de forma ciega, porque el frontend actualmente mezcla:
+- promociones
+- beneficios Wallet
+- cargos pendientes
+- tarifas con extras
+- tarifas fijas
+
+Cambiarlo sin migrar esas reglas al backend puede romper pagos, reservas y Wallet.
+
+### Solución requerida
+
+Crear una política backend autoritativa de pricing:
+- RidePricingService
+- WalletCreditService backend
+- CancellationPolicyService
+- NoShowPolicyService
+
+El frontend solo debe mostrar estimaciones.
+El backend debe calcular el monto final cobrable.
+
+Estado:
+NO APTO PARA MERGE.
+
