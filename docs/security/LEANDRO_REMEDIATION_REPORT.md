@@ -125,3 +125,28 @@ Evidencias:
 
 NO APTO PARA MERGE.
 
+
+## FASE 7 — Validación backend de reservas con tarjeta
+
+Se implementó una primera validación autoritativa en backend para impedir que una reserva/agendamiento sea creada como efectivo.
+
+Archivos modificados:
+- apps/api/src/modules/rides/rides.schemas.ts
+- apps/api/src/modules/rides/rides.service.ts
+
+Control agregado:
+- Si el viaje es scheduled/agendado, el backend exige paymentMethod = card.
+- Si se declara paymentProvider, solo permite mercadopago, prontopaga o transbank.
+- El bloqueo no depende del botón ni del estado React.
+
+Resultado build:
+- npm run build -w apps/api continúa FALLANDO por errores TS4111 preexistentes.
+- No se detectan errores nuevos asociados a paymentMethod, paymentProvider o SCHEDULED_RIDE_REQUIRES_CARD.
+
+Evidencia:
+- docs/security/evidence/70_patch_scheduled_card_backend.diff
+- docs/security/evidence/71_build_api_after_scheduled_card.txt
+
+Estado:
+PARCIAL. Falta agregar prueba automatizada que envíe rideMode=scheduled y paymentMethod=cash esperando error SCHEDULED_RIDE_REQUIRES_CARD.
+

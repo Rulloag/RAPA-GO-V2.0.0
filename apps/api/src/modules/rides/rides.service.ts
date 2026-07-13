@@ -523,6 +523,36 @@ export class RidesService {
     }
 
     const scheduleMeta = buildScheduleMeta(input, auth.role);
+
+    const isScheduledRide =
+      scheduleMeta?.rideMode === "scheduled" ||
+      input.rideMode === "scheduled" ||
+      input.isScheduled === true ||
+      Boolean(input.scheduledAt || input.scheduledPickupAt || input.scheduledReturnAt);
+
+    if (isScheduledRide && input.paymentMethod !== "card") {
+      return {
+        ok: false,
+        code: "SCHEDULED_RIDE_REQUIRES_CARD",
+        message: "Las reservas y viajes agendados deben pagarse con tarjeta.",
+        statusCode: 400,
+      };
+    }
+
+    if (
+      isScheduledRide &&
+      input.paymentMethod === "card" &&
+      input.paymentProvider &&
+      !["mercadopago", "prontopaga", "transbank"].includes(input.paymentProvider)
+    ) {
+      return {
+        ok: false,
+        code: "INVALID_PAYMENT_PROVIDER",
+        message: "Proveedor de pago no permitido para reservas.",
+        statusCode: 400,
+      };
+    }
+
     const notesForStorage = appendScheduleMetaToNotes(
       input.notes ?? null,
       scheduleMeta,
