@@ -239,3 +239,29 @@ VULNERABLE / PARCIAL.
 
 Se requiere que el backend sea fuente autoritativa del monto final.
 
+
+## FASE 6 — Control parcial contra manipulación de tarifa
+
+Se implementó control backend para evitar que estimatedFareClp enviado por el cliente reduzca el monto por debajo de la estimación calculada por servidor.
+
+Archivo modificado:
+- apps/api/src/modules/rides/rides.service.ts
+
+Control agregado:
+- El backend calcula serverEstimatedFare.
+- Si el cliente no envía tarifa válida, se usa serverEstimatedFare.
+- Si el cliente envía tarifa, el backend usa Math.max(clientFare, serverEstimatedFare).
+- Esto evita subpago por manipulación del payload o localStorage.
+
+Limitación:
+- Este control es parcial.
+- Todavía falta mover promociones, beneficios Wallet y cargos pendientes a backend autoritativo.
+- El frontend aún puede mandar montos altos o metadatos financieros, pero ya no puede reducir el precio bajo la estimación servidor.
+
+Evidencia:
+- docs/security/evidence/79_patch_backend_fare_floor.diff
+- docs/security/evidence/80_build_api_after_fare_floor.txt
+
+Estado:
+PARCIAL. NO APTO PARA MERGE todavía.
+
