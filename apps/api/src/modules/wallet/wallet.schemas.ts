@@ -2,7 +2,10 @@ import { z } from "zod";
 
 export const createPaymentOrderSchema = z.object({
   rideId: z.string().uuid(),
-  amount: z.number().int().positive(),
+
+  // Compatibilidad temporal: el frontend puede enviarlo, pero el backend lo ignora.
+  // La fuente de verdad del monto es ride_requests.estimated_fare_clp.
+  amount: z.number().int().positive().optional(),
 });
 
 export const webhookPayloadSchema = z.object({

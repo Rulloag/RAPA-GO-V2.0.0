@@ -1655,6 +1655,9 @@ type RapaGoFareRules = {
 };
 
 type StoredRegistrationProfile = {
+  email?: string | null;
+  phone?: string | null;
+  rut?: string | null;
   passengerFareType?: PassengerFareType | string | null;
   farePassengerType?: PassengerFareType | string | null;
   passengerType?: PassengerFareType | string | null;
@@ -3520,7 +3523,6 @@ function MapPointPicker({
                   width: 56,
                   height: 56,
                   borderRadius: 999,
-                  border: 0,
                   background: "#fffaf0",
                   color: "#111827",
                   border: "1px solid rgba(210,164,58,.35)",
@@ -4848,13 +4850,13 @@ export default function RequestRidePage(): JSX.Element {
       return;
     }
 
-    if (activePaymentMethod !== "cash" && activePaymentMethod !== "card") {
+    if (activePaymentMethod !== "cash" && String(activePaymentMethod) !== "card") {
       setShowPaymentBox(true);
       setSubmitError("Antes de solicitar el viaje debes elegir forma de pago.");
       return;
     }
 
-    if (reservationRequiresCard && activePaymentMethod !== "card") {
+    if (reservationRequiresCard && String(activePaymentMethod) !== "card") {
       setPaymentMethod("card");
       setShowPaymentBox(true);
       setSubmitError("Todas las reservas deben pagarse obligatoriamente con tarjeta/MercadoPago. Si cancelas dentro de los últimos 15 minutos, se descuenta 30% con tope $3.000 y el saldo queda como CRÉDITOS PARA PRÓXIMO VIAJE.");
@@ -5132,9 +5134,8 @@ export default function RequestRidePage(): JSX.Element {
           finalFareWithExtrasClp: selectedFareAmount,
           airportReservationRequiresCard: isAirportScheduledRide,
           reservationRequiresCard: reservationRequiresCard,
-          reservationRequiresCard: reservationRequiresCard,
           paymentRequiredProvider: "mercadopago",
-          cardCancellationCreditToWallet: reservationRequiresCard && activePaymentMethod === "card",
+          cardCancellationCreditToWallet: reservationRequiresCard && String(activePaymentMethod) === "card",
           cardCancellationAdminReviewRequired: false,
           cardCancellationCreditName: "CRÉDITOS PARA PRÓXIMO VIAJE",
         });
@@ -5233,10 +5234,10 @@ export default function RequestRidePage(): JSX.Element {
           originalFareBeforeWalletBenefitClp: selectedFareAmountBeforeWallet,
           finalFareAfterWalletBenefitClp: selectedFareAmount,
           walletBenefitAvailableButNotUsedClp: hasAvailableWalletBenefit && useWalletBenefit === false ? availableWalletBenefitTotalClp : 0,
-        }));
+        } as Parameters<typeof createLocalAdminScheduledRide>[0] & Record<string, unknown>));
       }
 
-      if (activePaymentMethod === "card" && selectedFareAmount > 0) {
+      if (String(activePaymentMethod) === "card" && selectedFareAmount > 0) {
         if (!createdRideId) {
           throw new Error("El viaje se creó, pero no se pudo obtener el ID para iniciar MercadoPago.");
         }
@@ -5291,7 +5292,7 @@ export default function RequestRidePage(): JSX.Element {
       const message = err instanceof Error ? err.message : "Error al solicitar el viaje.";
 
       if (isPassengerRolePermissionMessage(message)) {
-        if (activePaymentMethod === "card") {
+        if (String(activePaymentMethod) === "card") {
           setSubmitError("Para pagar con tarjeta debes estar conectado como pasajero real en la API. Inicia sesión de nuevo y vuelve a intentar.");
           return;
         }
@@ -5474,9 +5475,9 @@ export default function RequestRidePage(): JSX.Element {
           airportReservationRequiresCard: isAirportScheduledRide,
           reservationRequiresCard: reservationRequiresCard,
           paymentRequiredProvider: isAirportScheduledRide ? "mercadopago" : null,
-          cardCancellationCreditToWallet: reservationRequiresCard && activePaymentMethod === "card",
+          cardCancellationCreditToWallet: reservationRequiresCard && String(activePaymentMethod) === "card",
           cardCancellationAdminReviewRequired: false,
-          cardCancellationCreditName: reservationRequiresCard && activePaymentMethod === "card" ? "CRÉDITOS PARA PRÓXIMO VIAJE" : null,
+          cardCancellationCreditName: reservationRequiresCard && String(activePaymentMethod) === "card" ? "CRÉDITOS PARA PRÓXIMO VIAJE" : null,
         } as LocalPassengerRideData;
 
         const localReturnPickupRide = selectedRoundTripPromotion && returnScheduledAt

@@ -36,7 +36,7 @@ export const dashboardService = {
     const res = await apiClient.get<DashboardData>("/api/admin/dashboard", {
       headers: { Authorization: `Bearer ${accessToken}` },
     });
-    if (!res.ok) throw new Error(res.message ?? "Error al cargar el dashboard.");
+    if (res.ok === false) throw new Error(res.message ?? "Error al cargar el dashboard.");
     return res.data;
   },
 
@@ -44,7 +44,7 @@ export const dashboardService = {
     const res = await apiClient.get<ActivityItem[]>(`/api/admin/dashboard/activity?limit=${limit}`, {
       headers: { Authorization: `Bearer ${accessToken}` },
     });
-    if (!res.ok) throw new Error(res.message ?? "Error al cargar actividad.");
+    if (res.ok === false) throw new Error(res.message ?? "Error al cargar actividad.");
     return res.data;
   },
 };

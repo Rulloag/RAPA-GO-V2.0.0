@@ -126,15 +126,15 @@ describe("PaymentsService.createPayment", () => {
     process.env["MOBILE_APP_DEEP_LINK"]     = "rapago://";
   });
 
-  it("blocks payment when ride is not completed", async () => {
+  it("blocks payment when ride status is not payable", async () => {
     setupPassengerAuth();
-    mockFindRideById.mockResolvedValue({ ...completedRide, status: "accepted" });
+    mockFindRideById.mockResolvedValue({ ...completedRide, status: "cancelled" });
 
     const result = await service.createPayment("tok", { rideRequestId: RIDE_ID });
 
     expect(result.ok).toBe(false);
     if (!result.ok) {
-      expect(result.code).toBe("PAYMENT_RIDE_NOT_COMPLETED");
+      expect(result.code).toBe("PAYMENT_RIDE_STATUS_NOT_ALLOWED");
       expect(result.statusCode).toBe(409);
     }
     expect(mockCreate).not.toHaveBeenCalled();

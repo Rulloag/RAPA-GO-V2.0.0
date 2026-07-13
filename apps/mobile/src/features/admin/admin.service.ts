@@ -89,7 +89,7 @@ export const adminService = {
       { status },
       { token: accessToken },
     );
-    if (!result.ok) throw new Error(result.message ?? "Failed to update user status.");
+    if (result.ok === false) throw new Error(result.message ?? "Failed to update user status.");
     return (result.data as Envelope).data;
   },
 
@@ -101,7 +101,7 @@ export const adminService = {
     if (params.search) parts.push(`search=${encodeURIComponent(params.search)}`);
     const qs = parts.length ? `?${parts.join("&")}` : "";
     const result = await apiClient.get<Envelope>(`/admin/users${qs}`, { token: accessToken });
-    if (!result.ok) throw new Error(result.message ?? "Failed to load users.");
+    if (result.ok === false) throw new Error(result.message ?? "Failed to load users.");
     return (result.data as Envelope).data;
   },
 
@@ -113,7 +113,7 @@ export const adminService = {
     if (params.userId)       parts.push(`userId=${encodeURIComponent(params.userId)}`);
     const qs = parts.length ? `?${parts.join("&")}` : "";
     const result = await apiClient.get<Envelope>(`/admin/documents${qs}`, { token: accessToken });
-    if (!result.ok) throw new Error(result.message ?? "Failed to load documents.");
+    if (result.ok === false) throw new Error(result.message ?? "Failed to load documents.");
     return (result.data as Envelope).data;
   },
 
@@ -131,7 +131,7 @@ export const adminService = {
       body,
       { token: accessToken },
     );
-    if (!result.ok) throw new Error(result.message ?? "Failed to review document.");
+    if (result.ok === false) throw new Error(result.message ?? "Failed to review document.");
     return (result.data as Envelope).data;
   },
 
@@ -143,14 +143,14 @@ export const adminService = {
     if (params.passengerUserId) parts.push(`passengerUserId=${encodeURIComponent(params.passengerUserId)}`);
     const qs = parts.length ? `?${parts.join("&")}` : "";
     const result = await apiClient.get<Envelope>(`/admin/rides${qs}`, { token: accessToken });
-    if (!result.ok) throw new Error(result.message ?? "Failed to load rides.");
+    if (result.ok === false) throw new Error(result.message ?? "Failed to load rides.");
     return (result.data as Envelope).data;
   },
 
   async listActiveDrivers(accessToken: string): Promise<ActiveDriverData[]> {
     type Envelope = { ok: true; data: ActiveDriverData[]; statusCode: number };
     const result = await apiClient.get<Envelope>("/admin/drivers/active", { token: accessToken });
-    if (!result.ok) throw new Error(result.message ?? "Failed to load active drivers.");
+    if (result.ok === false) throw new Error(result.message ?? "Failed to load active drivers.");
     return (result.data as Envelope).data;
   },
 
@@ -161,7 +161,7 @@ export const adminService = {
       { driverUserId },
       { token: accessToken },
     );
-    if (!result.ok) throw new Error(result.message ?? "Failed to assign driver.");
+    if (result.ok === false) throw new Error(result.message ?? "Failed to assign driver.");
     return (result.data as Envelope).data;
   },
 
@@ -172,7 +172,7 @@ export const adminService = {
       { reason },
       { token: accessToken },
     );
-    if (!result.ok) throw new Error(result.message ?? "Failed to cancel ride.");
+    if (result.ok === false) throw new Error(result.message ?? "Failed to cancel ride.");
     return (result.data as Envelope).data;
   },
 
@@ -191,7 +191,7 @@ export const adminService = {
       body,
       { token: accessToken },
     );
-    if (!result.ok) throw new Error((result as any).message ?? "Failed to sync booking.");
+    if (result.ok === false) throw new Error((result as any).message ?? "Failed to sync booking.");
     return (result.data as Envelope).data;
   },
 };

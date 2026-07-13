@@ -222,16 +222,16 @@ export class MercadoPagoProvider implements PaymentProvider {
     };
 
     if (publicReturnUrl) {
-      preference.back_urls = {
+      preference["back_urls"] = {
         success: publicReturnUrl,
         failure: publicReturnUrl,
         pending: publicReturnUrl,
       };
-      preference.auto_return = "approved";
+      preference["auto_return"] = "approved";
     }
 
     if (publicWebhookUrl) {
-      preference.notification_url = publicWebhookUrl;
+      preference["notification_url"] = publicWebhookUrl;
     }
 
     console.log("[MercadoPago] Creando preferencia:", {
@@ -276,7 +276,7 @@ export class MercadoPagoProvider implements PaymentProvider {
           intento: attempt.name,
           providerOrderId: data.id,
           urlPay,
-          redirectAutomatico: Boolean((attempt.payload as Record<string, unknown>).back_urls),
+          redirectAutomatico: Boolean((attempt.payload as Record<string, unknown>)["back_urls"]),
         });
 
         return {
@@ -375,7 +375,10 @@ export class MercadoPagoProvider implements PaymentProvider {
     });
 
     if (!response.ok) {
-      const text = await response.text().catch(() => "");
+      const text =
+        typeof response.text === "function"
+          ? await response.text().catch(() => "")
+          : "";
 
       throw new Error(
         `MercadoPago API error ${response.status} fetching payment ${paymentId}: ${text}`,

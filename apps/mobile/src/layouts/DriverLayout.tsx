@@ -10,11 +10,9 @@ const DriverTripsPage = DriverPages.DriverTripsPage;
 const DriverProfilePage = DriverPages.DriverProfilePage;
 
 const DriverEarningsPage =
-  "DriverEarningsPage" in DriverPages
-    ? (DriverPages as typeof DriverPages & {
-        DriverEarningsPage: () => JSX.Element;
-      }).DriverEarningsPage
-    : DriverPages.DriverHomePage;
+  (DriverPages as typeof DriverPages & {
+    DriverEarningsPage?: () => JSX.Element;
+  }).DriverEarningsPage ?? DriverHomePage;
 
 const TABS = [
   { path: ROUTES.DRIVER.HOME, label: "Inicio", icon: homeOutline },

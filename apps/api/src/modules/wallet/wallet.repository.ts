@@ -81,6 +81,19 @@ export class WalletRepository {
     }
   }
 
+  async findTransactionByProviderTransactionId(
+    providerTransactionId: string,
+  ): Promise<Transaction | null> {
+    try {
+      const rows = await db.select().from(transactions)
+        .where(eq(transactions.providerTransactionId, providerTransactionId))
+        .limit(1);
+      return rows[0] ?? null;
+    } catch (err) {
+      throw AppError.internal(`Failed to query transaction by provider id: ${String(err)}`);
+    }
+  }
+
   async createPaymentOrder(data: NewPaymentOrder): Promise<PaymentOrder> {
     try {
       const rows = await db.insert(paymentOrders).values(data).returning();

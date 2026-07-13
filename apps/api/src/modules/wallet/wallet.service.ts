@@ -116,12 +116,27 @@ export class WalletService {
       return { ok: false as const, code: "AUTH_FORBIDDEN", message: "Ride does not belong to you.", statusCode: 403 };
     }
 
+    const amountFromRide = Math.round(Number(ride.estimatedFareClp ?? 0));
+
+    if (!Number.isFinite(amountFromRide) || amountFromRide <= 0) {
+      return {
+        ok: false as const,
+        code: "PAYMENT_INVALID_AMOUNT",
+        message: "Ride has no valid fare amount.",
+        statusCode: 422,
+      };
+    }
+
     const order = await walletRepo.createPaymentOrder({
       userId:   auth.userId,
       rideId:   input.rideId,
-      amount:   input.amount,
+      amount:   amountFromRide,
       currency: "CLP",
       status:   "pending",
+      metadata: {
+        clientRequestedAmountClp: input.amount ?? null,
+        amountSource: "ride_requests.estimated_fare_clp",
+      },
     });
     return { ok: true as const, order: serializePaymentOrder(order) };
   }
@@ -130,6 +145,21 @@ export class WalletService {
     const order = await walletRepo.findPaymentOrderByProviderOrderId(body.orderId);
     if (!order) {
       return { ok: false as const, code: "NOT_FOUND", message: "Payment order not found.", statusCode: 404 };
+    }
+
+    if (order.status === "success" && body.status !== "success") {
+      return { ok: true as const, order: serializePaymentOrder(order) };
+    }
+
+    if (body.status === "success" && body.transactionId) {
+      const existingTransaction = await walletRepo.findTransactionByProviderTransactionId(body.transactionId);
+      if (existingTransaction) {
+        return { ok: true as const, order: serializePaymentOrder(order) };
+      }
+    }
+
+    if (order.status === "success" && body.status === "success" && !body.transactionId) {
+      return { ok: true as const, order: serializePaymentOrder(order) };
     }
 
     const completedAt = body.status === "success" ? new Date() : undefined;

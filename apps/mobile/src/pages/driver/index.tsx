@@ -132,7 +132,7 @@ function browserLooksLikePoorConnection(): boolean {
 }
 
 async function detectRapaGoConnectivityMode(): Promise<RapaGoConnectivityMode> {
-  if (navigator.onLine === false) return "offline";
+  if (!Boolean(navigator.onLine)) return "offline";
 
   const browserPoor = browserLooksLikePoorConnection();
   const controller = new AbortController();
@@ -147,7 +147,7 @@ async function detectRapaGoConnectivityMode(): Promise<RapaGoConnectivityMode> {
 
     return browserPoor ? "poor" : "online";
   } catch {
-    return navigator.onLine === false ? "offline" : "poor";
+    return !Boolean(navigator.onLine) ? "offline" : "poor";
   } finally {
     window.clearTimeout(timeoutId);
   }
@@ -1308,9 +1308,15 @@ function UberDriverNavigationMap({
   ): { lat: number; lng: number } | null {
     if (!value) return null;
 
-    const raw = value as google.maps.LatLng & google.maps.LatLngLiteral;
-    const lat = typeof raw.lat === "function" ? raw.lat() : Number(raw.lat);
-    const lng = typeof raw.lng === "function" ? raw.lng() : Number(raw.lng);
+    const raw = value as {
+      lat?: number | (() => number);
+      lng?: number | (() => number);
+    };
+
+    const rawLat = raw.lat;
+    const rawLng = raw.lng;
+    const lat = typeof rawLat === "function" ? rawLat() : Number(rawLat);
+    const lng = typeof rawLng === "function" ? rawLng() : Number(rawLng);
 
     return Number.isFinite(lat) && Number.isFinite(lng) ? { lat, lng } : null;
   }
@@ -3318,9 +3324,10 @@ function removeLegacyDriverHeavyStorage(exceptKey?: string): void {
       // IMPORTANTE: no borrar la foto de perfil del conductor.
       // Antes esta limpieza eliminaba rapago_driver_profile_photo y por eso
       // el pasajero siempre veía la letra inicial en vez de la foto.
-      const lower = key.toLowerCase();
+      const keyName = String(key);
+      const lower = keyName.toLowerCase();
       if (
-        key === RAPAGO_DRIVER_CANONICAL_PROFILE_PHOTO_KEY ||
+        keyName === RAPAGO_DRIVER_CANONICAL_PROFILE_PHOTO_KEY ||
         lower.includes("profile") ||
         lower.includes("perfil") ||
         lower.includes("avatar")
@@ -3328,7 +3335,7 @@ function removeLegacyDriverHeavyStorage(exceptKey?: string): void {
         continue;
       }
 
-      localStorage.removeItem(key);
+      localStorage.removeItem(keyName);
     }
   } catch {
     // No bloquea el flujo.
@@ -4514,7 +4521,7 @@ function requeueAvailableRideForNextDriver(
 ): AvailableRideData {
   const nextRide = markRideSkippedByCurrentDriver(
     {
-      ...(ride as Record<string, unknown>),
+      ...(ride as unknown as Record<string, unknown>),
       status: "requested",
       driverId: null,
       driverUserId: null,
@@ -4528,7 +4535,7 @@ function requeueAvailableRideForNextDriver(
       requeuedReason: reason,
       forceActiveAfterDriverCancel:
         reason === "driver_cancelled" ||
-        (ride as Record<string, unknown>).forceActiveAfterDriverCancel === true,
+        (ride as unknown as Record<string, unknown>).forceActiveAfterDriverCancel === true,
     },
     user,
     reason,
@@ -5050,7 +5057,7 @@ function driverRideLooksLikeScheduledReservation(ride: Record<string, unknown>):
 function shouldHideFromNormalDriverRequestQueue(ride: AvailableRideData | Record<string, unknown>): boolean {
   // Las reservas agendadas NO deben entrar como "Nueva solicitud de viaje".
   // Se muestran solamente en la sección/botón Reservas del conductor asignado.
-  return driverRideLooksLikeScheduledReservation(ride as Record<string, unknown>);
+  return driverRideLooksLikeScheduledReservation(ride as unknown as Record<string, unknown>);
 }
 
 function getScheduledReservationAlertKey(ride: DriverAcceptedRideBridgeRecord): string {
@@ -5116,7 +5123,7 @@ function driverAvailableRideMatchesScheduledReservationForDriver(
   user?: unknown,
 ): boolean {
   const rideKeys = new Set(
-    getDriverReservationRideIdentityKeys(ride as Record<string, unknown>)
+    getDriverReservationRideIdentityKeys(ride as unknown as Record<string, unknown>)
       .map((key) => normalizeDriverReservationKey(key) ?? key),
   );
 
@@ -5344,13 +5351,13 @@ function getAcceptedScheduledReservationStatus(ride: DriverAcceptedRideBridgeRec
 function driverScheduledReservationNavigationStarted(
   ride: DriverAcceptedRideBridgeRecord | Record<string, unknown>,
 ): boolean {
-  const status = driverBridgeClean((ride as Record<string, unknown>).status);
+  const status = driverBridgeClean((ride as unknown as Record<string, unknown>).status);
 
   return (
-    (ride as Record<string, unknown>).scheduledReservationNavigationStarted === true ||
-    (ride as Record<string, unknown>).driverStartedScheduledReservation === true ||
-    Boolean((ride as Record<string, unknown>).driverStartedScheduledReservationAt) ||
-    Boolean((ride as Record<string, unknown>).scheduledReservationStartedAt) ||
+    (ride as unknown as Record<string, unknown>).scheduledReservationNavigationStarted === true ||
+    (ride as unknown as Record<string, unknown>).driverStartedScheduledReservation === true ||
+    Boolean((ride as unknown as Record<string, unknown>).driverStartedScheduledReservationAt) ||
+    Boolean((ride as unknown as Record<string, unknown>).scheduledReservationStartedAt) ||
     ["driver_en_route", "driver_arrived", "in_progress"].includes(status)
   );
 }
@@ -6572,7 +6579,13 @@ export function DriverHomePage(): JSX.Element {
 type PassengerNotificationPayload = {
   id: string;
   rideId: string;
-  type: "driver_cancelled_requeue" | "driver_assigned" | "scheduled_driver_assigned";
+  type:
+    | "driver_cancelled_requeue"
+    | "driver_assigned"
+    | "scheduled_driver_assigned"
+    | "scheduled_reservation_released"
+    | "scheduled_driver_started_route"
+    | "scheduled_driver_reassigned";
   title: string;
   body: string;
   createdAt: string;
@@ -7400,28 +7413,28 @@ function normalizeActiveDriverRideForLocalMirror(
     getDriverLiveUserField(user, "phoneNumber") ??
     getStoredDriverPublicPhone(user);
   const driverKeys = getDriverScheduledReservationIdentityKeys(user);
-  const rawStatus = String((ride as Record<string, unknown>).status ?? "").toLowerCase();
+  const rawStatus = String((ride as unknown as Record<string, unknown>).status ?? "").toLowerCase();
   const activeStatus = ["accepted", "driver_en_route", "driver_arrived", "in_progress"].includes(rawStatus)
     ? rawStatus
     : "accepted";
 
   return enrichRideWithSelectedDriverVehicle(
     {
-      ...(ride as Record<string, unknown>),
+      ...(ride as unknown as Record<string, unknown>),
       status: activeStatus,
-      acceptedAt: (ride as Record<string, unknown>).acceptedAt ?? new Date().toISOString(),
-      driverId: (ride as Record<string, unknown>).driverId ?? driverId,
-      driverUserId: (ride as Record<string, unknown>).driverUserId ?? driverId,
-      assignedDriverId: (ride as Record<string, unknown>).assignedDriverId ?? driverId,
-      assignedDriverUserId: (ride as Record<string, unknown>).assignedDriverUserId ?? driverId,
-      driverEmail: (ride as Record<string, unknown>).driverEmail ?? driverEmail,
-      assignedDriverEmail: (ride as Record<string, unknown>).assignedDriverEmail ?? driverEmail,
-      driverName: (ride as Record<string, unknown>).driverName ?? driverName,
-      assignedDriverName: (ride as Record<string, unknown>).assignedDriverName ?? driverName,
-      driverPhone: (ride as Record<string, unknown>).driverPhone ?? driverPhone,
+      acceptedAt: (ride as unknown as Record<string, unknown>).acceptedAt ?? new Date().toISOString(),
+      driverId: (ride as unknown as Record<string, unknown>).driverId ?? driverId,
+      driverUserId: (ride as unknown as Record<string, unknown>).driverUserId ?? driverId,
+      assignedDriverId: (ride as unknown as Record<string, unknown>).assignedDriverId ?? driverId,
+      assignedDriverUserId: (ride as unknown as Record<string, unknown>).assignedDriverUserId ?? driverId,
+      driverEmail: (ride as unknown as Record<string, unknown>).driverEmail ?? driverEmail,
+      assignedDriverEmail: (ride as unknown as Record<string, unknown>).assignedDriverEmail ?? driverEmail,
+      driverName: (ride as unknown as Record<string, unknown>).driverName ?? driverName,
+      assignedDriverName: (ride as unknown as Record<string, unknown>).assignedDriverName ?? driverName,
+      driverPhone: (ride as unknown as Record<string, unknown>).driverPhone ?? driverPhone,
       assignedDriverKeys: Array.from(
         new Set([
-          ...collectDriverReservationKeys([(ride as Record<string, unknown>).assignedDriverKeys]),
+          ...collectDriverReservationKeys([(ride as unknown as Record<string, unknown>).assignedDriverKeys]),
           ...driverKeys,
         ]),
       ),
@@ -7513,7 +7526,7 @@ function removeDriverActiveRideLocalMirror(
     const parsed = raw ? (JSON.parse(raw) as { ride?: Record<string, unknown> } | Record<string, unknown>) : null;
     const lastRide = parsed && typeof parsed === "object" && "ride" in parsed ? parsed.ride : parsed;
 
-    if (lastRide && typeof lastRide === "object" && driverRideIdentityMatches(lastRide, target as Record<string, unknown>)) {
+    if (lastRide && typeof lastRide === "object" && driverRideIdentityMatches(lastRide as Record<string, unknown>, target as Record<string, unknown>)) {
       localStorage.removeItem("rapago_last_accepted_ride");
     }
   } catch {
@@ -7556,7 +7569,7 @@ function saveDriverNextRideAfterCurrent(
   const now = new Date().toISOString();
   const queuedRide = normalizeActiveDriverRideForLocalMirror(
     {
-      ...(ride as Record<string, unknown>),
+      ...(ride as unknown as Record<string, unknown>),
       status: "accepted",
       queuedAfterRideId: String((currentRide as Record<string, unknown>).id ?? ""),
       queuedAt: now,
@@ -7605,7 +7618,7 @@ function promoteDriverNextRideAfterCompletion(
 
   return saveDriverActiveRideLocalMirror(
     {
-      ...(chosen as Record<string, unknown>),
+      ...(chosen as unknown as Record<string, unknown>),
       status: "accepted",
       queuedStatus: "promoted_to_active",
       queuedAfterRideId: null,
@@ -7629,7 +7642,7 @@ function readActiveDriverLocalRideMirrorsForDriver(user?: unknown): DriverRideDa
     try {
       const raw = localStorage.getItem(key);
       const parsed = raw ? (JSON.parse(raw) as Array<Record<string, unknown>>) : [];
-      if (Array.isArray(parsed)) output.push(...parsed as DriverRideData[]);
+      if (Array.isArray(parsed)) output.push(...(parsed as unknown as DriverRideData[]));
     } catch {
       // Ignora espejos locales antiguos.
     }
@@ -7977,8 +7990,8 @@ function readDriverNoShowTimerMap(): Record<string, number> {
 
     return Object.fromEntries(
       Object.entries(parsed)
-        .map(([key, value]) => [key, Number(value)])
-        .filter(([, value]) => Number.isFinite(value) && value > 0),
+        .map(([key, value]) => [key, Number(value)] as const)
+        .filter((entry): entry is readonly [string, number] => Number.isFinite(entry[1]) && entry[1] > 0),
     );
   } catch {
     return {};
@@ -8556,7 +8569,7 @@ function buildDriverCashClosureRidePatch(
     adminPaymentReviewStatus: closure.adminReviewStatus,
     paymentMethod: "cash",
     paymentStatus: closure.overpaidClp > 0 ? "cash_overpaid_pending_admin" : "cash_paid_exact",
-    notes: appendDriverCashClosureNoteOnce(String((ride as Record<string, unknown>).notes ?? ""), closure),
+    notes: appendDriverCashClosureNoteOnce(String((ride as unknown as Record<string, unknown>).notes ?? ""), closure),
   };
 }
 
@@ -8586,7 +8599,7 @@ function persistDriverCashClosureForAdmin(
 
   const patch = buildDriverCashClosureRidePatch(ride, closure);
   const enrichedRide = {
-    ...(ride as Record<string, unknown>),
+    ...(ride as unknown as Record<string, unknown>),
     ...patch,
     status: "completed",
     completedAt: closure.closedByDriverAt,
@@ -9541,6 +9554,7 @@ function showRideRequestSystemNotification(): void {
       const options: NotificationOptions & {
         vibrate?: number[];
         requireInteraction?: boolean;
+        renotify?: boolean;
       } = {
         body: "Hay una solicitud de viaje nueva disponible. Toca para abrir RAPA GO.",
         tag: "rapago-new-ride-request",
@@ -9950,7 +9964,13 @@ function DriverGlobalRideAlert(): JSX.Element | null {
   function dismissRideAlert(ride: AvailableRideData | string): void {
     const rideId = typeof ride === "string" ? ride : ride.id;
     alertedRideIdsRef.current.add(rideId);
-    markDriverRideRequestHandled(ride as AvailableRideData | string, session?.user, "rejected");
+    markDriverRideRequestHandled(
+      typeof ride === "string"
+        ? ride
+        : (ride as unknown as Partial<AvailableRideData> & Record<string, unknown>),
+      session?.user,
+      "rejected",
+    );
     stopAllDriverRideRequestAlerts(rideId);
 
     if (typeof ride !== "string") {
@@ -9962,7 +9982,8 @@ function DriverGlobalRideAlert(): JSX.Element | null {
 
   function goToRequests(): void {
     stopRideAlert(true);
-    history.push(DRIVER_REQUESTS_VIEW_ROUTE);
+    window.history.pushState(null, "", DRIVER_REQUESTS_VIEW_ROUTE);
+      window.dispatchEvent(new PopStateEvent("popstate"));
   }
 
   function dismissScheduledReservationAlert(ride: DriverScheduledReservationOffer): void {
@@ -10104,7 +10125,7 @@ function DriverGlobalRideAlert(): JSX.Element | null {
         ? saveDriverNextRideAfterCurrent(accepted, currentActiveRide, session?.user)
         : saveDriverActiveRideLocalMirror(accepted, session?.user);
 
-      publishAcceptedDriverVehicleToPassenger(acceptedForDriver, session?.user);
+      publishAcceptedDriverVehicleToPassenger(acceptedForDriver as unknown as DriverAcceptedRideBridgeRecord, session?.user);
       markDriverRideRequestHandled(
         acceptedForDriver as unknown as Record<string, unknown>,
         session?.user,
@@ -10955,7 +10976,13 @@ function AssignedRidesPage(): JSX.Element {
   function dismissAvailableRide(ride: AvailableRideData | string): void {
     const rideId = typeof ride === "string" ? ride : ride.id;
     alertedRideIdsRef.current.add(rideId);
-    markDriverRideRequestHandled(ride as AvailableRideData | string, session?.user, "rejected");
+    markDriverRideRequestHandled(
+      typeof ride === "string"
+        ? ride
+        : (ride as unknown as Partial<AvailableRideData> & Record<string, unknown>),
+      session?.user,
+      "rejected",
+    );
     stopAllDriverRideRequestAlerts(rideId);
 
     if (rideAlert?.id === rideId) {
@@ -10966,7 +10993,14 @@ function AssignedRidesPage(): JSX.Element {
       requeueAvailableRideForNextDriver(ride, session?.user, "driver_rejected");
     }
 
-    setAvailableRides((prev) => removeHandledRideFromAvailableList(prev, ride as AvailableRideData | string));
+    setAvailableRides((prev) =>
+      removeHandledRideFromAvailableList(
+        prev,
+        typeof ride === "string"
+          ? ride
+          : (ride as unknown as Partial<AvailableRideData> & Record<string, unknown>),
+      ),
+    );
   }
 
   useEffect(() => {
@@ -11398,7 +11432,7 @@ function AssignedRidesPage(): JSX.Element {
         ? saveDriverNextRideAfterCurrent(accepted, activeRide, session?.user)
         : saveDriverActiveRideLocalMirror(accepted, session?.user);
 
-      publishAcceptedDriverVehicleToPassenger(activeAccepted, session?.user);
+      publishAcceptedDriverVehicleToPassenger(activeAccepted as unknown as DriverAcceptedRideBridgeRecord, session?.user);
       markDriverRideRequestHandled(activeAccepted as unknown as Record<string, unknown>, session?.user, activeRide ? "accepted_next" : "accepted");
       stopAllDriverRideRequestAlerts(rideId);
 
@@ -11752,7 +11786,7 @@ function AssignedRidesPage(): JSX.Element {
       return;
     }
 
-    setActionLoading(rideId);
+    setAcceptingId(rideId);
     setError(null);
 
     try {
@@ -11777,7 +11811,7 @@ function AssignedRidesPage(): JSX.Element {
       setError(`No show registrado. Se notificó por app/WhatsApp y se aplicó cobro total del servicio: ${formatClp(Number(charge.amountClp ?? 0))}.`);
       window.setTimeout(() => void loadRides(), 450);
     } finally {
-      setActionLoading(null);
+      setAcceptingId(null);
     }
   }
 
@@ -11817,7 +11851,8 @@ function AssignedRidesPage(): JSX.Element {
       }
 
       stopScheduledReservationReadyAlert(true);
-      history.push(DRIVER_REQUESTS_VIEW_ROUTE);
+      window.history.pushState(null, "", DRIVER_REQUESTS_VIEW_ROUTE);
+      window.dispatchEvent(new PopStateEvent("popstate"));
       window.setTimeout(() => void loadRides(), 250);
     };
 
@@ -13909,11 +13944,11 @@ function DriverHistoryRideCard({
                 style={{ marginTop: 8, fontWeight: 800, fontSize: ".82rem" }}
               >
                 Precio: {formatClp(displayFareClp)} · Pago: {paymentLabel}
-                {((ride as Record<string, unknown>).cashPaymentConfirmedByDriver === true || (ride as Record<string, unknown>).cashPaymentClosure) && (
+                {((ride as unknown as Record<string, unknown>).cashPaymentConfirmedByDriver === true || (ride as unknown as Record<string, unknown>).cashPaymentClosure) && (
                   <>
                     <br />
-                    Efectivo recibido: {formatClp(Number((ride as Record<string, unknown>).cashPaidClp ?? (ride as Record<string, unknown>).paymentReceivedByDriverClp ?? 0))}
-                    {Number((ride as Record<string, unknown>).cashOverpaidClp ?? 0) > 0 && ` · Pagó demás: ${formatClp(Number((ride as Record<string, unknown>).cashOverpaidClp))}`}
+                    Efectivo recibido: {formatClp(Number((ride as unknown as Record<string, unknown>).cashPaidClp ?? (ride as unknown as Record<string, unknown>).paymentReceivedByDriverClp ?? 0))}
+                    {Number((ride as unknown as Record<string, unknown>).cashOverpaidClp ?? 0) > 0 && ` · Pagó demás: ${formatClp(Number((ride as unknown as Record<string, unknown>).cashOverpaidClp))}`}
                   </>
                 )}
               </div>
@@ -14163,6 +14198,61 @@ function DriverMyRidesPage(): JSX.Element {
     return status;
   }
 
+  async function handleDriverNoShowRide(ride: DriverRideData): Promise<void> {
+    const rideId = String(ride.id ?? "").trim();
+    if (!rideId) return;
+
+    const noShowState = getDriverNoShowState(ride as DriverRideData & Record<string, unknown>);
+    if (!noShowState.allowed) {
+      setLoadError(`Debes esperar 5 minutos desde que llegaste al punto. Falta ${formatDriverNoShowRemaining(noShowState.remainingMs)}.`);
+      return;
+    }
+
+    setActionLoading(rideId);
+    setLoadError(null);
+
+    try {
+      notifyPassengerNoShowByAppAndWhatsapp(ride, noShowState.feeClp);
+      const charge = saveDriverNoShowChargeForPassenger(ride, session?.user);
+      markPassengerRideNoShowCancelledFromDriver(ride, charge);
+      clearDriverNoShowTimer(ride as DriverRideData & Record<string, unknown>);
+
+      clearDriverLiveLocationForPassenger(rideId);
+      removeDriverActiveRideLocalMirror(
+        {
+          ...(ride as unknown as Record<string, unknown>),
+          status: "cancelled",
+          cancelledByRole: "driver_no_show",
+          cancelledBy: "driver",
+          cancellationReason: "No show registrado por conductor.",
+        },
+        session?.user,
+      );
+
+      setRides((prev) => prev.filter((item) => item.id !== rideId));
+
+      if (session?.accessToken) {
+        try {
+          await ridesService.cancelAcceptedRide(session.accessToken, rideId);
+        } catch {
+          // El cargo local y el aviso al pasajero quedan guardados aunque el backend responda distinto.
+        }
+      }
+
+      window.dispatchEvent(
+        new CustomEvent("rapago:driver-rides-updated", {
+          detail: { rideId, status: "cancelled", noShow: true, charge },
+        }),
+      );
+
+      setLoadError(`No show registrado. Se notificó por app/WhatsApp y se aplicó cobro total del servicio: ${formatClp(Number(charge.amountClp ?? 0))}.`);
+      window.setTimeout(() => void loadRides(), 450);
+    } finally {
+      setActionLoading(null);
+    }
+  }
+
+
   return (
     <IonPage>
       <IonHeader>
@@ -14354,7 +14444,14 @@ function DriverMyRidesPage(): JSX.Element {
                     expand="block"
                     color="success"
                     disabled={actionLoading === activeRide.id}
-                    onClick={() => void handleArrivedSmart(activeRide)}
+                    onClick={() =>
+                      void runRideAction(activeRide.id, () =>
+                        ridesService.markArrived(
+                          session!.accessToken,
+                          activeRide.id,
+                        ),
+                      )
+                    }
                   >
                     {actionLoading === activeRide.id ? (
                       <IonSpinner name="dots" />
@@ -14486,11 +14583,11 @@ function DriverMyRidesPage(): JSX.Element {
                           >
                             Precio: {formatClp(getRideDisplayFareClp(ride))} ·
                             Pago: {getRidePaymentMethodLabel(ride.notes)}
-                            {((ride as Record<string, unknown>).cashPaymentConfirmedByDriver === true || (ride as Record<string, unknown>).cashPaymentClosure) && (
+                            {((ride as unknown as Record<string, unknown>).cashPaymentConfirmedByDriver === true || (ride as unknown as Record<string, unknown>).cashPaymentClosure) && (
                               <>
                                 <br />
-                                Efectivo recibido: {formatClp(Number((ride as Record<string, unknown>).cashPaidClp ?? (ride as Record<string, unknown>).paymentReceivedByDriverClp ?? 0))}
-                                {Number((ride as Record<string, unknown>).cashOverpaidClp ?? 0) > 0 && ` · Pagó demás: ${formatClp(Number((ride as Record<string, unknown>).cashOverpaidClp))}`}
+                                Efectivo recibido: {formatClp(Number((ride as unknown as Record<string, unknown>).cashPaidClp ?? (ride as unknown as Record<string, unknown>).paymentReceivedByDriverClp ?? 0))}
+                                {Number((ride as unknown as Record<string, unknown>).cashOverpaidClp ?? 0) > 0 && ` · Pagó demás: ${formatClp(Number((ride as unknown as Record<string, unknown>).cashOverpaidClp))}`}
                               </>
                             )}
                             <br />

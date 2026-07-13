@@ -379,17 +379,17 @@ function toResponse(
   };
 
   if (scheduleMeta?.isScheduled) {
-    response.isScheduled = true;
-    response.rideMode = "scheduled";
-    response.tripFareMode = scheduleMeta.tripFareMode;
-    response.scheduledAt = scheduleMeta.scheduledAt;
-    response.scheduledPickupAt = scheduleMeta.scheduledPickupAt;
-    response.scheduledReturnAt = scheduleMeta.scheduledReturnAt;
-    response.scheduledActivationAt = scheduleMeta.scheduledActivationAt;
-    response.scheduledReturnActivationAt = scheduleMeta.scheduledReturnActivationAt;
-    response.requestedByRole = scheduleMeta.requestedByRole;
-    response.requesterRoleLabel = scheduleMeta.requesterRoleLabel;
-    response.adminScheduleStatus = scheduleMeta.adminScheduleStatus;
+    response["isScheduled"] = true;
+    response["rideMode"] = "scheduled";
+    response["tripFareMode"] = scheduleMeta.tripFareMode;
+    response["scheduledAt"] = scheduleMeta.scheduledAt;
+    response["scheduledPickupAt"] = scheduleMeta.scheduledPickupAt;
+    response["scheduledReturnAt"] = scheduleMeta.scheduledReturnAt;
+    response["scheduledActivationAt"] = scheduleMeta.scheduledActivationAt;
+    response["scheduledReturnActivationAt"] = scheduleMeta.scheduledReturnActivationAt;
+    response["requestedByRole"] = scheduleMeta.requestedByRole;
+    response["requesterRoleLabel"] = scheduleMeta.requesterRoleLabel;
+    response["adminScheduleStatus"] = scheduleMeta.adminScheduleStatus;
   }
 
   return response as RideRequestResponse;
@@ -523,17 +523,54 @@ export class RidesService {
     }
 
     const scheduleMeta = buildScheduleMeta(input, auth.role);
+
+    const isScheduledRide =
+      scheduleMeta?.rideMode === "scheduled" ||
+      input.rideMode === "scheduled" ||
+      input.isScheduled === true ||
+      Boolean(input.scheduledAt || input.scheduledPickupAt || input.scheduledReturnAt);
+
+    if (isScheduledRide && input.paymentMethod !== "card") {
+      return {
+        ok: false,
+        code: "SCHEDULED_RIDE_REQUIRES_CARD",
+        message: "Las reservas y viajes agendados deben pagarse con tarjeta.",
+        statusCode: 400,
+      };
+    }
+
+    if (
+      isScheduledRide &&
+      input.paymentMethod === "card" &&
+      input.paymentProvider &&
+      !["mercadopago", "prontopaga", "transbank"].includes(input.paymentProvider)
+    ) {
+      return {
+        ok: false,
+        code: "INVALID_PAYMENT_PROVIDER",
+        message: "Proveedor de pago no permitido para reservas.",
+        statusCode: 400,
+      };
+    }
+
     const notesForStorage = appendScheduleMetaToNotes(
       input.notes ?? null,
       scheduleMeta,
     );
 
     const fareFromClient = Number(input.estimatedFareClp);
-
-    const baseFare =
+    const serverEstimatedFare = await estimateFare(input.originText, input.destinationText);
+    const clientFare =
       Number.isFinite(fareFromClient) && fareFromClient > 0
         ? Math.round(fareFromClient)
-        : await estimateFare(input.originText, input.destinationText);
+        : null;
+
+    // Seguridad financiera:
+    // estimatedFareClp viene del cliente y no puede bajar el monto calculado por backend.
+    // Esto evita descuentos manipulados desde localStorage/frontend mientras se migra pricing completo al backend.
+    const baseFare = clientFare == null
+      ? serverEstimatedFare
+      : Math.max(clientFare, serverEstimatedFare);
 
     let finalFare = baseFare;
     let discountInfo:
@@ -1114,7 +1151,7 @@ export class RidesService {
     const responseRide = toResponse(cancelled) as RideRequestResponse &
       Record<string, unknown>;
 
-    responseRide.paymentRefund = paymentRefund;
+    responseRide["paymentRefund"] = paymentRefund;
 
     return {
       ok: true,

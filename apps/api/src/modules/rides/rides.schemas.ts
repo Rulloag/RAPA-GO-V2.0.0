@@ -27,6 +27,10 @@ export const createRideRequestSchema = z.object({
 
   estimatedFareClp: z.number().int().positive().nullable().optional(),
 
+  // Pago declarado por cliente. El backend valida reglas críticas.
+  paymentMethod: z.enum(["cash", "card"]).optional(),
+  paymentProvider: z.enum(["mercadopago", "prontopaga", "transbank"]).nullable().optional(),
+
   // Agendamiento / programación
   rideMode: z.enum(["now", "scheduled"]).optional(),
   isScheduled: z.boolean().optional(),

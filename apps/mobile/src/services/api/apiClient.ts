@@ -86,7 +86,7 @@ async function request<T>(
     );
   }
 
-  if (!response.ok) {
+  if (response.ok === false) {
     return parseErrorBody(parsed, response.status);
   }
 
@@ -108,7 +108,7 @@ async function requestWithRetry<T>(
 ): Promise<ApiResponse<T>> {
   const result = await request<T>(method, path, body, options);
 
-  if (!result.ok && RETRYABLE_CODES.has(result.code) && retries > 0) {
+  if (result.ok === false && RETRYABLE_CODES.has(result.code) && retries > 0) {
     const delayMs = (3 - retries) * 1000;
     await new Promise<void>((resolve) => setTimeout(resolve, delayMs));
 

@@ -290,7 +290,7 @@ function getPaymentStringValue(source: unknown, keys: string[]): string {
 }
 
 function getStoredRefundStatus(payment: Record<string, unknown>): string {
-  const rawPayload = payment.rawProviderPayload;
+  const rawPayload = payment["rawProviderPayload"];
 
   return normalizePaymentText(
     getPaymentStringValue(rawPayload, ["rapagoRefund", "status"]) ||
@@ -303,11 +303,11 @@ function extractMercadoPagoPaymentId(payment: Record<string, unknown>): string {
   return (
     getPaymentStringValue(payment, ["providerPaymentId"]) ||
     getPaymentStringValue(payment, ["externalId"]) ||
-    getPaymentStringValue(payment.rawProviderPayload, ["id"]) ||
-    getPaymentStringValue(payment.rawProviderPayload, ["data", "id"]) ||
-    getPaymentStringValue(payment.rawProviderPayload, ["payment_id"]) ||
-    getPaymentStringValue(payment.rawProviderPayload, ["paymentId"]) ||
-    getPaymentStringValue(payment.rawProviderPayload, ["externalId"])
+    getPaymentStringValue(payment["rawProviderPayload"], ["id"]) ||
+    getPaymentStringValue(payment["rawProviderPayload"], ["data", "id"]) ||
+    getPaymentStringValue(payment["rawProviderPayload"], ["payment_id"]) ||
+    getPaymentStringValue(payment["rawProviderPayload"], ["paymentId"]) ||
+    getPaymentStringValue(payment["rawProviderPayload"], ["externalId"])
   );
 }
 
@@ -508,7 +508,7 @@ export class PaymentsService {
 
     try {
       const result = await provider.createPayment({
-        orderId: payment.id,
+        orderId: payment["id"],
         amountClp,
         description: `Viaje Rapa Go — ${ride.originText} → ${ride.destinationText}`,
         passengerEmail: user?.email ?? "",
@@ -520,13 +520,13 @@ export class PaymentsService {
       providerOrderId = result.providerOrderId;
       urlPay = result.urlPay;
     } catch (err) {
-      await paymentsRepo.markFailed(payment.id);
+      await paymentsRepo.markFailed(payment["id"]);
 
       auditService.recordSafe({
         actorUserId: auth.userId,
         eventType: "payment.provider_error",
         entityType: "payment",
-        entityId: payment.id,
+        entityId: payment["id"],
         metadata: {
           error: String(err),
           rideId: ride.id,
@@ -542,13 +542,13 @@ export class PaymentsService {
       };
     }
 
-    await paymentsRepo.markProcessing(payment.id, urlPay, providerOrderId);
+    await paymentsRepo.markProcessing(payment["id"], urlPay, providerOrderId);
 
     auditService.recordSafe({
       actorUserId: auth.userId,
       eventType: "payment.created",
       entityType: "payment",
-      entityId: payment.id,
+      entityId: payment["id"],
       metadata: {
         rideId: ride.id,
         amountClp,
@@ -560,7 +560,7 @@ export class PaymentsService {
     return {
       ok: true,
       urlPay,
-      paymentId: payment.id,
+      paymentId: payment["id"],
     };
   }
 
@@ -588,7 +588,7 @@ export class PaymentsService {
       };
     }
 
-    const providerName = normalizePaymentText(payment.provider);
+    const providerName = normalizePaymentText(payment["provider"]);
 
     if (providerName !== "mercadopago") {
       return {
@@ -596,7 +596,7 @@ export class PaymentsService {
         processed: false,
         refunded: false,
         skippedReason: "El pago aprobado no fue realizado con MercadoPago.",
-        paymentId: String(payment.id ?? ""),
+        paymentId: String(payment["id"] ?? ""),
       };
     }
 
@@ -608,7 +608,7 @@ export class PaymentsService {
         processed: true,
         refunded: true,
         skippedReason: "Este pago ya fue devuelto anteriormente.",
-        paymentId: String(payment.id ?? ""),
+        paymentId: String(payment["id"] ?? ""),
         mercadoPagoPaymentId: extractMercadoPagoPaymentId(payment),
       };
     }
@@ -630,7 +630,7 @@ export class PaymentsService {
 
     if (!refundResult.ok) {
       await saveRefundStateOnPayment({
-        paymentId: String(payment.id),
+        paymentId: String(payment["id"]),
         status: "failed",
         mercadoPagoPaymentId,
         refundPayload: refundResult.data,
@@ -640,7 +640,7 @@ export class PaymentsService {
         actorUserId: input.cancelledByUserId,
         eventType: "payment.refund_failed_on_cancel",
         entityType: "payment",
-        entityId: String(payment.id ?? ""),
+        entityId: String(payment["id"] ?? ""),
         metadata: {
           rideId: input.rideRequestId,
           provider: "mercadopago",
@@ -660,7 +660,7 @@ export class PaymentsService {
     }
 
     await saveRefundStateOnPayment({
-      paymentId: String(payment.id),
+      paymentId: String(payment["id"]),
       status: "approved",
       mercadoPagoPaymentId,
       refundPayload: refundResult.data,
@@ -670,7 +670,7 @@ export class PaymentsService {
       actorUserId: input.cancelledByUserId,
       eventType: "payment.refunded_on_cancel",
       entityType: "payment",
-      entityId: String(payment.id ?? ""),
+      entityId: String(payment["id"] ?? ""),
       metadata: {
         rideId: input.rideRequestId,
         provider: "mercadopago",
@@ -684,7 +684,7 @@ export class PaymentsService {
       ok: true,
       processed: true,
       refunded: true,
-      paymentId: String(payment.id ?? ""),
+      paymentId: String(payment["id"] ?? ""),
       mercadoPagoPaymentId,
       refund: refundResult.data,
     };
@@ -787,7 +787,7 @@ export class PaymentsService {
     }
 
     if (status === "success") {
-      await paymentsRepo.markSuccess(payment.id, externalId, rawPayload);
+      await paymentsRepo.markSuccess(payment["id"], externalId, rawPayload);
 
       try {
         const { db } = await import("../../db/client.js");
@@ -808,7 +808,7 @@ export class PaymentsService {
         actorUserId: payment.passengerUserId,
         eventType: "payment.success",
         entityType: "payment",
-        entityId: payment.id,
+        entityId: payment["id"],
         metadata: {
           rideId: payment.rideRequestId,
           amountClp: payment.amountClp,
@@ -824,13 +824,13 @@ export class PaymentsService {
     }
 
     if (status === "rejected") {
-      await paymentsRepo.markRejected(payment.id, rawPayload);
+      await paymentsRepo.markRejected(payment["id"], rawPayload);
 
       auditService.recordSafe({
         actorUserId: payment.passengerUserId,
         eventType: "payment.rejected",
         entityType: "payment",
-        entityId: payment.id,
+        entityId: payment["id"],
         metadata: {
           rideId: payment.rideRequestId,
           provider: providerName,
