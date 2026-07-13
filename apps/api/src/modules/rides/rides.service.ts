@@ -559,11 +559,18 @@ export class RidesService {
     );
 
     const fareFromClient = Number(input.estimatedFareClp);
-
-    const baseFare =
+    const serverEstimatedFare = await estimateFare(input.originText, input.destinationText);
+    const clientFare =
       Number.isFinite(fareFromClient) && fareFromClient > 0
         ? Math.round(fareFromClient)
-        : await estimateFare(input.originText, input.destinationText);
+        : null;
+
+    // Seguridad financiera:
+    // estimatedFareClp viene del cliente y no puede bajar el monto calculado por backend.
+    // Esto evita descuentos manipulados desde localStorage/frontend mientras se migra pricing completo al backend.
+    const baseFare = clientFare == null
+      ? serverEstimatedFare
+      : Math.max(clientFare, serverEstimatedFare);
 
     let finalFare = baseFare;
     let discountInfo:
