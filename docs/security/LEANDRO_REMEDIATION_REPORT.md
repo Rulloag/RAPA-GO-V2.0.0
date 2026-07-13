@@ -558,3 +558,46 @@ Resultado:
 Estado:
 PARCIAL. Mobile sigue pendiente.
 
+
+## FASE 1 — Mobile driver TypeScript cleanup
+
+Se corrigieron los bloqueadores TypeScript restantes de driver/index.tsx.
+
+Cambios:
+- Casts seguros con unknown antes de Record<string, unknown>.
+- Tipos de notificación scheduled agregados.
+- Corrección de navegación sin history.push.
+- Corrección de NotificationOptions con renotify.
+- Corrección de handlers de aceptar/rechazar viajes.
+- Se agregó handleDriverNoShowRide dentro de DriverMyRidesPage para mantener el flujo de No show visible en esa pantalla.
+- Se mantiene el flujo de cobro No show, notificación app/WhatsApp y limpieza local del viaje.
+
+Evidencia:
+- docs/security/evidence/144_mobile_driver_lines_7505_7560_before.txt
+- docs/security/evidence/145_mobile_driver_lines_7598_7658_before.txt
+- docs/security/evidence/146_mobile_driver_lines_7978_8013_before.txt
+- docs/security/evidence/147_mobile_driver_lines_9542_9577_before.txt
+- docs/security/evidence/148_mobile_driver_lines_9948_9983_before.txt
+- docs/security/evidence/149_mobile_driver_lines_10105_10140_before.txt
+- docs/security/evidence/150_patch_mobile_driver_second_type_fixes.diff
+- docs/security/evidence/151_build_mobile_after_driver_second_type_fixes.txt
+- docs/security/evidence/152_mobile_driver_lines_10980_11015_before.txt
+- docs/security/evidence/153_mobile_driver_lines_11410_11445_before.txt
+- docs/security/evidence/154_mobile_driver_lines_11750_11855_before.txt
+- docs/security/evidence/155_mobile_driver_lines_14360_14430_before.txt
+- docs/security/evidence/156_mobile_driver_lines_14495_14530_before.txt
+- docs/security/evidence/157_patch_mobile_driver_third_type_fixes.diff
+- docs/security/evidence/158_build_mobile_after_driver_third_type_fixes.txt
+- docs/security/evidence/159_patch_mobile_driver_restore_action_loading.diff
+- docs/security/evidence/160_build_mobile_after_restore_action_loading.txt
+- docs/security/evidence/161_mobile_driver_my_rides_page_functions_before.txt
+- docs/security/evidence/162_patch_mobile_driver_my_rides_no_show_handler.diff
+- docs/security/evidence/163_build_mobile_after_driver_my_rides_no_show_handler.txt
+
+Resultado:
+- Ya no aparecen errores TypeScript de src/pages/driver/index.tsx en el build mobile.
+- Mobile build sigue fallando por passenger/index.tsx, RequestRidePage.tsx y TripsPage.tsx.
+
+Estado:
+DRIVER TYPESCRIPT OK. Mobile sigue pendiente.
+
