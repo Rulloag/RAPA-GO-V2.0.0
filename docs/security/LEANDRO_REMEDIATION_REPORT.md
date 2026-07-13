@@ -296,3 +296,33 @@ Evidencia:
 Estado:
 PARCIAL. Falta idempotencia, transacción atómica y pruebas automatizadas.
 
+
+## FASE 8 — Control parcial de idempotencia en webhook Wallet
+
+Se agregó control parcial para evitar duplicación de transacciones cuando el proveedor reenvía el mismo webhook.
+
+Archivos modificados:
+- apps/api/src/modules/wallet/wallet.repository.ts
+- apps/api/src/modules/wallet/wallet.service.ts
+
+Control agregado:
+- Se busca transacción existente por providerTransactionId.
+- Si existe, el webhook se responde como procesado sin crear otra transacción.
+- Si la orden ya está en success y llega un webhook no-success, no se degrada el estado.
+- Si la orden ya está en success y llega success sin transactionId, se evita crear una transacción duplicada.
+
+Evidencia:
+- docs/security/evidence/85_wallet_repository_before_idempotency.txt
+- docs/security/evidence/86_wallet_schema_before_idempotency.txt
+- docs/security/evidence/87_wallet_webhook_before_idempotency.txt
+- docs/security/evidence/88_wallet_idempotency_search.txt
+- docs/security/evidence/89_patch_wallet_webhook_idempotency.diff
+- docs/security/evidence/90_build_api_after_wallet_idempotency.txt
+
+Resultado build:
+- npm run build -w apps/api continúa FALLANDO por errores TS4111 preexistentes.
+- No se detectan errores nuevos asociados a Wallet idempotency.
+
+Estado:
+PARCIAL. Aún falta agregar índice único/migración para providerTransactionId y envolver actualización de orden + creación de transacción en transacción DB atómica.
+

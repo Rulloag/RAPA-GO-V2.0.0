@@ -147,6 +147,21 @@ export class WalletService {
       return { ok: false as const, code: "NOT_FOUND", message: "Payment order not found.", statusCode: 404 };
     }
 
+    if (order.status === "success" && body.status !== "success") {
+      return { ok: true as const, order: serializePaymentOrder(order) };
+    }
+
+    if (body.status === "success" && body.transactionId) {
+      const existingTransaction = await walletRepo.findTransactionByProviderTransactionId(body.transactionId);
+      if (existingTransaction) {
+        return { ok: true as const, order: serializePaymentOrder(order) };
+      }
+    }
+
+    if (order.status === "success" && body.status === "success" && !body.transactionId) {
+      return { ok: true as const, order: serializePaymentOrder(order) };
+    }
+
     const completedAt = body.status === "success" ? new Date() : undefined;
     const updated = await walletRepo.updatePaymentOrderStatus(order.id, body.status, completedAt);
     if (!updated) {
