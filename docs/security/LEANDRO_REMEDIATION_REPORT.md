@@ -505,3 +505,27 @@ Resultado:
 Estado:
 PARCIAL. Mobile sigue pendiente.
 
+
+## FASE 1 — Mobile small type fixes
+
+Se corrigieron tres bloqueadores pequeños de TypeScript en mobile.
+
+Cambios:
+- DriverLayout: se evita narrowing incorrecto a never al resolver DriverEarningsPage.
+- Admin legal: se usa narrowing explícito result.ok === false.
+- Apply: se corrige type predicate para que fileName coincida con el tipo esperado.
+
+Evidencia:
+- docs/security/evidence/130_mobile_admin_legal_before.txt
+- docs/security/evidence/131_mobile_driver_layout_before.txt
+- docs/security/evidence/132_mobile_apply_type_guard_before.txt
+- docs/security/evidence/133_patch_mobile_small_type_fixes.diff
+- docs/security/evidence/134_build_mobile_after_small_type_fixes.txt
+
+Resultado:
+- Los errores de DriverLayout, admin/legal y apply desaparecen del build.
+- Mobile build sigue fallando por errores grandes en driver, passenger, RequestRidePage y TripsPage.
+
+Estado:
+PARCIAL. Mobile sigue pendiente.
+

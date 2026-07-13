@@ -54,12 +54,12 @@ export function AdminLegalDocumentsPage(): React.ReactElement {
       type: formType, version: formVersion, title: formTitle,
       content: formContent, effectiveDate: formEffectiveDate,
     }, { token });
-    if (result.ok) {
+    if (result.ok === false) {
+      setError(result.message ?? "Error al guardar.");
+    } else {
       setShowModal(false);
       setFormType(""); setFormVersion(""); setFormTitle(""); setFormContent(""); setFormEffectiveDate("");
       void load();
-    } else {
-      setError(result.message ?? "Error al guardar.");
     }
     setSaving(false);
   }

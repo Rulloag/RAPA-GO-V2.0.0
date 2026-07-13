@@ -778,7 +778,7 @@ function isRutValid(value: string): boolean {
       },
     ];
 
-    return entries.filter((entry): entry is { suffix: string; url: string; fileName?: string } => Boolean(entry.url));
+    return entries.filter((entry): entry is { suffix: string; url: string; fileName: string } => Boolean(entry.url));
   }
 
   function persistDirectApplicationFilesForAdmin(mirror: Record<string, unknown>): void {
