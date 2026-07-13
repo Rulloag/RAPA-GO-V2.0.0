@@ -447,3 +447,33 @@ Resultado:
 Estado:
 API BUILD Y TESTS OK.
 
+
+## FASE 1 — Estado build mobile posterior a remediación backend
+
+Se ejecutó build oficial del workspace mobile.
+
+Comando:
+- npm run build -w apps/mobile
+
+Script mobile:
+- build = tsc && vite build
+
+Resultado:
+- FALLA en TypeScript antes de ejecutar Vite.
+
+Principales grupos de errores:
+- ApiResponse: accesos a message/code sin narrowing correcto.
+- AuthResponse: accesos a message/code en respuestas success/error.
+- DriverPage: errores de tipos, funciones no encontradas y estados scheduled no incluidos.
+- RequestRidePage: propiedades duplicadas y payloads financieros fuera del tipo.
+- TripsPage: errores de tipos en montos y cssClass en IonModal.
+- apiClient: acceso a code sin narrowing.
+
+Evidencia:
+- docs/security/evidence/112_mobile_package_scripts.txt
+- docs/security/evidence/113_build_mobile_after_security_fixes.txt
+
+Conclusión:
+API build y API tests están OK, pero mobile build oficial falla.
+Estado global de la rama: NO APTO PARA MERGE hasta corregir o documentar deuda mobile.
+
