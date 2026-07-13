@@ -11,24 +11,35 @@ const {
   mockFindById,
   mockListByUser,
   mockGetAvailableBalance,
+  mockGetWalletBalanceSummary,
   mockCreate,
   mockApprovePending,
   mockRejectPending,
   mockApplyAvailableCredit,
+  mockMarkDebitPaid,
+  mockCancelDebit,
+  mockReverseTransaction,
 } = vi.hoisted(() => ({
-  mockVerifyAccessToken:     vi.fn(),
-  mockHashToken:             vi.fn().mockReturnValue("hashed-token"),
-  mockIsSessionValid:        vi.fn().mockResolvedValue(true),
-  mockFindUserById:          vi.fn(),
-  mockGetOrCreateWallet:     vi.fn(),
-  mockFindByIdempotencyKey:  vi.fn(),
-  mockFindById:              vi.fn(),
-  mockListByUser:            vi.fn(),
-  mockGetAvailableBalance:   vi.fn(),
-  mockCreate:                vi.fn(),
-  mockApprovePending:        vi.fn(),
-  mockRejectPending:         vi.fn(),
-  mockApplyAvailableCredit:  vi.fn(),
+  mockVerifyAccessToken:        vi.fn(),
+  mockHashToken:                vi.fn().mockReturnValue("hashed-token"),
+  mockIsSessionValid:           vi.fn().mockResolvedValue(true),
+  mockFindUserById:             vi.fn(),
+  mockGetOrCreateWallet:        vi.fn(),
+  mockFindByIdempotencyKey:     vi.fn(),
+  mockFindById:                 vi.fn(),
+  mockListByUser:               vi.fn(),
+  mockGetAvailableBalance:      vi.fn(),
+  mockGetWalletBalanceSummary:  vi.fn().mockResolvedValue({
+    availableCreditClp: 0, pendingCreditClp: 0, pendingDebitClp: 0,
+    paidAmountClp: 0, refundedAmountClp: 0, reversedAmountClp: 0,
+  }),
+  mockCreate:                   vi.fn(),
+  mockApprovePending:           vi.fn(),
+  mockRejectPending:            vi.fn(),
+  mockApplyAvailableCredit:     vi.fn(),
+  mockMarkDebitPaid:            vi.fn(),
+  mockCancelDebit:              vi.fn(),
+  mockReverseTransaction:       vi.fn(),
 }));
 
 vi.mock("../../auth/token.service.js", () => ({
@@ -54,14 +65,18 @@ vi.mock("../wallet.repository.js", () => ({
 }));
 vi.mock("../walletTransactions.repository.js", () => ({
   WalletTransactionsRepository: vi.fn().mockImplementation(() => ({
-    findByIdempotencyKey: mockFindByIdempotencyKey,
-    findById:              mockFindById,
-    listByUser:            mockListByUser,
-    getAvailableBalance:   mockGetAvailableBalance,
-    create:                mockCreate,
-    approvePending:        mockApprovePending,
-    rejectPending:         mockRejectPending,
-    applyAvailableCredit:  mockApplyAvailableCredit,
+    findByIdempotencyKey:   mockFindByIdempotencyKey,
+    findById:                mockFindById,
+    listByUser:              mockListByUser,
+    getAvailableBalance:     mockGetAvailableBalance,
+    getWalletBalanceSummary: mockGetWalletBalanceSummary,
+    create:                  mockCreate,
+    approvePending:          mockApprovePending,
+    rejectPending:           mockRejectPending,
+    applyAvailableCredit:    mockApplyAvailableCredit,
+    markDebitPaid:           mockMarkDebitPaid,
+    cancelDebit:             mockCancelDebit,
+    reverseTransaction:      mockReverseTransaction,
   })),
 }));
 
@@ -256,7 +271,7 @@ describe("WalletTransactionsService — applyCredit (pasajero)", () => {
     mockFindById.mockResolvedValue(fakeTxRow({ status: "available", userId: PASSENGER_ID }));
     mockApplyAvailableCredit.mockResolvedValue({
       credit: fakeTxRow({ status: "applied" }),
-      debit: fakeTxRow({ id: DEBIT_ID, type: "debit", status: "applied" }),
+      consumptionRecord: fakeTxRow({ id: DEBIT_ID, type: "credit", status: "applied" }),
     });
 
     const input = applyCreditSchema.parse({ walletTransactionId: TX_ID, rideId: RIDE_ID, idempotencyKey: "apply-idem-001" });
@@ -356,5 +371,188 @@ describe("WalletTransactionsService — localStorage forjado no afecta al backen
 
     expect(parsed).not.toHaveProperty("amountClp");
     expect(parsed).not.toHaveProperty("status");
+  });
+});
+
+describe("WalletTransactionsService — débitos (mark-paid / cancel)", () => {
+  let service: WalletTransactionsService;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockIsSessionValid.mockResolvedValue(true);
+    service = new WalletTransactionsService();
+  });
+
+  it("rechaza marcar como pagado si no es admin", async () => {
+    authAs(PASSENGER_ID, "passenger");
+
+    const result = await service.markDebitPaid("tok", TX_ID, { collectionMethod: "admin_review" });
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.code).toBe("AUTH_FORBIDDEN");
+    expect(mockMarkDebitPaid).not.toHaveBeenCalled();
+  });
+
+  it("rechaza marcar como pagado un movimiento que no es type=debit", async () => {
+    authAs(ADMIN_A_ID, "admin");
+    mockFindById.mockResolvedValue(fakeTxRow({ type: "credit", status: "pending" }));
+
+    const result = await service.markDebitPaid("tok", TX_ID, { collectionMethod: "admin_review" });
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.code).toBe("WALLET_TX_WRONG_TYPE");
+    expect(mockMarkDebitPaid).not.toHaveBeenCalled();
+  });
+
+  it("un admin puede marcar un débito pending como paid", async () => {
+    authAs(ADMIN_B_ID, "admin");
+    mockFindById.mockResolvedValue(fakeTxRow({ type: "debit", status: "pending" }));
+    mockMarkDebitPaid.mockResolvedValue(fakeTxRow({ type: "debit", status: "paid" }));
+
+    const result = await service.markDebitPaid("tok", TX_ID, { collectionMethod: "admin_review" });
+
+    expect(result.ok).toBe(true);
+    expect(mockMarkDebitPaid).toHaveBeenCalledWith(TX_ID, ADMIN_B_ID, "admin_review");
+  });
+
+  it("DOBLE CARGO BLOQUEADO: no se puede marcar como pagado un débito que ya no está pending", async () => {
+    authAs(ADMIN_B_ID, "admin");
+    mockFindById.mockResolvedValue(fakeTxRow({ type: "debit", status: "paid" }));
+
+    const result = await service.markDebitPaid("tok", TX_ID, { collectionMethod: "admin_review" });
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.code).toBe("WALLET_TX_INVALID_TRANSITION");
+    expect(mockMarkDebitPaid).not.toHaveBeenCalled();
+  });
+
+  it("un admin puede condonar (cancelar) un débito pendiente con motivo", async () => {
+    authAs(ADMIN_A_ID, "admin");
+    mockFindById.mockResolvedValue(fakeTxRow({ type: "debit", status: "pending" }));
+    mockCancelDebit.mockResolvedValue(fakeTxRow({ type: "debit", status: "cancelled" }));
+
+    const result = await service.cancelDebit("tok", TX_ID, { reason: "Disputa ganada por el pasajero" });
+
+    expect(result.ok).toBe(true);
+    expect(mockCancelDebit).toHaveBeenCalledWith(TX_ID, ADMIN_A_ID, "Disputa ganada por el pasajero");
+  });
+
+  it("no reutiliza 'available' para un débito: el estado 'available' no existe en las transiciones de debit", async () => {
+    authAs(ADMIN_A_ID, "admin");
+    // fakeTxRow con status='available' y type='debit' es un estado que el sistema nunca
+    // produce (markDebitPaid/create de no-show jamás asignan 'available' a un debit) — se
+    // documenta como test negativo: mark-paid solo transiciona desde 'pending'.
+    mockFindById.mockResolvedValue(fakeTxRow({ type: "debit", status: "available" }));
+
+    const result = await service.markDebitPaid("tok", TX_ID, { collectionMethod: "admin_review" });
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.code).toBe("WALLET_TX_INVALID_TRANSITION");
+  });
+});
+
+describe("WalletTransactionsService — reverseTransaction", () => {
+  let service: WalletTransactionsService;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockIsSessionValid.mockResolvedValue(true);
+    service = new WalletTransactionsService();
+  });
+
+  it("rechaza si no es admin", async () => {
+    authAs(PASSENGER_ID, "passenger");
+
+    const result = await service.reverseTransaction("tok", TX_ID, { reason: "Error de cálculo" });
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.code).toBe("AUTH_FORBIDDEN");
+  });
+
+  it("IMPOSIBILIDAD DE AUTOAPROBAR: el admin que creó el movimiento no puede revertirlo", async () => {
+    authAs(ADMIN_A_ID, "admin");
+    mockFindById.mockResolvedValue(fakeTxRow({ createdBy: ADMIN_A_ID, approvedBy: null, status: "paid" }));
+
+    const result = await service.reverseTransaction("tok", TX_ID, { reason: "Error de cálculo" });
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.code).toBe("AUTH_SELF_APPROVAL_FORBIDDEN");
+    expect(mockReverseTransaction).not.toHaveBeenCalled();
+  });
+
+  it("IMPOSIBILIDAD DE AUTOAPROBAR: el admin que aprobó/resolvió el movimiento tampoco puede revertirlo", async () => {
+    authAs(ADMIN_B_ID, "admin");
+    mockFindById.mockResolvedValue(fakeTxRow({ createdBy: ADMIN_A_ID, approvedBy: ADMIN_B_ID, status: "paid" }));
+
+    const result = await service.reverseTransaction("tok", TX_ID, { reason: "Error de cálculo" });
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.code).toBe("AUTH_SELF_APPROVAL_FORBIDDEN");
+  });
+
+  it("un admin distinto puede revertir, se crea un nuevo movimiento sin editar el original", async () => {
+    const adminC = "f3a3a3a3-3333-4333-8333-333333333333";
+    authAs(adminC, "admin");
+    mockFindById.mockResolvedValue(fakeTxRow({ createdBy: ADMIN_A_ID, approvedBy: ADMIN_B_ID, status: "paid" }));
+    mockReverseTransaction.mockResolvedValue({
+      original: fakeTxRow({ status: "reversed" }),
+      reversal: fakeTxRow({ id: "reversal-uuid", type: "reversal", status: "reversed" }),
+    });
+
+    const result = await service.reverseTransaction("tok", TX_ID, { reason: "Error de cálculo" });
+
+    expect(result.ok).toBe(true);
+    expect(mockReverseTransaction).toHaveBeenCalledWith({
+      originalTransactionId: TX_ID,
+      resolvedBy: adminC,
+      reason: "Error de cálculo",
+    });
+  });
+
+  it("rechaza revertir un movimiento ya revertido", async () => {
+    const adminC = "f3a3a3a3-3333-4333-8333-333333333333";
+    authAs(adminC, "admin");
+    mockFindById.mockResolvedValue(fakeTxRow({ createdBy: ADMIN_A_ID, approvedBy: ADMIN_B_ID, status: "reversed" }));
+
+    const result = await service.reverseTransaction("tok", TX_ID, { reason: "Error de cálculo" });
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.code).toBe("WALLET_TX_INVALID_TRANSITION");
+    expect(mockReverseTransaction).not.toHaveBeenCalled();
+  });
+});
+
+describe("WalletTransactionsService — separación de saldo (créditos vs débitos)", () => {
+  let service: WalletTransactionsService;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockIsSessionValid.mockResolvedValue(true);
+    service = new WalletTransactionsService();
+  });
+
+  it("listMyCredits expone los 6 totales separados sin cruzarse entre sí", async () => {
+    authAs(PASSENGER_ID, "passenger");
+    mockListByUser.mockResolvedValue([]);
+    mockGetWalletBalanceSummary.mockResolvedValue({
+      availableCreditClp: 3000,
+      pendingCreditClp: 1000,
+      pendingDebitClp: 5000,
+      paidAmountClp: 12000,
+      refundedAmountClp: 4000,
+      reversedAmountClp: 500,
+    });
+
+    const result = await service.listMyCredits("tok");
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.availableCreditClp).toBe(3000);
+      expect(result.pendingCreditClp).toBe(1000);
+      expect(result.pendingDebitClp).toBe(5000);
+      expect(result.paidAmountClp).toBe(12000);
+      expect(result.refundedAmountClp).toBe(4000);
+      expect(result.reversedAmountClp).toBe(500);
+    }
   });
 });
