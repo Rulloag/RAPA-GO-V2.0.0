@@ -265,3 +265,33 @@ Evidencia:
 Estado:
 PARCIAL. NO APTO PARA MERGE todavía.
 
+
+## FASE 4 / FASE 8 — Wallet createPaymentOrder no confía en amount del cliente
+
+Se corrigió POST /api/payments/create-order del módulo Wallet.
+
+Archivos modificados:
+- apps/api/src/modules/wallet/wallet.schemas.ts
+- apps/api/src/modules/wallet/wallet.service.ts
+
+Control agregado:
+- mount en el body queda solo como compatibilidad temporal.
+- El backend ignora input.amount.
+- El monto real se toma desde ide_requests.estimated_fare_clp.
+- Se valida ownership del ride.
+- Se rechaza si el viaje no tiene monto válido.
+- Se registra metadata no autoritativa con el monto solicitado por cliente.
+
+Resultado build:
+- npm run build -w apps/api continúa FALLANDO por errores TS4111 preexistentes.
+- No se detectan errores nuevos asociados a Wallet, amountFromRide o metadata.
+
+Evidencia:
+- docs/security/evidence/81_wallet_schemas_before_amount_fix.txt
+- docs/security/evidence/82_wallet_create_order_before_amount_fix.txt
+- docs/security/evidence/83_patch_wallet_order_amount_backend.diff
+- docs/security/evidence/84_build_api_after_wallet_amount_fix.txt
+
+Estado:
+PARCIAL. Falta idempotencia, transacción atómica y pruebas automatizadas.
+
