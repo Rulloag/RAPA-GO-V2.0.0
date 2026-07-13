@@ -96,39 +96,12 @@ function getPendingChargeSessionEmail(user: unknown): string {
   return normalizePendingChargeEmail((user as Record<string, unknown>).email);
 }
 
-function readPassengerPendingChargesForRequest(user: unknown): PassengerPendingChargeForRequest[] {
-  try {
-    const sessionEmail = getPendingChargeSessionEmail(user);
-    const raw = localStorage.getItem(RAPAGO_PASSENGER_PENDING_CHARGES_KEY);
-    const parsed = raw ? (JSON.parse(raw) as Array<Record<string, unknown>>) : [];
-    if (!Array.isArray(parsed)) return [];
-
-    return parsed
-      .map((item, index): PassengerPendingChargeForRequest => ({
-        id: String(item.id ?? `pending-charge-${index}`),
-        rideId: typeof item.rideId === "string" ? item.rideId : null,
-        rideKey: typeof item.rideKey === "string" ? item.rideKey : null,
-        passengerEmail: typeof item.passengerEmail === "string" ? item.passengerEmail : null,
-        ownerKey: typeof item.ownerKey === "string" ? item.ownerKey : null,
-        amountClp: Math.max(0, Math.round(Number(item.amountClp ?? item.amount ?? 0))),
-        type: typeof item.type === "string" ? item.type : null,
-        status: String(item.status ?? "pending_next_ride"),
-        adminReviewStatus: typeof item.adminReviewStatus === "string" ? item.adminReviewStatus : null,
-        title: typeof item.title === "string" ? item.title : null,
-        description: typeof item.description === "string" ? item.description : null,
-        createdAt: typeof item.createdAt === "string" ? item.createdAt : null,
-        appliedRideId: typeof item.appliedRideId === "string" ? item.appliedRideId : null,
-        appliedAt: typeof item.appliedAt === "string" ? item.appliedAt : null,
-      }))
-      .filter((charge) => {
-        if (charge.amountClp <= 0) return false;
-        if (charge.status !== "pending_next_ride") return false;
-        const owner = normalizePendingChargeEmail(charge.passengerEmail || charge.ownerKey);
-        return !sessionEmail || !owner || owner === sessionEmail;
-      });
-  } catch {
-    return [];
-  }
+function readPassengerPendingChargesForRequest(_user: unknown): PassengerPendingChargeForRequest[] {
+  // Phase 2 security:
+  // Legacy localStorage pending charges are visual/admin-review only.
+  // They must not increase ride fares or payment amounts for the next request.
+  // Authoritative cancellation/no-show charges must come from backend/admin policy.
+  return [];
 }
 
 function writePassengerPendingChargesForRequest(charges: PassengerPendingChargeForRequest[]): void {
@@ -141,33 +114,11 @@ function writePassengerPendingChargesForRequest(charges: PassengerPendingChargeF
   }
 }
 
-function markPassengerPendingChargesAppliedToRide(user: unknown, rideId: string | null): void {
-  const sessionEmail = getPendingChargeSessionEmail(user);
-  const now = new Date().toISOString();
-
-  try {
-    const raw = localStorage.getItem(RAPAGO_PASSENGER_PENDING_CHARGES_KEY);
-    const parsed = raw ? (JSON.parse(raw) as PassengerPendingChargeForRequest[]) : [];
-    const current = Array.isArray(parsed) ? parsed : [];
-
-    const next = current.map((charge) => {
-      const owner = normalizePendingChargeEmail(charge.passengerEmail || charge.ownerKey);
-      const belongsToUser = !sessionEmail || !owner || owner === sessionEmail;
-      if (!belongsToUser || String(charge.status ?? "") !== "pending_next_ride") return charge;
-
-      return {
-        ...charge,
-        status: "applied_to_next_ride",
-        adminReviewStatus: "charged_in_next_ride",
-        appliedRideId: rideId,
-        appliedAt: now,
-      };
-    });
-
-    writePassengerPendingChargesForRequest(next);
-  } catch {
-    // No bloquea la solicitud si storage falla.
-  }
+function markPassengerPendingChargesAppliedToRide(_user: unknown, _rideId: string | null): void {
+  // Phase 2 security:
+  // Do not mark localStorage charges as charged/applied to the next ride.
+  // Backend must create and apply any real cancellation/no-show charge.
+  return;
 }
 
 const RAPAGO_WALLET_BENEFITS_KEY_REQUEST = "rapago_wallet_benefits_v1";
