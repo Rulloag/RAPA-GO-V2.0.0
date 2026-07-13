@@ -4,6 +4,7 @@ import {
   createPaymentOrderSchema,
   webhookPayloadSchema,
   listTransactionsQuerySchema,
+  adminCreateWalletCreditSchema,
 } from "./wallet.schemas.js";
 import { sendOk, sendError } from "../../shared/http/apiResponse.js";
 
@@ -65,6 +66,37 @@ export const walletController = {
       });
     }
     return sendOk(reply, result.order, 201);
+  },
+
+  async adminCreateWalletCredit(req: FastifyRequest, reply: FastifyReply) {
+    const token = getToken(req);
+    if (!token) {
+      return sendError(reply, {
+        code: "UNAUTHORIZED",
+        message: "Missing access token.",
+        statusCode: 401,
+      });
+    }
+
+    const parsed = adminCreateWalletCreditSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return sendError(reply, {
+        code: "VALIDATION_ERROR",
+        message: parsed.error.errors.map((e) => e.message).join("; "),
+        statusCode: 400,
+      });
+    }
+
+    const result = await svc.adminCreateWalletCredit(token, parsed.data);
+    if (!result.ok) {
+      return sendError(reply, {
+        code: result.code ?? "INTERNAL_ERROR",
+        message: result.message ?? "Internal error.",
+        statusCode: result.statusCode ?? 500,
+      });
+    }
+
+    return sendOk(reply, { wallet: result.wallet, transaction: result.transaction }, 201);
   },
 
   async handleWebhook(req: FastifyRequest, reply: FastifyReply) {
