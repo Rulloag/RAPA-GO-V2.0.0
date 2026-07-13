@@ -206,3 +206,36 @@ El backend debe calcular el monto final cobrable.
 Estado:
 NO APTO PARA MERGE.
 
+
+## FASE 5 / FASE 8 — Evidencia de monto financiero controlado por frontend
+
+### Evidencia
+
+Archivos:
+- docs/security/evidence/75_request_ride_payload_detail.txt
+- docs/security/evidence/76_trips_cancel_wallet_detail.txt
+- docs/security/evidence/77_payments_create_amount_detail.txt
+- docs/security/evidence/78_payments_webhook_detail.txt
+
+### Hallazgo
+
+El frontend construye payloads con:
+- estimatedFareClp
+- walletBenefitAppliedClp
+- walletBenefitDiscountClp
+- finalFareAfterWalletBenefitClp
+- passengerPendingChargeClp
+- reservationRequiresCard
+
+PaymentsService crea el pago usando ride.estimatedFareClp.
+
+### Riesgo
+
+Un cliente manipulado podría alterar el monto antes de crear el viaje y ese monto puede ser usado después para el cobro.
+
+### Estado
+
+VULNERABLE / PARCIAL.
+
+Se requiere que el backend sea fuente autoritativa del monto final.
+
