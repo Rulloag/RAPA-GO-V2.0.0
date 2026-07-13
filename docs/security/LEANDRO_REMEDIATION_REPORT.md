@@ -392,3 +392,25 @@ pm run build -w apps/api finaliza sin errores.
 Estado:
 PARCIAL. Falta ejecutar tests API y revisar build mobile.
 
+
+## FASE 1 — Corrección de sintaxis posterior a TS4111
+
+Se corrigió un reemplazo automático demasiado amplio en apps/api/src/modules/payments/payments.service.ts.
+
+Problemas corregidos:
+- Import roto: ./payment["provider"].js
+- String roto: payment["provider"]_error
+
+Resultado:
+- Se restaura ./payment.provider.js
+- Se restaura eventType = payment.provider_error
+- API build vuelve a compilar.
+
+Evidencia:
+- docs/security/evidence/100_build_api_final_after_security_fixes.txt
+- docs/security/evidence/102_patch_payments_service_syntax_fix.diff
+- docs/security/evidence/103_build_api_after_payments_syntax_fix.txt
+
+Estado:
+CORREGIDO.
+

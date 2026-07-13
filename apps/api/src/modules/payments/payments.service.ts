@@ -7,7 +7,7 @@ import { getActiveProvider, getProvider } from "./provider.registry.js";
 import { AuditService } from "../audit/audit.service.js";
 import { AppError } from "../../shared/errors/AppError.js";
 import type { CreatePaymentInput } from "./payments.schema.js";
-import type { NormalizedWebhook } from "./payment["provider"].js";
+import type { NormalizedWebhook } from "./payment.provider.js";
 
 const tokenService = new TokenService();
 const sessionService = new SessionService();
@@ -524,7 +524,7 @@ export class PaymentsService {
 
       auditService.recordSafe({
         actorUserId: auth.userId,
-        eventType: "payment["provider"]_error",
+        eventType: "payment.provider_error",
         entityType: "payment",
         entityId: payment["id"],
         metadata: {
