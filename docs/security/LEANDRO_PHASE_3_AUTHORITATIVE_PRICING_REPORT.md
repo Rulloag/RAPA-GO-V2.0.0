@@ -125,10 +125,10 @@ No se tocó Wallet, `localStorage`, proveedores de pago, ni ningún archivo de m
    `payment.amountClp` (§7). Requiere extender `NormalizedWebhook` + ambos proveedores.
 2. **ALTO** — Ausencia de transacciones DB atómicas en el flujo de webhook (`payments.service.ts`)
    y en `WalletService.handleWebhook` (confirmado en Fase 2B).
-3. **CRÍTICO, ya identificado en Fase 2B, NO corregido aquí (fuera de alcance, pertenece a Wallet)**
-   — `WalletService.createPaymentOrder` (`wallet.service.ts:122`) usa `input.amount` directo del
-   cliente sin validarlo contra el viaje. Se deja explícitamente para el Paso 6 del plan ("Recién
-   después corregir Wallet y créditos").
+3. ~~**CRÍTICO** — `WalletService.createPaymentOrder` (`wallet.service.ts:122`) usaba `input.amount`
+   directo del cliente sin validarlo contra el viaje.~~ **RESUELTO** en un apéndice de esta misma
+   fase — ver §13. `wallet.service.ts` ahora recalcula el monto desde `ride.estimatedFareClp`
+   igual que `rides.service.ts`, con guard de estado de viaje y auditoría de discrepancia.
 4. `estimateFare()` usa un proxy de distancia poco preciso (longitud de texto de
    origen/destino) cuando no hay `zone_fare` configurada — no es una vulnerabilidad de seguridad,
    pero sí una limitación de negocio a mejorar en una fase de precisión de tarifas.
@@ -144,23 +144,63 @@ Resultado:
   "admin"` bloquea a no-admins en las 5 rutas del servicio), no es tarifa de un viaje individual
   de pasajero. No es la misma clase de vulnerabilidad — un admin autorizado fijando tarifas
   oficiales es el comportamiento esperado. ✅ Sin acción.
-- `wallet.service.ts:122` (`input.amount`) — pendiente, explícitamente diferido a la fase de
-  Wallet (ítem 6 del plan). ⚠️ Documentado, no corregido aquí.
+- `wallet.service.ts:122` (`input.amount`) — **RESUELTO**, ver §13.
+
+## 13. Apéndice — Corrección de `WalletService.createPaymentOrder` (mismo commit range de esta fase)
+
+Se aplicó el mismo patrón que en `rides.service.ts`:
+
+- Guard de estado de viaje reutilizando el conjunto de `PAYMENT_ALLOWED_RIDE_STATUSES` de
+  `payments.service.ts` (definido localmente como `PAYMENT_ORDER_ALLOWED_RIDE_STATUSES` en
+  `wallet.service.ts`, mismos valores) → rechaza con `409 PAYMENT_RIDE_STATUS_NOT_ALLOWED` si el
+  viaje no está en un estado válido (p. ej. cancelado).
+- `authoritativeAmount = ride.estimatedFareClp` — si no es un entero positivo válido, `409
+  INVALID_RIDE_FARE`.
+- `input.amount` del cliente ya **nunca** se persiste; solo se compara y, si difiere, se registra
+  `wallet.payment_order_amount_mismatch` vía `AuditService.recordSafe` (sin bloquear, sin PII).
+- `wallet.schemas.ts`: se agregó un comentario en `createPaymentOrderSchema` aclarando que
+  `amount` es diagnóstico, no autoritativo — no se quitó el campo del DTO (compatibilidad con el
+  cliente móvil, que sigue enviándolo sin cambios).
+- Nuevo archivo de pruebas: `apps/api/src/modules/wallet/__tests__/wallet.service.test.ts` (no
+  existía ninguna prueba para este módulo). 6 casos: monto manipulado a la baja, monto exagerado,
+  monto correcto (sin discrepancia registrada), viaje inexistente (404), viaje de otro pasajero
+  (403), viaje en estado no permitido (409).
+
+```text
+Test Files  1 passed (1)
+     Tests  6 passed (6)
+```
+
+Suite completa del API tras este apéndice: **53/55** (mismos 2 fallos preexistentes de
+`payments.service.test.ts`/`mercadopago.provider.test.ts`, sin regresiones). Typecheck: 31 errores
+`TS4111` preexistentes, ninguno nuevo en `wallet.service.ts`/`wallet.schemas.ts`.
+
+**Riesgos residuales que quedan documentados y NO se corrigieron** (mismo criterio de alcance
+mínimo que el resto de la fase):
+- `wallets.balance`/`WalletRepository.updateBalance` siguen desconectados del flujo de
+  transacciones (código muerto preexistente).
+- No hay `db.transaction(...)` envolviendo la consulta del viaje + inserción de la orden (no
+  existe ningún precedente de transacciones atómicas en todo el codebase).
+- El sistema de créditos de cancelación en `localStorage` (`rapago_wallet_benefits_v1`,
+  compartido entre `WalletPage.tsx`/`TripsPage.tsx`/`admin/index.tsx`/`RequestRidePage.tsx`)
+  sigue sin backend — pendiente de decisión de negocio sobre la política real de cancelación
+  (reembolso 100% actual vs. crédito parcial que promete la UI) antes de diseñarlo.
 
 ---
 
 ```text
 FASE 3:
 TARIFA CONTROLADA POR CLIENTE: NO (ride creation ya no confía en estimatedFareClp del cliente)
-MONTO RECALCULADO EN BACKEND: SÍ (siempre, vía estimateFare())
-PAYMENTS USA MONTO AUTORITATIVO: SÍ (ya lo hacía — ride.estimatedFareClp persistido, ahora confiable)
+MONTO RECALCULADO EN BACKEND: SÍ (siempre, vía estimateFare(); wallet payment orders vía ride.estimatedFareClp)
+PAYMENTS USA MONTO AUTORITATIVO: SÍ (rides y wallet payment orders)
 WEBHOOK VALIDA MONTO: NO — gap documentado, no corregido en esta fase (§7, riesgo ALTO abierto)
 IDEMPOTENCIA: SÍ (webhook de pagos, confirmado por status ya terminal + tests existentes)
-PRUEBAS DE MANIPULACIÓN: PASAN (4/4 nuevas, más 47/49 preexistentes sin regresión)
-RIESGOS CRÍTICOS ABIERTOS: 1 (WalletService.createPaymentOrder — diferido intencionalmente a Wallet)
+PRUEBAS DE MANIPULACIÓN: PASAN (10/10 nuevas — 4 rides + 6 wallet —, 53/55 con preexistentes sin regresión)
+RIESGOS CRÍTICOS ABIERTOS: 0 (el único crítico quedó resuelto en el apéndice §13)
 COMMIT: pendiente de confirmación del usuario
-APTO PARA CONTINUAR CON WALLET: SÍ, con la condición de que la Fase de Wallet corrija también
-  wallet.service.ts:122 (input.amount) antes de dar por cerrada la integridad financiera completa.
+APTO PARA CONTINUAR CON WALLET: SÍ — la integridad de montos del flujo de pago principal y de
+  órdenes de wallet queda cerrada. El diseño del ledger de créditos de cancelación
+  ("CRÉDITOS PARA PRÓXIMO VIAJE") sigue pendiente de decisión de negocio, no de código.
 ```
 
 No se hizo push ni merge.
