@@ -768,7 +768,7 @@ export function RegisterPage(): JSX.Element {
         residentDocumentName: string | null;
       });
 
-      if (!result.ok) {
+      if (result.ok === false) {
         if (result.code === "AUTH_EMAIL_TAKEN") {
           setFieldErrors({ email: "Este correo ya está registrado." });
           return;

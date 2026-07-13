@@ -92,56 +92,56 @@ export interface CreateRideInput {
 export const ridesService = {
   async listMyRides(accessToken: string): Promise<RideRequestData[]> {
     const result = await apiClient.get<RidesEnvelope>("/rides/me", { token: accessToken });
-    if (!result.ok) throw new Error(result.message ?? "Failed to load rides.");
+    if (result.ok === false) throw new Error(result.message ?? "Failed to load rides.");
     return (result.data as RidesEnvelope).data;
   },
 
   async createRideRequest(accessToken: string, input: CreateRideInput): Promise<RideRequestData> {
     const result = await apiClient.post<RideEnvelope>("/rides/request", input, { token: accessToken });
-    if (!result.ok) throw new Error(result.message ?? "Failed to create ride request.");
+    if (result.ok === false) throw new Error(result.message ?? "Failed to create ride request.");
     return (result.data as RideEnvelope).data;
   },
 
   async cancelRideRequest(accessToken: string, rideId: string): Promise<RideRequestData> {
     const result = await apiClient.post<RideEnvelope>(`/rides/${rideId}/cancel`, {}, { token: accessToken });
-    if (!result.ok) throw new Error(result.message ?? "Failed to cancel ride request.");
+    if (result.ok === false) throw new Error(result.message ?? "Failed to cancel ride request.");
     return (result.data as RideEnvelope).data;
   },
 
   async listAvailableRides(accessToken: string): Promise<AvailableRideData[]> {
     type AvailableEnvelope = { ok: true; data: AvailableRideData[]; statusCode: number };
     const result = await apiClient.get<AvailableEnvelope>("/rides/available", { token: accessToken });
-    if (!result.ok) throw new Error(result.message ?? "Failed to load available rides.");
+    if (result.ok === false) throw new Error(result.message ?? "Failed to load available rides.");
     return (result.data as AvailableEnvelope).data;
   },
 
   async acceptRideRequest(accessToken: string, rideId: string): Promise<RideRequestData> {
     const result = await apiClient.post<RideEnvelope>(`/rides/${rideId}/accept`, {}, { token: accessToken });
-    if (!result.ok) throw new Error(result.message ?? "Failed to accept ride request.");
+    if (result.ok === false) throw new Error(result.message ?? "Failed to accept ride request.");
     return (result.data as RideEnvelope).data;
   },
 
   async completeRide(accessToken: string, rideId: string): Promise<RideRequestData> {
     const result = await apiClient.post<RideEnvelope>(`/rides/${rideId}/complete`, {}, { token: accessToken });
-    if (!result.ok) throw new Error(result.message ?? "Failed to complete ride.");
+    if (result.ok === false) throw new Error(result.message ?? "Failed to complete ride.");
     return (result.data as RideEnvelope).data;
   },
 
   async markEnRoute(accessToken: string, rideId: string): Promise<RideRequestData> {
     const result = await apiClient.post<RideEnvelope>(`/rides/${rideId}/en-route`, {}, { token: accessToken });
-    if (!result.ok) throw new Error(result.message ?? "Failed to mark ride en-route.");
+    if (result.ok === false) throw new Error(result.message ?? "Failed to mark ride en-route.");
     return (result.data as RideEnvelope).data;
   },
 
   async markArrived(accessToken: string, rideId: string): Promise<RideRequestData> {
     const result = await apiClient.post<RideEnvelope>(`/rides/${rideId}/arrived`, {}, { token: accessToken });
-    if (!result.ok) throw new Error(result.message ?? "Failed to mark arrival.");
+    if (result.ok === false) throw new Error(result.message ?? "Failed to mark arrival.");
     return (result.data as RideEnvelope).data;
   },
 
   async startRide(accessToken: string, rideId: string): Promise<RideRequestData> {
     const result = await apiClient.post<RideEnvelope>(`/rides/${rideId}/start`, {}, { token: accessToken });
-    if (!result.ok) throw new Error(result.message ?? "Failed to start ride.");
+    if (result.ok === false) throw new Error(result.message ?? "Failed to start ride.");
     return (result.data as RideEnvelope).data;
   },
 
@@ -149,14 +149,14 @@ export const ridesService = {
     const body: { reason?: string } = {};
     if (reason) body.reason = reason;
     const result = await apiClient.post<RideEnvelope>(`/rides/${rideId}/cancel-accepted`, body, { token: accessToken });
-    if (!result.ok) throw new Error(result.message ?? "Failed to cancel ride.");
+    if (result.ok === false) throw new Error(result.message ?? "Failed to cancel ride.");
     return (result.data as RideEnvelope).data;
   },
 
   async listDriverRides(accessToken: string): Promise<DriverRideData[]> {
     type DriverRidesEnvelope = { ok: true; data: DriverRideData[]; statusCode: number };
     const result = await apiClient.get<DriverRidesEnvelope>("/rides/driver/me", { token: accessToken });
-    if (!result.ok) throw new Error(result.message ?? "Failed to load driver rides.");
+    if (result.ok === false) throw new Error(result.message ?? "Failed to load driver rides.");
     return (result.data as DriverRidesEnvelope).data;
   },
 
@@ -165,7 +165,7 @@ export const ridesService = {
     const body: { rating: number; comment?: string } = { rating };
     if (comment) body.comment = comment;
     const result = await apiClient.post<RatingEnvelope>(`/rides/${rideId}/rate`, body, { token: accessToken });
-    if (!result.ok) throw new Error(result.message ?? "Failed to submit rating.");
+    if (result.ok === false) throw new Error(result.message ?? "Failed to submit rating.");
     return (result.data as RatingEnvelope).data;
   },
 };

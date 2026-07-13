@@ -477,3 +477,31 @@ Conclusión:
 API build y API tests están OK, pero mobile build oficial falla.
 Estado global de la rama: NO APTO PARA MERGE hasta corregir o documentar deuda mobile.
 
+
+## FASE 1 — Mobile ApiResponse narrowing
+
+Se corrigió el patrón de narrowing de ApiResponse/AuthResponse en servicios mobile.
+
+Cambio aplicado:
+- Se reemplazó if (!result.ok) por if (result.ok === false) en servicios donde TypeScript no estaba discriminando correctamente la unión ApiResponse.
+
+Archivos principales:
+- apps/mobile/src/services/api/apiClient.ts
+- apps/mobile/src/features/auth/auth.service.ts
+- apps/mobile/src/features/admin/admin.service.ts
+- apps/mobile/src/features/rides/rides.service.ts
+- apps/mobile/src/features/profile/profile.service.ts
+- apps/mobile/src/features/documents/documents.service.ts
+- apps/mobile/src/features/referrals/referrals.service.ts
+
+Evidencia:
+- docs/security/evidence/128_patch_mobile_explicit_ok_narrowing.diff
+- docs/security/evidence/129_build_mobile_after_ok_narrowing.txt
+
+Resultado:
+- Se reducen errores repetidos de ApiResponse.message/code.
+- Mobile build todavía falla por errores específicos en páginas grandes: driver, passenger, RequestRidePage, TripsPage, apply y admin/legal.
+
+Estado:
+PARCIAL. Mobile sigue pendiente.
+

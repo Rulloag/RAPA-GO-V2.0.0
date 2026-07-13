@@ -13,7 +13,7 @@ import type { LoginRequest, RegisterRequest } from "./auth.types.js";
 export const authService = {
   async login(payload: LoginRequest): Promise<AuthResponse> {
     const result = await apiClient.post<AuthResponse>("/auth/login", payload);
-    if (!result.ok) {
+    if (result.ok === false) {
       return { ok: false, code: result.code, message: result.message };
     }
     // Backend returns the AuthResponse shape directly (not nested under data)
@@ -22,7 +22,7 @@ export const authService = {
 
   async register(payload: RegisterRequest): Promise<AuthResponse> {
     const result = await apiClient.post<AuthResponse>("/auth/register", payload);
-    if (!result.ok) {
+    if (result.ok === false) {
       return { ok: false, code: result.code, message: result.message };
     }
     return result.data;
@@ -34,7 +34,7 @@ export const authService = {
 
   async me(accessToken: string): Promise<AuthResponse> {
     const result = await apiClient.get<AuthResponse>("/auth/me", { token: accessToken });
-    if (!result.ok) {
+    if (result.ok === false) {
       return { ok: false, code: result.code, message: result.message };
     }
     return result.data;

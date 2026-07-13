@@ -492,7 +492,7 @@ export function LoginPage(): JSX.Element {
     try {
       const result = await login(parsed.data);
 
-      if (!result.ok) {
+      if (result.ok === false) {
         setServerError(result.message ?? "Correo o contraseña incorrectos.");
         return;
       }
