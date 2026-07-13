@@ -290,6 +290,38 @@ export class RidesRepository {
   }
 
   /**
+   * Atomically cancel a ride as a driver-confirmed no-show, only when status='driver_arrived'
+   * AND the driver matches. Returns null if no row was updated (already cancelled/started by
+   * a concurrent request, or driver mismatch) — this is what makes "no-show no registrado
+   * anteriormente" and "prevención de doble cargo" enforceable at the DB level, not just in
+   * application code.
+   */
+  async cancelNoShow(id: string, driverUserId: string): Promise<RideRequest | null> {
+    try {
+      const rows = await db
+        .update(rideRequests)
+        .set({
+          status: "cancelled",
+          cancelledAt: new Date(),
+          cancelledByUserId: driverUserId,
+          cancelledByRole: "driver_no_show",
+          cancellationReason: "Confirmado por conductor: pasajero no se presentó.",
+          updatedAt: new Date(),
+        })
+        .where(and(
+          eq(rideRequests.id, id),
+          eq(rideRequests.status, "driver_arrived"),
+          eq(rideRequests.driverUserId, driverUserId),
+        ))
+        .returning();
+      return rows[0] ?? null;
+    } catch (err) {
+      if (err instanceof AppError) throw err;
+      throw AppError.internal(`Failed to cancel ride as no-show: ${String(err)}`);
+    }
+  }
+
+  /**
    * Atomically cancel a ride only when it is still in 'accepted' status.
    * Returns null if no row was updated (status changed concurrently).
    */

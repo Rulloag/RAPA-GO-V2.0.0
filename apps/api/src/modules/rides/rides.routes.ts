@@ -1,5 +1,6 @@
 import type { FastifyInstance } from "fastify";
 import { ridesController } from "./rides.controller.js";
+import { noShowController } from "./noShow.controller.js";
 import { requireLegalAcceptance } from "../../shared/middleware/requireLegalAcceptance.js";
 
 const legalCheck = requireLegalAcceptance([
@@ -25,4 +26,7 @@ export async function ridesRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.post("/:id/complete", ridesController.completeRide);
   fastify.post("/:id/cancel", ridesController.cancelRideRequest);
   fastify.post("/:id/cancel-accepted", ridesController.cancelAcceptedRide);
+
+  // Fase 4B: flujo autoritativo de no-show, separado del controller principal de rides.
+  fastify.post("/:id/no-show", noShowController.confirmNoShow);
 }
