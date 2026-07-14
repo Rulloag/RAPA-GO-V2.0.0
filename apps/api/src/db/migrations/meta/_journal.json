@@ -134,6 +134,13 @@
       "when": 1784052428697,
       "tag": "0018_flippant_joshua_kane",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1784054918610,
+      "tag": "0019_reconcile_legacy_payments_columns",
+      "breakpoints": true
     }
   ]
 }

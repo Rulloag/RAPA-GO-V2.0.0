@@ -12,6 +12,14 @@
 import { rideRequests } from "./rides.schema.js";
 import { users } from "./users.schema.js";
 
+/**
+ * NOTA (Fase 6): además de los índices declarados abajo, la tabla real tiene un índice único
+ * PARCIAL `payments_ride_active_idx` (ride_request_id, WHERE status IN ('pending','processing'))
+ * que impide más de un pago activo simultáneo por viaje. No se modela aquí porque el helper
+ * `index()` de Drizzle no soporta `.where()` en la versión usada por este proyecto — se versiona
+ * directamente en apps/api/src/db/migrations/0019_reconcile_legacy_payments_columns.sql. Cualquier
+ * cambio a esa regla debe actualizarse en ambos lugares.
+ */
 export const payments = pgTable(
   "payments",
   {
