@@ -5422,8 +5422,10 @@ export default function RequestRidePage(): JSX.Element {
           airportReservationRequiresCard: isAirportScheduledRide,
           reservationRequiresCard: reservationRequiresCard,
           paymentRequiredProvider: isAirportScheduledRide ? "mercadopago" : null,
+          // Esta rama solo se alcanza cuando activePaymentMethod !== "card" (el caso "card" ya
+          // retornó antes, ver el bloque isPassengerRolePermissionMessage más arriba).
           cardCancellationCreditToWallet: false,
-          cardCancellationAdminReviewRequired: reservationRequiresCard && String(activePaymentMethod) === "card",
+          cardCancellationAdminReviewRequired: false,
           cardCancellationCreditName: null,
         } as LocalPassengerRideData;
 

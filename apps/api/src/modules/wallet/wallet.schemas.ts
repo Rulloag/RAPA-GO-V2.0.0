@@ -3,8 +3,9 @@ import { z } from "zod";
 export const createPaymentOrderSchema = z.object({
   rideId: z.string().uuid(),
 
-  // Compatibilidad temporal: el frontend puede enviarlo, pero el backend lo ignora.
-  // La fuente de verdad del monto es ride_requests.estimated_fare_clp.
+  // NOTA DE SEGURIDAD: compatibilidad temporal con el cliente móvil. WalletService.
+  // createPaymentOrder NUNCA usa este valor como monto autoritativo — el monto real
+  // siempre se recalcula desde ride_requests.estimated_fare_clp en el servidor.
   amount: z.number().int().positive().optional(),
 });
 

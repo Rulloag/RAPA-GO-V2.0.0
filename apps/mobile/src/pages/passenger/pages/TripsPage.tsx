@@ -290,8 +290,8 @@ function readPassengerDriverArrivedTimerMap(): Record<string, number> {
 
     return Object.fromEntries(
       Object.entries(parsed)
-        .map(([key, value]) => [key, Number(value)] as const)
-        .filter((entry): entry is readonly [string, number] => Number.isFinite(entry[1]) && entry[1] > 0),
+        .map(([key, value]): [string, number] => [key, Number(value)])
+        .filter(([, value]) => Number.isFinite(value) && value > 0),
     );
   } catch {
     return {};
@@ -462,8 +462,8 @@ function readPassengerDriverAcceptedTimerMap(): Record<string, number> {
 
     return Object.fromEntries(
       Object.entries(parsed)
-        .map(([key, value]) => [key, Number(value)] as const)
-        .filter((entry): entry is readonly [string, number] => Number.isFinite(entry[1]) && entry[1] > 0),
+        .map(([key, value]): [string, number] => [key, Number(value)])
+        .filter(([, value]) => Number.isFinite(value) && value > 0),
     );
   } catch {
     return {};

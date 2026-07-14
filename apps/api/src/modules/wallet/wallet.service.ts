@@ -14,6 +14,18 @@ const sessionService = new SessionService();
 const usersRepo      = new UsersRepository();
 const walletRepo     = new WalletRepository();
 
+// Mismo conjunto que PAYMENT_ALLOWED_RIDE_STATUSES en payments.service.ts.
+const PAYMENT_ORDER_ALLOWED_RIDE_STATUSES = new Set([
+  "requested",
+  "scheduled",
+  "driver_scheduled",
+  "accepted",
+  "driver_en_route",
+  "driver_arrived",
+  "in_progress",
+  "completed",
+]);
+
 type AuthResult =
   | { ok: true; userId: string; role: string }
   | { ok: false; code: string; message: string; statusCode: number };
@@ -116,21 +128,48 @@ export class WalletService {
       return { ok: false as const, code: "AUTH_FORBIDDEN", message: "Ride does not belong to you.", statusCode: 403 };
     }
 
-    const amountFromRide = Math.round(Number(ride.estimatedFareClp ?? 0));
-
-    if (!Number.isFinite(amountFromRide) || amountFromRide <= 0) {
+    if (!PAYMENT_ORDER_ALLOWED_RIDE_STATUSES.has(String(ride.status ?? ""))) {
       return {
         ok: false as const,
-        code: "PAYMENT_INVALID_AMOUNT",
-        message: "Ride has no valid fare amount.",
-        statusCode: 422,
+        code: "PAYMENT_RIDE_STATUS_NOT_ALLOWED",
+        message: "Payment order can only be created for an active, scheduled, in-progress or completed ride.",
+        statusCode: 409,
       };
+    }
+
+    // SEGURIDAD: el monto autoritativo siempre es la tarifa calculada en el servidor para
+    // el viaje (ride.estimatedFareClp). input.amount NUNCA se usa como precio — solo se
+    // registra como discrepancia de auditoría si difiere, sin bloquear la orden.
+    const authoritativeAmount = ride.estimatedFareClp;
+    if (!Number.isFinite(authoritativeAmount) || authoritativeAmount === null || authoritativeAmount <= 0) {
+      return { ok: false as const, code: "INVALID_RIDE_FARE", message: "Ride has no valid fare.", statusCode: 409 };
+    }
+
+    const clientAmount = Number(input.amount);
+    if (Number.isFinite(clientAmount) && clientAmount > 0 && clientAmount !== authoritativeAmount) {
+      try {
+        const auditService = new (
+          await import("../audit/audit.service.js")
+        ).AuditService();
+
+        auditService.recordSafe({
+          actorUserId: auth.userId,
+          eventType: "wallet.payment_order_amount_mismatch",
+          metadata: {
+            clientAmountClp: clientAmount,
+            serverAmountClp: authoritativeAmount,
+            rideId: input.rideId,
+          },
+        });
+      } catch {
+        // No bloquea la creación de la orden si el audit log falla.
+      }
     }
 
     const order = await walletRepo.createPaymentOrder({
       userId:   auth.userId,
       rideId:   input.rideId,
-      amount:   amountFromRide,
+      amount:   authoritativeAmount,
       currency: "CLP",
       status:   "pending",
       metadata: {
