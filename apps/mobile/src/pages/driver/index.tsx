@@ -85,15 +85,24 @@ function getRapaGoConnectivityProbeUrl(): string {
   const env = import.meta.env as Record<string, string | undefined>;
   const raw = String(env.VITE_API_BASE_URL || env.VITE_API_URL || "/api").trim();
 
-  if (!raw || raw === "/") return "/api/health";
+  if (!raw || raw === "/" || raw === "/api") return "/health";
 
   if (/^https?:\/\//i.test(raw)) {
-    const base = raw.replace(/\/api\/?$/i, "").replace(/\/+$/, "");
-    return `${base}/api/health`;
+    try {
+      const url = new URL(raw);
+      const cleanPath = url.pathname.replace(/\/api\/?$/i, "").replace(/\/+$/, "");
+      url.pathname = `${cleanPath || ""}/health`;
+      url.search = "";
+      url.hash = "";
+      return url.toString();
+    } catch {
+      const base = raw.replace(/\/api\/?$/i, "").replace(/\/+$/, "");
+      return `${base}/health`;
+    }
   }
 
-  const clean = raw.replace(/\/+$/, "");
-  return clean.endsWith("/api") ? `${clean}/health` : `${clean}/api/health`;
+  const clean = raw.replace(/\/api\/?$/i, "").replace(/\/+$/, "");
+  return `${clean || ""}/health`;
 }
 
 function getBrowserNetworkInfo(): {
@@ -589,6 +598,27 @@ function getCleanRideNote(notes: string | null | undefined): string | null {
 
 function openGoogleNavigation(
   origin: { lat: number; lng: number } | null,
+  destination: { lat: number; lng: number },
+): void {
+  try {
+    window.dispatchEvent(
+      new CustomEvent("rapago:driver-internal-navigation-requested", {
+        detail: {
+          origin,
+          destination,
+          source: "driver_internal_map",
+        },
+      }),
+    );
+  } catch {
+    // No bloquea la navegaci?n interna.
+  }
+
+  console.info("[RAPA GO] Navegaci?n externa bloqueada. Se mantiene mapa interno.", {
+    origin,
+    destination,
+  });
+} | null,
   destination: { lat: number; lng: number },
 ): void {
   const destinationParam = `${destination.lat},${destination.lng}`;
@@ -7397,13 +7427,26 @@ type DriverPassengerCancelledRideRecord = {
 function isRidePassengerCancelledForDriver(ride: Record<string, unknown>): boolean {
   const status = normalizeDriverRideIdentityValue(ride.status);
   const cancelledByRole = normalizeDriverRideIdentityValue(ride.cancelledByRole ?? ride.cancelledBy);
-  const cancellationReason = normalizeDriverRideIdentityValue(ride.cancellationReason ?? ride.cancelReason ?? ride.reason);
+  const cancellationReason = normalizeDriverRideIdentityValue(
+    ride.cancellationReason ?? ride.cancelReason ?? ride.reason,
+  );
+
+  const driverNoShowOrDriverCancel =
+    cancelledByRole.includes("driver") ||
+    cancelledByRole.includes("conductor") ||
+    cancelledByRole.includes("no show") ||
+    cancelledByRole.includes("no_show") ||
+    cancellationReason.includes("no show") ||
+    cancellationReason.includes("no_show") ||
+    cancellationReason.includes("conductor") ||
+    cancellationReason.includes("driver");
+
+  if (driverNoShowOrDriverCancel) return false;
 
   return (
-    status === "cancelled" ||
-    status === "canceled" ||
     status === "passenger_cancelled" ||
     status === "cancelled_by_passenger" ||
+    status === "canceled_by_passenger" ||
     cancelledByRole.includes("passenger") ||
     cancelledByRole.includes("pasajero") ||
     cancellationReason.includes("cancelado por pasajero") ||
@@ -7527,7 +7570,7 @@ function driverRideMatchesPassengerCancelledRecord(
 }
 
 function findPassengerCancelledRideForDriver(ride: Record<string, unknown>): Record<string, unknown> | null {
-  if (isRidePassengerCancelledForDriver(ride) || wasDriverRidePassengerCancelledLocally(ride)) return ride;
+  if (isRidePassengerCancelledForDriver(ride)) return ride;
 
   return (
     readPassengerCancelledRideRecordsForDriver().find((cancelledRide) =>
@@ -7609,10 +7652,17 @@ function removeDriverRideAfterPassengerCancel(cancelledRide: Record<string, unkn
   } catch {
     // No bloquea el retiro visual.
   }
+  window.dispatchEvent(
+    new CustomEvent("rapago:driver-rides-updated", {
+      detail: { removedAfterPassengerCancel: true },
+    }),
+  );
 
-  window.dispatchEvent(new CustomEvent(RAPAGO_PASSENGER_CANCELLED_RIDE_EVENT, { detail: { cancelled: cancelledRide } }));
-  window.dispatchEvent(new CustomEvent("rapago:driver-rides-updated", { detail: { cancelled: cancelledRide } }));
-  window.dispatchEvent(new CustomEvent("rapago:driver-available-rides-updated", { detail: { cancelled: cancelledRide } }));
+  window.dispatchEvent(
+    new CustomEvent("rapago:driver-available-rides-updated", {
+      detail: { removedAfterPassengerCancel: true },
+    }),
+  );
 }
 
 
@@ -8745,9 +8795,9 @@ function notifyPassengerDriverArrivedByAppAndWhatsapp(ride: DriverRideData): voi
     const url = buildDriverArrivedWhatsappUrl(ride, feeClp);
     if (url) {
       try {
-        window.open(url, "_blank", "noopener,noreferrer");
+        localStorage.setItem("rapago_driver_last_arrived_whatsapp_url", url);
       } catch {
-        // Si el navegador bloquea popups, queda al menos el aviso por app.
+        // Queda al menos el aviso por app.
       }
     }
   }
