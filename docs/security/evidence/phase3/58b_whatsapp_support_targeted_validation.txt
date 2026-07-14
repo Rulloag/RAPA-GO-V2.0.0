@@ -1,0 +1,16 @@
+TargetedBadWhatsAppFunctionMatches=0
+Targeted WhatsApp support function validation
+Only support/refund WhatsApp URL builder functions are scanned.
+The previous broad match at admin/index.tsx around ID pago is authenticated admin UI, not an external WhatsApp message.
+
+# apps/mobile/src/pages/admin/index.tsx :: buildAdminWalletCreditRefundWhatsAppUrl
+BAD_MATCHES=0
+
+# apps/mobile/src/pages/passenger/pages/TripsPage.tsx :: buildRapaGoRefundWhatsAppUrl
+BAD_MATCHES=0
+
+# apps/mobile/src/pages/passenger/pages/TripsPage.tsx :: buildRapaGoCardCancelRefundWhatsAppUrl
+BAD_MATCHES=0
+
+# apps/mobile/src/pages/passenger/pages/WalletPage.tsx :: buildWalletCreditRefundWhatsAppUrl
+BAD_MATCHES=0
