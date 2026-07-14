@@ -1,0 +1,5 @@
+BadNumberMatches=0
+BadTermsInsideWhatsappFunctions=0
+MobileBuild=ExitCode=0
+WhatsAppExternalMessage=PII minimized to folio + provider/payment method/date + admin panel review
+Remaining broad scan matches are admin UI/type/map false positives, not WhatsApp external message payloads

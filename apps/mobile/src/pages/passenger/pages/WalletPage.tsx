@@ -158,19 +158,43 @@ function isWalletCardCancellationCredit(benefit: LocalWalletBenefit): boolean {
   );
 }
 
+function normalizeWalletSupportWhatsAppPhone(phone: string): string {
+  const digits = String(phone ?? "").replace(/\D/g, "");
+  return digits.length >= 8 && digits.length <= 15 ? digits : "56947964171";
+}
+
+function buildWalletSupportFolio(benefits: LocalWalletBenefit[]): string {
+  const raw = benefits
+    .map((benefit) => {
+      const record = benefit as LocalWalletBenefit & Record<string, unknown>;
+      return [record["id"], record["rideId"], record["paymentId"], record["createdAt"], record["source"]]
+        .map((value) => String(value ?? "").trim())
+        .filter(Boolean)
+        .join("|");
+    })
+    .filter(Boolean)
+    .join("||");
+
+  let hash = 0;
+  for (let i = 0; i < raw.length; i += 1) {
+    hash = (hash * 31 + raw.charCodeAt(i)) | 0;
+  }
+  return `RPG-${Math.abs(hash).toString(36).toUpperCase().padStart(6, "0").slice(0, 6)}`;
+}
+
 function buildWalletCreditRefundWhatsAppUrl(benefits: LocalWalletBenefit[]): string {
-  const total = benefits.reduce((sum, benefit) => sum + Math.max(0, Math.round(Number(benefit.amountClp ?? 0))), 0);
+  const phone = normalizeWalletSupportWhatsAppPhone(RAPAGO_SUPPORT_WHATSAPP_PHONE);
+  const folio = buildWalletSupportFolio(benefits);
+  const count = benefits.length;
+
   const lines = [
-    "Hola Soporte RAPA GO, quiero gestionar la devolución de mis CRÉDITOS PARA PRÓXIMO VIAJE por cancelación con tarjeta.",
-    `Monto CRÉDITOS PARA PRÓXIMO VIAJE: ${formatWalletClp(total)}`,
-    benefits[0]?.originText || benefits[0]?.destinationText
-      ? `Viaje: ${benefits[0]?.originText ?? "Origen"} → ${benefits[0]?.destinationText ?? "Destino"}`
-      : null,
-    benefits[0]?.paymentId ? `ID pago: ${benefits[0].paymentId}` : null,
-    "No entregaré claves ni datos de tarjeta. Quiero coordinarlo por el canal oficial.",
+    "Soporte RAPA GO: solicitud de revision de credito/devolucion.",
+    `Folio: ${folio}`,
+    count > 1 ? `Solicitudes: ${count}` : null,
+    "Revisar detalle en panel admin autenticado.",
   ].filter(Boolean);
 
-  return `https://wa.me/${RAPAGO_SUPPORT_WHATSAPP_PHONE}?text=${encodeURIComponent(lines.join("\n"))}`;
+  return `https://wa.me/${phone}?text=${encodeURIComponent(lines.join("\n"))}`;
 }
 
 function openWalletCreditRefundWhatsApp(benefits: LocalWalletBenefit[]): void {
