@@ -1850,8 +1850,8 @@ function buildPassengerCancelledRide(ride: RideRequestData): RideRequestData {
     passengerPendingChargeNotice:
       policy.feeClp > 0
         ? isCardPayment
-          ? `La penalización de ${formatClp(policy.feeClp)} se descuenta automáticamente del pago realizado. El saldo restante queda como CRÉDITOS PARA PRÓXIMO VIAJE en tu billetera.`
-          : `Tienes un cargo pendiente de ${formatClp(policy.feeClp)}. Se sumará automáticamente a tu próximo viaje.`
+          ? `La penalización de ${formatClp(policy.feeClp)} queda sujeto a revision segura del backend/admin. El frontend no crea creditos locales.`
+          : `Tienes un cargo pendiente de ${formatClp(policy.feeClp)}. Debe ser revisado y aplicado por backend/admin.`
         : null,
     // Si el viaje fue pagado con tarjeta, el reembolso real debe ejecutarlo el backend
     // usando el paymentId del proveedor. El frontend solo deja la solicitud marcada
@@ -6311,10 +6311,10 @@ function buildPassengerCancellationAlertMessage(
     : false;
 
   if (isCardPayment) {
-    return `${policy.message} ${policy.detail} Si confirmas, cancelaremos el viaje y podrás gestionar la devolución segura con RAPA GO por WhatsApp. El cargo de ${formatClp(policy.feeClp)} se sumará automáticamente a tu próximo viaje como cobro separado. ¿Confirmas cancelar?`;
+    return `${policy.message} ${policy.detail} Si confirmas, cancelaremos el viaje y podrás gestionar la devolución segura con RAPA GO por WhatsApp. El cargo de ${formatClp(policy.feeClp)} queda sujeto a revision y aplicacion por backend/admin. ¿Confirmas cancelar?`;
   }
 
-  return `${policy.message} ${policy.detail} Si confirmas, el cargo de ${formatClp(policy.feeClp)} se sumará automáticamente a tu próximo viaje. ¿Confirmas cancelar?`;
+  return `${policy.message} ${policy.detail} Si confirmas, el cargo de ${formatClp(policy.feeClp)} queda sujeto a revision y aplicacion por backend/admin. ¿Confirmas cancelar?`;
 }
 
 function PassengerRideCard({
@@ -6519,7 +6519,7 @@ function PassengerRideCard({
               }}
             >
               ⚠️ Revision backend pendiente: <strong>{formatClp(passengerCancelledChargeClp)}</strong>.
-              <br />Este monto se sumará automáticamente a cualquier próximo viaje que solicites.
+              <br />El backend/admin debe confirmar y aplicar cualquier cobro. Esta pantalla no crea cargos locales.
               {passengerCancelledCardRefundNotice && (
                 <>
                   <br /><span style={{ fontSize: ".76rem" }}>{passengerCancelledCardRefundNotice}</span>
