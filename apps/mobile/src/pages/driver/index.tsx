@@ -162,10 +162,10 @@ function getRapaGoConnectivityMessage(
 
   if (role === "driver") {
     if (status === "offline") {
-      return "Sin internet: quedaste No disponible. Busca una zona con conexión para volver a recibir viajes reales.";
+      return "Sin internet. Para proteger tus viajes quedaste No disponible. Busca una zona con conexión y luego vuelve a activar Disponible.";
     }
 
-    return "Conexión baja: quedaste No disponible para evitar viajes fallidos. Busca una zona con mejor internet para volver a estar disponible.";
+    return "Señal baja. Para evitar viajes fallidos quedaste No disponible. Busca una zona con mejor internet y vuelve a activar Disponible.";
   }
 
   if (role === "admin") {
@@ -271,58 +271,33 @@ function RapaGoConnectivityBanner({
   const isOffline = status === "offline";
 
   return (
-    <IonCard
-      style={{
-        margin: "0 0 14px",
-        borderRadius: "20px",
-        background: isChecking
-          ? "linear-gradient(135deg,#1f2937,#334155)"
-          : isOffline
-            ? "linear-gradient(135deg,#2A1A18,#7f1d1d)"
-            : "linear-gradient(135deg,#2A1A18,#8F3F25)",
-        color: "#ffffff",
-        border: "1px solid rgba(255,255,255,.12)",
-        boxShadow: "0 16px 34px rgba(0,0,0,.24)",
-        ...style,
-      }}
+    <div
+      className={`rapago-connectivity-banner ${
+        isChecking ? "is-checking" : isOffline ? "is-offline" : "is-poor"
+      }`}
+      style={style}
+      role="status"
+      aria-live="polite"
     >
-      <IonCardContent
-        style={{
-          padding: "13px 14px",
-          display: "grid",
-          gridTemplateColumns: "38px 1fr",
-          gap: 11,
-          alignItems: "center",
-        }}
-      >
-        <div
-          style={{
-            width: 38,
-            height: 38,
-            borderRadius: 999,
-            background: isChecking ? "rgba(255,255,255,.14)" : "rgba(245,158,11,.20)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            fontSize: "1.25rem",
-            fontWeight: 950,
-          }}
-        >
-          {isChecking ? "…" : isOffline ? "⌁" : "!"}
+      <div className="rapago-connectivity-banner__icon" aria-hidden="true">
+        {isChecking ? "…" : isOffline ? "⌁" : "!"}
+      </div>
+
+      <div className="rapago-connectivity-banner__copy">
+        <div className="rapago-connectivity-banner__title">
+          {isChecking
+            ? "Revisando conexión"
+            : isOffline
+              ? "Modo sin internet"
+              : "Modo conexión baja"}
         </div>
-        <div style={{ minWidth: 0 }}>
-          <div style={{ fontWeight: 950, fontSize: ".92rem" }}>
-            {isChecking ? "Revisando conexión" : isOffline ? "Modo sin internet" : "Modo conexión baja"}
-          </div>
-          <div style={{ marginTop: 3, fontSize: ".78rem", fontWeight: 800, lineHeight: 1.35, opacity: .9 }}>
-            {getRapaGoConnectivityMessage(role, status)}
-          </div>
+        <div className="rapago-connectivity-banner__message">
+          {getRapaGoConnectivityMessage(role, status)}
         </div>
-      </IonCardContent>
-    </IonCard>
+      </div>
+    </div>
   );
 }
-
 
 
 function StarRatingInput({
@@ -3092,6 +3067,771 @@ function saveDriverAvailability(
   );
 }
 
+const DRIVER_HOME_STYLES = String.raw`
+  .driver-home-page {
+    --driver-ink: #171412;
+    --driver-volcanic: #1a1a1a;
+    --driver-gold: #c89b3c;
+    --driver-gold-soft: #e8c86d;
+    --driver-sand: #d9c3a0;
+    --driver-ivory: #fffaf0;
+    --driver-terracotta: #b84f2e;
+    --driver-green: #138a4a;
+    --driver-red: #b42318;
+  }
+
+  .driver-home-toolbar {
+    --background: linear-gradient(115deg, #171412 0%, #2d2119 54%, #a63f25 100%) !important;
+    --color: #fffaf0 !important;
+    --border-width: 0 !important;
+    --min-height: 72px !important;
+    border-bottom: 1px solid rgba(232, 200, 109, 0.34) !important;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.24);
+  }
+
+  .driver-home-toolbar ion-title {
+    color: #fffaf0 !important;
+    padding-inline: 18px 110px !important;
+  }
+
+  .driver-home-brand {
+    display: flex;
+    align-items: center;
+    gap: 11px;
+    min-width: 0;
+  }
+
+  .driver-home-brand__mark {
+    width: 42px;
+    height: 42px;
+    border-radius: 15px;
+    display: grid;
+    place-items: center;
+    flex: 0 0 auto;
+    background: linear-gradient(145deg, #e8c86d, #c89b3c);
+    color: #171412;
+    box-shadow: 0 8px 22px rgba(200, 155, 60, 0.32);
+    border: 1px solid rgba(255, 250, 240, 0.45);
+  }
+
+  .driver-home-brand__mark ion-icon {
+    font-size: 23px;
+  }
+
+  .driver-home-brand__text {
+    min-width: 0;
+  }
+
+  .driver-home-brand__title {
+    color: #fffaf0 !important;
+    font-size: 1.08rem;
+    line-height: 1.05;
+    font-weight: 950;
+    letter-spacing: 0.01em;
+  }
+
+  .driver-home-brand__subtitle {
+    margin-top: 3px;
+    color: rgba(255, 250, 240, 0.76) !important;
+    font-size: 0.68rem;
+    line-height: 1;
+    font-weight: 800;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+
+  .driver-home-header-actions {
+    gap: 4px;
+    padding-right: 8px;
+  }
+
+  .driver-home-header-action {
+    width: 43px;
+    height: 43px;
+    margin: 0 !important;
+    --border-radius: 14px !important;
+    --background: rgba(255, 250, 240, 0.11) !important;
+    --background-hover: rgba(255, 250, 240, 0.18) !important;
+    --background-activated: rgba(255, 250, 240, 0.22) !important;
+    --color: #fffaf0 !important;
+    --box-shadow: none !important;
+    border: 1px solid rgba(255, 250, 240, 0.18);
+    border-radius: 14px;
+  }
+
+  .driver-home-header-action ion-icon {
+    color: #fffaf0 !important;
+    font-size: 21px;
+  }
+
+  .driver-home-content {
+    --background:
+      linear-gradient(180deg, rgba(18, 17, 16, 0.82), rgba(18, 17, 16, 0.96)),
+      url('/assets/rapa-go-bg.jpg') center / cover no-repeat fixed !important;
+  }
+
+  .driver-home-content::part(scroll) {
+    padding: 18px 16px calc(108px + env(safe-area-inset-bottom));
+  }
+
+  .driver-home-shell {
+    width: min(100%, 1040px);
+    margin: 0 auto;
+  }
+
+  .rapago-connectivity-banner {
+    position: relative;
+    z-index: 2;
+    width: 100%;
+    min-height: 96px;
+    margin: 4px 0 16px;
+    padding: 16px;
+    display: grid;
+    grid-template-columns: 44px minmax(0, 1fr);
+    gap: 12px;
+    align-items: start;
+    overflow: visible;
+    border-radius: 22px;
+    color: #ffffff !important;
+    border: 1px solid rgba(255, 255, 255, 0.16);
+    box-shadow: 0 16px 34px rgba(0, 0, 0, 0.30);
+  }
+
+  .rapago-connectivity-banner.is-checking {
+    background: linear-gradient(135deg, #1f2937, #334155);
+  }
+
+  .rapago-connectivity-banner.is-offline {
+    background: linear-gradient(135deg, #321a18, #8d1d1d);
+  }
+
+  .rapago-connectivity-banner.is-poor {
+    background: linear-gradient(135deg, #352019, #9a4828);
+  }
+
+  .rapago-connectivity-banner__icon {
+    width: 44px;
+    height: 44px;
+    border-radius: 15px;
+    display: grid;
+    place-items: center;
+    background: rgba(255, 255, 255, 0.14);
+    color: #ffffff !important;
+    font-size: 1.2rem;
+    font-weight: 950;
+  }
+
+  .rapago-connectivity-banner__copy,
+  .rapago-connectivity-banner__title,
+  .rapago-connectivity-banner__message {
+    color: #ffffff !important;
+  }
+
+  .rapago-connectivity-banner__title {
+    font-size: 0.98rem;
+    line-height: 1.2;
+    font-weight: 950;
+  }
+
+  .rapago-connectivity-banner__message {
+    margin-top: 6px;
+    font-size: 0.82rem;
+    line-height: 1.46;
+    font-weight: 800;
+    opacity: 1;
+    overflow-wrap: anywhere;
+  }
+
+  .driver-availability-panel {
+    margin-bottom: 15px;
+    padding: 15px;
+    border-radius: 24px;
+    color: #171412;
+    background: linear-gradient(145deg, #fffdf7 0%, #f5ead8 100%);
+    border: 1px solid rgba(200, 155, 60, 0.35);
+    box-shadow: 0 18px 42px rgba(0, 0, 0, 0.24);
+  }
+
+  .driver-availability-panel__header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 12px;
+  }
+
+  .driver-availability-panel__eyebrow {
+    color: #775a24;
+    font-size: 0.68rem;
+    line-height: 1;
+    font-weight: 950;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+
+  .driver-availability-panel__title {
+    margin-top: 4px;
+    color: #171412;
+    font-size: 1rem;
+    line-height: 1.1;
+    font-weight: 950;
+  }
+
+  .driver-availability-panel__status {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    padding: 7px 10px;
+    flex: 0 0 auto;
+    border-radius: 999px;
+    color: #171412;
+    background: rgba(255, 255, 255, 0.72);
+    border: 1px solid rgba(23, 20, 18, 0.1);
+    font-size: 0.7rem;
+    font-weight: 950;
+  }
+
+  .driver-availability-panel__dot {
+    width: 9px;
+    height: 9px;
+    border-radius: 999px;
+  }
+
+  .driver-availability-panel__dot.is-available {
+    background: #16a45b;
+    box-shadow: 0 0 0 5px rgba(22, 164, 91, 0.14);
+  }
+
+  .driver-availability-panel__dot.is-unavailable {
+    background: #d13c30;
+    box-shadow: 0 0 0 5px rgba(209, 60, 48, 0.14);
+  }
+
+  .driver-availability-panel__grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+  }
+
+  .driver-availability-button {
+    min-height: 50px;
+    padding: 10px 12px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    border-radius: 16px;
+    border: 1px solid rgba(23, 20, 18, 0.12);
+    font: inherit;
+    font-size: 0.88rem;
+    font-weight: 950;
+    line-height: 1.1;
+    cursor: pointer;
+    transition: transform 160ms ease, box-shadow 160ms ease, background 160ms ease;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  .driver-availability-button:active {
+    transform: scale(0.985);
+  }
+
+  .driver-availability-button.is-inactive {
+    color: #332d28;
+    background: #ffffff;
+    box-shadow: inset 0 0 0 1px rgba(200, 155, 60, 0.08);
+  }
+
+  .driver-availability-button.is-active.is-available {
+    color: #ffffff;
+    background: linear-gradient(135deg, #149b50, #0c743b);
+    border-color: rgba(12, 116, 59, 0.52);
+    box-shadow: 0 10px 24px rgba(20, 155, 80, 0.28);
+  }
+
+  .driver-availability-button.is-active.is-unavailable {
+    color: #ffffff;
+    background: linear-gradient(135deg, #cf3d30, #92271f);
+    border-color: rgba(146, 39, 31, 0.52);
+    box-shadow: 0 10px 24px rgba(180, 35, 24, 0.24);
+  }
+
+  .driver-availability-button ion-icon {
+    color: inherit !important;
+    font-size: 19px;
+  }
+
+  .driver-home-hero {
+    position: relative;
+    isolation: isolate;
+    overflow: hidden;
+    min-height: 190px;
+    padding: 20px;
+    border-radius: 28px;
+    color: #fffaf0;
+    background:
+      radial-gradient(circle at 88% 8%, rgba(232, 200, 109, 0.35), transparent 30%),
+      linear-gradient(135deg, #171412 0%, #32251c 54%, #a94429 100%);
+    border: 1px solid rgba(232, 200, 109, 0.34);
+    box-shadow: 0 24px 54px rgba(0, 0, 0, 0.36);
+  }
+
+  .driver-home-hero::before,
+  .driver-home-hero::after {
+    content: '';
+    position: absolute;
+    z-index: -1;
+    border-radius: 999px;
+    pointer-events: none;
+  }
+
+  .driver-home-hero::before {
+    width: 190px;
+    height: 190px;
+    right: -72px;
+    top: -78px;
+    background: rgba(255, 250, 240, 0.09);
+  }
+
+  .driver-home-hero::after {
+    width: 130px;
+    height: 130px;
+    right: 65px;
+    bottom: -88px;
+    background: rgba(200, 155, 60, 0.14);
+  }
+
+  .driver-home-hero__top {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 16px;
+  }
+
+  .driver-home-hero__eyebrow {
+    color: #e8c86d;
+    font-size: 0.7rem;
+    line-height: 1;
+    font-weight: 950;
+    letter-spacing: 0.11em;
+    text-transform: uppercase;
+  }
+
+  .driver-home-hero__title {
+    margin-top: 7px;
+    color: #fffaf0;
+    font-size: clamp(1.45rem, 4.4vw, 2rem);
+    line-height: 1.04;
+    font-weight: 950;
+    letter-spacing: -0.025em;
+  }
+
+  .driver-home-hero__subtitle {
+    max-width: 520px;
+    margin-top: 7px;
+    color: rgba(255, 250, 240, 0.78);
+    font-size: 0.82rem;
+    line-height: 1.4;
+    font-weight: 750;
+  }
+
+  .driver-home-hero__car {
+    width: 58px;
+    height: 58px;
+    display: grid;
+    place-items: center;
+    flex: 0 0 auto;
+    border-radius: 19px;
+    color: #171412;
+    background: linear-gradient(145deg, #f1d77f, #c89b3c);
+    border: 1px solid rgba(255, 250, 240, 0.46);
+    box-shadow: 0 14px 28px rgba(0, 0, 0, 0.25);
+  }
+
+  .driver-home-hero__car ion-icon {
+    color: #171412 !important;
+    font-size: 30px;
+  }
+
+  .driver-home-hero__metrics {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 10px;
+    margin-top: 20px;
+  }
+
+  .driver-home-metric {
+    min-width: 0;
+    padding: 12px;
+    border-radius: 17px;
+    color: #fffaf0;
+    background: rgba(255, 250, 240, 0.1);
+    border: 1px solid rgba(255, 250, 240, 0.15);
+    backdrop-filter: blur(10px);
+  }
+
+  .driver-home-metric__label {
+    color: rgba(255, 250, 240, 0.68);
+    font-size: 0.66rem;
+    line-height: 1;
+    font-weight: 850;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+
+  .driver-home-metric__value {
+    margin-top: 5px;
+    overflow: hidden;
+    color: #fffaf0;
+    font-size: 0.9rem;
+    line-height: 1.15;
+    font-weight: 950;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+
+  .driver-home-section {
+    margin-top: 22px;
+  }
+
+  .driver-home-section__header {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 12px;
+  }
+
+  .driver-home-section__title {
+    margin: 0;
+    color: #fffaf0;
+    font-size: 1.05rem;
+    line-height: 1.1;
+    font-weight: 950;
+    text-shadow: 0 2px 12px rgba(0, 0, 0, 0.65);
+  }
+
+  .driver-home-section__hint {
+    color: rgba(255, 250, 240, 0.62);
+    font-size: 0.7rem;
+    font-weight: 750;
+  }
+
+  .driver-home-actions-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+    gap: 12px;
+  }
+
+  ion-card.driver-home-action-card {
+    position: relative;
+    isolation: isolate;
+    min-height: 150px;
+    margin: 0 !important;
+    overflow: hidden;
+    border-radius: 22px !important;
+    color: #171412 !important;
+    background: linear-gradient(155deg, #fffdf8 0%, #f3e8d7 100%) !important;
+    border: 1px solid rgba(200, 155, 60, 0.28) !important;
+    box-shadow: 0 14px 34px rgba(0, 0, 0, 0.22) !important;
+    transition: transform 170ms ease, box-shadow 170ms ease;
+  }
+
+  ion-card.driver-home-action-card::after {
+    content: '';
+    position: absolute;
+    z-index: -1;
+    width: 90px;
+    height: 90px;
+    right: -34px;
+    top: -36px;
+    border-radius: 999px;
+    background: var(--driver-card-glow, rgba(200, 155, 60, 0.18));
+  }
+
+  ion-card.driver-home-action-card:active {
+    transform: scale(0.985);
+  }
+
+  ion-card.driver-home-action-card ion-card-content {
+    height: 100%;
+    padding: 16px !important;
+    color: #171412 !important;
+  }
+
+  .driver-home-action-card.is-reservations.has-pending {
+    background: linear-gradient(145deg, #fff8dc 0%, #efd486 100%) !important;
+    border-color: rgba(200, 155, 60, 0.66) !important;
+    box-shadow: 0 15px 38px rgba(200, 155, 60, 0.24) !important;
+  }
+
+  .driver-home-action-icon {
+    width: 48px;
+    height: 48px;
+    display: grid;
+    place-items: center;
+    margin-bottom: 13px;
+    border-radius: 16px;
+    color: #ffffff;
+    background: var(--driver-card-accent, #b84f2e);
+    box-shadow: 0 10px 22px var(--driver-card-shadow, rgba(184, 79, 46, 0.24));
+  }
+
+  .driver-home-action-icon ion-icon {
+    color: #ffffff !important;
+    font-size: 25px;
+  }
+
+  .driver-home-action-card.is-reservations.has-pending .driver-home-action-icon {
+    color: #171412;
+    background: #c89b3c;
+  }
+
+  .driver-home-action-card.is-reservations.has-pending .driver-home-action-icon ion-icon {
+    color: #171412 !important;
+  }
+
+  .driver-home-action-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+  }
+
+  .driver-home-action-title {
+    color: #171412 !important;
+    font-size: 0.98rem;
+    line-height: 1.1;
+    font-weight: 950;
+  }
+
+  .driver-home-action-badge {
+    min-width: 28px;
+    height: 28px;
+    display: grid;
+    place-items: center;
+    flex: 0 0 auto;
+    border-radius: 999px;
+    color: #171412;
+    background: #ffffff;
+    border: 1px solid rgba(23, 20, 18, 0.12);
+    font-size: 0.72rem;
+    font-weight: 950;
+    box-shadow: 0 5px 14px rgba(0, 0, 0, 0.12);
+  }
+
+  .driver-home-action-copy {
+    margin-top: 6px;
+    color: rgba(23, 20, 18, 0.68) !important;
+    font-size: 0.75rem;
+    line-height: 1.35;
+    font-weight: 750;
+  }
+
+  .driver-home-cta {
+    margin-top: 18px;
+    padding: 17px;
+    display: grid;
+    grid-template-columns: 48px minmax(0, 1fr) auto;
+    gap: 13px;
+    align-items: center;
+    border-radius: 23px;
+    color: #fffaf0;
+    background: linear-gradient(135deg, #171412 0%, #3b2b20 56%, #a94429 100%);
+    border: 1px solid rgba(232, 200, 109, 0.3);
+    box-shadow: 0 18px 42px rgba(0, 0, 0, 0.28);
+  }
+
+  .driver-home-cta__icon {
+    width: 48px;
+    height: 48px;
+    display: grid;
+    place-items: center;
+    border-radius: 16px;
+    color: #171412;
+    background: linear-gradient(145deg, #e8c86d, #c89b3c);
+  }
+
+  .driver-home-cta__icon ion-icon {
+    color: #171412 !important;
+    font-size: 24px;
+  }
+
+  .driver-home-cta__title {
+    color: #fffaf0;
+    font-size: 0.92rem;
+    line-height: 1.15;
+    font-weight: 950;
+  }
+
+  .driver-home-cta__copy {
+    margin-top: 4px;
+    color: rgba(255, 250, 240, 0.7);
+    font-size: 0.73rem;
+    line-height: 1.35;
+    font-weight: 750;
+  }
+
+  .driver-home-cta__button {
+    min-height: 42px;
+    padding: 9px 15px;
+    border: 0;
+    border-radius: 999px;
+    color: #171412;
+    background: #fffaf0;
+    font: inherit;
+    font-size: 0.78rem;
+    font-weight: 950;
+    cursor: pointer;
+    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.2);
+  }
+
+  @media (hover: hover) {
+    ion-card.driver-home-action-card:hover {
+      transform: translateY(-3px);
+      box-shadow: 0 20px 42px rgba(0, 0, 0, 0.28) !important;
+    }
+
+    .driver-availability-button:hover,
+    .driver-home-cta__button:hover {
+      transform: translateY(-1px);
+    }
+  }
+
+  @media (max-width: 620px) {
+    .rapago-connectivity-banner {
+      min-height: 104px;
+      margin-top: 2px;
+      padding: 15px 14px;
+      grid-template-columns: 42px minmax(0, 1fr);
+      gap: 11px;
+      border-radius: 20px;
+    }
+
+    .rapago-connectivity-banner__icon {
+      width: 42px;
+      height: 42px;
+    }
+
+    .rapago-connectivity-banner__title {
+      font-size: 0.94rem;
+    }
+
+    .rapago-connectivity-banner__message {
+      font-size: 0.8rem;
+      line-height: 1.5;
+    }
+
+    .driver-home-content::part(scroll) {
+      padding: 14px 12px calc(104px + env(safe-area-inset-bottom));
+    }
+
+    .driver-home-toolbar ion-title {
+      padding-inline: 12px 102px !important;
+    }
+
+    .driver-home-brand__mark {
+      width: 39px;
+      height: 39px;
+      border-radius: 14px;
+    }
+
+    .driver-home-brand__title {
+      font-size: 1rem;
+    }
+
+    .driver-home-brand__subtitle {
+      font-size: 0.61rem;
+    }
+
+    .driver-home-header-action {
+      width: 40px;
+      height: 40px;
+    }
+
+    .driver-home-hero {
+      padding: 18px;
+      border-radius: 24px;
+    }
+
+    .driver-home-hero__metrics {
+      grid-template-columns: 1fr 1fr;
+    }
+
+    .driver-home-metric:last-child {
+      grid-column: 1 / -1;
+    }
+
+    .driver-home-actions-grid {
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+
+    ion-card.driver-home-action-card {
+      min-height: 145px;
+      border-radius: 20px !important;
+    }
+
+    ion-card.driver-home-action-card ion-card-content {
+      padding: 14px !important;
+    }
+
+    .driver-home-action-icon {
+      width: 45px;
+      height: 45px;
+      margin-bottom: 12px;
+      border-radius: 15px;
+    }
+
+    .driver-home-action-title {
+      font-size: 0.9rem;
+    }
+
+    .driver-home-action-copy {
+      font-size: 0.69rem;
+    }
+
+    .driver-home-cta {
+      grid-template-columns: 44px minmax(0, 1fr);
+    }
+
+    .driver-home-cta__icon {
+      width: 44px;
+      height: 44px;
+    }
+
+    .driver-home-cta__button {
+      grid-column: 1 / -1;
+      width: 100%;
+    }
+  }
+
+  @media (max-width: 370px) {
+    .driver-availability-panel {
+      padding: 13px;
+      border-radius: 21px;
+    }
+
+    .driver-availability-panel__status {
+      padding: 6px 8px;
+      font-size: 0.64rem;
+    }
+
+    .driver-availability-button {
+      min-height: 48px;
+      padding: 8px;
+      font-size: 0.78rem;
+    }
+
+    .driver-home-actions-grid {
+      grid-template-columns: 1fr;
+    }
+
+    ion-card.driver-home-action-card {
+      min-height: 132px;
+    }
+  }
+`;
+
 function DriverHeaderWithoutNotifications(): JSX.Element {
   const auth = useAuth() as ReturnType<typeof useAuth> & {
     logout?: () => void | Promise<void>;
@@ -3117,38 +3857,35 @@ function DriverHeaderWithoutNotifications(): JSX.Element {
   }
 
   return (
-    <IonHeader>
-      <IonToolbar
-        style={
-          {
-            "--background": "linear-gradient(135deg,#14953f,#22c55e)",
-            "--color": "#ffffff",
-            "--border-width": "0",
-            "--min-height": "72px",
-          } as CSSProperties
-        }
-      >
-        <IonTitle style={{ fontWeight: 950, fontSize: "1.35rem" }}>
-          Inicio
+    <IonHeader className="driver-home-header">
+      <IonToolbar className="driver-home-toolbar">
+        <IonTitle>
+          <div className="driver-home-brand">
+            <div className="driver-home-brand__mark" aria-hidden="true">
+              <IonIcon icon={carOutline} />
+            </div>
+            <div className="driver-home-brand__text">
+              <div className="driver-home-brand__title">RAPA GO</div>
+              <div className="driver-home-brand__subtitle">Panel conductor</div>
+            </div>
+          </div>
         </IonTitle>
 
-        <IonButtons slot="end" style={{ paddingRight: 8 }}>
+        <IonButtons slot="end" className="driver-home-header-actions">
           <IonButton
             fill="clear"
-            color="light"
             routerLink={ROUTES.DRIVER.PROFILE}
-            aria-label="Perfil del conductor"
-            style={{ "--border-radius": "999px" } as CSSProperties}
+            aria-label="Abrir perfil del conductor"
+            className="driver-home-header-action"
           >
             <IonIcon icon={personOutline} slot="icon-only" />
           </IonButton>
 
           <IonButton
             fill="clear"
-            color="light"
             onClick={() => void handleLogout()}
             aria-label="Cerrar sesión"
-            style={{ "--border-radius": "999px" } as CSSProperties}
+            className="driver-home-header-action"
           >
             <IonIcon icon={logOutOutline} slot="icon-only" />
           </IonButton>
@@ -3168,90 +3905,49 @@ function DriverAvailabilityControl({
   const isAvailable = value === "available";
 
   return (
-    <IonCard
-      style={{
-        margin: "0 0 14px",
-        borderRadius: "22px",
-        background: isAvailable
-          ? "linear-gradient(135deg, rgba(34,197,94,.96), rgba(12,122,62,.94))"
-          : "linear-gradient(135deg, rgba(239,68,68,.96), rgba(143,63,37,.94))",
-        color: "#ffffff",
-        border: "1px solid rgba(255,255,255,.16)",
-        boxShadow: "0 16px 34px rgba(0,0,0,.26)",
-      }}
-    >
-      <IonCardContent style={{ padding: "12px 14px" }}>
-        <div
-          style={{
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "center",
-            gap: 12,
-            marginBottom: 10,
-          }}
-        >
-          <div style={{ fontWeight: 950, fontSize: "1rem" }}>
-            Estado del conductor
-          </div>
-          <div
-            style={{
-              width: 12,
-              height: 12,
-              borderRadius: 999,
-              background: isAvailable ? "#bbf7d0" : "#fecaca",
-              boxShadow: isAvailable
-                ? "0 0 18px rgba(187,247,208,.95)"
-                : "0 0 18px rgba(254,202,202,.95)",
-              flexShrink: 0,
-            }}
+    <section className="driver-availability-panel" aria-label="Estado del conductor">
+      <div className="driver-availability-panel__header">
+        <div>
+          <div className="driver-availability-panel__eyebrow">Conexión de trabajo</div>
+          <div className="driver-availability-panel__title">Estado del conductor</div>
+        </div>
+
+        <div className="driver-availability-panel__status">
+          <span
+            className={`driver-availability-panel__dot ${
+              isAvailable ? "is-available" : "is-unavailable"
+            }`}
           />
+          {isAvailable ? "En línea" : "Fuera de línea"}
         </div>
+      </div>
 
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "1fr 1fr",
-            gap: 10,
-          }}
+      <div className="driver-availability-panel__grid" role="group" aria-label="Cambiar disponibilidad">
+        <button
+          type="button"
+          className={`driver-availability-button ${
+            isAvailable ? "is-active is-available" : "is-inactive"
+          }`}
+          onClick={() => onChange("available")}
+          aria-pressed={isAvailable}
         >
-          <IonButton
-            expand="block"
-            fill={isAvailable ? "solid" : "outline"}
-            color="light"
-            onClick={() => onChange("available")}
-            style={
-              {
-                "--border-radius": "16px",
-                "--color": isAvailable ? "#0F8A3A" : "#ffffff",
-                "--border-color": "rgba(255,255,255,.72)",
-                height: "46px",
-                fontWeight: 950,
-              } as CSSProperties
-            }
-          >
-            Disponible
-          </IonButton>
+          <IonIcon icon={checkmarkCircleOutline} />
+          Disponible
+        </button>
 
-          <IonButton
-            expand="block"
-            fill={!isAvailable ? "solid" : "outline"}
-            color="light"
-            onClick={() => onChange("unavailable")}
-            style={
-              {
-                "--border-radius": "16px",
-                "--color": !isAvailable ? "#B42318" : "#ffffff",
-                "--border-color": "rgba(255,255,255,.72)",
-                height: "46px",
-                fontWeight: 950,
-              } as CSSProperties
-            }
-          >
-            No disponible
-          </IonButton>
-        </div>
-      </IonCardContent>
-    </IonCard>
+        <button
+          type="button"
+          className={`driver-availability-button ${
+            !isAvailable ? "is-active is-unavailable" : "is-inactive"
+          }`}
+          onClick={() => onChange("unavailable")}
+          aria-pressed={!isAvailable}
+        >
+          <IonIcon icon={closeOutline} />
+          No disponible
+        </button>
+      </div>
+    </section>
   );
 }
 
@@ -6070,6 +6766,7 @@ function getBorrowedVehicleRemainingText(vehicle: DriverVehicleRecord): string |
 
 export function DriverHomePage(): JSX.Element {
   const { session } = useAuth();
+  const history = useHistory();
   const driverAvailabilityUser = session?.user as
     DriverAvailabilityUser | undefined;
   const driverConnection = useRapaGoConnectivityMonitor("driver");
@@ -6077,6 +6774,7 @@ export function DriverHomePage(): JSX.Element {
     useState<DriverAvailability>(() =>
       readDriverAvailability(driverAvailabilityUser),
     );
+
   useEffect(() => {
     setDriverAvailability(readDriverAvailability(driverAvailabilityUser));
   }, [
@@ -6101,27 +6799,49 @@ export function DriverHomePage(): JSX.Element {
     driverConnection.blocked,
   ]);
 
-  const isDriverAvailable = driverAvailability === "available" && !driverConnection.blocked;
+  const isDriverAvailable =
+    driverAvailability === "available" && !driverConnection.blocked;
   const [pendingReservationCount, setPendingReservationCount] = useState(() =>
-    readDriverScheduledReservationOffers(driverAvailabilityUser, isDriverAvailable).length,
+    readDriverScheduledReservationOffers(
+      driverAvailabilityUser,
+      isDriverAvailable,
+    ).length,
   );
 
   useEffect(() => {
     const refreshReservations = () => {
       setPendingReservationCount(
-        readDriverScheduledReservationOffers(driverAvailabilityUser, isDriverAvailable).length,
+        readDriverScheduledReservationOffers(
+          driverAvailabilityUser,
+          isDriverAvailable,
+        ).length,
       );
     };
 
     refreshReservations();
-    window.addEventListener(DRIVER_SCHEDULED_RESERVATION_EVENT, refreshReservations as EventListener);
-    window.addEventListener("rapago:admin-scheduled-rides-updated", refreshReservations as EventListener);
+    window.addEventListener(
+      DRIVER_SCHEDULED_RESERVATION_EVENT,
+      refreshReservations as EventListener,
+    );
+    window.addEventListener(
+      "rapago:admin-scheduled-rides-updated",
+      refreshReservations as EventListener,
+    );
     window.addEventListener("storage", refreshReservations as EventListener);
 
     return () => {
-      window.removeEventListener(DRIVER_SCHEDULED_RESERVATION_EVENT, refreshReservations as EventListener);
-      window.removeEventListener("rapago:admin-scheduled-rides-updated", refreshReservations as EventListener);
-      window.removeEventListener("storage", refreshReservations as EventListener);
+      window.removeEventListener(
+        DRIVER_SCHEDULED_RESERVATION_EVENT,
+        refreshReservations as EventListener,
+      );
+      window.removeEventListener(
+        "rapago:admin-scheduled-rides-updated",
+        refreshReservations as EventListener,
+      );
+      window.removeEventListener(
+        "storage",
+        refreshReservations as EventListener,
+      );
     };
   }, [
     driverAvailabilityUser?.id,
@@ -6151,430 +6871,242 @@ export function DriverHomePage(): JSX.Element {
     session?.user?.email?.split("@")[0] ??
     "conductor";
 
-  const quickCardStyle: CSSProperties = {
-    margin: 0,
-    borderRadius: "20px",
-    background: "#F6F2EC",
-    border: "1px solid rgba(0,0,0,.06)",
-    boxShadow: "0 14px 32px rgba(0,0,0,.16)",
-    minHeight: "132px",
-  };
+  const connectionLabel =
+    driverConnection.status === "online"
+      ? "Conexión estable"
+      : driverConnection.status === "checking"
+        ? "Verificando señal"
+        : driverConnection.status === "poor"
+          ? "Señal baja"
+          : "Sin internet";
 
-  const iconBoxStyle: CSSProperties = {
-    width: "54px",
-    height: "54px",
-    borderRadius: "18px",
-    background: "#2dd36f",
-    color: "#111",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    marginBottom: "12px",
-    boxShadow: "0 12px 24px rgba(45,211,111,.28)",
-  };
+  const actionCards: Array<{
+    key: string;
+    title: string;
+    description: string;
+    route: string;
+    icon: string;
+    accent: string;
+    shadow: string;
+    glow: string;
+    className?: string;
+    badge?: number;
+  }> = [
+    {
+      key: "requests",
+      title: "Solicitudes",
+      description: isDriverAvailable
+        ? "Viajes disponibles y servicios activos"
+        : "Ponte disponible para recibir viajes",
+      route: DRIVER_REQUESTS_VIEW_ROUTE,
+      icon: listOutline,
+      accent: "#138a4a",
+      shadow: "rgba(19,138,74,.25)",
+      glow: "rgba(19,138,74,.16)",
+    },
+    {
+      key: "reservations",
+      title: "Reservas",
+      description:
+        pendingReservationCount > 0
+          ? `${pendingReservationCount} agendada${
+              pendingReservationCount === 1 ? "" : "s"
+            } por confirmar`
+          : "Revisa tus viajes asignados para más tarde",
+      route: DRIVER_RESERVATIONS_VIEW_ROUTE,
+      icon: timeOutline,
+      accent: pendingReservationCount > 0 ? "#c89b3c" : "#a56d18",
+      shadow: "rgba(200,155,60,.28)",
+      glow: "rgba(200,155,60,.20)",
+      className: `is-reservations ${
+        pendingReservationCount > 0 ? "has-pending" : ""
+      }`,
+      badge: pendingReservationCount > 0 ? pendingReservationCount : undefined,
+    },
+    {
+      key: "trips",
+      title: "Mis viajes",
+      description: "Historial, estados y navegación en ruta",
+      route: ROUTES.DRIVER.TRIPS,
+      icon: carOutline,
+      accent: "#2563a8",
+      shadow: "rgba(37,99,168,.25)",
+      glow: "rgba(37,99,168,.15)",
+    },
+    {
+      key: "earnings",
+      title: "Ganancias",
+      description: "Consulta ingresos y pagos de tus servicios",
+      route: ROUTES.DRIVER.EARNINGS,
+      icon: cashOutline,
+      accent: "#b84f2e",
+      shadow: "rgba(184,79,46,.25)",
+      glow: "rgba(184,79,46,.16)",
+    },
+    {
+      key: "profile",
+      title: "Perfil",
+      description: "Datos personales, documentos y vehículo",
+      route: ROUTES.DRIVER.PROFILE,
+      icon: personOutline,
+      accent: "#4b5563",
+      shadow: "rgba(75,85,99,.25)",
+      glow: "rgba(75,85,99,.14)",
+    },
+  ];
 
   return (
-    <IonPage>
+    <IonPage className="driver-home-page">
+      <style>{DRIVER_HOME_STYLES}</style>
       <DriverHeaderWithoutNotifications />
 
-      <IonContent
-        className="ion-padding"
-        style={
-          {
-            "--background":
-              "linear-gradient(180deg, rgba(15,15,15,.86), rgba(15,15,15,.97)), url('/assets/rapa-go-bg.jpg') center/cover no-repeat",
-          } as CSSProperties
-        }
-      >
-        <RapaGoConnectivityBanner
-          role="driver"
-          status={driverConnection.status}
-        />
-
-        <DriverAvailabilityControl
-          value={isDriverAvailable ? "available" : "unavailable"}
-          onChange={handleAvailabilityChange}
-        />
-
-        <section
-          style={{
-            position: "relative",
-            overflow: "hidden",
-            borderRadius: "22px",
-            minHeight: "155px",
-            padding: "18px",
-            background: isDriverAvailable
-              ? "linear-gradient(135deg, rgba(45,211,111,.96), rgba(210,164,58,.90))"
-              : "linear-gradient(135deg, rgba(239,68,68,.94), rgba(143,63,37,.92))",
-            boxShadow: "0 18px 42px rgba(0,0,0,.30)",
-            color: "#fff",
-          }}
-        >
-          <div
-            style={{
-              position: "absolute",
-              right: "-35px",
-              top: "-45px",
-              width: "155px",
-              height: "155px",
-              borderRadius: "999px",
-              background: "rgba(255,255,255,.16)",
-            }}
+      <IonContent className="driver-home-content">
+        <main className="driver-home-shell">
+          <RapaGoConnectivityBanner
+            role="driver"
+            status={driverConnection.status}
           />
 
-          <div
-            style={{
-              position: "absolute",
-              right: "26px",
-              bottom: "-38px",
-              width: "120px",
-              height: "120px",
-              borderRadius: "999px",
-              background: "rgba(0,0,0,.12)",
-            }}
+          <DriverAvailabilityControl
+            value={isDriverAvailable ? "available" : "unavailable"}
+            onChange={handleAvailabilityChange}
           />
 
-          <div style={{ position: "relative", zIndex: 1 }}>
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "space-between",
-                gap: 12,
-              }}
-            >
+          <section className="driver-home-hero">
+            <div className="driver-home-hero__top">
               <div>
-                <div
-                  style={{
-                    fontSize: "1.45rem",
-                    fontWeight: 950,
-                    lineHeight: 1.1,
-                  }}
-                >
+                <div className="driver-home-hero__eyebrow">
+                  Panel de conductor
+                </div>
+                <div className="driver-home-hero__title">
                   Hola, {driverName} 👋
                 </div>
-                <div
-                  style={{
-                    marginTop: 5,
-                    fontSize: ".88rem",
-                    fontWeight: 700,
-                    opacity: 0.94,
-                  }}
-                >
-                  Panel de conductor Rapa Go
+                <div className="driver-home-hero__subtitle">
+                  {isDriverAvailable
+                    ? "Estás listo para recibir solicitudes y reservas asignadas en Rapa Nui."
+                    : "Activa tu disponibilidad cuando estés preparado para comenzar a trabajar."}
                 </div>
               </div>
 
-              <div
-                style={{
-                  width: "56px",
-                  height: "56px",
-                  borderRadius: "18px",
-                  background: "rgba(255,255,255,.20)",
-                  border: "1px solid rgba(255,255,255,.30)",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  backdropFilter: "blur(8px)",
-                }}
-              >
-                <IonIcon icon={carOutline} style={{ fontSize: "30px" }} />
+              <div className="driver-home-hero__car" aria-hidden="true">
+                <IonIcon icon={carOutline} />
               </div>
             </div>
 
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: "1fr 1fr",
-                gap: "10px",
-                marginTop: "18px",
-              }}
-            >
-              <div
-                style={{
-                  background: "rgba(255,255,255,.18)",
-                  border: "1px solid rgba(255,255,255,.25)",
-                  borderRadius: "16px",
-                  padding: "12px",
-                  backdropFilter: "blur(8px)",
-                }}
-              >
-                <div style={{ fontSize: ".74rem", opacity: 0.86 }}>Estado</div>
-                <div style={{ fontWeight: 950, marginTop: 2 }}>
+            <div className="driver-home-hero__metrics">
+              <div className="driver-home-metric">
+                <div className="driver-home-metric__label">Estado</div>
+                <div className="driver-home-metric__value">
                   {isDriverAvailable ? "Disponible" : "No disponible"}
                 </div>
               </div>
 
-              <div
-                style={{
-                  background: "rgba(255,255,255,.18)",
-                  border: "1px solid rgba(255,255,255,.25)",
-                  borderRadius: "16px",
-                  padding: "12px",
-                  backdropFilter: "blur(8px)",
-                }}
-              >
-                <div style={{ fontSize: ".74rem", opacity: 0.86 }}>Zona</div>
-                <div style={{ fontWeight: 950, marginTop: 2, lineHeight: 1.2 }}>
-                  Rapa Nui
+              <div className="driver-home-metric">
+                <div className="driver-home-metric__label">Zona</div>
+                <div className="driver-home-metric__value">Rapa Nui</div>
+              </div>
+
+              <div className="driver-home-metric">
+                <div className="driver-home-metric__label">Red</div>
+                <div className="driver-home-metric__value">
+                  {connectionLabel}
                 </div>
               </div>
             </div>
-          </div>
-        </section>
+          </section>
 
-        <div style={{ marginTop: "18px" }}>
-          <div
-            style={{
-              color: "#F6F2EC",
-              fontSize: "1rem",
-              fontWeight: 950,
-              marginBottom: "10px",
-            }}
-          >
-            Accesos rápidos
-          </div>
+          <section className="driver-home-section">
+            <div className="driver-home-section__header">
+              <h2 className="driver-home-section__title">Accesos rápidos</h2>
+              <div className="driver-home-section__hint">
+                Todo tu trabajo en un lugar
+              </div>
+            </div>
 
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "1fr 1fr",
-              gap: "12px",
-            }}
-          >
-            <IonCard
-              button
-              routerLink={DRIVER_REQUESTS_VIEW_ROUTE}
-              style={quickCardStyle}
-            >
-              <IonCardContent style={{ padding: "18px" }}>
-                <div style={iconBoxStyle}>
-                  <IonIcon icon={listOutline} style={{ fontSize: "28px" }} />
-                </div>
-                <div
-                  style={{ fontWeight: 950, color: "#111", fontSize: "1rem" }}
+            <div className="driver-home-actions-grid">
+              {actionCards.map((card) => (
+                <IonCard
+                  key={card.key}
+                  button
+                  routerLink={card.route}
+                  className={`driver-home-action-card ${card.className ?? ""}`}
+                  style={
+                    {
+                      "--driver-card-accent": card.accent,
+                      "--driver-card-shadow": card.shadow,
+                      "--driver-card-glow": card.glow,
+                    } as CSSProperties
+                  }
                 >
-                  Solicitudes
-                </div>
-                <div
-                  style={{
-                    marginTop: 5,
-                    color: "#333",
-                    fontSize: ".78rem",
-                    fontWeight: 800,
-                    lineHeight: 1.35,
-                  }}
-                >
-                  {isDriverAvailable
-                    ? "Viajes disponibles y activos"
-                    : "Activa disponible para recibir viajes"}
-                </div>
-              </IonCardContent>
-            </IonCard>
+                  <IonCardContent>
+                    <div className="driver-home-action-icon">
+                      <IonIcon icon={card.icon} />
+                    </div>
 
-            <IonCard
-              button
-              routerLink={DRIVER_RESERVATIONS_VIEW_ROUTE}
-              style={{
-                ...quickCardStyle,
-                border: pendingReservationCount > 0
-                  ? "2px solid rgba(210,164,58,.78)"
-                  : quickCardStyle.border,
-                background: pendingReservationCount > 0
-                  ? "linear-gradient(135deg,#fff7dd,#F6F2EC)"
-                  : quickCardStyle.background,
+                    <div className="driver-home-action-row">
+                      <div className="driver-home-action-title">
+                        {card.title}
+                      </div>
+                      {card.badge != null && (
+                        <div
+                          className="driver-home-action-badge"
+                          aria-label={`${card.badge} reservas pendientes`}
+                        >
+                          {card.badge}
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="driver-home-action-copy">
+                      {card.description}
+                    </div>
+                  </IonCardContent>
+                </IonCard>
+              ))}
+            </div>
+          </section>
+
+          <section className="driver-home-cta">
+            <div className="driver-home-cta__icon" aria-hidden="true">
+              <IonIcon
+                icon={isDriverAvailable ? notificationsOutline : carOutline}
+              />
+            </div>
+
+            <div>
+              <div className="driver-home-cta__title">
+                {isDriverAvailable
+                  ? "Revisa tus solicitudes disponibles"
+                  : "Actualmente estás fuera de línea"}
+              </div>
+              <div className="driver-home-cta__copy">
+                {isDriverAvailable
+                  ? "Las nuevas solicitudes y reservas aparecerán con una alerta clara."
+                  : "No recibirás servicios hasta volver a marcarte como disponible."}
+              </div>
+            </div>
+
+            <button
+              type="button"
+              className="driver-home-cta__button"
+              onClick={() => {
+                if (isDriverAvailable) {
+                  history.push(ROUTES.DRIVER.REQUESTS);
+                } else {
+                  handleAvailabilityChange("available");
+                }
               }}
             >
-              <IonCardContent style={{ padding: "18px" }}>
-                <div
-                  style={{
-                    ...iconBoxStyle,
-                    background: pendingReservationCount > 0 ? "#d2a43a" : "#22c55e",
-                    color: "#111",
-                    boxShadow: "0 12px 24px rgba(210,164,58,.28)",
-                  }}
-                >
-                  <IonIcon icon={timeOutline} style={{ fontSize: "28px" }} />
-                </div>
-                <div
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "space-between",
-                    gap: 8,
-                  }}
-                >
-                  <div style={{ fontWeight: 950, color: "#111", fontSize: "1rem" }}>
-                    Reservas
-                  </div>
-                  {pendingReservationCount > 0 && (
-                    <IonBadge color="warning" style={{ fontWeight: 950 }}>
-                      {pendingReservationCount}
-                    </IonBadge>
-                  )}
-                </div>
-                <div
-                  style={{
-                    marginTop: 5,
-                    color: "#333",
-                    fontSize: ".78rem",
-                    fontWeight: 800,
-                    lineHeight: 1.35,
-                  }}
-                >
-                  {pendingReservationCount > 0
-                    ? `${pendingReservationCount} agendada${pendingReservationCount === 1 ? "" : "s"} por confirmar`
-                    : "Agendamientos asignados"}
-                </div>
-              </IonCardContent>
-            </IonCard>
-
-            <IonCard
-              button
-              routerLink={ROUTES.DRIVER.TRIPS}
-              style={quickCardStyle}
-            >
-              <IonCardContent style={{ padding: "18px" }}>
-                <div style={iconBoxStyle}>
-                  <IonIcon icon={carOutline} style={{ fontSize: "28px" }} />
-                </div>
-                <div
-                  style={{ fontWeight: 950, color: "#111", fontSize: "1rem" }}
-                >
-                  Mis viajes
-                </div>
-                <div
-                  style={{
-                    marginTop: 5,
-                    color: "#333",
-                    fontSize: ".78rem",
-                    fontWeight: 800,
-                    lineHeight: 1.35,
-                  }}
-                >
-                  Historial y navegación
-                </div>
-              </IonCardContent>
-            </IonCard>
-
-            <IonCard
-              button
-              routerLink={ROUTES.DRIVER.EARNINGS}
-              style={quickCardStyle}
-            >
-              <IonCardContent style={{ padding: "18px" }}>
-                <div style={iconBoxStyle}>
-                  <IonIcon icon={cashOutline} style={{ fontSize: "28px" }} />
-                </div>
-                <div
-                  style={{ fontWeight: 950, color: "#111", fontSize: "1rem" }}
-                >
-                  Ganancias
-                </div>
-                <div
-                  style={{
-                    marginTop: 5,
-                    color: "#333",
-                    fontSize: ".78rem",
-                    fontWeight: 800,
-                    lineHeight: 1.35,
-                  }}
-                >
-                  Resumen de ingresos
-                </div>
-              </IonCardContent>
-            </IonCard>
-
-            <IonCard
-              button
-              routerLink={ROUTES.DRIVER.PROFILE}
-              style={quickCardStyle}
-            >
-              <IonCardContent style={{ padding: "18px" }}>
-                <div
-                  style={{
-                    ...iconBoxStyle,
-                    background: "#6b7280",
-                    color: "#fff",
-                    boxShadow: "0 12px 24px rgba(107,114,128,.28)",
-                  }}
-                >
-                  <IonIcon icon={personOutline} style={{ fontSize: "28px" }} />
-                </div>
-                <div
-                  style={{ fontWeight: 950, color: "#111", fontSize: "1rem" }}
-                >
-                  Perfil
-                </div>
-                <div
-                  style={{
-                    marginTop: 5,
-                    color: "#333",
-                    fontSize: ".78rem",
-                    fontWeight: 800,
-                    lineHeight: 1.35,
-                  }}
-                >
-                  Datos personales y vehículo
-                </div>
-              </IonCardContent>
-            </IonCard>
-          </div>
-        </div>
-
-        <IonCard
-          style={{
-            margin: "18px 0 0",
-            borderRadius: "22px",
-            background: "linear-gradient(135deg, #d2a43a, #c5532f)",
-            color: "#fff",
-            boxShadow: "0 16px 32px rgba(0,0,0,.22)",
-          }}
-        >
-          <IonCardContent
-            style={{
-              padding: "18px",
-              display: "flex",
-              justifyContent: "space-between",
-              alignItems: "center",
-              gap: "14px",
-            }}
-          >
-            <div>
-              <div style={{ fontWeight: 950, fontSize: "1rem" }}>
-                {isDriverAvailable
-                  ? "Revisa tus solicitudes"
-                  : "Estás no disponible"}
-              </div>
-              <div style={{ opacity: 0.92, fontSize: ".8rem", marginTop: 4 }}>
-                {isDriverAvailable
-                  ? "Cuando un pasajero pida un viaje, aparecerá aquí."
-                  : "No recibirás solicitudes de viaje hasta cambiar tu estado a disponible."}
-              </div>
-            </div>
-
-            <IonButton
-              routerLink={ROUTES.DRIVER.REQUESTS}
-              fill="solid"
-              color="light"
-              style={
-                {
-                  "--border-radius": "999px",
-                  "--color": "#111",
-                } as CSSProperties
-              }
-            >
-              {isDriverAvailable ? "Ver" : "Cambiar"}
-            </IonButton>
-          </IonCardContent>
-        </IonCard>
+              {isDriverAvailable ? "Ver solicitudes" : "Ponerme disponible"}
+            </button>
+          </section>
+        </main>
       </IonContent>
 
       <DriverGlobalRideAlert />
     </IonPage>
   );
 }
-
 
 type PassengerNotificationPayload = {
   id: string;
