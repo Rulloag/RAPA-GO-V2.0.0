@@ -1,0 +1,611 @@
+﻿
+  apps\api\src\modules\wallet\__tests__\wallet.service.test.ts:5:  mockHashToken,
+  apps\api\src\modules\wallet\__tests__\wallet.service.test.ts:6:  mockIsSessionValid,
+  apps\api\src\modules\wallet\__tests__\wallet.service.test.ts:7:  mockFindUserById,
+> apps\api\src\modules\wallet\__tests__\wallet.service.test.ts:8:  mockCreditUserWallet,
+  apps\api\src\modules\wallet\__tests__\wallet.service.test.ts:9:} = vi.hoisted(() => ({
+  apps\api\src\modules\wallet\__tests__\wallet.service.test.ts:10:  mockVerifyAccessToken: vi.fn(),
+  apps\api\src\modules\wallet\__tests__\wallet.service.test.ts:11:  mockHashToken: vi.fn().mockReturnValue("hashed-token"),
+  apps\api\src\modules\wallet\__tests__\wallet.service.test.ts:12:  mockIsSessionValid: vi.fn().mockResolvedValue(true),
+  apps\api\src\modules\wallet\__tests__\wallet.service.test.ts:13:  mockFindUserById: vi.fn(),
+> apps\api\src\modules\wallet\__tests__\wallet.service.test.ts:14:  mockCreditUserWallet: vi.fn(),
+  apps\api\src\modules\wallet\__tests__\wallet.service.test.ts:15:}));
+  apps\api\src\modules\wallet\__tests__\wallet.service.test.ts:16:
+  apps\api\src\modules\wallet\__tests__\wallet.service.test.ts:17:vi.mock("../../../db/client.js", () => ({
+  apps\api\src\modules\wallet\__tests__\wallet.service.test.ts:18:  db: {},
+  apps\api\src\modules\wallet\__tests__\wallet.service.test.ts:19:}));
+  apps\api\src\modules\wallet\__tests__\wallet.service.test.ts:20:
+  apps\api\src\modules\wallet\__tests__\wallet.service.test.ts:21:vi.mock("../../../modules/auth/token.service.js", () => ({
+  apps\api\src\modules\wallet\__tests__\wallet.service.test.ts:22:  TokenService: vi.fn().mockImplementation(() => ({
+  apps\api\src\modules\wallet\__tests__\wallet.service.test.ts:23:    verifyAccessToken: mockVerifyAccessToken,
+  apps\api\src\modules\wallet\__tests__\wallet.service.test.ts:24:    hashToken: mockHashToken,
+  apps\api\src\modules\wallet\__tests__\wallet.service.test.ts:39:
+  apps\api\src\modules\wallet\__tests__\wallet.service.test.ts:40:vi.mock("../wallet.repository.js", () => ({
+  apps\api\src\modules\wallet\__tests__\wallet.service.test.ts:41:  WalletRepository: vi.fn().mockImplementation(() => ({
+> apps\api\src\modules\wallet\__tests__\wallet.service.test.ts:42:    creditUserWallet: mockCreditUserWallet,
+  apps\api\src\modules\wallet\__tests__\wallet.service.test.ts:43:  })),
+  apps\api\src\modules\wallet\__tests__\wallet.service.test.ts:44:}));
+  apps\api\src\modules\wallet\__tests__\wallet.service.test.ts:45:
+  apps\api\src\modules\wallet\__tests__\wallet.service.test.ts:46:import { WalletService } from "../wallet.service.js";
+  apps\api\src\modules\wallet\__tests__\wallet.service.test.ts:47:
+  apps\api\src\modules\wallet\__tests__\wallet.service.test.ts:48:const ADMIN_ID = "11111111-1111-4111-8111-111111111111";
+  apps\api\src\modules\wallet\__tests__\wallet.service.test.ts:49:const PASSENGER_ID = "22222222-2222-4222-8222-222222222222";
+  apps\api\src\modules\wallet\__tests__\wallet.service.test.ts:50:
+  apps\api\src\modules\wallet\__tests__\wallet.service.test.ts:51:const adminUser = {
+  apps\api\src\modules\wallet\__tests__\wallet.service.test.ts:52:  id: ADMIN_ID,
+  apps\api\src\modules\wallet\__tests__\wallet.service.test.ts:62:  role: "passenger",
+  apps\api\src\modules\wallet\__tests__\wallet.service.test.ts:63:};
+  apps\api\src\modules\wallet\__tests__\wallet.service.test.ts:64:
+> apps\api\src\modules\wallet\__tests__\wallet.service.test.ts:65:describe("WalletService.adminCreateWalletCredit", () => {
+  apps\api\src\modules\wallet\__tests__\wallet.service.test.ts:66:  let service: WalletService;
+  apps\api\src\modules\wallet\__tests__\wallet.service.test.ts:67:
+  apps\api\src\modules\wallet\__tests__\wallet.service.test.ts:68:  beforeEach(() => {
+  apps\api\src\modules\wallet\__tests__\wallet.service.test.ts:69:    vi.clearAllMocks();
+  apps\api\src\modules\wallet\__tests__\wallet.service.test.ts:70:    service = new WalletService();
+  apps\api\src\modules\wallet\__tests__\wallet.service.test.ts:71:    mockIsSessionValid.mockResolvedValue(true);
+  apps\api\src\modules\wallet\__tests__\wallet.service.test.ts:72:  });
+  apps\api\src\modules\wallet\__tests__\wallet.service.test.ts:73:
+  apps\api\src\modules\wallet\__tests__\wallet.service.test.ts:74:  it("blocks passenger from approving wallet credit", async () => {
+  apps\api\src\modules\wallet\__tests__\wallet.service.test.ts:75:    mockVerifyAccessToken.mockReturnValue({ sub: PASSENGER_ID });
+  apps\api\src\modules\wallet\__tests__\wallet.service.test.ts:76:    mockFindUserById.mockResolvedValue(passengerUser);
+  apps\api\src\modules\wallet\__tests__\wallet.service.test.ts:77:
+> apps\api\src\modules\wallet\__tests__\wallet.service.test.ts:78:    const result = await service.adminCreateWalletCredit("tok", {
+  apps\api\src\modules\wallet\__tests__\wallet.service.test.ts:79:      userId: PASSENGER_ID,
+  apps\api\src\modules\wallet\__tests__\wallet.service.test.ts:80:      amountClp: 5000,
+  apps\api\src\modules\wallet\__tests__\wallet.service.test.ts:81:      description: "Pago de mas aprobado",
+  apps\api\src\modules\wallet\__tests__\wallet.service.test.ts:82:    });
+  apps\api\src\modules\wallet\__tests__\wallet.service.test.ts:83:
+  apps\api\src\modules\wallet\__tests__\wallet.service.test.ts:84:    expect(result.ok).toBe(false);
+  apps\api\src\modules\wallet\__tests__\wallet.service.test.ts:85:    if (!result.ok) {
+  apps\api\src\modules\wallet\__tests__\wallet.service.test.ts:86:      expect(result.code).toBe("AUTH_FORBIDDEN");
+  apps\api\src\modules\wallet\__tests__\wallet.service.test.ts:87:      expect(result.statusCode).toBe(403);
+  apps\api\src\modules\wallet\__tests__\wallet.service.test.ts:88:    }
+> apps\api\src\modules\wallet\__tests__\wallet.service.test.ts:89:    expect(mockCreditUserWallet).not.toHaveBeenCalled();
+  apps\api\src\modules\wallet\__tests__\wallet.service.test.ts:90:  });
+  apps\api\src\modules\wallet\__tests__\wallet.service.test.ts:91:
+  apps\api\src\modules\wallet\__tests__\wallet.service.test.ts:92:  it("credits passenger wallet when actor is admin", async () => {
+  apps\api\src\modules\wallet\__tests__\wallet.service.test.ts:93:    mockVerifyAccessToken.mockReturnValue({ sub: ADMIN_ID });
+  apps\api\src\modules\wallet\__tests__\wallet.service.test.ts:94:    mockFindUserById.mockImplementation(async (id: string) => {
+  apps\api\src\modules\wallet\__tests__\wallet.service.test.ts:95:      if (id === ADMIN_ID) return adminUser;
+  apps\api\src\modules\wallet\__tests__\wallet.service.test.ts:96:      if (id === PASSENGER_ID) return passengerUser;
+  apps\api\src\modules\wallet\__tests__\wallet.service.test.ts:97:      return null;
+  apps\api\src\modules\wallet\__tests__\wallet.service.test.ts:98:    });
+  apps\api\src\modules\wallet\__tests__\wallet.service.test.ts:99:
+> apps\api\src\modules\wallet\__tests__\wallet.service.test.ts:100:    mockCreditUserWallet.mockResolvedValue({
+  apps\api\src\modules\wallet\__tests__\wallet.service.test.ts:101:      wallet: {
+  apps\api\src\modules\wallet\__tests__\wallet.service.test.ts:102:        id: "wallet-1",
+  apps\api\src\modules\wallet\__tests__\wallet.service.test.ts:103:        userId: PASSENGER_ID,
+  apps\api\src\modules\wallet\__tests__\wallet.service.test.ts:104:        balance: 7000,
+  apps\api\src\modules\wallet\__tests__\wallet.service.test.ts:105:        currency: "CLP",
+  apps\api\src\modules\wallet\__tests__\wallet.service.test.ts:106:        status: "active",
+  apps\api\src\modules\wallet\__tests__\wallet.service.test.ts:107:        createdAt: new Date("2026-01-01T00:00:00.000Z"),
+  apps\api\src\modules\wallet\__tests__\wallet.service.test.ts:108:        updatedAt: new Date("2026-01-01T00:00:00.000Z"),
+  apps\api\src\modules\wallet\__tests__\wallet.service.test.ts:109:      },
+  apps\api\src\modules\wallet\__tests__\wallet.service.test.ts:110:      transaction: {
+  apps\api\src\modules\wallet\__tests__\wallet.service.test.ts:125:      },
+  apps\api\src\modules\wallet\__tests__\wallet.service.test.ts:126:    });
+  apps\api\src\modules\wallet\__tests__\wallet.service.test.ts:127:
+> apps\api\src\modules\wallet\__tests__\wallet.service.test.ts:128:    const result = await service.adminCreateWalletCredit("tok", {
+  apps\api\src\modules\wallet\__tests__\wallet.service.test.ts:129:      userId: PASSENGER_ID,
+  apps\api\src\modules\wallet\__tests__\wallet.service.test.ts:130:      amountClp: 7000,
+  apps\api\src\modules\wallet\__tests__\wallet.service.test.ts:131:      description: "Pago de mas aprobado",
+  apps\api\src\modules\wallet\__tests__\wallet.service.test.ts:132:      externalReference: "test-1",
+  apps\api\src\modules\wallet\__tests__\wallet.service.test.ts:133:    });
+  apps\api\src\modules\wallet\__tests__\wallet.service.test.ts:134:
+  apps\api\src\modules\wallet\__tests__\wallet.service.test.ts:135:    expect(result.ok).toBe(true);
+> apps\api\src\modules\wallet\__tests__\wallet.service.test.ts:136:    expect(mockCreditUserWallet).toHaveBeenCalledWith(
+  apps\api\src\modules\wallet\__tests__\wallet.service.test.ts:137:      expect.objectContaining({
+  apps\api\src\modules\wallet\__tests__\wallet.service.test.ts:138:        userId: PASSENGER_ID,
+  apps\api\src\modules\wallet\__tests__\wallet.service.test.ts:139:        amountClp: 7000,
+  apps\api\src\modules\wallet\__tests__\wallet.service.test.ts:140:        description: "Pago de mas aprobado",
+  apps\api\src\modules\wallet\__tests__\wallet.service.test.ts:141:        providerTransactionId: "admin-credit:test-1",
+  apps\api\src\modules\wallet\__tests__\wallet.service.test.ts:142:      }),
+  apps\api\src\modules\wallet\__tests__\wallet.service.test.ts:143:    );
+  apps\api\src\modules\wallet\__tests__\wallet.service.test.ts:144:  });
+  apps\api\src\modules\wallet\__tests__\wallet.service.test.ts:145:
+  apps\api\src\modules\wallet\__tests__\wallet.service.test.ts:146:  it("returns 404 when target passenger does not exist", async () => {
+  apps\api\src\modules\wallet\__tests__\wallet.service.test.ts:150:      return null;
+  apps\api\src\modules\wallet\__tests__\wallet.service.test.ts:151:    });
+  apps\api\src\modules\wallet\__tests__\wallet.service.test.ts:152:
+> apps\api\src\modules\wallet\__tests__\wallet.service.test.ts:153:    const result = await service.adminCreateWalletCredit("tok", {
+  apps\api\src\modules\wallet\__tests__\wallet.service.test.ts:154:      userId: PASSENGER_ID,
+  apps\api\src\modules\wallet\__tests__\wallet.service.test.ts:155:      amountClp: 1000,
+  apps\api\src\modules\wallet\__tests__\wallet.service.test.ts:156:      description: "Credito inexistente",
+  apps\api\src\modules\wallet\__tests__\wallet.service.test.ts:157:    });
+  apps\api\src\modules\wallet\__tests__\wallet.service.test.ts:158:
+  apps\api\src\modules\wallet\__tests__\wallet.service.test.ts:159:    expect(result.ok).toBe(false);
+  apps\api\src\modules\wallet\__tests__\wallet.service.test.ts:160:    if (!result.ok) {
+  apps\api\src\modules\wallet\__tests__\wallet.service.test.ts:161:      expect(result.code).toBe("NOT_FOUND");
+  apps\api\src\modules\wallet\__tests__\wallet.service.test.ts:162:      expect(result.statusCode).toBe(404);
+  apps\api\src\modules\wallet\__tests__\wallet.service.test.ts:163:    }
+> apps\api\src\modules\wallet\__tests__\wallet.service.test.ts:164:    expect(mockCreditUserWallet).not.toHaveBeenCalled();
+  apps\api\src\modules\wallet\__tests__\wallet.service.test.ts:165:  });
+  apps\api\src\modules\wallet\__tests__\wallet.service.test.ts:166:});
+  apps\api\src\modules\wallet\wallet.controller.ts:4:  createPaymentOrderSchema,
+  apps\api\src\modules\wallet\wallet.controller.ts:5:  webhookPayloadSchema,
+  apps\api\src\modules\wallet\wallet.controller.ts:6:  listTransactionsQuerySchema,
+> apps\api\src\modules\wallet\wallet.controller.ts:7:  adminCreateWalletCreditSchema,
+  apps\api\src\modules\wallet\wallet.controller.ts:8:} from "./wallet.schemas.js";
+  apps\api\src\modules\wallet\wallet.controller.ts:9:import { sendOk, sendError } from "../../shared/http/apiResponse.js";
+  apps\api\src\modules\wallet\wallet.controller.ts:10:
+  apps\api\src\modules\wallet\wallet.controller.ts:11:const svc = new WalletService();
+  apps\api\src\modules\wallet\wallet.controller.ts:12:
+  apps\api\src\modules\wallet\wallet.controller.ts:13:function getToken(req: FastifyRequest): string {
+  apps\api\src\modules\wallet\wallet.controller.ts:14:  const auth = req.headers.authorization ?? "";
+  apps\api\src\modules\wallet\wallet.controller.ts:15:  return auth.replace(/^Bearer\s+/i, "");
+  apps\api\src\modules\wallet\wallet.controller.ts:16:}
+  apps\api\src\modules\wallet\wallet.controller.ts:17:
+  apps\api\src\modules\wallet\wallet.controller.ts:68:    return sendOk(reply, result.order, 201);
+  apps\api\src\modules\wallet\wallet.controller.ts:69:  },
+  apps\api\src\modules\wallet\wallet.controller.ts:70:
+> apps\api\src\modules\wallet\wallet.controller.ts:71:  async adminCreateWalletCredit(req: FastifyRequest, reply: FastifyReply) {
+  apps\api\src\modules\wallet\wallet.controller.ts:72:    const token = getToken(req);
+  apps\api\src\modules\wallet\wallet.controller.ts:73:    if (!token) {
+  apps\api\src\modules\wallet\wallet.controller.ts:74:      return sendError(reply, {
+  apps\api\src\modules\wallet\wallet.controller.ts:75:        code: "UNAUTHORIZED",
+  apps\api\src\modules\wallet\wallet.controller.ts:76:        message: "Missing access token.",
+  apps\api\src\modules\wallet\wallet.controller.ts:77:        statusCode: 401,
+  apps\api\src\modules\wallet\wallet.controller.ts:78:      });
+  apps\api\src\modules\wallet\wallet.controller.ts:79:    }
+  apps\api\src\modules\wallet\wallet.controller.ts:80:
+> apps\api\src\modules\wallet\wallet.controller.ts:81:    const parsed = adminCreateWalletCreditSchema.safeParse(req.body);
+  apps\api\src\modules\wallet\wallet.controller.ts:82:    if (!parsed.success) {
+  apps\api\src\modules\wallet\wallet.controller.ts:83:      return sendError(reply, {
+  apps\api\src\modules\wallet\wallet.controller.ts:84:        code: "VALIDATION_ERROR",
+  apps\api\src\modules\wallet\wallet.controller.ts:85:        message: parsed.error.errors.map((e) => e.message).join("; "),
+  apps\api\src\modules\wallet\wallet.controller.ts:86:        statusCode: 400,
+  apps\api\src\modules\wallet\wallet.controller.ts:87:      });
+  apps\api\src\modules\wallet\wallet.controller.ts:88:    }
+  apps\api\src\modules\wallet\wallet.controller.ts:89:
+> apps\api\src\modules\wallet\wallet.controller.ts:90:    const result = await svc.adminCreateWalletCredit(token, parsed.data);
+  apps\api\src\modules\wallet\wallet.controller.ts:91:    if (!result.ok) {
+  apps\api\src\modules\wallet\wallet.controller.ts:92:      return sendError(reply, {
+  apps\api\src\modules\wallet\wallet.controller.ts:93:        code: result.code ?? "INTERNAL_ERROR",
+  apps\api\src\modules\wallet\wallet.controller.ts:94:        message: result.message ?? "Internal error.",
+  apps\api\src\modules\wallet\wallet.controller.ts:95:        statusCode: result.statusCode ?? 500,
+  apps\api\src\modules\wallet\wallet.controller.ts:96:      });
+  apps\api\src\modules\wallet\wallet.controller.ts:97:    }
+  apps\api\src\modules\wallet\wallet.controller.ts:98:
+  apps\api\src\modules\wallet\wallet.controller.ts:99:    return sendOk(reply, { wallet: result.wallet, transaction: result.transaction 
+}, 201);
+  apps\api\src\modules\wallet\wallet.controller.ts:100:  },
+  apps\api\src\modules\wallet\wallet.repository.ts:94:    }
+  apps\api\src\modules\wallet\wallet.repository.ts:95:  }
+  apps\api\src\modules\wallet\wallet.repository.ts:96:
+> apps\api\src\modules\wallet\wallet.repository.ts:97:  async creditUserWallet(input: {
+  apps\api\src\modules\wallet\wallet.repository.ts:98:    userId: string;
+  apps\api\src\modules\wallet\wallet.repository.ts:99:    amountClp: number;
+  apps\api\src\modules\wallet\wallet.repository.ts:100:    rideId?: string | null;
+  apps\api\src\modules\wallet\wallet.repository.ts:101:    description: string;
+  apps\api\src\modules\wallet\wallet.repository.ts:102:    metadata?: Record<string, unknown>;
+  apps\api\src\modules\wallet\wallet.repository.ts:103:    providerTransactionId?: string | null;
+  apps\api\src\modules\wallet\wallet.repository.ts:104:  }): Promise<{ wallet: Wallet; transaction: Transaction }> {
+  apps\api\src\modules\wallet\wallet.repository.ts:105:    try {
+  apps\api\src\modules\wallet\wallet.repository.ts:106:      return await db.transaction(async (tx) => {
+  apps\api\src\modules\wallet\wallet.repository.ts:107:        let wallet = (await tx.select().from(wallets).where(eq(wallets.userId, 
+input.userId)).limit(1))[0] ?? null;
+  apps\api\src\modules\wallet\wallet.routes.ts:4:export async function walletRoutes(fastify: FastifyInstance): Promise<void> {
+  apps\api\src\modules\wallet\wallet.routes.ts:5:  fastify.get("/wallets/me",              walletController.getMyWallet);
+  apps\api\src\modules\wallet\wallet.routes.ts:6:  fastify.get("/wallets/me/transactions", walletController.getMyTransactions);
+> apps\api\src\modules\wallet\wallet.routes.ts:7:  fastify.post("/admin/wallet/credits", walletController.adminCreateWalletCredit);
+  apps\api\src\modules\wallet\wallet.routes.ts:8:  fastify.post("/payments/create-order",  walletController.createPaymentOrder);
+  apps\api\src\modules\wallet\wallet.routes.ts:9:  fastify.post("/payments/webhook",       walletController.handleWebhook);
+  apps\api\src\modules\wallet\wallet.routes.ts:10:}
+  apps\api\src\modules\wallet\wallet.schemas.ts:21:  limit: z.coerce.number().int().min(1).max(100).default(20),
+  apps\api\src\modules\wallet\wallet.schemas.ts:22:});
+  apps\api\src\modules\wallet\wallet.schemas.ts:23:
+> apps\api\src\modules\wallet\wallet.schemas.ts:24:export const adminCreateWalletCreditSchema = z.object({
+  apps\api\src\modules\wallet\wallet.schemas.ts:25:  userId: z.string().uuid(),
+  apps\api\src\modules\wallet\wallet.schemas.ts:26:  rideId: z.string().uuid().optional(),
+  apps\api\src\modules\wallet\wallet.schemas.ts:27:  amountClp: z.number().int().positive().max(10_000_000),
+  apps\api\src\modules\wallet\wallet.schemas.ts:28:  description: z.string().trim().min(3).max(300).optional(),
+  apps\api\src\modules\wallet\wallet.schemas.ts:29:  reason: z.string().trim().max(200).optional(),
+  apps\api\src\modules\wallet\wallet.schemas.ts:30:  externalReference: z.string().trim().max(120).optional(),
+  apps\api\src\modules\wallet\wallet.schemas.ts:31:});
+  apps\api\src\modules\wallet\wallet.schemas.ts:32:
+  apps\api\src\modules\wallet\wallet.schemas.ts:33:export type CreatePaymentOrderInput      = z.infer<typeof createPaymentOrderSchema>;
+  apps\api\src\modules\wallet\wallet.schemas.ts:34:export type WebhookPayload               = z.infer<typeof webhookPayloadSchema>;
+  apps\api\src\modules\wallet\wallet.schemas.ts:35:export type ListTransactionsQuery        = z.infer<typeof 
+listTransactionsQuerySchema>;
+> apps\api\src\modules\wallet\wallet.schemas.ts:36:export type AdminCreateWalletCreditInput = z.infer<typeof 
+adminCreateWalletCreditSchema>;
+  apps\api\src\modules\wallet\wallet.service.ts:6:import { db } from "../../db/client.js";
+  apps\api\src\modules\wallet\wallet.service.ts:7:import { rideRequests } from "../../db/schema/index.js";
+  apps\api\src\modules\wallet\wallet.service.ts:8:import { eq } from "drizzle-orm";
+> apps\api\src\modules\wallet\wallet.service.ts:9:import type { CreatePaymentOrderInput, WebhookPayload, AdminCreateWalletCreditInput } 
+from "./wallet.schemas.js";
+  apps\api\src\modules\wallet\wallet.service.ts:10:import type { Wallet, Transaction, PaymentOrder } from "../../db/schema/index.js";
+  apps\api\src\modules\wallet\wallet.service.ts:11:
+  apps\api\src\modules\wallet\wallet.service.ts:12:const tokenService   = new TokenService();
+  apps\api\src\modules\wallet\wallet.service.ts:13:const sessionService = new SessionService();
+  apps\api\src\modules\wallet\wallet.service.ts:14:const usersRepo      = new UsersRepository();
+  apps\api\src\modules\wallet\wallet.service.ts:15:const walletRepo     = new WalletRepository();
+  apps\api\src\modules\wallet\wallet.service.ts:16:
+  apps\api\src\modules\wallet\wallet.service.ts:17:type AuthResult =
+  apps\api\src\modules\wallet\wallet.service.ts:18:  | { ok: true; userId: string; role: string }
+  apps\api\src\modules\wallet\wallet.service.ts:19:  | { ok: false; code: string; message: string; statusCode: number };
+  apps\api\src\modules\wallet\wallet.service.ts:141:    return { ok: true as const, order: serializePaymentOrder(order) };
+  apps\api\src\modules\wallet\wallet.service.ts:142:  }
+  apps\api\src\modules\wallet\wallet.service.ts:143:
+> apps\api\src\modules\wallet\wallet.service.ts:144:  async adminCreateWalletCredit(accessToken: string, input: 
+AdminCreateWalletCreditInput) {
+  apps\api\src\modules\wallet\wallet.service.ts:145:    const auth = await authenticate(accessToken);
+  apps\api\src\modules\wallet\wallet.service.ts:146:    if (!auth.ok) return auth;
+  apps\api\src\modules\wallet\wallet.service.ts:147:
+  apps\api\src\modules\wallet\wallet.service.ts:148:    if (auth.role !== "admin") {
+  apps\api\src\modules\wallet\wallet.service.ts:149:      return {
+  apps\api\src\modules\wallet\wallet.service.ts:150:        ok: false as const,
+  apps\api\src\modules\wallet\wallet.service.ts:151:        code: "AUTH_FORBIDDEN",
+  apps\api\src\modules\wallet\wallet.service.ts:152:        message: "Only admins can approve wallet credits.",
+  apps\api\src\modules\wallet\wallet.service.ts:153:        statusCode: 403,
+  apps\api\src\modules\wallet\wallet.service.ts:154:      };
+  apps\api\src\modules\wallet\wallet.service.ts:190:    const reason = input.reason?.trim();
+  apps\api\src\modules\wallet\wallet.service.ts:191:    const externalReference = input.externalReference?.trim();
+  apps\api\src\modules\wallet\wallet.service.ts:192:
+> apps\api\src\modules\wallet\wallet.service.ts:193:    const result = await walletRepo.creditUserWallet({
+  apps\api\src\modules\wallet\wallet.service.ts:194:      userId: input.userId,
+  apps\api\src\modules\wallet\wallet.service.ts:195:      amountClp: input.amountClp,
+  apps\api\src\modules\wallet\wallet.service.ts:196:      ...(input.rideId ? { rideId: input.rideId } : {}),
+  apps\api\src\modules\wallet\wallet.service.ts:197:      description,
+  apps\api\src\modules\wallet\wallet.service.ts:198:      metadata: {
+  apps\api\src\modules\wallet\wallet.service.ts:199:        source: "admin_wallet_credit",
+  apps\api\src\modules\wallet\wallet.service.ts:200:        approvedByUserId: auth.userId,
+  apps\api\src\modules\wallet\wallet.service.ts:201:        ...(reason ? { reason } : {}),
+  apps\api\src\modules\wallet\wallet.service.ts:202:        ...(externalReference ? { externalReference } : {}),
+  apps\api\src\modules\wallet\wallet.service.ts:203:      },
+  apps\mobile\src\features\wallet\wallet.service.ts:28:}
+  apps\mobile\src\features\wallet\wallet.service.ts:29:
+  apps\mobile\src\features\wallet\wallet.service.ts:30:
+> apps\mobile\src\features\wallet\wallet.service.ts:31:export interface AdminCreateWalletCreditPayload {
+  apps\mobile\src\features\wallet\wallet.service.ts:32:  userId: string;
+  apps\mobile\src\features\wallet\wallet.service.ts:33:  rideId?: string;
+  apps\mobile\src\features\wallet\wallet.service.ts:34:  amountClp: number;
+  apps\mobile\src\features\wallet\wallet.service.ts:35:  description?: string;
+  apps\mobile\src\features\wallet\wallet.service.ts:36:  reason?: string;
+  apps\mobile\src\features\wallet\wallet.service.ts:37:  externalReference?: string;
+  apps\mobile\src\features\wallet\wallet.service.ts:38:}
+  apps\mobile\src\features\wallet\wallet.service.ts:39:
+> apps\mobile\src\features\wallet\wallet.service.ts:40:export interface AdminCreateWalletCreditResponse {
+  apps\mobile\src\features\wallet\wallet.service.ts:41:  wallet: WalletData;
+  apps\mobile\src\features\wallet\wallet.service.ts:42:  transaction: TransactionData;
+  apps\mobile\src\features\wallet\wallet.service.ts:43:}
+  apps\mobile\src\features\wallet\wallet.service.ts:44:
+  apps\mobile\src\features\wallet\wallet.service.ts:45:type Envelope<T> = { ok: true; data: T; statusCode: number };
+  apps\mobile\src\features\wallet\wallet.service.ts:46:
+  apps\mobile\src\features\wallet\wallet.service.ts:47:export const walletService = {
+  apps\mobile\src\features\wallet\wallet.service.ts:48:  async getMyWallet(accessToken: string): Promise<WalletData> {
+  apps\mobile\src\features\wallet\wallet.service.ts:49:    const result = await apiClient.get<Envelope<WalletData>>("/wallets/me", { 
+token: accessToken });
+  apps\mobile\src\features\wallet\wallet.service.ts:50:    if (!result.ok) throw new Error((result as { message?: string }).message ?? 
+"Error loading wallet.");
+  apps\mobile\src\features\wallet\wallet.service.ts:65:  },
+  apps\mobile\src\features\wallet\wallet.service.ts:66:
+  apps\mobile\src\features\wallet\wallet.service.ts:67:
+> apps\mobile\src\features\wallet\wallet.service.ts:68:  async adminCreateWalletCredit(
+  apps\mobile\src\features\wallet\wallet.service.ts:69:    accessToken: string,
+> apps\mobile\src\features\wallet\wallet.service.ts:70:    payload: AdminCreateWalletCreditPayload,
+> apps\mobile\src\features\wallet\wallet.service.ts:71:  ): Promise<AdminCreateWalletCreditResponse> {
+> apps\mobile\src\features\wallet\wallet.service.ts:72:    const result = await 
+apiClient.post<Envelope<AdminCreateWalletCreditResponse>>(
+  apps\mobile\src\features\wallet\wallet.service.ts:73:      "/admin/wallet/credits",
+  apps\mobile\src\features\wallet\wallet.service.ts:74:      payload,
+  apps\mobile\src\features\wallet\wallet.service.ts:75:      { token: accessToken },
+  apps\mobile\src\features\wallet\wallet.service.ts:76:    );
+  apps\mobile\src\features\wallet\wallet.service.ts:77:    if (!result.ok) throw new Error((result as { message?: string }).message ?? 
+"Error approving wallet credit.");
+> apps\mobile\src\features\wallet\wallet.service.ts:78:    return (result.data as Envelope<AdminCreateWalletCreditResponse>).data;
+  apps\mobile\src\features\wallet\wallet.service.ts:79:  },
+  apps\mobile\src\features\wallet\wallet.service.ts:80:
+  apps\mobile\src\features\wallet\wallet.service.ts:81:  async createPaymentOrder(
+  apps\mobile\src\features\wallet\wallet.service.ts:82:    accessToken: string,
+  apps\mobile\src\features\wallet\wallet.service.ts:83:    rideId: string,
+  apps\mobile\src\features\wallet\wallet.service.ts:84:    amount: number,
+  apps\mobile\src\features\wallet\wallet.service.ts:85:  ): Promise<PaymentOrderData> {
+  apps\mobile\src\features\wallet\wallet.service.ts:86:    const result = await apiClient.post<Envelope<PaymentOrderData>>(
+  apps\mobile\src\features\wallet\wallet.service.ts:87:      "/payments/create-order",
+  apps\mobile\src\features\wallet\wallet.service.ts:88:      { rideId, amount },
+  apps\mobile\src\pages\admin\index.tsx:211:};
+  apps\mobile\src\pages\admin\index.tsx:212:
+  apps\mobile\src\pages\admin\index.tsx:213:const RAPAGO_CASH_PAYMENT_REVIEWS_KEY_ADMIN = "rapago_cash_payment_reviews_v1";
+> apps\mobile\src\pages\admin\index.tsx:214:const RAPAGO_WALLET_BENEFITS_KEY_ADMIN = "rapago_wallet_benefits_v1";
+  apps\mobile\src\pages\admin\index.tsx:215:const RAPAGO_PASSENGER_PENDING_CHARGES_KEY_ADMIN = "rapago_passenger_pending_charges_v1";
+  apps\mobile\src\pages\admin\index.tsx:216:const RAPAGO_PASSENGER_PENDING_CHARGE_EVENT_ADMIN = 
+"rapago:passenger-pending-charge-updated";
+  apps\mobile\src\pages\admin\index.tsx:217:const RAPAGO_ADMIN_CASH_CLOSURES_EVENT = "rapago:admin-cash-closures-updated";
+  apps\mobile\src\pages\admin\index.tsx:218:const RAPAGO_DRIVER_CASH_CLOSURE_EVENT = "rapago:driver-cash-closure-updated";
+  apps\mobile\src\pages\admin\index.tsx:219:const RAPAGO_ADMIN_WALLET_BENEFIT_EVENT = "rapago:admin-wallet-benefit-updated";
+  apps\mobile\src\pages\admin\index.tsx:220:const RAPAGO_ADMIN_RIDES_EVENT = "rapago:admin-rides-updated";
+  apps\mobile\src\pages\admin\index.tsx:221:
+  apps\mobile\src\pages\admin\index.tsx:222:const RAPAGO_ADMIN_CASH_REVIEW_SOURCE_KEYS = [
+  apps\mobile\src\pages\admin\index.tsx:223:  RAPAGO_CASH_PAYMENT_REVIEWS_KEY_ADMIN,
+  apps\mobile\src\pages\admin\index.tsx:224:  "rapago_driver_cash_closures_v1",
+  apps\mobile\src\pages\admin\index.tsx:423:
+  apps\mobile\src\pages\admin\index.tsx:424:function readAdminWalletBenefits(): AdminWalletBenefit[] {
+  apps\mobile\src\pages\admin\index.tsx:425:  try {
+> apps\mobile\src\pages\admin\index.tsx:426:    const raw = localStorage.getItem(RAPAGO_WALLET_BENEFITS_KEY_ADMIN);
+  apps\mobile\src\pages\admin\index.tsx:427:    const parsed = raw ? (JSON.parse(raw) as Array<Record<string, unknown>>) : [];
+  apps\mobile\src\pages\admin\index.tsx:428:    if (!Array.isArray(parsed)) return [];
+  apps\mobile\src\pages\admin\index.tsx:429:
+  apps\mobile\src\pages\admin\index.tsx:430:    return parsed.map((item, index) => ({
+  apps\mobile\src\pages\admin\index.tsx:431:      id: String(item.id ?? `wallet-benefit-${index}`),
+  apps\mobile\src\pages\admin\index.tsx:432:      rideId: typeof item.rideId === "string" ? item.rideId : null,
+  apps\mobile\src\pages\admin\index.tsx:433:      passengerEmail: typeof item.passengerEmail === "string" ? item.passengerEmail : null,
+  apps\mobile\src\pages\admin\index.tsx:434:      ownerKey: typeof item.ownerKey === "string" ? item.ownerKey : null,
+  apps\mobile\src\pages\admin\index.tsx:435:      amountClp: Math.max(0, Math.round(Number(item.amountClp ?? item.amount ?? 0))),
+  apps\mobile\src\pages\admin\index.tsx:436:      status: String(item.status ?? "pending_admin"),
+  apps\mobile\src\pages\admin\index.tsx:461:
+  apps\mobile\src\pages\admin\index.tsx:462:function writeAdminWalletBenefits(benefits: AdminWalletBenefit[]): void {
+  apps\mobile\src\pages\admin\index.tsx:463:  try {
+> apps\mobile\src\pages\admin\index.tsx:464:    localStorage.setItem(RAPAGO_WALLET_BENEFITS_KEY_ADMIN, JSON.stringify(benefits.slice(0, 
+250)));
+  apps\mobile\src\pages\admin\index.tsx:465:    window.dispatchEvent(new CustomEvent("rapago:wallet-benefit-updated", { detail: { 
+benefits } }));
+  apps\mobile\src\pages\admin\index.tsx:466:    window.dispatchEvent(new CustomEvent(RAPAGO_ADMIN_WALLET_BENEFIT_EVENT, { detail: { 
+benefits } }));
+  apps\mobile\src\pages\admin\index.tsx:467:    window.dispatchEvent(new CustomEvent("rapago:wallet-updated", { detail: { benefits } }));
+  apps\mobile\src\pages\admin\index.tsx:468:    window.dispatchEvent(new CustomEvent(RAPAGO_ADMIN_RIDES_EVENT, { detail: { benefits } 
+}));
+  apps\mobile\src\pages\admin\index.tsx:469:  } catch {
+  apps\mobile\src\pages\admin\index.tsx:470:    // No bloquea el panel admin.
+  apps\mobile\src\pages\admin\index.tsx:471:  }
+  apps\mobile\src\pages\admin\index.tsx:472:}
+  apps\mobile\src\pages\admin\index.tsx:473:
+  apps\mobile\src\pages\admin\index.tsx:474:function isAdminWalletCardCancellationCredit(benefit: AdminWalletBenefit): boolean {
+  apps\mobile\src\pages\admin\index.tsx:576:  const paymentId = (benefit as AdminWalletBenefit & { paymentId?: string | null 
+}).paymentId;
+  apps\mobile\src\pages\admin\index.tsx:577:  const externalReference = normalizeAdminWalletCreditExternalReference(paymentId || 
+benefit.rideId || benefit.id);
+  apps\mobile\src\pages\admin\index.tsx:578:
+> apps\mobile\src\pages\admin\index.tsx:579:  await walletService.adminCreateWalletCredit(accessToken, {
+  apps\mobile\src\pages\admin\index.tsx:580:    userId: targetUserId,
+  apps\mobile\src\pages\admin\index.tsx:581:    ...(rideId ? { rideId } : {}),
+  apps\mobile\src\pages\admin\index.tsx:582:    amountClp,
+  apps\mobile\src\pages\admin\index.tsx:583:    description:
+  apps\mobile\src\pages\admin\index.tsx:584:      benefit.description ||
+  apps\mobile\src\pages\admin\index.tsx:585:      `Credito aprobado por admin: ${benefit.originText || "Origen"} -> 
+${benefit.destinationText || "Destino"}.`,
+  apps\mobile\src\pages\admin\index.tsx:586:    reason: "admin_approved_wallet_credit",
+  apps\mobile\src\pages\admin\index.tsx:587:    ...(externalReference ? { externalReference } : {}),
+  apps\mobile\src\pages\admin\index.tsx:588:  });
+  apps\mobile\src\pages\admin\index.tsx:589:
+  apps\mobile\src\pages\passenger\pages\HomePage.tsx:120:      normalizeWalletIdentity(parsed.userId),
+  apps\mobile\src\pages\passenger\pages\HomePage.tsx:121:      normalizeWalletIdentity(parsed.email),
+  apps\mobile\src\pages\passenger\pages\HomePage.tsx:122:      normalizeWalletIdentity(parsed.phone),
+> apps\mobile\src\pages\passenger\pages\HomePage.tsx:123:      normalizeWalletIdentity(localStorage.getItem("rapago_profile_phone")),
+> apps\mobile\src\pages\passenger\pages\HomePage.tsx:124:      normalizeWalletIdentity(localStorage.getItem("rapago_passenger_email")),
+  apps\mobile\src\pages\passenger\pages\HomePage.tsx:125:    );
+  apps\mobile\src\pages\passenger\pages\HomePage.tsx:126:  } catch {
+  apps\mobile\src\pages\passenger\pages\HomePage.tsx:127:    // No bloquea el saldo local.
+  apps\mobile\src\pages\passenger\pages\HomePage.tsx:128:  }
+  apps\mobile\src\pages\passenger\pages\HomePage.tsx:129:
+  apps\mobile\src\pages\passenger\pages\HomePage.tsx:130:  return Array.from(new Set(keys.filter(Boolean)));
+  apps\mobile\src\pages\passenger\pages\HomePage.tsx:131:}
+  apps\mobile\src\pages\passenger\pages\HomePage.tsx:132:
+  apps\mobile\src\pages\passenger\pages\HomePage.tsx:133:function walletBenefitMatchesPassenger(
+  apps\mobile\src\pages\passenger\pages\HomePage.tsx:134:  record: WalletBenefitRecord,
+  apps\mobile\src\pages\passenger\pages\HomePage.tsx:158:
+  apps\mobile\src\pages\passenger\pages\HomePage.tsx:159:function readWalletAppliedBenefitIds(): Set<string> {
+  apps\mobile\src\pages\passenger\pages\HomePage.tsx:160:  try {
+> apps\mobile\src\pages\passenger\pages\HomePage.tsx:161:    const raw = localStorage.getItem(RAPAGO_WALLET_APPLIED_BENEFITS_KEY);
+  apps\mobile\src\pages\passenger\pages\HomePage.tsx:162:    const parsed = raw ? (JSON.parse(raw) as string[]) : [];
+  apps\mobile\src\pages\passenger\pages\HomePage.tsx:163:    return new Set(Array.isArray(parsed) ? parsed.map(String) : []);
+  apps\mobile\src\pages\passenger\pages\HomePage.tsx:164:  } catch {
+  apps\mobile\src\pages\passenger\pages\HomePage.tsx:165:    return new Set();
+  apps\mobile\src\pages\passenger\pages\HomePage.tsx:166:  }
+  apps\mobile\src\pages\passenger\pages\HomePage.tsx:167:}
+  apps\mobile\src\pages\passenger\pages\HomePage.tsx:168:
+  apps\mobile\src\pages\passenger\pages\HomePage.tsx:169:function saveWalletAppliedBenefitIds(ids: Set<string>): void {
+  apps\mobile\src\pages\passenger\pages\HomePage.tsx:170:  try {
+  apps\mobile\src\pages\passenger\pages\HomePage.tsx:171:    localStorage.setItem(
+  apps\mobile\src\pages\passenger\pages\HomePage.tsx:179:
+  apps\mobile\src\pages\passenger\pages\HomePage.tsx:180:function readPassengerWalletBalance(): number {
+  apps\mobile\src\pages\passenger\pages\HomePage.tsx:181:  try {
+> apps\mobile\src\pages\passenger\pages\HomePage.tsx:182:    const value = Number(localStorage.getItem(RAPAGO_WALLET_BALANCE_KEY));
+  apps\mobile\src\pages\passenger\pages\HomePage.tsx:183:    return Number.isFinite(value) && value > 0 ? Math.round(value) : 0;
+  apps\mobile\src\pages\passenger\pages\HomePage.tsx:184:  } catch {
+  apps\mobile\src\pages\passenger\pages\HomePage.tsx:185:    return 0;
+  apps\mobile\src\pages\passenger\pages\HomePage.tsx:186:  }
+  apps\mobile\src\pages\passenger\pages\HomePage.tsx:187:}
+  apps\mobile\src\pages\passenger\pages\HomePage.tsx:188:
+  apps\mobile\src\pages\passenger\pages\HomePage.tsx:189:function writePassengerWalletBalance(value: number): void {
+  apps\mobile\src\pages\passenger\pages\HomePage.tsx:190:  try {
+  apps\mobile\src\pages\passenger\pages\HomePage.tsx:191:    const safeValue = Math.max(0, Math.round(value));
+> apps\mobile\src\pages\passenger\pages\HomePage.tsx:192:    localStorage.setItem(RAPAGO_WALLET_BALANCE_KEY, String(safeValue));
+> apps\mobile\src\pages\passenger\pages\HomePage.tsx:193:    localStorage.setItem("rapago_passenger_wallet_balance_clp", 
+String(safeValue));
+> apps\mobile\src\pages\passenger\pages\HomePage.tsx:194:    localStorage.setItem("rapago_wallet_available_balance_clp", 
+String(safeValue));
+  apps\mobile\src\pages\passenger\pages\HomePage.tsx:195:
+  apps\mobile\src\pages\passenger\pages\HomePage.tsx:196:    window.dispatchEvent(
+  apps\mobile\src\pages\passenger\pages\HomePage.tsx:197:      new CustomEvent(RAPAGO_WALLET_EVENT, {
+  apps\mobile\src\pages\passenger\pages\HomePage.tsx:198:        detail: { balanceClp: safeValue },
+  apps\mobile\src\pages\passenger\pages\HomePage.tsx:199:      }),
+  apps\mobile\src\pages\passenger\pages\HomePage.tsx:200:    );
+  apps\mobile\src\pages\passenger\pages\HomePage.tsx:201:  } catch {
+  apps\mobile\src\pages\passenger\pages\HomePage.tsx:202:    // No bloquea la app.
+  apps\mobile\src\pages\passenger\pages\HomePage.tsx:203:  }
+  apps\mobile\src\pages\passenger\pages\HomePage.tsx:204:}
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:121:  return;
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:122:}
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:123:
+> apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:124:const RAPAGO_WALLET_BENEFITS_KEY_REQUEST = "rapago_wallet_benefits_v1";
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:125:const RAPAGO_WALLET_BENEFIT_EVENT_REQUEST = 
+"rapago:wallet-benefit-updated";
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:126:
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:127:type PassengerWalletBenefitForRequest = {
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:128:  id: string;
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:129:  rideId?: string | null;
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:130:  passengerEmail?: string | null;
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:131:  ownerKey?: string | null;
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:132:  amountClp: number;
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:133:  status: "pending_admin" | "available" | "used" | "rejected" | string;
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:134:  source?: string | null;
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:164:function readPassengerWalletBenefitsForRequest(user: unknown): 
+PassengerWalletBenefitForRequest[] {
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:165:  try {
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:166:    const sessionEmail = getWalletBenefitSessionEmailForRequest(user);
+> apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:167:    const raw = localStorage.getItem(RAPAGO_WALLET_BENEFITS_KEY_REQUEST);
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:168:    const parsed = raw ? (JSON.parse(raw) as Array<Record<string, 
+unknown>>) : [];
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:169:    if (!Array.isArray(parsed)) return [];
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:170:
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:171:    return parsed
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:172:      .map((item, index): PassengerWalletBenefitForRequest => ({
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:173:        id: String(item.id ?? `wallet-benefit-${index}`),
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:174:        rideId: typeof item.rideId === "string" ? item.rideId : null,
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:175:        passengerEmail: typeof item.passengerEmail === "string" ? 
+item.passengerEmail : null,
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:176:        ownerKey: typeof item.ownerKey === "string" ? item.ownerKey : 
+null,
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:177:        amountClp: Math.max(0, Math.round(Number(item.amountClp ?? 
+item.amount ?? 0))),
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:202:
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:203:function getPassengerWalletBenefitTotalForRequest(_user: unknown): 
+number {
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:204:  // Phase 2 security:
+> apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:205:  // Legacy localStorage wallet benefits are visual/cache only.
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:206:  // They must not reduce ride fares or payment amounts.
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:207:  // Authoritative credits must come from backend wallet transactions.
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:208:  return 0;
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:209:}
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:210:
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:211:function markPassengerWalletBenefitsUsedForRide(input: {
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:212:  user: unknown;
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:213:  rideId: string | null;
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:214:  amountToUseClp: number;
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:215:  originText: string;
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:225:
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:226:  try {
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:227:    const sessionEmail = 
+getWalletBenefitSessionEmailForRequest(input.user);
+> apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:228:    const raw = localStorage.getItem(RAPAGO_WALLET_BENEFITS_KEY_REQUEST);
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:229:    const parsed = raw ? (JSON.parse(raw) as Array<Record<string, 
+unknown>>) : [];
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:230:    if (!Array.isArray(parsed)) return;
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:231:
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:232:    let remaining = amountToUse;
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:233:    const now = new Date().toISOString();
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:234:    const rideId = input.rideId || `local-${Date.now()}`;
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:235:    const extraAvailableBenefits: Array<Record<string, unknown>> = [];
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:236:
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:237:    const next = parsed.map((item, index) => {
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:238:      const benefit: PassengerWalletBenefitForRequest = {
+  apps\mobile\src\pages\passenger\pages\TripsPage.tsx:5693:};
+  apps\mobile\src\pages\passenger\pages\TripsPage.tsx:5694:
+  apps\mobile\src\pages\passenger\pages\TripsPage.tsx:5695:const RAPAGO_CASH_PAYMENT_REVIEWS_KEY = "rapago_cash_payment_reviews_v1";
+> apps\mobile\src\pages\passenger\pages\TripsPage.tsx:5696:const RAPAGO_WALLET_BENEFITS_KEY = "rapago_wallet_benefits_v1";
+  apps\mobile\src\pages\passenger\pages\TripsPage.tsx:5697:const RAPAGO_WALLET_BENEFIT_EVENT = "rapago:wallet-benefit-updated";
+  apps\mobile\src\pages\passenger\pages\TripsPage.tsx:5698:const RAPAGO_PASSENGER_PENDING_CHARGES_KEY = 
+"rapago_passenger_pending_charges_v1";
+  apps\mobile\src\pages\passenger\pages\TripsPage.tsx:5699:const RAPAGO_PASSENGER_PENDING_CHARGE_EVENT = 
+"rapago:passenger-pending-charge-updated";
+  apps\mobile\src\pages\passenger\pages\TripsPage.tsx:5700:
+  apps\mobile\src\pages\passenger\pages\TripsPage.tsx:5701:type PassengerPendingCharge = {
+  apps\mobile\src\pages\passenger\pages\TripsPage.tsx:5702:  id: string;
+  apps\mobile\src\pages\passenger\pages\TripsPage.tsx:5703:  rideId?: string | null;
+  apps\mobile\src\pages\passenger\pages\TripsPage.tsx:5704:  rideKey: string;
+  apps\mobile\src\pages\passenger\pages\TripsPage.tsx:5705:  passengerEmail?: string | null;
+  apps\mobile\src\pages\passenger\pages\TripsPage.tsx:5706:  passengerName?: string | null;
+  apps\mobile\src\pages\passenger\pages\WalletPage.tsx:30:import type { TransactionData, WalletData } from 
+"../../../features/wallet/wallet.service.js";
+  apps\mobile\src\pages\passenger\pages\WalletPage.tsx:31:import { RAPAGO_CONTACT } from "@rapa-go/shared";
+  apps\mobile\src\pages\passenger\pages\WalletPage.tsx:32:
+> apps\mobile\src\pages\passenger\pages\WalletPage.tsx:33:const RAPAGO_WALLET_BENEFITS_KEY = "rapago_wallet_benefits_v1";
+  apps\mobile\src\pages\passenger\pages\WalletPage.tsx:34:const RAPAGO_WALLET_BENEFIT_EVENT = "rapago:wallet-benefit-updated";
+  apps\mobile\src\pages\passenger\pages\WalletPage.tsx:35:const RAPAGO_SUPPORT_WHATSAPP_PHONE = "56947964171";
+  apps\mobile\src\pages\passenger\pages\WalletPage.tsx:36:
+  apps\mobile\src\pages\passenger\pages\WalletPage.tsx:37:const WALLET_BG =
+  apps\mobile\src\pages\passenger\pages\WalletPage.tsx:38:  "linear-gradient(180deg, rgba(14,12,10,.92), rgba(14,12,10,.96)), 
+url('/assets/rapa-go-bg.jpg') center/cover no-repeat";
+  apps\mobile\src\pages\passenger\pages\WalletPage.tsx:39:
+  apps\mobile\src\pages\passenger\pages\WalletPage.tsx:40:const GOLD_GRADIENT = "linear-gradient(135deg,#D6A83E 0%,#B7791F 45%,#7A351F 
+100%)";
+  apps\mobile\src\pages\passenger\pages\WalletPage.tsx:41:const SAND_GRADIENT = "linear-gradient(135deg,#FFF7E6 0%,#F7E4BA 100%)";
+  apps\mobile\src\pages\passenger\pages\WalletPage.tsx:42:
+  apps\mobile\src\pages\passenger\pages\WalletPage.tsx:43:type LocalWalletBenefit = {
+  apps\mobile\src\pages\passenger\pages\WalletPage.tsx:83:function readLocalWalletBenefits(user: unknown): LocalWalletBenefit[] {
+  apps\mobile\src\pages\passenger\pages\WalletPage.tsx:84:  try {
+  apps\mobile\src\pages\passenger\pages\WalletPage.tsx:85:    const sessionEmail = getWalletSessionEmail(user);
+> apps\mobile\src\pages\passenger\pages\WalletPage.tsx:86:    const raw = localStorage.getItem(RAPAGO_WALLET_BENEFITS_KEY);
+  apps\mobile\src\pages\passenger\pages\WalletPage.tsx:87:    const parsed = raw ? (JSON.parse(raw) as Array<Record<string, unknown>>) : 
+[];
+  apps\mobile\src\pages\passenger\pages\WalletPage.tsx:88:    if (!Array.isArray(parsed)) return [];
+  apps\mobile\src\pages\passenger\pages\WalletPage.tsx:89:
+  apps\mobile\src\pages\passenger\pages\WalletPage.tsx:90:    return parsed
+  apps\mobile\src\pages\passenger\pages\WalletPage.tsx:91:      .map((item, index): LocalWalletBenefit => ({
+  apps\mobile\src\pages\passenger\pages\WalletPage.tsx:92:        id: String(item.id ?? `wallet-benefit-${index}`),
+  apps\mobile\src\pages\passenger\pages\WalletPage.tsx:93:        rideId: typeof item.rideId === "string" ? item.rideId : null,
+  apps\mobile\src\pages\passenger\pages\WalletPage.tsx:94:        passengerEmail: typeof item.passengerEmail === "string" ? 
+item.passengerEmail : null,
+  apps\mobile\src\pages\passenger\pages\WalletPage.tsx:95:        ownerKey: typeof item.ownerKey === "string" ? item.ownerKey : null,
+  apps\mobile\src\pages\passenger\pages\WalletPage.tsx:96:        amountClp: Math.max(0, Math.round(Number(item.amountClp ?? item.amount 
+?? 0))),
+  apps\mobile\src\pages\passenger\pages\WalletPage.tsx:392:export default function WalletPage(): JSX.Element {
+  apps\mobile\src\pages\passenger\pages\WalletPage.tsx:393:  const { session } = useAuth();
+  apps\mobile\src\pages\passenger\pages\WalletPage.tsx:394:  const [wallet, setWallet] = useState<WalletData | null>(null);
+> apps\mobile\src\pages\passenger\pages\WalletPage.tsx:395:  const [walletTransactions, setWalletTransactions] = 
+useState<TransactionData[]>([]);
+  apps\mobile\src\pages\passenger\pages\WalletPage.tsx:396:  const [localBenefits, setLocalBenefits] = 
+useState<LocalWalletBenefit[]>([]);
+  apps\mobile\src\pages\passenger\pages\WalletPage.tsx:397:  const [loading, setLoading] = useState(true);
+  apps\mobile\src\pages\passenger\pages\WalletPage.tsx:398:  const [loadError, setLoadError] = useState<string | null>(null);
+  apps\mobile\src\pages\passenger\pages\WalletPage.tsx:399:
+  apps\mobile\src\pages\passenger\pages\WalletPage.tsx:400:  const refreshLocalBenefits = useCallback(() => {
+  apps\mobile\src\pages\passenger\pages\WalletPage.tsx:401:    setLocalBenefits(readLocalWalletBenefits(session?.user));
+  apps\mobile\src\pages\passenger\pages\WalletPage.tsx:402:  }, [session?.user]);
+  apps\mobile\src\pages\passenger\pages\WalletPage.tsx:403:
+  apps\mobile\src\pages\passenger\pages\WalletPage.tsx:404:  const load = useCallback(async () => {
+  apps\mobile\src\pages\passenger\pages\WalletPage.tsx:405:    if (!session?.accessToken) {
+  apps\mobile\src\pages\passenger\pages\WalletPage.tsx:406:      setWallet(null);
+> apps\mobile\src\pages\passenger\pages\WalletPage.tsx:407:      setWalletTransactions([]);
+  apps\mobile\src\pages\passenger\pages\WalletPage.tsx:408:      setLocalBenefits([]);
+  apps\mobile\src\pages\passenger\pages\WalletPage.tsx:409:      setLoading(false);
+  apps\mobile\src\pages\passenger\pages\WalletPage.tsx:410:      return;
+  apps\mobile\src\pages\passenger\pages\WalletPage.tsx:411:    }
+  apps\mobile\src\pages\passenger\pages\WalletPage.tsx:412:
+  apps\mobile\src\pages\passenger\pages\WalletPage.tsx:413:    setLoading(true);
+  apps\mobile\src\pages\passenger\pages\WalletPage.tsx:414:    setLoadError(null);
+  apps\mobile\src\pages\passenger\pages\WalletPage.tsx:415:
+  apps\mobile\src\pages\passenger\pages\WalletPage.tsx:416:    try {
+  apps\mobile\src\pages\passenger\pages\WalletPage.tsx:417:      const { walletService } = await 
+import("../../../features/wallet/wallet.service.js");
+  apps\mobile\src\pages\passenger\pages\WalletPage.tsx:421:      ]);
+  apps\mobile\src\pages\passenger\pages\WalletPage.tsx:422:
+  apps\mobile\src\pages\passenger\pages\WalletPage.tsx:423:      setWallet(walletResponse);
+> apps\mobile\src\pages\passenger\pages\WalletPage.tsx:424:      setWalletTransactions(transactionsResponse.items);
+  apps\mobile\src\pages\passenger\pages\WalletPage.tsx:425:      setLocalBenefits(readLocalWalletBenefits(session.user));
+  apps\mobile\src\pages\passenger\pages\WalletPage.tsx:426:    } catch (err) {
+  apps\mobile\src\pages\passenger\pages\WalletPage.tsx:427:      setLoadError(err instanceof Error ? err.message : "No se pudo 
+sincronizar la billetera. Mostrando beneficios locales.");
+  apps\mobile\src\pages\passenger\pages\WalletPage.tsx:428:      setWallet(null);
+> apps\mobile\src\pages\passenger\pages\WalletPage.tsx:429:      setWalletTransactions([]);
+  apps\mobile\src\pages\passenger\pages\WalletPage.tsx:430:      setLocalBenefits(readLocalWalletBenefits(session.user));
+  apps\mobile\src\pages\passenger\pages\WalletPage.tsx:431:    } finally {
+  apps\mobile\src\pages\passenger\pages\WalletPage.tsx:432:      setLoading(false);
+  apps\mobile\src\pages\passenger\pages\WalletPage.tsx:433:    }
+  apps\mobile\src\pages\passenger\pages\WalletPage.tsx:434:  }, [session?.accessToken, session?.user]);
+  apps\mobile\src\pages\passenger\pages\WalletPage.tsx:435:
+  apps\mobile\src\pages\passenger\pages\WalletPage.tsx:436:  useEffect(() => {
+  apps\mobile\src\pages\passenger\pages\WalletPage.tsx:437:    void load();
+  apps\mobile\src\pages\passenger\pages\WalletPage.tsx:438:  }, [load]);
+  apps\mobile\src\pages\passenger\pages\WalletPage.tsx:439:
+  apps\mobile\src\pages\passenger\pages\WalletPage.tsx:459:  const pendingCashCredits = cashCredits.filter(isWalletBenefitPending);
+  apps\mobile\src\pages\passenger\pages\WalletPage.tsx:460:  const pendingCardCredits = 
+cardCancellationCredits.filter(isWalletBenefitPending);
+  apps\mobile\src\pages\passenger\pages\WalletPage.tsx:461:
+> apps\mobile\src\pages\passenger\pages\WalletPage.tsx:462:  const backendCompletedCredits = walletTransactions.filter((transaction) => {
+  apps\mobile\src\pages\passenger\pages\WalletPage.tsx:463:    const type = String(transaction.type ?? "").toLowerCase();
+  apps\mobile\src\pages\passenger\pages\WalletPage.tsx:464:    const status = String(transaction.status ?? "").toLowerCase();
+  apps\mobile\src\pages\passenger\pages\WalletPage.tsx:465:    return type === "credit" && status === "completed";
+  apps\mobile\src\pages\passenger\pages\WalletPage.tsx:466:  });
+  apps\mobile\src\pages\passenger\pages\WalletPage.tsx:467:
+  apps\mobile\src\pages\passenger\pages\WalletPage.tsx:468:  const backendWalletBalanceClp = Math.max(0, 
+Math.round(Number(wallet?.balance ?? 0)));
+  apps\mobile\src\pages\passenger\pages\WalletPage.tsx:469:  const backendCreditHistoryClp = backendCompletedCredits.reduce(
+  apps\mobile\src\pages\passenger\pages\WalletPage.tsx:470:    (sum, transaction) => sum + Math.max(0, 
+Math.round(Number(transaction.amount ?? 0))),
+  apps\mobile\src\pages\passenger\pages\WalletPage.tsx:471:    0,
+  apps\mobile\src\pages\passenger\pages\WalletPage.tsx:472:  );
+
+
+Matches=52
