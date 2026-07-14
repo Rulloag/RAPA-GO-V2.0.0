@@ -1850,8 +1850,8 @@ function buildPassengerCancelledRide(ride: RideRequestData): RideRequestData {
     passengerPendingChargeNotice:
       policy.feeClp > 0
         ? isCardPayment
-          ? `La penalización de ${formatClp(policy.feeClp)} se descuenta automáticamente del pago realizado. El saldo restante queda como CRÉDITOS PARA PRÓXIMO VIAJE en tu billetera.`
-          : `Tienes un cargo pendiente de ${formatClp(policy.feeClp)}. Se sumará automáticamente a tu próximo viaje.`
+          ? `La penalización de ${formatClp(policy.feeClp)} queda sujeto a revision segura del backend/admin. El frontend no crea creditos locales.`
+          : `Tienes un cargo pendiente de ${formatClp(policy.feeClp)}. Debe ser revisado y aplicado por backend/admin.`
         : null,
     // Si el viaje fue pagado con tarjeta, el reembolso real debe ejecutarlo el backend
     // usando el paymentId del proveedor. El frontend solo deja la solicitud marcada
@@ -5933,19 +5933,47 @@ function savePassengerWalletCreditFromCardCancellation(
 }
 
 
+function normalizeRapaGoSupportWhatsAppPhone(phone: string): string {
+  const digits = String(phone ?? "").replace(/\D/g, "");
+  return digits.length >= 8 && digits.length <= 15 ? digits : "56947964171";
+}
+
+function buildRapaGoSupportFolio(parts: unknown[]): string {
+  const raw = parts.map((value) => String(value ?? "").trim()).filter(Boolean).join("|");
+  let hash = 0;
+  for (let i = 0; i < raw.length; i += 1) {
+    hash = (hash * 31 + raw.charCodeAt(i)) | 0;
+  }
+  return `RPG-${Math.abs(hash).toString(36).toUpperCase().padStart(6, "0").slice(0, 6)}`;
+}
+
+function formatRapaGoSupportDate(value: unknown): string | null {
+  const time = new Date(String(value ?? "")).getTime();
+  if (!Number.isFinite(time)) return null;
+  return new Date(time).toLocaleDateString("es-CL");
+}
+
 function buildRapaGoRefundWhatsAppUrl(ride: RideRequestData, review: PassengerCashPaymentReview): string {
-  const phone = RAPAGO_SUPPORT_WHATSAPP_PHONE;
+  const phone = normalizeRapaGoSupportWhatsAppPhone(RAPAGO_SUPPORT_WHATSAPP_PHONE);
+  const rideRecord = ride as RideRequestData & Record<string, unknown>;
+  const reviewRecord = review as PassengerCashPaymentReview & Record<string, unknown>;
+  const folio = buildRapaGoSupportFolio([
+    rideRecord["id"],
+    rideRecord["rideId"],
+    reviewRecord["id"],
+    reviewRecord["rideId"],
+    reviewRecord["createdAt"],
+  ]);
+  const supportDate = formatRapaGoSupportDate(reviewRecord["createdAt"] ?? rideRecord["completedAt"] ?? rideRecord["createdAt"]);
 
   const message = [
-    "Hola Soporte RAPA GO, quiero que me devuelvan este dinero. Solicito devolución por pago de más en efectivo.",
-    `Viaje: ${review.originText} → ${review.destinationText}`,
-    `Precio del viaje: ${formatClp(review.fareClp)}`,
-    `Pagué: ${formatClp(review.paidClp)}`,
-    `Diferencia a devolver: ${formatClp(review.overpaidClp)}`,
-    `ID viaje: ${review.rideId || getPassengerCashPaymentRideKey(ride as RideRequestData & Record<string, unknown>)}`,
-  ].join("\n");
+    "Soporte RAPA GO: solicitud de revision por pago en efectivo.",
+    `Folio: ${folio}`,
+    supportDate ? `Fecha solicitud: ${supportDate}` : null,
+    "Revisar detalle en panel admin autenticado.",
+  ].filter(Boolean);
 
-  return `https://wa.me/${phone}?text=${encodeURIComponent(message)}`;
+  return `https://wa.me/${phone}?text=${encodeURIComponent(message.join("\n"))}`;
 }
 
 function openPassengerRefundWhatsApp(ride: RideRequestData, review: PassengerCashPaymentReview): void {
@@ -5959,33 +5987,26 @@ function openPassengerRefundWhatsApp(ride: RideRequestData, review: PassengerCas
 }
 
 function buildRapaGoCardCancelRefundWhatsAppUrl(ride: RideRequestData): string {
-  const phone = RAPAGO_SUPPORT_WHATSAPP_PHONE;
+  const phone = normalizeRapaGoSupportWhatsAppPhone(RAPAGO_SUPPORT_WHATSAPP_PHONE);
   const record = ride as RideRequestData & Record<string, unknown>;
-  const amountClp =
-    getRideDisplayFareClp(ride) ??
-    addFastSearchFeeToBaseFare(ride, getPassengerRideBaseFareClp(ride)) ??
-    getPassengerRideBaseFareClp(ride);
-
-  const paymentId = String(
-    record.mercadoPagoPaymentId ??
-      record.paymentId ??
-      record.paymentExternalId ??
-      record.paymentPreferenceId ??
-      "",
-  ).trim();
+  const folio = buildRapaGoSupportFolio([
+    record["id"],
+    record["rideId"],
+    record["paymentId"],
+    record["mercadoPagoPaymentId"],
+    record["cancelledAt"],
+    record["createdAt"],
+  ]);
+  const supportDate = formatRapaGoSupportDate(record["cancelledAt"] ?? record["createdAt"]);
 
   const message = [
-    "Hola Soporte RAPA GO, cancelé un viaje pagado con tarjeta/MercadoPago y quiero gestionar la devolución de forma segura.",
-    `Viaje: ${ride.originText} → ${ride.destinationText}`,
-    amountClp != null ? `Monto del viaje: ${formatClp(amountClp)}` : "",
-    `Estado en la app: ${String(record.mercadoPagoRefundStatus ?? "pendiente de revisión")}`,
-    paymentId ? `ID de pago: ${paymentId}` : "",
-    String(record.id ?? record.rideId ?? "").trim() ? `ID del viaje: ${String(record.id ?? record.rideId).trim()}` : "",
-    String(record.passengerEmail ?? "").trim() ? `Correo pasajero: ${String(record.passengerEmail).trim()}` : "",
-    "No enviaré datos de tarjeta, claves ni códigos. Solo necesito que RAPA GO gestione la devolución.",
-  ].filter(Boolean).join("\n");
+    "Soporte RAPA GO: solicitud de revision de devolucion por cancelacion con tarjeta.",
+    `Folio: ${folio}`,
+    supportDate ? `Fecha solicitud: ${supportDate}` : null,
+    "Revisar detalle en panel admin autenticado.",
+  ].filter(Boolean);
 
-  return `https://wa.me/${phone}?text=${encodeURIComponent(message)}`;
+  return `https://wa.me/${phone}?text=${encodeURIComponent(message.join("\n"))}`;
 }
 
 function openRapaGoCardCancelRefundWhatsApp(ride: RideRequestData): void {
@@ -6290,10 +6311,10 @@ function buildPassengerCancellationAlertMessage(
     : false;
 
   if (isCardPayment) {
-    return `${policy.message} ${policy.detail} Si confirmas, cancelaremos el viaje y podrás gestionar la devolución segura con RAPA GO por WhatsApp. El cargo de ${formatClp(policy.feeClp)} se sumará automáticamente a tu próximo viaje como cobro separado. ¿Confirmas cancelar?`;
+    return `${policy.message} ${policy.detail} Si confirmas, cancelaremos el viaje y podrás gestionar la devolución segura con RAPA GO por WhatsApp. El cargo de ${formatClp(policy.feeClp)} queda sujeto a revision y aplicacion por backend/admin. ¿Confirmas cancelar?`;
   }
 
-  return `${policy.message} ${policy.detail} Si confirmas, el cargo de ${formatClp(policy.feeClp)} se sumará automáticamente a tu próximo viaje. ¿Confirmas cancelar?`;
+  return `${policy.message} ${policy.detail} Si confirmas, el cargo de ${formatClp(policy.feeClp)} queda sujeto a revision y aplicacion por backend/admin. ¿Confirmas cancelar?`;
 }
 
 function PassengerRideCard({
@@ -6498,7 +6519,7 @@ function PassengerRideCard({
               }}
             >
               ⚠️ Revision backend pendiente: <strong>{formatClp(passengerCancelledChargeClp)}</strong>.
-              <br />Este monto se sumará automáticamente a cualquier próximo viaje que solicites.
+              <br />El backend/admin debe confirmar y aplicar cualquier cobro. Esta pantalla no crea cargos locales.
               {passengerCancelledCardRefundNotice && (
                 <>
                   <br /><span style={{ fontSize: ".76rem" }}>{passengerCancelledCardRefundNotice}</span>

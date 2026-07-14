@@ -622,20 +622,60 @@ function markAdminWalletCreditRefundCompleted(benefit: AdminWalletBenefit): void
   writeAdminWalletBenefits(next);
 }
 
+function normalizeAdminSupportWhatsAppPhone(phone: string): string {
+  const digits = String(phone ?? "").replace(/\D/g, "");
+  return digits.length >= 8 && digits.length <= 15 ? digits : "56947964171";
+}
+
+function sanitizeAdminSupportText(value: unknown): string {
+  return String(value ?? "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-zA-Z0-9\s._-]/g, "")
+    .replace(/\s{2,}/g, " ")
+    .trim()
+    .slice(0, 80);
+}
+
+function buildAdminSupportFolio(parts: unknown[]): string {
+  const raw = parts.map((value) => String(value ?? "").trim()).filter(Boolean).join("|");
+  let hash = 0;
+  for (let i = 0; i < raw.length; i += 1) {
+    hash = (hash * 31 + raw.charCodeAt(i)) | 0;
+  }
+  return `RPG-${Math.abs(hash).toString(36).toUpperCase().padStart(6, "0").slice(0, 6)}`;
+}
+
+function formatAdminSupportDate(value: unknown): string | null {
+  const time = new Date(String(value ?? "")).getTime();
+  if (!Number.isFinite(time)) return null;
+  return new Date(time).toLocaleDateString("es-CL");
+}
+
 function buildAdminWalletCreditRefundWhatsAppUrl(benefit: AdminWalletBenefit): string {
+  const record = benefit as AdminWalletBenefit & Record<string, unknown>;
+  const phone = normalizeAdminSupportWhatsAppPhone(RAPAGO_SUPPORT_WHATSAPP_PHONE);
+  const folio = buildAdminSupportFolio([
+    record["id"],
+    record["rideId"],
+    record["paymentId"],
+    record["createdAt"],
+    record["source"],
+  ]);
+  const provider = sanitizeAdminSupportText(record["paymentProvider"]);
+  const method = sanitizeAdminSupportText(record["paymentMethod"]);
+  const supportDate = formatAdminSupportDate(record["createdAt"]);
+
   const lines = [
-    "Hola Gerencia de Soporte RAPA GO.",
-    "Necesito gestionar una devolución asociada a CRÉDITOS PARA PRÓXIMO VIAJE.",
-    `Pasajero: ${benefit.passengerEmail || benefit.ownerKey || "No informado"}`,
-    `Monto crédito: ${formatAdminCashClp(benefit.amountClp)}`,
-    benefit.paidClp != null ? `Pago original: ${formatAdminCashClp(benefit.paidClp)}` : null,
-    benefit.cancellationFeeClp != null ? `Penalización descontada: ${formatAdminCashClp(benefit.cancellationFeeClp)}` : null,
-    benefit.originText || benefit.destinationText ? `Viaje: ${benefit.originText || "Origen"} → ${benefit.destinationText || "Destino"}` : null,
-    benefit.paymentId ? `ID pago: ${benefit.paymentId}` : null,
-    benefit.rideId ? `ID viaje: ${benefit.rideId}` : null,
+    "Soporte RAPA GO: solicitud de revision de credito/devolucion.",
+    `Folio: ${folio}`,
+    provider ? `Proveedor: ${provider}` : null,
+    method ? `Medio de pago: ${method}` : null,
+    supportDate ? `Fecha solicitud: ${supportDate}` : null,
+    "Revisar detalle en panel admin autenticado.",
   ].filter(Boolean);
 
-  return `https://wa.me/${RAPAGO_SUPPORT_WHATSAPP_PHONE}?text=${encodeURIComponent(lines.join("\n"))}`;
+  return `https://wa.me/${phone}?text=${encodeURIComponent(lines.join("\n"))}`;
 }
 
 function openAdminWalletCreditRefundWhatsApp(benefit: AdminWalletBenefit): void {

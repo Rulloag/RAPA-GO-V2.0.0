@@ -1,0 +1,282 @@
+﻿
+  apps\mobile\src\pages\admin\index.tsx:6455:    passengerNotification:
+  apps\mobile\src\pages\admin\index.tsx:6456:      getRideUnknownField(ride, "returnPassengerNotification") ??
+  apps\mobile\src\pages\admin\index.tsx:6457:      "Tu regreso está agendado. RAPA GO asignará un conductor para la vuelta.",
+  apps\mobile\src\pages\admin\index.tsx:6458:    notes: `${String(ride.notes ?? "").trim()} Gestión admin: regreso promocional. El admin 
+debe asignar conductor para el regreso ${originText} → ${destinationText}.`.trim(),
+  apps\mobile\src\pages\admin\index.tsx:6459:    localAdminOverride: true,
+> apps\mobile\src\pages\admin\index.tsx:6460:    reservationRequiresCard: true,
+  apps\mobile\src\pages\admin\index.tsx:6461:    paymentRequiredProvider: "mercadopago",
+  apps\mobile\src\pages\admin\index.tsx:6462:    cardCancellationCreditToWallet: true,
+  apps\mobile\src\pages\admin\index.tsx:6463:    cardCancellationCreditName: "CRÉDITOS PARA PRÓXIMO VIAJE",
+  apps\mobile\src\pages\admin\index.tsx:6464:    reservationCancellationWindowMinutes: 15,
+  apps\mobile\src\pages\admin\index.tsx:6465:    adminAssignmentWindowMinutes: 30,
+  apps\mobile\src\pages\admin\index.tsx:6466:  } as AdminRideData;
+  apps\mobile\src\pages\admin\index.tsx:6467:}
+  apps\mobile\src\pages\admin\index.tsx:6468:
+  apps\mobile\src\pages\admin\index.tsx:6469:function readLocalPassengerReturnReservationsForAdmin(): AdminRideData[] {
+  apps\mobile\src\pages\admin\index.tsx:6470:  try {
+  apps\mobile\src\pages\admin\index.tsx:7029:      adminScheduleStatus: "pending_driver_confirmation",
+  apps\mobile\src\pages\admin\index.tsx:7030:      reservationStatus: "assigned_waiting_driver_acceptance",
+  apps\mobile\src\pages\admin\index.tsx:7031:      driverAssignmentStatus: "pending_driver_acceptance",
+  apps\mobile\src\pages\admin\index.tsx:7032:      assignedByAdminAt: nowIso,
+  apps\mobile\src\pages\admin\index.tsx:7033:      passengerNotification: assignedRecord.passengerNotification ?? "Tu reserva sigue 
+agendada. Estamos esperando confirmación del conductor asignado.",
+> apps\mobile\src\pages\admin\index.tsx:7034:      reservationRequiresCard: true,
+  apps\mobile\src\pages\admin\index.tsx:7035:      paymentRequiredProvider: "mercadopago",
+  apps\mobile\src\pages\admin\index.tsx:7036:      cardCancellationCreditToWallet: true,
+  apps\mobile\src\pages\admin\index.tsx:7037:      cardCancellationCreditName: "CRÉDITOS PARA PRÓXIMO VIAJE",
+  apps\mobile\src\pages\admin\index.tsx:7038:      reservationCancellationWindowMinutes: 15,
+  apps\mobile\src\pages\admin\index.tsx:7039:      adminAssignmentWindowMinutes: 30,
+  apps\mobile\src\pages\admin\index.tsx:7040:    };
+  apps\mobile\src\pages\admin\index.tsx:7041:  });
+  apps\mobile\src\pages\admin\index.tsx:7042:
+  apps\mobile\src\pages\admin\index.tsx:7043:  saveLocalPassengerRidesForAdmin(updated);
+  apps\mobile\src\pages\admin\index.tsx:7044:}
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:4124:  );
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:4125:  const effectivePassengerFareType = 
+selectedRoundTripPromotion?.passengerFareType ?? passengerFareType;
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:4126:  const effectiveTripFareMode: TripFareMode = 
+selectedRoundTripPromotion ? "round_trip" : tripFareMode;
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:4127:  const isRoundTripPromotionSelected = 
+Boolean(selectedRoundTripPromotion);
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:4128:  const isAirportScheduledRide = rideMode === "scheduled" && 
+!isRoundTripPromotionSelected;
+> apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:4129:  const reservationRequiresCard = rideMode === "scheduled" || 
+Boolean(selectedRoundTripPromotion);
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:4130:  const airportScheduledRequiresCard = isAirportScheduledRide;
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:4131:  const canChooseOrigin = rideMode !== "scheduled" || 
+isRoundTripPromotionSelected;
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:4132:  const requireReturnScheduledAt = effectiveTripFareMode === 
+"round_trip";
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:4133:  const roundTripPromotionReturnOnly = 
+Boolean(selectedRoundTripPromotion);
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:4134:
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:4135:  useEffect(() => {
+> apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:4136:    if (!reservationRequiresCard) return;
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:4137:    if (paymentMethod !== "card") setPaymentMethod("card");
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:4138:    setShowPaymentBox(false);
+> apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:4139:  }, [reservationRequiresCard, paymentMethod]);
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:4140:
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:4141:  useEffect(() => {
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:4142:    let cancelled = false;
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:4143:
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:4144:    void fetchRapaGoFareRules().then((rules) => {
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:4145:      if (!cancelled) setFareRules(rules);
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:4146:    });
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:4147:
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:4148:    return () => {
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:4149:      cancelled = true;
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:4760:    setSubmitError(null);
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:4761:    setShowPaymentBox(true);
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:4762:  }
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:4763:
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:4764:  function handleSelectPayment(method: Exclude<PaymentMethod, null>): 
+void {
+> apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:4765:    if (reservationRequiresCard && method === "cash") {
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:4766:      setPaymentMethod("card");
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:4767:      setShowPaymentBox(false);
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:4768:      setSubmitError("Todas las reservas se pagan obligatoriamente con 
+tarjeta/MercadoPago. Si cancelas dentro de los últimos 15 minutos, se descuenta 30% con tope $3.000 y el saldo queda como CRÉDITOS PARA 
+PRÓXIMO VIAJE.");
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:4769:      return;
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:4770:    }
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:4771:
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:4772:    setPaymentMethod(method);
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:4773:    setShowPaymentBox(false);
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:4774:    setSubmitError(null);
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:4775:  }
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:4809:      setShowPaymentBox(true);
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:4810:      setSubmitError("Antes de solicitar el viaje debes elegir forma de 
+pago.");
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:4811:      return;
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:4812:    }
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:4813:
+> apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:4814:    if (reservationRequiresCard && String(activePaymentMethod) !== 
+"card") {
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:4815:      setPaymentMethod("card");
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:4816:      setShowPaymentBox(true);
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:4817:      setSubmitError("Todas las reservas deben pagarse obligatoriamente 
+con tarjeta/MercadoPago. Si cancelas dentro de los últimos 15 minutos, se descuenta 30% con tope $3.000 y el saldo queda como CRÉDITOS 
+PARA PRÓXIMO VIAJE.");
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:4818:      return;
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:4819:    }
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:4820:
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:4821:    if (hasAvailableWalletBenefit && useWalletBenefit === null) {
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:4822:      setSubmitError(`Tienes 
+${formatCLP(availableWalletBenefitTotalClp)} a favor. Elige si quieres usar tu beneficio en este viaje.`);
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:4823:      return;
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:4824:    }
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:4841:
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:4842:    try {
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:4843:      const notes: string[] = [];
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:4844:
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:4845:      notes.push(`Forma de pago seleccionada: 
+${getPaymentLabel(activePaymentMethod)}.`);
+> apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:4846:      if (reservationRequiresCard) {
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:4847:        notes.push("Pago obligatorio para reservas: 
+tarjeta/MercadoPago.");
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:4848:        notes.push("Gestión reserva: el administrador designa conductor 
+30 minutos antes del inicio del servicio.");
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:4849:        notes.push("Política cancelación reserva: desde los últimos 15 
+minutos previos al inicio se cobra 30% con tope $3.000.");
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:4850:        notes.push("Si se cancela con tarjeta, la penalización se 
+descuenta del pago y el saldo queda como CRÉDITOS PARA PRÓXIMO VIAJE en billetera. Si requiere devolución, debe solicitarla a Gerencia 
+de Soporte RAPA GO por WhatsApp.");
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:4851:      }
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:4852:      if (pendingPassengerChargeTotalClp > 0) {
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:4853:        notes.push(`Cargo pendiente anterior por cancelación/no show 
+aplicado al próximo viaje: ${formatCLP(pendingPassengerChargeTotalClp)}.`);
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:4854:        notes.push(`Total antes de beneficio billetera incluyendo cargo 
+pendiente anterior: ${formatCLP(selectedFareAmountBeforeWallet)}.`);
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:4855:      }
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:4856:      if (selectedWalletBenefitDiscountClp > 0) {
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:5085:          flowerLeiSurchargeClp: airportWelcomeSurchargeClp,
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:5086:          airportWelcomeSurchargeClp,
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:5087:          optionalServicesTotalClp: airportWelcomeSurchargeClp,
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:5088:          baseFareBeforeExtrasClp: selectedBaseFareAmount,
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:5089:          finalFareWithExtrasClp: selectedFareAmount,
+> apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:5090:          airportReservationRequiresCard: isAirportScheduledRide,
+> apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:5091:          reservationRequiresCard: reservationRequiresCard,
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:5092:          paymentRequiredProvider: "mercadopago",
+> apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:5093:          cardCancellationCreditToWallet: reservationRequiresCard && 
+String(activePaymentMethod) === "card",
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:5094:          cardCancellationAdminReviewRequired: false,
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:5095:          cardCancellationCreditName: "CRÉDITOS PARA PRÓXIMO VIAJE",
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:5096:        });
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:5097:      } else if (selectedRoundTripPromotion) {
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:5098:        Object.assign(input as CreateRideInput & Record<string, 
+unknown>, {
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:5099:          roundTripPromotionId: selectedRoundTripPromotion.id,
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:5100:          roundTripPromotionTitle: selectedRoundTripPromotion.title,
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:5101:          roundTripPromotionDestination: 
+selectedRoundTripPromotion.destinationName,
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:5102:          roundTripPromotionBooking: true,
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:5103:          roundTripOutboundNow: true,
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:5253:        }
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:5254:
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:5255:        const localNotes: string[] = [];
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:5256:
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:5257:        localNotes.push(`Forma de pago seleccionada: 
+${getPaymentLabel(activePaymentMethod)}.`);
+> apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:5258:        if (reservationRequiresCard) {
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:5259:          localNotes.push("Pago obligatorio para reservas: 
+tarjeta/MercadoPago.");
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:5260:          localNotes.push("Gestión reserva: el administrador designa 
+conductor 30 minutos antes del inicio del servicio.");
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:5261:          localNotes.push("Política cancelación reserva: desde los 
+últimos 15 minutos previos al inicio se cobra 30% con tope $3.000.");
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:5262:          localNotes.push("Si se cancela con tarjeta, la penalización 
+se descuenta del pago y el saldo queda como CRÉDITOS PARA PRÓXIMO VIAJE en billetera. Si requiere devolución, debe solicitarla a 
+Gerencia de Soporte RAPA GO por WhatsApp.");
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:5263:        }
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:5264:        if (pendingPassengerChargeTotalClp > 0) {
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:5265:          localNotes.push(`Cargo pendiente anterior por cancelación/no 
+show aplicado al próximo viaje: ${formatCLP(pendingPassengerChargeTotalClp)}.`);
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:5266:          localNotes.push(`Total antes de beneficio billetera 
+incluyendo cargo pendiente anterior: ${formatCLP(selectedFareAmountBeforeWallet)}.`);
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:5267:        }
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:5268:        if (selectedWalletBenefitDiscountClp > 0) {
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:5425:          isRoundTrip: effectiveTripFareMode === "round_trip",
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:5426:          roundTripPromotionBooking: 
+Boolean(selectedRoundTripPromotion),
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:5427:          roundTripOutboundNow: Boolean(selectedRoundTripPromotion),
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:5428:          roundTripReturnPickupRequested: 
+Boolean(selectedRoundTripPromotion && returnScheduledAt),
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:5429:          roundTripReturnPickupAt: selectedRoundTripPromotion ? 
+returnScheduledAt : null,
+> apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:5430:          airportReservationRequiresCard: isAirportScheduledRide,
+> apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:5431:          reservationRequiresCard: reservationRequiresCard,
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:5432:          paymentRequiredProvider: isAirportScheduledRide ? 
+"mercadopago" : null,
+> apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:5433:          cardCancellationCreditToWallet: reservationRequiresCard && 
+String(activePaymentMethod) === "card",
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:5434:          cardCancellationAdminReviewRequired: false,
+> apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:5435:          cardCancellationCreditName: reservationRequiresCard && 
+String(activePaymentMethod) === "card" ? "CRÉDITOS PARA PRÓXIMO VIAJE" : null,
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:5436:        } as LocalPassengerRideData;
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:5437:
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:5438:        const localReturnPickupRide = selectedRoundTripPromotion && 
+returnScheduledAt
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:5439:          ? createRoundTripReturnPickupRide({
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:5440:              returnOriginText: 
+selectedRoundTripPromotion.destinationName,
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:5441:              returnOriginAddress: resolved.destination.address,
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:5442:              returnOriginLat: resolved.destination.lat,
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:5443:              returnOriginLng: resolved.destination.lng,
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:5444:              returnDestinationText: resolved.origin.text,
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:5445:              returnDestinationAddress: resolved.origin.address,
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:6922:                      </div>
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:6923:                      <div style={{ marginTop: 3, fontWeight: 950, 
+fontSize: "1.08rem", lineHeight: 1.05 }}>
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:6924:                        ¿Cómo quieres pagar?
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:6925:                      </div>
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:6926:                      <div style={{ marginTop: 6, color: 
+"rgba(17,17,17,.66)", fontSize: ".74rem", lineHeight: 1.35, fontWeight: 800 }}>
+> apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:6927:                        {reservationRequiresCard ? "Todas las reservas 
+se pagan obligatoriamente con tarjeta. Si cancelas dentro de los últimos 15 minutos, se descuenta 30% tope $3.000 y el saldo queda como 
+CRÉDITOS PARA PRÓXIMO VIAJE." : "Elige efectivo al conductor o paga con tarjeta mediante MercadoPago Checkout Pro."}
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:6928:                      </div>
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:6929:                    </div>
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:6930:                    <span style={{ borderRadius: 999, padding: "6px 
+9px", background: "#fff7e8", color: "#9A6A10", fontSize: ".66rem", fontWeight: 950, whiteSpace: "nowrap" }}>
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:6931:                      MercadoPago activo
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:6932:                    </span>
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:6933:                  </div>
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:6934:
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:6935:                  <div style={{ display: "grid", gridTemplateColumns: 
+"1fr", gap: 10, marginTop: 13 }}>
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:6936:                    <button
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:6937:                      type="button"
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:6947:                        transform: paymentMethod === "cash" ? 
+"scale(1.015)" : "scale(1)",
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:6948:                        transition: "all .18s ease",
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:6949:                        fontWeight: 950,
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:6950:                        textAlign: "left",
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:6951:                        width: "100%",
+> apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:6952:                        opacity: reservationRequiresCard ? .48 : 1,
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:6953:                      }}
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:6954:                    >
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:6955:                      <div style={{ display: "flex", alignItems: 
+"center", justifyContent: "space-between", gap: 12 }}>
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:6956:                        <div>
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:6957:                          <div style={{ fontSize: "1.35rem", 
+lineHeight: 1 }}>💵</div>
+> apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:6958:                          <div style={{ marginTop: 5, fontSize: 
+".94rem" }}>{reservationRequiresCard ? "Efectivo no disponible" : "Efectivo al conductor"}</div>
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:6959:                          <div style={{ marginTop: 3, fontSize: 
+".72rem", fontWeight: 850, opacity: .78 }}>
+> apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:6960:                            {reservationRequiresCard ? "Reservas: solo 
+tarjeta" : "Confirmación inmediata"}
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:6961:                          </div>
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:6962:                        </div>
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:6963:                        <div style={{ textAlign: "right" }}>
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:6964:                          <div style={{ fontSize: "1.04rem", 
+lineHeight: 1.05, fontWeight: 950 }}>
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:6965:                            {cashPaymentLabel}
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:6966:                          </div>
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:6967:                          <div style={{ marginTop: 2, fontSize: 
+".74rem", fontWeight: 950, color: "#4F350D" }}>
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:6968:                            {cashPaymentUsdLabel}
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:6969:                          </div>
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:6970:                        </div>
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:7148:                ) : paymentMethod === null ? (
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:7149:                  "ELIGE FORMA DE PAGO"
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:7150:                ) : selectedRoundTripPromotion ? (
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:7151:                  "IDA + AGENDAMIENTO DE RECOGIDA"
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:7152:                ) : rideMode === "scheduled" ? (
+> apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:7153:                  reservationRequiresCard ? "RESERVAR Y PAGAR CON 
+TARJETA" : paymentMethod === "card" ? "AGENDAR Y PAGAR CON TARJETA" : "AGENDA TU VIAJE"
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:7154:                ) : paymentMethod === "card" ? (
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:7155:                  "PAGAR CON TARJETA"
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:7156:                ) : (
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:7157:                  "SOLICITAR VIAJE"
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:7158:                )}
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:7159:            </IonButton>
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:7160:          </div>
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:7161:        </div>
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:7162:
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:7163:        {pickerTarget && (
+
+
+Matches=21

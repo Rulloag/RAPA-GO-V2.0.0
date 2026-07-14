@@ -1,0 +1,1376 @@
+﻿
+  apps\mobile\src\pages\admin\index.tsx:178:  cardRefundRequested?: boolean | null;
+  apps\mobile\src\pages\admin\index.tsx:179:  mercadoPagoRefundRequested?: boolean | null;
+  apps\mobile\src\pages\admin\index.tsx:180:  mercadoPagoRefundStatus?: string | null;
+> apps\mobile\src\pages\admin\index.tsx:181:  cancellationFeeClp?: number | null;
+  apps\mobile\src\pages\admin\index.tsx:182:  originText?: string | null;
+  apps\mobile\src\pages\admin\index.tsx:183:  destinationText?: string | null;
+  apps\mobile\src\pages\admin\index.tsx:184:  paymentId?: string | null;
+  apps\mobile\src\pages\admin\index.tsx:185:  paymentMethod?: string | null;
+  apps\mobile\src\pages\admin\index.tsx:186:  paymentProvider?: string | null;
+  apps\mobile\src\pages\admin\index.tsx:187:};
+  apps\mobile\src\pages\admin\index.tsx:188:
+  apps\mobile\src\pages\admin\index.tsx:189:type AdminPassengerPendingCharge = {
+  apps\mobile\src\pages\admin\index.tsx:190:  id: string;
+  apps\mobile\src\pages\admin\index.tsx:191:  rideId?: string | null;
+  apps\mobile\src\pages\admin\index.tsx:195:  originText?: string | null;
+  apps\mobile\src\pages\admin\index.tsx:196:  destinationText?: string | null;
+  apps\mobile\src\pages\admin\index.tsx:197:  amountClp: number;
+> apps\mobile\src\pages\admin\index.tsx:198:  minimumFareClp?: number | null;
+> apps\mobile\src\pages\admin\index.tsx:199:  type?: "late_cancel" | "no_show" | string | null;
+  apps\mobile\src\pages\admin\index.tsx:200:  paymentMethod?: string | null;
+> apps\mobile\src\pages\admin\index.tsx:201:  status: "pending_next_ride" | "applied_to_next_ride" | "paid" | "waived" | string;
+  apps\mobile\src\pages\admin\index.tsx:202:  adminReviewStatus?: string | null;
+  apps\mobile\src\pages\admin\index.tsx:203:  title?: string | null;
+  apps\mobile\src\pages\admin\index.tsx:204:  description?: string | null;
+  apps\mobile\src\pages\admin\index.tsx:205:  createdAt?: string | null;
+  apps\mobile\src\pages\admin\index.tsx:206:  appliedRideId?: string | null;
+  apps\mobile\src\pages\admin\index.tsx:207:  appliedAt?: string | null;
+  apps\mobile\src\pages\admin\index.tsx:208:  cardRefundRequested?: boolean | null;
+  apps\mobile\src\pages\admin\index.tsx:209:  mercadoPagoRefundStatus?: string | null;
+  apps\mobile\src\pages\admin\index.tsx:210:  cardRefundNotice?: string | null;
+  apps\mobile\src\pages\admin\index.tsx:211:};
+  apps\mobile\src\pages\admin\index.tsx:447:      cardRefundRequested: Boolean(item.cardRefundRequested || 
+item.mercadoPagoRefundRequested),
+  apps\mobile\src\pages\admin\index.tsx:448:      mercadoPagoRefundRequested: Boolean(item.mercadoPagoRefundRequested || 
+item.cardRefundRequested),
+  apps\mobile\src\pages\admin\index.tsx:449:      mercadoPagoRefundStatus: typeof item.mercadoPagoRefundStatus === "string" ? 
+item.mercadoPagoRefundStatus : null,
+> apps\mobile\src\pages\admin\index.tsx:450:      cancellationFeeClp: Number.isFinite(Number(item.cancellationFeeClp)) ? 
+Math.round(Number(item.cancellationFeeClp)) : null,
+  apps\mobile\src\pages\admin\index.tsx:451:      originText: typeof item.originText === "string" ? item.originText : null,
+  apps\mobile\src\pages\admin\index.tsx:452:      destinationText: typeof item.destinationText === "string" ? item.destinationText : 
+null,
+  apps\mobile\src\pages\admin\index.tsx:453:      paymentId: typeof item.paymentId === "string" ? item.paymentId : null,
+  apps\mobile\src\pages\admin\index.tsx:454:      paymentMethod: typeof item.paymentMethod === "string" ? item.paymentMethod : null,
+  apps\mobile\src\pages\admin\index.tsx:455:      paymentProvider: typeof item.paymentProvider === "string" ? item.paymentProvider : 
+null,
+  apps\mobile\src\pages\admin\index.tsx:456:    }));
+  apps\mobile\src\pages\admin\index.tsx:457:  } catch {
+  apps\mobile\src\pages\admin\index.tsx:458:    return [];
+  apps\mobile\src\pages\admin\index.tsx:459:  }
+  apps\mobile\src\pages\admin\index.tsx:460:}
+  apps\mobile\src\pages\admin\index.tsx:471:  }
+  apps\mobile\src\pages\admin\index.tsx:472:}
+  apps\mobile\src\pages\admin\index.tsx:473:
+> apps\mobile\src\pages\admin\index.tsx:474:function isAdminWalletCardCancellationCredit(benefit: AdminWalletBenefit): boolean {
+  apps\mobile\src\pages\admin\index.tsx:475:  const text = [
+  apps\mobile\src\pages\admin\index.tsx:476:    benefit.source,
+  apps\mobile\src\pages\admin\index.tsx:477:    benefit.title,
+  apps\mobile\src\pages\admin\index.tsx:478:    benefit.description,
+  apps\mobile\src\pages\admin\index.tsx:479:    benefit.paymentMethod,
+  apps\mobile\src\pages\admin\index.tsx:480:    benefit.paymentProvider,
+  apps\mobile\src\pages\admin\index.tsx:481:    benefit.mercadoPagoRefundStatus,
+  apps\mobile\src\pages\admin\index.tsx:482:  ]
+  apps\mobile\src\pages\admin\index.tsx:483:    .map((value) => String(value ?? "").toLowerCase())
+  apps\mobile\src\pages\admin\index.tsx:484:    .join(" ");
+  apps\mobile\src\pages\admin\index.tsx:629:    `Pasajero: ${benefit.passengerEmail || benefit.ownerKey || "No informado"}`,
+  apps\mobile\src\pages\admin\index.tsx:630:    `Monto crédito: ${formatAdminCashClp(benefit.amountClp)}`,
+  apps\mobile\src\pages\admin\index.tsx:631:    benefit.paidClp != null ? `Pago original: ${formatAdminCashClp(benefit.paidClp)}` : null,
+> apps\mobile\src\pages\admin\index.tsx:632:    benefit.cancellationFeeClp != null ? `Penalización descontada: 
+${formatAdminCashClp(benefit.cancellationFeeClp)}` : null,
+  apps\mobile\src\pages\admin\index.tsx:633:    benefit.originText || benefit.destinationText ? `Viaje: ${benefit.originText || 
+"Origen"} → ${benefit.destinationText || "Destino"}` : null,
+  apps\mobile\src\pages\admin\index.tsx:634:    benefit.paymentId ? `ID pago: ${benefit.paymentId}` : null,
+  apps\mobile\src\pages\admin\index.tsx:635:    benefit.rideId ? `ID viaje: ${benefit.rideId}` : null,
+  apps\mobile\src\pages\admin\index.tsx:636:  ].filter(Boolean);
+  apps\mobile\src\pages\admin\index.tsx:637:
+  apps\mobile\src\pages\admin\index.tsx:638:  return 
+`https://wa.me/${RAPAGO_SUPPORT_WHATSAPP_PHONE}?text=${encodeURIComponent(lines.join("\n"))}`;
+  apps\mobile\src\pages\admin\index.tsx:639:}
+  apps\mobile\src\pages\admin\index.tsx:640:
+  apps\mobile\src\pages\admin\index.tsx:641:function openAdminWalletCreditRefundWhatsApp(benefit: AdminWalletBenefit): void {
+  apps\mobile\src\pages\admin\index.tsx:642:  const url = buildAdminWalletCreditRefundWhatsAppUrl(benefit);
+  apps\mobile\src\pages\admin\index.tsx:665:        originText: typeof item.originText === "string" ? item.originText : null,
+  apps\mobile\src\pages\admin\index.tsx:666:        destinationText: typeof item.destinationText === "string" ? item.destinationText : 
+null,
+  apps\mobile\src\pages\admin\index.tsx:667:        amountClp: Math.max(0, Math.round(Number(item.amountClp ?? item.amount ?? 0))),
+> apps\mobile\src\pages\admin\index.tsx:668:        minimumFareClp: Number.isFinite(Number(item.minimumFareClp)) ? 
+Math.round(Number(item.minimumFareClp)) : null,
+  apps\mobile\src\pages\admin\index.tsx:669:        type: typeof item.type === "string" ? item.type : null,
+  apps\mobile\src\pages\admin\index.tsx:670:        paymentMethod: typeof item.paymentMethod === "string" ? item.paymentMethod : null,
+  apps\mobile\src\pages\admin\index.tsx:671:        status: String(item.status ?? "pending_next_ride"),
+  apps\mobile\src\pages\admin\index.tsx:672:        adminReviewStatus: typeof item.adminReviewStatus === "string" ? 
+item.adminReviewStatus : null,
+  apps\mobile\src\pages\admin\index.tsx:673:        title: typeof item.title === "string" ? item.title : null,
+  apps\mobile\src\pages\admin\index.tsx:674:        description: typeof item.description === "string" ? item.description : null,
+  apps\mobile\src\pages\admin\index.tsx:675:        createdAt: typeof item.createdAt === "string" ? item.createdAt : null,
+  apps\mobile\src\pages\admin\index.tsx:676:        appliedRideId: typeof item.appliedRideId === "string" ? item.appliedRideId : null,
+  apps\mobile\src\pages\admin\index.tsx:677:        appliedAt: typeof item.appliedAt === "string" ? item.appliedAt : null,
+  apps\mobile\src\pages\admin\index.tsx:678:        cardRefundRequested: Boolean(item.cardRefundRequested || 
+item.mercadoPagoRefundRequested),
+  apps\mobile\src\pages\admin\index.tsx:711:  if (status === "pending_next_ride") return "Pendiente próximo viaje";
+  apps\mobile\src\pages\admin\index.tsx:712:  if (status === "applied_to_next_ride") return "Agregado a próximo viaje";
+  apps\mobile\src\pages\admin\index.tsx:713:  if (status === "paid") return "Pagado";
+> apps\mobile\src\pages\admin\index.tsx:714:  if (status === "waived") return "Anulado";
+  apps\mobile\src\pages\admin\index.tsx:715:  return charge.status || "Pendiente";
+  apps\mobile\src\pages\admin\index.tsx:716:}
+  apps\mobile\src\pages\admin\index.tsx:717:
+  apps\mobile\src\pages\admin\index.tsx:718:function adminPassengerChargeStatusColor(charge: AdminPassengerPendingCharge): string {
+  apps\mobile\src\pages\admin\index.tsx:719:  const status = String(charge.status ?? "").toLowerCase();
+  apps\mobile\src\pages\admin\index.tsx:720:  const adminStatus = String(charge.adminReviewStatus ?? "").toLowerCase();
+  apps\mobile\src\pages\admin\index.tsx:721:
+  apps\mobile\src\pages\admin\index.tsx:722:  if (status === "charged_from_card_or_paid_amount" || adminStatus === 
+"no_show_total_service_charged") return "success";
+  apps\mobile\src\pages\admin\index.tsx:723:  if (status === "pending_next_ride") return "danger";
+  apps\mobile\src\pages\admin\index.tsx:724:  if (status === "applied_to_next_ride" || status === "paid") return "success";
+> apps\mobile\src\pages\admin\index.tsx:725:  if (status === "waived") return "medium";
+  apps\mobile\src\pages\admin\index.tsx:726:  return "warning";
+  apps\mobile\src\pages\admin\index.tsx:727:}
+  apps\mobile\src\pages\admin\index.tsx:728:
+  apps\mobile\src\pages\admin\index.tsx:729:function isAdminPassengerChargePaidFromCard(charge: AdminPassengerPendingCharge): boolean {
+  apps\mobile\src\pages\admin\index.tsx:730:  const status = String(charge.status ?? "").toLowerCase();
+  apps\mobile\src\pages\admin\index.tsx:731:  const adminStatus = String(charge.adminReviewStatus ?? "").toLowerCase();
+  apps\mobile\src\pages\admin\index.tsx:732:  const method = String(charge.paymentMethod ?? "").toLowerCase();
+  apps\mobile\src\pages\admin\index.tsx:733:
+  apps\mobile\src\pages\admin\index.tsx:734:  return (
+  apps\mobile\src\pages\admin\index.tsx:735:    status === "charged_from_card_or_paid_amount" ||
+  apps\mobile\src\pages\admin\index.tsx:751:  if (isAdminPassengerChargePaidFromCard(charge)) return "Cobrado desde tarjeta/pago";
+  apps\mobile\src\pages\admin\index.tsx:752:  if (status === "applied_to_next_ride") return "Ya fue sumado";
+  apps\mobile\src\pages\admin\index.tsx:753:  if (status === "paid") return "Pagado";
+> apps\mobile\src\pages\admin\index.tsx:754:  if (status === "waived") return "Anulado";
+  apps\mobile\src\pages\admin\index.tsx:755:  return "Próximo viaje";
+  apps\mobile\src\pages\admin\index.tsx:756:}
+  apps\mobile\src\pages\admin\index.tsx:757:
+> apps\mobile\src\pages\admin\index.tsx:758:function markAdminPassengerChargeStatus(charge: AdminPassengerPendingCharge, status: "paid" 
+| "waived"): void {
+  apps\mobile\src\pages\admin\index.tsx:759:  const now = new Date().toISOString();
+  apps\mobile\src\pages\admin\index.tsx:760:  const next = readAdminPassengerPendingCharges().map((item) => {
+  apps\mobile\src\pages\admin\index.tsx:761:    if (item.id !== charge.id) return item;
+  apps\mobile\src\pages\admin\index.tsx:762:    return {
+  apps\mobile\src\pages\admin\index.tsx:763:      ...item,
+  apps\mobile\src\pages\admin\index.tsx:764:      status,
+  apps\mobile\src\pages\admin\index.tsx:765:      adminReviewStatus: status,
+  apps\mobile\src\pages\admin\index.tsx:766:      appliedAt: status === "paid" ? (item.appliedAt ?? now) : item.appliedAt,
+  apps\mobile\src\pages\admin\index.tsx:767:    };
+  apps\mobile\src\pages\admin\index.tsx:768:  });
+  apps\mobile\src\pages\admin\index.tsx:1163:  const passengerChargesPendingNextRide = 
+passengerPendingCharges.filter(isAdminPassengerChargePending);
+  apps\mobile\src\pages\admin\index.tsx:1164:  const pendingPassengerChargeAmountClp = passengerChargesPendingNextRide.reduce((sum, 
+charge) => sum + Math.max(0, charge.amountClp), 0);
+  apps\mobile\src\pages\admin\index.tsx:1165:  const adminWalletBenefits = cashReviewsRevision >= 0 ? readAdminWalletBenefits() : [];
+> apps\mobile\src\pages\admin\index.tsx:1166:  const cardCancellationCredits = 
+adminWalletBenefits.filter(isAdminWalletCardCancellationCredit);
+> apps\mobile\src\pages\admin\index.tsx:1167:  const cardCancellationCreditsAmountClp = cardCancellationCredits.reduce((sum, credit) => 
+sum + Math.max(0, credit.amountClp), 0);
+> apps\mobile\src\pages\admin\index.tsx:1168:  const cardCancellationCreditsPending = 
+cardCancellationCredits.filter(isAdminWalletCreditPending);
+> apps\mobile\src\pages\admin\index.tsx:1169:  const cardRefundRequestsPending = cardCancellationCredits.filter((credit) =>
+  apps\mobile\src\pages\admin\index.tsx:1170:    credit.refundWhatsappAvailable && !isAdminWalletCreditRefundCompleted(credit),
+  apps\mobile\src\pages\admin\index.tsx:1171:  );
+  apps\mobile\src\pages\admin\index.tsx:1172:  const adminChargesTotalCount =
+  apps\mobile\src\pages\admin\index.tsx:1173:    passengerChargesPendingNextRide.length +
+  apps\mobile\src\pages\admin\index.tsx:1174:    pendingCashPaymentReviews.length +
+> apps\mobile\src\pages\admin\index.tsx:1175:    cardCancellationCreditsPending.length +
+  apps\mobile\src\pages\admin\index.tsx:1176:    cardRefundRequestsPending.length;
+  apps\mobile\src\pages\admin\index.tsx:1177:
+  apps\mobile\src\pages\admin\index.tsx:1178:  const kpis: Array<{
+  apps\mobile\src\pages\admin\index.tsx:1179:    id: "rides" | "revenue" | "drivers" | "users";
+  apps\mobile\src\pages\admin\index.tsx:1180:    label: string;
+  apps\mobile\src\pages\admin\index.tsx:1181:    value: string;
+  apps\mobile\src\pages\admin\index.tsx:1182:    helper: string;
+  apps\mobile\src\pages\admin\index.tsx:1183:    icon: string;
+  apps\mobile\src\pages\admin\index.tsx:1184:    tone: string;
+  apps\mobile\src\pages\admin\index.tsx:1185:    route?: string;
+  apps\mobile\src\pages\admin\index.tsx:1821:                            Créditos tarjeta
+  apps\mobile\src\pages\admin\index.tsx:1822:                          </div>
+  apps\mobile\src\pages\admin\index.tsx:1823:                          <div style={{ fontWeight: 950, color: "#111", fontSize: "1rem" }}>
+> apps\mobile\src\pages\admin\index.tsx:1824:                            {formatAdminCashClp(cardCancellationCreditsAmountClp)}
+  apps\mobile\src\pages\admin\index.tsx:1825:                          </div>
+  apps\mobile\src\pages\admin\index.tsx:1826:                        </div>
+  apps\mobile\src\pages\admin\index.tsx:1827:                      </div>
+  apps\mobile\src\pages\admin\index.tsx:1828:                    </IonCardContent>
+  apps\mobile\src\pages\admin\index.tsx:1829:                  </IonCard>
+  apps\mobile\src\pages\admin\index.tsx:1830:
+> apps\mobile\src\pages\admin\index.tsx:1831:                  {passengerPendingCharges.length === 0 && cashPaymentReviews.length === 0 
+&& cardCancellationCredits.length === 0 && (
+  apps\mobile\src\pages\admin\index.tsx:1832:                    <IonCard className="admin-section-card" style={{ borderRadius: 22 }}>
+  apps\mobile\src\pages\admin\index.tsx:1833:                      <IonCardContent>
+  apps\mobile\src\pages\admin\index.tsx:1834:                        <h2 style={{ margin: "0 0 6px", fontWeight: 950 }}>Sin cobranzas 
+pendientes</h2>
+  apps\mobile\src\pages\admin\index.tsx:1835:                        <p style={{ margin: 0, color: "var(--ion-color-medium)", fontSize: 
+".86rem" }}>
+  apps\mobile\src\pages\admin\index.tsx:1836:                          Cuando existan cancelaciones fuera de plazo, no show, pagos en 
+efectivo con diferencia o devoluciones, aparecerán aquí para validarlas.
+  apps\mobile\src\pages\admin\index.tsx:1837:                        </p>
+  apps\mobile\src\pages\admin\index.tsx:1838:                      </IonCardContent>
+  apps\mobile\src\pages\admin\index.tsx:1839:                    </IonCard>
+  apps\mobile\src\pages\admin\index.tsx:1840:                  )}
+  apps\mobile\src\pages\admin\index.tsx:1841:
+> apps\mobile\src\pages\admin\index.tsx:1842:              {cardCancellationCredits.length > 0 && (
+  apps\mobile\src\pages\admin\index.tsx:1843:                <IonCard
+  apps\mobile\src\pages\admin\index.tsx:1844:                  className="admin-section-card"
+  apps\mobile\src\pages\admin\index.tsx:1845:                  style={{
+  apps\mobile\src\pages\admin\index.tsx:1846:                    borderRadius: 22,
+  apps\mobile\src\pages\admin\index.tsx:1847:                    border: "1px solid rgba(34,197,94,.30)",
+  apps\mobile\src\pages\admin\index.tsx:1848:                    boxShadow: "0 16px 36px rgba(0,0,0,.10)",
+  apps\mobile\src\pages\admin\index.tsx:1849:                  }}
+  apps\mobile\src\pages\admin\index.tsx:1850:                >
+  apps\mobile\src\pages\admin\index.tsx:1851:                  <IonCardHeader>
+  apps\mobile\src\pages\admin\index.tsx:1852:                    <div className="admin-section-title-row">
+  apps\mobile\src\pages\admin\index.tsx:1878:                        lineHeight: 1.35,
+  apps\mobile\src\pages\admin\index.tsx:1879:                      }}
+  apps\mobile\src\pages\admin\index.tsx:1880:                    >
+> apps\mobile\src\pages\admin\index.tsx:1881:                      Total consignado en wallet: 
+<strong>{formatAdminCashClp(cardCancellationCreditsAmountClp)}</strong>.
+  apps\mobile\src\pages\admin\index.tsx:1882:                      Si el pasajero solicita devolución, se gestiona por WhatsApp con 
+Gerencia de Soporte RAPA GO.
+  apps\mobile\src\pages\admin\index.tsx:1883:                    </div>
+  apps\mobile\src\pages\admin\index.tsx:1884:
+  apps\mobile\src\pages\admin\index.tsx:1885:                    <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+> apps\mobile\src\pages\admin\index.tsx:1886:                      {cardCancellationCredits.slice(0, 10).map((credit) => {
+  apps\mobile\src\pages\admin\index.tsx:1887:                        const passengerLabel = credit.passengerEmail || credit.ownerKey || 
+"Pasajero";
+> apps\mobile\src\pages\admin\index.tsx:1888:                        const cancellationFee = Math.max(0, 
+Math.round(Number(credit.cancellationFeeClp ?? 0)));
+  apps\mobile\src\pages\admin\index.tsx:1889:
+  apps\mobile\src\pages\admin\index.tsx:1890:                        return (
+  apps\mobile\src\pages\admin\index.tsx:1891:                          <div
+  apps\mobile\src\pages\admin\index.tsx:1892:                            key={credit.id}
+  apps\mobile\src\pages\admin\index.tsx:1893:                            style={{
+  apps\mobile\src\pages\admin\index.tsx:1894:                              padding: 12,
+  apps\mobile\src\pages\admin\index.tsx:1895:                              borderRadius: 18,
+  apps\mobile\src\pages\admin\index.tsx:1896:                              background: "#f0fdf4",
+  apps\mobile\src\pages\admin\index.tsx:1897:                              border: "1px solid rgba(20,83,45,.14)",
+  apps\mobile\src\pages\admin\index.tsx:1898:                            }}
+  apps\mobile\src\pages\admin\index.tsx:2125:                                  color="medium"
+  apps\mobile\src\pages\admin\index.tsx:2126:                                  fill="outline"
+  apps\mobile\src\pages\admin\index.tsx:2127:                                  onClick={() => {
+> apps\mobile\src\pages\admin\index.tsx:2128:                                    markAdminPassengerChargeStatus(charge, "waived");
+  apps\mobile\src\pages\admin\index.tsx:2129:                                    setCashReviewsRevision((current) => current + 1);
+  apps\mobile\src\pages\admin\index.tsx:2130:                                    setAdminCashToast("Cargo anulado por administración.");
+  apps\mobile\src\pages\admin\index.tsx:2131:                                  }}
+  apps\mobile\src\pages\admin\index.tsx:2132:                                >
+  apps\mobile\src\pages\admin\index.tsx:2133:                                  Anular cargo
+  apps\mobile\src\pages\admin\index.tsx:2134:                                </IonButton>
+  apps\mobile\src\pages\admin\index.tsx:2135:                              )}
+  apps\mobile\src\pages\admin\index.tsx:2136:                              {String(charge.status).toLowerCase() === 
+"applied_to_next_ride" && (
+  apps\mobile\src\pages\admin\index.tsx:2137:                                <IonButton
+  apps\mobile\src\pages\admin\index.tsx:2138:                                  size="small"
+  apps\mobile\src\pages\admin\index.tsx:6459:    localAdminOverride: true,
+  apps\mobile\src\pages\admin\index.tsx:6460:    reservationRequiresCard: true,
+  apps\mobile\src\pages\admin\index.tsx:6461:    paymentRequiredProvider: "mercadopago",
+> apps\mobile\src\pages\admin\index.tsx:6462:    cardCancellationCreditToWallet: true,
+> apps\mobile\src\pages\admin\index.tsx:6463:    cardCancellationCreditName: "CRÉDITOS PARA PRÓXIMO VIAJE",
+  apps\mobile\src\pages\admin\index.tsx:6464:    reservationCancellationWindowMinutes: 15,
+  apps\mobile\src\pages\admin\index.tsx:6465:    adminAssignmentWindowMinutes: 30,
+  apps\mobile\src\pages\admin\index.tsx:6466:  } as AdminRideData;
+  apps\mobile\src\pages\admin\index.tsx:6467:}
+  apps\mobile\src\pages\admin\index.tsx:6468:
+  apps\mobile\src\pages\admin\index.tsx:6469:function readLocalPassengerReturnReservationsForAdmin(): AdminRideData[] {
+  apps\mobile\src\pages\admin\index.tsx:6470:  try {
+  apps\mobile\src\pages\admin\index.tsx:6471:    return readLocalPassengerRidesForAdmin()
+  apps\mobile\src\pages\admin\index.tsx:6472:      .map((item) => buildAdminReturnReservationFromRide(item as unknown as AdminRideData))
+  apps\mobile\src\pages\admin\index.tsx:6473:      .filter((ride): ride is AdminRideData => Boolean(ride));
+  apps\mobile\src\pages\admin\index.tsx:7033:      passengerNotification: assignedRecord.passengerNotification ?? "Tu reserva sigue 
+agendada. Estamos esperando confirmación del conductor asignado.",
+  apps\mobile\src\pages\admin\index.tsx:7034:      reservationRequiresCard: true,
+  apps\mobile\src\pages\admin\index.tsx:7035:      paymentRequiredProvider: "mercadopago",
+> apps\mobile\src\pages\admin\index.tsx:7036:      cardCancellationCreditToWallet: true,
+> apps\mobile\src\pages\admin\index.tsx:7037:      cardCancellationCreditName: "CRÉDITOS PARA PRÓXIMO VIAJE",
+  apps\mobile\src\pages\admin\index.tsx:7038:      reservationCancellationWindowMinutes: 15,
+  apps\mobile\src\pages\admin\index.tsx:7039:      adminAssignmentWindowMinutes: 30,
+  apps\mobile\src\pages\admin\index.tsx:7040:    };
+  apps\mobile\src\pages\admin\index.tsx:7041:  });
+  apps\mobile\src\pages\admin\index.tsx:7042:
+  apps\mobile\src\pages\admin\index.tsx:7043:  saveLocalPassengerRidesForAdmin(updated);
+  apps\mobile\src\pages\admin\index.tsx:7044:}
+  apps\mobile\src\pages\admin\index.tsx:7045:
+  apps\mobile\src\pages\admin\index.tsx:7046:
+  apps\mobile\src\pages\admin\index.tsx:7047:function getAdminRideRejectedDriverKeys(ride: AdminRideData | Record<string, unknown>): 
+string[] {
+  apps\mobile\src\pages\driver\index.tsx:1074:  const goingToPickup = !tripAlreadyStarted && ["accepted", 
+"driver_en_route"].includes(rideStatus);
+  apps\mobile\src\pages\driver\index.tsx:1075:  const waitingPassenger = !tripAlreadyStarted && rideStatus === "driver_arrived";
+  apps\mobile\src\pages\driver\index.tsx:1076:  const goingToDestination = tripAlreadyStarted;
+> apps\mobile\src\pages\driver\index.tsx:1077:  const [driverNoShowNowMs, setDriverNoShowNowMs] = useState(() => Date.now());
+  apps\mobile\src\pages\driver\index.tsx:1078:
+  apps\mobile\src\pages\driver\index.tsx:1079:  useEffect(() => {
+  apps\mobile\src\pages\driver\index.tsx:1080:    if (!waitingPassenger) {
+  apps\mobile\src\pages\driver\index.tsx:1081:      return;
+  apps\mobile\src\pages\driver\index.tsx:1082:    }
+  apps\mobile\src\pages\driver\index.tsx:1083:
+> apps\mobile\src\pages\driver\index.tsx:1084:    ensureDriverNoShowTimerStartMs(ride as DriverRideData & Record<string, unknown>);
+> apps\mobile\src\pages\driver\index.tsx:1085:    setDriverNoShowNowMs(Date.now());
+  apps\mobile\src\pages\driver\index.tsx:1086:
+> apps\mobile\src\pages\driver\index.tsx:1087:    const interval = window.setInterval(() => setDriverNoShowNowMs(Date.now()), 1000);
+  apps\mobile\src\pages\driver\index.tsx:1088:    return () => window.clearInterval(interval);
+  apps\mobile\src\pages\driver\index.tsx:1089:  }, [waitingPassenger, ride.id]);
+  apps\mobile\src\pages\driver\index.tsx:1090:
+> apps\mobile\src\pages\driver\index.tsx:1091:  const driverNoShowState = waitingPassenger
+> apps\mobile\src\pages\driver\index.tsx:1092:    ? getDriverNoShowState(ride as DriverRideData & Record<string, unknown>, 
+driverNoShowNowMs)
+  apps\mobile\src\pages\driver\index.tsx:1093:    : {
+  apps\mobile\src\pages\driver\index.tsx:1094:        allowed: false,
+  apps\mobile\src\pages\driver\index.tsx:1095:        remainingMs: RAPAGO_DRIVER_NO_SHOW_AFTER_ARRIVAL_MS,
+> apps\mobile\src\pages\driver\index.tsx:1096:        feeClp: getDriverRideNoShowFeeClp(ride as DriverRideData & Record<string, 
+unknown>),
+  apps\mobile\src\pages\driver\index.tsx:1097:      };
+  apps\mobile\src\pages\driver\index.tsx:1098:
+  apps\mobile\src\pages\driver\index.tsx:1099:  const target = goingToDestination
+  apps\mobile\src\pages\driver\index.tsx:1100:    ? destination
+  apps\mobile\src\pages\driver\index.tsx:1101:    : goingToPickup
+  apps\mobile\src\pages\driver\index.tsx:1102:      ? pickup
+  apps\mobile\src\pages\driver\index.tsx:1103:      : waitingPassenger
+  apps\mobile\src\pages\driver\index.tsx:1104:        ? pickup
+  apps\mobile\src\pages\driver\index.tsx:1105:        : destination;
+  apps\mobile\src\pages\driver\index.tsx:1106:  const currentPointDisplay = goingToDestination
+  apps\mobile\src\pages\driver\index.tsx:7934:  return null;
+  apps\mobile\src\pages\driver\index.tsx:7935:}
+  apps\mobile\src\pages\driver\index.tsx:7936:
+> apps\mobile\src\pages\driver\index.tsx:7937:function getDriverRideMinimumFareForNoShow(ride: Partial<DriverRideData> & Record<string, 
+unknown>): number {
+  apps\mobile\src\pages\driver\index.tsx:7938:  const displayFare = getRideDisplayFareClp(ride as RideWithFarePayload);
+  apps\mobile\src\pages\driver\index.tsx:7939:  if (displayFare != null && displayFare > 0) return displayFare;
+  apps\mobile\src\pages\driver\index.tsx:7940:
+> apps\mobile\src\pages\driver\index.tsx:7941:  const candidates = [ride.minimumFareClp, ride.minFareClp, ride.fareMinimumClp, 
+ride.estimatedFareClp, ride.fareClp, ride.priceClp];
+  apps\mobile\src\pages\driver\index.tsx:7942:  for (const candidate of candidates) {
+  apps\mobile\src\pages\driver\index.tsx:7943:    const parsed = Number(candidate);
+  apps\mobile\src\pages\driver\index.tsx:7944:    if (Number.isFinite(parsed) && parsed > 0) return Math.round(parsed);
+  apps\mobile\src\pages\driver\index.tsx:7945:  }
+  apps\mobile\src\pages\driver\index.tsx:7946:
+  apps\mobile\src\pages\driver\index.tsx:7947:  return 3000;
+  apps\mobile\src\pages\driver\index.tsx:7948:}
+  apps\mobile\src\pages\driver\index.tsx:7949:
+> apps\mobile\src\pages\driver\index.tsx:7950:function getDriverRideNoShowFeeClp(ride: Partial<DriverRideData> & Record<string, 
+unknown>): number {
+  apps\mobile\src\pages\driver\index.tsx:7951:  // No show RAPA GO: cobro íntegro del servicio tras 5 minutos de espera,
+  apps\mobile\src\pages\driver\index.tsx:7952:  // con aviso por app y WhatsApp al pasajero.
+> apps\mobile\src\pages\driver\index.tsx:7953:  return Math.max(0, Math.round(getDriverRideMinimumFareForNoShow(ride)));
+  apps\mobile\src\pages\driver\index.tsx:7954:}
+  apps\mobile\src\pages\driver\index.tsx:7955:
+> apps\mobile\src\pages\driver\index.tsx:7956:function getDriverRideArrivalTimestampMsForNoShow(ride: Partial<DriverRideData> & 
+Record<string, unknown>): number | null {
+  apps\mobile\src\pages\driver\index.tsx:7957:  const candidates = [ride.arrivedAt, ride.driverArrivedAt, ride.driverReachedPickupAt, 
+ride.updatedAt];
+  apps\mobile\src\pages\driver\index.tsx:7958:  for (const candidate of candidates) {
+  apps\mobile\src\pages\driver\index.tsx:7959:    const parsed = new Date(String(candidate ?? "")).getTime();
+  apps\mobile\src\pages\driver\index.tsx:7960:    if (Number.isFinite(parsed)) return parsed;
+  apps\mobile\src\pages\driver\index.tsx:7961:  }
+  apps\mobile\src\pages\driver\index.tsx:7962:  return null;
+  apps\mobile\src\pages\driver\index.tsx:7963:}
+  apps\mobile\src\pages\driver\index.tsx:7964:
+> apps\mobile\src\pages\driver\index.tsx:7965:function getDriverNoShowState(ride: Partial<DriverRideData> & Record<string, unknown>, 
+nowMs = Date.now()): {
+  apps\mobile\src\pages\driver\index.tsx:7966:  allowed: boolean;
+  apps\mobile\src\pages\driver\index.tsx:7967:  remainingMs: number;
+  apps\mobile\src\pages\driver\index.tsx:7968:  feeClp: number;
+  apps\mobile\src\pages\driver\index.tsx:7969:} {
+  apps\mobile\src\pages\driver\index.tsx:7970:  // Regla RAPA GO:
+  apps\mobile\src\pages\driver\index.tsx:7971:  // El contador de 5 minutos parte cuando la pantalla entra a "Esperando pasajero".
+  apps\mobile\src\pages\driver\index.tsx:7972:  // Así no se habilita No show por timestamps antiguos de pruebas/localStorage.
+> apps\mobile\src\pages\driver\index.tsx:7973:  return getDriverNoShowStateFromTimer(ride, nowMs);
+  apps\mobile\src\pages\driver\index.tsx:7974:}
+  apps\mobile\src\pages\driver\index.tsx:7975:
+> apps\mobile\src\pages\driver\index.tsx:7976:function formatDriverNoShowRemaining(ms: number): string {
+  apps\mobile\src\pages\driver\index.tsx:7977:  const totalSeconds = Math.max(0, Math.ceil(ms / 1000));
+  apps\mobile\src\pages\driver\index.tsx:7978:  const minutes = Math.floor(totalSeconds / 60);
+  apps\mobile\src\pages\driver\index.tsx:7979:  const seconds = totalSeconds % 60;
+  apps\mobile\src\pages\driver\index.tsx:7980:  return `${minutes}:${String(seconds).padStart(2, "0")}`;
+  apps\mobile\src\pages\driver\index.tsx:7981:}
+  apps\mobile\src\pages\driver\index.tsx:7982:
+  apps\mobile\src\pages\driver\index.tsx:7983:const RAPAGO_DRIVER_NO_SHOW_TIMER_KEY = "rapago_driver_no_show_timer_v1";
+  apps\mobile\src\pages\driver\index.tsx:7984:
+> apps\mobile\src\pages\driver\index.tsx:7985:function readDriverNoShowTimerMap(): Record<string, number> {
+  apps\mobile\src\pages\driver\index.tsx:7986:  try {
+  apps\mobile\src\pages\driver\index.tsx:7987:    const raw = localStorage.getItem(RAPAGO_DRIVER_NO_SHOW_TIMER_KEY);
+  apps\mobile\src\pages\driver\index.tsx:7988:    const parsed = raw ? (JSON.parse(raw) as Record<string, unknown>) : {};
+  apps\mobile\src\pages\driver\index.tsx:7989:    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {};
+  apps\mobile\src\pages\driver\index.tsx:7990:
+  apps\mobile\src\pages\driver\index.tsx:7991:    return Object.fromEntries(
+  apps\mobile\src\pages\driver\index.tsx:7992:      Object.entries(parsed)
+  apps\mobile\src\pages\driver\index.tsx:7993:        .map(([key, value]) => [key, Number(value)] as const)
+  apps\mobile\src\pages\driver\index.tsx:7994:        .filter((entry): entry is readonly [string, number] => Number.isFinite(entry[1]) 
+&& entry[1] > 0),
+  apps\mobile\src\pages\driver\index.tsx:7995:    );
+  apps\mobile\src\pages\driver\index.tsx:7998:  }
+  apps\mobile\src\pages\driver\index.tsx:7999:}
+  apps\mobile\src\pages\driver\index.tsx:8000:
+> apps\mobile\src\pages\driver\index.tsx:8001:function writeDriverNoShowTimerMap(map: Record<string, number>): void {
+  apps\mobile\src\pages\driver\index.tsx:8002:  try {
+  apps\mobile\src\pages\driver\index.tsx:8003:    localStorage.setItem(RAPAGO_DRIVER_NO_SHOW_TIMER_KEY, JSON.stringify(map));
+  apps\mobile\src\pages\driver\index.tsx:8004:  } catch {
+  apps\mobile\src\pages\driver\index.tsx:8005:    // No bloquea el flujo del conductor.
+  apps\mobile\src\pages\driver\index.tsx:8006:  }
+  apps\mobile\src\pages\driver\index.tsx:8007:}
+  apps\mobile\src\pages\driver\index.tsx:8008:
+> apps\mobile\src\pages\driver\index.tsx:8009:function ensureDriverNoShowTimerStartMs(
+  apps\mobile\src\pages\driver\index.tsx:8010:  ride: Partial<DriverRideData> & Record<string, unknown>,
+  apps\mobile\src\pages\driver\index.tsx:8011:  nowMs = Date.now(),
+  apps\mobile\src\pages\driver\index.tsx:8012:): number {
+> apps\mobile\src\pages\driver\index.tsx:8013:  const key = getDriverNoShowRideKey(ride);
+> apps\mobile\src\pages\driver\index.tsx:8014:  const current = readDriverNoShowTimerMap();
+  apps\mobile\src\pages\driver\index.tsx:8015:  const stored = Number(current[key]);
+  apps\mobile\src\pages\driver\index.tsx:8016:
+  apps\mobile\src\pages\driver\index.tsx:8017:  if (Number.isFinite(stored) && stored > 0) return stored;
+  apps\mobile\src\pages\driver\index.tsx:8018:
+  apps\mobile\src\pages\driver\index.tsx:8019:  const next = {
+  apps\mobile\src\pages\driver\index.tsx:8020:    ...current,
+  apps\mobile\src\pages\driver\index.tsx:8021:    [key]: nowMs,
+  apps\mobile\src\pages\driver\index.tsx:8022:  };
+  apps\mobile\src\pages\driver\index.tsx:8023:
+> apps\mobile\src\pages\driver\index.tsx:8024:  writeDriverNoShowTimerMap(next);
+  apps\mobile\src\pages\driver\index.tsx:8025:  return nowMs;
+  apps\mobile\src\pages\driver\index.tsx:8026:}
+  apps\mobile\src\pages\driver\index.tsx:8027:
+> apps\mobile\src\pages\driver\index.tsx:8028:function clearDriverNoShowTimer(ride: Partial<DriverRideData> & Record<string, unknown>): 
+void {
+> apps\mobile\src\pages\driver\index.tsx:8029:  const key = getDriverNoShowRideKey(ride);
+> apps\mobile\src\pages\driver\index.tsx:8030:  const current = readDriverNoShowTimerMap();
+  apps\mobile\src\pages\driver\index.tsx:8031:
+  apps\mobile\src\pages\driver\index.tsx:8032:  if (!(key in current)) return;
+  apps\mobile\src\pages\driver\index.tsx:8033:
+  apps\mobile\src\pages\driver\index.tsx:8034:  delete current[key];
+> apps\mobile\src\pages\driver\index.tsx:8035:  writeDriverNoShowTimerMap(current);
+  apps\mobile\src\pages\driver\index.tsx:8036:}
+  apps\mobile\src\pages\driver\index.tsx:8037:
+> apps\mobile\src\pages\driver\index.tsx:8038:function getDriverNoShowProgressPercent(state: { remainingMs: number }): number {
+  apps\mobile\src\pages\driver\index.tsx:8039:  const elapsed = RAPAGO_DRIVER_NO_SHOW_AFTER_ARRIVAL_MS - Math.max(0, state.remainingMs);
+  apps\mobile\src\pages\driver\index.tsx:8040:  return Math.max(0, Math.min(100, Math.round((elapsed / 
+RAPAGO_DRIVER_NO_SHOW_AFTER_ARRIVAL_MS) * 100)));
+  apps\mobile\src\pages\driver\index.tsx:8041:}
+  apps\mobile\src\pages\driver\index.tsx:8042:
+> apps\mobile\src\pages\driver\index.tsx:8043:function getDriverNoShowStateFromTimer(
+  apps\mobile\src\pages\driver\index.tsx:8044:  ride: Partial<DriverRideData> & Record<string, unknown>,
+  apps\mobile\src\pages\driver\index.tsx:8045:  nowMs = Date.now(),
+  apps\mobile\src\pages\driver\index.tsx:8046:): {
+  apps\mobile\src\pages\driver\index.tsx:8047:  allowed: boolean;
+  apps\mobile\src\pages\driver\index.tsx:8048:  remainingMs: number;
+  apps\mobile\src\pages\driver\index.tsx:8049:  feeClp: number;
+  apps\mobile\src\pages\driver\index.tsx:8050:} {
+> apps\mobile\src\pages\driver\index.tsx:8051:  const startAtMs = ensureDriverNoShowTimerStartMs(ride, nowMs);
+  apps\mobile\src\pages\driver\index.tsx:8052:  const remainingMs = Math.max(0, startAtMs + RAPAGO_DRIVER_NO_SHOW_AFTER_ARRIVAL_MS - 
+nowMs);
+  apps\mobile\src\pages\driver\index.tsx:8053:
+  apps\mobile\src\pages\driver\index.tsx:8054:  return {
+  apps\mobile\src\pages\driver\index.tsx:8055:    allowed: remainingMs <= 0,
+  apps\mobile\src\pages\driver\index.tsx:8056:    remainingMs,
+> apps\mobile\src\pages\driver\index.tsx:8057:    feeClp: getDriverRideNoShowFeeClp(ride),
+  apps\mobile\src\pages\driver\index.tsx:8058:  };
+  apps\mobile\src\pages\driver\index.tsx:8059:}
+  apps\mobile\src\pages\driver\index.tsx:8060:
+> apps\mobile\src\pages\driver\index.tsx:8061:function getDriverNoShowRideKey(ride: Partial<DriverRideData> & Record<string, unknown>): 
+string {
+  apps\mobile\src\pages\driver\index.tsx:8062:  const id = String(ride.id ?? ride.rideId ?? ride.originalRideId ?? "").trim();
+  apps\mobile\src\pages\driver\index.tsx:8063:  if (id) return `ride:${id}`;
+  apps\mobile\src\pages\driver\index.tsx:8064:
+  apps\mobile\src\pages\driver\index.tsx:8065:  return [
+  apps\mobile\src\pages\driver\index.tsx:8066:    String(ride.passengerEmail ?? ride.email ?? "").trim().toLowerCase(),
+  apps\mobile\src\pages\driver\index.tsx:8067:    String(ride.originText ?? "").trim().toLowerCase(),
+  apps\mobile\src\pages\driver\index.tsx:8068:    String(ride.destinationText ?? "").trim().toLowerCase(),
+  apps\mobile\src\pages\driver\index.tsx:8069:    String(ride.acceptedAt ?? ride.requestedAt ?? ride.createdAt ?? "").trim(),
+  apps\mobile\src\pages\driver\index.tsx:8070:  ].filter(Boolean).join("|");
+  apps\mobile\src\pages\driver\index.tsx:8071:}
+  apps\mobile\src\pages\driver\index.tsx:8072:
+  apps\mobile\src\pages\driver\index.tsx:8073:
+> apps\mobile\src\pages\driver\index.tsx:8074:function driverNoShowRideLooksCardPaid(ride: Partial<DriverRideData> & Record<string, 
+unknown>): boolean {
+  apps\mobile\src\pages\driver\index.tsx:8075:  const text = [
+  apps\mobile\src\pages\driver\index.tsx:8076:    ride.paymentMethod,
+  apps\mobile\src\pages\driver\index.tsx:8077:    ride.paymentProvider,
+  apps\mobile\src\pages\driver\index.tsx:8078:    ride.paymentStatus,
+  apps\mobile\src\pages\driver\index.tsx:8079:    ride.paymentId,
+  apps\mobile\src\pages\driver\index.tsx:8080:    ride.mercadoPagoPaymentId,
+  apps\mobile\src\pages\driver\index.tsx:8081:    ride.notes,
+  apps\mobile\src\pages\driver\index.tsx:8082:  ].map((value) => String(value ?? "").toLowerCase()).join(" ");
+  apps\mobile\src\pages\driver\index.tsx:8083:
+  apps\mobile\src\pages\driver\index.tsx:8084:  return (
+  apps\mobile\src\pages\driver\index.tsx:8091:  );
+  apps\mobile\src\pages\driver\index.tsx:8092:}
+  apps\mobile\src\pages\driver\index.tsx:8093:
+> apps\mobile\src\pages\driver\index.tsx:8094:function getDriverRidePassengerPhoneForNoShow(ride: Partial<DriverRideData> & 
+Record<string, unknown>): string {
+  apps\mobile\src\pages\driver\index.tsx:8095:  return String(
+  apps\mobile\src\pages\driver\index.tsx:8096:    ride.passengerPhone ??
+  apps\mobile\src\pages\driver\index.tsx:8097:      ride.userPhone ??
+  apps\mobile\src\pages\driver\index.tsx:8098:      ride.phone ??
+  apps\mobile\src\pages\driver\index.tsx:8099:      ride.passengerMobile ??
+  apps\mobile\src\pages\driver\index.tsx:8100:      ride.mobile ??
+  apps\mobile\src\pages\driver\index.tsx:8101:      "",
+  apps\mobile\src\pages\driver\index.tsx:8102:  ).replace(/\D/g, "");
+  apps\mobile\src\pages\driver\index.tsx:8103:}
+  apps\mobile\src\pages\driver\index.tsx:8104:
+> apps\mobile\src\pages\driver\index.tsx:8105:function buildDriverNoShowWhatsappUrl(ride: DriverRideData, feeClp: number): string | null 
+{
+> apps\mobile\src\pages\driver\index.tsx:8106:  const phone = getDriverRidePassengerPhoneForNoShow(ride as DriverRideData & 
+Record<string, unknown>);
+  apps\mobile\src\pages\driver\index.tsx:8107:  if (!phone) return null;
+  apps\mobile\src\pages\driver\index.tsx:8108:
+  apps\mobile\src\pages\driver\index.tsx:8109:  const message = [
+  apps\mobile\src\pages\driver\index.tsx:8110:    "Hola, soy tu conductor de RAPA GO.",
+  apps\mobile\src\pages\driver\index.tsx:8111:    "Ya llegué al punto de recogida indicado en la app.",
+  apps\mobile\src\pages\driver\index.tsx:8112:    "La app registra 5 minutos de espera.",
+  apps\mobile\src\pages\driver\index.tsx:8113:    `Si no te presentas, se marcará NO SHOW y se cobrará el total del servicio: 
+${formatClp(feeClp)}.`,
+  apps\mobile\src\pages\driver\index.tsx:8114:    `Viaje: ${String(ride.originText ?? "Origen")} → ${String(ride.destinationText ?? 
+"Destino")}.`,
+  apps\mobile\src\pages\driver\index.tsx:8115:  ].join("\n");
+  apps\mobile\src\pages\driver\index.tsx:8116:
+  apps\mobile\src\pages\driver\index.tsx:8118:}
+  apps\mobile\src\pages\driver\index.tsx:8119:
+  apps\mobile\src\pages\driver\index.tsx:8120:function buildDriverArrivedWhatsappUrl(ride: DriverRideData, feeClp: number): string | 
+null {
+> apps\mobile\src\pages\driver\index.tsx:8121:  const phone = getDriverRidePassengerPhoneForNoShow(ride as DriverRideData & 
+Record<string, unknown>);
+  apps\mobile\src\pages\driver\index.tsx:8122:  if (!phone) return null;
+  apps\mobile\src\pages\driver\index.tsx:8123:
+  apps\mobile\src\pages\driver\index.tsx:8124:  const message = [
+  apps\mobile\src\pages\driver\index.tsx:8125:    "Hola, soy tu conductor de RAPA GO.",
+  apps\mobile\src\pages\driver\index.tsx:8126:    "Ya llegué al punto de recogida indicado en la app.",
+  apps\mobile\src\pages\driver\index.tsx:8127:    "Por favor sal ahora para iniciar el viaje.",
+  apps\mobile\src\pages\driver\index.tsx:8128:    `La app inicia una espera de 5 minutos. Si no te presentas, se puede marcar NO SHOW y 
+cobrar el total del servicio: ${formatClp(feeClp)}.`,
+  apps\mobile\src\pages\driver\index.tsx:8129:    `Viaje: ${String(ride.originText ?? "Origen")} → ${String(ride.destinationText ?? 
+"Destino")}.`,
+  apps\mobile\src\pages\driver\index.tsx:8130:  ].join("\n");
+  apps\mobile\src\pages\driver\index.tsx:8131:
+  apps\mobile\src\pages\driver\index.tsx:8134:
+  apps\mobile\src\pages\driver\index.tsx:8135:function notifyPassengerDriverArrivedByAppAndWhatsapp(ride: DriverRideData): void {
+  apps\mobile\src\pages\driver\index.tsx:8136:  const record = ride as DriverRideData & Record<string, unknown>;
+> apps\mobile\src\pages\driver\index.tsx:8137:  const feeClp = getDriverRideNoShowFeeClp(record);
+  apps\mobile\src\pages\driver\index.tsx:8138:  const rideId = String(record.id ?? record.rideId ?? "");
+  apps\mobile\src\pages\driver\index.tsx:8139:  const notification = {
+  apps\mobile\src\pages\driver\index.tsx:8140:    id: `driver-arrived-${rideId || Date.now()}`,
+  apps\mobile\src\pages\driver\index.tsx:8141:    rideId,
+  apps\mobile\src\pages\driver\index.tsx:8142:    type: "driver_arrived",
+  apps\mobile\src\pages\driver\index.tsx:8143:    title: "Tu conductor llegó",
+  apps\mobile\src\pages\driver\index.tsx:8144:    body: `Sal ahora al punto de recogida. Tienes 5 minutos antes de que pueda aplicar No 
+show. Monto No show: ${formatClp(feeClp)}.`,
+  apps\mobile\src\pages\driver\index.tsx:8145:    createdAt: new Date().toISOString(),
+  apps\mobile\src\pages\driver\index.tsx:8146:    read: false,
+  apps\mobile\src\pages\driver\index.tsx:8147:  };
+  apps\mobile\src\pages\driver\index.tsx:8168:      arrivedAt: record.arrivedAt ?? new Date().toISOString(),
+  apps\mobile\src\pages\driver\index.tsx:8169:      passengerNotice: "Tu conductor llegó al punto. Sal ahora para evitar No show.",
+  apps\mobile\src\pages\driver\index.tsx:8170:      passengerNotification: notification.body,
+> apps\mobile\src\pages\driver\index.tsx:8171:      noShowCountdownStartedAt: record.noShowCountdownStartedAt ?? new 
+Date().toISOString(),
+  apps\mobile\src\pages\driver\index.tsx:8172:    };
+  apps\mobile\src\pages\driver\index.tsx:8173:
+  apps\mobile\src\pages\driver\index.tsx:8174:    // Actualiza los puentes locales para que TripsPage del pasajero muestre mapa + 
+mensaje al instante.
+  apps\mobile\src\pages\driver\index.tsx:8175:    for (const key of [
+  apps\mobile\src\pages\driver\index.tsx:8176:      "rapago_local_passenger_rides",
+  apps\mobile\src\pages\driver\index.tsx:8177:      "rapago_driver_accepted_vehicle_rides_v1",
+  apps\mobile\src\pages\driver\index.tsx:8178:      "rapago_driver_accepted_rides_v1",
+  apps\mobile\src\pages\driver\index.tsx:8179:      "rapago_admin_scheduled_rides",
+  apps\mobile\src\pages\driver\index.tsx:8180:      "rapago_admin_scheduled_rides_v1",
+  apps\mobile\src\pages\driver\index.tsx:8181:      "rapago_admin_scheduled_rides_v2",
+  apps\mobile\src\pages\driver\index.tsx:8221:  }
+  apps\mobile\src\pages\driver\index.tsx:8222:}
+  apps\mobile\src\pages\driver\index.tsx:8223:
+> apps\mobile\src\pages\driver\index.tsx:8224:function notifyPassengerNoShowByAppAndWhatsapp(ride: DriverRideData, feeClp: number): void 
+{
+  apps\mobile\src\pages\driver\index.tsx:8225:  const record = ride as DriverRideData & Record<string, unknown>;
+  apps\mobile\src\pages\driver\index.tsx:8226:  const now = new Date().toISOString();
+  apps\mobile\src\pages\driver\index.tsx:8227:  const notification = {
+> apps\mobile\src\pages\driver\index.tsx:8228:    id: `no-show-warning-${String(record.id ?? record.rideId ?? Date.now())}`,
+  apps\mobile\src\pages\driver\index.tsx:8229:    rideId: String(record.id ?? record.rideId ?? ""),
+  apps\mobile\src\pages\driver\index.tsx:8230:    type: "no_show_warning",
+  apps\mobile\src\pages\driver\index.tsx:8231:    title: "Tu conductor llegó al punto",
+  apps\mobile\src\pages\driver\index.tsx:8232:    body: `El conductor notificó llegada y esperó 5 minutos. Si no estás en el punto, se 
+marcará NO SHOW y se cobrará el total del servicio: ${formatClp(feeClp)}.`,
+  apps\mobile\src\pages\driver\index.tsx:8233:    createdAt: now,
+  apps\mobile\src\pages\driver\index.tsx:8234:    read: false,
+  apps\mobile\src\pages\driver\index.tsx:8235:  };
+  apps\mobile\src\pages\driver\index.tsx:8236:
+  apps\mobile\src\pages\driver\index.tsx:8237:  try {
+  apps\mobile\src\pages\driver\index.tsx:8238:    const raw = localStorage.getItem("rapago_passenger_notifications_v1");
+  apps\mobile\src\pages\driver\index.tsx:8251:    // No bloquea el no show.
+  apps\mobile\src\pages\driver\index.tsx:8252:  }
+  apps\mobile\src\pages\driver\index.tsx:8253:
+> apps\mobile\src\pages\driver\index.tsx:8254:  const url = buildDriverNoShowWhatsappUrl(ride, feeClp);
+  apps\mobile\src\pages\driver\index.tsx:8255:  if (url) {
+  apps\mobile\src\pages\driver\index.tsx:8256:    try {
+  apps\mobile\src\pages\driver\index.tsx:8257:      window.open(url, "_blank", "noopener,noreferrer");
+  apps\mobile\src\pages\driver\index.tsx:8258:    } catch {
+  apps\mobile\src\pages\driver\index.tsx:8259:      // Si el navegador bloquea popups, queda al menos la notificación por app.
+  apps\mobile\src\pages\driver\index.tsx:8260:    }
+  apps\mobile\src\pages\driver\index.tsx:8261:  }
+  apps\mobile\src\pages\driver\index.tsx:8262:}
+  apps\mobile\src\pages\driver\index.tsx:8263:
+> apps\mobile\src\pages\driver\index.tsx:8264:function saveDriverNoShowChargeForPassenger(
+  apps\mobile\src\pages\driver\index.tsx:8265:  ride: DriverRideData,
+  apps\mobile\src\pages\driver\index.tsx:8266:  user?: unknown,
+  apps\mobile\src\pages\driver\index.tsx:8267:): Record<string, unknown> {
+  apps\mobile\src\pages\driver\index.tsx:8268:  const record = ride as DriverRideData & Record<string, unknown>;
+> apps\mobile\src\pages\driver\index.tsx:8269:  const rideKey = getDriverNoShowRideKey(record);
+> apps\mobile\src\pages\driver\index.tsx:8270:  const feeClp = getDriverRideNoShowFeeClp(record);
+> apps\mobile\src\pages\driver\index.tsx:8271:  const isCardPaid = driverNoShowRideLooksCardPaid(record);
+  apps\mobile\src\pages\driver\index.tsx:8272:  const now = new Date().toISOString();
+  apps\mobile\src\pages\driver\index.tsx:8273:  const rideId = String(record.id ?? record.rideId ?? record.originalRideId ?? "").trim();
+  apps\mobile\src\pages\driver\index.tsx:8274:
+  apps\mobile\src\pages\driver\index.tsx:8275:  const charge = {
+> apps\mobile\src\pages\driver\index.tsx:8276:    id: `driver-no-show-${rideId || rideKey}`,
+  apps\mobile\src\pages\driver\index.tsx:8277:    rideId: rideId || rideKey,
+  apps\mobile\src\pages\driver\index.tsx:8278:    rideKey,
+  apps\mobile\src\pages\driver\index.tsx:8279:    passengerEmail: String(record.passengerEmail ?? record.email ?? "").trim() || null,
+  apps\mobile\src\pages\driver\index.tsx:8280:    passengerName: String(record.passengerName ?? record.userName ?? record.name ?? 
+"").trim() || null,
+  apps\mobile\src\pages\driver\index.tsx:8281:    originText: String(record.originText ?? ""),
+  apps\mobile\src\pages\driver\index.tsx:8282:    destinationText: String(record.destinationText ?? ""),
+  apps\mobile\src\pages\driver\index.tsx:8283:    amountClp: feeClp,
+> apps\mobile\src\pages\driver\index.tsx:8284:    minimumFareClp: getDriverRideMinimumFareForNoShow(record),
+  apps\mobile\src\pages\driver\index.tsx:8285:    type: "no_show",
+  apps\mobile\src\pages\driver\index.tsx:8286:    paymentMethod: getRidePaymentMethodLabel(String(record.notes ?? "")),
+  apps\mobile\src\pages\driver\index.tsx:8287:    status: isCardPaid ? "charged_from_card_or_paid_amount" : "pending_next_ride",
+  apps\mobile\src\pages\driver\index.tsx:8288:    adminReviewStatus: isCardPaid ? "no_show_total_service_charged" : 
+"charge_pending_next_ride",
+  apps\mobile\src\pages\driver\index.tsx:8289:    createdAt: now,
+  apps\mobile\src\pages\driver\index.tsx:8290:    appliedRideId: null,
+  apps\mobile\src\pages\driver\index.tsx:8291:    appliedAt: null,
+  apps\mobile\src\pages\driver\index.tsx:8292:    title: "Cargo por no show",
+  apps\mobile\src\pages\driver\index.tsx:8293:    description: isCardPaid
+  apps\mobile\src\pages\driver\index.tsx:8294:      ? `No show confirmado por conductor: notificó por app/WhatsApp y esperó 5 minutos en 
+el punto. Se cobra el total del servicio desde el pago/tarjeta: ${formatClp(feeClp)}.`
+  apps\mobile\src\pages\driver\index.tsx:8322:  return charge;
+  apps\mobile\src\pages\driver\index.tsx:8323:}
+  apps\mobile\src\pages\driver\index.tsx:8324:
+> apps\mobile\src\pages\driver\index.tsx:8325:function markPassengerRideNoShowCancelledFromDriver(
+  apps\mobile\src\pages\driver\index.tsx:8326:  ride: DriverRideData,
+  apps\mobile\src\pages\driver\index.tsx:8327:  charge: Record<string, unknown>,
+  apps\mobile\src\pages\driver\index.tsx:8328:): void {
+  apps\mobile\src\pages\driver\index.tsx:8329:  const cancelledAt = new Date().toISOString();
+  apps\mobile\src\pages\driver\index.tsx:8330:  const target = ride as DriverRideData & Record<string, unknown>;
+  apps\mobile\src\pages\driver\index.tsx:8331:  const cancelled = {
+  apps\mobile\src\pages\driver\index.tsx:8332:    ...target,
+  apps\mobile\src\pages\driver\index.tsx:8333:    status: "cancelled",
+  apps\mobile\src\pages\driver\index.tsx:8334:    cancelledAt,
+  apps\mobile\src\pages\driver\index.tsx:8335:    cancelledByRole: "driver_no_show",
+  apps\mobile\src\pages\driver\index.tsx:8336:    cancelledBy: "driver_no_show",
+  apps\mobile\src\pages\driver\index.tsx:8337:    cancellationReason: `No show confirmado por conductor. Cargo 
+${formatClp(Number(charge.amountClp ?? 0))} pendiente para el próximo viaje.`,
+> apps\mobile\src\pages\driver\index.tsx:8338:    passengerCancellationFeeClp: Number(charge.amountClp ?? 0),
+  apps\mobile\src\pages\driver\index.tsx:8339:    passengerCancellationPolicyType: "no_show",
+  apps\mobile\src\pages\driver\index.tsx:8340:    passengerCancellationPolicyText: "No show: cobro íntegro del servicio tras 5 minutos 
+de espera y notificación por app/WhatsApp.",
+  apps\mobile\src\pages\driver\index.tsx:8341:    paymentPendingClp: Number(charge.amountClp ?? 0),
+  apps\mobile\src\pages\driver\index.tsx:8342:    passengerPendingChargeNextRide: true,
+  apps\mobile\src\pages\driver\index.tsx:8343:    passengerPendingChargeNotice: String(charge.status ?? "") === 
+"charged_from_card_or_paid_amount"
+  apps\mobile\src\pages\driver\index.tsx:8344:      ? `No show confirmado. Se cobró el total del servicio desde el pago realizado: 
+${formatClp(Number(charge.amountClp ?? 0))}.`
+  apps\mobile\src\pages\driver\index.tsx:8345:      : `Cargo pendiente de ${formatClp(Number(charge.amountClp ?? 0))} por no show. Se 
+sumará automáticamente a tu próximo viaje.`,
+  apps\mobile\src\pages\driver\index.tsx:8346:  };
+  apps\mobile\src\pages\driver\index.tsx:8347:
+  apps\mobile\src\pages\driver\index.tsx:8348:  const keys = [
+  apps\mobile\src\pages\driver\index.tsx:11585:          status: "driver_arrived",
+  apps\mobile\src\pages\driver\index.tsx:11586:          driverArrivedAt: arrivedAt,
+  apps\mobile\src\pages\driver\index.tsx:11587:          arrivedAt,
+> apps\mobile\src\pages\driver\index.tsx:11588:          noShowCountdownStartedAt: arrivedAt,
+  apps\mobile\src\pages\driver\index.tsx:11589:          passengerNotice: "Tu conductor llegó al punto. Sal ahora para evitar No show.",
+  apps\mobile\src\pages\driver\index.tsx:11590:          passengerNotification: "Tu conductor llegó al punto. Tienes 5 minutos para 
+presentarte antes de No show.",
+  apps\mobile\src\pages\driver\index.tsx:11591:        },
+  apps\mobile\src\pages\driver\index.tsx:11592:        session?.user,
+  apps\mobile\src\pages\driver\index.tsx:11593:      );
+  apps\mobile\src\pages\driver\index.tsx:11594:
+  apps\mobile\src\pages\driver\index.tsx:11595:      notifyPassengerDriverArrivedByAppAndWhatsapp(arrivedRide);
+  apps\mobile\src\pages\driver\index.tsx:11596:      await loadRides();
+  apps\mobile\src\pages\driver\index.tsx:11597:    } catch (err) {
+  apps\mobile\src\pages\driver\index.tsx:11598:      setError(
+  apps\mobile\src\pages\driver\index.tsx:11776:    setCancelConfirmRide(ride);
+  apps\mobile\src\pages\driver\index.tsx:11777:  }
+  apps\mobile\src\pages\driver\index.tsx:11778:
+> apps\mobile\src\pages\driver\index.tsx:11779:  async function handleDriverNoShowRide(ride: DriverRideData): Promise<void> {
+  apps\mobile\src\pages\driver\index.tsx:11780:    const rideId = String(ride.id ?? "").trim();
+  apps\mobile\src\pages\driver\index.tsx:11781:    if (!rideId) return;
+  apps\mobile\src\pages\driver\index.tsx:11782:
+> apps\mobile\src\pages\driver\index.tsx:11783:    const noShowState = getDriverNoShowState(ride as DriverRideData & Record<string, 
+unknown>);
+> apps\mobile\src\pages\driver\index.tsx:11784:    if (!noShowState.allowed) {
+> apps\mobile\src\pages\driver\index.tsx:11785:      setError(`Debes esperar 5 minutos desde que llegaste al punto. Falta 
+${formatDriverNoShowRemaining(noShowState.remainingMs)}.`);
+  apps\mobile\src\pages\driver\index.tsx:11786:      return;
+  apps\mobile\src\pages\driver\index.tsx:11787:    }
+  apps\mobile\src\pages\driver\index.tsx:11788:
+  apps\mobile\src\pages\driver\index.tsx:11789:    setAcceptingId(rideId);
+  apps\mobile\src\pages\driver\index.tsx:11790:    setError(null);
+  apps\mobile\src\pages\driver\index.tsx:11791:
+  apps\mobile\src\pages\driver\index.tsx:11792:    try {
+> apps\mobile\src\pages\driver\index.tsx:11793:      notifyPassengerNoShowByAppAndWhatsapp(ride, noShowState.feeClp);
+> apps\mobile\src\pages\driver\index.tsx:11794:      const charge = saveDriverNoShowChargeForPassenger(ride, session?.user);
+> apps\mobile\src\pages\driver\index.tsx:11795:      markPassengerRideNoShowCancelledFromDriver(ride, charge);
+> apps\mobile\src\pages\driver\index.tsx:11796:      clearDriverNoShowTimer(ride as DriverRideData & Record<string, unknown>);
+  apps\mobile\src\pages\driver\index.tsx:11797:
+  apps\mobile\src\pages\driver\index.tsx:11798:      clearDriverLiveLocationForPassenger(rideId);
+  apps\mobile\src\pages\driver\index.tsx:11799:      removeDriverActiveRideLocalMirror({ ...(ride as unknown as Record<string, 
+unknown>), status: "cancelled", cancelledByRole: "driver_no_show" }, session?.user);
+  apps\mobile\src\pages\driver\index.tsx:11800:      setAssignedRides((prev) => prev.filter((item) => item.id !== rideId));
+  apps\mobile\src\pages\driver\index.tsx:11801:
+  apps\mobile\src\pages\driver\index.tsx:11802:      if (session?.accessToken) {
+  apps\mobile\src\pages\driver\index.tsx:11803:        try {
+  apps\mobile\src\pages\driver\index.tsx:11804:          await ridesService.cancelAcceptedRide(session.accessToken, rideId);
+  apps\mobile\src\pages\driver\index.tsx:11805:        } catch {
+  apps\mobile\src\pages\driver\index.tsx:11806:          // El cargo local y el aviso al pasajero quedan guardados aunque el backend 
+responda distinto.
+  apps\mobile\src\pages\driver\index.tsx:11807:        }
+  apps\mobile\src\pages\driver\index.tsx:11808:      }
+  apps\mobile\src\pages\driver\index.tsx:11809:
+> apps\mobile\src\pages\driver\index.tsx:11810:      window.dispatchEvent(new CustomEvent("rapago:driver-rides-updated", { detail: { 
+rideId, status: "cancelled", noShow: true, charge } }));
+  apps\mobile\src\pages\driver\index.tsx:11811:      setError(`No show registrado. Se notificó por app/WhatsApp y se aplicó cobro total 
+del servicio: ${formatClp(Number(charge.amountClp ?? 0))}.`);
+  apps\mobile\src\pages\driver\index.tsx:11812:      window.setTimeout(() => void loadRides(), 450);
+  apps\mobile\src\pages\driver\index.tsx:11813:    } finally {
+  apps\mobile\src\pages\driver\index.tsx:11814:      setAcceptingId(null);
+  apps\mobile\src\pages\driver\index.tsx:11815:    }
+  apps\mobile\src\pages\driver\index.tsx:11816:  }
+  apps\mobile\src\pages\driver\index.tsx:11817:
+  apps\mobile\src\pages\driver\index.tsx:11818:  async function handleStartReadyScheduledReservation(ride: 
+DriverScheduledReservationOffer): Promise<void> {
+  apps\mobile\src\pages\driver\index.tsx:11819:    if (!isDriverAvailable) {
+  apps\mobile\src\pages\driver\index.tsx:11820:      setError("Estás no disponible. Activa disponible para iniciar esta reserva.");
+  apps\mobile\src\pages\driver\index.tsx:12936:        : 390;
+  apps\mobile\src\pages\driver\index.tsx:12937:
+  apps\mobile\src\pages\driver\index.tsx:12938:    const activeRideWaitingPassenger = ride.status === "driver_arrived";
+> apps\mobile\src\pages\driver\index.tsx:12939:    const [activeRideNoShowNowMs, setActiveRideNoShowNowMs] = useState(() => Date.now());
+  apps\mobile\src\pages\driver\index.tsx:12940:
+  apps\mobile\src\pages\driver\index.tsx:12941:    useEffect(() => {
+  apps\mobile\src\pages\driver\index.tsx:12942:      if (!activeRideWaitingPassenger) return;
+  apps\mobile\src\pages\driver\index.tsx:12943:
+> apps\mobile\src\pages\driver\index.tsx:12944:      const interval = window.setInterval(() => setActiveRideNoShowNowMs(Date.now()), 
+1000);
+  apps\mobile\src\pages\driver\index.tsx:12945:      return () => window.clearInterval(interval);
+  apps\mobile\src\pages\driver\index.tsx:12946:    }, [activeRideWaitingPassenger, ride.id]);
+  apps\mobile\src\pages\driver\index.tsx:12947:
+> apps\mobile\src\pages\driver\index.tsx:12948:    const driverNoShowState = getDriverNoShowState(
+  apps\mobile\src\pages\driver\index.tsx:12949:      ride as DriverRideData & Record<string, unknown>,
+> apps\mobile\src\pages\driver\index.tsx:12950:      activeRideNoShowNowMs,
+  apps\mobile\src\pages\driver\index.tsx:12951:    );
+  apps\mobile\src\pages\driver\index.tsx:12952:
+  apps\mobile\src\pages\driver\index.tsx:12953:    return (
+  apps\mobile\src\pages\driver\index.tsx:12954:      <div
+  apps\mobile\src\pages\driver\index.tsx:12955:        style={{
+  apps\mobile\src\pages\driver\index.tsx:12956:          minHeight: "100%",
+  apps\mobile\src\pages\driver\index.tsx:12957:          background: "#0f1115",
+  apps\mobile\src\pages\driver\index.tsx:12958:          margin: "-16px",
+  apps\mobile\src\pages\driver\index.tsx:12959:          color: "#F6F2EC",
+  apps\mobile\src\pages\driver\index.tsx:12960:          display: "flex",
+  apps\mobile\src\pages\driver\index.tsx:13142:                    margin: "0 0 12px",
+  apps\mobile\src\pages\driver\index.tsx:13143:                    padding: "12px 13px",
+  apps\mobile\src\pages\driver\index.tsx:13144:                    borderRadius: 18,
+> apps\mobile\src\pages\driver\index.tsx:13145:                    background: driverNoShowState.allowed
+  apps\mobile\src\pages\driver\index.tsx:13146:                      ? "linear-gradient(135deg, rgba(250,204,21,.22), 
+rgba(245,158,11,.16))"
+  apps\mobile\src\pages\driver\index.tsx:13147:                      : "linear-gradient(135deg, rgba(15,23,42,.72), rgba(30,41,59,.72))",
+> apps\mobile\src\pages\driver\index.tsx:13148:                    border: driverNoShowState.allowed
+  apps\mobile\src\pages\driver\index.tsx:13149:                      ? "1px solid rgba(250,204,21,.45)"
+  apps\mobile\src\pages\driver\index.tsx:13150:                      : "1px solid rgba(148,163,184,.22)",
+  apps\mobile\src\pages\driver\index.tsx:13151:                    color: "#ffffff",
+  apps\mobile\src\pages\driver\index.tsx:13152:                  }}
+  apps\mobile\src\pages\driver\index.tsx:13153:                >
+  apps\mobile\src\pages\driver\index.tsx:13154:                  <div
+  apps\mobile\src\pages\driver\index.tsx:13155:                    style={{
+  apps\mobile\src\pages\driver\index.tsx:13156:                      display: "flex",
+  apps\mobile\src\pages\driver\index.tsx:13157:                      justifyContent: "space-between",
+  apps\mobile\src\pages\driver\index.tsx:13158:                      alignItems: "center",
+  apps\mobile\src\pages\driver\index.tsx:13163:                  >
+  apps\mobile\src\pages\driver\index.tsx:13164:                    <span>Espera para No show</span>
+  apps\mobile\src\pages\driver\index.tsx:13165:                    <span>
+> apps\mobile\src\pages\driver\index.tsx:13166:                      {driverNoShowState.allowed
+  apps\mobile\src\pages\driver\index.tsx:13167:                        ? "Listo"
+> apps\mobile\src\pages\driver\index.tsx:13168:                        : formatDriverNoShowRemaining(driverNoShowState.remainingMs)}
+  apps\mobile\src\pages\driver\index.tsx:13169:                    </span>
+  apps\mobile\src\pages\driver\index.tsx:13170:                  </div>
+  apps\mobile\src\pages\driver\index.tsx:13171:
+  apps\mobile\src\pages\driver\index.tsx:13172:                  <div
+  apps\mobile\src\pages\driver\index.tsx:13173:                    style={{
+  apps\mobile\src\pages\driver\index.tsx:13174:                      marginTop: 9,
+  apps\mobile\src\pages\driver\index.tsx:13175:                      height: 8,
+  apps\mobile\src\pages\driver\index.tsx:13176:                      borderRadius: 999,
+  apps\mobile\src\pages\driver\index.tsx:13177:                      overflow: "hidden",
+  apps\mobile\src\pages\driver\index.tsx:13178:                      background: "rgba(255,255,255,.16)",
+  apps\mobile\src\pages\driver\index.tsx:13180:                  >
+  apps\mobile\src\pages\driver\index.tsx:13181:                    <div
+  apps\mobile\src\pages\driver\index.tsx:13182:                      style={{
+> apps\mobile\src\pages\driver\index.tsx:13183:                        width: `${getDriverNoShowProgressPercent(driverNoShowState)}%`,
+  apps\mobile\src\pages\driver\index.tsx:13184:                        height: "100%",
+  apps\mobile\src\pages\driver\index.tsx:13185:                        borderRadius: 999,
+> apps\mobile\src\pages\driver\index.tsx:13186:                        background: driverNoShowState.allowed
+  apps\mobile\src\pages\driver\index.tsx:13187:                          ? "linear-gradient(90deg,#facc15,#22c55e)"
+  apps\mobile\src\pages\driver\index.tsx:13188:                          : "linear-gradient(90deg,#38bdf8,#facc15)",
+  apps\mobile\src\pages\driver\index.tsx:13189:                        transition: "width .35s ease",
+  apps\mobile\src\pages\driver\index.tsx:13190:                      }}
+  apps\mobile\src\pages\driver\index.tsx:13191:                    />
+  apps\mobile\src\pages\driver\index.tsx:13192:                  </div>
+  apps\mobile\src\pages\driver\index.tsx:13193:
+  apps\mobile\src\pages\driver\index.tsx:13194:                  <div
+  apps\mobile\src\pages\driver\index.tsx:13195:                    style={{
+  apps\mobile\src\pages\driver\index.tsx:13196:                      marginTop: 7,
+  apps\mobile\src\pages\driver\index.tsx:13199:                      opacity: .86,
+  apps\mobile\src\pages\driver\index.tsx:13200:                    }}
+  apps\mobile\src\pages\driver\index.tsx:13201:                  >
+> apps\mobile\src\pages\driver\index.tsx:13202:                    {driverNoShowState.allowed
+  apps\mobile\src\pages\driver\index.tsx:13203:                      ? "Ya puedes marcar No show si el pasajero no aparece."
+  apps\mobile\src\pages\driver\index.tsx:13204:                      : "El botón se habilita automáticamente al cumplir 5 minutos."}
+  apps\mobile\src\pages\driver\index.tsx:13205:                  </div>
+  apps\mobile\src\pages\driver\index.tsx:13206:                </div>
+  apps\mobile\src\pages\driver\index.tsx:13207:
+  apps\mobile\src\pages\driver\index.tsx:13208:                <div
+  apps\mobile\src\pages\driver\index.tsx:13209:                  style={{
+  apps\mobile\src\pages\driver\index.tsx:13210:                    display: "grid",
+  apps\mobile\src\pages\driver\index.tsx:13211:                    gridTemplateColumns: "1fr 1fr",
+  apps\mobile\src\pages\driver\index.tsx:13212:                    gap: 10,
+  apps\mobile\src\pages\driver\index.tsx:13226:                  <IonButton
+  apps\mobile\src\pages\driver\index.tsx:13227:                    expand="block"
+  apps\mobile\src\pages\driver\index.tsx:13228:                    color="warning"
+> apps\mobile\src\pages\driver\index.tsx:13229:                    disabled={!driverNoShowState.allowed}
+  apps\mobile\src\pages\driver\index.tsx:13230:                    style={
+  apps\mobile\src\pages\driver\index.tsx:13231:                      {
+  apps\mobile\src\pages\driver\index.tsx:13232:                        "--border-radius": "14px",
+  apps\mobile\src\pages\driver\index.tsx:13233:                        height: "52px",
+> apps\mobile\src\pages\driver\index.tsx:13234:                        "--color": driverNoShowState.allowed ? "#111111" : "#ffffff",
+> apps\mobile\src\pages\driver\index.tsx:13235:                        "--background": driverNoShowState.allowed ? undefined : 
+"rgba(71,85,105,.75)",
+> apps\mobile\src\pages\driver\index.tsx:13236:                        opacity: driverNoShowState.allowed ? 1 : .68,
+  apps\mobile\src\pages\driver\index.tsx:13237:                        position: "relative",
+  apps\mobile\src\pages\driver\index.tsx:13238:                        zIndex: 31,
+  apps\mobile\src\pages\driver\index.tsx:13239:                      } as CSSProperties
+  apps\mobile\src\pages\driver\index.tsx:13240:                    }
+> apps\mobile\src\pages\driver\index.tsx:13241:                    onClick={() => void handleDriverNoShowRide(ride)}
+  apps\mobile\src\pages\driver\index.tsx:13242:                  >
+> apps\mobile\src\pages\driver\index.tsx:13243:                    {driverNoShowState.allowed ? `No show · Total 
+${formatClp(driverNoShowState.feeClp)}` : `Espera ${formatDriverNoShowRemaining(driverNoShowState.remainingMs)}`}
+  apps\mobile\src\pages\driver\index.tsx:13244:                  </IonButton>
+  apps\mobile\src\pages\driver\index.tsx:13245:
+  apps\mobile\src\pages\driver\index.tsx:13246:                  <IonButton
+  apps\mobile\src\pages\driver\index.tsx:13247:                    expand="block"
+  apps\mobile\src\pages\driver\index.tsx:13248:                    fill="outline"
+  apps\mobile\src\pages\driver\index.tsx:13249:                    color="light"
+  apps\mobile\src\pages\driver\index.tsx:13250:                    style={
+  apps\mobile\src\pages\driver\index.tsx:13251:                      {
+  apps\mobile\src\pages\driver\index.tsx:13252:                        "--border-radius": "14px",
+  apps\mobile\src\pages\driver\index.tsx:13253:                        height: "52px",
+  apps\mobile\src\pages\driver\index.tsx:14198:    return status;
+  apps\mobile\src\pages\driver\index.tsx:14199:  }
+  apps\mobile\src\pages\driver\index.tsx:14200:
+> apps\mobile\src\pages\driver\index.tsx:14201:  async function handleDriverNoShowRide(ride: DriverRideData): Promise<void> {
+  apps\mobile\src\pages\driver\index.tsx:14202:    const rideId = String(ride.id ?? "").trim();
+  apps\mobile\src\pages\driver\index.tsx:14203:    if (!rideId) return;
+  apps\mobile\src\pages\driver\index.tsx:14204:
+> apps\mobile\src\pages\driver\index.tsx:14205:    const noShowState = getDriverNoShowState(ride as DriverRideData & Record<string, 
+unknown>);
+> apps\mobile\src\pages\driver\index.tsx:14206:    if (!noShowState.allowed) {
+> apps\mobile\src\pages\driver\index.tsx:14207:      setLoadError(`Debes esperar 5 minutos desde que llegaste al punto. Falta 
+${formatDriverNoShowRemaining(noShowState.remainingMs)}.`);
+  apps\mobile\src\pages\driver\index.tsx:14208:      return;
+  apps\mobile\src\pages\driver\index.tsx:14209:    }
+  apps\mobile\src\pages\driver\index.tsx:14210:
+  apps\mobile\src\pages\driver\index.tsx:14211:    setActionLoading(rideId);
+  apps\mobile\src\pages\driver\index.tsx:14212:    setLoadError(null);
+  apps\mobile\src\pages\driver\index.tsx:14213:
+  apps\mobile\src\pages\driver\index.tsx:14214:    try {
+> apps\mobile\src\pages\driver\index.tsx:14215:      notifyPassengerNoShowByAppAndWhatsapp(ride, noShowState.feeClp);
+> apps\mobile\src\pages\driver\index.tsx:14216:      const charge = saveDriverNoShowChargeForPassenger(ride, session?.user);
+> apps\mobile\src\pages\driver\index.tsx:14217:      markPassengerRideNoShowCancelledFromDriver(ride, charge);
+> apps\mobile\src\pages\driver\index.tsx:14218:      clearDriverNoShowTimer(ride as DriverRideData & Record<string, unknown>);
+  apps\mobile\src\pages\driver\index.tsx:14219:
+  apps\mobile\src\pages\driver\index.tsx:14220:      clearDriverLiveLocationForPassenger(rideId);
+  apps\mobile\src\pages\driver\index.tsx:14221:      removeDriverActiveRideLocalMirror(
+  apps\mobile\src\pages\driver\index.tsx:14222:        {
+  apps\mobile\src\pages\driver\index.tsx:14223:          ...(ride as unknown as Record<string, unknown>),
+  apps\mobile\src\pages\driver\index.tsx:14224:          status: "cancelled",
+  apps\mobile\src\pages\driver\index.tsx:14225:          cancelledByRole: "driver_no_show",
+  apps\mobile\src\pages\driver\index.tsx:14226:          cancelledBy: "driver",
+  apps\mobile\src\pages\driver\index.tsx:14227:          cancellationReason: "No show registrado por conductor.",
+  apps\mobile\src\pages\driver\index.tsx:14228:        },
+  apps\mobile\src\pages\driver\index.tsx:14241:
+  apps\mobile\src\pages\driver\index.tsx:14242:      window.dispatchEvent(
+  apps\mobile\src\pages\driver\index.tsx:14243:        new CustomEvent("rapago:driver-rides-updated", {
+> apps\mobile\src\pages\driver\index.tsx:14244:          detail: { rideId, status: "cancelled", noShow: true, charge },
+  apps\mobile\src\pages\driver\index.tsx:14245:        }),
+  apps\mobile\src\pages\driver\index.tsx:14246:      );
+  apps\mobile\src\pages\driver\index.tsx:14247:
+  apps\mobile\src\pages\driver\index.tsx:14248:      setLoadError(`No show registrado. Se notificó por app/WhatsApp y se aplicó cobro 
+total del servicio: ${formatClp(Number(charge.amountClp ?? 0))}.`);
+  apps\mobile\src\pages\driver\index.tsx:14249:      window.setTimeout(() => void loadRides(), 450);
+  apps\mobile\src\pages\driver\index.tsx:14250:    } finally {
+  apps\mobile\src\pages\driver\index.tsx:14251:      setActionLoading(null);
+  apps\mobile\src\pages\driver\index.tsx:14252:    }
+  apps\mobile\src\pages\driver\index.tsx:14253:  }
+  apps\mobile\src\pages\driver\index.tsx:14254:
+  apps\mobile\src\pages\driver\index.tsx:14486:                    <IonButton
+  apps\mobile\src\pages\driver\index.tsx:14487:                      expand="block"
+  apps\mobile\src\pages\driver\index.tsx:14488:                      color="warning"
+> apps\mobile\src\pages\driver\index.tsx:14489:                      disabled={actionLoading === activeRide.id || 
+!getDriverNoShowState(activeRide as DriverRideData & Record<string, unknown>).allowed}
+> apps\mobile\src\pages\driver\index.tsx:14490:                      onClick={() => void handleDriverNoShowRide(activeRide)}
+  apps\mobile\src\pages\driver\index.tsx:14491:                    >
+> apps\mobile\src\pages\driver\index.tsx:14492:                      {actionLoading === activeRide.id ? <IonSpinner name="dots" /> : 
+getDriverNoShowState(activeRide as DriverRideData & Record<string, unknown>).allowed ? `No show · Total 
+${formatClp(getDriverNoShowState(activeRide as DriverRideData & Record<string, unknown>).feeClp)}` : `Espera 
+${formatDriverNoShowRemaining(getDriverNoShowState(activeRide as DriverRideData & Record<string, unknown>).remainingMs)}`}
+  apps\mobile\src\pages\driver\index.tsx:14493:                    </IonButton>
+  apps\mobile\src\pages\driver\index.tsx:14494:                  </>
+  apps\mobile\src\pages\driver\index.tsx:14495:                )}
+  apps\mobile\src\pages\driver\index.tsx:14496:
+  apps\mobile\src\pages\driver\index.tsx:14497:                {activeRide.status === "in_progress" && (
+  apps\mobile\src\pages\driver\index.tsx:14498:                  <IonButton
+  apps\mobile\src\pages\driver\index.tsx:14499:                    expand="block"
+  apps\mobile\src\pages\driver\index.tsx:14500:                    color="success"
+  apps\mobile\src\pages\driver\index.tsx:14501:                    disabled={actionLoading === activeRide.id}
+  apps\mobile\src\pages\driver\index.tsx:14502:                    onClick={() => setCompleteConfirmRide(activeRide)}
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:100:  // Phase 2 security:
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:101:  // Legacy localStorage pending charges are visual/admin-review only.
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:102:  // They must not increase ride fares or payment amounts for the next 
+request.
+> apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:103:  // Authoritative cancellation/no-show charges must come from 
+backend/admin policy.
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:104:  return [];
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:105:}
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:106:
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:107:function writePassengerPendingChargesForRequest(charges: 
+PassengerPendingChargeForRequest[]): void {
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:108:  try {
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:109:    localStorage.setItem(RAPAGO_PASSENGER_PENDING_CHARGES_KEY, 
+JSON.stringify(charges.slice(0, 250)));
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:110:    window.dispatchEvent(new 
+CustomEvent(RAPAGO_PASSENGER_PENDING_CHARGE_EVENT, { detail: { charges } }));
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:111:    window.dispatchEvent(new CustomEvent("rapago:wallet-updated", { 
+detail: { charges } }));
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:112:  } catch {
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:113:    // No bloquea la solicitud.
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:117:function markPassengerPendingChargesAppliedToRide(_user: unknown, 
+_rideId: string | null): void {
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:118:  // Phase 2 security:
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:119:  // Do not mark localStorage charges as charged/applied to the next 
+ride.
+> apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:120:  // Backend must create and apply any real cancellation/no-show charge.
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:121:  return;
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:122:}
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:123:
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:124:const RAPAGO_WALLET_BENEFITS_KEY_REQUEST = "rapago_wallet_benefits_v1";
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:125:const RAPAGO_WALLET_BENEFIT_EVENT_REQUEST = 
+"rapago:wallet-benefit-updated";
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:126:
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:127:type PassengerWalletBenefitForRequest = {
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:128:  id: string;
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:129:  rideId?: string | null;
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:130:  passengerEmail?: string | null;
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:5090:          airportReservationRequiresCard: isAirportScheduledRide,
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:5091:          reservationRequiresCard: reservationRequiresCard,
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:5092:          paymentRequiredProvider: "mercadopago",
+> apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:5093:          cardCancellationCreditToWallet: reservationRequiresCard && 
+String(activePaymentMethod) === "card",
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:5094:          cardCancellationAdminReviewRequired: false,
+> apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:5095:          cardCancellationCreditName: "CRÉDITOS PARA PRÓXIMO VIAJE",
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:5096:        });
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:5097:      } else if (selectedRoundTripPromotion) {
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:5098:        Object.assign(input as CreateRideInput & Record<string, 
+unknown>, {
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:5099:          roundTripPromotionId: selectedRoundTripPromotion.id,
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:5100:          roundTripPromotionTitle: selectedRoundTripPromotion.title,
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:5101:          roundTripPromotionDestination: 
+selectedRoundTripPromotion.destinationName,
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:5102:          roundTripPromotionBooking: true,
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:5103:          roundTripOutboundNow: true,
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:5104:          roundTripReturnOnly: false,
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:5105:          roundTripReturnPickupRequested: true,
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:5430:          airportReservationRequiresCard: isAirportScheduledRide,
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:5431:          reservationRequiresCard: reservationRequiresCard,
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:5432:          paymentRequiredProvider: isAirportScheduledRide ? 
+"mercadopago" : null,
+> apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:5433:          cardCancellationCreditToWallet: reservationRequiresCard && 
+String(activePaymentMethod) === "card",
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:5434:          cardCancellationAdminReviewRequired: false,
+> apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:5435:          cardCancellationCreditName: reservationRequiresCard && 
+String(activePaymentMethod) === "card" ? "CRÉDITOS PARA PRÓXIMO VIAJE" : null,
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:5436:        } as LocalPassengerRideData;
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:5437:
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:5438:        const localReturnPickupRide = selectedRoundTripPromotion && 
+returnScheduledAt
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:5439:          ? createRoundTripReturnPickupRide({
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:5440:              returnOriginText: 
+selectedRoundTripPromotion.destinationName,
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:5441:              returnOriginAddress: resolved.destination.address,
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:5442:              returnOriginLat: resolved.destination.lat,
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:5443:              returnOriginLng: resolved.destination.lng,
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:5444:              returnDestinationText: resolved.origin.text,
+  apps\mobile\src\pages\passenger\pages\RequestRidePage.tsx:5445:              returnDestinationAddress: resolved.origin.address,
+  apps\mobile\src\pages\passenger\pages\TripsPage.tsx:313:    ride.driverArrivedAt,
+  apps\mobile\src\pages\passenger\pages\TripsPage.tsx:314:    ride.arrivedAt,
+  apps\mobile\src\pages\passenger\pages\TripsPage.tsx:315:    ride.driverReachedPickupAt,
+> apps\mobile\src\pages\passenger\pages\TripsPage.tsx:316:    ride.noShowCountdownStartedAt,
+  apps\mobile\src\pages\passenger\pages\TripsPage.tsx:317:    ride.updatedAt,
+  apps\mobile\src\pages\passenger\pages\TripsPage.tsx:318:  ];
+  apps\mobile\src\pages\passenger\pages\TripsPage.tsx:319:
+  apps\mobile\src\pages\passenger\pages\TripsPage.tsx:320:  for (const candidate of candidates) {
+  apps\mobile\src\pages\passenger\pages\TripsPage.tsx:321:    const parsed = new Date(String(candidate ?? "")).getTime();
+  apps\mobile\src\pages\passenger\pages\TripsPage.tsx:322:    if (Number.isFinite(parsed)) return parsed;
+  apps\mobile\src\pages\passenger\pages\TripsPage.tsx:323:  }
+  apps\mobile\src\pages\passenger\pages\TripsPage.tsx:324:
+  apps\mobile\src\pages\passenger\pages\TripsPage.tsx:325:  return null;
+  apps\mobile\src\pages\passenger\pages\TripsPage.tsx:326:}
+  apps\mobile\src\pages\passenger\pages\TripsPage.tsx:411:  }
+  apps\mobile\src\pages\passenger\pages\TripsPage.tsx:412:}
+  apps\mobile\src\pages\passenger\pages\TripsPage.tsx:413:
+> apps\mobile\src\pages\passenger\pages\TripsPage.tsx:414:function getLatestPassengerNoShowNotificationForRide(ride: RideRequestData): 
+PassengerNotificationPayload | null {
+  apps\mobile\src\pages\passenger\pages\TripsPage.tsx:415:  const record = ride as RideRequestData & Record<string, unknown>;
+  apps\mobile\src\pages\passenger\pages\TripsPage.tsx:416:  const notices = readPassengerNotifications()
+  apps\mobile\src\pages\passenger\pages\TripsPage.tsx:417:    .filter((item) =>
+  apps\mobile\src\pages\passenger\pages\TripsPage.tsx:418:      (
+  apps\mobile\src\pages\passenger\pages\TripsPage.tsx:419:        item.type === "no_show_warning" ||
+  apps\mobile\src\pages\passenger\pages\TripsPage.tsx:420:        item.type === "driver_arrived" ||
+  apps\mobile\src\pages\passenger\pages\TripsPage.tsx:421:        String(item.title ?? "").toLowerCase().includes("conductor llegó")
+  apps\mobile\src\pages\passenger\pages\TripsPage.tsx:422:      ) &&
+  apps\mobile\src\pages\passenger\pages\TripsPage.tsx:423:      (
+  apps\mobile\src\pages\passenger\pages\TripsPage.tsx:424:        passengerNotificationBelongsToRide(item, record) ||
+  apps\mobile\src\pages\passenger\pages\TripsPage.tsx:603:};
+  apps\mobile\src\pages\passenger\pages\TripsPage.tsx:604:
+  apps\mobile\src\pages\passenger\pages\TripsPage.tsx:605:type PassengerCancellationPolicy = {
+> apps\mobile\src\pages\passenger\pages\TripsPage.tsx:606:  type: "free" | "late_cancel" | "no_show";
+  apps\mobile\src\pages\passenger\pages\TripsPage.tsx:607:  feeClp: number;
+  apps\mobile\src\pages\passenger\pages\TripsPage.tsx:608:  title: string;
+  apps\mobile\src\pages\passenger\pages\TripsPage.tsx:609:  message: string;
+  apps\mobile\src\pages\passenger\pages\TripsPage.tsx:610:  detail: string;
+  apps\mobile\src\pages\passenger\pages\TripsPage.tsx:611:  acceptedElapsedMs: number | null;
+  apps\mobile\src\pages\passenger\pages\TripsPage.tsx:612:  arrivedElapsedMs: number | null;
+  apps\mobile\src\pages\passenger\pages\TripsPage.tsx:613:};
+  apps\mobile\src\pages\passenger\pages\TripsPage.tsx:614:
+  apps\mobile\src\pages\passenger\pages\TripsPage.tsx:615:function getPassengerRideStableKey(ride: Partial<RideRequestData> & 
+Record<string, unknown>): string {
+  apps\mobile\src\pages\passenger\pages\TripsPage.tsx:616:  const id = String(ride.id ?? ride.rideId ?? ride.originalRideId ?? 
+ride.serverRideId ?? "").trim();
+  apps\mobile\src\pages\passenger\pages\TripsPage.tsx:911:  window.dispatchEvent(new 
+CustomEvent("rapago:driver-available-rides-updated", { detail: { ride, record } }));
+  apps\mobile\src\pages\passenger\pages\TripsPage.tsx:912:}
+  apps\mobile\src\pages\passenger\pages\TripsPage.tsx:913:
+> apps\mobile\src\pages\passenger\pages\TripsPage.tsx:914:function getPassengerRideMinimumFareClp(ride: RideRequestData): number {
+  apps\mobile\src\pages\passenger\pages\TripsPage.tsx:915:  const record = ride as RideRequestData & Record<string, unknown>;
+  apps\mobile\src\pages\passenger\pages\TripsPage.tsx:916:  const fareType = getRidePassengerFareType(ride);
+  apps\mobile\src\pages\passenger\pages\TripsPage.tsx:917:  const candidates: unknown[] = [];
+  apps\mobile\src\pages\passenger\pages\TripsPage.tsx:918:
+  apps\mobile\src\pages\passenger\pages\TripsPage.tsx:919:  if (fareType === "resident") {
+> apps\mobile\src\pages\passenger\pages\TripsPage.tsx:920:    candidates.push(record.residentMinimumFareClp, 
+record.minimumFareResidentClp, record.minFareResidentClp);
+  apps\mobile\src\pages\passenger\pages\TripsPage.tsx:921:  }
+  apps\mobile\src\pages\passenger\pages\TripsPage.tsx:922:
+  apps\mobile\src\pages\passenger\pages\TripsPage.tsx:923:  if (fareType === "chilean") {
+> apps\mobile\src\pages\passenger\pages\TripsPage.tsx:924:    candidates.push(record.chileanMinimumFareClp, 
+record.minimumFareChileanClp, record.minFareChileanClp);
+  apps\mobile\src\pages\passenger\pages\TripsPage.tsx:925:  }
+  apps\mobile\src\pages\passenger\pages\TripsPage.tsx:926:
+  apps\mobile\src\pages\passenger\pages\TripsPage.tsx:927:  if (fareType === "foreigner") {
+> apps\mobile\src\pages\passenger\pages\TripsPage.tsx:928:    candidates.push(record.foreignerMinimumFareClp, 
+record.minimumFareForeignerClp, record.minFareForeignerClp);
+  apps\mobile\src\pages\passenger\pages\TripsPage.tsx:929:  }
+  apps\mobile\src\pages\passenger\pages\TripsPage.tsx:930:
+  apps\mobile\src\pages\passenger\pages\TripsPage.tsx:931:  candidates.push(
+> apps\mobile\src\pages\passenger\pages\TripsPage.tsx:932:    record.minimumFareClp,
+  apps\mobile\src\pages\passenger\pages\TripsPage.tsx:933:    record.minFareClp,
+> apps\mobile\src\pages\passenger\pages\TripsPage.tsx:934:    record.passengerMinimumFareClp,
+  apps\mobile\src\pages\passenger\pages\TripsPage.tsx:935:    record.fareMinimumClp,
+  apps\mobile\src\pages\passenger\pages\TripsPage.tsx:936:    extractMoneyAmount(String(ride.notes ?? "").match(/Tarifa 
+m[ií]nima[^:]*:\s*(\$?\s*[\d.,]+\s*CLP)/i)?.[1]),
+  apps\mobile\src\pages\passenger\pages\TripsPage.tsx:937:    extractMoneyAmount(String(ride.notes ?? 
+"").match(/M[ií]nimo[^:]*:\s*(\$?\s*[\d.,]+\s*CLP)/i)?.[1]),
+  apps\mobile\src\pages\passenger\pages\TripsPage.tsx:938:    getPassengerRideBaseFareClp(ride),
+  apps\mobile\src\pages\passenger\pages\TripsPage.tsx:939:  );
+  apps\mobile\src\pages\passenger\pages\TripsPage.tsx:940:
+  apps\mobile\src\pages\passenger\pages\TripsPage.tsx:941:  for (const candidate of candidates) {
+  apps\mobile\src\pages\passenger\pages\TripsPage.tsx:942:    const parsed = Number(candidate);
+  apps\mobile\src\pages\passenger\pages\TripsPage.tsx:943:    if (Number.isFinite(parsed) && parsed > 0) return Math.round(parsed);
+  apps\mobile\src\pages\passenger\pages\TripsPage.tsx:944:  }
+  apps\mobile\src\pages\passenger\pages\TripsPage.tsx:1009:  const arrivedAtMs = getPassengerCancellationTimeMs(record, ["arrivedAt", 
+"driverArrivedAt", "driverReachedPickupAt"]);
+  apps\mobile\src\pages\passenger\pages\TripsPage.tsx:1010:  const acceptedElapsedMs = acceptedAtMs == null ? null : Math.max(0, nowMs - 
+acceptedAtMs);
+  apps\mobile\src\pages\passenger\pages\TripsPage.tsx:1011:  const arrivedElapsedMs = arrivedAtMs == null ? null : Math.max(0, nowMs - 
+arrivedAtMs);
+> apps\mobile\src\pages\passenger\pages\TripsPage.tsx:1012:  const minimumFare = getPassengerRideMinimumFareClp(ride);
+  apps\mobile\src\pages\passenger\pages\TripsPage.tsx:1013:  const totalServiceFare =
+> apps\mobile\src\pages\passenger\pages\TripsPage.tsx:1014:    getPassengerCardCancellationCreditAmountClp(record) ||
+  apps\mobile\src\pages\passenger\pages\TripsPage.tsx:1015:    getPassengerRideBaseFareClp(ride) ||
+  apps\mobile\src\pages\passenger\pages\TripsPage.tsx:1016:    minimumFare;
+  apps\mobile\src\pages\passenger\pages\TripsPage.tsx:1017:  const charge30WithCap = () => Math.min(RAPAGO_CANCEL_FEE_CAP_CLP, 
+Math.round(minimumFare * 0.3));
+  apps\mobile\src\pages\passenger\pages\TripsPage.tsx:1018:  const scheduledChargeWindow = 
+isPassengerScheduledCancellationChargeWindow(record, nowMs);
+  apps\mobile\src\pages\passenger\pages\TripsPage.tsx:1019:
+  apps\mobile\src\pages\passenger\pages\TripsPage.tsx:1020:  if (effectiveStatus === "driver_arrived" && arrivedElapsedMs != null && 
+arrivedElapsedMs >= RAPAGO_NO_SHOW_AFTER_ARRIVAL_MS) {
+  apps\mobile\src\pages\passenger\pages\TripsPage.tsx:1021:    const fee = Math.max(0, Math.round(totalServiceFare));
+  apps\mobile\src\pages\passenger\pages\TripsPage.tsx:1022:    return {
+  apps\mobile\src\pages\passenger\pages\TripsPage.tsx:1023:      type: "no_show",
+  apps\mobile\src\pages\passenger\pages\TripsPage.tsx:1024:      feeClp: fee,
+  apps\mobile\src\pages\passenger\pages\TripsPage.tsx:1033:  if (scheduledChargeWindow) {
+  apps\mobile\src\pages\passenger\pages\TripsPage.tsx:1034:    const fee = charge30WithCap();
+  apps\mobile\src\pages\passenger\pages\TripsPage.tsx:1035:    return {
+> apps\mobile\src\pages\passenger\pages\TripsPage.tsx:1036:      type: "late_cancel",
+  apps\mobile\src\pages\passenger\pages\TripsPage.tsx:1037:      feeClp: fee,
+  apps\mobile\src\pages\passenger\pages\TripsPage.tsx:1038:      title: "Cancelación de reserva dentro de últimos 15 min",
+  apps\mobile\src\pages\passenger\pages\TripsPage.tsx:1039:      message: `La reserva está dentro de los últimos 15 minutos antes del 
+inicio del servicio. Se aplicará un cargo de ${formatClp(fee)}.`,
+  apps\mobile\src\pages\passenger\pages\TripsPage.tsx:1040:      detail: `Reserva: desde los últimos 15 minutos previos al inicio, 30% 
+de la tarifa mínima aplicable, con tope de ${formatClp(RAPAGO_CANCEL_FEE_CAP_CLP)}.`,
+  apps\mobile\src\pages\passenger\pages\TripsPage.tsx:1041:      acceptedElapsedMs,
+  apps\mobile\src\pages\passenger\pages\TripsPage.tsx:1042:      arrivedElapsedMs,
+  apps\mobile\src\pages\passenger\pages\TripsPage.tsx:1043:    };
+  apps\mobile\src\pages\passenger\pages\TripsPage.tsx:1044:  }
+  apps\mobile\src\pages\passenger\pages\TripsPage.tsx:1045:
+  apps\mobile\src\pages\passenger\pages\TripsPage.tsx:1046:  if (acceptedAtMs == null || acceptedElapsedMs == null || acceptedElapsedMs 
+<= RAPAGO_FREE_CANCEL_AFTER_ACCEPTANCE_MS) {
+  apps\mobile\src\pages\passenger\pages\TripsPage.tsx:1057:
+  apps\mobile\src\pages\passenger\pages\TripsPage.tsx:1058:  const fee = charge30WithCap();
+  apps\mobile\src\pages\passenger\pages\TripsPage.tsx:1059:  return {
+> apps\mobile\src\pages\passenger\pages\TripsPage.tsx:1060:    type: "late_cancel",
+  apps\mobile\src\pages\passenger\pages\TripsPage.tsx:1061:    feeClp: fee,
+  apps\mobile\src\pages\passenger\pages\TripsPage.tsx:1062:    title: "Cancelación con cobro",
+  apps\mobile\src\pages\passenger\pages\TripsPage.tsx:1063:    message: `Pasaron más de 3 minutos desde la aceptación. Se aplicará un 
+cargo de ${formatClp(fee)}.`,
+  apps\mobile\src\pages\passenger\pages\TripsPage.tsx:1064:    detail: `Desde el minuto 4: 30% de la tarifa mínima aplicable, con tope 
+de ${formatClp(RAPAGO_CANCEL_FEE_CAP_CLP)}.`,
+  apps\mobile\src\pages\passenger\pages\TripsPage.tsx:1065:    acceptedElapsedMs,
+  apps\mobile\src\pages\passenger\pages\TripsPage.tsx:1066:    arrivedElapsedMs,
+  apps\mobile\src\pages\passenger\pages\TripsPage.tsx:1067:  };
+  apps\mobile\src\pages\passenger\pages\TripsPage.tsx:1068:}
+  apps\mobile\src\pages\passenger\pages\TripsPage.tsx:1069:
+  apps\mobile\src\pages\passenger\pages\TripsPage.tsx:1070:function getCancelledRideAgeTimestampMs(ride: Partial<RideRequestData> & 
+Record<string, unknown>): number | null {
+  apps\mobile\src\pages\passenger\pages\TripsPage.tsx:1697:        originText: String(item.originText ?? ""),
+  apps\mobile\src\pages\passenger\pages\TripsPage.tsx:1698:        destinationText: String(item.destinationText ?? ""),
+  apps\mobile\src\pages\passenger\pages\TripsPage.tsx:1699:        amountClp: Math.max(0, Math.round(Number(item.amountClp ?? 
+item.amount ?? 0))),
+> apps\mobile\src\pages\passenger\pages\TripsPage.tsx:1700:        minimumFareClp: Math.max(0, Math.round(Number(item.minimumFareClp ?? 
+0))),
+> apps\mobile\src\pages\passenger\pages\TripsPage.tsx:1701:        type: String(item.type ?? "late_cancel") === "no_show" ? "no_show" : 
+"late_cancel",
+  apps\mobile\src\pages\passenger\pages\TripsPage.tsx:1702:        paymentMethod: typeof item.paymentMethod === "string" ? 
+item.paymentMethod : null,
+  apps\mobile\src\pages\passenger\pages\TripsPage.tsx:1703:        status: String(item.status ?? "pending_next_ride") as 
+PassengerPendingCharge["status"],
+  apps\mobile\src\pages\passenger\pages\TripsPage.tsx:1704:        adminReviewStatus: String(item.adminReviewStatus ?? 
+"charge_pending_next_ride") as PassengerPendingCharge["adminReviewStatus"],
+  apps\mobile\src\pages\passenger\pages\TripsPage.tsx:1705:        createdAt: String(item.createdAt ?? new Date().toISOString()),
+  apps\mobile\src\pages\passenger\pages\TripsPage.tsx:1706:        appliedRideId: typeof item.appliedRideId === "string" ? 
+item.appliedRideId : null,
+  apps\mobile\src\pages\passenger\pages\TripsPage.tsx:1707:        appliedAt: typeof item.appliedAt === "string" ? item.appliedAt : null,
+  apps\mobile\src\pages\passenger\pages\TripsPage.tsx:1708:        title: String(item.title ?? "Revision backend pendiente"),
+  apps\mobile\src\pages\passenger\pages\TripsPage.tsx:1709:        description: String(item.description ?? "Revision backend pendiente 
+para el próximo viaje."),
+  apps\mobile\src\pages\passenger\pages\TripsPage.tsx:1710:        cardRefundRequested: Boolean(item.cardRefundRequested || 
+item.mercadoPagoRefundRequested),
+  apps\mobile\src\pages\passenger\pages\TripsPage.tsx:1711:        mercadoPagoRefundRequested: Boolean(item.mercadoPagoRefundRequested 
+|| item.cardRefundRequested),
+  apps\mobile\src\pages\passenger\pages\TripsPage.tsx:1841:      policy.feeClp > 0
+  apps\mobile\src\pages\passenger\pages\TripsPage.tsx:1842:        ? `${policy.title}. ${policy.message}`
+  apps\mobile\src\pages\passenger\pages\TripsPage.tsx:1843:        : "Cancelado por pasajero.",
+> apps\mobile\src\pages\passenger\pages\TripsPage.tsx:1844:    passengerCancellationFeeClp: policy.feeClp,
+  apps\mobile\src\pages\passenger\pages\TripsPage.tsx:1845:    passengerCancellationPolicyType: policy.type,
+  apps\mobile\src\pages\passenger\pages\TripsPage.tsx:1846:    passengerCancellationPolicyText: policy.detail,
+  apps\mobile\src\pages\passenger\pages\TripsPage.tsx:1847:    passengerCancellationChargedAt: policy.feeClp > 0 ? now : null,
+  apps\mobile\src\pages\passenger\pages\TripsPage.tsx:1848:    paymentPendingClp: isCardPayment ? 0 : policy.feeClp,
+  apps\mobile\src\pages\passenger\pages\TripsPage.tsx:1849:    passengerPendingChargeNextRide: !isCardPayment && policy.feeClp > 0,
+  apps\mobile\src\pages\passenger\pages\TripsPage.tsx:1850:    passengerPendingChargeNotice:
+  apps\mobile\src\pages\passenger\pages\TripsPage.tsx:1851:      policy.feeClp > 0
+  apps\mobile\src\pages\passenger\pages\TripsPage.tsx:1852:        ? isCardPayment
+  apps\mobile\src\pages\passenger\pages\TripsPage.tsx:1853:          ? `La penalización de ${formatClp(policy.feeClp)} se descuenta 
+automáticamente del pago realizado. El saldo restante queda como CRÉDITOS PARA PRÓXIMO VIAJE en tu billetera.`
+  apps\mobile\src\pages\passenger\pages\TripsPage.tsx:1854:          : `Tienes un cargo pendiente de ${formatClp(policy.feeClp)}. Se 
+sumará automáticamente a tu próximo viaje.`
+  apps\mobile\src\pages\passenger\pages\TripsPage.tsx:1865:        : "Tu viaje fue cancelado. El saldo del pago queda como CRÉDITOS PARA 
+PRÓXIMO VIAJE en tu billetera. Si necesitas devolución, gestiona por WhatsApp con RAPA GO. No debes ingresar tarjeta, claves ni datos 
+bancarios."
+  apps\mobile\src\pages\passenger\pages\TripsPage.tsx:1866:      : null,
+  apps\mobile\src\pages\passenger\pages\TripsPage.tsx:1867:    cardWalletCreditRequested: isCardPayment,
+> apps\mobile\src\pages\passenger\pages\TripsPage.tsx:1868:    cardWalletCreditClp: isCardPayment ? 
+getPassengerCardCancellationCreditNetClp(record, policy.feeClp) : 0,
+  apps\mobile\src\pages\passenger\pages\TripsPage.tsx:1869:    cardWalletCreditStatus: isCardPayment ? "pending_admin" : null,
+  apps\mobile\src\pages\passenger\pages\TripsPage.tsx:1870:    requeuedReason: null,
+  apps\mobile\src\pages\passenger\pages\TripsPage.tsx:1871:    forceActiveAfterDriverCancel: false,
+  apps\mobile\src\pages\passenger\pages\TripsPage.tsx:1872:    passengerNotice: null,
+  apps\mobile\src\pages\passenger\pages\TripsPage.tsx:1873:    passengerNotification: null,
+  apps\mobile\src\pages\passenger\pages\TripsPage.tsx:1874:    driverName: null,
+  apps\mobile\src\pages\passenger\pages\TripsPage.tsx:1875:    driverPhone: null,
+  apps\mobile\src\pages\passenger\pages\TripsPage.tsx:1876:    driverVehicleBrand: null,
+  apps\mobile\src\pages\passenger\pages\TripsPage.tsx:1877:    driverVehicleModel: null,
+  apps\mobile\src\pages\passenger\pages\TripsPage.tsx:1878:    driverVehicleColor: null,
+  apps\mobile\src\pages\passenger\pages\TripsPage.tsx:5707:  originText: string;
+  apps\mobile\src\pages\passenger\pages\TripsPage.tsx:5708:  destinationText: string;
+  apps\mobile\src\pages\passenger\pages\TripsPage.tsx:5709:  amountClp: number;
+> apps\mobile\src\pages\passenger\pages\TripsPage.tsx:5710:  minimumFareClp: number;
+> apps\mobile\src\pages\passenger\pages\TripsPage.tsx:5711:  type: "late_cancel" | "no_show";
+  apps\mobile\src\pages\passenger\pages\TripsPage.tsx:5712:  paymentMethod?: string | null;
+> apps\mobile\src\pages\passenger\pages\TripsPage.tsx:5713:  status: "pending_next_ride" | "applied_to_next_ride" | "paid" | "waived";
+> apps\mobile\src\pages\passenger\pages\TripsPage.tsx:5714:  adminReviewStatus: "charge_pending_next_ride" | "charged_in_next_ride" | 
+"paid" | "waived";
+  apps\mobile\src\pages\passenger\pages\TripsPage.tsx:5715:  createdAt: string;
+  apps\mobile\src\pages\passenger\pages\TripsPage.tsx:5716:  appliedRideId?: string | null;
+  apps\mobile\src\pages\passenger\pages\TripsPage.tsx:5717:  appliedAt?: string | null;
+  apps\mobile\src\pages\passenger\pages\TripsPage.tsx:5718:  title: string;
+  apps\mobile\src\pages\passenger\pages\TripsPage.tsx:5719:  description: string;
+  apps\mobile\src\pages\passenger\pages\TripsPage.tsx:5720:  cardRefundRequested?: boolean | null;
+  apps\mobile\src\pages\passenger\pages\TripsPage.tsx:5721:  mercadoPagoRefundRequested?: boolean | null;
+  apps\mobile\src\pages\passenger\pages\TripsPage.tsx:5722:  mercadoPagoRefundStatus?: string | null;
+  apps\mobile\src\pages\passenger\pages\TripsPage.tsx:5723:  cardRefundNotice?: string | null;
+  apps\mobile\src\pages\passenger\pages\TripsPage.tsx:5724:};
+  apps\mobile\src\pages\passenger\pages\TripsPage.tsx:5886:  }
+  apps\mobile\src\pages\passenger\pages\TripsPage.tsx:5887:}
+  apps\mobile\src\pages\passenger\pages\TripsPage.tsx:5888:
+> apps\mobile\src\pages\passenger\pages\TripsPage.tsx:5889:function getPassengerCardCancellationCreditAmountClp(
+  apps\mobile\src\pages\passenger\pages\TripsPage.tsx:5890:  ride: Partial<RideRequestData> & Record<string, unknown>,
+  apps\mobile\src\pages\passenger\pages\TripsPage.tsx:5891:): number {
+  apps\mobile\src\pages\passenger\pages\TripsPage.tsx:5892:  const candidates = [
+  apps\mobile\src\pages\passenger\pages\TripsPage.tsx:5893:    ride.cardPaidClp,
+  apps\mobile\src\pages\passenger\pages\TripsPage.tsx:5894:    ride.mercadoPagoPaidClp,
+  apps\mobile\src\pages\passenger\pages\TripsPage.tsx:5895:    ride.paymentAmountClp,
+  apps\mobile\src\pages\passenger\pages\TripsPage.tsx:5896:    ride.paidClp,
+  apps\mobile\src\pages\passenger\pages\TripsPage.tsx:5897:    ride.totalPaidClp,
+  apps\mobile\src\pages\passenger\pages\TripsPage.tsx:5898:    ride.finalFareAfterWalletBenefitClp,
+  apps\mobile\src\pages\passenger\pages\TripsPage.tsx:5899:    ride.fareAfterWalletClp,
+  apps\mobile\src\pages\passenger\pages\TripsPage.tsx:5913:  return 0;
+  apps\mobile\src\pages\passenger\pages\TripsPage.tsx:5914:}
+  apps\mobile\src\pages\passenger\pages\TripsPage.tsx:5915:
+> apps\mobile\src\pages\passenger\pages\TripsPage.tsx:5916:function getPassengerCardCancellationCreditNetClp(
+  apps\mobile\src\pages\passenger\pages\TripsPage.tsx:5917:  ride: Partial<RideRequestData> & Record<string, unknown>,
+> apps\mobile\src\pages\passenger\pages\TripsPage.tsx:5918:  cancellationFeeClp: number,
+  apps\mobile\src\pages\passenger\pages\TripsPage.tsx:5919:): number {
+> apps\mobile\src\pages\passenger\pages\TripsPage.tsx:5920:  const paidAmount = getPassengerCardCancellationCreditAmountClp(ride);
+> apps\mobile\src\pages\passenger\pages\TripsPage.tsx:5921:  const fee = Math.max(0, Math.round(Number(cancellationFeeClp ?? 0)));
+  apps\mobile\src\pages\passenger\pages\TripsPage.tsx:5922:  return Math.max(0, paidAmount - fee);
+  apps\mobile\src\pages\passenger\pages\TripsPage.tsx:5923:}
+  apps\mobile\src\pages\passenger\pages\TripsPage.tsx:5924:
+  apps\mobile\src\pages\passenger\pages\TripsPage.tsx:5925:function savePassengerWalletCreditFromCardCancellation(
+  apps\mobile\src\pages\passenger\pages\TripsPage.tsx:5926:  ride: RideRequestData,
+  apps\mobile\src\pages\passenger\pages\TripsPage.tsx:5927:  cancelled: RideRequestData,
+  apps\mobile\src\pages\passenger\pages\TripsPage.tsx:5928:): void {
+  apps\mobile\src\pages\passenger\pages\TripsPage.tsx:5929:  // Phase 2 security:
+  apps\mobile\src\pages\passenger\pages\TripsPage.tsx:5930:  // Card/MercadoPago cancellation credits must not be created from 
+localStorage/frontend.
+  apps\mobile\src\pages\passenger\pages\TripsPage.tsx:5931:  // Real refund/credit state must come from backend payment refund or admin 
+wallet credit.
+  apps\mobile\src\pages\passenger\pages\TripsPage.tsx:6375:    effectiveStatus === "driver_arrived"
+  apps\mobile\src\pages\passenger\pages\TripsPage.tsx:6376:      ? getPassengerDriverArrivedCountdownState(ride as RideRequestData & 
+Record<string, unknown>, nowMs)
+  apps\mobile\src\pages\passenger\pages\TripsPage.tsx:6377:      : null;
+> apps\mobile\src\pages\passenger\pages\TripsPage.tsx:6378:  const passengerNoShowNotice = 
+getLatestPassengerNoShowNotificationForRide(ride);
+  apps\mobile\src\pages\passenger\pages\TripsPage.tsx:6379:
+  apps\mobile\src\pages\passenger\pages\TripsPage.tsx:6380:  const searchStartedAtMs = getPassengerRideStartedAtMs(
+  apps\mobile\src\pages\passenger\pages\TripsPage.tsx:6381:    (isDriverRequeuedSearch && driverRequeueMirror
+  apps\mobile\src\pages\passenger\pages\TripsPage.tsx:6382:      ? buildPassengerSearchingAfterDriverCancelRide({
+  apps\mobile\src\pages\passenger\pages\TripsPage.tsx:6383:          ...(ride as RideRequestData & Record<string, unknown>),
+  apps\mobile\src\pages\passenger\pages\TripsPage.tsx:6384:          ...driverRequeueMirror,
+  apps\mobile\src\pages\passenger\pages\TripsPage.tsx:6385:        })
+  apps\mobile\src\pages\passenger\pages\TripsPage.tsx:6386:      : ride) as RideRequestData & Record<string, unknown>,
+  apps\mobile\src\pages\passenger\pages\TripsPage.tsx:6387:  );
+  apps\mobile\src\pages\passenger\pages\TripsPage.tsx:6388:  const searchingElapsedMs = searchStartedAtMs == null ? 0 : Math.max(0, 
+nowMs - searchStartedAtMs);
+  apps\mobile\src\pages\passenger\pages\TripsPage.tsx:6393:  const cancellationPolicy = getPassengerCancellationPolicyForRide(ride);
+  apps\mobile\src\pages\passenger\pages\TripsPage.tsx:6394:  const passengerCancelledChargeClp = Math.max(
+  apps\mobile\src\pages\passenger\pages\TripsPage.tsx:6395:    0,
+> apps\mobile\src\pages\passenger\pages\TripsPage.tsx:6396:    Math.round(Number((ride as RideRequestData & Record<string, 
+unknown>).passengerCancellationFeeClp ?? (ride as RideRequestData & Record<string, unknown>).paymentPendingClp ?? 0)),
+  apps\mobile\src\pages\passenger\pages\TripsPage.tsx:6397:  );
+  apps\mobile\src\pages\passenger\pages\TripsPage.tsx:6398:  const passengerCancelledPolicyText = String((ride as RideRequestData & 
+Record<string, unknown>).passengerCancellationPolicyText ?? "").trim();
+  apps\mobile\src\pages\passenger\pages\TripsPage.tsx:6399:  const passengerCancelledCardRefundNotice = String((ride as RideRequestData 
+& Record<string, unknown>).cardRefundNotice ?? "").trim();
+  apps\mobile\src\pages\passenger\pages\TripsPage.tsx:6400:  const showCardCancelRefundButton = 
+shouldShowRapaGoCardCancelRefundButton(ride, effectiveStatus);
+  apps\mobile\src\pages\passenger\pages\TripsPage.tsx:6401:
+  apps\mobile\src\pages\passenger\pages\TripsPage.tsx:6402:  return (
+  apps\mobile\src\pages\passenger\pages\TripsPage.tsx:6403:    <IonCard
+  apps\mobile\src\pages\passenger\pages\TripsPage.tsx:6404:      aria-label={`Viaje ${label} de ${ride.originText} a 
+${ride.destinationText}`}
+  apps\mobile\src\pages\passenger\pages\TripsPage.tsx:6405:      style={{
+  apps\mobile\src\pages\passenger\pages\TripsPage.tsx:6406:        margin: 0,
+  apps\mobile\src\pages\passenger\pages\TripsPage.tsx:6465:            </div>
+  apps\mobile\src\pages\passenger\pages\TripsPage.tsx:6466:          )}
+  apps\mobile\src\pages\passenger\pages\TripsPage.tsx:6467:
+> apps\mobile\src\pages\passenger\pages\TripsPage.tsx:6468:          {passengerNoShowNotice && passengerNoShowNotice.type === 
+"no_show_warning" && effectiveStatus !== "cancelled" && (
+  apps\mobile\src\pages\passenger\pages\TripsPage.tsx:6469:            <div
+  apps\mobile\src\pages\passenger\pages\TripsPage.tsx:6470:              style={{
+  apps\mobile\src\pages\passenger\pages\TripsPage.tsx:6471:                marginBottom: 12,
+  apps\mobile\src\pages\passenger\pages\TripsPage.tsx:6472:                background: "#fff1f2",
+  apps\mobile\src\pages\passenger\pages\TripsPage.tsx:6473:                borderRadius: 18,
+  apps\mobile\src\pages\passenger\pages\TripsPage.tsx:6474:                padding: "12px",
+  apps\mobile\src\pages\passenger\pages\TripsPage.tsx:6475:                border: "1px solid rgba(220,38,38,.30)",
+  apps\mobile\src\pages\passenger\pages\TripsPage.tsx:6476:                color: "#7f1d1d",
+  apps\mobile\src\pages\passenger\pages\TripsPage.tsx:6477:                fontWeight: 900,
+  apps\mobile\src\pages\passenger\pages\TripsPage.tsx:6478:                lineHeight: 1.35,
+  apps\mobile\src\pages\passenger\pages\TripsPage.tsx:6479:              }}
+  apps\mobile\src\pages\passenger\pages\TripsPage.tsx:6480:            >
+> apps\mobile\src\pages\passenger\pages\TripsPage.tsx:6481:              ⚠️ <strong>{passengerNoShowNotice.title}</strong>
+  apps\mobile\src\pages\passenger\pages\TripsPage.tsx:6482:              <br />
+> apps\mobile\src\pages\passenger\pages\TripsPage.tsx:6483:              {passengerNoShowNotice.body}
+  apps\mobile\src\pages\passenger\pages\TripsPage.tsx:6484:            </div>
+  apps\mobile\src\pages\passenger\pages\TripsPage.tsx:6485:          )}
+  apps\mobile\src\pages\passenger\pages\TripsPage.tsx:6486:
+  apps\mobile\src\pages\passenger\pages\TripsPage.tsx:6487:          {effectiveStatus === "cancelled" && passengerCancelledChargeClp > 0 
+&& (
+  apps\mobile\src\pages\passenger\pages\TripsPage.tsx:6488:            <div
+  apps\mobile\src\pages\passenger\pages\TripsPage.tsx:6489:              style={{
+  apps\mobile\src\pages\passenger\pages\TripsPage.tsx:6490:                marginBottom: 12,
+  apps\mobile\src\pages\passenger\pages\TripsPage.tsx:6491:                background: "#fff7db",
+  apps\mobile\src\pages\passenger\pages\TripsPage.tsx:6492:                borderRadius: 18,
+  apps\mobile\src\pages\passenger\pages\TripsPage.tsx:6493:                padding: "12px",
+  apps\mobile\src\pages\passenger\pages\WalletPage.tsx:145:  return status === "pending_admin" || adminStatus === "pending_admin";
+  apps\mobile\src\pages\passenger\pages\WalletPage.tsx:146:}
+  apps\mobile\src\pages\passenger\pages\WalletPage.tsx:147:
+> apps\mobile\src\pages\passenger\pages\WalletPage.tsx:148:function isWalletCardCancellationCredit(benefit: LocalWalletBenefit): boolean 
+{
+  apps\mobile\src\pages\passenger\pages\WalletPage.tsx:149:  const text = `${benefit.source ?? ""} ${benefit.title ?? ""} 
+${benefit.description ?? ""}`.toLowerCase();
+  apps\mobile\src\pages\passenger\pages\WalletPage.tsx:150:  return (
+  apps\mobile\src\pages\passenger\pages\WalletPage.tsx:151:    text.includes("card_cancellation_credit") ||
+  apps\mobile\src\pages\passenger\pages\WalletPage.tsx:152:    text.includes("cancelación con tarjeta") ||
+  apps\mobile\src\pages\passenger\pages\WalletPage.tsx:153:    text.includes("cancelacion con tarjeta") ||
+  apps\mobile\src\pages\passenger\pages\WalletPage.tsx:154:    text.includes("mercadopago") ||
+  apps\mobile\src\pages\passenger\pages\WalletPage.tsx:155:    benefit.refundWhatsappAvailable === true ||
+  apps\mobile\src\pages\passenger\pages\WalletPage.tsx:156:    benefit.cardRefundRequested === true ||
+  apps\mobile\src\pages\passenger\pages\WalletPage.tsx:157:    benefit.mercadoPagoRefundRequested === true
+  apps\mobile\src\pages\passenger\pages\WalletPage.tsx:158:  );
+  apps\mobile\src\pages\passenger\pages\WalletPage.tsx:452:    };
+  apps\mobile\src\pages\passenger\pages\WalletPage.tsx:453:  }, [refreshLocalBenefits]);
+  apps\mobile\src\pages\passenger\pages\WalletPage.tsx:454:
+> apps\mobile\src\pages\passenger\pages\WalletPage.tsx:455:  const cardCancellationCredits = 
+localBenefits.filter(isWalletCardCancellationCredit);
+> apps\mobile\src\pages\passenger\pages\WalletPage.tsx:456:  const cashCredits = localBenefits.filter((benefit) => 
+!isWalletCardCancellationCredit(benefit));
+  apps\mobile\src\pages\passenger\pages\WalletPage.tsx:457:
+  apps\mobile\src\pages\passenger\pages\WalletPage.tsx:458:  const localApprovedVisualCredits = 
+localBenefits.filter(isWalletBenefitAvailable);
+  apps\mobile\src\pages\passenger\pages\WalletPage.tsx:459:  const pendingCashCredits = cashCredits.filter(isWalletBenefitPending);
+> apps\mobile\src\pages\passenger\pages\WalletPage.tsx:460:  const pendingCardCredits = 
+cardCancellationCredits.filter(isWalletBenefitPending);
+  apps\mobile\src\pages\passenger\pages\WalletPage.tsx:461:
+  apps\mobile\src\pages\passenger\pages\WalletPage.tsx:462:  const backendCompletedCredits = walletTransactions.filter((transaction) => {
+  apps\mobile\src\pages\passenger\pages\WalletPage.tsx:463:    const type = String(transaction.type ?? "").toLowerCase();
+  apps\mobile\src\pages\passenger\pages\WalletPage.tsx:464:    const status = String(transaction.status ?? "").toLowerCase();
+  apps\mobile\src\pages\passenger\pages\WalletPage.tsx:465:    return type === "credit" && status === "completed";
+  apps\mobile\src\pages\passenger\pages\WalletPage.tsx:466:  });
+  apps\mobile\src\pages\passenger\pages\WalletPage.tsx:467:
+  apps\mobile\src\pages\passenger\pages\WalletPage.tsx:468:  const backendWalletBalanceClp = Math.max(0, 
+Math.round(Number(wallet?.balance ?? 0)));
+  apps\mobile\src\pages\passenger\pages\WalletPage.tsx:469:  const backendCreditHistoryClp = backendCompletedCredits.reduce(
+  apps\mobile\src\pages\passenger\pages\WalletPage.tsx:470:    (sum, transaction) => sum + Math.max(0, 
+Math.round(Number(transaction.amount ?? 0))),
+  apps\mobile\src\pages\passenger\pages\WalletPage.tsx:674:                        tone="card"
+  apps\mobile\src\pages\passenger\pages\WalletPage.tsx:675:                        icon={cardOutline}
+  apps\mobile\src\pages\passenger\pages\WalletPage.tsx:676:                      >
+> apps\mobile\src\pages\passenger\pages\WalletPage.tsx:677:                        {cardCancellationCredits.length > 0 && (
+  apps\mobile\src\pages\passenger\pages\WalletPage.tsx:678:                          <IonButton
+  apps\mobile\src\pages\passenger\pages\WalletPage.tsx:679:                            expand="block"
+  apps\mobile\src\pages\passenger\pages\WalletPage.tsx:680:                            color="success"
+> apps\mobile\src\pages\passenger\pages\WalletPage.tsx:681:                            onClick={() => 
+openWalletCreditRefundWhatsApp(cardCancellationCredits)}
+  apps\mobile\src\pages\passenger\pages\WalletPage.tsx:682:                            style={{ marginTop: 12, "--border-radius": 
+"16px", fontWeight: 950 } as CSSProperties}
+  apps\mobile\src\pages\passenger\pages\WalletPage.tsx:683:                          >
+  apps\mobile\src\pages\passenger\pages\WalletPage.tsx:684:                            <IonIcon icon={logoWhatsapp} slot="start" />
+  apps\mobile\src\pages\passenger\pages\WalletPage.tsx:685:                            Solicitar devolución tarjeta por WhatsApp
+  apps\mobile\src\pages\passenger\pages\WalletPage.tsx:686:                          </IonButton>
+  apps\mobile\src\pages\passenger\pages\WalletPage.tsx:687:                        )}
+  apps\mobile\src\pages\passenger\pages\WalletPage.tsx:688:                      </CreditSplitBox>
+  apps\mobile\src\pages\passenger\pages\WalletPage.tsx:689:                    </div>
+  apps\mobile\src\pages\passenger\pages\WalletPage.tsx:690:
+  apps\mobile\src\pages\passenger\pages\WalletPage.tsx:691:                    {pendingBenefitClp > 0 && (
+
+
+Matches=158

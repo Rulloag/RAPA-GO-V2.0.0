@@ -5046,13 +5046,9 @@ export default function RequestRidePage(): JSX.Element {
           vehicleCategory?: VehicleCategory;
         }).vehicleCategory = vehicleCategory;
         (input as CreateRideInput & { paymentMethod?: string }).paymentMethod = activePaymentMethod;
-        if (pendingPassengerChargeTotalClp > 0) {
-          Object.assign(input as CreateRideInput & Record<string, unknown>, {
-            passengerPendingChargeClp: pendingPassengerChargeTotalClp,
-            passengerPendingChargeReason: "cancelacion_no_show_anterior",
-            finalFareWithPendingChargesClp: selectedFareAmountBeforeWallet,
-          });
-        }
+        // Phase 3 security:
+        // Cancellation/no-show charges are backend/admin authority only.
+        // Do not send passengerPendingChargeClp or finalFareWithPendingChargesClp from frontend.
         if (selectedWalletBenefitDiscountClp > 0) {
           Object.assign(input as CreateRideInput & Record<string, unknown>, {
             walletBenefitRequested: true,
@@ -5090,9 +5086,9 @@ export default function RequestRidePage(): JSX.Element {
           airportReservationRequiresCard: isAirportScheduledRide,
           reservationRequiresCard: reservationRequiresCard,
           paymentRequiredProvider: "mercadopago",
-          cardCancellationCreditToWallet: reservationRequiresCard && String(activePaymentMethod) === "card",
-          cardCancellationAdminReviewRequired: false,
-          cardCancellationCreditName: "CRÉDITOS PARA PRÓXIMO VIAJE",
+          cardCancellationCreditToWallet: false,
+          cardCancellationAdminReviewRequired: reservationRequiresCard && String(activePaymentMethod) === "card",
+          cardCancellationCreditName: null,
         });
       } else if (selectedRoundTripPromotion) {
         Object.assign(input as CreateRideInput & Record<string, unknown>, {
@@ -5119,10 +5115,8 @@ export default function RequestRidePage(): JSX.Element {
       );
 
       const createdRideId = extractRideRequestIdFromResponse(createdRideResponse);
-
-      if (pendingPassengerChargeTotalClp > 0) {
-        markPassengerPendingChargesAppliedToRide(session.user, createdRideId ?? `ride-${Date.now()}`);
-      }
+        // Phase 3 security:
+        // Do not mark local pending charges as applied; backend/admin must apply real charges.
       if (selectedWalletBenefitDiscountClp > 0) {
         markPassengerWalletBenefitsUsedForRide({
           user: session.user,
@@ -5178,9 +5172,8 @@ export default function RequestRidePage(): JSX.Element {
           airportWelcomeSurchargeClp,
           optionalServicesTotalClp: airportWelcomeSurchargeClp,
           baseFareBeforeExtrasClp: selectedBaseFareAmount,
-          passengerPendingChargeClp: pendingPassengerChargeTotalClp,
-          passengerPendingChargeReason: pendingPassengerChargeTotalClp > 0 ? "cancelacion_no_show_anterior" : null,
-          finalFareWithPendingChargesClp: selectedFareAmountBeforeWallet,
+          backendCancellationReviewRequired: pendingPassengerChargeTotalClp > 0,
+          localStorageFinancialAuthority: false,
           walletBenefitRequested: selectedWalletBenefitDiscountClp > 0,
           walletBenefitApplied: selectedWalletBenefitDiscountClp > 0,
           walletBenefitAppliedClp: selectedWalletBenefitDiscountClp,
@@ -5409,9 +5402,8 @@ export default function RequestRidePage(): JSX.Element {
             optionalServicesTotalClp: airportWelcomeSurchargeClp,
             baseFareBeforeExtrasClp: selectedBaseFareAmount,
           }),
-          passengerPendingChargeClp: pendingPassengerChargeTotalClp,
-          passengerPendingChargeReason: pendingPassengerChargeTotalClp > 0 ? "cancelacion_no_show_anterior" : null,
-          finalFareWithPendingChargesClp: selectedFareAmountBeforeWallet,
+          backendCancellationReviewRequired: pendingPassengerChargeTotalClp > 0,
+          localStorageFinancialAuthority: false,
           walletBenefitRequested: selectedWalletBenefitDiscountClp > 0,
           walletBenefitApplied: selectedWalletBenefitDiscountClp > 0,
           walletBenefitAppliedClp: selectedWalletBenefitDiscountClp,
@@ -5430,9 +5422,9 @@ export default function RequestRidePage(): JSX.Element {
           airportReservationRequiresCard: isAirportScheduledRide,
           reservationRequiresCard: reservationRequiresCard,
           paymentRequiredProvider: isAirportScheduledRide ? "mercadopago" : null,
-          cardCancellationCreditToWallet: reservationRequiresCard && String(activePaymentMethod) === "card",
-          cardCancellationAdminReviewRequired: false,
-          cardCancellationCreditName: reservationRequiresCard && String(activePaymentMethod) === "card" ? "CRÉDITOS PARA PRÓXIMO VIAJE" : null,
+          cardCancellationCreditToWallet: false,
+          cardCancellationAdminReviewRequired: reservationRequiresCard && String(activePaymentMethod) === "card",
+          cardCancellationCreditName: null,
         } as LocalPassengerRideData;
 
         const localReturnPickupRide = selectedRoundTripPromotion && returnScheduledAt
@@ -5464,9 +5456,8 @@ export default function RequestRidePage(): JSX.Element {
         if (localReturnPickupRide) {
           upsertLocalAdminScheduledRide(localReturnPickupRide);
         }
-        if (pendingPassengerChargeTotalClp > 0) {
-          markPassengerPendingChargesAppliedToRide(session.user, String(localRide.id ?? `local-${Date.now()}`));
-        }
+        // Phase 3 security:
+        // Do not mark local pending charges as applied; backend/admin must apply real charges.
         if (selectedWalletBenefitDiscountClp > 0) {
           markPassengerWalletBenefitsUsedForRide({
             user: session.user,
@@ -6831,7 +6822,7 @@ return (
                     }}
                   >
                     ⚠️ Cargo pendiente anterior por cancelación/no show: <strong>{formatCLP(pendingPassengerChargeTotalClp)}</strong>.
-                    <br />Se suma automáticamente al precio final de este viaje.
+                    <br />No se suma desde esta pantalla; cualquier cobro real debe venir del backend/admin.
                   </div>
                 )}
 
