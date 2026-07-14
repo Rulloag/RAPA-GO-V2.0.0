@@ -94,6 +94,13 @@ export class WalletRepository {
     }
   }
 
+  /**
+   * @deprecated Unificación de sistemas de Wallet: ya no se invoca desde
+   * WalletService.adminCreateWalletCredit (usa el ledger autoritativo,
+   * wallet_transactions_ledger, en su lugar). Se conserva temporalmente por transición
+   * controlada (compatibilidad → ledger → eliminación futura) — no eliminar sin confirmar
+   * que ningún otro caller la usa.
+   */
   async creditUserWallet(input: {
     userId: string;
     amountClp: number;

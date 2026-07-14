@@ -4,7 +4,7 @@ import { UsersRepository } from "../users/users.repository.js";
 import { WalletRepository } from "./wallet.repository.js";
 import { WalletTransactionsRepository } from "./walletTransactions.repository.js";
 import { AppError } from "../../shared/errors/AppError.js";
-import { CURRENT_LEDGER_POLICY_VERSION } from "./walletPolicy.constants.js";
+import { CURRENT_LEDGER_POLICY_VERSION, decideAdminCreditApproval } from "./walletPolicy.constants.js";
 import type {
   AdminCreateCreditInput,
   AdminModerateCreditInput,
@@ -78,6 +78,23 @@ function serialize(row: WalletTransactionLedgerRow) {
 }
 
 export class WalletTransactionsService {
+  /**
+   * Unificación de sistemas de Wallet: wallets.balance se mantiene únicamente como CACHÉ de
+   * lectura rápida para GET /wallets/me — nunca se incrementa/decrementa directamente, siempre
+   * se recalcula desde la fuente única de verdad (SUM de movimientos 'available' del ledger).
+   * Se invoca después de cualquier operación que cambie el saldo disponible de un usuario.
+   */
+  private async syncWalletBalanceCache(userId: string): Promise<void> {
+    try {
+      const wallet = await walletRepo.getOrCreate(userId);
+      const availableClp = await ledgerRepo.getAvailableBalance(userId);
+      await walletRepo.updateBalance(wallet.id, availableClp);
+    } catch {
+      // La caché de saldo es informativa (GET /wallets/me); si falla, el ledger sigue
+      // siendo la fuente de verdad y no se bloquea la operación principal.
+    }
+  }
+
   /** GET /wallets/me/credits — el pasajero solo puede consultar su propio ledger. */
   async listMyCredits(accessToken: string, status?: string, type?: string) {
     const auth = await authenticate(accessToken);
@@ -191,13 +208,16 @@ export class WalletTransactionsService {
       return { ok: false as const, code: "WALLET_TX_INVALID_TRANSITION", message: "El movimiento no se pudo revertir (ya revertido o modificado concurrentemente).", statusCode: 409 };
     }
 
+    await this.syncWalletBalanceCache(result.original.userId);
+
     return { ok: true as const, original: serialize(result.original), reversal: serialize(result.reversal) };
   }
 
   /**
    * POST /admin/wallet-transactions — un admin crea (propone) un crédito para un usuario.
-   * Nace en estado 'pending': requiere una aprobación posterior de OTRO admin (regla:
-   * imposibilidad de autoaprobar, ver approveCredit).
+   * Créditos <= ADMIN_WALLET_CREDIT_SINGLE_APPROVAL_MAX_CLP se auto-aprueban (un solo admin);
+   * montos mayores nacen en 'pending' y requieren aprobación de OTRO admin (imposibilidad de
+   * autoaprobar, ver approveCredit) — política compartida con WalletService.adminCreateWalletCredit.
    */
   async createCredit(accessToken: string, input: AdminCreateCreditInput) {
     const auth = await authenticate(accessToken);
@@ -213,6 +233,8 @@ export class WalletTransactionsService {
     }
 
     const wallet = await walletRepo.getOrCreate(input.userId);
+    const decision = decideAdminCreditApproval(input.amountClp);
+    const now = new Date();
 
     const row = await ledgerRepo.create({
       walletId: wallet.id,
@@ -222,15 +244,20 @@ export class WalletTransactionsService {
       source: input.source,
       amountClp: input.amountClp,
       currency: "CLP",
-      status: "pending",
-      approvalStatus: "pending_review",
+      status: decision.status,
+      approvalStatus: decision.approvalStatus,
       policyVersion: CURRENT_LEDGER_POLICY_VERSION,
       actorRole: "admin",
       idempotencyKey: input.idempotencyKey,
       createdBy: auth.userId,
+      ...(decision.status === "available" ? { approvedBy: auth.userId, approvedAt: now } : {}),
       expiresAt: input.expiresAt ? new Date(input.expiresAt) : null,
       metadata: { reason: input.reason },
     });
+
+    if (decision.status === "available") {
+      await this.syncWalletBalanceCache(input.userId);
+    }
 
     return { ok: true as const, transaction: serialize(row), idempotentReplay: false };
   }
@@ -267,6 +294,8 @@ export class WalletTransactionsService {
     if (!updated) {
       return { ok: false as const, code: "WALLET_TX_INVALID_TRANSITION", message: "El crédito fue modificado por otra solicitud concurrente.", statusCode: 409 };
     }
+
+    await this.syncWalletBalanceCache(updated.userId);
 
     return { ok: true as const, transaction: serialize(updated) };
   }
@@ -340,6 +369,8 @@ export class WalletTransactionsService {
         statusCode: 409,
       };
     }
+
+    await this.syncWalletBalanceCache(auth.userId);
 
     return { ok: true as const, transaction: serialize(result.consumptionRecord), idempotentReplay: false };
   }

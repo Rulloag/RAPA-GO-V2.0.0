@@ -1,18 +1,22 @@
+import { createHash } from "node:crypto";
 import { TokenService } from "../auth/token.service.js";
 import { SessionService } from "../auth/session.service.js";
 import { UsersRepository } from "../users/users.repository.js";
 import { WalletRepository } from "./wallet.repository.js";
+import { WalletTransactionsRepository } from "./walletTransactions.repository.js";
 import { AppError } from "../../shared/errors/AppError.js";
 import { db } from "../../db/client.js";
 import { rideRequests } from "../../db/schema/index.js";
 import { eq } from "drizzle-orm";
+import { CURRENT_LEDGER_POLICY_VERSION, decideAdminCreditApproval } from "./walletPolicy.constants.js";
 import type { CreatePaymentOrderInput, WebhookPayload, AdminCreateWalletCreditInput } from "./wallet.schemas.js";
-import type { Wallet, Transaction, PaymentOrder } from "../../db/schema/index.js";
+import type { Wallet, Transaction, PaymentOrder, WalletTransactionLedgerRow } from "../../db/schema/index.js";
 
 const tokenService   = new TokenService();
 const sessionService = new SessionService();
 const usersRepo      = new UsersRepository();
 const walletRepo     = new WalletRepository();
+const ledgerRepo     = new WalletTransactionsRepository();
 
 // Mismo conjunto que PAYMENT_ALLOWED_RIDE_STATUSES en payments.service.ts.
 const PAYMENT_ORDER_ALLOWED_RIDE_STATUSES = new Set([
@@ -72,6 +76,31 @@ function serializeTransaction(t: Transaction) {
     description:           t.description ?? null,
     createdAt:             t.createdAt.toISOString(),
     updatedAt:             t.updatedAt.toISOString(),
+  };
+}
+
+/**
+ * Adapta una fila del ledger autoritativo (wallet_transactions_ledger) al contrato legacy
+ * `TransactionData` que ya consume el frontend (Fase de unificación de sistemas de Wallet —
+ * el frontend no debe poder distinguir que ahora hay una sola fuente de verdad).
+ */
+function serializeLedgerRowAsLegacyTransaction(row: WalletTransactionLedgerRow) {
+  return {
+    id:                    row.id,
+    walletId:              row.walletId,
+    userId:                row.userId,
+    rideId:                row.rideId ?? null,
+    type:                  row.type,
+    amount:                row.amountClp,
+    currency:              row.currency,
+    status:                row.status === "available" ? "completed" : row.status,
+    provider:              "admin",
+    providerTransactionId: row.idempotencyKey,
+    description:           typeof row.metadata === "object" && row.metadata !== null && "reason" in row.metadata
+                              ? String((row.metadata as Record<string, unknown>)["reason"] ?? "")
+                              : null,
+    createdAt:             row.createdAt.toISOString(),
+    updatedAt:             row.createdAt.toISOString(),
   };
 }
 
@@ -229,24 +258,66 @@ export class WalletService {
     const reason = input.reason?.trim();
     const externalReference = input.externalReference?.trim();
 
-    const result = await walletRepo.creditUserWallet({
+    // UNIFICACIÓN DE SISTEMAS DE WALLET: este endpoint legacy ya NO escribe en wallets.balance
+    // ni en la tabla `transactions` (fachada de compatibilidad) — crea el movimiento en el
+    // ledger autoritativo (wallet_transactions_ledger), la única fuente de verdad financiera.
+    //
+    // Idempotencia: si el admin no envía externalReference, se deriva una clave determinista
+    // a partir de los campos de negocio de la solicitud (mismos campos → misma clave), para
+    // que un doble clic o un retry de red no generen un segundo crédito.
+    const idempotencySeed = externalReference
+      ? `ext:${externalReference}`
+      : `req:${input.userId}:${input.rideId ?? "none"}:${input.amountClp}:${reason ?? ""}`;
+    const idempotencyKey = `admin-credit:${createHash("sha256").update(idempotencySeed).digest("hex").slice(0, 40)}`;
+
+    const existing = await ledgerRepo.findByIdempotencyKey(idempotencyKey);
+    if (existing) {
+      const wallet = await walletRepo.getOrCreate(input.userId);
+      return {
+        ok: true as const,
+        wallet: serializeWallet(wallet),
+        transaction: serializeLedgerRowAsLegacyTransaction(existing),
+      };
+    }
+
+    const wallet = await walletRepo.getOrCreate(input.userId);
+    const decision = decideAdminCreditApproval(input.amountClp);
+    const now = new Date();
+
+    const row = await ledgerRepo.create({
+      walletId: wallet.id,
       userId: input.userId,
+      rideId: input.rideId ?? null,
+      type: "credit",
+      source: "admin",
       amountClp: input.amountClp,
-      ...(input.rideId ? { rideId: input.rideId } : {}),
-      description,
+      currency: "CLP",
+      status: decision.status,
+      approvalStatus: decision.approvalStatus,
+      policyVersion: CURRENT_LEDGER_POLICY_VERSION,
+      actorRole: "admin",
+      idempotencyKey,
+      createdBy: auth.userId,
+      ...(decision.status === "available" ? { approvedBy: auth.userId, approvedAt: now } : {}),
       metadata: {
         source: "admin_wallet_credit",
         approvedByUserId: auth.userId,
+        description,
         ...(reason ? { reason } : {}),
         ...(externalReference ? { externalReference } : {}),
       },
-      ...(externalReference ? { providerTransactionId: "admin-credit:" + externalReference } : {}),
     });
+
+    let updatedWallet = wallet;
+    if (decision.status === "available") {
+      const availableClp = await ledgerRepo.getAvailableBalance(input.userId);
+      updatedWallet = await walletRepo.updateBalance(wallet.id, availableClp);
+    }
 
     return {
       ok: true as const,
-      wallet: serializeWallet(result.wallet),
-      transaction: serializeTransaction(result.transaction),
+      wallet: serializeWallet(updatedWallet),
+      transaction: serializeLedgerRowAsLegacyTransaction(row),
     };
   }
 
