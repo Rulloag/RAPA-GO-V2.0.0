@@ -14082,42 +14082,6 @@ function DriverMyRidesPage(): JSX.Element {
     });
   }
 
-  // Reutiliza la misma lógica autoritativa (backend) que AssignedRidesPage.handleDriverNoShowRide,
-  // adaptada al actionLoading/runRideAction locales de DriverMyRidesPage.
-  async function handleDriverNoShowRide(ride: DriverRideData): Promise<void> {
-    const rideId = String(ride.id ?? "").trim();
-    if (!rideId) return;
-
-    const noShowState = getDriverNoShowState(ride as DriverRideData & Record<string, unknown>);
-    if (!noShowState.allowed) {
-      setLoadError(`Debes esperar 5 minutos desde que llegaste al punto. Falta ${formatDriverNoShowRemaining(noShowState.remainingMs)}.`);
-      return;
-    }
-
-    await runRideAction(rideId, async () => {
-      notifyPassengerNoShowByAppAndWhatsapp(ride, noShowState.feeClp);
-      const charge = saveDriverNoShowChargeForPassenger(ride, session?.user);
-      markPassengerRideNoShowCancelledFromDriver(ride, charge);
-      clearDriverNoShowTimer(ride as DriverRideData & Record<string, unknown>);
-      clearDriverLiveLocationForPassenger(rideId);
-      removeDriverActiveRideLocalMirror(
-        { ...(ride as unknown as Record<string, unknown>), status: "cancelled", cancelledByRole: "driver_no_show" },
-        session?.user,
-      );
-
-      if (session?.accessToken) {
-        try {
-          await ridesService.cancelAcceptedRide(session.accessToken, rideId);
-        } catch {
-          // El cargo local y el aviso al pasajero quedan guardados aunque el backend responda distinto.
-        }
-      }
-
-      window.dispatchEvent(new CustomEvent("rapago:driver-rides-updated", { detail: { rideId, status: "cancelled", noShow: true, charge } }));
-      setLoadError(`No show registrado. Se notificó por app/WhatsApp y se aplicó cobro total del servicio: ${formatClp(Number(charge.amountClp ?? 0))}.`);
-    });
-  }
-
   async function cancelActiveRideFromMyRides(ride: DriverRideData): Promise<void> {
     if (!ride?.id) return;
 
@@ -14315,6 +14279,8 @@ function DriverMyRidesPage(): JSX.Element {
 
       setLoadError(`No show registrado. Se notificó por app/WhatsApp y se aplicó cobro total del servicio: ${formatClp(Number(charge.amountClp ?? 0))}.`);
       window.setTimeout(() => void loadRides(), 450);
+    } catch (err) {
+      setLoadError(err instanceof Error ? err.message : "No se pudo registrar el no show.");
     } finally {
       setActionLoading(null);
     }
