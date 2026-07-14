@@ -1,4 +1,3 @@
-import { createHash } from "node:crypto";
 import { TokenService } from "../auth/token.service.js";
 import { SessionService } from "../auth/session.service.js";
 import { UsersRepository } from "../users/users.repository.js";
@@ -8,7 +7,7 @@ import { AppError } from "../../shared/errors/AppError.js";
 import { db } from "../../db/client.js";
 import { rideRequests } from "../../db/schema/index.js";
 import { eq } from "drizzle-orm";
-import { CURRENT_LEDGER_POLICY_VERSION, decideAdminCreditApproval } from "./walletPolicy.constants.js";
+import { CURRENT_LEDGER_POLICY_VERSION, decideAdminCreditApproval, buildWalletCreditOperationKey } from "./walletPolicy.constants.js";
 import type { CreatePaymentOrderInput, WebhookPayload, AdminCreateWalletCreditInput } from "./wallet.schemas.js";
 import type { Wallet, Transaction, PaymentOrder, WalletTransactionLedgerRow } from "../../db/schema/index.js";
 
@@ -262,15 +261,22 @@ export class WalletService {
     // ni en la tabla `transactions` (fachada de compatibilidad) — crea el movimiento en el
     // ledger autoritativo (wallet_transactions_ledger), la única fuente de verdad financiera.
     //
-    // Idempotencia: si el admin no envía externalReference, se deriva una clave determinista
-    // a partir de los campos de negocio de la solicitud (mismos campos → misma clave), para
-    // que un doble clic o un retry de red no generen un segundo crédito.
-    const idempotencySeed = externalReference
-      ? `ext:${externalReference}`
-      : `req:${input.userId}:${input.rideId ?? "none"}:${input.amountClp}:${reason ?? ""}`;
-    const idempotencyKey = `admin-credit:${createHash("sha256").update(idempotencySeed).digest("hex").slice(0, 40)}`;
+    // Idempotencia UNIFICADA entre endpoints: misma función (buildWalletCreditOperationKey)
+    // que usa WalletTransactionsService.createCredit — una solicitud equivalente hecha por
+    // /admin/wallet/credits o por /admin/wallet-transactions produce la MISMA clave y por lo
+    // tanto colisiona en el mismo movimiento del ledger, sin importar por cuál endpoint entró.
+    const operationKey = buildWalletCreditOperationKey({
+      operationType: "admin_wallet_credit",
+      userId: input.userId,
+      rideId: input.rideId ?? null,
+      paymentId: input.paymentId ?? null,
+      source: "admin",
+      amountClp: input.amountClp,
+      policyVersion: CURRENT_LEDGER_POLICY_VERSION,
+      externalReference: externalReference ?? null,
+    });
 
-    const existing = await ledgerRepo.findByIdempotencyKey(idempotencyKey);
+    const existing = await ledgerRepo.findByIdempotencyKey(operationKey);
     if (existing) {
       const wallet = await walletRepo.getOrCreate(input.userId);
       return {
@@ -296,7 +302,7 @@ export class WalletService {
       approvalStatus: decision.approvalStatus,
       policyVersion: CURRENT_LEDGER_POLICY_VERSION,
       actorRole: "admin",
-      idempotencyKey,
+      idempotencyKey: operationKey,
       createdBy: auth.userId,
       ...(decision.status === "available" ? { approvedBy: auth.userId, approvedAt: now } : {}),
       metadata: {

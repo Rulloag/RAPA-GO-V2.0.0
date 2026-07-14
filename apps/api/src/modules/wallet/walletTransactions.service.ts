@@ -4,7 +4,7 @@ import { UsersRepository } from "../users/users.repository.js";
 import { WalletRepository } from "./wallet.repository.js";
 import { WalletTransactionsRepository } from "./walletTransactions.repository.js";
 import { AppError } from "../../shared/errors/AppError.js";
-import { CURRENT_LEDGER_POLICY_VERSION, decideAdminCreditApproval } from "./walletPolicy.constants.js";
+import { CURRENT_LEDGER_POLICY_VERSION, decideAdminCreditApproval, buildWalletCreditOperationKey } from "./walletPolicy.constants.js";
 import type {
   AdminCreateCreditInput,
   AdminModerateCreditInput,
@@ -227,7 +227,21 @@ export class WalletTransactionsService {
       return { ok: false as const, code: "AUTH_FORBIDDEN", message: "Solo administradores pueden crear créditos.", statusCode: 403 };
     }
 
-    const existing = await ledgerRepo.findByIdempotencyKey(input.idempotencyKey);
+    // UNIFICACIÓN DE IDEMPOTENCIA: la misma clave canónica que usa el endpoint legacy
+    // /admin/wallet/credits — dos solicitudes equivalentes (mismos campos de dominio) desde
+    // cualquiera de los dos endpoints colisionan en el mismo movimiento del ledger.
+    const operationKey = buildWalletCreditOperationKey({
+      operationType: "admin_wallet_credit",
+      userId: input.userId,
+      rideId: input.rideId ?? null,
+      paymentId: input.paymentId ?? null,
+      source: input.source,
+      amountClp: input.amountClp,
+      policyVersion: CURRENT_LEDGER_POLICY_VERSION,
+      externalReference: input.externalReference ?? input.idempotencyKey ?? null,
+    });
+
+    const existing = await ledgerRepo.findByIdempotencyKey(operationKey);
     if (existing) {
       return { ok: true as const, transaction: serialize(existing), idempotentReplay: true };
     }
@@ -248,7 +262,7 @@ export class WalletTransactionsService {
       approvalStatus: decision.approvalStatus,
       policyVersion: CURRENT_LEDGER_POLICY_VERSION,
       actorRole: "admin",
-      idempotencyKey: input.idempotencyKey,
+      idempotencyKey: operationKey,
       createdBy: auth.userId,
       ...(decision.status === "available" ? { approvedBy: auth.userId, approvedAt: now } : {}),
       expiresAt: input.expiresAt ? new Date(input.expiresAt) : null,

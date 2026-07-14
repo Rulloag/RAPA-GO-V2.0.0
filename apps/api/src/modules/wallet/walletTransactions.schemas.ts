@@ -12,12 +12,22 @@ export const WALLET_TX_SOURCES = [
 export const adminCreateCreditSchema = z.object({
   userId: z.string().uuid(),
   rideId: z.string().uuid().nullable().optional(),
+  paymentId: z.string().trim().nullable().optional(),
   amountClp: z.number().int().positive(),
   source: z.enum(WALLET_TX_SOURCES),
   // Motivo obligatorio (regla de auditoría, Paso 6): nunca se crea un crédito sin justificación.
+  // NOTA (unificación de idempotencia): el motivo NUNCA forma parte de la clave de
+  // idempotencia — solo es texto informativo/auditoría, ver buildWalletCreditOperationKey.
   reason: z.string().trim().min(5, "El motivo debe tener al menos 5 caracteres.").max(500),
   expiresAt: z.string().trim().nullable().optional(),
-  idempotencyKey: z.string().trim().min(8).max(200),
+  // Token distintivo de la operación (equivalente a externalReference del endpoint legacy
+  // /admin/wallet/credits) — ambos alimentan la misma clave canónica compartida. Opcional:
+  // si se omite, dos solicitudes con los mismos campos de dominio se tratan como reintento
+  // del mismo movimiento (protección contra doble clic sin referencia explícita).
+  externalReference: z.string().trim().min(1).max(200).optional(),
+  // Compatibilidad retro: si algún caller todavía envía idempotencyKey, se usa como
+  // externalReference si este último no vino. Ya NO es la clave persistida directamente.
+  idempotencyKey: z.string().trim().min(8).max(200).optional(),
 });
 
 export const adminModerateCreditSchema = z.object({

@@ -25,6 +25,7 @@ export const listTransactionsQuerySchema = z.object({
 export const adminCreateWalletCreditSchema = z.object({
   userId: z.string().uuid(),
   rideId: z.string().uuid().optional(),
+  paymentId: z.string().trim().optional(),
   amountClp: z.number().int().positive().max(10_000_000),
   description: z.string().trim().min(3).max(300).optional(),
   reason: z.string().trim().max(200).optional(),
