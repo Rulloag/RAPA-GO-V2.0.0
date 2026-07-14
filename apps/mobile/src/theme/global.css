@@ -3280,3 +3280,655 @@ ion-item.rapago-cash-close-input ion-label {
   justify-content: center !important;
 }
 
+
+/* ========================================================================== 
+   RAPA GO — CONTRASTE PROFESIONAL DEFINITIVO
+   Debe permanecer como ÚLTIMO bloque de global.css.
+   Corrige botones, segmentos, estados deshabilitados y textos claros sobre
+   fondos marfil/beige en Passenger, Driver y Admin.
+   ========================================================================== */
+
+:root {
+  --rapago-ui-dark: #171717;
+  --rapago-ui-dark-soft: #2b2119;
+  --rapago-ui-text: #111827;
+  --rapago-ui-muted: #5f5140;
+  --rapago-ui-ivory: #fffaf0;
+  --rapago-ui-ivory-2: #f5e8cf;
+  --rapago-ui-gold: #c89b3c;
+  --rapago-ui-gold-dark: #8a641c;
+  --rapago-ui-terracotta: #b84f2e;
+  --rapago-ui-success: #167443;
+  --rapago-ui-disabled-bg: #e4dac7;
+  --rapago-ui-disabled-text: #4b5563;
+}
+
+/* --------------------------------------------------------------------------
+   Botones Ionic: una sola regla visual, legible en cualquier pantalla
+   -------------------------------------------------------------------------- */
+ion-button {
+  --border-radius: 15px !important;
+  --opacity: 1 !important;
+  min-height: 46px;
+  font-weight: 900 !important;
+  letter-spacing: 0.15px !important;
+  text-transform: none !important;
+  opacity: 1 !important;
+}
+
+ion-button:not([fill="clear"]):not([fill="outline"]):not([color="danger"]):not([color="secondary"]):not([color="success"]):not([color="medium"]):not([color="dark"]):not([color="light"]),
+ion-button[color="primary"] {
+  --background: linear-gradient(135deg, #d7a739 0%, #f3d58d 100%) !important;
+  --background-activated: #c89b3c !important;
+  --background-focused: #d7a739 !important;
+  --background-hover: #e6c16d !important;
+  --color: var(--rapago-ui-text) !important;
+  --border-color: rgba(138, 100, 28, 0.55) !important;
+  --box-shadow: 0 10px 24px rgba(139, 96, 18, 0.28) !important;
+  color: var(--rapago-ui-text) !important;
+}
+
+ion-button:not([fill="clear"]):not([fill="outline"]):not([color="danger"]):not([color="secondary"]):not([color="success"]):not([color="medium"]):not([color="dark"]):not([color="light"])::part(native),
+ion-button[color="primary"]::part(native) {
+  color: var(--rapago-ui-text) !important;
+  background: linear-gradient(135deg, #d7a739 0%, #f3d58d 100%) !important;
+  text-shadow: none !important;
+}
+
+ion-button[color="secondary"] {
+  --background: linear-gradient(135deg, #b84f2e 0%, #d56c49 100%) !important;
+  --background-activated: #9f3f24 !important;
+  --background-hover: #c45b39 !important;
+  --color: #ffffff !important;
+  --box-shadow: 0 10px 22px rgba(184, 79, 46, 0.28) !important;
+  color: #ffffff !important;
+}
+
+ion-button[color="secondary"]::part(native),
+ion-button[color="danger"]::part(native),
+ion-button[color="success"]::part(native),
+ion-button[color="medium"]::part(native),
+ion-button[color="dark"]::part(native) {
+  color: #ffffff !important;
+  text-shadow: none !important;
+}
+
+ion-button[color="danger"] {
+  --background: linear-gradient(135deg, #b42318 0%, #d94d3b 100%) !important;
+  --background-activated: #951f16 !important;
+  --color: #ffffff !important;
+  --box-shadow: 0 10px 22px rgba(180, 35, 24, 0.25) !important;
+  color: #ffffff !important;
+}
+
+ion-button[color="success"] {
+  --background: linear-gradient(135deg, #146c3d 0%, #239a5c 100%) !important;
+  --background-activated: #105c33 !important;
+  --color: #ffffff !important;
+  --box-shadow: 0 10px 22px rgba(20, 108, 61, 0.25) !important;
+  color: #ffffff !important;
+}
+
+ion-button[color="medium"],
+ion-button[color="dark"] {
+  --background: linear-gradient(135deg, #27272a 0%, #3f3f46 100%) !important;
+  --background-activated: #18181b !important;
+  --color: #ffffff !important;
+  --box-shadow: 0 9px 20px rgba(0, 0, 0, 0.22) !important;
+  color: #ffffff !important;
+}
+
+ion-button[color="light"] {
+  --background: linear-gradient(180deg, #fffdf7 0%, #f4e7cc 100%) !important;
+  --background-activated: #ead8b6 !important;
+  --color: var(--rapago-ui-text) !important;
+  --border-color: rgba(138, 100, 28, 0.48) !important;
+  color: var(--rapago-ui-text) !important;
+}
+
+ion-button[color="light"]::part(native) {
+  color: var(--rapago-ui-text) !important;
+  background: linear-gradient(180deg, #fffdf7 0%, #f4e7cc 100%) !important;
+  text-shadow: none !important;
+}
+
+/* Outline visible: nunca texto blanco sobre fondo blanco */
+ion-button[fill="outline"] {
+  --background: var(--rapago-ui-dark-soft) !important;
+  --background-activated: var(--rapago-ui-dark) !important;
+  --background-hover: #3b2e24 !important;
+  --border-color: var(--rapago-ui-gold) !important;
+  --border-width: 2px !important;
+  --border-style: solid !important;
+  --color: #ffffff !important;
+  --box-shadow: 0 8px 18px rgba(0, 0, 0, 0.18) !important;
+  color: #ffffff !important;
+}
+
+ion-button[fill="outline"]::part(native) {
+  color: #ffffff !important;
+  background: var(--rapago-ui-dark-soft) !important;
+  border: 2px solid var(--rapago-ui-gold) !important;
+  text-shadow: none !important;
+}
+
+ion-button[color="danger"][fill="outline"] {
+  --background: #fff6f2 !important;
+  --background-activated: #fbe2da !important;
+  --border-color: var(--rapago-ui-terracotta) !important;
+  --color: #8f2f1d !important;
+  color: #8f2f1d !important;
+}
+
+ion-button[color="danger"][fill="outline"]::part(native) {
+  color: #8f2f1d !important;
+  background: #fff6f2 !important;
+  border-color: var(--rapago-ui-terracotta) !important;
+}
+
+/* Botones clear: oscuros dentro del contenido, blancos en la cabecera */
+ion-content ion-button[fill="clear"] {
+  --color: #68480b !important;
+  color: #68480b !important;
+  font-weight: 900 !important;
+}
+
+ion-content ion-button[fill="clear"]::part(native) {
+  color: #68480b !important;
+  text-shadow: none !important;
+}
+
+ion-toolbar ion-button[fill="clear"],
+ion-header ion-button[fill="clear"],
+ion-toolbar ion-buttons ion-button,
+ion-header ion-buttons ion-button {
+  --color: #ffffff !important;
+  color: #ffffff !important;
+}
+
+ion-toolbar ion-button[fill="clear"]::part(native),
+ion-header ion-button[fill="clear"]::part(native),
+ion-toolbar ion-buttons ion-button::part(native),
+ion-header ion-buttons ion-button::part(native) {
+  color: #ffffff !important;
+}
+
+/* Estado deshabilitado: sigue siendo claramente legible */
+ion-button[disabled],
+ion-button.button-disabled,
+ion-button[aria-disabled="true"] {
+  --background: var(--rapago-ui-disabled-bg) !important;
+  --background-activated: var(--rapago-ui-disabled-bg) !important;
+  --background-hover: var(--rapago-ui-disabled-bg) !important;
+  --border-color: #aa9162 !important;
+  --color: var(--rapago-ui-disabled-text) !important;
+  --opacity: 1 !important;
+  color: var(--rapago-ui-disabled-text) !important;
+  opacity: 1 !important;
+  filter: saturate(0.78) !important;
+}
+
+ion-button[disabled]::part(native),
+ion-button.button-disabled::part(native),
+ion-button[aria-disabled="true"]::part(native) {
+  color: var(--rapago-ui-disabled-text) !important;
+  background: var(--rapago-ui-disabled-bg) !important;
+  border-color: #aa9162 !important;
+  opacity: 1 !important;
+  text-shadow: none !important;
+}
+
+/* El texto y los iconos del botón deben heredar el contraste correcto */
+ion-button ion-label,
+ion-button ion-text,
+ion-button span,
+ion-button strong,
+ion-button ion-icon {
+  color: inherit !important;
+  opacity: 1 !important;
+}
+
+/* --------------------------------------------------------------------------
+   Segmentos: corrige "Ahora / Agendar" y "Disponible / No disponible"
+   -------------------------------------------------------------------------- */
+ion-segment {
+  --background: #eee3cf !important;
+  background: #eee3cf !important;
+  border: 1px solid rgba(138, 100, 28, 0.38) !important;
+  border-radius: 16px !important;
+  padding: 4px !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.72) !important;
+}
+
+ion-segment-button {
+  --background: transparent !important;
+  --background-checked: linear-gradient(135deg, #d5a136 0%, #f0d18a 100%) !important;
+  --color: #49371f !important;
+  --color-checked: var(--rapago-ui-text) !important;
+  --indicator-color: transparent !important;
+  --indicator-box-shadow: none !important;
+  --border-radius: 13px !important;
+  min-height: 46px !important;
+  color: #49371f !important;
+  font-weight: 900 !important;
+  opacity: 1 !important;
+  text-transform: none !important;
+}
+
+ion-segment-button::part(native) {
+  color: #49371f !important;
+  background: transparent !important;
+  border-radius: 13px !important;
+  opacity: 1 !important;
+  font-weight: 900 !important;
+  text-shadow: none !important;
+}
+
+ion-segment-button.segment-button-checked,
+ion-segment-button[aria-checked="true"] {
+  --background: linear-gradient(135deg, #d5a136 0%, #f0d18a 100%) !important;
+  --color: var(--rapago-ui-text) !important;
+  color: var(--rapago-ui-text) !important;
+  box-shadow: 0 7px 16px rgba(138, 100, 28, 0.24) !important;
+}
+
+ion-segment-button.segment-button-checked::part(native),
+ion-segment-button[aria-checked="true"]::part(native) {
+  color: var(--rapago-ui-text) !important;
+  background: linear-gradient(135deg, #d5a136 0%, #f0d18a 100%) !important;
+}
+
+ion-segment-button[disabled],
+ion-segment-button.segment-button-disabled,
+ion-segment-button[aria-disabled="true"] {
+  --color: #6b7280 !important;
+  --color-checked: #4b5563 !important;
+  color: #6b7280 !important;
+  opacity: 1 !important;
+}
+
+ion-segment-button[disabled]::part(native),
+ion-segment-button.segment-button-disabled::part(native),
+ion-segment-button[aria-disabled="true"]::part(native) {
+  color: #6b7280 !important;
+  background: #ded6c7 !important;
+  opacity: 1 !important;
+}
+
+/* Segmentos dentro de tarjetas claras */
+ion-card ion-segment,
+.rapago-request-light ion-segment,
+.rapago-request-page ion-segment,
+.rapago-driver-light-panel ion-segment,
+.rapago-driver-light-form ion-segment {
+  --background: #ece1cd !important;
+  background: #ece1cd !important;
+}
+
+/* --------------------------------------------------------------------------
+   Paneles claros: textos auxiliares y controles siempre oscuros
+   -------------------------------------------------------------------------- */
+.rapago-request-light,
+.rapago-request-page,
+.rapago-driver-light-form,
+.rapago-driver-light-panel,
+.rapago-light-form-page,
+ion-card {
+  --rapago-local-text: var(--rapago-ui-text);
+}
+
+.rapago-request-light ion-note,
+.rapago-request-page ion-note,
+.rapago-driver-light-form ion-note,
+.rapago-driver-light-panel ion-note,
+.rapago-light-form-page ion-note,
+.rapago-request-light small,
+.rapago-request-page small,
+.rapago-driver-light-form small,
+.rapago-driver-light-panel small,
+.rapago-light-form-page small,
+.rapago-request-light .helper-text,
+.rapago-request-page .helper-text,
+.rapago-driver-light-form .helper-text,
+.rapago-driver-light-panel .helper-text,
+.rapago-light-form-page .helper-text,
+.rapago-request-light .hint,
+.rapago-request-page .hint,
+.rapago-driver-light-form .hint,
+.rapago-driver-light-panel .hint,
+.rapago-light-form-page .hint,
+.rapago-request-light .subtitle,
+.rapago-request-page .subtitle,
+.rapago-driver-light-form .subtitle,
+.rapago-driver-light-panel .subtitle,
+.rapago-light-form-page .subtitle {
+  color: var(--rapago-ui-muted) !important;
+  opacity: 1 !important;
+  text-shadow: none !important;
+}
+
+/* Botones dentro de cards claras */
+ion-card ion-button[fill="clear"] {
+  --color: #68480b !important;
+  color: #68480b !important;
+}
+
+ion-card ion-button[fill="clear"]::part(native) {
+  color: #68480b !important;
+}
+
+/* --------------------------------------------------------------------------
+   Botones HTML usados como selectores de estado
+   -------------------------------------------------------------------------- */
+button[aria-pressed],
+button[role="tab"],
+button[role="switch"] {
+  min-height: 44px;
+  border-radius: 14px;
+  font-weight: 900;
+  opacity: 1 !important;
+  text-shadow: none !important;
+}
+
+button[aria-pressed="true"],
+button[role="tab"][aria-selected="true"],
+button[role="switch"][aria-checked="true"] {
+  background: linear-gradient(135deg, #d5a136 0%, #f0d18a 100%) !important;
+  color: var(--rapago-ui-text) !important;
+  border: 1px solid var(--rapago-ui-gold-dark) !important;
+  box-shadow: 0 7px 16px rgba(138, 100, 28, 0.22) !important;
+}
+
+button[aria-pressed="false"],
+button[role="tab"][aria-selected="false"],
+button[role="switch"][aria-checked="false"] {
+  background: var(--rapago-ui-dark-soft) !important;
+  color: #ffffff !important;
+  border: 1px solid var(--rapago-ui-gold) !important;
+}
+
+button:disabled,
+button[aria-disabled="true"] {
+  color: var(--rapago-ui-disabled-text) !important;
+  opacity: 1 !important;
+}
+
+/* --------------------------------------------------------------------------
+   Ajustes móviles: mejor lectura sin agrandar en exceso
+   -------------------------------------------------------------------------- */
+@media (max-width: 480px) {
+  ion-button {
+    min-height: 48px;
+    font-size: 0.92rem !important;
+  }
+
+  ion-segment-button {
+    min-height: 44px !important;
+    font-size: 0.86rem !important;
+  }
+
+  ion-button ion-icon {
+    font-size: 1.08rem !important;
+  }
+}
+
+
+/* ==========================================================================
+   RAPA GO - ADMIN NO SHOW MOBILE POLISH
+   Modal No Show optimizado para celular
+   ========================================================================== */
+
+ion-modal.rapago-admin-no-show-modal {
+  --width: min(96vw, 520px) !important;
+  --height: min(94vh, 780px) !important;
+  --border-radius: 26px !important;
+  --background: #f6f2ec !important;
+}
+
+ion-modal.rapago-admin-no-show-modal::part(content) {
+  width: min(96vw, 520px) !important;
+  max-width: 520px !important;
+  height: min(94vh, 780px) !important;
+  max-height: 94vh !important;
+  border-radius: 26px !important;
+  overflow: hidden !important;
+  background: #f6f2ec !important;
+  box-shadow: 0 26px 70px rgba(0, 0, 0, 0.45) !important;
+}
+
+ion-modal.rapago-admin-no-show-modal::part(backdrop) {
+  background: rgba(0, 0, 0, 0.58) !important;
+  opacity: 1 !important;
+}
+
+.rapago-no-show-toolbar {
+  --background: linear-gradient(135deg, #111111 0%, #2b2119 55%, #8f341e 100%) !important;
+  --color: #fff7e6 !important;
+  border-bottom: 1px solid rgba(200, 155, 60, 0.35) !important;
+}
+
+.rapago-no-show-toolbar ion-title {
+  color: #fff7e6 !important;
+  font-size: 1.05rem !important;
+  font-weight: 950 !important;
+  letter-spacing: 0.15px !important;
+}
+
+.rapago-admin-no-show-content {
+  --background: #f6f2ec !important;
+  --padding-top: 10px !important;
+  --padding-bottom: 18px !important;
+  --padding-start: 10px !important;
+  --padding-end: 10px !important;
+  color: #111827 !important;
+}
+
+.rapago-admin-no-show-content ion-card {
+  margin: 0 0 12px !important;
+  border-radius: 20px !important;
+  background: linear-gradient(180deg, #fffaf0 0%, #f7ead4 100%) !important;
+  border: 1px solid rgba(200, 155, 60, 0.32) !important;
+  box-shadow: 0 12px 28px rgba(17, 24, 39, 0.13) !important;
+  overflow: hidden !important;
+}
+
+.rapago-admin-no-show-content ion-card ion-card {
+  border-radius: 18px !important;
+  background: #fffdf8 !important;
+  border: 1px solid rgba(200, 155, 60, 0.26) !important;
+  box-shadow: 0 8px 18px rgba(17, 24, 39, 0.10) !important;
+}
+
+.rapago-admin-no-show-content ion-card-header {
+  padding: 14px 14px 8px !important;
+}
+
+.rapago-admin-no-show-content ion-card-content {
+  padding: 12px !important;
+  color: #111827 !important;
+}
+
+.rapago-admin-no-show-content ion-card-title,
+.rapago-admin-no-show-content h2,
+.rapago-admin-no-show-content h3 {
+  color: #111827 !important;
+  font-size: 1rem !important;
+  line-height: 1.18 !important;
+  font-weight: 950 !important;
+  letter-spacing: -0.15px !important;
+}
+
+.rapago-admin-no-show-content ion-card-subtitle,
+.rapago-admin-no-show-content p {
+  color: #374151 !important;
+  font-size: 0.82rem !important;
+  line-height: 1.35 !important;
+  font-weight: 750 !important;
+}
+
+.rapago-admin-no-show-content strong {
+  display: block !important;
+  color: #4b5563 !important;
+  font-size: 0.72rem !important;
+  line-height: 1.1 !important;
+  font-weight: 950 !important;
+  text-transform: uppercase !important;
+  letter-spacing: 0.25px !important;
+  margin-bottom: 4px !important;
+}
+
+.rapago-admin-no-show-content ion-badge {
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  width: auto !important;
+  min-width: 86px !important;
+  max-width: 132px !important;
+  min-height: 26px !important;
+  padding: 5px 9px !important;
+  border-radius: 999px !important;
+  white-space: normal !important;
+  text-align: center !important;
+  line-height: 1.05 !important;
+  font-size: 0.68rem !important;
+  font-weight: 950 !important;
+  overflow: visible !important;
+  text-overflow: clip !important;
+}
+
+.rapago-admin-no-show-content ion-badge[color="warning"] {
+  --background: #facc15 !important;
+  --color: #111827 !important;
+  color: #111827 !important;
+}
+
+.rapago-admin-no-show-content ion-badge[color="success"] {
+  --background: #22c55e !important;
+  --color: #ffffff !important;
+  color: #ffffff !important;
+}
+
+.rapago-admin-no-show-content ion-badge[color="medium"] {
+  --background: #6b7280 !important;
+  --color: #ffffff !important;
+  color: #ffffff !important;
+}
+
+.rapago-admin-no-show-content div[style*="grid-template-columns"] {
+  gap: 8px !important;
+}
+
+.rapago-admin-no-show-content div[style*="background: #fff7e6"] {
+  background: #fff7e6 !important;
+  border: 1px solid rgba(200, 155, 60, 0.28) !important;
+  border-radius: 15px !important;
+  padding: 10px !important;
+}
+
+.rapago-admin-no-show-content div[style*="font-weight: 950"] {
+  color: #111827 !important;
+  font-size: 0.92rem !important;
+  line-height: 1.15 !important;
+}
+
+.rapago-admin-no-show-content ion-button {
+  min-height: 36px !important;
+  --border-radius: 999px !important;
+  font-size: 0.74rem !important;
+  font-weight: 950 !important;
+  text-transform: none !important;
+  letter-spacing: 0 !important;
+}
+
+.rapago-admin-no-show-content ion-button[color="success"] {
+  --background: linear-gradient(135deg, #34d399 0%, #16a34a 100%) !important;
+  --color: #ffffff !important;
+  --box-shadow: 0 8px 18px rgba(34, 197, 94, 0.24) !important;
+}
+
+.rapago-admin-no-show-content ion-button[color="danger"] {
+  --background: #ffffff !important;
+  --color: #dc2626 !important;
+  --border-color: #dc2626 !important;
+  --border-width: 1.5px !important;
+  --border-style: solid !important;
+}
+
+.rapago-admin-no-show-content .admin-section-title-row {
+  display: flex !important;
+  align-items: flex-start !important;
+  justify-content: space-between !important;
+  gap: 10px !important;
+}
+
+@media (max-width: 520px) {
+  ion-modal.rapago-admin-no-show-modal {
+    --width: calc(100vw - 14px) !important;
+    --height: calc(100vh - 22px) !important;
+    --border-radius: 22px !important;
+  }
+
+  ion-modal.rapago-admin-no-show-modal::part(content) {
+    width: calc(100vw - 14px) !important;
+    height: calc(100vh - 22px) !important;
+    max-height: calc(100vh - 22px) !important;
+    border-radius: 22px !important;
+  }
+
+  .rapago-admin-no-show-content {
+    --padding-start: 9px !important;
+    --padding-end: 9px !important;
+    --padding-top: 9px !important;
+  }
+
+  .rapago-admin-no-show-content ion-card-content {
+    padding: 11px !important;
+  }
+
+  .rapago-admin-no-show-content ion-card-title,
+  .rapago-admin-no-show-content h2,
+  .rapago-admin-no-show-content h3 {
+    font-size: 0.96rem !important;
+  }
+
+  .rapago-admin-no-show-content ion-card-subtitle,
+  .rapago-admin-no-show-content p {
+    font-size: 0.78rem !important;
+  }
+
+  .rapago-admin-no-show-content div[style*="grid-template-columns"] {
+    grid-template-columns: 1fr 1fr !important;
+  }
+
+  .rapago-admin-no-show-content ion-button {
+    flex: 1 1 120px !important;
+  }
+}
+
+@media (max-width: 380px) {
+  .rapago-admin-no-show-content div[style*="grid-template-columns"] {
+    grid-template-columns: 1fr !important;
+  }
+
+  .rapago-admin-no-show-content ion-badge {
+    min-width: 78px !important;
+    max-width: 112px !important;
+    font-size: 0.62rem !important;
+  }
+
+  .rapago-admin-no-show-content ion-card-title,
+  .rapago-admin-no-show-content h2,
+  .rapago-admin-no-show-content h3 {
+    font-size: 0.9rem !important;
+  }
+
+  .rapago-admin-no-show-content ion-card-subtitle,
+  .rapago-admin-no-show-content p {
+    font-size: 0.74rem !important;
+  }
+}
+
+/* ==========================================================================
+   FIN RAPA GO - ADMIN NO SHOW MOBILE POLISH
+   ========================================================================== */
+

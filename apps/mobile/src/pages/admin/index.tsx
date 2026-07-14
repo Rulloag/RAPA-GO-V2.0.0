@@ -738,26 +738,44 @@ function writeAdminPassengerPendingCharges(charges: AdminPassengerPendingCharge[
 }
 
 function isAdminPassengerChargePending(charge: AdminPassengerPendingCharge): boolean {
-  return String(charge.status ?? "").toLowerCase() === "pending_next_ride";
+  if (isAdminNoShowPendingReview(charge)) return true;
+
+  const status = String(charge.status ?? "").toLowerCase();
+  const adminStatus = String(charge.adminReviewStatus ?? "").toLowerCase();
+
+  return (
+    status === "pending_next_ride" ||
+    status === "backend_review_required" ||
+    status === "pending_admin_review" ||
+    adminStatus === "backend_review_required" ||
+    adminStatus === "pending_admin_review" ||
+    adminStatus === "charge_pending_next_ride"
+  );
 }
 
 function adminPassengerChargeStatusLabel(charge: AdminPassengerPendingCharge): string {
   const status = String(charge.status ?? "").toLowerCase();
   const adminStatus = String(charge.adminReviewStatus ?? "").toLowerCase();
 
+  if (isAdminNoShowPendingReview(charge)) return "No show por revisar";
+  if (isAdminNoShowCharge(charge) && adminStatus === "charge_pending_next_ride") return "Aprobado pr?ximo viaje";
+
   if (status === "charged_from_card_or_paid_amount" || adminStatus === "no_show_total_service_charged") {
     return "Cobrado desde tarjeta/pago";
   }
-  if (status === "pending_next_ride") return "Pendiente próximo viaje";
-  if (status === "applied_to_next_ride") return "Agregado a próximo viaje";
+  if (status === "pending_next_ride") return "Pendiente pr?ximo viaje";
+  if (status === "applied_to_next_ride") return "Agregado a pr?ximo viaje";
   if (status === "paid") return "Pagado";
-  if (status === "waived") return "Anulado";
+  if (status === "waived") return "Rechazado";
   return charge.status || "Pendiente";
 }
 
 function adminPassengerChargeStatusColor(charge: AdminPassengerPendingCharge): string {
   const status = String(charge.status ?? "").toLowerCase();
   const adminStatus = String(charge.adminReviewStatus ?? "").toLowerCase();
+
+  if (isAdminNoShowPendingReview(charge)) return "warning";
+  if (isAdminNoShowCharge(charge) && adminStatus === "charge_pending_next_ride") return "success";
 
   if (status === "charged_from_card_or_paid_amount" || adminStatus === "no_show_total_service_charged") return "success";
   if (status === "pending_next_ride") return "danger";
@@ -809,6 +827,131 @@ function markAdminPassengerChargeStatus(charge: AdminPassengerPendingCharge, sta
 
   writeAdminPassengerPendingCharges(next);
 }
+
+function isAdminNoShowCharge(charge: AdminPassengerPendingCharge): boolean {
+  const type = String(charge.type ?? "").toLowerCase();
+  const title = String(charge.title ?? "").toLowerCase();
+  const description = String(charge.description ?? "").toLowerCase();
+  const source = String((charge as Record<string, unknown>).source ?? "").toLowerCase();
+
+  return (
+    type === "no_show" ||
+    source.includes("no_show") ||
+    source.includes("driver_no_show") ||
+    title.includes("no show") ||
+    description.includes("no show")
+  );
+}
+
+function isAdminNoShowPendingReview(charge: AdminPassengerPendingCharge): boolean {
+  if (!isAdminNoShowCharge(charge)) return false;
+
+  const status = String(charge.status ?? "").toLowerCase();
+  const adminStatus = String(charge.adminReviewStatus ?? "").toLowerCase();
+
+  if (
+    status === "waived" ||
+    status === "paid" ||
+    status === "applied_to_next_ride" ||
+    adminStatus === "waived" ||
+    adminStatus === "rejected" ||
+    adminStatus === "admin_rejected" ||
+    adminStatus === "applied_to_next_ride" ||
+    adminStatus === "charge_pending_next_ride"
+  ) {
+    return false;
+  }
+
+  return true;
+}
+
+function approveAdminNoShowChargeForNextRide(charge: AdminPassengerPendingCharge): void {
+  const now = new Date().toISOString();
+  const chargeRecord = charge as AdminPassengerPendingCharge & Record<string, unknown>;
+
+  const originalServiceAmountClp = Math.max(
+    0,
+    Math.round(
+      Number(
+        chargeRecord.originalNoShowServiceAmountClp ??
+        chargeRecord.originalServiceAmountClp ??
+        chargeRecord.totalServiceAmountClp ??
+        chargeRecord.serviceAmountClp ??
+        chargeRecord.fareClp ??
+        chargeRecord.originalAmountClp ??
+        charge.amountClp ??
+        0,
+      ),
+    ),
+  );
+
+  const approvedNoShowChargeClp = Math.min(
+    3000,
+    Math.max(0, Math.round(originalServiceAmountClp * 0.3)),
+  );
+
+  const next = readAdminPassengerPendingCharges().map((item) => {
+    if (String(item.id ?? "") !== String(charge.id ?? "")) return item;
+
+    return {
+      ...item,
+      type: "no_show",
+      amountClp: approvedNoShowChargeClp,
+      originalAmountClp: Math.max(0, Math.round(Number(item.amountClp ?? (item as AdminPassengerPendingCharge & Record<string, unknown>).amount ?? originalServiceAmountClp))),
+      originalNoShowServiceAmountClp: originalServiceAmountClp,
+      noShowPenaltyPercent: 30,
+      noShowPenaltyCapClp: 3000,
+      status: "pending_next_ride",
+      adminReviewStatus: "charge_pending_next_ride",
+      appliedRideId: null,
+      appliedAt: null,
+      approvedAt: now,
+      approvedBy: "admin",
+      rejectedAt: null,
+      rejectedBy: null,
+      source: "admin_approved_no_show",
+      backendAuthorityRequired: true,
+      localStorageFinancialAuthority: false,
+      title: "No show aprobado",
+      description:
+        "No Show aprobado por administrador. Se cobrara 30% con tope $3.000 en el proximo viaje del pasajero. Cargo aprobado: $" +
+        approvedNoShowChargeClp.toLocaleString("es-CL") +
+        " CLP.",
+    } as AdminPassengerPendingCharge;
+  });
+
+  writeAdminPassengerPendingCharges(next);
+
+  window.dispatchEvent(new CustomEvent("rapago:admin-passenger-pending-charge-updated", { detail: { charges: next } }));
+  window.dispatchEvent(new CustomEvent("rapago:passenger-pending-charge-updated", { detail: { charges: next } }));
+  window.dispatchEvent(new CustomEvent("rapago:wallet-updated", { detail: { charges: next } }));
+}
+
+function rejectAdminNoShowCharge(charge: AdminPassengerPendingCharge): void {
+  const now = new Date().toISOString();
+
+  const next = readAdminPassengerPendingCharges().map((item) => {
+    if (String(item.id ?? "") !== String(charge.id ?? "")) return item;
+
+    return {
+      ...item,
+      status: "waived",
+      adminReviewStatus: "waived",
+      rejectedAt: now,
+      rejectedBy: "admin",
+      approvedAt: null,
+      approvedBy: null,
+      source: "admin_rejected_no_show",
+      title: item.title || "No show rechazado",
+      description:
+        item.description ||
+        "No show rechazado por administrador. No se cobrar? al pasajero.",
+    } as AdminPassengerPendingCharge;
+  });
+
+  writeAdminPassengerPendingCharges(next);
+}
+
 
 function isAdminCashWalletApproved(review: AdminCashPaymentReview): boolean {
   const status = String(review.adminReviewStatus ?? review.status ?? "").toLowerCase();
@@ -936,6 +1079,7 @@ export function AdminHomePage(): JSX.Element {
   const [cashReviewsRevision, setCashReviewsRevision] = useState(0);
   const [adminCashToast, setAdminCashToast] = useState<string | null>(null);
   const [showAdminChargesModal, setShowAdminChargesModal] = useState(false);
+  const [showAdminNoShowModal, setShowAdminNoShowModal] = useState(false);
 
   const load = useCallback(
     async (silent = false) => {
@@ -1201,6 +1345,8 @@ export function AdminHomePage(): JSX.Element {
   const pendingCashAmountClp = pendingCashPaymentReviews.reduce((sum, review) => sum + Math.max(0, review.overpaidClp), 0);
   const passengerPendingCharges = cashReviewsRevision >= 0 ? readAdminPassengerPendingCharges() : [];
   const passengerChargesPendingNextRide = passengerPendingCharges.filter(isAdminPassengerChargePending);
+  const adminNoShowCharges = passengerPendingCharges.filter(isAdminNoShowCharge);
+  const adminNoShowPendingReview = adminNoShowCharges.filter(isAdminNoShowPendingReview);
   const pendingPassengerChargeAmountClp = passengerChargesPendingNextRide.reduce((sum, charge) => sum + Math.max(0, charge.amountClp), 0);
   const adminWalletBenefits = cashReviewsRevision >= 0 ? readAdminWalletBenefits() : [];
   const cardCancellationCredits = adminWalletBenefits.filter(isAdminWalletCardCancellationCredit);
@@ -1275,13 +1421,13 @@ export function AdminHomePage(): JSX.Element {
     },
     {
       label: "Viajes",
-      description: "Monitorear operación",
+      description: "Monitorear operaci?n",
       icon: carOutline,
       route: ROUTES.ADMIN.TRIPS,
     },
     {
       label: "Docs",
-      description: "Revisión pendiente",
+      description: "Revisi?n pendiente",
       icon: documentTextOutline,
       route: ROUTES.ADMIN.DOCUMENTS,
     },
@@ -1292,8 +1438,14 @@ export function AdminHomePage(): JSX.Element {
       route: "__admin_charges__",
     },
     {
+      label: "No Show",
+      description: `${adminNoShowPendingReview.length} por revisar`,
+      icon: alertCircleOutline,
+      route: "__admin_no_show__",
+    },
+    {
       label: "Efectivo",
-      description: `${cashPaymentReviews.length} revisión${cashPaymentReviews.length !== 1 ? "es" : ""}`,
+      description: `${cashPaymentReviews.length} revisi?n${cashPaymentReviews.length !== 1 ? "es" : ""}`,
       icon: cashOutline,
       route: "__admin_charges__",
     },
@@ -1688,7 +1840,8 @@ export function AdminHomePage(): JSX.Element {
                         key={action.label}
                         routerLink={
                           action.route === ROUTES.ADMIN.DRIVERS ||
-                          action.route === "__admin_charges__"
+                          action.route === "__admin_charges__" ||
+                          action.route === "__admin_no_show__"
                             ? undefined
                             : action.route
                         }
@@ -1698,8 +1851,14 @@ export function AdminHomePage(): JSX.Element {
                             return;
                           }
 
+                          if (action.route === "__admin_no_show__") {
+                            setShowAdminNoShowModal(true);
+                            return;
+                          }
+
                           if (action.route === "__admin_charges__") {
                             setShowAdminChargesModal(true);
+                            return;
                           }
                         }}
                         fill="clear"
@@ -1787,7 +1946,130 @@ export function AdminHomePage(): JSX.Element {
                 </IonCard>
               )}
 
+              
+              {/* rapago-admin-no-show-modal */}
               <IonModal
+                className="rapago-admin-no-show-modal"
+                isOpen={showAdminNoShowModal}
+                onDidDismiss={() => setShowAdminNoShowModal(false)}
+                breakpoints={[0, 0.72, 0.95]}
+                initialBreakpoint={0.95}
+              >
+                <IonHeader>
+                  <IonToolbar color="dark" className="rapago-no-show-toolbar">
+                    <IonTitle>No Show</IonTitle>
+                    <div slot="end" style={{ paddingRight: 8 }}>
+                      <IonButton
+                        fill="clear"
+                        color="light"
+                        onClick={() => setShowAdminNoShowModal(false)}
+                      >
+                        Cerrar
+                      </IonButton>
+                    </div>
+                  </IonToolbar>
+                </IonHeader>
+
+                <IonContent className="ion-padding rapago-admin-no-show-content">
+                  <IonCard className="admin-section-card">
+                    <IonCardHeader>
+                      <div className="admin-section-title-row">
+                        <div>
+                          <IonCardTitle>No Show</IonCardTitle>
+                          <IonCardSubtitle>
+                            Aqu? se almacenan los No Show informados por conductores.
+                            Aprueba para cobrar en el pr?ximo viaje o rechaza para anular.
+                          </IonCardSubtitle>
+                        </div>
+
+                        <IonBadge color={adminNoShowPendingReview.length > 0 ? "warning" : "success"}>
+                          {adminNoShowPendingReview.length} por revisar
+                        </IonBadge>
+                      </div>
+                    </IonCardHeader>
+
+                    <IonCardContent style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                      {adminNoShowCharges.length === 0 ? (
+                        <IonText color="medium">
+                          <p style={{ margin: 0, fontWeight: 850 }}>
+                            No hay No Show registrados.
+                          </p>
+                        </IonText>
+                      ) : (
+                        adminNoShowCharges.map((charge) => (
+                          <IonCard key={charge.id} style={{ margin: 0 }}>
+                            <IonCardContent style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                              <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
+                                <div>
+                                  <h3 style={{ margin: 0, fontWeight: 950 }}>
+                                    {charge.title || "No Show"}
+                                  </h3>
+                                  <p style={{ margin: "4px 0 0", color: "#4b5563", fontWeight: 800 }}>
+                                    {charge.passengerName || charge.passengerEmail || "Pasajero"} ? {charge.originText || "Origen"} ? {charge.destinationText || "Destino"}
+                                  </p>
+                                </div>
+
+                                <IonBadge color={adminPassengerChargeStatusColor(charge)}>
+                                  {adminPassengerChargeStatusLabel(charge)}
+                                </IonBadge>
+                              </div>
+
+                              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                                <div style={{ background: "#fff7e6", borderRadius: 14, padding: 10 }}>
+                                  <strong>Cargo</strong>
+                                  <div style={{ fontWeight: 950 }}>
+                                    {formatAdminCashClp(charge.amountClp)}
+                                  </div>
+                                </div>
+
+                                <div style={{ background: "#fff7e6", borderRadius: 14, padding: 10 }}>
+                                  <strong>Cobro</strong>
+                                  <div style={{ fontWeight: 950 }}>Pr?ximo viaje</div>
+                                </div>
+                              </div>
+
+                              <p style={{ margin: 0, fontWeight: 800, lineHeight: 1.35 }}>
+                                {charge.description || "No Show informado por conductor. El admin debe aprobar o rechazar."}
+                              </p>
+
+                              {isAdminNoShowPendingReview(charge) && (
+                                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                                  <IonButton
+                                    size="small"
+                                    color="success"
+                                    onClick={() => {
+                                      approveAdminNoShowChargeForNextRide(charge);
+                                      setCashReviewsRevision((current) => current + 1);
+                                      setAdminCashToast("No Show aprobado. Se cobrar? en el pr?ximo viaje del pasajero.");
+                                    }}
+                                  >
+                                    Aprobar No Show
+                                  </IonButton>
+
+                                  <IonButton
+                                    size="small"
+                                    color="danger"
+                                    fill="outline"
+                                    onClick={() => {
+                                      rejectAdminNoShowCharge(charge);
+                                      setCashReviewsRevision((current) => current + 1);
+                                      setAdminCashToast("No Show rechazado.");
+                                    }}
+                                  >
+                                    Rechazar
+                                  </IonButton>
+                                </div>
+                              )}
+                            </IonCardContent>
+                          </IonCard>
+                        ))
+                      )}
+                    </IonCardContent>
+                  </IonCard>
+                </IonContent>
+              </IonModal>
+
+<IonModal
                 isOpen={showAdminChargesModal}
                 onDidDismiss={() => setShowAdminChargesModal(false)}
                 breakpoints={[0, 0.72, 0.95]}

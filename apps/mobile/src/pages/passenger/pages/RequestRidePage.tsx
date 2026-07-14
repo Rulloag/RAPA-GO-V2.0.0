@@ -96,12 +96,106 @@ function getPendingChargeSessionEmail(user: unknown): string {
   return normalizePendingChargeEmail((user as Record<string, unknown>).email);
 }
 
-function readPassengerPendingChargesForRequest(_user: unknown): PassengerPendingChargeForRequest[] {
-  // Phase 2 security:
-  // Legacy localStorage pending charges are visual/admin-review only.
-  // They must not increase ride fares or payment amounts for the next request.
-  // Authoritative cancellation/no-show charges must come from backend/admin policy.
-  return [];
+
+function calculateApprovedNoShowChargeForRequest(item: Record<string, unknown>): number {
+  const rawAmount = Math.max(0, Math.round(Number(item.amountClp ?? item.amount ?? 0)));
+
+  const originalCandidates = [
+    item.originalNoShowServiceAmountClp,
+    item.originalServiceAmountClp,
+    item.totalServiceAmountClp,
+    item.serviceAmountClp,
+    item.fareClp,
+    item.originalAmountClp,
+  ];
+
+  const originalAmount = originalCandidates
+    .map((value) => Math.max(0, Math.round(Number(value ?? 0))))
+    .find((value) => value > 0) ?? 0;
+
+  if (originalAmount > 0) {
+    return Math.min(3000, Math.max(0, Math.round(originalAmount * 0.3)));
+  }
+
+  // Compatibilidad con No Show viejos:
+  // si quedo guardado el total del servicio, se calcula 30%;
+  // si ya quedo guardada la penalizacion, solo se limita a 3000.
+  if (rawAmount > 3000) {
+    return Math.min(3000, Math.max(0, Math.round(rawAmount * 0.3)));
+  }
+
+  return Math.min(3000, rawAmount);
+}
+
+function readPassengerPendingChargesForRequest(user: unknown): PassengerPendingChargeForRequest[] {
+  try {
+    const sessionEmail = getPendingChargeSessionEmail(user);
+    const raw = localStorage.getItem(RAPAGO_PASSENGER_PENDING_CHARGES_KEY);
+    const parsed = raw ? (JSON.parse(raw) as Array<Record<string, unknown>>) : [];
+    if (!Array.isArray(parsed)) return [];
+
+    return parsed
+      .map((item, index) => {
+        const type = String(item.type ?? "").toLowerCase();
+        const status = String(item.status ?? "");
+        const adminReviewStatus = typeof item.adminReviewStatus === "string" ? item.adminReviewStatus : null;
+        const approvedNoShowAmountClp = type === "no_show"
+          ? calculateApprovedNoShowChargeForRequest(item)
+          : Math.max(0, Math.round(Number(item.amountClp ?? item.amount ?? 0)));
+
+        return {
+          id: String(item.id ?? `pending-charge-${index}`),
+          rideId: typeof item.rideId === "string" ? item.rideId : null,
+          rideKey: typeof item.rideKey === "string" ? item.rideKey : null,
+          passengerEmail: typeof item.passengerEmail === "string" ? item.passengerEmail : null,
+          ownerKey: typeof item.ownerKey === "string" ? item.ownerKey : null,
+          amountClp: approvedNoShowAmountClp,
+          type,
+          status,
+          adminReviewStatus,
+          title: typeof item.title === "string" ? item.title : "No Show aprobado",
+          description:
+            typeof item.description === "string"
+              ? item.description
+              : "No Show aprobado por administrador para cobrar en el proximo viaje.",
+          createdAt: typeof item.createdAt === "string" ? item.createdAt : null,
+          appliedRideId: typeof item.appliedRideId === "string" ? item.appliedRideId : null,
+          appliedAt: typeof item.appliedAt === "string" ? item.appliedAt : null,
+        } as PassengerPendingChargeForRequest;
+      })
+      .filter((charge) => {
+        const owner = normalizePendingChargeEmail(charge.passengerEmail || charge.ownerKey);
+        const belongsToUser = !sessionEmail || !owner || owner === sessionEmail;
+
+        const type = String(charge.type ?? "").toLowerCase();
+        const status = String(charge.status ?? "").toLowerCase();
+        const adminStatus = String(charge.adminReviewStatus ?? "").toLowerCase();
+
+        const approvedByAdmin =
+          status === "pending_next_ride" ||
+          adminStatus === "charge_pending_next_ride";
+
+        const notApplied =
+          !charge.appliedRideId &&
+          !charge.appliedAt &&
+          status !== "applied_to_next_ride" &&
+          adminStatus !== "applied_to_next_ride";
+
+        return (
+          belongsToUser &&
+          type === "no_show" &&
+          charge.amountClp > 0 &&
+          approvedByAdmin &&
+          notApplied
+        );
+      })
+      .sort((a, b) =>
+        new Date(String(a.createdAt ?? 0)).getTime() -
+        new Date(String(b.createdAt ?? 0)).getTime(),
+      );
+  } catch {
+    return [];
+  }
 }
 
 function writePassengerPendingChargesForRequest(charges: PassengerPendingChargeForRequest[]): void {
@@ -114,11 +208,63 @@ function writePassengerPendingChargesForRequest(charges: PassengerPendingChargeF
   }
 }
 
-function markPassengerPendingChargesAppliedToRide(_user: unknown, _rideId: string | null): void {
-  // Phase 2 security:
-  // Do not mark localStorage charges as charged/applied to the next ride.
-  // Backend must create and apply any real cancellation/no-show charge.
-  return;
+function markPassengerPendingChargesAppliedToRide(user: unknown, rideId: string | null): void {
+  try {
+    const sessionEmail = getPendingChargeSessionEmail(user);
+    const raw = localStorage.getItem(RAPAGO_PASSENGER_PENDING_CHARGES_KEY);
+    const parsed = raw ? (JSON.parse(raw) as Array<Record<string, unknown>>) : [];
+    if (!Array.isArray(parsed)) return;
+
+    const now = new Date().toISOString();
+    const safeRideId = rideId || `local-${Date.now()}`;
+    let changed = false;
+
+    const next = parsed.map((item) => {
+      const owner = normalizePendingChargeEmail(
+        typeof item.passengerEmail === "string"
+          ? item.passengerEmail
+          : typeof item.ownerKey === "string"
+            ? item.ownerKey
+            : "",
+      );
+
+      const belongsToUser = !sessionEmail || !owner || owner === sessionEmail;
+      const type = String(item.type ?? "").toLowerCase();
+      const status = String(item.status ?? "").toLowerCase();
+      const adminStatus = String(item.adminReviewStatus ?? "").toLowerCase();
+      const approvedNoShowAmountClp = calculateApprovedNoShowChargeForRequest(item);
+
+      const shouldApply =
+        belongsToUser &&
+        type === "no_show" &&
+        approvedNoShowAmountClp > 0 &&
+        (status === "pending_next_ride" || adminStatus === "charge_pending_next_ride") &&
+        !item.appliedRideId &&
+        !item.appliedAt;
+
+      if (!shouldApply) return item;
+
+      changed = true;
+
+      return {
+        ...item,
+        amountClp: approvedNoShowAmountClp,
+        status: "applied_to_next_ride",
+        adminReviewStatus: "applied_to_next_ride",
+        appliedRideId: safeRideId,
+        appliedAt: now,
+      };
+    });
+
+    if (!changed) return;
+
+    localStorage.setItem(RAPAGO_PASSENGER_PENDING_CHARGES_KEY, JSON.stringify(next.slice(0, 250)));
+    window.dispatchEvent(new CustomEvent(RAPAGO_PASSENGER_PENDING_CHARGE_EVENT, { detail: { charges: next } }));
+    window.dispatchEvent(new CustomEvent("rapago:admin-passenger-pending-charge-updated", { detail: { charges: next } }));
+    window.dispatchEvent(new CustomEvent("rapago:wallet-updated", { detail: { charges: next } }));
+  } catch {
+    // No bloquea la solicitud.
+  }
 }
 
 const RAPAGO_WALLET_BENEFITS_KEY_REQUEST = "rapago_wallet_benefits_v1";
@@ -5587,7 +5733,7 @@ export default function RequestRidePage(): JSX.Element {
   );
 
 return (
-    <IonPage>
+    <IonPage className="rapago-request-page">
       <IonHeader>
         <IonToolbar color="primary">
           <IonTitle>Solicitar Viaje</IonTitle>
@@ -5791,14 +5937,19 @@ return (
             <div style={sectionLabelStyle()}>Cuándo viajas</div>
 
             <div
+              role="tablist"
+              aria-label="Cuándo viajas"
               style={{
                 display: "grid",
                 gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+                gap: "8px",
                 marginBottom: "18px",
               }}
             >
               <button
                 type="button"
+                role="tab"
+                aria-selected={rideMode === "now"}
                 onClick={() => {
                   setRideMode("now");
                   clearRoundTripPromotion();
@@ -5808,14 +5959,26 @@ return (
                   setSubmitError(null);
                 }}
                 style={{
-                  background: "transparent",
-                  color: rideMode === "now" ? "#4fa3d9" : "rgba(246,242,236,.52)",
-                  border: "0",
-                  borderBottom:
-                    rideMode === "now" ? "2px solid #4fa3d9" : "1px solid #333",
+                  minHeight: "48px",
                   padding: "12px",
-                  fontWeight: 900,
+                  borderRadius: "14px",
+                  background:
+                    rideMode === "now"
+                      ? "linear-gradient(135deg,#D2A43A 0%,#F8D879 100%)"
+                      : "linear-gradient(180deg,#FFFDF7 0%,#F2E5C9 100%)",
+                  color: "#111111",
+                  border:
+                    rideMode === "now"
+                      ? "2px solid #B98517"
+                      : "1.5px solid rgba(138,100,28,.42)",
+                  boxShadow:
+                    rideMode === "now"
+                      ? "0 10px 22px rgba(210,164,58,.28)"
+                      : "0 6px 14px rgba(17,24,39,.08)",
+                  fontWeight: 950,
                   letterSpacing: ".03em",
+                  textShadow: "none",
+                  opacity: 1,
                 }}
               >
                 AHORA
@@ -5823,6 +5986,8 @@ return (
 
               <button
                 type="button"
+                role="tab"
+                aria-selected={rideMode === "scheduled"}
                 onClick={() => {
                   setRideMode("scheduled");
                   clearRoundTripPromotion();
@@ -5836,17 +6001,26 @@ return (
                   setSubmitError(null);
                 }}
                 style={{
-                  background: "transparent",
-                  color:
-                    rideMode === "scheduled" ? "#4fa3d9" : "rgba(246,242,236,.52)",
-                  border: "0",
-                  borderBottom:
-                    rideMode === "scheduled"
-                      ? "2px solid #4fa3d9"
-                      : "1px solid #333",
+                  minHeight: "48px",
                   padding: "12px",
-                  fontWeight: 900,
+                  borderRadius: "14px",
+                  background:
+                    rideMode === "scheduled"
+                      ? "linear-gradient(135deg,#D2A43A 0%,#F8D879 100%)"
+                      : "linear-gradient(180deg,#FFFDF7 0%,#F2E5C9 100%)",
+                  color: "#111111",
+                  border:
+                    rideMode === "scheduled"
+                      ? "2px solid #B98517"
+                      : "1.5px solid rgba(138,100,28,.42)",
+                  boxShadow:
+                    rideMode === "scheduled"
+                      ? "0 10px 22px rgba(210,164,58,.28)"
+                      : "0 6px 14px rgba(17,24,39,.08)",
+                  fontWeight: 950,
                   letterSpacing: ".03em",
+                  textShadow: "none",
+                  opacity: 1,
                 }}
               >
                 AGENDAR
@@ -5865,6 +6039,7 @@ return (
             >
               <button
                 type="button"
+                aria-pressed={!selectedRoundTripPromotion}
                 onClick={() => {
                   clearRoundTripPromotion();
                 }}
@@ -5921,6 +6096,7 @@ return (
                   <button
                     key={category}
                     type="button"
+                    aria-pressed={active}
                     onClick={() => {
                       setVehicleCategory(category);
                       setSubmitError(null);

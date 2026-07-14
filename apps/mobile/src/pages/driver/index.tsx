@@ -81,6 +81,221 @@ const RAPAGO_DRIVER_NO_SHOW_TOTAL_SERVICE_CHARGE = true;
 const RAPAGO_PASSENGER_PENDING_CHARGES_KEY_DRIVER = "rapago_passenger_pending_charges_v1";
 const RAPAGO_PASSENGER_PENDING_CHARGE_EVENT_DRIVER = "rapago:passenger-pending-charge-updated";
 
+const RAPAGO_DRIVER_NO_SHOW_COMPLETED_RIDES_KEY = "rapago_driver_no_show_completed_rides_v1";
+
+function readDriverNoShowCompletedRides(): Array<Record<string, unknown>> {
+  try {
+    const raw = localStorage.getItem(RAPAGO_DRIVER_NO_SHOW_COMPLETED_RIDES_KEY);
+    const parsed = raw ? (JSON.parse(raw) as Array<Record<string, unknown>>) : [];
+    return Array.isArray(parsed) ? parsed.filter((item) => item && typeof item === "object") : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveDriverNoShowCompletedRides(records: Array<Record<string, unknown>>): void {
+  try {
+    localStorage.setItem(
+      RAPAGO_DRIVER_NO_SHOW_COMPLETED_RIDES_KEY,
+      JSON.stringify(records.slice(0, 200)),
+    );
+  } catch {
+    // No bloquea UI.
+  }
+}
+
+function normalizeDriverNoShowIdentityValue(value: unknown): string {
+  return String(value ?? "")
+    .normalize("NFD")
+    .replace(/[\\u0300-\\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
+function getDriverNoShowIdentityValues(ride: Record<string, unknown>): string[] {
+  return [
+    ride.id,
+    ride.rideId,
+    ride.originalRideId,
+    ride.serverRideId,
+    ride.requestId,
+    ride.paymentId,
+  ]
+    .map((value) => String(value ?? "").trim())
+    .filter(Boolean);
+}
+
+function getDriverNoShowRouteKey(ride: Record<string, unknown>): string {
+  return [
+    ride.originText,
+    ride.destinationText,
+    ride.passengerEmail,
+    ride.passengerPhone,
+    ride.scheduledAt,
+    ride.scheduledPickupAt,
+    ride.requestedAt,
+    ride.createdAt,
+  ]
+    .map(normalizeDriverNoShowIdentityValue)
+    .filter(Boolean)
+    .join("|");
+}
+
+function driverRideNoShowCompletedIdentityMatches(
+  a: Record<string, unknown>,
+  b: Record<string, unknown>,
+): boolean {
+  const aIds = getDriverNoShowIdentityValues(a);
+  const bIds = new Set(getDriverNoShowIdentityValues(b));
+
+  if (aIds.length > 0 && aIds.some((id) => bIds.has(id))) return true;
+
+  const aRoute = getDriverNoShowRouteKey(a);
+  const bRoute = getDriverNoShowRouteKey(b);
+
+  return Boolean(aRoute && bRoute && aRoute === bRoute);
+}
+
+function wasDriverRideNoShowCompletedLocally(
+  ride: Record<string, unknown>,
+  _user?: unknown,
+): boolean {
+  return readDriverNoShowCompletedRides().some((record) =>
+    driverRideNoShowCompletedIdentityMatches(record, ride),
+  );
+}
+
+function clearDriverNoShowActiveStorageEverywhere(closedRide: Record<string, unknown>): void {
+  const objectKeys = [
+    "rapago_last_accepted_ride",
+    "rapago_driver_active_ride",
+    "rapago_driver_active_ride_v1",
+    "rapago_current_driver_location",
+  ];
+
+  for (const key of objectKeys) {
+    try {
+      const raw = localStorage.getItem(key);
+      if (!raw) {
+        localStorage.removeItem(key);
+        continue;
+      }
+
+      const parsed = JSON.parse(raw) as unknown;
+      const record =
+        parsed && typeof parsed === "object" && "ride" in (parsed as Record<string, unknown>)
+          ? (parsed as Record<string, unknown>).ride
+          : parsed;
+
+      if (
+        record &&
+        typeof record === "object" &&
+        driverRideNoShowCompletedIdentityMatches(record as Record<string, unknown>, closedRide)
+      ) {
+        localStorage.removeItem(key);
+      }
+    } catch {
+      localStorage.removeItem(key);
+    }
+  }
+
+  const activeListKeys = [
+    "rapago_local_driver_assigned_rides",
+    "rapago_driver_scheduled_queue",
+    "rapago_driver_active_rides_v1",
+  ];
+
+  for (const key of activeListKeys) {
+    try {
+      const raw = localStorage.getItem(key);
+      const parsed = raw ? (JSON.parse(raw) as Array<Record<string, unknown>>) : [];
+      if (!Array.isArray(parsed)) continue;
+
+      localStorage.setItem(
+        key,
+        JSON.stringify(
+          parsed
+            .filter((item) => !driverRideNoShowCompletedIdentityMatches(item, closedRide))
+            .slice(0, 200),
+        ),
+      );
+    } catch {
+      // No bloquea UI.
+    }
+  }
+
+  try {
+    const historyKey = "rapago_driver_my_rides_v1";
+    const raw = localStorage.getItem(historyKey);
+    const parsed = raw ? (JSON.parse(raw) as Array<Record<string, unknown>>) : [];
+    const safeList = Array.isArray(parsed) ? parsed : [];
+
+    const next = [
+      closedRide,
+      ...safeList.filter((item) => !driverRideNoShowCompletedIdentityMatches(item, closedRide)),
+    ].slice(0, 200);
+
+    localStorage.setItem(historyKey, JSON.stringify(next));
+  } catch {
+    // No bloquea historial local.
+  }
+}
+
+function markDriverRideNoShowCompletedLocally(
+  ride: DriverRideData & Record<string, unknown>,
+  user?: unknown,
+): DriverRideData & Record<string, unknown> {
+  const closedAt = new Date().toISOString();
+
+  const closedRide = {
+    ...ride,
+    status: "completed",
+    completedAt: String(ride.completedAt ?? closedAt),
+    closedByDriverAt: String(ride.closedByDriverAt ?? closedAt),
+    driverClosedAt: String(ride.driverClosedAt ?? closedAt),
+    driverNoShowClosed: true,
+    noShowConfirmedByDriver: true,
+    noShowConfirmedAt: String(ride.noShowConfirmedAt ?? closedAt),
+    cancelledByRole: "driver_no_show",
+    cancelledBy: "driver_no_show",
+    cancellationReason: "No show: pasajero no se presento tras 5 minutos de espera.",
+    driverFinalState: "no_show_completed",
+  } as DriverRideData & Record<string, unknown>;
+
+  const previous = readDriverNoShowCompletedRides();
+  saveDriverNoShowCompletedRides([
+    closedRide as unknown as Record<string, unknown>,
+    ...previous.filter(
+      (item) =>
+        !driverRideNoShowCompletedIdentityMatches(
+          item,
+          closedRide as unknown as Record<string, unknown>,
+        ),
+    ),
+  ]);
+
+  clearDriverNoShowActiveStorageEverywhere(closedRide as unknown as Record<string, unknown>);
+
+  try {
+    markDriverRideCancelledLocally(
+      {
+        ...(closedRide as unknown as Record<string, unknown>),
+        status: "cancelled",
+        cancelledByRole: "driver_no_show",
+        requeuedReason: "driver_no_show",
+      },
+      user,
+    );
+  } catch {
+    // Solo se usa como supresion local del activo.
+  }
+
+  return closedRide;
+}
+
+
+
 function getRapaGoConnectivityProbeUrl(): string {
   const env = import.meta.env as Record<string, string | undefined>;
   const raw = String(env.VITE_API_BASE_URL || env.VITE_API_URL || "/api").trim();
@@ -618,28 +833,6 @@ function openGoogleNavigation(
     origin,
     destination,
   });
-} | null,
-  destination: { lat: number; lng: number },
-): void {
-  const destinationParam = `${destination.lat},${destination.lng}`;
-  const params = new URLSearchParams({
-    api: "1",
-    destination: destinationParam,
-    travelmode: "driving",
-    dir_action: "navigate",
-  });
-
-  if (origin) {
-    params.set("origin", `${origin.lat},${origin.lng}`);
-  }
-
-  const url = `https://www.google.com/maps/dir/?${params.toString()}`;
-
-  try {
-    window.location.assign(url);
-  } catch {
-    window.open(url, "_blank", "noopener,noreferrer");
-  }
 }
 
 function isInsideRapaNui(point: { lat: number; lng: number } | null): boolean {
@@ -8806,40 +8999,212 @@ function notifyPassengerDriverArrivedByAppAndWhatsapp(ride: DriverRideData): voi
 function notifyPassengerNoShowByAppAndWhatsapp(ride: DriverRideData, feeClp: number): void {
   const record = ride as DriverRideData & Record<string, unknown>;
   const now = new Date().toISOString();
+  const amountClp = Math.max(0, Math.round(Number(feeClp) || 0));
+
+  const rideId = String(
+    record.id ??
+    record.rideId ??
+    record.originalRideId ??
+    record.serverRideId ??
+    "",
+  ).trim();
+
+  const rideKey = [
+    String(record.passengerEmail ?? record.email ?? "").trim().toLowerCase(),
+    String(record.originText ?? "").trim().toLowerCase(),
+    String(record.destinationText ?? "").trim().toLowerCase(),
+    String(record.scheduledAt ?? record.scheduledPickupAt ?? record.requestedAt ?? record.createdAt ?? "").trim(),
+  ].filter(Boolean).join("|");
+
+  const noShowRideId = rideId || rideKey || `no-show-${Date.now()}`;
+
+  const title = "No show registrado";
+  const body =
+    `Tu conductor te esper? 5 minutos en el punto de recogida y no te presentaste. ` +
+    `El viaje fue cerrado como No show. Monto referencial: ${formatClp(amountClp)}. ` +
+    `Este cargo queda en revisi?n del administrador; si se aprueba, se cobrar? en tu pr?ximo viaje.`;
+
   const notification = {
-    id: `no-show-warning-${String(record.id ?? record.rideId ?? Date.now())}`,
-    rideId: String(record.id ?? record.rideId ?? ""),
-    type: "no_show_warning",
-    title: "Tu conductor llegó al punto",
-    body: `El conductor notificó llegada y esperó 5 minutos. Si no estás en el punto, se marcará NO SHOW y se cobrará el total del servicio: ${formatClp(feeClp)}.`,
+    id: `driver-no-show-confirmed-${noShowRideId}`,
+    rideId: noShowRideId,
+    type: "driver_no_show_confirmed",
+    title,
+    body,
     createdAt: now,
     read: false,
+  };
+
+  const noShowRide = {
+    ...record,
+    id: noShowRideId,
+    rideId: noShowRideId,
+    status: "completed",
+    completedAt: now,
+    closedByDriverAt: now,
+    driverClosedAt: now,
+    driverNoShowClosed: true,
+    noShowCompleted: true,
+    noShowConfirmedByDriver: true,
+    noShowConfirmedAt: now,
+    noShowChargeClp: amountClp,
+    noShowAdminReviewStatus: "pending_admin_review",
+    adminReviewStatus: "backend_review_required",
+    pendingAdminNoShowReview: true,
+    passengerNotice: body,
+    passengerNotification: body,
+    passengerNoShowMessage: body,
+    cancelledByRole: "driver_no_show",
+    cancelledBy: "driver_no_show",
+    cancellationReason: "No show: pasajero no se present? tras 5 minutos de espera.",
+    driverFinalState: "no_show_completed",
+    shouldHideActiveMap: true,
+    localStorageFinancialAuthority: false,
+  };
+
+  const pendingCharge = {
+    id: `no-show-review-${noShowRideId}`,
+    rideId: noShowRideId,
+    rideKey,
+    passengerEmail: String(record.passengerEmail ?? record.email ?? "").trim() || null,
+    passengerName: String(record.passengerName ?? record.userName ?? record.name ?? "").trim() || null,
+    originText: String(record.originText ?? ""),
+    destinationText: String(record.destinationText ?? ""),
+    amountClp,
+    type: "no_show",
+    paymentMethod: String(record.paymentMethod ?? record.paymentType ?? ""),
+    status: "backend_review_required",
+    adminReviewStatus: "pending_admin_review",
+    title: "No show pendiente de revisi?n",
+    description: body,
+    createdAt: now,
+    appliedRideId: null,
+    appliedAt: null,
+    approvedAt: null,
+    approvedBy: null,
+    rejectedAt: null,
+    rejectedBy: null,
+    localStorageFinancialAuthority: false,
+    backendAuthorityRequired: true,
+    source: "driver_no_show",
   };
 
   try {
     const raw = localStorage.getItem("rapago_passenger_notifications_v1");
     const parsed = raw ? (JSON.parse(raw) as Array<Record<string, unknown>>) : [];
     const current = Array.isArray(parsed) ? parsed : [];
-    localStorage.setItem(
-      "rapago_passenger_notifications_v1",
-      JSON.stringify([
-        notification,
-        ...current.filter((item) => String(item.id ?? "") !== notification.id),
-      ].slice(0, 100)),
-    );
-    window.dispatchEvent(new CustomEvent("rapago:passenger-notifications-updated", { detail: { notification } }));
-    window.dispatchEvent(new CustomEvent("rapago:passenger-rides-updated", { detail: { ride, notification } }));
+
+    const nextNotifications = [
+      notification,
+      ...current.filter((item) => item.id !== notification.id),
+    ].slice(0, 100);
+
+    localStorage.setItem("rapago_passenger_notifications_v1", JSON.stringify(nextNotifications));
   } catch {
-    // No bloquea el no show.
+    // No bloquea No show.
   }
 
-  const url = buildDriverNoShowWhatsappUrl(ride, feeClp);
-  if (url) {
+  try {
+    const raw = localStorage.getItem("rapago_passenger_no_show_completed_rides_v1");
+    const parsed = raw ? (JSON.parse(raw) as Array<Record<string, unknown>>) : [];
+    const current = Array.isArray(parsed) ? parsed : [];
+
+    const next = [
+      noShowRide,
+      ...current.filter((item) => !driverRideIdentityMatches(item, record)),
+    ].slice(0, 200);
+
+    localStorage.setItem("rapago_passenger_no_show_completed_rides_v1", JSON.stringify(next));
+  } catch {
+    // No bloquea No show.
+  }
+
+  try {
+    const raw = localStorage.getItem("rapago_passenger_pending_charges_v1");
+    const parsed = raw ? (JSON.parse(raw) as Array<Record<string, unknown>>) : [];
+    const current = Array.isArray(parsed) ? parsed : [];
+
+    const nextCharges = [
+      pendingCharge,
+      ...current.filter((item) => String(item.id ?? "") !== String(pendingCharge.id)),
+    ].slice(0, 250);
+
+    localStorage.setItem("rapago_passenger_pending_charges_v1", JSON.stringify(nextCharges));
+  } catch {
+    // No bloquea No show.
+  }
+
+  const passengerRideKeys = [
+    "rapago_local_passenger_rides",
+    "rapago_driver_accepted_vehicle_rides_v1",
+    "rapago_driver_accepted_rides_v1",
+    "rapago_admin_scheduled_rides",
+    "rapago_admin_scheduled_rides_v1",
+    "rapago_admin_scheduled_rides_v2",
+    "rapago_admin_scheduled_rides_force_v1",
+    "rapago_bridge_scheduled_rides_v1",
+  ];
+
+  for (const key of passengerRideKeys) {
     try {
-      window.open(url, "_blank", "noopener,noreferrer");
+      const raw = localStorage.getItem(key);
+      const parsed = raw ? (JSON.parse(raw) as Array<Record<string, unknown>>) : [];
+      const current = Array.isArray(parsed) ? parsed : [];
+
+      let found = false;
+      const next = current.map((item) => {
+        if (!driverRideIdentityMatches(item, record)) return item;
+        found = true;
+        return {
+          ...item,
+          ...noShowRide,
+          status: "completed",
+          shouldHideActiveMap: true,
+        };
+      });
+
+      if (!found && key === "rapago_local_passenger_rides") {
+        next.unshift(noShowRide);
+      }
+
+      localStorage.setItem(key, JSON.stringify(next.slice(0, 220)));
     } catch {
-      // Si el navegador bloquea popups, queda al menos la notificación por app.
+      // No bloquea No show.
     }
+  }
+
+  try {
+    window.dispatchEvent(new CustomEvent("rapago:passenger-notifications-updated", {
+      detail: { notification, ride: noShowRide, pendingCharge, noShowCompleted: true },
+    }));
+
+    window.dispatchEvent(new CustomEvent("rapago:passenger-rides-updated", {
+      detail: { ride: noShowRide, notification, pendingCharge, noShowCompleted: true },
+    }));
+
+    window.dispatchEvent(new CustomEvent("rapago:passenger-pending-charge-updated", {
+      detail: { charge: pendingCharge, ride: noShowRide, backendAuthorityRequired: true },
+    }));
+
+    window.dispatchEvent(new CustomEvent("rapago:admin-passenger-pending-charge-updated", {
+      detail: { charge: pendingCharge, ride: noShowRide, backendAuthorityRequired: true },
+    }));
+
+    window.dispatchEvent(new CustomEvent("rapago:admin-rides-updated", {
+      detail: { charge: pendingCharge, ride: noShowRide, noShowCompleted: true },
+    }));
+
+    window.dispatchEvent(new CustomEvent("rapago:wallet-updated", {
+      detail: { charge: pendingCharge, ride: noShowRide, backendAuthorityRequired: true },
+    }));
+  } catch {
+    // No bloquea No show.
+  }
+
+  try {
+    const url = buildDriverNoShowWhatsappUrl(ride, amountClp);
+    if (url) localStorage.setItem("rapago_driver_last_no_show_whatsapp_url", url);
+  } catch {
+    // WhatsApp queda manual, no se abre autom?tico.
   }
 }
 
@@ -12303,7 +12668,7 @@ function AssignedRidesPage(): JSX.Element {
     clearDriverActiveRideLocalMirrors(cancelledRide);
 
     setAssignedRides((prev) =>
-      prev.filter((item) => !wasDriverRideCancelledLocally(item as unknown as Record<string, unknown>, session?.user)),
+      prev.filter((item) => (!wasDriverRideCancelledLocally(item as unknown as Record<string, unknown>, session?.user) && !wasDriverRideNoShowCompletedLocally(item as unknown as Record<string, unknown>, session?.user))),
     );
     setCancelConfirmRide(null);
     setError(null);
@@ -12336,7 +12701,7 @@ function AssignedRidesPage(): JSX.Element {
               item as unknown as Record<string, unknown>,
               requeued as unknown as Record<string, unknown>,
             ) &&
-            !wasDriverRideCancelledLocally(item as unknown as Record<string, unknown>, session?.user),
+            (!wasDriverRideCancelledLocally(item as unknown as Record<string, unknown>, session?.user) && !wasDriverRideNoShowCompletedLocally(item as unknown as Record<string, unknown>, session?.user)),
         ),
       );
     }
@@ -12373,25 +12738,98 @@ function AssignedRidesPage(): JSX.Element {
 
     try {
       notifyPassengerNoShowByAppAndWhatsapp(ride, noShowState.feeClp);
+
       const charge = saveDriverNoShowChargeForPassenger(ride, session?.user);
       markPassengerRideNoShowCancelledFromDriver(ride, charge);
       clearDriverNoShowTimer(ride as DriverRideData & Record<string, unknown>);
 
-      clearDriverLiveLocationForPassenger(rideId);
-      removeDriverActiveRideLocalMirror({ ...(ride as unknown as Record<string, unknown>), status: "cancelled", cancelledByRole: "driver_no_show" }, session?.user);
-      setAssignedRides((prev) => prev.filter((item) => item.id !== rideId));
+      const noShowClosedRide = markDriverRideNoShowCompletedLocally(
+        {
+          ...(ride as unknown as Record<string, unknown>),
+          id: rideId,
+          noShowChargeClp: Number(charge.amountClp ?? noShowState.feeClp ?? 0),
+        } as unknown as DriverRideData & Record<string, unknown>,
+        session?.user,
+      );
 
-      if (session?.accessToken) {
-        try {
-          await ridesService.cancelAcceptedRide(session.accessToken, rideId);
-        } catch {
-          // El cargo local y el aviso al pasajero quedan guardados aunque el backend responda distinto.
-        }
+      try {
+        clearDriverLiveLocationForPassenger(rideId);
+      } catch {
+        // No bloquea cierre visual.
       }
 
-      window.dispatchEvent(new CustomEvent("rapago:driver-rides-updated", { detail: { rideId, status: "cancelled", noShow: true, charge } }));
-      setError(`No show registrado. Se notificó por app/WhatsApp y se aplicó cobro total del servicio: ${formatClp(Number(charge.amountClp ?? 0))}.`);
-      window.setTimeout(() => void loadRides(), 450);
+      try {
+        clearDriverActiveRideLocalMirrors(noShowClosedRide);
+      } catch {
+        // No bloquea cierre visual.
+      }
+
+      try {
+        removeDriverActiveRideLocalMirror(noShowClosedRide as unknown as Record<string, unknown>, session?.user);
+      } catch {
+        // No bloquea cierre visual.
+      }
+
+
+      setAssignedRides((prev) =>
+        prev.filter(
+          (item) =>
+            !driverRideNoShowCompletedIdentityMatches(
+              item as unknown as Record<string, unknown>,
+              noShowClosedRide as unknown as Record<string, unknown>,
+            ),
+        ),
+      );
+
+      
+
+      
+
+
+      if (session?.accessToken) {
+        void ridesService.cancelAcceptedRide(session.accessToken, rideId).catch(() => {
+          // Aunque backend falle, el conductor no debe quedar pegado con el mapa.
+        });
+      }
+
+      window.dispatchEvent(
+        new CustomEvent("rapago:driver-active-ride-cancelled", {
+          detail: {
+            rideId,
+            ride: noShowClosedRide,
+            status: "completed",
+            reason: "driver_no_show",
+            noShowCompleted: true,
+          },
+        }),
+      );
+
+      window.dispatchEvent(
+        new CustomEvent("rapago:driver-rides-updated", {
+          detail: {
+            rideId,
+            status: "completed",
+            reason: "driver_no_show",
+            noShowCompleted: true,
+          },
+        }),
+      );
+
+      window.dispatchEvent(
+        new CustomEvent("rapago:driver-available-rides-updated", {
+          detail: {
+            rideId,
+            status: "completed",
+            reason: "driver_no_show",
+            noShowCompleted: true,
+          },
+        }),
+      );
+
+      setError("No show registrado. El viaje fue cerrado y retirado de tus viajes activos.");
+    } catch (err) {
+      console.error("[RAPA GO] Error cerrando No show", err);
+      setError(err instanceof Error ? err.message : "No se pudo cerrar el No show.");
     } finally {
       setAcceptingId(null);
     }
@@ -14584,7 +15022,20 @@ function DriverMyRidesPage(): JSX.Element {
 
     try {
       const data = await ridesService.listDriverRides(session.accessToken);
-      setRides(data);
+      const noShowCompleted = readDriverNoShowCompletedRides() as unknown as DriverRideData[];
+      const merged = [
+        ...noShowCompleted,
+        ...data.filter(
+          (ride) =>
+            !noShowCompleted.some((closedRide) =>
+              driverRideNoShowCompletedIdentityMatches(
+                closedRide as unknown as Record<string, unknown>,
+                ride as unknown as Record<string, unknown>,
+              ),
+            ),
+        ),
+      ];
+      setRides(merged);
     } catch (err) {
       setLoadError(
         err instanceof Error ? err.message : "Error al cargar tus viajes.",
@@ -14601,7 +15052,7 @@ function DriverMyRidesPage(): JSX.Element {
   const activeRide = rides.find((ride) =>
     ["accepted", "driver_en_route", "driver_arrived", "in_progress"].includes(
       ride.status,
-    ) && !wasDriverRideCancelledLocally(ride as unknown as Record<string, unknown>, session?.user),
+    ) && (!wasDriverRideCancelledLocally(ride as unknown as Record<string, unknown>, session?.user) && !wasDriverRideNoShowCompletedLocally(ride as unknown as Record<string, unknown>, session?.user)),
   );
 
   const historyRides = rides.filter(
@@ -14795,40 +15246,99 @@ function DriverMyRidesPage(): JSX.Element {
 
     try {
       notifyPassengerNoShowByAppAndWhatsapp(ride, noShowState.feeClp);
+
       const charge = saveDriverNoShowChargeForPassenger(ride, session?.user);
       markPassengerRideNoShowCancelledFromDriver(ride, charge);
       clearDriverNoShowTimer(ride as DriverRideData & Record<string, unknown>);
 
-      clearDriverLiveLocationForPassenger(rideId);
-      removeDriverActiveRideLocalMirror(
+      const noShowClosedRide = markDriverRideNoShowCompletedLocally(
         {
           ...(ride as unknown as Record<string, unknown>),
-          status: "cancelled",
-          cancelledByRole: "driver_no_show",
-          cancelledBy: "driver",
-          cancellationReason: "No show registrado por conductor.",
-        },
+          id: rideId,
+          noShowChargeClp: Number(charge.amountClp ?? noShowState.feeClp ?? 0),
+        } as unknown as DriverRideData & Record<string, unknown>,
         session?.user,
       );
 
-      setRides((prev) => prev.filter((item) => item.id !== rideId));
+      try {
+        clearDriverLiveLocationForPassenger(rideId);
+      } catch {
+        // No bloquea cierre visual.
+      }
+
+      try {
+        clearDriverActiveRideLocalMirrors(noShowClosedRide);
+      } catch {
+        // No bloquea cierre visual.
+      }
+
+      try {
+        removeDriverActiveRideLocalMirror(noShowClosedRide as unknown as Record<string, unknown>, session?.user);
+      } catch {
+        // No bloquea cierre visual.
+      }
+
+
+      
+
+      
+
+      setRides((prev) => [
+        noShowClosedRide,
+        ...prev.filter(
+          (item) =>
+            !driverRideNoShowCompletedIdentityMatches(
+              item as unknown as Record<string, unknown>,
+              noShowClosedRide as unknown as Record<string, unknown>,
+            ),
+        ),
+      ]);
+
 
       if (session?.accessToken) {
-        try {
-          await ridesService.cancelAcceptedRide(session.accessToken, rideId);
-        } catch {
-          // El cargo local y el aviso al pasajero quedan guardados aunque el backend responda distinto.
-        }
+        void ridesService.cancelAcceptedRide(session.accessToken, rideId).catch(() => {
+          // Aunque backend falle, el conductor no debe quedar pegado con el mapa.
+        });
       }
 
       window.dispatchEvent(
-        new CustomEvent("rapago:driver-rides-updated", {
-          detail: { rideId, status: "cancelled", noShow: true, charge },
+        new CustomEvent("rapago:driver-active-ride-cancelled", {
+          detail: {
+            rideId,
+            ride: noShowClosedRide,
+            status: "completed",
+            reason: "driver_no_show",
+            noShowCompleted: true,
+          },
         }),
       );
 
-      setLoadError(`No show registrado. Se notificó por app/WhatsApp y se aplicó cobro total del servicio: ${formatClp(Number(charge.amountClp ?? 0))}.`);
-      window.setTimeout(() => void loadRides(), 450);
+      window.dispatchEvent(
+        new CustomEvent("rapago:driver-rides-updated", {
+          detail: {
+            rideId,
+            status: "completed",
+            reason: "driver_no_show",
+            noShowCompleted: true,
+          },
+        }),
+      );
+
+      window.dispatchEvent(
+        new CustomEvent("rapago:driver-available-rides-updated", {
+          detail: {
+            rideId,
+            status: "completed",
+            reason: "driver_no_show",
+            noShowCompleted: true,
+          },
+        }),
+      );
+
+      setLoadError("No show registrado. El viaje fue cerrado y retirado de tus viajes activos.");
+    } catch (err) {
+      console.error("[RAPA GO] Error cerrando No show", err);
+      setLoadError(err instanceof Error ? err.message : "No se pudo cerrar el No show.");
     } finally {
       setActionLoading(null);
     }

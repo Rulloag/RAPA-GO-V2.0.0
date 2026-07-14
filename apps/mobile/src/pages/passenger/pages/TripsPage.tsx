@@ -63,6 +63,94 @@ const RAPAGO_REQUEUED_RIDES_KEY = "rapago_requeued_available_rides_v1";
 const RAPAGO_REQUEUED_PASSENGER_FORCE_KEY = "rapago_requeued_passenger_visible_rides_v1";
 const RAPAGO_REQUEUED_RIDES_EVENT = "rapago:ride-requeued-after-driver-cancel";
 
+const RAPAGO_PASSENGER_NO_SHOW_COMPLETED_RIDES_KEY = "rapago_passenger_no_show_completed_rides_v1";
+
+function normalizePassengerNoShowCompletedValue(value: unknown): string {
+  return String(value ?? "")
+    .normalize("NFD")
+    .replace(/[\\u0300-\\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
+function getPassengerNoShowCompletedIds(ride: Record<string, unknown>): string[] {
+  return [
+    ride.id,
+    ride.rideId,
+    ride.originalRideId,
+    ride.serverRideId,
+    ride.requestId,
+  ]
+    .map((value) => String(value ?? "").trim())
+    .filter(Boolean);
+}
+
+function getPassengerNoShowCompletedRouteKey(ride: Record<string, unknown>): string {
+  return [
+    ride.passengerEmail,
+    ride.email,
+    ride.originText,
+    ride.destinationText,
+    ride.scheduledAt,
+    ride.scheduledPickupAt,
+    ride.requestedAt,
+    ride.createdAt,
+  ]
+    .map(normalizePassengerNoShowCompletedValue)
+    .filter(Boolean)
+    .join("|");
+}
+
+function passengerNoShowCompletedRideMatches(
+  a: Record<string, unknown>,
+  b: Record<string, unknown>,
+): boolean {
+  const aIds = getPassengerNoShowCompletedIds(a);
+  const bIds = new Set(getPassengerNoShowCompletedIds(b));
+
+  if (aIds.length > 0 && aIds.some((id) => bIds.has(id))) return true;
+
+  const aRoute = getPassengerNoShowCompletedRouteKey(a);
+  const bRoute = getPassengerNoShowCompletedRouteKey(b);
+
+  return Boolean(aRoute && bRoute && aRoute === bRoute);
+}
+
+function readPassengerNoShowCompletedRides(): Array<Record<string, unknown>> {
+  try {
+    const raw = localStorage.getItem(RAPAGO_PASSENGER_NO_SHOW_COMPLETED_RIDES_KEY);
+    const parsed = raw ? (JSON.parse(raw) as Array<Record<string, unknown>>) : [];
+    return Array.isArray(parsed) ? parsed.filter((item) => item && typeof item === "object") : [];
+  } catch {
+    return [];
+  }
+}
+
+function isPassengerNoShowCompletedRide(ride: RideRequestData | Record<string, unknown>): boolean {
+  const record = ride as Record<string, unknown>;
+
+  if (
+    record.driverNoShowClosed === true ||
+    record.noShowCompleted === true ||
+    record.noShowConfirmedByDriver === true ||
+    String(record.driverFinalState ?? "") === "no_show_completed" ||
+    String(record.cancelledByRole ?? record.cancelledBy ?? "").toLowerCase().includes("driver_no_show")
+  ) {
+    return true;
+  }
+
+  return readPassengerNoShowCompletedRides().some((item) =>
+    passengerNoShowCompletedRideMatches(item, record),
+  );
+}
+
+function getPassengerNoShowCompletedEffectiveStatus(ride: RideRequestData): string {
+  if (isPassengerNoShowCompletedRide(ride)) return "completed";
+  return getEffectivePassengerRideStatus(ride);
+}
+
+
 
 type RapaGoDriverRatingRecord = {
   id: string;
@@ -7115,7 +7203,7 @@ export default function TripsPage(): JSX.Element {
   }, [allRides, ratedIds, session?.user]);
 
   const filteredBeforePagination = allRides.filter((r) => {
-    const effectiveStatus = getEffectivePassengerRideStatus(r);
+    const effectiveStatus = getPassengerNoShowCompletedEffectiveStatus(r);
 
     if (statusFilter === "all")       return true;
     if (statusFilter === "active")    return ACTIVE_STATUSES.includes(effectiveStatus);
@@ -7284,9 +7372,9 @@ export default function TripsPage(): JSX.Element {
 
   const counts = {
     all:       allRides.length,
-    active:    allRides.filter((r) => ACTIVE_STATUSES.includes(getEffectivePassengerRideStatus(r))).length,
-    completed: allRides.filter((r) => getEffectivePassengerRideStatus(r) === "completed").length,
-    cancelled: allRides.filter((r) => getEffectivePassengerRideStatus(r) === "cancelled").length,
+    active:    allRides.filter((r) => ACTIVE_STATUSES.includes(getPassengerNoShowCompletedEffectiveStatus(r))).length,
+    completed: allRides.filter((r) => getPassengerNoShowCompletedEffectiveStatus(r) === "completed").length,
+    cancelled: allRides.filter((r) => getPassengerNoShowCompletedEffectiveStatus(r) === "cancelled").length,
   };
 
   const hasMore = page * PAGE_SIZE < filteredBeforePagination.length;
