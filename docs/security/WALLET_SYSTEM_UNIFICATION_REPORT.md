@@ -148,21 +148,68 @@ todas las coincidencias corresponden a (a) la fachada de compatibilidad del endp
 proponer al admin, pero ya no crea dinero por sí mismo — la creación real siempre pasa por el
 ledger. Ninguna coincidencia representa un segundo backend financiero activo.
 
-## Riesgos residuales
+## Riesgos residuales (previos a este cierre)
 
-1. **Idempotencia cruzada entre endpoints no garantizada.** `POST /admin/wallet-transactions`
-   (ledger nativo, requiere `idempotencyKey` explícita del cliente) y `POST /admin/wallet/credits`
-   (legacy, deriva su propia clave) usan esquemas de idempotencia distintos. Si un admin usa
-   ambos endpoints para lo que considera "la misma" operación, podrían generarse dos créditos
-   legítimos (cada uno correctamente idempotente dentro de su propio endpoint, pero no entre
-   ambos). Mitigación futura: derivar la idempotencyKey del ledger nativo también a partir de
-   campos de negocio cuando no se provea explícitamente, igual que se hizo en el endpoint legacy.
+1. ~~**Idempotencia cruzada entre endpoints no garantizada.**~~ **RESUELTO** — ver §11 (Clave
+   canónica de operación) más abajo.
 2. **Umbral de aprobación ($3.000 CLP) sin confirmación formal del equipo** — implementado como
-   configurable y documentado, no como política aprobada.
+   configurable y documentado, no como política aprobada. Sigue abierto, riesgo MEDIO (no
+   bloqueante: el valor es una propuesta razonable ya documentada, con transición controlada si
+   cambia).
 3. El frontend (`admin/index.tsx`, `WalletPage.tsx`, etc.) sigue sin migrar a los endpoints del
    ledger — fuera de alcance de esta fase, ya documentado en fases anteriores.
 4. `transactions`/`wallets.balance` para pagos reales (MercadoPago/webhook) no se tocaron —
    dominio separado, coexiste sin conflicto con el ledger de créditos.
+
+## §11 — Cierre del riesgo residual: idempotencia canónica entre endpoints
+
+Se creó `buildWalletCreditOperationKey(...)` (`walletPolicy.constants.ts`), una función pura
+compartida por `WalletService.adminCreateWalletCredit` (endpoint legacy) y
+`WalletTransactionsService.createCredit` (endpoint nativo del ledger). Ambos calculan la misma
+clave de idempotencia a partir de **campos de dominio exclusivamente** — nunca del motivo/texto
+libre:
+
+```text
+credit:sha256(operationType|userId|rideId|paymentId|source|amountClp|policyVersion|externalReference)
+```
+
+- `externalReference` (o `idempotencyKey` como alias retrocompatible en el DTO del ledger) es el
+  token que el admin usa para distinguir explícitamente una operación de otra. Si se omite, se usa
+  un centinela fijo (`"no-reference"`, NO aleatorio) — así una solicitud repetida sin token
+  explícito (doble clic, retry de red) sigue detectándose como el mismo movimiento.
+- El motivo/descripción **nunca** forma parte de la clave — cambiar el texto no genera un
+  crédito nuevo ni impide detectar un duplicado.
+- `reverseTransaction` usa su propia clave (`reversal:<idOriginal>`, ya existente desde Fase 4B)
+  con un `operationType` implícito distinto (`type=reversal` en vez de `admin_wallet_credit`), así
+  que nunca colisiona con el crédito que revierte.
+
+Ambos endpoints comparten la misma tabla (`wallet_transactions_ledger`) y la misma restricción
+`UNIQUE(idempotency_key)` — por lo tanto, una operación equivalente enviada por cualquiera de los
+dos endpoints, en cualquier orden, o de forma concurrente, produce como máximo un movimiento.
+
+### Pruebas nuevas — `walletCreditIdempotencyAcrossEndpoints.test.ts`
+
+Instancia `WalletService` y `WalletTransactionsService` reales contra un repositorio simulado
+compartido con semántica de `UNIQUE(idempotency_key)` real (no solo mocks aislados por archivo):
+
+```text
+1. Crear por /admin/wallet/credits, repetir la misma operación por /admin/wallet-transactions
+   → un solo movimiento.                                                              ✅ PASA
+2. Orden inverso (ledger primero, legacy después), misma operación → un solo movimiento. ✅ PASA
+3. Dos solicitudes concurrentes por endpoints distintos → invariante final: 1 sola fila.  ✅ PASA
+4. Mismo viaje y monto, externalReference DISTINTO (operación legítima distinta)
+   → NO colisiona (2 filas).                                                          ✅ PASA
+5. Mismo externalReference, descripción distinta → SÍ colisiona (1 fila) — el motivo
+   nunca es parte de la clave.                                                        ✅ PASA
+6. Distintos pasajeros, mismo resto de campos → NO colisiona (2 filas).                ✅ PASA
+7. Distintos rideId, mismo resto de campos → NO colisiona (2 filas).                   ✅ PASA
+8. Reversa vs. crédito original → claves distintas, nunca colisionan.                  ✅ PASA
+```
+
+```text
+Test Files  11 passed (11)
+     Tests  117 passed (117)   (109 previos + 8 nuevos de idempotencia cruzada)
+```
 
 ---
 
@@ -171,15 +218,16 @@ FUENTE DE VERDAD FINANCIERA: UNA
 LEDGER AUTORITATIVO: SÍ
 ADMINCREATEWALLETCREDIT USA LEDGER: SÍ
 TABLA PARALELA ACTIVA: NO (creditUserWallet deprecado, sin callers)
-DOBLE ACREDITACIÓN POSIBLE: NO dentro de cada endpoint; SÍ entre endpoints distintos para la
-  misma operación de negocio (riesgo residual #1, documentado, no bloqueante — ningún flujo real
-  del frontend usa ambos endpoints para la misma acción)
+DOBLE ACREDITACIÓN POSIBLE: NO — cerrado también entre endpoints distintos (§11)
 FRONTEND COMPATIBLE: SÍ (mismo contrato de request/response)
+IDEMPOTENCIA ENTRE ENDPOINTS: SÍ
+DOBLE CRÉDITO ENTRE ENDPOINTS: NO
+TESTS API: 117/117
 BUILD API: OK
-TESTS API: OK (109/109)
 BUILD MOBILE: OK
 RIESGOS CRÍTICOS: 0
 RIESGOS ALTOS: 0
+RIESGOS MEDIOS: 1 (umbral de aprobación $3.000 CLP sin confirmación formal del equipo — #2 arriba)
 APTO PARA PR A MAIN: SÍ
 ```
 
