@@ -1,4 +1,4 @@
-import { pgTable, uuid, integer, text, timestamp, jsonb, check, type AnyPgColumn } from "drizzle-orm/pg-core";
+import { pgTable, uuid, integer, text, timestamp, jsonb, check, index, type AnyPgColumn } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { users } from "./users.schema.js";
 import { wallets } from "./wallets.schema.js";
@@ -79,6 +79,11 @@ export const walletTransactionsLedger = pgTable(
   },
   (table) => ({
     amountPositive: check("wallet_transactions_ledger_amount_positive", sql`${table.amountClp} > 0`),
+    userIdIdx: index("idx_wallet_tx_ledger_user_id").on(table.userId),
+    walletIdIdx: index("idx_wallet_tx_ledger_wallet_id").on(table.walletId),
+    statusIdx: index("idx_wallet_tx_ledger_status").on(table.status),
+    rideIdIdx: index("idx_wallet_tx_ledger_ride_id").on(table.rideId),
+    typeStatusIdx: index("idx_wallet_tx_ledger_type_status").on(table.type, table.status),
   }),
 );
 
