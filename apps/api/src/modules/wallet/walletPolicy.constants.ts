@@ -48,10 +48,28 @@ export function buildWalletCreditOperationKey(input: {
 }
 
 /**
- * Umbral de aprobación de créditos manuales de administración (unificación de sistemas de
- * Wallet). SIN CONFIRMAR POR EL EQUIPO todavía — valor propuesto en
- * docs/security/LEANDRO_PHASE_4B_CANCELLATION_POLICY_PROPOSAL.md, dejado configurable aquí
- * hasta que exista una decisión de negocio formal.
+ * Umbral de aprobación de créditos manuales de administración.
+ *
+ * POLÍTICA PROVISIONAL APROBADA PARA ESTA VERSIÓN (no es la política final de negocio —
+ * ver TAREA PENDIENTE más abajo):
+ *
+ *   Créditos manuales de hasta $3.000 CLP:
+ *     requieren aprobación de un administrador autorizado (auto-aprobado al crear).
+ *   Créditos manuales superiores a $3.000 CLP:
+ *     requieren aprobación de DOS administradores distintos — el creador NO puede ser quien
+ *     aprueba (POST .../approve, imposibilidad de autoaprobar ya implementada).
+ *   Créditos automáticos generados por reglas del sistema (no cubiertos por este umbral):
+ *     no requieren aprobación manual, siempre que el monto sea calculado en backend, exista
+ *     idempotencia, y estén vinculados a un viaje/pago/evento válido (mismo patrón ya usado
+ *     por los débitos de no-show en NoShowService — ver apps/api/src/modules/rides/noShow.service.ts).
+ *
+ * El umbral permanece configurable en backend (esta constante) — nunca hardcodeado en
+ * frontend ni derivado de un valor que el cliente pueda enviar.
+ *
+ * TAREA PENDIENTE: el equipo de negocio debe confirmar o modificar formalmente este monto
+ * ($3.000 CLP) antes de producción. Hasta entonces, este valor es la política vigente del
+ * sistema, no una cifra definitiva. Referencia: docs/security/LEANDRO_PHASE_4B_CANCELLATION_POLICY_PROPOSAL.md
+ * y docs/security/WALLET_SYSTEM_UNIFICATION_REPORT.md.
  *
  *   amountClp <= este umbral → aprobación de un solo administrador (auto-aprobado al crear).
  *   amountClp >  este umbral → requiere un SEGUNDO administrador vía POST .../approve

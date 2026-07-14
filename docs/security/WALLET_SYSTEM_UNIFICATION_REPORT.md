@@ -152,10 +152,25 @@ ledger. Ninguna coincidencia representa un segundo backend financiero activo.
 
 1. ~~**Idempotencia cruzada entre endpoints no garantizada.**~~ **RESUELTO** — ver §11 (Clave
    canónica de operación) más abajo.
-2. **Umbral de aprobación ($3.000 CLP) sin confirmación formal del equipo** — implementado como
-   configurable y documentado, no como política aprobada. Sigue abierto, riesgo MEDIO (no
-   bloqueante: el valor es una propuesta razonable ya documentada, con transición controlada si
-   cambia).
+2. **Umbral de aprobación** — **POLÍTICA PROVISIONAL APROBADA PARA ESTA VERSIÓN** (aprobada por
+   el usuario tras el cierre de idempotencia):
+
+   ```text
+   Créditos manuales de hasta $3.000 CLP: aprobación de un administrador autorizado.
+   Créditos manuales superiores a $3.000 CLP: aprobación de dos administradores distintos.
+   Créditos automáticos generados por reglas del sistema: no requieren aprobación manual,
+     siempre que el monto sea calculado por backend, exista idempotencia, y estén vinculados
+     a un viaje, pago o evento válido.
+   ```
+
+   Implementado en `decideAdminCreditApproval`/`ADMIN_WALLET_CREDIT_SINGLE_APPROVAL_MAX_CLP`
+   (`walletPolicy.constants.ts`), configurable en backend, nunca hardcodeado en frontend.
+
+   **TAREA PENDIENTE (seguimiento, no bloqueante para este PR):** el equipo de negocio debe
+   confirmar o modificar formalmente el monto de $3.000 CLP antes de producción. Hasta esa
+   confirmación, esta es la política vigente del sistema — riesgo MEDIO, no bloqueante, porque
+   ya está documentada, es configurable, y la mecánica de aprobación (1 vs. 2 administradores)
+   es correcta independientemente del valor exacto del umbral.
 3. El frontend (`admin/index.tsx`, `WalletPage.tsx`, etc.) sigue sin migrar a los endpoints del
    ledger — fuera de alcance de esta fase, ya documentado en fases anteriores.
 4. `transactions`/`wallets.balance` para pagos reales (MercadoPago/webhook) no se tocaron —
