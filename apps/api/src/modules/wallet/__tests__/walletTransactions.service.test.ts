@@ -19,6 +19,7 @@ const {
   mockMarkDebitPaid,
   mockCancelDebit,
   mockReverseTransaction,
+  mockUpdateBalance,
 } = vi.hoisted(() => ({
   mockVerifyAccessToken:        vi.fn(),
   mockHashToken:                vi.fn().mockReturnValue("hashed-token"),
@@ -40,6 +41,7 @@ const {
   mockMarkDebitPaid:            vi.fn(),
   mockCancelDebit:              vi.fn(),
   mockReverseTransaction:       vi.fn(),
+  mockUpdateBalance:            vi.fn(),
 }));
 
 vi.mock("../../auth/token.service.js", () => ({
@@ -60,7 +62,8 @@ vi.mock("../../users/users.repository.js", () => ({
 }));
 vi.mock("../wallet.repository.js", () => ({
   WalletRepository: vi.fn().mockImplementation(() => ({
-    getOrCreate: mockGetOrCreateWallet,
+    getOrCreate:   mockGetOrCreateWallet,
+    updateBalance: mockUpdateBalance,
   })),
 }));
 vi.mock("../walletTransactions.repository.js", () => ({
@@ -152,15 +155,15 @@ describe("WalletTransactionsService — createCredit (admin)", () => {
     expect(mockCreate).not.toHaveBeenCalled();
   });
 
-  it("un admin puede crear un crédito, queda en estado pending", async () => {
+  it("un admin puede crear un crédito por encima del umbral, queda en estado pending (requiere segunda aprobación)", async () => {
     authAs(ADMIN_A_ID, "admin");
     mockFindByIdempotencyKey.mockResolvedValue(null);
     mockGetOrCreateWallet.mockResolvedValue({ id: WALLET_ID, userId: PASSENGER_ID });
-    mockCreate.mockResolvedValue(fakeTxRow());
+    mockCreate.mockResolvedValue(fakeTxRow({ amountClp: 5000, status: "pending", approvalStatus: "pending_review" }));
 
     const input = adminCreateCreditSchema.parse({
       userId: PASSENGER_ID,
-      amountClp: 3000,
+      amountClp: 5000,
       source: "cancellation",
       reason: "Cancelación con tarjeta dentro de política",
       idempotencyKey: "idem-create-001",
@@ -169,7 +172,32 @@ describe("WalletTransactionsService — createCredit (admin)", () => {
     const result = await service.createCredit("tok", input);
 
     expect(result.ok).toBe(true);
-    expect(mockCreate).toHaveBeenCalledWith(expect.objectContaining({ status: "pending", createdBy: ADMIN_A_ID }));
+    expect(mockCreate).toHaveBeenCalledWith(expect.objectContaining({ status: "pending", approvalStatus: "pending_review", createdBy: ADMIN_A_ID }));
+    expect(mockGetAvailableBalance).not.toHaveBeenCalled();
+  });
+
+  it("un admin puede crear un crédito por debajo/igual al umbral, se auto-aprueba (un solo administrador)", async () => {
+    authAs(ADMIN_A_ID, "admin");
+    mockFindByIdempotencyKey.mockResolvedValue(null);
+    mockGetOrCreateWallet.mockResolvedValue({ id: WALLET_ID, userId: PASSENGER_ID });
+    mockCreate.mockResolvedValue(fakeTxRow({ amountClp: 3000, status: "available", approvalStatus: "admin_approved" }));
+    mockGetAvailableBalance.mockResolvedValue(3000);
+
+    const input = adminCreateCreditSchema.parse({
+      userId: PASSENGER_ID,
+      amountClp: 3000,
+      source: "cancellation",
+      reason: "Cancelación con tarjeta dentro de política",
+      idempotencyKey: "idem-create-002",
+    });
+
+    const result = await service.createCredit("tok", input);
+
+    expect(result.ok).toBe(true);
+    expect(mockCreate).toHaveBeenCalledWith(
+      expect.objectContaining({ status: "available", approvalStatus: "admin_approved", approvedBy: ADMIN_A_ID }),
+    );
+    expect(mockGetAvailableBalance).toHaveBeenCalledWith(PASSENGER_ID);
   });
 
   it("es idempotente: una segunda solicitud con la misma idempotencyKey no crea un segundo crédito", async () => {

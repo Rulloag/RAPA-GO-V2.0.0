@@ -8,8 +8,13 @@ const {
   mockFindUserById,
   mockCreditUserWallet,
   mockCreatePaymentOrder,
+  mockGetOrCreateWallet,
+  mockUpdateBalance,
   mockRecordSafe,
   mockDbLimit,
+  mockLedgerFindByIdempotencyKey,
+  mockLedgerCreate,
+  mockLedgerGetAvailableBalance,
 } = vi.hoisted(() => ({
   mockVerifyAccessToken: vi.fn(),
   mockHashToken:         vi.fn().mockReturnValue("hashed-token"),
@@ -17,8 +22,13 @@ const {
   mockFindUserById:      vi.fn(),
   mockCreditUserWallet:  vi.fn(),
   mockCreatePaymentOrder: vi.fn(),
+  mockGetOrCreateWallet: vi.fn(),
+  mockUpdateBalance:     vi.fn(),
   mockRecordSafe:        vi.fn(),
   mockDbLimit:           vi.fn(),
+  mockLedgerFindByIdempotencyKey: vi.fn(),
+  mockLedgerCreate:               vi.fn(),
+  mockLedgerGetAvailableBalance:  vi.fn(),
 }));
 
 vi.mock("../../auth/token.service.js", () => ({
@@ -41,6 +51,15 @@ vi.mock("../wallet.repository.js", () => ({
   WalletRepository: vi.fn().mockImplementation(() => ({
     creditUserWallet:   mockCreditUserWallet,
     createPaymentOrder: mockCreatePaymentOrder,
+    getOrCreate:         mockGetOrCreateWallet,
+    updateBalance:       mockUpdateBalance,
+  })),
+}));
+vi.mock("../walletTransactions.repository.js", () => ({
+  WalletTransactionsRepository: vi.fn().mockImplementation(() => ({
+    findByIdempotencyKey: mockLedgerFindByIdempotencyKey,
+    create:                mockLedgerCreate,
+    getAvailableBalance:   mockLedgerGetAvailableBalance,
   })),
 }));
 vi.mock("../../audit/audit.service.js", () => ({
@@ -122,7 +141,7 @@ describe("WalletService.adminCreateWalletCredit", () => {
     expect(mockCreditUserWallet).not.toHaveBeenCalled();
   });
 
-  it("credits passenger wallet when actor is admin", async () => {
+  it("UNIFICACIÓN: crea el crédito en el ledger autoritativo, NO en la tabla paralela (creditUserWallet)", async () => {
     mockVerifyAccessToken.mockReturnValue({ sub: ADMIN_ID });
     mockFindUserById.mockImplementation(async (id: string) => {
       if (id === ADMIN_ID) return adminUser;
@@ -130,50 +149,133 @@ describe("WalletService.adminCreateWalletCredit", () => {
       return null;
     });
 
-    mockCreditUserWallet.mockResolvedValue({
-      wallet: {
-        id: "wallet-1",
-        userId: PASSENGER_ID,
-        balance: 7000,
-        currency: "CLP",
-        status: "active",
-        createdAt: new Date("2026-01-01T00:00:00.000Z"),
-        updatedAt: new Date("2026-01-01T00:00:00.000Z"),
-      },
-      transaction: {
-        id: "transaction-1",
-        walletId: "wallet-1",
-        userId: PASSENGER_ID,
-        rideId: null,
-        type: "credit",
-        amount: 7000,
-        currency: "CLP",
-        status: "completed",
-        provider: "admin",
-        providerTransactionId: "admin-credit:test-1",
-        description: "Pago de mas aprobado",
-        metadata: {},
-        createdAt: new Date("2026-01-01T00:00:00.000Z"),
-        updatedAt: new Date("2026-01-01T00:00:00.000Z"),
-      },
+    mockLedgerFindByIdempotencyKey.mockResolvedValue(null);
+    mockGetOrCreateWallet.mockResolvedValue({
+      id: "wallet-1",
+      userId: PASSENGER_ID,
+      balance: 0,
+      currency: "CLP",
+      status: "active",
+      createdAt: new Date("2026-01-01T00:00:00.000Z"),
+      updatedAt: new Date("2026-01-01T00:00:00.000Z"),
+    });
+    mockLedgerCreate.mockResolvedValue({
+      id: "ledger-tx-1",
+      walletId: "wallet-1",
+      userId: PASSENGER_ID,
+      rideId: null,
+      type: "credit",
+      source: "admin",
+      amountClp: 2000,
+      currency: "CLP",
+      status: "available",
+      approvalStatus: "admin_approved",
+      idempotencyKey: "admin-credit:hash",
+      createdAt: new Date("2026-01-01T00:00:00.000Z"),
+      metadata: { reason: "cortesía" },
+    });
+    mockLedgerGetAvailableBalance.mockResolvedValue(2000);
+    mockUpdateBalance.mockResolvedValue({
+      id: "wallet-1",
+      userId: PASSENGER_ID,
+      balance: 2000,
+      currency: "CLP",
+      status: "active",
+      createdAt: new Date("2026-01-01T00:00:00.000Z"),
+      updatedAt: new Date("2026-01-01T00:00:00.000Z"),
     });
 
     const result = await service.adminCreateWalletCredit("tok", {
       userId: PASSENGER_ID,
-      amountClp: 7000,
+      amountClp: 2000,
       description: "Pago de mas aprobado",
       externalReference: "test-1",
     });
 
     expect(result.ok).toBe(true);
-    expect(mockCreditUserWallet).toHaveBeenCalledWith(
+    expect(mockLedgerCreate).toHaveBeenCalledWith(
       expect.objectContaining({
         userId: PASSENGER_ID,
-        amountClp: 7000,
-        description: "Pago de mas aprobado",
-        providerTransactionId: "admin-credit:test-1",
+        amountClp: 2000,
+        type: "credit",
+        source: "admin",
+        status: "available",
       }),
     );
+    // Tabla paralela: nunca se invoca. Un solo sistema financiero.
+    expect(mockCreditUserWallet).not.toHaveBeenCalled();
+  });
+
+  it("créditos por encima del umbral quedan pending (requieren un segundo admin)", async () => {
+    mockVerifyAccessToken.mockReturnValue({ sub: ADMIN_ID });
+    mockFindUserById.mockImplementation(async (id: string) => {
+      if (id === ADMIN_ID) return adminUser;
+      if (id === PASSENGER_ID) return passengerUser;
+      return null;
+    });
+
+    mockLedgerFindByIdempotencyKey.mockResolvedValue(null);
+    mockGetOrCreateWallet.mockResolvedValue({ id: "wallet-1", userId: PASSENGER_ID, balance: 0, currency: "CLP", status: "active", createdAt: new Date("2026-01-01T00:00:00.000Z"), updatedAt: new Date("2026-01-01T00:00:00.000Z") });
+    mockLedgerCreate.mockResolvedValue({
+      id: "ledger-tx-2",
+      walletId: "wallet-1",
+      userId: PASSENGER_ID,
+      type: "credit",
+      source: "admin",
+      amountClp: 10000,
+      currency: "CLP",
+      status: "pending",
+      approvalStatus: "pending_review",
+      idempotencyKey: "admin-credit:hash2",
+      createdAt: new Date("2026-01-01T00:00:00.000Z"),
+      metadata: {},
+    });
+
+    const result = await service.adminCreateWalletCredit("tok", {
+      userId: PASSENGER_ID,
+      amountClp: 10000,
+      description: "Compensación excepcional",
+    });
+
+    expect(result.ok).toBe(true);
+    expect(mockLedgerCreate).toHaveBeenCalledWith(expect.objectContaining({ status: "pending", approvalStatus: "pending_review" }));
+    // No se sincroniza el balance cache para créditos que aún no están disponibles.
+    expect(mockLedgerGetAvailableBalance).not.toHaveBeenCalled();
+  });
+
+  it("IDEMPOTENCIA: una segunda solicitud con el mismo externalReference no crea un segundo crédito", async () => {
+    mockVerifyAccessToken.mockReturnValue({ sub: ADMIN_ID });
+    mockFindUserById.mockImplementation(async (id: string) => {
+      if (id === ADMIN_ID) return adminUser;
+      if (id === PASSENGER_ID) return passengerUser;
+      return null;
+    });
+
+    mockLedgerFindByIdempotencyKey.mockResolvedValue({
+      id: "ledger-tx-existing",
+      walletId: "wallet-1",
+      userId: PASSENGER_ID,
+      type: "credit",
+      source: "admin",
+      amountClp: 2000,
+      currency: "CLP",
+      status: "available",
+      approvalStatus: "admin_approved",
+      idempotencyKey: "admin-credit:hash",
+      createdAt: new Date("2026-01-01T00:00:00.000Z"),
+      metadata: {},
+    });
+    mockGetOrCreateWallet.mockResolvedValue({ id: "wallet-1", userId: PASSENGER_ID, balance: 2000, currency: "CLP", status: "active", createdAt: new Date("2026-01-01T00:00:00.000Z"), updatedAt: new Date("2026-01-01T00:00:00.000Z") });
+
+    const result = await service.adminCreateWalletCredit("tok", {
+      userId: PASSENGER_ID,
+      amountClp: 2000,
+      description: "Reintento de red",
+      externalReference: "test-1",
+    });
+
+    expect(result.ok).toBe(true);
+    expect(mockLedgerCreate).not.toHaveBeenCalled();
   });
 
   it("returns 404 when target passenger does not exist", async () => {
@@ -195,6 +297,7 @@ describe("WalletService.adminCreateWalletCredit", () => {
       expect(result.statusCode).toBe(404);
     }
     expect(mockCreditUserWallet).not.toHaveBeenCalled();
+    expect(mockLedgerCreate).not.toHaveBeenCalled();
   });
 });
 
