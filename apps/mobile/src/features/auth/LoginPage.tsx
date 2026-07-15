@@ -70,6 +70,7 @@ type PassengerRegistrationProfile = {
   email?: string;
   phone?: string;
   rut?: string;
+  passport?: string;
   nationality?: string;
   passengerFareLabel?: string;
   passengerFareType?: PassengerFareType;
@@ -116,6 +117,32 @@ function getLegacyPassengerCondition(value: PassengerCondition): string {
   return "";
 }
 
+function normalizePassportForAuth(value: unknown): string {
+  return String(value ?? "")
+    .trim()
+    .toUpperCase()
+    .replace(/[^A-Z0-9-]/g, "");
+}
+
+function isValidPassportForAuth(value: unknown): boolean {
+  const clean = normalizePassportForAuth(value).replace(/-/g, "");
+  return clean.length >= 5 && clean.length <= 15;
+}
+
+function requiresPassportForPassengerCondition(value: PassengerCondition): boolean {
+  return value === "turista_extranjero";
+}
+
+function requiresRutForPassengerCondition(value: PassengerCondition): boolean {
+  return value === "turista_chileno" || value === "rapanui_normal" || value === "residente_rapa_nui";
+}
+
+function hasValidRutLengthForAuth(value: unknown): boolean {
+  const clean = String(value ?? "").replace(/[^0-9kK]/g, "");
+  return clean.length >= 8 && clean.length <= 10;
+}
+
+
 
 const RAPAGO_AUTH_PII_LOCAL_STORAGE_KEYS = [
   "rapago_passenger_email",
@@ -124,6 +151,8 @@ const RAPAGO_AUTH_PII_LOCAL_STORAGE_KEYS = [
   "rapago_profile_phone",
   "rapago_passenger_rut",
   "rapago_profile_rut",
+  "rapago_passenger_passport",
+  "rapago_profile_passport",
   "rapago_resident_document_name",
   "rapago_resident_document_uploaded_at",
   "rapago_passenger_residence_document_meta",
@@ -415,6 +444,17 @@ function persistPassengerProfile(profile: PassengerRegistrationProfile): void {
     if (profile.rut) {
       sessionStorage.setItem("rapago_passenger_rut", profile.rut);
       sessionStorage.setItem("rapago_profile_rut", profile.rut);
+    } else {
+      sessionStorage.removeItem("rapago_passenger_rut");
+      sessionStorage.removeItem("rapago_profile_rut");
+    }
+
+    if (profile.passport) {
+      sessionStorage.setItem("rapago_passenger_passport", profile.passport);
+      sessionStorage.setItem("rapago_profile_passport", profile.passport);
+    } else {
+      sessionStorage.removeItem("rapago_passenger_passport");
+      sessionStorage.removeItem("rapago_profile_passport");
     }
 
     if (profile.nationality) {
@@ -484,6 +524,9 @@ export function LoginPage(): JSX.Element {
 
   const [passengerRut, setPassengerRut] = useState(
     getStoredValue("rapago_passenger_rut"),
+  );
+  const [passengerPassport, setPassengerPassport] = useState(
+    getStoredValue("rapago_passenger_passport"),
   );
 
   const [residenceDocument, setResidenceDocument] = useState<File | null>(null);
@@ -558,6 +601,12 @@ export function LoginPage(): JSX.Element {
     setPassengerCondition(value);
     setFacebookStepError("");
 
+    if (value === "turista_extranjero") {
+      setPassengerRut("");
+    } else {
+      setPassengerPassport("");
+    }
+
     if (value !== "residente_rapa_nui") {
       setResidenceDocument(null);
       setResidenceDocumentName("");
@@ -617,6 +666,9 @@ export function LoginPage(): JSX.Element {
     const cleanEmail = normalizeEmail(passengerEmail);
     const cleanPhone = normalizePhone(passengerPhone);
     const cleanPassengerRut = formatRut(passengerRut);
+    const cleanPassengerPassport = normalizePassportForAuth(passengerPassport);
+    const needsRut = requiresRutForPassengerCondition(passengerCondition);
+    const needsPassport = requiresPassportForPassengerCondition(passengerCondition);
 
     if (!passengerCondition) {
       setFacebookStepError("Selecciona si eres turista chileno, turista extranjero o residente Rapa Nui.");
@@ -643,13 +695,23 @@ export function LoginPage(): JSX.Element {
       return;
     }
 
-    if (!cleanPassengerRut) {
-      setFacebookStepError("Ingresa tu RUT.");
+    if (needsRut && !cleanPassengerRut) {
+      setFacebookStepError("Ingresa tu RUT para continuar.");
       return;
     }
 
-    if (!isValidRut(cleanPassengerRut)) {
+    if (needsRut && !isValidRut(cleanPassengerRut)) {
       setFacebookStepError("Ingresa un RUT válido.");
+      return;
+    }
+
+    if (needsPassport && !cleanPassengerPassport) {
+      setFacebookStepError("Ingresa tu pasaporte para continuar con Facebook.");
+      return;
+    }
+
+    if (needsPassport && !isValidPassportForAuth(cleanPassengerPassport)) {
+      setFacebookStepError("Ingresa un pasaporte válido. Usa letras y números.");
       return;
     }
 
@@ -699,7 +761,8 @@ export function LoginPage(): JSX.Element {
       persistPassengerProfile({
         email: cleanEmail,
         phone: cleanPhone,
-        rut: cleanPassengerRut,
+        rut: needsRut ? cleanPassengerRut : "",
+        passport: needsPassport ? cleanPassengerPassport : "",
         nationality: conditionLabel,
         passengerFareLabel,
         passengerFareType,
@@ -759,7 +822,8 @@ export function LoginPage(): JSX.Element {
       passengerFareLabel,
       email: cleanEmail,
       phone: cleanPhone,
-      rut: cleanPassengerRut,
+      rut: needsPassport ? cleanPassengerPassport : cleanPassengerRut,
+      passport: needsPassport ? cleanPassengerPassport : "",
       residenceDocumentRequired: isResidentRapaNui ? "true" : "false",
       residenceDocumentUploaded: isResidentRapaNui ? "true" : "false",
       residenceVerificationStatus: isResidentRapaNui
@@ -1297,7 +1361,8 @@ export function LoginPage(): JSX.Element {
                     />
                   </IonItem>
 
-                  <IonItem style={modalItemStyle}>
+                  {passengerCondition !== "turista_extranjero" && (
+                    <IonItem style={modalItemStyle}>
                     <IonLabel position="stacked" style={{ color: "#F8D879", fontWeight: 950 }}>
                       RUT *
                     </IonLabel>
@@ -1317,6 +1382,29 @@ export function LoginPage(): JSX.Element {
                       required
                     />
                   </IonItem>
+                  )}
+
+                  {passengerCondition === "turista_extranjero" && (
+                    <IonItem style={modalItemStyle}>
+                      <IonLabel position="stacked" style={{ color: "#F8D879", fontWeight: 950 }}>
+                        Pasaporte *
+                      </IonLabel>
+                      <IonInput
+                        style={modalInputStyle}
+                        type="text"
+                        value={passengerPassport}
+                        placeholder="Ej: A1234567"
+                        autocomplete="off"
+                        inputmode="text"
+                        maxlength={20}
+                        required
+                        onIonInput={(event) => {
+                          setPassengerPassport(normalizePassportForAuth(event.detail.value ?? ""));
+                          setFacebookStepError("");
+                        }}
+                      />
+                    </IonItem>
+                  )}
 
                   {isResidentRapaNui && (
                     <div

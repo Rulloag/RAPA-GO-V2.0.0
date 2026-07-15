@@ -34,6 +34,7 @@ type RegisterField =
   | "name"
   | "lastName"
   | "rut"
+  | "passport"
   | "phone"
   | "email"
   | "passengerType"
@@ -212,6 +213,8 @@ const RAPAGO_AUTH_PII_LOCAL_STORAGE_KEYS = [
   "rapago_profile_phone",
   "rapago_passenger_rut",
   "rapago_profile_rut",
+  "rapago_passenger_passport",
+  "rapago_profile_passport",
   "rapago_resident_document_name",
   "rapago_resident_document_uploaded_at",
   "rapago_passenger_residence_document_meta",
@@ -235,6 +238,7 @@ function persistRegistrationProfile(data: {
   firstName: string;
   lastName: string;
   rut: string;
+  passport?: string;
   phone: string;
   email: string;
   passengerFareType: PassengerFareType;
@@ -264,6 +268,14 @@ function persistRegistrationProfile(data: {
     sessionStorage.setItem("rapago_profile_phone", data.phone);
     sessionStorage.setItem("rapago_passenger_rut", data.rut);
     sessionStorage.setItem("rapago_profile_rut", data.rut);
+
+    if (data.passengerFareType === "foreigner" && data.passport) {
+      sessionStorage.setItem("rapago_passenger_passport", data.passport);
+      sessionStorage.setItem("rapago_profile_passport", data.passport);
+    } else {
+      sessionStorage.removeItem("rapago_passenger_passport");
+      sessionStorage.removeItem("rapago_profile_passport");
+    }
 
     localStorage.setItem("rapago_passenger_fare_type", data.passengerFareType);
     localStorage.setItem("rapago_profile_passenger_type", data.passengerFareType);
@@ -306,6 +318,7 @@ function persistResidentVerificationRequest(input: {
   firstName: string;
   lastName: string;
   rut: string;
+  passport?: string;
   phone: string;
   email: string;
   document: ResidentDocumentData;
@@ -404,6 +417,27 @@ function validateRut(value: string): boolean {
   // Para no bloquear registros válidos con DV K, aquí solo exigimos números y largo correcto.
   // Si después quieres validar DV exacto, se puede agregar en backend.
   return digits.length >= 8 && digits.length <= 9;
+}
+
+function normalizePassportForRegister(value: unknown): string {
+  return String(value ?? "")
+    .trim()
+    .toUpperCase()
+    .replace(/[^A-Z0-9-]/g, "")
+    .slice(0, 20);
+}
+
+function validatePassportForRegister(value: unknown): boolean {
+  const clean = normalizePassportForRegister(value).replace(/-/g, "");
+  return clean.length >= 5 && clean.length <= 15;
+}
+
+function passengerFareRequiresPassport(value: PassengerFareType | ""): boolean {
+  return value === "foreigner";
+}
+
+function passengerFareRequiresRut(value: PassengerFareType | ""): boolean {
+  return value === "chilean" || value === "rapanui" || value === "resident";
 }
 
 function validatePhone(value: string): boolean {
@@ -580,6 +614,7 @@ export function RegisterPage(): JSX.Element {
   const [name, setName] = useState("");
   const [lastName, setLastName] = useState("");
   const [rut, setRut] = useState("");
+  const [passport, setPassport] = useState("");
   const [phone, setPhone] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -606,6 +641,8 @@ export function RegisterPage(): JSX.Element {
     acceptPrivacy &&
     acceptUserConditions &&
     passengerFareType !== "" &&
+    (!passengerFareRequiresRut(passengerFareType) || validateRut(rut)) &&
+    (!passengerFareRequiresPassport(passengerFareType) || validatePassportForRegister(passport)) &&
     (passengerFareType !== "resident" || residentDocument !== null) &&
     password.length >= PASSWORD_MIN_LENGTH &&
     !passwordMismatch &&
@@ -624,6 +661,14 @@ export function RegisterPage(): JSX.Element {
   function handlePassengerFareTypeChange(value: PassengerFareType): void {
     setPassengerFareType(value);
     clearFieldError("passengerType");
+    clearFieldError("rut");
+    clearFieldError("passport");
+
+    if (value === "foreigner") {
+      setRut("");
+    } else {
+      setPassport("");
+    }
 
     if (value !== "resident") {
       setResidentDocument(null);
@@ -731,6 +776,7 @@ export function RegisterPage(): JSX.Element {
     const cleanName = cleanPersonName(name).trim();
     const cleanLastName = cleanPersonName(lastName).trim();
     const cleanRutValue = normalizeRut(rut);
+    const cleanPassportValue = normalizePassportForRegister(passport);
     const cleanPhoneValue = normalizePhone(phone);
     const cleanEmailValue = normalizeEmail(email);
     const cleanPassengerFareType = isPassengerFareType(passengerFareType)
@@ -748,10 +794,20 @@ export function RegisterPage(): JSX.Element {
       nextErrors.lastName = "Ingresa tu apellido.";
     }
 
-    if (!cleanRutValue) {
-      nextErrors.rut = "Ingresa tu RUT.";
-    } else if (!validateRut(cleanRutValue)) {
-      nextErrors.rut = "El RUT debe tener 8 o 9 números.";
+    if (passengerFareRequiresRut(cleanPassengerFareType)) {
+      if (!cleanRutValue) {
+        nextErrors.rut = "Ingresa tu RUT.";
+      } else if (!validateRut(cleanRutValue)) {
+        nextErrors.rut = "El RUT debe tener 8 o 9 números.";
+      }
+    }
+
+    if (passengerFareRequiresPassport(cleanPassengerFareType)) {
+      if (!cleanPassportValue) {
+        nextErrors.passport = "Ingresa tu pasaporte.";
+      } else if (!validatePassportForRegister(cleanPassportValue)) {
+        nextErrors.passport = "Pasaporte inválido. Usa letras y números.";
+      }
     }
 
     if (!cleanPhoneValue) {
@@ -818,7 +874,8 @@ export function RegisterPage(): JSX.Element {
         ...parsed.data,
         firstName: cleanName,
         lastName: cleanLastName,
-        rut: cleanRutValue,
+        rut: selectedPassengerFareType === "foreigner" ? cleanPassportValue : cleanRutValue,
+        passport: selectedPassengerFareType === "foreigner" ? cleanPassportValue : "",
         phone: cleanPhoneValue,
         passengerType: selectedPassengerFareType,
         farePassengerType: selectedPassengerFareType,
@@ -832,6 +889,7 @@ export function RegisterPage(): JSX.Element {
         firstName: string;
         lastName: string;
         rut: string;
+        passport: string;
         phone: string;
         passengerType: PassengerFareType;
         farePassengerType: PassengerFareType;
@@ -859,7 +917,8 @@ export function RegisterPage(): JSX.Element {
         name: fullName,
         firstName: cleanName,
         lastName: cleanLastName,
-        rut: cleanRutValue,
+        rut: selectedPassengerFareType === "foreigner" ? cleanPassportValue : cleanRutValue,
+        passport: selectedPassengerFareType === "foreigner" ? cleanPassportValue : "",
         phone: cleanPhoneValue,
         email: cleanEmailValue,
         passengerFareType: selectedPassengerFareType,
@@ -980,27 +1039,6 @@ export function RegisterPage(): JSX.Element {
             {fieldErrors.lastName && <IonNote slot="error">{fieldErrors.lastName}</IonNote>}
           </IonItem>
 
-          <IonItem className={fieldErrors.rut ? "ion-invalid" : ""} style={registerItemStyle}>
-            <IonLabel position="stacked" style={labelStyle}>RUT *</IonLabel>
-            <IonInput
-              type="tel"
-              value={rut}
-              onIonInput={(event) => {
-                setRut(formatRut(String(event.detail.value ?? "")));
-                clearFieldError("rut");
-              }}
-              placeholder="123456789"
-              style={inputStyle}
-              autocomplete="off"
-              inputmode="numeric"
-              pattern="[0-9]*"
-              maxlength={12}
-              disabled={loading}
-              required
-            />
-            {fieldErrors.rut && <IonNote slot="error">{fieldErrors.rut}</IonNote>}
-          </IonItem>
-
                     <div style={nationalityFieldStyle}>
             <IonLabel style={nationalityLabelStyle}>
               Nacionalidad *
@@ -1097,6 +1135,52 @@ export function RegisterPage(): JSX.Element {
               </div>
             )}
           </div>
+
+          {/* RUT o Pasaporte según nacionalidad */}
+          {passengerFareType !== "" && passengerFareType !== "foreigner" && (
+            <IonItem className={fieldErrors.rut ? "ion-invalid" : ""} style={registerItemStyle}>
+              <IonLabel position="stacked" style={labelStyle}>RUT *</IonLabel>
+              <IonInput
+                type="tel"
+                value={rut}
+                onIonInput={(event) => {
+                  setRut(formatRut(String(event.detail.value ?? "")));
+                  clearFieldError("rut");
+                }}
+                placeholder="123456789"
+                style={inputStyle}
+                autocomplete="off"
+                inputmode="numeric"
+                pattern="[0-9]*"
+                maxlength={12}
+                disabled={loading}
+                required
+              />
+              {fieldErrors.rut && <IonNote slot="error">{fieldErrors.rut}</IonNote>}
+            </IonItem>
+          )}
+
+          {passengerFareType === "foreigner" && (
+            <IonItem className={fieldErrors.passport ? "ion-invalid" : ""} style={registerItemStyle}>
+              <IonLabel position="stacked" style={labelStyle}>Pasaporte *</IonLabel>
+              <IonInput
+                type="text"
+                value={passport}
+                onIonInput={(event) => {
+                  setPassport(normalizePassportForRegister(event.detail.value ?? ""));
+                  clearFieldError("passport");
+                }}
+                placeholder="Ej: A1234567"
+                style={inputStyle}
+                autocomplete="off"
+                inputmode="text"
+                maxlength={20}
+                disabled={loading}
+                required
+              />
+              {fieldErrors.passport && <IonNote slot="error">{fieldErrors.passport}</IonNote>}
+            </IonItem>
+          )}
 
           <IonItem className={fieldErrors.phone ? "ion-invalid" : ""} style={registerItemStyle}>
             <IonLabel position="stacked" style={labelStyle}>Teléfono *</IonLabel>
