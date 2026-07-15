@@ -1,4 +1,5 @@
 import {
+  IonAlert,
   IonBadge,
   IonButton,
   IonCard,
@@ -724,6 +725,7 @@ function createLocalPassengerRide(input: {
   originText: string;
   destinationText: string;
   notes?: string | null;
+  passengerNote?: string | null;
   estimatedFareClp?: number | null;
   rideMode?: RideMode | null;
   tripFareMode?: TripFareMode | null;
@@ -756,6 +758,7 @@ function createLocalPassengerRide(input: {
     originText: input.originText,
     destinationText: input.destinationText,
     notes: input.notes ?? null,
+    passengerNote: sanitizePassengerRideNote(input.passengerNote) || null,
     passengerName: input.passengerName ?? null,
     passengerEmail: input.passengerEmail ?? null,
     passengerFareType: input.passengerFareType ?? null,
@@ -877,6 +880,7 @@ function createLocalAdminScheduledRide(input: {
   originText: string;
   destinationText: string;
   notes?: string | null;
+  passengerNote?: string | null;
   estimatedFareClp?: number | null;
   rideMode: RideMode;
   tripFareMode: TripFareMode;
@@ -941,6 +945,7 @@ function createRoundTripReturnPickupRide(input: {
   promotionTitle: string;
   promotionDestinationName: string;
   relatedOutboundRideId?: string | null;
+  passengerNote?: string | null;
   passengerName?: string | null;
   passengerEmail?: string | null;
   passengerFareType?: PassengerFareType | null;
@@ -960,7 +965,10 @@ function createRoundTripReturnPickupRide(input: {
       scheduleFields.dispatchAt ??
       "",
   );
-  const notes = [
+  const returnPassengerNote = sanitizePassengerRideNote(input.passengerNote);
+  const notes: string[] = [];
+  appendPassengerRideNote(notes, returnPassengerNote);
+  notes.push(
     "Tipo de solicitud: agendamiento de recogida de regreso.",
     "IDA_MAS_AGENDAMIENTO_RECOGIDA: true.",
     `Promoción asociada: ${input.promotionTitle}.`,
@@ -977,12 +985,13 @@ function createRoundTripReturnPickupRide(input: {
     `Dirección destino confirmada: ${input.returnDestinationAddress}.`,
     `Coordenadas recogida accesible: ${input.returnOriginLat.toFixed(6)}, ${input.returnOriginLng.toFixed(6)}.`,
     `Coordenadas destino accesible: ${input.returnDestinationLat.toFixed(6)}, ${input.returnDestinationLng.toFixed(6)}.`,
-  ];
+  );
 
   const base = createLocalPassengerRide({
     originText: input.returnOriginText,
     destinationText: input.returnDestinationText,
     notes: limitRideNotes(notes.join(" ")),
+    passengerNote: returnPassengerNote || null,
     estimatedFareClp: null,
     rideMode: "scheduled",
     tripFareMode: "one_way",
@@ -4033,6 +4042,25 @@ function LegalCompactSection({ token }: { token: string }): JSX.Element {
 }
 
 
+const RAPAGO_PASSENGER_NOTE_MAX_LENGTH = 180;
+const RAPAGO_PASSENGER_NOTE_START = "RAPAGO_PASSENGER_NOTE_START";
+const RAPAGO_PASSENGER_NOTE_END = "RAPAGO_PASSENGER_NOTE_END";
+
+function sanitizePassengerRideNote(value: unknown): string {
+  return String(value ?? "")
+    .replace(/[\u0000-\u001F\u007F]/g, " ")
+    .replace(/[<>`{}$\\]/g, "")
+    .replace(/RAPAGO_PASSENGER_NOTE_(?:START|END)/gi, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, RAPAGO_PASSENGER_NOTE_MAX_LENGTH);
+}
+
+function appendPassengerRideNote(notes: string[], passengerNote: string): void {
+  if (!passengerNote) return;
+  notes.push(`${RAPAGO_PASSENGER_NOTE_START} ${passengerNote} ${RAPAGO_PASSENGER_NOTE_END}.`);
+}
+
 function limitRideNotes(value: string): string {
   return value
     .replace(/\s+/g, " ")
@@ -4241,6 +4269,7 @@ export default function RequestRidePage(): JSX.Element {
   const [rideMode, setRideMode] = useState<RideMode>("now");
   const [tripFareMode, setTripFareMode] = useState<TripFareMode>("one_way");
   const [selectedRoundTripPromotionId, setSelectedRoundTripPromotionId] = useState<string | null>(null);
+  const [pendingRoundTripPromotion, setPendingRoundTripPromotion] = useState<RoundTripPromotion | null>(null);
   const [scheduledAt, setScheduledAt] = useState("");
   const [returnScheduledAt, setReturnScheduledAt] = useState("");
   const [flightNumber, setFlightNumber] = useState("");
@@ -4980,6 +5009,8 @@ export default function RequestRidePage(): JSX.Element {
       return;
     }
 
+    const passengerNote = sanitizePassengerRideNote(notesInput);
+
     setPaymentMethod(activePaymentMethod);
     setShowPaymentBox(false);
     setSubmitting(true);
@@ -4987,6 +5018,7 @@ export default function RequestRidePage(): JSX.Element {
 
     try {
       const notes: string[] = [];
+      appendPassengerRideNote(notes, passengerNote);
 
       notes.push(`Forma de pago seleccionada: ${getPaymentLabel(activePaymentMethod)}.`);
       if (reservationRequiresCard) {
@@ -5107,10 +5139,6 @@ export default function RequestRidePage(): JSX.Element {
         `Coordenadas destino accesible: ${resolved.destination.lat.toFixed(6)}, ${resolved.destination.lng.toFixed(6)}.`,
       );
 
-      if (notesInput.trim()) {
-        notes.push(notesInput.trim());
-      }
-
       if (!selectedRoundTripPromotion && fareQuote && selectedFareAmount != null) {
         if (selectedBaseFareAmount != null && airportWelcomeSurchargeClp > 0) {
           notes.push(`Tarifa base antes de servicios opcionales: ${formatCLP(selectedBaseFareAmount)}.`);
@@ -5218,6 +5246,8 @@ export default function RequestRidePage(): JSX.Element {
         (input as CreateRideInput & { isRoundTrip?: boolean }).isRoundTrip = effectiveTripFareMode === "round_trip";
       }
 
+      // Conservador: no enviamos un campo nuevo que el backend todavía podría
+      // rechazar. La nota viaja dentro de `notes` con marcadores explícitos.
       Object.assign(input as CreateRideInput & Record<string, unknown>, scheduleFields);
       if (isAirportScheduledRide) {
         Object.assign(input as CreateRideInput & Record<string, unknown>, {
@@ -5290,6 +5320,7 @@ export default function RequestRidePage(): JSX.Element {
           promotionTitle: selectedRoundTripPromotion.title,
           promotionDestinationName: selectedRoundTripPromotion.destinationName,
           relatedOutboundRideId: createdRideId,
+          passengerNote: passengerNote || null,
           passengerName: getSessionDisplayName(session.user),
           passengerEmail: getSessionEmail(session.user),
           passengerFareType: effectivePassengerFareType,
@@ -5302,6 +5333,7 @@ export default function RequestRidePage(): JSX.Element {
           originText: resolved.origin.text,
           destinationText: resolved.destination.text,
           notes: input.notes ?? null,
+          passengerNote: passengerNote || null,
           estimatedFareClp: selectedFareAmount ?? null,
           rideMode,
           tripFareMode: effectiveTripFareMode,
@@ -5392,6 +5424,7 @@ export default function RequestRidePage(): JSX.Element {
         }
 
         const localNotes: string[] = [];
+        appendPassengerRideNote(localNotes, passengerNote);
 
         localNotes.push(`Forma de pago seleccionada: ${getPaymentLabel(activePaymentMethod)}.`);
         if (reservationRequiresCard) {
@@ -5503,10 +5536,6 @@ export default function RequestRidePage(): JSX.Element {
           `Coordenadas destino accesible: ${resolved.destination.lat.toFixed(6)}, ${resolved.destination.lng.toFixed(6)}.`,
         );
 
-        if (notesInput.trim()) {
-          localNotes.push(notesInput.trim());
-        }
-
         if (!selectedRoundTripPromotion && fareQuote && selectedFareAmount != null) {
           if (selectedBaseFareAmount != null && airportWelcomeSurchargeClp > 0) {
             localNotes.push(`Tarifa base antes de servicios opcionales: ${formatCLP(selectedBaseFareAmount)}.`);
@@ -5531,6 +5560,7 @@ export default function RequestRidePage(): JSX.Element {
             originText: resolved.origin.text,
             destinationText: resolved.destination.text,
             notes: limitRideNotes(localNotes.join(" ")),
+            passengerNote: passengerNote || null,
             estimatedFareClp: selectedFareAmount ?? null,
             rideMode: selectedRoundTripPromotion ? "now" : rideMode,
             tripFareMode: selectedRoundTripPromotion ? "one_way" : effectiveTripFareMode,
@@ -5587,6 +5617,7 @@ export default function RequestRidePage(): JSX.Element {
               promotionTitle: selectedRoundTripPromotion.title,
               promotionDestinationName: selectedRoundTripPromotion.destinationName,
               relatedOutboundRideId: String(localRide.id ?? ""),
+              passengerNote: passengerNote || null,
               passengerName: getSessionDisplayName(session.user),
               passengerEmail: getSessionEmail(session.user),
               passengerFareType: effectivePassengerFareType,
@@ -5622,6 +5653,7 @@ export default function RequestRidePage(): JSX.Element {
             originText: resolved.origin.text,
             destinationText: resolved.destination.text,
             notes: limitRideNotes(localNotes.join(" ")),
+            passengerNote: passengerNote || null,
             estimatedFareClp: selectedFareAmount ?? null,
             rideMode,
             tripFareMode: effectiveTripFareMode,
@@ -6272,7 +6304,7 @@ return (
                       <button
                         key={promotion.id}
                         type="button"
-                        onClick={() => void handleSelectRoundTripPromotion(promotion)}
+                        onClick={() => setPendingRoundTripPromotion(promotion)}
                         style={{
                           width: "100%",
                           border: active
@@ -6766,7 +6798,7 @@ return (
                 value={notesInput}
                 placeholder="Ej: Maletas grandes"
                 rows={3}
-                maxlength={180}
+                maxlength={RAPAGO_PASSENGER_NOTE_MAX_LENGTH}
                 onIonInput={(event) =>
                   setNotesInput(String(event.detail.value ?? ""))
                 }
@@ -7326,6 +7358,32 @@ return (
             </IonButton>
           </div>
         </div>
+
+        <IonAlert
+          isOpen={pendingRoundTripPromotion !== null}
+          header="¿Quieres esta oferta?"
+          message={
+            pendingRoundTripPromotion
+              ? `${pendingRoundTripPromotion.title}: ${pendingRoundTripPromotion.destinationName}, ida y vuelta por ${formatCLP(pendingRoundTripPromotion.fareClp)}. ¿Deseas aplicarla al viaje?`
+              : ""
+          }
+          buttons={[
+            {
+              text: "No",
+              role: "cancel",
+              handler: () => setPendingRoundTripPromotion(null),
+            },
+            {
+              text: "Sí, usar oferta",
+              handler: () => {
+                const promotion = pendingRoundTripPromotion;
+                setPendingRoundTripPromotion(null);
+                if (promotion) void handleSelectRoundTripPromotion(promotion);
+              },
+            },
+          ]}
+          onDidDismiss={() => setPendingRoundTripPromotion(null)}
+        />
 
         {pickerTarget && (
           <MapPointPicker

@@ -42,11 +42,20 @@ const RAPAGO_FAST_SEARCH_STORAGE_KEY = "rapago_passenger_fast_search_rides_v1";
 const RAPAGO_FAST_SEARCH_EVENT = "rapago:passenger-fast-search-updated";
 const RAPAGO_FAST_SEARCH_FEE_CLP = 800;
 const RAPAGO_FAST_SEARCH_PROMPT_AFTER_MS = 2 * 60 * 1000;
-const RAPAGO_FREE_CANCEL_AFTER_ACCEPTANCE_MS = 3 * 60 * 1000;
+// Política comercial RAPA GO:
+// - Cancelación gratuita durante los primeros 2 minutos desde la aceptación/asignación.
+// - Desde el minuto 3: 30% de la tarifa aplicable, con tope de $3.000.
+// - No show después de 5 minutos: 50% de la tarifa aplicable, con tope de $5.000.
+// - Viajes programados: gratis hasta 30 minutos antes; dentro de los últimos 30 minutos,
+//   30% de la tarifa aplicable, con tope de $3.000.
+// El frontend solo calcula un monto referencial. Backend/admin debe autorizar el cargo real.
+const RAPAGO_FREE_CANCEL_AFTER_ACCEPTANCE_MS = 2 * 60 * 1000;
 const RAPAGO_NO_SHOW_AFTER_ARRIVAL_MS = 5 * 60 * 1000;
-const RAPAGO_SCHEDULED_CANCEL_CHARGE_WINDOW_MS = 15 * 60 * 1000;
+const RAPAGO_SCHEDULED_CANCEL_CHARGE_WINDOW_MS = 30 * 60 * 1000;
 const RAPAGO_CANCEL_FEE_CAP_CLP = 3000;
-const RAPAGO_NO_SHOW_FULL_SERVICE_CHARGE = true;
+const RAPAGO_NO_SHOW_FEE_CAP_CLP = 5000;
+const RAPAGO_LATE_CANCEL_PERCENT = 30;
+const RAPAGO_NO_SHOW_PERCENT = 50;
 
 type PassengerNotificationPayload = {
   id: string;
@@ -146,8 +155,16 @@ function isPassengerNoShowCompletedRide(ride: RideRequestData | Record<string, u
 }
 
 function getPassengerNoShowCompletedEffectiveStatus(ride: RideRequestData): string {
+  const effectiveStatus = getEffectivePassengerRideStatus(ride);
+
+  // Un viaje que todavía está buscando conductor, aceptado, en camino, esperando
+  // al pasajero o en curso NUNCA debe contabilizarse como completado por un
+  // registro No Show antiguo que coincida por ruta. Esto evita que una solicitud
+  // nueva aparezca dentro de "Completados" antes de finalizar realmente.
+  if (ACTIVE_STATUSES.includes(effectiveStatus)) return effectiveStatus;
+
   if (isPassengerNoShowCompletedRide(ride)) return "completed";
-  return getEffectivePassengerRideStatus(ride);
+  return effectiveStatus;
 }
 
 
@@ -690,15 +707,107 @@ type PassengerFastSearchRecord = {
   respondedAt: string;
 };
 
+type PassengerCancellationReasonCode =
+  | "passenger_change"
+  | "driver_vehicle_mismatch"
+  | "safety_risk"
+  | "platform_duplicate"
+  | "operator_driver_fault"
+  | "other";
+
+type PassengerCancellationReason = {
+  code: PassengerCancellationReasonCode;
+  label: string;
+  exemptFromFee: boolean;
+};
+
+const PASSENGER_CANCELLATION_REASONS: PassengerCancellationReason[] = [
+  {
+    code: "passenger_change",
+    label: "Cambio de planes u otro motivo personal",
+    exemptFromFee: false,
+  },
+  {
+    code: "driver_vehicle_mismatch",
+    label: "El conductor o vehículo no coincide con la información de la App",
+    exemptFromFee: true,
+  },
+  {
+    code: "safety_risk",
+    label: "Riesgo o preocupación de seguridad",
+    exemptFromFee: true,
+  },
+  {
+    code: "platform_duplicate",
+    label: "Solicitud duplicada atribuible a la Plataforma",
+    exemptFromFee: true,
+  },
+  {
+    code: "operator_driver_fault",
+    label: "Problema atribuible al Operador o al conductor",
+    exemptFromFee: true,
+  },
+  {
+    code: "other",
+    label: "Otro motivo",
+    exemptFromFee: false,
+  },
+];
+
+function getPassengerCancellationReason(
+  value: unknown,
+): PassengerCancellationReason {
+  const code = String(value ?? "") as PassengerCancellationReasonCode;
+  return (
+    PASSENGER_CANCELLATION_REASONS.find((item) => item.code === code) ??
+    PASSENGER_CANCELLATION_REASONS[0]!
+  );
+}
+
 type PassengerCancellationPolicy = {
   type: "free" | "late_cancel" | "no_show";
   feeClp: number;
+  candidateFeeClp: number;
+  applicableFareClp: number;
+  feePercent: number;
+  feeCapClp: number;
   title: string;
   message: string;
   detail: string;
   acceptedElapsedMs: number | null;
   arrivedElapsedMs: number | null;
+  requiresAdminReview: boolean;
+  exemptionRequested: boolean;
+  cancellationReasonCode?: PassengerCancellationReasonCode | null;
+  cancellationReasonLabel?: string | null;
 };
+
+function applyPassengerCancellationReasonToPolicy(
+  policy: PassengerCancellationPolicy,
+  reasonCode: unknown,
+): PassengerCancellationPolicy {
+  const reason = getPassengerCancellationReason(reasonCode);
+  const exemptionRequested =
+    reason.exemptFromFee && policy.candidateFeeClp > 0;
+
+  return {
+    ...policy,
+    feeClp: exemptionRequested ? 0 : policy.candidateFeeClp,
+    requiresAdminReview: policy.candidateFeeClp > 0,
+    exemptionRequested,
+    cancellationReasonCode: reason.code,
+    cancellationReasonLabel: reason.label,
+    title: exemptionRequested
+      ? "Cancelación con solicitud de exención"
+      : policy.title,
+    message: exemptionRequested
+      ? "La cancelación se realizará sin aplicar un cargo automático. Administración revisará la causa informada."
+      : policy.message,
+    detail: exemptionRequested
+      ? `Motivo informado: ${reason.label}. El cargo referencial de ${formatClp(policy.candidateFeeClp)} queda suspendido hasta revisión del administrador.`
+      : policy.detail,
+  };
+}
 
 function getPassengerRideStableKey(ride: Partial<RideRequestData> & Record<string, unknown>): string {
   const id = String(ride.id ?? ride.rideId ?? ride.originalRideId ?? ride.serverRideId ?? "").trim();
@@ -1098,23 +1207,46 @@ function getPassengerCancellationPolicyForRide(ride: RideRequestData): Passenger
   const acceptedElapsedMs = acceptedAtMs == null ? null : Math.max(0, nowMs - acceptedAtMs);
   const arrivedElapsedMs = arrivedAtMs == null ? null : Math.max(0, nowMs - arrivedAtMs);
   const minimumFare = getPassengerRideMinimumFareClp(ride);
-  const totalServiceFare =
-    getPassengerCardCancellationCreditAmountClp(record) ||
-    getPassengerRideBaseFareClp(ride) ||
-    minimumFare;
-  const charge30WithCap = () => Math.min(RAPAGO_CANCEL_FEE_CAP_CLP, Math.round(minimumFare * 0.3));
+  const applicableFareClp = Math.max(
+    0,
+    Math.round(
+      getPassengerCardCancellationCreditAmountClp(record) ||
+      getPassengerRideBaseFareClp(ride) ||
+      minimumFare,
+    ),
+  );
+  const charge30WithCap = () =>
+    Math.min(
+      RAPAGO_CANCEL_FEE_CAP_CLP,
+      Math.max(0, Math.round(applicableFareClp * (RAPAGO_LATE_CANCEL_PERCENT / 100))),
+    );
+  const charge50WithCap = () =>
+    Math.min(
+      RAPAGO_NO_SHOW_FEE_CAP_CLP,
+      Math.max(0, Math.round(applicableFareClp * (RAPAGO_NO_SHOW_PERCENT / 100))),
+    );
   const scheduledChargeWindow = isPassengerScheduledCancellationChargeWindow(record, nowMs);
 
-  if (effectiveStatus === "driver_arrived" && arrivedElapsedMs != null && arrivedElapsedMs >= RAPAGO_NO_SHOW_AFTER_ARRIVAL_MS) {
-    const fee = Math.max(0, Math.round(totalServiceFare));
+  if (
+    effectiveStatus === "driver_arrived" &&
+    arrivedElapsedMs != null &&
+    arrivedElapsedMs >= RAPAGO_NO_SHOW_AFTER_ARRIVAL_MS
+  ) {
+    const fee = charge50WithCap();
     return {
       type: "no_show",
       feeClp: fee,
-      title: "Cobro total por no show",
-      message: `El conductor llegó al punto, notificó al cliente y esperó más de 5 minutos. Se aplicará el cobro total del servicio: ${formatClp(fee)}.`,
-      detail: "No show: cobro íntegro del servicio tras 5 minutos de espera y notificación por app/WhatsApp.",
+      candidateFeeClp: fee,
+      applicableFareClp,
+      feePercent: RAPAGO_NO_SHOW_PERCENT,
+      feeCapClp: RAPAGO_NO_SHOW_FEE_CAP_CLP,
+      title: "No presentación por revisar",
+      message: `El conductor llegó al punto y esperó 5 minutos. El cargo referencial es ${formatClp(fee)}.`,
+      detail: `No show: ${RAPAGO_NO_SHOW_PERCENT}% de la tarifa aplicable, con tope de ${formatClp(RAPAGO_NO_SHOW_FEE_CAP_CLP)}. El administrador debe validar la llegada, la espera y la evidencia antes de cobrar.`,
       acceptedElapsedMs,
       arrivedElapsedMs,
+      requiresAdminReview: true,
+      exemptionRequested: false,
     };
   }
 
@@ -1123,23 +1255,39 @@ function getPassengerCancellationPolicyForRide(ride: RideRequestData): Passenger
     return {
       type: "late_cancel",
       feeClp: fee,
-      title: "Cancelación de reserva dentro de últimos 15 min",
-      message: `La reserva está dentro de los últimos 15 minutos antes del inicio del servicio. Se aplicará un cargo de ${formatClp(fee)}.`,
-      detail: `Reserva: desde los últimos 15 minutos previos al inicio, 30% de la tarifa mínima aplicable, con tope de ${formatClp(RAPAGO_CANCEL_FEE_CAP_CLP)}.`,
+      candidateFeeClp: fee,
+      applicableFareClp,
+      feePercent: RAPAGO_LATE_CANCEL_PERCENT,
+      feeCapClp: RAPAGO_CANCEL_FEE_CAP_CLP,
+      title: "Cancelación programada dentro de 30 minutos",
+      message: `La reserva está dentro de los 30 minutos anteriores al inicio. El cargo referencial es ${formatClp(fee)}.`,
+      detail: `Viaje programado: ${RAPAGO_LATE_CANCEL_PERCENT}% de la tarifa aplicable, con tope de ${formatClp(RAPAGO_CANCEL_FEE_CAP_CLP)}. Administración debe confirmar o eximir el cargo.`,
       acceptedElapsedMs,
       arrivedElapsedMs,
+      requiresAdminReview: true,
+      exemptionRequested: false,
     };
   }
 
-  if (acceptedAtMs == null || acceptedElapsedMs == null || acceptedElapsedMs <= RAPAGO_FREE_CANCEL_AFTER_ACCEPTANCE_MS) {
+  if (
+    acceptedAtMs == null ||
+    acceptedElapsedMs == null ||
+    acceptedElapsedMs < RAPAGO_FREE_CANCEL_AFTER_ACCEPTANCE_MS
+  ) {
     return {
       type: "free",
       feeClp: 0,
+      candidateFeeClp: 0,
+      applicableFareClp,
+      feePercent: 0,
+      feeCapClp: 0,
       title: "Cancelación gratuita",
-      message: "Puedes cancelar gratis hasta 3 minutos desde que el conductor acepta el viaje.",
-      detail: "Cancelación gratuita del pasajero: hasta 3 minutos desde la aceptación del viaje.",
+      message: "Puedes cancelar gratuitamente durante los primeros 2 minutos desde la aceptación o asignación del conductor.",
+      detail: "No corresponde cargo por cancelación.",
       acceptedElapsedMs,
       arrivedElapsedMs,
+      requiresAdminReview: false,
+      exemptionRequested: false,
     };
   }
 
@@ -1147,11 +1295,17 @@ function getPassengerCancellationPolicyForRide(ride: RideRequestData): Passenger
   return {
     type: "late_cancel",
     feeClp: fee,
-    title: "Cancelación con cobro",
-    message: `Pasaron más de 3 minutos desde la aceptación. Se aplicará un cargo de ${formatClp(fee)}.`,
-    detail: `Desde el minuto 4: 30% de la tarifa mínima aplicable, con tope de ${formatClp(RAPAGO_CANCEL_FEE_CAP_CLP)}.`,
+    candidateFeeClp: fee,
+    applicableFareClp,
+    feePercent: RAPAGO_LATE_CANCEL_PERCENT,
+    feeCapClp: RAPAGO_CANCEL_FEE_CAP_CLP,
+    title: "Cancelación desde el tercer minuto",
+    message: `Finalizó el período gratuito de 2 minutos. El cargo referencial es ${formatClp(fee)}.`,
+    detail: `Desde el minuto 3: ${RAPAGO_LATE_CANCEL_PERCENT}% de la tarifa aplicable, con tope de ${formatClp(RAPAGO_CANCEL_FEE_CAP_CLP)}. Administración debe confirmar o eximir el cargo.`,
     acceptedElapsedMs,
     arrivedElapsedMs,
+    requiresAdminReview: true,
+    exemptionRequested: false,
   };
 }
 
@@ -1649,6 +1803,8 @@ function syncScheduledRidesToAdminBridge(rides: RideRequestData[]): void {
   saveAdminScheduledRideBridge([...scheduled, ...readAdminScheduledRideBridge()]);
 }
 
+const RAPAGO_PASSENGER_CANCELLED_RIDE_EVENT = "rapago:passenger-cancelled-ride-for-driver";
+
 const PASSENGER_CANCEL_STORAGE_KEYS = [
   LOCAL_PASSENGER_RIDES_KEY,
   RAPAGO_REQUEUED_RIDES_KEY,
@@ -1786,15 +1942,22 @@ function readPassengerPendingCharges(): PassengerPendingCharge[] {
         destinationText: String(item.destinationText ?? ""),
         amountClp: Math.max(0, Math.round(Number(item.amountClp ?? item.amount ?? 0))),
         minimumFareClp: Math.max(0, Math.round(Number(item.minimumFareClp ?? 0))),
+        applicableFareClp: Number.isFinite(Number(item.applicableFareClp)) ? Math.round(Number(item.applicableFareClp)) : null,
+        feePercent: Number.isFinite(Number(item.feePercent)) ? Number(item.feePercent) : null,
+        feeCapClp: Number.isFinite(Number(item.feeCapClp)) ? Math.round(Number(item.feeCapClp)) : null,
         type: String(item.type ?? "late_cancel") === "no_show" ? "no_show" : "late_cancel",
         paymentMethod: typeof item.paymentMethod === "string" ? item.paymentMethod : null,
-        status: String(item.status ?? "pending_next_ride") as PassengerPendingCharge["status"],
-        adminReviewStatus: String(item.adminReviewStatus ?? "charge_pending_next_ride") as PassengerPendingCharge["adminReviewStatus"],
+        status: String(item.status ?? "pending_admin_review") as PassengerPendingCharge["status"],
+        adminReviewStatus: String(item.adminReviewStatus ?? "pending_admin_review") as PassengerPendingCharge["adminReviewStatus"],
         createdAt: String(item.createdAt ?? new Date().toISOString()),
         appliedRideId: typeof item.appliedRideId === "string" ? item.appliedRideId : null,
         appliedAt: typeof item.appliedAt === "string" ? item.appliedAt : null,
         title: String(item.title ?? "Revision backend pendiente"),
         description: String(item.description ?? "Revision backend pendiente para el próximo viaje."),
+        requestedExemption: Boolean(item.requestedExemption),
+        cancellationReasonCode: typeof item.cancellationReasonCode === "string" ? item.cancellationReasonCode : null,
+        cancellationReasonLabel: typeof item.cancellationReasonLabel === "string" ? item.cancellationReasonLabel : null,
+        adminDecisionReason: typeof item.adminDecisionReason === "string" ? item.adminDecisionReason : null,
         cardRefundRequested: Boolean(item.cardRefundRequested || item.mercadoPagoRefundRequested),
         mercadoPagoRefundRequested: Boolean(item.mercadoPagoRefundRequested || item.cardRefundRequested),
         mercadoPagoRefundStatus: typeof item.mercadoPagoRefundStatus === "string" ? item.mercadoPagoRefundStatus : null,
@@ -1822,33 +1985,109 @@ function savePassengerPendingChargeFromCancellation(
   ride: RideRequestData,
   policy: PassengerCancellationPolicy,
 ): void {
-  if (policy.feeClp <= 0) return;
+  const candidateAmountClp = Math.max(
+    0,
+    Math.round(Number(policy.candidateFeeClp ?? policy.feeClp ?? 0)),
+  );
+  if (candidateAmountClp <= 0) return;
 
   try {
     const record = ride as RideRequestData & Record<string, unknown>;
     const rideId = String(record.id ?? record.rideId ?? record.originalRideId ?? record.serverRideId ?? "").trim();
     const rideKey = getPassengerPendingChargeRideKey(record);
+    const now = new Date().toISOString();
+    const paymentMethod = String(
+      record.paymentMethod ??
+      getRidePaymentMethodLabel(String(record.notes ?? "")) ??
+      "",
+    ).trim() || null;
+    const passengerEmail = String(record.passengerEmail ?? record.email ?? "").trim().toLowerCase() || null;
+    const passengerName = String(record.passengerName ?? record.userName ?? record.name ?? "").trim() || null;
+
+    const pendingCharge: PassengerPendingCharge & Record<string, unknown> = {
+      id: `cancellation-review-${rideId || rideKey}`,
+      rideId: rideId || null,
+      rideKey,
+      passengerEmail,
+      passengerName,
+      originText: String(record.originText ?? "Origen"),
+      destinationText: String(record.destinationText ?? "Destino"),
+      amountClp: candidateAmountClp,
+      minimumFareClp: getPassengerRideMinimumFareClp(ride),
+      applicableFareClp: policy.applicableFareClp,
+      originalServiceAmountClp: policy.applicableFareClp,
+      originalNoShowServiceAmountClp:
+        policy.type === "no_show" ? policy.applicableFareClp : null,
+      feePercent: policy.feePercent,
+      feeCapClp: policy.feeCapClp,
+      type: policy.type === "no_show" ? "no_show" : "late_cancel",
+      paymentMethod,
+      status: "pending_admin_review",
+      adminReviewStatus: policy.exemptionRequested
+        ? "pending_exemption_review"
+        : "pending_admin_review",
+      createdAt: now,
+      appliedRideId: null,
+      appliedAt: null,
+      title: policy.exemptionRequested
+        ? "Solicitud de exención de cargo"
+        : policy.type === "no_show"
+          ? "No show por validar"
+          : "Cancelación fuera de plazo por validar",
+      description: policy.exemptionRequested
+        ? `${policy.detail} El administrador debe revisar la causa antes de aprobar cualquier cargo.`
+        : `${policy.detail} Este monto es referencial y no puede cobrarse hasta aprobación del administrador/backend.`,
+      requestedExemption: policy.exemptionRequested,
+      cancellationReasonCode: policy.cancellationReasonCode ?? null,
+      cancellationReasonLabel: policy.cancellationReasonLabel ?? null,
+      backendAuthorityRequired: true,
+      localStorageFinancialAuthority: false,
+      cardRefundRequested: Boolean(record.cardRefundRequested || record.mercadoPagoRefundRequested),
+      mercadoPagoRefundRequested: Boolean(record.mercadoPagoRefundRequested || record.cardRefundRequested),
+      mercadoPagoRefundStatus:
+        typeof record.mercadoPagoRefundStatus === "string"
+          ? record.mercadoPagoRefundStatus
+          : null,
+      cardRefundNotice:
+        typeof record.cardRefundNotice === "string"
+          ? record.cardRefundNotice
+          : null,
+    };
+
+    const current = readPassengerPendingCharges();
+    const next = [
+      pendingCharge,
+      ...current.filter((item) => item.id !== pendingCharge.id),
+    ].slice(0, 250);
+    writePassengerPendingCharges(next);
 
     const notification: PassengerNotificationPayload = {
       id: `backend-charge-review-${rideId || rideKey}-${Date.now()}`,
       rideId: rideId || rideKey,
-      type: "backend_charge_review_required",
-      title: "Cargo sujeto a revision",
-      body: `La cancelacion/no show fue informada. El monto referencial ${formatClp(policy.feeClp)} no se carga desde este dispositivo; debe confirmarlo el backend/admin.`,
-      createdAt: new Date().toISOString(),
+      type: policy.exemptionRequested
+        ? "cancellation_exemption_review"
+        : "backend_charge_review_required",
+      title: policy.exemptionRequested
+        ? "Exención enviada a revisión"
+        : "Cargo sujeto a revisión",
+      body: policy.exemptionRequested
+        ? `La cancelación fue registrada. Administración revisará el motivo antes de decidir sobre el cargo referencial de ${formatClp(candidateAmountClp)}.`
+        : `La cancelación/no show fue informada. El monto referencial ${formatClp(candidateAmountClp)} no se carga desde este dispositivo; debe confirmarlo el backend/admin.`,
+      createdAt: now,
       read: false,
     };
 
-    const current = readPassengerNotifications();
+    const currentNotifications = readPassengerNotifications();
     localStorage.setItem(
       RAPAGO_PASSENGER_NOTIFICATIONS_KEY,
-      JSON.stringify([notification, ...current].slice(0, 100)),
+      JSON.stringify([notification, ...currentNotifications].slice(0, 100)),
     );
 
     window.dispatchEvent(new CustomEvent("rapago:passenger-notifications-updated", { detail: { notification, ride } }));
-    window.dispatchEvent(new CustomEvent("rapago:passenger-rides-updated", { detail: { ride, notification, policy } }));
+    window.dispatchEvent(new CustomEvent("rapago:passenger-rides-updated", { detail: { ride, notification, policy, pendingCharge } }));
+    window.dispatchEvent(new CustomEvent("rapago:admin-rides-updated", { detail: { pendingCharge } }));
   } catch {
-    // Visual solamente. No crea cargos reales desde localStorage.
+    // El frontend no autoriza cargos reales. Backend/admin sigue siendo la autoridad.
   }
 }
 
@@ -1909,13 +2148,18 @@ function isPassengerCancellationCardPaymentForRefundAction(
   return isPassengerCancellationCardPayment(ride);
 }
 
-function buildPassengerCancelledRide(ride: RideRequestData): RideRequestData {
+function buildPassengerCancelledRide(
+  ride: RideRequestData,
+  resolvedPolicy?: PassengerCancellationPolicy,
+): RideRequestData {
   const now = new Date().toISOString();
-  const policy = getPassengerCancellationPolicyForRide(ride);
+  const policy = resolvedPolicy ?? getPassengerCancellationPolicyForRide(ride);
   const record = ride as RideRequestData & Record<string, unknown>;
   const isCardPayment = isPassengerCancellationCardPaymentForRefundAction(record);
+  const candidateFeeClp = Math.max(0, Math.round(policy.candidateFeeClp));
+  const approvedFrontendFeeClp = policy.exemptionRequested ? 0 : Math.max(0, Math.round(policy.feeClp));
 
-  if (policy.feeClp > 0) {
+  if (candidateFeeClp > 0) {
     savePassengerPendingChargeFromCancellation(ride, policy);
   }
 
@@ -1926,35 +2170,43 @@ function buildPassengerCancelledRide(ride: RideRequestData): RideRequestData {
     cancelledByRole: "passenger",
     cancelledBy: "passenger",
     cancellationReason:
-      policy.feeClp > 0
-        ? `${policy.title}. ${policy.message}`
-        : "Cancelado por pasajero.",
-    passengerCancellationFeeClp: policy.feeClp,
+      policy.cancellationReasonLabel
+        ? `${policy.cancellationReasonLabel}. ${policy.title}.`
+        : policy.feeClp > 0
+          ? `${policy.title}. ${policy.message}`
+          : "Cancelado por pasajero.",
+    passengerCancellationFeeClp: approvedFrontendFeeClp,
+    passengerCancellationCandidateFeeClp: candidateFeeClp,
     passengerCancellationPolicyType: policy.type,
     passengerCancellationPolicyText: policy.detail,
-    passengerCancellationChargedAt: policy.feeClp > 0 ? now : null,
-    paymentPendingClp: isCardPayment ? 0 : policy.feeClp,
-    passengerPendingChargeNextRide: !isCardPayment && policy.feeClp > 0,
+    passengerCancellationFeePercent: policy.feePercent,
+    passengerCancellationFeeCapClp: policy.feeCapClp,
+    passengerCancellationApplicableFareClp: policy.applicableFareClp,
+    passengerCancellationReasonCode: policy.cancellationReasonCode ?? null,
+    passengerCancellationReasonLabel: policy.cancellationReasonLabel ?? null,
+    cancellationExemptionRequested: policy.exemptionRequested,
+    passengerCancellationRequiresAdminReview: policy.requiresAdminReview,
+    passengerCancellationChargedAt: null,
+    paymentPendingClp: 0,
+    passengerPendingChargeNextRide: false,
     passengerPendingChargeNotice:
-      policy.feeClp > 0
-        ? isCardPayment
-          ? `La penalización de ${formatClp(policy.feeClp)} queda sujeto a revision segura del backend/admin. El frontend no crea creditos locales.`
-          : `Tienes un cargo pendiente de ${formatClp(policy.feeClp)}. Debe ser revisado y aplicado por backend/admin.`
+      candidateFeeClp > 0
+        ? policy.exemptionRequested
+          ? `Solicitaste exención por: ${policy.cancellationReasonLabel ?? "causa informada"}. Administración revisará el cargo referencial de ${formatClp(candidateFeeClp)}.`
+          : `Existe un cargo referencial de ${formatClp(candidateFeeClp)} pendiente de revisión. Solo backend/admin puede aprobarlo.`
         : null,
-    // Si el viaje fue pagado con tarjeta, el reembolso real debe ejecutarlo el backend
-    // usando el paymentId del proveedor. El frontend solo deja la solicitud marcada
-    // para que producción la procese de forma segura.
+    // En tarjeta, el reembolso/crédito real debe ejecutarlo el backend.
     cardRefundRequested: isCardPayment,
     mercadoPagoRefundRequested: isCardPayment,
     mercadoPagoRefundStatus: isCardPayment ? "pending_backend_refund" : null,
     cardRefundNotice: isCardPayment
-      ? policy.feeClp > 0
-        ? `Tu viaje fue cancelado. El saldo del pago queda como CRÉDITOS PARA PRÓXIMO VIAJE en tu billetera. Si necesitas devolución, gestiona por WhatsApp con RAPA GO. El cargo pendiente de ${formatClp(policy.feeClp)} es separado y se cobrará automáticamente en tu próximo viaje.`
-        : "Tu viaje fue cancelado. El saldo del pago queda como CRÉDITOS PARA PRÓXIMO VIAJE en tu billetera. Si necesitas devolución, gestiona por WhatsApp con RAPA GO. No debes ingresar tarjeta, claves ni datos bancarios."
+      ? candidateFeeClp > 0
+        ? `Tu viaje fue cancelado. La devolución o crédito queda pendiente de revisión segura. El cargo referencial de ${formatClp(candidateFeeClp)} no se aplica automáticamente desde el frontend.`
+        : "Tu viaje fue cancelado. La devolución o crédito debe ser procesado por backend/admin. No ingreses tarjeta, claves ni códigos bancarios."
       : null,
     cardWalletCreditRequested: isCardPayment,
-    cardWalletCreditClp: isCardPayment ? getPassengerCardCancellationCreditNetClp(record, policy.feeClp) : 0,
-    cardWalletCreditStatus: isCardPayment ? "pending_admin" : null,
+    cardWalletCreditClp: 0,
+    cardWalletCreditStatus: isCardPayment ? "pending_admin_review" : null,
     requeuedReason: null,
     forceActiveAfterDriverCancel: false,
     passengerNotice: null,
@@ -2040,8 +2292,110 @@ function removePassengerRideFromArrayStorage(
   writeRideArrayStorage(key, parsed.filter((ride) => !isSamePassengerRideCancelTarget(ride, target)));
 }
 
-function cancelPassengerRideEverywhere(target: RideRequestData): RideRequestData {
-  const cancelled = buildPassengerCancelledRide(target);
+
+function publishPassengerCancellationToDriver(
+  cancelled: RideRequestData,
+): void {
+  const record = cancelled as RideRequestData & Record<string, unknown>;
+  const reason = String(
+    record.passengerCancellationReasonLabel ??
+      record.cancellationReasonLabel ??
+      record.cancellationReason ??
+      "Motivo no informado",
+  )
+    .replace(/[\u0000-\u001F\u007F]/g, " ")
+    .replace(/[<>`{}$\\]/g, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 240);
+
+  // Retira inmediatamente el viaje de los espejos activos del conductor.
+  // Esto evita que el mapa, la reserva o la solicitud continúen visibles
+  // mientras el listener del conductor procesa el aviso.
+  for (const key of [
+    "rapago_local_driver_assigned_rides",
+    "rapago_driver_scheduled_queue",
+    "rapago_driver_active_rides_v1",
+    "rapago_driver_my_rides_v1",
+  ]) {
+    try {
+      const raw = localStorage.getItem(key);
+      const parsed = raw ? (JSON.parse(raw) as Array<Record<string, unknown>>) : [];
+      if (!Array.isArray(parsed)) continue;
+
+      localStorage.setItem(
+        key,
+        JSON.stringify(
+          parsed
+            .filter((item) => !isSamePassengerRideCancelTarget(item, record))
+            .slice(0, 200),
+        ),
+      );
+    } catch {
+      // No bloquea la cancelación.
+    }
+  }
+
+  for (const key of [
+    "rapago_last_accepted_ride",
+    "rapago_driver_active_ride",
+    "rapago_driver_active_ride_v1",
+    "rapago_current_driver_location",
+  ]) {
+    try {
+      const raw = localStorage.getItem(key);
+      if (!raw) continue;
+
+      const parsed = JSON.parse(raw) as unknown;
+      const candidate =
+        parsed &&
+        typeof parsed === "object" &&
+        "ride" in (parsed as Record<string, unknown>)
+          ? (parsed as Record<string, unknown>).ride
+          : parsed;
+
+      if (
+        candidate &&
+        typeof candidate === "object" &&
+        isSamePassengerRideCancelTarget(
+          candidate as Record<string, unknown>,
+          record,
+        )
+      ) {
+        localStorage.removeItem(key);
+      }
+    } catch {
+      localStorage.removeItem(key);
+    }
+  }
+
+  const detail = {
+    cancelled: record,
+    ride: record,
+    rideId: String(record.id ?? record.rideId ?? record.originalRideId ?? ""),
+    reason,
+    cancelledByRole: "passenger",
+  };
+
+  window.dispatchEvent(
+    new CustomEvent(RAPAGO_PASSENGER_CANCELLED_RIDE_EVENT, { detail }),
+  );
+  window.dispatchEvent(
+    new CustomEvent("rapago:driver-active-ride-cancelled", { detail }),
+  );
+  window.dispatchEvent(
+    new CustomEvent("rapago:driver-rides-updated", { detail }),
+  );
+  window.dispatchEvent(
+    new CustomEvent("rapago:driver-available-rides-updated", { detail }),
+  );
+}
+
+function cancelPassengerRideEverywhere(
+  target: RideRequestData,
+  resolvedPolicy?: PassengerCancellationPolicy,
+): RideRequestData {
+  const cancelled = buildPassengerCancelledRide(target, resolvedPolicy);
   savePassengerWalletCreditFromCardCancellation(target, cancelled);
 
   // Quita la solicitud de todas las colas donde aparece como reencolada/activa,
@@ -2076,8 +2430,17 @@ function cancelPassengerRideEverywhere(target: RideRequestData): RideRequestData
 
   saveLocalPassengerRides(purgeExpiredCancelledRideRecords(dedupeRideList(nextLocal as Array<RideRequestData & Record<string, unknown>>)).slice(0, 200) as RideRequestData[]);
 
-  window.dispatchEvent(new CustomEvent("rapago:driver-available-rides-updated", { detail: { cancelled } }));
-  window.dispatchEvent(new CustomEvent(RAPAGO_REQUEUED_RIDES_EVENT, { detail: { cancelled } }));
+  publishPassengerCancellationToDriver(cancelled);
+  window.dispatchEvent(
+    new CustomEvent(RAPAGO_REQUEUED_RIDES_EVENT, {
+      detail: { cancelled, ride: cancelled },
+    }),
+  );
+  window.dispatchEvent(
+    new CustomEvent("rapago:passenger-rides-updated", {
+      detail: { cancelled, ride: cancelled },
+    }),
+  );
 
   return cancelled;
 }
@@ -3946,6 +4309,150 @@ function getPassengerDriverFullName(ride: RideRequestData & Record<string, unkno
 }
 
 
+const PASSENGER_DRIVER_PROFILE_SCOPED_BASE_KEYS = [
+  "rapago_driver_profile_photo",
+  "rapago_driver_profile_image_data_url",
+  "rapago_driver_profile_photo_url",
+  "rapago_public_driver_profile_photo",
+  "rapago_driver_photo",
+  "rapago_profile_photo",
+  "rapago_user_profile_photo",
+  "rapago_driver_avatar_data_url",
+] as const;
+
+function passengerDriverOwnerCandidates(
+  ride: RideRequestData & Record<string, unknown>,
+  live: PassengerLocalDriverLivePayload | null,
+): string[] {
+  return Array.from(
+    new Set(
+      [
+        live?.ownerKey,
+        live?.driverOwnerKey,
+        live?.vehicleOwnerKey,
+        live?.driverEmail,
+        live?.driverId,
+        live?.driverUserId,
+        live?.driverName,
+        live?.driverFullName,
+        ride.ownerKey,
+        ride.driverOwnerKey,
+        ride.vehicleOwnerKey,
+        ride.driverEmail,
+        ride.driverId,
+        ride.driverUserId,
+        ride.driverName,
+        ride.driverFullName,
+      ]
+        .map((value) => String(value ?? "").trim().toLowerCase())
+        .filter(Boolean),
+    ),
+  );
+}
+
+function passengerReadScopedDriverProfilePhoto(ownerKey: string): string | null {
+  const cleanOwner = String(ownerKey ?? "").trim().toLowerCase();
+  if (!cleanOwner) return null;
+
+  for (const baseKey of PASSENGER_DRIVER_PROFILE_SCOPED_BASE_KEYS) {
+    const scopedKey = `${baseKey}__${encodeURIComponent(cleanOwner)}`;
+    const image = passengerImageValue(
+      passengerReadStringStorageValue(scopedKey),
+    );
+    if (image) return image;
+  }
+
+  return null;
+}
+
+function passengerReadDriverProfilePhotoForRide(
+  ride: RideRequestData & Record<string, unknown>,
+  live: PassengerLocalDriverLivePayload | null,
+): string | null {
+  const ownerCandidates = passengerDriverOwnerCandidates(ride, live);
+
+  // La foto se guarda por conductor con una llave aislada. Primero buscamos
+  // exclusivamente las llaves que pertenecen al conductor asignado al viaje.
+  for (const owner of ownerCandidates) {
+    const image = passengerReadScopedDriverProfilePhoto(owner);
+    if (image) return image;
+  }
+
+  try {
+    const raw = localStorage.getItem("rapago_driver_public_profiles_v1");
+    const map = raw ? (JSON.parse(raw) as Record<string, unknown>) : {};
+    const profiles = Object.entries(map)
+      .filter((entry): entry is [string, Record<string, unknown>] =>
+        Boolean(entry[1] && typeof entry[1] === "object"),
+      );
+
+    const target = {
+      ...(live ?? {}),
+      ownerKey: passengerFirstValue(live?.ownerKey, ride.ownerKey) || null,
+      driverOwnerKey:
+        passengerFirstValue(live?.driverOwnerKey, ride.driverOwnerKey) || null,
+      driverId: passengerFirstValue(live?.driverId, ride.driverId) || null,
+      driverUserId:
+        passengerFirstValue(live?.driverUserId, ride.driverUserId) || null,
+      driverEmail:
+        passengerFirstValue(live?.driverEmail, ride.driverEmail) || null,
+      driverName: passengerFirstValue(live?.driverName, ride.driverName) || null,
+      driverFullName:
+        passengerFirstValue(live?.driverFullName, ride.driverFullName) || null,
+    } as PassengerLocalDriverLivePayload;
+
+    const matched = profiles.find(([mapOwner, profile]) => {
+      if (ownerCandidates.includes(mapOwner.trim().toLowerCase())) return true;
+      return passengerLivePayloadMatchesDriver(
+        profile as PassengerLocalDriverLivePayload,
+        target,
+      );
+    });
+
+    if (matched) {
+      const [mapOwner, profile] = matched;
+      const direct = passengerGetProfilePhotoFromObject(profile);
+      if (direct) {
+        return passengerImageWithVersion(
+          direct,
+          passengerObjectTime(profile, "rapago_driver_public_profiles_v1"),
+        );
+      }
+
+      const matchedOwner = passengerFirstValue(
+        profile.ownerKey,
+        profile.driverOwnerKey,
+        profile.driverEmail,
+        mapOwner,
+      ).toLowerCase();
+      const scoped = passengerReadScopedDriverProfilePhoto(matchedOwner);
+      if (scoped) return scoped;
+    }
+
+    // Compatibilidad de desarrollo: cuando hay exactamente un conductor
+    // publicado en este navegador, se puede recuperar su foto sin mezclarla
+    // con perfiles de terceros.
+    if (profiles.length === 1) {
+      const [mapOwner, profile] = profiles[0]!;
+      const direct = passengerGetProfilePhotoFromObject(profile);
+      if (direct) return direct;
+
+      const onlyOwner = passengerFirstValue(
+        profile.ownerKey,
+        profile.driverOwnerKey,
+        profile.driverEmail,
+        mapOwner,
+      ).toLowerCase();
+      const scoped = passengerReadScopedDriverProfilePhoto(onlyOwner);
+      if (scoped) return scoped;
+    }
+  } catch {
+    // No bloquea Mis Viajes si un perfil local antiguo está dañado.
+  }
+
+  return null;
+}
+
 function getPassengerDriverProfileImageDataUrl(ride: RideRequestData & Record<string, unknown>): string | null {
   const live = readPassengerLiveVehiclePayload(String(ride.id ?? ""));
   const specificImage = passengerImageValue(
@@ -3963,6 +4470,12 @@ function getPassengerDriverProfileImageDataUrl(ride: RideRequestData & Record<st
   );
 
   if (specificImage) return specificImage;
+
+  const assignedDriverImage = passengerReadDriverProfilePhotoForRide(ride, live);
+  if (assignedDriverImage) return assignedDriverImage;
+
+  // Solo usamos un respaldo global cuando no existe conductor asignado. Si el
+  // viaje ya tiene conductor, la búsqueda anterior fue aislada por identidad.
   if (passengerRideHasAssignedDriver(ride, live) || passengerRideIsAssignedOrActive(ride)) return null;
 
   return passengerReadBestProfilePhotoFromEverywhere();
@@ -4294,7 +4807,6 @@ function PassengerDriverAndVehicleDetails({
   const initial = driverName.trim().charAt(0).toUpperCase() || "C";
   const modelLine = [vehicle.brand, vehicle.model].filter(Boolean).join(" ").trim() || "Vehículo asignado";
   const plateText = vehicle.plate ? vehicle.plate.toUpperCase() : "SIN PATENTE";
-  const maskedPlate = vehicle.plate ? `****${plateText.slice(-4)}` : "****";
   const colorLine = vehicle.color ? `Color: ${vehicle.color}` : "Color no informado";
   const statusText = getPassengerUberStatusText(effectiveStatus);
   const cleanFirstName = driverName.split(/\s+/)[0]?.trim() || driverName;
@@ -4415,8 +4927,17 @@ function PassengerDriverAndVehicleDetails({
         </div>
 
         <div style={{ textAlign: "right", minWidth: 0 }}>
-          <div style={{ fontWeight: 950, fontSize: ".96rem", letterSpacing: ".02em" }}>
-            {maskedPlate}
+          <div
+            style={{
+              fontWeight: 950,
+              fontSize: ".96rem",
+              letterSpacing: ".04em",
+              whiteSpace: "nowrap",
+              overflowWrap: "normal",
+            }}
+            aria-label={`Patente completa ${plateText}`}
+          >
+            {plateText}
           </div>
           <div style={{ fontSize: ".78rem", color: "rgba(17,17,17,.66)", fontWeight: 850, marginTop: 2 }}>
             {modelLine}
@@ -5787,15 +6308,22 @@ type PassengerPendingCharge = {
   destinationText: string;
   amountClp: number;
   minimumFareClp: number;
+  applicableFareClp?: number | null;
+  feePercent?: number | null;
+  feeCapClp?: number | null;
   type: "late_cancel" | "no_show";
   paymentMethod?: string | null;
-  status: "pending_next_ride" | "applied_to_next_ride" | "paid" | "waived";
-  adminReviewStatus: "charge_pending_next_ride" | "charged_in_next_ride" | "paid" | "waived";
+  status: string;
+  adminReviewStatus: string;
   createdAt: string;
   appliedRideId?: string | null;
   appliedAt?: string | null;
   title: string;
   description: string;
+  requestedExemption?: boolean | null;
+  cancellationReasonCode?: string | null;
+  cancellationReasonLabel?: string | null;
+  adminDecisionReason?: string | null;
   cardRefundRequested?: boolean | null;
   mercadoPagoRefundRequested?: boolean | null;
   mercadoPagoRefundStatus?: string | null;
@@ -6628,19 +7156,19 @@ function buildPassengerCancellationAlertMessage(
   policy: PassengerCancellationPolicy,
   ride?: RideRequestData | null,
 ): string {
-  if (policy.feeClp <= 0) {
-    return "Puedes cancelar este viaje sin cobro. ¿Confirmas la cancelación?";
-  }
-
   const isCardPayment = ride
     ? isPassengerCancellationCardPaymentForRefundAction(ride as RideRequestData & Record<string, unknown>)
     : false;
 
-  if (isCardPayment) {
-    return `${policy.message} ${policy.detail} Si confirmas, cancelaremos el viaje y podrás gestionar la devolución segura con RAPA GO por WhatsApp. El cargo de ${formatClp(policy.feeClp)} queda sujeto a revision y aplicacion por backend/admin. ¿Confirmas cancelar?`;
+  const paymentNotice = isCardPayment
+    ? " La devolución o crédito de tarjeta/MercadoPago será procesado únicamente por backend/admin."
+    : "";
+
+  if (policy.candidateFeeClp <= 0) {
+    return `${policy.message} Selecciona el motivo y confirma la cancelación.${paymentNotice}`;
   }
 
-  return `${policy.message} ${policy.detail} Si confirmas, el cargo de ${formatClp(policy.feeClp)} queda sujeto a revision y aplicacion por backend/admin. ¿Confirmas cancelar?`;
+  return `${policy.message} ${policy.detail} Selecciona el motivo. Si corresponde a discrepancia de conductor/vehículo, seguridad, duplicidad de la Plataforma o causa imputable al Operador/conductor, el cargo quedará suspendido para revisión del administrador.${paymentNotice}`;
 }
 
 function PassengerRideCard({
@@ -7261,7 +7789,7 @@ function PassengerRideCard({
                 fontWeight: 900,
               }}
             >
-              Reserva dentro de últimos 15 min.
+              Reserva dentro de últimos 30 min.
               <br />
               Cargo por cancelar: <strong>{formatClp(cancellationPolicy.feeClp)}</strong>.
             </div>
@@ -7542,11 +8070,12 @@ export default function TripsPage(): JSX.Element {
     targetRide: RideRequestData,
     rideId: string,
     mode: "requested" | "accepted",
+    resolvedPolicy: PassengerCancellationPolicy,
   ): Promise<void> {
     setCancelling(rideId);
     setCancelError(null);
 
-    const cancelledLocal = cancelPassengerRideEverywhere(targetRide);
+    const cancelledLocal = cancelPassengerRideEverywhere(targetRide, resolvedPolicy);
     setAllRides((prev) => applyPassengerCancelledRideToList(prev, targetRide, cancelledLocal));
 
     try {
@@ -7590,14 +8119,11 @@ export default function TripsPage(): JSX.Element {
 
     const policy = getPassengerCancellationPolicyForRide(targetRide);
 
-    // Nunca usamos window.confirm porque en celular aparece como
-    // "192.168... dice". Todo queda dentro de la app RAPA GO.
-    if (policy.feeClp > 0) {
-      setPendingCancelAction({ rideId, mode, ride: targetRide, policy });
-      return;
-    }
-
-    void performPassengerCancel(targetRide, rideId, mode);
+    // Siempre pedimos el motivo dentro de la app. Las causas de discrepancia,
+    // seguridad, duplicidad o responsabilidad del Operador/conductor quedan
+    // suspendidas para revisión del administrador; nunca se eximen por confiar
+    // únicamente en el frontend.
+    setPendingCancelAction({ rideId, mode, ride: targetRide, policy });
   }
 
   async function handleCancel(rideId: string) {
@@ -7716,6 +8242,203 @@ export default function TripsPage(): JSX.Element {
 
   return (
     <IonPage>
+      <style>{`
+        /* ==========================================================
+           RAPA GO — Alerta de cancelación / No Show
+           Alto contraste para evitar fondo negro con texto invisible.
+           El cssClass del IonAlert es rapago-cancellation-policy-alert.
+           ========================================================== */
+        ion-alert.rapago-cancellation-policy-alert {
+          --background: #fffaf0;
+          --color: #17130d;
+          --backdrop-opacity: 0.72;
+          --max-width: 620px;
+        }
+
+        ion-alert.rapago-cancellation-policy-alert .alert-wrapper {
+          width: min(92vw, 620px) !important;
+          max-width: 620px !important;
+          max-height: min(88vh, 760px) !important;
+          border-radius: 24px !important;
+          background: #fffaf0 !important;
+          color: #17130d !important;
+          border: 2px solid rgba(200, 155, 60, 0.72) !important;
+          box-shadow: 0 28px 80px rgba(0, 0, 0, 0.48) !important;
+          overflow: hidden !important;
+        }
+
+        ion-alert.rapago-cancellation-policy-alert .alert-head {
+          padding: 22px 24px 10px !important;
+          text-align: left !important;
+          background: linear-gradient(135deg, #fff8e7 0%, #f1dfb8 100%) !important;
+          border-bottom: 1px solid rgba(139, 99, 25, 0.22) !important;
+        }
+
+        ion-alert.rapago-cancellation-policy-alert .alert-title {
+          margin: 0 !important;
+          color: #17130d !important;
+          font-size: clamp(1.12rem, 2.5vw, 1.35rem) !important;
+          font-weight: 950 !important;
+          line-height: 1.2 !important;
+          letter-spacing: -0.01em !important;
+        }
+
+        ion-alert.rapago-cancellation-policy-alert .alert-message {
+          margin: 14px 18px 10px !important;
+          padding: 14px 16px !important;
+          max-height: 185px !important;
+          overflow-y: auto !important;
+          white-space: pre-line !important;
+          color: #2b2419 !important;
+          background: #fff3cf !important;
+          border: 1px solid rgba(200, 155, 60, 0.42) !important;
+          border-radius: 16px !important;
+          font-size: 0.92rem !important;
+          font-weight: 750 !important;
+          line-height: 1.55 !important;
+          opacity: 1 !important;
+          scrollbar-width: thin;
+          scrollbar-color: #c89b3c #fff3cf;
+        }
+
+        ion-alert.rapago-cancellation-policy-alert .alert-input-group,
+        ion-alert.rapago-cancellation-policy-alert .alert-radio-group {
+          margin: 0 18px 12px !important;
+          padding: 6px !important;
+          max-height: 310px !important;
+          overflow-y: auto !important;
+          background: #ffffff !important;
+          border: 1px solid rgba(65, 50, 28, 0.16) !important;
+          border-radius: 16px !important;
+          scrollbar-width: thin;
+          scrollbar-color: #c89b3c #f6f2ec;
+        }
+
+        ion-alert.rapago-cancellation-policy-alert .alert-radio-button {
+          min-height: 58px !important;
+          margin: 0 0 6px !important;
+          border-radius: 13px !important;
+          background: #ffffff !important;
+          border: 1px solid #e7dcc7 !important;
+          color: #17130d !important;
+          transition: background 150ms ease, border-color 150ms ease, transform 150ms ease !important;
+        }
+
+        ion-alert.rapago-cancellation-policy-alert .alert-radio-button:last-child {
+          margin-bottom: 0 !important;
+        }
+
+        ion-alert.rapago-cancellation-policy-alert .alert-radio-button:hover {
+          background: #fff8e7 !important;
+          border-color: #c89b3c !important;
+        }
+
+        ion-alert.rapago-cancellation-policy-alert .alert-radio-button[aria-checked="true"] {
+          background: #fff0bd !important;
+          border-color: #a87920 !important;
+          box-shadow: inset 0 0 0 1px rgba(168, 121, 32, 0.3) !important;
+        }
+
+        ion-alert.rapago-cancellation-policy-alert .alert-radio-label {
+          padding-top: 14px !important;
+          padding-bottom: 14px !important;
+          white-space: normal !important;
+          overflow: visible !important;
+          text-overflow: clip !important;
+          color: #201a12 !important;
+          font-size: 0.9rem !important;
+          font-weight: 800 !important;
+          line-height: 1.35 !important;
+          opacity: 1 !important;
+        }
+
+        ion-alert.rapago-cancellation-policy-alert .alert-radio-icon {
+          border-color: #6b6255 !important;
+          opacity: 1 !important;
+        }
+
+        ion-alert.rapago-cancellation-policy-alert .alert-radio-button[aria-checked="true"] .alert-radio-icon {
+          border-color: #a87920 !important;
+        }
+
+        ion-alert.rapago-cancellation-policy-alert .alert-radio-inner {
+          background: #a87920 !important;
+        }
+
+        ion-alert.rapago-cancellation-policy-alert .alert-button-group {
+          display: grid !important;
+          grid-template-columns: 1fr 1fr !important;
+          gap: 10px !important;
+          padding: 12px 18px 18px !important;
+          background: #fffaf0 !important;
+          border-top: 1px solid rgba(65, 50, 28, 0.14) !important;
+        }
+
+        ion-alert.rapago-cancellation-policy-alert .alert-button {
+          width: 100% !important;
+          min-width: 0 !important;
+          min-height: 48px !important;
+          margin: 0 !important;
+          border-radius: 14px !important;
+          justify-content: center !important;
+          text-transform: none !important;
+          font-size: 0.9rem !important;
+          font-weight: 950 !important;
+          letter-spacing: 0 !important;
+          opacity: 1 !important;
+        }
+
+        ion-alert.rapago-cancellation-policy-alert .alert-button[role="cancel"] {
+          color: #17130d !important;
+          background: #f6f2ec !important;
+          border: 1px solid #b9aa91 !important;
+        }
+
+        ion-alert.rapago-cancellation-policy-alert .alert-button[role="destructive"] {
+          color: #ffffff !important;
+          background: linear-gradient(135deg, #b42318, #dc2626) !important;
+          border: 1px solid #991b1b !important;
+          box-shadow: 0 10px 22px rgba(185, 28, 28, 0.24) !important;
+        }
+
+        ion-alert.rapago-cancellation-policy-alert .alert-button:focus-visible {
+          outline: 3px solid rgba(200, 155, 60, 0.48) !important;
+          outline-offset: 2px !important;
+        }
+
+        @media (max-width: 520px) {
+          ion-alert.rapago-cancellation-policy-alert .alert-wrapper {
+            width: calc(100vw - 24px) !important;
+            max-height: calc(100vh - 34px) !important;
+            border-radius: 20px !important;
+          }
+
+          ion-alert.rapago-cancellation-policy-alert .alert-head {
+            padding: 18px 18px 9px !important;
+          }
+
+          ion-alert.rapago-cancellation-policy-alert .alert-message {
+            margin: 10px 12px 8px !important;
+            padding: 12px 13px !important;
+            max-height: 155px !important;
+            font-size: 0.84rem !important;
+          }
+
+          ion-alert.rapago-cancellation-policy-alert .alert-input-group,
+          ion-alert.rapago-cancellation-policy-alert .alert-radio-group {
+            margin: 0 12px 9px !important;
+            max-height: 270px !important;
+          }
+
+          ion-alert.rapago-cancellation-policy-alert .alert-radio-label {
+            font-size: 0.83rem !important;
+          }
+
+          ion-alert.rapago-cancellation-policy-alert .alert-button-group {
+            padding: 10px 12px 14px !important;
+          }
+        }
+      `}</style>
       <IonHeader>
         <IonToolbar color="primary">
           <IonTitle>Mis Viajes</IonTitle>
@@ -8057,12 +8780,20 @@ export default function TripsPage(): JSX.Element {
 
         <IonAlert
           isOpen={pendingCancelAction !== null}
+          cssClass="rapago-cancellation-policy-alert"
+          backdropDismiss={false}
           header={pendingCancelAction?.policy.title ?? "Cancelar viaje"}
           message={
             pendingCancelAction
               ? buildPassengerCancellationAlertMessage(pendingCancelAction.policy, pendingCancelAction.ride)
               : ""
           }
+          inputs={PASSENGER_CANCELLATION_REASONS.map((reason, index) => ({
+            type: "radio" as const,
+            label: reason.label,
+            value: reason.code,
+            checked: index === 0,
+          }))}
           buttons={[
             {
               text: "Volver",
@@ -8072,13 +8803,19 @@ export default function TripsPage(): JSX.Element {
             {
               text: "Sí, cancelar",
               role: "destructive",
-              handler: () => {
-                if (!pendingCancelAction) return;
+              handler: (reasonCode) => {
+                if (!pendingCancelAction) return false;
+                const resolvedPolicy = applyPassengerCancellationReasonToPolicy(
+                  pendingCancelAction.policy,
+                  reasonCode,
+                );
                 void performPassengerCancel(
                   pendingCancelAction.ride,
                   pendingCancelAction.rideId,
                   pendingCancelAction.mode,
+                  resolvedPolicy,
                 );
+                return true;
               },
             },
           ]}

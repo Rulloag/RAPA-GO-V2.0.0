@@ -875,65 +875,120 @@ function extractRideNavigationPoints(
   };
 }
 
-function getCleanRideNote(notes: string | null | undefined): string | null {
+const RAPAGO_PASSENGER_NOTE_MAX_LENGTH_DRIVER = 180;
+function sanitizePassengerRideNoteForDriver(value: unknown): string {
+  return String(value ?? "")
+    .replace(/[\u0000-\u001F\u007F]/g, " ")
+    .replace(/[<>`{}$\\]/g, "")
+    .replace(/RAPAGO_PASSENGER_NOTE_(?:START|END)/gi, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, RAPAGO_PASSENGER_NOTE_MAX_LENGTH_DRIVER);
+}
+
+function extractPassengerRideNoteFromNotes(notes: string | null | undefined): string | null {
   if (!notes) return null;
 
+  const marked = notes.match(
+    /RAPAGO_PASSENGER_NOTE_START\s+([\s\S]*?)\s+RAPAGO_PASSENGER_NOTE_END\.?/i,
+  );
+  if (marked?.[1]) {
+    return sanitizePassengerRideNoteForDriver(marked[1]) || null;
+  }
+
+  const labelled = notes.match(
+    /(?:Nota del pasajero|Nota pasajero):\s*([\s\S]*?)(?=\s+(?:RAPAGO_[A-Z_]+:|Forma de pago seleccionada:|Categor[ií]a de veh[ií]culo seleccionada:|Tipo de viaje seleccionado:|Direcci[oó]n origen confirmada:|Coordenadas recogida accesible:|Tarifa RAPA GO calculada:|$))/i,
+  );
+  if (labelled?.[1]) {
+    return sanitizePassengerRideNoteForDriver(labelled[1]) || null;
+  }
+
+  // Compatibilidad con solicitudes antiguas donde la nota se guardaba
+  // entre las coordenadas y la tarifa, sin una etiqueta propia.
+  const legacy = notes.match(
+    /Coordenadas destino accesible:\s*-?\d+(?:[.,]\d+)?,\s*-?\d+(?:[.,]\d+)?\.\s*([\s\S]*?)(?=\s+(?:Tarifa RAPA GO calculada:|Tarifa estimada pasajero:|Distancia estimada:|Duraci[oó]n estimada:|Tipo de viaje tarifario:|Ganancia estimada conductor:|$))/i,
+  );
+  if (legacy?.[1]) {
+    return sanitizePassengerRideNoteForDriver(legacy[1]) || null;
+  }
+
+  const looksTechnical = /(?:RAPAGO_[A-Z_]+:|Forma de pago seleccionada:|Coordenadas recogida accesible:|Tarifa RAPA GO calculada:|Categor[ií]a de veh[ií]culo seleccionada:)/i.test(notes);
+  if (!looksTechnical) {
+    return sanitizePassengerRideNoteForDriver(notes) || null;
+  }
+
+  return null;
+}
+
+function getPassengerRideNoteForDriver(rideOrNotes: unknown): string | null {
+  if (rideOrNotes && typeof rideOrNotes === "object") {
+    const record = rideOrNotes as Record<string, unknown>;
+    const direct = sanitizePassengerRideNoteForDriver(
+      record.passengerNote ??
+        record.passenger_note ??
+        record.passengerInstructions ??
+        record.passengerComment,
+    );
+    if (direct) return direct;
+
+    return extractPassengerRideNoteFromNotes(
+      typeof record.notes === "string" ? record.notes : null,
+    );
+  }
+
+  return extractPassengerRideNoteFromNotes(
+    typeof rideOrNotes === "string" ? rideOrNotes : null,
+  );
+}
+
+function PassengerRideNoteCard({
+  ride,
+  compact = false,
+}: {
+  ride: unknown;
+  compact?: boolean;
+}): JSX.Element | null {
+  const passengerNote = getPassengerRideNoteForDriver(ride);
+  if (!passengerNote) return null;
+
   return (
-    notes
-      .replace(
-        /Dirección origen confirmada:.*?(?=Dirección destino confirmada:|$)/i,
-        "",
-      )
-      .replace(
-        /Dirección destino confirmada:.*?(?=Ubicación real del pasajero:|Coordenadas recogida accesible:|$)/i,
-        "",
-      )
-      .replace(
-        /Ubicación real del pasajero:.*?(?=Punto accesible de recogida|Coordenadas recogida accesible:|$)/i,
-        "",
-      )
-      .replace(
-        /Punto accesible de recogida ajustado a calle\..*?(?=Coordenadas recogida accesible:|$)/i,
-        "",
-      )
-      .replace(
-        /Coordenadas recogida accesible:.*?(?=Coordenadas destino accesible:|$)/i,
-        "",
-      )
-      .replace(
-        /Coordenadas destino accesible:.*?(?=Tarifa RAPA GO calculada:|Tarifa estimada pasajero:|Distancia estimada:|Duración estimada:|Ganancia estimada conductor:|Forma de pago|$)/i,
-        "",
-      )
-      .replace(
-        /Tarifa RAPA GO calculada:.*?(?=Kilómetros calculados:|Distancia estimada:|Duración estimada:|Ganancia|Forma de pago|$)/i,
-        "",
-      )
-      .replace(
-        /Tarifa estimada pasajero:.*?(?=Distancia estimada:|Duración estimada:|Ganancia|Forma de pago|$)/i,
-        "",
-      )
-      .replace(
-        /Distancia estimada:.*?(?=Duración estimada:|Ganancia|Forma de pago|$)/i,
-        "",
-      )
-      .replace(
-        /Duración estimada:.*?(?=Tipo de viaje|Ganancia|Forma de pago|$)/i,
-        "",
-      )
-      .replace(
-        /Tipo de viaje:.*?(?=Ganancia|Categor[ií]a de veh[ií]culo|Forma de pago|$)/i,
-        "",
-      )
-      .replace(
-        /Ganancia estimada conductor:.*?(?=Categor[ií]a de veh[ií]culo|Forma de pago|$)/i,
-        "",
-      )
-      .replace(
-        /Categor[ií]a de veh[ií]culo seleccionada:.*?(?=Forma de pago|$)/i,
-        "",
-      )
-      .replace(/Forma de pago seleccionada:.*$/i, "")
-      .trim() || null
+    <div
+      style={{
+        marginTop: compact ? 8 : 12,
+        marginBottom: compact ? 8 : 12,
+        borderRadius: compact ? 14 : 18,
+        border: "1px solid rgba(210,164,58,.48)",
+        background: "linear-gradient(135deg,#fff9e8,#ffe7a6)",
+        color: "#111",
+        padding: compact ? "10px 11px" : "12px 13px",
+        boxShadow: "0 8px 20px rgba(0,0,0,.10)",
+        overflowWrap: "anywhere",
+      }}
+      aria-label="Nota del pasajero"
+    >
+      <div
+        style={{
+          color: "#8a6418",
+          fontSize: ".68rem",
+          fontWeight: 950,
+          letterSpacing: ".04em",
+          textTransform: "uppercase",
+        }}
+      >
+        📝 Nota del pasajero
+      </div>
+      <div
+        style={{
+          marginTop: 5,
+          fontSize: compact ? ".78rem" : ".84rem",
+          lineHeight: 1.4,
+          fontWeight: 850,
+          whiteSpace: "pre-wrap",
+        }}
+      >
+        {passengerNote}
+      </div>
+    </div>
   );
 }
 
@@ -7557,6 +7612,80 @@ function driverRideIdentityMatches(a: Record<string, unknown>, b: Record<string,
   return aKeys.some((key) => bKeys.includes(key));
 }
 
+function getDriverRideDirectIds(ride: Record<string, unknown>): string[] {
+  return [
+    ride.id,
+    ride.rideId,
+    ride.originalRideId,
+    ride.serverRideId,
+    ride.requestId,
+  ]
+    .map((value) => normalizeDriverRideIdentityValue(value))
+    .filter(Boolean);
+}
+
+function getDriverRideTimestampMs(
+  ride: Record<string, unknown>,
+  keys: string[],
+): number | null {
+  for (const key of keys) {
+    const value = ride[key];
+    if (!value) continue;
+
+    const parsed = new Date(String(value)).getTime();
+    if (Number.isFinite(parsed)) return parsed;
+  }
+
+  return null;
+}
+
+function getDriverRideAcceptedTimestampMs(ride: Record<string, unknown>): number | null {
+  return getDriverRideTimestampMs(ride, [
+    "acceptedAt",
+    "driverAcceptedAt",
+    "driverAcceptedScheduleAt",
+    "driverScheduleAcceptedAt",
+    "scheduledDriverAcceptedAt",
+    "driverConfirmedAt",
+    "enRouteAt",
+    "driverArrivedAt",
+    "arrivedAt",
+    "startedAt",
+  ]);
+}
+
+function getDriverRideCreationTimestampMs(ride: Record<string, unknown>): number | null {
+  return getDriverRideTimestampMs(ride, [
+    "requestedAt",
+    "createdAt",
+    "scheduledAt",
+    "scheduledPickupAt",
+  ]);
+}
+
+function getDriverRideCancellationTimestampMs(ride: Record<string, unknown>): number | null {
+  return getDriverRideTimestampMs(ride, [
+    "cancelledAt",
+    "canceledAt",
+    "passengerCancelledAt",
+    "updatedAt",
+  ]);
+}
+
+function cancellationRecordIsOlderThanAcceptedRide(
+  activeRide: Record<string, unknown>,
+  cancelledRide: Record<string, unknown>,
+): boolean {
+  const cancelledAt = getDriverRideCancellationTimestampMs(cancelledRide);
+  if (cancelledAt == null) return false;
+
+  const acceptedAt = getDriverRideAcceptedTimestampMs(activeRide);
+  if (acceptedAt != null && acceptedAt > cancelledAt + 1000) return true;
+
+  const createdAt = getDriverRideCreationTimestampMs(activeRide);
+  return createdAt != null && createdAt > cancelledAt + 1000;
+}
+
 function readDriverCancelledActiveRides(): DriverCancelledActiveRideRecord[] {
   try {
     const raw = localStorage.getItem(RAPAGO_DRIVER_CANCELLED_ACTIVE_RIDES_KEY);
@@ -7757,9 +7886,32 @@ type DriverPassengerCancelledRideRecord = {
   originText?: string | null;
   destinationText?: string | null;
   passengerEmail?: string | null;
+  cancellationReason?: string | null;
+  cancellationReasonLabel?: string | null;
+  cancellationReasonCode?: string | null;
   cancelledAt: string;
   cancelledByRole: "passenger";
 };
+
+
+function getPassengerCancellationReasonForDriver(
+  ride: Record<string, unknown>,
+): string {
+  const raw = String(
+    ride.passengerCancellationReasonLabel ??
+      ride.cancellationReasonLabel ??
+      ride.cancellationReason ??
+      ride.cancelReason ??
+      ride.reason ??
+      "",
+  );
+
+  const clean = sanitizeDriverTripSafetyText(raw, 240)
+    .replace(/^cancelado por pasajero[.: -]*/i, "")
+    .trim();
+
+  return clean || "Motivo no informado por el pasajero.";
+}
 
 function isRidePassengerCancelledForDriver(ride: Record<string, unknown>): boolean {
   const status = normalizeDriverRideIdentityValue(ride.status);
@@ -7831,6 +7983,22 @@ function markDriverRidePassengerCancelledLocally(ride: Record<string, unknown>):
     originText: typeof ride.originText === "string" ? ride.originText : null,
     destinationText: typeof ride.destinationText === "string" ? ride.destinationText : null,
     passengerEmail: typeof ride.passengerEmail === "string" ? ride.passengerEmail : null,
+    cancellationReason:
+      typeof ride.cancellationReason === "string"
+        ? sanitizeDriverTripSafetyText(ride.cancellationReason, 240)
+        : null,
+    cancellationReasonLabel:
+      typeof ride.passengerCancellationReasonLabel === "string"
+        ? sanitizeDriverTripSafetyText(ride.passengerCancellationReasonLabel, 180)
+        : typeof ride.cancellationReasonLabel === "string"
+          ? sanitizeDriverTripSafetyText(ride.cancellationReasonLabel, 180)
+          : null,
+    cancellationReasonCode:
+      typeof ride.passengerCancellationReasonCode === "string"
+        ? sanitizeDriverTripSafetyText(ride.passengerCancellationReasonCode, 80)
+        : typeof ride.cancellationReasonCode === "string"
+          ? sanitizeDriverTripSafetyText(ride.cancellationReasonCode, 80)
+          : null,
     cancelledAt: now,
     cancelledByRole: "passenger",
   };
@@ -7885,15 +8053,43 @@ function driverRideMatchesPassengerCancelledRecord(
   activeRide: Record<string, unknown>,
   cancelledRide: Record<string, unknown>,
 ): boolean {
-  if (driverRideIdentityMatches(activeRide, cancelledRide)) return true;
+  // Una cancelación antigua nunca debe borrar un viaje que fue aceptado después.
+  // Este era el motivo por el cual el mapa desaparecía al aceptar una solicitud nueva
+  // con una ruta parecida a un viaje cancelado anteriormente.
+  if (cancellationRecordIsOlderThanAcceptedRide(activeRide, cancelledRide)) {
+    return false;
+  }
+
+  const activeIds = getDriverRideDirectIds(activeRide);
+  const cancelledIds = new Set(getDriverRideDirectIds(cancelledRide));
+
+  if (activeIds.some((id) => cancelledIds.has(id))) return true;
+
+  // Si ambos registros tienen ID y no coinciden, son viajes distintos aunque la ruta sea igual.
+  if (activeIds.length > 0 && cancelledIds.size > 0) return false;
 
   const activeOrigin = normalizeDriverRideIdentityValue(activeRide.originText);
   const activeDestination = normalizeDriverRideIdentityValue(activeRide.destinationText);
-  const activePassengerEmail = normalizeDriverRideIdentityValue(activeRide.passengerEmail ?? activeRide.userEmail ?? activeRide.email);
+  const activePassengerEmail = normalizeDriverRideIdentityValue(
+    activeRide.passengerEmail ?? activeRide.userEmail ?? activeRide.email,
+  );
+  const activeSchedule = normalizeDriverRideIdentityValue(
+    activeRide.scheduledAt ?? activeRide.scheduledPickupAt ?? activeRide.requestedAt ?? activeRide.createdAt,
+  );
 
   const cancelledOrigin = normalizeDriverRideIdentityValue(cancelledRide.originText);
   const cancelledDestination = normalizeDriverRideIdentityValue(cancelledRide.destinationText);
-  const cancelledPassengerEmail = normalizeDriverRideIdentityValue(cancelledRide.passengerEmail ?? cancelledRide.userEmail ?? cancelledRide.email);
+  const cancelledPassengerEmail = normalizeDriverRideIdentityValue(
+    cancelledRide.passengerEmail ?? cancelledRide.userEmail ?? cancelledRide.email,
+  );
+  const cancelledSchedule = normalizeDriverRideIdentityValue(
+    cancelledRide.scheduledAt ?? cancelledRide.scheduledPickupAt ?? cancelledRide.requestedAt ?? cancelledRide.createdAt,
+  );
+
+  // La comparación por ruta es solo un respaldo para registros antiguos sin ID.
+  // Exigimos fecha de cancelación real para no confundir dos solicitudes iguales.
+  const cancelledAt = getDriverRideCancellationTimestampMs(cancelledRide);
+  if (cancelledAt == null) return false;
 
   return Boolean(
     activeOrigin &&
@@ -7902,7 +8098,8 @@ function driverRideMatchesPassengerCancelledRecord(
       cancelledDestination &&
       activeOrigin === cancelledOrigin &&
       activeDestination === cancelledDestination &&
-      (!activePassengerEmail || !cancelledPassengerEmail || activePassengerEmail === cancelledPassengerEmail),
+      (!activePassengerEmail || !cancelledPassengerEmail || activePassengerEmail === cancelledPassengerEmail) &&
+      (!activeSchedule || !cancelledSchedule || activeSchedule === cancelledSchedule),
   );
 }
 
@@ -8364,11 +8561,60 @@ function normalizeActiveDriverRideForLocalMirror(
   ) as unknown as DriverRideData;
 }
 
+function clearOlderDriverCancellationMarkersForAcceptedRide(
+  acceptedRide: Record<string, unknown>,
+  user?: unknown,
+): void {
+  const acceptedAt = getDriverRideAcceptedTimestampMs(acceptedRide) ?? Date.now();
+  const directIds = new Set(getDriverRideDirectIds(acceptedRide));
+  const driverEmail = normalizeDriverRideIdentityValue(getDriverLiveUserField(user, "email"));
+
+  try {
+    const current = readDriverCancelledActiveRides();
+    const next = current.filter((record) => {
+      const sameDriver =
+        !record.driverEmail ||
+        !driverEmail ||
+        normalizeDriverRideIdentityValue(record.driverEmail) === driverEmail;
+      if (!sameDriver) return true;
+
+      const recordIds = record.keys.map(normalizeDriverRideIdentityValue).filter(Boolean);
+      const exactIdMatch = recordIds.some((id) => directIds.has(id));
+      const recordTime = new Date(String(record.cancelledAt ?? "")).getTime();
+
+      return !(exactIdMatch && Number.isFinite(recordTime) && recordTime < acceptedAt);
+    });
+
+    if (next.length !== current.length) saveDriverCancelledActiveRides(next);
+  } catch {
+    // No bloquea la apertura del mapa.
+  }
+
+  try {
+    const current = readDriverPassengerCancelledRideRecords();
+    const next = current.filter((record) => {
+      const recordIds = record.keys.map(normalizeDriverRideIdentityValue).filter(Boolean);
+      const exactIdMatch = recordIds.some((id) => directIds.has(id));
+      const recordTime = new Date(String(record.cancelledAt ?? "")).getTime();
+
+      return !(exactIdMatch && Number.isFinite(recordTime) && recordTime < acceptedAt);
+    });
+
+    if (next.length !== current.length) saveDriverPassengerCancelledRideRecords(next);
+  } catch {
+    // No bloquea la apertura del mapa.
+  }
+}
+
 function saveDriverActiveRideLocalMirror(
   ride: DriverRideData | Record<string, unknown>,
   user?: unknown,
 ): DriverRideData {
   const activeRide = normalizeActiveDriverRideForLocalMirror(ride, user);
+  clearOlderDriverCancellationMarkersForAcceptedRide(
+    activeRide as unknown as Record<string, unknown>,
+    user,
+  );
   const keys = [
     "rapago_driver_active_rides_v1",
     "rapago_local_driver_assigned_rides",
@@ -11426,6 +11672,8 @@ function DriverGlobalRideAlert(): JSX.Element | null {
               </IonChip>
             </div>
 
+            <PassengerRideNoteCard ride={ride} />
+
             <div
               style={{
                 borderRadius: "22px",
@@ -11651,6 +11899,8 @@ function DriverGlobalRideAlert(): JSX.Element | null {
               {paymentIcon} {paymentLabel}
             </IonChip>
           </div>
+
+          <PassengerRideNoteCard ride={rideAlert} />
 
           <div
             style={{
@@ -11934,6 +12184,7 @@ function AssignedRidesPage(): JSX.Element {
         destinationText?: string | null;
         notes?: string | null;
       });
+      const cancellationReason = getPassengerCancellationReasonForDriver(cancelledRide);
 
       stopRideRequestAlert(true);
       setRideAlert(null);
@@ -11950,7 +12201,7 @@ function AssignedRidesPage(): JSX.Element {
         prev.filter((ride) => !driverRideMatchesPassengerCancelledRecord(ride as unknown as Record<string, unknown>, cancelledRide)),
       );
 
-      setError("El pasajero canceló el viaje. La solicitud fue retirada de tu pantalla.");
+      setError(`El pasajero canceló el viaje. Motivo: ${cancellationReason}`);
 
       try {
         if ("vibrate" in navigator) navigator.vibrate?.([220, 90, 220]);
@@ -11960,7 +12211,9 @@ function AssignedRidesPage(): JSX.Element {
 
       setPassengerCancelNotice({
         route: cancelledTitle,
-        message: "La solicitud fue retirada de tu pantalla. No debes continuar hacia la recogida.",
+        message: `Motivo informado: ${cancellationReason}
+
+La solicitud fue retirada de tu pantalla. No debes continuar hacia la recogida.`,
       });
     };
 
@@ -12425,7 +12678,26 @@ function AssignedRidesPage(): JSX.Element {
         ),
       );
     } catch (err) {
-      setAssignedRides([]);
+      // Si falla una consulta secundaria de la API, nunca eliminamos el viaje
+      // que el conductor acaba de aceptar. Recuperamos el mapa desde los espejos
+      // locales seguros y mantenemos la ruta activa.
+      const activeLocalScheduledRides = readActiveScheduledReservationRidesForDriver(session?.user);
+      const activeLocalRideMirrors = readActiveDriverLocalRideMirrorsForDriver(session?.user);
+      const recoveredByKey = new Map<string, DriverRideData>();
+
+      for (const ride of [...activeLocalScheduledRides, ...activeLocalRideMirrors]) {
+        if (findPassengerCancelledRideForDriver(ride as unknown as Record<string, unknown>)) continue;
+
+        const key =
+          getDriverScheduledReservationDedupeKey(
+            ride as unknown as DriverAcceptedRideBridgeRecord,
+          ) || String(ride.id);
+
+        if (key) recoveredByKey.set(key, ride as DriverRideData);
+      }
+
+      const recoveredActiveRides = Array.from(recoveredByKey.values());
+      setAssignedRides(recoveredActiveRides);
       setReservationOffers(
         readDriverScheduledReservationOffers(session?.user, isDriverAvailable),
       );
@@ -12455,9 +12727,15 @@ function AssignedRidesPage(): JSX.Element {
           ),
         );
       }
-      setError(
-        err instanceof Error ? err.message : "Error al cargar solicitudes.",
-      );
+      if (recoveredActiveRides.length > 0) {
+        // El viaje ya está aceptado y el mapa puede seguir funcionando aunque
+        // haya fallado la carga de nuevas solicitudes disponibles.
+        setError(null);
+      } else {
+        setError(
+          err instanceof Error ? err.message : "Error al cargar solicitudes.",
+        );
+      }
     } finally {
       setLoading(false);
     }
@@ -12572,6 +12850,15 @@ function AssignedRidesPage(): JSX.Element {
       removeRequeuedRide(rideId);
       setAvailableRides((prev) => removeHandledRideFromAvailableList(prev, activeAccepted as unknown as Record<string, unknown>));
       setAssignedRides([activeAccepted as DriverRideData]);
+      setRideAlert(null);
+      setError(null);
+
+      // Permanecemos en Solicitudes, pero ahora la pantalla cambia inmediatamente
+      // a Viaje activo y monta el mapa interno.
+      if (window.location.pathname !== ROUTES.DRIVER.REQUESTS) {
+        window.history.replaceState(null, "", ROUTES.DRIVER.REQUESTS);
+        window.dispatchEvent(new PopStateEvent("popstate"));
+      }
 
       // Forzamos recarga para traer notes/coordenadas completas y renderizar ruta.
       window.setTimeout(() => {
@@ -12636,7 +12923,13 @@ function AssignedRidesPage(): JSX.Element {
         removeRequeuedRide(rideId);
         setAvailableRides((prev) => removeHandledRideFromAvailableList(prev, activeAcceptedLocal as unknown as Record<string, unknown>));
         setAssignedRides([activeAcceptedLocal]);
+        setRideAlert(null);
         setError(null);
+
+        if (window.location.pathname !== ROUTES.DRIVER.REQUESTS) {
+          window.history.replaceState(null, "", ROUTES.DRIVER.REQUESTS);
+          window.dispatchEvent(new PopStateEvent("popstate"));
+        }
         return;
       }
 
@@ -13267,6 +13560,8 @@ function AssignedRidesPage(): JSX.Element {
               </IonChip>
             </div>
 
+            <PassengerRideNoteCard ride={ride} />
+
             <div
               style={{
                 borderRadius: "20px",
@@ -13567,6 +13862,8 @@ function AssignedRidesPage(): JSX.Element {
               </IonChip>
             </div>
 
+            <PassengerRideNoteCard ride={ride} compact />
+
             <div
               style={{
                 display: "grid",
@@ -13667,6 +13964,8 @@ function AssignedRidesPage(): JSX.Element {
               <div style={{ marginTop: 3, fontWeight: 950 }}>{activationText}</div>
             </div>
           </div>
+
+          <PassengerRideNoteCard ride={ride} compact />
 
           {readyToStart ? (
             <div style={{ marginTop: 12 }}>
@@ -13938,6 +14237,8 @@ function AssignedRidesPage(): JSX.Element {
               </div>
             </div>
           </div>
+
+          <PassengerRideNoteCard ride={ride} />
 
           {/* Resumen precio */}
           <div
@@ -15173,6 +15474,8 @@ function DriverHistoryRideCard({
               {label}
             </IonBadge>
 
+            <PassengerRideNoteCard ride={ride} compact />
+
             {displayFareClp != null && (
               <div
                 style={{ marginTop: 8, fontWeight: 800, fontSize: ".82rem" }}
@@ -15227,6 +15530,11 @@ function DriverMyRidesPage(): JSX.Element {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [completeConfirmRide, setCompleteConfirmRide] = useState<DriverRideData | null>(null);
+  const [passengerCancelNotice, setPassengerCancelNotice] = useState<{
+    route: string;
+    message: string;
+  } | null>(null);
+  const passengerCancelNoticeKeyRef = useRef("");
 
   const loadRides = useCallback(async () => {
     if (!session?.accessToken) return;
@@ -15262,6 +15570,151 @@ function DriverMyRidesPage(): JSX.Element {
   useEffect(() => {
     void loadRides();
   }, [loadRides]);
+
+  useEffect(() => {
+    const notifyPassengerCancelledInTrips = (
+      cancelledRide: Record<string, unknown>,
+    ): void => {
+      const keys = getDriverRideIdentityKeys(cancelledRide);
+      const noticeKey = [
+        ...keys,
+        String(cancelledRide.cancelledAt ?? ""),
+        getPassengerCancellationReasonForDriver(cancelledRide),
+      ].join("|");
+
+      if (noticeKey && passengerCancelNoticeKeyRef.current === noticeKey) return;
+      passengerCancelNoticeKeyRef.current = noticeKey;
+
+      markDriverRidePassengerCancelledLocally(cancelledRide);
+      removeDriverRideAfterPassengerCancel(cancelledRide);
+
+      const route = getDriverRideRouteDisplayLabel(cancelledRide as {
+        originText?: string | null;
+        destinationText?: string | null;
+        notes?: string | null;
+      });
+      const reason = getPassengerCancellationReasonForDriver(cancelledRide);
+
+      setRides((current) =>
+        current.filter(
+          (ride) =>
+            !driverRideMatchesPassengerCancelledRecord(
+              ride as unknown as Record<string, unknown>,
+              cancelledRide,
+            ),
+        ),
+      );
+
+      setCompleteConfirmRide((current) =>
+        current &&
+        driverRideMatchesPassengerCancelledRecord(
+          current as unknown as Record<string, unknown>,
+          cancelledRide,
+        )
+          ? null
+          : current,
+      );
+
+      setActionLoading(null);
+      setLoadError(null);
+      setPassengerCancelNotice({
+        route,
+        message: `Motivo informado: ${reason}\n\nEl viaje fue cancelado y retirado de tus viajes activos. No continúes hacia la recogida.`,
+      });
+
+      try {
+        if ("vibrate" in navigator) navigator.vibrate?.([240, 90, 240]);
+      } catch {
+        // No bloquea el aviso.
+      }
+    };
+
+    const checkPassengerCancelledInTrips = (event?: Event): void => {
+      const detail = (
+        event as
+          | CustomEvent<{ cancelled?: unknown; ride?: unknown }>
+          | undefined
+      )?.detail;
+
+      const eventRecord =
+        detail?.cancelled && typeof detail.cancelled === "object"
+          ? (detail.cancelled as Record<string, unknown>)
+          : detail?.ride && typeof detail.ride === "object"
+            ? (detail.ride as Record<string, unknown>)
+            : null;
+
+      if (eventRecord && isRidePassengerCancelledForDriver(eventRecord)) {
+        const visibleMatch =
+          rides.length === 0 ||
+          rides.some((ride) =>
+            driverRideMatchesPassengerCancelledRecord(
+              ride as unknown as Record<string, unknown>,
+              eventRecord,
+            ),
+          );
+
+        if (visibleMatch) {
+          notifyPassengerCancelledInTrips(eventRecord);
+          return;
+        }
+      }
+
+      for (const ride of rides) {
+        const cancelledMatch = findPassengerCancelledRideForDriver(
+          ride as unknown as Record<string, unknown>,
+        );
+
+        if (cancelledMatch) {
+          notifyPassengerCancelledInTrips(cancelledMatch);
+          return;
+        }
+      }
+    };
+
+    checkPassengerCancelledInTrips();
+
+    const timerId = window.setInterval(
+      checkPassengerCancelledInTrips,
+      1200,
+    );
+
+    window.addEventListener(
+      RAPAGO_PASSENGER_CANCELLED_RIDE_EVENT,
+      checkPassengerCancelledInTrips as EventListener,
+    );
+    window.addEventListener(
+      "rapago:passenger-rides-updated",
+      checkPassengerCancelledInTrips as EventListener,
+    );
+    window.addEventListener(
+      "rapago:driver-rides-updated",
+      checkPassengerCancelledInTrips as EventListener,
+    );
+    window.addEventListener(
+      "storage",
+      checkPassengerCancelledInTrips as EventListener,
+    );
+
+    return () => {
+      window.clearInterval(timerId);
+      window.removeEventListener(
+        RAPAGO_PASSENGER_CANCELLED_RIDE_EVENT,
+        checkPassengerCancelledInTrips as EventListener,
+      );
+      window.removeEventListener(
+        "rapago:passenger-rides-updated",
+        checkPassengerCancelledInTrips as EventListener,
+      );
+      window.removeEventListener(
+        "rapago:driver-rides-updated",
+        checkPassengerCancelledInTrips as EventListener,
+      );
+      window.removeEventListener(
+        "storage",
+        checkPassengerCancelledInTrips as EventListener,
+      );
+    };
+  }, [rides]);
 
   const activeRide = rides.find((ride) =>
     ["accepted", "driver_en_route", "driver_arrived", "in_progress"].includes(
@@ -15567,6 +16020,45 @@ function DriverMyRidesPage(): JSX.Element {
 
   return (
     <IonPage>
+      <style>{`
+        .rapago-passenger-cancel-alert-trips .alert-wrapper {
+          width: min(92vw, 520px);
+          max-width: 520px;
+          border-radius: 24px;
+          background: #fffdf7 !important;
+          color: #111827 !important;
+          border: 2px solid rgba(220,38,38,.32);
+          box-shadow: 0 28px 70px rgba(0,0,0,.34);
+        }
+        .rapago-passenger-cancel-alert-trips .alert-head {
+          padding: 22px 22px 10px;
+        }
+        .rapago-passenger-cancel-alert-trips .alert-title {
+          color: #991b1b !important;
+          font-size: 1.2rem;
+          font-weight: 950;
+        }
+        .rapago-passenger-cancel-alert-trips .alert-message {
+          color: #111827 !important;
+          white-space: pre-line;
+          line-height: 1.55;
+          font-weight: 760;
+          padding: 4px 22px 18px;
+        }
+        .rapago-passenger-cancel-alert-trips .alert-button-group {
+          padding: 8px 18px 18px;
+        }
+        .rapago-passenger-cancel-alert-trips .alert-button {
+          width: 100%;
+          min-height: 48px;
+          border-radius: 16px;
+          background: linear-gradient(135deg,#facc15,#f59e0b);
+          color: #111827 !important;
+          font-weight: 950;
+          justify-content: center;
+          margin: 0;
+        }
+      `}</style>
       <IonHeader>
         <IonToolbar color="success">
           <IonTitle>Mis Viajes</IonTitle>
@@ -15696,7 +16188,7 @@ function DriverMyRidesPage(): JSX.Element {
                   )}
                 </div>
 
-                {getCleanRideNote(activeRide.notes) && (
+                {getPassengerRideNoteForDriver(activeRide) && (
                   <div
                     style={{
                       marginTop: 6,
@@ -15706,7 +16198,7 @@ function DriverMyRidesPage(): JSX.Element {
                       lineHeight: 1.35,
                     }}
                   >
-                    {getCleanRideNote(activeRide.notes)}
+                    📝 Nota del pasajero: {getPassengerRideNoteForDriver(activeRide)}
                   </div>
                 )}
               </div>
@@ -15940,6 +16432,27 @@ function DriverMyRidesPage(): JSX.Element {
           }}
         />
       )}
+
+      <IonAlert
+        isOpen={Boolean(passengerCancelNotice)}
+        header="Pasajero canceló el viaje"
+        message={
+          passengerCancelNotice
+            ? `${passengerCancelNotice.route}
+
+${passengerCancelNotice.message}`
+            : ""
+        }
+        cssClass="rapago-passenger-cancel-alert-trips"
+        backdropDismiss={false}
+        onDidDismiss={() => setPassengerCancelNotice(null)}
+        buttons={[
+          {
+            text: "Entendido",
+            role: "confirm",
+          },
+        ]}
+      />
     </IonPage>
   );
 }

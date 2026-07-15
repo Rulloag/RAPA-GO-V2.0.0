@@ -36,7 +36,7 @@ import {
   IonToolbar,
   useIonViewWillEnter,
 } from "@ionic/react";
-import { useEffect, useState, useCallback, type CSSProperties } from "react";
+import { useEffect, useState, useCallback, useRef, type CSSProperties } from "react";
 import {
   alertCircleOutline,
   bicycleOutline,
@@ -92,7 +92,7 @@ import {
 } from "../../features/offline/offline.service";
 import { RAPAGO_CONTACT, WA_MESSAGES } from "@rapa-go/shared";
 import { WhatsAppButton } from "../../components/WhatsAppButton";
-import { MapFallback } from "../../components/MapFallback";
+import { loadRapaGoGoogleMaps } from "../../components/MapFallback";
 
 const ADMIN_DRIVERS_ROUTE = "/admin/drivers";
 const ADMIN_DRIVERS_REFRESH_EVENT = "rapago:admin-refresh-drivers";
@@ -197,15 +197,28 @@ type AdminPassengerPendingCharge = {
   destinationText?: string | null;
   amountClp: number;
   minimumFareClp?: number | null;
+  applicableFareClp?: number | null;
+  originalServiceAmountClp?: number | null;
+  originalNoShowServiceAmountClp?: number | null;
+  feePercent?: number | null;
+  feeCapClp?: number | null;
   type?: "late_cancel" | "no_show" | string | null;
   paymentMethod?: string | null;
-  status: "pending_next_ride" | "applied_to_next_ride" | "paid" | "waived" | string;
+  status: "pending_admin_review" | "pending_next_ride" | "applied_to_next_ride" | "paid" | "waived" | string;
   adminReviewStatus?: string | null;
   title?: string | null;
   description?: string | null;
   createdAt?: string | null;
   appliedRideId?: string | null;
   appliedAt?: string | null;
+  requestedExemption?: boolean | null;
+  cancellationReasonCode?: string | null;
+  cancellationReasonLabel?: string | null;
+  adminDecisionReason?: string | null;
+  approvedAt?: string | null;
+  approvedBy?: string | null;
+  rejectedAt?: string | null;
+  rejectedBy?: string | null;
   cardRefundRequested?: boolean | null;
   mercadoPagoRefundStatus?: string | null;
   cardRefundNotice?: string | null;
@@ -960,15 +973,28 @@ function readAdminPassengerPendingCharges(): AdminPassengerPendingCharge[] {
         destinationText: typeof item.destinationText === "string" ? item.destinationText : null,
         amountClp: Math.max(0, Math.round(Number(item.amountClp ?? item.amount ?? 0))),
         minimumFareClp: Number.isFinite(Number(item.minimumFareClp)) ? Math.round(Number(item.minimumFareClp)) : null,
+        applicableFareClp: Number.isFinite(Number(item.applicableFareClp)) ? Math.round(Number(item.applicableFareClp)) : null,
+        originalServiceAmountClp: Number.isFinite(Number(item.originalServiceAmountClp)) ? Math.round(Number(item.originalServiceAmountClp)) : null,
+        originalNoShowServiceAmountClp: Number.isFinite(Number(item.originalNoShowServiceAmountClp)) ? Math.round(Number(item.originalNoShowServiceAmountClp)) : null,
+        feePercent: Number.isFinite(Number(item.feePercent)) ? Number(item.feePercent) : null,
+        feeCapClp: Number.isFinite(Number(item.feeCapClp)) ? Math.round(Number(item.feeCapClp)) : null,
         type: typeof item.type === "string" ? item.type : null,
         paymentMethod: typeof item.paymentMethod === "string" ? item.paymentMethod : null,
-        status: String(item.status ?? "pending_next_ride"),
+        status: String(item.status ?? "pending_admin_review"),
         adminReviewStatus: typeof item.adminReviewStatus === "string" ? item.adminReviewStatus : null,
         title: typeof item.title === "string" ? item.title : null,
         description: typeof item.description === "string" ? item.description : null,
         createdAt: typeof item.createdAt === "string" ? item.createdAt : null,
         appliedRideId: typeof item.appliedRideId === "string" ? item.appliedRideId : null,
         appliedAt: typeof item.appliedAt === "string" ? item.appliedAt : null,
+        requestedExemption: Boolean(item.requestedExemption),
+        cancellationReasonCode: typeof item.cancellationReasonCode === "string" ? item.cancellationReasonCode : null,
+        cancellationReasonLabel: typeof item.cancellationReasonLabel === "string" ? item.cancellationReasonLabel : null,
+        adminDecisionReason: typeof item.adminDecisionReason === "string" ? item.adminDecisionReason : null,
+        approvedAt: typeof item.approvedAt === "string" ? item.approvedAt : null,
+        approvedBy: typeof item.approvedBy === "string" ? item.approvedBy : null,
+        rejectedAt: typeof item.rejectedAt === "string" ? item.rejectedAt : null,
+        rejectedBy: typeof item.rejectedBy === "string" ? item.rejectedBy : null,
         cardRefundRequested: Boolean(item.cardRefundRequested || item.mercadoPagoRefundRequested),
         mercadoPagoRefundStatus: typeof item.mercadoPagoRefundStatus === "string" ? item.mercadoPagoRefundStatus : null,
         cardRefundNotice: typeof item.cardRefundNotice === "string" ? item.cardRefundNotice : null,
@@ -999,11 +1025,29 @@ function isAdminPassengerChargePending(charge: AdminPassengerPendingCharge): boo
 
   return (
     status === "pending_next_ride" ||
+    status === "pending_admin_review" ||
     status === "backend_review_required" ||
     status === "pending_admin_review" ||
     adminStatus === "backend_review_required" ||
     adminStatus === "pending_admin_review" ||
+    adminStatus === "pending_exemption_review" ||
     adminStatus === "charge_pending_next_ride"
+  );
+}
+
+function isAdminPassengerChargeAwaitingDecision(
+  charge: AdminPassengerPendingCharge,
+): boolean {
+  const status = String(charge.status ?? "").toLowerCase();
+  const adminStatus = String(charge.adminReviewStatus ?? "").toLowerCase();
+
+  return (
+    status === "pending_admin_review" ||
+    status === "backend_review_required" ||
+    status === "pending_admin_review" ||
+    adminStatus === "pending_admin_review" ||
+    adminStatus === "pending_exemption_review" ||
+    adminStatus === "backend_review_required"
   );
 }
 
@@ -1012,13 +1056,15 @@ function adminPassengerChargeStatusLabel(charge: AdminPassengerPendingCharge): s
   const adminStatus = String(charge.adminReviewStatus ?? "").toLowerCase();
 
   if (isAdminNoShowPendingReview(charge)) return "No show por revisar";
-  if (isAdminNoShowCharge(charge) && adminStatus === "charge_pending_next_ride") return "Aprobado pr?ximo viaje";
+  if (adminStatus === "pending_exemption_review") return "Exención por revisar";
+  if (status === "pending_admin_review" || adminStatus === "pending_admin_review") return "Cargo por revisar";
+  if (isAdminNoShowCharge(charge) && adminStatus === "charge_pending_next_ride") return "Aprobado próximo viaje";
 
   if (status === "charged_from_card_or_paid_amount" || adminStatus === "no_show_total_service_charged") {
     return "Cobrado desde tarjeta/pago";
   }
-  if (status === "pending_next_ride") return "Pendiente pr?ximo viaje";
-  if (status === "applied_to_next_ride") return "Agregado a pr?ximo viaje";
+  if (status === "pending_next_ride") return "Pendiente próximo viaje";
+  if (status === "applied_to_next_ride") return "Agregado a próximo viaje";
   if (status === "paid") return "Pagado";
   if (status === "waived") return "Rechazado";
   return charge.status || "Pendiente";
@@ -1041,20 +1087,21 @@ function adminPassengerChargeStatusColor(charge: AdminPassengerPendingCharge): s
 function isAdminPassengerChargePaidFromCard(charge: AdminPassengerPendingCharge): boolean {
   const status = String(charge.status ?? "").toLowerCase();
   const adminStatus = String(charge.adminReviewStatus ?? "").toLowerCase();
-  const method = String(charge.paymentMethod ?? "").toLowerCase();
 
+  // El medio de pago por sí solo no demuestra que el cargo fue cobrado.
+  // Solo estados confirmados por backend/admin se consideran pagados.
   return (
     status === "charged_from_card_or_paid_amount" ||
-    adminStatus === "no_show_total_service_charged" ||
-    method.includes("tarjeta") ||
-    method.includes("mercado") ||
-    method.includes("card")
+    status === "paid" ||
+    adminStatus === "charged_from_card_or_paid_amount" ||
+    adminStatus === "no_show_charge_paid" ||
+    adminStatus === "late_cancel_charge_paid"
   );
 }
 
 function adminPassengerChargeTypeLabel(charge: AdminPassengerPendingCharge): string {
-  if (String(charge.type ?? "").toLowerCase() === "no_show") return "No show · total servicio";
-  return "Cancelación fuera de plazo";
+  if (String(charge.type ?? "").toLowerCase() === "no_show") return "No show · 50% (tope $5.000)";
+  return "Cancelación · 30% (tope $3.000)";
 }
 
 function adminPassengerChargeBillingLabel(charge: AdminPassengerPendingCharge): string {
@@ -1067,8 +1114,13 @@ function adminPassengerChargeBillingLabel(charge: AdminPassengerPendingCharge): 
   return "Próximo viaje";
 }
 
-function markAdminPassengerChargeStatus(charge: AdminPassengerPendingCharge, status: "paid" | "waived"): void {
+function markAdminPassengerChargeStatus(
+  charge: AdminPassengerPendingCharge,
+  status: "paid" | "waived",
+  adminDecisionReason = "",
+): void {
   const now = new Date().toISOString();
+  const safeReason = sanitizeAdminTripSafetyText(adminDecisionReason, 260);
   const next = readAdminPassengerPendingCharges().map((item) => {
     if (item.id !== charge.id) return item;
     return {
@@ -1076,10 +1128,101 @@ function markAdminPassengerChargeStatus(charge: AdminPassengerPendingCharge, sta
       status,
       adminReviewStatus: status,
       appliedAt: status === "paid" ? (item.appliedAt ?? now) : item.appliedAt,
+      adminDecisionReason:
+        safeReason ||
+        item.adminDecisionReason ||
+        (status === "waived"
+          ? "Cargo eximido por administración tras revisión."
+          : "Pago confirmado por administración."),
+      rejectedAt: status === "waived" ? now : item.rejectedAt,
+      rejectedBy: status === "waived" ? "admin" : item.rejectedBy,
+      approvedAt: status === "paid" ? (item.approvedAt ?? now) : item.approvedAt,
+      approvedBy: status === "paid" ? (item.approvedBy ?? "admin") : item.approvedBy,
     };
   });
 
   writeAdminPassengerPendingCharges(next);
+}
+
+function calculateAdminPassengerChargeAmount(
+  charge: AdminPassengerPendingCharge,
+): {
+  amountClp: number;
+  applicableFareClp: number;
+  percent: number;
+  capClp: number;
+} {
+  const isNoShow = isAdminNoShowCharge(charge);
+  const chargeRecord = charge as AdminPassengerPendingCharge & Record<string, unknown>;
+  const applicableFareClp = Math.max(
+    0,
+    Math.round(
+      Number(
+        charge.applicableFareClp ??
+        charge.originalNoShowServiceAmountClp ??
+        charge.originalServiceAmountClp ??
+        chargeRecord.totalServiceAmountClp ??
+        chargeRecord.serviceAmountClp ??
+        chargeRecord.fareClp ??
+        chargeRecord.originalAmountClp ??
+        charge.amountClp ??
+        0,
+      ),
+    ),
+  );
+  const percent = isNoShow ? 50 : 30;
+  const capClp = isNoShow ? 5000 : 3000;
+  const amountClp = Math.min(
+    capClp,
+    Math.max(0, Math.round(applicableFareClp * (percent / 100))),
+  );
+
+  return { amountClp, applicableFareClp, percent, capClp };
+}
+
+function approveAdminPassengerChargeForNextRide(
+  charge: AdminPassengerPendingCharge,
+): void {
+  const now = new Date().toISOString();
+  const calculation = calculateAdminPassengerChargeAmount(charge);
+  if (calculation.amountClp <= 0) {
+    throw new Error("No existe una tarifa aplicable válida para aprobar el cargo.");
+  }
+
+  const next = readAdminPassengerPendingCharges().map((item) => {
+    if (String(item.id ?? "") !== String(charge.id ?? "")) return item;
+
+    return {
+      ...item,
+      amountClp: calculation.amountClp,
+      applicableFareClp: calculation.applicableFareClp,
+      feePercent: calculation.percent,
+      feeCapClp: calculation.capClp,
+      status: "pending_next_ride",
+      adminReviewStatus: "charge_pending_next_ride",
+      requestedExemption: Boolean(item.requestedExemption),
+      appliedRideId: null,
+      appliedAt: null,
+      approvedAt: now,
+      approvedBy: "admin",
+      rejectedAt: null,
+      rejectedBy: null,
+      adminDecisionReason: item.requestedExemption
+        ? "Administrador revisó la solicitud de exención y aprobó el cargo."
+        : "Cargo aprobado por administración tras validar la política.",
+      backendAuthorityRequired: true,
+      localStorageFinancialAuthority: false,
+      title: isAdminNoShowCharge(item)
+        ? "No show aprobado"
+        : "Cargo por cancelación aprobado",
+      description: `${isAdminNoShowCharge(item) ? "No show" : "Cancelación"} aprobado: ${calculation.percent}% de la tarifa aplicable, con tope de $${calculation.capClp.toLocaleString("es-CL")}. Cargo aprobado: $${calculation.amountClp.toLocaleString("es-CL")} CLP.`,
+    } as AdminPassengerPendingCharge;
+  });
+
+  writeAdminPassengerPendingCharges(next);
+  window.dispatchEvent(new CustomEvent("rapago:admin-passenger-pending-charge-updated", { detail: { charges: next } }));
+  window.dispatchEvent(new CustomEvent("rapago:passenger-pending-charge-updated", { detail: { charges: next } }));
+  window.dispatchEvent(new CustomEvent("rapago:wallet-updated", { detail: { charges: next } }));
 }
 
 function isAdminNoShowCharge(charge: AdminPassengerPendingCharge): boolean {
@@ -1120,97 +1263,15 @@ function isAdminNoShowPendingReview(charge: AdminPassengerPendingCharge): boolea
 }
 
 function approveAdminNoShowChargeForNextRide(charge: AdminPassengerPendingCharge): void {
-  const now = new Date().toISOString();
-  const chargeRecord = charge as AdminPassengerPendingCharge & Record<string, unknown>;
-
-  const originalServiceAmountClp = Math.max(
-    0,
-    Math.round(
-      Number(
-        chargeRecord.originalNoShowServiceAmountClp ??
-        chargeRecord.originalServiceAmountClp ??
-        chargeRecord.totalServiceAmountClp ??
-        chargeRecord.serviceAmountClp ??
-        chargeRecord.fareClp ??
-        chargeRecord.originalAmountClp ??
-        charge.amountClp ??
-        0,
-      ),
-    ),
-  );
-
-  const approvedNoShowChargeClp = Math.min(
-    3000,
-    Math.max(0, Math.round(originalServiceAmountClp * 0.3)),
-  );
-
-  const next = readAdminPassengerPendingCharges().map((item) => {
-    if (String(item.id ?? "") !== String(charge.id ?? "")) return item;
-
-    const itemRecord = item as AdminPassengerPendingCharge & Record<string, unknown>;
-    const ownerEmail = String(itemRecord.passengerEmail ?? itemRecord.ownerKey ?? "").trim().toLowerCase();
-
-    return {
-      ...item,
-      passengerEmail: ownerEmail || item.passengerEmail || null,
-      ownerKey: ownerEmail || itemRecord.ownerKey || null,
-      type: "no_show",
-      amountClp: approvedNoShowChargeClp,
-      originalAmountClp: Math.max(0, Math.round(Number(item.amountClp ?? (item as AdminPassengerPendingCharge & Record<string, unknown>).amount ?? originalServiceAmountClp))),
-      originalNoShowServiceAmountClp: originalServiceAmountClp,
-      noShowPenaltyPercent: 30,
-      noShowPenaltyCapClp: 3000,
-      status: "pending_next_ride",
-      adminReviewStatus: "charge_pending_next_ride",
-      appliedRideId: null,
-      appliedAt: null,
-      approvedAt: now,
-      approvedBy: "admin",
-      rejectedAt: null,
-      rejectedBy: null,
-      source: "admin_approved_no_show",
-      backendAuthorityRequired: true,
-      localStorageFinancialAuthority: false,
-      title: "No show aprobado",
-      description:
-        "No Show aprobado por administrador. Se cobrara 30% con tope $3.000 en el proximo viaje del pasajero. Cargo aprobado: $" +
-        approvedNoShowChargeClp.toLocaleString("es-CL") +
-        " CLP.",
-    } as AdminPassengerPendingCharge;
-  });
-
-  writeAdminPassengerPendingCharges(next);
-
-  window.dispatchEvent(new CustomEvent("rapago:admin-passenger-pending-charge-updated", { detail: { charges: next } }));
-  window.dispatchEvent(new CustomEvent("rapago:passenger-pending-charge-updated", { detail: { charges: next } }));
-  window.dispatchEvent(new CustomEvent("rapago:wallet-updated", { detail: { charges: next } }));
+  approveAdminPassengerChargeForNextRide(charge);
 }
 
-function rejectAdminNoShowCharge(charge: AdminPassengerPendingCharge): void {
-  const now = new Date().toISOString();
-
-  const next = readAdminPassengerPendingCharges().map((item) => {
-    if (String(item.id ?? "") !== String(charge.id ?? "")) return item;
-
-    return {
-      ...item,
-      status: "waived",
-      adminReviewStatus: "waived",
-      rejectedAt: now,
-      rejectedBy: "admin",
-      approvedAt: null,
-      approvedBy: null,
-      source: "admin_rejected_no_show",
-      title: item.title || "No show rechazado",
-      description:
-        item.description ||
-        "No show rechazado por administrador. No se cobrar? al pasajero.",
-    } as AdminPassengerPendingCharge;
-  });
-
-  writeAdminPassengerPendingCharges(next);
+function rejectAdminNoShowCharge(
+  charge: AdminPassengerPendingCharge,
+  adminDecisionReason = "No show rechazado por administración tras revisión.",
+): void {
+  markAdminPassengerChargeStatus(charge, "waived", adminDecisionReason);
 }
-
 
 function isAdminCashWalletApproved(review: AdminCashPaymentReview): boolean {
   const status = String(review.adminReviewStatus ?? review.status ?? "").toLowerCase();
@@ -1343,6 +1404,7 @@ export function AdminHomePage(): JSX.Element {
   const [accountDeletionRequests, setAccountDeletionRequests] = useState<RapagoAccountDeletionRequest[]>(() => readAdminAccountDeletionRequests());
   const [showTripSafetyReportsModal, setShowTripSafetyReportsModal] = useState(false);
   const [tripSafetyReports, setTripSafetyReports] = useState<AdminTripSafetyReport[]>(() => readAdminTripSafetyReports());
+  const [pendingChargeWaiver, setPendingChargeWaiver] = useState<AdminPassengerPendingCharge | null>(null);
 
 
   useEffect(() => {
@@ -2633,7 +2695,7 @@ export function AdminHomePage(): JSX.Element {
                                     onClick={() => {
                                       approveAdminNoShowChargeForNextRide(charge);
                                       setCashReviewsRevision((current) => current + 1);
-                                      setAdminCashToast("No Show aprobado. Se cobrar? en el pr?ximo viaje del pasajero.");
+                                      setAdminCashToast("No show aprobado: 50% de la tarifa aplicable, con tope de $5.000.");
                                     }}
                                   >
                                     Aprobar No Show
@@ -2643,13 +2705,9 @@ export function AdminHomePage(): JSX.Element {
                                     size="small"
                                     color="danger"
                                     fill="outline"
-                                    onClick={() => {
-                                      rejectAdminNoShowCharge(charge);
-                                      setCashReviewsRevision((current) => current + 1);
-                                      setAdminCashToast("No Show rechazado.");
-                                    }}
+                                    onClick={() => setPendingChargeWaiver(charge)}
                                   >
-                                    Rechazar
+                                    Eximir / rechazar
                                   </IonButton>
                                 </div>
                               )}
@@ -3033,20 +3091,57 @@ export function AdminHomePage(): JSX.Element {
                               </p>
                             )}
 
+                            {charge.cancellationReasonLabel && (
+                              <div style={{ marginTop: 8, padding: 9, borderRadius: 12, background: charge.requestedExemption ? "rgba(245,158,11,.14)" : "rgba(0,0,0,.04)", color: "#111", fontSize: ".76rem", fontWeight: 850 }}>
+                                Motivo informado: <strong>{charge.cancellationReasonLabel}</strong>
+                                {charge.requestedExemption && (
+                                  <><br />⚠ Solicitud de exención: el administrador debe revisar antes de cobrar.</>
+                                )}
+                              </div>
+                            )}
+
+                            {charge.adminDecisionReason && (
+                              <div style={{ marginTop: 8, padding: 9, borderRadius: 12, background: "rgba(22,163,74,.10)", color: "#14532d", fontSize: ".76rem", fontWeight: 850 }}>
+                                Decisión admin: {charge.adminDecisionReason}
+                              </div>
+                            )}
+
                             <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 10 }}>
-                              {isAdminPassengerChargePending(charge) && (
-                                <IonButton
-                                  size="small"
-                                  color="medium"
-                                  fill="outline"
-                                  onClick={() => {
-                                    markAdminPassengerChargeStatus(charge, "waived");
-                                    setCashReviewsRevision((current) => current + 1);
-                                    setAdminCashToast("Cargo anulado por administración.");
-                                  }}
-                                >
-                                  Anular cargo
-                                </IonButton>
+                              {isAdminPassengerChargeAwaitingDecision(charge) && (
+                                <>
+                                  <IonButton
+                                    size="small"
+                                    color="success"
+                                    onClick={() => {
+                                      try {
+                                        approveAdminPassengerChargeForNextRide(charge);
+                                        setCashReviewsRevision((current) => current + 1);
+                                        setAdminCashToast(
+                                          isAdminNoShowCharge(charge)
+                                            ? "No show aprobado: 50% con tope de $5.000."
+                                            : "Cancelación aprobada: 30% con tope de $3.000.",
+                                        );
+                                      } catch (err) {
+                                        setAdminCashToast(
+                                          err instanceof Error
+                                            ? err.message
+                                            : "No se pudo aprobar el cargo.",
+                                        );
+                                      }
+                                    }}
+                                  >
+                                    Aprobar cargo
+                                  </IonButton>
+
+                                  <IonButton
+                                    size="small"
+                                    color="medium"
+                                    fill="outline"
+                                    onClick={() => setPendingChargeWaiver(charge)}
+                                  >
+                                    Eximir / anular
+                                  </IonButton>
+                                </>
                               )}
                               {String(charge.status).toLowerCase() === "applied_to_next_ride" && (
                                 <IonButton
@@ -3386,6 +3481,62 @@ export function AdminHomePage(): JSX.Element {
           )}
         </div>
       </IonContent>
+
+      <IonAlert
+        isOpen={pendingChargeWaiver !== null}
+        header="Eximir o anular cargo"
+        message={
+          pendingChargeWaiver
+            ? `Debes registrar una razón de auditoría para eximir el cargo de ${formatAdminCashClp(pendingChargeWaiver.amountClp)}.`
+            : ""
+        }
+        inputs={[
+          {
+            name: "reason",
+            type: "textarea",
+            placeholder: "Ej.: discrepancia de conductor/vehículo, riesgo de seguridad, duplicidad de Plataforma o causa atribuible al Operador.",
+            attributes: {
+              maxlength: 260,
+            },
+          },
+        ]}
+        buttons={[
+          {
+            text: "Volver",
+            role: "cancel",
+            handler: () => setPendingChargeWaiver(null),
+          },
+          {
+            text: "Confirmar exención",
+            role: "destructive",
+            handler: (data) => {
+              if (!pendingChargeWaiver) return false;
+              const reason = String(
+                typeof data === "string" ? data : data?.reason ?? "",
+              ).trim();
+              if (reason.length < 8) {
+                setAdminCashToast("Escribe una razón de al menos 8 caracteres.");
+                return false;
+              }
+
+              if (isAdminNoShowCharge(pendingChargeWaiver)) {
+                rejectAdminNoShowCharge(pendingChargeWaiver, reason);
+              } else {
+                markAdminPassengerChargeStatus(
+                  pendingChargeWaiver,
+                  "waived",
+                  reason,
+                );
+              }
+              setCashReviewsRevision((current) => current + 1);
+              setAdminCashToast("Cargo eximido con razón de auditoría.");
+              setPendingChargeWaiver(null);
+              return true;
+            },
+          },
+        ]}
+        onDidDismiss={() => setPendingChargeWaiver(null)}
+      />
 
       <IonToast
         isOpen={Boolean(adminCashToast)}
@@ -7505,7 +7656,31 @@ function getAdminRideScheduleInfo(ride: AdminRideData): AdminRideScheduleInfo {
   };
 }
 
+function isAdminRideNoShow(ride: AdminRideData): boolean {
+  const record = ride as AdminRideData & Record<string, unknown>;
+  const directStatus = String(record.status ?? "").trim().toLowerCase();
+  const finalState = String(record.driverFinalState ?? record.finalState ?? "").trim().toLowerCase();
+  const cancelledBy = String(record.cancelledByRole ?? record.cancelledBy ?? "").trim().toLowerCase();
+  const reason = String(record.cancellationReason ?? record.cancelReason ?? record.requeuedReason ?? "").trim().toLowerCase();
+
+  return (
+    directStatus === "no_show" ||
+    directStatus === "no-show" ||
+    record.driverNoShowClosed === true ||
+    record.noShowCompleted === true ||
+    record.noShowConfirmedByDriver === true ||
+    record.passengerNoShow === true ||
+    Boolean(record.noShowConfirmedAt) ||
+    finalState.includes("no_show") ||
+    cancelledBy.includes("no_show") ||
+    reason.includes("no show") ||
+    reason.includes("no-show")
+  );
+}
+
 function getEffectiveAdminRideStatus(ride: AdminRideData): string {
+  if (isAdminRideNoShow(ride)) return "no_show";
+
   const schedule = getAdminRideScheduleInfo(ride);
 
   if (
@@ -7837,7 +8012,7 @@ function buildAssignedScheduledRide(ride: AdminRideData, driver: ActiveDriverDat
     : `Tenemos agendado tu viaje. El admin lo asignó 30 minutos antes. Ve a buscar al usuario en ${ride.originText} y confirma esta reserva.${airportWelcomeInfo ? " Incluye collar de flores solicitado; admin gestiona el recibimiento en Mataveri." : ""}`;
   const passengerNotification = isReturnOnlyPromotion
     ? "Tu regreso quedó agendado. Estamos esperando que el conductor asignado confirme la vuelta."
-    : "Tu reserva sigue agendada. El admin gestionará/asignará conductor 30 minutos antes. Todas las reservas son con tarjeta; si cancelas dentro de los últimos 15 minutos se descuenta la penalización y el saldo queda como CRÉDITOS PARA PRÓXIMO VIAJE.";
+    : "Tu reserva sigue agendada. El admin gestionará/asignará conductor 30 minutos antes. Todas las reservas son con tarjeta; si cancelas dentro de los últimos 30 minutos se descuenta la penalización y el saldo queda como CRÉDITOS PARA PRÓXIMO VIAJE.";
 
   return {
     ...(ride as AdminRideData & Record<string, unknown>),
@@ -8128,7 +8303,7 @@ function adminRideCanBeAutoAssignedFromReservation(ride: AdminRideData): boolean
   if (hasAdminAssignedDriver(ride)) return false;
 
   const effectiveStatus = getEffectiveAdminRideStatus(ride);
-  if (["completed", "cancelled", "accepted", "driver_en_route", "driver_arrived", "in_progress"].includes(effectiveStatus)) {
+  if (["completed", "cancelled", "no_show", "accepted", "driver_en_route", "driver_arrived", "in_progress"].includes(effectiveStatus)) {
     return false;
   }
 
@@ -8276,19 +8451,51 @@ function assignScheduledRideToDriverLocally(ride: AdminRideData, driver: ActiveD
   return assigned;
 }
 
-function cleanAdminRideNotes(notes: string | null | undefined): string | null {
+const RAPAGO_PASSENGER_NOTE_MAX_LENGTH_ADMIN = 180;
+
+function sanitizeAdminPassengerNote(value: unknown): string {
+  return String(value ?? "")
+    .replace(/[\u0000-\u001F\u007F]/g, " ")
+    .replace(/[<>`{}$\\]/g, "")
+    .replace(/RAPAGO_PASSENGER_NOTE_(?:START|END)/gi, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, RAPAGO_PASSENGER_NOTE_MAX_LENGTH_ADMIN);
+}
+
+function extractAdminPassengerNoteFromNotes(notes: string | null | undefined): string | null {
   if (!notes) return null;
-  const cleaned = notes
-    .replace(/\bRAPAGO_[A-Z_]+:\s*[^.]+\.?/gi, "")
-    .replace(/Fecha y hora de recogida agendada:\s*[^.]+\.?/gi, "")
-    .replace(/Fecha y hora de regreso agendada:\s*[^.]+\.?/gi, "")
-    .replace(/Activaci[oó]n autom[aá]tica recogida:\s*[^.]+\.?/gi, "")
-    .replace(/Activaci[oó]n autom[aá]tica regreso:\s*[^.]+\.?/gi, "")
-    .replace(/Estado de agenda admin:\s*[^.]+\.?/gi, "")
-    .replace(/Solicitado por rol:\s*[^.]+\.?/gi, "")
-    .replace(/\s{2,}/g, " ")
-    .trim();
-  return cleaned || null;
+
+  const marked = notes.match(
+    /RAPAGO_PASSENGER_NOTE_START\s+([\s\S]*?)\s+RAPAGO_PASSENGER_NOTE_END\.?/i,
+  );
+  if (marked?.[1]) return sanitizeAdminPassengerNote(marked[1]) || null;
+
+  const labelled = notes.match(
+    /(?:Nota del pasajero|Nota pasajero):\s*([\s\S]*?)(?=\s+(?:RAPAGO_[A-Z_]+:|Forma de pago seleccionada:|Categor[ií]a de veh[ií]culo seleccionada:|Tipo de viaje seleccionado:|Direcci[oó]n origen confirmada:|Coordenadas recogida accesible:|Tarifa RAPA GO calculada:|$))/i,
+  );
+  if (labelled?.[1]) return sanitizeAdminPassengerNote(labelled[1]) || null;
+
+  const legacy = notes.match(
+    /Coordenadas destino accesible:\s*-?\d+(?:[.,]\d+)?,\s*-?\d+(?:[.,]\d+)?\.\s*([\s\S]*?)(?=\s+(?:Tarifa RAPA GO calculada:|Tarifa estimada pasajero:|Distancia estimada:|Duraci[oó]n estimada:|Tipo de viaje tarifario:|Ganancia estimada conductor:|$))/i,
+  );
+  if (legacy?.[1]) return sanitizeAdminPassengerNote(legacy[1]) || null;
+
+  const looksTechnical = /(?:RAPAGO_[A-Z_]+:|Forma de pago seleccionada:|Coordenadas recogida accesible:|Tarifa RAPA GO calculada:|Categor[ií]a de veh[ií]culo seleccionada:)/i.test(notes);
+  return looksTechnical ? null : sanitizeAdminPassengerNote(notes) || null;
+}
+
+function getAdminPassengerNote(ride: AdminRideData): string | null {
+  const record = ride as unknown as Record<string, unknown>;
+  const direct = sanitizeAdminPassengerNote(
+    record.passengerNote ??
+      record.passenger_note ??
+      record.passengerInstructions ??
+      record.passengerComment,
+  );
+  if (direct) return direct;
+
+  return extractAdminPassengerNoteFromNotes(ride.notes);
 }
 
 const RIDE_STATUS_LABEL_ADMIN: Record<string, string> = {
@@ -8300,6 +8507,7 @@ const RIDE_STATUS_LABEL_ADMIN: Record<string, string> = {
   in_progress: "En curso",
   completed: "Completado",
   cancelled: "Cancelado",
+  no_show: "No Show",
 };
 
 const RIDE_STATUS_COLOR_ADMIN: Record<string, string> = {
@@ -8311,6 +8519,7 @@ const RIDE_STATUS_COLOR_ADMIN: Record<string, string> = {
   in_progress: "success",
   completed: "medium",
   cancelled: "danger",
+  no_show: "warning",
 };
 
 const CANCELABLE_STATUSES = new Set([
@@ -8456,8 +8665,9 @@ function getAdminRidePriority(status: string): number {
   if (status === "driver_arrived") return 4;
   if (status === "in_progress") return 5;
   if (status === "completed") return 6;
-  if (status === "cancelled") return 7;
-  return 8;
+  if (status === "no_show") return 7;
+  if (status === "cancelled") return 8;
+  return 9;
 }
 
 function sortAdminRidesForOperations(rides: AdminRideData[]): AdminRideData[] {
@@ -8468,6 +8678,1213 @@ function sortAdminRidesForOperations(rides: AdminRideData[]): AdminRideData[] {
     if (priorityDiff !== 0) return priorityDiff;
     return getAdminRideTimeValue(b) - getAdminRideTimeValue(a);
   });
+}
+
+
+type AdminTripMapPoint = { lat: number; lng: number };
+
+type AdminTripMapResolvedPoints = {
+  pickup: AdminTripMapPoint | null;
+  destination: AdminTripMapPoint | null;
+};
+
+const ADMIN_RAPA_NUI_CENTER: AdminTripMapPoint = { lat: -27.1505, lng: -109.4325 };
+
+const ADMIN_RAPA_NUI_ZONE_POINTS: Array<{ label: string; aliases: string[]; point: AdminTripMapPoint }> = [
+  { label: "Hotel Taha Tai", aliases: ["hotel taha tai", "taha tai", "taha-tai"], point: { lat: -27.1469, lng: -109.4325 } },
+  { label: "Caleta Hanga Roa", aliases: ["caleta hanga roa", "caleta", "hanga roa"], point: { lat: -27.1488, lng: -109.4336 } },
+  { label: "Aeropuerto Mataveri", aliases: ["aeropuerto", "mataveri", "airport"], point: { lat: -27.1648, lng: -109.4210 } },
+  { label: "Hospital Hanga Roa", aliases: ["hospital", "hospital de hanga roa"], point: { lat: -27.1502, lng: -109.4216 } },
+  { label: "Centro de Hanga Roa", aliases: ["centro", "hanga roa centro", "iglesia", "comisaria", "comisaría", "mercado artesanal", "feria artesanal"], point: { lat: -27.1505, lng: -109.4325 } },
+  { label: "Tahai", aliases: ["tahai", "ahu tahai"], point: { lat: -27.1398, lng: -109.4298 } },
+  { label: "Hanga Piko", aliases: ["hanga piko", "puerto hanga piko"], point: { lat: -27.1561, lng: -109.4440 } },
+  { label: "Puna Pau", aliases: ["puna pau"], point: { lat: -27.1385, lng: -109.3959 } },
+  { label: "Ahu Akivi", aliases: ["ahu akivi", "akivi"], point: { lat: -27.1150, lng: -109.3950 } },
+  { label: "Anakena", aliases: ["anakena"], point: { lat: -27.0732, lng: -109.3233 } },
+  { label: "Terevaka", aliases: ["terevaka", "tere vaka"], point: { lat: -27.0917, lng: -109.3820 } },
+  { label: "Orongo / Rano Kau", aliases: ["orongo", "rano kau", "rano kao"], point: { lat: -27.1860, lng: -109.4355 } },
+  { label: "Rano Raraku", aliases: ["rano raraku"], point: { lat: -27.1210, lng: -109.2880 } },
+  { label: "Tongariki", aliases: ["tongariki", "ahu tongariki"], point: { lat: -27.1251, lng: -109.2761 } },
+  { label: "Vaitea", aliases: ["vaitea"], point: { lat: -27.1015, lng: -109.3505 } },
+  { label: "Apina", aliases: ["apina", "apiña"], point: { lat: -27.1477, lng: -109.4319 } },
+];
+
+function adminTripMapNormalizeText(value: unknown): string {
+  return String(value ?? "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
+function adminTripMapString(value: unknown): string {
+  return String(value ?? "").trim();
+}
+
+function adminTripMapNumber(value: unknown): number | null {
+  if (value === null || value === undefined || value === "") return null;
+  const parsed = Number(String(value).replace(",", "."));
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function adminTripMapPointFromValues(latValue: unknown, lngValue: unknown): AdminTripMapPoint | null {
+  const lat = adminTripMapNumber(latValue);
+  const lng = adminTripMapNumber(lngValue);
+  if (lat == null || lng == null) return null;
+  if (Math.abs(lat) > 90 || Math.abs(lng) > 180) return null;
+  return { lat, lng };
+}
+
+function adminTripMapPointFromRecord(record: Record<string, unknown>, pairs: Array<[string, string]>): AdminTripMapPoint | null {
+  for (const [latKey, lngKey] of pairs) {
+    const point = adminTripMapPointFromValues(record[latKey], record[lngKey]);
+    if (point) return point;
+  }
+  return null;
+}
+
+function adminTripMapPointFromNotes(notes: unknown, labels: string[]): AdminTripMapPoint | null {
+  const text = String(notes ?? "");
+  if (!text.trim()) return null;
+
+  for (const label of labels) {
+    const pattern = new RegExp(`${label}\\s*:\\s*(-?\\d+(?:[.,]\\d+)?)\\s*,\\s*(-?\\d+(?:[.,]\\d+)?)`, "i");
+    const match = text.match(pattern);
+    if (!match) continue;
+
+    const point = adminTripMapPointFromValues(match[1], match[2]);
+    if (point) return point;
+  }
+
+  return null;
+}
+
+function adminTripMapResolvePointFromZoneText(...values: unknown[]): AdminTripMapPoint | null {
+  const combined = adminTripMapNormalizeText(values.filter(Boolean).join(" "));
+  if (!combined) return null;
+
+  const match = ADMIN_RAPA_NUI_ZONE_POINTS.find((zone) =>
+    zone.aliases.some((alias) => {
+      const cleanAlias = adminTripMapNormalizeText(alias);
+      return combined.includes(cleanAlias) || cleanAlias.includes(combined);
+    }),
+  );
+
+  return match?.point ?? null;
+}
+
+async function adminTripMapGeocodeRapaNuiPoint(value: unknown): Promise<AdminTripMapPoint | null> {
+  const raw = adminTripMapString(value);
+  if (!raw) return null;
+
+  const byZone = adminTripMapResolvePointFromZoneText(raw);
+  if (byZone) return byZone;
+
+  try {
+    await loadRapaGoGoogleMaps();
+    if (!window.google?.maps?.Geocoder) return null;
+
+    const geocoder = new google.maps.Geocoder();
+    const normalized = adminTripMapNormalizeText(raw);
+    const query = normalized.includes("rapa nui") || normalized.includes("hanga roa") || normalized.includes("isla de pascua")
+      ? `${raw}, Chile`
+      : `${raw}, Hanga Roa, Rapa Nui, Valparaíso, Chile`;
+
+    return await new Promise<AdminTripMapPoint | null>((resolve) => {
+      geocoder.geocode(
+        {
+          address: query,
+          region: "CL",
+          componentRestrictions: { country: "CL" },
+        },
+        (results, status) => {
+          if (status !== google.maps.GeocoderStatus.OK || !results?.[0]) {
+            resolve(null);
+            return;
+          }
+
+          const location = results[0].geometry.location;
+          resolve({ lat: location.lat(), lng: location.lng() });
+        },
+      );
+    });
+  } catch {
+    return null;
+  }
+}
+
+function adminTripMapRideIdentityMatches(ride: AdminRideData, candidate: Record<string, unknown>): boolean {
+  const rideRecord = ride as AdminRideData & Record<string, unknown>;
+  const rideIds = new Set(
+    [ride.id, rideRecord.rideId, rideRecord.originalRideId, rideRecord.serverRideId]
+      .map((value) => adminTripMapString(value))
+      .filter(Boolean),
+  );
+  const candidateRideId = adminTripMapString(candidate.rideId ?? candidate.id ?? candidate.originalRideId ?? candidate.serverRideId);
+  if (candidateRideId && rideIds.has(candidateRideId)) return true;
+
+  const driverEmail = adminTripMapNormalizeText(getRideUnknownField(ride, "driverEmail") ?? getRideUnknownField(ride, "assignedDriverEmail"));
+  const candidateEmail = adminTripMapNormalizeText(candidate.driverEmail ?? candidate.email ?? candidate.assignedDriverEmail);
+  if (driverEmail && candidateEmail && driverEmail === candidateEmail) return true;
+
+  const driverName = adminTripMapNormalizeText(ride.driverName ?? getRideUnknownField(ride, "assignedDriverName"));
+  const candidateName = adminTripMapNormalizeText(candidate.driverName ?? candidate.name ?? candidate.assignedDriverName);
+  if (driverName && candidateName && driverName === candidateName) return true;
+
+  return false;
+}
+
+function adminTripMapExtractCandidatePoint(candidate: Record<string, unknown>): AdminTripMapPoint | null {
+  return adminTripMapPointFromRecord(candidate, [
+    ["lat", "lng"],
+    ["latitude", "longitude"],
+    ["driverLat", "driverLng"],
+    ["currentDriverLat", "currentDriverLng"],
+    ["driverLocationLat", "driverLocationLng"],
+  ]);
+}
+
+function readAdminTripLiveDriverPoint(ride: AdminRideData): AdminTripMapPoint | null {
+  const rideRecord = ride as AdminRideData & Record<string, unknown>;
+
+  const direct = adminTripMapPointFromRecord(rideRecord, [
+    ["driverLat", "driverLng"],
+    ["currentDriverLat", "currentDriverLng"],
+    ["driverLocationLat", "driverLocationLng"],
+    ["lastDriverLat", "lastDriverLng"],
+  ]);
+  if (direct) return direct;
+
+  const storageKeys = [
+    "rapago_current_driver_location",
+    "rapago_driver_current_location",
+    "rapago_driver_live_location_v1",
+    "rapago_driver_live_locations_v1",
+    "rapago_driver_locations_v1",
+    "rapago_driver_navigation_location_v1",
+  ];
+
+  for (const key of storageKeys) {
+    try {
+      const raw = localStorage.getItem(key);
+      if (!raw) continue;
+
+      const parsed = JSON.parse(raw) as unknown;
+      const candidates: Record<string, unknown>[] = [];
+
+      if (Array.isArray(parsed)) {
+        candidates.push(...parsed.filter((item): item is Record<string, unknown> => Boolean(item && typeof item === "object")));
+      } else if (parsed && typeof parsed === "object") {
+        const record = parsed as Record<string, unknown>;
+        candidates.push(record);
+        candidates.push(...Object.values(record).filter((item): item is Record<string, unknown> => Boolean(item && typeof item === "object")));
+      }
+
+      const matched = candidates.find((candidate) => adminTripMapRideIdentityMatches(ride, candidate));
+      const point = matched ? adminTripMapExtractCandidatePoint(matched) : null;
+      if (point) return point;
+
+      if (candidates.length === 1) {
+        const onlyPoint = adminTripMapExtractCandidatePoint(candidates[0]);
+        if (onlyPoint) return onlyPoint;
+      }
+    } catch {
+      // Storage antiguo o corrupto: se ignora.
+    }
+  }
+
+  return null;
+}
+
+async function resolveAdminTripMapPoints(ride: AdminRideData): Promise<AdminTripMapResolvedPoints> {
+  const record = ride as AdminRideData & Record<string, unknown>;
+
+  const pickupFromFields = adminTripMapPointFromRecord(record, [
+    ["pickupLat", "pickupLng"],
+    ["originLat", "originLng"],
+    ["startLat", "startLng"],
+    ["passengerOriginalLat", "passengerOriginalLng"],
+  ]);
+
+  const destinationFromFields = adminTripMapPointFromRecord(record, [
+    ["destinationLat", "destinationLng"],
+    ["destLat", "destLng"],
+    ["endLat", "endLng"],
+  ]);
+
+  const pickupFromNotes = adminTripMapPointFromNotes(ride.notes, [
+    "Coordenadas recogida accesible",
+    "Coordenadas origen accesible",
+    "Coordenadas origen",
+    "Ubicación real del pasajero",
+    "Ubicacion real del pasajero",
+  ]);
+
+  const destinationFromNotes = adminTripMapPointFromNotes(ride.notes, [
+    "Coordenadas destino accesible",
+    "Coordenadas destino",
+  ]);
+
+  const pickupText = adminTripMapString(getRideUnknownField(ride, "originAddress") ?? getRideUnknownField(ride, "pickupAddress") ?? ride.originText);
+  const destinationText = adminTripMapString(getRideUnknownField(ride, "destinationAddress") ?? ride.destinationText);
+
+  const pickup =
+    pickupFromFields ??
+    pickupFromNotes ??
+    adminTripMapResolvePointFromZoneText(pickupText, ride.notes) ??
+    await adminTripMapGeocodeRapaNuiPoint(pickupText);
+
+  const destination =
+    destinationFromFields ??
+    destinationFromNotes ??
+    adminTripMapResolvePointFromZoneText(destinationText, ride.notes) ??
+    await adminTripMapGeocodeRapaNuiPoint(destinationText);
+
+  return { pickup, destination };
+}
+
+function adminTripMapDistanceMeters(a: AdminTripMapPoint, b: AdminTripMapPoint): number {
+  const r = 6371000;
+  const toRad = (value: number) => (value * Math.PI) / 180;
+  const dLat = toRad(b.lat - a.lat);
+  const dLng = toRad(b.lng - a.lng);
+  const lat1 = toRad(a.lat);
+  const lat2 = toRad(b.lat);
+  const h =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLng / 2) ** 2;
+  return 2 * r * Math.asin(Math.sqrt(h));
+}
+
+function formatAdminTripMapDistance(value: number | null): string {
+  if (value == null || !Number.isFinite(value)) return "";
+  if (value < 1000) return `${Math.max(10, Math.round(value / 10) * 10)} m`;
+  return `${(value / 1000).toLocaleString("es-CL", { maximumFractionDigits: 1 })} km`;
+}
+
+function adminTripMarkerIcon(color: string, scale = 11): google.maps.Symbol {
+  return {
+    path: google.maps.SymbolPath.CIRCLE,
+    fillColor: color,
+    fillOpacity: 1,
+    strokeColor: "#ffffff",
+    strokeWeight: 3,
+    scale,
+  };
+}
+
+function adminTripDriverIcon(): google.maps.Symbol {
+  return {
+    path: google.maps.SymbolPath.FORWARD_CLOSED_ARROW,
+    fillColor: "#2563eb",
+    fillOpacity: 1,
+    strokeColor: "#ffffff",
+    strokeWeight: 3,
+    scale: 6,
+    rotation: 0,
+  };
+}
+
+
+function adminTripMapTracePointFromUnknown(value: unknown): AdminTripMapPoint | null {
+  if (!value) return null;
+
+  if (Array.isArray(value) && value.length >= 2) {
+    return adminTripMapPointFromValues(value[0], value[1]);
+  }
+
+  if (typeof value !== "object") return null;
+
+  const record = value as Record<string, unknown>;
+  return adminTripMapPointFromRecord(record, [
+    ["lat", "lng"],
+    ["latitude", "longitude"],
+    ["driverLat", "driverLng"],
+    ["currentDriverLat", "currentDriverLng"],
+    ["driverLocationLat", "driverLocationLng"],
+    ["routeLat", "routeLng"],
+  ]);
+}
+
+function adminTripMapTraceFromUnknown(value: unknown): AdminTripMapPoint[] {
+  if (!value) return [];
+
+  if (Array.isArray(value)) {
+    return value
+      .map(adminTripMapTracePointFromUnknown)
+      .filter((point): point is AdminTripMapPoint => Boolean(point));
+  }
+
+  if (typeof value !== "object") return [];
+
+  const record = value as Record<string, unknown>;
+  const directPoint = adminTripMapTracePointFromUnknown(record);
+  const nestedKeys = [
+    "points",
+    "path",
+    "trace",
+    "route",
+    "driverPath",
+    "driverRoute",
+    "driverRoutePath",
+    "driverRouteTrace",
+    "routeTrace",
+    "routeHistory",
+    "locationHistory",
+    "locations",
+    "completedRoutePath",
+    "completedDriverPath",
+  ];
+
+  for (const key of nestedKeys) {
+    const nested = adminTripMapTraceFromUnknown(record[key]);
+    if (nested.length >= 2) return nested;
+  }
+
+  return directPoint ? [directPoint] : [];
+}
+
+function adminTripMapDedupeTrace(points: AdminTripMapPoint[]): AdminTripMapPoint[] {
+  const next: AdminTripMapPoint[] = [];
+
+  for (const point of points) {
+    const last = next[next.length - 1];
+    if (!last || adminTripMapDistanceMeters(last, point) >= 3) {
+      next.push(point);
+    }
+  }
+
+  return next;
+}
+
+function readAdminTripCompletedDriverTrace(ride: AdminRideData): AdminTripMapPoint[] {
+  const rideRecord = ride as AdminRideData & Record<string, unknown>;
+  const direct = adminTripMapTraceFromUnknown(rideRecord);
+  if (direct.length >= 2) return adminTripMapDedupeTrace(direct);
+
+  const storageKeys = [
+    "rapago_driver_completed_route_traces_v1",
+    "rapago_driver_route_traces_v1",
+    "rapago_driver_route_history_v1",
+    "rapago_driver_location_history_v1",
+    "rapago_driver_completed_routes_v1",
+  ];
+
+  for (const key of storageKeys) {
+    try {
+      const raw = localStorage.getItem(key);
+      if (!raw) continue;
+
+      const parsed = JSON.parse(raw) as unknown;
+      const candidates: unknown[] = [];
+
+      if (Array.isArray(parsed)) {
+        candidates.push(parsed, ...parsed);
+      } else if (parsed && typeof parsed === "object") {
+        const record = parsed as Record<string, unknown>;
+        candidates.push(record);
+
+        const rideIds = [ride.id, rideRecord.rideId, rideRecord.originalRideId, rideRecord.serverRideId]
+          .map((value) => adminTripMapString(value))
+          .filter(Boolean);
+
+        for (const rideId of rideIds) {
+          if (record[rideId]) candidates.push(record[rideId]);
+          if (record[`ride:${rideId}`]) candidates.push(record[`ride:${rideId}`]);
+        }
+
+        candidates.push(...Object.values(record));
+      }
+
+      for (const candidate of candidates) {
+        const candidateRecord = candidate && typeof candidate === "object" ? candidate as Record<string, unknown> : null;
+        const matchesRide = candidateRecord ? adminTripMapRideIdentityMatches(ride, candidateRecord) : false;
+        const trace = adminTripMapTraceFromUnknown(candidate);
+
+        if ((matchesRide || candidates.length <= 2) && trace.length >= 2) {
+          return adminTripMapDedupeTrace(trace);
+        }
+      }
+    } catch {
+      // Storage local antiguo o corrupto: se ignora.
+    }
+  }
+
+  return [];
+}
+
+function AdminTripLiveRouteMap({
+  ride,
+  height = 190,
+}: {
+  ride: AdminRideData;
+  height?: number;
+}): JSX.Element {
+  const mapElementRef = useRef<HTMLDivElement | null>(null);
+  const mapRef = useRef<google.maps.Map | null>(null);
+  const rendererRef = useRef<google.maps.DirectionsRenderer | null>(null);
+  const directionsServiceRef = useRef<google.maps.DirectionsService | null>(null);
+  const driverMarkerRef = useRef<google.maps.Marker | null>(null);
+  const pickupMarkerRef = useRef<google.maps.Marker | null>(null);
+  const destinationMarkerRef = useRef<google.maps.Marker | null>(null);
+  const fallbackLineRef = useRef<google.maps.Polyline | null>(null);
+  const completedTraceLineRef = useRef<google.maps.Polyline | null>(null);
+  const pointsRef = useRef<AdminTripMapResolvedPoints | null>(null);
+  const routeKeyRef = useRef("");
+
+  const [mapMessage, setMapMessage] = useState("Cargando mapa del viaje...");
+  const [routeMessage, setRouteMessage] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    pointsRef.current = null;
+    routeKeyRef.current = "";
+
+    function setMarker(
+      markerRef: { current: google.maps.Marker | null },
+      point: AdminTripMapPoint | null,
+      options: google.maps.MarkerOptions,
+    ): void {
+      const map = mapRef.current;
+      if (!map || !window.google?.maps || !point) {
+        markerRef.current?.setMap(null);
+        markerRef.current = null;
+        return;
+      }
+
+      if (!markerRef.current) {
+        markerRef.current = new google.maps.Marker({ ...options, map, position: point });
+        return;
+      }
+
+      markerRef.current.setMap(map);
+      markerRef.current.setPosition(point);
+      markerRef.current.setOptions(options);
+    }
+
+    async function ensureMap(): Promise<void> {
+      await loadRapaGoGoogleMaps();
+      if (!mapElementRef.current || mapRef.current || !window.google?.maps) return;
+
+      mapRef.current = new google.maps.Map(mapElementRef.current, {
+        center: ADMIN_RAPA_NUI_CENTER,
+        zoom: 14,
+        mapTypeControl: false,
+        streetViewControl: false,
+        fullscreenControl: false,
+        clickableIcons: false,
+        gestureHandling: "greedy",
+      });
+
+      rendererRef.current = new google.maps.DirectionsRenderer({
+        map: mapRef.current,
+        suppressMarkers: true,
+        preserveViewport: true,
+        polylineOptions: {
+          strokeColor: "#2563eb",
+          strokeOpacity: 0.95,
+          strokeWeight: 7,
+        },
+      });
+      directionsServiceRef.current = new google.maps.DirectionsService();
+    }
+
+    async function ensurePoints(): Promise<AdminTripMapResolvedPoints> {
+      if (pointsRef.current) return pointsRef.current;
+      const points = await resolveAdminTripMapPoints(ride);
+      pointsRef.current = points;
+      return points;
+    }
+
+    function drawFallbackLine(start: AdminTripMapPoint | null, end: AdminTripMapPoint | null): void {
+      const map = mapRef.current;
+      if (!map || !window.google?.maps || !start || !end) {
+        fallbackLineRef.current?.setMap(null);
+        fallbackLineRef.current = null;
+        return;
+      }
+
+      const path = [start, end];
+      if (!fallbackLineRef.current) {
+        fallbackLineRef.current = new google.maps.Polyline({
+          map,
+          path,
+          strokeColor: "#0f172a",
+          strokeOpacity: 0.55,
+          strokeWeight: 5,
+          icons: [{ icon: { path: "M 0,-1 0,1", strokeOpacity: 1, scale: 4 }, offset: "0", repeat: "18px" }],
+        });
+      } else {
+        fallbackLineRef.current.setMap(map);
+        fallbackLineRef.current.setPath(path);
+      }
+    }
+
+    function drawCompletedTrace(path: AdminTripMapPoint[]): void {
+      const map = mapRef.current;
+      if (!map || !window.google?.maps || path.length < 2) {
+        completedTraceLineRef.current?.setMap(null);
+        completedTraceLineRef.current = null;
+        return;
+      }
+
+      fallbackLineRef.current?.setMap(null);
+      fallbackLineRef.current = null;
+      rendererRef.current?.set("directions", null);
+
+      if (!completedTraceLineRef.current) {
+        completedTraceLineRef.current = new google.maps.Polyline({
+          map,
+          path,
+          strokeColor: "#7c3aed",
+          strokeOpacity: 0.98,
+          strokeWeight: 8,
+        });
+      } else {
+        completedTraceLineRef.current.setMap(map);
+        completedTraceLineRef.current.setPath(path);
+      }
+    }
+
+    function fitVisiblePoints(points: Array<AdminTripMapPoint | null>): void {
+      const map = mapRef.current;
+      if (!map || !window.google?.maps) return;
+
+      const bounds = new google.maps.LatLngBounds();
+      points.filter(Boolean).forEach((point) => bounds.extend(point as AdminTripMapPoint));
+
+      if (!bounds.isEmpty()) {
+        try {
+          map.fitBounds(bounds, 48);
+          return;
+        } catch {
+          // Fallback abajo.
+        }
+      }
+
+      const fallback = points.find(Boolean) ?? ADMIN_RAPA_NUI_CENTER;
+      map.setCenter(fallback as AdminTripMapPoint);
+      map.setZoom(14);
+    }
+
+    async function refreshMapOnce(): Promise<void> {
+      try {
+        await ensureMap();
+        if (cancelled) return;
+
+        const map = mapRef.current;
+        const renderer = rendererRef.current;
+        const directionsService = directionsServiceRef.current;
+        if (!map || !renderer || !directionsService || !window.google?.maps) return;
+
+        const { pickup, destination } = await ensurePoints();
+        if (cancelled) return;
+
+        const effectiveStatus = getEffectiveAdminRideStatus(ride);
+        const lowerStatus = String(effectiveStatus ?? "").toLowerCase();
+        const isCompletedRide = lowerStatus === "completed" || Boolean(getRideUnknownField(ride, "completedAt"));
+        const liveDriverPoint = isCompletedRide ? null : readAdminTripLiveDriverPoint(ride);
+        const completedTrace = isCompletedRide ? readAdminTripCompletedDriverTrace(ride) : [];
+        const completedEndPoint = completedTrace.length >= 2 ? completedTrace[completedTrace.length - 1] : null;
+        const hasDriverStage = ["accepted", "driver_en_route", "driver_arrived", "in_progress"].includes(lowerStatus);
+        const goingToPickup = ["accepted", "driver_en_route"].includes(lowerStatus);
+        const goingToDestination = ["driver_arrived", "in_progress"].includes(lowerStatus);
+
+        setMarker(pickupMarkerRef, pickup, {
+          title: `Recogida: ${ride.originText}`,
+          label: { text: "R", color: "#ffffff", fontSize: "12px", fontWeight: "900" },
+          icon: adminTripMarkerIcon("#16a34a", 12),
+          zIndex: 30,
+        });
+
+        setMarker(destinationMarkerRef, destination, {
+          title: `Destino: ${ride.destinationText}`,
+          label: { text: "D", color: "#ffffff", fontSize: "12px", fontWeight: "900" },
+          icon: adminTripMarkerIcon("#dc2626", 11),
+          zIndex: 25,
+        });
+
+        setMarker(driverMarkerRef, isCompletedRide ? completedEndPoint : liveDriverPoint, {
+          title: isCompletedRide
+            ? "Fin del recorrido del conductor"
+            : `Conductor: ${ride.driverName || String(getRideUnknownField(ride, "assignedDriverName") ?? "Asignado")}`,
+          icon: adminTripDriverIcon(),
+          zIndex: 60,
+        });
+
+        if (isCompletedRide && completedTrace.length >= 2) {
+          drawCompletedTrace(completedTrace);
+          fitVisiblePoints([pickup, destination, ...completedTrace]);
+          const completedDistance = completedTrace.reduce((sum, point, index) => {
+            const previous = completedTrace[index - 1];
+            return previous ? sum + adminTripMapDistanceMeters(previous, point) : sum;
+          }, 0);
+          setMapMessage("Viaje completado · recorrido guardado");
+          setRouteMessage(`Ruta realizada por el conductor · ${formatAdminTripMapDistance(completedDistance)}`);
+          return;
+        }
+
+        completedTraceLineRef.current?.setMap(null);
+        completedTraceLineRef.current = null;
+
+        const routeStart = isCompletedRide
+          ? pickup ?? destination ?? ADMIN_RAPA_NUI_CENTER
+          : hasDriverStage && liveDriverPoint
+            ? liveDriverPoint
+            : pickup ?? destination ?? ADMIN_RAPA_NUI_CENTER;
+        const routeEnd = isCompletedRide
+          ? destination ?? pickup
+          : goingToPickup
+            ? pickup ?? destination
+            : goingToDestination
+              ? destination ?? pickup
+              : destination ?? pickup;
+
+        fitVisiblePoints([pickup, destination, liveDriverPoint]);
+
+        if (!routeStart || !routeEnd || adminTripMapDistanceMeters(routeStart, routeEnd) < 15) {
+          renderer.set("directions", null);
+          drawFallbackLine(null, null);
+          setRouteMessage(
+            isCompletedRide
+              ? "Viaje completado. No hay distancia suficiente para dibujar ruta."
+              : liveDriverPoint
+                ? "GPS conductor recibido. Esperando avance de ruta."
+                : "Esperando GPS del conductor. Mapa del viaje visible.",
+          );
+          setMapMessage(isCompletedRide ? "Viaje completado" : "Mapa del viaje activo");
+          return;
+        }
+
+        const routeKey = [
+          lowerStatus,
+          routeStart.lat.toFixed(5),
+          routeStart.lng.toFixed(5),
+          routeEnd.lat.toFixed(5),
+          routeEnd.lng.toFixed(5),
+        ].join("|");
+
+        if (routeKeyRef.current === routeKey) {
+          setMapMessage(
+            isCompletedRide
+              ? "Viaje completado · ruta del servicio"
+              : liveDriverPoint
+                ? "Ruta del conductor en vivo"
+                : "Ruta del viaje visible · esperando GPS conductor",
+          );
+          return;
+        }
+        routeKeyRef.current = routeKey;
+
+        const request: google.maps.DirectionsRequest = {
+          origin: routeStart,
+          destination: routeEnd,
+          travelMode: google.maps.TravelMode.DRIVING,
+          provideRouteAlternatives: false,
+          region: "CL",
+        };
+
+        if (!isCompletedRide) {
+          request.drivingOptions = {
+            departureTime: new Date(),
+            trafficModel: google.maps.TrafficModel.BEST_GUESS,
+          };
+        }
+
+        directionsService.route(request, (result, status) => {
+          if (cancelled) return;
+
+          if (status === google.maps.DirectionsStatus.OK && result) {
+            fallbackLineRef.current?.setMap(null);
+            fallbackLineRef.current = null;
+            renderer.setDirections(result);
+            const leg = result.routes[0]?.legs[0];
+            const distance = leg?.distance?.text || formatAdminTripMapDistance(routeEnd ? adminTripMapDistanceMeters(routeStart, routeEnd) : null);
+            const duration = leg?.duration?.text || "";
+            setRouteMessage(
+              isCompletedRide
+                ? `Ruta completada del servicio · ${distance}${duration ? ` · ${duration}` : ""}`
+                : liveDriverPoint
+                  ? `Conductor en ruta · ${distance}${duration ? ` · ${duration}` : ""}`
+                  : `Ruta del servicio · ${distance}${duration ? ` · ${duration}` : ""} · esperando GPS conductor`,
+            );
+            setMapMessage(
+              isCompletedRide
+                ? "Viaje completado · ruta del servicio"
+                : liveDriverPoint
+                  ? "Ruta del conductor en vivo"
+                  : "Ruta del viaje visible · esperando GPS conductor",
+            );
+            return;
+          }
+
+          renderer.set("directions", null);
+          drawFallbackLine(routeStart, routeEnd);
+          setRouteMessage(
+            isCompletedRide
+              ? "Viaje completado. Google no entregó ruta por calles; mostrando referencia del servicio."
+              : liveDriverPoint
+                ? "Google no entregó ruta por calles. Mostrando referencia del conductor."
+                : "Google no entregó ruta por calles. Mostrando referencia del viaje.",
+          );
+          setMapMessage(isCompletedRide ? "Viaje completado" : "Mapa del viaje activo");
+        });
+      } catch {
+        if (!cancelled) {
+          setMapMessage("No se pudo cargar Google Maps. Revisa la API key/conexión.");
+          setRouteMessage(null);
+        }
+      }
+    }
+
+    // El admin NO se actualiza solo. El mapa se calcula una vez al entrar o cuando presiona “Actualizar”.
+    void refreshMapOnce();
+
+    return () => {
+      cancelled = true;
+      driverMarkerRef.current?.setMap(null);
+      pickupMarkerRef.current?.setMap(null);
+      destinationMarkerRef.current?.setMap(null);
+      fallbackLineRef.current?.setMap(null);
+      completedTraceLineRef.current?.setMap(null);
+      rendererRef.current?.set("directions", null);
+    };
+  }, [ride.id, ride.originText, ride.destinationText, ride.notes, ride.status, ride.driverName, getRideUnknownField(ride, "driverEmail"), getRideUnknownField(ride, "completedAt"), height]);
+
+  return (
+    <div
+      style={{
+        position: "relative",
+        height,
+        minHeight: height,
+        overflow: "hidden",
+        borderRadius: "18px",
+        background: "#e8f1fb",
+        border: "1px solid rgba(210,164,58,.38)",
+        marginBottom: "10px",
+      }}
+    >
+      <div ref={mapElementRef} style={{ width: "100%", height: "100%" }} />
+      <div
+        style={{
+          position: "absolute",
+          left: 10,
+          right: 10,
+          top: 10,
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          gap: 8,
+          pointerEvents: "none",
+        }}
+      >
+        <div
+          style={{
+            background: "rgba(17,17,17,.88)",
+            color: "#fff",
+            borderRadius: "999px",
+            padding: "6px 10px",
+            fontSize: ".72rem",
+            fontWeight: 950,
+            boxShadow: "0 10px 22px rgba(0,0,0,.22)",
+          }}
+        >
+          🗺️ {mapMessage}
+        </div>
+        {routeMessage && (
+          <div
+            style={{
+              background: "rgba(255,255,255,.94)",
+              color: "#111",
+              borderRadius: "999px",
+              padding: "6px 10px",
+              fontSize: ".72rem",
+              fontWeight: 950,
+              boxShadow: "0 10px 22px rgba(0,0,0,.16)",
+              maxWidth: "58%",
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              whiteSpace: "nowrap",
+            }}
+          >
+            {routeMessage}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+
+type AdminRideExcelRow = Record<string, string>;
+
+type AdminXlsxEntry = {
+  name: string;
+  bytes: Uint8Array;
+};
+
+function sanitizeAdminExcelText(value: unknown, maxLength = 32000): string {
+  let text = String(value ?? "")
+    .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, maxLength);
+
+  // Defensa adicional contra Formula Injection al abrir el archivo en Excel.
+  if (/^[=+\-@]/.test(text)) text = `'${text}`;
+  return text;
+}
+
+function escapeAdminExcelXml(value: unknown): string {
+  return sanitizeAdminExcelText(value)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&apos;");
+}
+
+function getAdminRidePromotionLabel(ride: AdminRideData): string | null {
+  const record = ride as AdminRideData & Record<string, unknown>;
+  const direct = sanitizeAdminExcelText(
+    record.roundTripPromotionTitle ??
+      record.promotionTitle ??
+      record.offerTitle ??
+      record.selectedOfferTitle,
+    180,
+  );
+  if (direct) return direct;
+
+  const notes = String(ride.notes ?? "");
+  const match = notes.match(/(?:Promoción con regreso seleccionado|Promoción asociada|Oferta seleccionada):\s*([^\n.]+)/i);
+  return match?.[1] ? sanitizeAdminExcelText(match[1], 180) : null;
+}
+
+function getAdminRideVehicleSummary(ride: AdminRideData): string {
+  const record = ride as AdminRideData & Record<string, unknown>;
+  return [
+    record.driverVehicleBrand ?? record.vehicleBrand,
+    record.driverVehicleModel ?? record.vehicleModel,
+    record.driverVehicleColor ?? record.vehicleColor,
+  ]
+    .map((value) => sanitizeAdminExcelText(value, 80))
+    .filter(Boolean)
+    .join(" ");
+}
+
+function getAdminRideExcelStatus(ride: AdminRideData): "completed" | "cancelled" | "no_show" | null {
+  const status = getEffectiveAdminRideStatus(ride);
+  if (status === "completed" || status === "cancelled" || status === "no_show") return status;
+  return null;
+}
+
+function formatAdminExcelDate(value: unknown): string {
+  const date = new Date(String(value ?? ""));
+  if (!Number.isFinite(date.getTime())) return "";
+  return date.toLocaleString("es-CL", { dateStyle: "short", timeStyle: "short" });
+}
+
+function getAdminRideExcelRows(rides: AdminRideData[]): AdminRideExcelRow[] {
+  return rides
+    .map((ride): AdminRideExcelRow | null => {
+      const exportStatus = getAdminRideExcelStatus(ride);
+      if (!exportStatus) return null;
+
+      const record = ride as AdminRideData & Record<string, unknown>;
+      const schedule = getAdminRideScheduleInfo(ride);
+      const driverName = sanitizeAdminExcelText(
+        ride.driverName ?? record.assignedDriverName ?? record.driverFullName,
+        140,
+      );
+      const driverEmail = sanitizeAdminExcelText(record.driverEmail ?? record.assignedDriverEmail, 180);
+      const vehiclePlate = sanitizeAdminExcelText(record.driverVehiclePlate ?? record.vehiclePlate, 60);
+      const fare = Number(
+        ride.estimatedFareClp ??
+          record.fareClp ??
+          record.priceClp ??
+          record.totalFareClp ??
+          record.passengerFareClp ??
+          0,
+      );
+      const noShowType = exportStatus === "no_show"
+        ? sanitizeAdminExcelText(record.noShowType ?? record.cancelledByRole ?? record.cancelledBy ?? "Pasajero no se presentó", 120)
+        : "";
+
+      return {
+        "ID viaje": sanitizeAdminExcelText(ride.id ?? record.rideId ?? record.originalRideId, 140),
+        Estado: exportStatus === "no_show" ? "No Show" : exportStatus === "completed" ? "Completado" : "Cancelado",
+        "Fecha solicitud": formatAdminExcelDate(ride.requestedAt ?? ride.createdAt),
+        "Fecha programada": formatAdminExcelDate(schedule.displayScheduledAt ?? schedule.scheduledAt),
+        Origen: sanitizeAdminExcelText(ride.originText, 260),
+        Destino: sanitizeAdminExcelText(ride.destinationText, 260),
+        Pasajero: sanitizeAdminExcelText(ride.passengerName, 160),
+        "Email pasajero": sanitizeAdminExcelText(ride.passengerEmail, 180),
+        "Nota del pasajero": sanitizeAdminExcelText(getAdminPassengerNote(ride), 500),
+        Conductor: driverName,
+        "Email conductor": driverEmail,
+        Vehículo: getAdminRideVehicleSummary(ride),
+        Patente: vehiclePlate,
+        "Oferta destacada": sanitizeAdminExcelText(getAdminRidePromotionLabel(ride), 180),
+        "Tarifa CLP": Number.isFinite(fare) && fare > 0 ? String(Math.round(fare)) : "",
+        "Método de pago": sanitizeAdminExcelText(record.paymentMethod ?? record.paymentProvider, 80),
+        "Fecha aceptación": formatAdminExcelDate(ride.acceptedAt),
+        "Fecha llegada": formatAdminExcelDate(ride.arrivedAt ?? record.driverArrivedAt),
+        "Fecha inicio": formatAdminExcelDate(ride.startedAt),
+        "Fecha completado": formatAdminExcelDate(ride.completedAt),
+        "Fecha cancelado / No Show": formatAdminExcelDate(ride.cancelledAt ?? record.noShowConfirmedAt ?? record.closedByDriverAt),
+        "Motivo cancelación": sanitizeAdminExcelText(ride.cancellationReason ?? record.cancelReason, 500),
+        "Tipo No Show": noShowType,
+      };
+    })
+    .filter((row): row is AdminRideExcelRow => row !== null);
+}
+
+function adminXlsxColumnName(index: number): string {
+  let result = "";
+  let value = index + 1;
+  while (value > 0) {
+    const remainder = (value - 1) % 26;
+    result = String.fromCharCode(65 + remainder) + result;
+    value = Math.floor((value - 1) / 26);
+  }
+  return result;
+}
+
+function adminXlsxCell(ref: string, value: unknown, style = 0): string {
+  const styleAttribute = style > 0 ? ` s="${style}"` : "";
+  return `<c r="${ref}" t="inlineStr"${styleAttribute}><is><t xml:space="preserve">${escapeAdminExcelXml(value)}</t></is></c>`;
+}
+
+function adminXlsxSheetXml(rows: string[][], widths: number[]): string {
+  const rowXml = rows
+    .map((row, rowIndex) => {
+      const cells = row
+        .map((value, columnIndex) => adminXlsxCell(`${adminXlsxColumnName(columnIndex)}${rowIndex + 1}`, value, rowIndex === 0 ? 1 : 0))
+        .join("");
+      return `<row r="${rowIndex + 1}">${cells}</row>`;
+    })
+    .join("");
+
+  const lastColumn = adminXlsxColumnName(Math.max(0, (rows[0]?.length ?? 1) - 1));
+  const lastRow = Math.max(1, rows.length);
+  const cols = widths
+    .map((width, index) => `<col min="${index + 1}" max="${index + 1}" width="${width}" customWidth="1"/>`)
+    .join("");
+
+  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+  <dimension ref="A1:${lastColumn}${lastRow}"/>
+  <sheetViews><sheetView workbookViewId="0"><pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews>
+  <cols>${cols}</cols>
+  <sheetData>${rowXml}</sheetData>
+  <autoFilter ref="A1:${lastColumn}${lastRow}"/>
+</worksheet>`;
+}
+
+function adminXlsxCrc32(bytes: Uint8Array): number {
+  let crc = 0xffffffff;
+  for (const byte of bytes) {
+    crc ^= byte;
+    for (let bit = 0; bit < 8; bit += 1) {
+      crc = (crc >>> 1) ^ (crc & 1 ? 0xedb88320 : 0);
+    }
+  }
+  return (crc ^ 0xffffffff) >>> 0;
+}
+
+function adminXlsxWrite16(target: Uint8Array, offset: number, value: number): void {
+  target[offset] = value & 0xff;
+  target[offset + 1] = (value >>> 8) & 0xff;
+}
+
+function adminXlsxWrite32(target: Uint8Array, offset: number, value: number): void {
+  target[offset] = value & 0xff;
+  target[offset + 1] = (value >>> 8) & 0xff;
+  target[offset + 2] = (value >>> 16) & 0xff;
+  target[offset + 3] = (value >>> 24) & 0xff;
+}
+
+function adminXlsxDosDateTime(date = new Date()): { time: number; date: number } {
+  const year = Math.max(1980, date.getFullYear());
+  return {
+    time: (date.getHours() << 11) | (date.getMinutes() << 5) | Math.floor(date.getSeconds() / 2),
+    date: ((year - 1980) << 9) | ((date.getMonth() + 1) << 5) | date.getDate(),
+  };
+}
+
+function adminXlsxConcat(parts: Uint8Array[]): Uint8Array {
+  const total = parts.reduce((sum, part) => sum + part.length, 0);
+  const output = new Uint8Array(total);
+  let offset = 0;
+  for (const part of parts) {
+    output.set(part, offset);
+    offset += part.length;
+  }
+  return output;
+}
+
+function adminBuildStoredZip(entries: AdminXlsxEntry[]): Uint8Array {
+  const encoder = new TextEncoder();
+  const localParts: Uint8Array[] = [];
+  const centralParts: Uint8Array[] = [];
+  const metadata: Array<{ name: Uint8Array; bytes: Uint8Array; crc: number; offset: number }> = [];
+  const dos = adminXlsxDosDateTime();
+  let localOffset = 0;
+
+  for (const entry of entries) {
+    const name = encoder.encode(entry.name);
+    const crc = adminXlsxCrc32(entry.bytes);
+    const local = new Uint8Array(30 + name.length + entry.bytes.length);
+    adminXlsxWrite32(local, 0, 0x04034b50);
+    adminXlsxWrite16(local, 4, 20);
+    adminXlsxWrite16(local, 6, 0x0800);
+    adminXlsxWrite16(local, 8, 0);
+    adminXlsxWrite16(local, 10, dos.time);
+    adminXlsxWrite16(local, 12, dos.date);
+    adminXlsxWrite32(local, 14, crc);
+    adminXlsxWrite32(local, 18, entry.bytes.length);
+    adminXlsxWrite32(local, 22, entry.bytes.length);
+    adminXlsxWrite16(local, 26, name.length);
+    adminXlsxWrite16(local, 28, 0);
+    local.set(name, 30);
+    local.set(entry.bytes, 30 + name.length);
+    localParts.push(local);
+    metadata.push({ name, bytes: entry.bytes, crc, offset: localOffset });
+    localOffset += local.length;
+  }
+
+  let centralSize = 0;
+  for (const item of metadata) {
+    const central = new Uint8Array(46 + item.name.length);
+    adminXlsxWrite32(central, 0, 0x02014b50);
+    adminXlsxWrite16(central, 4, 20);
+    adminXlsxWrite16(central, 6, 20);
+    adminXlsxWrite16(central, 8, 0x0800);
+    adminXlsxWrite16(central, 10, 0);
+    adminXlsxWrite16(central, 12, dos.time);
+    adminXlsxWrite16(central, 14, dos.date);
+    adminXlsxWrite32(central, 16, item.crc);
+    adminXlsxWrite32(central, 20, item.bytes.length);
+    adminXlsxWrite32(central, 24, item.bytes.length);
+    adminXlsxWrite16(central, 28, item.name.length);
+    adminXlsxWrite16(central, 30, 0);
+    adminXlsxWrite16(central, 32, 0);
+    adminXlsxWrite16(central, 34, 0);
+    adminXlsxWrite16(central, 36, 0);
+    adminXlsxWrite32(central, 38, 0);
+    adminXlsxWrite32(central, 42, item.offset);
+    central.set(item.name, 46);
+    centralParts.push(central);
+    centralSize += central.length;
+  }
+
+  const end = new Uint8Array(22);
+  adminXlsxWrite32(end, 0, 0x06054b50);
+  adminXlsxWrite16(end, 4, 0);
+  adminXlsxWrite16(end, 6, 0);
+  adminXlsxWrite16(end, 8, entries.length);
+  adminXlsxWrite16(end, 10, entries.length);
+  adminXlsxWrite32(end, 12, centralSize);
+  adminXlsxWrite32(end, 16, localOffset);
+  adminXlsxWrite16(end, 20, 0);
+
+  return adminXlsxConcat([...localParts, ...centralParts, end]);
+}
+
+function buildAdminTerminalRidesXlsx(rides: AdminRideData[]): Uint8Array {
+  const encoder = new TextEncoder();
+  const rows = getAdminRideExcelRows(rides);
+  const headers = rows.length > 0 ? Object.keys(rows[0]) : ["Estado"];
+  const dataRows = rows.map((row) => headers.map((header) => row[header] ?? ""));
+  const completed = rows.filter((row) => row.Estado === "Completado").length;
+  const cancelled = rows.filter((row) => row.Estado === "Cancelado").length;
+  const noShow = rows.filter((row) => row.Estado === "No Show").length;
+
+  const summaryRows = [
+    ["Resumen de viajes RAPA GO", "Cantidad"],
+    ["Completados", String(completed)],
+    ["Cancelados", String(cancelled)],
+    ["No Show", String(noShow)],
+    ["Total exportado", String(rows.length)],
+    ["Fecha de exportación", new Date().toLocaleString("es-CL")],
+  ];
+
+  const sheet1 = adminXlsxSheetXml(summaryRows, [30, 20]);
+  const sheet2 = adminXlsxSheetXml([headers, ...dataRows], [
+    22, 14, 19, 19, 30, 30, 22, 28, 38, 24, 28, 24, 14, 24, 14, 18, 19, 19, 19, 19, 23, 38, 22,
+  ]);
+
+  const contentTypes = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
+  <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
+  <Default Extension="xml" ContentType="application/xml"/>
+  <Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>
+  <Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>
+  <Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>
+  <Override PartName="/xl/worksheets/sheet2.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>
+</Types>`;
+
+  const rootRelationships = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>
+</Relationships>`;
+
+  const workbook = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+  <sheets>
+    <sheet name="Resumen" sheetId="1" r:id="rId1"/>
+    <sheet name="Viajes" sheetId="2" r:id="rId2"/>
+  </sheets>
+</workbook>`;
+
+  const workbookRelationships = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>
+  <Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet2.xml"/>
+  <Relationship Id="rId3" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>
+</Relationships>`;
+
+  const styles = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+  <fonts count="2"><font><sz val="11"/><name val="Calibri"/></font><font><b/><color rgb="FFFFFFFF"/><sz val="11"/><name val="Calibri"/></font></fonts>
+  <fills count="3"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill><fill><patternFill patternType="solid"><fgColor rgb="FFC89B3C"/><bgColor indexed="64"/></patternFill></fill></fills>
+  <borders count="1"><border><left/><right/><top/><bottom/><diagonal/></border></borders>
+  <cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>
+  <cellXfs count="2"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/><xf numFmtId="0" fontId="1" fillId="2" borderId="0" xfId="0" applyFont="1" applyFill="1"><alignment horizontal="center" vertical="center" wrapText="1"/></xf></cellXfs>
+  <cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles>
+</styleSheet>`;
+
+  return adminBuildStoredZip([
+    { name: "[Content_Types].xml", bytes: encoder.encode(contentTypes) },
+    { name: "_rels/.rels", bytes: encoder.encode(rootRelationships) },
+    { name: "xl/workbook.xml", bytes: encoder.encode(workbook) },
+    { name: "xl/_rels/workbook.xml.rels", bytes: encoder.encode(workbookRelationships) },
+    { name: "xl/styles.xml", bytes: encoder.encode(styles) },
+    { name: "xl/worksheets/sheet1.xml", bytes: encoder.encode(sheet1) },
+    { name: "xl/worksheets/sheet2.xml", bytes: encoder.encode(sheet2) },
+  ]);
+}
+
+function downloadAdminTerminalRidesXlsx(rides: AdminRideData[]): number {
+  const terminalRides = rides.filter((ride) => getAdminRideExcelStatus(ride) !== null);
+  if (terminalRides.length === 0) return 0;
+
+  const bytes = buildAdminTerminalRidesXlsx(terminalRides);
+  const blob = new Blob([bytes], {
+    type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  const today = new Date().toISOString().slice(0, 10);
+  anchor.href = url;
+  anchor.download = `viajes_rapago_${today}.xlsx`;
+  anchor.style.display = "none";
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  window.setTimeout(() => URL.revokeObjectURL(url), 1500);
+  return terminalRides.length;
 }
 
 export function AdminTripsPage(): JSX.Element {
@@ -8486,6 +9903,8 @@ export function AdminTripsPage(): JSX.Element {
   const [cancelError, setCancelError] = useState<string | null>(null);
   const [activatingId, setActivatingId] = useState<string | null>(null);
   const [autoAssignToast, setAutoAssignToast] = useState<string | null>(null);
+  const [exportingTerminalRides, setExportingTerminalRides] = useState(false);
+  const [exportToast, setExportToast] = useState<string | null>(null);
 
   const loadData = useCallback(
     async (silent = false) => {
@@ -8501,7 +9920,7 @@ export function AdminTripsPage(): JSX.Element {
 
       try {
         const params: { status?: string } = {};
-        if (filterStatus && filterStatus !== "scheduled") params.status = filterStatus;
+        if (filterStatus && filterStatus !== "scheduled" && filterStatus !== "no_show") params.status = filterStatus;
 
         const ridesData = await adminService.listRides(
           session.accessToken,
@@ -8539,19 +9958,7 @@ export function AdminTripsPage(): JSX.Element {
     void loadData(false);
   }, [loadData]);
 
-  useEffect(() => {
-    const refreshScheduled = () => void loadData(true);
-    const interval = window.setInterval(refreshScheduled, 3000);
-
-    window.addEventListener("storage", refreshScheduled);
-    window.addEventListener("rapago:admin-scheduled-rides-updated", refreshScheduled);
-
-    return () => {
-      window.clearInterval(interval);
-      window.removeEventListener("storage", refreshScheduled);
-      window.removeEventListener("rapago:admin-scheduled-rides-updated", refreshScheduled);
-    };
-  }, [loadData]);
+  // El panel de viajes no hace auto-refresh. El admin usa el botón “Actualizar” para recargar.
 
   useEffect(() => {
     if (!session?.accessToken) return;
@@ -8599,10 +10006,6 @@ export function AdminTripsPage(): JSX.Element {
 
     void runAutoReservationAssignment();
 
-    const timerId = window.setInterval(() => {
-      void runAutoReservationAssignment();
-    }, 5000);
-
     const onReservationEvent = () => {
       window.setTimeout(() => {
         void runAutoReservationAssignment();
@@ -8616,7 +10019,6 @@ export function AdminTripsPage(): JSX.Element {
 
     return () => {
       cancelled = true;
-      window.clearInterval(timerId);
       window.removeEventListener("storage", onReservationEvent);
       window.removeEventListener("rapago:admin-scheduled-rides-updated", onReservationEvent as EventListener);
       window.removeEventListener(ADMIN_RESERVATION_AUTO_REASSIGN_EVENT, onReservationEvent as EventListener);
@@ -8792,6 +10194,36 @@ export function AdminTripsPage(): JSX.Element {
     history.push(ADMIN_DRIVERS_ROUTE);
   }
 
+  async function handleExportTerminalRides(): Promise<void> {
+    if (!session?.accessToken || exportingTerminalRides) return;
+
+    setExportingTerminalRides(true);
+    setLoadError(null);
+
+    try {
+      const ridesData = await adminService.listRides(session.accessToken, {});
+      const localScheduled = readLocalAdminScheduledRides();
+      const returnReservations = [
+        ...readLocalPassengerReturnReservationsForAdmin(),
+        ...buildAdminReturnReservationsFromRides(ridesData),
+        ...buildAdminReturnReservationsFromRides(localScheduled),
+      ];
+      const merged = mergeAdminRides([...localScheduled, ...returnReservations, ...ridesData]);
+      const exported = downloadAdminTerminalRidesXlsx(merged);
+
+      if (exported === 0) {
+        setExportToast("No hay viajes completados, cancelados o No Show para exportar.");
+        return;
+      }
+
+      setExportToast(`Excel generado con ${exported} viaje${exported === 1 ? "" : "s"}.`);
+    } catch (error) {
+      setLoadError(error instanceof Error ? error.message : "No fue posible generar el Excel de viajes.");
+    } finally {
+      setExportingTerminalRides(false);
+    }
+  }
+
   return (
     <IonPage>
       <IonHeader>
@@ -8865,6 +10297,7 @@ export function AdminTripsPage(): JSX.Element {
                 <IonSelectOption value="in_progress">En curso</IonSelectOption>
                 <IonSelectOption value="completed">Completado</IonSelectOption>
                 <IonSelectOption value="cancelled">Cancelado</IonSelectOption>
+                <IonSelectOption value="no_show">No Show</IonSelectOption>
               </IonSelect>
             </IonItem>
             <IonButton
@@ -8877,6 +10310,16 @@ export function AdminTripsPage(): JSX.Element {
               disabled={loading}
             >
               {loading ? <IonSpinner name="dots" /> : "Aplicar filtro"}
+            </IonButton>
+            <IonButton
+              expand="block"
+              size="small"
+              color="success"
+              style={{ marginTop: "8px", fontWeight: 900 }}
+              onClick={() => void handleExportTerminalRides()}
+              disabled={loading || exportingTerminalRides}
+            >
+              {exportingTerminalRides ? <IonSpinner name="dots" /> : "Exportar completados, cancelados y No Show a Excel"}
             </IonButton>
           </IonCardContent>
         </IonCard>
@@ -8923,14 +10366,15 @@ export function AdminTripsPage(): JSX.Element {
           <div
             style={{ display: "flex", flexDirection: "column", gap: "12px" }}
           >
-            {rides.map((ride) => {
+            {rides.map((ride, rideIndex) => {
               const scheduleInfo = getAdminRideScheduleInfo(ride);
               const effectiveStatus = getEffectiveAdminRideStatus(ride);
               const statusColor =
                 RIDE_STATUS_COLOR_ADMIN[effectiveStatus] ?? "medium";
               const statusLabel =
                 RIDE_STATUS_LABEL_ADMIN[effectiveStatus] ?? effectiveStatus;
-              const adminCleanNotes = cleanAdminRideNotes(ride.notes);
+              const adminPassengerNote = getAdminPassengerNote(ride);
+              const adminPromotionLabel = getAdminRidePromotionLabel(ride);
               const airportWelcomeInfo = getAdminRideAirportWelcomeInfo(ride);
               const assignedDriverName = String(
                 getRideUnknownField(ride, "assignedDriverName") ?? ride.driverName ?? "",
@@ -8948,14 +10392,12 @@ export function AdminTripsPage(): JSX.Element {
                     .includes("admin_auto"),
               );
               return (
-                <IonCard key={ride.id} style={{ margin: 0 }}>
+                <IonCard
+                  key={`${String(ride.id || getRideUnknownField(ride, "rideId") || getRideUnknownField(ride, "originalRideId") || "admin-ride")}::${rideIndex}`}
+                  style={{ margin: 0 }}
+                >
                   <IonCardContent style={{ padding: "12px 14px" }}>
-                    <MapFallback
-                      origin={{ text: ride.originText }}
-                      destination={{ text: ride.destinationText }}
-                      height={110}
-                      showRoute={false}
-                    />
+                    <AdminTripLiveRouteMap ride={ride} height={210} />
 
                     {/* Header */}
                     <div
@@ -9142,15 +10584,59 @@ export function AdminTripsPage(): JSX.Element {
                     )}
 
                     {/* Details */}
-                    {adminCleanNotes && (
+                    {adminPassengerNote && (
                       <div
                         style={{
-                          fontSize: "0.78rem",
-                          color: "var(--ion-color-medium)",
-                          marginBottom: "4px",
+                          marginBottom: "8px",
+                          borderRadius: "14px",
+                          border: "1px solid rgba(210,164,58,.46)",
+                          background: "linear-gradient(135deg,#fff9e8,#ffe7a6)",
+                          color: "#111",
+                          padding: "10px 11px",
+                          overflowWrap: "anywhere",
+                        }}
+                        aria-label="Nota del pasajero"
+                      >
+                        <div
+                          style={{
+                            color: "#8a6418",
+                            fontSize: ".68rem",
+                            fontWeight: 950,
+                            textTransform: "uppercase",
+                            letterSpacing: ".04em",
+                          }}
+                        >
+                          📝 Nota del pasajero
+                        </div>
+                        <div
+                          style={{
+                            marginTop: 5,
+                            fontSize: ".80rem",
+                            lineHeight: 1.4,
+                            fontWeight: 800,
+                            whiteSpace: "pre-wrap",
+                          }}
+                        >
+                          {adminPassengerNote}
+                        </div>
+                      </div>
+                    )}
+                    {adminPromotionLabel && (
+                      <div
+                        style={{
+                          marginBottom: "8px",
+                          borderRadius: "14px",
+                          border: "1px solid rgba(124,58,237,.28)",
+                          background: "linear-gradient(135deg,#f5f3ff,#ede9fe)",
+                          color: "#3b0764",
+                          padding: "10px 11px",
+                          fontSize: ".78rem",
+                          lineHeight: 1.35,
+                          fontWeight: 850,
                         }}
                       >
-                        Notas: {adminCleanNotes}
+                        <strong>🎁 Oferta destacada aplicada</strong>
+                        <div style={{ marginTop: 4 }}>{adminPromotionLabel}</div>
                       </div>
                     )}
                     {ride.estimatedFareClp != null && (
@@ -9325,6 +10811,14 @@ export function AdminTripsPage(): JSX.Element {
           duration={3200}
           color="success"
           onDidDismiss={() => setAutoAssignToast(null)}
+        />
+
+        <IonToast
+          isOpen={exportToast !== null}
+          message={exportToast ?? ""}
+          duration={3600}
+          color="success"
+          onDidDismiss={() => setExportToast(null)}
         />
       </IonContent>
     </IonPage>

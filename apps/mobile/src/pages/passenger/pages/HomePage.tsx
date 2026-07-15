@@ -17,6 +17,7 @@ import {
   chevronForwardOutline,
   giftOutline,
   mapOutline,
+  logoWhatsapp,
   newspaperOutline,
   ticketOutline,
   walletOutline,
@@ -488,6 +489,11 @@ export default function HomePage(): JSX.Element {
     history.push(ROUTES.PASSENGER.WALLET);
   };
 
+  const supportPhone = String(RAPAGO_CONTACT.adminPhone || "56947964171").replace(/\D/g, "");
+  const supportWhatsAppUrl = `https://wa.me/${supportPhone}?text=${encodeURIComponent(
+    `Hola, soy ${firstName}. Necesito ayuda con la aplicación RAPA GO.`,
+  )}`;
+
   return (
     <IonPage>
       <div className="passenger-home-header">
@@ -804,6 +810,49 @@ export default function HomePage(): JSX.Element {
           </IonCard>
         </div>
       </IonContent>
+
+      <a
+        href={supportWhatsAppUrl}
+        target="_blank"
+        rel="noopener noreferrer"
+        aria-label="Abrir Mesa de Ayuda de RAPA GO en WhatsApp"
+        title="Mesa de Ayuda"
+        style={{
+          position: "fixed",
+          right: "18px",
+          bottom: "88px",
+          zIndex: 1200,
+          width: "62px",
+          height: "62px",
+          borderRadius: "50%",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          background: "linear-gradient(145deg,#25D366,#128C7E)",
+          color: "#fff",
+          border: "3px solid rgba(255,255,255,.92)",
+          boxShadow: "0 14px 32px rgba(0,0,0,.32)",
+          textDecoration: "none",
+        }}
+      >
+        <IonIcon icon={logoWhatsapp} style={{ fontSize: "2rem" }} />
+        <span
+          style={{
+            position: "absolute",
+            right: 54,
+            whiteSpace: "nowrap",
+            padding: "7px 10px",
+            borderRadius: 999,
+            background: "rgba(17,17,17,.92)",
+            color: "#fff",
+            fontSize: ".68rem",
+            fontWeight: 950,
+            boxShadow: "0 8px 20px rgba(0,0,0,.22)",
+          }}
+        >
+          Mesa de Ayuda
+        </span>
+      </a>
     </IonPage>
   );
 }
