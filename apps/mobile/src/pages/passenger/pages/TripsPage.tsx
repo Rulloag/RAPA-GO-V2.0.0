@@ -5358,7 +5358,7 @@ function PassengerLiveRouteMap({
 
         const map = new google.maps.Map(mapElementRef.current, {
           center,
-          zoom: 15,
+          zoom: 16,
           disableDefaultUI: true,
           zoomControl: true,
           fullscreenControl: true,
@@ -5511,7 +5511,12 @@ function PassengerLiveRouteMap({
 
     map.panTo(point);
     if (force || (map.getZoom() ?? 0) < 17) {
-      map.setZoom(17);
+      map.setZoom(18);
+      try {
+        map.setTilt(45);
+      } catch {
+        // Tilt opcional según navegador.
+      }
     }
   }
 
@@ -5539,11 +5544,11 @@ function PassengerLiveRouteMap({
 
     const icon = {
       path: google.maps.SymbolPath.FORWARD_CLOSED_ARROW,
-      scale: 10,
-      fillColor: "#FACC15",
+      scale: 9,
+      fillColor: "#2382ff",
       fillOpacity: 1,
-      strokeColor: "#111827",
-      strokeWeight: 5,
+      strokeColor: "#ffffff",
+      strokeWeight: 4,
       rotation,
     };
 
@@ -5638,25 +5643,11 @@ function PassengerLiveRouteMap({
 
         rendererRef.current?.set("directions", null);
 
-        fallbackRouteLineRef.current = new google.maps.Polyline({
-          map,
-          path: [routeOrigin, routeDestination],
-          strokeColor: "#2382ff",
-          strokeOpacity: 1,
-          strokeWeight: 7,
-          icons: [
-            {
-              icon: { path: "M 0,-1 0,1", strokeOpacity: 1, scale: 4 },
-              offset: "0",
-              repeat: "16px",
-            },
-          ],
-          zIndex: 25,
-        });
-
+        // Si Google no entrega ruta por calle, no dibujamos una línea ficticia.
+        // El pasajero igual ve conductor/punto de recogida/destino reales.
         setRouteInfo({
           distanceText: distanceLabel,
-          durationText: "Ruta referencial",
+          durationText: "Esperando ruta de Google",
           meters: directDriverMeters,
         });
 
@@ -6386,6 +6377,253 @@ type PendingPassengerCancelAction = {
   policy: PassengerCancellationPolicy;
 };
 
+
+type RapagoTripSafetyReportStatus = "arrived_well" | "problem_reported" | "driver_accident_reported";
+
+type RapagoTripSafetyReport = {
+  id: string;
+  rideId: string;
+  rideKey: string;
+  reporterRole: "passenger" | "driver";
+  status: RapagoTripSafetyReportStatus;
+  title: string;
+  description: string;
+  passengerEmail?: string | null;
+  passengerName?: string | null;
+  driverEmail?: string | null;
+  driverName?: string | null;
+  originText?: string | null;
+  destinationText?: string | null;
+  createdAt: string;
+  updatedAt: string;
+  source: "passenger_trips" | "driver_app";
+  whatsappOpened?: boolean;
+  adminStatus?: "pending_admin" | "resolved" | "not_required";
+};
+
+const RAPAGO_TRIP_SAFETY_REPORTS_KEY = "rapago_trip_safety_reports_v1";
+const RAPAGO_TRIP_SAFETY_REPORT_EVENT = "rapago:trip-safety-reports-updated";
+
+function sanitizeTripSafetyText(value: unknown, maxLength = 220): string {
+  return String(value ?? "")
+    .replace(/[<>`{}$\\]/g, "")
+    .replace(/[\u0000-\u001F\u007F]/g, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, maxLength);
+}
+
+function getTripSafetyRideKey(ride: Partial<RideRequestData> & Record<string, unknown>): string {
+  const id = String(ride.id ?? ride.rideId ?? ride.originalRideId ?? ride.serverRideId ?? "").trim();
+  if (id) return `ride:${id}`;
+
+  return [
+    String(ride.passengerEmail ?? ride.email ?? "").trim().toLowerCase(),
+    String(ride.originText ?? "").trim().toLowerCase(),
+    String(ride.destinationText ?? "").trim().toLowerCase(),
+    String(ride.completedAt ?? ride.requestedAt ?? ride.createdAt ?? "").trim(),
+  ].filter(Boolean).join("|") || `local:${Date.now()}`;
+}
+
+function getTripSafetyUserKey(user: unknown, ride?: Partial<RideRequestData> & Record<string, unknown>): string {
+  const record = user && typeof user === "object" ? (user as Record<string, unknown>) : {};
+  const email = String(record.email ?? ride?.passengerEmail ?? ride?.email ?? "").trim().toLowerCase();
+  if (email) return `email:${email}`;
+
+  const id = String(record.id ?? ride?.passengerId ?? ride?.userId ?? "").trim();
+  if (id) return `id:${id}`;
+
+  return "passenger:local";
+}
+
+function readRapagoTripSafetyReports(): RapagoTripSafetyReport[] {
+  try {
+    const raw = localStorage.getItem(RAPAGO_TRIP_SAFETY_REPORTS_KEY);
+    const parsed = raw ? (JSON.parse(raw) as Array<Record<string, unknown>>) : [];
+    if (!Array.isArray(parsed)) return [];
+
+    return parsed
+      .filter((item) => item && typeof item === "object")
+      .map((item, index): RapagoTripSafetyReport => ({
+        id: sanitizeTripSafetyText(item.id, 120) || `trip-safety-${index}`,
+        rideId: sanitizeTripSafetyText(item.rideId, 120),
+        rideKey: sanitizeTripSafetyText(item.rideKey, 180),
+        reporterRole: String(item.reporterRole ?? "passenger") === "driver" ? "driver" : "passenger",
+        status: String(item.status ?? "problem_reported") as RapagoTripSafetyReportStatus,
+        title: sanitizeTripSafetyText(item.title, 120) || "Reporte de viaje",
+        description: sanitizeTripSafetyText(item.description, 260) || "Reporte registrado en la app.",
+        passengerEmail: sanitizeTripSafetyText(item.passengerEmail, 160).toLowerCase() || null,
+        passengerName: sanitizeTripSafetyText(item.passengerName, 120) || null,
+        driverEmail: sanitizeTripSafetyText(item.driverEmail, 160).toLowerCase() || null,
+        driverName: sanitizeTripSafetyText(item.driverName, 120) || null,
+        originText: sanitizeTripSafetyText(item.originText, 160) || null,
+        destinationText: sanitizeTripSafetyText(item.destinationText, 160) || null,
+        createdAt: sanitizeTripSafetyText(item.createdAt, 60) || new Date().toISOString(),
+        updatedAt: sanitizeTripSafetyText(item.updatedAt, 60) || new Date().toISOString(),
+        source: String(item.source ?? "passenger_trips") === "driver_app" ? "driver_app" : "passenger_trips",
+        whatsappOpened: Boolean(item.whatsappOpened),
+        adminStatus: String(item.adminStatus ?? "pending_admin") as RapagoTripSafetyReport["adminStatus"],
+      }))
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  } catch {
+    return [];
+  }
+}
+
+function writeRapagoTripSafetyReports(reports: RapagoTripSafetyReport[]): void {
+  try {
+    localStorage.setItem(RAPAGO_TRIP_SAFETY_REPORTS_KEY, JSON.stringify(reports.slice(0, 300)));
+    window.dispatchEvent(new CustomEvent(RAPAGO_TRIP_SAFETY_REPORT_EVENT, { detail: { reports } }));
+    window.dispatchEvent(new CustomEvent("rapago:admin-rides-updated", { detail: { tripSafetyReports: reports } }));
+  } catch {
+    // No bloquea Mis Viajes.
+  }
+}
+
+function savePassengerTripSafetyReport(
+  ride: RideRequestData,
+  user: unknown,
+  status: "arrived_well" | "problem_reported",
+): RapagoTripSafetyReport {
+  const record = ride as RideRequestData & Record<string, unknown>;
+  const rideKey = getTripSafetyRideKey(record);
+  const userRecord = user && typeof user === "object" ? (user as Record<string, unknown>) : {};
+  const now = new Date().toISOString();
+  const passengerEmail = sanitizeTripSafetyText(userRecord.email ?? record.passengerEmail ?? record.email, 160).toLowerCase() || null;
+  const passengerName = sanitizeTripSafetyText(userRecord.name ?? record.passengerName ?? record.userName, 120) || null;
+  const driverName = sanitizeTripSafetyText(record.driverName ?? record.driverFullName, 120) || null;
+
+  const nextReport: RapagoTripSafetyReport = {
+    id: `trip-safety-${rideKey}-${passengerEmail || "local"}`,
+    rideId: sanitizeTripSafetyText(record.id ?? record.rideId ?? record.originalRideId ?? rideKey, 120),
+    rideKey,
+    reporterRole: "passenger",
+    status,
+    title: status === "arrived_well" ? "Pasajero llegó bien" : "Pasajero reportó problema",
+    description:
+      status === "arrived_well"
+        ? "El pasajero confirmó desde Mis Viajes que llegó bien a destino."
+        : "El pasajero marcó Llegué mal / Reportar problema y fue derivado a WhatsApp soporte.",
+    passengerEmail,
+    passengerName,
+    driverEmail: sanitizeTripSafetyText(record.driverEmail, 160).toLowerCase() || null,
+    driverName,
+    originText: sanitizeTripSafetyText(record.originText, 160) || null,
+    destinationText: sanitizeTripSafetyText(record.destinationText, 160) || null,
+    createdAt: now,
+    updatedAt: now,
+    source: "passenger_trips",
+    whatsappOpened: status === "problem_reported",
+    adminStatus: status === "arrived_well" ? "not_required" : "pending_admin",
+  };
+
+  const current = readRapagoTripSafetyReports();
+  const next = [
+    nextReport,
+    ...current.filter((item) => !(item.rideKey === rideKey && item.reporterRole === "passenger" && item.passengerEmail === passengerEmail)),
+  ];
+
+  writeRapagoTripSafetyReports(next);
+  return nextReport;
+}
+
+function buildPassengerTripProblemWhatsAppUrl(ride: RideRequestData, user: unknown): string {
+  const record = ride as RideRequestData & Record<string, unknown>;
+  const userRecord = user && typeof user === "object" ? (user as Record<string, unknown>) : {};
+  const lines = [
+    "Soporte RAPA GO: pasajero reporta problema al finalizar viaje.",
+    `Pasajero: ${sanitizeTripSafetyText(userRecord.name ?? record.passengerName ?? "Pasajero", 80)}`,
+    `Correo: ${sanitizeTripSafetyText(userRecord.email ?? record.passengerEmail ?? record.email ?? "No informado", 120)}`,
+    `Viaje: ${sanitizeTripSafetyText(record.originText, 90) || "Origen"} -> ${sanitizeTripSafetyText(record.destinationText, 90) || "Destino"}`,
+    record.driverName || record.driverFullName ? `Conductor: ${sanitizeTripSafetyText(record.driverName ?? record.driverFullName, 90)}` : null,
+    "Motivo: Llegué mal / necesito reportar un problema.",
+    "Revisar registro en panel Admin RAPA GO.",
+  ].filter(Boolean);
+
+  return `https://wa.me/${RAPAGO_SUPPORT_WHATSAPP_PHONE}?text=${encodeURIComponent(lines.join("\n"))}`;
+}
+
+function openPassengerTripProblemWhatsApp(ride: RideRequestData, user: unknown): void {
+  const url = buildPassengerTripProblemWhatsAppUrl(ride, user);
+  try {
+    window.open(url, "_blank", "noopener,noreferrer");
+  } catch {
+    window.location.href = url;
+  }
+}
+
+
+function savePassengerEmergencyTripSafetyReport(
+  ride: RideRequestData,
+  user: unknown,
+): RapagoTripSafetyReport {
+  const record = ride as RideRequestData & Record<string, unknown>;
+  const rideKey = getTripSafetyRideKey(record);
+  const userRecord = user && typeof user === "object" ? (user as Record<string, unknown>) : {};
+  const now = new Date().toISOString();
+  const passengerEmail = sanitizeTripSafetyText(userRecord.email ?? record.passengerEmail ?? record.email, 160).toLowerCase() || null;
+  const passengerName = sanitizeTripSafetyText(userRecord.name ?? record.passengerName ?? record.userName, 120) || null;
+
+  const nextReport: RapagoTripSafetyReport = {
+    id: `trip-emergency-${rideKey}-${passengerEmail || "local"}`,
+    rideId: sanitizeTripSafetyText(record.id ?? record.rideId ?? record.originalRideId ?? rideKey, 120),
+    rideKey,
+    reporterRole: "passenger",
+    status: "problem_reported",
+    title: "Emergencia pasajero durante viaje",
+    description: "El pasajero presionó Emergencia durante el viaje y fue derivado inmediatamente a WhatsApp soporte RAPA GO.",
+    passengerEmail,
+    passengerName,
+    driverEmail: sanitizeTripSafetyText(record.driverEmail, 160).toLowerCase() || null,
+    driverName: sanitizeTripSafetyText(record.driverName ?? record.driverFullName, 120) || null,
+    originText: sanitizeTripSafetyText(record.originText, 160) || null,
+    destinationText: sanitizeTripSafetyText(record.destinationText, 160) || null,
+    createdAt: now,
+    updatedAt: now,
+    source: "passenger_trips",
+    whatsappOpened: true,
+    adminStatus: "pending_admin",
+  };
+
+  const current = readRapagoTripSafetyReports();
+  const next = [
+    nextReport,
+    ...current.filter((item) => !(item.id === nextReport.id || (item.rideKey === rideKey && item.title === nextReport.title && item.passengerEmail === passengerEmail))),
+  ];
+
+  writeRapagoTripSafetyReports(next);
+  return nextReport;
+}
+
+function buildPassengerEmergencyWhatsAppUrl(ride: RideRequestData, user: unknown): string {
+  const record = ride as RideRequestData & Record<string, unknown>;
+  const userRecord = user && typeof user === "object" ? (user as Record<string, unknown>) : {};
+  const lines = [
+    "EMERGENCIA RAPA GO: pasajero necesita ayuda inmediata durante un viaje.",
+    `Pasajero: ${sanitizeTripSafetyText(userRecord.name ?? record.passengerName ?? "Pasajero", 80)}`,
+    `Correo: ${sanitizeTripSafetyText(userRecord.email ?? record.passengerEmail ?? record.email ?? "No informado", 120)}`,
+    `Viaje: ${sanitizeTripSafetyText(record.originText, 90) || "Origen"} -> ${sanitizeTripSafetyText(record.destinationText, 90) || "Destino"}`,
+    record.driverName || record.driverFullName ? `Conductor: ${sanitizeTripSafetyText(record.driverName ?? record.driverFullName, 90)}` : null,
+    record.driverPhone ? `Teléfono conductor: ${sanitizeTripSafetyText(record.driverPhone, 40)}` : null,
+    `Estado viaje: ${sanitizeTripSafetyText(record.status ?? "activo", 60)}`,
+    "Acción: necesito contacto inmediato de soporte RAPA GO.",
+    "Este aviso quedó registrado en el panel Admin.",
+  ].filter(Boolean);
+
+  return `https://wa.me/${RAPAGO_SUPPORT_WHATSAPP_PHONE}?text=${encodeURIComponent(lines.join("\n"))}`;
+}
+
+function openPassengerEmergencyWhatsApp(ride: RideRequestData, user: unknown): void {
+  savePassengerEmergencyTripSafetyReport(ride, user);
+
+  const url = buildPassengerEmergencyWhatsAppUrl(ride, user);
+  try {
+    window.open(url, "_blank", "noopener,noreferrer");
+  } catch {
+    window.location.href = url;
+  }
+}
+
 function buildPassengerCancellationAlertMessage(
   policy: PassengerCancellationPolicy,
   ride?: RideRequestData | null,
@@ -6413,14 +6651,22 @@ function PassengerRideCard({
   onCancel,
   onCancelAccepted,
   onRate,
+  safetyReportStatus,
+  onArrivedWell,
+  onReportProblem,
+  onEmergency,
 }: {
   ride: RideRequestData;
   token: string;
   cancelling: boolean;
   rated: boolean;
+  safetyReportStatus: RapagoTripSafetyReportStatus | null;
   onCancel: (rideId: string) => void;
   onCancelAccepted: (rideId: string) => void;
   onRate: (rideId: string) => void;
+  onArrivedWell: (ride: RideRequestData) => void;
+  onReportProblem: (ride: RideRequestData) => void;
+  onEmergency: (ride: RideRequestData) => void;
 }): JSX.Element {
   const nav = extractPassengerRideNav(ride.notes);
   const effectiveStatus = getEffectivePassengerRideStatus(ride);
@@ -6921,6 +7167,62 @@ function PassengerRideCard({
             />
           )}
 
+
+          {effectiveStatus === "completed" && (
+            <div
+              style={{
+                marginTop: 12,
+                borderRadius: 20,
+                padding: "12px",
+                background: safetyReportStatus === "problem_reported" ? "#fff1f2" : "#ecfdf5",
+                border: safetyReportStatus === "problem_reported"
+                  ? "1px solid rgba(220,38,38,.30)"
+                  : "1px solid rgba(34,197,94,.30)",
+                color: safetyReportStatus === "problem_reported" ? "#7f1d1d" : "#064e3b",
+                fontWeight: 900,
+                lineHeight: 1.35,
+              }}
+            >
+              <div style={{ fontWeight: 950, fontSize: ".9rem" }}>
+                ¿Llegaste bien a destino?
+              </div>
+              <div style={{ marginTop: 4, fontSize: ".76rem", opacity: .86 }}>
+                Esto queda registrado en la app. Si reportas problema, se abre WhatsApp soporte y Admin lo verá.
+              </div>
+
+              {safetyReportStatus && (
+                <IonBadge
+                  color={safetyReportStatus === "problem_reported" ? "danger" : "success"}
+                  style={{ marginTop: 8, width: "fit-content" }}
+                >
+                  {safetyReportStatus === "problem_reported" ? "Problema reportado" : "Llegada confirmada"}
+                </IonBadge>
+              )}
+
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginTop: 10 }}>
+                <IonButton
+                  size="small"
+                  color="success"
+                  disabled={safetyReportStatus === "arrived_well"}
+                  onClick={() => onArrivedWell(ride)}
+                  style={{ "--border-radius": "999px", fontWeight: 950 } as CSSProperties}
+                >
+                  Llegué bien
+                </IonButton>
+
+                <IonButton
+                  size="small"
+                  color="danger"
+                  fill={safetyReportStatus === "problem_reported" ? "solid" : "outline"}
+                  onClick={() => onReportProblem(ride)}
+                  style={{ "--border-radius": "999px", fontWeight: 950 } as CSSProperties}
+                >
+                  Llegué mal / Reportar
+                </IonButton>
+              </div>
+            </div>
+          )}
+
           {passengerDriverAcceptedState && ["accepted", "driver_en_route"].includes(effectiveStatus) && (
             <div
               style={{
@@ -6996,6 +7298,17 @@ function PassengerRideCard({
               </IonButton>
             )}
 
+            {["accepted", "driver_en_route", "driver_arrived", "in_progress"].includes(effectiveStatus) && (
+              <IonButton
+                size="small"
+                color="danger"
+                onClick={() => onEmergency(ride)}
+                style={{ "--border-radius": "999px", fontWeight: 950 } as CSSProperties}
+              >
+                🚨 Emergencia / WhatsApp
+              </IonButton>
+            )}
+
             {effectiveStatus === "completed" && !rated && (
               <IonButton
                 size="small"
@@ -7003,7 +7316,7 @@ function PassengerRideCard({
                 color="warning"
                 onClick={() => onRate(ride.id)}
               >
-                ⭐ Calificar viaje
+                ⭐ Clasificar conductor
               </IonButton>
             )}
 
@@ -7057,7 +7370,7 @@ export default function TripsPage(): JSX.Element {
   const [pendingCancelAction, setPendingCancelAction] = useState<PendingPassengerCancelAction | null>(null);
   const [refundMercadoPagoAlert, setRefundMercadoPagoAlert] = useState<{ header: string; message: string; ride: RideRequestData | null } | null>(null);
   const [, setKnownAssignedRideIds] = useState<Set<string>>(new Set());
-  const promptedRatingRideIdsRef = useRef<Set<string>>(new Set());
+  const [tripSafetyReportsRevision, setTripSafetyReportsRevision] = useState(0);
 
   const loadRides = useCallback(async () => {
     setLoading(true);
@@ -7177,30 +7490,22 @@ export default function TripsPage(): JSX.Element {
 
 
 
+  // RAPA GO: no abrimos la calificación automáticamente al completar un viaje.
+  // El pasajero decide cuándo clasificar usando el botón de la tarjeta.
+
   useEffect(() => {
-    const completedWithoutRating = allRides.find((ride) => {
-      const effectiveStatus = getEffectivePassengerRideStatus(ride);
-      if (effectiveStatus !== "completed") return false;
-      if (ratedIds.has(ride.id)) return false;
-      if (passengerHasRatedRide(ride, session?.user)) return false;
-      return true;
-    });
+    const refreshTripSafetyReports = () => {
+      setTripSafetyReportsRevision((current) => current + 1);
+    };
 
-    if (!completedWithoutRating) return;
+    window.addEventListener("storage", refreshTripSafetyReports);
+    window.addEventListener(RAPAGO_TRIP_SAFETY_REPORT_EVENT, refreshTripSafetyReports as EventListener);
 
-    const promptKey = getPassengerRatingRideKey(
-      completedWithoutRating as RideRequestData & Record<string, unknown>,
-    );
-
-    if (promptedRatingRideIdsRef.current.has(promptKey)) return;
-
-    promptedRatingRideIdsRef.current.add(promptKey);
-    setRatingRideId(completedWithoutRating.id);
-    setRatingStars(5);
-    setRatingComment("");
-    setRatingExtras([]);
-    setRatingError(null);
-  }, [allRides, ratedIds, session?.user]);
+    return () => {
+      window.removeEventListener("storage", refreshTripSafetyReports);
+      window.removeEventListener(RAPAGO_TRIP_SAFETY_REPORT_EVENT, refreshTripSafetyReports as EventListener);
+    };
+  }, []);
 
   const filteredBeforePagination = allRides.filter((r) => {
     const effectiveStatus = getPassengerNoShowCompletedEffectiveStatus(r);
@@ -7303,6 +7608,22 @@ export default function TripsPage(): JSX.Element {
     requestPassengerCancel(rideId, "accepted");
   }
 
+  function handlePassengerArrivedWell(ride: RideRequestData): void {
+    savePassengerTripSafetyReport(ride, session?.user, "arrived_well");
+    setTripSafetyReportsRevision((current) => current + 1);
+  }
+
+  function handlePassengerReportProblem(ride: RideRequestData): void {
+    savePassengerTripSafetyReport(ride, session?.user, "problem_reported");
+    setTripSafetyReportsRevision((current) => current + 1);
+    openPassengerTripProblemWhatsApp(ride, session?.user);
+  }
+
+  function handlePassengerEmergency(ride: RideRequestData): void {
+    openPassengerEmergencyWhatsApp(ride, session?.user);
+    setTripSafetyReportsRevision((current) => current + 1);
+  }
+
   async function handleSubmitRating() {
     if (!ratingRideId) return;
 
@@ -7378,6 +7699,7 @@ export default function TripsPage(): JSX.Element {
   };
 
   const hasMore = page * PAGE_SIZE < filteredBeforePagination.length;
+  const tripSafetyReports = tripSafetyReportsRevision >= 0 ? readRapagoTripSafetyReports() : [];
   const ratingRide = ratingRideId ? allRides.find((ride) => ride.id === ratingRideId) ?? null : null;
   const ratingDriverName =
     ratingStringValue((ratingRide as RideRequestData & Record<string, unknown> | null)?.driverName) ||
@@ -7531,8 +7853,14 @@ export default function TripsPage(): JSX.Element {
                 token={session?.accessToken ?? ""}
                 cancelling={cancelling === ride.id}
                 rated={ratedIds.has(ride.id)}
+                safetyReportStatus={
+                  tripSafetyReports.find((item) => item.rideKey === getTripSafetyRideKey(ride as RideRequestData & Record<string, unknown>) && item.reporterRole === "passenger")?.status ?? null
+                }
                 onCancel={(rideId) => void handleCancel(rideId)}
                 onCancelAccepted={(rideId) => void handleCancelAccepted(rideId)}
+                onArrivedWell={handlePassengerArrivedWell}
+                onReportProblem={handlePassengerReportProblem}
+                onEmergency={handlePassengerEmergency}
                 onRate={(rideId) => {
                   setRatingRideId(rideId);
                   setRatingStars(5);

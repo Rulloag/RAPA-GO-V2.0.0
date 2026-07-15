@@ -80,8 +80,134 @@ const RAPAGO_DRIVER_NO_SHOW_AFTER_ARRIVAL_MS = 5 * 60 * 1000;
 const RAPAGO_DRIVER_NO_SHOW_TOTAL_SERVICE_CHARGE = true;
 const RAPAGO_PASSENGER_PENDING_CHARGES_KEY_DRIVER = "rapago_passenger_pending_charges_v1";
 const RAPAGO_PASSENGER_PENDING_CHARGE_EVENT_DRIVER = "rapago:passenger-pending-charge-updated";
+const RAPAGO_SUPPORT_WHATSAPP_PHONE_DRIVER = "56947964171";
+const RAPAGO_TRIP_SAFETY_REPORTS_KEY_DRIVER = "rapago_trip_safety_reports_v1";
+const RAPAGO_TRIP_SAFETY_REPORT_EVENT_DRIVER = "rapago:trip-safety-reports-updated";
 
 const RAPAGO_DRIVER_NO_SHOW_COMPLETED_RIDES_KEY = "rapago_driver_no_show_completed_rides_v1";
+
+
+type DriverTripSafetyReport = {
+  id: string;
+  rideId: string;
+  rideKey: string;
+  reporterRole: "passenger" | "driver";
+  status: "arrived_well" | "problem_reported" | "driver_accident_reported";
+  title: string;
+  description: string;
+  passengerEmail?: string | null;
+  passengerName?: string | null;
+  driverEmail?: string | null;
+  driverName?: string | null;
+  originText?: string | null;
+  destinationText?: string | null;
+  createdAt: string;
+  updatedAt: string;
+  source: "passenger_trips" | "driver_app";
+  whatsappOpened?: boolean;
+  adminStatus?: "pending_admin" | "resolved" | "not_required";
+};
+
+function sanitizeDriverTripSafetyText(value: unknown, maxLength = 220): string {
+  return String(value ?? "")
+    .replace(/[<>`{}$\\]/g, "")
+    .replace(/[\u0000-\u001F\u007F]/g, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, maxLength);
+}
+
+function getDriverTripSafetyRideKey(ride: Partial<DriverRideData> & Record<string, unknown>): string {
+  const id = String(ride.id ?? ride.rideId ?? ride.originalRideId ?? ride.serverRideId ?? "").trim();
+  if (id) return `ride:${id}`;
+
+  return [
+    String(ride.passengerEmail ?? ride.email ?? "").trim().toLowerCase(),
+    String(ride.originText ?? "").trim().toLowerCase(),
+    String(ride.destinationText ?? "").trim().toLowerCase(),
+    String(ride.acceptedAt ?? ride.requestedAt ?? ride.createdAt ?? "").trim(),
+  ].filter(Boolean).join("|") || `driver-local:${Date.now()}`;
+}
+
+function readDriverTripSafetyReports(): DriverTripSafetyReport[] {
+  try {
+    const raw = localStorage.getItem(RAPAGO_TRIP_SAFETY_REPORTS_KEY_DRIVER);
+    const parsed = raw ? (JSON.parse(raw) as Array<Record<string, unknown>>) : [];
+    if (!Array.isArray(parsed)) return [];
+
+    return parsed.filter((item): item is DriverTripSafetyReport => Boolean(item && typeof item === "object"));
+  } catch {
+    return [];
+  }
+}
+
+function writeDriverTripSafetyReports(reports: DriverTripSafetyReport[]): void {
+  try {
+    localStorage.setItem(RAPAGO_TRIP_SAFETY_REPORTS_KEY_DRIVER, JSON.stringify(reports.slice(0, 300)));
+    window.dispatchEvent(new CustomEvent(RAPAGO_TRIP_SAFETY_REPORT_EVENT_DRIVER, { detail: { reports } }));
+    window.dispatchEvent(new CustomEvent("rapago:admin-rides-updated", { detail: { tripSafetyReports: reports } }));
+  } catch {
+    // No bloquea reporte de emergencia.
+  }
+}
+
+function saveDriverAccidentTripSafetyReport(ride: DriverRideData, user: unknown): DriverTripSafetyReport {
+  const record = ride as DriverRideData & Record<string, unknown>;
+  const userRecord = user && typeof user === "object" ? (user as Record<string, unknown>) : {};
+  const rideKey = getDriverTripSafetyRideKey(record);
+  const now = new Date().toISOString();
+  const driverEmail = sanitizeDriverTripSafetyText(userRecord.email ?? record.driverEmail, 160).toLowerCase() || null;
+  const driverName = sanitizeDriverTripSafetyText(userRecord.name ?? record.driverName ?? record.driverFullName, 120) || null;
+
+  const report: DriverTripSafetyReport = {
+    id: `driver-accident-${rideKey}-${Date.now()}`,
+    rideId: sanitizeDriverTripSafetyText(record.id ?? record.rideId ?? rideKey, 120),
+    rideKey,
+    reporterRole: "driver",
+    status: "driver_accident_reported",
+    title: "Conductor reportó accidente/emergencia",
+    description: "El conductor presionó Reportar accidente / emergencia y fue derivado a WhatsApp soporte.",
+    passengerEmail: sanitizeDriverTripSafetyText(record.passengerEmail ?? record.email, 160).toLowerCase() || null,
+    passengerName: sanitizeDriverTripSafetyText(record.passengerName ?? record.userName, 120) || null,
+    driverEmail,
+    driverName,
+    originText: sanitizeDriverTripSafetyText(record.originText, 160) || null,
+    destinationText: sanitizeDriverTripSafetyText(record.destinationText, 160) || null,
+    createdAt: now,
+    updatedAt: now,
+    source: "driver_app",
+    whatsappOpened: true,
+    adminStatus: "pending_admin",
+  };
+
+  const current = readDriverTripSafetyReports();
+  writeDriverTripSafetyReports([report, ...current]);
+  return report;
+}
+
+function buildDriverAccidentWhatsAppUrl(ride: DriverRideData, user: unknown): string {
+  const record = ride as DriverRideData & Record<string, unknown>;
+  const userRecord = user && typeof user === "object" ? (user as Record<string, unknown>) : {};
+  const lines = [
+    "EMERGENCIA RAPA GO: conductor reporta accidente/problema en viaje.",
+    `Conductor: ${sanitizeDriverTripSafetyText(userRecord.name ?? record.driverName ?? "Conductor", 80)}`,
+    `Correo conductor: ${sanitizeDriverTripSafetyText(userRecord.email ?? record.driverEmail ?? "No informado", 120)}`,
+    `Viaje: ${sanitizeDriverTripSafetyText(record.originText, 90) || "Origen"} -> ${sanitizeDriverTripSafetyText(record.destinationText, 90) || "Destino"}`,
+    record.passengerName || record.passengerEmail ? `Pasajero: ${sanitizeDriverTripSafetyText(record.passengerName ?? record.passengerEmail, 90)}` : null,
+    "Solicito apoyo inmediato. El reporte quedó registrado en Admin.",
+  ].filter(Boolean);
+
+  return `https://wa.me/${RAPAGO_SUPPORT_WHATSAPP_PHONE_DRIVER}?text=${encodeURIComponent(lines.join("\n"))}`;
+}
+
+function openDriverAccidentWhatsApp(ride: DriverRideData, user: unknown): void {
+  const url = buildDriverAccidentWhatsAppUrl(ride, user);
+  try {
+    window.open(url, "_blank", "noopener,noreferrer");
+  } catch {
+    window.location.href = url;
+  }
+}
 
 function readDriverNoShowCompletedRides(): Array<Record<string, unknown>> {
   try {
@@ -13956,6 +14082,12 @@ function AssignedRidesPage(): JSX.Element {
     );
   }
 
+  function handleReportDriverAccidentFromHome(ride: DriverRideData): void {
+    saveDriverAccidentTripSafetyReport(ride, session?.user);
+    openDriverAccidentWhatsApp(ride, session?.user);
+    setError("Reporte de accidente guardado. Se abrió WhatsApp soporte.");
+  }
+
   function ActiveRideScreen({ ride }: { ride: DriverRideData }): JSX.Element {
     const nextOfferWhileActive = !nextQueuedRide
       ? availableRides.find(
@@ -14305,6 +14437,25 @@ function AssignedRidesPage(): JSX.Element {
                   >
                     Cancelar
                   </IonButton>
+
+
+                  <IonButton
+                    expand="block"
+                    color="danger"
+                    style={
+                      {
+                        "--border-radius": "14px",
+                        height: "52px",
+                        position: "relative",
+                        zIndex: 31,
+                        gridColumn: "1 / -1",
+                        fontWeight: 950,
+                      } as CSSProperties
+                    }
+                    onClick={() => handleReportDriverAccidentFromHome(ride)}
+                  >
+                    Reportar accidente / emergencia
+                  </IonButton>
                 </div>
               </>
             )}
@@ -14343,6 +14494,44 @@ function AssignedRidesPage(): JSX.Element {
                   onClick={() => requestCancelActiveRide(ride)}
                 >
                   Cancelar
+                </IonButton>
+
+
+                <IonButton
+                  expand="block"
+                  color="danger"
+                  style={
+                    {
+                      "--border-radius": "14px",
+                      height: "52px",
+                      position: "relative",
+                      zIndex: 31,
+                      gridColumn: "1 / -1",
+                      fontWeight: 950,
+                    } as CSSProperties
+                  }
+                  onClick={() => handleReportDriverAccidentFromHome(ride)}
+                >
+                  Reportar accidente / emergencia
+                </IonButton>
+
+
+                <IonButton
+                  expand="block"
+                  color="danger"
+                  style={
+                    {
+                      "--border-radius": "14px",
+                      height: "52px",
+                      position: "relative",
+                      zIndex: 31,
+                      gridColumn: "1 / -1",
+                      fontWeight: 950,
+                    } as CSSProperties
+                  }
+                  onClick={() => handleReportDriverAccidentFromHome(ride)}
+                >
+                  Reportar accidente / emergencia
                 </IonButton>
               </div>
             )}
@@ -15246,6 +15435,12 @@ function DriverMyRidesPage(): JSX.Element {
     }
   }
 
+  function handleReportDriverAccidentFromTrips(ride: DriverRideData): void {
+    saveDriverAccidentTripSafetyReport(ride, session?.user);
+    openDriverAccidentWhatsApp(ride, session?.user);
+    setLoadError("Reporte de accidente guardado. Se abrió WhatsApp soporte.");
+  }
+
   function statusLabel(status: string): string {
     if (status === "accepted") return "Aceptado";
     if (status === "driver_en_route") return "En camino";
@@ -15629,17 +15824,29 @@ function DriverMyRidesPage(): JSX.Element {
                 {["accepted", "driver_en_route", "driver_arrived", "in_progress"].includes(
                   activeRide.status,
                 ) && (
-                  <IonButton
-                    expand="block"
-                    fill="outline"
-                    color="danger"
-                    disabled={actionLoading === activeRide.id}
-                    onClick={() => {
-                      void cancelActiveRideFromMyRides(activeRide);
-                    }}
-                  >
-                    {actionLoading === activeRide.id ? <IonSpinner name="dots" /> : "Cancelar"}
-                  </IonButton>
+                  <>
+                    <IonButton
+                      expand="block"
+                      fill="outline"
+                      color="danger"
+                      disabled={actionLoading === activeRide.id}
+                      onClick={() => {
+                        void cancelActiveRideFromMyRides(activeRide);
+                      }}
+                    >
+                      {actionLoading === activeRide.id ? <IonSpinner name="dots" /> : "Cancelar"}
+                    </IonButton>
+
+                    <IonButton
+                      expand="block"
+                      color="danger"
+                      disabled={actionLoading === activeRide.id}
+                      onClick={() => handleReportDriverAccidentFromTrips(activeRide)}
+                      style={{ gridColumn: "1 / -1", "--border-radius": "14px", fontWeight: 950 } as CSSProperties}
+                    >
+                      Reportar accidente / emergencia
+                    </IonButton>
+                  </>
                 )}
               </div>
             </IonCardContent>

@@ -358,6 +358,121 @@ function formatAdminAccountDeletionDate(value: unknown): string {
 }
 
 
+type AdminTripSafetyReportStatus = "arrived_well" | "problem_reported" | "driver_accident_reported";
+
+type AdminTripSafetyReport = {
+  id: string;
+  rideId: string;
+  rideKey: string;
+  reporterRole: "passenger" | "driver";
+  status: AdminTripSafetyReportStatus;
+  title: string;
+  description: string;
+  passengerEmail?: string | null;
+  passengerName?: string | null;
+  driverEmail?: string | null;
+  driverName?: string | null;
+  originText?: string | null;
+  destinationText?: string | null;
+  createdAt: string;
+  updatedAt: string;
+  source: "passenger_trips" | "driver_app";
+  whatsappOpened?: boolean;
+  adminStatus?: "pending_admin" | "resolved" | "not_required";
+};
+
+const RAPAGO_TRIP_SAFETY_REPORTS_KEY_ADMIN = "rapago_trip_safety_reports_v1";
+const RAPAGO_TRIP_SAFETY_REPORT_EVENT_ADMIN = "rapago:trip-safety-reports-updated";
+
+function sanitizeAdminTripSafetyText(value: unknown, maxLength = 220): string {
+  return String(value ?? "")
+    .replace(/[<>`{}$\\]/g, "")
+    .replace(/[\u0000-\u001F\u007F]/g, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, maxLength);
+}
+
+function readAdminTripSafetyReports(): AdminTripSafetyReport[] {
+  try {
+    const raw = localStorage.getItem(RAPAGO_TRIP_SAFETY_REPORTS_KEY_ADMIN);
+    const parsed = raw ? (JSON.parse(raw) as Array<Record<string, unknown>>) : [];
+    if (!Array.isArray(parsed)) return [];
+
+    return parsed
+      .filter((item) => item && typeof item === "object")
+      .map((item, index): AdminTripSafetyReport => ({
+        id: sanitizeAdminTripSafetyText(item.id, 120) || `trip-safety-${index}`,
+        rideId: sanitizeAdminTripSafetyText(item.rideId, 120),
+        rideKey: sanitizeAdminTripSafetyText(item.rideKey, 180),
+        reporterRole: String(item.reporterRole ?? "passenger") === "driver" ? "driver" : "passenger",
+        status: String(item.status ?? "problem_reported") as AdminTripSafetyReportStatus,
+        title: sanitizeAdminTripSafetyText(item.title, 120) || "Reporte de viaje",
+        description: sanitizeAdminTripSafetyText(item.description, 280) || "Reporte registrado en la app.",
+        passengerEmail: sanitizeAdminTripSafetyText(item.passengerEmail, 160).toLowerCase() || null,
+        passengerName: sanitizeAdminTripSafetyText(item.passengerName, 120) || null,
+        driverEmail: sanitizeAdminTripSafetyText(item.driverEmail, 160).toLowerCase() || null,
+        driverName: sanitizeAdminTripSafetyText(item.driverName, 120) || null,
+        originText: sanitizeAdminTripSafetyText(item.originText, 160) || null,
+        destinationText: sanitizeAdminTripSafetyText(item.destinationText, 160) || null,
+        createdAt: sanitizeAdminTripSafetyText(item.createdAt, 60) || new Date().toISOString(),
+        updatedAt: sanitizeAdminTripSafetyText(item.updatedAt, 60) || new Date().toISOString(),
+        source: String(item.source ?? "passenger_trips") === "driver_app" ? "driver_app" : "passenger_trips",
+        whatsappOpened: Boolean(item.whatsappOpened),
+        adminStatus: String(item.adminStatus ?? "pending_admin") as AdminTripSafetyReport["adminStatus"],
+      }))
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  } catch {
+    return [];
+  }
+}
+
+function writeAdminTripSafetyReports(reports: AdminTripSafetyReport[]): void {
+  try {
+    localStorage.setItem(RAPAGO_TRIP_SAFETY_REPORTS_KEY_ADMIN, JSON.stringify(reports.slice(0, 300)));
+    window.dispatchEvent(new CustomEvent(RAPAGO_TRIP_SAFETY_REPORT_EVENT_ADMIN, { detail: { reports } }));
+    window.dispatchEvent(new CustomEvent(RAPAGO_ADMIN_RIDES_EVENT, { detail: { reports } }));
+  } catch {
+    // No bloquea el panel admin.
+  }
+}
+
+function markAdminTripSafetyReportResolved(reportId: string): AdminTripSafetyReport[] {
+  const now = new Date().toISOString();
+  const next = readAdminTripSafetyReports().map((item) => {
+    if (String(item.id) !== String(reportId)) return item;
+    return {
+      ...item,
+      adminStatus: "resolved" as const,
+      updatedAt: now,
+    };
+  });
+
+  writeAdminTripSafetyReports(next);
+  return next;
+}
+
+function adminTripSafetyStatusLabel(report: AdminTripSafetyReport): string {
+  if (report.adminStatus === "resolved") return "Resuelto";
+  if (report.status === "arrived_well") return "Llegó bien";
+  if (report.status === "driver_accident_reported") return "Accidente/emergencia";
+  return "Problema pasajero";
+}
+
+function adminTripSafetyStatusColor(report: AdminTripSafetyReport): string {
+  if (report.adminStatus === "resolved") return "success";
+  if (report.status === "arrived_well") return "medium";
+  if (report.status === "driver_accident_reported") return "danger";
+  return "warning";
+}
+
+function formatAdminTripSafetyDate(value: unknown): string {
+  const date = new Date(String(value ?? ""));
+  if (!Number.isFinite(date.getTime())) return "Sin fecha";
+  return date.toLocaleString("es-CL", { dateStyle: "short", timeStyle: "short" });
+}
+
+
 const RAPAGO_ADMIN_CASH_REVIEW_SOURCE_KEYS = [
   RAPAGO_CASH_PAYMENT_REVIEWS_KEY_ADMIN,
   "rapago_driver_cash_closures_v1",
@@ -1226,6 +1341,8 @@ export function AdminHomePage(): JSX.Element {
   const [showAdminNoShowModal, setShowAdminNoShowModal] = useState(false);
   const [showAccountDeletionModal, setShowAccountDeletionModal] = useState(false);
   const [accountDeletionRequests, setAccountDeletionRequests] = useState<RapagoAccountDeletionRequest[]>(() => readAdminAccountDeletionRequests());
+  const [showTripSafetyReportsModal, setShowTripSafetyReportsModal] = useState(false);
+  const [tripSafetyReports, setTripSafetyReports] = useState<AdminTripSafetyReport[]>(() => readAdminTripSafetyReports());
 
 
   useEffect(() => {
@@ -1239,6 +1356,22 @@ export function AdminHomePage(): JSX.Element {
     return () => {
       window.removeEventListener("storage", refreshAccountDeletionRequests);
       window.removeEventListener(RAPAGO_ACCOUNT_DELETION_EVENT_ADMIN, refreshAccountDeletionRequests as EventListener);
+    };
+  }, []);
+
+  useEffect(() => {
+    const refreshTripSafetyReports = () => {
+      setTripSafetyReports(readAdminTripSafetyReports());
+    };
+
+    window.addEventListener("storage", refreshTripSafetyReports);
+    window.addEventListener(RAPAGO_TRIP_SAFETY_REPORT_EVENT_ADMIN, refreshTripSafetyReports as EventListener);
+    window.addEventListener(RAPAGO_ADMIN_RIDES_EVENT, refreshTripSafetyReports as EventListener);
+
+    return () => {
+      window.removeEventListener("storage", refreshTripSafetyReports);
+      window.removeEventListener(RAPAGO_TRIP_SAFETY_REPORT_EVENT_ADMIN, refreshTripSafetyReports as EventListener);
+      window.removeEventListener(RAPAGO_ADMIN_RIDES_EVENT, refreshTripSafetyReports as EventListener);
     };
   }, []);
 
@@ -1576,6 +1709,9 @@ export function AdminHomePage(): JSX.Element {
   const pendingAccountDeletionRequests = accountDeletionRequests.filter(
     (request) => request.status === "pending_admin",
   );
+  const pendingTripSafetyReports = tripSafetyReports.filter(
+    (report) => report.adminStatus !== "resolved" && report.status !== "arrived_well",
+  );
 
   const primaryActions = [
     {
@@ -1613,6 +1749,12 @@ export function AdminHomePage(): JSX.Element {
       description: `${pendingAccountDeletionRequests.length} solicitud${pendingAccountDeletionRequests.length !== 1 ? "es" : ""}`,
       icon: warningOutline,
       route: "__account_deletion__",
+    },
+    {
+      label: "Reportes",
+      description: `${pendingTripSafetyReports.length} pendiente${pendingTripSafetyReports.length !== 1 ? "s" : ""}`,
+      icon: alertCircleOutline,
+      route: "__trip_safety_reports__",
     },
     {
       label: "Efectivo",
@@ -2013,7 +2155,8 @@ export function AdminHomePage(): JSX.Element {
                           action.route === ROUTES.ADMIN.DRIVERS ||
                           action.route === "__admin_charges__" ||
                           action.route === "__admin_no_show__" ||
-                          action.route === "__account_deletion__"
+                          action.route === "__account_deletion__" ||
+                          action.route === "__trip_safety_reports__"
                             ? undefined
                             : action.route
                         }
@@ -2031,6 +2174,12 @@ export function AdminHomePage(): JSX.Element {
                           if (action.route === "__account_deletion__") {
                             setAccountDeletionRequests(readAdminAccountDeletionRequests());
                             setShowAccountDeletionModal(true);
+                            return;
+                          }
+
+                          if (action.route === "__trip_safety_reports__") {
+                            setTripSafetyReports(readAdminTripSafetyReports());
+                            setShowTripSafetyReportsModal(true);
                             return;
                           }
 
@@ -2269,6 +2418,122 @@ export function AdminHomePage(): JSX.Element {
                             </IonCard>
                           ))}
                         </div>
+                      )}
+                    </IonCardContent>
+                  </IonCard>
+                </IonContent>
+              </IonModal>
+
+              <IonModal
+                isOpen={showTripSafetyReportsModal}
+                onDidDismiss={() => setShowTripSafetyReportsModal(false)}
+                breakpoints={[0, 0.72, 0.95]}
+                initialBreakpoint={0.95}
+              >
+                <IonHeader>
+                  <IonToolbar color="dark">
+                    <IonTitle>Reportes de viaje</IonTitle>
+                    <div slot="end" style={{ paddingRight: 8 }}>
+                      <IonButton
+                        fill="clear"
+                        color="light"
+                        onClick={() => setShowTripSafetyReportsModal(false)}
+                      >
+                        Cerrar
+                      </IonButton>
+                    </div>
+                  </IonToolbar>
+                </IonHeader>
+
+                <IonContent className="ion-padding">
+                  <IonCard style={{ margin: "0 0 12px" }}>
+                    <IonCardHeader>
+                      <div className="admin-section-title-row">
+                        <div>
+                          <IonCardTitle>Problemas, llegada y accidentes</IonCardTitle>
+                          <IonCardSubtitle>
+                            Llegué bien / Llegué mal del pasajero y Reportar accidente del conductor.
+                          </IonCardSubtitle>
+                        </div>
+
+                        <IonBadge color={pendingTripSafetyReports.length > 0 ? "warning" : "success"}>
+                          {pendingTripSafetyReports.length} pendiente{pendingTripSafetyReports.length !== 1 ? "s" : ""}
+                        </IonBadge>
+                      </div>
+                    </IonCardHeader>
+
+                    <IonCardContent style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                      {tripSafetyReports.length === 0 ? (
+                        <IonText color="medium">
+                          <p style={{ margin: 0, fontWeight: 850 }}>
+                            No hay reportes de viaje registrados.
+                          </p>
+                        </IonText>
+                      ) : (
+                        tripSafetyReports.map((report) => (
+                          <IonCard key={report.id} style={{ margin: 0 }}>
+                            <IonCardContent style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                              <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
+                                <div>
+                                  <h3 style={{ margin: 0, fontWeight: 950 }}>
+                                    {report.title}
+                                  </h3>
+                                  <p style={{ margin: "4px 0 0", color: "#4b5563", fontWeight: 800 }}>
+                                    {report.originText || "Origen"} → {report.destinationText || "Destino"}
+                                  </p>
+                                </div>
+
+                                <IonBadge color={adminTripSafetyStatusColor(report)}>
+                                  {adminTripSafetyStatusLabel(report)}
+                                </IonBadge>
+                              </div>
+
+                              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                                <div style={{ background: "#fff7e6", borderRadius: 14, padding: 10 }}>
+                                  <strong>Reporta</strong>
+                                  <div style={{ fontWeight: 950 }}>
+                                    {report.reporterRole === "driver" ? "Conductor" : "Pasajero"}
+                                  </div>
+                                </div>
+
+                                <div style={{ background: "#fff7e6", borderRadius: 14, padding: 10 }}>
+                                  <strong>Fecha</strong>
+                                  <div style={{ fontWeight: 950 }}>
+                                    {formatAdminTripSafetyDate(report.createdAt)}
+                                  </div>
+                                </div>
+                              </div>
+
+                              <p style={{ margin: 0, fontWeight: 800, lineHeight: 1.35 }}>
+                                {report.description}
+                              </p>
+
+                              <div style={{ fontSize: ".78rem", color: "#374151", fontWeight: 800, lineHeight: 1.35 }}>
+                                {report.passengerName || report.passengerEmail ? (
+                                  <div>Pasajero: {report.passengerName || report.passengerEmail}</div>
+                                ) : null}
+                                {report.driverName || report.driverEmail ? (
+                                  <div>Conductor: {report.driverName || report.driverEmail}</div>
+                                ) : null}
+                                {report.whatsappOpened ? <div>WhatsApp soporte fue abierto desde la app.</div> : null}
+                              </div>
+
+                              {report.adminStatus !== "resolved" && report.status !== "arrived_well" && (
+                                <IonButton
+                                  size="small"
+                                  color="success"
+                                  onClick={() => {
+                                    const next = markAdminTripSafetyReportResolved(report.id);
+                                    setTripSafetyReports(next);
+                                    setAdminCashToast("Reporte marcado como resuelto.");
+                                  }}
+                                >
+                                  Marcar resuelto
+                                </IonButton>
+                              )}
+                            </IonCardContent>
+                          </IonCard>
+                        ))
                       )}
                     </IonCardContent>
                   </IonCard>
