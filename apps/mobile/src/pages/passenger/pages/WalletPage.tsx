@@ -115,7 +115,7 @@ function readLocalWalletBenefits(user: unknown): LocalWalletBenefit[] {
       .filter((benefit) => {
         if (benefit.amountClp <= 0) return false;
         const owner = normalizeWalletEmail(benefit.passengerEmail || benefit.ownerKey);
-        return !sessionEmail || !owner || owner === sessionEmail;
+        return Boolean(sessionEmail && owner && owner === sessionEmail);
       })
       .sort(
         (a, b) =>

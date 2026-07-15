@@ -893,8 +893,13 @@ function approveAdminNoShowChargeForNextRide(charge: AdminPassengerPendingCharge
   const next = readAdminPassengerPendingCharges().map((item) => {
     if (String(item.id ?? "") !== String(charge.id ?? "")) return item;
 
+    const itemRecord = item as AdminPassengerPendingCharge & Record<string, unknown>;
+    const ownerEmail = String(itemRecord.passengerEmail ?? itemRecord.ownerKey ?? "").trim().toLowerCase();
+
     return {
       ...item,
+      passengerEmail: ownerEmail || item.passengerEmail || null,
+      ownerKey: ownerEmail || itemRecord.ownerKey || null,
       type: "no_show",
       amountClp: approvedNoShowChargeClp,
       originalAmountClp: Math.max(0, Math.round(Number(item.amountClp ?? (item as AdminPassengerPendingCharge & Record<string, unknown>).amount ?? originalServiceAmountClp))),

@@ -165,7 +165,7 @@ function readPassengerPendingChargesForRequest(user: unknown): PassengerPendingC
       })
       .filter((charge) => {
         const owner = normalizePendingChargeEmail(charge.passengerEmail || charge.ownerKey);
-        const belongsToUser = !sessionEmail || !owner || owner === sessionEmail;
+        const belongsToUser = Boolean(sessionEmail && owner && owner === sessionEmail);
 
         const type = String(charge.type ?? "").toLowerCase();
         const status = String(charge.status ?? "").toLowerCase();
@@ -228,7 +228,7 @@ function markPassengerPendingChargesAppliedToRide(user: unknown, rideId: string 
             : "",
       );
 
-      const belongsToUser = !sessionEmail || !owner || owner === sessionEmail;
+      const belongsToUser = Boolean(sessionEmail && owner && owner === sessionEmail);
       const type = String(item.type ?? "").toLowerCase();
       const status = String(item.status ?? "").toLowerCase();
       const adminStatus = String(item.adminReviewStatus ?? "").toLowerCase();
@@ -338,7 +338,7 @@ function readPassengerWalletBenefitsForRequest(user: unknown): PassengerWalletBe
       .filter((benefit) => {
         if (!isPassengerWalletBenefitAvailableForRequest(benefit)) return false;
         const owner = normalizeWalletBenefitEmailForRequest(benefit.passengerEmail || benefit.ownerKey);
-        return !sessionEmail || !owner || owner === sessionEmail;
+        return Boolean(sessionEmail && owner && owner === sessionEmail);
       })
       .sort((a, b) => new Date(String(a.createdAt ?? 0)).getTime() - new Date(String(b.createdAt ?? 0)).getTime());
   } catch {
@@ -390,7 +390,7 @@ function markPassengerWalletBenefitsUsedForRide(input: {
         adminReviewStatus: typeof item.adminReviewStatus === "string" ? item.adminReviewStatus : null,
       };
       const owner = normalizeWalletBenefitEmailForRequest(benefit.passengerEmail || benefit.ownerKey);
-      const belongsToUser = !sessionEmail || !owner || owner === sessionEmail;
+      const belongsToUser = Boolean(sessionEmail && owner && owner === sessionEmail);
 
       if (!belongsToUser || remaining <= 0 || !isPassengerWalletBenefitAvailableForRequest(benefit)) {
         return item;
