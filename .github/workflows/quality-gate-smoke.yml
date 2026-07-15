@@ -1,0 +1,14 @@
+name: Quality Gate Smoke
+
+on:
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Confirmar ejecución
+        run: echo "GitHub Actions OK"
