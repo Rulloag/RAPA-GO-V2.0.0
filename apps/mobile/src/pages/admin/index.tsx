@@ -106,6 +106,7 @@ const ADMIN_DRIVER_ASSIGNMENT_SELECTION_KEY = "rapago_admin_selected_ride_for_dr
 const ADMIN_DRIVER_ASSIGNMENT_EVENT = "rapago:admin-driver-assignment-updated";
 const DRIVER_ASSIGNED_RIDE_EVENT = "rapago:driver-assigned-scheduled-ride";
 const ADMIN_RESERVATION_AUTO_REASSIGN_EVENT = "rapago:admin-reservation-reassign-needed";
+const ADMIN_RESERVATION_AUTO_ASSIGN_EVENT = "rapago:admin-reservation-auto-assigned";
 const SCHEDULE_ACTIVATION_MINUTES_ADMIN = 30;
 const RAPAGO_SUPPORT_WHATSAPP_PHONE = "56947964171";
 
@@ -210,6 +211,21 @@ type AdminPassengerPendingCharge = {
   cardRefundNotice?: string | null;
 };
 
+type AdminReservationAutoAssignLogStatus = "assigned" | "waiting_driver" | "skipped" | "error";
+
+type AdminReservationAutoAssignLog = {
+  id: string;
+  rideId: string;
+  rideKey: string;
+  status: AdminReservationAutoAssignLogStatus;
+  driverId?: string | null;
+  driverName?: string | null;
+  driverEmail?: string | null;
+  message: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
 const RAPAGO_CASH_PAYMENT_REVIEWS_KEY_ADMIN = "rapago_cash_payment_reviews_v1";
 const RAPAGO_WALLET_BENEFITS_KEY_ADMIN = "rapago_wallet_benefits_v1";
 const RAPAGO_PASSENGER_PENDING_CHARGES_KEY_ADMIN = "rapago_passenger_pending_charges_v1";
@@ -218,6 +234,129 @@ const RAPAGO_ADMIN_CASH_CLOSURES_EVENT = "rapago:admin-cash-closures-updated";
 const RAPAGO_DRIVER_CASH_CLOSURE_EVENT = "rapago:driver-cash-closure-updated";
 const RAPAGO_ADMIN_WALLET_BENEFIT_EVENT = "rapago:admin-wallet-benefit-updated";
 const RAPAGO_ADMIN_RIDES_EVENT = "rapago:admin-rides-updated";
+const RAPAGO_ADMIN_RESERVATION_AUTO_ASSIGN_LOG_KEY = "rapago_admin_reservation_auto_assign_log_v1";
+
+
+type RapagoAccountDeletionRequestStatus = "pending_admin" | "approved" | "rejected" | "cancelled";
+
+type RapagoAccountDeletionRequest = {
+  id: string;
+  ownerKey: string;
+  userId?: string | null;
+  userEmail?: string | null;
+  userName?: string | null;
+  userRole?: string | null;
+  reason: string;
+  comment?: string | null;
+  status: RapagoAccountDeletionRequestStatus;
+  createdAt: string;
+  updatedAt: string;
+  adminReviewedAt?: string | null;
+  adminReviewedBy?: string | null;
+  adminNote?: string | null;
+  source?: string | null;
+};
+
+const RAPAGO_ACCOUNT_DELETION_REQUESTS_KEY_ADMIN = "rapago_account_deletion_requests_v1";
+const RAPAGO_ACCOUNT_DELETION_EVENT_ADMIN = "rapago:account-deletion-requests-updated";
+
+function sanitizeAdminAccountDeletionText(value: unknown, maxLength = 240): string {
+  return String(value ?? "")
+    .replace(/[<>`{}$\\]/g, "")
+    .replace(/[\u0000-\u001F\u007F]/g, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, maxLength);
+}
+
+function readAdminAccountDeletionRequests(): RapagoAccountDeletionRequest[] {
+  try {
+    const raw = localStorage.getItem(RAPAGO_ACCOUNT_DELETION_REQUESTS_KEY_ADMIN);
+    const parsed = raw ? (JSON.parse(raw) as Array<Record<string, unknown>>) : [];
+    if (!Array.isArray(parsed)) return [];
+
+    return parsed
+      .map((item, index): RapagoAccountDeletionRequest => ({
+        id: sanitizeAdminAccountDeletionText(item.id, 90) || `account-delete-${index}`,
+        ownerKey: sanitizeAdminAccountDeletionText(item.ownerKey, 180),
+        userId: sanitizeAdminAccountDeletionText(item.userId, 120) || null,
+        userEmail: sanitizeAdminAccountDeletionText(item.userEmail, 160).toLowerCase() || null,
+        userName: sanitizeAdminAccountDeletionText(item.userName, 120) || null,
+        userRole: sanitizeAdminAccountDeletionText(item.userRole, 60) || null,
+        reason: sanitizeAdminAccountDeletionText(item.reason, 120) || "No informado",
+        comment: sanitizeAdminAccountDeletionText(item.comment, 260) || null,
+        status: String(item.status ?? "pending_admin") as RapagoAccountDeletionRequestStatus,
+        createdAt: sanitizeAdminAccountDeletionText(item.createdAt, 40) || new Date().toISOString(),
+        updatedAt: sanitizeAdminAccountDeletionText(item.updatedAt, 40) || new Date().toISOString(),
+        adminReviewedAt: sanitizeAdminAccountDeletionText(item.adminReviewedAt, 40) || null,
+        adminReviewedBy: sanitizeAdminAccountDeletionText(item.adminReviewedBy, 80) || null,
+        adminNote: sanitizeAdminAccountDeletionText(item.adminNote, 260) || null,
+        source: sanitizeAdminAccountDeletionText(item.source, 80) || null,
+      }))
+      .filter((item) => Boolean(item.id))
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  } catch {
+    return [];
+  }
+}
+
+function writeAdminAccountDeletionRequests(requests: RapagoAccountDeletionRequest[]): void {
+  try {
+    localStorage.setItem(RAPAGO_ACCOUNT_DELETION_REQUESTS_KEY_ADMIN, JSON.stringify(requests.slice(0, 250)));
+    window.dispatchEvent(new CustomEvent(RAPAGO_ACCOUNT_DELETION_EVENT_ADMIN, { detail: { requests } }));
+    window.dispatchEvent(new CustomEvent(RAPAGO_ADMIN_RIDES_EVENT, { detail: { requests } }));
+  } catch {
+    // No bloquea el panel admin.
+  }
+}
+
+function updateAdminAccountDeletionRequestStatus(
+  id: string,
+  status: Exclude<RapagoAccountDeletionRequestStatus, "pending_admin">,
+  adminNote: string,
+): RapagoAccountDeletionRequest[] {
+  const now = new Date().toISOString();
+  const next = readAdminAccountDeletionRequests().map((item) => {
+    if (String(item.id) !== String(id)) return item;
+
+    return {
+      ...item,
+      status,
+      updatedAt: now,
+      adminReviewedAt: now,
+      adminReviewedBy: "admin",
+      adminNote: sanitizeAdminAccountDeletionText(adminNote, 260),
+    };
+  });
+
+  writeAdminAccountDeletionRequests(next);
+  return next;
+}
+
+function adminAccountDeletionStatusLabel(status: RapagoAccountDeletionRequestStatus): string {
+  if (status === "approved") return "Aprobada";
+  if (status === "rejected") return "Rechazada";
+  if (status === "cancelled") return "Cancelada";
+  return "Pendiente";
+}
+
+function adminAccountDeletionStatusColor(status: RapagoAccountDeletionRequestStatus): string {
+  if (status === "approved") return "success";
+  if (status === "rejected") return "danger";
+  if (status === "cancelled") return "medium";
+  return "warning";
+}
+
+function formatAdminAccountDeletionDate(value: unknown): string {
+  const date = new Date(String(value ?? ""));
+  if (!Number.isFinite(date.getTime())) return "Sin fecha";
+
+  return date.toLocaleString("es-CL", {
+    dateStyle: "short",
+    timeStyle: "short",
+  });
+}
+
 
 const RAPAGO_ADMIN_CASH_REVIEW_SOURCE_KEYS = [
   RAPAGO_CASH_PAYMENT_REVIEWS_KEY_ADMIN,
@@ -1085,6 +1224,23 @@ export function AdminHomePage(): JSX.Element {
   const [adminCashToast, setAdminCashToast] = useState<string | null>(null);
   const [showAdminChargesModal, setShowAdminChargesModal] = useState(false);
   const [showAdminNoShowModal, setShowAdminNoShowModal] = useState(false);
+  const [showAccountDeletionModal, setShowAccountDeletionModal] = useState(false);
+  const [accountDeletionRequests, setAccountDeletionRequests] = useState<RapagoAccountDeletionRequest[]>(() => readAdminAccountDeletionRequests());
+
+
+  useEffect(() => {
+    const refreshAccountDeletionRequests = () => {
+      setAccountDeletionRequests(readAdminAccountDeletionRequests());
+    };
+
+    window.addEventListener("storage", refreshAccountDeletionRequests);
+    window.addEventListener(RAPAGO_ACCOUNT_DELETION_EVENT_ADMIN, refreshAccountDeletionRequests as EventListener);
+
+    return () => {
+      window.removeEventListener("storage", refreshAccountDeletionRequests);
+      window.removeEventListener(RAPAGO_ACCOUNT_DELETION_EVENT_ADMIN, refreshAccountDeletionRequests as EventListener);
+    };
+  }, []);
 
   const load = useCallback(
     async (silent = false) => {
@@ -1417,6 +1573,10 @@ export function AdminHomePage(): JSX.Element {
     },
   ];
 
+  const pendingAccountDeletionRequests = accountDeletionRequests.filter(
+    (request) => request.status === "pending_admin",
+  );
+
   const primaryActions = [
     {
       label: "Usuarios",
@@ -1447,6 +1607,12 @@ export function AdminHomePage(): JSX.Element {
       description: `${adminNoShowPendingReview.length} por revisar`,
       icon: alertCircleOutline,
       route: "__admin_no_show__",
+    },
+    {
+      label: "Borrar cuenta",
+      description: `${pendingAccountDeletionRequests.length} solicitud${pendingAccountDeletionRequests.length !== 1 ? "es" : ""}`,
+      icon: warningOutline,
+      route: "__account_deletion__",
     },
     {
       label: "Efectivo",
@@ -1846,7 +2012,8 @@ export function AdminHomePage(): JSX.Element {
                         routerLink={
                           action.route === ROUTES.ADMIN.DRIVERS ||
                           action.route === "__admin_charges__" ||
-                          action.route === "__admin_no_show__"
+                          action.route === "__admin_no_show__" ||
+                          action.route === "__account_deletion__"
                             ? undefined
                             : action.route
                         }
@@ -1858,6 +2025,12 @@ export function AdminHomePage(): JSX.Element {
 
                           if (action.route === "__admin_no_show__") {
                             setShowAdminNoShowModal(true);
+                            return;
+                          }
+
+                          if (action.route === "__account_deletion__") {
+                            setAccountDeletionRequests(readAdminAccountDeletionRequests());
+                            setShowAccountDeletionModal(true);
                             return;
                           }
 
@@ -1952,6 +2125,156 @@ export function AdminHomePage(): JSX.Element {
               )}
 
               
+              <IonModal
+                isOpen={showAccountDeletionModal}
+                onDidDismiss={() => setShowAccountDeletionModal(false)}
+                breakpoints={[0, 0.72, 0.95]}
+                initialBreakpoint={0.95}
+              >
+                <IonHeader>
+                  <IonToolbar color="dark">
+                    <IonTitle>Solicitudes borrar cuenta</IonTitle>
+                    <div slot="end" style={{ paddingRight: 8 }}>
+                      <IonButton
+                        fill="clear"
+                        color="light"
+                        onClick={() => setShowAccountDeletionModal(false)}
+                      >
+                        Cerrar
+                      </IonButton>
+                    </div>
+                  </IonToolbar>
+                </IonHeader>
+
+                <IonContent className="ion-padding">
+                  <IonCard style={{ margin: "0 0 12px" }}>
+                    <IonCardHeader>
+                      <div className="admin-section-title-row">
+                        <div>
+                          <IonCardTitle>Borrar cuenta</IonCardTitle>
+                          <IonCardSubtitle>
+                            Solicitudes enviadas desde Perfil. Aprobar deja la cuenta marcada para desactivación administrativa.
+                          </IonCardSubtitle>
+                        </div>
+
+                        <IonBadge color={pendingAccountDeletionRequests.length > 0 ? "warning" : "medium"}>
+                          {pendingAccountDeletionRequests.length} pendiente{pendingAccountDeletionRequests.length !== 1 ? "s" : ""}
+                        </IonBadge>
+                      </div>
+                    </IonCardHeader>
+
+                    <IonCardContent>
+                      {accountDeletionRequests.length === 0 ? (
+                        <IonText color="medium">
+                          <p style={{ margin: 0, fontWeight: 850 }}>
+                            No hay solicitudes de eliminación de cuenta.
+                          </p>
+                        </IonText>
+                      ) : (
+                        <div style={{ display: "grid", gap: 10 }}>
+                          {accountDeletionRequests.map((request) => (
+                            <IonCard key={request.id} style={{ margin: 0 }}>
+                              <IonCardContent style={{ padding: 14 }}>
+                                <div
+                                  style={{
+                                    display: "flex",
+                                    justifyContent: "space-between",
+                                    alignItems: "flex-start",
+                                    gap: 10,
+                                    marginBottom: 8,
+                                  }}
+                                >
+                                  <div>
+                                    <h3 style={{ margin: 0, fontWeight: 950 }}>
+                                      {request.userName || request.userEmail || "Usuario"}
+                                    </h3>
+                                    <p style={{ margin: "4px 0 0", color: "#4b5563", fontWeight: 800 }}>
+                                      {request.userEmail || "Correo no informado"} · {request.userRole || "Rol no informado"}
+                                    </p>
+                                  </div>
+
+                                  <IonBadge color={adminAccountDeletionStatusColor(request.status)}>
+                                    {adminAccountDeletionStatusLabel(request.status)}
+                                  </IonBadge>
+                                </div>
+
+                                <div
+                                  style={{
+                                    padding: "10px 12px",
+                                    borderRadius: 14,
+                                    background: "#f8fafc",
+                                    border: "1px solid rgba(148, 163, 184, .32)",
+                                    color: "#111827",
+                                    fontWeight: 800,
+                                  }}
+                                >
+                                  <p style={{ margin: 0 }}>
+                                    <strong>Motivo:</strong> {request.reason}
+                                  </p>
+
+                                  {request.comment && (
+                                    <p style={{ margin: "6px 0 0" }}>
+                                      <strong>Comentario:</strong> {request.comment}
+                                    </p>
+                                  )}
+
+                                  <p style={{ margin: "6px 0 0", color: "#64748b" }}>
+                                    Enviada: {formatAdminAccountDeletionDate(request.createdAt)}
+                                  </p>
+
+                                  {request.adminNote && (
+                                    <p style={{ margin: "6px 0 0", color: "#64748b" }}>
+                                      <strong>Nota admin:</strong> {request.adminNote}
+                                    </p>
+                                  )}
+                                </div>
+
+                                {request.status === "pending_admin" && (
+                                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 12 }}>
+                                    <IonButton
+                                      size="small"
+                                      color="danger"
+                                      onClick={() => {
+                                        const next = updateAdminAccountDeletionRequestStatus(
+                                          request.id,
+                                          "approved",
+                                          "Solicitud aprobada. Cuenta marcada para desactivación administrativa.",
+                                        );
+                                        setAccountDeletionRequests(next);
+                                        setAdminCashToast("Solicitud de borrar cuenta aprobada.");
+                                      }}
+                                    >
+                                      Aprobar eliminación
+                                    </IonButton>
+
+                                    <IonButton
+                                      size="small"
+                                      color="medium"
+                                      fill="outline"
+                                      onClick={() => {
+                                        const next = updateAdminAccountDeletionRequestStatus(
+                                          request.id,
+                                          "rejected",
+                                          "Solicitud rechazada por administrador.",
+                                        );
+                                        setAccountDeletionRequests(next);
+                                        setAdminCashToast("Solicitud de borrar cuenta rechazada.");
+                                      }}
+                                    >
+                                      Rechazar
+                                    </IonButton>
+                                  </div>
+                                )}
+                              </IonCardContent>
+                            </IonCard>
+                          ))}
+                        </div>
+                      )}
+                    </IonCardContent>
+                  </IonCard>
+                </IonContent>
+              </IonModal>
+
               {/* rapago-admin-no-show-modal */}
               <IonModal
                 className="rapago-admin-no-show-modal"
@@ -4813,25 +5136,34 @@ export function AdminDriversPage(): JSX.Element {
 
     const runAutoReassign = () => {
       const localScheduled = readLocalAdminScheduledRides();
+      const assignedAutomatically: AdminRideData[] = [];
       const reassigned: AdminRideData[] = [];
 
       for (const ride of localScheduled) {
+        const directAssignment = autoAssignReservationToAvailableDriverFromAdmin(ride, drivers);
+        if (directAssignment) {
+          assignedAutomatically.push(directAssignment);
+          continue;
+        }
+
         const next = autoAssignReservationToNextAvailableDriverFromAdmin(ride, drivers);
         if (next) reassigned.push(next);
       }
 
-      if (reassigned.length > 0) {
-        setDriverRides((prev) => mergeAdminRides([...reassigned, ...prev]));
+      const processed = [...assignedAutomatically, ...reassigned];
+
+      if (processed.length > 0) {
+        setDriverRides((prev) => mergeAdminRides([...processed, ...prev]));
         setAssignmentRide((current) => {
           if (!current) return current;
-          return reassigned.some((ride) => getAdminRideMergeKey(ride) === getAdminRideMergeKey(current))
+          return processed.some((ride) => getAdminRideMergeKey(ride) === getAdminRideMergeKey(current))
             ? null
             : current;
         });
         setAssignmentToast(
-          reassigned.length === 1
-            ? "Reserva reasignada automáticamente al siguiente conductor disponible."
-            : `${reassigned.length} reservas reasignadas automáticamente al siguiente conductor disponible.`,
+          processed.length === 1
+            ? "Sistema asignó automáticamente la reserva a un conductor disponible."
+            : `${processed.length} reservas asignadas automáticamente a conductores disponibles.`,
         );
       }
     };
@@ -7473,6 +7805,154 @@ function findNextAvailableAdminDriverForRide(
   );
 }
 
+function readAdminReservationAutoAssignLog(): AdminReservationAutoAssignLog[] {
+  try {
+    const raw = localStorage.getItem(RAPAGO_ADMIN_RESERVATION_AUTO_ASSIGN_LOG_KEY);
+    const parsed = raw ? (JSON.parse(raw) as Array<Record<string, unknown>>) : [];
+    if (!Array.isArray(parsed)) return [];
+
+    return parsed
+      .map((item, index): AdminReservationAutoAssignLog => ({
+        id: String(item.id ?? `reservation-auto-assign-${index}`),
+        rideId: String(item.rideId ?? ""),
+        rideKey: String(item.rideKey ?? item.rideId ?? ""),
+        status: String(item.status ?? "skipped") as AdminReservationAutoAssignLogStatus,
+        driverId: typeof item.driverId === "string" ? item.driverId : null,
+        driverName: typeof item.driverName === "string" ? item.driverName : null,
+        driverEmail: typeof item.driverEmail === "string" ? item.driverEmail : null,
+        message: String(item.message ?? ""),
+        createdAt: String(item.createdAt ?? new Date().toISOString()),
+        updatedAt: String(item.updatedAt ?? item.createdAt ?? new Date().toISOString()),
+      }))
+      .filter((item) => Boolean(item.rideKey || item.rideId));
+  } catch {
+    return [];
+  }
+}
+
+function writeAdminReservationAutoAssignLog(logs: AdminReservationAutoAssignLog[]): void {
+  try {
+    localStorage.setItem(RAPAGO_ADMIN_RESERVATION_AUTO_ASSIGN_LOG_KEY, JSON.stringify(logs.slice(0, 250)));
+    window.dispatchEvent(new CustomEvent(ADMIN_RESERVATION_AUTO_ASSIGN_EVENT, { detail: { logs } }));
+  } catch {
+    // No bloquea el panel admin.
+  }
+}
+
+function upsertAdminReservationAutoAssignLog(input: Omit<AdminReservationAutoAssignLog, "id" | "createdAt" | "updatedAt">): void {
+  const now = new Date().toISOString();
+  const id = `reservation-auto-assign-${input.rideKey || input.rideId}`;
+  const current = readAdminReservationAutoAssignLog();
+  const previous = current.find((item) => item.id === id);
+  const nextLog: AdminReservationAutoAssignLog = {
+    id,
+    ...input,
+    createdAt: previous?.createdAt ?? now,
+    updatedAt: now,
+  };
+
+  writeAdminReservationAutoAssignLog([
+    nextLog,
+    ...current.filter((item) => item.id !== id),
+  ]);
+}
+
+function adminRideCanBeAutoAssignedFromReservation(ride: AdminRideData): boolean {
+  const schedule = getAdminRideScheduleInfo(ride);
+  if (!schedule.isScheduled) return false;
+  if (hasAdminAssignedDriver(ride)) return false;
+
+  const effectiveStatus = getEffectiveAdminRideStatus(ride);
+  if (["completed", "cancelled", "accepted", "driver_en_route", "driver_arrived", "in_progress"].includes(effectiveStatus)) {
+    return false;
+  }
+
+  const record = ride as AdminRideData & Record<string, unknown>;
+  const rawStatus = String(
+    record.adminScheduleStatus ??
+      record.scheduleStatus ??
+      record.reservationStatus ??
+      record.driverAssignmentStatus ??
+      "",
+  ).toLowerCase();
+
+  if (
+    rawStatus.includes("cancel") ||
+    rawStatus.includes("accepted") ||
+    rawStatus.includes("completed") ||
+    rawStatus.includes("in_progress")
+  ) {
+    return false;
+  }
+
+  return true;
+}
+
+function autoAssignReservationToAvailableDriverFromAdmin(
+  ride: AdminRideData,
+  drivers: ActiveDriverData[],
+): AdminRideData | null {
+  if (!adminRideCanBeAutoAssignedFromReservation(ride)) return null;
+
+  const rideKey = getAdminRideMergeKey(ride);
+  const nextDriver = findNextAvailableAdminDriverForRide(ride, drivers);
+
+  if (!nextDriver) {
+    upsertAdminReservationAutoAssignLog({
+      rideId: ride.id,
+      rideKey,
+      status: "waiting_driver",
+      driverId: null,
+      driverName: null,
+      driverEmail: null,
+      message: "Reserva recibida. El sistema sigue buscando un conductor disponible automáticamente.",
+    });
+    return null;
+  }
+
+  const now = new Date().toISOString();
+  const preparedRide = {
+    ...(ride as AdminRideData & Record<string, unknown>),
+    status: "scheduled",
+    adminScheduleStatus: "pending_driver_confirmation",
+    scheduleStatus: "pending_driver_confirmation",
+    reservationStatus: "assigned_waiting_driver_acceptance",
+    driverAssignmentStatus: "pending_driver_acceptance",
+    availableForDrivers: false,
+    reassignmentNeeded: false,
+    needsNextAvailableDriver: false,
+    autoAssignedBy: "admin_auto",
+    autoAssignedAt: now,
+    adminAutoAssignStatus: "assigned",
+    adminAutoAssignedDriverId: nextDriver.id,
+    adminAutoAssignedDriverName: nextDriver.name,
+    adminAutoAssignedDriverEmail: nextDriver.email,
+    adminAutoAssignMessage: `Sistema asignó automáticamente esta reserva a ${nextDriver.name}. Esperando confirmación del conductor.`,
+    passengerNotification: "Tu reserva fue asignada a un conductor. Estamos esperando su confirmación.",
+    driverNotification: "Te llegó una reserva agendada de RAPA GO. Confirma si puedes realizarla.",
+  } as AdminRideData;
+
+  const assigned = assignScheduledRideToDriverLocally(preparedRide, nextDriver);
+
+  upsertAdminReservationAutoAssignLog({
+    rideId: assigned.id,
+    rideKey,
+    status: "assigned",
+    driverId: nextDriver.id,
+    driverName: nextDriver.name,
+    driverEmail: nextDriver.email,
+    message: `Reserva asignada automáticamente a ${nextDriver.name}.`,
+  });
+
+  window.dispatchEvent(
+    new CustomEvent(ADMIN_RESERVATION_AUTO_ASSIGN_EVENT, {
+      detail: { ride: assigned, driverId: nextDriver.id, driverName: nextDriver.name },
+    }),
+  );
+
+  return assigned;
+}
+
 function autoAssignReservationToNextAvailableDriverFromAdmin(
   ride: AdminRideData,
   drivers: ActiveDriverData[],
@@ -7740,6 +8220,7 @@ export function AdminTripsPage(): JSX.Element {
   const [cancelAlertId, setCancelAlertId] = useState<string | null>(null);
   const [cancelError, setCancelError] = useState<string | null>(null);
   const [activatingId, setActivatingId] = useState<string | null>(null);
+  const [autoAssignToast, setAutoAssignToast] = useState<string | null>(null);
 
   const loadData = useCallback(
     async (silent = false) => {
@@ -7806,6 +8287,77 @@ export function AdminTripsPage(): JSX.Element {
       window.removeEventListener("rapago:admin-scheduled-rides-updated", refreshScheduled);
     };
   }, [loadData]);
+
+  useEffect(() => {
+    if (!session?.accessToken) return;
+
+    const accessToken = session.accessToken;
+    let cancelled = false;
+    let running = false;
+
+    const runAutoReservationAssignment = async (): Promise<void> => {
+      if (running) return;
+      running = true;
+
+      try {
+        const drivers = await adminService.listActiveDrivers(accessToken);
+        const localScheduled = readLocalAdminScheduledRides();
+        const processed: AdminRideData[] = [];
+
+        for (const ride of localScheduled) {
+          const directAssignment = autoAssignReservationToAvailableDriverFromAdmin(ride, drivers);
+          if (directAssignment) {
+            processed.push(directAssignment);
+            continue;
+          }
+
+          const reassigned = autoAssignReservationToNextAvailableDriverFromAdmin(ride, drivers);
+          if (reassigned) processed.push(reassigned);
+        }
+
+        if (processed.length > 0 && !cancelled) {
+          setRides((prev) =>
+            sortAdminRidesForOperations(mergeAdminRides([...processed, ...prev])),
+          );
+          setAutoAssignToast(
+            processed.length === 1
+              ? "Sistema asignó automáticamente una reserva a un conductor disponible."
+              : `Sistema asignó automáticamente ${processed.length} reservas a conductores disponibles.`,
+          );
+        }
+      } catch {
+        // No bloquea el panel: si falla, se reintenta en el próximo ciclo.
+      } finally {
+        running = false;
+      }
+    };
+
+    void runAutoReservationAssignment();
+
+    const timerId = window.setInterval(() => {
+      void runAutoReservationAssignment();
+    }, 5000);
+
+    const onReservationEvent = () => {
+      window.setTimeout(() => {
+        void runAutoReservationAssignment();
+      }, 120);
+    };
+
+    window.addEventListener("storage", onReservationEvent);
+    window.addEventListener("rapago:admin-scheduled-rides-updated", onReservationEvent as EventListener);
+    window.addEventListener(ADMIN_RESERVATION_AUTO_REASSIGN_EVENT, onReservationEvent as EventListener);
+    window.addEventListener(ADMIN_RESERVATION_AUTO_ASSIGN_EVENT, onReservationEvent as EventListener);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(timerId);
+      window.removeEventListener("storage", onReservationEvent);
+      window.removeEventListener("rapago:admin-scheduled-rides-updated", onReservationEvent as EventListener);
+      window.removeEventListener(ADMIN_RESERVATION_AUTO_REASSIGN_EVENT, onReservationEvent as EventListener);
+      window.removeEventListener(ADMIN_RESERVATION_AUTO_ASSIGN_EVENT, onReservationEvent as EventListener);
+    };
+  }, [session?.accessToken]);
 
   async function handleCancel(rideId: string, reason: string) {
     if (!session?.accessToken) return;
@@ -8115,6 +8667,21 @@ export function AdminTripsPage(): JSX.Element {
                 RIDE_STATUS_LABEL_ADMIN[effectiveStatus] ?? effectiveStatus;
               const adminCleanNotes = cleanAdminRideNotes(ride.notes);
               const airportWelcomeInfo = getAdminRideAirportWelcomeInfo(ride);
+              const assignedDriverName = String(
+                getRideUnknownField(ride, "assignedDriverName") ?? ride.driverName ?? "",
+              ).trim();
+              const adminAutoAssignedAt = String(
+                getRideUnknownField(ride, "autoAssignedAt") ?? getRideUnknownField(ride, "autoReassignedAt") ?? "",
+              ).trim();
+              const adminAutoAssignMessage = String(
+                getRideUnknownField(ride, "adminAutoAssignMessage") ?? "",
+              ).trim();
+              const wasAutoAssignedBySystem = Boolean(
+                adminAutoAssignedAt ||
+                  String(getRideUnknownField(ride, "autoAssignedBy") ?? getRideUnknownField(ride, "autoReassignedBy") ?? "")
+                    .toLowerCase()
+                    .includes("admin_auto"),
+              );
               return (
                 <IonCard key={ride.id} style={{ margin: 0 }}>
                   <IonCardContent style={{ padding: "12px 14px" }}>
@@ -8215,6 +8782,35 @@ export function AdminTripsPage(): JSX.Element {
                             : scheduleInfo.isReturnOnlyPromotion
                               ? "el admin debe asignar conductor para el regreso."
                               : "se buscarán conductores 10 min antes."}
+                        </div>
+                      </div>
+                    )}
+
+                    {scheduleInfo.isScheduled && assignedDriverName && wasAutoAssignedBySystem && (
+                      <div
+                        style={{
+                          background: "rgba(34,197,94,.12)",
+                          border: "1px solid rgba(34,197,94,.32)",
+                          borderRadius: "14px",
+                          padding: "10px 12px",
+                          marginBottom: "8px",
+                          fontSize: "0.78rem",
+                          lineHeight: 1.35,
+                          color: "#064E3B",
+                          fontWeight: 850,
+                        }}
+                      >
+                        <strong>✅ Asignación automática realizada</strong>
+                        <div>
+                          Conductor asignado: <strong>{assignedDriverName}</strong>
+                        </div>
+                        {adminAutoAssignedAt && (
+                          <div>
+                            Fecha: {formatAdminScheduleDate(adminAutoAssignedAt)}
+                          </div>
+                        )}
+                        <div>
+                          {adminAutoAssignMessage || "El sistema encontró un conductor disponible y le envió esta reserva para confirmación."}
                         </div>
                       </div>
                     )}
@@ -8456,6 +9052,14 @@ export function AdminTripsPage(): JSX.Element {
           onDidDismiss={() => {
             if (cancellingId === null) setCancelAlertId(null);
           }}
+        />
+
+        <IonToast
+          isOpen={autoAssignToast !== null}
+          message={autoAssignToast ?? ""}
+          duration={3200}
+          color="success"
+          onDidDismiss={() => setAutoAssignToast(null)}
         />
       </IonContent>
     </IonPage>
