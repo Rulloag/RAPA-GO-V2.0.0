@@ -5283,6 +5283,7 @@ const DRIVER_ASSIGNED_SCHEDULED_RIDE_EVENT = "rapago:driver-assigned-scheduled-r
 
 const DRIVER_SCHEDULED_RESERVATION_EVENT = "rapago:driver-scheduled-reservation-updated";
 const DRIVER_RESERVATION_AUTO_REASSIGN_EVENT = "rapago:admin-reservation-reassign-needed";
+const DRIVER_ADMIN_RESERVATION_AUTO_ASSIGNED_EVENT = "rapago:admin-reservation-auto-assigned";
 const DRIVER_RESERVATIONS_VIEW_ROUTE = `${ROUTES.DRIVER.REQUESTS}?view=reservations`;
 const DRIVER_REQUESTS_VIEW_ROUTE = `${ROUTES.DRIVER.REQUESTS}?view=requests`;
 
@@ -5487,6 +5488,18 @@ function getDriverScheduledReservationDriverKeys(ride: DriverAcceptedRideBridgeR
     ride.assignedDriverQueueKeys,
     ride.driverReservationKeys,
     ride.driverQueueKeys,
+    // Compatibilidad con el auto-asignador del Admin.
+    (ride as Record<string, unknown>).adminAutoAssignedDriverId,
+    (ride as Record<string, unknown>).adminAutoAssignedDriverUserId,
+    (ride as Record<string, unknown>).adminAutoAssignedDriverEmail,
+    (ride as Record<string, unknown>).adminAutoAssignedDriverName,
+    (ride as Record<string, unknown>).autoAssignedDriverId,
+    (ride as Record<string, unknown>).autoAssignedDriverUserId,
+    (ride as Record<string, unknown>).autoAssignedDriverEmail,
+    (ride as Record<string, unknown>).autoAssignedDriverName,
+    (ride as Record<string, unknown>).nextAssignedDriverId,
+    (ride as Record<string, unknown>).nextAssignedDriverEmail,
+    (ride as Record<string, unknown>).nextAssignedDriverName,
     ride.ownerKey,
     ride.driverOwnerKey,
   ]);
@@ -5566,14 +5579,19 @@ function driverScheduledReservationIsAccepted(ride: DriverAcceptedRideBridgeReco
   const response = driverBridgeClean(
     ride.driverScheduleResponse ?? ride.scheduledDriverResponse ?? ride.driverReservationResponse,
   );
-  const adminStatus = driverBridgeClean(ride.adminScheduleStatus ?? ride.adminReservationStatus);
+  const adminStatus = driverBridgeClean(
+    ride.adminScheduleStatus ?? ride.adminReservationStatus ?? ride.scheduleStatus ?? ride.reservationStatus,
+  );
 
   return (
     response === "accepted" ||
     response === "aceptada" ||
+    response === "confirmada" ||
+    response === "driver_accepted" ||
     adminStatus === "driver_confirmed" ||
     adminStatus === "driver_accepted" ||
     adminStatus === "accepted_by_driver" ||
+    adminStatus === "driver_confirmed_waiting_activation" ||
     status === "driver_scheduled_confirmed"
   );
 }
@@ -10855,7 +10873,7 @@ function DriverGlobalRideAlert(): JSX.Element | null {
   ]);
 
   useEffect(() => {
-    if (!isDriverAvailable || !shouldRunGlobalAlert) {
+    if (!isDriverAvailable) {
       stopRideAlert(true);
       return;
     }
@@ -10871,6 +10889,7 @@ function DriverGlobalRideAlert(): JSX.Element | null {
     window.addEventListener(DRIVER_ASSIGNED_SCHEDULED_RIDE_EVENT, tick as EventListener);
     window.addEventListener("rapago:driver-reservation-inbox-updated", tick as EventListener);
     window.addEventListener("rapago:admin-scheduled-rides-updated", tick as EventListener);
+    window.addEventListener(DRIVER_ADMIN_RESERVATION_AUTO_ASSIGNED_EVENT, tick as EventListener);
     window.addEventListener("storage", tick);
 
     return () => {
@@ -10879,6 +10898,7 @@ function DriverGlobalRideAlert(): JSX.Element | null {
       window.removeEventListener(DRIVER_ASSIGNED_SCHEDULED_RIDE_EVENT, tick as EventListener);
       window.removeEventListener("rapago:driver-reservation-inbox-updated", tick as EventListener);
       window.removeEventListener("rapago:admin-scheduled-rides-updated", tick as EventListener);
+      window.removeEventListener(DRIVER_ADMIN_RESERVATION_AUTO_ASSIGNED_EVENT, tick as EventListener);
       window.removeEventListener("storage", tick);
     };
   }, [
@@ -12021,6 +12041,7 @@ function AssignedRidesPage(): JSX.Element {
     window.addEventListener(DRIVER_ASSIGNED_SCHEDULED_RIDE_EVENT, tick as EventListener);
     window.addEventListener("rapago:driver-reservation-inbox-updated", tick as EventListener);
     window.addEventListener("rapago:admin-scheduled-rides-updated", tick as EventListener);
+    window.addEventListener(DRIVER_ADMIN_RESERVATION_AUTO_ASSIGNED_EVENT, tick as EventListener);
     window.addEventListener("storage", tick as EventListener);
 
     return () => {
@@ -12029,6 +12050,7 @@ function AssignedRidesPage(): JSX.Element {
       window.removeEventListener(DRIVER_ASSIGNED_SCHEDULED_RIDE_EVENT, tick as EventListener);
       window.removeEventListener("rapago:driver-reservation-inbox-updated", tick as EventListener);
       window.removeEventListener("rapago:admin-scheduled-rides-updated", tick as EventListener);
+      window.removeEventListener(DRIVER_ADMIN_RESERVATION_AUTO_ASSIGNED_EVENT, tick as EventListener);
       window.removeEventListener("storage", tick as EventListener);
     };
   }, [
@@ -12329,6 +12351,7 @@ function AssignedRidesPage(): JSX.Element {
     window.addEventListener(DRIVER_ASSIGNED_SCHEDULED_RIDE_EVENT, refreshAvailableAfterRequeue as EventListener);
     window.addEventListener("rapago:driver-reservation-inbox-updated", refreshAvailableAfterRequeue as EventListener);
     window.addEventListener("rapago:admin-scheduled-rides-updated", refreshAvailableAfterRequeue as EventListener);
+    window.addEventListener(DRIVER_ADMIN_RESERVATION_AUTO_ASSIGNED_EVENT, refreshAvailableAfterRequeue as EventListener);
     window.addEventListener("rapago:driver-available-rides-updated", refreshAvailableAfterRequeue as EventListener);
     window.addEventListener("storage", refreshAvailableAfterRequeue);
 
@@ -12338,6 +12361,7 @@ function AssignedRidesPage(): JSX.Element {
       window.removeEventListener(DRIVER_ASSIGNED_SCHEDULED_RIDE_EVENT, refreshAvailableAfterRequeue as EventListener);
       window.removeEventListener("rapago:driver-reservation-inbox-updated", refreshAvailableAfterRequeue as EventListener);
       window.removeEventListener("rapago:admin-scheduled-rides-updated", refreshAvailableAfterRequeue as EventListener);
+      window.removeEventListener(DRIVER_ADMIN_RESERVATION_AUTO_ASSIGNED_EVENT, refreshAvailableAfterRequeue as EventListener);
       window.removeEventListener("rapago:driver-available-rides-updated", refreshAvailableAfterRequeue as EventListener);
       window.removeEventListener("storage", refreshAvailableAfterRequeue);
     };
