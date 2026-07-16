@@ -77,7 +77,8 @@ type RapaGoConnectivityRole = "driver" | "passenger" | "admin";
 const RAPAGO_CONNECTIVITY_STATUS_KEY = "rapago_connectivity_status_v1";
 const RAPAGO_CONNECTIVITY_EVENT = "rapago:connectivity-status-changed";
 const RAPAGO_DRIVER_NO_SHOW_AFTER_ARRIVAL_MS = 5 * 60 * 1000;
-const RAPAGO_DRIVER_NO_SHOW_TOTAL_SERVICE_CHARGE = true;
+const RAPAGO_DRIVER_NO_SHOW_PERCENT = 50;
+const RAPAGO_DRIVER_NO_SHOW_CAP_CLP = 5000;
 const RAPAGO_PASSENGER_PENDING_CHARGES_KEY_DRIVER = "rapago_passenger_pending_charges_v1";
 const RAPAGO_PASSENGER_PENDING_CHARGE_EVENT_DRIVER = "rapago:passenger-pending-charge-updated";
 const RAPAGO_SUPPORT_WHATSAPP_PHONE_DRIVER = "56947964171";
@@ -9113,9 +9114,20 @@ function getDriverRideMinimumFareForNoShow(ride: Partial<DriverRideData> & Recor
 }
 
 function getDriverRideNoShowFeeClp(ride: Partial<DriverRideData> & Record<string, unknown>): number {
-  // No show RAPA GO: cobro íntegro del servicio tras 5 minutos de espera,
-  // con aviso por app y WhatsApp al pasajero.
-  return Math.max(0, Math.round(getDriverRideMinimumFareForNoShow(ride)));
+  const applicableFareClp = Math.max(
+    0,
+    Math.round(getDriverRideMinimumFareForNoShow(ride)),
+  );
+
+  return Math.min(
+    RAPAGO_DRIVER_NO_SHOW_CAP_CLP,
+    Math.max(
+      0,
+      Math.round(
+        applicableFareClp * (RAPAGO_DRIVER_NO_SHOW_PERCENT / 100),
+      ),
+    ),
+  );
 }
 
 function getDriverRideArrivalTimestampMsForNoShow(ride: Partial<DriverRideData> & Record<string, unknown>): number | null {
@@ -9236,35 +9248,233 @@ function getDriverNoShowRideKey(ride: Partial<DriverRideData> & Record<string, u
 }
 
 
-function driverNoShowRideLooksCardPaid(ride: Partial<DriverRideData> & Record<string, unknown>): boolean {
-  const text = [
-    ride.paymentMethod,
-    ride.paymentProvider,
-    ride.paymentStatus,
-    ride.paymentId,
-    ride.mercadoPagoPaymentId,
-    ride.notes,
-  ].map((value) => String(value ?? "").toLowerCase()).join(" ");
 
-  return (
-    text.includes("tarjeta") ||
-    text.includes("card") ||
-    text.includes("mercadopago") ||
-    text.includes("mercado pago") ||
-    text.includes("webpay") ||
-    Boolean(ride.paymentId || ride.mercadoPagoPaymentId)
-  );
+type DriverPassengerIdentityForNoShow = {
+  userId: string | null;
+  fullName: string | null;
+  email: string | null;
+  phone: string | null;
+};
+
+const RAPAGO_DRIVER_PASSENGER_IDENTITY_STORAGE_KEYS = [
+  "rapago_local_passenger_rides",
+  "rapago_driver_accepted_vehicle_rides_v1",
+  "rapago_driver_accepted_rides_v1",
+  "rapago_local_driver_assigned_rides",
+  "rapago_driver_active_rides_v1",
+  "rapago_last_accepted_ride",
+  "rapago_admin_scheduled_rides",
+  "rapago_admin_scheduled_rides_v1",
+  "rapago_admin_scheduled_rides_v2",
+  "rapago_admin_scheduled_rides_force_v1",
+  "rapago_bridge_scheduled_rides_v1",
+] as const;
+
+function driverNoShowIdentityString(
+  record: Record<string, unknown> | null | undefined,
+  keys: string[],
+): string {
+  if (!record) return "";
+
+  for (const key of keys) {
+    const value = String(record[key] ?? "").trim();
+    if (value) return value;
+  }
+
+  return "";
+}
+
+function extractDriverNoShowPassengerNameFromNotes(
+  notes: unknown,
+): string {
+  const text = String(notes ?? "");
+  if (!text.trim()) return "";
+
+  const patterns = [
+    /Nombre completo del pasajero\s*:\s*([^\n]+)/i,
+    /Nombre del pasajero\s*:\s*([^\n]+)/i,
+    /Nombre pasajero\s*:\s*([^\n]+)/i,
+    /Pasajero\s*:\s*([^\n]+)/i,
+    /Nombre del usuario\s*:\s*([^\n]+)/i,
+  ];
+
+  for (const pattern of patterns) {
+    const match = text.match(pattern);
+    const value = String(match?.[1] ?? "")
+      .replace(/\s+/g, " ")
+      .trim();
+
+    if (value) return value.slice(0, 120);
+  }
+
+  return "";
+}
+
+function readDriverPassengerIdentityMirror(
+  ride: Record<string, unknown>,
+): Record<string, unknown> | null {
+  for (const key of RAPAGO_DRIVER_PASSENGER_IDENTITY_STORAGE_KEYS) {
+    try {
+      const raw = localStorage.getItem(key);
+      if (!raw) continue;
+
+      const parsed = JSON.parse(raw) as unknown;
+      const candidates: Array<Record<string, unknown>> = [];
+
+      if (Array.isArray(parsed)) {
+        candidates.push(
+          ...parsed.filter(
+            (item): item is Record<string, unknown> =>
+              Boolean(item && typeof item === "object"),
+          ),
+        );
+      } else if (parsed && typeof parsed === "object") {
+        const record = parsed as Record<string, unknown>;
+        const nestedRide =
+          record.ride && typeof record.ride === "object"
+            ? (record.ride as Record<string, unknown>)
+            : null;
+
+        candidates.push(nestedRide ?? record);
+      }
+
+      const matched = candidates.find((candidate) =>
+        driverRideIdentityMatches(candidate, ride),
+      );
+
+      if (matched) return matched;
+    } catch {
+      // Continúa con la siguiente fuente local.
+    }
+  }
+
+  return null;
+}
+
+function getDriverPassengerIdentityForNoShow(
+  ride: Record<string, unknown>,
+): DriverPassengerIdentityForNoShow {
+  const mirror = readDriverPassengerIdentityMirror(ride);
+  const source = {
+    ...(mirror ?? {}),
+    ...ride,
+  } as Record<string, unknown>;
+
+  const firstName = driverNoShowIdentityString(source, [
+    "passengerFirstName",
+    "userFirstName",
+    "firstName",
+    "givenName",
+  ]);
+  const lastName = driverNoShowIdentityString(source, [
+    "passengerLastName",
+    "userLastName",
+    "lastName",
+    "familyName",
+    "surname",
+  ]);
+
+  const fullName =
+    driverNoShowIdentityString(source, [
+      "passengerFullName",
+      "passengerName",
+      "userFullName",
+      "userName",
+      "customerName",
+      "clientName",
+    ]) ||
+    [firstName, lastName].filter(Boolean).join(" ").trim() ||
+    extractDriverNoShowPassengerNameFromNotes(source.notes);
+
+  const email = driverNoShowIdentityString(source, [
+    "passengerEmail",
+    "userEmail",
+    "customerEmail",
+    "email",
+  ]).toLowerCase();
+
+  const phone = driverNoShowIdentityString(source, [
+    "passengerPhone",
+    "userPhone",
+    "customerPhone",
+    "phone",
+    "mobile",
+  ]);
+
+  const userId = driverNoShowIdentityString(source, [
+    "passengerUserId",
+    "ownerUserId",
+    "requesterUserId",
+    "userId",
+  ]);
+
+  return {
+    userId: userId || null,
+    fullName: fullName || null,
+    email: email || null,
+    phone: phone || null,
+  };
 }
 
 function getDriverRidePassengerPhoneForNoShow(ride: Partial<DriverRideData> & Record<string, unknown>): string {
+  const identity = getDriverPassengerIdentityForNoShow(
+    ride as Record<string, unknown>,
+  );
+
   return String(
-    ride.passengerPhone ??
+    identity.phone ??
+      ride.passengerPhone ??
       ride.userPhone ??
       ride.phone ??
       ride.passengerMobile ??
       ride.mobile ??
       "",
   ).replace(/\D/g, "");
+}
+
+
+function getDriverPolicyChargeApiBaseUrl(): string {
+  const env =
+    (import.meta as unknown as {
+      env?: Record<string, string | undefined>;
+    }).env ?? {};
+
+  return String(
+    env.VITE_API_URL ??
+      env.VITE_API_BASE_URL ??
+      "http://localhost:3000",
+  ).replace(/\/+$/, "");
+}
+
+async function declareDriverNoShowInBackend(
+  accessToken: string,
+  rideId: string,
+): Promise<Record<string, unknown>> {
+  const response = await fetch(
+    `${getDriverPolicyChargeApiBaseUrl()}/api/rides/${encodeURIComponent(rideId)}/no-show`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${accessToken}`,
+      },
+      body: JSON.stringify({}),
+    },
+  );
+
+  const payload = (await response
+    .json()
+    .catch(() => ({}))) as Record<string, unknown>;
+
+  if (!response.ok) {
+    throw new Error(
+      typeof payload.message === "string"
+        ? payload.message
+        : "No se pudo registrar el No Show en el backend.",
+    );
+  }
+
+  return payload;
 }
 
 function buildDriverNoShowWhatsappUrl(ride: DriverRideData, feeClp: number): string | null {
@@ -9275,7 +9485,8 @@ function buildDriverNoShowWhatsappUrl(ride: DriverRideData, feeClp: number): str
     "Hola, soy tu conductor de RAPA GO.",
     "Ya llegué al punto de recogida indicado en la app.",
     "La app registra 5 minutos de espera.",
-    `Si no te presentas, se marcará NO SHOW y se cobrará el total del servicio: ${formatClp(feeClp)}.`,
+    `Si no te presentas, se podrá marcar NO SHOW. El cargo referencial es 50% de la tarifa, con tope de $5.000: ${formatClp(feeClp)}.`,
+    "El administrador debe revisar y aprobar el cargo antes de sumarlo a un próximo viaje.",
     `Viaje: ${String(ride.originText ?? "Origen")} → ${String(ride.destinationText ?? "Destino")}.`,
   ].join("\n");
 
@@ -9290,7 +9501,8 @@ function buildDriverArrivedWhatsappUrl(ride: DriverRideData, feeClp: number): st
     "Hola, soy tu conductor de RAPA GO.",
     "Ya llegué al punto de recogida indicado en la app.",
     "Por favor sal ahora para iniciar el viaje.",
-    `La app inicia una espera de 5 minutos. Si no te presentas, se puede marcar NO SHOW y cobrar el total del servicio: ${formatClp(feeClp)}.`,
+    `La app inicia una espera de 5 minutos. Si no te presentas, se puede marcar NO SHOW con un cargo referencial de 50% de la tarifa, tope $5.000: ${formatClp(feeClp)}.`,
+    "El cargo queda pendiente de revisión administrativa.",
     `Viaje: ${String(ride.originText ?? "Origen")} → ${String(ride.destinationText ?? "Destino")}.`,
   ].join("\n");
 
@@ -9388,8 +9600,10 @@ function notifyPassengerDriverArrivedByAppAndWhatsapp(ride: DriverRideData): voi
 
 function notifyPassengerNoShowByAppAndWhatsapp(ride: DriverRideData, feeClp: number): void {
   const record = ride as DriverRideData & Record<string, unknown>;
+  const passengerIdentity = getDriverPassengerIdentityForNoShow(record);
   const now = new Date().toISOString();
   const amountClp = Math.max(0, Math.round(Number(feeClp) || 0));
+  const applicableFareClp = getDriverRideMinimumFareForNoShow(record);
 
   const rideId = String(
     record.id ??
@@ -9452,17 +9666,27 @@ function notifyPassengerNoShowByAppAndWhatsapp(ride: DriverRideData, feeClp: num
   };
 
   const pendingCharge = {
-    id: `no-show-review-${noShowRideId}`,
+    id: `driver-no-show-${noShowRideId}`,
     rideId: noShowRideId,
     rideKey,
-    passengerEmail: String(record.passengerEmail ?? record.email ?? "").trim().toLowerCase() || null,
-    ownerKey: String(record.passengerEmail ?? record.email ?? "").trim().toLowerCase() || null,
-    passengerName: String(record.passengerName ?? record.userName ?? record.name ?? "").trim() || null,
+    passengerUserId: passengerIdentity.userId,
+    ownerUserId: passengerIdentity.userId,
+    passengerEmail: passengerIdentity.email,
+    ownerKey: passengerIdentity.userId || passengerIdentity.email,
+    passengerName: passengerIdentity.fullName,
     originText: String(record.originText ?? ""),
     destinationText: String(record.destinationText ?? ""),
     amountClp,
+    minimumFareClp: applicableFareClp,
+    applicableFareClp,
+    originalServiceAmountClp: applicableFareClp,
+    originalNoShowServiceAmountClp: applicableFareClp,
+    feePercent: RAPAGO_DRIVER_NO_SHOW_PERCENT,
+    feeCapClp: RAPAGO_DRIVER_NO_SHOW_CAP_CLP,
     type: "no_show",
-    paymentMethod: String(record.paymentMethod ?? record.paymentType ?? ""),
+    paymentMethod:
+      String(record.paymentMethod ?? record.paymentType ?? "").trim() ||
+      getRidePaymentMethodLabel(String(record.notes ?? "")),
     status: "backend_review_required",
     adminReviewStatus: "pending_admin_review",
     title: "No show pendiente de revisi?n",
@@ -9606,7 +9830,8 @@ function saveDriverNoShowChargeForPassenger(
   const record = ride as DriverRideData & Record<string, unknown>;
   const rideKey = getDriverNoShowRideKey(record);
   const feeClp = getDriverRideNoShowFeeClp(record);
-  const isCardPaid = driverNoShowRideLooksCardPaid(record);
+  const applicableFareClp = getDriverRideMinimumFareForNoShow(record);
+  const passengerIdentity = getDriverPassengerIdentityForNoShow(record);
   const now = new Date().toISOString();
   const rideId = String(record.id ?? record.rideId ?? record.originalRideId ?? "").trim();
 
@@ -9614,23 +9839,33 @@ function saveDriverNoShowChargeForPassenger(
     id: `driver-no-show-${rideId || rideKey}`,
     rideId: rideId || rideKey,
     rideKey,
-    passengerEmail: String(record.passengerEmail ?? record.email ?? "").trim() || null,
-    passengerName: String(record.passengerName ?? record.userName ?? record.name ?? "").trim() || null,
+    passengerUserId: passengerIdentity.userId,
+    ownerUserId: passengerIdentity.userId,
+    passengerEmail: passengerIdentity.email,
+    passengerName: passengerIdentity.fullName,
+    passengerPhone: passengerIdentity.phone,
     originText: String(record.originText ?? ""),
     destinationText: String(record.destinationText ?? ""),
     amountClp: feeClp,
-    minimumFareClp: getDriverRideMinimumFareForNoShow(record),
+    minimumFareClp: applicableFareClp,
+    applicableFareClp,
+    originalServiceAmountClp: applicableFareClp,
+    originalNoShowServiceAmountClp: applicableFareClp,
+    feePercent: RAPAGO_DRIVER_NO_SHOW_PERCENT,
+    feeCapClp: RAPAGO_DRIVER_NO_SHOW_CAP_CLP,
     type: "no_show",
     paymentMethod: getRidePaymentMethodLabel(String(record.notes ?? "")),
-    status: isCardPaid ? "charged_from_card_or_paid_amount" : "pending_next_ride",
-    adminReviewStatus: isCardPaid ? "no_show_total_service_charged" : "charge_pending_next_ride",
+    status: "pending_admin_review",
+    adminReviewStatus: "pending_admin_review",
     createdAt: now,
     appliedRideId: null,
     appliedAt: null,
-    title: "Cargo por no show",
-    description: isCardPaid
-      ? `No show confirmado por conductor: notificó por app/WhatsApp y esperó 5 minutos en el punto. Se cobra el total del servicio desde el pago/tarjeta: ${formatClp(feeClp)}.`
-      : `No show confirmado por conductor: notificó por app/WhatsApp y esperó 5 minutos en el punto. Cargo total del servicio pendiente para el próximo viaje: ${formatClp(feeClp)}.`,
+    title: "No show pendiente de revisión",
+    description:
+      `No show informado por conductor después de 5 minutos de espera. ` +
+      `Cargo referencial: ${RAPAGO_DRIVER_NO_SHOW_PERCENT}% de la tarifa aplicable, ` +
+      `con tope de ${formatClp(RAPAGO_DRIVER_NO_SHOW_CAP_CLP)}. ` +
+      `Monto por revisar: ${formatClp(feeClp)}. El administrador debe aprobar o rechazar.`,
     driverId: String((user as Record<string, unknown> | null)?.id ?? record.driverId ?? record.driverUserId ?? "").trim() || null,
     driverEmail: String((user as Record<string, unknown> | null)?.email ?? record.driverEmail ?? "").trim() || null,
     driverName: String((user as Record<string, unknown> | null)?.name ?? record.driverName ?? "").trim() || null,
@@ -9675,12 +9910,13 @@ function markPassengerRideNoShowCancelledFromDriver(
     cancellationReason: `No show confirmado por conductor. Cargo ${formatClp(Number(charge.amountClp ?? 0))} pendiente para el próximo viaje.`,
     passengerCancellationFeeClp: Number(charge.amountClp ?? 0),
     passengerCancellationPolicyType: "no_show",
-    passengerCancellationPolicyText: "No show: cobro íntegro del servicio tras 5 minutos de espera y notificación por app/WhatsApp.",
+    passengerCancellationPolicyText:
+      "No show: 30% de la tarifa aplicable, con tope de $5.000, después de 5 minutos de espera. Requiere aprobación administrativa.",
     paymentPendingClp: Number(charge.amountClp ?? 0),
-    passengerPendingChargeNextRide: true,
-    passengerPendingChargeNotice: String(charge.status ?? "") === "charged_from_card_or_paid_amount"
-      ? `No show confirmado. Se cobró el total del servicio desde el pago realizado: ${formatClp(Number(charge.amountClp ?? 0))}.`
-      : `Cargo pendiente de ${formatClp(Number(charge.amountClp ?? 0))} por no show. Se sumará automáticamente a tu próximo viaje.`,
+    passengerPendingChargeNextRide: false,
+    passengerPendingChargeNotice:
+      `Cargo referencial de ${formatClp(Number(charge.amountClp ?? 0))} por No Show. ` +
+      "Queda pendiente de revisión del administrador y solo se sumará a un próximo viaje si se aprueba.",
   };
 
   const keys = [
@@ -13231,9 +13467,17 @@ La solicitud fue retirada de tu pantalla. No debes continuar hacia la recogida.`
 
 
       if (session?.accessToken) {
-        void ridesService.cancelAcceptedRide(session.accessToken, rideId).catch(() => {
-          // Aunque backend falle, el conductor no debe quedar pegado con el mapa.
-        });
+        try {
+          await declareDriverNoShowInBackend(
+            session.accessToken,
+            rideId,
+          );
+        } catch (backendError) {
+          console.error(
+            "[RAPA GO] No Show local cerrado, pero backend falló",
+            backendError,
+          );
+        }
       }
 
       window.dispatchEvent(
@@ -15969,9 +16213,17 @@ function DriverMyRidesPage(): JSX.Element {
 
 
       if (session?.accessToken) {
-        void ridesService.cancelAcceptedRide(session.accessToken, rideId).catch(() => {
-          // Aunque backend falle, el conductor no debe quedar pegado con el mapa.
-        });
+        try {
+          await declareDriverNoShowInBackend(
+            session.accessToken,
+            rideId,
+          );
+        } catch (backendError) {
+          console.error(
+            "[RAPA GO] No Show local cerrado, pero backend falló",
+            backendError,
+          );
+        }
       }
 
       window.dispatchEvent(

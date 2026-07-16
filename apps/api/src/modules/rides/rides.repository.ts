@@ -1,9 +1,14 @@
-import { and, avg, count, desc, eq, inArray } from "drizzle-orm";
+import { and, asc, avg, count, desc, eq, inArray, isNull } from "drizzle-orm";
 import { db } from "../../db/client.js";
 import { rideRequests, users, rideRatings, driverProfiles } from "../../db/schema/index.js";
 import { alias } from "drizzle-orm/pg-core";
 import { AppError } from "../../shared/errors/AppError.js";
 import type { RideRequest } from "../../db/schema/index.js";
+import {
+  ridePolicyCharges,
+  type RidePolicyCharge,
+  type NewRidePolicyCharge,
+} from "../../db/schema/ridePolicyCharges.schema.js";
 
 export interface RideWithDriverName extends RideRequest {
   driverName:          string | null;
@@ -15,6 +20,19 @@ export interface RideWithDriverName extends RideRequest {
   driverVehicleYear:   number | null;
   driverVehiclePlate:  string | null;
   driverVehicleColor:  string | null;
+}
+
+
+
+export interface RidePolicyChargeWithOwner extends RidePolicyCharge {
+  ownerName: string | null;
+  ownerEmail: string | null;
+}
+
+export interface RideCreatedWithPolicyCharges {
+  ride: RideRequest;
+  appliedCharges: RidePolicyCharge[];
+  appliedChargesTotalClp: number;
 }
 
 export class RidesRepository {
@@ -132,17 +150,120 @@ export class RidesRepository {
     notes: string | null,
     estimatedFareClp: number,
   ): Promise<RideRequest> {
+    const result = await this.createWithApprovedPolicyCharges(
+      passengerUserId,
+      originText,
+      destinationText,
+      notes,
+      estimatedFareClp,
+    );
+
+    return result.ride;
+  }
+
+  /**
+   * Crea el viaje y adjunta, dentro de la misma transacción, todos los cargos
+   * aprobados y pendientes del mismo usuario.
+   *
+   * El frontend nunca es la autoridad del cargo. El monto final persistido en
+   * ride_requests.estimated_fare_clp se calcula en el backend.
+   */
+  async createWithApprovedPolicyCharges(
+    passengerUserId: string,
+    originText: string,
+    destinationText: string,
+    notes: string | null,
+    baseEstimatedFareClp: number,
+  ): Promise<RideCreatedWithPolicyCharges> {
     try {
-      const rows = await db
-        .insert(rideRequests)
-        .values({ passengerUserId, originText, destinationText, notes, estimatedFareClp, status: "requested" })
-        .returning();
-      const row = rows[0];
-      if (!row) throw AppError.internal("Insert returned no rows.");
-      return row;
+      return await db.transaction(async (tx) => {
+        const approvedCharges = await tx
+          .select()
+          .from(ridePolicyCharges)
+          .where(
+            and(
+              eq(ridePolicyCharges.ownerUserId, passengerUserId),
+              eq(
+                ridePolicyCharges.status,
+                "approved_pending_next_ride",
+              ),
+              isNull(ridePolicyCharges.appliedToRideId),
+            ),
+          )
+          .orderBy(asc(ridePolicyCharges.createdAt));
+
+        const appliedChargesTotalClp = approvedCharges.reduce(
+          (sum, charge) =>
+            sum +
+            Math.max(
+              0,
+              Math.round(
+                Number(
+                  charge.approvedAmountClp ??
+                    charge.calculatedAmountClp ??
+                    0,
+                ),
+              ),
+            ),
+          0,
+        );
+
+        const finalEstimatedFareClp = Math.max(
+          0,
+          Math.round(baseEstimatedFareClp + appliedChargesTotalClp),
+        );
+
+        const [ride] = await tx
+          .insert(rideRequests)
+          .values({
+            passengerUserId,
+            originText,
+            destinationText,
+            notes,
+            estimatedFareClp: finalEstimatedFareClp,
+            status: "requested",
+          })
+          .returning();
+
+        if (!ride) {
+          throw AppError.internal("Insert returned no rows.");
+        }
+
+        if (approvedCharges.length > 0) {
+          const now = new Date();
+          const chargeIds = approvedCharges.map((charge) => charge.id);
+
+          await tx
+            .update(ridePolicyCharges)
+            .set({
+              status: "attached_to_next_ride",
+              appliedToRideId: ride.id,
+              appliedAt: now,
+              updatedAt: now,
+            })
+            .where(
+              and(
+                inArray(ridePolicyCharges.id, chargeIds),
+                eq(
+                  ridePolicyCharges.status,
+                  "approved_pending_next_ride",
+                ),
+                isNull(ridePolicyCharges.appliedToRideId),
+              ),
+            );
+        }
+
+        return {
+          ride,
+          appliedCharges: approvedCharges,
+          appliedChargesTotalClp,
+        };
+      });
     } catch (err) {
       if (err instanceof AppError) throw err;
-      throw AppError.internal(`Failed to create ride request: ${String(err)}`);
+      throw AppError.internal(
+        `Failed to create ride request with policy charges: ${String(err)}`,
+      );
     }
   }
 
@@ -316,6 +437,244 @@ export class RidesRepository {
     } catch (err) {
       if (err instanceof AppError) throw err;
       throw AppError.internal(`Failed to cancel accepted ride: ${String(err)}`);
+    }
+  }
+
+
+  async findPolicyChargeById(id: string): Promise<RidePolicyCharge | null> {
+    try {
+      const [row] = await db
+        .select()
+        .from(ridePolicyCharges)
+        .where(eq(ridePolicyCharges.id, id))
+        .limit(1);
+
+      return row ?? null;
+    } catch (err) {
+      throw AppError.internal(
+        `Failed to query ride policy charge: ${String(err)}`,
+      );
+    }
+  }
+
+  async findPolicyChargeBySourceRideAndType(
+    sourceRideId: string,
+    type: string,
+  ): Promise<RidePolicyCharge | null> {
+    try {
+      const [row] = await db
+        .select()
+        .from(ridePolicyCharges)
+        .where(
+          and(
+            eq(ridePolicyCharges.sourceRideId, sourceRideId),
+            eq(ridePolicyCharges.type, type),
+          ),
+        )
+        .limit(1);
+
+      return row ?? null;
+    } catch (err) {
+      throw AppError.internal(
+        `Failed to query ride policy charge by source ride: ${String(err)}`,
+      );
+    }
+  }
+
+  async createPolicyCharge(
+    data: NewRidePolicyCharge,
+  ): Promise<RidePolicyCharge> {
+    try {
+      const existing = await this.findPolicyChargeBySourceRideAndType(
+        data.sourceRideId,
+        data.type,
+      );
+
+      if (existing) return existing;
+
+      const [row] = await db
+        .insert(ridePolicyCharges)
+        .values(data)
+        .returning();
+
+      if (!row) {
+        throw AppError.internal("Policy charge insert returned no rows.");
+      }
+
+      return row;
+    } catch (err) {
+      if (err instanceof AppError) throw err;
+
+      // La restricción única evita duplicar el mismo tipo de cargo por viaje.
+      const existing = await this.findPolicyChargeBySourceRideAndType(
+        data.sourceRideId,
+        data.type,
+      );
+
+      if (existing) return existing;
+
+      throw AppError.internal(
+        `Failed to create ride policy charge: ${String(err)}`,
+      );
+    }
+  }
+
+  async listApprovedPolicyChargesForOwner(
+    ownerUserId: string,
+  ): Promise<RidePolicyCharge[]> {
+    try {
+      return await db
+        .select()
+        .from(ridePolicyCharges)
+        .where(
+          and(
+            eq(ridePolicyCharges.ownerUserId, ownerUserId),
+            eq(
+              ridePolicyCharges.status,
+              "approved_pending_next_ride",
+            ),
+            isNull(ridePolicyCharges.appliedToRideId),
+          ),
+        )
+        .orderBy(asc(ridePolicyCharges.createdAt));
+    } catch (err) {
+      throw AppError.internal(
+        `Failed to list approved policy charges: ${String(err)}`,
+      );
+    }
+  }
+
+  async listAllPolicyCharges(): Promise<RidePolicyChargeWithOwner[]> {
+    try {
+      const owner = alias(users, "policy_charge_owner");
+
+      const rows = await db
+        .select({
+          charge: ridePolicyCharges,
+          ownerName: owner.name,
+          ownerEmail: owner.email,
+        })
+        .from(ridePolicyCharges)
+        .leftJoin(owner, eq(ridePolicyCharges.ownerUserId, owner.id))
+        .orderBy(desc(ridePolicyCharges.createdAt));
+
+      return rows.map((row) => ({
+        ...row.charge,
+        ownerName: row.ownerName ?? null,
+        ownerEmail: row.ownerEmail ?? null,
+      }));
+    } catch (err) {
+      throw AppError.internal(
+        `Failed to list ride policy charges: ${String(err)}`,
+      );
+    }
+  }
+
+  async approvePolicyCharge(input: {
+    id: string;
+    reviewedByUserId: string;
+    approvedAmountClp: number;
+    adminDecisionReason: string | null;
+  }): Promise<RidePolicyCharge | null> {
+    try {
+      const [row] = await db
+        .update(ridePolicyCharges)
+        .set({
+          status: "approved_pending_next_ride",
+          approvedAmountClp: input.approvedAmountClp,
+          reviewedByUserId: input.reviewedByUserId,
+          reviewedAt: new Date(),
+          adminDecisionReason: input.adminDecisionReason,
+          appliedToRideId: null,
+          appliedAt: null,
+          updatedAt: new Date(),
+        })
+        .where(
+          and(
+            eq(ridePolicyCharges.id, input.id),
+            inArray(ridePolicyCharges.status, [
+              "pending_admin_review",
+              "approved_pending_next_ride",
+            ]),
+          ),
+        )
+        .returning();
+
+      return row ?? null;
+    } catch (err) {
+      throw AppError.internal(
+        `Failed to approve ride policy charge: ${String(err)}`,
+      );
+    }
+  }
+
+  async waivePolicyCharge(input: {
+    id: string;
+    reviewedByUserId: string;
+    adminDecisionReason: string;
+  }): Promise<RidePolicyCharge | null> {
+    try {
+      const [row] = await db
+        .update(ridePolicyCharges)
+        .set({
+          status: "waived",
+          approvedAmountClp: 0,
+          reviewedByUserId: input.reviewedByUserId,
+          reviewedAt: new Date(),
+          adminDecisionReason: input.adminDecisionReason,
+          updatedAt: new Date(),
+        })
+        .where(
+          and(
+            eq(ridePolicyCharges.id, input.id),
+            inArray(ridePolicyCharges.status, [
+              "pending_admin_review",
+              "approved_pending_next_ride",
+            ]),
+          ),
+        )
+        .returning();
+
+      return row ?? null;
+    } catch (err) {
+      throw AppError.internal(
+        `Failed to waive ride policy charge: ${String(err)}`,
+      );
+    }
+  }
+
+  async markNoShow(
+    id: string,
+    driverUserId: string,
+  ): Promise<RideRequest | null> {
+    try {
+      const now = new Date();
+
+      const [row] = await db
+        .update(rideRequests)
+        .set({
+          status: "cancelled",
+          cancelledAt: now,
+          cancelledByUserId: driverUserId,
+          cancelledByRole: "driver_no_show",
+          cancellationReason:
+            "No show: pasajero no se presentó después de 5 minutos.",
+          updatedAt: now,
+        })
+        .where(
+          and(
+            eq(rideRequests.id, id),
+            eq(rideRequests.status, "driver_arrived"),
+            eq(rideRequests.driverUserId, driverUserId),
+          ),
+        )
+        .returning();
+
+      return row ?? null;
+    } catch (err) {
+      throw AppError.internal(
+        `Failed to mark ride as no show: ${String(err)}`,
+      );
     }
   }
 

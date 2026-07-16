@@ -5,6 +5,7 @@ export * from "./audit.schema.js";
 export * from "./documents.schema.js";
 export * from "./bankAccounts.schema.js";
 export * from "./rides.schema.js";
+export * from "./ridePolicyCharges.schema.js";
 export * from "./ratings.schema.js";
 export * from "./driverStatuses.schema.js";
 export * from "./offline.schema.js";
@@ -15,8 +16,36 @@ export * from "./touristServices.schema.js";
 export * from "./rentalVehicles.schema.js";
 export * from "./servicePricingTiers.schema.js";
 export * from "./notifications.schema.js";
-export { applications, type Application } from "./applications.schema.js";
-export { eventTickets, type EventTicket } from "./eventTickets.schema.js";
-export { legalDocuments, userAcceptances, type LegalDocument, type UserAcceptance } from "./legalDocuments.schema.js";
-export { fareSettings, zoneFares, type FareSetting, type ZoneFare } from "./fareSettings.schema.js";
-export { referralCodes, referralUses, type ReferralCode, type NewReferralCode, type ReferralUse, type NewReferralUse } from "./referrals.schema.js";
+
+export {
+  applications,
+  type Application,
+} from "./applications.schema.js";
+
+export {
+  eventTickets,
+  type EventTicket,
+} from "./eventTickets.schema.js";
+
+export {
+  legalDocuments,
+  userAcceptances,
+  type LegalDocument,
+  type UserAcceptance,
+} from "./legalDocuments.schema.js";
+
+export {
+  fareSettings,
+  zoneFares,
+  type FareSetting,
+  type ZoneFare,
+} from "./fareSettings.schema.js";
+
+export {
+  referralCodes,
+  referralUses,
+  type ReferralCode,
+  type NewReferralCode,
+  type ReferralUse,
+  type NewReferralUse,
+} from "./referrals.schema.js";

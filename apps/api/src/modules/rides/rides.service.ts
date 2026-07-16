@@ -11,11 +11,17 @@ import type {
   AvailableRidesResult,
   DriverRideResponse,
   DriverRidesListResult,
+  RidePolicyChargeResponse,
+  PolicyChargesResult,
+  AdminPolicyChargesResult,
 } from "./rides.types.js";
 import type { RideRequest } from "../../db/schema/index.js";
+import type { RidePolicyCharge } from "../../db/schema/ridePolicyCharges.schema.js";
 import type {
   CreateRideRequestInput,
   CancelAcceptedInput,
+  AdminPolicyChargeReviewInput,
+  AdminUpsertApprovePolicyChargeInput,
 } from "./rides.schemas.js";
 
 const tokenService = new TokenService();
@@ -24,6 +30,13 @@ const usersRepo = new UsersRepository();
 const ridesRepo = new RidesRepository();
 
 const SCHEDULE_ACTIVATION_MINUTES = 10;
+const PASSENGER_FREE_CANCELLATION_MS = 2 * 60 * 1000;
+const SCHEDULED_FREE_CANCELLATION_BEFORE_MS = 30 * 60 * 1000;
+const DRIVER_NO_SHOW_WAIT_MS = 5 * 60 * 1000;
+const LATE_CANCELLATION_PERCENT = 30;
+const LATE_CANCELLATION_CAP_CLP = 3000;
+const NO_SHOW_PERCENT = 50;
+const NO_SHOW_CAP_CLP = 5000;
 
 async function estimateFare(
   originText: string,
@@ -331,9 +344,160 @@ function isReadyForDriverSearch(r: RideRequest): boolean {
   return new Date(activation).getTime() <= Date.now();
 }
 
+
+function inferRidePaymentMethod(
+  notes: string | null | undefined,
+): string | null {
+  const text = String(notes ?? "").toLowerCase();
+
+  if (
+    text.includes("mercadopago") ||
+    text.includes("tarjeta") ||
+    text.includes("paymentmethod: card")
+  ) {
+    return "card";
+  }
+
+  if (
+    text.includes("efectivo") ||
+    text.includes("paymentmethod: cash")
+  ) {
+    return "cash";
+  }
+
+  return null;
+}
+
+function calculatePolicyAmount(
+  applicableFareClp: number,
+  percent: number,
+  capClp: number,
+): number {
+  return Math.min(
+    Math.max(0, Math.round(capClp)),
+    Math.max(
+      0,
+      Math.round(
+        Math.max(0, Math.round(applicableFareClp)) *
+          (Math.max(0, percent) / 100),
+      ),
+    ),
+  );
+}
+
+function toPolicyChargeResponse(
+  charge: RidePolicyCharge,
+  owner?: { name?: string | null; email?: string | null },
+): RidePolicyChargeResponse {
+  return {
+    id: charge.id,
+    sourceRideId: charge.sourceRideId,
+    ownerUserId: charge.ownerUserId,
+    ownerName: owner?.name ?? null,
+    ownerEmail: owner?.email ?? null,
+    type:
+      charge.type === "no_show"
+        ? "no_show"
+        : "late_cancellation",
+    status: charge.status,
+    paymentMethod: charge.paymentMethod ?? null,
+    applicableFareClp: charge.applicableFareClp,
+    feePercent: charge.feePercent,
+    feeCapClp: charge.feeCapClp,
+    calculatedAmountClp: charge.calculatedAmountClp,
+    approvedAmountClp: charge.approvedAmountClp ?? null,
+    amountClp: Math.max(
+      0,
+      Math.round(
+        Number(
+          charge.approvedAmountClp ??
+            charge.calculatedAmountClp ??
+            0,
+        ),
+      ),
+    ),
+    reason: charge.reason ?? null,
+    adminDecisionReason: charge.adminDecisionReason ?? null,
+    reviewedByUserId: charge.reviewedByUserId ?? null,
+    reviewedAt: charge.reviewedAt?.toISOString() ?? null,
+    appliedToRideId: charge.appliedToRideId ?? null,
+    appliedAt: charge.appliedAt?.toISOString() ?? null,
+    settledAt: charge.settledAt?.toISOString() ?? null,
+    createdAt: charge.createdAt.toISOString(),
+    updatedAt: charge.updatedAt.toISOString(),
+  };
+}
+
+function shouldCreatePassengerCancellationCharge(
+  ride: RideRequest,
+): boolean {
+  const nowMs = Date.now();
+  const scheduleMeta = getScheduleMetaFromRide(ride);
+
+  if (scheduleMeta?.isScheduled && scheduleMeta.scheduledPickupAt) {
+    const pickupMs = new Date(scheduleMeta.scheduledPickupAt).getTime();
+
+    if (Number.isFinite(pickupMs)) {
+      const timeUntilPickupMs = pickupMs - nowMs;
+      return (
+        timeUntilPickupMs <= SCHEDULED_FREE_CANCELLATION_BEFORE_MS
+      );
+    }
+  }
+
+  if (!ride.acceptedAt) return false;
+
+  return (
+    nowMs - ride.acceptedAt.getTime() >=
+    PASSENGER_FREE_CANCELLATION_MS
+  );
+}
+
+function buildPolicyChargeData(input: {
+  ride: RideRequest;
+  type: "late_cancellation" | "no_show";
+  reason: string | null;
+}) {
+  const applicableFareClp = Math.max(
+    0,
+    Math.round(Number(input.ride.estimatedFareClp ?? 0)),
+  );
+
+  const isNoShow = input.type === "no_show";
+  const feePercent = isNoShow
+    ? NO_SHOW_PERCENT
+    : LATE_CANCELLATION_PERCENT;
+  const feeCapClp = isNoShow
+    ? NO_SHOW_CAP_CLP
+    : LATE_CANCELLATION_CAP_CLP;
+
+  return {
+    sourceRideId: input.ride.id,
+    ownerUserId: input.ride.passengerUserId,
+    type: input.type,
+    status: "pending_admin_review",
+    paymentMethod: inferRidePaymentMethod(input.ride.notes),
+    applicableFareClp,
+    feePercent,
+    feeCapClp,
+    calculatedAmountClp: calculatePolicyAmount(
+      applicableFareClp,
+      feePercent,
+      feeCapClp,
+    ),
+    reason: input.reason,
+    updatedAt: new Date(),
+  } as const;
+}
+
 function toResponse(
   r: RideRequest | RideWithDriverName,
   discountInfo?: { discountPercent: number; originalFare: number },
+  policyInfo?: {
+    baseFareClp: number;
+    appliedChargesTotalClp: number;
+    appliedCharges: RidePolicyCharge[];
+  },
 ): RideRequestResponse {
   const scheduleMeta = getScheduleMetaFromRide(r);
 
@@ -376,6 +540,16 @@ function toResponse(
     discountApplied: discountInfo != null,
     discountPercent: discountInfo?.discountPercent ?? null,
     originalFareClp: discountInfo?.originalFare ?? null,
+    baseFareClp:
+      policyInfo?.baseFareClp ??
+      r.estimatedFareClp ??
+      null,
+    policyChargesAppliedClp:
+      policyInfo?.appliedChargesTotalClp ?? 0,
+    policyChargesApplied:
+      policyInfo?.appliedCharges.map((charge) =>
+        toPolicyChargeResponse(charge),
+      ) ?? [],
   };
 
   if (scheduleMeta?.isScheduled) {
@@ -614,7 +788,7 @@ export class RidesService {
       // No bloquea crear el viaje.
     }
 
-    const row = await ridesRepo.create(
+    const created = await ridesRepo.createWithApprovedPolicyCharges(
       auth.userId,
       input.originText,
       input.destinationText,
@@ -622,7 +796,19 @@ export class RidesService {
       finalFare,
     );
 
-    return { ok: true, ride: toResponse(row, discountInfo) };
+    return {
+      ok: true,
+      ride: toResponse(
+        created.ride,
+        discountInfo,
+        {
+          baseFareClp: finalFare,
+          appliedChargesTotalClp:
+            created.appliedChargesTotalClp,
+          appliedCharges: created.appliedCharges,
+        },
+      ),
+    };
   }
 
   async cancelRideRequest(
@@ -1104,6 +1290,23 @@ export class RidesService {
       await new DriverStatusRepository().setAvailable(cancelled.driverUserId);
     }
 
+    let policyCharge: RidePolicyCharge | null = null;
+
+    if (
+      auth.role === "passenger" &&
+      shouldCreatePassengerCancellationCharge(existing)
+    ) {
+      const chargeData = buildPolicyChargeData({
+        ride: existing,
+        type: "late_cancellation",
+        reason: input.reason ?? null,
+      });
+
+      if (chargeData.calculatedAmountClp > 0) {
+        policyCharge = await ridesRepo.createPolicyCharge(chargeData);
+      }
+    }
+
     let paymentRefund: Record<string, unknown> | null = null;
 
     try {
@@ -1152,10 +1355,453 @@ export class RidesService {
       Record<string, unknown>;
 
     responseRide["paymentRefund"] = paymentRefund;
+    responseRide["policyCharge"] = policyCharge
+      ? toPolicyChargeResponse(policyCharge)
+      : null;
 
     return {
       ok: true,
       ride: responseRide,
+    };
+  }
+
+
+  async listMyApprovedPolicyCharges(
+    accessToken: string,
+  ): Promise<PolicyChargesResult> {
+    const auth = await authenticate(accessToken);
+    if (!auth.ok) return auth;
+
+    if (auth.role !== "passenger" && auth.role !== "driver") {
+      return {
+        ok: false,
+        code: "AUTH_FORBIDDEN",
+        message:
+          "Only passenger or driver accounts can access their charges.",
+        statusCode: 403,
+      };
+    }
+
+    const rows =
+      await ridesRepo.listApprovedPolicyChargesForOwner(auth.userId);
+
+    return {
+      ok: true,
+      charges: rows.map((charge) =>
+        toPolicyChargeResponse(charge),
+      ),
+    };
+  }
+
+  async adminListPolicyCharges(
+    accessToken: string,
+  ): Promise<AdminPolicyChargesResult> {
+    const auth = await authenticate(accessToken);
+    if (!auth.ok) return auth;
+
+    if (auth.role !== "admin") {
+      return {
+        ok: false,
+        code: "AUTH_FORBIDDEN",
+        message: "Only admins can list policy charges.",
+        statusCode: 403,
+      };
+    }
+
+    const rows = await ridesRepo.listAllPolicyCharges();
+
+    return {
+      ok: true,
+      charges: rows.map((charge) =>
+        toPolicyChargeResponse(charge, {
+          name: charge.ownerName,
+          email: charge.ownerEmail,
+        }),
+      ),
+    };
+  }
+
+  async adminApprovePolicyCharge(
+    accessToken: string,
+    chargeId: string,
+    input: AdminPolicyChargeReviewInput,
+  ): Promise<
+    | { ok: true; charge: RidePolicyChargeResponse }
+    | {
+        ok: false;
+        code: string;
+        message: string;
+        statusCode: number;
+      }
+  > {
+    const auth = await authenticate(accessToken);
+    if (!auth.ok) return auth;
+
+    if (auth.role !== "admin") {
+      return {
+        ok: false,
+        code: "AUTH_FORBIDDEN",
+        message: "Only admins can approve policy charges.",
+        statusCode: 403,
+      };
+    }
+
+    const existing = await ridesRepo.findPolicyChargeById(chargeId);
+
+    if (!existing) {
+      return {
+        ok: false,
+        code: "NOT_FOUND",
+        message: "Policy charge not found.",
+        statusCode: 404,
+      };
+    }
+
+    if (
+      existing.status !== "pending_admin_review" &&
+      existing.status !== "approved_pending_next_ride"
+    ) {
+      return {
+        ok: false,
+        code: "POLICY_CHARGE_CANNOT_APPROVE",
+        message: `Charge cannot be approved from status '${existing.status}'.`,
+        statusCode: 409,
+      };
+    }
+
+    const maximumAllowed = Math.min(
+      existing.feeCapClp,
+      existing.calculatedAmountClp,
+    );
+
+    const approvedAmountClp =
+      input.approvedAmountClp == null
+        ? maximumAllowed
+        : Math.min(
+            maximumAllowed,
+            Math.max(0, Math.round(input.approvedAmountClp)),
+          );
+
+    if (approvedAmountClp <= 0) {
+      return {
+        ok: false,
+        code: "POLICY_CHARGE_INVALID_AMOUNT",
+        message: "Approved charge amount must be greater than zero.",
+        statusCode: 422,
+      };
+    }
+
+    const updated = await ridesRepo.approvePolicyCharge({
+      id: existing.id,
+      reviewedByUserId: auth.userId,
+      approvedAmountClp,
+      adminDecisionReason:
+        input.adminDecisionReason?.trim() ||
+        "Cargo aprobado por administración.",
+    });
+
+    if (!updated) {
+      return {
+        ok: false,
+        code: "POLICY_CHARGE_CANNOT_APPROVE",
+        message: "Policy charge could not be approved.",
+        statusCode: 409,
+      };
+    }
+
+    return {
+      ok: true,
+      charge: toPolicyChargeResponse(updated),
+    };
+  }
+
+  async adminUpsertAndApprovePolicyCharge(
+    accessToken: string,
+    input: AdminUpsertApprovePolicyChargeInput,
+  ): Promise<
+    | { ok: true; charge: RidePolicyChargeResponse }
+    | {
+        ok: false;
+        code: string;
+        message: string;
+        statusCode: number;
+      }
+  > {
+    const auth = await authenticate(accessToken);
+    if (!auth.ok) return auth;
+
+    if (auth.role !== "admin") {
+      return {
+        ok: false,
+        code: "AUTH_FORBIDDEN",
+        message: "Only admins can import and approve policy charges.",
+        statusCode: 403,
+      };
+    }
+
+    const ride = await ridesRepo.findById(input.rideId);
+
+    if (!ride) {
+      return {
+        ok: false,
+        code: "NOT_FOUND",
+        message: "Ride request not found.",
+        statusCode: 404,
+      };
+    }
+
+    const type =
+      input.type === "no_show"
+        ? "no_show"
+        : "late_cancellation";
+
+    const isNoShow = type === "no_show";
+    const feePercent = isNoShow
+      ? NO_SHOW_PERCENT
+      : LATE_CANCELLATION_PERCENT;
+    const feeCapClp = isNoShow
+      ? NO_SHOW_CAP_CLP
+      : LATE_CANCELLATION_CAP_CLP;
+
+    const applicableFareClp = Math.max(
+      0,
+      Math.round(
+        Number(
+          input.applicableFareClp ??
+            ride.estimatedFareClp ??
+            0,
+        ),
+      ),
+    );
+
+    const calculatedAmountClp = calculatePolicyAmount(
+      applicableFareClp,
+      feePercent,
+      feeCapClp,
+    );
+
+    const requestedApprovedAmount = Math.max(
+      0,
+      Math.round(input.amountClp),
+    );
+
+    const approvedAmountClp = Math.min(
+      feeCapClp,
+      calculatedAmountClp > 0
+        ? calculatedAmountClp
+        : requestedApprovedAmount,
+      requestedApprovedAmount,
+    );
+
+    if (approvedAmountClp <= 0) {
+      return {
+        ok: false,
+        code: "POLICY_CHARGE_INVALID_AMOUNT",
+        message: "There is no valid charge amount to approve.",
+        statusCode: 422,
+      };
+    }
+
+    const created = await ridesRepo.createPolicyCharge({
+      sourceRideId: ride.id,
+      ownerUserId: ride.passengerUserId,
+      type,
+      status: "pending_admin_review",
+      paymentMethod:
+        input.paymentMethod ??
+        inferRidePaymentMethod(ride.notes),
+      applicableFareClp:
+        applicableFareClp > 0
+          ? applicableFareClp
+          : Math.ceil(
+              approvedAmountClp / (feePercent / 100),
+            ),
+      feePercent,
+      feeCapClp,
+      calculatedAmountClp:
+        calculatedAmountClp > 0
+          ? calculatedAmountClp
+          : approvedAmountClp,
+      reason:
+        input.reason?.trim() ||
+        ride.cancellationReason ||
+        null,
+      updatedAt: new Date(),
+    });
+
+    const updated = await ridesRepo.approvePolicyCharge({
+      id: created.id,
+      reviewedByUserId: auth.userId,
+      approvedAmountClp,
+      adminDecisionReason:
+        input.adminDecisionReason?.trim() ||
+        "Cargo aprobado por administración.",
+    });
+
+    if (!updated) {
+      return {
+        ok: false,
+        code: "POLICY_CHARGE_CANNOT_APPROVE",
+        message: "Policy charge could not be approved.",
+        statusCode: 409,
+      };
+    }
+
+    return {
+      ok: true,
+      charge: toPolicyChargeResponse(updated),
+    };
+  }
+
+  async adminWaivePolicyCharge(
+    accessToken: string,
+    chargeId: string,
+    input: AdminPolicyChargeReviewInput,
+  ): Promise<
+    | { ok: true; charge: RidePolicyChargeResponse }
+    | {
+        ok: false;
+        code: string;
+        message: string;
+        statusCode: number;
+      }
+  > {
+    const auth = await authenticate(accessToken);
+    if (!auth.ok) return auth;
+
+    if (auth.role !== "admin") {
+      return {
+        ok: false,
+        code: "AUTH_FORBIDDEN",
+        message: "Only admins can waive policy charges.",
+        statusCode: 403,
+      };
+    }
+
+    const reason = input.adminDecisionReason?.trim();
+
+    if (!reason || reason.length < 8) {
+      return {
+        ok: false,
+        code: "VALIDATION_ERROR",
+        message: "A waiver reason of at least 8 characters is required.",
+        statusCode: 400,
+      };
+    }
+
+    const updated = await ridesRepo.waivePolicyCharge({
+      id: chargeId,
+      reviewedByUserId: auth.userId,
+      adminDecisionReason: reason,
+    });
+
+    if (!updated) {
+      return {
+        ok: false,
+        code: "POLICY_CHARGE_CANNOT_WAIVE",
+        message: "Policy charge could not be waived.",
+        statusCode: 409,
+      };
+    }
+
+    return {
+      ok: true,
+      charge: toPolicyChargeResponse(updated),
+    };
+  }
+
+  async declareNoShow(
+    accessToken: string,
+    rideId: string,
+  ): Promise<RideResult> {
+    const auth = await authenticate(accessToken);
+    if (!auth.ok) return auth;
+
+    if (auth.role !== "driver") {
+      return {
+        ok: false,
+        code: "AUTH_FORBIDDEN",
+        message: "Only drivers can declare a no show.",
+        statusCode: 403,
+      };
+    }
+
+    const existing = await ridesRepo.findById(rideId);
+
+    if (!existing) {
+      return {
+        ok: false,
+        code: "NOT_FOUND",
+        message: "Ride request not found.",
+        statusCode: 404,
+      };
+    }
+
+    if (existing.driverUserId !== auth.userId) {
+      return {
+        ok: false,
+        code: "AUTH_FORBIDDEN",
+        message: "You can only declare no show on rides assigned to you.",
+        statusCode: 403,
+      };
+    }
+
+    if (existing.status !== "driver_arrived" || !existing.arrivedAt) {
+      return {
+        ok: false,
+        code: "RIDE_NO_SHOW_NOT_ALLOWED",
+        message: "The driver must mark arrival before declaring no show.",
+        statusCode: 409,
+      };
+    }
+
+    const waitedMs = Date.now() - existing.arrivedAt.getTime();
+
+    if (waitedMs < DRIVER_NO_SHOW_WAIT_MS) {
+      return {
+        ok: false,
+        code: "RIDE_NO_SHOW_WAIT_REQUIRED",
+        message: "You must wait 5 minutes after arrival.",
+        statusCode: 409,
+      };
+    }
+
+    const closed = await ridesRepo.markNoShow(
+      rideId,
+      auth.userId,
+    );
+
+    if (!closed) {
+      return {
+        ok: false,
+        code: "RIDE_NO_SHOW_CANNOT_CLOSE",
+        message: "Ride could not be closed as no show.",
+        statusCode: 409,
+      };
+    }
+
+    const chargeData = buildPolicyChargeData({
+      ride: existing,
+      type: "no_show",
+      reason:
+        "Pasajero no se presentó después de 5 minutos.",
+    });
+
+    const charge =
+      chargeData.calculatedAmountClp > 0
+        ? await ridesRepo.createPolicyCharge(chargeData)
+        : null;
+
+    const response = toResponse(closed) as RideRequestResponse &
+      Record<string, unknown>;
+
+    response["policyCharge"] = charge
+      ? toPolicyChargeResponse(charge)
+      : null;
+
+    return {
+      ok: true,
+      ride: response,
     };
   }
 

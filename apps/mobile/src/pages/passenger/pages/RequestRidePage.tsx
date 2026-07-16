@@ -31,6 +31,7 @@ import {
   timeOutline,
 } from "ionicons/icons";
 import {
+  useCallback,
   useEffect,
   useMemo,
   useRef,
@@ -77,7 +78,12 @@ type PassengerPendingChargeForRequest = {
   rideKey?: string | null;
   passengerEmail?: string | null;
   ownerKey?: string | null;
+  ownerUserId?: string | null;
+  passengerUserId?: string | null;
   amountClp: number;
+  applicableFareClp?: number | null;
+  feePercent?: number | null;
+  feeCapClp?: number | null;
   type?: string | null;
   status: string;
   adminReviewStatus?: string | null;
@@ -92,16 +98,103 @@ function normalizePendingChargeEmail(value: unknown): string {
   return String(value ?? "").trim().toLowerCase();
 }
 
+function normalizePendingChargeUserId(value: unknown): string {
+  return String(value ?? "").trim().toLowerCase();
+}
+
 function getPendingChargeSessionEmail(user: unknown): string {
   if (!user || typeof user !== "object") return "";
   return normalizePendingChargeEmail((user as Record<string, unknown>).email);
 }
 
+function getPendingChargeSessionUserId(user: unknown): string {
+  if (!user || typeof user !== "object") return "";
+  const record = user as Record<string, unknown>;
 
-function calculateApprovedNoShowChargeForRequest(item: Record<string, unknown>): number {
-  const rawAmount = Math.max(0, Math.round(Number(item.amountClp ?? item.amount ?? 0)));
+  return normalizePendingChargeUserId(
+    record.id ??
+      record.userId ??
+      record.uid ??
+      record.sub ??
+      record.accountId ??
+      record.authUserId,
+  );
+}
+
+function normalizePassengerPendingChargeType(value: unknown): string {
+  return String(value ?? "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .trim();
+}
+
+function isPassengerPendingChargeSupportedType(value: unknown): boolean {
+  const type = normalizePassengerPendingChargeType(value);
+
+  return (
+    type === "no_show" ||
+    type === "late_cancel" ||
+    type === "late_cancellation" ||
+    type === "cancellation" ||
+    type === "cancel_after_free_window" ||
+    type === "cancel_after_two_minutes"
+  );
+}
+
+function isPassengerPendingChargeNoShow(value: unknown): boolean {
+  return normalizePassengerPendingChargeType(value) === "no_show";
+}
+
+function getPassengerPendingChargeDefaultTitle(type: unknown): string {
+  return isPassengerPendingChargeNoShow(type)
+    ? "No Show aprobado"
+    : "Cancelación aprobada";
+}
+
+function getPassengerPendingChargeDefaultDescription(type: unknown): string {
+  return isPassengerPendingChargeNoShow(type)
+    ? "No Show aprobado por administración para sumarlo al próximo viaje."
+    : "Cargo por cancelación desde el minuto 3 aprobado por administración para sumarlo al próximo viaje.";
+}
+
+function calculateApprovedPassengerChargeForRequest(
+  item: Record<string, unknown>,
+): number {
+  const type = normalizePassengerPendingChargeType(item.type);
+  const isNoShow = isPassengerPendingChargeNoShow(type);
+
+  const configuredPercent = Number(item.feePercent);
+  const percent =
+    Number.isFinite(configuredPercent) && configuredPercent > 0
+      ? Math.min(100, configuredPercent)
+      : 30;
+
+  const configuredCap = Number(item.feeCapClp);
+  const capClp =
+    Number.isFinite(configuredCap) && configuredCap > 0
+      ? Math.round(configuredCap)
+      : isNoShow
+        ? 5000
+        : 3000;
+
+  const explicitlyApprovedCandidates = [
+    item.approvedFeeClp,
+    item.approvedAmountClp,
+    item.calculatedFeeClp,
+  ];
+
+  const explicitlyApprovedAmount =
+    explicitlyApprovedCandidates
+      .map((value) => Math.max(0, Math.round(Number(value ?? 0))))
+      .find((value) => value > 0) ?? 0;
+
+  if (explicitlyApprovedAmount > 0) {
+    return Math.min(capClp, explicitlyApprovedAmount);
+  }
 
   const originalCandidates = [
+    item.applicableFareClp,
     item.originalNoShowServiceAmountClp,
     item.originalServiceAmountClp,
     item.totalServiceAmountClp,
@@ -110,67 +203,155 @@ function calculateApprovedNoShowChargeForRequest(item: Record<string, unknown>):
     item.originalAmountClp,
   ];
 
-  const originalAmount = originalCandidates
-    .map((value) => Math.max(0, Math.round(Number(value ?? 0))))
-    .find((value) => value > 0) ?? 0;
+  const originalAmount =
+    originalCandidates
+      .map((value) => Math.max(0, Math.round(Number(value ?? 0))))
+      .find((value) => value > 0) ?? 0;
 
   if (originalAmount > 0) {
-    return Math.min(3000, Math.max(0, Math.round(originalAmount * 0.3)));
+    return Math.min(
+      capClp,
+      Math.max(0, Math.round(originalAmount * (percent / 100))),
+    );
   }
 
-  // Compatibilidad con No Show viejos:
-  // si quedo guardado el total del servicio, se calcula 30%;
-  // si ya quedo guardada la penalizacion, solo se limita a 3000.
-  if (rawAmount > 3000) {
-    return Math.min(3000, Math.max(0, Math.round(rawAmount * 0.3)));
-  }
+  // Registros nuevos guardan `amountClp` como penalización ya aprobada.
+  // En registros antiguos, el tope impide que se cobre más de lo permitido.
+  const rawAmount = Math.max(
+    0,
+    Math.round(Number(item.amountClp ?? item.amount ?? 0)),
+  );
 
-  return Math.min(3000, rawAmount);
+  return Math.min(capClp, rawAmount);
 }
 
-function readPassengerPendingChargesForRequest(user: unknown): PassengerPendingChargeForRequest[] {
+function pendingChargeBelongsToCurrentUser(
+  item: Record<string, unknown>,
+  user: unknown,
+): boolean {
+  const sessionUserId = getPendingChargeSessionUserId(user);
+  const sessionEmail = getPendingChargeSessionEmail(user);
+
+  const ownerUserId = normalizePendingChargeUserId(
+    item.ownerUserId ??
+      item.passengerUserId ??
+      item.userId ??
+      item.requesterUserId,
+  );
+
+  if (sessionUserId && ownerUserId) {
+    return sessionUserId === ownerUserId;
+  }
+
+  const ownerEmail = normalizePendingChargeEmail(
+    item.passengerEmail ??
+      item.ownerKey ??
+      item.userEmail ??
+      item.email,
+  );
+
+  return Boolean(sessionEmail && ownerEmail && sessionEmail === ownerEmail);
+}
+
+function readPassengerPendingChargesForRequest(
+  user: unknown,
+): PassengerPendingChargeForRequest[] {
   try {
-    const sessionEmail = getPendingChargeSessionEmail(user);
     const raw = localStorage.getItem(RAPAGO_PASSENGER_PENDING_CHARGES_KEY);
-    const parsed = raw ? (JSON.parse(raw) as Array<Record<string, unknown>>) : [];
-    if (!Array.isArray(parsed)) return [];
+    const decoded = raw ? (JSON.parse(raw) as unknown) : [];
+    const parsed: Array<Record<string, unknown>> = Array.isArray(decoded)
+      ? decoded.filter(
+          (item): item is Record<string, unknown> =>
+            Boolean(item && typeof item === "object"),
+        )
+      : decoded && typeof decoded === "object"
+        ? Object.values(decoded as Record<string, unknown>).filter(
+            (item): item is Record<string, unknown> =>
+              Boolean(item && typeof item === "object"),
+          )
+        : [];
 
     return parsed
-      .map((item, index) => {
-        const type = String(item.type ?? "").toLowerCase();
-        const status = String(item.status ?? "");
-        const adminReviewStatus = typeof item.adminReviewStatus === "string" ? item.adminReviewStatus : null;
-        const approvedNoShowAmountClp = type === "no_show"
-          ? calculateApprovedNoShowChargeForRequest(item)
-          : Math.max(0, Math.round(Number(item.amountClp ?? item.amount ?? 0)));
+      .map((item, index): PassengerPendingChargeForRequest => {
+        const type = normalizePassengerPendingChargeType(item.type);
+        const amountClp = calculateApprovedPassengerChargeForRequest(item);
 
         return {
           id: String(item.id ?? `pending-charge-${index}`),
           rideId: typeof item.rideId === "string" ? item.rideId : null,
           rideKey: typeof item.rideKey === "string" ? item.rideKey : null,
-          passengerEmail: typeof item.passengerEmail === "string" ? item.passengerEmail : null,
-          ownerKey: typeof item.ownerKey === "string" ? item.ownerKey : null,
-          amountClp: approvedNoShowAmountClp,
+          passengerEmail:
+            typeof item.passengerEmail === "string"
+              ? item.passengerEmail
+              : null,
+          ownerKey:
+            typeof item.ownerKey === "string"
+              ? item.ownerKey
+              : null,
+          ownerUserId:
+            typeof item.ownerUserId === "string"
+              ? item.ownerUserId
+              : typeof item.userId === "string"
+                ? item.userId
+                : null,
+          passengerUserId:
+            typeof item.passengerUserId === "string"
+              ? item.passengerUserId
+              : null,
+          amountClp,
+          applicableFareClp: Number.isFinite(Number(item.applicableFareClp))
+            ? Math.round(Number(item.applicableFareClp))
+            : null,
+          feePercent: Number.isFinite(Number(item.feePercent))
+            ? Number(item.feePercent)
+            : 30,
+          feeCapClp: Number.isFinite(Number(item.feeCapClp))
+            ? Math.round(Number(item.feeCapClp))
+            : isPassengerPendingChargeNoShow(type)
+              ? 5000
+              : 3000,
           type,
-          status,
-          adminReviewStatus,
-          title: typeof item.title === "string" ? item.title : "No Show aprobado",
+          status: String(item.status ?? ""),
+          adminReviewStatus:
+            typeof item.adminReviewStatus === "string"
+              ? item.adminReviewStatus
+              : null,
+          title:
+            typeof item.title === "string"
+              ? item.title
+              : getPassengerPendingChargeDefaultTitle(type),
           description:
             typeof item.description === "string"
               ? item.description
-              : "No Show aprobado por administrador para cobrar en el proximo viaje.",
-          createdAt: typeof item.createdAt === "string" ? item.createdAt : null,
-          appliedRideId: typeof item.appliedRideId === "string" ? item.appliedRideId : null,
-          appliedAt: typeof item.appliedAt === "string" ? item.appliedAt : null,
-        } as PassengerPendingChargeForRequest;
+              : getPassengerPendingChargeDefaultDescription(type),
+          createdAt:
+            typeof item.createdAt === "string"
+              ? item.createdAt
+              : null,
+          appliedRideId:
+            typeof item.appliedRideId === "string"
+              ? item.appliedRideId
+              : null,
+          appliedAt:
+            typeof item.appliedAt === "string"
+              ? item.appliedAt
+              : null,
+        };
       })
       .filter((charge) => {
-        const owner = normalizePendingChargeEmail(charge.passengerEmail || charge.ownerKey);
-        const belongsToUser = Boolean(sessionEmail && owner && owner === sessionEmail);
+        const rawCharge = parsed.find(
+          (item) => String(item.id ?? "") === String(charge.id),
+        ) ?? (charge as unknown as Record<string, unknown>);
 
-        const type = String(charge.type ?? "").toLowerCase();
+        const belongsToUser = pendingChargeBelongsToCurrentUser(
+          rawCharge,
+          user,
+        );
+
         const status = String(charge.status ?? "").toLowerCase();
-        const adminStatus = String(charge.adminReviewStatus ?? "").toLowerCase();
+        const adminStatus = String(
+          charge.adminReviewStatus ?? "",
+        ).toLowerCase();
 
         const approvedByAdmin =
           status === "pending_next_ride" ||
@@ -184,36 +365,192 @@ function readPassengerPendingChargesForRequest(user: unknown): PassengerPendingC
 
         return (
           belongsToUser &&
-          type === "no_show" &&
+          isPassengerPendingChargeSupportedType(charge.type) &&
           charge.amountClp > 0 &&
           approvedByAdmin &&
           notApplied
         );
       })
-      .sort((a, b) =>
-        new Date(String(a.createdAt ?? 0)).getTime() -
-        new Date(String(b.createdAt ?? 0)).getTime(),
+      .sort(
+        (a, b) =>
+          new Date(String(a.createdAt ?? 0)).getTime() -
+          new Date(String(b.createdAt ?? 0)).getTime(),
       );
   } catch {
     return [];
   }
 }
 
-function writePassengerPendingChargesForRequest(charges: PassengerPendingChargeForRequest[]): void {
+
+type BackendRidePolicyChargeForRequest = {
+  id: string;
+  sourceRideId: string;
+  ownerUserId: string;
+  type: "late_cancellation" | "no_show";
+  status: string;
+  paymentMethod: string | null;
+  applicableFareClp: number;
+  feePercent: number;
+  feeCapClp: number;
+  calculatedAmountClp: number;
+  approvedAmountClp: number | null;
+  amountClp: number;
+  reason: string | null;
+  adminDecisionReason: string | null;
+  appliedToRideId: string | null;
+  appliedAt: string | null;
+  createdAt: string;
+};
+
+async function fetchMyApprovedPolicyChargesForRequest(
+  accessToken: string,
+): Promise<PassengerPendingChargeForRequest[]> {
+  const response = await fetch(
+    `${getRapaGoApiBaseUrl()}/api/rides/policy-charges/me`,
+    {
+      method: "GET",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+      },
+      cache: "no-store",
+    },
+  );
+
+  const payload = (await response
+    .json()
+    .catch(() => ({}))) as Record<string, unknown>;
+
+  if (!response.ok) {
+    const message =
+      typeof payload.message === "string"
+        ? payload.message
+        : "No se pudieron cargar los cargos aprobados.";
+    throw new Error(message);
+  }
+
+  const data = Array.isArray(payload.data)
+    ? payload.data
+    : Array.isArray(payload.charges)
+      ? payload.charges
+      : [];
+
+  return data
+    .filter(
+      (item): item is BackendRidePolicyChargeForRequest =>
+        Boolean(item && typeof item === "object"),
+    )
+    .map((item) => ({
+      id: String(item.id),
+      rideId: String(item.sourceRideId),
+      rideKey: `ride:${String(item.sourceRideId)}`,
+      ownerUserId: String(item.ownerUserId),
+      passengerUserId: String(item.ownerUserId),
+      amountClp: Math.max(
+        0,
+        Math.round(
+          Number(
+            item.approvedAmountClp ??
+              item.amountClp ??
+              item.calculatedAmountClp ??
+              0,
+          ),
+        ),
+      ),
+      applicableFareClp: Math.max(
+        0,
+        Math.round(Number(item.applicableFareClp ?? 0)),
+      ),
+      feePercent: Number(item.feePercent ?? 0),
+      feeCapClp: Math.max(
+        0,
+        Math.round(Number(item.feeCapClp ?? 0)),
+      ),
+      type:
+        item.type === "no_show"
+          ? "no_show"
+          : "late_cancellation",
+      status: "pending_next_ride",
+      adminReviewStatus: "charge_pending_next_ride",
+      title:
+        item.type === "no_show"
+          ? "No Show aprobado"
+          : "Cancelación aprobada",
+      description:
+        item.adminDecisionReason ??
+        (item.type === "no_show"
+          ? "No Show aprobado por administración para sumarlo al próximo viaje."
+          : "Cargo por cancelación aprobado por administración para sumarlo al próximo viaje."),
+      createdAt: item.createdAt,
+      appliedRideId: item.appliedToRideId,
+      appliedAt: item.appliedAt,
+    }))
+    .filter(
+      (charge) =>
+        charge.amountClp > 0 &&
+        !charge.appliedRideId &&
+        !charge.appliedAt,
+    );
+}
+
+function mergePassengerPendingChargesForRequest(
+  backendCharges: PassengerPendingChargeForRequest[],
+  localCharges: PassengerPendingChargeForRequest[],
+): PassengerPendingChargeForRequest[] {
+  const byKey = new Map<string, PassengerPendingChargeForRequest>();
+
+  for (const charge of localCharges) {
+    const key = `${String(charge.rideId ?? charge.rideKey ?? charge.id)}:${String(charge.type ?? "")}`;
+    byKey.set(key, charge);
+  }
+
+  // Backend gana sobre cualquier espejo local.
+  for (const charge of backendCharges) {
+    const key = `${String(charge.rideId ?? charge.rideKey ?? charge.id)}:${String(charge.type ?? "")}`;
+    byKey.set(key, charge);
+  }
+
+  return [...byKey.values()].sort(
+    (a, b) =>
+      new Date(String(a.createdAt ?? 0)).getTime() -
+      new Date(String(b.createdAt ?? 0)).getTime(),
+  );
+}
+
+function writePassengerPendingChargesForRequest(
+  charges: PassengerPendingChargeForRequest[],
+): void {
   try {
-    localStorage.setItem(RAPAGO_PASSENGER_PENDING_CHARGES_KEY, JSON.stringify(charges.slice(0, 250)));
-    window.dispatchEvent(new CustomEvent(RAPAGO_PASSENGER_PENDING_CHARGE_EVENT, { detail: { charges } }));
-    window.dispatchEvent(new CustomEvent("rapago:wallet-updated", { detail: { charges } }));
+    localStorage.setItem(
+      RAPAGO_PASSENGER_PENDING_CHARGES_KEY,
+      JSON.stringify(charges.slice(0, 250)),
+    );
+
+    window.dispatchEvent(
+      new CustomEvent(RAPAGO_PASSENGER_PENDING_CHARGE_EVENT, {
+        detail: { charges },
+      }),
+    );
+
+    window.dispatchEvent(
+      new CustomEvent("rapago:wallet-updated", {
+        detail: { charges },
+      }),
+    );
   } catch {
     // No bloquea la solicitud.
   }
 }
 
-function markPassengerPendingChargesAppliedToRide(user: unknown, rideId: string | null): void {
+function markPassengerPendingChargesAppliedToRide(
+  user: unknown,
+  rideId: string | null,
+): void {
   try {
-    const sessionEmail = getPendingChargeSessionEmail(user);
     const raw = localStorage.getItem(RAPAGO_PASSENGER_PENDING_CHARGES_KEY);
-    const parsed = raw ? (JSON.parse(raw) as Array<Record<string, unknown>>) : [];
+    const parsed = raw
+      ? (JSON.parse(raw) as Array<Record<string, unknown>>)
+      : [];
+
     if (!Array.isArray(parsed)) return;
 
     const now = new Date().toISOString();
@@ -221,25 +558,23 @@ function markPassengerPendingChargesAppliedToRide(user: unknown, rideId: string 
     let changed = false;
 
     const next = parsed.map((item) => {
-      const owner = normalizePendingChargeEmail(
-        typeof item.passengerEmail === "string"
-          ? item.passengerEmail
-          : typeof item.ownerKey === "string"
-            ? item.ownerKey
-            : "",
-      );
-
-      const belongsToUser = Boolean(sessionEmail && owner && owner === sessionEmail);
-      const type = String(item.type ?? "").toLowerCase();
+      const type = normalizePassengerPendingChargeType(item.type);
       const status = String(item.status ?? "").toLowerCase();
-      const adminStatus = String(item.adminReviewStatus ?? "").toLowerCase();
-      const approvedNoShowAmountClp = calculateApprovedNoShowChargeForRequest(item);
+      const adminStatus = String(
+        item.adminReviewStatus ?? "",
+      ).toLowerCase();
+
+      const approvedAmountClp =
+        calculateApprovedPassengerChargeForRequest(item);
 
       const shouldApply =
-        belongsToUser &&
-        type === "no_show" &&
-        approvedNoShowAmountClp > 0 &&
-        (status === "pending_next_ride" || adminStatus === "charge_pending_next_ride") &&
+        pendingChargeBelongsToCurrentUser(item, user) &&
+        isPassengerPendingChargeSupportedType(type) &&
+        approvedAmountClp > 0 &&
+        (
+          status === "pending_next_ride" ||
+          adminStatus === "charge_pending_next_ride"
+        ) &&
         !item.appliedRideId &&
         !item.appliedAt;
 
@@ -249,7 +584,19 @@ function markPassengerPendingChargesAppliedToRide(user: unknown, rideId: string 
 
       return {
         ...item,
-        amountClp: approvedNoShowAmountClp,
+        amountClp: approvedAmountClp,
+        feePercent:
+          Number.isFinite(Number(item.feePercent)) &&
+          Number(item.feePercent) > 0
+            ? Number(item.feePercent)
+            : 30,
+        feeCapClp:
+          Number.isFinite(Number(item.feeCapClp)) &&
+          Number(item.feeCapClp) > 0
+            ? Math.round(Number(item.feeCapClp))
+            : isPassengerPendingChargeNoShow(type)
+              ? 5000
+              : 3000,
         status: "applied_to_next_ride",
         adminReviewStatus: "applied_to_next_ride",
         appliedRideId: safeRideId,
@@ -259,10 +606,29 @@ function markPassengerPendingChargesAppliedToRide(user: unknown, rideId: string 
 
     if (!changed) return;
 
-    localStorage.setItem(RAPAGO_PASSENGER_PENDING_CHARGES_KEY, JSON.stringify(next.slice(0, 250)));
-    window.dispatchEvent(new CustomEvent(RAPAGO_PASSENGER_PENDING_CHARGE_EVENT, { detail: { charges: next } }));
-    window.dispatchEvent(new CustomEvent("rapago:admin-passenger-pending-charge-updated", { detail: { charges: next } }));
-    window.dispatchEvent(new CustomEvent("rapago:wallet-updated", { detail: { charges: next } }));
+    localStorage.setItem(
+      RAPAGO_PASSENGER_PENDING_CHARGES_KEY,
+      JSON.stringify(next.slice(0, 250)),
+    );
+
+    window.dispatchEvent(
+      new CustomEvent(RAPAGO_PASSENGER_PENDING_CHARGE_EVENT, {
+        detail: { charges: next },
+      }),
+    );
+
+    window.dispatchEvent(
+      new CustomEvent(
+        "rapago:admin-passenger-pending-charge-updated",
+        { detail: { charges: next } },
+      ),
+    );
+
+    window.dispatchEvent(
+      new CustomEvent("rapago:wallet-updated", {
+        detail: { charges: next },
+      }),
+    );
   } catch {
     // No bloquea la solicitud.
   }
@@ -4266,6 +4632,11 @@ export default function RequestRidePage(): JSX.Element {
   const [showPaymentBox, setShowPaymentBox] = useState(false);
   const [useWalletBenefit, setUseWalletBenefit] = useState<boolean | null>(null);
   const [walletBenefitRevision, setWalletBenefitRevision] = useState(0);
+  const [pendingChargeRevision, setPendingChargeRevision] = useState(0);
+  const [
+    backendPendingPassengerCharges,
+    setBackendPendingPassengerCharges,
+  ] = useState<PassengerPendingChargeForRequest[]>([]);
   const [rideMode, setRideMode] = useState<RideMode>("now");
   const [tripFareMode, setTripFareMode] = useState<TripFareMode>("one_way");
   const [selectedRoundTripPromotionId, setSelectedRoundTripPromotionId] = useState<string | null>(null);
@@ -4796,16 +5167,111 @@ export default function RequestRidePage(): JSX.Element {
   }
 
 
+  useEffect(() => {
+    let cancelled = false;
+
+    const refreshPendingCharges = () => {
+      setPendingChargeRevision((current) => current + 1);
+
+      if (!session?.accessToken) return;
+
+      void fetchMyApprovedPolicyChargesForRequest(
+        session.accessToken,
+      )
+        .then((charges) => {
+          if (!cancelled) {
+            setBackendPendingPassengerCharges(charges);
+          }
+        })
+        .catch(() => {
+          // Conserva el respaldo local si el backend no está disponible.
+        });
+    };
+
+    const handlePendingChargeStorage = (event: StorageEvent) => {
+      if (
+        !event.key ||
+        event.key === RAPAGO_PASSENGER_PENDING_CHARGES_KEY
+      ) {
+        refreshPendingCharges();
+      }
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        refreshPendingCharges();
+      }
+    };
+
+    refreshPendingCharges();
+
+    window.addEventListener("storage", handlePendingChargeStorage);
+    window.addEventListener(
+      RAPAGO_PASSENGER_PENDING_CHARGE_EVENT,
+      refreshPendingCharges as EventListener,
+    );
+    window.addEventListener(
+      "rapago:admin-passenger-pending-charge-updated",
+      refreshPendingCharges as EventListener,
+    );
+    window.addEventListener(
+      "rapago:wallet-updated",
+      refreshPendingCharges as EventListener,
+    );
+    window.addEventListener("focus", refreshPendingCharges);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+
+    return () => {
+      cancelled = true;
+      window.removeEventListener("storage", handlePendingChargeStorage);
+      window.removeEventListener(
+        RAPAGO_PASSENGER_PENDING_CHARGE_EVENT,
+        refreshPendingCharges as EventListener,
+      );
+      window.removeEventListener(
+        "rapago:admin-passenger-pending-charge-updated",
+        refreshPendingCharges as EventListener,
+      );
+      window.removeEventListener(
+        "rapago:wallet-updated",
+        refreshPendingCharges as EventListener,
+      );
+      window.removeEventListener("focus", refreshPendingCharges);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
+  }, [session?.user]);
+
   const airportWelcomeSurchargeClp =
     isAirportScheduledRide && airportWelcomeOption === "flower_lei"
       ? AIRPORT_FLOWER_LEI_SURCHARGE_CLP
       : 0;
   const hasAirportFlowerLei = airportWelcomeSurchargeClp > 0;
-  const pendingPassengerCharges = readPassengerPendingChargesForRequest(session?.user);
-  const pendingPassengerChargeTotalClp = pendingPassengerCharges.reduce(
-    (sum, charge) => sum + Math.max(0, Math.round(Number(charge.amountClp ?? 0))),
-    0,
-  );
+  const localPendingPassengerCharges =
+    pendingChargeRevision >= 0
+      ? readPassengerPendingChargesForRequest(session?.user)
+      : [];
+  const pendingPassengerCharges =
+    mergePassengerPendingChargesForRequest(
+      backendPendingPassengerCharges,
+      localPendingPassengerCharges,
+    );
+  const pendingNoShowChargeTotalClp = pendingPassengerCharges
+    .filter((charge) => isPassengerPendingChargeNoShow(charge.type))
+    .reduce(
+      (sum, charge) =>
+        sum + Math.max(0, Math.round(Number(charge.amountClp ?? 0))),
+      0,
+    );
+  const pendingCancellationChargeTotalClp = pendingPassengerCharges
+    .filter((charge) => !isPassengerPendingChargeNoShow(charge.type))
+    .reduce(
+      (sum, charge) =>
+        sum + Math.max(0, Math.round(Number(charge.amountClp ?? 0))),
+      0,
+    );
+  const pendingPassengerChargeTotalClp =
+    pendingNoShowChargeTotalClp +
+    pendingCancellationChargeTotalClp;
   const availableWalletBenefits = walletBenefitRevision >= 0
     ? readPassengerWalletBenefitsForRequest(session?.user)
     : [];
@@ -5179,7 +5645,13 @@ export default function RequestRidePage(): JSX.Element {
           tripFareMode?: TripFareMode;
           tripType?: string;
           isRoundTrip?: boolean;
-        }).estimatedFareClp = selectedFareAmount;
+        }).estimatedFareClp = Math.max(
+          0,
+          Math.round(
+            (selectedFareAmount ?? 0) -
+              pendingPassengerChargeTotalClp,
+          ),
+        );
         (input as CreateRideInput & {
           passengerFareType?: PassengerFareType;
           farePassengerType?: PassengerFareType;
@@ -5291,8 +5763,6 @@ export default function RequestRidePage(): JSX.Element {
       );
 
       const createdRideId = extractRideRequestIdFromResponse(createdRideResponse);
-        // Phase 3 security:
-        // Do not mark local pending charges as applied; backend/admin must apply real charges.
       if (selectedWalletBenefitDiscountClp > 0) {
         markPassengerWalletBenefitsUsedForRide({
           user: session.user,
@@ -5373,6 +5843,13 @@ export default function RequestRidePage(): JSX.Element {
           rideRequestId: createdRideId,
         });
 
+        if (pendingPassengerChargeTotalClp > 0) {
+          markPassengerPendingChargesAppliedToRide(
+            session.user,
+            createdRideId,
+          );
+        }
+
         try {
           localStorage.setItem(
             "rapago_pending_card_payment_v1",
@@ -5392,6 +5869,13 @@ export default function RequestRidePage(): JSX.Element {
 
         window.location.href = payment.urlPay;
         return;
+      }
+
+      if (pendingPassengerChargeTotalClp > 0) {
+        markPassengerPendingChargesAppliedToRide(
+          session.user,
+          createdRideId,
+        );
       }
 
       setOriginPoint(null);
@@ -5630,11 +6114,17 @@ export default function RequestRidePage(): JSX.Element {
           localRide,
           ...readLocalPassengerRides(),
         ]);
+
+        if (pendingPassengerChargeTotalClp > 0) {
+          markPassengerPendingChargesAppliedToRide(
+            session.user,
+            String(localRide.id ?? `local-${Date.now()}`),
+          );
+        }
+
         if (localReturnPickupRide) {
           upsertLocalAdminScheduledRide(localReturnPickupRide);
         }
-        // Phase 3 security:
-        // Do not mark local pending charges as applied; backend/admin must apply real charges.
         if (selectedWalletBenefitDiscountClp > 0) {
           markPassengerWalletBenefitsUsedForRide({
             user: session.user,
@@ -7029,8 +7519,18 @@ return (
                       fontWeight: 900,
                     }}
                   >
-                    ⚠️ Cargo pendiente anterior por cancelación/no show: <strong>{formatCLP(pendingPassengerChargeTotalClp)}</strong>.
-                    <br />No se suma desde esta pantalla; cualquier cobro real debe venir del backend/admin.
+                    ⚠️ Cargos aprobados que se sumarán a este viaje: <strong>{formatCLP(pendingPassengerChargeTotalClp)}</strong>.
+                    {pendingCancellationChargeTotalClp > 0 && (
+                      <>
+                        <br />Cancelación desde el minuto 3: <strong>{formatCLP(pendingCancellationChargeTotalClp)}</strong>.
+                      </>
+                    )}
+                    {pendingNoShowChargeTotalClp > 0 && (
+                      <>
+                        <br />No Show aprobado: <strong>{formatCLP(pendingNoShowChargeTotalClp)}</strong>.
+                      </>
+                    )}
+                    <br />Se aplican exclusivamente a esta cuenta y quedarán asociados a este nuevo viaje.
                   </div>
                 )}
 

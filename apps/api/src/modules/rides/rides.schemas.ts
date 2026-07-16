@@ -27,11 +27,12 @@ export const createRideRequestSchema = z.object({
 
   estimatedFareClp: z.number().int().positive().nullable().optional(),
 
-  // Pago declarado por cliente. El backend valida reglas críticas.
   paymentMethod: z.enum(["cash", "card"]).optional(),
-  paymentProvider: z.enum(["mercadopago", "prontopaga", "transbank"]).nullable().optional(),
+  paymentProvider: z
+    .enum(["mercadopago", "prontopaga", "transbank"])
+    .nullable()
+    .optional(),
 
-  // Agendamiento / programación
   rideMode: z.enum(["now", "scheduled"]).optional(),
   isScheduled: z.boolean().optional(),
   tripFareMode: z.enum(["one_way", "round_trip"]).optional(),
@@ -43,7 +44,9 @@ export const createRideRequestSchema = z.object({
   scheduledReturnActivationAt: z.string().trim().nullable().optional(),
 });
 
-export type CreateRideRequestInput = z.infer<typeof createRideRequestSchema>;
+export type CreateRideRequestInput = z.infer<
+  typeof createRideRequestSchema
+>;
 
 export const cancelAcceptedSchema = z.object({
   reason: z
@@ -54,4 +57,46 @@ export const cancelAcceptedSchema = z.object({
     .transform((v) => (v === "" ? undefined : v)),
 });
 
-export type CancelAcceptedInput = z.infer<typeof cancelAcceptedSchema>;
+export type CancelAcceptedInput = z.infer<
+  typeof cancelAcceptedSchema
+>;
+
+export const adminPolicyChargeReviewSchema = z.object({
+  approvedAmountClp: z
+    .number()
+    .int()
+    .positive()
+    .max(5000)
+    .optional(),
+
+  adminDecisionReason: z
+    .string()
+    .trim()
+    .max(500)
+    .optional()
+    .transform((value) =>
+      value === "" ? undefined : value,
+    ),
+});
+
+export type AdminPolicyChargeReviewInput = z.infer<
+  typeof adminPolicyChargeReviewSchema
+>;
+
+export const adminUpsertApprovePolicyChargeSchema = z.object({
+  rideId: z.string().uuid(),
+  type: z.enum(["late_cancellation", "no_show"]),
+  amountClp: z.number().int().positive().max(5000),
+  applicableFareClp: z.number().int().positive().optional(),
+  paymentMethod: z.string().trim().max(30).optional(),
+  reason: z.string().trim().max(500).optional(),
+  adminDecisionReason: z
+    .string()
+    .trim()
+    .max(500)
+    .optional(),
+});
+
+export type AdminUpsertApprovePolicyChargeInput = z.infer<
+  typeof adminUpsertApprovePolicyChargeSchema
+>;
