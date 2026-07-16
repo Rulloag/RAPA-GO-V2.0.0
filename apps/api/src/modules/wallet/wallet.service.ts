@@ -3,11 +3,7 @@ import { SessionService } from "../auth/session.service.js";
 import { UsersRepository } from "../users/users.repository.js";
 import { WalletRepository } from "./wallet.repository.js";
 import { AppError } from "../../shared/errors/AppError.js";
-import { db } from "../../db/client.js";
-import { rideRequests } from "../../db/schema/index.js";
-import { eq } from "drizzle-orm";
-import type { CreatePaymentOrderInput, WebhookPayload } from "./wallet.schemas.js";
-import type { Wallet, Transaction, PaymentOrder } from "../../db/schema/index.js";
+import type { Wallet, Transaction } from "../../db/schema/index.js";
 
 const tokenService   = new TokenService();
 const sessionService = new SessionService();
@@ -63,23 +59,6 @@ function serializeTransaction(t: Transaction) {
   };
 }
 
-function serializePaymentOrder(o: PaymentOrder) {
-  return {
-    id:              o.id,
-    userId:          o.userId,
-    rideId:          o.rideId ?? null,
-    amount:          o.amount,
-    currency:        o.currency,
-    status:          o.status,
-    provider:        o.provider ?? null,
-    providerOrderId: o.providerOrderId ?? null,
-    paymentUrl:      o.paymentUrl ?? null,
-    expiresAt:       o.expiresAt ? o.expiresAt.toISOString() : null,
-    completedAt:     o.completedAt ? o.completedAt.toISOString() : null,
-    createdAt:       o.createdAt.toISOString(),
-  };
-}
-
 export class WalletService {
   async getMyWallet(accessToken: string) {
     const auth = await authenticate(accessToken);
@@ -100,60 +79,5 @@ export class WalletService {
       page,
       limit,
     };
-  }
-
-  async createPaymentOrder(accessToken: string, input: CreatePaymentOrderInput) {
-    const auth = await authenticate(accessToken);
-    if (!auth.ok) return auth;
-
-    // Validate ride belongs to user
-    const rideRows = await db.select().from(rideRequests).where(eq(rideRequests.id, input.rideId)).limit(1);
-    const ride = rideRows[0];
-    if (!ride) {
-      return { ok: false as const, code: "NOT_FOUND", message: "Ride not found.", statusCode: 404 };
-    }
-    if (ride.passengerUserId !== auth.userId) {
-      return { ok: false as const, code: "AUTH_FORBIDDEN", message: "Ride does not belong to you.", statusCode: 403 };
-    }
-
-    const order = await walletRepo.createPaymentOrder({
-      userId:   auth.userId,
-      rideId:   input.rideId,
-      amount:   input.amount,
-      currency: "CLP",
-      status:   "pending",
-    });
-    return { ok: true as const, order: serializePaymentOrder(order) };
-  }
-
-  async handleWebhook(body: WebhookPayload) {
-    const order = await walletRepo.findPaymentOrderByProviderOrderId(body.orderId);
-    if (!order) {
-      return { ok: false as const, code: "NOT_FOUND", message: "Payment order not found.", statusCode: 404 };
-    }
-
-    const completedAt = body.status === "success" ? new Date() : undefined;
-    const updated = await walletRepo.updatePaymentOrderStatus(order.id, body.status, completedAt);
-    if (!updated) {
-      return { ok: false as const, code: "INTERNAL_ERROR", message: "Failed to update payment order.", statusCode: 500 };
-    }
-
-    if (body.status === "success") {
-      const wallet = await walletRepo.getOrCreate(order.userId);
-      await walletRepo.createTransaction({
-        walletId:              wallet.id,
-        userId:                order.userId,
-        ...(order.rideId !== null ? { rideId: order.rideId } : {}),
-        type:                  "payment",
-        amount:                order.amount,
-        currency:              order.currency,
-        status:                "completed",
-        provider:              body.provider,
-        ...(body.transactionId !== undefined ? { providerTransactionId: body.transactionId } : {}),
-        description:           `Pago por orden ${order.id}`,
-      });
-    }
-
-    return { ok: true as const, order: serializePaymentOrder(updated) };
   }
 }

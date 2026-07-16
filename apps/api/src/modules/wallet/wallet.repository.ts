@@ -1,8 +1,8 @@
 import { eq, desc, count } from "drizzle-orm";
 import { db } from "../../db/client.js";
-import { wallets, transactions, paymentOrders } from "../../db/schema/index.js";
+import { wallets, transactions } from "../../db/schema/index.js";
 import { AppError } from "../../shared/errors/AppError.js";
-import type { Wallet, Transaction, PaymentOrder, NewTransaction, NewPaymentOrder } from "../../db/schema/index.js";
+import type { Wallet, Transaction, NewTransaction } from "../../db/schema/index.js";
 
 export class WalletRepository {
   async findByUserId(userId: string): Promise<Wallet | null> {
@@ -81,40 +81,4 @@ export class WalletRepository {
     }
   }
 
-  async createPaymentOrder(data: NewPaymentOrder): Promise<PaymentOrder> {
-    try {
-      const rows = await db.insert(paymentOrders).values(data).returning();
-      const row = rows[0];
-      if (!row) throw AppError.internal("PaymentOrder insert returned no rows.");
-      return row;
-    } catch (err) {
-      if (err instanceof AppError) throw err;
-      throw AppError.internal(`Failed to create payment order: ${String(err)}`);
-    }
-  }
-
-  async findPaymentOrderByProviderOrderId(providerOrderId: string): Promise<PaymentOrder | null> {
-    try {
-      const rows = await db.select().from(paymentOrders)
-        .where(eq(paymentOrders.providerOrderId, providerOrderId)).limit(1);
-      return rows[0] ?? null;
-    } catch (err) {
-      throw AppError.internal(`Failed to query payment order: ${String(err)}`);
-    }
-  }
-
-  async updatePaymentOrderStatus(
-    id: string,
-    status: string,
-    completedAt?: Date,
-  ): Promise<PaymentOrder | null> {
-    try {
-      const set: Partial<typeof paymentOrders.$inferInsert> = { status };
-      if (completedAt !== undefined) set.completedAt = completedAt;
-      const rows = await db.update(paymentOrders).set(set).where(eq(paymentOrders.id, id)).returning();
-      return rows[0] ?? null;
-    } catch (err) {
-      throw AppError.internal(`Failed to update payment order status: ${String(err)}`);
-    }
-  }
 }
