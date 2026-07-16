@@ -1103,6 +1103,32 @@ export function LoginPage(): JSX.Element {
             {fieldErrors.password && <IonNote slot="error">{fieldErrors.password}</IonNote>}
           </IonItem>
 
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "flex-end",
+              margin: "-4px 0 2px",
+            }}
+          >
+            <IonButton
+              fill="clear"
+              size="small"
+              type="button"
+              disabled={loading}
+              onClick={() => history.push("/auth/forgot-password")}
+              style={
+                {
+                  "--color": "#F8D879",
+                  fontWeight: 900,
+                  margin: 0,
+                  textTransform: "none",
+                } as CSSProperties
+              }
+            >
+              ¿Olvidaste tu contraseña?
+            </IonButton>
+          </div>
+
           <IonButton expand="block" type="submit" disabled={loading} style={primaryButtonStyle}>
             {loading ? <IonSpinner name="crescent" /> : "Iniciar sesión"}
           </IonButton>

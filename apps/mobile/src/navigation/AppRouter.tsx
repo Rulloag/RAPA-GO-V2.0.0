@@ -7,6 +7,8 @@ import { WelcomePage } from "../pages/WelcomePage";
 import { NotFoundPage } from "../pages/NotFoundPage";
 import { LoginPage, RegisterPage } from "../features/auth";
 import { FacebookCallbackPage } from "../features/auth/FacebookCallbackPage";
+import { ForgotPasswordPage } from "../features/auth/ForgotPasswordPage";
+import { ResetPasswordPage } from "../features/auth/ResetPasswordPage";
 import { PassengerLayout } from "../layouts/PassengerLayout";
 import { DriverLayout } from "../layouts/DriverLayout";
 import { GuideLayout } from "../layouts/GuideLayout";
@@ -114,6 +116,8 @@ export function AppRouter(): JSX.Element {
         <Route exact path="/legal/:type" component={LegalPage} />
 
         <AuthRoute path={ROUTES.AUTH.LOGIN} component={LoginPage} />
+        <AuthRoute path="/auth/forgot-password" component={ForgotPasswordPage} />
+        <AuthRoute path="/auth/reset-password" component={ResetPasswordPage} />
         <AuthRoute path={ROUTES.AUTH.REGISTER} component={RegisterPage} />
 
         <PrivateRoute path={ROUTES.PASSENGER.BASE} component={PassengerLayout} />
