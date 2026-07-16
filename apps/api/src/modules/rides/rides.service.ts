@@ -185,6 +185,16 @@ export class RidesService {
     }
 
     const rideType = input.rideType ?? "immediate";
+
+    if (rideType === "scheduled" && input.paymentMethod !== "card") {
+      return {
+        ok: false,
+        code: "SCHEDULED_RIDE_REQUIRES_CARD",
+        message: "Las reservas y viajes agendados deben pagarse con tarjeta.",
+        statusCode: 400,
+      };
+    }
+
     const hasMultiDestinations = (input.destinations?.length ?? 0) > 0;
 
     // ── Resolve effective distance, duration, and destination fields ──────────

@@ -177,6 +177,7 @@ const SCHEDULED_INPUT = {
   durationSeconds:   300,
   rideType:          "scheduled" as const,
   scheduledPickupAt: scheduledAt(60),
+  paymentMethod:     "card" as const,
 };
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
@@ -694,6 +695,23 @@ describe("RidesService.createRideRequest — scheduled rides", () => {
     service = new RidesService();
   });
 
+  it("scheduled ride without paymentMethod='card' is rejected", async () => {
+    const result = await service.createRideRequest("token", { ...SCHEDULED_INPUT, paymentMethod: undefined });
+
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.code).toBe("SCHEDULED_RIDE_REQUIRES_CARD");
+    expect(mockCreate).not.toHaveBeenCalled();
+  });
+
+  it("scheduled ride with paymentMethod='cash' is rejected", async () => {
+    const result = await service.createRideRequest("token", { ...SCHEDULED_INPUT, paymentMethod: "cash" });
+
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.code).toBe("SCHEDULED_RIDE_REQUIRES_CARD");
+  });
+
   it("scheduled ride is created with rideType='scheduled'", async () => {
     mockCreate.mockImplementation((data: Record<string, unknown>) =>
       Promise.resolve(makeRide({ ...data, status: "requested", rideType: "scheduled" })),
@@ -939,6 +957,7 @@ const MULTI_DEST_SCHEDULED_INPUT = {
   ...MULTI_DEST_INPUT,
   rideType:          "scheduled" as const,
   scheduledPickupAt: new Date(Date.now() + 90 * 60 * 1000).toISOString(),
+  paymentMethod:     "card" as const,
 };
 
 function makeStop(overrides: Partial<Record<string, unknown>> = {}) {
