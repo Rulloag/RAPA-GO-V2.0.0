@@ -320,6 +320,37 @@ export class RidesRepository {
   }
 
   /**
+   * Atomically transition status='driver_arrived' -> 'no_show', only when the driver matches.
+   * The conditional WHERE is the concurrency guard: two simultaneous calls can only have one
+   * match (whichever commits first flips the status away from 'driver_arrived'), so the caller
+   * can treat a non-null return as "I own this transition, charge exactly once".
+   */
+  async markNoShow(id: string, driverUserId: string): Promise<RideRequest | null> {
+    try {
+      const rows = await db
+        .update(rideRequests)
+        .set({
+          status:             "no_show",
+          cancelledAt:        new Date(),
+          cancellationReason: "passenger_no_show",
+          cancelledByUserId:  driverUserId,
+          cancelledByRole:    "driver",
+          updatedAt:          new Date(),
+        })
+        .where(and(
+          eq(rideRequests.id, id),
+          eq(rideRequests.status, "driver_arrived"),
+          eq(rideRequests.driverUserId, driverUserId),
+        ))
+        .returning();
+      return rows[0] ?? null;
+    } catch (err) {
+      if (err instanceof AppError) throw err;
+      throw AppError.internal(`Failed to mark ride as no-show: ${String(err)}`);
+    }
+  }
+
+  /**
    * Atomically start a ride only when status='driver_arrived' AND driver matches.
    * Returns null if no row was updated.
    */

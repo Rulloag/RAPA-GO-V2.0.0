@@ -6,6 +6,7 @@ import { RideStopsRepository } from "./rideStops.repository.js";
 import { RideAssignmentOffersRepository } from "./rideAssignmentOffers.repository.js";
 import { DriverStatusRepository } from "../drivers/driverStatus.repository.js";
 import { FareSettingsRepository } from "../fareSettings/fareSettings.repository.js";
+import { WalletRepository } from "../wallet/wallet.repository.js";
 import { AppError } from "../../shared/errors/AppError.js";
 import { toResponse, toStopResponse, toDriverRideResponse, toAvailableResponse } from "./rides.responseMapper.js";
 import type {
@@ -24,6 +25,7 @@ const rideStopsRepo     = new RideStopsRepository();
 const offersRepo        = new RideAssignmentOffersRepository();
 const driverStatusRepo  = new DriverStatusRepository();
 const fareSettingsRepo  = new FareSettingsRepository();
+const walletRepo        = new WalletRepository();
 
 const DEFAULT_PRIORITY_SURCHARGE_CLP = 2000;
 
@@ -530,6 +532,56 @@ export class RidesService {
         message: `Ride cannot be marked arrived — current status is '${existing.status}'.`,
         statusCode: 409,
       };
+    }
+
+    return { ok: true, ride: toResponse(updated) };
+  }
+
+  /**
+   * Authoritative passenger no-show. The driver only confirms the fact — the backend derives
+   * the charge from ride.estimatedFareClp (never a client-supplied amount). The status flip
+   * in markNoShow is the concurrency gate: it can only succeed once per ride, so the wallet
+   * debit below can only run once even under concurrent requests.
+   */
+  async confirmNoShow(accessToken: string, rideId: string): Promise<RideResult> {
+    const auth = await authenticate(accessToken);
+    if (!auth.ok) return auth;
+
+    if (auth.role !== "driver") {
+      return { ok: false, code: "AUTH_FORBIDDEN", message: "Only drivers can confirm a no-show.", statusCode: 403 };
+    }
+
+    const updated = await ridesRepo.markNoShow(rideId, auth.userId);
+    if (!updated) {
+      const existing = await ridesRepo.findById(rideId);
+      if (!existing) {
+        return { ok: false, code: "NOT_FOUND", message: "Ride request not found.", statusCode: 404 };
+      }
+      if (existing.driverUserId !== auth.userId) {
+        return { ok: false, code: "AUTH_FORBIDDEN", message: "You can only confirm no-show on rides assigned to you.", statusCode: 403 };
+      }
+      return {
+        ok: false,
+        code: "RIDE_CANNOT_CONFIRM_NO_SHOW",
+        message: `No-show cannot be confirmed — current status is '${existing.status}'.`,
+        statusCode: 409,
+      };
+    }
+
+    const chargeClp = updated.estimatedFareClp ?? 0;
+    if (chargeClp > 0) {
+      const wallet = await walletRepo.getOrCreate(updated.passengerUserId);
+      await walletRepo.updateBalance(wallet.id, wallet.balance - chargeClp);
+      await walletRepo.createTransaction({
+        walletId:    wallet.id,
+        userId:      updated.passengerUserId,
+        rideId:      updated.id,
+        type:        "no_show_charge",
+        amount:      -chargeClp,
+        currency:    "CLP",
+        status:      "completed",
+        description: `Cargo por no-show — viaje ${updated.id}`,
+      });
     }
 
     return { ok: true, ride: toResponse(updated) };
