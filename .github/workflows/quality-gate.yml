@@ -1,0 +1,261 @@
+name: Quality Gate
+
+# Control automático de Pull Requests hacia main. NO publica, NO despliega, NO toca
+# Android/iOS release ni Sentry — eso vive en workflows separados (release-validation.yml y una
+# integración de Sentry futuros, fuera de alcance de este archivo).
+on:
+  pull_request:
+    branches: [main]
+
+# Cancela ejecuciones anteriores del mismo PR cuando llega un push nuevo — evita gastar minutos de
+# CI validando un estado ya obsoleto del PR.
+concurrency:
+  group: quality-gate-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+env:
+  NODE_VERSION: "20"
+
+jobs:
+  install:
+    name: Instalación reproducible
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      # npm ci exige que package-lock.json esté sincronizado con los package.json — falla si
+      # alguien commiteó una dependencia sin actualizar el lockfile.
+      - run: npm ci
+      - name: Cachear node_modules para los jobs siguientes
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            node_modules
+            apps/api/node_modules
+            apps/mobile/node_modules
+            packages/shared/node_modules
+          key: quality-gate-node-modules-${{ github.event.pull_request.number }}-${{ github.run_id }}
+
+  typecheck:
+    name: Typecheck (API + mobile)
+    runs-on: ubuntu-latest
+    needs: install
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - uses: actions/cache/restore@v4
+        with:
+          path: |
+            node_modules
+            apps/api/node_modules
+            apps/mobile/node_modules
+            packages/shared/node_modules
+          key: quality-gate-node-modules-${{ github.event.pull_request.number }}-${{ github.run_id }}
+          fail-on-cache-miss: true
+      - name: Build packages/shared (dependencia de tipos de apps/api)
+        run: npm run build --workspace=packages/shared
+      - name: Typecheck apps/api
+        run: npm run typecheck --workspace=apps/api
+      - name: Typecheck apps/mobile
+        run: npm run typecheck --workspace=apps/mobile
+
+  test-api:
+    name: Tests API
+    runs-on: ubuntu-latest
+    needs: install
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - uses: actions/cache/restore@v4
+        with:
+          path: |
+            node_modules
+            apps/api/node_modules
+            apps/mobile/node_modules
+            packages/shared/node_modules
+          key: quality-gate-node-modules-${{ github.event.pull_request.number }}-${{ github.run_id }}
+          fail-on-cache-miss: true
+      - run: npm run test --workspace=apps/api
+
+  build:
+    name: Build (API + mobile)
+    runs-on: ubuntu-latest
+    needs: install
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - uses: actions/cache/restore@v4
+        with:
+          path: |
+            node_modules
+            apps/api/node_modules
+            apps/mobile/node_modules
+            packages/shared/node_modules
+          key: quality-gate-node-modules-${{ github.event.pull_request.number }}-${{ github.run_id }}
+          fail-on-cache-miss: true
+      - name: Build packages/shared
+        run: npm run build --workspace=packages/shared
+      - name: Build API
+        run: npm run build --workspace=apps/api
+      - name: Build mobile
+        run: npm run build --workspace=apps/mobile
+
+  migrations:
+    name: Migraciones (base vacía + segunda ejecución)
+    runs-on: ubuntu-latest
+    needs: install
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: quality_gate
+          POSTGRES_PASSWORD: quality_gate
+          POSTGRES_DB: quality_gate_migrations
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U quality_gate"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      PGHOST: localhost
+      PGPORT: 5432
+      PGUSER: quality_gate
+      PGPASSWORD: quality_gate
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - uses: actions/cache/restore@v4
+        with:
+          path: |
+            node_modules
+            apps/api/node_modules
+            apps/mobile/node_modules
+            packages/shared/node_modules
+          key: quality-gate-node-modules-${{ github.event.pull_request.number }}-${{ github.run_id }}
+          fail-on-cache-miss: true
+      - name: Build packages/shared
+        run: npm run build --workspace=packages/shared
+      # main no tiene el script db:verify-chain (aportado por la rama de remediación) ni una
+      # cadena de migraciones sana — el journal de drizzle solo trackea 16 de los 34 archivos
+      # .sql presentes, con 3 números duplicados (0011, 0028, 0029). Ese problema es deuda
+      # documentada aparte y no se resuelve en este workflow. Por ahora este job solo corre
+      # `drizzle-kit migrate` contra la base efímera de CI para detectar errores de aplicación
+      # bruta (no valida idempotencia ni segunda pasada todavía).
+      - name: Aplicar migraciones sobre base vacía (DB efímera de CI, no DATABASE_URL del proyecto)
+        working-directory: apps/api
+        env:
+          DATABASE_URL: postgresql://quality_gate:quality_gate@localhost:5432/quality_gate_migrations
+        run: npm run db:migrate
+
+  secret-scan:
+    name: Búsqueda de secretos
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      # gitleaks-action es gratuita para repos públicos y cuentas personales. Si este repositorio
+      # pasa a vivir bajo una organización de GitHub, Gitleaks puede exigir la variable
+      # GITLEAKS_LICENSE para seguir funcionando — no se agrega ninguna licencia ni secreto aquí.
+      # Si este job falla específicamente por falta de licencia (no por secretos detectados), se
+      # reemplaza en un commit separado — ver docs/security/QUALITY_GATE.md.
+      - name: gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  financial-authz-regression:
+    name: Regresión financiera y de autorización
+    runs-on: ubuntu-latest
+    needs: install
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - uses: actions/cache/restore@v4
+        with:
+          path: |
+            node_modules
+            apps/api/node_modules
+            apps/mobile/node_modules
+            packages/shared/node_modules
+          key: quality-gate-node-modules-${{ github.event.pull_request.number }}-${{ github.run_id }}
+          fail-on-cache-miss: true
+      - name: Build packages/shared
+        run: npm run build --workspace=packages/shared
+      # Cobertura financiera/autorización = todo lo bajo payments/wallet/rides. Corre esa porción
+      # de la suite de forma aislada y falla el job si algo ahí falla — no basta con que la suite
+      # completa (job test-api) pase en verde, este job aísla específicamente el dinero.
+      - name: Ejecutar suite financiera/autorización (payments, wallet, rides)
+        working-directory: apps/api
+        run: npx vitest run src/modules/payments src/modules/wallet src/modules/rides
+      # Evita que un fallo se "resuelva" borrando el test en vez de arreglando el bug: compara el
+      # número de archivos de test bajo esas rutas contra main y falla si bajó.
+      - name: Verificar que no se eliminaron tests financieros/de autorización respecto a main
+        working-directory: apps/api
+        run: |
+          git fetch origin main --depth=1
+          BASE_COUNT=$(git ls-tree -r origin/main --name-only -- \
+            apps/api/src/modules/payments apps/api/src/modules/wallet apps/api/src/modules/rides \
+            | grep -c '\.test\.ts$' || true)
+          HEAD_COUNT=$(git ls-tree -r HEAD --name-only -- \
+            apps/api/src/modules/payments apps/api/src/modules/wallet apps/api/src/modules/rides \
+            | grep -c '\.test\.ts$' || true)
+          echo "Archivos de test en main: ${BASE_COUNT}"
+          echo "Archivos de test en este PR: ${HEAD_COUNT}"
+          if [ "$HEAD_COUNT" -lt "$BASE_COUNT" ]; then
+            echo "::error::Este PR elimina archivos de test bajo payments/wallet/rides (${BASE_COUNT} -> ${HEAD_COUNT}). Si un test se movió o se consolidó, ajusta este chequeo explícitamente en el PR; no está permitido reducir la cobertura financiera/de autorización en silencio."
+            exit 1
+          fi
+
+  quality-gate-report:
+    name: Reporte final del Quality Gate
+    runs-on: ubuntu-latest
+    if: always()
+    needs:
+      - install
+      - typecheck
+      - test-api
+      - build
+      - migrations
+      - secret-scan
+      - financial-authz-regression
+    steps:
+      - name: Resumen
+        run: |
+          {
+            echo "## Quality Gate — resumen"
+            echo ""
+            echo "| Verificación | Resultado |"
+            echo "|---|---|"
+            echo "| Instalación reproducible | ${{ needs.install.result }} |"
+            echo "| Typecheck API + mobile | ${{ needs.typecheck.result }} |"
+            echo "| Tests API | ${{ needs.test-api.result }} |"
+            echo "| Build API + mobile | ${{ needs.build.result }} |"
+            echo "| Migraciones (base vacía + 2ª ejecución) | ${{ needs.migrations.result }} |"
+            echo "| Búsqueda de secretos | ${{ needs.secret-scan.result }} |"
+            echo "| Regresión financiera/autorización | ${{ needs['financial-authz-regression'].result }} |"
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Fallar si cualquier verificación no pasó
+        if: >-
+          contains(needs.*.result, 'failure') ||
+          contains(needs.*.result, 'cancelled')
+        run: |
+          echo "::error::Al menos una verificación del Quality Gate falló o fue cancelada. Revisa el resumen arriba."
+          exit 1

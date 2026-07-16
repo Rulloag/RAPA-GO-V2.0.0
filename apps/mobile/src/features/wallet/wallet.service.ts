@@ -17,16 +17,6 @@ export interface TransactionData {
   createdAt:   string;
 }
 
-export interface PaymentOrderData {
-  id:              string;
-  amount:          number;
-  currency:        string;
-  status:          string;
-  paymentUrl:      string | null;
-  providerOrderId: string | null;
-  createdAt:       string;
-}
-
 type Envelope<T> = { ok: true; data: T; statusCode: number };
 
 export const walletService = {
@@ -47,19 +37,5 @@ export const walletService = {
     );
     if (!result.ok) throw new Error((result as { message?: string }).message ?? "Error loading transactions.");
     return (result.data as Envelope<{ items: TransactionData[]; total: number }>).data;
-  },
-
-  async createPaymentOrder(
-    accessToken: string,
-    rideId: string,
-    amount: number,
-  ): Promise<PaymentOrderData> {
-    const result = await apiClient.post<Envelope<PaymentOrderData>>(
-      "/payments/create-order",
-      { rideId, amount },
-      { token: accessToken },
-    );
-    if (!result.ok) throw new Error((result as { message?: string }).message ?? "Error creating payment order.");
-    return (result.data as Envelope<PaymentOrderData>).data;
   },
 };
