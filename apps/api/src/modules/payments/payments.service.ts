@@ -267,4 +267,45 @@ export class PaymentsService {
 
     return { ok: true, processed: false };
   }
+
+  /**
+   * Admin-only, idempotent refund flip. markRefunded's WHERE status='success' is the
+   * idempotency gate — calling this twice for the same payment is safe, the second call
+   * simply finds no row to update.
+   */
+  async refundPayment(accessToken: string, paymentId: string): Promise<Result<{ refunded: boolean }>> {
+    const auth = await authenticate(accessToken);
+    if (!auth.ok) return auth;
+    if (auth.role !== "admin") {
+      return { ok: false, code: "AUTH_FORBIDDEN", message: "Admin access required.", statusCode: 403 };
+    }
+
+    const payment = await paymentsRepo.findById(paymentId);
+    if (!payment) {
+      return { ok: false, code: "NOT_FOUND", message: "Payment not found.", statusCode: 404 };
+    }
+
+    const refunded = await paymentsRepo.markRefunded(paymentId);
+    if (!refunded) {
+      if (payment.status === "refunded") {
+        return { ok: true, refunded: false };
+      }
+      return {
+        ok: false,
+        code: "PAYMENT_NOT_REFUNDABLE",
+        message: `Payment cannot be refunded — current status is '${payment.status}'.`,
+        statusCode: 409,
+      };
+    }
+
+    auditService.recordSafe({
+      actorUserId: auth.userId,
+      eventType:   "payment.refunded",
+      entityType:  "payment",
+      entityId:    refunded.id,
+      metadata:    { rideId: refunded.rideRequestId, amountClp: refunded.amountClp },
+    });
+
+    return { ok: true, refunded: true };
+  }
 }
