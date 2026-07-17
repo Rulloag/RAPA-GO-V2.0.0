@@ -127,6 +127,13 @@
       "when": 1784223110081,
       "tag": "0017_bitter_felicia_hardy",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1784247725479,
+      "tag": "0018_password_reset_tokens",
+      "breakpoints": true
     }
   ]
 }

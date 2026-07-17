@@ -19,6 +19,6 @@
       "@shared/*": ["src/shared/*"]
     }
   },
-  "include": ["src"],
+  "include": ["src", "../mobile/src/features/auth/passwordReset.repository.ts"],
   "exclude": ["node_modules", "dist"]
 }

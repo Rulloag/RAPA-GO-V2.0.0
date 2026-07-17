@@ -1,10 +1,22 @@
 import type { FastifyRequest, FastifyReply } from "fastify";
 import { AuthService } from "./auth.service.js";
-import { loginRequestSchema, registerRequestSchema } from "./auth.schemas.js";
-import type { LoginRequest, RegisterRequest } from "./auth.types.js";
+import {
+  forgotPasswordRequestSchema,
+  loginRequestSchema,
+  registerRequestSchema,
+  resetPasswordRequestSchema,
+} from "./auth.schemas.js";
+import type {
+  ForgotPasswordRequest,
+  LoginRequest,
+  RegisterRequest,
+  ResetPasswordRequest,
+} from "./auth.types.js";
 import { sendError } from "../../shared/http/apiResponse.js";
+import { PasswordResetService } from "./passwordReset.service.js";
 
 const authService = new AuthService();
+const passwordResetService = new PasswordResetService();
 
 function getRequiredEnv(name: string): string {
   const value = process.env[name];
@@ -66,6 +78,75 @@ export const authController = {
     }
 
     reply.status(201).send(result);
+  },
+
+  async forgotPassword(
+    request: FastifyRequest<{ Body: ForgotPasswordRequest }>,
+    reply: FastifyReply,
+  ): Promise<void> {
+    const parsed = forgotPasswordRequestSchema.safeParse(
+      request.body,
+    );
+
+    if (!parsed.success) {
+      sendError(reply, {
+        code: "VALIDATION_ERROR",
+        message: parsed.error.issues[0]?.message ??
+          "Solicitud inválida.",
+        statusCode: 400,
+      });
+      return;
+    }
+
+    const userAgentHeader = request.headers["user-agent"];
+    const userAgent = Array.isArray(userAgentHeader)
+      ? userAgentHeader.join(" ")
+      : userAgentHeader;
+
+    const result =
+      await passwordResetService.requestPasswordReset(
+        parsed.data,
+        {
+          requestIp: request.ip,
+          requestUserAgent: userAgent ?? null,
+        },
+      );
+
+    reply
+      .header("Cache-Control", "no-store")
+      .status(202)
+      .send(result);
+  },
+
+  async resetPassword(
+    request: FastifyRequest<{ Body: ResetPasswordRequest }>,
+    reply: FastifyReply,
+  ): Promise<void> {
+    const parsed = resetPasswordRequestSchema.safeParse(
+      request.body,
+    );
+
+    if (!parsed.success) {
+      sendError(reply, {
+        code: "VALIDATION_ERROR",
+        message: parsed.error.issues[0]?.message ??
+          "Solicitud inválida.",
+        statusCode: 400,
+      });
+      return;
+    }
+
+    const result =
+      await passwordResetService.resetPassword(parsed.data);
+
+    reply.header("Cache-Control", "no-store");
+
+    if ("statusCode" in result) {
+      reply.status(result.statusCode).send(result);
+      return;
+    }
+
+    reply.status(200).send(result);
   },
 
   async logout(
