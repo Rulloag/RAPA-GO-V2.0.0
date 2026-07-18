@@ -1,4 +1,4 @@
-import { and, asc, avg, count, desc, eq, inArray, isNull } from "drizzle-orm";
+import { and, asc, avg, count, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 import { db } from "../../db/client.js";
 import { rideRequests, users, rideRatings, driverProfiles } from "../../db/schema/index.js";
 import { alias } from "drizzle-orm/pg-core";
@@ -174,6 +174,7 @@ export class RidesRepository {
     destinationText: string,
     notes: string | null,
     baseEstimatedFareClp: number,
+    initialStatus: "requested" | "pending_payment" = "requested",
   ): Promise<RideCreatedWithPolicyCharges> {
     try {
       return await db.transaction(async (tx) => {
@@ -221,7 +222,7 @@ export class RidesRepository {
             destinationText,
             notes,
             estimatedFareClp: finalEstimatedFareClp,
-            status: "requested",
+            status: initialStatus,
           })
           .returning();
 
@@ -411,7 +412,7 @@ export class RidesRepository {
   }
 
   /**
-   * Atomically cancel a ride only when it is still in 'accepted' status.
+   * Atomically cancel a ride while it is accepted or the driver is still travelling to the pickup.
    * Returns null if no row was updated (status changed concurrently).
    */
   async cancelAccepted(
@@ -431,12 +432,133 @@ export class RidesRepository {
           cancellationReason,
           updatedAt:          new Date(),
         })
-        .where(and(eq(rideRequests.id, id), eq(rideRequests.status, "accepted")))
+        .where(
+          and(
+            eq(rideRequests.id, id),
+            inArray(rideRequests.status, [
+              "accepted",
+              "driver_en_route",
+              "driver_arrived",
+            ]),
+          ),
+        )
         .returning();
       return rows[0] ?? null;
     } catch (err) {
       if (err instanceof AppError) throw err;
       throw AppError.internal(`Failed to cancel accepted ride: ${String(err)}`);
+    }
+  }
+
+
+  /**
+   * Publica el viaje solo después de que el backend recibió un pago aprobado.
+   * La condición status='pending_payment' evita activaciones dobles y hace la
+   * operación idempotente ante webhooks repetidos.
+   */
+  /**
+   * Activa RapaGo más veloz exactamente una vez y suma el recargo al total real.
+   * El marcador en notes hace que los webhooks repetidos sean idempotentes.
+   */
+  async activateFastSearch(
+    id: string,
+    feeClp: number,
+    paymentMethod: "cash" | "card",
+  ): Promise<RideRequest | null> {
+    try {
+      const safeFeeClp = Math.max(0, Math.round(Number(feeClp)));
+      if (safeFeeClp <= 0) return this.findById(id);
+
+      const activatedAt = new Date();
+      const marker = "RAPAGO_FAST_SEARCH_ACTIVE: true";
+      const noteBlock = [
+        marker,
+        `RAPAGO_FAST_SEARCH_FEE_CLP: ${safeFeeClp}`,
+        `RAPAGO_FAST_SEARCH_PAYMENT_METHOD: ${paymentMethod}`,
+        "RAPAGO_FAST_SEARCH_PAYMENT_STATUS: approved",
+        `RAPAGO_FAST_SEARCH_ACTIVATED_AT: ${activatedAt.toISOString()}`,
+        `RapaGo más veloz: incluido en el total. Recargo: $${safeFeeClp.toLocaleString("es-CL")} CLP.`,
+      ].join("\n");
+
+      const [updated] = await db
+        .update(rideRequests)
+        .set({
+          estimatedFareClp: sql<number>`coalesce(${rideRequests.estimatedFareClp}, 0) + ${safeFeeClp}`,
+          notes: sql<string>`concat_ws(E'\\n', nullif(${rideRequests.notes}, ''), ${noteBlock})`,
+          updatedAt: activatedAt,
+        })
+        .where(
+          and(
+            eq(rideRequests.id, id),
+            sql`coalesce(${rideRequests.notes}, '') not like ${`%${marker}%`}`,
+          ),
+        )
+        .returning();
+
+      return updated ?? this.findById(id);
+    } catch (err) {
+      throw AppError.internal(
+        `Failed to activate RapaGo fast search: ${String(err)}`,
+      );
+    }
+  }
+
+  async activateAfterApprovedPayment(id: string): Promise<RideRequest | null> {
+    try {
+      const [row] = await db
+        .update(rideRequests)
+        .set({
+          status: "requested",
+          updatedAt: new Date(),
+        })
+        .where(
+          and(
+            eq(rideRequests.id, id),
+            eq(rideRequests.status, "pending_payment"),
+          ),
+        )
+        .returning();
+
+      return row ?? null;
+    } catch (err) {
+      throw AppError.internal(
+        `Failed to activate ride after approved payment: ${String(err)}`,
+      );
+    }
+  }
+
+  /**
+   * Cierra una solicitud que nunca recibió un pago aprobado. Nunca toca viajes
+   * ya publicados, aceptados o iniciados.
+   */
+  async cancelPendingPayment(
+    id: string,
+    cancellationReason: string,
+  ): Promise<RideRequest | null> {
+    try {
+      const now = new Date();
+      const [row] = await db
+        .update(rideRequests)
+        .set({
+          status: "cancelled",
+          cancelledAt: now,
+          cancelledByRole: "payment",
+          cancellationReason,
+          updatedAt: now,
+        })
+        .where(
+          and(
+            eq(rideRequests.id, id),
+            eq(rideRequests.status, "pending_payment"),
+          ),
+        )
+        .returning();
+
+      return row ?? null;
+    } catch (err) {
+      throw AppError.internal(
+        `Failed to cancel pending-payment ride: ${String(err)}`,
+      );
     }
   }
 
@@ -713,12 +835,29 @@ export class RidesRepository {
     }
   }
 
-  async cancel(id: string): Promise<RideRequest> {
+  async cancel(
+    id: string,
+    cancelledByUserId?: string | null,
+    cancelledByRole?: string | null,
+    cancellationReason?: string | null,
+  ): Promise<RideRequest> {
     try {
       const rows = await db
         .update(rideRequests)
-        .set({ status: "cancelled", cancelledAt: new Date(), updatedAt: new Date() })
-        .where(eq(rideRequests.id, id))
+        .set({
+          status: "cancelled",
+          cancelledAt: new Date(),
+          cancelledByUserId: cancelledByUserId ?? null,
+          cancelledByRole: cancelledByRole ?? null,
+          cancellationReason: cancellationReason ?? null,
+          updatedAt: new Date(),
+        })
+        .where(
+          and(
+            eq(rideRequests.id, id),
+            inArray(rideRequests.status, ["requested", "pending_payment"]),
+          ),
+        )
         .returning();
       const row = rows[0];
       if (!row) throw AppError.internal("Update returned no rows.");

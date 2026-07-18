@@ -69,13 +69,27 @@ function normalizePublicHttpsUrl(value: unknown): string | null {
     const hostname = url.hostname.toLowerCase();
 
     // MercadoPago puede rechazar localhost/red local en back_urls y webhooks.
-    // Para redirección automática usa un dominio HTTPS público o Dev Tunnel.
+    // Para redirecciÃ³n automÃ¡tica usa un dominio HTTPS pÃºblico o Dev Tunnel.
     if (isLocalOrPrivate(hostname)) return null;
     if (url.protocol !== "https:") return null;
 
     return url.toString();
   } catch {
     return null;
+  }
+}
+
+function buildPaymentResultUrl(
+  baseUrl: string,
+  result: "approved_return" | "failure_return" | "pending_return",
+): string {
+  try {
+    const url = new URL(baseUrl);
+    url.searchParams.set("payment", result);
+    return url.toString();
+  } catch {
+    const separator = baseUrl.includes("?") ? "&" : "?";
+    return `${baseUrl}${separator}payment=${result}`;
   }
 }
 
@@ -193,6 +207,12 @@ export class MercadoPagoProvider implements PaymentProvider {
     const publicWebhookUrl = normalizePublicHttpsUrl(params.webhookUrl);
     const payerEmail = normalizePayerEmail(params.passengerEmail);
 
+    if (!publicWebhookUrl) {
+      throw new Error(
+        "Mercado Pago requiere una URL HTTPS pÃºblica de webhook. El viaje no puede activarse usando solamente la URL de retorno.",
+      );
+    }
+
     const preference: Record<string, unknown> = {
       items: [
         {
@@ -223,9 +243,9 @@ export class MercadoPagoProvider implements PaymentProvider {
 
     if (publicReturnUrl) {
       preference["back_urls"] = {
-        success: publicReturnUrl,
-        failure: publicReturnUrl,
-        pending: publicReturnUrl,
+        success: buildPaymentResultUrl(publicReturnUrl, "approved_return"),
+        failure: buildPaymentResultUrl(publicReturnUrl, "failure_return"),
+        pending: buildPaymentResultUrl(publicReturnUrl, "pending_return"),
       };
       preference["auto_return"] = "approved";
     }
@@ -253,8 +273,10 @@ export class MercadoPagoProvider implements PaymentProvider {
         payload: withoutKeys(preference, ["payment_methods"]),
       },
       {
-        name: "mínima sin urls",
-        payload: withoutKeys(preference, ["payment_methods", "back_urls", "auto_return", "notification_url"]),
+        // Nunca quitamos notification_url: el webhook es la Ãºnica autoridad
+        // que puede desbloquear un viaje pagado con tarjeta.
+        name: "mÃ­nima conservando webhook",
+        payload: withoutKeys(preference, ["payment_methods", "back_urls", "auto_return"]),
       },
     ];
 

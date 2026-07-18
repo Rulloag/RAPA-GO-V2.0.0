@@ -1513,7 +1513,7 @@ async function createMercadoPagoCheckout(input: {
         ? payload.message
         : typeof payload.error === "string"
           ? payload.error
-          : "No se pudo iniciar el pago con MercadoPago.";
+          : "No se pudo iniciar el pago con Mercado Pago.";
     throw new Error(message);
   }
 
@@ -1526,7 +1526,7 @@ async function createMercadoPagoCheckout(input: {
     "";
 
   if (!urlPay) {
-    throw new Error("MercadoPago no devolvió URL de pago.");
+    throw new Error("Mercado Pago no devolvió URL de pago.");
   }
 
   const paymentIdValue =
@@ -5345,7 +5345,7 @@ export default function RequestRidePage(): JSX.Element {
     if (method === "card") {
       return cardPaymentAmount != null
         ? `Tarjeta · ${formatCLP(cardPaymentAmount)}`
-        : "Tarjeta · MercadoPago";
+        : "Tarjeta · Mercado Pago";
     }
     return "Pendiente";
   }
@@ -5406,7 +5406,7 @@ export default function RequestRidePage(): JSX.Element {
     if (reservationRequiresCard && method === "cash") {
       setPaymentMethod("card");
       setShowPaymentBox(false);
-      setSubmitError("Todas las reservas se pagan obligatoriamente con tarjeta/MercadoPago. Si cancelas dentro de los últimos 15 minutos, se descuenta 30% con tope $3.000 y el saldo queda como CRÉDITOS PARA PRÓXIMO VIAJE.");
+      setSubmitError("Todas las reservas se pagan obligatoriamente con tarjeta/Mercado Pago. Si cancelas dentro de los últimos 15 minutos, se descuenta 30% con tope $3.000 y el saldo queda como CRÉDITOS PARA PRÓXIMO VIAJE.");
       return;
     }
 
@@ -5455,7 +5455,7 @@ export default function RequestRidePage(): JSX.Element {
     if (reservationRequiresCard && String(activePaymentMethod) !== "card") {
       setPaymentMethod("card");
       setShowPaymentBox(true);
-      setSubmitError("Todas las reservas deben pagarse obligatoriamente con tarjeta/MercadoPago. Si cancelas dentro de los últimos 15 minutos, se descuenta 30% con tope $3.000 y el saldo queda como CRÉDITOS PARA PRÓXIMO VIAJE.");
+      setSubmitError("Todas las reservas deben pagarse obligatoriamente con tarjeta/Mercado Pago. Si cancelas dentro de los últimos 15 minutos, se descuenta 30% con tope $3.000 y el saldo queda como CRÉDITOS PARA PRÓXIMO VIAJE.");
       return;
     }
 
@@ -5488,7 +5488,7 @@ export default function RequestRidePage(): JSX.Element {
 
       notes.push(`Forma de pago seleccionada: ${getPaymentLabel(activePaymentMethod)}.`);
       if (reservationRequiresCard) {
-        notes.push("Pago obligatorio para reservas: tarjeta/MercadoPago.");
+        notes.push("Pago obligatorio para reservas: tarjeta/Mercado Pago.");
         notes.push("Gestión reserva: el administrador designa conductor 30 minutos antes del inicio del servicio.");
         notes.push("Política cancelación reserva: desde los últimos 15 minutos previos al inicio se cobra 30% con tope $3.000.");
         notes.push("Si se cancela con tarjeta, la penalización se descuenta del pago y el saldo queda como CRÉDITOS PARA PRÓXIMO VIAJE en billetera. Si requiere devolución, debe solicitarla a Gerencia de Soporte RAPA GO por WhatsApp.");
@@ -5548,7 +5548,7 @@ export default function RequestRidePage(): JSX.Element {
           notes.push("Recogida a elección del pasajero.");
         } else {
           notes.push(`Tipo de reserva: recogida aeropuerto.`);
-          notes.push("Pago obligatorio para reservas: tarjeta/MercadoPago.");
+          notes.push("Pago obligatorio para reservas: tarjeta/Mercado Pago.");
           notes.push("Política cancelación reserva: desde los últimos 15 minutos se cobra 30% con tope $3.000; el saldo neto queda como CRÉDITOS PARA PRÓXIMO VIAJE. Si necesitas devolución, abre WhatsApp con Gerencia de Soporte RAPA GO.");
           notes.push(`Origen automático aeropuerto: ${RAPA_NUI_AIRPORT_DESTINATION.text}.`);
           notes.push(`RAPAGO_AIRPORT_ORIGIN_LAT: ${RAPA_NUI_AIRPORT_DESTINATION.lat}.`);
@@ -5776,66 +5776,68 @@ export default function RequestRidePage(): JSX.Element {
         setWalletBenefitRevision((current) => current + 1);
       }
 
-      if (selectedRoundTripPromotion && returnScheduledAt) {
-        upsertRoundTripReturnPickupRide(createRoundTripReturnPickupRide({
-          returnOriginText: selectedRoundTripPromotion.destinationName,
-          returnOriginAddress: resolved.destination.address,
-          returnOriginLat: resolved.destination.lat,
-          returnOriginLng: resolved.destination.lng,
-          returnDestinationText: resolved.origin.text,
-          returnDestinationAddress: resolved.origin.address,
-          returnDestinationLat: resolved.origin.lat,
-          returnDestinationLng: resolved.origin.lng,
-          returnScheduledAt,
-          promotionTitle: selectedRoundTripPromotion.title,
-          promotionDestinationName: selectedRoundTripPromotion.destinationName,
-          relatedOutboundRideId: createdRideId,
-          passengerNote: passengerNote || null,
-          passengerName: getSessionDisplayName(session.user),
-          passengerEmail: getSessionEmail(session.user),
-          passengerFareType: effectivePassengerFareType,
-          passengerFareLabel: passengerFareTypeLabel(effectivePassengerFareType),
-        }));
-      }
+      // Los espejos locales de reservas quedan diferidos. Con tarjeta no se
+      // publican en admin/conductor hasta que el webhook apruebe el pago.
+      const pendingReturnPickupRide = selectedRoundTripPromotion && returnScheduledAt
+        ? createRoundTripReturnPickupRide({
+            returnOriginText: selectedRoundTripPromotion.destinationName,
+            returnOriginAddress: resolved.destination.address,
+            returnOriginLat: resolved.destination.lat,
+            returnOriginLng: resolved.destination.lng,
+            returnDestinationText: resolved.origin.text,
+            returnDestinationAddress: resolved.origin.address,
+            returnDestinationLat: resolved.origin.lat,
+            returnDestinationLng: resolved.origin.lng,
+            returnScheduledAt,
+            promotionTitle: selectedRoundTripPromotion.title,
+            promotionDestinationName: selectedRoundTripPromotion.destinationName,
+            relatedOutboundRideId: createdRideId,
+            passengerNote: passengerNote || null,
+            passengerName: getSessionDisplayName(session.user),
+            passengerEmail: getSessionEmail(session.user),
+            passengerFareType: effectivePassengerFareType,
+            passengerFareLabel: passengerFareTypeLabel(effectivePassengerFareType),
+          })
+        : null;
 
-      if (rideMode === "scheduled") {
-        upsertLocalAdminScheduledRide(createLocalAdminScheduledRide({
-          originText: resolved.origin.text,
-          destinationText: resolved.destination.text,
-          notes: input.notes ?? null,
-          passengerNote: passengerNote || null,
-          estimatedFareClp: selectedFareAmount ?? null,
-          rideMode,
-          tripFareMode: effectiveTripFareMode,
-          scheduledAt,
-          returnScheduledAt,
-          scheduleKind: selectedRoundTripPromotion ? "round_trip_promotion" : "airport_pickup",
-          passengerName: getSessionDisplayName(session.user),
-          passengerEmail: getSessionEmail(session.user),
-          passengerFareType: effectivePassengerFareType,
-          passengerFareLabel: passengerFareTypeLabel(effectivePassengerFareType),
-          airportWelcomeOption: rideMode === "scheduled" ? airportWelcomeOption : null,
-          airportWelcomeLabel: hasAirportFlowerLei ? AIRPORT_FLOWER_LEI_LABEL : "Solo recogida",
-          flowerLeiRequested: hasAirportFlowerLei,
-          airportWelcomeSurchargeClp,
-          optionalServicesTotalClp: airportWelcomeSurchargeClp,
-          baseFareBeforeExtrasClp: selectedBaseFareAmount,
-          backendCancellationReviewRequired: pendingPassengerChargeTotalClp > 0,
-          localStorageFinancialAuthority: false,
-          walletBenefitRequested: selectedWalletBenefitDiscountClp > 0,
-          walletBenefitApplied: selectedWalletBenefitDiscountClp > 0,
-          walletBenefitAppliedClp: selectedWalletBenefitDiscountClp,
-          walletBenefitDiscountClp: selectedWalletBenefitDiscountClp,
-          walletBenefitOriginalFareClp: selectedFareAmountBeforeWallet,
-          originalFareBeforeWalletBenefitClp: selectedFareAmountBeforeWallet,
-          finalFareAfterWalletBenefitClp: selectedFareAmount,
-          walletBenefitAvailableButNotUsedClp: hasAvailableWalletBenefit && useWalletBenefit === false ? availableWalletBenefitTotalClp : 0,
-        } as Parameters<typeof createLocalAdminScheduledRide>[0] & Record<string, unknown>));
-      }
+      const pendingScheduledRide = rideMode === "scheduled"
+        ? createLocalAdminScheduledRide({
+            originText: resolved.origin.text,
+            destinationText: resolved.destination.text,
+            notes: input.notes ?? null,
+            passengerNote: passengerNote || null,
+            estimatedFareClp: selectedFareAmount ?? null,
+            rideMode,
+            tripFareMode: effectiveTripFareMode,
+            scheduledAt,
+            returnScheduledAt,
+            scheduleKind: selectedRoundTripPromotion ? "round_trip_promotion" : "airport_pickup",
+            passengerName: getSessionDisplayName(session.user),
+            passengerEmail: getSessionEmail(session.user),
+            passengerFareType: effectivePassengerFareType,
+            passengerFareLabel: passengerFareTypeLabel(effectivePassengerFareType),
+            airportWelcomeOption: rideMode === "scheduled" ? airportWelcomeOption : null,
+            airportWelcomeLabel: hasAirportFlowerLei ? AIRPORT_FLOWER_LEI_LABEL : "Solo recogida",
+            flowerLeiRequested: hasAirportFlowerLei,
+            airportWelcomeSurchargeClp,
+            optionalServicesTotalClp: airportWelcomeSurchargeClp,
+            baseFareBeforeExtrasClp: selectedBaseFareAmount,
+            backendCancellationReviewRequired: pendingPassengerChargeTotalClp > 0,
+            localStorageFinancialAuthority: false,
+            walletBenefitRequested: selectedWalletBenefitDiscountClp > 0,
+            walletBenefitApplied: selectedWalletBenefitDiscountClp > 0,
+            walletBenefitAppliedClp: selectedWalletBenefitDiscountClp,
+            walletBenefitDiscountClp: selectedWalletBenefitDiscountClp,
+            walletBenefitOriginalFareClp: selectedFareAmountBeforeWallet,
+            originalFareBeforeWalletBenefitClp: selectedFareAmountBeforeWallet,
+            finalFareAfterWalletBenefitClp: selectedFareAmount,
+            walletBenefitAvailableButNotUsedClp: hasAvailableWalletBenefit && useWalletBenefit === false ? availableWalletBenefitTotalClp : 0,
+          } as Parameters<typeof createLocalAdminScheduledRide>[0] & Record<string, unknown>)
+        : null;
 
       if (String(activePaymentMethod) === "card" && selectedFareAmount > 0) {
         if (!createdRideId) {
-          throw new Error("El viaje se creó, pero no se pudo obtener el ID para iniciar MercadoPago.");
+          throw new Error("El viaje se creó, pero no se pudo obtener el ID para iniciar Mercado Pago.");
         }
 
         const payment = await createMercadoPagoCheckout({
@@ -5861,14 +5863,37 @@ export default function RequestRidePage(): JSX.Element {
               createdAt: new Date().toISOString(),
               originText: resolved.origin.text,
               destinationText: resolved.destination.text,
+              scheduledRideMirror: pendingScheduledRide
+                ? {
+                    ...pendingScheduledRide,
+                    serverRideId: createdRideId,
+                    originalRideId: createdRideId,
+                    paymentStatus: "pending",
+                  }
+                : null,
+              returnPickupRideMirror: pendingReturnPickupRide
+                ? {
+                    ...pendingReturnPickupRide,
+                    relatedOutboundRideId: createdRideId,
+                    paymentStatus: "pending",
+                  }
+                : null,
             }),
           );
         } catch {
-          // No bloquea la redirección a MercadoPago.
+          // No bloquea la redirección a Mercado Pago.
         }
 
         window.location.href = payment.urlPay;
         return;
+      }
+
+      if (pendingReturnPickupRide) {
+        upsertRoundTripReturnPickupRide(pendingReturnPickupRide);
+      }
+
+      if (pendingScheduledRide) {
+        upsertLocalAdminScheduledRide(pendingScheduledRide);
       }
 
       if (pendingPassengerChargeTotalClp > 0) {
@@ -5912,7 +5937,7 @@ export default function RequestRidePage(): JSX.Element {
 
         localNotes.push(`Forma de pago seleccionada: ${getPaymentLabel(activePaymentMethod)}.`);
         if (reservationRequiresCard) {
-          localNotes.push("Pago obligatorio para reservas: tarjeta/MercadoPago.");
+          localNotes.push("Pago obligatorio para reservas: tarjeta/Mercado Pago.");
           localNotes.push("Gestión reserva: el administrador designa conductor 30 minutos antes del inicio del servicio.");
           localNotes.push("Política cancelación reserva: desde los últimos 15 minutos previos al inicio se cobra 30% con tope $3.000.");
           localNotes.push("Si se cancela con tarjeta, la penalización se descuenta del pago y el saldo queda como CRÉDITOS PARA PRÓXIMO VIAJE en billetera. Si requiere devolución, debe solicitarla a Gerencia de Soporte RAPA GO por WhatsApp.");
@@ -5967,7 +5992,7 @@ export default function RequestRidePage(): JSX.Element {
             localNotes.push("Recogida a elección del pasajero.");
           } else {
             localNotes.push(`Tipo de reserva: recogida aeropuerto.`);
-            localNotes.push("Pago obligatorio para reservas: tarjeta/MercadoPago.");
+            localNotes.push("Pago obligatorio para reservas: tarjeta/Mercado Pago.");
             localNotes.push("Política cancelación reserva: desde los últimos 15 minutos se cobra 30% con tope $3.000; el saldo neto queda como CRÉDITOS PARA PRÓXIMO VIAJE. Si necesitas devolución, abre WhatsApp con Gerencia de Soporte RAPA GO.");
             localNotes.push(`Origen automático aeropuerto: ${RAPA_NUI_AIRPORT_DESTINATION.text}.`);
             localNotes.push(`RAPAGO_AIRPORT_ORIGIN_LAT: ${RAPA_NUI_AIRPORT_DESTINATION.lat}.`);
@@ -7598,7 +7623,7 @@ return (
                     } as CSSProperties
                   }
                 >
-                  {paymentMethod === "cash" ? "Efectivo seleccionado · continuar" : paymentMethod === "card" ? "Tarjeta seleccionada · MercadoPago" : "Elegir forma de pago"}
+                  {paymentMethod === "cash" ? "Efectivo seleccionado · continuar" : paymentMethod === "card" ? "Tarjeta seleccionada · Mercado Pago" : "Elegir forma de pago"}
                 </IonButton>
               </div>
 
@@ -7623,11 +7648,11 @@ return (
                         ¿Cómo quieres pagar?
                       </div>
                       <div style={{ marginTop: 6, color: "rgba(17,17,17,.66)", fontSize: ".74rem", lineHeight: 1.35, fontWeight: 800 }}>
-                        {reservationRequiresCard ? "Todas las reservas se pagan obligatoriamente con tarjeta. Si cancelas dentro de los últimos 15 minutos, se descuenta 30% tope $3.000 y el saldo queda como CRÉDITOS PARA PRÓXIMO VIAJE." : "Elige efectivo al conductor o paga con tarjeta mediante MercadoPago Checkout Pro."}
+                        {reservationRequiresCard ? "Todas las reservas se pagan obligatoriamente con tarjeta. Si cancelas dentro de los últimos 15 minutos, se descuenta 30% tope $3.000 y el saldo queda como CRÉDITOS PARA PRÓXIMO VIAJE." : "Elige efectivo al conductor o paga con tarjeta mediante Mercado Pago Checkout Pro."}
                       </div>
                     </div>
                     <span style={{ borderRadius: 999, padding: "6px 9px", background: "#fff7e8", color: "#9A6A10", fontSize: ".66rem", fontWeight: 950, whiteSpace: "nowrap" }}>
-                      MercadoPago activo
+                      Mercado Pago activo
                     </span>
                   </div>
 
@@ -7694,7 +7719,7 @@ return (
                           <div style={{ fontSize: "1.25rem", lineHeight: 1 }}>💳</div>
                           <div style={{ marginTop: 5, fontSize: ".9rem" }}>Tarjeta</div>
                           <div style={{ marginTop: 3, fontSize: ".72rem", fontWeight: 850, opacity: .72 }}>
-                            MercadoPago seguro
+                            Mercado Pago seguro
                           </div>
                         </div>
                         <div style={{ textAlign: "right" }}>

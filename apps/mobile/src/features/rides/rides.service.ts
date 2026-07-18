@@ -102,8 +102,10 @@ export const ridesService = {
     return (result.data as RideEnvelope).data;
   },
 
-  async cancelRideRequest(accessToken: string, rideId: string): Promise<RideRequestData> {
-    const result = await apiClient.post<RideEnvelope>(`/rides/${rideId}/cancel`, {}, { token: accessToken });
+  async cancelRideRequest(accessToken: string, rideId: string, reason?: string): Promise<RideRequestData> {
+    const body: { reason?: string } = {};
+    if (reason) body.reason = reason;
+    const result = await apiClient.post<RideEnvelope>(`/rides/${rideId}/cancel`, body, { token: accessToken });
     if (result.ok === false) throw new Error(result.message ?? "Failed to cancel ride request.");
     return (result.data as RideEnvelope).data;
   },

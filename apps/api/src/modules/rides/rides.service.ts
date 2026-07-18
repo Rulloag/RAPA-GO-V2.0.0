@@ -29,9 +29,9 @@ const sessionService = new SessionService();
 const usersRepo = new UsersRepository();
 const ridesRepo = new RidesRepository();
 
-const SCHEDULE_ACTIVATION_MINUTES = 10;
+const SCHEDULE_ACTIVATION_MINUTES = 30;
 const PASSENGER_FREE_CANCELLATION_MS = 2 * 60 * 1000;
-const SCHEDULED_FREE_CANCELLATION_BEFORE_MS = 30 * 60 * 1000;
+const SCHEDULED_CANCELLATION_CHARGE_WINDOW_MS = 15 * 60 * 1000;
 const DRIVER_NO_SHOW_WAIT_MS = 5 * 60 * 1000;
 const LATE_CANCELLATION_PERCENT = 30;
 const LATE_CANCELLATION_CAP_CLP = 3000;
@@ -368,6 +368,35 @@ function inferRidePaymentMethod(
   return null;
 }
 
+async function rideHasApprovedCardPayment(ride: RideRequest): Promise<boolean> {
+  if (inferRidePaymentMethod(ride.notes) !== "card") return true;
+
+  try {
+    const { PaymentsRepository } = await import(
+      "../payments/payments.repository.js"
+    );
+    const payment = await new PaymentsRepository().findSuccessfulByRideId(ride.id);
+    return Boolean(payment);
+  } catch {
+    // Ante una falla de base de datos, cerramos el acceso por seguridad.
+    return false;
+  }
+}
+
+function paymentNotApprovedResult(): {
+  ok: false;
+  code: string;
+  message: string;
+  statusCode: number;
+} {
+  return {
+    ok: false,
+    code: "PAYMENT_NOT_APPROVED",
+    message: "El servicio con tarjeta todavía no tiene un pago aprobado por Mercado Pago.",
+    statusCode: 409,
+  };
+}
+
 function calculatePolicyAmount(
   applicableFareClp: number,
   percent: number,
@@ -440,7 +469,7 @@ function shouldCreatePassengerCancellationCharge(
     if (Number.isFinite(pickupMs)) {
       const timeUntilPickupMs = pickupMs - nowMs;
       return (
-        timeUntilPickupMs <= SCHEDULED_FREE_CANCELLATION_BEFORE_MS
+        timeUntilPickupMs <= SCHEDULED_CANCELLATION_CHARGE_WINDOW_MS
       );
     }
   }
@@ -676,7 +705,26 @@ export class RidesService {
     }
 
     const rows = await ridesRepo.findByPassengerIdWithDriver(auth.userId);
-    return { ok: true, rides: rows.map((r) => toResponse(r)) };
+    const responses = await Promise.all(
+      rows.map(async (ride) => {
+        const response = toResponse(ride);
+
+        // Compatibilidad con solicitudes antiguas creadas antes de que existiera
+        // pending_payment. Aunque su fila diga requested, el pasajero nunca debe
+        // verla activa si el backend no encuentra un pago aprobado.
+        if (
+          ride.status === "requested" &&
+          inferRidePaymentMethod(ride.notes) === "card" &&
+          !(await rideHasApprovedCardPayment(ride))
+        ) {
+          return { ...response, status: "pending_payment" };
+        }
+
+        return response;
+      }),
+    );
+
+    return { ok: true, rides: responses };
   }
 
   async createRideRequest(
@@ -794,6 +842,7 @@ export class RidesService {
       input.destinationText,
       notesForStorage,
       finalFare,
+      input.paymentMethod === "card" ? "pending_payment" : "requested",
     );
 
     return {
@@ -814,6 +863,7 @@ export class RidesService {
   async cancelRideRequest(
     accessToken: string,
     rideId: string,
+    input: CancelAcceptedInput = {},
   ): Promise<RideResult> {
     const auth = await authenticate(accessToken);
     if (!auth.ok) return auth;
@@ -842,7 +892,7 @@ export class RidesService {
       };
     }
 
-    if (existing.status !== "requested") {
+    if (!["requested", "pending_payment"].includes(existing.status)) {
       return {
         ok: false,
         code: "RIDE_CANNOT_CANCEL",
@@ -851,7 +901,12 @@ export class RidesService {
       };
     }
 
-    const cancelled = await ridesRepo.cancel(existing.id);
+    const cancelled = await ridesRepo.cancel(
+      existing.id,
+      auth.userId,
+      auth.role,
+      input.reason ?? "Cancelado por pasajero.",
+    );
     return { ok: true, ride: toResponse(cancelled) };
   }
 
@@ -872,8 +927,17 @@ export class RidesService {
 
     const rows = await ridesRepo.findAvailable();
     const readyRows = rows.filter(isReadyForDriverSearch);
+    const paymentChecks = await Promise.all(
+      readyRows.map(async (ride) => ({
+        ride,
+        approved: await rideHasApprovedCardPayment(ride),
+      })),
+    );
+    const payableRows = paymentChecks
+      .filter((item) => item.approved)
+      .map((item) => item.ride);
 
-    return { ok: true, rides: readyRows.map(toAvailableResponse) };
+    return { ok: true, rides: payableRows.map(toAvailableResponse) };
   }
 
   async acceptRideRequest(
@@ -890,6 +954,21 @@ export class RidesService {
         message: "Only drivers can accept ride requests.",
         statusCode: 403,
       };
+    }
+
+    const rideBeforeAccept = await ridesRepo.findById(rideId);
+
+    if (!rideBeforeAccept) {
+      return {
+        ok: false,
+        code: "NOT_FOUND",
+        message: "Ride request not found.",
+        statusCode: 404,
+      };
+    }
+
+    if (!(await rideHasApprovedCardPayment(rideBeforeAccept))) {
+      return paymentNotApprovedResult();
     }
 
     const accepted = await ridesRepo.accept(rideId, auth.userId);
@@ -958,6 +1037,14 @@ export class RidesService {
       };
     }
 
+    const rideBeforeComplete = await ridesRepo.findById(rideId);
+    if (!rideBeforeComplete) {
+      return { ok: false, code: "NOT_FOUND", message: "Ride request not found.", statusCode: 404 };
+    }
+    if (!(await rideHasApprovedCardPayment(rideBeforeComplete))) {
+      return paymentNotApprovedResult();
+    }
+
     const completed = await ridesRepo.complete(rideId, auth.userId);
 
     if (!completed) {
@@ -1024,6 +1111,14 @@ export class RidesService {
         message: "Only drivers can mark rides en-route.",
         statusCode: 403,
       };
+    }
+
+    const rideBeforeEnRoute = await ridesRepo.findById(rideId);
+    if (!rideBeforeEnRoute) {
+      return { ok: false, code: "NOT_FOUND", message: "Ride request not found.", statusCode: 404 };
+    }
+    if (!(await rideHasApprovedCardPayment(rideBeforeEnRoute))) {
+      return paymentNotApprovedResult();
     }
 
     const updated = await ridesRepo.markEnRoute(rideId, auth.userId);
@@ -1100,6 +1195,14 @@ export class RidesService {
       };
     }
 
+    const rideBeforeArrived = await ridesRepo.findById(rideId);
+    if (!rideBeforeArrived) {
+      return { ok: false, code: "NOT_FOUND", message: "Ride request not found.", statusCode: 404 };
+    }
+    if (!(await rideHasApprovedCardPayment(rideBeforeArrived))) {
+      return paymentNotApprovedResult();
+    }
+
     const updated = await ridesRepo.markArrived(rideId, auth.userId);
 
     if (!updated) {
@@ -1172,6 +1275,14 @@ export class RidesService {
         message: "Only drivers can start rides.",
         statusCode: 403,
       };
+    }
+
+    const rideBeforeStart = await ridesRepo.findById(rideId);
+    if (!rideBeforeStart) {
+      return { ok: false, code: "NOT_FOUND", message: "Ride request not found.", statusCode: 404 };
+    }
+    if (!(await rideHasApprovedCardPayment(rideBeforeStart))) {
+      return paymentNotApprovedResult();
     }
 
     const started = await ridesRepo.start(rideId, auth.userId);
@@ -1819,9 +1930,20 @@ export class RidesService {
     }
 
     const rows = await ridesRepo.findByDriverId(auth.userId);
+    const paymentChecks = await Promise.all(
+      rows.map(async (ride) => ({
+        ride,
+        approved:
+          ride.status === "cancelled" ||
+          (await rideHasApprovedCardPayment(ride)),
+      })),
+    );
+
     return {
       ok: true,
-      rides: rows.map(toDriverRideResponse),
+      rides: paymentChecks
+        .filter((item) => item.approved)
+        .map((item) => toDriverRideResponse(item.ride)),
     };
   }
 }

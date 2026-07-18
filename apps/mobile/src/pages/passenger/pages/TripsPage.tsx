@@ -21,7 +21,6 @@ import { RIDE_STATUS_LABEL, RIDE_STATUS_COLOR } from "../shared.js";
 
 const PAGE_SIZE = 20;
 const RAPAGO_SUPPORT_WHATSAPP_PHONE = "56947964171";
-const RAPAGO_SUPPORT_WHATSAPP_DISPLAY = "+56 9 4796 4171";
 // Los viajes cancelados solo viven 30 minutos en Mis Viajes.
 // Así no se acumulan ni se repiten indefinidamente en Todos/Cancelados durante pruebas o uso real.
 const CANCELLED_RIDE_EXPIRATION_MS = 30 * 60 * 1000;
@@ -38,6 +37,212 @@ const ACTIVE_STATUSES = [
 
 const LOCAL_PASSENGER_RIDES_KEY = "rapago_local_passenger_rides";
 
+const RAPAGO_PENDING_CARD_PAYMENT_KEY = "rapago_pending_card_payment_v1";
+const RAPAGO_PAID_SCHEDULE_MIRROR_KEYS = [
+  "rapago_admin_scheduled_rides",
+  "rapago_admin_scheduled_rides_v1",
+  "rapago_admin_scheduled_rides_v2",
+  "rapago_admin_scheduled_rides_force_v1",
+  "rapago_bridge_scheduled_rides_v1",
+] as const;
+
+type PendingCardPaymentRecord = {
+  rideRequestId: string;
+  paymentId?: string | null;
+  amountClp?: number | null;
+  provider?: string | null;
+  createdAt?: string | null;
+  originText?: string | null;
+  destinationText?: string | null;
+  scheduledRideMirror?: Record<string, unknown> | null;
+  returnPickupRideMirror?: Record<string, unknown> | null;
+};
+
+type PaymentReturnMessage = {
+  tone: "checking" | "approved" | "pending" | "rejected";
+  title: string;
+  body: string;
+};
+
+const RAPAGO_PENDING_FAST_SEARCH_PAYMENT_KEY = "rapago_pending_fast_search_payment_v1";
+
+type PendingFastSearchPaymentRecord = {
+  rideRequestId: string;
+  paymentId: string;
+  amountClp: number;
+  createdAt: string;
+  rideMirror: Record<string, unknown>;
+};
+
+function readPendingFastSearchPayment(): PendingFastSearchPaymentRecord | null {
+  try {
+    const raw = localStorage.getItem(RAPAGO_PENDING_FAST_SEARCH_PAYMENT_KEY);
+    const parsed = raw ? (JSON.parse(raw) as PendingFastSearchPaymentRecord) : null;
+    if (!parsed || typeof parsed !== "object") return null;
+    if (!String(parsed.rideRequestId ?? "").trim()) return null;
+    if (!String(parsed.paymentId ?? "").trim()) return null;
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+function savePendingFastSearchPayment(record: PendingFastSearchPaymentRecord): void {
+  try {
+    localStorage.setItem(RAPAGO_PENDING_FAST_SEARCH_PAYMENT_KEY, JSON.stringify(record));
+  } catch {
+    // El backend sigue siendo la autoridad del pago.
+  }
+}
+
+function clearPendingFastSearchPayment(): void {
+  try {
+    localStorage.removeItem(RAPAGO_PENDING_FAST_SEARCH_PAYMENT_KEY);
+  } catch {
+    // No bloquea Mis Viajes.
+  }
+}
+
+function getTripsApiBaseUrl(): string {
+  const env = import.meta.env as Record<string, string | undefined>;
+  return String(env.VITE_API_URL ?? env.VITE_API_BASE_URL ?? "http://localhost:3000")
+    .replace(/\/api\/?$/i, "")
+    .replace(/\/+$/, "");
+}
+
+function unwrapTripsApiPayload(value: unknown): Record<string, unknown> {
+  if (!value || typeof value !== "object") return {};
+  const record = value as Record<string, unknown>;
+  const data = record.data;
+  return data && typeof data === "object" ? (data as Record<string, unknown>) : record;
+}
+
+function readPendingCardPayment(): PendingCardPaymentRecord | null {
+  try {
+    const raw = localStorage.getItem(RAPAGO_PENDING_CARD_PAYMENT_KEY);
+    const parsed = raw ? (JSON.parse(raw) as PendingCardPaymentRecord) : null;
+    if (!parsed || typeof parsed !== "object") return null;
+
+    const rideRequestId = String(parsed.rideRequestId ?? "").trim();
+    if (!rideRequestId) return null;
+
+    return { ...parsed, rideRequestId };
+  } catch {
+    return null;
+  }
+}
+
+function getPaidMirrorKey(item: Record<string, unknown>): string {
+  const directId = String(
+    item.serverRideId ?? item.originalRideId ?? item.id ?? "",
+  ).trim();
+  if (directId) return `id:${directId}`;
+
+  return [
+    item.scheduledAt ?? item.scheduledPickupAt ?? "",
+    item.originText ?? "",
+    item.destinationText ?? "",
+    item.passengerEmail ?? "",
+  ]
+    .map((value) => String(value).trim().toLowerCase())
+    .join("|");
+}
+
+function upsertPaidMirrorIntoStorage(
+  storageKey: string,
+  mirror: Record<string, unknown>,
+  limit: number,
+): void {
+  try {
+    const raw = localStorage.getItem(storageKey);
+    const parsed = raw ? (JSON.parse(raw) as unknown) : [];
+    const current = Array.isArray(parsed)
+      ? parsed.filter((item): item is Record<string, unknown> => Boolean(item && typeof item === "object"))
+      : [];
+    const targetKey = getPaidMirrorKey(mirror);
+    const next = [
+      mirror,
+      ...current.filter((item) => getPaidMirrorKey(item) !== targetKey),
+    ].slice(0, limit);
+    localStorage.setItem(storageKey, JSON.stringify(next));
+  } catch {
+    // La API sigue siendo la autoridad aunque no exista almacenamiento local.
+  }
+}
+
+function activatePaidCardPaymentMirrors(pending: PendingCardPaymentRecord): void {
+  const approvedAt = new Date().toISOString();
+  const scheduledMirror = pending.scheduledRideMirror;
+  const returnMirror = pending.returnPickupRideMirror;
+
+  if (scheduledMirror && typeof scheduledMirror === "object") {
+    const approvedMirror: Record<string, unknown> = {
+      ...scheduledMirror,
+      serverRideId: pending.rideRequestId,
+      originalRideId: pending.rideRequestId,
+      paymentStatus: "approved",
+      paymentApproved: true,
+      paymentApprovedAt: approvedAt,
+      paymentProvider: "mercadopago",
+    };
+
+    for (const key of RAPAGO_PAID_SCHEDULE_MIRROR_KEYS) {
+      upsertPaidMirrorIntoStorage(key, approvedMirror, 80);
+    }
+
+    try {
+      localStorage.setItem("rapago_last_scheduled_ride_for_admin", JSON.stringify(approvedMirror));
+    } catch {
+      // No bloquea la confirmación real del backend.
+    }
+  }
+
+  if (returnMirror && typeof returnMirror === "object") {
+    const approvedReturnMirror: Record<string, unknown> = {
+      ...returnMirror,
+      relatedOutboundRideId: pending.rideRequestId,
+      paymentStatus: "approved",
+      paymentApproved: true,
+      paymentApprovedAt: approvedAt,
+      paymentProvider: "mercadopago",
+    };
+
+    upsertPaidMirrorIntoStorage(LOCAL_PASSENGER_RIDES_KEY, approvedReturnMirror, 40);
+    for (const key of RAPAGO_PAID_SCHEDULE_MIRROR_KEYS) {
+      upsertPaidMirrorIntoStorage(key, approvedReturnMirror, 80);
+    }
+  }
+
+  window.dispatchEvent(new CustomEvent("rapago:passenger-rides-updated", { detail: { rideId: pending.rideRequestId } }));
+  window.dispatchEvent(new CustomEvent(RAPAGO_ADMIN_SCHEDULED_RIDES_EVENT, { detail: { rideId: pending.rideRequestId } }));
+}
+
+function clearPendingCardPayment(): void {
+  try {
+    localStorage.removeItem(RAPAGO_PENDING_CARD_PAYMENT_KEY);
+  } catch {
+    // No bloquea Mis Viajes.
+  }
+}
+
+function cleanPaymentReturnQuery(): void {
+  try {
+    const url = new URL(window.location.href);
+    url.searchParams.delete("payment");
+    url.searchParams.delete("collection_id");
+    url.searchParams.delete("collection_status");
+    url.searchParams.delete("payment_id");
+    url.searchParams.delete("status");
+    url.searchParams.delete("external_reference");
+    url.searchParams.delete("merchant_order_id");
+    url.searchParams.delete("preference_id");
+    window.history.replaceState(null, "", `${url.pathname}${url.search}${url.hash}`);
+  } catch {
+    // No bloquea la verificación.
+  }
+}
+
+
 const RAPAGO_FAST_SEARCH_STORAGE_KEY = "rapago_passenger_fast_search_rides_v1";
 const RAPAGO_FAST_SEARCH_EVENT = "rapago:passenger-fast-search-updated";
 const RAPAGO_FAST_SEARCH_FEE_CLP = 800;
@@ -46,12 +251,12 @@ const RAPAGO_FAST_SEARCH_PROMPT_AFTER_MS = 2 * 60 * 1000;
 // - Cancelación gratuita durante los primeros 2 minutos desde la aceptación/asignación.
 // - Desde el minuto 3: 30% de la tarifa aplicable, con tope de $3.000.
 // - No show después de 5 minutos: 50% de la tarifa aplicable, con tope de $5.000.
-// - Viajes programados: gratis hasta 30 minutos antes; dentro de los últimos 30 minutos,
+// - Viajes programados: cancelación gratuita hasta 15 minutos antes; dentro de los últimos 15 minutos,
 //   30% de la tarifa aplicable, con tope de $3.000.
 // El frontend solo calcula un monto referencial. Backend/admin debe autorizar el cargo real.
 const RAPAGO_FREE_CANCEL_AFTER_ACCEPTANCE_MS = 2 * 60 * 1000;
 const RAPAGO_NO_SHOW_AFTER_ARRIVAL_MS = 5 * 60 * 1000;
-const RAPAGO_SCHEDULED_CANCEL_CHARGE_WINDOW_MS = 30 * 60 * 1000;
+const RAPAGO_SCHEDULED_CANCEL_CHARGE_WINDOW_MS = 15 * 60 * 1000;
 const RAPAGO_CANCEL_FEE_CAP_CLP = 3000;
 const RAPAGO_NO_SHOW_FEE_CAP_CLP = 5000;
 const RAPAGO_LATE_CANCEL_PERCENT = 30;
@@ -161,7 +366,7 @@ function getPassengerNoShowCompletedEffectiveStatus(ride: RideRequestData): stri
   // al pasajero o en curso NUNCA debe contabilizarse como completado por un
   // registro No Show antiguo que coincida por ruta. Esto evita que una solicitud
   // nueva aparezca dentro de "Completados" antes de finalizar realmente.
-  if (ACTIVE_STATUSES.includes(effectiveStatus)) return effectiveStatus;
+  if (effectiveStatus === "pending_payment" || ACTIVE_STATUSES.includes(effectiveStatus)) return effectiveStatus;
 
   if (isPassengerNoShowCompletedRide(ride)) return "completed";
   return effectiveStatus;
@@ -705,6 +910,8 @@ type PassengerFastSearchRecord = {
   feeClp: number;
   offeredAt: string;
   respondedAt: string;
+  paymentMethod?: "cash" | "card" | null;
+  paymentStatus?: "approved" | "pending" | "rejected" | null;
 };
 
 type PassengerCancellationReasonCode =
@@ -836,27 +1043,50 @@ function writePassengerFastSearchMap(map: Record<string, PassengerFastSearchReco
 }
 
 function getPassengerFastSearchRecord(ride: Partial<RideRequestData> & Record<string, unknown>): PassengerFastSearchRecord | null {
-  const map = readPassengerFastSearchMap();
   const key = getPassengerRideStableKey(ride);
-  const byKey = map[key];
-  if (byKey) return byKey;
-
   const id = String(ride.id ?? ride.rideId ?? ride.originalRideId ?? ride.serverRideId ?? "").trim();
-  if (id) {
-    const found = Object.values(map).find((record) => record.rideId === id);
-    if (found) return found;
-  }
+  const notes = String(ride.notes ?? "");
+  const backendActive =
+    /RAPAGO_FAST_SEARCH_ACTIVE:\s*true/i.test(notes) ||
+    ride.rapagoFastSearchAccepted === true ||
+    ride.fastSearchRequested === true;
 
-  if (ride.rapagoFastSearchAccepted === true || ride.fastSearchRequested === true) {
+  if (backendActive) {
+    const feeFromNotes = Number(
+      notes.match(/RAPAGO_FAST_SEARCH_FEE_CLP:\s*(\d+)/i)?.[1] ??
+        ride.rapagoFastSearchFeeClp ??
+        ride.fastSearchFeeClp ??
+        RAPAGO_FAST_SEARCH_FEE_CLP,
+    );
+    const methodText = String(
+      notes.match(/RAPAGO_FAST_SEARCH_PAYMENT_METHOD:\s*(cash|card)/i)?.[1] ??
+        ride.rapagoFastSearchPaymentMethod ??
+        ride.fastSearchPaymentMethod ??
+        "",
+    ).toLowerCase();
+
     return {
       rideKey: key,
       rideId: id || null,
       accepted: true,
       dismissed: false,
-      feeClp: Math.max(0, Math.round(Number(ride.rapagoFastSearchFeeClp ?? ride.fastSearchFeeClp ?? RAPAGO_FAST_SEARCH_FEE_CLP))),
-      offeredAt: String(ride.rapagoFastSearchOfferedAt ?? ride.fastSearchOfferedAt ?? new Date().toISOString()),
-      respondedAt: String(ride.rapagoFastSearchRespondedAt ?? ride.fastSearchRespondedAt ?? new Date().toISOString()),
+      feeClp: Number.isFinite(feeFromNotes) && feeFromNotes > 0
+        ? Math.round(feeFromNotes)
+        : RAPAGO_FAST_SEARCH_FEE_CLP,
+      offeredAt: String(ride.rapagoFastSearchOfferedAt ?? ride.fastSearchOfferedAt ?? ride.updatedAt ?? new Date().toISOString()),
+      respondedAt: String(ride.rapagoFastSearchRespondedAt ?? ride.fastSearchRespondedAt ?? ride.updatedAt ?? new Date().toISOString()),
+      paymentMethod: methodText === "card" ? "card" : methodText === "cash" ? "cash" : null,
+      paymentStatus: "approved",
     };
+  }
+
+  const map = readPassengerFastSearchMap();
+  const byKey = map[key];
+  if (byKey) return byKey;
+
+  if (id) {
+    const found = Object.values(map).find((record) => record.rideId === id);
+    if (found) return found;
   }
 
   if (ride.rapagoFastSearchDismissed === true) {
@@ -868,6 +1098,8 @@ function getPassengerFastSearchRecord(ride: Partial<RideRequestData> & Record<st
       feeClp: 0,
       offeredAt: String(ride.rapagoFastSearchOfferedAt ?? new Date().toISOString()),
       respondedAt: String(ride.rapagoFastSearchRespondedAt ?? new Date().toISOString()),
+      paymentMethod: null,
+      paymentStatus: null,
     };
   }
 
@@ -883,6 +1115,17 @@ function getPassengerFastSearchFeeClp(ride: Partial<RideRequestData> & Record<st
 }
 
 function getPassengerRideBaseFareClp(ride: RideRequestData): number | null {
+  const notes = String(ride.notes ?? "");
+  const backendFastSearchActive = /RAPAGO_FAST_SEARCH_ACTIVE:\s*true/i.test(notes);
+
+  if (
+    backendFastSearchActive &&
+    ride.estimatedFareClp != null &&
+    Number.isFinite(Number(ride.estimatedFareClp))
+  ) {
+    return Math.round(Number(ride.estimatedFareClp));
+  }
+
   const noteFare = extractFareFromNotes(ride.notes);
   if (noteFare != null) return noteFare;
 
@@ -980,9 +1223,28 @@ function buildPassengerFastSearchRidePatch(
 ): Record<string, unknown> {
   const accepted = record.accepted;
   const fee = accepted ? record.feeClp : 0;
-  const note = accepted
-    ? `RapaGo más veloz: solicitado por el pasajero. Recargo: ${formatClp(fee)}.`
-    : "RapaGo más veloz: el pasajero lo rechazó.";
+  const notesBefore = String(ride.notes ?? "");
+  const alreadyIncluded =
+    /RAPAGO_FAST_SEARCH_ACTIVE:\s*true/i.test(notesBefore) ||
+    ride.rapagoFastSearchFareIncluded === true;
+  const directFare = Number(ride.estimatedFareClp);
+  const updatedFare =
+    accepted && !alreadyIncluded && Number.isFinite(directFare) && directFare > 0
+      ? Math.round(directFare + fee)
+      : Number.isFinite(directFare) && directFare > 0
+        ? Math.round(directFare)
+        : ride.estimatedFareClp;
+
+  let notes = notesBefore;
+  if (accepted) {
+    notes = appendPassengerRideNoteOnce(notes, "RAPAGO_FAST_SEARCH_ACTIVE: true");
+    notes = appendPassengerRideNoteOnce(notes, `RAPAGO_FAST_SEARCH_FEE_CLP: ${fee}`);
+    notes = appendPassengerRideNoteOnce(notes, `RAPAGO_FAST_SEARCH_PAYMENT_METHOD: ${record.paymentMethod ?? "cash"}`);
+    notes = appendPassengerRideNoteOnce(notes, "RAPAGO_FAST_SEARCH_PAYMENT_STATUS: approved");
+    notes = appendPassengerRideNoteOnce(notes, `RapaGo más veloz: incluido en el total. Recargo: ${formatClp(fee)}.`);
+  } else {
+    notes = appendPassengerRideNoteOnce(notes, "RapaGo más veloz: el pasajero lo rechazó.");
+  }
 
   return {
     rapagoFastSearchOfferedAt: record.offeredAt,
@@ -990,16 +1252,22 @@ function buildPassengerFastSearchRidePatch(
     rapagoFastSearchAccepted: accepted,
     rapagoFastSearchDismissed: record.dismissed,
     rapagoFastSearchFeeClp: fee,
+    rapagoFastSearchPaymentMethod: record.paymentMethod ?? null,
+    rapagoFastSearchPaymentStatus: record.paymentStatus ?? null,
+    rapagoFastSearchFareIncluded: accepted,
     fastSearchRequested: accepted,
     fastSearchFeeClp: fee,
+    fastSearchPaymentMethod: record.paymentMethod ?? null,
+    fastSearchPaymentStatus: record.paymentStatus ?? null,
     passengerPrioritySearch: accepted,
+    estimatedFareClp: updatedFare,
     passengerNotice: accepted
       ? `Activaste RapaGo más veloz. Se agregan ${formatClp(fee)} a la tarifa.`
       : ride.passengerNotice ?? null,
     passengerNotification: accepted
       ? `RapaGo más veloz activo: ${formatClp(fee)} se agregan al monto final.`
       : ride.passengerNotification ?? null,
-    notes: appendPassengerRideNoteOnce(String(ride.notes ?? ""), note),
+    notes,
   };
 }
 
@@ -1083,18 +1351,23 @@ function addPassengerFastSearchNotification(record: PassengerFastSearchRecord): 
   }
 }
 
-function applyPassengerFastSearchChoice(ride: RideRequestData, accepted: boolean): void {
+function applyPassengerFastSearchApprovedLocally(
+  ride: RideRequestData,
+  paymentMethod: "cash" | "card",
+): PassengerFastSearchRecord {
   const target = ride as RideRequestData & Record<string, unknown>;
   const now = new Date().toISOString();
   const key = getPassengerRideStableKey(target);
   const record: PassengerFastSearchRecord = {
     rideKey: key,
     rideId: String(target.id ?? "") || null,
-    accepted,
-    dismissed: !accepted,
-    feeClp: accepted ? RAPAGO_FAST_SEARCH_FEE_CLP : 0,
+    accepted: true,
+    dismissed: false,
+    feeClp: RAPAGO_FAST_SEARCH_FEE_CLP,
     offeredAt: String(target.rapagoFastSearchOfferedAt ?? now),
     respondedAt: now,
+    paymentMethod,
+    paymentStatus: "approved",
   };
 
   const map = readPassengerFastSearchMap();
@@ -1106,6 +1379,128 @@ function applyPassengerFastSearchChoice(ride: RideRequestData, accepted: boolean
   window.dispatchEvent(new CustomEvent(RAPAGO_FAST_SEARCH_EVENT, { detail: { ride, record } }));
   window.dispatchEvent(new CustomEvent("rapago:passenger-rides-updated", { detail: { ride, record } }));
   window.dispatchEvent(new CustomEvent("rapago:driver-available-rides-updated", { detail: { ride, record } }));
+  return record;
+}
+
+function dismissPassengerFastSearchLocally(ride: RideRequestData): void {
+  const target = ride as RideRequestData & Record<string, unknown>;
+  const now = new Date().toISOString();
+  const key = getPassengerRideStableKey(target);
+  const record: PassengerFastSearchRecord = {
+    rideKey: key,
+    rideId: String(target.id ?? "") || null,
+    accepted: false,
+    dismissed: true,
+    feeClp: 0,
+    offeredAt: String(target.rapagoFastSearchOfferedAt ?? now),
+    respondedAt: now,
+    paymentMethod: null,
+    paymentStatus: null,
+  };
+
+  const map = readPassengerFastSearchMap();
+  map[key] = record;
+  writePassengerFastSearchMap(map);
+  updatePassengerFastSearchRideStorage(target, record);
+  window.dispatchEvent(new CustomEvent(RAPAGO_FAST_SEARCH_EVENT, { detail: { ride, record } }));
+  window.dispatchEvent(new CustomEvent("rapago:passenger-rides-updated", { detail: { ride, record } }));
+}
+
+async function requestPassengerFastSearch(
+  ride: RideRequestData,
+  accessToken: string,
+): Promise<{
+  paymentId: string;
+  urlPay: string;
+  activated: boolean;
+}> {
+  const response = await fetch(`${getTripsApiBaseUrl()}/api/payments/create`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${accessToken}`,
+    },
+    body: JSON.stringify({
+      rideRequestId: ride.id,
+      paymentPurpose: "fast_search",
+    }),
+  });
+
+  const raw = await response.json().catch(() => ({}));
+  const payload = unwrapTripsApiPayload(raw);
+
+  if (!response.ok) {
+    throw new Error(
+      String(payload.message ?? payload.error ?? "No se pudo activar RapaGo más veloz."),
+    );
+  }
+
+  return {
+    paymentId: String(payload.paymentId ?? ""),
+    urlPay: String(payload.urlPay ?? ""),
+    activated: payload.activated === true,
+  };
+}
+
+async function fetchPassengerFastSearchPaymentStatus(
+  accessToken: string,
+  paymentId: string,
+): Promise<string> {
+  const response = await fetch(
+    `${getTripsApiBaseUrl()}/api/payments/${encodeURIComponent(paymentId)}/status`,
+    {
+      method: "GET",
+      headers: { Authorization: `Bearer ${accessToken}` },
+      cache: "no-store",
+    },
+  );
+
+  const raw = await response.json().catch(() => ({}));
+  const payload = unwrapTripsApiPayload(raw);
+
+  if (!response.ok) {
+    throw new Error(String(payload.message ?? "No se pudo verificar el recargo."));
+  }
+
+  return String(payload.status ?? "").trim().toLowerCase();
+}
+
+async function applyPassengerFastSearchChoice(
+  ride: RideRequestData,
+  accepted: boolean,
+  accessToken: string,
+): Promise<void> {
+  if (!accepted) {
+    dismissPassengerFastSearchLocally(ride);
+    return;
+  }
+
+  if (!accessToken) {
+    throw new Error("Tu sesión expiró. Inicia sesión nuevamente para activar RapaGo más veloz.");
+  }
+
+  const paymentLabel = getRidePaymentMethodLabel(ride.notes);
+  const isCard = paymentLabel.includes("Mercado Pago");
+  const result = await requestPassengerFastSearch(ride, accessToken);
+
+  if (result.activated) {
+    applyPassengerFastSearchApprovedLocally(ride, "cash");
+    return;
+  }
+
+  if (!isCard || !result.paymentId || !result.urlPay) {
+    throw new Error("El backend no devolvió el pago de RapaGo más veloz correctamente.");
+  }
+
+  savePendingFastSearchPayment({
+    rideRequestId: ride.id,
+    paymentId: result.paymentId,
+    amountClp: RAPAGO_FAST_SEARCH_FEE_CLP,
+    createdAt: new Date().toISOString(),
+    rideMirror: ride as RideRequestData & Record<string, unknown>,
+  });
+
+  window.location.href = result.urlPay;
 }
 
 function getPassengerRideMinimumFareClp(ride: RideRequestData): number {
@@ -1259,12 +1654,40 @@ function getPassengerCancellationPolicyForRide(ride: RideRequestData): Passenger
       applicableFareClp,
       feePercent: RAPAGO_LATE_CANCEL_PERCENT,
       feeCapClp: RAPAGO_CANCEL_FEE_CAP_CLP,
-      title: "Cancelación programada dentro de 30 minutos",
-      message: `La reserva está dentro de los 30 minutos anteriores al inicio. El cargo referencial es ${formatClp(fee)}.`,
+      title: "Cancelación programada dentro de 15 minutos",
+      message: `La reserva está dentro de los 15 minutos anteriores al inicio. El cargo referencial es ${formatClp(fee)}.`,
       detail: `Viaje programado: ${RAPAGO_LATE_CANCEL_PERCENT}% de la tarifa aplicable, con tope de ${formatClp(RAPAGO_CANCEL_FEE_CAP_CLP)}. Administración debe confirmar o eximir el cargo.`,
       acceptedElapsedMs,
       arrivedElapsedMs,
       requiresAdminReview: true,
+      exemptionRequested: false,
+    };
+  }
+
+  // En reservas programadas la regla especial manda sobre la regla general de 2 minutos:
+  // fuera de los últimos 15 minutos la cancelación es gratuita, aunque el conductor
+  // ya haya sido preasignado 30 minutos antes.
+  const isScheduledReservation =
+    record.isScheduled === true ||
+    ["scheduled", "driver_scheduled"].includes(String(record.status ?? "").toLowerCase()) ||
+    Boolean(record.scheduledAt) ||
+    Boolean(record.scheduledPickupAt) ||
+    Boolean(record.pickupScheduledAt);
+
+  if (isScheduledReservation && !scheduledChargeWindow) {
+    return {
+      type: "free",
+      feeClp: 0,
+      candidateFeeClp: 0,
+      applicableFareClp,
+      feePercent: 0,
+      feeCapClp: 0,
+      title: "Cancelación gratuita de reserva",
+      message: "Puedes cancelar gratuitamente hasta 15 minutos antes de la hora programada.",
+      detail: "La penalización del 30% con tope de $3.000 solo comienza dentro de los últimos 15 minutos.",
+      acceptedElapsedMs,
+      arrivedElapsedMs,
+      requiresAdminReview: false,
       exemptionRequested: false,
     };
   }
@@ -2140,7 +2563,7 @@ function isPassengerCancellationCardPaymentForRefundAction(
   ride: Partial<RideRequestData> & Record<string, unknown>,
 ): boolean {
   // Regla RAPA GO:
-  // El botón “Cancelar/devolución” es ÚNICAMENTE para tarjeta/MercadoPago.
+  // El botón “Cancelar/devolución” es ÚNICAMENTE para tarjeta/Mercado Pago.
   // Si el viaje fue efectivo, jamás debe aparecer aunque un registro antiguo
   // haya quedado con flags de refund en localStorage.
   if (isPassengerCancellationCashPaymentForRefundAction(ride)) return false;
@@ -2992,7 +3415,7 @@ function getRideDisplayFareClp(ride: RideRequestData): number | null {
 
 function getRidePaymentMethodLabel(notes: string | null | undefined): string {
   const text = String(notes ?? "").toLowerCase();
-  if (text.includes("tarjeta") || text.includes("prontopaga")) return "Tarjeta / ProntoPaga";
+  if (text.includes("tarjeta") || text.includes("prontopaga") || text.includes("mercadopago") || text.includes("mercado pago")) return "Tarjeta / Mercado Pago";
   if (text.includes("efectivo")) return "Efectivo";
   return "Pendiente";
 }
@@ -4760,31 +5183,6 @@ function getPassengerVehicleFallbackImageDataUrl(vehicle: {
   return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
 }
 
-function getPassengerDriverPhone(ride: RideRequestData & Record<string, unknown>): string {
-  const live = readPassengerLiveVehiclePayload(String(ride.id ?? ""));
-  const fromRide = passengerFirstValue(
-    ride.driverPhone,
-    ride.driverPhoneNumber,
-    ride.driverMobile,
-    ride.phone,
-    live?.driverPhone,
-    live?.driverPhoneNumber,
-    live?.driverMobile,
-  );
-
-  if (fromRide) return fromRide;
-
-  try {
-    return passengerFirstValue(
-      localStorage.getItem("rapago_driver_phone"),
-      localStorage.getItem("rapago_driver_public_phone"),
-      localStorage.getItem("rapago_profile_phone"),
-    );
-  } catch {
-    return "";
-  }
-}
-
 function getPassengerUberStatusText(status: string): string {
   if (status === "driver_arrived") return "Tu conductor llegó";
   if (status === "in_progress") return "Viaje en curso";
@@ -4803,15 +5201,11 @@ function PassengerDriverAndVehicleDetails({
   const vehicle = getPassengerDriverVehiclePublicData(ride);
   const hasRealVehicleImage = Boolean(vehicle.imageDataUrl);
   const vehicleVisual = vehicle.imageDataUrl ?? getPassengerVehicleFallbackImageDataUrl(vehicle);
-  const driverPhone = getPassengerDriverPhone(ride);
   const initial = driverName.trim().charAt(0).toUpperCase() || "C";
   const modelLine = [vehicle.brand, vehicle.model].filter(Boolean).join(" ").trim() || "Vehículo asignado";
   const plateText = vehicle.plate ? vehicle.plate.toUpperCase() : "SIN PATENTE";
   const colorLine = vehicle.color ? `Color: ${vehicle.color}` : "Color no informado";
   const statusText = getPassengerUberStatusText(effectiveStatus);
-  const cleanFirstName = driverName.split(/\s+/)[0]?.trim() || driverName;
-  const whatsappText = encodeURIComponent(`Hola ${cleanFirstName}, soy tu pasajero de RAPA GO.`);
-  const safePhone = driverPhone.replace(/[^0-9+]/g, "");
 
   return (
     <div
@@ -4969,69 +5363,6 @@ function PassengerDriverAndVehicleDetails({
         </div>
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 48px 48px", gap: 8, alignItems: "center" }}>
-        <a
-          href={safePhone ? `https://wa.me/${safePhone.replace(/^\+/, "")}?text=${whatsappText}` : `https://wa.me/${RAPAGO_SUPPORT_WHATSAPP_PHONE}`}
-          target="_blank"
-          rel="noreferrer"
-          style={{
-            height: 42,
-            borderRadius: 999,
-            background: "#eef0f2",
-            color: "rgba(17,17,17,.70)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            textDecoration: "none",
-            fontWeight: 850,
-            fontSize: ".78rem",
-            padding: "0 12px",
-            whiteSpace: "nowrap",
-            overflow: "hidden",
-            textOverflow: "ellipsis",
-          }}
-        >
-          Enviar mensaje a {cleanFirstName}
-        </a>
-        <a
-          href={safePhone ? `tel:${safePhone}` : `tel:${RAPAGO_SUPPORT_WHATSAPP_DISPLAY.replace(/[^0-9+]/g, "")}`}
-          style={{
-            width: 42,
-            height: 42,
-            borderRadius: 999,
-            background: "#f3f4f6",
-            color: "#111111",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            textDecoration: "none",
-            fontWeight: 950,
-            fontSize: "1rem",
-          }}
-          aria-label="Llamar al conductor"
-        >
-          📞
-        </a>
-        <button
-          type="button"
-          style={{
-            width: 42,
-            height: 42,
-            borderRadius: 999,
-            border: 0,
-            background: "#111111",
-            color: "#ffffff",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            fontWeight: 950,
-            fontSize: "1rem",
-          }}
-          aria-label="Seguridad del viaje"
-        >
-          🛡️
-        </button>
-      </div>
     </div>
   );
 }
@@ -5382,6 +5713,7 @@ function getEffectivePassengerRideStatus(ride: RideRequestData): string {
   if (requeueMirror && !passengerAcceptedDriverIsNewerThanRequeue(rideRecord, requeueMirror)) return "requested";
 
   if (rawStatus === "cancelled" || rawStatus === "completed") return rawStatus;
+  if (rawStatus === "pending_payment") return "pending_payment";
 
   if (
     schedule.isScheduled &&
@@ -5424,18 +5756,21 @@ function getEffectivePassengerRideStatus(ride: RideRequestData): string {
 }
 
 function getPassengerRideStatusLabel(status: string): string {
+  if (status === "pending_payment") return "Pago pendiente";
   if (status === "scheduled") return "Agendado";
   if (status === "driver_scheduled") return "Tu conductor fue asignado";
   return RIDE_STATUS_LABEL[status] ?? status;
 }
 
 function getPassengerRideStatusColor(status: string): string {
+  if (status === "pending_payment") return "warning";
   if (status === "scheduled") return "warning";
   if (status === "driver_scheduled") return "success";
   return RIDE_STATUS_COLOR[status] ?? "medium";
 }
 
 function rideStatusTitle(status: string, ride?: RideRequestData): string {
+  if (status === "pending_payment") return "Esperando confirmación de pago";
   if (status === "driver_scheduled") return "Tu conductor fue asignado";
   if (status === "scheduled" && ride && isRoundTripReturnPickupRide(ride as RideRequestData & Record<string, unknown>)) return "Agendamiento de recogida";
   if (status === "scheduled") return "Viaje agendado";
@@ -5451,6 +5786,10 @@ function rideStatusTitle(status: string, ride?: RideRequestData): string {
 
 function rideStatusSubtitle(ride: RideRequestData): string {
   const effectiveStatus = getEffectivePassengerRideStatus(ride);
+
+  if (effectiveStatus === "pending_payment") {
+    return "El servicio todavía no está activo. Solo se publicará cuando el backend confirme el pago aprobado por Mercado Pago.";
+  }
 
   if (effectiveStatus === "driver_scheduled") {
     return `${ride.driverName ?? "Tu conductor"} quedó agendado para tu reserva. Te avisaremos cuando se active el viaje.`;
@@ -7161,7 +7500,7 @@ function buildPassengerCancellationAlertMessage(
     : false;
 
   const paymentNotice = isCardPayment
-    ? " La devolución o crédito de tarjeta/MercadoPago será procesado únicamente por backend/admin."
+    ? " La devolución o crédito de tarjeta/Mercado Pago será procesado únicamente por backend/admin."
     : "";
 
   if (policy.candidateFeeClp <= 0) {
@@ -7208,7 +7547,7 @@ function PassengerRideCard({
           driverRequeueMirror,
         ),
     );
-  const hasDriver = !["requested", "scheduled"].includes(effectiveStatus) || (!!ride.driverName && !isDriverRequeuedSearch);
+  const hasDriver = !["pending_payment", "requested", "scheduled"].includes(effectiveStatus) || (!!ride.driverName && !isDriverRequeuedSearch);
   const navHasMapPoints =
     (nav.pickupLat != null && nav.pickupLng != null) ||
     (nav.destinationLat != null && nav.destinationLng != null) ||
@@ -7227,6 +7566,8 @@ function PassengerRideCard({
   const scheduleInfo = getPassengerRideScheduleInfo(ride as RideRequestData & Record<string, unknown>);
   const isScheduledPending = scheduleInfo.isScheduled && effectiveStatus === "scheduled" && !isDriverRequeuedSearch;
   const [nowMs, setNowMs] = useState(() => Date.now());
+  const [fastSearchBusy, setFastSearchBusy] = useState(false);
+  const [fastSearchActionError, setFastSearchActionError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!ACTIVE_STATUSES.includes(effectiveStatus)) return;
@@ -7273,6 +7614,7 @@ function PassengerRideCard({
   const fastSearchRecord = getPassengerFastSearchRecord(ride as RideRequestData & Record<string, unknown>);
   const fastSearchFeeClp = getPassengerFastSearchFeeClp(ride as RideRequestData & Record<string, unknown>);
   const showFastSearchPrompt = shouldShowPassengerFastSearchPrompt(ride as RideRequestData & Record<string, unknown>, nowMs);
+  const fastSearchUsesMercadoPago = paymentLabel.includes("Mercado Pago");
   const cancellationPolicy = getPassengerCancellationPolicyForRide(ride);
   const passengerCancelledChargeClp = Math.max(
     0,
@@ -7303,6 +7645,24 @@ function PassengerRideCard({
         </div>
 
         <div style={{ padding: showMap ? "16px" : "12px 16px", color: "#111111" }}>
+          {effectiveStatus === "pending_payment" && (
+            <div
+              style={{
+                marginBottom: 12,
+                background: "#fff7db",
+                borderRadius: 18,
+                padding: "12px",
+                border: "1px solid rgba(210,164,58,.62)",
+                color: "#5f3f00",
+                fontWeight: 900,
+                lineHeight: 1.35,
+              }}
+            >
+              ⏳ <strong>Pago pendiente con Mercado Pago.</strong>
+              <br />Este servicio está bloqueado y no se enviará a ningún conductor hasta que el backend confirme el pago aprobado.
+            </div>
+          )}
+
           {isDriverRequeuedSearch && (
             <div
               style={{
@@ -7418,7 +7778,7 @@ function PassengerRideCard({
                 lineHeight: 1.35,
               }}
             >
-              💳 Pago con tarjeta/MercadoPago.
+              💳 Pago con tarjeta/Mercado Pago.
               <br />El pago queda como crédito a favor en tu billetera y pasa a revisión del administrador. Si necesitas devolución, gestiona con RAPA GO por WhatsApp. No entregues claves ni datos de tu tarjeta.
               <IonButton
                 expand="block"
@@ -7489,51 +7849,239 @@ function PassengerRideCard({
                 </div>
 
                 {!showFastSearchPrompt && !fastSearchRecord && (
-                  <div style={{ marginTop: 9, color: "#8a6418", fontSize: ".74rem", fontWeight: 850, lineHeight: 1.3 }}>
-                    Si pasan 2 minutos sin conductor, podrás activar RapaGo más veloz (+$800 CLP).
+                  <div
+                    style={{
+                      marginTop: 12,
+                      padding: "10px 12px",
+                      borderRadius: 14,
+                      background: "#fff8dc",
+                      border: "1px solid #e6bd52",
+                      color: "#3f2d00",
+                      fontSize: ".76rem",
+                      fontWeight: 900,
+                      lineHeight: 1.4,
+                      boxShadow: "0 4px 12px rgba(95,63,0,.08)",
+                    }}
+                  >
+                    ⚡ Si pasan 2 minutos sin conductor, podrás activar
+                    <strong> RapaGo más veloz</strong> por
+                    <strong> +{formatClp(RAPAGO_FAST_SEARCH_FEE_CLP)}</strong>.
                   </div>
                 )}
 
                 {showFastSearchPrompt && (
                   <div
+                    role="region"
+                    aria-label="Activar RapaGo más veloz"
                     style={{
-                      marginTop: 12,
-                      borderRadius: 18,
-                      padding: "12px",
-                      background: "linear-gradient(135deg,#111111,#3b2a12)",
-                      color: "#ffffff",
-                      boxShadow: "0 12px 24px rgba(0,0,0,.18)",
+                      marginTop: 14,
+                      width: "100%",
+                      overflow: "hidden",
+                      borderRadius: 22,
+                      padding: "16px",
+                      background: "linear-gradient(145deg,#fffdf6 0%,#fff1b8 58%,#f4cb55 100%)",
+                      border: "2px solid #d49b16",
+                      color: "#211700",
+                      boxShadow: "0 14px 30px rgba(92,62,0,.22)",
                     }}
                   >
-                    <div style={{ fontWeight: 950, fontSize: ".92rem" }}>¿Quieres un RapaGo más veloz?</div>
-                    <div style={{ marginTop: 5, color: "rgba(255,255,255,.78)", fontSize: ".78rem", lineHeight: 1.35, fontWeight: 800 }}>
-                      Ya llevas {searchingElapsedLabel} buscando conductor. Si aceptas, se agregan {formatClp(RAPAGO_FAST_SEARCH_FEE_CLP)} a la tarifa.
+                    <div
+                      style={{
+                        display: "flex",
+                        alignItems: "flex-start",
+                        gap: 12,
+                      }}
+                    >
+                      <div
+                        aria-hidden="true"
+                        style={{
+                          flex: "0 0 44px",
+                          width: 44,
+                          height: 44,
+                          display: "grid",
+                          placeItems: "center",
+                          borderRadius: 14,
+                          background: "#111827",
+                          color: "#ffffff",
+                          fontSize: "1.35rem",
+                          boxShadow: "0 7px 16px rgba(17,24,39,.24)",
+                        }}
+                      >
+                        ⚡
+                      </div>
+
+                      <div style={{ minWidth: 0, flex: 1 }}>
+                        <div
+                          style={{
+                            color: "#755000",
+                            fontSize: ".68rem",
+                            fontWeight: 950,
+                            letterSpacing: ".08em",
+                            textTransform: "uppercase",
+                          }}
+                        >
+                          Búsqueda prioritaria
+                        </div>
+
+                        <div
+                          style={{
+                            marginTop: 3,
+                            color: "#171100",
+                            fontWeight: 950,
+                            fontSize: "1rem",
+                            lineHeight: 1.2,
+                          }}
+                        >
+                          ¿Quieres un RapaGo más veloz?
+                        </div>
+                      </div>
                     </div>
-                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginTop: 10 }}>
-                      <IonButton
-                        size="small"
-                        color="warning"
-                        style={{ "--border-radius": "999px", fontWeight: 950 } as React.CSSProperties}
-                        onClick={() => applyPassengerFastSearchChoice(ride, true)}
+
+                    <div
+                      style={{
+                        marginTop: 12,
+                        padding: "11px 12px",
+                        borderRadius: 14,
+                        background: "rgba(255,255,255,.82)",
+                        border: "1px solid rgba(117,80,0,.22)",
+                        color: "#3d2d05",
+                        fontSize: ".8rem",
+                        lineHeight: 1.45,
+                        fontWeight: 800,
+                      }}
+                    >
+                      Ya llevas <strong>{searchingElapsedLabel}</strong> buscando conductor.
+                      Al activarlo, priorizaremos tu solicitud y se agregarán
+                      <strong> {formatClp(RAPAGO_FAST_SEARCH_FEE_CLP)}</strong> al monto final.
+                    </div>
+
+                    <div
+                      style={{
+                        marginTop: 12,
+                        display: "grid",
+                        gridTemplateColumns: "1fr",
+                        gap: 9,
+                      }}
+                    >
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setFastSearchBusy(true);
+                          setFastSearchActionError(null);
+                          void applyPassengerFastSearchChoice(ride, true, token)
+                            .catch((err) => {
+                              setFastSearchActionError(
+                                err instanceof Error ? err.message : "No se pudo activar RapaGo más veloz.",
+                              );
+                            })
+                            .finally(() => setFastSearchBusy(false));
+                        }}
+                        disabled={fastSearchBusy}
+                        style={{
+                          width: "100%",
+                          minHeight: 46,
+                          border: "none",
+                          borderRadius: 14,
+                          padding: "11px 14px",
+                          background: "#111827",
+                          color: "#ffffff",
+                          fontSize: ".88rem",
+                          fontWeight: 950,
+                          lineHeight: 1.2,
+                          cursor: "pointer",
+                          boxShadow: "0 8px 18px rgba(17,24,39,.22)",
+                        }}
                       >
-                        Sí, más veloz
-                      </IonButton>
-                      <IonButton
-                        size="small"
-                        fill="outline"
-                        color="light"
-                        style={{ "--border-radius": "999px", fontWeight: 950 } as React.CSSProperties}
-                        onClick={() => applyPassengerFastSearchChoice(ride, false)}
+                        {fastSearchBusy
+                          ? "Procesando…"
+                          : fastSearchUsesMercadoPago
+                            ? `💳 Pagar ${formatClp(RAPAGO_FAST_SEARCH_FEE_CLP)} con Mercado Pago`
+                            : `⚡ Sí, activar por ${formatClp(RAPAGO_FAST_SEARCH_FEE_CLP)}`}
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setFastSearchActionError(null);
+                          void applyPassengerFastSearchChoice(ride, false, token);
+                        }}
+                        disabled={fastSearchBusy}
+                        style={{
+                          width: "100%",
+                          minHeight: 43,
+                          border: "2px solid #6b4b00",
+                          borderRadius: 14,
+                          padding: "9px 14px",
+                          background: "#ffffff",
+                          color: "#3a2900",
+                          fontSize: ".82rem",
+                          fontWeight: 950,
+                          lineHeight: 1.2,
+                          cursor: "pointer",
+                        }}
                       >
-                        No
-                      </IonButton>
+                        No, seguir esperando
+                      </button>
+                    </div>
+
+                    {fastSearchActionError && (
+                      <div
+                        role="alert"
+                        style={{
+                          marginTop: 10,
+                          padding: "10px 12px",
+                          borderRadius: 12,
+                          background: "#fff1f2",
+                          border: "1px solid #e11d48",
+                          color: "#881337",
+                          fontSize: ".75rem",
+                          fontWeight: 900,
+                          lineHeight: 1.35,
+                        }}
+                      >
+                        {fastSearchActionError}
+                      </div>
+                    )}
+
+                    <div
+                      style={{
+                        marginTop: 10,
+                        color: "#5e4408",
+                        fontSize: ".68rem",
+                        fontWeight: 800,
+                        lineHeight: 1.35,
+                        textAlign: "center",
+                      }}
+                    >
+                      {fastSearchUsesMercadoPago
+                        ? "La prioridad se activará solamente cuando Mercado Pago confirme realmente el pago de $800."
+                        : "Los $800 se sumarán al total en efectivo y el conductor verá el monto actualizado."}
                     </div>
                   </div>
                 )}
 
                 {fastSearchRecord?.accepted && (
-                  <div style={{ marginTop: 10, borderRadius: 16, padding: "10px 12px", background: "#eafff1", color: "#14532d", border: "1px solid rgba(34,197,94,.35)", fontSize: ".78rem", fontWeight: 900, lineHeight: 1.35 }}>
-                    ⚡ RapaGo más veloz activo. Se agregan {formatClp(fastSearchFeeClp)} al monto final.
+                  <div
+                    style={{
+                      marginTop: 12,
+                      borderRadius: 18,
+                      padding: "12px 14px",
+                      background: "linear-gradient(135deg,#ecfdf3,#c9f7da)",
+                      color: "#0f4b2b",
+                      border: "2px solid #38a169",
+                      fontSize: ".8rem",
+                      fontWeight: 900,
+                      lineHeight: 1.4,
+                      boxShadow: "0 8px 18px rgba(20,83,45,.12)",
+                    }}
+                  >
+                    <div style={{ fontSize: ".9rem", fontWeight: 950 }}>
+                      ⚡ RapaGo más veloz activado
+                    </div>
+                    <div style={{ marginTop: 3 }}>
+                      Tu solicitud tiene prioridad. Se agregan
+                      <strong> {formatClp(fastSearchFeeClp)}</strong> al monto final.
+                    </div>
                   </div>
                 )}
               </div>
@@ -7584,7 +8132,7 @@ function PassengerRideCard({
             </div>
           )}
 
-          {hasDriver && !["requested", "scheduled", "cancelled"].includes(effectiveStatus) && (
+          {hasDriver && !["pending_payment", "requested", "scheduled", "cancelled"].includes(effectiveStatus) && (
             <PassengerDriverAndVehicleDetails ride={ride as RideRequestData & Record<string, unknown>} />
           )}
 
@@ -7683,7 +8231,11 @@ function PassengerRideCard({
                 </div>
               )}
               <div style={{ marginTop: 3, fontSize: ".72rem", color: "rgba(17,17,17,.60)", lineHeight: 1.25 }}>
-                Este es el valor que pagarás al finalizar el viaje.
+                {paymentLabel.includes("Mercado Pago")
+                  ? effectiveStatus === "pending_payment"
+                    ? "Este monto todavía no está confirmado. El servicio sigue bloqueado."
+                    : "Pago con tarjeta validado por Mercado Pago y el backend de RAPA GO."
+                  : "Este es el valor que pagarás al finalizar el viaje."}
               </div>
             </div>
           )}
@@ -7789,7 +8341,7 @@ function PassengerRideCard({
                 fontWeight: 900,
               }}
             >
-              Reserva dentro de últimos 30 min.
+              Reserva dentro de últimos 15 min.
               <br />
               Cargo por cancelar: <strong>{formatClp(cancellationPolicy.feeClp)}</strong>.
             </div>
@@ -7802,7 +8354,7 @@ function PassengerRideCard({
           )}
 
           <div style={{ display: "flex", gap: 8, marginTop: 14, flexWrap: "wrap" }}>
-            {["requested", "scheduled", "driver_scheduled"].includes(effectiveStatus) && (
+            {["pending_payment", "requested", "scheduled", "driver_scheduled"].includes(effectiveStatus) && (
               <IonButton
                 size="small"
                 fill="outline"
@@ -7899,6 +8451,7 @@ export default function TripsPage(): JSX.Element {
   const [refundMercadoPagoAlert, setRefundMercadoPagoAlert] = useState<{ header: string; message: string; ride: RideRequestData | null } | null>(null);
   const [, setKnownAssignedRideIds] = useState<Set<string>>(new Set());
   const [tripSafetyReportsRevision, setTripSafetyReportsRevision] = useState(0);
+  const [paymentReturnMessage, setPaymentReturnMessage] = useState<PaymentReturnMessage | null>(null);
 
   const loadRides = useCallback(async () => {
     setLoading(true);
@@ -7984,6 +8537,202 @@ export default function TripsPage(): JSX.Element {
   }, [session?.accessToken]);
 
   useEffect(() => {
+    let returnMarker = "";
+
+    try {
+      returnMarker = new URLSearchParams(window.location.search).get("payment") ?? "";
+    } catch {
+      returnMarker = "";
+    }
+
+    const supportedMarkers = new Set([
+      "return",
+      "success", // compatibilidad con enlaces antiguos; nunca se confía en este texto.
+      "approved_return",
+      "failure_return",
+      "pending_return",
+    ]);
+
+    if (!supportedMarkers.has(returnMarker)) return;
+
+    let disposed = false;
+    let waitTimer: number | null = null;
+
+    const wait = (milliseconds: number): Promise<void> =>
+      new Promise((resolve) => {
+        waitTimer = window.setTimeout(resolve, milliseconds);
+      });
+
+    const verifyPaymentWithBackend = async (): Promise<void> => {
+      setPaymentReturnMessage({
+        tone: "checking",
+        title: "Verificando pago con Mercado Pago",
+        body: "Volver desde la tienda no activa el servicio. Estamos consultando el estado real guardado por el backend.",
+      });
+
+      const pending = readPendingCardPayment();
+      const pendingFastSearch = readPendingFastSearchPayment();
+      const accessToken = session?.accessToken;
+
+      if (accessToken && pendingFastSearch) {
+        setPaymentReturnMessage({
+          tone: "checking",
+          title: "Verificando RapaGo más veloz",
+          body: "La prioridad no se activa por volver desde Mercado Pago. Estamos esperando la aprobación real de los $800.",
+        });
+
+        for (let attempt = 0; attempt < 15 && !disposed; attempt += 1) {
+          try {
+            const status = await fetchPassengerFastSearchPaymentStatus(
+              accessToken,
+              pendingFastSearch.paymentId,
+            );
+
+            if (status === "success") {
+              const serverRides = await ridesService.listMyRides(accessToken);
+              const serverRide = serverRides.find(
+                (item) => item.id === pendingFastSearch.rideRequestId,
+              );
+              const rideForMirror =
+                serverRide ??
+                (pendingFastSearch.rideMirror as unknown as RideRequestData);
+
+              applyPassengerFastSearchApprovedLocally(rideForMirror, "card");
+              clearPendingFastSearchPayment();
+              cleanPaymentReturnQuery();
+              setPaymentReturnMessage({
+                tone: "approved",
+                title: "RapaGo más veloz activado",
+                body: "Mercado Pago confirmó los $800. Tu solicitud tiene prioridad y el conductor verá el recargo como pagado.",
+              });
+              await loadRides();
+              return;
+            }
+
+            if (["rejected", "failed", "refunded"].includes(status)) {
+              clearPendingFastSearchPayment();
+              cleanPaymentReturnQuery();
+              setPaymentReturnMessage({
+                tone: "rejected",
+                title: "Recargo no aprobado",
+                body: "Los $800 no fueron confirmados. El viaje principal continúa normalmente, sin RapaGo más veloz.",
+              });
+              await loadRides();
+              return;
+            }
+
+            setPaymentReturnMessage({
+              tone: attempt < 5 ? "checking" : "pending",
+              title: attempt < 5 ? "Confirmando los $800" : "Pago de prioridad pendiente",
+              body: "El viaje continúa normal, pero la prioridad seguirá apagada hasta que Mercado Pago confirme el recargo.",
+            });
+          } catch {
+            setPaymentReturnMessage({
+              tone: "pending",
+              title: "No pudimos confirmar el recargo todavía",
+              body: "Por seguridad, RapaGo más veloz sigue apagado. El viaje principal no se cancela.",
+            });
+          }
+
+          if (attempt < 14 && !disposed) await wait(2000);
+        }
+
+        cleanPaymentReturnQuery();
+        if (!disposed) {
+          setPaymentReturnMessage({
+            tone: "pending",
+            title: "Pago de prioridad aún pendiente",
+            body: "RapaGo más veloz se activará únicamente cuando el backend reciba la aprobación real de Mercado Pago.",
+          });
+          void loadRides();
+        }
+        return;
+      }
+
+      if (!accessToken || !pending) {
+        cleanPaymentReturnQuery();
+        if (!disposed) {
+          setPaymentReturnMessage({
+            tone: "pending",
+            title: "Pago todavía no confirmado",
+            body: "No encontramos una confirmación local para este regreso. El servicio no se activará hasta que el backend reciba un pago aprobado.",
+          });
+          void loadRides();
+        }
+        return;
+      }
+
+      for (let attempt = 0; attempt < 15 && !disposed; attempt += 1) {
+        try {
+          const serverRides = await ridesService.listMyRides(accessToken);
+          const serverRide = serverRides.find((ride) => ride.id === pending.rideRequestId);
+          const status = String(serverRide?.status ?? "").trim().toLowerCase();
+
+          if (status === "cancelled") {
+            clearPendingCardPayment();
+            cleanPaymentReturnQuery();
+            setPaymentReturnMessage({
+              tone: "rejected",
+              title: "Pago no aprobado",
+              body: "Mercado Pago no confirmó el cobro. La solicitud fue cancelada y no se envió a ningún conductor.",
+            });
+            await loadRides();
+            return;
+          }
+
+          if (status && status !== "pending_payment") {
+            activatePaidCardPaymentMirrors(pending);
+            clearPendingCardPayment();
+            cleanPaymentReturnQuery();
+            setPaymentReturnMessage({
+              tone: "approved",
+              title: "Pago aprobado",
+              body: "El backend confirmó el pago. Ahora el servicio quedó habilitado y puede continuar con la búsqueda o la reserva.",
+            });
+            await loadRides();
+            return;
+          }
+
+          if (!disposed) {
+            setPaymentReturnMessage({
+              tone: attempt < 5 ? "checking" : "pending",
+              title: attempt < 5 ? "Confirmando tu pago" : "Pago pendiente de confirmación",
+              body: "El viaje sigue bloqueado y no aparece al conductor. Se habilitará solamente cuando Mercado Pago lo informe como aprobado.",
+            });
+          }
+        } catch {
+          if (!disposed) {
+            setPaymentReturnMessage({
+              tone: "pending",
+              title: "No pudimos confirmar el pago todavía",
+              body: "Por seguridad, el servicio permanece bloqueado. Actualiza nuevamente cuando tengas conexión.",
+            });
+          }
+        }
+
+        if (attempt < 14 && !disposed) await wait(2000);
+      }
+
+      cleanPaymentReturnQuery();
+      if (!disposed) {
+        setPaymentReturnMessage({
+          tone: "pending",
+          title: "Pago aún no confirmado",
+          body: "La solicitud continúa bloqueada. No se mostrará al conductor hasta recibir la aprobación real de Mercado Pago.",
+        });
+        void loadRides();
+      }
+    };
+
+    void verifyPaymentWithBackend();
+
+    return () => {
+      disposed = true;
+      if (waitTimer != null) window.clearTimeout(waitTimer);
+    };
+  }, [loadRides, session?.accessToken]);
+
+  useEffect(() => {
     cleanupExpiredCancelledRidesEverywhere();
 
     const interval = window.setInterval(() => {
@@ -8057,7 +8806,7 @@ export default function TripsPage(): JSX.Element {
       message: [
         "Tu viaje fue cancelado correctamente.",
         "",
-        "Como el pago fue con tarjeta/MercadoPago, el saldo neto queda como CRÉDITOS PARA PRÓXIMO VIAJE en tu billetera. Si necesitas devolución, se gestiona por WhatsApp con RAPA GO. Esta opción no aplica para efectivo.",
+        "Como el pago fue con tarjeta/Mercado Pago, el saldo neto queda como CRÉDITOS PARA PRÓXIMO VIAJE en tu billetera. Si necesitas devolución, se gestiona por WhatsApp con RAPA GO. Esta opción no aplica para efectivo.",
         "",
         "No debes ingresar tarjeta, claves ni códigos bancarios.",
         "",
@@ -8088,10 +8837,23 @@ export default function TripsPage(): JSX.Element {
         (mode === "accepted" || !["scheduled", "driver_scheduled"].includes(effectiveStatus));
 
       if (shouldTryBackend) {
+        const cancellationReason =
+          resolvedPolicy.cancellationReasonLabel ??
+          resolvedPolicy.title ??
+          "Cancelado por pasajero.";
+
         if (mode === "accepted") {
-          await ridesService.cancelAcceptedRide(session!.accessToken, rideId);
+          await ridesService.cancelAcceptedRide(
+            session!.accessToken,
+            rideId,
+            cancellationReason,
+          );
         } else {
-          await ridesService.cancelRideRequest(session!.accessToken, rideId);
+          await ridesService.cancelRideRequest(
+            session!.accessToken,
+            rideId,
+            cancellationReason,
+          );
         }
       }
 
@@ -8513,6 +9275,55 @@ export default function TripsPage(): JSX.Element {
         </IonToolbar>
       </IonHeader>
       <IonContent>
+        {paymentReturnMessage && (
+          <IonCard
+            style={{
+              margin: "12px 14px 0",
+              borderRadius: 18,
+              background:
+                paymentReturnMessage.tone === "approved"
+                  ? "#ecfdf5"
+                  : paymentReturnMessage.tone === "rejected"
+                    ? "#fff1f2"
+                    : "#fff7db",
+              color:
+                paymentReturnMessage.tone === "approved"
+                  ? "#064e3b"
+                  : paymentReturnMessage.tone === "rejected"
+                    ? "#7f1d1d"
+                    : "#5f3f00",
+              border:
+                paymentReturnMessage.tone === "approved"
+                  ? "1px solid rgba(34,197,94,.38)"
+                  : paymentReturnMessage.tone === "rejected"
+                    ? "1px solid rgba(220,38,38,.35)"
+                    : "1px solid rgba(210,164,58,.65)",
+              boxShadow: "0 10px 24px rgba(0,0,0,.12)",
+            }}
+          >
+            <IonCardContent style={{ padding: "12px 14px" }}>
+              <div style={{ fontWeight: 950, fontSize: ".92rem" }}>
+                {paymentReturnMessage.tone === "checking" ? "⏳ " : paymentReturnMessage.tone === "approved" ? "✅ " : paymentReturnMessage.tone === "rejected" ? "❌ " : "⚠️ "}
+                {paymentReturnMessage.title}
+              </div>
+              <div style={{ marginTop: 4, fontSize: ".8rem", lineHeight: 1.4 }}>
+                {paymentReturnMessage.body}
+              </div>
+              {paymentReturnMessage.tone !== "checking" && (
+                <IonButton
+                  size="small"
+                  fill="outline"
+                  color={paymentReturnMessage.tone === "rejected" ? "danger" : paymentReturnMessage.tone === "approved" ? "success" : "warning"}
+                  style={{ "--border-radius": "999px", marginTop: 8, fontWeight: 900 } as CSSProperties}
+                  onClick={() => setPaymentReturnMessage(null)}
+                >
+                  Entendido
+                </IonButton>
+              )}
+            </IonCardContent>
+          </IonCard>
+        )}
+
         {passengerNotice && (
           <IonCard style={{ margin: "12px 14px 0", borderRadius: 18, background: "#fff7db", color: "#111", border: "1px solid rgba(210,164,58,.65)", boxShadow: "0 10px 24px rgba(0,0,0,.16)" }}>
             <IonCardContent style={{ padding: "12px 14px" }}>

@@ -2,7 +2,7 @@ import crypto from "node:crypto";
 import { TokenService } from "../auth/token.service.js";
 import { SessionService } from "../auth/session.service.js";
 import { UsersRepository } from "../users/users.repository.js";
-import { PaymentsRepository } from "./payments.repository.js";
+import { PaymentsRepository, type PaymentPurpose } from "./payments.repository.js";
 import { getActiveProvider, getProvider } from "./provider.registry.js";
 import { AuditService } from "../audit/audit.service.js";
 import { AppError } from "../../shared/errors/AppError.js";
@@ -38,6 +38,7 @@ type PaymentAuthUser = {
 };
 
 const PAYMENT_ALLOWED_RIDE_STATUSES = new Set([
+  "pending_payment",
   "requested",
   "scheduled",
   "driver_scheduled",
@@ -47,6 +48,38 @@ const PAYMENT_ALLOWED_RIDE_STATUSES = new Set([
   "in_progress",
   "completed",
 ]);
+
+const RAPAGO_FAST_SEARCH_FEE_CLP = 800;
+const RAPAGO_FAST_SEARCH_MARKER = "RAPAGO_FAST_SEARCH_ACTIVE: true";
+
+function getPaymentPurpose(value: unknown): PaymentPurpose {
+  return String(value ?? "").trim().toLowerCase() === "fast_search"
+    ? "fast_search"
+    : "ride";
+}
+
+function inferRidePaymentMethod(notes: string | null | undefined): "cash" | "card" | null {
+  const text = normalizePaymentText(notes);
+
+  if (
+    text.includes("mercadopago") ||
+    text.includes("mercado pago") ||
+    text.includes("tarjeta") ||
+    text.includes("paymentmethod: card")
+  ) {
+    return "card";
+  }
+
+  if (text.includes("efectivo") || text.includes("paymentmethod: cash")) {
+    return "cash";
+  }
+
+  return null;
+}
+
+function rideHasFastSearchActive(notes: string | null | undefined): boolean {
+  return String(notes ?? "").includes(RAPAGO_FAST_SEARCH_MARKER);
+}
 
 function normalizePaymentText(value: unknown): string {
   return String(value ?? "")
@@ -242,17 +275,31 @@ async function authenticate(
   };
 }
 
-function buildPaymentReturnUrl(): string {
-  const successUrl = process.env["PAYMENT_SUCCESS_URL"];
+function normalizePaymentReturnUrl(value: string): string {
+  const trimmed = value.trim();
 
-  if (successUrl?.trim()) {
-    return successUrl.trim();
+  try {
+    const url = new URL(trimmed);
+    // Esta marca solo indica que el usuario volvió desde la pasarela.
+    // Nunca representa aprobación del pago.
+    url.searchParams.set("payment", "return");
+    return url.toString();
+  } catch {
+    return trimmed.replace(/([?&])payment=success\b/i, "$1payment=return");
+  }
+}
+
+function buildPaymentReturnUrl(): string {
+  const configuredUrl = process.env["PAYMENT_SUCCESS_URL"];
+
+  if (configuredUrl?.trim()) {
+    return normalizePaymentReturnUrl(configuredUrl);
   }
 
   const frontendUrl = process.env["FRONTEND_URL"];
 
   if (frontendUrl?.trim()) {
-    return `${frontendUrl.replace(/\/+$/, "")}/passenger/trips?payment=success`;
+    return `${frontendUrl.replace(/\/+$/, "")}/passenger/trips?payment=return`;
   }
 
   const mobileDeepLink = process.env["MOBILE_APP_DEEP_LINK"] ?? "rapago://";
@@ -325,6 +372,7 @@ async function findSuccessfulPaymentByRideRequestId(
       .where(
         and(
           eq(payments.rideRequestId, rideRequestId),
+          eq(payments.paymentPurpose, "ride"),
           eq(payments.status, "success"),
         ),
       )
@@ -413,11 +461,82 @@ async function refundMercadoPagoPayment(input: {
   };
 }
 
+function getMercadoPagoWebhookAmountClp(rawPayload: Record<string, unknown>): number | null {
+  const value =
+    rawPayload["transaction_amount"] ??
+    rawPayload["transactionAmount"] ??
+    rawPayload["amount"];
+  const amount = Number(value);
+  return Number.isFinite(amount) ? Math.round(amount) : null;
+}
+
+function getMercadoPagoWebhookCurrency(rawPayload: Record<string, unknown>): string {
+  return String(
+    rawPayload["currency_id"] ??
+      rawPayload["currency"] ??
+      "",
+  ).trim().toUpperCase();
+}
+
+async function activateRideAfterApprovedPayment(rideRequestId: string): Promise<void> {
+  const { RidesRepository } = await import("../rides/rides.repository.js");
+  const repo = new RidesRepository() as {
+    activateAfterApprovedPayment?: (id: string) => Promise<unknown>;
+  };
+
+  if (typeof repo.activateAfterApprovedPayment === "function") {
+    await repo.activateAfterApprovedPayment(rideRequestId);
+  }
+}
+
+async function cancelRideAfterRejectedPayment(
+  rideRequestId: string,
+  reason: string,
+): Promise<void> {
+  const { RidesRepository } = await import("../rides/rides.repository.js");
+  const repo = new RidesRepository() as {
+    cancelPendingPayment?: (id: string, reason: string) => Promise<unknown>;
+  };
+
+  if (typeof repo.cancelPendingPayment === "function") {
+    await repo.cancelPendingPayment(rideRequestId, reason);
+  }
+}
+
+async function activateFastSearchAfterPayment(
+  rideRequestId: string,
+  paymentMethod: "cash" | "card",
+): Promise<void> {
+  const { RidesRepository } = await import("../rides/rides.repository.js");
+  const repo = new RidesRepository() as {
+    activateFastSearch?: (
+      id: string,
+      feeClp: number,
+      method: "cash" | "card",
+    ) => Promise<unknown>;
+  };
+
+  if (typeof repo.activateFastSearch !== "function") {
+    throw new Error("RidesRepository.activateFastSearch is not available.");
+  }
+
+  await repo.activateFastSearch(
+    rideRequestId,
+    RAPAGO_FAST_SEARCH_FEE_CLP,
+    paymentMethod,
+  );
+}
+
 export class PaymentsService {
   async createPayment(
     accessToken: string,
     input: CreatePaymentInput,
-  ): Promise<Result<{ urlPay: string; paymentId: string }>> {
+  ): Promise<Result<{
+    urlPay: string;
+    paymentId: string;
+    paymentPurpose: PaymentPurpose;
+    activated: boolean;
+  }>> {
     const auth = await authenticate(accessToken);
 
     if (!auth.ok) return auth;
@@ -458,6 +577,8 @@ export class PaymentsService {
       };
     }
 
+    const paymentPurpose = getPaymentPurpose(input.paymentPurpose);
+
     if (!PAYMENT_ALLOWED_RIDE_STATUSES.has(String(ride.status ?? ""))) {
       return {
         ok: false,
@@ -468,18 +589,145 @@ export class PaymentsService {
       };
     }
 
-    const active = await paymentsRepo.findActiveByRideId(input.rideRequestId);
+    if (paymentPurpose === "fast_search" && String(ride.status) !== "requested") {
+      return {
+        ok: false,
+        code: "FAST_SEARCH_STATUS_NOT_ALLOWED",
+        message:
+          "RapaGo más veloz solo se puede activar mientras el viaje está buscando conductor.",
+        statusCode: 409,
+      };
+    }
+
+    if (paymentPurpose === "fast_search" && rideHasFastSearchActive(ride.notes)) {
+      return {
+        ok: false,
+        code: "FAST_SEARCH_ALREADY_ACTIVE",
+        message: "RapaGo más veloz ya está activo para este viaje.",
+        statusCode: 409,
+      };
+    }
+
+    const successful = await paymentsRepo.findSuccessfulByRideIdAndPurpose(
+      input.rideRequestId,
+      paymentPurpose,
+    );
+
+    if (successful) {
+      return {
+        ok: false,
+        code:
+          paymentPurpose === "fast_search"
+            ? "FAST_SEARCH_ALREADY_PAID"
+            : "PAYMENT_ALREADY_PAID",
+        message:
+          paymentPurpose === "fast_search"
+            ? "El recargo de RapaGo más veloz ya fue pagado."
+            : "Este viaje ya tiene un pago aprobado.",
+        statusCode: 409,
+      };
+    }
+
+    const active = await paymentsRepo.findActiveByRideIdAndPurpose(
+      input.rideRequestId,
+      paymentPurpose,
+    );
 
     if (active) {
       return {
         ok: false,
         code: "PAYMENT_ALREADY_EXISTS",
-        message: "A payment for this ride is already pending or processing.",
+        message:
+          paymentPurpose === "fast_search"
+            ? "El pago de RapaGo más veloz ya está pendiente o procesándose."
+            : "A payment for this ride is already pending or processing.",
         statusCode: 409,
       };
     }
 
-    const amountClp = ride.estimatedFareClp ?? 0;
+    const ridePaymentMethod = inferRidePaymentMethod(ride.notes);
+
+    if (paymentPurpose === "fast_search" && !ridePaymentMethod) {
+      return {
+        ok: false,
+        code: "FAST_SEARCH_PAYMENT_METHOD_UNKNOWN",
+        message:
+          "No pudimos identificar si el viaje fue solicitado en efectivo o con Mercado Pago.",
+        statusCode: 422,
+      };
+    }
+
+    if (paymentPurpose === "fast_search" && ridePaymentMethod === "cash") {
+      const cashPayment = await paymentsRepo.create({
+        rideRequestId: ride.id,
+        passengerUserId: auth.userId,
+        amountClp: RAPAGO_FAST_SEARCH_FEE_CLP,
+        paymentPurpose: "fast_search",
+        status: "processing",
+        provider: "cash",
+        providerOrderId: `cash-fast-search-${ride.id}`,
+        providerPaymentId: `cash-fast-search-${crypto.randomUUID()}`,
+        rawProviderPayload: {
+          source: "rapago_fast_search_cash",
+          priorityStatus: "approved",
+          collectionStatus: "pay_on_completion",
+          amountClp: RAPAGO_FAST_SEARCH_FEE_CLP,
+          activatedAt: new Date().toISOString(),
+        },
+      });
+
+      try {
+        await activateFastSearchAfterPayment(ride.id, "cash");
+      } catch (err) {
+        await paymentsRepo.markFailed(cashPayment.id);
+        return {
+          ok: false,
+          code: "FAST_SEARCH_ACTIVATION_ERROR",
+          message: "No se pudo activar RapaGo más veloz. Intenta nuevamente.",
+          statusCode: 500,
+        };
+      }
+
+      auditService.recordSafe({
+        actorUserId: auth.userId,
+        eventType: "payment.fast_search_cash_activated",
+        entityType: "payment",
+        entityId: cashPayment.id,
+        metadata: {
+          rideId: ride.id,
+          amountClp: RAPAGO_FAST_SEARCH_FEE_CLP,
+          paymentPurpose: "fast_search",
+          actorRole: auth.role,
+        },
+      });
+
+      return {
+        ok: true,
+        urlPay: "",
+        paymentId: cashPayment.id,
+        paymentPurpose: "fast_search",
+        activated: true,
+      };
+    }
+
+    if (paymentPurpose === "fast_search" && ridePaymentMethod === "card") {
+      const approvedRidePayment = await paymentsRepo.findSuccessfulByRideId(ride.id);
+
+      if (!approvedRidePayment) {
+        return {
+          ok: false,
+          code: "RIDE_PAYMENT_NOT_APPROVED",
+          message:
+            "El pago principal del viaje todavía no está aprobado por Mercado Pago.",
+          statusCode: 409,
+        };
+      }
+    }
+
+    const amountClp =
+      paymentPurpose === "fast_search"
+        ? RAPAGO_FAST_SEARCH_FEE_CLP
+        : Math.max(0, Math.round(Number(ride.estimatedFareClp ?? 0)));
 
     if (amountClp <= 0) {
       return {
@@ -497,6 +745,7 @@ export class PaymentsService {
       rideRequestId: ride.id,
       passengerUserId: auth.userId,
       amountClp,
+      paymentPurpose,
       status: "pending",
       provider: provider.name,
     });
@@ -508,9 +757,12 @@ export class PaymentsService {
 
     try {
       const result = await provider.createPayment({
-        orderId: payment["id"],
+        orderId: payment.id,
         amountClp,
-        description: `Viaje Rapa Go — ${ride.originText} → ${ride.destinationText}`,
+        description:
+          paymentPurpose === "fast_search"
+            ? `RapaGo más veloz — ${ride.originText} → ${ride.destinationText}`
+            : `Viaje Rapa Go — ${ride.originText} → ${ride.destinationText}`,
         passengerEmail: user?.email ?? "",
         passengerName: user?.name ?? "Pasajero",
         returnUrl: buildPaymentReturnUrl(),
@@ -520,47 +772,123 @@ export class PaymentsService {
       providerOrderId = result.providerOrderId;
       urlPay = result.urlPay;
     } catch (err) {
-      await paymentsRepo.markFailed(payment["id"]);
+      await paymentsRepo.markFailed(payment.id);
+
+      if (paymentPurpose === "ride") {
+        try {
+          await ridesRepo.cancelPendingPayment(
+            ride.id,
+            "No se pudo iniciar el pago con Mercado Pago.",
+          );
+        } catch {
+          // El error del proveedor sigue siendo la respuesta principal.
+        }
+      }
 
       auditService.recordSafe({
         actorUserId: auth.userId,
         eventType: "payment.provider_error",
         entityType: "payment",
-        entityId: payment["id"],
+        entityId: payment.id,
         metadata: {
           error: String(err),
           rideId: ride.id,
           provider: provider.name,
-        } as Record<string, string>,
+          paymentPurpose,
+        },
       });
 
       return {
         ok: false,
         code: "PAYMENT_PROVIDER_ERROR",
-        message: "Could not initiate payment with provider. Please try again.",
+        message:
+          paymentPurpose === "fast_search"
+            ? "No se pudo iniciar el pago de RapaGo más veloz. Intenta nuevamente."
+            : "Could not initiate payment with provider. Please try again.",
         statusCode: 502,
       };
     }
 
-    await paymentsRepo.markProcessing(payment["id"], urlPay, providerOrderId);
+    await paymentsRepo.markProcessing(payment.id, urlPay, providerOrderId);
 
     auditService.recordSafe({
       actorUserId: auth.userId,
       eventType: "payment.created",
       entityType: "payment",
-      entityId: payment["id"],
+      entityId: payment.id,
       metadata: {
         rideId: ride.id,
         amountClp,
         provider: provider.name,
         actorRole: auth.role,
+        paymentPurpose,
       },
     });
 
     return {
       ok: true,
       urlPay,
-      paymentId: payment["id"],
+      paymentId: payment.id,
+      paymentPurpose,
+      activated: false,
+    };
+  }
+
+  async getPaymentStatus(
+    accessToken: string,
+    paymentId: string,
+  ): Promise<Result<{
+    payment: {
+      id: string;
+      rideRequestId: string;
+      status: string;
+      paymentPurpose: PaymentPurpose;
+      amountClp: number;
+      provider: string;
+      paidAt: string | null;
+      rejectedAt: string | null;
+      failedAt: string | null;
+    };
+  }>> {
+    const auth = await authenticate(accessToken);
+    if (!auth.ok) return auth;
+
+    const payment = await paymentsRepo.findById(paymentId);
+    if (!payment) {
+      return {
+        ok: false,
+        code: "NOT_FOUND",
+        message: "Payment not found.",
+        statusCode: 404,
+      };
+    }
+
+    const isAdmin = ["admin", "administrator"].includes(
+      normalizePaymentText(auth.role),
+    );
+
+    if (!isAdmin && payment.passengerUserId !== auth.userId) {
+      return {
+        ok: false,
+        code: "AUTH_FORBIDDEN",
+        message: "This payment does not belong to you.",
+        statusCode: 403,
+      };
+    }
+
+    return {
+      ok: true,
+      payment: {
+        id: payment.id,
+        rideRequestId: payment.rideRequestId,
+        status: payment.status,
+        paymentPurpose: getPaymentPurpose(payment.paymentPurpose),
+        amountClp: payment.amountClp,
+        provider: payment.provider,
+        paidAt: payment.paidAt?.toISOString() ?? null,
+        rejectedAt: payment.rejectedAt?.toISOString() ?? null,
+        failedAt: payment.failedAt?.toISOString() ?? null,
+      },
     };
   }
 
@@ -767,8 +1095,28 @@ export class PaymentsService {
       };
     }
 
+    const paymentPurpose = getPaymentPurpose(payment.paymentPurpose);
+
+    if (payment.status === "success") {
+      // Repara una eventual caída ocurrida después de guardar el pago y antes
+      // de publicar el viaje o la prioridad. Es idempotente.
+      try {
+        if (paymentPurpose === "fast_search") {
+          await activateFastSearchAfterPayment(payment.rideRequestId, "card");
+        } else {
+          await activateRideAfterApprovedPayment(payment.rideRequestId);
+        }
+      } catch {
+        // Mercado Pago repetirá el webhook y volveremos a intentarlo.
+      }
+
+      return {
+        ok: true,
+        processed: false,
+      };
+    }
+
     if (
-      payment.status === "success" ||
       payment.status === "rejected" ||
       payment.status === "failed" ||
       payment.status === "refunded"
@@ -787,21 +1135,62 @@ export class PaymentsService {
     }
 
     if (status === "success") {
-      await paymentsRepo.markSuccess(payment["id"], externalId, rawPayload);
+      if (providerName === "mercadopago") {
+        const paidAmountClp = getMercadoPagoWebhookAmountClp(rawPayload);
+        const currency = getMercadoPagoWebhookCurrency(rawPayload);
+        const expectedAmountClp = Math.round(Number(payment.amountClp));
+        const amountMatches =
+          paidAmountClp != null &&
+          paidAmountClp === expectedAmountClp;
+        const currencyMatches = !currency || currency === "CLP";
 
-      try {
-        const { db } = await import("../../db/client.js");
-        const { rideRequests } = await import("../../db/schema/rides.schema.js");
-        const { eq } = await import("drizzle-orm");
+        if (!amountMatches || !currencyMatches) {
+          await paymentsRepo.markRejected(payment["id"], {
+            ...rawPayload,
+            rapagoValidation: {
+              status: "amount_or_currency_mismatch",
+              expectedAmountClp,
+              paidAmountClp,
+              expectedCurrency: "CLP",
+              paidCurrency: currency || null,
+            },
+          });
 
-        await db
-          .update(rideRequests)
-          .set({
-            updatedAt: new Date(),
-          })
-          .where(eq(rideRequests.id, payment.rideRequestId));
-      } catch {
-        // No bloquea el webhook si la actualización auxiliar del viaje falla.
+          if (paymentPurpose === "ride") {
+            try {
+              await cancelRideAfterRejectedPayment(
+                payment.rideRequestId,
+                "Pago rechazado: el monto o la moneda no coincide con el viaje.",
+              );
+            } catch {
+              // El viaje sigue en pending_payment y por lo tanto permanece oculto.
+            }
+          }
+
+          auditService.recordSafe({
+            actorUserId: payment.passengerUserId,
+            eventType: "payment.amount_mismatch",
+            entityType: "payment",
+            entityId: payment["id"],
+            metadata: {
+              rideId: payment.rideRequestId,
+              expectedAmountClp,
+              paidAmountClp: paidAmountClp ?? "missing",
+              currency: currency || "missing",
+              provider: providerName,
+            },
+          });
+
+          return { ok: true, processed: true };
+        }
+      }
+
+      await paymentsRepo.markSuccess(payment.id, externalId, rawPayload);
+
+      if (paymentPurpose === "fast_search") {
+        await activateFastSearchAfterPayment(payment.rideRequestId, "card");
+      } else {
+        await activateRideAfterApprovedPayment(payment.rideRequestId);
       }
 
       auditService.recordSafe({
@@ -814,6 +1203,7 @@ export class PaymentsService {
           amountClp: payment.amountClp,
           externalId,
           provider: providerName,
+          paymentPurpose,
         },
       });
 
@@ -825,6 +1215,17 @@ export class PaymentsService {
 
     if (status === "rejected") {
       await paymentsRepo.markRejected(payment["id"], rawPayload);
+
+      if (paymentPurpose === "ride") {
+        try {
+          await cancelRideAfterRejectedPayment(
+            payment.rideRequestId,
+            "Pago rechazado o cancelado por Mercado Pago.",
+          );
+        } catch {
+          // Si falla, el viaje permanece pending_payment y no se publica.
+        }
+      }
 
       auditService.recordSafe({
         actorUserId: payment.passengerUserId,

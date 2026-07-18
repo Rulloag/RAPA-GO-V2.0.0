@@ -108,6 +108,7 @@ const DRIVER_ASSIGNED_RIDE_EVENT = "rapago:driver-assigned-scheduled-ride";
 const ADMIN_RESERVATION_AUTO_REASSIGN_EVENT = "rapago:admin-reservation-reassign-needed";
 const ADMIN_RESERVATION_AUTO_ASSIGN_EVENT = "rapago:admin-reservation-auto-assigned";
 const SCHEDULE_ACTIVATION_MINUTES_ADMIN = 30;
+const SCHEDULED_CANCELLATION_CHARGE_MINUTES_ADMIN = 15;
 const RAPAGO_SUPPORT_WHATSAPP_PHONE = "56947964171";
 
 function cleanPath(path: string): string {
@@ -8865,7 +8866,7 @@ function buildAssignedScheduledRide(ride: AdminRideData, driver: ActiveDriverDat
     : `Tenemos agendado tu viaje. El admin lo asignó 30 minutos antes. Ve a buscar al usuario en ${ride.originText} y confirma esta reserva.${airportWelcomeInfo ? " Incluye collar de flores solicitado; admin gestiona el recibimiento en Mataveri." : ""}`;
   const passengerNotification = isReturnOnlyPromotion
     ? "Tu regreso quedó agendado. Estamos esperando que el conductor asignado confirme la vuelta."
-    : "Tu reserva sigue agendada. El admin gestionará/asignará conductor 30 minutos antes. Todas las reservas son con tarjeta; si cancelas dentro de los últimos 30 minutos se descuenta la penalización y el saldo queda como CRÉDITOS PARA PRÓXIMO VIAJE.";
+    : `Tu reserva sigue agendada. El admin gestionará/asignará conductor ${SCHEDULE_ACTIVATION_MINUTES_ADMIN} minutos antes. Todas las reservas son con tarjeta; si cancelas dentro de los últimos ${SCHEDULED_CANCELLATION_CHARGE_MINUTES_ADMIN} minutos se cobra 30% con tope de $3.000 y el saldo queda como CRÉDITOS PARA PRÓXIMO VIAJE.`;
 
   return {
     ...(ride as AdminRideData & Record<string, unknown>),
@@ -10371,6 +10372,37 @@ function AdminTripLiveRouteMap({
 
 
 type AdminRideExcelRow = Record<string, string>;
+type AdminRideTerminalStatus = "completed" | "cancelled" | "no_show";
+
+const ADMIN_RIDE_EXCEL_HEADERS = [
+  "ID viaje",
+  "Estado",
+  "Fecha solicitud",
+  "Fecha programada",
+  "Origen",
+  "Destino",
+  "Pasajero",
+  "Email pasajero",
+  "Nota del pasajero",
+  "Conductor",
+  "Email conductor",
+  "Vehículo",
+  "Patente",
+  "Oferta destacada",
+  "Tarifa CLP",
+  "Método de pago",
+  "Fecha aceptación",
+  "Fecha llegada",
+  "Fecha inicio",
+  "Fecha completado",
+  "Fecha cancelado / No Show",
+  "Motivo cancelación",
+  "Tipo No Show",
+] as const;
+
+const ADMIN_RIDE_EXCEL_WIDTHS = [
+  22, 14, 19, 19, 30, 30, 22, 28, 38, 24, 28, 24, 14, 24, 14, 18, 19, 19, 19, 19, 23, 38, 22,
+];
 
 type AdminXlsxEntry = {
   name: string;
@@ -10426,9 +10458,13 @@ function getAdminRideVehicleSummary(ride: AdminRideData): string {
     .join(" ");
 }
 
-function getAdminRideExcelStatus(ride: AdminRideData): "completed" | "cancelled" | "no_show" | null {
-  const status = getEffectiveAdminRideStatus(ride);
-  if (status === "completed" || status === "cancelled" || status === "no_show") return status;
+function getAdminRideExcelStatus(ride: AdminRideData): AdminRideTerminalStatus | null {
+  // No Show se evalúa primero para que nunca termine mezclado con Cancelados o Completados.
+  if (isAdminRideNoShow(ride)) return "no_show";
+
+  const status = String(getEffectiveAdminRideStatus(ride) ?? "").trim().toLowerCase();
+  if (["completed", "complete", "finished"].includes(status)) return "completed";
+  if (["cancelled", "canceled", "passenger_cancelled", "driver_cancelled"].includes(status)) return "cancelled";
   return null;
 }
 
@@ -10438,12 +10474,130 @@ function formatAdminExcelDate(value: unknown): string {
   return date.toLocaleString("es-CL", { dateStyle: "short", timeStyle: "short" });
 }
 
-function getAdminRideExcelRows(rides: AdminRideData[]): AdminRideExcelRow[] {
-  return rides
-    .map((ride): AdminRideExcelRow | null => {
-      const exportStatus = getAdminRideExcelStatus(ride);
-      if (!exportStatus) return null;
+function getAdminRideExcelPaymentLabel(ride: AdminRideData): string {
+  const record = ride as AdminRideData & Record<string, unknown>;
+  const raw = [
+    record.paymentMethod,
+    record.paymentProvider,
+    record.provider,
+    record.paymentType,
+    ride.notes,
+  ]
+    .map((value) => String(value ?? "").toLowerCase())
+    .join(" ");
 
+  if (raw.includes("mercadopago") || raw.includes("mercado pago") || raw.includes("tarjeta") || raw.includes("card")) {
+    return "Mercado Pago";
+  }
+  if (raw.includes("cash") || raw.includes("efectivo")) return "Efectivo";
+
+  return sanitizeAdminExcelText(record.paymentMethod ?? record.paymentProvider, 80);
+}
+
+function getAdminRideExcelCancellationReason(
+  ride: AdminRideData,
+  exportStatus: AdminRideTerminalStatus,
+): string {
+  const record = ride as AdminRideData & Record<string, unknown>;
+  const direct =
+    ride.cancellationReason ??
+    record.cancelReason ??
+    record.cancelledReason ??
+    record.passengerCancellationReason ??
+    record.driverCancellationReason ??
+    record.adminCancellationReason ??
+    record.reason;
+
+  const cleaned = sanitizeAdminExcelText(direct, 500);
+  if (cleaned) return cleaned;
+  return exportStatus === "no_show" ? "Pasajero no se presentó en el punto de recogida." : "Sin motivo informado";
+}
+
+function getAdminRideExcelNoShowType(ride: AdminRideData): string {
+  const record = ride as AdminRideData & Record<string, unknown>;
+  const direct = sanitizeAdminExcelText(
+    record.noShowType ?? record.noShowReason ?? record.noShowCategory,
+    120,
+  );
+  if (direct) return direct;
+
+  const cancelledBy = String(record.cancelledByRole ?? record.cancelledBy ?? "").toLowerCase();
+  if (cancelledBy.includes("driver_no_show")) return "Pasajero no se presentó";
+  if (cancelledBy.includes("passenger_no_show")) return "Conductor no se presentó";
+  return "Pasajero no se presentó";
+}
+
+function getAdminRideExcelTerminalTimestampMs(
+  ride: AdminRideData,
+  status: AdminRideTerminalStatus,
+): number {
+  const record = ride as AdminRideData & Record<string, unknown>;
+  const candidates = status === "completed"
+    ? [ride.completedAt, record.closedByDriverAt, record.finishedAt, record.updatedAt]
+    : status === "no_show"
+      ? [record.noShowConfirmedAt, record.closedByDriverAt, ride.cancelledAt, record.updatedAt]
+      : [ride.cancelledAt, record.canceledAt, record.updatedAt];
+
+  for (const candidate of candidates) {
+    const parsed = new Date(String(candidate ?? "")).getTime();
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  return 0;
+}
+
+function getAdminRideExcelDedupeKey(ride: AdminRideData): string {
+  const record = ride as AdminRideData & Record<string, unknown>;
+  const id = String(ride.id ?? record.rideId ?? record.originalRideId ?? record.serverRideId ?? "").trim();
+  if (id) return `id:${id}`;
+
+  const schedule = getAdminRideScheduleInfo(ride);
+  return [
+    getAdminRideExcelStatus(ride) ?? "unknown",
+    ride.passengerEmail ?? record.email ?? "",
+    ride.originText ?? "",
+    ride.destinationText ?? "",
+    schedule.displayScheduledAt ?? schedule.scheduledAt ?? ride.requestedAt ?? ride.createdAt ?? "",
+  ]
+    .map((value) => String(value ?? "").trim().toLowerCase())
+    .join("|");
+}
+
+function dedupeAdminRideExcelSource(rides: AdminRideData[]): AdminRideData[] {
+  const byKey = new Map<string, AdminRideData>();
+
+  for (const ride of rides) {
+    const status = getAdminRideExcelStatus(ride);
+    if (!status) continue;
+
+    const key = getAdminRideExcelDedupeKey(ride);
+    const current = byKey.get(key);
+    if (!current) {
+      byKey.set(key, ride);
+      continue;
+    }
+
+    const currentStatus = getAdminRideExcelStatus(current) ?? status;
+    if (getAdminRideExcelTerminalTimestampMs(ride, status) >= getAdminRideExcelTerminalTimestampMs(current, currentStatus)) {
+      byKey.set(key, ride);
+    }
+  }
+
+  return [...byKey.values()];
+}
+
+function getAdminRideExcelRows(
+  rides: AdminRideData[],
+  onlyStatus?: AdminRideTerminalStatus,
+): AdminRideExcelRow[] {
+  return dedupeAdminRideExcelSource(rides)
+    .filter((ride) => !onlyStatus || getAdminRideExcelStatus(ride) === onlyStatus)
+    .sort((a, b) => {
+      const aStatus = getAdminRideExcelStatus(a) ?? "cancelled";
+      const bStatus = getAdminRideExcelStatus(b) ?? "cancelled";
+      return getAdminRideExcelTerminalTimestampMs(b, bStatus) - getAdminRideExcelTerminalTimestampMs(a, aStatus);
+    })
+    .map((ride): AdminRideExcelRow => {
+      const exportStatus = getAdminRideExcelStatus(ride) as AdminRideTerminalStatus;
       const record = ride as AdminRideData & Record<string, unknown>;
       const schedule = getAdminRideScheduleInfo(ride);
       const driverName = sanitizeAdminExcelText(
@@ -10460,9 +10614,6 @@ function getAdminRideExcelRows(rides: AdminRideData[]): AdminRideExcelRow[] {
           record.passengerFareClp ??
           0,
       );
-      const noShowType = exportStatus === "no_show"
-        ? sanitizeAdminExcelText(record.noShowType ?? record.cancelledByRole ?? record.cancelledBy ?? "Pasajero no se presentó", 120)
-        : "";
 
       return {
         "ID viaje": sanitizeAdminExcelText(ride.id ?? record.rideId ?? record.originalRideId, 140),
@@ -10471,8 +10622,8 @@ function getAdminRideExcelRows(rides: AdminRideData[]): AdminRideExcelRow[] {
         "Fecha programada": formatAdminExcelDate(schedule.displayScheduledAt ?? schedule.scheduledAt),
         Origen: sanitizeAdminExcelText(ride.originText, 260),
         Destino: sanitizeAdminExcelText(ride.destinationText, 260),
-        Pasajero: sanitizeAdminExcelText(ride.passengerName, 160),
-        "Email pasajero": sanitizeAdminExcelText(ride.passengerEmail, 180),
+        Pasajero: sanitizeAdminExcelText(ride.passengerName ?? record.userName ?? record.passengerFullName, 160),
+        "Email pasajero": sanitizeAdminExcelText(ride.passengerEmail ?? record.email ?? record.userEmail, 180),
         "Nota del pasajero": sanitizeAdminExcelText(getAdminPassengerNote(ride), 500),
         Conductor: driverName,
         "Email conductor": driverEmail,
@@ -10480,17 +10631,27 @@ function getAdminRideExcelRows(rides: AdminRideData[]): AdminRideExcelRow[] {
         Patente: vehiclePlate,
         "Oferta destacada": sanitizeAdminExcelText(getAdminRidePromotionLabel(ride), 180),
         "Tarifa CLP": Number.isFinite(fare) && fare > 0 ? String(Math.round(fare)) : "",
-        "Método de pago": sanitizeAdminExcelText(record.paymentMethod ?? record.paymentProvider, 80),
-        "Fecha aceptación": formatAdminExcelDate(ride.acceptedAt),
+        "Método de pago": getAdminRideExcelPaymentLabel(ride),
+        "Fecha aceptación": formatAdminExcelDate(ride.acceptedAt ?? record.driverAcceptedAt),
         "Fecha llegada": formatAdminExcelDate(ride.arrivedAt ?? record.driverArrivedAt),
-        "Fecha inicio": formatAdminExcelDate(ride.startedAt),
-        "Fecha completado": formatAdminExcelDate(ride.completedAt),
-        "Fecha cancelado / No Show": formatAdminExcelDate(ride.cancelledAt ?? record.noShowConfirmedAt ?? record.closedByDriverAt),
-        "Motivo cancelación": sanitizeAdminExcelText(ride.cancellationReason ?? record.cancelReason, 500),
-        "Tipo No Show": noShowType,
+        "Fecha inicio": formatAdminExcelDate(ride.startedAt ?? record.startedAt),
+        "Fecha completado": exportStatus === "completed"
+          ? formatAdminExcelDate(ride.completedAt ?? record.closedByDriverAt ?? record.finishedAt)
+          : "",
+        "Fecha cancelado / No Show": exportStatus !== "completed"
+          ? formatAdminExcelDate(ride.cancelledAt ?? record.canceledAt ?? record.noShowConfirmedAt ?? record.closedByDriverAt)
+          : "",
+        "Motivo cancelación": exportStatus === "completed" ? "" : getAdminRideExcelCancellationReason(ride, exportStatus),
+        "Tipo No Show": exportStatus === "no_show" ? getAdminRideExcelNoShowType(ride) : "",
       };
-    })
-    .filter((row): row is AdminRideExcelRow => row !== null);
+    });
+}
+
+function adminRideExcelTableRows(rows: AdminRideExcelRow[]): string[][] {
+  return [
+    [...ADMIN_RIDE_EXCEL_HEADERS],
+    ...rows.map((row) => ADMIN_RIDE_EXCEL_HEADERS.map((header) => row[header] ?? "")),
+  ];
 }
 
 function adminXlsxColumnName(index: number): string {
@@ -10647,26 +10808,27 @@ function adminBuildStoredZip(entries: AdminXlsxEntry[]): Uint8Array {
 
 function buildAdminTerminalRidesXlsx(rides: AdminRideData[]): Uint8Array {
   const encoder = new TextEncoder();
-  const rows = getAdminRideExcelRows(rides);
-  const headers = rows.length > 0 ? Object.keys(rows[0]) : ["Estado"];
-  const dataRows = rows.map((row) => headers.map((header) => row[header] ?? ""));
-  const completed = rows.filter((row) => row.Estado === "Completado").length;
-  const cancelled = rows.filter((row) => row.Estado === "Cancelado").length;
-  const noShow = rows.filter((row) => row.Estado === "No Show").length;
+  const completedRows = getAdminRideExcelRows(rides, "completed");
+  const cancelledRows = getAdminRideExcelRows(rides, "cancelled");
+  const noShowRows = getAdminRideExcelRows(rides, "no_show");
+  const totalRows = completedRows.length + cancelledRows.length + noShowRows.length;
 
   const summaryRows = [
-    ["Resumen de viajes RAPA GO", "Cantidad"],
-    ["Completados", String(completed)],
-    ["Cancelados", String(cancelled)],
-    ["No Show", String(noShow)],
-    ["Total exportado", String(rows.length)],
+    ["Resumen de viajes RAPA GO", "Cantidad / regla"],
+    ["Completados", String(completedRows.length)],
+    ["Cancelados", String(cancelledRows.length)],
+    ["No Show", String(noShowRows.length)],
+    ["Total exportado", String(totalRows)],
+    ["Asignación automática de conductor", `${SCHEDULE_ACTIVATION_MINUTES_ADMIN} minutos antes de la reserva`],
+    ["Cancelación programada con cargo", `Dentro de los últimos ${SCHEDULED_CANCELLATION_CHARGE_MINUTES_ADMIN} minutos`],
+    ["Cargo cancelación programada", "30% de la tarifa, tope $3.000 CLP"],
     ["Fecha de exportación", new Date().toLocaleString("es-CL")],
   ];
 
-  const sheet1 = adminXlsxSheetXml(summaryRows, [30, 20]);
-  const sheet2 = adminXlsxSheetXml([headers, ...dataRows], [
-    22, 14, 19, 19, 30, 30, 22, 28, 38, 24, 28, 24, 14, 24, 14, 18, 19, 19, 19, 19, 23, 38, 22,
-  ]);
+  const sheet1 = adminXlsxSheetXml(summaryRows, [38, 48]);
+  const sheet2 = adminXlsxSheetXml(adminRideExcelTableRows(completedRows), ADMIN_RIDE_EXCEL_WIDTHS);
+  const sheet3 = adminXlsxSheetXml(adminRideExcelTableRows(cancelledRows), ADMIN_RIDE_EXCEL_WIDTHS);
+  const sheet4 = adminXlsxSheetXml(adminRideExcelTableRows(noShowRows), ADMIN_RIDE_EXCEL_WIDTHS);
 
   const contentTypes = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
@@ -10676,6 +10838,8 @@ function buildAdminTerminalRidesXlsx(rides: AdminRideData[]): Uint8Array {
   <Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>
   <Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>
   <Override PartName="/xl/worksheets/sheet2.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>
+  <Override PartName="/xl/worksheets/sheet3.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>
+  <Override PartName="/xl/worksheets/sheet4.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>
 </Types>`;
 
   const rootRelationships = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
@@ -10687,7 +10851,9 @@ function buildAdminTerminalRidesXlsx(rides: AdminRideData[]): Uint8Array {
 <workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
   <sheets>
     <sheet name="Resumen" sheetId="1" r:id="rId1"/>
-    <sheet name="Viajes" sheetId="2" r:id="rId2"/>
+    <sheet name="Completados" sheetId="2" r:id="rId2"/>
+    <sheet name="Cancelados" sheetId="3" r:id="rId3"/>
+    <sheet name="No Show" sheetId="4" r:id="rId4"/>
   </sheets>
 </workbook>`;
 
@@ -10695,7 +10861,9 @@ function buildAdminTerminalRidesXlsx(rides: AdminRideData[]): Uint8Array {
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
   <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>
   <Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet2.xml"/>
-  <Relationship Id="rId3" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>
+  <Relationship Id="rId3" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet3.xml"/>
+  <Relationship Id="rId4" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet4.xml"/>
+  <Relationship Id="rId5" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>
 </Relationships>`;
 
   const styles = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
@@ -10716,11 +10884,13 @@ function buildAdminTerminalRidesXlsx(rides: AdminRideData[]): Uint8Array {
     { name: "xl/styles.xml", bytes: encoder.encode(styles) },
     { name: "xl/worksheets/sheet1.xml", bytes: encoder.encode(sheet1) },
     { name: "xl/worksheets/sheet2.xml", bytes: encoder.encode(sheet2) },
+    { name: "xl/worksheets/sheet3.xml", bytes: encoder.encode(sheet3) },
+    { name: "xl/worksheets/sheet4.xml", bytes: encoder.encode(sheet4) },
   ]);
 }
 
 function downloadAdminTerminalRidesXlsx(rides: AdminRideData[]): number {
-  const terminalRides = rides.filter((ride) => getAdminRideExcelStatus(ride) !== null);
+  const terminalRides = dedupeAdminRideExcelSource(rides);
   if (terminalRides.length === 0) return 0;
 
   const bytes = buildAdminTerminalRidesXlsx(terminalRides);

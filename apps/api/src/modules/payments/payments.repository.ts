@@ -1,4 +1,4 @@
-import { and, eq, inArray } from "drizzle-orm";
+import { and, desc, eq, inArray } from "drizzle-orm";
 
 import { db } from "../../db/client.js";
 import {
@@ -6,6 +6,8 @@ import {
   type NewPayment,
   type Payment,
 } from "../../db/schema/payments.schema.js";
+
+export type PaymentPurpose = "ride" | "fast_search";
 
 export class PaymentsRepository {
   async create(data: NewPayment): Promise<Payment> {
@@ -23,41 +25,70 @@ export class PaymentsRepository {
     return row ?? null;
   }
 
-  async findByRideId(rideRequestId: string): Promise<Payment | null> {
-    const [row] = await db
-      .select()
-      .from(payments)
-      .where(eq(payments.rideRequestId, rideRequestId))
-      .limit(1);
-
-    return row ?? null;
-  }
-
-  async findSuccessfulByRideId(rideRequestId: string): Promise<Payment | null> {
+  async findByRideId(
+    rideRequestId: string,
+    paymentPurpose: PaymentPurpose = "ride",
+  ): Promise<Payment | null> {
     const [row] = await db
       .select()
       .from(payments)
       .where(
         and(
           eq(payments.rideRequestId, rideRequestId),
+          eq(payments.paymentPurpose, paymentPurpose),
+        ),
+      )
+      .orderBy(desc(payments.createdAt))
+      .limit(1);
+
+    return row ?? null;
+  }
+
+  // Importante: este método representa exclusivamente el pago principal.
+  // Un pago de $800 de fast_search jamás puede habilitar por sí solo un viaje con tarjeta.
+  async findSuccessfulByRideId(rideRequestId: string): Promise<Payment | null> {
+    return this.findSuccessfulByRideIdAndPurpose(rideRequestId, "ride");
+  }
+
+  async findSuccessfulByRideIdAndPurpose(
+    rideRequestId: string,
+    paymentPurpose: PaymentPurpose,
+  ): Promise<Payment | null> {
+    const [row] = await db
+      .select()
+      .from(payments)
+      .where(
+        and(
+          eq(payments.rideRequestId, rideRequestId),
+          eq(payments.paymentPurpose, paymentPurpose),
           eq(payments.status, "success"),
         ),
       )
+      .orderBy(desc(payments.paidAt), desc(payments.createdAt))
       .limit(1);
 
     return row ?? null;
   }
 
   async findActiveByRideId(rideRequestId: string): Promise<Payment | null> {
+    return this.findActiveByRideIdAndPurpose(rideRequestId, "ride");
+  }
+
+  async findActiveByRideIdAndPurpose(
+    rideRequestId: string,
+    paymentPurpose: PaymentPurpose,
+  ): Promise<Payment | null> {
     const [row] = await db
       .select()
       .from(payments)
       .where(
         and(
           eq(payments.rideRequestId, rideRequestId),
+          eq(payments.paymentPurpose, paymentPurpose),
           inArray(payments.status, ["pending", "processing"]),
         ),
       )
+      .orderBy(desc(payments.createdAt))
       .limit(1);
 
     return row ?? null;

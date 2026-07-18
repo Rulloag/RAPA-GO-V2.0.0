@@ -245,9 +245,23 @@ export const ridesController = {
     const token = requireToken(request, reply);
     if (!token) return;
 
+    const parsed = cancelAcceptedSchema.safeParse(request.body ?? {});
+
+    if (!parsed.success) {
+      sendError(reply, {
+        code: "VALIDATION_ERROR",
+        message:
+          parsed.error.errors[0]?.message ??
+          "Invalid request body.",
+        statusCode: 400,
+      });
+      return;
+    }
+
     const result = await ridesService.cancelRideRequest(
       token,
       request.params.id,
+      parsed.data,
     );
 
     if (!result.ok) {

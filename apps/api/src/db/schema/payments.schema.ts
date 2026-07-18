@@ -27,6 +27,12 @@ export const payments = pgTable(
 
     amountClp: integer("amount_clp").notNull(),
 
+    // "ride" = pago principal del viaje.
+    // "fast_search" = recargo independiente de RapaGo más veloz ($800).
+    paymentPurpose: varchar("payment_purpose", { length: 32 })
+      .notNull()
+      .default("ride"),
+
     status: varchar("status", { length: 32 })
       .notNull()
       .default("pending"),
@@ -60,6 +66,11 @@ export const payments = pgTable(
     passengerUserIdx: index("payments_passenger_user_id_idx").on(table.passengerUserId),
     statusIdx: index("payments_status_idx").on(table.status),
     providerOrderIdx: index("payments_provider_order_id_idx").on(table.providerOrderId),
+    ridePurposeStatusIdx: index("payments_ride_purpose_status_idx").on(
+      table.rideRequestId,
+      table.paymentPurpose,
+      table.status,
+    ),
   }),
 );
 
