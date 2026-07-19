@@ -9,13 +9,18 @@ sigue **no puede automatizarse** desde este repositorio.
 
 **No validada end-to-end todavía.** El proyecto nativo `apps/mobile/ios/`
 fue generado y compila en la parte web/TypeScript (typecheck, tests, build
-del bundle), pero la resolución de paquetes Swift (`xcodebuild -list`) no
-pudo completarse en el entorno de desarrollo donde se preparó este cambio
-por una limitación de red del sandbox — confirmado reproducible incluso con
-`Package.resolved` ya cacheado. Esto **no** es un defecto del código: es un
-paso de verificación pendiente que debe completarse en una máquina con
-Xcode y acceso de red normal antes de considerar la integración probada con
-credenciales reales de Apple.
+del bundle). La resolución de paquetes Swift (`Resolve Package Graph`) sí
+se completó con éxito en la última verificación (los 13 paquetes SPM —
+4 remotos desde GitHub público, el resto locales vía Capacitor —
+resolvieron sin prompts de credenciales). El build (`xcodebuild ... build`,
+sin firma) no pudo completarse porque la máquina donde se preparó este
+cambio no tiene instalado ningún runtime/plataforma de iOS Simulator ni de
+iOS Device en Xcode (`xcrun simctl list runtimes` vacío; xcodebuild reporta
+"iOS 26.5 is not installed. Please download and install the platform from
+Xcode > Settings > Components."). Esto **no** es un defecto del código: es
+un componente de Xcode que debe instalarse (Xcode > Settings > Components)
+en la máquina donde se compile, antes de considerar la integración probada
+con credenciales reales de Apple.
 
 ## 1. Apple Developer — pasos obligatorios
 
