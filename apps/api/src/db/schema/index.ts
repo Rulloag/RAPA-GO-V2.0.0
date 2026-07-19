@@ -9,6 +9,7 @@ export * from "./rides.schema.js";
 export * from "./ridePolicyCharges.schema.js";
 export * from "./ratings.schema.js";
 export * from "./driverStatuses.schema.js";
+export * from "./driverCompliance.schema.js";
 export * from "./offline.schema.js";
 export * from "./driverProfiles.schema.js";
 export * from "./passengerProfiles.schema.js";

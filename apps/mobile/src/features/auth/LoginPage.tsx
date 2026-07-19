@@ -1,6 +1,5 @@
 import { useState, type ChangeEvent, type FormEvent, type CSSProperties } from "react";
 import {
-  IonAlert,
   IonButton,
   IonContent,
   IonHeader,
@@ -20,6 +19,7 @@ import {
 import { useHistory } from "react-router-dom";
 import { loginRequestSchema, type UserRole } from "@rapa-go/shared";
 import { useAuth } from "./useAuth.js";
+import { authService } from "./auth.service.js";
 import { ROUTES } from "../../navigation/routes.js";
 
 const ROLE_HOME: Record<UserRole, string> = {
@@ -279,44 +279,6 @@ function readFileAsDataUrl(file: File): Promise<string> {
   });
 }
 
-function readResidentVerificationRequests(): Array<Record<string, unknown>> {
-  try {
-    const raw = localStorage.getItem(RESIDENT_VERIFICATION_REQUESTS_KEY);
-    const parsed = raw ? (JSON.parse(raw) as Array<Record<string, unknown>>) : [];
-    return Array.isArray(parsed) ? parsed : [];
-  } catch {
-    return [];
-  }
-}
-
-function getResidentVerificationStatusForPassenger(
-  email: string,
-  rut: string,
-): ResidenceVerificationStatus | null {
-  const cleanEmail = normalizeEmail(email);
-  const cleanRutValue = formatRut(rut).trim().toUpperCase();
-
-  const request = readResidentVerificationRequests().find((item) => {
-    const itemEmail = String(item.email ?? "").trim().toLowerCase();
-    const itemRut = String(item.rut ?? "").trim().toUpperCase();
-
-    return Boolean(
-      (cleanEmail && itemEmail === cleanEmail) ||
-        (cleanRutValue && itemRut === cleanRutValue),
-    );
-  });
-
-  const status = String(request?.status ?? "").trim().toLowerCase();
-
-  if (status === "approved") return "approved";
-  if (status === "rejected") return "rejected";
-  if (status === "pending" || status === "under_review" || status === "on_hold") {
-    return "pending";
-  }
-
-  return null;
-}
-
 
 function persistResidentVerificationRequest(input: {
   userId: string;
@@ -499,6 +461,46 @@ function persistPassengerProfile(profile: PassengerRegistrationProfile): void {
   }
 }
 
+function getFacebookRedirectErrorMessage(): string {
+  try {
+    const code = new URLSearchParams(window.location.search).get(
+      "facebook",
+    );
+
+    if (code === "resident_pending") {
+      return "Tu documento de residencia Rapa Nui sigue pendiente de revisión por el administrador.";
+    }
+
+    if (code === "resident_rejected") {
+      return "Tu documento de residencia fue rechazado. Adjunta uno nuevo para solicitar otra revisión.";
+    }
+
+    if (code === "account_pending") {
+      return "Tu cuenta todavía está pendiente de aprobación.";
+    }
+
+    if (code === "account_blocked") {
+      return "Tu cuenta está bloqueada. Contacta a soporte.";
+    }
+
+    if (code === "email_required") {
+      return "Facebook no entregó tu correo. Autoriza el correo o usa otro método de ingreso.";
+    }
+
+    if (code === "state_error") {
+      return "La solicitud de Facebook expiró o no es válida. Intenta nuevamente.";
+    }
+
+    if (code === "error") {
+      return "No se pudo completar el ingreso con Facebook.";
+    }
+  } catch {
+    // No bloquea la pantalla de acceso.
+  }
+
+  return "";
+}
+
 export function LoginPage(): JSX.Element {
   const history = useHistory();
   const { login } = useAuth();
@@ -508,7 +510,9 @@ export function LoginPage(): JSX.Element {
 
   const [loading, setLoading] = useState(false);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
-  const [serverError, setServerError] = useState("");
+  const [serverError, setServerError] = useState(
+    getFacebookRedirectErrorMessage,
+  );
 
   const [showFacebookStep, setShowFacebookStep] = useState(false);
   const [passengerCondition, setPassengerCondition] =
@@ -532,7 +536,10 @@ export function LoginPage(): JSX.Element {
   const [residenceDocument, setResidenceDocument] = useState<File | null>(null);
   const [residenceDocumentName, setResidenceDocumentName] = useState("");
   const [facebookStepError, setFacebookStepError] = useState("");
-  const [showResidentPendingAlert, setShowResidentPendingAlert] = useState(false);
+  const [facebookPrecheckLoading, setFacebookPrecheckLoading] =
+    useState(false);
+  const [residentSubmissionMessage, setResidentSubmissionMessage] =
+    useState("");
 
   const isResidentRapaNui = passengerCondition === "residente_rapa_nui";
 
@@ -589,6 +596,7 @@ export function LoginPage(): JSX.Element {
 
   function openFacebookStep(): void {
     setFacebookStepError("");
+    setResidentSubmissionMessage("");
 
     if (!passengerEmail && email.trim()) {
       setPassengerEmail(normalizeEmail(email));
@@ -600,6 +608,7 @@ export function LoginPage(): JSX.Element {
   function handlePassengerConditionChange(value: PassengerCondition): void {
     setPassengerCondition(value);
     setFacebookStepError("");
+    setResidentSubmissionMessage("");
 
     if (value === "turista_extranjero") {
       setPassengerRut("");
@@ -624,6 +633,7 @@ export function LoginPage(): JSX.Element {
 
   function handleResidenceDocumentChange(e: ChangeEvent<HTMLInputElement>): void {
     setFacebookStepError("");
+    setResidentSubmissionMessage("");
 
     const file = e.target.files?.[0] ?? null;
 
@@ -662,16 +672,22 @@ export function LoginPage(): JSX.Element {
 
   async function continueWithFacebook(): Promise<void> {
     setFacebookStepError("");
+    setResidentSubmissionMessage("");
 
     const cleanEmail = normalizeEmail(passengerEmail);
     const cleanPhone = normalizePhone(passengerPhone);
     const cleanPassengerRut = formatRut(passengerRut);
-    const cleanPassengerPassport = normalizePassportForAuth(passengerPassport);
-    const needsRut = requiresRutForPassengerCondition(passengerCondition);
-    const needsPassport = requiresPassportForPassengerCondition(passengerCondition);
+    const cleanPassengerPassport =
+      normalizePassportForAuth(passengerPassport);
+    const needsRut =
+      requiresRutForPassengerCondition(passengerCondition);
+    const needsPassport =
+      requiresPassportForPassengerCondition(passengerCondition);
 
     if (!passengerCondition) {
-      setFacebookStepError("Selecciona si eres turista chileno, turista extranjero o residente Rapa Nui.");
+      setFacebookStepError(
+        "Selecciona si eres turista chileno, turista extranjero o residente Rapa Nui.",
+      );
       return;
     }
 
@@ -681,7 +697,9 @@ export function LoginPage(): JSX.Element {
     }
 
     if (!isValidEmail(cleanEmail)) {
-      setFacebookStepError("Ingresa un correo electrónico válido.");
+      setFacebookStepError(
+        "Ingresa un correo electrónico válido.",
+      );
       return;
     }
 
@@ -706,114 +724,188 @@ export function LoginPage(): JSX.Element {
     }
 
     if (needsPassport && !cleanPassengerPassport) {
-      setFacebookStepError("Ingresa tu pasaporte para continuar con Facebook.");
-      return;
-    }
-
-    if (needsPassport && !isValidPassportForAuth(cleanPassengerPassport)) {
-      setFacebookStepError("Ingresa un pasaporte válido. Usa letras y números.");
-      return;
-    }
-
-    const currentResidenceStatus = isResidentRapaNui
-      ? getResidentVerificationStatusForPassenger(cleanEmail, cleanPassengerRut)
-      : null;
-    const isResidentAlreadyApproved = currentResidenceStatus === "approved";
-
-    if (isResidentRapaNui && !isResidentAlreadyApproved && !residenceDocument) {
       setFacebookStepError(
-        currentResidenceStatus === "pending"
-          ? "Tu documento de Residente Rapa Nui ya está pendiente de revisión. Debe aprobarlo el administrador antes de entrar con Facebook."
-          : "Para Residente Rapa Nui debes adjuntar un documento de residencia.",
+        "Ingresa tu pasaporte para continuar con Facebook.",
       );
       return;
     }
 
-    const passengerFareType = getPassengerFareType(passengerCondition);
-    const conditionLabel = getConditionLabel(passengerCondition);
-    const passengerFareLabel = getPassengerFareLabel(passengerFareType);
-    const legacyCondition = getLegacyPassengerCondition(passengerCondition);
-
-    let residenceDocumentMeta: ResidenceDocumentMeta | null = null;
-    let residenceDocumentDataUrl = "";
-
-    try {
-      if (isResidentRapaNui && residenceDocument) {
-        residenceDocumentMeta = {
-          name: residenceDocument.name,
-          type: residenceDocument.type,
-          size: residenceDocument.size,
-          lastModified: residenceDocument.lastModified,
-          uploadedAt: new Date().toISOString(),
-        };
-
-        /**
-         * Guardamos temporalmente el documento en sessionStorage para que la página
-         * del pasajero pueda leerlo después del login.
-         *
-         * localStorage NO se usa para el archivo completo porque puede romper la app
-         * por límite de espacio, especialmente en móvil.
-         */
-        residenceDocumentDataUrl = await readFileAsDataUrl(residenceDocument);
-        sessionStorage.setItem("rapago_passenger_residence_document_data_url", residenceDocumentDataUrl);
-      }
-
-      persistPassengerProfile({
-        email: cleanEmail,
-        phone: cleanPhone,
-        rut: needsRut ? cleanPassengerRut : "",
-        passport: needsPassport ? cleanPassengerPassport : "",
-        nationality: conditionLabel,
-        passengerFareLabel,
-        passengerFareType,
-        farePassengerType: passengerFareType,
-        passengerType: passengerFareType,
-        passengerCondition,
-        passengerConditionLegacy: legacyCondition,
-        belongsToRapaNuiEthnicity: isResidentRapaNui,
-        residenceDocumentRequired: isResidentRapaNui,
-        residenceDocumentUploaded: isResidentRapaNui ? Boolean(residenceDocumentMeta) : false,
-        residenceDocumentMeta,
-        residenceVerificationStatus: isResidentRapaNui
-          ? isResidentAlreadyApproved
-            ? "approved"
-            : "pending"
-          : "not_required",
-        residenceVerificationMessage: isResidentRapaNui
-          ? isResidentAlreadyApproved
-            ? "Tu residencia Rapa Nui ya fue aprobada por el administrador."
-            : "Tu documento de Residente Rapa Nui está pendiente de revisión por el administrador."
-          : "",
-        facebookLoginPrecheck: true,
-      });
-
-      if (isResidentRapaNui && !isResidentAlreadyApproved && residenceDocumentMeta && residenceDocumentDataUrl) {
-        persistResidentVerificationRequest({
-          userId: `facebook-${cleanEmail}`,
-          name: "Pasajero Facebook",
-          firstName: "Pasajero",
-          lastName: "Facebook",
-          rut: cleanPassengerRut,
-          phone: cleanPhone,
-          email: cleanEmail,
-          document: {
-            ...residenceDocumentMeta,
-            dataUrl: residenceDocumentDataUrl,
-          },
-          authProvider: "facebook",
-        });
-      }
-    } catch {
+    if (
+      needsPassport &&
+      !isValidPassportForAuth(cleanPassengerPassport)
+    ) {
       setFacebookStepError(
-        "No se pudo guardar el documento en este dispositivo. Intenta con un archivo más liviano.",
+        "Ingresa un pasaporte válido. Usa letras y números.",
       );
       return;
     }
 
-    if (isResidentRapaNui && !isResidentAlreadyApproved) {
-      setShowResidentPendingAlert(true);
-      return;
+    const passengerFareType =
+      getPassengerFareType(passengerCondition);
+    const conditionLabel =
+      getConditionLabel(passengerCondition);
+    const passengerFareLabel =
+      getPassengerFareLabel(passengerFareType);
+    const legacyCondition =
+      getLegacyPassengerCondition(passengerCondition);
+
+    let isResidentApproved = false;
+    let residenceDocumentMeta: ResidenceDocumentMeta | null =
+      null;
+
+    if (isResidentRapaNui) {
+      setFacebookPrecheckLoading(true);
+
+      try {
+        const backendStatus =
+          await authService.getFacebookResidentStatus({
+            email: cleanEmail,
+            rut: cleanPassengerRut,
+          });
+
+        isResidentApproved =
+          backendStatus.status === "approved";
+
+        if (!isResidentApproved && !residenceDocument) {
+          if (backendStatus.status === "pending") {
+            setResidentSubmissionMessage(
+              backendStatus.message,
+            );
+          } else if (
+            backendStatus.status === "rejected"
+          ) {
+            setFacebookStepError(
+              backendStatus.message,
+            );
+          } else {
+            setFacebookStepError(
+              "Para Residente Rapa Nui debes adjuntar un documento de residencia.",
+            );
+          }
+
+          return;
+        }
+
+        if (!isResidentApproved && residenceDocument) {
+          residenceDocumentMeta = {
+            name: residenceDocument.name,
+            type: residenceDocument.type,
+            size: residenceDocument.size,
+            lastModified: residenceDocument.lastModified,
+            uploadedAt: new Date().toISOString(),
+          };
+
+          const residenceDocumentDataUrl =
+            await readFileAsDataUrl(residenceDocument);
+
+          const submitted =
+            await authService.submitFacebookResidentPrecheck({
+              email: cleanEmail,
+              phone: cleanPhone,
+              rut: cleanPassengerRut,
+              documentName: residenceDocument.name,
+              documentType:
+                residenceDocument.type as
+                  | "application/pdf"
+                  | "image/jpeg"
+                  | "image/png"
+                  | "image/webp",
+              documentSize: residenceDocument.size,
+              documentDataUrl: residenceDocumentDataUrl,
+            });
+
+          isResidentApproved =
+            submitted.status === "approved";
+
+          persistPassengerProfile({
+            email: cleanEmail,
+            phone: cleanPhone,
+            rut: cleanPassengerRut,
+            nationality: conditionLabel,
+            passengerFareLabel,
+            passengerFareType,
+            farePassengerType: passengerFareType,
+            passengerType: passengerFareType,
+            passengerCondition,
+            passengerConditionLegacy: legacyCondition,
+            belongsToRapaNuiEthnicity: true,
+            residenceDocumentRequired: true,
+            residenceDocumentUploaded: true,
+            residenceDocumentMeta,
+            residenceVerificationStatus:
+              isResidentApproved ? "approved" : "pending",
+            residenceVerificationMessage:
+              submitted.message,
+            facebookLoginPrecheck: true,
+          });
+
+          // Copia local de respaldo para que la misma pantalla pueda
+          // mostrar el estado aun si se pierde momentáneamente la red.
+          persistResidentVerificationRequest({
+            userId: submitted.userId,
+            name: "Pasajero Facebook",
+            firstName: "Pasajero",
+            lastName: "Facebook",
+            rut: cleanPassengerRut,
+            phone: cleanPhone,
+            email: cleanEmail,
+            document: {
+              ...residenceDocumentMeta,
+              dataUrl: residenceDocumentDataUrl,
+            },
+            authProvider: "facebook",
+          });
+
+          if (!isResidentApproved) {
+            setResidentSubmissionMessage(
+              submitted.message,
+            );
+            return;
+          }
+        }
+      } catch (error) {
+        setFacebookStepError(
+          error instanceof Error
+            ? error.message
+            : "No se pudo enviar el documento al administrador.",
+        );
+        return;
+      } finally {
+        setFacebookPrecheckLoading(false);
+      }
     }
+
+    persistPassengerProfile({
+      email: cleanEmail,
+      phone: cleanPhone,
+      rut: needsRut ? cleanPassengerRut : "",
+      passport: needsPassport
+        ? cleanPassengerPassport
+        : "",
+      nationality: conditionLabel,
+      passengerFareLabel,
+      passengerFareType,
+      farePassengerType: passengerFareType,
+      passengerType: passengerFareType,
+      passengerCondition,
+      passengerConditionLegacy: legacyCondition,
+      belongsToRapaNuiEthnicity: isResidentRapaNui,
+      residenceDocumentRequired: isResidentRapaNui,
+      residenceDocumentUploaded: isResidentRapaNui
+        ? Boolean(
+            residenceDocumentMeta ||
+              isResidentApproved,
+          )
+        : false,
+      residenceDocumentMeta,
+      residenceVerificationStatus: isResidentRapaNui
+        ? "approved"
+        : "not_required",
+      residenceVerificationMessage: isResidentRapaNui
+        ? "Tu residencia Rapa Nui fue aprobada por el administrador."
+        : "",
+      facebookLoginPrecheck: true,
+    });
 
     const params = new URLSearchParams({
       condition: legacyCondition,
@@ -822,17 +914,28 @@ export function LoginPage(): JSX.Element {
       passengerFareLabel,
       email: cleanEmail,
       phone: cleanPhone,
-      rut: needsPassport ? cleanPassengerPassport : cleanPassengerRut,
-      passport: needsPassport ? cleanPassengerPassport : "",
-      residenceDocumentRequired: isResidentRapaNui ? "true" : "false",
-      residenceDocumentUploaded: isResidentRapaNui ? "true" : "false",
+      rut: needsPassport
+        ? cleanPassengerPassport
+        : cleanPassengerRut,
+      passport: needsPassport
+        ? cleanPassengerPassport
+        : "",
+      residenceDocumentRequired: isResidentRapaNui
+        ? "true"
+        : "false",
+      residenceDocumentUploaded: isResidentRapaNui
+        ? "true"
+        : "false",
       residenceVerificationStatus: isResidentRapaNui
         ? "approved"
         : "not_required",
-      rapaNuiEthnicity: isResidentRapaNui ? "si" : "no",
+      rapaNuiEthnicity: isResidentRapaNui
+        ? "si"
+        : "no",
     });
 
-    window.location.href = `${API_URL}/api/auth/facebook?${params.toString()}`;
+    window.location.href =
+      `${API_URL}/api/auth/facebook?${params.toString()}`;
   }
 
   function goToRegister(): void {
@@ -1468,6 +1571,25 @@ export function LoginPage(): JSX.Element {
                     </div>
                   )}
 
+                  {residentSubmissionMessage && (
+                    <div
+                      role="status"
+                      style={{
+                        margin: "4px 0 12px",
+                        padding: "12px 14px",
+                        borderRadius: 16,
+                        background: "rgba(34,197,94,.12)",
+                        border: "1px solid rgba(34,197,94,.38)",
+                        color: "#14532D",
+                        fontSize: ".84rem",
+                        fontWeight: 850,
+                        lineHeight: 1.4,
+                      }}
+                    >
+                      {residentSubmissionMessage}
+                    </div>
+                  )}
+
                   <IonButton
                     expand="block"
                     style={primaryButtonStyle}
@@ -1477,8 +1599,19 @@ export function LoginPage(): JSX.Element {
                       void continueWithFacebook();
                     }}
                     type="button"
+                    disabled={facebookPrecheckLoading}
                   >
-                    Continuar con Facebook
+                    {facebookPrecheckLoading ? (
+                      <>
+                        <IonSpinner
+                          name="crescent"
+                          style={{ marginRight: 8 }}
+                        />
+                        Enviando documento...
+                      </>
+                    ) : (
+                      "Continuar con Facebook"
+                    )}
                   </IonButton>
 
                   <IonButton
@@ -1500,21 +1633,6 @@ export function LoginPage(): JSX.Element {
           </IonPage>
         </IonModal>
 
-        <IonAlert
-          isOpen={showResidentPendingAlert}
-          header="Solicitud enviada a revisión"
-          message="Tu documento de Residente Rapa Nui fue enviado al administrador. Cuando sea aprobado, podrás continuar con Facebook y entrar a RAPA GO con tarifa de residente."
-          buttons={[
-            {
-              text: "Entendido",
-              handler: () => {
-                setShowResidentPendingAlert(false);
-                setShowFacebookStep(false);
-              },
-            },
-          ]}
-          onDidDismiss={() => setShowResidentPendingAlert(false)}
-        />
       </IonContent>
     </IonPage>
   );

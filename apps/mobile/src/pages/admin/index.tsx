@@ -4682,15 +4682,24 @@ function getPassengerConditionText(user: AdminUserData): string {
   ]);
 }
 
-function isRapaNuiResidentUser(user: AdminUserData): boolean {
+function isRapaNuiResidentUser(
+  user: AdminUserData,
+  docs: AdminDocumentData[] = [],
+): boolean {
   const text = normalizeAdminText(getPassengerConditionText(user));
   const belongs = getUserMetaBoolean(user, [
     "belongsToRapaNuiEthnicity",
     "isRapaNui",
     "rapaNuiResident",
   ]);
+  const hasResidenceDocument = docs.some(
+    (doc) =>
+      isActiveResidenceDocument(doc) &&
+      sameUserForDocument(user, doc),
+  );
 
   return (
+    hasResidenceDocument ||
     belongs === true ||
     text.includes("residente_rapa_nui") ||
     text.includes("residente rapa nui") ||
@@ -4739,6 +4748,101 @@ function isResidenceDocument(doc: AdminDocumentData): boolean {
   return RESIDENCE_DOCUMENT_TYPES.has(type) || type.includes("residence") || type.includes("residencia") || type.includes("rapa");
 }
 
+function isActiveResidenceDocument(
+  doc: AdminDocumentData,
+): boolean {
+  if (!isResidenceDocument(doc)) return false;
+
+  const status = normalizeAdminText(doc.status);
+
+  return ![
+    "withdrawn",
+    "cancelled",
+    "canceled",
+    "abandoned",
+    "retirado",
+  ].includes(status);
+}
+
+type ResidentDocumentMetadata = {
+  phone?: string | undefined;
+  rut?: string | undefined;
+  provider?: string | undefined;
+  documentName?: string | undefined;
+  documentType?: string | undefined;
+  uploadedAt?: string | undefined;
+};
+
+const RESIDENT_DOCUMENT_META_MARKER = "#rapagoMeta=";
+
+function getResidentDocumentMetadata(
+  doc: AdminDocumentData | null | undefined,
+): ResidentDocumentMetadata | null {
+  const raw = String(
+    (doc as ExtendedAdminDocumentData | null | undefined)
+      ?.fileUrl ?? "",
+  );
+  const markerIndex = raw.indexOf(
+    RESIDENT_DOCUMENT_META_MARKER,
+  );
+
+  if (markerIndex < 0) return null;
+
+  try {
+    const encoded = raw.slice(
+      markerIndex + RESIDENT_DOCUMENT_META_MARKER.length,
+    );
+    const parsed = JSON.parse(
+      decodeURIComponent(encoded),
+    ) as Record<string, unknown>;
+
+    return {
+      phone:
+        typeof parsed["phone"] === "string"
+          ? parsed["phone"]
+          : undefined,
+      rut:
+        typeof parsed["rut"] === "string"
+          ? parsed["rut"]
+          : undefined,
+      provider:
+        typeof parsed["provider"] === "string"
+          ? parsed["provider"]
+          : undefined,
+      documentName:
+        typeof parsed["documentName"] === "string"
+          ? parsed["documentName"]
+          : undefined,
+      documentType:
+        typeof parsed["documentType"] === "string"
+          ? parsed["documentType"]
+          : undefined,
+      uploadedAt:
+        typeof parsed["uploadedAt"] === "string"
+          ? parsed["uploadedAt"]
+          : undefined,
+    };
+  } catch {
+    return null;
+  }
+}
+
+function getResidentDocumentPreviewUrl(
+  doc: AdminDocumentData | null | undefined,
+): string {
+  const raw = String(
+    (doc as ExtendedAdminDocumentData | null | undefined)
+      ?.fileUrl ?? "",
+  );
+  const markerIndex = raw.indexOf(
+    RESIDENT_DOCUMENT_META_MARKER,
+  );
+
+  return markerIndex >= 0
+    ? raw.slice(0, markerIndex)
+    : raw;
+}
+
 function sameUserForDocument(user: AdminUserData, doc: AdminDocumentData): boolean {
   const extendedDoc = doc as ExtendedAdminDocumentData;
   const userEmail = normalizeAdminText(user.email);
@@ -4755,7 +4859,11 @@ function getResidenceDocsForUser(
   user: AdminUserData,
   docs: AdminDocumentData[],
 ): AdminDocumentData[] {
-  return docs.filter((doc) => isResidenceDocument(doc) && sameUserForDocument(user, doc));
+  return docs.filter(
+    (doc) =>
+      isActiveResidenceDocument(doc) &&
+      sameUserForDocument(user, doc),
+  );
 }
 
 function getBestResidenceDocForUser(
@@ -4776,7 +4884,11 @@ function getResidenceVerificationStatus(
   user: AdminUserData,
   docs: AdminDocumentData[],
 ): PassengerVerificationStatus {
-  if (!isRapaNuiResidentUser(user)) return "not_required";
+  const doc = getBestResidenceDocForUser(user, docs);
+
+  if (!isRapaNuiResidentUser(user, docs) && !doc) {
+    return "not_required";
+  }
 
   const extended = user as ExtendedAdminUserData;
   const backendStatus = normalizeAdminText(
@@ -4788,8 +4900,6 @@ function getResidenceVerificationStatus(
   if (backendStatus.includes("approved") || backendStatus.includes("aprobado")) return "approved";
   if (backendStatus.includes("rejected") || backendStatus.includes("rechazado")) return "rejected";
   if (backendStatus.includes("pending") || backendStatus.includes("uploaded") || backendStatus.includes("pendiente")) return "pending";
-
-  const doc = getBestResidenceDocForUser(user, docs);
 
   if (!doc) {
     const uploaded = getUserMetaBoolean(user, ["residenceDocumentUploaded"]);
@@ -4819,7 +4929,14 @@ function residenceStatusColor(status: PassengerVerificationStatus): string {
 
 function getDocumentFileName(doc: AdminDocumentData): string {
   const extended = doc as ExtendedAdminDocumentData;
-  return extended.fileName ?? extended.originalName ?? extended.fileUrl ?? "Documento";
+  const metadata = getResidentDocumentMetadata(doc);
+
+  return (
+    extended.fileName ??
+    extended.originalName ??
+    metadata?.documentName ??
+    "Documento"
+  );
 }
 
 function getLocalResidenceDocumentPreview(user: AdminUserData): string {
@@ -5078,7 +5195,7 @@ export function AdminUsersPage(): JSX.Element {
     if (
       user &&
       normalizedNewStatus === "active" &&
-      isRapaNuiResidentUser(user) &&
+      isRapaNuiResidentUser(user, docs) &&
       residenceStatus !== "approved"
     ) {
       setUpdateError(
@@ -5151,7 +5268,7 @@ export function AdminUsersPage(): JSX.Element {
 
     if (
       (action === "unblock" || action === "restore") &&
-      isRapaNuiResidentUser(user) &&
+      isRapaNuiResidentUser(user, docs) &&
       getResidenceVerificationStatus(user, docs) !== "approved"
     ) {
       setUpdateError(
@@ -5349,7 +5466,7 @@ export function AdminUsersPage(): JSX.Element {
   const pendingRapaNuiCount =
     users.filter((user) => {
       const status = getResidenceVerificationStatus(user, docs);
-      return isRapaNuiResidentUser(user) && status !== "approved";
+      return isRapaNuiResidentUser(user, docs) && status !== "approved";
     }).length +
     residentRequests.filter((request) => request.status === "pending").length;
 
@@ -5656,15 +5773,31 @@ export function AdminUsersPage(): JSX.Element {
               const statusColor = STATUS_COLOR[effectiveStatus] ?? "medium";
               const statusLabel = STATUS_LABEL[effectiveStatus] ?? effectiveStatus;
               const roleLabel = ROLE_LABEL[user.role] ?? user.role;
-              const passengerLabel = getPassengerLabel(user);
-              const providerLabel = getRegistrationProviderLabel(user);
-              const passengerPhone = getPassengerPhone(user);
-              const passengerRut = getPassengerRut(user);
-              const residenceStatus = getResidenceVerificationStatus(user, docs);
               const residenceDoc = getBestResidenceDocForUser(user, docs);
+              const residenceMetadata =
+                getResidentDocumentMetadata(residenceDoc);
+              const residenceStatus =
+                getResidenceVerificationStatus(user, docs);
+              const isResident =
+                isRapaNuiResidentUser(user, docs);
+              const passengerLabel = isResident
+                ? "Rapa Nui normal"
+                : getPassengerLabel(user);
+              const providerLabel =
+                residenceMetadata?.provider === "facebook"
+                  ? "Facebook"
+                  : getRegistrationProviderLabel(user);
+              const passengerPhone =
+                getPassengerPhone(user) ||
+                residenceMetadata?.phone ||
+                "";
+              const passengerRut =
+                getPassengerRut(user) ||
+                residenceMetadata?.rut ||
+                "";
               const residenceFilePreview =
-                residenceDoc?.fileUrl ?? getLocalResidenceDocumentPreview(user);
-              const isResident = isRapaNuiResidentUser(user);
+                getResidentDocumentPreviewUrl(residenceDoc) ||
+                getLocalResidenceDocumentPreview(user);
               const isProcessing = updatingId === user.id;
 
               return (
@@ -10371,6 +10504,210 @@ function AdminTripLiveRouteMap({
 }
 
 
+
+type AdminRideAssignmentComplianceRow = {
+  id: string;
+  rideRequestId: string;
+  driverUserId: string;
+  driverName: string | null;
+  driverEmail: string | null;
+  originText: string | null;
+  destinationText: string | null;
+  acceptedAt: string;
+  endedAt: string | null;
+  elapsedSeconds: number | null;
+  outcome: string;
+  cancellationReason: string | null;
+  cancelledByUserId: string | null;
+  cancelledByRole: string | null;
+  cancellationEvent: string | null;
+  locationLat: number | null;
+  locationLng: number | null;
+  locationAccuracyMeters: number | null;
+  locationCapturedAt: string | null;
+};
+
+type AdminDriverRestComplianceRow = {
+  id: string;
+  driverUserId: string;
+  driverName: string | null;
+  driverEmail: string | null;
+  scheduleId: string;
+  startTime: string;
+  timezone: string;
+  scheduledStartAt: string;
+  actualStartAt: string | null;
+  requiredEndAt: string | null;
+  completedAt: string | null;
+  status: string;
+  delayedByRideId: string | null;
+  durationMinutes: number;
+  durationHours: number;
+};
+
+async function fetchAdminDriverComplianceReport(
+  accessToken: string,
+): Promise<{
+  assignments: AdminRideAssignmentComplianceRow[];
+  restPeriods: AdminDriverRestComplianceRow[];
+}> {
+  const baseUrl = getAdminPolicyChargeApiBaseUrl();
+  const apiBaseUrl = /\/api$/i.test(baseUrl) ? baseUrl : `${baseUrl}/api`;
+  const headers = { Authorization: `Bearer ${accessToken}` };
+
+  const [assignmentResponse, restResponse] = await Promise.all([
+    fetch(`${apiBaseUrl}/admin/compliance/ride-assignments`, {
+      method: "GET",
+      headers,
+      cache: "no-store",
+    }),
+    fetch(`${apiBaseUrl}/admin/compliance/driver-rest-periods`, {
+      method: "GET",
+      headers,
+      cache: "no-store",
+    }),
+  ]);
+
+  const [assignmentPayload, restPayload] = await Promise.all([
+    assignmentResponse.json().catch(() => ({})) as Promise<Record<string, unknown>>,
+    restResponse.json().catch(() => ({})) as Promise<Record<string, unknown>>,
+  ]);
+
+  if (!assignmentResponse.ok) {
+    throw new Error(
+      typeof assignmentPayload.message === "string"
+        ? assignmentPayload.message
+        : "No se pudo cargar el informe de aceptación y cancelación.",
+    );
+  }
+  if (!restResponse.ok) {
+    throw new Error(
+      typeof restPayload.message === "string"
+        ? restPayload.message
+        : "No se pudo cargar el informe de desconexión de conductores.",
+    );
+  }
+
+  return {
+    assignments: Array.isArray(assignmentPayload.data)
+      ? (assignmentPayload.data as AdminRideAssignmentComplianceRow[])
+      : [],
+    restPeriods: Array.isArray(restPayload.data)
+      ? (restPayload.data as AdminDriverRestComplianceRow[])
+      : [],
+  };
+}
+
+function formatComplianceDuration(totalSeconds: unknown): string {
+  const safe = Math.max(0, Math.floor(Number(totalSeconds) || 0));
+  const hours = Math.floor(safe / 3600);
+  const minutes = Math.floor((safe % 3600) / 60);
+  const seconds = safe % 60;
+  return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
+}
+
+const ADMIN_ASSIGNMENT_COMPLIANCE_HEADERS = [
+  "ID registro",
+  "ID viaje",
+  "ID conductor",
+  "Conductor",
+  "Email conductor",
+  "Origen",
+  "Destino",
+  "Fecha aceptación",
+  "Fecha término",
+  "Resultado",
+  "Tiempo segundos",
+  "Tiempo HH:MM:SS",
+  "Motivo cancelación",
+  "Cancelado por",
+  "Evento",
+  "Latitud",
+  "Longitud",
+  "Precisión metros",
+  "Fecha ubicación",
+] as const;
+
+const ADMIN_ASSIGNMENT_COMPLIANCE_WIDTHS = [
+  22, 22, 22, 24, 28, 28, 28, 20, 20, 18, 16, 18, 42, 20, 28, 14, 14, 16, 20,
+];
+
+const ADMIN_REST_COMPLIANCE_HEADERS = [
+  "ID período",
+  "ID conductor",
+  "Conductor",
+  "Email conductor",
+  "Hora diaria",
+  "Zona horaria",
+  "Inicio programado",
+  "Inicio real",
+  "Fin exigido",
+  "Completado",
+  "Estado",
+  "Atrasado por viaje",
+  "Minutos exigidos",
+  "Horas exigidas",
+] as const;
+
+const ADMIN_REST_COMPLIANCE_WIDTHS = [
+  22, 22, 24, 28, 14, 20, 20, 20, 20, 20, 24, 22, 18, 16,
+];
+
+function getAdminAssignmentComplianceTableRows(
+  rows: AdminRideAssignmentComplianceRow[],
+): string[][] {
+  return [
+    [...ADMIN_ASSIGNMENT_COMPLIANCE_HEADERS],
+    ...rows.map((row) => [
+      sanitizeAdminExcelText(row.id, 140),
+      sanitizeAdminExcelText(row.rideRequestId, 140),
+      sanitizeAdminExcelText(row.driverUserId, 140),
+      sanitizeAdminExcelText(row.driverName, 160),
+      sanitizeAdminExcelText(row.driverEmail, 180),
+      sanitizeAdminExcelText(row.originText, 260),
+      sanitizeAdminExcelText(row.destinationText, 260),
+      formatAdminExcelDate(row.acceptedAt),
+      formatAdminExcelDate(row.endedAt),
+      sanitizeAdminExcelText(row.outcome, 80),
+      String(Math.max(0, Math.floor(Number(row.elapsedSeconds) || 0))),
+      formatComplianceDuration(row.elapsedSeconds),
+      sanitizeAdminExcelText(row.cancellationReason, 500),
+      sanitizeAdminExcelText(row.cancelledByRole, 80),
+      sanitizeAdminExcelText(row.cancellationEvent, 120),
+      row.locationLat == null ? "" : String(row.locationLat),
+      row.locationLng == null ? "" : String(row.locationLng),
+      row.locationAccuracyMeters == null
+        ? ""
+        : String(row.locationAccuracyMeters),
+      formatAdminExcelDate(row.locationCapturedAt),
+    ]),
+  ];
+}
+
+function getAdminRestComplianceTableRows(
+  rows: AdminDriverRestComplianceRow[],
+): string[][] {
+  return [
+    [...ADMIN_REST_COMPLIANCE_HEADERS],
+    ...rows.map((row) => [
+      sanitizeAdminExcelText(row.id, 140),
+      sanitizeAdminExcelText(row.driverUserId, 140),
+      sanitizeAdminExcelText(row.driverName, 160),
+      sanitizeAdminExcelText(row.driverEmail, 180),
+      sanitizeAdminExcelText(row.startTime, 20),
+      sanitizeAdminExcelText(row.timezone, 80),
+      formatAdminExcelDate(row.scheduledStartAt),
+      formatAdminExcelDate(row.actualStartAt),
+      formatAdminExcelDate(row.requiredEndAt),
+      formatAdminExcelDate(row.completedAt),
+      sanitizeAdminExcelText(row.status, 80),
+      sanitizeAdminExcelText(row.delayedByRideId, 140),
+      String(Math.max(0, Math.round(Number(row.durationMinutes) || 0))),
+      String(Math.max(0, Number(row.durationHours) || 0)),
+    ]),
+  ];
+}
+
 type AdminRideExcelRow = Record<string, string>;
 type AdminRideTerminalStatus = "completed" | "cancelled" | "no_show";
 
@@ -10806,7 +11143,11 @@ function adminBuildStoredZip(entries: AdminXlsxEntry[]): Uint8Array {
   return adminXlsxConcat([...localParts, ...centralParts, end]);
 }
 
-function buildAdminTerminalRidesXlsx(rides: AdminRideData[]): Uint8Array {
+function buildAdminTerminalRidesXlsx(
+  rides: AdminRideData[],
+  assignments: AdminRideAssignmentComplianceRow[],
+  restPeriods: AdminDriverRestComplianceRow[],
+): Uint8Array {
   const encoder = new TextEncoder();
   const completedRows = getAdminRideExcelRows(rides, "completed");
   const cancelledRows = getAdminRideExcelRows(rides, "cancelled");
@@ -10818,7 +11159,10 @@ function buildAdminTerminalRidesXlsx(rides: AdminRideData[]): Uint8Array {
     ["Completados", String(completedRows.length)],
     ["Cancelados", String(cancelledRows.length)],
     ["No Show", String(noShowRows.length)],
-    ["Total exportado", String(totalRows)],
+    ["Total viajes exportados", String(totalRows)],
+    ["Registros aceptación/cancelación", String(assignments.length)],
+    ["Períodos de desconexión", String(restPeriods.length)],
+    ["Desconexión continua exigida", "12 horas"],
     ["Asignación automática de conductor", `${SCHEDULE_ACTIVATION_MINUTES_ADMIN} minutos antes de la reserva`],
     ["Cancelación programada con cargo", `Dentro de los últimos ${SCHEDULED_CANCELLATION_CHARGE_MINUTES_ADMIN} minutos`],
     ["Cargo cancelación programada", "30% de la tarifa, tope $3.000 CLP"],
@@ -10829,6 +11173,14 @@ function buildAdminTerminalRidesXlsx(rides: AdminRideData[]): Uint8Array {
   const sheet2 = adminXlsxSheetXml(adminRideExcelTableRows(completedRows), ADMIN_RIDE_EXCEL_WIDTHS);
   const sheet3 = adminXlsxSheetXml(adminRideExcelTableRows(cancelledRows), ADMIN_RIDE_EXCEL_WIDTHS);
   const sheet4 = adminXlsxSheetXml(adminRideExcelTableRows(noShowRows), ADMIN_RIDE_EXCEL_WIDTHS);
+  const sheet5 = adminXlsxSheetXml(
+    getAdminAssignmentComplianceTableRows(assignments),
+    ADMIN_ASSIGNMENT_COMPLIANCE_WIDTHS,
+  );
+  const sheet6 = adminXlsxSheetXml(
+    getAdminRestComplianceTableRows(restPeriods),
+    ADMIN_REST_COMPLIANCE_WIDTHS,
+  );
 
   const contentTypes = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
@@ -10840,6 +11192,8 @@ function buildAdminTerminalRidesXlsx(rides: AdminRideData[]): Uint8Array {
   <Override PartName="/xl/worksheets/sheet2.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>
   <Override PartName="/xl/worksheets/sheet3.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>
   <Override PartName="/xl/worksheets/sheet4.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>
+  <Override PartName="/xl/worksheets/sheet5.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>
+  <Override PartName="/xl/worksheets/sheet6.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>
 </Types>`;
 
   const rootRelationships = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
@@ -10854,6 +11208,8 @@ function buildAdminTerminalRidesXlsx(rides: AdminRideData[]): Uint8Array {
     <sheet name="Completados" sheetId="2" r:id="rId2"/>
     <sheet name="Cancelados" sheetId="3" r:id="rId3"/>
     <sheet name="No Show" sheetId="4" r:id="rId4"/>
+    <sheet name="Aceptación-cancelación" sheetId="5" r:id="rId5"/>
+    <sheet name="Descansos 12 horas" sheetId="6" r:id="rId6"/>
   </sheets>
 </workbook>`;
 
@@ -10863,7 +11219,9 @@ function buildAdminTerminalRidesXlsx(rides: AdminRideData[]): Uint8Array {
   <Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet2.xml"/>
   <Relationship Id="rId3" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet3.xml"/>
   <Relationship Id="rId4" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet4.xml"/>
-  <Relationship Id="rId5" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>
+  <Relationship Id="rId5" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet5.xml"/>
+  <Relationship Id="rId6" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet6.xml"/>
+  <Relationship Id="rId7" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>
 </Relationships>`;
 
   const styles = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
@@ -10886,14 +11244,41 @@ function buildAdminTerminalRidesXlsx(rides: AdminRideData[]): Uint8Array {
     { name: "xl/worksheets/sheet2.xml", bytes: encoder.encode(sheet2) },
     { name: "xl/worksheets/sheet3.xml", bytes: encoder.encode(sheet3) },
     { name: "xl/worksheets/sheet4.xml", bytes: encoder.encode(sheet4) },
+    { name: "xl/worksheets/sheet5.xml", bytes: encoder.encode(sheet5) },
+    { name: "xl/worksheets/sheet6.xml", bytes: encoder.encode(sheet6) },
   ]);
 }
 
-function downloadAdminTerminalRidesXlsx(rides: AdminRideData[]): number {
-  const terminalRides = dedupeAdminRideExcelSource(rides);
-  if (terminalRides.length === 0) return 0;
+type AdminComplianceExportResult = {
+  terminalRides: number;
+  assignmentRecords: number;
+  restPeriods: number;
+  totalRecords: number;
+};
 
-  const bytes = buildAdminTerminalRidesXlsx(terminalRides);
+function downloadAdminTerminalRidesXlsx(
+  rides: AdminRideData[],
+  assignments: AdminRideAssignmentComplianceRow[],
+  restPeriods: AdminDriverRestComplianceRow[],
+): AdminComplianceExportResult {
+  const terminalRides = dedupeAdminRideExcelSource(rides);
+  const totalRecords =
+    terminalRides.length + assignments.length + restPeriods.length;
+
+  if (totalRecords === 0) {
+    return {
+      terminalRides: 0,
+      assignmentRecords: 0,
+      restPeriods: 0,
+      totalRecords: 0,
+    };
+  }
+
+  const bytes = buildAdminTerminalRidesXlsx(
+    terminalRides,
+    assignments,
+    restPeriods,
+  );
   const blob = new Blob([bytes], {
     type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
   });
@@ -10901,13 +11286,19 @@ function downloadAdminTerminalRidesXlsx(rides: AdminRideData[]): number {
   const anchor = document.createElement("a");
   const today = new Date().toISOString().slice(0, 10);
   anchor.href = url;
-  anchor.download = `viajes_rapago_${today}.xlsx`;
+  anchor.download = `viajes_y_cumplimiento_rapago_${today}.xlsx`;
   anchor.style.display = "none";
   document.body.appendChild(anchor);
   anchor.click();
   anchor.remove();
   window.setTimeout(() => URL.revokeObjectURL(url), 1500);
-  return terminalRides.length;
+
+  return {
+    terminalRides: terminalRides.length,
+    assignmentRecords: assignments.length,
+    restPeriods: restPeriods.length,
+    totalRecords,
+  };
 }
 
 export function AdminTripsPage(): JSX.Element {
@@ -11224,7 +11615,10 @@ export function AdminTripsPage(): JSX.Element {
     setLoadError(null);
 
     try {
-      const ridesData = await adminService.listRides(session.accessToken, {});
+      const [ridesData, complianceReport] = await Promise.all([
+        adminService.listRides(session.accessToken, {}),
+        fetchAdminDriverComplianceReport(session.accessToken),
+      ]);
       const localScheduled = readLocalAdminScheduledRides();
       const returnReservations = [
         ...readLocalPassengerReturnReservationsForAdmin(),
@@ -11232,14 +11626,22 @@ export function AdminTripsPage(): JSX.Element {
         ...buildAdminReturnReservationsFromRides(localScheduled),
       ];
       const merged = mergeAdminRides([...localScheduled, ...returnReservations, ...ridesData]);
-      const exported = downloadAdminTerminalRidesXlsx(merged);
+      const exported = downloadAdminTerminalRidesXlsx(
+        merged,
+        complianceReport.assignments,
+        complianceReport.restPeriods,
+      );
 
-      if (exported === 0) {
-        setExportToast("No hay viajes completados, cancelados o No Show para exportar.");
+      if (exported.totalRecords === 0) {
+        setExportToast("No hay viajes ni registros de cumplimiento para exportar.");
         return;
       }
 
-      setExportToast(`Excel generado con ${exported} viaje${exported === 1 ? "" : "s"}.`);
+      setExportToast(
+        `Excel generado: ${exported.terminalRides} viajes, ` +
+          `${exported.assignmentRecords} registros de aceptación/cancelación y ` +
+          `${exported.restPeriods} períodos de descanso.`,
+      );
     } catch (error) {
       setLoadError(error instanceof Error ? error.message : "No fue posible generar el Excel de viajes.");
     } finally {
@@ -11342,7 +11744,7 @@ export function AdminTripsPage(): JSX.Element {
               onClick={() => void handleExportTerminalRides()}
               disabled={loading || exportingTerminalRides}
             >
-              {exportingTerminalRides ? <IonSpinner name="dots" /> : "Exportar completados, cancelados y No Show a Excel"}
+              {exportingTerminalRides ? <IonSpinner name="dots" /> : "Exportar viajes y cumplimiento laboral a Excel"}
             </IonButton>
           </IonCardContent>
         </IonCard>
@@ -11407,6 +11809,22 @@ export function AdminTripsPage(): JSX.Element {
               ).trim();
               const adminAutoAssignMessage = String(
                 getRideUnknownField(ride, "adminAutoAssignMessage") ?? "",
+              ).trim();
+              const adminDriverRejectionReason = String(
+                getRideUnknownField(ride, "adminLastDriverRejectionReason") ??
+                  getRideUnknownField(ride, "adminDriverRejectionReason") ??
+                  getRideUnknownField(ride, "driverRejectionReason") ??
+                  "",
+              ).trim();
+              const adminRejectedDriverName = String(
+                getRideUnknownField(ride, "adminLastRejectedDriverName") ??
+                  getRideUnknownField(ride, "lastRejectedByDriverName") ??
+                  "Conductor",
+              ).trim();
+              const adminDriverRejectedAt = String(
+                getRideUnknownField(ride, "lastRejectedByDriverAt") ??
+                  getRideUnknownField(ride, "rejectedAt") ??
+                  "",
               ).trim();
               const wasAutoAssignedBySystem = Boolean(
                 adminAutoAssignedAt ||
@@ -11512,6 +11930,38 @@ export function AdminTripsPage(): JSX.Element {
                             : scheduleInfo.isReturnOnlyPromotion
                               ? "el admin debe asignar conductor para el regreso."
                               : "se buscarán conductores 10 min antes."}
+                        </div>
+                      </div>
+                    )}
+
+                    {scheduleInfo.isScheduled && adminDriverRejectionReason && (
+                      <div
+                        style={{
+                          background: "rgba(220,38,38,.10)",
+                          border: "1px solid rgba(220,38,38,.34)",
+                          borderRadius: "14px",
+                          padding: "10px 12px",
+                          marginBottom: "8px",
+                          fontSize: "0.78rem",
+                          lineHeight: 1.4,
+                          color: "#7F1D1D",
+                          fontWeight: 850,
+                        }}
+                      >
+                        <strong>🚫 Conductor rechazó la reserva</strong>
+                        <div>
+                          Conductor: <strong>{adminRejectedDriverName}</strong>
+                        </div>
+                        <div>
+                          Motivo: <strong>{adminDriverRejectionReason}</strong>
+                        </div>
+                        {adminDriverRejectedAt && (
+                          <div>
+                            Fecha: {formatAdminScheduleDate(adminDriverRejectedAt)}
+                          </div>
+                        )}
+                        <div>
+                          La reserva sigue activa y pasa al siguiente conductor disponible.
                         </div>
                       </div>
                     )}
@@ -14119,6 +14569,7 @@ const DOC_STATUS_COLOR: Record<string, string> = {
   uploaded: "primary",
   approved: "success",
   rejected: "danger",
+  withdrawn: "medium",
 };
 
 const DOC_STATUS_LABEL: Record<string, string> = {
@@ -14126,6 +14577,7 @@ const DOC_STATUS_LABEL: Record<string, string> = {
   uploaded: "Subido",
   approved: "Aprobado",
   rejected: "Rechazado",
+  withdrawn: "Retirado por el usuario",
 };
 
 const DOC_TYPE_LABEL: Record<string, string> = {
@@ -14801,6 +15253,10 @@ export function AdminDocumentsPage(): JSX.Element {
                 extendedDoc.documentType;
               const residentDoc = isResidenceDocument(doc);
               const linkedUser = findDocumentUser(doc);
+              const residentMetadata =
+                getResidentDocumentMetadata(doc);
+              const documentPreviewUrl =
+                getResidentDocumentPreviewUrl(doc);
               const actioningThis = actioning && actionId === doc.id;
 
               return (
@@ -14880,7 +15336,7 @@ export function AdminDocumentsPage(): JSX.Element {
                           )}
                         </div>
 
-                        {linkedUser && (
+                        {(linkedUser || residentMetadata) && (
                           <div
                             style={{
                               marginTop: 8,
@@ -14900,7 +15356,11 @@ export function AdminDocumentsPage(): JSX.Element {
                                 Celular
                               </div>
                               <div style={{ fontSize: ".78rem", fontWeight: 900, color: "#111" }}>
-                                {getPassengerPhone(linkedUser) || "No informado"}
+                                {(linkedUser
+                                  ? getPassengerPhone(linkedUser)
+                                  : "") ||
+                                  residentMetadata?.phone ||
+                                  "No informado"}
                               </div>
                             </div>
 
@@ -14915,18 +15375,27 @@ export function AdminDocumentsPage(): JSX.Element {
                                 RUT
                               </div>
                               <div style={{ fontSize: ".78rem", fontWeight: 900, color: "#111" }}>
-                                {getPassengerRut(linkedUser) || "No informado"}
+                                {(linkedUser
+                                  ? getPassengerRut(linkedUser)
+                                  : "") ||
+                                  residentMetadata?.rut ||
+                                  "No informado"}
                               </div>
                             </div>
                           </div>
                         )}
 
-                        {extendedDoc.fileUrl && (
+                        {documentPreviewUrl && (
                           <IonButton
                             size="small"
                             fill="clear"
                             color="primary"
-                            onClick={() => window.open(String(extendedDoc.fileUrl), "_blank")}
+                            onClick={() =>
+                              window.open(
+                                documentPreviewUrl,
+                                "_blank",
+                              )
+                            }
                             style={{ marginTop: 6 }}
                           >
                             Ver documento

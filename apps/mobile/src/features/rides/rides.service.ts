@@ -3,6 +3,44 @@ import { apiClient } from "../../services/api/index.js";
 type RidesEnvelope = { ok: true; data: RideRequestData[]; statusCode: number };
 type RideEnvelope  = { ok: true; data: RideRequestData;   statusCode: number };
 
+type ComplianceLocationPayload = {
+  lat: number;
+  lng: number;
+  accuracyMeters?: number;
+  capturedAt: string;
+};
+
+async function captureCancellationLocation(): Promise<ComplianceLocationPayload | null> {
+  if (typeof navigator === "undefined" || !navigator.geolocation) return null;
+
+  return await new Promise((resolve) => {
+    const timeoutId = window.setTimeout(() => resolve(null), 3000);
+
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        window.clearTimeout(timeoutId);
+        resolve({
+          lat: position.coords.latitude,
+          lng: position.coords.longitude,
+          accuracyMeters: Number.isFinite(position.coords.accuracy)
+            ? position.coords.accuracy
+            : undefined,
+          capturedAt: new Date(position.timestamp || Date.now()).toISOString(),
+        });
+      },
+      () => {
+        window.clearTimeout(timeoutId);
+        resolve(null);
+      },
+      {
+        enableHighAccuracy: true,
+        timeout: 2500,
+        maximumAge: 15000,
+      },
+    );
+  });
+}
+
 /** Ride response for passenger — includes driverUserId and acceptedAt. */
 export interface RideRequestData {
   id:               string;
@@ -148,8 +186,18 @@ export const ridesService = {
   },
 
   async cancelAcceptedRide(accessToken: string, rideId: string, reason?: string): Promise<RideRequestData> {
-    const body: { reason?: string } = {};
+    const body: {
+      reason?: string;
+      cancellationEvent: string;
+      location?: ComplianceLocationPayload;
+    } = {
+      cancellationEvent: "mobile_cancel_accepted",
+    };
     if (reason) body.reason = reason;
+
+    const location = await captureCancellationLocation();
+    if (location) body.location = location;
+
     const result = await apiClient.post<RideEnvelope>(`/rides/${rideId}/cancel-accepted`, body, { token: accessToken });
     if (result.ok === false) throw new Error(result.message ?? "Failed to cancel ride.");
     return (result.data as RideEnvelope).data;

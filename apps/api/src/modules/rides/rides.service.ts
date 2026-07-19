@@ -3,6 +3,8 @@ import { SessionService } from "../auth/session.service.js";
 import { UsersRepository } from "../users/users.repository.js";
 import { RidesRepository, type RideWithDriverName } from "./rides.repository.js";
 import { AppError } from "../../shared/errors/AppError.js";
+import { DriverComplianceService } from "../drivers/driverCompliance.service.js";
+import { DriverStatusRepository } from "../drivers/driverStatus.repository.js";
 import type {
   RideRequestResponse,
   RidesListResult,
@@ -28,6 +30,8 @@ const tokenService = new TokenService();
 const sessionService = new SessionService();
 const usersRepo = new UsersRepository();
 const ridesRepo = new RidesRepository();
+const driverComplianceService = new DriverComplianceService();
+const driverStatusRepo = new DriverStatusRepository();
 
 const SCHEDULE_ACTIVATION_MINUTES = 30;
 const PASSENGER_FREE_CANCELLATION_MS = 2 * 60 * 1000;
@@ -925,6 +929,13 @@ export class RidesService {
       };
     }
 
+    const restAccess = await driverComplianceService.canReceiveNewOffers(
+      auth.userId,
+    );
+    if (!restAccess.allowed) {
+      return { ok: true, rides: [] };
+    }
+
     const rows = await ridesRepo.findAvailable();
     const readyRows = rows.filter(isReadyForDriverSearch);
     const paymentChecks = await Promise.all(
@@ -953,6 +964,18 @@ export class RidesService {
         code: "AUTH_FORBIDDEN",
         message: "Only drivers can accept ride requests.",
         statusCode: 403,
+      };
+    }
+
+    const restAccess = await driverComplianceService.canReceiveNewOffers(
+      auth.userId,
+    );
+    if (!restAccess.allowed) {
+      return {
+        ok: false,
+        code: "DRIVER_REST_PERIOD",
+        message: restAccess.state.message,
+        statusCode: 409,
       };
     }
 
@@ -1002,6 +1025,8 @@ export class RidesService {
         statusCode: 409,
       };
     }
+
+    await driverStatusRepo.setBusy(auth.userId, accepted.id);
 
     const acceptedResp = toResponse(accepted);
 
@@ -1077,10 +1102,9 @@ export class RidesService {
     }
 
     if (completed.driverUserId) {
-      const { DriverStatusRepository } = await import(
-        "../drivers/driverStatus.repository.js"
+      await driverComplianceService.releaseDriverAfterRide(
+        completed.driverUserId,
       );
-      await new DriverStatusRepository().setAvailable(completed.driverUserId);
     }
 
     import("../notifications/notifications.helpers.js")
@@ -1371,6 +1395,20 @@ export class RidesService {
       auth.userId,
       auth.role,
       input.reason ?? null,
+      {
+        cancellationEvent:
+          input.cancellationEvent ?? `mobile_cancelled_by_${auth.role}`,
+        location: input.location
+          ? {
+              lat: input.location.lat,
+              lng: input.location.lng,
+              accuracyMeters: input.location.accuracyMeters ?? null,
+              capturedAt: input.location.capturedAt
+                ? new Date(input.location.capturedAt)
+                : new Date(),
+            }
+          : null,
+      },
     );
 
     if (!cancelled) {
@@ -1394,11 +1432,9 @@ export class RidesService {
     }
 
     if (cancelled.driverUserId) {
-      const { DriverStatusRepository } = await import(
-        "../drivers/driverStatus.repository.js"
+      await driverComplianceService.releaseDriverAfterRide(
+        cancelled.driverUserId,
       );
-
-      await new DriverStatusRepository().setAvailable(cancelled.driverUserId);
     }
 
     let policyCharge: RidePolicyCharge | null = null;
@@ -1890,6 +1926,8 @@ export class RidesService {
         statusCode: 409,
       };
     }
+
+    await driverComplianceService.releaseDriverAfterRide(auth.userId);
 
     const chargeData = buildPolicyChargeData({
       ride: existing,

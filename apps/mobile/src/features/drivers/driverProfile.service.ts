@@ -18,6 +18,47 @@ export interface DriverProfileData {
   updatedAt:       string;
 }
 
+
+export interface DriverRestScheduleData {
+  id: string;
+  driverUserId: string;
+  startTime: string;
+  startMinuteLocal: number;
+  durationMinutes: number;
+  durationHours: number;
+  timezone: string;
+  effectiveFrom: string;
+  effectiveTo: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface DriverRestPeriodData {
+  id: string;
+  driverUserId: string;
+  scheduleId: string;
+  scheduledStartAt: string;
+  actualStartAt: string | null;
+  requiredEndAt: string | null;
+  completedAt: string | null;
+  status: string;
+  delayedByRideId: string | null;
+  durationMinutes: number;
+  durationHours: number;
+}
+
+export interface DriverRestComplianceData {
+  effectiveSchedule: DriverRestScheduleData | null;
+  latestSchedule: DriverRestScheduleData | null;
+  state: {
+    blockedForNewOffers: boolean;
+    status: string;
+    message: string;
+    activePeriod: DriverRestPeriodData | null;
+    nextScheduledStartAt: string | null;
+  };
+}
+
 export interface UpsertDriverProfilePayload {
   phone?:           string;
   vehicleBrand?:    string;
@@ -45,5 +86,37 @@ export const driverProfileService = {
     const result = await apiClient.patch<Envelope<DriverProfileData>>("/drivers/me/profile", payload, { token: accessToken });
     if (!result.ok) throw new Error((result as { message?: string }).message ?? "Error saving driver profile.");
     return (result.data as Envelope<DriverProfileData>).data;
+  },
+
+  async getMyRestSchedule(accessToken: string): Promise<DriverRestComplianceData> {
+    const result = await apiClient.get<Envelope<DriverRestComplianceData>>(
+      "/drivers/me/rest-schedule",
+      { token: accessToken },
+    );
+    if (!result.ok) {
+      throw new Error(
+        (result as { message?: string }).message ??
+          "No se pudo cargar tu horario de descanso.",
+      );
+    }
+    return (result.data as Envelope<DriverRestComplianceData>).data;
+  },
+
+  async updateMyRestSchedule(
+    accessToken: string,
+    startTime: string,
+  ): Promise<DriverRestComplianceData> {
+    const result = await apiClient.patch<Envelope<DriverRestComplianceData>>(
+      "/drivers/me/rest-schedule",
+      { startTime },
+      { token: accessToken },
+    );
+    if (!result.ok) {
+      throw new Error(
+        (result as { message?: string }).message ??
+          "No se pudo guardar tu horario de descanso.",
+      );
+    }
+    return (result.data as Envelope<DriverRestComplianceData>).data;
   },
 };

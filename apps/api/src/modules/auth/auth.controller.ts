@@ -1,6 +1,9 @@
+import { createHmac, timingSafeEqual } from "node:crypto";
 import type { FastifyRequest, FastifyReply } from "fastify";
 import { AuthService } from "./auth.service.js";
 import {
+  facebookResidentPrecheckSchema,
+  facebookResidentStatusSchema,
   forgotPasswordRequestSchema,
   loginRequestSchema,
   registerRequestSchema,
@@ -12,6 +15,10 @@ import type {
   RegisterRequest,
   ResetPasswordRequest,
 } from "./auth.types.js";
+import type {
+  FacebookResidentPrecheckInput,
+  FacebookResidentStatusInput,
+} from "./auth.schemas.js";
 import { sendError } from "../../shared/http/apiResponse.js";
 import { PasswordResetService } from "./passwordReset.service.js";
 
@@ -33,6 +40,109 @@ function getFrontendUrl(): string {
     process.env["FRONTEND_URL"] ||
     "http://192.168.100.91:5173"
   ).replace(/\/$/, "");
+}
+
+type FacebookOAuthState = {
+  version: 1;
+  residentIntent: boolean;
+  expiresAt: number;
+};
+
+function createFacebookOAuthState(
+  residentIntent: boolean,
+  secret: string,
+): string {
+  const payload: FacebookOAuthState = {
+    version: 1,
+    residentIntent,
+    expiresAt: Date.now() + 15 * 60 * 1000,
+  };
+  const encodedPayload = Buffer.from(
+    JSON.stringify(payload),
+    "utf8",
+  ).toString("base64url");
+  const signature = createHmac("sha256", secret)
+    .update(encodedPayload)
+    .digest("base64url");
+
+  return `${encodedPayload}.${signature}`;
+}
+
+function readFacebookOAuthState(
+  value: string | undefined,
+  secret: string,
+): FacebookOAuthState | null {
+  if (!value) return null;
+
+  const [encodedPayload, receivedSignature] =
+    value.split(".");
+
+  if (!encodedPayload || !receivedSignature) {
+    return null;
+  }
+
+  const expectedSignature = createHmac("sha256", secret)
+    .update(encodedPayload)
+    .digest("base64url");
+  const receivedBuffer = Buffer.from(
+    receivedSignature,
+    "utf8",
+  );
+  const expectedBuffer = Buffer.from(
+    expectedSignature,
+    "utf8",
+  );
+
+  if (
+    receivedBuffer.length !== expectedBuffer.length ||
+    !timingSafeEqual(receivedBuffer, expectedBuffer)
+  ) {
+    return null;
+  }
+
+  try {
+    const parsed = JSON.parse(
+      Buffer.from(encodedPayload, "base64url").toString(
+        "utf8",
+      ),
+    ) as Partial<FacebookOAuthState>;
+
+    if (
+      parsed.version !== 1 ||
+      typeof parsed.residentIntent !== "boolean" ||
+      typeof parsed.expiresAt !== "number" ||
+      parsed.expiresAt < Date.now()
+    ) {
+      return null;
+    }
+
+    return {
+      version: 1,
+      residentIntent: parsed.residentIntent,
+      expiresAt: parsed.expiresAt,
+    };
+  } catch {
+    return null;
+  }
+}
+
+function isFacebookResidentIntent(
+  query: Record<string, string | undefined>,
+): boolean {
+  const condition = String(
+    query["passengerCondition"] ??
+      query["condition"] ??
+      "",
+  )
+    .trim()
+    .toLowerCase();
+
+  return [
+    "residente_rapa_nui",
+    "residente rapa nui",
+    "residente",
+    "resident",
+  ].includes(condition);
 }
 
 export const authController = {
@@ -180,18 +290,93 @@ export const authController = {
     reply.status(result.ok ? 200 : (result.statusCode ?? 401)).send(result);
   },
 
+  async facebookResidentPrecheck(
+    request: FastifyRequest<{
+      Body: FacebookResidentPrecheckInput;
+    }>,
+    reply: FastifyReply,
+  ): Promise<void> {
+    const parsed = facebookResidentPrecheckSchema.safeParse(
+      request.body,
+    );
+
+    if (!parsed.success) {
+      sendError(reply, {
+        code: "VALIDATION_ERROR",
+        message:
+          parsed.error.issues[0]?.message ??
+          "Los datos de residencia no son válidos.",
+        statusCode: 400,
+      });
+      return;
+    }
+
+    const result =
+      await authService.submitFacebookResidentPrecheck(
+        parsed.data,
+      );
+
+    reply
+      .header("Cache-Control", "no-store")
+      .status(result.ok ? 200 : result.statusCode)
+      .send(result);
+  },
+
+  async facebookResidentStatus(
+    request: FastifyRequest<{
+      Body: FacebookResidentStatusInput;
+    }>,
+    reply: FastifyReply,
+  ): Promise<void> {
+    const parsed = facebookResidentStatusSchema.safeParse(
+      request.body,
+    );
+
+    if (!parsed.success) {
+      sendError(reply, {
+        code: "VALIDATION_ERROR",
+        message:
+          parsed.error.issues[0]?.message ??
+          "Los datos de consulta no son válidos.",
+        statusCode: 400,
+      });
+      return;
+    }
+
+    const result =
+      await authService.getFacebookResidentPrecheckStatus(
+        parsed.data,
+      );
+
+    reply
+      .header("Cache-Control", "no-store")
+      .status(200)
+      .send(result);
+  },
+
   async facebookLogin(
-    _request: FastifyRequest,
+    request: FastifyRequest<{
+      Querystring: Record<string, string | undefined>;
+    }>,
     reply: FastifyReply,
   ): Promise<void> {
     const appId = getRequiredEnv("FACEBOOK_APP_ID");
+    const appSecret = getRequiredEnv("FACEBOOK_APP_SECRET");
     const redirectUri = getRequiredEnv("FACEBOOK_REDIRECT_URI");
+    const residentIntent = isFacebookResidentIntent(
+      request.query,
+    );
+    const state = createFacebookOAuthState(
+      residentIntent,
+      appSecret,
+    );
 
     const params = new URLSearchParams({
       client_id: appId,
       redirect_uri: redirectUri,
       scope: "public_profile,email",
       response_type: "code",
+      state,
     });
 
     reply.redirect(
@@ -200,7 +385,12 @@ export const authController = {
   },
 
   async facebookCallback(
-    request: FastifyRequest<{ Querystring: { code?: string } }>,
+    request: FastifyRequest<{
+      Querystring: {
+        code?: string;
+        state?: string;
+      };
+    }>,
     reply: FastifyReply,
   ): Promise<void> {
     const frontendUrl = getFrontendUrl();
@@ -213,6 +403,17 @@ export const authController = {
 
     const appId = getRequiredEnv("FACEBOOK_APP_ID");
     const appSecret = getRequiredEnv("FACEBOOK_APP_SECRET");
+    const oauthState = readFacebookOAuthState(
+      request.query.state,
+      appSecret,
+    );
+
+    if (!oauthState) {
+      reply.redirect(
+        `${frontendUrl}/auth/login?facebook=state_error`,
+      );
+      return;
+    }
     const redirectUri = getRequiredEnv("FACEBOOK_REDIRECT_URI");
 
     const tokenParams = new URLSearchParams({
@@ -261,15 +462,33 @@ export const authController = {
       return;
     }
 
-    const result = await authService.loginWithFacebook({
-      facebookId: profile.id,
-      email: profile.email,
-      name: profile.name,
-      avatarUrl: profile.picture?.data?.url ?? null,
-    });
+    const result = await authService.loginWithFacebook(
+      {
+        facebookId: profile.id,
+        email: profile.email,
+        name: profile.name,
+        avatarUrl: profile.picture?.data?.url ?? null,
+      },
+      {
+        residentIntent: oauthState.residentIntent,
+      },
+    );
 
     if (!result.ok) {
-      reply.redirect(`${frontendUrl}/auth/login?facebook=error`);
+      const errorCode =
+        result.code === "AUTH_RESIDENCE_PENDING"
+          ? "resident_pending"
+          : result.code === "AUTH_RESIDENCE_REJECTED"
+            ? "resident_rejected"
+            : result.code === "AUTH_ACCOUNT_PENDING"
+              ? "account_pending"
+              : result.code === "AUTH_ACCOUNT_SUSPENDED"
+                ? "account_blocked"
+                : "error";
+
+      reply.redirect(
+        `${frontendUrl}/auth/login?facebook=${encodeURIComponent(errorCode)}`,
+      );
       return;
     }
 

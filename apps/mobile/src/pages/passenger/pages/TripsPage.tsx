@@ -8828,13 +8828,16 @@ export default function TripsPage(): JSX.Element {
     setAllRides((prev) => applyPassengerCancelledRideToList(prev, targetRide, cancelledLocal));
 
     try {
-      const effectiveStatus = getEffectivePassengerRideStatus(targetRide);
+      // Toda reserva real debe cancelarse también en el backend.
+      // "scheduled" es un estado visual del frontend; en la base de datos
+      // normalmente continúa como requested hasta su activación.
       const shouldTryBackend =
         Boolean(session?.accessToken) &&
         !rideId.startsWith("local-") &&
         !rideId.startsWith("admin-local-") &&
-        !isDriverCancelledRequeuedRide(targetRide as RideRequestData & Record<string, unknown>) &&
-        (mode === "accepted" || !["scheduled", "driver_scheduled"].includes(effectiveStatus));
+        !isDriverCancelledRequeuedRide(
+          targetRide as RideRequestData & Record<string, unknown>,
+        );
 
       if (shouldTryBackend) {
         const cancellationReason =

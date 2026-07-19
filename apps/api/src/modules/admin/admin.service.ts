@@ -4,6 +4,7 @@ import { UsersRepository } from "../users/users.repository.js";
 import { AdminRepository } from "./admin.repository.js";
 import { AuditService } from "../audit/audit.service.js";
 import { DriverStatusRepository } from "../drivers/driverStatus.repository.js";
+import { DriverComplianceService } from "../drivers/driverCompliance.service.js";
 import { OfflineRepository } from "../offline/offline.repository.js";
 import { RidesRepository } from "../rides/rides.repository.js";
 import { AppError } from "../../shared/errors/AppError.js";
@@ -18,6 +19,7 @@ const usersRepo        = new UsersRepository();
 const adminRepo        = new AdminRepository();
 const auditService     = new AuditService();
 const driverStatusRepo = new DriverStatusRepository();
+const driverComplianceService = new DriverComplianceService();
 const offlineRepo      = new OfflineRepository();
 const ridesRepo        = new RidesRepository();
 
@@ -275,6 +277,18 @@ export class AdminService {
       return { ok: false, code: "DRIVER_NOT_AVAILABLE", message: "Driver is not active.", statusCode: 400 };
     }
 
+    const restAccess = await driverComplianceService.canReceiveNewOffers(
+      input.driverUserId,
+    );
+    if (!restAccess.allowed) {
+      return {
+        ok: false,
+        code: "DRIVER_REST_PERIOD",
+        message: restAccess.state.message,
+        statusCode: 409,
+      };
+    }
+
     const driverStatus = await driverStatusRepo.findByDriverId(input.driverUserId);
     if (!driverStatus || driverStatus.availability !== "available") {
       return {
@@ -285,7 +299,7 @@ export class AdminService {
       };
     }
 
-    const updated = await adminRepo.assignDriver(rideId, input.driverUserId);
+    const updated = await ridesRepo.accept(rideId, input.driverUserId);
     if (!updated) {
       const refetch = await adminRepo.findRideById(rideId);
       return {
@@ -341,7 +355,20 @@ export class AdminService {
     }
 
     const previousStatus = existing.status;
-    const updated = await adminRepo.cancelRide(rideId, auth.userId, input.reason, cancelableStatuses);
+    const updated = existing.status === "requested"
+      ? await adminRepo.cancelRide(
+          rideId,
+          auth.userId,
+          input.reason,
+          cancelableStatuses,
+        )
+      : await ridesRepo.cancelAccepted(
+          rideId,
+          auth.userId,
+          "admin",
+          input.reason,
+          { cancellationEvent: "admin_ride_cancelled", location: null },
+        );
     if (!updated) {
       const refetch = await adminRepo.findRideById(rideId);
       return {
@@ -353,7 +380,9 @@ export class AdminService {
     }
 
     if (existing.driverUserId) {
-      await driverStatusRepo.setAvailable(existing.driverUserId);
+      await driverComplianceService.releaseDriverAfterRide(
+        existing.driverUserId,
+      );
     }
 
     auditService.recordSafe({
@@ -407,9 +436,15 @@ export class AdminService {
         return { ok: true, ride: toRideResponse(ride) };
       }
 
+      const restAccess = await driverComplianceService.canReceiveNewOffers(
+        input.driverUserId,
+      );
       const driverStatus = await driverStatusRepo.findByDriverId(input.driverUserId);
-      if (driverStatus?.availability === "available") {
-        await adminRepo.assignDriver(newRide.id, input.driverUserId);
+      if (
+        restAccess.allowed &&
+        driverStatus?.availability === "available"
+      ) {
+        await ridesRepo.accept(newRide.id, input.driverUserId);
         await driverStatusRepo.setBusy(input.driverUserId, newRide.id);
         auditService.recordSafe({
           eventType: "admin.ride_driver_assigned",

@@ -68,4 +68,38 @@ export class DriverStatusRepository {
       throw AppError.internal(`Failed to set driver available: ${String(err)}`);
     }
   }
+
+  /**
+   * Deja al conductor fuera de la recepción de ofertas sin borrar un viaje
+   * activo. Se utiliza al comenzar la franja legal de desconexión.
+   */
+  async setUnavailableForRest(driverUserId: string): Promise<void> {
+    try {
+      const current = await this.findByDriverId(driverUserId);
+
+      // Si está terminando un viaje, conserva busy/currentRideId. El backend ya
+      // bloqueará nuevas ofertas y activará las 12 horas al cerrar el servicio.
+      if (current?.currentRideId) return;
+
+      await db
+        .insert(driverStatuses)
+        .values({
+          driverUserId,
+          availability: "unavailable",
+          currentRideId: null,
+          lastSeenAt: new Date(),
+        })
+        .onConflictDoUpdate({
+          target: driverStatuses.driverUserId,
+          set: {
+            availability: "unavailable",
+            currentRideId: null,
+            updatedAt: new Date(),
+          },
+        });
+    } catch (err) {
+      if (err instanceof AppError) throw err;
+      throw AppError.internal(`Failed to set driver unavailable for rest: ${String(err)}`);
+    }
+  }
 }

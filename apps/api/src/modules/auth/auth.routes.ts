@@ -42,6 +42,35 @@ export async function authRoutes(
     authController.resetPassword,
   );
 
+  // Validación previa de Residente Rapa Nui para Facebook.
+  // El documento puede pesar hasta 1.5 MB; en base64 el cuerpo JSON es mayor.
+  fastify.post(
+    "/facebook/resident-precheck",
+    {
+      bodyLimit: 3 * 1024 * 1024,
+      config: {
+        rateLimit: {
+          max: 5,
+          timeWindow: "15 minutes",
+        },
+      },
+    },
+    authController.facebookResidentPrecheck,
+  );
+
+  fastify.post(
+    "/facebook/resident-status",
+    {
+      config: {
+        rateLimit: {
+          max: 15,
+          timeWindow: "15 minutes",
+        },
+      },
+    },
+    authController.facebookResidentStatus,
+  );
+
   // Facebook Login
   fastify.get("/facebook", authController.facebookLogin);
   fastify.get("/facebook/callback", authController.facebookCallback);

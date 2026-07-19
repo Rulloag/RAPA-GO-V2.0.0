@@ -13,6 +13,13 @@ import { AuthCredentialsRepository } from "./authCredentials.repository.js";
 import { AuditService } from "../audit/audit.service.js";
 import { AppError } from "../../shared/errors/AppError.js";
 import type { UserRole } from "@rapa-go/shared";
+import { and, desc, eq } from "drizzle-orm";
+import { db } from "../../db/client.js";
+import { userDocuments, users } from "../../db/schema/index.js";
+import type {
+  FacebookResidentPrecheckInput,
+  FacebookResidentStatusInput,
+} from "./auth.schemas.js";
 
 function toUserRole(raw: string): UserRole {
   return raw as UserRole;
@@ -31,6 +38,239 @@ const auditService = new AuditService();
 
 function roleInitialStatus(role: UserRole): "active" | "pending" {
   return role === "passenger" ? "active" : "pending";
+}
+
+const FACEBOOK_RESIDENT_DOCUMENT_TYPE = "rapa_nui_residence";
+const FACEBOOK_RESIDENT_DOCUMENT_MAX_BYTES = Math.floor(1.5 * 1024 * 1024);
+const FACEBOOK_RESIDENT_META_MARKER = "#rapagoMeta=";
+
+type FacebookResidentVerificationStatus =
+  | "missing"
+  | "pending"
+  | "approved"
+  | "rejected";
+
+type FacebookResidentDocumentMetadata = {
+  version: 1;
+  phone: string;
+  rut: string;
+  provider: "facebook";
+  documentName: string;
+  documentType: string;
+  uploadedAt: string;
+};
+
+type FacebookResidentStatusResult = {
+  ok: true;
+  status: FacebookResidentVerificationStatus;
+  message: string;
+  userId?: string;
+  documentId?: string;
+  rejectionReason?: string | null;
+};
+
+type FacebookResidentPrecheckResult =
+  | (FacebookResidentStatusResult & {
+      status: "pending" | "approved";
+      userId: string;
+      documentId: string;
+    })
+  | {
+      ok: false;
+      code: string;
+      message: string;
+      statusCode: number;
+    };
+
+function normalizeResidentRut(value: unknown): string {
+  return String(value ?? "")
+    .trim()
+    .toUpperCase()
+    .replace(/[^0-9K]/g, "");
+}
+
+function stripResidentDocumentMetadata(value: string): string {
+  const markerIndex = value.indexOf(FACEBOOK_RESIDENT_META_MARKER);
+  return markerIndex >= 0 ? value.slice(0, markerIndex) : value;
+}
+
+function parseResidentDocumentMetadata(
+  value: string | null | undefined,
+): FacebookResidentDocumentMetadata | null {
+  const raw = String(value ?? "");
+  const markerIndex = raw.indexOf(FACEBOOK_RESIDENT_META_MARKER);
+
+  if (markerIndex < 0) return null;
+
+  try {
+    const encoded = raw.slice(
+      markerIndex + FACEBOOK_RESIDENT_META_MARKER.length,
+    );
+    const parsed = JSON.parse(
+      decodeURIComponent(encoded),
+    ) as Partial<FacebookResidentDocumentMetadata>;
+
+    if (
+      parsed.version !== 1 ||
+      parsed.provider !== "facebook" ||
+      typeof parsed.rut !== "string"
+    ) {
+      return null;
+    }
+
+    return {
+      version: 1,
+      phone: String(parsed.phone ?? ""),
+      rut: parsed.rut,
+      provider: "facebook",
+      documentName: String(parsed.documentName ?? "documento-residencia"),
+      documentType: String(parsed.documentType ?? "application/octet-stream"),
+      uploadedAt: String(parsed.uploadedAt ?? ""),
+    };
+  } catch {
+    return null;
+  }
+}
+
+function validateResidentDocumentDataUrl(input: {
+  documentDataUrl: string;
+  documentType: string;
+  documentSize: number;
+}): { ok: true; dataUrl: string } | {
+  ok: false;
+  message: string;
+} {
+  const dataUrl = stripResidentDocumentMetadata(
+    input.documentDataUrl.trim(),
+  );
+
+  const match = dataUrl.match(
+    /^data:(application\/pdf|image\/jpeg|image\/png|image\/webp);base64,([A-Za-z0-9+/=\r\n]+)$/i,
+  );
+
+  if (!match) {
+    return {
+      ok: false,
+      message: "El documento debe ser PDF, JPG, PNG o WEBP.",
+    };
+  }
+
+  const mimeType = String(match[1] ?? "").toLowerCase();
+  const requestedType = input.documentType.toLowerCase();
+
+  if (mimeType !== requestedType) {
+    return {
+      ok: false,
+      message: "El tipo real del documento no coincide con el archivo enviado.",
+    };
+  }
+
+  const base64Payload = String(match[2] ?? "").replace(/\s+/g, "");
+
+  let decodedBytes: number;
+
+  try {
+    decodedBytes = Buffer.from(base64Payload, "base64").byteLength;
+  } catch {
+    return {
+      ok: false,
+      message: "No se pudo leer el documento enviado.",
+    };
+  }
+
+  if (
+    decodedBytes <= 0 ||
+    decodedBytes > FACEBOOK_RESIDENT_DOCUMENT_MAX_BYTES ||
+    input.documentSize > FACEBOOK_RESIDENT_DOCUMENT_MAX_BYTES
+  ) {
+    return {
+      ok: false,
+      message: "El documento supera el máximo de 1.5 MB.",
+    };
+  }
+
+  const toleratedDifference = Math.max(
+    2048,
+    Math.ceil(input.documentSize * 0.02),
+  );
+
+  if (Math.abs(decodedBytes - input.documentSize) > toleratedDifference) {
+    return {
+      ok: false,
+      message: "El tamaño del documento no coincide con el archivo enviado.",
+    };
+  }
+
+  return {
+    ok: true,
+    dataUrl,
+  };
+}
+
+function attachResidentDocumentMetadata(
+  dataUrl: string,
+  metadata: FacebookResidentDocumentMetadata,
+): string {
+  return `${stripResidentDocumentMetadata(dataUrl)}${FACEBOOK_RESIDENT_META_MARKER}${encodeURIComponent(
+    JSON.stringify(metadata),
+  )}`;
+}
+
+function mapResidentDocumentStatus(
+  status: string | null | undefined,
+): FacebookResidentVerificationStatus {
+  const normalized = String(status ?? "").trim().toLowerCase();
+
+  if (normalized === "approved") return "approved";
+  if (normalized === "rejected") return "rejected";
+  if (
+    normalized === "pending" ||
+    normalized === "uploaded" ||
+    normalized === "under_review"
+  ) {
+    return "pending";
+  }
+
+  return "missing";
+}
+
+async function findLatestFacebookResidentDocument(
+  userId: string,
+): Promise<typeof userDocuments.$inferSelect | null> {
+  const rows = await db
+    .select()
+    .from(userDocuments)
+    .where(
+      and(
+        eq(userDocuments.userId, userId),
+        eq(userDocuments.documentType, FACEBOOK_RESIDENT_DOCUMENT_TYPE),
+      ),
+    )
+    .orderBy(desc(userDocuments.updatedAt))
+    .limit(1);
+
+  return rows[0] ?? null;
+}
+
+function residentStatusMessage(
+  status: FacebookResidentVerificationStatus,
+  rejectionReason?: string | null,
+): string {
+  if (status === "approved") {
+    return "Tu residencia Rapa Nui fue aprobada. Ya puedes continuar con Facebook.";
+  }
+
+  if (status === "rejected") {
+    return rejectionReason?.trim()
+      ? `Tu documento fue rechazado. Motivo: ${rejectionReason.trim()}`
+      : "Tu documento fue rechazado. Adjunta un documento válido para volver a enviarlo.";
+  }
+
+  if (status === "pending") {
+    return "Tu documento fue enviado al administrador y está pendiente de revisión.";
+  }
+
+  return "Todavía no existe una solicitud de residencia Rapa Nui para este correo.";
 }
 
 export class AuthService {
@@ -243,12 +483,253 @@ export class AuthService {
     };
   }
 
-  async loginWithFacebook(profile: {
-    facebookId: string;
-    email: string;
-    name: string;
-    avatarUrl?: string | null;
-  }): Promise<AuthServiceResult> {
+  async getFacebookResidentPrecheckStatus(
+    input: FacebookResidentStatusInput,
+  ): Promise<FacebookResidentStatusResult> {
+    const email = input.email.toLowerCase().trim();
+    const rut = normalizeResidentRut(input.rut);
+    const user = await usersRepository.findByEmail(email);
+
+    if (!user) {
+      return {
+        ok: true,
+        status: "missing",
+        message: residentStatusMessage("missing"),
+      };
+    }
+
+    const document = await findLatestFacebookResidentDocument(user.id);
+
+    if (!document) {
+      return {
+        ok: true,
+        status: "missing",
+        message: residentStatusMessage("missing"),
+        userId: user.id,
+      };
+    }
+
+    const metadata = parseResidentDocumentMetadata(document.fileUrl);
+
+    if (
+      metadata?.rut &&
+      normalizeResidentRut(metadata.rut) !== rut
+    ) {
+      return {
+        ok: true,
+        status: "missing",
+        message: residentStatusMessage("missing"),
+      };
+    }
+
+    const documentStatus = mapResidentDocumentStatus(document.status);
+    const status =
+      documentStatus === "approved" && user.status === "active"
+        ? "approved"
+        : documentStatus === "approved"
+          ? "pending"
+          : documentStatus;
+
+    return {
+      ok: true,
+      status,
+      message: residentStatusMessage(status, document.rejectionReason),
+      userId: user.id,
+      documentId: document.id,
+      rejectionReason: document.rejectionReason,
+    };
+  }
+
+  async submitFacebookResidentPrecheck(
+    input: FacebookResidentPrecheckInput,
+  ): Promise<FacebookResidentPrecheckResult> {
+    const email = input.email.toLowerCase().trim();
+    const rut = normalizeResidentRut(input.rut);
+    const documentValidation = validateResidentDocumentDataUrl(input);
+
+    if (!documentValidation.ok) {
+      return {
+        ok: false,
+        code: "AUTH_RESIDENCE_DOCUMENT_INVALID",
+        message: documentValidation.message,
+        statusCode: 400,
+      };
+    }
+
+    let user = await usersRepository.findByEmail(email);
+
+    if (
+      user &&
+      (user.status === "suspended" || user.status === "banned")
+    ) {
+      return {
+        ok: false,
+        code: "AUTH_ACCOUNT_SUSPENDED",
+        message: "Esta cuenta está bloqueada. Contacta a soporte.",
+        statusCode: 403,
+      };
+    }
+
+    if (user?.role === "admin") {
+      return {
+        ok: false,
+        code: "AUTH_FORBIDDEN",
+        message: "Este correo pertenece a una cuenta administrativa.",
+        statusCode: 403,
+      };
+    }
+
+    if (!user) {
+      try {
+        user = await usersService.createUser({
+          email,
+          name: "Pasajero Facebook",
+          role: "passenger",
+          status: "pending",
+        });
+      } catch (error) {
+        user = await usersRepository.findByEmail(email);
+
+        if (!user) throw error;
+      }
+    }
+
+    const existingDocument =
+      await findLatestFacebookResidentDocument(user.id);
+
+    if (existingDocument) {
+      const existingMetadata = parseResidentDocumentMetadata(
+        existingDocument.fileUrl,
+      );
+
+      if (
+        existingMetadata?.rut &&
+        normalizeResidentRut(existingMetadata.rut) !== rut
+      ) {
+        return {
+          ok: false,
+          code: "AUTH_RESIDENCE_IDENTITY_MISMATCH",
+          message:
+            "El RUT no coincide con la solicitud de residencia registrada para este correo.",
+          statusCode: 409,
+        };
+      }
+
+      if (
+        mapResidentDocumentStatus(existingDocument.status) === "approved" &&
+        user.status === "active"
+      ) {
+        return {
+          ok: true,
+          status: "approved",
+          message: residentStatusMessage("approved"),
+          userId: user.id,
+          documentId: existingDocument.id,
+          rejectionReason: null,
+        };
+      }
+    }
+
+    const now = new Date();
+    const metadata: FacebookResidentDocumentMetadata = {
+      version: 1,
+      phone: input.phone.trim(),
+      rut,
+      provider: "facebook",
+      documentName: input.documentName.trim(),
+      documentType: input.documentType,
+      uploadedAt: now.toISOString(),
+    };
+    const storedDocument = attachResidentDocumentMetadata(
+      documentValidation.dataUrl,
+      metadata,
+    );
+
+    let documentId: string;
+
+    if (existingDocument) {
+      const rows = await db
+        .update(userDocuments)
+        .set({
+          status: "uploaded",
+          fileUrl: storedDocument,
+          rejectionReason: null,
+          uploadedAt: now,
+          reviewedAt: null,
+          updatedAt: now,
+        })
+        .where(eq(userDocuments.id, existingDocument.id))
+        .returning({ id: userDocuments.id });
+
+      const updated = rows[0];
+
+      if (!updated) {
+        throw AppError.internal(
+          "No se pudo actualizar el documento de residencia.",
+        );
+      }
+
+      documentId = updated.id;
+    } else {
+      const rows = await db
+        .insert(userDocuments)
+        .values({
+          userId: user.id,
+          documentType: FACEBOOK_RESIDENT_DOCUMENT_TYPE,
+          status: "uploaded",
+          fileUrl: storedDocument,
+          rejectionReason: null,
+          uploadedAt: now,
+          reviewedAt: null,
+          createdAt: now,
+          updatedAt: now,
+        })
+        .returning({ id: userDocuments.id });
+
+      const created = rows[0];
+
+      if (!created) {
+        throw AppError.internal(
+          "No se pudo crear el documento de residencia.",
+        );
+      }
+
+      documentId = created.id;
+    }
+
+    auditService.recordSafe({
+      eventType: "auth.facebook.resident_precheck.submitted",
+      entityType: "user_document",
+      entityId: documentId,
+      actorUserId: user.id,
+      metadata: {
+        provider: "facebook",
+        documentType: FACEBOOK_RESIDENT_DOCUMENT_TYPE,
+        userStatus: user.status,
+      },
+    });
+
+    return {
+      ok: true,
+      status: "pending",
+      message: residentStatusMessage("pending"),
+      userId: user.id,
+      documentId,
+      rejectionReason: null,
+    };
+  }
+
+  async loginWithFacebook(
+    profile: {
+      facebookId: string;
+      email: string;
+      name: string;
+      avatarUrl?: string | null;
+    },
+    options: {
+      residentIntent: boolean;
+    },
+  ): Promise<AuthServiceResult> {
     const email = profile.email.toLowerCase().trim();
 
     let user = await usersRepository.findByEmail(email);
@@ -271,6 +752,98 @@ export class AuthService {
           facebookId: profile.facebookId,
         },
       });
+    }
+
+    if (user.status === "suspended" || user.status === "banned") {
+      return {
+        ok: false,
+        code: "AUTH_ACCOUNT_SUSPENDED",
+        message: "Esta cuenta está bloqueada. Contacta a soporte.",
+        statusCode: 403,
+      };
+    }
+
+    const residentDocument =
+      await findLatestFacebookResidentDocument(user.id);
+    const residentDocumentStatus = mapResidentDocumentStatus(
+      residentDocument?.status,
+    );
+
+    if (options.residentIntent) {
+      if (residentDocumentStatus === "pending") {
+        return {
+          ok: false,
+          code: "AUTH_RESIDENCE_PENDING",
+          message:
+            "Tu documento de residencia Rapa Nui está pendiente de revisión por el administrador.",
+          statusCode: 403,
+        };
+      }
+
+      if (residentDocumentStatus === "rejected") {
+        return {
+          ok: false,
+          code: "AUTH_RESIDENCE_REJECTED",
+          message: residentStatusMessage(
+            "rejected",
+            residentDocument?.rejectionReason,
+          ),
+          statusCode: 403,
+        };
+      }
+
+      if (
+        residentDocumentStatus !== "approved" ||
+        user.status !== "active"
+      ) {
+        return {
+          ok: false,
+          code: "AUTH_ACCOUNT_PENDING",
+          message:
+            "Tu cuenta de Residente Rapa Nui está pendiente de aprobación.",
+          statusCode: 403,
+        };
+      }
+    } else if (
+      residentDocument &&
+      (residentDocumentStatus === "pending" ||
+        residentDocumentStatus === "rejected")
+    ) {
+      const now = new Date();
+
+      await db
+        .update(userDocuments)
+        .set({
+          status: "withdrawn",
+          rejectionReason:
+            "El usuario eligió ingresar con otro tipo de pasajero.",
+          reviewedAt: now,
+          updatedAt: now,
+        })
+        .where(eq(userDocuments.id, residentDocument.id));
+
+      if (user.status === "pending") {
+        const rows = await db
+          .update(users)
+          .set({
+            status: "active",
+            updatedAt: now,
+          })
+          .where(eq(users.id, user.id))
+          .returning();
+
+        user = rows[0] ?? user;
+      }
+    }
+
+    if (user.status === "pending") {
+      return {
+        ok: false,
+        code: "AUTH_ACCOUNT_PENDING",
+        message:
+          "Tu cuenta está pendiente de aprobación por el administrador.",
+        statusCode: 403,
+      };
     }
 
     const authUser: AuthUser = {

@@ -65,6 +65,7 @@ import {
   loadRapaGoGoogleMaps,
 } from "../../components/MapFallback";
 import { WhatsAppButton } from "../../components/WhatsAppButton";
+import { DriverRestScheduleCard } from "./components/DriverRestScheduleCard";
 
 type AvailableRideData =
   import("../../features/rides/rides.service").AvailableRideData;
@@ -166,8 +167,8 @@ function saveDriverAccidentTripSafetyReport(ride: DriverRideData, user: unknown)
     rideKey,
     reporterRole: "driver",
     status: "driver_accident_reported",
-    title: "Conductor reportÃ³ accidente/emergencia",
-    description: "El conductor presionÃ³ Reportar accidente / emergencia y fue derivado a WhatsApp soporte.",
+    title: "Conductor reportó accidente/emergencia",
+    description: "El conductor presionó Reportar accidente / emergencia y fue derivado a WhatsApp soporte.",
     passengerEmail: sanitizeDriverTripSafetyText(record.passengerEmail ?? record.email, 160).toLowerCase() || null,
     passengerName: sanitizeDriverTripSafetyText(record.passengerName ?? record.userName, 120) || null,
     driverEmail,
@@ -195,7 +196,7 @@ function buildDriverAccidentWhatsAppUrl(ride: DriverRideData, user: unknown): st
     `Correo conductor: ${sanitizeDriverTripSafetyText(userRecord.email ?? record.driverEmail ?? "No informado", 120)}`,
     `Viaje: ${sanitizeDriverTripSafetyText(record.originText, 90) || "Origen"} -> ${sanitizeDriverTripSafetyText(record.destinationText, 90) || "Destino"}`,
     record.passengerName || record.passengerEmail ? `Pasajero: ${sanitizeDriverTripSafetyText(record.passengerName ?? record.passengerEmail, 90)}` : null,
-    "Solicito apoyo inmediato. El reporte quedÃ³ registrado en Admin.",
+    "Solicito apoyo inmediato. El reporte quedó registrado en Admin.",
   ].filter(Boolean);
 
   return `https://wa.me/${RAPAGO_SUPPORT_WHATSAPP_PHONE_DRIVER}?text=${encodeURIComponent(lines.join("\n"))}`;
@@ -508,26 +509,26 @@ function getRapaGoConnectivityMessage(
   role: RapaGoConnectivityRole,
   status: RapaGoConnectivityMode,
 ): string {
-  if (status === "checking") return "Revisando conexiÃ³n de Rapa Go...";
-  if (status === "online") return "ConexiÃ³n estable.";
+  if (status === "checking") return "Revisando conexión de Rapa Go...";
+  if (status === "online") return "Conexión estable.";
 
   if (role === "driver") {
     if (status === "offline") {
-      return "Sin internet. Para proteger tus viajes quedaste No disponible. Busca una zona con conexiÃ³n y luego vuelve a activar Disponible.";
+      return "Sin internet. Para proteger tus viajes quedaste No disponible. Busca una zona con conexión y luego vuelve a activar Disponible.";
     }
 
-    return "SeÃ±al baja. Para evitar viajes fallidos quedaste No disponible. Busca una zona con mejor internet y vuelve a activar Disponible.";
+    return "Señal baja. Para evitar viajes fallidos quedaste No disponible. Busca una zona con mejor internet y vuelve a activar Disponible.";
   }
 
   if (role === "admin") {
-    return "Modo conexiÃ³n baja: algunas acciones pueden quedar pendientes hasta recuperar internet.";
+    return "Modo conexión baja: algunas acciones pueden quedar pendientes hasta recuperar internet.";
   }
 
   if (status === "offline") {
-    return "Sin internet: puedes revisar lo Ãºltimo cargado, pero para solicitar, pagar o cancelar viajes necesitas conexiÃ³n.";
+    return "Sin internet: puedes revisar lo último cargado, pero para solicitar, pagar o cancelar viajes necesitas conexión.";
   }
 
-  return "Modo conexiÃ³n baja: algunas acciones pueden tardar. Para solicitar viajes usa una zona con mejor seÃ±al.";
+  return "Modo conexión baja: algunas acciones pueden tardar. Para solicitar viajes usa una zona con mejor señal.";
 }
 
 function publishRapaGoConnectivityStatus(status: RapaGoConnectivityMode): void {
@@ -631,16 +632,16 @@ function RapaGoConnectivityBanner({
       aria-live="polite"
     >
       <div className="rapago-connectivity-banner__icon" aria-hidden="true">
-        {isChecking ? "â€¦" : isOffline ? "âŒ" : "!"}
+        {isChecking ? "…" : isOffline ? "⌁" : "!"}
       </div>
 
       <div className="rapago-connectivity-banner__copy">
         <div className="rapago-connectivity-banner__title">
           {isChecking
-            ? "Revisando conexiÃ³n"
+            ? "Revisando conexión"
             : isOffline
               ? "Modo sin internet"
-              : "Modo conexiÃ³n baja"}
+              : "Modo conexión baja"}
         </div>
         <div className="rapago-connectivity-banner__message">
           {getRapaGoConnectivityMessage(role, status)}
@@ -670,7 +671,7 @@ function StarRatingInput({
             color: s <= value ? "#f4c430" : "#ccc",
           }}
         >
-          â˜…
+          ★
         </span>
       ))}
     </div>
@@ -801,14 +802,14 @@ function DriverRatingStarsDisplay({ summary }: { summary: DriverRatingSummary })
       <div style={{ display: "flex", gap: 1, fontSize: "1rem", lineHeight: 1 }}>
         {[1, 2, 3, 4, 5].map((star) => (
           <span key={star} style={{ color: star <= rounded ? "#f4c430" : "rgba(255,255,255,.42)" }}>
-            â˜…
+            ★
           </span>
         ))}
       </div>
       <div style={{ fontWeight: 950, fontSize: ".82rem" }}>
         {summary.count > 0
-          ? `${summary.average.toFixed(1)} Â· ${summary.count} calificaciÃ³n${summary.count === 1 ? "" : "es"}`
-          : "Sin calificaciones todavÃ­a"}
+          ? `${summary.average.toFixed(1)} · ${summary.count} calificación${summary.count === 1 ? "" : "es"}`
+          : "Sin calificaciones todavía"}
       </div>
     </div>
   );
@@ -863,11 +864,11 @@ function extractRideNavigationPoints(
     ),
     passengerOriginalLat: extractNumberFromNotes(
       notes,
-      /UbicaciÃ³n real del pasajero:\s*(-?\d+(?:[.,]\d+)?)/i,
+      /Ubicación real del pasajero:\s*(-?\d+(?:[.,]\d+)?)/i,
     ),
     passengerOriginalLng: extractNumberFromNotes(
       notes,
-      /UbicaciÃ³n real del pasajero:\s*-?\d+(?:[.,]\d+)?,\s*(-?\d+(?:[.,]\d+)?)/i,
+      /Ubicación real del pasajero:\s*-?\d+(?:[.,]\d+)?,\s*(-?\d+(?:[.,]\d+)?)/i,
     ),
     pickupWalkMeters: extractNumberFromNotes(
       notes,
@@ -898,7 +899,7 @@ function extractPassengerRideNoteFromNotes(notes: string | null | undefined): st
   }
 
   const labelled = notes.match(
-    /(?:Nota del pasajero|Nota pasajero):\s*([\s\S]*?)(?=\s+(?:RAPAGO_[A-Z_]+:|Forma de pago seleccionada:|Categor[iÃ­]a de veh[iÃ­]culo seleccionada:|Tipo de viaje seleccionado:|Direcci[oÃ³]n origen confirmada:|Coordenadas recogida accesible:|Tarifa RAPA GO calculada:|$))/i,
+    /(?:Nota del pasajero|Nota pasajero):\s*([\s\S]*?)(?=\s+(?:RAPAGO_[A-Z_]+:|Forma de pago seleccionada:|Categor[ií]a de veh[ií]culo seleccionada:|Tipo de viaje seleccionado:|Direcci[oó]n origen confirmada:|Coordenadas recogida accesible:|Tarifa RAPA GO calculada:|$))/i,
   );
   if (labelled?.[1]) {
     return sanitizePassengerRideNoteForDriver(labelled[1]) || null;
@@ -907,13 +908,13 @@ function extractPassengerRideNoteFromNotes(notes: string | null | undefined): st
   // Compatibilidad con solicitudes antiguas donde la nota se guardaba
   // entre las coordenadas y la tarifa, sin una etiqueta propia.
   const legacy = notes.match(
-    /Coordenadas destino accesible:\s*-?\d+(?:[.,]\d+)?,\s*-?\d+(?:[.,]\d+)?\.\s*([\s\S]*?)(?=\s+(?:Tarifa RAPA GO calculada:|Tarifa estimada pasajero:|Distancia estimada:|Duraci[oÃ³]n estimada:|Tipo de viaje tarifario:|Ganancia estimada conductor:|$))/i,
+    /Coordenadas destino accesible:\s*-?\d+(?:[.,]\d+)?,\s*-?\d+(?:[.,]\d+)?\.\s*([\s\S]*?)(?=\s+(?:Tarifa RAPA GO calculada:|Tarifa estimada pasajero:|Distancia estimada:|Duraci[oó]n estimada:|Tipo de viaje tarifario:|Ganancia estimada conductor:|$))/i,
   );
   if (legacy?.[1]) {
     return sanitizePassengerRideNoteForDriver(legacy[1]) || null;
   }
 
-  const looksTechnical = /(?:RAPAGO_[A-Z_]+:|Forma de pago seleccionada:|Coordenadas recogida accesible:|Tarifa RAPA GO calculada:|Categor[iÃ­]a de veh[iÃ­]culo seleccionada:)/i.test(notes);
+  const looksTechnical = /(?:RAPAGO_[A-Z_]+:|Forma de pago seleccionada:|Coordenadas recogida accesible:|Tarifa RAPA GO calculada:|Categor[ií]a de veh[ií]culo seleccionada:)/i.test(notes);
   if (!looksTechnical) {
     return sanitizePassengerRideNoteForDriver(notes) || null;
   }
@@ -976,7 +977,7 @@ function PassengerRideNoteCard({
           textTransform: "uppercase",
         }}
       >
-        ðŸ“ Nota del pasajero
+        📝 Nota del pasajero
       </div>
       <div
         style={{
@@ -1040,7 +1041,7 @@ const RAPA_NUI_ZONE_REFERENCES: RapaNuiZoneReference[] = [
   { zone: "Ara Piki", aliases: ["ara piki", "arapiki"], point: { lat: -27.1456, lng: -109.4149 } },
   { zone: "Orito / Camino a Anakena", aliases: ["orito", "camino anakena", "panaquena", "panakena", "inla", "la inla"], point: { lat: -27.1028, lng: -109.3716 } },
   { zone: "Hospital / Centro de Hanga Roa", aliases: ["hospital", "hanga roa hospital", "hospital de hanga roa"], point: { lat: -27.1502, lng: -109.4216 } },
-  { zone: "Centro de Hanga Roa", aliases: ["centro", "hanga roa", "caleta", "mercado artesanal", "feria artesanal", "iglesia", "comisaria", "comisarÃ­a", "hotel taha tai", "taha tai", "taha-tai", "hanga roa centro"], point: { lat: -27.1505, lng: -109.4325 } },
+  { zone: "Centro de Hanga Roa", aliases: ["centro", "hanga roa", "caleta", "mercado artesanal", "feria artesanal", "iglesia", "comisaria", "comisaría", "hotel taha tai", "taha tai", "taha-tai", "hanga roa centro"], point: { lat: -27.1505, lng: -109.4325 } },
   { zone: "Tahai", aliases: ["tahai", "ahu tahai"], point: { lat: -27.1398, lng: -109.4298 } },
   { zone: "Mataveri / Aeropuerto", aliases: ["mataveri", "aeropuerto", "airport"], point: { lat: -27.1648, lng: -109.4210 } },
   { zone: "Hanga Piko", aliases: ["hanga piko", "puerto hanga piko"], point: { lat: -27.1561, lng: -109.4440 } },
@@ -1105,8 +1106,8 @@ function getRapaNuiFallbackDriverPointForMap(
 
   if (!target || !isInsideRapaNui(target)) return center;
 
-  // Si el destino estÃ¡ en el centro, alejamos un poco el punto inicial para
-  // que Google dibuje una ruta visible en vez de una lÃ­nea de 0 metros.
+  // Si el destino está en el centro, alejamos un poco el punto inicial para
+  // que Google dibuje una ruta visible en vez de una línea de 0 metros.
   if (pointDistanceMetersForZone(center, target) <= 260) {
     return { lat: target.lat - 0.0042, lng: target.lng + 0.0042 };
   }
@@ -1118,9 +1119,9 @@ function getDriverMapPointForRoute(
   realPoint: { lat: number; lng: number } | null,
   _target: { lat: number; lng: number } | null,
 ): { lat: number; lng: number } | null {
-  // NavegaciÃ³n 100% real: nunca inventamos coordenadas del conductor.
-  // Si el GPS estÃ¡ fuera de Rapa Nui en pruebas, se muestra esa ubicaciÃ³n real.
-  // En producciÃ³n, al estar en la isla, Google calcularÃ¡ la ruta real desde el GPS real.
+  // Navegación 100% real: nunca inventamos coordenadas del conductor.
+  // Si el GPS está fuera de Rapa Nui en pruebas, se muestra esa ubicación real.
+  // En producción, al estar en la isla, Google calculará la ruta real desde el GPS real.
   return realPoint;
 }
 
@@ -1165,7 +1166,7 @@ function cleanPointDisplayName(value: unknown, fallback: string): string {
   return raw
     .replace(/,\s*Hanga Roa.*$/i, "")
     .replace(/,\s*Isla de Pascua.*$/i, "")
-    .replace(/,\s*Valpara[iÃ­]so.*$/i, "")
+    .replace(/,\s*Valpara[ií]so.*$/i, "")
     .replace(/,\s*Chile.*$/i, "")
     .trim() || fallback;
 }
@@ -1178,8 +1179,8 @@ function extractConfirmedRideAddress(
   if (!text.trim()) return null;
 
   const pattern = kind === "origin"
-    ? /Direcci[oÃ³]n origen confirmada:\s*(.*?)(?=Direcci[oÃ³]n destino confirmada:|Ubicaci[oÃ³]n real del pasajero:|Coordenadas recogida accesible:|$)/i
-    : /Direcci[oÃ³]n destino confirmada:\s*(.*?)(?=Ubicaci[oÃ³]n real del pasajero:|Coordenadas recogida accesible:|Coordenadas destino accesible:|$)/i;
+    ? /Direcci[oó]n origen confirmada:\s*(.*?)(?=Direcci[oó]n destino confirmada:|Ubicaci[oó]n real del pasajero:|Coordenadas recogida accesible:|$)/i
+    : /Direcci[oó]n destino confirmada:\s*(.*?)(?=Ubicaci[oó]n real del pasajero:|Coordenadas recogida accesible:|Coordenadas destino accesible:|$)/i;
 
   const value = text.match(pattern)?.[1]?.trim();
   return value ? value.replace(/\s+/g, " ") : null;
@@ -1213,7 +1214,7 @@ function getDriverAddressMainPart(address: string | null | undefined): string {
     "isla de pascua",
     "easter island",
     "valparaiso",
-    "valparaÃ­so",
+    "valparaíso",
     "chile",
   ]);
 
@@ -1248,7 +1249,7 @@ function buildDriverPlaceStreetTitle(
       return place;
     }
 
-    return `${place} Â· ${street}`;
+    return `${place} · ${street}`;
   }
 
   return place || street || fallbackClean;
@@ -1273,7 +1274,7 @@ function buildDriverPointDisplay(input: {
   return {
     name,
     zone,
-    detail: detailParts.join(" Â· ") || zone,
+    detail: detailParts.join(" · ") || zone,
   };
 }
 
@@ -1293,15 +1294,15 @@ function getDriverRidePointDisplayLabel(
 function getDriverRideRouteDisplayLabel(
   ride: { originText?: string | null; destinationText?: string | null; notes?: string | null },
 ): string {
-  return `${getDriverRidePointDisplayLabel(ride, "origin")} â†’ ${getDriverRidePointDisplayLabel(ride, "destination")}`;
+  return `${getDriverRidePointDisplayLabel(ride, "origin")} → ${getDriverRidePointDisplayLabel(ride, "destination")}`;
 }
 
 function getDriverLocationMessage(): string {
   if (!navigator.geolocation) {
-    return "Tu navegador no permite usar GPS. Activa ubicaciÃ³n para tomar viajes reales.";
+    return "Tu navegador no permite usar GPS. Activa ubicación para tomar viajes reales.";
   }
 
-  return "Activa el permiso de ubicaciÃ³n para ver rutas reales del conductor.";
+  return "Activa el permiso de ubicación para ver rutas reales del conductor.";
 }
 
 function getCurrentLocationForNavigation(destination: {
@@ -1440,7 +1441,7 @@ function UberDriverNavigationMap({
 
   // Estado efectivo para el mapa:
   // - Antes de iniciar viaje: ruta al punto de recogida.
-  // - DespuÃ©s de iniciar viaje: ruta SIEMPRE al destino final.
+  // - Después de iniciar viaje: ruta SIEMPRE al destino final.
   // Esto evita que el conductor tome la carrera y el mapa siga apuntando a la recogida.
   const tripAlreadyStarted =
     rideStatus === "in_progress" ||
@@ -1516,7 +1517,7 @@ function UberDriverNavigationMap({
 
     return alreadyHasIsland
       ? `${base}, Chile`
-      : `${base}, Hanga Roa, Rapa Nui, ValparaÃ­so, Chile`;
+      : `${base}, Hanga Roa, Rapa Nui, Valparaíso, Chile`;
   }
 
   async function resolvePointWithGoogleMaps(
@@ -1605,8 +1606,8 @@ function UberDriverNavigationMap({
     if (!text || text === "Sigue la ruta marcada.") return null;
 
     const patterns = [
-      /(?:hacia|en direcciÃ³n a|por|en|toma|contin[uÃº]a por|mantente en)\s+([^.,;]+)/i,
-      /(?:gira|dobla|incorp[oÃ³]rate)\s+(?:a la derecha|a la izquierda|ligeramente a la derecha|ligeramente a la izquierda)?\s*(?:hacia|en)?\s*([^.,;]+)/i,
+      /(?:hacia|en dirección a|por|en|toma|contin[uú]a por|mantente en)\s+([^.,;]+)/i,
+      /(?:gira|dobla|incorp[oó]rate)\s+(?:a la derecha|a la izquierda|ligeramente a la derecha|ligeramente a la izquierda)?\s*(?:hacia|en)?\s*([^.,;]+)/i,
     ];
 
     for (const pattern of patterns) {
@@ -1635,14 +1636,14 @@ function UberDriverNavigationMap({
 
   function maneuverArrow(maneuver: string | null | undefined): string {
     const raw = String(maneuver ?? "").toLowerCase();
-    if (raw.includes("left")) return "â†°";
-    if (raw.includes("right")) return "â†±";
-    if (raw.includes("uturn")) return "â†¶";
-    if (raw.includes("roundabout")) return "â†»";
-    if (raw.includes("merge")) return "â¤´";
-    if (raw.includes("fork")) return "â‘‚";
-    if (raw.includes("ramp")) return "â¤´";
-    return "â†‘";
+    if (raw.includes("left")) return "↰";
+    if (raw.includes("right")) return "↱";
+    if (raw.includes("uturn")) return "↶";
+    if (raw.includes("roundabout")) return "↻";
+    if (raw.includes("merge")) return "⤴";
+    if (raw.includes("fork")) return "⑂";
+    if (raw.includes("ramp")) return "⤴";
+    return "↑";
   }
 
   function arrivalInstructionText(distanceMeters: number | null): string | null {
@@ -1656,8 +1657,8 @@ function UberDriverNavigationMap({
 
     if (distanceMeters <= 35) return `Llegaste a ${destinationName}.`;
     if (distanceMeters <= 100) return `En ${formatNavigationMeters(distanceMeters)} llegas a ${destinationName}.`;
-    if (distanceMeters <= 200) return `PrepÃ¡rate, en ${formatNavigationMeters(distanceMeters)} llegas a ${destinationName}.`;
-    if (distanceMeters <= 500) return `ContinÃºa, en ${formatNavigationMeters(distanceMeters)} llegas a ${destinationName}.`;
+    if (distanceMeters <= 200) return `Prepárate, en ${formatNavigationMeters(distanceMeters)} llegas a ${destinationName}.`;
+    if (distanceMeters <= 500) return `Continúa, en ${formatNavigationMeters(distanceMeters)} llegas a ${destinationName}.`;
 
     return null;
   }
@@ -1679,7 +1680,7 @@ function UberDriverNavigationMap({
       utterance.volume = 0.88;
       window.speechSynthesis.speak(utterance);
     } catch {
-      // La voz es opcional. La indicaciÃ³n visual se mantiene aunque el navegador bloquee audio.
+      // La voz es opcional. La indicación visual se mantiene aunque el navegador bloquee audio.
     }
   }
 
@@ -1796,7 +1797,7 @@ function UberDriverNavigationMap({
 
     let selectedStep = steps[0];
 
-    // No nos quedamos pegados en la primera instrucciÃ³n si el conductor ya la pasÃ³.
+    // No nos quedamos pegados en la primera instrucción si el conductor ya la pasó.
     for (const step of steps) {
       const end = latLngToPlainPoint(step.end_location);
       if (!end || distanceMeters(driverPoint, end) > 18) {
@@ -1837,8 +1838,8 @@ function UberDriverNavigationMap({
     const movedSinceRoute = distanceMeters(lastRouteOrigin, point);
     const secondsSinceRoute = (now - lastRouteRecalculateAtRef.current) / 1000;
 
-    // Recalcula si el conductor se moviÃ³ o tomÃ³ otro camino.
-    // En celular no esperamos tanto: asÃ­ el mapa no queda "pegado" y la distancia baja en vivo.
+    // Recalcula si el conductor se movió o tomó otro camino.
+    // En celular no esperamos tanto: así el mapa no queda "pegado" y la distancia baja en vivo.
     return movedSinceRoute >= 3 && secondsSinceRoute >= 1.2;
   }
 
@@ -1870,12 +1871,12 @@ function UberDriverNavigationMap({
       map.setZoom(18);
       map.panTo(focusPoint);
 
-      // Efecto Google Maps: deja el conductor mÃ¡s abajo y muestra mÃ¡s ruta hacia adelante.
+      // Efecto Google Maps: deja el conductor más abajo y muestra más ruta hacia adelante.
       window.setTimeout(() => {
         try {
           map.panBy(0, Math.round(height * 0.16));
         } catch {
-          // No bloquea la cÃ¡mara si el navegador no soporta panBy en ese momento.
+          // No bloquea la cámara si el navegador no soporta panBy en ese momento.
         }
       }, 90);
 
@@ -1891,7 +1892,7 @@ function UberDriverNavigationMap({
 
   function openExternalNavigationToTarget(): void {
     // La flecha verde ahora NO abre Google Maps externo.
-    // Solo acerca y bloquea la cÃ¡mara dentro del mapa de RAPA GO.
+    // Solo acerca y bloquea la cámara dentro del mapa de RAPA GO.
     focusNavigationCameraInsideApp(true);
   }
 
@@ -1960,7 +1961,7 @@ function UberDriverNavigationMap({
     const now = Date.now();
 
     if (!force && !navigationCameraLockedRef.current) {
-      // Si el conductor tocÃ³/arrastrÃ³ el mapa, dejamos revisar unos segundos.
+      // Si el conductor tocó/arrastró el mapa, dejamos revisar unos segundos.
       // Luego se vuelve a centrar solo para que no parezca pegado.
       if (manualCameraUnlockUntilRef.current && now >= manualCameraUnlockUntilRef.current) {
         updateNavigationCameraLock(true);
@@ -1982,7 +1983,7 @@ function UberDriverNavigationMap({
 
     map.panTo(point);
 
-    // Igual que Google Maps: la flecha queda mÃ¡s abajo y se ve mÃ¡s camino por delante.
+    // Igual que Google Maps: la flecha queda más abajo y se ve más camino por delante.
     window.setTimeout(() => {
       try {
         if (navigationCameraLockedRef.current || force) {
@@ -2025,14 +2026,14 @@ function UberDriverNavigationMap({
     if (!mapRef.current || !window.google?.maps) return;
 
     setMarker(pickupMarkerRef, pickup, {
-      title: `Recogida: ${pickupDisplay.name} Â· Zona ${pickupDisplay.zone}`,
+      title: `Recogida: ${pickupDisplay.name} · Zona ${pickupDisplay.zone}`,
       label: { text: "R", color: "#ffffff", fontSize: "13px", fontWeight: "900" },
       icon: makeCircleIcon("#22c55e", "#ffffff", 17),
       zIndex: 40,
     });
 
     setMarker(destinationMarkerRef, destination, {
-      title: `Destino: ${destinationDisplay.name} Â· Zona ${destinationDisplay.zone}`,
+      title: `Destino: ${destinationDisplay.name} · Zona ${destinationDisplay.zone}`,
       label: { text: "D", color: "#ffffff", fontSize: "13px", fontWeight: "900" },
       icon: makeCircleIcon("#ef4444", "#ffffff", 15),
       zIndex: 35,
@@ -2106,13 +2107,13 @@ function UberDriverNavigationMap({
           renderer.setDirections(result);
 
           // Al recalcular, Google entrega los bounds reales de la ruta.
-          // Si todavÃ­a no estamos siguiendo el GPS, mostramos toda la ruta automÃ¡ticamente.
+          // Si todavía no estamos siguiendo el GPS, mostramos toda la ruta automáticamente.
           const routeBounds = result.routes[0]?.bounds;
           if (routeBounds && (!driverPointRef.current || !didInitialCameraRef.current)) {
             try {
               map.fitBounds(routeBounds, 64);
             } catch {
-              // No bloquea la navegaciÃ³n.
+              // No bloquea la navegación.
             }
           }
 
@@ -2147,14 +2148,14 @@ function UberDriverNavigationMap({
               : instruction,
           );
 
-          // Sin voz automÃ¡tica: el conductor pidiÃ³ indicaciÃ³n visual tipo Waze/Google Maps.
-          // Si despuÃ©s quieres voz, se puede reactivar llamando a speakDriverNavigationInstruction().
+          // Sin voz automática: el conductor pidió indicación visual tipo Waze/Google Maps.
+          // Si después quieres voz, se puede reactivar llamando a speakDriverNavigationInstruction().
 
           return;
         }
 
-        // Si Google Maps no entrega ruta por calles, no dibujamos lÃ­nea ficticia.
-        // AsÃ­ evitamos navegaciÃ³n falsa: el conductor debe abrir Google Maps oficial.
+        // Si Google Maps no entrega ruta por calles, no dibujamos línea ficticia.
+        // Así evitamos navegación falsa: el conductor debe abrir Google Maps oficial.
         renderer.set("directions", null);
         fallbackLineRef.current?.setMap(null);
         fallbackLineRef.current = null;
@@ -2347,7 +2348,7 @@ function UberDriverNavigationMap({
           ? distanceMeters(previous, next)
           : Number.POSITIVE_INFINITY;
 
-        // Filtra solo ruido mÃ­nimo del GPS. En Rapa Nui las calles son cortas, por eso seguimos movimientos desde 2 m.
+        // Filtra solo ruido mínimo del GPS. En Rapa Nui las calles son cortas, por eso seguimos movimientos desde 2 m.
         if (previous && moved < 2) return;
 
         if (previous && moved >= 2) {
@@ -2390,9 +2391,9 @@ function UberDriverNavigationMap({
 
         setMapError(null);
 
-        // Punto azul + cÃ¡mara: siempre usa el GPS real del conductor.
-        // No se usa ninguna coordenada ficticia para simular que estÃ¡ en Rapa Nui.
-        // Si Google Maps no puede calcular una ruta real, se muestra aviso y queda el botÃ³n de Google Maps.
+        // Punto azul + cámara: siempre usa el GPS real del conductor.
+        // No se usa ninguna coordenada ficticia para simular que está en Rapa Nui.
+        // Si Google Maps no puede calcular una ruta real, se muestra aviso y queda el botón de Google Maps.
         if (mapReadyRef.current) {
           const distanceToRoute = getDistanceToCurrentRouteMeters(next);
           const now = Date.now();
@@ -2447,7 +2448,7 @@ function UberDriverNavigationMap({
         style={{ width: "100%", height: "100%" }}
       />
 
-      {/* Panel superior estilo Google Maps: instrucciÃ³n principal + siguiente maniobra */}
+      {/* Panel superior estilo Google Maps: instrucción principal + siguiente maniobra */}
       <div
         style={{
           position: "absolute",
@@ -2481,7 +2482,7 @@ function UberDriverNavigationMap({
               textAlign: "center",
             }}
           >
-            {nextInstruction?.maneuver === "arrive" ? "ðŸ" : maneuverArrow(nextInstruction?.maneuver)}
+            {nextInstruction?.maneuver === "arrive" ? "🏁" : maneuverArrow(nextInstruction?.maneuver)}
           </div>
 
           <div style={{ minWidth: 0 }}>
@@ -2494,10 +2495,10 @@ function UberDriverNavigationMap({
               }}
             >
               {goingToPickup
-                ? "en direcciÃ³n a la recogida"
+                ? "en dirección a la recogida"
                 : waitingPassenger
                   ? "esperando en"
-                  : "en direcciÃ³n a"}
+                  : "en dirección a"}
             </div>
             <div
               style={{
@@ -2525,7 +2526,7 @@ function UberDriverNavigationMap({
               }}
             >
               {routeInfo?.duration ? `${routeInfo.duration}` : "Calculando ruta"}
-              {routeInfo?.distance ? ` Â· ${routeInfo.distance}` : ""}
+              {routeInfo?.distance ? ` · ${routeInfo.distance}` : ""}
             </div>
           </div>
         </div>
@@ -2603,7 +2604,7 @@ function UberDriverNavigationMap({
             pointerEvents: "none",
           }}
         >
-          ðŸ“ Activando GPS real...
+          📍 Activando GPS real...
         </div>
       )}
 
@@ -2683,7 +2684,7 @@ function UberDriverNavigationMap({
         }}
         aria-label={mapVoiceMuted ? "Indicaciones visuales sin voz" : "Voz activada"}
       >
-        {mapVoiceMuted ? "ðŸ”‡" : "ðŸ”Š"}
+        {mapVoiceMuted ? "🔇" : "🔊"}
       </button>
 
       {!isNavigationCameraLocked && (
@@ -2705,7 +2706,7 @@ function UberDriverNavigationMap({
             zIndex: 14,
           }}
         >
-          â–³ Centrar
+          △ Centrar
         </button>
       )}
 
@@ -2752,10 +2753,10 @@ function UberDriverNavigationMap({
           pointerEvents: "none",
         }}
       >
-        âš  Informar
+        {"\u26A0"} Informar
       </div>
 
-      {/* Hoja inferior estilo navegaciÃ³n */}
+      {/* Hoja inferior estilo navegación */}
       <div
         style={{
           position: "absolute",
@@ -2790,7 +2791,7 @@ function UberDriverNavigationMap({
             fontSize: 26,
             justifySelf: "start",
           }}
-          aria-label="Soltar seguimiento de cÃ¡mara"
+          aria-label="Soltar seguimiento de cámara"
         >
           <IonIcon icon={closeOutline} />
         </button>
@@ -2818,7 +2819,7 @@ function UberDriverNavigationMap({
             }}
           >
             {routeInfo?.distance || "Calculando distancia"}
-            {targetLabel ? ` Â· ${targetLabel}` : ""}
+            {targetLabel ? ` · ${targetLabel}` : ""}
           </div>
         </div>
 
@@ -2937,7 +2938,7 @@ type DriverLiveLocationPayload = {
   driverNationality?: string | null;
   isResident?: boolean | null;
   driverIsResident?: boolean | null;
-  // Aliases para que Mis Viajes del pasajero lea datos aunque venga de una versiÃ³n anterior.
+  // Aliases para que Mis Viajes del pasajero lea datos aunque venga de una versión anterior.
   vehicleBrand?: string | null;
   vehicleModel?: string | null;
   vehicleColor?: string | null;
@@ -3305,7 +3306,7 @@ function publishDriverLiveLocationForPassenger(
       }),
     );
   } catch {
-    // No bloquea la navegaciÃ³n del conductor si el navegador no permite guardar.
+    // No bloquea la navegación del conductor si el navegador no permite guardar.
   }
 }
 
@@ -3331,7 +3332,7 @@ function clearDriverLiveLocationForPassenger(rideId: string): void {
       }),
     );
   } catch {
-    // No bloquea cierre/cancelaciÃ³n.
+    // No bloquea cierre/cancelación.
   }
 }
 
@@ -3457,7 +3458,7 @@ function saveDriverAvailability(
       JSON.stringify(snapshot),
     );
   } catch {
-    // No bloquea la app si localStorage no estÃ¡ disponible.
+    // No bloquea la app si localStorage no está disponible.
   }
 
   window.dispatchEvent(
@@ -4289,7 +4290,7 @@ function DriverHeaderWithoutNotifications(): JSX.Element {
           <IonButton
             fill="clear"
             onClick={() => void handleLogout()}
-            aria-label="Cerrar sesiÃ³n"
+            aria-label="Cerrar sesión"
             className="driver-home-header-action"
           >
             <IonIcon icon={logOutOutline} slot="icon-only" />
@@ -4313,7 +4314,7 @@ function DriverAvailabilityControl({
     <section className="driver-availability-panel" aria-label="Estado del conductor">
       <div className="driver-availability-panel__header">
         <div>
-          <div className="driver-availability-panel__eyebrow">ConexiÃ³n de trabajo</div>
+          <div className="driver-availability-panel__eyebrow">Conexión de trabajo</div>
           <div className="driver-availability-panel__title">Estado del conductor</div>
         </div>
 
@@ -4323,7 +4324,7 @@ function DriverAvailabilityControl({
               isAvailable ? "is-available" : "is-unavailable"
             }`}
           />
-          {isAvailable ? "En lÃ­nea" : "Fuera de lÃ­nea"}
+          {isAvailable ? "En línea" : "Fuera de línea"}
         </div>
       </div>
 
@@ -4424,7 +4425,7 @@ function removeLegacyDriverHeavyStorage(exceptKey?: string): void {
 
       // IMPORTANTE: no borrar la foto de perfil del conductor.
       // Antes esta limpieza eliminaba rapago_driver_profile_photo y por eso
-      // el pasajero siempre veÃ­a la letra inicial en vez de la foto.
+      // el pasajero siempre veía la letra inicial en vez de la foto.
       const keyName = String(key);
       const lower = keyName.toLowerCase();
       if (
@@ -4478,14 +4479,14 @@ function safeSetDriverLocalStorageItem(key: string, value: string): void {
       localStorage.setItem(key, value);
       return;
     } catch {
-      // Intenta una limpieza mÃ¡s fuerte de imÃ¡genes antiguas duplicadas.
+      // Intenta una limpieza más fuerte de imágenes antiguas duplicadas.
     }
 
     aggressiveDriverImageStorageCleanup(key);
     try {
       localStorage.setItem(key, value);
     } catch {
-      // Si aÃºn falla, no bloqueamos la app. El dato liviano sigue funcionando.
+      // Si aún falla, no bloqueamos la app. El dato liviano sigue funcionando.
     }
   }
 }
@@ -4590,7 +4591,7 @@ function publishDriverVehicleSnapshotToStorage(snapshot: Record<string, unknown>
   };
   const lightPayload = JSON.stringify(lightSnapshot);
 
-  // Limpiamos duplicados antiguos del vehÃ­culo, pero NO borramos la foto de perfil.
+  // Limpiamos duplicados antiguos del vehículo, pero NO borramos la foto de perfil.
   removeLegacyDriverHeavyStorage();
 
   if (profileImage) {
@@ -4639,7 +4640,7 @@ function publishDriverVehicleSnapshotToStorage(snapshot: Record<string, unknown>
     map[ownerKey] = lightSnapshot;
     safeSetDriverLocalStorageItem("rapago_driver_public_profiles_v1", JSON.stringify(map));
   } catch {
-    // No bloquea el perfil pÃºblico.
+    // No bloquea el perfil público.
   }
 }
 
@@ -4843,7 +4844,7 @@ function normalizeDriverVehicleRecord(
   const label = sanitizeDriverVehicleValue(
     String(record.label ?? [brand, model, year, color].filter(Boolean).join(" ")),
     90,
-  ) || `${brand} ${model}`.trim() || plate || "VehÃ­culo Rapa Go";
+  ) || `${brand} ${model}`.trim() || plate || "Vehículo Rapa Go";
 
   return {
     id,
@@ -4913,7 +4914,7 @@ function getDefaultBorrowedVehicleExpiry(): string {
 function resizeDriverVehicleImage(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
     if (!file.type.startsWith("image/")) {
-      reject(new Error("Debes seleccionar una imagen del vehÃ­culo."));
+      reject(new Error("Debes seleccionar una imagen del vehículo."));
       return;
     }
 
@@ -5011,7 +5012,7 @@ function readAllDriverVehicles(user?: unknown): DriverVehicleRecord[] {
 
   const vehicles = rawCandidates.flatMap((raw) => parseDriverVehicleArrayFromRaw(raw, user));
 
-  // Compatibilidad: si la postulaciÃ³n solo dejÃ³ datos sueltos del vehÃ­culo, lo reconstruimos.
+  // Compatibilidad: si la postulación solo dejó datos sueltos del vehículo, lo reconstruimos.
   const looseVehicle = normalizeDriverVehicleRecord(
     {
       id: "vehicle-from-application-profile",
@@ -5042,7 +5043,7 @@ function saveAllDriverVehicles(vehicles: DriverVehicleRecord[]): void {
     const payload = JSON.stringify(normalized);
     const lightPayload = JSON.stringify(stripDriverLargeImageFields(normalized));
 
-    // Guardamos la versiÃ³n completa solo una vez. Las copias de compatibilidad van sin foto.
+    // Guardamos la versión completa solo una vez. Las copias de compatibilidad van sin foto.
     safeSetDriverLocalStorageItem(DRIVER_VEHICLES_STORAGE_KEY, payload);
     safeSetDriverLocalStorageItem("rapago_driver_vehicles", lightPayload);
     safeSetDriverLocalStorageItem("rapago_driver_registered_vehicles_v1", lightPayload);
@@ -5120,7 +5121,7 @@ function readSelectedDriverVehicleId(user?: unknown): string | null {
     }
   }
 
-  // Si viene desde el formulario de inscripciÃ³n, seleccionamos automÃ¡ticamente el principal.
+  // Si viene desde el formulario de inscripción, seleccionamos automáticamente el principal.
   const vehicles = readAllDriverVehicles(user).filter(
     (vehicle) => vehicle.ownerKey === ownerKey && !isBorrowedVehicleExpired(vehicle),
   );
@@ -5192,9 +5193,9 @@ function readSelectedDriverVehicle(user?: unknown): DriverVehicleRecord | null {
 }
 
 function getDriverVehicleLabel(vehicle: DriverVehicleRecord | null): string {
-  if (!vehicle) return "Sin vehÃ­culo seleccionado";
+  if (!vehicle) return "Sin vehículo seleccionado";
   const ownership = vehicle.ownership === "borrowed" ? "Prestado" : "Propio";
-  return `${vehicle.label} Â· ${vehicle.plate} Â· ${ownership}`;
+  return `${vehicle.label} · ${vehicle.plate} · ${ownership}`;
 }
 
 function getDriverVehiclePublicPayload(user?: unknown): Record<string, unknown> {
@@ -5377,7 +5378,7 @@ function writeDriverAcceptedBridgeArray(key: string, rides: DriverAcceptedRideBr
   try {
     localStorage.setItem(key, JSON.stringify(rides.slice(0, 220)));
   } catch {
-    // No bloquea la aceptaciÃ³n del viaje.
+    // No bloquea la aceptación del viaje.
   }
 }
 
@@ -5440,7 +5441,7 @@ function publishAcceptedDriverVehicleToPassenger(
     );
     window.dispatchEvent(new CustomEvent("rapago:passenger-rides-updated"));
   } catch {
-    // No bloquea la aceptaciÃ³n del viaje.
+    // No bloquea la aceptación del viaje.
   }
 }
 
@@ -5940,7 +5941,7 @@ function collectDriverReservationRecordsFromStorageKey(
       }
     }
 
-    // Respaldo: si el Admin guardÃ³ un objeto con llaves que no coinciden exactamente,
+    // Respaldo: si el Admin guardó un objeto con llaves que no coinciden exactamente,
     // revisamos todas las listas y filtramos por assignedDriverKeys/Email/Nombre.
     for (const value of Object.values(parsed as Record<string, unknown>)) {
       if (Array.isArray(value)) {
@@ -6080,7 +6081,7 @@ function updateDriverScheduledReservationEverywhere(
 
   // Los eventos se disparan fuera del stack actual.
   // Esto evita bucles infinitos cuando un listener vuelve a leer/actualizar reservas
-  // mientras todavÃ­a estamos dentro de updateDriverScheduledReservationEverywhere().
+  // mientras todavía estamos dentro de updateDriverScheduledReservationEverywhere().
   window.setTimeout(() => {
     window.dispatchEvent(new CustomEvent(DRIVER_SCHEDULED_RESERVATION_EVENT, { detail: { ride: target } }));
     window.dispatchEvent(new CustomEvent(DRIVER_ASSIGNED_SCHEDULED_RIDE_EVENT, { detail: { ride: target } }));
@@ -6116,15 +6117,15 @@ function getDriverScheduledReservationActivationMs(ride: DriverAcceptedRideBridg
 function driverScheduledReservationIsActiveNow(ride: DriverAcceptedRideBridgeRecord): boolean {
   const status = driverBridgeClean(ride.status);
 
-  // Si ya estÃ¡ en progreso real, no lo escondemos.
+  // Si ya está en progreso real, no lo escondemos.
   if (status === "in_progress") return true;
 
   // Importante RAPA GO:
   // Una reserva aceptada por el conductor NO se convierte en viaje activo altiro.
-  // Debe quedar como "Reserva aceptada" hasta la hora de activaciÃ³n
+  // Debe quedar como "Reserva aceptada" hasta la hora de activación
   // (normalmente 10 minutos antes de la recogida). Por eso NO usamos
   // status === "accepted", availableForDrivers, pending_driver, driver_en_route
-  // ni driver_arrived como activaciÃ³n automÃ¡tica antes de hora.
+  // ni driver_arrived como activación automática antes de hora.
   if (
     ride.adminActivated === true ||
     ride.activatedByAdmin === true ||
@@ -6139,8 +6140,8 @@ function driverScheduledReservationIsActiveNow(ride: DriverAcceptedRideBridgeRec
     return Date.now() >= activationMs;
   }
 
-  // Compatibilidad: si una reserva antigua no trae fecha de activaciÃ³n, reciÃ©n
-  // respetamos estados de ruta reales. Las reservas nuevas sÃ­ traen activationMs.
+  // Compatibilidad: si una reserva antigua no trae fecha de activación, recién
+  // respetamos estados de ruta reales. Las reservas nuevas sí traen activationMs.
   return ["driver_en_route", "driver_arrived"].includes(status);
 }
 
@@ -6175,7 +6176,7 @@ function driverRideLooksLikeScheduledReservation(ride: Record<string, unknown>):
 
 function shouldHideFromNormalDriverRequestQueue(ride: AvailableRideData | Record<string, unknown>): boolean {
   // Las reservas agendadas NO deben entrar como "Nueva solicitud de viaje".
-  // Se muestran solamente en la secciÃ³n/botÃ³n Reservas del conductor asignado.
+  // Se muestran solamente en la sección/botón Reservas del conductor asignado.
   return driverRideLooksLikeScheduledReservation(ride as unknown as Record<string, unknown>);
 }
 
@@ -6277,9 +6278,9 @@ function buildScheduledReservationReleasedForPassenger(
     availableForDrivers: false,
     visibleToDrivers: false,
     passengerNotice:
-      "Tu reserva se activÃ³. Estamos avisando al conductor asignado para que vaya a buscarte.",
+      "Tu reserva se activó. Estamos avisando al conductor asignado para que vaya a buscarte.",
     passengerNotification:
-      "Tu reserva se activÃ³. Estamos avisando al conductor asignado para que vaya a buscarte.",
+      "Tu reserva se activó. Estamos avisando al conductor asignado para que vaya a buscarte.",
   };
 }
 
@@ -6309,7 +6310,7 @@ function releaseScheduledReservationForPassengerSearch(
   pushPassengerNotification({
     rideId: String(released.id ?? ride.id),
     type: "scheduled_reservation_released",
-    title: "Tu reserva se activÃ³",
+    title: "Tu reserva se activó",
     body: "Estamos avisando al conductor asignado para iniciar tu viaje.",
   });
 
@@ -6330,7 +6331,7 @@ function findScheduledReservationReadyForDriver(
 
   if (!ready) return null;
 
-  // Si aÃºn no estaba aceptada, al llegar la hora/activaciÃ³n la soltamos para el pasajero
+  // Si aún no estaba aceptada, al llegar la hora/activación la soltamos para el pasajero
   // como "Buscando conductor", pero sigue bloqueada solo para el conductor asignado.
   if (!driverScheduledReservationIsAccepted(ready)) {
     return releaseScheduledReservationForPassengerSearch(
@@ -6349,7 +6350,7 @@ function getScheduledReservationCountdownText(ride: DriverAcceptedRideBridgeReco
   if (diffMs <= 0) return "ya puedes ir a buscar al pasajero";
 
   const minutes = Math.max(1, Math.ceil(diffMs / 60_000));
-  return `se abrirÃ¡ en ${minutes} min`;
+  return `se abrirá en ${minutes} min`;
 }
 
 function speakScheduledReservationAlert(): void {
@@ -6359,7 +6360,7 @@ function speakScheduledReservationAlert(): void {
     window.speechSynthesis.cancel();
 
     const utterance = new SpeechSynthesisUtterance(
-      "Tienes un viaje agendado. Ve a buscar al usuario donde reservÃ³.",
+      "Tienes un viaje agendado. Ve a buscar al usuario donde reservó.",
     );
 
     utterance.lang = "es-CL";
@@ -6380,8 +6381,8 @@ function showScheduledReservationSystemNotification(): void {
     const show = () => {
       if (Notification.permission !== "granted") return;
 
-      const notification = new Notification("ðŸ“… Viaje agendado RAPA GO", {
-        body: "Tenemos agendado tu viaje. Ve a buscar al usuario donde reservÃ³.",
+      const notification = new Notification("📅 Viaje agendado RAPA GO", {
+        body: "Tenemos agendado tu viaje. Ve a buscar al usuario donde reservó.",
         tag: "rapago-scheduled-reservation-ready",
         renotify: true,
         silent: false,
@@ -6408,7 +6409,7 @@ function showScheduledReservationSystemNotification(): void {
       });
     }
   } catch {
-    // NotificaciÃ³n opcional.
+    // Notificación opcional.
   }
 }
 
@@ -6420,7 +6421,7 @@ function startScheduledReservationAlertSound(): RideRequestAlertController {
   try {
     void audioContext?.resume();
   } catch {
-    // Si el navegador bloquea audio, seguimos con vibraciÃ³n/notificaciÃ³n.
+    // Si el navegador bloquea audio, seguimos con vibración/notificación.
   }
 
   function playAlarmCycle(): void {
@@ -6430,13 +6431,13 @@ function startScheduledReservationAlertSound(): RideRequestAlertController {
       void audioContext?.resume();
       playDriverAlertTone(audioContext, 0.42);
     } catch {
-      // Mantiene vibraciÃ³n/notificaciÃ³n si audio no estÃ¡ disponible.
+      // Mantiene vibración/notificación si audio no está disponible.
     }
 
     try {
       if ("vibrate" in navigator) navigator.vibrate([700, 220, 700, 220, 700]);
     } catch {
-      // VibraciÃ³n opcional.
+      // Vibración opcional.
     }
   }
 
@@ -6525,7 +6526,7 @@ function startDriverScheduledReservationNavigationLocally(
     rideId: String(started.id ?? ride.id),
     type: "scheduled_driver_started_route",
     title: "Tu conductor va en camino",
-    body: "Tu conductor iniciÃ³ la ruta hacia tu punto de recogida.",
+    body: "Tu conductor inició la ruta hacia tu punto de recogida.",
   });
 
   return started;
@@ -6541,7 +6542,7 @@ function getActiveScheduledReservationRideForDriver(
   const status = getAcceptedScheduledReservationStatus(ride);
   if (!["accepted", "driver_en_route", "driver_arrived", "in_progress"].includes(status)) return null;
 
-  // Aunque la reserva ya estÃ© activa por hora, NO abrimos mapa automÃ¡tico.
+  // Aunque la reserva ya esté activa por hora, NO abrimos mapa automático.
   // Solo se convierte en viaje activo cuando el conductor toca "Iniciar viaje"
   // en la alerta especial de reserva.
   if (!driverScheduledReservationNavigationStarted(ride)) return null;
@@ -6580,7 +6581,7 @@ function readActiveScheduledReservationRidesForDriver(user?: unknown): DriverRid
       const parsed = raw ? (JSON.parse(raw) as DriverAcceptedRideBridgeRecord[]) : [];
       if (Array.isArray(parsed)) all.push(...parsed);
     } catch {
-      // Ignora datos daÃ±ados.
+      // Ignora datos dañados.
     }
   }
 
@@ -6625,10 +6626,10 @@ function getConfirmedWaitingScheduledReservationForDriver(
       scheduledDriverResponse: "accepted",
       passengerNotice:
         ride.passengerNotice ??
-        "Tu conductor fue asignado. VerÃ¡s la ruta cuando se active la reserva.",
+        "Tu conductor fue asignado. Verás la ruta cuando se active la reserva.",
       passengerNotification:
         ride.passengerNotification ??
-        "Tu conductor fue asignado. VerÃ¡s la ruta cuando se active la reserva.",
+        "Tu conductor fue asignado. Verás la ruta cuando se active la reserva.",
     },
     user,
   ) as unknown as DriverScheduledReservationOffer;
@@ -6699,8 +6700,8 @@ function buildDriverScheduledReservationAcceptedPayload(
       availableForDrivers: false,
       reassignmentNeeded: false,
       needsNextAvailableDriver: false,
-      passengerNotice: "Tu conductor fue asignado. Revisa sus datos, foto de perfil y vehÃ­culo en Mis Viajes.",
-      passengerNotification: "Tu conductor fue asignado. Revisa sus datos, foto de perfil y vehÃ­culo en Mis Viajes.",
+      passengerNotice: "Tu conductor fue asignado. Revisa sus datos, foto de perfil y vehículo en Mis Viajes.",
+      passengerNotification: "Tu conductor fue asignado. Revisa sus datos, foto de perfil y vehículo en Mis Viajes.",
     },
     user,
   );
@@ -6708,9 +6709,16 @@ function buildDriverScheduledReservationAcceptedPayload(
 
 function buildDriverScheduledReservationRejectedPayload(
   ride: DriverAcceptedRideBridgeRecord,
-  user?: unknown,
+  user: unknown,
+  rejectionReason: string,
 ): DriverAcceptedRideBridgeRecord {
   const now = new Date().toISOString();
+  const cleanRejectionReason = sanitizeDriverTripSafetyText(rejectionReason, 260);
+
+  if (!cleanRejectionReason) {
+    throw new Error("Debes escribir el motivo del rechazo.");
+  }
+
   const currentKeys = getDriverScheduledReservationIdentityKeys(user);
   const rejectedKeys = Array.from(new Set([...getDriverScheduledRejectedKeys(ride), ...currentKeys]));
   const driverName =
@@ -6725,10 +6733,14 @@ function buildDriverScheduledReservationRejectedPayload(
     ...ride,
     status: "scheduled",
     adminScheduleStatus: "pending_next_driver",
+    scheduleStatus: "pending_next_driver",
+    reservationStatus: "pending_next_driver",
+    driverAssignmentStatus: "pending_next_driver",
     lastDriverScheduleResponse: "rejected",
     lastRejectedByDriverId: driverId,
     lastRejectedByDriverEmail: driverEmail,
     lastRejectedByDriverName: driverName,
+    lastRejectedByDriverAt: now,
     rejectedByDriverKeys: rejectedKeys,
     rejectedDriverKeys: rejectedKeys,
     skippedDriverKeys: rejectedKeys,
@@ -6746,7 +6758,13 @@ function buildDriverScheduledReservationRejectedPayload(
       ].filter(Boolean)),
     ),
     rejectedAt: now,
-    rejectedReason: "Conductor rechazÃ³ reserva agendada.",
+    rejectedReason: cleanRejectionReason,
+    driverRejectionReason: cleanRejectionReason,
+    adminDriverRejectionReason: cleanRejectionReason,
+    adminLastDriverRejectionReason: cleanRejectionReason,
+    lastRejectedReason: cleanRejectionReason,
+    driverRejectionRequiresAdminVisibility: true,
+    adminAutoAssignMessage: `${driverName} rechazó la reserva. Motivo: ${cleanRejectionReason}. Buscando siguiente conductor disponible.`,
     driverId: null,
     driverUserId: null,
     assignedDriverId: null,
@@ -6874,6 +6892,16 @@ function buildReservationAssignedToNextDriverPayload(
       ...getRideSkippedDriverKeys(ride),
     ].filter(Boolean)),
   );
+  const driverRejectionReason = sanitizeDriverTripSafetyText(
+    ride.adminLastDriverRejectionReason ??
+      ride.adminDriverRejectionReason ??
+      ride.driverRejectionReason ??
+      ride.rejectedReason,
+    260,
+  );
+  const rejectedDriverName =
+    sanitizeDriverTripSafetyText(ride.lastRejectedByDriverName, 120) ||
+    "El conductor anterior";
 
   return {
     ...ride,
@@ -6916,9 +6944,15 @@ function buildReservationAssignedToNextDriverPayload(
     autoReassignedAt: now,
     autoReassignedReason: reason,
     autoReassignedBy: "driver_app",
+    adminLastDriverRejectionReason: driverRejectionReason || null,
+    adminLastRejectedDriverName: rejectedDriverName,
+    adminAutoAssignMessage:
+      reason === "driver_rejected"
+        ? `${rejectedDriverName} rechazó la reserva. Motivo: ${driverRejectionReason || "No informado"}. Se reasignó automáticamente a ${candidate.name}.`
+        : `La reserva fue reasignada automáticamente a ${candidate.name}.`,
     driverNotification: "Te reasignamos esta reserva porque otro conductor no pudo tomarla. Confirma si puedes realizarla.",
-    passengerNotice: "El conductor anterior no pudo tomar la reserva. Estamos esperando confirmaciÃ³n del siguiente conductor disponible.",
-    passengerNotification: "El conductor anterior no pudo tomar la reserva. Estamos esperando confirmaciÃ³n del siguiente conductor disponible.",
+    passengerNotice: "El conductor anterior no pudo tomar la reserva. Estamos esperando confirmación del siguiente conductor disponible.",
+    passengerNotification: "El conductor anterior no pudo tomar la reserva. Estamos esperando confirmación del siguiente conductor disponible.",
   };
 }
 
@@ -6943,7 +6977,7 @@ function removeScheduledReservationFromAllDriverQueues(ride: DriverAcceptedRideB
 
       if (changed) localStorage.setItem(objectStorageKey, JSON.stringify(queue));
     } catch {
-      // No bloquea la reasignaciÃ³n.
+      // No bloquea la reasignación.
     }
   }
 
@@ -6958,7 +6992,7 @@ function removeScheduledReservationFromAllDriverQueues(ride: DriverAcceptedRideB
       const next = current.filter((item) => !isSameDriverAcceptedRide(item, ride));
       localStorage.setItem(arrayKey, JSON.stringify(next.slice(0, 160)));
     } catch {
-      // No bloquea la reasignaciÃ³n.
+      // No bloquea la reasignación.
     }
   }
 }
@@ -6999,7 +7033,7 @@ function upsertScheduledReservationForOnlyNextDriver(
 
       localStorage.setItem(objectStorageKey, JSON.stringify(queue));
     } catch {
-      // No bloquea la reasignaciÃ³n.
+      // No bloquea la reasignación.
     }
   }
 
@@ -7020,7 +7054,7 @@ function upsertScheduledReservationForOnlyNextDriver(
         ].slice(0, 160)),
       );
     } catch {
-      // No bloquea la reasignaciÃ³n.
+      // No bloquea la reasignación.
     }
   }
 }
@@ -7033,9 +7067,26 @@ function resolveScheduledReservationNextDriverAssignment(
   const candidate = getNextAvailableDriverCandidateForReservation(rejectedRide, user);
 
   if (!candidate) {
+    // El conductor que rechazó no debe seguir viendo la reserva.
+    // Admin la conserva y podrá asignarla al siguiente disponible.
+    removeScheduledReservationFromAllDriverQueues(rejectedRide);
+
     window.dispatchEvent(
       new CustomEvent(DRIVER_RESERVATION_AUTO_REASSIGN_EVENT, {
-        detail: { ride: rejectedRide, reason, mode: "need_admin_or_next_available_driver" },
+        detail: {
+          ride: rejectedRide,
+          reason,
+          rejectionReason:
+            rejectedRide.adminLastDriverRejectionReason ??
+            rejectedRide.driverRejectionReason ??
+            rejectedRide.rejectedReason,
+          mode: "need_admin_or_next_available_driver",
+        },
+      }),
+    );
+    window.dispatchEvent(
+      new CustomEvent("rapago:admin-scheduled-rides-updated", {
+        detail: { ride: rejectedRide, driverRejected: true },
       }),
     );
     return rejectedRide;
@@ -7074,7 +7125,7 @@ function acceptDriverScheduledReservationLocally(
   pushPassengerNotification({
     rideId: String(accepted.id ?? ride.id),
     type: "scheduled_driver_assigned",
-    title: "Conductor confirmÃ³ tu reserva",
+    title: "Conductor confirmó tu reserva",
     body: "Tu reserva agendada fue confirmada por el conductor asignado.",
   });
 
@@ -7083,11 +7134,22 @@ function acceptDriverScheduledReservationLocally(
 
 function rejectDriverScheduledReservationLocally(
   ride: DriverScheduledReservationOffer,
-  user?: unknown,
-): void {
-  const rejected = buildDriverScheduledReservationRejectedPayload(ride, user);
-  const nextAssignment = resolveScheduledReservationNextDriverAssignment(rejected, user, "driver_rejected");
+  user: unknown,
+  rejectionReason: string,
+): DriverAcceptedRideBridgeRecord {
+  const rejected = buildDriverScheduledReservationRejectedPayload(
+    ride,
+    user,
+    rejectionReason,
+  );
+  const nextAssignment = resolveScheduledReservationNextDriverAssignment(
+    rejected,
+    user,
+    "driver_rejected",
+  );
+
   updateDriverScheduledReservationEverywhere(ride, () => nextAssignment);
+  return nextAssignment;
 }
 
 function formatDriverScheduledReservationDate(value: unknown): string {
@@ -7184,7 +7246,7 @@ function getBorrowedVehicleRemainingText(vehicle: DriverVehicleRecord): string |
   const diff = new Date(vehicle.expiresAt).getTime() - Date.now();
   if (!Number.isFinite(diff) || diff <= 0) return "Vence hoy";
   const days = Math.ceil(diff / (24 * 60 * 60_000));
-  return `Se borrarÃ¡ automÃ¡ticamente en ${days} dÃ­a${days === 1 ? "" : "s"}`;
+  return `Se borrará automáticamente en ${days} día${days === 1 ? "" : "s"}`;
 }
 
 export function DriverHomePage(): JSX.Element {
@@ -7197,6 +7259,7 @@ export function DriverHomePage(): JSX.Element {
     useState<DriverAvailability>(() =>
       readDriverAvailability(driverAvailabilityUser),
     );
+  const [restBlocked, setRestBlocked] = useState(false);
 
   useEffect(() => {
     setDriverAvailability(readDriverAvailability(driverAvailabilityUser));
@@ -7222,8 +7285,25 @@ export function DriverHomePage(): JSX.Element {
     driverConnection.blocked,
   ]);
 
+  useEffect(() => {
+    if (!restBlocked) return;
+    if (driverAvailability !== "available") return;
+
+    setDriverAvailability("unavailable");
+    saveDriverAvailability("unavailable", driverAvailabilityUser);
+  }, [
+    driverAvailability,
+    driverAvailabilityUser?.id,
+    driverAvailabilityUser?.userId,
+    driverAvailabilityUser?.email,
+    driverAvailabilityUser?.name,
+    restBlocked,
+  ]);
+
   const isDriverAvailable =
-    driverAvailability === "available" && !driverConnection.blocked;
+    driverAvailability === "available" &&
+    !driverConnection.blocked &&
+    !restBlocked;
   const [pendingReservationCount, setPendingReservationCount] = useState(() =>
     readDriverScheduledReservationOffers(
       driverAvailabilityUser,
@@ -7275,6 +7355,12 @@ export function DriverHomePage(): JSX.Element {
   ]);
 
   function handleAvailabilityChange(value: DriverAvailability): void {
+    if (value === "available" && restBlocked) {
+      setDriverAvailability("unavailable");
+      saveDriverAvailability("unavailable", driverAvailabilityUser);
+      return;
+    }
+
     if (value === "available" && driverConnection.blocked) {
       setDriverAvailability("unavailable");
       saveDriverAvailability("unavailable", driverAvailabilityUser);
@@ -7296,11 +7382,11 @@ export function DriverHomePage(): JSX.Element {
 
   const connectionLabel =
     driverConnection.status === "online"
-      ? "ConexiÃ³n estable"
+      ? "Conexión estable"
       : driverConnection.status === "checking"
-        ? "Verificando seÃ±al"
+        ? "Verificando señal"
         : driverConnection.status === "poor"
-          ? "SeÃ±al baja"
+          ? "Señal baja"
           : "Sin internet";
 
   const actionCards: Array<{
@@ -7335,7 +7421,7 @@ export function DriverHomePage(): JSX.Element {
           ? `${pendingReservationCount} agendada${
               pendingReservationCount === 1 ? "" : "s"
             } por confirmar`
-          : "Revisa tus viajes asignados para mÃ¡s tarde",
+          : "Revisa tus viajes asignados para más tarde",
       route: DRIVER_RESERVATIONS_VIEW_ROUTE,
       icon: timeOutline,
       accent: pendingReservationCount > 0 ? "#c89b3c" : "#a56d18",
@@ -7349,7 +7435,7 @@ export function DriverHomePage(): JSX.Element {
     {
       key: "trips",
       title: "Mis viajes",
-      description: "Historial, estados y navegaciÃ³n en ruta",
+      description: "Historial, estados y navegación en ruta",
       route: ROUTES.DRIVER.TRIPS,
       icon: carOutline,
       accent: "#2563a8",
@@ -7369,7 +7455,7 @@ export function DriverHomePage(): JSX.Element {
     {
       key: "profile",
       title: "Perfil",
-      description: "Datos personales, documentos y vehÃ­culo",
+      description: "Datos personales, documentos y vehículo",
       route: ROUTES.DRIVER.PROFILE,
       icon: personOutline,
       accent: "#4b5563",
@@ -7395,6 +7481,8 @@ export function DriverHomePage(): JSX.Element {
             onChange={handleAvailabilityChange}
           />
 
+          <DriverRestScheduleCard onBlockedChange={setRestBlocked} />
+
           <section className="driver-home-hero">
             <div className="driver-home-hero__top">
               <div>
@@ -7402,12 +7490,14 @@ export function DriverHomePage(): JSX.Element {
                   Panel de conductor
                 </div>
                 <div className="driver-home-hero__title">
-                  Hola, {driverName} ðŸ‘‹
+                  Hola, {driverName} 👋
                 </div>
                 <div className="driver-home-hero__subtitle">
-                  {isDriverAvailable
-                    ? "EstÃ¡s listo para recibir solicitudes y reservas asignadas en Rapa Nui."
-                    : "Activa tu disponibilidad cuando estÃ©s preparado para comenzar a trabajar."}
+                  {restBlocked
+                    ? "Estás cumpliendo tu descanso continuo de 12 horas. No se enviarán nuevas ofertas."
+                    : isDriverAvailable
+                      ? "Estás listo para recibir solicitudes y reservas asignadas en Rapa Nui."
+                      : "Activa tu disponibilidad cuando estés preparado para comenzar a trabajar."}
                 </div>
               </div>
 
@@ -7440,7 +7530,7 @@ export function DriverHomePage(): JSX.Element {
 
           <section className="driver-home-section">
             <div className="driver-home-section__header">
-              <h2 className="driver-home-section__title">Accesos rÃ¡pidos</h2>
+              <h2 className="driver-home-section__title">Accesos rápidos</h2>
               <div className="driver-home-section__hint">
                 Todo tu trabajo en un lugar
               </div>
@@ -7500,12 +7590,12 @@ export function DriverHomePage(): JSX.Element {
               <div className="driver-home-cta__title">
                 {isDriverAvailable
                   ? "Revisa tus solicitudes disponibles"
-                  : "Actualmente estÃ¡s fuera de lÃ­nea"}
+                  : "Actualmente estás fuera de línea"}
               </div>
               <div className="driver-home-cta__copy">
                 {isDriverAvailable
-                  ? "Las nuevas solicitudes y reservas aparecerÃ¡n con una alerta clara."
-                  : "No recibirÃ¡s servicios hasta volver a marcarte como disponible."}
+                  ? "Las nuevas solicitudes y reservas aparecerán con una alerta clara."
+                  : "No recibirás servicios hasta volver a marcarte como disponible."}
               </div>
             </div>
 
@@ -7712,7 +7802,7 @@ function saveDriverCancelledActiveRides(records: DriverCancelledActiveRideRecord
       JSON.stringify(records.slice(0, 120)),
     );
   } catch {
-    // No bloquea la cancelaciÃ³n visual.
+    // No bloquea la cancelación visual.
   }
 }
 
@@ -7834,7 +7924,7 @@ function clearDriverActiveRideLocalMirrors(cancelledRide: Record<string, unknown
 
       localStorage.setItem(key, JSON.stringify(next.slice(0, 200)));
     } catch {
-      // No bloquea la cancelaciÃ³n visual.
+      // No bloquea la cancelación visual.
     }
   }
 
@@ -7861,7 +7951,7 @@ function clearDriverActiveRideLocalMirrors(cancelledRide: Record<string, unknown
         localStorage.setItem(key, JSON.stringify(next));
       }
     } catch {
-      // No bloquea la cancelaciÃ³n visual.
+      // No bloquea la cancelación visual.
     }
   }
 }
@@ -8072,8 +8162,8 @@ function driverRideMatchesPassengerCancelledRecord(
   activeRide: Record<string, unknown>,
   cancelledRide: Record<string, unknown>,
 ): boolean {
-  // Una cancelaciÃ³n antigua nunca debe borrar un viaje que fue aceptado despuÃ©s.
-  // Este era el motivo por el cual el mapa desaparecÃ­a al aceptar una solicitud nueva
+  // Una cancelación antigua nunca debe borrar un viaje que fue aceptado después.
+  // Este era el motivo por el cual el mapa desaparecía al aceptar una solicitud nueva
   // con una ruta parecida a un viaje cancelado anteriormente.
   if (cancellationRecordIsOlderThanAcceptedRide(activeRide, cancelledRide)) {
     return false;
@@ -8105,8 +8195,8 @@ function driverRideMatchesPassengerCancelledRecord(
     cancelledRide.scheduledAt ?? cancelledRide.scheduledPickupAt ?? cancelledRide.requestedAt ?? cancelledRide.createdAt,
   );
 
-  // La comparaciÃ³n por ruta es solo un respaldo para registros antiguos sin ID.
-  // Exigimos fecha de cancelaciÃ³n real para no confundir dos solicitudes iguales.
+  // La comparación por ruta es solo un respaldo para registros antiguos sin ID.
+  // Exigimos fecha de cancelación real para no confundir dos solicitudes iguales.
   const cancelledAt = getDriverRideCancellationTimestampMs(cancelledRide);
   if (cancelledAt == null) return false;
 
@@ -8260,7 +8350,7 @@ function pushPassengerNotification(notification: Omit<PassengerNotificationPaylo
     localStorage.setItem(RAPAGO_PASSENGER_NOTIFICATIONS_KEY, JSON.stringify([next, ...current].slice(0, 80)));
     window.dispatchEvent(new CustomEvent("rapago:passenger-notification", { detail: next }));
   } catch {
-    // No bloquea la cancelaciÃ³n.
+    // No bloquea la cancelación.
   }
 }
 
@@ -8318,8 +8408,8 @@ function requeueRideAfterDriverCancel(ride: DriverRideData, driverUser?: unknown
       requeuedReason: "driver_cancelled",
       forceActiveAfterDriverCancel: true,
       cancelledByDriverEmail: cancelledDriverEmail ?? null,
-      passengerNotice: "Tu conductor cancelÃ³ el viaje, estamos buscando uno nuevo.",
-      passengerNotification: "Tu conductor cancelÃ³ el viaje, estamos buscando uno nuevo.",
+      passengerNotice: "Tu conductor canceló el viaje, estamos buscando uno nuevo.",
+      passengerNotification: "Tu conductor canceló el viaje, estamos buscando uno nuevo.",
     },
     driverUser,
     "driver_cancelled",
@@ -8394,12 +8484,12 @@ function requeueRideAfterDriverCancel(ride: DriverRideData, driverUser?: unknown
           requeuedAt: now,
           requeuedReason: "driver_cancelled",
           forceActiveAfterDriverCancel: true,
-          passengerNotice: "Tu conductor cancelÃ³ el viaje, estamos buscando uno nuevo.",
-          passengerNotification: "Tu conductor cancelÃ³ el viaje, estamos buscando uno nuevo.",
+          passengerNotice: "Tu conductor canceló el viaje, estamos buscando uno nuevo.",
+          passengerNotification: "Tu conductor canceló el viaje, estamos buscando uno nuevo.",
         } as Record<string, unknown>;
       });
 
-      // Si el viaje venÃ­a solo desde backend y no estaba en localStorage,
+      // Si el viaje venía solo desde backend y no estaba en localStorage,
       // lo insertamos para que el pasajero lo vea nuevamente como "Buscando conductor".
       if (!found && key === "rapago_local_passenger_rides") {
         next.unshift({
@@ -8418,13 +8508,13 @@ function requeueRideAfterDriverCancel(ride: DriverRideData, driverUser?: unknown
     window.dispatchEvent(new CustomEvent("rapago:driver-available-rides-updated", { detail: { ride: requeued } }));
     window.dispatchEvent(new CustomEvent(RAPAGO_REQUEUED_RIDES_EVENT, { detail: { ride: requeued, rides: readRequeuedAvailableRides() } }));
   } catch {
-    // No bloquea la cancelaciÃ³n.
+    // No bloquea la cancelación.
   }
 
   pushPassengerNotification({
     rideId: ride.id,
     type: "driver_cancelled_requeue",
-    title: "Tu conductor cancelÃ³ el viaje",
+    title: "Tu conductor canceló el viaje",
     body: "Estamos buscando un nuevo conductor disponible para tu solicitud.",
   });
 
@@ -8759,8 +8849,8 @@ function saveDriverNextRideAfterCurrent(
       queuedAt: now,
       queuedStatus: "waiting_current_trip",
       driverHasCurrentRide: true,
-      passengerNotice: "Tu conductor aceptÃ³ tu viaje y lo iniciarÃ¡ cuando termine su viaje actual.",
-      passengerNotification: "Tu conductor estÃ¡ terminando un viaje anterior. Te avisaremos cuando vaya en camino.",
+      passengerNotice: "Tu conductor aceptó tu viaje y lo iniciará cuando termine su viaje actual.",
+      passengerNotification: "Tu conductor está terminando un viaje anterior. Te avisaremos cuando vaya en camino.",
     },
     user,
   ) as DriverNextRideQueueRecord;
@@ -8807,7 +8897,7 @@ function promoteDriverNextRideAfterCompletion(
       queuedStatus: "promoted_to_active",
       queuedAfterRideId: null,
       previousRideCompletedAt: new Date().toISOString(),
-      passengerNotice: "Tu conductor ya terminÃ³ su viaje anterior y va en camino.",
+      passengerNotice: "Tu conductor ya terminó su viaje anterior y va en camino.",
       passengerNotification: "Tu conductor va en camino.",
     },
     user,
@@ -8838,7 +8928,7 @@ function readActiveDriverLocalRideMirrorsForDriver(user?: unknown): DriverRideDa
     const ride = parsed && typeof parsed === "object" && "ride" in parsed ? parsed.ride : parsed;
     if (ride && typeof ride === "object") output.push(ride as DriverRideData);
   } catch {
-    // Ignora Ãºltimo aceptado antiguo.
+    // Ignora último aceptado antiguo.
   }
 
   const byKey = new Map<string, DriverRideData>();
@@ -8968,12 +9058,12 @@ function driverRideRequestIsHandled(
   const handled = readDriverHandledRideRequests();
   if (handled.some((record) => record.driverKey === driverKey && rideKeys.has(record.key))) return true;
 
-  // Si ya estÃ¡ como prÃ³ximo servicio aceptado, no puede volver a sonar como solicitud nueva.
+  // Si ya está como próximo servicio aceptado, no puede volver a sonar como solicitud nueva.
   if (readDriverNextRideQueue(user).some((queued) => driverRideIdentityMatches(queued as unknown as Record<string, unknown>, ride))) {
     return true;
   }
 
-  // Si ya estÃ¡ activo para este conductor, tampoco debe volver a entrar a la cola.
+  // Si ya está activo para este conductor, tampoco debe volver a entrar a la cola.
   if (readActiveDriverLocalRideMirrorsForDriver(user).some((active) => driverRideIdentityMatches(active as unknown as Record<string, unknown>, ride))) {
     return true;
   }
@@ -9050,8 +9140,8 @@ function extractFareFromNotes(notes: string | null | undefined): number | null {
     /Precio del viaje:\s*\$?\s*([\d.,]+)\s*CLP/i,
     /Total(?: del viaje| a pagar)?:\s*\$?\s*([\d.,]+)\s*CLP/i,
     /Monto(?: del viaje)?:\s*\$?\s*([\d.,]+)\s*CLP/i,
-    /Efectivo\s*[â€¢\-:]\s*\$?\s*([\d.,]+)\s*CLP/i,
-    /Tarjeta\s*[â€¢\-:]\s*\$?\s*([\d.,]+)\s*CLP/i,
+    /Efectivo\s*[•\-:]\s*\$?\s*([\d.,]+)\s*CLP/i,
+    /Tarjeta\s*[•\-:]\s*\$?\s*([\d.,]+)\s*CLP/i,
     /Forma de pago seleccionada:\s*[^.]*?\$\s*([\d.,]+)\s*CLP/i,
     /Forma de pago:\s*[^.]*?\$\s*([\d.,]+)\s*CLP/i,
   ];
@@ -9194,7 +9284,7 @@ function DriverFastSearchBadge({
               color: isCard ? "#1d4ed8" : "#805900",
             }}
           >
-            âš¡ RapaGo mÃ¡s veloz
+            ⚡ RapaGo más veloz
           </div>
           <div
             style={{
@@ -9204,7 +9294,7 @@ function DriverFastSearchBadge({
               lineHeight: 1.35,
             }}
           >
-            El pasajero agregÃ³ {formatClp(info.feeClp)} para priorizar esta solicitud.
+            El pasajero agregó {formatClp(info.feeClp)} para priorizar esta solicitud.
           </div>
         </div>
 
@@ -9239,8 +9329,8 @@ function DriverFastSearchBadge({
       >
         <span>
           {isCard
-            ? "âœ… Recargo pagado con Mercado Pago. No cobrar efectivo."
-            : "ðŸ’µ Cobrar el total actualizado en efectivo."}
+            ? "✅ Recargo pagado con Mercado Pago. No cobrar efectivo."
+            : "💵 Cobrar el total actualizado en efectivo."}
         </span>
         {totalClp != null && <strong>Total: {formatClp(totalClp)}</strong>}
       </div>
@@ -9260,7 +9350,7 @@ function getRideDisplayFareClp(ride: RideWithFarePayload): number | null {
   ];
 
   // El backend guarda estimatedFareClp con los $800 ya incluidos.
-  // Cuando la prioridad estÃ¡ activa, ese total real tiene preferencia sobre
+  // Cuando la prioridad está activa, ese total real tiene preferencia sobre
   // la tarifa base antigua escrita en notes.
   if (fastSearch.active) {
     for (const value of directCandidates) {
@@ -9330,7 +9420,7 @@ function getDriverNoShowState(ride: Partial<DriverRideData> & Record<string, unk
 } {
   // Regla RAPA GO:
   // El contador de 5 minutos parte cuando la pantalla entra a "Esperando pasajero".
-  // AsÃ­ no se habilita No show por timestamps antiguos de pruebas/localStorage.
+  // Así no se habilita No show por timestamps antiguos de pruebas/localStorage.
   return getDriverNoShowStateFromTimer(ride, nowMs);
 }
 
@@ -9528,7 +9618,7 @@ function readDriverPassengerIdentityMirror(
 
       if (matched) return matched;
     } catch {
-      // ContinÃºa con la siguiente fuente local.
+      // Continúa con la siguiente fuente local.
     }
   }
 
@@ -9667,11 +9757,11 @@ function buildDriverNoShowWhatsappUrl(ride: DriverRideData, feeClp: number): str
 
   const message = [
     "Hola, soy tu conductor de RAPA GO.",
-    "Ya lleguÃ© al punto de recogida indicado en la app.",
+    "Ya llegué al punto de recogida indicado en la app.",
     "La app registra 5 minutos de espera.",
-    `Si no te presentas, se podrÃ¡ marcar NO SHOW. El cargo referencial es 50% de la tarifa, con tope de $5.000: ${formatClp(feeClp)}.`,
-    "El administrador debe revisar y aprobar el cargo antes de sumarlo a un prÃ³ximo viaje.",
-    `Viaje: ${String(ride.originText ?? "Origen")} â†’ ${String(ride.destinationText ?? "Destino")}.`,
+    `Si no te presentas, se podrá marcar NO SHOW. El cargo referencial es 50% de la tarifa, con tope de $5.000: ${formatClp(feeClp)}.`,
+    "El administrador debe revisar y aprobar el cargo antes de sumarlo a un próximo viaje.",
+    `Viaje: ${String(ride.originText ?? "Origen")} → ${String(ride.destinationText ?? "Destino")}.`,
   ].join("\n");
 
   return `https://wa.me/${phone}?text=${encodeURIComponent(message)}`;
@@ -9683,11 +9773,11 @@ function buildDriverArrivedWhatsappUrl(ride: DriverRideData, feeClp: number): st
 
   const message = [
     "Hola, soy tu conductor de RAPA GO.",
-    "Ya lleguÃ© al punto de recogida indicado en la app.",
+    "Ya llegué al punto de recogida indicado en la app.",
     "Por favor sal ahora para iniciar el viaje.",
     `La app inicia una espera de 5 minutos. Si no te presentas, se puede marcar NO SHOW con un cargo referencial de 50% de la tarifa, tope $5.000: ${formatClp(feeClp)}.`,
-    "El cargo queda pendiente de revisiÃ³n administrativa.",
-    `Viaje: ${String(ride.originText ?? "Origen")} â†’ ${String(ride.destinationText ?? "Destino")}.`,
+    "El cargo queda pendiente de revisión administrativa.",
+    `Viaje: ${String(ride.originText ?? "Origen")} → ${String(ride.destinationText ?? "Destino")}.`,
   ].join("\n");
 
   return `https://wa.me/${phone}?text=${encodeURIComponent(message)}`;
@@ -9701,7 +9791,7 @@ function notifyPassengerDriverArrivedByAppAndWhatsapp(ride: DriverRideData): voi
     id: `driver-arrived-${rideId || Date.now()}`,
     rideId,
     type: "driver_arrived",
-    title: "Tu conductor llegÃ³",
+    title: "Tu conductor llegó",
     body: `Sal ahora al punto de recogida. Tienes 5 minutos antes de que pueda aplicar No show. Monto No show: ${formatClp(feeClp)}.`,
     createdAt: new Date().toISOString(),
     read: false,
@@ -9727,7 +9817,7 @@ function notifyPassengerDriverArrivedByAppAndWhatsapp(ride: DriverRideData): voi
       status: "driver_arrived",
       driverArrivedAt: record.driverArrivedAt ?? new Date().toISOString(),
       arrivedAt: record.arrivedAt ?? new Date().toISOString(),
-      passengerNotice: "Tu conductor llegÃ³ al punto. Sal ahora para evitar No show.",
+      passengerNotice: "Tu conductor llegó al punto. Sal ahora para evitar No show.",
       passengerNotification: notification.body,
       noShowCountdownStartedAt: record.noShowCountdownStartedAt ?? new Date().toISOString(),
     };
@@ -10044,9 +10134,9 @@ function saveDriverNoShowChargeForPassenger(
     createdAt: now,
     appliedRideId: null,
     appliedAt: null,
-    title: "No show pendiente de revisiÃ³n",
+    title: "No show pendiente de revisión",
     description:
-      `No show informado por conductor despuÃ©s de 5 minutos de espera. ` +
+      `No show informado por conductor después de 5 minutos de espera. ` +
       `Cargo referencial: ${RAPAGO_DRIVER_NO_SHOW_PERCENT}% de la tarifa aplicable, ` +
       `con tope de ${formatClp(RAPAGO_DRIVER_NO_SHOW_CAP_CLP)}. ` +
       `Monto por revisar: ${formatClp(feeClp)}. El administrador debe aprobar o rechazar.`,
@@ -10091,16 +10181,16 @@ function markPassengerRideNoShowCancelledFromDriver(
     cancelledAt,
     cancelledByRole: "driver_no_show",
     cancelledBy: "driver_no_show",
-    cancellationReason: `No show confirmado por conductor. Cargo ${formatClp(Number(charge.amountClp ?? 0))} pendiente para el prÃ³ximo viaje.`,
+    cancellationReason: `No show confirmado por conductor. Cargo ${formatClp(Number(charge.amountClp ?? 0))} pendiente para el próximo viaje.`,
     passengerCancellationFeeClp: Number(charge.amountClp ?? 0),
     passengerCancellationPolicyType: "no_show",
     passengerCancellationPolicyText:
-      "No show: 30% de la tarifa aplicable, con tope de $5.000, despuÃ©s de 5 minutos de espera. Requiere aprobaciÃ³n administrativa.",
+      "No show: 30% de la tarifa aplicable, con tope de $5.000, después de 5 minutos de espera. Requiere aprobación administrativa.",
     paymentPendingClp: Number(charge.amountClp ?? 0),
     passengerPendingChargeNextRide: false,
     passengerPendingChargeNotice:
       `Cargo referencial de ${formatClp(Number(charge.amountClp ?? 0))} por No Show. ` +
-      "Queda pendiente de revisiÃ³n del administrador y solo se sumarÃ¡ a un prÃ³ximo viaje si se aprueba.",
+      "Queda pendiente de revisión del administrador y solo se sumará a un próximo viaje si se aprueba.",
   };
 
   const keys = [
@@ -10158,9 +10248,9 @@ function getRidePaymentMethodLabel(notes: string | null | undefined): string {
 
 function getRidePaymentIcon(notes: string | null | undefined): string {
   const label = getRidePaymentMethodLabel(notes);
-  if (label === "Mercado Pago") return "ðŸ’³";
-  if (label === "Efectivo") return "ðŸ’µ";
-  return "âŒ›";
+  if (label === "Mercado Pago") return "💳";
+  if (label === "Efectivo") return "💵";
+  return "⌛";
 }
 
 
@@ -10255,8 +10345,8 @@ function appendDriverCashClosureNoteOnce(
   const current = String(notes ?? "").trim();
   const marker = "Cierre efectivo conductor:";
   const line = closure.decision === "overpaid"
-    ? `${marker} tarifa ${formatClp(closure.fareClp)}, cliente pagÃ³ ${formatClp(closure.paidClp)}, pagÃ³ demÃ¡s ${formatClp(closure.overpaidClp)}. RevisiÃ³n admin pendiente.`
-    : `${marker} cliente pagÃ³ justo ${formatClp(closure.fareClp)}.`;
+    ? `${marker} tarifa ${formatClp(closure.fareClp)}, cliente pagó ${formatClp(closure.paidClp)}, pagó demás ${formatClp(closure.overpaidClp)}. Revisión admin pendiente.`
+    : `${marker} cliente pagó justo ${formatClp(closure.fareClp)}.`;
 
   if (current.toLowerCase().includes(marker.toLowerCase())) return current;
   return `${current}${current ? " " : ""}${line}`.trim();
@@ -10302,8 +10392,8 @@ function buildDriverCashClosurePayload(
     closedByDriverAt: now,
     createdAt: now,
     notes: overpaidClp > 0
-      ? `Cliente pagÃ³ ${formatClp(paidClp)} en efectivo. Diferencia: ${formatClp(overpaidClp)}.`
-      : `Cliente pagÃ³ justo ${formatClp(fareClp)} en efectivo.`,
+      ? `Cliente pagó ${formatClp(paidClp)} en efectivo. Diferencia: ${formatClp(overpaidClp)}.`
+      : `Cliente pagó justo ${formatClp(fareClp)} en efectivo.`,
   };
 }
 
@@ -10409,7 +10499,7 @@ function persistDriverCashClosureForAdmin(
       const finalList = found ? next : [enrichedRide, ...parsed];
       localStorage.setItem(key, JSON.stringify(finalList.slice(0, 250)));
     } catch {
-      // No bloquea si un storage antiguo estÃ¡ corrupto.
+      // No bloquea si un storage antiguo está corrupto.
     }
   }
 
@@ -10564,7 +10654,7 @@ function DriverCashCloseRideOverlay({
               {getDriverRideRouteDisplayLabel(ride)}
             </div>
             <div style={{ marginTop: 7, fontSize: ".82rem", fontWeight: 900, color: "#333" }}>
-              Tarifa: {formatClp(fareClp)} Â· Pago: {isCash ? "Efectivo" : getRidePaymentMethodLabel(ride.notes)}
+              Tarifa: {formatClp(fareClp)} · Pago: {isCash ? "Efectivo" : getRidePaymentMethodLabel(ride.notes)}
             </div>
           </div>
 
@@ -10578,7 +10668,7 @@ function DriverCashCloseRideOverlay({
             }}
           >
             <div style={{ fontWeight: 950, marginBottom: 8 }}>
-              Â¿Llegaste bien al destino y el pasajero ya bajÃ³?
+              ¿Llegaste bien al destino y el pasajero ya bajó?
             </div>
             <IonButton
               expand="block"
@@ -10586,7 +10676,7 @@ function DriverCashCloseRideOverlay({
               onClick={() => setDestinationOk(true)}
               style={{ "--border-radius": "14px", fontWeight: 950 } as CSSProperties}
             >
-              SÃ­, lleguÃ© bien al destino
+              Sí, llegué bien al destino
             </IonButton>
           </div>
 
@@ -10606,7 +10696,7 @@ function DriverCashCloseRideOverlay({
                 <div>
                   <div style={{ fontWeight: 950 }}>Pago en efectivo</div>
                   <div style={{ fontSize: ".74rem", color: "#555", fontWeight: 800 }}>
-                    Esto se enviarÃ¡ al panel Admin para cuadratura.
+                    Esto se enviará al panel Admin para cuadratura.
                   </div>
                 </div>
               </div>
@@ -10622,7 +10712,7 @@ function DriverCashCloseRideOverlay({
                   }}
                   style={{ "--border-radius": "14px", fontWeight: 950 } as CSSProperties}
                 >
-                  PagÃ³ justo
+                  Pagó justo
                 </IonButton>
                 <IonButton
                   expand="block"
@@ -10631,7 +10721,7 @@ function DriverCashCloseRideOverlay({
                   onClick={() => setDecision("overpaid")}
                   style={{ "--border-radius": "14px", fontWeight: 950 } as CSSProperties}
                 >
-                  PagÃ³ demÃ¡s
+                  Pagó demás
                 </IonButton>
               </div>
 
@@ -10653,7 +10743,7 @@ function DriverCashCloseRideOverlay({
                     } as CSSProperties}
                   >
                     <IonLabel position="stacked" style={{ fontWeight: 950 }}>
-                      Â¿CuÃ¡nto pagÃ³ el cliente?
+                      ¿Cuánto pagó el cliente?
                     </IonLabel>
                     <IonInput
                       value={paidAmountText}
@@ -10685,11 +10775,11 @@ function DriverCashCloseRideOverlay({
                     }}
                   >
                     {paidAmountClp == null && "Ingresa el monto recibido."}
-                    {paidAmountClp != null && paidAmountClp <= fareClp && "Para 'pagÃ³ demÃ¡s', el monto recibido debe ser mayor a la tarifa."}
+                    {paidAmountClp != null && paidAmountClp <= fareClp && "Para 'pagó demás', el monto recibido debe ser mayor a la tarifa."}
                     {paidAmountClp != null && paidAmountClp > fareClp && (
                       <>
-                        Recibido: {formatClp(paidAmountClp)} Â· PagÃ³ demÃ¡s: {formatClp(overpaidClp)}
-                        <br />Admin recibirÃ¡ esta diferencia para revisiÃ³n/cuadratura.
+                        Recibido: {formatClp(paidAmountClp)} · Pagó demás: {formatClp(overpaidClp)}
+                        <br />Admin recibirá esta diferencia para revisión/cuadratura.
                       </>
                     )}
                   </div>
@@ -10711,7 +10801,7 @@ function DriverCashCloseRideOverlay({
                 marginBottom: 12,
               }}
             >
-              Este viaje no estÃ¡ marcado como efectivo. Se cerrarÃ¡ sin pedir monto recibido.
+              Este viaje no está marcado como efectivo. Se cerrará sin pedir monto recibido.
             </div>
           )}
 
@@ -10797,7 +10887,7 @@ function getRideTripTypeLabel(notes: string | null | undefined): string {
 }
 
 function getRideTripTypeEmoji(notes: string | null | undefined): string {
-  return getRideTripTypeLabel(notes) === "Ida y vuelta" ? "ðŸ”" : "âž¡ï¸";
+  return getRideTripTypeLabel(notes) === "Ida y vuelta" ? "🔁" : "➡️";
 }
 
 function normalizeRideVehicleCategory(
@@ -10840,10 +10930,10 @@ function extractVehicleCategoryFromNotes(
   if (!text.trim()) return null;
 
   const patterns = [
-    /Veh[iÃ­]culo(?: seleccionado| seleccionada)?\s*:\s*([^\n.]+)/i,
-    /Tipo de veh[iÃ­]culo(?: seleccionado| seleccionada)?\s*:\s*([^\n.]+)/i,
-    /Categor[iÃ­]a de veh[iÃ­]culo(?: seleccionado| seleccionada)?\s*:\s*([^\n.]+)/i,
-    /Categor[iÃ­]a veh[iÃ­]culo(?: seleccionado| seleccionada)?\s*:\s*([^\n.]+)/i,
+    /Veh[ií]culo(?: seleccionado| seleccionada)?\s*:\s*([^\n.]+)/i,
+    /Tipo de veh[ií]culo(?: seleccionado| seleccionada)?\s*:\s*([^\n.]+)/i,
+    /Categor[ií]a de veh[ií]culo(?: seleccionado| seleccionada)?\s*:\s*([^\n.]+)/i,
+    /Categor[ií]a veh[ií]culo(?: seleccionado| seleccionada)?\s*:\s*([^\n.]+)/i,
     /fareVehicleCategory\s*[:=]\s*([^\n.]+)/i,
     /vehicleCategory\s*[:=]\s*([^\n.]+)/i,
   ];
@@ -10872,9 +10962,9 @@ function getRideVehicleCategory(
 }
 
 function getRideVehicleLabel(category: RideVehicleCategoryForDriver): string {
-  if (category === "xl") return "VehÃ­culo XL";
+  if (category === "xl") return "Vehículo XL";
   if (category === "luggage") return "Extra maletas";
-  return "EstÃ¡ndar";
+  return "Estándar";
 }
 
 function getRideVehicleShortLabel(
@@ -10882,13 +10972,13 @@ function getRideVehicleShortLabel(
 ): string {
   if (category === "xl") return "XL";
   if (category === "luggage") return "Maletas";
-  return "EstÃ¡ndar";
+  return "Estándar";
 }
 
 function getRideVehicleEmoji(category: RideVehicleCategoryForDriver): string {
-  if (category === "xl") return "ðŸš™";
-  if (category === "luggage") return "ðŸ§³";
-  return "ðŸš—";
+  if (category === "xl") return "🚙";
+  if (category === "luggage") return "🧳";
+  return "🚗";
 }
 
 function getDriverEstimatedEarning(fareClp: number | null): number | null {
@@ -11018,7 +11108,7 @@ function saveDriverCompletedRideForEarnings(ride: DriverEarningsRide, user?: unk
     localStorage.setItem("rapago_driver_my_rides_v1", JSON.stringify(next.slice(0, 250)));
     window.dispatchEvent(new CustomEvent("rapago:driver-rides-updated", { detail: { ride: completedRide } }));
   } catch {
-    // No bloquea la finalizaciÃ³n si el navegador no permite guardar.
+    // No bloquea la finalización si el navegador no permite guardar.
   }
 }
 
@@ -11266,10 +11356,10 @@ function primeDriverAlertAudio(): void {
     const audioContext = getAlertAudioContext();
     void audioContext?.resume();
 
-    // Tono casi imperceptible para desbloquear audio despuÃ©s de tocar "Disponible".
+    // Tono casi imperceptible para desbloquear audio después de tocar "Disponible".
     playDriverAlertTone(audioContext, 0.02);
   } catch {
-    // El audio se intentarÃ¡ nuevamente cuando llegue una solicitud.
+    // El audio se intentará nuevamente cuando llegue una solicitud.
   }
 
   try {
@@ -11277,7 +11367,7 @@ function primeDriverAlertAudio(): void {
       navigator.vibrate([80, 40, 80]);
     }
   } catch {
-    // VibraciÃ³n opcional.
+    // Vibración opcional.
   }
 }
 
@@ -11327,7 +11417,7 @@ function showRideRequestSystemNotification(): void {
       };
 
       const notification = new Notification(
-        "ðŸš• Nueva solicitud RAPA GO",
+        "🚕 Nueva solicitud RAPA GO",
         options,
       );
 
@@ -11355,14 +11445,14 @@ function showRideRequestSystemNotification(): void {
 
     // Importante:
     // En celular el permiso debe pedirse idealmente al tocar "Disponible".
-    // Si el navegador aÃºn permite pedirlo aquÃ­, lo intentamos igual.
+    // Si el navegador aún permite pedirlo aquí, lo intentamos igual.
     if (Notification.permission === "default") {
       void Notification.requestPermission().then((permission) => {
         if (permission === "granted") show();
       });
     }
   } catch {
-    // La notificaciÃ³n del sistema es opcional.
+    // La notificación del sistema es opcional.
   }
 }
 
@@ -11374,7 +11464,7 @@ function startRideRequestAlertSound(message?: string): RideRequestAlertControlle
   try {
     void audioContext?.resume();
   } catch {
-    // Si el navegador bloquea audio, seguimos con vibraciÃ³n/notificaciÃ³n.
+    // Si el navegador bloquea audio, seguimos con vibración/notificación.
   }
 
   function playAlarmCycle(): void {
@@ -11384,7 +11474,7 @@ function startRideRequestAlertSound(message?: string): RideRequestAlertControlle
       void audioContext?.resume();
       playDriverAlertTone(audioContext, 0.42);
     } catch {
-      // Si el navegador bloquea audio, mantenemos vibraciÃ³n/voz/notificaciÃ³n.
+      // Si el navegador bloquea audio, mantenemos vibración/voz/notificación.
     }
 
     try {
@@ -11392,7 +11482,7 @@ function startRideRequestAlertSound(message?: string): RideRequestAlertControlle
         navigator.vibrate([700, 220, 700, 220, 700]);
       }
     } catch {
-      // VibraciÃ³n opcional.
+      // Vibración opcional.
     }
   }
 
@@ -11540,11 +11630,11 @@ function DriverGlobalRideAlert(): JSX.Element | null {
 
     try {
       // Global en toda la app del conductor:
-      // si ya va en un viaje activo, igual debe sonar y aparecer el prÃ³ximo servicio.
-      // Al aceptarlo se guarda como "PrÃ³ximo servicio aceptado", sin reemplazar el viaje actual.
+      // si ya va en un viaje activo, igual debe sonar y aparecer el próximo servicio.
+      // Al aceptarlo se guarda como "Próximo servicio aceptado", sin reemplazar el viaje actual.
 
       // PRIORIDAD ABSOLUTA: reservas agendadas asignadas por admin.
-      // Esto debe correr tambiÃ©n si el conductor estÃ¡ en /driver/requests?view=reservations.
+      // Esto debe correr también si el conductor está en /driver/requests?view=reservations.
       // Si lo bloqueamos por shouldRunGlobalAlert, la reserva queda aceptada pero nunca suena.
       // Aunque exista una alerta normal activa, al llegar la hora debe sonar
       // la alerta especial de reserva y NO la tarjeta "Nueva solicitud de viaje".
@@ -11571,7 +11661,7 @@ function DriverGlobalRideAlert(): JSX.Element | null {
       }
 
       // Si estamos en Solicitudes/Reservas, solo evitamos la alerta normal.
-      // La reserva especial de arriba sÃ­ debe sonar aunque estemos en esa pantalla.
+      // La reserva especial de arriba sí debe sonar aunque estemos en esa pantalla.
       if (!shouldRunGlobalAlert) return;
 
       // Si ya hay cualquier alerta abierta, no montamos otra encima.
@@ -11764,7 +11854,7 @@ function DriverGlobalRideAlert(): JSX.Element | null {
     ride: DriverScheduledReservationOffer,
   ): Promise<void> {
     if (!isDriverAvailable) {
-      setAlertError("EstÃ¡s en No disponible. Cambia a Disponible para aceptar esta reserva.");
+      setAlertError("Estás en No disponible. Cambia a Disponible para aceptar esta reserva.");
       return;
     }
 
@@ -11838,7 +11928,7 @@ function DriverGlobalRideAlert(): JSX.Element | null {
 
     if (!isDriverAvailable) {
       setAlertError(
-        "EstÃ¡s en No disponible. Cambia a Disponible para aceptar viajes.",
+        "Estás en No disponible. Cambia a Disponible para aceptar viajes.",
       );
       return;
     }
@@ -11905,15 +11995,15 @@ function DriverGlobalRideAlert(): JSX.Element | null {
         pushPassengerNotification({
           rideId: String(ride.id),
           type: "driver_assigned",
-          title: "Tu conductor aceptÃ³ tu viaje",
-          body: "El conductor estÃ¡ terminando un viaje anterior. Cuando cierre esa carrera iniciarÃ¡ tu servicio.",
+          title: "Tu conductor aceptó tu viaje",
+          body: "El conductor está terminando un viaje anterior. Cuando cierre esa carrera iniciará tu servicio.",
         });
 
         stopRideAlert(true);
         setAccepting(false);
         setAlertError(null);
 
-        // No cambiamos de pantalla: la navegaciÃ³n actual sigue intacta.
+        // No cambiamos de pantalla: la navegación actual sigue intacta.
         window.dispatchEvent(new CustomEvent(RAPAGO_DRIVER_NEXT_RIDES_EVENT, { detail: { ride: acceptedForDriver } }));
         window.dispatchEvent(new CustomEvent("rapago:driver-rides-updated", { detail: { ride: acceptedForDriver } }));
         return;
@@ -11945,7 +12035,7 @@ function DriverGlobalRideAlert(): JSX.Element | null {
             }),
           );
         } catch {
-          // No bloquea la aceptaciÃ³n.
+          // No bloquea la aceptación.
         }
       }
 
@@ -12058,7 +12148,7 @@ function DriverGlobalRideAlert(): JSX.Element | null {
                   fontSize: 26,
                 }}
               >
-                ðŸ“…
+                📅
               </div>
 
               <div>
@@ -12066,7 +12156,7 @@ function DriverGlobalRideAlert(): JSX.Element | null {
                   Viaje agendado listo
                 </div>
                 <div style={{ fontSize: ".78rem", opacity: 0.86, marginTop: 3 }}>
-                  Tenemos agendado tu viaje Â· {getScheduledReservationCountdownText(ride as unknown as DriverAcceptedRideBridgeRecord)}
+                  Tenemos agendado tu viaje · {getScheduledReservationCountdownText(ride as unknown as DriverAcceptedRideBridgeRecord)}
                 </div>
               </div>
             </div>
@@ -12084,7 +12174,7 @@ function DriverGlobalRideAlert(): JSX.Element | null {
           <div style={{ padding: "18px" }}>
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 14 }}>
               <IonChip color="warning" style={{ fontWeight: 950 }}>
-                ðŸ“… Reserva asignada
+                📅 Reserva asignada
               </IonChip>
               <IonChip color="success" style={{ fontWeight: 950 }}>
                 {vehicleEmoji} {vehicleLabel}
@@ -12172,7 +12262,7 @@ function DriverGlobalRideAlert(): JSX.Element | null {
                 onClick={() => dismissScheduledReservationAlert(ride)}
                 style={{ "--border-radius": "17px", height: "54px", fontWeight: 950 } as CSSProperties}
               >
-                Ver despuÃ©s
+                Ver después
               </IonButton>
 
               <IonButton
@@ -12283,8 +12373,8 @@ function DriverGlobalRideAlert(): JSX.Element | null {
               </div>
               <div style={{ fontSize: ".78rem", opacity: 0.84, marginTop: 3 }}>
                 {isNextServiceAlert
-                  ? `Sonando por ${formatRideAlertSeconds(secondsLeft)} Â· queda como prÃ³ximo servicio`
-                  : `Sonando por ${formatRideAlertSeconds(secondsLeft)} Â· disponible ahora`}
+                  ? `Sonando por ${formatRideAlertSeconds(secondsLeft)} · queda como próximo servicio`
+                  : `Sonando por ${formatRideAlertSeconds(secondsLeft)} · disponible ahora`}
               </div>
             </div>
           </div>
@@ -12454,7 +12544,7 @@ function DriverGlobalRideAlert(): JSX.Element | null {
                 } as CSSProperties
               }
             >
-              {accepting ? <IonSpinner name="dots" /> : isNextServiceAlert ? "Aceptar prÃ³ximo" : "Aceptar viaje"}
+              {accepting ? <IonSpinner name="dots" /> : isNextServiceAlert ? "Aceptar próximo" : "Aceptar viaje"}
             </IonButton>
           </div>
 
@@ -12500,6 +12590,8 @@ function AssignedRidesPage(): JSX.Element {
   const [assignedRides, setAssignedRides] = useState<DriverRideData[]>([]);
   const [loading, setLoading] = useState(true);
   const [acceptingId, setAcceptingId] = useState<string | null>(null);
+  const [pendingReservationReject, setPendingReservationReject] =
+    useState<DriverScheduledReservationOffer | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [driverLocation, setDriverLocation] = useState<{
     lat: number;
@@ -12625,7 +12717,7 @@ function AssignedRidesPage(): JSX.Element {
         prev.filter((ride) => !driverRideMatchesPassengerCancelledRecord(ride as unknown as Record<string, unknown>, cancelledRide)),
       );
 
-      setError(`El pasajero cancelÃ³ el viaje. Motivo: ${cancellationReason}`);
+      setError(`El pasajero canceló el viaje. Motivo: ${cancellationReason}`);
 
       try {
         if ("vibrate" in navigator) navigator.vibrate?.([220, 90, 220]);
@@ -12888,7 +12980,7 @@ La solicitud fue retirada de tu pantalla. No debes continuar hacia la recogida.`
 
     if (nextRide && activeRide) {
       // Tipo Uber: si el conductor va en un viaje, la nueva solicitud aparece
-      // encima del mapa/trayecto como "prÃ³ximo servicio" y la alerta se apaga al aceptar/rechazar.
+      // encima del mapa/trayecto como "próximo servicio" y la alerta se apaga al aceptar/rechazar.
       startRideRequestAlert(nextRide);
       return;
     }
@@ -12946,7 +13038,7 @@ La solicitud fue retirada de tu pantalla. No debes continuar hacia la recogida.`
   useEffect(() => {
     if (!navigator.geolocation) {
       setLocationError(
-        "Este dispositivo no permite GPS. No puedes tomar viajes reales sin ubicaciÃ³n.",
+        "Este dispositivo no permite GPS. No puedes tomar viajes reales sin ubicación.",
       );
       return;
     }
@@ -12995,7 +13087,7 @@ La solicitud fue retirada de tu pantalla. No debes continuar hacia la recogida.`
 
         // Cuando hay viaje activo NO actualizamos estado en cada GPS,
         // porque eso remonta la pantalla y provoca el bucle visual del mapa.
-        // Igual publicamos arriba la ubicaciÃ³n real para que el pasajero vea la flecha viva.
+        // Igual publicamos arriba la ubicación real para que el pasajero vea la flecha viva.
         if (activeRide) {
           return;
         }
@@ -13005,7 +13097,7 @@ La solicitud fue retirada de tu pantalla. No debes continuar hacia la recogida.`
       () => {
         setDriverLocation(null);
         setLocationError(
-          "Activa el permiso de ubicaciÃ³n para tomar viajes reales.",
+          "Activa el permiso de ubicación para tomar viajes reales.",
         );
       },
       {
@@ -13089,13 +13181,13 @@ La solicitud fue retirada de tu pantalla. No debes continuar hacia la recogida.`
 
         setPassengerCancelNotice({
           route,
-          message: `El pasajero cancelÃ³ la reserva.
+          message: `El pasajero canceló la reserva.
 
 Motivo informado: ${reason}
 
-La reserva fue retirada. No continÃºes hacia la recogida.`,
+La reserva fue retirada. No continúes hacia la recogida.`,
         });
-        setError(`El pasajero cancelÃ³ la reserva. Motivo: ${reason}`);
+        setError(`El pasajero canceló la reserva. Motivo: ${reason}`);
 
         try {
           if ("vibrate" in navigator) navigator.vibrate?.([240, 90, 240]);
@@ -13104,7 +13196,7 @@ La reserva fue retirada. No continÃºes hacia la recogida.`,
         }
       }
 
-      // Solo las reservas que el conductor iniciÃ³ desde la alerta especial
+      // Solo las reservas que el conductor inició desde la alerta especial
       // se convierten en mapa/ruta dentro de Solicitudes.
       const activeLocalScheduledRides = readActiveScheduledReservationRidesForDriver(session?.user);
       const activeLocalRideMirrors = readActiveDriverLocalRideMirrorsForDriver(session?.user);
@@ -13121,7 +13213,7 @@ La reserva fue retirada. No continÃºes hacia la recogida.`,
 
         if (!isActiveStatus) return false;
 
-        // Las reservas agendadas solo se muestran como ruta si el conductor tocÃ³
+        // Las reservas agendadas solo se muestran como ruta si el conductor tocó
         // "Iniciar viaje" en la alerta especial.
         if (driverRideLooksLikeScheduledReservation(ride as unknown as Record<string, unknown>)) {
           return driverScheduledReservationNavigationStarted(ride as unknown as Record<string, unknown>);
@@ -13141,7 +13233,7 @@ La reserva fue retirada. No continÃºes hacia la recogida.`,
         setReservationOffers([]);
         setConfirmedReservationOffers([]);
         setAvailableRides([]);
-        setError("Debes elegir un vehÃ­culo activo en tu perfil para ver solicitudes o reservas.");
+        setError("Debes elegir un vehículo activo en tu perfil para ver solicitudes o reservas.");
         return;
       }
 
@@ -13206,7 +13298,7 @@ La reserva fue retirada. No continÃºes hacia la recogida.`,
 
       if (isDriverAvailable && !readSelectedDriverVehicleId(session?.user)) {
         setAvailableRides([]);
-        setError("Debes elegir un vehÃ­culo activo en tu perfil para ver solicitudes o reservas.");
+        setError("Debes elegir un vehículo activo en tu perfil para ver solicitudes o reservas.");
         return;
       }
 
@@ -13227,7 +13319,7 @@ La reserva fue retirada. No continÃºes hacia la recogida.`,
         );
       }
       if (recoveredActiveRides.length > 0) {
-        // El viaje ya estÃ¡ aceptado y el mapa puede seguir funcionando aunque
+        // El viaje ya está aceptado y el mapa puede seguir funcionando aunque
         // haya fallado la carga de nuevas solicitudes disponibles.
         setError(null);
       } else {
@@ -13290,13 +13382,13 @@ La reserva fue retirada. No continÃºes hacia la recogida.`,
 
     if (!isDriverAvailable) {
       setError(
-        "EstÃ¡s en modo no disponible. Cambia a disponible para aceptar viajes.",
+        "Estás en modo no disponible. Cambia a disponible para aceptar viajes.",
       );
       return;
     }
 
     if (!driverLocation) {
-      setError("Activa tu ubicaciÃ³n real para tomar este viaje.");
+      setError("Activa tu ubicación real para tomar este viaje.");
       return;
     }
 
@@ -13322,7 +13414,7 @@ La reserva fue retirada. No continÃºes hacia la recogida.`,
       if (activeRide) {
         setAvailableRides((prev) => removeHandledRideFromAvailableList(prev, activeAccepted as unknown as Record<string, unknown>));
         setRideAlert(null);
-        setError("PrÃ³ximo servicio aceptado. Se activarÃ¡ cuando cierres el viaje actual.");
+        setError("Próximo servicio aceptado. Se activará cuando cierres el viaje actual.");
         return;
       }
 
@@ -13351,7 +13443,7 @@ La reserva fue retirada. No continÃºes hacia la recogida.`,
           }),
         );
       } catch {
-        // No bloquea la aceptaciÃ³n del viaje.
+        // No bloquea la aceptación del viaje.
       }
 
       removeRequeuedRide(rideId);
@@ -13395,7 +13487,7 @@ La reserva fue retirada. No continÃºes hacia la recogida.`,
           removeRequeuedRide(rideId);
           setAvailableRides((prev) => removeHandledRideFromAvailableList(prev, activeAcceptedLocal as unknown as Record<string, unknown>));
           setRideAlert(null);
-          setError("PrÃ³ximo servicio aceptado. Se activarÃ¡ cuando cierres el viaje actual.");
+          setError("Próximo servicio aceptado. Se activará cuando cierres el viaje actual.");
           return;
         }
 
@@ -13424,7 +13516,7 @@ La reserva fue retirada. No continÃºes hacia la recogida.`,
             }),
           );
         } catch {
-          // No bloquea la aceptaciÃ³n local.
+          // No bloquea la aceptación local.
         }
 
         removeRequeuedRide(rideId);
@@ -13467,7 +13559,7 @@ La reserva fue retirada. No continÃºes hacia la recogida.`,
        * Backend exige este orden:
        * accepted -> driver_en_route -> driver_arrived
        *
-       * En la pantalla tipo Uber mostramos directamente "LleguÃ©",
+       * En la pantalla tipo Uber mostramos directamente "Llegué",
        * pero por dentro hacemos los dos pasos para evitar el 409.
        */
       if (ride.status === "accepted") {
@@ -13484,8 +13576,8 @@ La reserva fue retirada. No continÃºes hacia la recogida.`,
           driverArrivedAt: arrivedAt,
           arrivedAt,
           noShowCountdownStartedAt: arrivedAt,
-          passengerNotice: "Tu conductor llegÃ³ al punto. Sal ahora para evitar No show.",
-          passengerNotification: "Tu conductor llegÃ³ al punto. Tienes 5 minutos para presentarte antes de No show.",
+          passengerNotice: "Tu conductor llegó al punto. Sal ahora para evitar No show.",
+          passengerNotification: "Tu conductor llegó al punto. Tienes 5 minutos para presentarte antes de No show.",
         },
         session?.user,
       );
@@ -13575,7 +13667,7 @@ La reserva fue retirada. No continÃºes hacia la recogida.`,
           session?.user,
         );
         setAssignedRides([nextActive]);
-        setError("Viaje cerrado correctamente. Se activÃ³ tu prÃ³ximo servicio aceptado.");
+        setError("Viaje cerrado correctamente. Se activó tu próximo servicio aceptado.");
       } else {
         setAssignedRides((prev) => prev.filter((item) => item.id !== rideId));
         setError(null);
@@ -13661,7 +13753,7 @@ La reserva fue retirada. No continÃºes hacia la recogida.`,
       try {
         await ridesService.cancelAcceptedRide(session.accessToken, rideId);
       } catch {
-        // Aunque el backend responda 404/500, la app ya limpiÃ³ el viaje activo localmente.
+        // Aunque el backend responda 404/500, la app ya limpió el viaje activo localmente.
       }
     }
 
@@ -13745,7 +13837,7 @@ La reserva fue retirada. No continÃºes hacia la recogida.`,
           );
         } catch (backendError) {
           console.error(
-            "[RAPA GO] No Show local cerrado, pero backend fallÃ³",
+            "[RAPA GO] No Show local cerrado, pero backend falló",
             backendError,
           );
         }
@@ -13796,7 +13888,7 @@ La reserva fue retirada. No continÃºes hacia la recogida.`,
 
   async function handleStartReadyScheduledReservation(ride: DriverScheduledReservationOffer): Promise<void> {
     if (!isDriverAvailable) {
-      setError("EstÃ¡s no disponible. Activa disponible para iniciar esta reserva.");
+      setError("Estás no disponible. Activa disponible para iniciar esta reserva.");
       return;
     }
 
@@ -13868,10 +13960,10 @@ La reserva fue retirada. No continÃºes hacia la recogida.`,
   }
 
   async function handleAcceptScheduledReservation(ride: DriverScheduledReservationOffer): Promise<void> {
-    // Las reservas asignadas por admin se aceptan localmente aunque la sesiÃ³n
+    // Las reservas asignadas por admin se aceptan localmente aunque la sesión
     // de desarrollo no traiga accessToken. No debe quedarse silencioso.
     if (!isDriverAvailable) {
-      setError("EstÃ¡s no disponible. Activa disponible para confirmar esta reserva.");
+      setError("Estás no disponible. Activa disponible para confirmar esta reserva.");
       return;
     }
 
@@ -13884,8 +13976,8 @@ La reserva fue retirada. No continÃºes hacia la recogida.`,
 
       setReservationOffers((prev) => prev.filter((item) => !isSameDriverAcceptedRide(item, ride)));
 
-      // Si la reserva ya estÃ¡ en hora de activaciÃ³n, al aceptar debe abrirse la ruta
-      // de inmediato. Si todavÃ­a falta tiempo, queda en "Reservas aceptadas" esperando
+      // Si la reserva ya está en hora de activación, al aceptar debe abrirse la ruta
+      // de inmediato. Si todavía falta tiempo, queda en "Reservas aceptadas" esperando
       // el aviso especial de salida.
       if (driverScheduledReservationIsActiveNow(acceptedRecord)) {
         setConfirmedReservationOffers(readConfirmedWaitingScheduledReservationsForDriver(session?.user));
@@ -13924,7 +14016,7 @@ La reserva fue retirada. No continÃºes hacia la recogida.`,
         rideId: String(ride.id),
         type: "scheduled_driver_assigned",
         title: "Tu conductor fue asignado",
-        body: "El conductor confirmÃ³ tu reserva. Ya puedes ver sus datos, vehÃ­culo y contacto en Mis Viajes.",
+        body: "El conductor confirmó tu reserva. Ya puedes ver sus datos, vehículo y contacto en Mis Viajes.",
       });
 
       window.setTimeout(() => void loadRides(), 300);
@@ -13935,15 +14027,51 @@ La reserva fue retirada. No continÃºes hacia la recogida.`,
     }
   }
 
-  async function handleRejectScheduledReservation(ride: DriverScheduledReservationOffer): Promise<void> {
+  async function handleRejectScheduledReservation(
+    ride: DriverScheduledReservationOffer,
+    rejectionReason: string,
+  ): Promise<void> {
+    const cleanReason = sanitizeDriverTripSafetyText(rejectionReason, 260);
+
+    if (!cleanReason) {
+      setError("Debes escribir el motivo del rechazo.");
+      return;
+    }
+
+    setPendingReservationReject(null);
     setAcceptingId(String(ride.id));
     setError(null);
 
     try {
-      rejectDriverScheduledReservationLocally(ride, session?.user);
-      setReservationOffers((prev) => prev.filter((item) => !isSameDriverAcceptedRide(item, ride)));
-      setConfirmedReservationOffers((prev) => prev.filter((item) => !isSameDriverAcceptedRide(item, ride)));
-      window.setTimeout(() => void loadRides(), 300);
+      const nextAssignment = rejectDriverScheduledReservationLocally(
+        ride,
+        session?.user,
+        cleanReason,
+      );
+
+      alertedScheduledReservationKeysRef.current.add(
+        getScheduledReservationAlertKey(
+          ride as unknown as DriverAcceptedRideBridgeRecord,
+        ),
+      );
+      setReservationOffers((prev) =>
+        prev.filter((item) => !isSameDriverAcceptedRide(item, ride)),
+      );
+      setConfirmedReservationOffers((prev) =>
+        prev.filter((item) => !isSameDriverAcceptedRide(item, ride)),
+      );
+
+      window.dispatchEvent(
+        new CustomEvent("rapago:admin-scheduled-rides-updated", {
+          detail: {
+            ride: nextAssignment,
+            driverRejected: true,
+            rejectionReason: cleanReason,
+          },
+        }),
+      );
+
+      window.setTimeout(() => void loadRides(), 500);
     } catch (err) {
       setError(err instanceof Error ? err.message : "No se pudo rechazar la reserva.");
     } finally {
@@ -14035,7 +14163,7 @@ La reserva fue retirada. No continÃºes hacia la recogida.`,
                 <div
                   style={{ fontSize: ".78rem", opacity: 0.82, marginTop: 3 }}
                 >
-                  {activeRide ? "Aparece sobre tu trayecto actual Â· " : "Alerta sonora activa por "}
+                  {activeRide ? "Aparece sobre tu trayecto actual · " : "Alerta sonora activa por "}
                   {formatRideAlertSeconds(rideAlertSecondsLeft)}
                 </div>
               </div>
@@ -14220,7 +14348,7 @@ La reserva fue retirada. No continÃºes hacia la recogida.`,
                 {acceptingId === ride.id ? (
                   <IonSpinner name="dots" />
                 ) : driverLocation ? (
-                  activeRide ? "Aceptar prÃ³ximo" : "Aceptar viaje"
+                  activeRide ? "Aceptar próximo" : "Aceptar viaje"
                 ) : (
                   "Activa GPS"
                 )}
@@ -14290,7 +14418,7 @@ La reserva fue retirada. No continÃºes hacia la recogida.`,
                   marginBottom: 10,
                 }}
               >
-                ðŸ“… Viaje agendado asignado
+                📅 Viaje agendado asignado
               </div>
 
               <div style={{ fontWeight: 950, fontSize: "1.12rem", lineHeight: 1.15 }}>
@@ -14305,7 +14433,7 @@ La reserva fue retirada. No continÃºes hacia la recogida.`,
                   lineHeight: 1.35,
                 }}
               >
-                "Tenemos agendado tu viaje. La reserva queda congelada aquÃ­ y solo sonarÃ¡ cuando corresponda ir a buscar al usuario."
+                "Tenemos agendado tu viaje. La reserva queda congelada aquí y solo sonará cuando corresponda ir a buscar al usuario."
               </div>
             </div>
 
@@ -14401,7 +14529,7 @@ La reserva fue retirada. No continÃºes hacia la recogida.`,
                     fontWeight: 950,
                   } as CSSProperties
                 }
-                onClick={() => void handleRejectScheduledReservation(ride)}
+                onClick={() => setPendingReservationReject(ride)}
               >
                 Rechazar
               </IonButton>
@@ -14462,7 +14590,7 @@ La reserva fue retirada. No continÃºes hacia la recogida.`,
                 {getDriverRideRouteDisplayLabel(ride)}
               </div>
               <div style={{ marginTop: 7, fontSize: ".82rem", fontWeight: 850, color: "rgba(17,17,17,.74)", lineHeight: 1.35 }}>
-                Ya aceptaste esta reserva. Espera la hora indicada: te llegarÃ¡ una notificaciÃ³n para iniciar el viaje y se abrirÃ¡ la ruta.
+                Ya aceptaste esta reserva. Espera la hora indicada: te llegará una notificación para iniciar el viaje y se abrirá la ruta.
               </div>
             </div>
             <div style={{ minWidth: 82, textAlign: "right", fontWeight: 950 }}>
@@ -14488,7 +14616,7 @@ La reserva fue retirada. No continÃºes hacia la recogida.`,
           {readyToStart ? (
             <div style={{ marginTop: 12 }}>
               <div style={{ marginBottom: 10, borderRadius: 16, background: "rgba(34,197,94,.16)", border: "1px solid rgba(34,197,94,.36)", padding: "10px 12px", fontWeight: 950, fontSize: ".82rem", lineHeight: 1.35, color: "#0F8A3A" }}>
-                âœ… Reserva lista. Ya puedes iniciar la ruta hacia el pasajero.
+                ✅ Reserva lista. Ya puedes iniciar la ruta hacia el pasajero.
               </div>
               <IonButton
                 expand="block"
@@ -14502,7 +14630,7 @@ La reserva fue retirada. No continÃºes hacia la recogida.`,
             </div>
           ) : (
             <div style={{ marginTop: 12, borderRadius: 16, background: "rgba(34,197,94,.14)", border: "1px solid rgba(34,197,94,.30)", padding: "10px 12px", fontWeight: 900, fontSize: ".80rem", lineHeight: 1.35 }}>
-              â± {countdownText}. Cuando llegue el momento, te avisaremos: â€œTenemos agendado tu viaje, ve a buscar al usuarioâ€.
+              ⏱ {countdownText}. Cuando llegue el momento, te avisaremos: “Tenemos agendado tu viaje, ve a buscar al usuario”.
             </div>
           )}
         </IonCardContent>
@@ -14803,7 +14931,7 @@ La reserva fue retirada. No continÃºes hacia la recogida.`,
                   fontWeight: 800,
                 }}
               >
-                {paymentIcon} MÃ©todo de pago: {paymentLabel}
+                {paymentIcon} Método de pago: {paymentLabel}
               </div>
               <div
                 style={{
@@ -14813,7 +14941,7 @@ La reserva fue retirada. No continÃºes hacia la recogida.`,
                   fontWeight: 900,
                 }}
               >
-                {rideVehicleEmoji} VehÃ­culo: {rideVehicleLabel}
+                {rideVehicleEmoji} Vehículo: {rideVehicleLabel}
               </div>
               <div
                 style={{
@@ -14891,7 +15019,7 @@ La reserva fue retirada. No continÃºes hacia la recogida.`,
               ) : !isDriverAvailable ? (
                 "No disponible"
               ) : driverLocation ? (
-                activeRide ? "Aceptar prÃ³ximo" : "Aceptar viaje"
+                activeRide ? "Aceptar próximo" : "Aceptar viaje"
               ) : (
                 "Activa GPS"
               )}
@@ -14905,7 +15033,7 @@ La reserva fue retirada. No continÃºes hacia la recogida.`,
   function handleReportDriverAccidentFromHome(ride: DriverRideData): void {
     saveDriverAccidentTripSafetyReport(ride, session?.user);
     openDriverAccidentWhatsApp(ride, session?.user);
-    setError("Reporte de accidente guardado. Se abriÃ³ WhatsApp soporte.");
+    setError("Reporte de accidente guardado. Se abrió WhatsApp soporte.");
   }
 
   function ActiveRideScreen({ ride }: { ride: DriverRideData }): JSX.Element {
@@ -14924,9 +15052,9 @@ La reserva fue retirada. No continÃºes hacia la recogida.`,
           ? "Navegando al destino"
           : "Navegando al punto de recogida";
 
-    // El mapa debe quedar visible: los botones de acciÃ³n van debajo,
+    // El mapa debe quedar visible: los botones de acción van debajo,
     // no encima del mapa. En celular se reduce la altura para que
-    // "LleguÃ© al punto / Cancelar" quede siempre a la vista.
+    // "Llegué al punto / Cancelar" quede siempre a la vista.
     const activeMapHeight =
       typeof window !== "undefined"
         ? Math.max(310, Math.min(430, window.innerHeight - 280))
@@ -14967,7 +15095,7 @@ La reserva fue retirada. No continÃºes hacia la recogida.`,
           />
         </div>
 
-        {/* Panel de acciones separado del mapa: visible pero sin tapar la navegaciÃ³n */}
+        {/* Panel de acciones separado del mapa: visible pero sin tapar la navegación */}
         <div style={{ padding: "12px 14px 18px", flex: "0 0 auto" }}>
           <div
             style={{
@@ -15036,12 +15164,12 @@ La reserva fue retirada. No continÃºes hacia la recogida.`,
                   lineHeight: 1.35,
                 }}
               >
-                <div style={{ fontSize: ".80rem", opacity: .86 }}>PrÃ³ximo servicio aceptado</div>
+                <div style={{ fontSize: ".80rem", opacity: .86 }}>Próximo servicio aceptado</div>
                 <div style={{ fontSize: ".92rem", marginTop: 2 }}>
-                  {nextQueuedRide.originText} â†’ {nextQueuedRide.destinationText}
+                  {nextQueuedRide.originText} → {nextQueuedRide.destinationText}
                 </div>
                 <div style={{ fontSize: ".74rem", opacity: .78, marginTop: 3 }}>
-                  Se activarÃ¡ automÃ¡ticamente cuando confirmes que llegaste al destino actual.
+                  Se activará automáticamente cuando confirmes que llegaste al destino actual.
                 </div>
               </div>
             )}
@@ -15061,7 +15189,7 @@ La reserva fue retirada. No continÃºes hacia la recogida.`,
               >
                 <div style={{ fontSize: ".78rem", opacity: .86 }}>Nuevo servicio para continuar</div>
                 <div style={{ fontSize: ".92rem", marginTop: 2 }}>
-                  {nextOfferWhileActive.originText} â†’ {nextOfferWhileActive.destinationText}
+                  {nextOfferWhileActive.originText} → {nextOfferWhileActive.destinationText}
                 </div>
                 <div style={{ display: "grid", gridTemplateColumns: "0.85fr 1.15fr", gap: 8, marginTop: 9 }}>
                   <IonButton
@@ -15081,7 +15209,7 @@ La reserva fue retirada. No continÃºes hacia la recogida.`,
                     onClick={() => void handleAcceptRide(nextOfferWhileActive.id)}
                     style={{ "--border-radius": "999px", "--color": "#111", fontWeight: 950 } as CSSProperties}
                   >
-                    {acceptingId === nextOfferWhileActive.id ? <IonSpinner name="dots" /> : "Aceptar prÃ³ximo"}
+                    {acceptingId === nextOfferWhileActive.id ? <IonSpinner name="dots" /> : "Aceptar próximo"}
                   </IonButton>
                 </div>
               </div>
@@ -15198,7 +15326,7 @@ La reserva fue retirada. No continÃºes hacia la recogida.`,
                   >
                     {driverNoShowState.allowed
                       ? "Ya puedes marcar No show si el pasajero no aparece."
-                      : "El botÃ³n se habilita automÃ¡ticamente al cumplir 5 minutos."}
+                      : "El botón se habilita automáticamente al cumplir 5 minutos."}
                   </div>
                 </div>
 
@@ -15237,7 +15365,7 @@ La reserva fue retirada. No continÃºes hacia la recogida.`,
                     }
                     onClick={() => void handleDriverNoShowRide(ride)}
                   >
-                    {driverNoShowState.allowed ? `No show Â· Total ${formatClp(driverNoShowState.feeClp)}` : `Espera ${formatDriverNoShowRemaining(driverNoShowState.remainingMs)}`}
+                    {driverNoShowState.allowed ? `No show · Total ${formatClp(driverNoShowState.feeClp)}` : `Espera ${formatDriverNoShowRemaining(driverNoShowState.remainingMs)}`}
                   </IonButton>
 
                   <IonButton
@@ -15375,7 +15503,7 @@ La reserva fue retirada. No continÃºes hacia la recogida.`,
                   }
                   onClick={() => void handleArrivedSmart(ride)}
                 >
-                  LleguÃ© al punto
+                  Llegué al punto
                 </IonButton>
 
                 <IonButton
@@ -15441,10 +15569,10 @@ La reserva fue retirada. No continÃºes hacia la recogida.`,
                 }}
               >
                 {showOnlyReservations
-                  ? "Acepta o rechaza solo las reservas que te asignÃ³ el administrador."
+                  ? "Acepta o rechaza solo las reservas que te asignó el administrador."
                   : isDriverAvailable
                     ? "Acepta solo cuando puedas iniciar la ruta."
-                    : "EstÃ¡s no disponible. No se cargarÃ¡n solicitudes nuevas."}
+                    : "Estás no disponible. No se cargarán solicitudes nuevas."}
               </div>
             </div>
           </IonToolbar>
@@ -15513,7 +15641,7 @@ La reserva fue retirada. No continÃºes hacia la recogida.`,
                     fontSize: ".82rem",
                   }}
                 >
-                  ðŸ“ {locationError}
+                  📍 {locationError}
                 </IonCardContent>
               </IonCard>
             )}
@@ -15533,7 +15661,7 @@ La reserva fue retirada. No continÃºes hacia la recogida.`,
                   style={{ padding: "18px", textAlign: "center" }}
                 >
                   <div style={{ fontSize: "1.05rem", fontWeight: 950 }}>
-                    EstÃ¡s no disponible
+                    Estás no disponible
                   </div>
                   <div
                     style={{
@@ -15544,7 +15672,7 @@ La reserva fue retirada. No continÃºes hacia la recogida.`,
                       lineHeight: 1.4,
                     }}
                   >
-                    No te aparecerÃ¡n solicitudes de viaje hasta que cambies tu
+                    No te aparecerán solicitudes de viaje hasta que cambies tu
                     estado a disponible desde el inicio del conductor.
                   </div>
                 </IonCardContent>
@@ -15692,14 +15820,14 @@ La reserva fue retirada. No continÃºes hacia la recogida.`,
                         fontSize: "1.35rem",
                       }}
                     >
-                      ðŸ“…
+                      📅
                     </div>
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ fontWeight: 950, fontSize: "1.08rem" }}>
                         Viaje agendado listo
                       </div>
                       <div style={{ marginTop: 2, fontSize: ".75rem", opacity: .9 }}>
-                        Sonando por 0:{String(scheduledReservationAlertSecondsLeft).padStart(2, "0")} Â· ve a buscar al pasajero
+                        Sonando por 0:{String(scheduledReservationAlertSecondsLeft).padStart(2, "0")} · ve a buscar al pasajero
                       </div>
                     </div>
                     <button
@@ -15714,7 +15842,7 @@ La reserva fue retirada. No continÃºes hacia la recogida.`,
                       }}
                       aria-label="Cerrar alerta"
                     >
-                      Ã—
+                      ×
                     </button>
                   </div>
 
@@ -15727,9 +15855,9 @@ La reserva fue retirada. No continÃºes hacia la recogida.`,
                         marginBottom: 14,
                       }}
                     >
-                      <span style={{ border: "1px solid rgba(210,164,58,.45)", borderRadius: 999, padding: "7px 10px", fontWeight: 950 }}>ðŸ“… Reserva lista</span>
-                      <span style={{ border: "1px solid rgba(34,197,94,.35)", borderRadius: 999, padding: "7px 10px", fontWeight: 950 }}>ðŸš• EstÃ¡ndar</span>
-                      <span style={{ border: "1px solid rgba(210,164,58,.45)", borderRadius: 999, padding: "7px 10px", fontWeight: 950 }}>ðŸ’µ Efectivo</span>
+                      <span style={{ border: "1px solid rgba(210,164,58,.45)", borderRadius: 999, padding: "7px 10px", fontWeight: 950 }}>📅 Reserva lista</span>
+                      <span style={{ border: "1px solid rgba(34,197,94,.35)", borderRadius: 999, padding: "7px 10px", fontWeight: 950 }}>🚕 Estándar</span>
+                      <span style={{ border: "1px solid rgba(210,164,58,.45)", borderRadius: 999, padding: "7px 10px", fontWeight: 950 }}>💵 Efectivo</span>
                     </div>
 
                     <div
@@ -15784,7 +15912,7 @@ La reserva fue retirada. No continÃºes hacia la recogida.`,
                         onClick={() => stopScheduledReservationReadyAlert(true)}
                         style={{ "--border-radius": "14px", fontWeight: 950 } as CSSProperties}
                       >
-                        Ver despuÃ©s
+                        Ver después
                       </IonButton>
                       <IonButton
                         expand="block"
@@ -15801,7 +15929,7 @@ La reserva fue retirada. No continÃºes hacia la recogida.`,
               </div>
             )}
 
-            {/* La alerta sonora global estÃ¡ fuera de Solicitudes. AquÃ­ solo quedan las tarjetas normales. */}
+            {/* La alerta sonora global está fuera de Solicitudes. Aquí solo quedan las tarjetas normales. */}
             {false && rideAlert && isDriverAvailable && !activeRide && (
               <DriverRideRequestAlertOverlay ride={rideAlert} />
             )}
@@ -15841,7 +15969,7 @@ La reserva fue retirada. No continÃºes hacia la recogida.`,
   padding: 8px 22px 10px;
 }
 .rapago-passenger-cancel-alert .alert-message::before {
-  content: "âš ï¸";
+  content: "\\26A0";
   display: grid;
   place-items: center;
   width: 54px;
@@ -15881,7 +16009,7 @@ La reserva fue retirada. No continÃºes hacia la recogida.`,
 
       <IonAlert
         isOpen={Boolean(passengerCancelNotice)}
-        header="Pasajero cancelÃ³ el viaje"
+        header="Pasajero canceló el viaje"
         message={
           passengerCancelNotice
             ? `${passengerCancelNotice.route}\n\n${passengerCancelNotice.message}`
@@ -15898,9 +16026,55 @@ La reserva fue retirada. No continÃºes hacia la recogida.`,
       />
 
       <IonAlert
+        isOpen={Boolean(pendingReservationReject)}
+        header="¿Por qué rechazas esta reserva?"
+        subHeader="La reserva pasará al siguiente conductor disponible."
+        message="Debes escribir el motivo. El administrador podrá verlo."
+        cssClass="rapago-danger-alert"
+        onDidDismiss={() => setPendingReservationReject(null)}
+        inputs={[
+          {
+            name: "reason",
+            type: "textarea",
+            placeholder: "Ej.: No alcanzo a llegar a la hora programada.",
+            attributes: {
+              maxlength: 260,
+            },
+          },
+        ]}
+        buttons={[
+          {
+            text: "Volver",
+            role: "cancel",
+          },
+          {
+            text: "Rechazar y pasar al siguiente",
+            role: "destructive",
+            handler: (values) => {
+              const reason = sanitizeDriverTripSafetyText(values?.reason, 260);
+
+              if (!reason) {
+                setError("Debes escribir el motivo del rechazo.");
+                return false;
+              }
+
+              if (pendingReservationReject) {
+                void handleRejectScheduledReservation(
+                  pendingReservationReject,
+                  reason,
+                );
+              }
+
+              return true;
+            },
+          },
+        ]}
+      />
+
+      <IonAlert
         isOpen={Boolean(cancelConfirmRide)}
-        header="Â¿EstÃ¡s seguro de cancelar?"
-        message="El viaje volverÃ¡ a estar disponible y se notificarÃ¡ al pasajero que buscaremos otro conductor."
+        header="¿Estás seguro de cancelar?"
+        message="El viaje volverá a estar disponible y se notificará al pasajero que buscaremos otro conductor."
         cssClass="rapago-danger-alert"
         onDidDismiss={() => setCancelConfirmRide(null)}
         buttons={[
@@ -15909,7 +16083,7 @@ La reserva fue retirada. No continÃºes hacia la recogida.`,
             role: "cancel",
           },
           {
-            text: "SÃ­, cancelar",
+            text: "Sí, cancelar",
             role: "destructive",
             handler: () => {
               if (cancelConfirmRide) {
@@ -16000,12 +16174,12 @@ function DriverHistoryRideCard({
               <div
                 style={{ marginTop: 8, fontWeight: 800, fontSize: ".82rem" }}
               >
-                Precio: {formatClp(displayFareClp)} Â· Pago: {paymentLabel}
+                Precio: {formatClp(displayFareClp)} · Pago: {paymentLabel}
                 {((ride as unknown as Record<string, unknown>).cashPaymentConfirmedByDriver === true || (ride as unknown as Record<string, unknown>).cashPaymentClosure) && (
                   <>
                     <br />
                     Efectivo recibido: {formatClp(Number((ride as unknown as Record<string, unknown>).cashPaidClp ?? (ride as unknown as Record<string, unknown>).paymentReceivedByDriverClp ?? 0))}
-                    {Number((ride as unknown as Record<string, unknown>).cashOverpaidClp ?? 0) > 0 && ` Â· PagÃ³ demÃ¡s: ${formatClp(Number((ride as unknown as Record<string, unknown>).cashOverpaidClp))}`}
+                    {Number((ride as unknown as Record<string, unknown>).cashOverpaidClp ?? 0) > 0 && ` · Pagó demás: ${formatClp(Number((ride as unknown as Record<string, unknown>).cashOverpaidClp))}`}
                   </>
                 )}
               </div>
@@ -16149,7 +16323,7 @@ function DriverMyRidesPage(): JSX.Element {
       setLoadError(null);
       setPassengerCancelNotice({
         route,
-        message: `Motivo informado: ${reason}\n\nEl viaje fue cancelado y retirado de tus viajes activos. No continÃºes hacia la recogida.`,
+        message: `Motivo informado: ${reason}\n\nEl viaje fue cancelado y retirado de tus viajes activos. No continúes hacia la recogida.`,
       });
 
       try {
@@ -16340,7 +16514,7 @@ function DriverMyRidesPage(): JSX.Element {
           );
         }
       } catch {
-        // No bloquea la cancelaciÃ³n visual.
+        // No bloquea la cancelación visual.
       }
 
       setRides((prev) => {
@@ -16421,13 +16595,13 @@ function DriverMyRidesPage(): JSX.Element {
   function handleReportDriverAccidentFromTrips(ride: DriverRideData): void {
     saveDriverAccidentTripSafetyReport(ride, session?.user);
     openDriverAccidentWhatsApp(ride, session?.user);
-    setLoadError("Reporte de accidente guardado. Se abriÃ³ WhatsApp soporte.");
+    setLoadError("Reporte de accidente guardado. Se abrió WhatsApp soporte.");
   }
 
   function statusLabel(status: string): string {
     if (status === "accepted") return "Aceptado";
     if (status === "driver_en_route") return "En camino";
-    if (status === "driver_arrived") return "LleguÃ©";
+    if (status === "driver_arrived") return "Llegué";
     if (status === "in_progress") return "En viaje";
     if (status === "completed") return "Completado";
     if (status === "cancelled") return "Cancelado";
@@ -16506,7 +16680,7 @@ function DriverMyRidesPage(): JSX.Element {
           );
         } catch (backendError) {
           console.error(
-            "[RAPA GO] No Show local cerrado, pero backend fallÃ³",
+            "[RAPA GO] No Show local cerrado, pero backend falló",
             backendError,
           );
         }
@@ -16670,7 +16844,7 @@ function DriverMyRidesPage(): JSX.Element {
                     }}
                   >
                     {activeRide.status === "in_progress"
-                      ? "GuÃ­a al pasajero al destino"
+                      ? "Guía al pasajero al destino"
                       : "Primero ve al punto de recogida"}
                   </div>
                 </div>
@@ -16697,14 +16871,14 @@ function DriverMyRidesPage(): JSX.Element {
 
               <div style={{ marginTop: "12px", color: "#111" }}>
                 <div style={{ fontWeight: 900, fontSize: ".92rem" }}>
-                  {activeRide.originText} â†’ {activeRide.destinationText}
+                  {activeRide.originText} → {activeRide.destinationText}
                 </div>
 
                 {getRideDisplayFareClp(activeRide) != null && (
                   <div
                     style={{ marginTop: 6, color: "#C89B3C", fontWeight: 950 }}
                   >
-                    Precio: {formatClp(getRideDisplayFareClp(activeRide))} Â·
+                    Precio: {formatClp(getRideDisplayFareClp(activeRide))} ·
                     Pago: {getRidePaymentMethodLabel(activeRide.notes)}
                   </div>
                 )}
@@ -16717,7 +16891,7 @@ function DriverMyRidesPage(): JSX.Element {
                     fontWeight: 900,
                   }}
                 >
-                  VehÃ­culo:{" "}
+                  Vehículo:{" "}
                   {getRideVehicleEmoji(
                     getRideVehicleCategory(activeRide as RideWithFarePayload),
                   )}{" "}
@@ -16736,7 +16910,7 @@ function DriverMyRidesPage(): JSX.Element {
                       lineHeight: 1.35,
                     }}
                   >
-                    ðŸ“ Nota del pasajero: {getPassengerRideNoteForDriver(activeRide)}
+                    📝 Nota del pasajero: {getPassengerRideNoteForDriver(activeRide)}
                   </div>
                 )}
               </div>
@@ -16798,7 +16972,7 @@ function DriverMyRidesPage(): JSX.Element {
                     {actionLoading === activeRide.id ? (
                       <IonSpinner name="dots" />
                     ) : (
-                      "LleguÃ©"
+                      "Llegué"
                     )}
                   </IonButton>
                 )}
@@ -16831,7 +17005,7 @@ function DriverMyRidesPage(): JSX.Element {
                       disabled={actionLoading === activeRide.id || !getDriverNoShowState(activeRide as DriverRideData & Record<string, unknown>).allowed}
                       onClick={() => void handleDriverNoShowRide(activeRide)}
                     >
-                      {actionLoading === activeRide.id ? <IonSpinner name="dots" /> : getDriverNoShowState(activeRide as DriverRideData & Record<string, unknown>).allowed ? `No show Â· Total ${formatClp(getDriverNoShowState(activeRide as DriverRideData & Record<string, unknown>).feeClp)}` : `Espera ${formatDriverNoShowRemaining(getDriverNoShowState(activeRide as DriverRideData & Record<string, unknown>).remainingMs)}`}
+                      {actionLoading === activeRide.id ? <IonSpinner name="dots" /> : getDriverNoShowState(activeRide as DriverRideData & Record<string, unknown>).allowed ? `No show · Total ${formatClp(getDriverNoShowState(activeRide as DriverRideData & Record<string, unknown>).feeClp)}` : `Espera ${formatDriverNoShowRemaining(getDriverNoShowState(activeRide as DriverRideData & Record<string, unknown>).remainingMs)}`}
                     </IonButton>
                   </>
                 )}
@@ -16885,7 +17059,7 @@ function DriverMyRidesPage(): JSX.Element {
 
         {!loading && !activeRide && historyRides.length === 0 && (
           <IonText color="medium">
-            <p>No tienes viajes todavÃ­a.</p>
+            <p>No tienes viajes todavía.</p>
           </IonText>
         )}
 
@@ -16935,17 +17109,17 @@ function DriverMyRidesPage(): JSX.Element {
                               fontSize: ".82rem",
                             }}
                           >
-                            Precio: {formatClp(getRideDisplayFareClp(ride))} Â·
+                            Precio: {formatClp(getRideDisplayFareClp(ride))} ·
                             Pago: {getRidePaymentMethodLabel(ride.notes)}
                             {((ride as unknown as Record<string, unknown>).cashPaymentConfirmedByDriver === true || (ride as unknown as Record<string, unknown>).cashPaymentClosure) && (
                               <>
                                 <br />
                                 Efectivo recibido: {formatClp(Number((ride as unknown as Record<string, unknown>).cashPaidClp ?? (ride as unknown as Record<string, unknown>).paymentReceivedByDriverClp ?? 0))}
-                                {Number((ride as unknown as Record<string, unknown>).cashOverpaidClp ?? 0) > 0 && ` Â· PagÃ³ demÃ¡s: ${formatClp(Number((ride as unknown as Record<string, unknown>).cashOverpaidClp))}`}
+                                {Number((ride as unknown as Record<string, unknown>).cashOverpaidClp ?? 0) > 0 && ` · Pagó demás: ${formatClp(Number((ride as unknown as Record<string, unknown>).cashOverpaidClp))}`}
                               </>
                             )}
                             <br />
-                            VehÃ­culo: {rideVehicleEmoji} {rideVehicleLabel}
+                            Vehículo: {rideVehicleEmoji} {rideVehicleLabel}
                           </div>
                         )}
                       </div>
@@ -16973,7 +17147,7 @@ function DriverMyRidesPage(): JSX.Element {
 
       <IonAlert
         isOpen={Boolean(passengerCancelNotice)}
-        header="Pasajero cancelÃ³ el viaje"
+        header="Pasajero canceló el viaje"
         message={
           passengerCancelNotice
             ? `${passengerCancelNotice.route}
@@ -17060,7 +17234,7 @@ export function DriverEarningsPage(): JSX.Element {
 
   const filterLabels: Record<DriverEarningsFilter, string> = {
     today: "Hoy",
-    week: "7 dÃ­as",
+    week: "7 días",
     month: "Mes",
     all: "Todo",
   };
@@ -17147,7 +17321,7 @@ export function DriverEarningsPage(): JSX.Element {
           </IonCard>
           <IonCard style={{ margin: 0, borderRadius: 18, background: "#F6F2EC" }}>
             <IonCardContent style={{ padding: 14 }}>
-              <div style={{ color: "#555", fontSize: ".72rem", fontWeight: 850 }}>ComisiÃ³n Rapa Go</div>
+              <div style={{ color: "#555", fontSize: ".72rem", fontWeight: 850 }}>Comisión Rapa Go</div>
               <div style={{ color: "#111", fontWeight: 950, marginTop: 3 }}>{formatClp(totalCommissionClp)}</div>
             </IonCardContent>
           </IonCard>
@@ -17200,7 +17374,7 @@ export function DriverEarningsPage(): JSX.Element {
         {!loading && visibleRides.length === 0 && (
           <IonCard style={{ margin: "14px 0 0", borderRadius: 20, background: "#F6F2EC" }}>
             <IonCardContent style={{ color: "#111", fontWeight: 850 }}>
-              TodavÃ­a no hay viajes completados para este filtro.
+              Todavía no hay viajes completados para este filtro.
             </IonCardContent>
           </IonCard>
         )}
@@ -17233,7 +17407,7 @@ export function DriverEarningsPage(): JSX.Element {
                           {dateMs ? new Date(dateMs).toLocaleString("es-CL") : "Fecha no informada"}
                         </div>
                         <div style={{ marginTop: 5, color: "#555", fontSize: ".74rem", fontWeight: 800 }}>
-                          {getRidePaymentMethodLabel(String(ride.notes ?? ""))} Â· {getRideTripTypeLabel(String(ride.notes ?? ""))}
+                          {getRidePaymentMethodLabel(String(ride.notes ?? ""))} · {getRideTripTypeLabel(String(ride.notes ?? ""))}
                         </div>
                       </div>
 
@@ -17260,8 +17434,8 @@ export function DriverEarningsPage(): JSX.Element {
 }
 
 const LANGUAGE_OPTIONS: { value: string; label: string; emoji: string }[] = [
-  { value: "es", label: "EspaÃ±ol", emoji: "ðŸ‡¨ðŸ‡±" },
-  { value: "en", label: "InglÃ©s", emoji: "ðŸ‡ºðŸ‡¸" },
+  { value: "es", label: "Español", emoji: "🇨🇱" },
+  { value: "en", label: "Inglés", emoji: "🇺🇸" },
 ];
 
 function normalizeDriverLanguages(
@@ -17385,7 +17559,7 @@ function persistStoredDriverProfilePhotoUrl(value: string, user?: unknown): void
       }));
     }
   } catch {
-    // No bloquea el perfil si localStorage no estÃ¡ disponible.
+    // No bloquea el perfil si localStorage no está disponible.
   }
 }
 
@@ -17436,7 +17610,7 @@ function persistStoredDriverVehicleImageDataUrl(
       removeDriverScopedStorageItem("rapago_driver_vehicle_image_name", user);
     }
   } catch {
-    // No bloquea el perfil si localStorage no estÃ¡ disponible.
+    // No bloquea el perfil si localStorage no está disponible.
   }
 }
 
@@ -17550,7 +17724,7 @@ function readStoredDriverRegistrationProfile(user?: unknown): StoredDriverRegist
     const parsedOwner = getDriverScopedOwnerKey(parsed);
     const expectedOwner = getDriverScopedOwnerKey(user);
 
-    // Si el perfil antiguo pertenece explÃ­citamente a otro conductor, se ignora.
+    // Si el perfil antiguo pertenece explícitamente a otro conductor, se ignora.
     if (
       user &&
       typeof user === "object" &&
@@ -17629,7 +17803,7 @@ function persistStoredDriverRegistrationProfile(
       writeDriverScopedStorageItem("rapago_driver_nationality", label, next);
       writeDriverScopedStorageItem("rapago_driver_is_resident", String(fareType === "resident"), next);
 
-      // Solo se escribe en llaves de pasajero si este conductor estÃ¡ usando tambiÃ©n modo pasajero.
+      // Solo se escribe en llaves de pasajero si este conductor está usando también modo pasajero.
       if (fareType === "resident") {
         writeDriverScopedStorageItem("rapago_passenger_fare_type", "resident", next);
         writeDriverScopedStorageItem("rapago_profile_passenger_type", "resident", next);
@@ -17646,7 +17820,7 @@ function persistStoredDriverRegistrationProfile(
       );
     }
   } catch {
-    // No bloquea el perfil si localStorage no estÃ¡ disponible.
+    // No bloquea el perfil si localStorage no está disponible.
   }
 }
 
@@ -17728,11 +17902,11 @@ function safeProfileMessage(message: string | null): string | null {
 
   if (
     message.toLowerCase().includes("token") ||
-    message.toLowerCase().includes("sesiÃ³n expir") ||
+    message.toLowerCase().includes("sesión expir") ||
     message.toLowerCase().includes("unauthorized") ||
     message.includes("401")
   ) {
-    return "No se pudo cargar el perfil desde el servidor. La sesiÃ³n sigue abierta.";
+    return "No se pudo cargar el perfil desde el servidor. La sesión sigue abierta.";
   }
 
   return message;
@@ -17947,7 +18121,7 @@ export function DriverProfilePage(): JSX.Element {
     const cleanLanguages = normalizeDriverLanguages(languages);
 
     if (vehicleOwnership === "borrowed" && !vehicleExpiresAt.trim()) {
-      setError("El vehÃ­culo opcional o prestado debe tener fecha de expiraciÃ³n.");
+      setError("El vehículo opcional o prestado debe tener fecha de expiración.");
       setSaving(false);
       return;
     }
@@ -17955,8 +18129,8 @@ export function DriverProfilePage(): JSX.Element {
     try {
       persistDriverResidentFareForDriver(session?.user);
 
-      // Primero guardamos localmente. AsÃ­ el botÃ³n funciona aunque el backend
-      // rechace campos nuevos como foto base64 o el perfil aÃºn no exista.
+      // Primero guardamos localmente. Así el botón funciona aunque el backend
+      // rechace campos nuevos como foto base64 o el perfil aún no exista.
       if (trimPhone) {
         writeDriverScopedStorageItem("rapago_driver_public_phone", trimPhone, session?.user);
       }
@@ -17989,8 +18163,8 @@ export function DriverProfilePage(): JSX.Element {
 
       let savedVehicle: DriverVehicleRecord | null = null;
 
-      // El vehÃ­culo principal del perfil se transforma en vehÃ­culo activo pÃºblico.
-      // Es el dato que leerÃ¡ el pasajero cuando el conductor acepte un viaje.
+      // El vehículo principal del perfil se transforma en vehículo activo público.
+      // Es el dato que leerá el pasajero cuando el conductor acepte un viaje.
       if (cleanVehicleBrand && cleanVehicleModel && cleanVehiclePlate) {
         savedVehicle = addDriverVehicle({
           user: session?.user,
@@ -18012,8 +18186,8 @@ export function DriverProfilePage(): JSX.Element {
         vehicle: savedVehicle ?? readSelectedDriverVehicle(session?.user),
       });
 
-      // Intentamos guardar tambiÃ©n en backend, pero no dejamos que eso borre
-      // el guardado local ni la foto del vehÃ­culo.
+      // Intentamos guardar también en backend, pero no dejamos que eso borre
+      // el guardado local ni la foto del vehículo.
       if (session?.accessToken) {
         const payload: Parameters<
           typeof driverProfileService.upsertMyProfile
@@ -18040,7 +18214,7 @@ export function DriverProfilePage(): JSX.Element {
           await driverProfileService.upsertMyProfile(session.accessToken, payload);
         } catch (backendError) {
           // El perfil queda guardado en este dispositivo igual.
-          console.warn("Perfil guardado localmente. Backend no actualizÃ³:", backendError);
+          console.warn("Perfil guardado localmente. Backend no actualizó:", backendError);
         }
       }
 
@@ -18111,11 +18285,11 @@ export function DriverProfilePage(): JSX.Element {
         }),
       );
     } catch {
-      // Si storage falla, igual forzamos navegaciÃ³n.
+      // Si storage falla, igual forzamos navegación.
     }
 
-    // Ionic/React a veces mantiene el layout anterior por cachÃ©.
-    // Por eso se fuerza navegaciÃ³n real a passenger/home.
+    // Ionic/React a veces mantiene el layout anterior por caché.
+    // Por eso se fuerza navegación real a passenger/home.
     window.location.href = ROUTES.PASSENGER.HOME;
   }
 
@@ -18132,13 +18306,13 @@ export function DriverProfilePage(): JSX.Element {
     setPhotoError(null);
 
     if (!file.type.startsWith("image/")) {
-      setPhotoError("Selecciona una imagen vÃ¡lida.");
+      setPhotoError("Selecciona una imagen válida.");
       event.target.value = "";
       return;
     }
 
     if (file.size > 3 * 1024 * 1024) {
-      setPhotoError("La foto no puede pesar mÃ¡s de 3 MB.");
+      setPhotoError("La foto no puede pesar más de 3 MB.");
       event.target.value = "";
       return;
     }
@@ -18181,13 +18355,13 @@ export function DriverProfilePage(): JSX.Element {
     setVehiclePhotoError(null);
 
     if (!file.type.startsWith("image/")) {
-      setVehiclePhotoError("Selecciona una imagen vÃ¡lida del vehÃ­culo.");
+      setVehiclePhotoError("Selecciona una imagen válida del vehículo.");
       event.target.value = "";
       return;
     }
 
     if (file.size > 5 * 1024 * 1024) {
-      setVehiclePhotoError("La foto del vehÃ­culo no puede pesar mÃ¡s de 5 MB.");
+      setVehiclePhotoError("La foto del vehículo no puede pesar más de 5 MB.");
       event.target.value = "";
       return;
     }
@@ -18204,7 +18378,7 @@ export function DriverProfilePage(): JSX.Element {
       });
     } catch (err) {
       setVehiclePhotoError(
-        err instanceof Error ? err.message : "No se pudo cargar la foto del vehÃ­culo.",
+        err instanceof Error ? err.message : "No se pudo cargar la foto del vehículo.",
       );
     } finally {
       event.target.value = "";
@@ -18306,7 +18480,7 @@ export function DriverProfilePage(): JSX.Element {
           <IonTitle>Mi Perfil</IonTitle>
           <IonButtons slot="end">
             <IonButton color="light" onClick={() => void handleLogout()}>
-              Cerrar sesiÃ³n
+              Cerrar sesión
             </IonButton>
           </IonButtons>
         </IonToolbar>
@@ -18315,7 +18489,7 @@ export function DriverProfilePage(): JSX.Element {
       <IonAlert
         isOpen={success}
         header="Cambios guardados"
-        message="Tu perfil y la foto del vehÃ­culo se guardaron correctamente. El pasajero podrÃ¡ ver estos datos cuando aceptes un viaje."
+        message="Tu perfil y la foto del vehículo se guardaron correctamente. El pasajero podrá ver estos datos cuando aceptes un viaje."
         buttons={[{ text: "OK", handler: () => setSuccess(false) }]}
         onDidDismiss={() => setSuccess(false)}
       />
@@ -18439,7 +18613,7 @@ export function DriverProfilePage(): JSX.Element {
                       fontWeight: 850,
                     }}
                   >
-                    {phone.trim() ? phone : "TelÃ©fono pendiente"}
+                    {phone.trim() ? phone : "Teléfono pendiente"}
                   </div>
                   <div
                     style={{
@@ -18468,7 +18642,7 @@ export function DriverProfilePage(): JSX.Element {
             >
               <IonCardContent style={{ padding: "14px" }}>
                 <div style={{ fontWeight: 950, fontSize: ".98rem", marginBottom: 8 }}>
-                  ReputaciÃ³n del conductor
+                  Reputación del conductor
                 </div>
                 <DriverRatingStarsDisplay summary={driverRatingSummary} />
                 <div style={{ marginTop: 7, color: "rgba(255,255,255,.72)", fontSize: ".78rem", lineHeight: 1.35 }}>
@@ -18488,15 +18662,15 @@ export function DriverProfilePage(): JSX.Element {
                         }}
                       >
                         <div style={{ fontWeight: 950, color: "#f4c430" }}>
-                          {"â˜…".repeat(Math.max(1, Math.min(5, Math.round(Number(rating.stars) || 1))))}
-                          {"â˜†".repeat(5 - Math.max(1, Math.min(5, Math.round(Number(rating.stars) || 1))))}
+                          {"★".repeat(Math.max(1, Math.min(5, Math.round(Number(rating.stars) || 1))))}
+                          {"☆".repeat(5 - Math.max(1, Math.min(5, Math.round(Number(rating.stars) || 1))))}
                         </div>
                         <div style={{ marginTop: 3, fontSize: ".76rem", color: "rgba(255,255,255,.78)", lineHeight: 1.35 }}>
-                          {rating.originText ?? "Origen"} â†’ {rating.destinationText ?? "Destino"}
+                          {rating.originText ?? "Origen"} → {rating.destinationText ?? "Destino"}
                         </div>
                         {rating.comment && (
                           <div style={{ marginTop: 4, fontSize: ".78rem", color: "#ffffff", fontWeight: 800 }}>
-                            â€œ{rating.comment}â€
+                            “{rating.comment}”
                           </div>
                         )}
                       </div>
@@ -18564,13 +18738,13 @@ export function DriverProfilePage(): JSX.Element {
                     marginBottom: 10,
                   }}
                 >
-                  El telÃ©fono se toma automÃ¡ticamente desde el registro si estÃ¡
+                  El teléfono se toma automáticamente desde el registro si está
                   disponible.
                 </div>
 
                 <IonItem lines="none" style={driverInputItemStyle()}>
                   <IonLabel position="stacked" style={driverFieldLabelStyle()}>
-                    TelÃ©fono
+                    Teléfono
                   </IonLabel>
                   <IonInput
                     style={driverFieldTextStyle()}
@@ -18651,7 +18825,7 @@ export function DriverProfilePage(): JSX.Element {
                           marginTop: 3,
                         }}
                       >
-                        Adjunta una foto clara. Se actualizarÃ¡ inmediatamente en
+                        Adjunta una foto clara. Se actualizará inmediatamente en
                         tu perfil.
                       </div>
                     </div>
@@ -18759,7 +18933,7 @@ export function DriverProfilePage(): JSX.Element {
                 <div
                   style={{ fontWeight: 950, fontSize: "1rem", marginBottom: 4 }}
                 >
-                  VehÃ­culos del conductor
+                  Vehículos del conductor
                 </div>
                 <div
                   style={{
@@ -18770,7 +18944,7 @@ export function DriverProfilePage(): JSX.Element {
                     lineHeight: 1.35,
                   }}
                 >
-                  AquÃ­ se toman los vehÃ­culos enviados en la inscripciÃ³n. Puedes agregar todos los vehÃ­culos que tengas y elegir cuÃ¡l queda activo para recibir solicitudes y reservas.
+                  Aquí se toman los vehículos enviados en la inscripción. Puedes agregar todos los vehículos que tengas y elegir cuál queda activo para recibir solicitudes y reservas.
                 </div>
 
                 <div
@@ -18787,7 +18961,7 @@ export function DriverProfilePage(): JSX.Element {
                     fontWeight: 950,
                   }}
                 >
-                  {driverVehicles.length} vehÃ­culo{driverVehicles.length !== 1 ? "s" : ""} registrado{driverVehicles.length !== 1 ? "s" : ""}
+                  {driverVehicles.length} vehículo{driverVehicles.length !== 1 ? "s" : ""} registrado{driverVehicles.length !== 1 ? "s" : ""}
                 </div>
 
                 {driverVehicles.length > 0 && (
@@ -18827,14 +19001,14 @@ export function DriverProfilePage(): JSX.Element {
 
                           <div style={{ minWidth: 0 }}>
                             <div style={{ fontWeight: 950, color: "#111", fontSize: ".92rem" }}>
-                              {vehicle.brand} {vehicle.model} {vehicle.year ? `Â· ${vehicle.year}` : ""}
+                              {vehicle.brand} {vehicle.model} {vehicle.year ? `· ${vehicle.year}` : ""}
                             </div>
                             <div style={{ color: "#333", fontSize: ".78rem", fontWeight: 850, marginTop: 2 }}>
-                              Patente {vehicle.plate || "sin patente"} Â· {vehicle.color || "sin color"}
+                              Patente {vehicle.plate || "sin patente"} · {vehicle.color || "sin color"}
                             </div>
                             <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 8 }}>
                               <IonBadge color={vehicle.ownership === "borrowed" ? "warning" : "success"}>
-                                {vehicle.ownership === "borrowed" ? "Opcional / temporal" : "VehÃ­culo propio"}
+                                {vehicle.ownership === "borrowed" ? "Opcional / temporal" : "Vehículo propio"}
                               </IonBadge>
                               {selected && <IonBadge color="success">Activo</IonBadge>}
                               {borrowedText && <IonBadge color="medium">{borrowedText}</IonBadge>}
@@ -18848,7 +19022,7 @@ export function DriverProfilePage(): JSX.Element {
                                 onClick={() => handleSelectDriverVehicle(vehicle)}
                                 style={{ "--border-radius": "14px", fontWeight: 950 } as CSSProperties}
                               >
-                                {selected ? "VehÃ­culo activo" : "Usar este"}
+                                {selected ? "Vehículo activo" : "Usar este"}
                               </IonButton>
                               <IonButton
                                 size="small"
@@ -18881,7 +19055,7 @@ export function DriverProfilePage(): JSX.Element {
 
                 {driverVehicles.length === 0 && (
                   <IonNote style={{ display: "block", marginBottom: 12, color: "#8f3c24", fontWeight: 900 }}>
-                    No hay vehÃ­culos cargados desde la inscripciÃ³n. Completa los datos abajo y guarda tu vehÃ­culo principal. DespuÃ©s podrÃ¡s agregar mÃ¡s vehÃ­culos si tienes.
+                    No hay vehículos cargados desde la inscripción. Completa los datos abajo y guarda tu vehículo principal. Después podrás agregar más vehículos si tienes.
                   </IonNote>
                 )}
 
@@ -18893,7 +19067,7 @@ export function DriverProfilePage(): JSX.Element {
                     onClick={() => handlePrepareNewVehicle("own")}
                     style={{ "--border-radius": "16px", height: "46px", fontWeight: 950 } as CSSProperties}
                   >
-                    VehÃ­culo propio
+                    Vehículo propio
                   </IonButton>
                   <IonButton
                     expand="block"
@@ -18902,7 +19076,7 @@ export function DriverProfilePage(): JSX.Element {
                     onClick={() => handlePrepareNewVehicle("borrowed")}
                     style={{ "--border-radius": "16px", height: "46px", fontWeight: 950 } as CSSProperties}
                   >
-                    Agregar vehÃ­culo opcional
+                    Agregar vehículo opcional
                   </IonButton>
                 </div>
 
@@ -18915,8 +19089,8 @@ export function DriverProfilePage(): JSX.Element {
                   }}
                 >
                   {vehicleOwnership === "borrowed"
-                    ? "VehÃ­culo opcional/temporal: puedes agregar mÃ¡s de uno. Cada opcional exige fecha de expiraciÃ³n y luego se borra automÃ¡ticamente."
-                    : "VehÃ­culo propio: puedes guardar tu principal y tambiÃ©n agregar mÃ¡s vehÃ­culos propios si los usas en Rapa Go."}
+                    ? "Vehículo opcional/temporal: puedes agregar más de uno. Cada opcional exige fecha de expiración y luego se borra automáticamente."
+                    : "Vehículo propio: puedes guardar tu principal y también agregar más vehículos propios si los usas en Rapa Go."}
                 </div>
 
                 <IonItem lines="none" style={driverInputItemStyle()}>
@@ -18951,7 +19125,7 @@ export function DriverProfilePage(): JSX.Element {
 
                 <IonItem lines="none" style={driverInputItemStyle()}>
                   <IonLabel position="stacked" style={driverFieldLabelStyle()}>
-                    AÃ±o
+                    Año
                   </IonLabel>
                   <IonInput
                     style={driverFieldTextStyle()}
@@ -19000,7 +19174,7 @@ export function DriverProfilePage(): JSX.Element {
                 {vehicleOwnership === "borrowed" && (
                   <IonItem lines="none" style={driverInputItemStyle()}>
                     <IonLabel position="stacked" style={driverFieldLabelStyle()}>
-                      Fecha de expiraciÃ³n del vehÃ­culo opcional *
+                      Fecha de expiración del vehículo opcional *
                     </IonLabel>
                     <IonInput
                       style={driverFieldTextStyle()}
@@ -19022,7 +19196,7 @@ export function DriverProfilePage(): JSX.Element {
                   }}
                 >
                   <div style={{ fontWeight: 950, fontSize: ".95rem", color: "#111" }}>
-                    Foto del vehÃ­culo
+                    Foto del vehículo
                   </div>
                   <div
                     style={{
@@ -19033,7 +19207,7 @@ export function DriverProfilePage(): JSX.Element {
                       marginTop: 3,
                     }}
                   >
-                    Esta foto se mostrarÃ¡ al pasajero cuando aceptes un viaje.
+                    Esta foto se mostrará al pasajero cuando aceptes un viaje.
                   </div>
 
                   {hasVehiclePhoto && (
@@ -19051,7 +19225,7 @@ export function DriverProfilePage(): JSX.Element {
                     >
                       <img
                         src={cleanVehicleImageDataUrl}
-                        alt="Foto del vehÃ­culo"
+                        alt="Foto del vehículo"
                         style={{
                           width: "100%",
                           height: 180,
@@ -19141,7 +19315,7 @@ export function DriverProfilePage(): JSX.Element {
 
                 <IonItem lines="none" style={driverInputItemStyle()}>
                   <IonLabel position="stacked" style={driverFieldLabelStyle()}>
-                    NÃºmero de licencia
+                    Número de licencia
                   </IonLabel>
                   <IonInput
                     style={driverFieldTextStyle()}
@@ -19197,7 +19371,7 @@ export function DriverProfilePage(): JSX.Element {
                     marginBottom: 10,
                   }}
                 >
-                  BiografÃ­a
+                  Biografía
                 </div>
                 <IonItem lines="none" style={driverInputItemStyle()}>
                   <IonLabel position="stacked" style={driverFieldLabelStyle()}>
@@ -19209,7 +19383,7 @@ export function DriverProfilePage(): JSX.Element {
                     onIonInput={(event) =>
                       setBio(String(event.detail.value ?? ""))
                     }
-                    placeholder="CuÃ©ntale al pasajero sobre tu experiencia..."
+                    placeholder="Cuéntale al pasajero sobre tu experiencia..."
                     autoGrow
                     rows={4}
                   />
@@ -19232,7 +19406,7 @@ export function DriverProfilePage(): JSX.Element {
                     marginBottom: 12,
                   }}
                 >
-                  Selecciona el idioma principal que verÃ¡n tus pasajeros.
+                  Selecciona el idioma principal que verán tus pasajeros.
                 </div>
 
                 <div
@@ -19293,7 +19467,7 @@ export function DriverProfilePage(): JSX.Element {
                   }}
                 >
                   Idioma seleccionado:{" "}
-                  {languages.includes("en") ? "InglÃ©s" : "EspaÃ±ol"}
+                  {languages.includes("en") ? "Inglés" : "Español"}
                 </div>
               </IonCardContent>
             </IonCard>
@@ -19332,7 +19506,7 @@ export function DriverProfilePage(): JSX.Element {
                           color: "#111",
                         }}
                       >
-                        Â¿Quieres pedir un Rapa Go?
+                        ¿Quieres pedir un Rapa Go?
                       </div>
                       <div
                         style={{
@@ -19344,7 +19518,7 @@ export function DriverProfilePage(): JSX.Element {
                         }}
                       >
                         Cambia temporalmente a la vista de pasajero sin cerrar
-                        sesiÃ³n.
+                        sesión.
                       </div>
                     </div>
                   </div>
@@ -19401,7 +19575,7 @@ export function DriverProfilePage(): JSX.Element {
                 } as CSSProperties
               }
             >
-              Cerrar sesiÃ³n
+              Cerrar sesión
             </IonButton>
           </div>
         )}

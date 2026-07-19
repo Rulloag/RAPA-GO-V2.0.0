@@ -55,6 +55,22 @@ export const cancelAcceptedSchema = z.object({
     .max(500, "Reason must not exceed 500 characters.")
     .optional()
     .transform((v) => (v === "" ? undefined : v)),
+
+  cancellationEvent: z
+    .string()
+    .trim()
+    .max(80)
+    .optional()
+    .transform((v) => (v === "" ? undefined : v)),
+
+  location: z
+    .object({
+      lat: z.number().min(-90).max(90),
+      lng: z.number().min(-180).max(180),
+      accuracyMeters: z.number().nonnegative().max(100000).optional(),
+      capturedAt: z.string().datetime({ offset: true }).optional(),
+    })
+    .optional(),
 });
 
 export type CancelAcceptedInput = z.infer<

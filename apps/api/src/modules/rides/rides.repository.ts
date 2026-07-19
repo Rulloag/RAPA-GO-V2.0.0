@@ -1,6 +1,6 @@
 import { and, asc, avg, count, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 import { db } from "../../db/client.js";
-import { rideRequests, users, rideRatings, driverProfiles } from "../../db/schema/index.js";
+import { rideRequests, users, rideRatings, driverProfiles, rideDriverAssignments } from "../../db/schema/index.js";
 import { alias } from "drizzle-orm/pg-core";
 import { AppError } from "../../shared/errors/AppError.js";
 import type { RideRequest } from "../../db/schema/index.js";
@@ -311,12 +311,39 @@ export class RidesRepository {
    */
   async accept(id: string, driverUserId: string): Promise<RideRequest | null> {
     try {
-      const rows = await db
-        .update(rideRequests)
-        .set({ status: "accepted", driverUserId, acceptedAt: new Date(), updatedAt: new Date() })
-        .where(and(eq(rideRequests.id, id), eq(rideRequests.status, "requested")))
-        .returning();
-      return rows[0] ?? null;
+      return await db.transaction(async (tx) => {
+        const acceptedAt = new Date();
+        const rows = await tx
+          .update(rideRequests)
+          .set({
+            status: "accepted",
+            driverUserId,
+            acceptedAt,
+            updatedAt: acceptedAt,
+          })
+          .where(
+            and(
+              eq(rideRequests.id, id),
+              eq(rideRequests.status, "requested"),
+            ),
+          )
+          .returning();
+
+        const accepted = rows[0] ?? null;
+        if (!accepted) return null;
+
+        await tx
+          .insert(rideDriverAssignments)
+          .values({
+            rideRequestId: accepted.id,
+            driverUserId,
+            acceptedAt,
+            outcome: "active",
+          })
+          .onConflictDoNothing();
+
+        return accepted;
+      });
     } catch (err) {
       if (err instanceof AppError) throw err;
       throw AppError.internal(`Failed to accept ride request: ${String(err)}`);
@@ -329,16 +356,61 @@ export class RidesRepository {
    */
   async complete(id: string, driverUserId: string): Promise<RideRequest | null> {
     try {
-      const rows = await db
-        .update(rideRequests)
-        .set({ status: "completed", completedAt: new Date(), updatedAt: new Date() })
-        .where(and(
-          eq(rideRequests.id, id),
-          eq(rideRequests.status, "in_progress"),
-          eq(rideRequests.driverUserId, driverUserId),
-        ))
-        .returning();
-      return rows[0] ?? null;
+      return await db.transaction(async (tx) => {
+        const completedAt = new Date();
+        const rows = await tx
+          .update(rideRequests)
+          .set({
+            status: "completed",
+            completedAt,
+            updatedAt: completedAt,
+          })
+          .where(and(
+            eq(rideRequests.id, id),
+            eq(rideRequests.status, "in_progress"),
+            eq(rideRequests.driverUserId, driverUserId),
+          ))
+          .returning();
+
+        const completed = rows[0] ?? null;
+        if (!completed) return null;
+
+        const activeRows = await tx
+          .select()
+          .from(rideDriverAssignments)
+          .where(
+            and(
+              eq(rideDriverAssignments.rideRequestId, id),
+              eq(rideDriverAssignments.driverUserId, driverUserId),
+              eq(rideDriverAssignments.outcome, "active"),
+              isNull(rideDriverAssignments.endedAt),
+            ),
+          )
+          .orderBy(desc(rideDriverAssignments.acceptedAt))
+          .limit(1);
+
+        const active = activeRows[0];
+        if (active) {
+          const elapsedSeconds = Math.max(
+            0,
+            Math.floor(
+              (completedAt.getTime() - active.acceptedAt.getTime()) / 1000,
+            ),
+          );
+          await tx
+            .update(rideDriverAssignments)
+            .set({
+              endedAt: completedAt,
+              elapsedSeconds,
+              outcome: "completed",
+              cancellationEvent: "ride_completed",
+              updatedAt: completedAt,
+            })
+            .where(eq(rideDriverAssignments.id, active.id));
+        }
+
+        return completed;
+      });
     } catch (err) {
       if (err instanceof AppError) throw err;
       throw AppError.internal(`Failed to complete ride: ${String(err)}`);
@@ -420,30 +492,96 @@ export class RidesRepository {
     cancelledByUserId: string,
     cancelledByRole: string,
     cancellationReason: string | null,
+    compliance?: {
+      cancellationEvent?: string | null;
+      location?: {
+        lat: number;
+        lng: number;
+        accuracyMeters?: number | null;
+        capturedAt?: Date | null;
+      } | null;
+    },
   ): Promise<RideRequest | null> {
     try {
-      const rows = await db
-        .update(rideRequests)
-        .set({
-          status:             "cancelled",
-          cancelledAt:        new Date(),
-          cancelledByUserId,
-          cancelledByRole,
-          cancellationReason,
-          updatedAt:          new Date(),
-        })
-        .where(
-          and(
-            eq(rideRequests.id, id),
-            inArray(rideRequests.status, [
-              "accepted",
-              "driver_en_route",
-              "driver_arrived",
-            ]),
-          ),
-        )
-        .returning();
-      return rows[0] ?? null;
+      return await db.transaction(async (tx) => {
+        const cancelledAt = new Date();
+        const rows = await tx
+          .update(rideRequests)
+          .set({
+            status: "cancelled",
+            cancelledAt,
+            cancelledByUserId,
+            cancelledByRole,
+            cancellationReason,
+            updatedAt: cancelledAt,
+          })
+          .where(
+            and(
+              eq(rideRequests.id, id),
+              inArray(rideRequests.status, [
+                "accepted",
+                "driver_en_route",
+                "driver_arrived",
+              ]),
+            ),
+          )
+          .returning();
+
+        const cancelled = rows[0] ?? null;
+        if (!cancelled) return null;
+
+        const driverUserId = cancelled.driverUserId;
+        if (driverUserId) {
+          const activeRows = await tx
+            .select()
+            .from(rideDriverAssignments)
+            .where(
+              and(
+                eq(rideDriverAssignments.rideRequestId, id),
+                eq(rideDriverAssignments.driverUserId, driverUserId),
+                eq(rideDriverAssignments.outcome, "active"),
+                isNull(rideDriverAssignments.endedAt),
+              ),
+            )
+            .orderBy(desc(rideDriverAssignments.acceptedAt))
+            .limit(1);
+
+          const active = activeRows[0];
+          if (active) {
+            const elapsedSeconds = Math.max(
+              0,
+              Math.floor(
+                (cancelledAt.getTime() - active.acceptedAt.getTime()) / 1000,
+              ),
+            );
+
+            await tx
+              .update(rideDriverAssignments)
+              .set({
+                endedAt: cancelledAt,
+                elapsedSeconds,
+                outcome: "cancelled",
+                cancellationReason,
+                cancelledByUserId,
+                cancelledByRole,
+                cancellationEvent:
+                  compliance?.cancellationEvent ??
+                  `ride_cancelled_by_${cancelledByRole}`,
+                locationLat: compliance?.location?.lat ?? null,
+                locationLng: compliance?.location?.lng ?? null,
+                locationAccuracyMeters:
+                  compliance?.location?.accuracyMeters ?? null,
+                locationCapturedAt:
+                  compliance?.location?.capturedAt ??
+                  (compliance?.location ? cancelledAt : null),
+                updatedAt: cancelledAt,
+              })
+              .where(eq(rideDriverAssignments.id, active.id));
+          }
+        }
+
+        return cancelled;
+      });
     } catch (err) {
       if (err instanceof AppError) throw err;
       throw AppError.internal(`Failed to cancel accepted ride: ${String(err)}`);
@@ -770,29 +908,69 @@ export class RidesRepository {
     driverUserId: string,
   ): Promise<RideRequest | null> {
     try {
-      const now = new Date();
+      return await db.transaction(async (tx) => {
+        const now = new Date();
+        const reason =
+          "No show: pasajero no se presentó después de 5 minutos.";
 
-      const [row] = await db
-        .update(rideRequests)
-        .set({
-          status: "cancelled",
-          cancelledAt: now,
-          cancelledByUserId: driverUserId,
-          cancelledByRole: "driver_no_show",
-          cancellationReason:
-            "No show: pasajero no se presentó después de 5 minutos.",
-          updatedAt: now,
-        })
-        .where(
-          and(
-            eq(rideRequests.id, id),
-            eq(rideRequests.status, "driver_arrived"),
-            eq(rideRequests.driverUserId, driverUserId),
-          ),
-        )
-        .returning();
+        const [row] = await tx
+          .update(rideRequests)
+          .set({
+            status: "cancelled",
+            cancelledAt: now,
+            cancelledByUserId: driverUserId,
+            cancelledByRole: "driver_no_show",
+            cancellationReason: reason,
+            updatedAt: now,
+          })
+          .where(
+            and(
+              eq(rideRequests.id, id),
+              eq(rideRequests.status, "driver_arrived"),
+              eq(rideRequests.driverUserId, driverUserId),
+            ),
+          )
+          .returning();
 
-      return row ?? null;
+        if (!row) return null;
+
+        const activeRows = await tx
+          .select()
+          .from(rideDriverAssignments)
+          .where(
+            and(
+              eq(rideDriverAssignments.rideRequestId, id),
+              eq(rideDriverAssignments.driverUserId, driverUserId),
+              eq(rideDriverAssignments.outcome, "active"),
+              isNull(rideDriverAssignments.endedAt),
+            ),
+          )
+          .orderBy(desc(rideDriverAssignments.acceptedAt))
+          .limit(1);
+
+        const active = activeRows[0];
+        if (active) {
+          const elapsedSeconds = Math.max(
+            0,
+            Math.floor((now.getTime() - active.acceptedAt.getTime()) / 1000),
+          );
+          await tx
+            .update(rideDriverAssignments)
+            .set({
+              endedAt: now,
+              elapsedSeconds,
+              outcome: "no_show",
+              cancellationReason: reason,
+              cancelledByUserId: driverUserId,
+              cancelledByRole: "driver_no_show",
+              cancellationEvent: "driver_declared_no_show",
+              updatedAt: now,
+            })
+            .where(eq(rideDriverAssignments.id, active.id));
+        }
+
+        return row;
+      });
     } catch (err) {
       throw AppError.internal(
         `Failed to mark ride as no show: ${String(err)}`,
