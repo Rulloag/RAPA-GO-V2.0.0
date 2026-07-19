@@ -376,6 +376,15 @@ export class AuthService {
       };
     }
 
+    if (user.status === "deleted") {
+      return {
+        ok: false,
+        code: "AUTH_ACCOUNT_DELETED",
+        message: "Esta cuenta fue eliminada.",
+        statusCode: 403,
+      };
+    }
+
     const credentials = await credentialsRepo.findByUserId(user.id);
 
     if (!credentials) {
@@ -557,6 +566,15 @@ export class AuthService {
     }
 
     let user = await usersRepository.findByEmail(email);
+
+    if (user?.status === "deleted") {
+      return {
+        ok: false,
+        code: "AUTH_ACCOUNT_DELETED",
+        message: "Esta cuenta fue eliminada.",
+        statusCode: 403,
+      };
+    }
 
     if (
       user &&
@@ -754,6 +772,15 @@ export class AuthService {
       });
     }
 
+    if (user.status === "deleted") {
+      return {
+        ok: false,
+        code: "AUTH_ACCOUNT_DELETED",
+        message: "Esta cuenta fue eliminada.",
+        statusCode: 403,
+      };
+    }
+
     if (user.status === "suspended" || user.status === "banned") {
       return {
         ok: false,
@@ -942,6 +969,15 @@ export class AuthService {
         ok: false,
         code: "UNAUTHORIZED",
         message: "User not found.",
+      };
+    }
+
+    if (user.status === "deleted") {
+      return {
+        ok: false,
+        code: "AUTH_ACCOUNT_DELETED",
+        message: "Esta cuenta fue eliminada.",
+        statusCode: 401,
       };
     }
 

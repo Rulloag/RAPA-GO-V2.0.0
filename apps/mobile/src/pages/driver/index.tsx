@@ -66,6 +66,7 @@ import {
 } from "../../components/MapFallback";
 import { WhatsAppButton } from "../../components/WhatsAppButton";
 import { DriverRestScheduleCard } from "./components/DriverRestScheduleCard";
+import { AccountDeletionCard } from "../../components/accountDeletion/AccountDeletionCard.js";
 
 type AvailableRideData =
   import("../../features/rides/rides.service").AvailableRideData;
@@ -19543,6 +19544,22 @@ export function DriverProfilePage(): JSX.Element {
                 </IonCardContent>
               </IonCard>
             )}
+
+            <AccountDeletionCard
+              requesterSnapshot={{
+                phone: phone.trim() || null,
+                rut: storedProfile.rut?.trim() || null,
+                vehicleBrand: vehicleBrand.trim() || null,
+                vehicleModel: vehicleModel.trim() || null,
+                vehicleYear: Number.isFinite(Number(vehicleYear))
+                  ? Number(vehicleYear)
+                  : null,
+                vehiclePlate: vehiclePlate.trim() || null,
+                vehicleColor: vehicleColor.trim() || null,
+                licenseNumber: licenseNumber.trim() || null,
+                sourceView: "driver",
+              }}
+            />
 
             <IonButton
               expand="block"

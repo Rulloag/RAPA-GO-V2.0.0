@@ -84,6 +84,23 @@ export function AuthProvider({ children }: AuthProviderProps): JSX.Element {
     };
   }, []);
 
+  useEffect(() => {
+    const forceLogout = () => {
+      void sessionStorageService.clearSession().finally(() => {
+        setSession(null);
+        setUser(null);
+        setStatus("unauthenticated");
+        history.replace(ROUTES.AUTH.LOGIN);
+      });
+    };
+
+    window.addEventListener("auth:force-logout", forceLogout);
+
+    return () => {
+      window.removeEventListener("auth:force-logout", forceLogout);
+    };
+  }, [history]);
+
   const login = useCallback(async (payload: LoginRequest): Promise<AuthResponse> => {
     setStatus("loading");
 

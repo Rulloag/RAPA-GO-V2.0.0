@@ -5,6 +5,10 @@ import { rateLimitPlugin } from "./plugins/rateLimit.js";
 import { globalErrorHandler } from "./shared/errors/errorHandler.js";
 
 import { authRoutes } from "./modules/auth/auth.routes.js";
+import {
+  accountDeletionRoutes,
+  adminAccountDeletionRoutes,
+} from "./modules/accountDeletion/accountDeletion.routes.js";
 import { profileRoutes } from "./modules/profile/profile.routes.js";
 import { documentsRoutes } from "./modules/documents/documents.routes.js";
 import { bankAccountsRoutes } from "./modules/bankAccounts/bankAccounts.routes.js";
@@ -121,6 +125,12 @@ export async function buildApp(): Promise<FastifyInstance> {
 
   // ── Modules ───────────────────────────────────────────────────────────────
   await fastify.register(authRoutes, { prefix: "/api/auth" });
+  await fastify.register(accountDeletionRoutes, {
+    prefix: "/api/account-deletion",
+  });
+  await fastify.register(adminAccountDeletionRoutes, {
+    prefix: "/api/admin/account-deletion",
+  });
   await fastify.register(profileRoutes, { prefix: "/api/profile" });
   await fastify.register(documentsRoutes, { prefix: "/api/documents" });
   await fastify.register(bankAccountsRoutes, { prefix: "/api/bank-account" });

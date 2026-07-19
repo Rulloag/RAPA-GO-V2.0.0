@@ -3,7 +3,7 @@ import { pgTable, uuid, varchar, text, boolean, timestamp } from "drizzle-orm/pg
 /**
  * users — core identity record for every platform participant.
  * Role values must match UserRole in @rapa-go/shared.
- * Status lifecycle: pending → active → suspended | banned
+ * Status lifecycle: pending → active → suspended | banned | deleted
  */
 export const users = pgTable("users", {
   id:          uuid("id").primaryKey().defaultRandom(),

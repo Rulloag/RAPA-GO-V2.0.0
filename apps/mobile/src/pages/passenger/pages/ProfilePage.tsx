@@ -43,6 +43,7 @@ import {
   trashOutline,
 } from "ionicons/icons";
 import { ModulePlaceholderPage } from "../../../components/ModulePlaceholderPage";
+import { AccountDeletionCard } from "../../../components/accountDeletion/AccountDeletionCard.js";
 import { ROUTE_METADATA } from "../../../navigation/routeConfig";
 import { ROUTES } from "../../../navigation/routes";
 import { useAuth } from "../../../features/auth";
@@ -90,123 +91,6 @@ const PASSENGER_FARE_DESCRIPTION: Record<PassengerFareType, string> = {
   chilean: "Persona chilena que visita la isla y no acredita residencia.",
   foreigner: "Persona extranjera visitante.",
 };
-
-
-type RapagoAccountDeletionRequestStatus = "pending_admin" | "approved" | "rejected" | "cancelled";
-
-type RapagoAccountDeletionRequest = {
-  id: string;
-  ownerKey: string;
-  userId?: string | null;
-  userEmail?: string | null;
-  userName?: string | null;
-  userRole?: string | null;
-  reason: string;
-  comment?: string | null;
-  status: RapagoAccountDeletionRequestStatus;
-  createdAt: string;
-  updatedAt: string;
-  adminReviewedAt?: string | null;
-  adminReviewedBy?: string | null;
-  adminNote?: string | null;
-  source: "profile_form";
-};
-
-const RAPAGO_ACCOUNT_DELETION_REQUESTS_KEY = "rapago_account_deletion_requests_v1";
-const RAPAGO_ACCOUNT_DELETION_EVENT = "rapago:account-deletion-requests-updated";
-
-function sanitizeAccountDeletionText(value: unknown, maxLength = 220): string {
-  return String(value ?? "")
-    .replace(/[<>`{}$\\]/g, "")
-    .replace(/[\u0000-\u001F\u007F]/g, "")
-    .replace(/\s+/g, " ")
-    .trim()
-    .slice(0, maxLength);
-}
-
-function readAccountDeletionRequests(): RapagoAccountDeletionRequest[] {
-  try {
-    const raw = localStorage.getItem(RAPAGO_ACCOUNT_DELETION_REQUESTS_KEY);
-    const parsed = raw ? (JSON.parse(raw) as Array<Record<string, unknown>>) : [];
-    if (!Array.isArray(parsed)) return [];
-
-    return parsed
-      .map((item, index): RapagoAccountDeletionRequest => ({
-        id: sanitizeAccountDeletionText(item.id, 90) || `account-delete-${index}`,
-        ownerKey: sanitizeAccountDeletionText(item.ownerKey, 180),
-        userId: sanitizeAccountDeletionText(item.userId, 120) || null,
-        userEmail: sanitizeAccountDeletionText(item.userEmail, 160).toLowerCase() || null,
-        userName: sanitizeAccountDeletionText(item.userName, 120) || null,
-        userRole: sanitizeAccountDeletionText(item.userRole, 60) || null,
-        reason: sanitizeAccountDeletionText(item.reason, 120) || "No informado",
-        comment: sanitizeAccountDeletionText(item.comment, 260) || null,
-        status: String(item.status ?? "pending_admin") as RapagoAccountDeletionRequestStatus,
-        createdAt: sanitizeAccountDeletionText(item.createdAt, 40) || new Date().toISOString(),
-        updatedAt: sanitizeAccountDeletionText(item.updatedAt, 40) || new Date().toISOString(),
-        adminReviewedAt: sanitizeAccountDeletionText(item.adminReviewedAt, 40) || null,
-        adminReviewedBy: sanitizeAccountDeletionText(item.adminReviewedBy, 80) || null,
-        adminNote: sanitizeAccountDeletionText(item.adminNote, 260) || null,
-        source: "profile_form",
-      }))
-      .filter((item) => Boolean(item.ownerKey || item.userEmail || item.userId))
-      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-  } catch {
-    return [];
-  }
-}
-
-function writeAccountDeletionRequests(requests: RapagoAccountDeletionRequest[]): void {
-  try {
-    localStorage.setItem(RAPAGO_ACCOUNT_DELETION_REQUESTS_KEY, JSON.stringify(requests.slice(0, 250)));
-    window.dispatchEvent(new CustomEvent(RAPAGO_ACCOUNT_DELETION_EVENT, { detail: { requests } }));
-  } catch {
-    // No bloquea el perfil si storage no está disponible.
-  }
-}
-
-function getAccountDeletionOwnerKey(userCandidate: unknown, profileCandidate: unknown): string {
-  const user = userCandidate && typeof userCandidate === "object"
-    ? (userCandidate as Record<string, unknown>)
-    : {};
-  const profile = profileCandidate && typeof profileCandidate === "object"
-    ? (profileCandidate as Record<string, unknown>)
-    : {};
-  const candidates = [user.id, profile.id, user.email, profile.email, user.name, profile.name];
-
-  for (const value of candidates) {
-    const text = sanitizeAccountDeletionText(value, 180).toLowerCase();
-    if (text) return text;
-  }
-
-  return "profile-unknown-user";
-}
-
-function getLatestAccountDeletionRequestForOwner(
-  requests: RapagoAccountDeletionRequest[],
-  ownerKey: string,
-): RapagoAccountDeletionRequest | null {
-  const normalizedOwner = sanitizeAccountDeletionText(ownerKey, 180).toLowerCase();
-  if (!normalizedOwner) return null;
-
-  return (
-    requests.find((item) => sanitizeAccountDeletionText(item.ownerKey, 180).toLowerCase() === normalizedOwner) ??
-    null
-  );
-}
-
-function accountDeletionStatusLabel(status: RapagoAccountDeletionRequestStatus): string {
-  if (status === "approved") return "Aprobada por admin";
-  if (status === "rejected") return "Rechazada";
-  if (status === "cancelled") return "Cancelada";
-  return "Pendiente admin";
-}
-
-function accountDeletionStatusColor(status: RapagoAccountDeletionRequestStatus): string {
-  if (status === "approved") return "success";
-  if (status === "rejected") return "danger";
-  if (status === "cancelled") return "medium";
-  return "warning";
-}
 
 
 type ProfileLanguage = "es" | "en";
@@ -1145,29 +1029,6 @@ export function ProfileIndexPage(): JSX.Element {
   const [generatingCode, setGeneratingCode] = useState(false);
   const [copiedCode,     setCopiedCode]     = useState(false);
 
-  const [accountDeletionRequests, setAccountDeletionRequests] = useState<RapagoAccountDeletionRequest[]>(() => readAccountDeletionRequests());
-  const [showAccountDeletionForm, setShowAccountDeletionForm] = useState(false);
-  const [accountDeletionReason, setAccountDeletionReason] = useState("");
-  const [accountDeletionComment, setAccountDeletionComment] = useState("");
-  const [accountDeletionConfirm, setAccountDeletionConfirm] = useState("");
-  const [accountDeletionError, setAccountDeletionError] = useState("");
-  const [accountDeletionSuccess, setAccountDeletionSuccess] = useState("");
-
-
-  useEffect(() => {
-    const refreshAccountDeletionRequests = () => {
-      setAccountDeletionRequests(readAccountDeletionRequests());
-    };
-
-    window.addEventListener("storage", refreshAccountDeletionRequests);
-    window.addEventListener(RAPAGO_ACCOUNT_DELETION_EVENT, refreshAccountDeletionRequests as EventListener);
-
-    return () => {
-      window.removeEventListener("storage", refreshAccountDeletionRequests);
-      window.removeEventListener(RAPAGO_ACCOUNT_DELETION_EVENT, refreshAccountDeletionRequests as EventListener);
-    };
-  }, []);
-
   const loadProfile = useCallback(async () => {
     if (!session?.accessToken) return;
 
@@ -1402,73 +1263,6 @@ export function ProfileIndexPage(): JSX.Element {
     } catch { }
   }
 
-  function handleSubmitAccountDeletionRequest(): void {
-    setAccountDeletionError("");
-    setAccountDeletionSuccess("");
-
-    if (!profile) {
-      setAccountDeletionError("No se pudo identificar tu cuenta. Vuelve a iniciar sesión.");
-      return;
-    }
-
-    const reason = sanitizeAccountDeletionText(accountDeletionReason, 120);
-    const comment = sanitizeAccountDeletionText(accountDeletionComment, 260);
-
-    if (!reason) {
-      setAccountDeletionError("Selecciona un motivo para solicitar la eliminación.");
-      return;
-    }
-
-    if (accountDeletionConfirm !== "yes") {
-      setAccountDeletionError("Confirma que entiendes que la solicitud será revisada por el administrador.");
-      return;
-    }
-
-    const ownerKey = getAccountDeletionOwnerKey(session?.user, profile);
-    const latestRequest = getLatestAccountDeletionRequestForOwner(accountDeletionRequests, ownerKey);
-
-    if (latestRequest?.status === "pending_admin") {
-      setAccountDeletionError("Ya tienes una solicitud pendiente. El administrador debe revisarla.");
-      return;
-    }
-
-    const sessionUser = session?.user && typeof session.user === "object"
-      ? (session.user as Record<string, unknown>)
-      : {};
-    const now = new Date().toISOString();
-    const userEmail = sanitizeAccountDeletionText(profile.email ?? sessionUser.email, 160).toLowerCase();
-    const userName = sanitizeAccountDeletionText(profile.name ?? sessionUser.name, 120);
-    const userRole = sanitizeAccountDeletionText(profile.role ?? sessionUser.role, 60);
-
-    const nextRequest: RapagoAccountDeletionRequest = {
-      id: `account-delete-${Date.now()}`,
-      ownerKey,
-      userId: sanitizeAccountDeletionText(sessionUser.id, 120) || null,
-      userEmail: userEmail || null,
-      userName: userName || null,
-      userRole: userRole || null,
-      reason,
-      comment: comment || null,
-      status: "pending_admin",
-      createdAt: now,
-      updatedAt: now,
-      adminReviewedAt: null,
-      adminReviewedBy: null,
-      adminNote: null,
-      source: "profile_form",
-    };
-
-    const next = [nextRequest, ...accountDeletionRequests.filter((item) => item.id !== nextRequest.id)];
-
-    writeAccountDeletionRequests(next);
-    setAccountDeletionRequests(next);
-    setAccountDeletionReason("");
-    setAccountDeletionComment("");
-    setAccountDeletionConfirm("");
-    setShowAccountDeletionForm(false);
-    setAccountDeletionSuccess("Solicitud enviada al administrador. Tu cuenta no se borrará hasta que sea revisada.");
-  }
-
   async function handleLogout() {
     try {
       if (typeof auth.logout === "function") {
@@ -1492,13 +1286,6 @@ export function ProfileIndexPage(): JSX.Element {
   const profileText = PROFILE_TEXT[language];
   const passengerFareLabel = getPassengerFareTypeLabel(passengerFareType, language);
   const passengerFareDescription = getPassengerFareTypeDescription(passengerFareType, language);
-  const accountDeletionOwnerKey = getAccountDeletionOwnerKey(session?.user, profile);
-  const latestAccountDeletionRequest = getLatestAccountDeletionRequestForOwner(
-    accountDeletionRequests,
-    accountDeletionOwnerKey,
-  );
-  const hasPendingAccountDeletionRequest = latestAccountDeletionRequest?.status === "pending_admin";
-
 
   function handleLanguageChange(nextLanguage: ProfileLanguage): void {
     setLanguage(nextLanguage);
@@ -2215,153 +2002,14 @@ export function ProfileIndexPage(): JSX.Element {
               </IonCardContent>
             </IonCard>
 
-            <IonCard
-              style={rapagoProfileCard({
-                marginBottom: 14,
-                border: "1.5px solid rgba(220, 38, 38, 0.28)",
-              })}
-            >
-              <IonCardHeader>
-                <IonCardTitle style={{ display: "flex", alignItems: "center", gap: 8, color: "#111", fontWeight: 950 }}>
-                  <IonIcon icon={trashOutline} />
-                  Solicitar borrar cuenta
-                </IonCardTitle>
-              </IonCardHeader>
-
-              <IonCardContent style={{ padding: 16, paddingTop: 0 }}>
-                <p style={{ margin: "0 0 12px", color: "#5b4632", fontWeight: 800, lineHeight: 1.4 }}>
-                  Esta acción no borra tu cuenta de inmediato. La solicitud llega al administrador y queda pendiente de revisión.
-                </p>
-
-                {latestAccountDeletionRequest && (
-                  <div
-                    style={{
-                      marginBottom: 12,
-                      padding: "10px 12px",
-                      borderRadius: 16,
-                      background: "#fff7ed",
-                      border: "1px solid rgba(210, 164, 58, 0.34)",
-                      color: "#1f1711",
-                      fontWeight: 850,
-                    }}
-                  >
-                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
-                      <strong>Estado de solicitud</strong>
-                      <IonBadge color={accountDeletionStatusColor(latestAccountDeletionRequest.status)}>
-                        {accountDeletionStatusLabel(latestAccountDeletionRequest.status)}
-                      </IonBadge>
-                    </div>
-                    <div style={{ marginTop: 6, fontSize: ".82rem", color: "#6b5a45" }}>
-                      Motivo: {latestAccountDeletionRequest.reason}
-                    </div>
-                    {latestAccountDeletionRequest.adminNote && (
-                      <div style={{ marginTop: 6, fontSize: ".82rem", color: "#6b5a45" }}>
-                        Nota admin: {latestAccountDeletionRequest.adminNote}
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                {accountDeletionSuccess && (
-                  <IonText color="success">
-                    <p style={{ margin: "0 0 12px", fontWeight: 900 }}>{accountDeletionSuccess}</p>
-                  </IonText>
-                )}
-
-                {accountDeletionError && (
-                  <IonText color="danger">
-                    <p style={{ margin: "0 0 12px", fontWeight: 900 }}>{accountDeletionError}</p>
-                  </IonText>
-                )}
-
-                {!hasPendingAccountDeletionRequest && (
-                  <>
-                    <IonButton
-                      expand="block"
-                      color="danger"
-                      fill={showAccountDeletionForm ? "solid" : "outline"}
-                      onClick={() => {
-                        setAccountDeletionError("");
-                        setAccountDeletionSuccess("");
-                        setShowAccountDeletionForm((current) => !current);
-                      }}
-                      disabled={saving}
-                      style={{ "--border-radius": "18px", height: "52px", fontWeight: 950 } as CSSProperties}
-                    >
-                      <IonIcon icon={trashOutline} slot="start" />
-                      {showAccountDeletionForm ? "Cerrar formulario" : "Solicitar eliminación"}
-                    </IonButton>
-
-                    {showAccountDeletionForm && (
-                      <div style={{ marginTop: 12 }}>
-                        <IonItem style={rapagoInputStyle()}>
-                          <IonLabel position="stacked" style={rapagoLabelStyle()}>
-                            Motivo *
-                          </IonLabel>
-                          <IonSelect
-                            value={accountDeletionReason}
-                            placeholder="Selecciona un motivo"
-                            onIonChange={(event) => {
-                              setAccountDeletionReason(String(event.detail.value ?? ""));
-                              setAccountDeletionError("");
-                            }}
-                          >
-                            <IonSelectOption value="Ya no usaré la aplicación">Ya no usaré la aplicación</IonSelectOption>
-                            <IonSelectOption value="Quiero eliminar mis datos">Quiero eliminar mis datos</IonSelectOption>
-                            <IonSelectOption value="Tuve un problema con el servicio">Tuve un problema con el servicio</IonSelectOption>
-                            <IonSelectOption value="Otro motivo">Otro motivo</IonSelectOption>
-                          </IonSelect>
-                        </IonItem>
-
-                        <IonItem style={rapagoInputStyle()}>
-                          <IonLabel position="stacked" style={rapagoLabelStyle()}>
-                            Comentario opcional
-                          </IonLabel>
-                          <IonInput
-                            value={accountDeletionComment}
-                            onIonInput={(event) => {
-                              setAccountDeletionComment(sanitizeAccountDeletionText(event.detail.value, 260));
-                              setAccountDeletionError("");
-                            }}
-                            placeholder="Escribe un comentario para el administrador"
-                            maxlength={260}
-                            style={rapagoFieldStyle()}
-                          />
-                        </IonItem>
-
-                        <IonItem style={rapagoInputStyle()}>
-                          <IonLabel position="stacked" style={rapagoLabelStyle()}>
-                            Confirmación *
-                          </IonLabel>
-                          <IonSelect
-                            value={accountDeletionConfirm}
-                            placeholder="Confirma antes de enviar"
-                            onIonChange={(event) => {
-                              setAccountDeletionConfirm(String(event.detail.value ?? ""));
-                              setAccountDeletionError("");
-                            }}
-                          >
-                            <IonSelectOption value="yes">
-                              Entiendo que mi cuenta quedará en revisión
-                            </IonSelectOption>
-                          </IonSelect>
-                        </IonItem>
-
-                        <IonButton
-                          expand="block"
-                          color="danger"
-                          onClick={handleSubmitAccountDeletionRequest}
-                          disabled={saving}
-                          style={{ "--border-radius": "18px", height: "52px", fontWeight: 950, marginTop: 12 } as CSSProperties}
-                        >
-                          Enviar solicitud al admin
-                        </IonButton>
-                      </div>
-                    )}
-                  </>
-                )}
-              </IonCardContent>
-            </IonCard>
+            <AccountDeletionCard
+              requesterSnapshot={{
+                phone: phoneInput.trim() || null,
+                rut: readStoredRegistrationProfile().rut ?? null,
+                passengerType: passengerFareType,
+                sourceView: "passenger",
+              }}
+            />
 
             <IonCard style={rapagoProfileCard({ marginBottom: 20 })}>
               <IonCardContent style={{ padding: 16 }}>

@@ -63,15 +63,6 @@ async function request<T>(
     clearTimeout(timerId);
   }
 
-  if (response.status === 401) {
-    return {
-      ok: false,
-      statusCode: 401,
-      code: "UNAUTHORIZED",
-      message: "No autorizado.",
-    } as ApiResponse<T>;
-  }
-
   if (response.status === 204 || response.status === 205) {
     return { ok: true, data: undefined as T, statusCode: response.status };
   }
@@ -87,7 +78,23 @@ async function request<T>(
   }
 
   if (response.ok === false) {
-    return parseErrorBody(parsed, response.status);
+    const errorResponse = parseErrorBody(parsed, response.status);
+
+    if (
+      response.status === 401 &&
+      errorResponse.ok === false &&
+      ["AUTH_SESSION_REVOKED", "AUTH_ACCOUNT_DELETED"].includes(
+        errorResponse.code,
+      )
+    ) {
+      window.dispatchEvent(
+        new CustomEvent("auth:force-logout", {
+          detail: { code: errorResponse.code },
+        }),
+      );
+    }
+
+    return errorResponse;
   }
 
   return {

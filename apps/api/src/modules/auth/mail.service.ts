@@ -131,4 +131,89 @@ export class MailService {
       `,
     });
   }
+  async sendAccountDeletionRequestReceived(
+    to: string,
+  ): Promise<void> {
+    await this.getTransporter().sendMail({
+      from: this.getFrom(),
+      to,
+      subject: "Recibimos tu solicitud de eliminación de cuenta",
+      text: [
+        "Recibimos tu solicitud para eliminar tu cuenta de RAPA GO.",
+        "",
+        "La cuenta no será eliminada automáticamente.",
+        "Un administrador revisará el motivo y las operaciones pendientes.",
+        "",
+        "Te informaremos si la solicitud es aprobada o rechazada.",
+      ].join("\n"),
+      html: `
+        <div style="font-family:Arial,sans-serif;background:#f4efe7;padding:28px;color:#171717">
+          <div style="max-width:560px;margin:auto;background:#ffffff;border-radius:20px;padding:28px;border:1px solid #d6a640">
+            <h1 style="margin:0 0 14px;color:#8f3c24">RAPA GO</h1>
+            <h2 style="margin:0 0 14px">Solicitud recibida</h2>
+            <p>Recibimos tu solicitud para eliminar la cuenta.</p>
+            <p><strong>La eliminación no es automática.</strong> Un administrador revisará el motivo y las operaciones pendientes.</p>
+            <p>Te informaremos cuando exista una decisión.</p>
+          </div>
+        </div>
+      `,
+    });
+  }
+
+  async sendAccountDeletionRejected(
+    to: string,
+    reason: string,
+  ): Promise<void> {
+    await this.getTransporter().sendMail({
+      from: this.getFrom(),
+      to,
+      subject: "Tu solicitud de eliminación fue rechazada",
+      text: [
+        "Tu solicitud de eliminación de cuenta fue rechazada.",
+        "",
+        `Motivo: ${reason}`,
+        "",
+        "Tu cuenta continúa activa.",
+      ].join("\n"),
+      html: `
+        <div style="font-family:Arial,sans-serif;background:#f4efe7;padding:28px;color:#171717">
+          <div style="max-width:560px;margin:auto;background:#ffffff;border-radius:20px;padding:28px;border:1px solid #d6a640">
+            <h1 style="margin:0 0 14px;color:#8f3c24">RAPA GO</h1>
+            <h2 style="margin:0 0 14px">Solicitud rechazada</h2>
+            <p>Tu solicitud de eliminación fue rechazada.</p>
+            <p><strong>Motivo:</strong> ${reason.replace(/[<>]/g, "")}</p>
+            <p>Tu cuenta continúa activa.</p>
+          </div>
+        </div>
+      `,
+    });
+  }
+
+  async sendAccountDeletionCompleted(
+    to: string,
+  ): Promise<void> {
+    await this.getTransporter().sendMail({
+      from: this.getFrom(),
+      to,
+      subject: "Tu cuenta de RAPA GO fue eliminada",
+      text: [
+        "Tu solicitud fue aprobada.",
+        "",
+        "La cuenta fue eliminada o anonimizada y todas las sesiones fueron cerradas.",
+        "Los registros que deban conservarse por obligaciones legales permanecen restringidos y anonimizados.",
+      ].join("\n"),
+      html: `
+        <div style="font-family:Arial,sans-serif;background:#f4efe7;padding:28px;color:#171717">
+          <div style="max-width:560px;margin:auto;background:#ffffff;border-radius:20px;padding:28px;border:1px solid #d6a640">
+            <h1 style="margin:0 0 14px;color:#8f3c24">RAPA GO</h1>
+            <h2 style="margin:0 0 14px">Cuenta eliminada</h2>
+            <p>Tu solicitud fue aprobada.</p>
+            <p>La cuenta fue eliminada o anonimizada y todas las sesiones fueron cerradas.</p>
+            <p style="color:#675a4a">Los registros que deban conservarse por obligaciones legales permanecen restringidos y anonimizados.</p>
+          </div>
+        </div>
+      `,
+    });
+  }
+
 }

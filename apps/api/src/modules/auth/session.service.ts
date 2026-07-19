@@ -80,4 +80,37 @@ export class SessionService {
       throw AppError.internal(`Failed to validate session: ${String(err)}`);
     }
   }
+
+  async revokeAllForUser(userId: string): Promise<void> {
+    const now = new Date();
+
+    try {
+      await db.transaction(async (tx) => {
+        await tx
+          .update(authSessions)
+          .set({ revokedAt: now })
+          .where(
+            and(
+              eq(authSessions.userId, userId),
+              isNull(authSessions.revokedAt),
+            ),
+          );
+
+        await tx
+          .update(refreshTokens)
+          .set({ revokedAt: now })
+          .where(
+            and(
+              eq(refreshTokens.userId, userId),
+              isNull(refreshTokens.revokedAt),
+            ),
+          );
+      });
+    } catch (err) {
+      throw AppError.internal(
+        `Failed to revoke all user sessions: ${String(err)}`,
+      );
+    }
+  }
+
 }

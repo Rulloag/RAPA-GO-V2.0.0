@@ -93,6 +93,7 @@ import {
 import { RAPAGO_CONTACT, WA_MESSAGES } from "@rapa-go/shared";
 import { WhatsAppButton } from "../../components/WhatsAppButton";
 import { loadRapaGoGoogleMaps } from "../../components/MapFallback";
+import { AccountDeletionAdminPanel } from "../../components/accountDeletion/AccountDeletionAdminPanel.js";
 
 const ADMIN_DRIVERS_ROUTE = "/admin/drivers";
 const ADMIN_DRIVERS_REFRESH_EVENT = "rapago:admin-refresh-drivers";
@@ -254,127 +255,6 @@ const RAPAGO_DRIVER_CASH_CLOSURE_EVENT = "rapago:driver-cash-closure-updated";
 const RAPAGO_ADMIN_WALLET_BENEFIT_EVENT = "rapago:admin-wallet-benefit-updated";
 const RAPAGO_ADMIN_RIDES_EVENT = "rapago:admin-rides-updated";
 const RAPAGO_ADMIN_RESERVATION_AUTO_ASSIGN_LOG_KEY = "rapago_admin_reservation_auto_assign_log_v1";
-
-
-type RapagoAccountDeletionRequestStatus = "pending_admin" | "approved" | "rejected" | "cancelled";
-
-type RapagoAccountDeletionRequest = {
-  id: string;
-  ownerKey: string;
-  userId?: string | null;
-  userEmail?: string | null;
-  userName?: string | null;
-  userRole?: string | null;
-  reason: string;
-  comment?: string | null;
-  status: RapagoAccountDeletionRequestStatus;
-  createdAt: string;
-  updatedAt: string;
-  adminReviewedAt?: string | null;
-  adminReviewedBy?: string | null;
-  adminNote?: string | null;
-  source?: string | null;
-};
-
-const RAPAGO_ACCOUNT_DELETION_REQUESTS_KEY_ADMIN = "rapago_account_deletion_requests_v1";
-const RAPAGO_ACCOUNT_DELETION_EVENT_ADMIN = "rapago:account-deletion-requests-updated";
-
-function sanitizeAdminAccountDeletionText(value: unknown, maxLength = 240): string {
-  return String(value ?? "")
-    .replace(/[<>`{}$\\]/g, "")
-    .replace(/[\u0000-\u001F\u007F]/g, "")
-    .replace(/\s+/g, " ")
-    .trim()
-    .slice(0, maxLength);
-}
-
-function readAdminAccountDeletionRequests(): RapagoAccountDeletionRequest[] {
-  try {
-    const raw = localStorage.getItem(RAPAGO_ACCOUNT_DELETION_REQUESTS_KEY_ADMIN);
-    const parsed = raw ? (JSON.parse(raw) as Array<Record<string, unknown>>) : [];
-    if (!Array.isArray(parsed)) return [];
-
-    return parsed
-      .map((item, index): RapagoAccountDeletionRequest => ({
-        id: sanitizeAdminAccountDeletionText(item.id, 90) || `account-delete-${index}`,
-        ownerKey: sanitizeAdminAccountDeletionText(item.ownerKey, 180),
-        userId: sanitizeAdminAccountDeletionText(item.userId, 120) || null,
-        userEmail: sanitizeAdminAccountDeletionText(item.userEmail, 160).toLowerCase() || null,
-        userName: sanitizeAdminAccountDeletionText(item.userName, 120) || null,
-        userRole: sanitizeAdminAccountDeletionText(item.userRole, 60) || null,
-        reason: sanitizeAdminAccountDeletionText(item.reason, 120) || "No informado",
-        comment: sanitizeAdminAccountDeletionText(item.comment, 260) || null,
-        status: String(item.status ?? "pending_admin") as RapagoAccountDeletionRequestStatus,
-        createdAt: sanitizeAdminAccountDeletionText(item.createdAt, 40) || new Date().toISOString(),
-        updatedAt: sanitizeAdminAccountDeletionText(item.updatedAt, 40) || new Date().toISOString(),
-        adminReviewedAt: sanitizeAdminAccountDeletionText(item.adminReviewedAt, 40) || null,
-        adminReviewedBy: sanitizeAdminAccountDeletionText(item.adminReviewedBy, 80) || null,
-        adminNote: sanitizeAdminAccountDeletionText(item.adminNote, 260) || null,
-        source: sanitizeAdminAccountDeletionText(item.source, 80) || null,
-      }))
-      .filter((item) => Boolean(item.id))
-      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-  } catch {
-    return [];
-  }
-}
-
-function writeAdminAccountDeletionRequests(requests: RapagoAccountDeletionRequest[]): void {
-  try {
-    localStorage.setItem(RAPAGO_ACCOUNT_DELETION_REQUESTS_KEY_ADMIN, JSON.stringify(requests.slice(0, 250)));
-    window.dispatchEvent(new CustomEvent(RAPAGO_ACCOUNT_DELETION_EVENT_ADMIN, { detail: { requests } }));
-    window.dispatchEvent(new CustomEvent(RAPAGO_ADMIN_RIDES_EVENT, { detail: { requests } }));
-  } catch {
-    // No bloquea el panel admin.
-  }
-}
-
-function updateAdminAccountDeletionRequestStatus(
-  id: string,
-  status: Exclude<RapagoAccountDeletionRequestStatus, "pending_admin">,
-  adminNote: string,
-): RapagoAccountDeletionRequest[] {
-  const now = new Date().toISOString();
-  const next = readAdminAccountDeletionRequests().map((item) => {
-    if (String(item.id) !== String(id)) return item;
-
-    return {
-      ...item,
-      status,
-      updatedAt: now,
-      adminReviewedAt: now,
-      adminReviewedBy: "admin",
-      adminNote: sanitizeAdminAccountDeletionText(adminNote, 260),
-    };
-  });
-
-  writeAdminAccountDeletionRequests(next);
-  return next;
-}
-
-function adminAccountDeletionStatusLabel(status: RapagoAccountDeletionRequestStatus): string {
-  if (status === "approved") return "Aprobada";
-  if (status === "rejected") return "Rechazada";
-  if (status === "cancelled") return "Cancelada";
-  return "Pendiente";
-}
-
-function adminAccountDeletionStatusColor(status: RapagoAccountDeletionRequestStatus): string {
-  if (status === "approved") return "success";
-  if (status === "rejected") return "danger";
-  if (status === "cancelled") return "medium";
-  return "warning";
-}
-
-function formatAdminAccountDeletionDate(value: unknown): string {
-  const date = new Date(String(value ?? ""));
-  if (!Number.isFinite(date.getTime())) return "Sin fecha";
-
-  return date.toLocaleString("es-CL", {
-    dateStyle: "short",
-    timeStyle: "short",
-  });
-}
 
 
 type AdminTripSafetyReportStatus = "arrived_well" | "problem_reported" | "driver_accident_reported";
@@ -2136,25 +2016,10 @@ export function AdminHomePage(): JSX.Element {
   const [showAdminChargesModal, setShowAdminChargesModal] = useState(false);
   const [showAdminNoShowModal, setShowAdminNoShowModal] = useState(false);
   const [showAccountDeletionModal, setShowAccountDeletionModal] = useState(false);
-  const [accountDeletionRequests, setAccountDeletionRequests] = useState<RapagoAccountDeletionRequest[]>(() => readAdminAccountDeletionRequests());
   const [showTripSafetyReportsModal, setShowTripSafetyReportsModal] = useState(false);
   const [tripSafetyReports, setTripSafetyReports] = useState<AdminTripSafetyReport[]>(() => readAdminTripSafetyReports());
   const [pendingChargeWaiver, setPendingChargeWaiver] = useState<AdminPassengerPendingCharge | null>(null);
 
-
-  useEffect(() => {
-    const refreshAccountDeletionRequests = () => {
-      setAccountDeletionRequests(readAdminAccountDeletionRequests());
-    };
-
-    window.addEventListener("storage", refreshAccountDeletionRequests);
-    window.addEventListener(RAPAGO_ACCOUNT_DELETION_EVENT_ADMIN, refreshAccountDeletionRequests as EventListener);
-
-    return () => {
-      window.removeEventListener("storage", refreshAccountDeletionRequests);
-      window.removeEventListener(RAPAGO_ACCOUNT_DELETION_EVENT_ADMIN, refreshAccountDeletionRequests as EventListener);
-    };
-  }, []);
 
   useEffect(() => {
     const refreshTripSafetyReports = () => {
@@ -2543,9 +2408,6 @@ export function AdminHomePage(): JSX.Element {
     },
   ];
 
-  const pendingAccountDeletionRequests = accountDeletionRequests.filter(
-    (request) => request.status === "pending_admin",
-  );
   const pendingTripSafetyReports = tripSafetyReports.filter(
     (report) => report.adminStatus !== "resolved" && report.status !== "arrived_well",
   );
@@ -2583,7 +2445,7 @@ export function AdminHomePage(): JSX.Element {
     },
     {
       label: "Borrar cuenta",
-      description: `${pendingAccountDeletionRequests.length} solicitud${pendingAccountDeletionRequests.length !== 1 ? "es" : ""}`,
+      description: "Pasajeros y conductores",
       icon: warningOutline,
       route: "__account_deletion__",
     },
@@ -3009,7 +2871,6 @@ export function AdminHomePage(): JSX.Element {
                           }
 
                           if (action.route === "__account_deletion__") {
-                            setAccountDeletionRequests(readAdminAccountDeletionRequests());
                             setShowAccountDeletionModal(true);
                             return;
                           }
@@ -3133,131 +2994,7 @@ export function AdminHomePage(): JSX.Element {
                 </IonHeader>
 
                 <IonContent className="ion-padding">
-                  <IonCard style={{ margin: "0 0 12px" }}>
-                    <IonCardHeader>
-                      <div className="admin-section-title-row">
-                        <div>
-                          <IonCardTitle>Borrar cuenta</IonCardTitle>
-                          <IonCardSubtitle>
-                            Solicitudes enviadas desde Perfil. Aprobar deja la cuenta marcada para desactivación administrativa.
-                          </IonCardSubtitle>
-                        </div>
-
-                        <IonBadge color={pendingAccountDeletionRequests.length > 0 ? "warning" : "medium"}>
-                          {pendingAccountDeletionRequests.length} pendiente{pendingAccountDeletionRequests.length !== 1 ? "s" : ""}
-                        </IonBadge>
-                      </div>
-                    </IonCardHeader>
-
-                    <IonCardContent>
-                      {accountDeletionRequests.length === 0 ? (
-                        <IonText color="medium">
-                          <p style={{ margin: 0, fontWeight: 850 }}>
-                            No hay solicitudes de eliminación de cuenta.
-                          </p>
-                        </IonText>
-                      ) : (
-                        <div style={{ display: "grid", gap: 10 }}>
-                          {accountDeletionRequests.map((request) => (
-                            <IonCard key={request.id} style={{ margin: 0 }}>
-                              <IonCardContent style={{ padding: 14 }}>
-                                <div
-                                  style={{
-                                    display: "flex",
-                                    justifyContent: "space-between",
-                                    alignItems: "flex-start",
-                                    gap: 10,
-                                    marginBottom: 8,
-                                  }}
-                                >
-                                  <div>
-                                    <h3 style={{ margin: 0, fontWeight: 950 }}>
-                                      {request.userName || request.userEmail || "Usuario"}
-                                    </h3>
-                                    <p style={{ margin: "4px 0 0", color: "#4b5563", fontWeight: 800 }}>
-                                      {request.userEmail || "Correo no informado"} · {request.userRole || "Rol no informado"}
-                                    </p>
-                                  </div>
-
-                                  <IonBadge color={adminAccountDeletionStatusColor(request.status)}>
-                                    {adminAccountDeletionStatusLabel(request.status)}
-                                  </IonBadge>
-                                </div>
-
-                                <div
-                                  style={{
-                                    padding: "10px 12px",
-                                    borderRadius: 14,
-                                    background: "#f8fafc",
-                                    border: "1px solid rgba(148, 163, 184, .32)",
-                                    color: "#111827",
-                                    fontWeight: 800,
-                                  }}
-                                >
-                                  <p style={{ margin: 0 }}>
-                                    <strong>Motivo:</strong> {request.reason}
-                                  </p>
-
-                                  {request.comment && (
-                                    <p style={{ margin: "6px 0 0" }}>
-                                      <strong>Comentario:</strong> {request.comment}
-                                    </p>
-                                  )}
-
-                                  <p style={{ margin: "6px 0 0", color: "#64748b" }}>
-                                    Enviada: {formatAdminAccountDeletionDate(request.createdAt)}
-                                  </p>
-
-                                  {request.adminNote && (
-                                    <p style={{ margin: "6px 0 0", color: "#64748b" }}>
-                                      <strong>Nota admin:</strong> {request.adminNote}
-                                    </p>
-                                  )}
-                                </div>
-
-                                {request.status === "pending_admin" && (
-                                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 12 }}>
-                                    <IonButton
-                                      size="small"
-                                      color="danger"
-                                      onClick={() => {
-                                        const next = updateAdminAccountDeletionRequestStatus(
-                                          request.id,
-                                          "approved",
-                                          "Solicitud aprobada. Cuenta marcada para desactivación administrativa.",
-                                        );
-                                        setAccountDeletionRequests(next);
-                                        setAdminCashToast("Solicitud de borrar cuenta aprobada.");
-                                      }}
-                                    >
-                                      Aprobar eliminación
-                                    </IonButton>
-
-                                    <IonButton
-                                      size="small"
-                                      color="medium"
-                                      fill="outline"
-                                      onClick={() => {
-                                        const next = updateAdminAccountDeletionRequestStatus(
-                                          request.id,
-                                          "rejected",
-                                          "Solicitud rechazada por administrador.",
-                                        );
-                                        setAccountDeletionRequests(next);
-                                        setAdminCashToast("Solicitud de borrar cuenta rechazada.");
-                                      }}
-                                    >
-                                      Rechazar
-                                    </IonButton>
-                                  </div>
-                                )}
-                              </IonCardContent>
-                            </IonCard>
-                          ))}
-                        </div>
-                      )}
-                    </IonCardContent>
-                  </IonCard>
+                  <AccountDeletionAdminPanel />
                 </IonContent>
               </IonModal>
 

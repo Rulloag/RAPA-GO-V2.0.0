@@ -4,7 +4,7 @@ import type { User } from "../../db/schema/index.js";
 export type { User };
 
 /** Allowed values for the user status column. */
-export type UserStatus = "pending" | "active" | "suspended" | "banned";
+export type UserStatus = "pending" | "active" | "suspended" | "banned" | "deleted";
 
 /** Input for creating a new user record. Passwords are never stored in users. */
 export interface CreateUserInput {
