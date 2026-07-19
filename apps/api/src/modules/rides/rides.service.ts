@@ -25,6 +25,16 @@ import type {
   AdminPolicyChargeReviewInput,
   AdminUpsertApprovePolicyChargeInput,
 } from "./rides.schemas.js";
+import {
+  DRIVER_NO_SHOW_WAIT_MS,
+  LATE_CANCELLATION_CAP_CLP,
+  LATE_CANCELLATION_PERCENT,
+  NO_SHOW_CAP_CLP,
+  NO_SHOW_PERCENT,
+  calculateRidePolicyAmount,
+  isPassengerCancellationChargeable,
+  roundFareUpTo500,
+} from "./ridePolicy.js";
 
 const tokenService = new TokenService();
 const sessionService = new SessionService();
@@ -34,13 +44,6 @@ const driverComplianceService = new DriverComplianceService();
 const driverStatusRepo = new DriverStatusRepository();
 
 const SCHEDULE_ACTIVATION_MINUTES = 30;
-const PASSENGER_FREE_CANCELLATION_MS = 2 * 60 * 1000;
-const SCHEDULED_CANCELLATION_CHARGE_WINDOW_MS = 15 * 60 * 1000;
-const DRIVER_NO_SHOW_WAIT_MS = 5 * 60 * 1000;
-const LATE_CANCELLATION_PERCENT = 30;
-const LATE_CANCELLATION_CAP_CLP = 3000;
-const NO_SHOW_PERCENT = 50;
-const NO_SHOW_CAP_CLP = 5000;
 
 async function estimateFare(
   originText: string,
@@ -62,7 +65,7 @@ async function estimateFare(
 
     if (perKmSetting) perKmCentavos = perKmSetting.value;
     if (minSetting) minFareCentavos = minSetting.value;
-    if (zoneFare) return zoneFare.fare;
+    if (zoneFare) return roundFareUpTo500(zoneFare.fare);
   } catch {
     // Usa cálculo local si tarifas falla.
   }
@@ -75,7 +78,9 @@ async function estimateFare(
   const minFareCLP = Math.round(minFareCentavos / 100);
   const raw = minFareCLP + Math.round((estimatedKm * perKmCentavos) / 10000);
 
-  return Math.min(Math.max(raw, minFareCLP), 50000);
+  return roundFareUpTo500(
+    Math.min(Math.max(raw, minFareCLP), 50000),
+  );
 }
 
 type ScheduleMeta = {
@@ -372,6 +377,83 @@ function inferRidePaymentMethod(
   return null;
 }
 
+function appendPaymentMetaToNotes(
+  notes: string | null | undefined,
+  paymentMethod: "cash" | "card" | undefined,
+  paymentProvider:
+    | "mercadopago"
+    | "prontopaga"
+    | "transbank"
+    | null
+    | undefined,
+): string | null {
+  const cleaned = String(notes ?? "")
+    .replace(/\n?PaymentMethod:\s*(?:cash|card)\s*/gi, "")
+    .replace(/\n?PaymentProvider:\s*[^\n]+\s*/gi, "")
+    .trim();
+
+  if (!paymentMethod) return cleaned || null;
+
+  const lines = [
+    `PaymentMethod: ${paymentMethod}`,
+    paymentMethod === "card"
+      ? `PaymentProvider: ${paymentProvider ?? "mercadopago"}`
+      : null,
+  ].filter(Boolean);
+
+  return [cleaned, lines.join("\n")].filter(Boolean).join("\n\n");
+}
+
+async function refundCardPaymentForCancelledRide(input: {
+  rideRequestId: string;
+  cancelledByUserId: string;
+  cancelledByRole: string;
+  reason: string | null;
+}): Promise<Record<string, unknown> | null> {
+  try {
+    const { PaymentsService } = await import(
+      "../payments/payments.service.js"
+    );
+
+    const refundResult =
+      await new PaymentsService().refundCardPaymentForCancelledRide({
+        rideRequestId: input.rideRequestId,
+        cancelledByUserId: input.cancelledByUserId,
+        cancelledByRole: input.cancelledByRole,
+        reason: input.reason,
+      });
+
+    if (refundResult.ok) {
+      return {
+        processed: refundResult.processed,
+        refunded: refundResult.refunded,
+        skippedReason: refundResult.skippedReason ?? null,
+        paymentId: refundResult.paymentId ?? null,
+        mercadoPagoPaymentId:
+          refundResult.mercadoPagoPaymentId ?? null,
+      };
+    }
+
+    return {
+      processed: true,
+      refunded: false,
+      failed: true,
+      code: refundResult.code,
+      message: refundResult.message,
+    };
+  } catch (err) {
+    return {
+      processed: true,
+      refunded: false,
+      failed: true,
+      message:
+        err instanceof Error
+          ? err.message
+          : "Error interno al devolver el pago con tarjeta.",
+    };
+  }
+}
+
 async function rideHasApprovedCardPayment(ride: RideRequest): Promise<boolean> {
   if (inferRidePaymentMethod(ride.notes) !== "card") return true;
 
@@ -399,23 +481,6 @@ function paymentNotApprovedResult(): {
     message: "El servicio con tarjeta todavía no tiene un pago aprobado por Mercado Pago.",
     statusCode: 409,
   };
-}
-
-function calculatePolicyAmount(
-  applicableFareClp: number,
-  percent: number,
-  capClp: number,
-): number {
-  return Math.min(
-    Math.max(0, Math.round(capClp)),
-    Math.max(
-      0,
-      Math.round(
-        Math.max(0, Math.round(applicableFareClp)) *
-          (Math.max(0, percent) / 100),
-      ),
-    ),
-  );
 }
 
 function toPolicyChargeResponse(
@@ -464,26 +529,20 @@ function toPolicyChargeResponse(
 function shouldCreatePassengerCancellationCharge(
   ride: RideRequest,
 ): boolean {
-  const nowMs = Date.now();
   const scheduleMeta = getScheduleMetaFromRide(ride);
+  const scheduledPickupAtMs = scheduleMeta?.scheduledPickupAt
+    ? new Date(scheduleMeta.scheduledPickupAt).getTime()
+    : null;
 
-  if (scheduleMeta?.isScheduled && scheduleMeta.scheduledPickupAt) {
-    const pickupMs = new Date(scheduleMeta.scheduledPickupAt).getTime();
-
-    if (Number.isFinite(pickupMs)) {
-      const timeUntilPickupMs = pickupMs - nowMs;
-      return (
-        timeUntilPickupMs <= SCHEDULED_CANCELLATION_CHARGE_WINDOW_MS
-      );
-    }
-  }
-
-  if (!ride.acceptedAt) return false;
-
-  return (
-    nowMs - ride.acceptedAt.getTime() >=
-    PASSENGER_FREE_CANCELLATION_MS
-  );
+  return isPassengerCancellationChargeable({
+    isScheduled: scheduleMeta?.isScheduled === true,
+    scheduledPickupAtMs:
+      scheduledPickupAtMs != null &&
+      Number.isFinite(scheduledPickupAtMs)
+        ? scheduledPickupAtMs
+        : null,
+    acceptedAtMs: ride.acceptedAt?.getTime() ?? null,
+  });
 }
 
 function buildPolicyChargeData(input: {
@@ -513,7 +572,7 @@ function buildPolicyChargeData(input: {
     applicableFareClp,
     feePercent,
     feeCapClp,
-    calculatedAmountClp: calculatePolicyAmount(
+    calculatedAmountClp: calculateRidePolicyAmount(
       applicableFareClp,
       feePercent,
       feeCapClp,
@@ -779,24 +838,36 @@ export class RidesService {
       };
     }
 
-    const notesForStorage = appendScheduleMetaToNotes(
-      input.notes ?? null,
-      scheduleMeta,
+    const notesForStorage = appendPaymentMetaToNotes(
+      appendScheduleMetaToNotes(
+        input.notes ?? null,
+        scheduleMeta,
+      ),
+      input.paymentMethod,
+      input.paymentProvider,
     );
 
     const fareFromClient = Number(input.estimatedFareClp);
-    const serverEstimatedFare = await estimateFare(input.originText, input.destinationText);
+    const serverEstimatedFare = roundFareUpTo500(
+      await estimateFare(
+        input.originText,
+        input.destinationText,
+      ),
+    );
     const clientFare =
       Number.isFinite(fareFromClient) && fareFromClient > 0
-        ? Math.round(fareFromClient)
+        ? roundFareUpTo500(fareFromClient)
         : null;
 
-    // Seguridad financiera:
-    // estimatedFareClp viene del cliente y no puede bajar el monto calculado por backend.
-    // Esto evita descuentos manipulados desde localStorage/frontend mientras se migra pricing completo al backend.
-    const baseFare = clientFare == null
-      ? serverEstimatedFare
-      : Math.max(clientFare, serverEstimatedFare);
+    // El backend nunca permite un monto inferior a su cálculo y aplica el
+    // redondeo oficial. El valor del cliente se conserva temporalmente solo
+    // cuando es mayor, hasta que el motor de distancia viva completamente
+    // en servidor.
+    const baseFare = roundFareUpTo500(
+      clientFare == null
+        ? serverEstimatedFare
+        : Math.max(clientFare, serverEstimatedFare),
+    );
 
     let finalFare = baseFare;
     let discountInfo:
@@ -832,13 +903,17 @@ export class RidesService {
           refCode.discountAmount
         ) {
           const discountPercent = refCode.discountAmount;
-          finalFare = Math.round(baseFare * (1 - discountPercent / 100));
+          finalFare = roundFareUpTo500(
+            baseFare * (1 - discountPercent / 100),
+          );
           discountInfo = { discountPercent, originalFare: baseFare };
         }
       }
     } catch {
       // No bloquea crear el viaje.
     }
+
+    finalFare = roundFareUpTo500(finalFare);
 
     const created = await ridesRepo.createWithApprovedPolicyCharges(
       auth.userId,
@@ -905,13 +980,50 @@ export class RidesService {
       };
     }
 
+    const cancellationReason =
+      input.reason ?? "Cancelado por pasajero.";
+
     const cancelled = await ridesRepo.cancel(
       existing.id,
       auth.userId,
-      auth.role,
-      input.reason ?? "Cancelado por pasajero.",
+      "passenger",
+      cancellationReason,
     );
-    return { ok: true, ride: toResponse(cancelled) };
+
+    let policyCharge: RidePolicyCharge | null = null;
+
+    // Las reservas se cobran dentro de los últimos 30 minutos aunque todavía
+    // no hayan sido aceptadas por un conductor. Un viaje inmediato sin
+    // conductor sigue siendo gratuito.
+    if (shouldCreatePassengerCancellationCharge(existing)) {
+      const chargeData = buildPolicyChargeData({
+        ride: existing,
+        type: "late_cancellation",
+        reason: cancellationReason,
+      });
+
+      if (chargeData.calculatedAmountClp > 0) {
+        policyCharge = await ridesRepo.createPolicyCharge(chargeData);
+      }
+    }
+
+    const paymentRefund =
+      await refundCardPaymentForCancelledRide({
+        rideRequestId: rideId,
+        cancelledByUserId: auth.userId,
+        cancelledByRole: "passenger",
+        reason: cancellationReason,
+      });
+
+    const response = toResponse(cancelled) as RideRequestResponse &
+      Record<string, unknown>;
+
+    response["policyCharge"] = policyCharge
+      ? toPolicyChargeResponse(policyCharge)
+      : null;
+    response["paymentRefund"] = paymentRefund;
+
+    return { ok: true, ride: response };
   }
 
   async listAvailableRides(
@@ -1372,32 +1484,37 @@ export class RidesService {
       };
     }
 
-    if (auth.role === "passenger" && existing.passengerUserId !== auth.userId) {
+    const cancellingAsPassenger =
+      existing.passengerUserId === auth.userId;
+    const cancellingAsDriver =
+      existing.driverUserId === auth.userId;
+
+    if (!cancellingAsPassenger && !cancellingAsDriver) {
       return {
         ok: false,
         code: "AUTH_FORBIDDEN",
-        message: "You can only cancel your own rides.",
+        message:
+          "You can only cancel a ride requested by you or assigned to you.",
         statusCode: 403,
       };
     }
 
-    if (auth.role === "driver" && existing.driverUserId !== auth.userId) {
-      return {
-        ok: false,
-        code: "AUTH_FORBIDDEN",
-        message: "You can only cancel rides assigned to you.",
-        statusCode: 403,
-      };
-    }
+    // Una cuenta con rol driver también puede estar viajando como usuario.
+    // La relación con el viaje, no el rol global de la cuenta, determina la
+    // política aplicable.
+    const cancellationActorRole = cancellingAsPassenger
+      ? "passenger"
+      : "driver";
 
     const cancelled = await ridesRepo.cancelAccepted(
       rideId,
       auth.userId,
-      auth.role,
+      cancellationActorRole,
       input.reason ?? null,
       {
         cancellationEvent:
-          input.cancellationEvent ?? `mobile_cancelled_by_${auth.role}`,
+          input.cancellationEvent ??
+          `mobile_cancelled_by_${cancellationActorRole}`,
         location: input.location
           ? {
               lat: input.location.lat,
@@ -1431,16 +1548,16 @@ export class RidesService {
       };
     }
 
-    if (cancelled.driverUserId) {
+    if (existing.driverUserId) {
       await driverComplianceService.releaseDriverAfterRide(
-        cancelled.driverUserId,
+        existing.driverUserId,
       );
     }
 
     let policyCharge: RidePolicyCharge | null = null;
 
     if (
-      auth.role === "passenger" &&
+      cancellationActorRole === "passenger" &&
       shouldCreatePassengerCancellationCharge(existing)
     ) {
       const chargeData = buildPolicyChargeData({
@@ -1454,49 +1571,18 @@ export class RidesService {
       }
     }
 
-    let paymentRefund: Record<string, unknown> | null = null;
-
-    try {
-      const { PaymentsService } = await import(
-        "../payments/payments.service.js"
-      );
-
-      const refundResult =
-        await new PaymentsService().refundCardPaymentForCancelledRide({
-          rideRequestId: rideId,
-          cancelledByUserId: auth.userId,
-          cancelledByRole: auth.role,
-          reason: input.reason ?? null,
-        });
-
-      if (refundResult.ok) {
-        paymentRefund = {
-          processed: refundResult.processed,
-          refunded: refundResult.refunded,
-          skippedReason: refundResult.skippedReason ?? null,
-          paymentId: refundResult.paymentId ?? null,
-          mercadoPagoPaymentId: refundResult.mercadoPagoPaymentId ?? null,
-        };
-      } else {
-        paymentRefund = {
-          processed: true,
-          refunded: false,
-          failed: true,
-          code: refundResult.code,
-          message: refundResult.message,
-        };
-      }
-    } catch (err) {
-      paymentRefund = {
-        processed: true,
-        refunded: false,
-        failed: true,
-        message:
-          err instanceof Error
-            ? err.message
-            : "Error interno al devolver el pago con tarjeta.",
-      };
-    }
+    // Cuando cancela el conductor el viaje vuelve a búsqueda; no se devuelve
+    // el pago ni se genera cargo al pasajero. La devolución solo corresponde
+    // cuando la cuenta pasajera cancela definitivamente.
+    const paymentRefund =
+      cancellationActorRole === "passenger"
+        ? await refundCardPaymentForCancelledRide({
+            rideRequestId: rideId,
+            cancelledByUserId: auth.userId,
+            cancelledByRole: cancellationActorRole,
+            reason: input.reason ?? null,
+          })
+        : null;
 
     const responseRide = toResponse(cancelled) as RideRequestResponse &
       Record<string, unknown>;
@@ -1505,6 +1591,12 @@ export class RidesService {
     responseRide["policyCharge"] = policyCharge
       ? toPolicyChargeResponse(policyCharge)
       : null;
+
+    if (cancellationActorRole === "driver") {
+      responseRide["requeuedAfterDriverCancellation"] = true;
+      responseRide["passengerNotice"] =
+        "Tu conductor canceló el viaje. Estamos buscando uno nuevo.";
+    }
 
     return {
       ok: true,
@@ -1721,7 +1813,7 @@ export class RidesService {
       ),
     );
 
-    const calculatedAmountClp = calculatePolicyAmount(
+    const calculatedAmountClp = calculateRidePolicyAmount(
       applicableFareClp,
       feePercent,
       feeCapClp,

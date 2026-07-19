@@ -9,6 +9,7 @@ import {
   type RidePolicyCharge,
   type NewRidePolicyCharge,
 } from "../../db/schema/ridePolicyCharges.schema.js";
+import { roundFareUpTo500 } from "./ridePolicy.js";
 
 export interface RideWithDriverName extends RideRequest {
   driverName:          string | null;
@@ -178,6 +179,12 @@ export class RidesRepository {
   ): Promise<RideCreatedWithPolicyCharges> {
     try {
       return await db.transaction(async (tx) => {
+        // Serializa la creación de viajes por cuenta para impedir que dos
+        // solicitudes simultáneas adjunten el mismo cargo aprobado.
+        await tx.execute(
+          sql`select id from users where id = ${passengerUserId} for update`,
+        );
+
         const approvedCharges = await tx
           .select()
           .from(ridePolicyCharges)
@@ -209,9 +216,8 @@ export class RidesRepository {
           0,
         );
 
-        const finalEstimatedFareClp = Math.max(
-          0,
-          Math.round(baseEstimatedFareClp + appliedChargesTotalClp),
+        const finalEstimatedFareClp = roundFareUpTo500(
+          baseEstimatedFareClp + appliedChargesTotalClp,
         );
 
         const [ride] = await tx
@@ -504,17 +510,36 @@ export class RidesRepository {
   ): Promise<RideRequest | null> {
     try {
       return await db.transaction(async (tx) => {
-        const cancelledAt = new Date();
+        const changedAt = new Date();
+        const driverIsCancelling = cancelledByRole === "driver";
+
         const rows = await tx
           .update(rideRequests)
-          .set({
-            status: "cancelled",
-            cancelledAt,
-            cancelledByUserId,
-            cancelledByRole,
-            cancellationReason,
-            updatedAt: cancelledAt,
-          })
+          .set(
+            driverIsCancelling
+              ? {
+                  // El conductor abandona su asignación, pero la solicitud del
+                  // pasajero sigue activa y vuelve a la lista disponible.
+                  status: "requested",
+                  driverUserId: null,
+                  acceptedAt: null,
+                  enRouteAt: null,
+                  arrivedAt: null,
+                  cancelledAt: null,
+                  cancelledByUserId: null,
+                  cancelledByRole: null,
+                  cancellationReason: null,
+                  updatedAt: changedAt,
+                }
+              : {
+                  status: "cancelled",
+                  cancelledAt: changedAt,
+                  cancelledByUserId,
+                  cancelledByRole,
+                  cancellationReason,
+                  updatedAt: changedAt,
+                },
+          )
           .where(
             and(
               eq(rideRequests.id, id),
@@ -527,18 +552,24 @@ export class RidesRepository {
           )
           .returning();
 
-        const cancelled = rows[0] ?? null;
-        if (!cancelled) return null;
+        const changedRide = rows[0] ?? null;
+        if (!changedRide) return null;
 
-        const driverUserId = cancelled.driverUserId;
-        if (driverUserId) {
+        const assignmentDriverUserId = driverIsCancelling
+          ? cancelledByUserId
+          : changedRide.driverUserId;
+
+        if (assignmentDriverUserId) {
           const activeRows = await tx
             .select()
             .from(rideDriverAssignments)
             .where(
               and(
                 eq(rideDriverAssignments.rideRequestId, id),
-                eq(rideDriverAssignments.driverUserId, driverUserId),
+                eq(
+                  rideDriverAssignments.driverUserId,
+                  assignmentDriverUserId,
+                ),
                 eq(rideDriverAssignments.outcome, "active"),
                 isNull(rideDriverAssignments.endedAt),
               ),
@@ -551,14 +582,15 @@ export class RidesRepository {
             const elapsedSeconds = Math.max(
               0,
               Math.floor(
-                (cancelledAt.getTime() - active.acceptedAt.getTime()) / 1000,
+                (changedAt.getTime() - active.acceptedAt.getTime()) /
+                  1000,
               ),
             );
 
             await tx
               .update(rideDriverAssignments)
               .set({
-                endedAt: cancelledAt,
+                endedAt: changedAt,
                 elapsedSeconds,
                 outcome: "cancelled",
                 cancellationReason,
@@ -573,21 +605,22 @@ export class RidesRepository {
                   compliance?.location?.accuracyMeters ?? null,
                 locationCapturedAt:
                   compliance?.location?.capturedAt ??
-                  (compliance?.location ? cancelledAt : null),
-                updatedAt: cancelledAt,
+                  (compliance?.location ? changedAt : null),
+                updatedAt: changedAt,
               })
               .where(eq(rideDriverAssignments.id, active.id));
           }
         }
 
-        return cancelled;
+        return changedRide;
       });
     } catch (err) {
       if (err instanceof AppError) throw err;
-      throw AppError.internal(`Failed to cancel accepted ride: ${String(err)}`);
+      throw AppError.internal(
+        `Failed to cancel accepted ride: ${String(err)}`,
+      );
     }
   }
-
 
   /**
    * Publica el viaje solo después de que el backend recibió un pago aprobado.
@@ -621,7 +654,7 @@ export class RidesRepository {
       const [updated] = await db
         .update(rideRequests)
         .set({
-          estimatedFareClp: sql<number>`coalesce(${rideRequests.estimatedFareClp}, 0) + ${safeFeeClp}`,
+          estimatedFareClp: sql<number>`(ceil((coalesce(${rideRequests.estimatedFareClp}, 0) + ${safeFeeClp})::numeric / 500) * 500)::integer`,
           notes: sql<string>`concat_ws(E'\\n', nullif(${rideRequests.notes}, ''), ${noteBlock})`,
           updatedAt: activatedAt,
         })
@@ -996,7 +1029,7 @@ export class RidesRepository {
           originText:           data.originText,
           destinationText:      data.destinationText,
           notes:                data.notes,
-          estimatedFareClp:     data.estimatedFareClp,
+          estimatedFareClp:     roundFareUpTo500(data.estimatedFareClp),
           status:               "requested",
           isOfflineBooking:     true,
           offlinePassengerName:  data.offlinePassengerName,
