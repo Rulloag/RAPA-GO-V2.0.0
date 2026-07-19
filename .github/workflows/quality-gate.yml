@@ -163,6 +163,13 @@ jobs:
   secret-scan:
     name: Búsqueda de secretos
     runs-on: ubuntu-latest
+    # gitleaks-action llama a GET /repos/{owner}/{repo}/pulls/{n}/commits para resolver el rango de
+    # commits del PR a escanear. Sin este permiso explícito, el GITHUB_TOKEN por defecto responde
+    # 403 "Resource not accessible by integration" en ese endpoint y el job falla — no por un
+    # secreto detectado, sino por falta de acceso de lectura a PRs.
+    permissions:
+      contents: read
+      pull-requests: read
     steps:
       - uses: actions/checkout@v4
         with:
