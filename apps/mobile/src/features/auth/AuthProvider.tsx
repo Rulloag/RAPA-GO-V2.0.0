@@ -11,6 +11,7 @@ import type {
   AuthStatus,
   LoginRequest,
   RegisterRequest,
+  AppleSignInRequest,
   AuthResponse,
 } from "./auth.types.js";
 import type { UserRole } from "@rapa-go/shared";
@@ -25,18 +26,17 @@ interface AuthProviderProps {
  * AuthProvider — manages authentication state for the entire app.
  *
  * Session persistence:
- *  - Currently memory-only via SessionStorageService.
+ *  - Persisted via SessionStorageService, backed by native Keychain (iOS) /
+ *    Keystore (Android) through @aparajita/capacitor-secure-storage.
  *  - On app start, attempts to load a non-expired session from the service.
  *  - Starts in "loading" state until the restore attempt completes.
- *
- * TODO(phase-secure-storage): when SessionStorageService is backed by
- * Keychain/Keystore, persistence will survive app restarts automatically —
- * no changes needed in this file.
  *
  * SECURITY invariants:
  *  - Never use localStorage or sessionStorage.
  *  - Password is never stored in state beyond the login call.
- *  - accessToken is in memory only (current implementation).
+ *  - Apple's own tokens (identityToken, authorizationCode, access/refresh)
+ *    never reach this provider — only Rapa Go's own session, same as
+ *    login/register.
  */
 export function AuthProvider({ children }: AuthProviderProps): JSX.Element {
   const history = useHistory();
@@ -144,6 +144,21 @@ export function AuthProvider({ children }: AuthProviderProps): JSX.Element {
     return response;
   }, []);
 
+  // ── Sign in with Apple ───────────────────────────────────────────────────────
+  const signInWithApple = useCallback(async (payload: AppleSignInRequest): Promise<AuthResponse> => {
+    setStatus("loading");
+    const response = await authService.signInWithApple(payload);
+    if (response.ok) {
+      await sessionStorageService.saveSession(response.session, response.refreshToken);
+      setSession(response.session);
+      setUser(response.session.user);
+      setStatus("authenticated");
+    } else {
+      setStatus("unauthenticated");
+    }
+    return response;
+  }, []);
+
   // ── Logout ───────────────────────────────────────────────────────────────────
   const logout = useCallback(async (): Promise<void> => {
     if (session?.accessToken) {
@@ -156,7 +171,7 @@ export function AuthProvider({ children }: AuthProviderProps): JSX.Element {
   }, [session]);
 
   return (
-    <AuthContext.Provider value={{ status, user, session, login, register, logout }}>
+    <AuthContext.Provider value={{ status, user, session, login, register, signInWithApple, logout }}>
       {children}
     </AuthContext.Provider>
   );
