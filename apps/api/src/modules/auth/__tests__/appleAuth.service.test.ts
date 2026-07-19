@@ -272,17 +272,69 @@ describe("AppleAuthService.signIn", () => {
   it("rejects when Apple's token-exchange response describes a different account than the identityToken (respuesta incoherente)", async () => {
     const fakes = buildFakes({
       existingIdentity: null,
+      userByEmail: null,
       exchangedClaims: { sub: "a-completely-different-sub" },
     });
 
-    const result = await fakes.service.signIn(basePayload);
+    const result = await fakes.service.signIn({ ...basePayload, role: "passenger" });
 
     expect(result.ok).toBe(false);
     if (!result.ok) {
       expect(result.code).toBe("AUTH_APPLE_TOKEN_INCOHERENT");
       expect(result.statusCode).toBe(401);
     }
-    expect(fakes.mockFindByProviderAndSub).not.toHaveBeenCalled();
+    // The identity lookup by sub runs before the code-consuming exchange —
+    // confirmed once here (not "never called").
+    expect(fakes.mockFindByProviderAndSub).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not consume the authorizationCode (never calls exchange) when a new user is missing role — the code stays valid for an immediate retry with role", async () => {
+    const fakes = buildFakes({ existingIdentity: null, userByEmail: null });
+
+    const result = await fakes.service.signIn(basePayload); // no role
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.code).toBe("VALIDATION_ERROR");
+    expect(fakes.mockExchange).not.toHaveBeenCalled();
+  });
+
+  it("does not consume the authorizationCode when the email already belongs to another account", async () => {
+    const otherAccount = { id: "user-other2", email: "newuser@example.com", name: "Other2", role: "passenger", status: "active", avatarUrl: null, isVerified: true };
+    const fakes = buildFakes({ existingIdentity: null, userByEmail: otherAccount });
+
+    const result = await fakes.service.signIn({ ...basePayload, role: "passenger" });
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.code).toBe("AUTH_APPLE_ACCOUNT_LINKING_REQUIRED");
+    expect(fakes.mockExchange).not.toHaveBeenCalled();
+  });
+
+  it("succeeds when the client retries immediately with role using the same (still-valid) authorizationCode", async () => {
+    const newUser = { id: "user-retry", email: "newuser@example.com", name: "Retry User", role: "passenger", status: "active", avatarUrl: null, isVerified: true };
+    const fakes = buildFakes({
+      existingIdentity: null,
+      userByEmail: null,
+      createUserWithIdentityResult: { user: newUser, identity: { id: "identity-retry" } },
+    });
+
+    // First attempt: no role — must be rejected without touching Apple's token
+    // endpoint. buildFakes queues exactly the 2 verify() results a single
+    // successful signIn() needs; this attempt only consumes 1 (identityToken).
+    const firstAttempt = await fakes.service.signIn(basePayload);
+    expect(firstAttempt.ok).toBe(false);
+    expect(fakes.mockExchange).not.toHaveBeenCalled();
+
+    // Retry with role, same identityToken/authorizationCode. Re-queue verify()
+    // results for this second attempt (identityToken, then the exchanged
+    // token) since the first attempt already consumed one of the originals.
+    fakes.mockVerify.mockReset();
+    fakes.mockVerify
+      .mockResolvedValueOnce(baseClaims())
+      .mockResolvedValueOnce(baseClaims());
+
+    const retry = await fakes.service.signIn({ ...basePayload, role: "passenger" });
+    expect(retry.ok).toBe(true);
+    expect(fakes.mockExchange).toHaveBeenCalledTimes(1);
   });
 
   it("propagates AUTH_CONFIGURATION_ERROR when Apple config is incomplete", async () => {
