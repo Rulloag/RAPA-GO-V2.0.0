@@ -3,6 +3,7 @@ import { Route, Switch } from "react-router-dom";
 import { RoleLayout } from "./RoleLayout";
 import { ROUTES } from "../navigation/routes";
 import * as DriverPages from "../pages/driver";
+import { DriverLocationRuntime } from "../features/location/index.js";
 
 const DriverHomePage = DriverPages.DriverHomePage;
 const DriverRequestsPage = DriverPages.DriverRequestsPage;
@@ -25,6 +26,7 @@ const TABS = [
 export function DriverLayout(): JSX.Element {
   return (
     <RoleLayout tabs={TABS}>
+      <DriverLocationRuntime />
       <Switch>
         <Route exact path={ROUTES.DRIVER.HOME} component={DriverHomePage} />
         <Route exact path={ROUTES.DRIVER.REQUESTS} component={DriverRequestsPage} />

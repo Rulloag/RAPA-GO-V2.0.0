@@ -89,11 +89,15 @@ export function PrivacyPublicPage(): JSX.Element {
       <Section title="4. Ubicación y mapas">
         <p>
           La ubicación se utiliza para mostrar el mapa, calcular rutas, encontrar
-          el punto de recogida y permitir seguimiento durante un viaje activo.
-          RAPA GO no debe usar ubicación en segundo plano cuando no exista una
-          función operacional activa que lo justifique. Puedes retirar el permiso
-          desde la configuración del dispositivo, aunque algunas funciones dejarán
-          de estar disponibles.
+          el punto de recogida y permitir seguimiento durante un viaje activo. La
+          ubicación en segundo plano se solicita únicamente al conductor cuando ya
+          tiene un viaje activo, para mantener visible su posición al pasajero y al
+          operador aunque la aplicación quede minimizada. El seguimiento se detiene
+          al finalizar o cancelar el viaje, al cerrar la sesión o cuando el permiso
+          es retirado. RAPA GO no debe usar ubicación en segundo plano cuando no
+          exista una función operacional activa que lo justifique. Puedes retirar
+          el permiso desde la configuración del dispositivo, aunque algunas
+          funciones dejarán de estar disponibles.
         </p>
       </Section>
 

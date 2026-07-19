@@ -1,0 +1,9 @@
+<!-- Merge these keys into apps/mobile/ios/App/App/Info.plist on macOS/Xcode. -->
+<key>NSLocationWhenInUseUsageDescription</key>
+<string>RAPA GO usa tu ubicación para encontrar el punto de recogida, mostrar viajes cercanos y navegar durante el servicio.</string>
+<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+<string>Durante un viaje activo, RAPA GO continúa compartiendo la ubicación del conductor con el pasajero aunque cambie de aplicación o bloquee la pantalla. El seguimiento se detiene al finalizar el viaje.</string>
+<key>UIBackgroundModes</key>
+<array>
+  <string>location</string>
+</array>

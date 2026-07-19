@@ -20,6 +20,7 @@ import {
 } from "@ionic/react";
 import { RoleLayout } from "./RoleLayout";
 import { ROUTES } from "../navigation/routes";
+import { PassengerLocationRuntime } from "../features/location/index.js";
 
 const HomePage = lazy(() => import("../pages/passenger/pages/HomePage.js"));
 const RequestRidePage = lazy(
@@ -214,6 +215,7 @@ function PassengerComingSoonPage({
 export function PassengerLayout(): JSX.Element {
   return (
     <RoleLayout tabs={TABS}>
+      <PassengerLocationRuntime />
       <Switch>
         <Route
           exact

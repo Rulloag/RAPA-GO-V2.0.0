@@ -13037,81 +13037,58 @@ La solicitud fue retirada de tu pantalla. No debes continuar hacia la recogida.`
   ]);
 
   useEffect(() => {
-    if (!navigator.geolocation) {
-      setLocationError(
-        "Este dispositivo no permite GPS. No puedes tomar viajes reales sin ubicación.",
-      );
-      return;
-    }
+    const applyNativeLocation = (raw: unknown): void => {
+      if (!raw || typeof raw !== "object") return;
+      const detail = raw as Record<string, unknown>;
+      const lat = Number(detail.lat);
+      const lng = Number(detail.lng);
+      if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
 
-    const watchId = navigator.geolocation.watchPosition(
-      (position) => {
-        const nextLocation = {
-          lat: position.coords.latitude,
-          lng: position.coords.longitude,
-        };
+      const nextLocation = { lat, lng };
+      const previousLocation = lastPublishedDriverLocationRef.current;
+      const movedMeters = previousLocation
+        ? distanceMetersForLiveDriverGps(previousLocation, nextLocation)
+        : Number.POSITIVE_INFINITY;
+      const eventHeading = Number(detail.heading);
 
-        const previousLocation = lastPublishedDriverLocationRef.current;
-        const movedMeters = previousLocation
-          ? distanceMetersForLiveDriverGps(previousLocation, nextLocation)
-          : Number.POSITIVE_INFINITY;
-        const browserHeading = Number(position.coords.heading);
-
-        if (previousLocation && movedMeters >= 4) {
-          liveDriverHeadingRef.current = bearingDegreesForLiveDriverGps(previousLocation, nextLocation);
-        } else if (Number.isFinite(browserHeading)) {
-          liveDriverHeadingRef.current = browserHeading;
-        }
-
-        lastPublishedDriverLocationRef.current = nextLocation;
-        driverLocationRef.current = nextLocation;
-        setLocationError(null);
-
-        if (activeRide) {
-          publishDriverLiveLocationForPassenger(
-            activeRide as unknown as DriverRideData,
-            {
-              lat: nextLocation.lat,
-              lng: nextLocation.lng,
-              heading: liveDriverHeadingRef.current,
-              speed: Number.isFinite(Number(position.coords.speed))
-                ? Number(position.coords.speed)
-                : null,
-              accuracy: Number.isFinite(Number(position.coords.accuracy))
-                ? Number(position.coords.accuracy)
-                : null,
-            },
-            liveDriverHeadingRef.current,
-            session?.user,
-          );
-        }
-
-        // Cuando hay viaje activo NO actualizamos estado en cada GPS,
-        // porque eso remonta la pantalla y provoca el bucle visual del mapa.
-        // Igual publicamos arriba la ubicación real para que el pasajero vea la flecha viva.
-        if (activeRide) {
-          return;
-        }
-
-        setDriverLocation(nextLocation);
-      },
-      () => {
-        setDriverLocation(null);
-        setLocationError(
-          "Activa el permiso de ubicación para tomar viajes reales.",
+      if (previousLocation && movedMeters >= 4) {
+        liveDriverHeadingRef.current = bearingDegreesForLiveDriverGps(
+          previousLocation,
+          nextLocation,
         );
-      },
-      {
-        enableHighAccuracy: true,
-        maximumAge: 5000,
-        timeout: 12000,
-      },
+      } else if (Number.isFinite(eventHeading)) {
+        liveDriverHeadingRef.current = eventHeading;
+      }
+
+      lastPublishedDriverLocationRef.current = nextLocation;
+      driverLocationRef.current = nextLocation;
+      setLocationError(null);
+      setDriverLocation(nextLocation);
+    };
+
+    const handleNativeLocation = (event: Event): void => {
+      applyNativeLocation((event as CustomEvent<unknown>).detail);
+    };
+
+    window.addEventListener(
+      "rapago:driver-native-location",
+      handleNativeLocation as EventListener,
     );
 
+    try {
+      const currentRaw = localStorage.getItem("rapago_current_driver_location");
+      if (currentRaw) applyNativeLocation(JSON.parse(currentRaw) as unknown);
+    } catch {
+      // Espera el siguiente punto nativo.
+    }
+
     return () => {
-      navigator.geolocation.clearWatch(watchId);
+      window.removeEventListener(
+        "rapago:driver-native-location",
+        handleNativeLocation as EventListener,
+      );
     };
-  }, [activeRide?.id, activeRide?.status, session?.user]);
+  }, []);
 
   const loadRides = useCallback(async (background = false) => {
     if (!session?.accessToken) return;

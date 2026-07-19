@@ -1,0 +1,11 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">RAPA GO</string>
+    <string name="title_activity_main">RAPA GO</string>
+    <string name="package_name">cl.rapago.app</string>
+    <string name="custom_url_scheme">cl.rapago.app</string>
+    <string name="location_channel_name">Viaje activo RAPA GO</string>
+    <string name="location_channel_description">Ubicación del conductor durante un viaje activo.</string>
+    <string name="location_notification_title">RAPA GO · Viaje activo</string>
+    <string name="location_notification_body">Compartiendo tu ubicación con el pasajero. Se detiene al finalizar el viaje.</string>
+</resources>
