@@ -84,6 +84,26 @@ jobs:
           fail-on-cache-miss: true
       - run: npm run test --workspace=apps/api
 
+  test-mobile:
+    name: Tests Mobile
+    runs-on: ubuntu-latest
+    needs: install
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - uses: actions/cache/restore@v4
+        with:
+          path: |
+            node_modules
+            apps/api/node_modules
+            apps/mobile/node_modules
+            packages/shared/node_modules
+          key: quality-gate-node-modules-${{ github.event.pull_request.number }}-${{ github.run_id }}
+          fail-on-cache-miss: true
+      - run: npm run test --workspace=apps/mobile
+
   build:
     name: Build (API + mobile)
     runs-on: ubuntu-latest
@@ -239,6 +259,7 @@ jobs:
       - install
       - typecheck
       - test-api
+      - test-mobile
       - build
       - migrations
       - secret-scan
@@ -254,6 +275,7 @@ jobs:
             echo "| Instalación reproducible | ${{ needs.install.result }} |"
             echo "| Typecheck API + mobile | ${{ needs.typecheck.result }} |"
             echo "| Tests API | ${{ needs.test-api.result }} |"
+            echo "| Tests Mobile | ${{ needs['test-mobile'].result }} |"
             echo "| Build API + mobile | ${{ needs.build.result }} |"
             echo "| Migraciones (base vacía + 2ª ejecución) | ${{ needs.migrations.result }} |"
             echo "| Búsqueda de secretos | ${{ needs.secret-scan.result }} |"
