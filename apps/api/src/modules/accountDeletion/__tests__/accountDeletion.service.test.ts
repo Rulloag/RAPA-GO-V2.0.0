@@ -5,6 +5,7 @@ const {
   mockHashToken,
   mockIsSessionValid,
   mockFindUserById,
+  mockFindUserByEmail,
   mockFindLatestByUserId,
   mockFindPendingByUserId,
   mockCreate,
@@ -14,15 +15,24 @@ const {
   mockReject,
   mockNotifyUserOfRejection,
   mockApproveAndAnonymize,
+  mockHasRecentPublicVerification,
+  mockCreatePublicVerification,
+  mockRevokePublicVerification,
+  mockVerifyAndConsumePublicCode,
+  mockCreatePublicRequest,
+  mockAttachPublicContact,
+  mockFindPublicStatus,
   mockRecordSafe,
   mockSendReceived,
   mockSendRejected,
   mockSendCompleted,
+  mockSendVerificationCode,
 } = vi.hoisted(() => ({
   mockVerifyAccessToken: vi.fn(),
   mockHashToken: vi.fn().mockReturnValue("access-hash"),
   mockIsSessionValid: vi.fn().mockResolvedValue(true),
   mockFindUserById: vi.fn(),
+  mockFindUserByEmail: vi.fn(),
   mockFindLatestByUserId: vi.fn(),
   mockFindPendingByUserId: vi.fn(),
   mockCreate: vi.fn(),
@@ -32,10 +42,18 @@ const {
   mockReject: vi.fn(),
   mockNotifyUserOfRejection: vi.fn(),
   mockApproveAndAnonymize: vi.fn(),
+  mockHasRecentPublicVerification: vi.fn(),
+  mockCreatePublicVerification: vi.fn(),
+  mockRevokePublicVerification: vi.fn(),
+  mockVerifyAndConsumePublicCode: vi.fn(),
+  mockCreatePublicRequest: vi.fn(),
+  mockAttachPublicContact: vi.fn(),
+  mockFindPublicStatus: vi.fn(),
   mockRecordSafe: vi.fn(),
   mockSendReceived: vi.fn().mockResolvedValue(undefined),
   mockSendRejected: vi.fn().mockResolvedValue(undefined),
   mockSendCompleted: vi.fn().mockResolvedValue(undefined),
+  mockSendVerificationCode: vi.fn().mockResolvedValue(undefined),
 }));
 
 vi.mock("../../auth/token.service.js", () => ({
@@ -54,6 +72,7 @@ vi.mock("../../auth/session.service.js", () => ({
 vi.mock("../../users/users.repository.js", () => ({
   UsersRepository: vi.fn().mockImplementation(() => ({
     findById: mockFindUserById,
+    findByEmail: mockFindUserByEmail,
   })),
 }));
 
@@ -68,6 +87,13 @@ vi.mock("../accountDeletion.repository.js", () => ({
     reject: mockReject,
     notifyUserOfRejection: mockNotifyUserOfRejection,
     approveAndAnonymize: mockApproveAndAnonymize,
+    hasRecentPublicVerification: mockHasRecentPublicVerification,
+    createPublicVerification: mockCreatePublicVerification,
+    revokePublicVerification: mockRevokePublicVerification,
+    verifyAndConsumePublicCode: mockVerifyAndConsumePublicCode,
+    createPublicRequest: mockCreatePublicRequest,
+    attachPublicContact: mockAttachPublicContact,
+    findPublicStatus: mockFindPublicStatus,
   })),
 }));
 
@@ -82,6 +108,7 @@ vi.mock("../../auth/mail.service.js", () => ({
     sendAccountDeletionRequestReceived: mockSendReceived,
     sendAccountDeletionRejected: mockSendRejected,
     sendAccountDeletionCompleted: mockSendCompleted,
+    sendAccountDeletionVerificationCode: mockSendVerificationCode,
   })),
 }));
 
@@ -121,6 +148,8 @@ const admin = {
 const pendingRequest = {
   id: REQUEST_ID,
   userId: PASSENGER_ID,
+  trackingCode: "RAD-ABCDEF1234567890",
+  requestChannel: "app" as const,
   requesterRole: "passenger",
   reason: "Ya no utilizaré la aplicación.",
   comment: null,
@@ -142,6 +171,10 @@ describe("AccountDeletionService", () => {
     service = new AccountDeletionService();
     mockHashToken.mockReturnValue("access-hash");
     mockIsSessionValid.mockResolvedValue(true);
+    mockHasRecentPublicVerification.mockResolvedValue(false);
+    mockCreatePublicVerification.mockResolvedValue(
+      "55555555-5555-4555-8555-555555555555",
+    );
   });
 
   it.each([
@@ -363,4 +396,97 @@ describe("AccountDeletionService", () => {
       }),
     );
   });
+
+  it("mantiene una respuesta genérica para un correo desconocido", async () => {
+    mockFindUserByEmail.mockResolvedValue(null);
+
+    const result = await service.requestPublicVerification(
+      { email: "unknown@test.cl" },
+      {},
+    );
+
+    expect(result.ok).toBe(true);
+    expect(mockCreatePublicVerification).not.toHaveBeenCalled();
+    expect(mockSendVerificationCode).not.toHaveBeenCalled();
+  });
+
+  it("envía un código para una cuenta de pasajero", async () => {
+    mockFindUserByEmail.mockResolvedValue(passenger);
+
+    const result = await service.requestPublicVerification(
+      { email: passenger.email },
+      { requestIp: "127.0.0.1", requestUserAgent: "vitest" },
+    );
+
+    expect(result.ok).toBe(true);
+    expect(mockCreatePublicVerification).toHaveBeenCalledOnce();
+    expect(mockSendVerificationCode).toHaveBeenCalledWith(
+      passenger.email,
+      expect.stringMatching(/^\d{6}$/),
+      10,
+    );
+  });
+
+  it("rechaza un código público inválido", async () => {
+    mockFindUserByEmail.mockResolvedValue(passenger);
+    mockVerifyAndConsumePublicCode.mockResolvedValue(null);
+
+    const result = await service.submitPublicRequest({
+      email: passenger.email,
+      code: "123456",
+      reason: "Ya no utilizaré la aplicación.",
+      accepted: true,
+    });
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.code).toBe(
+        "ACCOUNT_DELETION_PUBLIC_CODE_INVALID",
+      );
+    }
+    expect(mockCreatePublicRequest).not.toHaveBeenCalled();
+  });
+
+  it("crea una solicitud web verificada con seguimiento", async () => {
+    mockFindUserByEmail.mockResolvedValue(passenger);
+    mockVerifyAndConsumePublicCode.mockResolvedValue(PASSENGER_ID);
+    mockFindPendingByUserId.mockResolvedValue(null);
+    mockCreatePublicRequest.mockResolvedValue({
+      ...pendingRequest,
+      requestChannel: "web",
+    });
+
+    const result = await service.submitPublicRequest({
+      email: passenger.email,
+      code: "123456",
+      reason: "Ya no utilizaré la aplicación.",
+      comment: "Solicitud realizada desde el sitio público.",
+      accepted: true,
+    });
+
+    expect(result.ok).toBe(true);
+    expect(mockCreatePublicRequest).toHaveBeenCalledOnce();
+    expect(mockNotifyAdmins).toHaveBeenCalledOnce();
+  });
+
+  it("consulta el estado público con correo y seguimiento", async () => {
+    mockFindPublicStatus.mockResolvedValue({
+      trackingCode: pendingRequest.trackingCode,
+      status: "pending",
+      requestedAt: pendingRequest.requestedAt,
+      reviewedAt: null,
+      completedAt: null,
+      adminNote: null,
+      failureReason: null,
+    });
+
+    const result = await service.getPublicStatus({
+      email: passenger.email,
+      trackingCode: pendingRequest.trackingCode,
+    });
+
+    expect(result.ok).toBe(true);
+    expect(mockFindPublicStatus).toHaveBeenCalledOnce();
+  });
+
 });

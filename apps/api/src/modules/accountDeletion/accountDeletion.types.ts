@@ -7,6 +7,8 @@ export type AccountDeletionRequestStatus =
   | "failed"
   | "cancelled";
 
+export type AccountDeletionRequestChannel = "app" | "web";
+
 export interface AccountDeletionClientSnapshot {
   phone?: string | null;
   rut?: string | null;
@@ -23,6 +25,8 @@ export interface AccountDeletionClientSnapshot {
 export interface AccountDeletionRequestResponse {
   id: string;
   userId: string | null;
+  trackingCode: string;
+  requestChannel: AccountDeletionRequestChannel;
   requesterRole: string;
   reason: string;
   comment: string | null;
@@ -33,6 +37,16 @@ export interface AccountDeletionRequestResponse {
   processingAt: string | null;
   completedAt: string | null;
   failedAt: string | null;
+  failureReason: string | null;
+}
+
+export interface PublicAccountDeletionStatusResponse {
+  trackingCode: string;
+  status: AccountDeletionRequestStatus;
+  requestedAt: string;
+  reviewedAt: string | null;
+  completedAt: string | null;
+  adminNote: string | null;
   failureReason: string | null;
 }
 

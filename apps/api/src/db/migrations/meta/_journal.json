@@ -148,6 +148,13 @@
       "when": 1784435136349,
       "tag": "0028_account_deletion_requests",
       "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1784438000000,
+      "tag": "0029_public_account_deletion",
+      "breakpoints": true
     }
   ]
 }

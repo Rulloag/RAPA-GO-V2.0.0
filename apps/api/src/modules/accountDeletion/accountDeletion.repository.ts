@@ -1,9 +1,13 @@
+import { randomBytes } from "node:crypto";
+
 import {
   and,
   desc,
   eq,
+  gt,
   inArray,
   isNull,
+  lt,
   or,
   sql,
 } from "drizzle-orm";
@@ -11,6 +15,7 @@ import {
 import { db } from "../../db/client.js";
 import {
   accountDeletionRequests,
+  accountDeletionVerifications,
   applications,
   authSessions,
   driverProfiles,
@@ -33,6 +38,7 @@ import type {
   AccountDeletionClientSnapshot,
   AccountDeletionRequestResponse,
   AccountDeletionRequestStatus,
+  PublicAccountDeletionStatusResponse,
 } from "./accountDeletion.types.js";
 import type {
   CreateAccountDeletionRequestInput,
@@ -74,6 +80,8 @@ function toPublicResponse(
   return {
     id: row.id,
     userId: row.userId,
+    trackingCode: row.trackingCode,
+    requestChannel: row.requestChannel as "app" | "web",
     requesterRole: row.requesterRole,
     reason: row.reason,
     comment: row.comment,
@@ -86,6 +94,13 @@ function toPublicResponse(
     failedAt: iso(row.failedAt),
     failureReason: row.failureReason,
   };
+}
+
+function newTrackingCode(): string {
+  return `RAD-${randomBytes(10)
+    .toString("hex")
+    .slice(0, 16)
+    .toUpperCase()}`;
 }
 
 export class AccountDeletionRepository {
@@ -146,6 +161,8 @@ export class AccountDeletionRepository {
         .insert(accountDeletionRequests)
         .values({
           userId,
+          trackingCode: newTrackingCode(),
+          requestChannel: "app",
           requesterRole,
           reason: input.reason,
           comment: input.comment?.trim() || null,
@@ -166,6 +183,243 @@ export class AccountDeletionRepository {
       if (error instanceof AppError) throw error;
       throw AppError.internal(
         `Failed to create account deletion request: ${String(error)}`,
+      );
+    }
+  }
+
+  async hasRecentPublicVerification(
+    emailHash: string,
+    since: Date,
+  ): Promise<boolean> {
+    try {
+      const rows = await db
+        .select({ id: accountDeletionVerifications.id })
+        .from(accountDeletionVerifications)
+        .where(
+          and(
+            eq(accountDeletionVerifications.emailHash, emailHash),
+            gt(accountDeletionVerifications.createdAt, since),
+            isNull(accountDeletionVerifications.consumedAt),
+            isNull(accountDeletionVerifications.revokedAt),
+          ),
+        )
+        .limit(1);
+
+      return Boolean(rows[0]);
+    } catch (error) {
+      throw AppError.internal(
+        `Failed to check public account deletion verification: ${String(error)}`,
+      );
+    }
+  }
+
+  async createPublicVerification(input: {
+    userId: string;
+    emailHash: string;
+    codeHash: string;
+    expiresAt: Date;
+    requestIp: string | null;
+    requestUserAgent: string | null;
+  }): Promise<string> {
+    try {
+      const rows = await db
+        .insert(accountDeletionVerifications)
+        .values(input)
+        .returning({ id: accountDeletionVerifications.id });
+
+      const created = rows[0];
+
+      if (!created) {
+        throw AppError.internal(
+          "Public account deletion verification insert returned no rows.",
+        );
+      }
+
+      return created.id;
+    } catch (error) {
+      if (error instanceof AppError) throw error;
+      throw AppError.internal(
+        `Failed to create public account deletion verification: ${String(error)}`,
+      );
+    }
+  }
+
+  async revokePublicVerification(verificationId: string): Promise<void> {
+    try {
+      await db
+        .update(accountDeletionVerifications)
+        .set({ revokedAt: new Date() })
+        .where(eq(accountDeletionVerifications.id, verificationId));
+    } catch (error) {
+      throw AppError.internal(
+        `Failed to revoke public account deletion verification: ${String(error)}`,
+      );
+    }
+  }
+
+  async verifyAndConsumePublicCode(
+    emailHash: string,
+    codeHash: string,
+  ): Promise<string | null> {
+    try {
+      return await db.transaction(async (tx) => {
+        const now = new Date();
+
+        const rows = await tx
+          .select()
+          .from(accountDeletionVerifications)
+          .where(
+            and(
+              eq(accountDeletionVerifications.emailHash, emailHash),
+              gt(accountDeletionVerifications.expiresAt, now),
+              isNull(accountDeletionVerifications.consumedAt),
+              isNull(accountDeletionVerifications.revokedAt),
+              lt(accountDeletionVerifications.attempts, 5),
+            ),
+          )
+          .orderBy(desc(accountDeletionVerifications.createdAt))
+          .limit(1);
+
+        const verification = rows[0];
+
+        if (!verification) return null;
+
+        if (verification.codeHash !== codeHash) {
+          const attempts = verification.attempts + 1;
+
+          await tx
+            .update(accountDeletionVerifications)
+            .set({
+              attempts,
+              revokedAt: attempts >= 5 ? now : null,
+            })
+            .where(eq(accountDeletionVerifications.id, verification.id));
+
+          return null;
+        }
+
+        const consumedRows = await tx
+          .update(accountDeletionVerifications)
+          .set({ consumedAt: now })
+          .where(
+            and(
+              eq(accountDeletionVerifications.id, verification.id),
+              isNull(accountDeletionVerifications.consumedAt),
+            ),
+          )
+          .returning({ userId: accountDeletionVerifications.userId });
+
+        return consumedRows[0]?.userId ?? null;
+      });
+    } catch (error) {
+      throw AppError.internal(
+        `Failed to consume public account deletion verification: ${String(error)}`,
+      );
+    }
+  }
+
+  async createPublicRequest(
+    userId: string,
+    requesterRole: string,
+    emailHash: string,
+    input: CreateAccountDeletionRequestInput,
+  ): Promise<AccountDeletionRequestResponse> {
+    try {
+      const rows = await db
+        .insert(accountDeletionRequests)
+        .values({
+          userId,
+          trackingCode: newTrackingCode(),
+          requestChannel: "web",
+          contactEmailHash: emailHash,
+          requesterRole,
+          reason: input.reason,
+          comment: input.comment?.trim() || null,
+          requesterSnapshot: null,
+          status: "pending",
+        })
+        .returning();
+
+      const created = rows[0];
+
+      if (!created) {
+        throw AppError.internal(
+          "Public account deletion request insert returned no rows.",
+        );
+      }
+
+      return toPublicResponse(created);
+    } catch (error) {
+      if (error instanceof AppError) throw error;
+      throw AppError.internal(
+        `Failed to create public account deletion request: ${String(error)}`,
+      );
+    }
+  }
+
+  async attachPublicContact(
+    requestId: string,
+    emailHash: string,
+  ): Promise<AccountDeletionRequestResponse> {
+    try {
+      const rows = await db
+        .update(accountDeletionRequests)
+        .set({
+          contactEmailHash: emailHash,
+          updatedAt: new Date(),
+        })
+        .where(eq(accountDeletionRequests.id, requestId))
+        .returning();
+
+      const updated = rows[0];
+
+      if (!updated) {
+        throw AppError.notFound(
+          "No se encontró la solicitud de eliminación.",
+        );
+      }
+
+      return toPublicResponse(updated);
+    } catch (error) {
+      if (error instanceof AppError) throw error;
+      throw AppError.internal(
+        `Failed to attach public contact to account deletion request: ${String(error)}`,
+      );
+    }
+  }
+
+  async findPublicStatus(
+    trackingCode: string,
+    emailHash: string,
+  ): Promise<PublicAccountDeletionStatusResponse | null> {
+    try {
+      const rows = await db
+        .select()
+        .from(accountDeletionRequests)
+        .where(
+          and(
+            eq(accountDeletionRequests.trackingCode, trackingCode),
+            eq(accountDeletionRequests.contactEmailHash, emailHash),
+          ),
+        )
+        .limit(1);
+
+      const row = rows[0];
+
+      if (!row) return null;
+
+      return {
+        trackingCode: row.trackingCode,
+        status: row.status as AccountDeletionRequestStatus,
+        requestedAt: row.requestedAt.toISOString(),
+        reviewedAt: iso(row.reviewedAt),
+        completedAt: iso(row.completedAt),
+        adminNote: row.adminNote,
+        failureReason: row.failureReason,
+      };
+    } catch (error) {
+      throw AppError.internal(
+        `Failed to load public account deletion status: ${String(error)}`,
       );
     }
   }

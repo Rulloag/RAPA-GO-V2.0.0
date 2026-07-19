@@ -20,6 +20,14 @@ export const ROUTES = {
     FACEBOOK_CALLBACK: "/auth/facebook/callback",
   },
 
+  PUBLIC: {
+    PRIVACY: "/privacidad",
+    TERMS: "/terminos",
+    SUPPORT: "/soporte",
+    EULA: "/eula",
+    DELETE_ACCOUNT: "/eliminar-cuenta",
+  },
+
   PASSENGER: {
     BASE: "/passenger",
     HOME: "/passenger/home",

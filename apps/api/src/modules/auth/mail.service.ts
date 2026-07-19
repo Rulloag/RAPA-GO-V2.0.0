@@ -131,27 +131,66 @@ export class MailService {
       `,
     });
   }
+  async sendAccountDeletionVerificationCode(
+    to: string,
+    code: string,
+    expiresMinutes: number,
+  ): Promise<void> {
+    await this.getTransporter().sendMail({
+      from: this.getFrom(),
+      to,
+      subject: "Código para solicitar la eliminación de tu cuenta",
+      text: [
+        "Solicitaste iniciar la eliminación de tu cuenta RAPA GO desde el sitio web.",
+        "",
+        `Tu código de verificación es: ${code}`,
+        `El código vence en ${expiresMinutes} minutos y puede utilizarse una sola vez.`,
+        "",
+        "Si no hiciste esta solicitud, ignora este correo.",
+      ].join("\n"),
+      html: `
+        <div style="font-family:Arial,sans-serif;background:#f4efe7;padding:28px;color:#171717">
+          <div style="max-width:560px;margin:auto;background:#ffffff;border-radius:20px;padding:28px;border:1px solid #d6a640">
+            <h1 style="margin:0 0 14px;color:#8f3c24">RAPA GO</h1>
+            <h2 style="margin:0 0 14px">Verifica tu correo</h2>
+            <p>Usa este código para continuar con la solicitud de eliminación:</p>
+            <div style="font-size:34px;font-weight:900;letter-spacing:8px;text-align:center;padding:18px;border-radius:16px;background:#171717;color:#f8d879">${code}</div>
+            <p>Vence en <strong>${expiresMinutes} minutos</strong> y puede utilizarse una sola vez.</p>
+            <p style="color:#675a4a">Si no hiciste esta solicitud, ignora este correo.</p>
+          </div>
+        </div>
+      `,
+    });
+  }
+
   async sendAccountDeletionRequestReceived(
     to: string,
+    trackingCode?: string,
   ): Promise<void> {
+    const trackingLine = trackingCode
+      ? `Número de seguimiento: ${trackingCode}`
+      : null;
+
     await this.getTransporter().sendMail({
       from: this.getFrom(),
       to,
       subject: "Recibimos tu solicitud de eliminación de cuenta",
       text: [
         "Recibimos tu solicitud para eliminar tu cuenta de RAPA GO.",
+        trackingLine,
         "",
         "La cuenta no será eliminada automáticamente.",
         "Un administrador revisará el motivo y las operaciones pendientes.",
         "",
         "Te informaremos si la solicitud es aprobada o rechazada.",
-      ].join("\n"),
+      ].filter(Boolean).join("\n"),
       html: `
         <div style="font-family:Arial,sans-serif;background:#f4efe7;padding:28px;color:#171717">
           <div style="max-width:560px;margin:auto;background:#ffffff;border-radius:20px;padding:28px;border:1px solid #d6a640">
             <h1 style="margin:0 0 14px;color:#8f3c24">RAPA GO</h1>
             <h2 style="margin:0 0 14px">Solicitud recibida</h2>
             <p>Recibimos tu solicitud para eliminar la cuenta.</p>
+            ${trackingCode ? `<p><strong>Número de seguimiento:</strong> ${trackingCode}</p>` : ""}
             <p><strong>La eliminación no es automática.</strong> Un administrador revisará el motivo y las operaciones pendientes.</p>
             <p>Te informaremos cuando exista una decisión.</p>
           </div>

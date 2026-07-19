@@ -7,6 +7,9 @@ import { sendError, sendOk } from "../../shared/http/apiResponse.js";
 import {
   createAccountDeletionRequestSchema,
   listAccountDeletionRequestsQuerySchema,
+  publicAccountDeletionCodeRequestSchema,
+  publicAccountDeletionStatusQuerySchema,
+  publicAccountDeletionSubmitSchema,
   reviewAccountDeletionRequestSchema,
 } from "./accountDeletion.schemas.js";
 import { AccountDeletionService } from "./accountDeletion.service.js";
@@ -29,6 +32,13 @@ function missingToken(reply: FastifyReply): FastifyReply {
     message: "Falta el token de acceso.",
     statusCode: 401,
   });
+}
+
+function firstValidationMessage(
+  errors: Array<{ message: string }>,
+  fallback: string,
+): string {
+  return errors[0]?.message ?? fallback;
 }
 
 export const accountDeletionController = {
@@ -66,9 +76,10 @@ export const accountDeletionController = {
     if (!parsed.success) {
       return sendError(reply, {
         code: "VALIDATION_ERROR",
-        message:
-          parsed.error.errors[0]?.message ??
+        message: firstValidationMessage(
+          parsed.error.errors,
           "Solicitud inválida.",
+        ),
         statusCode: 400,
       });
     }
@@ -86,6 +97,111 @@ export const accountDeletionController = {
     return sendOk(reply, result.request, 201);
   },
 
+  async publicRequestCode(
+    request: FastifyRequest,
+    reply: FastifyReply,
+  ): Promise<FastifyReply> {
+    const parsed = publicAccountDeletionCodeRequestSchema.safeParse(
+      request.body,
+    );
+
+    if (!parsed.success) {
+      return sendError(reply, {
+        code: "VALIDATION_ERROR",
+        message: firstValidationMessage(
+          parsed.error.errors,
+          "Ingresa un correo válido.",
+        ),
+        statusCode: 400,
+      });
+    }
+
+    const result = await service.requestPublicVerification(
+      parsed.data,
+      {
+        requestIp: request.ip,
+        requestUserAgent: request.headers["user-agent"] ?? null,
+      },
+    );
+
+    if (result.ok === false) {
+      return sendError(reply, {
+        code: result.code,
+        message: result.message,
+        statusCode: result.statusCode,
+      });
+    }
+
+    return sendOk(reply, {
+      message: result.message,
+      expiresMinutes: result.expiresMinutes,
+    });
+  },
+
+  async publicSubmit(
+    request: FastifyRequest,
+    reply: FastifyReply,
+  ): Promise<FastifyReply> {
+    const parsed = publicAccountDeletionSubmitSchema.safeParse(
+      request.body,
+    );
+
+    if (!parsed.success) {
+      return sendError(reply, {
+        code: "VALIDATION_ERROR",
+        message: firstValidationMessage(
+          parsed.error.errors,
+          "Solicitud inválida.",
+        ),
+        statusCode: 400,
+      });
+    }
+
+    const result = await service.submitPublicRequest(parsed.data);
+
+    if (result.ok === false) {
+      return sendError(reply, {
+        code: result.code,
+        message: result.message,
+        statusCode: result.statusCode,
+      });
+    }
+
+    return sendOk(reply, result.request, 201);
+  },
+
+  async publicStatus(
+    request: FastifyRequest,
+    reply: FastifyReply,
+  ): Promise<FastifyReply> {
+    const parsed = publicAccountDeletionStatusQuerySchema.safeParse(
+      request.query,
+    );
+
+    if (!parsed.success) {
+      return sendError(reply, {
+        code: "VALIDATION_ERROR",
+        message: firstValidationMessage(
+          parsed.error.errors,
+          "Datos de seguimiento inválidos.",
+        ),
+        statusCode: 400,
+      });
+    }
+
+    const result = await service.getPublicStatus(parsed.data);
+
+    if (result.ok === false) {
+      return sendError(reply, {
+        code: result.code,
+        message: result.message,
+        statusCode: result.statusCode,
+      });
+    }
+
+    return sendOk(reply, result.request);
+  },
+
   async adminList(
     request: FastifyRequest,
     reply: FastifyReply,
@@ -100,9 +216,10 @@ export const accountDeletionController = {
     if (!parsed.success) {
       return sendError(reply, {
         code: "VALIDATION_ERROR",
-        message:
-          parsed.error.errors[0]?.message ??
+        message: firstValidationMessage(
+          parsed.error.errors,
           "Filtros inválidos.",
+        ),
         statusCode: 400,
       });
     }
@@ -137,9 +254,10 @@ export const accountDeletionController = {
     if (!parsed.success) {
       return sendError(reply, {
         code: "VALIDATION_ERROR",
-        message:
-          parsed.error.errors[0]?.message ??
+        message: firstValidationMessage(
+          parsed.error.errors,
           "Debes escribir el motivo del rechazo.",
+        ),
         statusCode: 400,
       });
     }
@@ -175,9 +293,10 @@ export const accountDeletionController = {
     if (!parsed.success) {
       return sendError(reply, {
         code: "VALIDATION_ERROR",
-        message:
-          parsed.error.errors[0]?.message ??
+        message: firstValidationMessage(
+          parsed.error.errors,
           "Debes registrar una observación administrativa.",
+        ),
         statusCode: 400,
       });
     }

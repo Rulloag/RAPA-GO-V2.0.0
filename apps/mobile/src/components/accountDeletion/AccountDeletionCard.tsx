@@ -291,6 +291,17 @@ export function AccountDeletionCard({
               Enviada: {readableDate(request.requestedAt)}
             </p>
 
+            <p
+              style={{
+                margin: "6px 0 0",
+                color: "#5b4632",
+                fontSize: ".82rem",
+                fontWeight: 900,
+              }}
+            >
+              Seguimiento: {request.trackingCode}
+            </p>
+
             {request.adminNote && (
               <p
                 style={{

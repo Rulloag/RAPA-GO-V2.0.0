@@ -25,9 +25,13 @@ export interface AccountDeletionClientSnapshot {
   sourceView?: "passenger" | "driver" | null;
 }
 
+export type AccountDeletionRequestChannel = "app" | "web";
+
 export interface AccountDeletionRequestData {
   id: string;
   userId: string | null;
+  trackingCode: string;
+  requestChannel: AccountDeletionRequestChannel;
   requesterRole: string;
   reason: string;
   comment: string | null;

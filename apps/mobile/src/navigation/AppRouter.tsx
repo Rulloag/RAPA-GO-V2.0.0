@@ -28,6 +28,13 @@ import {
   ApplicationStatusPage,
 } from "../pages/apply/index";
 import { LegalPage } from "../pages/legal/index";
+import { PublicAccountDeletionPage } from "../pages/public/PublicAccountDeletionPage.js";
+import {
+  EulaPublicPage,
+  PrivacyPublicPage,
+  SupportPublicPage,
+  TermsPublicPage,
+} from "../pages/public/PublicLegalPages.js";
 
 function getPreferredHome(role: string): string {
   const mode =
@@ -107,6 +114,15 @@ export function AppRouter(): JSX.Element {
         <Redirect exact from={ROUTES.ROOT} to={ROUTES.WELCOME} />
 
         <Route exact path={ROUTES.WELCOME} component={WelcomePage} />
+        <Route exact path={ROUTES.PUBLIC.PRIVACY} component={PrivacyPublicPage} />
+        <Route exact path={ROUTES.PUBLIC.TERMS} component={TermsPublicPage} />
+        <Route exact path={ROUTES.PUBLIC.SUPPORT} component={SupportPublicPage} />
+        <Route exact path={ROUTES.PUBLIC.EULA} component={EulaPublicPage} />
+        <Route
+          exact
+          path={ROUTES.PUBLIC.DELETE_ACCOUNT}
+          component={PublicAccountDeletionPage}
+        />
         <Route exact path={ROUTES.NOT_FOUND} component={NotFoundPage} />
 
         <Route exact path={ROUTES.APPLY.DRIVER} component={ApplicationDriverPage} />

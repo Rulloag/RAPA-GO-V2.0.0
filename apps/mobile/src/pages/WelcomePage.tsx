@@ -52,6 +52,26 @@ export function WelcomePage(): JSX.Element {
           >
             Perfil
           </IonButton>
+
+          <div
+            style={{
+              display: "flex",
+              flexWrap: "wrap",
+              justifyContent: "center",
+              gap: 4,
+              marginTop: 14,
+            }}
+          >
+            <IonButton fill="clear" size="small" onClick={() => history.push(ROUTES.PUBLIC.PRIVACY)}>
+              Privacidad
+            </IonButton>
+            <IonButton fill="clear" size="small" onClick={() => history.push(ROUTES.PUBLIC.SUPPORT)}>
+              Soporte
+            </IonButton>
+            <IonButton fill="clear" size="small" onClick={() => history.push(ROUTES.PUBLIC.DELETE_ACCOUNT)}>
+              Eliminar cuenta
+            </IonButton>
+          </div>
         </div>
       </div>
     </PublicLayout>

@@ -3,38 +3,65 @@ import type { FastifyInstance } from "fastify";
 import { accountDeletionController } from "./accountDeletion.controller.js";
 
 export async function accountDeletionRoutes(
-  app: FastifyInstance,
+  fastify: FastifyInstance,
 ): Promise<void> {
-  app.get("/me", accountDeletionController.getMine);
+  fastify.get("/me", accountDeletionController.getMine);
+  fastify.post("/requests", accountDeletionController.create);
 
-  app.post(
-    "/requests",
+  fastify.post(
+    "/public/code",
     {
       config: {
         rateLimit: {
-          max: 3,
-          timeWindow: "1 hour",
+          max: 5,
+          timeWindow: "15 minutes",
         },
       },
     },
-    accountDeletionController.create,
+    accountDeletionController.publicRequestCode,
+  );
+
+  fastify.post(
+    "/public/requests",
+    {
+      config: {
+        rateLimit: {
+          max: 10,
+          timeWindow: "15 minutes",
+        },
+      },
+    },
+    accountDeletionController.publicSubmit,
+  );
+
+  fastify.get(
+    "/public/status",
+    {
+      config: {
+        rateLimit: {
+          max: 30,
+          timeWindow: "15 minutes",
+        },
+      },
+    },
+    accountDeletionController.publicStatus,
   );
 }
 
 export async function adminAccountDeletionRoutes(
-  app: FastifyInstance,
+  fastify: FastifyInstance,
 ): Promise<void> {
-  app.get(
+  fastify.get(
     "/requests",
     accountDeletionController.adminList,
   );
 
-  app.post(
+  fastify.post(
     "/requests/:id/reject",
     accountDeletionController.adminReject,
   );
 
-  app.post(
+  fastify.post(
     "/requests/:id/approve",
     accountDeletionController.adminApprove,
   );

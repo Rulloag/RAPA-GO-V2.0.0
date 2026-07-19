@@ -548,6 +548,18 @@ export function AccountDeletionAdminPanel(): JSX.Element {
                     )}
 
                     {detailRow(
+                      "Seguimiento",
+                      request.trackingCode,
+                    )}
+
+                    {detailRow(
+                      "Canal",
+                      request.requestChannel === "web"
+                        ? "Sitio público"
+                        : "Aplicación",
+                    )}
+
+                    {detailRow(
                       "Rol",
                       request.requester?.role ??
                         request.requesterRole,

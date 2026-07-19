@@ -1,3 +1,5 @@
+import { createHash, randomInt } from "node:crypto";
+
 import { AppError } from "../../shared/errors/AppError.js";
 import { AuditService } from "../audit/audit.service.js";
 import { MailService } from "../auth/mail.service.js";
@@ -8,11 +10,15 @@ import { AccountDeletionRepository } from "./accountDeletion.repository.js";
 import type {
   CreateAccountDeletionRequestInput,
   ListAccountDeletionRequestsQuery,
+  PublicAccountDeletionCodeRequestInput,
+  PublicAccountDeletionStatusQuery,
+  PublicAccountDeletionSubmitInput,
   ReviewAccountDeletionRequestInput,
 } from "./accountDeletion.schemas.js";
 import type {
   AccountDeletionAdminResponse,
   AccountDeletionRequestResponse,
+  PublicAccountDeletionStatusResponse,
 } from "./accountDeletion.types.js";
 
 const tokenService = new TokenService();
@@ -48,6 +54,46 @@ type AdminListResult =
 type AdminRequestResult =
   | { ok: true; request: AccountDeletionRequestResponse }
   | ServiceFailure;
+
+type PublicCodeResult =
+  | { ok: true; message: string; expiresMinutes: number }
+  | ServiceFailure;
+
+type PublicSubmitResult =
+  | { ok: true; request: AccountDeletionRequestResponse }
+  | ServiceFailure;
+
+type PublicStatusResult =
+  | { ok: true; request: PublicAccountDeletionStatusResponse }
+  | ServiceFailure;
+
+const PUBLIC_CODE_MESSAGE =
+  "Si el correo pertenece a una cuenta elegible, enviaremos un código de verificación.";
+
+function sha256(value: string): string {
+  return createHash("sha256").update(value).digest("hex");
+}
+
+function normalizeContext(
+  value: string | null | undefined,
+  maximumLength: number,
+): string | null {
+  const normalized = String(value ?? "").trim();
+  return normalized ? normalized.slice(0, maximumLength) : null;
+}
+
+async function waitForMinimumDuration(
+  startedAt: number,
+  minimumMilliseconds = 400,
+): Promise<void> {
+  const remaining = minimumMilliseconds - (Date.now() - startedAt);
+
+  if (remaining > 0) {
+    await new Promise<void>((resolve) => {
+      setTimeout(resolve, remaining);
+    });
+  }
+}
 
 async function authenticate(
   accessToken: string,
@@ -184,8 +230,221 @@ export class AccountDeletionService {
     });
 
     void mailService
-      .sendAccountDeletionRequestReceived(auth.email)
+      .sendAccountDeletionRequestReceived(
+        auth.email,
+        request.trackingCode,
+      )
       .catch(() => {});
+
+    return { ok: true, request };
+  }
+
+  async requestPublicVerification(
+    input: PublicAccountDeletionCodeRequestInput,
+    context: {
+      requestIp?: string | null;
+      requestUserAgent?: string | null;
+    },
+  ): Promise<PublicCodeResult> {
+    const startedAt = Date.now();
+    const email = input.email.trim().toLowerCase();
+    const emailHash = sha256(email);
+    const expiresMinutes = 10;
+
+    try {
+      const user = await usersRepository.findByEmail(email);
+
+      if (
+        !user ||
+        !["passenger", "driver"].includes(user.role) ||
+        user.status === "deleted"
+      ) {
+        return {
+          ok: true,
+          message: PUBLIC_CODE_MESSAGE,
+          expiresMinutes,
+        };
+      }
+
+      const recent = await repository.hasRecentPublicVerification(
+        emailHash,
+        new Date(Date.now() - 60_000),
+      );
+
+      if (recent) {
+        return {
+          ok: true,
+          message: PUBLIC_CODE_MESSAGE,
+          expiresMinutes,
+        };
+      }
+
+      const code = randomInt(0, 1_000_000)
+        .toString()
+        .padStart(6, "0");
+      const codeHash = sha256(`${emailHash}:${code}`);
+      const verificationId =
+        await repository.createPublicVerification({
+          userId: user.id,
+          emailHash,
+          codeHash,
+          expiresAt: new Date(
+            Date.now() + expiresMinutes * 60_000,
+          ),
+          requestIp: normalizeContext(context.requestIp, 64),
+          requestUserAgent: normalizeContext(
+            context.requestUserAgent,
+            500,
+          ),
+        });
+
+      try {
+        await mailService.sendAccountDeletionVerificationCode(
+          user.email,
+          code,
+          expiresMinutes,
+        );
+
+        auditService.recordSafe({
+          actorUserId: user.id,
+          eventType: "account_deletion.public_code_sent",
+          entityType: "account_deletion_verification",
+          entityId: verificationId,
+          metadata: {
+            channel: "web",
+          },
+        });
+      } catch {
+        await repository
+          .revokePublicVerification(verificationId)
+          .catch(() => {});
+
+        auditService.recordSafe({
+          actorUserId: user.id,
+          eventType: "account_deletion.public_code_delivery_failed",
+          entityType: "account_deletion_verification",
+          entityId: verificationId,
+        });
+      }
+
+      return {
+        ok: true,
+        message: PUBLIC_CODE_MESSAGE,
+        expiresMinutes,
+      };
+    } finally {
+      await waitForMinimumDuration(startedAt);
+    }
+  }
+
+  async submitPublicRequest(
+    input: PublicAccountDeletionSubmitInput,
+  ): Promise<PublicSubmitResult> {
+    const email = input.email.trim().toLowerCase();
+    const emailHash = sha256(email);
+    const codeHash = sha256(`${emailHash}:${input.code}`);
+    const user = await usersRepository.findByEmail(email);
+
+    if (
+      !user ||
+      !["passenger", "driver"].includes(user.role) ||
+      user.status === "deleted"
+    ) {
+      return {
+        ok: false,
+        code: "ACCOUNT_DELETION_PUBLIC_CODE_INVALID",
+        message: "El código es inválido o venció.",
+        statusCode: 400,
+      };
+    }
+
+    const verifiedUserId =
+      await repository.verifyAndConsumePublicCode(
+        emailHash,
+        codeHash,
+      );
+
+    if (verifiedUserId !== user.id) {
+      return {
+        ok: false,
+        code: "ACCOUNT_DELETION_PUBLIC_CODE_INVALID",
+        message: "El código es inválido o venció.",
+        statusCode: 400,
+      };
+    }
+
+    const existing = await repository.findPendingByUserId(user.id);
+
+    if (existing) {
+      const request = await repository.attachPublicContact(
+        existing.id,
+        emailHash,
+      );
+
+      return { ok: true, request };
+    }
+
+    const requestInput: CreateAccountDeletionRequestInput = {
+      reason: input.reason,
+    };
+
+    if (input.comment) {
+      requestInput.comment = input.comment;
+    }
+
+    const request = await repository.createPublicRequest(
+      user.id,
+      user.role,
+      emailHash,
+      requestInput,
+    );
+
+    await repository.notifyAdminsOfNewRequest(
+      request.id,
+      user.name,
+      user.role,
+    );
+
+    auditService.recordSafe({
+      actorUserId: user.id,
+      eventType: "account_deletion.public_requested",
+      entityType: "account_deletion_request",
+      entityId: request.id,
+      metadata: {
+        requesterRole: user.role,
+        channel: "web",
+        trackingCode: request.trackingCode,
+      },
+    });
+
+    void mailService
+      .sendAccountDeletionRequestReceived(
+        user.email,
+        request.trackingCode,
+      )
+      .catch(() => {});
+
+    return { ok: true, request };
+  }
+
+  async getPublicStatus(
+    query: PublicAccountDeletionStatusQuery,
+  ): Promise<PublicStatusResult> {
+    const emailHash = sha256(query.email.trim().toLowerCase());
+    const request = await repository.findPublicStatus(
+      query.trackingCode,
+      emailHash,
+    );
+
+    if (!request) {
+      return {
+        ok: false,
+        code: "ACCOUNT_DELETION_TRACKING_NOT_FOUND",
+        message:
+          "No encontramos una solicitud con esos datos.",
+        statusCode: 404,
+      };
+    }
 
     return { ok: true, request };
   }

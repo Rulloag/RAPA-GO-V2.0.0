@@ -1,0 +1,9 @@
+RewriteEngine On
+
+# Serve existing assets and files directly.
+RewriteCond %{REQUEST_FILENAME} -f [OR]
+RewriteCond %{REQUEST_FILENAME} -d
+RewriteRule ^ - [L]
+
+# Ionic/React public routes: /privacidad, /soporte, /terminos, /eula and /eliminar-cuenta.
+RewriteRule ^ index.html [L]
