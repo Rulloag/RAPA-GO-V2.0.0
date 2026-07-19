@@ -105,8 +105,9 @@ export class MercadoPagoProvider implements PaymentProvider {
     try {
       const config = getConfig();
 
-      // Skip verification in development or when secret is not set.
-      if (!config.webhookSecret) return true;
+      // Fail closed: without a configured secret there is no way to verify
+      // authenticity, so the webhook must be rejected, never accepted.
+      if (!config.webhookSecret) return false;
 
       const xSignature = headers["x-signature"] ?? "";
       const xRequestId = headers["x-request-id"] ?? "";

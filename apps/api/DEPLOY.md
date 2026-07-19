@@ -14,6 +14,7 @@ Nunca commitear `.env` real. Usa `.env.example` como plantilla.
 | `DATABASE_URL` | PostgreSQL connection string completa | `postgresql://user:pass@host:5432/db` |
 | `JWT_SECRET` | Secreto para firmar JWT (mín. 64 bytes aleatorios) | `openssl rand -hex 64` |
 | `CORS_ORIGIN` | Origen(es) permitidos por CORS (sin wildcard en prod) | `https://app.rapago.cl` |
+| `MERCADOPAGO_WEBHOOK_SECRET` | Secreto para verificar la firma del webhook de MercadoPago. **Obligatorio si `PAYMENT_PROVIDER=mercadopago`** — sin él, el webhook falla cerrado y rechaza toda notificación (nunca procesa un pago sin firma verificable) | `openssl rand -hex 32` |
 
 ### Variables opcionales
 

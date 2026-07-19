@@ -78,6 +78,26 @@ describe("payment webhooks are exempt from the global rate limit", () => {
     expect(statusCodes.every((code) => code === 401)).toBe(true);
   });
 
+  it("rejects a MercadoPago webhook with HTTP 401 when MERCADOPAGO_WEBHOOK_SECRET is unset, even with a well-formed x-signature header (fails closed, not just rate-limit exempt)", async () => {
+    const savedSecret = process.env["MERCADOPAGO_WEBHOOK_SECRET"];
+    delete process.env["MERCADOPAGO_WEBHOOK_SECRET"];
+
+    const res = await app.inject({
+      method: "POST",
+      url: "/payments/webhook/mercadopago",
+      headers: { "x-signature": "ts=1700000000,v1=deadbeef", "x-request-id": "req-1" },
+      payload: { type: "payment", data: { id: "123" } },
+    });
+
+    if (savedSecret === undefined) {
+      delete process.env["MERCADOPAGO_WEBHOOK_SECRET"];
+    } else {
+      process.env["MERCADOPAGO_WEBHOOK_SECRET"] = savedSecret;
+    }
+
+    expect(res.statusCode).toBe(401);
+  });
+
   it("still rate limits a normal payments route (not the webhooks) once its own global max is exceeded", async () => {
     let last;
     for (let i = 0; i < 101; i++) {
