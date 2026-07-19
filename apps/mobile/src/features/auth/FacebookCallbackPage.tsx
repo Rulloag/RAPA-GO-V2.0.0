@@ -4,6 +4,7 @@ import { useHistory, useLocation } from "react-router-dom";
 import type { UserRole } from "@rapa-go/shared";
 import { ROUTES } from "../../navigation/routes.js";
 import { sessionStorageService } from "./sessionStorage.service.js";
+import { legalService } from "../legal/legal.service.js";
 import type { AuthSession } from "./auth.types.js";
 
 const ROLE_HOME: Record<UserRole, string> = {
@@ -23,6 +24,102 @@ const VALID_ROLES = new Set<UserRole>([
 ]);
 
 type CallbackState = "loading" | "error";
+
+const RAPAGO_FACEBOOK_LEGAL_ACCEPTANCES_KEY =
+  "rapago_pending_facebook_legal_acceptances_v1";
+
+const RAPAGO_FACEBOOK_REQUIRED_LEGAL_TYPES = new Set([
+  "terms_and_conditions",
+  "privacy_policy",
+  "user_conditions",
+]);
+
+type PendingFacebookLegalAcceptance = {
+  legalDocumentId: string;
+  type: string;
+  version: string;
+  title: string;
+};
+
+function readPendingFacebookLegalAcceptances():
+  PendingFacebookLegalAcceptance[] {
+  try {
+    const raw = localStorage.getItem(
+      RAPAGO_FACEBOOK_LEGAL_ACCEPTANCES_KEY,
+    );
+    const parsed = raw
+      ? (JSON.parse(raw) as unknown)
+      : [];
+
+    if (!Array.isArray(parsed)) return [];
+
+    return parsed.filter(
+      (
+        item,
+      ): item is PendingFacebookLegalAcceptance => {
+        if (!item || typeof item !== "object") return false;
+        const record = item as Record<string, unknown>;
+
+        return (
+          typeof record.legalDocumentId === "string" &&
+          typeof record.type === "string" &&
+          RAPAGO_FACEBOOK_REQUIRED_LEGAL_TYPES.has(
+            record.type,
+          ) &&
+          typeof record.version === "string" &&
+          typeof record.title === "string"
+        );
+      },
+    );
+  } catch {
+    return [];
+  }
+}
+
+async function acceptPendingFacebookLegalDocuments(
+  accessToken: string,
+): Promise<void> {
+  const pending = readPendingFacebookLegalAcceptances();
+
+  const foundTypes = new Set(
+    pending.map((item) => item.type),
+  );
+
+  if (
+    pending.length !==
+      RAPAGO_FACEBOOK_REQUIRED_LEGAL_TYPES.size ||
+    [...RAPAGO_FACEBOOK_REQUIRED_LEGAL_TYPES].some(
+      (type) => !foundTypes.has(type),
+    )
+  ) {
+    throw new Error("legal_missing");
+  }
+
+  const current =
+    await legalService.getMyAcceptances(accessToken);
+
+  for (const document of pending) {
+    const alreadyAccepted = current.some(
+      (acceptance) =>
+        acceptance.legalDocumentId ===
+          document.legalDocumentId &&
+        acceptance.versionAccepted ===
+          document.version,
+    );
+
+    if (alreadyAccepted) continue;
+
+    await legalService.accept(
+      accessToken,
+      document.legalDocumentId,
+      document.version,
+    );
+  }
+
+  localStorage.removeItem(
+    RAPAGO_FACEBOOK_LEGAL_ACCEPTANCES_KEY,
+  );
+}
 
 function normalizeCallbackText(value: string | null): string {
   try {
@@ -47,6 +144,14 @@ function getFacebookCallbackErrorMessage(code: string | null): string {
 
   if (code === "save_failed") {
     return "No se pudo guardar la sesión en este dispositivo. Limpia caché e intenta nuevamente.";
+  }
+
+  if (code === "legal_missing") {
+    return "Debes aceptar Términos, Privacidad y Condiciones para Usuarios antes de continuar con Facebook.";
+  }
+
+  if (code === "legal_save_failed") {
+    return "No se pudo registrar tu aceptación legal. Vuelve al login, marca las tres casillas e intenta nuevamente.";
   }
 
   if (code === "cancelled") {
@@ -115,6 +220,25 @@ export function FacebookCallbackPage(): JSX.Element {
           isVerified,
         },
       };
+
+      try {
+        await acceptPendingFacebookLegalDocuments(
+          accessToken,
+        );
+      } catch (error) {
+        if (cancelled) return;
+
+        setState("error");
+        setErrorMessage(
+          getFacebookCallbackErrorMessage(
+            error instanceof Error &&
+              error.message === "legal_missing"
+              ? "legal_missing"
+              : "legal_save_failed",
+          ),
+        );
+        return;
+      }
 
       try {
         await sessionStorageService.saveSession(session);

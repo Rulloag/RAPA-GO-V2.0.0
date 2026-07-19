@@ -27,7 +27,6 @@ import {
   locateOutline,
   navigateOutline,
   searchOutline,
-  shieldCheckmarkOutline,
   timeOutline,
 } from "ionicons/icons";
 import {
@@ -39,6 +38,7 @@ import {
   type CSSProperties,
 } from "react";
 import { useHistory } from "react-router-dom";
+import { ROUTES } from "../../../navigation/routes.js";
 import { MapFallback, loadRapaGoGoogleMaps } from "../../../components/MapFallback.js";
 import { useAuth } from "../../../features/auth/index.js";
 import {
@@ -46,11 +46,6 @@ import {
   type CreateRideInput,
 } from "../../../features/rides/rides.service.js";
 import { walletService } from "../../../features/wallet/wallet.service.js";
-import {
-  legalService,
-  type LegalDocumentData,
-  type UserAcceptanceData,
-} from "../../../features/legal/legal.service.js";
 import { RIDE_STATUS_LABEL } from "../shared.js";
 
 
@@ -4280,135 +4275,6 @@ function MapPointPicker({
 }
 
 
-function LegalCompactSection({ token }: { token: string }): JSX.Element {
-  const [docs, setDocs] = useState<LegalDocumentData[]>([]);
-  const [acceptances, setAcceptances] = useState<UserAcceptanceData[]>([]);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    Promise.all([
-      legalService.getActive(),
-      legalService.getMyAcceptances(token),
-    ])
-      .then(([activeDocs, userAcceptances]) => {
-        setDocs(activeDocs);
-        setAcceptances(userAcceptances);
-      })
-      .catch(() => {
-        setDocs([]);
-        setAcceptances([]);
-      })
-      .finally(() => {
-        setLoading(false);
-      });
-  }, [token]);
-
-  function getStatus(
-    doc: LegalDocumentData,
-  ): "accepted" | "new_version" | "not_accepted" {
-    const acceptance = acceptances.find(
-      (item) => item.legalDocumentId === doc.id,
-    );
-
-    if (!acceptance) return "not_accepted";
-    if (acceptance.versionAccepted !== doc.version) return "new_version";
-
-    return "accepted";
-  }
-
-  function handleAccept(doc: LegalDocumentData): void {
-    void legalService
-      .accept(token, doc.id, doc.version)
-      .then(() => legalService.getMyAcceptances(token))
-      .then(setAcceptances)
-      .catch(() => {});
-  }
-
-  const pendingDocs = docs.filter((doc) => getStatus(doc) !== "accepted");
-
-  if (loading) {
-    return (
-      <div style={{ display: "flex", justifyContent: "center", padding: "8px 0" }}>
-        <IonSpinner name="dots" />
-      </div>
-    );
-  }
-
-  if (pendingDocs.length === 0) {
-    return (
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: "8px",
-          color: "rgba(246,242,236,.72)",
-          fontSize: ".78rem",
-          margin: "2px 0 16px",
-        }}
-      >
-        <IonIcon icon={shieldCheckmarkOutline} style={{ color: "#2BA84A" }} />
-        Forma de pago
-      </div>
-    );
-  }
-
-  return (
-    <IonCard
-      style={{
-        margin: "0 0 16px",
-        borderRadius: "12px",
-        background: "#f4f6fb",
-      }}
-    >
-      <IonCardContent style={{ padding: "12px" }}>
-        <div style={{ fontWeight: 900, marginBottom: "8px", color: "#111" }}>
-          Documentos pendientes
-        </div>
-
-        {pendingDocs.map((doc) => {
-          const status = getStatus(doc);
-
-          return (
-            <IonItem
-              key={doc.id}
-              lines="none"
-              style={
-                {
-                  "--background": "#ffffff",
-                  "--border-radius": "10px",
-                  marginBottom: "8px",
-                } as CSSProperties
-              }
-            >
-              <IonLabel>
-                <h3>{doc.title}</h3>
-                <p>v{doc.version}</p>
-              </IonLabel>
-
-              <IonBadge
-                color={status === "new_version" ? "warning" : "danger"}
-                slot="end"
-              >
-                {status === "new_version" ? "Nueva" : "Pendiente"}
-              </IonBadge>
-
-              <IonButton
-                size="small"
-                fill="clear"
-                slot="end"
-                onClick={() => handleAccept(doc)}
-              >
-                Aceptar
-              </IonButton>
-            </IonItem>
-          );
-        })}
-      </IonCardContent>
-    </IonCard>
-  );
-}
-
-
 const RAPAGO_PASSENGER_NOTE_MAX_LENGTH = 180;
 const RAPAGO_PASSENGER_NOTE_START = "RAPAGO_PASSENGER_NOTE_START";
 const RAPAGO_PASSENGER_NOTE_END = "RAPAGO_PASSENGER_NOTE_END";
@@ -5975,6 +5841,21 @@ export default function RequestRidePage(): JSX.Element {
       history.push("/passenger/trips");
     } catch (err) {
       const message = err instanceof Error ? err.message : "Error al solicitar el viaje.";
+      const normalizedMessage = message.toLowerCase();
+
+      if (
+        normalizedMessage.includes("legal_acceptance_required") ||
+        normalizedMessage.includes("documentos legales requeridos") ||
+        normalizedMessage.includes("debes aceptar los documentos legales")
+      ) {
+        setSubmitError(
+          "Debes aceptar los documentos legales vigentes antes de solicitar un viaje. Te llevaremos a Perfil > Documentos.",
+        );
+        window.setTimeout(() => {
+          history.push(ROUTES.PROFILE.DOCUMENTS);
+        }, 500);
+        return;
+      }
 
       if (isPassengerRolePermissionMessage(message)) {
         if (String(activePaymentMethod) === "card") {
@@ -7369,10 +7250,6 @@ return (
                 }
               />
             </IonItem>
-
-            {session?.accessToken && (
-              <LegalCompactSection token={session.accessToken} />
-            )}
 
             <div
               style={{

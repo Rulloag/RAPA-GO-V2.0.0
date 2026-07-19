@@ -1,6 +1,7 @@
 import { useState, type ChangeEvent, type FormEvent, type CSSProperties } from "react";
 import {
   IonButton,
+  IonCheckbox,
   IonContent,
   IonHeader,
   IonInput,
@@ -20,6 +21,7 @@ import { useHistory } from "react-router-dom";
 import { loginRequestSchema, type UserRole } from "@rapa-go/shared";
 import { useAuth } from "./useAuth.js";
 import { authService } from "./auth.service.js";
+import { legalService, type LegalDocumentData } from "../legal/legal.service.js";
 import { ROUTES } from "../../navigation/routes.js";
 
 const ROLE_HOME: Record<UserRole, string> = {
@@ -42,6 +44,68 @@ const API_URL = (
  */
 const MAX_RESIDENCE_DOCUMENT_SIZE_BYTES = 1.5 * 1024 * 1024;
 const RESIDENT_VERIFICATION_REQUESTS_KEY = "rapago_resident_verification_requests_v1";
+
+const RAPAGO_FACEBOOK_LEGAL_ACCEPTANCES_KEY =
+  "rapago_pending_facebook_legal_acceptances_v1";
+
+const RAPAGO_FACEBOOK_REQUIRED_LEGAL_TYPES = [
+  "terms_and_conditions",
+  "privacy_policy",
+  "user_conditions",
+] as const;
+
+type FacebookRequiredLegalType =
+  (typeof RAPAGO_FACEBOOK_REQUIRED_LEGAL_TYPES)[number];
+
+type PendingFacebookLegalAcceptance = {
+  legalDocumentId: string;
+  type: FacebookRequiredLegalType;
+  version: string;
+  title: string;
+};
+
+function isFacebookRequiredLegalType(
+  value: string,
+): value is FacebookRequiredLegalType {
+  return RAPAGO_FACEBOOK_REQUIRED_LEGAL_TYPES.includes(
+    value as FacebookRequiredLegalType,
+  );
+}
+
+function persistPendingFacebookLegalAcceptances(
+  documents: LegalDocumentData[],
+): PendingFacebookLegalAcceptance[] {
+  const selected = documents
+    .filter(
+      (document) =>
+        document.isActive &&
+        isFacebookRequiredLegalType(document.type),
+    )
+    .map((document) => ({
+      legalDocumentId: document.id,
+      type: document.type as FacebookRequiredLegalType,
+      version: document.version,
+      title: document.title,
+    }));
+
+  const foundTypes = new Set(selected.map((item) => item.type));
+  const missingTypes = RAPAGO_FACEBOOK_REQUIRED_LEGAL_TYPES.filter(
+    (type) => !foundTypes.has(type),
+  );
+
+  if (missingTypes.length > 0) {
+    throw new Error(
+      "No pudimos cargar todos los documentos legales obligatorios. Intenta nuevamente.",
+    );
+  }
+
+  localStorage.setItem(
+    RAPAGO_FACEBOOK_LEGAL_ACCEPTANCES_KEY,
+    JSON.stringify(selected),
+  );
+
+  return selected;
+}
 
 type ResidenceVerificationStatus = "pending" | "approved" | "rejected" | "not_required";
 
@@ -541,6 +605,17 @@ export function LoginPage(): JSX.Element {
   const [residentSubmissionMessage, setResidentSubmissionMessage] =
     useState("");
 
+  const [acceptFacebookTerms, setAcceptFacebookTerms] =
+    useState(false);
+  const [acceptFacebookPrivacy, setAcceptFacebookPrivacy] =
+    useState(false);
+  const [
+    acceptFacebookUserConditions,
+    setAcceptFacebookUserConditions,
+  ] = useState(false);
+  const [facebookLegalLoading, setFacebookLegalLoading] =
+    useState(false);
+
   const isResidentRapaNui = passengerCondition === "residente_rapa_nui";
 
   async function handleSubmit(e: FormEvent<HTMLFormElement>) {
@@ -684,6 +759,17 @@ export function LoginPage(): JSX.Element {
     const needsPassport =
       requiresPassportForPassengerCondition(passengerCondition);
 
+    if (
+      !acceptFacebookTerms ||
+      !acceptFacebookPrivacy ||
+      !acceptFacebookUserConditions
+    ) {
+      setFacebookStepError(
+        "Debes aceptar Términos y Condiciones, Política de Privacidad y Condiciones para Usuarios antes de continuar con Facebook.",
+      );
+      return;
+    }
+
     if (!passengerCondition) {
       setFacebookStepError(
         "Selecciona si eres turista chileno, turista extranjero o residente Rapa Nui.",
@@ -738,6 +824,24 @@ export function LoginPage(): JSX.Element {
         "Ingresa un pasaporte válido. Usa letras y números.",
       );
       return;
+    }
+
+    setFacebookLegalLoading(true);
+
+    try {
+      const activeLegalDocuments = await legalService.getActive();
+      persistPendingFacebookLegalAcceptances(
+        activeLegalDocuments,
+      );
+    } catch (error) {
+      setFacebookStepError(
+        error instanceof Error
+          ? error.message
+          : "No pudimos preparar la aceptación legal para Facebook.",
+      );
+      return;
+    } finally {
+      setFacebookLegalLoading(false);
     }
 
     const passengerFareType =
@@ -1571,6 +1675,172 @@ export function LoginPage(): JSX.Element {
                     </div>
                   )}
 
+                  <div
+                    style={{
+                      margin: "4px 0 14px",
+                      padding: "14px",
+                      borderRadius: 20,
+                      background:
+                        "linear-gradient(135deg,#FFF8E6,#FFFFFF)",
+                      border:
+                        "1px solid rgba(200,155,60,.42)",
+                    }}
+                  >
+                    <div
+                      style={{
+                        marginBottom: 10,
+                        color: "#111",
+                        fontSize: ".9rem",
+                        fontWeight: 950,
+                      }}
+                    >
+                      Documentos legales obligatorios
+                    </div>
+
+                    <IonItem
+                      lines="none"
+                      style={{
+                        "--background": "transparent",
+                        "--padding-start": "0",
+                        "--inner-padding-end": "0",
+                        alignItems: "flex-start",
+                      } as CSSProperties}
+                    >
+                      <IonCheckbox
+                        slot="start"
+                        checked={acceptFacebookTerms}
+                        onIonChange={(event) => {
+                          setAcceptFacebookTerms(
+                            event.detail.checked,
+                          );
+                          setFacebookStepError("");
+                        }}
+                      />
+                      <IonLabel
+                        style={{
+                          color: "#30271F",
+                          whiteSpace: "normal",
+                          lineHeight: 1.35,
+                          fontWeight: 800,
+                        }}
+                      >
+                        Acepto los Términos y Condiciones.
+                        <button
+                          type="button"
+                          onClick={() =>
+                            history.push(ROUTES.PUBLIC.TERMS)
+                          }
+                          style={{
+                            border: 0,
+                            background: "transparent",
+                            color: "#8A5A00",
+                            fontWeight: 950,
+                            textDecoration: "underline",
+                            cursor: "pointer",
+                          }}
+                        >
+                          Ver documento
+                        </button>
+                      </IonLabel>
+                    </IonItem>
+
+                    <IonItem
+                      lines="none"
+                      style={{
+                        "--background": "transparent",
+                        "--padding-start": "0",
+                        "--inner-padding-end": "0",
+                        alignItems: "flex-start",
+                      } as CSSProperties}
+                    >
+                      <IonCheckbox
+                        slot="start"
+                        checked={acceptFacebookPrivacy}
+                        onIonChange={(event) => {
+                          setAcceptFacebookPrivacy(
+                            event.detail.checked,
+                          );
+                          setFacebookStepError("");
+                        }}
+                      />
+                      <IonLabel
+                        style={{
+                          color: "#30271F",
+                          whiteSpace: "normal",
+                          lineHeight: 1.35,
+                          fontWeight: 800,
+                        }}
+                      >
+                        Acepto la Política de Privacidad.
+                        <button
+                          type="button"
+                          onClick={() =>
+                            history.push(
+                              ROUTES.PUBLIC.PRIVACY,
+                            )
+                          }
+                          style={{
+                            border: 0,
+                            background: "transparent",
+                            color: "#8A5A00",
+                            fontWeight: 950,
+                            textDecoration: "underline",
+                            cursor: "pointer",
+                          }}
+                        >
+                          Ver documento
+                        </button>
+                      </IonLabel>
+                    </IonItem>
+
+                    <IonItem
+                      lines="none"
+                      style={{
+                        "--background": "transparent",
+                        "--padding-start": "0",
+                        "--inner-padding-end": "0",
+                        alignItems: "flex-start",
+                      } as CSSProperties}
+                    >
+                      <IonCheckbox
+                        slot="start"
+                        checked={
+                          acceptFacebookUserConditions
+                        }
+                        onIonChange={(event) => {
+                          setAcceptFacebookUserConditions(
+                            event.detail.checked,
+                          );
+                          setFacebookStepError("");
+                        }}
+                      />
+                      <IonLabel
+                        style={{
+                          color: "#30271F",
+                          whiteSpace: "normal",
+                          lineHeight: 1.35,
+                          fontWeight: 800,
+                        }}
+                      >
+                        Acepto las Condiciones para Usuarios.
+                      </IonLabel>
+                    </IonItem>
+
+                    <p
+                      style={{
+                        margin: "8px 0 0",
+                        color: "#675A4A",
+                        fontSize: ".76rem",
+                        fontWeight: 760,
+                        lineHeight: 1.4,
+                      }}
+                    >
+                      Las Condiciones para Conductores no se
+                      solicitan a pasajeros. Solo corresponden
+                      al proceso de postulación de conductor.
+                    </p>
+                  </div>
+
                   {residentSubmissionMessage && (
                     <div
                       role="status"
@@ -1599,15 +1869,22 @@ export function LoginPage(): JSX.Element {
                       void continueWithFacebook();
                     }}
                     type="button"
-                    disabled={facebookPrecheckLoading}
+                    disabled={
+                      facebookPrecheckLoading ||
+                      facebookLegalLoading ||
+                      !acceptFacebookTerms ||
+                      !acceptFacebookPrivacy ||
+                      !acceptFacebookUserConditions
+                    }
                   >
-                    {facebookPrecheckLoading ? (
+                    {facebookPrecheckLoading ||
+                    facebookLegalLoading ? (
                       <>
                         <IonSpinner
                           name="crescent"
                           style={{ marginRight: 8 }}
                         />
-                        Enviando documento...
+                        Validando datos...
                       </>
                     ) : (
                       "Continuar con Facebook"
