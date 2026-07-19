@@ -9,8 +9,8 @@ import { authController } from "./auth.controller.js";
  *   POST /api/auth/register  — create a new user account
  *   POST /api/auth/logout    — invalidate current session
  *   GET  /api/auth/me        — return current authenticated user
- *
- * All endpoints return AUTH_NOT_IMPLEMENTED until the auth provider is wired.
+ *   POST /api/auth/refresh   — rotate an access/refresh token pair
+ *   POST /api/auth/apple     — exchange a verified Apple identity for a session
  */
 export async function authRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.post("/login", authController.login);
@@ -18,4 +18,5 @@ export async function authRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.post("/logout", authController.logout);
   fastify.get("/me", authController.me);
   fastify.post("/refresh", authController.refresh);
+  fastify.post("/apple", authController.apple);
 }

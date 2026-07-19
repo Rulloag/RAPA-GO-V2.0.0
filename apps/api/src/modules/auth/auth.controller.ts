@@ -1,10 +1,13 @@
 import type { FastifyRequest, FastifyReply } from "fastify";
 import { AuthService } from "./auth.service.js";
-import { loginRequestSchema, registerRequestSchema } from "./auth.schemas.js";
+import { AppleAuthService } from "./appleAuth.service.js";
+import { loginRequestSchema, registerRequestSchema, appleAuthRequestSchema } from "./auth.schemas.js";
 import type { LoginRequest, RegisterRequest } from "./auth.types.js";
+import type { AppleAuthRequest } from "./appleAuth.types.js";
 import { sendError } from "../../shared/http/apiResponse.js";
 
-const authService = new AuthService();
+const authService      = new AuthService();
+const appleAuthService = new AppleAuthService();
 
 export const authController = {
   async login(
@@ -72,5 +75,22 @@ export const authController = {
     }
     const result = await authService.refreshSession(raw);
     reply.status(result.ok ? 200 : (result.statusCode ?? 401)).send(result);
+  },
+
+  async apple(
+    request: FastifyRequest<{ Body: AppleAuthRequest }>,
+    reply: FastifyReply,
+  ): Promise<void> {
+    const parsed = appleAuthRequestSchema.safeParse(request.body);
+    if (!parsed.success) {
+      sendError(reply, { code: "VALIDATION_ERROR", message: parsed.error.message, statusCode: 400 });
+      return;
+    }
+    const result = await appleAuthService.signIn(parsed.data);
+    if (!result.ok) {
+      reply.status(result.statusCode ?? 401).send(result);
+      return;
+    }
+    reply.status(200).send(result);
   },
 };
