@@ -8,6 +8,10 @@ const mockFindByPassenger = vi.fn();
 const mockFindByPassengerWithDriver = vi.fn();
 const mockMarkEnRoute    = vi.fn();
 const mockMarkArrived    = vi.fn();
+const mockMarkNoShow     = vi.fn();
+const mockWalletGetOrCreate  = vi.fn();
+const mockWalletUpdateBalance = vi.fn();
+const mockWalletCreateTransaction = vi.fn();
 const mockIsSessionValid = vi.fn().mockResolvedValue(true);
 const mockFindUserById   = vi.fn();
 const mockFindDriverStatusById         = vi.fn();
@@ -43,7 +47,16 @@ vi.mock("../rides.repository.js", () => ({
     cancelAccepted:               vi.fn(),
     markEnRoute:                  mockMarkEnRoute,
     markArrived:                  mockMarkArrived,
+    markNoShow:                   mockMarkNoShow,
     clearPreferredDriverGender:   mockClearPreferredDriverGender,
+  })),
+}));
+
+vi.mock("../../wallet/wallet.repository.js", () => ({
+  WalletRepository: vi.fn().mockImplementation(() => ({
+    getOrCreate:      mockWalletGetOrCreate,
+    updateBalance:    mockWalletUpdateBalance,
+    createTransaction: mockWalletCreateTransaction,
   })),
 }));
 
@@ -177,6 +190,7 @@ const SCHEDULED_INPUT = {
   durationSeconds:   300,
   rideType:          "scheduled" as const,
   scheduledPickupAt: scheduledAt(60),
+  paymentMethod:     "card" as const,
 };
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
@@ -393,6 +407,72 @@ describe("RidesService.markArrived", () => {
     mockFindById.mockResolvedValue(makeRide({ status: "driver_en_route", driverUserId: "driver-99" }));
 
     const result = await service.markArrived("token", "ride-1");
+
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.statusCode).toBe(403);
+  });
+});
+
+describe("RidesService.confirmNoShow", () => {
+  let service: InstanceType<typeof RidesService>;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockIsSessionValid.mockResolvedValue(true);
+    mockWalletGetOrCreate.mockResolvedValue({ id: "wallet-1", balance: 10000 });
+    service = new RidesService();
+  });
+
+  it("driver can confirm no-show and passenger is charged the authoritative fare", async () => {
+    mockFindUserById.mockResolvedValue({ id: "driver-1", role: "driver" });
+    const ride = makeRide({
+      status: "no_show", driverUserId: "driver-1", passengerUserId: "passenger-1", estimatedFareClp: 7000,
+    });
+    mockMarkNoShow.mockResolvedValue(ride);
+
+    const result = await service.confirmNoShow("token", "ride-1");
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(mockMarkNoShow).toHaveBeenCalledWith("ride-1", "driver-1");
+    expect(mockWalletUpdateBalance).toHaveBeenCalledWith("wallet-1", 10000 - 7000);
+    expect(mockWalletCreateTransaction).toHaveBeenCalledWith(
+      expect.objectContaining({ type: "no_show_charge", amount: -7000, userId: "passenger-1" }),
+    );
+  });
+
+  it("passenger role returns 403 and never charges", async () => {
+    mockFindUserById.mockResolvedValue({ id: "user-123", role: "passenger" });
+
+    const result = await service.confirmNoShow("token", "ride-1");
+
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.statusCode).toBe(403);
+    expect(mockMarkNoShow).not.toHaveBeenCalled();
+    expect(mockWalletUpdateBalance).not.toHaveBeenCalled();
+  });
+
+  it("second confirmation on the same ride is rejected — no double charge", async () => {
+    mockFindUserById.mockResolvedValue({ id: "driver-1", role: "driver" });
+    mockMarkNoShow.mockResolvedValue(null);
+    mockFindById.mockResolvedValue(makeRide({ status: "no_show", driverUserId: "driver-1" }));
+
+    const result = await service.confirmNoShow("token", "ride-1");
+
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.statusCode).toBe(409);
+    expect(mockWalletUpdateBalance).not.toHaveBeenCalled();
+  });
+
+  it("returns 403 when ride belongs to a different driver", async () => {
+    mockFindUserById.mockResolvedValue({ id: "driver-1", role: "driver" });
+    mockMarkNoShow.mockResolvedValue(null);
+    mockFindById.mockResolvedValue(makeRide({ status: "driver_arrived", driverUserId: "driver-99" }));
+
+    const result = await service.confirmNoShow("token", "ride-1");
 
     expect(result.ok).toBe(false);
     if (result.ok) return;
@@ -694,6 +774,23 @@ describe("RidesService.createRideRequest — scheduled rides", () => {
     service = new RidesService();
   });
 
+  it("scheduled ride without paymentMethod='card' is rejected", async () => {
+    const result = await service.createRideRequest("token", { ...SCHEDULED_INPUT, paymentMethod: undefined });
+
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.code).toBe("SCHEDULED_RIDE_REQUIRES_CARD");
+    expect(mockCreate).not.toHaveBeenCalled();
+  });
+
+  it("scheduled ride with paymentMethod='cash' is rejected", async () => {
+    const result = await service.createRideRequest("token", { ...SCHEDULED_INPUT, paymentMethod: "cash" });
+
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.code).toBe("SCHEDULED_RIDE_REQUIRES_CARD");
+  });
+
   it("scheduled ride is created with rideType='scheduled'", async () => {
     mockCreate.mockImplementation((data: Record<string, unknown>) =>
       Promise.resolve(makeRide({ ...data, status: "requested", rideType: "scheduled" })),
@@ -939,6 +1036,7 @@ const MULTI_DEST_SCHEDULED_INPUT = {
   ...MULTI_DEST_INPUT,
   rideType:          "scheduled" as const,
   scheduledPickupAt: new Date(Date.now() + 90 * 60 * 1000).toISOString(),
+  paymentMethod:     "card" as const,
 };
 
 function makeStop(overrides: Partial<Record<string, unknown>> = {}) {

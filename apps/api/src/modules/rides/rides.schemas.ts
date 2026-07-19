@@ -53,6 +53,8 @@ export const createRideRequestSchema = z
       .enum(["immediate", "scheduled"])
       .optional()
       .default("immediate"),
+    // Declared by the client; the backend enforces that scheduled rides require card.
+    paymentMethod: z.enum(["cash", "card"]).optional(),
     scheduledPickupAt: z
       .string()
       .datetime({ message: "scheduledPickupAt must be a valid ISO 8601 datetime." })

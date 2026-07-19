@@ -12,6 +12,7 @@ export async function ridesRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.post("/:id/accept",          ridesController.acceptRideRequest);
   fastify.post("/:id/en-route",        ridesController.markEnRoute);
   fastify.post("/:id/arrived",         ridesController.markArrived);
+  fastify.post("/:id/no-show",         ridesController.confirmNoShow);
   fastify.post("/:id/start",           ridesController.startRide);
   fastify.post("/:id/complete",        ridesController.completeRide);
   fastify.post("/:id/cancel",          ridesController.cancelRideRequest);

@@ -94,4 +94,17 @@ export class PaymentsRepository {
       .returning();
     return row!;
   }
+
+  /**
+   * Atomic: only flips status='success' -> 'refunded'. The WHERE clause is the idempotency
+   * gate — a second call for the same payment finds no row still in 'success' and returns null.
+   */
+  async markRefunded(id: string): Promise<Payment | null> {
+    const [row] = await db
+      .update(payments)
+      .set({ status: "refunded", updatedAt: new Date() })
+      .where(and(eq(payments.id, id), eq(payments.status, "success")))
+      .returning();
+    return row ?? null;
+  }
 }

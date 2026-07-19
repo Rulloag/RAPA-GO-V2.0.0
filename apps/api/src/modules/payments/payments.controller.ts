@@ -98,4 +98,23 @@ export const paymentsController = {
 
     sendOk(reply, { processed: result.processed });
   },
+
+  async refundPayment(
+    request: FastifyRequest<{ Params: { id: string } }>,
+    reply: FastifyReply,
+  ): Promise<void> {
+    const token = extractBearer(request);
+    if (!token) {
+      sendError(reply, { code: "UNAUTHORIZED", message: "Missing Bearer token.", statusCode: 401 });
+      return;
+    }
+
+    const result = await paymentsService.refundPayment(token, request.params.id);
+    if (!result.ok) {
+      sendError(reply, { code: result.code, message: result.message, statusCode: result.statusCode });
+      return;
+    }
+
+    sendOk(reply, { refunded: result.refunded });
+  },
 };

@@ -113,6 +113,153 @@
       "when": 1779397251556,
       "tag": "0015_unique_drax",
       "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1779397252556,
+      "tag": "0016_driver_profiles",
+      "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1779397253556,
+      "tag": "0017_passenger_profiles",
+      "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1779397254556,
+      "tag": "0018_payments_base",
+      "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1779397255556,
+      "tag": "0019_tourist_services",
+      "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1779397256556,
+      "tag": "0020_rental_fleet",
+      "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1779397257556,
+      "tag": "0021_tour_pricing_and_notifications",
+      "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "7",
+      "when": 1779397258556,
+      "tag": "0022_notifications_wa_me",
+      "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1779397259556,
+      "tag": "0023_applications",
+      "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1779397260556,
+      "tag": "0024_event_tickets",
+      "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1779397261556,
+      "tag": "0025_legal_documents",
+      "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1779397262556,
+      "tag": "0026_fare_settings",
+      "breakpoints": true
+    },
+    {
+      "idx": 27,
+      "version": "7",
+      "when": 1779397263556,
+      "tag": "0027_referrals",
+      "breakpoints": true
+    },
+    {
+      "idx": 28,
+      "version": "7",
+      "when": 1779397264556,
+      "tag": "0028_rides_geo_fields",
+      "breakpoints": true
+    },
+    {
+      "idx": 29,
+      "version": "7",
+      "when": 1779397265556,
+      "tag": "0029_driver_location",
+      "breakpoints": true
+    },
+    {
+      "idx": 30,
+      "version": "7",
+      "when": 1779397266556,
+      "tag": "0030_scheduled_rides",
+      "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "7",
+      "when": 1779397267556,
+      "tag": "0031_ride_stops",
+      "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "7",
+      "when": 1779397268556,
+      "tag": "0032_queued_ride_offers",
+      "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1779397269556,
+      "tag": "0033_driver_gender_preference",
+      "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "7",
+      "when": 1779397270556,
+      "tag": "0034_whatsapp_base",
+      "breakpoints": true
+    },
+    {
+      "idx": 35,
+      "version": "7",
+      "when": 1779397271556,
+      "tag": "0035_payments_prontopaga",
+      "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "7",
+      "when": 1779397272556,
+      "tag": "0036_payments_failed_status",
+      "breakpoints": true
     }
   ]
 }

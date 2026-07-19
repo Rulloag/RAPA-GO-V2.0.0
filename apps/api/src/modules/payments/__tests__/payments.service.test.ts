@@ -13,6 +13,7 @@ const {
   mockMarkFailed,
   mockMarkSuccess,
   mockMarkRejected,
+  mockMarkRefunded,
   mockFindById,
   mockRecordSafe,
   mockCreatePayment,
@@ -30,6 +31,7 @@ const {
   mockMarkFailed:             vi.fn(),
   mockMarkSuccess:            vi.fn(),
   mockMarkRejected:           vi.fn(),
+  mockMarkRefunded:           vi.fn(),
   mockFindById:               vi.fn(),
   mockRecordSafe:             vi.fn(),
   mockCreatePayment:          vi.fn(),
@@ -68,6 +70,7 @@ vi.mock("../payments.repository.js", () => ({
     markFailed:         mockMarkFailed,
     markSuccess:        mockMarkSuccess,
     markRejected:       mockMarkRejected,
+    markRefunded:       mockMarkRefunded,
     findById:           mockFindById,
   })),
 }));
@@ -377,6 +380,63 @@ describe("PaymentsService.handleWebhook", () => {
     if (!result.ok) {
       expect(result.code).toBe("WEBHOOK_PROVIDER_ERROR");
       expect(result.statusCode).toBe(502);
+    }
+  });
+});
+
+describe("PaymentsService.refundPayment", () => {
+  let service: InstanceType<typeof PaymentsService>;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockVerifyAccessToken.mockReturnValue({ sub: "admin-1" });
+    mockIsSessionValid.mockResolvedValue(true);
+    service = new PaymentsService();
+  });
+
+  it("admin can refund a successful payment", async () => {
+    mockFindUserById.mockResolvedValue({ id: "admin-1", role: "admin" });
+    mockFindById.mockResolvedValue({ id: "pay-1", status: "success", rideRequestId: "ride-1", amountClp: 5000 });
+    mockMarkRefunded.mockResolvedValue({ id: "pay-1", status: "refunded", rideRequestId: "ride-1", amountClp: 5000 });
+
+    const result = await service.refundPayment("token", "pay-1");
+
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.refunded).toBe(true);
+  });
+
+  it("non-admin role returns 403", async () => {
+    mockFindUserById.mockResolvedValue({ id: "user-1", role: "passenger" });
+
+    const result = await service.refundPayment("token", "pay-1");
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.statusCode).toBe(403);
+    expect(mockMarkRefunded).not.toHaveBeenCalled();
+  });
+
+  it("refunding an already-refunded payment is idempotent, not an error", async () => {
+    mockFindUserById.mockResolvedValue({ id: "admin-1", role: "admin" });
+    mockFindById.mockResolvedValue({ id: "pay-1", status: "refunded", rideRequestId: "ride-1", amountClp: 5000 });
+    mockMarkRefunded.mockResolvedValue(null);
+
+    const result = await service.refundPayment("token", "pay-1");
+
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.refunded).toBe(false);
+  });
+
+  it("refunding a non-success payment (e.g. pending) is rejected", async () => {
+    mockFindUserById.mockResolvedValue({ id: "admin-1", role: "admin" });
+    mockFindById.mockResolvedValue({ id: "pay-1", status: "pending", rideRequestId: "ride-1", amountClp: 5000 });
+    mockMarkRefunded.mockResolvedValue(null);
+
+    const result = await service.refundPayment("token", "pay-1");
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.code).toBe("PAYMENT_NOT_REFUNDABLE");
+      expect(result.statusCode).toBe(409);
     }
   });
 });
