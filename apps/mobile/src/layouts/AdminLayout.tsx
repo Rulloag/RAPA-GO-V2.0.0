@@ -1,4 +1,4 @@
-import { homeOutline, peopleOutline, carOutline, settingsOutline, documentTextOutline, personAddOutline, ticketOutline, shieldCheckmarkOutline, cashOutline, giftOutline } from "ionicons/icons";
+import { homeOutline, peopleOutline, carOutline, settingsOutline, documentTextOutline, personAddOutline, ticketOutline, shieldCheckmarkOutline, cashOutline, giftOutline, helpBuoyOutline } from "ionicons/icons";
 import { Route, Switch } from "react-router-dom";
 import { RoleLayout } from "./RoleLayout";
 import { ROUTES } from "../navigation/routes";
@@ -21,6 +21,7 @@ import { AdminApplicationsPage } from "../pages/admin/applications/index.js";
 import { AdminLegalDocumentsPage } from "../pages/admin/legal/index.js";
 import { AdminFareSettingsPage } from "../pages/admin/fare/index.js";
 import { AdminReferralsPage } from "../pages/admin/referrals/index.js";
+import { AdminSupportPage } from "../pages/admin/support/index.js";
 
 const TABS = [
   { path: ROUTES.ADMIN.HOME,             label: "Panel",    icon: homeOutline },
@@ -32,6 +33,7 @@ const TABS = [
   { path: ROUTES.ADMIN.LEGAL_DOCUMENTS,  label: "Legales",  icon: shieldCheckmarkOutline },
   { path: ROUTES.ADMIN.FARE_SETTINGS,    label: "Tarifas",  icon: cashOutline },
   { path: ROUTES.ADMIN.REFERRALS,        label: "Referidos", icon: giftOutline },
+  { path: ROUTES.ADMIN.SUPPORT,          label: "Soporte",   icon: helpBuoyOutline },
   { path: ROUTES.ADMIN.SETTINGS,         label: "Config",   icon: settingsOutline },
 ];
 
@@ -56,6 +58,7 @@ export function AdminLayout(): JSX.Element {
         <Route exact path="/admin/legal-documents"  component={AdminLegalDocumentsPage} />
         <Route exact path={ROUTES.ADMIN.FARE_SETTINGS} component={AdminFareSettingsPage} />
         <Route exact path={ROUTES.ADMIN.REFERRALS}    component={AdminReferralsPage} />
+        <Route exact path={ROUTES.ADMIN.SUPPORT}      component={AdminSupportPage} />
       </Switch>
     </RoleLayout>
   );

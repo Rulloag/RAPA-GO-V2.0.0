@@ -6,6 +6,7 @@ import {
   mapOutline,
   calendarOutline,
   ticketOutline,
+  helpCircleOutline,
 } from "ionicons/icons";
 import { Route, Switch } from "react-router-dom";
 import {
@@ -43,9 +44,9 @@ const TABS = [
   { path: ROUTES.PASSENGER.TRIPS, label: "Viajes", icon: carOutline },
 
   {
-    path: `${ROUTES.PASSENGER.HOME}?soon=services`,
-    label: "Próximamente",
-    icon: mapOutline,
+    path: ROUTES.SUPPORT.CENTER,
+    label: "Ayuda",
+    icon: helpCircleOutline,
   },
   {
     path: `${ROUTES.PASSENGER.HOME}?soon=bookings`,

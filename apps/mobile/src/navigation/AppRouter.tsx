@@ -22,6 +22,9 @@ import {
   ProfileNotificationsPage,
 } from "../pages/profile";
 import { NotificationPage } from "../pages/notifications/NotificationPage";
+import { SupportCenterPage } from "../pages/support/SupportCenterPage.js";
+import { RatingSyncRuntime } from "../features/ratings/RatingSyncRuntime.js";
+import { SupportQuickAccess } from "../features/support/SupportQuickAccess.js";
 import {
   ApplicationDriverPage,
   ApplicationGuidePage,
@@ -102,8 +105,11 @@ function AuthRoute({
 
 export function AppRouter(): JSX.Element {
   return (
-    <IonRouterOutlet>
-      <Switch>
+    <>
+      <RatingSyncRuntime />
+      <SupportQuickAccess />
+      <IonRouterOutlet>
+        <Switch>
         {/* Facebook callback debe ir arriba para que no lo tome otra ruta */}
         <Route
           exact
@@ -148,9 +154,11 @@ export function AppRouter(): JSX.Element {
         <PrivateRoute exact path={ROUTES.PROFILE.SECURITY} component={ProfileSecurityPage} />
         <PrivateRoute exact path={ROUTES.PROFILE.NOTIFICATIONS} component={ProfileNotificationsPage} />
         <PrivateRoute exact path="/notifications" component={NotificationPage} />
+        <PrivateRoute exact path={ROUTES.SUPPORT.CENTER} component={SupportCenterPage} />
 
         <Route render={() => <Redirect to={ROUTES.NOT_FOUND} />} />
-      </Switch>
-    </IonRouterOutlet>
+        </Switch>
+      </IonRouterOutlet>
+    </>
   );
 }

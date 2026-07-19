@@ -13,6 +13,10 @@ export const ROUTES = {
   WELCOME: "/welcome",
   NOT_FOUND: "/404",
 
+  SUPPORT: {
+    CENTER: "/support-center",
+  },
+
   AUTH: {
     BASE: "/auth",
     LOGIN: "/auth/login",
@@ -92,6 +96,7 @@ export const ROUTES = {
     LEGAL_DOCUMENTS: "/admin/legal-documents",
     FARE_SETTINGS: "/admin/fare-settings",
     REFERRALS: "/admin/referrals",
+    SUPPORT: "/admin/support",
   },
 
   APPLY: {

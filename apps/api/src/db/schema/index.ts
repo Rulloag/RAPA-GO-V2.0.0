@@ -11,6 +11,7 @@ export * from "./rides.schema.js";
 export * from "./rideLocationUpdates.schema.js";
 export * from "./ridePolicyCharges.schema.js";
 export * from "./ratings.schema.js";
+export * from "./supportCases.schema.js";
 export * from "./driverStatuses.schema.js";
 export * from "./driverCompliance.schema.js";
 export * from "./offline.schema.js";

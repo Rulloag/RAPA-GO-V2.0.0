@@ -176,6 +176,13 @@
       "when": 1784462400000,
       "tag": "0032_facebook_login_exchange_security",
       "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1784494800000,
+      "tag": "0033_support_cases_and_rating_summary",
+      "breakpoints": true
     }
   ]
 }

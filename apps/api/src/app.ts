@@ -16,6 +16,7 @@ import { ridesRoutes } from "./modules/rides/rides.routes.js";
 import { rideTrackingRoutes } from "./modules/rideTracking/rideTracking.routes.js";
 import { paymentsRoutes } from "./modules/payments/payments.routes.js";
 import { ratingsRoutes } from "./modules/ratings/ratings.routes.js";
+import { supportRoutes, adminSupportRoutes } from "./modules/support/support.routes.js";
 import { adminRoutes } from "./modules/admin/admin.routes.js";
 import { driverStatusRoutes } from "./modules/drivers/driverStatus.routes.js";
 import { driverProfileRoutes } from "./modules/drivers/driverProfile.routes.js";
@@ -165,6 +166,8 @@ export async function buildApp(): Promise<FastifyInstance> {
   await fastify.register(paymentsRoutes, { prefix: "/api" });
 
   await fastify.register(ratingsRoutes, { prefix: "/api" });
+  await fastify.register(supportRoutes, { prefix: "/api/support" });
+  await fastify.register(adminSupportRoutes, { prefix: "/api/admin/support" });
   await fastify.register(adminRoutes, { prefix: "/api/admin" });
   await fastify.register(driverStatusRoutes, { prefix: "/api/drivers" });
   await fastify.register(offlineRoutes, { prefix: "/api" });
