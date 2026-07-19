@@ -169,6 +169,13 @@
       "when": 1784455200000,
       "tag": "0031_cash_overpayment_benefits",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1784462400000,
+      "tag": "0032_facebook_login_exchange_security",
+      "breakpoints": true
     }
   ]
 }

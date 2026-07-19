@@ -167,6 +167,10 @@ export class AdminService {
       return { ok: false, code: "NOT_FOUND", message: "User not found.", statusCode: 404 };
     }
 
+    if (input.status !== "active") {
+      await sessionService.revokeAllForUser(targetUserId);
+    }
+
     auditService.recordSafe({
       eventType: "admin.user_status_changed",
       metadata:  { adminUserId: auth.userId, targetUserId, previousStatus: existing.status, newStatus: input.status },

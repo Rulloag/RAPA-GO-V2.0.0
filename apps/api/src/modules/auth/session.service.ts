@@ -1,6 +1,6 @@
 import { eq, and, isNull, gt } from "drizzle-orm";
 import { db } from "../../db/client.js";
-import { authSessions, refreshTokens } from "../../db/schema/index.js";
+import { authSessions, refreshTokens, users } from "../../db/schema/index.js";
 import { AppError } from "../../shared/errors/AppError.js";
 
 /**
@@ -67,11 +67,13 @@ export class SessionService {
       const rows = await db
         .select({ id: authSessions.id })
         .from(authSessions)
+        .innerJoin(users, eq(authSessions.userId, users.id))
         .where(
           and(
             eq(authSessions.accessTokenHash, accessTokenHash),
             isNull(authSessions.revokedAt),
             gt(authSessions.expiresAt, new Date()),
+            eq(users.status, "active"),
           ),
         )
         .limit(1);

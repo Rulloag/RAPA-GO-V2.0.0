@@ -1,8 +1,14 @@
-import { createContext, useState, useCallback, useEffect, type ReactNode } from "react";
+import {
+  createContext,
+  useState,
+  useCallback,
+  useEffect,
+  type ReactNode,
+} from "react";
 import { useHistory } from "react-router-dom";
 import { authService } from "./auth.service.js";
 import { sessionStorageService } from "./sessionStorage.service.js";
-import { ROUTES } from "../../navigation/routes";
+import { ROUTES } from "../../navigation/routes.js";
 import type {
   AuthContextValue,
   AuthUser,
@@ -12,7 +18,6 @@ import type {
   RegisterRequest,
   AuthResponse,
 } from "./auth.types.js";
-import type { UserRole } from "@rapa-go/shared";
 
 export const AuthContext = createContext<AuthContextValue | null>(null);
 
@@ -22,74 +27,67 @@ interface AuthProviderProps {
 
 export function AuthProvider({ children }: AuthProviderProps): JSX.Element {
   const history = useHistory();
-
   const [status, setStatus] = useState<AuthStatus>("loading");
   const [user, setUser] = useState<AuthUser | null>(null);
   const [session, setSession] = useState<AuthSession | null>(null);
 
+  const clearLocalSession = useCallback(async (): Promise<void> => {
+    await sessionStorageService.clearSession();
+    setSession(null);
+    setUser(null);
+    setStatus("unauthenticated");
+  }, []);
+
   useEffect(() => {
     let cancelled = false;
 
-    async function restore() {
-      try {
-        const persisted = await sessionStorageService.loadSession();
-        if (cancelled) return;
+    async function restore(): Promise<void> {
+      const persisted = await sessionStorageService.loadSession();
+      if (cancelled) return;
 
-        if (persisted) {
-          const restoredUser: AuthUser = {
-            id: persisted.userId,
-            email: persisted.email,
-            name: persisted.name,
-            role: persisted.role as UserRole,
-            avatarUrl: persisted.avatarUrl,
-            isVerified: persisted.isVerified,
-          };
+      if (!persisted) {
+        setStatus("unauthenticated");
+        return;
+      }
 
-          const restoredSession: AuthSession = {
-            accessToken: persisted.accessToken,
-            expiresAt: persisted.expiresAt,
-            user: restoredUser,
-          };
+      const verified = await authService.me(persisted.accessToken);
+      if (cancelled) return;
 
-          setUser(restoredUser);
-          setSession(restoredSession);
-          setStatus("authenticated");
-        } else {
+      if (!verified.ok) {
+        await sessionStorageService.clearSession();
+        if (!cancelled) {
+          setSession(null);
+          setUser(null);
           setStatus("unauthenticated");
         }
-      } catch {
-        if (!cancelled) setStatus("unauthenticated");
+        return;
       }
+
+      await sessionStorageService.saveSession(verified.session);
+      if (cancelled) return;
+
+      setSession(verified.session);
+      setUser(verified.session.user);
+      setStatus("authenticated");
     }
 
-    void restore();
+    void restore().catch(async () => {
+      await sessionStorageService.clearSession();
+      if (!cancelled) {
+        setSession(null);
+        setUser(null);
+        setStatus("unauthenticated");
+      }
+    });
 
     return () => {
       cancelled = true;
     };
   }, []);
 
-  // IMPORTANTE:
-  // Ya no cerramos sesión automáticamente cuando el token expira.
-  // La sesión solo se cerrará cuando el usuario presione "Cerrar sesión".
-  useEffect(() => {
-    const handler = () => {
-      console.warn("Token expirado, pero se mantiene la sesión abierta.");
-    };
-
-    window.addEventListener("auth:expired", handler);
-
-    return () => {
-      window.removeEventListener("auth:expired", handler);
-    };
-  }, []);
-
   useEffect(() => {
     const forceLogout = () => {
-      void sessionStorageService.clearSession().finally(() => {
-        setSession(null);
-        setUser(null);
-        setStatus("unauthenticated");
+      void clearLocalSession().finally(() => {
         history.replace(ROUTES.AUTH.LOGIN);
       });
     };
@@ -99,58 +97,59 @@ export function AuthProvider({ children }: AuthProviderProps): JSX.Element {
     return () => {
       window.removeEventListener("auth:force-logout", forceLogout);
     };
-  }, [history]);
+  }, [clearLocalSession, history]);
 
-  const login = useCallback(async (payload: LoginRequest): Promise<AuthResponse> => {
-    setStatus("loading");
+  const login = useCallback(
+    async (payload: LoginRequest): Promise<AuthResponse> => {
+      setStatus("loading");
+      const response = await authService.login(payload);
 
-    const response = await authService.login(payload);
+      if (response.ok) {
+        await sessionStorageService.saveSession(response.session);
+        setSession(response.session);
+        setUser(response.session.user);
+        setStatus("authenticated");
+      } else {
+        setStatus("unauthenticated");
+      }
 
-    if (response.ok) {
-      await sessionStorageService.saveSession(response.session);
-      setSession(response.session);
-      setUser(response.session.user);
-      setStatus("authenticated");
-    } else {
-      setStatus("unauthenticated");
-    }
+      return response;
+    },
+    [],
+  );
 
-    return response;
-  }, []);
+  const register = useCallback(
+    async (payload: RegisterRequest): Promise<AuthResponse> => {
+      setStatus("loading");
+      const response = await authService.register(payload);
 
-  const register = useCallback(async (payload: RegisterRequest): Promise<AuthResponse> => {
-    setStatus("loading");
+      if (response.ok) {
+        await sessionStorageService.saveSession(response.session);
+        setSession(response.session);
+        setUser(response.session.user);
+        setStatus("authenticated");
+      } else {
+        setStatus("unauthenticated");
+      }
 
-    const response = await authService.register(payload);
-
-    if (response.ok) {
-      await sessionStorageService.saveSession(response.session);
-      setSession(response.session);
-      setUser(response.session.user);
-      setStatus("authenticated");
-    } else {
-      setStatus("unauthenticated");
-    }
-
-    return response;
-  }, []);
+      return response;
+    },
+    [],
+  );
 
   const logout = useCallback(async (): Promise<void> => {
     if (session?.accessToken) {
       await authService.logout(session.accessToken).catch(() => {});
     }
 
-    await sessionStorageService.clearSession();
-
-    setSession(null);
-    setUser(null);
-    setStatus("unauthenticated");
-
+    await clearLocalSession();
     history.replace(ROUTES.AUTH.LOGIN);
-  }, [session, history]);
+  }, [session, clearLocalSession, history]);
 
   return (
-    <AuthContext.Provider value={{ status, user, session, login, register, logout }}>
+    <AuthContext.Provider
+      value={{ status, user, session, login, register, logout }}
+    >
       {children}
     </AuthContext.Provider>
   );

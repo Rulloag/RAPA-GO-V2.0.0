@@ -3,8 +3,23 @@ import { randomBytes, createHash } from "node:crypto";
 import { AppError } from "../../shared/errors/AppError.js";
 import type { AuthUser } from "./auth.types.js";
 
-const ACCESS_TOKEN_TTL_SECONDS = 30 * 24 * 60 * 60; // 30 días
-const REFRESH_TOKEN_TTL_MS = 180 * 24 * 60 * 60 * 1000; // 180 días
+const DEFAULT_ACCESS_TOKEN_TTL_SECONDS = 24 * 60 * 60; // 24 horas
+const MIN_ACCESS_TOKEN_TTL_SECONDS = 15 * 60;
+const MAX_ACCESS_TOKEN_TTL_SECONDS = 7 * 24 * 60 * 60;
+const REFRESH_TOKEN_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 días
+
+function getAccessTokenTtlSeconds(): number {
+  const configured = Number(process.env["ACCESS_TOKEN_TTL_SECONDS"] ?? "");
+
+  if (!Number.isFinite(configured)) {
+    return DEFAULT_ACCESS_TOKEN_TTL_SECONDS;
+  }
+
+  return Math.min(
+    MAX_ACCESS_TOKEN_TTL_SECONDS,
+    Math.max(MIN_ACCESS_TOKEN_TTL_SECONDS, Math.floor(configured)),
+  );
+}
 const REFRESH_TOKEN_BYTES = 48;
 
 export interface AccessTokenPayload {
@@ -44,7 +59,8 @@ export class TokenService {
 
   issueAccessToken(user: AuthUser): IssuedAccessToken {
     const secret = this.getSecret();
-    const expiresAt = new Date(Date.now() + ACCESS_TOKEN_TTL_SECONDS * 1000);
+    const ttlSeconds = getAccessTokenTtlSeconds();
+    const expiresAt = new Date(Date.now() + ttlSeconds * 1000);
 
     const payload: AccessTokenPayload = {
       sub: user.id,
@@ -53,7 +69,7 @@ export class TokenService {
     };
 
     const token = jwt.sign(payload, secret, {
-      expiresIn: ACCESS_TOKEN_TTL_SECONDS,
+      expiresIn: ttlSeconds,
       algorithm: "HS256",
     });
 

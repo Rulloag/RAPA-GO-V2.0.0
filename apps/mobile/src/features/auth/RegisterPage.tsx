@@ -18,6 +18,8 @@ import {
 import { useHistory } from "react-router-dom";
 import { registerRequestSchema, type UserRole } from "@rapa-go/shared";
 import { useAuth } from "./useAuth.js";
+import { authService } from "./auth.service.js";
+import { sessionStorageService } from "./sessionStorage.service.js";
 import { ROUTES } from "../../navigation/routes.js";
 import { legalService } from "../../features/legal/legal.service.js";
 import { referralsService } from "../../features/referrals/referrals.service.js";
@@ -92,7 +94,7 @@ type ResidentDocumentData = {
   uploadedAt: string;
 };
 
-const RESIDENT_DOCUMENT_MAX_BYTES = 2 * 1024 * 1024;
+const RESIDENT_DOCUMENT_MAX_BYTES = Math.floor(1.5 * 1024 * 1024);
 const RESIDENT_VERIFICATION_REQUESTS_KEY = "rapago_resident_verification_requests_v1";
 const PASSWORD_MIN_LENGTH = 8;
 const PASSWORD_MAX_LENGTH = 72;
@@ -259,7 +261,22 @@ function persistRegistrationProfile(data: {
       residenceDocumentUploaded: Boolean(data.residentDocument),
     };
 
-    sessionStorage.setItem(RAPAGO_AUTH_SESSION_PROFILE_KEY, JSON.stringify(data));
+    const safeSessionProfile = {
+      ...data,
+      residentDocument: data.residentDocument
+        ? {
+            name: data.residentDocument.name,
+            type: data.residentDocument.type,
+            sizeBytes: data.residentDocument.sizeBytes,
+            uploadedAt: data.residentDocument.uploadedAt,
+          }
+        : null,
+    };
+
+    sessionStorage.setItem(
+      RAPAGO_AUTH_SESSION_PROFILE_KEY,
+      JSON.stringify(safeSessionProfile),
+    );
     localStorage.setItem("rapago_registration_profile", JSON.stringify(safeProfile));
 
     sessionStorage.setItem("rapago_passenger_email", data.email);
@@ -350,10 +367,11 @@ function persistResidentVerificationRequest(input: {
       documentType: input.document.type,
       documentSizeBytes: input.document.sizeBytes,
       documentUploadedAt: input.document.uploadedAt,
-      documentDataUrl: input.document.dataUrl,
+      documentDataUrl: null,
+      documentStorage: "backend",
       reason: "Validacion de residencia Rapa Nui",
       userMessage: "Tu documento de Residente Rapa Nui esta pendiente de revision por el administrador.",
-      storageScope: "session_only",
+      storageScope: "backend",
     };
 
     const safeLocalRequest = {
@@ -371,8 +389,8 @@ function persistResidentVerificationRequest(input: {
       documentSizeBytes: input.document.sizeBytes,
       documentUploadedAt: input.document.uploadedAt,
       documentDataUrl: null,
-      documentStorage: "session_only_pending_backend_upload",
-      piiStorage: "session_only",
+      documentStorage: "backend",
+      piiStorage: "minimal_local_mirror",
       reason: "Validacion de residencia Rapa Nui",
       userMessage: "Tu documento de Residente Rapa Nui esta pendiente de revision por el administrador.",
     };
@@ -695,7 +713,18 @@ export function RegisterPage(): JSX.Element {
       lowerName.endsWith(".jpeg") ||
       lowerName.endsWith(".png") ||
       lowerName.endsWith(".webp");
-    const allowedByType = !file.type || ALLOWED_RESIDENT_DOCUMENT_MIME_TYPES.has(file.type);
+    const inferredMimeType = lowerName.endsWith(".pdf")
+      ? "application/pdf"
+      : lowerName.endsWith(".png")
+        ? "image/png"
+        : lowerName.endsWith(".webp")
+          ? "image/webp"
+          : lowerName.endsWith(".jpg") || lowerName.endsWith(".jpeg")
+            ? "image/jpeg"
+            : "";
+    const normalizedMimeType = file.type || inferredMimeType;
+    const allowedByType =
+      ALLOWED_RESIDENT_DOCUMENT_MIME_TYPES.has(normalizedMimeType);
 
     if (!allowedByName || !allowedByType) {
       setResidentDocument(null);
@@ -710,7 +739,7 @@ export function RegisterPage(): JSX.Element {
       setResidentDocument(null);
       setFieldErrors((prev) => ({
         ...prev,
-        residentDocument: "El documento debe pesar máximo 2 MB para no poner lenta la app.",
+        residentDocument: "El documento debe pesar máximo 1.5 MB para proteger tus datos y mantener rápida la app.",
       }));
       return;
     }
@@ -719,7 +748,7 @@ export function RegisterPage(): JSX.Element {
       const dataUrl = await fileToDataUrl(file);
       setResidentDocument({
         name: safeFileName,
-        type: file.type || "application/octet-stream",
+        type: normalizedMimeType,
         sizeBytes: file.size,
         dataUrl,
         uploadedAt: new Date().toISOString(),
@@ -734,23 +763,36 @@ export function RegisterPage(): JSX.Element {
   }
 
   async function acceptLegalDocuments(accessToken: string): Promise<void> {
-    const typesToAccept = ["terms_and_conditions", "privacy_policy", "user_conditions"];
+    const requiredTypes = [
+      "terms_and_conditions",
+      "privacy_policy",
+      "user_conditions",
+    ];
+    const documents = await legalService.getActive();
 
-    try {
-      const docs = await legalService.getActive();
-
-      await Promise.all(
-        typesToAccept.map(async (type) => {
-          const doc = docs.find((item) => item.type === type && item.isActive);
-
-          if (!doc) return;
-
-          await legalService.accept(accessToken, doc.id, doc.version);
-        }),
+    const requiredDocuments = requiredTypes.map((type) => {
+      const document = documents.find(
+        (item) => item.type === type && item.isActive,
       );
-    } catch {
-      // No bloqueamos el registro si la aceptación legal falla.
-    }
+
+      if (!document) {
+        throw new Error(
+          "No están disponibles todos los documentos legales obligatorios.",
+        );
+      }
+
+      return document;
+    });
+
+    await Promise.all(
+      requiredDocuments.map((document) =>
+        legalService.accept(
+          accessToken,
+          document.id,
+          document.version,
+        ),
+      ),
+    );
   }
 
   async function applyReferralCode(userId: string): Promise<void> {
@@ -868,6 +910,7 @@ export function RegisterPage(): JSX.Element {
     const selectedPassengerFareType = cleanPassengerFareType as PassengerFareType;
 
     setLoading(true);
+    let createdAccessToken: string | null = null;
 
     try {
       const result = await register({
@@ -910,30 +953,46 @@ export function RegisterPage(): JSX.Element {
       }
 
       const accessToken = result.session.accessToken;
+      createdAccessToken = accessToken;
       const userId = result.session.user.id;
       const registeredRole = result.session.user.role;
 
-      persistRegistrationProfile({
-        name: fullName,
-        firstName: cleanName,
-        lastName: cleanLastName,
-        rut: selectedPassengerFareType === "foreigner" ? cleanPassportValue : cleanRutValue,
-        passport: selectedPassengerFareType === "foreigner" ? cleanPassportValue : "",
-        phone: cleanPhoneValue,
-        email: cleanEmailValue,
-        passengerFareType: selectedPassengerFareType,
-        passengerFareLabel: getPassengerFareTypeLabel(selectedPassengerFareType),
-        residenceVerificationStatus:
-          selectedPassengerFareType === "resident" ? "pending" : "not_required",
-        residenceVerificationMessage:
-          selectedPassengerFareType === "resident"
-            ? "Tu documento de Residente Rapa Nui está pendiente de revisión por el administrador."
-            : "",
-        residentDocument:
-          selectedPassengerFareType === "resident" ? residentDocument : null,
-      });
+      await acceptLegalDocuments(accessToken);
+      await applyReferralCode(userId);
 
       if (selectedPassengerFareType === "resident" && residentDocument) {
+        const submitted =
+          await authService.submitFacebookResidentPrecheck({
+            provider: "email",
+            email: cleanEmailValue,
+            phone: cleanPhoneValue,
+            rut: cleanRutValue,
+            documentName: residentDocument.name,
+            documentType: residentDocument.type as
+              | "application/pdf"
+              | "image/jpeg"
+              | "image/png"
+              | "image/webp",
+            documentSize: residentDocument.sizeBytes,
+            documentDataUrl: residentDocument.dataUrl,
+          });
+
+        persistRegistrationProfile({
+          name: fullName,
+          firstName: cleanName,
+          lastName: cleanLastName,
+          rut: cleanRutValue,
+          passport: "",
+          phone: cleanPhoneValue,
+          email: cleanEmailValue,
+          passengerFareType: selectedPassengerFareType,
+          passengerFareLabel:
+            getPassengerFareTypeLabel(selectedPassengerFareType),
+          residenceVerificationStatus: submitted.status,
+          residenceVerificationMessage: submitted.message,
+          residentDocument,
+        });
+
         persistResidentVerificationRequest({
           userId,
           name: fullName,
@@ -944,16 +1003,57 @@ export function RegisterPage(): JSX.Element {
           email: cleanEmailValue,
           document: residentDocument,
         });
+
+        if (submitted.status === "pending") {
+          await authService.logout(accessToken).catch(() => {});
+          await sessionStorageService.clearSession();
+          window.location.replace(
+            `${ROUTES.AUTH.LOGIN}?registration=resident_pending`,
+          );
+          return;
+        }
+      } else {
+        persistRegistrationProfile({
+          name: fullName,
+          firstName: cleanName,
+          lastName: cleanLastName,
+          rut:
+            selectedPassengerFareType === "foreigner"
+              ? cleanPassportValue
+              : cleanRutValue,
+          passport:
+            selectedPassengerFareType === "foreigner"
+              ? cleanPassportValue
+              : "",
+          phone: cleanPhoneValue,
+          email: cleanEmailValue,
+          passengerFareType: selectedPassengerFareType,
+          passengerFareLabel:
+            getPassengerFareTypeLabel(selectedPassengerFareType),
+          residenceVerificationStatus: "not_required",
+          residenceVerificationMessage: "",
+          residentDocument: null,
+        });
       }
 
-      await Promise.all([
-        applyReferralCode(userId),
-        acceptLegalDocuments(accessToken),
-      ]);
+      history.replace(
+        ROLE_HOME[registeredRole] ?? ROUTES.PASSENGER.HOME,
+      );
+    } catch (error) {
+      if (createdAccessToken) {
+        await authService.logout(createdAccessToken).catch(() => {});
+        await sessionStorageService.clearSession();
+        window.location.replace(
+          `${ROUTES.AUTH.LOGIN}?registration=setup_error`,
+        );
+        return;
+      }
 
-      history.replace(ROLE_HOME[registeredRole] ?? ROUTES.PASSENGER.HOME);
-    } catch {
-      setServerError("Error de conexión. Verifica tu red e inténtalo de nuevo.");
+      setServerError(
+        error instanceof Error
+          ? error.message
+          : "Error de conexión. Verifica tu red e inténtalo de nuevo.",
+      );
     } finally {
       setLoading(false);
     }

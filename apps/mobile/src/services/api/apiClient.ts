@@ -80,13 +80,21 @@ async function request<T>(
   if (response.ok === false) {
     const errorResponse = parseErrorBody(parsed, response.status);
 
-    if (
-      response.status === 401 &&
+    const mustForceLogout =
+      Boolean(token) &&
       errorResponse.ok === false &&
-      ["AUTH_SESSION_REVOKED", "AUTH_ACCOUNT_DELETED"].includes(
-        errorResponse.code,
-      )
-    ) {
+      (
+        response.status === 401 ||
+        [
+          "AUTH_SESSION_REVOKED",
+          "AUTH_TOKEN_EXPIRED",
+          "AUTH_ACCOUNT_DELETED",
+          "AUTH_ACCOUNT_SUSPENDED",
+          "UNAUTHORIZED",
+        ].includes(errorResponse.code)
+      );
+
+    if (mustForceLogout) {
       window.dispatchEvent(
         new CustomEvent("auth:force-logout", {
           detail: { code: errorResponse.code },
@@ -134,7 +142,7 @@ export const apiClient = {
     path: string,
     body?: unknown,
     options?: RequestOptions,
-    retries = 1,
+    retries = 0,
   ): Promise<ApiResponse<T>> {
     return requestWithRetry<T>("POST", path, body, options, retries);
   },
@@ -144,7 +152,7 @@ export const apiClient = {
     body?: unknown,
     options?: RequestOptions,
   ): Promise<ApiResponse<T>> {
-    return requestWithRetry<T>("PATCH", path, body, options, 1);
+    return requestWithRetry<T>("PATCH", path, body, options, 0);
   },
 
   put<T>(
@@ -152,10 +160,10 @@ export const apiClient = {
     body?: unknown,
     options?: RequestOptions,
   ): Promise<ApiResponse<T>> {
-    return requestWithRetry<T>("PUT", path, body, options, 1);
+    return requestWithRetry<T>("PUT", path, body, options, 0);
   },
 
   delete<T>(path: string, options?: RequestOptions): Promise<ApiResponse<T>> {
-    return requestWithRetry<T>("DELETE", path, undefined, options, 1);
+    return requestWithRetry<T>("DELETE", path, undefined, options, 0);
   },
 };

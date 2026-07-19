@@ -25,3 +25,11 @@ export type PasswordResetServiceResult =
       message: string;
       statusCode: number;
     };
+export type FacebookLoginPreparationResult =
+  | { ok: true; exchangeCode: string }
+  | {
+      ok: false;
+      code: string;
+      message: string;
+      statusCode?: number;
+    };

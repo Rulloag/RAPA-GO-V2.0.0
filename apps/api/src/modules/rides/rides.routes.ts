@@ -6,6 +6,7 @@ import { requireLegalAcceptance } from "../../shared/middleware/requireLegalAcce
 const legalCheck = requireLegalAcceptance([
   "terms_and_conditions",
   "privacy_policy",
+  "user_conditions",
 ]);
 
 export async function ridesRoutes(

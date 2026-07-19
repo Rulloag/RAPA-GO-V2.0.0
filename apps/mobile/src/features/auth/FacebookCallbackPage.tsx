@@ -1,11 +1,22 @@
-import { IonButton, IonContent, IonPage, IonSpinner, IonText } from "@ionic/react";
-import { useEffect, useMemo, useState, type CSSProperties } from "react";
+import {
+  IonButton,
+  IonContent,
+  IonPage,
+  IonSpinner,
+  IonText,
+} from "@ionic/react";
+import {
+  useEffect,
+  useMemo,
+  useState,
+  type CSSProperties,
+} from "react";
 import { useHistory, useLocation } from "react-router-dom";
 import type { UserRole } from "@rapa-go/shared";
 import { ROUTES } from "../../navigation/routes.js";
 import { sessionStorageService } from "./sessionStorage.service.js";
+import { authService } from "./auth.service.js";
 import { legalService } from "../legal/legal.service.js";
-import type { AuthSession } from "./auth.types.js";
 
 const ROLE_HOME: Record<UserRole, string> = {
   passenger: ROUTES.PASSENGER.HOME,
@@ -15,16 +26,6 @@ const ROLE_HOME: Record<UserRole, string> = {
   admin: ROUTES.ADMIN.HOME,
 };
 
-const VALID_ROLES = new Set<UserRole>([
-  "passenger",
-  "driver",
-  "guide",
-  "rental_operator",
-  "admin",
-]);
-
-type CallbackState = "loading" | "error";
-
 const RAPAGO_FACEBOOK_LEGAL_ACCEPTANCES_KEY =
   "rapago_pending_facebook_legal_acceptances_v1";
 
@@ -33,6 +34,8 @@ const RAPAGO_FACEBOOK_REQUIRED_LEGAL_TYPES = new Set([
   "privacy_policy",
   "user_conditions",
 ]);
+
+type CallbackState = "loading" | "error";
 
 type PendingFacebookLegalAcceptance = {
   legalDocumentId: string;
@@ -44,28 +47,22 @@ type PendingFacebookLegalAcceptance = {
 function readPendingFacebookLegalAcceptances():
   PendingFacebookLegalAcceptance[] {
   try {
-    const raw = localStorage.getItem(
+    const raw = sessionStorage.getItem(
       RAPAGO_FACEBOOK_LEGAL_ACCEPTANCES_KEY,
     );
-    const parsed = raw
-      ? (JSON.parse(raw) as unknown)
-      : [];
+    const parsed = raw ? (JSON.parse(raw) as unknown) : [];
 
     if (!Array.isArray(parsed)) return [];
 
     return parsed.filter(
-      (
-        item,
-      ): item is PendingFacebookLegalAcceptance => {
+      (item): item is PendingFacebookLegalAcceptance => {
         if (!item || typeof item !== "object") return false;
         const record = item as Record<string, unknown>;
 
         return (
           typeof record.legalDocumentId === "string" &&
           typeof record.type === "string" &&
-          RAPAGO_FACEBOOK_REQUIRED_LEGAL_TYPES.has(
-            record.type,
-          ) &&
+          RAPAGO_FACEBOOK_REQUIRED_LEGAL_TYPES.has(record.type) &&
           typeof record.version === "string" &&
           typeof record.title === "string"
         );
@@ -80,14 +77,10 @@ async function acceptPendingFacebookLegalDocuments(
   accessToken: string,
 ): Promise<void> {
   const pending = readPendingFacebookLegalAcceptances();
-
-  const foundTypes = new Set(
-    pending.map((item) => item.type),
-  );
+  const foundTypes = new Set(pending.map((item) => item.type));
 
   if (
-    pending.length !==
-      RAPAGO_FACEBOOK_REQUIRED_LEGAL_TYPES.size ||
+    pending.length !== RAPAGO_FACEBOOK_REQUIRED_LEGAL_TYPES.size ||
     [...RAPAGO_FACEBOOK_REQUIRED_LEGAL_TYPES].some(
       (type) => !foundTypes.has(type),
     )
@@ -95,16 +88,13 @@ async function acceptPendingFacebookLegalDocuments(
     throw new Error("legal_missing");
   }
 
-  const current =
-    await legalService.getMyAcceptances(accessToken);
+  const current = await legalService.getMyAcceptances(accessToken);
 
   for (const document of pending) {
     const alreadyAccepted = current.some(
       (acceptance) =>
-        acceptance.legalDocumentId ===
-          document.legalDocumentId &&
-        acceptance.versionAccepted ===
-          document.version,
+        acceptance.legalDocumentId === document.legalDocumentId &&
+        acceptance.versionAccepted === document.version,
     );
 
     if (alreadyAccepted) continue;
@@ -116,34 +106,16 @@ async function acceptPendingFacebookLegalDocuments(
     );
   }
 
-  localStorage.removeItem(
-    RAPAGO_FACEBOOK_LEGAL_ACCEPTANCES_KEY,
-  );
+  sessionStorage.removeItem(RAPAGO_FACEBOOK_LEGAL_ACCEPTANCES_KEY);
 }
 
-function normalizeCallbackText(value: string | null): string {
-  try {
-    return decodeURIComponent(String(value ?? "")).trim();
-  } catch {
-    return String(value ?? "").trim();
-  }
-}
-
-function isValidUserRole(value: string | null): value is UserRole {
-  return Boolean(value && VALID_ROLES.has(value as UserRole));
-}
-
-function getFacebookCallbackErrorMessage(code: string | null): string {
-  if (code === "missing_session") {
-    return "Facebook no devolvió una sesión válida. Intenta iniciar sesión nuevamente.";
+function getFacebookCallbackErrorMessage(code: string): string {
+  if (code === "missing_exchange") {
+    return "Facebook no devolvió un código de ingreso válido. Intenta nuevamente.";
   }
 
-  if (code === "invalid_role") {
-    return "Facebook devolvió un rol inválido. Intenta nuevamente o entra con correo.";
-  }
-
-  if (code === "save_failed") {
-    return "No se pudo guardar la sesión en este dispositivo. Limpia caché e intenta nuevamente.";
+  if (code === "exchange_failed") {
+    return "El inicio con Facebook expiró o ya fue utilizado. Intenta nuevamente.";
   }
 
   if (code === "legal_missing") {
@@ -151,11 +123,11 @@ function getFacebookCallbackErrorMessage(code: string | null): string {
   }
 
   if (code === "legal_save_failed") {
-    return "No se pudo registrar tu aceptación legal. Vuelve al login, marca las tres casillas e intenta nuevamente.";
+    return "No se pudo registrar tu aceptación legal. Vuelve al login y marca las tres casillas.";
   }
 
-  if (code === "cancelled") {
-    return "Inicio con Facebook cancelado.";
+  if (code === "save_failed") {
+    return "No se pudo guardar la sesión de forma segura en este dispositivo.";
   }
 
   return "No se pudo iniciar sesión con Facebook. Intenta nuevamente.";
@@ -167,72 +139,64 @@ export function FacebookCallbackPage(): JSX.Element {
   const [state, setState] = useState<CallbackState>("loading");
   const [errorMessage, setErrorMessage] = useState("");
 
-  const params = useMemo(() => new URLSearchParams(location.search), [location.search]);
+  const fragmentParams = useMemo(
+    () =>
+      new URLSearchParams(
+        location.hash.startsWith("#")
+          ? location.hash.slice(1)
+          : location.hash,
+      ),
+    [location.hash],
+  );
 
   useEffect(() => {
     let cancelled = false;
 
     async function finishFacebookLogin(): Promise<void> {
-      const error = params.get("error");
+      const exchangeCode = fragmentParams.get("exchangeCode")?.trim() ?? "";
 
-      if (error) {
+      // Remove the one-time code from browser history immediately.
+      window.history.replaceState(
+        null,
+        document.title,
+        ROUTES.AUTH.FACEBOOK_CALLBACK,
+      );
+
+      if (!exchangeCode) {
         if (cancelled) return;
-
         setState("error");
-        setErrorMessage(getFacebookCallbackErrorMessage(error));
+        setErrorMessage(
+          getFacebookCallbackErrorMessage("missing_exchange"),
+        );
         return;
       }
 
-      const accessToken = normalizeCallbackText(params.get("accessToken"));
-      const expiresAt = normalizeCallbackText(params.get("expiresAt"));
-      const userId = normalizeCallbackText(params.get("userId"));
-      const email = normalizeCallbackText(params.get("email"));
-      const name = normalizeCallbackText(params.get("name"));
-      const roleParam = normalizeCallbackText(params.get("role"));
-      const avatarUrl = normalizeCallbackText(params.get("avatarUrl")) || null;
-      const isVerified = params.get("isVerified") === "true";
+      const result = await authService.exchangeFacebookLogin(exchangeCode);
 
-      if (!accessToken || !expiresAt || !userId || !email || !name || !roleParam) {
+      if (result.ok === false) {
         if (cancelled) return;
-
         setState("error");
-        setErrorMessage(getFacebookCallbackErrorMessage("missing_session"));
+        setErrorMessage(
+          result.message ||
+            getFacebookCallbackErrorMessage("exchange_failed"),
+        );
         return;
       }
-
-      if (!isValidUserRole(roleParam)) {
-        if (cancelled) return;
-
-        setState("error");
-        setErrorMessage(getFacebookCallbackErrorMessage("invalid_role"));
-        return;
-      }
-
-      const session: AuthSession = {
-        accessToken,
-        expiresAt,
-        user: {
-          id: userId,
-          email,
-          name,
-          role: roleParam,
-          avatarUrl,
-          isVerified,
-        },
-      };
 
       try {
         await acceptPendingFacebookLegalDocuments(
-          accessToken,
+          result.session.accessToken,
         );
       } catch (error) {
-        if (cancelled) return;
+        await authService
+          .logout(result.session.accessToken)
+          .catch(() => {});
 
+        if (cancelled) return;
         setState("error");
         setErrorMessage(
           getFacebookCallbackErrorMessage(
-            error instanceof Error &&
-              error.message === "legal_missing"
+            error instanceof Error && error.message === "legal_missing"
               ? "legal_missing"
               : "legal_save_failed",
           ),
@@ -241,26 +205,40 @@ export function FacebookCallbackPage(): JSX.Element {
       }
 
       try {
-        await sessionStorageService.saveSession(session);
+        await sessionStorageService.saveSession(result.session);
 
-        const home = ROLE_HOME[roleParam] ?? ROUTES.PASSENGER.HOME;
-
-        window.history.replaceState(null, document.title, home);
-        window.location.replace(home);
-      } catch {
         if (cancelled) return;
 
+        const home =
+          ROLE_HOME[result.session.user.role] ??
+          ROUTES.PASSENGER.HOME;
+
+        window.location.replace(home);
+      } catch {
+        await authService
+          .logout(result.session.accessToken)
+          .catch(() => {});
+
+        if (cancelled) return;
         setState("error");
-        setErrorMessage(getFacebookCallbackErrorMessage("save_failed"));
+        setErrorMessage(
+          getFacebookCallbackErrorMessage("save_failed"),
+        );
       }
     }
 
-    void finishFacebookLogin();
+    void finishFacebookLogin().catch(() => {
+      if (cancelled) return;
+      setState("error");
+      setErrorMessage(
+        getFacebookCallbackErrorMessage("exchange_failed"),
+      );
+    });
 
     return () => {
       cancelled = true;
     };
-  }, [params]);
+  }, [fragmentParams]);
 
   const pageStyle = {
     "--background":

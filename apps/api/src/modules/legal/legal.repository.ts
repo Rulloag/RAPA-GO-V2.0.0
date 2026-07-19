@@ -87,6 +87,7 @@ export class LegalRepository {
         eq(userAcceptances.userId, userId),
         eq(legalDocuments.type, documentType),
         eq(legalDocuments.isActive, true),
+        eq(userAcceptances.versionAccepted, legalDocuments.version),
       ))
       .limit(1);
     return rows.length > 0;

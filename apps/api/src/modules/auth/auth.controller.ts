@@ -1,7 +1,12 @@
-import { createHmac, timingSafeEqual } from "node:crypto";
+import {
+  createHmac,
+  randomBytes,
+  timingSafeEqual,
+} from "node:crypto";
 import type { FastifyRequest, FastifyReply } from "fastify";
 import { AuthService } from "./auth.service.js";
 import {
+  facebookLoginExchangeSchema,
   facebookResidentPrecheckSchema,
   facebookResidentStatusSchema,
   forgotPasswordRequestSchema,
@@ -16,6 +21,7 @@ import type {
   ResetPasswordRequest,
 } from "./auth.types.js";
 import type {
+  FacebookLoginExchangeInput,
   FacebookResidentPrecheckInput,
   FacebookResidentStatusInput,
 } from "./auth.schemas.js";
@@ -25,8 +31,12 @@ import { PasswordResetService } from "./passwordReset.service.js";
 const authService = new AuthService();
 const passwordResetService = new PasswordResetService();
 
+const FACEBOOK_STATE_COOKIE = "rapago_fb_oauth_state";
+const FACEBOOK_STATE_TTL_SECONDS = 15 * 60;
+const FACEBOOK_HTTP_TIMEOUT_MS = 10_000;
+
 function getRequiredEnv(name: string): string {
-  const value = process.env[name];
+  const value = process.env[name]?.trim();
 
   if (!value) {
     throw new Error(`Missing environment variable: ${name}`);
@@ -36,26 +46,52 @@ function getRequiredEnv(name: string): string {
 }
 
 function getFrontendUrl(): string {
-  return (
-    process.env["FRONTEND_URL"] ||
-    "http://192.168.100.91:5173"
-  ).replace(/\/$/, "");
+  const configured = process.env["FRONTEND_URL"]?.trim();
+  const fallback =
+    process.env["NODE_ENV"] === "production"
+      ? ""
+      : "http://localhost:5173";
+  const raw = configured || fallback;
+
+  if (!raw) {
+    throw new Error(
+      "Missing environment variable: FRONTEND_URL",
+    );
+  }
+
+  const parsed = new URL(raw);
+
+  if (parsed.protocol !== "https:" && parsed.protocol !== "http:") {
+    throw new Error("FRONTEND_URL must use http or https.");
+  }
+
+  if (
+    process.env["NODE_ENV"] === "production" &&
+    parsed.protocol !== "https:"
+  ) {
+    throw new Error("FRONTEND_URL must use HTTPS in production.");
+  }
+
+  return parsed.origin;
 }
 
 type FacebookOAuthState = {
-  version: 1;
+  version: 2;
   residentIntent: boolean;
+  nonce: string;
   expiresAt: number;
 };
 
 function createFacebookOAuthState(
   residentIntent: boolean,
+  nonce: string,
   secret: string,
 ): string {
   const payload: FacebookOAuthState = {
-    version: 1,
+    version: 2,
     residentIntent,
-    expiresAt: Date.now() + 15 * 60 * 1000,
+    nonce,
+    expiresAt: Date.now() + FACEBOOK_STATE_TTL_SECONDS * 1000,
   };
   const encodedPayload = Buffer.from(
     JSON.stringify(payload),
@@ -74,24 +110,15 @@ function readFacebookOAuthState(
 ): FacebookOAuthState | null {
   if (!value) return null;
 
-  const [encodedPayload, receivedSignature] =
-    value.split(".");
+  const [encodedPayload, receivedSignature] = value.split(".");
 
-  if (!encodedPayload || !receivedSignature) {
-    return null;
-  }
+  if (!encodedPayload || !receivedSignature) return null;
 
   const expectedSignature = createHmac("sha256", secret)
     .update(encodedPayload)
     .digest("base64url");
-  const receivedBuffer = Buffer.from(
-    receivedSignature,
-    "utf8",
-  );
-  const expectedBuffer = Buffer.from(
-    expectedSignature,
-    "utf8",
-  );
+  const receivedBuffer = Buffer.from(receivedSignature, "utf8");
+  const expectedBuffer = Buffer.from(expectedSignature, "utf8");
 
   if (
     receivedBuffer.length !== expectedBuffer.length ||
@@ -102,14 +129,14 @@ function readFacebookOAuthState(
 
   try {
     const parsed = JSON.parse(
-      Buffer.from(encodedPayload, "base64url").toString(
-        "utf8",
-      ),
+      Buffer.from(encodedPayload, "base64url").toString("utf8"),
     ) as Partial<FacebookOAuthState>;
 
     if (
-      parsed.version !== 1 ||
+      parsed.version !== 2 ||
       typeof parsed.residentIntent !== "boolean" ||
+      typeof parsed.nonce !== "string" ||
+      parsed.nonce.length < 32 ||
       typeof parsed.expiresAt !== "number" ||
       parsed.expiresAt < Date.now()
     ) {
@@ -117,8 +144,9 @@ function readFacebookOAuthState(
     }
 
     return {
-      version: 1,
+      version: 2,
       residentIntent: parsed.residentIntent,
+      nonce: parsed.nonce,
       expiresAt: parsed.expiresAt,
     };
   } catch {
@@ -126,13 +154,82 @@ function readFacebookOAuthState(
   }
 }
 
+function constantTimeEqualText(left: string, right: string): boolean {
+  const leftBuffer = Buffer.from(left, "utf8");
+  const rightBuffer = Buffer.from(right, "utf8");
+
+  return (
+    leftBuffer.length === rightBuffer.length &&
+    timingSafeEqual(leftBuffer, rightBuffer)
+  );
+}
+
+function readCookie(
+  cookieHeader: string | undefined,
+  name: string,
+): string | null {
+  if (!cookieHeader) return null;
+
+  for (const pair of cookieHeader.split(";")) {
+    const separator = pair.indexOf("=");
+    if (separator < 0) continue;
+
+    const key = pair.slice(0, separator).trim();
+    if (key !== name) continue;
+
+    const value = pair.slice(separator + 1).trim();
+
+    try {
+      return decodeURIComponent(value);
+    } catch {
+      return value;
+    }
+  }
+
+  return null;
+}
+
+function facebookStateCookie(value: string, maxAge: number): string {
+  const secure =
+    process.env["NODE_ENV"] === "production" ? "; Secure" : "";
+
+  return [
+    `${FACEBOOK_STATE_COOKIE}=${encodeURIComponent(value)}`,
+    "Path=/api/auth/facebook",
+    "HttpOnly",
+    "SameSite=Lax",
+    `Max-Age=${maxAge}`,
+    secure,
+  ]
+    .filter(Boolean)
+    .join("; ");
+}
+
+async function fetchWithTimeout(
+  url: string,
+  init: RequestInit,
+): Promise<Response> {
+  const controller = new AbortController();
+  const timer = setTimeout(
+    () => controller.abort(),
+    FACEBOOK_HTTP_TIMEOUT_MS,
+  );
+
+  try {
+    return await fetch(url, {
+      ...init,
+      signal: controller.signal,
+    });
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 function isFacebookResidentIntent(
   query: Record<string, string | undefined>,
 ): boolean {
   const condition = String(
-    query["passengerCondition"] ??
-      query["condition"] ??
-      "",
+    query["passengerCondition"] ?? query["condition"] ?? "",
   )
     .trim()
     .toLowerCase();
@@ -145,6 +242,11 @@ function isFacebookResidentIntent(
   ].includes(condition);
 }
 
+function extractBearer(request: FastifyRequest): string {
+  const auth = request.headers.authorization;
+  return auth?.startsWith("Bearer ") ? auth.slice(7).trim() : "";
+}
+
 export const authController = {
   async login(
     request: FastifyRequest<{ Body: LoginRequest }>,
@@ -155,14 +257,18 @@ export const authController = {
     if (!parsed.success) {
       sendError(reply, {
         code: "VALIDATION_ERROR",
-        message: parsed.error.message,
+        message: parsed.error.issues[0]?.message ?? "Datos inválidos.",
         statusCode: 400,
       });
       return;
     }
 
     const result = await authService.login(parsed.data);
-    reply.status(result.ok ? 200 : 401).send(result);
+    reply
+      .header("Cache-Control", "no-store")
+      .header("Pragma", "no-cache")
+      .status(result.ok ? 200 : (result.statusCode ?? 401))
+      .send(result);
   },
 
   async register(
@@ -174,7 +280,7 @@ export const authController = {
     if (!parsed.success) {
       sendError(reply, {
         code: "VALIDATION_ERROR",
-        message: parsed.error.message,
+        message: parsed.error.issues[0]?.message ?? "Datos inválidos.",
         statusCode: 400,
       });
       return;
@@ -182,27 +288,24 @@ export const authController = {
 
     const result = await authService.register(parsed.data);
 
-    if (!result.ok) {
-      reply.status(result.statusCode ?? 409).send(result);
-      return;
-    }
-
-    reply.status(201).send(result);
+    reply
+      .header("Cache-Control", "no-store")
+      .header("Pragma", "no-cache")
+      .status(result.ok ? 201 : (result.statusCode ?? 409))
+      .send(result);
   },
 
   async forgotPassword(
     request: FastifyRequest<{ Body: ForgotPasswordRequest }>,
     reply: FastifyReply,
   ): Promise<void> {
-    const parsed = forgotPasswordRequestSchema.safeParse(
-      request.body,
-    );
+    const parsed = forgotPasswordRequestSchema.safeParse(request.body);
 
     if (!parsed.success) {
       sendError(reply, {
         code: "VALIDATION_ERROR",
-        message: parsed.error.issues[0]?.message ??
-          "Solicitud inválida.",
+        message:
+          parsed.error.issues[0]?.message ?? "Solicitud inválida.",
         statusCode: 400,
       });
       return;
@@ -213,41 +316,34 @@ export const authController = {
       ? userAgentHeader.join(" ")
       : userAgentHeader;
 
-    const result =
-      await passwordResetService.requestPasswordReset(
-        parsed.data,
-        {
-          requestIp: request.ip,
-          requestUserAgent: userAgent ?? null,
-        },
-      );
+    const result = await passwordResetService.requestPasswordReset(
+      parsed.data,
+      {
+        requestIp: request.ip,
+        requestUserAgent: userAgent ?? null,
+      },
+    );
 
-    reply
-      .header("Cache-Control", "no-store")
-      .status(202)
-      .send(result);
+    reply.header("Cache-Control", "no-store").status(202).send(result);
   },
 
   async resetPassword(
     request: FastifyRequest<{ Body: ResetPasswordRequest }>,
     reply: FastifyReply,
   ): Promise<void> {
-    const parsed = resetPasswordRequestSchema.safeParse(
-      request.body,
-    );
+    const parsed = resetPasswordRequestSchema.safeParse(request.body);
 
     if (!parsed.success) {
       sendError(reply, {
         code: "VALIDATION_ERROR",
-        message: parsed.error.issues[0]?.message ??
-          "Solicitud inválida.",
+        message:
+          parsed.error.issues[0]?.message ?? "Solicitud inválida.",
         statusCode: 400,
       });
       return;
     }
 
-    const result =
-      await passwordResetService.resetPassword(parsed.data);
+    const result = await passwordResetService.resetPassword(parsed.data);
 
     reply.header("Cache-Control", "no-store");
 
@@ -263,19 +359,15 @@ export const authController = {
     request: FastifyRequest,
     reply: FastifyReply,
   ): Promise<void> {
-    const authHeader = request.headers["authorization"] ?? "";
-    const token = authHeader.replace("Bearer ", "").trim();
-
-    const result = await authService.logout(token);
-    reply.status(200).send(result);
+    const result = await authService.logout(extractBearer(request));
+    reply.header("Cache-Control", "no-store").status(200).send(result);
   },
 
   async me(
     request: FastifyRequest,
     reply: FastifyReply,
   ): Promise<void> {
-    const authHeader = request.headers["authorization"] ?? "";
-    const token = authHeader.replace("Bearer ", "").trim();
+    const token = extractBearer(request);
 
     if (!token) {
       sendError(reply, {
@@ -287,18 +379,17 @@ export const authController = {
     }
 
     const result = await authService.getMe(token);
-    reply.status(result.ok ? 200 : (result.statusCode ?? 401)).send(result);
+    reply
+      .header("Cache-Control", "no-store")
+      .status(result.ok ? 200 : (result.statusCode ?? 401))
+      .send(result);
   },
 
   async facebookResidentPrecheck(
-    request: FastifyRequest<{
-      Body: FacebookResidentPrecheckInput;
-    }>,
+    request: FastifyRequest<{ Body: FacebookResidentPrecheckInput }>,
     reply: FastifyReply,
   ): Promise<void> {
-    const parsed = facebookResidentPrecheckSchema.safeParse(
-      request.body,
-    );
+    const parsed = facebookResidentPrecheckSchema.safeParse(request.body);
 
     if (!parsed.success) {
       sendError(reply, {
@@ -311,10 +402,9 @@ export const authController = {
       return;
     }
 
-    const result =
-      await authService.submitFacebookResidentPrecheck(
-        parsed.data,
-      );
+    const result = await authService.submitFacebookResidentPrecheck(
+      parsed.data,
+    );
 
     reply
       .header("Cache-Control", "no-store")
@@ -323,14 +413,10 @@ export const authController = {
   },
 
   async facebookResidentStatus(
-    request: FastifyRequest<{
-      Body: FacebookResidentStatusInput;
-    }>,
+    request: FastifyRequest<{ Body: FacebookResidentStatusInput }>,
     reply: FastifyReply,
   ): Promise<void> {
-    const parsed = facebookResidentStatusSchema.safeParse(
-      request.body,
-    );
+    const parsed = facebookResidentStatusSchema.safeParse(request.body);
 
     if (!parsed.success) {
       sendError(reply, {
@@ -343,15 +429,11 @@ export const authController = {
       return;
     }
 
-    const result =
-      await authService.getFacebookResidentPrecheckStatus(
-        parsed.data,
-      );
+    const result = await authService.getFacebookResidentPrecheckStatus(
+      parsed.data,
+    );
 
-    reply
-      .header("Cache-Control", "no-store")
-      .status(200)
-      .send(result);
+    reply.header("Cache-Control", "no-store").status(200).send(result);
   },
 
   async facebookLogin(
@@ -363,11 +445,11 @@ export const authController = {
     const appId = getRequiredEnv("FACEBOOK_APP_ID");
     const appSecret = getRequiredEnv("FACEBOOK_APP_SECRET");
     const redirectUri = getRequiredEnv("FACEBOOK_REDIRECT_URI");
-    const residentIntent = isFacebookResidentIntent(
-      request.query,
-    );
+    const residentIntent = isFacebookResidentIntent(request.query);
+    const nonce = randomBytes(32).toString("base64url");
     const state = createFacebookOAuthState(
       residentIntent,
+      nonce,
       appSecret,
     );
 
@@ -379,42 +461,56 @@ export const authController = {
       state,
     });
 
-    reply.redirect(
-      `https://www.facebook.com/v20.0/dialog/oauth?${params.toString()}`,
-    );
+    reply
+      .header(
+        "Set-Cookie",
+        facebookStateCookie(nonce, FACEBOOK_STATE_TTL_SECONDS),
+      )
+      .header("Cache-Control", "no-store")
+      .redirect(
+        `https://www.facebook.com/v20.0/dialog/oauth?${params.toString()}`,
+      );
   },
 
   async facebookCallback(
     request: FastifyRequest<{
-      Querystring: {
-        code?: string;
-        state?: string;
-      };
+      Querystring: { code?: string; state?: string };
     }>,
     reply: FastifyReply,
   ): Promise<void> {
     const frontendUrl = getFrontendUrl();
     const code = request.query.code;
+    const appId = getRequiredEnv("FACEBOOK_APP_ID");
+    const appSecret = getRequiredEnv("FACEBOOK_APP_SECRET");
+    const redirectUri = getRequiredEnv("FACEBOOK_REDIRECT_URI");
+    const oauthState = readFacebookOAuthState(
+      request.query.state,
+      appSecret,
+    );
+    const cookieNonce = readCookie(
+      request.headers.cookie,
+      FACEBOOK_STATE_COOKIE,
+    );
+
+    reply
+      .header("Set-Cookie", facebookStateCookie("", 0))
+      .header("Cache-Control", "no-store");
 
     if (!code) {
       reply.redirect(`${frontendUrl}/auth/login?facebook=error`);
       return;
     }
 
-    const appId = getRequiredEnv("FACEBOOK_APP_ID");
-    const appSecret = getRequiredEnv("FACEBOOK_APP_SECRET");
-    const oauthState = readFacebookOAuthState(
-      request.query.state,
-      appSecret,
-    );
-
-    if (!oauthState) {
+    if (
+      !oauthState ||
+      !cookieNonce ||
+      !constantTimeEqualText(oauthState.nonce, cookieNonce)
+    ) {
       reply.redirect(
         `${frontendUrl}/auth/login?facebook=state_error`,
       );
       return;
     }
-    const redirectUri = getRequiredEnv("FACEBOOK_REDIRECT_URI");
 
     const tokenParams = new URLSearchParams({
       client_id: appId,
@@ -423,42 +519,62 @@ export const authController = {
       code,
     });
 
-    const tokenResponse = await fetch(
-      `https://graph.facebook.com/v20.0/oauth/access_token?${tokenParams.toString()}`,
+    const tokenResponse = await fetchWithTimeout(
+      "https://graph.facebook.com/v20.0/oauth/access_token",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/x-www-form-urlencoded",
+          Accept: "application/json",
+        },
+        body: tokenParams.toString(),
+      },
     );
 
-    const tokenData = (await tokenResponse.json()) as {
+    const tokenData = (await tokenResponse.json().catch(() => ({}))) as {
       access_token?: string;
-      error?: unknown;
     };
 
-    if (!tokenData.access_token) {
+    if (!tokenResponse.ok || !tokenData.access_token) {
       reply.redirect(`${frontendUrl}/auth/login?facebook=error`);
       return;
     }
 
+    const appSecretProof = createHmac("sha256", appSecret)
+      .update(tokenData.access_token)
+      .digest("hex");
     const profileParams = new URLSearchParams({
       fields: "id,name,email,picture",
-      access_token: tokenData.access_token,
+      appsecret_proof: appSecretProof,
     });
 
-    const profileResponse = await fetch(
+    const profileResponse = await fetchWithTimeout(
       `https://graph.facebook.com/me?${profileParams.toString()}`,
+      {
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${tokenData.access_token}`,
+          Accept: "application/json",
+        },
+      },
     );
 
-    const profile = (await profileResponse.json()) as {
+    const profile = (await profileResponse.json().catch(() => ({}))) as {
       id?: string;
       name?: string;
       email?: string;
-      picture?: {
-        data?: {
-          url?: string;
-        };
-      };
+      picture?: { data?: { url?: string } };
     };
 
-    if (!profile.id || !profile.name || !profile.email) {
-      reply.redirect(`${frontendUrl}/auth/login?facebook=email_required`);
+    if (
+      !profileResponse.ok ||
+      !profile.id ||
+      !profile.name ||
+      !profile.email
+    ) {
+      reply.redirect(
+        `${frontendUrl}/auth/login?facebook=email_required`,
+      );
       return;
     }
 
@@ -469,9 +585,7 @@ export const authController = {
         name: profile.name,
         avatarUrl: profile.picture?.data?.url ?? null,
       },
-      {
-        residentIntent: oauthState.residentIntent,
-      },
+      { residentIntent: oauthState.residentIntent },
     );
 
     if (!result.ok) {
@@ -492,19 +606,38 @@ export const authController = {
       return;
     }
 
-    const redirectParams = new URLSearchParams({
-      accessToken: result.session.accessToken,
-      expiresAt: result.session.expiresAt,
-      userId: result.session.user.id,
-      email: result.session.user.email,
-      name: result.session.user.name,
-      role: result.session.user.role,
-      avatarUrl: result.session.user.avatarUrl ?? "",
-      isVerified: String(result.session.user.isVerified),
-    });
-
+    // The fragment is not sent in HTTP requests or Referer headers.
+    // It contains a short-lived one-time code, never an access token or PII.
     reply.redirect(
-      `${frontendUrl}/auth/facebook/callback?${redirectParams.toString()}`,
+      `${frontendUrl}/auth/facebook/callback#exchangeCode=${encodeURIComponent(result.exchangeCode)}`,
     );
   },
-};  
+
+  async facebookExchange(
+    request: FastifyRequest<{ Body: FacebookLoginExchangeInput }>,
+    reply: FastifyReply,
+  ): Promise<void> {
+    const parsed = facebookLoginExchangeSchema.safeParse(request.body);
+
+    if (!parsed.success) {
+      sendError(reply, {
+        code: "VALIDATION_ERROR",
+        message:
+          parsed.error.issues[0]?.message ??
+          "El código de Facebook no es válido.",
+        statusCode: 400,
+      });
+      return;
+    }
+
+    const result = await authService.exchangeFacebookLogin(
+      parsed.data.exchangeCode,
+    );
+
+    reply
+      .header("Cache-Control", "no-store")
+      .header("Pragma", "no-cache")
+      .status(result.ok ? 200 : (result.statusCode ?? 401))
+      .send(result);
+  },
+};

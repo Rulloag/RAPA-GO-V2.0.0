@@ -19,6 +19,7 @@ export type FacebookResidentStatusResponse = {
 };
 
 export type FacebookResidentPrecheckPayload = {
+  provider?: "facebook" | "email";
   email: string;
   phone: string;
   rut: string;
@@ -64,6 +65,27 @@ export const authService = {
     if (result.ok === false) {
       return { ok: false, code: result.code, message: result.message };
     }
+    return result.data;
+  },
+
+  async exchangeFacebookLogin(
+    exchangeCode: string,
+  ): Promise<AuthResponse> {
+    const result = await apiClient.post<AuthResponse>(
+      "/auth/facebook/exchange",
+      { exchangeCode },
+      undefined,
+      0,
+    );
+
+    if (result.ok === false) {
+      return {
+        ok: false,
+        code: result.code,
+        message: result.message,
+      };
+    }
+
     return result.data;
   },
 

@@ -55,12 +55,32 @@ async function checkDbConnection(): Promise<"connected" | "disconnected"> {
   }
 }
 
+
+function getTrustProxySetting(): boolean | number {
+  const configured = String(process.env["TRUST_PROXY"] ?? "")
+    .trim()
+    .toLowerCase();
+
+  if (configured === "true") return true;
+  if (configured === "false") return false;
+
+  const hops = Number(configured);
+  if (Number.isInteger(hops) && hops >= 0 && hops <= 5) {
+    return hops;
+  }
+
+  // Production deployments normally sit behind one trusted reverse proxy.
+  return process.env["NODE_ENV"] === "production" ? 1 : false;
+}
+
 /**
  * buildApp — constructs and configures the Fastify instance.
  * Separated from server.ts so the app can be imported in tests without binding a port.
  */
 export async function buildApp(): Promise<FastifyInstance> {
   const fastify = Fastify({
+    trustProxy: getTrustProxySetting(),
+    bodyLimit: 1 * 1024 * 1024,
     logger: {
       level: process.env["NODE_ENV"] === "production" ? "warn" : "info",
     },

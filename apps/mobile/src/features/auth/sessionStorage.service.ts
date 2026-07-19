@@ -1,7 +1,15 @@
 import { SecureStorage } from "@aparajita/capacitor-secure-storage";
+import type { UserRole } from "@rapa-go/shared";
 import type { AuthSession } from "./auth.types.js";
 
 const SESSION_KEY = "rapa_go_session";
+const VALID_ROLES = new Set<UserRole>([
+  "passenger",
+  "driver",
+  "guide",
+  "rental_operator",
+  "admin",
+]);
 
 export interface PersistedSession {
   accessToken: string;
@@ -9,9 +17,31 @@ export interface PersistedSession {
   userId: string;
   email: string;
   name: string;
-  role: string;
+  role: UserRole;
   avatarUrl: string | null;
   isVerified: boolean;
+}
+
+function isPersistedSession(value: unknown): value is PersistedSession {
+  if (!value || typeof value !== "object") return false;
+
+  const record = value as Record<string, unknown>;
+  const expiresAtMs = Date.parse(String(record.expiresAt ?? ""));
+
+  return (
+    typeof record.accessToken === "string" &&
+    record.accessToken.length >= 32 &&
+    typeof record.userId === "string" &&
+    record.userId.length > 0 &&
+    typeof record.email === "string" &&
+    record.email.includes("@") &&
+    typeof record.name === "string" &&
+    record.name.length > 0 &&
+    typeof record.role === "string" &&
+    VALID_ROLES.has(record.role as UserRole) &&
+    typeof record.isVerified === "boolean" &&
+    Number.isFinite(expiresAtMs)
+  );
 }
 
 class SessionStorageService {
@@ -35,11 +65,21 @@ class SessionStorageService {
       const raw = await SecureStorage.get(SESSION_KEY);
       if (!raw) return null;
 
-      const persisted = JSON.parse(raw as string) as PersistedSession;
+      const parsed = JSON.parse(String(raw)) as unknown;
 
-      // No cerrar sesión automáticamente por expiresAt.
-      return persisted;
+      if (!isPersistedSession(parsed)) {
+        await this.clearSession();
+        return null;
+      }
+
+      if (Date.parse(parsed.expiresAt) <= Date.now()) {
+        await this.clearSession();
+        return null;
+      }
+
+      return parsed;
     } catch {
+      await this.clearSession();
       return null;
     }
   }
@@ -48,7 +88,7 @@ class SessionStorageService {
     try {
       await SecureStorage.remove(SESSION_KEY);
     } catch {
-      // ignore
+      // No bloquea el cierre local.
     }
   }
 }

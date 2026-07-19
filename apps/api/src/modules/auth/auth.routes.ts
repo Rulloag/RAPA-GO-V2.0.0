@@ -1,29 +1,36 @@
 import type { FastifyInstance } from "fastify";
 import { authController } from "./auth.controller.js";
 
-/**
- * Auth routes
- * Prefix: /api/auth
- */
+const LOGIN_RATE_LIMIT = {
+  config: { rateLimit: { max: 10, timeWindow: "15 minutes" } },
+} as const;
 
+const REGISTER_RATE_LIMIT = {
+  config: { rateLimit: { max: 5, timeWindow: "1 hour" } },
+} as const;
+
+const FACEBOOK_RATE_LIMIT = {
+  config: { rateLimit: { max: 15, timeWindow: "15 minutes" } },
+} as const;
+
+/** Auth routes — prefix /api/auth. */
 export async function authRoutes(
   fastify: FastifyInstance,
 ): Promise<void> {
-  // Auth normal
-  fastify.post("/login", authController.login);
-  fastify.post("/register", authController.register);
+  fastify.post("/login", LOGIN_RATE_LIMIT, authController.login);
+  fastify.post(
+    "/register",
+    REGISTER_RATE_LIMIT,
+    authController.register,
+  );
   fastify.post("/logout", authController.logout);
   fastify.get("/me", authController.me);
 
-  // Recuperación automática de contraseña.
   fastify.post(
     "/password/forgot",
     {
       config: {
-        rateLimit: {
-          max: 5,
-          timeWindow: "15 minutes",
-        },
+        rateLimit: { max: 5, timeWindow: "15 minutes" },
       },
     },
     authController.forgotPassword,
@@ -33,26 +40,18 @@ export async function authRoutes(
     "/password/reset",
     {
       config: {
-        rateLimit: {
-          max: 10,
-          timeWindow: "15 minutes",
-        },
+        rateLimit: { max: 10, timeWindow: "15 minutes" },
       },
     },
     authController.resetPassword,
   );
 
-  // Validación previa de Residente Rapa Nui para Facebook.
-  // El documento puede pesar hasta 1.5 MB; en base64 el cuerpo JSON es mayor.
   fastify.post(
     "/facebook/resident-precheck",
     {
       bodyLimit: 3 * 1024 * 1024,
       config: {
-        rateLimit: {
-          max: 5,
-          timeWindow: "15 minutes",
-        },
+        rateLimit: { max: 5, timeWindow: "15 minutes" },
       },
     },
     authController.facebookResidentPrecheck,
@@ -60,18 +59,23 @@ export async function authRoutes(
 
   fastify.post(
     "/facebook/resident-status",
-    {
-      config: {
-        rateLimit: {
-          max: 15,
-          timeWindow: "15 minutes",
-        },
-      },
-    },
+    FACEBOOK_RATE_LIMIT,
     authController.facebookResidentStatus,
   );
 
-  // Facebook Login
-  fastify.get("/facebook", authController.facebookLogin);
-  fastify.get("/facebook/callback", authController.facebookCallback);
+  fastify.get(
+    "/facebook",
+    FACEBOOK_RATE_LIMIT,
+    authController.facebookLogin,
+  );
+  fastify.get(
+    "/facebook/callback",
+    FACEBOOK_RATE_LIMIT,
+    authController.facebookCallback,
+  );
+  fastify.post(
+    "/facebook/exchange",
+    FACEBOOK_RATE_LIMIT,
+    authController.facebookExchange,
+  );
 }

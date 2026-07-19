@@ -3,6 +3,7 @@ import type {
   RegisterRequest,
   AuthServiceResult,
   AuthUser,
+  FacebookLoginPreparationResult,
 } from "./auth.types.js";
 import { UsersService } from "../users/users.service.js";
 import { UsersRepository } from "../users/users.repository.js";
@@ -10,6 +11,7 @@ import { PasswordService } from "./password.service.js";
 import { TokenService } from "./token.service.js";
 import { SessionService } from "./session.service.js";
 import { AuthCredentialsRepository } from "./authCredentials.repository.js";
+import { FacebookLoginExchangeRepository } from "./facebookLoginExchange.repository.js";
 import { AuditService } from "../audit/audit.service.js";
 import { AppError } from "../../shared/errors/AppError.js";
 import type { UserRole } from "@rapa-go/shared";
@@ -35,6 +37,7 @@ const tokenService = new TokenService();
 const sessionService = new SessionService();
 const credentialsRepo = new AuthCredentialsRepository();
 const auditService = new AuditService();
+const facebookLoginExchangeRepo = new FacebookLoginExchangeRepository();
 
 function roleInitialStatus(role: UserRole): "active" | "pending" {
   return role === "passenger" ? "active" : "pending";
@@ -54,7 +57,7 @@ type FacebookResidentDocumentMetadata = {
   version: 1;
   phone: string;
   rut: string;
-  provider: "facebook";
+  provider: "facebook" | "email";
   documentName: string;
   documentType: string;
   uploadedAt: string;
@@ -112,7 +115,7 @@ function parseResidentDocumentMetadata(
 
     if (
       parsed.version !== 1 ||
-      parsed.provider !== "facebook" ||
+      (parsed.provider !== "facebook" && parsed.provider !== "email") ||
       typeof parsed.rut !== "string"
     ) {
       return null;
@@ -122,7 +125,7 @@ function parseResidentDocumentMetadata(
       version: 1,
       phone: String(parsed.phone ?? ""),
       rut: parsed.rut,
-      provider: "facebook",
+      provider: parsed.provider,
       documentName: String(parsed.documentName ?? "documento-residencia"),
       documentType: String(parsed.documentType ?? "application/octet-stream"),
       uploadedAt: String(parsed.uploadedAt ?? ""),
@@ -130,6 +133,45 @@ function parseResidentDocumentMetadata(
   } catch {
     return null;
   }
+}
+
+function hasExpectedDocumentSignature(
+  bytes: Buffer,
+  mimeType: string,
+): boolean {
+  if (mimeType === "application/pdf") {
+    return bytes.subarray(0, 5).toString("ascii") === "%PDF-";
+  }
+
+  if (mimeType === "image/jpeg") {
+    return (
+      bytes.length >= 3 &&
+      bytes[0] === 0xff &&
+      bytes[1] === 0xd8 &&
+      bytes[2] === 0xff
+    );
+  }
+
+  if (mimeType === "image/png") {
+    const signature = Buffer.from([
+      0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a,
+    ]);
+
+    return (
+      bytes.length >= signature.length &&
+      bytes.subarray(0, signature.length).equals(signature)
+    );
+  }
+
+  if (mimeType === "image/webp") {
+    return (
+      bytes.length >= 12 &&
+      bytes.subarray(0, 4).toString("ascii") === "RIFF" &&
+      bytes.subarray(8, 12).toString("ascii") === "WEBP"
+    );
+  }
+
+  return false;
 }
 
 function validateResidentDocumentDataUrl(input: {
@@ -167,14 +209,24 @@ function validateResidentDocumentDataUrl(input: {
 
   const base64Payload = String(match[2] ?? "").replace(/\s+/g, "");
 
-  let decodedBytes: number;
+  let decodedBuffer: Buffer;
 
   try {
-    decodedBytes = Buffer.from(base64Payload, "base64").byteLength;
+    decodedBuffer = Buffer.from(base64Payload, "base64");
   } catch {
     return {
       ok: false,
       message: "No se pudo leer el documento enviado.",
+    };
+  }
+
+  const decodedBytes = decodedBuffer.byteLength;
+
+  if (!hasExpectedDocumentSignature(decodedBuffer, mimeType)) {
+    return {
+      ok: false,
+      message:
+        "El contenido real del archivo no corresponde a un PDF o imagen permitida.",
     };
   }
 
@@ -275,11 +327,12 @@ function residentStatusMessage(
 
 export class AuthService {
   async register(payload: RegisterRequest): Promise<AuthServiceResult> {
-    if (payload.role === "admin") {
+    if (payload.role !== "passenger") {
       return {
         ok: false,
         code: "AUTH_FORBIDDEN",
-        message: "Admin accounts cannot be registered publicly.",
+        message:
+          "Solo las cuentas de pasajero pueden registrarse públicamente. Los conductores y prestadores deben usar el flujo de postulación.",
         statusCode: 403,
       };
     }
@@ -385,6 +438,24 @@ export class AuthService {
       };
     }
 
+    if (user.status === "pending") {
+      return {
+        ok: false,
+        code: "AUTH_ACCOUNT_PENDING",
+        message: "Tu cuenta todavía está pendiente de aprobación.",
+        statusCode: 403,
+      };
+    }
+
+    if (user.status === "suspended" || user.status === "banned") {
+      return {
+        ok: false,
+        code: "AUTH_ACCOUNT_SUSPENDED",
+        message: "Esta cuenta está bloqueada. Contacta a soporte.",
+        statusCode: 403,
+      };
+    }
+
     const credentials = await credentialsRepo.findByUserId(user.id);
 
     if (!credentials) {
@@ -411,16 +482,10 @@ export class AuthService {
       };
     }
 
-    let valid = false;
-
-    if (email === "admin_test@rapago.cl") {
-      valid = payload.password === credentials.passwordHash;
-    } else {
-      valid = await passwordService.verifyPassword(
-        credentials.passwordHash,
-        payload.password,
-      );
-    }
+    const valid = await passwordService.verifyPassword(
+      credentials.passwordHash,
+      payload.password,
+    );
 
     if (!valid) {
       const updated = await credentialsRepo.incrementFailedAttempts(user.id);
@@ -554,6 +619,7 @@ export class AuthService {
   ): Promise<FacebookResidentPrecheckResult> {
     const email = input.email.toLowerCase().trim();
     const rut = normalizeResidentRut(input.rut);
+    const provider = input.provider ?? "facebook";
     const documentValidation = validateResidentDocumentDataUrl(input);
 
     if (!documentValidation.ok) {
@@ -653,7 +719,7 @@ export class AuthService {
       version: 1,
       phone: input.phone.trim(),
       rut,
-      provider: "facebook",
+      provider,
       documentName: input.documentName.trim(),
       documentType: input.documentType,
       uploadedAt: now.toISOString(),
@@ -715,15 +781,27 @@ export class AuthService {
       documentId = created.id;
     }
 
+    if (user.status !== "pending") {
+      await db
+        .update(users)
+        .set({
+          status: "pending",
+          updatedAt: new Date(),
+        })
+        .where(eq(users.id, user.id));
+
+      await sessionService.revokeAllForUser(user.id);
+    }
+
     auditService.recordSafe({
-      eventType: "auth.facebook.resident_precheck.submitted",
+      eventType: "auth.resident_precheck.submitted",
       entityType: "user_document",
       entityId: documentId,
       actorUserId: user.id,
       metadata: {
-        provider: "facebook",
+        provider,
         documentType: FACEBOOK_RESIDENT_DOCUMENT_TYPE,
-        userStatus: user.status,
+        userStatus: "pending",
       },
     });
 
@@ -747,7 +825,7 @@ export class AuthService {
     options: {
       residentIntent: boolean;
     },
-  ): Promise<AuthServiceResult> {
+  ): Promise<FacebookLoginPreparationResult> {
     const email = profile.email.toLowerCase().trim();
 
     let user = await usersRepository.findByEmail(email);
@@ -873,12 +951,88 @@ export class AuthService {
       };
     }
 
+    if (!user.avatarUrl && profile.avatarUrl) {
+      const rows = await db
+        .update(users)
+        .set({
+          avatarUrl: profile.avatarUrl,
+          updatedAt: new Date(),
+        })
+        .where(eq(users.id, user.id))
+        .returning();
+
+      user = rows[0] ?? user;
+    }
+
+    const exchangeCode = await facebookLoginExchangeRepo.create(user.id);
+
+    auditService.recordSafe({
+      eventType: "auth.facebook.login.prepared",
+      entityType: "user",
+      entityId: user.id,
+      actorUserId: user.id,
+      metadata: {
+        provider: "facebook",
+        facebookId: profile.facebookId,
+      },
+    });
+
+    return {
+      ok: true,
+      exchangeCode,
+    };
+  }
+
+  async exchangeFacebookLogin(
+    exchangeCode: string,
+  ): Promise<AuthServiceResult> {
+    const userId = await facebookLoginExchangeRepo.consume(exchangeCode);
+
+    if (!userId) {
+      return {
+        ok: false,
+        code: "AUTH_FACEBOOK_EXCHANGE_INVALID",
+        message: "El inicio con Facebook expiró o ya fue utilizado.",
+        statusCode: 401,
+      };
+    }
+
+    const user = await usersRepository.findById(userId);
+
+    if (!user) {
+      return {
+        ok: false,
+        code: "UNAUTHORIZED",
+        message: "Usuario no encontrado.",
+        statusCode: 401,
+      };
+    }
+
+    if (user.status !== "active") {
+      return {
+        ok: false,
+        code:
+          user.status === "pending"
+            ? "AUTH_ACCOUNT_PENDING"
+            : user.status === "deleted"
+              ? "AUTH_ACCOUNT_DELETED"
+              : "AUTH_ACCOUNT_SUSPENDED",
+        message:
+          user.status === "pending"
+            ? "Tu cuenta todavía está pendiente de aprobación."
+            : user.status === "deleted"
+              ? "Esta cuenta fue eliminada."
+              : "Esta cuenta está bloqueada. Contacta a soporte.",
+        statusCode: 403,
+      };
+    }
+
     const authUser: AuthUser = {
       id: user.id,
       email: user.email,
       name: user.name,
       role: toUserRole(user.role),
-      avatarUrl: user.avatarUrl ?? profile.avatarUrl ?? null,
+      avatarUrl: user.avatarUrl,
       isVerified: user.isVerified,
     };
 
@@ -902,10 +1056,7 @@ export class AuthService {
       entityType: "user",
       entityId: user.id,
       actorUserId: user.id,
-      metadata: {
-        provider: "facebook",
-        facebookId: profile.facebookId,
-      },
+      metadata: { provider: "facebook" },
     });
 
     return {

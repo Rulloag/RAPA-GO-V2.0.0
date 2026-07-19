@@ -4,6 +4,7 @@ const {
   mockVerifyAccessToken,
   mockHashToken,
   mockIsSessionValid,
+  mockRevokeAllForUser,
   mockFindUserById,
   mockListUsers,
   mockAdminFindById,
@@ -26,6 +27,7 @@ const {
   mockVerifyAccessToken: vi.fn(),
   mockHashToken: vi.fn().mockReturnValue("hashed-token"),
   mockIsSessionValid: vi.fn().mockResolvedValue(true),
+  mockRevokeAllForUser: vi.fn().mockResolvedValue(undefined),
   mockFindUserById: vi.fn(),
   mockListUsers: vi.fn(),
   mockAdminFindById: vi.fn(),
@@ -56,6 +58,7 @@ vi.mock("../../../modules/auth/token.service.js", () => ({
 vi.mock("../../../modules/auth/session.service.js", () => ({
   SessionService: vi.fn().mockImplementation(() => ({
     isSessionValid: mockIsSessionValid,
+    revokeAllForUser: mockRevokeAllForUser,
   })),
 }));
 
@@ -189,5 +192,44 @@ describe("AdminService authorization", () => {
       status: undefined,
       search: undefined,
     });
+  });
+
+  it("revokes all sessions when an admin suspends a user", async () => {
+    mockVerifyAccessToken.mockReturnValue({ sub: ADMIN_ID });
+    mockFindUserById.mockResolvedValue(adminUser);
+    mockAdminFindById.mockResolvedValue(passengerUser);
+    mockUpdateStatus.mockResolvedValue({
+      ...passengerUser,
+      status: "suspended",
+    });
+
+    const result = await service.updateUserStatus(
+      "tok-admin",
+      PASSENGER_ID,
+      { status: "suspended" },
+    );
+
+    expect(result.ok).toBe(true);
+    expect(mockRevokeAllForUser).toHaveBeenCalledOnce();
+    expect(mockRevokeAllForUser).toHaveBeenCalledWith(PASSENGER_ID);
+  });
+
+  it("does not revoke sessions when an admin activates a user", async () => {
+    mockVerifyAccessToken.mockReturnValue({ sub: ADMIN_ID });
+    mockFindUserById.mockResolvedValue(adminUser);
+    mockAdminFindById.mockResolvedValue({
+      ...passengerUser,
+      status: "pending",
+    });
+    mockUpdateStatus.mockResolvedValue(passengerUser);
+
+    const result = await service.updateUserStatus(
+      "tok-admin",
+      PASSENGER_ID,
+      { status: "active" },
+    );
+
+    expect(result.ok).toBe(true);
+    expect(mockRevokeAllForUser).not.toHaveBeenCalled();
   });
 });

@@ -68,6 +68,7 @@ const facebookResidentRutSchema = z
   .max(20, "El RUT es demasiado largo.");
 
 export const facebookResidentPrecheckSchema = z.object({
+  provider: z.enum(["facebook", "email"]).optional(),
   email: facebookResidentEmailSchema,
   phone: z
     .string()
@@ -110,6 +111,19 @@ export const facebookResidentStatusSchema = z.object({
   email: facebookResidentEmailSchema,
   rut: facebookResidentRutSchema,
 });
+
+export const facebookLoginExchangeSchema = z.object({
+  exchangeCode: z
+    .string()
+    .trim()
+    .min(32, "El código de Facebook no es válido.")
+    .max(128, "El código de Facebook no es válido.")
+    .regex(/^[A-Za-z0-9_-]+$/, "El código de Facebook no es válido."),
+});
+
+export type FacebookLoginExchangeInput = z.infer<
+  typeof facebookLoginExchangeSchema
+>;
 
 export type FacebookResidentPrecheckInput = z.infer<
   typeof facebookResidentPrecheckSchema

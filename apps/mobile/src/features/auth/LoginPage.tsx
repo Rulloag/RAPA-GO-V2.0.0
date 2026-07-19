@@ -99,7 +99,7 @@ function persistPendingFacebookLegalAcceptances(
     );
   }
 
-  localStorage.setItem(
+  sessionStorage.setItem(
     RAPAGO_FACEBOOK_LEGAL_ACCEPTANCES_KEY,
     JSON.stringify(selected),
   );
@@ -382,10 +382,11 @@ function persistResidentVerificationRequest(input: {
       documentType: input.document.type,
       documentSizeBytes: Number((input.document as ResidentVerificationDocumentData & Record<string, unknown>).size ?? 0),
       documentUploadedAt: input.document.uploadedAt,
-      documentDataUrl: input.document.dataUrl,
+      documentDataUrl: null,
+      documentStorage: "backend",
       reason: "Validacion de residencia Rapa Nui",
       userMessage: "Tu documento de Residente Rapa Nui esta pendiente de revision por el administrador.",
-      storageScope: "session_only",
+      storageScope: "backend",
     };
 
     const safeLocalRequest = {
@@ -527,7 +528,18 @@ function persistPassengerProfile(profile: PassengerRegistrationProfile): void {
 
 function getFacebookRedirectErrorMessage(): string {
   try {
-    const code = new URLSearchParams(window.location.search).get(
+    const searchParams = new URLSearchParams(window.location.search);
+    const registrationCode = searchParams.get("registration");
+
+    if (registrationCode === "resident_pending") {
+      return "Tu cuenta fue creada y tu documento de Residente Rapa Nui quedó pendiente de revisión por el administrador.";
+    }
+
+    if (registrationCode === "setup_error") {
+      return "La cuenta fue creada, pero no se pudo completar de forma segura la aceptación legal o el documento. Inicia sesión para volver a intentarlo.";
+    }
+
+    const code = searchParams.get(
       "facebook",
     );
 
@@ -904,6 +916,7 @@ export function LoginPage(): JSX.Element {
 
           const submitted =
             await authService.submitFacebookResidentPrecheck({
+              provider: "facebook",
               email: cleanEmail,
               phone: cleanPhone,
               rut: cleanPassengerRut,
