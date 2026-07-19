@@ -260,6 +260,13 @@
       "when": 1779397272556,
       "tag": "0036_payments_failed_status",
       "breakpoints": true
+    },
+    {
+      "idx": 37,
+      "version": "7",
+      "when": 1779397273556,
+      "tag": "0037_oauth_identities",
+      "breakpoints": true
     }
   ]
 }
