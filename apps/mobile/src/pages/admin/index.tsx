@@ -109,7 +109,7 @@ const DRIVER_ASSIGNED_RIDE_EVENT = "rapago:driver-assigned-scheduled-ride";
 const ADMIN_RESERVATION_AUTO_REASSIGN_EVENT = "rapago:admin-reservation-reassign-needed";
 const ADMIN_RESERVATION_AUTO_ASSIGN_EVENT = "rapago:admin-reservation-auto-assigned";
 const SCHEDULE_ACTIVATION_MINUTES_ADMIN = 30;
-const SCHEDULED_CANCELLATION_CHARGE_MINUTES_ADMIN = 15;
+const SCHEDULED_CANCELLATION_CHARGE_MINUTES_ADMIN = 30;
 const RAPAGO_SUPPORT_WHATSAPP_PHONE = "56947964171";
 
 function cleanPath(path: string): string {
@@ -827,7 +827,7 @@ function markAdminWalletCreditRefundCompleted(benefit: AdminWalletBenefit): void
       approvedAt: item.approvedAt ?? now,
       approvedBy: item.approvedBy ?? "admin",
       refundCompletedAt: now,
-      title: "CRÉDITOS PARA PRÓXIMO VIAJE",
+      title: "DEVOLUCIÓN DE TARJETA",
     } as AdminWalletBenefit & Record<string, unknown>;
   });
 
@@ -879,7 +879,7 @@ function buildAdminWalletCreditRefundWhatsAppUrl(benefit: AdminWalletBenefit): s
   const supportDate = formatAdminSupportDate(record["createdAt"]);
 
   const lines = [
-    "Soporte RAPA GO: solicitud de revision de credito/devolucion.",
+    "Soporte RAPA GO: solicitud de revisión de devolución de tarjeta.",
     `Folio: ${folio}`,
     provider ? `Proveedor: ${provider}` : null,
     method ? `Medio de pago: ${method}` : null,
@@ -3376,15 +3376,15 @@ export function AdminHomePage(): JSX.Element {
                   <IonCardHeader>
                     <div className="admin-section-title-row">
                       <div>
-                        <IonCardTitle>CRÉDITOS PARA PRÓXIMO VIAJE</IonCardTitle>
+                        <IonCardTitle>DEVOLUCIONES DE TARJETA</IonCardTitle>
                         <IonCardSubtitle>
-                          Registros heredados de cancelaciones con tarjeta. No forman parte del saldo a favor por efectivo.
+                          Cancelaciones con tarjeta pendientes de revisión o devolución. No forman parte de Beneficios por pago de más en efectivo.
                         </IonCardSubtitle>
                       </div>
                       <IonBadge color={cardRefundRequestsPending.length > 0 ? "warning" : "success"}>
                         {cardRefundRequestsPending.length > 0
                           ? `${cardRefundRequestsPending.length} devolución${cardRefundRequestsPending.length !== 1 ? "es" : ""}`
-                          : "Disponible"}
+                          : "Sin pendientes"}
                       </IonBadge>
                     </div>
                   </IonCardHeader>
@@ -3450,7 +3450,7 @@ export function AdminHomePage(): JSX.Element {
                                 </div>
                               </div>
                               <div style={{ background: "rgba(255,255,255,.75)", borderRadius: 12, padding: 8 }}>
-                                <div style={{ fontSize: ".66rem", color: "#166534", fontWeight: 900 }}>Crédito neto</div>
+                                <div style={{ fontSize: ".66rem", color: "#166534", fontWeight: 900 }}>Monto a devolver</div>
                                 <div style={{ fontWeight: 950, color: "#111", fontSize: ".82rem" }}>
                                   {formatAdminCashClp(credit.amountClp)}
                                 </div>
@@ -8258,9 +8258,9 @@ function buildAdminReturnReservationFromRide(ride: AdminRideData): AdminRideData
     localAdminOverride: true,
     reservationRequiresCard: true,
     paymentRequiredProvider: "mercadopago",
-    cardCancellationCreditToWallet: true,
-    cardCancellationCreditName: "CRÉDITOS PARA PRÓXIMO VIAJE",
-    reservationCancellationWindowMinutes: 15,
+    cardCancellationCreditToWallet: false,
+    cardCancellationCreditName: null,
+    reservationCancellationWindowMinutes: 30,
     adminAssignmentWindowMinutes: 30,
   } as AdminRideData;
 }
@@ -8736,7 +8736,7 @@ function buildAssignedScheduledRide(ride: AdminRideData, driver: ActiveDriverDat
     : `Tenemos agendado tu viaje. El admin lo asignó 30 minutos antes. Ve a buscar al usuario en ${ride.originText} y confirma esta reserva.${airportWelcomeInfo ? " Incluye collar de flores solicitado; admin gestiona el recibimiento en Mataveri." : ""}`;
   const passengerNotification = isReturnOnlyPromotion
     ? "Tu regreso quedó agendado. Estamos esperando que el conductor asignado confirme la vuelta."
-    : `Tu reserva sigue agendada. El admin gestionará/asignará conductor ${SCHEDULE_ACTIVATION_MINUTES_ADMIN} minutos antes. Todas las reservas son con tarjeta; si cancelas dentro de los últimos ${SCHEDULED_CANCELLATION_CHARGE_MINUTES_ADMIN} minutos se cobra 30% con tope de $3.000 y el saldo queda como CRÉDITOS PARA PRÓXIMO VIAJE.`;
+    : `Tu reserva sigue agendada. El admin gestionará/asignará conductor ${SCHEDULE_ACTIVATION_MINUTES_ADMIN} minutos antes. Todas las reservas son con tarjeta; si cancelas dentro de los últimos ${SCHEDULED_CANCELLATION_CHARGE_MINUTES_ADMIN} minutos se cobra 30% con tope de $3.000 y el saldo restante se devuelve al medio de pago original; no se convierte en Beneficios.`;
 
   return {
     ...(ride as AdminRideData & Record<string, unknown>),
@@ -8856,9 +8856,9 @@ function syncPassengerRideAssignment(ride: AdminRideData, assigned: AdminRideDat
       passengerNotification: assignedRecord.passengerNotification ?? "Tu reserva sigue agendada. Estamos esperando confirmación del conductor asignado.",
       reservationRequiresCard: true,
       paymentRequiredProvider: "mercadopago",
-      cardCancellationCreditToWallet: true,
-      cardCancellationCreditName: "CRÉDITOS PARA PRÓXIMO VIAJE",
-      reservationCancellationWindowMinutes: 15,
+      cardCancellationCreditToWallet: false,
+      cardCancellationCreditName: null,
+      reservationCancellationWindowMinutes: 30,
       adminAssignmentWindowMinutes: 30,
     };
   });

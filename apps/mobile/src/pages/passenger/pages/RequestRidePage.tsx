@@ -2194,7 +2194,7 @@ const DEFAULT_RAPAGO_FARE_RULES: RapaGoFareRules = {
     },
   ],
   roundingMode: "ceil",
-  roundingUnitClp: 100,
+  roundingUnitClp: 500,
   usdRate: 1000,
   cardPaymentPercent: 0,
   driverPercent: 85,
@@ -2619,7 +2619,7 @@ async function fetchRapaGoFareRules(): Promise<RapaGoFareRules> {
       // Se ignora cualquier configuración antigua "none" o "nearest" guardada en localStorage.
       roundingMode: "ceil",
       roundingUnitClp: Math.max(
-        100,
+        500,
         Math.round(parseStoredNumber(parsed.rounding?.unitClp, fallback.roundingUnitClp)),
       ),
       usdRate: Math.max(
@@ -2646,7 +2646,7 @@ function roundByAdminRule(value: number, rules: RapaGoFareRules): number {
   // REDONDEO FINAL OBLIGATORIO
   // Se aplica solo al total final del viaje.
   // No se aplica por km, ni por tramo urbano, ni por tramo rural.
-  const unit = Math.max(100, Math.round(rules.roundingUnitClp || 100));
+  const unit = Math.max(500, Math.round(rules.roundingUnitClp || 500));
 
   return Math.ceil(safe / unit) * unit;
 }
@@ -5406,7 +5406,7 @@ export default function RequestRidePage(): JSX.Element {
     if (reservationRequiresCard && method === "cash") {
       setPaymentMethod("card");
       setShowPaymentBox(false);
-      setSubmitError("Todas las reservas se pagan obligatoriamente con tarjeta/Mercado Pago. Si cancelas dentro de los últimos 15 minutos, se descuenta 30% con tope $3.000 y el saldo queda como CRÉDITOS PARA PRÓXIMO VIAJE.");
+      setSubmitError("Todas las reservas se pagan obligatoriamente con tarjeta/Mercado Pago. Si cancelas dentro de los últimos 30 minutos, se descuenta 30% con tope $3.000. El saldo restante se gestiona como devolución al medio de pago original y no se convierte en Beneficios.");
       return;
     }
 
@@ -5455,7 +5455,7 @@ export default function RequestRidePage(): JSX.Element {
     if (reservationRequiresCard && String(activePaymentMethod) !== "card") {
       setPaymentMethod("card");
       setShowPaymentBox(true);
-      setSubmitError("Todas las reservas deben pagarse obligatoriamente con tarjeta/Mercado Pago. Si cancelas dentro de los últimos 15 minutos, se descuenta 30% con tope $3.000 y el saldo queda como CRÉDITOS PARA PRÓXIMO VIAJE.");
+      setSubmitError("Todas las reservas deben pagarse obligatoriamente con tarjeta/Mercado Pago. Si cancelas dentro de los últimos 30 minutos, se descuenta 30% con tope $3.000. El saldo restante se gestiona como devolución al medio de pago original y no se convierte en Beneficios.");
       return;
     }
 
@@ -5490,8 +5490,8 @@ export default function RequestRidePage(): JSX.Element {
       if (reservationRequiresCard) {
         notes.push("Pago obligatorio para reservas: tarjeta/Mercado Pago.");
         notes.push("Gestión reserva: el administrador designa conductor 30 minutos antes del inicio del servicio.");
-        notes.push("Política cancelación reserva: desde los últimos 15 minutos previos al inicio se cobra 30% con tope $3.000.");
-        notes.push("Si se cancela con tarjeta, la penalización se descuenta del pago y el saldo queda como CRÉDITOS PARA PRÓXIMO VIAJE en billetera. Si requiere devolución, debe solicitarla a Gerencia de Soporte RAPA GO por WhatsApp.");
+        notes.push("Política cancelación reserva: desde los últimos 30 minutos previos al inicio se cobra 30% con tope $3.000.");
+        notes.push("Si se cancela con tarjeta, la penalización aprobada se descuenta del pago y el saldo restante se gestiona como devolución al medio de pago original. No se convierte en Beneficios ni en saldo transferible.");
       }
       if (pendingPassengerChargeTotalClp > 0) {
         notes.push(`Cargo pendiente anterior por cancelación/no show aplicado al próximo viaje: ${formatCLP(pendingPassengerChargeTotalClp)}.`);
@@ -5549,7 +5549,7 @@ export default function RequestRidePage(): JSX.Element {
         } else {
           notes.push(`Tipo de reserva: recogida aeropuerto.`);
           notes.push("Pago obligatorio para reservas: tarjeta/Mercado Pago.");
-          notes.push("Política cancelación reserva: desde los últimos 15 minutos se cobra 30% con tope $3.000; el saldo neto queda como CRÉDITOS PARA PRÓXIMO VIAJE. Si necesitas devolución, abre WhatsApp con Gerencia de Soporte RAPA GO.");
+          notes.push("Política cancelación reserva: dentro de los últimos 30 minutos se cobra 30% con tope $3.000; el saldo restante se gestiona como devolución al medio de pago original por backend/Mercado Pago.");
           notes.push(`Origen automático aeropuerto: ${RAPA_NUI_AIRPORT_DESTINATION.text}.`);
           notes.push(`RAPAGO_AIRPORT_ORIGIN_LAT: ${RAPA_NUI_AIRPORT_DESTINATION.lat}.`);
           notes.push(`RAPAGO_AIRPORT_ORIGIN_LNG: ${RAPA_NUI_AIRPORT_DESTINATION.lng}.`);
@@ -5939,8 +5939,8 @@ export default function RequestRidePage(): JSX.Element {
         if (reservationRequiresCard) {
           localNotes.push("Pago obligatorio para reservas: tarjeta/Mercado Pago.");
           localNotes.push("Gestión reserva: el administrador designa conductor 30 minutos antes del inicio del servicio.");
-          localNotes.push("Política cancelación reserva: desde los últimos 15 minutos previos al inicio se cobra 30% con tope $3.000.");
-          localNotes.push("Si se cancela con tarjeta, la penalización se descuenta del pago y el saldo queda como CRÉDITOS PARA PRÓXIMO VIAJE en billetera. Si requiere devolución, debe solicitarla a Gerencia de Soporte RAPA GO por WhatsApp.");
+          localNotes.push("Política cancelación reserva: desde los últimos 30 minutos previos al inicio se cobra 30% con tope $3.000.");
+          localNotes.push("Si se cancela con tarjeta, la penalización aprobada se descuenta del pago y el saldo restante se gestiona como devolución al medio de pago original. No se convierte en Beneficios ni en saldo transferible.");
         }
         if (pendingPassengerChargeTotalClp > 0) {
           localNotes.push(`Cargo pendiente anterior por cancelación/no show aplicado al próximo viaje: ${formatCLP(pendingPassengerChargeTotalClp)}.`);
@@ -5993,7 +5993,7 @@ export default function RequestRidePage(): JSX.Element {
           } else {
             localNotes.push(`Tipo de reserva: recogida aeropuerto.`);
             localNotes.push("Pago obligatorio para reservas: tarjeta/Mercado Pago.");
-            localNotes.push("Política cancelación reserva: desde los últimos 15 minutos se cobra 30% con tope $3.000; el saldo neto queda como CRÉDITOS PARA PRÓXIMO VIAJE. Si necesitas devolución, abre WhatsApp con Gerencia de Soporte RAPA GO.");
+            localNotes.push("Política cancelación reserva: dentro de los últimos 30 minutos se cobra 30% con tope $3.000; el saldo restante se gestiona como devolución al medio de pago original por backend/Mercado Pago.");
             localNotes.push(`Origen automático aeropuerto: ${RAPA_NUI_AIRPORT_DESTINATION.text}.`);
             localNotes.push(`RAPAGO_AIRPORT_ORIGIN_LAT: ${RAPA_NUI_AIRPORT_DESTINATION.lat}.`);
             localNotes.push(`RAPAGO_AIRPORT_ORIGIN_LNG: ${RAPA_NUI_AIRPORT_DESTINATION.lng}.`);
@@ -7080,7 +7080,7 @@ return (
                     >
                       Al agendar, el origen queda automático en Aeropuerto Internacional Mataveri de Rapa Nui. El pasajero elige el destino final. La reserva queda congelada para conductores y se libera {SCHEDULE_ACTIVATION_MINUTES} min antes.
                       <br />
-                      <strong>Pago obligatorio con tarjeta:</strong> todas las reservas son con tarjeta. Si cancelas dentro de los últimos 15 minutos, se descuenta 30% con tope $3.000 y el saldo queda como <strong>CRÉDITOS PARA PRÓXIMO VIAJE</strong>. Si necesitas devolución, puedes abrir WhatsApp con Gerencia de Soporte RAPA GO.
+                      <strong>Pago obligatorio con tarjeta:</strong> todas las reservas son con tarjeta. Si cancelas dentro de los últimos 30 minutos, se descuenta 30% con tope $3.000. El saldo restante se devuelve al medio de pago original; no se convierte en Beneficios.
                     </IonNote>
                   </>
                 )}
@@ -7648,7 +7648,7 @@ return (
                         ¿Cómo quieres pagar?
                       </div>
                       <div style={{ marginTop: 6, color: "rgba(17,17,17,.66)", fontSize: ".74rem", lineHeight: 1.35, fontWeight: 800 }}>
-                        {reservationRequiresCard ? "Todas las reservas se pagan obligatoriamente con tarjeta. Si cancelas dentro de los últimos 15 minutos, se descuenta 30% tope $3.000 y el saldo queda como CRÉDITOS PARA PRÓXIMO VIAJE." : "Elige efectivo al conductor o paga con tarjeta mediante Mercado Pago Checkout Pro."}
+                        {reservationRequiresCard ? "Todas las reservas se pagan obligatoriamente con tarjeta. Si cancelas dentro de los últimos 30 minutos, se descuenta 30% con tope $3.000. El saldo restante se devuelve al medio de pago original y no se convierte en Beneficios." : "Elige efectivo al conductor o paga con tarjeta mediante Mercado Pago Checkout Pro."}
                       </div>
                     </div>
                     <span style={{ borderRadius: 999, padding: "6px 9px", background: "#fff7e8", color: "#9A6A10", fontSize: ".66rem", fontWeight: 950, whiteSpace: "nowrap" }}>

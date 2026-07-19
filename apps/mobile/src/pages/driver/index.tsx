@@ -10186,7 +10186,7 @@ function markPassengerRideNoShowCancelledFromDriver(
     passengerCancellationFeeClp: Number(charge.amountClp ?? 0),
     passengerCancellationPolicyType: "no_show",
     passengerCancellationPolicyText:
-      "No show: 30% de la tarifa aplicable, con tope de $5.000, después de 5 minutos de espera. Requiere aprobación administrativa.",
+      "No show: 50% de la tarifa aplicable, con tope de $5.000, después de 5 minutos de espera. Requiere aprobación administrativa.",
     paymentPendingClp: Number(charge.amountClp ?? 0),
     passengerPendingChargeNextRide: false,
     passengerPendingChargeNotice:

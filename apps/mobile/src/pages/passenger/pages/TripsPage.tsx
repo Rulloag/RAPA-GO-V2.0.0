@@ -251,12 +251,12 @@ const RAPAGO_FAST_SEARCH_PROMPT_AFTER_MS = 2 * 60 * 1000;
 // - Cancelación gratuita durante los primeros 2 minutos desde la aceptación/asignación.
 // - Desde el minuto 3: 30% de la tarifa aplicable, con tope de $3.000.
 // - No show después de 5 minutos: 50% de la tarifa aplicable, con tope de $5.000.
-// - Viajes programados: cancelación gratuita hasta 15 minutos antes; dentro de los últimos 15 minutos,
+// - Viajes programados: cancelación gratuita hasta 30 minutos antes; dentro de los últimos 30 minutos,
 //   30% de la tarifa aplicable, con tope de $3.000.
 // El frontend solo calcula un monto referencial. Backend/admin debe autorizar el cargo real.
 const RAPAGO_FREE_CANCEL_AFTER_ACCEPTANCE_MS = 2 * 60 * 1000;
 const RAPAGO_NO_SHOW_AFTER_ARRIVAL_MS = 5 * 60 * 1000;
-const RAPAGO_SCHEDULED_CANCEL_CHARGE_WINDOW_MS = 15 * 60 * 1000;
+const RAPAGO_SCHEDULED_CANCEL_CHARGE_WINDOW_MS = 30 * 60 * 1000;
 const RAPAGO_CANCEL_FEE_CAP_CLP = 3000;
 const RAPAGO_NO_SHOW_FEE_CAP_CLP = 5000;
 const RAPAGO_LATE_CANCEL_PERCENT = 30;
@@ -1654,8 +1654,8 @@ function getPassengerCancellationPolicyForRide(ride: RideRequestData): Passenger
       applicableFareClp,
       feePercent: RAPAGO_LATE_CANCEL_PERCENT,
       feeCapClp: RAPAGO_CANCEL_FEE_CAP_CLP,
-      title: "Cancelación programada dentro de 15 minutos",
-      message: `La reserva está dentro de los 15 minutos anteriores al inicio. El cargo referencial es ${formatClp(fee)}.`,
+      title: "Cancelación programada dentro de 30 minutos",
+      message: `La reserva está dentro de los 30 minutos anteriores al inicio. El cargo referencial es ${formatClp(fee)}.`,
       detail: `Viaje programado: ${RAPAGO_LATE_CANCEL_PERCENT}% de la tarifa aplicable, con tope de ${formatClp(RAPAGO_CANCEL_FEE_CAP_CLP)}. Administración debe confirmar o eximir el cargo.`,
       acceptedElapsedMs,
       arrivedElapsedMs,
@@ -1665,7 +1665,7 @@ function getPassengerCancellationPolicyForRide(ride: RideRequestData): Passenger
   }
 
   // En reservas programadas la regla especial manda sobre la regla general de 2 minutos:
-  // fuera de los últimos 15 minutos la cancelación es gratuita, aunque el conductor
+  // fuera de los últimos 30 minutos la cancelación es gratuita, aunque el conductor
   // ya haya sido preasignado 30 minutos antes.
   const isScheduledReservation =
     record.isScheduled === true ||
@@ -1683,8 +1683,8 @@ function getPassengerCancellationPolicyForRide(ride: RideRequestData): Passenger
       feePercent: 0,
       feeCapClp: 0,
       title: "Cancelación gratuita de reserva",
-      message: "Puedes cancelar gratuitamente hasta 15 minutos antes de la hora programada.",
-      detail: "La penalización del 30% con tope de $3.000 solo comienza dentro de los últimos 15 minutos.",
+      message: "Puedes cancelar gratuitamente hasta 30 minutos antes de la hora programada.",
+      detail: "La penalización del 30% con tope de $3.000 solo comienza dentro de los últimos 30 minutos.",
       acceptedElapsedMs,
       arrivedElapsedMs,
       requiresAdminReview: false,
@@ -2624,12 +2624,12 @@ function buildPassengerCancelledRide(
     mercadoPagoRefundStatus: isCardPayment ? "pending_backend_refund" : null,
     cardRefundNotice: isCardPayment
       ? candidateFeeClp > 0
-        ? `Tu viaje fue cancelado. La devolución o crédito queda pendiente de revisión segura. El cargo referencial de ${formatClp(candidateFeeClp)} no se aplica automáticamente desde el frontend.`
-        : "Tu viaje fue cancelado. La devolución o crédito debe ser procesado por backend/admin. No ingreses tarjeta, claves ni códigos bancarios."
+        ? `Tu viaje fue cancelado. La devolución queda pendiente de revisión segura. El cargo referencial de ${formatClp(candidateFeeClp)} no se aplica automáticamente desde el frontend.`
+        : "Tu viaje fue cancelado. La devolución debe ser procesada por backend/Mercado Pago. No ingreses tarjeta, claves ni códigos bancarios."
       : null,
-    cardWalletCreditRequested: isCardPayment,
+    cardWalletCreditRequested: false,
     cardWalletCreditClp: 0,
-    cardWalletCreditStatus: isCardPayment ? "pending_admin_review" : null,
+    cardWalletCreditStatus: null,
     requeuedReason: null,
     forceActiveAfterDriverCancel: false,
     passengerNotice: null,
@@ -7500,7 +7500,7 @@ function buildPassengerCancellationAlertMessage(
     : false;
 
   const paymentNotice = isCardPayment
-    ? " La devolución o crédito de tarjeta/Mercado Pago será procesado únicamente por backend/admin."
+    ? " La devolución de tarjeta/Mercado Pago será procesada únicamente por backend/admin."
     : "";
 
   if (policy.candidateFeeClp <= 0) {
@@ -7779,7 +7779,7 @@ function PassengerRideCard({
               }}
             >
               💳 Pago con tarjeta/Mercado Pago.
-              <br />El pago queda como crédito a favor en tu billetera y pasa a revisión del administrador. Si necesitas devolución, gestiona con RAPA GO por WhatsApp. No entregues claves ni datos de tu tarjeta.
+              <br />La devolución se procesa al medio de pago original mediante backend/Mercado Pago y queda sujeta a revisión administrativa. No se convierte en Beneficios. No entregues claves ni datos de tu tarjeta.
               <IonButton
                 expand="block"
                 size="small"
@@ -8341,7 +8341,7 @@ function PassengerRideCard({
                 fontWeight: 900,
               }}
             >
-              Reserva dentro de últimos 15 min.
+              Reserva dentro de últimos 30 min.
               <br />
               Cargo por cancelar: <strong>{formatClp(cancellationPolicy.feeClp)}</strong>.
             </div>
@@ -8806,7 +8806,7 @@ export default function TripsPage(): JSX.Element {
       message: [
         "Tu viaje fue cancelado correctamente.",
         "",
-        "Como el pago fue con tarjeta/Mercado Pago, el saldo neto queda como CRÉDITOS PARA PRÓXIMO VIAJE en tu billetera. Si necesitas devolución, se gestiona por WhatsApp con RAPA GO. Esta opción no aplica para efectivo.",
+        "Como el pago fue con tarjeta/Mercado Pago, el saldo restante se gestiona como devolución al medio de pago original mediante backend/Mercado Pago. No se convierte en Beneficios. Esta opción no aplica para efectivo.",
         "",
         "No debes ingresar tarjeta, claves ni códigos bancarios.",
         "",
