@@ -28,6 +28,11 @@ export const createRideRequestSchema = z.object({
   estimatedFareClp: z.number().int().positive().nullable().optional(),
 
   paymentMethod: z.enum(["cash", "card"]).optional(),
+
+  // Beneficios solo puede consumirse en un viaje pagado en efectivo. El monto
+  // se calcula y descuenta dentro de una transacción SQL del backend.
+  useWalletBenefit: z.boolean().optional(),
+
   paymentProvider: z
     .enum(["mercadopago", "prontopaga", "transbank"])
     .nullable()

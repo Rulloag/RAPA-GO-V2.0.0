@@ -336,16 +336,6 @@ function getPaymentStringValue(source: unknown, keys: string[]): string {
   return "";
 }
 
-function getStoredRefundStatus(payment: Record<string, unknown>): string {
-  const rawPayload = payment["rawProviderPayload"];
-
-  return normalizePaymentText(
-    getPaymentStringValue(rawPayload, ["rapagoRefund", "status"]) ||
-      getPaymentStringValue(rawPayload, ["refundStatus"]) ||
-      getPaymentStringValue(rawPayload, ["refund", "status"]),
-  );
-}
-
 function extractMercadoPagoPaymentId(payment: Record<string, unknown>): string {
   return (
     getPaymentStringValue(payment, ["providerPaymentId"]) ||
@@ -358,70 +348,9 @@ function extractMercadoPagoPaymentId(payment: Record<string, unknown>): string {
   );
 }
 
-async function findSuccessfulPaymentByRideRequestId(
-  rideRequestId: string,
-): Promise<Record<string, unknown> | null> {
-  try {
-    const { db } = await import("../../db/client.js");
-    const { payments } = await import("../../db/schema/payments.schema.js");
-    const { and, eq } = await import("drizzle-orm");
-
-    const [row] = await db
-      .select()
-      .from(payments)
-      .where(
-        and(
-          eq(payments.rideRequestId, rideRequestId),
-          eq(payments.paymentPurpose, "ride"),
-          eq(payments.status, "success"),
-        ),
-      )
-      .limit(1);
-
-    return (row ?? null) as Record<string, unknown> | null;
-  } catch {
-    return null;
-  }
-}
-
-async function saveRefundStateOnPayment(input: {
-  paymentId: string;
-  status: "approved" | "failed";
-  mercadoPagoPaymentId: string;
-  refundPayload: unknown;
-}): Promise<void> {
-  try {
-    const { db } = await import("../../db/client.js");
-    const { payments } = await import("../../db/schema/payments.schema.js");
-    const { eq } = await import("drizzle-orm");
-
-    const existing = await paymentsRepo.findById(input.paymentId);
-    const previousPayload = isPaymentRecord(existing?.rawProviderPayload)
-      ? existing?.rawProviderPayload
-      : {};
-
-    await db
-      .update(payments)
-      .set({
-        rawProviderPayload: {
-          ...previousPayload,
-          rapagoRefund: {
-            status: input.status,
-            mercadoPagoPaymentId: input.mercadoPagoPaymentId,
-            at: new Date().toISOString(),
-            payload: input.refundPayload,
-          },
-        } as Record<string, unknown>,
-        updatedAt: new Date(),
-      })
-      .where(eq(payments.id, input.paymentId));
-  } catch {
-    // No rompe la cancelación si no se pudo guardar el detalle local.
-  }
-}
-
 async function refundMercadoPagoPayment(input: {
   mercadoPagoPaymentId: string;
+  idempotencyKey: string;
 }): Promise<{
   ok: boolean;
   statusCode: number;
@@ -439,26 +368,44 @@ async function refundMercadoPagoPayment(input: {
     };
   }
 
-  const response = await fetch(
-    `https://api.mercadopago.com/v1/payments/${input.mercadoPagoPaymentId}/refunds`,
-    {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-        "Content-Type": "application/json",
-        "X-Idempotency-Key": crypto.randomUUID(),
+  try {
+    const response = await fetch(
+      `https://api.mercadopago.com/v1/payments/${input.mercadoPagoPaymentId}/refunds`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          "Content-Type": "application/json",
+          "X-Idempotency-Key": input.idempotencyKey,
+        },
+        body: JSON.stringify({}),
       },
-      body: JSON.stringify({}),
-    },
-  );
+    );
 
-  const data = await response.json().catch(() => ({}));
+    const data = await response.json().catch(() => ({}));
 
-  return {
-    ok: response.ok,
-    statusCode: response.status,
-    data,
-  };
+    return {
+      ok: response.ok,
+      statusCode: response.status,
+      data,
+    };
+  } catch (err) {
+    return {
+      ok: false,
+      statusCode: 502,
+      data: {
+        message:
+          err instanceof Error
+            ? err.message
+            : "No fue posible conectar con MercadoPago.",
+      },
+    };
+  }
+}
+
+function extractMercadoPagoRefundId(payload: unknown): string | null {
+  const id = getPaymentStringValue(payload, ["id"]);
+  return id || null;
 }
 
 function getMercadoPagoWebhookAmountClp(rawPayload: Record<string, unknown>): number | null {
@@ -905,62 +852,121 @@ export class PaymentsService {
     mercadoPagoPaymentId?: string;
     refund?: unknown;
   }>> {
-    const payment = await findSuccessfulPaymentByRideRequestId(input.rideRequestId);
+    const payment = await paymentsRepo.findRefundableByRideId(
+      input.rideRequestId,
+    );
 
     if (!payment) {
       return {
         ok: true,
         processed: false,
         refunded: false,
-        skippedReason: "No existe un pago aprobado para devolver en este viaje.",
+        skippedReason:
+          "No existe un pago aprobado para devolver en este viaje.",
       };
     }
 
-    const providerName = normalizePaymentText(payment["provider"]);
-
-    if (providerName !== "mercadopago") {
+    if (normalizePaymentText(payment.provider) !== "mercadopago") {
       return {
         ok: true,
         processed: false,
         refunded: false,
-        skippedReason: "El pago aprobado no fue realizado con MercadoPago.",
-        paymentId: String(payment["id"] ?? ""),
+        skippedReason:
+          "El pago aprobado no fue realizado con MercadoPago.",
+        paymentId: payment.id,
       };
     }
 
-    const storedRefundStatus = getStoredRefundStatus(payment);
+    const mercadoPagoPaymentId = extractMercadoPagoPaymentId(
+      payment as unknown as Record<string, unknown>,
+    );
 
-    if (storedRefundStatus === "approved" || storedRefundStatus === "aprobado") {
+    if (
+      payment.status === "refunded" ||
+      payment.refundStatus === "approved"
+    ) {
       return {
         ok: true,
         processed: true,
         refunded: true,
         skippedReason: "Este pago ya fue devuelto anteriormente.",
-        paymentId: String(payment["id"] ?? ""),
-        mercadoPagoPaymentId: extractMercadoPagoPaymentId(payment),
+        paymentId: payment.id,
+        mercadoPagoPaymentId,
       };
     }
-
-    const mercadoPagoPaymentId = extractMercadoPagoPaymentId(payment);
 
     if (!mercadoPagoPaymentId) {
       return {
         ok: false,
         code: "REFUND_MISSING_MERCADOPAGO_ID",
-        message: "El pago no tiene providerPaymentId de MercadoPago para devolver.",
+        message:
+          "El pago no tiene providerPaymentId de MercadoPago para devolver.",
         statusCode: 409,
+      };
+    }
+
+    if (payment.refundStatus === "processing") {
+      return {
+        ok: true,
+        processed: true,
+        refunded: false,
+        skippedReason:
+          "La devolución de este pago ya está siendo procesada.",
+        paymentId: payment.id,
+        mercadoPagoPaymentId,
+      };
+    }
+
+    // Clave estable: un mismo pago siempre usa exactamente la misma operación
+    // idempotente ante reintentos, timeouts o llamadas duplicadas.
+    const idempotencyKey = `rapago-refund-${payment.id}`;
+    const claimed = await paymentsRepo.claimRefund(
+      payment.id,
+      idempotencyKey,
+    );
+
+    if (!claimed) {
+      const current = await paymentsRepo.findById(payment.id);
+
+      if (
+        current?.status === "refunded" ||
+        current?.refundStatus === "approved"
+      ) {
+        return {
+          ok: true,
+          processed: true,
+          refunded: true,
+          skippedReason: "Este pago ya fue devuelto anteriormente.",
+          paymentId: payment.id,
+          mercadoPagoPaymentId,
+        };
+      }
+
+      return {
+        ok: true,
+        processed: true,
+        refunded: false,
+        skippedReason:
+          "Otra solicitud ya está procesando la devolución.",
+        paymentId: payment.id,
+        mercadoPagoPaymentId,
       };
     }
 
     const refundResult = await refundMercadoPagoPayment({
       mercadoPagoPaymentId,
+      idempotencyKey,
     });
 
     if (!refundResult.ok) {
-      await saveRefundStateOnPayment({
-        paymentId: String(payment["id"]),
-        status: "failed",
-        mercadoPagoPaymentId,
+      const providerMessage =
+        getPaymentStringValue(refundResult.data, ["message"]) ||
+        getPaymentStringValue(refundResult.data, ["error"]) ||
+        `MercadoPago respondió HTTP ${refundResult.statusCode}.`;
+
+      await paymentsRepo.markRefundFailed({
+        id: payment.id,
+        reason: providerMessage,
         refundPayload: refundResult.data,
       });
 
@@ -968,11 +974,12 @@ export class PaymentsService {
         actorUserId: input.cancelledByUserId,
         eventType: "payment.refund_failed_on_cancel",
         entityType: "payment",
-        entityId: String(payment["id"] ?? ""),
+        entityId: payment.id,
         metadata: {
           rideId: input.rideRequestId,
           provider: "mercadopago",
           mercadoPagoPaymentId,
+          idempotencyKey,
           statusCode: String(refundResult.statusCode),
           cancelledByRole: input.cancelledByRole,
           reason: input.reason ?? "",
@@ -982,15 +989,15 @@ export class PaymentsService {
       return {
         ok: false,
         code: "MERCADOPAGO_REFUND_ERROR",
-        message: "El viaje fue cancelado, pero MercadoPago no pudo procesar la devolución.",
+        message:
+          "El viaje fue cancelado, pero MercadoPago no pudo procesar la devolución.",
         statusCode: refundResult.statusCode,
       };
     }
 
-    await saveRefundStateOnPayment({
-      paymentId: String(payment["id"]),
-      status: "approved",
-      mercadoPagoPaymentId,
+    await paymentsRepo.markRefunded({
+      id: payment.id,
+      providerRefundId: extractMercadoPagoRefundId(refundResult.data),
       refundPayload: refundResult.data,
     });
 
@@ -998,11 +1005,12 @@ export class PaymentsService {
       actorUserId: input.cancelledByUserId,
       eventType: "payment.refunded_on_cancel",
       entityType: "payment",
-      entityId: String(payment["id"] ?? ""),
+      entityId: payment.id,
       metadata: {
         rideId: input.rideRequestId,
         provider: "mercadopago",
         mercadoPagoPaymentId,
+        idempotencyKey,
         cancelledByRole: input.cancelledByRole,
         reason: input.reason ?? "",
       } as Record<string, string>,
@@ -1012,7 +1020,7 @@ export class PaymentsService {
       ok: true,
       processed: true,
       refunded: true,
-      paymentId: String(payment["id"] ?? ""),
+      paymentId: payment.id,
       mercadoPagoPaymentId,
       refund: refundResult.data,
     };

@@ -57,6 +57,26 @@ export interface RideRequestResponse {
   discountPercent:      number | null;
   originalFareClp:      number | null;
 
+  /** Forma de pago persistida por el backend para este viaje. */
+  paymentMethod?: "cash" | "card" | null;
+  paymentProvider?: string | null;
+
+  /** Indica si la cuenta pidió usar su Beneficio disponible. */
+  walletBenefitRequested?: boolean;
+
+  /** Tarifa y cargos antes de descontar Beneficios. */
+  fareBeforeWalletBenefitClp?: number | null;
+
+  /** Beneficio realmente consumido por el backend. */
+  walletBenefitAppliedClp?: number;
+
+  /** Beneficio que quedó disponible después de crear el viaje. */
+  walletBenefitRemainingClp?: number;
+
+  /** Beneficio restituido automáticamente si el viaje fue cancelado o No Show. */
+  walletBenefitReversedClp?: number;
+  walletBenefitReversedAt?: string | null;
+
   /** Tarifa antes de cargos administrativos del viaje anterior. */
   baseFareClp?: number | null;
 

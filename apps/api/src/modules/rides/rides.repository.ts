@@ -1,6 +1,14 @@
 import { and, asc, avg, count, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 import { db } from "../../db/client.js";
-import { rideRequests, users, rideRatings, driverProfiles, rideDriverAssignments } from "../../db/schema/index.js";
+import {
+  driverProfiles,
+  rideDriverAssignments,
+  rideRatings,
+  rideRequests,
+  transactions,
+  users,
+  wallets,
+} from "../../db/schema/index.js";
 import { alias } from "drizzle-orm/pg-core";
 import { AppError } from "../../shared/errors/AppError.js";
 import type { RideRequest } from "../../db/schema/index.js";
@@ -10,6 +18,135 @@ import {
   type NewRidePolicyCharge,
 } from "../../db/schema/ridePolicyCharges.schema.js";
 import { roundFareUpTo500 } from "./ridePolicy.js";
+
+type RapaGoTransaction =
+  Parameters<Parameters<typeof db.transaction>[0]>[0];
+
+/**
+ * Devuelve exactamente una vez el Beneficio consumido por un viaje que terminó
+ * cancelado o No Show. La operación ocurre en la misma transacción que cierra
+ * el viaje para que nunca exista una cancelación sin restitución financiera.
+ */
+async function restoreAppliedWalletBenefit(
+  tx: RapaGoTransaction,
+  ride: RideRequest,
+  restoredAt: Date,
+  reason: "ride_cancelled" | "passenger_no_show",
+): Promise<RideRequest> {
+  const appliedClp = Math.max(
+    0,
+    Math.round(Number(ride.walletBenefitAppliedClp ?? 0)),
+  );
+  const alreadyReversedClp = Math.max(
+    0,
+    Math.round(Number(ride.walletBenefitReversedClp ?? 0)),
+  );
+  const amountToRestoreClp = Math.max(
+    0,
+    appliedClp - alreadyReversedClp,
+  );
+
+  if (
+    amountToRestoreClp <= 0 ||
+    ride.paymentMethod !== "cash"
+  ) {
+    return ride;
+  }
+
+  await tx.execute(
+    sql`select id from wallets where user_id = ${ride.passengerUserId} for update`,
+  );
+
+  const wallet = (
+    await tx
+      .select()
+      .from(wallets)
+      .where(eq(wallets.userId, ride.passengerUserId))
+      .limit(1)
+  )[0];
+
+  if (!wallet || wallet.status !== "active") {
+    throw AppError.internal(
+      "Cannot restore the applied Benefit because the account wallet is unavailable.",
+    );
+  }
+
+  const walletBalanceBeforeClp = Math.max(
+    0,
+    Math.round(Number(wallet.balance ?? 0)),
+  );
+  const walletBalanceAfterClp =
+    walletBalanceBeforeClp + amountToRestoreClp;
+
+  const [updatedWallet] = await tx
+    .update(wallets)
+    .set({
+      balance: walletBalanceAfterClp,
+      updatedAt: restoredAt,
+    })
+    .where(eq(wallets.id, wallet.id))
+    .returning();
+
+  if (!updatedWallet) {
+    throw AppError.internal(
+      "Wallet update returned no rows while restoring a Benefit.",
+    );
+  }
+
+  await tx.insert(transactions).values({
+    walletId: wallet.id,
+    userId: ride.passengerUserId,
+    rideId: ride.id,
+    type: "benefit_reversal",
+    amount: amountToRestoreClp,
+    currency: "CLP",
+    status: "completed",
+    provider: "rapago",
+    providerTransactionId: `benefit-reversal:${ride.id}`,
+    description:
+      reason === "passenger_no_show"
+        ? "Beneficio restituido porque el viaje terminó como No Show"
+        : "Beneficio restituido porque el viaje fue cancelado",
+    metadata: {
+      source: "cash_overpayment_benefit",
+      exclusiveToOwner: true,
+      cashRideOnly: true,
+      reversalReason: reason,
+      appliedClp,
+      previouslyReversedClp: alreadyReversedClp,
+      restoredClp: amountToRestoreClp,
+      balanceBeforeClp: walletBalanceBeforeClp,
+      balanceAfterClp: walletBalanceAfterClp,
+    },
+  });
+
+  const [restoredRide] = await tx
+    .update(rideRequests)
+    .set({
+      walletBenefitReversedClp:
+        alreadyReversedClp + amountToRestoreClp,
+      walletBenefitReversedAt: restoredAt,
+      updatedAt: restoredAt,
+    })
+    .where(
+      and(
+        eq(rideRequests.id, ride.id),
+        eq(
+          rideRequests.walletBenefitReversedClp,
+          alreadyReversedClp,
+        ),
+      ),
+    )
+    .returning();
+
+  if (!restoredRide) {
+    throw AppError.internal(
+      "Ride update returned no rows while restoring a Benefit.",
+    );
+  }
+
+  return restoredRide;
+}
 
 export interface RideWithDriverName extends RideRequest {
   driverName:          string | null;
@@ -34,6 +171,10 @@ export interface RideCreatedWithPolicyCharges {
   ride: RideRequest;
   appliedCharges: RidePolicyCharge[];
   appliedChargesTotalClp: number;
+  fareBeforeWalletBenefitClp: number;
+  walletBenefitRequested: boolean;
+  walletBenefitAppliedClp: number;
+  walletBenefitRemainingClp: number;
 }
 
 export class RidesRepository {
@@ -61,6 +202,13 @@ export class RidesRepository {
           destinationText:    rideRequests.destinationText,
           notes:              rideRequests.notes,
           estimatedFareClp:   rideRequests.estimatedFareClp,
+          paymentMethod:      rideRequests.paymentMethod,
+          paymentProvider:    rideRequests.paymentProvider,
+          walletBenefitRequested: rideRequests.walletBenefitRequested,
+          walletBenefitAppliedClp: rideRequests.walletBenefitAppliedClp,
+          walletBenefitReversedClp: rideRequests.walletBenefitReversedClp,
+          walletBenefitReversedAt: rideRequests.walletBenefitReversedAt,
+          fareBeforeWalletBenefitClp: rideRequests.fareBeforeWalletBenefitClp,
           status:             rideRequests.status,
           requestedAt:        rideRequests.requestedAt,
           acceptedAt:         rideRequests.acceptedAt,
@@ -176,11 +324,17 @@ export class RidesRepository {
     notes: string | null,
     baseEstimatedFareClp: number,
     initialStatus: "requested" | "pending_payment" = "requested",
+    options: {
+      paymentMethod?: "cash" | "card";
+      paymentProvider?: string | null;
+      useWalletBenefit?: boolean;
+    } = {},
   ): Promise<RideCreatedWithPolicyCharges> {
     try {
       return await db.transaction(async (tx) => {
-        // Serializa la creación de viajes por cuenta para impedir que dos
-        // solicitudes simultáneas adjunten el mismo cargo aprobado.
+        // Serializa creación y consumo de saldo por cuenta. Dos solicitudes
+        // simultáneas nunca pueden gastar el mismo Beneficio ni adjuntar el
+        // mismo cargo administrativo.
         await tx.execute(
           sql`select id from users where id = ${passengerUserId} for update`,
         );
@@ -216,8 +370,58 @@ export class RidesRepository {
           0,
         );
 
-        const finalEstimatedFareClp = roundFareUpTo500(
+        const fareBeforeWalletBenefitClp = roundFareUpTo500(
           baseEstimatedFareClp + appliedChargesTotalClp,
+        );
+
+        const walletBenefitRequested = options.useWalletBenefit === true;
+
+        if (
+          walletBenefitRequested &&
+          options.paymentMethod !== "cash"
+        ) {
+          throw AppError.internal(
+            "Wallet benefits can only be used on cash rides.",
+          );
+        }
+
+        let walletBenefitAppliedClp = 0;
+        let walletBenefitRemainingClp = 0;
+        let walletId: string | null = null;
+        let walletBalanceBeforeClp = 0;
+
+        if (walletBenefitRequested) {
+          // La billetera puede no existir todavía. En ese caso el saldo es 0.
+          await tx.execute(
+            sql`select id from wallets where user_id = ${passengerUserId} for update`,
+          );
+
+          const wallet = (
+            await tx
+              .select()
+              .from(wallets)
+              .where(eq(wallets.userId, passengerUserId))
+              .limit(1)
+          )[0];
+
+          if (wallet && wallet.status === "active") {
+            walletId = wallet.id;
+            walletBalanceBeforeClp = Math.max(
+              0,
+              Math.round(wallet.balance),
+            );
+            walletBenefitAppliedClp = Math.min(
+              walletBalanceBeforeClp,
+              fareBeforeWalletBenefitClp,
+            );
+            walletBenefitRemainingClp =
+              walletBalanceBeforeClp - walletBenefitAppliedClp;
+          }
+        }
+
+        const finalEstimatedFareClp = Math.max(
+          0,
+          fareBeforeWalletBenefitClp - walletBenefitAppliedClp,
         );
 
         const [ride] = await tx
@@ -228,12 +432,60 @@ export class RidesRepository {
             destinationText,
             notes,
             estimatedFareClp: finalEstimatedFareClp,
+            paymentMethod: options.paymentMethod ?? null,
+            paymentProvider: options.paymentProvider ?? null,
+            walletBenefitRequested,
+            walletBenefitAppliedClp,
+            fareBeforeWalletBenefitClp,
             status: initialStatus,
           })
           .returning();
 
         if (!ride) {
           throw AppError.internal("Insert returned no rows.");
+        }
+
+        if (walletId && walletBenefitAppliedClp > 0) {
+          const now = new Date();
+
+          const [updatedWallet] = await tx
+            .update(wallets)
+            .set({
+              balance: walletBenefitRemainingClp,
+              updatedAt: now,
+            })
+            .where(eq(wallets.id, walletId))
+            .returning();
+
+          if (!updatedWallet) {
+            throw AppError.internal(
+              "Wallet update returned no rows while applying benefit.",
+            );
+          }
+
+          await tx.insert(transactions).values({
+            walletId,
+            userId: passengerUserId,
+            rideId: ride.id,
+            type: "benefit_use",
+            amount: -walletBenefitAppliedClp,
+            currency: "CLP",
+            status: "completed",
+            provider: "rapago",
+            providerTransactionId: `benefit-use:${ride.id}`,
+            description:
+              "Beneficio aplicado al viaje en efectivo de la misma cuenta",
+            metadata: {
+              source: "cash_overpayment_benefit",
+              exclusiveToOwner: true,
+              cashRideOnly: true,
+              balanceBeforeClp: walletBalanceBeforeClp,
+              appliedClp: walletBenefitAppliedClp,
+              balanceAfterClp: walletBenefitRemainingClp,
+              fareBeforeBenefitClp: fareBeforeWalletBenefitClp,
+              fareAfterBenefitClp: finalEstimatedFareClp,
+            },
+          });
         }
 
         if (approvedCharges.length > 0) {
@@ -264,12 +516,16 @@ export class RidesRepository {
           ride,
           appliedCharges: approvedCharges,
           appliedChargesTotalClp,
+          fareBeforeWalletBenefitClp,
+          walletBenefitRequested,
+          walletBenefitAppliedClp,
+          walletBenefitRemainingClp,
         };
       });
     } catch (err) {
       if (err instanceof AppError) throw err;
       throw AppError.internal(
-        `Failed to create ride request with policy charges: ${String(err)}`,
+        `Failed to create ride request with policy charges and benefits: ${String(err)}`,
       );
     }
   }
@@ -612,7 +868,16 @@ export class RidesRepository {
           }
         }
 
-        return changedRide;
+        if (driverIsCancelling) {
+          return changedRide;
+        }
+
+        return restoreAppliedWalletBenefit(
+          tx,
+          changedRide,
+          changedAt,
+          "ride_cancelled",
+        );
       });
     } catch (err) {
       if (err instanceof AppError) throw err;
@@ -1002,7 +1267,12 @@ export class RidesRepository {
             .where(eq(rideDriverAssignments.id, active.id));
         }
 
-        return row;
+        return restoreAppliedWalletBenefit(
+          tx,
+          row,
+          now,
+          "passenger_no_show",
+        );
       });
     } catch (err) {
       throw AppError.internal(
@@ -1053,29 +1323,46 @@ export class RidesRepository {
     cancellationReason?: string | null,
   ): Promise<RideRequest> {
     try {
-      const rows = await db
-        .update(rideRequests)
-        .set({
-          status: "cancelled",
-          cancelledAt: new Date(),
-          cancelledByUserId: cancelledByUserId ?? null,
-          cancelledByRole: cancelledByRole ?? null,
-          cancellationReason: cancellationReason ?? null,
-          updatedAt: new Date(),
-        })
-        .where(
-          and(
-            eq(rideRequests.id, id),
-            inArray(rideRequests.status, ["requested", "pending_payment"]),
-          ),
-        )
-        .returning();
-      const row = rows[0];
-      if (!row) throw AppError.internal("Update returned no rows.");
-      return row;
+      return await db.transaction(async (tx) => {
+        const cancelledAt = new Date();
+
+        const [row] = await tx
+          .update(rideRequests)
+          .set({
+            status: "cancelled",
+            cancelledAt,
+            cancelledByUserId: cancelledByUserId ?? null,
+            cancelledByRole: cancelledByRole ?? null,
+            cancellationReason: cancellationReason ?? null,
+            updatedAt: cancelledAt,
+          })
+          .where(
+            and(
+              eq(rideRequests.id, id),
+              inArray(rideRequests.status, [
+                "requested",
+                "pending_payment",
+              ]),
+            ),
+          )
+          .returning();
+
+        if (!row) {
+          throw AppError.internal("Update returned no rows.");
+        }
+
+        return restoreAppliedWalletBenefit(
+          tx,
+          row,
+          cancelledAt,
+          "ride_cancelled",
+        );
+      });
     } catch (err) {
       if (err instanceof AppError) throw err;
-      throw AppError.internal(`Failed to cancel ride request: ${String(err)}`);
+      throw AppError.internal(
+        `Failed to cancel ride request: ${String(err)}`,
+      );
     }
   }
 }

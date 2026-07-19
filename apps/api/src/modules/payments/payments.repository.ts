@@ -1,4 +1,4 @@
-import { and, desc, eq, inArray } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull, or } from "drizzle-orm";
 
 import { db } from "../../db/client.js";
 import {
@@ -48,6 +48,26 @@ export class PaymentsRepository {
   // Un pago de $800 de fast_search jamás puede habilitar por sí solo un viaje con tarjeta.
   async findSuccessfulByRideId(rideRequestId: string): Promise<Payment | null> {
     return this.findSuccessfulByRideIdAndPurpose(rideRequestId, "ride");
+  }
+
+  /** Pago principal que puede devolverse o ya fue devuelto. */
+  async findRefundableByRideId(
+    rideRequestId: string,
+  ): Promise<Payment | null> {
+    const [row] = await db
+      .select()
+      .from(payments)
+      .where(
+        and(
+          eq(payments.rideRequestId, rideRequestId),
+          eq(payments.paymentPurpose, "ride"),
+          inArray(payments.status, ["success", "refunded"]),
+        ),
+      )
+      .orderBy(desc(payments.paidAt), desc(payments.createdAt))
+      .limit(1);
+
+    return row ?? null;
   }
 
   async findSuccessfulByRideIdAndPurpose(
@@ -172,38 +192,135 @@ export class PaymentsRepository {
     return row!;
   }
 
-  async markRefunded(id: string, refundPayload: unknown): Promise<Payment> {
+  /**
+   * Reserva la devolución de forma atómica. Solo una petición puede pasar a
+   * processing. Los reintentos después de failed usan la misma clave estable.
+   */
+  async claimRefund(
+    id: string,
+    idempotencyKey: string,
+  ): Promise<Payment | null> {
+    const now = new Date();
+    const [row] = await db
+      .update(payments)
+      .set({
+        refundStatus: "processing",
+        refundIdempotencyKey: idempotencyKey,
+        refundRequestedAt: now,
+        refundFailedAt: null,
+        refundFailureReason: null,
+        updatedAt: now,
+      })
+      .where(
+        and(
+          eq(payments.id, id),
+          eq(payments.status, "success"),
+          or(
+            isNull(payments.refundStatus),
+            eq(payments.refundStatus, "failed"),
+          ),
+        ),
+      )
+      .returning();
+
+    return row ?? null;
+  }
+
+  async markRefunded(input: {
+    id: string;
+    providerRefundId?: string | null;
+    refundPayload: unknown;
+  }): Promise<Payment> {
+    const existing = await this.findById(input.id);
+    const previousPayload =
+      existing?.rawProviderPayload &&
+      typeof existing.rawProviderPayload === "object"
+        ? existing.rawProviderPayload
+        : {};
+    const now = new Date();
+
     const [row] = await db
       .update(payments)
       .set({
         status: "refunded",
+        refundStatus: "approved",
+        refundProviderId: input.providerRefundId ?? null,
+        refundedAt: now,
+        refundFailedAt: null,
+        refundFailureReason: null,
         rawProviderPayload: {
-          refundStatus: "approved",
-          refundedAt: new Date().toISOString(),
-          refundPayload,
+          ...previousPayload,
+          rapagoRefund: {
+            status: "approved",
+            providerRefundId: input.providerRefundId ?? null,
+            refundedAt: now.toISOString(),
+            payload: input.refundPayload,
+          },
         } as Record<string, unknown>,
-        updatedAt: new Date(),
+        updatedAt: now,
       })
-      .where(eq(payments.id, id))
+      .where(
+        and(
+          eq(payments.id, input.id),
+          eq(payments.refundStatus, "processing"),
+        ),
+      )
       .returning();
 
-    return row!;
+    if (!row) {
+      const current = await this.findById(input.id);
+      if (current?.refundStatus === "approved") return current;
+      throw new Error("Payment refund could not be marked approved.");
+    }
+
+    return row;
   }
 
-  async markRefundFailed(id: string, refundPayload: unknown): Promise<Payment> {
+  async markRefundFailed(input: {
+    id: string;
+    reason: string;
+    refundPayload: unknown;
+  }): Promise<Payment> {
+    const existing = await this.findById(input.id);
+    const previousPayload =
+      existing?.rawProviderPayload &&
+      typeof existing.rawProviderPayload === "object"
+        ? existing.rawProviderPayload
+        : {};
+    const now = new Date();
+
     const [row] = await db
       .update(payments)
       .set({
+        refundStatus: "failed",
+        refundFailedAt: now,
+        refundFailureReason: input.reason.slice(0, 1000),
         rawProviderPayload: {
-          refundStatus: "failed",
-          refundFailedAt: new Date().toISOString(),
-          refundPayload,
+          ...previousPayload,
+          rapagoRefund: {
+            status: "failed",
+            failedAt: now.toISOString(),
+            reason: input.reason,
+            payload: input.refundPayload,
+          },
         } as Record<string, unknown>,
-        updatedAt: new Date(),
+        updatedAt: now,
       })
-      .where(eq(payments.id, id))
+      .where(
+        and(
+          eq(payments.id, input.id),
+          eq(payments.refundStatus, "processing"),
+        ),
+      )
       .returning();
 
-    return row!;
+    if (!row) {
+      const current = await this.findById(input.id);
+      if (current) return current;
+      throw new Error("Payment refund failure could not be persisted.");
+    }
+
+    return row;
   }
+
 }

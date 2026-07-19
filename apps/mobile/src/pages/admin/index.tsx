@@ -80,6 +80,10 @@ import { ActionCard } from "../../components/ActionCard";
 import { ROUTES } from "../../navigation/routes";
 import { useAuth } from "../../features/auth";
 import {
+  walletService,
+  type CashOverpaymentBenefitData,
+} from "../../features/wallet/wallet.service.js";
+import {
   adminService,
   type AdminUserData,
   type AdminDocumentData,
@@ -1787,6 +1791,79 @@ function rejectAdminNoShowCharge(
   markAdminPassengerChargeStatus(charge, "waived", adminDecisionReason);
 }
 
+function mergeAdminBackendCashOverpaymentBenefits(
+  benefits: CashOverpaymentBenefitData[],
+  rides: AdminRideData[],
+): void {
+  if (benefits.length === 0) return;
+
+  const current = readAdminCashPaymentReviews();
+
+  for (const benefit of benefits) {
+    const ride = rides.find(
+      (item) => String(item.id ?? "") === benefit.sourceRideId,
+    ) as (AdminRideData & Record<string, unknown>) | undefined;
+    const rideKey = `ride:${benefit.sourceRideId}`;
+    const storageKey = `passenger:${rideKey}`;
+    const existing = current[storageKey] ?? current[rideKey];
+
+    const adminReviewStatus =
+      benefit.status === "approved"
+        ? "backend_credit_created"
+        : benefit.status === "rejected"
+          ? "admin_rejected"
+          : "pending_admin";
+
+    current[storageKey] = {
+      id: benefit.id,
+      rideId: benefit.sourceRideId,
+      rideKey,
+      originText: String(
+        ride?.originText ?? existing?.originText ?? "Origen del viaje",
+      ),
+      destinationText: String(
+        ride?.destinationText ??
+          existing?.destinationText ??
+          "Destino del viaje",
+      ),
+      fareClp: benefit.fareClp,
+      paidClp: benefit.paidClp,
+      overpaidClp:
+        benefit.approvedAmountClp ?? benefit.requestedAmountClp,
+      decision: "wallet_credit",
+      status:
+        benefit.status === "approved"
+          ? "wallet_available"
+          : benefit.status === "rejected"
+            ? "completed"
+            : "pending_wallet_admin",
+      adminReviewStatus,
+      createdAt: benefit.createdAt,
+      passengerEmail:
+        benefit.ownerEmail ?? existing?.passengerEmail ?? null,
+      passengerName:
+        benefit.ownerName ?? existing?.passengerName ?? null,
+      ownerUserId: benefit.ownerUserId,
+      passengerPaidClp: benefit.paidClp,
+      passengerOverpaidClp:
+        benefit.approvedAmountClp ?? benefit.requestedAmountClp,
+      passengerDecision: "wallet_credit",
+      passengerWantsWalletCredit: true,
+      passengerWantsRefund: false,
+      source: "backend_cash_overpayment_benefit",
+    };
+  }
+
+  writeAdminCashPaymentReviews(current);
+}
+
+function isAdminCashWalletRejected(
+  review: AdminCashPaymentReview,
+): boolean {
+  const status = String(review.adminReviewStatus ?? "").toLowerCase();
+  return status === "admin_rejected" || status === "rejected";
+}
+
 function isAdminCashWalletApproved(review: AdminCashPaymentReview): boolean {
   const status = String(review.status ?? "").toLowerCase();
   const adminStatus = String(review.adminReviewStatus ?? "").toLowerCase();
@@ -1820,7 +1897,10 @@ function adminCashReviewDecisionLabel(review: AdminCashPaymentReview): string {
 
 function adminCashReviewStatusLabel(review: AdminCashPaymentReview): string {
   if (review.decision === "wallet_credit") {
-    return isAdminCashWalletApproved(review) ? "Saldo aprobado" : "Pendiente aprobar saldo";
+    if (isAdminCashWalletRejected(review)) return "Beneficio rechazado";
+    return isAdminCashWalletApproved(review)
+      ? "Beneficio aprobado"
+      : "Pendiente aprobar Beneficio";
   }
   if (review.decision === "refund_whatsapp") {
     return isAdminCashRefundCompleted(review) ? "Devolución gestionada" : "Pendiente devolución";
@@ -1832,7 +1912,10 @@ function adminCashReviewStatusLabel(review: AdminCashPaymentReview): string {
 }
 
 function adminCashReviewStatusColor(review: AdminCashPaymentReview): string {
-  if (review.decision === "wallet_credit") return isAdminCashWalletApproved(review) ? "success" : "warning";
+  if (review.decision === "wallet_credit") {
+    if (isAdminCashWalletRejected(review)) return "danger";
+    return isAdminCashWalletApproved(review) ? "success" : "warning";
+  }
   if (review.decision === "refund_whatsapp") return isAdminCashRefundCompleted(review) ? "success" : "danger";
   if (review.decision === "driver_overpaid") return isAdminCashWalletApproved(review) ? "success" : "tertiary";
   return "medium";
@@ -1881,17 +1964,10 @@ async function approveAdminCashWalletCredit(
     throw new Error("El saldo a favor no tiene un monto válido.");
   }
 
-  const targetUserId = resolveAdminCashReviewOwnerUserId(review, users);
-  if (!targetUserId) {
-    throw new Error(
-      "No se encontró la cuenta propietaria del viaje. Actualiza Usuarios y vuelve a intentar.",
-    );
-  }
-
   const rideId = adminWalletCreditUuidOrUndefined(review.rideId);
   if (!rideId) {
     throw new Error(
-      "El viaje no tiene un ID válido para crear el beneficio real en backend.",
+      "El viaje no tiene un ID válido para aprobar el Beneficio.",
     );
   }
 
@@ -1899,22 +1975,31 @@ async function approveAdminCashWalletCredit(
     "../../features/wallet/wallet.service.js"
   );
 
-  const externalReference = normalizeAdminWalletCreditExternalReference(
-    review.rideId || review.rideKey || review.id,
+  // La cuenta propietaria y el monto máximo provienen de la solicitud backend.
+  // Admin ya no puede crear créditos arbitrarios desde LocalStorage.
+  const approval =
+    await walletService.adminApproveCashOverpaymentBenefitByRide(
+      accessToken,
+      rideId,
+      {
+        approvedAmountClp: creditAmount,
+        adminDecisionReason:
+          "Beneficio aprobado por dinero pagado de más en efectivo.",
+      },
+    );
+
+  const targetUserId =
+    approval.benefit.ownerUserId ||
+    resolveAdminCashReviewOwnerUserId(review, users);
+  const approvedAmountClp = Math.max(
+    0,
+    Math.round(
+      approval.benefit.approvedAmountClp ??
+        approval.benefit.requestedAmountClp,
+    ),
   );
-
-  await walletService.adminCreateWalletCredit(accessToken, {
-    userId: targetUserId,
-    rideId,
-    amountClp: creditAmount,
-    description:
-      `Beneficio aprobado por dinero pagado de más en efectivo. ` +
-      `${review.originText || "Origen"} → ${review.destinationText || "Destino"}.`,
-    reason: "cash_overpayment_benefit",
-    ...(externalReference ? { externalReference } : {}),
-  });
-
   const now = new Date().toISOString();
+
   const updatedReviews = readAdminCashPaymentReviews().map((item) => {
     if (
       (item.rideKey || item.rideId || item.id) !==
@@ -1926,6 +2011,8 @@ async function approveAdminCashWalletCredit(
     return {
       ...item,
       ownerUserId: targetUserId,
+      overpaidClp: approvedAmountClp,
+      passengerOverpaidClp: approvedAmountClp,
       adminReviewStatus: "backend_credit_created",
       status: "wallet_available",
     };
@@ -1934,39 +2021,84 @@ async function approveAdminCashWalletCredit(
   writeAdminCashPaymentReviews(updatedReviews);
 
   const benefits = readAdminWalletBenefits();
-  const benefitId = `cash-overpayment-${review.rideId || review.rideKey}`;
+  const benefitId = approval.benefit.id;
 
   const nextBenefit: AdminWalletBenefit = {
     id: benefitId,
-    rideId: review.rideId || null,
-    passengerEmail: review.passengerEmail ?? null,
-    ownerKey: review.passengerEmail ?? null,
+    rideId: approval.benefit.sourceRideId,
+    passengerEmail:
+      approval.benefit.ownerEmail ?? review.passengerEmail ?? null,
+    ownerKey:
+      approval.benefit.ownerEmail ?? review.passengerEmail ?? null,
     ownerUserId: targetUserId,
-    amountClp: creditAmount,
+    amountClp: approvedAmountClp,
     status: "available",
-    source: "cash_overpayment",
-    title: "SALDO A FAVOR PARA PRÓXIMO VIAJE",
+    source: "cash_overpayment_backend",
+    title: "BENEFICIO APROBADO PARA PRÓXIMO VIAJE EN EFECTIVO",
     description:
-      `Saldo aprobado en backend para la cuenta propietaria. ` +
-      `Usuario declaró ${formatAdminCashClp(
-        review.passengerPaidClp ?? review.paidClp,
-      )} y conductor declaró ${formatAdminCashClp(
-        review.driverPaidClp ?? 0,
-      )}. Viaje ${review.originText} → ${review.destinationText}.`,
-    createdAt: review.createdAt,
-    approvedAt: now,
+      "Beneficio aprobado en backend y asociado exclusivamente a la cuenta que pagó el viaje.",
+    createdAt: approval.benefit.createdAt,
+    approvedAt: approval.benefit.reviewedAt ?? now,
     approvedBy: "admin",
     adminReviewStatus: "backend_credit_created",
-    fareClp: review.fareClp,
-    paidClp: review.paidClp,
-    driverPaidClp: review.driverPaidClp ?? null,
-    passengerPaidClp: review.passengerPaidClp ?? review.paidClp,
+    fareClp: approval.benefit.fareClp,
+    paidClp: approval.benefit.paidClp,
+    passengerPaidClp: approval.benefit.paidClp,
   };
 
   writeAdminWalletBenefits([
     nextBenefit,
     ...benefits.filter((item) => String(item.id ?? "") !== benefitId),
   ]);
+}
+
+async function rejectAdminCashWalletCredit(
+  accessToken: string,
+  review: AdminCashPaymentReview,
+  reason: string,
+): Promise<void> {
+  if (!accessToken) {
+    throw new Error("Sesión de administrador no disponible.");
+  }
+
+  const cleanReason = String(reason ?? "").trim();
+  if (!cleanReason) {
+    throw new Error("Debes escribir el motivo del rechazo.");
+  }
+
+  const rideId = adminWalletCreditUuidOrUndefined(review.rideId);
+  if (!rideId) {
+    throw new Error(
+      "El viaje no tiene un ID válido para rechazar el Beneficio.",
+    );
+  }
+
+  const { walletService } = await import(
+    "../../features/wallet/wallet.service.js"
+  );
+
+  await walletService.adminRejectCashOverpaymentBenefitByRide(
+    accessToken,
+    rideId,
+    cleanReason,
+  );
+
+  const updatedReviews = readAdminCashPaymentReviews().map((item) => {
+    if (
+      (item.rideKey || item.rideId || item.id) !==
+      (review.rideKey || review.rideId || review.id)
+    ) {
+      return item;
+    }
+
+    return {
+      ...item,
+      adminReviewStatus: "admin_rejected",
+      status: "completed",
+    };
+  });
+
+  writeAdminCashPaymentReviews(updatedReviews);
 }
 
 function markAdminCashRefundCompleted(review: AdminCashPaymentReview): void {
@@ -2054,6 +2186,7 @@ export function AdminHomePage(): JSX.Element {
           driversResult,
           usersResult,
           policyChargesResult,
+          cashBenefitsResult,
         ] = await Promise.all([
             dashboardService.getDashboard(token),
             dashboardService.getActivity(token, 5),
@@ -2068,6 +2201,9 @@ export function AdminHomePage(): JSX.Element {
               .catch(() => [] as AdminUserData[]),
             fetchAdminBackendPolicyCharges(token)
               .catch(() => [] as AdminPassengerPendingCharge[]),
+            walletService
+              .adminListCashOverpaymentBenefits(token, "all")
+              .catch(() => [] as CashOverpaymentBenefitData[]),
           ]);
 
         setData(dash);
@@ -2075,6 +2211,13 @@ export function AdminHomePage(): JSX.Element {
         setAdminRides(ridesResult);
         setAdminDrivers(driversResult);
         setAdminUsers(usersResult);
+        if (cashBenefitsResult.length > 0) {
+          mergeAdminBackendCashOverpaymentBenefits(
+            cashBenefitsResult,
+            ridesResult,
+          );
+          setCashReviewsRevision((current) => current + 1);
+        }
         if (policyChargesResult.length > 0) {
           mergeAdminBackendPolicyCharges(policyChargesResult);
           setCashReviewsRevision((current) => current + 1);
@@ -2305,7 +2448,12 @@ export function AdminHomePage(): JSX.Element {
 
   const cashPaymentReviews = cashReviewsRevision >= 0 ? readAdminCashPaymentReviews() : [];
   const pendingCashPaymentReviews = cashPaymentReviews.filter((review) => {
-    if (review.decision === "wallet_credit") return !isAdminCashWalletApproved(review);
+    if (review.decision === "wallet_credit") {
+      return (
+        !isAdminCashWalletApproved(review) &&
+        !isAdminCashWalletRejected(review)
+      );
+    }
     if (review.decision === "refund_whatsapp") return !isAdminCashRefundCompleted(review);
     if (review.decision === "driver_overpaid") return !isAdminCashWalletApproved(review);
     return false;
@@ -3878,7 +4026,7 @@ export function AdminHomePage(): JSX.Element {
                               )}
                             </div>
                             <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 10 }}>
-                              {isWallet && !isAdminCashWalletApproved(review) && (
+                              {isWallet && !isAdminCashWalletApproved(review) && !isAdminCashWalletRejected(review) && (
                                 <IonButton
                                   size="small"
                                   color="success"
@@ -3905,6 +4053,43 @@ export function AdminHomePage(): JSX.Element {
                                   }}
                                 >
                                   Aprobar saldo
+                                </IonButton>
+                              )}
+
+                              {isWallet && !isAdminCashWalletApproved(review) && !isAdminCashWalletRejected(review) && (
+                                <IonButton
+                                  size="small"
+                                  color="danger"
+                                  fill="outline"
+                                  onClick={() => {
+                                    const reason = window.prompt(
+                                      "Motivo del rechazo del Beneficio:",
+                                      "El monto informado no coincide con la revisión del viaje.",
+                                    );
+                                    if (reason == null) return;
+
+                                    void (async () => {
+                                      try {
+                                        await rejectAdminCashWalletCredit(
+                                          session?.accessToken ?? "",
+                                          review,
+                                          reason,
+                                        );
+                                        setCashReviewsRevision((current) => current + 1);
+                                        setAdminCashToast(
+                                          "Solicitud de Beneficio rechazada. El usuario verá el motivo.",
+                                        );
+                                      } catch (err) {
+                                        setAdminCashToast(
+                                          err instanceof Error
+                                            ? err.message
+                                            : "No se pudo rechazar el Beneficio.",
+                                        );
+                                      }
+                                    })();
+                                  }}
+                                >
+                                  Rechazar
                                 </IonButton>
                               )}
 

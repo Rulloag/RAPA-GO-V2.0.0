@@ -45,6 +45,7 @@ import {
   ridesService,
   type CreateRideInput,
 } from "../../../features/rides/rides.service.js";
+import { walletService } from "../../../features/wallet/wallet.service.js";
 import {
   legalService,
   type LegalDocumentData,
@@ -4632,6 +4633,8 @@ export default function RequestRidePage(): JSX.Element {
   const [showPaymentBox, setShowPaymentBox] = useState(false);
   const [useWalletBenefit, setUseWalletBenefit] = useState<boolean | null>(null);
   const [walletBenefitRevision, setWalletBenefitRevision] = useState(0);
+  const [backendWalletBenefitClp, setBackendWalletBenefitClp] = useState(0);
+  const [walletBenefitLoading, setWalletBenefitLoading] = useState(false);
   const [pendingChargeRevision, setPendingChargeRevision] = useState(0);
   const [
     backendPendingPassengerCharges,
@@ -4710,6 +4713,44 @@ export default function RequestRidePage(): JSX.Element {
       window.removeEventListener(RAPAGO_WALLET_BENEFIT_EVENT_REQUEST, refreshWalletBenefits as EventListener);
     };
   }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    if (!session?.accessToken) {
+      setBackendWalletBenefitClp(0);
+      setWalletBenefitLoading(false);
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    setWalletBenefitLoading(true);
+
+    void walletService
+      .getMyWallet(session.accessToken)
+      .then((wallet) => {
+        if (cancelled) return;
+        setBackendWalletBenefitClp(
+          Math.max(
+            0,
+            Math.round(
+              Number(wallet.availableBenefitClp ?? wallet.balance ?? 0),
+            ),
+          ),
+        );
+      })
+      .catch(() => {
+        if (!cancelled) setBackendWalletBenefitClp(0);
+      })
+      .finally(() => {
+        if (!cancelled) setWalletBenefitLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [session?.accessToken, walletBenefitRevision]);
 
 
   useEffect(() => {
@@ -5272,13 +5313,9 @@ export default function RequestRidePage(): JSX.Element {
   const pendingPassengerChargeTotalClp =
     pendingNoShowChargeTotalClp +
     pendingCancellationChargeTotalClp;
-  const availableWalletBenefits = walletBenefitRevision >= 0
-    ? readPassengerWalletBenefitsForRequest(session?.user)
-    : [];
-  const availableWalletBenefitTotalClp = availableWalletBenefits.reduce(
-    (sum, benefit) => sum + Math.max(0, Math.round(Number(benefit.amountClp ?? 0))),
-    0,
-  );
+  // El backend es la única autoridad del saldo disponible. Los registros
+  // antiguos de LocalStorage no se suman ni se descuentan financieramente.
+  const availableWalletBenefitTotalClp = backendWalletBenefitClp;
   const hasAvailableWalletBenefit = availableWalletBenefitTotalClp > 0;
 
   function getBaseSelectedFareAmount(method: PaymentMethod = paymentMethod): number | null {
@@ -5314,7 +5351,10 @@ export default function RequestRidePage(): JSX.Element {
   }
 
   function getSelectedWalletBenefitDiscount(method: PaymentMethod = paymentMethod): number {
-    return getWalletBenefitDiscountForAmount(getSelectedFareAmountBeforeWallet(method));
+    if (method !== "cash") return 0;
+    return getWalletBenefitDiscountForAmount(
+      getSelectedFareAmountBeforeWallet(method),
+    );
   }
 
   const cashPaymentAmountBeforeWallet = addPendingPassengerCharges(addAirportWelcomeExtras(
@@ -5331,10 +5371,15 @@ export default function RequestRidePage(): JSX.Element {
         ? fareQuote.cardFare
         : null,
   ));
-  const cashWalletBenefitDiscountClp = getWalletBenefitDiscountForAmount(cashPaymentAmountBeforeWallet);
-  const cardWalletBenefitDiscountClp = getWalletBenefitDiscountForAmount(cardPaymentAmountBeforeWallet);
-  const cashPaymentAmount = applyWalletBenefitDiscount(cashPaymentAmountBeforeWallet);
-  const cardPaymentAmount = applyWalletBenefitDiscount(cardPaymentAmountBeforeWallet);
+  const cashWalletBenefitDiscountClp = getWalletBenefitDiscountForAmount(
+    cashPaymentAmountBeforeWallet,
+  );
+  const cardWalletBenefitDiscountClp = 0;
+  const cashPaymentAmount = applyWalletBenefitDiscount(
+    cashPaymentAmountBeforeWallet,
+  );
+  // Beneficios jamás modifica un cobro con tarjeta.
+  const cardPaymentAmount = cardPaymentAmountBeforeWallet;
 
   function getPaymentLabel(method: PaymentMethod): string {
     if (method === "cash") {
@@ -5387,7 +5432,10 @@ export default function RequestRidePage(): JSX.Element {
       : null;
 
   function getSelectedFareAmount(method: PaymentMethod = paymentMethod): number | null {
-    return applyWalletBenefitDiscount(getSelectedFareAmountBeforeWallet(method));
+    const beforeBenefit = getSelectedFareAmountBeforeWallet(method);
+    return method === "cash"
+      ? applyWalletBenefitDiscount(beforeBenefit)
+      : beforeBenefit;
   }
 
   function getSelectedDriverEarning(method: PaymentMethod = paymentMethod): number | null {
@@ -5648,7 +5696,7 @@ export default function RequestRidePage(): JSX.Element {
         }).estimatedFareClp = Math.max(
           0,
           Math.round(
-            (selectedFareAmount ?? 0) -
+            (selectedFareAmountBeforeWallet ?? 0) -
               pendingPassengerChargeTotalClp,
           ),
         );
@@ -5695,24 +5743,10 @@ export default function RequestRidePage(): JSX.Element {
         // Phase 3 security:
         // Cancellation/no-show charges are backend/admin authority only.
         // Do not send passengerPendingChargeClp or finalFareWithPendingChargesClp from frontend.
-        if (selectedWalletBenefitDiscountClp > 0) {
-          Object.assign(input as CreateRideInput & Record<string, unknown>, {
-            walletBenefitRequested: true,
-            walletBenefitApplied: true,
-            walletBenefitAppliedClp: selectedWalletBenefitDiscountClp,
-            walletBenefitDiscountClp: selectedWalletBenefitDiscountClp,
-            walletBenefitOriginalFareClp: selectedFareAmountBeforeWallet,
-            originalFareBeforeWalletBenefitClp: selectedFareAmountBeforeWallet,
-            finalFareAfterWalletBenefitClp: selectedFareAmount,
-            walletBenefitSource: "admin_approved_cash_overpayment",
-          });
-        } else if (hasAvailableWalletBenefit && useWalletBenefit === false) {
-          Object.assign(input as CreateRideInput & Record<string, unknown>, {
-            walletBenefitRequested: false,
-            walletBenefitApplied: false,
-            walletBenefitAvailableClp: availableWalletBenefitTotalClp,
-          });
-        }
+        // El frontend solo expresa la decisión. El backend bloquea la cuenta,
+        // verifica el saldo y calcula el monto real a consumir.
+        input.useWalletBenefit =
+          activePaymentMethod === "cash" && useWalletBenefit === true;
         (input as CreateRideInput & { tripFareMode?: TripFareMode }).tripFareMode = effectiveTripFareMode;
         (input as CreateRideInput & { tripType?: string }).tripType = effectiveTripFareMode;
         (input as CreateRideInput & { isRoundTrip?: boolean }).isRoundTrip = effectiveTripFareMode === "round_trip";
@@ -5763,17 +5797,33 @@ export default function RequestRidePage(): JSX.Element {
       );
 
       const createdRideId = extractRideRequestIdFromResponse(createdRideResponse);
-      if (selectedWalletBenefitDiscountClp > 0) {
-        markPassengerWalletBenefitsUsedForRide({
-          user: session.user,
-          rideId: createdRideId ?? `ride-${Date.now()}`,
-          amountToUseClp: selectedWalletBenefitDiscountClp,
-          originText: resolved.origin.text,
-          destinationText: resolved.destination.text,
-          fareBeforeWalletClp: selectedFareAmountBeforeWallet,
-          fareAfterWalletClp: selectedFareAmount,
-        });
+      const appliedBenefitClp = Math.max(
+        0,
+        Math.round(
+          Number(createdRideResponse.walletBenefitAppliedClp ?? 0),
+        ),
+      );
+
+      if (appliedBenefitClp > 0) {
+        setBackendWalletBenefitClp(
+          Math.max(
+            0,
+            Math.round(
+              Number(createdRideResponse.walletBenefitRemainingClp ?? 0),
+            ),
+          ),
+        );
         setWalletBenefitRevision((current) => current + 1);
+        window.dispatchEvent(
+          new CustomEvent("rapago:wallet-updated", {
+            detail: {
+              rideId: createdRideId,
+              appliedBenefitClp,
+              remainingBenefitClp:
+                createdRideResponse.walletBenefitRemainingClp ?? 0,
+            },
+          }),
+        );
       }
 
       // Los espejos locales de reservas quedan diferidos. Con tarjeta no se
@@ -7737,7 +7787,7 @@ return (
               )}
             </div>
 
-            {hasAvailableWalletBenefit && paymentMethod && activePaymentAmountBeforeWallet != null && (
+            {hasAvailableWalletBenefit && paymentMethod === "cash" && activePaymentAmountBeforeWallet != null && (
               <IonCard
                 style={{
                   margin: "0 0 14px",
@@ -7758,8 +7808,9 @@ return (
                         ¿Quieres usar tu saldo a favor en este viaje?
                       </div>
                       <div style={{ marginTop: 5, color: "#36543B", fontSize: ".78rem", fontWeight: 820, lineHeight: 1.35 }}>
-                        Tienes {formatCLP(availableWalletBenefitTotalClp)} aprobado por admin.
-                        Si lo usas, se descuenta del total final de este viaje.
+                        {walletBenefitLoading
+                          ? "Sincronizando tu saldo aprobado…"
+                          : `Tienes ${formatCLP(availableWalletBenefitTotalClp)} aprobado por admin. Si lo usas, el backend descuenta el monto real del total de este viaje en efectivo.`}
                       </div>
                     </div>
                     <IonBadge color="success" style={{ fontWeight: 950, flexShrink: 0 }}>

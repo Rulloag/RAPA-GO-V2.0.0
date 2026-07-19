@@ -356,7 +356,7 @@ function isReadyForDriverSearch(r: RideRequest): boolean {
 
 function inferRidePaymentMethod(
   notes: string | null | undefined,
-): string | null {
+): "cash" | "card" | null {
   const text = String(notes ?? "").toLowerCase();
 
   if (
@@ -589,6 +589,10 @@ function toResponse(
     baseFareClp: number;
     appliedChargesTotalClp: number;
     appliedCharges: RidePolicyCharge[];
+    fareBeforeWalletBenefitClp?: number;
+    walletBenefitRequested?: boolean;
+    walletBenefitAppliedClp?: number;
+    walletBenefitRemainingClp?: number;
   },
 ): RideRequestResponse {
   const scheduleMeta = getScheduleMetaFromRide(r);
@@ -632,6 +636,30 @@ function toResponse(
     discountApplied: discountInfo != null,
     discountPercent: discountInfo?.discountPercent ?? null,
     originalFareClp: discountInfo?.originalFare ?? null,
+    paymentMethod:
+      r.paymentMethod === "cash" || r.paymentMethod === "card"
+        ? r.paymentMethod
+        : inferRidePaymentMethod(r.notes),
+    paymentProvider: r.paymentProvider ?? null,
+    walletBenefitRequested:
+      policyInfo?.walletBenefitRequested ??
+      r.walletBenefitRequested ??
+      false,
+    fareBeforeWalletBenefitClp:
+      policyInfo?.fareBeforeWalletBenefitClp ??
+      r.fareBeforeWalletBenefitClp ??
+      r.estimatedFareClp ??
+      null,
+    walletBenefitAppliedClp:
+      policyInfo?.walletBenefitAppliedClp ??
+      r.walletBenefitAppliedClp ??
+      0,
+    walletBenefitRemainingClp:
+      policyInfo?.walletBenefitRemainingClp ?? 0,
+    walletBenefitReversedClp:
+      r.walletBenefitReversedClp ?? 0,
+    walletBenefitReversedAt:
+      r.walletBenefitReversedAt?.toISOString() ?? null,
     baseFareClp:
       policyInfo?.baseFareClp ??
       r.estimatedFareClp ??
@@ -807,6 +835,16 @@ export class RidesService {
       };
     }
 
+    if (input.useWalletBenefit === true && input.paymentMethod !== "cash") {
+      return {
+        ok: false,
+        code: "WALLET_BENEFIT_CASH_ONLY",
+        message:
+          "El Beneficio solo puede utilizarse en un viaje pagado en efectivo.",
+        statusCode: 422,
+      };
+    }
+
     const scheduleMeta = buildScheduleMeta(input, auth.role);
 
     const isScheduledRide =
@@ -922,6 +960,13 @@ export class RidesService {
       notesForStorage,
       finalFare,
       input.paymentMethod === "card" ? "pending_payment" : "requested",
+      {
+        ...(input.paymentMethod
+          ? { paymentMethod: input.paymentMethod }
+          : {}),
+        paymentProvider: input.paymentProvider ?? null,
+        useWalletBenefit: input.useWalletBenefit === true,
+      },
     );
 
     return {
@@ -934,6 +979,14 @@ export class RidesService {
           appliedChargesTotalClp:
             created.appliedChargesTotalClp,
           appliedCharges: created.appliedCharges,
+          fareBeforeWalletBenefitClp:
+            created.fareBeforeWalletBenefitClp,
+          walletBenefitRequested:
+            created.walletBenefitRequested,
+          walletBenefitAppliedClp:
+            created.walletBenefitAppliedClp,
+          walletBenefitRemainingClp:
+            created.walletBenefitRemainingClp,
         },
       ),
     };

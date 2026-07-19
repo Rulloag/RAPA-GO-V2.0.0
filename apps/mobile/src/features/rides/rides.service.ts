@@ -75,6 +75,16 @@ export interface RideRequestData {
   discountApplied:      boolean;
   discountPercent:      number | null;
   originalFareClp:      number | null;
+  paymentMethod?: "cash" | "card" | null;
+  paymentProvider?: string | null;
+  walletBenefitRequested?: boolean;
+  fareBeforeWalletBenefitClp?: number | null;
+  walletBenefitAppliedClp?: number;
+  walletBenefitRemainingClp?: number;
+  walletBenefitReversedClp?: number;
+  walletBenefitReversedAt?: string | null;
+  baseFareClp?: number | null;
+  policyChargesAppliedClp?: number;
 }
 
 /** Subset returned to drivers for their own rides. */
@@ -122,9 +132,21 @@ export interface RatingData {
 }
 
 export interface CreateRideInput {
-  originText:      string;
+  originText: string;
   destinationText: string;
-  notes?:          string;
+  notes?: string;
+  estimatedFareClp?: number;
+  paymentMethod?: "cash" | "card";
+  paymentProvider?: "mercadopago" | "prontopaga" | "transbank" | null;
+  useWalletBenefit?: boolean;
+  rideMode?: "now" | "scheduled";
+  isScheduled?: boolean;
+  tripFareMode?: "one_way" | "round_trip";
+  scheduledAt?: string | null;
+  scheduledPickupAt?: string | null;
+  scheduledReturnAt?: string | null;
+  scheduledActivationAt?: string | null;
+  scheduledReturnActivationAt?: string | null;
 }
 
 export const ridesService = {

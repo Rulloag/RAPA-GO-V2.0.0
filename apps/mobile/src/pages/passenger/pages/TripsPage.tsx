@@ -15,6 +15,7 @@ import { WhatsAppButton } from "../../../components/WhatsAppButton.js";
 import { loadRapaGoGoogleMaps } from "../../../components/MapFallback.js";
 import { useAuth } from "../../../features/auth/index.js";
 import { ridesService, type RideRequestData } from "../../../features/rides/rides.service.js";
+import { walletService } from "../../../features/wallet/wallet.service.js";
 import { ROUTES } from "../../../navigation/routes.js";
 import { RAPAGO_CONTACT, WA_MESSAGES } from "@rapa-go/shared";
 import { RIDE_STATUS_LABEL, RIDE_STATUS_COLOR } from "../shared.js";
@@ -6995,8 +6996,11 @@ function PassengerCashPaymentAfterRideCard({
   ride: RideRequestData;
   displayFareClp: number;
 }): JSX.Element | null {
+  const { session } = useAuth();
   const [showOverpaidForm, setShowOverpaidForm] = useState(false);
   const [paidAmountText, setPaidAmountText] = useState("");
+  const [submittingBenefit, setSubmittingBenefit] = useState(false);
+  const [benefitError, setBenefitError] = useState<string | null>(null);
   const [review, setReview] = useState<PassengerCashPaymentReview | null>(() =>
     getPassengerCashPaymentReview(ride),
   );
@@ -7005,6 +7009,8 @@ function PassengerCashPaymentAfterRideCard({
     setReview(getPassengerCashPaymentReview(ride));
     setShowOverpaidForm(false);
     setPaidAmountText("");
+    setSubmittingBenefit(false);
+    setBenefitError(null);
   }, [ride.id]);
 
   if (getEffectivePassengerRideStatus(ride) !== "completed") return null;
@@ -7030,21 +7036,63 @@ function PassengerCashPaymentAfterRideCard({
     setPaidAmountText("");
   }
 
-  function saveAsWalletCredit(): void {
-    if (!canConfirmOverpay) return;
+  async function saveAsWalletCredit(): Promise<void> {
+    if (!canConfirmOverpay || submittingBenefit) return;
 
-    const saved = savePassengerCashPaymentReview(ride, {
-      fareClp: displayFareClp,
-      paidClp: paidAmountClp,
-      overpaidClp,
-      decision: "wallet_credit",
-      status: "pending_wallet_admin",
-      adminReviewStatus: "pending_admin",
-    });
+    if (!session?.accessToken) {
+      setBenefitError("Tu sesión terminó. Vuelve a iniciar sesión para solicitar el Beneficio.");
+      return;
+    }
 
-    savePassengerWalletBenefitFromCashOverpayment(ride, saved);
-    setReview(saved);
-    setShowOverpaidForm(false);
+    setSubmittingBenefit(true);
+    setBenefitError(null);
+
+    try {
+      const benefit = await walletService.requestCashOverpaymentBenefit(
+        session.accessToken,
+        {
+          rideId: ride.id,
+          paidClp: paidAmountClp,
+          reason: "El usuario solicita conservar como Beneficio el dinero pagado de más en efectivo.",
+        },
+      );
+
+      const saved = savePassengerCashPaymentReview(ride, {
+        fareClp: benefit.fareClp,
+        paidClp: benefit.paidClp,
+        overpaidClp: benefit.requestedAmountClp,
+        decision: "wallet_credit",
+        status:
+          benefit.status === "approved"
+            ? "wallet_available"
+            : "pending_wallet_admin",
+        adminReviewStatus:
+          benefit.status === "approved"
+            ? "admin_approved"
+            : "pending_admin",
+      });
+
+      // LocalStorage conserva solo una copia visual para compatibilidad. La
+      // solicitud y el monto financiero real ya fueron creados por el backend.
+      savePassengerWalletBenefitFromCashOverpayment(ride, saved);
+      setReview(saved);
+      setShowOverpaidForm(false);
+      setPaidAmountText("");
+
+      window.dispatchEvent(
+        new CustomEvent(RAPAGO_WALLET_BENEFIT_EVENT, {
+          detail: { benefit, ride },
+        }),
+      );
+    } catch (err) {
+      setBenefitError(
+        err instanceof Error
+          ? err.message
+          : "No se pudo enviar la solicitud de Beneficio.",
+      );
+    } finally {
+      setSubmittingBenefit(false);
+    }
   }
 
   function requestRefund(): void {
@@ -7196,15 +7244,32 @@ function PassengerCashPaymentAfterRideCard({
             )}
           </div>
 
+          {benefitError && (
+            <div
+              style={{
+                marginTop: 10,
+                borderRadius: 14,
+                padding: "9px 11px",
+                background: "#FEE2E2",
+                color: "#991B1B",
+                fontWeight: 850,
+                fontSize: ".78rem",
+                lineHeight: 1.35,
+              }}
+            >
+              {benefitError}
+            </div>
+          )}
+
           <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 8, marginTop: 10 }}>
             <IonButton
               size="small"
               color="success"
-              disabled={!canConfirmOverpay}
+              disabled={!canConfirmOverpay || submittingBenefit}
               style={{ "--border-radius": "999px", fontWeight: 950 } as React.CSSProperties}
-              onClick={saveAsWalletCredit}
+              onClick={() => void saveAsWalletCredit()}
             >
-              Sí, usar como saldo a favor
+              {submittingBenefit ? "Enviando al administrador…" : "Sí, guardar como Beneficio"}
             </IonButton>
 
             <IonButton
