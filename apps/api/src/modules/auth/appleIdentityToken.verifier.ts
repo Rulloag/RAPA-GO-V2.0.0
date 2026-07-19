@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto";
+import { createHash, timingSafeEqual } from "node:crypto";
 import { decodeProtectedHeader, importJWK, jwtVerify } from "jose";
 import { AppError } from "../../shared/errors/AppError.js";
 import { getAppleAuthConfig, APPLE_ISSUER, APPLE_JWKS_URL } from "./appleAuth.config.js";
@@ -127,7 +127,12 @@ export class AppleIdentityTokenVerifier {
 
     if (opts.expectedNonce !== undefined) {
       const expectedHashedNonce = createHash("sha256").update(opts.expectedNonce).digest("hex");
-      if (payload["nonce"] !== expectedHashedNonce) {
+      const tokenNonce = payload["nonce"];
+      let matches = false;
+      if (typeof tokenNonce === "string" && /^[0-9a-f]{64}$/i.test(tokenNonce)) {
+        matches = timingSafeEqual(Buffer.from(tokenNonce, "hex"), Buffer.from(expectedHashedNonce, "hex"));
+      }
+      if (!matches) {
         throw new AppError({ code: "AUTH_APPLE_NONCE_MISMATCH", message: "Apple identity token nonce does not match.", statusCode: 401 });
       }
     }

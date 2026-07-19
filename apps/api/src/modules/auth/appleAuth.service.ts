@@ -35,7 +35,12 @@ function buildName(name: AppleAuthRequest["name"], email: string): string {
   // Apple only sends the name on the very first authorization. If it's
   // absent (returning user, or user declined to share it), fall back to
   // the local part of the email so `users.name` (NOT NULL) is never empty.
-  return email.split("@")[0] ?? "Apple User";
+  // Sanitized through the same trim+length-cap as the given/family-name
+  // path — the local part is attacker-influenced input (email addresses
+  // aren't restricted to friendly-looking text) and must be bounded the
+  // same way before it's ever stored.
+  const localPart = sanitizeNamePart(email.split("@")[0]);
+  return localPart || "Apple User";
 }
 
 export class AppleAuthService {

@@ -231,6 +231,25 @@ describe("AppleAuthService.signIn", () => {
     );
   });
 
+  it("caps the email-local-part name fallback at 50 characters, same as the given/family name path", async () => {
+    const longLocalPart = "a".repeat(80);
+    const longEmail = `${longLocalPart}@example.com`;
+    const newUser = { id: "user-longname", email: longEmail, name: longLocalPart.slice(0, 50), role: "passenger", status: "active", avatarUrl: null, isVerified: true };
+    const fakes = buildFakes({
+      existingIdentity: null,
+      userByEmail: null,
+      identityClaims: { email: longEmail },
+      exchangedClaims: { email: longEmail },
+      createUserWithIdentityResult: { user: newUser, identity: { id: "identity-longname" } },
+    });
+
+    await fakes.service.signIn({ ...basePayload, role: "passenger" });
+
+    const call = fakes.mockCreateUserWithIdentity.mock.calls[0]?.[0] as { name: string };
+    expect(call.name.length).toBeLessThanOrEqual(50);
+    expect(call.name).toBe(longLocalPart.slice(0, 50));
+  });
+
   it("resolves a duplicate-creation race by falling back to the existing identity", async () => {
     const raceUser = { id: "user-race", email: "newuser@example.com", name: "Race Winner", role: "passenger", status: "active", avatarUrl: null, isVerified: true };
     const fakes = buildFakes({

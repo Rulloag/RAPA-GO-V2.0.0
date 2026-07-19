@@ -121,12 +121,33 @@ describe("AppleIdentityTokenVerifier", () => {
     expect(claims.sub).toBeTruthy();
   });
 
-  it("rejects when the nonce does not match (nonce incorrecto)", async () => {
+  it("rejects when the nonce does not match a malformed (non-hex) claim (nonce incorrecto)", async () => {
     const token = await signAppleToken(
       key.privateKey,
       { alg: "ES256", kid: key.kid },
       defaultClaims({ nonce: "some-hash-that-wont-match" }),
     );
+    const verifier = new AppleIdentityTokenVerifier(fakeFetch(200, jwksResponse(key)));
+
+    await expect(verifier.verify(token, { expectedNonce: "client-generated-nonce-abc123" }))
+      .rejects.toMatchObject({ code: "AUTH_APPLE_NONCE_MISMATCH" });
+  });
+
+  it("rejects when the nonce claim is a well-formed but wrong 64-char hex digest (constant-time comparison path)", async () => {
+    const wrongButWellFormedHash = "a".repeat(64);
+    const token = await signAppleToken(
+      key.privateKey,
+      { alg: "ES256", kid: key.kid },
+      defaultClaims({ nonce: wrongButWellFormedHash }),
+    );
+    const verifier = new AppleIdentityTokenVerifier(fakeFetch(200, jwksResponse(key)));
+
+    await expect(verifier.verify(token, { expectedNonce: "client-generated-nonce-abc123" }))
+      .rejects.toMatchObject({ code: "AUTH_APPLE_NONCE_MISMATCH" });
+  });
+
+  it("rejects a token with no nonce claim at all when the request expects one", async () => {
+    const token = await signAppleToken(key.privateKey, { alg: "ES256", kid: key.kid }, defaultClaims());
     const verifier = new AppleIdentityTokenVerifier(fakeFetch(200, jwksResponse(key)));
 
     await expect(verifier.verify(token, { expectedNonce: "client-generated-nonce-abc123" }))
