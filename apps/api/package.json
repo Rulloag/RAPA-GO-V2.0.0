@@ -4,13 +4,18 @@
   "private": true,
   "description": "RAPA GO — Backend API Fastify + TypeScript",
   "type": "module",
-  "main": "dist/src/server.js",
+  "main": "dist/server.js",
+  "engines": {
+    "node": "22.x",
+    "npm": ">=10"
+  },
   "scripts": {
+    "clean": "node --input-type=module -e \"import { rmSync } from 'node:fs'; rmSync('dist', { recursive: true, force: true });\"",
     "dev": "tsx watch src/server.ts",
-    "build": "tsc",
-    "typecheck": "tsc --noEmit",
+    "build": "npm run clean && tsc -p tsconfig.json",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
     "lint": "eslint src --ext .ts",
-    "start": "node dist/src/server.js",
+    "start": "node dist/server.js",
     "test": "vitest run",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
