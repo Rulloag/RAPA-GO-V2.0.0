@@ -197,6 +197,13 @@
       "when": 1784556000000,
       "tag": "0034_payments_schema_integrity",
       "breakpoints": true
+    },
+    {
+      "idx": 28,
+      "version": "7",
+      "when": 1784585784499,
+      "tag": "0035_passenger_fare_profile",
+      "breakpoints": true
     }
   ]
 }
