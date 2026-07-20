@@ -500,8 +500,8 @@ const formShellStyle: CSSProperties = {
 };
 
 const registerItemStyle = {
-  "--background": "#fffaf0",
-  "--color": "#1f1711",
+  "--background": "#2a2118",
+  "--color": "#ffffff",
   "--border-color": "transparent",
   "--highlight-color-focused": "#c99a32",
   "--highlight-color-valid": "#c99a32",
@@ -516,13 +516,13 @@ const registerItemStyle = {
 } as CSSProperties;
 
 const labelStyle: CSSProperties = {
-  color: "#3a2a1b",
+  color: "#F8D879",
   fontWeight: 900,
 };
 
 const inputStyle = {
-  "--color": "#1f1711",
-  "--placeholder-color": "#8a765e",
+  "--color": "#ffffff",
+  "--placeholder-color": "rgba(255,255,255,0.45)",
   "--placeholder-opacity": "1",
   fontWeight: 850,
 } as CSSProperties;
