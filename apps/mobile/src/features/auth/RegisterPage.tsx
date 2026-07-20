@@ -1060,7 +1060,7 @@ export function RegisterPage(): JSX.Element {
   }
 
   return (
-    <IonPage>
+    <IonPage className="rapago-auth-dark">
       <IonHeader>
         <IonToolbar color="warning">
           <IonTitle style={{ color: "#111", fontWeight: 950 }}>Crear cuenta</IonTitle>

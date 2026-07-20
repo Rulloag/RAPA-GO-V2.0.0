@@ -1206,7 +1206,7 @@ export function LoginPage(): JSX.Element {
   ];
 
   return (
-    <IonPage>
+    <IonPage className="rapago-auth-dark">
       <IonHeader>
         <IonToolbar
           style={

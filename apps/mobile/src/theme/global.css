@@ -4157,3 +4157,32 @@ ion-modal.facebook-step-modal::part(content) {
     padding: 12px 10px 24px !important;
   }
 }
+
+/* ==========================================================================
+   Auth dark forms (login/register): force white text regardless of global
+   light-form overrides defined above.
+   ========================================================================== */
+.rapago-auth-dark ion-item ion-input,
+.rapago-auth-dark ion-item ion-textarea,
+.rapago-auth-dark ion-input,
+.rapago-auth-dark ion-textarea {
+  --color: #ffffff !important;
+  --placeholder-color: rgba(255, 255, 255, 0.45) !important;
+  color: #ffffff !important;
+}
+
+.rapago-auth-dark ion-input::part(native),
+.rapago-auth-dark ion-textarea::part(native) {
+  color: #ffffff !important;
+  -webkit-text-fill-color: #ffffff !important;
+  caret-color: #ffffff !important;
+}
+
+.rapago-auth-dark ion-input::part(native):-webkit-autofill,
+.rapago-auth-dark ion-input::part(native):-webkit-autofill:hover,
+.rapago-auth-dark ion-input::part(native):-webkit-autofill:focus,
+.rapago-auth-dark ion-input::part(native):-webkit-autofill:active {
+  -webkit-text-fill-color: #ffffff !important;
+  -webkit-box-shadow: 0 0 0 1000px transparent inset !important;
+  transition: background-color 9999s ease-in-out 0s;
+}
