@@ -7,20 +7,36 @@ sigue **no puede automatizarse** desde este repositorio.
 
 ## Estado de la integración
 
-**No validada end-to-end todavía.** El proyecto nativo `apps/mobile/ios/`
-fue generado y compila en la parte web/TypeScript (typecheck, tests, build
-del bundle). La resolución de paquetes Swift (`Resolve Package Graph`) sí
-se completó con éxito en la última verificación (los 13 paquetes SPM —
-4 remotos desde GitHub público, el resto locales vía Capacitor —
-resolvieron sin prompts de credenciales). El build (`xcodebuild ... build`,
-sin firma) no pudo completarse porque la máquina donde se preparó este
-cambio no tiene instalado ningún runtime/plataforma de iOS Simulator ni de
-iOS Device en Xcode (`xcrun simctl list runtimes` vacío; xcodebuild reporta
-"iOS 26.5 is not installed. Please download and install the platform from
-Xcode > Settings > Components."). Esto **no** es un defecto del código: es
-un componente de Xcode que debe instalarse (Xcode > Settings > Components)
-en la máquina donde se compile, antes de considerar la integración probada
-con credenciales reales de Apple.
+**Build nativo sin firma validado.** El proyecto nativo `apps/mobile/ios/`
+compila en la parte web/TypeScript (typecheck, tests, build del bundle) y
+también en Xcode: `Resolve Package Graph` completa con éxito (13 paquetes
+SPM — 4 remotos desde GitHub público, el resto locales vía Capacitor) y
+
+```bash
+cd apps/mobile/ios/App
+xcodebuild \
+  -project App.xcodeproj \
+  -scheme App \
+  -sdk iphonesimulator \
+  -configuration Debug \
+  -destination 'generic/platform=iOS Simulator' \
+  CODE_SIGNING_ALLOWED=NO \
+  build
+```
+
+termina con `** BUILD SUCCEEDED **` (validado en Xcode 26.5 con el runtime
+de iOS Simulator instalado). Esto confirma que el proyecto nativo, las
+dependencias SPM y el entitlement de Sign in with Apple están correctamente
+configurados a nivel de compilación.
+
+Lo único que queda pendiente es lo que **no puede automatizarse ni
+verificarse sin una cuenta de Apple Developer real** (ver secciones 1–3
+abajo):
+
+- Configurar el App ID en Apple Developer Portal y habilitar la capability.
+- Seleccionar un Team en Xcode (Signing & Capabilities) para poder firmar.
+- Probar el flujo Sign in with Apple end-to-end con credenciales reales.
+- Validar en un dispositivo físico.
 
 ## 1. Apple Developer — pasos obligatorios
 
