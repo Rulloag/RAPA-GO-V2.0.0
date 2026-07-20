@@ -3932,3 +3932,125 @@ ion-modal.rapago-admin-no-show-modal::part(backdrop) {
    FIN RAPA GO - ADMIN NO SHOW MOBILE POLISH
    ========================================================================== */
 
+
+
+/* RAPA GO: modal Facebook legible */
+ion-modal.facebook-step-modal {
+  --width: min(94vw, 620px);
+  --height: min(92vh, 860px);
+  --max-width: 620px;
+  --max-height: 860px;
+  --border-radius: 28px;
+  --background: #fffaf0 !important;
+}
+
+ion-modal.facebook-step-modal::part(content) {
+  overflow: hidden;
+  border: 1px solid rgba(200, 155, 60, 0.55);
+  border-radius: 28px;
+  background: #fffaf0 !important;
+  color: #1d1d1b !important;
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.42);
+}
+
+ion-modal.facebook-step-modal::part(backdrop) {
+  background: rgba(0, 0, 0, 0.58) !important;
+  opacity: 1 !important;
+}
+
+.facebook-step-page {
+  background: #fffaf0 !important;
+  color: #1d1d1b !important;
+}
+
+.facebook-step-content {
+  --background: #fffaf0 !important;
+  --color: #1d1d1b !important;
+  background: #fffaf0 !important;
+  color: #1d1d1b !important;
+}
+
+.facebook-step-content::part(background) {
+  background: #fffaf0 !important;
+}
+
+.facebook-step-content::part(scroll) {
+  overflow-y: auto;
+  padding-bottom: 26px;
+}
+
+.facebook-step-card {
+  width: 100% !important;
+  max-width: 570px !important;
+  min-height: 0 !important;
+  height: auto !important;
+  margin: 0 auto !important;
+  overflow: visible !important;
+  border: 1px solid rgba(200, 155, 60, 0.45) !important;
+  border-radius: 24px !important;
+  background: #fffaf0 !important;
+  color: #1d1d1b !important;
+  box-shadow: 0 16px 45px rgba(43, 32, 18, 0.18) !important;
+  opacity: 1 !important;
+  visibility: visible !important;
+}
+
+.facebook-step-header {
+  color: #ffffff !important;
+  background: linear-gradient(135deg, #261e19 0%, #9a4023 100%) !important;
+}
+
+.facebook-step-body {
+  min-height: 0 !important;
+  height: auto !important;
+  overflow: visible !important;
+  background: linear-gradient(180deg, #fffaf0 0%, #f7efe1 100%) !important;
+  color: #1d1d1b !important;
+}
+
+.facebook-step-body ion-item {
+  --background: #ffffff !important;
+  --color: #1d1d1b !important;
+  --border-color: transparent !important;
+  background: #ffffff !important;
+  color: #1d1d1b !important;
+  opacity: 1 !important;
+}
+
+.facebook-step-body ion-input,
+.facebook-step-body ion-select,
+.facebook-step-body ion-textarea {
+  --color: #111827 !important;
+  --placeholder-color: #6b7280 !important;
+  --placeholder-opacity: 1 !important;
+  color: #111827 !important;
+  opacity: 1 !important;
+}
+
+.facebook-step-body ion-label {
+  opacity: 1 !important;
+}
+
+@media (max-width: 480px) {
+  ion-modal.facebook-step-modal {
+    --width: calc(100vw - 18px);
+    --height: calc(100vh - 22px);
+    --max-width: none;
+    --max-height: none;
+    --border-radius: 22px;
+  }
+
+  ion-modal.facebook-step-modal::part(content) {
+    border-radius: 22px;
+    background: #fffaf0 !important;
+  }
+
+  .facebook-step-content {
+    --background: #fffaf0 !important;
+    background: #fffaf0 !important;
+  }
+
+  .facebook-step-card {
+    border-radius: 19px !important;
+  }
+}

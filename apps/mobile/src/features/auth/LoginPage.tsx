@@ -1392,6 +1392,7 @@ export function LoginPage(): JSX.Element {
         </form>
 
         <IonModal
+          className="facebook-step-modal"
           isOpen={showFacebookStep}
           onDidDismiss={() => setShowFacebookStep(false)}
           keepContentsMounted={true}
@@ -1404,10 +1405,10 @@ export function LoginPage(): JSX.Element {
             } as CSSProperties
           }
         >
-          <IonPage style={modalPageStyle}>
-            <IonContent className="ion-padding" style={modalPageStyle}>
-              <div style={modalCardStyle}>
-                <div style={modalHeaderStyle}>
+          <IonPage className="facebook-step-page" style={modalPageStyle}>
+            <IonContent className="ion-padding facebook-step-content" style={modalPageStyle}>
+              <div className="facebook-step-card" style={modalCardStyle}>
+                <div className="facebook-step-header" style={modalHeaderStyle}>
                   <div>
                     <div
                       style={{
@@ -1445,7 +1446,7 @@ export function LoginPage(): JSX.Element {
                   </button>
                 </div>
 
-                <div style={modalBodyStyle}>
+                <div className="facebook-step-body" style={modalBodyStyle}>
                   <p
                     style={{
                       margin: "0 0 14px",
