@@ -1128,10 +1128,6 @@ export function LoginPage(): JSX.Element {
     marginTop: "10px",
   } as CSSProperties;
 
-  const modalPageStyle = {
-    "--background": "linear-gradient(180deg, rgba(16,14,12,.86), rgba(16,14,12,.96)), url('/assets/rapa-go-bg.jpg') center / cover no-repeat",
-  } as CSSProperties;
-
   const modalCardStyle: CSSProperties = {
     width: "min(92vw, 560px)",
     margin: "18px auto 24px",
@@ -1395,7 +1391,6 @@ export function LoginPage(): JSX.Element {
           className="facebook-step-modal"
           isOpen={showFacebookStep}
           onDidDismiss={() => setShowFacebookStep(false)}
-          keepContentsMounted={true}
           style={
             {
               "--width": "min(94vw, 620px)",
@@ -1405,8 +1400,7 @@ export function LoginPage(): JSX.Element {
             } as CSSProperties
           }
         >
-          <IonPage className="facebook-step-page" style={modalPageStyle}>
-            <IonContent className="ion-padding facebook-step-content" style={modalPageStyle}>
+          <IonContent className="facebook-step-content" scrollY={true}>
               <div className="facebook-step-card" style={modalCardStyle}>
                 <div className="facebook-step-header" style={modalHeaderStyle}>
                   <div>
@@ -1921,7 +1915,6 @@ export function LoginPage(): JSX.Element {
                 </div>
               </div>
             </IonContent>
-          </IonPage>
         </IonModal>
 
       </IonContent>
