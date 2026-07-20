@@ -1102,8 +1102,8 @@ export function LoginPage(): JSX.Element {
   } as CSSProperties;
 
   const inputTextStyle = {
-    "--color": "#F6F2EC",
-    "--placeholder-color": "rgba(246,242,236,.52)",
+    "--color": "#ffffff",
+    "--placeholder-color": "rgba(255,255,255,0.45)",
     "--placeholder-opacity": "1",
     fontWeight: 850,
   } as CSSProperties;

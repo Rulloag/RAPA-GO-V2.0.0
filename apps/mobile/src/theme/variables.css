@@ -33,13 +33,23 @@
 
 /* Input & textarea text color — globally visible on dark and light backgrounds */
 ion-input {
-  --color: #e8f0f7;
-  --placeholder-color: rgba(232, 240, 247, 0.5);
+  --color: #ffffff;
+  --placeholder-color: rgba(255, 255, 255, 0.45);
 }
 
 ion-textarea {
-  --color: #e8f0f7;
-  --placeholder-color: rgba(232, 240, 247, 0.5);
+  --color: #ffffff;
+  --placeholder-color: rgba(255, 255, 255, 0.45);
+}
+
+/* Override browser autofill styles — Chrome/Edge apply their own bg+text color */
+ion-input input:-webkit-autofill,
+ion-input input:-webkit-autofill:hover,
+ion-input input:-webkit-autofill:focus,
+ion-input input:-webkit-autofill:active {
+  -webkit-text-fill-color: #ffffff !important;
+  -webkit-box-shadow: 0 0 0 1000px transparent inset !important;
+  transition: background-color 9999s ease-in-out 0s;
 }
 
 /* Dark mode support */
