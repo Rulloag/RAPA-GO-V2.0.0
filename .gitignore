@@ -153,3 +153,8 @@ packages/*/dist/
 
 # Capacitor
 .capacitor/
+
+# Builds manuales para Hostinger
+HOSTINGER-FRONTEND-*/
+RAPA-GO-HOSTINGER-*.zip
+RAPA-GO-FRONTEND*.zip
