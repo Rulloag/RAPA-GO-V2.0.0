@@ -16,6 +16,11 @@ import {
 import { useHistory } from "react-router-dom";
 import { loginRequestSchema } from "@rapa-go/shared";
 import { useAuth } from "./useAuth.js";
+import { AppleSignInButton } from "./AppleSignInButton.js";
+import { AppleRoleSelectionModal } from "./AppleRoleSelectionModal.js";
+import { useAppleSignIn } from "./useAppleSignIn.js";
+import type { AppleSignInOutcome } from "./useAppleSignIn.js";
+import type { PublicRole } from "./roles.js";
 import { ROUTES } from "../../navigation/routes.js";
 import type { UserRole } from "@rapa-go/shared";
 
@@ -30,12 +35,54 @@ const ROLE_HOME: Record<UserRole, string> = {
 export function LoginPage(): JSX.Element {
   const history = useHistory();
   const { login } = useAuth();
+  const apple = useAppleSignIn();
 
   const [email, setEmail]       = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading]   = useState(false);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [serverError, setServerError] = useState("");
+
+  function handleAppleOutcome(outcome: AppleSignInOutcome): void {
+    switch (outcome.kind) {
+      case "success": {
+        const home = ROLE_HOME[outcome.role] ?? ROUTES.WELCOME;
+        history.replace(home);
+        return;
+      }
+      case "cancelled":
+        // Voluntary cancellation is not an error — no message shown.
+        setServerError("");
+        return;
+      case "role_required":
+        // Modal opens via apple.awaitingRole; nothing else to do here.
+        setServerError("");
+        return;
+      case "linking_required":
+        setServerError("Ya existe una cuenta con este correo. Inicia sesión con tu método habitual para vincular Apple.");
+        return;
+      case "suspended":
+        setServerError("Tu cuenta está suspendida. Contacta a soporte.");
+        return;
+      case "invalid_credential":
+        setServerError("No se pudo verificar tu identidad de Apple. Inténtalo de nuevo.");
+        return;
+      case "network_error":
+        setServerError("Error de conexión. Verifica tu red e inténtalo de nuevo.");
+        return;
+      case "unavailable":
+        // Button is hidden when unavailable — this shouldn't be reachable from the UI.
+        return;
+      case "internal_error":
+        setServerError("No se pudo iniciar sesión con Apple. Inténtalo de nuevo.");
+        return;
+    }
+  }
+
+  async function handleAppleRoleSubmit(role: PublicRole): Promise<void> {
+    const outcome = await apple.submitRole(role);
+    handleAppleOutcome(outcome);
+  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -136,6 +183,13 @@ export function LoginPage(): JSX.Element {
             {loading ? <IonSpinner name="crescent" /> : "Iniciar sesión"}
           </IonButton>
 
+          <AppleSignInButton
+            isAvailable={apple.isAvailable}
+            loading={apple.loading}
+            disabled={loading}
+            onPress={() => { void apple.signIn().then(handleAppleOutcome); }}
+          />
+
           <IonButton
             expand="block"
             fill="clear"
@@ -155,6 +209,13 @@ export function LoginPage(): JSX.Element {
           </IonButton>
         </form>
       </IonContent>
+
+      <AppleRoleSelectionModal
+        isOpen={apple.awaitingRole}
+        loading={apple.loading}
+        onCancel={apple.cancelRoleSelection}
+        onConfirm={(role) => { void handleAppleRoleSubmit(role); }}
+      />
     </IonPage>
   );
 }

@@ -23,6 +23,7 @@ import { useAuth } from "./useAuth.js";
 import { ROUTES } from "../../navigation/routes.js";
 import { legalService } from "../../features/legal/legal.service.js";
 import { referralsService } from "../../features/referrals/referrals.service.js";
+import { ROLE_LABELS, type PublicRole } from "./roles.js";
 import type { UserRole } from "@rapa-go/shared";
 
 const ROLE_HOME: Record<UserRole, string> = {
@@ -32,15 +33,6 @@ const ROLE_HOME: Record<UserRole, string> = {
   rental_operator: ROUTES.RENTAL.HOME,
   admin:           ROUTES.ADMIN.HOME,
 };
-
-const ROLE_LABELS: Record<Exclude<UserRole, "admin">, string> = {
-  passenger:       "Pasajero",
-  driver:          "Conductor",
-  guide:           "Guía turístico",
-  rental_operator: "Arriendo de vehículos",
-};
-
-type PublicRole = Exclude<UserRole, "admin">;
 
 export function RegisterPage(): JSX.Element {
   const history = useHistory();

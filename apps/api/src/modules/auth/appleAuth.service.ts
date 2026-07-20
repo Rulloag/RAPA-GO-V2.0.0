@@ -87,17 +87,77 @@ export class AppleAuthService {
   }
 
   async signIn(payload: AppleAuthRequest): Promise<AppleAuthResult> {
-    // 1. Verify the identityToken presented by the client.
+    // 1. Verify the identityToken presented by the client. This alone is
+    //    enough to know the Apple sub and (usually) email — no need to
+    //    touch Apple's token endpoint yet.
     const identityClaims = await this.identityTokenVerifier.verify(payload.identityToken, {
       ...(payload.nonce !== undefined ? { expectedNonce: payload.nonce } : {}),
     });
 
-    // 2. Exchange the authorizationCode with Apple, using the exact client_id
-    //    the identityToken was issued for.
+    const existing = await this.identitiesRepository.findByProviderAndSub(PROVIDER, identityClaims.sub);
+    if (existing) {
+      return this.signInExisting(payload, identityClaims, existing.userId, existing.id);
+    }
+
+    // New-account preconditions (email present, not already taken, role
+    // supplied and not admin) are checked BEFORE exchanging authorizationCode.
+    // Apple authorization codes are single-use: if we consumed it here and
+    // then found role was missing, the client's natural retry (same code,
+    // now with role attached) would fail at Apple with invalid_grant,
+    // permanently breaking the "pick a role and retry" flow. Deferring the
+    // exchange until we know this attempt can actually complete keeps that
+    // retry — and the authorizationCode — valid.
+    const precondition = this.checkNewAccountPreconditions(payload, identityClaims);
+    if (precondition) return precondition;
+
+    return this.exchangeAndCompleteNewAccount(payload, identityClaims);
+  }
+
+  /**
+   * Validates everything about a new-account request that doesn't require
+   * calling Apple's token endpoint. Returns an error result if any check
+   * fails, or `null` if the request may proceed to the (code-consuming)
+   * exchange step.
+   */
+  private checkNewAccountPreconditions(
+    payload: AppleAuthRequest,
+    identityClaims: Awaited<ReturnType<AppleIdentityTokenVerifier["verify"]>>,
+  ): AppleAuthResult | null {
+    const email = identityClaims.email?.toLowerCase().trim();
+    if (!email) {
+      return {
+        ok: false,
+        code: "AUTH_APPLE_EMAIL_MISSING",
+        message: "Apple did not provide an email for this account.",
+        statusCode: 400,
+      };
+    }
+
+    if (!payload.role) {
+      return {
+        ok: false,
+        code: "VALIDATION_ERROR",
+        message: "role is required to create a new account.",
+        statusCode: 400,
+      };
+    }
+    if (payload.role === "admin") {
+      return { ok: false, code: "AUTH_FORBIDDEN", message: "Admin accounts cannot be registered publicly.", statusCode: 403 };
+    }
+
+    return null;
+  }
+
+  private async exchangeIdentity(
+    payload: AppleAuthRequest,
+    identityClaims: Awaited<ReturnType<AppleIdentityTokenVerifier["verify"]>>,
+  ): Promise<{ ok: true; encryptedRefreshToken: string | undefined } | { ok: false; result: AppleAuthResult }> {
+    // Exchange the authorizationCode with Apple, using the exact client_id
+    // the identityToken was issued for.
     const exchange = await this.tokenExchangeClient.exchange(payload.authorizationCode, identityClaims.aud);
 
-    // 3. The exchanged id_token must describe the same Apple account as the
-    //    identityToken the client presented — never trust the two independently.
+    // The exchanged id_token must describe the same Apple account as the
+    // identityToken the client presented — never trust the two independently.
     const exchangedClaims = await this.identityTokenVerifier.verify(exchange.idToken, {});
     if (exchangedClaims.sub !== identityClaims.sub) {
       this.auditService.recordSafe({
@@ -107,9 +167,12 @@ export class AppleAuthService {
       });
       return {
         ok: false,
-        code: "AUTH_APPLE_TOKEN_INCOHERENT",
-        message: "Apple's token exchange response does not match the presented identity token.",
-        statusCode: 401,
+        result: {
+          ok: false,
+          code: "AUTH_APPLE_TOKEN_INCOHERENT",
+          message: "Apple's token exchange response does not match the presented identity token.",
+          statusCode: 401,
+        },
       };
     }
 
@@ -119,18 +182,14 @@ export class AppleAuthService {
       ? OAuthTokenCrypto.encrypt(exchange.refreshToken)
       : undefined;
 
-    const existing = await this.identitiesRepository.findByProviderAndSub(PROVIDER, identityClaims.sub);
-    if (existing) {
-      return this.signInExisting(existing.userId, existing.id, encryptedRefreshToken);
-    }
-
-    return this.signInNew(payload, identityClaims, encryptedRefreshToken);
+    return { ok: true, encryptedRefreshToken };
   }
 
   private async signInExisting(
+    payload: AppleAuthRequest,
+    identityClaims: Awaited<ReturnType<AppleIdentityTokenVerifier["verify"]>>,
     userId: string,
     identityId: string,
-    encryptedRefreshToken: string | undefined,
   ): Promise<AppleAuthResult> {
     const user = await this.usersRepository.findById(userId);
     if (!user) {
@@ -147,6 +206,24 @@ export class AppleAuthService {
       return { ok: false, code: "AUTH_ACCOUNT_SUSPENDED", message: "Account is suspended.", statusCode: 403 };
     }
 
+    const exchanged = await this.exchangeIdentity(payload, identityClaims);
+    if (!exchanged.ok) return exchanged.result;
+
+    return this.completeExistingUserSignIn(user, identityId, exchanged.encryptedRefreshToken);
+  }
+
+  /**
+   * Final step shared by both the "identity already existed" path and the
+   * new-account race-loss fallback below — issues the Rapa Go session
+   * without ever exchanging authorizationCode a second time within the same
+   * request (the race fallback already has its encryptedRefreshToken from
+   * the exchange exchangeAndCompleteNewAccount performed once).
+   */
+  private async completeExistingUserSignIn(
+    user: User,
+    identityId: string,
+    encryptedRefreshToken: string | undefined,
+  ): Promise<AppleAuthResult> {
     if (encryptedRefreshToken !== undefined) {
       await this.identitiesRepository.updateEncryptedRefreshToken(identityId, encryptedRefreshToken);
     }
@@ -172,25 +249,24 @@ export class AppleAuthService {
     };
   }
 
-  private async signInNew(
+  private async exchangeAndCompleteNewAccount(
     payload: AppleAuthRequest,
     identityClaims: Awaited<ReturnType<AppleIdentityTokenVerifier["verify"]>>,
-    encryptedRefreshToken: string | undefined,
   ): Promise<AppleAuthResult> {
     const email = identityClaims.email?.toLowerCase().trim();
-    if (!email) {
-      return {
-        ok: false,
-        code: "AUTH_APPLE_EMAIL_MISSING",
-        message: "Apple did not provide an email for this account.",
-        statusCode: 400,
-      };
+    // Preconditions already guarantee email and role are present — this is
+    // unreachable in practice, kept only to satisfy the type checker.
+    if (!email || !payload.role || payload.role === "admin") {
+      throw AppError.internal("exchangeAndCompleteNewAccount called without validated preconditions.");
     }
 
     // Never auto-link on email match — a matching email only means "someone
     // registered this address before", not "this is the same person". The
     // account owner must link explicitly, authenticated as themselves
-    // (a later PR); here we only report the conflict.
+    // (a later PR); here we only report the conflict. Checked again here
+    // (not just in checkNewAccountPreconditions) to close the window
+    // between that check and this one — still before the code-consuming
+    // exchange, so a real conflict never burns the authorizationCode either.
     const emailOwner = await this.usersRepository.findByEmail(email);
     if (emailOwner) {
       this.auditService.recordSafe({
@@ -207,17 +283,8 @@ export class AppleAuthService {
       };
     }
 
-    if (!payload.role) {
-      return {
-        ok: false,
-        code: "VALIDATION_ERROR",
-        message: "role is required to create a new account.",
-        statusCode: 400,
-      };
-    }
-    if (payload.role === "admin") {
-      return { ok: false, code: "AUTH_FORBIDDEN", message: "Admin accounts cannot be registered publicly.", statusCode: 403 };
-    }
+    const exchanged = await this.exchangeIdentity(payload, identityClaims);
+    if (!exchanged.ok) return exchanged.result;
 
     const name = buildName(payload.name, email);
 
@@ -234,17 +301,27 @@ export class AppleAuthService {
       providerEmail:           email,
       providerEmailVerified:   identityClaims.emailVerified,
       providerIsPrivateEmail:  identityClaims.isPrivateEmail,
-      encryptedRefreshToken,
+      encryptedRefreshToken: exchanged.encryptedRefreshToken,
     });
 
     if (!created) {
       // Unique(provider, provider_user_id) violation: a concurrent request
       // for the exact same Apple account won the race and created it first.
+      // We've already exchanged the authorizationCode once above (as part of
+      // this same request) — completeExistingUserSignIn reuses that result
+      // rather than exchanging (the now-single-use) code a second time.
       const identity = await this.identitiesRepository.findByProviderAndSub(PROVIDER, identityClaims.sub);
       if (!identity) {
         throw AppError.internal("OAuth identity creation race could not be resolved.");
       }
-      return this.signInExisting(identity.userId, identity.id, encryptedRefreshToken);
+      const winnerUser = await this.usersRepository.findById(identity.userId);
+      if (!winnerUser) {
+        return { ok: false, code: "UNAUTHORIZED", message: "User not found.", statusCode: 401 };
+      }
+      if (winnerUser.status === "suspended" || winnerUser.status === "banned") {
+        return { ok: false, code: "AUTH_ACCOUNT_SUSPENDED", message: "Account is suspended.", statusCode: 403 };
+      }
+      return this.completeExistingUserSignIn(winnerUser, identity.id, exchanged.encryptedRefreshToken);
     }
 
     const session = await this.issueSession(created.user);
