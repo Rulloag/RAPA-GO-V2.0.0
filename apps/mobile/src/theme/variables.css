@@ -42,32 +42,35 @@ ion-textarea {
   --placeholder-color: rgba(255, 255, 255, 0.45);
 }
 
-/* Nativo: apunta al <input> real dentro del shadow DOM de Ionic */
-ion-input input,
-ion-textarea textarea {
+/*
+ * ::part(native) es la única forma correcta de cruzar el Shadow DOM de Ionic.
+ * Apunta directamente al <input> nativo dentro del componente.
+ */
+ion-input::part(native) {
   color: #ffffff !important;
-  caret-color: #ffffff !important;
+  caret-color: #ffffff;
+  -webkit-text-fill-color: #ffffff !important;
+}
+
+ion-textarea::part(native) {
+  color: #ffffff !important;
+  caret-color: #ffffff;
+  -webkit-text-fill-color: #ffffff !important;
 }
 
 /* Autofill de Chrome/Edge — sobrescribe el color que pone el browser */
-ion-input input:-webkit-autofill,
-ion-input input:-webkit-autofill:hover,
-ion-input input:-webkit-autofill:focus,
-ion-input input:-webkit-autofill:active,
-input:-webkit-autofill,
-input:-webkit-autofill:hover,
-input:-webkit-autofill:focus,
-input:-webkit-autofill:active {
+ion-input::part(native):-webkit-autofill,
+ion-input::part(native):-webkit-autofill:hover,
+ion-input::part(native):-webkit-autofill:focus,
+ion-input::part(native):-webkit-autofill:active {
   -webkit-text-fill-color: #ffffff !important;
   -webkit-box-shadow: 0 0 0 1000px transparent inset !important;
   transition: background-color 9999s ease-in-out 0s;
 }
 
 /* Selección de texto */
-ion-input input::selection,
-ion-textarea textarea::selection {
+ion-input::part(native)::selection {
   background: rgba(255, 255, 255, 0.25);
-  color: #ffffff;
 }
 
 /* Dark mode support */
