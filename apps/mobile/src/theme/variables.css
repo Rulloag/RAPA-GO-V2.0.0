@@ -26,6 +26,20 @@
   /* Font */
   --ion-font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
     Helvetica, Arial, sans-serif;
+
+  /* Input text — light blue-white that reads well on any background */
+  --ion-input-color: #e8f0f7;
+}
+
+/* Input & textarea text color — globally visible on dark and light backgrounds */
+ion-input {
+  --color: #e8f0f7;
+  --placeholder-color: rgba(232, 240, 247, 0.5);
+}
+
+ion-textarea {
+  --color: #e8f0f7;
+  --placeholder-color: rgba(232, 240, 247, 0.5);
 }
 
 /* Dark mode support */
