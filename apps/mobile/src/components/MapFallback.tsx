@@ -68,8 +68,19 @@ const GOOGLE_MAPS_SCRIPT_ID = "rapa-go-google-maps-script";
 const GOOGLE_MAPS_CALLBACK_NAME = "initRapaGoGoogleMap";
 
 function getGoogleMapsApiKey(): string {
-  const envKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY as string | undefined;
-  return (envKey || "AIzaSyDZvqVcZBGFPbdHYPM4sYZuIvejDm1ZaOc").trim();
+  const envKey = String(
+    import.meta.env.VITE_GOOGLE_MAPS_API_KEY ?? "",
+  ).trim();
+
+  if (
+    !envKey ||
+    envKey === "REDACTED_GOOGLE_MAPS_API_KEY" ||
+    envKey.startsWith("<")
+  ) {
+    return "";
+  }
+
+  return envKey;
 }
 
 function isGoogleMapsReady(): boolean {

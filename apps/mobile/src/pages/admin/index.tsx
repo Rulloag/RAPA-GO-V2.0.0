@@ -98,6 +98,7 @@ import { RAPAGO_CONTACT, WA_MESSAGES } from "@rapa-go/shared";
 import { WhatsAppButton } from "../../components/WhatsAppButton";
 import { loadRapaGoGoogleMaps } from "../../components/MapFallback";
 import { AccountDeletionAdminPanel } from "../../components/accountDeletion/AccountDeletionAdminPanel.js";
+import { getApiOrigin as getConfiguredApiOrigin } from "../../services/api/apiBaseUrl.js";
 
 const ADMIN_DRIVERS_ROUTE = "/admin/drivers";
 const ADMIN_DRIVERS_REFRESH_EVENT = "rapago:admin-refresh-drivers";
@@ -1011,16 +1012,7 @@ type BackendAdminPolicyCharge = {
 };
 
 function getAdminPolicyChargeApiBaseUrl(): string {
-  const env =
-    (import.meta as unknown as {
-      env?: Record<string, string | undefined>;
-    }).env ?? {};
-
-  return String(
-    env.VITE_API_URL ??
-      env.VITE_API_BASE_URL ??
-      "http://localhost:3000",
-  ).replace(/\/+$/, "");
+  return getConfiguredApiOrigin();
 }
 
 function adminPolicyChargeIsUuid(value: unknown): boolean {
@@ -13144,7 +13136,7 @@ const DEFAULT_ADMIN_FARE_ROWS: AdminFareRow[] = [
 ];
 
 function getApiBaseUrl(): string {
-  return (import.meta.env["VITE_API_BASE_URL"] as string | undefined) ?? "/api";
+  return getConfiguredApiOrigin();
 }
 
 function buildAdminApiUrl(path: string): string {

@@ -137,3 +137,13 @@ cp .env.example .env
 # Editar .env con DATABASE_URL y JWT_SECRET reales
 PORT=3099 npx tsx --env-file=.env src/server.ts
 ```
+
+
+## Reglas de producción del Bloque 08-A1
+
+- `PAYMENT_WEBHOOK_BASE_URL` debe ser la URL HTTPS pública de la API.
+- Las claves de Google Maps no deben quedar incrustadas en TypeScript ni en archivos de ejemplo.
+- Android/iOS deben usar `VITE_API_BASE_URL` con una URL absoluta accesible desde el teléfono.
+- No se permite usar `localhost` como respaldo dentro de una build móvil.
+- La migración `0034_payments_schema_integrity.sql` repara instalaciones existentes.
+- La migración `0031_cash_overpayment_benefits.sql` contiene la base idempotente necesaria para una base nueva.

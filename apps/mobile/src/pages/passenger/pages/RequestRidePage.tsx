@@ -47,6 +47,7 @@ import {
 } from "../../../features/rides/rides.service.js";
 import { walletService } from "../../../features/wallet/wallet.service.js";
 import { RIDE_STATUS_LABEL } from "../shared.js";
+import { getApiOrigin as getConfiguredApiOrigin } from "../../../services/api/apiBaseUrl.js";
 
 
 const LOCAL_PASSENGER_RIDES_KEY = "rapago_local_passenger_rides";
@@ -1446,12 +1447,7 @@ function saveLocalPassengerRide(input: {
 }
 
 function getRapaGoApiBaseUrl(): string {
-  const envValue =
-    typeof import.meta !== "undefined"
-      ? String(import.meta.env?.VITE_API_URL ?? "")
-      : "";
-
-  return (envValue || "http://localhost:3000").replace(/\/+$/, "");
+  return getConfiguredApiOrigin();
 }
 
 function getNestedUnknown(source: unknown, path: string[]): unknown {

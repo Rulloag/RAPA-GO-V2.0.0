@@ -67,6 +67,7 @@ import {
 import { WhatsAppButton } from "../../components/WhatsAppButton";
 import { DriverRestScheduleCard } from "./components/DriverRestScheduleCard";
 import { AccountDeletionCard } from "../../components/accountDeletion/AccountDeletionCard.js";
+import { getApiOrigin as getConfiguredApiOrigin } from "../../services/api/apiBaseUrl.js";
 
 type AvailableRideData =
   import("../../features/rides/rides.service").AvailableRideData;
@@ -9709,16 +9710,7 @@ function getDriverRidePassengerPhoneForNoShow(ride: Partial<DriverRideData> & Re
 
 
 function getDriverPolicyChargeApiBaseUrl(): string {
-  const env =
-    (import.meta as unknown as {
-      env?: Record<string, string | undefined>;
-    }).env ?? {};
-
-  return String(
-    env.VITE_API_URL ??
-      env.VITE_API_BASE_URL ??
-      "http://localhost:3000",
-  ).replace(/\/+$/, "");
+  return getConfiguredApiOrigin();
 }
 
 async function declareDriverNoShowInBackend(

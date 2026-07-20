@@ -1,4 +1,5 @@
 import type { ApiResponse, RequestOptions } from "./apiTypes.js";
+import { getApiBaseUrl } from "./apiBaseUrl.js";
 import {
   DEFAULT_TIMEOUT_MS,
   networkError,
@@ -6,8 +7,6 @@ import {
   invalidResponseError,
   parseErrorBody,
 } from "./apiErrors.js";
-
-const BASE_URL = (import.meta.env["VITE_API_BASE_URL"] as string | undefined) ?? "";
 
 async function request<T>(
   method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE",
@@ -17,12 +16,8 @@ async function request<T>(
 ): Promise<ApiResponse<T>> {
   const { token, headers: extraHeaders = {}, timeoutMs = DEFAULT_TIMEOUT_MS } = options;
 
-  let cleanPath = path;
-  if (BASE_URL.endsWith("/api") && path.startsWith("/api")) {
-    cleanPath = path.substring(4);
-  }
-
-  const url = `${BASE_URL}${cleanPath}`;
+  const baseUrl = getApiBaseUrl();
+  const url = `${baseUrl}${path.startsWith("/") ? path : `/${path}`}`;
 
   const headers: Record<string, string> = {
     "Content-Type": "application/json",

@@ -19,6 +19,7 @@ import { walletService } from "../../../features/wallet/wallet.service.js";
 import { ROUTES } from "../../../navigation/routes.js";
 import { RAPAGO_CONTACT, WA_MESSAGES } from "@rapa-go/shared";
 import { RIDE_STATUS_LABEL, RIDE_STATUS_COLOR } from "../shared.js";
+import { getApiOrigin as getConfiguredApiOrigin } from "../../../services/api/apiBaseUrl.js";
 
 const PAGE_SIZE = 20;
 const RAPAGO_SUPPORT_WHATSAPP_PHONE = "56947964171";
@@ -105,10 +106,7 @@ function clearPendingFastSearchPayment(): void {
 }
 
 function getTripsApiBaseUrl(): string {
-  const env = import.meta.env as Record<string, string | undefined>;
-  return String(env.VITE_API_URL ?? env.VITE_API_BASE_URL ?? "http://localhost:3000")
-    .replace(/\/api\/?$/i, "")
-    .replace(/\/+$/, "");
+  return getConfiguredApiOrigin();
 }
 
 function unwrapTripsApiPayload(value: unknown): Record<string, unknown> {
@@ -5375,7 +5373,7 @@ type RideLiveResponse = {
 };
 
 function getApiBaseUrl(): string {
-  return (import.meta.env["VITE_API_BASE_URL"] as string | undefined) ?? "/api";
+  return getConfiguredApiOrigin();
 }
 
 function buildApiUrl(path: string): string {
