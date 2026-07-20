@@ -247,7 +247,7 @@ const RAPAGO_FAST_SEARCH_EVENT = "rapago:passenger-fast-search-updated";
 const RAPAGO_FAST_SEARCH_FEE_CLP = 800;
 const RAPAGO_FAST_SEARCH_PROMPT_AFTER_MS = 2 * 60 * 1000;
 // Política comercial RAPA GO:
-// - Cancelación gratuita durante los primeros 2 minutos desde la aceptación/asignación.
+// - Cancelación gratuita durante los primeros 2 minutos desde la aceptación confirmada del conductor.
 // - Desde el minuto 3: 30% de la tarifa aplicable, con tope de $3.000.
 // - No show después de 5 minutos: 50% de la tarifa aplicable, con tope de $5.000.
 // - Viajes programados: cancelación gratuita hasta 30 minutos antes; dentro de los últimos 30 minutos,
@@ -1636,7 +1636,7 @@ function getPassengerCancellationPolicyForRide(ride: RideRequestData): Passenger
       feeCapClp: RAPAGO_NO_SHOW_FEE_CAP_CLP,
       title: "No presentación por revisar",
       message: `El conductor llegó al punto y esperó 5 minutos. El cargo referencial es ${formatClp(fee)}.`,
-      detail: `No show: ${RAPAGO_NO_SHOW_PERCENT}% de la tarifa aplicable, con tope de ${formatClp(RAPAGO_NO_SHOW_FEE_CAP_CLP)}. El administrador debe validar la llegada, la espera y la evidencia antes de cobrar.`,
+      detail: `No show: ${RAPAGO_NO_SHOW_PERCENT}% de la tarifa aplicable, con tope de ${formatClp(RAPAGO_NO_SHOW_FEE_CAP_CLP)}. El administrador debe validar la llegada, la espera y la evidencia antes de cobrar. Una vez recaudado, el cargo se distribuye 50% al conductor y 50% a Rapa Go.`,
       acceptedElapsedMs,
       arrivedElapsedMs,
       requiresAdminReview: true,
@@ -1704,7 +1704,7 @@ function getPassengerCancellationPolicyForRide(ride: RideRequestData): Passenger
       feePercent: 0,
       feeCapClp: 0,
       title: "Cancelación gratuita",
-      message: "Puedes cancelar gratuitamente durante los primeros 2 minutos desde la aceptación o asignación del conductor.",
+      message: "Puedes cancelar gratuitamente durante los primeros 2 minutos desde que el conductor acepta la solicitud y la aplicación confirma su asignación.",
       detail: "No corresponde cargo por cancelación.",
       acceptedElapsedMs,
       arrivedElapsedMs,

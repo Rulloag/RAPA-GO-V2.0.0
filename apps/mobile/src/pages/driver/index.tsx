@@ -82,6 +82,8 @@ const RAPAGO_CONNECTIVITY_EVENT = "rapago:connectivity-status-changed";
 const RAPAGO_DRIVER_NO_SHOW_AFTER_ARRIVAL_MS = 5 * 60 * 1000;
 const RAPAGO_DRIVER_NO_SHOW_PERCENT = 50;
 const RAPAGO_DRIVER_NO_SHOW_CAP_CLP = 5000;
+const RAPAGO_DRIVER_NO_SHOW_DRIVER_SHARE_PERCENT = 50;
+const RAPAGO_DRIVER_NO_SHOW_PLATFORM_SHARE_PERCENT = 50;
 const RAPAGO_PASSENGER_PENDING_CHARGES_KEY_DRIVER = "rapago_passenger_pending_charges_v1";
 const RAPAGO_PASSENGER_PENDING_CHARGE_EVENT_DRIVER = "rapago:passenger-pending-charge-updated";
 const RAPAGO_SUPPORT_WHATSAPP_PHONE_DRIVER = "56947964171";
@@ -9406,6 +9408,21 @@ function getDriverRideNoShowFeeClp(ride: Partial<DriverRideData> & Record<string
   );
 }
 
+function getDriverNoShowDistribution(amountClp: number): {
+  driverShareClp: number;
+  platformShareClp: number;
+} {
+  const total = Math.max(0, Math.round(Number(amountClp) || 0));
+  const driverShareClp = Math.floor(
+    total * (RAPAGO_DRIVER_NO_SHOW_DRIVER_SHARE_PERCENT / 100),
+  );
+
+  return {
+    driverShareClp,
+    platformShareClp: total - driverShareClp,
+  };
+}
+
 function getDriverRideArrivalTimestampMsForNoShow(ride: Partial<DriverRideData> & Record<string, unknown>): number | null {
   const candidates = [ride.arrivedAt, ride.driverArrivedAt, ride.driverReachedPickupAt, ride.updatedAt];
   for (const candidate of candidates) {
@@ -9950,6 +9967,10 @@ function notifyPassengerNoShowByAppAndWhatsapp(ride: DriverRideData, feeClp: num
     originalNoShowServiceAmountClp: applicableFareClp,
     feePercent: RAPAGO_DRIVER_NO_SHOW_PERCENT,
     feeCapClp: RAPAGO_DRIVER_NO_SHOW_CAP_CLP,
+    driverSharePercent: RAPAGO_DRIVER_NO_SHOW_DRIVER_SHARE_PERCENT,
+    platformSharePercent: RAPAGO_DRIVER_NO_SHOW_PLATFORM_SHARE_PERCENT,
+    driverShareClp: getDriverNoShowDistribution(amountClp).driverShareClp,
+    platformShareClp: getDriverNoShowDistribution(amountClp).platformShareClp,
     type: "no_show",
     paymentMethod:
       String(record.paymentMethod ?? record.paymentType ?? "").trim() ||
@@ -10120,6 +10141,10 @@ function saveDriverNoShowChargeForPassenger(
     originalNoShowServiceAmountClp: applicableFareClp,
     feePercent: RAPAGO_DRIVER_NO_SHOW_PERCENT,
     feeCapClp: RAPAGO_DRIVER_NO_SHOW_CAP_CLP,
+    driverSharePercent: RAPAGO_DRIVER_NO_SHOW_DRIVER_SHARE_PERCENT,
+    platformSharePercent: RAPAGO_DRIVER_NO_SHOW_PLATFORM_SHARE_PERCENT,
+    driverShareClp: getDriverNoShowDistribution(feeClp).driverShareClp,
+    platformShareClp: getDriverNoShowDistribution(feeClp).platformShareClp,
     type: "no_show",
     paymentMethod: getRidePaymentMethodLabel(String(record.notes ?? "")),
     status: "pending_admin_review",
@@ -10132,7 +10157,9 @@ function saveDriverNoShowChargeForPassenger(
       `No show informado por conductor después de 5 minutos de espera. ` +
       `Cargo referencial: ${RAPAGO_DRIVER_NO_SHOW_PERCENT}% de la tarifa aplicable, ` +
       `con tope de ${formatClp(RAPAGO_DRIVER_NO_SHOW_CAP_CLP)}. ` +
-      `Monto por revisar: ${formatClp(feeClp)}. El administrador debe aprobar o rechazar.`,
+      `Monto por revisar: ${formatClp(feeClp)}. El administrador debe aprobar o rechazar. ` +
+      `Si se recauda, ${RAPAGO_DRIVER_NO_SHOW_DRIVER_SHARE_PERCENT}% corresponde al conductor y ` +
+      `${RAPAGO_DRIVER_NO_SHOW_PLATFORM_SHARE_PERCENT}% a Rapa Go.`,
     driverId: String((user as Record<string, unknown> | null)?.id ?? record.driverId ?? record.driverUserId ?? "").trim() || null,
     driverEmail: String((user as Record<string, unknown> | null)?.email ?? record.driverEmail ?? "").trim() || null,
     driverName: String((user as Record<string, unknown> | null)?.name ?? record.driverName ?? "").trim() || null,
@@ -10178,7 +10205,7 @@ function markPassengerRideNoShowCancelledFromDriver(
     passengerCancellationFeeClp: Number(charge.amountClp ?? 0),
     passengerCancellationPolicyType: "no_show",
     passengerCancellationPolicyText:
-      "No show: 50% de la tarifa aplicable, con tope de $5.000, después de 5 minutos de espera. Requiere aprobación administrativa.",
+      "No show: 50% de la tarifa aplicable, con tope de $5.000, después de 5 minutos de espera. Requiere aprobación administrativa y, al recaudarse, se distribuye 50% al conductor y 50% a Rapa Go.",
     paymentPendingClp: Number(charge.amountClp ?? 0),
     passengerPendingChargeNextRide: false,
     passengerPendingChargeNotice:
@@ -13794,9 +13821,9 @@ La reserva fue retirada. No continúes hacia la recogida.`,
         ),
       );
 
-      
 
-      
+
+
 
 
       if (session?.accessToken) {
@@ -15335,7 +15362,7 @@ La reserva fue retirada. No continúes hacia la recogida.`,
                     }
                     onClick={() => void handleDriverNoShowRide(ride)}
                   >
-                    {driverNoShowState.allowed ? `No show · Total ${formatClp(driverNoShowState.feeClp)}` : `Espera ${formatDriverNoShowRemaining(driverNoShowState.remainingMs)}`}
+                    {driverNoShowState.allowed ? `No show · Cargo ${formatClp(driverNoShowState.feeClp)}` : `Espera ${formatDriverNoShowRemaining(driverNoShowState.remainingMs)}`}
                   </IonButton>
 
                   <IonButton
@@ -16626,9 +16653,9 @@ function DriverMyRidesPage(): JSX.Element {
       }
 
 
-      
 
-      
+
+
 
       setRides((prev) => [
         noShowClosedRide,
@@ -16975,7 +17002,7 @@ function DriverMyRidesPage(): JSX.Element {
                       disabled={actionLoading === activeRide.id || !getDriverNoShowState(activeRide as DriverRideData & Record<string, unknown>).allowed}
                       onClick={() => void handleDriverNoShowRide(activeRide)}
                     >
-                      {actionLoading === activeRide.id ? <IonSpinner name="dots" /> : getDriverNoShowState(activeRide as DriverRideData & Record<string, unknown>).allowed ? `No show · Total ${formatClp(getDriverNoShowState(activeRide as DriverRideData & Record<string, unknown>).feeClp)}` : `Espera ${formatDriverNoShowRemaining(getDriverNoShowState(activeRide as DriverRideData & Record<string, unknown>).remainingMs)}`}
+                      {actionLoading === activeRide.id ? <IonSpinner name="dots" /> : getDriverNoShowState(activeRide as DriverRideData & Record<string, unknown>).allowed ? `No show · Cargo ${formatClp(getDriverNoShowState(activeRide as DriverRideData & Record<string, unknown>).feeClp)}` : `Espera ${formatDriverNoShowRemaining(getDriverNoShowState(activeRide as DriverRideData & Record<string, unknown>).remainingMs)}`}
                     </IonButton>
                   </>
                 )}

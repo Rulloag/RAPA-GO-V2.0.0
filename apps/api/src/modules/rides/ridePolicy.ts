@@ -19,6 +19,8 @@ export const LATE_CANCELLATION_PERCENT = 30;
 export const LATE_CANCELLATION_CAP_CLP = 3000;
 export const NO_SHOW_PERCENT = 50;
 export const NO_SHOW_CAP_CLP = 5000;
+export const NO_SHOW_DRIVER_SHARE_PERCENT = 50;
+export const NO_SHOW_PLATFORM_SHARE_PERCENT = 50;
 
 export function roundFareUpTo500(value: number): number {
   const safe = Number.isFinite(value)
@@ -29,6 +31,41 @@ export function roundFareUpTo500(value: number): number {
     Math.ceil(safe / RIDE_FARE_ROUNDING_UNIT_CLP) *
     RIDE_FARE_ROUNDING_UNIT_CLP
   );
+}
+
+export type NoShowDistribution = {
+  totalAmountClp: number;
+  driverShareClp: number;
+  platformShareClp: number;
+  driverSharePercent: number;
+  platformSharePercent: number;
+};
+
+/**
+ * Divide el cargo No Show aprobado entre conductor y Rapa Go.
+ * Si el total fuera impar, el peso indivisible queda en la parte de Rapa Go
+ * para que la suma siempre coincida exactamente con el cargo total.
+ */
+export function splitNoShowAmount(
+  amountClp: number,
+): NoShowDistribution {
+  const totalAmountClp = Math.max(
+    0,
+    Math.round(Number(amountClp) || 0),
+  );
+
+  const driverShareClp = Math.floor(
+    totalAmountClp *
+      (NO_SHOW_DRIVER_SHARE_PERCENT / 100),
+  );
+
+  return {
+    totalAmountClp,
+    driverShareClp,
+    platformShareClp: totalAmountClp - driverShareClp,
+    driverSharePercent: NO_SHOW_DRIVER_SHARE_PERCENT,
+    platformSharePercent: NO_SHOW_PLATFORM_SHARE_PERCENT,
+  };
 }
 
 export function calculateRidePolicyAmount(

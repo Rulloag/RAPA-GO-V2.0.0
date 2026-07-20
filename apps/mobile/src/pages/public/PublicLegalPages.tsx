@@ -183,10 +183,10 @@ export function TermsPublicPage(): JSX.Element {
 
       <Section title="3. Cancelaciones y no presentación">
         <List>
-          <li>Viaje inmediato: cancelación gratuita durante los primeros 2 minutos desde la asignación del conductor.</li>
+          <li>Viaje inmediato: cancelación gratuita durante los primeros 2 minutos desde que el conductor acepta la solicitud y la aplicación confirma su asignación al pasajero.</li>
           <li>Desde el tercer minuto: cargo de 30 % de la tarifa, con tope de $3.000 CLP.</li>
           <li>Viaje programado: gratuito hasta 30 minutos antes; dentro de los últimos 30 minutos, 30 % con tope de $3.000 CLP.</li>
-          <li>No presentación: después de 5 minutos de espera en el origen, 50 % de la tarifa con tope de $5.000 CLP.</li>
+          <li>No presentación: después de 5 minutos de espera en el origen, 50 % de la tarifa con tope de $5.000 CLP. Cuando el cargo sea aprobado y recaudado, se distribuirá 50 % al conductor y 50 % a Rapa Go.</li>
         </List>
         <p>
           No corresponde cargo cuando exista discrepancia de identidad o vehículo,

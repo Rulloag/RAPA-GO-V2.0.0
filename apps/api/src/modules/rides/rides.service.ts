@@ -32,6 +32,7 @@ import {
   NO_SHOW_CAP_CLP,
   NO_SHOW_PERCENT,
   calculateRidePolicyAmount,
+  splitNoShowAmount,
   isPassengerCancellationChargeable,
   roundFareUpTo500,
 } from "./ridePolicy.js";
@@ -487,6 +488,22 @@ function toPolicyChargeResponse(
   charge: RidePolicyCharge,
   owner?: { name?: string | null; email?: string | null },
 ): RidePolicyChargeResponse {
+  const amountClp = Math.max(
+    0,
+    Math.round(
+      Number(
+        charge.approvedAmountClp ??
+          charge.calculatedAmountClp ??
+          0,
+      ),
+    ),
+  );
+
+  const noShowDistribution =
+    charge.type === "no_show"
+      ? splitNoShowAmount(amountClp)
+      : null;
+
   return {
     id: charge.id,
     sourceRideId: charge.sourceRideId,
@@ -504,16 +521,15 @@ function toPolicyChargeResponse(
     feeCapClp: charge.feeCapClp,
     calculatedAmountClp: charge.calculatedAmountClp,
     approvedAmountClp: charge.approvedAmountClp ?? null,
-    amountClp: Math.max(
-      0,
-      Math.round(
-        Number(
-          charge.approvedAmountClp ??
-            charge.calculatedAmountClp ??
-            0,
-        ),
-      ),
-    ),
+    amountClp,
+    driverSharePercent:
+      noShowDistribution?.driverSharePercent ?? null,
+    platformSharePercent:
+      noShowDistribution?.platformSharePercent ?? null,
+    driverShareClp:
+      noShowDistribution?.driverShareClp ?? null,
+    platformShareClp:
+      noShowDistribution?.platformShareClp ?? null,
     reason: charge.reason ?? null,
     adminDecisionReason: charge.adminDecisionReason ?? null,
     reviewedByUserId: charge.reviewedByUserId ?? null,

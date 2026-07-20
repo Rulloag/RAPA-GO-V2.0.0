@@ -13,6 +13,10 @@ export interface RidePolicyChargeResponse {
   calculatedAmountClp: number;
   approvedAmountClp: number | null;
   amountClp: number;
+  driverSharePercent: number | null;
+  platformSharePercent: number | null;
+  driverShareClp: number | null;
+  platformShareClp: number | null;
   reason: string | null;
   adminDecisionReason: string | null;
   reviewedByUserId: string | null;

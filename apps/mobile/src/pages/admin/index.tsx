@@ -214,6 +214,10 @@ type AdminPassengerPendingCharge = {
   originalNoShowServiceAmountClp?: number | null;
   feePercent?: number | null;
   feeCapClp?: number | null;
+  driverSharePercent?: number | null;
+  platformSharePercent?: number | null;
+  driverShareClp?: number | null;
+  platformShareClp?: number | null;
   type?: "late_cancel" | "no_show" | string | null;
   paymentMethod?: string | null;
   status: "pending_admin_review" | "pending_next_ride" | "applied_to_next_ride" | "paid" | "waived" | string;
@@ -949,6 +953,10 @@ function readAdminPassengerPendingCharges(): AdminPassengerPendingCharge[] {
         originalNoShowServiceAmountClp: Number.isFinite(Number(item.originalNoShowServiceAmountClp)) ? Math.round(Number(item.originalNoShowServiceAmountClp)) : null,
         feePercent: Number.isFinite(Number(item.feePercent)) ? Number(item.feePercent) : null,
         feeCapClp: Number.isFinite(Number(item.feeCapClp)) ? Math.round(Number(item.feeCapClp)) : null,
+        driverSharePercent: item.driverSharePercent != null && Number.isFinite(Number(item.driverSharePercent)) ? Number(item.driverSharePercent) : null,
+        platformSharePercent: item.platformSharePercent != null && Number.isFinite(Number(item.platformSharePercent)) ? Number(item.platformSharePercent) : null,
+        driverShareClp: item.driverShareClp != null && Number.isFinite(Number(item.driverShareClp)) ? Math.round(Number(item.driverShareClp)) : null,
+        platformShareClp: item.platformShareClp != null && Number.isFinite(Number(item.platformShareClp)) ? Math.round(Number(item.platformShareClp)) : null,
         type: typeof item.type === "string" ? item.type : null,
         paymentMethod: typeof item.paymentMethod === "string" ? item.paymentMethod : null,
         status: String(item.status ?? "pending_admin_review"),
@@ -1004,6 +1012,10 @@ type BackendAdminPolicyCharge = {
   calculatedAmountClp: number;
   approvedAmountClp: number | null;
   amountClp: number;
+  driverSharePercent: number | null;
+  platformSharePercent: number | null;
+  driverShareClp: number | null;
+  platformShareClp: number | null;
   reason: string | null;
   adminDecisionReason: string | null;
   appliedToRideId: string | null;
@@ -1072,6 +1084,10 @@ function mapBackendPolicyChargeToAdmin(
         : null,
     feePercent: item.feePercent,
     feeCapClp: item.feeCapClp,
+    driverSharePercent: item.driverSharePercent,
+    platformSharePercent: item.platformSharePercent,
+    driverShareClp: item.driverShareClp,
+    platformShareClp: item.platformShareClp,
     type:
       item.type === "no_show"
         ? "no_show"
@@ -1690,6 +1706,35 @@ function calculateAdminPassengerChargeAmount(
   return { amountClp, applicableFareClp, percent, capClp };
 }
 
+function getAdminNoShowDistribution(
+  charge: AdminPassengerPendingCharge,
+): {
+  driverShareClp: number;
+  platformShareClp: number;
+} {
+  const amountClp = Math.max(
+    0,
+    Math.round(Number(charge.amountClp ?? 0)),
+  );
+
+  const driverShareClp =
+    charge.driverShareClp != null &&
+    Number.isFinite(Number(charge.driverShareClp))
+      ? Math.max(0, Math.round(Number(charge.driverShareClp)))
+      : Math.floor(amountClp / 2);
+
+  const platformShareClp =
+    charge.platformShareClp != null &&
+    Number.isFinite(Number(charge.platformShareClp))
+      ? Math.max(0, Math.round(Number(charge.platformShareClp)))
+      : Math.max(0, amountClp - driverShareClp);
+
+  return {
+    driverShareClp,
+    platformShareClp,
+  };
+}
+
 function approveAdminPassengerChargeForNextRide(
   charge: AdminPassengerPendingCharge,
 ): void {
@@ -1708,6 +1753,14 @@ function approveAdminPassengerChargeForNextRide(
       applicableFareClp: calculation.applicableFareClp,
       feePercent: calculation.percent,
       feeCapClp: calculation.capClp,
+      driverSharePercent: isAdminNoShowCharge(item) ? 50 : null,
+      platformSharePercent: isAdminNoShowCharge(item) ? 50 : null,
+      driverShareClp: isAdminNoShowCharge(item)
+        ? Math.floor(calculation.amountClp / 2)
+        : null,
+      platformShareClp: isAdminNoShowCharge(item)
+        ? calculation.amountClp - Math.floor(calculation.amountClp / 2)
+        : null,
       status: "pending_next_ride",
       adminReviewStatus: "charge_pending_next_ride",
       requestedExemption: Boolean(item.requestedExemption),
@@ -1725,7 +1778,9 @@ function approveAdminPassengerChargeForNextRide(
       title: isAdminNoShowCharge(item)
         ? "No show aprobado"
         : "Cargo por cancelación aprobado",
-      description: `${isAdminNoShowCharge(item) ? "No show" : "Cancelación"} aprobado: ${calculation.percent}% de la tarifa aplicable, con tope de $${calculation.capClp.toLocaleString("es-CL")}. Cargo aprobado: $${calculation.amountClp.toLocaleString("es-CL")} CLP.`,
+      description: isAdminNoShowCharge(item)
+        ? `No show aprobado: ${calculation.percent}% de la tarifa aplicable, con tope de $${calculation.capClp.toLocaleString("es-CL")}. Cargo aprobado: $${calculation.amountClp.toLocaleString("es-CL")} CLP. Distribución: 50% conductor y 50% Rapa Go.`
+        : `Cancelación aprobada: ${calculation.percent}% de la tarifa aplicable, con tope de $${calculation.capClp.toLocaleString("es-CL")}. Cargo aprobado: $${calculation.amountClp.toLocaleString("es-CL")} CLP.`,
     } as AdminPassengerPendingCharge;
   });
 
@@ -3111,7 +3166,7 @@ export function AdminHomePage(): JSX.Element {
                 </IonCard>
               )}
 
-              
+
               <IonModal
                 isOpen={showAccountDeletionModal}
                 onDidDismiss={() => setShowAccountDeletionModal(false)}
@@ -3326,9 +3381,9 @@ export function AdminHomePage(): JSX.Element {
                                 </IonBadge>
                               </div>
 
-                              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                              <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 8 }}>
                                 <div style={{ background: "#fff7e6", borderRadius: 14, padding: 10 }}>
-                                  <strong>Cargo</strong>
+                                  <strong>Cargo total</strong>
                                   <div style={{ fontWeight: 950 }}>
                                     {formatAdminCashClp(charge.amountClp)}
                                   </div>
@@ -3338,6 +3393,20 @@ export function AdminHomePage(): JSX.Element {
                                   <strong>Cobro</strong>
                                   <div style={{ fontWeight: 950 }}>
                                     {adminPassengerChargeBillingLabel(charge)}
+                                  </div>
+                                </div>
+
+                                <div style={{ background: "#eefbf1", borderRadius: 14, padding: 10 }}>
+                                  <strong>Conductor · 50%</strong>
+                                  <div style={{ fontWeight: 950 }}>
+                                    {formatAdminCashClp(getAdminNoShowDistribution(charge).driverShareClp)}
+                                  </div>
+                                </div>
+
+                                <div style={{ background: "#eef4ff", borderRadius: 14, padding: 10 }}>
+                                  <strong>Rapa Go · 50%</strong>
+                                  <div style={{ fontWeight: 950 }}>
+                                    {formatAdminCashClp(getAdminNoShowDistribution(charge).platformShareClp)}
                                   </div>
                                 </div>
                               </div>
@@ -3379,7 +3448,7 @@ export function AdminHomePage(): JSX.Element {
                                       )
                                         .then(() => {
                                           setCashReviewsRevision((current) => current + 1);
-                                          setAdminCashToast("No Show aprobado: 50% de la tarifa aplicable, con tope de $5.000. Quedó guardado en backend y se sumará al próximo viaje.");
+                                          setAdminCashToast("No Show aprobado: 50% de la tarifa aplicable, tope $5.000. Al recaudarse se distribuirá 50% al conductor y 50% a Rapa Go.");
                                         })
                                         .catch((err) => {
                                           setAdminCashToast(
