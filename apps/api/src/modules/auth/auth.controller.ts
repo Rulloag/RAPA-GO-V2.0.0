@@ -75,21 +75,23 @@ function getFrontendUrl(): string {
   return parsed.origin;
 }
 
+type FacebookPassengerFareType = "resident" | "chilean" | "foreigner";
+
 type FacebookOAuthState = {
-  version: 2;
-  residentIntent: boolean;
+  version: 3;
+  passengerFareType: FacebookPassengerFareType;
   nonce: string;
   expiresAt: number;
 };
 
 function createFacebookOAuthState(
-  residentIntent: boolean,
+  passengerFareType: FacebookPassengerFareType,
   nonce: string,
   secret: string,
 ): string {
   const payload: FacebookOAuthState = {
-    version: 2,
-    residentIntent,
+    version: 3,
+    passengerFareType,
     nonce,
     expiresAt: Date.now() + FACEBOOK_STATE_TTL_SECONDS * 1000,
   };
@@ -133,8 +135,10 @@ function readFacebookOAuthState(
     ) as Partial<FacebookOAuthState>;
 
     if (
-      parsed.version !== 2 ||
-      typeof parsed.residentIntent !== "boolean" ||
+      parsed.version !== 3 ||
+      (parsed.passengerFareType !== "resident" &&
+        parsed.passengerFareType !== "chilean" &&
+        parsed.passengerFareType !== "foreigner") ||
       typeof parsed.nonce !== "string" ||
       parsed.nonce.length < 32 ||
       typeof parsed.expiresAt !== "number" ||
@@ -144,8 +148,8 @@ function readFacebookOAuthState(
     }
 
     return {
-      version: 2,
-      residentIntent: parsed.residentIntent,
+      version: 3,
+      passengerFareType: parsed.passengerFareType,
       nonce: parsed.nonce,
       expiresAt: parsed.expiresAt,
     };
@@ -225,21 +229,39 @@ async function fetchWithTimeout(
   }
 }
 
-function isFacebookResidentIntent(
+function getFacebookPassengerFareType(
   query: Record<string, string | undefined>,
-): boolean {
-  const condition = String(
-    query["passengerCondition"] ?? query["condition"] ?? "",
+): FacebookPassengerFareType {
+  const value = String(
+    query["requestedPassengerFareType"] ??
+      query["passengerFareType"] ??
+      query["passengerCondition"] ??
+      query["condition"] ??
+      "",
   )
     .trim()
     .toLowerCase();
 
-  return [
-    "residente_rapa_nui",
-    "residente rapa nui",
-    "residente",
-    "resident",
-  ].includes(condition);
+  if (
+    value === "resident" ||
+    value === "residente" ||
+    value === "residente_rapa_nui" ||
+    value === "residente rapa nui"
+  ) {
+    return "resident";
+  }
+
+  if (
+    value === "foreigner" ||
+    value === "extranjero" ||
+    value === "turista_extranjero" ||
+    value === "turista extranjero"
+  ) {
+    return "foreigner";
+  }
+
+  // Valores antiguos rapanui/rapanui_normal ya no son una categoría activa.
+  return "chilean";
 }
 
 function extractBearer(request: FastifyRequest): string {
@@ -445,10 +467,12 @@ export const authController = {
     const appId = getRequiredEnv("FACEBOOK_APP_ID");
     const appSecret = getRequiredEnv("FACEBOOK_APP_SECRET");
     const redirectUri = getRequiredEnv("FACEBOOK_REDIRECT_URI");
-    const residentIntent = isFacebookResidentIntent(request.query);
+    const passengerFareType = getFacebookPassengerFareType(
+      request.query,
+    );
     const nonce = randomBytes(32).toString("base64url");
     const state = createFacebookOAuthState(
-      residentIntent,
+      passengerFareType,
       nonce,
       appSecret,
     );
@@ -585,7 +609,7 @@ export const authController = {
         name: profile.name,
         avatarUrl: profile.picture?.data?.url ?? null,
       },
-      { residentIntent: oauthState.residentIntent },
+      { passengerFareType: oauthState.passengerFareType },
     );
 
     if (!result.ok) {

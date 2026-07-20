@@ -38,6 +38,10 @@ export const registerRequestSchema = z.object({
   password: z.string().min(8, { message: "Password must be at least 8 characters." }),
   name: z.string().min(2, { message: "Name must be at least 2 characters." }).max(100),
   role: z.enum(USER_ROLES, { errorMap: () => ({ message: "Invalid role." }) }),
+  phone: z.string().trim().min(8).max(24).optional(),
+  passengerFareType: z
+    .enum(["resident", "chilean", "foreigner"])
+    .optional(),
 });
 
 export const authUserSchema = z.object({
@@ -47,6 +51,15 @@ export const authUserSchema = z.object({
   role: z.enum(USER_ROLES),
   avatarUrl: z.string().url().nullable(),
   isVerified: z.boolean(),
+  requestedPassengerFareType: z
+    .enum(["resident", "chilean", "foreigner"])
+    .optional(),
+  passengerFareType: z
+    .enum(["resident", "chilean", "foreigner"])
+    .optional(),
+  residenceVerificationStatus: z
+    .enum(["not_required", "pending", "approved", "rejected"])
+    .optional(),
 });
 
 export const authSessionSchema = z.object({

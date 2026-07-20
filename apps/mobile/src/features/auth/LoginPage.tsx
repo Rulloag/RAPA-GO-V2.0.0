@@ -34,7 +34,7 @@ const ROLE_HOME: Record<UserRole, string> = {
 
 const API_URL = (
   import.meta.env.VITE_API_URL ??
-  "https://api.rapago.cl"
+  "https://backend.rapago.cl"
 ).replace(/\/$/, "");
 
 /**
@@ -112,11 +112,10 @@ type ResidenceVerificationStatus = "pending" | "approved" | "rejected" | "not_re
 type PassengerCondition =
   | "turista_chileno"
   | "turista_extranjero"
-  | "rapanui_normal"
   | "residente_rapa_nui"
   | "";
 
-type PassengerFareType = "resident" | "rapanui" | "chilean" | "foreigner";
+type PassengerFareType = "resident" | "chilean" | "foreigner";
 
 type ResidenceDocumentMeta = {
   name: string;
@@ -137,6 +136,8 @@ type PassengerRegistrationProfile = {
   passport?: string;
   nationality?: string;
   passengerFareLabel?: string;
+  requestedPassengerFareType?: PassengerFareType;
+  effectivePassengerFareType?: PassengerFareType;
   passengerFareType?: PassengerFareType;
   farePassengerType?: PassengerFareType;
   passengerType?: PassengerFareType;
@@ -153,14 +154,12 @@ type PassengerRegistrationProfile = {
 
 function getPassengerFareType(condition: PassengerCondition): PassengerFareType {
   if (condition === "residente_rapa_nui") return "resident";
-  if (condition === "rapanui_normal") return "rapanui";
   if (condition === "turista_chileno") return "chilean";
   return "foreigner";
 }
 
 function getConditionLabel(value: PassengerCondition): string {
   if (value === "residente_rapa_nui") return "Residente Rapa Nui";
-  if (value === "rapanui_normal") return "Rapanui normal";
   if (value === "turista_chileno") return "Turista chileno";
   if (value === "turista_extranjero") return "Turista extranjero";
   return "";
@@ -168,14 +167,12 @@ function getConditionLabel(value: PassengerCondition): string {
 
 function getPassengerFareLabel(value: PassengerFareType): string {
   if (value === "resident") return "Residente Rapa Nui";
-  if (value === "rapanui") return "Rapanui normal";
   if (value === "chilean") return "Turista chileno";
   return "Turista extranjero";
 }
 
 function getLegacyPassengerCondition(value: PassengerCondition): string {
   if (value === "residente_rapa_nui") return "residente";
-  if (value === "rapanui_normal") return "rapanui_normal";
   if (value === "turista_chileno") return "chileno_no_residente";
   if (value === "turista_extranjero") return "extranjero";
   return "";
@@ -198,7 +195,7 @@ function requiresPassportForPassengerCondition(value: PassengerCondition): boole
 }
 
 function requiresRutForPassengerCondition(value: PassengerCondition): boolean {
-  return value === "turista_chileno" || value === "rapanui_normal" || value === "residente_rapa_nui";
+  return value === "turista_chileno" || value === "residente_rapa_nui";
 }
 
 function hasValidRutLengthForAuth(value: unknown): boolean {
@@ -255,7 +252,6 @@ function getStoredPassengerCondition(): PassengerCondition {
   if (
     value === "turista_chileno" ||
     value === "turista_extranjero" ||
-    value === "rapanui_normal" ||
     value === "residente_rapa_nui"
   ) {
     return value;
@@ -266,7 +262,7 @@ function getStoredPassengerCondition(): PassengerCondition {
    */
   if (value === "chileno_no_residente") return "turista_chileno";
   if (value === "extranjero") return "turista_extranjero";
-  if (value === "rapanui" || value === "rapanui_normal") return "rapanui_normal";
+  if (value === "rapanui" || value === "rapanui_normal") return "turista_chileno";
   if (value === "residente") return "residente_rapa_nui";
 
   return "";
@@ -435,37 +431,87 @@ function persistResidentVerificationRequest(input: {
 }
 
 
-function persistPassengerProfile(profile: PassengerRegistrationProfile): void {
+function persistPassengerProfile(
+  profile: PassengerRegistrationProfile,
+): void {
   try {
     clearLegacyAuthPiiLocalStorage();
 
+    const requestedPassengerFareType =
+      profile.requestedPassengerFareType ??
+      profile.passengerFareType ??
+      "chilean";
+    const effectivePassengerFareType =
+      profile.effectivePassengerFareType ??
+      profile.passengerFareType ??
+      "chilean";
+    const effectivePassengerFareLabel =
+      getPassengerFareLabel(effectivePassengerFareType);
+
+    const fullProfile: PassengerRegistrationProfile = {
+      ...profile,
+      requestedPassengerFareType,
+      effectivePassengerFareType,
+      passengerFareType: effectivePassengerFareType,
+      farePassengerType: effectivePassengerFareType,
+      passengerType: effectivePassengerFareType,
+      passengerFareLabel: effectivePassengerFareLabel,
+      nationality: effectivePassengerFareLabel,
+    };
+
     const safeProfile: PassengerRegistrationProfile = {
-      nationality: profile.nationality,
-      passengerFareLabel: profile.passengerFareLabel,
-      passengerFareType: profile.passengerFareType,
-      farePassengerType: profile.farePassengerType,
-      passengerType: profile.passengerType,
+      nationality: effectivePassengerFareLabel,
+      passengerFareLabel: effectivePassengerFareLabel,
+      requestedPassengerFareType,
+      effectivePassengerFareType,
+      passengerFareType: effectivePassengerFareType,
+      farePassengerType: effectivePassengerFareType,
+      passengerType: effectivePassengerFareType,
       passengerCondition: profile.passengerCondition,
-      passengerConditionLegacy: profile.passengerConditionLegacy,
-      belongsToRapaNuiEthnicity: profile.belongsToRapaNuiEthnicity,
-      residenceDocumentRequired: profile.residenceDocumentRequired,
-      residenceDocumentUploaded: profile.residenceDocumentUploaded,
-      residenceVerificationStatus: profile.residenceVerificationStatus,
-      residenceVerificationMessage: profile.residenceVerificationMessage,
+      passengerConditionLegacy:
+        profile.passengerConditionLegacy,
+      belongsToRapaNuiEthnicity:
+        profile.belongsToRapaNuiEthnicity,
+      residenceDocumentRequired:
+        profile.residenceDocumentRequired,
+      residenceDocumentUploaded:
+        profile.residenceDocumentUploaded,
+      residenceVerificationStatus:
+        profile.residenceVerificationStatus,
+      residenceVerificationMessage:
+        profile.residenceVerificationMessage,
       facebookLoginPrecheck: profile.facebookLoginPrecheck,
     };
 
-    sessionStorage.setItem(RAPAGO_AUTH_SESSION_PROFILE_KEY, JSON.stringify(profile));
-    localStorage.setItem("rapago_registration_profile", JSON.stringify(safeProfile));
+    sessionStorage.setItem(
+      RAPAGO_AUTH_SESSION_PROFILE_KEY,
+      JSON.stringify(fullProfile),
+    );
+    localStorage.setItem(
+      "rapago_registration_profile",
+      JSON.stringify(safeProfile),
+    );
 
     if (profile.email) {
-      sessionStorage.setItem("rapago_passenger_email", profile.email);
-      sessionStorage.setItem("rapago_profile_email", profile.email);
+      sessionStorage.setItem(
+        "rapago_passenger_email",
+        profile.email,
+      );
+      sessionStorage.setItem(
+        "rapago_profile_email",
+        profile.email,
+      );
     }
 
     if (profile.phone) {
-      sessionStorage.setItem("rapago_passenger_phone", profile.phone);
-      sessionStorage.setItem("rapago_profile_phone", profile.phone);
+      sessionStorage.setItem(
+        "rapago_passenger_phone",
+        profile.phone,
+      );
+      sessionStorage.setItem(
+        "rapago_profile_phone",
+        profile.phone,
+      );
     }
 
     if (profile.rut) {
@@ -477,50 +523,102 @@ function persistPassengerProfile(profile: PassengerRegistrationProfile): void {
     }
 
     if (profile.passport) {
-      sessionStorage.setItem("rapago_passenger_passport", profile.passport);
-      sessionStorage.setItem("rapago_profile_passport", profile.passport);
+      sessionStorage.setItem(
+        "rapago_passenger_passport",
+        profile.passport,
+      );
+      sessionStorage.setItem(
+        "rapago_profile_passport",
+        profile.passport,
+      );
     } else {
       sessionStorage.removeItem("rapago_passenger_passport");
       sessionStorage.removeItem("rapago_profile_passport");
     }
 
-    if (profile.nationality) {
-      localStorage.setItem("rapago_profile_nationality", profile.nationality);
-      localStorage.setItem("rapago_nationality", profile.nationality);
-    }
+    localStorage.setItem(
+      "rapago_profile_nationality",
+      effectivePassengerFareLabel,
+    );
+    localStorage.setItem(
+      "rapago_nationality",
+      effectivePassengerFareLabel,
+    );
+    localStorage.setItem(
+      "rapago_requested_passenger_fare_type",
+      requestedPassengerFareType,
+    );
+    localStorage.setItem(
+      "rapago_passenger_fare_type",
+      effectivePassengerFareType,
+    );
+    localStorage.setItem(
+      "rapago_fare_passenger_type",
+      effectivePassengerFareType,
+    );
+    localStorage.setItem(
+      "rapago_passenger_type",
+      effectivePassengerFareType,
+    );
 
     if (profile.passengerCondition) {
-      localStorage.setItem("rapago_passenger_condition", profile.passengerCondition);
+      localStorage.setItem(
+        "rapago_passenger_condition",
+        profile.passengerCondition,
+      );
     }
 
     if (profile.passengerConditionLegacy) {
-      localStorage.setItem("rapago_passenger_condition_legacy", profile.passengerConditionLegacy);
+      localStorage.setItem(
+        "rapago_passenger_condition_legacy",
+        profile.passengerConditionLegacy,
+      );
     }
 
-    if (profile.passengerFareType) {
-      localStorage.setItem("rapago_passenger_fare_type", profile.passengerFareType);
-      localStorage.setItem("rapago_fare_passenger_type", profile.passengerFareType);
-      localStorage.setItem("rapago_passenger_type", profile.passengerFareType);
-    }
-
-    if (typeof profile.belongsToRapaNuiEthnicity === "boolean") {
-      localStorage.setItem("rapago_belongs_to_rapa_nui_ethnicity", profile.belongsToRapaNuiEthnicity ? "si" : "no");
+    if (
+      typeof profile.belongsToRapaNuiEthnicity === "boolean"
+    ) {
+      localStorage.setItem(
+        "rapago_belongs_to_rapa_nui_ethnicity",
+        profile.belongsToRapaNuiEthnicity ? "si" : "no",
+      );
     }
 
     if (profile.residenceVerificationStatus) {
-      localStorage.setItem("rapago_residence_verification_status", profile.residenceVerificationStatus);
+      localStorage.setItem(
+        "rapago_residence_verification_status",
+        profile.residenceVerificationStatus,
+      );
     }
 
     if (profile.residenceVerificationMessage) {
-      localStorage.setItem("rapago_residence_verification_user_message", profile.residenceVerificationMessage);
-    } else if (profile.residenceVerificationStatus === "not_required") {
-      localStorage.removeItem("rapago_residence_verification_user_message");
+      localStorage.setItem(
+        "rapago_residence_verification_user_message",
+        profile.residenceVerificationMessage,
+      );
+    } else if (
+      profile.residenceVerificationStatus === "not_required"
+    ) {
+      localStorage.removeItem(
+        "rapago_residence_verification_user_message",
+      );
     }
 
-    localStorage.setItem("rapago_residence_document_required", profile.residenceDocumentRequired ? "true" : "false");
-    localStorage.setItem("rapago_residence_document_uploaded", profile.residenceDocumentUploaded ? "true" : "false");
-    localStorage.removeItem("rapago_passenger_residence_document_meta");
-    sessionStorage.removeItem("rapago_passenger_residence_document_data_url");
+    localStorage.setItem(
+      "rapago_residence_document_required",
+      profile.residenceDocumentRequired ? "true" : "false",
+    );
+    localStorage.setItem(
+      "rapago_residence_document_uploaded",
+      profile.residenceDocumentUploaded ? "true" : "false",
+    );
+    localStorage.removeItem(
+      "rapago_passenger_residence_document_meta",
+    );
+    sessionStorage.removeItem(
+      "rapago_passenger_residence_document_data_url",
+    );
+    localStorage.removeItem("rapago_driver_is_rapanui_normal");
   } catch {
     // No bloqueamos el login si storage falla.
   }
@@ -532,7 +630,7 @@ function getFacebookRedirectErrorMessage(): string {
     const registrationCode = searchParams.get("registration");
 
     if (registrationCode === "resident_pending") {
-      return "Tu cuenta fue creada y tu documento de Residente Rapa Nui quedó pendiente de revisión por el administrador.";
+      return "Tu cuenta está activa con tarifa Turista chileno mientras revisamos tu documento de residencia.";
     }
 
     if (registrationCode === "setup_error") {
@@ -856,20 +954,27 @@ export function LoginPage(): JSX.Element {
       setFacebookLegalLoading(false);
     }
 
-    const passengerFareType =
+    const requestedPassengerFareType =
       getPassengerFareType(passengerCondition);
     const conditionLabel =
       getConditionLabel(passengerCondition);
-    const passengerFareLabel =
-      getPassengerFareLabel(passengerFareType);
     const legacyCondition =
       getLegacyPassengerCondition(passengerCondition);
 
-    let isResidentApproved = false;
+    let effectivePassengerFareType: PassengerFareType =
+      requestedPassengerFareType;
+    let residenceVerificationStatus:
+      ResidenceVerificationStatus =
+      isResidentRapaNui ? "pending" : "not_required";
+    let residenceVerificationMessage = "";
     let residenceDocumentMeta: ResidenceDocumentMeta | null =
       null;
+    let isResidentApproved = false;
 
     if (isResidentRapaNui) {
+      effectivePassengerFareType = "chilean";
+      residenceVerificationMessage =
+        "Tu cuenta quedará activa con tarifa Turista chileno mientras revisamos tu residencia.";
       setFacebookPrecheckLoading(true);
 
       try {
@@ -879,27 +984,22 @@ export function LoginPage(): JSX.Element {
             rut: cleanPassengerRut,
           });
 
-        isResidentApproved =
-          backendStatus.status === "approved";
-
-        if (!isResidentApproved && !residenceDocument) {
-          if (backendStatus.status === "pending") {
-            setResidentSubmissionMessage(
-              backendStatus.message,
-            );
-          } else if (
-            backendStatus.status === "rejected"
-          ) {
-            setFacebookStepError(
-              backendStatus.message,
-            );
-          } else {
-            setFacebookStepError(
-              "Para Residente Rapa Nui debes adjuntar un documento de residencia.",
-            );
-          }
-
-          return;
+        if (backendStatus.status === "approved") {
+          isResidentApproved = true;
+          effectivePassengerFareType = "resident";
+          residenceVerificationStatus = "approved";
+          residenceVerificationMessage =
+            "Tu residencia Rapa Nui fue aprobada.";
+        } else if (backendStatus.status === "rejected") {
+          residenceVerificationStatus = "rejected";
+          residenceVerificationMessage =
+            `${backendStatus.message} Puedes ingresar de inmediato con tarifa Turista chileno.`;
+        } else {
+          residenceVerificationStatus = "pending";
+          residenceVerificationMessage =
+            backendStatus.status === "pending"
+              ? `${backendStatus.message} Puedes ingresar de inmediato con tarifa Turista chileno.`
+              : "Tu cuenta quedará activa con tarifa Turista chileno. Puedes adjuntar tu documento ahora o regularizarlo después.";
         }
 
         if (!isResidentApproved && residenceDocument) {
@@ -933,31 +1033,15 @@ export function LoginPage(): JSX.Element {
 
           isResidentApproved =
             submitted.status === "approved";
+          effectivePassengerFareType =
+            isResidentApproved ? "resident" : "chilean";
+          residenceVerificationStatus =
+            isResidentApproved ? "approved" : "pending";
+          residenceVerificationMessage =
+            isResidentApproved
+              ? "Tu residencia Rapa Nui fue aprobada."
+              : `${submitted.message} Puedes ingresar de inmediato con tarifa Turista chileno.`;
 
-          persistPassengerProfile({
-            email: cleanEmail,
-            phone: cleanPhone,
-            rut: cleanPassengerRut,
-            nationality: conditionLabel,
-            passengerFareLabel,
-            passengerFareType,
-            farePassengerType: passengerFareType,
-            passengerType: passengerFareType,
-            passengerCondition,
-            passengerConditionLegacy: legacyCondition,
-            belongsToRapaNuiEthnicity: true,
-            residenceDocumentRequired: true,
-            residenceDocumentUploaded: true,
-            residenceDocumentMeta,
-            residenceVerificationStatus:
-              isResidentApproved ? "approved" : "pending",
-            residenceVerificationMessage:
-              submitted.message,
-            facebookLoginPrecheck: true,
-          });
-
-          // Copia local de respaldo para que la misma pantalla pueda
-          // mostrar el estado aun si se pierde momentáneamente la red.
           persistResidentVerificationRequest({
             userId: submitted.userId,
             name: "Pasajero Facebook",
@@ -972,25 +1056,25 @@ export function LoginPage(): JSX.Element {
             },
             authProvider: "facebook",
           });
-
-          if (!isResidentApproved) {
-            setResidentSubmissionMessage(
-              submitted.message,
-            );
-            return;
-          }
         }
       } catch (error) {
-        setFacebookStepError(
+        effectivePassengerFareType = "chilean";
+        residenceVerificationStatus = "pending";
+        residenceVerificationMessage =
           error instanceof Error
-            ? error.message
-            : "No se pudo enviar el documento al administrador.",
-        );
-        return;
+            ? `Tu cuenta seguirá activa como Turista chileno. No se pudo completar la validación de residencia: ${error.message}`
+            : "Tu cuenta seguirá activa como Turista chileno. Podrás regularizar tu residencia más adelante.";
       } finally {
         setFacebookPrecheckLoading(false);
       }
+
+      setResidentSubmissionMessage(
+        residenceVerificationMessage,
+      );
     }
+
+    const effectivePassengerFareLabel =
+      getPassengerFareLabel(effectivePassengerFareType);
 
     persistPassengerProfile({
       email: cleanEmail,
@@ -999,36 +1083,32 @@ export function LoginPage(): JSX.Element {
       passport: needsPassport
         ? cleanPassengerPassport
         : "",
-      nationality: conditionLabel,
-      passengerFareLabel,
-      passengerFareType,
-      farePassengerType: passengerFareType,
-      passengerType: passengerFareType,
+      nationality: effectivePassengerFareLabel,
+      passengerFareLabel: effectivePassengerFareLabel,
+      requestedPassengerFareType,
+      effectivePassengerFareType,
+      passengerFareType: effectivePassengerFareType,
+      farePassengerType: effectivePassengerFareType,
+      passengerType: effectivePassengerFareType,
       passengerCondition,
       passengerConditionLegacy: legacyCondition,
       belongsToRapaNuiEthnicity: isResidentRapaNui,
       residenceDocumentRequired: isResidentRapaNui,
       residenceDocumentUploaded: isResidentRapaNui
-        ? Boolean(
-            residenceDocumentMeta ||
-              isResidentApproved,
-          )
+        ? Boolean(residenceDocumentMeta || isResidentApproved)
         : false,
       residenceDocumentMeta,
-      residenceVerificationStatus: isResidentRapaNui
-        ? "approved"
-        : "not_required",
-      residenceVerificationMessage: isResidentRapaNui
-        ? "Tu residencia Rapa Nui fue aprobada por el administrador."
-        : "",
+      residenceVerificationStatus,
+      residenceVerificationMessage,
       facebookLoginPrecheck: true,
     });
 
     const params = new URLSearchParams({
       condition: legacyCondition,
       passengerCondition,
-      passengerFareType,
-      passengerFareLabel,
+      requestedPassengerFareType,
+      passengerFareType: effectivePassengerFareType,
+      passengerFareLabel: effectivePassengerFareLabel,
       email: cleanEmail,
       phone: cleanPhone,
       rut: needsPassport
@@ -1040,12 +1120,11 @@ export function LoginPage(): JSX.Element {
       residenceDocumentRequired: isResidentRapaNui
         ? "true"
         : "false",
-      residenceDocumentUploaded: isResidentRapaNui
-        ? "true"
-        : "false",
-      residenceVerificationStatus: isResidentRapaNui
-        ? "approved"
-        : "not_required",
+      residenceDocumentUploaded:
+        residenceDocumentMeta || isResidentApproved
+          ? "true"
+          : "false",
+      residenceVerificationStatus,
       rapaNuiEthnicity: isResidentRapaNui
         ? "si"
         : "no",
@@ -1192,15 +1271,9 @@ export function LoginPage(): JSX.Element {
       icon: "🌎",
     },
     {
-      value: "rapanui_normal",
-      title: "Rapanui normal",
-      subtitle: "Tarifa local Rapanui. No requiere documento.",
-      icon: "🌺",
-    },
-    {
       value: "residente_rapa_nui",
       title: "Residente Rapa Nui",
-      subtitle: "Requiere documento para validación admin.",
+      subtitle: "Cuenta activa como Turista chileno hasta que el documento sea aprobado.",
       icon: "🗿",
     },
   ];
@@ -1450,7 +1523,7 @@ export function LoginPage(): JSX.Element {
                       fontWeight: 760,
                     }}
                   >
-                    Selecciona tu tipo de pasajero para aplicar la tarifa correcta antes de entrar con Facebook. Rapanui normal no requiere documento.
+                    Selecciona tu tipo de pasajero. Si eliges Residente Rapa Nui, podrás entrar inmediatamente con tarifa Turista chileno mientras revisamos el documento.
                   </p>
 
                   {facebookStepError && (
@@ -1563,7 +1636,7 @@ export function LoginPage(): JSX.Element {
                       lineHeight: 1.35,
                     }}
                   >
-                    🗿 Si eres Residente Rapa Nui, el documento quedará pendiente para revisión del administrador antes de aprobar la tarifa.
+
                   </div>
 
                   <IonItem style={modalItemStyle}>

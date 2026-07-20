@@ -3460,12 +3460,17 @@ function normalizeRidePassengerFareType(value: unknown): PassengerFareType | nul
   }
 
   if (
+    raw === "rapanui" ||
+    raw === "rapanui normal" ||
+    raw === "rapa nui normal"
+  ) {
+    return "chilean";
+  }
+
+  if (
     raw.includes("residente rapa nui") ||
-    raw.includes("rapa nui") ||
-    raw.includes("rapanui") ||
-    raw.includes("resident") ||
-    raw.includes("residente") ||
-    raw.includes("local") ||
+    raw === "resident" ||
+    raw === "residente" ||
     raw === "true" ||
     raw === "1"
   ) {

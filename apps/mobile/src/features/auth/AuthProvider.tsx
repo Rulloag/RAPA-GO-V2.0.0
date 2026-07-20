@@ -86,6 +86,60 @@ export function AuthProvider({ children }: AuthProviderProps): JSX.Element {
   }, []);
 
   useEffect(() => {
+    if (status !== "authenticated" || !session?.accessToken) return;
+
+    let cancelled = false;
+    let refreshing = false;
+
+    const refreshSessionUser = async (): Promise<void> => {
+      if (refreshing || cancelled) return;
+      refreshing = true;
+
+      try {
+        const verified = await authService.me(session.accessToken);
+        if (cancelled || !verified.ok) return;
+
+        await sessionStorageService.saveSession(verified.session);
+        if (cancelled) return;
+
+        setSession(verified.session);
+        setUser(verified.session.user);
+      } finally {
+        refreshing = false;
+      }
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        void refreshSessionUser();
+      }
+    };
+
+    window.addEventListener("focus", refreshSessionUser);
+    document.addEventListener(
+      "visibilitychange",
+      handleVisibilityChange,
+    );
+    window.addEventListener(
+      "rapago:resident-verification-updated",
+      refreshSessionUser,
+    );
+
+    return () => {
+      cancelled = true;
+      window.removeEventListener("focus", refreshSessionUser);
+      document.removeEventListener(
+        "visibilitychange",
+        handleVisibilityChange,
+      );
+      window.removeEventListener(
+        "rapago:resident-verification-updated",
+        refreshSessionUser,
+      );
+    };
+  }, [session?.accessToken, status]);
+
+  useEffect(() => {
     const forceLogout = () => {
       void clearLocalSession().finally(() => {
         history.replace(ROUTES.AUTH.LOGIN);

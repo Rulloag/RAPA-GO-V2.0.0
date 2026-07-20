@@ -2306,12 +2306,20 @@ function normalizePassengerFareType(value: unknown): PassengerFareType | null {
   }
 
   if (
+    raw === "rapanui" ||
+    raw === "rapanui normal" ||
+    raw === "rapa nui normal"
+  ) {
+    // Valor legado eliminado: nunca debe otorgar tarifa residente.
+    return "chilean";
+  }
+
+  if (
     raw.includes("residente rapa nui") ||
-    raw.includes("rapa nui") ||
-    raw.includes("rapanui") ||
-    raw.includes("resident") ||
-    raw.includes("residente") ||
-    raw.includes("local") ||
+    raw === "resident" ||
+    raw === "residente" ||
+    raw === "resident approved" ||
+    raw === "residente aprobado" ||
     raw === "true" ||
     raw === "1"
   ) {
@@ -2386,10 +2394,10 @@ function readPassengerFareType(user?: unknown): PassengerFareType {
       if (stored) return stored;
     }
   } catch {
-    // Si no existe dato guardado, se usa residente como valor seguro por defecto.
+    // Si no existe dato guardado, se usa Turista chileno como valor seguro.
   }
 
-  return "resident";
+  return "chilean";
 }
 
 function vehicleCategoryLabel(category: VehicleCategory): string {
@@ -2769,7 +2777,7 @@ function calculateRapaGoFare(
   km: number,
   minutes: number,
   rules: RapaGoFareRules = DEFAULT_RAPAGO_FARE_RULES,
-  passengerType: PassengerFareType = "resident",
+  passengerType: PassengerFareType = "chilean",
   vehicleCategory: VehicleCategory = "standard",
   destinationText = "",
   tripFareMode: TripFareMode = "one_way",
@@ -2843,7 +2851,7 @@ function calculateEstimatedFareFromPoints(
   origin: { lat: number; lng: number },
   destination: { lat: number; lng: number },
   rules: RapaGoFareRules = DEFAULT_RAPAGO_FARE_RULES,
-  passengerType: PassengerFareType = "resident",
+  passengerType: PassengerFareType = "chilean",
   vehicleCategory: VehicleCategory = "standard",
   destinationText = "",
   tripFareMode: TripFareMode = "one_way",

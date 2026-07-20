@@ -4,6 +4,16 @@ export interface PassengerProfileData {
   id:                    string;
   userId:                string;
   phone:                 string | null;
+  requestedFareType:     "resident" | "chilean" | "foreigner";
+  effectiveFareType:     "resident" | "chilean" | "foreigner";
+  residenceVerificationStatus:
+    | "not_required"
+    | "pending"
+    | "approved"
+    | "rejected";
+  residenceRequestedAt:  string | null;
+  residenceReviewedAt:   string | null;
+  residenceRejectionReason: string | null;
   preferredLanguage:     string;
   notificationEnabled:   boolean;
   emailNotifications:    boolean;

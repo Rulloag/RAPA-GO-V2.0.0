@@ -17,7 +17,7 @@ import { AppError } from "../../shared/errors/AppError.js";
 import type { UserRole } from "@rapa-go/shared";
 import { and, desc, eq } from "drizzle-orm";
 import { db } from "../../db/client.js";
-import { userDocuments, users } from "../../db/schema/index.js";
+import { passengerProfiles, userDocuments, users } from "../../db/schema/index.js";
 import type {
   FacebookResidentPrecheckInput,
   FacebookResidentStatusInput,
@@ -314,15 +314,170 @@ function residentStatusMessage(
 
   if (status === "rejected") {
     return rejectionReason?.trim()
-      ? `Tu documento fue rechazado. Motivo: ${rejectionReason.trim()}`
-      : "Tu documento fue rechazado. Adjunta un documento válido para volver a enviarlo.";
+      ? `Tu documento fue rechazado. Motivo: ${rejectionReason.trim()}. Tu cuenta permanece activa con tarifa Turista chileno.`
+      : "Tu documento fue rechazado. Tu cuenta permanece activa con tarifa Turista chileno y puedes adjuntar otro documento.";
   }
 
   if (status === "pending") {
-    return "Tu documento fue enviado al administrador y está pendiente de revisión.";
+    return "Tu documento fue enviado al administrador. Tu cuenta permanece activa con tarifa Turista chileno mientras se revisa.";
   }
 
   return "Todavía no existe una solicitud de residencia Rapa Nui para este correo.";
+}
+
+
+type PassengerFareType = "resident" | "chilean" | "foreigner";
+type ResidenceVerificationStatus =
+  | "not_required"
+  | "pending"
+  | "approved"
+  | "rejected";
+
+function normalizePassengerFareType(
+  value: unknown,
+): PassengerFareType {
+  if (value === "resident") return "resident";
+  if (value === "foreigner") return "foreigner";
+  return "chilean";
+}
+
+function effectivePassengerFareType(
+  requested: PassengerFareType,
+  status: ResidenceVerificationStatus,
+): PassengerFareType {
+  return requested === "resident" && status !== "approved"
+    ? "chilean"
+    : requested;
+}
+
+async function upsertPassengerFareProfile(input: {
+  userId: string;
+  phone?: string | null | undefined;
+  requestedFareType: PassengerFareType;
+  verificationStatus: ResidenceVerificationStatus;
+}): Promise<typeof passengerProfiles.$inferSelect> {
+  const effectiveFareType = effectivePassengerFareType(
+    input.requestedFareType,
+    input.verificationStatus,
+  );
+  const now = new Date();
+
+  const rows = await db
+    .insert(passengerProfiles)
+    .values({
+      userId: input.userId,
+      phone: input.phone?.trim() || null,
+      requestedFareType: input.requestedFareType,
+      effectiveFareType,
+      residenceVerificationStatus: input.verificationStatus,
+      residenceRequestedAt:
+        input.requestedFareType === "resident" ? now : null,
+      residenceReviewedAt:
+        input.verificationStatus === "approved" ||
+        input.verificationStatus === "rejected"
+          ? now
+          : null,
+      residenceRejectionReason: null,
+      updatedAt: now,
+    })
+    .onConflictDoUpdate({
+      target: passengerProfiles.userId,
+      set: {
+        ...(input.phone !== undefined
+          ? { phone: input.phone?.trim() || null }
+          : {}),
+        requestedFareType: input.requestedFareType,
+        effectiveFareType,
+        residenceVerificationStatus: input.verificationStatus,
+        residenceRequestedAt:
+          input.requestedFareType === "resident" ? now : null,
+        residenceReviewedAt:
+          input.verificationStatus === "approved" ||
+          input.verificationStatus === "rejected"
+            ? now
+            : null,
+        residenceRejectionReason: null,
+        updatedAt: now,
+      },
+    })
+    .returning();
+
+  const profile = rows[0];
+
+  if (!profile) {
+    throw AppError.internal(
+      "No se pudo guardar la categoría tarifaria del pasajero.",
+    );
+  }
+
+  return profile;
+}
+
+async function findPassengerFareProfile(
+  userId: string,
+): Promise<typeof passengerProfiles.$inferSelect | null> {
+  const rows = await db
+    .select()
+    .from(passengerProfiles)
+    .where(eq(passengerProfiles.userId, userId))
+    .limit(1);
+
+  return rows[0] ?? null;
+}
+
+async function buildAuthUser(
+  user: typeof users.$inferSelect,
+): Promise<AuthUser> {
+  const profile = await findPassengerFareProfile(user.id);
+
+  return {
+    id: user.id,
+    email: user.email,
+    name: user.name,
+    role: toUserRole(user.role),
+    avatarUrl: user.avatarUrl,
+    isVerified: user.isVerified,
+    ...(profile
+      ? {
+          requestedPassengerFareType: normalizePassengerFareType(
+            profile.requestedFareType,
+          ),
+          passengerFareType: normalizePassengerFareType(
+            profile.effectiveFareType,
+          ),
+          residenceVerificationStatus:
+            profile.residenceVerificationStatus as ResidenceVerificationStatus,
+        }
+      : {}),
+  };
+}
+
+async function reactivatePassengerResidenceAccount(
+  user: typeof users.$inferSelect,
+): Promise<typeof users.$inferSelect> {
+  if (user.role !== "passenger" || user.status !== "pending") {
+    return user;
+  }
+
+  const profile = await findPassengerFareProfile(user.id);
+  const status = String(
+    profile?.residenceVerificationStatus ?? "",
+  ).toLowerCase();
+
+  if (!["pending", "approved", "rejected"].includes(status)) {
+    return user;
+  }
+
+  const rows = await db
+    .update(users)
+    .set({
+      status: "active",
+      updatedAt: new Date(),
+    })
+    .where(eq(users.id, user.id))
+    .returning();
+
+  return rows[0] ?? user;
 }
 
 export class AuthService {
@@ -351,14 +506,22 @@ export class AuthService {
 
       await credentialsRepo.createForUser(user.id, passwordHash);
 
-      const authUser: AuthUser = {
-        id: user.id,
-        email: user.email,
-        name: user.name,
-        role: toUserRole(user.role),
-        avatarUrl: user.avatarUrl,
-        isVerified: user.isVerified,
-      };
+      const requestedFareType = normalizePassengerFareType(
+        payload.passengerFareType,
+      );
+      const verificationStatus: ResidenceVerificationStatus =
+        requestedFareType === "resident"
+          ? "pending"
+          : "not_required";
+
+      await upsertPassengerFareProfile({
+        userId: user.id,
+        phone: payload.phone,
+        requestedFareType,
+        verificationStatus,
+      });
+
+      const authUser = await buildAuthUser(user);
 
       const accessToken = tokenService.issueAccessToken(authUser);
       const refreshToken = tokenService.issueRefreshToken();
@@ -419,7 +582,7 @@ export class AuthService {
   async login(payload: LoginRequest): Promise<AuthServiceResult> {
     const email = payload.email.toLowerCase().trim();
 
-    const user = await usersRepository.findByEmail(email);
+    let user = await usersRepository.findByEmail(email);
 
     if (!user) {
       return {
@@ -437,6 +600,8 @@ export class AuthService {
         statusCode: 403,
       };
     }
+
+    user = await reactivatePassengerResidenceAccount(user);
 
     if (user.status === "pending") {
       return {
@@ -515,14 +680,7 @@ export class AuthService {
 
     await credentialsRepo.resetFailedAttempts(user.id);
 
-    const authUser: AuthUser = {
-      id: user.id,
-      email: user.email,
-      name: user.name,
-      role: toUserRole(user.role),
-      avatarUrl: user.avatarUrl,
-      isVerified: user.isVerified,
-    };
+    const authUser = await buildAuthUser(user);
 
     const accessToken = tokenService.issueAccessToken(authUser);
     const refreshToken = tokenService.issueRefreshToken();
@@ -596,13 +754,7 @@ export class AuthService {
       };
     }
 
-    const documentStatus = mapResidentDocumentStatus(document.status);
-    const status =
-      documentStatus === "approved" && user.status === "active"
-        ? "approved"
-        : documentStatus === "approved"
-          ? "pending"
-          : documentStatus;
+    const status = mapResidentDocumentStatus(document.status);
 
     return {
       ok: true,
@@ -669,7 +821,7 @@ export class AuthService {
           email,
           name: "Pasajero Facebook",
           role: "passenger",
-          status: "pending",
+          status: "active",
         });
       } catch (error) {
         user = await usersRepository.findByEmail(email);
@@ -700,8 +852,7 @@ export class AuthService {
       }
 
       if (
-        mapResidentDocumentStatus(existingDocument.status) === "approved" &&
-        user.status === "active"
+        mapResidentDocumentStatus(existingDocument.status) === "approved"
       ) {
         return {
           ok: true,
@@ -781,17 +932,25 @@ export class AuthService {
       documentId = created.id;
     }
 
-    if (user.status !== "pending") {
-      await db
+    if (user.status === "pending" && user.role === "passenger") {
+      const activeRows = await db
         .update(users)
         .set({
-          status: "pending",
-          updatedAt: new Date(),
+          status: "active",
+          updatedAt: now,
         })
-        .where(eq(users.id, user.id));
+        .where(eq(users.id, user.id))
+        .returning();
 
-      await sessionService.revokeAllForUser(user.id);
+      user = activeRows[0] ?? user;
     }
+
+    await upsertPassengerFareProfile({
+      userId: user.id,
+      phone: input.phone,
+      requestedFareType: "resident",
+      verificationStatus: "pending",
+    });
 
     auditService.recordSafe({
       eventType: "auth.resident_precheck.submitted",
@@ -801,7 +960,8 @@ export class AuthService {
       metadata: {
         provider,
         documentType: FACEBOOK_RESIDENT_DOCUMENT_TYPE,
-        userStatus: "pending",
+        userStatus: "active",
+        effectiveFareType: "chilean",
       },
     });
 
@@ -823,7 +983,7 @@ export class AuthService {
       avatarUrl?: string | null;
     },
     options: {
-      residentIntent: boolean;
+      passengerFareType: PassengerFareType;
     },
   ): Promise<FacebookLoginPreparationResult> {
     const email = profile.email.toLowerCase().trim();
@@ -874,72 +1034,47 @@ export class AuthService {
       residentDocument?.status,
     );
 
-    if (options.residentIntent) {
-      if (residentDocumentStatus === "pending") {
-        return {
-          ok: false,
-          code: "AUTH_RESIDENCE_PENDING",
-          message:
-            "Tu documento de residencia Rapa Nui está pendiente de revisión por el administrador.",
-          statusCode: 403,
-        };
-      }
+    if (options.passengerFareType === "resident") {
+      const verificationStatus: ResidenceVerificationStatus =
+        residentDocumentStatus === "approved"
+          ? "approved"
+          : residentDocumentStatus === "rejected"
+            ? "rejected"
+            : "pending";
 
-      if (residentDocumentStatus === "rejected") {
-        return {
-          ok: false,
-          code: "AUTH_RESIDENCE_REJECTED",
-          message: residentStatusMessage(
-            "rejected",
-            residentDocument?.rejectionReason,
-          ),
-          statusCode: 403,
-        };
-      }
+      await upsertPassengerFareProfile({
+        userId: user.id,
+        requestedFareType: "resident",
+        verificationStatus,
+      });
+    } else {
+      await upsertPassengerFareProfile({
+        userId: user.id,
+        requestedFareType: options.passengerFareType,
+        verificationStatus: "not_required",
+      });
 
       if (
-        residentDocumentStatus !== "approved" ||
-        user.status !== "active"
+        residentDocument &&
+        (residentDocumentStatus === "pending" ||
+          residentDocumentStatus === "rejected")
       ) {
-        return {
-          ok: false,
-          code: "AUTH_ACCOUNT_PENDING",
-          message:
-            "Tu cuenta de Residente Rapa Nui está pendiente de aprobación.",
-          statusCode: 403,
-        };
-      }
-    } else if (
-      residentDocument &&
-      (residentDocumentStatus === "pending" ||
-        residentDocumentStatus === "rejected")
-    ) {
-      const now = new Date();
+        const now = new Date();
 
-      await db
-        .update(userDocuments)
-        .set({
-          status: "withdrawn",
-          rejectionReason:
-            "El usuario eligió ingresar con otro tipo de pasajero.",
-          reviewedAt: now,
-          updatedAt: now,
-        })
-        .where(eq(userDocuments.id, residentDocument.id));
-
-      if (user.status === "pending") {
-        const rows = await db
-          .update(users)
+        await db
+          .update(userDocuments)
           .set({
-            status: "active",
+            status: "withdrawn",
+            rejectionReason:
+              "El usuario eligió ingresar con otro tipo de pasajero.",
+            reviewedAt: now,
             updatedAt: now,
           })
-          .where(eq(users.id, user.id))
-          .returning();
-
-        user = rows[0] ?? user;
+          .where(eq(userDocuments.id, residentDocument.id));
       }
     }
+
+    user = await reactivatePassengerResidenceAccount(user);
 
     if (user.status === "pending") {
       return {
@@ -997,7 +1132,7 @@ export class AuthService {
       };
     }
 
-    const user = await usersRepository.findById(userId);
+    let user = await usersRepository.findById(userId);
 
     if (!user) {
       return {
@@ -1007,6 +1142,8 @@ export class AuthService {
         statusCode: 401,
       };
     }
+
+    user = await reactivatePassengerResidenceAccount(user);
 
     if (user.status !== "active") {
       return {
@@ -1027,14 +1164,7 @@ export class AuthService {
       };
     }
 
-    const authUser: AuthUser = {
-      id: user.id,
-      email: user.email,
-      name: user.name,
-      role: toUserRole(user.role),
-      avatarUrl: user.avatarUrl,
-      isVerified: user.isVerified,
-    };
+    const authUser = await buildAuthUser(user);
 
     const accessToken = tokenService.issueAccessToken(authUser);
     const refreshToken = tokenService.issueRefreshToken();
@@ -1141,14 +1271,7 @@ export class AuthService {
       };
     }
 
-    const authUser: AuthUser = {
-      id: user.id,
-      email: user.email,
-      name: user.name,
-      role: toUserRole(user.role),
-      avatarUrl: user.avatarUrl,
-      isVerified: user.isVerified,
-    };
+    const authUser = await buildAuthUser(user);
 
     return {
       ok: true,

@@ -526,12 +526,18 @@ function normalizePassengerFareType(...values: unknown[]): PassengerFareType | n
     }
 
     if (
+      text === "rapanui" ||
+      text === "rapanui normal" ||
+      text === "rapa nui normal"
+    ) {
+      // Categoría legada eliminada: se mantiene como Turista chileno.
+      return "chilean";
+    }
+
+    if (
       text.includes("residente rapa nui") ||
       text.includes("residente_rapa_nui") ||
       text.includes("resident_rapa_nui") ||
-      text.includes("rapa nui") ||
-      text.includes("rapanui") ||
-      text.includes("local") ||
       text === "resident" ||
       text === "residente" ||
       text === "true" ||

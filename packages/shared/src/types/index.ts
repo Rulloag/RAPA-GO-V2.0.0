@@ -73,6 +73,14 @@ export type ApiResponse<T> = ApiSuccessResponse<T> | ApiErrorResponse;
 // ─── Auth types ───────────────────────────────────────────────────────────────
 
 /** Authenticated user as returned by the backend. */
+export type PassengerFareType = "resident" | "chilean" | "foreigner";
+export type ResidenceVerificationStatus =
+  | "not_required"
+  | "pending"
+  | "approved"
+  | "rejected";
+
+/** Authenticated user as returned by the backend. */
 export type AuthUser = {
   id: string;
   email: string;
@@ -80,6 +88,11 @@ export type AuthUser = {
   role: UserRole;
   avatarUrl: string | null;
   isVerified: boolean;
+  /** Categoría solicitada por la persona. */
+  requestedPassengerFareType?: PassengerFareType;
+  /** Categoría que realmente se usa para calcular el precio. */
+  passengerFareType?: PassengerFareType;
+  residenceVerificationStatus?: ResidenceVerificationStatus;
 };
 
 /**
@@ -109,6 +122,8 @@ export type RegisterRequest = {
   password: string;
   name: string;
   role: UserRole;
+  phone?: string | undefined;
+  passengerFareType?: PassengerFareType | undefined;
 };
 
 /** Standard auth response envelope from the backend. */

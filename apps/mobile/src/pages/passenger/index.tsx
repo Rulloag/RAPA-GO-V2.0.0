@@ -1067,12 +1067,17 @@ function normalizePassengerFareType(value: unknown): PassengerFareType | null {
   }
 
   if (
+    raw === "rapanui" ||
+    raw === "rapanui normal" ||
+    raw === "rapa nui normal"
+  ) {
+    return "chilean";
+  }
+
+  if (
     raw.includes("residente rapa nui") ||
-    raw.includes("rapa nui") ||
-    raw.includes("rapanui") ||
-    raw.includes("resident") ||
-    raw.includes("residente") ||
-    raw.includes("local") ||
+    raw === "resident" ||
+    raw === "residente" ||
     raw === "true" ||
     raw === "1"
   ) {
@@ -1149,10 +1154,10 @@ function readPassengerFareType(user?: unknown): PassengerFareType {
 
     if (globalStored && storedBelongsToThisUser) return globalStored;
   } catch {
-    // Si no existe dato guardado, usa residente como valor seguro por defecto.
+    // Si no existe dato guardado, usa Turista chileno como valor seguro por defecto.
   }
 
-  return "resident";
+  return "chilean";
 }
 
 function readAdminFareEngineConfig(): FareEngineConfig | null {
@@ -1960,7 +1965,7 @@ function calculateRapaGoFareFromCompatibilityRules(
 function calculateRapaGoFare(
   km: number,
   minutes?: number,
-  passengerType: PassengerFareType = "resident",
+  passengerType: PassengerFareType = "chilean",
   originOrDestinationText = "",
   vehicleCategory: VehicleFareCategory = "standard",
 ): {
