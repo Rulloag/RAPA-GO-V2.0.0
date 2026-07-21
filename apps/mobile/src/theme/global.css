@@ -71,7 +71,7 @@ ion-router-outlet {
    ========================================================================== */
 
 /* ==========================================================================
-   RAPA GO — Public toolbar (golden header, image 3)
+   RAPA GO — Public toolbar (used by other public pages, NOT /welcome)
    ========================================================================== */
 
 .public-toolbar {
@@ -90,152 +90,177 @@ ion-router-outlet {
 }
 
 /* ==========================================================================
-   RAPA GO — Welcome screen (original essence + logo improvement)
+   RAPA GO — /welcome full-bleed shell (no navbar)
    ========================================================================== */
 
-.welcome-container {
+.welcome-shell {
+  min-height: 100%;
   display: flex;
   flex-direction: column;
-  gap: 1.2rem;
-  max-width: 520px;
-  margin: 2.5rem auto 2rem auto;
-  padding: 32px 26px 24px;
-  border-radius: 28px;
-  background: rgba(20, 23, 30, 0.88) !important;
-  backdrop-filter: blur(18px) !important;
-  -webkit-backdrop-filter: blur(18px) !important;
-  border: 1px solid rgba(214,166,64,0.18);
-  box-shadow:
-    0 25px 60px rgba(0,0,0,.60),
-    inset 0 1px 0 rgba(255,255,255,.06);
-  overflow: hidden;
-}
-
-/* Logo + title on the same row */
-.welcome-header-block {
-  display: flex;
   align-items: center;
-  gap: 14px;
+  justify-content: center;
+  padding: max(env(safe-area-inset-top), 32px) 28px
+           max(env(safe-area-inset-bottom), 28px);
+  gap: 0;
 }
 
-.welcome-inline-logo {
-  width: 56px;
-  height: 56px;
-  border-radius: 16px;
-  object-fit: cover;
+/* ── Hero ─────────────────────────────────────── */
+.welcome-hero {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  text-align: center;
+  padding-bottom: 24px;
+}
+
+.welcome-logo-wrap {
+  width: 108px;
+  height: 108px;
+  border-radius: 30px;
+  overflow: hidden;
   background: #fff;
+  /* refined border: golden ring */
   box-shadow:
-    0 8px 20px rgba(0,0,0,.45),
-    0 0 0 2px rgba(214,166,64,.30);
-  flex-shrink: 0;
+    0 0 0 3px rgba(214,166,64,.55),
+    0 0 0 6px rgba(214,166,64,.12),
+    0 20px 44px rgba(0,0,0,.55);
 }
 
-.welcome-title {
+.welcome-logo-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.welcome-brand {
   margin: 0;
-  font-size: 2.2rem;
+  font-size: 2.8rem;
   font-weight: 950;
-  letter-spacing: .03em;
-  background: linear-gradient(135deg, #C89B3C, #F6F2EC, #C89B3C);
+  letter-spacing: .1em;
+  background: linear-gradient(135deg, #f8d879 0%, #d6a640 48%, #f8d879 100%);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
-  line-height: 1.1;
+  line-height: 1;
 }
 
-.welcome-subtitle {
+.welcome-tagline {
   margin: 0;
-  font-size: 1.05rem;
-  font-weight: 700;
+  font-size: 0.93rem;
+  font-weight: 600;
+  color: rgba(246,242,236,.65);
   line-height: 1.5;
-  color: #C89B3C;
+  max-width: 270px;
 }
 
-.welcome-status {
-  margin: 0;
-  font-size: 0.95rem;
-  line-height: 1.75;
-  color: rgba(246,242,236,.82);
+/* ── Divider ──────────────────────────────────── */
+.welcome-divider-line {
+  width: 52px;
+  height: 2px;
+  background: linear-gradient(90deg, transparent, rgba(214,166,64,.7), transparent);
+  border-radius: 2px;
+  margin: 0 auto 28px;
 }
 
-.welcome-container span,
-.welcome-container p {
-  text-shadow: 0 1px 3px rgba(0,0,0,0.6);
-}
-
-.welcome-buttons {
+/* ── CTA stack ────────────────────────────────── */
+.welcome-cta-stack {
   display: flex;
   flex-direction: column;
   gap: 14px;
-  margin-top: 6px;
+  width: 100%;
+  max-width: 400px;
 }
 
-.welcome-buttons ion-button,
-.welcome-container ion-button {
-  height: 56px;
-  font-size: 1rem;
-  font-weight: 800;
-  letter-spacing: 0.6px;
-  text-transform: uppercase;
-  --border-radius: 18px;
-  margin: 0;
-}
-
-.btn-auth-primary {
-  --background: linear-gradient(135deg, #f8d879 0%, #d6a640 46%, #b84f2e 100%);
-  --background-activated: linear-gradient(135deg, #c89b3c, #b84f2e);
-  --box-shadow: 0 12px 28px rgba(214,166,64,.35);
-  --color: #201607;
-  color: #201607;
-}
-
-.btn-register {
-  --background: linear-gradient(135deg, #C89B3C 0%, #D9C3A0 100%);
-  --background-activated: linear-gradient(135deg, #a07828, #bfaa88);
-  --box-shadow: 0 10px 22px rgba(200,155,60,.28);
-  --color: #1A1A1A;
-  color: #1A1A1A;
-}
-
-.btn-perfil {
-  --border-color: rgba(214,166,64,.50);
+/* Primary: solid gold fill + terracotta gradient, gold border */
+.welcome-btn-login {
+  --border-radius: 20px;
+  --background: linear-gradient(135deg, #f8d879 0%, #d6a640 46%, #c08830 100%);
+  --background-activated: linear-gradient(135deg, #d6a640, #9a6c1e);
+  --box-shadow: 0 14px 30px rgba(214,166,64,.36);
+  --color: #1a0f00;
+  color: #1a0f00;
+  /* visible golden border */
   --border-width: 1.5px;
+  --border-style: solid;
+  --border-color: rgba(255,224,120,.60);
+  height: 58px;
+  font-size: 1rem;
+  font-weight: 950;
+  letter-spacing: .04em;
+  text-transform: none;
+}
+
+/* Secondary: dark fill with clear golden border */
+.welcome-btn-register {
+  --border-radius: 20px;
+  --background: rgba(26,22,16,.82);
+  --background-activated: rgba(40,34,22,.90);
+  --box-shadow: 0 10px 24px rgba(0,0,0,.35);
   --color: #f8d879;
-  --background: rgba(255,255,255,.03);
+  color: #f8d879;
+  --border-width: 1.5px;
+  --border-style: solid;
+  --border-color: rgba(214,166,64,.72);
+  height: 58px;
+  font-size: 1rem;
+  font-weight: 850;
+  letter-spacing: .04em;
+  text-transform: none;
 }
 
-.welcome-buttons ion-button:active {
-  transform: scale(0.98);
-  transition: transform .1s ease;
+/* Tertiary: ghost outline */
+.welcome-btn-profile {
+  --border-radius: 20px;
+  --border-color: rgba(214,166,64,.36);
+  --border-width: 1.5px;
+  --color: rgba(246,242,236,.55);
+  --background: rgba(255,255,255,.02);
+  height: 50px;
+  font-size: 0.9rem;
+  font-weight: 750;
+  letter-spacing: .03em;
+  text-transform: none;
 }
 
-/* Footer links: more visible than before */
+/* ── Footer links ────────────────────────────── */
 .welcome-footer-links {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 2px;
-  margin-top: 8px;
+  gap: 0;
+  margin-top: 22px;
   flex-wrap: wrap;
 }
 
 .welcome-link {
-  --color: #C89B3C !important;
+  --color: #C89B3C;
+  --padding-start: 8px;
+  --padding-end: 8px;
   font-size: 0.8rem;
   font-weight: 700;
-  --padding-start: 6px;
-  --padding-end: 6px;
   text-transform: none;
-  text-decoration: none;
   opacity: 0.9;
 }
 
 .welcome-link-sep {
-  color: rgba(200,155,60,.55);
+  color: rgba(200,155,60,.45);
   font-size: 0.85rem;
   user-select: none;
+  margin: 0 2px;
 }
 
-/* Auth flow — register badge */
+/* ── Responsive ──────────────────────────────── */
+@media (max-width: 400px) {
+  .welcome-brand { font-size: 2.3rem; }
+  .welcome-logo-wrap { width: 92px; height: 92px; border-radius: 26px; }
+  .welcome-btn-login,
+  .welcome-btn-register { height: 54px; }
+  .welcome-btn-profile { height: 48px; }
+}
+
+/* ── Auth flow — register badge ─────────────── */
 .rapago-auth-register-badge {
   display: inline-flex;
   align-self: center;
