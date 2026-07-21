@@ -4,6 +4,7 @@ import {
   IonCheckbox,
   IonContent,
   IonHeader,
+  IonIcon,
   IonInput,
   IonItem,
   IonLabel,
@@ -17,12 +18,14 @@ import {
   IonTitle,
   IonToolbar,
 } from "@ionic/react";
+import { arrowBackOutline, mailOutline, lockClosedOutline, logoFacebook } from "ionicons/icons";
 import { useHistory } from "react-router-dom";
 import { loginRequestSchema, type UserRole } from "@rapa-go/shared";
 import { useAuth } from "./useAuth.js";
 import { authService } from "./auth.service.js";
 import { legalService, type LegalDocumentData } from "../legal/legal.service.js";
 import { ROUTES } from "../../navigation/routes.js";
+import logoRapago from "../../theme/img/logo-rapago.jpeg";
 
 const ROLE_HOME: Record<UserRole, string> = {
   passenger: ROUTES.PASSENGER.HOME,
@@ -1063,51 +1066,6 @@ export function LoginPage(): JSX.Element {
     "--background": "linear-gradient(180deg, rgba(20,16,12,.72), rgba(20,16,12,.86)), url('/assets/rapa-go-bg.jpg') center / cover no-repeat fixed",
   } as CSSProperties;
 
-  const formShellStyle: CSSProperties = {
-    width: "min(92vw, 470px)",
-    margin: "34px auto 22px",
-    padding: "22px",
-    borderRadius: "30px",
-    background: "linear-gradient(180deg, rgba(26,26,25,.96), rgba(15,15,15,.98))",
-    border: "1px solid rgba(214,166,64,.34)",
-    boxShadow: "0 24px 70px rgba(0,0,0,.48), inset 0 1px 0 rgba(255,255,255,.08)",
-    color: "#F6F2EC",
-  };
-
-  const brandBadgeStyle: CSSProperties = {
-    width: 58,
-    height: 58,
-    borderRadius: 20,
-    display: "grid",
-    placeItems: "center",
-    background: "linear-gradient(135deg,#F8D879,#C89B3C 48%,#8F3C24)",
-    boxShadow: "0 12px 28px rgba(200,155,60,.35)",
-    color: "#111",
-    fontSize: "1.7rem",
-    fontWeight: 950,
-    marginBottom: 14,
-  };
-
-  const authInputStyle = {
-    "--background": "rgba(255,255,255,.065)",
-    "--color": "#F6F2EC",
-    "--border-color": "rgba(214,166,64,.30)",
-    "--highlight-color-focused": "#D6A640",
-    "--padding-start": "16px",
-    "--inner-padding-end": "16px",
-    border: "1px solid rgba(214,166,64,.30)",
-    borderRadius: "18px",
-    marginBottom: "12px",
-    overflow: "hidden",
-  } as CSSProperties;
-
-  const inputTextStyle = {
-    "--color": "#ffffff",
-    "--placeholder-color": "rgba(255,255,255,0.45)",
-    "--placeholder-opacity": "1",
-    fontWeight: 850,
-  } as CSSProperties;
-
   const primaryButtonStyle = {
     "--border-radius": "18px",
     "--background": "linear-gradient(135deg,#F8D879 0%,#D6A640 48%,#B84F2E 100%)",
@@ -1229,58 +1187,50 @@ export function LoginPage(): JSX.Element {
             void handleSubmit(e);
           }}
           noValidate
-          style={formShellStyle}
+          className="rapago-auth-card"
         >
-          <div style={brandBadgeStyle}>🗿</div>
+          <div className="rapago-auth-brand-header">
+            <button
+              type="button"
+              className="rapago-auth-back-button"
+              onClick={() => history.replace(ROUTES.WELCOME)}
+              aria-label="Volver a bienvenida"
+            >
+              <IonIcon icon={arrowBackOutline} />
+            </button>
+
+            <div className="rapago-auth-brand-logo-wrap">
+              <img
+                src={logoRapago}
+                alt="Rapa Go"
+                className="passenger-home-logo rapago-auth-brand-logo"
+              />
+            </div>
+          </div>
 
           <IonText>
-            <h2
-              style={{
-                margin: "0 0 6px",
-                fontSize: "2rem",
-                lineHeight: 1.05,
-                fontWeight: 950,
-                color: "#D6A640",
-              }}
-            >
-              Bienvenido a Rapa Go
-            </h2>
+            <h2 className="rapago-auth-title">Bienvenido a Rapa Go</h2>
           </IonText>
 
-          <p
-            style={{
-              margin: "0 0 18px",
-              color: "rgba(246,242,236,.72)",
-              fontWeight: 750,
-              lineHeight: 1.35,
-            }}
-          >
-            Movilidad local, turismo y viajes seguros en Rapa Nui.
+          <p className="rapago-auth-tagline">
+            Movilidad, Tours, Rent a Car y Eventos en Rapa Nui
           </p>
 
           {serverError && (
             <IonText color="danger">
-              <p
-                className="auth-error"
-                style={{
-                  background: "rgba(239,68,68,.14)",
-                  border: "1px solid rgba(239,68,68,.28)",
-                  padding: "10px 12px",
-                  borderRadius: 14,
-                  fontWeight: 900,
-                }}
-              >
+              <p className="auth-error rapago-auth-error">
                 {serverError}
               </p>
             </IonText>
           )}
 
-          <IonItem className={fieldErrors.email ? "ion-invalid" : ""} style={authInputStyle}>
-            <IonLabel position="stacked" style={{ color: "#F8D879", fontWeight: 900 }}>
-              Correo electrónico
-            </IonLabel>
+          <IonItem
+            className={`rapago-auth-field ${fieldErrors.email ? "ion-invalid" : ""}`}
+            lines="none"
+          >
+            <IonIcon slot="start" icon={mailOutline} className="rapago-auth-field-icon" />
+            <IonLabel position="stacked">Correo electrónico</IonLabel>
             <IonInput
-              style={inputTextStyle}
               type="email"
               value={email}
               onIonInput={(e) => {
@@ -1300,12 +1250,13 @@ export function LoginPage(): JSX.Element {
             {fieldErrors.email && <IonNote slot="error">{fieldErrors.email}</IonNote>}
           </IonItem>
 
-          <IonItem className={fieldErrors.password ? "ion-invalid" : ""} style={authInputStyle}>
-            <IonLabel position="stacked" style={{ color: "#F8D879", fontWeight: 900 }}>
-              Contraseña
-            </IonLabel>
+          <IonItem
+            className={`rapago-auth-field ${fieldErrors.password ? "ion-invalid" : ""}`}
+            lines="none"
+          >
+            <IonIcon slot="start" icon={lockClosedOutline} className="rapago-auth-field-icon" />
+            <IonLabel position="stacked">Contraseña</IonLabel>
             <IonInput
-              style={inputTextStyle}
               type="password"
               value={password}
               onIonInput={(e) => {
@@ -1319,35 +1270,28 @@ export function LoginPage(): JSX.Element {
             {fieldErrors.password && <IonNote slot="error">{fieldErrors.password}</IonNote>}
           </IonItem>
 
-          <div
-            style={{
-              display: "flex",
-              justifyContent: "flex-end",
-              margin: "-4px 0 2px",
-            }}
+          <IonButton
+            expand="block"
+            type="submit"
+            disabled={loading}
+            className="rapago-auth-btn-primary"
           >
+            {loading ? <IonSpinner name="crescent" /> : "Iniciar sesión"}
+          </IonButton>
+
+          <div className="rapago-auth-forgot">
             <IonButton
               fill="clear"
               size="small"
               type="button"
               disabled={loading}
               onClick={() => history.push("/auth/forgot-password")}
-              style={
-                {
-                  "--color": "#F8D879",
-                  fontWeight: 900,
-                  margin: 0,
-                  textTransform: "none",
-                } as CSSProperties
-              }
             >
               ¿Olvidaste tu contraseña?
             </IonButton>
           </div>
 
-          <IonButton expand="block" type="submit" disabled={loading} style={primaryButtonStyle}>
-            {loading ? <IonSpinner name="crescent" /> : "Iniciar sesión"}
-          </IonButton>
+          <div className="rapago-auth-divider">o</div>
 
           <IonButton
             expand="block"
@@ -1359,8 +1303,9 @@ export function LoginPage(): JSX.Element {
               openFacebookStep();
             }}
             type="button"
-            style={outlineButtonStyle}
+            className="rapago-auth-btn-outline"
           >
+            <IonIcon slot="start" icon={logoFacebook} />
             Continuar con Facebook
           </IonButton>
 
@@ -1370,7 +1315,7 @@ export function LoginPage(): JSX.Element {
             disabled={loading}
             onClick={goToRegister}
             type="button"
-            style={{ color: "#F8D879", fontWeight: 900, marginTop: 8 } as CSSProperties}
+            className="rapago-auth-btn-clear"
           >
             ¿No tienes cuenta? Crear cuenta
           </IonButton>
@@ -1381,7 +1326,7 @@ export function LoginPage(): JSX.Element {
             disabled={loading}
             onClick={() => history.replace(ROUTES.WELCOME)}
             type="button"
-            style={outlineButtonStyle}
+            className="rapago-auth-btn-outline"
           >
             Volver al inicio
           </IonButton>

@@ -4,6 +4,7 @@ import {
   IonCheckbox,
   IonContent,
   IonHeader,
+  IonIcon,
   IonInput,
   IonItem,
   IonLabel,
@@ -15,6 +16,13 @@ import {
   IonTitle,
   IonToolbar,
 } from "@ionic/react";
+import {
+  arrowBackOutline,
+  personOutline,
+  callOutline,
+  mailOutline,
+  lockClosedOutline,
+} from "ionicons/icons";
 import { useHistory } from "react-router-dom";
 import { registerRequestSchema, type UserRole } from "@rapa-go/shared";
 import { useAuth } from "./useAuth.js";
@@ -23,6 +31,7 @@ import { sessionStorageService } from "./sessionStorage.service.js";
 import { ROUTES } from "../../navigation/routes.js";
 import { legalService } from "../../features/legal/legal.service.js";
 import { referralsService } from "../../features/referrals/referrals.service.js";
+import logoRapago from "../../theme/img/logo-rapago.jpeg";
 
 const ROLE_HOME: Record<UserRole, string> = {
   passenger: ROUTES.PASSENGER.HOME,
@@ -483,48 +492,48 @@ function getFirstFieldError(
 
 const pageContentStyle = {
   "--background":
-    "linear-gradient(180deg, #fff7e8 0%, #f9ead0 48%, #edd2a0 100%)",
+    "linear-gradient(180deg, rgba(20,16,12,.72), rgba(20,16,12,.86)), url('/assets/rapa-go-bg.jpg') center / cover no-repeat fixed",
 } as CSSProperties;
 
 const formShellStyle: CSSProperties = {
-  maxWidth: 540,
-  margin: "1.25rem auto 2rem",
+  width: "min(92vw, 480px)",
+  margin: "26px auto 26px",
   display: "flex",
   flexDirection: "column",
-  gap: "0.75rem",
-  padding: "20px 16px 22px",
-  borderRadius: 26,
-  background: "rgba(255, 252, 244, 0.96)",
-  border: "1px solid rgba(205, 157, 60, 0.36)",
-  boxShadow: "0 18px 44px rgba(66, 43, 16, 0.18)",
+  gap: "0.5rem",
+  padding: "22px 22px 26px",
+  borderRadius: 28,
+  background: "linear-gradient(180deg, rgba(28,26,23,.97), rgba(14,13,12,.98))",
+  border: "1px solid rgba(214,166,64,.32)",
+  boxShadow: "0 26px 70px rgba(0,0,0,.5), inset 0 1px 0 rgba(255,255,255,.06)",
+  color: "#F6F2EC",
 };
 
 const registerItemStyle = {
-  "--background": "#2a2118",
+  "--background": "rgba(255,255,255,.055)",
   "--color": "#ffffff",
   "--border-color": "transparent",
-  "--highlight-color-focused": "#c99a32",
-  "--highlight-color-valid": "#c99a32",
-  "--highlight-color-invalid": "#d33b32",
-  "--padding-start": "16px",
-  "--inner-padding-end": "12px",
-  "--min-height": "64px",
-  border: "1px solid rgba(198, 151, 54, 0.42)",
-  borderRadius: 18,
-  boxShadow: "0 8px 20px rgba(78, 52, 18, 0.06)",
+  "--highlight-color-focused": "#d6a640",
+  "--highlight-color-valid": "#d6a640",
+  "--highlight-color-invalid": "#b84f2e",
+  "--padding-start": "14px",
+  "--inner-padding-end": "10px",
+  "--min-height": "62px",
+  border: "1.5px solid rgba(214,166,64,.28)",
+  borderRadius: 16,
   overflow: "hidden",
 } as CSSProperties;
 
 const labelStyle: CSSProperties = {
   color: "#F8D879",
-  fontWeight: 900,
+  fontWeight: 800,
 };
 
 const inputStyle = {
   "--color": "#ffffff",
-  "--placeholder-color": "rgba(255,255,255,0.45)",
+  "--placeholder-color": "rgba(255,255,255,0.5)",
   "--placeholder-opacity": "1",
-  fontWeight: 850,
+  fontWeight: 700,
 } as CSSProperties;
 
 const softNoteStyle: CSSProperties = {
@@ -606,7 +615,7 @@ const uploadBoxStyle: CSSProperties = {
 const phoneInputRowStyle: CSSProperties = {
   display: "flex",
   alignItems: "center",
-  gap: 10,
+  gap: 8,
   width: "100%",
 };
 
@@ -614,14 +623,14 @@ const phonePrefixStyle: CSSProperties = {
   flex: "0 0 auto",
   display: "inline-flex",
   alignItems: "center",
-  justifyContent: "center",
-  minWidth: 52,
-  height: 38,
-  borderRadius: 12,
-  background: "rgba(210, 164, 58, 0.14)",
-  border: "1px solid rgba(210, 164, 58, 0.34)",
-  color: "#3a2a1b",
-  fontWeight: 950,
+  height: 26,
+  paddingInlineEnd: 10,
+  marginInlineEnd: 2,
+  borderInlineEnd: "1px solid rgba(214, 166, 64, 0.35)",
+  color: "#F8D879",
+  fontWeight: 800,
+  fontSize: "0.98rem",
+  letterSpacing: "0.01em",
 };
 
 export function RegisterPage(): JSX.Element {
@@ -1062,8 +1071,16 @@ export function RegisterPage(): JSX.Element {
   return (
     <IonPage className="rapago-auth-dark">
       <IonHeader>
-        <IonToolbar color="warning">
-          <IonTitle style={{ color: "#111", fontWeight: 950 }}>Crear cuenta</IonTitle>
+        <IonToolbar
+          style={
+            {
+              "--background": "linear-gradient(135deg,#111 0%,#5A241A 56%,#C89B3C 130%)",
+              "--color": "#fff",
+              "--min-height": "72px",
+            } as CSSProperties
+          }
+        >
+          <IonTitle style={{ color: "#fff", fontWeight: 950 }}>Crear cuenta</IonTitle>
         </IonToolbar>
       </IonHeader>
 
@@ -1075,35 +1092,45 @@ export function RegisterPage(): JSX.Element {
           style={formShellStyle}
           noValidate
         >
+          <div className="rapago-auth-brand-header">
+            <button
+              type="button"
+              className="rapago-auth-back-button"
+              onClick={() => history.replace(ROUTES.WELCOME)}
+              aria-label="Volver a bienvenida"
+            >
+              <IonIcon icon={arrowBackOutline} />
+            </button>
+
+            <div className="rapago-auth-brand-logo-wrap">
+              <img
+                src={logoRapago}
+                alt="Rapa Go"
+                className="passenger-home-logo rapago-auth-brand-logo"
+              />
+            </div>
+          </div>
+
           <IonText>
-            <h2 style={{ margin: "0 0 0.25rem", fontWeight: 950, color: "#1f1711" }}>
-              Crea tu cuenta Rapa Go
-            </h2>
+            <h2 className="rapago-auth-title">Crea tu cuenta Rapa Go</h2>
           </IonText>
 
           <IonText>
-            <p style={{ margin: "0 0 0.75rem", fontSize: "0.9rem", lineHeight: 1.45, color: "#5a4528", fontWeight: 700 }}>
-              La cuenta se crea como pasajero. Selecciona tu tipo de pasajero para aplicar la tarifa correcta. Rapanui normal no requiere documento; Residente Rapa Nui sí debe adjuntar documento para validación.
+            <p className="rapago-auth-subtitle">
+              Crea tu cuenta RAPA GO, una nueva visión de viajar.
             </p>
           </IonText>
 
           {serverError && (
             <IonText color="danger">
-              <p
-                style={{
-                  margin: "0 0 0.75rem",
-                  padding: "0.75rem",
-                  background: "var(--ion-color-danger-tint)",
-                  borderRadius: 10,
-                  fontWeight: 700,
-                }}
-              >
+              <p className="rapago-auth-error">
                 {serverError}
               </p>
             </IonText>
           )}
 
           <IonItem className={fieldErrors.name ? "ion-invalid" : ""} style={registerItemStyle}>
+            <IonIcon slot="start" icon={personOutline} className="rapago-auth-field-icon" />
             <IonLabel position="stacked" style={labelStyle}>Nombre *</IonLabel>
             <IonInput
               type="text"
@@ -1122,6 +1149,7 @@ export function RegisterPage(): JSX.Element {
           </IonItem>
 
           <IonItem className={fieldErrors.lastName ? "ion-invalid" : ""} style={registerItemStyle}>
+            <IonIcon slot="start" icon={personOutline} className="rapago-auth-field-icon" />
             <IonLabel position="stacked" style={labelStyle}>Apellido *</IonLabel>
             <IonInput
               type="text"
@@ -1283,6 +1311,7 @@ export function RegisterPage(): JSX.Element {
           )}
 
           <IonItem className={fieldErrors.phone ? "ion-invalid" : ""} style={registerItemStyle}>
+            <IonIcon slot="start" icon={callOutline} className="rapago-auth-field-icon" />
             <IonLabel position="stacked" style={labelStyle}>Teléfono *</IonLabel>
             <div style={phoneInputRowStyle}>
               <span style={phonePrefixStyle}>+56</span>
@@ -1307,6 +1336,7 @@ export function RegisterPage(): JSX.Element {
           </IonItem>
 
           <IonItem className={fieldErrors.email ? "ion-invalid" : ""} style={registerItemStyle}>
+            <IonIcon slot="start" icon={mailOutline} className="rapago-auth-field-icon" />
             <IonLabel position="stacked" style={labelStyle}>Correo electrónico *</IonLabel>
             <IonInput
               type="email"
@@ -1327,6 +1357,7 @@ export function RegisterPage(): JSX.Element {
           </IonItem>
 
           <IonItem className={fieldErrors.password ? "ion-invalid" : ""} style={registerItemStyle}>
+            <IonIcon slot="start" icon={lockClosedOutline} className="rapago-auth-field-icon" />
             <IonLabel position="stacked" style={labelStyle}>Contraseña *</IonLabel>
             <IonInput
               type="password"
@@ -1346,6 +1377,7 @@ export function RegisterPage(): JSX.Element {
           </IonItem>
 
           <IonItem className={fieldErrors.confirmPassword ? "ion-invalid" : ""} style={registerItemStyle}>
+            <IonIcon slot="start" icon={lockClosedOutline} className="rapago-auth-field-icon" />
             <IonLabel position="stacked" style={labelStyle}>Confirmar contraseña *</IonLabel>
             <IonInput
               type="password"
@@ -1394,7 +1426,7 @@ export function RegisterPage(): JSX.Element {
             </IonText>
           )}
 
-          <IonList style={{ marginTop: "0.75rem", borderRadius: 18, overflow: "hidden", background: "transparent", border: "1px solid rgba(198,151,54,.30)" }}>
+          <IonList style={{ marginTop: "0.75rem", borderRadius: 18, overflow: "hidden", background: "transparent" }}>
             <IonItem style={{ ...registerItemStyle, borderRadius: 0, boxShadow: "none", borderLeft: 0, borderRight: 0, borderTop: 0 } as CSSProperties}>
               <IonCheckbox
                 checked={acceptTerms}
@@ -1405,7 +1437,7 @@ export function RegisterPage(): JSX.Element {
                 slot="start"
                 disabled={loading}
               />
-              <IonLabel style={{ whiteSpace: "normal", color: "#2f2217", fontWeight: 750, lineHeight: 1.35 }}>
+              <IonLabel style={{ whiteSpace: "normal", color: "#F6F2EC", fontWeight: 750, lineHeight: 1.35 }}>
                 He leído y acepto los{" "}
                 <a href="/legal/terms-and-conditions" target="_blank" rel="noopener noreferrer">
                   Términos y Condiciones
@@ -1423,7 +1455,7 @@ export function RegisterPage(): JSX.Element {
                 slot="start"
                 disabled={loading}
               />
-              <IonLabel style={{ whiteSpace: "normal", color: "#2f2217", fontWeight: 750, lineHeight: 1.35 }}>
+              <IonLabel style={{ whiteSpace: "normal", color: "#F6F2EC", fontWeight: 750, lineHeight: 1.35 }}>
                 He leído y acepto la{" "}
                 <a href="/legal/privacy-policy" target="_blank" rel="noopener noreferrer">
                   Política de Privacidad
@@ -1441,7 +1473,7 @@ export function RegisterPage(): JSX.Element {
                 slot="start"
                 disabled={loading}
               />
-              <IonLabel style={{ whiteSpace: "normal", color: "#2f2217", fontWeight: 750, lineHeight: 1.35 }}>
+              <IonLabel style={{ whiteSpace: "normal", color: "#F6F2EC", fontWeight: 750, lineHeight: 1.35 }}>
                 Acepto las{" "}
                 <a href="/legal/user-conditions" target="_blank" rel="noopener noreferrer">
                   Condiciones para Usuarios
@@ -1462,7 +1494,7 @@ export function RegisterPage(): JSX.Element {
             expand="block"
             type="submit"
             disabled={!canSubmit}
-            style={{ marginTop: "1rem", height: "52px", fontWeight: 950, "--border-radius": "18px", "--background": "linear-gradient(135deg, #d2a43a, #f4d782)", "--color": "#111" } as CSSProperties}
+            className="rapago-auth-btn-primary"
           >
             {loading ? <IonSpinner name="crescent" /> : "Crear cuenta"}
           </IonButton>
@@ -1472,6 +1504,7 @@ export function RegisterPage(): JSX.Element {
             fill="clear"
             disabled={loading}
             onClick={() => history.push(ROUTES.AUTH.LOGIN)}
+            className="rapago-auth-btn-clear"
           >
             ¿Ya tienes cuenta? Iniciar sesión
           </IonButton>
@@ -1479,9 +1512,9 @@ export function RegisterPage(): JSX.Element {
           <IonButton
             expand="block"
             fill="outline"
-            color="warning"
             disabled={loading}
             onClick={() => history.replace(ROUTES.WELCOME)}
+            className="rapago-auth-btn-outline"
           >
             Volver al inicio
           </IonButton>

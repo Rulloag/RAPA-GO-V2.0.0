@@ -2752,11 +2752,11 @@ ion-item ion-select {
   opacity: 1 !important;
 }
 
-/* Shadow parts de Ionic moderno */
-ion-input::part(native),
-ion-textarea::part(native),
-ion-select::part(text),
-ion-select::part(placeholder) {
+/* Shadow parts de Ionic moderno — SOLO dentro de tarjetas claras (ion-card) */
+ion-card ion-input::part(native),
+ion-card ion-textarea::part(native),
+ion-card ion-select::part(text),
+ion-card ion-select::part(placeholder) {
   color: #111111 !important;
   -webkit-text-fill-color: #111111 !important;
   opacity: 1 !important;
@@ -2764,17 +2764,15 @@ ion-select::part(placeholder) {
   font-weight: 900 !important;
 }
 
-ion-input::part(placeholder),
-ion-textarea::part(placeholder) {
+ion-card ion-input::part(placeholder),
+ion-card ion-textarea::part(placeholder) {
   color: #6b6b6b !important;
   -webkit-text-fill-color: #6b6b6b !important;
   opacity: 1 !important;
   font-weight: 800 !important;
 }
 
-/* Fallback por si el navegador expone input/textarea interno */
-ion-input input,
-ion-textarea textarea,
+/* Fallback por si el navegador expone input/textarea interno (solo tarjetas claras) */
 ion-card ion-input input,
 ion-card ion-textarea textarea {
   color: #111111 !important;
@@ -2784,8 +2782,8 @@ ion-card ion-textarea textarea {
   font-weight: 900 !important;
 }
 
-ion-input input::placeholder,
-ion-textarea textarea::placeholder {
+ion-card ion-input input::placeholder,
+ion-card ion-textarea textarea::placeholder {
   color: #6b6b6b !important;
   -webkit-text-fill-color: #6b6b6b !important;
   opacity: 1 !important;
@@ -2813,10 +2811,10 @@ ion-button[color="danger"][fill="outline"] {
   font-weight: 950 !important;
 }
 
-/* Fechas y números: que se vean negros */
-input[type="date"],
-input[type="number"],
-input[type="tel"] {
+/* Fechas y números dentro de tarjetas claras: que se vean negros */
+ion-card input[type="date"],
+ion-card input[type="number"],
+ion-card input[type="tel"] {
   color: #111111 !important;
   -webkit-text-fill-color: #111111 !important;
   font-weight: 900 !important;
@@ -4159,30 +4157,338 @@ ion-modal.facebook-step-modal::part(content) {
 }
 
 /* ==========================================================================
-   Auth dark forms (login/register): force white text regardless of global
-   light-form overrides defined above.
+   RAPA GO — Auth (Login / Register) design system
+   Scoped under .rapago-auth-dark so it never clashes with the global
+   light-form rules that force #111 text. Palette: gold / terracotta / dark.
    ========================================================================== */
+
+/* Card / form shell */
+.rapago-auth-card {
+  width: min(92vw, 460px);
+  margin: 26px auto 26px;
+  padding: 22px 22px 26px;
+  border-radius: 28px;
+  background: linear-gradient(180deg, rgba(28, 26, 23, 0.97), rgba(14, 13, 12, 0.98));
+  border: 1px solid rgba(214, 166, 64, 0.32);
+  box-shadow:
+    0 26px 70px rgba(0, 0, 0, 0.5),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  color: #f6f2ec;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Brand header: back arrow + centered logo on the same row */
+.rapago-auth-brand-header {
+  display: grid;
+  grid-template-columns: 42px 1fr 42px;
+  align-items: center;
+  column-gap: 8px;
+  width: 100%;
+  margin: 0 0 8px;
+}
+
+.rapago-auth-back-button {
+  grid-column: 1;
+  justify-self: start;
+  width: 42px;
+  height: 42px;
+  border: 1px solid rgba(214, 166, 64, 0.45);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.06);
+  color: #f8d879;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  transition: background 0.2s ease, transform 0.2s ease;
+}
+
+.rapago-auth-back-button:hover {
+  background: rgba(214, 166, 64, 0.16);
+  transform: translateX(-1px);
+}
+
+.rapago-auth-back-button ion-icon {
+  font-size: 1.25rem;
+}
+
+.rapago-auth-brand-logo-wrap {
+  grid-column: 2;
+  width: 100%;
+  display: flex;
+  justify-content: center;
+  margin: 0;
+}
+
+.rapago-auth-brand-logo {
+  width: 78px;
+  height: 78px;
+  border-radius: 22px;
+  padding: 5px;
+  background: #ffffff;
+  box-shadow:
+    0 10px 24px rgba(0, 0, 0, 0.4),
+    0 0 0 2px rgba(246, 242, 236, 0.14);
+}
+
+/* Typography */
+.rapago-auth-title {
+  margin: 10px 0 4px;
+  text-align: center;
+  font-size: 1.72rem;
+  line-height: 1.1;
+  font-weight: 950;
+  color: #f1c864;
+  letter-spacing: 0.01em;
+}
+
+.rapago-auth-subtitle,
+.rapago-auth-tagline {
+  margin: 0 0 18px;
+  text-align: center;
+  color: rgba(246, 242, 236, 0.72);
+  font-weight: 650;
+  line-height: 1.4;
+  font-size: 0.95rem;
+}
+
+/* Field (ion-item) */
+.rapago-auth-dark .rapago-auth-field {
+  --background: rgba(255, 255, 255, 0.055);
+  --border-color: transparent;
+  --highlight-color-focused: #d6a640;
+  --highlight-color-valid: #d6a640;
+  --highlight-color-invalid: #b84f2e;
+  --padding-start: 14px;
+  --inner-padding-end: 10px;
+  --min-height: 62px;
+  border: 1.5px solid rgba(214, 166, 64, 0.28);
+  border-radius: 16px;
+  margin-bottom: 14px;
+  overflow: hidden;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.rapago-auth-dark .rapago-auth-field.item-has-focus {
+  border-color: rgba(214, 166, 64, 0.75);
+  box-shadow: 0 0 0 3px rgba(214, 166, 64, 0.16);
+}
+
+.rapago-auth-dark .rapago-auth-field.ion-invalid {
+  border-color: rgba(184, 79, 46, 0.8);
+  box-shadow: 0 0 0 3px rgba(184, 79, 46, 0.16);
+}
+
+/* Labels */
+.rapago-auth-dark .rapago-auth-field ion-label {
+  color: #f8d879 !important;
+  font-weight: 800 !important;
+}
+
+/* Leading icon inside a field */
+.rapago-auth-field-icon {
+  color: #c89b3c;
+  font-size: 1.18rem;
+  margin-inline-end: 8px;
+  align-self: center;
+}
+
+/* Input text — white and robust against the global #111 rules */
+.rapago-auth-dark .rapago-auth-field ion-input,
+.rapago-auth-dark .rapago-auth-field ion-textarea,
 .rapago-auth-dark ion-item ion-input,
 .rapago-auth-dark ion-item ion-textarea,
 .rapago-auth-dark ion-input,
 .rapago-auth-dark ion-textarea {
   --color: #ffffff !important;
-  --placeholder-color: rgba(255, 255, 255, 0.45) !important;
+  --placeholder-color: rgba(255, 255, 255, 0.5) !important;
+  --placeholder-opacity: 1 !important;
   color: #ffffff !important;
+  font-weight: 700;
 }
 
 .rapago-auth-dark ion-input::part(native),
 .rapago-auth-dark ion-textarea::part(native) {
   color: #ffffff !important;
   -webkit-text-fill-color: #ffffff !important;
-  caret-color: #ffffff !important;
+  caret-color: #f8d879 !important;
 }
 
+/* This Ionic build renders the real <input> in light DOM (scoped, not shadow),
+   so target it directly to guarantee bright typed text in login AND register. */
+.rapago-auth-dark ion-input input,
+.rapago-auth-dark ion-textarea textarea {
+  color: #ffffff !important;
+  -webkit-text-fill-color: #ffffff !important;
+  caret-color: #f8d879 !important;
+}
+
+.rapago-auth-dark ion-input input::placeholder,
+.rapago-auth-dark ion-textarea textarea::placeholder {
+  color: rgba(255, 255, 255, 0.5) !important;
+  -webkit-text-fill-color: rgba(255, 255, 255, 0.5) !important;
+  opacity: 1 !important;
+}
+
+.rapago-auth-dark input::-ms-reveal,
+.rapago-auth-dark input::-ms-clear,
+.rapago-auth-dark input::-webkit-credentials-auto-fill-button {
+  display: none;
+  visibility: hidden;
+  pointer-events: none;
+}
+
+/* Neutralize browser autofill (kills the blue/yellow box + dark text) */
 .rapago-auth-dark ion-input::part(native):-webkit-autofill,
 .rapago-auth-dark ion-input::part(native):-webkit-autofill:hover,
 .rapago-auth-dark ion-input::part(native):-webkit-autofill:focus,
-.rapago-auth-dark ion-input::part(native):-webkit-autofill:active {
+.rapago-auth-dark ion-input::part(native):-webkit-autofill:active,
+.rapago-auth-dark ion-input input:-webkit-autofill,
+.rapago-auth-dark ion-input input:-webkit-autofill:hover,
+.rapago-auth-dark ion-input input:-webkit-autofill:focus,
+.rapago-auth-dark ion-input input:-webkit-autofill:active {
   -webkit-text-fill-color: #ffffff !important;
   -webkit-box-shadow: 0 0 0 1000px transparent inset !important;
+  caret-color: #f8d879 !important;
   transition: background-color 9999s ease-in-out 0s;
+}
+
+/* Server error box */
+.rapago-auth-error {
+  background: rgba(184, 79, 46, 0.16);
+  border: 1px solid rgba(184, 79, 46, 0.4);
+  color: #f3c6b4;
+  padding: 10px 12px;
+  border-radius: 14px;
+  font-weight: 800;
+  margin: 0 0 12px;
+}
+
+/* Error notes / messages use a warm terracotta that fits the palette */
+.rapago-auth-dark ion-note[slot="error"],
+.rapago-auth-dark .ion-color-danger {
+  color: #f0906e !important;
+}
+
+/* Forgot-password row */
+.rapago-auth-forgot {
+  display: flex;
+  justify-content: center;
+  margin: 14px 0 18px;
+}
+
+.rapago-auth-dark .rapago-auth-forgot ion-button {
+  --color: #f8d879;
+  font-weight: 800;
+  text-transform: none;
+  margin: 0;
+  letter-spacing: 0.01em;
+}
+
+/* Buttons */
+.rapago-auth-dark .rapago-auth-btn-primary {
+  --border-radius: 16px;
+  --background: linear-gradient(135deg, #f8d879 0%, #d6a640 46%, #b84f2e 100%);
+  --background-activated: linear-gradient(135deg, #c89b3c, #b84f2e);
+  --box-shadow: 0 16px 30px rgba(214, 166, 64, 0.32);
+  --color: #201607;
+  color: #201607;
+  height: 54px;
+  font-weight: 950;
+  margin-top: 8px;
+  text-transform: none;
+}
+
+.rapago-auth-dark .rapago-auth-btn-outline {
+  --border-radius: 16px;
+  --border-color: rgba(214, 166, 64, 0.7);
+  --border-width: 1.5px;
+  --color: #f8d879;
+  --background: rgba(255, 255, 255, 0.02);
+  height: 50px;
+  font-weight: 850;
+  margin-top: 10px;
+  text-transform: none;
+}
+
+.rapago-auth-dark .rapago-auth-btn-clear {
+  --color: #f8d879;
+  font-weight: 850;
+  margin-top: 6px;
+  text-transform: none;
+}
+
+/* Divider with a centered "o" */
+.rapago-auth-divider {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 0 0 8px;
+  color: rgba(246, 242, 236, 0.5);
+  font-weight: 700;
+  font-size: 0.82rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.rapago-auth-divider::before,
+.rapago-auth-divider::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(214, 166, 64, 0.4), transparent);
+}
+
+/* Responsive: mobile-first refinements */
+@media (max-width: 600px) {
+  .rapago-auth-card {
+    width: min(94vw, 440px);
+    margin: 18px auto 22px;
+    padding: 18px 16px 22px;
+    border-radius: 24px;
+  }
+
+  .rapago-auth-tagline {
+    white-space: nowrap;
+    font-size: clamp(0.72rem, 2.8vw, 0.9rem);
+  }
+
+  .rapago-auth-title {
+    font-size: 1.5rem;
+  }
+
+  .rapago-auth-brand-logo {
+    width: 68px;
+    height: 68px;
+    border-radius: 20px;
+  }
+
+  /* 16px keeps iOS from auto-zooming on focus; comfortable tap height */
+  .rapago-auth-dark .rapago-auth-field ion-input,
+  .rapago-auth-dark ion-item ion-input {
+    font-size: 16px !important;
+  }
+
+  .rapago-auth-dark .rapago-auth-field {
+    --min-height: 60px;
+  }
+
+  .rapago-auth-dark .rapago-auth-btn-primary {
+    height: 52px;
+  }
+
+  .rapago-auth-dark .rapago-auth-btn-outline {
+    height: 50px;
+  }
+}
+
+@media (max-width: 380px) {
+  .rapago-auth-card {
+    padding: 16px 13px 20px;
+  }
+
+  .rapago-auth-field-icon {
+    font-size: 1.05rem;
+    margin-inline-end: 6px;
+  }
 }
