@@ -8,7 +8,7 @@ import {
   ticketOutline,
   helpCircleOutline,
 } from "ionicons/icons";
-import { Redirect, Route, Switch } from "react-router-dom";
+import { Redirect, Route } from "react-router-dom";
 import { IonSpinner } from "@ionic/react";
 import { RoleLayout } from "./RoleLayout";
 import { ROUTES } from "../navigation/routes";
@@ -63,10 +63,10 @@ function PageSuspense({ children }: { children: ReactNode }): JSX.Element {
             display: "flex",
             justifyContent: "center",
             alignItems: "center",
-            height: "60vh",
+            minHeight: "60vh",
           }}
         >
-          <IonSpinner name="crescent" />
+          <IonSpinner name="crescent" color="warning" />
         </div>
       }
     >
@@ -77,9 +77,11 @@ function PageSuspense({ children }: { children: ReactNode }): JSX.Element {
 
 export function PassengerLayout(): JSX.Element {
   return (
-    <RoleLayout tabs={TABS}>
+    <>
       <PassengerLocationRuntime />
-      <Switch>
+      <RoleLayout tabs={TABS}>
+        <Redirect exact from={ROUTES.PASSENGER.BASE} to={ROUTES.PASSENGER.HOME} />
+
         <Route
           exact
           path={ROUTES.PASSENGER.HOME}
@@ -151,7 +153,7 @@ export function PassengerLayout(): JSX.Element {
         )}
 
         <Route render={() => <Redirect to={ROUTES.NOT_FOUND} />} />
-      </Switch>
-    </RoleLayout>
+      </RoleLayout>
+    </>
   );
 }

@@ -1,5 +1,17 @@
-import { homeOutline, peopleOutline, carOutline, settingsOutline, documentTextOutline, personAddOutline, ticketOutline, shieldCheckmarkOutline, cashOutline, giftOutline, helpBuoyOutline } from "ionicons/icons";
-import { Redirect, Route, Switch } from "react-router-dom";
+import {
+  homeOutline,
+  peopleOutline,
+  carOutline,
+  settingsOutline,
+  documentTextOutline,
+  personAddOutline,
+  ticketOutline,
+  shieldCheckmarkOutline,
+  cashOutline,
+  giftOutline,
+  helpBuoyOutline,
+} from "ionicons/icons";
+import { Redirect, Route } from "react-router-dom";
 import { RoleLayout } from "./RoleLayout";
 import { ROUTES } from "../navigation/routes";
 import {
@@ -47,41 +59,40 @@ const TABS = [
 export function AdminLayout(): JSX.Element {
   return (
     <RoleLayout tabs={TABS}>
-      <Switch>
-        <Route exact path={ROUTES.ADMIN.HOME} component={AdminHomePage} />
-        <Route exact path={ROUTES.ADMIN.USERS} component={AdminUsersPage} />
-        <Route exact path={ROUTES.ADMIN.DRIVERS} component={AdminDriversPage} />
-        {RELEASE_FEATURES.tourism && (
-          <Route exact path={ROUTES.ADMIN.GUIDES} component={AdminGuidesPage} />
-        )}
-        {RELEASE_FEATURES.rentals && (
-          <Route exact path={ROUTES.ADMIN.RENTALS} component={AdminRentalsPage} />
-        )}
-        <Route exact path={ROUTES.ADMIN.TRIPS} component={AdminTripsPage} />
-        <Route exact path={ROUTES.ADMIN.PAYMENTS} component={AdminPaymentsPage} />
-        <Route exact path={ROUTES.ADMIN.SETTINGS} component={AdminSettingsPage} />
-        <Route exact path={ROUTES.ADMIN.DOCUMENTS} component={AdminDocumentsPage} />
-        <Route exact path={ROUTES.ADMIN.OFFLINE_BOOKINGS} component={AdminOfflineBookingsPage} />
-        <Route exact path={ROUTES.ADMIN.APPLICATIONS} component={AdminApplicationsPage} />
-        {RELEASE_FEATURES.events && (
-          <Route exact path={ROUTES.ADMIN.EVENT_TICKETS} component={AdminEventTicketsPage} />
-        )}
-        <Route exact path="/admin/activity" component={AdminActivityPage} />
-        <Route exact path="/admin/alerts" component={AdminAlertsPage} />
-        <Route exact path={ROUTES.ADMIN.LEGAL_DOCUMENTS} component={AdminLegalDocumentsPage} />
-        <Route exact path={ROUTES.ADMIN.FARE_SETTINGS} component={AdminFareSettingsPage} />
-        <Route exact path={ROUTES.ADMIN.REFERRALS} component={AdminReferralsPage} />
-        <Route exact path={ROUTES.ADMIN.SUPPORT} component={AdminSupportPage} />
+      <Redirect exact from={ROUTES.ADMIN.BASE} to={ROUTES.ADMIN.HOME} />
+      <Route exact path={ROUTES.ADMIN.HOME} component={AdminHomePage} />
+      <Route exact path={ROUTES.ADMIN.USERS} component={AdminUsersPage} />
+      <Route exact path={ROUTES.ADMIN.DRIVERS} component={AdminDriversPage} />
+      {RELEASE_FEATURES.tourism && (
+        <Route exact path={ROUTES.ADMIN.GUIDES} component={AdminGuidesPage} />
+      )}
+      {RELEASE_FEATURES.rentals && (
+        <Route exact path={ROUTES.ADMIN.RENTALS} component={AdminRentalsPage} />
+      )}
+      <Route exact path={ROUTES.ADMIN.TRIPS} component={AdminTripsPage} />
+      <Route exact path={ROUTES.ADMIN.PAYMENTS} component={AdminPaymentsPage} />
+      <Route exact path={ROUTES.ADMIN.SETTINGS} component={AdminSettingsPage} />
+      <Route exact path={ROUTES.ADMIN.DOCUMENTS} component={AdminDocumentsPage} />
+      <Route exact path={ROUTES.ADMIN.OFFLINE_BOOKINGS} component={AdminOfflineBookingsPage} />
+      <Route exact path={ROUTES.ADMIN.APPLICATIONS} component={AdminApplicationsPage} />
+      {RELEASE_FEATURES.events && (
+        <Route exact path={ROUTES.ADMIN.EVENT_TICKETS} component={AdminEventTicketsPage} />
+      )}
+      <Route exact path="/admin/activity" component={AdminActivityPage} />
+      <Route exact path="/admin/alerts" component={AdminAlertsPage} />
+      <Route exact path={ROUTES.ADMIN.LEGAL_DOCUMENTS} component={AdminLegalDocumentsPage} />
+      <Route exact path={ROUTES.ADMIN.FARE_SETTINGS} component={AdminFareSettingsPage} />
+      <Route exact path={ROUTES.ADMIN.REFERRALS} component={AdminReferralsPage} />
+      <Route exact path={ROUTES.ADMIN.SUPPORT} component={AdminSupportPage} />
 
-        {DISABLED_ADMIN_PATHS.length > 0 && (
-          <Route
-            path={[...DISABLED_ADMIN_PATHS]}
-            render={() => <Redirect to={ROUTES.NOT_FOUND} />}
-          />
-        )}
+      {DISABLED_ADMIN_PATHS.length > 0 && (
+        <Route
+          path={[...DISABLED_ADMIN_PATHS]}
+          render={() => <Redirect to={ROUTES.NOT_FOUND} />}
+        />
+      )}
 
-        <Route render={() => <Redirect to={ROUTES.NOT_FOUND} />} />
-      </Switch>
+      <Route render={() => <Redirect to={ROUTES.NOT_FOUND} />} />
     </RoleLayout>
   );
 }

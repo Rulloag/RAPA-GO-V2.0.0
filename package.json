@@ -19,7 +19,8 @@
     "test": "npm run test --workspaces --if-present",
     "build:all": "npm run build --workspaces --if-present",
     "verify:release": "node scripts/release/verify-release.mjs",
-    "build:android:aab": "powershell -ExecutionPolicy Bypass -File scripts/release/build-android-aab.ps1"
+    "build:android:aab": "powershell -ExecutionPolicy Bypass -File scripts/release/build-android-aab.ps1",
+    "verify:routes": "node scripts/release/verify-routes.mjs"
   },
   "engines": {
     "node": ">=22",

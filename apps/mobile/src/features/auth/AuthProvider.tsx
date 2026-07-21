@@ -27,6 +27,23 @@ interface AuthProviderProps {
   children: ReactNode;
 }
 
+const SESSION_RESTORE_TIMEOUT_MS = 12000;
+
+async function verifySessionWithTimeout(accessToken: string): Promise<AuthResponse> {
+  return Promise.race([
+    authService.me(accessToken),
+    new Promise<AuthResponse>((resolve) => {
+      window.setTimeout(() => {
+        resolve({
+          ok: false,
+          code: "AUTH_RESTORE_TIMEOUT",
+          message: "No se pudo restaurar la sesión a tiempo.",
+        });
+      }, SESSION_RESTORE_TIMEOUT_MS);
+    }),
+  ]);
+}
+
 export function AuthProvider({ children }: AuthProviderProps): JSX.Element {
   const history = useHistory();
   const [status, setStatus] = useState<AuthStatus>("loading");
@@ -53,7 +70,7 @@ export function AuthProvider({ children }: AuthProviderProps): JSX.Element {
         return;
       }
 
-      const verified = await authService.me(persisted.accessToken);
+      const verified = await verifySessionWithTimeout(persisted.accessToken);
       if (cancelled) return;
 
       if (!verified.ok) {

@@ -1,5 +1,4 @@
 import type { ReactNode } from "react";
-import { IonSpinner } from "@ionic/react";
 import { Redirect } from "react-router-dom";
 import { useAuth } from "../features/auth";
 import { ROUTES } from "./routes";
@@ -8,7 +7,7 @@ import {
   getReleaseHome,
   isReleaseRoleEnabled,
 } from "../config/releaseFeatures.js";
-
+import { RouteLoadingPage } from "./RouteLoadingPage.js";
 
 export const ROLE_HOME: Record<UserRole, string> = {
   passenger: ROUTES.PASSENGER.HOME,
@@ -62,11 +61,7 @@ export function RouteGuard({ children, path }: RouteGuardProps): JSX.Element {
   const { status, user } = useAuth();
 
   if (status === "loading") {
-    return (
-      <div style={{ display: "flex", justifyContent: "center", alignItems: "center", height: "100vh" }}>
-        <IonSpinner name="crescent" />
-      </div>
-    );
+    return <RouteLoadingPage />;
   }
 
   if (status === "unauthenticated" || !user) {
@@ -79,6 +74,10 @@ export function RouteGuard({ children, path }: RouteGuardProps): JSX.Element {
   }
 
   if (path.startsWith(ROUTES.PROFILE.BASE)) {
+    return <>{children}</>;
+  }
+
+  if (path === ROUTES.SUPPORT.CENTER || path === "/notifications") {
     return <>{children}</>;
   }
 

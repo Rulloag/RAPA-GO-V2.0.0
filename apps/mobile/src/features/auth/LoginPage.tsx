@@ -704,6 +704,18 @@ export function LoginPage(): JSX.Element {
       return;
     }
 
+    if (outcome.kind === "cancelled") {
+      setServerError("Cancelaste el ingreso con Apple.");
+      return;
+    }
+
+    if (outcome.kind === "unavailable") {
+      setServerError(
+        "Continuar con Apple está disponible dentro de la aplicación RAPA GO instalada en un iPhone.",
+      );
+      return;
+    }
+
     if (outcome.kind === "linking_required" || outcome.kind === "error") {
       setServerError(outcome.message);
     }

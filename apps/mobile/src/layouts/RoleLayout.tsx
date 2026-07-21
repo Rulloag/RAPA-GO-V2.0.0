@@ -1,9 +1,17 @@
-import { IonIcon, IonLabel, IonRouterOutlet, IonTabBar, IonTabButton, IonTabs } from "@ionic/react";
+import {
+  IonIcon,
+  IonLabel,
+  IonRouterOutlet,
+  IonTabBar,
+  IonTabButton,
+  IonTabs,
+} from "@ionic/react";
 import type { ReactNode } from "react";
 import type { TabItem } from "../navigation/routeConfig";
 
 interface RoleLayoutProps {
   tabs: TabItem[];
+  /** Direct Route/Redirect children only. Do not wrap these in Switch. */
   children: ReactNode;
 }
 

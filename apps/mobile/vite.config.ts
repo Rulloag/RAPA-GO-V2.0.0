@@ -3,6 +3,8 @@ import react from "@vitejs/plugin-react";
 import { resolve } from "path";
 
 export default defineConfig(({ mode }) => ({
+  base: "/",
+  appType: "spa",
   plugins: [react()],
   resolve: {
     alias: {
