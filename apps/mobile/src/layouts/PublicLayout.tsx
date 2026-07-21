@@ -12,15 +12,6 @@ interface PublicLayoutProps {
   children: ReactNode;
 }
 
-/**
- * PublicLayout — wraps public pages with a consistent Ionic shell.
- *
- * Provides: IonPage > IonHeader > IonContent structure.
- * Responsive by default via Ionic's layout system.
- *
- * Authenticated layouts (with side menus, tab bars, etc.)
- * will be added in separate layout components once auth is implemented.
- */
 export function PublicLayout({
   title,
   children,
@@ -28,8 +19,8 @@ export function PublicLayout({
   return (
     <IonPage>
       <IonHeader>
-        <IonToolbar color="primary">
-          <IonTitle>{title}</IonTitle>
+        <IonToolbar className="public-toolbar">
+          <IonTitle className="public-toolbar-title">{title}</IonTitle>
         </IonToolbar>
       </IonHeader>
       <IonContent className="ion-padding">{children}</IonContent>
