@@ -152,8 +152,7 @@ export function PassengerLayout(): JSX.Element {
           />
         )}
 
-        <Route render={() => <Redirect to={ROUTES.NOT_FOUND} />} />
-      </RoleLayout>
+        </RoleLayout>
     </>
   );
 }

@@ -35,8 +35,7 @@ export function DriverLayout(): JSX.Element {
         <Route exact path={ROUTES.DRIVER.TRIP_DETAIL_PATTERN} component={DriverTripsPage} />
         <Route exact path={ROUTES.DRIVER.EARNINGS} component={DriverEarningsPage} />
         <Route exact path={ROUTES.DRIVER.PROFILE} component={DriverProfilePage} />
-        <Route render={() => <Redirect to={ROUTES.NOT_FOUND} />} />
-      </RoleLayout>
+        </RoleLayout>
     </>
   );
 }

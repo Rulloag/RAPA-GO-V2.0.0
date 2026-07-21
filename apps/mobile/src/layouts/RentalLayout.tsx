@@ -27,7 +27,6 @@ export function RentalLayout(): JSX.Element {
       <Route exact path={ROUTES.RENTAL.BOOKINGS} component={RentalBookingsPage} />
       <Route exact path={ROUTES.RENTAL.EARNINGS} component={RentalEarningsPage} />
       <Route exact path={ROUTES.RENTAL.PROFILE} component={RentalProfilePage} />
-      <Route render={() => <Redirect to={ROUTES.NOT_FOUND} />} />
     </RoleLayout>
   );
 }
