@@ -27,6 +27,7 @@ export function GuideLayout(): JSX.Element {
       <Route exact path={ROUTES.GUIDE.BOOKINGS} component={GuideBookingsPage} />
       <Route exact path={ROUTES.GUIDE.EARNINGS} component={GuideEarningsPage} />
       <Route exact path={ROUTES.GUIDE.PROFILE} component={GuideProfilePage} />
+      <Route render={() => <Redirect to={ROUTES.NOT_FOUND} />} />
     </RoleLayout>
   );
 }

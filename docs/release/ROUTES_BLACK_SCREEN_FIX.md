@@ -1,17 +1,35 @@
 # RAPA GO — Corrección global de rutas negras
 
-## Causa corregida
+## Causa principal corregida
 
-Ionic debe recibir las rutas como hijos directos de `IonRouterOutlet` dentro de
-los layouts con pestañas. Los layouts anteriores enviaban un `Switch` y otros
-componentes como hijos del outlet. Ionic no podía identificar cada ruta de
-pasajero, conductor, administrador, guía o arriendo y podía mantener las
-páginas ocultas con la clase interna `ion-page-hidden`.
+El monorepo instalaba **dos copias diferentes de React**:
 
-El router principal también mezclaba `IonRouterOutlet` con un único `Switch`.
-Se reemplazó por un `Switch` estándar en el nivel superior y se reservó
-`IonRouterOutlet` para las pestañas, donde ahora recibe `Route` y `Redirect`
-directamente.
+- raíz del proyecto: React 18.2.0;
+- `apps/mobile`: React 18.3.1.
+
+`react-router` se cargaba con la copia de la raíz, mientras que la aplicación y
+`react-dom` podían usar la copia de `apps/mobile`. Al ejecutar hooks como
+`useHistory()` o `useContext()`, React detectaba runtimes distintos y lanzaba
+`Invalid hook call`. El resultado visible era un `<ion-app>` vacío y todas las
+rutas quedaban negras.
+
+La corrección deja React y React DOM en 18.3.1 en todo el monorepo, incorpora
+`overrides` en el `package.json` raíz y añade `resolve.dedupe` en Vite para
+impedir que React, React DOM o React Router vuelvan a duplicarse.
+
+## Otras protecciones aplicadas
+
+- `RouteErrorBoundary` ahora envuelve también `IonReactRouter` y
+  `AppProviders`. Si falla la restauración de sesión o un proveedor global, se
+  muestra una pantalla de recuperación en lugar de una vista negra.
+- `#root`, `ion-app`, `html` y `body` usan el alto completo de la ventana.
+- Los scripts `pretypecheck`, `prebuild` y `prebuild:prod` compilan primero
+  `@rapa-go/shared`. Así una instalación limpia ya no falla porque falte
+  `packages/shared/dist`.
+- Ionic recibe las rutas como hijos directos de `IonRouterOutlet` dentro de los
+  layouts con pestañas. No se anida un `Switch` dentro del outlet.
+- Vite mantiene `base: "/"` y Hostinger conserva el fallback SPA mediante
+  `.htaccess`.
 
 ## Cobertura
 
@@ -25,16 +43,18 @@ directamente.
 - Pantalla de recuperación ante errores para evitar una vista completamente negra.
 - Assets de Vite fijados a la raíz y fallback SPA de Hostinger.
 
-## Sign in with Apple
-
-El botón se muestra en el login web para confirmar que la opción existe. En un
-navegador informa que la autenticación real está disponible en la aplicación
-nativa de iPhone. En iOS utiliza el plugin nativo y continúa con el flujo real.
-
 ## Verificación
 
+Desde la raíz del proyecto:
+
 ```powershell
+Remove-Item -Recurse -Force node_modules -ErrorAction SilentlyContinue
+npm ci
 npm run verify:routes
 npm run typecheck --workspace=apps/mobile
 npm run build:prod --workspace=apps/mobile
+npm ls react react-dom
 ```
+
+La última orden debe mostrar una sola versión de React y React DOM: 18.3.1.
+El compilado listo para Hostinger queda en `apps/mobile/dist`.

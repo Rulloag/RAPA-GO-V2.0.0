@@ -14,6 +14,7 @@ import "../theme/variables.css";
 import "../theme/global.css";
 
 import { AppRouter } from "../navigation/AppRouter";
+import { RouteErrorBoundary } from "../navigation/RouteErrorBoundary";
 import { AppProviders } from "./AppProviders";
 import { RapaGoLanguageRuntime } from "../i18n/rapagoI18n";
 
@@ -28,13 +29,15 @@ export function App(): JSX.Element {
 
   return (
     <IonApp>
-      <RapaGoLanguageRuntime />
+      <RouteErrorBoundary>
+        <RapaGoLanguageRuntime />
 
-      <IonReactRouter>
-        <AppProviders>
-          <AppRouter />
-        </AppProviders>
-      </IonReactRouter>
+        <IonReactRouter>
+          <AppProviders>
+            <AppRouter />
+          </AppProviders>
+        </IonReactRouter>
+      </RouteErrorBoundary>
     </IonApp>
   );
 }

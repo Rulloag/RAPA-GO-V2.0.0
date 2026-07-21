@@ -7,6 +7,10 @@ export default defineConfig(({ mode }) => ({
   appType: "spa",
   plugins: [react()],
   resolve: {
+    // Force every workspace dependency to use the same React runtime.
+    // Without this, npm can install one React at the monorepo root and
+    // another inside apps/mobile, causing invalid-hook-call and black screens.
+    dedupe: ["react", "react-dom", "react-router", "react-router-dom"],
     alias: {
       "@": resolve(__dirname, "src"),
       "@components": resolve(__dirname, "src/components"),

@@ -19,6 +19,7 @@ function forbidText(source, forbidden, label) {
   console.log(`OK: ${label}`);
 }
 
+const app = read("apps/mobile/src/app/App.tsx");
 const appRouter = read("apps/mobile/src/navigation/AppRouter.tsx");
 const roleLayout = read("apps/mobile/src/layouts/RoleLayout.tsx");
 const passenger = read("apps/mobile/src/layouts/PassengerLayout.tsx");
@@ -30,7 +31,28 @@ const appleButton = read("apps/mobile/src/features/auth/AppleSignInButton.tsx");
 const login = read("apps/mobile/src/features/auth/LoginPage.tsx");
 const vite = read("apps/mobile/vite.config.ts");
 const htaccess = read("apps/mobile/public/.htaccess");
+const rootPackage = JSON.parse(read("package.json"));
+const mobilePackage = JSON.parse(read("apps/mobile/package.json"));
 
+if (rootPackage.dependencies?.react !== mobilePackage.dependencies?.react) {
+  throw new Error(
+    `INVALIDO: React no coincide entre raíz (${rootPackage.dependencies?.react}) y mobile (${mobilePackage.dependencies?.react})`,
+  );
+}
+console.log(`OK: React único ${mobilePackage.dependencies?.react} en todo el monorepo`);
+
+if (rootPackage.dependencies?.["react-dom"] !== mobilePackage.dependencies?.["react-dom"]) {
+  throw new Error(
+    `INVALIDO: React DOM no coincide entre raíz (${rootPackage.dependencies?.["react-dom"]}) y mobile (${mobilePackage.dependencies?.["react-dom"]})`,
+  );
+}
+console.log(`OK: React DOM único ${mobilePackage.dependencies?.["react-dom"]} en todo el monorepo`);
+
+requireText(
+  app,
+  "<RouteErrorBoundary>",
+  "La aplicación completa queda protegida contra una pantalla negra",
+);
 requireText(appRouter, "<Switch>", "Router principal usa Switch estable");
 forbidText(
   appRouter,
@@ -58,6 +80,7 @@ requireText(appleButton, "Continuar con Apple", "Botón Apple visible");
 requireText(login, 'outcome.kind === "unavailable"', "Login explica Apple fuera de iPhone");
 requireText(vite, 'base: "/"', "Vite genera assets desde la raíz");
 requireText(vite, 'appType: "spa"', "Vite está configurado como SPA");
+requireText(vite, 'dedupe: ["react", "react-dom", "react-router", "react-router-dom"]', "Vite evita duplicar React y React Router");
 requireText(htaccess, "RewriteRule ^ index.html [L]", "Hostinger redirige rutas SPA a index.html");
 
 console.log("\nRUTAS RAPA GO: VERIFICACION OK");
