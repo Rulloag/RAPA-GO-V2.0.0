@@ -2403,8 +2403,8 @@ function BankAccountPage(): JSX.Element {
           fontSize:      "0.82rem",
           color:         "var(--ion-color-warning-shade)",
         }}>
-          <strong>Los pagos reales se implementarán en una fase futura.</strong><br />
-          Puedes registrar tu cuenta bancaria ahora. El procesamiento de pagos estará disponible próximamente.
+          <strong>Cuenta protegida para devoluciones verificadas.</strong><br />
+          Se usa únicamente para transferir devoluciones aprobadas por el administrador. El número completo se cifra en el backend y la app solo muestra los últimos 4 dígitos.
         </div>
 
         {loading && (
@@ -2500,7 +2500,7 @@ function BankAccountPage(): JSX.Element {
                     clearInput
                   />
                   <IonNote slot="helper" style={{ fontSize: "0.7rem" }}>
-                    Solo se guardarán los últimos 4 dígitos. Requerido para guardar.
+                    El número completo se cifra en el servidor. En la app solo se muestran los últimos 4 dígitos.
                   </IonNote>
                 </IonItem>
 

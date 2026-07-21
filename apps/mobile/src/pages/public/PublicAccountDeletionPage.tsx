@@ -16,6 +16,7 @@ import {
   type FormEvent,
 } from "react";
 
+import { RAPAGO_CONTACT } from "@rapa-go/shared";
 import {
   publicAccountDeletionService,
   type PublicAccountDeletionStatusData,
@@ -501,6 +502,18 @@ export function PublicAccountDeletionPage(): JSX.Element {
             )}
           </div>
         )}
+      </section>
+
+      <section style={publicSiteStyles.card}>
+        <h2 style={{ margin: "0 0 10px", color: "#f8d879" }}>
+          Contacto de privacidad
+        </h2>
+        <p style={publicSiteStyles.muted}>
+          Para consultas sobre identidad, conservación legal, saldos o el estado de una solicitud, escribe a{" "}
+          <a href={`mailto:${RAPAGO_CONTACT.privacyEmail}`} style={{ color: "#f8d879", fontWeight: 900 }}>
+            {RAPAGO_CONTACT.privacyEmail}
+          </a>. La solicitud también puede realizarse desde el Perfil de la aplicación.
+        </p>
       </section>
     </PublicSiteShell>
   );

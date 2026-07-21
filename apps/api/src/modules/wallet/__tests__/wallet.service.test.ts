@@ -7,6 +7,7 @@ const {
   mockFindUserById,
   mockFindRideById,
   mockFindBenefitByRide,
+  mockFindRefundByRide,
   mockFindBenefitById,
   mockCreateBenefitRequest,
   mockApproveBenefit,
@@ -17,6 +18,7 @@ const {
   mockFindUserById: vi.fn(),
   mockFindRideById: vi.fn(),
   mockFindBenefitByRide: vi.fn(),
+  mockFindRefundByRide: vi.fn(),
   mockFindBenefitById: vi.fn(),
   mockCreateBenefitRequest: vi.fn(),
   mockApproveBenefit: vi.fn(),
@@ -50,6 +52,7 @@ vi.mock("../../rides/rides.repository.js", () => ({
 vi.mock("../wallet.repository.js", () => ({
   WalletRepository: vi.fn().mockImplementation(() => ({
     findCashOverpaymentBenefitByRideId: mockFindBenefitByRide,
+    findCashOverpaymentRefundByRideId: mockFindRefundByRide,
     findCashOverpaymentBenefitById: mockFindBenefitById,
     createCashOverpaymentBenefitRequest: mockCreateBenefitRequest,
     approveCashOverpaymentBenefit: mockApproveBenefit,
@@ -112,6 +115,7 @@ describe("WalletService cash overpayment benefits", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockIsSessionValid.mockResolvedValue(true);
+    mockFindRefundByRide.mockResolvedValue(null);
     service = new WalletService();
   });
 

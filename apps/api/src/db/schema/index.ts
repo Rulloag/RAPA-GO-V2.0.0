@@ -20,6 +20,7 @@ export * from "./driverProfiles.schema.js";
 export * from "./passengerProfiles.schema.js";
 export * from "./payments.schema.js";
 export * from "./wallets.schema.js";
+export * from "./cashOverpaymentRefunds.schema.js";
 export * from "./touristServices.schema.js";
 export * from "./rentalVehicles.schema.js";
 export * from "./servicePricingTiers.schema.js";

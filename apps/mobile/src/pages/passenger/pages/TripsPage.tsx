@@ -16,6 +16,7 @@ import { loadRapaGoGoogleMaps } from "../../../components/MapFallback.js";
 import { useAuth } from "../../../features/auth/index.js";
 import { ridesService, type RideRequestData } from "../../../features/rides/rides.service.js";
 import { walletService } from "../../../features/wallet/wallet.service.js";
+import { cashRefundsService } from "../../../features/cashRefunds/cashRefunds.service.js";
 import { ROUTES } from "../../../navigation/routes.js";
 import { RAPAGO_CONTACT, WA_MESSAGES } from "@rapa-go/shared";
 import { RIDE_STATUS_LABEL, RIDE_STATUS_COLOR } from "../shared.js";
@@ -6610,7 +6611,7 @@ function PassengerLiveRouteMap({
 }
 
 
-type PassengerCashPaymentDecision = "exact" | "wallet_credit" | "refund_whatsapp";
+type PassengerCashPaymentDecision = "exact" | "wallet_credit" | "bank_refund" | "refund_whatsapp";
 
 type PassengerCashPaymentReview = {
   id: string;
@@ -6773,7 +6774,7 @@ function savePassengerCashPaymentReview(
     passengerOverpaidClp: input.overpaidClp,
     passengerDecision: input.decision,
     passengerWantsWalletCredit: input.decision === "wallet_credit",
-    passengerWantsRefund: input.decision === "refund_whatsapp",
+    passengerWantsRefund: input.decision === "bank_refund" || input.decision === "refund_whatsapp",
   };
 
   const reviews = readPassengerCashPaymentReviews();
@@ -7003,6 +7004,7 @@ function PassengerCashPaymentAfterRideCard({
   const [showOverpaidForm, setShowOverpaidForm] = useState(false);
   const [paidAmountText, setPaidAmountText] = useState("");
   const [submittingBenefit, setSubmittingBenefit] = useState(false);
+  const [submittingRefund, setSubmittingRefund] = useState(false);
   const [benefitError, setBenefitError] = useState<string | null>(null);
   const [review, setReview] = useState<PassengerCashPaymentReview | null>(() =>
     getPassengerCashPaymentReview(ride),
@@ -7013,6 +7015,7 @@ function PassengerCashPaymentAfterRideCard({
     setShowOverpaidForm(false);
     setPaidAmountText("");
     setSubmittingBenefit(false);
+    setSubmittingRefund(false);
     setBenefitError(null);
   }, [ride.id]);
 
@@ -7098,25 +7101,61 @@ function PassengerCashPaymentAfterRideCard({
     }
   }
 
-  function requestRefund(): void {
-    if (!canConfirmOverpay) return;
+  async function requestRefund(): Promise<void> {
+    if (!canConfirmOverpay || submittingRefund) return;
 
-    const saved = savePassengerCashPaymentReview(ride, {
-      fareClp: displayFareClp,
-      paidClp: paidAmountClp,
-      overpaidClp,
-      decision: "refund_whatsapp",
-      status: "pending_refund",
-      adminReviewStatus: "refund_requested",
-    });
+    if (!session?.accessToken) {
+      setBenefitError(
+        "Tu sesión terminó. Vuelve a iniciar sesión para solicitar la devolución.",
+      );
+      return;
+    }
 
-    setReview(saved);
-    openPassengerRefundWhatsApp(ride, saved);
+    setSubmittingRefund(true);
+    setBenefitError(null);
+
+    try {
+      const refund = await cashRefundsService.request(
+        session.accessToken,
+        {
+          rideId: ride.id,
+          paidClp: paidAmountClp,
+          reason:
+            "El usuario solicita devolución bancaria del dinero pagado de más en efectivo.",
+        },
+      );
+
+      const saved = savePassengerCashPaymentReview(ride, {
+        fareClp: refund.fareClp,
+        paidClp: refund.paidClp,
+        overpaidClp: refund.requestedAmountClp,
+        decision: "bank_refund",
+        status: "pending_refund",
+        adminReviewStatus:
+          refund.status === "completed"
+            ? "refund_completed"
+            : "refund_requested",
+      });
+
+      setReview(saved);
+      setShowOverpaidForm(false);
+      setPaidAmountText("");
+    } catch (err) {
+      setBenefitError(
+        err instanceof Error
+          ? err.message
+          : "No se pudo solicitar la devolución bancaria.",
+      );
+    } finally {
+      setSubmittingRefund(false);
+    }
   }
 
   if (review) {
     const isWallet = review.decision === "wallet_credit";
-    const isRefund = review.decision === "refund_whatsapp";
+    const isRefund =
+      review.decision === "bank_refund" ||
+      review.decision === "refund_whatsapp";
 
     return (
       <div
@@ -7133,7 +7172,7 @@ function PassengerCashPaymentAfterRideCard({
         <div style={{ fontWeight: 950, fontSize: ".9rem" }}>
           {review.decision === "exact" && "✅ Pago en efectivo confirmado"}
           {isWallet && "💚 Saldo para próximo viaje enviado a revisión"}
-          {isRefund && "📲 Devolución solicitada por WhatsApp"}
+          {isRefund && "🏦 Devolución bancaria enviada a revisión"}
         </div>
 
         <div style={{ marginTop: 5, fontSize: ".78rem", lineHeight: 1.35, fontWeight: 800 }}>
@@ -7145,19 +7184,19 @@ function PassengerCashPaymentAfterRideCard({
           )}
           {isRefund && (
             <>
-              Abrimos WhatsApp con el detalle de la devolución por <strong>{formatClp(review.overpaidClp)}</strong>. También quedó registrado para revisión del administrador.
+              La devolución por <strong>{formatClp(review.overpaidClp)}</strong> quedó registrada en el backend y pendiente de revisión administrativa. El depósito se realizará en la cuenta bancaria registrada en tu Perfil.
             </>
           )}
         </div>
 
-        {isRefund && (
+        {review.decision === "refund_whatsapp" && (
           <IonButton
             size="small"
             color="warning"
             style={{ "--border-radius": "999px", marginTop: 8, fontWeight: 950 } as React.CSSProperties}
             onClick={() => openPassengerRefundWhatsApp(ride, review)}
           >
-            Abrir WhatsApp de devolución
+            Abrir WhatsApp de devolución anterior
           </IonButton>
         )}
       </div>
@@ -7238,7 +7277,7 @@ function PassengerCashPaymentAfterRideCard({
           <div style={{ color: "rgba(255,255,255,.82)", fontSize: ".76rem", lineHeight: 1.35, fontWeight: 800 }}>
             {canConfirmOverpay ? (
               <>
-                Has pagado de más: <strong>{formatClp(overpaidClp)}</strong>. ¿Quieres usar ese dinero como saldo a favor o quieres que te devolvamos ese dinero por WhatsApp?
+                Has pagado de más: <strong>{formatClp(overpaidClp)}</strong>. ¿Quieres usar ese dinero como saldo a favor o solicitar una devolución a tu cuenta bancaria registrada?
               </>
             ) : (
               <>
@@ -7278,11 +7317,13 @@ function PassengerCashPaymentAfterRideCard({
             <IonButton
               size="small"
               color="warning"
-              disabled={!canConfirmOverpay}
+              disabled={!canConfirmOverpay || submittingRefund}
               style={{ "--border-radius": "999px", fontWeight: 950 } as React.CSSProperties}
-              onClick={requestRefund}
+              onClick={() => void requestRefund()}
             >
-              Quiero que me devuelvan ese dinero
+              {submittingRefund
+                ? "Enviando devolución…"
+                : "Solicitar devolución bancaria"}
             </IonButton>
 
             <IonButton

@@ -9,6 +9,7 @@ import { useHistory } from "react-router-dom";
 import { authService } from "./auth.service.js";
 import { sessionStorageService } from "./sessionStorage.service.js";
 import { ROUTES } from "../../navigation/routes.js";
+import { clientStoragePolicy } from "../../services/storage/clientStoragePolicy.js";
 import type {
   AuthContextValue,
   AuthUser,
@@ -33,6 +34,7 @@ export function AuthProvider({ children }: AuthProviderProps): JSX.Element {
 
   const clearLocalSession = useCallback(async (): Promise<void> => {
     await sessionStorageService.clearSession();
+    clientStoragePolicy.clearSensitiveClientStorage();
     setSession(null);
     setUser(null);
     setStatus("unauthenticated");
@@ -55,6 +57,7 @@ export function AuthProvider({ children }: AuthProviderProps): JSX.Element {
 
       if (!verified.ok) {
         await sessionStorageService.clearSession();
+        clientStoragePolicy.clearSensitiveClientStorage();
         if (!cancelled) {
           setSession(null);
           setUser(null);
@@ -73,6 +76,7 @@ export function AuthProvider({ children }: AuthProviderProps): JSX.Element {
 
     void restore().catch(async () => {
       await sessionStorageService.clearSession();
+      clientStoragePolicy.clearSensitiveClientStorage();
       if (!cancelled) {
         setSession(null);
         setUser(null);
@@ -156,6 +160,7 @@ export function AuthProvider({ children }: AuthProviderProps): JSX.Element {
   const login = useCallback(
     async (payload: LoginRequest): Promise<AuthResponse> => {
       setStatus("loading");
+      clientStoragePolicy.prepareClientStorageForAuthentication();
       const response = await authService.login(payload);
 
       if (response.ok) {
@@ -175,6 +180,7 @@ export function AuthProvider({ children }: AuthProviderProps): JSX.Element {
   const register = useCallback(
     async (payload: RegisterRequest): Promise<AuthResponse> => {
       setStatus("loading");
+      clientStoragePolicy.prepareClientStorageForAuthentication();
       const response = await authService.register(payload);
 
       if (response.ok) {

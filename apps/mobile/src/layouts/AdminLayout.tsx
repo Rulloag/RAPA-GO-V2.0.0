@@ -29,6 +29,7 @@ const TABS = [
   { path: ROUTES.ADMIN.DOCUMENTS,        label: "Docs",     icon: documentTextOutline },
   { path: ROUTES.ADMIN.APPLICATIONS,     label: "Postul.",  icon: personAddOutline },
   { path: ROUTES.ADMIN.TRIPS,            label: "Viajes",   icon: carOutline },
+  { path: ROUTES.ADMIN.PAYMENTS,         label: "Pagos",    icon: cashOutline },
   { path: ROUTES.ADMIN.EVENT_TICKETS,    label: "Entradas", icon: ticketOutline },
   { path: ROUTES.ADMIN.LEGAL_DOCUMENTS,  label: "Legales",  icon: shieldCheckmarkOutline },
   { path: ROUTES.ADMIN.FARE_SETTINGS,    label: "Tarifas",  icon: cashOutline },

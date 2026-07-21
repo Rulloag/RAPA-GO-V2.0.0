@@ -3,6 +3,7 @@ import { and, asc, count, desc, eq, sql } from "drizzle-orm";
 import { db } from "../../db/client.js";
 import {
   cashOverpaymentBenefits,
+  cashOverpaymentRefundRequests,
   paymentOrders,
   transactions,
   users,
@@ -317,6 +318,28 @@ export class WalletRepository {
       if (err instanceof AppError) throw err;
       throw AppError.internal(
         `Failed to credit wallet benefit: ${String(err)}`,
+      );
+    }
+  }
+
+  async findCashOverpaymentRefundByRideId(
+    sourceRideId: string,
+  ): Promise<{ id: string; ownerUserId: string; status: string } | null> {
+    try {
+      const [row] = await db
+        .select({
+          id: cashOverpaymentRefundRequests.id,
+          ownerUserId: cashOverpaymentRefundRequests.ownerUserId,
+          status: cashOverpaymentRefundRequests.status,
+        })
+        .from(cashOverpaymentRefundRequests)
+        .where(eq(cashOverpaymentRefundRequests.sourceRideId, sourceRideId))
+        .limit(1);
+
+      return row ?? null;
+    } catch (err) {
+      throw AppError.internal(
+        `Failed to query cash overpayment refund by ride: ${String(err)}`,
       );
     }
   }

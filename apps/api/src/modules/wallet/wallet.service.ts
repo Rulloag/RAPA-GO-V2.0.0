@@ -358,6 +358,19 @@ export class WalletService {
       };
     }
 
+    const existingRefund =
+      await walletRepo.findCashOverpaymentRefundByRideId(ride.id);
+
+    if (existingRefund) {
+      return {
+        ok: false as const,
+        code: "CASH_OVERPAYMENT_RESOLUTION_ALREADY_SELECTED",
+        message:
+          "Este viaje ya tiene una solicitud de devolución bancaria. No puede guardarse también como Beneficio.",
+        statusCode: 409,
+      };
+    }
+
     const existing =
       await walletRepo.findCashOverpaymentBenefitByRideId(ride.id);
 

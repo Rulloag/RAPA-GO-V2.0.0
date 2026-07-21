@@ -54,16 +54,16 @@ function persist(ride: RideRequestData, point: RideLocationPointResponse): void 
   };
 
   try {
-    const raw = localStorage.getItem(LIVE_LOCATION_KEY);
+    const raw = sessionStorage.getItem(LIVE_LOCATION_KEY);
     const parsed = raw ? (JSON.parse(raw) as unknown) : {};
     const map = parsed && typeof parsed === "object" && !Array.isArray(parsed)
       ? (parsed as Record<string, unknown>)
       : {};
     map[ride.id] = payload;
-    localStorage.setItem(LIVE_LOCATION_KEY, JSON.stringify(map));
-    localStorage.setItem(CURRENT_LOCATION_KEY, JSON.stringify(payload));
+    sessionStorage.setItem(LIVE_LOCATION_KEY, JSON.stringify(map));
+    sessionStorage.setItem(CURRENT_LOCATION_KEY, JSON.stringify(payload));
   } catch {
-    // Los eventos siguen actualizando la UI aunque localStorage falle.
+    // Los eventos siguen actualizando la UI aunque sessionStorage falle.
   }
 
   window.dispatchEvent(new CustomEvent(LIVE_LOCATION_EVENT, { detail: payload }));
