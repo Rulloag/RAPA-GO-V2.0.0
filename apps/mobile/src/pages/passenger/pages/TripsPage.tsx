@@ -3,7 +3,7 @@ import {
   IonBadge, IonButton, IonCard, IonCardContent, IonChip, IonContent, IonHeader,
 IonInfiniteScroll, IonInfiniteScrollContent, IonLabel, IonModal, IonPage,
   IonRefresher, IonRefresherContent, IonSpinner, IonText, IonTextarea, IonTitle,
-  IonToolbar, IonItem, IonToast, IonInput,
+  IonToolbar, IonItem, IonToast, IonInput, IonToggle,
 } from "@ionic/react";
 import { useState, useCallback, useEffect, useRef, type CSSProperties } from "react";
 import { useHistory } from "react-router-dom";
@@ -390,6 +390,7 @@ type RapaGoDriverRatingRecord = {
   stars: number;
   comment?: string | null;
   extras?: string[];
+  commentVisibility?: "participants_and_admin" | "admin_only";
   originText?: string | null;
   destinationText?: string | null;
   createdAt: string;
@@ -467,26 +468,28 @@ function getRideDriverRatingKey(ride: Partial<RideRequestData> & Record<string, 
   return "driver:unknown";
 }
 
-function readRapaGoDriverRatings(): RapaGoDriverRatingRecord[] {
+function parseRapaGoDriverRatings(raw: string | null): RapaGoDriverRatingRecord[] {
   try {
-    const raw = localStorage.getItem(RAPAGO_DRIVER_RATINGS_KEY);
     const parsed = raw ? (JSON.parse(raw) as RapaGoDriverRatingRecord[]) : [];
     return Array.isArray(parsed)
       ? parsed.filter((item) => item && typeof item === "object" && Number.isFinite(Number(item.stars)))
       : [];
-  } catch {
-    return [];
-  }
+  } catch { return []; }
+}
+
+function readRapaGoDriverRatings(): RapaGoDriverRatingRecord[] {
+  const sessionItems = parseRapaGoDriverRatings(sessionStorage.getItem(RAPAGO_DRIVER_RATINGS_KEY));
+  return sessionItems.length > 0 ? sessionItems : parseRapaGoDriverRatings(localStorage.getItem(RAPAGO_DRIVER_RATINGS_KEY));
 }
 
 function writeRapaGoDriverRatings(records: RapaGoDriverRatingRecord[]): void {
   try {
-    localStorage.setItem(RAPAGO_DRIVER_RATINGS_KEY, JSON.stringify(records.slice(0, 600)));
-    window.dispatchEvent(new CustomEvent(RAPAGO_DRIVER_RATINGS_EVENT, { detail: { ratings: records } }));
-    window.dispatchEvent(new CustomEvent("rapago:driver-profile-updated", { detail: { ratings: records } }));
-  } catch {
-    // No bloquea la calificación si el navegador no permite guardar.
-  }
+    const limited = records.slice(0, 600);
+    sessionStorage.setItem(RAPAGO_DRIVER_RATINGS_KEY, JSON.stringify(limited));
+    localStorage.setItem(RAPAGO_DRIVER_RATINGS_KEY, JSON.stringify(limited.map((item) => ({ ...item, comment: null }))));
+    window.dispatchEvent(new CustomEvent(RAPAGO_DRIVER_RATINGS_EVENT, { detail: { ratings: limited } }));
+    window.dispatchEvent(new CustomEvent("rapago:driver-profile-updated", { detail: { ratings: limited } }));
+  } catch { /* No bloquea la calificación. */ }
 }
 
 function upsertPassengerDriverRating(
@@ -495,6 +498,7 @@ function upsertPassengerDriverRating(
   comment: string,
   user: unknown,
   extras: string[] = [],
+  commentVisibility: "participants_and_admin" | "admin_only" = "participants_and_admin",
 ): RapaGoDriverRatingRecord {
   const rideRecord = ride as RideRequestData & Record<string, unknown>;
   const rideKey = getPassengerRatingRideKey(rideRecord);
@@ -8548,6 +8552,7 @@ export default function TripsPage(): JSX.Element {
   const [ratingStars,      setRatingStars]      = useState(5);
   const [ratingComment,    setRatingComment]    = useState("");
   const [ratingExtras,     setRatingExtras]     = useState<string[]>([]);
+  const [ratingPrivateComment, setRatingPrivateComment] = useState(false);
   const [submittingRating, setSubmittingRating] = useState(false);
   const [ratingError,      setRatingError]      = useState<string | null>(null);
   const [ratedIds,         setRatedIds]         = useState<Set<string>>(new Set());
@@ -9046,7 +9051,8 @@ export default function TripsPage(): JSX.Element {
       ].filter(Boolean).join("\n");
 
       // Primero guardamos localmente para que el conductor vea sus estrellas al instante.
-      upsertPassengerDriverRating(targetRide, ratingStars, ratingCommentWithExtras, session?.user, ratingExtras);
+      const commentVisibility = ratingPrivateComment ? "admin_only" : "participants_and_admin";
+      upsertPassengerDriverRating(targetRide, ratingStars, ratingCommentWithExtras, session?.user, ratingExtras, commentVisibility);
 
       if (
         session?.accessToken &&
@@ -9059,6 +9065,7 @@ export default function TripsPage(): JSX.Element {
             ratingRideId,
             ratingStars,
             ratingCommentWithExtras || undefined,
+            commentVisibility,
           );
         } catch {
           // Si el backend todavía no guarda rating, el respaldo local mantiene la experiencia tipo Uber.
@@ -9083,6 +9090,7 @@ export default function TripsPage(): JSX.Element {
       setRatingStars(5);
       setRatingComment("");
       setRatingExtras([]);
+      setRatingPrivateComment(false);
     } catch (err) {
       const message = err instanceof Error ? err.message : "Error al calificar el viaje.";
       setRatingError(safeTripsErrorMessage(message) ?? "No se pudo guardar la calificación.");
@@ -9660,6 +9668,19 @@ export default function TripsPage(): JSX.Element {
                     />
                   </IonItem>
 
+                  <IonItem lines="none" style={{ "--background": "transparent", "--padding-start": "0" } as CSSProperties}>
+                    <IonLabel>
+                      <div style={{ fontWeight: 900 }}>Comentario solo para RAPA GO</div>
+                      <div style={{ fontSize: ".74rem", color: "#6B7280" }}>
+                        Al activarlo, el conductor no verá el texto. La calificación numérica sí cuenta para su promedio.
+                      </div>
+                    </IonLabel>
+                    <IonToggle
+                      checked={ratingPrivateComment}
+                      onIonChange={(event) => setRatingPrivateComment(event.detail.checked)}
+                    />
+                  </IonItem>
+
                   {ratingError && (
                     <IonText color="danger">
                       <p style={{ fontSize: "0.82rem", margin: "8px 0 0", fontWeight: 850 }}>
@@ -9677,6 +9698,7 @@ export default function TripsPage(): JSX.Element {
                         setRatingRideId(null);
                         setRatingExtras([]);
                         setRatingComment("");
+                        setRatingPrivateComment(false);
                         setRatingError(null);
                       }}
                       disabled={submittingRating}

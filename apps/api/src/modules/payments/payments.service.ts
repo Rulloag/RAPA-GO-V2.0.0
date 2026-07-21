@@ -474,6 +474,66 @@ async function activateFastSearchAfterPayment(
   );
 }
 
+
+function stableJson(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(stableJson).join(",")}]`;
+  if (value && typeof value === "object") {
+    return `{${Object.entries(value as Record<string, unknown>)
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([key, nested]) => `${JSON.stringify(key)}:${stableJson(nested)}`)
+      .join(",")}}`;
+  }
+  return JSON.stringify(value) ?? "null";
+}
+
+function getWebhookEventIdentity(
+  providerName: string,
+  payload: Record<string, unknown>,
+  headers: Record<string, string>,
+): {
+  eventKey: string;
+  payloadHash: string;
+  requestId: string | null;
+  action: string | null;
+} {
+  const payloadHash = crypto
+    .createHash("sha256")
+    .update(stableJson(payload))
+    .digest("hex");
+  const data = payload["data"];
+  const dataId = data && typeof data === "object"
+    ? getPaymentStringValue(data, ["id"])
+    : "";
+  const requestId = String(headers["x-request-id"] ?? "").trim() || null;
+  const providerReference =
+    dataId ||
+    getPaymentStringValue(payload, [
+      "id",
+      "transaction_id",
+      "external_id",
+      "order",
+      "order_id",
+    ]);
+  const action = getPaymentStringValue(payload, ["action", "type", "status"]) || null;
+  const identity = [requestId, providerReference, action]
+    .filter(Boolean)
+    .join(":") || payloadHash;
+  return {
+    eventKey: crypto
+      .createHash("sha256")
+      .update(`${providerName}:${identity}:${payloadHash}`)
+      .digest("hex"),
+    payloadHash,
+    requestId,
+    action,
+  };
+}
+
+function buildReceiptNumber(paymentId: string, createdAt: Date): string {
+  const date = createdAt.toISOString().slice(0, 10).replaceAll("-", "");
+  return `RPG-${date}-${paymentId.slice(0, 8).toUpperCase()}`;
+}
+
 export class PaymentsService {
   async createPayment(
     accessToken: string,
@@ -795,6 +855,14 @@ export class PaymentsService {
       paidAt: string | null;
       rejectedAt: string | null;
       failedAt: string | null;
+      providerOrderId: string | null;
+      providerPaymentId: string | null;
+      refundStatus: string | null;
+      refundProviderId: string | null;
+      refundedAt: string | null;
+      receiptNumber: string;
+      createdAt: string;
+      updatedAt: string;
     };
   }>> {
     const auth = await authenticate(accessToken);
@@ -835,6 +903,44 @@ export class PaymentsService {
         paidAt: payment.paidAt?.toISOString() ?? null,
         rejectedAt: payment.rejectedAt?.toISOString() ?? null,
         failedAt: payment.failedAt?.toISOString() ?? null,
+        providerOrderId: payment.providerOrderId ?? null,
+        providerPaymentId: payment.providerPaymentId ?? null,
+        refundStatus: payment.refundStatus ?? null,
+        refundProviderId: payment.refundProviderId ?? null,
+        refundedAt: payment.refundedAt?.toISOString() ?? null,
+        receiptNumber: buildReceiptNumber(payment.id, payment.createdAt),
+        createdAt: payment.createdAt.toISOString(),
+        updatedAt: payment.updatedAt.toISOString(),
+      },
+    };
+  }
+
+
+  async getPaymentReceipt(
+    accessToken: string,
+    paymentId: string,
+  ): Promise<Result<{ receipt: Record<string, unknown> }>> {
+    const statusResult = await this.getPaymentStatus(accessToken, paymentId);
+    if (!statusResult.ok) return statusResult;
+    const payment = statusResult.payment;
+    return {
+      ok: true,
+      receipt: {
+        receiptNumber: payment.receiptNumber,
+        paymentId: payment.id,
+        rideRequestId: payment.rideRequestId,
+        paymentPurpose: payment.paymentPurpose,
+        amountClp: payment.amountClp,
+        currency: "CLP",
+        provider: payment.provider,
+        status: payment.status,
+        providerOrderId: payment.providerOrderId,
+        providerPaymentId: payment.providerPaymentId,
+        refundStatus: payment.refundStatus,
+        refundProviderId: payment.refundProviderId,
+        paidAt: payment.paidAt,
+        refundedAt: payment.refundedAt,
+        issuedAt: payment.updatedAt,
       },
     };
   }
@@ -1048,11 +1154,8 @@ export class PaymentsService {
       auditService.recordSafe({
         eventType: "payment.webhook_invalid_signature",
         entityType: "payment",
-        metadata: {
-          provider: providerName,
-        } as Record<string, string>,
+        metadata: { provider: providerName } as Record<string, string>,
       });
-
       return {
         ok: false,
         code: "WEBHOOK_INVALID_SIGNATURE",
@@ -1061,200 +1164,186 @@ export class PaymentsService {
       };
     }
 
-    let normalized: NormalizedWebhook;
+    const eventIdentity = getWebhookEventIdentity(providerName, payload, headers);
+    const claimed = await paymentsRepo.claimWebhookEvent({
+      provider: providerName,
+      eventKey: eventIdentity.eventKey,
+      payloadHash: eventIdentity.payloadHash,
+      payload,
+      requestId: eventIdentity.requestId,
+      action: eventIdentity.action,
+      status: "processing",
+      updatedAt: new Date(),
+    });
+
+    if (!claimed.claimed) {
+      return { ok: true, processed: false };
+    }
+
+    const eventId = claimed.event.id;
 
     try {
-      normalized = await provider.normalizeWebhook(payload, headers);
-    } catch (err) {
-      auditService.recordSafe({
-        eventType: "payment.webhook_normalize_error",
-        entityType: "payment",
-        metadata: {
-          provider: providerName,
-          error: String(err),
-        } as Record<string, string>,
-      });
+      const normalized: NormalizedWebhook = await provider.normalizeWebhook(payload, headers);
+      const { orderId, status, externalId, rawPayload } = normalized;
 
-      return {
-        ok: false,
-        code: "WEBHOOK_PROVIDER_ERROR",
-        message: "Could not fetch payment details from provider.",
-        statusCode: 502,
+      if (!orderId) {
+        await paymentsRepo.completeWebhookEvent({
+          id: eventId,
+          providerPaymentId: externalId || null,
+          action: status,
+        });
+        return { ok: true, processed: false };
+      }
+
+      const payment = await paymentsRepo.findById(orderId);
+      if (!payment) {
+        await paymentsRepo.failWebhookEvent(eventId, `Payment not found: ${orderId}`);
+        return {
+          ok: false,
+          code: "NOT_FOUND",
+          message: "Payment not found.",
+          statusCode: 404,
+        };
+      }
+
+      const finish = async (processed: boolean): Promise<Result<{ processed: boolean }>> => {
+        await paymentsRepo.completeWebhookEvent({
+          id: eventId,
+          paymentId: payment.id,
+          providerPaymentId: externalId || payment.providerPaymentId || null,
+          action: status,
+        });
+        return { ok: true, processed };
       };
-    }
 
-    const { orderId, status, externalId, rawPayload } = normalized;
+      const paymentPurpose = getPaymentPurpose(payment.paymentPurpose);
 
-    if (!orderId) {
-      return {
-        ok: true,
-        processed: false,
-      };
-    }
+      if (payment.status === "success") {
+        try {
+          if (paymentPurpose === "fast_search") {
+            await activateFastSearchAfterPayment(payment.rideRequestId, "card");
+          } else {
+            await activateRideAfterApprovedPayment(payment.rideRequestId);
+          }
+        } catch {
+          // El estado aprobado permanece persistido y puede conciliarse.
+        }
+        return finish(false);
+      }
 
-    const payment = await paymentsRepo.findById(orderId);
+      if (["rejected", "failed", "refunded"].includes(payment.status)) {
+        return finish(false);
+      }
 
-    if (!payment) {
-      return {
-        ok: false,
-        code: "NOT_FOUND",
-        message: "Payment not found.",
-        statusCode: 404,
-      };
-    }
+      if (status === "pending" || status === "unknown") {
+        return finish(false);
+      }
 
-    const paymentPurpose = getPaymentPurpose(payment.paymentPurpose);
+      if (status === "success") {
+        if (providerName === "mercadopago") {
+          const paidAmountClp = getMercadoPagoWebhookAmountClp(rawPayload);
+          const currency = getMercadoPagoWebhookCurrency(rawPayload);
+          const expectedAmountClp = Math.round(Number(payment.amountClp));
+          const amountMatches = paidAmountClp != null && paidAmountClp === expectedAmountClp;
+          const currencyMatches = !currency || currency === "CLP";
 
-    if (payment.status === "success") {
-      // Repara una eventual caída ocurrida después de guardar el pago y antes
-      // de publicar el viaje o la prioridad. Es idempotente.
-      try {
+          if (!amountMatches || !currencyMatches) {
+            await paymentsRepo.markRejected(payment.id, {
+              ...rawPayload,
+              rapagoValidation: {
+                status: "amount_or_currency_mismatch",
+                expectedAmountClp,
+                paidAmountClp,
+                expectedCurrency: "CLP",
+                paidCurrency: currency || null,
+              },
+            });
+            if (paymentPurpose === "ride") {
+              try {
+                await cancelRideAfterRejectedPayment(
+                  payment.rideRequestId,
+                  "Pago rechazado: el monto o la moneda no coincide con el viaje.",
+                );
+              } catch {
+                // El viaje sigue oculto en pending_payment.
+              }
+            }
+            auditService.recordSafe({
+              actorUserId: payment.passengerUserId,
+              eventType: "payment.amount_mismatch",
+              entityType: "payment",
+              entityId: payment.id,
+              metadata: {
+                rideId: payment.rideRequestId,
+                expectedAmountClp,
+                paidAmountClp: paidAmountClp ?? "missing",
+                currency: currency || "missing",
+                provider: providerName,
+              },
+            });
+            return finish(true);
+          }
+        }
+
+        await paymentsRepo.markSuccess(payment.id, externalId, rawPayload);
         if (paymentPurpose === "fast_search") {
           await activateFastSearchAfterPayment(payment.rideRequestId, "card");
         } else {
           await activateRideAfterApprovedPayment(payment.rideRequestId);
         }
-      } catch {
-        // Mercado Pago repetirá el webhook y volveremos a intentarlo.
+        auditService.recordSafe({
+          actorUserId: payment.passengerUserId,
+          eventType: "payment.success",
+          entityType: "payment",
+          entityId: payment.id,
+          metadata: {
+            rideId: payment.rideRequestId,
+            amountClp: payment.amountClp,
+            externalId,
+            provider: providerName,
+            paymentPurpose,
+          },
+        });
+        return finish(true);
       }
 
-      return {
-        ok: true,
-        processed: false,
-      };
-    }
-
-    if (
-      payment.status === "rejected" ||
-      payment.status === "failed" ||
-      payment.status === "refunded"
-    ) {
-      return {
-        ok: true,
-        processed: false,
-      };
-    }
-
-    if (status === "pending" || status === "unknown") {
-      return {
-        ok: true,
-        processed: false,
-      };
-    }
-
-    if (status === "success") {
-      if (providerName === "mercadopago") {
-        const paidAmountClp = getMercadoPagoWebhookAmountClp(rawPayload);
-        const currency = getMercadoPagoWebhookCurrency(rawPayload);
-        const expectedAmountClp = Math.round(Number(payment.amountClp));
-        const amountMatches =
-          paidAmountClp != null &&
-          paidAmountClp === expectedAmountClp;
-        const currencyMatches = !currency || currency === "CLP";
-
-        if (!amountMatches || !currencyMatches) {
-          await paymentsRepo.markRejected(payment["id"], {
-            ...rawPayload,
-            rapagoValidation: {
-              status: "amount_or_currency_mismatch",
-              expectedAmountClp,
-              paidAmountClp,
-              expectedCurrency: "CLP",
-              paidCurrency: currency || null,
-            },
-          });
-
-          if (paymentPurpose === "ride") {
-            try {
-              await cancelRideAfterRejectedPayment(
-                payment.rideRequestId,
-                "Pago rechazado: el monto o la moneda no coincide con el viaje.",
-              );
-            } catch {
-              // El viaje sigue en pending_payment y por lo tanto permanece oculto.
-            }
+      if (status === "rejected") {
+        await paymentsRepo.markRejected(payment.id, rawPayload);
+        if (paymentPurpose === "ride") {
+          try {
+            await cancelRideAfterRejectedPayment(
+              payment.rideRequestId,
+              "Pago rechazado o cancelado por Mercado Pago.",
+            );
+          } catch {
+            // El viaje permanece pending_payment y no se publica.
           }
-
-          auditService.recordSafe({
-            actorUserId: payment.passengerUserId,
-            eventType: "payment.amount_mismatch",
-            entityType: "payment",
-            entityId: payment["id"],
-            metadata: {
-              rideId: payment.rideRequestId,
-              expectedAmountClp,
-              paidAmountClp: paidAmountClp ?? "missing",
-              currency: currency || "missing",
-              provider: providerName,
-            },
-          });
-
-          return { ok: true, processed: true };
         }
+        auditService.recordSafe({
+          actorUserId: payment.passengerUserId,
+          eventType: "payment.rejected",
+          entityType: "payment",
+          entityId: payment.id,
+          metadata: { rideId: payment.rideRequestId, provider: providerName },
+        });
+        return finish(true);
       }
 
-      await paymentsRepo.markSuccess(payment.id, externalId, rawPayload);
-
-      if (paymentPurpose === "fast_search") {
-        await activateFastSearchAfterPayment(payment.rideRequestId, "card");
-      } else {
-        await activateRideAfterApprovedPayment(payment.rideRequestId);
-      }
-
+      return finish(false);
+    } catch (error) {
+      await paymentsRepo.failWebhookEvent(eventId, String(error));
       auditService.recordSafe({
-        actorUserId: payment.passengerUserId,
-        eventType: "payment.success",
+        eventType: "payment.webhook_processing_error",
         entityType: "payment",
-        entityId: payment["id"],
-        metadata: {
-          rideId: payment.rideRequestId,
-          amountClp: payment.amountClp,
-          externalId,
-          provider: providerName,
-          paymentPurpose,
-        },
+        metadata: { provider: providerName, error: String(error) } as Record<string, string>,
       });
-
       return {
-        ok: true,
-        processed: true,
+        ok: false,
+        code: "WEBHOOK_PROVIDER_ERROR",
+        message: "Could not process payment webhook.",
+        statusCode: 502,
       };
     }
-
-    if (status === "rejected") {
-      await paymentsRepo.markRejected(payment["id"], rawPayload);
-
-      if (paymentPurpose === "ride") {
-        try {
-          await cancelRideAfterRejectedPayment(
-            payment.rideRequestId,
-            "Pago rechazado o cancelado por Mercado Pago.",
-          );
-        } catch {
-          // Si falla, el viaje permanece pending_payment y no se publica.
-        }
-      }
-
-      auditService.recordSafe({
-        actorUserId: payment.passengerUserId,
-        eventType: "payment.rejected",
-        entityType: "payment",
-        entityId: payment["id"],
-        metadata: {
-          rideId: payment.rideRequestId,
-          provider: providerName,
-        },
-      });
-
-      return {
-        ok: true,
-        processed: true,
-      };
-    }
-
-    return {
-      ok: true,
-      processed: false,
-    };
   }
+
 }

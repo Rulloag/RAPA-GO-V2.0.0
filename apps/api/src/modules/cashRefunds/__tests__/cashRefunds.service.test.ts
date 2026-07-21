@@ -17,6 +17,8 @@ const {
   rejectRefund,
   completeRefund,
   decryptSensitiveValue,
+  findCashClosureByRideId,
+  markCashResolution,
 } = vi.hoisted(() => ({
   verifyAccessToken: vi.fn(),
   hashToken: vi.fn().mockReturnValue("hash"),
@@ -34,6 +36,8 @@ const {
   rejectRefund: vi.fn(),
   completeRefund: vi.fn(),
   decryptSensitiveValue: vi.fn(),
+  findCashClosureByRideId: vi.fn(),
+  markCashResolution: vi.fn(),
 }));
 
 vi.mock("../../auth/token.service.js", () => ({
@@ -67,6 +71,13 @@ vi.mock("../cashRefunds.repository.js", () => ({
     approve: approveRefund,
     reject: rejectRefund,
     complete: completeRefund,
+    findCashClosureByRideId,
+  })),
+}));
+vi.mock("../../cashPayments/cashPayments.repository.js", () => ({
+  CashPaymentsRepository: vi.fn().mockImplementation(() => ({
+    markResolution: markCashResolution,
+    markResolved: markCashResolution,
   })),
 }));
 vi.mock("../../../shared/security/fieldEncryption.js", () => ({
@@ -104,6 +115,24 @@ const ride = {
   notes: "PaymentMethod: cash",
   estimatedFareClp: 10_000,
 };
+const cashClosure = {
+  id: "66666666-6666-4666-8666-666666666666",
+  rideRequestId: RIDE_ID,
+  passengerUserId: PASSENGER_ID,
+  driverUserId: "77777777-7777-4777-8777-777777777777",
+  fareClp: 10_000,
+  paidClp: 12_000,
+  overpaidClp: 2_000,
+  decision: "overpaid",
+  status: "overpayment_pending_choice",
+  resolutionType: null,
+  resolutionReferenceId: null,
+  driverNote: null,
+  closedAt: now,
+  createdAt: now,
+  updatedAt: now,
+};
+
 const bankAccount = {
   id: BANK_ID,
   userId: PASSENGER_ID,
@@ -157,6 +186,8 @@ describe("CashRefundsService", () => {
     isSessionValid.mockResolvedValue(true);
     findRefundByRideId.mockResolvedValue(null);
     findBenefitByRideId.mockResolvedValue(null);
+    findCashClosureByRideId.mockResolvedValue(cashClosure);
+    markCashResolution.mockResolvedValue(cashClosure);
     listByOwner.mockResolvedValue([]);
     listForAdmin.mockResolvedValue([]);
     service = new CashRefundsService();

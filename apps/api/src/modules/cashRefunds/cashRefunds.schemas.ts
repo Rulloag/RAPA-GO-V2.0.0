@@ -2,7 +2,7 @@ import { z } from "zod";
 
 export const requestCashOverpaymentRefundSchema = z.object({
   rideId: z.string().uuid(),
-  paidClp: z.number().int().positive().max(50_000_000),
+  paidClp: z.number().int().positive().max(50_000_000).optional(),
   reason: z
     .string()
     .trim()

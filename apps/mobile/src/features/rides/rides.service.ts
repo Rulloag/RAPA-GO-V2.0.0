@@ -127,8 +127,28 @@ export interface RatingData {
   raterRole:     string;
   rating:        number;
   comment:       string | null;
+  commentVisibility?: "participants_and_admin" | "admin_only";
+  moderationStatus?: "visible" | "hidden";
   createdAt:     string;
   updatedAt:     string;
+}
+
+export interface CashPaymentClosureData {
+  id: string;
+  rideRequestId: string;
+  passengerUserId: string;
+  driverUserId: string;
+  fareClp: number;
+  paidClp: number;
+  overpaidClp: number;
+  decision: "exact" | "overpaid";
+  status: string;
+  resolutionType: "benefit" | "bank_refund" | null;
+  resolutionReferenceId: string | null;
+  driverNote: string | null;
+  closedAt: string;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface CreateRideInput {
@@ -232,12 +252,36 @@ export const ridesService = {
     return (result.data as DriverRidesEnvelope).data;
   },
 
-  async rateRide(accessToken: string, rideId: string, rating: number, comment?: string): Promise<RatingData> {
+  async rateRide(
+    accessToken: string,
+    rideId: string,
+    rating: number,
+    comment?: string,
+    commentVisibility: "participants_and_admin" | "admin_only" = "participants_and_admin",
+  ): Promise<RatingData> {
     type RatingEnvelope = { ok: true; data: RatingData; statusCode: number };
-    const body: { rating: number; comment?: string } = { rating };
+    const body: { rating: number; comment?: string; commentVisibility: "participants_and_admin" | "admin_only" } = {
+      rating,
+      commentVisibility,
+    };
     if (comment) body.comment = comment;
     const result = await apiClient.post<RatingEnvelope>(`/rides/${rideId}/rate`, body, { token: accessToken });
     if (result.ok === false) throw new Error(result.message ?? "Failed to submit rating.");
     return (result.data as RatingEnvelope).data;
+  },
+
+  async closeCashPayment(
+    accessToken: string,
+    rideId: string,
+    input: { paidClp: number; decision: "exact" | "overpaid"; note?: string },
+  ): Promise<CashPaymentClosureData> {
+    type ClosureEnvelope = { ok: true; data: CashPaymentClosureData; statusCode: number };
+    const result = await apiClient.post<ClosureEnvelope>(
+      `/cash-payments/rides/${rideId}/close`,
+      input,
+      { token: accessToken },
+    );
+    if (result.ok === false) throw new Error(result.message ?? "No se pudo registrar el pago en efectivo.");
+    return (result.data as ClosureEnvelope).data;
   },
 };

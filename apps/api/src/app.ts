@@ -25,6 +25,7 @@ import { passengerProfileRoutes } from "./modules/passengers/passengerProfile.ro
 import { offlineRoutes } from "./modules/offline/offline.routes.js";
 import { walletRoutes } from "./modules/wallet/wallet.routes.js";
 import { cashRefundsRoutes } from "./modules/cashRefunds/cashRefunds.routes.js";
+import { cashPaymentsRoutes } from "./modules/cashPayments/cashPayments.routes.js";
 import { touristRoutes } from "./modules/tourist/tourist.routes.js";
 import { rentalRoutes } from "./modules/rental/rental.routes.js";
 import { notificationsRoutes } from "./modules/notifications/notifications.routes.js";
@@ -177,6 +178,7 @@ export async function buildApp(): Promise<FastifyInstance> {
   await fastify.register(passengerProfileRoutes, { prefix: "/api" });
   await fastify.register(walletRoutes, { prefix: "/api" });
   await fastify.register(cashRefundsRoutes, { prefix: "/api" });
+  await fastify.register(cashPaymentsRoutes, { prefix: "/api" });
   await fastify.register(touristRoutes, { prefix: "/api" });
   await fastify.register(rentalRoutes, { prefix: "/api" });
   await fastify.register(notificationsRoutes, { prefix: "/api" });

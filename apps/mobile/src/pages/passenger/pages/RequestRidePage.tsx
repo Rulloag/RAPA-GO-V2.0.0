@@ -48,6 +48,7 @@ import {
 import { walletService } from "../../../features/wallet/wallet.service.js";
 import { RIDE_STATUS_LABEL } from "../shared.js";
 import { getApiOrigin as getConfiguredApiOrigin } from "../../../services/api/apiBaseUrl.js";
+import { preSearchLocationService } from "../../../features/location/preSearchLocation.service.js";
 
 
 const LOCAL_PASSENGER_RIDES_KEY = "rapago_local_passenger_rides";
@@ -4480,6 +4481,11 @@ export default function RequestRidePage(): JSX.Element {
   const { session } = useAuth();
   const history = useHistory();
 
+  useEffect(() => {
+    preSearchLocationService.read();
+    return () => preSearchLocationService.clear();
+  }, []);
+
   const [originPoint, setOriginPoint] = useState<ConfirmedPoint | null>(null);
   const [destinationPoint, setDestinationPoint] =
     useState<ConfirmedPoint | null>(null);
@@ -4968,6 +4974,7 @@ export default function RequestRidePage(): JSX.Element {
 
     navigator.geolocation.getCurrentPosition(
       (position) => {
+        preSearchLocationService.remember(position);
         const gpsPoint = {
           lat: position.coords.latitude,
           lng: position.coords.longitude,
@@ -5509,9 +5516,6 @@ export default function RequestRidePage(): JSX.Element {
         resolved.origin.walkMeters > 8
       ) {
         notes.push(
-          `Ubicación real del pasajero: ${resolved.origin.originalLat.toFixed(6)}, ${resolved.origin.originalLng.toFixed(6)}.`,
-        );
-        notes.push(
           `Punto accesible de recogida ajustado a calle. El pasajero debe caminar aprox. ${resolved.origin.walkMeters} m.`,
         );
       }
@@ -5665,6 +5669,7 @@ export default function RequestRidePage(): JSX.Element {
         session.accessToken,
         input,
       );
+      preSearchLocationService.clear();
 
       const createdRideId = extractRideRequestIdFromResponse(createdRideResponse);
       const appliedBenefitClp = Math.max(
@@ -5965,9 +5970,6 @@ export default function RequestRidePage(): JSX.Element {
           resolved.origin.walkMeters != null &&
           resolved.origin.walkMeters > 8
         ) {
-          localNotes.push(
-            `Ubicación real del pasajero: ${resolved.origin.originalLat.toFixed(6)}, ${resolved.origin.originalLng.toFixed(6)}.`,
-          );
           localNotes.push(
             `Punto accesible de recogida ajustado a calle. El pasajero debe caminar aprox. ${resolved.origin.walkMeters} m.`,
           );

@@ -13622,6 +13622,17 @@ La reserva fue retirada. No continúes hacia la recogida.`,
       const cashPatch = buildDriverCashClosureRidePatch(currentRide, cashClosure);
 
       if (cashClosure) {
+        try {
+          await ridesService.closeCashPayment(session.accessToken, rideId, {
+            paidClp: cashClosure.paidClp,
+            decision: cashClosure.decision,
+            ...(cashClosure.notes ? { note: cashClosure.notes } : {}),
+          });
+        } catch (cashError) {
+          setError(cashError instanceof Error
+            ? `Viaje completado. Cierre efectivo pendiente de sincronizar: ${cashError.message}`
+            : "Viaje completado. El cierre efectivo quedó pendiente de sincronizar.");
+        }
         persistDriverCashClosureForAdmin(
           { ...(currentRide as unknown as Record<string, unknown>), ...cashPatch, completedAt, closedByDriverAt: completedAt },
           cashClosure,
@@ -16542,6 +16553,17 @@ function DriverMyRidesPage(): JSX.Element {
       const cashPatch = buildDriverCashClosureRidePatch(ride, cashClosure);
 
       if (cashClosure) {
+        try {
+          await ridesService.closeCashPayment(session.accessToken, ride.id, {
+            paidClp: cashClosure.paidClp,
+            decision: cashClosure.decision,
+            ...(cashClosure.notes ? { note: cashClosure.notes } : {}),
+          });
+        } catch (cashError) {
+          setLoadError(cashError instanceof Error
+            ? `Viaje completado. Cierre efectivo pendiente de sincronizar: ${cashError.message}`
+            : "Viaje completado. El cierre efectivo quedó pendiente de sincronizar.");
+        }
         persistDriverCashClosureForAdmin(
           { ...(ride as unknown as Record<string, unknown>), ...cashPatch, completedAt, closedByDriverAt: completedAt },
           cashClosure,

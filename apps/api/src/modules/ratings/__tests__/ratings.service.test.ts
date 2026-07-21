@@ -8,7 +8,10 @@ const {
   findRideById,
   findByRideAndRater,
   createRating,
+  findRatingsByRideId,
   getReceivedSummary,
+  listRatingsForAdmin,
+  moderateRating,
 } = vi.hoisted(() => ({
   verifyAccessToken: vi.fn(),
   hashToken: vi.fn().mockReturnValue("hash"),
@@ -17,7 +20,10 @@ const {
   findRideById: vi.fn(),
   findByRideAndRater: vi.fn(),
   createRating: vi.fn(),
+  findRatingsByRideId: vi.fn(),
   getReceivedSummary: vi.fn(),
+  listRatingsForAdmin: vi.fn(),
+  moderateRating: vi.fn(),
 }));
 
 vi.mock("../../auth/token.service.js", () => ({ TokenService: vi.fn().mockImplementation(() => ({ verifyAccessToken, hashToken })) }));
@@ -27,8 +33,10 @@ vi.mock("../../rides/rides.repository.js", () => ({ RidesRepository: vi.fn().moc
 vi.mock("../ratings.repository.js", () => ({ RatingsRepository: vi.fn().mockImplementation(() => ({
   findByRideAndRater,
   create: createRating,
-  findByRideId: vi.fn().mockResolvedValue([]),
+  findByRideId: findRatingsByRideId,
   getReceivedSummary,
+  listForAdmin: listRatingsForAdmin,
+  moderate: moderateRating,
 })) }));
 
 const { RatingsService } = await import("../ratings.service.js");
@@ -44,6 +52,8 @@ describe("RatingsService", () => {
     service = new RatingsService();
     isSessionValid.mockResolvedValue(true);
     findByRideAndRater.mockResolvedValue(null);
+    findRatingsByRideId.mockResolvedValue([]);
+    listRatingsForAdmin.mockResolvedValue([]);
   });
 
   it("guarda la calificación del pasajero al conductor", async () => {
@@ -95,4 +105,69 @@ describe("RatingsService", () => {
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.code).toBe("AUTH_FORBIDDEN");
   });
+  it("oculta al conductor un comentario marcado solo para RAPA GO", async () => {
+    verifyAccessToken.mockReturnValue({ sub: DRIVER_ID });
+    findUserById.mockResolvedValue({ id: DRIVER_ID, role: "driver", status: "active" });
+    findRideById.mockResolvedValue({ id: RIDE_ID, passengerUserId: PASSENGER_ID, driverUserId: DRIVER_ID, status: "completed" });
+    findRatingsByRideId.mockResolvedValue([{
+      id: "private-rating",
+      rideRequestId: RIDE_ID,
+      raterUserId: PASSENGER_ID,
+      ratedUserId: DRIVER_ID,
+      raterRole: "passenger",
+      rating: 3,
+      comment: "Comentario privado para soporte",
+      commentVisibility: "admin_only",
+      moderationStatus: "visible",
+      moderationReason: null,
+      moderatedByUserId: null,
+      moderatedAt: null,
+      createdAt: now,
+      updatedAt: now,
+    }]);
+
+    const result = await service.getRideRatings("token", RIDE_ID);
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.ratings[0]?.comment).toBeNull();
+    expect(result.ratings[0]?.commentVisibility).toBe("admin_only");
+  });
+
+  it("permite al administrador moderar y conservar la trazabilidad", async () => {
+    const ADMIN_ID = "44444444-4444-4444-8444-444444444444";
+    verifyAccessToken.mockReturnValue({ sub: ADMIN_ID });
+    findUserById.mockResolvedValue({ id: ADMIN_ID, role: "admin", status: "active" });
+    moderateRating.mockResolvedValue({
+      id: "private-rating",
+      rideRequestId: RIDE_ID,
+      raterUserId: PASSENGER_ID,
+      ratedUserId: DRIVER_ID,
+      raterRole: "passenger",
+      rating: 3,
+      comment: "Comentario privado para soporte",
+      commentVisibility: "admin_only",
+      moderationStatus: "hidden",
+      moderationReason: "Contiene datos personales",
+      moderatedByUserId: ADMIN_ID,
+      moderatedAt: now,
+      createdAt: now,
+      updatedAt: now,
+    });
+
+    const result = await service.moderate("token", "private-rating", {
+      moderationStatus: "hidden",
+      moderationReason: "Contiene datos personales",
+    });
+
+    expect(result.ok).toBe(true);
+    expect(moderateRating).toHaveBeenCalledWith({
+      id: "private-rating",
+      moderationStatus: "hidden",
+      moderationReason: "Contiene datos personales",
+      moderatedByUserId: ADMIN_ID,
+    });
+    if (result.ok) expect(result.rating.comment).toBe("Comentario privado para soporte");
+  });
+
 });

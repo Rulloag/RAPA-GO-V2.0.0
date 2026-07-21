@@ -8,6 +8,8 @@ export interface DriverReceivedRatingData {
   raterRole: string;
   rating: number;
   comment: string | null;
+  commentVisibility?: "participants_and_admin" | "admin_only";
+  moderationStatus?: "visible" | "hidden";
   raterName: string | null;
   originText: string | null;
   destinationText: string | null;
@@ -33,10 +35,16 @@ export class RatingsApiError extends Error {
 }
 
 export const ratingsService = {
-  async rateRide(accessToken: string, rideId: string, rating: number, comment?: string): Promise<void> {
+  async rateRide(
+    accessToken: string,
+    rideId: string,
+    rating: number,
+    comment?: string,
+    commentVisibility: "participants_and_admin" | "admin_only" = "participants_and_admin",
+  ): Promise<void> {
     const result = await apiClient.post<{ ok: true; data: unknown; statusCode: number }>(
       `/rides/${rideId}/rate`,
-      { rating, ...(comment ? { comment } : {}) },
+      { rating, commentVisibility, ...(comment ? { comment } : {}) },
       { token: accessToken },
     );
     if (result.ok === false) {

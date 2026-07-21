@@ -4,6 +4,7 @@ import { db } from "../../db/client.js";
 import {
   cashOverpaymentBenefits,
   cashOverpaymentRefundRequests,
+  cashPaymentClosures,
   users,
 } from "../../db/schema/index.js";
 import { AppError } from "../../shared/errors/AppError.js";
@@ -63,6 +64,12 @@ export class CashRefundsRepository {
       );
     }
   }
+
+async findCashClosureByRideId(sourceRideId: string) {
+  const [row] = await db.select().from(cashPaymentClosures)
+    .where(eq(cashPaymentClosures.rideRequestId, sourceRideId)).limit(1);
+  return row ?? null;
+}
 
   async create(
     data: NewCashOverpaymentRefundRequest,

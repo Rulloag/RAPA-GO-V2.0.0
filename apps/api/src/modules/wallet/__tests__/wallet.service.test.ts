@@ -11,6 +11,8 @@ const {
   mockFindBenefitById,
   mockCreateBenefitRequest,
   mockApproveBenefit,
+  mockFindCashClosure,
+  mockMarkCashResolution,
 } = vi.hoisted(() => ({
   mockVerifyAccessToken: vi.fn(),
   mockHashToken: vi.fn().mockReturnValue("hashed-token"),
@@ -22,6 +24,8 @@ const {
   mockFindBenefitById: vi.fn(),
   mockCreateBenefitRequest: vi.fn(),
   mockApproveBenefit: vi.fn(),
+  mockFindCashClosure: vi.fn(),
+  mockMarkCashResolution: vi.fn(),
 }));
 
 vi.mock("../../auth/token.service.js", () => ({
@@ -56,6 +60,14 @@ vi.mock("../wallet.repository.js", () => ({
     findCashOverpaymentBenefitById: mockFindBenefitById,
     createCashOverpaymentBenefitRequest: mockCreateBenefitRequest,
     approveCashOverpaymentBenefit: mockApproveBenefit,
+    findCashPaymentClosureByRideId: mockFindCashClosure,
+  })),
+}));
+
+vi.mock("../../cashPayments/cashPayments.repository.js", () => ({
+  CashPaymentsRepository: vi.fn().mockImplementation(() => ({
+    markResolution: mockMarkCashResolution,
+    markResolved: mockMarkCashResolution,
   })),
 }));
 
@@ -89,6 +101,24 @@ const completedCashRide = {
   estimatedFareClp: 10_000,
 };
 
+const cashClosure = {
+  id: "77777777-7777-4777-8777-777777777777",
+  rideRequestId: RIDE_ID,
+  passengerUserId: OWNER_ID,
+  driverUserId: "88888888-8888-4888-8888-888888888888",
+  fareClp: 10_000,
+  paidClp: 12_000,
+  overpaidClp: 2_000,
+  decision: "overpaid",
+  status: "overpayment_pending_choice",
+  resolutionType: null,
+  resolutionReferenceId: null,
+  driverNote: null,
+  closedAt: new Date("2026-07-19T12:00:00.000Z"),
+  createdAt: new Date("2026-07-19T12:00:00.000Z"),
+  updatedAt: new Date("2026-07-19T12:00:00.000Z"),
+};
+
 const benefit = {
   id: BENEFIT_ID,
   sourceRideId: RIDE_ID,
@@ -116,6 +146,8 @@ describe("WalletService cash overpayment benefits", () => {
     vi.clearAllMocks();
     mockIsSessionValid.mockResolvedValue(true);
     mockFindRefundByRide.mockResolvedValue(null);
+    mockFindCashClosure.mockResolvedValue(cashClosure);
+    mockMarkCashResolution.mockResolvedValue(cashClosure);
     service = new WalletService();
   });
 

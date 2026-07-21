@@ -3,6 +3,7 @@ import { and, asc, count, desc, eq, sql } from "drizzle-orm";
 import { db } from "../../db/client.js";
 import {
   cashOverpaymentBenefits,
+  cashPaymentClosures,
   cashOverpaymentRefundRequests,
   paymentOrders,
   transactions,
@@ -321,6 +322,12 @@ export class WalletRepository {
       );
     }
   }
+
+async findCashPaymentClosureByRideId(rideId: string) {
+  const [row] = await db.select().from(cashPaymentClosures)
+    .where(eq(cashPaymentClosures.rideRequestId, rideId)).limit(1);
+  return row ?? null;
+}
 
   async findCashOverpaymentRefundByRideId(
     sourceRideId: string,

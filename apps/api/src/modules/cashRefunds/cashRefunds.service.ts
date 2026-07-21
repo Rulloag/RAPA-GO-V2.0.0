@@ -7,6 +7,7 @@ import { BankAccountsRepository } from "../bankAccounts/bankAccounts.repository.
 import { RidesRepository } from "../rides/rides.repository.js";
 import { UsersRepository } from "../users/users.repository.js";
 import { CashRefundsRepository } from "./cashRefunds.repository.js";
+import { CashPaymentsRepository } from "../cashPayments/cashPayments.repository.js";
 import type {
   ApproveCashOverpaymentRefundInput,
   CompleteCashOverpaymentRefundInput,
@@ -20,6 +21,7 @@ const usersRepository = new UsersRepository();
 const ridesRepository = new RidesRepository();
 const bankAccountsRepository = new BankAccountsRepository();
 const refundsRepository = new CashRefundsRepository();
+const cashPaymentsRepository = new CashPaymentsRepository();
 
 type AuthResult =
   | { ok: true; userId: string; role: string }
@@ -223,9 +225,16 @@ export class CashRefundsService {
       };
     }
 
-    const fareClp = Math.max(0, Math.round(Number(ride.estimatedFareClp ?? 0)));
-    const paidClp = Math.max(0, Math.round(Number(input.paidClp)));
-    const requestedAmountClp = paidClp - fareClp;
+    const closure = await refundsRepository.findCashClosureByRideId(ride.id);
+    if (!closure) {
+      return { ok: false as const, code: "CASH_CLOSURE_REQUIRED", message: "El conductor todavía no ha confirmado en el backend el efectivo recibido.", statusCode: 409 };
+    }
+    const fareClp = closure.fareClp;
+    const paidClp = closure.paidClp;
+    const requestedAmountClp = closure.overpaidClp;
+    if (input.paidClp != null && Math.round(input.paidClp) !== paidClp) {
+      return { ok: false as const, code: "CASH_AMOUNT_MISMATCH", message: "El monto informado no coincide con el cierre confirmado por el conductor.", statusCode: 409 };
+    }
 
     if (fareClp <= 0) {
       return {
@@ -301,6 +310,12 @@ export class CashRefundsService {
       bankAccountNumberLast4: bankAccount.accountNumberLast4,
       bankAccountNumberEncrypted: bankAccount.accountNumberEncrypted,
       updatedAt: new Date(),
+    });
+
+    await cashPaymentsRepository.markResolution({
+      rideRequestId: ride.id,
+      type: "bank_refund",
+      referenceId: created.id,
     });
 
     return {
@@ -521,6 +536,12 @@ export class CashRefundsService {
         statusCode: existing ? 409 : 404,
       };
     }
+
+    await cashPaymentsRepository.markResolved({
+      rideRequestId: completed.sourceRideId,
+      type: "bank_refund",
+      referenceId: completed.id,
+    });
 
     return { ok: true as const, refund: serializeRefund(completed) };
   }
