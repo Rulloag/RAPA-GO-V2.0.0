@@ -49,6 +49,7 @@ import {
 
 import { sql } from "drizzle-orm";
 import { db } from "./db/client.js";
+import { releaseFeatures } from "./config/features.js";
 
 async function checkDbConnection(): Promise<"connected" | "disconnected"> {
   try {
@@ -128,6 +129,7 @@ export async function buildApp(): Promise<FastifyInstance> {
         memory: memMb < 512 ? "ok" : "critical",
         memoryMb: memMb,
       },
+      releaseFeatures,
     };
   });
 
@@ -179,12 +181,18 @@ export async function buildApp(): Promise<FastifyInstance> {
   await fastify.register(walletRoutes, { prefix: "/api" });
   await fastify.register(cashRefundsRoutes, { prefix: "/api" });
   await fastify.register(cashPaymentsRoutes, { prefix: "/api" });
-  await fastify.register(touristRoutes, { prefix: "/api" });
-  await fastify.register(rentalRoutes, { prefix: "/api" });
+  if (releaseFeatures.tourism) {
+    await fastify.register(touristRoutes, { prefix: "/api" });
+  }
+  if (releaseFeatures.rentals) {
+    await fastify.register(rentalRoutes, { prefix: "/api" });
+  }
   await fastify.register(notificationsRoutes, { prefix: "/api" });
   await fastify.register(applicationsRoutes, { prefix: "/api" });
-  await fastify.register(eventTicketsRoutes, { prefix: "/api" });
-  await fastify.register(adminEventTicketsRoutes, { prefix: "/api/admin" });
+  if (releaseFeatures.events) {
+    await fastify.register(eventTicketsRoutes, { prefix: "/api" });
+    await fastify.register(adminEventTicketsRoutes, { prefix: "/api/admin" });
+  }
   await fastify.register(legalDocumentsRoutes, { prefix: "/api" });
   await fastify.register(adminLegalRoutes, { prefix: "/api/admin" });
   await fastify.register(fareSettingsPublicRoutes, { prefix: "/api" });

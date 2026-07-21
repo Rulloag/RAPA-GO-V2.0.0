@@ -15,15 +15,13 @@ export function WelcomePage(): JSX.Element {
 
         <IonText color="medium">
           <p className="welcome-subtitle">
-            Plataforma de movilidad y turismo para Rapa Nui
+            Movilidad local y viajes seguros en Rapa Nui
           </p>
         </IonText>
 
         <IonText>
           <p className="welcome-status">
-            La aplicación está en fase de construcción. Los módulos de
-            transporte, guías, rent a car, wallet y pagos se activarán
-            progresivamente en las próximas versiones.
+            Solicita viajes, revisa tus servicios y administra tu cuenta desde RAPA GO.
           </p>
         </IonText>
 
@@ -31,7 +29,7 @@ export function WelcomePage(): JSX.Element {
           <IonButton
             expand="block"
             className="btn-auth-primary"
-            onClick={() => history.push(ROUTES.AUTH.LOGIN)}
+            onClick={() => history.push(ROUTES.ROOT)}
           >
             Login
           </IonButton>
@@ -42,15 +40,6 @@ export function WelcomePage(): JSX.Element {
             onClick={() => history.push(ROUTES.AUTH.REGISTER)}
           >
             Registro
-          </IonButton>
-
-          <IonButton
-            expand="block"
-            fill="outline"
-            className="btn-perfil"
-            onClick={() => history.push(ROUTES.PROFILE.INDEX)}
-          >
-            Perfil
           </IonButton>
 
           <div

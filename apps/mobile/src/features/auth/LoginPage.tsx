@@ -18,19 +18,13 @@ import {
   IonToolbar,
 } from "@ionic/react";
 import { useHistory } from "react-router-dom";
-import { loginRequestSchema, type UserRole } from "@rapa-go/shared";
+import { loginRequestSchema } from "@rapa-go/shared";
 import { useAuth } from "./useAuth.js";
 import { authService } from "./auth.service.js";
 import { legalService, type LegalDocumentData } from "../legal/legal.service.js";
 import { ROUTES } from "../../navigation/routes.js";
+import { getReleaseHome } from "../../config/releaseFeatures.js";
 
-const ROLE_HOME: Record<UserRole, string> = {
-  passenger: ROUTES.PASSENGER.HOME,
-  driver: ROUTES.DRIVER.HOME,
-  guide: ROUTES.GUIDE.HOME,
-  rental_operator: ROUTES.RENTAL.HOME,
-  admin: ROUTES.ADMIN.HOME,
-};
 
 const API_URL = (
   import.meta.env.VITE_API_URL ??
@@ -769,9 +763,7 @@ export function LoginPage(): JSX.Element {
       });
 
       const role = result.session.user.role;
-      const home = ROLE_HOME[role] ?? ROUTES.WELCOME;
-
-      history.replace(home);
+      history.replace(getReleaseHome(role));
     } catch {
       setServerError("Error de conexión. Verifica tu internet e inténtalo nuevamente.");
     } finally {
@@ -1446,17 +1438,6 @@ export function LoginPage(): JSX.Element {
             style={{ color: "#F8D879", fontWeight: 900, marginTop: 8 } as CSSProperties}
           >
             ¿No tienes cuenta? Crear cuenta
-          </IonButton>
-
-          <IonButton
-            expand="block"
-            fill="outline"
-            disabled={loading}
-            onClick={() => history.replace(ROUTES.WELCOME)}
-            type="button"
-            style={outlineButtonStyle}
-          >
-            Volver al inicio
           </IonButton>
         </form>
 

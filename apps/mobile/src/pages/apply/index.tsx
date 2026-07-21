@@ -2594,9 +2594,6 @@ function isRutValid(value: string): boolean {
                 <IonButton routerLink="/apply/driver" color="primary" style={{ marginTop: "16px" }}>
                   Inscríbete como conductor
                 </IonButton>
-                <IonButton routerLink="/apply/guide" color="secondary" style={{ marginTop: "8px" }}>
-                  Inscríbete como guía
-                </IonButton>
               </IonCardContent>
             </IonCard>
           )}

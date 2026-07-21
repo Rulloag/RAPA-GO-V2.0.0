@@ -158,3 +158,9 @@ packages/*/dist/
 HOSTINGER-FRONTEND-*/
 RAPA-GO-HOSTINGER-*.zip
 RAPA-GO-FRONTEND*.zip
+
+release-output/
+*.jks
+*.keystore
+key.properties
+local.properties

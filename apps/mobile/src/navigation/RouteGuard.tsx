@@ -4,12 +4,17 @@ import { Redirect } from "react-router-dom";
 import { useAuth } from "../features/auth";
 import { ROUTES } from "./routes";
 import type { UserRole } from "@rapa-go/shared";
+import {
+  getReleaseHome,
+  isReleaseRoleEnabled,
+} from "../config/releaseFeatures.js";
+
 
 export const ROLE_HOME: Record<UserRole, string> = {
   passenger: ROUTES.PASSENGER.HOME,
   driver: ROUTES.DRIVER.HOME,
-  guide: ROUTES.GUIDE.HOME,
-  rental_operator: ROUTES.RENTAL.HOME,
+  guide: getReleaseHome("guide"),
+  rental_operator: getReleaseHome("rental_operator"),
   admin: ROUTES.ADMIN.HOME,
 };
 
@@ -50,7 +55,7 @@ function getRedirectHome(role: UserRole): string {
     return ROUTES.DRIVER.HOME;
   }
 
-  return ROLE_HOME[role];
+  return getReleaseHome(role);
 }
 
 export function RouteGuard({ children, path }: RouteGuardProps): JSX.Element {
@@ -65,7 +70,12 @@ export function RouteGuard({ children, path }: RouteGuardProps): JSX.Element {
   }
 
   if (status === "unauthenticated" || !user) {
-    return <Redirect to={ROUTES.AUTH.LOGIN} />;
+    return <Redirect to={ROUTES.ROOT} />;
+  }
+
+  if (!isReleaseRoleEnabled(user.role)) {
+    if (path === ROUTES.SUPPORT.CENTER) return <>{children}</>;
+    return <Redirect to={ROUTES.SUPPORT.CENTER} />;
   }
 
   if (path.startsWith(ROUTES.PROFILE.BASE)) {

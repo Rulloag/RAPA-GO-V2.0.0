@@ -12887,28 +12887,6 @@ export function AdminSettingsPage(): JSX.Element {
             </IonCardContent>
           </IonCard>
         ))}
-
-        <div style={{ marginTop: "24px" }}>
-          <IonCard style={{ background: "var(--ion-color-light)" }}>
-            <IonCardContent
-              style={{ fontSize: "0.78rem", color: "var(--ion-color-medium)" }}
-            >
-              <div
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "8px",
-                  marginBottom: "6px",
-                }}
-              >
-                <IonIcon icon={settingsOutline} />
-                <strong>Próximamente</strong>
-              </div>
-              Parámetros del sistema · Integraciones de pago · Notificaciones
-              globales · Comisiones de plataforma
-            </IonCardContent>
-          </IonCard>
-        </div>
       </IonContent>
     </IonPage>
   );

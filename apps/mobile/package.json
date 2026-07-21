@@ -10,7 +10,9 @@
     "build:prod": "tsc && vite build --mode production",
     "typecheck": "tsc --noEmit",
     "lint": "eslint src --ext .ts,.tsx",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "verify:release": "node ../../scripts/release/verify-release.mjs",
+    "android:sync:prod": "npm run build:prod && npx cap sync android"
   },
   "dependencies": {
     "@aparajita/capacitor-secure-storage": "8.0.0",

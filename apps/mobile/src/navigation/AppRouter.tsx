@@ -1,9 +1,8 @@
 import { IonRouterOutlet } from "@ionic/react";
-import { Redirect, Route, Switch } from "react-router-dom";
+import { Redirect, Route, Switch, type RouteComponentProps } from "react-router-dom";
 import { ROUTES } from "./routes";
-import { RouteGuard, ROLE_HOME } from "./RouteGuard";
+import { RouteGuard } from "./RouteGuard";
 import { useAuth } from "../features/auth";
-import { WelcomePage } from "../pages/WelcomePage";
 import { NotFoundPage } from "../pages/NotFoundPage";
 import { LoginPage, RegisterPage } from "../features/auth";
 import { FacebookCallbackPage } from "../features/auth/FacebookCallbackPage";
@@ -38,24 +37,10 @@ import {
   SupportPublicPage,
   TermsPublicPage,
 } from "../pages/public/PublicLegalPages.js";
-
-function getPreferredHome(role: string): string {
-  const mode =
-    localStorage.getItem("rapago_active_role") ??
-    localStorage.getItem("rapago_selected_role") ??
-    localStorage.getItem("rapago_view_mode") ??
-    localStorage.getItem("rapago_active_mode");
-
-  if (role === "driver" && mode === "passenger") {
-    return ROUTES.PASSENGER.HOME;
-  }
-
-  if (role === "driver" && mode === "driver") {
-    return ROUTES.DRIVER.HOME;
-  }
-
-  return ROLE_HOME[role as keyof typeof ROLE_HOME] ?? ROUTES.WELCOME;
-}
+import {
+  RELEASE_FEATURES,
+  getReleaseHome,
+} from "../config/releaseFeatures.js";
 
 function PrivateRoute({
   path,
@@ -94,10 +79,22 @@ function AuthRoute({
       path={path}
       render={() => {
         if (status === "authenticated" && user) {
-          return <Redirect to={getPreferredHome(user.role)} />;
+          return <Redirect to={getReleaseHome(user.role)} />;
         }
 
         return <Component />;
+      }}
+    />
+  );
+}
+
+function LegacyLoginRedirect({ location }: RouteComponentProps): JSX.Element {
+  return (
+    <Redirect
+      to={{
+        pathname: ROUTES.ROOT,
+        search: location.search,
+        hash: location.hash,
       }}
     />
   );
@@ -110,53 +107,73 @@ export function AppRouter(): JSX.Element {
       <SupportQuickAccess />
       <IonRouterOutlet>
         <Switch>
-        {/* Facebook callback debe ir arriba para que no lo tome otra ruta */}
-        <Route
-          exact
-          path={ROUTES.AUTH.FACEBOOK_CALLBACK}
-          component={FacebookCallbackPage}
-        />
+          {/* Callback OAuth primero para evitar colisiones. */}
+          <Route
+            exact
+            path={ROUTES.AUTH.FACEBOOK_CALLBACK}
+            component={FacebookCallbackPage}
+          />
 
-        <Redirect exact from={ROUTES.ROOT} to={ROUTES.WELCOME} />
+          {/* El acceso público se muestra en la raíz, sin exponer /auth/login. */}
+          <AuthRoute path={ROUTES.ROOT} component={LoginPage} />
+          <Route
+            exact
+            path={ROUTES.AUTH.LOGIN}
+            component={LegacyLoginRedirect}
+          />
+          <Redirect exact from={ROUTES.WELCOME} to={ROUTES.ROOT} />
 
-        <Route exact path={ROUTES.WELCOME} component={WelcomePage} />
-        <Route exact path={ROUTES.PUBLIC.PRIVACY} component={PrivacyPublicPage} />
-        <Route exact path={ROUTES.PUBLIC.TERMS} component={TermsPublicPage} />
-        <Route exact path={ROUTES.PUBLIC.SUPPORT} component={SupportPublicPage} />
-        <Route exact path={ROUTES.PUBLIC.EULA} component={EulaPublicPage} />
-        <Route
-          exact
-          path={ROUTES.PUBLIC.DELETE_ACCOUNT}
-          component={PublicAccountDeletionPage}
-        />
-        <Route exact path={ROUTES.NOT_FOUND} component={NotFoundPage} />
+          <Route exact path={ROUTES.PUBLIC.PRIVACY} component={PrivacyPublicPage} />
+          <Route exact path={ROUTES.PUBLIC.TERMS} component={TermsPublicPage} />
+          <Route exact path={ROUTES.PUBLIC.SUPPORT} component={SupportPublicPage} />
+          <Route exact path={ROUTES.PUBLIC.EULA} component={EulaPublicPage} />
+          <Route
+            exact
+            path={ROUTES.PUBLIC.DELETE_ACCOUNT}
+            component={PublicAccountDeletionPage}
+          />
+          <Route exact path={ROUTES.NOT_FOUND} component={NotFoundPage} />
 
-        <Route exact path={ROUTES.APPLY.DRIVER} component={ApplicationDriverPage} />
-        <Route exact path={ROUTES.APPLY.GUIDE} component={ApplicationGuidePage} />
-        <Route exact path={ROUTES.APPLY.STATUS} component={ApplicationStatusPage} />
+          <Route exact path={ROUTES.APPLY.DRIVER} component={ApplicationDriverPage} />
+          {RELEASE_FEATURES.tourism ? (
+            <Route exact path={ROUTES.APPLY.GUIDE} component={ApplicationGuidePage} />
+          ) : (
+            <Route exact path={ROUTES.APPLY.GUIDE} render={() => <Redirect to={ROUTES.NOT_FOUND} />} />
+          )}
+          <Route exact path={ROUTES.APPLY.STATUS} component={ApplicationStatusPage} />
 
-        <Route exact path="/legal/:type" component={LegalPage} />
+          <Route exact path="/legal/:type" component={LegalPage} />
 
-        <AuthRoute path={ROUTES.AUTH.LOGIN} component={LoginPage} />
-        <AuthRoute path="/auth/forgot-password" component={ForgotPasswordPage} />
-        <AuthRoute path="/auth/reset-password" component={ResetPasswordPage} />
-        <AuthRoute path={ROUTES.AUTH.REGISTER} component={RegisterPage} />
+          <AuthRoute path="/auth/forgot-password" component={ForgotPasswordPage} />
+          <AuthRoute path="/auth/reset-password" component={ResetPasswordPage} />
+          <AuthRoute path={ROUTES.AUTH.REGISTER} component={RegisterPage} />
 
-        <PrivateRoute path={ROUTES.PASSENGER.BASE} component={PassengerLayout} />
-        <PrivateRoute path={ROUTES.DRIVER.BASE} component={DriverLayout} />
-        <PrivateRoute path={ROUTES.GUIDE.BASE} component={GuideLayout} />
-        <PrivateRoute path={ROUTES.RENTAL.BASE} component={RentalLayout} />
-        <PrivateRoute path={ROUTES.ADMIN.BASE} component={AdminLayout} />
+          <PrivateRoute path={ROUTES.PASSENGER.BASE} component={PassengerLayout} />
+          <PrivateRoute path={ROUTES.DRIVER.BASE} component={DriverLayout} />
 
-        <PrivateRoute exact path={ROUTES.PROFILE.INDEX} component={ProfileIndexPage} />
-        <PrivateRoute exact path={ROUTES.PROFILE.DOCUMENTS} component={ProfileDocumentsPage} />
-        <PrivateRoute exact path={ROUTES.PROFILE.BANK_ACCOUNT} component={ProfileBankAccountPage} />
-        <PrivateRoute exact path={ROUTES.PROFILE.SECURITY} component={ProfileSecurityPage} />
-        <PrivateRoute exact path={ROUTES.PROFILE.NOTIFICATIONS} component={ProfileNotificationsPage} />
-        <PrivateRoute exact path="/notifications" component={NotificationPage} />
-        <PrivateRoute exact path={ROUTES.SUPPORT.CENTER} component={SupportCenterPage} />
+          {RELEASE_FEATURES.tourism ? (
+            <PrivateRoute path={ROUTES.GUIDE.BASE} component={GuideLayout} />
+          ) : (
+            <Route path={ROUTES.GUIDE.BASE} render={() => <Redirect to={ROUTES.NOT_FOUND} />} />
+          )}
 
-        <Route render={() => <Redirect to={ROUTES.NOT_FOUND} />} />
+          {RELEASE_FEATURES.rentals ? (
+            <PrivateRoute path={ROUTES.RENTAL.BASE} component={RentalLayout} />
+          ) : (
+            <Route path={ROUTES.RENTAL.BASE} render={() => <Redirect to={ROUTES.NOT_FOUND} />} />
+          )}
+
+          <PrivateRoute path={ROUTES.ADMIN.BASE} component={AdminLayout} />
+
+          <PrivateRoute exact path={ROUTES.PROFILE.INDEX} component={ProfileIndexPage} />
+          <PrivateRoute exact path={ROUTES.PROFILE.DOCUMENTS} component={ProfileDocumentsPage} />
+          <PrivateRoute exact path={ROUTES.PROFILE.BANK_ACCOUNT} component={ProfileBankAccountPage} />
+          <PrivateRoute exact path={ROUTES.PROFILE.SECURITY} component={ProfileSecurityPage} />
+          <PrivateRoute exact path={ROUTES.PROFILE.NOTIFICATIONS} component={ProfileNotificationsPage} />
+          <PrivateRoute exact path="/notifications" component={NotificationPage} />
+          <PrivateRoute exact path={ROUTES.SUPPORT.CENTER} component={SupportCenterPage} />
+
+          <Route render={() => <Redirect to={ROUTES.NOT_FOUND} />} />
         </Switch>
       </IonRouterOutlet>
     </>

@@ -1044,7 +1044,7 @@ function BankAccountPage(): JSX.Element {
           color:         "var(--ion-color-warning-shade)",
         }}>
           <strong>Los pagos reales se implementarán en una fase futura.</strong><br />
-          Puedes registrar tu cuenta bancaria ahora. El procesamiento de pagos estará disponible próximamente.
+          Registra una cuenta bancaria solo para devoluciones aprobadas. RAPA GO no utiliza estos datos para realizar cobros.
         </div>
 
         {loading && (

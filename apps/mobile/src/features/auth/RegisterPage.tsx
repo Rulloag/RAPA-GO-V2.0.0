@@ -16,21 +16,15 @@ import {
   IonToolbar,
 } from "@ionic/react";
 import { useHistory } from "react-router-dom";
-import { registerRequestSchema, type UserRole } from "@rapa-go/shared";
+import { registerRequestSchema } from "@rapa-go/shared";
 import { useAuth } from "./useAuth.js";
 import { authService } from "./auth.service.js";
 import { sessionStorageService } from "./sessionStorage.service.js";
 import { ROUTES } from "../../navigation/routes.js";
+import { getReleaseHome } from "../../config/releaseFeatures.js";
 import { legalService } from "../../features/legal/legal.service.js";
 import { referralsService } from "../../features/referrals/referrals.service.js";
 
-const ROLE_HOME: Record<UserRole, string> = {
-  passenger: ROUTES.PASSENGER.HOME,
-  driver: ROUTES.PASSENGER.HOME,
-  guide: ROUTES.PASSENGER.HOME,
-  rental_operator: ROUTES.PASSENGER.HOME,
-  admin: ROUTES.ADMIN.HOME,
-};
 
 type RegisterField =
   | "name"
@@ -1116,9 +1110,7 @@ export function RegisterPage(): JSX.Element {
         residentDocument,
       });
 
-      history.replace(
-        ROLE_HOME[registeredRole] ?? ROUTES.PASSENGER.HOME,
-      );
+      history.replace(getReleaseHome(registeredRole));
     } catch (error) {
       if (createdAccessToken) {
         await authService.logout(createdAccessToken).catch(() => {});
@@ -1551,7 +1543,7 @@ export function RegisterPage(): JSX.Element {
             expand="block"
             fill="clear"
             disabled={loading}
-            onClick={() => history.push(ROUTES.AUTH.LOGIN)}
+            onClick={() => history.push(ROUTES.ROOT)}
           >
             ¿Ya tienes cuenta? Iniciar sesión
           </IonButton>
@@ -1561,7 +1553,7 @@ export function RegisterPage(): JSX.Element {
             fill="outline"
             color="warning"
             disabled={loading}
-            onClick={() => history.replace(ROUTES.WELCOME)}
+            onClick={() => history.replace(ROUTES.ROOT)}
           >
             Volver al inicio
           </IonButton>

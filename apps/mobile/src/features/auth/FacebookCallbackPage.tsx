@@ -12,19 +12,12 @@ import {
   type CSSProperties,
 } from "react";
 import { useHistory, useLocation } from "react-router-dom";
-import type { UserRole } from "@rapa-go/shared";
 import { ROUTES } from "../../navigation/routes.js";
+import { getReleaseHome } from "../../config/releaseFeatures.js";
 import { sessionStorageService } from "./sessionStorage.service.js";
 import { authService } from "./auth.service.js";
 import { legalService } from "../legal/legal.service.js";
 
-const ROLE_HOME: Record<UserRole, string> = {
-  passenger: ROUTES.PASSENGER.HOME,
-  driver: ROUTES.DRIVER.HOME,
-  guide: ROUTES.GUIDE.HOME,
-  rental_operator: ROUTES.RENTAL.HOME,
-  admin: ROUTES.ADMIN.HOME,
-};
 
 const RAPAGO_FACEBOOK_LEGAL_ACCEPTANCES_KEY =
   "rapago_pending_facebook_legal_acceptances_v1";
@@ -209,11 +202,7 @@ export function FacebookCallbackPage(): JSX.Element {
 
         if (cancelled) return;
 
-        const home =
-          ROLE_HOME[result.session.user.role] ??
-          ROUTES.PASSENGER.HOME;
-
-        window.location.replace(home);
+        window.location.replace(getReleaseHome(result.session.user.role));
       } catch {
         await authService
           .logout(result.session.accessToken)
