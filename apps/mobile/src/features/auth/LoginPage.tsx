@@ -865,7 +865,7 @@ export function LoginPage(): JSX.Element {
       const role = result.session.user.role;
       history.replace(getReleaseHome(role));
     } catch {
-      setServerError("Error de conexión. Verifica tu internet e inténtalo nuevamente.");
+      setServerError("No fue posible comunicarse con el servidor de RAPA GO. Inténtalo nuevamente en unos segundos.");
     } finally {
       setLoading(false);
     }

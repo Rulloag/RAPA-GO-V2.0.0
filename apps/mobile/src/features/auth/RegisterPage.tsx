@@ -1124,7 +1124,7 @@ export function RegisterPage(): JSX.Element {
       setServerError(
         error instanceof Error
           ? error.message
-          : "Error de conexión. Verifica tu red e inténtalo de nuevo.",
+          : "No fue posible comunicarse con el servidor de RAPA GO. Inténtalo nuevamente en unos segundos.",
       );
     } finally {
       setLoading(false);

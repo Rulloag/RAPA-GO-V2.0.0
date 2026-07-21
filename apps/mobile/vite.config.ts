@@ -3,13 +3,13 @@ import react from "@vitejs/plugin-react";
 import { resolve } from "path";
 
 export default defineConfig(({ mode }) => ({
+  // El frontend está publicado en la raíz del dominio (actualmente api.rapago.cl).
+  // Mantener una base absoluta evita que /auth/login intente buscar assets en /auth/assets.
   base: "/",
   appType: "spa",
   plugins: [react()],
   resolve: {
-    // Force every workspace dependency to use the same React runtime.
-    // Without this, npm can install one React at the monorepo root and
-    // another inside apps/mobile, causing invalid-hook-call and black screens.
+    // Evita runtimes duplicados de React dentro del monorepo.
     dedupe: ["react", "react-dom", "react-router", "react-router-dom"],
     alias: {
       "@": resolve(__dirname, "src"),
@@ -35,5 +35,21 @@ export default defineConfig(({ mode }) => ({
   build: {
     outDir: "dist",
     sourcemap: mode !== "production",
+    // Ionic/Capacitor crea imports dinámicos web-*.js. En hosting compartido,
+    // una publicación incompleta o una caché antigua puede devolver index.html
+    // para esos archivos y producir el error MIME text/html. Se integra todo
+    // el JavaScript en un único app.js estable para eliminar esa causa.
+    rollupOptions: {
+      output: {
+        inlineDynamicImports: true,
+        entryFileNames: "assets/app.js",
+        chunkFileNames: "assets/[name].js",
+        assetFileNames: (assetInfo) =>
+          assetInfo.name?.endsWith(".css")
+            ? "assets/app.css"
+            : "assets/[name]-[hash][extname]",
+      },
+    },
+    chunkSizeWarningLimit: 3500,
   },
 }));

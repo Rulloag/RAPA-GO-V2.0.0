@@ -12,6 +12,13 @@ function readConfiguredValue(): string {
   ).trim();
 
   if (!rawValue) {
+    // En producción el frontend está alojado en api.rapago.cl, mientras que
+    // la API real vive en backend.rapago.cl. Este respaldo evita que una
+    // compilación sin archivo .env intente enviar /api al servidor estático.
+    if (import.meta.env.PROD) {
+      return "https://backend.rapago.cl";
+    }
+
     if (Capacitor.isNativePlatform()) {
       throw new Error(
         "Falta VITE_API_BASE_URL para conectar la app móvil con el backend.",
