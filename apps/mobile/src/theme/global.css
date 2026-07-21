@@ -235,7 +235,6 @@ ion-router-outlet {
 }
 
 .welcome-link {
-  --color: #F8D879;
   --padding-start: 8px;
   --padding-end: 8px;
   font-size: 0.83rem;
@@ -251,6 +250,16 @@ ion-router-outlet {
   font-size: 0.85rem;
   user-select: none;
   margin: 0 2px;
+}
+
+.welcome-footer-links ion-button.welcome-link[fill="clear"] {
+  --color: #f8d879 !important;
+  color: #f8d879 !important;
+}
+
+.welcome-footer-links ion-button.welcome-link[fill="clear"]::part(native) {
+  color: #f8d879 !important;
+  text-shadow: 0 1px 2px rgba(0,0,0,.45) !important;
 }
 
 /* ── Responsive ──────────────────────────────── */
