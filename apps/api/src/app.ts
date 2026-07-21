@@ -1,6 +1,7 @@
+import cors from "@fastify/cors";
+import { createCorsOptions } from "./plugins/cors.js";
 import { randomUUID } from "node:crypto";
 import Fastify, { type FastifyInstance } from "fastify";
-import { corsPlugin } from "./plugins/cors.js";
 import { helmetPlugin } from "./plugins/helmet.js";
 import { rateLimitPlugin } from "./plugins/rateLimit.js";
 import { globalErrorHandler } from "./shared/errors/errorHandler.js";
@@ -95,7 +96,7 @@ export async function buildApp(): Promise<FastifyInstance> {
 
   // ── Security & transport plugins ──────────────────────────────────────────
   await fastify.register(helmetPlugin);
-  await fastify.register(corsPlugin);
+  await fastify.register(cors, createCorsOptions());
   await fastify.register(rateLimitPlugin);
 
   // ── Global error handler ──────────────────────────────────────────────────
