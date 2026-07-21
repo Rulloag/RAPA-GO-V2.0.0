@@ -3,7 +3,6 @@ import {
   IonButton,
   IonCheckbox,
   IonContent,
-  IonHeader,
   IonIcon,
   IonInput,
   IonItem,
@@ -15,8 +14,6 @@ import {
   IonSelectOption,
   IonSpinner,
   IonText,
-  IonTitle,
-  IonToolbar,
 } from "@ionic/react";
 import { arrowBackOutline, mailOutline, lockClosedOutline, logoFacebook, eyeOutline, eyeOffOutline } from "ionicons/icons";
 import { useHistory } from "react-router-dom";
@@ -1166,22 +1163,6 @@ export function LoginPage(): JSX.Element {
 
   return (
     <IonPage className="rapago-auth-dark">
-      <IonHeader>
-        <IonToolbar
-          style={
-            {
-              "--background": "linear-gradient(135deg,#111 0%,#5A241A 56%,#C89B3C 130%)",
-              "--color": "#fff",
-              "--min-height": "72px",
-            } as CSSProperties
-          }
-        >
-          <IonTitle style={{ fontWeight: 950, letterSpacing: ".01em" }}>
-            Iniciar sesión
-          </IonTitle>
-        </IonToolbar>
-      </IonHeader>
-
       <IonContent className="ion-padding" style={pageStyle}>
         <form
           onSubmit={(e) => {

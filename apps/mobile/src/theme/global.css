@@ -70,95 +70,178 @@ ion-router-outlet {
    WELCOME PAGE
    ========================================================================== */
 
-.welcome-container {
+/* ==========================================================================
+   RAPA GO — Welcome screen (full-bleed redesign)
+   ========================================================================== */
+
+.welcome-shell {
+  min-height: 100%;
   display: flex;
   flex-direction: column;
-  gap: 1.4rem;
-  max-width: 520px;
-  margin: 5rem auto 2rem auto;
-  padding: 38px 28px;
-  border-radius: 28px;
-  background: rgba(20, 23, 30, 0.82) !important;
-  backdrop-filter: blur(18px) !important;
-  -webkit-backdrop-filter: blur(18px) !important;
-  border: 1px solid rgba(255,255,255,0.10);
-  box-shadow:
-    0 25px 60px rgba(0,0,0,.55),
-    inset 0 1px 0 rgba(255,255,255,.05);
-  overflow: hidden;
+  align-items: center;
+  justify-content: center;
+  padding: env(safe-area-inset-top, 24px) 28px calc(env(safe-area-inset-bottom, 0px) + 28px);
+  gap: 0;
 }
 
-.welcome-title {
-  margin: 0 0 14px 0;
-  font-size: 2.4rem;
-  font-weight: 900;
-  letter-spacing: 1px;
-  background: linear-gradient(135deg, #C89B3C, #F6F2EC, #C89B3C);
+/* Hero */
+.welcome-hero {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  width: 100%;
+  text-align: center;
+  padding: 32px 0 28px;
+}
+
+.welcome-logo-wrap {
+  width: 100px;
+  height: 100px;
+  border-radius: 28px;
+  overflow: hidden;
+  background: #fff;
+  box-shadow:
+    0 16px 36px rgba(0,0,0,.50),
+    0 0 0 2px rgba(214,166,64,.30);
+}
+
+.welcome-logo {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.welcome-brand {
+  margin: 0;
+  font-size: 2.6rem;
+  font-weight: 950;
+  letter-spacing: .08em;
+  background: linear-gradient(135deg, #f8d879 0%, #d6a640 50%, #f8d879 100%);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
+  background-clip: text;
 }
 
-.welcome-subtitle {
-  margin: 0 0 12px 0;
-  font-size: 1.2rem;
-  font-weight: 700;
-  line-height: 1.5;
-  color: #C89B3C;
+.welcome-tagline {
+  margin: 0;
+  font-size: 0.95rem;
+  font-weight: 650;
+  color: rgba(246, 242, 236, 0.7);
+  line-height: 1.45;
+  max-width: 280px;
 }
 
-.welcome-status {
-  margin: 0 0 18px 0;
-  font-size: 1rem;
-  line-height: 1.8;
-  color: #F6F2EC;
+/* Separator */
+.welcome-divider {
+  width: 48px;
+  height: 2px;
+  background: linear-gradient(90deg, transparent, rgba(214,166,64,.6), transparent);
+  border-radius: 2px;
+  margin: 4px 0 28px;
 }
 
-.welcome-container span,
-.welcome-container p {
-  text-shadow: 0 2px 4px rgba(0,0,0,0.9);
-}
-
-.welcome-buttons {
+/* CTAs */
+.welcome-cta {
   display: flex;
   flex-direction: column;
-  gap: 16px;
-  margin-top: 10px;
+  gap: 14px;
+  width: 100%;
+  max-width: 380px;
 }
 
-.welcome-buttons ion-button,
-.welcome-container ion-button {
-  height: 58px;
+.welcome-btn-primary {
+  --border-radius: 18px;
+  --background: linear-gradient(135deg, #f8d879 0%, #d6a640 46%, #b84f2e 100%);
+  --background-activated: linear-gradient(135deg, #c89b3c, #b84f2e);
+  --box-shadow: 0 18px 36px rgba(214,166,64,.35);
+  --color: #201607;
+  color: #201607;
+  height: 56px;
   font-size: 1rem;
+  font-weight: 950;
+  letter-spacing: .02em;
+  text-transform: none;
+}
+
+.welcome-btn-outline {
+  --border-radius: 18px;
+  --border-color: rgba(214,166,64,.65);
+  --border-width: 1.5px;
+  --color: #f8d879;
+  --background: rgba(255,255,255,.03);
+  height: 54px;
+  font-size: 1rem;
+  font-weight: 850;
+  letter-spacing: .02em;
+  text-transform: none;
+}
+
+/* Footer links row */
+.welcome-footer-links {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  margin-top: 28px;
+  flex-wrap: wrap;
+}
+
+.welcome-link {
+  --color: rgba(246,242,236,.45);
+  font-size: 0.75rem;
+  --padding-start: 6px;
+  --padding-end: 6px;
+  text-transform: none;
+}
+
+.welcome-link-sep {
+  color: rgba(246,242,236,.25);
+  font-size: 0.8rem;
+  user-select: none;
+}
+
+/* ==========================================================================
+   Auth flow — register "new user" badge (differentiates register from login)
+   ========================================================================== */
+.rapago-auth-register-badge {
+  display: inline-flex;
+  align-self: center;
+  align-items: center;
+  padding: 3px 12px;
+  border-radius: 999px;
+  background: linear-gradient(135deg, rgba(184,79,46,.22), rgba(214,166,64,.18));
+  border: 1px solid rgba(214,166,64,.30);
+  margin-bottom: 6px;
+}
+
+.rapago-auth-register-badge span {
+  font-size: 0.74rem;
   font-weight: 800;
-  letter-spacing: 0.8px;
+  color: #f8d879;
+  letter-spacing: .04em;
   text-transform: uppercase;
-  --border-radius: 16px;
-  margin: 0;
 }
 
-.btn-auth-primary {
-  --background: linear-gradient(135deg, #C89B3C, #D9C3A0);
-  --color: #F6F2EC;
-  box-shadow: 0 10px 25px rgba(200,155,60,.35);
+@media (max-width: 400px) {
+  .welcome-brand {
+    font-size: 2.2rem;
+  }
+
+  .welcome-logo-wrap {
+    width: 88px;
+    height: 88px;
+    border-radius: 24px;
+  }
+
+  .welcome-btn-primary,
+  .welcome-btn-outline {
+    height: 52px;
+    font-size: 0.95rem;
+  }
 }
 
-.btn-register {
-  --background: linear-gradient(135deg, #C89B3C, #D9C3A0);
-  --color: #1A1A1A;
-  box-shadow: 0 10px 25px rgba(200,169,110,.35);
-}
 
-.btn-perfil {
-  --background: rgba(10,12,16,.55);
-  --color: #F6F2EC;
-  border: 1px solid rgba(255,255,255,.18);
-  box-shadow: 0 8px 18px rgba(0,0,0,.25);
-}
-
-.welcome-buttons ion-button:hover {
-  transform: translateY(-2px);
-  transition: all .25s ease;
-}
 
 /* ==========================================================================
    FORMULARIOS
@@ -562,50 +645,7 @@ ion-toggle {
    RESPONSIVE
    ========================================================================== */
 
-@media (max-width: 768px) {
-  .welcome-container {
-    margin: 2rem 16px;
-    padding: 30px 22px;
-  }
-
-  .welcome-title {
-    font-size: 2rem;
-  }
-
-  .welcome-subtitle {
-    font-size: 1.05rem;
-  }
-
-  .welcome-status {
-    font-size: 0.95rem;
-  }
-}
-
 @media (max-width: 480px) {
-  .welcome-container {
-    margin: 1.5rem 12px;
-    padding: 24px 18px;
-    border-radius: 22px;
-  }
-
-  .welcome-title {
-    font-size: 1.8rem;
-  }
-
-  .welcome-subtitle {
-    font-size: 1rem;
-  }
-
-  .welcome-status {
-    font-size: 0.92rem;
-    line-height: 1.7;
-  }
-
-  .welcome-buttons ion-button {
-    height: 54px;
-    font-size: 0.95rem;
-  }
-
   .passenger-home-header {
     padding: calc(env(safe-area-inset-top) + 10px) 18px 16px !important;
   }
@@ -4307,11 +4347,25 @@ ion-modal.facebook-step-modal::part(content) {
   width: 42px;
   height: 42px;
   min-height: 42px;
-  margin: 0;
+  /* Keep the button vertically centered regardless of stacked-label
+     which pushes slot="end" to the top of the IonItem */
+  align-self: center;
+  margin: 0 0 0 4px;
+  flex-shrink: 0;
 }
 
 .rapago-auth-dark .rapago-auth-eye ion-icon {
   font-size: 1.3rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* IonItem slot="end" wrapper — center it on the vertical axis so the eye
+   aligns with the actual input text, not the top of the label+input block */
+.rapago-auth-dark ion-item::part(end) {
+  align-self: center !important;
+  margin-top: 0 !important;
 }
 
 /* Input text — white and robust against the global #111 rules */

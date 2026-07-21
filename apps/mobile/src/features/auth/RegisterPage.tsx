@@ -3,7 +3,6 @@ import {
   IonButton,
   IonCheckbox,
   IonContent,
-  IonHeader,
   IonIcon,
   IonInput,
   IonItem,
@@ -13,8 +12,6 @@ import {
   IonPage,
   IonSpinner,
   IonText,
-  IonTitle,
-  IonToolbar,
 } from "@ionic/react";
 import {
   arrowBackOutline,
@@ -1074,20 +1071,6 @@ export function RegisterPage(): JSX.Element {
 
   return (
     <IonPage className="rapago-auth-dark">
-      <IonHeader>
-        <IonToolbar
-          style={
-            {
-              "--background": "linear-gradient(135deg,#111 0%,#5A241A 56%,#C89B3C 130%)",
-              "--color": "#fff",
-              "--min-height": "72px",
-            } as CSSProperties
-          }
-        >
-          <IonTitle style={{ color: "#fff", fontWeight: 950 }}>Crear cuenta</IonTitle>
-        </IonToolbar>
-      </IonHeader>
-
       <IonContent className="ion-padding" style={pageContentStyle}>
         <form
           onSubmit={(event) => {
@@ -1116,8 +1099,12 @@ export function RegisterPage(): JSX.Element {
           </div>
 
           <IonText>
-            <h2 className="rapago-auth-title">Crea tu cuenta Rapa Go</h2>
+            <h2 className="rapago-auth-title">Crea tu cuenta</h2>
           </IonText>
+
+          <div className="rapago-auth-register-badge">
+            <span>Nuevo usuario</span>
+          </div>
 
           <IonText>
             <p className="rapago-auth-subtitle">
