@@ -92,7 +92,6 @@ export function AdminLayout(): JSX.Element {
         />
       )}
 
-      <Route render={() => <Redirect to={ROUTES.NOT_FOUND} />} />
     </RoleLayout>
   );
 }
