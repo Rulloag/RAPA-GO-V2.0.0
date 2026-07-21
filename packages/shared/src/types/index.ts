@@ -90,6 +90,8 @@ export type AuthUser = {
   role: UserRole;
   avatarUrl: string | null;
   isVerified: boolean;
+  /** Contact phone stored in the passenger/driver profile when available. */
+  phone?: string | null;
   /** Categoría solicitada por la persona. */
   requestedPassengerFareType?: PassengerFareType;
   /** Categoría que realmente se usa para calcular el precio. */

@@ -1,6 +1,7 @@
 import { useState, type ChangeEvent, type FormEvent, type CSSProperties } from "react";
 import {
   IonButton,
+  IonButtons,
   IonCheckbox,
   IonContent,
   IonHeader,
@@ -27,6 +28,7 @@ import { getReleaseHome } from "../../config/releaseFeatures.js";
 import { AppleAccountSetupModal } from "./AppleAccountSetupModal.js";
 import { AppleSignInButton } from "./AppleSignInButton.js";
 import { useAppleSignIn, type AppleSignInOutcome } from "./useAppleSignIn.js";
+import { RapaGoLanguageToolbarButton } from "../../i18n/rapagoI18n.js";
 
 
 const API_URL = (
@@ -275,6 +277,25 @@ function isValidEmail(value: string): boolean {
 
 function normalizePhone(value: string): string {
   return value.replace(/[^\d+]/g, "").trim();
+}
+
+function readPhoneFromAuthUser(user: unknown): string {
+  if (!user || typeof user !== "object") return "";
+
+  const record = user as Record<string, unknown>;
+  for (const value of [
+    record.phone,
+    record.phoneNumber,
+    record.mobile,
+    record.mobilePhone,
+    record.celular,
+  ]) {
+    if (typeof value === "string" && value.trim()) {
+      return normalizePhone(value);
+    }
+  }
+
+  return "";
 }
 
 function isValidPhone(value: string): boolean {
@@ -696,9 +717,43 @@ export function LoginPage(): JSX.Element {
   async function completeAppleSetup(input: {
     passengerFareType: "resident" | "chilean" | "foreigner";
     acceptedDocumentIds: string[];
+    phone: string;
   }): Promise<void> {
     setServerError("");
-    handleAppleOutcome(await apple.completeSetup(input));
+
+    const cleanPhone = normalizePhone(input.phone);
+    const outcome = await apple.completeSetup({
+      ...input,
+      phone: cleanPhone,
+    });
+
+    if (outcome.kind === "success") {
+      const passengerConditionByFare: Record<
+        "resident" | "chilean" | "foreigner",
+        PassengerCondition
+      > = {
+        resident: "residente_rapa_nui",
+        chilean: "turista_chileno",
+        foreigner: "turista_extranjero",
+      };
+
+      persistPassengerProfile({
+        phone: cleanPhone,
+        requestedPassengerFareType: input.passengerFareType,
+        effectivePassengerFareType:
+          input.passengerFareType === "resident"
+            ? "chilean"
+            : input.passengerFareType,
+        passengerFareType:
+          input.passengerFareType === "resident"
+            ? "chilean"
+            : input.passengerFareType,
+        passengerCondition:
+          passengerConditionByFare[input.passengerFareType],
+      });
+    }
+
+    handleAppleOutcome(outcome);
   }
 
   const [email, setEmail] = useState(getStoredValue("rapago_passenger_email"));
@@ -786,8 +841,13 @@ export function LoginPage(): JSX.Element {
         return;
       }
 
+      const sessionPhone = readPhoneFromAuthUser(
+        result.session.user,
+      );
+
       persistPassengerProfile({
         email: parsed.data.email,
+        ...(sessionPhone ? { phone: sessionPhone } : {}),
       });
 
       const role = result.session.user.role;
@@ -1313,6 +1373,9 @@ export function LoginPage(): JSX.Element {
           <IonTitle style={{ fontWeight: 950, letterSpacing: ".01em" }}>
             Iniciar sesión
           </IonTitle>
+          <IonButtons slot="end">
+            <RapaGoLanguageToolbarButton />
+          </IonButtons>
         </IonToolbar>
       </IonHeader>
 

@@ -4,6 +4,7 @@ import {
   IonCheckbox,
   IonContent,
   IonHeader,
+  IonInput,
   IonItem,
   IonLabel,
   IonModal,
@@ -25,6 +26,7 @@ interface AppleAccountSetupModalProps {
   onConfirm: (input: {
     passengerFareType: ApplePassengerFareType;
     acceptedDocumentIds: string[];
+    phone: string;
   }) => void;
 }
 
@@ -44,12 +46,23 @@ export function AppleAccountSetupModal({
   const [fareType, setFareType] =
     useState<ApplePassengerFareType>("chilean");
   const [accepted, setAccepted] = useState<Record<string, boolean>>({});
+  const [phone, setPhone] = useState("");
+  const [phoneTouched, setPhoneTouched] = useState(false);
 
   useEffect(() => {
     if (!isOpen) return;
     setFareType("chilean");
     setAccepted({});
+    setPhone("");
+    setPhoneTouched(false);
   }, [isOpen]);
+
+  const normalizedPhone = phone
+    .replace(/[^\d+]/g, "")
+    .trim();
+  const phoneIsValid =
+    normalizedPhone.length >= 8 &&
+    normalizedPhone.length <= 15;
 
   const allAccepted = useMemo(
     () =>
@@ -70,6 +83,31 @@ export function AppleAccountSetupModal({
           Apple confirmó tu identidad. Para crear tu cuenta de pasajero,
           selecciona la tarifa y acepta los documentos vigentes.
         </p>
+
+        <IonItem>
+          <IonLabel position="stacked">Número de celular</IonLabel>
+          <IonInput
+            value={phone}
+            type="tel"
+            inputmode="tel"
+            autocomplete="tel"
+            placeholder="+56 9 1234 5678"
+            disabled={loading}
+            onIonInput={(event) => {
+              setPhone(String(event.detail.value ?? ""));
+            }}
+            onIonBlur={() => setPhoneTouched(true)}
+          />
+          {phoneTouched && !phoneIsValid && (
+            <IonNote slot="error" color="danger">
+              Ingresa un celular válido de 8 a 15 dígitos.
+            </IonNote>
+          )}
+          <IonNote slot="helper">
+            Apple no entrega el número de teléfono. Rapa Go lo solicita una sola
+            vez para viajes, contacto y seguridad.
+          </IonNote>
+        </IonItem>
 
         <IonItem>
           <IonLabel position="stacked">Tipo de pasajero</IonLabel>
@@ -128,11 +166,12 @@ export function AppleAccountSetupModal({
 
         <IonButton
           expand="block"
-          disabled={!allAccepted || loading}
+          disabled={!allAccepted || !phoneIsValid || loading}
           onClick={() =>
             onConfirm({
               passengerFareType: fareType,
               acceptedDocumentIds: documents.map((document) => document.id),
+              phone: normalizedPhone,
             })
           }
           style={{ marginTop: 20, fontWeight: 900 }}

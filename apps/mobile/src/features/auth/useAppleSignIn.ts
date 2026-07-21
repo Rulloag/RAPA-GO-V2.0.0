@@ -141,6 +141,7 @@ export function useAppleSignIn() {
     async (input: {
       passengerFareType: ApplePassengerFareType;
       acceptedDocumentIds: string[];
+      phone: string;
     }): Promise<AppleSignInOutcome> => {
       const credentials = pending.current;
       if (!credentials) {
@@ -154,6 +155,7 @@ export function useAppleSignIn() {
       try {
         return await submit({
           ...credentials,
+          phone: input.phone,
           passengerFareType: input.passengerFareType,
           legalAcceptances: documents
             .filter((document) =>

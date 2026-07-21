@@ -63,6 +63,17 @@ function normalizeFareType(
   return "chilean";
 }
 
+function normalizeApplePhone(value: string | undefined): string {
+  return String(value ?? "")
+    .replace(/[^+\d]/g, "")
+    .trim()
+    .slice(0, 16);
+}
+
+function isValidApplePhone(value: string): boolean {
+  return /^\+?[0-9]{8,15}$/.test(value);
+}
+
 function isUniqueViolation(error: unknown): boolean {
   if (!error || typeof error !== "object") return false;
   const code = "code" in error ? String(error.code) : "";
@@ -346,6 +357,17 @@ export class AppleAuthService {
       throw error;
     }
 
+    const phone = normalizeApplePhone(payload.phone);
+    if (!isValidApplePhone(phone)) {
+      return {
+        ok: false,
+        code: "AUTH_APPLE_PHONE_REQUIRED",
+        message:
+          "Apple no comparte tu número de teléfono. Ingresa un celular válido para completar tu cuenta RAPA GO.",
+        statusCode: 400,
+      };
+    }
+
     const requestedFareType = normalizeFareType(payload.passengerFareType);
     const verificationStatus =
       requestedFareType === "resident" ? "pending" : "not_required";
@@ -370,6 +392,7 @@ export class AppleAuthService {
 
         await tx.insert(passengerProfiles).values({
           userId: user.id,
+          phone,
           requestedFareType,
           effectiveFareType,
           residenceVerificationStatus: verificationStatus,

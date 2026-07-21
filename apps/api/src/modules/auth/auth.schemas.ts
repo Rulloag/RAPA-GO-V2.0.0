@@ -171,6 +171,11 @@ export const appleAuthRequestSchema = z.object({
       familyName: z.string().trim().max(50).optional(),
     })
     .optional(),
+  phone: z
+    .string()
+    .trim()
+    .regex(/^\+?[0-9]{8,15}$/, "El teléfono de Apple no es válido.")
+    .optional(),
   passengerFareType: z
     .enum(["resident", "chilean", "foreigner"])
     .optional(),

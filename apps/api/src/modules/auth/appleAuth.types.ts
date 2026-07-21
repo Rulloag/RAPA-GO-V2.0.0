@@ -17,6 +17,7 @@ export interface AppleAuthRequest {
   authorizationCode: string;
   nonce: string;
   name?: AppleAuthName | undefined;
+  phone?: string | undefined;
   passengerFareType?: ApplePassengerFareType | undefined;
   legalAcceptances?: AppleLegalAcceptanceInput[] | undefined;
 }

@@ -454,6 +454,7 @@ export async function buildAuthUser(
     isVerified: user.isVerified,
     authProviders,
     hasPassword: Boolean(credentials),
+    ...(profile?.phone ? { phone: profile.phone } : {}),
     ...(profile
       ? {
           requestedPassengerFareType: normalizePassengerFareType(
@@ -1074,6 +1075,7 @@ export class AuthService {
     },
     options: {
       passengerFareType: PassengerFareType;
+      phone?: string;
     },
   ): Promise<FacebookLoginPreparationResult> {
     const email = profile.email.toLowerCase().trim();
@@ -1210,12 +1212,14 @@ export class AuthService {
 
       await upsertPassengerFareProfile({
         userId: user.id,
+        ...(options.phone ? { phone: options.phone } : {}),
         requestedFareType: "resident",
         verificationStatus,
       });
     } else {
       await upsertPassengerFareProfile({
         userId: user.id,
+        ...(options.phone ? { phone: options.phone } : {}),
         requestedFareType: options.passengerFareType,
         verificationStatus: "not_required",
       });

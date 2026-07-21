@@ -88,6 +88,7 @@ type FacebookOAuthState = {
   version: 4;
   mode: FacebookOAuthMode;
   passengerFareType: FacebookPassengerFareType;
+  phone?: string;
   nonce: string;
   expiresAt: number;
   linkCode?: string;
@@ -99,6 +100,7 @@ function createFacebookOAuthState(
   secret: string,
   mode: FacebookOAuthMode = "login",
   linkCode?: string,
+  phone?: string,
 ): string {
   const payload: FacebookOAuthState = {
     version: 4,
@@ -107,6 +109,7 @@ function createFacebookOAuthState(
     nonce,
     expiresAt: Date.now() + FACEBOOK_STATE_TTL_SECONDS * 1000,
     ...(mode === "link" && linkCode ? { linkCode } : {}),
+    ...(phone ? { phone } : {}),
   };
   const encodedPayload = Buffer.from(
     JSON.stringify(payload),
@@ -171,10 +174,24 @@ function readFacebookOAuthState(
       nonce: parsed.nonce,
       expiresAt: parsed.expiresAt,
       ...(parsed.linkCode ? { linkCode: parsed.linkCode } : {}),
+      ...(typeof parsed.phone === "string" &&
+      /^\+?[0-9]{8,15}$/.test(parsed.phone)
+        ? { phone: parsed.phone }
+        : {}),
     };
   } catch {
     return null;
   }
+}
+
+function normalizeFacebookPhone(value: unknown): string {
+  const normalized = String(value ?? "")
+    .replace(/[^+\d]/g, "")
+    .trim();
+
+  return /^\+?[0-9]{8,15}$/.test(normalized)
+    ? normalized
+    : "";
 }
 
 function constantTimeEqualText(left: string, right: string): boolean {
@@ -606,12 +623,15 @@ export const authController = {
     const passengerFareType = getFacebookPassengerFareType(
       request.query,
     );
+    const phone = normalizeFacebookPhone(request.query["phone"]);
     const nonce = randomBytes(32).toString("base64url");
     const state = createFacebookOAuthState(
       passengerFareType,
       nonce,
       appSecret,
       "login",
+      undefined,
+      phone || undefined,
     );
 
     reply
@@ -809,7 +829,10 @@ export const authController = {
         name: profile.name,
         avatarUrl: profile.picture?.data?.url ?? null,
       },
-      { passengerFareType: oauthState.passengerFareType },
+      {
+        passengerFareType: oauthState.passengerFareType,
+        ...(oauthState.phone ? { phone: oauthState.phone } : {}),
+      },
     );
 
     if (!result.ok) {

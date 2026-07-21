@@ -25,4 +25,5 @@ export interface UpdateUserStatusInput {
 export interface UpdateProfileInput {
   name?: string;
   avatarUrl?: string | null;
+  phone?: string;
 }

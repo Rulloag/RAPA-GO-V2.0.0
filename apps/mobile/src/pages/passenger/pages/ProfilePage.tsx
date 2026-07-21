@@ -846,10 +846,33 @@ export function ProfileIndexPage(): JSX.Element {
     currentRole?: string | null;
     roles?: string[] | null;
   };
+  const RAPAGO_AUTH_SESSION_PROFILE_KEY =
+    "rapago_registration_profile_session";
+
+  function parseStoredProfile(
+    storage: Storage,
+    key: string,
+  ): StoredRegistrationProfile {
+    try {
+      const raw = storage.getItem(key);
+      return raw
+        ? (JSON.parse(raw) as StoredRegistrationProfile)
+        : {};
+    } catch {
+      return {};
+    }
+  }
+
   function readStoredRegistrationProfile(): StoredRegistrationProfile {
     try {
-      const raw = localStorage.getItem("rapago_registration_profile");
-      const parsed = raw ? (JSON.parse(raw) as StoredRegistrationProfile) : {};
+      const localProfile = parseStoredProfile(
+        localStorage,
+        "rapago_registration_profile",
+      );
+      const sessionProfile = parseStoredProfile(
+        sessionStorage,
+        RAPAGO_AUTH_SESSION_PROFILE_KEY,
+      );
       const directFareType =
         localStorage.getItem("rapago_passenger_fare_type") ??
         localStorage.getItem("rapago_passenger_condition") ??
@@ -862,11 +885,38 @@ export function ProfileIndexPage(): JSX.Element {
         localStorage.getItem("rapago_profile_nationality") ??
         localStorage.getItem("rapago_nationality") ??
         localStorage.getItem("nationality");
+      const directPhone =
+        sessionStorage.getItem("rapago_profile_phone") ??
+        sessionStorage.getItem("rapago_passenger_phone");
+      const directRut =
+        sessionStorage.getItem("rapago_profile_rut") ??
+        sessionStorage.getItem("rapago_passenger_rut");
+      const directEmail =
+        sessionStorage.getItem("rapago_profile_email") ??
+        sessionStorage.getItem("rapago_passenger_email");
+
+      const parsed = {
+        ...localProfile,
+        ...sessionProfile,
+      };
 
       return {
         ...parsed,
-        phone: parsed.phone ?? localStorage.getItem("rapago_profile_phone"),
-        rut: parsed.rut ?? localStorage.getItem("rapago_profile_rut"),
+        email:
+          sessionProfile.email ??
+          directEmail ??
+          localProfile.email ??
+          null,
+        phone:
+          sessionProfile.phone ??
+          directPhone ??
+          localProfile.phone ??
+          null,
+        rut:
+          sessionProfile.rut ??
+          directRut ??
+          localProfile.rut ??
+          null,
         passengerFareType:
           parsed.passengerFareType ??
           parsed.farePassengerType ??
@@ -912,15 +962,47 @@ export function ProfileIndexPage(): JSX.Element {
     }
   }
 
-  function persistStoredRegistrationProfile(data: Partial<StoredRegistrationProfile>): void {
+  function persistStoredRegistrationProfile(
+    data: Partial<StoredRegistrationProfile>,
+  ): void {
     try {
       const current = readStoredRegistrationProfile();
       const next = { ...current, ...data };
 
-      localStorage.setItem("rapago_registration_profile", JSON.stringify(next));
+      sessionStorage.setItem(
+        RAPAGO_AUTH_SESSION_PROFILE_KEY,
+        JSON.stringify(next),
+      );
 
-      if (next.phone) localStorage.setItem("rapago_profile_phone", next.phone);
-      if (next.rut) localStorage.setItem("rapago_profile_rut", next.rut);
+      if (next.email) {
+        sessionStorage.setItem("rapago_profile_email", next.email);
+        sessionStorage.setItem("rapago_passenger_email", next.email);
+      }
+      if (next.phone) {
+        sessionStorage.setItem("rapago_profile_phone", next.phone);
+        sessionStorage.setItem("rapago_passenger_phone", next.phone);
+      }
+      if (next.rut) {
+        sessionStorage.setItem("rapago_profile_rut", next.rut);
+        sessionStorage.setItem("rapago_passenger_rut", next.rut);
+      }
+
+      const {
+        email: _email,
+        phone: _phone,
+        rut: _rut,
+        firstName: _firstName,
+        lastName: _lastName,
+        birthDate: _birthDate,
+        ...safeProfile
+      } = next;
+
+      localStorage.setItem(
+        "rapago_registration_profile",
+        JSON.stringify(safeProfile),
+      );
+      localStorage.removeItem("rapago_profile_phone");
+      localStorage.removeItem("rapago_profile_rut");
 
       const normalizedFareType = normalizePassengerFareType(
         next.passengerFareType,
@@ -932,30 +1014,68 @@ export function ProfileIndexPage(): JSX.Element {
       );
 
       if (normalizedFareType) {
-        localStorage.setItem("rapago_passenger_fare_type", normalizedFareType);
-        localStorage.setItem("rapago_passenger_condition", normalizedFareType);
-        localStorage.setItem("rapago_profile_passenger_type", normalizedFareType);
-        localStorage.setItem("rapago_profile_nationality", getPassengerFareTypeLabel(normalizedFareType));
-        localStorage.setItem("rapago_nationality", getPassengerFareTypeLabel(normalizedFareType));
+        localStorage.setItem(
+          "rapago_passenger_fare_type",
+          normalizedFareType,
+        );
+        localStorage.setItem(
+          "rapago_passenger_condition",
+          normalizedFareType,
+        );
+        localStorage.setItem(
+          "rapago_profile_passenger_type",
+          normalizedFareType,
+        );
+        localStorage.setItem(
+          "rapago_profile_nationality",
+          getPassengerFareTypeLabel(normalizedFareType),
+        );
+        localStorage.setItem(
+          "rapago_nationality",
+          getPassengerFareTypeLabel(normalizedFareType),
+        );
       }
+
+      window.dispatchEvent(
+        new CustomEvent("rapago:registration-profile-updated"),
+      );
     } catch {
-      // No bloquea el perfil si localStorage no está disponible.
+      // No bloquea el perfil si storage no está disponible.
     }
   }
 
   function getSessionPhone(user: unknown): string {
     if (!user || typeof user !== "object") return "";
 
-    const value = (user as { phone?: string | null }).phone;
-    return typeof value === "string" ? value.trim() : "";
+    const record = user as Record<string, unknown>;
+    const candidates = [
+      record.phone,
+      record.phoneNumber,
+      record.mobile,
+      record.mobilePhone,
+      record.celular,
+    ];
+
+    for (const value of candidates) {
+      if (typeof value === "string" && value.trim()) {
+        return value.trim();
+      }
+    }
+
+    return "";
   }
 
   function getAutoPhone(profilePhone?: string | null): string {
     const stored = readStoredRegistrationProfile();
+    const directSessionPhone =
+      sessionStorage.getItem("rapago_profile_phone") ??
+      sessionStorage.getItem("rapago_passenger_phone") ??
+      "";
 
     return (
       profilePhone?.trim() ||
       getSessionPhone(session?.user) ||
+      directSessionPhone.trim() ||
       stored.phone?.trim() ||
       ""
     );
@@ -1362,6 +1482,36 @@ export function ProfileIndexPage(): JSX.Element {
           <IonTitle style={{ fontWeight: 950, fontSize: "1.2rem" }}>
             {profileText.profile}
           </IonTitle>
+
+          <IonButtons slot="end">
+            <IonButton
+              aria-label={
+                language === "es"
+                  ? "Cambiar aplicación a inglés"
+                  : "Switch app to Spanish"
+              }
+              title={
+                language === "es"
+                  ? "Cambiar a English"
+                  : "Cambiar a Español"
+              }
+              onClick={() =>
+                handleLanguageChange(language === "es" ? "en" : "es")
+              }
+              style={
+                {
+                  "--border-radius": "999px",
+                  "--background": "rgba(17,24,39,.22)",
+                  "--color": "#ffffff",
+                  fontWeight: 950,
+                  marginRight: 8,
+                } as CSSProperties
+              }
+            >
+              <IonIcon icon={languageOutline} slot="start" />
+              {language === "es" ? "EN" : "ES"}
+            </IonButton>
+          </IonButtons>
         </IonToolbar>
       </IonHeader>
 

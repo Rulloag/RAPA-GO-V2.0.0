@@ -15,6 +15,7 @@ export interface AppleSignInRequest {
   authorizationCode: string;
   nonce: string;
   name?: { givenName?: string; familyName?: string };
+  phone?: string;
   passengerFareType?: ApplePassengerFareType;
   legalAcceptances?: AppleLegalAcceptance[];
 }
