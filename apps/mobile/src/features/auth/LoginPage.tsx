@@ -18,7 +18,7 @@ import {
   IonTitle,
   IonToolbar,
 } from "@ionic/react";
-import { arrowBackOutline, mailOutline, lockClosedOutline, logoFacebook } from "ionicons/icons";
+import { arrowBackOutline, mailOutline, lockClosedOutline, logoFacebook, eyeOutline, eyeOffOutline } from "ionicons/icons";
 import { useHistory } from "react-router-dom";
 import { loginRequestSchema, type UserRole } from "@rapa-go/shared";
 import { useAuth } from "./useAuth.js";
@@ -588,6 +588,7 @@ export function LoginPage(): JSX.Element {
   const [password, setPassword] = useState("");
 
   const [loading, setLoading] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [serverError, setServerError] = useState(
     getFacebookRedirectErrorMessage,
@@ -1257,7 +1258,7 @@ export function LoginPage(): JSX.Element {
             <IonIcon slot="start" icon={lockClosedOutline} className="rapago-auth-field-icon" />
             <IonLabel position="stacked">Contraseña</IonLabel>
             <IonInput
-              type="password"
+              type={showPassword ? "text" : "password"}
               value={password}
               onIonInput={(e) => {
                 setPassword(String(e.detail.value ?? ""));
@@ -1267,6 +1268,18 @@ export function LoginPage(): JSX.Element {
               disabled={loading}
               required
             />
+            {password.length > 0 && (
+              <IonButton
+                slot="end"
+                fill="clear"
+                type="button"
+                className="rapago-auth-eye"
+                onClick={() => setShowPassword((prev) => !prev)}
+                aria-label={showPassword ? "Ocultar contraseña" : "Mostrar contraseña"}
+              >
+                <IonIcon slot="icon-only" icon={showPassword ? eyeOffOutline : eyeOutline} />
+              </IonButton>
+            )}
             {fieldErrors.password && <IonNote slot="error">{fieldErrors.password}</IonNote>}
           </IonItem>
 

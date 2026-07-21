@@ -22,6 +22,8 @@ import {
   callOutline,
   mailOutline,
   lockClosedOutline,
+  eyeOutline,
+  eyeOffOutline,
 } from "ionicons/icons";
 import { useHistory } from "react-router-dom";
 import { registerRequestSchema, type UserRole } from "@rapa-go/shared";
@@ -657,6 +659,8 @@ export function RegisterPage(): JSX.Element {
   const [acceptUserConditions, setAcceptUserConditions] = useState(false);
 
   const [loading, setLoading] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [fieldErrors, setFieldErrors] = useState<Record<RegisterField | string, string>>({});
   const [serverError, setServerError] = useState("");
 
@@ -1360,7 +1364,7 @@ export function RegisterPage(): JSX.Element {
             <IonIcon slot="start" icon={lockClosedOutline} className="rapago-auth-field-icon" />
             <IonLabel position="stacked" style={labelStyle}>Contraseña *</IonLabel>
             <IonInput
-              type="password"
+              type={showPassword ? "text" : "password"}
               value={password}
               onIonInput={(event) => {
                 setPassword(String(event.detail.value ?? ""));
@@ -1373,6 +1377,18 @@ export function RegisterPage(): JSX.Element {
               disabled={loading}
               required
             />
+            {password.length > 0 && (
+              <IonButton
+                slot="end"
+                fill="clear"
+                type="button"
+                className="rapago-auth-eye"
+                onClick={() => setShowPassword((prev) => !prev)}
+                aria-label={showPassword ? "Ocultar contraseña" : "Mostrar contraseña"}
+              >
+                <IonIcon slot="icon-only" icon={showPassword ? eyeOffOutline : eyeOutline} />
+              </IonButton>
+            )}
             {fieldErrors.password && <IonNote slot="error">{fieldErrors.password}</IonNote>}
           </IonItem>
 
@@ -1380,7 +1396,7 @@ export function RegisterPage(): JSX.Element {
             <IonIcon slot="start" icon={lockClosedOutline} className="rapago-auth-field-icon" />
             <IonLabel position="stacked" style={labelStyle}>Confirmar contraseña *</IonLabel>
             <IonInput
-              type="password"
+              type={showConfirmPassword ? "text" : "password"}
               value={confirmPassword}
               onIonInput={(event) => {
                 setConfirmPassword(String(event.detail.value ?? ""));
@@ -1393,6 +1409,18 @@ export function RegisterPage(): JSX.Element {
               disabled={loading}
               required
             />
+            {confirmPassword.length > 0 && (
+              <IonButton
+                slot="end"
+                fill="clear"
+                type="button"
+                className="rapago-auth-eye"
+                onClick={() => setShowConfirmPassword((prev) => !prev)}
+                aria-label={showConfirmPassword ? "Ocultar contraseña" : "Mostrar contraseña"}
+              >
+                <IonIcon slot="icon-only" icon={showConfirmPassword ? eyeOffOutline : eyeOutline} />
+              </IonButton>
+            )}
             {passwordMismatch && !fieldErrors.confirmPassword && (
               <IonText color="danger">
                 <p style={{ margin: "6px 0 0", fontSize: "0.8rem", fontWeight: 800 }}>

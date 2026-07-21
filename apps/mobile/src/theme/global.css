@@ -4293,6 +4293,27 @@ ion-modal.facebook-step-modal::part(content) {
   align-self: center;
 }
 
+/* Password show/hide toggle — only rendered when field has a value, mobile-friendly tap target */
+.rapago-auth-dark .rapago-auth-eye {
+  --color: #d6a640;
+  --background: transparent;
+  --background-hover: rgba(214, 166, 64, 0.14);
+  --background-activated: rgba(214, 166, 64, 0.22);
+  --border-radius: 50%;
+  --padding-start: 0;
+  --padding-end: 0;
+  --padding-top: 0;
+  --padding-bottom: 0;
+  width: 42px;
+  height: 42px;
+  min-height: 42px;
+  margin: 0;
+}
+
+.rapago-auth-dark .rapago-auth-eye ion-icon {
+  font-size: 1.3rem;
+}
+
 /* Input text — white and robust against the global #111 rules */
 .rapago-auth-dark .rapago-auth-field ion-input,
 .rapago-auth-dark .rapago-auth-field ion-textarea,
@@ -4328,14 +4349,6 @@ ion-modal.facebook-step-modal::part(content) {
   color: rgba(255, 255, 255, 0.5) !important;
   -webkit-text-fill-color: rgba(255, 255, 255, 0.5) !important;
   opacity: 1 !important;
-}
-
-.rapago-auth-dark input::-ms-reveal,
-.rapago-auth-dark input::-ms-clear,
-.rapago-auth-dark input::-webkit-credentials-auto-fill-button {
-  display: none;
-  visibility: hidden;
-  pointer-events: none;
 }
 
 /* Neutralize browser autofill (kills the blue/yellow box + dark text) */
