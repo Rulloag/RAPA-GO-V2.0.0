@@ -6,7 +6,10 @@ import { AppError } from "../../shared/errors/AppError.js";
 
 const EXCHANGE_CODE_BYTES = 32;
 const EXCHANGE_TTL_MS = 3 * 60 * 1000;
+const SETUP_EXCHANGE_TTL_MS = 30 * 60 * 1000;
 const CLEANUP_RETENTION_MS = 24 * 60 * 60 * 1000;
+
+type FacebookExchangePurpose = "login" | "link" | "setup";
 
 function hashCode(code: string): string {
   return createHash("sha256").update(code).digest("hex");
@@ -15,11 +18,13 @@ function hashCode(code: string): string {
 export class FacebookLoginExchangeRepository {
   async create(
     userId: string,
-    purpose: "login" | "link" = "login",
+    purpose: FacebookExchangePurpose = "login",
   ): Promise<string> {
     const code = randomBytes(EXCHANGE_CODE_BYTES).toString("base64url");
     const now = new Date();
-    const expiresAt = new Date(now.getTime() + EXCHANGE_TTL_MS);
+    const ttlMs =
+      purpose === "setup" ? SETUP_EXCHANGE_TTL_MS : EXCHANGE_TTL_MS;
+    const expiresAt = new Date(now.getTime() + ttlMs);
 
     try {
       await db.delete(facebookLoginExchanges).where(
@@ -52,7 +57,7 @@ export class FacebookLoginExchangeRepository {
 
   async consume(
     code: string,
-    purpose: "login" | "link" = "login",
+    purpose: FacebookExchangePurpose = "login",
   ): Promise<string | null> {
     const cleanCode = code.trim();
     if (!cleanCode) return null;

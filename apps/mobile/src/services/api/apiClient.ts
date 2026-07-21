@@ -20,9 +20,12 @@ async function request<T>(
   const url = `${baseUrl}${path.startsWith("/") ? path : `/${path}`}`;
 
   const headers: Record<string, string> = {
-    "Content-Type": "application/json",
     ...extraHeaders,
   };
+
+  if (body !== undefined && !("Content-Type" in headers)) {
+    headers["Content-Type"] = "application/json";
+  }
 
   if (token) {
     headers["Authorization"] = `Bearer ${token}`;

@@ -70,6 +70,14 @@ async function acceptPendingFacebookLegalDocuments(
   accessToken: string,
 ): Promise<void> {
   const pending = readPendingFacebookLegalAcceptances();
+
+  // En ingresos posteriores la cuenta ya fue configurada y no se vuelve
+  // a pedir el formulario. Solo procesamos aceptaciones cuando el usuario
+  // acaba de completar el alta inicial con Facebook.
+  if (pending.length === 0) {
+    return;
+  }
+
   const foundTypes = new Set(pending.map((item) => item.type));
 
   if (

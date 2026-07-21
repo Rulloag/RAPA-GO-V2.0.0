@@ -100,6 +100,11 @@ export async function authRoutes(
     authController.facebookCallback,
   );
   fastify.post(
+    "/facebook/setup",
+    FACEBOOK_RATE_LIMIT,
+    authController.facebookSetup,
+  );
+  fastify.post(
     "/facebook/exchange",
     FACEBOOK_RATE_LIMIT,
     authController.facebookExchange,

@@ -33,6 +33,20 @@ export type FacebookResidentPrecheckPayload = {
   documentDataUrl: string;
 };
 
+
+export type FacebookAccountSetupPayload = {
+  setupCode: string;
+  passengerFareType: "resident" | "chilean" | "foreigner";
+  phone: string;
+  rut?: string;
+  passport?: string;
+};
+
+export type FacebookAccountSetupResponse = {
+  ok: true;
+  exchangeCode: string;
+};
+
 export type FacebookResidentPrecheckResponse = {
   ok: true;
   status: "pending" | "approved";
@@ -117,6 +131,28 @@ export const authService = {
         code: result.code,
         message: result.message,
       };
+    }
+
+    return result.data;
+  },
+
+
+  async completeFacebookAccountSetup(
+    payload: FacebookAccountSetupPayload,
+  ): Promise<FacebookAccountSetupResponse> {
+    const result =
+      await apiClient.post<FacebookAccountSetupResponse>(
+        "/auth/facebook/setup",
+        payload,
+        undefined,
+        0,
+      );
+
+    if (result.ok === false) {
+      throw new Error(
+        result.message ??
+          "No se pudo completar el registro con Facebook.",
+      );
     }
 
     return result.data;

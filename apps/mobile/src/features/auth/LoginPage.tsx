@@ -1,4 +1,10 @@
-import { useState, type ChangeEvent, type FormEvent, type CSSProperties } from "react";
+import {
+  useEffect,
+  useState,
+  type ChangeEvent,
+  type FormEvent,
+  type CSSProperties,
+} from "react";
 import {
   IonButton,
   IonButtons,
@@ -778,6 +784,7 @@ export function LoginPage(): JSX.Element {
   );
 
   const [showFacebookStep, setShowFacebookStep] = useState(false);
+  const [facebookSetupCode, setFacebookSetupCode] = useState("");
   const [passengerCondition, setPassengerCondition] =
     useState<PassengerCondition>(getStoredPassengerCondition());
 
@@ -816,6 +823,48 @@ export function LoginPage(): JSX.Element {
     useState(false);
 
   const isResidentRapaNui = passengerCondition === "residente_rapa_nui";
+
+  useEffect(() => {
+    const searchParams = new URLSearchParams(window.location.search);
+
+    if (searchParams.get("facebook") !== "setup") {
+      return;
+    }
+
+    const fragment = new URLSearchParams(
+      window.location.hash.startsWith("#")
+        ? window.location.hash.slice(1)
+        : window.location.hash,
+    );
+
+    const setupCode = fragment.get("setupCode")?.trim() ?? "";
+    const facebookEmail = normalizeEmail(
+      fragment.get("email") ?? "",
+    );
+
+    window.history.replaceState(
+      null,
+      document.title,
+      ROUTES.AUTH.LOGIN,
+    );
+
+    if (!setupCode) {
+      setServerError(
+        "No se pudo preparar el registro con Facebook. Intenta nuevamente.",
+      );
+      return;
+    }
+
+    setServerError("");
+    setFacebookStepError("");
+    setFacebookSetupCode(setupCode);
+
+    if (facebookEmail) {
+      setPassengerEmail(facebookEmail);
+    }
+
+    setShowFacebookStep(true);
+  }, []);
 
   async function handleSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -871,15 +920,21 @@ export function LoginPage(): JSX.Element {
     }
   }
 
-  function openFacebookStep(): void {
+  function startFacebookLogin(): void {
+    setServerError("");
     setFacebookStepError("");
     setResidentSubmissionMessage("");
+    setFacebookSetupCode("");
 
-    if (!passengerEmail && email.trim()) {
-      setPassengerEmail(normalizeEmail(email));
+    try {
+      sessionStorage.removeItem(
+        RAPAGO_FACEBOOK_LEGAL_ACCEPTANCES_KEY,
+      );
+    } catch {
+      // No bloquea el inicio con Facebook.
     }
 
-    setShowFacebookStep(true);
+    window.location.assign(`${API_URL}/api/auth/facebook`);
   }
 
   function handlePassengerConditionChange(value: PassengerCondition): void {
@@ -960,6 +1015,13 @@ export function LoginPage(): JSX.Element {
       requiresRutForPassengerCondition(passengerCondition);
     const needsPassport =
       requiresPassportForPassengerCondition(passengerCondition);
+
+    if (!facebookSetupCode) {
+      setFacebookStepError(
+        "La validación de Facebook expiró. Cierra este formulario y vuelve a presionar Continuar con Facebook.",
+      );
+      return;
+    }
 
     if (
       !acceptFacebookTerms ||
@@ -1195,35 +1257,35 @@ export function LoginPage(): JSX.Element {
       facebookLoginPrecheck: true,
     });
 
-    const params = new URLSearchParams({
-      condition: legacyCondition,
-      passengerCondition,
-      requestedPassengerFareType,
-      passengerFareType: effectivePassengerFareType,
-      passengerFareLabel: effectivePassengerFareLabel,
-      email: cleanEmail,
-      phone: cleanPhone,
-      rut: needsPassport
-        ? cleanPassengerPassport
-        : cleanPassengerRut,
-      passport: needsPassport
-        ? cleanPassengerPassport
-        : "",
-      residenceDocumentRequired: isResidentRapaNui
-        ? "true"
-        : "false",
-      residenceDocumentUploaded:
-        residenceDocumentMeta || isResidentApproved
-          ? "true"
-          : "false",
-      residenceVerificationStatus,
-      rapaNuiEthnicity: isResidentRapaNui
-        ? "si"
-        : "no",
-    });
+    setFacebookPrecheckLoading(true);
 
-    window.location.href =
-      `${API_URL}/api/auth/facebook?${params.toString()}`;
+    try {
+      const completed =
+        await authService.completeFacebookAccountSetup({
+          setupCode: facebookSetupCode,
+          passengerFareType: requestedPassengerFareType,
+          phone: cleanPhone,
+          ...(needsRut ? { rut: cleanPassengerRut } : {}),
+          ...(needsPassport
+            ? { passport: cleanPassengerPassport }
+            : {}),
+        });
+
+      setShowFacebookStep(false);
+      setFacebookSetupCode("");
+
+      window.location.replace(
+        `${ROUTES.AUTH.FACEBOOK_CALLBACK}#exchangeCode=${encodeURIComponent(completed.exchangeCode)}`,
+      );
+    } catch (error) {
+      setFacebookStepError(
+        error instanceof Error
+          ? error.message
+          : "No se pudo completar el registro con Facebook.",
+      );
+    } finally {
+      setFacebookPrecheckLoading(false);
+    }
   }
 
   function goToRegister(): void {
@@ -1524,7 +1586,7 @@ export function LoginPage(): JSX.Element {
             onClick={(e) => {
               e.preventDefault();
               e.stopPropagation();
-              openFacebookStep();
+              startFacebookLogin();
             }}
             type="button"
             style={outlineButtonStyle}
@@ -1744,6 +1806,7 @@ export function LoginPage(): JSX.Element {
                       placeholder="tu@correo.com"
                       autocomplete="email"
                       inputmode="email"
+                      disabled={Boolean(facebookSetupCode)}
                       required
                     />
                   </IonItem>

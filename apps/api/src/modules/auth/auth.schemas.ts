@@ -135,6 +135,62 @@ export const facebookResidentStatusSchema = z.object({
   rut: facebookResidentRutSchema,
 });
 
+
+export const facebookAccountSetupSchema = z
+  .object({
+    setupCode: z
+      .string()
+      .trim()
+      .min(32, "El código de Facebook no es válido.")
+      .max(128, "El código de Facebook no es válido.")
+      .regex(
+        /^[A-Za-z0-9_-]+$/,
+        "El código de Facebook no es válido.",
+      ),
+    passengerFareType: z.enum([
+      "resident",
+      "chilean",
+      "foreigner",
+    ]),
+    phone: z
+      .string()
+      .trim()
+      .regex(
+        /^\+?[0-9]{8,15}$/,
+        "Ingresa un celular válido.",
+      ),
+    rut: z.string().trim().max(20).optional(),
+    passport: z.string().trim().max(30).optional(),
+  })
+  .superRefine((value, context) => {
+    if (
+      (value.passengerFareType === "resident" ||
+        value.passengerFareType === "chilean") &&
+      !value.rut?.trim()
+    ) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["rut"],
+        message: "Ingresa tu RUT para continuar.",
+      });
+    }
+
+    if (
+      value.passengerFareType === "foreigner" &&
+      !value.passport?.trim()
+    ) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["passport"],
+        message: "Ingresa tu pasaporte para continuar.",
+      });
+    }
+  });
+
+export type FacebookAccountSetupInput = z.infer<
+  typeof facebookAccountSetupSchema
+>;
+
 export const facebookLoginExchangeSchema = z.object({
   exchangeCode: z
     .string()

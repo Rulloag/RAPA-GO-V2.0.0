@@ -26,7 +26,16 @@ export type PasswordResetServiceResult =
       statusCode: number;
     };
 export type FacebookLoginPreparationResult =
-  | { ok: true; exchangeCode: string }
+  | {
+      ok: true;
+      setupRequired: false;
+      exchangeCode: string;
+    }
+  | {
+      ok: true;
+      setupRequired: true;
+      setupCode: string;
+    }
   | {
       ok: false;
       code: string;

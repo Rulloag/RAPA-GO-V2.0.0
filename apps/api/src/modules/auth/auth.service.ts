@@ -23,6 +23,7 @@ import { and, desc, eq } from "drizzle-orm";
 import { db } from "../../db/client.js";
 import { passengerProfiles, userDocuments, users } from "../../db/schema/index.js";
 import type {
+  FacebookAccountSetupInput,
   FacebookResidentPrecheckInput,
   FacebookResidentStatusInput,
 } from "./auth.schemas.js";
@@ -1073,10 +1074,6 @@ export class AuthService {
       name: string;
       avatarUrl?: string | null;
     },
-    options: {
-      passengerFareType: PassengerFareType;
-      phone?: string;
-    },
   ): Promise<FacebookLoginPreparationResult> {
     const email = profile.email.toLowerCase().trim();
     const identity =
@@ -1121,9 +1118,6 @@ export class AuthService {
           };
         }
 
-        // Compatibilidad controlada con cuentas Facebook antiguas que no
-        // tenían contraseña ni una identidad persistente. El correo fue
-        // entregado por Facebook y coincide exactamente con la cuenta.
         user = existingByEmail;
 
         await authIdentitiesRepo.link({
@@ -1196,13 +1190,148 @@ export class AuthService {
       };
     }
 
+    if (!user.avatarUrl && profile.avatarUrl) {
+      const rows = await db
+        .update(users)
+        .set({
+          avatarUrl: profile.avatarUrl,
+          updatedAt: new Date(),
+        })
+        .where(eq(users.id, user.id))
+        .returning();
+
+      user = rows[0] ?? user;
+    }
+
+    const passengerProfile = await findPassengerFareProfile(user.id);
+    const requestedFareType = String(
+      passengerProfile?.requestedFareType ?? "",
+    );
+    const hasCompletedProfile = Boolean(
+      passengerProfile?.phone?.trim() &&
+        ["resident", "chilean", "foreigner"].includes(
+          requestedFareType,
+        ),
+    );
+
+    if (!hasCompletedProfile) {
+      const setupCode = await facebookLoginExchangeRepo.create(
+        user.id,
+        "setup",
+      );
+
+      auditService.recordSafe({
+        eventType: "auth.facebook.setup.required",
+        entityType: "user",
+        entityId: user.id,
+        actorUserId: user.id,
+        metadata: { provider: "facebook" },
+      });
+
+      return {
+        ok: true,
+        setupRequired: true,
+        setupCode,
+      };
+    }
+
+    user = await reactivatePassengerResidenceAccount(user);
+
+    if (user.status === "pending") {
+      return {
+        ok: false,
+        code: "AUTH_ACCOUNT_PENDING",
+        message:
+          "Tu cuenta está pendiente de aprobación por el administrador.",
+        statusCode: 403,
+      };
+    }
+
+    const exchangeCode = await facebookLoginExchangeRepo.create(
+      user.id,
+      "login",
+    );
+
+    auditService.recordSafe({
+      eventType: "auth.facebook.login.prepared",
+      entityType: "user",
+      entityId: user.id,
+      actorUserId: user.id,
+      metadata: {
+        provider: "facebook",
+        facebookId: profile.facebookId,
+      },
+    });
+
+    return {
+      ok: true,
+      setupRequired: false,
+      exchangeCode,
+    };
+  }
+
+  async completeFacebookAccountSetup(
+    input: FacebookAccountSetupInput,
+  ): Promise<
+    | { ok: true; exchangeCode: string }
+    | {
+        ok: false;
+        code: string;
+        message: string;
+        statusCode: number;
+      }
+  > {
+    const userId = await facebookLoginExchangeRepo.consume(
+      input.setupCode,
+      "setup",
+    );
+
+    if (!userId) {
+      return {
+        ok: false,
+        code: "AUTH_FACEBOOK_SETUP_INVALID",
+        message:
+          "La validación de Facebook expiró. Vuelve a presionar Continuar con Facebook.",
+        statusCode: 401,
+      };
+    }
+
+    let user = await usersRepository.findById(userId);
+
+    if (!user) {
+      return {
+        ok: false,
+        code: "UNAUTHORIZED",
+        message: "Usuario no encontrado.",
+        statusCode: 401,
+      };
+    }
+
+    if (user.status === "deleted") {
+      return {
+        ok: false,
+        code: "AUTH_ACCOUNT_DELETED",
+        message: "Esta cuenta fue eliminada.",
+        statusCode: 403,
+      };
+    }
+
+    if (user.status === "suspended" || user.status === "banned") {
+      return {
+        ok: false,
+        code: "AUTH_ACCOUNT_SUSPENDED",
+        message: "Esta cuenta está bloqueada. Contacta a soporte.",
+        statusCode: 403,
+      };
+    }
+
     const residentDocument =
       await findLatestFacebookResidentDocument(user.id);
     const residentDocumentStatus = mapResidentDocumentStatus(
       residentDocument?.status,
     );
 
-    if (options.passengerFareType === "resident") {
+    if (input.passengerFareType === "resident") {
       const verificationStatus: ResidenceVerificationStatus =
         residentDocumentStatus === "approved"
           ? "approved"
@@ -1212,15 +1341,15 @@ export class AuthService {
 
       await upsertPassengerFareProfile({
         userId: user.id,
-        ...(options.phone ? { phone: options.phone } : {}),
+        phone: input.phone,
         requestedFareType: "resident",
         verificationStatus,
       });
     } else {
       await upsertPassengerFareProfile({
         userId: user.id,
-        ...(options.phone ? { phone: options.phone } : {}),
-        requestedFareType: options.passengerFareType,
+        phone: input.phone,
+        requestedFareType: input.passengerFareType,
         verificationStatus: "not_required",
       });
 
@@ -1246,27 +1375,19 @@ export class AuthService {
 
     user = await reactivatePassengerResidenceAccount(user);
 
-    if (user.status === "pending") {
+    if (user.status !== "active") {
       return {
         ok: false,
-        code: "AUTH_ACCOUNT_PENDING",
+        code:
+          user.status === "pending"
+            ? "AUTH_ACCOUNT_PENDING"
+            : "AUTH_ACCOUNT_SUSPENDED",
         message:
-          "Tu cuenta está pendiente de aprobación por el administrador.",
+          user.status === "pending"
+            ? "Tu cuenta todavía está pendiente de aprobación."
+            : "Esta cuenta está bloqueada. Contacta a soporte.",
         statusCode: 403,
       };
-    }
-
-    if (!user.avatarUrl && profile.avatarUrl) {
-      const rows = await db
-        .update(users)
-        .set({
-          avatarUrl: profile.avatarUrl,
-          updatedAt: new Date(),
-        })
-        .where(eq(users.id, user.id))
-        .returning();
-
-      user = rows[0] ?? user;
     }
 
     const exchangeCode = await facebookLoginExchangeRepo.create(
@@ -1275,20 +1396,17 @@ export class AuthService {
     );
 
     auditService.recordSafe({
-      eventType: "auth.facebook.login.prepared",
+      eventType: "auth.facebook.setup.completed",
       entityType: "user",
       entityId: user.id,
       actorUserId: user.id,
       metadata: {
         provider: "facebook",
-        facebookId: profile.facebookId,
+        passengerFareType: input.passengerFareType,
       },
     });
 
-    return {
-      ok: true,
-      exchangeCode,
-    };
+    return { ok: true, exchangeCode };
   }
 
   async prepareFacebookIdentityLink(

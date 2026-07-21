@@ -8,6 +8,7 @@ import { AuthService } from "./auth.service.js";
 import {
   appleAuthRequestSchema,
   createPasswordRequestSchema,
+  facebookAccountSetupSchema,
   facebookLoginExchangeSchema,
   facebookResidentPrecheckSchema,
   facebookResidentStatusSchema,
@@ -25,6 +26,7 @@ import type {
 import type {
   AppleAuthRequestInput,
   CreatePasswordRequestInput,
+  FacebookAccountSetupInput,
   FacebookLoginExchangeInput,
   FacebookResidentPrecheckInput,
   FacebookResidentStatusInput,
@@ -822,18 +824,12 @@ export const authController = {
       return;
     }
 
-    const result = await authService.loginWithFacebook(
-      {
-        facebookId: profile.id,
-        email: profile.email,
-        name: profile.name,
-        avatarUrl: profile.picture?.data?.url ?? null,
-      },
-      {
-        passengerFareType: oauthState.passengerFareType,
-        ...(oauthState.phone ? { phone: oauthState.phone } : {}),
-      },
-    );
+    const result = await authService.loginWithFacebook({
+      facebookId: profile.id,
+      email: profile.email,
+      name: profile.name,
+      avatarUrl: profile.picture?.data?.url ?? null,
+    });
 
     if (!result.ok) {
       const errorCode =
@@ -855,11 +851,51 @@ export const authController = {
       return;
     }
 
+    if (result.setupRequired) {
+      const fragment = new URLSearchParams({
+        setupCode: result.setupCode,
+        email: profile.email,
+      });
+
+      reply.redirect(
+        `${frontendUrl}/auth/login?facebook=setup#${fragment.toString()}`,
+      );
+      return;
+    }
+
     // The fragment is not sent in HTTP requests or Referer headers.
-    // It contains a short-lived one-time code, never an access token or PII.
+    // It contains a short-lived one-time code, never an access token.
     reply.redirect(
       `${frontendUrl}/auth/facebook/callback#exchangeCode=${encodeURIComponent(result.exchangeCode)}`,
     );
+  },
+
+  async facebookSetup(
+    request: FastifyRequest<{ Body: FacebookAccountSetupInput }>,
+    reply: FastifyReply,
+  ): Promise<void> {
+    const parsed = facebookAccountSetupSchema.safeParse(request.body);
+
+    if (!parsed.success) {
+      sendError(reply, {
+        code: "VALIDATION_ERROR",
+        message:
+          parsed.error.issues[0]?.message ??
+          "Los datos del pasajero no son válidos.",
+        statusCode: 400,
+      });
+      return;
+    }
+
+    const result = await authService.completeFacebookAccountSetup(
+      parsed.data,
+    );
+
+    reply
+      .header("Cache-Control", "no-store")
+      .header("Pragma", "no-cache")
+      .status(result.ok ? 200 : result.statusCode)
+      .send(result);
   },
 
   async facebookExchange(
