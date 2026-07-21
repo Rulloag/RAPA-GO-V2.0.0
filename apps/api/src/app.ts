@@ -90,7 +90,7 @@ export async function buildApp(): Promise<FastifyInstance> {
       level: process.env["NODE_ENV"] === "production" ? "warn" : "info",
     },
     // Attach request id to every log line
-    genReqId: () => crypto.randomUUID(),
+    genReqId: () => randomUUID(),
   });
 
   // ── Security & transport plugins ──────────────────────────────────────────
