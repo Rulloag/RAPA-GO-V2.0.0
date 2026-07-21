@@ -18,6 +18,7 @@ import type {
   LoginRequest,
   RegisterRequest,
   AuthResponse,
+  AppleSignInRequest,
 } from "./auth.types.js";
 
 export const AuthContext = createContext<AuthContextValue | null>(null);
@@ -197,6 +198,26 @@ export function AuthProvider({ children }: AuthProviderProps): JSX.Element {
     [],
   );
 
+  const signInWithApple = useCallback(
+    async (payload: AppleSignInRequest): Promise<AuthResponse> => {
+      setStatus("loading");
+      clientStoragePolicy.prepareClientStorageForAuthentication();
+      const response = await authService.signInWithApple(payload);
+
+      if (response.ok) {
+        await sessionStorageService.saveSession(response.session);
+        setSession(response.session);
+        setUser(response.session.user);
+        setStatus("authenticated");
+      } else {
+        setStatus("unauthenticated");
+      }
+
+      return response;
+    },
+    [],
+  );
+
   const refreshSession = useCallback(async (): Promise<void> => {
     if (!session?.accessToken) return;
 
@@ -220,7 +241,7 @@ export function AuthProvider({ children }: AuthProviderProps): JSX.Element {
 
   return (
     <AuthContext.Provider
-      value={{ status, user, session, login, register, logout, refreshSession }}
+      value={{ status, user, session, login, register, signInWithApple, logout, refreshSession }}
     >
       {children}
     </AuthContext.Provider>

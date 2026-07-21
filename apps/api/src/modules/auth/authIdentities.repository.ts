@@ -4,7 +4,11 @@ import { db } from "../../db/client.js";
 import { authIdentities } from "../../db/schema/index.js";
 import { AppError } from "../../shared/errors/AppError.js";
 
-export type AuthIdentityProvider = "facebook";
+export type AuthIdentityProvider = "facebook" | "apple";
+
+function providerLabel(provider: AuthIdentityProvider): string {
+  return provider === "apple" ? "Apple" : "Facebook";
+}
 
 export class AuthIdentitiesRepository {
   async findActiveByProviderSubject(
@@ -73,7 +77,7 @@ export class AuthIdentitiesRepository {
         .map((row) => row.provider)
         .filter(
           (provider): provider is AuthIdentityProvider =>
-            provider === "facebook",
+            provider === "facebook" || provider === "apple",
         );
     } catch (error) {
       throw AppError.internal(
@@ -88,6 +92,8 @@ export class AuthIdentitiesRepository {
     providerSubject: string;
     providerEmail?: string | null;
     emailVerified?: boolean;
+    providerIsPrivateEmail?: boolean;
+    encryptedRefreshToken?: string | null;
   }): Promise<typeof authIdentities.$inferSelect> {
     try {
       return await db.transaction(async (tx) => {
@@ -97,10 +103,7 @@ export class AuthIdentitiesRepository {
           .where(
             and(
               eq(authIdentities.provider, input.provider),
-              eq(
-                authIdentities.providerSubject,
-                input.providerSubject,
-              ),
+              eq(authIdentities.providerSubject, input.providerSubject),
             ),
           )
           .limit(1);
@@ -114,8 +117,7 @@ export class AuthIdentitiesRepository {
         ) {
           throw new AppError({
             code: "AUTH_IDENTITY_ALREADY_LINKED",
-            message:
-              "Esta cuenta de Facebook ya está vinculada a otra cuenta RAPA GO.",
+            message: `Esta cuenta de ${providerLabel(input.provider)} ya está vinculada a otra cuenta RAPA GO.`,
             statusCode: 409,
           });
         }
@@ -133,14 +135,24 @@ export class AuthIdentitiesRepository {
 
         const existingForUser = userRows[0];
         const now = new Date();
+        const providerEmail =
+          input.providerEmail?.trim().toLowerCase() || null;
 
         if (existingForUser) {
           const rows = await tx
             .update(authIdentities)
             .set({
               providerSubject: input.providerSubject,
-              providerEmail: input.providerEmail?.trim().toLowerCase() || null,
+              providerEmail,
               emailVerified: input.emailVerified ?? false,
+              providerIsPrivateEmail:
+                input.providerIsPrivateEmail ?? false,
+              ...(input.encryptedRefreshToken !== undefined
+                ? {
+                    encryptedRefreshToken:
+                      input.encryptedRefreshToken,
+                  }
+                : {}),
               linkedAt: existingForUser.linkedAt ?? now,
               lastLoginAt: now,
               revokedAt: null,
@@ -163,8 +175,12 @@ export class AuthIdentitiesRepository {
             .update(authIdentities)
             .set({
               userId: input.userId,
-              providerEmail: input.providerEmail?.trim().toLowerCase() || null,
+              providerEmail,
               emailVerified: input.emailVerified ?? false,
+              providerIsPrivateEmail:
+                input.providerIsPrivateEmail ?? false,
+              encryptedRefreshToken:
+                input.encryptedRefreshToken ?? null,
               linkedAt: now,
               lastLoginAt: now,
               revokedAt: null,
@@ -188,8 +204,12 @@ export class AuthIdentitiesRepository {
             userId: input.userId,
             provider: input.provider,
             providerSubject: input.providerSubject,
-            providerEmail: input.providerEmail?.trim().toLowerCase() || null,
+            providerEmail,
             emailVerified: input.emailVerified ?? false,
+            providerIsPrivateEmail:
+              input.providerIsPrivateEmail ?? false,
+            encryptedRefreshToken:
+              input.encryptedRefreshToken ?? null,
             linkedAt: now,
             lastLoginAt: now,
           })
@@ -207,6 +227,22 @@ export class AuthIdentitiesRepository {
       if (error instanceof AppError) throw error;
       throw AppError.internal(
         `Failed to link auth identity: ${String(error)}`,
+      );
+    }
+  }
+
+  async updateEncryptedRefreshToken(
+    identityId: string,
+    encryptedRefreshToken: string,
+  ): Promise<void> {
+    try {
+      await db
+        .update(authIdentities)
+        .set({ encryptedRefreshToken, updatedAt: new Date() })
+        .where(eq(authIdentities.id, identityId));
+    } catch (error) {
+      throw AppError.internal(
+        `Failed to update OAuth refresh token: ${String(error)}`,
       );
     }
   }

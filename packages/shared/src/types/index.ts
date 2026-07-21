@@ -74,7 +74,7 @@ export type ApiResponse<T> = ApiSuccessResponse<T> | ApiErrorResponse;
 
 /** Authenticated user as returned by the backend. */
 export type PassengerFareType = "resident" | "chilean" | "foreigner";
-export type AuthProvider = "password" | "facebook";
+export type AuthProvider = "password" | "facebook" | "apple";
 
 export type ResidenceVerificationStatus =
   | "not_required"

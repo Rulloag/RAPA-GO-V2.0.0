@@ -23,6 +23,17 @@ export async function authRoutes(
     REGISTER_RATE_LIMIT,
     authController.register,
   );
+
+  fastify.post(
+    "/apple",
+    { config: { rateLimit: { max: 10, timeWindow: "15 minutes" } } },
+    authController.appleLogin,
+  );
+  fastify.post(
+    "/apple/link",
+    { config: { rateLimit: { max: 5, timeWindow: "15 minutes" } } },
+    authController.appleLink,
+  );
   fastify.post("/logout", authController.logout);
   fastify.get("/me", authController.me);
 

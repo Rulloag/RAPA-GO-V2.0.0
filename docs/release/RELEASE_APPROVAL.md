@@ -30,6 +30,6 @@
 | Jurídica / Privacidad | | | |
 | Gerencia | | | |
 
-## Dependencia externa iOS
+## Cierre iOS
 
-Proyecto, Sign in with Apple, geolocalización, App Privacy y build iOS deben adjuntarse como evidencia del programador responsable antes del envío a App Store.
+Proyecto, Sign in with Apple, geolocalización, App Privacy y build iOS deben adjuntarse como evidencia del responsable de Desarrollo antes del envío a App Store.

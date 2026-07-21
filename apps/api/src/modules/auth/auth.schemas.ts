@@ -156,3 +156,35 @@ export type FacebookResidentStatusInput = z.infer<
   typeof facebookResidentStatusSchema
 >;
 
+
+
+export const appleAuthRequestSchema = z.object({
+  identityToken: z.string().trim().min(100).max(12000),
+  authorizationCode: z.string().trim().min(8).max(4096),
+  nonce: z
+    .string()
+    .trim()
+    .regex(/^[a-f0-9]{64}$/i, "El nonce de Apple no es válido."),
+  name: z
+    .object({
+      givenName: z.string().trim().max(50).optional(),
+      familyName: z.string().trim().max(50).optional(),
+    })
+    .optional(),
+  passengerFareType: z
+    .enum(["resident", "chilean", "foreigner"])
+    .optional(),
+  legalAcceptances: z
+    .array(
+      z.object({
+        legalDocumentId: z.string().uuid(),
+        version: z.string().trim().min(1).max(30),
+      }),
+    )
+    .max(12)
+    .optional(),
+});
+
+export type AppleAuthRequestInput = z.infer<
+  typeof appleAuthRequestSchema
+>;

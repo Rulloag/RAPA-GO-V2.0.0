@@ -1,6 +1,7 @@
 import {
   boolean,
   index,
+  text,
   pgTable,
   timestamp,
   uniqueIndex,
@@ -29,6 +30,10 @@ export const authIdentities = pgTable(
     providerSubject: varchar("provider_subject", { length: 255 }).notNull(),
     providerEmail: varchar("provider_email", { length: 255 }),
     emailVerified: boolean("email_verified").notNull().default(false),
+    providerIsPrivateEmail: boolean("provider_is_private_email")
+      .notNull()
+      .default(false),
+    encryptedRefreshToken: text("encrypted_refresh_token"),
     linkedAt: timestamp("linked_at", { withTimezone: true })
       .notNull()
       .defaultNow(),

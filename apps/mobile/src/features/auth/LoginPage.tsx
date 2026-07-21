@@ -24,6 +24,9 @@ import { authService } from "./auth.service.js";
 import { legalService, type LegalDocumentData } from "../legal/legal.service.js";
 import { ROUTES } from "../../navigation/routes.js";
 import { getReleaseHome } from "../../config/releaseFeatures.js";
+import { AppleAccountSetupModal } from "./AppleAccountSetupModal.js";
+import { AppleSignInButton } from "./AppleSignInButton.js";
+import { useAppleSignIn, type AppleSignInOutcome } from "./useAppleSignIn.js";
 
 
 const API_URL = (
@@ -672,6 +675,31 @@ function getFacebookRedirectErrorMessage(): string {
 export function LoginPage(): JSX.Element {
   const history = useHistory();
   const { login } = useAuth();
+  const apple = useAppleSignIn();
+
+  function handleAppleOutcome(outcome: AppleSignInOutcome): void {
+    if (outcome.kind === "success") {
+      history.replace(getReleaseHome(outcome.role));
+      return;
+    }
+
+    if (outcome.kind === "linking_required" || outcome.kind === "error") {
+      setServerError(outcome.message);
+    }
+  }
+
+  async function startAppleSignIn(): Promise<void> {
+    setServerError("");
+    handleAppleOutcome(await apple.signIn());
+  }
+
+  async function completeAppleSetup(input: {
+    passengerFareType: "resident" | "chilean" | "foreigner";
+    acceptedDocumentIds: string[];
+  }): Promise<void> {
+    setServerError("");
+    handleAppleOutcome(await apple.completeSetup(input));
+  }
 
   const [email, setEmail] = useState(getStoredValue("rapago_passenger_email"));
   const [password, setPassword] = useState("");
@@ -1429,6 +1457,13 @@ export function LoginPage(): JSX.Element {
             Continuar con Facebook
           </IonButton>
 
+          <AppleSignInButton
+            isAvailable={apple.isAvailable}
+            loading={apple.loading}
+            disabled={loading}
+            onPress={() => void startAppleSignIn()}
+          />
+
           <IonButton
             expand="block"
             fill="clear"
@@ -1970,6 +2005,14 @@ export function LoginPage(): JSX.Element {
               </div>
             </IonContent>
         </IonModal>
+
+        <AppleAccountSetupModal
+          isOpen={apple.setupOpen}
+          loading={apple.loading}
+          documents={apple.documents}
+          onCancel={apple.cancelSetup}
+          onConfirm={(input) => void completeAppleSetup(input)}
+        />
 
       </IonContent>
     </IonPage>

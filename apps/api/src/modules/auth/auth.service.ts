@@ -356,7 +356,7 @@ function effectivePassengerFareType(
     : requested;
 }
 
-async function upsertPassengerFareProfile(input: {
+export async function upsertPassengerFareProfile(input: {
   userId: string;
   phone?: string | null | undefined;
   requestedFareType: PassengerFareType;
@@ -431,7 +431,7 @@ async function findPassengerFareProfile(
   return rows[0] ?? null;
 }
 
-async function buildAuthUser(
+export async function buildAuthUser(
   user: typeof users.$inferSelect,
 ): Promise<AuthUser> {
   const [profile, credentials, externalProviders] = await Promise.all([
@@ -497,7 +497,7 @@ async function reactivatePassengerResidenceAccount(
   return rows[0] ?? user;
 }
 
-async function authenticateActiveAccessToken(
+export async function authenticateActiveAccessToken(
   accessToken: string,
 ): Promise<
   | { ok: true; user: typeof users.$inferSelect }

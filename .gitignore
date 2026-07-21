@@ -146,8 +146,17 @@ vite.config.ts.timestamp-*
 
 # RAPA GO monorepo — build outputs and native platform folders
 apps/mobile/dist/
-apps/mobile/android/
-apps/mobile/ios/
+# Native projects are versioned because signing capabilities, permissions and
+# custom location plugins are required for store builds. Generated artifacts stay ignored.
+apps/mobile/android/.gradle/
+apps/mobile/android/**/build/
+apps/mobile/android/local.properties
+apps/mobile/ios/App/Pods/
+apps/mobile/ios/App/DerivedData/
+apps/mobile/ios/App/App/public/
+apps/mobile/ios/App/App/capacitor.config.json
+apps/mobile/ios/App/App/config.xml
+apps/mobile/ios/App/App.xcworkspace/xcuserdata/
 apps/api/dist/
 packages/*/dist/
 

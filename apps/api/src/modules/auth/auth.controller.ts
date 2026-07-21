@@ -6,6 +6,7 @@ import {
 import type { FastifyRequest, FastifyReply } from "fastify";
 import { AuthService } from "./auth.service.js";
 import {
+  appleAuthRequestSchema,
   createPasswordRequestSchema,
   facebookLoginExchangeSchema,
   facebookResidentPrecheckSchema,
@@ -22,6 +23,7 @@ import type {
   ResetPasswordRequest,
 } from "./auth.types.js";
 import type {
+  AppleAuthRequestInput,
   CreatePasswordRequestInput,
   FacebookLoginExchangeInput,
   FacebookResidentPrecheckInput,
@@ -29,9 +31,11 @@ import type {
 } from "./auth.schemas.js";
 import { sendError } from "../../shared/http/apiResponse.js";
 import { PasswordResetService } from "./passwordReset.service.js";
+import { AppleAuthService } from "./appleAuth.service.js";
 
 const authService = new AuthService();
 const passwordResetService = new PasswordResetService();
+const appleAuthService = new AppleAuthService();
 
 const FACEBOOK_STATE_COOKIE = "rapago_fb_oauth_state";
 const FACEBOOK_STATE_TTL_SECONDS = 15 * 60;
@@ -345,6 +349,69 @@ export const authController = {
       .header("Cache-Control", "no-store")
       .header("Pragma", "no-cache")
       .status(result.ok ? 201 : (result.statusCode ?? 409))
+      .send(result);
+  },
+
+  async appleLogin(
+    request: FastifyRequest<{ Body: AppleAuthRequestInput }>,
+    reply: FastifyReply,
+  ): Promise<void> {
+    const parsed = appleAuthRequestSchema.safeParse(request.body);
+
+    if (!parsed.success) {
+      sendError(reply, {
+        code: "VALIDATION_ERROR",
+        message:
+          parsed.error.issues[0]?.message ??
+          "Los datos de Apple no son válidos.",
+        statusCode: 400,
+      });
+      return;
+    }
+
+    const userAgentHeader = request.headers["user-agent"];
+    const userAgent = Array.isArray(userAgentHeader)
+      ? userAgentHeader.join(" ")
+      : userAgentHeader;
+
+    const result = await appleAuthService.signIn(parsed.data, {
+      ipAddress: request.ip,
+      ...(userAgent ? { userAgent } : {}),
+    });
+
+    reply
+      .header("Cache-Control", "no-store")
+      .header("Pragma", "no-cache")
+      .status(result.ok ? 200 : (result.statusCode ?? 401))
+      .send(result);
+  },
+
+  async appleLink(
+    request: FastifyRequest<{ Body: AppleAuthRequestInput }>,
+    reply: FastifyReply,
+  ): Promise<void> {
+    const parsed = appleAuthRequestSchema.safeParse(request.body);
+
+    if (!parsed.success) {
+      sendError(reply, {
+        code: "VALIDATION_ERROR",
+        message:
+          parsed.error.issues[0]?.message ??
+          "Los datos de Apple no son válidos.",
+        statusCode: 400,
+      });
+      return;
+    }
+
+    const result = await appleAuthService.link(
+      extractBearer(request),
+      parsed.data,
+    );
+
+    reply
+      .header("Cache-Control", "no-store")
+      .header("Pragma", "no-cache")
+      .status(result.ok ? 200 : result.statusCode)
       .send(result);
   },
 

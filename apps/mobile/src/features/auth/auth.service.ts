@@ -1,6 +1,6 @@
 import { apiClient } from "../../services/api/index.js";
 import type { AuthResponse } from "./auth.types.js";
-import type { LoginRequest, RegisterRequest } from "./auth.types.js";
+import type { AppleSignInRequest, LoginRequest, RegisterRequest } from "./auth.types.js";
 
 
 export type FacebookResidentVerificationStatus =
@@ -66,6 +66,39 @@ export const authService = {
       return { ok: false, code: result.code, message: result.message };
     }
     return result.data;
+  },
+
+  async signInWithApple(payload: AppleSignInRequest): Promise<AuthResponse> {
+    const result = await apiClient.post<AuthResponse>(
+      "/auth/apple",
+      payload,
+      undefined,
+      0,
+    );
+
+    if (result.ok === false) {
+      return { ok: false, code: result.code, message: result.message };
+    }
+
+    return result.data;
+  },
+
+  async linkApple(
+    accessToken: string,
+    payload: AppleSignInRequest,
+  ): Promise<{ message: string }> {
+    const result = await apiClient.post<{ ok: true; message: string }>(
+      "/auth/apple/link",
+      payload,
+      { token: accessToken },
+      0,
+    );
+
+    if (result.ok === false) {
+      throw new Error(result.message);
+    }
+
+    return { message: result.data.message };
   },
 
   async exchangeFacebookLogin(

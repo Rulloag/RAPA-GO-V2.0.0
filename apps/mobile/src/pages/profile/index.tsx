@@ -25,7 +25,7 @@ import { useHistory } from "react-router-dom";
 import { ModulePlaceholderPage } from "../../components/ModulePlaceholderPage";
 import { ROUTE_METADATA } from "../../navigation/routeConfig";
 import { ROUTES } from "../../navigation/routes";
-import { useAuth } from "../../features/auth";
+import { AppleLinkButton, useAuth } from "../../features/auth";
 import { profileService, type ProfileData } from "../../features/profile/profile.service";
 import { ROLE_HOME } from "../../navigation/RouteGuard";
 import { documentsService } from "../../features/documents/documents.service";
@@ -1173,11 +1173,68 @@ function BankAccountPage(): JSX.Element {
 }
 
 export function ProfileSecurityPage(): JSX.Element {
-  const m = meta("/profile/security");
+  const history = useHistory();
+  const { user } = useAuth();
+  const [message, setMessage] = useState("");
+  const [error, setError] = useState("");
+  const appleLinked = user?.authProviders?.includes("apple") === true;
+
   return (
     <IonPage>
-      <IonHeader><IonToolbar color="primary"><IonTitle>{m.label}</IonTitle></IonToolbar></IonHeader>
-      <IonContent className="ion-padding"><ModulePlaceholderPage title={m.label} role="passenger" plannedFeatures={m.plannedFeatures} /></IonContent>
+      <IonHeader>
+        <IonToolbar color="primary">
+          <IonButtons slot="start">
+            <IonButton onClick={() => history.goBack()}>Volver</IonButton>
+          </IonButtons>
+          <IonTitle>Seguridad</IonTitle>
+        </IonToolbar>
+      </IonHeader>
+      <IonContent className="ion-padding">
+        <IonCard>
+          <IonCardHeader>
+            <IonCardTitle>Métodos de acceso</IonCardTitle>
+          </IonCardHeader>
+          <IonCardContent>
+            <p>
+              Vincula Apple para ingresar de forma segura desde tu iPhone.
+              La cuenta no se fusiona automáticamente solo por coincidir el correo.
+            </p>
+
+            <IonBadge color={appleLinked ? "success" : "medium"}>
+              {appleLinked ? "Apple vinculado" : "Apple no vinculado"}
+            </IonBadge>
+
+            <div style={{ marginTop: 16 }}>
+              <AppleLinkButton
+                linked={appleLinked}
+                onSuccess={(value) => {
+                  setError("");
+                  setMessage(value);
+                }}
+                onError={(value) => {
+                  setMessage("");
+                  setError(value);
+                }}
+              />
+            </div>
+
+            {message && (
+              <IonText color="success">
+                <p role="status">{message}</p>
+              </IonText>
+            )}
+            {error && (
+              <IonText color="danger">
+                <p role="alert">{error}</p>
+              </IonText>
+            )}
+
+            <IonNote>
+              La vinculación de Apple solo aparece dentro de la aplicación instalada en iOS.
+            </IonNote>
+          </IonCardContent>
+        </IonCard>
+      </IonContent>
     </IonPage>
   );
 }
