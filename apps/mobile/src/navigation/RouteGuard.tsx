@@ -9,6 +9,16 @@ import {
 } from "../config/releaseFeatures.js";
 import { RouteLoadingPage } from "./RouteLoadingPage.js";
 
+/**
+ * TEMPORAL: las rutas del frontend quedan abiertas para validar que todas las
+ * pantallas rendericen correctamente en Hostinger. La API y las operaciones
+ * privadas siguen protegidas por autenticación y autorización en el backend.
+ *
+ * Para volver a activar la protección visual del frontend, cambia este valor
+ * a true y genera un nuevo build.
+ */
+export const FRONTEND_ROUTE_GUARDS_ENABLED = false;
+
 export const ROLE_HOME: Record<UserRole, string> = {
   passenger: ROUTES.PASSENGER.HOME,
   driver: ROUTES.DRIVER.HOME,
@@ -59,6 +69,10 @@ function getRedirectHome(role: UserRole): string {
 
 export function RouteGuard({ children, path }: RouteGuardProps): JSX.Element {
   const { status, user } = useAuth();
+
+  if (!FRONTEND_ROUTE_GUARDS_ENABLED) {
+    return <>{children}</>;
+  }
 
   if (status === "loading") {
     return <RouteLoadingPage />;

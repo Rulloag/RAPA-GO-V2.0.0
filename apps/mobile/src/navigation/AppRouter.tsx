@@ -1,6 +1,6 @@
 import { Redirect, Route, Switch, type RouteComponentProps } from "react-router-dom";
 import { ROUTES } from "./routes";
-import { RouteGuard } from "./RouteGuard";
+import { FRONTEND_ROUTE_GUARDS_ENABLED, RouteGuard } from "./RouteGuard";
 import { RouteErrorBoundary } from "./RouteErrorBoundary.js";
 import { RouteLoadingPage } from "./RouteLoadingPage.js";
 import { useAuth } from "../features/auth";
@@ -56,11 +56,15 @@ function PrivateRoute({
     <Route
       path={path}
       exact={exact}
-      render={({ location }) => (
-        <RouteGuard path={location.pathname}>
+      render={({ location }) =>
+        FRONTEND_ROUTE_GUARDS_ENABLED ? (
+          <RouteGuard path={location.pathname}>
+            <Component />
+          </RouteGuard>
+        ) : (
           <Component />
-        </RouteGuard>
-      )}
+        )
+      }
     />
   );
 }
