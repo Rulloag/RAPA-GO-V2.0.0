@@ -60,6 +60,10 @@ export const authUserSchema = z.object({
   residenceVerificationStatus: z
     .enum(["not_required", "pending", "approved", "rejected"])
     .optional(),
+  authProviders: z
+    .array(z.enum(["password", "facebook", "google", "apple"]))
+    .optional(),
+  hasPassword: z.boolean().optional(),
 });
 
 export const authSessionSchema = z.object({

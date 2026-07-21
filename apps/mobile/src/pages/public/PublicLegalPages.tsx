@@ -6,6 +6,7 @@ import {
   shieldCheckmarkOutline,
 } from "ionicons/icons";
 import type { CSSProperties, ReactNode } from "react";
+import { RAPAGO_CONTACT } from "@rapa-go/shared";
 
 import {
   PublicSiteShell,
@@ -13,9 +14,6 @@ import {
 } from "./PublicSiteShell.js";
 
 const UPDATED_AT = "19 de julio de 2026";
-const SUPPORT_PHONE_DISPLAY = "+56 9 4796 4171";
-const SUPPORT_PHONE_DIGITS = "56947964171";
-const PRIVACY_EMAIL = "privacidad@rapago.cl";
 
 function Section({
   title,
@@ -56,7 +54,7 @@ export function PrivacyPublicPage(): JSX.Element {
           públicos vinculados al servicio.
         </p>
         <p>
-          Contacto de privacidad: <a style={publicSiteStyles.link} href={`mailto:${PRIVACY_EMAIL}`}>{PRIVACY_EMAIL}</a>.
+          Contacto de privacidad: <a style={publicSiteStyles.link} href={`mailto:${RAPAGO_CONTACT.privacyEmail}`}>{RAPAGO_CONTACT.privacyEmail}</a>.
         </p>
       </Section>
 
@@ -136,7 +134,7 @@ export function PrivacyPublicPage(): JSX.Element {
           1 de diciembre de 2026.
         </p>
         <p>
-          Envía tu solicitud a <a style={publicSiteStyles.link} href={`mailto:${PRIVACY_EMAIL}`}>{PRIVACY_EMAIL}</a> o utiliza el formulario de eliminación.
+          Envía tu solicitud a <a style={publicSiteStyles.link} href={`mailto:${RAPAGO_CONTACT.privacyEmail}`}>{RAPAGO_CONTACT.privacyEmail}</a> o utiliza el formulario de eliminación.
         </p>
         <p>
           Fuentes oficiales: <a style={publicSiteStyles.link} href="https://www.bcn.cl/leychile/navegar?idNorma=141599" target="_blank" rel="noreferrer">Ley N.º 19.628</a> y <a style={publicSiteStyles.link} href="https://www.bcn.cl/leychile/navegar?idNorma=1209272" target="_blank" rel="noreferrer">Ley N.º 21.719</a>.
@@ -226,15 +224,18 @@ export function TermsPublicPage(): JSX.Element {
       <Section title="7. Cuenta y terminación">
         <p>
           Puedes solicitar la eliminación desde tu perfil o mediante el sitio
-          público. La cuenta permanece activa hasta que administración apruebe la
-          solicitud. Si se rechaza, recibirás el motivo y podrás presentar una
-          nueva solicitud cuando corresponda.
+          público. La cuenta permanece activa durante la revisión. RAPA GO no
+          puede rechazar discrecionalmente la solicitud: solo puede aplazarla por
+          una causa objetiva y temporal, como un viaje activo, un saldo, un
+          reembolso, un contracargo, un reclamo o una investigación de seguridad.
+          La solicitud debe completarse dentro de un plazo máximo de 30 días,
+          salvo una obligación legal de conservación debidamente informada.
         </p>
       </Section>
 
       <Section title="8. Contacto">
         <p>
-          Para soporte utiliza <a style={publicSiteStyles.link} href="/soporte">rapago.cl/soporte</a> o WhatsApp al {SUPPORT_PHONE_DISPLAY}.
+          Para soporte utiliza <a style={publicSiteStyles.link} href="/soporte">rapago.cl/soporte</a> o WhatsApp al {RAPAGO_CONTACT.supportPhoneDisplay}.
         </p>
       </Section>
     </PublicSiteShell>
@@ -244,56 +245,40 @@ export function TermsPublicPage(): JSX.Element {
 export function EulaPublicPage(): JSX.Element {
   return (
     <PublicSiteShell
-      title="Acuerdo de licencia de usuario final"
-      subtitle={`EULA de RAPA GO. Última actualización: ${UPDATED_AT}.`}
+      title="Licencia de uso de RAPA GO"
+      subtitle={`Información sobre la licencia. Última actualización: ${UPDATED_AT}.`}
     >
-      <Section title="1. Licencia">
+      <Section title="EULA estándar de Apple">
         <p>
-          Haka Taiko SpA concede una licencia personal, limitada, revocable, no
-          exclusiva y no transferible para instalar y utilizar RAPA GO en un
-          dispositivo compatible, exclusivamente para acceder a sus servicios.
+          La versión de RAPA GO distribuida mediante App Store utiliza la
+          EULA estándar de Apple. Esta página es únicamente informativa y no
+          reemplaza, modifica ni duplica esa licencia.
+        </p>
+        <p>
+          Consulta el texto vigente en
+          <a
+            style={publicSiteStyles.link}
+            href="https://www.apple.com/legal/internet-services/itunes/dev/stdeula/"
+            target="_blank"
+            rel="noreferrer"
+          >
+            {" "}la EULA estándar de Apple
+          </a>.
         </p>
       </Section>
 
-      <Section title="2. Restricciones">
-        <List>
-          <li>No copiar, vender, sublicenciar ni distribuir la aplicación.</li>
-          <li>No intentar obtener el código fuente, eludir controles o interferir con la seguridad.</li>
-          <li>No usar automatizaciones para abusar de reservas, promociones, pagos o cuentas.</li>
-          <li>No utilizar marcas, contenidos o datos de RAPA GO sin autorización.</li>
-        </List>
-      </Section>
-
-      <Section title="3. Actualizaciones y servicios de terceros">
+      <Section title="Servicio de movilidad">
         <p>
-          La aplicación puede requerir actualizaciones para mantener seguridad y
-          compatibilidad. Mapas, pagos, notificaciones y otros componentes pueden
-          estar sujetos a términos de sus respectivos proveedores.
+          Los Términos y Condiciones de RAPA GO regulan la cuenta, los viajes,
+          las tarifas, cancelaciones, pagos, soporte y demás servicios de
+          movilidad. No se presentan como una EULA personalizada de Apple.
         </p>
       </Section>
 
-      <Section title="4. Datos, soporte y terminación">
+      <Section title="Soporte y privacidad">
         <p>
-          El tratamiento de datos se rige por la Política de Privacidad. La licencia
-          termina si incumples estas condiciones o si la cuenta es eliminada. Tras
-          la terminación debes dejar de utilizar la aplicación. Las obligaciones
-          que por su naturaleza deban subsistir continuarán vigentes.
-        </p>
-      </Section>
-
-      <Section title="5. Tiendas de aplicaciones">
-        <p>
-          Cuando RAPA GO se obtiene desde una tienda, la tienda no es responsable
-          de prestar el servicio de transporte ni de administrar la cuenta. Las
-          condiciones obligatorias de la plataforma de distribución se entienden
-          incorporadas cuando sean aplicables.
-        </p>
-      </Section>
-
-      <Section title="6. Legislación y contacto">
-        <p>
-          Este acuerdo se interpreta conforme a la legislación chilena, sin afectar
-          derechos irrenunciables del consumidor. Para soporte consulta
+          El tratamiento de datos se rige por la Política de Privacidad. Para
+          soporte consulta
           <a style={publicSiteStyles.link} href="/soporte"> rapago.cl/soporte</a>.
         </p>
       </Section>
@@ -302,7 +287,7 @@ export function EulaPublicPage(): JSX.Element {
 }
 
 export function SupportPublicPage(): JSX.Element {
-  const whatsappUrl = `https://wa.me/${SUPPORT_PHONE_DIGITS}?text=${encodeURIComponent(
+  const whatsappUrl = `https://wa.me/${RAPAGO_CONTACT.supportPhone}?text=${encodeURIComponent(
     "Hola, necesito ayuda con RAPA GO.",
   )}`;
 
@@ -321,17 +306,33 @@ export function SupportPublicPage(): JSX.Element {
         <div style={{ display: "grid", gap: 10 }}>
           <IonButton href={whatsappUrl} target="_blank" style={actionStyle}>
             <IonIcon icon={logoWhatsapp} slot="start" />
-            WhatsApp {SUPPORT_PHONE_DISPLAY}
+            WhatsApp {RAPAGO_CONTACT.supportPhoneDisplay}
           </IonButton>
-          <IonButton href={`tel:+${SUPPORT_PHONE_DIGITS}`} fill="outline" style={actionStyle}>
+          <IonButton href={`tel:+${RAPAGO_CONTACT.supportPhone}`} fill="outline" style={actionStyle}>
             <IonIcon icon={callOutline} slot="start" />
             Llamar a soporte
           </IonButton>
-          <IonButton href={`mailto:${PRIVACY_EMAIL}`} fill="outline" style={actionStyle}>
+          <IonButton href={`mailto:${RAPAGO_CONTACT.supportEmail}`} fill="outline" style={actionStyle}>
             <IonIcon icon={mailOutline} slot="start" />
-            Consultas de privacidad
+            Soporte: {RAPAGO_CONTACT.supportEmail}
+          </IonButton>
+          <IonButton href={`mailto:${RAPAGO_CONTACT.claimsEmail}`} fill="outline" style={actionStyle}>
+            <IonIcon icon={mailOutline} slot="start" />
+            Reclamos: {RAPAGO_CONTACT.claimsEmail}
+          </IonButton>
+          <IonButton href={`mailto:${RAPAGO_CONTACT.privacyEmail}`} fill="outline" style={actionStyle}>
+            <IonIcon icon={mailOutline} slot="start" />
+            Privacidad: {RAPAGO_CONTACT.privacyEmail}
           </IonButton>
         </div>
+      </Section>
+
+      <Section title="Horario de atención">
+        <p>
+          Atención humana todos los días de <strong>{RAPAGO_CONTACT.supportHours}</strong>,
+          {" "}{RAPAGO_CONTACT.supportTimeZone}. No anunciamos atención humana 24/7.
+        </p>
+        <p>{RAPAGO_CONTACT.afterHoursMessage}</p>
       </Section>
 
       <Section title="Antes de contactar">

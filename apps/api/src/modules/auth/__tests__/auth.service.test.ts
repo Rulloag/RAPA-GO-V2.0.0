@@ -23,6 +23,13 @@ const mockRecordSafe         = vi.fn();
 const mockIncrementFailed    = vi.fn().mockResolvedValue({ failedLoginAttempts: 1 });
 const mockCreateFacebookExchange = vi.fn();
 const mockConsumeFacebookExchange = vi.fn();
+const mockListActiveProviders = vi.fn().mockResolvedValue([]);
+const mockFindIdentityBySubject = vi.fn();
+const mockFindIdentityByUserProvider = vi.fn();
+const mockLinkIdentity = vi.fn();
+const mockTouchIdentityLogin = vi.fn();
+const mockDbSelectRows = vi.fn();
+const mockDbReturningRows = vi.fn();
 
 vi.mock("../../../modules/users/users.service.js", () => ({
   UsersService: vi.fn().mockImplementation(() => ({ createUser: mockCreateUser })),
@@ -65,6 +72,57 @@ vi.mock("../facebookLoginExchange.repository.js", () => ({
     consume: mockConsumeFacebookExchange,
   })),
 }));
+vi.mock("../../../db/client.js", () => {
+  const makeSelectChain = () => {
+    const chain: Record<string, unknown> = {};
+    chain.from = vi.fn(() => chain);
+    chain.where = vi.fn(() => chain);
+    chain.orderBy = vi.fn(() => chain);
+    chain.limit = vi.fn(async () => mockDbSelectRows());
+    return chain;
+  };
+
+  const makeInsertChain = () => {
+    const chain: Record<string, unknown> = {};
+    chain.values = vi.fn(() => chain);
+    chain.onConflictDoUpdate = vi.fn(() => chain);
+    chain.returning = vi.fn(async () => mockDbReturningRows());
+    return chain;
+  };
+
+  const makeUpdateChain = () => {
+    const chain: Record<string, unknown> = {};
+    chain.set = vi.fn(() => chain);
+    chain.where = vi.fn(() => chain);
+    chain.returning = vi.fn(async () => mockDbReturningRows());
+    return chain;
+  };
+
+  return {
+    db: {
+      select: vi.fn(() => makeSelectChain()),
+      insert: vi.fn(() => makeInsertChain()),
+      update: vi.fn(() => makeUpdateChain()),
+    },
+  };
+});
+
+vi.mock("../authIdentities.repository.js", () => ({
+  AuthIdentitiesRepository: vi.fn().mockImplementation(() => ({
+    listActiveProviders: mockListActiveProviders,
+    findActiveByProviderSubject: mockFindIdentityBySubject,
+    findActiveByUserProvider: mockFindIdentityByUserProvider,
+    link: mockLinkIdentity,
+    touchLastLogin: mockTouchIdentityLogin,
+  })),
+}));
+
+vi.mock("../mail.service.js", () => ({
+  MailService: vi.fn().mockImplementation(() => ({
+    sendPasswordChangedEmail: vi.fn().mockResolvedValue(undefined),
+  })),
+}));
+
 vi.mock("../../../modules/audit/audit.service.js", () => ({
   AuditService: vi.fn().mockImplementation(() => ({ recordSafe: mockRecordSafe })),
 }));
@@ -81,6 +139,23 @@ function mockSuccessfulRegistration() {
     status: "active", avatarUrl: null, isVerified: false,
   });
   mockCreateForUser.mockResolvedValue({});
+  mockFindByUserId.mockResolvedValue({ userId: "user-1" });
+  mockDbReturningRows.mockResolvedValue([
+    {
+      userId: "user-1",
+      requestedFareType: "chilean",
+      effectiveFareType: "chilean",
+      residenceVerificationStatus: "not_required",
+    },
+  ]);
+  mockDbSelectRows.mockResolvedValue([
+    {
+      userId: "user-1",
+      requestedFareType: "chilean",
+      effectiveFareType: "chilean",
+      residenceVerificationStatus: "not_required",
+    },
+  ]);
   mockIssueAccessToken.mockReturnValue({ token: "jwt", hash: "access-hash", expiresAt: new Date(Date.now() + 900_000) });
   mockIssueRefreshToken.mockReturnValue({ token: "rt", hash: "rt-hash", expiresAt: new Date(Date.now() + 604_800_000) });
   mockCreateSession.mockResolvedValue(undefined);
@@ -94,6 +169,16 @@ describe("AuthService.register", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    mockDbSelectRows.mockResolvedValue([]);
+    mockDbReturningRows.mockResolvedValue([
+      {
+        userId: "user-1",
+        requestedFareType: "chilean",
+        effectiveFareType: "chilean",
+        residenceVerificationStatus: "not_required",
+      },
+    ]);
+    mockListActiveProviders.mockResolvedValue([]);
     service = new AuthService();
   });
 
@@ -192,9 +277,15 @@ describe("AuthService.register", () => {
 
     expect(result.ok).toBe(true);
     if (result.ok) {
-      const serialised = JSON.stringify(result.session);
-      expect(serialised).not.toContain("password");
-      expect(serialised).not.toContain("hash");
+      const sessionRecord = result.session as unknown as Record<string, unknown>;
+      const userRecord = result.session.user as unknown as Record<string, unknown>;
+
+      expect(sessionRecord).not.toHaveProperty("password");
+      expect(sessionRecord).not.toHaveProperty("passwordHash");
+      expect(sessionRecord).not.toHaveProperty("hash");
+      expect(userRecord).not.toHaveProperty("password");
+      expect(userRecord).not.toHaveProperty("passwordHash");
+      expect(userRecord).not.toHaveProperty("hash");
     }
   });
 });
@@ -204,6 +295,16 @@ describe("AuthService.login", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    mockDbSelectRows.mockResolvedValue([]);
+    mockDbReturningRows.mockResolvedValue([
+      {
+        userId: "user-1",
+        requestedFareType: "chilean",
+        effectiveFareType: "chilean",
+        residenceVerificationStatus: "not_required",
+      },
+    ]);
+    mockListActiveProviders.mockResolvedValue([]);
     service = new AuthService();
   });
 
@@ -326,6 +427,16 @@ describe("AuthService.exchangeFacebookLogin", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    mockDbSelectRows.mockResolvedValue([]);
+    mockDbReturningRows.mockResolvedValue([
+      {
+        userId: "user-1",
+        requestedFareType: "chilean",
+        effectiveFareType: "chilean",
+        residenceVerificationStatus: "not_required",
+      },
+    ]);
+    mockListActiveProviders.mockResolvedValue([]);
     service = new AuthService();
   });
 

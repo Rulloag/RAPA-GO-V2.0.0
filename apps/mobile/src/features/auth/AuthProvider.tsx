@@ -191,6 +191,18 @@ export function AuthProvider({ children }: AuthProviderProps): JSX.Element {
     [],
   );
 
+  const refreshSession = useCallback(async (): Promise<void> => {
+    if (!session?.accessToken) return;
+
+    const verified = await authService.me(session.accessToken);
+    if (!verified.ok) return;
+
+    await sessionStorageService.saveSession(verified.session);
+    setSession(verified.session);
+    setUser(verified.session.user);
+    setStatus("authenticated");
+  }, [session?.accessToken]);
+
   const logout = useCallback(async (): Promise<void> => {
     if (session?.accessToken) {
       await authService.logout(session.accessToken).catch(() => {});
@@ -202,7 +214,7 @@ export function AuthProvider({ children }: AuthProviderProps): JSX.Element {
 
   return (
     <AuthContext.Provider
-      value={{ status, user, session, login, register, logout }}
+      value={{ status, user, session, login, register, logout, refreshSession }}
     >
       {children}
     </AuthContext.Provider>

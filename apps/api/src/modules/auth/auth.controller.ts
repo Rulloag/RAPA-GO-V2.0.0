@@ -6,6 +6,7 @@ import {
 import type { FastifyRequest, FastifyReply } from "fastify";
 import { AuthService } from "./auth.service.js";
 import {
+  createPasswordRequestSchema,
   facebookLoginExchangeSchema,
   facebookResidentPrecheckSchema,
   facebookResidentStatusSchema,
@@ -21,6 +22,7 @@ import type {
   ResetPasswordRequest,
 } from "./auth.types.js";
 import type {
+  CreatePasswordRequestInput,
   FacebookLoginExchangeInput,
   FacebookResidentPrecheckInput,
   FacebookResidentStatusInput,
@@ -76,24 +78,31 @@ function getFrontendUrl(): string {
 }
 
 type FacebookPassengerFareType = "resident" | "chilean" | "foreigner";
+type FacebookOAuthMode = "login" | "link";
 
 type FacebookOAuthState = {
-  version: 3;
+  version: 4;
+  mode: FacebookOAuthMode;
   passengerFareType: FacebookPassengerFareType;
   nonce: string;
   expiresAt: number;
+  linkCode?: string;
 };
 
 function createFacebookOAuthState(
   passengerFareType: FacebookPassengerFareType,
   nonce: string,
   secret: string,
+  mode: FacebookOAuthMode = "login",
+  linkCode?: string,
 ): string {
   const payload: FacebookOAuthState = {
-    version: 3,
+    version: 4,
+    mode,
     passengerFareType,
     nonce,
     expiresAt: Date.now() + FACEBOOK_STATE_TTL_SECONDS * 1000,
+    ...(mode === "link" && linkCode ? { linkCode } : {}),
   };
   const encodedPayload = Buffer.from(
     JSON.stringify(payload),
@@ -135,23 +144,29 @@ function readFacebookOAuthState(
     ) as Partial<FacebookOAuthState>;
 
     if (
-      parsed.version !== 3 ||
+      parsed.version !== 4 ||
+      (parsed.mode !== "login" && parsed.mode !== "link") ||
       (parsed.passengerFareType !== "resident" &&
         parsed.passengerFareType !== "chilean" &&
         parsed.passengerFareType !== "foreigner") ||
       typeof parsed.nonce !== "string" ||
       parsed.nonce.length < 32 ||
       typeof parsed.expiresAt !== "number" ||
-      parsed.expiresAt < Date.now()
+      parsed.expiresAt < Date.now() ||
+      (parsed.mode === "link" &&
+        (typeof parsed.linkCode !== "string" ||
+          parsed.linkCode.length < 32))
     ) {
       return null;
     }
 
     return {
-      version: 3,
+      version: 4,
+      mode: parsed.mode,
       passengerFareType: parsed.passengerFareType,
       nonce: parsed.nonce,
       expiresAt: parsed.expiresAt,
+      ...(parsed.linkCode ? { linkCode: parsed.linkCode } : {}),
     };
   } catch {
     return null;
@@ -262,6 +277,22 @@ function getFacebookPassengerFareType(
 
   // Valores antiguos rapanui/rapanui_normal ya no son una categoría activa.
   return "chilean";
+}
+
+function buildFacebookAuthorizationUrl(input: {
+  appId: string;
+  redirectUri: string;
+  state: string;
+}): string {
+  const params = new URLSearchParams({
+    client_id: input.appId,
+    redirect_uri: input.redirectUri,
+    scope: "public_profile,email",
+    response_type: "code",
+    state: input.state,
+  });
+
+  return `https://www.facebook.com/v20.0/dialog/oauth?${params.toString()}`;
 }
 
 function extractBearer(request: FastifyRequest): string {
@@ -377,6 +408,44 @@ export const authController = {
     reply.status(200).send(result);
   },
 
+  async createPassword(
+    request: FastifyRequest<{ Body: CreatePasswordRequestInput }>,
+    reply: FastifyReply,
+  ): Promise<void> {
+    const token = extractBearer(request);
+
+    if (!token) {
+      sendError(reply, {
+        code: "UNAUTHORIZED",
+        message: "Falta el token de acceso.",
+        statusCode: 401,
+      });
+      return;
+    }
+
+    const parsed = createPasswordRequestSchema.safeParse(request.body);
+
+    if (!parsed.success) {
+      sendError(reply, {
+        code: "VALIDATION_ERROR",
+        message:
+          parsed.error.issues[0]?.message ?? "Solicitud inválida.",
+        statusCode: 400,
+      });
+      return;
+    }
+
+    const result = await authService.createPassword(
+      token,
+      parsed.data.newPassword,
+    );
+
+    reply
+      .header("Cache-Control", "no-store")
+      .status(result.ok ? 200 : result.statusCode)
+      .send(result);
+  },
+
   async logout(
     request: FastifyRequest,
     reply: FastifyReply,
@@ -475,15 +544,8 @@ export const authController = {
       passengerFareType,
       nonce,
       appSecret,
+      "login",
     );
-
-    const params = new URLSearchParams({
-      client_id: appId,
-      redirect_uri: redirectUri,
-      scope: "public_profile,email",
-      response_type: "code",
-      state,
-    });
 
     reply
       .header(
@@ -492,8 +554,57 @@ export const authController = {
       )
       .header("Cache-Control", "no-store")
       .redirect(
-        `https://www.facebook.com/v20.0/dialog/oauth?${params.toString()}`,
+        buildFacebookAuthorizationUrl({
+          appId,
+          redirectUri,
+          state,
+        }),
       );
+  },
+
+  async facebookLinkStart(
+    request: FastifyRequest,
+    reply: FastifyReply,
+  ): Promise<void> {
+    const token = extractBearer(request);
+    const prepared = await authService.prepareFacebookIdentityLink(token);
+
+    if (!prepared.ok) {
+      sendError(reply, {
+        code: prepared.code,
+        message: prepared.message,
+        statusCode: prepared.statusCode,
+      });
+      return;
+    }
+
+    const appId = getRequiredEnv("FACEBOOK_APP_ID");
+    const appSecret = getRequiredEnv("FACEBOOK_APP_SECRET");
+    const redirectUri = getRequiredEnv("FACEBOOK_REDIRECT_URI");
+    const nonce = randomBytes(32).toString("base64url");
+    const state = createFacebookOAuthState(
+      "chilean",
+      nonce,
+      appSecret,
+      "link",
+      prepared.linkCode,
+    );
+
+    reply
+      .header(
+        "Set-Cookie",
+        facebookStateCookie(nonce, FACEBOOK_STATE_TTL_SECONDS),
+      )
+      .header("Cache-Control", "no-store")
+      .status(200)
+      .send({
+        ok: true,
+        authorizationUrl: buildFacebookAuthorizationUrl({
+          appId,
+          redirectUri,
+          state,
+        }),
+      });
   },
 
   async facebookCallback(
@@ -602,6 +713,28 @@ export const authController = {
       return;
     }
 
+    if (oauthState.mode === "link") {
+      const linkResult = await authService.completeFacebookIdentityLink(
+        oauthState.linkCode ?? "",
+        {
+          facebookId: profile.id,
+          email: profile.email,
+          name: profile.name,
+        },
+      );
+
+      const linkStatus = linkResult.ok
+        ? "success"
+        : linkResult.code === "AUTH_IDENTITY_ALREADY_LINKED"
+          ? "already-linked"
+          : "error";
+
+      reply.redirect(
+        `${frontendUrl}/profile/security?facebookLink=${encodeURIComponent(linkStatus)}`,
+      );
+      return;
+    }
+
     const result = await authService.loginWithFacebook(
       {
         facebookId: profile.id,
@@ -618,8 +751,10 @@ export const authController = {
           ? "resident_pending"
           : result.code === "AUTH_RESIDENCE_REJECTED"
             ? "resident_rejected"
-            : result.code === "AUTH_ACCOUNT_PENDING"
-              ? "account_pending"
+            : result.code === "AUTH_FACEBOOK_LINK_REQUIRED"
+              ? "link_required"
+              : result.code === "AUTH_ACCOUNT_PENDING"
+                ? "account_pending"
               : result.code === "AUTH_ACCOUNT_SUSPENDED"
                 ? "account_blocked"
                 : "error";

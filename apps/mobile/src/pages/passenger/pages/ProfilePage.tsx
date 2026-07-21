@@ -33,7 +33,10 @@ import {
   exitOutline,
   giftOutline,
   languageOutline,
+  keyOutline,
+  linkOutline,
   lockClosedOutline,
+  logoFacebook,
   mailOutline,
   personOutline,
   saveOutline,
@@ -46,7 +49,7 @@ import { ModulePlaceholderPage } from "../../../components/ModulePlaceholderPage
 import { AccountDeletionCard } from "../../../components/accountDeletion/AccountDeletionCard.js";
 import { ROUTE_METADATA } from "../../../navigation/routeConfig";
 import { ROUTES } from "../../../navigation/routes";
-import { useAuth } from "../../../features/auth";
+import { authService, useAuth } from "../../../features/auth";
 import { profileService, type ProfileData } from "../../../features/profile/profile.service";
 import { ROLE_HOME } from "../../../navigation/RouteGuard";
 import { documentsService } from "../../../features/documents/documents.service";
@@ -2530,11 +2533,278 @@ function BankAccountPage(): JSX.Element {
 }
 
 export function ProfileSecurityPage(): JSX.Element {
-  const m = meta("/profile/security");
+  const history = useHistory();
+  const { session, user, refreshSession } = useAuth();
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [savingPassword, setSavingPassword] = useState(false);
+  const [linkingFacebook, setLinkingFacebook] = useState(false);
+  const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
+
+  const authProviders = user?.authProviders ?? [];
+  const hasPassword =
+    user?.hasPassword === true || authProviders.includes("password");
+  const facebookLinked = authProviders.includes("facebook");
+
+  useEffect(() => {
+    const linkStatus = new URLSearchParams(
+      window.location.search,
+    ).get("facebookLink");
+
+    if (!linkStatus) return;
+
+    if (linkStatus === "success") {
+      setSuccess("Facebook quedó vinculado correctamente.");
+      setError("");
+      void refreshSession();
+    } else if (linkStatus === "already-linked") {
+      setError(
+        "Esa cuenta de Facebook ya está vinculada a otra cuenta RAPA GO.",
+      );
+    } else {
+      setError(
+        "No se pudo vincular Facebook. Inicia el proceso nuevamente.",
+      );
+    }
+
+    history.replace(ROUTES.PROFILE.SECURITY);
+  }, [history, refreshSession]);
+
+  async function createBackupPassword(): Promise<void> {
+    if (!session?.accessToken) {
+      setError("Debes iniciar sesión nuevamente.");
+      return;
+    }
+
+    if (newPassword.length < 8) {
+      setError("La contraseña debe tener al menos 8 caracteres.");
+      return;
+    }
+
+    if (newPassword !== confirmPassword) {
+      setError("Las contraseñas no coinciden.");
+      return;
+    }
+
+    setSavingPassword(true);
+    setError("");
+    setSuccess("");
+
+    try {
+      const result = await authService.createPassword(
+        session.accessToken,
+        { newPassword, confirmPassword },
+      );
+
+      setNewPassword("");
+      setConfirmPassword("");
+      setSuccess(result.message);
+      await refreshSession();
+    } catch (passwordError) {
+      setError(
+        passwordError instanceof Error
+          ? passwordError.message
+          : "No se pudo crear la contraseña.",
+      );
+    } finally {
+      setSavingPassword(false);
+    }
+  }
+
+  async function linkFacebook(): Promise<void> {
+    if (!session?.accessToken) {
+      setError("Debes iniciar sesión nuevamente.");
+      return;
+    }
+
+    setLinkingFacebook(true);
+    setError("");
+    setSuccess("");
+
+    try {
+      const authorizationUrl = await authService.startFacebookLink(
+        session.accessToken,
+      );
+      window.location.assign(authorizationUrl);
+    } catch (linkError) {
+      setError(
+        linkError instanceof Error
+          ? linkError.message
+          : "No se pudo iniciar la vinculación.",
+      );
+      setLinkingFacebook(false);
+    }
+  }
+
+  const cardStyle = {
+    borderRadius: 22,
+    border: "1px solid rgba(210,164,58,.35)",
+    boxShadow: "0 14px 34px rgba(65,34,20,.10)",
+  } as CSSProperties;
+
   return (
     <IonPage>
-      <IonHeader><IonToolbar color="primary"><IonTitle>{m.label}</IonTitle></IonToolbar></IonHeader>
-      <IonContent className="ion-padding"><ModulePlaceholderPage title={m.label} role="passenger" plannedFeatures={m.plannedFeatures} /></IonContent>
+      <IonHeader>
+        <IonToolbar color="primary">
+          <IonButtons slot="start">
+            <IonButton onClick={() => history.goBack()}>
+              <IonIcon icon={arrowBackOutline} />
+            </IonButton>
+          </IonButtons>
+          <IonTitle>Seguridad de la cuenta</IonTitle>
+        </IonToolbar>
+      </IonHeader>
+
+      <IonContent
+        className="ion-padding"
+        style={{
+          "--background": "linear-gradient(180deg,#fff7e8,#eed5a4)",
+        } as CSSProperties}
+      >
+        <div style={{ maxWidth: 720, margin: "0 auto", paddingBottom: 80 }}>
+          {success && (
+            <IonText color="success">
+              <p style={{ fontWeight: 900 }}>{success}</p>
+            </IonText>
+          )}
+
+          {error && (
+            <IonText color="danger">
+              <p style={{ fontWeight: 900 }}>{error}</p>
+            </IonText>
+          )}
+
+          <IonCard style={cardStyle}>
+            <IonCardHeader>
+              <IonCardTitle>Formas de ingreso</IonCardTitle>
+            </IonCardHeader>
+            <IonCardContent>
+              <div style={{ display: "grid", gap: 10 }}>
+                <IonItem lines="none">
+                  <IonIcon icon={mailOutline} slot="start" />
+                  <IonLabel>
+                    <strong>Correo de la cuenta</strong>
+                    <p>{user?.email ?? "No disponible"}</p>
+                  </IonLabel>
+                </IonItem>
+
+                <IonItem lines="none">
+                  <IonIcon icon={keyOutline} slot="start" />
+                  <IonLabel>
+                    <strong>Correo y contraseña</strong>
+                    <p>{hasPassword ? "Configurado" : "Sin contraseña de respaldo"}</p>
+                  </IonLabel>
+                  <IonBadge color={hasPassword ? "success" : "warning"}>
+                    {hasPassword ? "Activo" : "Pendiente"}
+                  </IonBadge>
+                </IonItem>
+
+                <IonItem lines="none">
+                  <IonIcon icon={logoFacebook} slot="start" />
+                  <IonLabel>
+                    <strong>Facebook</strong>
+                    <p>{facebookLinked ? "Vinculado de forma segura" : "No vinculado"}</p>
+                  </IonLabel>
+                  <IonBadge color={facebookLinked ? "success" : "medium"}>
+                    {facebookLinked ? "Activo" : "Disponible"}
+                  </IonBadge>
+                </IonItem>
+              </div>
+            </IonCardContent>
+          </IonCard>
+
+          {!hasPassword && (
+            <IonCard style={cardStyle}>
+              <IonCardHeader>
+                <IonCardTitle>Crear contraseña de respaldo</IonCardTitle>
+              </IonCardHeader>
+              <IonCardContent>
+                <p style={{ color: "#5b4632", fontWeight: 750 }}>
+                  Podrás seguir entrando con Facebook y también recuperar el
+                  acceso mediante tu correo verificado.
+                </p>
+
+                <IonItem>
+                  <IonLabel position="stacked">Nueva contraseña</IonLabel>
+                  <IonInput
+                    type="password"
+                    value={newPassword}
+                    minlength={8}
+                    maxlength={128}
+                    autocomplete="new-password"
+                    onIonInput={(event) =>
+                      setNewPassword(String(event.detail.value ?? ""))
+                    }
+                  />
+                </IonItem>
+
+                <IonItem>
+                  <IonLabel position="stacked">Repetir contraseña</IonLabel>
+                  <IonInput
+                    type="password"
+                    value={confirmPassword}
+                    minlength={8}
+                    maxlength={128}
+                    autocomplete="new-password"
+                    onIonInput={(event) =>
+                      setConfirmPassword(String(event.detail.value ?? ""))
+                    }
+                  />
+                </IonItem>
+
+                <IonButton
+                  expand="block"
+                  color="warning"
+                  disabled={savingPassword}
+                  onClick={() => void createBackupPassword()}
+                  style={{ marginTop: 14, fontWeight: 950 } as CSSProperties}
+                >
+                  {savingPassword ? <IonSpinner name="dots" /> : "Crear contraseña"}
+                </IonButton>
+              </IonCardContent>
+            </IonCard>
+          )}
+
+          <IonCard style={cardStyle}>
+            <IonCardHeader>
+              <IonCardTitle>Vinculación segura</IonCardTitle>
+            </IonCardHeader>
+            <IonCardContent>
+              <p style={{ color: "#5b4632", fontWeight: 750 }}>
+                RAPA GO nunca fusiona cuentas solo porque tengan el mismo correo.
+                Para vincular Facebook debes iniciar sesión en RAPA GO y autorizar
+                expresamente el proveedor.
+              </p>
+
+              <IonButton
+                expand="block"
+                color="primary"
+                disabled={facebookLinked || linkingFacebook}
+                onClick={() => void linkFacebook()}
+                style={{ fontWeight: 950 } as CSSProperties}
+              >
+                <IonIcon icon={linkOutline} slot="start" />
+                {facebookLinked
+                  ? "Facebook ya está vinculado"
+                  : linkingFacebook
+                    ? "Abriendo Facebook..."
+                    : "Vincular Facebook"}
+              </IonButton>
+
+              <IonButton
+                expand="block"
+                fill="outline"
+                color="dark"
+                onClick={() => history.push("/auth/forgot-password")}
+                style={{ marginTop: 10, fontWeight: 900 } as CSSProperties}
+              >
+                Recuperar o cambiar contraseña por correo
+              </IonButton>
+            </IonCardContent>
+          </IonCard>
+        </div>
+      </IonContent>
     </IonPage>
   );
 }
@@ -2550,4 +2820,3 @@ export function ProfileNotificationsPage(): JSX.Element {
 }
 
 export default ProfileIndexPage;
-  

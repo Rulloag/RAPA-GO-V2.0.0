@@ -138,6 +138,33 @@ describe("SupportService", () => {
     expect(createCase).toHaveBeenCalledWith(expect.objectContaining({ requesterUserId: PASSENGER_ID, rideRequestId: RIDE_ID }), "passenger");
   });
 
+  it("genera una alerta crítica para casos de seguridad", async () => {
+    authenticateAs(passenger);
+    findActiveAdminIds.mockResolvedValue([ADMIN_ID]);
+    createCase.mockResolvedValue({
+      ...supportCase,
+      category: "safety",
+      priority: "urgent",
+      subject: "Riesgo durante el viaje",
+    });
+
+    const result = await service.createCase("token", {
+      category: "safety",
+      subject: "Riesgo durante el viaje",
+      description: "Necesito registrar una situación crítica de seguridad.",
+      priority: "normal",
+    });
+
+    expect(result.ok).toBe(true);
+    expect(createNotification).toHaveBeenCalledWith(
+      expect.objectContaining({
+        userId: ADMIN_ID,
+        type: "support_case_critical",
+        title: expect.stringContaining("ALERTA CRÍTICA"),
+      }),
+    );
+  });
+
   it("permite al conductor reportar un objeto perdido en un viaje completado asignado", async () => {
     authenticateAs(driver);
     findRideById.mockResolvedValue({ id: RIDE_ID, passengerUserId: PASSENGER_ID, driverUserId: DRIVER_ID, status: "completed" });

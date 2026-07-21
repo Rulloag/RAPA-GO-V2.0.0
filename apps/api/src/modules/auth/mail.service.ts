@@ -180,9 +180,10 @@ export class MailService {
         trackingLine,
         "",
         "La cuenta no será eliminada automáticamente.",
-        "Un administrador revisará el motivo y las operaciones pendientes.",
+        "Un administrador revisará la identidad y las operaciones pendientes.",
+        "El plazo máximo ordinario de procesamiento es de 30 días.",
         "",
-        "Te informaremos si la solicitud es aprobada o rechazada.",
+        "Si existe un impedimento objetivo y temporal, te informaremos la causa y la fecha de revisión.",
       ].filter(Boolean).join("\n"),
       html: `
         <div style="font-family:Arial,sans-serif;background:#f4efe7;padding:28px;color:#171717">
@@ -191,37 +192,43 @@ export class MailService {
             <h2 style="margin:0 0 14px">Solicitud recibida</h2>
             <p>Recibimos tu solicitud para eliminar la cuenta.</p>
             ${trackingCode ? `<p><strong>Número de seguimiento:</strong> ${trackingCode}</p>` : ""}
-            <p><strong>La eliminación no es automática.</strong> Un administrador revisará el motivo y las operaciones pendientes.</p>
-            <p>Te informaremos cuando exista una decisión.</p>
+            <p><strong>La eliminación no es automática.</strong> Un administrador revisará la identidad y las operaciones pendientes.</p>
+            <p>El plazo máximo ordinario de procesamiento es de <strong>30 días</strong>.</p>
+            <p>Si existe un impedimento objetivo y temporal, te informaremos la causa y la fecha de revisión.</p>
           </div>
         </div>
       `,
     });
   }
 
-  async sendAccountDeletionRejected(
+  async sendAccountDeletionDeferred(
     to: string,
     reason: string,
+    deferUntil: Date,
   ): Promise<void> {
+    const date = deferUntil.toLocaleDateString("es-CL");
+
     await this.getTransporter().sendMail({
       from: this.getFrom(),
       to,
-      subject: "Tu solicitud de eliminación fue rechazada",
+      subject: "Tu solicitud de eliminación fue aplazada temporalmente",
       text: [
-        "Tu solicitud de eliminación de cuenta fue rechazada.",
+        "Tu solicitud de eliminación sigue vigente.",
         "",
-        `Motivo: ${reason}`,
+        `Causa temporal: ${reason}`,
+        `Fecha máxima de revisión: ${date}`,
         "",
-        "Tu cuenta continúa activa.",
+        "Tu cuenta continúa activa mientras se resuelve el impedimento informado.",
       ].join("\n"),
       html: `
         <div style="font-family:Arial,sans-serif;background:#f4efe7;padding:28px;color:#171717">
           <div style="max-width:560px;margin:auto;background:#ffffff;border-radius:20px;padding:28px;border:1px solid #d6a640">
             <h1 style="margin:0 0 14px;color:#8f3c24">RAPA GO</h1>
-            <h2 style="margin:0 0 14px">Solicitud rechazada</h2>
-            <p>Tu solicitud de eliminación fue rechazada.</p>
-            <p><strong>Motivo:</strong> ${reason.replace(/[<>]/g, "")}</p>
-            <p>Tu cuenta continúa activa.</p>
+            <h2 style="margin:0 0 14px">Solicitud aplazada temporalmente</h2>
+            <p>Tu solicitud sigue vigente.</p>
+            <p><strong>Causa temporal:</strong> ${reason.replace(/[<>]/g, "")}</p>
+            <p><strong>Fecha máxima de revisión:</strong> ${date}</p>
+            <p>Tu cuenta continúa activa mientras se resuelve el impedimento informado.</p>
           </div>
         </div>
       `,

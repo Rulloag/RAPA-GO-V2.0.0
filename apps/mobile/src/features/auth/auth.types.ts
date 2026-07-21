@@ -15,4 +15,5 @@ export interface AuthContextValue {
   login: (payload: LoginRequest) => Promise<AuthResponse>;
   register: (payload: RegisterRequest) => Promise<AuthResponse>;
   logout: () => Promise<void>;
+  refreshSession: () => Promise<void>;
 }

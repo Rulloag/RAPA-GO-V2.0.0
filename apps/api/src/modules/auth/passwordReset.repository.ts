@@ -118,22 +118,32 @@ export class PasswordResetRepository {
         }
 
         const credentialsRows = await tx
-          .update(authCredentials)
-          .set({
+          .insert(authCredentials)
+          .values({
+            userId: consumed.userId,
             passwordHash: input.passwordHash,
             passwordUpdatedAt: now,
             failedLoginAttempts: 0,
             lockedUntil: null,
             updatedAt: now,
           })
-          .where(eq(authCredentials.userId, consumed.userId))
+          .onConflictDoUpdate({
+            target: authCredentials.userId,
+            set: {
+              passwordHash: input.passwordHash,
+              passwordUpdatedAt: now,
+              failedLoginAttempts: 0,
+              lockedUntil: null,
+              updatedAt: now,
+            },
+          })
           .returning({
             userId: authCredentials.userId,
           });
 
         if (!credentialsRows[0]) {
           throw AppError.internal(
-            "Password reset token belongs to an account without password credentials.",
+            "Password reset did not create or update credentials.",
           );
         }
 

@@ -74,6 +74,8 @@ export type ApiResponse<T> = ApiSuccessResponse<T> | ApiErrorResponse;
 
 /** Authenticated user as returned by the backend. */
 export type PassengerFareType = "resident" | "chilean" | "foreigner";
+export type AuthProvider = "password" | "facebook";
+
 export type ResidenceVerificationStatus =
   | "not_required"
   | "pending"
@@ -93,6 +95,10 @@ export type AuthUser = {
   /** Categoría que realmente se usa para calcular el precio. */
   passengerFareType?: PassengerFareType;
   residenceVerificationStatus?: ResidenceVerificationStatus;
+  /** Authentication methods currently linked to the account. */
+  authProviders?: AuthProvider[];
+  /** True when the account can sign in with email and password. */
+  hasPassword?: boolean;
 };
 
 /**

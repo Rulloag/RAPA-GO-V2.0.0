@@ -127,6 +127,46 @@ export const authService = {
     return result.data;
   },
 
+
+  async createPassword(
+    accessToken: string,
+    payload: { newPassword: string; confirmPassword: string },
+  ): Promise<{ message: string }> {
+    const result = await apiClient.post<{
+      ok: true;
+      message: string;
+    }>(
+      "/auth/password/create",
+      payload,
+      { token: accessToken },
+    );
+
+    if (result.ok === false) {
+      throw new Error(result.message);
+    }
+
+    return { message: result.data.message };
+  },
+
+  async startFacebookLink(
+    accessToken: string,
+  ): Promise<string> {
+    const result = await apiClient.post<{
+      ok: true;
+      authorizationUrl: string;
+    }>(
+      "/auth/facebook/link/start",
+      undefined,
+      { token: accessToken },
+    );
+
+    if (result.ok === false) {
+      throw new Error(result.message);
+    }
+
+    return result.data.authorizationUrl;
+  },
+
   async logout(accessToken: string): Promise<void> {
     await apiClient.post("/auth/logout", undefined, { token: accessToken });
   },

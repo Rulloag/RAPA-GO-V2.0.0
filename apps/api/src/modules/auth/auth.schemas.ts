@@ -47,6 +47,29 @@ export const resetPasswordRequestSchema = z
     }
   });
 
+
+export const createPasswordRequestSchema = z
+  .object({
+    newPassword: z
+      .string()
+      .min(8, "La contraseña debe tener al menos 8 caracteres.")
+      .max(128, "La contraseña es demasiado larga."),
+    confirmPassword: z.string(),
+  })
+  .superRefine((value, context) => {
+    if (value.newPassword !== value.confirmPassword) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["confirmPassword"],
+        message: "Las contraseñas no coinciden.",
+      });
+    }
+  });
+
+export type CreatePasswordRequestInput = z.infer<
+  typeof createPasswordRequestSchema
+>;
+
 const FACEBOOK_RESIDENT_DOCUMENT_MIME_TYPES = [
   "application/pdf",
   "image/jpeg",

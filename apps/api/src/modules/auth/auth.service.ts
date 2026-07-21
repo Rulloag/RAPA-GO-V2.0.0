@@ -4,6 +4,8 @@ import type {
   AuthServiceResult,
   AuthUser,
   FacebookLoginPreparationResult,
+  AuthActionResult,
+  FacebookLinkStartResult,
 } from "./auth.types.js";
 import { UsersService } from "../users/users.service.js";
 import { UsersRepository } from "../users/users.repository.js";
@@ -12,6 +14,8 @@ import { TokenService } from "./token.service.js";
 import { SessionService } from "./session.service.js";
 import { AuthCredentialsRepository } from "./authCredentials.repository.js";
 import { FacebookLoginExchangeRepository } from "./facebookLoginExchange.repository.js";
+import { AuthIdentitiesRepository } from "./authIdentities.repository.js";
+import { MailService } from "./mail.service.js";
 import { AuditService } from "../audit/audit.service.js";
 import { AppError } from "../../shared/errors/AppError.js";
 import type { UserRole } from "@rapa-go/shared";
@@ -38,6 +42,8 @@ const sessionService = new SessionService();
 const credentialsRepo = new AuthCredentialsRepository();
 const auditService = new AuditService();
 const facebookLoginExchangeRepo = new FacebookLoginExchangeRepository();
+const authIdentitiesRepo = new AuthIdentitiesRepository();
+const mailService = new MailService();
 
 function roleInitialStatus(role: UserRole): "active" | "pending" {
   return role === "passenger" ? "active" : "pending";
@@ -428,7 +434,16 @@ async function findPassengerFareProfile(
 async function buildAuthUser(
   user: typeof users.$inferSelect,
 ): Promise<AuthUser> {
-  const profile = await findPassengerFareProfile(user.id);
+  const [profile, credentials, externalProviders] = await Promise.all([
+    findPassengerFareProfile(user.id),
+    credentialsRepo.findByUserId(user.id),
+    authIdentitiesRepo.listActiveProviders(user.id),
+  ]);
+
+  const authProviders = [
+    ...(credentials ? (["password"] as const) : []),
+    ...externalProviders,
+  ];
 
   return {
     id: user.id,
@@ -437,6 +452,8 @@ async function buildAuthUser(
     role: toUserRole(user.role),
     avatarUrl: user.avatarUrl,
     isVerified: user.isVerified,
+    authProviders,
+    hasPassword: Boolean(credentials),
     ...(profile
       ? {
           requestedPassengerFareType: normalizePassengerFareType(
@@ -478,6 +495,79 @@ async function reactivatePassengerResidenceAccount(
     .returning();
 
   return rows[0] ?? user;
+}
+
+async function authenticateActiveAccessToken(
+  accessToken: string,
+): Promise<
+  | { ok: true; user: typeof users.$inferSelect }
+  | {
+      ok: false;
+      code: string;
+      message: string;
+      statusCode: number;
+    }
+> {
+  if (!accessToken) {
+    return {
+      ok: false,
+      code: "UNAUTHORIZED",
+      message: "Falta el token de acceso.",
+      statusCode: 401,
+    };
+  }
+
+  let payload;
+
+  try {
+    payload = tokenService.verifyAccessToken(accessToken);
+  } catch (error) {
+    if (error instanceof AppError) {
+      return {
+        ok: false,
+        code: error.code,
+        message: error.message,
+        statusCode: error.statusCode,
+      };
+    }
+
+    return {
+      ok: false,
+      code: "UNAUTHORIZED",
+      message: "La sesión no es válida.",
+      statusCode: 401,
+    };
+  }
+
+  const sessionValid = await sessionService.isSessionValid(
+    tokenService.hashToken(accessToken),
+  );
+
+  if (!sessionValid) {
+    return {
+      ok: false,
+      code: "AUTH_SESSION_REVOKED",
+      message: "La sesión fue cerrada.",
+      statusCode: 401,
+    };
+  }
+
+  const user = await usersRepository.findById(payload.sub);
+
+  if (!user || user.status !== "active") {
+    return {
+      ok: false,
+      code: user?.status === "deleted"
+        ? "AUTH_ACCOUNT_DELETED"
+        : "AUTH_ACCOUNT_UNAVAILABLE",
+      message: user?.status === "deleted"
+        ? "Esta cuenta fue eliminada."
+        : "La cuenta no está habilitada.",
+      statusCode: 403,
+    };
+  }
+
+  return { ok: true, user };
 }
 
 export class AuthService {
@@ -987,27 +1077,103 @@ export class AuthService {
     },
   ): Promise<FacebookLoginPreparationResult> {
     const email = profile.email.toLowerCase().trim();
+    const identity =
+      await authIdentitiesRepo.findActiveByProviderSubject(
+        "facebook",
+        profile.facebookId,
+      );
 
-    let user = await usersRepository.findByEmail(email);
+    let user = identity
+      ? await usersRepository.findById(identity.userId)
+      : null;
+
+    if (identity && !user) {
+      return {
+        ok: false,
+        code: "AUTH_FACEBOOK_IDENTITY_ORPHANED",
+        message:
+          "La vinculación de Facebook no está disponible. Contacta a soporte.",
+        statusCode: 409,
+      };
+    }
+
+    if (!identity) {
+      const existingByEmail = await usersRepository.findByEmail(email);
+
+      if (existingByEmail) {
+        const credentials =
+          await credentialsRepo.findByUserId(existingByEmail.id);
+        const existingFacebookIdentity =
+          await authIdentitiesRepo.findActiveByUserProvider(
+            existingByEmail.id,
+            "facebook",
+          );
+
+        if (credentials || existingFacebookIdentity) {
+          return {
+            ok: false,
+            code: "AUTH_FACEBOOK_LINK_REQUIRED",
+            message:
+              "Ya existe una cuenta RAPA GO con este correo. Inicia sesión con tu contraseña y vincula Facebook desde Perfil > Seguridad.",
+            statusCode: 409,
+          };
+        }
+
+        // Compatibilidad controlada con cuentas Facebook antiguas que no
+        // tenían contraseña ni una identidad persistente. El correo fue
+        // entregado por Facebook y coincide exactamente con la cuenta.
+        user = existingByEmail;
+
+        await authIdentitiesRepo.link({
+          userId: user.id,
+          provider: "facebook",
+          providerSubject: profile.facebookId,
+          providerEmail: email,
+          emailVerified: true,
+        });
+
+        auditService.recordSafe({
+          eventType: "auth.facebook.legacy_identity_claimed",
+          entityType: "user",
+          entityId: user.id,
+          actorUserId: user.id,
+          metadata: { provider: "facebook" },
+        });
+      } else {
+        user = await usersService.createUser({
+          email,
+          name: profile.name,
+          role: "passenger",
+          status: "active",
+        });
+
+        await authIdentitiesRepo.link({
+          userId: user.id,
+          provider: "facebook",
+          providerSubject: profile.facebookId,
+          providerEmail: email,
+          emailVerified: true,
+        });
+
+        auditService.recordSafe({
+          eventType: "auth.facebook.register.success",
+          entityType: "user",
+          entityId: user.id,
+          actorUserId: user.id,
+          metadata: {
+            provider: "facebook",
+            facebookId: profile.facebookId,
+          },
+        });
+      }
+    } else {
+      await authIdentitiesRepo.touchLastLogin(identity.id);
+    }
 
     if (!user) {
-      user = await usersService.createUser({
-        email,
-        name: profile.name,
-        role: "passenger",
-        status: "active",
-      });
-
-      auditService.recordSafe({
-        eventType: "auth.facebook.register.success",
-        entityType: "user",
-        entityId: user.id,
-        actorUserId: user.id,
-        metadata: {
-          provider: "facebook",
-          facebookId: profile.facebookId,
-        },
-      });
+      throw AppError.internal(
+        "Facebook login did not resolve a user.",
+      );
     }
 
     if (user.status === "deleted") {
@@ -1099,7 +1265,10 @@ export class AuthService {
       user = rows[0] ?? user;
     }
 
-    const exchangeCode = await facebookLoginExchangeRepo.create(user.id);
+    const exchangeCode = await facebookLoginExchangeRepo.create(
+      user.id,
+      "login",
+    );
 
     auditService.recordSafe({
       eventType: "auth.facebook.login.prepared",
@@ -1115,6 +1284,144 @@ export class AuthService {
     return {
       ok: true,
       exchangeCode,
+    };
+  }
+
+  async prepareFacebookIdentityLink(
+    accessToken: string,
+  ): Promise<FacebookLinkStartResult> {
+    const auth = await authenticateActiveAccessToken(accessToken);
+    if (!auth.ok) return auth;
+
+    const existing =
+      await authIdentitiesRepo.findActiveByUserProvider(
+        auth.user.id,
+        "facebook",
+      );
+
+    if (existing) {
+      return {
+        ok: false,
+        code: "AUTH_FACEBOOK_ALREADY_LINKED",
+        message: "Facebook ya está vinculado a esta cuenta.",
+        statusCode: 409,
+      };
+    }
+
+    const linkCode = await facebookLoginExchangeRepo.create(
+      auth.user.id,
+      "link",
+    );
+
+    return { ok: true, linkCode };
+  }
+
+  async completeFacebookIdentityLink(
+    linkCode: string,
+    profile: {
+      facebookId: string;
+      email: string;
+      name: string;
+    },
+  ): Promise<AuthActionResult> {
+    const userId = await facebookLoginExchangeRepo.consume(
+      linkCode,
+      "link",
+    );
+
+    if (!userId) {
+      return {
+        ok: false,
+        code: "AUTH_FACEBOOK_LINK_EXPIRED",
+        message:
+          "La vinculación expiró o ya fue utilizada. Iníciala nuevamente desde Perfil > Seguridad.",
+        statusCode: 400,
+      };
+    }
+
+    const user = await usersRepository.findById(userId);
+
+    if (!user || user.status !== "active") {
+      return {
+        ok: false,
+        code: "AUTH_ACCOUNT_UNAVAILABLE",
+        message: "La cuenta no está disponible para vincular Facebook.",
+        statusCode: 403,
+      };
+    }
+
+    try {
+      await authIdentitiesRepo.link({
+        userId: user.id,
+        provider: "facebook",
+        providerSubject: profile.facebookId,
+        providerEmail: profile.email,
+        emailVerified: true,
+      });
+    } catch (error) {
+      if (error instanceof AppError) {
+        return {
+          ok: false,
+          code: error.code,
+          message: error.message,
+          statusCode: error.statusCode,
+        };
+      }
+      throw error;
+    }
+
+    auditService.recordSafe({
+      eventType: "auth.identity.linked",
+      entityType: "user",
+      entityId: user.id,
+      actorUserId: user.id,
+      metadata: { provider: "facebook" },
+    });
+
+    return {
+      ok: true,
+      message: "Facebook quedó vinculado correctamente.",
+    };
+  }
+
+  async createPassword(
+    accessToken: string,
+    newPassword: string,
+  ): Promise<AuthActionResult> {
+    const auth = await authenticateActiveAccessToken(accessToken);
+    if (!auth.ok) return auth;
+
+    const existing = await credentialsRepo.findByUserId(auth.user.id);
+
+    if (existing) {
+      return {
+        ok: false,
+        code: "AUTH_PASSWORD_ALREADY_SET",
+        message:
+          "Esta cuenta ya tiene contraseña. Usa Recuperar contraseña para cambiarla.",
+        statusCode: 409,
+      };
+    }
+
+    const passwordHash = await passwordService.hashPassword(newPassword);
+    await credentialsRepo.createForUser(auth.user.id, passwordHash);
+
+    auditService.recordSafe({
+      eventType: "auth.password.created",
+      entityType: "user",
+      entityId: auth.user.id,
+      actorUserId: auth.user.id,
+      metadata: { source: "profile_security" },
+    });
+
+    void mailService
+      .sendPasswordChangedEmail(auth.user.email)
+      .catch(() => {});
+
+    return {
+      ok: true,
+      message:
+        "Contraseña creada. Desde ahora también puedes ingresar con correo y contraseña.",
     };
   }
 

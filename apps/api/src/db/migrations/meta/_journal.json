@@ -204,6 +204,13 @@
       "when": 1784585784499,
       "tag": "0035_passenger_fare_profile",
       "breakpoints": true
+    },
+    {
+      "idx": 29,
+      "version": "7",
+      "when": 1784591346387,
+      "tag": "0036_auth_identity_support_deletion_policy",
+      "breakpoints": true
     }
   ]
 }

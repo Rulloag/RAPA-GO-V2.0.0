@@ -26,6 +26,7 @@ import {
 } from "@ionic/react";
 import { useCallback, useEffect, useMemo, useState, type CSSProperties } from "react";
 import { arrowBackOutline, homeOutline } from "ionicons/icons";
+import { RAPAGO_CONTACT } from "@rapa-go/shared";
 import { useHistory } from "react-router-dom";
 import { useAuth } from "../../features/auth/index.js";
 import { ridesService, type DriverRideData, type RideRequestData } from "../../features/rides/rides.service.js";
@@ -37,7 +38,6 @@ import {
   type SupportPriority,
 } from "../../features/support/support.service.js";
 
-const SUPPORT_PHONE = "56947964171";
 const CATEGORY_LABEL: Record<SupportCategory, string> = {
   support: "Ayuda general",
   complaint: "Reclamo",
@@ -201,7 +201,7 @@ export function SupportCenterPage(): JSX.Element {
     }
   }
 
-  const whatsappUrl = `https://wa.me/${SUPPORT_PHONE}?text=${encodeURIComponent("Hola RAPA GO, necesito ayuda con mi cuenta o un viaje.")}`;
+  const whatsappUrl = `https://wa.me/${RAPAGO_CONTACT.supportPhone}?text=${encodeURIComponent("Hola RAPA GO, necesito ayuda con mi cuenta o un viaje.")}`;
 
   return (
     <IonPage>
@@ -252,7 +252,15 @@ export function SupportCenterPage(): JSX.Element {
             <IonCardContent>
               <h1 style={{ margin: 0, fontSize: "1.35rem", fontWeight: 950 }}>Soporte RAPA GO</h1>
               <p style={{ color: "rgba(255,255,255,.76)", lineHeight: 1.4 }}>Crea un reclamo, reporta un objeto perdido o revisa el seguimiento administrativo con un folio único.</p>
-              <IonButton href={whatsappUrl} target="_blank" color="success" expand="block">WhatsApp para urgencias</IonButton>
+              <p style={{ color: "rgba(255,255,255,.88)", lineHeight: 1.45, fontWeight: 750 }}>
+                Atención humana todos los días de {RAPAGO_CONTACT.supportHours}, {RAPAGO_CONTACT.supportTimeZone}. No se ofrece atención humana 24/7.
+              </p>
+              <p style={{ color: "rgba(255,255,255,.72)", lineHeight: 1.4, fontSize: ".84rem" }}>
+                {RAPAGO_CONTACT.afterHoursMessage}
+              </p>
+              <IonButton href={whatsappUrl} target="_blank" color="success" expand="block">WhatsApp institucional</IonButton>
+              <IonButton href={`mailto:${RAPAGO_CONTACT.supportEmail}`} fill="outline" color="light" expand="block">{RAPAGO_CONTACT.supportEmail}</IonButton>
+              <IonButton href={`mailto:${RAPAGO_CONTACT.claimsEmail}`} fill="outline" color="light" expand="block">{RAPAGO_CONTACT.claimsEmail}</IonButton>
             </IonCardContent>
           </IonCard>
 

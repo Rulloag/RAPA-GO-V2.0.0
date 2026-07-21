@@ -33,3 +33,21 @@ export type FacebookLoginPreparationResult =
       message: string;
       statusCode?: number;
     };
+
+export type AuthActionResult =
+  | { ok: true; message: string }
+  | {
+      ok: false;
+      code: string;
+      message: string;
+      statusCode: number;
+    };
+
+export type FacebookLinkStartResult =
+  | { ok: true; linkCode: string }
+  | {
+      ok: false;
+      code: string;
+      message: string;
+      statusCode: number;
+    };

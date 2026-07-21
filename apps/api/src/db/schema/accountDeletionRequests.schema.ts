@@ -1,3 +1,4 @@
+import { sql } from "drizzle-orm";
 import {
   index,
   integer,
@@ -48,6 +49,16 @@ export const accountDeletionRequests = pgTable(
     requestedAt: timestamp("requested_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
+
+    deadlineAt: timestamp("deadline_at", { withTimezone: true })
+      .notNull()
+      .default(sql`now() + interval '30 days'`),
+
+    deferredUntil: timestamp("deferred_until", { withTimezone: true }),
+
+    decisionReasonCode: varchar("decision_reason_code", { length: 60 }),
+
+    retentionSummary: text("retention_summary"),
 
     reviewedAt: timestamp("reviewed_at", { withTimezone: true }),
 

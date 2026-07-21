@@ -7,6 +7,7 @@ import {
   IonCardTitle,
   IonCheckbox,
   IonIcon,
+  IonInput,
   IonItem,
   IonLabel,
   IonNote,
@@ -36,6 +37,7 @@ interface AccountDeletionCardProps {
 
 const OPEN_STATUSES = new Set<AccountDeletionRequestStatus>([
   "pending",
+  "deferred",
   "approved",
   "processing",
 ]);
@@ -44,6 +46,8 @@ function statusLabel(status: AccountDeletionRequestStatus): string {
   switch (status) {
     case "pending":
       return "Pendiente de revisión";
+    case "deferred":
+      return "Aplazada temporalmente";
     case "approved":
       return "Aprobada";
     case "processing":
@@ -66,7 +70,6 @@ function statusColor(status: AccountDeletionRequestStatus): string {
     case "completed":
     case "approved":
       return "success";
-    case "rejected":
     case "failed":
       return "danger";
     case "cancelled":
@@ -103,6 +106,9 @@ export function AccountDeletionCard({
   const [reason, setReason] = useState("");
   const [comment, setComment] = useState("");
   const [confirmed, setConfirmed] = useState(false);
+  const [verificationCode, setVerificationCode] = useState("");
+  const [sendingCode, setSendingCode] = useState(false);
+  const [codeSent, setCodeSent] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
 
@@ -136,6 +142,33 @@ export function AccountDeletionCard({
     void loadRequest();
   }, [loadRequest]);
 
+  async function sendVerificationCode(): Promise<void> {
+    if (!session?.accessToken) {
+      setError("Debes iniciar sesión nuevamente.");
+      return;
+    }
+
+    setSendingCode(true);
+    setError("");
+    setSuccess("");
+
+    try {
+      const result = await accountDeletionService.requestVerificationCode(
+        session.accessToken,
+      );
+      setCodeSent(true);
+      setSuccess(result.message);
+    } catch (codeError) {
+      setError(
+        codeError instanceof Error
+          ? codeError.message
+          : "No se pudo enviar el código.",
+      );
+    } finally {
+      setSendingCode(false);
+    }
+  }
+
   async function submit(): Promise<void> {
     if (!session?.accessToken) {
       setError("Debes iniciar sesión nuevamente.");
@@ -144,11 +177,17 @@ export function AccountDeletionCard({
 
     const cleanReason = reason.trim();
     const cleanComment = comment.trim();
+    const cleanVerificationCode = verificationCode.trim();
 
     if (cleanReason.length < 10) {
       setError(
         "Escribe el motivo con al menos 10 caracteres.",
       );
+      return;
+    }
+
+    if (!/^\d{6}$/.test(cleanVerificationCode)) {
+      setError("Solicita e ingresa el código de 6 números enviado a tu correo.");
       return;
     }
 
@@ -165,10 +204,12 @@ export function AccountDeletionCard({
 
     try {
       const payload: {
+        verificationCode: string;
         reason: string;
         comment?: string;
         requesterSnapshot?: AccountDeletionClientSnapshot;
       } = {
+        verificationCode: cleanVerificationCode,
         reason: cleanReason,
       };
 
@@ -187,9 +228,11 @@ export function AccountDeletionCard({
       setReason("");
       setComment("");
       setConfirmed(false);
+      setVerificationCode("");
+      setCodeSent(false);
       setShowForm(false);
       setSuccess(
-        "Solicitud enviada. Tu cuenta continuará activa hasta que el administrador la apruebe.",
+        "Solicitud enviada. Tu cuenta continuará activa durante la revisión y el plazo ordinario máximo es de 30 días.",
       );
     } catch (submitError) {
       setError(
@@ -365,13 +408,51 @@ export function AccountDeletionCard({
             >
               {showForm
                 ? "Cerrar formulario"
-                : request?.status === "rejected"
-                  ? "Enviar una nueva solicitud"
-                  : "Solicitar eliminación"}
+                : "Solicitar eliminación"}
             </IonButton>
 
             {showForm && (
               <div style={{ marginTop: 12 }}>
+                <IonButton
+                  expand="block"
+                  fill="outline"
+                  onClick={() => void sendVerificationCode()}
+                  disabled={sendingCode}
+                  style={{ fontWeight: 900, marginBottom: 10 }}
+                >
+                  {sendingCode ? <IonSpinner name="dots" /> : "Enviar código a mi correo"}
+                </IonButton>
+
+                <IonItem
+                  lines="none"
+                  style={{
+                    "--background": "#fffaf0",
+                    borderRadius: 16,
+                    marginBottom: 10,
+                  } as CSSProperties}
+                >
+                  <IonLabel position="stacked">Código de verificación</IonLabel>
+                  <IonInput
+                    value={verificationCode}
+                    inputMode="numeric"
+                    maxlength={6}
+                    placeholder="000000"
+                    onIonInput={(event) => {
+                      setVerificationCode(
+                        String(event.detail.value ?? "")
+                          .replace(/\D/g, "")
+                          .slice(0, 6),
+                      );
+                      setError("");
+                    }}
+                  />
+                  <IonNote slot="helper">
+                    {codeSent
+                      ? "Código enviado. Vence en 10 minutos."
+                      : "Reautenticación obligatoria antes de enviar la solicitud."}
+                  </IonNote>
+                </IonItem>
+
                 <IonItem
                   lines="none"
                   style={{
@@ -451,9 +532,9 @@ export function AccountDeletionCard({
                       lineHeight: 1.35,
                     }}
                   >
-                    Entiendo que la solicitud será revisada y que
-                    la cuenta solo se eliminará si el administrador
-                    la aprueba.
+                    Entiendo que la solicitud será revisada, que no puede
+                    rechazarse discrecionalmente y que solo puede aplazarse
+                    por una causa objetiva y temporal informada.
                   </IonLabel>
                 </IonItem>
 

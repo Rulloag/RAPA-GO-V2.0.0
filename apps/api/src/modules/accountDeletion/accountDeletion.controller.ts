@@ -6,6 +6,7 @@ import type {
 import { sendError, sendOk } from "../../shared/http/apiResponse.js";
 import {
   createAccountDeletionRequestSchema,
+  deferAccountDeletionRequestSchema,
   listAccountDeletionRequestsQuerySchema,
   publicAccountDeletionCodeRequestSchema,
   publicAccountDeletionStatusQuerySchema,
@@ -60,6 +61,29 @@ export const accountDeletionController = {
     }
 
     return sendOk(reply, result.request);
+  },
+
+  async requestAppCode(
+    request: FastifyRequest,
+    reply: FastifyReply,
+  ): Promise<FastifyReply> {
+    const token = bearer(request);
+    if (!token) return missingToken(reply);
+
+    const result = await service.requestAppVerification(token);
+
+    if (result.ok === false) {
+      return sendError(reply, {
+        code: result.code,
+        message: result.message,
+        statusCode: result.statusCode,
+      });
+    }
+
+    return sendOk(reply, {
+      message: result.message,
+      expiresMinutes: result.expiresMinutes,
+    });
   },
 
   async create(
@@ -240,14 +264,14 @@ export const accountDeletionController = {
     return sendOk(reply, result.requests);
   },
 
-  async adminReject(
+  async adminDefer(
     request: FastifyRequest<{ Params: { id: string } }>,
     reply: FastifyReply,
   ): Promise<FastifyReply> {
     const token = bearer(request);
     if (!token) return missingToken(reply);
 
-    const parsed = reviewAccountDeletionRequestSchema.safeParse(
+    const parsed = deferAccountDeletionRequestSchema.safeParse(
       request.body,
     );
 
@@ -256,13 +280,13 @@ export const accountDeletionController = {
         code: "VALIDATION_ERROR",
         message: firstValidationMessage(
           parsed.error.errors,
-          "Debes escribir el motivo del rechazo.",
+          "Debes indicar una causa objetiva de aplazamiento.",
         ),
         statusCode: 400,
       });
     }
 
-    const result = await service.reject(
+    const result = await service.defer(
       token,
       request.params.id,
       parsed.data,

@@ -13,7 +13,10 @@ function hashCode(code: string): string {
 }
 
 export class FacebookLoginExchangeRepository {
-  async create(userId: string): Promise<string> {
+  async create(
+    userId: string,
+    purpose: "login" | "link" = "login",
+  ): Promise<string> {
     const code = randomBytes(EXCHANGE_CODE_BYTES).toString("base64url");
     const now = new Date();
     const expiresAt = new Date(now.getTime() + EXCHANGE_TTL_MS);
@@ -35,6 +38,7 @@ export class FacebookLoginExchangeRepository {
       await db.insert(facebookLoginExchanges).values({
         userId,
         codeHash: hashCode(code),
+        purpose,
         expiresAt,
       });
 
@@ -46,7 +50,10 @@ export class FacebookLoginExchangeRepository {
     }
   }
 
-  async consume(code: string): Promise<string | null> {
+  async consume(
+    code: string,
+    purpose: "login" | "link" = "login",
+  ): Promise<string | null> {
     const cleanCode = code.trim();
     if (!cleanCode) return null;
 
@@ -59,6 +66,7 @@ export class FacebookLoginExchangeRepository {
         .where(
           and(
             eq(facebookLoginExchanges.codeHash, hashCode(cleanCode)),
+            eq(facebookLoginExchanges.purpose, purpose),
             isNull(facebookLoginExchanges.usedAt),
             gt(facebookLoginExchanges.expiresAt, now),
           ),
