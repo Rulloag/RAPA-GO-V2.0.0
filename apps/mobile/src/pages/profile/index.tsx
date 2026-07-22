@@ -24,6 +24,7 @@ import { useEffect, useState, useCallback } from "react";
 import { useHistory } from "react-router-dom";
 import { ModulePlaceholderPage } from "../../components/ModulePlaceholderPage";
 import { ROUTE_METADATA } from "../../navigation/routeConfig";
+import { ROUTES } from "../../navigation/routes";
 import { useAuth } from "../../features/auth";
 import { profileService, type ProfileData } from "../../features/profile/profile.service";
 import { ROLE_HOME } from "../../navigation/RouteGuard";
@@ -36,6 +37,7 @@ import {
   STATUS_LABEL as DOC_STATUS_LABEL,
 } from "../../features/documents/documents.constants";
 import { referralsService, type ReferralSummary } from "../../features/referrals/referrals.service.js";
+import { RapaGoLanguageRuntime, RapaGoLanguageCard } from "../../i18n/rapagoI18n";
 
 function meta(path: string) {
   return ROUTE_METADATA.find((r) => r.path === path)!;
@@ -56,9 +58,230 @@ const STATUS_LABEL: Record<string, string> = {
   banned:    "Bloqueada",
 };
 
+type PassengerFareType = "resident" | "chilean" | "foreigner";
+
+const PASSENGER_FARE_LABEL: Record<PassengerFareType, string> = {
+  resident: "Residente",
+  chilean: "Chileno no residente",
+  foreigner: "Extranjero / turista",
+};
+
+function normalizeTextForFare(value: unknown): string {
+  return String(value ?? "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .trim();
+}
+
+function normalizePassengerFareType(...values: unknown[]): PassengerFareType | null {
+  const text = normalizeTextForFare(values.filter((value) => value !== null && value !== undefined && value !== "").join(" "));
+
+  if (!text) return null;
+
+  // Orden importante: "chileno no residente" contiene la palabra "residente".
+  // Por eso primero detectamos extranjero, después chileno no residente y al final residente.
+  if (
+    text.includes("foreigner") ||
+    text.includes("foreign") ||
+    text.includes("extranjero") ||
+    text.includes("turista") ||
+    text.includes("tourist") ||
+    text.includes("visitor_foreign")
+  ) {
+    return "foreigner";
+  }
+
+  if (
+    text.includes("chilean") ||
+    text.includes("chileno") ||
+    text.includes("no residente") ||
+    text.includes("no_residente") ||
+    text.includes("non resident") ||
+    text.includes("non_resident") ||
+    text.includes("visitante_chileno")
+  ) {
+    return "chilean";
+  }
+
+  if (
+    text.includes("resident") ||
+    text.includes("residente") ||
+    text.includes("local") ||
+    text === "true" ||
+    text === "1"
+  ) {
+    return "resident";
+  }
+
+  return null;
+}
+
+function getPassengerFareTypeLabel(value: PassengerFareType | null | undefined): string {
+  return value ? PASSENGER_FARE_LABEL[value] : "No informada";
+}
+
+function sameEmail(a?: string | null, b?: string | null): boolean {
+  if (!a || !b) return false;
+  return a.trim().toLowerCase() === b.trim().toLowerCase();
+}
+
 export function ProfileIndexPage(): JSX.Element {
-  const { session } = useAuth();
+  const auth = useAuth() as ReturnType<typeof useAuth> & {
+    logout?: () => void | Promise<void>;
+    signOut?: () => void | Promise<void>;
+  };
+
+  const { session } = auth;
   const history = useHistory();
+
+  type StoredRegistrationProfile = {
+    name?: string | null;
+    firstName?: string | null;
+    lastName?: string | null;
+    email?: string | null;
+    phone?: string | null;
+    rut?: string | null;
+    birthDate?: string | null;
+    passengerFareType?: PassengerFareType | string | null;
+    passengerFareLabel?: string | null;
+    directPassengerFareType?: string | null;
+    directNationality?: string | null;
+    passengerType?: PassengerFareType | string | null;
+    farePassengerType?: PassengerFareType | string | null;
+    nationality?: string | null;
+    isResident?: boolean | string | null;
+  };
+
+  function readStoredRegistrationProfile(): StoredRegistrationProfile {
+    try {
+      const raw = localStorage.getItem("rapago_registration_profile");
+      const parsed = raw ? (JSON.parse(raw) as StoredRegistrationProfile) : {};
+      const directFareType =
+        localStorage.getItem("rapago_passenger_fare_type") ??
+        localStorage.getItem("rapago_profile_passenger_type") ??
+        localStorage.getItem("rapago_fare_passenger_type") ??
+        localStorage.getItem("farePassengerType") ??
+        localStorage.getItem("passengerType");
+      const directNationality =
+        localStorage.getItem("rapago_profile_nationality") ??
+        localStorage.getItem("rapago_nationality") ??
+        localStorage.getItem("nationality");
+
+      return {
+        ...parsed,
+        phone: parsed.phone ?? localStorage.getItem("rapago_profile_phone"),
+        rut: parsed.rut ?? localStorage.getItem("rapago_profile_rut"),
+        passengerFareType:
+          parsed.passengerFareType ??
+          parsed.farePassengerType ??
+          parsed.passengerType ??
+          null,
+        passengerFareLabel:
+          parsed.passengerFareLabel ?? parsed.nationality ?? null,
+        directPassengerFareType: directFareType,
+        directNationality,
+        nationality: parsed.nationality ?? parsed.passengerFareLabel ?? null,
+      };
+    } catch {
+      return {};
+    }
+  }
+
+  function persistStoredRegistrationProfile(data: Partial<StoredRegistrationProfile>): void {
+    try {
+      const current = readStoredRegistrationProfile();
+      const next = { ...current, ...data };
+
+      localStorage.setItem("rapago_registration_profile", JSON.stringify(next));
+
+      if (next.phone) localStorage.setItem("rapago_profile_phone", next.phone);
+      if (next.rut) localStorage.setItem("rapago_profile_rut", next.rut);
+
+      const normalizedFareType = normalizePassengerFareType(
+        next.passengerFareType,
+        next.farePassengerType,
+        next.passengerType,
+        next.nationality,
+        next.passengerFareLabel,
+        next.isResident,
+      );
+
+      if (normalizedFareType) {
+        localStorage.setItem("rapago_passenger_fare_type", normalizedFareType);
+        localStorage.setItem("rapago_profile_passenger_type", normalizedFareType);
+        localStorage.setItem("rapago_profile_nationality", getPassengerFareTypeLabel(normalizedFareType));
+      }
+    } catch {
+      // No bloquea el perfil si localStorage no está disponible.
+    }
+  }
+
+  function getSessionPhone(user: unknown): string {
+    if (!user || typeof user !== "object") return "";
+
+    const value = (user as { phone?: string | null }).phone;
+    return typeof value === "string" ? value.trim() : "";
+  }
+
+  function getAutoPhone(profilePhone?: string | null): string {
+    const stored = readStoredRegistrationProfile();
+
+    return (
+      profilePhone?.trim() ||
+      getSessionPhone(session?.user) ||
+      stored.phone?.trim() ||
+      ""
+    );
+  }
+
+  function getAutoPassengerFareType(profileCandidate?: unknown): PassengerFareType | null {
+    const stored = readStoredRegistrationProfile();
+    const profileObject = profileCandidate && typeof profileCandidate === "object"
+      ? (profileCandidate as Record<string, unknown>)
+      : {};
+    const sessionUser = session?.user && typeof session.user === "object"
+      ? (session.user as Record<string, unknown>)
+      : {};
+
+    const profileEmail = String(profileObject.email ?? sessionUser.email ?? stored.email ?? "").trim();
+
+    const fromProfileOrSession = normalizePassengerFareType(
+      profileObject.passengerFareType,
+      profileObject.farePassengerType,
+      profileObject.passengerType,
+      profileObject.nationality,
+      profileObject.isResident,
+      sessionUser.passengerFareType,
+      sessionUser.farePassengerType,
+      sessionUser.passengerType,
+      sessionUser.nationality,
+      sessionUser.isResident,
+    );
+
+    if (fromProfileOrSession) return fromProfileOrSession;
+
+    const storedBelongsToThisUser = !stored.email || !profileEmail || sameEmail(stored.email, profileEmail);
+
+    if (storedBelongsToThisUser) {
+      const fromStored = normalizePassengerFareType(
+        stored.nationality,
+        stored.passengerFareLabel,
+        stored.farePassengerType,
+        stored.passengerFareType,
+        stored.passengerType,
+        stored.isResident,
+      ) ??
+      normalizePassengerFareType(
+        stored.directNationality,
+        stored.directPassengerFareType,
+      );
+
+      if (fromStored) return fromStored;
+    }
+
+    return null;
+  }
 
   const [profile,    setProfile]    = useState<ProfileData | null>(null);
   const [loadError,  setLoadError]  = useState<string | null>(null);
@@ -66,6 +289,8 @@ export function ProfileIndexPage(): JSX.Element {
 
   const [nameInput,      setNameInput]      = useState("");
   const [avatarInput,    setAvatarInput]    = useState("");
+  const [phoneInput,     setPhoneInput]     = useState("");
+  const [passengerFareType, setPassengerFareType] = useState<PassengerFareType | null>(null);
   const [saving,         setSaving]         = useState(false);
   const [saveError,      setSaveError]      = useState<string | null>(null);
   const [saveSuccess,    setSaveSuccess]    = useState(false);
@@ -76,38 +301,88 @@ export function ProfileIndexPage(): JSX.Element {
 
   const loadProfile = useCallback(async () => {
     if (!session?.accessToken) return;
+
     setLoading(true);
     setLoadError(null);
+
     try {
       const data = await profileService.getProfile(session.accessToken);
+      const autoPhone = getAutoPhone((data as ProfileData & { phone?: string | null }).phone);
+      const autoPassengerFareType = getAutoPassengerFareType(data);
+
       setProfile(data);
       setNameInput(data.name);
       setAvatarInput(data.avatarUrl ?? "");
+      setPhoneInput(autoPhone);
+      setPassengerFareType(autoPassengerFareType);
+
+      persistStoredRegistrationProfile({
+        ...(autoPhone ? { phone: autoPhone } : {}),
+        email: data.email,
+        name: data.name,
+        ...(autoPassengerFareType
+          ? {
+              passengerFareType: autoPassengerFareType,
+              passengerFareLabel: getPassengerFareTypeLabel(autoPassengerFareType),
+              nationality: getPassengerFareTypeLabel(autoPassengerFareType),
+              isResident: autoPassengerFareType === "resident",
+            }
+          : {}),
+      });
+
       referralsService.getMyReferral(session.accessToken).then(setReferral).catch(() => {});
     } catch (err) {
+      const fallbackPhone = getAutoPhone(null);
+      const fallbackPassengerFareType = getAutoPassengerFareType(session.user);
+
+      setPassengerFareType(fallbackPassengerFareType);
+
+      if (fallbackPhone || fallbackPassengerFareType) {
+        setPhoneInput(fallbackPhone);
+        persistStoredRegistrationProfile({
+          ...(fallbackPhone ? { phone: fallbackPhone } : {}),
+          email: session.user?.email ?? null,
+          name: session.user?.name ?? null,
+          ...(fallbackPassengerFareType
+            ? {
+                passengerFareType: fallbackPassengerFareType,
+                passengerFareLabel: getPassengerFareTypeLabel(fallbackPassengerFareType),
+                nationality: getPassengerFareTypeLabel(fallbackPassengerFareType),
+                isResident: fallbackPassengerFareType === "resident",
+              }
+            : {}),
+        });
+      }
+
       setLoadError(err instanceof Error ? err.message : "Error al cargar el perfil.");
     } finally {
       setLoading(false);
     }
-  }, [session?.accessToken]);
+  }, [session?.accessToken, session?.user]);
 
   useEffect(() => { void loadProfile(); }, [loadProfile]);
 
   async function handleSave() {
     if (!session?.accessToken || !profile) return;
 
-    // Build payload before entering loading state to avoid a flash of spinner
-    // when there's nothing to save.
-    const payload: { name?: string; avatarUrl?: string | null } = {};
+    const payload: { name?: string; avatarUrl?: string | null; phone?: string } = {};
     const trimmedName = nameInput.trim();
+    const trimmedPhone = phoneInput.trim();
+
     if (trimmedName && trimmedName !== profile.name) {
       payload.name = trimmedName;
     }
+
     const trimmedAvatar = avatarInput.trim();
     const avatarChanged = trimmedAvatar !== (profile.avatarUrl ?? "");
     if (avatarChanged) {
       payload.avatarUrl = trimmedAvatar === "" ? null : trimmedAvatar;
     }
+
+    if (trimmedPhone) {
+      payload.phone = trimmedPhone;
+    }
+
     if (Object.keys(payload).length === 0) {
       setSaveError("No hay cambios para guardar.");
       return;
@@ -116,11 +391,30 @@ export function ProfileIndexPage(): JSX.Element {
     setSaving(true);
     setSaveError(null);
     setSaveSuccess(false);
+
     try {
       const updated = await profileService.updateProfile(session.accessToken, payload);
+      const savedPhone = getAutoPhone((updated as ProfileData & { phone?: string | null }).phone ?? trimmedPhone);
+
       setProfile(updated);
       setNameInput(updated.name);
       setAvatarInput(updated.avatarUrl ?? "");
+      setPhoneInput(savedPhone);
+
+      persistStoredRegistrationProfile({
+        ...(savedPhone ? { phone: savedPhone } : {}),
+        email: updated.email,
+        name: updated.name,
+        ...(passengerFareType
+          ? {
+              passengerFareType,
+              passengerFareLabel: getPassengerFareTypeLabel(passengerFareType),
+              nationality: getPassengerFareTypeLabel(passengerFareType),
+              isResident: passengerFareType === "resident",
+            }
+          : {}),
+      });
+
       setSaveSuccess(true);
     } catch (err) {
       setSaveError(err instanceof Error ? err.message : "Error al guardar los cambios.");
@@ -151,10 +445,28 @@ export function ProfileIndexPage(): JSX.Element {
     } catch { }
   }
 
+  async function handleLogout() {
+    try {
+      if (typeof auth.logout === "function") {
+        await auth.logout();
+      } else if (typeof auth.signOut === "function") {
+        await auth.signOut();
+      } else {
+        localStorage.removeItem("rapago_session");
+        localStorage.removeItem("rapago_auth_session");
+        localStorage.removeItem("auth_session");
+        sessionStorage.clear();
+      }
+    } finally {
+      history.replace(ROUTES.AUTH.LOGIN);
+    }
+  }
+
   const roleHome = profile?.role ? ROLE_HOME[profile.role as keyof typeof ROLE_HOME] : undefined;
 
   return (
     <IonPage>
+      <RapaGoLanguageRuntime />
       <IonHeader>
         <IonToolbar color="primary">
           <IonTitle>Mi Perfil</IonTitle>
@@ -181,6 +493,20 @@ export function ProfileIndexPage(): JSX.Element {
 
         {!loading && profile && (
           <>
+            <RapaGoLanguageCard />
+
+            {!phoneInput.trim() && (
+              <IonCard style={{ margin: "0 0 12px", background: "#fff3cd", border: "1px solid #ffc107" }}>
+                <IonCardContent style={{ padding: "8px 14px" }}>
+                  <IonText>
+                    <p style={{ margin: 0, fontSize: "0.82rem", color: "#6b4700" }}>
+                      Completa tu teléfono para solicitar viajes.
+                    </p>
+                  </IonText>
+                </IonCardContent>
+              </IonCard>
+            )}
+
             {/* Account info */}
             <IonCard style={{ marginBottom: "16px" }}>
               <IonCardHeader>
@@ -189,6 +515,7 @@ export function ProfileIndexPage(): JSX.Element {
               <IonCardContent style={{ paddingTop: 0 }}>
                 <div style={{ display: "flex", flexDirection: "column", gap: "6px", fontSize: "0.9rem" }}>
                   <div><strong>Email:</strong> {profile.email}</div>
+                  <div><strong>Nacionalidad / residencia:</strong> {getPassengerFareTypeLabel(passengerFareType)}</div>
                   <div><strong>Rol:</strong> {ROLE_LABEL[profile.role] ?? profile.role}</div>
                   <div>
                     <strong>Estado:</strong>{" "}
@@ -224,6 +551,29 @@ export function ProfileIndexPage(): JSX.Element {
                     maxlength={100}
                     clearInput
                   />
+                </IonItem>
+
+                <IonItem lines="full" style={{ marginTop: "8px" }}>
+                  <IonLabel position="stacked">Teléfono</IonLabel>
+                  <IonInput
+                    value={phoneInput}
+                    onIonInput={(e) => setPhoneInput(String(e.detail.value ?? ""))}
+                    placeholder="+56 9 1234 5678"
+                    type="tel"
+                    maxlength={20}
+                    clearInput
+                  />
+                </IonItem>
+
+                <IonItem lines="full" style={{ marginTop: "8px" }}>
+                  <IonLabel position="stacked">Nacionalidad / residencia</IonLabel>
+                  <IonInput
+                    value={getPassengerFareTypeLabel(passengerFareType)}
+                    readonly
+                  />
+                  <IonNote slot="helper" style={{ fontSize: "0.7rem" }}>
+                    Este dato se toma automáticamente desde el registro y se usa para calcular tarifas.
+                  </IonNote>
                 </IonItem>
 
                 <IonItem lines="none" style={{ marginTop: "8px" }}>
@@ -308,6 +658,21 @@ export function ProfileIndexPage(): JSX.Element {
                     </IonButton>
                   </>
                 )}
+              </IonCardContent>
+            </IonCard>
+
+            <IonCard style={{ marginTop: "16px", marginBottom: "20px" }}>
+              <IonCardContent>
+                <IonButton
+                  expand="block"
+                  color="danger"
+                  fill="outline"
+                  onClick={() => void handleLogout()}
+                  disabled={saving}
+                  style={{ fontWeight: 800 }}
+                >
+                  Cerrar sesión
+                </IonButton>
               </IonCardContent>
             </IonCard>
           </>

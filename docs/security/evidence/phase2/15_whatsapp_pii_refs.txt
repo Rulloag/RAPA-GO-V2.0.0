@@ -1,0 +1,139 @@
+﻿apps/api/src/modules/notifications/notifications.helpers.ts:1:import { generateWhatsAppLink } from "@rapa-go/shared";
+apps/api/src/modules/notifications/notifications.helpers.ts:30:? generateWhatsAppLink(p.guidePhone, `Nueva reserva en Rapa Go: ${p.serviceTitle} para ${p.passengerName} el ${p.bookingDate}. Confirma en la app.`)
+apps/api/src/modules/notifications/notifications.helpers.ts:54:? generateWhatsAppLink(p.driverPhone, `Hola, soy tu conductor en Rapa Go para el viaje de ${p.origin} a ${p.destination}.`)
+apps/api/src/modules/notifications/notifications.helpers.ts:95:? generateWhatsAppLink(p.operatorPhone, `Nueva reserva de arriendo en Rapa Go: ${p.vehicleName} para ${p.passengerName} del ${p.startDate} al ${p.endDate}.`)
+apps/mobile/src/components/DriverInfoCard.tsx:3:import { WhatsAppButton } from "./WhatsAppButton.js";
+apps/mobile/src/components/DriverInfoCard.tsx:97:<WhatsAppButton phone={phone} message={waMessage} label="Contactar conductor" size="small" />
+apps/mobile/src/components/NotificationBell.tsx:78:WhatsApp
+apps/mobile/src/components/WhatsAppButton.tsx:2:import { logoWhatsapp } from "ionicons/icons";
+apps/mobile/src/components/WhatsAppButton.tsx:3:import { generateWhatsAppLink, formatPhoneForWhatsApp } from "@rapa-go/shared";
+apps/mobile/src/components/WhatsAppButton.tsx:5:interface WhatsAppButtonProps {
+apps/mobile/src/components/WhatsAppButton.tsx:16:export function WhatsAppButton({
+apps/mobile/src/components/WhatsAppButton.tsx:19:label   = "WhatsApp",
+apps/mobile/src/components/WhatsAppButton.tsx:25:}: WhatsAppButtonProps): JSX.Element | null {
+apps/mobile/src/components/WhatsAppButton.tsx:26:const cleaned = formatPhoneForWhatsApp(phone);
+apps/mobile/src/components/WhatsAppButton.tsx:29:const href = generateWhatsAppLink(phone, message);
+apps/mobile/src/components/WhatsAppButton.tsx:45:<IonIcon slot="start" icon={logoWhatsapp} />
+apps/mobile/src/pages/admin/index.tsx:94:import { WhatsAppButton } from "../../components/WhatsAppButton";
+apps/mobile/src/pages/admin/index.tsx:110:const RAPAGO_SUPPORT_WHATSAPP_PHONE = "56947964171";
+apps/mobile/src/pages/admin/index.tsx:127:type AdminCashPaymentDecision = "exact" | "wallet_credit" | "refund_whatsapp" | "driver_overpaid";
+apps/mobile/src/pages/admin/index.tsx:177:refundWhatsappAvailable?: boolean | null;
+apps/mobile/src/pages/admin/index.tsx:301:if (raw === "refund_whatsapp") return "refund_whatsapp";
+apps/mobile/src/pages/admin/index.tsx:362:current.passengerWantsRefund = decision === "refund_whatsapp" || current.passengerWantsRefund || false;
+apps/mobile/src/pages/admin/index.tsx:380:? "refund_whatsapp"
+apps/mobile/src/pages/admin/index.tsx:389:: decision === "refund_whatsapp"
+apps/mobile/src/pages/admin/index.tsx:400:status: decision === "wallet_credit" ? "wallet_available" : decision === "refund_whatsapp" ? "pending_refund" : decision === "driver_overpaid" ? "pending_driver_review" : "completed",
+apps/mobile/src/pages/admin/index.tsx:446:refundWhatsappAvailable: Boolean(item.refundWhatsappAvailable),
+apps/mobile/src/pages/admin/index.tsx:492:benefit.refundWhatsappAvailable === true ||
+apps/mobile/src/pages/admin/index.tsx:578:function buildAdminWalletCreditRefundWhatsAppUrl(benefit: AdminWalletBenefit): string {
+apps/mobile/src/pages/admin/index.tsx:591:return `https://wa.me/${RAPAGO_SUPPORT_WHATSAPP_PHONE}?text=${encodeURIComponent(lines.join("\n"))}`;
+apps/mobile/src/pages/admin/index.tsx:594:function openAdminWalletCreditRefundWhatsApp(benefit: AdminWalletBenefit): void {
+apps/mobile/src/pages/admin/index.tsx:595:const url = buildAdminWalletCreditRefundWhatsAppUrl(benefit);
+apps/mobile/src/pages/admin/index.tsx:738:if (review.decision === "refund_whatsapp") return "Devolución por WhatsApp";
+apps/mobile/src/pages/admin/index.tsx:747:if (review.decision === "refund_whatsapp") {
+apps/mobile/src/pages/admin/index.tsx:758:if (review.decision === "refund_whatsapp") return isAdminCashRefundCompleted(review) ? "success" : "danger";
+apps/mobile/src/pages/admin/index.tsx:1110:if (review.decision === "refund_whatsapp") return !isAdminCashRefundCompleted(review);
+apps/mobile/src/pages/admin/index.tsx:1123:credit.refundWhatsappAvailable && !isAdminWalletCreditRefundCompleted(credit),
+apps/mobile/src/pages/admin/index.tsx:1835:Si el pasajero solicita devolución, se gestiona por WhatsApp con Gerencia de Soporte RAPA GO.
+apps/mobile/src/pages/admin/index.tsx:1915:{credit.refundWhatsappAvailable && !isAdminWalletCreditRefundCompleted(credit) && (
+apps/mobile/src/pages/admin/index.tsx:1920:onClick={() => openAdminWalletCreditRefundWhatsApp(credit)}
+apps/mobile/src/pages/admin/index.tsx:1922:WhatsApp devolución
+apps/mobile/src/pages/admin/index.tsx:1926:{credit.refundWhatsappAvailable && !isAdminWalletCreditRefundCompleted(credit) && (
+apps/mobile/src/pages/admin/index.tsx:2135:const isRefund = review.decision === "refund_whatsapp";
+apps/mobile/src/pages/admin/index.tsx:7968:{/* WhatsApp contacts */}
+apps/mobile/src/pages/admin/index.tsx:7978:<WhatsAppButton
+apps/mobile/src/pages/admin/index.tsx:7979:phone={RAPAGO_SUPPORT_WHATSAPP_PHONE}
+apps/mobile/src/pages/admin/index.tsx:7987:label="WhatsApp conductor"
+apps/mobile/src/pages/admin/index.tsx:7989:<WhatsAppButton
+apps/mobile/src/pages/admin/index.tsx:7990:phone={RAPAGO_SUPPORT_WHATSAPP_PHONE}
+apps/mobile/src/pages/admin/index.tsx:7996:label="WhatsApp pasajero"
+apps/mobile/src/pages/admin/index.tsx:8257:Registra viajes coordinados por teléfono o WhatsApp cuando el
+apps/mobile/src/pages/admin/index.tsx:8519:<WhatsAppButton
+apps/mobile/src/pages/admin/index.tsx:8524:label="WhatsApp pasajero"
+apps/mobile/src/pages/driver/index.tsx:67:import { WhatsAppButton } from "../../components/WhatsAppButton";
+apps/mobile/src/pages/driver/index.tsx:7952:// con aviso por app y WhatsApp al pasajero.
+apps/mobile/src/pages/driver/index.tsx:8105:function buildDriverNoShowWhatsappUrl(ride: DriverRideData, feeClp: number): string | null {
+apps/mobile/src/pages/driver/index.tsx:8117:return `https://wa.me/${phone}?text=${encodeURIComponent(message)}`;
+apps/mobile/src/pages/driver/index.tsx:8120:function buildDriverArrivedWhatsappUrl(ride: DriverRideData, feeClp: number): string | null {
+apps/mobile/src/pages/driver/index.tsx:8132:return `https://wa.me/${phone}?text=${encodeURIComponent(message)}`;
+apps/mobile/src/pages/driver/index.tsx:8135:function notifyPassengerDriverArrivedByAppAndWhatsapp(ride: DriverRideData): void {
+apps/mobile/src/pages/driver/index.tsx:8213:const url = buildDriverArrivedWhatsappUrl(ride, feeClp);
+apps/mobile/src/pages/driver/index.tsx:8224:function notifyPassengerNoShowByAppAndWhatsapp(ride: DriverRideData, feeClp: number): void {
+apps/mobile/src/pages/driver/index.tsx:8254:const url = buildDriverNoShowWhatsappUrl(ride, feeClp);
+apps/mobile/src/pages/driver/index.tsx:8294:? `No show confirmado por conductor: notificó por app/WhatsApp y esperó 5 minutos en el punto. Se cobra el total del servicio desde el pago/tarjeta: ${formatClp(feeClp)}.`
+apps/mobile/src/pages/driver/index.tsx:8295:: `No show confirmado por conductor: notificó por app/WhatsApp y esperó 5 minutos en el punto. Cargo total del servicio pendiente para el próximo viaje: ${formatClp(feeClp)}.`,
+apps/mobile/src/pages/driver/index.tsx:8340:passengerCancellationPolicyText: "No show: cobro íntegro del servicio tras 5 minutos de espera y notificación por app/WhatsApp.",
+apps/mobile/src/pages/driver/index.tsx:11595:notifyPassengerDriverArrivedByAppAndWhatsapp(arrivedRide);
+apps/mobile/src/pages/driver/index.tsx:11793:notifyPassengerNoShowByAppAndWhatsapp(ride, noShowState.feeClp);
+apps/mobile/src/pages/driver/index.tsx:11811:setError(`No show registrado. Se notificó por app/WhatsApp y se aplicó cobro total del servicio: ${formatClp(Number(charge.amountClp ?? 0))}.`);
+apps/mobile/src/pages/driver/index.tsx:14215:notifyPassengerNoShowByAppAndWhatsapp(ride, noShowState.feeClp);
+apps/mobile/src/pages/driver/index.tsx:14248:setLoadError(`No show registrado. Se notificó por app/WhatsApp y se aplicó cobro total del servicio: ${formatClp(Number(charge.amountClp ?? 0))}.`);
+apps/mobile/src/pages/passenger/index.tsx:61:import { WhatsAppButton } from "../../components/WhatsAppButton";
+apps/mobile/src/pages/passenger/index.tsx:5588:<WhatsAppButton
+apps/mobile/src/pages/passenger/index.tsx:5596:<WhatsAppButton
+apps/mobile/src/pages/passenger/pages/HomePage.tsx:26:import { WhatsAppButton } from "../../../components/WhatsAppButton.js";
+apps/mobile/src/pages/passenger/pages/HomePage.tsx:573:<WhatsAppButton
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:4895:notes.push("Si se cancela con tarjeta, la penalización se descuenta del pago y el saldo queda como CRÉDITOS PARA PRÓXIMO VIAJE en billetera. Si requiere devolución, debe solicitarla a Gerencia de Soporte RAPA GO por WhatsApp.");
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:4953:notes.push("Política cancelación reserva: desde los últimos 15 minutos se cobra 30% con tope $3.000; el saldo neto queda como CRÉDITOS PARA PRÓXIMO VIAJE. Si necesitas devolución, abre WhatsApp con Gerencia de Soporte RAPA GO.");
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:5307:localNotes.push("Si se cancela con tarjeta, la penalización se descuenta del pago y el saldo queda como CRÉDITOS PARA PRÓXIMO VIAJE en billetera. Si requiere devolución, debe solicitarla a Gerencia de Soporte RAPA GO por WhatsApp.");
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:5360:localNotes.push("Política cancelación reserva: desde los últimos 15 minutos se cobra 30% con tope $3.000; el saldo neto queda como CRÉDITOS PARA PRÓXIMO VIAJE. Si necesitas devolución, abre WhatsApp con Gerencia de Soporte RAPA GO.");
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:6414:<strong>Pago obligatorio con tarjeta:</strong> todas las reservas son con tarjeta. Si cancelas dentro de los últimos 15 minutos, se descuenta 30% con tope $3.000 y el saldo queda como <strong>CRÉDITOS PARA PRÓXIMO VIAJE</strong>. Si necesitas devolución, puedes abrir WhatsApp con Gerencia de Soporte RAPA GO.
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:14:import { WhatsAppButton } from "../../../components/WhatsAppButton.js";
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:23:const RAPAGO_SUPPORT_WHATSAPP_PHONE = "56947964171";
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:24:const RAPAGO_SUPPORT_WHATSAPP_DISPLAY = "+56 9 4796 4171";
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:1027:detail: "No show: cobro íntegro del servicio tras 5 minutos de espera y notificación por app/WhatsApp.",
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:1754:? `El pago original queda registrado como crédito a favor en tu billetera y pasa a revisión del administrador. Si necesitas devolución, puedes gestionarla por WhatsApp con RAPA GO. El cargo de cancelación/no show de ${formatClp(policy.feeClp)} es separado y se sumará automáticamente al próximo viaje.`
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:1891:? `Tu viaje fue cancelado. El saldo del pago queda como CRÉDITOS PARA PRÓXIMO VIAJE en tu billetera. Si necesitas devolución, gestiona por WhatsApp con RAPA GO. El cargo pendiente de ${formatClp(policy.feeClp)} es separado y se cobrará automáticamente en tu próximo viaje.`
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:1892:: "Tu viaje fue cancelado. El saldo del pago queda como CRÉDITOS PARA PRÓXIMO VIAJE en tu billetera. Si necesitas devolución, gestiona por WhatsApp con RAPA GO. No debes ingresar tarjeta, claves ni datos bancarios."
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:4240:const whatsappText = encodeURIComponent(`Hola ${cleanFirstName}, soy tu pasajero de RAPA GO.`);
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:4392:href={safePhone ? `https://wa.me/${safePhone.replace(/^\+/, "")}?text=${whatsappText}` : `https://wa.me/${RAPAGO_SUPPORT_WHATSAPP_PHONE}`}
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:4415:href={safePhone ? `tel:${safePhone}` : `tel:${RAPAGO_SUPPORT_WHATSAPP_DISPLAY.replace(/[^0-9+]/g, "")}`}
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:5697:type PassengerCashPaymentDecision = "exact" | "wallet_credit" | "refund_whatsapp";
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:5853:passengerWantsRefund: input.decision === "refund_whatsapp",
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:5995:`Si el pasajero requiere devolución, debe solicitarla a Gerencia de Soporte RAPA GO por WhatsApp. Viaje ${String(ride.originText ?? "")} → ${String(ride.destinationText ?? "")}.`,
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:6003:refundWhatsappAvailable: true,
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:6032:function buildRapaGoRefundWhatsAppUrl(ride: RideRequestData, review: PassengerCashPaymentReview): string {
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:6033:const phone = RAPAGO_SUPPORT_WHATSAPP_PHONE;
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:6044:return `https://wa.me/${phone}?text=${encodeURIComponent(message)}`;
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:6047:function openPassengerRefundWhatsApp(ride: RideRequestData, review: PassengerCashPaymentReview): void {
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:6048:const url = buildRapaGoRefundWhatsAppUrl(ride, review);
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:6057:function buildRapaGoCardCancelRefundWhatsAppUrl(ride: RideRequestData): string {
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:6058:const phone = RAPAGO_SUPPORT_WHATSAPP_PHONE;
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:6084:return `https://wa.me/${phone}?text=${encodeURIComponent(message)}`;
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:6087:function openRapaGoCardCancelRefundWhatsApp(ride: RideRequestData): void {
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:6092:const url = buildRapaGoCardCancelRefundWhatsAppUrl(ride);
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:6186:decision: "refund_whatsapp",
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:6192:openPassengerRefundWhatsApp(ride, saved);
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:6197:const isRefund = review.decision === "refund_whatsapp";
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:6214:{isRefund && "📲 Devolución solicitada por WhatsApp"}
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:6226:Abrimos WhatsApp con el detalle de la devolución por <strong>{formatClp(review.overpaidClp)}</strong>. También quedó registrado para revisión del administrador.
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:6236:onClick={() => openPassengerRefundWhatsApp(ride, review)}
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:6238:Abrir WhatsApp de devolución
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:6319:Has pagado de más: <strong>{formatClp(overpaidClp)}</strong>. ¿Quieres usar ese dinero como saldo a favor o quieres que te devolvamos ese dinero por WhatsApp?
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:6389:return `${policy.message} ${policy.detail} Si confirmas, cancelaremos el viaje y podrás gestionar la devolución segura con RAPA GO por WhatsApp. El cargo de ${formatClp(policy.feeClp)} se sumará automáticamente a tu próximo viaje como cobro separado. ¿Confirmas cancelar?`;
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:6613:onClick={() => openRapaGoCardCancelRefundWhatsApp(ride)}
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:6635:<br />El pago queda como crédito a favor en tu billetera y pasa a revisión del administrador. Si necesitas devolución, gestiona con RAPA GO por WhatsApp. No entregues claves ni datos de tu tarjeta.
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:6641:onClick={() => openRapaGoCardCancelRefundWhatsApp(ride)}
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:7004:<WhatsAppButton
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:7005:phone={RAPAGO_SUPPORT_WHATSAPP_PHONE}
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:7214:"Como el pago fue con tarjeta/MercadoPago, el saldo neto queda como CRÉDITOS PARA PRÓXIMO VIAJE en tu billetera. Si necesitas devolución, se gestiona por WhatsApp con RAPA GO. Esta opción no aplica para efectivo.",
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:7218:"Presiona Cancelar/devolución para abrir WhatsApp y dejar la devolución registrada con nosotros.",
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:7762:if (ride) openRapaGoCardCancelRefundWhatsApp(ride);
+apps/mobile/src/pages/passenger/pages/WalletPage.tsx:26:logoWhatsapp,
+apps/mobile/src/pages/passenger/pages/WalletPage.tsx:35:const RAPAGO_SUPPORT_WHATSAPP_PHONE = "56947964171";
+apps/mobile/src/pages/passenger/pages/WalletPage.tsx:59:refundWhatsappAvailable?: boolean | null;
+apps/mobile/src/pages/passenger/pages/WalletPage.tsx:107:refundWhatsappAvailable: Boolean(item.refundWhatsappAvailable),
+apps/mobile/src/pages/passenger/pages/WalletPage.tsx:155:benefit.refundWhatsappAvailable === true ||
+apps/mobile/src/pages/passenger/pages/WalletPage.tsx:161:function buildWalletCreditRefundWhatsAppUrl(benefits: LocalWalletBenefit[]): string {
+apps/mobile/src/pages/passenger/pages/WalletPage.tsx:173:return `https://wa.me/${RAPAGO_SUPPORT_WHATSAPP_PHONE}?text=${encodeURIComponent(lines.join("\n"))}`;
+apps/mobile/src/pages/passenger/pages/WalletPage.tsx:176:function openWalletCreditRefundWhatsApp(benefits: LocalWalletBenefit[]): void {
+apps/mobile/src/pages/passenger/pages/WalletPage.tsx:177:const url = buildWalletCreditRefundWhatsAppUrl(benefits);
+apps/mobile/src/pages/passenger/pages/WalletPage.tsx:646:description="Saldo neto por cancelación con tarjeta/MercadoPago. Si quieres devolución, solicita soporte por WhatsApp."
+apps/mobile/src/pages/passenger/pages/WalletPage.tsx:656:onClick={() => openWalletCreditRefundWhatsApp(cardCancellationCredits)}
+apps/mobile/src/pages/passenger/pages/WalletPage.tsx:659:<IonIcon icon={logoWhatsapp} slot="start" />
+apps/mobile/src/pages/passenger/pages/WalletPage.tsx:660:Solicitar devolución tarjeta por WhatsApp
+packages/shared/src/utils/index.ts:1:export * from "./whatsapp.js";
+packages/shared/src/utils/whatsapp.ts:1:export function formatPhoneForWhatsApp(phone: string): string {
+packages/shared/src/utils/whatsapp.ts:9:export function generateWhatsAppLink(phone: string, message: string): string {
+packages/shared/src/utils/whatsapp.ts:10:const number  = formatPhoneForWhatsApp(phone);
+packages/shared/src/utils/whatsapp.ts:12:return `https://wa.me/${number}?text=${encoded}`;

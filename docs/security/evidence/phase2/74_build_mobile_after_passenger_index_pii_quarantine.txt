@@ -1,0 +1,17 @@
+
+> @rapa-go/mobile@2.0.0 build
+> tsc && vite build
+
+src/pages/passenger/index.tsx(591,38): error TS5076: '||' and '??' operations cannot be mixed without parentheses.
+src/pages/passenger/index.tsx(592,34): error TS5076: '||' and '??' operations cannot be mixed without parentheses.
+src/pages/passenger/index.tsx(593,38): error TS5076: '||' and '??' operations cannot be mixed without parentheses.
+src/pages/passenger/index.tsx(1356,7): error TS5076: '||' and '??' operations cannot be mixed without parentheses.
+src/pages/passenger/index.tsx(1365,7): error TS5076: '||' and '??' operations cannot be mixed without parentheses.
+npm error Lifecycle script `build` failed with error:
+npm error code 2
+npm error path C:\Users\leand\OneDrive\Escritorio\RAPA-GO-V2.0.0\apps\mobile
+npm error workspace @rapa-go/mobile@2.0.0
+npm error location C:\Users\leand\OneDrive\Escritorio\RAPA-GO-V2.0.0\apps\mobile
+npm error command failed
+npm error command C:\WINDOWS\system32\cmd.exe /d /s /c tsc && vite build
+ExitCode=2

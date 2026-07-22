@@ -2,7 +2,7 @@ import { z } from "zod";
 import { RIDE_STATUSES } from "@rapa-go/shared";
 
 const VALID_ROLES   = ["passenger", "driver", "guide", "rental", "rental_operator", "admin"] as const;
-const VALID_STATUSES = ["pending", "active", "suspended", "banned"] as const;
+const VALID_STATUSES = ["pending", "active", "suspended", "banned", "deleted"] as const;
 
 export const listUsersQuerySchema = z.object({
   role:   z.enum(VALID_ROLES).optional(),

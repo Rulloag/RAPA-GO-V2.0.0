@@ -1,6 +1,6 @@
 import { eq, and, isNull, gt } from "drizzle-orm";
 import { db } from "../../db/client.js";
-import { authSessions, refreshTokens } from "../../db/schema/index.js";
+import { authSessions, refreshTokens, users } from "../../db/schema/index.js";
 import { AppError } from "../../shared/errors/AppError.js";
 
 /**
@@ -67,11 +67,13 @@ export class SessionService {
       const rows = await db
         .select({ id: authSessions.id })
         .from(authSessions)
+        .innerJoin(users, eq(authSessions.userId, users.id))
         .where(
           and(
             eq(authSessions.accessTokenHash, accessTokenHash),
             isNull(authSessions.revokedAt),
             gt(authSessions.expiresAt, new Date()),
+            eq(users.status, "active"),
           ),
         )
         .limit(1);
@@ -81,33 +83,36 @@ export class SessionService {
     }
   }
 
-  async findValidRefreshToken(tokenHash: string): Promise<{ id: string; userId: string } | null> {
+  async revokeAllForUser(userId: string): Promise<void> {
+    const now = new Date();
+
     try {
-      const rows = await db
-        .select({ id: refreshTokens.id, userId: refreshTokens.userId })
-        .from(refreshTokens)
-        .where(
-          and(
-            eq(refreshTokens.tokenHash, tokenHash),
-            isNull(refreshTokens.revokedAt),
-            gt(refreshTokens.expiresAt, new Date()),
-          ),
-        )
-        .limit(1);
-      return rows[0] ?? null;
+      await db.transaction(async (tx) => {
+        await tx
+          .update(authSessions)
+          .set({ revokedAt: now })
+          .where(
+            and(
+              eq(authSessions.userId, userId),
+              isNull(authSessions.revokedAt),
+            ),
+          );
+
+        await tx
+          .update(refreshTokens)
+          .set({ revokedAt: now })
+          .where(
+            and(
+              eq(refreshTokens.userId, userId),
+              isNull(refreshTokens.revokedAt),
+            ),
+          );
+      });
     } catch (err) {
-      throw AppError.internal(`Failed to find refresh token: ${String(err)}`);
+      throw AppError.internal(
+        `Failed to revoke all user sessions: ${String(err)}`,
+      );
     }
   }
 
-  async revokeRefreshToken(tokenId: string): Promise<void> {
-    try {
-      await db
-        .update(refreshTokens)
-        .set({ revokedAt: new Date() })
-        .where(eq(refreshTokens.id, tokenId));
-    } catch (err) {
-      throw AppError.internal(`Failed to revoke refresh token: ${String(err)}`);
-    }
-  }
 }

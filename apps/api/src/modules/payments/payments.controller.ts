@@ -4,7 +4,7 @@ import {
   createPaymentSchema,
   prontoPagaWebhookSchema,
   mercadoPagoWebhookSchema,
-} from "./payments.schemas.js";
+} from "./payments.schema.js";
 import { sendOk, sendError } from "../../shared/http/apiResponse.js";
 
 const paymentsService = new PaymentsService();
@@ -39,7 +39,41 @@ export const paymentsController = {
       return;
     }
 
-    sendOk(reply, { urlPay: result.urlPay, paymentId: result.paymentId }, 201);
+    sendOk(reply, {
+      urlPay: result.urlPay,
+      paymentId: result.paymentId,
+      paymentPurpose: result.paymentPurpose,
+      activated: result.activated,
+    }, 201);
+  },
+
+  async getPaymentStatus(request: FastifyRequest, reply: FastifyReply): Promise<void> {
+    const token = extractBearer(request);
+    if (!token) {
+      sendError(reply, { code: "UNAUTHORIZED", message: "Missing Bearer token.", statusCode: 401 });
+      return;
+    }
+
+    const paymentId = String(
+      (request.params as Record<string, unknown> | undefined)?.["paymentId"] ?? "",
+    ).trim();
+
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(paymentId)) {
+      sendError(reply, {
+        code: "VALIDATION_ERROR",
+        message: "paymentId must be a valid UUID.",
+        statusCode: 400,
+      });
+      return;
+    }
+
+    const result = await paymentsService.getPaymentStatus(token, paymentId);
+    if (!result.ok) {
+      sendError(reply, { code: result.code, message: result.message, statusCode: result.statusCode });
+      return;
+    }
+
+    sendOk(reply, result.payment);
   },
 
   async prontoPagaWebhook(request: FastifyRequest, reply: FastifyReply): Promise<void> {
@@ -53,7 +87,6 @@ export const paymentsController = {
       return;
     }
 
-    // ProntoPaga embeds the signature in the body — headers are not needed.
     const result = await paymentsService.handleWebhook(
       "prontopaga",
       parsed.data as Record<string, unknown>,
@@ -79,7 +112,6 @@ export const paymentsController = {
       return;
     }
 
-    // MercadoPago signs via x-signature and x-request-id headers.
     const headers: Record<string, string> = {
       "x-signature":   String(request.headers["x-signature"]   ?? ""),
       "x-request-id":  String(request.headers["x-request-id"]  ?? ""),
@@ -97,24 +129,5 @@ export const paymentsController = {
     }
 
     sendOk(reply, { processed: result.processed });
-  },
-
-  async refundPayment(
-    request: FastifyRequest<{ Params: { id: string } }>,
-    reply: FastifyReply,
-  ): Promise<void> {
-    const token = extractBearer(request);
-    if (!token) {
-      sendError(reply, { code: "UNAUTHORIZED", message: "Missing Bearer token.", statusCode: 401 });
-      return;
-    }
-
-    const result = await paymentsService.refundPayment(token, request.params.id);
-    if (!result.ok) {
-      sendError(reply, { code: result.code, message: result.message, statusCode: result.statusCode });
-      return;
-    }
-
-    sendOk(reply, { refunded: result.refunded });
   },
 };

@@ -1,0 +1,1725 @@
+﻿# apps/api/src/modules/rides/rides.service.ts
+## async cancelRideRequest
+  608:           const discountPercent = refCode.discountAmount;
+  609:           finalFare = Math.round(baseFare * (1 - discountPercent / 100));
+  610:           discountInfo = { discountPercent, originalFare: baseFare };
+  611:         }
+  612:       }
+  613:     } catch {
+  614:       // No bloquea crear el viaje.
+  615:     }
+  616: 
+  617:     const row = await ridesRepo.create(
+  618:       auth.userId,
+  619:       input.originText,
+  620:       input.destinationText,
+  621:       notesForStorage,
+  622:       finalFare,
+  623:     );
+  624: 
+  625:     return { ok: true, ride: toResponse(row, discountInfo) };
+  626:   }
+  627: 
+  628:   async cancelRideRequest(
+  629:     accessToken: string,
+  630:     rideId: string,
+  631:   ): Promise<RideResult> {
+  632:     const auth = await authenticate(accessToken);
+  633:     if (!auth.ok) return auth;
+  634: 
+  635:     if (auth.role !== "passenger" && auth.role !== "driver") {
+  636:       return {
+  637:         ok: false,
+  638:         code: "AUTH_FORBIDDEN",
+  639:         message:
+  640:           "Only passengers or drivers can cancel their own ride requests.",
+  641:         statusCode: 403,
+  642:       };
+  643:     }
+  644: 
+  645:     const existing = await ridesRepo.findByIdAndPassenger(
+  646:       rideId,
+  647:       auth.userId,
+  648:     );
+  649: 
+  650:     if (!existing) {
+  651:       return {
+  652:         ok: false,
+  653:         code: "NOT_FOUND",
+  654:         message: "Ride request not found.",
+  655:         statusCode: 404,
+  656:       };
+  657:     }
+  658: 
+  659:     if (existing.status !== "requested") {
+  660:       return {
+  661:         ok: false,
+  662:         code: "RIDE_CANNOT_CANCEL",
+  663:         message: `Ride request cannot be cancelled â€” current status is '${existing.status}'.`,
+  664:         statusCode: 409,
+  665:       };
+  666:     }
+  667: 
+  668:     const cancelled = await ridesRepo.cancel(existing.id);
+  669:     return { ok: true, ride: toResponse(cancelled) };
+  670:   }
+  671: 
+  672:   async listAvailableRides(
+  673:     accessToken: string,
+  674:   ): Promise<AvailableRidesResult> {
+  675:     const auth = await authenticate(accessToken);
+  676:     if (!auth.ok) return auth;
+  677: 
+  678:     if (auth.role !== "driver") {
+  679:       return {
+  680:         ok: false,
+  681:         code: "AUTH_FORBIDDEN",
+  682:         message: "Only drivers can view available rides.",
+  683:         statusCode: 403,
+  684:       };
+  685:     }
+  686: 
+  687:     const rows = await ridesRepo.findAvailable();
+  688:     const readyRows = rows.filter(isReadyForDriverSearch);
+  689: 
+  690:     return { ok: true, rides: readyRows.map(toAvailableResponse) };
+  691:   }
+  692: 
+  693:   async acceptRideRequest(
+  694:     accessToken: string,
+  695:     rideId: string,
+  696:   ): Promise<RideResult> {
+  697:     const auth = await authenticate(accessToken);
+  698:     if (!auth.ok) return auth;
+  699: 
+  700:     if (auth.role !== "driver") {
+  701:       return {
+  702:         ok: false,
+  703:         code: "AUTH_FORBIDDEN",
+  704:         message: "Only drivers can accept ride requests.",
+  705:         statusCode: 403,
+  706:       };
+  707:     }
+  708: 
+  709:     const accepted = await ridesRepo.accept(rideId, auth.userId);
+  710: 
+  711:     if (!accepted) {
+  712:       const existing = await ridesRepo.findById(rideId);
+  713: 
+  714:       if (!existing) {
+  715:         return {
+  716:           ok: false,
+  717:           code: "NOT_FOUND",
+  718:           message: "Ride request not found.",
+  719:           statusCode: 404,
+  720:         };
+  721:       }
+  722: 
+  723:       if (existing.status === "accepted") {
+  724:         return {
+  725:           ok: false,
+  726:           code: "RIDE_ALREADY_ACCEPTED",
+  727:           message:
+  728:             "This ride has already been accepted by another driver.",
+  729:           statusCode: 409,
+  730:         };
+  731:       }
+  732: 
+  733:       return {
+  734:         ok: false,
+  735:         code: "RIDE_CANNOT_ACCEPT",
+  736:         message: `Ride request cannot be accepted â€” current status is '${existing.status}'.`,
+  737:         statusCode: 409,
+  738:       };
+  739:     }
+  740: 
+  741:     const acceptedResp = toResponse(accepted);
+  742: 
+  743:     import("../notifications/notifications.helpers.js")
+  744:       .then(({ notifyPassengerDriverAssigned }) => {
+  745:         notifyPassengerDriverAssigned({
+  746:           passengerUserId: acceptedResp.passengerUserId,
+  747:           driverName: acceptedResp.driverName ?? "Tu conductor",
+  748:           driverPhone: acceptedResp.driverPhone ?? null,
+
+## async cancelAcceptedRide
+ 1005:       if (existing.status !== "driver_arrived") {
+ 1006:         return {
+ 1007:           ok: false,
+ 1008:           code: "RIDE_CANNOT_START",
+ 1009:           message: "Driver must mark arrival before starting the ride.",
+ 1010:           statusCode: 409,
+ 1011:         };
+ 1012:       }
+ 1013: 
+ 1014:       return {
+ 1015:         ok: false,
+ 1016:         code: "AUTH_FORBIDDEN",
+ 1017:         message: "You can only start rides assigned to you.",
+ 1018:         statusCode: 403,
+ 1019:       };
+ 1020:     }
+ 1021: 
+ 1022:     return { ok: true, ride: toResponse(started) };
+ 1023:   }
+ 1024: 
+ 1025:   async cancelAcceptedRide(
+ 1026:     accessToken: string,
+ 1027:     rideId: string,
+ 1028:     input: CancelAcceptedInput,
+ 1029:   ): Promise<RideResult> {
+ 1030:     const auth = await authenticate(accessToken);
+ 1031: 
+ 1032:     if (!auth.ok) return auth;
+ 1033: 
+ 1034:     if (auth.role !== "passenger" && auth.role !== "driver") {
+ 1035:       return {
+ 1036:         ok: false,
+ 1037:         code: "AUTH_FORBIDDEN",
+ 1038:         message: "Only passengers or drivers can cancel rides.",
+ 1039:         statusCode: 403,
+ 1040:       };
+ 1041:     }
+ 1042: 
+ 1043:     const existing = await ridesRepo.findById(rideId);
+ 1044: 
+ 1045:     if (!existing) {
+ 1046:       return {
+ 1047:         ok: false,
+ 1048:         code: "NOT_FOUND",
+ 1049:         message: "Ride request not found.",
+ 1050:         statusCode: 404,
+ 1051:       };
+ 1052:     }
+ 1053: 
+ 1054:     if (auth.role === "passenger" && existing.passengerUserId !== auth.userId) {
+ 1055:       return {
+ 1056:         ok: false,
+ 1057:         code: "AUTH_FORBIDDEN",
+ 1058:         message: "You can only cancel your own rides.",
+ 1059:         statusCode: 403,
+ 1060:       };
+ 1061:     }
+ 1062: 
+ 1063:     if (auth.role === "driver" && existing.driverUserId !== auth.userId) {
+ 1064:       return {
+ 1065:         ok: false,
+ 1066:         code: "AUTH_FORBIDDEN",
+ 1067:         message: "You can only cancel rides assigned to you.",
+ 1068:         statusCode: 403,
+ 1069:       };
+ 1070:     }
+ 1071: 
+ 1072:     const cancelled = await ridesRepo.cancelAccepted(
+ 1073:       rideId,
+ 1074:       auth.userId,
+ 1075:       auth.role,
+ 1076:       input.reason ?? null,
+ 1077:     );
+ 1078: 
+ 1079:     if (!cancelled) {
+ 1080:       const refetch = await ridesRepo.findById(rideId);
+ 1081: 
+ 1082:       if (!refetch) {
+ 1083:         return {
+ 1084:           ok: false,
+ 1085:           code: "NOT_FOUND",
+ 1086:           message: "Ride request not found.",
+ 1087:           statusCode: 404,
+ 1088:         };
+ 1089:       }
+ 1090: 
+ 1091:       return {
+ 1092:         ok: false,
+ 1093:         code: "RIDE_CANNOT_CANCEL",
+ 1094:         message: `Ride request cannot be cancelled â€” current status is '${refetch.status}'.`,
+ 1095:         statusCode: 409,
+ 1096:       };
+ 1097:     }
+ 1098: 
+ 1099:     if (cancelled.driverUserId) {
+ 1100:       const { DriverStatusRepository } = await import(
+ 1101:         "../drivers/driverStatus.repository.js"
+ 1102:       );
+ 1103: 
+ 1104:       await new DriverStatusRepository().setAvailable(cancelled.driverUserId);
+ 1105:     }
+ 1106: 
+ 1107:     let paymentRefund: Record<string, unknown> | null = null;
+ 1108: 
+ 1109:     try {
+ 1110:       const { PaymentsService } = await import(
+ 1111:         "../payments/payments.service.js"
+ 1112:       );
+ 1113: 
+ 1114:       const refundResult =
+ 1115:         await new PaymentsService().refundCardPaymentForCancelledRide({
+ 1116:           rideRequestId: rideId,
+ 1117:           cancelledByUserId: auth.userId,
+ 1118:           cancelledByRole: auth.role,
+ 1119:           reason: input.reason ?? null,
+ 1120:         });
+ 1121: 
+ 1122:       if (refundResult.ok) {
+ 1123:         paymentRefund = {
+ 1124:           processed: refundResult.processed,
+ 1125:           refunded: refundResult.refunded,
+ 1126:           skippedReason: refundResult.skippedReason ?? null,
+ 1127:           paymentId: refundResult.paymentId ?? null,
+ 1128:           mercadoPagoPaymentId: refundResult.mercadoPagoPaymentId ?? null,
+ 1129:         };
+ 1130:       } else {
+ 1131:         paymentRefund = {
+ 1132:           processed: true,
+ 1133:           refunded: false,
+ 1134:           failed: true,
+ 1135:           code: refundResult.code,
+ 1136:           message: refundResult.message,
+ 1137:         };
+ 1138:       }
+ 1139:     } catch (err) {
+ 1140:       paymentRefund = {
+ 1141:         processed: true,
+ 1142:         refunded: false,
+ 1143:         failed: true,
+ 1144:         message:
+ 1145:           err instanceof Error
+
+## async completeRide
+  739:     }
+  740: 
+  741:     const acceptedResp = toResponse(accepted);
+  742: 
+  743:     import("../notifications/notifications.helpers.js")
+  744:       .then(({ notifyPassengerDriverAssigned }) => {
+  745:         notifyPassengerDriverAssigned({
+  746:           passengerUserId: acceptedResp.passengerUserId,
+  747:           driverName: acceptedResp.driverName ?? "Tu conductor",
+  748:           driverPhone: acceptedResp.driverPhone ?? null,
+  749:           rideId: acceptedResp.id,
+  750:           origin: acceptedResp.originText,
+  751:           destination: acceptedResp.destinationText,
+  752:         });
+  753:       })
+  754:       .catch(() => {});
+  755: 
+  756:     return { ok: true, ride: toResponse(accepted) };
+  757:   }
+  758: 
+  759:   async completeRide(
+  760:     accessToken: string,
+  761:     rideId: string,
+  762:   ): Promise<RideResult> {
+  763:     const auth = await authenticate(accessToken);
+  764:     if (!auth.ok) return auth;
+  765: 
+  766:     if (auth.role !== "driver") {
+  767:       return {
+  768:         ok: false,
+  769:         code: "AUTH_FORBIDDEN",
+  770:         message: "Only drivers can complete rides.",
+  771:         statusCode: 403,
+  772:       };
+  773:     }
+  774: 
+  775:     const completed = await ridesRepo.complete(rideId, auth.userId);
+  776: 
+  777:     if (!completed) {
+  778:       const existing = await ridesRepo.findById(rideId);
+  779: 
+  780:       if (!existing) {
+  781:         return {
+  782:           ok: false,
+  783:           code: "NOT_FOUND",
+  784:           message: "Ride request not found.",
+  785:           statusCode: 404,
+  786:         };
+  787:       }
+  788: 
+  789:       if (existing.status !== "in_progress") {
+  790:         return {
+  791:           ok: false,
+  792:           code: "RIDE_CANNOT_COMPLETE",
+  793:           message: `Ride cannot be completed â€” current status is '${existing.status}'.`,
+  794:           statusCode: 409,
+  795:         };
+  796:       }
+  797: 
+  798:       return {
+  799:         ok: false,
+  800:         code: "AUTH_FORBIDDEN",
+  801:         message: "You can only complete rides assigned to you.",
+  802:         statusCode: 403,
+  803:       };
+  804:     }
+  805: 
+  806:     if (completed.driverUserId) {
+  807:       const { DriverStatusRepository } = await import(
+  808:         "../drivers/driverStatus.repository.js"
+  809:       );
+  810:       await new DriverStatusRepository().setAvailable(completed.driverUserId);
+  811:     }
+  812: 
+  813:     import("../notifications/notifications.helpers.js")
+  814:       .then(({ notifyPassengerRideCompleted }) => {
+  815:         notifyPassengerRideCompleted({
+  816:           passengerUserId: completed.passengerUserId,
+  817:           rideId: completed.id,
+  818:           origin: completed.originText,
+  819:           destination: completed.destinationText,
+  820:         });
+  821:       })
+  822:       .catch(() => {});
+  823: 
+  824:     return { ok: true, ride: toResponse(completed) };
+  825:   }
+  826: 
+  827:   async markEnRoute(
+  828:     accessToken: string,
+  829:     rideId: string,
+  830:   ): Promise<RideResult> {
+  831:     const auth = await authenticate(accessToken);
+  832:     if (!auth.ok) return auth;
+  833: 
+  834:     if (auth.role !== "driver") {
+  835:       return {
+  836:         ok: false,
+  837:         code: "AUTH_FORBIDDEN",
+  838:         message: "Only drivers can mark rides en-route.",
+  839:         statusCode: 403,
+  840:       };
+  841:     }
+  842: 
+  843:     const updated = await ridesRepo.markEnRoute(rideId, auth.userId);
+  844: 
+  845:     if (!updated) {
+  846:       const existing = await ridesRepo.findById(rideId);
+  847: 
+  848:       if (!existing) {
+  849:         return {
+  850:           ok: false,
+  851:           code: "NOT_FOUND",
+  852:           message: "Ride request not found.",
+  853:           statusCode: 404,
+  854:         };
+  855:       }
+  856: 
+  857:       if (existing.driverUserId !== auth.userId) {
+  858:         return {
+  859:           ok: false,
+  860:           code: "AUTH_FORBIDDEN",
+  861:           message: "You can only update rides assigned to you.",
+  862:           statusCode: 403,
+  863:         };
+  864:       }
+  865: 
+  866:       return {
+  867:         ok: false,
+  868:         code: "RIDE_CANNOT_MARK_EN_ROUTE",
+  869:         message: `Ride cannot be marked en-route â€” current status is '${existing.status}'.`,
+  870:         statusCode: 409,
+  871:       };
+  872:     }
+  873: 
+  874:     const auditService = new (
+  875:       await import("../audit/audit.service.js")
+  876:     ).AuditService();
+  877: 
+  878:     auditService.recordSafe({
+  879:       eventType: "ride.driver_en_route",
+
+## async startRide
+  955:         driverUserId: auth.userId,
+  956:         rideId,
+  957:       },
+  958:     });
+  959: 
+  960:     const arrivedResp = toResponse(updated);
+  961: 
+  962:     import("../notifications/notifications.helpers.js")
+  963:       .then(({ notifyPassengerDriverArrived }) => {
+  964:         notifyPassengerDriverArrived({
+  965:           passengerUserId: arrivedResp.passengerUserId,
+  966:           driverName: arrivedResp.driverName ?? "Tu conductor",
+  967:           rideId: arrivedResp.id,
+  968:         });
+  969:       })
+  970:       .catch(() => {});
+  971: 
+  972:     return { ok: true, ride: toResponse(updated) };
+  973:   }
+  974: 
+  975:   async startRide(
+  976:     accessToken: string,
+  977:     rideId: string,
+  978:   ): Promise<RideResult> {
+  979:     const auth = await authenticate(accessToken);
+  980:     if (!auth.ok) return auth;
+  981: 
+  982:     if (auth.role !== "driver") {
+  983:       return {
+  984:         ok: false,
+  985:         code: "AUTH_FORBIDDEN",
+  986:         message: "Only drivers can start rides.",
+  987:         statusCode: 403,
+  988:       };
+  989:     }
+  990: 
+  991:     const started = await ridesRepo.start(rideId, auth.userId);
+  992: 
+  993:     if (!started) {
+  994:       const existing = await ridesRepo.findById(rideId);
+  995: 
+  996:       if (!existing) {
+  997:         return {
+  998:           ok: false,
+  999:           code: "NOT_FOUND",
+ 1000:           message: "Ride request not found.",
+ 1001:           statusCode: 404,
+ 1002:         };
+ 1003:       }
+ 1004: 
+ 1005:       if (existing.status !== "driver_arrived") {
+ 1006:         return {
+ 1007:           ok: false,
+ 1008:           code: "RIDE_CANNOT_START",
+ 1009:           message: "Driver must mark arrival before starting the ride.",
+ 1010:           statusCode: 409,
+ 1011:         };
+ 1012:       }
+ 1013: 
+ 1014:       return {
+ 1015:         ok: false,
+ 1016:         code: "AUTH_FORBIDDEN",
+ 1017:         message: "You can only start rides assigned to you.",
+ 1018:         statusCode: 403,
+ 1019:       };
+ 1020:     }
+ 1021: 
+ 1022:     return { ok: true, ride: toResponse(started) };
+ 1023:   }
+ 1024: 
+ 1025:   async cancelAcceptedRide(
+ 1026:     accessToken: string,
+ 1027:     rideId: string,
+ 1028:     input: CancelAcceptedInput,
+ 1029:   ): Promise<RideResult> {
+ 1030:     const auth = await authenticate(accessToken);
+ 1031: 
+ 1032:     if (!auth.ok) return auth;
+ 1033: 
+ 1034:     if (auth.role !== "passenger" && auth.role !== "driver") {
+ 1035:       return {
+ 1036:         ok: false,
+ 1037:         code: "AUTH_FORBIDDEN",
+ 1038:         message: "Only passengers or drivers can cancel rides.",
+ 1039:         statusCode: 403,
+ 1040:       };
+ 1041:     }
+ 1042: 
+ 1043:     const existing = await ridesRepo.findById(rideId);
+ 1044: 
+ 1045:     if (!existing) {
+ 1046:       return {
+ 1047:         ok: false,
+ 1048:         code: "NOT_FOUND",
+ 1049:         message: "Ride request not found.",
+ 1050:         statusCode: 404,
+ 1051:       };
+ 1052:     }
+ 1053: 
+ 1054:     if (auth.role === "passenger" && existing.passengerUserId !== auth.userId) {
+ 1055:       return {
+ 1056:         ok: false,
+ 1057:         code: "AUTH_FORBIDDEN",
+ 1058:         message: "You can only cancel your own rides.",
+ 1059:         statusCode: 403,
+ 1060:       };
+ 1061:     }
+ 1062: 
+ 1063:     if (auth.role === "driver" && existing.driverUserId !== auth.userId) {
+ 1064:       return {
+ 1065:         ok: false,
+ 1066:         code: "AUTH_FORBIDDEN",
+ 1067:         message: "You can only cancel rides assigned to you.",
+ 1068:         statusCode: 403,
+ 1069:       };
+ 1070:     }
+ 1071: 
+ 1072:     const cancelled = await ridesRepo.cancelAccepted(
+ 1073:       rideId,
+ 1074:       auth.userId,
+ 1075:       auth.role,
+ 1076:       input.reason ?? null,
+ 1077:     );
+ 1078: 
+ 1079:     if (!cancelled) {
+ 1080:       const refetch = await ridesRepo.findById(rideId);
+ 1081: 
+ 1082:       if (!refetch) {
+ 1083:         return {
+ 1084:           ok: false,
+ 1085:           code: "NOT_FOUND",
+ 1086:           message: "Ride request not found.",
+ 1087:           statusCode: 404,
+ 1088:         };
+ 1089:       }
+ 1090: 
+ 1091:       return {
+ 1092:         ok: false,
+ 1093:         code: "RIDE_CANNOT_CANCEL",
+ 1094:         message: `Ride request cannot be cancelled â€” current status is '${refetch.status}'.`,
+ 1095:         statusCode: 409,
+
+# apps/mobile/src/pages/passenger/pages/TripsPage.tsx
+## function calculatePassengerCancellationPolicy
+NOT_FOUND
+
+## function savePassengerPendingChargeFromCancellation
+ 1713:         cardRefundNotice: typeof item.cardRefundNotice === "string" ? item.cardRefundNotice : null,
+ 1714:       }))
+ 1715:       .filter((charge) => charge.amountClp > 0);
+ 1716:   } catch {
+ 1717:     return [];
+ 1718:   }
+ 1719: }
+ 1720: 
+ 1721: function writePassengerPendingCharges(charges: PassengerPendingCharge[]): void {
+ 1722:   try {
+ 1723:     localStorage.setItem(RAPAGO_PASSENGER_PENDING_CHARGES_KEY, JSON.stringify(charges.slice(0, 250)));
+ 1724:     window.dispatchEvent(new CustomEvent(RAPAGO_PASSENGER_PENDING_CHARGE_EVENT, { detail: { charges } }));
+ 1725:     window.dispatchEvent(new CustomEvent("rapago:admin-passenger-pending-charge-updated", { detail: { charges } }));
+ 1726:     window.dispatchEvent(new CustomEvent("rapago:admin-rides-updated", { detail: { charges } }));
+ 1727:     window.dispatchEvent(new CustomEvent("rapago:wallet-updated", { detail: { charges } }));
+ 1728:   } catch {
+ 1729:     // No bloquea la cancelaciÃ³n si el navegador no permite guardar.
+ 1730:   }
+ 1731: }
+ 1732: 
+ 1733: function savePassengerPendingChargeFromCancellation(
+ 1734:   ride: RideRequestData,
+ 1735:   policy: PassengerCancellationPolicy,
+ 1736: ): void {
+ 1737:   if (policy.feeClp <= 0) return;
+ 1738: 
+ 1739:   try {
+ 1740:     const record = ride as RideRequestData & Record<string, unknown>;
+ 1741:     const rideId = String(record.id ?? record.rideId ?? record.originalRideId ?? record.serverRideId ?? "").trim();
+ 1742:     const rideKey = getPassengerPendingChargeRideKey(record);
+ 1743: 
+ 1744:     const notification: PassengerNotificationPayload = {
+ 1745:       id: `backend-charge-review-${rideId || rideKey}-${Date.now()}`,
+ 1746:       rideId: rideId || rideKey,
+ 1747:       type: "backend_charge_review_required",
+ 1748:       title: "Cargo sujeto a revision",
+ 1749:       body: `La cancelacion/no show fue informada. El monto referencial ${formatClp(policy.feeClp)} no se carga desde este dispositivo; debe confirmarlo el backend/admin.`,
+ 1750:       createdAt: new Date().toISOString(),
+ 1751:       read: false,
+ 1752:     };
+ 1753: 
+ 1754:     const current = readPassengerNotifications();
+ 1755:     localStorage.setItem(
+ 1756:       RAPAGO_PASSENGER_NOTIFICATIONS_KEY,
+ 1757:       JSON.stringify([notification, ...current].slice(0, 100)),
+ 1758:     );
+ 1759: 
+ 1760:     window.dispatchEvent(new CustomEvent("rapago:passenger-notifications-updated", { detail: { notification, ride } }));
+ 1761:     window.dispatchEvent(new CustomEvent("rapago:passenger-rides-updated", { detail: { ride, notification, policy } }));
+ 1762:   } catch {
+ 1763:     // Visual solamente. No crea cargos reales desde localStorage.
+ 1764:   }
+ 1765: }
+ 1766: 
+ 1767: function isPassengerCancellationCardPayment(ride: Partial<RideRequestData> & Record<string, unknown>): boolean {
+ 1768:   const text = [
+ 1769:     ride.paymentMethod,
+ 1770:     ride.paymentProvider,
+ 1771:     ride.paymentStatus,
+ 1772:     ride.paymentId,
+ 1773:     ride.mercadoPagoPaymentId,
+ 1774:     ride.notes,
+ 1775:   ]
+ 1776:     .map((value) => String(value ?? "").toLowerCase())
+ 1777:     .join(" ");
+ 1778: 
+ 1779:   return (
+ 1780:     text.includes("tarjeta") ||
+ 1781:     text.includes("card") ||
+ 1782:     text.includes("mercadopago") ||
+ 1783:     text.includes("mercado pago") ||
+ 1784:     text.includes("prontopaga") ||
+ 1785:     text.includes("webpay") ||
+ 1786:     Boolean(ride.paymentId || ride.mercadoPagoPaymentId)
+ 1787:   );
+ 1788: }
+ 1789: 
+ 1790: function isPassengerCancellationCashPaymentForRefundAction(
+ 1791:   ride: Partial<RideRequestData> & Record<string, unknown>,
+ 1792: ): boolean {
+ 1793:   const text = [
+ 1794:     ride.paymentMethod,
+ 1795:     ride.paymentProvider,
+ 1796:     ride.paymentStatus,
+ 1797:     ride.notes,
+ 1798:   ]
+ 1799:     .map((value) => String(value ?? "").toLowerCase())
+ 1800:     .join(" ");
+ 1801: 
+ 1802:   return (
+ 1803:     text.includes("efectivo") ||
+ 1804:     text.includes("cash") ||
+ 1805:     text.includes("pago: efectivo") ||
+ 1806:     text.includes("pago efectivo") ||
+ 1807:     text.includes("forma de pago seleccionada: efectivo") ||
+ 1808:     text.includes("forma de pago: efectivo")
+ 1809:   );
+ 1810: }
+ 1811: 
+ 1812: function isPassengerCancellationCardPaymentForRefundAction(
+ 1813:   ride: Partial<RideRequestData> & Record<string, unknown>,
+ 1814: ): boolean {
+ 1815:   // Regla RAPA GO:
+ 1816:   // El botÃ³n â€œCancelar/devoluciÃ³nâ€ es ÃšNICAMENTE para tarjeta/MercadoPago.
+ 1817:   // Si el viaje fue efectivo, jamÃ¡s debe aparecer aunque un registro antiguo
+ 1818:   // haya quedado con flags de refund en localStorage.
+ 1819:   if (isPassengerCancellationCashPaymentForRefundAction(ride)) return false;
+ 1820: 
+ 1821:   return isPassengerCancellationCardPayment(ride);
+ 1822: }
+ 1823: 
+ 1824: function buildPassengerCancelledRide(ride: RideRequestData): RideRequestData {
+ 1825:   const now = new Date().toISOString();
+ 1826:   const policy = getPassengerCancellationPolicyForRide(ride);
+ 1827:   const record = ride as RideRequestData & Record<string, unknown>;
+ 1828:   const isCardPayment = isPassengerCancellationCardPaymentForRefundAction(record);
+ 1829: 
+ 1830:   if (policy.feeClp > 0) {
+ 1831:     savePassengerPendingChargeFromCancellation(ride, policy);
+ 1832:   }
+ 1833: 
+ 1834:   return {
+ 1835:     ...record,
+ 1836:     status: "cancelled",
+ 1837:     cancelledAt: now,
+ 1838:     cancelledByRole: "passenger",
+ 1839:     cancelledBy: "passenger",
+ 1840:     cancellationReason:
+ 1841:       policy.feeClp > 0
+ 1842:         ? `${policy.title}. ${policy.message}`
+ 1843:         : "Cancelado por pasajero.",
+ 1844:     passengerCancellationFeeClp: policy.feeClp,
+ 1845:     passengerCancellationPolicyType: policy.type,
+ 1846:     passengerCancellationPolicyText: policy.detail,
+ 1847:     passengerCancellationChargedAt: policy.feeClp > 0 ? now : null,
+ 1848:     paymentPendingClp: isCardPayment ? 0 : policy.feeClp,
+ 1849:     passengerPendingChargeNextRide: !isCardPayment && policy.feeClp > 0,
+ 1850:     passengerPendingChargeNotice:
+ 1851:       policy.feeClp > 0
+ 1852:         ? isCardPayment
+ 1853:           ? `La penalizaciÃ³n de ${formatClp(policy.feeClp)} se descuenta automÃ¡ticamente del pago realizado. El saldo restante queda como CRÃ‰DITOS PARA PRÃ“XIMO VIAJE en tu billetera.`
+
+## function cancel
+ 1935: function removePassengerRideFromArrayStorage(
+ 1936:   key: string,
+ 1937:   target: Partial<RideRequestData> & Record<string, unknown>,
+ 1938: ): void {
+ 1939:   if (key === "rapago_last_scheduled_ride_for_admin") {
+ 1940:     try {
+ 1941:       const raw = localStorage.getItem(key);
+ 1942:       const parsed = raw ? (JSON.parse(raw) as RideRequestData & Record<string, unknown>) : null;
+ 1943:       if (parsed && isSamePassengerRideCancelTarget(parsed, target)) localStorage.removeItem(key);
+ 1944:     } catch {
+ 1945:       // No bloquea la cancelaciÃ³n local.
+ 1946:     }
+ 1947:     return;
+ 1948:   }
+ 1949: 
+ 1950:   const parsed = readRideArrayStorage(key);
+ 1951:   if (parsed.length === 0) return;
+ 1952:   writeRideArrayStorage(key, parsed.filter((ride) => !isSamePassengerRideCancelTarget(ride, target)));
+ 1953: }
+ 1954: 
+ 1955: function cancelPassengerRideEverywhere(target: RideRequestData): RideRequestData {
+ 1956:   const cancelled = buildPassengerCancelledRide(target);
+ 1957:   savePassengerWalletCreditFromCardCancellation(target, cancelled);
+ 1958: 
+ 1959:   // Quita la solicitud de todas las colas donde aparece como reencolada/activa,
+ 1960:   // para que no vuelva a mostrarse como "Buscando conductor" al actualizar.
+ 1961:   for (const key of PASSENGER_CANCEL_STORAGE_KEYS) {
+ 1962:     if (key !== LOCAL_PASSENGER_RIDES_KEY) {
+ 1963:       removePassengerRideFromArrayStorage(key, cancelled as RideRequestData & Record<string, unknown>);
+ 1964:     }
+ 1965:   }
+ 1966: 
+ 1967:   const local = readLocalPassengerRides();
+ 1968:   let found = false;
+ 1969: 
+ 1970:   const nextLocal = local.map((ride) => {
+ 1971:     if (!isSamePassengerRideCancelTarget(ride as RideRequestData & Record<string, unknown>, cancelled as RideRequestData & Record<string, unknown>)) {
+ 1972:       return ride;
+ 1973:     }
+ 1974: 
+ 1975:     found = true;
+ 1976:     return {
+ 1977:       ...ride,
+ 1978:       ...cancelled,
+ 1979:       id: ride.id || cancelled.id,
+ 1980:       originalRideId:
+ 1981:         (ride as RideRequestData & Record<string, unknown>).originalRideId ??
+ 1982:         (cancelled as RideRequestData & Record<string, unknown>).originalRideId ??
+ 1983:         cancelled.id,
+ 1984:     } as RideRequestData;
+ 1985:   });
+ 1986: 
+ 1987:   if (!found) nextLocal.unshift(cancelled);
+ 1988: 
+ 1989:   saveLocalPassengerRides(purgeExpiredCancelledRideRecords(dedupeRideList(nextLocal as Array<RideRequestData & Record<string, unknown>>)).slice(0, 200) as RideRequestData[]);
+ 1990: 
+ 1991:   window.dispatchEvent(new CustomEvent("rapago:driver-available-rides-updated", { detail: { cancelled } }));
+ 1992:   window.dispatchEvent(new CustomEvent(RAPAGO_REQUEUED_RIDES_EVENT, { detail: { cancelled } }));
+ 1993: 
+ 1994:   return cancelled;
+ 1995: }
+ 1996: 
+ 1997: function applyPassengerCancelledRideToList(
+ 1998:   rides: RideRequestData[],
+ 1999:   target: RideRequestData,
+ 2000:   cancelled: RideRequestData,
+ 2001: ): RideRequestData[] {
+ 2002:   let found = false;
+ 2003: 
+ 2004:   const next = rides.map((ride) => {
+ 2005:     if (!isSamePassengerRideCancelTarget(ride as RideRequestData & Record<string, unknown>, target as RideRequestData & Record<string, unknown>)) {
+ 2006:       return ride;
+ 2007:     }
+ 2008: 
+ 2009:     found = true;
+ 2010:     return {
+ 2011:       ...ride,
+ 2012:       ...cancelled,
+ 2013:       id: ride.id || cancelled.id,
+ 2014:       originalRideId:
+ 2015:         (ride as RideRequestData & Record<string, unknown>).originalRideId ??
+ 2016:         (cancelled as RideRequestData & Record<string, unknown>).originalRideId ??
+ 2017:         cancelled.id,
+ 2018:     } as RideRequestData;
+ 2019:   });
+ 2020: 
+ 2021:   if (!found) next.unshift(cancelled);
+ 2022: 
+ 2023:   return mergeRides(next, []);
+ 2024: }
+ 2025: 
+ 2026: function applyPassengerCancelInView(ride: RideRequestData, reason = "Cancelado por pasajero."): RideRequestData {
+ 2027:   return {
+ 2028:     ...ride,
+ 2029:     status: "cancelled",
+ 2030:     cancelledAt: new Date().toISOString(),
+ 2031:     cancelledByRole: "passenger",
+ 2032:     cancelledBy: "passenger",
+ 2033:     cancellationReason: reason,
+ 2034:     requeuedReason: null,
+ 2035:     forceActiveAfterDriverCancel: false,
+ 2036:     passengerNotice: null,
+ 2037:     passengerNotification: null,
+ 2038:   } as RideRequestData;
+ 2039: }
+ 2040: 
+ 2041: function isPassengerPermissionMessage(message: unknown): boolean {
+ 2042:   const text = String(message ?? "").toLowerCase();
+ 2043: 
+ 2044:   return (
+ 2045:     text.includes("403") ||
+ 2046:     text.includes("forbidden") ||
+ 2047:     text.includes("only passengers can access ride requests") ||
+ 2048:     text.includes("only passengers") ||
+ 2049:     text.includes("solo pasajeros") ||
+ 2050:     text.includes("unauthorized") ||
+ 2051:     text.includes("401") ||
+ 2052:     text.includes("token") ||
+ 2053:     text.includes("sesiÃ³n") ||
+ 2054:     text.includes("session")
+ 2055:   );
+ 2056: }
+ 2057: 
+ 2058: function safeTripsErrorMessage(message: string | null): string | null {
+ 2059:   if (!message) return null;
+ 2060: 
+ 2061:   if (isPassengerPermissionMessage(message)) {
+ 2062:     // No mostramos el error tÃ©cnico cuando el usuario conductor cambiÃ³ a vista pasajero.
+ 2063:     // El backend debe permitir driver/admin en rutas de pasajero para operaciÃ³n real.
+ 2064:     return null;
+ 2065:   }
+ 2066: 
+ 2067:   return message;
+ 2068: }
+ 2069: 
+ 2070: function readLocalPassengerRides(): RideRequestData[] {
+ 2071:   try {
+ 2072:     const raw = localStorage.getItem(LOCAL_PASSENGER_RIDES_KEY);
+ 2073:     if (!raw) return [];
+ 2074: 
+ 2075:     const parsed = JSON.parse(raw) as RideRequestData[];
+
+## cancelAccepted
+ 7150:     rideId: string,
+ 7151:     mode: "requested" | "accepted",
+ 7152:   ): Promise<void> {
+ 7153:     setCancelling(rideId);
+ 7154:     setCancelError(null);
+ 7155: 
+ 7156:     const cancelledLocal = cancelPassengerRideEverywhere(targetRide);
+ 7157:     setAllRides((prev) => applyPassengerCancelledRideToList(prev, targetRide, cancelledLocal));
+ 7158: 
+ 7159:     try {
+ 7160:       const effectiveStatus = getEffectivePassengerRideStatus(targetRide);
+ 7161:       const shouldTryBackend =
+ 7162:         Boolean(session?.accessToken) &&
+ 7163:         !rideId.startsWith("local-") &&
+ 7164:         !rideId.startsWith("admin-local-") &&
+ 7165:         !isDriverCancelledRequeuedRide(targetRide as RideRequestData & Record<string, unknown>) &&
+ 7166:         (mode === "accepted" || !["scheduled", "driver_scheduled"].includes(effectiveStatus));
+ 7167: 
+ 7168:       if (shouldTryBackend) {
+ 7169:         if (mode === "accepted") {
+ 7170:           await ridesService.cancelAcceptedRide(session!.accessToken, rideId);
+ 7171:         } else {
+ 7172:           await ridesService.cancelRideRequest(session!.accessToken, rideId);
+ 7173:         }
+ 7174:       }
+ 7175: 
+ 7176:       showMercadoPagoRefundAlert(targetRide);
+ 7177:       setCancelError(null);
+ 7178:     } catch {
+ 7179:       // Aunque el backend responda 404/409/500, ya cancelamos en localStorage
+ 7180:       // para que el pasajero no quede atrapado con el viaje reencolado activo.
+ 7181:       showMercadoPagoRefundAlert(targetRide);
+ 7182:       setCancelError(null);
+ 7183:     } finally {
+ 7184:       setCancelling(null);
+ 7185:       setPendingCancelAction(null);
+ 7186:       void loadRides();
+ 7187:     }
+ 7188:   }
+ 7189: 
+ 7190:   function requestPassengerCancel(rideId: string, mode: "requested" | "accepted"): void {
+ 7191:     const targetRide =
+ 7192:       allRides.find((ride) => ride.id === rideId) ??
+ 7193:       readLocalPassengerRides().find((ride) => ride.id === rideId) ??
+ 7194:       readPassengerVisibleRequeuedRides(session?.user).find((ride) => ride.id === rideId);
+ 7195: 
+ 7196:     if (!targetRide) return;
+ 7197: 
+ 7198:     const policy = getPassengerCancellationPolicyForRide(targetRide);
+ 7199: 
+ 7200:     // Nunca usamos window.confirm porque en celular aparece como
+ 7201:     // "192.168... dice". Todo queda dentro de la app RAPA GO.
+ 7202:     if (policy.feeClp > 0) {
+ 7203:       setPendingCancelAction({ rideId, mode, ride: targetRide, policy });
+ 7204:       return;
+ 7205:     }
+ 7206: 
+ 7207:     void performPassengerCancel(targetRide, rideId, mode);
+ 7208:   }
+ 7209: 
+ 7210:   async function handleCancel(rideId: string) {
+ 7211:     requestPassengerCancel(rideId, "requested");
+ 7212:   }
+ 7213: 
+ 7214:   async function handleCancelAccepted(rideId: string) {
+ 7215:     requestPassengerCancel(rideId, "accepted");
+ 7216:   }
+ 7217: 
+ 7218:   async function handleSubmitRating() {
+ 7219:     if (!ratingRideId) return;
+ 7220: 
+ 7221:     const targetRide =
+ 7222:       allRides.find((ride) => ride.id === ratingRideId) ??
+ 7223:       readLocalPassengerRides().find((ride) => ride.id === ratingRideId);
+ 7224: 
+ 7225:     if (!targetRide) {
+ 7226:       setRatingError("No encontramos el viaje para calificar.");
+ 7227:       return;
+ 7228:     }
+ 7229: 
+ 7230:     setSubmittingRating(true);
+ 7231:     setRatingError(null);
+ 7232: 
+ 7233:     try {
+ 7234:       const ratingCommentWithExtras = [
+ 7235:         ratingComment.trim(),
+ 7236:         ratingExtras.length > 0 ? `Extras: ${ratingExtras.join(", ")}` : "",
+ 7237:       ].filter(Boolean).join("\n");
+ 7238: 
+ 7239:       // Primero guardamos localmente para que el conductor vea sus estrellas al instante.
+ 7240:       upsertPassengerDriverRating(targetRide, ratingStars, ratingCommentWithExtras, session?.user, ratingExtras);
+ 7241: 
+ 7242:       if (
+ 7243:         session?.accessToken &&
+ 7244:         !ratingRideId.startsWith("local-") &&
+ 7245:         !ratingRideId.startsWith("admin-local-")
+ 7246:       ) {
+ 7247:         try {
+ 7248:           await ridesService.rateRide(
+ 7249:             session.accessToken,
+ 7250:             ratingRideId,
+ 7251:             ratingStars,
+ 7252:             ratingCommentWithExtras || undefined,
+ 7253:           );
+ 7254:         } catch {
+ 7255:           // Si el backend todavÃ­a no guarda rating, el respaldo local mantiene la experiencia tipo Uber.
+ 7256:         }
+ 7257:       }
+ 7258: 
+ 7259:       setRatedIds((prev) => new Set([...prev, ratingRideId]));
+ 7260:       setAllRides((prev) =>
+ 7261:         prev.map((ride) =>
+ 7262:           ride.id === ratingRideId
+ 7263:             ? ({
+ 7264:                 ...(ride as RideRequestData & Record<string, unknown>),
+ 7265:                 passengerRatedDriver: true,
+ 7266:                 passengerDriverRatingStars: ratingStars,
+ 7267:                 passengerDriverRatingComment: ratingCommentWithExtras || null,
+ 7268:                 passengerDriverRatingExtras: ratingExtras,
+ 7269:               } as RideRequestData)
+ 7270:             : ride,
+ 7271:         ),
+ 7272:       );
+ 7273:       setRatingRideId(null);
+ 7274:       setRatingStars(5);
+ 7275:       setRatingComment("");
+ 7276:       setRatingExtras([]);
+ 7277:     } catch (err) {
+ 7278:       const message = err instanceof Error ? err.message : "Error al calificar el viaje.";
+ 7279:       setRatingError(safeTripsErrorMessage(message) ?? "No se pudo guardar la calificaciÃ³n.");
+ 7280:     } finally {
+ 7281:       setSubmittingRating(false);
+ 7282:     }
+ 7283:   }
+ 7284: 
+ 7285:   const counts = {
+ 7286:     all:       allRides.length,
+ 7287:     active:    allRides.filter((r) => ACTIVE_STATUSES.includes(getEffectivePassengerRideStatus(r))).length,
+ 7288:     completed: allRides.filter((r) => getEffectivePassengerRideStatus(r) === "completed").length,
+ 7289:     cancelled: allRides.filter((r) => getEffectivePassengerRideStatus(r) === "cancelled").length,
+ 7290:   };
+
+## buildCancelledRideRecord
+NOT_FOUND
+
+# apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx
+## readPassengerPendingChargesForRequest
+   79:   amountClp: number;
+   80:   type?: string | null;
+   81:   status: string;
+   82:   adminReviewStatus?: string | null;
+   83:   title?: string | null;
+   84:   description?: string | null;
+   85:   createdAt?: string | null;
+   86:   appliedRideId?: string | null;
+   87:   appliedAt?: string | null;
+   88: };
+   89: 
+   90: function normalizePendingChargeEmail(value: unknown): string {
+   91:   return String(value ?? "").trim().toLowerCase();
+   92: }
+   93: 
+   94: function getPendingChargeSessionEmail(user: unknown): string {
+   95:   if (!user || typeof user !== "object") return "";
+   96:   return normalizePendingChargeEmail((user as Record<string, unknown>).email);
+   97: }
+   98: 
+   99: function readPassengerPendingChargesForRequest(_user: unknown): PassengerPendingChargeForRequest[] {
+  100:   // Phase 2 security:
+  101:   // Legacy localStorage pending charges are visual/admin-review only.
+  102:   // They must not increase ride fares or payment amounts for the next request.
+  103:   // Authoritative cancellation/no-show charges must come from backend/admin policy.
+  104:   return [];
+  105: }
+  106: 
+  107: function writePassengerPendingChargesForRequest(charges: PassengerPendingChargeForRequest[]): void {
+  108:   try {
+  109:     localStorage.setItem(RAPAGO_PASSENGER_PENDING_CHARGES_KEY, JSON.stringify(charges.slice(0, 250)));
+  110:     window.dispatchEvent(new CustomEvent(RAPAGO_PASSENGER_PENDING_CHARGE_EVENT, { detail: { charges } }));
+  111:     window.dispatchEvent(new CustomEvent("rapago:wallet-updated", { detail: { charges } }));
+  112:   } catch {
+  113:     // No bloquea la solicitud.
+  114:   }
+  115: }
+  116: 
+  117: function markPassengerPendingChargesAppliedToRide(_user: unknown, _rideId: string | null): void {
+  118:   // Phase 2 security:
+  119:   // Do not mark localStorage charges as charged/applied to the next ride.
+  120:   // Backend must create and apply any real cancellation/no-show charge.
+  121:   return;
+  122: }
+  123: 
+  124: const RAPAGO_WALLET_BENEFITS_KEY_REQUEST = "rapago_wallet_benefits_v1";
+  125: const RAPAGO_WALLET_BENEFIT_EVENT_REQUEST = "rapago:wallet-benefit-updated";
+  126: 
+  127: type PassengerWalletBenefitForRequest = {
+  128:   id: string;
+  129:   rideId?: string | null;
+  130:   passengerEmail?: string | null;
+  131:   ownerKey?: string | null;
+  132:   amountClp: number;
+  133:   status: "pending_admin" | "available" | "used" | "rejected" | string;
+  134:   source?: string | null;
+  135:   title?: string | null;
+  136:   description?: string | null;
+  137:   createdAt?: string | null;
+  138:   approvedAt?: string | null;
+  139:   approvedBy?: string | null;
+  140:   adminReviewStatus?: string | null;
+  141:   fareClp?: number | null;
+  142:   paidClp?: number | null;
+  143:   appliedRideId?: string | null;
+  144:   appliedAt?: string | null;
+  145:   usedAmountClp?: number | null;
+  146: };
+  147: 
+  148: function normalizeWalletBenefitEmailForRequest(value: unknown): string {
+  149:   return String(value ?? "").trim().toLowerCase();
+  150: }
+  151: 
+  152: function getWalletBenefitSessionEmailForRequest(user: unknown): string {
+  153:   if (!user || typeof user !== "object") return "";
+  154:   return normalizeWalletBenefitEmailForRequest((user as Record<string, unknown>).email);
+  155: }
+  156: 
+  157: function isPassengerWalletBenefitAvailableForRequest(benefit: PassengerWalletBenefitForRequest): boolean {
+  158:   const status = String(benefit.status ?? "").toLowerCase();
+  159:   const adminStatus = String(benefit.adminReviewStatus ?? "").toLowerCase();
+  160: 
+  161:   return (status === "available" || status === "approved" || adminStatus === "admin_approved") && benefit.amountClp > 0;
+  162: }
+  163: 
+  164: function readPassengerWalletBenefitsForRequest(user: unknown): PassengerWalletBenefitForRequest[] {
+  165:   try {
+  166:     const sessionEmail = getWalletBenefitSessionEmailForRequest(user);
+  167:     const raw = localStorage.getItem(RAPAGO_WALLET_BENEFITS_KEY_REQUEST);
+  168:     const parsed = raw ? (JSON.parse(raw) as Array<Record<string, unknown>>) : [];
+  169:     if (!Array.isArray(parsed)) return [];
+  170: 
+  171:     return parsed
+  172:       .map((item, index): PassengerWalletBenefitForRequest => ({
+  173:         id: String(item.id ?? `wallet-benefit-${index}`),
+  174:         rideId: typeof item.rideId === "string" ? item.rideId : null,
+  175:         passengerEmail: typeof item.passengerEmail === "string" ? item.passengerEmail : null,
+  176:         ownerKey: typeof item.ownerKey === "string" ? item.ownerKey : null,
+  177:         amountClp: Math.max(0, Math.round(Number(item.amountClp ?? item.amount ?? 0))),
+  178:         status: String(item.status ?? "pending_admin"),
+  179:         source: typeof item.source === "string" ? item.source : null,
+  180:         title: typeof item.title === "string" ? item.title : null,
+  181:         description: typeof item.description === "string" ? item.description : null,
+  182:         createdAt: typeof item.createdAt === "string" ? item.createdAt : null,
+  183:         approvedAt: typeof item.approvedAt === "string" ? item.approvedAt : null,
+  184:         approvedBy: typeof item.approvedBy === "string" ? item.approvedBy : null,
+  185:         adminReviewStatus: typeof item.adminReviewStatus === "string" ? item.adminReviewStatus : null,
+  186:         fareClp: Number.isFinite(Number(item.fareClp)) ? Math.round(Number(item.fareClp)) : null,
+  187:         paidClp: Number.isFinite(Number(item.paidClp)) ? Math.round(Number(item.paidClp)) : null,
+  188:         appliedRideId: typeof item.appliedRideId === "string" ? item.appliedRideId : null,
+  189:         appliedAt: typeof item.appliedAt === "string" ? item.appliedAt : null,
+  190:         usedAmountClp: Number.isFinite(Number(item.usedAmountClp)) ? Math.round(Number(item.usedAmountClp)) : null,
+  191:       }))
+  192:       .filter((benefit) => {
+  193:         if (!isPassengerWalletBenefitAvailableForRequest(benefit)) return false;
+  194:         const owner = normalizeWalletBenefitEmailForRequest(benefit.passengerEmail || benefit.ownerKey);
+  195:         return !sessionEmail || !owner || owner === sessionEmail;
+  196:       })
+  197:       .sort((a, b) => new Date(String(a.createdAt ?? 0)).getTime() - new Date(String(b.createdAt ?? 0)).getTime());
+  198:   } catch {
+  199:     return [];
+  200:   }
+  201: }
+  202: 
+  203: function getPassengerWalletBenefitTotalForRequest(_user: unknown): number {
+  204:   // Phase 2 security:
+  205:   // Legacy localStorage wallet benefits are visual/cache only.
+  206:   // They must not reduce ride fares or payment amounts.
+  207:   // Authoritative credits must come from backend wallet transactions.
+  208:   return 0;
+  209: }
+  210: 
+  211: function markPassengerWalletBenefitsUsedForRide(input: {
+  212:   user: unknown;
+  213:   rideId: string | null;
+  214:   amountToUseClp: number;
+  215:   originText: string;
+  216:   destinationText: string;
+  217:   fareBeforeWalletClp: number;
+  218:   fareAfterWalletClp: number;
+  219: }): void {
+
+## markPassengerPendingChargesAppliedToRide
+   97: }
+   98: 
+   99: function readPassengerPendingChargesForRequest(_user: unknown): PassengerPendingChargeForRequest[] {
+  100:   // Phase 2 security:
+  101:   // Legacy localStorage pending charges are visual/admin-review only.
+  102:   // They must not increase ride fares or payment amounts for the next request.
+  103:   // Authoritative cancellation/no-show charges must come from backend/admin policy.
+  104:   return [];
+  105: }
+  106: 
+  107: function writePassengerPendingChargesForRequest(charges: PassengerPendingChargeForRequest[]): void {
+  108:   try {
+  109:     localStorage.setItem(RAPAGO_PASSENGER_PENDING_CHARGES_KEY, JSON.stringify(charges.slice(0, 250)));
+  110:     window.dispatchEvent(new CustomEvent(RAPAGO_PASSENGER_PENDING_CHARGE_EVENT, { detail: { charges } }));
+  111:     window.dispatchEvent(new CustomEvent("rapago:wallet-updated", { detail: { charges } }));
+  112:   } catch {
+  113:     // No bloquea la solicitud.
+  114:   }
+  115: }
+  116: 
+  117: function markPassengerPendingChargesAppliedToRide(_user: unknown, _rideId: string | null): void {
+  118:   // Phase 2 security:
+  119:   // Do not mark localStorage charges as charged/applied to the next ride.
+  120:   // Backend must create and apply any real cancellation/no-show charge.
+  121:   return;
+  122: }
+  123: 
+  124: const RAPAGO_WALLET_BENEFITS_KEY_REQUEST = "rapago_wallet_benefits_v1";
+  125: const RAPAGO_WALLET_BENEFIT_EVENT_REQUEST = "rapago:wallet-benefit-updated";
+  126: 
+  127: type PassengerWalletBenefitForRequest = {
+  128:   id: string;
+  129:   rideId?: string | null;
+  130:   passengerEmail?: string | null;
+  131:   ownerKey?: string | null;
+  132:   amountClp: number;
+  133:   status: "pending_admin" | "available" | "used" | "rejected" | string;
+  134:   source?: string | null;
+  135:   title?: string | null;
+  136:   description?: string | null;
+  137:   createdAt?: string | null;
+  138:   approvedAt?: string | null;
+  139:   approvedBy?: string | null;
+  140:   adminReviewStatus?: string | null;
+  141:   fareClp?: number | null;
+  142:   paidClp?: number | null;
+  143:   appliedRideId?: string | null;
+  144:   appliedAt?: string | null;
+  145:   usedAmountClp?: number | null;
+  146: };
+  147: 
+  148: function normalizeWalletBenefitEmailForRequest(value: unknown): string {
+  149:   return String(value ?? "").trim().toLowerCase();
+  150: }
+  151: 
+  152: function getWalletBenefitSessionEmailForRequest(user: unknown): string {
+  153:   if (!user || typeof user !== "object") return "";
+  154:   return normalizeWalletBenefitEmailForRequest((user as Record<string, unknown>).email);
+  155: }
+  156: 
+  157: function isPassengerWalletBenefitAvailableForRequest(benefit: PassengerWalletBenefitForRequest): boolean {
+  158:   const status = String(benefit.status ?? "").toLowerCase();
+  159:   const adminStatus = String(benefit.adminReviewStatus ?? "").toLowerCase();
+  160: 
+  161:   return (status === "available" || status === "approved" || adminStatus === "admin_approved") && benefit.amountClp > 0;
+  162: }
+  163: 
+  164: function readPassengerWalletBenefitsForRequest(user: unknown): PassengerWalletBenefitForRequest[] {
+  165:   try {
+  166:     const sessionEmail = getWalletBenefitSessionEmailForRequest(user);
+  167:     const raw = localStorage.getItem(RAPAGO_WALLET_BENEFITS_KEY_REQUEST);
+  168:     const parsed = raw ? (JSON.parse(raw) as Array<Record<string, unknown>>) : [];
+  169:     if (!Array.isArray(parsed)) return [];
+  170: 
+  171:     return parsed
+  172:       .map((item, index): PassengerWalletBenefitForRequest => ({
+  173:         id: String(item.id ?? `wallet-benefit-${index}`),
+  174:         rideId: typeof item.rideId === "string" ? item.rideId : null,
+  175:         passengerEmail: typeof item.passengerEmail === "string" ? item.passengerEmail : null,
+  176:         ownerKey: typeof item.ownerKey === "string" ? item.ownerKey : null,
+  177:         amountClp: Math.max(0, Math.round(Number(item.amountClp ?? item.amount ?? 0))),
+  178:         status: String(item.status ?? "pending_admin"),
+  179:         source: typeof item.source === "string" ? item.source : null,
+  180:         title: typeof item.title === "string" ? item.title : null,
+  181:         description: typeof item.description === "string" ? item.description : null,
+  182:         createdAt: typeof item.createdAt === "string" ? item.createdAt : null,
+  183:         approvedAt: typeof item.approvedAt === "string" ? item.approvedAt : null,
+  184:         approvedBy: typeof item.approvedBy === "string" ? item.approvedBy : null,
+  185:         adminReviewStatus: typeof item.adminReviewStatus === "string" ? item.adminReviewStatus : null,
+  186:         fareClp: Number.isFinite(Number(item.fareClp)) ? Math.round(Number(item.fareClp)) : null,
+  187:         paidClp: Number.isFinite(Number(item.paidClp)) ? Math.round(Number(item.paidClp)) : null,
+  188:         appliedRideId: typeof item.appliedRideId === "string" ? item.appliedRideId : null,
+  189:         appliedAt: typeof item.appliedAt === "string" ? item.appliedAt : null,
+  190:         usedAmountClp: Number.isFinite(Number(item.usedAmountClp)) ? Math.round(Number(item.usedAmountClp)) : null,
+  191:       }))
+  192:       .filter((benefit) => {
+  193:         if (!isPassengerWalletBenefitAvailableForRequest(benefit)) return false;
+  194:         const owner = normalizeWalletBenefitEmailForRequest(benefit.passengerEmail || benefit.ownerKey);
+  195:         return !sessionEmail || !owner || owner === sessionEmail;
+  196:       })
+  197:       .sort((a, b) => new Date(String(a.createdAt ?? 0)).getTime() - new Date(String(b.createdAt ?? 0)).getTime());
+  198:   } catch {
+  199:     return [];
+  200:   }
+  201: }
+  202: 
+  203: function getPassengerWalletBenefitTotalForRequest(_user: unknown): number {
+  204:   // Phase 2 security:
+  205:   // Legacy localStorage wallet benefits are visual/cache only.
+  206:   // They must not reduce ride fares or payment amounts.
+  207:   // Authoritative credits must come from backend wallet transactions.
+  208:   return 0;
+  209: }
+  210: 
+  211: function markPassengerWalletBenefitsUsedForRide(input: {
+  212:   user: unknown;
+  213:   rideId: string | null;
+  214:   amountToUseClp: number;
+  215:   originText: string;
+  216:   destinationText: string;
+  217:   fareBeforeWalletClp: number;
+  218:   fareAfterWalletClp: number;
+  219: }): void {
+  220:   // Phase 2 security:
+  221:   // Do not mutate legacy localStorage as if money was applied.
+  222:   // Backend must approve/apply credits before any financial discount is valid.
+  223:   const amountToUse = 0;
+  224:   if (amountToUse <= 0) return;
+  225: 
+  226:   try {
+  227:     const sessionEmail = getWalletBenefitSessionEmailForRequest(input.user);
+  228:     const raw = localStorage.getItem(RAPAGO_WALLET_BENEFITS_KEY_REQUEST);
+  229:     const parsed = raw ? (JSON.parse(raw) as Array<Record<string, unknown>>) : [];
+  230:     if (!Array.isArray(parsed)) return;
+  231: 
+  232:     let remaining = amountToUse;
+  233:     const now = new Date().toISOString();
+  234:     const rideId = input.rideId || `local-${Date.now()}`;
+  235:     const extraAvailableBenefits: Array<Record<string, unknown>> = [];
+  236: 
+  237:     const next = parsed.map((item, index) => {
+
+## passengerPendingChargeClp
+ 5031:         (input as CreateRideInput & {
+ 5032:           passengerFareLabel?: string;
+ 5033:           nationality?: string;
+ 5034:           isResident?: boolean;
+ 5035:           requestedByRole?: string;
+ 5036:           requesterRole?: string;
+ 5037:         }).isResident = effectivePassengerFareType === "resident";
+ 5038:         (input as CreateRideInput & { requestedByRole?: string; requesterRole?: string }).requestedByRole = "passenger";
+ 5039:         (input as CreateRideInput & { requestedByRole?: string; requesterRole?: string }).requesterRole = "passenger";
+ 5040:         (input as CreateRideInput & {
+ 5041:           fareVehicleCategory?: VehicleCategory;
+ 5042:           vehicleCategory?: VehicleCategory;
+ 5043:         }).fareVehicleCategory = vehicleCategory;
+ 5044:         (input as CreateRideInput & {
+ 5045:           fareVehicleCategory?: VehicleCategory;
+ 5046:           vehicleCategory?: VehicleCategory;
+ 5047:         }).vehicleCategory = vehicleCategory;
+ 5048:         (input as CreateRideInput & { paymentMethod?: string }).paymentMethod = activePaymentMethod;
+ 5049:         if (pendingPassengerChargeTotalClp > 0) {
+ 5050:           Object.assign(input as CreateRideInput & Record<string, unknown>, {
+ 5051:             passengerPendingChargeClp: pendingPassengerChargeTotalClp,
+ 5052:             passengerPendingChargeReason: "cancelacion_no_show_anterior",
+ 5053:             finalFareWithPendingChargesClp: selectedFareAmountBeforeWallet,
+ 5054:           });
+ 5055:         }
+ 5056:         if (selectedWalletBenefitDiscountClp > 0) {
+ 5057:           Object.assign(input as CreateRideInput & Record<string, unknown>, {
+ 5058:             walletBenefitRequested: true,
+ 5059:             walletBenefitApplied: true,
+ 5060:             walletBenefitAppliedClp: selectedWalletBenefitDiscountClp,
+ 5061:             walletBenefitDiscountClp: selectedWalletBenefitDiscountClp,
+ 5062:             walletBenefitOriginalFareClp: selectedFareAmountBeforeWallet,
+ 5063:             originalFareBeforeWalletBenefitClp: selectedFareAmountBeforeWallet,
+ 5064:             finalFareAfterWalletBenefitClp: selectedFareAmount,
+ 5065:             walletBenefitSource: "admin_approved_cash_overpayment",
+ 5066:           });
+ 5067:         } else if (hasAvailableWalletBenefit && useWalletBenefit === false) {
+ 5068:           Object.assign(input as CreateRideInput & Record<string, unknown>, {
+ 5069:             walletBenefitRequested: false,
+ 5070:             walletBenefitApplied: false,
+ 5071:             walletBenefitAvailableClp: availableWalletBenefitTotalClp,
+ 5072:           });
+ 5073:         }
+ 5074:         (input as CreateRideInput & { tripFareMode?: TripFareMode }).tripFareMode = effectiveTripFareMode;
+ 5075:         (input as CreateRideInput & { tripType?: string }).tripType = effectiveTripFareMode;
+ 5076:         (input as CreateRideInput & { isRoundTrip?: boolean }).isRoundTrip = effectiveTripFareMode === "round_trip";
+ 5077:       }
+ 5078: 
+ 5079:       Object.assign(input as CreateRideInput & Record<string, unknown>, scheduleFields);
+ 5080:       if (isAirportScheduledRide) {
+ 5081:         Object.assign(input as CreateRideInput & Record<string, unknown>, {
+ 5082:           airportWelcomeOption,
+ 5083:           airportWelcomeLabel: hasAirportFlowerLei ? AIRPORT_FLOWER_LEI_LABEL : "Solo recogida",
+ 5084:           flowerLeiRequested: hasAirportFlowerLei,
+ 5085:           flowerLeiSurchargeClp: airportWelcomeSurchargeClp,
+ 5086:           airportWelcomeSurchargeClp,
+ 5087:           optionalServicesTotalClp: airportWelcomeSurchargeClp,
+ 5088:           baseFareBeforeExtrasClp: selectedBaseFareAmount,
+ 5089:           finalFareWithExtrasClp: selectedFareAmount,
+ 5090:           airportReservationRequiresCard: isAirportScheduledRide,
+ 5091:           reservationRequiresCard: reservationRequiresCard,
+ 5092:           paymentRequiredProvider: "mercadopago",
+ 5093:           cardCancellationCreditToWallet: reservationRequiresCard && String(activePaymentMethod) === "card",
+ 5094:           cardCancellationAdminReviewRequired: false,
+ 5095:           cardCancellationCreditName: "CRÃ‰DITOS PARA PRÃ“XIMO VIAJE",
+ 5096:         });
+ 5097:       } else if (selectedRoundTripPromotion) {
+ 5098:         Object.assign(input as CreateRideInput & Record<string, unknown>, {
+ 5099:           roundTripPromotionId: selectedRoundTripPromotion.id,
+ 5100:           roundTripPromotionTitle: selectedRoundTripPromotion.title,
+ 5101:           roundTripPromotionDestination: selectedRoundTripPromotion.destinationName,
+ 5102:           roundTripPromotionBooking: true,
+ 5103:           roundTripOutboundNow: true,
+ 5104:           roundTripReturnOnly: false,
+ 5105:           roundTripReturnPickupRequested: true,
+ 5106:           roundTripReturnPickupAt: returnScheduledAt,
+ 5107:           baseFareBeforeExtrasClp: selectedBaseFareAmount,
+ 5108:           finalFareWithExtrasClp: selectedFareAmount,
+ 5109:         });
+ 5110:       }
+ 5111: 
+ 5112:       if (notes.length > 0) {
+ 5113:         input.notes = limitRideNotes(notes.join(" "));
+ 5114:       }
+ 5115: 
+ 5116:       const createdRideResponse = await ridesService.createRideRequest(
+ 5117:         session.accessToken,
+ 5118:         input,
+ 5119:       );
+ 5120: 
+ 5121:       const createdRideId = extractRideRequestIdFromResponse(createdRideResponse);
+ 5122: 
+ 5123:       if (pendingPassengerChargeTotalClp > 0) {
+ 5124:         markPassengerPendingChargesAppliedToRide(session.user, createdRideId ?? `ride-${Date.now()}`);
+ 5125:       }
+ 5126:       if (selectedWalletBenefitDiscountClp > 0) {
+ 5127:         markPassengerWalletBenefitsUsedForRide({
+ 5128:           user: session.user,
+ 5129:           rideId: createdRideId ?? `ride-${Date.now()}`,
+ 5130:           amountToUseClp: selectedWalletBenefitDiscountClp,
+ 5131:           originText: resolved.origin.text,
+ 5132:           destinationText: resolved.destination.text,
+ 5133:           fareBeforeWalletClp: selectedFareAmountBeforeWallet,
+ 5134:           fareAfterWalletClp: selectedFareAmount,
+ 5135:         });
+ 5136:         setWalletBenefitRevision((current) => current + 1);
+ 5137:       }
+ 5138: 
+ 5139:       if (selectedRoundTripPromotion && returnScheduledAt) {
+ 5140:         upsertRoundTripReturnPickupRide(createRoundTripReturnPickupRide({
+ 5141:           returnOriginText: selectedRoundTripPromotion.destinationName,
+ 5142:           returnOriginAddress: resolved.destination.address,
+ 5143:           returnOriginLat: resolved.destination.lat,
+ 5144:           returnOriginLng: resolved.destination.lng,
+ 5145:           returnDestinationText: resolved.origin.text,
+ 5146:           returnDestinationAddress: resolved.origin.address,
+ 5147:           returnDestinationLat: resolved.origin.lat,
+ 5148:           returnDestinationLng: resolved.origin.lng,
+ 5149:           returnScheduledAt,
+ 5150:           promotionTitle: selectedRoundTripPromotion.title,
+ 5151:           promotionDestinationName: selectedRoundTripPromotion.destinationName,
+ 5152:           relatedOutboundRideId: createdRideId,
+ 5153:           passengerName: getSessionDisplayName(session.user),
+ 5154:           passengerEmail: getSessionEmail(session.user),
+ 5155:           passengerFareType: effectivePassengerFareType,
+ 5156:           passengerFareLabel: passengerFareTypeLabel(effectivePassengerFareType),
+ 5157:         }));
+ 5158:       }
+ 5159: 
+ 5160:       if (rideMode === "scheduled") {
+ 5161:         upsertLocalAdminScheduledRide(createLocalAdminScheduledRide({
+ 5162:           originText: resolved.origin.text,
+ 5163:           destinationText: resolved.destination.text,
+ 5164:           notes: input.notes ?? null,
+ 5165:           estimatedFareClp: selectedFareAmount ?? null,
+ 5166:           rideMode,
+ 5167:           tripFareMode: effectiveTripFareMode,
+ 5168:           scheduledAt,
+ 5169:           returnScheduledAt,
+ 5170:           scheduleKind: selectedRoundTripPromotion ? "round_trip_promotion" : "airport_pickup",
+ 5171:           passengerName: getSessionDisplayName(session.user),
+
+## cardCancellationCreditToWallet
+ 5073:         }
+ 5074:         (input as CreateRideInput & { tripFareMode?: TripFareMode }).tripFareMode = effectiveTripFareMode;
+ 5075:         (input as CreateRideInput & { tripType?: string }).tripType = effectiveTripFareMode;
+ 5076:         (input as CreateRideInput & { isRoundTrip?: boolean }).isRoundTrip = effectiveTripFareMode === "round_trip";
+ 5077:       }
+ 5078: 
+ 5079:       Object.assign(input as CreateRideInput & Record<string, unknown>, scheduleFields);
+ 5080:       if (isAirportScheduledRide) {
+ 5081:         Object.assign(input as CreateRideInput & Record<string, unknown>, {
+ 5082:           airportWelcomeOption,
+ 5083:           airportWelcomeLabel: hasAirportFlowerLei ? AIRPORT_FLOWER_LEI_LABEL : "Solo recogida",
+ 5084:           flowerLeiRequested: hasAirportFlowerLei,
+ 5085:           flowerLeiSurchargeClp: airportWelcomeSurchargeClp,
+ 5086:           airportWelcomeSurchargeClp,
+ 5087:           optionalServicesTotalClp: airportWelcomeSurchargeClp,
+ 5088:           baseFareBeforeExtrasClp: selectedBaseFareAmount,
+ 5089:           finalFareWithExtrasClp: selectedFareAmount,
+ 5090:           airportReservationRequiresCard: isAirportScheduledRide,
+ 5091:           reservationRequiresCard: reservationRequiresCard,
+ 5092:           paymentRequiredProvider: "mercadopago",
+ 5093:           cardCancellationCreditToWallet: reservationRequiresCard && String(activePaymentMethod) === "card",
+ 5094:           cardCancellationAdminReviewRequired: false,
+ 5095:           cardCancellationCreditName: "CRÃ‰DITOS PARA PRÃ“XIMO VIAJE",
+ 5096:         });
+ 5097:       } else if (selectedRoundTripPromotion) {
+ 5098:         Object.assign(input as CreateRideInput & Record<string, unknown>, {
+ 5099:           roundTripPromotionId: selectedRoundTripPromotion.id,
+ 5100:           roundTripPromotionTitle: selectedRoundTripPromotion.title,
+ 5101:           roundTripPromotionDestination: selectedRoundTripPromotion.destinationName,
+ 5102:           roundTripPromotionBooking: true,
+ 5103:           roundTripOutboundNow: true,
+ 5104:           roundTripReturnOnly: false,
+ 5105:           roundTripReturnPickupRequested: true,
+ 5106:           roundTripReturnPickupAt: returnScheduledAt,
+ 5107:           baseFareBeforeExtrasClp: selectedBaseFareAmount,
+ 5108:           finalFareWithExtrasClp: selectedFareAmount,
+ 5109:         });
+ 5110:       }
+ 5111: 
+ 5112:       if (notes.length > 0) {
+ 5113:         input.notes = limitRideNotes(notes.join(" "));
+ 5114:       }
+ 5115: 
+ 5116:       const createdRideResponse = await ridesService.createRideRequest(
+ 5117:         session.accessToken,
+ 5118:         input,
+ 5119:       );
+ 5120: 
+ 5121:       const createdRideId = extractRideRequestIdFromResponse(createdRideResponse);
+ 5122: 
+ 5123:       if (pendingPassengerChargeTotalClp > 0) {
+ 5124:         markPassengerPendingChargesAppliedToRide(session.user, createdRideId ?? `ride-${Date.now()}`);
+ 5125:       }
+ 5126:       if (selectedWalletBenefitDiscountClp > 0) {
+ 5127:         markPassengerWalletBenefitsUsedForRide({
+ 5128:           user: session.user,
+ 5129:           rideId: createdRideId ?? `ride-${Date.now()}`,
+ 5130:           amountToUseClp: selectedWalletBenefitDiscountClp,
+ 5131:           originText: resolved.origin.text,
+ 5132:           destinationText: resolved.destination.text,
+ 5133:           fareBeforeWalletClp: selectedFareAmountBeforeWallet,
+ 5134:           fareAfterWalletClp: selectedFareAmount,
+ 5135:         });
+ 5136:         setWalletBenefitRevision((current) => current + 1);
+ 5137:       }
+ 5138: 
+ 5139:       if (selectedRoundTripPromotion && returnScheduledAt) {
+ 5140:         upsertRoundTripReturnPickupRide(createRoundTripReturnPickupRide({
+ 5141:           returnOriginText: selectedRoundTripPromotion.destinationName,
+ 5142:           returnOriginAddress: resolved.destination.address,
+ 5143:           returnOriginLat: resolved.destination.lat,
+ 5144:           returnOriginLng: resolved.destination.lng,
+ 5145:           returnDestinationText: resolved.origin.text,
+ 5146:           returnDestinationAddress: resolved.origin.address,
+ 5147:           returnDestinationLat: resolved.origin.lat,
+ 5148:           returnDestinationLng: resolved.origin.lng,
+ 5149:           returnScheduledAt,
+ 5150:           promotionTitle: selectedRoundTripPromotion.title,
+ 5151:           promotionDestinationName: selectedRoundTripPromotion.destinationName,
+ 5152:           relatedOutboundRideId: createdRideId,
+ 5153:           passengerName: getSessionDisplayName(session.user),
+ 5154:           passengerEmail: getSessionEmail(session.user),
+ 5155:           passengerFareType: effectivePassengerFareType,
+ 5156:           passengerFareLabel: passengerFareTypeLabel(effectivePassengerFareType),
+ 5157:         }));
+ 5158:       }
+ 5159: 
+ 5160:       if (rideMode === "scheduled") {
+ 5161:         upsertLocalAdminScheduledRide(createLocalAdminScheduledRide({
+ 5162:           originText: resolved.origin.text,
+ 5163:           destinationText: resolved.destination.text,
+ 5164:           notes: input.notes ?? null,
+ 5165:           estimatedFareClp: selectedFareAmount ?? null,
+ 5166:           rideMode,
+ 5167:           tripFareMode: effectiveTripFareMode,
+ 5168:           scheduledAt,
+ 5169:           returnScheduledAt,
+ 5170:           scheduleKind: selectedRoundTripPromotion ? "round_trip_promotion" : "airport_pickup",
+ 5171:           passengerName: getSessionDisplayName(session.user),
+ 5172:           passengerEmail: getSessionEmail(session.user),
+ 5173:           passengerFareType: effectivePassengerFareType,
+ 5174:           passengerFareLabel: passengerFareTypeLabel(effectivePassengerFareType),
+ 5175:           airportWelcomeOption: rideMode === "scheduled" ? airportWelcomeOption : null,
+ 5176:           airportWelcomeLabel: hasAirportFlowerLei ? AIRPORT_FLOWER_LEI_LABEL : "Solo recogida",
+ 5177:           flowerLeiRequested: hasAirportFlowerLei,
+ 5178:           airportWelcomeSurchargeClp,
+ 5179:           optionalServicesTotalClp: airportWelcomeSurchargeClp,
+ 5180:           baseFareBeforeExtrasClp: selectedBaseFareAmount,
+ 5181:           passengerPendingChargeClp: pendingPassengerChargeTotalClp,
+ 5182:           passengerPendingChargeReason: pendingPassengerChargeTotalClp > 0 ? "cancelacion_no_show_anterior" : null,
+ 5183:           finalFareWithPendingChargesClp: selectedFareAmountBeforeWallet,
+ 5184:           walletBenefitRequested: selectedWalletBenefitDiscountClp > 0,
+ 5185:           walletBenefitApplied: selectedWalletBenefitDiscountClp > 0,
+ 5186:           walletBenefitAppliedClp: selectedWalletBenefitDiscountClp,
+ 5187:           walletBenefitDiscountClp: selectedWalletBenefitDiscountClp,
+ 5188:           walletBenefitOriginalFareClp: selectedFareAmountBeforeWallet,
+ 5189:           originalFareBeforeWalletBenefitClp: selectedFareAmountBeforeWallet,
+ 5190:           finalFareAfterWalletBenefitClp: selectedFareAmount,
+ 5191:           walletBenefitAvailableButNotUsedClp: hasAvailableWalletBenefit && useWalletBenefit === false ? availableWalletBenefitTotalClp : 0,
+ 5192:         } as Parameters<typeof createLocalAdminScheduledRide>[0] & Record<string, unknown>));
+ 5193:       }
+ 5194: 
+ 5195:       if (String(activePaymentMethod) === "card" && selectedFareAmount > 0) {
+ 5196:         if (!createdRideId) {
+ 5197:           throw new Error("El viaje se creÃ³, pero no se pudo obtener el ID para iniciar MercadoPago.");
+ 5198:         }
+ 5199: 
+ 5200:         const payment = await createMercadoPagoCheckout({
+ 5201:           accessToken: session.accessToken,
+ 5202:           rideRequestId: createdRideId,
+ 5203:         });
+ 5204: 
+ 5205:         try {
+ 5206:           localStorage.setItem(
+ 5207:             "rapago_pending_card_payment_v1",
+ 5208:             JSON.stringify({
+ 5209:               rideRequestId: createdRideId,
+ 5210:               paymentId: payment.paymentId,
+ 5211:               amountClp: selectedFareAmount,
+ 5212:               provider: "mercadopago",
+ 5213:               createdAt: new Date().toISOString(),
+
+## finalFareWithPendingChargesClp
+ 5033:           nationality?: string;
+ 5034:           isResident?: boolean;
+ 5035:           requestedByRole?: string;
+ 5036:           requesterRole?: string;
+ 5037:         }).isResident = effectivePassengerFareType === "resident";
+ 5038:         (input as CreateRideInput & { requestedByRole?: string; requesterRole?: string }).requestedByRole = "passenger";
+ 5039:         (input as CreateRideInput & { requestedByRole?: string; requesterRole?: string }).requesterRole = "passenger";
+ 5040:         (input as CreateRideInput & {
+ 5041:           fareVehicleCategory?: VehicleCategory;
+ 5042:           vehicleCategory?: VehicleCategory;
+ 5043:         }).fareVehicleCategory = vehicleCategory;
+ 5044:         (input as CreateRideInput & {
+ 5045:           fareVehicleCategory?: VehicleCategory;
+ 5046:           vehicleCategory?: VehicleCategory;
+ 5047:         }).vehicleCategory = vehicleCategory;
+ 5048:         (input as CreateRideInput & { paymentMethod?: string }).paymentMethod = activePaymentMethod;
+ 5049:         if (pendingPassengerChargeTotalClp > 0) {
+ 5050:           Object.assign(input as CreateRideInput & Record<string, unknown>, {
+ 5051:             passengerPendingChargeClp: pendingPassengerChargeTotalClp,
+ 5052:             passengerPendingChargeReason: "cancelacion_no_show_anterior",
+ 5053:             finalFareWithPendingChargesClp: selectedFareAmountBeforeWallet,
+ 5054:           });
+ 5055:         }
+ 5056:         if (selectedWalletBenefitDiscountClp > 0) {
+ 5057:           Object.assign(input as CreateRideInput & Record<string, unknown>, {
+ 5058:             walletBenefitRequested: true,
+ 5059:             walletBenefitApplied: true,
+ 5060:             walletBenefitAppliedClp: selectedWalletBenefitDiscountClp,
+ 5061:             walletBenefitDiscountClp: selectedWalletBenefitDiscountClp,
+ 5062:             walletBenefitOriginalFareClp: selectedFareAmountBeforeWallet,
+ 5063:             originalFareBeforeWalletBenefitClp: selectedFareAmountBeforeWallet,
+ 5064:             finalFareAfterWalletBenefitClp: selectedFareAmount,
+ 5065:             walletBenefitSource: "admin_approved_cash_overpayment",
+ 5066:           });
+ 5067:         } else if (hasAvailableWalletBenefit && useWalletBenefit === false) {
+ 5068:           Object.assign(input as CreateRideInput & Record<string, unknown>, {
+ 5069:             walletBenefitRequested: false,
+ 5070:             walletBenefitApplied: false,
+ 5071:             walletBenefitAvailableClp: availableWalletBenefitTotalClp,
+ 5072:           });
+ 5073:         }
+ 5074:         (input as CreateRideInput & { tripFareMode?: TripFareMode }).tripFareMode = effectiveTripFareMode;
+ 5075:         (input as CreateRideInput & { tripType?: string }).tripType = effectiveTripFareMode;
+ 5076:         (input as CreateRideInput & { isRoundTrip?: boolean }).isRoundTrip = effectiveTripFareMode === "round_trip";
+ 5077:       }
+ 5078: 
+ 5079:       Object.assign(input as CreateRideInput & Record<string, unknown>, scheduleFields);
+ 5080:       if (isAirportScheduledRide) {
+ 5081:         Object.assign(input as CreateRideInput & Record<string, unknown>, {
+ 5082:           airportWelcomeOption,
+ 5083:           airportWelcomeLabel: hasAirportFlowerLei ? AIRPORT_FLOWER_LEI_LABEL : "Solo recogida",
+ 5084:           flowerLeiRequested: hasAirportFlowerLei,
+ 5085:           flowerLeiSurchargeClp: airportWelcomeSurchargeClp,
+ 5086:           airportWelcomeSurchargeClp,
+ 5087:           optionalServicesTotalClp: airportWelcomeSurchargeClp,
+ 5088:           baseFareBeforeExtrasClp: selectedBaseFareAmount,
+ 5089:           finalFareWithExtrasClp: selectedFareAmount,
+ 5090:           airportReservationRequiresCard: isAirportScheduledRide,
+ 5091:           reservationRequiresCard: reservationRequiresCard,
+ 5092:           paymentRequiredProvider: "mercadopago",
+ 5093:           cardCancellationCreditToWallet: reservationRequiresCard && String(activePaymentMethod) === "card",
+ 5094:           cardCancellationAdminReviewRequired: false,
+ 5095:           cardCancellationCreditName: "CRÃ‰DITOS PARA PRÃ“XIMO VIAJE",
+ 5096:         });
+ 5097:       } else if (selectedRoundTripPromotion) {
+ 5098:         Object.assign(input as CreateRideInput & Record<string, unknown>, {
+ 5099:           roundTripPromotionId: selectedRoundTripPromotion.id,
+ 5100:           roundTripPromotionTitle: selectedRoundTripPromotion.title,
+ 5101:           roundTripPromotionDestination: selectedRoundTripPromotion.destinationName,
+ 5102:           roundTripPromotionBooking: true,
+ 5103:           roundTripOutboundNow: true,
+ 5104:           roundTripReturnOnly: false,
+ 5105:           roundTripReturnPickupRequested: true,
+ 5106:           roundTripReturnPickupAt: returnScheduledAt,
+ 5107:           baseFareBeforeExtrasClp: selectedBaseFareAmount,
+ 5108:           finalFareWithExtrasClp: selectedFareAmount,
+ 5109:         });
+ 5110:       }
+ 5111: 
+ 5112:       if (notes.length > 0) {
+ 5113:         input.notes = limitRideNotes(notes.join(" "));
+ 5114:       }
+ 5115: 
+ 5116:       const createdRideResponse = await ridesService.createRideRequest(
+ 5117:         session.accessToken,
+ 5118:         input,
+ 5119:       );
+ 5120: 
+ 5121:       const createdRideId = extractRideRequestIdFromResponse(createdRideResponse);
+ 5122: 
+ 5123:       if (pendingPassengerChargeTotalClp > 0) {
+ 5124:         markPassengerPendingChargesAppliedToRide(session.user, createdRideId ?? `ride-${Date.now()}`);
+ 5125:       }
+ 5126:       if (selectedWalletBenefitDiscountClp > 0) {
+ 5127:         markPassengerWalletBenefitsUsedForRide({
+ 5128:           user: session.user,
+ 5129:           rideId: createdRideId ?? `ride-${Date.now()}`,
+ 5130:           amountToUseClp: selectedWalletBenefitDiscountClp,
+ 5131:           originText: resolved.origin.text,
+ 5132:           destinationText: resolved.destination.text,
+ 5133:           fareBeforeWalletClp: selectedFareAmountBeforeWallet,
+ 5134:           fareAfterWalletClp: selectedFareAmount,
+ 5135:         });
+ 5136:         setWalletBenefitRevision((current) => current + 1);
+ 5137:       }
+ 5138: 
+ 5139:       if (selectedRoundTripPromotion && returnScheduledAt) {
+ 5140:         upsertRoundTripReturnPickupRide(createRoundTripReturnPickupRide({
+ 5141:           returnOriginText: selectedRoundTripPromotion.destinationName,
+ 5142:           returnOriginAddress: resolved.destination.address,
+ 5143:           returnOriginLat: resolved.destination.lat,
+ 5144:           returnOriginLng: resolved.destination.lng,
+ 5145:           returnDestinationText: resolved.origin.text,
+ 5146:           returnDestinationAddress: resolved.origin.address,
+ 5147:           returnDestinationLat: resolved.origin.lat,
+ 5148:           returnDestinationLng: resolved.origin.lng,
+ 5149:           returnScheduledAt,
+ 5150:           promotionTitle: selectedRoundTripPromotion.title,
+ 5151:           promotionDestinationName: selectedRoundTripPromotion.destinationName,
+ 5152:           relatedOutboundRideId: createdRideId,
+ 5153:           passengerName: getSessionDisplayName(session.user),
+ 5154:           passengerEmail: getSessionEmail(session.user),
+ 5155:           passengerFareType: effectivePassengerFareType,
+ 5156:           passengerFareLabel: passengerFareTypeLabel(effectivePassengerFareType),
+ 5157:         }));
+ 5158:       }
+ 5159: 
+ 5160:       if (rideMode === "scheduled") {
+ 5161:         upsertLocalAdminScheduledRide(createLocalAdminScheduledRide({
+ 5162:           originText: resolved.origin.text,
+ 5163:           destinationText: resolved.destination.text,
+ 5164:           notes: input.notes ?? null,
+ 5165:           estimatedFareClp: selectedFareAmount ?? null,
+ 5166:           rideMode,
+ 5167:           tripFareMode: effectiveTripFareMode,
+ 5168:           scheduledAt,
+ 5169:           returnScheduledAt,
+ 5170:           scheduleKind: selectedRoundTripPromotion ? "round_trip_promotion" : "airport_pickup",
+ 5171:           passengerName: getSessionDisplayName(session.user),
+ 5172:           passengerEmail: getSessionEmail(session.user),
+ 5173:           passengerFareType: effectivePassengerFareType,
+

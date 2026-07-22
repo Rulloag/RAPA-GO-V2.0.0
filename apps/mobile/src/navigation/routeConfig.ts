@@ -24,6 +24,7 @@ export const ROUTE_METADATA: RouteMetadata[] = [
   { path: "/passenger/rentals", label: "Arriendo", role: "passenger", plannedFeatures: ["Catálogo de vehículos", "Reserva por días", "Entrega y devolución"] },
   { path: "/passenger/wallet", label: "Billetera", role: "passenger", plannedFeatures: ["Saldo disponible", "Historial de transacciones", "Recargar saldo"] },
   { path: "/passenger/profile", label: "Perfil", role: "passenger", plannedFeatures: ["Datos personales", "Documentos", "Configuración"] },
+  { path: "/support-center", label: "Centro de ayuda", role: "passenger", plannedFeatures: ["Reclamos", "Objetos perdidos", "Seguimiento administrativo"] },
 
   // Driver
   { path: "/driver/home", label: "Inicio Conductor", role: "driver", plannedFeatures: ["Estado en línea/fuera de línea", "Solicitudes cercanas", "Estadísticas del día"] },
@@ -55,6 +56,7 @@ export const ROUTE_METADATA: RouteMetadata[] = [
   { path: "/admin/trips", label: "Viajes", role: "admin", plannedFeatures: ["Monitor de viajes activos", "Historial global", "Incidencias"] },
   { path: "/admin/payments", label: "Pagos", role: "admin", plannedFeatures: ["Transacciones globales", "Conciliación bancaria", "Fraudes"] },
   { path: "/admin/settings", label: "Configuración", role: "admin", plannedFeatures: ["Parámetros del sistema", "Tarifas", "Integraciones"] },
+  { path: "/admin/support", label: "Soporte", role: "admin", plannedFeatures: ["Reclamos", "Objetos perdidos", "Historial y resolución"] },
 
   // Profile (shared)
   { path: "/profile", label: "Mi Perfil", role: "passenger", plannedFeatures: ["Foto de perfil", "Datos personales", "Preferencias"] },

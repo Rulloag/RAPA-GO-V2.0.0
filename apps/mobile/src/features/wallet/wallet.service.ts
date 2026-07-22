@@ -1,29 +1,115 @@
 import { apiClient } from "../../services/api/index.js";
 
 export interface WalletData {
-  id:        string;
-  balance:   number;
-  currency:  string;
-  status:    string;
+  id: string;
+  userId?: string;
+  balance: number;
+  availableBenefitClp?: number;
+  currency: string;
+  status: string;
+  benefitType?: "cash_overpayment_only";
+  transferable?: boolean;
+  rechargeable?: boolean;
 }
 
 export interface TransactionData {
-  id:          string;
-  type:        string;
-  amount:      number;
-  currency:    string;
-  status:      string;
+  id: string;
+  type: string;
+  amount: number;
+  currency: string;
+  status: string;
   description: string | null;
-  createdAt:   string;
+  createdAt: string;
+}
+
+export interface CashOverpaymentBenefitData {
+  id: string;
+  sourceRideId: string;
+  ownerUserId: string;
+  ownerName: string | null;
+  ownerEmail: string | null;
+  status: "pending_admin_review" | "approved" | "rejected" | string;
+  paymentMethod: "cash";
+  fareClp: number;
+  paidClp: number;
+  requestedAmountClp: number;
+  approvedAmountClp: number | null;
+  requestReason: string | null;
+  adminDecisionReason: string | null;
+  reviewedByUserId: string | null;
+  reviewedAt: string | null;
+  walletTransactionId: string | null;
+  requestedAt: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface PaymentOrderData {
+  id: string;
+  amount: number;
+  currency: string;
+  status: string;
+  paymentUrl: string | null;
+  providerOrderId: string | null;
+  createdAt: string;
+}
+
+export interface RequestCashOverpaymentBenefitPayload {
+  rideId: string;
+  paidClp: number;
+  reason?: string;
+}
+
+export interface AdminCreateWalletCreditPayload {
+  userId: string;
+  rideId: string;
+  amountClp: number;
+  description?: string;
+  reason?: string;
+  externalReference?: string;
+}
+
+export interface AdminBenefitReviewPayload {
+  approvedAmountClp?: number;
+  adminDecisionReason?: string;
+}
+
+export interface AdminBenefitApprovalResponse {
+  benefit: CashOverpaymentBenefitData;
+  wallet: WalletData;
+  transaction: TransactionData;
+  alreadyApproved?: boolean;
 }
 
 type Envelope<T> = { ok: true; data: T; statusCode: number };
 
+function unwrap<T>(
+  result: {
+    ok: boolean;
+    data?: unknown;
+    message?: string;
+  },
+  fallbackMessage: string,
+): T {
+  if (!result.ok) {
+    throw new Error(result.message ?? fallbackMessage);
+  }
+
+  const envelope = result.data as Envelope<T> | undefined;
+  if (!envelope || envelope.ok !== true) {
+    throw new Error(fallbackMessage);
+  }
+
+  return envelope.data;
+}
+
 export const walletService = {
   async getMyWallet(accessToken: string): Promise<WalletData> {
-    const result = await apiClient.get<Envelope<WalletData>>("/wallets/me", { token: accessToken });
-    if (!result.ok) throw new Error((result as { message?: string }).message ?? "Error loading wallet.");
-    return (result.data as Envelope<WalletData>).data;
+    const result = await apiClient.get<Envelope<WalletData>>(
+      "/wallets/me",
+      { token: accessToken },
+    );
+    return unwrap(result, "No se pudo cargar Beneficios.");
   },
 
   async getMyTransactions(
@@ -31,11 +117,142 @@ export const walletService = {
     page = 1,
     limit = 20,
   ): Promise<{ items: TransactionData[]; total: number }> {
-    const result = await apiClient.get<Envelope<{ items: TransactionData[]; total: number }>>(
+    const result = await apiClient.get<
+      Envelope<{ items: TransactionData[]; total: number }>
+    >(
       `/wallets/me/transactions?page=${page}&limit=${limit}`,
       { token: accessToken },
     );
-    if (!result.ok) throw new Error((result as { message?: string }).message ?? "Error loading transactions.");
-    return (result.data as Envelope<{ items: TransactionData[]; total: number }>).data;
+    return unwrap(result, "No se pudo cargar el registro de Beneficios.");
+  },
+
+  async listMyCashOverpaymentBenefits(
+    accessToken: string,
+  ): Promise<CashOverpaymentBenefitData[]> {
+    const result = await apiClient.get<
+      Envelope<CashOverpaymentBenefitData[]>
+    >(
+      "/wallets/me/cash-overpayment-benefits",
+      { token: accessToken },
+    );
+    return unwrap(result, "No se pudieron cargar tus solicitudes.");
+  },
+
+  async requestCashOverpaymentBenefit(
+    accessToken: string,
+    payload: RequestCashOverpaymentBenefitPayload,
+  ): Promise<CashOverpaymentBenefitData> {
+    const result = await apiClient.post<
+      Envelope<CashOverpaymentBenefitData>
+    >(
+      "/wallets/me/cash-overpayment-benefits",
+      payload,
+      { token: accessToken },
+    );
+    return unwrap(result, "No se pudo solicitar el Beneficio.");
+  },
+
+  async adminListCashOverpaymentBenefits(
+    accessToken: string,
+    status: string = "all",
+  ): Promise<CashOverpaymentBenefitData[]> {
+    const result = await apiClient.get<
+      Envelope<CashOverpaymentBenefitData[]>
+    >(
+      `/admin/wallet/cash-overpayment-benefits?status=${encodeURIComponent(status)}`,
+      { token: accessToken },
+    );
+    return unwrap(result, "No se pudieron cargar las solicitudes.");
+  },
+
+  async adminApproveCashOverpaymentBenefit(
+    accessToken: string,
+    benefitId: string,
+    payload: AdminBenefitReviewPayload = {},
+  ): Promise<AdminBenefitApprovalResponse> {
+    const result = await apiClient.post<
+      Envelope<AdminBenefitApprovalResponse>
+    >(
+      `/admin/wallet/cash-overpayment-benefits/${encodeURIComponent(benefitId)}/approve`,
+      payload,
+      { token: accessToken },
+    );
+    return unwrap(result, "No se pudo aprobar el Beneficio.");
+  },
+
+  async adminApproveCashOverpaymentBenefitByRide(
+    accessToken: string,
+    rideId: string,
+    payload: AdminBenefitReviewPayload = {},
+  ): Promise<AdminBenefitApprovalResponse> {
+    const result = await apiClient.post<
+      Envelope<AdminBenefitApprovalResponse>
+    >(
+      `/admin/wallet/cash-overpayment-benefits/by-ride/${encodeURIComponent(rideId)}/approve`,
+      payload,
+      { token: accessToken },
+    );
+    return unwrap(result, "No se pudo aprobar el Beneficio.");
+  },
+
+  async adminRejectCashOverpaymentBenefit(
+    accessToken: string,
+    benefitId: string,
+    adminDecisionReason: string,
+  ): Promise<CashOverpaymentBenefitData> {
+    const result = await apiClient.post<
+      Envelope<CashOverpaymentBenefitData>
+    >(
+      `/admin/wallet/cash-overpayment-benefits/${encodeURIComponent(benefitId)}/reject`,
+      { adminDecisionReason },
+      { token: accessToken },
+    );
+    return unwrap(result, "No se pudo rechazar el Beneficio.");
+  },
+
+  async adminRejectCashOverpaymentBenefitByRide(
+    accessToken: string,
+    rideId: string,
+    adminDecisionReason: string,
+  ): Promise<CashOverpaymentBenefitData> {
+    const result = await apiClient.post<
+      Envelope<CashOverpaymentBenefitData>
+    >(
+      `/admin/wallet/cash-overpayment-benefits/by-ride/${encodeURIComponent(rideId)}/reject`,
+      { adminDecisionReason },
+      { token: accessToken },
+    );
+    return unwrap(result, "No se pudo rechazar el Beneficio.");
+  },
+
+  /** Compatibilidad con el botón antiguo del panel Admin. */
+  async adminCreateWalletCredit(
+    accessToken: string,
+    payload: AdminCreateWalletCreditPayload,
+  ): Promise<AdminBenefitApprovalResponse> {
+    const result = await apiClient.post<
+      Envelope<AdminBenefitApprovalResponse>
+    >(
+      "/admin/wallet/credits",
+      payload,
+      { token: accessToken },
+    );
+    return unwrap(result, "No se pudo aprobar el Beneficio.");
+  },
+
+  async createPaymentOrder(
+    accessToken: string,
+    rideId: string,
+    amount?: number,
+  ): Promise<PaymentOrderData> {
+    const body: { rideId: string; amount?: number } = { rideId };
+    if (amount != null) body.amount = amount;
+
+    const result = await apiClient.post<Envelope<PaymentOrderData>>(
+      "/payments/create-order",
+      body,
+      { token: accessToken },
+    );
+    return unwrap(result, "No se pudo crear la orden de pago.");
   },
 };

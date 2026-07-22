@@ -19,13 +19,13 @@ type DocEnvelope    = { ok: true; data: DocumentRecord;   statusCode: number };
 export const documentsService = {
   async listDocuments(accessToken: string): Promise<DocumentRecord[]> {
     const result = await apiClient.get<DocsEnvelope>("/documents/me", { token: accessToken });
-    if (!result.ok) throw new Error(result.message ?? "Failed to load documents.");
+    if (result.ok === false) throw new Error(result.message ?? "Failed to load documents.");
     return (result.data as DocsEnvelope).data;
   },
 
   async createDocument(accessToken: string, documentType: string): Promise<DocumentRecord> {
     const result = await apiClient.post<DocEnvelope>("/documents/me", { documentType }, { token: accessToken });
-    if (!result.ok) throw new Error(result.message ?? "Failed to create document record.");
+    if (result.ok === false) throw new Error(result.message ?? "Failed to create document record.");
     return (result.data as DocEnvelope).data;
   },
 
@@ -39,7 +39,7 @@ export const documentsService = {
       payload,
       { token: accessToken },
     );
-    if (!result.ok) throw new Error(result.message ?? "Failed to register upload metadata.");
+    if (result.ok === false) throw new Error(result.message ?? "Failed to register upload metadata.");
     return (result.data as DocEnvelope).data;
   },
 };

@@ -1,0 +1,11 @@
+Phase 3 reservation/card validation summary
+
+Result:
+- Frontend reservationRequiresCard declaration count: 1.
+- No duplicate reservationRequiresCard declaration detected.
+- Frontend forces card/MercadoPago for scheduled reservations.
+- Backend schema accepts paymentMethod/paymentProvider/rideMode/isScheduled/scheduled fields.
+- Backend createRideRequest rejects scheduled rides when paymentMethod is not card.
+- Backend rejection code: SCHEDULED_RIDE_REQUIRES_CARD.
+- Backend statusCode: 400.
+- No code patch required for this checkpoint.

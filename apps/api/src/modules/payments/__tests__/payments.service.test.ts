@@ -8,13 +8,17 @@ const {
   mockFindUserById,
   mockFindRideById,
   mockFindActiveByRideId,
+  mockFindSuccessfulByRideIdAndPurpose,
   mockCreate,
   mockMarkProcessing,
   mockMarkFailed,
   mockMarkSuccess,
   mockMarkRejected,
-  mockMarkRefunded,
   mockFindById,
+  mockFindRefundableByRideId,
+  mockClaimRefund,
+  mockMarkRefunded,
+  mockMarkRefundFailed,
   mockRecordSafe,
   mockCreatePayment,
   mockVerifyWebhookSignature,
@@ -26,13 +30,17 @@ const {
   mockFindUserById:           vi.fn(),
   mockFindRideById:           vi.fn(),
   mockFindActiveByRideId:     vi.fn(),
+  mockFindSuccessfulByRideIdAndPurpose: vi.fn().mockResolvedValue(null),
   mockCreate:                 vi.fn(),
   mockMarkProcessing:         vi.fn(),
   mockMarkFailed:             vi.fn(),
   mockMarkSuccess:            vi.fn(),
   mockMarkRejected:           vi.fn(),
-  mockMarkRefunded:           vi.fn(),
   mockFindById:               vi.fn(),
+  mockFindRefundableByRideId:   vi.fn(),
+  mockClaimRefund:              vi.fn(),
+  mockMarkRefunded:             vi.fn(),
+  mockMarkRefundFailed:         vi.fn(),
   mockRecordSafe:             vi.fn(),
   mockCreatePayment:          vi.fn(),
   mockVerifyWebhookSignature: vi.fn(),
@@ -65,13 +73,18 @@ vi.mock("../../../modules/users/users.repository.js", () => ({
 vi.mock("../payments.repository.js", () => ({
   PaymentsRepository: vi.fn().mockImplementation(() => ({
     findActiveByRideId: mockFindActiveByRideId,
+    findActiveByRideIdAndPurpose: mockFindActiveByRideId,
+    findSuccessfulByRideIdAndPurpose: mockFindSuccessfulByRideIdAndPurpose,
     create:             mockCreate,
     markProcessing:     mockMarkProcessing,
     markFailed:         mockMarkFailed,
     markSuccess:        mockMarkSuccess,
     markRejected:       mockMarkRejected,
-    markRefunded:       mockMarkRefunded,
     findById:           mockFindById,
+    findRefundableByRideId: mockFindRefundableByRideId,
+    claimRefund:           mockClaimRefund,
+    markRefunded:          mockMarkRefunded,
+    markRefundFailed:      mockMarkRefundFailed,
   })),
 }));
 vi.mock("../provider.registry.js", () => ({
@@ -129,15 +142,15 @@ describe("PaymentsService.createPayment", () => {
     process.env["MOBILE_APP_DEEP_LINK"]     = "rapago://";
   });
 
-  it("blocks payment when ride is not completed", async () => {
+  it("blocks payment when ride status is not payable", async () => {
     setupPassengerAuth();
-    mockFindRideById.mockResolvedValue({ ...completedRide, status: "accepted" });
+    mockFindRideById.mockResolvedValue({ ...completedRide, status: "cancelled" });
 
     const result = await service.createPayment("tok", { rideRequestId: RIDE_ID });
 
     expect(result.ok).toBe(false);
     if (!result.ok) {
-      expect(result.code).toBe("PAYMENT_RIDE_NOT_COMPLETED");
+      expect(result.code).toBe("PAYMENT_RIDE_STATUS_NOT_ALLOWED");
       expect(result.statusCode).toBe(409);
     }
     expect(mockCreate).not.toHaveBeenCalled();
@@ -384,59 +397,112 @@ describe("PaymentsService.handleWebhook", () => {
   });
 });
 
-describe("PaymentsService.refundPayment", () => {
-  let service: InstanceType<typeof PaymentsService>;
+
+// ── refundCardPaymentForCancelledRide ────────────────────────────────────────
+
+describe("PaymentsService.refundCardPaymentForCancelledRide", () => {
+  let service: PaymentsService;
+
+  const refundablePayment = {
+    id: PAYMENT_ID,
+    rideRequestId: RIDE_ID,
+    passengerUserId: PASSENGER_ID,
+    amountClp: 5000,
+    paymentPurpose: "ride",
+    status: "success",
+    provider: "mercadopago",
+    providerPaymentId: "mp-payment-123",
+    refundStatus: null,
+    rawProviderPayload: {},
+    paidAt: new Date("2026-07-19T12:00:00.000Z"),
+    createdAt: new Date("2026-07-19T11:59:00.000Z"),
+  };
 
   beforeEach(() => {
     vi.clearAllMocks();
-    mockVerifyAccessToken.mockReturnValue({ sub: "admin-1" });
-    mockIsSessionValid.mockResolvedValue(true);
     service = new PaymentsService();
+    process.env["MERCADOPAGO_ACCESS_TOKEN"] = "test-access-token";
   });
 
-  it("admin can refund a successful payment", async () => {
-    mockFindUserById.mockResolvedValue({ id: "admin-1", role: "admin" });
-    mockFindById.mockResolvedValue({ id: "pay-1", status: "success", rideRequestId: "ride-1", amountClp: 5000 });
-    mockMarkRefunded.mockResolvedValue({ id: "pay-1", status: "refunded", rideRequestId: "ride-1", amountClp: 5000 });
+  it("uses a stable idempotency key and persists an approved refund", async () => {
+    mockFindRefundableByRideId.mockResolvedValue(refundablePayment);
+    mockClaimRefund.mockResolvedValue({
+      ...refundablePayment,
+      refundStatus: "processing",
+      refundIdempotencyKey: `rapago-refund-${PAYMENT_ID}`,
+    });
+    mockMarkRefunded.mockResolvedValue({
+      ...refundablePayment,
+      status: "refunded",
+      refundStatus: "approved",
+    });
 
-    const result = await service.refundPayment("token", "pay-1");
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 201,
+      json: vi.fn().mockResolvedValue({ id: "mp-refund-1" }),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await service.refundCardPaymentForCancelledRide({
+      rideRequestId: RIDE_ID,
+      cancelledByUserId: PASSENGER_ID,
+      cancelledByRole: "passenger",
+      reason: "Cambio de planes",
+    });
 
     expect(result.ok).toBe(true);
-    if (result.ok) expect(result.refunded).toBe(true);
-  });
-
-  it("non-admin role returns 403", async () => {
-    mockFindUserById.mockResolvedValue({ id: "user-1", role: "passenger" });
-
-    const result = await service.refundPayment("token", "pay-1");
-
-    expect(result.ok).toBe(false);
-    if (!result.ok) expect(result.statusCode).toBe(403);
-    expect(mockMarkRefunded).not.toHaveBeenCalled();
-  });
-
-  it("refunding an already-refunded payment is idempotent, not an error", async () => {
-    mockFindUserById.mockResolvedValue({ id: "admin-1", role: "admin" });
-    mockFindById.mockResolvedValue({ id: "pay-1", status: "refunded", rideRequestId: "ride-1", amountClp: 5000 });
-    mockMarkRefunded.mockResolvedValue(null);
-
-    const result = await service.refundPayment("token", "pay-1");
-
-    expect(result.ok).toBe(true);
-    if (result.ok) expect(result.refunded).toBe(false);
-  });
-
-  it("refunding a non-success payment (e.g. pending) is rejected", async () => {
-    mockFindUserById.mockResolvedValue({ id: "admin-1", role: "admin" });
-    mockFindById.mockResolvedValue({ id: "pay-1", status: "pending", rideRequestId: "ride-1", amountClp: 5000 });
-    mockMarkRefunded.mockResolvedValue(null);
-
-    const result = await service.refundPayment("token", "pay-1");
-
-    expect(result.ok).toBe(false);
-    if (!result.ok) {
-      expect(result.code).toBe("PAYMENT_NOT_REFUNDABLE");
-      expect(result.statusCode).toBe(409);
+    if (result.ok) {
+      expect(result.refunded).toBe(true);
     }
+
+    expect(mockClaimRefund).toHaveBeenCalledWith(
+      PAYMENT_ID,
+      `rapago-refund-${PAYMENT_ID}`,
+    );
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://api.mercadopago.com/v1/payments/mp-payment-123/refunds",
+      expect.objectContaining({
+        method: "POST",
+        headers: expect.objectContaining({
+          "X-Idempotency-Key": `rapago-refund-${PAYMENT_ID}`,
+        }),
+      }),
+    );
+    expect(mockMarkRefunded).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: PAYMENT_ID,
+        providerRefundId: "mp-refund-1",
+      }),
+    );
+
+    vi.unstubAllGlobals();
+  });
+
+  it("does not request a second refund when it was already approved", async () => {
+    mockFindRefundableByRideId.mockResolvedValue({
+      ...refundablePayment,
+      status: "refunded",
+      refundStatus: "approved",
+    });
+
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await service.refundCardPaymentForCancelledRide({
+      rideRequestId: RIDE_ID,
+      cancelledByUserId: PASSENGER_ID,
+      cancelledByRole: "passenger",
+    });
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.refunded).toBe(true);
+      expect(result.processed).toBe(true);
+    }
+    expect(mockClaimRefund).not.toHaveBeenCalled();
+    expect(fetchMock).not.toHaveBeenCalled();
+
+    vi.unstubAllGlobals();
   });
 });

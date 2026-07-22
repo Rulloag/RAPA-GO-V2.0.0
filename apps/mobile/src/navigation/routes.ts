@@ -13,10 +13,23 @@ export const ROUTES = {
   WELCOME: "/welcome",
   NOT_FOUND: "/404",
 
+  SUPPORT: {
+    CENTER: "/support-center",
+  },
+
   AUTH: {
     BASE: "/auth",
     LOGIN: "/auth/login",
     REGISTER: "/auth/register",
+    FACEBOOK_CALLBACK: "/auth/facebook/callback",
+  },
+
+  PUBLIC: {
+    PRIVACY: "/privacidad",
+    TERMS: "/terminos",
+    SUPPORT: "/soporte",
+    EULA: "/eula",
+    DELETE_ACCOUNT: "/eliminar-cuenta",
   },
 
   PASSENGER: {
@@ -82,7 +95,8 @@ export const ROUTES = {
     EVENT_TICKETS: "/admin/event-tickets",
     LEGAL_DOCUMENTS: "/admin/legal-documents",
     FARE_SETTINGS: "/admin/fare-settings",
-    REFERRALS:     "/admin/referrals",
+    REFERRALS: "/admin/referrals",
+    SUPPORT: "/admin/support",
   },
 
   APPLY: {
@@ -110,14 +124,19 @@ export const ROUTES = {
 export const buildRoute = {
   passengerTripDetail: (tripId: string): string =>
     `/passenger/trips/${tripId}`,
+
   passengerGuideDetail: (guideId: string): string =>
     `/passenger/guides/${guideId}`,
+
   passengerRentalDetail: (vehicleId: string): string =>
     `/passenger/rentals/${vehicleId}`,
+
   driverTripDetail: (tripId: string): string =>
     `/driver/trips/${tripId}`,
+
   guideTourDetail: (tourId: string): string =>
     `/guide/tours/${tourId}`,
+
   rentalVehicleDetail: (vehicleId: string): string =>
     `/rental/vehicles/${vehicleId}`,
 };

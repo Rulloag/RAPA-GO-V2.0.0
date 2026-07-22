@@ -1,0 +1,7 @@
+Phase 3 refund/webhook/idempotency checkpoint
+
+Goal:
+- Verify cancelled card rides cannot trigger duplicate refunds.
+- Verify refund/card cancellation authority lives in backend.
+- Verify webhook/payment updates are idempotent.
+- Verify frontend does not create local financial authority for cancellation/no-show.

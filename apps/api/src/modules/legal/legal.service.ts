@@ -102,9 +102,31 @@ export class LegalService {
   }, ipAddress?: string, userAgent?: string): Promise<UserAcceptanceResult> {
     const auth = await authenticate(accessToken);
     if (!auth.ok) return auth;
+
+    const document = await legalRepo.findById(input.legalDocumentId);
+
+    if (!document || !document.isActive) {
+      return {
+        ok: false,
+        code: "LEGAL_DOCUMENT_NOT_ACTIVE",
+        message: "El documento legal ya no está activo.",
+        statusCode: 409,
+      };
+    }
+
+    if (document.version !== input.version) {
+      return {
+        ok: false,
+        code: "LEGAL_VERSION_MISMATCH",
+        message:
+          "La versión legal cambió. Vuelve a abrir el documento y acepta la versión vigente.",
+        statusCode: 409,
+      };
+    }
+
     const acceptance = await legalRepo.createAcceptance({
       userId: auth.userId, legalDocumentId: input.legalDocumentId,
-      versionAccepted: input.version,
+      versionAccepted: document.version,
       ...(ipAddress ? { ipAddress } : {}),
       ...(userAgent ? { userAgent } : {}),
     });

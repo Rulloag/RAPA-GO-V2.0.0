@@ -6,6 +6,9 @@ import { useAuth } from "../features/auth";
 import { WelcomePage } from "../pages/WelcomePage";
 import { NotFoundPage } from "../pages/NotFoundPage";
 import { LoginPage, RegisterPage } from "../features/auth";
+import { FacebookCallbackPage } from "../features/auth/FacebookCallbackPage";
+import { ForgotPasswordPage } from "../features/auth/ForgotPasswordPage";
+import { ResetPasswordPage } from "../features/auth/ResetPasswordPage";
 import { PassengerLayout } from "../layouts/PassengerLayout";
 import { DriverLayout } from "../layouts/DriverLayout";
 import { GuideLayout } from "../layouts/GuideLayout";
@@ -18,12 +21,42 @@ import {
   ProfileSecurityPage,
   ProfileNotificationsPage,
 } from "../pages/profile";
-import { NotificationPage } from "../pages/notifications/NotificationPage.js";
-import { ApplicationDriverPage, ApplicationGuidePage, ApplicationStatusPage } from "../pages/apply/index.js";
-import { LegalPage } from "../pages/legal/index.js";
-import { MapTestPage } from "../pages/maps/MapTestPage.js";
+import { NotificationPage } from "../pages/notifications/NotificationPage";
+import { SupportCenterPage } from "../pages/support/SupportCenterPage.js";
+import { RatingSyncRuntime } from "../features/ratings/RatingSyncRuntime.js";
+import { SupportQuickAccess } from "../features/support/SupportQuickAccess.js";
+import {
+  ApplicationDriverPage,
+  ApplicationGuidePage,
+  ApplicationStatusPage,
+} from "../pages/apply/index";
+import { LegalPage } from "../pages/legal/index";
+import { PublicAccountDeletionPage } from "../pages/public/PublicAccountDeletionPage.js";
+import {
+  EulaPublicPage,
+  PrivacyPublicPage,
+  SupportPublicPage,
+  TermsPublicPage,
+} from "../pages/public/PublicLegalPages.js";
 
-/** Wraps a private route: passes the current path to RouteGuard for role checking. */
+function getPreferredHome(role: string): string {
+  const mode =
+    localStorage.getItem("rapago_active_role") ??
+    localStorage.getItem("rapago_selected_role") ??
+    localStorage.getItem("rapago_view_mode") ??
+    localStorage.getItem("rapago_active_mode");
+
+  if (role === "driver" && mode === "passenger") {
+    return ROUTES.PASSENGER.HOME;
+  }
+
+  if (role === "driver" && mode === "driver") {
+    return ROUTES.DRIVER.HOME;
+  }
+
+  return ROLE_HOME[role as keyof typeof ROLE_HOME] ?? ROUTES.WELCOME;
+}
+
 function PrivateRoute({
   path,
   component: Component,
@@ -46,7 +79,6 @@ function PrivateRoute({
   );
 }
 
-/** Auth routes redirect to role home when user already has a session. */
 function AuthRoute({
   path,
   component: Component,
@@ -62,8 +94,9 @@ function AuthRoute({
       path={path}
       render={() => {
         if (status === "authenticated" && user) {
-          return <Redirect to={ROLE_HOME[user.role]} />;
+          return <Redirect to={getPreferredHome(user.role)} />;
         }
+
         return <Component />;
       }}
     />
@@ -72,47 +105,60 @@ function AuthRoute({
 
 export function AppRouter(): JSX.Element {
   return (
-    <IonRouterOutlet>
-      <Switch>
+    <>
+      <RatingSyncRuntime />
+      <SupportQuickAccess />
+      <IonRouterOutlet>
+        <Switch>
+        {/* Facebook callback debe ir arriba para que no lo tome otra ruta */}
+        <Route
+          exact
+          path={ROUTES.AUTH.FACEBOOK_CALLBACK}
+          component={FacebookCallbackPage}
+        />
+
         <Redirect exact from={ROUTES.ROOT} to={ROUTES.WELCOME} />
 
-        {/* Public */}
         <Route exact path={ROUTES.WELCOME} component={WelcomePage} />
+        <Route exact path={ROUTES.PUBLIC.PRIVACY} component={PrivacyPublicPage} />
+        <Route exact path={ROUTES.PUBLIC.TERMS} component={TermsPublicPage} />
+        <Route exact path={ROUTES.PUBLIC.SUPPORT} component={SupportPublicPage} />
+        <Route exact path={ROUTES.PUBLIC.EULA} component={EulaPublicPage} />
+        <Route
+          exact
+          path={ROUTES.PUBLIC.DELETE_ACCOUNT}
+          component={PublicAccountDeletionPage}
+        />
         <Route exact path={ROUTES.NOT_FOUND} component={NotFoundPage} />
+
         <Route exact path={ROUTES.APPLY.DRIVER} component={ApplicationDriverPage} />
-        <Route exact path={ROUTES.APPLY.GUIDE}  component={ApplicationGuidePage} />
+        <Route exact path={ROUTES.APPLY.GUIDE} component={ApplicationGuidePage} />
         <Route exact path={ROUTES.APPLY.STATUS} component={ApplicationStatusPage} />
 
-        {/* Legal — public, no auth required */}
         <Route exact path="/legal/:type" component={LegalPage} />
 
-        {/* Maps integration test — only available in development */}
-        {import.meta.env.MODE === "development" && (
-          <Route exact path={ROUTES.MAPS.TEST} component={MapTestPage} />
-        )}
-
-        {/* Auth — redirect to role home if already authenticated */}
-        <AuthRoute path={ROUTES.AUTH.LOGIN}    component={LoginPage} />
+        <AuthRoute path={ROUTES.AUTH.LOGIN} component={LoginPage} />
+        <AuthRoute path="/auth/forgot-password" component={ForgotPasswordPage} />
+        <AuthRoute path="/auth/reset-password" component={ResetPasswordPage} />
         <AuthRoute path={ROUTES.AUTH.REGISTER} component={RegisterPage} />
 
-        {/* Role sections — protected by RouteGuard */}
         <PrivateRoute path={ROUTES.PASSENGER.BASE} component={PassengerLayout} />
-        <PrivateRoute path={ROUTES.DRIVER.BASE}    component={DriverLayout} />
-        <PrivateRoute path={ROUTES.GUIDE.BASE}     component={GuideLayout} />
-        <PrivateRoute path={ROUTES.RENTAL.BASE}    component={RentalLayout} />
-        <PrivateRoute path={ROUTES.ADMIN.BASE}     component={AdminLayout} />
+        <PrivateRoute path={ROUTES.DRIVER.BASE} component={DriverLayout} />
+        <PrivateRoute path={ROUTES.GUIDE.BASE} component={GuideLayout} />
+        <PrivateRoute path={ROUTES.RENTAL.BASE} component={RentalLayout} />
+        <PrivateRoute path={ROUTES.ADMIN.BASE} component={AdminLayout} />
 
-        {/* Shared profile — protected, any authenticated role */}
-        <PrivateRoute exact path={ROUTES.PROFILE.INDEX}         component={ProfileIndexPage} />
-        <PrivateRoute exact path={ROUTES.PROFILE.DOCUMENTS}     component={ProfileDocumentsPage} />
-        <PrivateRoute exact path={ROUTES.PROFILE.BANK_ACCOUNT}  component={ProfileBankAccountPage} />
-        <PrivateRoute exact path={ROUTES.PROFILE.SECURITY}      component={ProfileSecurityPage} />
+        <PrivateRoute exact path={ROUTES.PROFILE.INDEX} component={ProfileIndexPage} />
+        <PrivateRoute exact path={ROUTES.PROFILE.DOCUMENTS} component={ProfileDocumentsPage} />
+        <PrivateRoute exact path={ROUTES.PROFILE.BANK_ACCOUNT} component={ProfileBankAccountPage} />
+        <PrivateRoute exact path={ROUTES.PROFILE.SECURITY} component={ProfileSecurityPage} />
         <PrivateRoute exact path={ROUTES.PROFILE.NOTIFICATIONS} component={ProfileNotificationsPage} />
         <PrivateRoute exact path="/notifications" component={NotificationPage} />
+        <PrivateRoute exact path={ROUTES.SUPPORT.CENTER} component={SupportCenterPage} />
 
-        {/* Catch-all */}
         <Route render={() => <Redirect to={ROUTES.NOT_FOUND} />} />
-      </Switch>
-    </IonRouterOutlet>
+        </Switch>
+      </IonRouterOutlet>
+    </>
   );
 }

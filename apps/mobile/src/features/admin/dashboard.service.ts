@@ -34,17 +34,17 @@ export interface ActivityItem {
 export const dashboardService = {
   async getDashboard(accessToken: string): Promise<DashboardData> {
     const res = await apiClient.get<DashboardData>("/admin/dashboard", {
-      token: accessToken,
+      headers: { Authorization: `Bearer ${accessToken}` },
     });
-    if (!res.ok) throw new Error(res.message ?? "Error al cargar el dashboard.");
+    if (res.ok === false) throw new Error(res.message ?? "Error al cargar el dashboard.");
     return res.data;
   },
 
   async getActivity(accessToken: string, limit = 20): Promise<ActivityItem[]> {
     const res = await apiClient.get<ActivityItem[]>(`/admin/dashboard/activity?limit=${limit}`, {
-      token: accessToken,
+      headers: { Authorization: `Bearer ${accessToken}` },
     });
-    if (!res.ok) throw new Error(res.message ?? "Error al cargar actividad.");
+    if (res.ok === false) throw new Error(res.message ?? "Error al cargar actividad.");
     return res.data;
   },
 };

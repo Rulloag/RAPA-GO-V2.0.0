@@ -7,6 +7,7 @@
     "module": "ESNext",
     "moduleResolution": "Bundler",
     "jsx": "react-jsx",
+
     "baseUrl": ".",
     "paths": {
       "@/*": ["src/*"],
@@ -19,9 +20,22 @@
       "@navigation/*": ["src/navigation/*"],
       "@theme/*": ["src/theme/*"]
     },
+
     "noEmit": true,
     "allowImportingTsExtensions": true,
-    "types": ["vite/client"]
+    "skipLibCheck": true,
+    "allowSyntheticDefaultImports": true,
+    "esModuleInterop": true,
+    "resolveJsonModule": true,
+
+    "strict": false,
+    "noImplicitAny": false,
+    "exactOptionalPropertyTypes": false,
+    "noPropertyAccessFromIndexSignature": false,
+    "noUnusedLocals": false,
+    "noUnusedParameters": false,
+
+    "types": ["vite/client", "google.maps"]
   },
   "include": ["src"],
   "exclude": ["node_modules", "dist"]

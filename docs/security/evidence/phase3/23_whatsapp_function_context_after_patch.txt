@@ -1,0 +1,98 @@
+## apps/mobile/src/pages/admin/index.tsx :: buildAdminWalletCreditRefundWhatsAppUrl
+BadTermsInsideFunction=0
+
+function buildAdminWalletCreditRefundWhatsAppUrl(benefit: AdminWalletBenefit): string {
+  const record = benefit as AdminWalletBenefit & Record<string, unknown>;
+  const phone = normalizeAdminSupportWhatsAppPhone(RAPAGO_SUPPORT_WHATSAPP_PHONE);
+  const folio = buildAdminSupportFolio([
+    record["id"],
+    record["rideId"],
+    record["paymentId"],
+    record["createdAt"],
+    record["source"],
+  ]);
+  const provider = sanitizeAdminSupportText(record["paymentProvider"]);
+  const method = sanitizeAdminSupportText(record["paymentMethod"]);
+  const supportDate = formatAdminSupportDate(record["createdAt"]);
+
+  const lines = [
+    "Soporte RAPA GO: solicitud de revision de credito/devolucion.",
+    `Folio: ${folio}`,
+    provider ? `Proveedor: ${provider}` : null,
+    method ? `Medio de pago: ${method}` : null,
+    supportDate ? `Fecha solicitud: ${supportDate}` : null,
+    "Revisar detalle en panel admin autenticado.",
+  ].filter(Boolean);
+
+  return `https://wa.me/${phone}?text=${encodeURIComponent(lines.join("\n"))}`;
+}
+
+## apps/mobile/src/pages/passenger/pages/TripsPage.tsx :: buildRapaGoRefundWhatsAppUrl
+BadTermsInsideFunction=0
+
+function buildRapaGoRefundWhatsAppUrl(ride: RideRequestData, review: PassengerCashPaymentReview): string {
+  const phone = normalizeRapaGoSupportWhatsAppPhone(RAPAGO_SUPPORT_WHATSAPP_PHONE);
+  const rideRecord = ride as RideRequestData & Record<string, unknown>;
+  const reviewRecord = review as PassengerCashPaymentReview & Record<string, unknown>;
+  const folio = buildRapaGoSupportFolio([
+    rideRecord["id"],
+    rideRecord["rideId"],
+    reviewRecord["id"],
+    reviewRecord["rideId"],
+    reviewRecord["createdAt"],
+  ]);
+  const supportDate = formatRapaGoSupportDate(reviewRecord["createdAt"] ?? rideRecord["completedAt"] ?? rideRecord["createdAt"]);
+
+  const message = [
+    "Soporte RAPA GO: solicitud de revision por pago en efectivo.",
+    `Folio: ${folio}`,
+    supportDate ? `Fecha solicitud: ${supportDate}` : null,
+    "Revisar detalle en panel admin autenticado.",
+  ].filter(Boolean);
+
+  return `https://wa.me/${phone}?text=${encodeURIComponent(message.join("\n"))}`;
+}
+
+## apps/mobile/src/pages/passenger/pages/TripsPage.tsx :: buildRapaGoCardCancelRefundWhatsAppUrl
+BadTermsInsideFunction=0
+
+function buildRapaGoCardCancelRefundWhatsAppUrl(ride: RideRequestData): string {
+  const phone = normalizeRapaGoSupportWhatsAppPhone(RAPAGO_SUPPORT_WHATSAPP_PHONE);
+  const record = ride as RideRequestData & Record<string, unknown>;
+  const folio = buildRapaGoSupportFolio([
+    record["id"],
+    record["rideId"],
+    record["paymentId"],
+    record["mercadoPagoPaymentId"],
+    record["cancelledAt"],
+    record["createdAt"],
+  ]);
+  const supportDate = formatRapaGoSupportDate(record["cancelledAt"] ?? record["createdAt"]);
+
+  const message = [
+    "Soporte RAPA GO: solicitud de revision de devolucion por cancelacion con tarjeta.",
+    `Folio: ${folio}`,
+    supportDate ? `Fecha solicitud: ${supportDate}` : null,
+    "Revisar detalle en panel admin autenticado.",
+  ].filter(Boolean);
+
+  return `https://wa.me/${phone}?text=${encodeURIComponent(message.join("\n"))}`;
+}
+
+## apps/mobile/src/pages/passenger/pages/WalletPage.tsx :: buildWalletCreditRefundWhatsAppUrl
+BadTermsInsideFunction=0
+
+function buildWalletCreditRefundWhatsAppUrl(benefits: LocalWalletBenefit[]): string {
+  const phone = normalizeWalletSupportWhatsAppPhone(RAPAGO_SUPPORT_WHATSAPP_PHONE);
+  const folio = buildWalletSupportFolio(benefits);
+  const count = benefits.length;
+
+  const lines = [
+    "Soporte RAPA GO: solicitud de revision de credito/devolucion.",
+    `Folio: ${folio}`,
+    count > 1 ? `Solicitudes: ${count}` : null,
+    "Revisar detalle en panel admin autenticado.",
+  ].filter(Boolean);
+
+  return `https://wa.me/${phone}?text=${encodeURIComponent(lines.join("\n"))}`;
+}

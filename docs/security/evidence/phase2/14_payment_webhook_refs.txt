@@ -1,0 +1,370 @@
+﻿apps/api/src/app.ts:130:// payments.routes.ts define /payments/create y /payments/webhook/...
+apps/api/src/db/schema/wallets.schema.ts:40:providerTransactionId: text("provider_transaction_id"),
+apps/api/src/modules/payments/mercadopago.provider.ts:6:NormalizedWebhook,
+apps/api/src/modules/payments/mercadopago.provider.ts:10:const MP_API_URL = "https://api.mercadopago.com";
+apps/api/src/modules/payments/mercadopago.provider.ts:15:webhookSecret: string;
+apps/api/src/modules/payments/mercadopago.provider.ts:19:const accessToken = process.env["MERCADOPAGO_ACCESS_TOKEN"] ?? "";
+apps/api/src/modules/payments/mercadopago.provider.ts:20:const webhookSecret = process.env["MERCADOPAGO_WEBHOOK_SECRET"] ?? "";
+apps/api/src/modules/payments/mercadopago.provider.ts:21:const environment = process.env["MERCADOPAGO_ENVIRONMENT"] ?? "sandbox";
+apps/api/src/modules/payments/mercadopago.provider.ts:22:const checkoutUrlMode = process.env["MERCADOPAGO_CHECKOUT_URL_MODE"] ?? "init_point";
+apps/api/src/modules/payments/mercadopago.provider.ts:25:throw new Error("MercadoPago credentials not configured. Falta MERCADOPAGO_ACCESS_TOKEN en el .env del API.");
+apps/api/src/modules/payments/mercadopago.provider.ts:28:return { accessToken, webhookSecret, environment, checkoutUrlMode };
+apps/api/src/modules/payments/mercadopago.provider.ts:71:// MercadoPago puede rechazar localhost/red local en back_urls y webhooks.
+apps/api/src/modules/payments/mercadopago.provider.ts:101:function getMercadoPagoErrorMessage(status: number, body: string): string {
+apps/api/src/modules/payments/mercadopago.provider.ts:147:return { ok: false, status: response.status, text: text || "MercadoPago returned invalid JSON." };
+apps/api/src/modules/payments/mercadopago.provider.ts:174:export class MercadoPagoProvider implements PaymentProvider {
+apps/api/src/modules/payments/mercadopago.provider.ts:175:readonly name = "mercadopago";
+apps/api/src/modules/payments/mercadopago.provider.ts:183:throw new Error(`Invalid MercadoPago amount: ${params.amountClp}`);
+apps/api/src/modules/payments/mercadopago.provider.ts:189:throw new Error("Missing MercadoPago orderId.");
+apps/api/src/modules/payments/mercadopago.provider.ts:193:const publicWebhookUrl = normalizePublicHttpsUrl(params.webhookUrl);
+apps/api/src/modules/payments/mercadopago.provider.ts:233:if (publicWebhookUrl) {
+apps/api/src/modules/payments/mercadopago.provider.ts:234:preference["notification_url"] = publicWebhookUrl;
+apps/api/src/modules/payments/mercadopago.provider.ts:237:console.log("[MercadoPago] Creando preferencia:", {
+apps/api/src/modules/payments/mercadopago.provider.ts:243:webhookUrlUsada: publicWebhookUrl,
+apps/api/src/modules/payments/mercadopago.provider.ts:271:console.error("[MercadoPago] Respuesta incompleta:", data);
+apps/api/src/modules/payments/mercadopago.provider.ts:272:throw new Error("MercadoPago response missing preference id or checkout URL.");
+apps/api/src/modules/payments/mercadopago.provider.ts:275:console.log("[MercadoPago] Preferencia creada OK:", {
+apps/api/src/modules/payments/mercadopago.provider.ts:291:parsedMessage: getMercadoPagoErrorMessage(result.status, result.text),
+apps/api/src/modules/payments/mercadopago.provider.ts:294:console.error(`[MercadoPago] Intento rechazado (${attempt.name}):`, lastError);
+apps/api/src/modules/payments/mercadopago.provider.ts:298:`MercadoPago API error ${lastError?.status ?? "unknown"}: ${lastError?.parsedMessage ?? "unknown error"}`,
+apps/api/src/modules/payments/mercadopago.provider.ts:302:verifyWebhookSignature(payload: Record<string, unknown>, headers: Record<string, string>): boolean {
+apps/api/src/modules/payments/mercadopago.provider.ts:306:if (!config.webhookSecret) return true;
+apps/api/src/modules/payments/mercadopago.provider.ts:331:.createHmac("sha256", config.webhookSecret)
+apps/api/src/modules/payments/mercadopago.provider.ts:343:async normalizeWebhook(
+apps/api/src/modules/payments/mercadopago.provider.ts:346:): Promise<NormalizedWebhook> {
+apps/api/src/modules/payments/mercadopago.provider.ts:384:`MercadoPago API error ${response.status} fetching payment ${paymentId}: ${text}`,
+apps/api/src/modules/payments/payment.provider.ts:10:webhookUrl:     string;
+apps/api/src/modules/payments/payment.provider.ts:20:export interface NormalizedWebhook {
+apps/api/src/modules/payments/payment.provider.ts:36:* Verify the webhook came from the real provider.
+apps/api/src/modules/payments/payment.provider.ts:38:* @param headers  Relevant HTTP headers (e.g. x-signature for MercadoPago)
+apps/api/src/modules/payments/payment.provider.ts:40:verifyWebhookSignature(
+apps/api/src/modules/payments/payment.provider.ts:46:* Normalise a raw webhook into provider-agnostic fields.
+apps/api/src/modules/payments/payment.provider.ts:47:* May make an additional API call (e.g. MercadoPago requires a GET to retrieve status).
+apps/api/src/modules/payments/payment.provider.ts:49:normalizeWebhook(
+apps/api/src/modules/payments/payment.provider.ts:52:): Promise<NormalizedWebhook>;
+apps/api/src/modules/payments/payments.controller.ts:5:prontoPagaWebhookSchema,
+apps/api/src/modules/payments/payments.controller.ts:6:mercadoPagoWebhookSchema,
+apps/api/src/modules/payments/payments.controller.ts:45:async prontoPagaWebhook(request: FastifyRequest, reply: FastifyReply): Promise<void> {
+apps/api/src/modules/payments/payments.controller.ts:46:const parsed = prontoPagaWebhookSchema.safeParse(request.body);
+apps/api/src/modules/payments/payments.controller.ts:50:message:    parsed.error.errors[0]?.message ?? "Invalid webhook payload.",
+apps/api/src/modules/payments/payments.controller.ts:56:// ProntoPaga embeds the signature in the body — headers are not needed.
+apps/api/src/modules/payments/payments.controller.ts:57:const result = await paymentsService.handleWebhook(
+apps/api/src/modules/payments/payments.controller.ts:58:"prontopaga",
+apps/api/src/modules/payments/payments.controller.ts:71:async mercadoPagoWebhook(request: FastifyRequest, reply: FastifyReply): Promise<void> {
+apps/api/src/modules/payments/payments.controller.ts:72:const parsed = mercadoPagoWebhookSchema.safeParse(request.body);
+apps/api/src/modules/payments/payments.controller.ts:76:message:    parsed.error.errors[0]?.message ?? "Invalid webhook payload.",
+apps/api/src/modules/payments/payments.controller.ts:82:// MercadoPago signs via x-signature and x-request-id headers.
+apps/api/src/modules/payments/payments.controller.ts:88:const result = await paymentsService.handleWebhook(
+apps/api/src/modules/payments/payments.controller.ts:89:"mercadopago",
+apps/api/src/modules/payments/payments.repository.ts:112:webhookPayload: unknown,
+apps/api/src/modules/payments/payments.repository.ts:119:rawProviderPayload: webhookPayload as Record<string, unknown>,
+apps/api/src/modules/payments/payments.repository.ts:129:async markRejected(id: string, webhookPayload: unknown): Promise<Payment> {
+apps/api/src/modules/payments/payments.repository.ts:134:rawProviderPayload: webhookPayload as Record<string, unknown>,
+apps/api/src/modules/payments/payments.routes.ts:6:fastify.post("/payments/webhook/prontopaga", paymentsController.prontoPagaWebhook);
+apps/api/src/modules/payments/payments.routes.ts:7:fastify.post("/payments/webhook/mercadopago", paymentsController.mercadoPagoWebhook);
+apps/api/src/modules/payments/payments.schema.ts:11:// ── ProntoPaga webhook ─────────────────────────────────────────────────────────
+apps/api/src/modules/payments/payments.schema.ts:13:export const prontoPagaWebhookSchema = z
+apps/api/src/modules/payments/payments.schema.ts:15:// ProntoPaga documentation uses "order" as the primary field name.
+apps/api/src/modules/payments/payments.schema.ts:28:{ message: "Webhook payload must include 'order' or 'order_id'." },
+apps/api/src/modules/payments/payments.schema.ts:31:export type ProntoPagaWebhookBody = z.infer<typeof prontoPagaWebhookSchema>;
+apps/api/src/modules/payments/payments.schema.ts:33:// ── MercadoPago webhook ────────────────────────────────────────────────────────
+apps/api/src/modules/payments/payments.schema.ts:35:export const mercadoPagoWebhookSchema = z
+apps/api/src/modules/payments/payments.schema.ts:46:export type MercadoPagoWebhookBody = z.infer<typeof mercadoPagoWebhookSchema>;
+apps/api/src/modules/payments/payments.service.ts:10:import type { NormalizedWebhook } from "./payment.provider.js";
+apps/api/src/modules/payments/payments.service.ts:302:function extractMercadoPagoPaymentId(payment: Record<string, unknown>): string {
+apps/api/src/modules/payments/payments.service.ts:342:mercadoPagoPaymentId: string;
+apps/api/src/modules/payments/payments.service.ts:362:mercadoPagoPaymentId: input.mercadoPagoPaymentId,
+apps/api/src/modules/payments/payments.service.ts:375:async function refundMercadoPagoPayment(input: {
+apps/api/src/modules/payments/payments.service.ts:376:mercadoPagoPaymentId: string;
+apps/api/src/modules/payments/payments.service.ts:382:const accessToken = process.env["MERCADOPAGO_ACCESS_TOKEN"];
+apps/api/src/modules/payments/payments.service.ts:389:message: "Falta MERCADOPAGO_ACCESS_TOKEN en el backend.",
+apps/api/src/modules/payments/payments.service.ts:395:`https://api.mercadopago.com/v1/payments/${input.mercadoPagoPaymentId}/refunds`,
+apps/api/src/modules/payments/payments.service.ts:401:"X-Idempotency-Key": crypto.randomUUID(),
+apps/api/src/modules/payments/payments.service.ts:504:const webhookBaseUrl = process.env["PAYMENT_WEBHOOK_BASE_URL"] ?? "";
+apps/api/src/modules/payments/payments.service.ts:517:webhookUrl: `${webhookBaseUrl.replace(/\/+$/, "")}/api/payments/webhook/${provider.name}`,
+apps/api/src/modules/payments/payments.service.ts:577:mercadoPagoPaymentId?: string;
+apps/api/src/modules/payments/payments.service.ts:593:if (providerName !== "mercadopago") {
+apps/api/src/modules/payments/payments.service.ts:598:skippedReason: "El pago aprobado no fue realizado con MercadoPago.",
+apps/api/src/modules/payments/payments.service.ts:612:mercadoPagoPaymentId: extractMercadoPagoPaymentId(payment),
+apps/api/src/modules/payments/payments.service.ts:616:const mercadoPagoPaymentId = extractMercadoPagoPaymentId(payment);
+apps/api/src/modules/payments/payments.service.ts:618:if (!mercadoPagoPaymentId) {
+apps/api/src/modules/payments/payments.service.ts:621:code: "REFUND_MISSING_MERCADOPAGO_ID",
+apps/api/src/modules/payments/payments.service.ts:622:message: "El pago no tiene providerPaymentId de MercadoPago para devolver.",
+apps/api/src/modules/payments/payments.service.ts:627:const refundResult = await refundMercadoPagoPayment({
+apps/api/src/modules/payments/payments.service.ts:628:mercadoPagoPaymentId,
+apps/api/src/modules/payments/payments.service.ts:635:mercadoPagoPaymentId,
+apps/api/src/modules/payments/payments.service.ts:646:provider: "mercadopago",
+apps/api/src/modules/payments/payments.service.ts:647:mercadoPagoPaymentId,
+apps/api/src/modules/payments/payments.service.ts:656:code: "MERCADOPAGO_REFUND_ERROR",
+apps/api/src/modules/payments/payments.service.ts:657:message: "El viaje fue cancelado, pero MercadoPago no pudo procesar la devolución.",
+apps/api/src/modules/payments/payments.service.ts:665:mercadoPagoPaymentId,
+apps/api/src/modules/payments/payments.service.ts:676:provider: "mercadopago",
+apps/api/src/modules/payments/payments.service.ts:677:mercadoPagoPaymentId,
+apps/api/src/modules/payments/payments.service.ts:688:mercadoPagoPaymentId,
+apps/api/src/modules/payments/payments.service.ts:693:async handleWebhook(
+apps/api/src/modules/payments/payments.service.ts:705:code: "WEBHOOK_UNKNOWN_PROVIDER",
+apps/api/src/modules/payments/payments.service.ts:711:if (!provider.verifyWebhookSignature(payload, headers)) {
+apps/api/src/modules/payments/payments.service.ts:713:eventType: "payment.webhook_invalid_signature",
+apps/api/src/modules/payments/payments.service.ts:722:code: "WEBHOOK_INVALID_SIGNATURE",
+apps/api/src/modules/payments/payments.service.ts:723:message: "Invalid webhook signature.",
+apps/api/src/modules/payments/payments.service.ts:728:let normalized: NormalizedWebhook;
+apps/api/src/modules/payments/payments.service.ts:731:normalized = await provider.normalizeWebhook(payload, headers);
+apps/api/src/modules/payments/payments.service.ts:734:eventType: "payment.webhook_normalize_error",
+apps/api/src/modules/payments/payments.service.ts:744:code: "WEBHOOK_PROVIDER_ERROR",
+apps/api/src/modules/payments/payments.service.ts:804:// No bloquea el webhook si la actualización auxiliar del viaje falla.
+apps/api/src/modules/payments/prontopaga.provider.ts:6:NormalizedWebhook,
+apps/api/src/modules/payments/prontopaga.provider.ts:11:const environment = process.env["PRONTOPAGA_ENVIRONMENT"] ?? "sandbox";
+apps/api/src/modules/payments/prontopaga.provider.ts:14:? (process.env["PRONTOPAGA_API_URL_PROD"]     ?? "https://api.prontopaga.cl/v1")
+apps/api/src/modules/payments/prontopaga.provider.ts:15:: (process.env["PRONTOPAGA_API_URL_SANDBOX"]  ?? "https://sandbox.prontopaga.cl/v1");
+apps/api/src/modules/payments/prontopaga.provider.ts:17:const apiKey     = process.env["PRONTOPAGA_API_KEY"]     ?? "";
+apps/api/src/modules/payments/prontopaga.provider.ts:18:const secretKey  = process.env["PRONTOPAGA_SECRET_KEY"]  ?? "";
+apps/api/src/modules/payments/prontopaga.provider.ts:19:const commerceId = process.env["PRONTOPAGA_COMMERCE_ID"] ?? "";
+apps/api/src/modules/payments/prontopaga.provider.ts:23:"ProntoPaga credentials not configured (PRONTOPAGA_API_KEY, PRONTOPAGA_SECRET_KEY, PRONTOPAGA_COMMERCE_ID).",
+apps/api/src/modules/payments/prontopaga.provider.ts:48:export class ProntoPagaProvider implements PaymentProvider {
+apps/api/src/modules/payments/prontopaga.provider.ts:49:readonly name = "prontopaga";
+apps/api/src/modules/payments/prontopaga.provider.ts:63:webhook_url:  params.webhookUrl,
+apps/api/src/modules/payments/prontopaga.provider.ts:79:throw new Error(`ProntoPaga API error ${response.status}: ${text}`);
+apps/api/src/modules/payments/prontopaga.provider.ts:85:throw new Error("ProntoPaga response missing url_pay or order_id.");
+apps/api/src/modules/payments/prontopaga.provider.ts:94:verifyWebhookSignature(payload: Record<string, unknown>, _headers: Record<string, string>): boolean {
+apps/api/src/modules/payments/prontopaga.provider.ts:118:async normalizeWebhook(
+apps/api/src/modules/payments/prontopaga.provider.ts:121:): Promise<NormalizedWebhook> {
+apps/api/src/modules/payments/prontopaga.service.ts:3:function getProntoPagaConfig(): {
+apps/api/src/modules/payments/prontopaga.service.ts:9:const environment = process.env["PRONTOPAGA_ENVIRONMENT"] ?? "sandbox";
+apps/api/src/modules/payments/prontopaga.service.ts:12:? (process.env["PRONTOPAGA_API_URL_PROD"] ?? "https://api.prontopaga.cl/v1")
+apps/api/src/modules/payments/prontopaga.service.ts:13:: (process.env["PRONTOPAGA_API_URL_SANDBOX"] ?? "https://sandbox.prontopaga.cl/v1");
+apps/api/src/modules/payments/prontopaga.service.ts:15:const apiKey = process.env["PRONTOPAGA_API_KEY"] ?? "";
+apps/api/src/modules/payments/prontopaga.service.ts:16:const secretKey = process.env["PRONTOPAGA_SECRET_KEY"] ?? "";
+apps/api/src/modules/payments/prontopaga.service.ts:17:const commerceId = process.env["PRONTOPAGA_COMMERCE_ID"] ?? "";
+apps/api/src/modules/payments/prontopaga.service.ts:20:throw new Error("ProntoPaga credentials not configured (PRONTOPAGA_API_KEY, PRONTOPAGA_SECRET_KEY, PRONTOPAGA_COMMERCE_ID).");
+apps/api/src/modules/payments/prontopaga.service.ts:26:export interface ProntoPagaCreateParams {
+apps/api/src/modules/payments/prontopaga.service.ts:33:webhookUrl: string;
+apps/api/src/modules/payments/prontopaga.service.ts:36:export interface ProntoPagaCreateResult {
+apps/api/src/modules/payments/prontopaga.service.ts:47:export async function createProntoPagaPayment(
+apps/api/src/modules/payments/prontopaga.service.ts:48:params: ProntoPagaCreateParams,
+apps/api/src/modules/payments/prontopaga.service.ts:49:): Promise<ProntoPagaCreateResult> {
+apps/api/src/modules/payments/prontopaga.service.ts:50:const config = getProntoPagaConfig();
+apps/api/src/modules/payments/prontopaga.service.ts:61:webhook_url:  params.webhookUrl,
+apps/api/src/modules/payments/prontopaga.service.ts:77:throw new Error(`ProntoPaga API error ${response.status}: ${text}`);
+apps/api/src/modules/payments/prontopaga.service.ts:87:throw new Error("ProntoPaga response missing url_pay or order_id.");
+apps/api/src/modules/payments/prontopaga.service.ts:96:export function verifyProntoPagaWebhookSignature(
+apps/api/src/modules/payments/prontopaga.service.ts:101:const config = getProntoPagaConfig();
+apps/api/src/modules/payments/provider.registry.ts:2:import { ProntoPagaProvider }  from "./prontopaga.provider.js";
+apps/api/src/modules/payments/provider.registry.ts:3:import { MercadoPagoProvider } from "./mercadopago.provider.js";
+apps/api/src/modules/payments/provider.registry.ts:6:prontopaga:  new ProntoPagaProvider(),
+apps/api/src/modules/payments/provider.registry.ts:7:mercadopago: new MercadoPagoProvider(),
+apps/api/src/modules/payments/provider.registry.ts:19:* Defaults to MercadoPago. Override via PAYMENT_PROVIDER env var.
+apps/api/src/modules/payments/provider.registry.ts:21:* ProntoPaga is disabled by default (Fase 4 commercial decision).
+apps/api/src/modules/payments/provider.registry.ts:25:const name = process.env["PAYMENT_PROVIDER"] ?? "mercadopago";
+apps/api/src/modules/payments/__tests__/mercadopago.provider.test.ts:4:process.env["MERCADOPAGO_ACCESS_TOKEN"]  = "TEST-access-token";
+apps/api/src/modules/payments/__tests__/mercadopago.provider.test.ts:5:process.env["MERCADOPAGO_WEBHOOK_SECRET"] = "test-webhook-secret";
+apps/api/src/modules/payments/__tests__/mercadopago.provider.test.ts:6:process.env["MERCADOPAGO_ENVIRONMENT"]   = "sandbox";
+apps/api/src/modules/payments/__tests__/mercadopago.provider.test.ts:10:import { MercadoPagoProvider } from "../mercadopago.provider.js";
+apps/api/src/modules/payments/__tests__/mercadopago.provider.test.ts:17:describe("MercadoPagoProvider.verifyWebhookSignature", () => {
+apps/api/src/modules/payments/__tests__/mercadopago.provider.test.ts:18:const secret    = "test-webhook-secret";
+apps/api/src/modules/payments/__tests__/mercadopago.provider.test.ts:22:let provider: MercadoPagoProvider;
+apps/api/src/modules/payments/__tests__/mercadopago.provider.test.ts:25:provider = new MercadoPagoProvider();
+apps/api/src/modules/payments/__tests__/mercadopago.provider.test.ts:32:expect(provider.verifyWebhookSignature(
+apps/api/src/modules/payments/__tests__/mercadopago.provider.test.ts:41:expect(provider.verifyWebhookSignature(
+apps/api/src/modules/payments/__tests__/mercadopago.provider.test.ts:48:expect(provider.verifyWebhookSignature(
+apps/api/src/modules/payments/__tests__/mercadopago.provider.test.ts:54:it("returns true when MERCADOPAGO_WEBHOOK_SECRET is not set (dev bypass)", () => {
+apps/api/src/modules/payments/__tests__/mercadopago.provider.test.ts:55:delete process.env["MERCADOPAGO_WEBHOOK_SECRET"];
+apps/api/src/modules/payments/__tests__/mercadopago.provider.test.ts:57:expect(provider.verifyWebhookSignature(
+apps/api/src/modules/payments/__tests__/mercadopago.provider.test.ts:63:it("returns false when MERCADOPAGO_ACCESS_TOKEN is missing", () => {
+apps/api/src/modules/payments/__tests__/mercadopago.provider.test.ts:64:delete process.env["MERCADOPAGO_ACCESS_TOKEN"];
+apps/api/src/modules/payments/__tests__/mercadopago.provider.test.ts:69:expect(provider.verifyWebhookSignature(
+apps/api/src/modules/payments/__tests__/mercadopago.provider.test.ts:76:describe("MercadoPagoProvider.normalizeWebhook", () => {
+apps/api/src/modules/payments/__tests__/mercadopago.provider.test.ts:77:let provider: MercadoPagoProvider;
+apps/api/src/modules/payments/__tests__/mercadopago.provider.test.ts:80:provider  = new MercadoPagoProvider();
+apps/api/src/modules/payments/__tests__/mercadopago.provider.test.ts:85:const result = await provider.normalizeWebhook(
+apps/api/src/modules/payments/__tests__/mercadopago.provider.test.ts:94:const result = await provider.normalizeWebhook({ type: "payment" }, {});
+apps/api/src/modules/payments/__tests__/mercadopago.provider.test.ts:109:const result = await provider.normalizeWebhook(
+apps/api/src/modules/payments/__tests__/mercadopago.provider.test.ts:125:const result = await provider.normalizeWebhook({ type: "payment", data: { id: "1" } }, {});
+apps/api/src/modules/payments/__tests__/mercadopago.provider.test.ts:135:const result = await provider.normalizeWebhook({ type: "payment", data: { id: "2" } }, {});
+apps/api/src/modules/payments/__tests__/mercadopago.provider.test.ts:146:provider.normalizeWebhook({ type: "payment", data: { id: "3" } }, {}),
+apps/api/src/modules/payments/__tests__/mercadopago.provider.test.ts:147:).rejects.toThrow("MercadoPago API error 500");
+apps/api/src/modules/payments/__tests__/payments.service.test.ts:19:mockVerifyWebhookSignature,
+apps/api/src/modules/payments/__tests__/payments.service.test.ts:20:mockNormalizeWebhook,
+apps/api/src/modules/payments/__tests__/payments.service.test.ts:36:mockVerifyWebhookSignature: vi.fn(),
+apps/api/src/modules/payments/__tests__/payments.service.test.ts:37:mockNormalizeWebhook:       vi.fn(),
+apps/api/src/modules/payments/__tests__/payments.service.test.ts:41:name:                    "prontopaga",
+apps/api/src/modules/payments/__tests__/payments.service.test.ts:43:verifyWebhookSignature:  mockVerifyWebhookSignature,
+apps/api/src/modules/payments/__tests__/payments.service.test.ts:44:normalizeWebhook:        mockNormalizeWebhook,
+apps/api/src/modules/payments/__tests__/payments.service.test.ts:125:process.env["PAYMENT_WEBHOOK_BASE_URL"] = "https://api.rapago.cl";
+apps/api/src/modules/payments/__tests__/payments.service.test.ts:179:urlPay: "https://sandbox.mercadopago.com/checkout?pref=MP-PREF-999",
+apps/api/src/modules/payments/__tests__/payments.service.test.ts:187:expect(result.urlPay).toBe("https://sandbox.mercadopago.com/checkout?pref=MP-PREF-999");
+apps/api/src/modules/payments/__tests__/payments.service.test.ts:198:urlPay: "https://sandbox.mercadopago.com/checkout?pref=MP-PREF-777",
+apps/api/src/modules/payments/__tests__/payments.service.test.ts:207:"https://sandbox.mercadopago.com/checkout?pref=MP-PREF-777",
+apps/api/src/modules/payments/__tests__/payments.service.test.ts:213:// ── handleWebhook ──────────────────────────────────────────────────────────────
+apps/api/src/modules/payments/__tests__/payments.service.test.ts:215:describe("PaymentsService.handleWebhook", () => {
+apps/api/src/modules/payments/__tests__/payments.service.test.ts:229:mockVerifyWebhookSignature.mockReturnValue(true);
+apps/api/src/modules/payments/__tests__/payments.service.test.ts:230:mockNormalizeWebhook.mockResolvedValue({
+apps/api/src/modules/payments/__tests__/payments.service.test.ts:242:mockVerifyWebhookSignature.mockReturnValue(false);
+apps/api/src/modules/payments/__tests__/payments.service.test.ts:244:const result = await service.handleWebhook("prontopaga", { order: PAYMENT_ID, status: "success" }, {});
+apps/api/src/modules/payments/__tests__/payments.service.test.ts:248:expect(result.code).toBe("WEBHOOK_INVALID_SIGNATURE");
+apps/api/src/modules/payments/__tests__/payments.service.test.ts:254:it("processes success status from normalizeWebhook", async () => {
+apps/api/src/modules/payments/__tests__/payments.service.test.ts:255:mockNormalizeWebhook.mockResolvedValue({
+apps/api/src/modules/payments/__tests__/payments.service.test.ts:259:const result = await service.handleWebhook("prontopaga", { order: PAYMENT_ID, status: "success" }, {});
+apps/api/src/modules/payments/__tests__/payments.service.test.ts:266:it("processes success using 'order' field (prontopaga payload)", async () => {
+apps/api/src/modules/payments/__tests__/payments.service.test.ts:267:mockNormalizeWebhook.mockResolvedValue({
+apps/api/src/modules/payments/__tests__/payments.service.test.ts:271:const result = await service.handleWebhook(
+apps/api/src/modules/payments/__tests__/payments.service.test.ts:272:"prontopaga",
+apps/api/src/modules/payments/__tests__/payments.service.test.ts:282:it("processes success using 'order_id' field (prontopaga fallback)", async () => {
+apps/api/src/modules/payments/__tests__/payments.service.test.ts:283:mockNormalizeWebhook.mockResolvedValue({
+apps/api/src/modules/payments/__tests__/payments.service.test.ts:287:const result = await service.handleWebhook(
+apps/api/src/modules/payments/__tests__/payments.service.test.ts:288:"prontopaga",
+apps/api/src/modules/payments/__tests__/payments.service.test.ts:299:mockNormalizeWebhook.mockResolvedValue({
+apps/api/src/modules/payments/__tests__/payments.service.test.ts:303:const result = await service.handleWebhook("prontopaga", { order: PAYMENT_ID, status: "rejected" }, {});
+apps/api/src/modules/payments/__tests__/payments.service.test.ts:311:it("is idempotent: does not re-process a duplicate success webhook", async () => {
+apps/api/src/modules/payments/__tests__/payments.service.test.ts:314:const result = await service.handleWebhook("prontopaga", { order: PAYMENT_ID, status: "success" }, {});
+apps/api/src/modules/payments/__tests__/payments.service.test.ts:321:it("is idempotent: does not re-process a duplicate rejected webhook", async () => {
+apps/api/src/modules/payments/__tests__/payments.service.test.ts:323:mockNormalizeWebhook.mockResolvedValue({
+apps/api/src/modules/payments/__tests__/payments.service.test.ts:327:const result = await service.handleWebhook("prontopaga", { order: PAYMENT_ID, status: "rejected" }, {});
+apps/api/src/modules/payments/__tests__/payments.service.test.ts:335:mockNormalizeWebhook.mockResolvedValue({
+apps/api/src/modules/payments/__tests__/payments.service.test.ts:339:const result = await service.handleWebhook("prontopaga", { order: PAYMENT_ID, status: "chargeback" }, {});
+apps/api/src/modules/payments/__tests__/payments.service.test.ts:348:mockNormalizeWebhook.mockResolvedValue({
+apps/api/src/modules/payments/__tests__/payments.service.test.ts:352:const result = await service.handleWebhook("mercadopago", { type: "payment", data: { id: "123" } }, {});
+apps/api/src/modules/payments/__tests__/payments.service.test.ts:360:mockNormalizeWebhook.mockResolvedValue({
+apps/api/src/modules/payments/__tests__/payments.service.test.ts:364:const result = await service.handleWebhook("mercadopago", { type: "subscription_preapproval" }, {});
+apps/api/src/modules/payments/__tests__/payments.service.test.ts:371:it("returns 502 when normalizeWebhook throws (provider API error)", async () => {
+apps/api/src/modules/payments/__tests__/payments.service.test.ts:372:mockNormalizeWebhook.mockRejectedValue(new Error("MP API down"));
+apps/api/src/modules/payments/__tests__/payments.service.test.ts:374:const result = await service.handleWebhook("mercadopago", { type: "payment", data: { id: "999" } }, {});
+apps/api/src/modules/payments/__tests__/payments.service.test.ts:378:expect(result.code).toBe("WEBHOOK_PROVIDER_ERROR");
+apps/api/src/modules/payments/__tests__/prontopaga.service.test.ts:4:process.env["PRONTOPAGA_ENVIRONMENT"]  = "sandbox";
+apps/api/src/modules/payments/__tests__/prontopaga.service.test.ts:5:process.env["PRONTOPAGA_API_KEY"]      = "test-api-key";
+apps/api/src/modules/payments/__tests__/prontopaga.service.test.ts:6:process.env["PRONTOPAGA_SECRET_KEY"]   = "test-secret";
+apps/api/src/modules/payments/__tests__/prontopaga.service.test.ts:7:process.env["PRONTOPAGA_COMMERCE_ID"]  = "COMMERCE123";
+apps/api/src/modules/payments/__tests__/prontopaga.service.test.ts:11:import { ProntoPagaProvider } from "../prontopaga.provider.js";
+apps/api/src/modules/payments/__tests__/prontopaga.service.test.ts:19:describe("ProntoPagaProvider.verifyWebhookSignature", () => {
+apps/api/src/modules/payments/__tests__/prontopaga.service.test.ts:21:let provider: ProntoPagaProvider;
+apps/api/src/modules/payments/__tests__/prontopaga.service.test.ts:24:provider = new ProntoPagaProvider();
+apps/api/src/modules/payments/__tests__/prontopaga.service.test.ts:31:expect(provider.verifyWebhookSignature(
+apps/api/src/modules/payments/__tests__/prontopaga.service.test.ts:42:expect(provider.verifyWebhookSignature(
+apps/api/src/modules/payments/__tests__/prontopaga.service.test.ts:54:expect(provider.verifyWebhookSignature(
+apps/api/src/modules/payments/__tests__/prontopaga.service.test.ts:65:expect(provider.verifyWebhookSignature(tampered as Record<string, unknown>, {})).toBe(false);
+apps/api/src/modules/payments/__tests__/prontopaga.service.test.ts:72:expect(provider.verifyWebhookSignature(
+apps/api/src/modules/payments/__tests__/prontopaga.service.test.ts:78:it("returns false when PRONTOPAGA_SECRET_KEY is missing", () => {
+apps/api/src/modules/payments/__tests__/prontopaga.service.test.ts:79:delete process.env["PRONTOPAGA_SECRET_KEY"];
+apps/api/src/modules/payments/__tests__/prontopaga.service.test.ts:83:expect(provider.verifyWebhookSignature(
+apps/api/src/modules/payments/__tests__/prontopaga.service.test.ts:90:describe("ProntoPagaProvider.normalizeWebhook", () => {
+apps/api/src/modules/payments/__tests__/prontopaga.service.test.ts:91:let provider: ProntoPagaProvider;
+apps/api/src/modules/payments/__tests__/prontopaga.service.test.ts:94:provider = new ProntoPagaProvider();
+apps/api/src/modules/payments/__tests__/prontopaga.service.test.ts:98:const result = await provider.normalizeWebhook(
+apps/api/src/modules/payments/__tests__/prontopaga.service.test.ts:108:const result = await provider.normalizeWebhook(
+apps/api/src/modules/payments/__tests__/prontopaga.service.test.ts:118:const r = await provider.normalizeWebhook({ order: "id", status: ppStatus }, {});
+apps/api/src/modules/payments/__tests__/prontopaga.service.test.ts:125:const r = await provider.normalizeWebhook({ order: "id", status: ppStatus }, {});
+apps/api/src/modules/payments/__tests__/prontopaga.service.test.ts:131:const r = await provider.normalizeWebhook({ order: "id", status: "chargeback" }, {});
+apps/api/src/modules/rides/rides.schemas.ts:32:paymentProvider: z.enum(["mercadopago", "prontopaga", "transbank"]).nullable().optional(),
+apps/api/src/modules/rides/rides.service.ts:546:!["mercadopago", "prontopaga", "transbank"].includes(input.paymentProvider)
+apps/api/src/modules/rides/rides.service.ts:1128:mercadoPagoPaymentId: refundResult.mercadoPagoPaymentId ?? null,
+apps/api/src/modules/wallet/wallet.controller.ts:5:webhookPayloadSchema,
+apps/api/src/modules/wallet/wallet.controller.ts:70:async handleWebhook(req: FastifyRequest, reply: FastifyReply) {
+apps/api/src/modules/wallet/wallet.controller.ts:71:const parsed = webhookPayloadSchema.safeParse(req.body);
+apps/api/src/modules/wallet/wallet.controller.ts:79:const result = await svc.handleWebhook(parsed.data);
+apps/api/src/modules/wallet/wallet.repository.ts:84:async findTransactionByProviderTransactionId(
+apps/api/src/modules/wallet/wallet.repository.ts:85:providerTransactionId: string,
+apps/api/src/modules/wallet/wallet.repository.ts:89:.where(eq(transactions.providerTransactionId, providerTransactionId))
+apps/api/src/modules/wallet/wallet.routes.ts:8:fastify.post("/payments/webhook",       walletController.handleWebhook);
+apps/api/src/modules/wallet/wallet.schemas.ts:11:export const webhookPayloadSchema = z.object({
+apps/api/src/modules/wallet/wallet.schemas.ts:25:export type WebhookPayload          = z.infer<typeof webhookPayloadSchema>;
+apps/api/src/modules/wallet/wallet.service.ts:9:import type { CreatePaymentOrderInput, WebhookPayload } from "./wallet.schemas.js";
+apps/api/src/modules/wallet/wallet.service.ts:59:providerTransactionId: t.providerTransactionId ?? null,
+apps/api/src/modules/wallet/wallet.service.ts:144:async handleWebhook(body: WebhookPayload) {
+apps/api/src/modules/wallet/wallet.service.ts:155:const existingTransaction = await walletRepo.findTransactionByProviderTransactionId(body.transactionId);
+apps/api/src/modules/wallet/wallet.service.ts:182:...(body.transactionId !== undefined ? { providerTransactionId: body.transactionId } : {}),
+apps/mobile/src/i18n/rapagoI18n.tsx:248:"ProntoPaga": "ProntoPaga",
+apps/mobile/src/pages/admin/index.tsx:179:mercadoPagoRefundRequested?: boolean | null;
+apps/mobile/src/pages/admin/index.tsx:180:mercadoPagoRefundStatus?: string | null;
+apps/mobile/src/pages/admin/index.tsx:209:mercadoPagoRefundStatus?: string | null;
+apps/mobile/src/pages/admin/index.tsx:447:cardRefundRequested: Boolean(item.cardRefundRequested || item.mercadoPagoRefundRequested),
+apps/mobile/src/pages/admin/index.tsx:448:mercadoPagoRefundRequested: Boolean(item.mercadoPagoRefundRequested || item.cardRefundRequested),
+apps/mobile/src/pages/admin/index.tsx:449:mercadoPagoRefundStatus: typeof item.mercadoPagoRefundStatus === "string" ? item.mercadoPagoRefundStatus : null,
+apps/mobile/src/pages/admin/index.tsx:481:benefit.mercadoPagoRefundStatus,
+apps/mobile/src/pages/admin/index.tsx:490:text.includes("mercadopago") ||
+apps/mobile/src/pages/admin/index.tsx:494:benefit.mercadoPagoRefundRequested === true
+apps/mobile/src/pages/admin/index.tsx:631:cardRefundRequested: Boolean(item.cardRefundRequested || item.mercadoPagoRefundRequested),
+apps/mobile/src/pages/admin/index.tsx:632:mercadoPagoRefundStatus: typeof item.mercadoPagoRefundStatus === "string" ? item.mercadoPagoRefundStatus : null,
+apps/mobile/src/pages/admin/index.tsx:1963:Efectivo se suma al próximo viaje; tarjeta/MercadoPago se cobra desde el pago realizado.
+apps/mobile/src/pages/admin/index.tsx:1989:Hay {formatAdminCashClp(pendingPassengerChargeAmountClp)} pendiente por efectivo/sin pago. En tarjeta/MercadoPago la penalización se descuenta del pago realizado y el saldo va a CRÉDITOS PARA PRÓXIMO VIAJE.
+apps/mobile/src/pages/admin/index.tsx:2039:<><br />💳 Tarjeta/MercadoPago: penalización cobrada desde el pago realizado.</>
+apps/mobile/src/pages/admin/index.tsx:4499:if (text.includes("prontopaga") || text.includes("tarjeta"))
+apps/mobile/src/pages/admin/index.tsx:4500:return "ProntoPaga";
+apps/mobile/src/pages/admin/index.tsx:6392:paymentRequiredProvider: "mercadopago",
+apps/mobile/src/pages/admin/index.tsx:6966:paymentRequiredProvider: "mercadopago",
+apps/mobile/src/pages/driver/index.tsx:8080:ride.mercadoPagoPaymentId,
+apps/mobile/src/pages/driver/index.tsx:8087:text.includes("mercadopago") ||
+apps/mobile/src/pages/driver/index.tsx:8090:Boolean(ride.paymentId || ride.mercadoPagoPaymentId)
+apps/mobile/src/pages/driver/index.tsx:8391:text.includes("prontopaga") ||
+apps/mobile/src/pages/driver/index.tsx:8394:return "ProntoPaga";
+apps/mobile/src/pages/driver/index.tsx:8401:if (label === "ProntoPaga") return "💳";
+apps/mobile/src/pages/driver/index.tsx:12662:icon={paymentLabel === "ProntoPaga" ? cardOutline : cashOutline}
+apps/mobile/src/pages/driver/index.tsx:12665:color: paymentLabel === "ProntoPaga" ? "#2563eb" : "#22c55e",
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:1017:async function createMercadoPagoCheckout(input: {
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:1040:: "No se pudo iniciar el pago con MercadoPago.";
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:1053:throw new Error("MercadoPago no devolvió URL de pago.");
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:4752:: "Tarjeta · MercadoPago";
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:4813:setSubmitError("Todas las reservas se pagan obligatoriamente con tarjeta/MercadoPago. Si cancelas dentro de los últimos 15 minutos, se descuenta 30% con tope $3.000 y el saldo queda como CRÉDITOS PARA PRÓXIMO VIAJE.");
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:4862:setSubmitError("Todas las reservas deben pagarse obligatoriamente con tarjeta/MercadoPago. Si cancelas dentro de los últimos 15 minutos, se descuenta 30% con tope $3.000 y el saldo queda como CRÉDITOS PARA PRÓXIMO VIAJE.");
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:4892:notes.push("Pago obligatorio para reservas: tarjeta/MercadoPago.");
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:4952:notes.push("Pago obligatorio para reservas: tarjeta/MercadoPago.");
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:5137:paymentRequiredProvider: "mercadopago",
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:5242:throw new Error("El viaje se creó, pero no se pudo obtener el ID para iniciar MercadoPago.");
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:5245:const payment = await createMercadoPagoCheckout({
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:5257:provider: "mercadopago",
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:5264:// No bloquea la redirección a MercadoPago.
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:5304:localNotes.push("Pago obligatorio para reservas: tarjeta/MercadoPago.");
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:5359:localNotes.push("Pago obligatorio para reservas: tarjeta/MercadoPago.");
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:5477:paymentRequiredProvider: isAirportScheduledRide ? "mercadopago" : null,
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:6947:{paymentMethod === "cash" ? "Efectivo seleccionado · continuar" : paymentMethod === "card" ? "Tarjeta seleccionada · MercadoPago" : "Elegir forma de pago"}
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:6972:{reservationRequiresCard ? "Todas las reservas se pagan obligatoriamente con tarjeta. Si cancelas dentro de los últimos 15 minutos, se descuenta 30% tope $3.000 y el saldo queda como CRÉDITOS PARA PRÓXIMO VIAJE." : "Elige efectivo al conductor o paga con tarjeta mediante MercadoPago Checkout Pro."}
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:6976:MercadoPago activo
+apps/mobile/src/pages/passenger/pages/RequestRidePage.tsx:7043:MercadoPago seguro
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:1710:cardRefundRequested: Boolean(item.cardRefundRequested || item.mercadoPagoRefundRequested),
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:1711:mercadoPagoRefundRequested: Boolean(item.mercadoPagoRefundRequested || item.cardRefundRequested),
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:1712:mercadoPagoRefundStatus: typeof item.mercadoPagoRefundStatus === "string" ? item.mercadoPagoRefundStatus : null,
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:1742:// Pago con tarjeta/MercadoPago:
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:1780:mercadoPagoRefundRequested: isCardPayment,
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:1781:mercadoPagoRefundStatus: isCardPayment ? "pending_backend_refund" : null,
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:1800:ride.mercadoPagoPaymentId,
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:1809:text.includes("mercadopago") ||
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:1811:text.includes("prontopaga") ||
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:1813:Boolean(ride.paymentId || ride.mercadoPagoPaymentId)
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:1843:// El botón “Cancelar/devolución” es ÚNICAMENTE para tarjeta/MercadoPago.
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:1887:mercadoPagoRefundRequested: isCardPayment,
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:1888:mercadoPagoRefundStatus: isCardPayment ? "pending_backend_refund" : null,
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:2571:if (text.includes("tarjeta") || text.includes("prontopaga")) return "Tarjeta / ProntoPaga";
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:5748:mercadoPagoRefundRequested?: boolean | null;
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:5749:mercadoPagoRefundStatus?: string | null;
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:5930:ride.mercadoPagoPaidClp,
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:5992:`Pago con tarjeta/MercadoPago cancelado. Pago realizado: ${formatClp(paidAmountClp)}. ` +
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:6005:mercadoPagoRefundRequested: true,
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:6006:mercadoPagoRefundStatus: "wallet_credit_available",
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:6010:paymentProvider: "mercadopago",
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:6011:paymentId: String(record.paymentId ?? record.mercadoPagoPaymentId ?? "").trim() || null,
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:6066:record.mercadoPagoPaymentId ??
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:6074:"Hola Soporte RAPA GO, cancelé un viaje pagado con tarjeta/MercadoPago y quiero gestionar la devolución de forma segura.",
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:6077:`Estado en la app: ${String(record.mercadoPagoRefundStatus ?? "pendiente de revisión")}`,
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:6114:Boolean(record.mercadoPagoRefundRequested) ||
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:6115:Boolean(record.mercadoPagoRefundStatus) ||
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:6634:💳 Pago con tarjeta/MercadoPago.
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:7045:const [refundMercadoPagoAlert, setRefundMercadoPagoAlert] = useState<{ header: string; message: string; ride: RideRequestData | null } | null>(null);
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:7204:function showMercadoPagoRefundAlert(ride: RideRequestData): void {
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:7208:setRefundMercadoPagoAlert({
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:7214:"Como el pago fue con tarjeta/MercadoPago, el saldo neto queda como CRÉDITOS PARA PRÓXIMO VIAJE en tu billetera. Si necesitas devolución, se gestiona por WhatsApp con RAPA GO. Esta opción no aplica para efectivo.",
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:7251:showMercadoPagoRefundAlert(targetRide);
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:7256:showMercadoPagoRefundAlert(targetRide);
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:7748:isOpen={refundMercadoPagoAlert !== null}
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:7749:header={refundMercadoPagoAlert?.header ?? "Cancelar/devolución"}
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:7750:message={refundMercadoPagoAlert?.message ?? ""}
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:7755:handler: () => setRefundMercadoPagoAlert(null),
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:7760:const ride = refundMercadoPagoAlert?.ride;
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:7761:setRefundMercadoPagoAlert(null);
+apps/mobile/src/pages/passenger/pages/TripsPage.tsx:7766:onDidDismiss={() => setRefundMercadoPagoAlert(null)}
+apps/mobile/src/pages/passenger/pages/WalletPage.tsx:61:mercadoPagoRefundRequested?: boolean | null;
+apps/mobile/src/pages/passenger/pages/WalletPage.tsx:62:mercadoPagoRefundStatus?: string | null;
+apps/mobile/src/pages/passenger/pages/WalletPage.tsx:108:cardRefundRequested: Boolean(item.cardRefundRequested || item.mercadoPagoRefundRequested),
+apps/mobile/src/pages/passenger/pages/WalletPage.tsx:109:mercadoPagoRefundRequested: Boolean(item.mercadoPagoRefundRequested || item.cardRefundRequested),
+apps/mobile/src/pages/passenger/pages/WalletPage.tsx:110:mercadoPagoRefundStatus: typeof item.mercadoPagoRefundStatus === "string" ? item.mercadoPagoRefundStatus : null,
+apps/mobile/src/pages/passenger/pages/WalletPage.tsx:154:text.includes("mercadopago") ||
+apps/mobile/src/pages/passenger/pages/WalletPage.tsx:157:benefit.mercadoPagoRefundRequested === true
+apps/mobile/src/pages/passenger/pages/WalletPage.tsx:618:Para no confundirse, separamos el saldo por origen: efectivo y tarjeta/MercadoPago.
+apps/mobile/src/pages/passenger/pages/WalletPage.tsx:646:description="Saldo neto por cancelación con tarjeta/MercadoPago. Si quieres devolución, solicita soporte por WhatsApp."

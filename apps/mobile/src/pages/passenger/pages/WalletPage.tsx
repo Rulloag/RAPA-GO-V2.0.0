@@ -1,111 +1,486 @@
-import { IonBadge, IonButton, IonContent, IonHeader, IonNote, IonPage, IonRefresher, IonRefresherContent, IonSpinner, IonText, IonTitle, IonToolbar } from "@ionic/react";
-import { useState, useCallback, useEffect } from "react";
-import { walletOutline } from "ionicons/icons";
-import { EmptyState } from "../../../components/EmptyState.js";
-import { SkeletonList } from "../../../components/SkeletonCard.js";
-import { useAuth } from "../../../features/auth/index.js";
-import type { WalletData, TransactionData } from "../../../features/wallet/wallet.service.js";
+import {
+  IonBadge,
+  IonCard,
+  IonCardContent,
+  IonContent,
+  IonHeader,
+  IonIcon,
+  IonPage,
+  IonRefresher,
+  IonRefresherContent,
+  IonSpinner,
+  IonText,
+  IonTitle,
+  IonToolbar,
+} from "@ionic/react";
+import {
+  alertCircleOutline,
+  cashOutline,
+  checkmarkCircleOutline,
+  giftOutline,
+  timeOutline,
+} from "ionicons/icons";
+import {
+  useCallback,
+  useEffect,
+  useState,
+  type CSSProperties,
+} from "react";
 
-const TX_TYPE_LABEL: Record<string, string> = { payment: "Débito", credit: "Crédito", refund: "Reembolso", topup: "Crédito" };
-const TX_STATUS_COLOR: Record<string, string> = { completed: "success", pending: "warning", failed: "danger", cancelled: "medium" };
+import { useAuth } from "../../../features/auth/index.js";
+import {
+  walletService,
+  type CashOverpaymentBenefitData,
+  type WalletData,
+} from "../../../features/wallet/wallet.service.js";
+
+const WALLET_BG =
+  "linear-gradient(180deg, rgba(14,12,10,.92), rgba(14,12,10,.96)), url('/assets/rapa-go-bg.jpg') center/cover no-repeat";
+const GOLD_GRADIENT =
+  "linear-gradient(135deg,#D6A83E 0%,#B7791F 45%,#7A351F 100%)";
+
+function formatClp(value: number | null | undefined): string {
+  const amount = Math.max(0, Math.round(Number(value ?? 0)));
+  return `$${amount.toLocaleString("es-CL")} CLP`;
+}
+
+function formatDate(value: string | null | undefined): string {
+  const date = new Date(String(value ?? ""));
+  if (!Number.isFinite(date.getTime())) return "Sin fecha";
+  return date.toLocaleString("es-CL", {
+    dateStyle: "short",
+    timeStyle: "short",
+  });
+}
+
+function statusInfo(status: string): {
+  label: string;
+  color: "warning" | "success" | "danger" | "medium";
+  icon: string;
+} {
+  if (status === "approved") {
+    return {
+      label: "Aprobado por el administrador",
+      color: "success",
+      icon: checkmarkCircleOutline,
+    };
+  }
+
+  if (status === "rejected") {
+    return {
+      label: "Rechazado",
+      color: "danger",
+      icon: alertCircleOutline,
+    };
+  }
+
+  return {
+    label: "Pendiente de revisión",
+    color: "warning",
+    icon: timeOutline,
+  };
+}
+
+function benefitAmount(benefit: CashOverpaymentBenefitData): number {
+  if (benefit.status === "approved") {
+    return Math.max(
+      0,
+      Math.round(
+        benefit.approvedAmountClp ?? benefit.requestedAmountClp,
+      ),
+    );
+  }
+
+  return Math.max(0, Math.round(benefit.requestedAmountClp));
+}
 
 export default function WalletPage(): JSX.Element {
   const { session } = useAuth();
-  const [wallet,       setWallet]       = useState<WalletData | null>(null);
-  const [transactions, setTransactions] = useState<TransactionData[]>([]);
-  const [loading,      setLoading]      = useState(true);
-  const [loadError,    setLoadError]    = useState<string | null>(null);
+  const [wallet, setWallet] = useState<WalletData | null>(null);
+  const [requests, setRequests] = useState<
+    CashOverpaymentBenefitData[]
+  >([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
-    if (!session?.accessToken) return;
-    setLoading(true); setLoadError(null);
+    if (!session?.accessToken) {
+      setWallet(null);
+      setRequests([]);
+      setLoading(false);
+      return;
+    }
+
+    setLoading(true);
+    setError(null);
+
     try {
-      const { walletService } = await import("../../../features/wallet/wallet.service.js");
-      const [w, tx] = await Promise.all([
+      const [walletData, requestData] = await Promise.all([
         walletService.getMyWallet(session.accessToken),
-        walletService.getMyTransactions(session.accessToken, 1, 20),
+        walletService.listMyCashOverpaymentBenefits(
+          session.accessToken,
+        ),
       ]);
-      setWallet(w);
-      setTransactions(tx.items);
+
+      setWallet(walletData);
+      setRequests(
+        [...requestData].sort(
+          (a, b) =>
+            new Date(b.createdAt).getTime() -
+            new Date(a.createdAt).getTime(),
+        ),
+      );
     } catch (err) {
-      setLoadError(err instanceof Error ? err.message : "Error al cargar la billetera.");
+      setError(
+        err instanceof Error
+          ? err.message
+          : "No se pudo sincronizar Beneficios con el servidor.",
+      );
     } finally {
       setLoading(false);
     }
   }, [session?.accessToken]);
 
-  useEffect(() => { void load(); }, [load]);
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  useEffect(() => {
+    const refresh = () => void load();
+    window.addEventListener("rapago:wallet-benefit-updated", refresh);
+    window.addEventListener("rapago:wallet-updated", refresh);
+
+    return () => {
+      window.removeEventListener(
+        "rapago:wallet-benefit-updated",
+        refresh,
+      );
+      window.removeEventListener("rapago:wallet-updated", refresh);
+    };
+  }, [load]);
+
+  const availableClp = Math.max(
+    0,
+    Math.round(
+      Number(wallet?.availableBenefitClp ?? wallet?.balance ?? 0),
+    ),
+  );
+
+  const pendingTotalClp = requests
+    .filter((request) => request.status === "pending_admin_review")
+    .reduce(
+      (sum, request) => sum + benefitAmount(request),
+      0,
+    );
 
   return (
     <IonPage>
       <IonHeader>
-        <IonToolbar color="primary"><IonTitle>Mi Billetera</IonTitle></IonToolbar>
+        <IonToolbar
+          style={
+            {
+              "--background": GOLD_GRADIENT,
+              "--color": "#fff",
+              "--min-height": "72px",
+              "--border-width": "0",
+            } as CSSProperties
+          }
+        >
+          <IonTitle style={{ fontWeight: 950 }}>Beneficios</IonTitle>
+        </IonToolbar>
       </IonHeader>
-      <IonContent className="ion-padding">
-        <IonRefresher slot="fixed" onIonRefresh={(e) => { void load().then(() => e.detail.complete()); }}>
+
+      <IonContent
+        className="ion-padding"
+        style={{ "--background": WALLET_BG } as CSSProperties}
+      >
+        <IonRefresher
+          slot="fixed"
+          onIonRefresh={(event) => {
+            void load().finally(() => event.detail.complete());
+          }}
+        >
           <IonRefresherContent />
         </IonRefresher>
 
-        {loading && <SkeletonList count={4} height="64px" />}
-        {loadError && <IonText color="danger"><p>{loadError}</p></IonText>}
-
-        {!loading && wallet && (
-          <div style={{ paddingBottom: "80px" }}>
-            <div style={{ background: "linear-gradient(145deg, var(--ion-color-primary) 0%, var(--ion-color-primary-shade) 100%)", padding: "32px 24px 28px", textAlign: "center" }}>
-              <div style={{ color: "rgba(255,255,255,0.8)", fontSize: "0.82rem", marginBottom: "6px" }}>Saldo disponible</div>
-              <div style={{ color: "#fff", fontSize: "2.4rem", fontWeight: 800, letterSpacing: "-1px" }}>
-                ${(wallet.balance / 100).toLocaleString("es-CL")}
-                <span style={{ fontSize: "1rem", fontWeight: 400, marginLeft: "6px", opacity: 0.8 }}>{wallet.currency}</span>
+        <div
+          style={{
+            maxWidth: 620,
+            margin: "0 auto",
+            paddingBottom: 90,
+          }}
+        >
+          <section
+            style={{
+              borderRadius: 32,
+              padding: "24px 20px",
+              background: GOLD_GRADIENT,
+              color: "#fff",
+              boxShadow: "0 24px 70px rgba(0,0,0,.42)",
+              marginBottom: 16,
+            }}
+          >
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 12,
+              }}
+            >
+              <div
+                style={{
+                  width: 48,
+                  height: 48,
+                  borderRadius: 18,
+                  background: "rgba(255,255,255,.17)",
+                  display: "grid",
+                  placeItems: "center",
+                }}
+              >
+                <IonIcon icon={giftOutline} style={{ fontSize: 27 }} />
               </div>
-              <div style={{ marginTop: "10px" }}>
-                <IonBadge color={wallet.status === "active" ? "success" : "medium"} style={{ fontSize: "0.72rem" }}>
-                  {wallet.status === "active" ? "✓ Billetera activa" : wallet.status}
-                </IonBadge>
+              <div>
+                <div
+                  style={{
+                    fontSize: ".75rem",
+                    fontWeight: 900,
+                    opacity: 0.84,
+                    textTransform: "uppercase",
+                  }}
+                >
+                  Saldo a favor
+                </div>
+                <div
+                  style={{
+                    fontSize: "1.75rem",
+                    fontWeight: 950,
+                    marginTop: 2,
+                  }}
+                >
+                  {loading ? "Sincronizando…" : formatClp(availableClp)}
+                </div>
               </div>
             </div>
 
-            <div style={{ padding: "16px 16px 0" }}>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px", marginBottom: "6px" }}>
-                <IonButton expand="block" fill="outline" disabled style={{ "--border-radius": "12px" }}>↑ Recargar</IonButton>
-                <IonButton expand="block" fill="outline" disabled style={{ "--border-radius": "12px" }}>↓ Retirar</IonButton>
-              </div>
-              <IonNote style={{ fontSize: "0.72rem", color: "var(--ion-color-medium)", display: "block", marginBottom: "20px", textAlign: "center" }}>
-                Recarga y retiro disponibles próximamente
-              </IonNote>
+            <p
+              style={{
+                margin: "17px 0 0",
+                fontWeight: 750,
+                lineHeight: 1.45,
+                opacity: 0.94,
+              }}
+            >
+              Nace únicamente cuando pagas de más en efectivo y el
+              administrador lo aprueba. No se recarga, no se transfiere y
+              solo puede usarse por esta misma cuenta en un próximo viaje
+              pagado en efectivo.
+            </p>
+          </section>
 
-              <div style={{ fontWeight: 700, fontSize: "1rem", marginBottom: "12px" }}>Movimientos</div>
+          {error && (
+            <IonCard
+              style={{
+                margin: "0 0 14px",
+                borderRadius: 22,
+                background: "#FFF3CD",
+              }}
+            >
+              <IonCardContent
+                style={{ display: "flex", gap: 10, alignItems: "center" }}
+              >
+                <IonIcon
+                  icon={alertCircleOutline}
+                  style={{ fontSize: 24, color: "#9A6700" }}
+                />
+                <IonText color="dark">
+                  <strong>{error}</strong>
+                </IonText>
+              </IonCardContent>
+            </IonCard>
+          )}
 
-              {transactions.length === 0 && <EmptyState icon={walletOutline} title="Sin movimientos" subtitle="Tus transacciones aparecerán aquí" />}
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(2,minmax(0,1fr))",
+              gap: 10,
+              marginBottom: 16,
+            }}
+          >
+            <IonCard
+              style={{ margin: 0, borderRadius: 22, background: "#EAFBF0" }}
+            >
+              <IonCardContent>
+                <IonIcon
+                  icon={checkmarkCircleOutline}
+                  style={{ fontSize: 24, color: "#15803D" }}
+                />
+                <div style={{ marginTop: 7, fontWeight: 900 }}>
+                  Aprobado
+                </div>
+                <div style={{ fontWeight: 950, fontSize: "1.05rem" }}>
+                  {formatClp(availableClp)}
+                </div>
+              </IonCardContent>
+            </IonCard>
 
-              {transactions.length > 0 && (
-                <div style={{ display: "flex", flexDirection: "column", gap: "1px", background: "var(--ion-color-light-shade)", borderRadius: "14px", overflow: "hidden" }}>
-                  {transactions.map((tx, idx) => {
-                    const isDebit = tx.type === "payment";
-                    const txIcon  = tx.type === "payment" ? "🚗" : tx.type === "refund" ? "↩️" : "💰";
-                    return (
-                      <div key={tx.id} style={{ background: "var(--ion-card-background, #fff)", padding: "12px 16px", display: "flex", alignItems: "center", gap: "12px", borderBottom: idx < transactions.length - 1 ? "1px solid var(--ion-color-light-shade)" : "none" }}>
-                        <div style={{ width: "40px", height: "40px", borderRadius: "50%", flexShrink: 0, background: isDebit ? "var(--ion-color-danger-tint)" : "var(--ion-color-success-tint)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "1.1rem" }}>
-                          {txIcon}
+            <IonCard
+              style={{ margin: 0, borderRadius: 22, background: "#FFF7D6" }}
+            >
+              <IonCardContent>
+                <IonIcon
+                  icon={timeOutline}
+                  style={{ fontSize: 24, color: "#9A6700" }}
+                />
+                <div style={{ marginTop: 7, fontWeight: 900 }}>
+                  Pendiente
+                </div>
+                <div style={{ fontWeight: 950, fontSize: "1.05rem" }}>
+                  {formatClp(pendingTotalClp)}
+                </div>
+              </IonCardContent>
+            </IonCard>
+          </div>
+
+          <h2
+            style={{
+              color: "#fff",
+              fontSize: "1.05rem",
+              fontWeight: 950,
+              margin: "8px 4px 12px",
+            }}
+          >
+            Solicitudes por pago de más
+          </h2>
+
+          {loading ? (
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "center",
+                padding: 32,
+              }}
+            >
+              <IonSpinner color="warning" />
+            </div>
+          ) : requests.length === 0 ? (
+            <IonCard
+              style={{
+                margin: 0,
+                borderRadius: 24,
+                background: "rgba(255,255,255,.96)",
+              }}
+            >
+              <IonCardContent style={{ textAlign: "center", padding: 25 }}>
+                <IonIcon
+                  icon={cashOutline}
+                  style={{ fontSize: 38, color: "#B7791F" }}
+                />
+                <h3 style={{ margin: "10px 0 5px", fontWeight: 950 }}>
+                  Sin solicitudes
+                </h3>
+                <p style={{ margin: 0, color: "#655B50", lineHeight: 1.45 }}>
+                  Después de completar un viaje en efectivo podrás informar
+                  cuánto pagaste y solicitar conservar la diferencia.
+                </p>
+              </IonCardContent>
+            </IonCard>
+          ) : (
+            requests.map((request) => {
+              const info = statusInfo(request.status);
+              return (
+                <IonCard
+                  key={request.id}
+                  style={{
+                    margin: "0 0 12px",
+                    borderRadius: 24,
+                    background: "rgba(255,255,255,.97)",
+                  }}
+                >
+                  <IonCardContent>
+                    <div
+                      style={{
+                        display: "flex",
+                        justifyContent: "space-between",
+                        gap: 12,
+                        alignItems: "flex-start",
+                      }}
+                    >
+                      <div style={{ minWidth: 0 }}>
+                        <div
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 7,
+                            fontWeight: 950,
+                          }}
+                        >
+                          <IonIcon icon={info.icon} />
+                          Pago de más en efectivo
                         </div>
-                        <div style={{ flex: 1, minWidth: 0 }}>
-                          <div style={{ fontWeight: 600, fontSize: "0.85rem" }}>{TX_TYPE_LABEL[tx.type] ?? tx.type}</div>
-                          {tx.description && <div style={{ fontSize: "0.72rem", color: "var(--ion-color-medium)", marginTop: "1px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{tx.description}</div>}
-                          <div style={{ fontSize: "0.68rem", color: "var(--ion-color-medium)", marginTop: "2px", display: "flex", alignItems: "center", gap: "4px" }}>
-                            {new Date(tx.createdAt).toLocaleString("es-CL", { dateStyle: "short", timeStyle: "short" })}
-                            <IonBadge color={TX_STATUS_COLOR[tx.status] ?? "medium"} style={{ fontSize: "0.6rem" }}>{tx.status}</IonBadge>
-                          </div>
-                        </div>
-                        <div style={{ fontWeight: 800, fontSize: "0.95rem", color: isDebit ? "var(--ion-color-danger)" : "var(--ion-color-success)", flexShrink: 0 }}>
-                          {isDebit ? "−" : "+"}${(tx.amount / 100).toLocaleString("es-CL")}
+                        <div
+                          style={{
+                            fontSize: "1.25rem",
+                            fontWeight: 950,
+                            marginTop: 8,
+                          }}
+                        >
+                          {formatClp(benefitAmount(request))}
                         </div>
                       </div>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-          </div>
-        )}
+                      <IonBadge color={info.color}>{info.label}</IonBadge>
+                    </div>
+
+                    <div
+                      style={{
+                        display: "grid",
+                        gridTemplateColumns: "1fr 1fr",
+                        gap: 8,
+                        marginTop: 14,
+                        fontSize: ".79rem",
+                        color: "#5F564B",
+                      }}
+                    >
+                      <div>
+                        Tarifa: <strong>{formatClp(request.fareClp)}</strong>
+                      </div>
+                      <div>
+                        Pagado: <strong>{formatClp(request.paidClp)}</strong>
+                      </div>
+                    </div>
+
+                    <p
+                      style={{
+                        margin: "12px 0 0",
+                        color: "#6B6257",
+                        fontSize: ".78rem",
+                      }}
+                    >
+                      Solicitado: {formatDate(request.requestedAt)}
+                    </p>
+
+                    {request.adminDecisionReason && (
+                      <p
+                        style={{
+                          margin: "9px 0 0",
+                          padding: "9px 11px",
+                          borderRadius: 14,
+                          background: "#F5F1EA",
+                          color: "#463D34",
+                          fontSize: ".8rem",
+                          lineHeight: 1.4,
+                        }}
+                      >
+                        <strong>Respuesta del administrador:</strong>{" "}
+                        {request.adminDecisionReason}
+                      </p>
+                    )}
+                  </IonCardContent>
+                </IonCard>
+              );
+            })
+          )}
+        </div>
       </IonContent>
     </IonPage>
   );

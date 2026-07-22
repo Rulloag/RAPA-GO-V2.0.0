@@ -1,72 +1,4982 @@
-/*
- * RAPA GO — Global styles
- *
- * Keep this file minimal. Component-level styles belong in each component.
- * Ionic handles most layout and responsive behavior via its own system.
- */
+/* ==========================================================================
+   RAPA GO — GLOBAL STYLES
+   Paleta oficial: Dorado #C89B3C · Negro #1A1A1A · Marfil #F6F2EC · Terracota #B84F2E · Beige #D9C3A0
+   ========================================================================== */
+:root {
+  /* Paleta oficial RAPA GO */
+  --rapago-gold: #C89B3C;
+  --rapago-volcanic: #1A1A1A;
+  --rapago-ivory: #F6F2EC;
+  --rapago-terracotta: #B84F2E;
+  --rapago-sand: #D9C3A0;
 
-/* Welcome page */
-.welcome-container {
-  display: flex;
-  flex-direction: column;
-  gap: 1rem;
-  max-width: 480px;
-  margin: 2rem auto 0;
+  /* Ionic theme override */
+  --ion-color-primary: #C89B3C;
+  --ion-color-primary-rgb: 200, 155, 60;
+  --ion-color-primary-contrast: #1A1A1A;
+  --ion-color-primary-contrast-rgb: 26, 26, 26;
+  --ion-color-primary-shade: #B08435;
+  --ion-color-primary-tint: #D4AD61;
+
+  --ion-color-secondary: #B84F2E;
+  --ion-color-secondary-rgb: 184, 79, 46;
+  --ion-color-secondary-contrast: #F6F2EC;
+  --ion-color-secondary-contrast-rgb: 246, 242, 236;
+  --ion-color-secondary-shade: #A24628;
+  --ion-color-secondary-tint: #C16246;
+
+  --ion-color-tertiary: #D9C3A0;
+  --ion-color-tertiary-rgb: 217, 195, 160;
+  --ion-color-tertiary-contrast: #1A1A1A;
+  --ion-color-tertiary-contrast-rgb: 26, 26, 26;
+  --ion-color-tertiary-shade: #BFAE8D;
+  --ion-color-tertiary-tint: #DDC9AA;
+
+  --ion-background-color: #1A1A1A;
+  --ion-text-color: #F6F2EC;
+  --ion-card-background: rgba(246, 242, 236, 0.96);
+  --ion-toolbar-background: #1A1A1A;
+  --ion-tab-bar-background: #1A1A1A;
 }
 
-.welcome-title {
-  font-size: 2rem;
-  font-weight: 700;
+
+html,
+body,
+ion-app {
+  width: 100%;
+  min-height: 100%;
   margin: 0;
+  padding: 0;
+  background: #1A1A1A !important;
 }
 
-.welcome-subtitle {
-  font-size: 1.1rem;
-  margin: 0;
+ion-content {
+  --background:
+    linear-gradient(
+      180deg,
+      rgba(15, 17, 21, 0.45) 0%,
+      rgba(10, 11, 14, 0.78) 100%
+    ),
+    url("./img/imgen-rapanui2.jpeg") no-repeat center center / cover fixed !important;
 }
 
-.welcome-status {
-  line-height: 1.6;
-  margin: 0;
+.ion-page,
+ion-router-outlet {
+  background: transparent !important;
+  --background: transparent !important;
 }
 
-/* Google Places Autocomplete dropdown — must render above Ionic stack */
-.pac-container {
-  z-index: 99999 !important;
-  font-family: var(--ion-font-family, inherit);
-  border-radius: 0 0 10px 10px;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
+/* ==========================================================================
+   WELCOME PAGE
+   ========================================================================== */
+
+/* ==========================================================================
+   RAPA GO — Public toolbar (used by other public pages, NOT /welcome)
+   ========================================================================== */
+
+.public-toolbar {
+  --background: linear-gradient(135deg, #C89B3C 0%, #d6a640 50%, #b07a28 100%);
+  --color: #1a1100;
+  --min-height: 58px;
+  box-shadow: 0 3px 12px rgba(0,0,0,.40);
 }
 
-.pac-item {
-  padding: 8px 12px;
-  font-size: 0.875rem;
-  cursor: pointer;
+.public-toolbar-title {
+  font-weight: 900;
+  font-size: 1.15rem;
+  letter-spacing: .06em;
+  color: #1a1100 !important;
+  -webkit-text-fill-color: #1a1100 !important;
 }
 
-.pac-item:hover,
-.pac-item-selected {
-  background: var(--ion-color-light);
-}
+/* ==========================================================================
+   RAPA GO — /welcome full-bleed shell (no navbar)
+   ========================================================================== */
 
-/* NotFound page */
-.not-found-container {
+.welcome-shell {
+  min-height: 100%;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 1rem;
-  padding-top: 3rem;
-  text-align: center;
+  justify-content: center;
+  padding: max(env(safe-area-inset-top), 32px) 28px
+           max(env(safe-area-inset-bottom), 28px);
+  gap: 0;
 }
 
-.not-found-code {
-  font-size: 5rem;
-  font-weight: 700;
+/* ── Hero ─────────────────────────────────────── */
+.welcome-hero {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  text-align: center;
+  padding-bottom: 24px;
+}
+
+.welcome-logo-wrap {
+  width: 108px;
+  height: 108px;
+  border-radius: 30px;
+  overflow: hidden;
+  background: #fff;
+  /* refined border: golden ring */
+  box-shadow:
+    0 0 0 3px rgba(214,166,64,.55),
+    0 0 0 6px rgba(214,166,64,.12),
+    0 20px 44px rgba(0,0,0,.55);
+}
+
+.welcome-logo-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.welcome-brand {
   margin: 0;
+  font-size: 2.8rem;
+  font-weight: 950;
+  letter-spacing: .1em;
+  background: linear-gradient(135deg, #f8d879 0%, #d6a640 48%, #f8d879 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
   line-height: 1;
 }
 
-.not-found-message {
+.welcome-tagline {
   margin: 0;
+  font-size: 0.93rem;
+  font-weight: 600;
+  color: rgba(246,242,236,.65);
+  line-height: 1.5;
+  max-width: 270px;
+}
+
+/* ── Divider ──────────────────────────────────── */
+.welcome-divider-line {
+  width: 52px;
+  height: 2px;
+  background: linear-gradient(90deg, transparent, rgba(214,166,64,.7), transparent);
+  border-radius: 2px;
+  margin: 0 auto 28px;
+}
+
+/* ── CTA stack ────────────────────────────────── */
+.welcome-cta-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  width: 100%;
+  max-width: 400px;
+}
+
+/* Primary: solid gold fill + terracotta gradient, gold border */
+.welcome-btn-login {
+  --border-radius: 20px;
+  --background: linear-gradient(135deg, #f8d879 0%, #d6a640 46%, #c08830 100%);
+  --background-activated: linear-gradient(135deg, #d6a640, #9a6c1e);
+  --box-shadow: 0 14px 30px rgba(214,166,64,.36);
+  --color: #1a0f00;
+  color: #1a0f00;
+  /* visible golden border */
+  --border-width: 1.5px;
+  --border-style: solid;
+  --border-color: rgba(255,224,120,.60);
+  height: 58px;
   font-size: 1rem;
+  font-weight: 950;
+  letter-spacing: .04em;
+  text-transform: none;
+}
+
+/* Secondary: dark fill with clear golden border */
+.welcome-btn-register {
+  --border-radius: 20px;
+  --background: rgba(26,22,16,.82);
+  --background-activated: rgba(40,34,22,.90);
+  --box-shadow: 0 10px 24px rgba(0,0,0,.35);
+  --color: #f8d879;
+  color: #f8d879;
+  --border-width: 1.5px;
+  --border-style: solid;
+  --border-color: rgba(214,166,64,.72);
+  height: 58px;
+  font-size: 1rem;
+  font-weight: 850;
+  letter-spacing: .04em;
+  text-transform: none;
+}
+
+/* Tertiary: ghost outline */
+.welcome-btn-profile {
+  --border-radius: 20px;
+  --border-color: rgba(214,166,64,.36);
+  --border-width: 1.5px;
+  --color: rgba(246,242,236,.55);
+  --background: rgba(255,255,255,.02);
+  height: 50px;
+  font-size: 0.9rem;
+  font-weight: 750;
+  letter-spacing: .03em;
+  text-transform: none;
+}
+
+/* ── Footer links ────────────────────────────── */
+.welcome-footer-links {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0;
+  margin-top: 22px;
+  flex-wrap: wrap;
+}
+
+.welcome-link {
+  --padding-start: 8px;
+  --padding-end: 8px;
+  font-size: 0.83rem;
+  font-weight: 800;
+  text-transform: none;
+  opacity: 1;
+  letter-spacing: .02em;
+  text-shadow: 0 1px 2px rgba(0,0,0,.45);
+}
+
+.welcome-link-sep {
+  color: rgba(246,242,236,.55);
+  font-size: 0.85rem;
+  user-select: none;
+  margin: 0 2px;
+}
+
+.welcome-footer-links ion-button.welcome-link[fill="clear"] {
+  --color: #f8d879 !important;
+  color: #f8d879 !important;
+}
+
+.welcome-footer-links ion-button.welcome-link[fill="clear"]::part(native) {
+  color: #f8d879 !important;
+  text-shadow: 0 1px 2px rgba(0,0,0,.45) !important;
+}
+
+/* ── Responsive ──────────────────────────────── */
+@media (max-width: 400px) {
+  .welcome-brand { font-size: 2.3rem; }
+  .welcome-logo-wrap { width: 92px; height: 92px; border-radius: 26px; }
+  .welcome-btn-login,
+  .welcome-btn-register { height: 54px; }
+  .welcome-btn-profile { height: 48px; }
+}
+
+/* ── Auth flow — register badge ─────────────── */
+.rapago-auth-register-badge {
+  display: inline-flex;
+  align-self: center;
+  align-items: center;
+  padding: 3px 12px;
+  border-radius: 999px;
+  background: linear-gradient(135deg, rgba(184,79,46,.22), rgba(214,166,64,.18));
+  border: 1px solid rgba(214,166,64,.30);
+  margin-bottom: 6px;
+}
+
+.rapago-auth-register-badge span {
+  font-size: 0.74rem;
+  font-weight: 800;
+  color: #f8d879;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+}
+
+
+/* ==========================================================================
+   FORMULARIOS
+   ========================================================================== */
+
+.form-container,
+form,
+.register-container {
+  max-width: 580px;
+  margin: 2.5rem auto;
+  padding: 30px 24px;
+  border-radius: 24px;
+  background: rgba(20, 23, 30, 0.82) !important;
+  backdrop-filter: blur(20px) !important;
+  -webkit-backdrop-filter: blur(20px) !important;
+  border: 1px solid rgba(255,255,255,0.1);
+  box-shadow: 0 30px 60px rgba(0,0,0,0.75);
+}
+
+.form-section-title {
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: #C89B3C;
+  margin: 1.8rem 0 0.8rem 0;
+  letter-spacing: 0.5px;
+  border-bottom: 1px solid rgba(200,169,110,0.15);
+  padding-bottom: 6px;
+  text-transform: uppercase;
+}
+
+ion-item,
+.form-group-item {
+  --background: rgba(15,17,21,0.48) !important;
+  --border-radius: 14px;
+  --padding-start: 16px;
+  --inner-padding-end: 16px;
+  --highlight-background: transparent !important;
+  --border-style: none !important;
+  --inner-border-width: 0px !important;
+  border: 1px solid rgba(255,255,255,0.08) !important;
+  border-radius: 14px;
+  margin-bottom: 16px;
+}
+
+ion-item.item-has-focus,
+ion-item:focus-within {
+  border-color: rgba(200,155,60,0.65) !important;
+  box-shadow: 0 0 12px rgba(200,155,60,0.25) !important;
+}
+
+ion-label,
+label {
+  color: #D9C3A0 !important;
+  font-size: 0.85rem !important;
+  font-weight: 700 !important;
+}
+
+ion-input,
+ion-textarea,
+ion-select {
+  --color: #F6F2EC !important;
+  --placeholder-color: #D9C3A0 !important;
+  color: #F6F2EC !important;
+}
+
+ion-input input,
+ion-textarea textarea {
+  color: #F6F2EC !important;
+}
+
+/* ==========================================================================
+   HOME PASAJERO
+   ========================================================================== */
+
+.passenger-home-header {
+  background: linear-gradient(
+    145deg,
+    var(--ion-color-primary) 0%,
+    var(--ion-color-primary-shade) 100%
+  ) !important;
+  padding: calc(env(safe-area-inset-top) + 12px) 18px 18px !important;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.28);
+}
+
+.passenger-home-header-row {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  gap: 14px !important;
+}
+
+.passenger-home-user {
+  display: flex !important;
+  align-items: center !important;
+  gap: 12px !important;
+  min-width: 0;
+}
+
+.passenger-home-avatar {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: rgba(255,255,255,0.18);
+  border: 2px solid rgba(255,255,255,0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #F6F2EC;
+  font-weight: 900;
+  font-size: 1.1rem;
+  flex-shrink: 0;
+}
+
+.passenger-home-user-text {
+  min-width: 0;
+  flex: 1;
+}
+
+/* Alturas estables: evita reflow cuando el nombre carga asíncrono */
+.passenger-home-greeting {
+  color: #F6F2EC;
+  font-weight: 900;
+  font-size: 1.05rem;
+  line-height: 1.2;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-height: 1.26rem;
+}
+
+.passenger-home-question {
+  color: rgba(255,255,255,0.86);
+  font-size: 0.8rem;
+  margin-top: 2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-height: 0.96rem;
+}
+
+/* Perfil visible en todos los celulares */
+.profile-top-button {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center;
+  gap: 8px !important;
+  padding: 7px 11px;
+  border-radius: 999px;
+  background: rgba(255,255,255,0.16);
+  border: 2px solid rgba(255,255,255,0.55);
+  color: #F6F2EC;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.profile-top-avatar {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: rgba(255,255,255,0.22);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 900;
+  font-size: 0.8rem;
+  color: #F6F2EC;
+}
+
+.profile-top-text {
+  display: inline-block !important;
+  font-size: 0.85rem;
+  font-weight: 900;
+  white-space: nowrap;
+  color: #F6F2EC;
+}
+
+.passenger-home-content {
+  padding: 0 18px 110px;
+}
+
+.passenger-home-section {
+  margin-top: 24px;
+}
+
+.passenger-home-section-title {
+  margin: 0 0 14px;
+  color: #F6F2EC;
+  font-size: 1rem;
+  font-weight: 900;
+  text-shadow: 0 2px 8px rgba(0,0,0,0.8);
+}
+
+/* Servicios */
+.services-grid {
+  display: flex !important;
+  gap: 14px !important;
+  overflow-x: auto !important;
+  padding-bottom: 10px !important;
+  scrollbar-width: thin;
+}
+
+.services-grid > * {
+  flex: 0 0 110px !important;
+  width: 110px !important;
+  max-width: 110px !important;
+}
+
+.services-grid::-webkit-scrollbar,
+.frequent-destinations-row::-webkit-scrollbar {
+  height: 4px;
+}
+
+.services-grid::-webkit-scrollbar-thumb,
+.frequent-destinations-row::-webkit-scrollbar-thumb {
+  background: rgba(255,255,255,0.25);
+  border-radius: 999px;
+}
+
+/* Destinos frecuentes */
+.frequent-destinations-row {
+  display: flex !important;
+  gap: 10px !important;
+  overflow-x: auto !important;
+  padding-bottom: 8px !important;
+}
+
+.frequent-destination-chip {
+  --background: #F6F2EC !important;
+  --color: #1A1A1A !important;
+  color: #1A1A1A !important;
+  flex-shrink: 0;
+  height: 38px;
+  padding: 0 12px;
+  border-radius: 999px;
+  border: 1px solid rgba(0,0,0,0.08);
+  box-shadow: 0 8px 18px rgba(0,0,0,0.18);
+  font-size: 0.82rem;
+  font-weight: 900;
+}
+
+.frequent-destination-chip ion-label {
+  color: #1A1A1A !important;
+  font-weight: 900 !important;
+}
+
+.frequent-destination-icon {
+  margin-right: 4px;
+  font-size: 0.95rem;
+  color: #B84F2E !important;
+}
+
+/* Accesos rápidos */
+.quick-access-grid {
+  margin-top: 24px;
+  display: grid !important;
+  grid-template-columns: 1fr 1fr !important;
+  gap: 12px !important;
+}
+
+.quick-access-card {
+  margin: 0;
+  border-radius: 16px;
+  cursor: pointer;
+  background: rgba(10,12,16,0.92);
+  box-shadow: 0 10px 26px rgba(0,0,0,0.25);
+  transition: transform 0.2s cubic-bezier(0.22, 1, 0.36, 1), box-shadow 0.2s ease;
+}
+
+.quick-access-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 14px 32px rgba(0,0,0,0.30);
+}
+
+.quick-access-card:active {
+  transform: scale(0.97);
+}
+
+.quick-access-content {
+  padding: 16px;
+  display: flex !important;
+  align-items: center !important;
+  gap: 12px !important;
+}
+
+.quick-access-icon {
+  font-size: 1.45rem;
+  flex-shrink: 0;
+}
+
+.quick-access-icon.trips {
+  color: var(--ion-color-primary);
+}
+
+.quick-access-icon.wallet {
+  color: var(--ion-color-success);
+}
+
+.quick-access-title {
+  color: #F6F2EC;
+  font-weight: 900;
+  font-size: 0.9rem;
+}
+
+.quick-access-subtitle {
+  color: #D9C3A0;
+  font-size: 0.75rem;
+  margin-top: 2px;
+  min-height: 1.05rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Referidos */
+.referral-banner {
+  margin-top: 22px;
+  background: linear-gradient(135deg, #C89B3C 0%, #B84F2E 100%);
+  border-radius: 18px;
+  padding: 18px;
+  display: flex !important;
+  align-items: center !important;
+  gap: 14px !important;
+  cursor: pointer;
+  box-shadow: 0 12px 28px rgba(0,0,0,0.25);
+  transition: transform 0.2s cubic-bezier(0.22, 1, 0.36, 1), box-shadow 0.2s ease;
+  border: 1.5px solid rgba(255, 224, 120, 0.22);
+}
+
+.referral-banner:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 16px 36px rgba(0,0,0,0.30);
+  border-color: rgba(255, 224, 120, 0.40);
+}
+
+.referral-banner:active {
+  transform: scale(0.98);
+}
+
+.referral-icon {
+  font-size: 2rem;
+  color: #F6F2EC;
+  flex-shrink: 0;
+}
+
+.referral-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.referral-title {
+  color: #F6F2EC;
+  font-weight: 900;
+  font-size: 1rem;
+}
+
+.referral-subtitle {
+  color: rgba(255,255,255,0.9);
+  font-size: 0.8rem;
+  margin-top: 3px;
+  line-height: 1.35;
+}
+
+.referral-arrow {
+  color: rgba(255,255,255,0.85);
+  font-size: 1.3rem;
+  flex-shrink: 0;
+}
+
+/* Postulación */
+.join-card {
+  margin-top: 22px;
+  border-radius: 18px;
+  background: rgba(10,12,16,0.92);
+  box-shadow: 0 12px 30px rgba(0,0,0,0.28);
+  border: 1px solid rgba(210, 164, 58, 0.18);
+  transition: box-shadow 0.2s ease;
+}
+
+.join-card:hover {
+  box-shadow: 0 16px 38px rgba(0,0,0,0.32);
+}
+
+.join-card-title {
+  color: #F6F2EC;
+  font-size: 1rem;
+  font-weight: 900;
+}
+
+.join-card-button {
+  margin-top: 8px;
+}
+
+/* Avisos */
+.passenger-warning-box {
+  margin: 14px 0 0;
+  background: #F6F2EC;
+  border: 1px solid #C89B3C;
+  border-radius: 14px;
+  padding: 10px 14px;
+}
+
+.passenger-warning-text {
+  margin: 0;
+  font-size: 0.82rem;
+  color: #1A1A1A;
+  font-weight: 700;
+}
+
+/* ==========================================================================
+   SERVICE CARD
+   ========================================================================== */
+
+.service-card {
+  background: #F6F2EC !important;
+  border-radius: 18px;
+  box-shadow: 0 10px 24px rgba(0,0,0,0.16);
+}
+
+.service-card-title {
+  color: #1A1A1A !important;
+  font-weight: 900 !important;
+}
+
+.service-card-subtitle {
+  color: #1A1A1A !important;
+  font-weight: 600 !important;
+}
+
+/* ==========================================================================
+   TOGGLES
+   ========================================================================== */
+
+ion-toggle {
+  --track-background: rgba(15,17,21,0.8);
+  --track-background-checked: var(--ion-color-primary, #C89B3C);
+  --handle-background-checked: #F6F2EC;
+  color: #cbd5e0;
+  font-size: 0.92rem;
+  font-weight: 500;
+}
+
+/* ==========================================================================
+   RESPONSIVE
+   ========================================================================== */
+
+@media (max-width: 480px) {
+  .passenger-home-header {
+    padding: calc(env(safe-area-inset-top) + 10px) 18px 16px !important;
+  }
+
+  .passenger-home-avatar {
+    width: 44px;
+    height: 44px;
+    font-size: 1rem;
+  }
+
+  .passenger-home-greeting {
+    font-size: 1rem;
+  }
+
+  .passenger-home-question {
+    font-size: 0.78rem;
+  }
+
+  .profile-top-button {
+    padding: 6px 8px;
+    gap: 5px !important;
+  }
+
+  .profile-top-avatar {
+    width: 24px;
+    height: 24px;
+    font-size: 0.7rem;
+  }
+
+  .profile-top-text {
+    display: inline-block !important;
+    font-size: 0.72rem;
+  }
+
+  .services-grid > * {
+    flex: 0 0 92px !important;
+    width: 92px !important;
+    max-width: 92px !important;
+  }
+
+  ion-tab-button ion-label {
+    font-size: 9px !important;
+  }
+
+  ion-tab-button ion-icon {
+    font-size: 17px !important;
+  }
+}
+
+@media (max-width: 360px) {
+  .passenger-home-content {
+    padding-left: 14px;
+    padding-right: 14px;
+  }
+
+  .profile-top-button {
+    padding: 5px 7px;
+    gap: 4px !important;
+  }
+
+  .profile-top-avatar {
+    width: 22px;
+    height: 22px;
+    font-size: 0.66rem;
+  }
+
+  .profile-top-text {
+    display: inline-block !important;
+    font-size: 0.68rem;
+  }
+
+  .services-grid > * {
+    flex: 0 0 88px !important;
+    width: 88px !important;
+    max-width: 88px !important;
+  }
+
+  .quick-access-title {
+    font-size: 0.82rem;
+  }
+
+  .quick-access-subtitle {
+    font-size: 0.7rem;
+  }
+
+  ion-tab-button ion-label {
+    font-size: 8px !important;
+  }
+
+  ion-tab-button ion-icon {
+    font-size: 15px !important;
+  }
+}
+
+/* ========================================================================== 
+   RAPA GO — PALETA OFICIAL / AJUSTES FINALES
+   ========================================================================== */
+
+ion-toolbar[color="primary"],
+ion-toolbar[color="secondary"] {
+  --background: linear-gradient(135deg, var(--rapago-volcanic) 0%, #2A2119 55%, var(--rapago-terracotta) 100%) !important;
+  --color: var(--rapago-ivory) !important;
+}
+
+ion-title {
+  color: var(--rapago-ivory) !important;
+  font-weight: 900;
+}
+
+ion-button {
+  --border-radius: 14px;
+  font-weight: 850;
+  letter-spacing: 0.2px;
+}
+
+ion-button[color="primary"],
+ion-button:not([fill="clear"]):not([fill="outline"]) {
+  --background: linear-gradient(135deg, var(--rapago-gold) 0%, var(--rapago-sand) 100%) !important;
+  --background-activated: var(--rapago-gold) !important;
+  --background-focused: var(--rapago-gold) !important;
+  --background-hover: var(--rapago-sand) !important;
+  --color: var(--rapago-volcanic) !important;
+  box-shadow: 0 10px 24px rgba(200, 155, 60, 0.28);
+}
+
+ion-button[color="secondary"] {
+  --background: linear-gradient(135deg, var(--rapago-terracotta) 0%, #D06A45 100%) !important;
+  --color: var(--rapago-ivory) !important;
+  box-shadow: 0 10px 24px rgba(184, 79, 46, 0.28);
+}
+
+ion-button[fill="outline"] {
+  --border-color: var(--rapago-gold) !important;
+  --color: var(--rapago-gold) !important;
+  --background: rgba(26, 26, 26, 0.38) !important;
+}
+
+ion-button[fill="clear"] {
+  --color: var(--rapago-sand) !important;
+}
+
+ion-card {
+  background: rgba(246, 242, 236, 0.96) !important;
+  color: var(--rapago-volcanic) !important;
+  border: 1px solid rgba(200, 155, 60, 0.20);
+}
+
+ion-card ion-card-title,
+ion-card h1,
+ion-card h2,
+ion-card h3,
+ion-card .quick-access-title,
+ion-card .join-card-title {
+  color: var(--rapago-volcanic) !important;
+}
+
+ion-card p,
+ion-card .quick-access-subtitle,
+ion-card ion-card-content {
+  color: rgba(26, 26, 26, 0.82) !important;
+}
+
+ion-chip {
+  --background: rgba(246, 242, 236, 0.96) !important;
+  --color: var(--rapago-volcanic) !important;
+  border: 1px solid rgba(200, 155, 60, 0.22);
+}
+
+ion-badge[color="success"] {
+  --background: var(--rapago-gold) !important;
+  --color: var(--rapago-volcanic) !important;
+}
+
+ion-badge[color="warning"] {
+  --background: var(--rapago-sand) !important;
+  --color: var(--rapago-volcanic) !important;
+}
+
+ion-badge[color="danger"] {
+  --background: var(--rapago-terracotta) !important;
+  --color: var(--rapago-ivory) !important;
+}
+
+/* Home con la nueva paleta */
+.passenger-home-header {
+  background: linear-gradient(135deg, var(--rapago-volcanic) 0%, #2B2119 52%, var(--rapago-terracotta) 100%) !important;
+  border-bottom: 1px solid rgba(200, 155, 60, 0.28);
+}
+
+.passenger-home-avatar,
+.profile-top-avatar {
+  background: rgba(200, 155, 60, 0.24) !important;
+  border-color: rgba(246, 242, 236, 0.70) !important;
+  color: var(--rapago-ivory) !important;
+}
+
+.profile-top-button {
+  background: rgba(246, 242, 236, 0.12) !important;
+  border-color: rgba(200, 155, 60, 0.70) !important;
+}
+
+.service-card {
+  background: var(--rapago-ivory) !important;
+  border: 1px solid rgba(200, 155, 60, 0.24);
+}
+
+.service-card-title,
+.service-card-subtitle {
+  color: var(--rapago-volcanic) !important;
+}
+
+.frequent-destinations-row,
+.frequent-destinations-carousel {
+  display: flex !important;
+  gap: 12px !important;
+  overflow-x: auto !important;
+  overflow-y: hidden !important;
+  scroll-snap-type: x mandatory;
+  -webkit-overflow-scrolling: touch;
+  padding: 2px 4px 10px !important;
+}
+
+.frequent-destination-chip {
+  --background: linear-gradient(135deg, var(--rapago-ivory) 0%, var(--rapago-sand) 100%) !important;
+  --color: var(--rapago-volcanic) !important;
+  color: var(--rapago-volcanic) !important;
+  border: 1px solid rgba(200, 155, 60, 0.35) !important;
+  box-shadow: 0 10px 22px rgba(26, 26, 26, 0.20);
+  scroll-snap-align: start;
+}
+
+.frequent-destination-chip ion-icon,
+.frequent-destination-icon {
+  color: var(--rapago-terracotta) !important;
+}
+
+.referral-banner {
+  background: linear-gradient(135deg, var(--rapago-gold) 0%, var(--rapago-terracotta) 100%) !important;
+  box-shadow: 0 14px 30px rgba(184, 79, 46, 0.25);
+}
+
+.referral-title,
+.referral-subtitle,
+.referral-icon,
+.referral-arrow {
+  color: var(--rapago-ivory) !important;
+}
+
+.join-card {
+  background: rgba(246, 242, 236, 0.96) !important;
+}
+
+.join-card-title {
+  color: var(--rapago-volcanic) !important;
+}
+
+.quick-access-card {
+  background: rgba(246, 242, 236, 0.96) !important;
+  border: 1px solid rgba(200, 155, 60, 0.22);
+}
+
+.quick-access-title {
+  color: var(--rapago-volcanic) !important;
+}
+
+.quick-access-subtitle {
+  color: rgba(26, 26, 26, 0.68) !important;
+}
+
+.quick-access-icon.trips,
+.quick-access-icon.wallet {
+  color: var(--rapago-terracotta) !important;
+}
+
+.passenger-warning-box {
+  background: var(--rapago-sand) !important;
+  border-color: var(--rapago-gold) !important;
+}
+
+.passenger-warning-text {
+  color: var(--rapago-volcanic) !important;
+}
+
+/* ==========================================================================
+   HOME IMAGE CAROUSEL — RAPA GO
+   ========================================================================== */
+
+.home-image-carousel {
+  margin-top: 16px;
+  height: 220px;
+  border-radius: 22px;
+  overflow: hidden;
+  position: relative;
+  box-shadow: 0 14px 35px rgba(0, 0, 0, 0.35);
+  border: 1px solid rgba(246, 242, 236, 0.18);
+  background: var(--rapago-volcanic);
+}
+
+.home-image-carousel-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  transition: opacity 0.4s ease;
+}
+
+.home-image-carousel-overlay {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    180deg,
+    rgba(26, 26, 26, 0.08) 0%,
+    rgba(26, 26, 26, 0.78) 100%
+  );
+}
+
+.home-image-carousel-text {
+  position: absolute;
+  left: 16px;
+  right: 16px;
+  bottom: 16px;
+  z-index: 2;
+}
+
+.home-image-carousel-title {
+  color: var(--rapago-ivory);
+  font-size: 1.2rem;
+  font-weight: 900;
+  text-shadow: 0 2px 8px rgba(0, 0, 0, 0.7);
+}
+
+.home-image-carousel-subtitle {
+  color: var(--rapago-sand);
+  font-size: 0.82rem;
+  font-weight: 700;
+  margin-top: 3px;
+  text-shadow: 0 2px 8px rgba(0, 0, 0, 0.7);
+}
+
+.home-image-carousel-dots {
+  position: absolute;
+  right: 14px;
+  bottom: 14px;
+  display: flex;
+  gap: 6px;
+  z-index: 3;
+}
+
+.home-image-carousel-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  border: none;
+  background: rgba(246, 242, 236, 0.75);
+  transition: all 0.25s ease;
+  padding: 0;
+  cursor: pointer;
+}
+
+.home-image-carousel-dot.active {
+  width: 18px;
+  background: var(--rapago-gold);
+}
+
+/* Hero CTA — botón primario sobre el carrusel */
+.rapago-hero-cta {
+  --border-radius: 18px;
+  --background: linear-gradient(135deg, #c89b3c 0%, #d2a43a 50%, #f8d879 100%);
+  --background-activated: linear-gradient(135deg, #b98517, #c89b3c);
+  --box-shadow: 0 10px 28px rgba(210, 164, 58, 0.35);
+  --color: #111;
+  color: #111;
+  height: 48px;
+  margin-top: 12px;
+  font-size: 0.92rem;
+  font-weight: 950;
+  letter-spacing: 0.02em;
+  text-transform: none;
+  border: 1.5px solid rgba(255, 224, 120, 0.55);
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.rapago-hero-cta:active {
+  transform: scale(0.97);
+}
+
+/* Eyebrow / kicker sobre títulos de sección */
+.passenger-home-section-eyebrow {
+  color: #9a6a10;
+  font-size: 0.70rem;
+  font-weight: 900;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  margin-bottom: 4px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.passenger-home-section-eyebrow::before {
+  content: "";
+  width: 16px;
+  height: 3px;
+  border-radius: 2px;
+  background: linear-gradient(90deg, #d2a43a, #c89b3c);
+  flex-shrink: 0;
+}
+
+.passenger-warning-whatsapp {
+  margin-top: 8px;
+}
+
+@media (max-width: 480px) {
+  .home-image-carousel {
+    height: 200px;
+    border-radius: 20px;
+  }
+
+  .home-image-carousel-title {
+    font-size: 1.08rem;
+  }
+
+  .home-image-carousel-subtitle {
+    font-size: 0.78rem;
+  }
+}
+
+@media (max-width: 360px) {
+  .home-image-carousel {
+    height: 185px;
+  }
+  
+}
+
+
+/* ==========================================================================
+   RAPA GO LOGO — HEADER HOME
+   ========================================================================== */
+
+.passenger-home-logo {
+  width: 56px;
+  height: 56px;
+  border-radius: 16px;
+  object-fit: cover;
+  background: #ffffff;
+  padding: 4px;
+  display: block;
+  aspect-ratio: 1 / 1;
+  box-shadow:
+    0 4px 12px rgba(0, 0, 0, 0.24),
+    0 0 0 2px rgba(246, 242, 236, 0.20);
+  flex-shrink: 0;
+  transition: transform 0.2s ease;
+}
+
+.passenger-home-logo:hover {
+  transform: scale(1.02);
+}
+
+@media (max-width: 480px) {
+  .passenger-home-logo {
+    width: 50px;
+    height: 50px;
+    border-radius: 15px;
+    padding: 3px;
+  }
+}
+
+@media (max-width: 360px) {
+  .passenger-home-logo {
+    width: 46px;
+    height: 46px;
+    border-radius: 14px;
+  }
+  
+}
+/* ==========================================================================
+   ADMIN DASHBOARD — RAPA GO
+   Agregar al final de global.css
+   ========================================================================== */
+
+.admin-header {
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.24);
+}
+
+.admin-toolbar {
+  --background: linear-gradient(
+    135deg,
+    var(--rapago-volcanic) 0%,
+    #2b2119 52%,
+    var(--rapago-terracotta) 100%
+  ) !important;
+  --color: var(--rapago-ivory) !important;
+  --border-width: 0 !important;
+}
+
+.admin-notification {
+  padding-right: 10px;
+}
+
+.admin-dashboard-content {
+  --background:
+    linear-gradient(
+      180deg,
+      rgba(26, 26, 26, 0.86) 0%,
+      rgba(26, 26, 26, 0.74) 45%,
+      rgba(26, 26, 26, 0.92) 100%
+    ),
+    url("./img/imgen-rapanui2.jpeg") no-repeat center center / cover fixed !important;
+}
+
+.admin-dashboard-shell {
+  padding: 14px 14px 110px;
+}
+
+.admin-hero-card {
+  min-height: 136px;
+  padding: 20px;
+  border-radius: 24px;
+  background:
+    radial-gradient(circle at top right, rgba(200, 155, 60, 0.34), transparent 34%),
+    linear-gradient(135deg, rgba(26, 26, 26, 0.96), rgba(43, 33, 25, 0.94));
+  border: 1px solid rgba(200, 155, 60, 0.35);
+  box-shadow: 0 20px 45px rgba(0, 0, 0, 0.35);
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.admin-eyebrow {
+  margin: 0 0 7px;
+  color: var(--rapago-sand);
+  font-size: 0.76rem;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.admin-hero-title {
+  margin: 0;
+  color: var(--rapago-ivory);
+  font-size: 1.55rem;
+  font-weight: 950;
+  line-height: 1.05;
+}
+
+.admin-hero-date {
+  margin: 10px 0 0;
+  color: rgba(246, 242, 236, 0.82);
+  font-size: 0.84rem;
+  font-weight: 700;
+  text-transform: capitalize;
+}
+
+.admin-status-pill {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 7px 10px;
+  border-radius: 999px;
+  background: rgba(246, 242, 236, 0.1);
+  color: var(--rapago-ivory);
+  border: 1px solid rgba(246, 242, 236, 0.16);
+  font-size: 0.72rem;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.admin-status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: #38d06f;
+  box-shadow: 0 0 0 4px rgba(56, 208, 111, 0.18);
+}
+
+.admin-loading-card {
+  margin-top: 16px;
+  min-height: 110px;
+  border-radius: 20px;
+  background: rgba(246, 242, 236, 0.94);
+  color: var(--rapago-volcanic);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  font-weight: 800;
+}
+
+.admin-error-card {
+  margin: 14px 0 0;
+  border-radius: 18px;
+  background: var(--rapago-terracotta) !important;
+  color: var(--rapago-ivory) !important;
+}
+
+.admin-alerts {
+  margin-top: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.admin-alert-card {
+  margin: 0;
+  border-radius: 18px;
+  border: 1px solid transparent;
+}
+
+.admin-alert-card.warning {
+  background: rgba(217, 195, 160, 0.96) !important;
+  border-color: rgba(200, 155, 60, 0.35);
+}
+
+.admin-alert-card.critical {
+  background: rgba(184, 79, 46, 0.96) !important;
+  color: var(--rapago-ivory) !important;
+  border-color: rgba(246, 242, 236, 0.2);
+}
+
+.admin-alert-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-weight: 850;
+}
+
+.admin-alert-row ion-icon {
+  font-size: 1.25rem;
+  flex-shrink: 0;
+}
+
+.admin-kpi-grid {
+  margin-top: 16px;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.admin-kpi-card {
+  margin: 0;
+  border-radius: 22px;
+  overflow: hidden;
+  min-height: 174px;
+  border: 1px solid rgba(200, 155, 60, 0.24);
+  box-shadow: 0 16px 32px rgba(0, 0, 0, 0.24);
+}
+
+.admin-kpi-card ion-card-content {
+  padding: 16px !important;
+}
+
+.admin-kpi-card.gold {
+  background: linear-gradient(145deg, var(--rapago-gold), var(--rapago-sand)) !important;
+}
+
+.admin-kpi-card.terracotta {
+  background: linear-gradient(145deg, var(--rapago-terracotta), #d06a45) !important;
+}
+
+.admin-kpi-card.sand {
+  background: linear-gradient(145deg, var(--rapago-sand), var(--rapago-ivory)) !important;
+}
+
+.admin-kpi-card.ivory {
+  background: linear-gradient(145deg, var(--rapago-ivory), #ffffff) !important;
+}
+
+.admin-kpi-card.warning {
+  background: linear-gradient(145deg, #f0c36a, var(--rapago-sand)) !important;
+}
+
+.admin-kpi-top {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.admin-kpi-icon {
+  width: 38px;
+  height: 38px;
+  border-radius: 14px;
+  background: rgba(26, 26, 26, 0.13);
+  color: var(--rapago-volcanic);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.admin-kpi-card.terracotta .admin-kpi-icon {
+  background: rgba(246, 242, 236, 0.18);
+  color: var(--rapago-ivory);
+}
+
+.admin-kpi-icon ion-icon {
+  font-size: 1.35rem;
+}
+
+.admin-kpi-value {
+  color: var(--rapago-volcanic);
+  font-size: 1.85rem;
+  font-weight: 950;
+  line-height: 1.05;
+  margin-top: 10px;
+}
+
+.admin-kpi-card.terracotta .admin-kpi-value,
+.admin-kpi-card.terracotta .admin-kpi-label,
+.admin-kpi-card.terracotta .admin-kpi-helper {
+  color: var(--rapago-ivory);
+}
+
+.admin-kpi-label {
+  color: rgba(26, 26, 26, 0.78);
+  font-size: 0.86rem;
+  font-weight: 950;
+  margin-top: 5px;
+}
+
+.admin-kpi-helper {
+  color: rgba(26, 26, 26, 0.64);
+  font-size: 0.73rem;
+  font-weight: 750;
+  line-height: 1.35;
+  margin-top: 6px;
+}
+
+.admin-kpi-badges {
+  display: flex;
+  gap: 5px;
+  flex-wrap: wrap;
+  margin-top: 10px;
+}
+
+.admin-kpi-badges ion-badge {
+  font-size: 0.62rem;
+}
+
+.admin-section-card {
+  margin: 16px 0 0;
+  border-radius: 22px;
+  background: rgba(246, 242, 236, 0.96) !important;
+  border: 1px solid rgba(200, 155, 60, 0.24);
+  box-shadow: 0 14px 32px rgba(0, 0, 0, 0.22);
+  overflow: hidden;
+}
+
+.admin-section-card ion-card-header {
+  padding: 16px 16px 8px;
+}
+
+.admin-section-card ion-card-title {
+  color: var(--rapago-volcanic) !important;
+  font-size: 1.02rem;
+  font-weight: 950;
+}
+
+.admin-section-card ion-card-subtitle {
+  color: rgba(26, 26, 26, 0.62) !important;
+  font-weight: 750;
+  margin-top: 3px;
+}
+
+.admin-section-title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.admin-clean-list {
+  background: transparent !important;
+  padding: 0 8px 10px;
+}
+
+.admin-clean-list ion-item {
+  --background: rgba(255, 255, 255, 0.42) !important;
+  --color: var(--rapago-volcanic) !important;
+  --border-radius: 16px;
+  --padding-start: 12px;
+  --inner-padding-end: 8px;
+  margin: 8px 0;
+  border: 1px solid rgba(200, 155, 60, 0.16) !important;
+}
+
+.admin-clean-list ion-icon {
+  color: var(--rapago-terracotta);
+}
+
+.admin-rank-badge {
+  width: 32px;
+  height: 32px;
+  border-radius: 12px;
+  background: linear-gradient(135deg, var(--rapago-gold), var(--rapago-sand));
+  color: var(--rapago-volcanic);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 950;
+}
+
+.admin-activity-icon {
+  width: 34px;
+  height: 34px;
+  border-radius: 13px;
+  background: rgba(184, 79, 46, 0.12);
+  color: var(--rapago-terracotta);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.admin-quick-card ion-card-content {
+  padding: 12px 14px 16px !important;
+}
+
+.admin-quick-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 10px;
+}
+
+.admin-quick-action {
+  margin: 0;
+  height: auto;
+  min-height: 68px;
+  --padding-start: 0;
+  --padding-end: 0;
+  --background: transparent !important;
+  --box-shadow: none !important;
+  width: 100%;
+}
+
+.admin-quick-action-inner {
+  width: 100%;
+  min-height: 68px;
+  padding: 12px;
+  border-radius: 18px;
+  background: rgba(26, 26, 26, 0.06);
+  border: 1px solid rgba(200, 155, 60, 0.18);
+  display: grid;
+  grid-template-columns: 42px 1fr 18px;
+  align-items: center;
+  gap: 12px;
+  text-align: left;
+}
+
+.admin-quick-icon {
+  width: 42px;
+  height: 42px;
+  border-radius: 15px;
+  background: linear-gradient(135deg, var(--rapago-gold), var(--rapago-sand));
+  color: var(--rapago-volcanic);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.admin-quick-icon ion-icon {
+  font-size: 1.35rem;
+}
+
+.admin-quick-action strong {
+  display: block;
+  color: var(--rapago-volcanic);
+  font-size: 0.86rem;
+  font-weight: 950;
+}
+
+.admin-quick-action span {
+  display: block;
+  color: rgba(26, 26, 26, 0.62);
+  font-size: 0.72rem;
+  font-weight: 750;
+  margin-top: 2px;
+}
+
+.admin-quick-arrow {
+  color: rgba(26, 26, 26, 0.42);
+  font-size: 1.05rem;
+}
+
+@media (min-width: 680px) {
+  .admin-dashboard-shell {
+    max-width: 980px;
+    margin: 0 auto;
+  }
+
+  .admin-kpi-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  .admin-quick-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 380px) {
+  .admin-dashboard-shell {
+    padding-left: 10px;
+    padding-right: 10px;
+  }
+
+  .admin-hero-card {
+    padding: 16px;
+    border-radius: 20px;
+  }
+
+  .admin-hero-title {
+    font-size: 1.32rem;
+  }
+
+  .admin-status-pill {
+    font-size: 0.66rem;
+    padding: 6px 8px;
+  }
+
+  .admin-kpi-grid {
+    gap: 10px;
+  }
+
+  .admin-kpi-card {
+    min-height: 166px;
+    border-radius: 19px;
+  }
+
+  .admin-kpi-value {
+    font-size: 1.55rem;
+  }
+}
+
+
+/* ==========================================================================
+   RAPA GO — FIX FINAL ADMIN MOBILE
+   Barra inferior completa visible + tarjetas compactas.
+   IMPORTANTE: este bloque debe quedar SIEMPRE al final del global.css.
+   ========================================================================== */
+
+/* Evita que el contenido quede tapado por la barra */
+ion-content,
+.admin-dashboard-content {
+  --padding-bottom: calc(82px + env(safe-area-inset-bottom)) !important;
+}
+
+.admin-dashboard-shell,
+.passenger-home-content {
+  padding-bottom: calc(96px + env(safe-area-inset-bottom)) !important;
+}
+
+/* BARRA INFERIOR: muestra todos los accesos en celular */
+ion-tab-bar {
+  position: fixed !important;
+  left: 0 !important;
+  right: 0 !important;
+  bottom: 0 !important;
+  z-index: 9999 !important;
+
+  --background: #1A1A1A !important;
+  background: #1A1A1A !important;
+
+  height: calc(66px + env(safe-area-inset-bottom)) !important;
+  min-height: calc(66px + env(safe-area-inset-bottom)) !important;
+
+  padding: 6px 4px calc(6px + env(safe-area-inset-bottom)) !important;
+
+  display: grid !important;
+  grid-auto-flow: column !important;
+  grid-auto-columns: minmax(0, 1fr) !important;
+  align-items: center !important;
+
+  gap: 0 !important;
+
+  overflow-x: hidden !important;
+  overflow-y: hidden !important;
+
+  border-top: 1px solid rgba(200, 155, 60, 0.28) !important;
+  box-shadow: 0 -8px 20px rgba(0, 0, 0, 0.42) !important;
+
+  backdrop-filter: blur(16px) !important;
+  -webkit-backdrop-filter: blur(16px) !important;
+}
+
+/* Botones compactos para que quepan: Panel, Usuarios, Docs, Postul., Viajes, etc. */
+ion-tab-button {
+  width: auto !important;
+  min-width: 0 !important;
+  max-width: none !important;
+
+  height: 54px !important;
+  min-height: 54px !important;
+
+  margin: 0 !important;
+  padding: 0 !important;
+  border-radius: 0 !important;
+
+  --padding-start: 0 !important;
+  --padding-end: 0 !important;
+  --padding-top: 3px !important;
+  --padding-bottom: 3px !important;
+
+  --background: transparent !important;
+  --background-focused: transparent !important;
+  --background-selected: transparent !important;
+
+  --color: #D9C3A0 !important;
+  --color-selected: #C89B3C !important;
+
+  color: #D9C3A0 !important;
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+}
+
+ion-tab-button ion-icon {
+  width: 16px !important;
+  height: 16px !important;
+  font-size: 16px !important;
+  margin: 0 0 2px !important;
+  color: inherit !important;
+}
+
+ion-tab-button ion-label {
+  display: block !important;
+  width: 100% !important;
+  max-width: 38px !important;
+  margin: 0 auto !important;
+
+  color: inherit !important;
+  font-size: 6.2px !important;
+  line-height: 1.05 !important;
+  font-weight: 900 !important;
+  text-align: center !important;
+
+  white-space: nowrap !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+}
+
+/* Activo como tu segunda imagen: dorado, sin caja grande */
+ion-tab-button.tab-selected,
+ion-tab-button[aria-selected="true"] {
+  color: #C89B3C !important;
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+}
+
+ion-tab-button.tab-selected ion-icon,
+ion-tab-button.tab-selected ion-label,
+ion-tab-button[aria-selected="true"] ion-icon,
+ion-tab-button[aria-selected="true"] ion-label {
+  color: #C89B3C !important;
+}
+
+/* Pantallas medianas: un poco más grande */
+@media (min-width: 390px) {
+  ion-tab-button ion-icon {
+    width: 17px !important;
+    height: 17px !important;
+    font-size: 17px !important;
+  }
+
+  ion-tab-button ion-label {
+    max-width: 42px !important;
+    font-size: 6.8px !important;
+  }
+}
+
+/* Pantallas grandes: sigue ordenado */
+@media (min-width: 700px) {
+  ion-tab-bar {
+    height: calc(70px + env(safe-area-inset-bottom)) !important;
+    min-height: calc(70px + env(safe-area-inset-bottom)) !important;
+    padding-left: 12px !important;
+    padding-right: 12px !important;
+  }
+
+  ion-tab-button ion-icon {
+    width: 19px !important;
+    height: 19px !important;
+    font-size: 19px !important;
+  }
+
+  ion-tab-button ion-label {
+    max-width: 58px !important;
+    font-size: 8px !important;
+  }
+}
+
+/* TARJETAS KPI ADMIN: compactas y bonitas para celular */
+.admin-kpi-grid {
+  display: grid !important;
+  grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  gap: 10px !important;
+  margin: 14px 0 !important;
+}
+
+.admin-kpi-card {
+  margin: 0 !important;
+  min-height: 128px !important;
+  border-radius: 20px !important;
+  overflow: hidden !important;
+  position: relative !important;
+
+  background: linear-gradient(145deg, #F6F2EC 0%, #D9C3A0 100%) !important;
+  border: 1px solid rgba(200, 155, 60, 0.30) !important;
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.20) !important;
+}
+
+.admin-kpi-card::after {
+  content: "";
+  position: absolute;
+  right: -28px;
+  top: -28px;
+  width: 84px;
+  height: 84px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.18);
+  pointer-events: none;
+}
+
+.admin-kpi-card ion-card-content {
+  position: relative !important;
+  z-index: 2 !important;
+  padding: 12px !important;
+}
+
+.admin-kpi-top {
+  display: flex !important;
+  justify-content: space-between !important;
+  align-items: center !important;
+}
+
+.admin-kpi-icon {
+  width: 34px !important;
+  height: 34px !important;
+  border-radius: 13px !important;
+
+  background: rgba(26, 26, 26, 0.10) !important;
+  color: #B84F2E !important;
+
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+}
+
+.admin-kpi-icon ion-icon {
+  font-size: 1.14rem !important;
+}
+
+.admin-kpi-value {
+  margin-top: 10px !important;
+  color: #1A1A1A !important;
+  font-size: clamp(1.25rem, 5.2vw, 1.7rem) !important;
+  line-height: 1 !important;
+  font-weight: 950 !important;
+  letter-spacing: -0.4px !important;
+  overflow-wrap: anywhere !important;
+}
+
+.admin-kpi-label {
+  margin-top: 6px !important;
+  color: #1A1A1A !important;
+  font-size: 0.74rem !important;
+  line-height: 1.15 !important;
+  font-weight: 950 !important;
+}
+
+.admin-kpi-helper {
+  margin-top: 4px !important;
+  color: rgba(26, 26, 26, 0.68) !important;
+  font-size: 0.62rem !important;
+  line-height: 1.25 !important;
+  font-weight: 750 !important;
+}
+
+.admin-kpi-badges {
+  display: flex !important;
+  flex-wrap: wrap !important;
+  gap: 3px !important;
+  margin-top: 8px !important;
+}
+
+.admin-kpi-badges ion-badge {
+  font-size: 0.52rem !important;
+  padding: 3px 5px !important;
+  border-radius: 999px !important;
+}
+
+/* Tonos de tarjetas */
+.admin-kpi-card.gold {
+  background: linear-gradient(145deg, #F6F2EC 0%, #D9C3A0 48%, #C89B3C 100%) !important;
+}
+
+.admin-kpi-card.terracotta {
+  background: linear-gradient(145deg, #B84F2E 0%, #8F341E 100%) !important;
+}
+
+.admin-kpi-card.sand {
+  background: linear-gradient(145deg, #D9C3A0 0%, #F6F2EC 100%) !important;
+}
+
+.admin-kpi-card.ivory {
+  background: linear-gradient(145deg, #F6F2EC 0%, #FFFFFF 100%) !important;
+}
+
+.admin-kpi-card.warning {
+  background: linear-gradient(145deg, #F2B84B 0%, #D9C3A0 100%) !important;
+}
+
+.admin-kpi-card.terracotta .admin-kpi-icon,
+.admin-kpi-card.terracotta .admin-kpi-value,
+.admin-kpi-card.terracotta .admin-kpi-label,
+.admin-kpi-card.terracotta .admin-kpi-helper {
+  color: #F6F2EC !important;
+}
+
+.admin-kpi-card.terracotta .admin-kpi-icon {
+  background: rgba(246, 242, 236, 0.16) !important;
+}
+
+/* Secciones admin más limpias */
+.admin-section-card {
+  margin: 14px 0 0 !important;
+  border-radius: 22px !important;
+  background: rgba(246, 242, 236, 0.97) !important;
+  border: 1px solid rgba(200, 155, 60, 0.24) !important;
+  box-shadow: 0 14px 32px rgba(0, 0, 0, 0.22) !important;
+  overflow: hidden !important;
+}
+
+.admin-section-card ion-card-header {
+  padding: 14px 14px 8px !important;
+}
+
+.admin-section-card ion-card-title {
+  color: #1A1A1A !important;
+  font-size: 1rem !important;
+  font-weight: 950 !important;
+}
+
+.admin-section-card ion-card-subtitle {
+  color: rgba(26, 26, 26, 0.62) !important;
+  font-size: 0.72rem !important;
+  font-weight: 800 !important;
+  text-transform: none !important;
+}
+
+.admin-quick-grid {
+  display: grid !important;
+  grid-template-columns: 1fr !important;
+  gap: 9px !important;
+}
+
+.admin-quick-action-inner {
+  min-height: 62px !important;
+  padding: 10px !important;
+  border-radius: 17px !important;
+  grid-template-columns: 40px minmax(0, 1fr) 18px !important;
+}
+
+.admin-quick-icon {
+  width: 40px !important;
+  height: 40px !important;
+  border-radius: 14px !important;
+}
+
+@media (min-width: 700px) {
+  .admin-kpi-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+  }
+
+  .admin-quick-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+}
+
+/* ==========================================================================
+   RAPA GO — HOMOLOGACIÓN VISUAL GLOBAL FINAL
+   Pegar al final. Este bloque estandariza colores en toda la app.
+   ========================================================================== */
+
+/* Base global */
+:root {
+  --rapago-gold: #C89B3C;
+  --rapago-volcanic: #1A1A1A;
+  --rapago-ivory: #F6F2EC;
+  --rapago-terracotta: #B84F2E;
+  --rapago-sand: #D9C3A0;
+
+  --ion-color-primary: #C89B3C;
+  --ion-color-primary-rgb: 200, 155, 60;
+  --ion-color-primary-contrast: #1A1A1A;
+  --ion-color-primary-contrast-rgb: 26, 26, 26;
+  --ion-color-primary-shade: #B08435;
+  --ion-color-primary-tint: #D4AD61;
+
+  --ion-color-secondary: #B84F2E;
+  --ion-color-secondary-rgb: 184, 79, 46;
+  --ion-color-secondary-contrast: #F6F2EC;
+  --ion-color-secondary-contrast-rgb: 246, 242, 236;
+  --ion-color-secondary-shade: #A24628;
+  --ion-color-secondary-tint: #C16246;
+
+  --ion-color-tertiary: #D9C3A0;
+  --ion-color-tertiary-rgb: 217, 195, 160;
+  --ion-color-tertiary-contrast: #1A1A1A;
+  --ion-color-tertiary-contrast-rgb: 26, 26, 26;
+  --ion-color-tertiary-shade: #BFAE8D;
+  --ion-color-tertiary-tint: #DDC9AA;
+
+  --ion-background-color: #1A1A1A;
+  --ion-text-color: #F6F2EC;
+  --ion-card-background: rgba(246, 242, 236, 0.97);
+  --ion-toolbar-background: #1A1A1A;
+  --ion-tab-bar-background: #1A1A1A;
+}
+
+html,
+body,
+ion-app,
+.ion-page,
+ion-router-outlet {
+  background: var(--rapago-volcanic) !important;
+  color: var(--rapago-ivory) !important;
+}
+
+ion-content {
+  --background:
+    linear-gradient(
+      180deg,
+      rgba(26, 26, 26, 0.72) 0%,
+      rgba(26, 26, 26, 0.82) 48%,
+      rgba(26, 26, 26, 0.96) 100%
+    ),
+    url("./img/imgen-rapanui2.jpeg") no-repeat center center / cover fixed !important;
+}
+
+/* Headers / toolbars */
+ion-header,
+.admin-header {
+  background: var(--rapago-volcanic) !important;
+}
+
+ion-toolbar,
+ion-toolbar[color],
+.admin-toolbar {
+  --background: linear-gradient(135deg, #1A1A1A 0%, #2B2119 55%, #B84F2E 100%) !important;
+  --color: var(--rapago-ivory) !important;
+  --border-width: 0 !important;
+  border-bottom: 1px solid rgba(200, 155, 60, 0.28) !important;
+}
+
+ion-title {
+  color: var(--rapago-ivory) !important;
+  font-weight: 950 !important;
+  letter-spacing: .2px !important;
+}
+
+/* Botones homogéneos */
+ion-button {
+  --border-radius: 15px !important;
+  font-weight: 900 !important;
+  letter-spacing: .2px !important;
+  text-transform: none !important;
+}
+
+ion-button:not([fill="clear"]):not([fill="outline"]),
+ion-button[color="primary"] {
+  --background: linear-gradient(135deg, var(--rapago-gold) 0%, var(--rapago-sand) 100%) !important;
+  --background-activated: var(--rapago-gold) !important;
+  --background-focused: var(--rapago-gold) !important;
+  --background-hover: var(--rapago-sand) !important;
+  --color: var(--rapago-volcanic) !important;
+  --box-shadow: 0 10px 24px rgba(200, 155, 60, 0.28) !important;
+}
+
+ion-button[color="secondary"] {
+  --background: linear-gradient(135deg, var(--rapago-terracotta) 0%, #D06A45 100%) !important;
+  --color: var(--rapago-ivory) !important;
+}
+
+ion-button[fill="outline"] {
+  --border-color: var(--rapago-gold) !important;
+  --color: var(--rapago-gold) !important;
+  --background: rgba(26, 26, 26, 0.30) !important;
+}
+
+ion-button[fill="clear"] {
+  --color: var(--rapago-gold) !important;
+  --background: transparent !important;
+}
+
+/* Cards globales */
+ion-card {
+  background: rgba(246, 242, 236, 0.97) !important;
+  color: var(--rapago-volcanic) !important;
+  border: 1px solid rgba(200, 155, 60, 0.24) !important;
+  border-radius: 20px !important;
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.20) !important;
+}
+
+ion-card-title,
+ion-card-subtitle,
+ion-card h1,
+ion-card h2,
+ion-card h3,
+ion-card strong {
+  color: var(--rapago-volcanic) !important;
+}
+
+ion-card-subtitle,
+ion-card p,
+ion-card ion-note,
+ion-card ion-card-content {
+  color: rgba(26, 26, 26, 0.75) !important;
+}
+
+/* Formularios */
+ion-item,
+.form-group-item {
+  --background: rgba(246, 242, 236, 0.08) !important;
+  --color: var(--rapago-ivory) !important;
+  --border-radius: 15px !important;
+  border: 1px solid rgba(200, 155, 60, 0.22) !important;
+  border-radius: 15px !important;
+}
+
+ion-card ion-item,
+.admin-clean-list ion-item {
+  --background: rgba(255, 255, 255, 0.42) !important;
+  --color: var(--rapago-volcanic) !important;
+}
+
+ion-label,
+label {
+  color: var(--rapago-sand) !important;
+  font-weight: 800 !important;
+}
+
+ion-card ion-label,
+ion-card label,
+.admin-clean-list ion-label {
+  color: var(--rapago-volcanic) !important;
+}
+
+ion-input,
+ion-textarea,
+ion-select {
+  --color: var(--rapago-ivory) !important;
+  --placeholder-color: rgba(217, 195, 160, 0.72) !important;
+}
+
+ion-card ion-input,
+ion-card ion-textarea,
+ion-card ion-select {
+  --color: var(--rapago-volcanic) !important;
+  color: var(--rapago-volcanic) !important;
+}
+
+/* Badges / chips */
+ion-chip {
+  --background: linear-gradient(135deg, var(--rapago-ivory) 0%, var(--rapago-sand) 100%) !important;
+  --color: var(--rapago-volcanic) !important;
+  border: 1px solid rgba(200, 155, 60, 0.32) !important;
+  font-weight: 900 !important;
+}
+
+ion-badge {
+  border-radius: 999px !important;
+  font-weight: 900 !important;
+}
+
+ion-badge[color="success"] {
+  --background: var(--rapago-gold) !important;
+  --color: var(--rapago-volcanic) !important;
+}
+
+ion-badge[color="warning"] {
+  --background: var(--rapago-sand) !important;
+  --color: var(--rapago-volcanic) !important;
+}
+
+ion-badge[color="danger"] {
+  --background: var(--rapago-terracotta) !important;
+  --color: var(--rapago-ivory) !important;
+}
+
+ion-badge[color="medium"] {
+  --background: rgba(26, 26, 26, 0.16) !important;
+  --color: var(--rapago-volcanic) !important;
+}
+
+/* Segmentos */
+ion-segment {
+  background: rgba(26, 26, 26, 0.34) !important;
+  border: 1px solid rgba(200, 155, 60, 0.22) !important;
+  border-radius: 16px !important;
+  padding: 4px !important;
+}
+
+ion-segment-button {
+  --color: var(--rapago-sand) !important;
+  --color-checked: var(--rapago-volcanic) !important;
+  --background-checked: linear-gradient(135deg, var(--rapago-gold), var(--rapago-sand)) !important;
+  --indicator-color: transparent !important;
+  border-radius: 13px !important;
+  font-weight: 900 !important;
+}
+
+/* Home / passenger */
+.passenger-home-header {
+  background: linear-gradient(135deg, var(--rapago-volcanic) 0%, #2B2119 52%, var(--rapago-terracotta) 100%) !important;
+  border-bottom: 1px solid rgba(200, 155, 60, 0.28) !important;
+}
+
+.passenger-home-section-title,
+.passenger-home-greeting,
+.passenger-home-question {
+  color: var(--rapago-ivory) !important;
+}
+
+.service-card,
+.quick-access-card,
+.join-card {
+  background: rgba(246, 242, 236, 0.97) !important;
+  border: 1px solid rgba(200, 155, 60, 0.24) !important;
+}
+
+.service-card-title,
+.service-card-subtitle,
+.quick-access-title,
+.join-card-title {
+  color: var(--rapago-volcanic) !important;
+}
+
+.quick-access-subtitle {
+  color: rgba(26, 26, 26, 0.66) !important;
+}
+
+.referral-banner {
+  background: linear-gradient(135deg, var(--rapago-gold) 0%, var(--rapago-terracotta) 100%) !important;
+}
+
+.referral-title,
+.referral-subtitle,
+.referral-icon,
+.referral-arrow {
+  color: var(--rapago-ivory) !important;
+}
+
+/* Admin */
+.admin-dashboard-content {
+  --background:
+    linear-gradient(180deg, rgba(26, 26, 26, 0.84), rgba(26, 26, 26, 0.94)),
+    url("./img/imgen-rapanui2.jpeg") no-repeat center center / cover fixed !important;
+}
+
+.admin-hero-card {
+  background:
+    radial-gradient(circle at top right, rgba(200, 155, 60, 0.34), transparent 34%),
+    linear-gradient(135deg, rgba(26, 26, 26, 0.96), rgba(43, 33, 25, 0.95)) !important;
+  border: 1px solid rgba(200, 155, 60, 0.35) !important;
+}
+
+.admin-eyebrow,
+.admin-hero-date,
+.admin-status-pill {
+  color: var(--rapago-sand) !important;
+}
+
+.admin-hero-title {
+  color: var(--rapago-ivory) !important;
+}
+
+.admin-kpi-grid {
+  display: grid !important;
+  grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  gap: 10px !important;
+  margin: 14px 0 !important;
+}
+
+.admin-kpi-card {
+  margin: 0 !important;
+  min-height: 128px !important;
+  border-radius: 20px !important;
+  overflow: hidden !important;
+  position: relative !important;
+  background: linear-gradient(145deg, var(--rapago-ivory) 0%, var(--rapago-sand) 100%) !important;
+  border: 1px solid rgba(200, 155, 60, 0.30) !important;
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.20) !important;
+}
+
+.admin-kpi-card ion-card-content {
+  position: relative !important;
+  z-index: 2 !important;
+  padding: 12px !important;
+}
+
+.admin-kpi-card.gold {
+  background: linear-gradient(145deg, var(--rapago-ivory) 0%, var(--rapago-sand) 48%, var(--rapago-gold) 100%) !important;
+}
+
+.admin-kpi-card.terracotta {
+  background: linear-gradient(145deg, var(--rapago-terracotta) 0%, #8F341E 100%) !important;
+}
+
+.admin-kpi-card.sand {
+  background: linear-gradient(145deg, var(--rapago-sand) 0%, var(--rapago-ivory) 100%) !important;
+}
+
+.admin-kpi-card.ivory {
+  background: linear-gradient(145deg, var(--rapago-ivory) 0%, #FFFFFF 100%) !important;
+}
+
+.admin-kpi-icon {
+  width: 34px !important;
+  height: 34px !important;
+  border-radius: 13px !important;
+  background: rgba(26, 26, 26, 0.10) !important;
+  color: var(--rapago-terracotta) !important;
+}
+
+.admin-kpi-value {
+  margin-top: 10px !important;
+  color: var(--rapago-volcanic) !important;
+  font-size: clamp(1.25rem, 5.2vw, 1.7rem) !important;
+  line-height: 1 !important;
+  font-weight: 950 !important;
+}
+
+.admin-kpi-label {
+  margin-top: 6px !important;
+  color: var(--rapago-volcanic) !important;
+  font-size: .74rem !important;
+  font-weight: 950 !important;
+}
+
+.admin-kpi-helper {
+  margin-top: 4px !important;
+  color: rgba(26, 26, 26, .68) !important;
+  font-size: .62rem !important;
+  line-height: 1.25 !important;
+  font-weight: 750 !important;
+}
+
+.admin-kpi-card.terracotta .admin-kpi-icon,
+.admin-kpi-card.terracotta .admin-kpi-value,
+.admin-kpi-card.terracotta .admin-kpi-label,
+.admin-kpi-card.terracotta .admin-kpi-helper {
+  color: var(--rapago-ivory) !important;
+}
+
+.admin-section-card {
+  margin: 14px 0 0 !important;
+  border-radius: 22px !important;
+  background: rgba(246, 242, 236, 0.97) !important;
+  border: 1px solid rgba(200, 155, 60, 0.24) !important;
+  box-shadow: 0 14px 32px rgba(0, 0, 0, 0.22) !important;
+}
+
+.admin-quick-action-inner {
+  background: linear-gradient(135deg, rgba(246, 242, 236, 0.94), rgba(217, 195, 160, 0.55)) !important;
+  border: 1px solid rgba(200, 155, 60, 0.22) !important;
+}
+
+.admin-quick-icon {
+  background: linear-gradient(135deg, var(--rapago-gold), var(--rapago-sand)) !important;
+  color: var(--rapago-volcanic) !important;
+}
+
+/* Tab bar compacta */
+ion-tab-bar {
+  position: fixed !important;
+  left: 0 !important;
+  right: 0 !important;
+  bottom: 0 !important;
+  z-index: 9999 !important;
+  --background: #1A1A1A !important;
+  background: #1A1A1A !important;
+  height: calc(66px + env(safe-area-inset-bottom)) !important;
+  min-height: calc(66px + env(safe-area-inset-bottom)) !important;
+  padding: 6px 4px calc(6px + env(safe-area-inset-bottom)) !important;
+  display: grid !important;
+  grid-auto-flow: column !important;
+  grid-auto-columns: minmax(0, 1fr) !important;
+  align-items: center !important;
+  gap: 0 !important;
+  overflow-x: hidden !important;
+  overflow-y: hidden !important;
+  border-top: 1px solid rgba(200, 155, 60, 0.28) !important;
+  box-shadow: 0 -8px 20px rgba(0, 0, 0, 0.42) !important;
+}
+
+ion-tab-button {
+  width: auto !important;
+  min-width: 0 !important;
+  max-width: none !important;
+  height: 54px !important;
+  min-height: 54px !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  border-radius: 0 !important;
+  --padding-start: 0 !important;
+  --padding-end: 0 !important;
+  --padding-top: 3px !important;
+  --padding-bottom: 3px !important;
+  --background: transparent !important;
+  --background-focused: transparent !important;
+  --background-selected: transparent !important;
+  --color: var(--rapago-sand) !important;
+  --color-selected: var(--rapago-gold) !important;
+  color: var(--rapago-sand) !important;
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+}
+
+ion-tab-button ion-icon {
+  width: 16px !important;
+  height: 16px !important;
+  font-size: 16px !important;
+  margin: 0 0 2px !important;
+  color: inherit !important;
+}
+
+ion-tab-button ion-label {
+  display: block !important;
+  width: 100% !important;
+  max-width: 38px !important;
+  margin: 0 auto !important;
+  color: inherit !important;
+  font-size: 6.2px !important;
+  line-height: 1.05 !important;
+  font-weight: 900 !important;
+  text-align: center !important;
+  white-space: nowrap !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+}
+
+ion-tab-button.tab-selected,
+ion-tab-button[aria-selected="true"] {
+  color: var(--rapago-gold) !important;
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+}
+
+ion-tab-button.tab-selected ion-icon,
+ion-tab-button.tab-selected ion-label,
+ion-tab-button[aria-selected="true"] ion-icon,
+ion-tab-button[aria-selected="true"] ion-label {
+  color: var(--rapago-gold) !important;
+}
+
+ion-content,
+.admin-dashboard-content {
+  --padding-bottom: calc(82px + env(safe-area-inset-bottom)) !important;
+}
+
+.admin-dashboard-shell,
+.passenger-home-content {
+  padding-bottom: calc(96px + env(safe-area-inset-bottom)) !important;
+}
+
+@media (min-width: 390px) {
+  ion-tab-button ion-icon {
+    width: 17px !important;
+    height: 17px !important;
+    font-size: 17px !important;
+  }
+
+  ion-tab-button ion-label {
+    max-width: 42px !important;
+    font-size: 6.8px !important;
+  }
+}
+
+@media (min-width: 700px) {
+  .admin-kpi-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+  }
+
+  .admin-quick-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+
+  ion-tab-button ion-icon {
+    width: 19px !important;
+    height: 19px !important;
+    font-size: 19px !important;
+  }
+
+  ion-tab-button ion-label {
+    max-width: 58px !important;
+    font-size: 8px !important;
+  }
+  
+}
+
+
+/* ==========================================================================
+   RAPA GO — FIX FINAL FORMULARIOS E INSCRIPCIÓN CONDUCTOR
+   IMPORTANTE: este bloque debe quedar SIEMPRE al final del global.css.
+   Soluciona letras claras/invisibles en tarjetas claras, inputs, labels,
+   botones Sí/No, checkbox, selects y formularios de inscripción.
+   ========================================================================== */
+
+/* Contenedor recomendado en TSX:
+   <IonPage className="driver-registration-page">
+   o
+   <IonContent className="driver-registration-page">
+*/
+
+.driver-registration-page,
+.driver-registration-page * {
+  box-sizing: border-box;
+}
+
+/* Fondo de la pantalla de inscripción */
+.driver-registration-page ion-content,
+ion-content.driver-registration-page {
+  --background:
+    linear-gradient(
+      180deg,
+      rgba(26, 26, 26, 0.72) 0%,
+      rgba(26, 26, 26, 0.84) 48%,
+      rgba(26, 26, 26, 0.96) 100%
+    ),
+    url("./img/imgen-rapanui2.jpeg") no-repeat center center / cover fixed !important;
+}
+
+/* Tarjetas claras */
+.driver-registration-page ion-card {
+  background: #F6F2EC !important;
+  color: #1A1A1A !important;
+  border: 2px solid rgba(200, 155, 60, 0.26) !important;
+  border-radius: 22px !important;
+  box-shadow: 0 14px 34px rgba(0, 0, 0, 0.26) !important;
+}
+
+/* Contenido de tarjetas */
+.driver-registration-page ion-card-content,
+.driver-registration-page ion-card-header {
+  color: #1A1A1A !important;
+}
+
+/* Títulos */
+.driver-registration-page ion-card-title,
+.driver-registration-page h1,
+.driver-registration-page h2,
+.driver-registration-page h3,
+.driver-registration-page h4,
+.driver-registration-page strong {
+  color: #111111 !important;
+  font-weight: 950 !important;
+  letter-spacing: 0.1px !important;
+}
+
+/* Textos descriptivos */
+.driver-registration-page p,
+.driver-registration-page ion-note,
+.driver-registration-page ion-text,
+.driver-registration-page .helper-text {
+  color: #404040 !important;
+  font-weight: 650 !important;
+  line-height: 1.45 !important;
+}
+
+/* Items / cajas de input dentro de la inscripción */
+.driver-registration-page ion-item {
+  --background: #FFFFFF !important;
+  --color: #111111 !important;
+  --border-color: transparent !important;
+  --highlight-color-focused: #C89B3C !important;
+  --highlight-color-valid: #C89B3C !important;
+  --highlight-color-invalid: #B84F2E !important;
+  --padding-start: 14px !important;
+  --inner-padding-end: 14px !important;
+
+  background: #FFFFFF !important;
+  color: #111111 !important;
+  border: 2px solid #E6D4B4 !important;
+  border-radius: 18px !important;
+  margin-bottom: 12px !important;
+  box-shadow: 0 5px 14px rgba(26, 26, 26, 0.04) !important;
+}
+
+/* Focus */
+.driver-registration-page ion-item.item-has-focus,
+.driver-registration-page ion-item:focus-within {
+  border-color: #C89B3C !important;
+  box-shadow:
+    0 0 0 3px rgba(200, 155, 60, 0.16),
+    0 8px 18px rgba(26, 26, 26, 0.08) !important;
+}
+
+/* Labels */
+.driver-registration-page ion-label,
+.driver-registration-page label {
+  color: #111111 !important;
+  font-size: 0.92rem !important;
+  font-weight: 950 !important;
+  letter-spacing: 0.1px !important;
+  opacity: 1 !important;
+}
+
+/* Inputs */
+.driver-registration-page ion-input,
+.driver-registration-page ion-textarea,
+.driver-registration-page ion-select,
+.driver-registration-page input,
+.driver-registration-page textarea {
+  --color: #111111 !important;
+  --placeholder-color: #777777 !important;
+  --placeholder-opacity: 1 !important;
+
+  color: #111111 !important;
+  font-size: 1rem !important;
+  font-weight: 800 !important;
+  opacity: 1 !important;
+}
+
+/* Texto interno del shadow/input nativo */
+.driver-registration-page ion-input input,
+.driver-registration-page ion-textarea textarea {
+  color: #111111 !important;
+  font-weight: 800 !important;
+  opacity: 1 !important;
+}
+
+/* Placeholder más visible */
+.driver-registration-page ion-input::part(native),
+.driver-registration-page ion-textarea::part(native) {
+  color: #111111 !important;
+  font-weight: 800 !important;
+}
+
+.driver-registration-page input::placeholder,
+.driver-registration-page textarea::placeholder {
+  color: #777777 !important;
+  opacity: 1 !important;
+  font-weight: 750 !important;
+}
+
+/* Select */
+.driver-registration-page ion-select::part(text),
+.driver-registration-page ion-select::part(placeholder),
+.driver-registration-page ion-select::part(icon) {
+  color: #111111 !important;
+  opacity: 1 !important;
+  font-weight: 850 !important;
+}
+
+/* Botones Sí / No usados como IonButton outline */
+.driver-registration-page ion-button[fill="outline"] {
+  --border-color: #5F5F5F !important;
+  --color: #111111 !important;
+  --background: #FFFFFF !important;
+  --background-activated: #F0E3CA !important;
+  --background-focused: #F0E3CA !important;
+  --background-hover: #F0E3CA !important;
+  color: #111111 !important;
+  font-weight: 950 !important;
+}
+
+/* Botones activos */
+.driver-registration-page ion-button[color="success"],
+.driver-registration-page ion-button[color="warning"],
+.driver-registration-page ion-button[color="primary"] {
+  --background: linear-gradient(135deg, #C89B3C 0%, #D9C3A0 100%) !important;
+  --color: #111111 !important;
+  color: #111111 !important;
+  font-weight: 950 !important;
+}
+
+/* Segmentos, si los usas para Sí/No */
+.driver-registration-page ion-segment {
+  background: #F0E3CA !important;
+  border: 1px solid rgba(200, 155, 60, 0.42) !important;
+  border-radius: 16px !important;
+  padding: 4px !important;
+}
+
+.driver-registration-page ion-segment-button {
+  --color: #111111 !important;
+  --color-checked: #111111 !important;
+  --background: transparent !important;
+  --background-checked: linear-gradient(135deg, #C89B3C, #D9C3A0) !important;
+  --indicator-color: transparent !important;
+  color: #111111 !important;
+  font-size: 0.95rem !important;
+  font-weight: 950 !important;
+  border-radius: 13px !important;
+}
+
+.driver-registration-page ion-segment-button::part(native) {
+  color: #111111 !important;
+  font-weight: 950 !important;
+}
+
+/* Checkbox */
+.driver-registration-page ion-checkbox {
+  --checkbox-background: #FFFFFF !important;
+  --checkbox-background-checked: #C89B3C !important;
+  --border-color: #6B6B6B !important;
+  --border-color-checked: #C89B3C !important;
+  --checkmark-color: #111111 !important;
+}
+
+/* Texto de checkbox */
+.driver-registration-page ion-checkbox + ion-label,
+.driver-registration-page .terms-text {
+  color: #111111 !important;
+  font-weight: 800 !important;
+  line-height: 1.42 !important;
+  white-space: normal !important;
+}
+
+/* Links legales */
+.driver-registration-page a {
+  color: #8A5A00 !important;
+  font-weight: 950 !important;
+  text-decoration: underline !important;
+}
+
+/* Cajas de subida de archivo */
+.driver-registration-page input[type="file"] {
+  color: #111111 !important;
+}
+
+.driver-registration-page .file-upload-box,
+.driver-registration-page .upload-box,
+.driver-registration-page label.file-upload-box,
+.driver-registration-page label.upload-box {
+  display: block;
+  width: 100%;
+  background: #FFFFFF !important;
+  color: #111111 !important;
+  border: 2px dashed rgba(200, 155, 60, 0.85) !important;
+  border-radius: 18px !important;
+  padding: 14px !important;
+  font-weight: 950 !important;
+}
+
+.driver-registration-page .file-upload-box small,
+.driver-registration-page .upload-box small,
+.driver-registration-page .file-name,
+.driver-registration-page .selected-file {
+  color: #4A4A4A !important;
+  font-weight: 800 !important;
+}
+
+/* Alertas y errores dentro del formulario */
+.driver-registration-page ion-text[color="danger"],
+.driver-registration-page ion-text[color="danger"] p,
+.driver-registration-page .error-text {
+  color: #B84F2E !important;
+  font-weight: 900 !important;
+}
+
+.driver-registration-page ion-note[slot="error"] {
+  color: #B84F2E !important;
+  font-weight: 900 !important;
+}
+
+/* Botón principal del formulario */
+.driver-registration-page ion-button[type="submit"],
+.driver-registration-page .submit-button {
+  --background: linear-gradient(135deg, #C89B3C 0%, #D9C3A0 100%) !important;
+  --color: #111111 !important;
+  --border-radius: 16px !important;
+  height: 52px !important;
+  font-weight: 950 !important;
+  letter-spacing: 0.2px !important;
+}
+
+/* Botón deshabilitado */
+.driver-registration-page ion-button[disabled] {
+  opacity: 0.55 !important;
+}
+
+/* Corrección general para IonCard claro en formularios:
+   evita texto blanco dentro de tarjetas claras aunque otra regla global lo pise. */
+ion-card.form-card,
+ion-card.registration-card,
+.driver-registration-page ion-card {
+  --color: #111111 !important;
+}
+
+ion-card.form-card ion-label,
+ion-card.registration-card ion-label,
+.driver-registration-page ion-card ion-label {
+  color: #111111 !important;
+}
+
+ion-card.form-card ion-input,
+ion-card.registration-card ion-input,
+.driver-registration-page ion-card ion-input {
+  --color: #111111 !important;
+  color: #111111 !important;
+  --placeholder-color: #777777 !important;
+  --placeholder-opacity: 1 !important;
+}
+
+/* Responsive */
+@media (max-width: 480px) {
+  .driver-registration-page ion-card {
+    border-radius: 20px !important;
+  }
+
+  .driver-registration-page ion-label,
+  .driver-registration-page label {
+    font-size: 0.88rem !important;
+  }
+
+  .driver-registration-page ion-input,
+  .driver-registration-page ion-textarea,
+  .driver-registration-page ion-select,
+  .driver-registration-page input,
+  .driver-registration-page textarea {
+    font-size: 0.96rem !important;
+  }
+}
+
+
+
+/* ==========================================================================
+   RAPA GO — FIX FINAL INPUTS PERFIL / FORMULARIOS
+   Pegar SIEMPRE al final del global.css.
+   Corrige letras blancas/grises dentro de cuadros claros de Ionic Shadow DOM.
+   ========================================================================== */
+
+/* Tarjetas claras: texto realmente negro */
+ion-card,
+ion-card *,
+ion-card ion-card-content,
+ion-card ion-label,
+ion-card ion-note,
+ion-card p,
+ion-card div,
+ion-card span,
+ion-card strong {
+  color: #111111 !important;
+  opacity: 1 !important;
+}
+
+/* Inputs dentro de tarjetas claras */
+ion-card ion-item,
+ion-card .driver-profile-card ion-item,
+ion-card .profile-form-card ion-item {
+  --background: #ffffff !important;
+  --color: #111111 !important;
+  --border-color: rgba(200, 155, 60, 0.55) !important;
+  --highlight-color-focused: #C89B3C !important;
+  background: #ffffff !important;
+  color: #111111 !important;
+  border: 1.5px solid rgba(200, 155, 60, 0.55) !important;
+  border-radius: 16px !important;
+}
+
+/* Labels arriba del input */
+ion-card ion-label,
+ion-card ion-item ion-label,
+ion-item ion-label {
+  color: #111111 !important;
+  font-weight: 950 !important;
+  opacity: 1 !important;
+}
+
+/* Variables Ionic del input */
+ion-card ion-input,
+ion-card ion-textarea,
+ion-card ion-select,
+ion-item ion-input,
+ion-item ion-textarea,
+ion-item ion-select {
+  --color: #111111 !important;
+  --placeholder-color: #6b6b6b !important;
+  --placeholder-opacity: 1 !important;
+  color: #111111 !important;
+  font-size: 16px !important;
+  font-weight: 900 !important;
+  opacity: 1 !important;
+}
+
+/* Shadow parts de Ionic moderno — SOLO dentro de tarjetas claras (ion-card) */
+ion-card ion-input::part(native),
+ion-card ion-textarea::part(native),
+ion-card ion-select::part(text),
+ion-card ion-select::part(placeholder) {
+  color: #111111 !important;
+  -webkit-text-fill-color: #111111 !important;
+  opacity: 1 !important;
+  font-size: 16px !important;
+  font-weight: 900 !important;
+}
+
+ion-card ion-input::part(placeholder),
+ion-card ion-textarea::part(placeholder) {
+  color: #6b6b6b !important;
+  -webkit-text-fill-color: #6b6b6b !important;
+  opacity: 1 !important;
+  font-weight: 800 !important;
+}
+
+/* Fallback por si el navegador expone input/textarea interno (solo tarjetas claras) */
+ion-card ion-input input,
+ion-card ion-textarea textarea {
+  color: #111111 !important;
+  -webkit-text-fill-color: #111111 !important;
+  opacity: 1 !important;
+  font-size: 16px !important;
+  font-weight: 900 !important;
+}
+
+ion-card ion-input input::placeholder,
+ion-card ion-textarea textarea::placeholder {
+  color: #6b6b6b !important;
+  -webkit-text-fill-color: #6b6b6b !important;
+  opacity: 1 !important;
+  font-weight: 800 !important;
+}
+
+/* Evita selección azul permanente cuando haces click o inspeccionas */
+::selection {
+  background: rgba(200, 155, 60, 0.35) !important;
+  color: #111111 !important;
+}
+
+/* Perfil conductor: ancho móvil bonito también en PC */
+.driver-profile-shell,
+.profile-shell {
+  max-width: 560px !important;
+  margin: 0 auto !important;
+}
+
+/* Botón cerrar sesión visible y limpio */
+ion-button[color="danger"][fill="outline"] {
+  --border-color: #e11d48 !important;
+  --color: #e11d48 !important;
+  --background: rgba(225, 29, 72, 0.06) !important;
+  font-weight: 950 !important;
+}
+
+/* Fechas y números dentro de tarjetas claras: que se vean negros */
+ion-card input[type="date"],
+ion-card input[type="number"],
+ion-card input[type="tel"] {
+  color: #111111 !important;
+  -webkit-text-fill-color: #111111 !important;
+  font-weight: 900 !important;
+}
+
+/* Corrige icono de calendario/clear en inputs claros */
+ion-card ion-input,
+ion-card ion-textarea {
+  caret-color: #111111 !important;
+}
+
+
+/* ==========================================================================
+   RAPA GO — FIX FINAL CONTRASTE / LEGIBILIDAD
+   Pegar al FINAL de global.css.
+   ========================================================================== */
+
+ion-content {
+  --background:
+    linear-gradient(180deg, rgba(26,26,26,.54) 0%, rgba(26,26,26,.68) 50%, rgba(26,26,26,.82) 100%),
+    url("./img/imgen-rapanui2.jpeg") no-repeat center center / cover fixed !important;
+}
+
+ion-content,
+ion-page,
+.ion-page {
+  color: #F6F2EC !important;
+}
+
+ion-item:not(ion-card ion-item),
+ion-list:not(ion-card ion-list) ion-item {
+  --background: rgba(36,36,36,.96) !important;
+  --color: #F6F2EC !important;
+  --placeholder-color: rgba(246,242,236,.70) !important;
+  border: 1px solid rgba(200,155,60,.32) !important;
+}
+
+ion-item:not(ion-card ion-item) ion-label,
+ion-list:not(ion-card ion-list) ion-label {
+  color: #D9C3A0 !important;
+  font-weight: 950 !important;
+}
+
+ion-item:not(ion-card ion-item) ion-input,
+ion-item:not(ion-card ion-item) ion-textarea,
+ion-item:not(ion-card ion-item) ion-select,
+ion-item:not(ion-card ion-item) input,
+ion-item:not(ion-card ion-item) textarea {
+  --color: #F6F2EC !important;
+  color: #F6F2EC !important;
+  font-weight: 900 !important;
+}
+
+ion-card {
+  background: rgba(246,242,236,.98) !important;
+  color: #111111 !important;
+}
+
+ion-card *,
+ion-card ion-label,
+ion-card ion-text,
+ion-card ion-card-title,
+ion-card ion-card-subtitle,
+ion-card ion-card-content,
+ion-card h1,
+ion-card h2,
+ion-card h3,
+ion-card p,
+ion-card span,
+ion-card strong {
+  color: #111111 !important;
+}
+
+ion-card ion-note,
+ion-card small {
+  color: rgba(17,17,17,.68) !important;
+}
+
+/* Tarjetas oscuras de solicitudes */
+.driver-request-card,
+.ride-request-card,
+.request-card,
+.request-modal-card,
+.rapago-dark-card,
+.driver-request-modal,
+.driver-request-modal *,
+.ride-request-card *,
+.request-card *,
+.request-modal-card *,
+.rapago-dark-card * {
+  color: #F6F2EC !important;
+}
+
+.driver-request-modal,
+.request-modal-card,
+.ride-request-card,
+.request-card {
+  background:
+    radial-gradient(circle at top left, rgba(34,197,94,.18), transparent 34%),
+    linear-gradient(145deg, rgba(17,17,17,.98), rgba(30,23,18,.98)) !important;
+  border: 1px solid rgba(217,195,160,.72) !important;
+  box-shadow: 0 26px 70px rgba(0,0,0,.42) !important;
+}
+
+/* Overlay menos oscuro */
+ion-modal::part(backdrop),
+ion-alert::part(backdrop),
+ion-action-sheet::part(backdrop) {
+  background: rgba(0,0,0,.46) !important;
+  opacity: 1 !important;
+}
+
+.driver-requests-content,
+.passenger-trips-content,
+.passenger-request-content {
+  --background:
+    linear-gradient(180deg, rgba(26,26,26,.50) 0%, rgba(26,26,26,.66) 55%, rgba(26,26,26,.82) 100%),
+    url("./img/imgen-rapanui2.jpeg") no-repeat center center / cover fixed !important;
+}
+
+.driver-requests-content h1,
+.driver-requests-content h2,
+.driver-requests-content h3,
+.driver-requests-content p,
+.passenger-trips-content h1,
+.passenger-trips-content h2,
+.passenger-trips-content h3,
+.passenger-trips-content p,
+.passenger-request-content h1,
+.passenger-request-content h2,
+.passenger-request-content h3,
+.passenger-request-content p {
+  color: #F6F2EC !important;
+  text-shadow: 0 2px 8px rgba(0,0,0,.55);
+}
+
+.route-box,
+.route-box *,
+.trip-detail-box,
+.trip-detail-box *,
+.ride-detail-box,
+.ride-detail-box * {
+  color: #111111 !important;
+}
+
+.route-box-dark,
+.route-box-dark *,
+.driver-route-box,
+.driver-route-box * {
+  color: #F6F2EC !important;
+}
+
+ion-button:not([fill="clear"]):not([fill="outline"]),
+ion-button[color="primary"] {
+  --background: linear-gradient(135deg, #D8A83E 0%, #F0D9AA 100%) !important;
+  --color: #111111 !important;
+  --box-shadow: 0 14px 30px rgba(216,168,62,.30) !important;
+}
+
+ion-button[color="danger"],
+button.danger,
+.btn-danger {
+  --background: #B84F2E !important;
+  --color: #F6F2EC !important;
+  color: #F6F2EC !important;
+}
+
+ion-tab-bar {
+  background: rgba(17,17,17,.98) !important;
+  --background: rgba(17,17,17,.98) !important;
+}
+
+ion-tab-button,
+ion-tab-button ion-label,
+ion-tab-button ion-icon {
+  color: #D9C3A0 !important;
+}
+
+ion-tab-button.tab-selected,
+ion-tab-button[aria-selected="true"],
+ion-tab-button.tab-selected ion-label,
+ion-tab-button.tab-selected ion-icon,
+ion-tab-button[aria-selected="true"] ion-label,
+ion-tab-button[aria-selected="true"] ion-icon {
+  color: #C89B3C !important;
+}
+
+[style*="background: #111"],
+[style*="background:#111"],
+[style*="background: #1f1f1f"],
+[style*="background:#1f1f1f"],
+[style*="background: #171717"],
+[style*="background:#171717"] {
+  color: #F6F2EC !important;
+}
+
+ion-button[style*="#D2A43A"],
+button[style*="#D2A43A"] {
+  color: #111111 !important;
+}
+
+.passenger-request-content ion-item,
+.request-ride-page ion-item {
+  --background: rgba(36,36,36,.98) !important;
+  --color: #F6F2EC !important;
+  border-color: rgba(200,155,60,.35) !important;
+  box-shadow: 0 10px 24px rgba(0,0,0,.18);
+}
+
+.driver-requests-content ion-card,
+.driver-requests-content .request-card,
+.driver-requests-content .ride-request-card {
+  filter: none !important;
+  opacity: 1 !important;
+}
+
+.driver-requests-content *,
+.passenger-request-content *,
+.passenger-trips-content * {
+  opacity: unset;
+}
+
+.dark-muted,
+.rapago-muted,
+.driver-requests-content ion-note,
+.passenger-request-content ion-note {
+  color: rgba(246,242,236,.72) !important;
+}
+
+@media (max-width: 480px) {
+  ion-content {
+    --background:
+      linear-gradient(180deg, rgba(26,26,26,.46) 0%, rgba(26,26,26,.64) 48%, rgba(26,26,26,.86) 100%),
+      url("./img/imgen-rapanui2.jpeg") no-repeat center center / cover fixed !important;
+  }
+
+  ion-card {
+    border-radius: 22px !important;
+  }
+
+  ion-item {
+    min-height: 54px !important;
+  }
+}
+
+
+/* ==========================================================================
+   RAPA GO — FIX FINAL CUADROS NEGROS / FORMULARIOS CLAROS MOBILE
+   IMPORTANTE: dejar este bloque SIEMPRE al final del global.css.
+   Corrige RequestRidePage, DriverPage y modales Ionic que quedaban oscuros.
+   ========================================================================== */
+
+:root {
+  --rapago-form-bg: #fffaf0;
+  --rapago-form-bg-2: #f8ead0;
+  --rapago-form-border: rgba(200, 155, 60, 0.42);
+  --rapago-form-text: #111827;
+  --rapago-form-muted: rgba(17, 24, 39, 0.64);
+}
+
+/* Páginas donde queremos formularios claros */
+.rapago-request-light,
+.rapago-request-page,
+.rapago-driver-light-form,
+.rapago-driver-light-panel,
+.rapago-light-form-page {
+  color: var(--rapago-form-text) !important;
+}
+
+/* IonItem/IonInput/IonTextarea/IonSelect claros */
+.rapago-request-light ion-item,
+.rapago-request-page ion-item,
+.rapago-driver-light-form ion-item,
+.rapago-driver-light-panel ion-item,
+.rapago-light-form-page ion-item,
+ion-item.rapago-light-input,
+ion-item.rapago-cash-close-input {
+  --background: linear-gradient(180deg, var(--rapago-form-bg), var(--rapago-form-bg-2)) !important;
+  --color: var(--rapago-form-text) !important;
+  --placeholder-color: rgba(17, 24, 39, 0.46) !important;
+  --border-color: var(--rapago-form-border) !important;
+  --highlight-background: transparent !important;
+  --inner-border-width: 0px !important;
+  background: linear-gradient(180deg, var(--rapago-form-bg), var(--rapago-form-bg-2)) !important;
+  color: var(--rapago-form-text) !important;
+  border: 1px solid var(--rapago-form-border) !important;
+  border-radius: 18px !important;
+  box-shadow: 0 12px 24px rgba(26, 26, 26, 0.10) !important;
+}
+
+/* El native part de Ionic era el que seguía pintando negro */
+.rapago-request-light ion-item::part(native),
+.rapago-request-page ion-item::part(native),
+.rapago-driver-light-form ion-item::part(native),
+.rapago-driver-light-panel ion-item::part(native),
+.rapago-light-form-page ion-item::part(native),
+ion-item.rapago-light-input::part(native),
+ion-item.rapago-cash-close-input::part(native) {
+  background: linear-gradient(180deg, var(--rapago-form-bg), var(--rapago-form-bg-2)) !important;
+  color: var(--rapago-form-text) !important;
+  border-radius: 18px !important;
+}
+
+/* Texto e inputs dentro del item */
+.rapago-request-light ion-input,
+.rapago-request-light ion-textarea,
+.rapago-request-light ion-select,
+.rapago-request-page ion-input,
+.rapago-request-page ion-textarea,
+.rapago-request-page ion-select,
+.rapago-driver-light-form ion-input,
+.rapago-driver-light-form ion-textarea,
+.rapago-driver-light-form ion-select,
+.rapago-driver-light-panel ion-input,
+.rapago-driver-light-panel ion-textarea,
+.rapago-driver-light-panel ion-select,
+.rapago-light-form-page ion-input,
+.rapago-light-form-page ion-textarea,
+.rapago-light-form-page ion-select,
+ion-item.rapago-light-input ion-input,
+ion-item.rapago-light-input ion-textarea,
+ion-item.rapago-cash-close-input ion-input {
+  --background: transparent !important;
+  --color: var(--rapago-form-text) !important;
+  --placeholder-color: rgba(17, 24, 39, 0.48) !important;
+  color: var(--rapago-form-text) !important;
+}
+
+.rapago-request-light ion-input input,
+.rapago-request-light ion-textarea textarea,
+.rapago-request-page ion-input input,
+.rapago-request-page ion-textarea textarea,
+.rapago-driver-light-form ion-input input,
+.rapago-driver-light-form ion-textarea textarea,
+.rapago-driver-light-panel ion-input input,
+.rapago-driver-light-panel ion-textarea textarea,
+.rapago-light-form-page ion-input input,
+.rapago-light-form-page ion-textarea textarea,
+ion-item.rapago-light-input ion-input input,
+ion-item.rapago-cash-close-input ion-input input {
+  color: var(--rapago-form-text) !important;
+  -webkit-text-fill-color: var(--rapago-form-text) !important;
+  caret-color: #B84F2E !important;
+}
+
+/* Labels dentro de formularios claros */
+.rapago-request-light ion-label,
+.rapago-request-light label,
+.rapago-request-page ion-label,
+.rapago-request-page label,
+.rapago-driver-light-form ion-label,
+.rapago-driver-light-form label,
+.rapago-driver-light-panel ion-label,
+.rapago-driver-light-panel label,
+.rapago-light-form-page ion-label,
+.rapago-light-form-page label,
+ion-item.rapago-light-input ion-label,
+ion-item.rapago-cash-close-input ion-label {
+  color: rgba(17, 24, 39, 0.72) !important;
+  font-weight: 900 !important;
+}
+
+/* Tarjetas/cajas informativas claras de RequestRide */
+.rapago-request-light .rapago-info-box,
+.rapago-request-light .rapago-accessible-box,
+.rapago-request-light .rapago-picker-panel,
+.rapago-request-light .rapago-confirm-card,
+.rapago-request-light .rapago-suggestion-box,
+.rapago-request-page .rapago-info-box,
+.rapago-request-page .rapago-accessible-box,
+.rapago-request-page .rapago-picker-panel,
+.rapago-request-page .rapago-confirm-card,
+.rapago-request-page .rapago-suggestion-box {
+  background: linear-gradient(180deg, #fffaf0, #f8ead0) !important;
+  color: var(--rapago-form-text) !important;
+  border: 1px solid var(--rapago-form-border) !important;
+  box-shadow: 0 16px 32px rgba(26, 26, 26, 0.12) !important;
+}
+
+/* Fallback para cajas inline oscuras muy comunes en RequestRide/Driver */
+.rapago-request-light div[style*="background: #111"],
+.rapago-request-light div[style*="background:#111"],
+.rapago-request-light div[style*="background: #171717"],
+.rapago-request-light div[style*="background:#171717"],
+.rapago-request-light div[style*="background: #242424"],
+.rapago-request-light div[style*="background:#242424"],
+.rapago-request-page div[style*="background: #111"],
+.rapago-request-page div[style*="background:#111"],
+.rapago-request-page div[style*="background: #171717"],
+.rapago-request-page div[style*="background:#171717"],
+.rapago-request-page div[style*="background: #242424"],
+.rapago-request-page div[style*="background:#242424"],
+.rapago-driver-light-form div[style*="background: #111"],
+.rapago-driver-light-form div[style*="background:#111"],
+.rapago-driver-light-form div[style*="background: #171717"],
+.rapago-driver-light-form div[style*="background:#171717"],
+.rapago-driver-light-form div[style*="background: #242424"],
+.rapago-driver-light-form div[style*="background:#242424"] {
+  background: linear-gradient(180deg, #fffaf0, #f8ead0) !important;
+  color: var(--rapago-form-text) !important;
+  border-color: var(--rapago-form-border) !important;
+}
+
+/* Textos dentro de esos paneles claros */
+.rapago-request-light .rapago-info-box *,
+.rapago-request-light .rapago-accessible-box *,
+.rapago-request-light .rapago-picker-panel *,
+.rapago-request-light .rapago-confirm-card *,
+.rapago-request-page .rapago-info-box *,
+.rapago-request-page .rapago-accessible-box *,
+.rapago-request-page .rapago-picker-panel *,
+.rapago-request-page .rapago-confirm-card *,
+.rapago-driver-light-form .rapago-info-box *,
+.rapago-driver-light-form .rapago-accessible-box *,
+.rapago-driver-light-form .rapago-picker-panel *,
+.rapago-driver-light-form .rapago-confirm-card * {
+  color: var(--rapago-form-text) !important;
+}
+
+/* Mantener botones oscuros especiales sin romperlos */
+.rapago-request-light ion-button,
+.rapago-request-page ion-button,
+.rapago-driver-light-form ion-button {
+  color: inherit;
+}
+
+/* Alertas internas bonitas */
+.rapago-passenger-cancel-alert {
+  --background: linear-gradient(180deg,#fffaf0,#f8ead0) !important;
+  --color: #111827 !important;
+  --button-color: #111827 !important;
+  --max-width: 360px;
+  --width: calc(100vw - 42px);
+  --border-radius: 28px;
+}
+
+.rapago-passenger-cancel-alert .alert-wrapper {
+  border-radius: 28px !important;
+  border: 1px solid rgba(220,38,38,.18) !important;
+  box-shadow: 0 28px 70px rgba(0,0,0,.36) !important;
+  overflow: hidden;
+}
+
+.rapago-passenger-cancel-alert .alert-title {
+  color: #dc2626 !important;
+  font-weight: 950 !important;
+}
+
+.rapago-passenger-cancel-alert .alert-message {
+  color: #111827 !important;
+  white-space: pre-line !important;
+  font-weight: 850 !important;
+  line-height: 1.42 !important;
+}
+
+.rapago-passenger-cancel-alert .alert-button {
+  border-radius: 16px !important;
+  background: linear-gradient(135deg,#facc15,#f59e0b) !important;
+  color: #111827 !important;
+  font-weight: 950 !important;
+  justify-content: center !important;
+}
+
+
+/* ========================================================================== 
+   RAPA GO — CONTRASTE PROFESIONAL DEFINITIVO
+   Debe permanecer como ÚLTIMO bloque de global.css.
+   Corrige botones, segmentos, estados deshabilitados y textos claros sobre
+   fondos marfil/beige en Passenger, Driver y Admin.
+   ========================================================================== */
+
+:root {
+  --rapago-ui-dark: #171717;
+  --rapago-ui-dark-soft: #2b2119;
+  --rapago-ui-text: #111827;
+  --rapago-ui-muted: #5f5140;
+  --rapago-ui-ivory: #fffaf0;
+  --rapago-ui-ivory-2: #f5e8cf;
+  --rapago-ui-gold: #c89b3c;
+  --rapago-ui-gold-dark: #8a641c;
+  --rapago-ui-terracotta: #b84f2e;
+  --rapago-ui-success: #167443;
+  --rapago-ui-disabled-bg: #e4dac7;
+  --rapago-ui-disabled-text: #4b5563;
+}
+
+/* --------------------------------------------------------------------------
+   Botones Ionic: una sola regla visual, legible en cualquier pantalla
+   -------------------------------------------------------------------------- */
+ion-button {
+  --border-radius: 15px !important;
+  --opacity: 1 !important;
+  min-height: 46px;
+  font-weight: 900 !important;
+  letter-spacing: 0.15px !important;
+  text-transform: none !important;
+  opacity: 1 !important;
+}
+
+ion-button:not([fill="clear"]):not([fill="outline"]):not([color="danger"]):not([color="secondary"]):not([color="success"]):not([color="medium"]):not([color="dark"]):not([color="light"]),
+ion-button[color="primary"] {
+  --background: linear-gradient(135deg, #d7a739 0%, #f3d58d 100%) !important;
+  --background-activated: #c89b3c !important;
+  --background-focused: #d7a739 !important;
+  --background-hover: #e6c16d !important;
+  --color: var(--rapago-ui-text) !important;
+  --border-color: rgba(138, 100, 28, 0.55) !important;
+  --box-shadow: 0 10px 24px rgba(139, 96, 18, 0.28) !important;
+  color: var(--rapago-ui-text) !important;
+}
+
+ion-button:not([fill="clear"]):not([fill="outline"]):not([color="danger"]):not([color="secondary"]):not([color="success"]):not([color="medium"]):not([color="dark"]):not([color="light"])::part(native),
+ion-button[color="primary"]::part(native) {
+  color: var(--rapago-ui-text) !important;
+  background: linear-gradient(135deg, #d7a739 0%, #f3d58d 100%) !important;
+  text-shadow: none !important;
+}
+
+ion-button[color="secondary"] {
+  --background: linear-gradient(135deg, #b84f2e 0%, #d56c49 100%) !important;
+  --background-activated: #9f3f24 !important;
+  --background-hover: #c45b39 !important;
+  --color: #ffffff !important;
+  --box-shadow: 0 10px 22px rgba(184, 79, 46, 0.28) !important;
+  color: #ffffff !important;
+}
+
+ion-button[color="secondary"]::part(native),
+ion-button[color="danger"]::part(native),
+ion-button[color="success"]::part(native),
+ion-button[color="medium"]::part(native),
+ion-button[color="dark"]::part(native) {
+  color: #ffffff !important;
+  text-shadow: none !important;
+}
+
+ion-button[color="danger"] {
+  --background: linear-gradient(135deg, #b42318 0%, #d94d3b 100%) !important;
+  --background-activated: #951f16 !important;
+  --color: #ffffff !important;
+  --box-shadow: 0 10px 22px rgba(180, 35, 24, 0.25) !important;
+  color: #ffffff !important;
+}
+
+ion-button[color="success"] {
+  --background: linear-gradient(135deg, #146c3d 0%, #239a5c 100%) !important;
+  --background-activated: #105c33 !important;
+  --color: #ffffff !important;
+  --box-shadow: 0 10px 22px rgba(20, 108, 61, 0.25) !important;
+  color: #ffffff !important;
+}
+
+ion-button[color="medium"],
+ion-button[color="dark"] {
+  --background: linear-gradient(135deg, #27272a 0%, #3f3f46 100%) !important;
+  --background-activated: #18181b !important;
+  --color: #ffffff !important;
+  --box-shadow: 0 9px 20px rgba(0, 0, 0, 0.22) !important;
+  color: #ffffff !important;
+}
+
+ion-button[color="light"] {
+  --background: linear-gradient(180deg, #fffdf7 0%, #f4e7cc 100%) !important;
+  --background-activated: #ead8b6 !important;
+  --color: var(--rapago-ui-text) !important;
+  --border-color: rgba(138, 100, 28, 0.48) !important;
+  color: var(--rapago-ui-text) !important;
+}
+
+ion-button[color="light"]::part(native) {
+  color: var(--rapago-ui-text) !important;
+  background: linear-gradient(180deg, #fffdf7 0%, #f4e7cc 100%) !important;
+  text-shadow: none !important;
+}
+
+/* Outline visible: nunca texto blanco sobre fondo blanco */
+ion-button[fill="outline"] {
+  --background: var(--rapago-ui-dark-soft) !important;
+  --background-activated: var(--rapago-ui-dark) !important;
+  --background-hover: #3b2e24 !important;
+  --border-color: var(--rapago-ui-gold) !important;
+  --border-width: 2px !important;
+  --border-style: solid !important;
+  --color: #ffffff !important;
+  --box-shadow: 0 8px 18px rgba(0, 0, 0, 0.18) !important;
+  color: #ffffff !important;
+}
+
+ion-button[fill="outline"]::part(native) {
+  color: #ffffff !important;
+  background: var(--rapago-ui-dark-soft) !important;
+  border: 2px solid var(--rapago-ui-gold) !important;
+  text-shadow: none !important;
+}
+
+ion-button[color="danger"][fill="outline"] {
+  --background: #fff6f2 !important;
+  --background-activated: #fbe2da !important;
+  --border-color: var(--rapago-ui-terracotta) !important;
+  --color: #8f2f1d !important;
+  color: #8f2f1d !important;
+}
+
+ion-button[color="danger"][fill="outline"]::part(native) {
+  color: #8f2f1d !important;
+  background: #fff6f2 !important;
+  border-color: var(--rapago-ui-terracotta) !important;
+}
+
+/* Botones clear: oscuros dentro del contenido, blancos en la cabecera */
+ion-content ion-button[fill="clear"] {
+  --color: #68480b !important;
+  color: #68480b !important;
+  font-weight: 900 !important;
+}
+
+ion-content ion-button[fill="clear"]::part(native) {
+  color: #68480b !important;
+  text-shadow: none !important;
+}
+
+ion-toolbar ion-button[fill="clear"],
+ion-header ion-button[fill="clear"],
+ion-toolbar ion-buttons ion-button,
+ion-header ion-buttons ion-button {
+  --color: #ffffff !important;
+  color: #ffffff !important;
+}
+
+ion-toolbar ion-button[fill="clear"]::part(native),
+ion-header ion-button[fill="clear"]::part(native),
+ion-toolbar ion-buttons ion-button::part(native),
+ion-header ion-buttons ion-button::part(native) {
+  color: #ffffff !important;
+}
+
+/* Estado deshabilitado: sigue siendo claramente legible */
+ion-button[disabled],
+ion-button.button-disabled,
+ion-button[aria-disabled="true"] {
+  --background: var(--rapago-ui-disabled-bg) !important;
+  --background-activated: var(--rapago-ui-disabled-bg) !important;
+  --background-hover: var(--rapago-ui-disabled-bg) !important;
+  --border-color: #aa9162 !important;
+  --color: var(--rapago-ui-disabled-text) !important;
+  --opacity: 1 !important;
+  color: var(--rapago-ui-disabled-text) !important;
+  opacity: 1 !important;
+  filter: saturate(0.78) !important;
+}
+
+ion-button[disabled]::part(native),
+ion-button.button-disabled::part(native),
+ion-button[aria-disabled="true"]::part(native) {
+  color: var(--rapago-ui-disabled-text) !important;
+  background: var(--rapago-ui-disabled-bg) !important;
+  border-color: #aa9162 !important;
+  opacity: 1 !important;
+  text-shadow: none !important;
+}
+
+/* El texto y los iconos del botón deben heredar el contraste correcto */
+ion-button ion-label,
+ion-button ion-text,
+ion-button span,
+ion-button strong,
+ion-button ion-icon {
+  color: inherit !important;
+  opacity: 1 !important;
+}
+
+/* --------------------------------------------------------------------------
+   Segmentos: corrige "Ahora / Agendar" y "Disponible / No disponible"
+   -------------------------------------------------------------------------- */
+ion-segment {
+  --background: #eee3cf !important;
+  background: #eee3cf !important;
+  border: 1px solid rgba(138, 100, 28, 0.38) !important;
+  border-radius: 16px !important;
+  padding: 4px !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.72) !important;
+}
+
+ion-segment-button {
+  --background: transparent !important;
+  --background-checked: linear-gradient(135deg, #d5a136 0%, #f0d18a 100%) !important;
+  --color: #49371f !important;
+  --color-checked: var(--rapago-ui-text) !important;
+  --indicator-color: transparent !important;
+  --indicator-box-shadow: none !important;
+  --border-radius: 13px !important;
+  min-height: 46px !important;
+  color: #49371f !important;
+  font-weight: 900 !important;
+  opacity: 1 !important;
+  text-transform: none !important;
+}
+
+ion-segment-button::part(native) {
+  color: #49371f !important;
+  background: transparent !important;
+  border-radius: 13px !important;
+  opacity: 1 !important;
+  font-weight: 900 !important;
+  text-shadow: none !important;
+}
+
+ion-segment-button.segment-button-checked,
+ion-segment-button[aria-checked="true"] {
+  --background: linear-gradient(135deg, #d5a136 0%, #f0d18a 100%) !important;
+  --color: var(--rapago-ui-text) !important;
+  color: var(--rapago-ui-text) !important;
+  box-shadow: 0 7px 16px rgba(138, 100, 28, 0.24) !important;
+}
+
+ion-segment-button.segment-button-checked::part(native),
+ion-segment-button[aria-checked="true"]::part(native) {
+  color: var(--rapago-ui-text) !important;
+  background: linear-gradient(135deg, #d5a136 0%, #f0d18a 100%) !important;
+}
+
+ion-segment-button[disabled],
+ion-segment-button.segment-button-disabled,
+ion-segment-button[aria-disabled="true"] {
+  --color: #6b7280 !important;
+  --color-checked: #4b5563 !important;
+  color: #6b7280 !important;
+  opacity: 1 !important;
+}
+
+ion-segment-button[disabled]::part(native),
+ion-segment-button.segment-button-disabled::part(native),
+ion-segment-button[aria-disabled="true"]::part(native) {
+  color: #6b7280 !important;
+  background: #ded6c7 !important;
+  opacity: 1 !important;
+}
+
+/* Segmentos dentro de tarjetas claras */
+ion-card ion-segment,
+.rapago-request-light ion-segment,
+.rapago-request-page ion-segment,
+.rapago-driver-light-panel ion-segment,
+.rapago-driver-light-form ion-segment {
+  --background: #ece1cd !important;
+  background: #ece1cd !important;
+}
+
+/* --------------------------------------------------------------------------
+   Paneles claros: textos auxiliares y controles siempre oscuros
+   -------------------------------------------------------------------------- */
+.rapago-request-light,
+.rapago-request-page,
+.rapago-driver-light-form,
+.rapago-driver-light-panel,
+.rapago-light-form-page,
+ion-card {
+  --rapago-local-text: var(--rapago-ui-text);
+}
+
+.rapago-request-light ion-note,
+.rapago-request-page ion-note,
+.rapago-driver-light-form ion-note,
+.rapago-driver-light-panel ion-note,
+.rapago-light-form-page ion-note,
+.rapago-request-light small,
+.rapago-request-page small,
+.rapago-driver-light-form small,
+.rapago-driver-light-panel small,
+.rapago-light-form-page small,
+.rapago-request-light .helper-text,
+.rapago-request-page .helper-text,
+.rapago-driver-light-form .helper-text,
+.rapago-driver-light-panel .helper-text,
+.rapago-light-form-page .helper-text,
+.rapago-request-light .hint,
+.rapago-request-page .hint,
+.rapago-driver-light-form .hint,
+.rapago-driver-light-panel .hint,
+.rapago-light-form-page .hint,
+.rapago-request-light .subtitle,
+.rapago-request-page .subtitle,
+.rapago-driver-light-form .subtitle,
+.rapago-driver-light-panel .subtitle,
+.rapago-light-form-page .subtitle {
+  color: var(--rapago-ui-muted) !important;
+  opacity: 1 !important;
+  text-shadow: none !important;
+}
+
+/* Botones dentro de cards claras */
+ion-card ion-button[fill="clear"] {
+  --color: #68480b !important;
+  color: #68480b !important;
+}
+
+ion-card ion-button[fill="clear"]::part(native) {
+  color: #68480b !important;
+}
+
+/* --------------------------------------------------------------------------
+   Botones HTML usados como selectores de estado
+   -------------------------------------------------------------------------- */
+button[aria-pressed],
+button[role="tab"],
+button[role="switch"] {
+  min-height: 44px;
+  border-radius: 14px;
+  font-weight: 900;
+  opacity: 1 !important;
+  text-shadow: none !important;
+}
+
+button[aria-pressed="true"],
+button[role="tab"][aria-selected="true"],
+button[role="switch"][aria-checked="true"] {
+  background: linear-gradient(135deg, #d5a136 0%, #f0d18a 100%) !important;
+  color: var(--rapago-ui-text) !important;
+  border: 1px solid var(--rapago-ui-gold-dark) !important;
+  box-shadow: 0 7px 16px rgba(138, 100, 28, 0.22) !important;
+}
+
+button[aria-pressed="false"],
+button[role="tab"][aria-selected="false"],
+button[role="switch"][aria-checked="false"] {
+  background: var(--rapago-ui-dark-soft) !important;
+  color: #ffffff !important;
+  border: 1px solid var(--rapago-ui-gold) !important;
+}
+
+button:disabled,
+button[aria-disabled="true"] {
+  color: var(--rapago-ui-disabled-text) !important;
+  opacity: 1 !important;
+}
+
+/* --------------------------------------------------------------------------
+   Ajustes móviles: mejor lectura sin agrandar en exceso
+   -------------------------------------------------------------------------- */
+@media (max-width: 480px) {
+  ion-button {
+    min-height: 48px;
+    font-size: 0.92rem !important;
+  }
+
+  ion-segment-button {
+    min-height: 44px !important;
+    font-size: 0.86rem !important;
+  }
+
+  ion-button ion-icon {
+    font-size: 1.08rem !important;
+  }
+}
+
+
+/* ==========================================================================
+   RAPA GO - ADMIN NO SHOW MOBILE POLISH
+   Modal No Show optimizado para celular
+   ========================================================================== */
+
+ion-modal.rapago-admin-no-show-modal {
+  --width: min(96vw, 520px) !important;
+  --height: min(94vh, 780px) !important;
+  --border-radius: 26px !important;
+  --background: #f6f2ec !important;
+}
+
+ion-modal.rapago-admin-no-show-modal::part(content) {
+  width: min(96vw, 520px) !important;
+  max-width: 520px !important;
+  height: min(94vh, 780px) !important;
+  max-height: 94vh !important;
+  border-radius: 26px !important;
+  overflow: hidden !important;
+  background: #f6f2ec !important;
+  box-shadow: 0 26px 70px rgba(0, 0, 0, 0.45) !important;
+}
+
+ion-modal.rapago-admin-no-show-modal::part(backdrop) {
+  background: rgba(0, 0, 0, 0.58) !important;
+  opacity: 1 !important;
+}
+
+.rapago-no-show-toolbar {
+  --background: linear-gradient(135deg, #111111 0%, #2b2119 55%, #8f341e 100%) !important;
+  --color: #fff7e6 !important;
+  border-bottom: 1px solid rgba(200, 155, 60, 0.35) !important;
+}
+
+.rapago-no-show-toolbar ion-title {
+  color: #fff7e6 !important;
+  font-size: 1.05rem !important;
+  font-weight: 950 !important;
+  letter-spacing: 0.15px !important;
+}
+
+.rapago-admin-no-show-content {
+  --background: #f6f2ec !important;
+  --padding-top: 10px !important;
+  --padding-bottom: 18px !important;
+  --padding-start: 10px !important;
+  --padding-end: 10px !important;
+  color: #111827 !important;
+}
+
+.rapago-admin-no-show-content ion-card {
+  margin: 0 0 12px !important;
+  border-radius: 20px !important;
+  background: linear-gradient(180deg, #fffaf0 0%, #f7ead4 100%) !important;
+  border: 1px solid rgba(200, 155, 60, 0.32) !important;
+  box-shadow: 0 12px 28px rgba(17, 24, 39, 0.13) !important;
+  overflow: hidden !important;
+}
+
+.rapago-admin-no-show-content ion-card ion-card {
+  border-radius: 18px !important;
+  background: #fffdf8 !important;
+  border: 1px solid rgba(200, 155, 60, 0.26) !important;
+  box-shadow: 0 8px 18px rgba(17, 24, 39, 0.10) !important;
+}
+
+.rapago-admin-no-show-content ion-card-header {
+  padding: 14px 14px 8px !important;
+}
+
+.rapago-admin-no-show-content ion-card-content {
+  padding: 12px !important;
+  color: #111827 !important;
+}
+
+.rapago-admin-no-show-content ion-card-title,
+.rapago-admin-no-show-content h2,
+.rapago-admin-no-show-content h3 {
+  color: #111827 !important;
+  font-size: 1rem !important;
+  line-height: 1.18 !important;
+  font-weight: 950 !important;
+  letter-spacing: -0.15px !important;
+}
+
+.rapago-admin-no-show-content ion-card-subtitle,
+.rapago-admin-no-show-content p {
+  color: #374151 !important;
+  font-size: 0.82rem !important;
+  line-height: 1.35 !important;
+  font-weight: 750 !important;
+}
+
+.rapago-admin-no-show-content strong {
+  display: block !important;
+  color: #4b5563 !important;
+  font-size: 0.72rem !important;
+  line-height: 1.1 !important;
+  font-weight: 950 !important;
+  text-transform: uppercase !important;
+  letter-spacing: 0.25px !important;
+  margin-bottom: 4px !important;
+}
+
+.rapago-admin-no-show-content ion-badge {
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  width: auto !important;
+  min-width: 86px !important;
+  max-width: 132px !important;
+  min-height: 26px !important;
+  padding: 5px 9px !important;
+  border-radius: 999px !important;
+  white-space: normal !important;
+  text-align: center !important;
+  line-height: 1.05 !important;
+  font-size: 0.68rem !important;
+  font-weight: 950 !important;
+  overflow: visible !important;
+  text-overflow: clip !important;
+}
+
+.rapago-admin-no-show-content ion-badge[color="warning"] {
+  --background: #facc15 !important;
+  --color: #111827 !important;
+  color: #111827 !important;
+}
+
+.rapago-admin-no-show-content ion-badge[color="success"] {
+  --background: #22c55e !important;
+  --color: #ffffff !important;
+  color: #ffffff !important;
+}
+
+.rapago-admin-no-show-content ion-badge[color="medium"] {
+  --background: #6b7280 !important;
+  --color: #ffffff !important;
+  color: #ffffff !important;
+}
+
+.rapago-admin-no-show-content div[style*="grid-template-columns"] {
+  gap: 8px !important;
+}
+
+.rapago-admin-no-show-content div[style*="background: #fff7e6"] {
+  background: #fff7e6 !important;
+  border: 1px solid rgba(200, 155, 60, 0.28) !important;
+  border-radius: 15px !important;
+  padding: 10px !important;
+}
+
+.rapago-admin-no-show-content div[style*="font-weight: 950"] {
+  color: #111827 !important;
+  font-size: 0.92rem !important;
+  line-height: 1.15 !important;
+}
+
+.rapago-admin-no-show-content ion-button {
+  min-height: 36px !important;
+  --border-radius: 999px !important;
+  font-size: 0.74rem !important;
+  font-weight: 950 !important;
+  text-transform: none !important;
+  letter-spacing: 0 !important;
+}
+
+.rapago-admin-no-show-content ion-button[color="success"] {
+  --background: linear-gradient(135deg, #34d399 0%, #16a34a 100%) !important;
+  --color: #ffffff !important;
+  --box-shadow: 0 8px 18px rgba(34, 197, 94, 0.24) !important;
+}
+
+.rapago-admin-no-show-content ion-button[color="danger"] {
+  --background: #ffffff !important;
+  --color: #dc2626 !important;
+  --border-color: #dc2626 !important;
+  --border-width: 1.5px !important;
+  --border-style: solid !important;
+}
+
+.rapago-admin-no-show-content .admin-section-title-row {
+  display: flex !important;
+  align-items: flex-start !important;
+  justify-content: space-between !important;
+  gap: 10px !important;
+}
+
+@media (max-width: 520px) {
+  ion-modal.rapago-admin-no-show-modal {
+    --width: calc(100vw - 14px) !important;
+    --height: calc(100vh - 22px) !important;
+    --border-radius: 22px !important;
+  }
+
+  ion-modal.rapago-admin-no-show-modal::part(content) {
+    width: calc(100vw - 14px) !important;
+    height: calc(100vh - 22px) !important;
+    max-height: calc(100vh - 22px) !important;
+    border-radius: 22px !important;
+  }
+
+  .rapago-admin-no-show-content {
+    --padding-start: 9px !important;
+    --padding-end: 9px !important;
+    --padding-top: 9px !important;
+  }
+
+  .rapago-admin-no-show-content ion-card-content {
+    padding: 11px !important;
+  }
+
+  .rapago-admin-no-show-content ion-card-title,
+  .rapago-admin-no-show-content h2,
+  .rapago-admin-no-show-content h3 {
+    font-size: 0.96rem !important;
+  }
+
+  .rapago-admin-no-show-content ion-card-subtitle,
+  .rapago-admin-no-show-content p {
+    font-size: 0.78rem !important;
+  }
+
+  .rapago-admin-no-show-content div[style*="grid-template-columns"] {
+    grid-template-columns: 1fr 1fr !important;
+  }
+
+  .rapago-admin-no-show-content ion-button {
+    flex: 1 1 120px !important;
+  }
+}
+
+@media (max-width: 380px) {
+  .rapago-admin-no-show-content div[style*="grid-template-columns"] {
+    grid-template-columns: 1fr !important;
+  }
+
+  .rapago-admin-no-show-content ion-badge {
+    min-width: 78px !important;
+    max-width: 112px !important;
+    font-size: 0.62rem !important;
+  }
+
+  .rapago-admin-no-show-content ion-card-title,
+  .rapago-admin-no-show-content h2,
+  .rapago-admin-no-show-content h3 {
+    font-size: 0.9rem !important;
+  }
+
+  .rapago-admin-no-show-content ion-card-subtitle,
+  .rapago-admin-no-show-content p {
+    font-size: 0.74rem !important;
+  }
+}
+
+/* ==========================================================================
+   FIN RAPA GO - ADMIN NO SHOW MOBILE POLISH
+   ========================================================================== */
+
+
+
+/* RAPA GO: modal Facebook legible */
+ion-modal.facebook-step-modal {
+  --width: min(94vw, 620px);
+  --height: min(92vh, 860px);
+  --max-width: 620px;
+  --max-height: 860px;
+  --border-radius: 28px;
+  --background: #fffaf0 !important;
+}
+
+ion-modal.facebook-step-modal::part(content) {
+  overflow: hidden;
+  border: 1px solid rgba(200, 155, 60, 0.55);
+  border-radius: 28px;
+  background: #fffaf0 !important;
+  color: #1d1d1b !important;
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.42);
+}
+
+ion-modal.facebook-step-modal::part(backdrop) {
+  background: rgba(0, 0, 0, 0.58) !important;
+  opacity: 1 !important;
+}
+
+.facebook-step-page {
+  background: #fffaf0 !important;
+  color: #1d1d1b !important;
+}
+
+.facebook-step-content {
+  --background: #fffaf0 !important;
+  --color: #1d1d1b !important;
+  background: #fffaf0 !important;
+  color: #1d1d1b !important;
+}
+
+.facebook-step-content::part(background) {
+  background: #fffaf0 !important;
+}
+
+.facebook-step-content::part(scroll) {
+  overflow-y: auto;
+  padding-bottom: 26px;
+}
+
+.facebook-step-card {
+  width: 100% !important;
+  max-width: 570px !important;
+  min-height: 0 !important;
+  height: auto !important;
+  margin: 0 auto !important;
+  overflow: visible !important;
+  border: 1px solid rgba(200, 155, 60, 0.45) !important;
+  border-radius: 24px !important;
+  background: #fffaf0 !important;
+  color: #1d1d1b !important;
+  box-shadow: 0 16px 45px rgba(43, 32, 18, 0.18) !important;
+  opacity: 1 !important;
+  visibility: visible !important;
+}
+
+.facebook-step-header {
+  color: #ffffff !important;
+  background: linear-gradient(135deg, #261e19 0%, #9a4023 100%) !important;
+}
+
+.facebook-step-body {
+  min-height: 0 !important;
+  height: auto !important;
+  overflow: visible !important;
+  background: linear-gradient(180deg, #fffaf0 0%, #f7efe1 100%) !important;
+  color: #1d1d1b !important;
+}
+
+.facebook-step-body ion-item {
+  --background: #ffffff !important;
+  --color: #1d1d1b !important;
+  --border-color: transparent !important;
+  background: #ffffff !important;
+  color: #1d1d1b !important;
+  opacity: 1 !important;
+}
+
+.facebook-step-body ion-input,
+.facebook-step-body ion-select,
+.facebook-step-body ion-textarea {
+  --color: #111827 !important;
+  --placeholder-color: #6b7280 !important;
+  --placeholder-opacity: 1 !important;
+  color: #111827 !important;
+  opacity: 1 !important;
+}
+
+.facebook-step-body ion-label {
+  opacity: 1 !important;
+}
+
+@media (max-width: 480px) {
+  ion-modal.facebook-step-modal {
+    --width: calc(100vw - 18px);
+    --height: calc(100vh - 22px);
+    --max-width: none;
+    --max-height: none;
+    --border-radius: 22px;
+  }
+
+  ion-modal.facebook-step-modal::part(content) {
+    border-radius: 22px;
+    background: #fffaf0 !important;
+  }
+
+  .facebook-step-content {
+    --background: #fffaf0 !important;
+    background: #fffaf0 !important;
+  }
+
+  .facebook-step-card {
+    border-radius: 19px !important;
+  }
+}
+
+
+/* RAPA GO: corrección estructural definitiva modal Facebook */
+
+ion-modal.facebook-step-modal {
+  --width: min(94vw, 620px) !important;
+  --height: min(92vh, 860px) !important;
+  --max-width: 620px !important;
+  --max-height: 860px !important;
+  --border-radius: 28px !important;
+  --background: #fffaf0 !important;
+}
+
+ion-modal.facebook-step-modal::part(content) {
+  overflow: hidden !important;
+  border: 1px solid rgba(200, 155, 60, 0.62) !important;
+  border-radius: 28px !important;
+  background: #fffaf0 !important;
+  color: #1d1d1b !important;
+  opacity: 1 !important;
+  visibility: visible !important;
+}
+
+.facebook-step-content {
+  display: block !important;
+  width: 100% !important;
+  height: 100% !important;
+  --background: #fffaf0 !important;
+  --color: #1d1d1b !important;
+  --overflow: auto !important;
+  background: #fffaf0 !important;
+  color: #1d1d1b !important;
+  opacity: 1 !important;
+  visibility: visible !important;
+}
+
+.facebook-step-content::part(background) {
+  background: #fffaf0 !important;
+}
+
+.facebook-step-content::part(scroll) {
+  display: block !important;
+  min-height: 100% !important;
+  padding: 18px 14px 30px !important;
+  overflow-x: hidden !important;
+  overflow-y: auto !important;
+  background: #fffaf0 !important;
+  color: #1d1d1b !important;
+}
+
+.facebook-step-card {
+  display: block !important;
+  width: 100% !important;
+  max-width: 570px !important;
+  min-height: 0 !important;
+  height: auto !important;
+  margin: 0 auto !important;
+  background: #fffaf0 !important;
+  color: #1d1d1b !important;
+  opacity: 1 !important;
+  visibility: visible !important;
+}
+
+.facebook-step-header,
+.facebook-step-body,
+.facebook-step-body * {
+  opacity: 1 !important;
+  visibility: visible !important;
+}
+
+.facebook-step-body {
+  background: linear-gradient(
+    180deg,
+    #fffaf0 0%,
+    #f7efe1 100%
+  ) !important;
+  color: #1d1d1b !important;
+}
+
+.facebook-step-body ion-item {
+  --background: #ffffff !important;
+  --color: #111827 !important;
+  background: #ffffff !important;
+  color: #111827 !important;
+}
+
+@media (max-width: 600px) {
+  ion-modal.facebook-step-modal {
+    --width: calc(100vw - 18px) !important;
+    --height: calc(100vh - 22px) !important;
+    --max-width: none !important;
+    --max-height: none !important;
+    --border-radius: 22px !important;
+  }
+
+  ion-modal.facebook-step-modal::part(content) {
+    border-radius: 22px !important;
+  }
+
+  .facebook-step-content::part(scroll) {
+    padding: 12px 10px 24px !important;
+  }
+}
+
+/* ==========================================================================
+   RAPA GO — Auth (Login / Register) design system
+   Scoped under .rapago-auth-dark so it never clashes with the global
+   light-form rules that force #111 text. Palette: gold / terracotta / dark.
+   ========================================================================== */
+
+/* Card / form shell */
+.rapago-auth-card {
+  width: min(92vw, 460px);
+  margin: 26px auto 26px;
+  padding: 22px 22px 26px;
+  border-radius: 28px;
+  background: linear-gradient(180deg, rgba(28, 26, 23, 0.97), rgba(14, 13, 12, 0.98));
+  border: 2px solid rgba(214, 166, 64, 0.55);
+  box-shadow:
+    0 0 0 4px rgba(214, 166, 64, 0.08),
+    0 0 32px rgba(214, 166, 64, 0.16),
+    0 26px 70px rgba(0, 0, 0, 0.50),
+    inset 0 0 0 1px rgba(214, 166, 64, 0.14),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  color: #f6f2ec;
+  display: flex;
+  flex-direction: column;
+  transition: border-color 0.3s ease, box-shadow 0.3s ease;
+}
+
+.rapago-auth-card:focus-within {
+  border-color: rgba(248, 216, 121, 0.72);
+  box-shadow:
+    0 0 0 6px rgba(214, 166, 64, 0.10),
+    0 0 42px rgba(214, 166, 64, 0.24),
+    0 26px 70px rgba(0, 0, 0, 0.50),
+    inset 0 0 0 1px rgba(214, 166, 64, 0.22),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06);
+}
+
+/* Brand header: back arrow + centered logo on the same row */
+.rapago-auth-brand-header {
+  display: grid;
+  grid-template-columns: 42px 1fr 42px;
+  align-items: center;
+  column-gap: 8px;
+  width: 100%;
+  margin: 0 0 8px;
+}
+
+.rapago-auth-back-button {
+  grid-column: 1;
+  justify-self: start;
+  width: 42px;
+  height: 42px;
+  border: 1px solid rgba(214, 166, 64, 0.45);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.06);
+  color: #f8d879;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  transition: background 0.2s ease, transform 0.2s ease;
+}
+
+.rapago-auth-back-button:hover {
+  background: rgba(214, 166, 64, 0.16);
+  transform: translateX(-1px);
+}
+
+.rapago-auth-back-button ion-icon {
+  font-size: 1.25rem;
+}
+
+.rapago-auth-brand-logo-wrap {
+  grid-column: 2;
+  width: 100%;
+  display: flex;
+  justify-content: center;
+  margin: 0;
+}
+
+/* Mismo tamaño y tratamiento que el logo de /welcome (.welcome-logo-wrap) */
+.rapago-auth-brand-logo {
+  width: 108px;
+  height: 108px;
+  border-radius: 30px;
+  padding: 0;
+  object-fit: cover;
+  background: #ffffff;
+  box-shadow:
+    0 0 0 3px rgba(214, 166, 64, 0.55),
+    0 0 0 6px rgba(214, 166, 64, 0.12),
+    0 20px 44px rgba(0, 0, 0, 0.55);
+}
+
+/* Replica el responsive de /welcome (.welcome-logo-wrap @ max-width 400px) */
+@media (max-width: 400px) {
+  .rapago-auth-brand-logo {
+    width: 92px;
+    height: 92px;
+    border-radius: 26px;
+  }
+}
+
+/* Typography */
+.rapago-auth-title {
+  margin: 10px 0 4px;
+  text-align: center;
+  font-size: 1.72rem;
+  line-height: 1.1;
+  font-weight: 950;
+  color: #f1c864;
+  letter-spacing: 0.01em;
+}
+
+.rapago-auth-subtitle,
+.rapago-auth-tagline {
+  margin: 0 0 18px;
+  text-align: center;
+  color: rgba(246, 242, 236, 0.72);
+  font-weight: 650;
+  line-height: 1.4;
+  font-size: 0.95rem;
+}
+
+/* Field (ion-item) */
+.rapago-auth-dark .rapago-auth-field {
+  --background: rgba(255, 255, 255, 0.055);
+  --border-color: transparent;
+  --highlight-color-focused: #d6a640;
+  --highlight-color-valid: #d6a640;
+  --highlight-color-invalid: #b84f2e;
+  --padding-start: 14px;
+  --inner-padding-end: 10px;
+  --min-height: 62px;
+  border: 1.5px solid rgba(214, 166, 64, 0.28);
+  border-radius: 16px;
+  margin-bottom: 14px;
+  overflow: hidden;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.rapago-auth-dark .rapago-auth-field.item-has-focus {
+  border-color: rgba(214, 166, 64, 0.75);
+  box-shadow: 0 0 0 3px rgba(214, 166, 64, 0.16);
+}
+
+.rapago-auth-dark .rapago-auth-field.ion-invalid {
+  border-color: rgba(184, 79, 46, 0.8);
+  box-shadow: 0 0 0 3px rgba(184, 79, 46, 0.16);
+}
+
+/* Labels */
+.rapago-auth-dark .rapago-auth-field ion-label {
+  color: #f8d879 !important;
+  font-weight: 800 !important;
+}
+
+/* Leading icon inside a field */
+.rapago-auth-field-icon {
+  color: #c89b3c;
+  font-size: 1.18rem;
+  margin-inline-end: 8px;
+  align-self: center;
+}
+
+/* Password show/hide toggle — only rendered when field has a value, mobile-friendly tap target */
+.rapago-auth-dark .rapago-auth-eye {
+  --color: #d6a640;
+  --background: transparent;
+  --background-hover: rgba(214, 166, 64, 0.14);
+  --background-activated: rgba(214, 166, 64, 0.22);
+  --border-radius: 50%;
+  --padding-start: 0;
+  --padding-end: 0;
+  --padding-top: 0;
+  --padding-bottom: 0;
+  width: 42px;
+  height: 42px;
+  min-height: 42px;
+  /* Keep the button vertically centered regardless of stacked-label
+     which pushes slot="end" to the top of the IonItem */
+  align-self: center;
+  margin: 0 0 0 4px;
+  flex-shrink: 0;
+}
+
+.rapago-auth-dark .rapago-auth-eye ion-icon {
+  font-size: 1.3rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* IonItem slot="end" wrapper — center it on the vertical axis so the eye
+   aligns with the actual input text, not the top of the label+input block */
+.rapago-auth-dark ion-item::part(end) {
+  align-self: center !important;
+  margin-top: 0 !important;
+}
+
+/* Input text — white and robust against the global #111 rules */
+.rapago-auth-dark .rapago-auth-field ion-input,
+.rapago-auth-dark .rapago-auth-field ion-textarea,
+.rapago-auth-dark ion-item ion-input,
+.rapago-auth-dark ion-item ion-textarea,
+.rapago-auth-dark ion-input,
+.rapago-auth-dark ion-textarea {
+  --color: #ffffff !important;
+  --placeholder-color: rgba(255, 255, 255, 0.5) !important;
+  --placeholder-opacity: 1 !important;
+  color: #ffffff !important;
+  font-weight: 700;
+}
+
+.rapago-auth-dark ion-input::part(native),
+.rapago-auth-dark ion-textarea::part(native) {
+  color: #ffffff !important;
+  -webkit-text-fill-color: #ffffff !important;
+  caret-color: #f8d879 !important;
+}
+
+/* This Ionic build renders the real <input> in light DOM (scoped, not shadow),
+   so target it directly to guarantee bright typed text in login AND register. */
+.rapago-auth-dark ion-input input,
+.rapago-auth-dark ion-textarea textarea {
+  color: #ffffff !important;
+  -webkit-text-fill-color: #ffffff !important;
+  caret-color: #f8d879 !important;
+}
+
+.rapago-auth-dark ion-input input::placeholder,
+.rapago-auth-dark ion-textarea textarea::placeholder {
+  color: rgba(255, 255, 255, 0.5) !important;
+  -webkit-text-fill-color: rgba(255, 255, 255, 0.5) !important;
+  opacity: 1 !important;
+}
+
+/* Neutralize browser autofill (kills the blue/yellow box + dark text) */
+.rapago-auth-dark ion-input::part(native):-webkit-autofill,
+.rapago-auth-dark ion-input::part(native):-webkit-autofill:hover,
+.rapago-auth-dark ion-input::part(native):-webkit-autofill:focus,
+.rapago-auth-dark ion-input::part(native):-webkit-autofill:active,
+.rapago-auth-dark ion-input input:-webkit-autofill,
+.rapago-auth-dark ion-input input:-webkit-autofill:hover,
+.rapago-auth-dark ion-input input:-webkit-autofill:focus,
+.rapago-auth-dark ion-input input:-webkit-autofill:active {
+  -webkit-text-fill-color: #ffffff !important;
+  -webkit-box-shadow: 0 0 0 1000px transparent inset !important;
+  caret-color: #f8d879 !important;
+  transition: background-color 9999s ease-in-out 0s;
+}
+
+/* Server error box */
+.rapago-auth-error {
+  background: rgba(184, 79, 46, 0.16);
+  border: 1px solid rgba(184, 79, 46, 0.4);
+  color: #f3c6b4;
+  padding: 10px 12px;
+  border-radius: 14px;
+  font-weight: 800;
+  margin: 0 0 12px;
+}
+
+/* Error notes / messages use a warm terracotta that fits the palette */
+.rapago-auth-dark ion-note[slot="error"],
+.rapago-auth-dark .ion-color-danger {
+  color: #f0906e !important;
+}
+
+/* Forgot-password row */
+.rapago-auth-forgot {
+  display: flex;
+  justify-content: center;
+  margin: 14px 0 18px;
+}
+
+.rapago-auth-dark .rapago-auth-forgot ion-button {
+  --color: #f8d879;
+  font-weight: 800;
+  text-transform: none;
+  margin: 0;
+  letter-spacing: 0.01em;
+}
+
+/* Buttons */
+.rapago-auth-dark .rapago-auth-btn-primary {
+  --border-radius: 16px;
+  --background: linear-gradient(135deg, #f8d879 0%, #d6a640 46%, #b84f2e 100%);
+  --background-activated: linear-gradient(135deg, #c89b3c, #b84f2e);
+  --box-shadow: 0 16px 30px rgba(214, 166, 64, 0.32);
+  --color: #201607;
+  color: #201607;
+  height: 54px;
+  font-weight: 950;
+  margin-top: 8px;
+  text-transform: none;
+}
+
+.rapago-auth-dark .rapago-auth-btn-outline {
+  --border-radius: 16px;
+  --border-color: rgba(214, 166, 64, 0.7);
+  --border-width: 1.5px;
+  --color: #f8d879;
+  --background: rgba(255, 255, 255, 0.02);
+  height: 50px;
+  font-weight: 850;
+  margin-top: 10px;
+  text-transform: none;
+}
+
+.rapago-auth-dark .rapago-auth-btn-clear {
+  --color: #f8d879;
+  font-weight: 850;
+  margin-top: 6px;
+  text-transform: none;
+}
+
+/* Divider with a centered "o" */
+.rapago-auth-divider {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 0 0 8px;
+  color: rgba(246, 242, 236, 0.5);
+  font-weight: 700;
+  font-size: 0.82rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.rapago-auth-divider::before,
+.rapago-auth-divider::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(214, 166, 64, 0.4), transparent);
+}
+
+/* Responsive: mobile-first refinements */
+@media (max-width: 600px) {
+  .rapago-auth-card {
+    width: min(94vw, 440px);
+    margin: 18px auto 22px;
+    padding: 18px 16px 22px;
+    border-radius: 24px;
+  }
+
+  .rapago-auth-tagline {
+    white-space: nowrap;
+    font-size: clamp(0.72rem, 2.8vw, 0.9rem);
+  }
+
+  .rapago-auth-title {
+    font-size: 1.5rem;
+  }
+
+  /* 16px keeps iOS from auto-zooming on focus; comfortable tap height */
+  .rapago-auth-dark .rapago-auth-field ion-input,
+  .rapago-auth-dark ion-item ion-input {
+    font-size: 16px !important;
+  }
+
+  .rapago-auth-dark .rapago-auth-field {
+    --min-height: 60px;
+  }
+
+  .rapago-auth-dark .rapago-auth-btn-primary {
+    height: 52px;
+  }
+
+  .rapago-auth-dark .rapago-auth-btn-outline {
+    height: 50px;
+  }
+}
+
+@media (max-width: 380px) {
+  .rapago-auth-card {
+    padding: 16px 13px 20px;
+  }
+
+  .rapago-auth-field-icon {
+    font-size: 1.05rem;
+    margin-inline-end: 6px;
+  }
+}
+
+/* ==========================================================================
+   PROTOCOLO DE SESIÓN — TOAST DE CIERRE DE SESIÓN
+   Paleta: éxito = dorado · error = terracota · fondo = volcánico
+   ========================================================================== */
+
+.rapago-session-toast {
+  --border-radius: 18px;
+  --box-shadow: 0 18px 44px rgba(0, 0, 0, 0.5);
+  --color: #f6f2ec;
+  --start: 16px;
+  --end: 16px;
+  --max-width: 440px;
+  font-weight: 800;
+  letter-spacing: 0.01em;
+  text-align: center;
+}
+
+.rapago-session-toast::part(container) {
+  border: 1.5px solid rgba(214, 166, 64, 0.55);
+  background: linear-gradient(135deg, #1a1a1a 0%, #241d14 100%);
+  padding: 14px 18px;
+}
+
+.rapago-session-toast::part(icon) {
+  font-size: 1.45rem;
+  margin-inline-end: 10px;
+}
+
+.rapago-session-toast::part(message) {
+  font-size: 0.95rem;
+  font-weight: 800;
+}
+
+/* Éxito — acento dorado */
+.rapago-session-toast--success::part(container) {
+  border-color: rgba(214, 166, 64, 0.75);
+  box-shadow:
+    0 18px 44px rgba(0, 0, 0, 0.5),
+    0 0 0 1px rgba(214, 166, 64, 0.18),
+    0 8px 28px rgba(214, 166, 64, 0.22);
+}
+
+.rapago-session-toast--success::part(icon) {
+  color: #f8d879;
+}
+
+/* Error — acento terracota */
+.rapago-session-toast--error::part(container) {
+  border-color: rgba(184, 79, 46, 0.85);
+  box-shadow:
+    0 18px 44px rgba(0, 0, 0, 0.5),
+    0 0 0 1px rgba(184, 79, 46, 0.22),
+    0 8px 28px rgba(184, 79, 46, 0.28);
+}
+
+.rapago-session-toast--error::part(icon) {
+  color: #c16246;
+}
+
+/* ==========================================================================
+   SITIO PÚBLICO — LISTAS LEGALES (privacidad, términos, EULA, soporte)
+   ========================================================================== */
+
+.rapago-public-list li {
+  padding-left: 4px;
+  margin-bottom: 6px;
+}
+
+.rapago-public-list li::marker {
+  color: #d6a640;
+  font-weight: 900;
+}
+
+/* ==========================================================================
+   SERVICE CARD — microinteracciones y estados
+   Paleta: dorado / volcánico / marfil
+   ========================================================================== */
+
+.rapago-service-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 20px 10px 16px;
+  background: #ffffff;
+  border-radius: 18px;
+  border: 1.5px solid rgba(210, 164, 58, 0.18);
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.10);
+  cursor: pointer;
+  min-width: 90px;
+  text-align: center;
+  overflow: hidden;
+  user-select: none;
+  transition:
+    transform 0.2s cubic-bezier(0.22, 1, 0.36, 1),
+    box-shadow 0.2s ease,
+    border-color 0.2s ease;
+  outline: none;
+}
+
+.rapago-service-card:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 14px 32px rgba(210, 164, 58, 0.18);
+  border-color: rgba(210, 164, 58, 0.35);
+}
+
+.rapago-service-card:active {
+  transform: scale(0.96);
+  box-shadow: 0 6px 14px rgba(0, 0, 0, 0.12);
+}
+
+.rapago-service-card:focus-visible {
+  border-color: #d2a43a;
+  box-shadow: 0 0 0 3px rgba(210, 164, 58, 0.22);
+}
+
+/* Featured: acción principal — borde dorado y glow */
+.rapago-service-card--featured {
+  background: linear-gradient(160deg, #fffdf5, #fff8e8);
+  border: 2px solid rgba(210, 164, 58, 0.55);
+  box-shadow:
+    0 10px 24px rgba(0, 0, 0, 0.10),
+    0 0 0 1px rgba(210, 164, 58, 0.12),
+    0 8px 22px rgba(210, 164, 58, 0.12);
+}
+
+.rapago-service-card--featured:hover {
+  box-shadow:
+    0 14px 32px rgba(210, 164, 58, 0.20),
+    0 0 0 1px rgba(210, 164, 58, 0.20),
+    0 12px 28px rgba(210, 164, 58, 0.18);
+}
+
+/* Disabled: próximamente — atenuada, sin cursor pointer */
+.rapago-service-card--disabled {
+  opacity: 0.55;
+  cursor: default;
+  filter: grayscale(0.3);
+}
+
+.rapago-service-card--disabled:hover {
+  transform: none;
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.10);
+  border-color: rgba(210, 164, 58, 0.18);
+}
+
+.rapago-service-card--disabled:active {
+  transform: none;
+}
+
+/* Badge "Pronto" */
+.rapago-service-card__badge {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: rgba(17, 17, 17, 0.80);
+  color: #f8d879;
+  font-size: 0.62rem;
+  font-weight: 900;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  pointer-events: none;
+}
+
+/* Icon wrappers */
+.rapago-service-card__icon-wrap {
+  width: 54px;
+  height: 54px;
+  border-radius: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition: transform 0.2s ease;
+}
+
+.rapago-service-card:hover .rapago-service-card__icon-wrap {
+  transform: scale(1.06);
+}
+
+.rapago-service-card__icon-wrap--primary {
+  background: linear-gradient(135deg, #c89b3c, #d2a43a);
+  box-shadow: 0 6px 16px rgba(200, 155, 60, 0.30);
+}
+
+.rapago-service-card__icon-wrap--secondary {
+  background: linear-gradient(135deg, #b84f2e, #c86038);
+  box-shadow: 0 6px 16px rgba(184, 79, 46, 0.25);
+}
+
+.rapago-service-card__icon-wrap--tertiary {
+  background: linear-gradient(135deg, #d9c3a0, #c8b48a);
+  box-shadow: 0 6px 16px rgba(217, 195, 160, 0.25);
+}
+
+.rapago-service-card__icon-wrap--success {
+  background: linear-gradient(135deg, #5a8a4a, #6d9e5c);
+  box-shadow: 0 6px 16px rgba(90, 138, 74, 0.25);
+}
+
+.rapago-service-card__icon-wrap--warning {
+  background: linear-gradient(135deg, #c89b3c, #d9a830);
+  box-shadow: 0 6px 16px rgba(200, 155, 60, 0.25);
+}
+
+.rapago-service-card__icon-wrap--danger {
+  background: linear-gradient(135deg, #b84f2e, #a24628);
+  box-shadow: 0 6px 16px rgba(184, 79, 46, 0.25);
+}
+
+.rapago-service-card__icon-wrap--medium {
+  background: linear-gradient(135deg, #8a8577, #9a9488);
+  box-shadow: 0 6px 16px rgba(138, 133, 119, 0.20);
+}
+
+.rapago-service-card__icon--primary { color: #111; font-size: 1.5rem; }
+.rapago-service-card__icon--secondary { color: #f6f2ec; font-size: 1.5rem; }
+.rapago-service-card__icon--tertiary { color: #111; font-size: 1.5rem; }
+.rapago-service-card__icon--success { color: #f6f2ec; font-size: 1.5rem; }
+.rapago-service-card__icon--warning { color: #111; font-size: 1.5rem; }
+.rapago-service-card__icon--danger { color: #f6f2ec; font-size: 1.5rem; }
+.rapago-service-card__icon--medium { color: #f6f2ec; font-size: 1.5rem; }
+
+.rapago-service-card__title {
+  font-weight: 800;
+  font-size: 0.88rem;
+  color: #111827;
+  line-height: 1.2;
+}
+
+.rapago-service-card__subtitle {
+  font-size: 0.74rem;
+  color: #6b5a42;
+  line-height: 1.35;
+  font-weight: 600;
+}
+
+.rapago-service-card--disabled .rapago-service-card__title {
+  color: #6b5a42;
+}
+
+.rapago-service-card--disabled .rapago-service-card__subtitle {
+  color: #9a9488;
+}
+
+/* ==========================================================================
+   SOLICITAR VIAJE — SUGERENCIAS DE DIRECCIÓN
+   ========================================================================== */
+
+.rapago-suggestion-item {
+  transition: background 0.15s ease;
+}
+
+.rapago-suggestion-item:hover {
+  background: rgba(210, 164, 58, 0.1) !important;
+}
+
+.rapago-suggestion-item:active {
+  background: rgba(210, 164, 58, 0.18) !important;
 }

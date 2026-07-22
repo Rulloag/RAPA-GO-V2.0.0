@@ -1,28 +1,41 @@
 {
-  "name": "rapa-go",
-  "version": "2.0.0",
-  "private": true,
-  "description": "RAPA GO V2.0.0 — Plataforma de movilidad y turismo para Rapa Nui",
-  "workspaces": [
-    "apps/*",
-    "packages/*"
-  ],
-  "scripts": {
-    "dev": "npm run dev:api & npm run dev:mobile",
-    "dev:mobile": "npm run dev --workspace=apps/mobile",
-    "dev:api": "npm run build --workspace=packages/shared && npm run dev --workspace=apps/api",
-    "build": "npm run build --workspaces --if-present",
-    "build:mobile": "npm run build --workspace=apps/mobile",
-    "build:api": "npm run build --workspace=packages/shared && npm run build --workspace=apps/api",
-    "typecheck": "npm run typecheck --workspaces --if-present",
-    "lint": "npm run lint --workspaces --if-present",
-    "test": "npm run test --workspaces --if-present"
-  },
-  "engines": {
-    "node": ">=20.0.0",
-    "npm": ">=10.0.0"
-  },
-  "devDependencies": {
-    "drizzle-orm": "0.45.2"
-  }
+    "name": "rapa-go",
+    "version": "2.0.0",
+    "private": true,
+    "description": "RAPA GO V2.0.0 â€” Plataforma de movilidad y turismo para Rapa Nui",
+    "workspaces": [
+        "apps/*",
+        "packages/*"
+    ],
+    "scripts": {
+        "dev": "npm run dev:api & npm run dev:mobile",
+        "dev:mobile": "npm run dev --workspace=apps/mobile",
+        "dev:api": "npm run build --workspace=packages/shared && npm run dev --workspace=apps/api",
+        "build": "npm run build:api",
+        "build:mobile": "npm run build --workspace=apps/mobile",
+        "build:api": "npm run build --workspace=packages/shared && npm run build --workspace=apps/api",
+        "typecheck": "npm run typecheck --workspaces --if-present",
+        "lint": "npm run lint --workspaces --if-present",
+        "test": "npm run test --workspaces --if-present",
+        "build:all": "npm run build --workspaces --if-present"
+    },
+    "engines": {
+        "node": ">=22",
+        "npm": ">=10.0.0"
+    },
+    "dependencies": {
+        "@capacitor/geolocation": "8.2.0",
+        "@capacitor/google-maps": "8.0.1",
+        "@react-google-maps/api": "2.20.8",
+        "drizzle-orm": "0.45.2",
+        "leaflet": "1.9.4",
+        "react": "18.2.0",
+        "react-dom": "18.2.0",
+        "react-leaflet": "4.2.1",
+        "swiper": "12.2.0"
+    },
+    "devDependencies": {
+        "@types/leaflet": "1.9.21",
+        "typescript": "5.4.5"
+    }
 }
