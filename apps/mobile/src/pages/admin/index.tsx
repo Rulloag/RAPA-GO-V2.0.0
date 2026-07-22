@@ -12184,8 +12184,7 @@ export function AdminTripsPage(): JSX.Element {
               );
             })}
           </div>
-          );
-        })()}
+        )}
 
         {/* Female preference warning alert */}
         <IonAlert
