@@ -1115,4 +1115,34 @@ export const authController = {
       .status(result.ok ? 200 : (result.statusCode ?? 401))
       .send(result);
   },
+
+  async refresh(
+    request: FastifyRequest<{ Body: { refreshToken: string } }>,
+    reply: FastifyReply,
+  ): Promise<void> {
+    const raw = request.body?.refreshToken;
+    if (!raw || typeof raw !== "string") {
+      sendError(reply, { code: "VALIDATION_ERROR", message: "refreshToken is required.", statusCode: 400 });
+      return;
+    }
+    const result = await authService.refreshSession(raw);
+    reply.status(result.ok ? 200 : (result.statusCode ?? 401)).send(result);
+  },
+
+  async apple(
+    request: FastifyRequest<{ Body: AppleAuthRequest }>,
+    reply: FastifyReply,
+  ): Promise<void> {
+    const parsed = appleAuthRequestSchema.safeParse(request.body);
+    if (!parsed.success) {
+      sendError(reply, { code: "VALIDATION_ERROR", message: parsed.error.message, statusCode: 400 });
+      return;
+    }
+    const result = await appleAuthService.signIn(parsed.data);
+    if (!result.ok) {
+      reply.status(result.statusCode ?? 401).send(result);
+      return;
+    }
+    reply.status(200).send(result);
+  },
 };

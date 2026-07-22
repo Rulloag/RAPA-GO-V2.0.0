@@ -13,9 +13,13 @@ import { useEffect, useState, type CSSProperties } from "react";
 import { useHistory } from "react-router-dom";
 import {
   carOutline,
+  carSportOutline,
   chevronForwardOutline,
   giftOutline,
+  mapOutline,
   logoWhatsapp,
+  newspaperOutline,
+  ticketOutline,
   walletOutline,
 } from "ionicons/icons";
 
@@ -27,7 +31,6 @@ import {
 } from "../../../features/passengers/passengerProfile.service.js";
 import { useConnectivity } from "../../../hooks/useConnectivity.js";
 import { ROUTES } from "../../../navigation/routes.js";
-import { RELEASE_FEATURES } from "../../../config/releaseFeatures.js";
 import { useAuth } from "../../../features/auth/index.js";
 import { RAPAGO_CONTACT, WA_MESSAGES } from "@rapa-go/shared";
 
@@ -54,6 +57,26 @@ const HOME_CAROUSEL_IMAGES = [
   },
 ];
 
+const RAPA_NUI_NEWS = [
+  {
+    title: "Noticias y avisos locales",
+    subtitle: "Próximamente: avisos oficiales, horarios y recomendaciones para moverte mejor en Rapa Nui.",
+    tag: "Próximamente",
+    icon: newspaperOutline,
+  },
+  {
+    title: "Actividades culturales",
+    subtitle: "Próximamente: eventos, panoramas y experiencias culturales dentro de Rapa Go.",
+    tag: "Próximamente",
+    icon: ticketOutline,
+  },
+  {
+    title: "Turismo local",
+    subtitle: "Próximamente: guías locales, rutas turísticas y experiencias protegidas por la plataforma.",
+    tag: "Próximamente",
+    icon: mapOutline,
+  },
+];
 
 const RAPAGO_WALLET_BALANCE_KEY = "rapago_wallet_balance_clp_v1";
 const RAPAGO_WALLET_APPLIED_BENEFITS_KEY = "rapago_wallet_applied_benefits_v1";
@@ -400,11 +423,18 @@ export default function HomePage(): JSX.Element {
       <div className="passenger-home-header">
         <div className="passenger-home-header-row">
           <div className="passenger-home-user">
-            <img src={logoRapago} alt="Rapa Go" className="passenger-home-logo" />
+            {/* width/height HTML evitan el salto de layout (FOUC) antes de que cargue el CSS */}
+            <img
+              src={logoRapago}
+              alt="Rapa Go"
+              className="passenger-home-logo"
+              width={56}
+              height={56}
+            />
 
             <div className="passenger-home-user-text">
-              <div className="passenger-home-greeting">Hola, {firstName} 👋</div>
-              <div className="passenger-home-question">¿A dónde vamos hoy?</div>
+              <div className="passenger-home-greeting">Hola, {firstName}</div>
+              <div className="passenger-home-question">¿A dónde quieres ir?</div>
             </div>
           </div>
 
@@ -440,6 +470,14 @@ export default function HomePage(): JSX.Element {
               <div className="home-image-carousel-subtitle">
                 {activeImage.subtitle}
               </div>
+
+              <IonButton
+                expand="block"
+                className="rapago-hero-cta"
+                onClick={() => history.push(ROUTES.PASSENGER.REQUEST_RIDE)}
+              >
+                Solicitar Viaje
+              </IonButton>
             </div>
 
             <div className="home-image-carousel-dots">
@@ -493,7 +531,8 @@ export default function HomePage(): JSX.Element {
           )}
 
           <section className="passenger-home-section">
-            <h2 className="passenger-home-section-title">Servicios</h2>
+            <div className="passenger-home-section-eyebrow">Servicios</div>
+            <h2 className="passenger-home-section-title">¿Qué necesitas?</h2>
 
             <div className="services-grid">
               <ServiceCard
@@ -501,38 +540,136 @@ export default function HomePage(): JSX.Element {
                 title="Viaje"
                 subtitle="Solicitar ahora"
                 color="primary"
+                featured
                 onClick={() => history.push(ROUTES.PASSENGER.REQUEST_RIDE)}
               />
 
-              {RELEASE_FEATURES.tourism && (
-                <ServiceCard
-                  icon={carOutline}
-                  title="Guías"
-                  subtitle="Turismo local"
-                  color="secondary"
-                  onClick={() => history.push(ROUTES.PASSENGER.GUIDES)}
-                />
-              )}
+              <ServiceCard
+                icon={mapOutline}
+                title="Turismo local"
+                subtitle="Guías y tours"
+                color="medium"
+                disabled
+                badge="Pronto"
+                onClick={() => {}}
+              />
 
-              {RELEASE_FEATURES.rentals && (
-                <ServiceCard
-                  icon={carOutline}
-                  title="Arriendo"
-                  subtitle="Reservar vehículo"
-                  color="tertiary"
-                  onClick={() => history.push(ROUTES.PASSENGER.RENTALS)}
-                />
-              )}
+              <ServiceCard
+                icon={carSportOutline}
+                title="Reserva vehículo"
+                subtitle="Arriendos"
+                color="medium"
+                disabled
+                badge="Pronto"
+                onClick={() => {}}
+              />
 
-              {RELEASE_FEATURES.events && (
-                <ServiceCard
-                  icon={carOutline}
-                  title="Eventos"
-                  subtitle="Actividades disponibles"
-                  color="warning"
-                  onClick={() => history.push(ROUTES.PASSENGER.EVENTS)}
-                />
-              )}
+              <ServiceCard
+                icon={ticketOutline}
+                title="Eventos"
+                subtitle="Cultura"
+                color="medium"
+                disabled
+                badge="Pronto"
+                onClick={() => {}}
+              />
+            </div>
+          </section>
+
+          <section className="passenger-home-section">
+            <div className="passenger-home-section-eyebrow">Módulos</div>
+            <h2 className="passenger-home-section-title">Próximamente</h2>
+
+            <div
+              style={{
+                display: "flex",
+                gap: "12px",
+                overflowX: "auto",
+                padding: "2px 2px 8px",
+                scrollSnapType: "x mandatory",
+              }}
+            >
+              {RAPA_NUI_NEWS.map((news) => (
+                <IonCard
+                  key={news.title}
+                  aria-disabled="true"
+                  style={{
+                    minWidth: "255px",
+                    maxWidth: "280px",
+                    margin: 0,
+                    borderRadius: "22px",
+                    background: "linear-gradient(135deg, rgba(255,255,255,.96), rgba(244,226,185,.96))",
+                    color: "#181818",
+                    boxShadow: "0 14px 28px rgba(0,0,0,.18)",
+                    scrollSnapAlign: "start",
+                  }}
+                >
+                  <IonCardContent
+                    style={{
+                      padding: "16px",
+                      display: "flex",
+                      alignItems: "flex-start",
+                      gap: "12px",
+                    }}
+                  >
+                    <div
+                      style={{
+                        width: "44px",
+                        height: "44px",
+                        borderRadius: "16px",
+                        background: "linear-gradient(135deg,#C89B3C,#F3D891)",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        flexShrink: 0,
+                        boxShadow: "0 10px 22px rgba(200,155,60,.28)",
+                      }}
+                    >
+                      <IonIcon
+                        icon={news.icon}
+                        style={{ fontSize: "1.35rem", color: "#111" }}
+                      />
+                    </div>
+
+                    <div style={{ minWidth: 0 }}>
+                      <div
+                        style={{
+                          fontSize: ".68rem",
+                          fontWeight: 950,
+                          letterSpacing: ".05em",
+                          textTransform: "uppercase",
+                          color: "#9A6A16",
+                          marginBottom: "5px",
+                        }}
+                      >
+                        {news.tag}
+                      </div>
+
+                      <div
+                        style={{
+                          fontSize: ".92rem",
+                          fontWeight: 950,
+                          lineHeight: 1.15,
+                          color: "#151515",
+                        }}
+                      >
+                        {news.title}
+                      </div>
+
+                      <div
+                        style={{
+                          marginTop: "6px",
+                          fontSize: ".74rem",
+                          lineHeight: 1.35,
+                          color: "rgba(20,20,20,.68)",
+                        }}
+                      >
+                        {news.subtitle}
+                      </div>
+                    </div>
+                  </IonCardContent>
+                </IonCard>
+              ))}
             </div>
           </section>
 
@@ -603,6 +740,15 @@ export default function HomePage(): JSX.Element {
             <IonCardContent>
               <IonButton expand="block" routerLink="/apply/driver" color="primary">
                 Inscríbete como conductor
+              </IonButton>
+
+              <IonButton
+                expand="block"
+                routerLink="/apply/guide"
+                color="secondary"
+                className="join-card-button"
+              >
+                Inscríbete como guía
               </IonButton>
 
               <IonButton

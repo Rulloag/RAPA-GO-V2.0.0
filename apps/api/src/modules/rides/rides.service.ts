@@ -1,7 +1,12 @@
 import { TokenService } from "../auth/token.service.js";
 import { SessionService } from "../auth/session.service.js";
 import { UsersRepository } from "../users/users.repository.js";
-import { RidesRepository, type RideWithDriverName } from "./rides.repository.js";
+import { RidesRepository } from "./rides.repository.js";
+import { RideStopsRepository } from "./rideStops.repository.js";
+import { RideAssignmentOffersRepository } from "./rideAssignmentOffers.repository.js";
+import { DriverStatusRepository } from "../drivers/driverStatus.repository.js";
+import { FareSettingsRepository } from "../fareSettings/fareSettings.repository.js";
+import { WalletRepository } from "../wallet/wallet.repository.js";
 import { AppError } from "../../shared/errors/AppError.js";
 import { DriverComplianceService } from "../drivers/driverCompliance.service.js";
 import { DriverStatusRepository } from "../drivers/driverStatus.repository.js";
@@ -796,6 +801,75 @@ async function authenticate(accessToken: string): Promise<AuthResult> {
   };
 }
 
+async function autoAssignNearestDriver(
+  rideId: string,
+  originLat: number,
+  originLng: number,
+  genderFilter?: "female" | "male",
+): Promise<(import("../../db/schema/index.js").RideRequest) | null> {
+  const now = new Date();
+  const locationCutoff = new Date(now.getTime() - MAX_DRIVER_LOCATION_AGE_MINUTES * 60 * 1000);
+  const lastSeenCutoff  = new Date(now.getTime() - MAX_DRIVER_LAST_SEEN_AGE_MINUTES * 60 * 1000);
+
+  const candidates = await driverStatusRepo.findAvailableWithLocation({
+    locationCutoff,
+    lastSeenCutoff,
+    ...(genderFilter ? { genderFilter } : {}),
+  });
+
+  const ranked = candidates
+    .map(c => ({ ...c, distanceKm: haversineKm(originLat, originLng, c.currentLat, c.currentLng) }))
+    .filter(c => c.distanceKm <= MAX_PICKUP_DISTANCE_KM)
+    .sort((a, b) => a.distanceKm - b.distanceKm);
+
+  for (const candidate of ranked) {
+    const assigned = await ridesRepo.accept(rideId, candidate.driverUserId);
+    if (assigned) {
+      await driverStatusRepo.setBusy(candidate.driverUserId, rideId);
+      return assigned;
+    }
+    // Race condition — another request grabbed this driver; try next
+  }
+
+  return null;
+}
+
+type QueuedOfferResult =
+  | { created: true;  expiresAt: string }
+  | { created: false };
+
+async function tryCreateQueuedOffer(
+  rideId: string,
+  originLat: number,
+  originLng: number,
+  genderFilter?: "female" | "male",
+): Promise<QueuedOfferResult> {
+  await offersRepo.expireStale();
+  const now = new Date();
+  const locationCutoff = new Date(now.getTime() - MAX_DRIVER_LOCATION_AGE_MINUTES * 60 * 1000);
+  const lastSeenCutoff  = new Date(now.getTime() - MAX_DRIVER_LAST_SEEN_AGE_MINUTES * 60 * 1000);
+  const busyCandidates = await driverStatusRepo.findBusyEligibleForQueuedOffer({
+    locationCutoff,
+    lastSeenCutoff,
+    ...(genderFilter ? { genderFilter } : {}),
+  });
+  const ranked = busyCandidates
+    .map(c => ({ ...c, distanceKm: haversineKm(originLat, originLng, c.currentLat, c.currentLng) }))
+    .filter(c => c.distanceKm <= MAX_PICKUP_DISTANCE_KM)
+    .sort((a, b) => a.distanceKm - b.distanceKm);
+
+  if (ranked.length > 0 && ranked[0]) {
+    const offer = await offersRepo.createOffer({
+      rideRequestId: rideId,
+      driverUserId:  ranked[0].driverUserId,
+      expiresAt:     new Date(now.getTime() + 20 * 1000),
+      attemptOrder:  1,
+    });
+    return { created: true, expiresAt: offer.expiresAt.toISOString() };
+  }
+  return { created: false };
+}
+
 export class RidesService {
   async listMyRides(accessToken: string): Promise<RidesListResult> {
     const auth = await authenticate(accessToken);
@@ -1508,7 +1582,7 @@ export class RidesService {
         return {
           ok: false,
           code: "RIDE_CANNOT_START",
-          message: "Driver must mark arrival before starting the ride.",
+          message: `Ride cannot be started — current status is '${existing.status}'.`,
           statusCode: 409,
         };
       }

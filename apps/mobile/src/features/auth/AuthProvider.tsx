@@ -17,6 +17,7 @@ import type {
   AuthStatus,
   LoginRequest,
   RegisterRequest,
+  AppleSignInRequest,
   AuthResponse,
   AppleSignInRequest,
 } from "./auth.types.js";
@@ -248,11 +249,30 @@ export function AuthProvider({ children }: AuthProviderProps): JSX.Element {
   }, [session?.accessToken]);
 
   const logout = useCallback(async (): Promise<void> => {
+    let ok = true;
+
     if (session?.accessToken) {
-      await authService.logout(session.accessToken).catch(() => {});
+      try {
+        await authService.logout(session.accessToken);
+      } catch {
+        ok = false;
+      }
     }
 
-    await clearLocalSession();
+    try {
+      await clearLocalSession();
+    } catch {
+      ok = false;
+    }
+
+    /**
+     * Protocolo de sesión: notifica el resultado del cierre para que la UI
+     * muestre el mensaje correspondiente (SessionLogoutToast).
+     */
+    window.dispatchEvent(
+      new CustomEvent("auth:logout-result", { detail: { ok } }),
+    );
+
     history.replace(ROUTES.AUTH.LOGIN);
   }, [session, clearLocalSession, history]);
 

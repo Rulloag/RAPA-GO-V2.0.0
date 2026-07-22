@@ -15,6 +15,7 @@ export const driverProfiles = pgTable("driver_profiles", {
   profilePhotoUrl: text("profile_photo_url"),
   bio:             text("bio"),
   languages:       text("languages").array(),
+  gender:          text("gender"),
   createdAt:       timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt:       timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });

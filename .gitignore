@@ -146,17 +146,8 @@ vite.config.ts.timestamp-*
 
 # RAPA GO monorepo — build outputs and native platform folders
 apps/mobile/dist/
-# Native projects are versioned because signing capabilities, permissions and
-# custom location plugins are required for store builds. Generated artifacts stay ignored.
-apps/mobile/android/.gradle/
-apps/mobile/android/**/build/
-apps/mobile/android/local.properties
-apps/mobile/ios/App/Pods/
-apps/mobile/ios/App/DerivedData/
-apps/mobile/ios/App/App/public/
-apps/mobile/ios/App/App/capacitor.config.json
-apps/mobile/ios/App/App/config.xml
-apps/mobile/ios/App/App.xcworkspace/xcuserdata/
+# android/ is not generated yet — no android build in this repo.
+apps/mobile/android/
 apps/api/dist/
 packages/*/dist/
 
@@ -167,9 +158,3 @@ packages/*/dist/
 HOSTINGER-FRONTEND-*/
 RAPA-GO-HOSTINGER-*.zip
 RAPA-GO-FRONTEND*.zip
-
-release-output/
-*.jks
-*.keystore
-key.properties
-local.properties

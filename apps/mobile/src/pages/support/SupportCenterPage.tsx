@@ -18,7 +18,6 @@ import {
   IonSelect,
   IonSelectOption,
   IonSpinner,
-  IonText,
   IonTextarea,
   IonTitle,
   IonToolbar,
@@ -26,7 +25,6 @@ import {
 } from "@ionic/react";
 import { useCallback, useEffect, useMemo, useState, type CSSProperties } from "react";
 import { arrowBackOutline, homeOutline } from "ionicons/icons";
-import { RAPAGO_CONTACT } from "@rapa-go/shared";
 import { useHistory } from "react-router-dom";
 import { useAuth } from "../../features/auth/index.js";
 import { ridesService, type DriverRideData, type RideRequestData } from "../../features/rides/rides.service.js";
@@ -38,6 +36,7 @@ import {
   type SupportPriority,
 } from "../../features/support/support.service.js";
 
+const SUPPORT_PHONE = "56947964171";
 const CATEGORY_LABEL: Record<SupportCategory, string> = {
   support: "Ayuda general",
   complaint: "Reclamo",
@@ -62,6 +61,29 @@ const STATUS_COLOR: Record<string, string> = {
   closed: "medium",
   rejected: "danger",
 };
+
+/* Acento lateral por estado (paleta RAPA GO) */
+const STATUS_ACCENT: Record<string, string> = {
+  open: "#c89b3c",
+  in_review: "#d6a640",
+  waiting_user: "#d9c3a0",
+  resolved: "#5a8a4a",
+  closed: "#8a8577",
+  rejected: "#b84f2e",
+};
+
+const formItemStyle = {
+  "--background": "#ffffff",
+  "--border-color": "transparent",
+  "--highlight-color-focused": "#c89b3c",
+  "--padding-start": "14px",
+  "--inner-padding-end": "12px",
+  border: "1.5px solid rgba(200,155,60,.30)",
+  borderRadius: "14px",
+  marginBottom: "10px",
+  boxShadow: "0 4px 14px rgba(120,84,20,.06)",
+  overflow: "hidden",
+} as CSSProperties;
 
 type RideOption = Pick<RideRequestData, "id" | "originText" | "destinationText" | "status" | "completedAt"> | Pick<DriverRideData, "id" | "originText" | "destinationText" | "status" | "completedAt">;
 
@@ -201,7 +223,7 @@ export function SupportCenterPage(): JSX.Element {
     }
   }
 
-  const whatsappUrl = `https://wa.me/${RAPAGO_CONTACT.supportPhone}?text=${encodeURIComponent("Hola RAPA GO, necesito ayuda con mi cuenta o un viaje.")}`;
+  const whatsappUrl = `https://wa.me/${SUPPORT_PHONE}?text=${encodeURIComponent("Hola RAPA GO, necesito ayuda con mi cuenta o un viaje.")}`;
 
   return (
     <IonPage>
@@ -248,70 +270,145 @@ export function SupportCenterPage(): JSX.Element {
       <IonContent className="ion-padding" style={{ "--background": "linear-gradient(180deg,#fff7e8,#eed5a4)" } as CSSProperties}>
         <IonRefresher slot="fixed" onIonRefresh={(event) => void load().finally(() => event.detail.complete())}><IonRefresherContent /></IonRefresher>
         <div style={{ maxWidth: 760, margin: "0 auto", paddingBottom: 90 }}>
-          <IonCard style={{ borderRadius: 24, background: "#111827", color: "#fff" }}>
-            <IonCardContent>
-              <h1 style={{ margin: 0, fontSize: "1.35rem", fontWeight: 950 }}>Soporte RAPA GO</h1>
-              <p style={{ color: "rgba(255,255,255,.76)", lineHeight: 1.4 }}>Crea un reclamo, reporta un objeto perdido o revisa el seguimiento administrativo con un folio único.</p>
-              <p style={{ color: "rgba(255,255,255,.88)", lineHeight: 1.45, fontWeight: 750 }}>
-                Atención humana todos los días de {RAPAGO_CONTACT.supportHours}, {RAPAGO_CONTACT.supportTimeZone}. No se ofrece atención humana 24/7.
-              </p>
-              <p style={{ color: "rgba(255,255,255,.72)", lineHeight: 1.4, fontSize: ".84rem" }}>
-                {RAPAGO_CONTACT.afterHoursMessage}
-              </p>
-              <IonButton href={whatsappUrl} target="_blank" color="success" expand="block">WhatsApp institucional</IonButton>
-              <IonButton href={`mailto:${RAPAGO_CONTACT.supportEmail}`} fill="outline" color="light" expand="block">{RAPAGO_CONTACT.supportEmail}</IonButton>
-              <IonButton href={`mailto:${RAPAGO_CONTACT.claimsEmail}`} fill="outline" color="light" expand="block">{RAPAGO_CONTACT.claimsEmail}</IonButton>
+          <IonCard
+            style={{
+              borderRadius: 24,
+              background: "linear-gradient(135deg,#171717 0%,#241d14 60%,#3a2c12 100%)",
+              color: "#fff",
+              border: "1px solid rgba(214,166,64,.45)",
+              boxShadow: "0 22px 56px rgba(60,40,10,.35)",
+              position: "relative",
+              overflow: "hidden",
+            }}
+          >
+            <div
+              aria-hidden
+              style={{
+                position: "absolute",
+                top: 0,
+                left: 0,
+                right: 0,
+                height: 4,
+                background: "linear-gradient(90deg, transparent, #f8d879 30%, #d6a640 55%, #f8d879 70%, transparent)",
+              }}
+            />
+            <IonCardContent style={{ padding: "22px 20px" }}>
+              <p style={{ margin: "0 0 6px", color: "#f8d879", fontWeight: 950, letterSpacing: ".08em", textTransform: "uppercase", fontSize: ".72rem" }}>Centro de ayuda</p>
+              <h1 style={{ margin: 0, fontSize: "1.4rem", fontWeight: 950, lineHeight: 1.15 }}>Soporte RAPA GO</h1>
+              <p style={{ color: "rgba(255,255,255,.78)", lineHeight: 1.5, margin: "10px 0 16px" }}>Crea un reclamo, reporta un objeto perdido o revisa el seguimiento administrativo con un folio único.</p>
+              <IonButton href={whatsappUrl} target="_blank" color="success" expand="block" style={{ "--border-radius": "16px", height: "50px", fontWeight: 900, letterSpacing: ".02em", textTransform: "none" }}>WhatsApp para urgencias</IonButton>
             </IonCardContent>
           </IonCard>
 
-          {error && <IonText color="danger"><p style={{ fontWeight: 850 }}>{error}</p></IonText>}
-          {success && <IonText color="success"><p style={{ fontWeight: 900 }}>{success}</p></IonText>}
+          {error && (
+            <div style={{ margin: "14px 0", padding: "12px 14px", borderRadius: 16, background: "rgba(184,79,46,.12)", border: "1.5px solid rgba(184,79,46,.45)", color: "#8a2f18", fontWeight: 850, lineHeight: 1.4 }}>
+              {error}
+            </div>
+          )}
+          {success && (
+            <div style={{ margin: "14px 0", padding: "12px 14px", borderRadius: 16, background: "rgba(200,155,60,.16)", border: "1.5px solid rgba(200,155,60,.55)", color: "#6b4f12", fontWeight: 900, lineHeight: 1.4 }}>
+              {success}
+            </div>
+          )}
 
-          <IonCard style={{ borderRadius: 24 }}>
-            <IonCardContent>
-              <h2 style={{ margin: "0 0 12px", fontWeight: 950 }}>Nueva solicitud</h2>
-              <IonItem><IonLabel position="stacked">Tipo</IonLabel><IonSelect value={category} onIonChange={(event) => { setCategory(event.detail.value as SupportCategory); setRideId(""); }}>
+          <IonCard style={{ borderRadius: 24, border: "1px solid rgba(200,155,60,.35)", boxShadow: "0 18px 46px rgba(120,84,20,.14)" }}>
+            <IonCardContent style={{ padding: "22px 20px" }}>
+              <h2 style={{ margin: "0 0 14px", fontWeight: 950, display: "flex", alignItems: "center", gap: 10, color: "#1a1a1a" }}>
+                <span aria-hidden style={{ width: 20, height: 4, borderRadius: 2, background: "linear-gradient(90deg,#d6a640,#c89b3c)", boxShadow: "0 2px 8px rgba(200,155,60,.40)" }} />
+                Nueva solicitud
+              </h2>
+              <IonItem style={formItemStyle}><IonLabel position="stacked">Tipo</IonLabel><IonSelect value={category} onIonChange={(event) => { setCategory(event.detail.value as SupportCategory); setRideId(""); }}>
                 {Object.entries(CATEGORY_LABEL).map(([value, label]) => <IonSelectOption key={value} value={value}>{label}</IonSelectOption>)}
               </IonSelect></IonItem>
-              <IonItem><IonLabel position="stacked">Prioridad</IonLabel><IonSelect value={category === "safety" ? "urgent" : priority} disabled={category === "safety"} onIonChange={(event) => setPriority(event.detail.value as SupportPriority)}>
+              <IonItem style={formItemStyle}><IonLabel position="stacked">Prioridad</IonLabel><IonSelect value={category === "safety" ? "urgent" : priority} disabled={category === "safety"} onIonChange={(event) => setPriority(event.detail.value as SupportPriority)}>
                 <IonSelectOption value="low">Baja</IonSelectOption><IonSelectOption value="normal">Normal</IonSelectOption><IonSelectOption value="high">Alta</IonSelectOption><IonSelectOption value="urgent">Urgente</IonSelectOption>
               </IonSelect></IonItem>
-              <IonItem><IonLabel position="stacked">Viaje relacionado</IonLabel><IonSelect value={rideId} placeholder="Sin viaje relacionado" onIonChange={(event) => setRideId(String(event.detail.value ?? ""))}>
+              <IonItem style={formItemStyle}><IonLabel position="stacked">Viaje relacionado</IonLabel><IonSelect value={rideId} placeholder="Sin viaje relacionado" onIonChange={(event) => setRideId(String(event.detail.value ?? ""))}>
                 <IonSelectOption value="">Sin viaje relacionado</IonSelectOption>
                 {selectableRides.map((ride) => <IonSelectOption key={ride.id} value={ride.id}>{ride.originText} → {ride.destinationText} · {ride.status}</IonSelectOption>)}
               </IonSelect><IonNote slot="helper">Objetos perdidos: solo viajes completados.</IonNote></IonItem>
-              <IonItem><IonLabel position="stacked">Asunto</IonLabel><IonInput value={subject} maxlength={140} onIonInput={(event) => setSubject(String(event.detail.value ?? ""))} /></IonItem>
-              <IonItem><IonLabel position="stacked">Descripción</IonLabel><IonTextarea value={description} maxlength={4000} rows={5} autoGrow onIonInput={(event) => setDescription(String(event.detail.value ?? ""))} /></IonItem>
+              <IonItem style={formItemStyle}><IonLabel position="stacked">Asunto</IonLabel><IonInput value={subject} maxlength={140} onIonInput={(event) => setSubject(String(event.detail.value ?? ""))} /></IonItem>
+              <IonItem style={formItemStyle}><IonLabel position="stacked">Descripción</IonLabel><IonTextarea value={description} maxlength={4000} rows={5} autoGrow onIonInput={(event) => setDescription(String(event.detail.value ?? ""))} /></IonItem>
               {category === "lost_item" && <>
-                <IonItem><IonLabel position="stacked">Objeto perdido</IonLabel><IonInput value={lostItem} maxlength={1500} onIonInput={(event) => setLostItem(String(event.detail.value ?? ""))} /></IonItem>
-                <IonItem><IonLabel position="stacked">Última vez que lo viste</IonLabel><IonInput type="datetime-local" value={lastSeenAt} onIonInput={(event) => setLastSeenAt(String(event.detail.value ?? ""))} /></IonItem>
+                <IonItem style={formItemStyle}><IonLabel position="stacked">Objeto perdido</IonLabel><IonInput value={lostItem} maxlength={1500} onIonInput={(event) => setLostItem(String(event.detail.value ?? ""))} /></IonItem>
+                <IonItem style={formItemStyle}><IonLabel position="stacked">Última vez que lo viste</IonLabel><IonInput type="datetime-local" value={lastSeenAt} onIonInput={(event) => setLastSeenAt(String(event.detail.value ?? ""))} /></IonItem>
               </>}
-              <IonItem><IonLabel position="stacked">Celular de contacto (opcional)</IonLabel><IonInput type="tel" value={phone} maxlength={30} onIonInput={(event) => setPhone(String(event.detail.value ?? ""))} /></IonItem>
-              <IonButton expand="block" color="warning" disabled={creating} onClick={() => void createCase()} style={{ marginTop: 16, fontWeight: 950 }}>
+              <IonItem style={formItemStyle}><IonLabel position="stacked">Celular de contacto (opcional)</IonLabel><IonInput type="tel" value={phone} maxlength={30} onIonInput={(event) => setPhone(String(event.detail.value ?? ""))} /></IonItem>
+              <IonButton expand="block" color="warning" disabled={creating} onClick={() => void createCase()} style={{ marginTop: 16, "--border-radius": "16px", height: "52px", fontWeight: 950, letterSpacing: ".02em", textTransform: "none" }}>
                 {creating ? <IonSpinner name="dots" /> : "Enviar a administración"}
               </IonButton>
             </IonCardContent>
           </IonCard>
 
-          <h2 style={{ fontWeight: 950, margin: "22px 4px 8px" }}>Mis solicitudes</h2>
-          {loading ? <div style={{ textAlign: "center", padding: 24 }}><IonSpinner /></div> : cases.length === 0 ? <IonCard><IonCardContent>No tienes solicitudes todavía.</IonCardContent></IonCard> : <IonList style={{ background: "transparent" }}>
-            {cases.map((item) => <IonCard key={item.id} button onClick={() => void openDetail(item.id)} style={{ borderRadius: 20 }}>
-              <IonCardContent>
-                <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "flex-start" }}><div><strong>{item.subject}</strong><div style={{ fontSize: ".76rem", color: "#6b7280", marginTop: 4 }}>{item.trackingCode} · {CATEGORY_LABEL[item.category]}</div></div><IonBadge color={STATUS_COLOR[item.status] ?? "medium"}>{STATUS_LABEL[item.status] ?? item.status}</IonBadge></div>
-                <div style={{ marginTop: 8, fontSize: ".78rem", color: "#4b5563" }}>Actualizado: {formatDate(item.updatedAt)}</div>
-              </IonCardContent>
-            </IonCard>)}
-          </IonList>}
+          <h2 style={{ fontWeight: 950, margin: "26px 4px 10px", display: "flex", alignItems: "center", gap: 10, color: "#1a1a1a" }}>
+            <span aria-hidden style={{ width: 20, height: 4, borderRadius: 2, background: "linear-gradient(90deg,#d6a640,#c89b3c)", boxShadow: "0 2px 8px rgba(200,155,60,.40)" }} />
+            Mis solicitudes
+          </h2>
+          {loading ? (
+            <div style={{ textAlign: "center", padding: 24 }}><IonSpinner /></div>
+          ) : cases.length === 0 ? (
+            <IonCard style={{ borderRadius: 20, border: "1px dashed rgba(200,155,60,.50)", boxShadow: "none" }}>
+              <IonCardContent style={{ textAlign: "center", padding: "26px 18px", color: "#6b5f43", fontWeight: 750 }}>No tienes solicitudes todavía.</IonCardContent>
+            </IonCard>
+          ) : (
+            <IonList style={{ background: "transparent" }}>
+              {cases.map((item) => (
+                <IonCard
+                  key={item.id}
+                  button
+                  onClick={() => void openDetail(item.id)}
+                  style={{
+                    borderRadius: 20,
+                    border: "1px solid rgba(200,155,60,.28)",
+                    borderLeft: `5px solid ${STATUS_ACCENT[item.status] ?? "#c89b3c"}`,
+                    boxShadow: "0 12px 30px rgba(120,84,20,.10)",
+                    marginInline: 0,
+                  }}
+                >
+                  <IonCardContent style={{ padding: "16px 16px" }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "flex-start" }}>
+                      <div style={{ minWidth: 0 }}>
+                        <strong style={{ fontSize: ".98rem", lineHeight: 1.3 }}>{item.subject}</strong>
+                        <div style={{ fontSize: ".76rem", color: "#8a7a55", marginTop: 5, fontWeight: 750, letterSpacing: ".02em" }}>{item.trackingCode} · {CATEGORY_LABEL[item.category]}</div>
+                      </div>
+                      <IonBadge color={STATUS_COLOR[item.status] ?? "medium"} style={{ flexShrink: 0, borderRadius: 999, padding: "5px 10px", fontWeight: 850 }}>{STATUS_LABEL[item.status] ?? item.status}</IonBadge>
+                    </div>
+                    <div style={{ marginTop: 10, fontSize: ".78rem", color: "#6b5f43", fontWeight: 650 }}>Actualizado: {formatDate(item.updatedAt)}</div>
+                  </IonCardContent>
+                </IonCard>
+              ))}
+            </IonList>
+          )}
         </div>
 
         <IonModal isOpen={detail !== null || detailLoading} onDidDismiss={() => setDetail(null)}>
-          <IonHeader><IonToolbar color="dark"><IonTitle>{detail?.supportCase.trackingCode ?? "Cargando caso"}</IonTitle><IonButton slot="end" fill="clear" color="light" onClick={() => setDetail(null)}>Cerrar</IonButton></IonToolbar></IonHeader>
-          <IonContent className="ion-padding">
+          <IonHeader>
+            <IonToolbar
+              style={{
+                "--background": "linear-gradient(135deg,#171717 0%,#241d14 60%,#3a2c12 100%)",
+                "--color": "#f6f2ec",
+                "border-bottom": "2px solid rgba(214,166,64,.45)",
+              } as CSSProperties}
+            >
+              <IonTitle style={{ fontWeight: 950, letterSpacing: ".02em" }}>{detail?.supportCase.trackingCode ?? "Cargando caso"}</IonTitle>
+              <IonButton slot="end" fill="clear" style={{ "--color": "#f8d879", fontWeight: 900, textTransform: "none" } as CSSProperties} onClick={() => setDetail(null)}>Cerrar</IonButton>
+            </IonToolbar>
+          </IonHeader>
+          <IonContent className="ion-padding" style={{ "--background": "linear-gradient(180deg,#fff7e8,#eed5a4)" } as CSSProperties}>
             {detailLoading && !detail ? <div style={{ textAlign: "center", padding: 30 }}><IonSpinner /></div> : detail && <div style={{ maxWidth: 680, margin: "0 auto" }}>
-              <IonCard><IonCardContent><div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}><h2 style={{ margin: 0 }}>{detail.supportCase.subject}</h2><IonBadge color={STATUS_COLOR[detail.supportCase.status] ?? "medium"}>{STATUS_LABEL[detail.supportCase.status] ?? detail.supportCase.status}</IonBadge></div><p>{detail.supportCase.description}</p>{detail.supportCase.adminResolution && <p><strong>Resolución:</strong> {detail.supportCase.adminResolution}</p>}</IonCardContent></IonCard>
-              <h3>Seguimiento</h3>
-              {detail.events.map((event) => <IonCard key={event.id}><IonCardContent><div style={{ fontSize: ".76rem", color: "#6b7280" }}>{formatDate(event.createdAt)} · {event.actorRole}</div>{event.publicMessage && <p style={{ marginBottom: 0 }}>{event.publicMessage}</p>}{event.fromStatus !== event.toStatus && event.toStatus && <IonBadge color={STATUS_COLOR[event.toStatus] ?? "medium"}>{STATUS_LABEL[event.toStatus] ?? event.toStatus}</IonBadge>}</IonCardContent></IonCard>)}
-              {!['closed','rejected'].includes(detail.supportCase.status) && <IonCard><IonCardContent><IonItem><IonLabel position="stacked">Responder a soporte</IonLabel><IonTextarea value={reply} rows={4} maxlength={3000} onIonInput={(event) => setReply(String(event.detail.value ?? ""))} /></IonItem><IonButton expand="block" disabled={sendingReply || reply.trim().length < 2} onClick={() => void sendReply()}>{sendingReply ? <IonSpinner name="dots" /> : "Enviar respuesta"}</IonButton></IonCardContent></IonCard>}
+              <IonCard style={{ borderRadius: 20, border: "1px solid rgba(200,155,60,.35)", borderLeft: `5px solid ${STATUS_ACCENT[detail.supportCase.status] ?? "#c89b3c"}`, boxShadow: "0 14px 36px rgba(120,84,20,.12)" }}>
+                <IonCardContent>
+                  <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "flex-start" }}><h2 style={{ margin: 0, fontWeight: 950, lineHeight: 1.25 }}>{detail.supportCase.subject}</h2><IonBadge color={STATUS_COLOR[detail.supportCase.status] ?? "medium"} style={{ flexShrink: 0, borderRadius: 999, padding: "5px 10px", fontWeight: 850 }}>{STATUS_LABEL[detail.supportCase.status] ?? detail.supportCase.status}</IonBadge></div>
+                  <p style={{ lineHeight: 1.55 }}>{detail.supportCase.description}</p>
+                  {detail.supportCase.adminResolution && <p style={{ padding: "10px 12px", borderRadius: 12, background: "rgba(200,155,60,.14)", border: "1px solid rgba(200,155,60,.40)" }}><strong>Resolución:</strong> {detail.supportCase.adminResolution}</p>}
+                </IonCardContent>
+              </IonCard>
+              <h3 style={{ fontWeight: 950, display: "flex", alignItems: "center", gap: 10, margin: "20px 4px 10px" }}>
+                <span aria-hidden style={{ width: 18, height: 4, borderRadius: 2, background: "linear-gradient(90deg,#d6a640,#c89b3c)" }} />
+                Seguimiento
+              </h3>
+              {detail.events.map((event) => <IonCard key={event.id} style={{ borderRadius: 16, border: "1px solid rgba(200,155,60,.24)", boxShadow: "0 8px 22px rgba(120,84,20,.08)" }}><IonCardContent style={{ padding: "14px 16px" }}><div style={{ fontSize: ".76rem", color: "#8a7a55", fontWeight: 750, letterSpacing: ".02em" }}>{formatDate(event.createdAt)} · {event.actorRole}</div>{event.publicMessage && <p style={{ marginBottom: 0, lineHeight: 1.5 }}>{event.publicMessage}</p>}{event.fromStatus !== event.toStatus && event.toStatus && <IonBadge color={STATUS_COLOR[event.toStatus] ?? "medium"} style={{ borderRadius: 999, padding: "4px 10px", fontWeight: 850 }}>{STATUS_LABEL[event.toStatus] ?? event.toStatus}</IonBadge>}</IonCardContent></IonCard>)}
+              {!['closed','rejected'].includes(detail.supportCase.status) && <IonCard style={{ borderRadius: 20, border: "1px solid rgba(200,155,60,.35)", boxShadow: "0 14px 36px rgba(120,84,20,.12)" }}><IonCardContent><IonItem style={formItemStyle}><IonLabel position="stacked">Responder a soporte</IonLabel><IonTextarea value={reply} rows={4} maxlength={3000} onIonInput={(event) => setReply(String(event.detail.value ?? ""))} /></IonItem><IonButton expand="block" color="warning" disabled={sendingReply || reply.trim().length < 2} onClick={() => void sendReply()} style={{ "--border-radius": "16px", height: "48px", fontWeight: 950, letterSpacing: ".02em", textTransform: "none" }}>{sendingReply ? <IonSpinner name="dots" /> : "Enviar respuesta"}</IonButton></IonCardContent></IonCard>}
             </div>}
           </IonContent>
         </IonModal>

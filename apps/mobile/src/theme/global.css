@@ -72,95 +72,227 @@ ion-router-outlet {
    WELCOME PAGE
    ========================================================================== */
 
-.welcome-container {
-  display: flex;
-  flex-direction: column;
-  gap: 1.4rem;
-  max-width: 520px;
-  margin: 5rem auto 2rem auto;
-  padding: 38px 28px;
-  border-radius: 28px;
-  background: rgba(20, 23, 30, 0.82) !important;
-  backdrop-filter: blur(18px) !important;
-  -webkit-backdrop-filter: blur(18px) !important;
-  border: 1px solid rgba(255,255,255,0.10);
-  box-shadow:
-    0 25px 60px rgba(0,0,0,.55),
-    inset 0 1px 0 rgba(255,255,255,.05);
-  overflow: hidden;
+/* ==========================================================================
+   RAPA GO — Public toolbar (used by other public pages, NOT /welcome)
+   ========================================================================== */
+
+.public-toolbar {
+  --background: linear-gradient(135deg, #C89B3C 0%, #d6a640 50%, #b07a28 100%);
+  --color: #1a1100;
+  --min-height: 58px;
+  box-shadow: 0 3px 12px rgba(0,0,0,.40);
 }
 
-.welcome-title {
-  margin: 0 0 14px 0;
-  font-size: 2.4rem;
+.public-toolbar-title {
   font-weight: 900;
-  letter-spacing: 1px;
-  background: linear-gradient(135deg, #C89B3C, #F6F2EC, #C89B3C);
+  font-size: 1.15rem;
+  letter-spacing: .06em;
+  color: #1a1100 !important;
+  -webkit-text-fill-color: #1a1100 !important;
+}
+
+/* ==========================================================================
+   RAPA GO — /welcome full-bleed shell (no navbar)
+   ========================================================================== */
+
+.welcome-shell {
+  min-height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: max(env(safe-area-inset-top), 32px) 28px
+           max(env(safe-area-inset-bottom), 28px);
+  gap: 0;
+}
+
+/* ── Hero ─────────────────────────────────────── */
+.welcome-hero {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  text-align: center;
+  padding-bottom: 24px;
+}
+
+.welcome-logo-wrap {
+  width: 108px;
+  height: 108px;
+  border-radius: 30px;
+  overflow: hidden;
+  background: #fff;
+  /* refined border: golden ring */
+  box-shadow:
+    0 0 0 3px rgba(214,166,64,.55),
+    0 0 0 6px rgba(214,166,64,.12),
+    0 20px 44px rgba(0,0,0,.55);
+}
+
+.welcome-logo-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.welcome-brand {
+  margin: 0;
+  font-size: 2.8rem;
+  font-weight: 950;
+  letter-spacing: .1em;
+  background: linear-gradient(135deg, #f8d879 0%, #d6a640 48%, #f8d879 100%);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
+  background-clip: text;
+  line-height: 1;
 }
 
-.welcome-subtitle {
-  margin: 0 0 12px 0;
-  font-size: 1.2rem;
-  font-weight: 700;
+.welcome-tagline {
+  margin: 0;
+  font-size: 0.93rem;
+  font-weight: 600;
+  color: rgba(246,242,236,.65);
   line-height: 1.5;
-  color: #C89B3C;
+  max-width: 270px;
 }
 
-.welcome-status {
-  margin: 0 0 18px 0;
-  font-size: 1rem;
-  line-height: 1.8;
-  color: #F6F2EC;
+/* ── Divider ──────────────────────────────────── */
+.welcome-divider-line {
+  width: 52px;
+  height: 2px;
+  background: linear-gradient(90deg, transparent, rgba(214,166,64,.7), transparent);
+  border-radius: 2px;
+  margin: 0 auto 28px;
 }
 
-.welcome-container span,
-.welcome-container p {
-  text-shadow: 0 2px 4px rgba(0,0,0,0.9);
-}
-
-.welcome-buttons {
+/* ── CTA stack ────────────────────────────────── */
+.welcome-cta-stack {
   display: flex;
   flex-direction: column;
-  gap: 16px;
-  margin-top: 10px;
+  gap: 14px;
+  width: 100%;
+  max-width: 400px;
 }
 
-.welcome-buttons ion-button,
-.welcome-container ion-button {
+/* Primary: solid gold fill + terracotta gradient, gold border */
+.welcome-btn-login {
+  --border-radius: 20px;
+  --background: linear-gradient(135deg, #f8d879 0%, #d6a640 46%, #c08830 100%);
+  --background-activated: linear-gradient(135deg, #d6a640, #9a6c1e);
+  --box-shadow: 0 14px 30px rgba(214,166,64,.36);
+  --color: #1a0f00;
+  color: #1a0f00;
+  /* visible golden border */
+  --border-width: 1.5px;
+  --border-style: solid;
+  --border-color: rgba(255,224,120,.60);
   height: 58px;
   font-size: 1rem;
+  font-weight: 950;
+  letter-spacing: .04em;
+  text-transform: none;
+}
+
+/* Secondary: dark fill with clear golden border */
+.welcome-btn-register {
+  --border-radius: 20px;
+  --background: rgba(26,22,16,.82);
+  --background-activated: rgba(40,34,22,.90);
+  --box-shadow: 0 10px 24px rgba(0,0,0,.35);
+  --color: #f8d879;
+  color: #f8d879;
+  --border-width: 1.5px;
+  --border-style: solid;
+  --border-color: rgba(214,166,64,.72);
+  height: 58px;
+  font-size: 1rem;
+  font-weight: 850;
+  letter-spacing: .04em;
+  text-transform: none;
+}
+
+/* Tertiary: ghost outline */
+.welcome-btn-profile {
+  --border-radius: 20px;
+  --border-color: rgba(214,166,64,.36);
+  --border-width: 1.5px;
+  --color: rgba(246,242,236,.55);
+  --background: rgba(255,255,255,.02);
+  height: 50px;
+  font-size: 0.9rem;
+  font-weight: 750;
+  letter-spacing: .03em;
+  text-transform: none;
+}
+
+/* ── Footer links ────────────────────────────── */
+.welcome-footer-links {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0;
+  margin-top: 22px;
+  flex-wrap: wrap;
+}
+
+.welcome-link {
+  --padding-start: 8px;
+  --padding-end: 8px;
+  font-size: 0.83rem;
   font-weight: 800;
-  letter-spacing: 0.8px;
+  text-transform: none;
+  opacity: 1;
+  letter-spacing: .02em;
+  text-shadow: 0 1px 2px rgba(0,0,0,.45);
+}
+
+.welcome-link-sep {
+  color: rgba(246,242,236,.55);
+  font-size: 0.85rem;
+  user-select: none;
+  margin: 0 2px;
+}
+
+.welcome-footer-links ion-button.welcome-link[fill="clear"] {
+  --color: #f8d879 !important;
+  color: #f8d879 !important;
+}
+
+.welcome-footer-links ion-button.welcome-link[fill="clear"]::part(native) {
+  color: #f8d879 !important;
+  text-shadow: 0 1px 2px rgba(0,0,0,.45) !important;
+}
+
+/* ── Responsive ──────────────────────────────── */
+@media (max-width: 400px) {
+  .welcome-brand { font-size: 2.3rem; }
+  .welcome-logo-wrap { width: 92px; height: 92px; border-radius: 26px; }
+  .welcome-btn-login,
+  .welcome-btn-register { height: 54px; }
+  .welcome-btn-profile { height: 48px; }
+}
+
+/* ── Auth flow — register badge ─────────────── */
+.rapago-auth-register-badge {
+  display: inline-flex;
+  align-self: center;
+  align-items: center;
+  padding: 3px 12px;
+  border-radius: 999px;
+  background: linear-gradient(135deg, rgba(184,79,46,.22), rgba(214,166,64,.18));
+  border: 1px solid rgba(214,166,64,.30);
+  margin-bottom: 6px;
+}
+
+.rapago-auth-register-badge span {
+  font-size: 0.74rem;
+  font-weight: 800;
+  color: #f8d879;
+  letter-spacing: .04em;
   text-transform: uppercase;
-  --border-radius: 16px;
-  margin: 0;
 }
 
-.btn-auth-primary {
-  --background: linear-gradient(135deg, #C89B3C, #D9C3A0);
-  --color: #F6F2EC;
-  box-shadow: 0 10px 25px rgba(200,155,60,.35);
-}
-
-.btn-register {
-  --background: linear-gradient(135deg, #C89B3C, #D9C3A0);
-  --color: #1A1A1A;
-  box-shadow: 0 10px 25px rgba(200,169,110,.35);
-}
-
-.btn-perfil {
-  --background: rgba(10,12,16,.55);
-  --color: #F6F2EC;
-  border: 1px solid rgba(255,255,255,.18);
-  box-shadow: 0 8px 18px rgba(0,0,0,.25);
-}
-
-.welcome-buttons ion-button:hover {
-  transform: translateY(-2px);
-  transition: all .25s ease;
-}
 
 /* ==========================================================================
    FORMULARIOS
@@ -276,19 +408,29 @@ ion-textarea textarea {
 
 .passenger-home-user-text {
   min-width: 0;
+  flex: 1;
 }
 
+/* Alturas estables: evita reflow cuando el nombre carga asíncrono */
 .passenger-home-greeting {
   color: #F6F2EC;
   font-weight: 900;
   font-size: 1.05rem;
   line-height: 1.2;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-height: 1.26rem;
 }
 
 .passenger-home-question {
   color: rgba(255,255,255,0.86);
   font-size: 0.8rem;
   margin-top: 2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-height: 0.96rem;
 }
 
 /* Perfil visible en todos los celulares */
@@ -416,6 +558,16 @@ ion-textarea textarea {
   cursor: pointer;
   background: rgba(10,12,16,0.92);
   box-shadow: 0 10px 26px rgba(0,0,0,0.25);
+  transition: transform 0.2s cubic-bezier(0.22, 1, 0.36, 1), box-shadow 0.2s ease;
+}
+
+.quick-access-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 14px 32px rgba(0,0,0,0.30);
+}
+
+.quick-access-card:active {
+  transform: scale(0.97);
 }
 
 .quick-access-content {
@@ -448,6 +600,10 @@ ion-textarea textarea {
   color: #D9C3A0;
   font-size: 0.75rem;
   margin-top: 2px;
+  min-height: 1.05rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 /* Referidos */
@@ -461,6 +617,18 @@ ion-textarea textarea {
   gap: 14px !important;
   cursor: pointer;
   box-shadow: 0 12px 28px rgba(0,0,0,0.25);
+  transition: transform 0.2s cubic-bezier(0.22, 1, 0.36, 1), box-shadow 0.2s ease;
+  border: 1.5px solid rgba(255, 224, 120, 0.22);
+}
+
+.referral-banner:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 16px 36px rgba(0,0,0,0.30);
+  border-color: rgba(255, 224, 120, 0.40);
+}
+
+.referral-banner:active {
+  transform: scale(0.98);
 }
 
 .referral-icon {
@@ -499,6 +667,12 @@ ion-textarea textarea {
   border-radius: 18px;
   background: rgba(10,12,16,0.92);
   box-shadow: 0 12px 30px rgba(0,0,0,0.28);
+  border: 1px solid rgba(210, 164, 58, 0.18);
+  transition: box-shadow 0.2s ease;
+}
+
+.join-card:hover {
+  box-shadow: 0 16px 38px rgba(0,0,0,0.32);
 }
 
 .join-card-title {
@@ -564,50 +738,7 @@ ion-toggle {
    RESPONSIVE
    ========================================================================== */
 
-@media (max-width: 768px) {
-  .welcome-container {
-    margin: 2rem 16px;
-    padding: 30px 22px;
-  }
-
-  .welcome-title {
-    font-size: 2rem;
-  }
-
-  .welcome-subtitle {
-    font-size: 1.05rem;
-  }
-
-  .welcome-status {
-    font-size: 0.95rem;
-  }
-}
-
 @media (max-width: 480px) {
-  .welcome-container {
-    margin: 1.5rem 12px;
-    padding: 24px 18px;
-    border-radius: 22px;
-  }
-
-  .welcome-title {
-    font-size: 1.8rem;
-  }
-
-  .welcome-subtitle {
-    font-size: 1rem;
-  }
-
-  .welcome-status {
-    font-size: 0.92rem;
-    line-height: 1.7;
-  }
-
-  .welcome-buttons ion-button {
-    height: 54px;
-    font-size: 0.95rem;
-  }
-
   .passenger-home-header {
     padding: calc(env(safe-area-inset-top) + 10px) 18px 16px !important;
   }
@@ -897,7 +1028,7 @@ ion-badge[color="danger"] {
 
 .home-image-carousel {
   margin-top: 16px;
-  height: 190px;
+  height: 220px;
   border-radius: 22px;
   overflow: hidden;
   position: relative;
@@ -972,13 +1103,57 @@ ion-badge[color="danger"] {
   background: var(--rapago-gold);
 }
 
+/* Hero CTA — botón primario sobre el carrusel */
+.rapago-hero-cta {
+  --border-radius: 18px;
+  --background: linear-gradient(135deg, #c89b3c 0%, #d2a43a 50%, #f8d879 100%);
+  --background-activated: linear-gradient(135deg, #b98517, #c89b3c);
+  --box-shadow: 0 10px 28px rgba(210, 164, 58, 0.35);
+  --color: #111;
+  color: #111;
+  height: 48px;
+  margin-top: 12px;
+  font-size: 0.92rem;
+  font-weight: 950;
+  letter-spacing: 0.02em;
+  text-transform: none;
+  border: 1.5px solid rgba(255, 224, 120, 0.55);
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.rapago-hero-cta:active {
+  transform: scale(0.97);
+}
+
+/* Eyebrow / kicker sobre títulos de sección */
+.passenger-home-section-eyebrow {
+  color: #9a6a10;
+  font-size: 0.70rem;
+  font-weight: 900;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  margin-bottom: 4px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.passenger-home-section-eyebrow::before {
+  content: "";
+  width: 16px;
+  height: 3px;
+  border-radius: 2px;
+  background: linear-gradient(90deg, #d2a43a, #c89b3c);
+  flex-shrink: 0;
+}
+
 .passenger-warning-whatsapp {
   margin-top: 8px;
 }
 
 @media (max-width: 480px) {
   .home-image-carousel {
-    height: 175px;
+    height: 200px;
     border-radius: 20px;
   }
 
@@ -993,7 +1168,7 @@ ion-badge[color="danger"] {
 
 @media (max-width: 360px) {
   .home-image-carousel {
-    height: 160px;
+    height: 185px;
   }
   
 }
@@ -1010,15 +1185,17 @@ ion-badge[color="danger"] {
   object-fit: cover;
   background: #ffffff;
   padding: 4px;
+  display: block;
+  aspect-ratio: 1 / 1;
   box-shadow:
     0 4px 12px rgba(0, 0, 0, 0.24),
     0 0 0 2px rgba(246, 242, 236, 0.20);
   flex-shrink: 0;
+  transition: transform 0.2s ease;
 }
 
 .passenger-home-logo:hover {
   transform: scale(1.02);
-  transition: transform 0.2s ease;
 }
 
 @media (max-width: 480px) {
@@ -1591,7 +1768,7 @@ ion-tab-button ion-icon {
 ion-tab-button ion-label {
   display: block !important;
   width: 100% !important;
-  max-width: 38px !important;
+  max-width: 52px !important;
   margin: 0 auto !important;
 
   color: inherit !important;
@@ -1630,8 +1807,16 @@ ion-tab-button[aria-selected="true"] ion-label {
   }
 
   ion-tab-button ion-label {
-    max-width: 42px !important;
+    max-width: 56px !important;
     font-size: 6.8px !important;
+  }
+}
+
+/* Pantallas muy angostas (≤360px): labels más compactos */
+@media (max-width: 360px) {
+  ion-tab-button ion-label {
+    max-width: 44px !important;
+    font-size: 5.8px !important;
   }
 }
 
@@ -2754,11 +2939,11 @@ ion-item ion-select {
   opacity: 1 !important;
 }
 
-/* Shadow parts de Ionic moderno */
-ion-input::part(native),
-ion-textarea::part(native),
-ion-select::part(text),
-ion-select::part(placeholder) {
+/* Shadow parts de Ionic moderno — SOLO dentro de tarjetas claras (ion-card) */
+ion-card ion-input::part(native),
+ion-card ion-textarea::part(native),
+ion-card ion-select::part(text),
+ion-card ion-select::part(placeholder) {
   color: #111111 !important;
   -webkit-text-fill-color: #111111 !important;
   opacity: 1 !important;
@@ -2766,17 +2951,15 @@ ion-select::part(placeholder) {
   font-weight: 900 !important;
 }
 
-ion-input::part(placeholder),
-ion-textarea::part(placeholder) {
+ion-card ion-input::part(placeholder),
+ion-card ion-textarea::part(placeholder) {
   color: #6b6b6b !important;
   -webkit-text-fill-color: #6b6b6b !important;
   opacity: 1 !important;
   font-weight: 800 !important;
 }
 
-/* Fallback por si el navegador expone input/textarea interno */
-ion-input input,
-ion-textarea textarea,
+/* Fallback por si el navegador expone input/textarea interno (solo tarjetas claras) */
 ion-card ion-input input,
 ion-card ion-textarea textarea {
   color: #111111 !important;
@@ -2786,8 +2969,8 @@ ion-card ion-textarea textarea {
   font-weight: 900 !important;
 }
 
-ion-input input::placeholder,
-ion-textarea textarea::placeholder {
+ion-card ion-input input::placeholder,
+ion-card ion-textarea textarea::placeholder {
   color: #6b6b6b !important;
   -webkit-text-fill-color: #6b6b6b !important;
   opacity: 1 !important;
@@ -2815,10 +2998,10 @@ ion-button[color="danger"][fill="outline"] {
   font-weight: 950 !important;
 }
 
-/* Fechas y números: que se vean negros */
-input[type="date"],
-input[type="number"],
-input[type="tel"] {
+/* Fechas y números dentro de tarjetas claras: que se vean negros */
+ion-card input[type="date"],
+ion-card input[type="number"],
+ion-card input[type="tel"] {
   color: #111111 !important;
   -webkit-text-fill-color: #111111 !important;
   font-weight: 900 !important;
@@ -4158,4 +4341,652 @@ ion-modal.facebook-step-modal::part(content) {
   .facebook-step-content::part(scroll) {
     padding: 12px 10px 24px !important;
   }
+}
+
+/* ==========================================================================
+   RAPA GO — Auth (Login / Register) design system
+   Scoped under .rapago-auth-dark so it never clashes with the global
+   light-form rules that force #111 text. Palette: gold / terracotta / dark.
+   ========================================================================== */
+
+/* Card / form shell */
+.rapago-auth-card {
+  width: min(92vw, 460px);
+  margin: 26px auto 26px;
+  padding: 22px 22px 26px;
+  border-radius: 28px;
+  background: linear-gradient(180deg, rgba(28, 26, 23, 0.97), rgba(14, 13, 12, 0.98));
+  border: 2px solid rgba(214, 166, 64, 0.55);
+  box-shadow:
+    0 0 0 4px rgba(214, 166, 64, 0.08),
+    0 0 32px rgba(214, 166, 64, 0.16),
+    0 26px 70px rgba(0, 0, 0, 0.50),
+    inset 0 0 0 1px rgba(214, 166, 64, 0.14),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  color: #f6f2ec;
+  display: flex;
+  flex-direction: column;
+  transition: border-color 0.3s ease, box-shadow 0.3s ease;
+}
+
+.rapago-auth-card:focus-within {
+  border-color: rgba(248, 216, 121, 0.72);
+  box-shadow:
+    0 0 0 6px rgba(214, 166, 64, 0.10),
+    0 0 42px rgba(214, 166, 64, 0.24),
+    0 26px 70px rgba(0, 0, 0, 0.50),
+    inset 0 0 0 1px rgba(214, 166, 64, 0.22),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06);
+}
+
+/* Brand header: back arrow + centered logo on the same row */
+.rapago-auth-brand-header {
+  display: grid;
+  grid-template-columns: 42px 1fr 42px;
+  align-items: center;
+  column-gap: 8px;
+  width: 100%;
+  margin: 0 0 8px;
+}
+
+.rapago-auth-back-button {
+  grid-column: 1;
+  justify-self: start;
+  width: 42px;
+  height: 42px;
+  border: 1px solid rgba(214, 166, 64, 0.45);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.06);
+  color: #f8d879;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  transition: background 0.2s ease, transform 0.2s ease;
+}
+
+.rapago-auth-back-button:hover {
+  background: rgba(214, 166, 64, 0.16);
+  transform: translateX(-1px);
+}
+
+.rapago-auth-back-button ion-icon {
+  font-size: 1.25rem;
+}
+
+.rapago-auth-brand-logo-wrap {
+  grid-column: 2;
+  width: 100%;
+  display: flex;
+  justify-content: center;
+  margin: 0;
+}
+
+/* Mismo tamaño y tratamiento que el logo de /welcome (.welcome-logo-wrap) */
+.rapago-auth-brand-logo {
+  width: 108px;
+  height: 108px;
+  border-radius: 30px;
+  padding: 0;
+  object-fit: cover;
+  background: #ffffff;
+  box-shadow:
+    0 0 0 3px rgba(214, 166, 64, 0.55),
+    0 0 0 6px rgba(214, 166, 64, 0.12),
+    0 20px 44px rgba(0, 0, 0, 0.55);
+}
+
+/* Replica el responsive de /welcome (.welcome-logo-wrap @ max-width 400px) */
+@media (max-width: 400px) {
+  .rapago-auth-brand-logo {
+    width: 92px;
+    height: 92px;
+    border-radius: 26px;
+  }
+}
+
+/* Typography */
+.rapago-auth-title {
+  margin: 10px 0 4px;
+  text-align: center;
+  font-size: 1.72rem;
+  line-height: 1.1;
+  font-weight: 950;
+  color: #f1c864;
+  letter-spacing: 0.01em;
+}
+
+.rapago-auth-subtitle,
+.rapago-auth-tagline {
+  margin: 0 0 18px;
+  text-align: center;
+  color: rgba(246, 242, 236, 0.72);
+  font-weight: 650;
+  line-height: 1.4;
+  font-size: 0.95rem;
+}
+
+/* Field (ion-item) */
+.rapago-auth-dark .rapago-auth-field {
+  --background: rgba(255, 255, 255, 0.055);
+  --border-color: transparent;
+  --highlight-color-focused: #d6a640;
+  --highlight-color-valid: #d6a640;
+  --highlight-color-invalid: #b84f2e;
+  --padding-start: 14px;
+  --inner-padding-end: 10px;
+  --min-height: 62px;
+  border: 1.5px solid rgba(214, 166, 64, 0.28);
+  border-radius: 16px;
+  margin-bottom: 14px;
+  overflow: hidden;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.rapago-auth-dark .rapago-auth-field.item-has-focus {
+  border-color: rgba(214, 166, 64, 0.75);
+  box-shadow: 0 0 0 3px rgba(214, 166, 64, 0.16);
+}
+
+.rapago-auth-dark .rapago-auth-field.ion-invalid {
+  border-color: rgba(184, 79, 46, 0.8);
+  box-shadow: 0 0 0 3px rgba(184, 79, 46, 0.16);
+}
+
+/* Labels */
+.rapago-auth-dark .rapago-auth-field ion-label {
+  color: #f8d879 !important;
+  font-weight: 800 !important;
+}
+
+/* Leading icon inside a field */
+.rapago-auth-field-icon {
+  color: #c89b3c;
+  font-size: 1.18rem;
+  margin-inline-end: 8px;
+  align-self: center;
+}
+
+/* Password show/hide toggle — only rendered when field has a value, mobile-friendly tap target */
+.rapago-auth-dark .rapago-auth-eye {
+  --color: #d6a640;
+  --background: transparent;
+  --background-hover: rgba(214, 166, 64, 0.14);
+  --background-activated: rgba(214, 166, 64, 0.22);
+  --border-radius: 50%;
+  --padding-start: 0;
+  --padding-end: 0;
+  --padding-top: 0;
+  --padding-bottom: 0;
+  width: 42px;
+  height: 42px;
+  min-height: 42px;
+  /* Keep the button vertically centered regardless of stacked-label
+     which pushes slot="end" to the top of the IonItem */
+  align-self: center;
+  margin: 0 0 0 4px;
+  flex-shrink: 0;
+}
+
+.rapago-auth-dark .rapago-auth-eye ion-icon {
+  font-size: 1.3rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* IonItem slot="end" wrapper — center it on the vertical axis so the eye
+   aligns with the actual input text, not the top of the label+input block */
+.rapago-auth-dark ion-item::part(end) {
+  align-self: center !important;
+  margin-top: 0 !important;
+}
+
+/* Input text — white and robust against the global #111 rules */
+.rapago-auth-dark .rapago-auth-field ion-input,
+.rapago-auth-dark .rapago-auth-field ion-textarea,
+.rapago-auth-dark ion-item ion-input,
+.rapago-auth-dark ion-item ion-textarea,
+.rapago-auth-dark ion-input,
+.rapago-auth-dark ion-textarea {
+  --color: #ffffff !important;
+  --placeholder-color: rgba(255, 255, 255, 0.5) !important;
+  --placeholder-opacity: 1 !important;
+  color: #ffffff !important;
+  font-weight: 700;
+}
+
+.rapago-auth-dark ion-input::part(native),
+.rapago-auth-dark ion-textarea::part(native) {
+  color: #ffffff !important;
+  -webkit-text-fill-color: #ffffff !important;
+  caret-color: #f8d879 !important;
+}
+
+/* This Ionic build renders the real <input> in light DOM (scoped, not shadow),
+   so target it directly to guarantee bright typed text in login AND register. */
+.rapago-auth-dark ion-input input,
+.rapago-auth-dark ion-textarea textarea {
+  color: #ffffff !important;
+  -webkit-text-fill-color: #ffffff !important;
+  caret-color: #f8d879 !important;
+}
+
+.rapago-auth-dark ion-input input::placeholder,
+.rapago-auth-dark ion-textarea textarea::placeholder {
+  color: rgba(255, 255, 255, 0.5) !important;
+  -webkit-text-fill-color: rgba(255, 255, 255, 0.5) !important;
+  opacity: 1 !important;
+}
+
+/* Neutralize browser autofill (kills the blue/yellow box + dark text) */
+.rapago-auth-dark ion-input::part(native):-webkit-autofill,
+.rapago-auth-dark ion-input::part(native):-webkit-autofill:hover,
+.rapago-auth-dark ion-input::part(native):-webkit-autofill:focus,
+.rapago-auth-dark ion-input::part(native):-webkit-autofill:active,
+.rapago-auth-dark ion-input input:-webkit-autofill,
+.rapago-auth-dark ion-input input:-webkit-autofill:hover,
+.rapago-auth-dark ion-input input:-webkit-autofill:focus,
+.rapago-auth-dark ion-input input:-webkit-autofill:active {
+  -webkit-text-fill-color: #ffffff !important;
+  -webkit-box-shadow: 0 0 0 1000px transparent inset !important;
+  caret-color: #f8d879 !important;
+  transition: background-color 9999s ease-in-out 0s;
+}
+
+/* Server error box */
+.rapago-auth-error {
+  background: rgba(184, 79, 46, 0.16);
+  border: 1px solid rgba(184, 79, 46, 0.4);
+  color: #f3c6b4;
+  padding: 10px 12px;
+  border-radius: 14px;
+  font-weight: 800;
+  margin: 0 0 12px;
+}
+
+/* Error notes / messages use a warm terracotta that fits the palette */
+.rapago-auth-dark ion-note[slot="error"],
+.rapago-auth-dark .ion-color-danger {
+  color: #f0906e !important;
+}
+
+/* Forgot-password row */
+.rapago-auth-forgot {
+  display: flex;
+  justify-content: center;
+  margin: 14px 0 18px;
+}
+
+.rapago-auth-dark .rapago-auth-forgot ion-button {
+  --color: #f8d879;
+  font-weight: 800;
+  text-transform: none;
+  margin: 0;
+  letter-spacing: 0.01em;
+}
+
+/* Buttons */
+.rapago-auth-dark .rapago-auth-btn-primary {
+  --border-radius: 16px;
+  --background: linear-gradient(135deg, #f8d879 0%, #d6a640 46%, #b84f2e 100%);
+  --background-activated: linear-gradient(135deg, #c89b3c, #b84f2e);
+  --box-shadow: 0 16px 30px rgba(214, 166, 64, 0.32);
+  --color: #201607;
+  color: #201607;
+  height: 54px;
+  font-weight: 950;
+  margin-top: 8px;
+  text-transform: none;
+}
+
+.rapago-auth-dark .rapago-auth-btn-outline {
+  --border-radius: 16px;
+  --border-color: rgba(214, 166, 64, 0.7);
+  --border-width: 1.5px;
+  --color: #f8d879;
+  --background: rgba(255, 255, 255, 0.02);
+  height: 50px;
+  font-weight: 850;
+  margin-top: 10px;
+  text-transform: none;
+}
+
+.rapago-auth-dark .rapago-auth-btn-clear {
+  --color: #f8d879;
+  font-weight: 850;
+  margin-top: 6px;
+  text-transform: none;
+}
+
+/* Divider with a centered "o" */
+.rapago-auth-divider {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 0 0 8px;
+  color: rgba(246, 242, 236, 0.5);
+  font-weight: 700;
+  font-size: 0.82rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.rapago-auth-divider::before,
+.rapago-auth-divider::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(214, 166, 64, 0.4), transparent);
+}
+
+/* Responsive: mobile-first refinements */
+@media (max-width: 600px) {
+  .rapago-auth-card {
+    width: min(94vw, 440px);
+    margin: 18px auto 22px;
+    padding: 18px 16px 22px;
+    border-radius: 24px;
+  }
+
+  .rapago-auth-tagline {
+    white-space: nowrap;
+    font-size: clamp(0.72rem, 2.8vw, 0.9rem);
+  }
+
+  .rapago-auth-title {
+    font-size: 1.5rem;
+  }
+
+  /* 16px keeps iOS from auto-zooming on focus; comfortable tap height */
+  .rapago-auth-dark .rapago-auth-field ion-input,
+  .rapago-auth-dark ion-item ion-input {
+    font-size: 16px !important;
+  }
+
+  .rapago-auth-dark .rapago-auth-field {
+    --min-height: 60px;
+  }
+
+  .rapago-auth-dark .rapago-auth-btn-primary {
+    height: 52px;
+  }
+
+  .rapago-auth-dark .rapago-auth-btn-outline {
+    height: 50px;
+  }
+}
+
+@media (max-width: 380px) {
+  .rapago-auth-card {
+    padding: 16px 13px 20px;
+  }
+
+  .rapago-auth-field-icon {
+    font-size: 1.05rem;
+    margin-inline-end: 6px;
+  }
+}
+
+/* ==========================================================================
+   PROTOCOLO DE SESIÓN — TOAST DE CIERRE DE SESIÓN
+   Paleta: éxito = dorado · error = terracota · fondo = volcánico
+   ========================================================================== */
+
+.rapago-session-toast {
+  --border-radius: 18px;
+  --box-shadow: 0 18px 44px rgba(0, 0, 0, 0.5);
+  --color: #f6f2ec;
+  --start: 16px;
+  --end: 16px;
+  --max-width: 440px;
+  font-weight: 800;
+  letter-spacing: 0.01em;
+  text-align: center;
+}
+
+.rapago-session-toast::part(container) {
+  border: 1.5px solid rgba(214, 166, 64, 0.55);
+  background: linear-gradient(135deg, #1a1a1a 0%, #241d14 100%);
+  padding: 14px 18px;
+}
+
+.rapago-session-toast::part(icon) {
+  font-size: 1.45rem;
+  margin-inline-end: 10px;
+}
+
+.rapago-session-toast::part(message) {
+  font-size: 0.95rem;
+  font-weight: 800;
+}
+
+/* Éxito — acento dorado */
+.rapago-session-toast--success::part(container) {
+  border-color: rgba(214, 166, 64, 0.75);
+  box-shadow:
+    0 18px 44px rgba(0, 0, 0, 0.5),
+    0 0 0 1px rgba(214, 166, 64, 0.18),
+    0 8px 28px rgba(214, 166, 64, 0.22);
+}
+
+.rapago-session-toast--success::part(icon) {
+  color: #f8d879;
+}
+
+/* Error — acento terracota */
+.rapago-session-toast--error::part(container) {
+  border-color: rgba(184, 79, 46, 0.85);
+  box-shadow:
+    0 18px 44px rgba(0, 0, 0, 0.5),
+    0 0 0 1px rgba(184, 79, 46, 0.22),
+    0 8px 28px rgba(184, 79, 46, 0.28);
+}
+
+.rapago-session-toast--error::part(icon) {
+  color: #c16246;
+}
+
+/* ==========================================================================
+   SITIO PÚBLICO — LISTAS LEGALES (privacidad, términos, EULA, soporte)
+   ========================================================================== */
+
+.rapago-public-list li {
+  padding-left: 4px;
+  margin-bottom: 6px;
+}
+
+.rapago-public-list li::marker {
+  color: #d6a640;
+  font-weight: 900;
+}
+
+/* ==========================================================================
+   SERVICE CARD — microinteracciones y estados
+   Paleta: dorado / volcánico / marfil
+   ========================================================================== */
+
+.rapago-service-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 20px 10px 16px;
+  background: #ffffff;
+  border-radius: 18px;
+  border: 1.5px solid rgba(210, 164, 58, 0.18);
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.10);
+  cursor: pointer;
+  min-width: 90px;
+  text-align: center;
+  overflow: hidden;
+  user-select: none;
+  transition:
+    transform 0.2s cubic-bezier(0.22, 1, 0.36, 1),
+    box-shadow 0.2s ease,
+    border-color 0.2s ease;
+  outline: none;
+}
+
+.rapago-service-card:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 14px 32px rgba(210, 164, 58, 0.18);
+  border-color: rgba(210, 164, 58, 0.35);
+}
+
+.rapago-service-card:active {
+  transform: scale(0.96);
+  box-shadow: 0 6px 14px rgba(0, 0, 0, 0.12);
+}
+
+.rapago-service-card:focus-visible {
+  border-color: #d2a43a;
+  box-shadow: 0 0 0 3px rgba(210, 164, 58, 0.22);
+}
+
+/* Featured: acción principal — borde dorado y glow */
+.rapago-service-card--featured {
+  background: linear-gradient(160deg, #fffdf5, #fff8e8);
+  border: 2px solid rgba(210, 164, 58, 0.55);
+  box-shadow:
+    0 10px 24px rgba(0, 0, 0, 0.10),
+    0 0 0 1px rgba(210, 164, 58, 0.12),
+    0 8px 22px rgba(210, 164, 58, 0.12);
+}
+
+.rapago-service-card--featured:hover {
+  box-shadow:
+    0 14px 32px rgba(210, 164, 58, 0.20),
+    0 0 0 1px rgba(210, 164, 58, 0.20),
+    0 12px 28px rgba(210, 164, 58, 0.18);
+}
+
+/* Disabled: próximamente — atenuada, sin cursor pointer */
+.rapago-service-card--disabled {
+  opacity: 0.55;
+  cursor: default;
+  filter: grayscale(0.3);
+}
+
+.rapago-service-card--disabled:hover {
+  transform: none;
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.10);
+  border-color: rgba(210, 164, 58, 0.18);
+}
+
+.rapago-service-card--disabled:active {
+  transform: none;
+}
+
+/* Badge "Pronto" */
+.rapago-service-card__badge {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: rgba(17, 17, 17, 0.80);
+  color: #f8d879;
+  font-size: 0.62rem;
+  font-weight: 900;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  pointer-events: none;
+}
+
+/* Icon wrappers */
+.rapago-service-card__icon-wrap {
+  width: 54px;
+  height: 54px;
+  border-radius: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition: transform 0.2s ease;
+}
+
+.rapago-service-card:hover .rapago-service-card__icon-wrap {
+  transform: scale(1.06);
+}
+
+.rapago-service-card__icon-wrap--primary {
+  background: linear-gradient(135deg, #c89b3c, #d2a43a);
+  box-shadow: 0 6px 16px rgba(200, 155, 60, 0.30);
+}
+
+.rapago-service-card__icon-wrap--secondary {
+  background: linear-gradient(135deg, #b84f2e, #c86038);
+  box-shadow: 0 6px 16px rgba(184, 79, 46, 0.25);
+}
+
+.rapago-service-card__icon-wrap--tertiary {
+  background: linear-gradient(135deg, #d9c3a0, #c8b48a);
+  box-shadow: 0 6px 16px rgba(217, 195, 160, 0.25);
+}
+
+.rapago-service-card__icon-wrap--success {
+  background: linear-gradient(135deg, #5a8a4a, #6d9e5c);
+  box-shadow: 0 6px 16px rgba(90, 138, 74, 0.25);
+}
+
+.rapago-service-card__icon-wrap--warning {
+  background: linear-gradient(135deg, #c89b3c, #d9a830);
+  box-shadow: 0 6px 16px rgba(200, 155, 60, 0.25);
+}
+
+.rapago-service-card__icon-wrap--danger {
+  background: linear-gradient(135deg, #b84f2e, #a24628);
+  box-shadow: 0 6px 16px rgba(184, 79, 46, 0.25);
+}
+
+.rapago-service-card__icon-wrap--medium {
+  background: linear-gradient(135deg, #8a8577, #9a9488);
+  box-shadow: 0 6px 16px rgba(138, 133, 119, 0.20);
+}
+
+.rapago-service-card__icon--primary { color: #111; font-size: 1.5rem; }
+.rapago-service-card__icon--secondary { color: #f6f2ec; font-size: 1.5rem; }
+.rapago-service-card__icon--tertiary { color: #111; font-size: 1.5rem; }
+.rapago-service-card__icon--success { color: #f6f2ec; font-size: 1.5rem; }
+.rapago-service-card__icon--warning { color: #111; font-size: 1.5rem; }
+.rapago-service-card__icon--danger { color: #f6f2ec; font-size: 1.5rem; }
+.rapago-service-card__icon--medium { color: #f6f2ec; font-size: 1.5rem; }
+
+.rapago-service-card__title {
+  font-weight: 800;
+  font-size: 0.88rem;
+  color: #111827;
+  line-height: 1.2;
+}
+
+.rapago-service-card__subtitle {
+  font-size: 0.74rem;
+  color: #6b5a42;
+  line-height: 1.35;
+  font-weight: 600;
+}
+
+.rapago-service-card--disabled .rapago-service-card__title {
+  color: #6b5a42;
+}
+
+.rapago-service-card--disabled .rapago-service-card__subtitle {
+  color: #9a9488;
+}
+
+/* ==========================================================================
+   SOLICITAR VIAJE — SUGERENCIAS DE DIRECCIÓN
+   ========================================================================== */
+
+.rapago-suggestion-item {
+  transition: background 0.15s ease;
+}
+
+.rapago-suggestion-item:hover {
+  background: rgba(210, 164, 58, 0.1) !important;
+}
+
+.rapago-suggestion-item:active {
+  background: rgba(210, 164, 58, 0.18) !important;
 }

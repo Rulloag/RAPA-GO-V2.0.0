@@ -3,7 +3,7 @@ import {
   IonButton,
   IonCheckbox,
   IonContent,
-  IonHeader,
+  IonIcon,
   IonInput,
   IonItem,
   IonLabel,
@@ -12,22 +12,33 @@ import {
   IonPage,
   IonSpinner,
   IonText,
-  IonTitle,
-  IonToolbar,
 } from "@ionic/react";
-import { useHistory } from "react-router-dom";
 import {
-  registerRequestSchema,
-  type LegalAcceptanceInput,
-} from "@rapa-go/shared";
+  arrowBackOutline,
+  personOutline,
+  callOutline,
+  mailOutline,
+  lockClosedOutline,
+  eyeOutline,
+  eyeOffOutline,
+} from "ionicons/icons";
+import { useHistory } from "react-router-dom";
+import { registerRequestSchema, type UserRole } from "@rapa-go/shared";
 import { useAuth } from "./useAuth.js";
 import { authService } from "./auth.service.js";
 import { sessionStorageService } from "./sessionStorage.service.js";
 import { ROUTES } from "../../navigation/routes.js";
-import { getReleaseHome } from "../../config/releaseFeatures.js";
 import { legalService } from "../../features/legal/legal.service.js";
 import { referralsService } from "../../features/referrals/referrals.service.js";
+import logoRapago from "../../theme/img/logo-rapago.jpeg";
 
+const ROLE_HOME: Record<UserRole, string> = {
+  passenger: ROUTES.PASSENGER.HOME,
+  driver: ROUTES.PASSENGER.HOME,
+  guide: ROUTES.PASSENGER.HOME,
+  rental_operator: ROUTES.PASSENGER.HOME,
+  admin: ROUTES.ADMIN.HOME,
+};
 
 type RegisterField =
   | "name"
@@ -43,7 +54,7 @@ type RegisterField =
   | "terms";
 
 
-type PassengerFareType = "resident" | "chilean" | "foreigner";
+type PassengerFareType = "resident" | "rapanui" | "chilean" | "foreigner";
 type ResidenceVerificationStatus = "pending" | "approved" | "rejected" | "not_required";
 
 const PASSENGER_FARE_TYPES: Array<{
@@ -56,8 +67,15 @@ const PASSENGER_FARE_TYPES: Array<{
   {
     value: "resident",
     label: "Residente Rapa Nui",
-    helper: "Tu cuenta queda activa como Turista chileno mientras revisamos tu documento.",
+    helper: "Requiere documento de residencia para validación del equipo Rapa Go.",
     badge: "Rapa Nui",
+    multiplier: "1,00",
+  },
+  {
+    value: "rapanui",
+    label: "Rapanui normal",
+    helper: "Persona Rapanui/local. No requiere documento de residencia.",
+    badge: "Rapanui",
     multiplier: "1,00",
   },
   {
@@ -103,7 +121,7 @@ function getPassengerFareTypeLabel(value: PassengerFareType): string {
 }
 
 function isPassengerFareType(value: string): value is PassengerFareType {
-  return value === "resident" || value === "chilean" || value === "foreigner";
+  return value === "resident" || value === "rapanui" || value === "chilean" || value === "foreigner";
 }
 
 function cleanEmailInput(value: string): string {
@@ -233,8 +251,8 @@ function persistRegistrationProfile(data: {
   passport?: string;
   phone: string;
   email: string;
-  requestedPassengerFareType: PassengerFareType;
-  effectivePassengerFareType: PassengerFareType;
+  passengerFareType: PassengerFareType;
+  passengerFareLabel: string;
   residenceVerificationStatus: ResidenceVerificationStatus;
   residenceVerificationMessage?: string;
   residentDocument?: ResidentDocumentData | null;
@@ -242,27 +260,17 @@ function persistRegistrationProfile(data: {
   try {
     clearLegacyAuthPiiLocalStorage();
 
-    const effectivePassengerFareLabel = getPassengerFareTypeLabel(
-      data.effectivePassengerFareType,
-    );
-
     const safeProfile = {
-      requestedPassengerFareType: data.requestedPassengerFareType,
-      passengerFareType: data.effectivePassengerFareType,
-      effectivePassengerFareType: data.effectivePassengerFareType,
-      passengerFareLabel: effectivePassengerFareLabel,
+      passengerFareType: data.passengerFareType,
+      passengerFareLabel: data.passengerFareLabel,
       residenceVerificationStatus: data.residenceVerificationStatus,
-      residenceVerificationMessage:
-        data.residenceVerificationMessage ?? "",
-      residenceDocumentRequired:
-        data.requestedPassengerFareType === "resident",
+      residenceVerificationMessage: data.residenceVerificationMessage ?? "",
+      residenceDocumentRequired: data.passengerFareType === "resident",
       residenceDocumentUploaded: Boolean(data.residentDocument),
     };
 
     const safeSessionProfile = {
       ...data,
-      passengerFareType: data.effectivePassengerFareType,
-      passengerFareLabel: effectivePassengerFareLabel,
       residentDocument: data.residentDocument
         ? {
             name: data.residentDocument.name,
@@ -277,10 +285,7 @@ function persistRegistrationProfile(data: {
       RAPAGO_AUTH_SESSION_PROFILE_KEY,
       JSON.stringify(safeSessionProfile),
     );
-    localStorage.setItem(
-      "rapago_registration_profile",
-      JSON.stringify(safeProfile),
-    );
+    localStorage.setItem("rapago_registration_profile", JSON.stringify(safeProfile));
 
     sessionStorage.setItem("rapago_passenger_email", data.email);
     sessionStorage.setItem("rapago_profile_email", data.email);
@@ -289,80 +294,34 @@ function persistRegistrationProfile(data: {
     sessionStorage.setItem("rapago_passenger_rut", data.rut);
     sessionStorage.setItem("rapago_profile_rut", data.rut);
 
-    if (data.effectivePassengerFareType === "foreigner" && data.passport) {
-      sessionStorage.setItem(
-        "rapago_passenger_passport",
-        data.passport,
-      );
-      sessionStorage.setItem(
-        "rapago_profile_passport",
-        data.passport,
-      );
+    if (data.passengerFareType === "foreigner" && data.passport) {
+      sessionStorage.setItem("rapago_passenger_passport", data.passport);
+      sessionStorage.setItem("rapago_profile_passport", data.passport);
     } else {
       sessionStorage.removeItem("rapago_passenger_passport");
       sessionStorage.removeItem("rapago_profile_passport");
     }
 
-    localStorage.setItem(
-      "rapago_requested_passenger_fare_type",
-      data.requestedPassengerFareType,
-    );
-    localStorage.setItem(
-      "rapago_passenger_fare_type",
-      data.effectivePassengerFareType,
-    );
-    localStorage.setItem(
-      "rapago_profile_passenger_type",
-      data.effectivePassengerFareType,
-    );
-    localStorage.setItem(
-      "rapago_fare_passenger_type",
-      data.effectivePassengerFareType,
-    );
-    localStorage.setItem(
-      "rapago_profile_nationality",
-      effectivePassengerFareLabel,
-    );
-    localStorage.setItem(
-      "rapago_residence_verification_status",
-      data.residenceVerificationStatus,
-    );
+    localStorage.setItem("rapago_passenger_fare_type", data.passengerFareType);
+    localStorage.setItem("rapago_profile_passenger_type", data.passengerFareType);
+    localStorage.setItem("rapago_fare_passenger_type", data.passengerFareType);
+    localStorage.setItem("rapago_profile_nationality", data.passengerFareLabel);
+    localStorage.setItem("rapago_residence_verification_status", data.residenceVerificationStatus);
 
     if (data.residenceVerificationMessage) {
-      localStorage.setItem(
-        "rapago_residence_verification_user_message",
-        data.residenceVerificationMessage,
-      );
-    } else if (
-      data.residenceVerificationStatus === "not_required"
-    ) {
-      localStorage.removeItem(
-        "rapago_residence_verification_user_message",
-      );
+      localStorage.setItem("rapago_residence_verification_user_message", data.residenceVerificationMessage);
+    } else if (data.residenceVerificationStatus === "not_required") {
+      localStorage.removeItem("rapago_residence_verification_user_message");
     }
 
-    localStorage.setItem(
-      "rapago_driver_passenger_fare_type",
-      data.effectivePassengerFareType,
-    );
-    localStorage.setItem(
-      "rapago_driver_fare_passenger_type",
-      data.effectivePassengerFareType,
-    );
-    localStorage.setItem(
-      "rapago_driver_nationality",
-      effectivePassengerFareLabel,
-    );
-    localStorage.setItem(
-      "rapago_driver_is_resident",
-      String(data.effectivePassengerFareType === "resident"),
-    );
-    localStorage.removeItem("rapago_driver_is_rapanui_normal");
+    localStorage.setItem("rapago_driver_passenger_fare_type", data.passengerFareType);
+    localStorage.setItem("rapago_driver_fare_passenger_type", data.passengerFareType);
+    localStorage.setItem("rapago_driver_nationality", data.passengerFareLabel);
+    localStorage.setItem("rapago_driver_is_resident", String(data.passengerFareType === "resident"));
+    localStorage.setItem("rapago_driver_is_rapanui_normal", String(data.passengerFareType === "rapanui"));
 
     localStorage.removeItem("rapago_resident_document_name");
-    localStorage.removeItem(
-      "rapago_resident_document_uploaded_at",
-    );
+    localStorage.removeItem("rapago_resident_document_uploaded_at");
   } catch {
     // No bloquea el registro si storage no esta disponible.
   }
@@ -504,7 +463,7 @@ function passengerFareRequiresPassport(value: PassengerFareType | ""): boolean {
 }
 
 function passengerFareRequiresRut(value: PassengerFareType | ""): boolean {
-  return value === "chilean" || value === "resident";
+  return value === "chilean" || value === "rapanui" || value === "resident";
 }
 
 function validatePhone(value: string): boolean {
@@ -532,48 +491,39 @@ function getFirstFieldError(
 
 const pageContentStyle = {
   "--background":
-    "linear-gradient(180deg, #fff7e8 0%, #f9ead0 48%, #edd2a0 100%)",
+    "linear-gradient(180deg, rgba(20,16,12,.72), rgba(20,16,12,.86)), url('/assets/rapa-go-bg.jpg') center / cover no-repeat fixed",
 } as CSSProperties;
 
 const formShellStyle: CSSProperties = {
-  maxWidth: 540,
-  margin: "1.25rem auto 2rem",
-  display: "flex",
-  flexDirection: "column",
-  gap: "0.75rem",
-  padding: "20px 16px 22px",
-  borderRadius: 26,
-  background: "rgba(255, 252, 244, 0.96)",
-  border: "1px solid rgba(205, 157, 60, 0.36)",
-  boxShadow: "0 18px 44px rgba(66, 43, 16, 0.18)",
+  width: "min(92vw, 540px)",
+  gap: "0.5rem",
 };
 
 const registerItemStyle = {
-  "--background": "#fffaf0",
-  "--color": "#1f1711",
+  "--background": "rgba(255,255,255,.055)",
+  "--color": "#ffffff",
   "--border-color": "transparent",
-  "--highlight-color-focused": "#c99a32",
-  "--highlight-color-valid": "#c99a32",
-  "--highlight-color-invalid": "#d33b32",
-  "--padding-start": "16px",
-  "--inner-padding-end": "12px",
-  "--min-height": "64px",
-  border: "1px solid rgba(198, 151, 54, 0.42)",
-  borderRadius: 18,
-  boxShadow: "0 8px 20px rgba(78, 52, 18, 0.06)",
+  "--highlight-color-focused": "#d6a640",
+  "--highlight-color-valid": "#d6a640",
+  "--highlight-color-invalid": "#b84f2e",
+  "--padding-start": "14px",
+  "--inner-padding-end": "10px",
+  "--min-height": "62px",
+  border: "1.5px solid rgba(214,166,64,.28)",
+  borderRadius: 16,
   overflow: "hidden",
 } as CSSProperties;
 
 const labelStyle: CSSProperties = {
-  color: "#3a2a1b",
-  fontWeight: 900,
+  color: "#F8D879",
+  fontWeight: 800,
 };
 
 const inputStyle = {
-  "--color": "#1f1711",
-  "--placeholder-color": "#8a765e",
+  "--color": "#ffffff",
+  "--placeholder-color": "rgba(255,255,255,0.5)",
   "--placeholder-opacity": "1",
-  fontWeight: 850,
+  fontWeight: 700,
 } as CSSProperties;
 
 const softNoteStyle: CSSProperties = {
@@ -655,7 +605,7 @@ const uploadBoxStyle: CSSProperties = {
 const phoneInputRowStyle: CSSProperties = {
   display: "flex",
   alignItems: "center",
-  gap: 10,
+  gap: 8,
   width: "100%",
 };
 
@@ -663,14 +613,14 @@ const phonePrefixStyle: CSSProperties = {
   flex: "0 0 auto",
   display: "inline-flex",
   alignItems: "center",
-  justifyContent: "center",
-  minWidth: 52,
-  height: 38,
-  borderRadius: 12,
-  background: "rgba(210, 164, 58, 0.14)",
-  border: "1px solid rgba(210, 164, 58, 0.34)",
-  color: "#3a2a1b",
-  fontWeight: 950,
+  height: 26,
+  paddingInlineEnd: 10,
+  marginInlineEnd: 2,
+  borderInlineEnd: "1px solid rgba(214, 166, 64, 0.35)",
+  color: "#F8D879",
+  fontWeight: 800,
+  fontSize: "0.98rem",
+  letterSpacing: "0.01em",
 };
 
 export function RegisterPage(): JSX.Element {
@@ -697,6 +647,8 @@ export function RegisterPage(): JSX.Element {
   const [acceptUserConditions, setAcceptUserConditions] = useState(false);
 
   const [loading, setLoading] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [fieldErrors, setFieldErrors] = useState<Record<RegisterField | string, string>>({});
   const [serverError, setServerError] = useState("");
 
@@ -710,6 +662,7 @@ export function RegisterPage(): JSX.Element {
     passengerFareType !== "" &&
     (!passengerFareRequiresRut(passengerFareType) || validateRut(rut)) &&
     (!passengerFareRequiresPassport(passengerFareType) || validatePassportForRegister(passport)) &&
+    (passengerFareType !== "resident" || residentDocument !== null) &&
     password.length >= PASSWORD_MIN_LENGTH &&
     !passwordMismatch &&
     !loading;
@@ -810,17 +763,15 @@ export function RegisterPage(): JSX.Element {
     }
   }
 
-  async function loadRequiredLegalAcceptances(): Promise<
-    LegalAcceptanceInput[]
-  > {
+  async function acceptLegalDocuments(accessToken: string): Promise<void> {
     const requiredTypes = [
       "terms_and_conditions",
       "privacy_policy",
       "user_conditions",
-    ] as const;
+    ];
     const documents = await legalService.getActive();
 
-    return requiredTypes.map((type) => {
+    const requiredDocuments = requiredTypes.map((type) => {
       const document = documents.find(
         (item) => item.type === type && item.isActive,
       );
@@ -831,11 +782,18 @@ export function RegisterPage(): JSX.Element {
         );
       }
 
-      return {
-        legalDocumentId: document.id,
-        version: document.version,
-      };
+      return document;
     });
+
+    await Promise.all(
+      requiredDocuments.map((document) =>
+        legalService.accept(
+          accessToken,
+          document.id,
+          document.version,
+        ),
+      ),
+    );
   }
 
   async function applyReferralCode(userId: string): Promise<void> {
@@ -905,6 +863,10 @@ export function RegisterPage(): JSX.Element {
       nextErrors.passengerType = "Selecciona tu nacionalidad.";
     }
 
+    if (cleanPassengerFareType === "resident" && !residentDocument) {
+      nextErrors.residentDocument = "Adjunta un documento para validar residencia Rapa Nui.";
+    }
+
     if (!cleanEmailValue) {
       nextErrors.email = "Ingresa tu correo electrónico.";
     } else if (!validateEmail(cleanEmailValue)) {
@@ -932,44 +894,23 @@ export function RegisterPage(): JSX.Element {
       return;
     }
 
-    setLoading(true);
-
-    let legalAcceptances: LegalAcceptanceInput[];
-    try {
-      legalAcceptances = await loadRequiredLegalAcceptances();
-    } catch (error) {
-      setServerError(
-        error instanceof Error
-          ? error.message
-          : "No fue posible cargar los documentos legales vigentes.",
-      );
-      setLoading(false);
-      return;
-    }
-
     const payload = {
       name: fullName,
       email: cleanEmailValue,
       password,
       role: "passenger" as const,
-      legalAcceptances,
     };
 
     const parsed = registerRequestSchema.safeParse(payload);
 
     if (!parsed.success) {
       setFieldErrors(getFirstFieldError(parsed.error.issues));
-      setLoading(false);
       return;
     }
 
-    const selectedPassengerFareType =
-      cleanPassengerFareType as PassengerFareType;
-    const initialEffectivePassengerFareType: PassengerFareType =
-      selectedPassengerFareType === "resident"
-        ? "chilean"
-        : selectedPassengerFareType;
+    const selectedPassengerFareType = cleanPassengerFareType as PassengerFareType;
 
+    setLoading(true);
     let createdAccessToken: string | null = null;
 
     try {
@@ -977,58 +918,38 @@ export function RegisterPage(): JSX.Element {
         ...parsed.data,
         firstName: cleanName,
         lastName: cleanLastName,
-        rut:
-          selectedPassengerFareType === "foreigner"
-            ? cleanPassportValue
-            : cleanRutValue,
-        passport:
-          selectedPassengerFareType === "foreigner"
-            ? cleanPassportValue
-            : "",
+        rut: selectedPassengerFareType === "foreigner" ? cleanPassportValue : cleanRutValue,
+        passport: selectedPassengerFareType === "foreigner" ? cleanPassportValue : "",
         phone: cleanPhoneValue,
-        passengerFareType: selectedPassengerFareType,
-        passengerType: initialEffectivePassengerFareType,
-        farePassengerType: initialEffectivePassengerFareType,
-        nationality: getPassengerFareTypeLabel(
-          initialEffectivePassengerFareType,
-        ),
+        passengerType: selectedPassengerFareType,
+        farePassengerType: selectedPassengerFareType,
+        nationality: getPassengerFareTypeLabel(selectedPassengerFareType),
         isResident: selectedPassengerFareType === "resident",
         residenceVerificationStatus:
-          selectedPassengerFareType === "resident"
-            ? "pending"
-            : "not_required",
+          selectedPassengerFareType === "resident" ? "pending" : "not_required",
         residentDocumentName:
-          selectedPassengerFareType === "resident"
-            ? residentDocument?.name ?? null
-            : null,
+          selectedPassengerFareType === "resident" ? residentDocument?.name ?? null : null,
       } as typeof parsed.data & {
         firstName: string;
         lastName: string;
         rut: string;
         passport: string;
         phone: string;
-        passengerFareType: PassengerFareType;
         passengerType: PassengerFareType;
         farePassengerType: PassengerFareType;
         nationality: string;
         isResident: boolean;
-        residenceVerificationStatus:
-          ResidenceVerificationStatus;
+        residenceVerificationStatus: ResidenceVerificationStatus;
         residentDocumentName: string | null;
       });
 
       if (result.ok === false) {
         if (result.code === "AUTH_EMAIL_TAKEN") {
-          setFieldErrors({
-            email: "Este correo ya está registrado.",
-          });
+          setFieldErrors({ email: "Este correo ya está registrado." });
           return;
         }
 
-        setServerError(
-          result.message ??
-            "No se pudo crear la cuenta. Inténtalo de nuevo.",
-        );
+        setServerError(result.message ?? "No se pudo crear la cuenta. Inténtalo de nuevo.");
         return;
       }
 
@@ -1037,93 +958,88 @@ export function RegisterPage(): JSX.Element {
       const userId = result.session.user.id;
       const registeredRole = result.session.user.role;
 
+      await acceptLegalDocuments(accessToken);
       await applyReferralCode(userId);
 
-      let effectivePassengerFareType: PassengerFareType =
-        initialEffectivePassengerFareType;
-      let residenceVerificationStatus:
-        ResidenceVerificationStatus =
-        selectedPassengerFareType === "resident"
-          ? "pending"
-          : "not_required";
-      let residenceVerificationMessage =
-        selectedPassengerFareType === "resident"
-          ? "Tu cuenta está activa con tarifa Turista chileno. Puedes adjuntar o regularizar tu documento de residencia desde tu perfil."
-          : "";
-
-      if (
-        selectedPassengerFareType === "resident" &&
-        residentDocument
-      ) {
-        try {
-          const submitted =
-            await authService.submitFacebookResidentPrecheck({
-              provider: "email",
-              email: cleanEmailValue,
-              phone: cleanPhoneValue,
-              rut: cleanRutValue,
-              documentName: residentDocument.name,
-              documentType: residentDocument.type as
-                | "application/pdf"
-                | "image/jpeg"
-                | "image/png"
-                | "image/webp",
-              documentSize: residentDocument.sizeBytes,
-              documentDataUrl: residentDocument.dataUrl,
-            });
-
-          residenceVerificationStatus = submitted.status;
-          effectivePassengerFareType =
-            submitted.status === "approved"
-              ? "resident"
-              : "chilean";
-          residenceVerificationMessage =
-            submitted.status === "approved"
-              ? "Tu residencia Rapa Nui fue aprobada."
-              : `${submitted.message} Puedes usar Rapa Go de inmediato con tarifa Turista chileno.`;
-
-          persistResidentVerificationRequest({
-            userId,
-            name: fullName,
-            firstName: cleanName,
-            lastName: cleanLastName,
-            rut: cleanRutValue,
-            phone: cleanPhoneValue,
+      if (selectedPassengerFareType === "resident" && residentDocument) {
+        const submitted =
+          await authService.submitFacebookResidentPrecheck({
+            provider: "email",
             email: cleanEmailValue,
-            document: residentDocument,
+            phone: cleanPhoneValue,
+            rut: cleanRutValue,
+            documentName: residentDocument.name,
+            documentType: residentDocument.type as
+              | "application/pdf"
+              | "image/jpeg"
+              | "image/png"
+              | "image/webp",
+            documentSize: residentDocument.sizeBytes,
+            documentDataUrl: residentDocument.dataUrl,
           });
-        } catch (documentError) {
-          effectivePassengerFareType = "chilean";
-          residenceVerificationStatus = "pending";
-          residenceVerificationMessage =
-            documentError instanceof Error
-              ? `Tu cuenta está activa como Turista chileno. No se pudo enviar el documento: ${documentError.message}`
-              : "Tu cuenta está activa como Turista chileno. No se pudo enviar el documento y podrás intentarlo nuevamente desde tu perfil.";
+
+        persistRegistrationProfile({
+          name: fullName,
+          firstName: cleanName,
+          lastName: cleanLastName,
+          rut: cleanRutValue,
+          passport: "",
+          phone: cleanPhoneValue,
+          email: cleanEmailValue,
+          passengerFareType: selectedPassengerFareType,
+          passengerFareLabel:
+            getPassengerFareTypeLabel(selectedPassengerFareType),
+          residenceVerificationStatus: submitted.status,
+          residenceVerificationMessage: submitted.message,
+          residentDocument,
+        });
+
+        persistResidentVerificationRequest({
+          userId,
+          name: fullName,
+          firstName: cleanName,
+          lastName: cleanLastName,
+          rut: cleanRutValue,
+          phone: cleanPhoneValue,
+          email: cleanEmailValue,
+          document: residentDocument,
+        });
+
+        if (submitted.status === "pending") {
+          await authService.logout(accessToken).catch(() => {});
+          await sessionStorageService.clearSession();
+          window.location.replace(
+            `${ROUTES.AUTH.LOGIN}?registration=resident_pending`,
+          );
+          return;
         }
+      } else {
+        persistRegistrationProfile({
+          name: fullName,
+          firstName: cleanName,
+          lastName: cleanLastName,
+          rut:
+            selectedPassengerFareType === "foreigner"
+              ? cleanPassportValue
+              : cleanRutValue,
+          passport:
+            selectedPassengerFareType === "foreigner"
+              ? cleanPassportValue
+              : "",
+          phone: cleanPhoneValue,
+          email: cleanEmailValue,
+          passengerFareType: selectedPassengerFareType,
+          passengerFareLabel:
+            getPassengerFareTypeLabel(selectedPassengerFareType),
+          residenceVerificationStatus: "not_required",
+          residenceVerificationMessage: "",
+          residentDocument: null,
+        });
       }
 
-      persistRegistrationProfile({
-        name: fullName,
-        firstName: cleanName,
-        lastName: cleanLastName,
-        rut:
-          selectedPassengerFareType === "foreigner"
-            ? cleanPassportValue
-            : cleanRutValue,
-        passport:
-          selectedPassengerFareType === "foreigner"
-            ? cleanPassportValue
-            : "",
-        phone: cleanPhoneValue,
-        email: cleanEmailValue,
-        requestedPassengerFareType: selectedPassengerFareType,
-        effectivePassengerFareType,
-        residenceVerificationStatus,
-        residenceVerificationMessage,
-        residentDocument,
-      });
-
-      history.replace(getReleaseHome(registeredRole));
+      history.replace(
+        ROLE_HOME[registeredRole] ?? ROUTES.PASSENGER.HOME,
+      );
     } catch (error) {
       if (createdAccessToken) {
         await authService.logout(createdAccessToken).catch(() => {});
@@ -1137,7 +1053,7 @@ export function RegisterPage(): JSX.Element {
       setServerError(
         error instanceof Error
           ? error.message
-          : "No fue posible comunicarse con el servidor de RAPA GO. Inténtalo nuevamente en unos segundos.",
+          : "Error de conexión. Verifica tu red e inténtalo de nuevo.",
       );
     } finally {
       setLoading(false);
@@ -1145,50 +1061,59 @@ export function RegisterPage(): JSX.Element {
   }
 
   return (
-    <IonPage>
-      <IonHeader>
-        <IonToolbar color="warning">
-          <IonTitle style={{ color: "#111", fontWeight: 950 }}>Crear cuenta</IonTitle>
-        </IonToolbar>
-      </IonHeader>
-
+    <IonPage className="rapago-auth-dark">
       <IonContent className="ion-padding" style={pageContentStyle}>
         <form
           onSubmit={(event) => {
             void handleSubmit(event);
           }}
+          className="rapago-auth-card"
           style={formShellStyle}
           noValidate
         >
-          <IonText>
-            <h2 style={{ margin: "0 0 0.25rem", fontWeight: 950, color: "#1f1711" }}>
-              Crea tu cuenta Rapa Go
-            </h2>
-          </IonText>
+          <div className="rapago-auth-brand-header">
+            <button
+              type="button"
+              className="rapago-auth-back-button"
+              onClick={() => history.replace(ROUTES.WELCOME)}
+              aria-label="Volver a bienvenida"
+            >
+              <IonIcon icon={arrowBackOutline} />
+            </button>
+
+            <div className="rapago-auth-brand-logo-wrap">
+              <img
+                src={logoRapago}
+                alt="Rapa Go"
+                className="passenger-home-logo rapago-auth-brand-logo"
+              />
+            </div>
+          </div>
 
           <IonText>
-            <p style={{ margin: "0 0 0.75rem", fontSize: "0.9rem", lineHeight: 1.45, color: "#5a4528", fontWeight: 700 }}>
-              La cuenta se crea como pasajero. Si eliges Residente Rapa Nui, podrás usar la app de inmediato con tarifa Turista chileno mientras se revisa tu documento.
+            <h2 className="rapago-auth-title">Crea tu cuenta</h2>
+          </IonText>
+
+          <div className="rapago-auth-register-badge">
+            <span>Nuevo usuario</span>
+          </div>
+
+          <IonText>
+            <p className="rapago-auth-subtitle">
+              Crea tu cuenta RAPA GO, una nueva visión de viajar.
             </p>
           </IonText>
 
           {serverError && (
             <IonText color="danger">
-              <p
-                style={{
-                  margin: "0 0 0.75rem",
-                  padding: "0.75rem",
-                  background: "var(--ion-color-danger-tint)",
-                  borderRadius: 10,
-                  fontWeight: 700,
-                }}
-              >
+              <p className="rapago-auth-error">
                 {serverError}
               </p>
             </IonText>
           )}
 
           <IonItem className={fieldErrors.name ? "ion-invalid" : ""} style={registerItemStyle}>
+            <IonIcon slot="start" icon={personOutline} className="rapago-auth-field-icon" />
             <IonLabel position="stacked" style={labelStyle}>Nombre *</IonLabel>
             <IonInput
               type="text"
@@ -1207,6 +1132,7 @@ export function RegisterPage(): JSX.Element {
           </IonItem>
 
           <IonItem className={fieldErrors.lastName ? "ion-invalid" : ""} style={registerItemStyle}>
+            <IonIcon slot="start" icon={personOutline} className="rapago-auth-field-icon" />
             <IonLabel position="stacked" style={labelStyle}>Apellido *</IonLabel>
             <IonInput
               type="text"
@@ -1283,11 +1209,11 @@ export function RegisterPage(): JSX.Element {
                 />
 
                 <div style={{ fontWeight: 950, marginBottom: 6 }}>
-                  Documento de residencia Rapa Nui (opcional)
+                  Documento de residencia Rapa Nui *
                 </div>
 
                 <IonNote style={{ color: "rgba(246, 242, 236, 0.72)", display: "block", marginBottom: 10, lineHeight: 1.35 }}>
-                  Adjunta un documento para solicitar la tarifa de residente. Mientras se revisa, tu cuenta queda activa como Turista chileno.
+                  Adjunta certificado, comprobante o documento que permita validar que eres residente.
                 </IonNote>
 
                 <IonButton
@@ -1368,6 +1294,7 @@ export function RegisterPage(): JSX.Element {
           )}
 
           <IonItem className={fieldErrors.phone ? "ion-invalid" : ""} style={registerItemStyle}>
+            <IonIcon slot="start" icon={callOutline} className="rapago-auth-field-icon" />
             <IonLabel position="stacked" style={labelStyle}>Teléfono *</IonLabel>
             <div style={phoneInputRowStyle}>
               <span style={phonePrefixStyle}>+56</span>
@@ -1392,6 +1319,7 @@ export function RegisterPage(): JSX.Element {
           </IonItem>
 
           <IonItem className={fieldErrors.email ? "ion-invalid" : ""} style={registerItemStyle}>
+            <IonIcon slot="start" icon={mailOutline} className="rapago-auth-field-icon" />
             <IonLabel position="stacked" style={labelStyle}>Correo electrónico *</IonLabel>
             <IonInput
               type="email"
@@ -1412,9 +1340,10 @@ export function RegisterPage(): JSX.Element {
           </IonItem>
 
           <IonItem className={fieldErrors.password ? "ion-invalid" : ""} style={registerItemStyle}>
+            <IonIcon slot="start" icon={lockClosedOutline} className="rapago-auth-field-icon" />
             <IonLabel position="stacked" style={labelStyle}>Contraseña *</IonLabel>
             <IonInput
-              type="password"
+              type={showPassword ? "text" : "password"}
               value={password}
               onIonInput={(event) => {
                 setPassword(String(event.detail.value ?? ""));
@@ -1427,13 +1356,26 @@ export function RegisterPage(): JSX.Element {
               disabled={loading}
               required
             />
+            {password.length > 0 && (
+              <IonButton
+                slot="end"
+                fill="clear"
+                type="button"
+                className="rapago-auth-eye"
+                onClick={() => setShowPassword((prev) => !prev)}
+                aria-label={showPassword ? "Ocultar contraseña" : "Mostrar contraseña"}
+              >
+                <IonIcon slot="icon-only" icon={showPassword ? eyeOffOutline : eyeOutline} />
+              </IonButton>
+            )}
             {fieldErrors.password && <IonNote slot="error">{fieldErrors.password}</IonNote>}
           </IonItem>
 
           <IonItem className={fieldErrors.confirmPassword ? "ion-invalid" : ""} style={registerItemStyle}>
+            <IonIcon slot="start" icon={lockClosedOutline} className="rapago-auth-field-icon" />
             <IonLabel position="stacked" style={labelStyle}>Confirmar contraseña *</IonLabel>
             <IonInput
-              type="password"
+              type={showConfirmPassword ? "text" : "password"}
               value={confirmPassword}
               onIonInput={(event) => {
                 setConfirmPassword(String(event.detail.value ?? ""));
@@ -1446,17 +1388,35 @@ export function RegisterPage(): JSX.Element {
               disabled={loading}
               required
             />
-            {passwordMismatch && !fieldErrors.confirmPassword && (
-              <IonText color="danger">
-                <p style={{ margin: "6px 0 0", fontSize: "0.8rem", fontWeight: 800 }}>
-                  Tu contraseña no coincide. Vuelve a escribirla.
-                </p>
-              </IonText>
+            {confirmPassword.length > 0 && (
+              <IonButton
+                slot="end"
+                fill="clear"
+                type="button"
+                className="rapago-auth-eye"
+                onClick={() => setShowConfirmPassword((prev) => !prev)}
+                aria-label={showConfirmPassword ? "Ocultar contraseña" : "Mostrar contraseña"}
+              >
+                <IonIcon slot="icon-only" icon={showConfirmPassword ? eyeOffOutline : eyeOutline} />
+              </IonButton>
             )}
             {fieldErrors.confirmPassword && (
               <IonNote slot="error">{fieldErrors.confirmPassword}</IonNote>
             )}
           </IonItem>
+          {passwordMismatch && !fieldErrors.confirmPassword && (
+            <p
+              style={{
+                margin: "-6px 0 10px 4px",
+                fontSize: "0.82rem",
+                fontWeight: 800,
+                color: "var(--ion-color-danger)",
+                lineHeight: 1.35,
+              }}
+            >
+              Tu contraseña no coincide. Vuelve a escribirla.
+            </p>
+          )}
 
          
 
@@ -1479,7 +1439,7 @@ export function RegisterPage(): JSX.Element {
             </IonText>
           )}
 
-          <IonList style={{ marginTop: "0.75rem", borderRadius: 18, overflow: "hidden", background: "transparent", border: "1px solid rgba(198,151,54,.30)" }}>
+          <IonList style={{ marginTop: "0.75rem", borderRadius: 18, overflow: "hidden", background: "transparent" }}>
             <IonItem style={{ ...registerItemStyle, borderRadius: 0, boxShadow: "none", borderLeft: 0, borderRight: 0, borderTop: 0 } as CSSProperties}>
               <IonCheckbox
                 checked={acceptTerms}
@@ -1490,7 +1450,7 @@ export function RegisterPage(): JSX.Element {
                 slot="start"
                 disabled={loading}
               />
-              <IonLabel style={{ whiteSpace: "normal", color: "#2f2217", fontWeight: 750, lineHeight: 1.35 }}>
+              <IonLabel style={{ whiteSpace: "normal", color: "#F6F2EC", fontWeight: 750, lineHeight: 1.35 }}>
                 He leído y acepto los{" "}
                 <a href="/legal/terms-and-conditions" target="_blank" rel="noopener noreferrer">
                   Términos y Condiciones
@@ -1508,7 +1468,7 @@ export function RegisterPage(): JSX.Element {
                 slot="start"
                 disabled={loading}
               />
-              <IonLabel style={{ whiteSpace: "normal", color: "#2f2217", fontWeight: 750, lineHeight: 1.35 }}>
+              <IonLabel style={{ whiteSpace: "normal", color: "#F6F2EC", fontWeight: 750, lineHeight: 1.35 }}>
                 He leído y acepto la{" "}
                 <a href="/legal/privacy-policy" target="_blank" rel="noopener noreferrer">
                   Política de Privacidad
@@ -1526,7 +1486,7 @@ export function RegisterPage(): JSX.Element {
                 slot="start"
                 disabled={loading}
               />
-              <IonLabel style={{ whiteSpace: "normal", color: "#2f2217", fontWeight: 750, lineHeight: 1.35 }}>
+              <IonLabel style={{ whiteSpace: "normal", color: "#F6F2EC", fontWeight: 750, lineHeight: 1.35 }}>
                 Acepto las{" "}
                 <a href="/legal/user-conditions" target="_blank" rel="noopener noreferrer">
                   Condiciones para Usuarios
@@ -1547,7 +1507,7 @@ export function RegisterPage(): JSX.Element {
             expand="block"
             type="submit"
             disabled={!canSubmit}
-            style={{ marginTop: "1rem", height: "52px", fontWeight: 950, "--border-radius": "18px", "--background": "linear-gradient(135deg, #d2a43a, #f4d782)", "--color": "#111" } as CSSProperties}
+            className="rapago-auth-btn-primary"
           >
             {loading ? <IonSpinner name="crescent" /> : "Crear cuenta"}
           </IonButton>
@@ -1556,7 +1516,8 @@ export function RegisterPage(): JSX.Element {
             expand="block"
             fill="clear"
             disabled={loading}
-            onClick={() => history.push(ROUTES.ROOT)}
+            onClick={() => history.push(ROUTES.AUTH.LOGIN)}
+            className="rapago-auth-btn-clear"
           >
             ¿Ya tienes cuenta? Iniciar sesión
           </IonButton>
@@ -1564,9 +1525,9 @@ export function RegisterPage(): JSX.Element {
           <IonButton
             expand="block"
             fill="outline"
-            color="warning"
             disabled={loading}
-            onClick={() => history.replace(ROUTES.ROOT)}
+            onClick={() => history.replace(ROUTES.WELCOME)}
+            className="rapago-auth-btn-outline"
           >
             Volver al inicio
           </IonButton>

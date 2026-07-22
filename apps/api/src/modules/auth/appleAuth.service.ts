@@ -1,94 +1,52 @@
-import { and, eq, inArray, isNull } from "drizzle-orm";
-
-import { db } from "../../db/client.js";
-import {
-  authIdentities,
-  legalDocuments,
-  passengerProfiles,
-  userAcceptances,
-  users,
-} from "../../db/schema/index.js";
-import { AppError } from "../../shared/errors/AppError.js";
-import { OAuthTokenCrypto } from "../../shared/security/oauthTokenCrypto.js";
-import { AuditService } from "../audit/audit.service.js";
+import type { UserRole } from "@rapa-go/shared";
 import { UsersRepository } from "../users/users.repository.js";
-import {
-  authenticateActiveAccessToken,
-  buildAuthUser,
-} from "./auth.service.js";
-import { AuthIdentitiesRepository } from "./authIdentities.repository.js";
-import type {
-  AppleAuthRequest,
-  AppleAuthResult,
-  AppleLinkResult,
-  ApplePassengerFareType,
-} from "./appleAuth.types.js";
+import { OAuthIdentitiesRepository } from "./oauthIdentities.repository.js";
+import { TokenService } from "./token.service.js";
+import { SessionService } from "./session.service.js";
+import { AuditService } from "../audit/audit.service.js";
 import { AppleIdentityTokenVerifier } from "./appleIdentityToken.verifier.js";
 import { AppleTokenExchangeClient } from "./appleTokenExchange.client.js";
-import { SessionService } from "./session.service.js";
-import { TokenService } from "./token.service.js";
+import { OAuthTokenCrypto } from "../../shared/security/oauthTokenCrypto.js";
+import { AppError } from "../../shared/errors/AppError.js";
+import type { AppleAuthRequest, AppleAuthResult } from "./appleAuth.types.js";
+import type { AuthUser } from "./auth.types.js";
+import type { User } from "../../db/schema/index.js";
 
-const REQUIRED_LEGAL_TYPES = [
-  "terms_and_conditions",
-  "privacy_policy",
-  "user_conditions",
-] as const;
-const PROVIDER = "apple" as const;
+const PROVIDER = "apple";
 
-function sanitizeNamePart(value: string | undefined): string {
-  return (value ?? "").trim().replace(/\s+/g, " ").slice(0, 50);
+function toUserRole(raw: string): UserRole {
+  return raw as UserRole;
 }
 
-function buildDisplayName(
-  name: AppleAuthRequest["name"],
-  email: string,
-): string {
-  const fullName = [
-    sanitizeNamePart(name?.givenName),
-    sanitizeNamePart(name?.familyName),
-  ]
-    .filter(Boolean)
-    .join(" ")
-    .trim();
-
-  if (fullName.length >= 2) return fullName.slice(0, 100);
-  const emailName = sanitizeNamePart(email.split("@")[0]);
-  return emailName.length >= 2 ? emailName : "Usuario Apple";
+/** Mirrors AuthService's role→initial-status rule (kept local to avoid coupling). */
+function roleInitialStatus(role: UserRole): "active" | "pending" {
+  return role === "passenger" ? "active" : "pending";
 }
 
-function normalizeFareType(
-  value: ApplePassengerFareType | undefined,
-): ApplePassengerFareType {
-  if (value === "resident" || value === "foreigner") return value;
-  return "chilean";
+function sanitizeNamePart(part: string | undefined): string {
+  return (part ?? "").trim().slice(0, 50);
 }
 
-function normalizeApplePhone(value: string | undefined): string {
-  return String(value ?? "")
-    .replace(/[^+\d]/g, "")
-    .trim()
-    .slice(0, 16);
-}
-
-function isValidApplePhone(value: string): boolean {
-  return /^\+?[0-9]{8,15}$/.test(value);
-}
-
-function isUniqueViolation(error: unknown): boolean {
-  if (!error || typeof error !== "object") return false;
-  const code = "code" in error ? String(error.code) : "";
-  const cause = "cause" in error ? error.cause : undefined;
-  const causeCode =
-    cause && typeof cause === "object" && "code" in cause
-      ? String(cause.code)
-      : "";
-  return code === "23505" || causeCode === "23505";
+function buildName(name: AppleAuthRequest["name"], email: string): string {
+  const given  = sanitizeNamePart(name?.givenName);
+  const family = sanitizeNamePart(name?.familyName);
+  const full = [given, family].filter(Boolean).join(" ").trim();
+  if (full) return full;
+  // Apple only sends the name on the very first authorization. If it's
+  // absent (returning user, or user declined to share it), fall back to
+  // the local part of the email so `users.name` (NOT NULL) is never empty.
+  // Sanitized through the same trim+length-cap as the given/family-name
+  // path — the local part is attacker-influenced input (email addresses
+  // aren't restricted to friendly-looking text) and must be bounded the
+  // same way before it's ever stored.
+  const localPart = sanitizeNamePart(email.split("@")[0]);
+  return localPart || "Apple User";
 }
 
 export class AppleAuthService {
   constructor(
     private readonly usersRepository = new UsersRepository(),
-    private readonly identitiesRepository = new AuthIdentitiesRepository(),
+    private readonly identitiesRepository = new OAuthIdentitiesRepository(),
     private readonly auditService = new AuditService(),
     private readonly identityTokenVerifier = new AppleIdentityTokenVerifier(),
     private readonly tokenExchangeClient = new AppleTokenExchangeClient(),
@@ -96,456 +54,294 @@ export class AppleAuthService {
     private readonly sessionService = new SessionService(),
   ) {}
 
-  private async issueSession(
-    user: typeof users.$inferSelect,
-  ): Promise<AppleAuthResult> {
-    const authUser = await buildAuthUser(user);
-    const accessToken = this.tokenService.issueAccessToken(authUser);
+  private async issueSession(user: User): Promise<{ authUser: AuthUser; accessToken: string; refreshToken: string; expiresAt: string }> {
+    const authUser: AuthUser = {
+      id:         user.id,
+      email:      user.email,
+      name:       user.name,
+      role:       toUserRole(user.role),
+      avatarUrl:  user.avatarUrl,
+      isVerified: user.isVerified,
+    };
+
+    const accessToken  = this.tokenService.issueAccessToken(authUser);
     const refreshToken = this.tokenService.issueRefreshToken();
 
     await this.sessionService.createSession({
-      userId: user.id,
+      userId:          user.id,
       accessTokenHash: accessToken.hash,
-      expiresAt: accessToken.expiresAt,
+      expiresAt:       accessToken.expiresAt,
     });
     await this.sessionService.createRefreshToken({
-      userId: user.id,
+      userId:    user.id,
       tokenHash: refreshToken.hash,
       expiresAt: refreshToken.expiresAt,
     });
 
     return {
-      ok: true,
-      session: {
-        accessToken: accessToken.token,
-        expiresAt: accessToken.expiresAt.toISOString(),
-        user: authUser,
-      },
+      authUser,
+      accessToken:  accessToken.token,
+      refreshToken: refreshToken.token,
+      expiresAt:    accessToken.expiresAt.toISOString(),
     };
   }
 
-  private async verifyAndExchange(payload: AppleAuthRequest): Promise<{
-    claims: Awaited<ReturnType<AppleIdentityTokenVerifier["verify"]>>;
-    encryptedRefreshToken?: string;
-  }> {
-    const claims = await this.identityTokenVerifier.verify(
-      payload.identityToken,
-      { expectedNonce: payload.nonce },
-    );
-
-    const exchanged = await this.tokenExchangeClient.exchange(
-      payload.authorizationCode,
-      claims.aud,
-    );
-    const exchangedClaims = await this.identityTokenVerifier.verify(
-      exchanged.idToken,
-    );
-
-    if (
-      exchangedClaims.sub !== claims.sub ||
-      exchangedClaims.aud !== claims.aud
-    ) {
-      throw new AppError({
-        code: "AUTH_APPLE_TOKEN_INCOHERENT",
-        message: "La respuesta de Apple no coincide con la identidad presentada.",
-        statusCode: 401,
-      });
-    }
-
-    return {
-      claims,
-      ...(exchanged.refreshToken
-        ? {
-            encryptedRefreshToken: OAuthTokenCrypto.encrypt(
-              exchanged.refreshToken,
-            ),
-          }
-        : {}),
-    };
-  }
-
-  private async validateLegalAcceptances(
-    payload: AppleAuthRequest,
-  ): Promise<Array<typeof legalDocuments.$inferSelect>> {
-    const activeDocuments = await db
-      .select()
-      .from(legalDocuments)
-      .where(
-        and(
-          eq(legalDocuments.isActive, true),
-          inArray(legalDocuments.type, [...REQUIRED_LEGAL_TYPES]),
-        ),
-      );
-
-    const activeByType = new Map(
-      activeDocuments.map((document) => [document.type, document]),
-    );
-    const submittedById = new Map(
-      (payload.legalAcceptances ?? []).map((item) => [
-        item.legalDocumentId,
-        item.version,
-      ]),
-    );
-
-    for (const type of REQUIRED_LEGAL_TYPES) {
-      const document = activeByType.get(type);
-      if (!document) {
-        throw new AppError({
-          code: "LEGAL_DOCUMENT_UNAVAILABLE",
-          message: `El documento legal obligatorio ${type} no está disponible.`,
-          statusCode: 503,
-        });
-      }
-      if (submittedById.get(document.id) !== document.version) {
-        throw new AppError({
-          code: "LEGAL_ACCEPTANCE_REQUIRED",
-          message:
-            "Debes aceptar Términos, Privacidad y Condiciones para Usuarios antes de crear la cuenta con Apple.",
-          statusCode: 409,
-        });
-      }
-    }
-
-    return REQUIRED_LEGAL_TYPES.map((type) => {
-      const document = activeByType.get(type);
-      if (!document) throw AppError.internal("Missing active legal document.");
-      return document;
+  async signIn(payload: AppleAuthRequest): Promise<AppleAuthResult> {
+    // 1. Verify the identityToken presented by the client. This alone is
+    //    enough to know the Apple sub and (usually) email — no need to
+    //    touch Apple's token endpoint yet.
+    const identityClaims = await this.identityTokenVerifier.verify(payload.identityToken, {
+      ...(payload.nonce !== undefined ? { expectedNonce: payload.nonce } : {}),
     });
+
+    const existing = await this.identitiesRepository.findByProviderAndSub(PROVIDER, identityClaims.sub);
+    if (existing) {
+      return this.signInExisting(payload, identityClaims, existing.userId, existing.id);
+    }
+
+    // New-account preconditions (email present, not already taken, role
+    // supplied and not admin) are checked BEFORE exchanging authorizationCode.
+    // Apple authorization codes are single-use: if we consumed it here and
+    // then found role was missing, the client's natural retry (same code,
+    // now with role attached) would fail at Apple with invalid_grant,
+    // permanently breaking the "pick a role and retry" flow. Deferring the
+    // exchange until we know this attempt can actually complete keeps that
+    // retry — and the authorizationCode — valid.
+    const precondition = this.checkNewAccountPreconditions(payload, identityClaims);
+    if (precondition) return precondition;
+
+    return this.exchangeAndCompleteNewAccount(payload, identityClaims);
   }
 
-  async signIn(
+  /**
+   * Validates everything about a new-account request that doesn't require
+   * calling Apple's token endpoint. Returns an error result if any check
+   * fails, or `null` if the request may proceed to the (code-consuming)
+   * exchange step.
+   */
+  private checkNewAccountPreconditions(
     payload: AppleAuthRequest,
-    metadata?: { ipAddress?: string; userAgent?: string },
-  ): Promise<AppleAuthResult> {
-    let verifiedClaims: Awaited<
-      ReturnType<AppleIdentityTokenVerifier["verify"]>
-    >;
-    try {
-      verifiedClaims = await this.identityTokenVerifier.verify(
-        payload.identityToken,
-        { expectedNonce: payload.nonce },
-      );
-    } catch (error) {
-      if (error instanceof AppError) {
-        return {
-          ok: false,
-          code: error.code,
-          message: error.message,
-          statusCode: error.statusCode,
-        };
-      }
-      throw error;
-    }
-
-    const existingIdentity =
-      await this.identitiesRepository.findActiveByProviderSubject(
-        PROVIDER,
-        verifiedClaims.sub,
-      );
-
-    if (existingIdentity) {
-      try {
-        const exchanged = await this.verifyAndExchange(payload);
-        if (exchanged.encryptedRefreshToken) {
-          await this.identitiesRepository.updateEncryptedRefreshToken(
-            existingIdentity.id,
-            exchanged.encryptedRefreshToken,
-          );
-        }
-        await this.identitiesRepository.touchLastLogin(existingIdentity.id);
-
-        const user = await this.usersRepository.findById(
-          existingIdentity.userId,
-        );
-        if (!user) {
-          return {
-            ok: false,
-            code: "UNAUTHORIZED",
-            message: "La cuenta asociada a Apple no existe.",
-            statusCode: 401,
-          };
-        }
-        if (user.status !== "active") {
-          return {
-            ok: false,
-            code:
-              user.status === "deleted"
-                ? "AUTH_ACCOUNT_DELETED"
-                : user.status === "pending"
-                  ? "AUTH_ACCOUNT_PENDING"
-                  : "AUTH_ACCOUNT_SUSPENDED",
-            message:
-              user.status === "pending"
-                ? "La cuenta todavía está pendiente de aprobación."
-                : user.status === "deleted"
-                  ? "Esta cuenta fue eliminada."
-                  : "Esta cuenta está bloqueada.",
-            statusCode: 403,
-          };
-        }
-
-        this.auditService.recordSafe({
-          eventType: "auth.apple.login.success",
-          entityType: "user",
-          entityId: user.id,
-          actorUserId: user.id,
-          metadata: { provider: PROVIDER },
-        });
-        return await this.issueSession(user);
-      } catch (error) {
-        if (error instanceof AppError) {
-          return {
-            ok: false,
-            code: error.code,
-            message: error.message,
-            statusCode: error.statusCode,
-          };
-        }
-        throw error;
-      }
-    }
-
-    const email = verifiedClaims.email?.trim().toLowerCase();
-    if (!email || !verifiedClaims.emailVerified) {
+    identityClaims: Awaited<ReturnType<AppleIdentityTokenVerifier["verify"]>>,
+  ): AppleAuthResult | null {
+    const email = identityClaims.email?.toLowerCase().trim();
+    if (!email) {
       return {
         ok: false,
         code: "AUTH_APPLE_EMAIL_MISSING",
-        message:
-          "Apple no entregó un correo verificado para crear la cuenta.",
+        message: "Apple did not provide an email for this account.",
         statusCode: 400,
       };
     }
 
+    if (!payload.role) {
+      return {
+        ok: false,
+        code: "VALIDATION_ERROR",
+        message: "role is required to create a new account.",
+        statusCode: 400,
+      };
+    }
+    if (payload.role === "admin") {
+      return { ok: false, code: "AUTH_FORBIDDEN", message: "Admin accounts cannot be registered publicly.", statusCode: 403 };
+    }
+
+    return null;
+  }
+
+  private async exchangeIdentity(
+    payload: AppleAuthRequest,
+    identityClaims: Awaited<ReturnType<AppleIdentityTokenVerifier["verify"]>>,
+  ): Promise<{ ok: true; encryptedRefreshToken: string | undefined } | { ok: false; result: AppleAuthResult }> {
+    // Exchange the authorizationCode with Apple, using the exact client_id
+    // the identityToken was issued for.
+    const exchange = await this.tokenExchangeClient.exchange(payload.authorizationCode, identityClaims.aud);
+
+    // The exchanged id_token must describe the same Apple account as the
+    // identityToken the client presented — never trust the two independently.
+    const exchangedClaims = await this.identityTokenVerifier.verify(exchange.idToken, {});
+    if (exchangedClaims.sub !== identityClaims.sub) {
+      this.auditService.recordSafe({
+        eventType:  "auth.apple.login.failure",
+        entityType: "auth",
+        metadata:   { reason: "token_incoherent" },
+      });
+      return {
+        ok: false,
+        result: {
+          ok: false,
+          code: "AUTH_APPLE_TOKEN_INCOHERENT",
+          message: "Apple's token exchange response does not match the presented identity token.",
+          statusCode: 401,
+        },
+      };
+    }
+
+    // Refresh token is encrypted before it ever touches application memory
+    // beyond this scope — never logged, never returned to the client.
+    const encryptedRefreshToken = exchange.refreshToken !== undefined
+      ? OAuthTokenCrypto.encrypt(exchange.refreshToken)
+      : undefined;
+
+    return { ok: true, encryptedRefreshToken };
+  }
+
+  private async signInExisting(
+    payload: AppleAuthRequest,
+    identityClaims: Awaited<ReturnType<AppleIdentityTokenVerifier["verify"]>>,
+    userId: string,
+    identityId: string,
+  ): Promise<AppleAuthResult> {
+    const user = await this.usersRepository.findById(userId);
+    if (!user) {
+      return { ok: false, code: "UNAUTHORIZED", message: "User not found.", statusCode: 401 };
+    }
+    if (user.status === "suspended" || user.status === "banned") {
+      this.auditService.recordSafe({
+        eventType:   "auth.apple.login.failure",
+        entityType:  "user",
+        entityId:    user.id,
+        actorUserId: user.id,
+        metadata:    { reason: "account_suspended" },
+      });
+      return { ok: false, code: "AUTH_ACCOUNT_SUSPENDED", message: "Account is suspended.", statusCode: 403 };
+    }
+
+    const exchanged = await this.exchangeIdentity(payload, identityClaims);
+    if (!exchanged.ok) return exchanged.result;
+
+    return this.completeExistingUserSignIn(user, identityId, exchanged.encryptedRefreshToken);
+  }
+
+  /**
+   * Final step shared by both the "identity already existed" path and the
+   * new-account race-loss fallback below — issues the Rapa Go session
+   * without ever exchanging authorizationCode a second time within the same
+   * request (the race fallback already has its encryptedRefreshToken from
+   * the exchange exchangeAndCompleteNewAccount performed once).
+   */
+  private async completeExistingUserSignIn(
+    user: User,
+    identityId: string,
+    encryptedRefreshToken: string | undefined,
+  ): Promise<AppleAuthResult> {
+    if (encryptedRefreshToken !== undefined) {
+      await this.identitiesRepository.updateEncryptedRefreshToken(identityId, encryptedRefreshToken);
+    }
+
+    const session = await this.issueSession(user);
+
+    this.auditService.recordSafe({
+      eventType:   "auth.apple.login.success",
+      entityType:  "user",
+      entityId:    user.id,
+      actorUserId: user.id,
+      metadata:    { role: user.role },
+    });
+
+    return {
+      ok: true,
+      session: {
+        accessToken: session.accessToken,
+        expiresAt:   session.expiresAt,
+        user:        session.authUser,
+      },
+      refreshToken: session.refreshToken,
+    };
+  }
+
+  private async exchangeAndCompleteNewAccount(
+    payload: AppleAuthRequest,
+    identityClaims: Awaited<ReturnType<AppleIdentityTokenVerifier["verify"]>>,
+  ): Promise<AppleAuthResult> {
+    const email = identityClaims.email?.toLowerCase().trim();
+    // Preconditions already guarantee email and role are present — this is
+    // unreachable in practice, kept only to satisfy the type checker.
+    if (!email || !payload.role || payload.role === "admin") {
+      throw AppError.internal("exchangeAndCompleteNewAccount called without validated preconditions.");
+    }
+
+    // Never auto-link on email match — a matching email only means "someone
+    // registered this address before", not "this is the same person". The
+    // account owner must link explicitly, authenticated as themselves
+    // (a later PR); here we only report the conflict. Checked again here
+    // (not just in checkNewAccountPreconditions) to close the window
+    // between that check and this one — still before the code-consuming
+    // exchange, so a real conflict never burns the authorizationCode either.
     const emailOwner = await this.usersRepository.findByEmail(email);
     if (emailOwner) {
+      this.auditService.recordSafe({
+        eventType:  "auth.apple.login.conflict",
+        entityType: "user",
+        entityId:   emailOwner.id,
+        metadata:   { reason: "email_taken" },
+      });
       return {
         ok: false,
         code: "AUTH_APPLE_ACCOUNT_LINKING_REQUIRED",
-        message:
-          "Ya existe una cuenta con ese correo. Ingresa con tu método actual y vincula Apple desde Perfil > Seguridad.",
+        message: "An account with this email already exists. Sign in with your existing method to link Apple.",
         statusCode: 409,
       };
     }
 
-    let legalDocumentsToAccept;
-    try {
-      legalDocumentsToAccept = await this.validateLegalAcceptances(payload);
-    } catch (error) {
-      if (error instanceof AppError) {
-        return {
-          ok: false,
-          code: error.code,
-          message: error.message,
-          statusCode: error.statusCode,
-        };
+    const exchanged = await this.exchangeIdentity(payload, identityClaims);
+    if (!exchanged.ok) return exchanged.result;
+
+    const name = buildName(payload.name, email);
+
+    const created = await this.identitiesRepository.createUserWithIdentity({
+      email,
+      name,
+      role:   payload.role,
+      status: roleInitialStatus(payload.role),
+      // Apple only asserts a verified email for accounts it controls
+      // (including private-relay addresses) — safe to trust as verified.
+      isVerified: identityClaims.emailVerified,
+      provider:                PROVIDER,
+      providerUserId:          identityClaims.sub,
+      providerEmail:           email,
+      providerEmailVerified:   identityClaims.emailVerified,
+      providerIsPrivateEmail:  identityClaims.isPrivateEmail,
+      encryptedRefreshToken: exchanged.encryptedRefreshToken,
+    });
+
+    if (!created) {
+      // Unique(provider, provider_user_id) violation: a concurrent request
+      // for the exact same Apple account won the race and created it first.
+      // We've already exchanged the authorizationCode once above (as part of
+      // this same request) — completeExistingUserSignIn reuses that result
+      // rather than exchanging (the now-single-use) code a second time.
+      const identity = await this.identitiesRepository.findByProviderAndSub(PROVIDER, identityClaims.sub);
+      if (!identity) {
+        throw AppError.internal("OAuth identity creation race could not be resolved.");
       }
-      throw error;
+      const winnerUser = await this.usersRepository.findById(identity.userId);
+      if (!winnerUser) {
+        return { ok: false, code: "UNAUTHORIZED", message: "User not found.", statusCode: 401 };
+      }
+      if (winnerUser.status === "suspended" || winnerUser.status === "banned") {
+        return { ok: false, code: "AUTH_ACCOUNT_SUSPENDED", message: "Account is suspended.", statusCode: 403 };
+      }
+      return this.completeExistingUserSignIn(winnerUser, identity.id, exchanged.encryptedRefreshToken);
     }
 
-    let exchanged;
-    try {
-      exchanged = await this.verifyAndExchange(payload);
-    } catch (error) {
-      if (error instanceof AppError) {
-        return {
-          ok: false,
-          code: error.code,
-          message: error.message,
-          statusCode: error.statusCode,
-        };
-      }
-      throw error;
-    }
+    const session = await this.issueSession(created.user);
 
-    const phone = normalizeApplePhone(payload.phone);
-    if (!isValidApplePhone(phone)) {
-      return {
-        ok: false,
-        code: "AUTH_APPLE_PHONE_REQUIRED",
-        message:
-          "Apple no comparte tu número de teléfono. Ingresa un celular válido para completar tu cuenta RAPA GO.",
-        statusCode: 400,
-      };
-    }
+    this.auditService.recordSafe({
+      eventType:   "auth.apple.register.success",
+      entityType:  "user",
+      entityId:    created.user.id,
+      actorUserId: created.user.id,
+      metadata:    { role: created.user.role, isPrivateEmail: identityClaims.isPrivateEmail },
+    });
 
-    const requestedFareType = normalizeFareType(payload.passengerFareType);
-    const verificationStatus =
-      requestedFareType === "resident" ? "pending" : "not_required";
-    const effectiveFareType =
-      requestedFareType === "resident" ? "chilean" : requestedFareType;
-    const now = new Date();
-
-    try {
-      const createdUser = await db.transaction(async (tx) => {
-        const userRows = await tx
-          .insert(users)
-          .values({
-            email,
-            name: buildDisplayName(payload.name, email),
-            role: "passenger",
-            status: "active",
-            isVerified: true,
-          })
-          .returning();
-        const user = userRows[0];
-        if (!user) throw AppError.internal("User insert returned no rows.");
-
-        await tx.insert(passengerProfiles).values({
-          userId: user.id,
-          phone,
-          requestedFareType,
-          effectiveFareType,
-          residenceVerificationStatus: verificationStatus,
-          residenceRequestedAt:
-            requestedFareType === "resident" ? now : null,
-          updatedAt: now,
-        });
-
-        await tx.insert(authIdentities).values({
-          userId: user.id,
-          provider: PROVIDER,
-          providerSubject: exchanged.claims.sub,
-          providerEmail: email,
-          emailVerified: exchanged.claims.emailVerified,
-          providerIsPrivateEmail: exchanged.claims.isPrivateEmail,
-          encryptedRefreshToken:
-            exchanged.encryptedRefreshToken ?? null,
-          linkedAt: now,
-          lastLoginAt: now,
-        });
-
-        await tx.insert(userAcceptances).values(
-          legalDocumentsToAccept.map((document) => ({
-            userId: user.id,
-            legalDocumentId: document.id,
-            versionAccepted: document.version,
-            ipAddress: metadata?.ipAddress ?? null,
-            userAgent: metadata?.userAgent ?? null,
-          })),
-        );
-
-        return user;
-      });
-
-      this.auditService.recordSafe({
-        eventType: "auth.apple.register.success",
-        entityType: "user",
-        entityId: createdUser.id,
-        actorUserId: createdUser.id,
-        metadata: {
-          provider: PROVIDER,
-          isPrivateEmail: exchanged.claims.isPrivateEmail,
-          passengerFareType: requestedFareType,
-        },
-      });
-
-      return await this.issueSession(createdUser);
-    } catch (error) {
-      if (isUniqueViolation(error)) {
-        const concurrentIdentity =
-          await this.identitiesRepository.findActiveByProviderSubject(
-            PROVIDER,
-            exchanged.claims.sub,
-          );
-        if (concurrentIdentity) {
-          const user = await this.usersRepository.findById(
-            concurrentIdentity.userId,
-          );
-          if (user?.status === "active") return await this.issueSession(user);
-        }
-        return {
-          ok: false,
-          code: "AUTH_APPLE_ACCOUNT_LINKING_REQUIRED",
-          message:
-            "La cuenta ya existe. Ingresa con tu método actual y vincula Apple desde Perfil > Seguridad.",
-          statusCode: 409,
-        };
-      }
-      if (error instanceof AppError) {
-        return {
-          ok: false,
-          code: error.code,
-          message: error.message,
-          statusCode: error.statusCode,
-        };
-      }
-      throw error;
-    }
-  }
-
-  async link(
-    accessToken: string,
-    payload: AppleAuthRequest,
-  ): Promise<AppleLinkResult> {
-    const auth = await authenticateActiveAccessToken(accessToken);
-    if (!auth.ok) return auth;
-
-    try {
-      const exchanged = await this.verifyAndExchange(payload);
-      const alreadyLinked =
-        await this.identitiesRepository.findActiveByProviderSubject(
-          PROVIDER,
-          exchanged.claims.sub,
-        );
-
-      if (alreadyLinked && alreadyLinked.userId !== auth.user.id) {
-        return {
-          ok: false,
-          code: "AUTH_IDENTITY_ALREADY_LINKED",
-          message:
-            "Esta cuenta de Apple ya está vinculada a otra cuenta RAPA GO.",
-          statusCode: 409,
-        };
-      }
-
-      await this.identitiesRepository.link({
-        userId: auth.user.id,
-        provider: PROVIDER,
-        providerSubject: exchanged.claims.sub,
-        providerEmail: exchanged.claims.email ?? null,
-        emailVerified: exchanged.claims.emailVerified,
-        providerIsPrivateEmail: exchanged.claims.isPrivateEmail,
-        encryptedRefreshToken:
-          exchanged.encryptedRefreshToken ?? null,
-      });
-
-      this.auditService.recordSafe({
-        eventType: "auth.identity.linked",
-        entityType: "user",
-        entityId: auth.user.id,
-        actorUserId: auth.user.id,
-        metadata: { provider: PROVIDER },
-      });
-
-      return {
-        ok: true,
-        message: "Apple quedó vinculado correctamente.",
-      };
-    } catch (error) {
-      if (error instanceof AppError) {
-        return {
-          ok: false,
-          code: error.code,
-          message: error.message,
-          statusCode: error.statusCode,
-        };
-      }
-      throw error;
-    }
-  }
-
-  async getLinkedAppleIdentity(userId: string) {
-    return db
-      .select()
-      .from(authIdentities)
-      .where(
-        and(
-          eq(authIdentities.userId, userId),
-          eq(authIdentities.provider, PROVIDER),
-          isNull(authIdentities.revokedAt),
-        ),
-      )
-      .limit(1)
-      .then((rows) => rows[0] ?? null);
+    return {
+      ok: true,
+      session: {
+        accessToken: session.accessToken,
+        expiresAt:   session.expiresAt,
+        user:        session.authUser,
+      },
+      refreshToken: session.refreshToken,
+    };
   }
 }

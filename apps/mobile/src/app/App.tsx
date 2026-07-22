@@ -14,9 +14,9 @@ import "../theme/variables.css";
 import "../theme/global.css";
 
 import { AppRouter } from "../navigation/AppRouter";
-import { RouteErrorBoundary } from "../navigation/RouteErrorBoundary";
 import { AppProviders } from "./AppProviders";
 import { RapaGoLanguageRuntime } from "../i18n/rapagoI18n";
+import { SessionLogoutToast } from "../components/SessionLogoutToast";
 
 setupIonicReact({
   mode: "md",
@@ -29,15 +29,15 @@ export function App(): JSX.Element {
 
   return (
     <IonApp>
-      <RouteErrorBoundary>
-        <RapaGoLanguageRuntime />
+      <RapaGoLanguageRuntime />
 
-        <IonReactRouter>
-          <AppProviders>
-            <AppRouter />
-          </AppProviders>
-        </IonReactRouter>
-      </RouteErrorBoundary>
+      <IonReactRouter>
+        <AppProviders>
+          <AppRouter />
+          {/* Protocolo de sesión: feedback global de cierre de sesión */}
+          <SessionLogoutToast />
+        </AppProviders>
+      </IonReactRouter>
     </IonApp>
   );
 }

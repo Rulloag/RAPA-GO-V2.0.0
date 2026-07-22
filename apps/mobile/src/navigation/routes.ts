@@ -114,6 +114,10 @@ export const ROUTES = {
     SECURITY: "/profile/security",
     NOTIFICATIONS: "/profile/notifications",
   },
+
+  MAPS: {
+    TEST: "/maps/test",
+  },
 } as const;
 
 /** Build concrete URLs for parameterized routes */

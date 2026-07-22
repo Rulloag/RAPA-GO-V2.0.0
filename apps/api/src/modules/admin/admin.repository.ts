@@ -29,6 +29,11 @@ export interface AdminRideRow {
   cancellationReason: string | null;
   cancelledByRole:    string | null;
   createdAt:          Date;
+  rideType:           string;
+  scheduledPickupAt:  Date | null;
+  priorityFeeClp:     number | null;
+  flightNumber:          string | null;
+  preferredDriverGender: string | null;
 }
 
 export interface ListRidesFilter {
@@ -221,6 +226,11 @@ export class AdminRepository {
           cancellationReason: rideRequests.cancellationReason,
           cancelledByRole:    rideRequests.cancelledByRole,
           createdAt:          rideRequests.createdAt,
+          rideType:           rideRequests.rideType,
+          scheduledPickupAt:  rideRequests.scheduledPickupAt,
+          priorityFeeClp:        rideRequests.priorityFeeClp,
+          flightNumber:          rideRequests.flightNumber,
+          preferredDriverGender: rideRequests.preferredDriverGender,
         })
         .from(rideRequests)
         .innerJoin(passenger, eq(rideRequests.passengerUserId, passenger.id))
@@ -265,6 +275,11 @@ export class AdminRepository {
           cancellationReason: rideRequests.cancellationReason,
           cancelledByRole:    rideRequests.cancelledByRole,
           createdAt:          rideRequests.createdAt,
+          rideType:           rideRequests.rideType,
+          scheduledPickupAt:  rideRequests.scheduledPickupAt,
+          priorityFeeClp:        rideRequests.priorityFeeClp,
+          flightNumber:          rideRequests.flightNumber,
+          preferredDriverGender: rideRequests.preferredDriverGender,
         })
         .from(rideRequests)
         .innerJoin(passenger, eq(rideRequests.passengerUserId, passenger.id))

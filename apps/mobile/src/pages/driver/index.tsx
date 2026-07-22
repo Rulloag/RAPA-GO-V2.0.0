@@ -12,6 +12,7 @@ import {
   IonInput,
   IonItem,
   IonLabel,
+  IonModal,
   IonNote,
   IonPage,
   IonRefresher,
@@ -21,6 +22,7 @@ import {
   IonTextarea,
   IonTitle,
   IonToolbar,
+  useIonViewWillEnter,
 } from "@ionic/react";
 import {
   useEffect,
@@ -16105,6 +16107,240 @@ La reserva fue retirada. No continúes hacia la recogida.`,
   );
 }
 
+// ── DriverRideRouteMap ────────────────────────────────────────────────────────
+// Shows a driving route from the driver's current position to origin (pre-pickup)
+// or destination (in_progress). Requires driver position from Geolocation.
+
+const DRIVER_ROUTE_LABEL: Record<string, string> = {
+  accepted:        "Ruta hacia el pasajero",
+  driver_en_route: "Ruta hacia el pasajero",
+  in_progress:     "Ruta hacia el destino",
+};
+
+function DriverRideRouteMap({ status, driverPos, originLat, originLng, destinationLat, destinationLng }: {
+  status: string;
+  driverPos: LatLng | null;
+  originLat: number | null; originLng: number | null;
+  destinationLat: number | null; destinationLng: number | null;
+}): JSX.Element | null {
+  const route  = useDirectionsRoute();
+  const mapRef = useRef<GoogleMapInstance | null>(null);
+
+  if (!["accepted", "driver_en_route", "driver_arrived", "in_progress"].includes(status)) return null;
+
+  if (status === "driver_arrived") {
+    return (
+      <div style={{ marginTop: "8px", padding: "8px 10px", background: "var(--ion-color-secondary-tint)", borderRadius: "8px", fontSize: "0.8rem", color: "var(--ion-color-secondary-shade)" }}>
+        Ya llegaste al punto de recogida. Inicia el viaje cuando el pasajero esté a bordo.
+      </div>
+    );
+  }
+
+  if (!driverPos) {
+    return (
+      <div style={{ marginTop: "8px", fontSize: "0.78rem", color: "var(--ion-color-medium)", fontStyle: "italic" }}>
+        Actualiza tu ubicación para ver la ruta.
+      </div>
+    );
+  }
+
+  const target: LatLng | null = status === "in_progress"
+    ? (destinationLat && destinationLng ? { lat: destinationLat, lng: destinationLng } : null)
+    : (originLat && originLng ? { lat: originLat, lng: originLng } : null);
+
+  if (!target) {
+    return (
+      <div style={{ marginTop: "8px", fontSize: "0.78rem", color: "var(--ion-color-medium)", fontStyle: "italic" }}>
+        Sin coordenadas suficientes para mostrar ruta.
+      </div>
+    );
+  }
+
+  function handleMapReady(map: GoogleMapInstance) {
+    mapRef.current = map;
+    void route.calculate(driverPos!, target!, map);
+  }
+
+  return (
+    <div style={{ marginTop: "8px" }}>
+      <div style={{ fontSize: "0.78rem", fontWeight: 600, color: "var(--ion-color-dark)", marginBottom: "6px" }}>
+        {DRIVER_ROUTE_LABEL[status] ?? "Ruta"}
+      </div>
+      <MapView
+        center={driverPos}
+        zoom={13}
+        height="160px"
+        onMapReady={handleMapReady}
+      />
+      {route.status === "loading" && (
+        <div style={{ fontSize: "0.72rem", color: "var(--ion-color-medium)", marginTop: "4px", display: "flex", alignItems: "center", gap: "6px" }}>
+          <IonSpinner name="dots" style={{ width: "12px", height: "12px" }} /> Calculando ruta…
+        </div>
+      )}
+      {route.status === "success" && route.summary && (
+        <div style={{ fontSize: "0.75rem", color: "var(--ion-color-primary)", marginTop: "4px", fontWeight: 600 }}>
+          {route.summary.distanceText} · {route.summary.durationText}
+        </div>
+      )}
+      {route.status === "error" && route.error && (
+        <div style={{ fontSize: "0.72rem", color: "var(--ion-color-danger)", marginTop: "4px" }}>{route.error}</div>
+      )}
+    </div>
+  );
+}
+
+// ── Scheduled helpers ─────────────────────────────────────────────────────────
+
+function fmtScheduledPickup(iso: string): string {
+  return new Date(iso).toLocaleString("es-CL", {
+    day: "2-digit", month: "2-digit", year: "numeric",
+    hour: "2-digit", minute: "2-digit",
+  });
+}
+
+function isPickupSoon(iso: string): boolean {
+  return new Date(iso).getTime() <= Date.now() + 2 * 60 * 60 * 1000;
+}
+
+// ── QueuedOfferModal ──────────────────────────────────────────────────────────
+
+function useCountdown(expiresAt: string | null): number {
+  const [seconds, setSeconds] = useState<number>(() =>
+    expiresAt ? Math.max(0, Math.floor((new Date(expiresAt).getTime() - Date.now()) / 1000)) : 0,
+  );
+
+  useEffect(() => {
+    if (!expiresAt) return;
+    const tick = () => {
+      const remaining = Math.max(0, Math.floor((new Date(expiresAt).getTime() - Date.now()) / 1000));
+      setSeconds(remaining);
+    };
+    tick();
+    const id = setInterval(tick, 1000);
+    return () => clearInterval(id);
+  }, [expiresAt]);
+
+  return seconds;
+}
+
+function QueuedOfferModal({ offer, onAccept, onReject, onExpire, loading }: {
+  offer: ActiveRideOfferData;
+  onAccept: () => void;
+  onReject: () => void;
+  onExpire: () => void;
+  loading: boolean;
+}): JSX.Element {
+  const countdown = useCountdown(offer.offer.expiresAt);
+  const { ride } = offer;
+
+  useEffect(() => {
+    if (countdown === 0) onExpire();
+  }, [countdown, onExpire]);
+
+  const countdownColor = countdown <= 5 ? "var(--ion-color-danger)" : countdown <= 10 ? "var(--ion-color-warning-shade)" : "var(--ion-color-success-shade)";
+
+  return (
+    <div style={{ padding: "16px" }}>
+      {/* Header */}
+      <div style={{
+        background:   "var(--ion-color-success)",
+        color:        "white",
+        borderRadius: "12px 12px 0 0",
+        padding:      "14px 16px",
+        margin:       "-16px -16px 0",
+      }}>
+        <div style={{ fontWeight: 700, fontSize: "1rem" }}>Próximo viaje disponible</div>
+        <div style={{ fontSize: "0.8rem", opacity: 0.9, marginTop: "2px" }}>
+          Este viaje comenzará después de terminar tu viaje actual.
+        </div>
+      </div>
+
+      {/* Countdown */}
+      <div style={{
+        textAlign: "center", padding: "14px 0 8px",
+        fontWeight: 800, fontSize: "2.2rem", color: countdownColor,
+        letterSpacing: "-1px",
+      }}>
+        {countdown}s
+      </div>
+
+      {/* Ride details */}
+      <div style={{
+        background: "var(--ion-color-light)", borderRadius: "10px",
+        padding: "12px 14px", marginBottom: "12px",
+      }}>
+        <div style={{ fontWeight: 600, fontSize: "0.92rem", marginBottom: "6px" }}>
+          {ride.originText} → {ride.destinationText}
+        </div>
+
+        <div style={{ display: "flex", flexWrap: "wrap", gap: "10px", fontSize: "0.8rem", color: "var(--ion-color-medium-shade)" }}>
+          {ride.estimatedFareClp != null && (
+            <span style={{ fontWeight: 600, color: "var(--ion-color-success-shade)" }}>
+              ${ride.estimatedFareClp.toLocaleString("es-CL")} CLP
+            </span>
+          )}
+          {ride.distanceMeters != null && (
+            <span>{(ride.distanceMeters / 1000).toFixed(1)} km</span>
+          )}
+          {ride.durationSeconds != null && (
+            <span>~{Math.round(ride.durationSeconds / 60)} min</span>
+          )}
+        </div>
+
+        {ride.rideType === "scheduled" && ride.scheduledPickupAt && (
+          <div style={{
+            marginTop: "8px", padding: "6px 10px",
+            background: "var(--ion-color-warning-tint)", borderRadius: "6px",
+            fontSize: "0.78rem", color: "var(--ion-color-warning-shade)", fontWeight: 600,
+          }}>
+            Programado: {fmtScheduledPickup(ride.scheduledPickupAt)}
+          </div>
+        )}
+
+        {ride.priorityFeeClp != null && ride.priorityFeeClp > 0 && (
+          <div style={{
+            marginTop: "6px", fontSize: "0.78rem",
+            color: "var(--ion-color-warning-shade)", fontWeight: 600,
+          }}>
+            Recargo prioritario: ${ride.priorityFeeClp.toLocaleString("es-CL")} CLP
+          </div>
+        )}
+
+        {ride.flightNumber && (
+          <div style={{ marginTop: "4px", fontSize: "0.78rem", color: "var(--ion-color-medium)" }}>
+            Vuelo: {ride.flightNumber}
+          </div>
+        )}
+      </div>
+
+      {/* Actions */}
+      <div style={{ display: "flex", gap: "8px" }}>
+        <IonButton
+          expand="block"
+          fill="outline"
+          color="medium"
+          style={{ flex: 1 }}
+          disabled={loading}
+          onClick={onReject}
+        >
+          Rechazar
+        </IonButton>
+        <IonButton
+          expand="block"
+          color="success"
+          style={{ flex: 1 }}
+          disabled={loading || countdown === 0}
+          onClick={onAccept}
+        >
+          {loading ? <IonSpinner name="dots" style={{ width: "18px", height: "18px" }} /> : "Aceptar"}
+        </IonButton>
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+
 export function DriverTripsPage(): JSX.Element {
   return (
     <>
@@ -16749,6 +16985,8 @@ function DriverMyRidesPage(): JSX.Element {
   }
 
 
+  const hasAcceptedQueuedRide = hasInProgressRide && rides.some(r => r.status === "accepted");
+
   return (
     <IonPage>
       <style>{`
@@ -16793,6 +17031,11 @@ function DriverMyRidesPage(): JSX.Element {
       <IonHeader>
         <IonToolbar color="success">
           <IonTitle>Mis Viajes</IonTitle>
+          <div slot="end" style={{ paddingRight: "8px" }}>
+            <IonButton fill="clear" color="light" disabled={loading} onClick={() => void loadRides()}>
+              <IonIcon icon={refreshOutline} slot="icon-only" />
+            </IonButton>
+          </div>
         </IonToolbar>
       </IonHeader>
 
@@ -17186,6 +17429,10 @@ ${passengerCancelNotice.message}`
       />
     </IonPage>
   );
+}
+
+function clp(amount: number): string {
+  return `$${amount.toLocaleString("es-CL")} CLP`;
 }
 
 export function DriverEarningsPage(): JSX.Element {

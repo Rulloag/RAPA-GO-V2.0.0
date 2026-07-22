@@ -1,185 +1,185 @@
 import { useCallback, useRef, useState } from "react";
 import { Capacitor } from "@capacitor/core";
-import {
-  AppleSignIn,
-  ErrorCode,
-  SignInScope,
-} from "@capawesome/capacitor-apple-sign-in";
-import { legalService, type LegalDocumentData } from "../legal/legal.service.js";
+import { AppleSignIn, SignInScope, ErrorCode } from "@capawesome/capacitor-apple-sign-in";
 import { generateAppleNoncePair } from "./appleNonce.js";
-import type {
-  ApplePassengerFareType,
-  AppleSignInRequest,
-} from "./auth.types.js";
 import { useAuth } from "./useAuth.js";
+import type { AppleSignInRequest } from "./auth.types.js";
+import type { PublicRole } from "./roles.js";
 import type { UserRole } from "@rapa-go/shared";
 
-const REQUIRED_TYPES = new Set([
-  "terms_and_conditions",
-  "privacy_policy",
-  "user_conditions",
-]);
-
-type PendingAppleCredentials = Pick<
-  AppleSignInRequest,
-  "identityToken" | "authorizationCode" | "nonce" | "name"
->;
-
+/**
+ * Discriminated outcome of an Apple sign-in attempt — the UI branches on
+ * `kind`, never on raw backend error codes directly, so error-code mapping
+ * lives in exactly one place (mapBackendError below).
+ *
+ * `success` carries the signed-in user's role directly, rather than making
+ * the caller read it back out of AuthProvider's context state — reading
+ * context after an `await` risks a stale-closure read of the pre-update
+ * value, since the state setter's effect isn't visible until the next
+ * render.
+ */
 export type AppleSignInOutcome =
   | { kind: "success"; role: UserRole }
   | { kind: "cancelled" }
-  | { kind: "setup_required" }
-  | { kind: "linking_required"; message: string }
-  | { kind: "error"; message: string }
-  | { kind: "unavailable" };
+  | { kind: "role_required" }
+  | { kind: "linking_required" }
+  | { kind: "invalid_credential"; message: string }
+  | { kind: "suspended"; message: string }
+  | { kind: "network_error"; message: string }
+  | { kind: "unavailable" }
+  | { kind: "internal_error"; message: string };
 
-export function useAppleSignIn() {
+/** Credentials held only in memory between the initial attempt and a role-required retry. */
+interface PendingCredentials {
+  identityToken: string;
+  authorizationCode: string;
+  nonce: string;
+  name?: AppleSignInRequest["name"];
+}
+
+const SUSPENDED_CODES = new Set(["AUTH_ACCOUNT_SUSPENDED"]);
+const LINKING_REQUIRED_CODES = new Set(["AUTH_APPLE_ACCOUNT_LINKING_REQUIRED"]);
+const ROLE_REQUIRED_CODES = new Set(["VALIDATION_ERROR"]);
+const INVALID_CREDENTIAL_CODES = new Set([
+  "UNAUTHORIZED",
+  "AUTH_APPLE_TOKEN_INVALID",
+  "AUTH_APPLE_TOKEN_INCOHERENT",
+  "AUTH_APPLE_NONCE_MISMATCH",
+  "AUTH_APPLE_EMAIL_MISSING",
+  "AUTH_FORBIDDEN",
+]);
+const NETWORK_CODES = new Set(["NETWORK_ERROR", "TIMEOUT"]);
+
+function mapBackendError(code: string, message: string): AppleSignInOutcome {
+  if (ROLE_REQUIRED_CODES.has(code))     return { kind: "role_required" };
+  if (LINKING_REQUIRED_CODES.has(code))  return { kind: "linking_required" };
+  if (SUSPENDED_CODES.has(code))         return { kind: "suspended", message };
+  if (INVALID_CREDENTIAL_CODES.has(code)) return { kind: "invalid_credential", message };
+  if (NETWORK_CODES.has(code))           return { kind: "network_error", message };
+  return { kind: "internal_error", message };
+}
+
+export interface UseAppleSignInResult {
+  /** True only on iOS running as a native Capacitor app — the only platform this PR implements. */
+  isAvailable: boolean;
+  loading: boolean;
+  /** Starts the native Apple flow. No-op (returns immediately) if already loading. */
+  signIn: () => Promise<AppleSignInOutcome>;
+  /** True while signIn() is waiting for a role to complete a new-account sign-in. */
+  awaitingRole: boolean;
+  /** Retries with the credentials from the last attempt plus a role. Only valid while awaitingRole is true. */
+  submitRole: (role: PublicRole) => Promise<AppleSignInOutcome>;
+  /** Discards any credentials held in memory without retrying — e.g. user backs out of role selection. */
+  cancelRoleSelection: () => void;
+}
+
+export function useAppleSignIn(): UseAppleSignInResult {
   const { signInWithApple } = useAuth();
   const [loading, setLoading] = useState(false);
-  const [setupOpen, setSetupOpen] = useState(false);
-  const [documents, setDocuments] = useState<LegalDocumentData[]>([]);
-  const pending = useRef<PendingAppleCredentials | null>(null);
+  const [awaitingRole, setAwaitingRole] = useState(false);
+  const pendingRef = useRef<PendingCredentials | null>(null);
 
-  const isAvailable =
-    Capacitor.isNativePlatform() && Capacitor.getPlatform() === "ios";
+  const isAvailable = Capacitor.getPlatform() === "ios";
 
   const clearPending = useCallback(() => {
-    pending.current = null;
-    setSetupOpen(false);
-    setDocuments([]);
+    pendingRef.current = null;
+    setAwaitingRole(false);
   }, []);
 
-  const submit = useCallback(
-    async (payload: AppleSignInRequest): Promise<AppleSignInOutcome> => {
+  const submitToBackend = useCallback(
+    async (credentials: PendingCredentials, role?: PublicRole): Promise<AppleSignInOutcome> => {
+      const payload: AppleSignInRequest = {
+        identityToken: credentials.identityToken,
+        authorizationCode: credentials.authorizationCode,
+        nonce: credentials.nonce,
+        ...(credentials.name ? { name: credentials.name } : {}),
+        ...(role ? { role } : {}),
+      };
+
       const response = await signInWithApple(payload);
-      if (response.ok === true) {
+
+      if (response.ok) {
         clearPending();
         return { kind: "success", role: response.session.user.role };
       }
 
-      if (response.code === "LEGAL_ACCEPTANCE_REQUIRED") {
-        const active = await legalService.getActive();
-        const required = active.filter(
-          (document) => document.isActive && REQUIRED_TYPES.has(document.type),
-        );
-        if (required.length !== REQUIRED_TYPES.size) {
-          clearPending();
-          return {
-            kind: "error",
-            message:
-              "No pudimos cargar todos los documentos legales obligatorios.",
-          };
-        }
-        setDocuments(required);
-        setSetupOpen(true);
-        return { kind: "setup_required" };
+      const outcome = mapBackendError(response.code, response.message ?? "");
+      if (outcome.kind === "role_required") {
+        // The only case where we deliberately keep credentials in memory —
+        // everything else clears them, per the flow's cleanup contract.
+        pendingRef.current = credentials;
+        setAwaitingRole(true);
+      } else {
+        clearPending();
       }
-
-      clearPending();
-      if (response.code === "AUTH_APPLE_ACCOUNT_LINKING_REQUIRED") {
-        return { kind: "linking_required", message: response.message };
-      }
-      return { kind: "error", message: response.message };
+      return outcome;
     },
-    [clearPending, signInWithApple],
+    [signInWithApple, clearPending],
   );
 
   const signIn = useCallback(async (): Promise<AppleSignInOutcome> => {
+    if (loading) return { kind: "internal_error", message: "A sign-in attempt is already in progress." };
     if (!isAvailable) return { kind: "unavailable" };
-    if (loading) return { kind: "error", message: "Apple ya está procesando el ingreso." };
 
     setLoading(true);
+    const { raw: rawNonce, hashed: hashedNonce } = await generateAppleNoncePair();
+
     try {
-      const nonce = await generateAppleNoncePair();
       const result = await AppleSignIn.signIn({
         scopes: [SignInScope.Email, SignInScope.FullName],
-        nonce: nonce.hashed,
+        nonce: hashedNonce,
       });
 
-      if (!result.idToken || !result.authorizationCode) {
-        return {
-          kind: "error",
-          message: "Apple no entregó credenciales completas.",
-        };
+      // Defensive: never call the backend with incomplete credentials.
+      if (!result.authorizationCode || !result.idToken) {
+        return { kind: "internal_error", message: "Apple did not return complete credentials." };
       }
 
-      const credentials: PendingAppleCredentials = {
+      const credentials: PendingCredentials = {
         identityToken: result.idToken,
         authorizationCode: result.authorizationCode,
-        nonce: nonce.raw,
-        ...((result.givenName || result.familyName)
-          ? {
-              name: {
-                ...(result.givenName
-                  ? { givenName: result.givenName }
-                  : {}),
-                ...(result.familyName
-                  ? { familyName: result.familyName }
-                  : {}),
-              },
-            }
+        nonce: rawNonce,
+        ...((result.givenName ?? result.familyName)
+          ? { name: { ...(result.givenName ? { givenName: result.givenName } : {}), ...(result.familyName ? { familyName: result.familyName } : {}) } }
           : {}),
       };
-      pending.current = credentials;
-      return await submit(credentials);
-    } catch (error) {
-      const code = (error as { code?: string } | null)?.code;
-      if (code === ErrorCode.SignInCanceled) return { kind: "cancelled" };
-      return {
-        kind: "error",
-        message:
-          error instanceof Error
-            ? error.message
-            : "No se pudo iniciar sesión con Apple.",
-      };
+
+      return await submitToBackend(credentials);
+    } catch (err) {
+      const code = (err as { code?: string } | null)?.code;
+      if (code === ErrorCode.SignInCanceled) {
+        return { kind: "cancelled" };
+      }
+      const message = err instanceof Error ? err.message : "Apple sign-in failed.";
+      return { kind: "internal_error", message };
     } finally {
       setLoading(false);
     }
-  }, [isAvailable, loading, submit]);
+  }, [loading, isAvailable, submitToBackend]);
 
-  const completeSetup = useCallback(
-    async (input: {
-      passengerFareType: ApplePassengerFareType;
-      acceptedDocumentIds: string[];
-      phone: string;
-    }): Promise<AppleSignInOutcome> => {
-      const credentials = pending.current;
-      if (!credentials) {
-        return {
-          kind: "error",
-          message: "La autorización de Apple expiró. Iníciala nuevamente.",
-        };
+  const submitRole = useCallback(
+    async (role: PublicRole): Promise<AppleSignInOutcome> => {
+      // Runtime guard, not just a TypeScript type: PublicRole is erased at
+      // runtime, so a manipulated/compromised UI could still call this with
+      // "admin" as a plain string. This is the actual enforcement point.
+      const ALLOWED_ROLES: readonly string[] = ["passenger", "driver", "guide", "rental_operator"];
+      if (!ALLOWED_ROLES.includes(role)) {
+        return { kind: "internal_error", message: "Invalid role." };
       }
 
+      const pending = pendingRef.current;
+      if (!pending) {
+        return { kind: "internal_error", message: "No pending Apple credentials to retry." };
+      }
       setLoading(true);
       try {
-        return await submit({
-          ...credentials,
-          phone: input.phone,
-          passengerFareType: input.passengerFareType,
-          legalAcceptances: documents
-            .filter((document) =>
-              input.acceptedDocumentIds.includes(document.id),
-            )
-            .map((document) => ({
-              legalDocumentId: document.id,
-              version: document.version,
-            })),
-        });
+        return await submitToBackend(pending, role);
       } finally {
         setLoading(false);
       }
     },
-    [documents, submit],
+    [submitToBackend],
   );
 
-  return {
-    isAvailable,
-    loading,
-    setupOpen,
-    documents,
-    signIn,
-    completeSetup,
-    cancelSetup: clearPending,
-  };
+  return { isAvailable, loading, signIn, awaitingRole, submitRole, cancelRoleSelection: clearPending };
 }

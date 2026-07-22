@@ -1,68 +1,83 @@
-import { IonButton, IonText } from "@ionic/react";
+import type { CSSProperties } from "react";
+import { IonButton, IonContent, IonPage } from "@ionic/react";
 import { useHistory } from "react-router-dom";
-import { PublicLayout } from "../layouts/PublicLayout";
 import { ROUTES } from "../navigation/routes";
+import logoRapago from "../theme/img/logo-rapago.jpeg";
 
 export function WelcomePage(): JSX.Element {
   const history = useHistory();
 
+  const pageStyle: CSSProperties = {
+    "--background": "linear-gradient(180deg,rgba(14,12,10,.82) 0%,rgba(14,12,10,.93) 100%), url('/assets/rapa-go-bg.jpg') center/cover no-repeat fixed",
+  } as CSSProperties;
+
   return (
-    <PublicLayout title="RAPA GO">
-      <div className="welcome-container">
-        <IonText color="primary">
-          <h1 className="welcome-title">RAPA GO V2.0.0</h1>
-        </IonText>
+    <IonPage>
+      <IonContent scrollY style={pageStyle}>
+        <div className="welcome-shell">
 
-        <IonText color="medium">
-          <p className="welcome-subtitle">
-            Movilidad local y viajes seguros en Rapa Nui
-          </p>
-        </IonText>
+          {/* ── Hero ─────────────────────────── */}
+          <div className="welcome-hero">
+            <div className="welcome-logo-wrap">
+              <img src={logoRapago} alt="Rapa Go" className="welcome-logo-img" />
+            </div>
+            <h1 className="welcome-brand">RAPA GO</h1>
+            <p className="welcome-tagline">
+              Movilidad, Tours, Rent a Car y Eventos en Rapa Nui
+            </p>
+          </div>
 
-        <IonText>
-          <p className="welcome-status">
-            Solicita viajes, revisa tus servicios y administra tu cuenta desde RAPA GO.
-          </p>
-        </IonText>
+          {/* ── Divider ──────────────────────── */}
+          <div className="welcome-divider-line" aria-hidden />
 
-        <div className="welcome-buttons">
-          <IonButton
-            expand="block"
-            className="btn-auth-primary"
-            onClick={() => history.push(ROUTES.ROOT)}
-          >
-            Login
-          </IonButton>
+          {/* ── CTAs ─────────────────────────── */}
+          <div className="welcome-cta-stack">
+            <IonButton
+              expand="block"
+              className="welcome-btn-login"
+              onClick={() => history.push(ROUTES.AUTH.LOGIN)}
+            >
+              Iniciar sesión
+            </IonButton>
 
-          <IonButton
-            expand="block"
-            className="btn-register"
-            onClick={() => history.push(ROUTES.AUTH.REGISTER)}
-          >
-            Registro
-          </IonButton>
+            <IonButton
+              expand="block"
+              className="welcome-btn-register"
+              onClick={() => history.push(ROUTES.AUTH.REGISTER)}
+            >
+              Crear cuenta
+            </IonButton>
 
-          <div
-            style={{
-              display: "flex",
-              flexWrap: "wrap",
-              justifyContent: "center",
-              gap: 4,
-              marginTop: 14,
-            }}
-          >
-            <IonButton fill="clear" size="small" onClick={() => history.push(ROUTES.PUBLIC.PRIVACY)}>
+            <IonButton
+              expand="block"
+              fill="outline"
+              className="welcome-btn-profile"
+              onClick={() => history.push(ROUTES.PROFILE.INDEX)}
+            >
+              Perfil
+            </IonButton>
+          </div>
+
+          {/* ── Footer links ─────────────────── */}
+          <div className="welcome-footer-links">
+            <IonButton fill="clear" size="small" className="welcome-link"
+              onClick={() => history.push(ROUTES.PUBLIC.PRIVACY)}>
               Privacidad
             </IonButton>
-            <IonButton fill="clear" size="small" onClick={() => history.push(ROUTES.PUBLIC.SUPPORT)}>
+            <span className="welcome-link-sep">·</span>
+            <IonButton fill="clear" size="small" className="welcome-link"
+              onClick={() => history.push(ROUTES.PUBLIC.SUPPORT)}>
               Soporte
             </IonButton>
-            <IonButton fill="clear" size="small" onClick={() => history.push(ROUTES.PUBLIC.DELETE_ACCOUNT)}>
+            <span className="welcome-link-sep">·</span>
+            <IonButton fill="clear" size="small" className="welcome-link"
+              onClick={() => history.push(ROUTES.PUBLIC.DELETE_ACCOUNT)}>
               Eliminar cuenta
             </IonButton>
           </div>
+
         </div>
-      </div>
-    </PublicLayout>
+      </IonContent>
+    </IonPage>
   );
 }
