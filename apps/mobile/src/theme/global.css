@@ -4258,13 +4258,27 @@ ion-modal.facebook-step-modal::part(content) {
   padding: 22px 22px 26px;
   border-radius: 28px;
   background: linear-gradient(180deg, rgba(28, 26, 23, 0.97), rgba(14, 13, 12, 0.98));
-  border: 1px solid rgba(214, 166, 64, 0.32);
+  border: 2px solid rgba(214, 166, 64, 0.55);
   box-shadow:
-    0 26px 70px rgba(0, 0, 0, 0.5),
+    0 0 0 4px rgba(214, 166, 64, 0.08),
+    0 0 32px rgba(214, 166, 64, 0.16),
+    0 26px 70px rgba(0, 0, 0, 0.50),
+    inset 0 0 0 1px rgba(214, 166, 64, 0.14),
     inset 0 1px 0 rgba(255, 255, 255, 0.06);
   color: #f6f2ec;
   display: flex;
   flex-direction: column;
+  transition: border-color 0.3s ease, box-shadow 0.3s ease;
+}
+
+.rapago-auth-card:focus-within {
+  border-color: rgba(248, 216, 121, 0.72);
+  box-shadow:
+    0 0 0 6px rgba(214, 166, 64, 0.10),
+    0 0 42px rgba(214, 166, 64, 0.24),
+    0 26px 70px rgba(0, 0, 0, 0.50),
+    inset 0 0 0 1px rgba(214, 166, 64, 0.22),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06);
 }
 
 /* Brand header: back arrow + centered logo on the same row */
@@ -4309,15 +4323,27 @@ ion-modal.facebook-step-modal::part(content) {
   margin: 0;
 }
 
+/* Mismo tamaño y tratamiento que el logo de /welcome (.welcome-logo-wrap) */
 .rapago-auth-brand-logo {
-  width: 78px;
-  height: 78px;
-  border-radius: 22px;
-  padding: 5px;
+  width: 108px;
+  height: 108px;
+  border-radius: 30px;
+  padding: 0;
+  object-fit: cover;
   background: #ffffff;
   box-shadow:
-    0 10px 24px rgba(0, 0, 0, 0.4),
-    0 0 0 2px rgba(246, 242, 236, 0.14);
+    0 0 0 3px rgba(214, 166, 64, 0.55),
+    0 0 0 6px rgba(214, 166, 64, 0.12),
+    0 20px 44px rgba(0, 0, 0, 0.55);
+}
+
+/* Replica el responsive de /welcome (.welcome-logo-wrap @ max-width 400px) */
+@media (max-width: 400px) {
+  .rapago-auth-brand-logo {
+    width: 92px;
+    height: 92px;
+    border-radius: 26px;
+  }
 }
 
 /* Typography */
@@ -4573,12 +4599,6 @@ ion-modal.facebook-step-modal::part(content) {
     font-size: 1.5rem;
   }
 
-  .rapago-auth-brand-logo {
-    width: 68px;
-    height: 68px;
-    border-radius: 20px;
-  }
-
   /* 16px keeps iOS from auto-zooming on focus; comfortable tap height */
   .rapago-auth-dark .rapago-auth-field ion-input,
   .rapago-auth-dark ion-item ion-input {
@@ -4607,4 +4627,77 @@ ion-modal.facebook-step-modal::part(content) {
     font-size: 1.05rem;
     margin-inline-end: 6px;
   }
+}
+
+/* ==========================================================================
+   PROTOCOLO DE SESIÓN — TOAST DE CIERRE DE SESIÓN
+   Paleta: éxito = dorado · error = terracota · fondo = volcánico
+   ========================================================================== */
+
+.rapago-session-toast {
+  --border-radius: 18px;
+  --box-shadow: 0 18px 44px rgba(0, 0, 0, 0.5);
+  --color: #f6f2ec;
+  --start: 16px;
+  --end: 16px;
+  --max-width: 440px;
+  font-weight: 800;
+  letter-spacing: 0.01em;
+  text-align: center;
+}
+
+.rapago-session-toast::part(container) {
+  border: 1.5px solid rgba(214, 166, 64, 0.55);
+  background: linear-gradient(135deg, #1a1a1a 0%, #241d14 100%);
+  padding: 14px 18px;
+}
+
+.rapago-session-toast::part(icon) {
+  font-size: 1.45rem;
+  margin-inline-end: 10px;
+}
+
+.rapago-session-toast::part(message) {
+  font-size: 0.95rem;
+  font-weight: 800;
+}
+
+/* Éxito — acento dorado */
+.rapago-session-toast--success::part(container) {
+  border-color: rgba(214, 166, 64, 0.75);
+  box-shadow:
+    0 18px 44px rgba(0, 0, 0, 0.5),
+    0 0 0 1px rgba(214, 166, 64, 0.18),
+    0 8px 28px rgba(214, 166, 64, 0.22);
+}
+
+.rapago-session-toast--success::part(icon) {
+  color: #f8d879;
+}
+
+/* Error — acento terracota */
+.rapago-session-toast--error::part(container) {
+  border-color: rgba(184, 79, 46, 0.85);
+  box-shadow:
+    0 18px 44px rgba(0, 0, 0, 0.5),
+    0 0 0 1px rgba(184, 79, 46, 0.22),
+    0 8px 28px rgba(184, 79, 46, 0.28);
+}
+
+.rapago-session-toast--error::part(icon) {
+  color: #c16246;
+}
+
+/* ==========================================================================
+   SITIO PÚBLICO — LISTAS LEGALES (privacidad, términos, EULA, soporte)
+   ========================================================================== */
+
+.rapago-public-list li {
+  padding-left: 4px;
+  margin-bottom: 6px;
+}
+
+.rapago-public-list li::marker {
+  color: #d6a640;
+  font-weight: 900;
 }

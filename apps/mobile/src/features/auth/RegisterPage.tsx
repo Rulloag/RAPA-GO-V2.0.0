@@ -495,17 +495,8 @@ const pageContentStyle = {
 } as CSSProperties;
 
 const formShellStyle: CSSProperties = {
-  width: "min(92vw, 480px)",
-  margin: "26px auto 26px",
-  display: "flex",
-  flexDirection: "column",
+  width: "min(92vw, 540px)",
   gap: "0.5rem",
-  padding: "22px 22px 26px",
-  borderRadius: 28,
-  background: "linear-gradient(180deg, rgba(28,26,23,.97), rgba(14,13,12,.98))",
-  border: "1px solid rgba(214,166,64,.32)",
-  boxShadow: "0 26px 70px rgba(0,0,0,.5), inset 0 1px 0 rgba(255,255,255,.06)",
-  color: "#F6F2EC",
 };
 
 const registerItemStyle = {
@@ -1076,6 +1067,7 @@ export function RegisterPage(): JSX.Element {
           onSubmit={(event) => {
             void handleSubmit(event);
           }}
+          className="rapago-auth-card"
           style={formShellStyle}
           noValidate
         >
@@ -1408,17 +1400,23 @@ export function RegisterPage(): JSX.Element {
                 <IonIcon slot="icon-only" icon={showConfirmPassword ? eyeOffOutline : eyeOutline} />
               </IonButton>
             )}
-            {passwordMismatch && !fieldErrors.confirmPassword && (
-              <IonText color="danger">
-                <p style={{ margin: "6px 0 0", fontSize: "0.8rem", fontWeight: 800 }}>
-                  Tu contraseña no coincide. Vuelve a escribirla.
-                </p>
-              </IonText>
-            )}
             {fieldErrors.confirmPassword && (
               <IonNote slot="error">{fieldErrors.confirmPassword}</IonNote>
             )}
           </IonItem>
+          {passwordMismatch && !fieldErrors.confirmPassword && (
+            <p
+              style={{
+                margin: "-6px 0 10px 4px",
+                fontSize: "0.82rem",
+                fontWeight: 800,
+                color: "var(--ion-color-danger)",
+                lineHeight: 1.35,
+              }}
+            >
+              Tu contraseña no coincide. Vuelve a escribirla.
+            </p>
+          )}
 
          
 

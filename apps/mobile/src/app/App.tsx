@@ -16,6 +16,7 @@ import "../theme/global.css";
 import { AppRouter } from "../navigation/AppRouter";
 import { AppProviders } from "./AppProviders";
 import { RapaGoLanguageRuntime } from "../i18n/rapagoI18n";
+import { SessionLogoutToast } from "../components/SessionLogoutToast";
 
 setupIonicReact({
   mode: "md",
@@ -33,6 +34,8 @@ export function App(): JSX.Element {
       <IonReactRouter>
         <AppProviders>
           <AppRouter />
+          {/* Protocolo de sesión: feedback global de cierre de sesión */}
+          <SessionLogoutToast />
         </AppProviders>
       </IonReactRouter>
     </IonApp>

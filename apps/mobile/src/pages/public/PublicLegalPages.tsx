@@ -26,7 +26,30 @@ function Section({
 }): JSX.Element {
   return (
     <section style={publicSiteStyles.card}>
-      <h2 style={{ margin: "0 0 12px", color: "#f8d879" }}>
+      <h2
+        style={{
+          margin: "0 0 12px",
+          display: "flex",
+          alignItems: "center",
+          gap: 10,
+          color: "#f8d879",
+          fontSize: "1.14rem",
+          fontWeight: 900,
+          lineHeight: 1.25,
+          letterSpacing: "0.01em",
+        }}
+      >
+        <span
+          aria-hidden
+          style={{
+            flexShrink: 0,
+            width: 20,
+            height: 4,
+            borderRadius: 2,
+            background: "linear-gradient(90deg,#f8d879,#d6a640)",
+            boxShadow: "0 2px 8px rgba(214,166,64,.40)",
+          }}
+        />
         {title}
       </h2>
       <div style={publicSiteStyles.muted}>{children}</div>
@@ -36,7 +59,10 @@ function Section({
 
 function List({ children }: { children: ReactNode }): JSX.Element {
   return (
-    <ul style={{ margin: "8px 0 0", paddingLeft: 22, lineHeight: 1.7 }}>
+    <ul
+      className="rapago-public-list"
+      style={{ margin: "10px 0 0", paddingLeft: 22, lineHeight: 1.75 }}
+    >
       {children}
     </ul>
   );
@@ -308,7 +334,10 @@ export function SupportPublicPage(): JSX.Element {
 
   const actionStyle = {
     "--border-radius": "16px",
+    "--box-shadow": "0 10px 26px rgba(0,0,0,.28)",
+    height: "50px",
     fontWeight: 900,
+    letterSpacing: "0.02em",
     textTransform: "none",
   } as CSSProperties;
 
