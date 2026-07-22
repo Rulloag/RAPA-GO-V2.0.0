@@ -1729,9 +1729,10 @@ export function LoginPage(): JSX.Element {
           style={
             {
               "--width": "min(92vw, 520px)",
-              "--height": "auto",
+              "--height": "620px",
               "--max-height": "88vh",
               "--border-radius": "28px",
+              "--box-shadow": "0 24px 80px rgba(0,0,0,.55)",
             } as CSSProperties
           }
         >
