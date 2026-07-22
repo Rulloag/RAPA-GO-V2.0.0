@@ -124,6 +124,11 @@ export type LoginRequest = {
   password: string;
 };
 
+export type LegalAcceptanceInput = {
+  legalDocumentId: string;
+  version: string;
+};
+
 /** Payload sent to POST /api/auth/register */
 export type RegisterRequest = {
   email: string;
@@ -132,6 +137,7 @@ export type RegisterRequest = {
   role: UserRole;
   phone?: string | undefined;
   passengerFareType?: PassengerFareType | undefined;
+  legalAcceptances: LegalAcceptanceInput[];
 };
 
 /** Standard auth response envelope from the backend. */

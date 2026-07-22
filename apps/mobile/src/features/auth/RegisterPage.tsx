@@ -16,7 +16,10 @@ import {
   IonToolbar,
 } from "@ionic/react";
 import { useHistory } from "react-router-dom";
-import { registerRequestSchema } from "@rapa-go/shared";
+import {
+  registerRequestSchema,
+  type LegalAcceptanceInput,
+} from "@rapa-go/shared";
 import { useAuth } from "./useAuth.js";
 import { authService } from "./auth.service.js";
 import { sessionStorageService } from "./sessionStorage.service.js";
@@ -807,15 +810,17 @@ export function RegisterPage(): JSX.Element {
     }
   }
 
-  async function acceptLegalDocuments(accessToken: string): Promise<void> {
+  async function loadRequiredLegalAcceptances(): Promise<
+    LegalAcceptanceInput[]
+  > {
     const requiredTypes = [
       "terms_and_conditions",
       "privacy_policy",
       "user_conditions",
-    ];
+    ] as const;
     const documents = await legalService.getActive();
 
-    const requiredDocuments = requiredTypes.map((type) => {
+    return requiredTypes.map((type) => {
       const document = documents.find(
         (item) => item.type === type && item.isActive,
       );
@@ -826,18 +831,11 @@ export function RegisterPage(): JSX.Element {
         );
       }
 
-      return document;
+      return {
+        legalDocumentId: document.id,
+        version: document.version,
+      };
     });
-
-    await Promise.all(
-      requiredDocuments.map((document) =>
-        legalService.accept(
-          accessToken,
-          document.id,
-          document.version,
-        ),
-      ),
-    );
   }
 
   async function applyReferralCode(userId: string): Promise<void> {
@@ -934,17 +932,34 @@ export function RegisterPage(): JSX.Element {
       return;
     }
 
+    setLoading(true);
+
+    let legalAcceptances: LegalAcceptanceInput[];
+    try {
+      legalAcceptances = await loadRequiredLegalAcceptances();
+    } catch (error) {
+      setServerError(
+        error instanceof Error
+          ? error.message
+          : "No fue posible cargar los documentos legales vigentes.",
+      );
+      setLoading(false);
+      return;
+    }
+
     const payload = {
       name: fullName,
       email: cleanEmailValue,
       password,
       role: "passenger" as const,
+      legalAcceptances,
     };
 
     const parsed = registerRequestSchema.safeParse(payload);
 
     if (!parsed.success) {
       setFieldErrors(getFirstFieldError(parsed.error.issues));
+      setLoading(false);
       return;
     }
 
@@ -955,7 +970,6 @@ export function RegisterPage(): JSX.Element {
         ? "chilean"
         : selectedPassengerFareType;
 
-    setLoading(true);
     let createdAccessToken: string | null = null;
 
     try {
@@ -1023,7 +1037,6 @@ export function RegisterPage(): JSX.Element {
       const userId = result.session.user.id;
       const registeredRole = result.session.user.role;
 
-      await acceptLegalDocuments(accessToken);
       await applyReferralCode(userId);
 
       let effectivePassengerFareType: PassengerFareType =

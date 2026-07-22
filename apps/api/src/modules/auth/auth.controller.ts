@@ -463,7 +463,11 @@ export const authController = {
       return;
     }
 
-    const result = await authService.register(parsed.data);
+    const userAgent = request.headers["user-agent"];
+    const result = await authService.register(parsed.data, {
+      ipAddress: request.ip,
+      ...(typeof userAgent === "string" ? { userAgent } : {}),
+    });
 
     reply
       .header("Cache-Control", "no-store")
@@ -1068,8 +1072,13 @@ export const authController = {
       return;
     }
 
+    const userAgent = request.headers["user-agent"];
     const result = await authService.completeFacebookAccountSetup(
       parsed.data,
+      {
+        ipAddress: request.ip,
+        ...(typeof userAgent === "string" ? { userAgent } : {}),
+      },
     );
 
     reply

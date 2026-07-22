@@ -40,6 +40,10 @@ export type FacebookAccountSetupPayload = {
   phone: string;
   rut?: string;
   passport?: string;
+  legalAcceptances: Array<{
+    legalDocumentId: string;
+    version: string;
+  }>;
 };
 
 export type FacebookAccountSetupResponse = {

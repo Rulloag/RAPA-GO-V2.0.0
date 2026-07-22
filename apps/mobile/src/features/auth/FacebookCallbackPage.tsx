@@ -16,99 +16,8 @@ import { ROUTES } from "../../navigation/routes.js";
 import { getReleaseHome } from "../../config/releaseFeatures.js";
 import { sessionStorageService } from "./sessionStorage.service.js";
 import { authService } from "./auth.service.js";
-import { legalService } from "../legal/legal.service.js";
-
-
-const RAPAGO_FACEBOOK_LEGAL_ACCEPTANCES_KEY =
-  "rapago_pending_facebook_legal_acceptances_v1";
-
-const RAPAGO_FACEBOOK_REQUIRED_LEGAL_TYPES = new Set([
-  "terms_and_conditions",
-  "privacy_policy",
-  "user_conditions",
-]);
 
 type CallbackState = "loading" | "error";
-
-type PendingFacebookLegalAcceptance = {
-  legalDocumentId: string;
-  type: string;
-  version: string;
-  title: string;
-};
-
-function readPendingFacebookLegalAcceptances():
-  PendingFacebookLegalAcceptance[] {
-  try {
-    const raw = sessionStorage.getItem(
-      RAPAGO_FACEBOOK_LEGAL_ACCEPTANCES_KEY,
-    );
-    const parsed = raw ? (JSON.parse(raw) as unknown) : [];
-
-    if (!Array.isArray(parsed)) return [];
-
-    return parsed.filter(
-      (item): item is PendingFacebookLegalAcceptance => {
-        if (!item || typeof item !== "object") return false;
-        const record = item as Record<string, unknown>;
-
-        return (
-          typeof record.legalDocumentId === "string" &&
-          typeof record.type === "string" &&
-          RAPAGO_FACEBOOK_REQUIRED_LEGAL_TYPES.has(record.type) &&
-          typeof record.version === "string" &&
-          typeof record.title === "string"
-        );
-      },
-    );
-  } catch {
-    return [];
-  }
-}
-
-async function acceptPendingFacebookLegalDocuments(
-  accessToken: string,
-): Promise<void> {
-  const pending = readPendingFacebookLegalAcceptances();
-
-  // En ingresos posteriores la cuenta ya fue configurada y no se vuelve
-  // a pedir el formulario. Solo procesamos aceptaciones cuando el usuario
-  // acaba de completar el alta inicial con Facebook.
-  if (pending.length === 0) {
-    return;
-  }
-
-  const foundTypes = new Set(pending.map((item) => item.type));
-
-  if (
-    pending.length !== RAPAGO_FACEBOOK_REQUIRED_LEGAL_TYPES.size ||
-    [...RAPAGO_FACEBOOK_REQUIRED_LEGAL_TYPES].some(
-      (type) => !foundTypes.has(type),
-    )
-  ) {
-    throw new Error("legal_missing");
-  }
-
-  const current = await legalService.getMyAcceptances(accessToken);
-
-  for (const document of pending) {
-    const alreadyAccepted = current.some(
-      (acceptance) =>
-        acceptance.legalDocumentId === document.legalDocumentId &&
-        acceptance.versionAccepted === document.version,
-    );
-
-    if (alreadyAccepted) continue;
-
-    await legalService.accept(
-      accessToken,
-      document.legalDocumentId,
-      document.version,
-    );
-  }
-
-  sessionStorage.removeItem(RAPAGO_FACEBOOK_LEGAL_ACCEPTANCES_KEY);
-}
 
 function getFacebookCallbackErrorMessage(code: string): string {
   if (code === "missing_exchange") {
@@ -117,14 +26,6 @@ function getFacebookCallbackErrorMessage(code: string): string {
 
   if (code === "exchange_failed") {
     return "El inicio con Facebook expiró o ya fue utilizado. Intenta nuevamente.";
-  }
-
-  if (code === "legal_missing") {
-    return "Debes aceptar Términos, Privacidad y Condiciones para Usuarios antes de continuar con Facebook.";
-  }
-
-  if (code === "legal_save_failed") {
-    return "No se pudo registrar tu aceptación legal. Vuelve al login y marca las tres casillas.";
   }
 
   if (code === "save_failed") {
@@ -188,27 +89,6 @@ export function FacebookCallbackPage(): JSX.Element {
         setErrorMessage(
           result.message ||
             getFacebookCallbackErrorMessage("exchange_failed"),
-        );
-        return;
-      }
-
-      try {
-        await acceptPendingFacebookLegalDocuments(
-          result.session.accessToken,
-        );
-      } catch (error) {
-        await authService
-          .logout(result.session.accessToken)
-          .catch(() => {});
-
-        if (cancelled) return;
-        setState("error");
-        setErrorMessage(
-          getFacebookCallbackErrorMessage(
-            error instanceof Error && error.message === "legal_missing"
-              ? "legal_missing"
-              : "legal_save_failed",
-          ),
         );
         return;
       }

@@ -50,9 +50,6 @@ const API_URL = (
 const MAX_RESIDENCE_DOCUMENT_SIZE_BYTES = 1.5 * 1024 * 1024;
 const RESIDENT_VERIFICATION_REQUESTS_KEY = "rapago_resident_verification_requests_v1";
 
-const RAPAGO_FACEBOOK_LEGAL_ACCEPTANCES_KEY =
-  "rapago_pending_facebook_legal_acceptances_v1";
-
 const RAPAGO_FACEBOOK_REQUIRED_LEGAL_TYPES = [
   "terms_and_conditions",
   "privacy_policy",
@@ -77,7 +74,7 @@ function isFacebookRequiredLegalType(
   );
 }
 
-function persistPendingFacebookLegalAcceptances(
+function buildRequiredFacebookLegalAcceptances(
   documents: LegalDocumentData[],
 ): PendingFacebookLegalAcceptance[] {
   const selected = documents
@@ -103,11 +100,6 @@ function persistPendingFacebookLegalAcceptances(
       "No pudimos cargar todos los documentos legales obligatorios. Intenta nuevamente.",
     );
   }
-
-  sessionStorage.setItem(
-    RAPAGO_FACEBOOK_LEGAL_ACCEPTANCES_KEY,
-    JSON.stringify(selected),
-  );
 
   return selected;
 }
@@ -1034,14 +1026,6 @@ export function LoginPage(): JSX.Element {
     setResidentSubmissionMessage("");
     setFacebookSetupCode("");
 
-    try {
-      sessionStorage.removeItem(
-        RAPAGO_FACEBOOK_LEGAL_ACCEPTANCES_KEY,
-      );
-    } catch {
-      // No bloquea el inicio con Facebook.
-    }
-
     window.location.assign(`${API_URL}/api/auth/facebook`);
   }
 
@@ -1198,11 +1182,12 @@ export function LoginPage(): JSX.Element {
       return;
     }
 
+    let legalAcceptances: PendingFacebookLegalAcceptance[] = [];
     setFacebookLegalLoading(true);
 
     try {
       const activeLegalDocuments = await legalService.getActive();
-      persistPendingFacebookLegalAcceptances(
+      legalAcceptances = buildRequiredFacebookLegalAcceptances(
         activeLegalDocuments,
       );
     } catch (error) {
@@ -1377,6 +1362,10 @@ export function LoginPage(): JSX.Element {
           ...(needsPassport
             ? { passport: cleanPassengerPassport }
             : {}),
+          legalAcceptances: legalAcceptances.map((acceptance) => ({
+            legalDocumentId: acceptance.legalDocumentId,
+            version: acceptance.version,
+          })),
         });
 
       setShowFacebookStep(false);
@@ -1732,7 +1721,6 @@ export function LoginPage(): JSX.Element {
               "--height": "620px",
               "--max-height": "88vh",
               "--border-radius": "28px",
-              "--box-shadow": "0 24px 80px rgba(0,0,0,.55)",
             } as CSSProperties
           }
         >

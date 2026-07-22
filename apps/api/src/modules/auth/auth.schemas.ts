@@ -1,5 +1,10 @@
 import { z } from "zod";
-import { loginRequestSchema, registerRequestSchema, authSessionSchema } from "@rapa-go/shared";
+import {
+  authSessionSchema,
+  legalAcceptanceInputSchema,
+  loginRequestSchema,
+  registerRequestSchema,
+} from "@rapa-go/shared";
 
 export { loginRequestSchema, registerRequestSchema, authSessionSchema };
 
@@ -161,6 +166,13 @@ export const facebookAccountSetupSchema = z
       ),
     rut: z.string().trim().max(20).optional(),
     passport: z.string().trim().max(30).optional(),
+    legalAcceptances: z
+      .array(legalAcceptanceInputSchema)
+      .min(
+        3,
+        "Debes aceptar todos los documentos legales obligatorios.",
+      )
+      .max(12),
   })
   .superRefine((value, context) => {
     if (

@@ -21,12 +21,21 @@ import { AppError } from "../../shared/errors/AppError.js";
 import type { UserRole } from "@rapa-go/shared";
 import { and, desc, eq } from "drizzle-orm";
 import { db } from "../../db/client.js";
-import { passengerProfiles, userDocuments, users } from "../../db/schema/index.js";
+import {
+  authCredentials,
+  passengerProfiles,
+  userAcceptances,
+  userDocuments,
+  users,
+} from "../../db/schema/index.js";
 import type {
   FacebookAccountSetupInput,
   FacebookResidentPrecheckInput,
   FacebookResidentStatusInput,
 } from "./auth.schemas.js";
+import {
+  validateRequiredRegistrationLegalAcceptances,
+} from "./registrationLegal.service.js";
 
 function toUserRole(raw: string): UserRole {
   return raw as UserRole;
@@ -48,6 +57,20 @@ const mailService = new MailService();
 
 function roleInitialStatus(role: UserRole): "active" | "pending" {
   return role === "passenger" ? "active" : "pending";
+}
+
+function isUniqueViolation(error: unknown): boolean {
+  if (!error || typeof error !== "object") return false;
+
+  const directCode =
+    "code" in error ? String(error.code) : "";
+  const cause = "cause" in error ? error.cause : undefined;
+  const causeCode =
+    cause && typeof cause === "object" && "code" in cause
+      ? String(cause.code)
+      : "";
+
+  return directCode === "23505" || causeCode === "23505";
 }
 
 const FACEBOOK_RESIDENT_DOCUMENT_TYPE = "rapa_nui_residence";
@@ -573,7 +596,10 @@ export async function authenticateActiveAccessToken(
 }
 
 export class AuthService {
-  async register(payload: RegisterRequest): Promise<AuthServiceResult> {
+  async register(
+    payload: RegisterRequest,
+    metadata?: { ipAddress?: string; userAgent?: string },
+  ): Promise<AuthServiceResult> {
     if (payload.role !== "passenger") {
       return {
         ok: false,
@@ -587,17 +613,23 @@ export class AuthService {
     const email = payload.email.toLowerCase().trim();
 
     try {
-      const passwordHash = await passwordService.hashPassword(payload.password);
+      const existing = await usersRepository.findByEmail(email);
+      if (existing) {
+        return {
+          ok: false,
+          code: "AUTH_EMAIL_TAKEN",
+          message: "Email address is already registered.",
+          statusCode: 409,
+        };
+      }
 
-      const user = await usersService.createUser({
-        email,
-        name: payload.name,
-        role: payload.role,
-        status: roleInitialStatus(payload.role),
-      });
-
-      await credentialsRepo.createForUser(user.id, passwordHash);
-
+      const legalDocumentsToAccept =
+        await validateRequiredRegistrationLegalAcceptances(
+          payload.legalAcceptances,
+        );
+      const passwordHash = await passwordService.hashPassword(
+        payload.password,
+      );
       const requestedFareType = normalizePassengerFareType(
         payload.passengerFareType,
       );
@@ -605,16 +637,63 @@ export class AuthService {
         requestedFareType === "resident"
           ? "pending"
           : "not_required";
+      const effectiveFareType =
+        requestedFareType === "resident"
+          ? "chilean"
+          : requestedFareType;
+      const now = new Date();
 
-      await upsertPassengerFareProfile({
-        userId: user.id,
-        phone: payload.phone,
-        requestedFareType,
-        verificationStatus,
+      const user = await db.transaction(async (tx) => {
+        const userRows = await tx
+          .insert(users)
+          .values({
+            email,
+            name: payload.name,
+            role: payload.role,
+            status: roleInitialStatus(payload.role),
+          })
+          .returning();
+        const createdUser = userRows[0];
+
+        if (!createdUser) {
+          throw AppError.internal("User insert returned no rows.");
+        }
+
+        await tx.insert(authCredentials).values({
+          userId: createdUser.id,
+          passwordHash,
+          passwordUpdatedAt: now,
+          failedLoginAttempts: 0,
+          lockedUntil: null,
+          updatedAt: now,
+        });
+
+        await tx.insert(passengerProfiles).values({
+          userId: createdUser.id,
+          phone: payload.phone ?? null,
+          requestedFareType,
+          effectiveFareType,
+          residenceVerificationStatus: verificationStatus,
+          residenceRequestedAt:
+            requestedFareType === "resident" ? now : null,
+          updatedAt: now,
+        });
+
+        await tx.insert(userAcceptances).values(
+          legalDocumentsToAccept.map((document) => ({
+            userId: createdUser.id,
+            legalDocumentId: document.id,
+            versionAccepted: document.version,
+            ipAddress: metadata?.ipAddress ?? null,
+            userAgent: metadata?.userAgent ?? null,
+            acceptedAt: now,
+          })),
+        );
+
+        return createdUser;
       });
 
       const authUser = await buildAuthUser(user);
-
       const accessToken = tokenService.issueAccessToken(authUser);
       const refreshToken = tokenService.issueRefreshToken();
 
@@ -635,7 +714,14 @@ export class AuthService {
         entityType: "user",
         entityId: user.id,
         actorUserId: user.id,
-        metadata: { role: user.role, status: user.status },
+        metadata: {
+          role: user.role,
+          status: user.status,
+          legalVersions: legalDocumentsToAccept.map((document) => ({
+            type: document.type,
+            version: document.version,
+          })),
+        },
       });
 
       return {
@@ -647,7 +733,10 @@ export class AuthService {
         },
       };
     } catch (err) {
-      if (err instanceof AppError && err.code === "AUTH_EMAIL_TAKEN") {
+      if (
+        (err instanceof AppError && err.code === "AUTH_EMAIL_TAKEN") ||
+        isUniqueViolation(err)
+      ) {
         auditService.recordSafe({
           eventType: "auth.register.failure",
           entityType: "user",
@@ -658,6 +747,16 @@ export class AuthService {
           ok: false,
           code: "AUTH_EMAIL_TAKEN",
           message: "Email address is already registered.",
+          statusCode: 409,
+        };
+      }
+
+      if (err instanceof AppError) {
+        return {
+          ok: false,
+          code: err.code,
+          message: err.message,
+          statusCode: err.statusCode,
         };
       }
 
@@ -1297,6 +1396,7 @@ export class AuthService {
 
   async completeFacebookAccountSetup(
     input: FacebookAccountSetupInput,
+    metadata?: { ipAddress?: string; userAgent?: string },
   ): Promise<
     | { ok: true; exchangeCode: string }
     | {
@@ -1348,6 +1448,26 @@ export class AuthService {
         message: "Esta cuenta está bloqueada. Contacta a soporte.",
         statusCode: 403,
       };
+    }
+
+    let legalDocumentsToAccept: Awaited<
+      ReturnType<typeof validateRequiredRegistrationLegalAcceptances>
+    >;
+    try {
+      legalDocumentsToAccept =
+        await validateRequiredRegistrationLegalAcceptances(
+          input.legalAcceptances,
+        );
+    } catch (error) {
+      if (error instanceof AppError) {
+        return {
+          ok: false,
+          code: error.code,
+          message: error.message,
+          statusCode: error.statusCode,
+        };
+      }
+      throw error;
     }
 
     const residentDocument =
@@ -1415,6 +1535,33 @@ export class AuthService {
       };
     }
 
+    const acceptedAt = new Date();
+
+    for (const document of legalDocumentsToAccept) {
+      await db
+        .insert(userAcceptances)
+        .values({
+          userId: user.id,
+          legalDocumentId: document.id,
+          versionAccepted: document.version,
+          ipAddress: metadata?.ipAddress ?? null,
+          userAgent: metadata?.userAgent ?? null,
+          acceptedAt,
+        })
+        .onConflictDoUpdate({
+          target: [
+            userAcceptances.userId,
+            userAcceptances.legalDocumentId,
+          ],
+          set: {
+            versionAccepted: document.version,
+            ipAddress: metadata?.ipAddress ?? null,
+            userAgent: metadata?.userAgent ?? null,
+            acceptedAt,
+          },
+        });
+    }
+
     const exchangeCode = await facebookLoginExchangeRepo.create(
       user.id,
       "login",
@@ -1428,6 +1575,10 @@ export class AuthService {
       metadata: {
         provider: "facebook",
         passengerFareType: input.passengerFareType,
+        legalVersions: legalDocumentsToAccept.map((document) => ({
+          type: document.type,
+          version: document.version,
+        })),
       },
     });
 
