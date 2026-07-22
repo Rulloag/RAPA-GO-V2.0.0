@@ -1766,7 +1766,7 @@ ion-tab-button ion-icon {
 ion-tab-button ion-label {
   display: block !important;
   width: 100% !important;
-  max-width: 38px !important;
+  max-width: 52px !important;
   margin: 0 auto !important;
 
   color: inherit !important;
@@ -1805,8 +1805,16 @@ ion-tab-button[aria-selected="true"] ion-label {
   }
 
   ion-tab-button ion-label {
-    max-width: 42px !important;
+    max-width: 56px !important;
     font-size: 6.8px !important;
+  }
+}
+
+/* Pantallas muy angostas (≤360px): labels más compactos */
+@media (max-width: 360px) {
+  ion-tab-button ion-label {
+    max-width: 44px !important;
+    font-size: 5.8px !important;
   }
 }
 
