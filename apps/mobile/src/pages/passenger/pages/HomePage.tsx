@@ -337,82 +337,6 @@ function formatWalletClp(value: number): string {
   return `$${Math.max(0, Math.round(value)).toLocaleString("es-CL")} CLP`;
 }
 
-function ComingSoonServiceCard({
-  icon,
-  title,
-  subtitle,
-}: {
-  icon: string;
-  title: string;
-  subtitle: string;
-}): JSX.Element {
-  const cardStyle: CSSProperties = {
-    minHeight: "132px",
-    borderRadius: "22px",
-    margin: 0,
-    background: "linear-gradient(145deg, rgba(246,242,236,.72), rgba(226,213,187,.62))",
-    color: "#111",
-    border: "1px dashed rgba(200,155,60,.62)",
-    boxShadow: "0 12px 26px rgba(0,0,0,.14)",
-    opacity: 0.82,
-    cursor: "not-allowed",
-  };
-
-  return (
-    <IonCard style={cardStyle} aria-disabled="true">
-      <IonCardContent
-        style={{
-          minHeight: 132,
-          padding: "14px 10px",
-          display: "flex",
-          flexDirection: "column",
-          alignItems: "center",
-          justifyContent: "center",
-          textAlign: "center",
-          gap: 7,
-        }}
-      >
-        <div
-          style={{
-            width: 54,
-            height: 54,
-            borderRadius: 18,
-            background: "linear-gradient(135deg,#e2c98f,#f6f2ec)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            boxShadow: "0 12px 22px rgba(0,0,0,.12)",
-          }}
-        >
-          <IonIcon icon={icon} style={{ fontSize: "1.55rem", color: "#111" }} />
-        </div>
-
-        <div style={{ fontWeight: 950, fontSize: ".92rem", lineHeight: 1.05 }}>
-          {title}
-        </div>
-        <div style={{ color: "#6b7280", fontSize: ".72rem", fontWeight: 850, lineHeight: 1.2 }}>
-          {subtitle}
-        </div>
-        <div
-          style={{
-            marginTop: 2,
-            padding: "5px 9px",
-            borderRadius: 999,
-            background: "rgba(200,155,60,.20)",
-            color: "#7a5512",
-            fontSize: ".62rem",
-            fontWeight: 950,
-            letterSpacing: ".04em",
-            textTransform: "uppercase",
-          }}
-        >
-          Próximamente
-        </div>
-      </IonCardContent>
-    </IonCard>
-  );
-}
-
 export default function HomePage(): JSX.Element {
   const history = useHistory();
   const isOnline = useConnectivity();
@@ -499,11 +423,18 @@ export default function HomePage(): JSX.Element {
       <div className="passenger-home-header">
         <div className="passenger-home-header-row">
           <div className="passenger-home-user">
-            <img src={logoRapago} alt="Rapa Go" className="passenger-home-logo" />
+            {/* width/height HTML evitan el salto de layout (FOUC) antes de que cargue el CSS */}
+            <img
+              src={logoRapago}
+              alt="Rapa Go"
+              className="passenger-home-logo"
+              width={56}
+              height={56}
+            />
 
             <div className="passenger-home-user-text">
-              <div className="passenger-home-greeting">Hola, {firstName} 👋</div>
-              <div className="passenger-home-question">¿A dónde vamos hoy?</div>
+              <div className="passenger-home-greeting">Hola, {firstName}</div>
+              <div className="passenger-home-question">¿A dónde quieres ir?</div>
             </div>
           </div>
 
@@ -539,6 +470,14 @@ export default function HomePage(): JSX.Element {
               <div className="home-image-carousel-subtitle">
                 {activeImage.subtitle}
               </div>
+
+              <IonButton
+                expand="block"
+                className="rapago-hero-cta"
+                onClick={() => history.push(ROUTES.PASSENGER.REQUEST_RIDE)}
+              >
+                Solicitar Viaje
+              </IonButton>
             </div>
 
             <div className="home-image-carousel-dots">
@@ -592,7 +531,8 @@ export default function HomePage(): JSX.Element {
           )}
 
           <section className="passenger-home-section">
-            <h2 className="passenger-home-section-title">Servicios</h2>
+            <div className="passenger-home-section-eyebrow">Servicios</div>
+            <h2 className="passenger-home-section-title">¿Qué necesitas?</h2>
 
             <div className="services-grid">
               <ServiceCard
@@ -600,31 +540,45 @@ export default function HomePage(): JSX.Element {
                 title="Viaje"
                 subtitle="Solicitar ahora"
                 color="primary"
+                featured
                 onClick={() => history.push(ROUTES.PASSENGER.REQUEST_RIDE)}
               />
 
-              <ComingSoonServiceCard
+              <ServiceCard
                 icon={mapOutline}
                 title="Turismo local"
                 subtitle="Guías y tours"
+                color="medium"
+                disabled
+                badge="Pronto"
+                onClick={() => {}}
               />
 
-              <ComingSoonServiceCard
+              <ServiceCard
                 icon={carSportOutline}
                 title="Reserva vehículo"
                 subtitle="Arriendos"
+                color="medium"
+                disabled
+                badge="Pronto"
+                onClick={() => {}}
               />
 
-              <ComingSoonServiceCard
+              <ServiceCard
                 icon={ticketOutline}
                 title="Eventos"
                 subtitle="Cultura"
+                color="medium"
+                disabled
+                badge="Pronto"
+                onClick={() => {}}
               />
             </div>
           </section>
 
           <section className="passenger-home-section">
-            <h2 className="passenger-home-section-title">Módulos próximos</h2>
+            <div className="passenger-home-section-eyebrow">Módulos</div>
+            <h2 className="passenger-home-section-title">Próximamente</h2>
 
             <div
               style={{

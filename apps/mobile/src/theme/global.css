@@ -406,19 +406,29 @@ ion-textarea textarea {
 
 .passenger-home-user-text {
   min-width: 0;
+  flex: 1;
 }
 
+/* Alturas estables: evita reflow cuando el nombre carga asíncrono */
 .passenger-home-greeting {
   color: #F6F2EC;
   font-weight: 900;
   font-size: 1.05rem;
   line-height: 1.2;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-height: 1.26rem;
 }
 
 .passenger-home-question {
   color: rgba(255,255,255,0.86);
   font-size: 0.8rem;
   margin-top: 2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-height: 0.96rem;
 }
 
 /* Perfil visible en todos los celulares */
@@ -546,6 +556,16 @@ ion-textarea textarea {
   cursor: pointer;
   background: rgba(10,12,16,0.92);
   box-shadow: 0 10px 26px rgba(0,0,0,0.25);
+  transition: transform 0.2s cubic-bezier(0.22, 1, 0.36, 1), box-shadow 0.2s ease;
+}
+
+.quick-access-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 14px 32px rgba(0,0,0,0.30);
+}
+
+.quick-access-card:active {
+  transform: scale(0.97);
 }
 
 .quick-access-content {
@@ -578,6 +598,10 @@ ion-textarea textarea {
   color: #D9C3A0;
   font-size: 0.75rem;
   margin-top: 2px;
+  min-height: 1.05rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 /* Referidos */
@@ -591,6 +615,18 @@ ion-textarea textarea {
   gap: 14px !important;
   cursor: pointer;
   box-shadow: 0 12px 28px rgba(0,0,0,0.25);
+  transition: transform 0.2s cubic-bezier(0.22, 1, 0.36, 1), box-shadow 0.2s ease;
+  border: 1.5px solid rgba(255, 224, 120, 0.22);
+}
+
+.referral-banner:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 16px 36px rgba(0,0,0,0.30);
+  border-color: rgba(255, 224, 120, 0.40);
+}
+
+.referral-banner:active {
+  transform: scale(0.98);
 }
 
 .referral-icon {
@@ -629,6 +665,12 @@ ion-textarea textarea {
   border-radius: 18px;
   background: rgba(10,12,16,0.92);
   box-shadow: 0 12px 30px rgba(0,0,0,0.28);
+  border: 1px solid rgba(210, 164, 58, 0.18);
+  transition: box-shadow 0.2s ease;
+}
+
+.join-card:hover {
+  box-shadow: 0 16px 38px rgba(0,0,0,0.32);
 }
 
 .join-card-title {
@@ -984,7 +1026,7 @@ ion-badge[color="danger"] {
 
 .home-image-carousel {
   margin-top: 16px;
-  height: 190px;
+  height: 220px;
   border-radius: 22px;
   overflow: hidden;
   position: relative;
@@ -1059,13 +1101,57 @@ ion-badge[color="danger"] {
   background: var(--rapago-gold);
 }
 
+/* Hero CTA — botón primario sobre el carrusel */
+.rapago-hero-cta {
+  --border-radius: 18px;
+  --background: linear-gradient(135deg, #c89b3c 0%, #d2a43a 50%, #f8d879 100%);
+  --background-activated: linear-gradient(135deg, #b98517, #c89b3c);
+  --box-shadow: 0 10px 28px rgba(210, 164, 58, 0.35);
+  --color: #111;
+  color: #111;
+  height: 48px;
+  margin-top: 12px;
+  font-size: 0.92rem;
+  font-weight: 950;
+  letter-spacing: 0.02em;
+  text-transform: none;
+  border: 1.5px solid rgba(255, 224, 120, 0.55);
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.rapago-hero-cta:active {
+  transform: scale(0.97);
+}
+
+/* Eyebrow / kicker sobre títulos de sección */
+.passenger-home-section-eyebrow {
+  color: #9a6a10;
+  font-size: 0.70rem;
+  font-weight: 900;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  margin-bottom: 4px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.passenger-home-section-eyebrow::before {
+  content: "";
+  width: 16px;
+  height: 3px;
+  border-radius: 2px;
+  background: linear-gradient(90deg, #d2a43a, #c89b3c);
+  flex-shrink: 0;
+}
+
 .passenger-warning-whatsapp {
   margin-top: 8px;
 }
 
 @media (max-width: 480px) {
   .home-image-carousel {
-    height: 175px;
+    height: 200px;
     border-radius: 20px;
   }
 
@@ -1080,7 +1166,7 @@ ion-badge[color="danger"] {
 
 @media (max-width: 360px) {
   .home-image-carousel {
-    height: 160px;
+    height: 185px;
   }
   
 }
@@ -1097,15 +1183,17 @@ ion-badge[color="danger"] {
   object-fit: cover;
   background: #ffffff;
   padding: 4px;
+  display: block;
+  aspect-ratio: 1 / 1;
   box-shadow:
     0 4px 12px rgba(0, 0, 0, 0.24),
     0 0 0 2px rgba(246, 242, 236, 0.20);
   flex-shrink: 0;
+  transition: transform 0.2s ease;
 }
 
 .passenger-home-logo:hover {
   transform: scale(1.02);
-  transition: transform 0.2s ease;
 }
 
 @media (max-width: 480px) {
@@ -4700,4 +4788,195 @@ ion-modal.facebook-step-modal::part(content) {
 .rapago-public-list li::marker {
   color: #d6a640;
   font-weight: 900;
+}
+
+/* ==========================================================================
+   SERVICE CARD — microinteracciones y estados
+   Paleta: dorado / volcánico / marfil
+   ========================================================================== */
+
+.rapago-service-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 20px 10px 16px;
+  background: #ffffff;
+  border-radius: 18px;
+  border: 1.5px solid rgba(210, 164, 58, 0.18);
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.10);
+  cursor: pointer;
+  min-width: 90px;
+  text-align: center;
+  overflow: hidden;
+  user-select: none;
+  transition:
+    transform 0.2s cubic-bezier(0.22, 1, 0.36, 1),
+    box-shadow 0.2s ease,
+    border-color 0.2s ease;
+  outline: none;
+}
+
+.rapago-service-card:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 14px 32px rgba(210, 164, 58, 0.18);
+  border-color: rgba(210, 164, 58, 0.35);
+}
+
+.rapago-service-card:active {
+  transform: scale(0.96);
+  box-shadow: 0 6px 14px rgba(0, 0, 0, 0.12);
+}
+
+.rapago-service-card:focus-visible {
+  border-color: #d2a43a;
+  box-shadow: 0 0 0 3px rgba(210, 164, 58, 0.22);
+}
+
+/* Featured: acción principal — borde dorado y glow */
+.rapago-service-card--featured {
+  background: linear-gradient(160deg, #fffdf5, #fff8e8);
+  border: 2px solid rgba(210, 164, 58, 0.55);
+  box-shadow:
+    0 10px 24px rgba(0, 0, 0, 0.10),
+    0 0 0 1px rgba(210, 164, 58, 0.12),
+    0 8px 22px rgba(210, 164, 58, 0.12);
+}
+
+.rapago-service-card--featured:hover {
+  box-shadow:
+    0 14px 32px rgba(210, 164, 58, 0.20),
+    0 0 0 1px rgba(210, 164, 58, 0.20),
+    0 12px 28px rgba(210, 164, 58, 0.18);
+}
+
+/* Disabled: próximamente — atenuada, sin cursor pointer */
+.rapago-service-card--disabled {
+  opacity: 0.55;
+  cursor: default;
+  filter: grayscale(0.3);
+}
+
+.rapago-service-card--disabled:hover {
+  transform: none;
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.10);
+  border-color: rgba(210, 164, 58, 0.18);
+}
+
+.rapago-service-card--disabled:active {
+  transform: none;
+}
+
+/* Badge "Pronto" */
+.rapago-service-card__badge {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: rgba(17, 17, 17, 0.80);
+  color: #f8d879;
+  font-size: 0.62rem;
+  font-weight: 900;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  pointer-events: none;
+}
+
+/* Icon wrappers */
+.rapago-service-card__icon-wrap {
+  width: 54px;
+  height: 54px;
+  border-radius: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition: transform 0.2s ease;
+}
+
+.rapago-service-card:hover .rapago-service-card__icon-wrap {
+  transform: scale(1.06);
+}
+
+.rapago-service-card__icon-wrap--primary {
+  background: linear-gradient(135deg, #c89b3c, #d2a43a);
+  box-shadow: 0 6px 16px rgba(200, 155, 60, 0.30);
+}
+
+.rapago-service-card__icon-wrap--secondary {
+  background: linear-gradient(135deg, #b84f2e, #c86038);
+  box-shadow: 0 6px 16px rgba(184, 79, 46, 0.25);
+}
+
+.rapago-service-card__icon-wrap--tertiary {
+  background: linear-gradient(135deg, #d9c3a0, #c8b48a);
+  box-shadow: 0 6px 16px rgba(217, 195, 160, 0.25);
+}
+
+.rapago-service-card__icon-wrap--success {
+  background: linear-gradient(135deg, #5a8a4a, #6d9e5c);
+  box-shadow: 0 6px 16px rgba(90, 138, 74, 0.25);
+}
+
+.rapago-service-card__icon-wrap--warning {
+  background: linear-gradient(135deg, #c89b3c, #d9a830);
+  box-shadow: 0 6px 16px rgba(200, 155, 60, 0.25);
+}
+
+.rapago-service-card__icon-wrap--danger {
+  background: linear-gradient(135deg, #b84f2e, #a24628);
+  box-shadow: 0 6px 16px rgba(184, 79, 46, 0.25);
+}
+
+.rapago-service-card__icon-wrap--medium {
+  background: linear-gradient(135deg, #8a8577, #9a9488);
+  box-shadow: 0 6px 16px rgba(138, 133, 119, 0.20);
+}
+
+.rapago-service-card__icon--primary { color: #111; font-size: 1.5rem; }
+.rapago-service-card__icon--secondary { color: #f6f2ec; font-size: 1.5rem; }
+.rapago-service-card__icon--tertiary { color: #111; font-size: 1.5rem; }
+.rapago-service-card__icon--success { color: #f6f2ec; font-size: 1.5rem; }
+.rapago-service-card__icon--warning { color: #111; font-size: 1.5rem; }
+.rapago-service-card__icon--danger { color: #f6f2ec; font-size: 1.5rem; }
+.rapago-service-card__icon--medium { color: #f6f2ec; font-size: 1.5rem; }
+
+.rapago-service-card__title {
+  font-weight: 800;
+  font-size: 0.88rem;
+  color: #111827;
+  line-height: 1.2;
+}
+
+.rapago-service-card__subtitle {
+  font-size: 0.74rem;
+  color: #6b5a42;
+  line-height: 1.35;
+  font-weight: 600;
+}
+
+.rapago-service-card--disabled .rapago-service-card__title {
+  color: #6b5a42;
+}
+
+.rapago-service-card--disabled .rapago-service-card__subtitle {
+  color: #9a9488;
+}
+
+/* ==========================================================================
+   SOLICITAR VIAJE — SUGERENCIAS DE DIRECCIÓN
+   ========================================================================== */
+
+.rapago-suggestion-item {
+  transition: background 0.15s ease;
+}
+
+.rapago-suggestion-item:hover {
+  background: rgba(210, 164, 58, 0.1) !important;
+}
+
+.rapago-suggestion-item:active {
+  background: rgba(210, 164, 58, 0.18) !important;
 }
