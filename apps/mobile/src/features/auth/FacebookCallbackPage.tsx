@@ -140,6 +140,11 @@ export function FacebookCallbackPage(): JSX.Element {
   const [state, setState] = useState<CallbackState>("loading");
   const [errorMessage, setErrorMessage] = useState("");
 
+  const queryParams = useMemo(
+    () => new URLSearchParams(location.search),
+    [location.search],
+  );
+
   const fragmentParams = useMemo(
     () =>
       new URLSearchParams(
@@ -154,7 +159,10 @@ export function FacebookCallbackPage(): JSX.Element {
     let cancelled = false;
 
     async function finishFacebookLogin(): Promise<void> {
-      const exchangeCode = fragmentParams.get("exchangeCode")?.trim() ?? "";
+      const exchangeCode =
+        queryParams.get("exchangeCode")?.trim() ??
+        fragmentParams.get("exchangeCode")?.trim() ??
+        "";
 
       // Remove the one-time code from browser history immediately.
       window.history.replaceState(
@@ -235,7 +243,7 @@ export function FacebookCallbackPage(): JSX.Element {
     return () => {
       cancelled = true;
     };
-  }, [fragmentParams]);
+  }, [fragmentParams, queryParams]);
 
   const pageStyle = {
     "--background":

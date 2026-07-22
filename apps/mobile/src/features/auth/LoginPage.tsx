@@ -846,9 +846,12 @@ export function LoginPage(): JSX.Element {
         : window.location.hash,
     );
 
-    const setupCode = fragment.get("setupCode")?.trim() ?? "";
+    const setupCode =
+      searchParams.get("setupCode")?.trim() ??
+      fragment.get("setupCode")?.trim() ??
+      "";
     const facebookEmail = normalizeEmail(
-      fragment.get("email") ?? "",
+      searchParams.get("email") ?? fragment.get("email") ?? "",
     );
 
     window.history.replaceState(
@@ -888,8 +891,13 @@ export function LoginPage(): JSX.Element {
         : window.location.hash,
     );
 
-    const linkToken = fragment.get("linkToken")?.trim() ?? "";
-    const linkEmail = normalizeEmail(fragment.get("email") ?? "");
+    const linkToken =
+      searchParams.get("linkToken")?.trim() ??
+      fragment.get("linkToken")?.trim() ??
+      "";
+    const linkEmail = normalizeEmail(
+      searchParams.get("email") ?? fragment.get("email") ?? "",
+    );
 
     window.history.replaceState(
       null,

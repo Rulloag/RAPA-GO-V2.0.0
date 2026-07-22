@@ -963,33 +963,39 @@ export const authController = {
         },
         appSecret,
       );
-      const fragment = new URLSearchParams({
+      const query = new URLSearchParams({
+        facebook: "link_required",
         linkToken,
         email: result.email,
       });
 
       reply.redirect(
-        `${frontendUrl}/auth/login?facebook=link_required#${fragment.toString()}`,
+        `${frontendUrl}/auth/login?${query.toString()}`,
       );
       return;
     }
 
     if (result.kind === "setup") {
-      const fragment = new URLSearchParams({
+      const query = new URLSearchParams({
+        facebook: "setup",
         setupCode: result.setupCode,
         email: profile.email,
       });
 
       reply.redirect(
-        `${frontendUrl}/auth/login?facebook=setup#${fragment.toString()}`,
+        `${frontendUrl}/auth/login?${query.toString()}`,
       );
       return;
     }
 
-    // The fragment is not sent in HTTP requests or Referer headers.
-    // It contains a short-lived one-time code, never an access token.
+    const callbackQuery = new URLSearchParams({
+      exchangeCode: result.exchangeCode,
+    });
+
+    // The exchange code is short-lived, single-use and is removed from
+    // browser history immediately by the frontend callback page.
     reply.redirect(
-      `${frontendUrl}/auth/facebook/callback#exchangeCode=${encodeURIComponent(result.exchangeCode)}`,
+      `${frontendUrl}/auth/facebook/callback?${callbackQuery.toString()}`,
     );
   },
 
