@@ -146,8 +146,8 @@ vite.config.ts.timestamp-*
 
 # RAPA GO monorepo — build outputs and native platform folders
 apps/mobile/dist/
+# android/ is not generated yet — no android build in this repo.
 apps/mobile/android/
-apps/mobile/ios/
 apps/api/dist/
 packages/*/dist/
 

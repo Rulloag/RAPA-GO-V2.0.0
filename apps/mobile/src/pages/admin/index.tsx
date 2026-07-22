@@ -11606,7 +11606,17 @@ export function AdminTripsPage(): JSX.Element {
           <IonRefresherContent />
         </IonRefresher>
 
-        {/* Filter */}
+        {/* Segmento Todos / Programados */}
+        <IonSegment
+          value={viewMode}
+          onIonChange={(e) => setViewMode(e.detail.value as "all" | "scheduled")}
+          style={{ margin: "0 0 10px" }}
+        >
+          <IonSegmentButton value="all"><IonLabel>Todos</IonLabel></IonSegmentButton>
+          <IonSegmentButton value="scheduled"><IonLabel>⚡ Programados</IonLabel></IonSegmentButton>
+        </IonSegment>
+
+        {/* Filter by status */}
         <IonCard style={{ margin: "0 0 12px" }}>
           <IonCardContent style={{ padding: "10px 12px" }}>
             <IonItem lines="none">
@@ -11753,6 +11763,25 @@ export function AdminTripsPage(): JSX.Element {
                 >
                   <IonCardContent style={{ padding: "12px 14px" }}>
                     <AdminTripLiveRouteMap ride={ride} height={210} />
+
+                    {/* Alerta reserva próxima sin conductor */}
+                    {alertaSoon && (
+                      <div style={{
+                        display:      "flex",
+                        alignItems:   "center",
+                        gap:          "6px",
+                        padding:      "8px 10px",
+                        background:   "var(--ion-color-danger-tint, #fde8e8)",
+                        borderRadius: "8px",
+                        marginTop:    "8px",
+                        fontSize:     "0.8rem",
+                        color:        "var(--ion-color-danger)",
+                        fontWeight:   600,
+                      }}>
+                        <IonIcon icon={warningOutline} style={{ fontSize: "1rem", flexShrink: 0 }} />
+                        Reserva próxima sin conductor asignado
+                      </div>
+                    )}
 
                     {/* Header */}
                     <div
@@ -12156,6 +12185,29 @@ export function AdminTripsPage(): JSX.Element {
             })}
           </div>
         )}
+
+        {/* Female preference warning alert */}
+        <IonAlert
+          isOpen={femaleWarnRideId !== null}
+          header="Preferencia de conductora"
+          message="Este pasajero solicitó una conductora mujer. No se puede verificar el género del conductor seleccionado desde este panel. ¿Deseas asignar de todas formas?"
+          buttons={[
+            {
+              text: "Volver",
+              role: "cancel",
+              handler: () => setFemaleWarnRideId(null),
+            },
+            {
+              text: "Asignar de todas formas",
+              handler: () => {
+                const rideId = femaleWarnRideId;
+                setFemaleWarnRideId(null);
+                if (rideId) void handleAssign(rideId);
+              },
+            },
+          ]}
+          onDidDismiss={() => setFemaleWarnRideId(null)}
+        />
 
         {/* Cancel alert */}
         <IonAlert

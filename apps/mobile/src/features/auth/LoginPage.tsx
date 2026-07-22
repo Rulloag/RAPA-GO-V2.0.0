@@ -580,6 +580,7 @@ function getFacebookRedirectErrorMessage(): string {
 export function LoginPage(): JSX.Element {
   const history = useHistory();
   const { login } = useAuth();
+  const apple = useAppleSignIn();
 
   const [email, setEmail] = useState(getStoredValue("rapago_passenger_email"));
   const [password, setPassword] = useState("");
@@ -1857,6 +1858,13 @@ export function LoginPage(): JSX.Element {
         </IonModal>
 
       </IonContent>
+
+      <AppleRoleSelectionModal
+        isOpen={apple.awaitingRole}
+        loading={apple.loading}
+        onCancel={apple.cancelRoleSelection}
+        onConfirm={(role) => { void handleAppleRoleSubmit(role); }}
+      />
     </IonPage>
   );
 }

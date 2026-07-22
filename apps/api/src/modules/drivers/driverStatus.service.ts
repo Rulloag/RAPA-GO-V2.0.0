@@ -2,12 +2,14 @@ import { TokenService } from "../auth/token.service.js";
 import { SessionService } from "../auth/session.service.js";
 import { UsersRepository } from "../users/users.repository.js";
 import { DriverStatusRepository } from "./driverStatus.repository.js";
+import { RidesRepository } from "../rides/rides.repository.js";
 import { AppError } from "../../shared/errors/AppError.js";
 
 const tokenService     = new TokenService();
 const sessionService   = new SessionService();
 const usersRepo        = new UsersRepository();
 const driverStatusRepo = new DriverStatusRepository();
+const ridesRepo        = new RidesRepository();
 
 type AuthResult =
   | { ok: true; userId: string; role: string }
@@ -80,5 +82,45 @@ export class DriverStatusService {
         currentRideId: updated.currentRideId ?? null,
       },
     };
+  }
+
+  async getTodayEarnings(accessToken: string) {
+    const auth = await authenticate(accessToken);
+    if (!auth.ok) return auth;
+    if (auth.role !== "driver") return { ok: false as const, code: "AUTH_FORBIDDEN", message: "Solo conductores pueden consultar sus ganancias.", statusCode: 403 };
+
+    const today = new Date();
+    const rides = await ridesRepo.findCompletedByDriverIdOnDate(auth.userId, today);
+
+    // Rides with null estimatedFareClp are excluded (no fare to sum).
+    const grossFareClp = rides.reduce((sum, r) => sum + (r.estimatedFareClp ?? 0), 0);
+    const appCommissionClp = Math.round(grossFareClp * 0.20);
+    const netEarningsClp   = grossFareClp - appCommissionClp;
+
+    const dateStr = `${today.getUTCFullYear()}-${String(today.getUTCMonth() + 1).padStart(2, "0")}-${String(today.getUTCDate()).padStart(2, "0")}`;
+
+    return {
+      ok: true as const,
+      earnings: {
+        date:                 dateStr,
+        grossFareClp,
+        appCommissionPercent: 20,
+        appCommissionClp,
+        netEarningsClp,
+        completedRides:       rides.length,
+      },
+    };
+  }
+
+  async updateMyLocation(accessToken: string, lat: number, lng: number) {
+    const auth = await authenticate(accessToken);
+    if (!auth.ok) return auth;
+    if (auth.role !== "driver") return { ok: false as const, code: "AUTH_FORBIDDEN", message: "Solo conductores pueden actualizar su ubicación.", statusCode: 403 };
+
+    if (!isFinite(lat) || lat < -90  || lat > 90)  return { ok: false as const, code: "VALIDATION_ERROR", message: "lat inválida.", statusCode: 400 };
+    if (!isFinite(lng) || lng < -180 || lng > 180) return { ok: false as const, code: "VALIDATION_ERROR", message: "lng inválida.", statusCode: 400 };
+
+    await driverStatusRepo.updateLocation(auth.userId, lat, lng);
+    return { ok: true as const, updatedAt: new Date().toISOString() };
   }
 }

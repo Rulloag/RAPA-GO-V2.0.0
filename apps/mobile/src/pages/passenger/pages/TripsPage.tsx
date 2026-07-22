@@ -7,7 +7,10 @@ IonInfiniteScroll, IonInfiniteScrollContent, IonLabel, IonModal, IonPage,
 } from "@ionic/react";
 import { useState, useCallback, useEffect, useRef, type CSSProperties } from "react";
 import { useHistory } from "react-router-dom";
-import { carOutline } from "ionicons/icons";
+import { carOutline, refreshOutline, locationOutline } from "ionicons/icons";
+import { MapView } from "../../../features/maps/MapView.js";
+import { useDirectionsRoute } from "../../../features/maps/useDirectionsRoute.js";
+import type { GoogleMapInstance } from "../../../features/maps/maps.types.js";
 import { EmptyState } from "../../../components/EmptyState.js";
 import { TripTimeline } from "../../../components/TripTimeline.js";
 import { SkeletonList } from "../../../components/SkeletonCard.js";
@@ -9270,6 +9273,9 @@ export default function TripsPage(): JSX.Element {
       <IonHeader>
         <IonToolbar color="primary">
           <IonTitle>Mis Viajes</IonTitle>
+          <IonButton slot="end" fill="clear" color="light" disabled={loading} onClick={() => void loadRides()} aria-label="Actualizar">
+            {loading ? <IonSpinner name="dots" style={{ width: "18px", height: "18px" }} /> : <IonIcon icon={refreshOutline} />}
+          </IonButton>
         </IonToolbar>
         <IonToolbar style={{ "--background": "var(--ion-color-primary)", "--border-width": "0" }}>
           <div style={{ display: "flex", gap: "8px", padding: "0 12px 10px", overflowX: "auto" }}>

@@ -7,6 +7,7 @@ import { DriverStatusRepository } from "../drivers/driverStatus.repository.js";
 import { DriverComplianceService } from "../drivers/driverCompliance.service.js";
 import { OfflineRepository } from "../offline/offline.repository.js";
 import { RidesRepository } from "../rides/rides.repository.js";
+import { RideAssignmentOffersRepository } from "../rides/rideAssignmentOffers.repository.js";
 import { AppError } from "../../shared/errors/AppError.js";
 import type { ListUsersQuery, UpdateUserStatusInput, ListDocumentsQuery, ReviewDocumentInput, AdminListRidesQuery, AdminAssignDriverInput, AdminCancelRideInput, AdminSyncToRideInput } from "./admin.schemas.js";
 import type { AdminUsersListResult, AdminUserResult, AdminUserResponse, AdminDocumentResponse, AdminDocumentsListResult, AdminDocumentResult, AdminRidesListResult, AdminRideResult, AdminRideResponse, ActiveDriversListResult, ActiveDriverResponse } from "./admin.types.js";
@@ -22,6 +23,7 @@ const driverStatusRepo = new DriverStatusRepository();
 const driverComplianceService = new DriverComplianceService();
 const offlineRepo      = new OfflineRepository();
 const ridesRepo        = new RidesRepository();
+const offersRepo       = new RideAssignmentOffersRepository();
 
 function toRideResponse(r: AdminRideRow): AdminRideResponse {
   return {
@@ -47,6 +49,11 @@ function toRideResponse(r: AdminRideRow): AdminRideResponse {
     cancellationReason: r.cancellationReason ?? null,
     cancelledByRole:    r.cancelledByRole ?? null,
     createdAt:          r.createdAt.toISOString(),
+    rideType:           r.rideType ?? "immediate",
+    scheduledPickupAt:  r.scheduledPickupAt?.toISOString() ?? null,
+    priorityFeeClp:         r.priorityFeeClp ?? null,
+    flightNumber:           r.flightNumber ?? null,
+    preferredDriverGender:  (r.preferredDriverGender as "female" | null | undefined) ?? null,
   };
 }
 
@@ -314,7 +321,10 @@ export class AdminService {
       };
     }
 
-    await driverStatusRepo.setBusy(input.driverUserId, rideId);
+    // Scheduled rides keep driver available until they press "Voy en camino"
+    if (existing.rideType !== "scheduled") {
+      await driverStatusRepo.setBusy(input.driverUserId, rideId);
+    }
 
     auditService.recordSafe({
       eventType: "admin.ride_driver_assigned",

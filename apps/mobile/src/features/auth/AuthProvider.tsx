@@ -16,6 +16,7 @@ import type {
   AuthStatus,
   LoginRequest,
   RegisterRequest,
+  AppleSignInRequest,
   AuthResponse,
 } from "./auth.types.js";
 

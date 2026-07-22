@@ -4518,6 +4518,62 @@ function buildRideScheduleFields(input: {
   };
 }
 
+// ── Constants ─────────────────────────────────────────────────────────────────
+
+const HANGA_ROA          = { lat: -27.15, lng: -109.4333 };
+const MIN_SCHEDULED_MINUTES = 30;
+const MAX_SCHEDULED_DAYS    = 30;
+const MAX_DESTINATIONS      = 3;
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+function toDatetimeLocalValue(d: Date): string {
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+function minScheduledDate(): Date {
+  return new Date(Date.now() + MIN_SCHEDULED_MINUTES * 60 * 1000);
+}
+
+function maxScheduledDate(): Date {
+  return new Date(Date.now() + MAX_SCHEDULED_DAYS * 24 * 60 * 60 * 1000);
+}
+
+function formatDistance(meters: number): string {
+  if (meters >= 1000) return `${(meters / 1000).toFixed(1)} km`;
+  return `${meters} m`;
+}
+
+function formatDuration(seconds: number): string {
+  const mins = Math.round(seconds / 60);
+  if (mins >= 60) {
+    const h = Math.floor(mins / 60);
+    const m = mins % 60;
+    return m > 0 ? `${h} h ${m} min` : `${h} h`;
+  }
+  return `${mins} min`;
+}
+
+function hasDuplicatePoints(origin: MapPoint, dests: MapPoint[]): boolean {
+  const all    = [origin, ...dests];
+  const coords = all.map(p => `${p.position.lat.toFixed(6)},${p.position.lng.toFixed(6)}`);
+  return new Set(coords).size < coords.length;
+}
+
+// ── Types ─────────────────────────────────────────────────────────────────────
+
+type RideMode  = "immediate" | "scheduled";
+type PageStatus =
+  | "idle"
+  | "calculating_route"
+  | "ready_to_submit"
+  | "submitting"
+  | "success"
+  | "error";
+
+// ── Component ─────────────────────────────────────────────────────────────────
+
 export default function RequestRidePage(): JSX.Element {
   const { session } = useAuth();
   const history = useHistory();

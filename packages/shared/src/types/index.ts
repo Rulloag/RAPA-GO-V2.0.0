@@ -113,5 +113,5 @@ export type RegisterRequest = {
 
 /** Standard auth response envelope from the backend. */
 export type AuthResponse =
-  | { ok: true; session: AuthSession }
+  | { ok: true; session: AuthSession; refreshToken?: string }
   | { ok: false; code: string; message: string };
