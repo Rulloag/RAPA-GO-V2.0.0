@@ -8,6 +8,7 @@ export type PublicAccountDeletionStatus =
   | "approved"
   | "processing"
   | "completed"
+  | "deferred"
   | "rejected"
   | "failed"
   | "cancelled";
@@ -24,10 +25,14 @@ export interface PublicAccountDeletionStatusData {
   trackingCode: string;
   status: PublicAccountDeletionStatus;
   requestedAt: string;
+  deadlineAt: string;
+  deferredUntil: string | null;
+  decisionReasonCode: string | null;
   reviewedAt: string | null;
   completedAt: string | null;
   adminNote: string | null;
   failureReason: string | null;
+  retentionSummary: string | null;
 }
 
 type Envelope<T> = {

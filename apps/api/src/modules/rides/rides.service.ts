@@ -1,12 +1,7 @@
 import { TokenService } from "../auth/token.service.js";
 import { SessionService } from "../auth/session.service.js";
 import { UsersRepository } from "../users/users.repository.js";
-import { RidesRepository } from "./rides.repository.js";
-import { RideStopsRepository } from "./rideStops.repository.js";
-import { RideAssignmentOffersRepository } from "./rideAssignmentOffers.repository.js";
-import { DriverStatusRepository } from "../drivers/driverStatus.repository.js";
-import { FareSettingsRepository } from "../fareSettings/fareSettings.repository.js";
-import { WalletRepository } from "../wallet/wallet.repository.js";
+import { RidesRepository, type RideWithDriverName } from "./rides.repository.js";
 import { AppError } from "../../shared/errors/AppError.js";
 import { DriverComplianceService } from "../drivers/driverCompliance.service.js";
 import { DriverStatusRepository } from "../drivers/driverStatus.repository.js";
@@ -37,6 +32,7 @@ import {
   NO_SHOW_CAP_CLP,
   NO_SHOW_PERCENT,
   calculateRidePolicyAmount,
+  splitNoShowAmount,
   isPassengerCancellationChargeable,
   roundFareUpTo500,
 } from "./ridePolicy.js";
@@ -492,6 +488,22 @@ function toPolicyChargeResponse(
   charge: RidePolicyCharge,
   owner?: { name?: string | null; email?: string | null },
 ): RidePolicyChargeResponse {
+  const amountClp = Math.max(
+    0,
+    Math.round(
+      Number(
+        charge.approvedAmountClp ??
+          charge.calculatedAmountClp ??
+          0,
+      ),
+    ),
+  );
+
+  const noShowDistribution =
+    charge.type === "no_show"
+      ? splitNoShowAmount(amountClp)
+      : null;
+
   return {
     id: charge.id,
     sourceRideId: charge.sourceRideId,
@@ -509,16 +521,15 @@ function toPolicyChargeResponse(
     feeCapClp: charge.feeCapClp,
     calculatedAmountClp: charge.calculatedAmountClp,
     approvedAmountClp: charge.approvedAmountClp ?? null,
-    amountClp: Math.max(
-      0,
-      Math.round(
-        Number(
-          charge.approvedAmountClp ??
-            charge.calculatedAmountClp ??
-            0,
-        ),
-      ),
-    ),
+    amountClp,
+    driverSharePercent:
+      noShowDistribution?.driverSharePercent ?? null,
+    platformSharePercent:
+      noShowDistribution?.platformSharePercent ?? null,
+    driverShareClp:
+      noShowDistribution?.driverShareClp ?? null,
+    platformShareClp:
+      noShowDistribution?.platformShareClp ?? null,
     reason: charge.reason ?? null,
     adminDecisionReason: charge.adminDecisionReason ?? null,
     reviewedByUserId: charge.reviewedByUserId ?? null,
@@ -783,75 +794,6 @@ async function authenticate(accessToken: string): Promise<AuthResult> {
     userId: user.id,
     role: user.role,
   };
-}
-
-async function autoAssignNearestDriver(
-  rideId: string,
-  originLat: number,
-  originLng: number,
-  genderFilter?: "female" | "male",
-): Promise<(import("../../db/schema/index.js").RideRequest) | null> {
-  const now = new Date();
-  const locationCutoff = new Date(now.getTime() - MAX_DRIVER_LOCATION_AGE_MINUTES * 60 * 1000);
-  const lastSeenCutoff  = new Date(now.getTime() - MAX_DRIVER_LAST_SEEN_AGE_MINUTES * 60 * 1000);
-
-  const candidates = await driverStatusRepo.findAvailableWithLocation({
-    locationCutoff,
-    lastSeenCutoff,
-    ...(genderFilter ? { genderFilter } : {}),
-  });
-
-  const ranked = candidates
-    .map(c => ({ ...c, distanceKm: haversineKm(originLat, originLng, c.currentLat, c.currentLng) }))
-    .filter(c => c.distanceKm <= MAX_PICKUP_DISTANCE_KM)
-    .sort((a, b) => a.distanceKm - b.distanceKm);
-
-  for (const candidate of ranked) {
-    const assigned = await ridesRepo.accept(rideId, candidate.driverUserId);
-    if (assigned) {
-      await driverStatusRepo.setBusy(candidate.driverUserId, rideId);
-      return assigned;
-    }
-    // Race condition — another request grabbed this driver; try next
-  }
-
-  return null;
-}
-
-type QueuedOfferResult =
-  | { created: true;  expiresAt: string }
-  | { created: false };
-
-async function tryCreateQueuedOffer(
-  rideId: string,
-  originLat: number,
-  originLng: number,
-  genderFilter?: "female" | "male",
-): Promise<QueuedOfferResult> {
-  await offersRepo.expireStale();
-  const now = new Date();
-  const locationCutoff = new Date(now.getTime() - MAX_DRIVER_LOCATION_AGE_MINUTES * 60 * 1000);
-  const lastSeenCutoff  = new Date(now.getTime() - MAX_DRIVER_LAST_SEEN_AGE_MINUTES * 60 * 1000);
-  const busyCandidates = await driverStatusRepo.findBusyEligibleForQueuedOffer({
-    locationCutoff,
-    lastSeenCutoff,
-    ...(genderFilter ? { genderFilter } : {}),
-  });
-  const ranked = busyCandidates
-    .map(c => ({ ...c, distanceKm: haversineKm(originLat, originLng, c.currentLat, c.currentLng) }))
-    .filter(c => c.distanceKm <= MAX_PICKUP_DISTANCE_KM)
-    .sort((a, b) => a.distanceKm - b.distanceKm);
-
-  if (ranked.length > 0 && ranked[0]) {
-    const offer = await offersRepo.createOffer({
-      rideRequestId: rideId,
-      driverUserId:  ranked[0].driverUserId,
-      expiresAt:     new Date(now.getTime() + 20 * 1000),
-      attemptOrder:  1,
-    });
-    return { created: true, expiresAt: offer.expiresAt.toISOString() };
-  }
-  return { created: false };
 }
 
 export class RidesService {
@@ -1566,7 +1508,7 @@ export class RidesService {
         return {
           ok: false,
           code: "RIDE_CANNOT_START",
-          message: `Ride cannot be started — current status is '${existing.status}'.`,
+          message: "Driver must mark arrival before starting the ride.",
           statusCode: 409,
         };
       }

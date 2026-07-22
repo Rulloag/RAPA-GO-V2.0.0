@@ -73,6 +73,16 @@ export type ApiResponse<T> = ApiSuccessResponse<T> | ApiErrorResponse;
 // ─── Auth types ───────────────────────────────────────────────────────────────
 
 /** Authenticated user as returned by the backend. */
+export type PassengerFareType = "resident" | "chilean" | "foreigner";
+export type AuthProvider = "password" | "facebook" | "apple";
+
+export type ResidenceVerificationStatus =
+  | "not_required"
+  | "pending"
+  | "approved"
+  | "rejected";
+
+/** Authenticated user as returned by the backend. */
 export type AuthUser = {
   id: string;
   email: string;
@@ -80,6 +90,17 @@ export type AuthUser = {
   role: UserRole;
   avatarUrl: string | null;
   isVerified: boolean;
+  /** Contact phone stored in the passenger/driver profile when available. */
+  phone?: string | null;
+  /** Categoría solicitada por la persona. */
+  requestedPassengerFareType?: PassengerFareType;
+  /** Categoría que realmente se usa para calcular el precio. */
+  passengerFareType?: PassengerFareType;
+  residenceVerificationStatus?: ResidenceVerificationStatus;
+  /** Authentication methods currently linked to the account. */
+  authProviders?: AuthProvider[];
+  /** True when the account can sign in with email and password. */
+  hasPassword?: boolean;
 };
 
 /**
@@ -103,15 +124,23 @@ export type LoginRequest = {
   password: string;
 };
 
+export type LegalAcceptanceInput = {
+  legalDocumentId: string;
+  version: string;
+};
+
 /** Payload sent to POST /api/auth/register */
 export type RegisterRequest = {
   email: string;
   password: string;
   name: string;
   role: UserRole;
+  phone?: string | undefined;
+  passengerFareType?: PassengerFareType | undefined;
+  legalAcceptances: LegalAcceptanceInput[];
 };
 
 /** Standard auth response envelope from the backend. */
 export type AuthResponse =
-  | { ok: true; session: AuthSession; refreshToken?: string }
+  | { ok: true; session: AuthSession }
   | { ok: false; code: string; message: string };

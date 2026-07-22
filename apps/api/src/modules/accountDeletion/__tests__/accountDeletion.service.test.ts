@@ -12,8 +12,8 @@ const {
   mockNotifyAdmins,
   mockList,
   mockFindAdminById,
-  mockReject,
-  mockNotifyUserOfRejection,
+  mockDefer,
+  mockNotifyUserOfDeferral,
   mockApproveAndAnonymize,
   mockHasRecentPublicVerification,
   mockCreatePublicVerification,
@@ -24,7 +24,7 @@ const {
   mockFindPublicStatus,
   mockRecordSafe,
   mockSendReceived,
-  mockSendRejected,
+  mockSendDeferred,
   mockSendCompleted,
   mockSendVerificationCode,
 } = vi.hoisted(() => ({
@@ -39,8 +39,8 @@ const {
   mockNotifyAdmins: vi.fn(),
   mockList: vi.fn(),
   mockFindAdminById: vi.fn(),
-  mockReject: vi.fn(),
-  mockNotifyUserOfRejection: vi.fn(),
+  mockDefer: vi.fn(),
+  mockNotifyUserOfDeferral: vi.fn(),
   mockApproveAndAnonymize: vi.fn(),
   mockHasRecentPublicVerification: vi.fn(),
   mockCreatePublicVerification: vi.fn(),
@@ -51,7 +51,7 @@ const {
   mockFindPublicStatus: vi.fn(),
   mockRecordSafe: vi.fn(),
   mockSendReceived: vi.fn().mockResolvedValue(undefined),
-  mockSendRejected: vi.fn().mockResolvedValue(undefined),
+  mockSendDeferred: vi.fn().mockResolvedValue(undefined),
   mockSendCompleted: vi.fn().mockResolvedValue(undefined),
   mockSendVerificationCode: vi.fn().mockResolvedValue(undefined),
 }));
@@ -84,8 +84,8 @@ vi.mock("../accountDeletion.repository.js", () => ({
     notifyAdminsOfNewRequest: mockNotifyAdmins,
     list: mockList,
     findAdminById: mockFindAdminById,
-    reject: mockReject,
-    notifyUserOfRejection: mockNotifyUserOfRejection,
+    defer: mockDefer,
+    notifyUserOfDeferral: mockNotifyUserOfDeferral,
     approveAndAnonymize: mockApproveAndAnonymize,
     hasRecentPublicVerification: mockHasRecentPublicVerification,
     createPublicVerification: mockCreatePublicVerification,
@@ -106,7 +106,7 @@ vi.mock("../../audit/audit.service.js", () => ({
 vi.mock("../../auth/mail.service.js", () => ({
   MailService: vi.fn().mockImplementation(() => ({
     sendAccountDeletionRequestReceived: mockSendReceived,
-    sendAccountDeletionRejected: mockSendRejected,
+    sendAccountDeletionDeferred: mockSendDeferred,
     sendAccountDeletionCompleted: mockSendCompleted,
     sendAccountDeletionVerificationCode: mockSendVerificationCode,
   })),
@@ -156,6 +156,10 @@ const pendingRequest = {
   status: "pending" as const,
   adminNote: null,
   requestedAt: "2026-07-19T00:00:00.000Z",
+  deadlineAt: "2026-08-18T00:00:00.000Z",
+  deferredUntil: null,
+  decisionReasonCode: null,
+  retentionSummary: null,
   reviewedAt: null,
   processingAt: null,
   completedAt: null,
@@ -190,7 +194,10 @@ describe("AccountDeletionService", () => {
       requesterRole: user.role,
     });
 
+    mockVerifyAndConsumePublicCode.mockResolvedValue(user.id);
+
     const result = await service.createRequest("access-token", {
+      verificationCode: "123456",
       reason: "Ya no utilizaré la aplicación.",
       requesterSnapshot: {
         sourceView: user.role as "passenger" | "driver",
@@ -214,6 +221,7 @@ describe("AccountDeletionService", () => {
     mockFindPendingByUserId.mockResolvedValue(pendingRequest);
 
     const result = await service.createRequest("access-token", {
+      verificationCode: "123456",
       reason: "Quiero cerrar definitivamente mi cuenta.",
     });
 
@@ -269,7 +277,7 @@ describe("AccountDeletionService", () => {
     expect(mockList).not.toHaveBeenCalled();
   });
 
-  it("rechaza una solicitud y mantiene la cuenta activa", async () => {
+  it("aplaza una solicitud por una causa objetiva y mantiene la cuenta activa", async () => {
     mockVerifyAccessToken.mockReturnValue({ sub: ADMIN_ID });
     mockFindUserById.mockResolvedValue(admin);
     mockFindAdminById.mockResolvedValue({
@@ -281,34 +289,42 @@ describe("AccountDeletionService", () => {
       application: null,
       documents: [],
       accountSummary: {
-        totalRides: 0,
-        activeRides: 0,
+        totalRides: 1,
+        activeRides: 1,
         pendingPayments: 0,
         walletBalanceClp: 0,
         activeServiceBookings: 0,
         activeRentalBookings: 0,
         activeEventTickets: 0,
+        openSupportCases: 0,
       },
-      blockers: [],
-      canApprove: true,
+      blockers: ["La cuenta tiene 1 viaje activo."],
+      canApprove: false,
     });
-    mockReject.mockResolvedValue({
+    mockDefer.mockResolvedValue({
       ...pendingRequest,
-      status: "rejected",
-      adminNote: "Tiene un viaje que debe aclarar con soporte.",
+      status: "deferred",
+      adminNote: "Tiene un viaje activo que debe finalizar.",
+      deferredUntil: pendingRequest.deadlineAt,
+      decisionReasonCode: "active_ride",
     });
 
-    const result = await service.reject("admin-token", REQUEST_ID, {
-      note: "Tiene un viaje que debe aclarar con soporte.",
+    const result = await service.defer("admin-token", REQUEST_ID, {
+      reasonCode: "active_ride",
+      note: "Tiene un viaje activo que debe finalizar.",
+      deferUntil: pendingRequest.deadlineAt,
     });
 
     expect(result.ok).toBe(true);
-    expect(mockReject).toHaveBeenCalledWith(
+    expect(mockDefer).toHaveBeenCalledWith(
       REQUEST_ID,
       ADMIN_ID,
-      "Tiene un viaje que debe aclarar con soporte.",
+      expect.objectContaining({
+        reasonCode: "active_ride",
+        note: "Tiene un viaje activo que debe finalizar.",
+      }),
     );
-    expect(mockNotifyUserOfRejection).toHaveBeenCalledOnce();
+    expect(mockNotifyUserOfDeferral).toHaveBeenCalledOnce();
     expect(mockApproveAndAnonymize).not.toHaveBeenCalled();
   });
 
@@ -331,6 +347,7 @@ describe("AccountDeletionService", () => {
         activeServiceBookings: 0,
         activeRentalBookings: 0,
         activeEventTickets: 0,
+        openSupportCases: 0,
       },
       blockers: ["La cuenta tiene 1 viaje activo."],
       canApprove: false,
@@ -367,6 +384,7 @@ describe("AccountDeletionService", () => {
         activeServiceBookings: 0,
         activeRentalBookings: 0,
         activeEventTickets: 0,
+        openSupportCases: 0,
       },
       blockers: [],
       canApprove: true,

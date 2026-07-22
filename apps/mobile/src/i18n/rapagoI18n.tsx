@@ -1,4 +1,5 @@
 import {
+  IonButton,
   IonCard,
   IonCardContent,
   IonIcon,
@@ -771,6 +772,41 @@ export function RapaGoLanguageRuntime(): null {
   }, []);
 
   return null;
+}
+
+export function RapaGoLanguageToolbarButton(): JSX.Element {
+  const { language, setLanguage } = useRapaGoLanguage();
+  const nextLanguage: RapaGoLanguage =
+    language === "es" ? "en" : "es";
+
+  return (
+    <IonButton
+      type="button"
+      aria-label={
+        language === "es"
+          ? "Cambiar aplicación a inglés"
+          : "Switch app to Spanish"
+      }
+      title={
+        language === "es"
+          ? "Cambiar a English"
+          : "Cambiar a Español"
+      }
+      onClick={() => setLanguage(nextLanguage)}
+      style={
+        {
+          "--border-radius": "999px",
+          "--background": "rgba(255,255,255,.16)",
+          "--color": "#ffffff",
+          fontWeight: 950,
+          minWidth: 72,
+        } as CSSProperties
+      }
+    >
+      <IonIcon icon={globeOutline} slot="start" />
+      {language === "es" ? "EN" : "ES"}
+    </IonButton>
+  );
 }
 
 export function RapaGoLanguageCard(): JSX.Element {

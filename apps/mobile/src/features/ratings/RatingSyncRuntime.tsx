@@ -13,27 +13,31 @@ type LocalRating = Record<string, unknown> & {
   stars?: number;
   comment?: string | null;
   backendSyncedAt?: string | null;
+  commentVisibility?: "participants_and_admin" | "admin_only";
 };
 
-function readRatings(): LocalRating[] {
+function parseRatings(raw: string | null): LocalRating[] {
   try {
-    const parsed = JSON.parse(localStorage.getItem(RATINGS_KEY) ?? "[]") as unknown;
+    const parsed = JSON.parse(raw ?? "[]") as unknown;
     return Array.isArray(parsed)
       ? parsed.filter((item): item is LocalRating => Boolean(item && typeof item === "object"))
       : [];
-  } catch {
-    return [];
-  }
+  } catch { return []; }
+}
+
+function readRatings(): LocalRating[] {
+  const sessionItems = parseRatings(sessionStorage.getItem(RATINGS_KEY));
+  return sessionItems.length > 0 ? sessionItems : parseRatings(localStorage.getItem(RATINGS_KEY));
 }
 
 function writeRatings(items: LocalRating[]): void {
   try {
-    localStorage.setItem(RATINGS_KEY, JSON.stringify(items.slice(0, 600)));
-    window.dispatchEvent(new CustomEvent(RATINGS_EVENT, { detail: { ratings: items } }));
-    window.dispatchEvent(new CustomEvent("rapago:driver-profile-updated", { detail: { ratings: items } }));
-  } catch {
-    // No bloquea la aplicación.
-  }
+    const limited = items.slice(0, 600);
+    sessionStorage.setItem(RATINGS_KEY, JSON.stringify(limited));
+    localStorage.setItem(RATINGS_KEY, JSON.stringify(limited.map((item) => ({ ...item, comment: null }))));
+    window.dispatchEvent(new CustomEvent(RATINGS_EVENT, { detail: { ratings: limited } }));
+    window.dispatchEvent(new CustomEvent("rapago:driver-profile-updated", { detail: { ratings: limited } }));
+  } catch { /* No bloquea la aplicación. */ }
 }
 
 function normalized(value: unknown): string {
@@ -80,6 +84,7 @@ export function RatingSyncRuntime(): null {
           passengerName: item.raterName,
           stars: item.rating,
           comment: item.comment,
+          commentVisibility: item.commentVisibility ?? "participants_and_admin",
           originText: item.originText,
           destinationText: item.destinationText,
           createdAt: item.createdAt,
@@ -113,6 +118,7 @@ export function RatingSyncRuntime(): null {
             String(item.rideId),
             Math.max(1, Math.min(5, Math.round(Number(item.stars ?? 5)))),
             typeof item.comment === "string" ? item.comment : undefined,
+            item.commentVisibility === "admin_only" ? "admin_only" : "participants_and_admin",
           );
           item.backendSyncedAt = new Date().toISOString();
           changed = true;

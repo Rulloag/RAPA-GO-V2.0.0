@@ -2,9 +2,15 @@ import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import { resolve } from "path";
 
-export default defineConfig({
+export default defineConfig(({ mode }) => ({
+  // El frontend está publicado en la raíz del dominio (actualmente api.rapago.cl).
+  // Mantener una base absoluta evita que /auth/login intente buscar assets en /auth/assets.
+  base: "/",
+  appType: "spa",
   plugins: [react()],
   resolve: {
+    // Evita runtimes duplicados de React dentro del monorepo.
+    dedupe: ["react", "react-dom", "react-router", "react-router-dom"],
     alias: {
       "@": resolve(__dirname, "src"),
       "@components": resolve(__dirname, "src/components"),
@@ -28,16 +34,22 @@ export default defineConfig({
   },
   build: {
     outDir: "dist",
-    sourcemap: true,
+    sourcemap: mode !== "production",
+    // Ionic/Capacitor crea imports dinámicos web-*.js. En hosting compartido,
+    // una publicación incompleta o una caché antigua puede devolver index.html
+    // para esos archivos y producir el error MIME text/html. Se integra todo
+    // el JavaScript en un único app.js estable para eliminar esa causa.
     rollupOptions: {
-      // These packages are not installed locally; they are provided by the native
-      // Capacitor layer at runtime. Externalize so the web build succeeds.
-      external: [
-        "@sentry/capacitor",
-        "@sentry/react",
-        "@capacitor/splash-screen",
-        "@aparajita/capacitor-secure-storage",
-      ],
+      output: {
+        inlineDynamicImports: true,
+        entryFileNames: "assets/app.js",
+        chunkFileNames: "assets/[name].js",
+        assetFileNames: (assetInfo) =>
+          assetInfo.name?.endsWith(".css")
+            ? "assets/app.css"
+            : "assets/[name]-[hash][extname]",
+      },
     },
+    chunkSizeWarningLimit: 3500,
   },
-});
+}));

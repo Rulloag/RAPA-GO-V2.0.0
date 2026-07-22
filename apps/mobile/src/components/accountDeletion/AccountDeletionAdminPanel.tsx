@@ -14,7 +14,6 @@ import {
 } from "@ionic/react";
 import {
   checkmarkCircleOutline,
-  closeCircleOutline,
   documentTextOutline,
   refreshOutline,
   warningOutline,
@@ -37,6 +36,8 @@ function statusLabel(status: AccountDeletionRequestStatus): string {
   switch (status) {
     case "pending":
       return "Pendiente";
+    case "deferred":
+      return "Aplazada";
     case "approved":
       return "Aprobada";
     case "processing":
@@ -59,7 +60,6 @@ function statusColor(status: AccountDeletionRequestStatus): string {
     case "completed":
     case "approved":
       return "success";
-    case "rejected":
     case "failed":
       return "danger";
     case "cancelled":
@@ -199,9 +199,17 @@ export function AccountDeletionAdminPanel(): JSX.Element {
     }
   }
 
-  async function reject(
+  async function deferRequest(
     request: AdminAccountDeletionRequestData,
     note: string,
+    reasonCode:
+      | "active_ride"
+      | "pending_payment"
+      | "wallet_balance"
+      | "open_claim"
+      | "chargeback_or_fraud"
+      | "identity_unverified"
+      | "legal_retention",
   ): Promise<void> {
     if (!session?.accessToken) return;
 
@@ -210,22 +218,26 @@ export function AccountDeletionAdminPanel(): JSX.Element {
     setMessage("");
 
     try {
-      await accountDeletionService.reject(
+      await accountDeletionService.defer(
         session.accessToken,
         request.id,
-        note,
+        {
+          reasonCode,
+          note,
+          deferUntil: request.deadlineAt,
+        },
       );
 
       setMessage(
-        "La solicitud fue rechazada. La cuenta continúa activa y el usuario podrá ver el motivo.",
+        "La solicitud fue aplazada por una causa objetiva. Sigue vigente y el usuario verá el motivo.",
       );
 
       await load();
-    } catch (rejectError) {
+    } catch (deferError) {
       setError(
-        rejectError instanceof Error
-          ? rejectError.message
-          : "No se pudo rechazar la solicitud.",
+        deferError instanceof Error
+          ? deferError.message
+          : "No se pudo aplazar la solicitud.",
       );
     } finally {
       setActionId(null);
@@ -278,42 +290,85 @@ export function AccountDeletionAdminPanel(): JSX.Element {
     });
   }
 
-  function askReject(
+  function askDefer(
     request: AdminAccountDeletionRequestData,
   ): void {
     void presentAlert({
-      header: "Rechazar solicitud",
+      header: "Aplazar temporalmente",
       message:
-        "El motivo es obligatorio y será visible para el pasajero o conductor.",
+        "Selecciona una causa objetiva. La solicitud seguirá vigente y no podrá exceder el plazo máximo de 30 días.",
       inputs: [
+        {
+          name: "reasonCode",
+          type: "radio",
+          label: "Viaje activo",
+          value: "active_ride",
+          checked: request.accountSummary.activeRides > 0,
+        },
+        {
+          name: "reasonCode",
+          type: "radio",
+          label: "Pago o contracargo pendiente",
+          value: "pending_payment",
+        },
+        {
+          name: "reasonCode",
+          type: "radio",
+          label: "Saldo o beneficio pendiente",
+          value: "wallet_balance",
+        },
+        {
+          name: "reasonCode",
+          type: "radio",
+          label: "Reclamo o soporte abierto",
+          value: "open_claim",
+        },
+        {
+          name: "reasonCode",
+          type: "radio",
+          label: "Fraude o investigación",
+          value: "chargeback_or_fraud",
+        },
+        {
+          name: "reasonCode",
+          type: "radio",
+          label: "Identidad no verificada",
+          value: "identity_unverified",
+        },
+        {
+          name: "reasonCode",
+          type: "radio",
+          label: "Conservación legal",
+          value: "legal_retention",
+        },
         {
           name: "note",
           type: "textarea",
-          placeholder: "Escribe el motivo del rechazo",
-          attributes: {
-            maxlength: 1000,
-          },
+          placeholder: "Explica el impedimento temporal",
+          attributes: { maxlength: 1000 },
         },
       ],
       buttons: [
+        { text: "Cancelar", role: "cancel" },
         {
-          text: "Cancelar",
-          role: "cancel",
-        },
-        {
-          text: "Rechazar",
-          role: "destructive",
+          text: "Aplazar",
           handler: (data) => {
             const note = String(data?.note ?? "").trim();
+            const reasonCode = String(data?.reasonCode ?? "") as
+              | "active_ride"
+              | "pending_payment"
+              | "wallet_balance"
+              | "open_claim"
+              | "chargeback_or_fraud"
+              | "identity_unverified"
+              | "legal_retention";
 
-            if (note.length < 3) {
-              setError(
-                "Debes escribir el motivo del rechazo.",
-              );
+            if (note.length < 3 || !reasonCode) {
+              setError("Selecciona la causa y escribe una explicación.");
               return false;
             }
 
-            void reject(request, note);
+            void deferRequest(request, note, reasonCode);
             return true;
           },
         },
@@ -322,7 +377,8 @@ export function AccountDeletionAdminPanel(): JSX.Element {
   }
 
   const pendingCount = requests.filter(
-    (request) => request.status === "pending",
+    (request) =>
+      request.status === "pending" || request.status === "deferred",
   ).length;
 
   return (
@@ -793,7 +849,7 @@ export function AccountDeletionAdminPanel(): JSX.Element {
                   </IonNote>
                 )}
 
-                {request.status === "pending" && (
+                {(request.status === "pending" || request.status === "deferred") && (
                   <div
                     style={{
                       display: "flex",
@@ -822,17 +878,17 @@ export function AccountDeletionAdminPanel(): JSX.Element {
                     </IonButton>
 
                     <IonButton
-                      color="danger"
+                      color="warning"
                       fill="outline"
                       size="small"
-                      onClick={() => askReject(request)}
+                      onClick={() => askDefer(request)}
                       disabled={busy}
                     >
                       <IonIcon
-                        icon={closeCircleOutline}
+                        icon={warningOutline}
                         slot="start"
                       />
-                      Rechazar con motivo
+                      Aplazar con causa
                     </IonButton>
                   </div>
                 )}

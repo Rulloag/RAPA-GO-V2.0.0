@@ -23,6 +23,9 @@ const {
   mockCreatePayment,
   mockVerifyWebhookSignature,
   mockNormalizeWebhook,
+  mockClaimWebhookEvent,
+  mockCompleteWebhookEvent,
+  mockFailWebhookEvent,
 } = vi.hoisted(() => ({
   mockVerifyAccessToken:      vi.fn(),
   mockHashToken:              vi.fn().mockReturnValue("hashed-token"),
@@ -45,6 +48,9 @@ const {
   mockCreatePayment:          vi.fn(),
   mockVerifyWebhookSignature: vi.fn(),
   mockNormalizeWebhook:       vi.fn(),
+  mockClaimWebhookEvent:      vi.fn(),
+  mockCompleteWebhookEvent:   vi.fn(),
+  mockFailWebhookEvent:       vi.fn(),
 }));
 
 const mockProvider = {
@@ -85,6 +91,9 @@ vi.mock("../payments.repository.js", () => ({
     claimRefund:           mockClaimRefund,
     markRefunded:          mockMarkRefunded,
     markRefundFailed:      mockMarkRefundFailed,
+    claimWebhookEvent:     mockClaimWebhookEvent,
+    completeWebhookEvent:  mockCompleteWebhookEvent,
+    failWebhookEvent:      mockFailWebhookEvent,
   })),
 }));
 vi.mock("../provider.registry.js", () => ({
@@ -242,6 +251,12 @@ describe("PaymentsService.handleWebhook", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     service = new PaymentsService();
+    mockClaimWebhookEvent.mockResolvedValue({
+      claimed: true,
+      event: { id: "webhook-event-id", status: "processing" },
+    });
+    mockCompleteWebhookEvent.mockResolvedValue(undefined);
+    mockFailWebhookEvent.mockResolvedValue(undefined);
     mockVerifyWebhookSignature.mockReturnValue(true);
     mockNormalizeWebhook.mockResolvedValue({
       orderId:    PAYMENT_ID,

@@ -9,6 +9,7 @@ export interface UpsertBankAccountData {
   bankName:           string;
   accountType:        string;
   accountNumberLast4: string;
+  accountNumberEncrypted: string;
 }
 
 export class BankAccountsRepository {
@@ -35,7 +36,8 @@ export class BankAccountsRepository {
           bankName:           data.bankName,
           accountType:        data.accountType,
           accountNumberLast4: data.accountNumberLast4,
-          status:             "pending",
+          accountNumberEncrypted: data.accountNumberEncrypted,
+          status:             "active",
         })
         .onConflictDoUpdate({
           target: userBankAccounts.userId,
@@ -44,6 +46,8 @@ export class BankAccountsRepository {
             bankName:           data.bankName,
             accountType:        data.accountType,
             accountNumberLast4: data.accountNumberLast4,
+            accountNumberEncrypted: data.accountNumberEncrypted,
+            status:             "active",
             updatedAt:          new Date(),
           },
         })

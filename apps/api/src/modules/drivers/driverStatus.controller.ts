@@ -33,29 +33,4 @@ export const driverStatusController = {
     }
     return sendOk(reply, result.status);
   },
-
-  async getTodayEarnings(req: FastifyRequest, reply: FastifyReply) {
-    const result = await svc.getTodayEarnings(getToken(req));
-    if (!result.ok) {
-      return sendError(reply, {
-        code:       result.code       ?? "INTERNAL_ERROR",
-        message:    result.message    ?? "Internal error.",
-        statusCode: result.statusCode ?? 500,
-      });
-    }
-    return sendOk(reply, result.earnings);
-  },
-
-  async updateMyLocation(req: FastifyRequest<{ Body: { lat: number; lng: number } }>, reply: FastifyReply) {
-    const { lat, lng } = req.body ?? {};
-    const result = await svc.updateMyLocation(getToken(req), lat, lng);
-    if (!result.ok) {
-      return sendError(reply, {
-        code:       result.code       ?? "INTERNAL_ERROR",
-        message:    result.message    ?? "Internal error.",
-        statusCode: result.statusCode ?? 500,
-      });
-    }
-    return sendOk(reply, { updatedAt: result.updatedAt });
-  },
 };

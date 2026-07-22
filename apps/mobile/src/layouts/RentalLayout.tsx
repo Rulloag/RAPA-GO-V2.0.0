@@ -1,5 +1,5 @@
 import { homeOutline, carOutline, calendarOutline, cashOutline } from "ionicons/icons";
-import { Route, Switch } from "react-router-dom";
+import { Redirect, Route } from "react-router-dom";
 import { RoleLayout } from "./RoleLayout";
 import { ROUTES } from "../navigation/routes";
 import {
@@ -20,14 +20,13 @@ const TABS = [
 export function RentalLayout(): JSX.Element {
   return (
     <RoleLayout tabs={TABS}>
-      <Switch>
-        <Route exact path={ROUTES.RENTAL.HOME} component={RentalHomePage} />
-        <Route exact path={ROUTES.RENTAL.VEHICLES} component={RentalVehiclesPage} />
-        <Route exact path={ROUTES.RENTAL.VEHICLE_DETAIL_PATTERN} component={RentalVehiclesPage} />
-        <Route exact path={ROUTES.RENTAL.BOOKINGS} component={RentalBookingsPage} />
-        <Route exact path={ROUTES.RENTAL.EARNINGS} component={RentalEarningsPage} />
-        <Route exact path={ROUTES.RENTAL.PROFILE} component={RentalProfilePage} />
-      </Switch>
+      <Redirect exact from={ROUTES.RENTAL.BASE} to={ROUTES.RENTAL.HOME} />
+      <Route exact path={ROUTES.RENTAL.HOME} component={RentalHomePage} />
+      <Route exact path={ROUTES.RENTAL.VEHICLES} component={RentalVehiclesPage} />
+      <Route exact path={ROUTES.RENTAL.VEHICLE_DETAIL_PATTERN} component={RentalVehiclesPage} />
+      <Route exact path={ROUTES.RENTAL.BOOKINGS} component={RentalBookingsPage} />
+      <Route exact path={ROUTES.RENTAL.EARNINGS} component={RentalEarningsPage} />
+      <Route exact path={ROUTES.RENTAL.PROFILE} component={RentalProfilePage} />
     </RoleLayout>
   );
 }

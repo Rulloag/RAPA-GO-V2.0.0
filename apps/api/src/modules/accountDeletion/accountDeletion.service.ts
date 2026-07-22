@@ -9,6 +9,7 @@ import { UsersRepository } from "../users/users.repository.js";
 import { AccountDeletionRepository } from "./accountDeletion.repository.js";
 import type {
   CreateAccountDeletionRequestInput,
+  DeferAccountDeletionRequestInput,
   ListAccountDeletionRequestsQuery,
   PublicAccountDeletionCodeRequestInput,
   PublicAccountDeletionStatusQuery,
@@ -178,6 +179,57 @@ export class AccountDeletionService {
     return { ok: true, request };
   }
 
+  async requestAppVerification(
+    accessToken: string,
+  ): Promise<PublicCodeResult> {
+    const auth = await authenticate(accessToken);
+    if (isFailure(auth)) return auth;
+
+    const emailHash = sha256(auth.email.trim().toLowerCase());
+    const expiresMinutes = 10;
+    const recent = await repository.hasRecentPublicVerification(
+      emailHash,
+      new Date(Date.now() - 60_000),
+    );
+
+    if (!recent) {
+      const code = randomInt(0, 1_000_000)
+        .toString()
+        .padStart(6, "0");
+      const codeHash = sha256(`${emailHash}:${code}`);
+      const verificationId = await repository.createPublicVerification({
+        userId: auth.id,
+        emailHash,
+        codeHash,
+        expiresAt: new Date(Date.now() + expiresMinutes * 60_000),
+        requestIp: null,
+        requestUserAgent: null,
+      });
+
+      try {
+        await mailService.sendAccountDeletionVerificationCode(
+          auth.email,
+          code,
+          expiresMinutes,
+        );
+      } catch {
+        await repository.revokePublicVerification(verificationId).catch(() => {});
+        return {
+          ok: false,
+          code: "ACCOUNT_DELETION_CODE_DELIVERY_FAILED",
+          message: "No pudimos enviar el código de verificación.",
+          statusCode: 503,
+        };
+      }
+    }
+
+    return {
+      ok: true,
+      message: "Enviamos un código de verificación al correo de tu cuenta.",
+      expiresMinutes,
+    };
+  }
+
   async createRequest(
     accessToken: string,
     input: CreateAccountDeletionRequestInput,
@@ -204,6 +256,22 @@ export class AccountDeletionService {
         message:
           "Ya existe una solicitud pendiente de revisión para esta cuenta.",
         statusCode: 409,
+      };
+    }
+
+    const emailHash = sha256(auth.email.trim().toLowerCase());
+    const codeHash = sha256(`${emailHash}:${input.verificationCode}`);
+    const verifiedUserId = await repository.verifyAndConsumePublicCode(
+      emailHash,
+      codeHash,
+    );
+
+    if (verifiedUserId !== auth.id) {
+      return {
+        ok: false,
+        code: "ACCOUNT_DELETION_REAUTH_REQUIRED",
+        message: "El código de verificación es inválido o venció.",
+        statusCode: 400,
       };
     }
 
@@ -385,6 +453,7 @@ export class AccountDeletionService {
     }
 
     const requestInput: CreateAccountDeletionRequestInput = {
+      verificationCode: input.code,
       reason: input.reason,
     };
 
@@ -469,10 +538,10 @@ export class AccountDeletionService {
     return { ok: true, requests };
   }
 
-  async reject(
+  async defer(
     accessToken: string,
     requestId: string,
-    input: ReviewAccountDeletionRequestInput,
+    input: DeferAccountDeletionRequestInput,
   ): Promise<AdminRequestResult> {
     const auth = await authenticate(accessToken);
     if (isFailure(auth)) return auth;
@@ -481,7 +550,7 @@ export class AccountDeletionService {
       return {
         ok: false,
         code: "FORBIDDEN",
-        message: "Solo un administrador puede rechazar la solicitud.",
+        message: "Solo un administrador puede aplazar la solicitud.",
         statusCode: 403,
       };
     }
@@ -497,54 +566,62 @@ export class AccountDeletionService {
       };
     }
 
-    try {
-      const request = await repository.reject(
-        requestId,
-        auth.id,
-        input.note,
-      );
-
-      if (detail.userId) {
-        await repository.notifyUserOfRejection(
-          detail.userId,
-          request.id,
-          input.note,
-          request.requesterRole,
-        );
-      }
-
-      auditService.recordSafe({
-        actorUserId: auth.id,
-        eventType: "account_deletion.rejected",
-        entityType: "account_deletion_request",
-        entityId: request.id,
-        metadata: {
-          requesterRole: request.requesterRole,
-        },
-      });
-
-      if (detail.requester?.email) {
-        void mailService
-          .sendAccountDeletionRejected(
-            detail.requester.email,
-            input.note,
-          )
-          .catch(() => {});
-      }
-
-      return { ok: true, request };
-    } catch (error) {
-      if (error instanceof AppError) {
-        return {
-          ok: false,
-          code: error.code,
-          message: error.message,
-          statusCode: error.statusCode,
-        };
-      }
-
-      throw error;
+    if (!["pending", "deferred"].includes(detail.status)) {
+      return {
+        ok: false,
+        code: "ACCOUNT_DELETION_NOT_REVIEWABLE",
+        message: "La solicitud ya fue completada o no puede aplazarse.",
+        statusCode: 409,
+      };
     }
+
+    const maximumDeadline = new Date(detail.deadlineAt);
+    const requestedUntil = input.deferUntil
+      ? new Date(input.deferUntil)
+      : maximumDeadline;
+    const deferUntil =
+      requestedUntil.getTime() > maximumDeadline.getTime()
+        ? maximumDeadline
+        : requestedUntil;
+
+    const request = await repository.defer(requestId, auth.id, {
+      reasonCode: input.reasonCode,
+      note: input.note,
+      deferUntil,
+    });
+
+    if (detail.userId) {
+      await repository.notifyUserOfDeferral(
+        detail.userId,
+        request.id,
+        input.note,
+        request.requesterRole,
+      );
+    }
+
+    auditService.recordSafe({
+      actorUserId: auth.id,
+      eventType: "account_deletion.deferred",
+      entityType: "account_deletion_request",
+      entityId: request.id,
+      metadata: {
+        requesterRole: request.requesterRole,
+        reasonCode: input.reasonCode,
+        deferUntil: deferUntil.toISOString(),
+      },
+    });
+
+    if (detail.requester?.email) {
+      void mailService
+        .sendAccountDeletionDeferred(
+          detail.requester.email,
+          input.note,
+          deferUntil,
+        )
+        .catch(() => {});
+    }
+
+    return { ok: true, request };
   }
 
   async approve(
@@ -575,7 +652,7 @@ export class AccountDeletionService {
       };
     }
 
-    if (detail.status !== "pending") {
+    if (!["pending", "deferred"].includes(detail.status)) {
       return {
         ok: false,
         code: "ACCOUNT_DELETION_NOT_PENDING",

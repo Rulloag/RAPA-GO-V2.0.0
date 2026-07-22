@@ -1,6 +1,7 @@
+import cors from "@fastify/cors";
+import { createCorsOptions } from "./plugins/cors.js";
 import { randomUUID } from "node:crypto";
 import Fastify, { type FastifyInstance } from "fastify";
-import { corsPlugin } from "./plugins/cors.js";
 import { helmetPlugin } from "./plugins/helmet.js";
 import { rateLimitPlugin } from "./plugins/rateLimit.js";
 import { globalErrorHandler } from "./shared/errors/errorHandler.js";
@@ -24,6 +25,8 @@ import { driverProfileRoutes } from "./modules/drivers/driverProfile.routes.js";
 import { passengerProfileRoutes } from "./modules/passengers/passengerProfile.routes.js";
 import { offlineRoutes } from "./modules/offline/offline.routes.js";
 import { walletRoutes } from "./modules/wallet/wallet.routes.js";
+import { cashRefundsRoutes } from "./modules/cashRefunds/cashRefunds.routes.js";
+import { cashPaymentsRoutes } from "./modules/cashPayments/cashPayments.routes.js";
 import { touristRoutes } from "./modules/tourist/tourist.routes.js";
 import { rentalRoutes } from "./modules/rental/rental.routes.js";
 import { notificationsRoutes } from "./modules/notifications/notifications.routes.js";
@@ -47,6 +50,7 @@ import {
 
 import { sql } from "drizzle-orm";
 import { db } from "./db/client.js";
+import { releaseFeatures } from "./config/features.js";
 
 async function checkDbConnection(): Promise<"connected" | "disconnected"> {
   try {
@@ -87,12 +91,12 @@ export async function buildApp(): Promise<FastifyInstance> {
       level: process.env["NODE_ENV"] === "production" ? "warn" : "info",
     },
     // Attach request id to every log line
-    genReqId: () => crypto.randomUUID(),
+    genReqId: () => randomUUID(),
   });
 
   // ── Security & transport plugins ──────────────────────────────────────────
   await fastify.register(helmetPlugin);
-  await fastify.register(corsPlugin);
+  await fastify.register(cors, createCorsOptions());
   await fastify.register(rateLimitPlugin);
 
   // ── Global error handler ──────────────────────────────────────────────────
@@ -126,6 +130,7 @@ export async function buildApp(): Promise<FastifyInstance> {
         memory: memMb < 512 ? "ok" : "critical",
         memoryMb: memMb,
       },
+      releaseFeatures,
     };
   });
 
@@ -175,12 +180,20 @@ export async function buildApp(): Promise<FastifyInstance> {
   await fastify.register(driverProfileRoutes, { prefix: "/api" });
   await fastify.register(passengerProfileRoutes, { prefix: "/api" });
   await fastify.register(walletRoutes, { prefix: "/api" });
-  await fastify.register(touristRoutes, { prefix: "/api" });
-  await fastify.register(rentalRoutes, { prefix: "/api" });
+  await fastify.register(cashRefundsRoutes, { prefix: "/api" });
+  await fastify.register(cashPaymentsRoutes, { prefix: "/api" });
+  if (releaseFeatures.tourism) {
+    await fastify.register(touristRoutes, { prefix: "/api" });
+  }
+  if (releaseFeatures.rentals) {
+    await fastify.register(rentalRoutes, { prefix: "/api" });
+  }
   await fastify.register(notificationsRoutes, { prefix: "/api" });
   await fastify.register(applicationsRoutes, { prefix: "/api" });
-  await fastify.register(eventTicketsRoutes, { prefix: "/api" });
-  await fastify.register(adminEventTicketsRoutes, { prefix: "/api/admin" });
+  if (releaseFeatures.events) {
+    await fastify.register(eventTicketsRoutes, { prefix: "/api" });
+    await fastify.register(adminEventTicketsRoutes, { prefix: "/api/admin" });
+  }
   await fastify.register(legalDocumentsRoutes, { prefix: "/api" });
   await fastify.register(adminLegalRoutes, { prefix: "/api/admin" });
   await fastify.register(fareSettingsPublicRoutes, { prefix: "/api" });

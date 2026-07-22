@@ -17,9 +17,11 @@ import {
   accountDeletionRequests,
   accountDeletionVerifications,
   applications,
+  authIdentities,
   authSessions,
   driverProfiles,
   eventTickets,
+  facebookLoginExchanges,
   notifications,
   passengerProfiles,
   paymentOrders,
@@ -28,6 +30,7 @@ import {
   rentalBookings,
   rideRequests,
   serviceBookings,
+  supportCases,
   userDocuments,
   users,
   wallets,
@@ -67,6 +70,9 @@ const PENDING_PAYMENT_STATUSES = [
   "created",
   "in_process",
   "authorized",
+  "disputed",
+  "chargeback",
+  "under_review",
 ];
 
 function iso(value: Date | string | null | undefined): string | null {
@@ -88,6 +94,10 @@ function toPublicResponse(
     status: row.status as AccountDeletionRequestStatus,
     adminNote: row.adminNote,
     requestedAt: row.requestedAt.toISOString(),
+    deadlineAt: row.deadlineAt.toISOString(),
+    deferredUntil: iso(row.deferredUntil),
+    decisionReasonCode: row.decisionReasonCode,
+    retentionSummary: row.retentionSummary,
     reviewedAt: iso(row.reviewedAt),
     processingAt: iso(row.processingAt),
     completedAt: iso(row.completedAt),
@@ -135,6 +145,7 @@ export class AccountDeletionRepository {
             eq(accountDeletionRequests.userId, userId),
             inArray(accountDeletionRequests.status, [
               "pending",
+              "deferred",
               "approved",
               "processing",
             ]),
@@ -168,6 +179,7 @@ export class AccountDeletionRepository {
           comment: input.comment?.trim() || null,
           requesterSnapshot: input.requesterSnapshot ?? null,
           status: "pending",
+          deadlineAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
         })
         .returning();
 
@@ -337,6 +349,7 @@ export class AccountDeletionRepository {
           comment: input.comment?.trim() || null,
           requesterSnapshot: null,
           status: "pending",
+          deadlineAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
         })
         .returning();
 
@@ -412,10 +425,14 @@ export class AccountDeletionRepository {
         trackingCode: row.trackingCode,
         status: row.status as AccountDeletionRequestStatus,
         requestedAt: row.requestedAt.toISOString(),
+        deadlineAt: row.deadlineAt.toISOString(),
+        deferredUntil: iso(row.deferredUntil),
+        decisionReasonCode: row.decisionReasonCode,
         reviewedAt: iso(row.reviewedAt),
         completedAt: iso(row.completedAt),
         adminNote: row.adminNote,
         failureReason: row.failureReason,
+        retentionSummary: row.retentionSummary,
       };
     } catch (error) {
       throw AppError.internal(
@@ -497,9 +514,11 @@ export class AccountDeletionRepository {
           activeServiceBookings: 0,
           activeRentalBookings: 0,
           activeEventTickets: 0,
+          openSupportCases: 0,
         },
         blockers: [],
-        canApprove: row.status === "pending",
+        canApprove:
+          row.status === "pending" || row.status === "deferred",
       };
     }
 
@@ -515,6 +534,7 @@ export class AccountDeletionRepository {
       serviceRows,
       rentalRows,
       ticketRows,
+      supportRows,
     ] = await Promise.all([
       db.select().from(users).where(eq(users.id, userId)).limit(1),
 
@@ -586,6 +606,11 @@ export class AccountDeletionRepository {
         .select({ status: eventTickets.status })
         .from(eventTickets)
         .where(eq(eventTickets.userId, userId)),
+
+      db
+        .select({ status: supportCases.status })
+        .from(supportCases)
+        .where(eq(supportCases.requesterUserId, userId)),
     ]);
 
     const user = userRows[0] ?? null;
@@ -633,6 +658,10 @@ export class AccountDeletionRepository {
       (item) => item.status === "active",
     ).length;
 
+    const openSupportCases = supportRows.filter(
+      (item) => !["resolved", "closed", "rejected"].includes(item.status),
+    ).length;
+
     const walletBalanceClp = Math.max(0, Number(wallet?.balance ?? 0));
 
     const blockers: string[] = [];
@@ -670,6 +699,12 @@ export class AccountDeletionRepository {
     if (activeEventTickets > 0) {
       blockers.push(
         `La cuenta tiene ${activeEventTickets} ticket(s) de evento activo(s).`,
+      );
+    }
+
+    if (openSupportCases > 0) {
+      blockers.push(
+        `La cuenta tiene ${openSupportCases} reclamo(s) o caso(s) de soporte abierto(s).`,
       );
     }
 
@@ -751,30 +786,37 @@ export class AccountDeletionRepository {
         activeServiceBookings,
         activeRentalBookings,
         activeEventTickets,
+        openSupportCases,
       },
 
       blockers,
 
       canApprove:
-        row.status === "pending" &&
+        (row.status === "pending" || row.status === "deferred") &&
         user?.status !== "deleted" &&
         blockers.length === 0,
     };
   }
 
-  async reject(
+  async defer(
     requestId: string,
     adminUserId: string,
-    note: string,
+    input: {
+      reasonCode: string;
+      note: string;
+      deferUntil: Date | null;
+    },
   ): Promise<AccountDeletionRequestResponse> {
     try {
       const rows = await db
         .update(accountDeletionRequests)
         .set({
-          status: "rejected",
+          status: "deferred",
           reviewedByUserId: adminUserId,
-          adminNote: note,
+          adminNote: input.note,
           reviewedAt: new Date(),
+          deferredUntil: input.deferUntil,
+          decisionReasonCode: input.reasonCode,
           updatedAt: new Date(),
           failureReason: null,
           failedAt: null,
@@ -782,7 +824,7 @@ export class AccountDeletionRepository {
         .where(
           and(
             eq(accountDeletionRequests.id, requestId),
-            eq(accountDeletionRequests.status, "pending"),
+            inArray(accountDeletionRequests.status, ["pending", "deferred"]),
           ),
         )
         .returning();
@@ -791,9 +833,8 @@ export class AccountDeletionRepository {
 
       if (!updated) {
         throw new AppError({
-          code: "ACCOUNT_DELETION_NOT_PENDING",
-          message:
-            "La solicitud ya fue revisada o no se encuentra pendiente.",
+          code: "ACCOUNT_DELETION_NOT_REVIEWABLE",
+          message: "La solicitud ya fue completada o no puede aplazarse.",
           statusCode: 409,
         });
       }
@@ -802,7 +843,7 @@ export class AccountDeletionRepository {
     } catch (error) {
       if (error instanceof AppError) throw error;
       throw AppError.internal(
-        `Failed to reject account deletion request: ${String(error)}`,
+        `Failed to defer account deletion request: ${String(error)}`,
       );
     }
   }
@@ -830,7 +871,7 @@ export class AccountDeletionRepository {
           .where(
             and(
               eq(accountDeletionRequests.id, requestId),
-              eq(accountDeletionRequests.status, "pending"),
+              inArray(accountDeletionRequests.status, ["pending", "deferred"]),
             ),
           )
           .returning();
@@ -881,6 +922,14 @@ export class AccountDeletionRepository {
         await tx.execute(
           sql`DELETE FROM password_reset_tokens WHERE user_id = ${userId}::uuid`,
         );
+
+        await tx
+          .delete(authIdentities)
+          .where(eq(authIdentities.userId, userId));
+
+        await tx
+          .delete(facebookLoginExchanges)
+          .where(eq(facebookLoginExchanges.userId, userId));
 
         // Información privada que no debe conservarse después del cierre.
         await tx.execute(
@@ -986,6 +1035,8 @@ export class AccountDeletionRepository {
             updatedAt: now,
             failureReason: null,
             failedAt: null,
+            retentionSummary:
+              "Se eliminaron credenciales, perfiles, documentos, medios de pago y datos bancarios. Viajes, pagos, comprobantes y aceptaciones legales se conservan de forma restringida para integridad, obligaciones legales, tributarias y defensa de derechos.",
             requesterSnapshot: {
               redacted: true,
               requesterRole: approvedRows[0].requesterRole,
@@ -1064,7 +1115,7 @@ export class AccountDeletionRepository {
     }
   }
 
-  async notifyUserOfRejection(
+  async notifyUserOfDeferral(
     userId: string,
     requestId: string,
     note: string,
@@ -1073,9 +1124,9 @@ export class AccountDeletionRepository {
     try {
       await db.insert(notifications).values({
         userId,
-        type: "account_deletion_rejected",
-        title: "Solicitud de eliminación rechazada",
-        message: `Tu cuenta continúa activa. Motivo: ${note}`,
+        type: "account_deletion_deferred",
+        title: "Solicitud de eliminación aplazada",
+        message: `Tu solicitud sigue vigente. Causa temporal: ${note}`,
         entityType: "account_deletion_request",
         entityId: requestId,
         actionUrl:

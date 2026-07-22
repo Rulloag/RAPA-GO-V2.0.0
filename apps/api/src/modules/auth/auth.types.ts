@@ -4,7 +4,7 @@ export type { AuthUser, AuthSession, LoginRequest, RegisterRequest, AuthResponse
 
 /** Internal service result before mapping to HTTP response. */
 export type AuthServiceResult =
-  | { ok: true; session: AuthSession; refreshToken?: string }
+  | { ok: true; session: AuthSession }
   | { ok: false; code: string; message: string; statusCode?: number };
 
 export interface ForgotPasswordRequest {
@@ -26,10 +26,46 @@ export type PasswordResetServiceResult =
       statusCode: number;
     };
 export type FacebookLoginPreparationResult =
-  | { ok: true; exchangeCode: string }
+  | {
+      ok: true;
+      kind: "login";
+      exchangeCode: string;
+    }
+  | {
+      ok: true;
+      kind: "setup";
+      setupCode: string;
+    }
+  | {
+      ok: true;
+      kind: "link_existing";
+      linkCode: string;
+      email: string;
+      facebookId: string;
+      name: string;
+      avatarUrl?: string | null;
+    }
   | {
       ok: false;
       code: string;
       message: string;
       statusCode?: number;
+    };
+
+export type AuthActionResult =
+  | { ok: true; message: string }
+  | {
+      ok: false;
+      code: string;
+      message: string;
+      statusCode: number;
+    };
+
+export type FacebookLinkStartResult =
+  | { ok: true; linkCode: string }
+  | {
+      ok: false;
+      code: string;
+      message: string;
+      statusCode: number;
     };

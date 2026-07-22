@@ -4,6 +4,7 @@ import {
   calculateRidePolicyAmount,
   isPassengerCancellationChargeable,
   roundFareUpTo500,
+  splitNoShowAmount,
 } from "../ridePolicy.js";
 
 describe("RAPA GO ride policy", () => {
@@ -63,5 +64,23 @@ describe("RAPA GO ride policy", () => {
     expect(calculateRidePolicyAmount(50000, 30, 3000)).toBe(3000);
     expect(calculateRidePolicyAmount(5000, 50, 5000)).toBe(2500);
     expect(calculateRidePolicyAmount(50000, 50, 5000)).toBe(5000);
+  });
+
+  it("distribuye el No Show 50% conductor y 50% Rapa Go", () => {
+    expect(splitNoShowAmount(5000)).toEqual({
+      totalAmountClp: 5000,
+      driverShareClp: 2500,
+      platformShareClp: 2500,
+      driverSharePercent: 50,
+      platformSharePercent: 50,
+    });
+
+    expect(splitNoShowAmount(2501)).toEqual({
+      totalAmountClp: 2501,
+      driverShareClp: 1250,
+      platformShareClp: 1251,
+      driverSharePercent: 50,
+      platformSharePercent: 50,
+    });
   });
 });

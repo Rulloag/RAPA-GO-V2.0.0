@@ -4,7 +4,6 @@ import {
 } from "node:crypto";
 import { AuditService } from "../audit/audit.service.js";
 import { UsersRepository } from "../users/users.repository.js";
-import { AuthCredentialsRepository } from "./authCredentials.repository.js";
 import { MailService } from "./mail.service.js";
 import { PasswordService } from "./password.service.js";
 import { PasswordResetRepository } from "./passwordReset.repository.js";
@@ -21,7 +20,6 @@ const INVALID_RESET_MESSAGE =
   "El enlace venció, ya fue utilizado o no es válido. Solicita uno nuevo.";
 
 const usersRepository = new UsersRepository();
-const credentialsRepository = new AuthCredentialsRepository();
 const passwordResetRepository = new PasswordResetRepository();
 const passwordService = new PasswordService();
 const mailService = new MailService();
@@ -118,17 +116,6 @@ export class PasswordResetService {
         user.status === "suspended" ||
         user.status === "banned"
       ) {
-        return {
-          ok: true,
-          message: GENERIC_FORGOT_MESSAGE,
-        };
-      }
-
-      // Facebook-only accounts currently have no local password to reset.
-      const credentials =
-        await credentialsRepository.findByUserId(user.id);
-
-      if (!credentials) {
         return {
           ok: true,
           message: GENERIC_FORGOT_MESSAGE,

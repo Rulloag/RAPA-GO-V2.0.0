@@ -45,7 +45,7 @@ function isPersistedSession(value: unknown): value is PersistedSession {
 }
 
 class SessionStorageService {
-  async saveSession(session: AuthSession, refreshToken?: string): Promise<void> {
+  async saveSession(session: AuthSession): Promise<void> {
     const persisted: PersistedSession = {
       accessToken: session.accessToken,
       expiresAt: session.expiresAt,
@@ -58,9 +58,6 @@ class SessionStorageService {
     };
 
     await SecureStorage.set(SESSION_KEY, JSON.stringify(persisted));
-    if (refreshToken) {
-      await SecureStorage.set(REFRESH_KEY, refreshToken);
-    }
   }
 
   async loadSession(): Promise<PersistedSession | null> {
@@ -83,15 +80,6 @@ class SessionStorageService {
       return parsed;
     } catch {
       await this.clearSession();
-      return null;
-    }
-  }
-
-  async loadRefreshToken(): Promise<string | null> {
-    try {
-      const raw = await SecureStorage.get(REFRESH_KEY);
-      return raw ? (raw as string) : null;
-    } catch {
       return null;
     }
   }

@@ -25,7 +25,7 @@ import { useHistory } from "react-router-dom";
 import { ModulePlaceholderPage } from "../../components/ModulePlaceholderPage";
 import { ROUTE_METADATA } from "../../navigation/routeConfig";
 import { ROUTES } from "../../navigation/routes";
-import { useAuth } from "../../features/auth";
+import { AppleLinkButton, useAuth } from "../../features/auth";
 import { profileService, type ProfileData } from "../../features/profile/profile.service";
 import { ROLE_HOME } from "../../navigation/RouteGuard";
 import { documentsService } from "../../features/documents/documents.service";
@@ -153,10 +153,34 @@ export function ProfileIndexPage(): JSX.Element {
     isResident?: boolean | string | null;
   };
 
+  const RAPAGO_AUTH_SESSION_PROFILE_KEY =
+    "rapago_registration_profile_session";
+
+  function parseStoredProfile(
+    storage: Storage,
+    key: string,
+  ): StoredRegistrationProfile {
+    try {
+      const raw = storage.getItem(key);
+      return raw
+        ? (JSON.parse(raw) as StoredRegistrationProfile)
+        : {};
+    } catch {
+      return {};
+    }
+  }
+
   function readStoredRegistrationProfile(): StoredRegistrationProfile {
     try {
-      const raw = localStorage.getItem("rapago_registration_profile");
-      const parsed = raw ? (JSON.parse(raw) as StoredRegistrationProfile) : {};
+      const localProfile = parseStoredProfile(
+        localStorage,
+        "rapago_registration_profile",
+      );
+      const sessionProfile = parseStoredProfile(
+        sessionStorage,
+        RAPAGO_AUTH_SESSION_PROFILE_KEY,
+      );
+      const parsed = { ...localProfile, ...sessionProfile };
       const directFareType =
         localStorage.getItem("rapago_passenger_fare_type") ??
         localStorage.getItem("rapago_profile_passenger_type") ??
@@ -170,8 +194,24 @@ export function ProfileIndexPage(): JSX.Element {
 
       return {
         ...parsed,
-        phone: parsed.phone ?? localStorage.getItem("rapago_profile_phone"),
-        rut: parsed.rut ?? localStorage.getItem("rapago_profile_rut"),
+        email:
+          sessionProfile.email ??
+          sessionStorage.getItem("rapago_profile_email") ??
+          sessionStorage.getItem("rapago_passenger_email") ??
+          localProfile.email ??
+          null,
+        phone:
+          sessionProfile.phone ??
+          sessionStorage.getItem("rapago_profile_phone") ??
+          sessionStorage.getItem("rapago_passenger_phone") ??
+          localProfile.phone ??
+          null,
+        rut:
+          sessionProfile.rut ??
+          sessionStorage.getItem("rapago_profile_rut") ??
+          sessionStorage.getItem("rapago_passenger_rut") ??
+          localProfile.rut ??
+          null,
         passengerFareType:
           parsed.passengerFareType ??
           parsed.farePassengerType ??
@@ -188,15 +228,45 @@ export function ProfileIndexPage(): JSX.Element {
     }
   }
 
-  function persistStoredRegistrationProfile(data: Partial<StoredRegistrationProfile>): void {
+  function persistStoredRegistrationProfile(
+    data: Partial<StoredRegistrationProfile>,
+  ): void {
     try {
       const current = readStoredRegistrationProfile();
       const next = { ...current, ...data };
 
-      localStorage.setItem("rapago_registration_profile", JSON.stringify(next));
+      sessionStorage.setItem(
+        RAPAGO_AUTH_SESSION_PROFILE_KEY,
+        JSON.stringify(next),
+      );
+      if (next.email) {
+        sessionStorage.setItem("rapago_profile_email", next.email);
+        sessionStorage.setItem("rapago_passenger_email", next.email);
+      }
+      if (next.phone) {
+        sessionStorage.setItem("rapago_profile_phone", next.phone);
+        sessionStorage.setItem("rapago_passenger_phone", next.phone);
+      }
+      if (next.rut) {
+        sessionStorage.setItem("rapago_profile_rut", next.rut);
+        sessionStorage.setItem("rapago_passenger_rut", next.rut);
+      }
 
-      if (next.phone) localStorage.setItem("rapago_profile_phone", next.phone);
-      if (next.rut) localStorage.setItem("rapago_profile_rut", next.rut);
+      const {
+        email: _email,
+        phone: _phone,
+        rut: _rut,
+        firstName: _firstName,
+        lastName: _lastName,
+        birthDate: _birthDate,
+        ...safeProfile
+      } = next;
+      localStorage.setItem(
+        "rapago_registration_profile",
+        JSON.stringify(safeProfile),
+      );
+      localStorage.removeItem("rapago_profile_phone");
+      localStorage.removeItem("rapago_profile_rut");
 
       const normalizedFareType = normalizePassengerFareType(
         next.passengerFareType,
@@ -208,20 +278,41 @@ export function ProfileIndexPage(): JSX.Element {
       );
 
       if (normalizedFareType) {
-        localStorage.setItem("rapago_passenger_fare_type", normalizedFareType);
-        localStorage.setItem("rapago_profile_passenger_type", normalizedFareType);
-        localStorage.setItem("rapago_profile_nationality", getPassengerFareTypeLabel(normalizedFareType));
+        localStorage.setItem(
+          "rapago_passenger_fare_type",
+          normalizedFareType,
+        );
+        localStorage.setItem(
+          "rapago_profile_passenger_type",
+          normalizedFareType,
+        );
+        localStorage.setItem(
+          "rapago_profile_nationality",
+          getPassengerFareTypeLabel(normalizedFareType),
+        );
       }
     } catch {
-      // No bloquea el perfil si localStorage no está disponible.
+      // No bloquea el perfil si storage no está disponible.
     }
   }
 
   function getSessionPhone(user: unknown): string {
     if (!user || typeof user !== "object") return "";
 
-    const value = (user as { phone?: string | null }).phone;
-    return typeof value === "string" ? value.trim() : "";
+    const record = user as Record<string, unknown>;
+    for (const value of [
+      record.phone,
+      record.phoneNumber,
+      record.mobile,
+      record.mobilePhone,
+      record.celular,
+    ]) {
+      if (typeof value === "string" && value.trim()) {
+        return value.trim();
+      }
+    }
+
+    return "";
   }
 
   function getAutoPhone(profilePhone?: string | null): string {
@@ -230,6 +321,8 @@ export function ProfileIndexPage(): JSX.Element {
     return (
       profilePhone?.trim() ||
       getSessionPhone(session?.user) ||
+      sessionStorage.getItem("rapago_profile_phone")?.trim() ||
+      sessionStorage.getItem("rapago_passenger_phone")?.trim() ||
       stored.phone?.trim() ||
       ""
     );
@@ -1044,7 +1137,7 @@ function BankAccountPage(): JSX.Element {
           color:         "var(--ion-color-warning-shade)",
         }}>
           <strong>Los pagos reales se implementarán en una fase futura.</strong><br />
-          Puedes registrar tu cuenta bancaria ahora. El procesamiento de pagos estará disponible próximamente.
+          Registra una cuenta bancaria solo para devoluciones aprobadas. RAPA GO no utiliza estos datos para realizar cobros.
         </div>
 
         {loading && (
@@ -1173,11 +1266,68 @@ function BankAccountPage(): JSX.Element {
 }
 
 export function ProfileSecurityPage(): JSX.Element {
-  const m = meta("/profile/security");
+  const history = useHistory();
+  const { user } = useAuth();
+  const [message, setMessage] = useState("");
+  const [error, setError] = useState("");
+  const appleLinked = user?.authProviders?.includes("apple") === true;
+
   return (
     <IonPage>
-      <IonHeader><IonToolbar color="primary"><IonTitle>{m.label}</IonTitle></IonToolbar></IonHeader>
-      <IonContent className="ion-padding"><ModulePlaceholderPage title={m.label} role="passenger" plannedFeatures={m.plannedFeatures} /></IonContent>
+      <IonHeader>
+        <IonToolbar color="primary">
+          <IonButtons slot="start">
+            <IonButton onClick={() => history.goBack()}>Volver</IonButton>
+          </IonButtons>
+          <IonTitle>Seguridad</IonTitle>
+        </IonToolbar>
+      </IonHeader>
+      <IonContent className="ion-padding">
+        <IonCard>
+          <IonCardHeader>
+            <IonCardTitle>Métodos de acceso</IonCardTitle>
+          </IonCardHeader>
+          <IonCardContent>
+            <p>
+              Vincula Apple para ingresar de forma segura desde tu iPhone.
+              La cuenta no se fusiona automáticamente solo por coincidir el correo.
+            </p>
+
+            <IonBadge color={appleLinked ? "success" : "medium"}>
+              {appleLinked ? "Apple vinculado" : "Apple no vinculado"}
+            </IonBadge>
+
+            <div style={{ marginTop: 16 }}>
+              <AppleLinkButton
+                linked={appleLinked}
+                onSuccess={(value) => {
+                  setError("");
+                  setMessage(value);
+                }}
+                onError={(value) => {
+                  setMessage("");
+                  setError(value);
+                }}
+              />
+            </div>
+
+            {message && (
+              <IonText color="success">
+                <p role="status">{message}</p>
+              </IonText>
+            )}
+            {error && (
+              <IonText color="danger">
+                <p role="alert">{error}</p>
+              </IonText>
+            )}
+
+            <IonNote>
+              La vinculación de Apple solo aparece dentro de la aplicación instalada en iOS.
+            </IonNote>
+          </IonCardContent>
+        </IonCard>
+      </IonContent>
     </IonPage>
   );
 }

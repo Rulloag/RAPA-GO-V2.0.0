@@ -12,102 +12,12 @@ import {
   type CSSProperties,
 } from "react";
 import { useHistory, useLocation } from "react-router-dom";
-import type { UserRole } from "@rapa-go/shared";
 import { ROUTES } from "../../navigation/routes.js";
+import { getReleaseHome } from "../../config/releaseFeatures.js";
 import { sessionStorageService } from "./sessionStorage.service.js";
 import { authService } from "./auth.service.js";
-import { legalService } from "../legal/legal.service.js";
-
-const ROLE_HOME: Record<UserRole, string> = {
-  passenger: ROUTES.PASSENGER.HOME,
-  driver: ROUTES.DRIVER.HOME,
-  guide: ROUTES.GUIDE.HOME,
-  rental_operator: ROUTES.RENTAL.HOME,
-  admin: ROUTES.ADMIN.HOME,
-};
-
-const RAPAGO_FACEBOOK_LEGAL_ACCEPTANCES_KEY =
-  "rapago_pending_facebook_legal_acceptances_v1";
-
-const RAPAGO_FACEBOOK_REQUIRED_LEGAL_TYPES = new Set([
-  "terms_and_conditions",
-  "privacy_policy",
-  "user_conditions",
-]);
 
 type CallbackState = "loading" | "error";
-
-type PendingFacebookLegalAcceptance = {
-  legalDocumentId: string;
-  type: string;
-  version: string;
-  title: string;
-};
-
-function readPendingFacebookLegalAcceptances():
-  PendingFacebookLegalAcceptance[] {
-  try {
-    const raw = sessionStorage.getItem(
-      RAPAGO_FACEBOOK_LEGAL_ACCEPTANCES_KEY,
-    );
-    const parsed = raw ? (JSON.parse(raw) as unknown) : [];
-
-    if (!Array.isArray(parsed)) return [];
-
-    return parsed.filter(
-      (item): item is PendingFacebookLegalAcceptance => {
-        if (!item || typeof item !== "object") return false;
-        const record = item as Record<string, unknown>;
-
-        return (
-          typeof record.legalDocumentId === "string" &&
-          typeof record.type === "string" &&
-          RAPAGO_FACEBOOK_REQUIRED_LEGAL_TYPES.has(record.type) &&
-          typeof record.version === "string" &&
-          typeof record.title === "string"
-        );
-      },
-    );
-  } catch {
-    return [];
-  }
-}
-
-async function acceptPendingFacebookLegalDocuments(
-  accessToken: string,
-): Promise<void> {
-  const pending = readPendingFacebookLegalAcceptances();
-  const foundTypes = new Set(pending.map((item) => item.type));
-
-  if (
-    pending.length !== RAPAGO_FACEBOOK_REQUIRED_LEGAL_TYPES.size ||
-    [...RAPAGO_FACEBOOK_REQUIRED_LEGAL_TYPES].some(
-      (type) => !foundTypes.has(type),
-    )
-  ) {
-    throw new Error("legal_missing");
-  }
-
-  const current = await legalService.getMyAcceptances(accessToken);
-
-  for (const document of pending) {
-    const alreadyAccepted = current.some(
-      (acceptance) =>
-        acceptance.legalDocumentId === document.legalDocumentId &&
-        acceptance.versionAccepted === document.version,
-    );
-
-    if (alreadyAccepted) continue;
-
-    await legalService.accept(
-      accessToken,
-      document.legalDocumentId,
-      document.version,
-    );
-  }
-
-  sessionStorage.removeItem(RAPAGO_FACEBOOK_LEGAL_ACCEPTANCES_KEY);
-}
 
 function getFacebookCallbackErrorMessage(code: string): string {
   if (code === "missing_exchange") {
@@ -116,14 +26,6 @@ function getFacebookCallbackErrorMessage(code: string): string {
 
   if (code === "exchange_failed") {
     return "El inicio con Facebook expiró o ya fue utilizado. Intenta nuevamente.";
-  }
-
-  if (code === "legal_missing") {
-    return "Debes aceptar Términos, Privacidad y Condiciones para Usuarios antes de continuar con Facebook.";
-  }
-
-  if (code === "legal_save_failed") {
-    return "No se pudo registrar tu aceptación legal. Vuelve al login y marca las tres casillas.";
   }
 
   if (code === "save_failed") {
@@ -139,6 +41,11 @@ export function FacebookCallbackPage(): JSX.Element {
   const [state, setState] = useState<CallbackState>("loading");
   const [errorMessage, setErrorMessage] = useState("");
 
+  const queryParams = useMemo(
+    () => new URLSearchParams(location.search),
+    [location.search],
+  );
+
   const fragmentParams = useMemo(
     () =>
       new URLSearchParams(
@@ -153,7 +60,10 @@ export function FacebookCallbackPage(): JSX.Element {
     let cancelled = false;
 
     async function finishFacebookLogin(): Promise<void> {
-      const exchangeCode = fragmentParams.get("exchangeCode")?.trim() ?? "";
+      const exchangeCode =
+        queryParams.get("exchangeCode")?.trim() ??
+        fragmentParams.get("exchangeCode")?.trim() ??
+        "";
 
       // Remove the one-time code from browser history immediately.
       window.history.replaceState(
@@ -184,36 +94,11 @@ export function FacebookCallbackPage(): JSX.Element {
       }
 
       try {
-        await acceptPendingFacebookLegalDocuments(
-          result.session.accessToken,
-        );
-      } catch (error) {
-        await authService
-          .logout(result.session.accessToken)
-          .catch(() => {});
-
-        if (cancelled) return;
-        setState("error");
-        setErrorMessage(
-          getFacebookCallbackErrorMessage(
-            error instanceof Error && error.message === "legal_missing"
-              ? "legal_missing"
-              : "legal_save_failed",
-          ),
-        );
-        return;
-      }
-
-      try {
         await sessionStorageService.saveSession(result.session);
 
         if (cancelled) return;
 
-        const home =
-          ROLE_HOME[result.session.user.role] ??
-          ROUTES.PASSENGER.HOME;
-
-        window.location.replace(home);
+        window.location.replace(getReleaseHome(result.session.user.role));
       } catch {
         await authService
           .logout(result.session.accessToken)
@@ -238,7 +123,7 @@ export function FacebookCallbackPage(): JSX.Element {
     return () => {
       cancelled = true;
     };
-  }, [fragmentParams]);
+  }, [fragmentParams, queryParams]);
 
   const pageStyle = {
     "--background":

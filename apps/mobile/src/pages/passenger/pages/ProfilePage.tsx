@@ -33,7 +33,10 @@ import {
   exitOutline,
   giftOutline,
   languageOutline,
+  keyOutline,
+  linkOutline,
   lockClosedOutline,
+  logoFacebook,
   mailOutline,
   personOutline,
   saveOutline,
@@ -46,7 +49,7 @@ import { ModulePlaceholderPage } from "../../../components/ModulePlaceholderPage
 import { AccountDeletionCard } from "../../../components/accountDeletion/AccountDeletionCard.js";
 import { ROUTE_METADATA } from "../../../navigation/routeConfig";
 import { ROUTES } from "../../../navigation/routes";
-import { useAuth } from "../../../features/auth";
+import { authService, useAuth } from "../../../features/auth";
 import { profileService, type ProfileData } from "../../../features/profile/profile.service";
 import { ROLE_HOME } from "../../../navigation/RouteGuard";
 import { documentsService } from "../../../features/documents/documents.service";
@@ -526,12 +529,18 @@ function normalizePassengerFareType(...values: unknown[]): PassengerFareType | n
     }
 
     if (
+      text === "rapanui" ||
+      text === "rapanui normal" ||
+      text === "rapa nui normal"
+    ) {
+      // Categoría legada eliminada: se mantiene como Turista chileno.
+      return "chilean";
+    }
+
+    if (
       text.includes("residente rapa nui") ||
       text.includes("residente_rapa_nui") ||
       text.includes("resident_rapa_nui") ||
-      text.includes("rapa nui") ||
-      text.includes("rapanui") ||
-      text.includes("local") ||
       text === "resident" ||
       text === "residente" ||
       text === "true" ||
@@ -837,10 +846,33 @@ export function ProfileIndexPage(): JSX.Element {
     currentRole?: string | null;
     roles?: string[] | null;
   };
+  const RAPAGO_AUTH_SESSION_PROFILE_KEY =
+    "rapago_registration_profile_session";
+
+  function parseStoredProfile(
+    storage: Storage,
+    key: string,
+  ): StoredRegistrationProfile {
+    try {
+      const raw = storage.getItem(key);
+      return raw
+        ? (JSON.parse(raw) as StoredRegistrationProfile)
+        : {};
+    } catch {
+      return {};
+    }
+  }
+
   function readStoredRegistrationProfile(): StoredRegistrationProfile {
     try {
-      const raw = localStorage.getItem("rapago_registration_profile");
-      const parsed = raw ? (JSON.parse(raw) as StoredRegistrationProfile) : {};
+      const localProfile = parseStoredProfile(
+        localStorage,
+        "rapago_registration_profile",
+      );
+      const sessionProfile = parseStoredProfile(
+        sessionStorage,
+        RAPAGO_AUTH_SESSION_PROFILE_KEY,
+      );
       const directFareType =
         localStorage.getItem("rapago_passenger_fare_type") ??
         localStorage.getItem("rapago_passenger_condition") ??
@@ -853,11 +885,38 @@ export function ProfileIndexPage(): JSX.Element {
         localStorage.getItem("rapago_profile_nationality") ??
         localStorage.getItem("rapago_nationality") ??
         localStorage.getItem("nationality");
+      const directPhone =
+        sessionStorage.getItem("rapago_profile_phone") ??
+        sessionStorage.getItem("rapago_passenger_phone");
+      const directRut =
+        sessionStorage.getItem("rapago_profile_rut") ??
+        sessionStorage.getItem("rapago_passenger_rut");
+      const directEmail =
+        sessionStorage.getItem("rapago_profile_email") ??
+        sessionStorage.getItem("rapago_passenger_email");
+
+      const parsed = {
+        ...localProfile,
+        ...sessionProfile,
+      };
 
       return {
         ...parsed,
-        phone: parsed.phone ?? localStorage.getItem("rapago_profile_phone"),
-        rut: parsed.rut ?? localStorage.getItem("rapago_profile_rut"),
+        email:
+          sessionProfile.email ??
+          directEmail ??
+          localProfile.email ??
+          null,
+        phone:
+          sessionProfile.phone ??
+          directPhone ??
+          localProfile.phone ??
+          null,
+        rut:
+          sessionProfile.rut ??
+          directRut ??
+          localProfile.rut ??
+          null,
         passengerFareType:
           parsed.passengerFareType ??
           parsed.farePassengerType ??
@@ -903,15 +962,47 @@ export function ProfileIndexPage(): JSX.Element {
     }
   }
 
-  function persistStoredRegistrationProfile(data: Partial<StoredRegistrationProfile>): void {
+  function persistStoredRegistrationProfile(
+    data: Partial<StoredRegistrationProfile>,
+  ): void {
     try {
       const current = readStoredRegistrationProfile();
       const next = { ...current, ...data };
 
-      localStorage.setItem("rapago_registration_profile", JSON.stringify(next));
+      sessionStorage.setItem(
+        RAPAGO_AUTH_SESSION_PROFILE_KEY,
+        JSON.stringify(next),
+      );
 
-      if (next.phone) localStorage.setItem("rapago_profile_phone", next.phone);
-      if (next.rut) localStorage.setItem("rapago_profile_rut", next.rut);
+      if (next.email) {
+        sessionStorage.setItem("rapago_profile_email", next.email);
+        sessionStorage.setItem("rapago_passenger_email", next.email);
+      }
+      if (next.phone) {
+        sessionStorage.setItem("rapago_profile_phone", next.phone);
+        sessionStorage.setItem("rapago_passenger_phone", next.phone);
+      }
+      if (next.rut) {
+        sessionStorage.setItem("rapago_profile_rut", next.rut);
+        sessionStorage.setItem("rapago_passenger_rut", next.rut);
+      }
+
+      const {
+        email: _email,
+        phone: _phone,
+        rut: _rut,
+        firstName: _firstName,
+        lastName: _lastName,
+        birthDate: _birthDate,
+        ...safeProfile
+      } = next;
+
+      localStorage.setItem(
+        "rapago_registration_profile",
+        JSON.stringify(safeProfile),
+      );
+      localStorage.removeItem("rapago_profile_phone");
+      localStorage.removeItem("rapago_profile_rut");
 
       const normalizedFareType = normalizePassengerFareType(
         next.passengerFareType,
@@ -923,30 +1014,68 @@ export function ProfileIndexPage(): JSX.Element {
       );
 
       if (normalizedFareType) {
-        localStorage.setItem("rapago_passenger_fare_type", normalizedFareType);
-        localStorage.setItem("rapago_passenger_condition", normalizedFareType);
-        localStorage.setItem("rapago_profile_passenger_type", normalizedFareType);
-        localStorage.setItem("rapago_profile_nationality", getPassengerFareTypeLabel(normalizedFareType));
-        localStorage.setItem("rapago_nationality", getPassengerFareTypeLabel(normalizedFareType));
+        localStorage.setItem(
+          "rapago_passenger_fare_type",
+          normalizedFareType,
+        );
+        localStorage.setItem(
+          "rapago_passenger_condition",
+          normalizedFareType,
+        );
+        localStorage.setItem(
+          "rapago_profile_passenger_type",
+          normalizedFareType,
+        );
+        localStorage.setItem(
+          "rapago_profile_nationality",
+          getPassengerFareTypeLabel(normalizedFareType),
+        );
+        localStorage.setItem(
+          "rapago_nationality",
+          getPassengerFareTypeLabel(normalizedFareType),
+        );
       }
+
+      window.dispatchEvent(
+        new CustomEvent("rapago:registration-profile-updated"),
+      );
     } catch {
-      // No bloquea el perfil si localStorage no está disponible.
+      // No bloquea el perfil si storage no está disponible.
     }
   }
 
   function getSessionPhone(user: unknown): string {
     if (!user || typeof user !== "object") return "";
 
-    const value = (user as { phone?: string | null }).phone;
-    return typeof value === "string" ? value.trim() : "";
+    const record = user as Record<string, unknown>;
+    const candidates = [
+      record.phone,
+      record.phoneNumber,
+      record.mobile,
+      record.mobilePhone,
+      record.celular,
+    ];
+
+    for (const value of candidates) {
+      if (typeof value === "string" && value.trim()) {
+        return value.trim();
+      }
+    }
+
+    return "";
   }
 
   function getAutoPhone(profilePhone?: string | null): string {
     const stored = readStoredRegistrationProfile();
+    const directSessionPhone =
+      sessionStorage.getItem("rapago_profile_phone") ??
+      sessionStorage.getItem("rapago_passenger_phone") ??
+      "";
 
     return (
       profilePhone?.trim() ||
       getSessionPhone(session?.user) ||
+      directSessionPhone.trim() ||
       stored.phone?.trim() ||
       ""
     );
@@ -1353,6 +1482,36 @@ export function ProfileIndexPage(): JSX.Element {
           <IonTitle style={{ fontWeight: 950, fontSize: "1.2rem" }}>
             {profileText.profile}
           </IonTitle>
+
+          <IonButtons slot="end">
+            <IonButton
+              aria-label={
+                language === "es"
+                  ? "Cambiar aplicación a inglés"
+                  : "Switch app to Spanish"
+              }
+              title={
+                language === "es"
+                  ? "Cambiar a English"
+                  : "Cambiar a Español"
+              }
+              onClick={() =>
+                handleLanguageChange(language === "es" ? "en" : "es")
+              }
+              style={
+                {
+                  "--border-radius": "999px",
+                  "--background": "rgba(17,24,39,.22)",
+                  "--color": "#ffffff",
+                  fontWeight: 950,
+                  marginRight: 8,
+                } as CSSProperties
+              }
+            >
+              <IonIcon icon={languageOutline} slot="start" />
+              {language === "es" ? "EN" : "ES"}
+            </IonButton>
+          </IonButtons>
         </IonToolbar>
       </IonHeader>
 
@@ -2394,8 +2553,8 @@ function BankAccountPage(): JSX.Element {
           fontSize:      "0.82rem",
           color:         "var(--ion-color-warning-shade)",
         }}>
-          <strong>Los pagos reales se implementarán en una fase futura.</strong><br />
-          Puedes registrar tu cuenta bancaria ahora. El procesamiento de pagos estará disponible próximamente.
+          <strong>Cuenta protegida para devoluciones verificadas.</strong><br />
+          Se usa únicamente para transferir devoluciones aprobadas por el administrador. El número completo se cifra en el backend y la app solo muestra los últimos 4 dígitos.
         </div>
 
         {loading && (
@@ -2491,7 +2650,7 @@ function BankAccountPage(): JSX.Element {
                     clearInput
                   />
                   <IonNote slot="helper" style={{ fontSize: "0.7rem" }}>
-                    Solo se guardarán los últimos 4 dígitos. Requerido para guardar.
+                    El número completo se cifra en el servidor. En la app solo se muestran los últimos 4 dígitos.
                   </IonNote>
                 </IonItem>
 
@@ -2524,11 +2683,278 @@ function BankAccountPage(): JSX.Element {
 }
 
 export function ProfileSecurityPage(): JSX.Element {
-  const m = meta("/profile/security");
+  const history = useHistory();
+  const { session, user, refreshSession } = useAuth();
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [savingPassword, setSavingPassword] = useState(false);
+  const [linkingFacebook, setLinkingFacebook] = useState(false);
+  const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
+
+  const authProviders = user?.authProviders ?? [];
+  const hasPassword =
+    user?.hasPassword === true || authProviders.includes("password");
+  const facebookLinked = authProviders.includes("facebook");
+
+  useEffect(() => {
+    const linkStatus = new URLSearchParams(
+      window.location.search,
+    ).get("facebookLink");
+
+    if (!linkStatus) return;
+
+    if (linkStatus === "success") {
+      setSuccess("Facebook quedó vinculado correctamente.");
+      setError("");
+      void refreshSession();
+    } else if (linkStatus === "already-linked") {
+      setError(
+        "Esa cuenta de Facebook ya está vinculada a otra cuenta RAPA GO.",
+      );
+    } else {
+      setError(
+        "No se pudo vincular Facebook. Inicia el proceso nuevamente.",
+      );
+    }
+
+    history.replace(ROUTES.PROFILE.SECURITY);
+  }, [history, refreshSession]);
+
+  async function createBackupPassword(): Promise<void> {
+    if (!session?.accessToken) {
+      setError("Debes iniciar sesión nuevamente.");
+      return;
+    }
+
+    if (newPassword.length < 8) {
+      setError("La contraseña debe tener al menos 8 caracteres.");
+      return;
+    }
+
+    if (newPassword !== confirmPassword) {
+      setError("Las contraseñas no coinciden.");
+      return;
+    }
+
+    setSavingPassword(true);
+    setError("");
+    setSuccess("");
+
+    try {
+      const result = await authService.createPassword(
+        session.accessToken,
+        { newPassword, confirmPassword },
+      );
+
+      setNewPassword("");
+      setConfirmPassword("");
+      setSuccess(result.message);
+      await refreshSession();
+    } catch (passwordError) {
+      setError(
+        passwordError instanceof Error
+          ? passwordError.message
+          : "No se pudo crear la contraseña.",
+      );
+    } finally {
+      setSavingPassword(false);
+    }
+  }
+
+  async function linkFacebook(): Promise<void> {
+    if (!session?.accessToken) {
+      setError("Debes iniciar sesión nuevamente.");
+      return;
+    }
+
+    setLinkingFacebook(true);
+    setError("");
+    setSuccess("");
+
+    try {
+      const authorizationUrl = await authService.startFacebookLink(
+        session.accessToken,
+      );
+      window.location.assign(authorizationUrl);
+    } catch (linkError) {
+      setError(
+        linkError instanceof Error
+          ? linkError.message
+          : "No se pudo iniciar la vinculación.",
+      );
+      setLinkingFacebook(false);
+    }
+  }
+
+  const cardStyle = {
+    borderRadius: 22,
+    border: "1px solid rgba(210,164,58,.35)",
+    boxShadow: "0 14px 34px rgba(65,34,20,.10)",
+  } as CSSProperties;
+
   return (
     <IonPage>
-      <IonHeader><IonToolbar color="primary"><IonTitle>{m.label}</IonTitle></IonToolbar></IonHeader>
-      <IonContent className="ion-padding"><ModulePlaceholderPage title={m.label} role="passenger" plannedFeatures={m.plannedFeatures} /></IonContent>
+      <IonHeader>
+        <IonToolbar color="primary">
+          <IonButtons slot="start">
+            <IonButton onClick={() => history.goBack()}>
+              <IonIcon icon={arrowBackOutline} />
+            </IonButton>
+          </IonButtons>
+          <IonTitle>Seguridad de la cuenta</IonTitle>
+        </IonToolbar>
+      </IonHeader>
+
+      <IonContent
+        className="ion-padding"
+        style={{
+          "--background": "linear-gradient(180deg,#fff7e8,#eed5a4)",
+        } as CSSProperties}
+      >
+        <div style={{ maxWidth: 720, margin: "0 auto", paddingBottom: 80 }}>
+          {success && (
+            <IonText color="success">
+              <p style={{ fontWeight: 900 }}>{success}</p>
+            </IonText>
+          )}
+
+          {error && (
+            <IonText color="danger">
+              <p style={{ fontWeight: 900 }}>{error}</p>
+            </IonText>
+          )}
+
+          <IonCard style={cardStyle}>
+            <IonCardHeader>
+              <IonCardTitle>Formas de ingreso</IonCardTitle>
+            </IonCardHeader>
+            <IonCardContent>
+              <div style={{ display: "grid", gap: 10 }}>
+                <IonItem lines="none">
+                  <IonIcon icon={mailOutline} slot="start" />
+                  <IonLabel>
+                    <strong>Correo de la cuenta</strong>
+                    <p>{user?.email ?? "No disponible"}</p>
+                  </IonLabel>
+                </IonItem>
+
+                <IonItem lines="none">
+                  <IonIcon icon={keyOutline} slot="start" />
+                  <IonLabel>
+                    <strong>Correo y contraseña</strong>
+                    <p>{hasPassword ? "Configurado" : "Sin contraseña de respaldo"}</p>
+                  </IonLabel>
+                  <IonBadge color={hasPassword ? "success" : "warning"}>
+                    {hasPassword ? "Activo" : "Pendiente"}
+                  </IonBadge>
+                </IonItem>
+
+                <IonItem lines="none">
+                  <IonIcon icon={logoFacebook} slot="start" />
+                  <IonLabel>
+                    <strong>Facebook</strong>
+                    <p>{facebookLinked ? "Vinculado de forma segura" : "No vinculado"}</p>
+                  </IonLabel>
+                  <IonBadge color={facebookLinked ? "success" : "medium"}>
+                    {facebookLinked ? "Activo" : "Disponible"}
+                  </IonBadge>
+                </IonItem>
+              </div>
+            </IonCardContent>
+          </IonCard>
+
+          {!hasPassword && (
+            <IonCard style={cardStyle}>
+              <IonCardHeader>
+                <IonCardTitle>Crear contraseña de respaldo</IonCardTitle>
+              </IonCardHeader>
+              <IonCardContent>
+                <p style={{ color: "#5b4632", fontWeight: 750 }}>
+                  Podrás seguir entrando con Facebook y también recuperar el
+                  acceso mediante tu correo verificado.
+                </p>
+
+                <IonItem>
+                  <IonLabel position="stacked">Nueva contraseña</IonLabel>
+                  <IonInput
+                    type="password"
+                    value={newPassword}
+                    minlength={8}
+                    maxlength={128}
+                    autocomplete="new-password"
+                    onIonInput={(event) =>
+                      setNewPassword(String(event.detail.value ?? ""))
+                    }
+                  />
+                </IonItem>
+
+                <IonItem>
+                  <IonLabel position="stacked">Repetir contraseña</IonLabel>
+                  <IonInput
+                    type="password"
+                    value={confirmPassword}
+                    minlength={8}
+                    maxlength={128}
+                    autocomplete="new-password"
+                    onIonInput={(event) =>
+                      setConfirmPassword(String(event.detail.value ?? ""))
+                    }
+                  />
+                </IonItem>
+
+                <IonButton
+                  expand="block"
+                  color="warning"
+                  disabled={savingPassword}
+                  onClick={() => void createBackupPassword()}
+                  style={{ marginTop: 14, fontWeight: 950 } as CSSProperties}
+                >
+                  {savingPassword ? <IonSpinner name="dots" /> : "Crear contraseña"}
+                </IonButton>
+              </IonCardContent>
+            </IonCard>
+          )}
+
+          <IonCard style={cardStyle}>
+            <IonCardHeader>
+              <IonCardTitle>Vinculación segura</IonCardTitle>
+            </IonCardHeader>
+            <IonCardContent>
+              <p style={{ color: "#5b4632", fontWeight: 750 }}>
+                RAPA GO nunca fusiona cuentas solo porque tengan el mismo correo.
+                Para vincular Facebook debes iniciar sesión en RAPA GO y autorizar
+                expresamente el proveedor.
+              </p>
+
+              <IonButton
+                expand="block"
+                color="primary"
+                disabled={facebookLinked || linkingFacebook}
+                onClick={() => void linkFacebook()}
+                style={{ fontWeight: 950 } as CSSProperties}
+              >
+                <IonIcon icon={linkOutline} slot="start" />
+                {facebookLinked
+                  ? "Facebook ya está vinculado"
+                  : linkingFacebook
+                    ? "Abriendo Facebook..."
+                    : "Vincular Facebook"}
+              </IonButton>
+
+              <IonButton
+                expand="block"
+                fill="outline"
+                color="dark"
+                onClick={() => history.push("/auth/forgot-password")}
+                style={{ marginTop: 10, fontWeight: 900 } as CSSProperties}
+              >
+                Recuperar o cambiar contraseña por correo
+              </IonButton>
+            </IonCardContent>
+          </IonCard>
+        </div>
+      </IonContent>
     </IonPage>
   );
 }
@@ -2544,4 +2970,3 @@ export function ProfileNotificationsPage(): JSX.Element {
 }
 
 export default ProfileIndexPage;
-  

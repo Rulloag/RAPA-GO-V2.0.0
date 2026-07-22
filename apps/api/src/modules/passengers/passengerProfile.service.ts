@@ -34,6 +34,16 @@ function serializeProfile(profile: import("../../db/schema/index.js").PassengerP
     id:                    profile.id,
     userId:                profile.userId,
     phone:                 profile.phone                 ?? null,
+    requestedFareType:     profile.requestedFareType,
+    effectiveFareType:     profile.effectiveFareType,
+    residenceVerificationStatus:
+      profile.residenceVerificationStatus,
+    residenceRequestedAt:
+      profile.residenceRequestedAt?.toISOString() ?? null,
+    residenceReviewedAt:
+      profile.residenceReviewedAt?.toISOString() ?? null,
+    residenceRejectionReason:
+      profile.residenceRejectionReason ?? null,
     preferredLanguage:     profile.preferredLanguage,
     notificationEnabled:   profile.notificationEnabled,
     emailNotifications:    profile.emailNotifications,

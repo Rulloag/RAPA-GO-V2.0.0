@@ -47,5 +47,14 @@
 	</array>
 	<key>UIViewControllerBasedStatusBarAppearance</key>
 	<true/>
+
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>RAPA GO usa tu ubicación para confirmar el punto de recogida, mostrar el trayecto y navegar durante el servicio.</string>
+	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+	<string>Durante un viaje activo, RAPA GO continúa compartiendo la ubicación del conductor con el pasajero aunque cambie de aplicación o bloquee la pantalla. El seguimiento se detiene al finalizar o cancelar el viaje.</string>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>location</string>
+	</array>
 </dict>
 </plist>

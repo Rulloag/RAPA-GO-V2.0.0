@@ -33,11 +33,24 @@ export const loginRequestSchema = z.object({
   password: z.string().min(8, { message: "Password must be at least 8 characters." }),
 });
 
+export const legalAcceptanceInputSchema = z.object({
+  legalDocumentId: z.string().uuid({ message: "Valid legal document id is required." }),
+  version: z.string().trim().min(1).max(30),
+});
+
 export const registerRequestSchema = z.object({
   email: z.string().email({ message: "Valid email is required." }),
   password: z.string().min(8, { message: "Password must be at least 8 characters." }),
   name: z.string().min(2, { message: "Name must be at least 2 characters." }).max(100),
   role: z.enum(USER_ROLES, { errorMap: () => ({ message: "Invalid role." }) }),
+  phone: z.string().trim().min(8).max(24).optional(),
+  passengerFareType: z
+    .enum(["resident", "chilean", "foreigner"])
+    .optional(),
+  legalAcceptances: z
+    .array(legalAcceptanceInputSchema)
+    .min(3, { message: "All required legal documents must be accepted." })
+    .max(12),
 });
 
 export const authUserSchema = z.object({
@@ -47,6 +60,19 @@ export const authUserSchema = z.object({
   role: z.enum(USER_ROLES),
   avatarUrl: z.string().url().nullable(),
   isVerified: z.boolean(),
+  requestedPassengerFareType: z
+    .enum(["resident", "chilean", "foreigner"])
+    .optional(),
+  passengerFareType: z
+    .enum(["resident", "chilean", "foreigner"])
+    .optional(),
+  residenceVerificationStatus: z
+    .enum(["not_required", "pending", "approved", "rejected"])
+    .optional(),
+  authProviders: z
+    .array(z.enum(["password", "facebook", "google", "apple"]))
+    .optional(),
+  hasPassword: z.boolean().optional(),
 });
 
 export const authSessionSchema = z.object({

@@ -1,13 +1,13 @@
 // Shared lookup tables used across multiple passenger pages
 
 export const RIDE_STATUS_LABEL: Record<string, string> = {
-  requested:       "Esperando conductor",
+  requested:       "Solicitado",
   accepted:        "Conductor asignado",
-  driver_en_route: "Tu conductor va en camino",
-  driver_arrived:  "Tu conductor llegó",
-  in_progress:     "Viaje en curso",
-  completed:       "Viaje completado",
-  cancelled:       "Viaje cancelado",
+  driver_en_route: "Conductor en camino",
+  driver_arrived:  "Conductor llegó",
+  in_progress:     "En curso",
+  completed:       "Completado",
+  cancelled:       "Cancelado",
 };
 
 export const RIDE_STATUS_COLOR: Record<string, string> = {

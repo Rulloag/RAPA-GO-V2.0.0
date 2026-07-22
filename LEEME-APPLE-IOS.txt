@@ -1,0 +1,24 @@
+RAPA GO - CODIGO APPLE E IOS INTEGRADO
+
+Este ZIP contiene el proyecto completo actual, incluyendo los cierres 19-26,
+Sign in with Apple y geolocalización nativa iOS.
+
+No contiene secretos, certificados, .env, archivos .p8, .p12, mobileprovision,
+keystores ni contraseñas.
+
+INSTALACION EN EL REPOSITORIO OFICIAL:
+1. Descomprimir el ZIP.
+2. Abrir PowerShell dentro de la carpeta descomprimida.
+3. Ejecutar:
+   Set-ExecutionPolicy -Scope Process Bypass
+   .\INSTALAR-APPLE-IOS-INTEGRADO.ps1
+4. Cuando todas las pruebas terminen, escribir SUBIR.
+
+DESPUES DEL PUSH:
+- Configurar Apple Developer y el App ID cl.rapago.app.
+- Configurar variables Apple en Hostinger.
+- Aplicar migración 0040.
+- Abrir apps/mobile/ios/App en un Mac con Xcode.
+- Seleccionar Team, firmar y probar en iPhone/TestFlight.
+
+Detalles: docs/development/apple-sign-in-ios-setup.md

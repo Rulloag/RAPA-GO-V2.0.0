@@ -6,6 +6,7 @@ export interface ProfileResponse {
   role:       string;
   status:     string;
   avatarUrl:  string | null;
+  phone:      string | null;
   isVerified: boolean;
   createdAt:  string; // ISO 8601
 }

@@ -13,6 +13,10 @@ export interface RidePolicyChargeResponse {
   calculatedAmountClp: number;
   approvedAmountClp: number | null;
   amountClp: number;
+  driverSharePercent: number | null;
+  platformSharePercent: number | null;
+  driverShareClp: number | null;
+  platformShareClp: number | null;
   reason: string | null;
   adminDecisionReason: string | null;
   reviewedByUserId: string | null;
@@ -95,41 +99,29 @@ export interface RideRequestResponse {
 
 /** Subset exposed to driver for their own rides — no passenger identity. */
 export interface DriverRideResponse {
-  id:                    string;
-  originText:            string;
-  destinationText:       string;
-  notes:                 string | null;
-  estimatedFareClp:      number | null;
-  originLat:             number | null;
-  originLng:             number | null;
-  destinationLat:        number | null;
-  destinationLng:        number | null;
-  distanceMeters:        number | null;
-  durationSeconds:       number | null;
-  fareCalculationSource: string;
-  status:                string;
-  requestedAt:           string;
-  acceptedAt:            string | null;
-  enRouteAt:             string | null;
-  arrivedAt:             string | null;
-  startedAt:             string | null;
-  completedAt:           string | null;
-  cancelledAt:           string | null;
-  cancellationReason:    string | null;
-  cancelledByRole:       string | null;
-  createdAt:             string;
-  rideType:              string;
-  scheduledPickupAt:     string | null;
-  priorityFeeClp:        number | null;
-  flightNumber:          string | null;
-  stops?:                RideStopResponse[];
+  id:                 string;
+  originText:         string;
+  destinationText:    string;
+  notes:              string | null;
+  estimatedFareClp:   number | null;
+  status:             string;
+  requestedAt:        string;
+  acceptedAt:         string | null;
+  enRouteAt:          string | null;
+  arrivedAt:          string | null;
+  startedAt:          string | null;
+  completedAt:        string | null;
+  cancelledAt:        string | null;
+  cancellationReason: string | null;
+  cancelledByRole:    string | null;
+  createdAt:          string;
 }
 
 export type DriverRidesListResult =
   | { ok: true; rides: DriverRideResponse[] }
   | { ok: false; code: string; message: string; statusCode: number };
 
-/** Subset exposed to drivers browsing available rides — no passenger identity. */
+/** Subset exposed to drivers — no passenger identity fields. */
 export interface AvailableRideResponse {
   id:               string;
   originText:       string;

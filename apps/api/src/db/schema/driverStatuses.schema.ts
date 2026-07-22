@@ -1,4 +1,4 @@
-import { pgTable, uuid, varchar, timestamp, doublePrecision } from "drizzle-orm/pg-core";
+import { pgTable, uuid, varchar, timestamp } from "drizzle-orm/pg-core";
 import { users } from "./users.schema.js";
 import { rideRequests } from "./rides.schema.js";
 
@@ -9,11 +9,6 @@ export const driverStatuses = pgTable("driver_statuses", {
   currentZone:    varchar("current_zone", { length: 50 }),
   lastSeenAt:     timestamp("last_seen_at", { withTimezone: true }),
   currentRideId:  uuid("current_ride_id").references(() => rideRequests.id, { onDelete: "set null" }),
-  // Queued offer: next ride the driver committed to (after current ride ends)
-  queuedRideId:   uuid("queued_ride_id").references(() => rideRequests.id, { onDelete: "set null" }),
-  currentLat:     doublePrecision("current_lat"),
-  currentLng:     doublePrecision("current_lng"),
-  locationUpdatedAt: timestamp("location_updated_at", { withTimezone: true }),
   createdAt:      timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt:      timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });

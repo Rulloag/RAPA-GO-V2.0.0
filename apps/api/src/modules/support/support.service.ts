@@ -181,8 +181,16 @@ async function notifyAdminsOfNewCase(supportCase: SupportCase): Promise<void> {
     adminIds.map((adminId) =>
       notificationsRepo.create({
         userId: adminId,
-        type: "support_case_created",
-        title: `Nuevo caso ${supportCase.trackingCode}`,
+        type:
+          supportCase.priority === "urgent" ||
+          supportCase.category === "safety"
+            ? "support_case_critical"
+            : "support_case_created",
+        title:
+          supportCase.priority === "urgent" ||
+          supportCase.category === "safety"
+            ? `ALERTA CRÍTICA ${supportCase.trackingCode}`
+            : `Nuevo caso ${supportCase.trackingCode}`,
         message: supportCase.subject,
         entityType: "support_case",
         entityId: supportCase.id,

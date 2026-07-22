@@ -6,6 +6,10 @@ import {
 import type { FastifyRequest, FastifyReply } from "fastify";
 import { AuthService } from "./auth.service.js";
 import {
+  appleAuthRequestSchema,
+  createPasswordRequestSchema,
+  facebookAccountSetupSchema,
+  facebookExistingAccountLinkSchema,
   facebookLoginExchangeSchema,
   facebookResidentPrecheckSchema,
   facebookResidentStatusSchema,
@@ -21,18 +25,25 @@ import type {
   ResetPasswordRequest,
 } from "./auth.types.js";
 import type {
+  AppleAuthRequestInput,
+  CreatePasswordRequestInput,
+  FacebookAccountSetupInput,
+  FacebookExistingAccountLinkInput,
   FacebookLoginExchangeInput,
   FacebookResidentPrecheckInput,
   FacebookResidentStatusInput,
 } from "./auth.schemas.js";
 import { sendError } from "../../shared/http/apiResponse.js";
 import { PasswordResetService } from "./passwordReset.service.js";
+import { AppleAuthService } from "./appleAuth.service.js";
 
 const authService = new AuthService();
 const passwordResetService = new PasswordResetService();
+const appleAuthService = new AppleAuthService();
 
 const FACEBOOK_STATE_COOKIE = "rapago_fb_oauth_state";
 const FACEBOOK_STATE_TTL_SECONDS = 15 * 60;
+const FACEBOOK_EXISTING_LINK_TTL_SECONDS = 5 * 60;
 const FACEBOOK_HTTP_TIMEOUT_MS = 10_000;
 
 function getRequiredEnv(name: string): string {
@@ -75,23 +86,35 @@ function getFrontendUrl(): string {
   return parsed.origin;
 }
 
+type FacebookPassengerFareType = "resident" | "chilean" | "foreigner";
+type FacebookOAuthMode = "login" | "link";
+
 type FacebookOAuthState = {
-  version: 2;
-  residentIntent: boolean;
+  version: 4;
+  mode: FacebookOAuthMode;
+  passengerFareType: FacebookPassengerFareType;
+  phone?: string;
   nonce: string;
   expiresAt: number;
+  linkCode?: string;
 };
 
 function createFacebookOAuthState(
-  residentIntent: boolean,
+  passengerFareType: FacebookPassengerFareType,
   nonce: string,
   secret: string,
+  mode: FacebookOAuthMode = "login",
+  linkCode?: string,
+  phone?: string,
 ): string {
   const payload: FacebookOAuthState = {
-    version: 2,
-    residentIntent,
+    version: 4,
+    mode,
+    passengerFareType,
     nonce,
     expiresAt: Date.now() + FACEBOOK_STATE_TTL_SECONDS * 1000,
+    ...(mode === "link" && linkCode ? { linkCode } : {}),
+    ...(phone ? { phone } : {}),
   };
   const encodedPayload = Buffer.from(
     JSON.stringify(payload),
@@ -133,10 +156,117 @@ function readFacebookOAuthState(
     ) as Partial<FacebookOAuthState>;
 
     if (
-      parsed.version !== 2 ||
-      typeof parsed.residentIntent !== "boolean" ||
+      parsed.version !== 4 ||
+      (parsed.mode !== "login" && parsed.mode !== "link") ||
+      (parsed.passengerFareType !== "resident" &&
+        parsed.passengerFareType !== "chilean" &&
+        parsed.passengerFareType !== "foreigner") ||
       typeof parsed.nonce !== "string" ||
       parsed.nonce.length < 32 ||
+      typeof parsed.expiresAt !== "number" ||
+      parsed.expiresAt < Date.now() ||
+      (parsed.mode === "link" &&
+        (typeof parsed.linkCode !== "string" ||
+          parsed.linkCode.length < 32))
+    ) {
+      return null;
+    }
+
+    return {
+      version: 4,
+      mode: parsed.mode,
+      passengerFareType: parsed.passengerFareType,
+      nonce: parsed.nonce,
+      expiresAt: parsed.expiresAt,
+      ...(parsed.linkCode ? { linkCode: parsed.linkCode } : {}),
+      ...(typeof parsed.phone === "string" &&
+      /^\+?[0-9]{8,15}$/.test(parsed.phone)
+        ? { phone: parsed.phone }
+        : {}),
+    };
+  } catch {
+    return null;
+  }
+}
+
+type FacebookExistingAccountLinkToken = {
+  version: 1;
+  linkCode: string;
+  facebookId: string;
+  email: string;
+  name: string;
+  avatarUrl?: string | null;
+  expiresAt: number;
+};
+
+function createFacebookExistingAccountLinkToken(
+  input: Omit<FacebookExistingAccountLinkToken, "version" | "expiresAt">,
+  secret: string,
+): string {
+  const payload: FacebookExistingAccountLinkToken = {
+    version: 1,
+    ...input,
+    expiresAt:
+      Date.now() + FACEBOOK_EXISTING_LINK_TTL_SECONDS * 1000,
+  };
+  const encodedPayload = Buffer.from(
+    JSON.stringify(payload),
+    "utf8",
+  ).toString("base64url");
+  const signature = createHmac("sha256", secret)
+    .update(encodedPayload)
+    .digest("base64url");
+
+  return `${encodedPayload}.${signature}`;
+}
+
+function readFacebookExistingAccountLinkToken(
+  value: string | undefined,
+  secret: string,
+): FacebookExistingAccountLinkToken | null {
+  if (!value) return null;
+
+  const [encodedPayload, receivedSignature] = value.split(".");
+
+  if (!encodedPayload || !receivedSignature) return null;
+
+  const expectedSignature = createHmac("sha256", secret)
+    .update(encodedPayload)
+    .digest("base64url");
+  const receivedBuffer = Buffer.from(receivedSignature, "utf8");
+  const expectedBuffer = Buffer.from(expectedSignature, "utf8");
+
+  if (
+    receivedBuffer.length !== expectedBuffer.length ||
+    !timingSafeEqual(receivedBuffer, expectedBuffer)
+  ) {
+    return null;
+  }
+
+  try {
+    const parsed = JSON.parse(
+      Buffer.from(encodedPayload, "base64url").toString("utf8"),
+    ) as Partial<FacebookExistingAccountLinkToken>;
+
+    const avatarUrl =
+      typeof parsed.avatarUrl === "string" && parsed.avatarUrl.length <= 2048
+        ? parsed.avatarUrl
+        : null;
+
+    if (
+      parsed.version !== 1 ||
+      typeof parsed.linkCode !== "string" ||
+      !/^[A-Za-z0-9_-]{32,128}$/.test(parsed.linkCode) ||
+      typeof parsed.facebookId !== "string" ||
+      parsed.facebookId.length < 1 ||
+      parsed.facebookId.length > 128 ||
+      typeof parsed.email !== "string" ||
+      parsed.email.length < 3 ||
+      parsed.email.length > 255 ||
+      !parsed.email.includes("@") ||
+      typeof parsed.name !== "string" ||
+      parsed.name.trim().length < 1 ||
+      parsed.name.length > 200 ||
       typeof parsed.expiresAt !== "number" ||
       parsed.expiresAt < Date.now()
     ) {
@@ -144,14 +274,27 @@ function readFacebookOAuthState(
     }
 
     return {
-      version: 2,
-      residentIntent: parsed.residentIntent,
-      nonce: parsed.nonce,
+      version: 1,
+      linkCode: parsed.linkCode,
+      facebookId: parsed.facebookId,
+      email: parsed.email.trim().toLowerCase(),
+      name: parsed.name.trim(),
+      avatarUrl,
       expiresAt: parsed.expiresAt,
     };
   } catch {
     return null;
   }
+}
+
+function normalizeFacebookPhone(value: unknown): string {
+  const normalized = String(value ?? "")
+    .replace(/[^+\d]/g, "")
+    .trim();
+
+  return /^\+?[0-9]{8,15}$/.test(normalized)
+    ? normalized
+    : "";
 }
 
 function constantTimeEqualText(left: string, right: string): boolean {
@@ -225,21 +368,55 @@ async function fetchWithTimeout(
   }
 }
 
-function isFacebookResidentIntent(
+function getFacebookPassengerFareType(
   query: Record<string, string | undefined>,
-): boolean {
-  const condition = String(
-    query["passengerCondition"] ?? query["condition"] ?? "",
+): FacebookPassengerFareType {
+  const value = String(
+    query["requestedPassengerFareType"] ??
+      query["passengerFareType"] ??
+      query["passengerCondition"] ??
+      query["condition"] ??
+      "",
   )
     .trim()
     .toLowerCase();
 
-  return [
-    "residente_rapa_nui",
-    "residente rapa nui",
-    "residente",
-    "resident",
-  ].includes(condition);
+  if (
+    value === "resident" ||
+    value === "residente" ||
+    value === "residente_rapa_nui" ||
+    value === "residente rapa nui"
+  ) {
+    return "resident";
+  }
+
+  if (
+    value === "foreigner" ||
+    value === "extranjero" ||
+    value === "turista_extranjero" ||
+    value === "turista extranjero"
+  ) {
+    return "foreigner";
+  }
+
+  // Valores antiguos rapanui/rapanui_normal ya no son una categoría activa.
+  return "chilean";
+}
+
+function buildFacebookAuthorizationUrl(input: {
+  appId: string;
+  redirectUri: string;
+  state: string;
+}): string {
+  const params = new URLSearchParams({
+    client_id: input.appId,
+    redirect_uri: input.redirectUri,
+    scope: "public_profile,email",
+    response_type: "code",
+    state: input.state,
+  });
+
+  return `https://www.facebook.com/v20.0/dialog/oauth?${params.toString()}`;
 }
 
 function extractBearer(request: FastifyRequest): string {
@@ -286,12 +463,79 @@ export const authController = {
       return;
     }
 
-    const result = await authService.register(parsed.data);
+    const userAgent = request.headers["user-agent"];
+    const result = await authService.register(parsed.data, {
+      ipAddress: request.ip,
+      ...(typeof userAgent === "string" ? { userAgent } : {}),
+    });
 
     reply
       .header("Cache-Control", "no-store")
       .header("Pragma", "no-cache")
       .status(result.ok ? 201 : (result.statusCode ?? 409))
+      .send(result);
+  },
+
+  async appleLogin(
+    request: FastifyRequest<{ Body: AppleAuthRequestInput }>,
+    reply: FastifyReply,
+  ): Promise<void> {
+    const parsed = appleAuthRequestSchema.safeParse(request.body);
+
+    if (!parsed.success) {
+      sendError(reply, {
+        code: "VALIDATION_ERROR",
+        message:
+          parsed.error.issues[0]?.message ??
+          "Los datos de Apple no son válidos.",
+        statusCode: 400,
+      });
+      return;
+    }
+
+    const userAgentHeader = request.headers["user-agent"];
+    const userAgent = Array.isArray(userAgentHeader)
+      ? userAgentHeader.join(" ")
+      : userAgentHeader;
+
+    const result = await appleAuthService.signIn(parsed.data, {
+      ipAddress: request.ip,
+      ...(userAgent ? { userAgent } : {}),
+    });
+
+    reply
+      .header("Cache-Control", "no-store")
+      .header("Pragma", "no-cache")
+      .status(result.ok ? 200 : (result.statusCode ?? 401))
+      .send(result);
+  },
+
+  async appleLink(
+    request: FastifyRequest<{ Body: AppleAuthRequestInput }>,
+    reply: FastifyReply,
+  ): Promise<void> {
+    const parsed = appleAuthRequestSchema.safeParse(request.body);
+
+    if (!parsed.success) {
+      sendError(reply, {
+        code: "VALIDATION_ERROR",
+        message:
+          parsed.error.issues[0]?.message ??
+          "Los datos de Apple no son válidos.",
+        statusCode: 400,
+      });
+      return;
+    }
+
+    const result = await appleAuthService.link(
+      extractBearer(request),
+      parsed.data,
+    );
+
+    reply
+      .header("Cache-Control", "no-store")
+      .header("Pragma", "no-cache")
+      .status(result.ok ? 200 : result.statusCode)
       .send(result);
   },
 
@@ -353,6 +597,44 @@ export const authController = {
     }
 
     reply.status(200).send(result);
+  },
+
+  async createPassword(
+    request: FastifyRequest<{ Body: CreatePasswordRequestInput }>,
+    reply: FastifyReply,
+  ): Promise<void> {
+    const token = extractBearer(request);
+
+    if (!token) {
+      sendError(reply, {
+        code: "UNAUTHORIZED",
+        message: "Falta el token de acceso.",
+        statusCode: 401,
+      });
+      return;
+    }
+
+    const parsed = createPasswordRequestSchema.safeParse(request.body);
+
+    if (!parsed.success) {
+      sendError(reply, {
+        code: "VALIDATION_ERROR",
+        message:
+          parsed.error.issues[0]?.message ?? "Solicitud inválida.",
+        statusCode: 400,
+      });
+      return;
+    }
+
+    const result = await authService.createPassword(
+      token,
+      parsed.data.newPassword,
+    );
+
+    reply
+      .header("Cache-Control", "no-store")
+      .status(result.ok ? 200 : result.statusCode)
+      .send(result);
   },
 
   async logout(
@@ -445,21 +727,19 @@ export const authController = {
     const appId = getRequiredEnv("FACEBOOK_APP_ID");
     const appSecret = getRequiredEnv("FACEBOOK_APP_SECRET");
     const redirectUri = getRequiredEnv("FACEBOOK_REDIRECT_URI");
-    const residentIntent = isFacebookResidentIntent(request.query);
+    const passengerFareType = getFacebookPassengerFareType(
+      request.query,
+    );
+    const phone = normalizeFacebookPhone(request.query["phone"]);
     const nonce = randomBytes(32).toString("base64url");
     const state = createFacebookOAuthState(
-      residentIntent,
+      passengerFareType,
       nonce,
       appSecret,
+      "login",
+      undefined,
+      phone || undefined,
     );
-
-    const params = new URLSearchParams({
-      client_id: appId,
-      redirect_uri: redirectUri,
-      scope: "public_profile,email",
-      response_type: "code",
-      state,
-    });
 
     reply
       .header(
@@ -468,8 +748,57 @@ export const authController = {
       )
       .header("Cache-Control", "no-store")
       .redirect(
-        `https://www.facebook.com/v20.0/dialog/oauth?${params.toString()}`,
+        buildFacebookAuthorizationUrl({
+          appId,
+          redirectUri,
+          state,
+        }),
       );
+  },
+
+  async facebookLinkStart(
+    request: FastifyRequest,
+    reply: FastifyReply,
+  ): Promise<void> {
+    const token = extractBearer(request);
+    const prepared = await authService.prepareFacebookIdentityLink(token);
+
+    if (!prepared.ok) {
+      sendError(reply, {
+        code: prepared.code,
+        message: prepared.message,
+        statusCode: prepared.statusCode,
+      });
+      return;
+    }
+
+    const appId = getRequiredEnv("FACEBOOK_APP_ID");
+    const appSecret = getRequiredEnv("FACEBOOK_APP_SECRET");
+    const redirectUri = getRequiredEnv("FACEBOOK_REDIRECT_URI");
+    const nonce = randomBytes(32).toString("base64url");
+    const state = createFacebookOAuthState(
+      "chilean",
+      nonce,
+      appSecret,
+      "link",
+      prepared.linkCode,
+    );
+
+    reply
+      .header(
+        "Set-Cookie",
+        facebookStateCookie(nonce, FACEBOOK_STATE_TTL_SECONDS),
+      )
+      .header("Cache-Control", "no-store")
+      .status(200)
+      .send({
+        ok: true,
+        authorizationUrl: buildFacebookAuthorizationUrl({
+          appId,
+          redirectUri,
+          state,
+        }),
+      });
   },
 
   async facebookCallback(
@@ -578,15 +907,34 @@ export const authController = {
       return;
     }
 
-    const result = await authService.loginWithFacebook(
-      {
-        facebookId: profile.id,
-        email: profile.email,
-        name: profile.name,
-        avatarUrl: profile.picture?.data?.url ?? null,
-      },
-      { residentIntent: oauthState.residentIntent },
-    );
+    if (oauthState.mode === "link") {
+      const linkResult = await authService.completeFacebookIdentityLink(
+        oauthState.linkCode ?? "",
+        {
+          facebookId: profile.id,
+          email: profile.email,
+          name: profile.name,
+        },
+      );
+
+      const linkStatus = linkResult.ok
+        ? "success"
+        : linkResult.code === "AUTH_IDENTITY_ALREADY_LINKED"
+          ? "already-linked"
+          : "error";
+
+      reply.redirect(
+        `${frontendUrl}/profile/security?facebookLink=${encodeURIComponent(linkStatus)}`,
+      );
+      return;
+    }
+
+    const result = await authService.loginWithFacebook({
+      facebookId: profile.id,
+      email: profile.email,
+      name: profile.name,
+      avatarUrl: profile.picture?.data?.url ?? null,
+    });
 
     if (!result.ok) {
       const errorCode =
@@ -594,8 +942,10 @@ export const authController = {
           ? "resident_pending"
           : result.code === "AUTH_RESIDENCE_REJECTED"
             ? "resident_rejected"
-            : result.code === "AUTH_ACCOUNT_PENDING"
-              ? "account_pending"
+            : result.code === "AUTH_FACEBOOK_LINK_REQUIRED"
+              ? "link_required"
+              : result.code === "AUTH_ACCOUNT_PENDING"
+                ? "account_pending"
               : result.code === "AUTH_ACCOUNT_SUSPENDED"
                 ? "account_blocked"
                 : "error";
@@ -606,11 +956,136 @@ export const authController = {
       return;
     }
 
-    // The fragment is not sent in HTTP requests or Referer headers.
-    // It contains a short-lived one-time code, never an access token or PII.
+    if (result.kind === "link_existing") {
+      const linkToken = createFacebookExistingAccountLinkToken(
+        {
+          linkCode: result.linkCode,
+          facebookId: result.facebookId,
+          email: result.email,
+          name: result.name,
+          avatarUrl: result.avatarUrl ?? null,
+        },
+        appSecret,
+      );
+      const query = new URLSearchParams({
+        facebook: "link_required",
+        linkToken,
+        email: result.email,
+      });
+
+      reply.redirect(
+        `${frontendUrl}/auth/login?${query.toString()}`,
+      );
+      return;
+    }
+
+    if (result.kind === "setup") {
+      const query = new URLSearchParams({
+        facebook: "setup",
+        setupCode: result.setupCode,
+        email: profile.email,
+      });
+
+      reply.redirect(
+        `${frontendUrl}/auth/login?${query.toString()}`,
+      );
+      return;
+    }
+
+    const callbackQuery = new URLSearchParams({
+      exchangeCode: result.exchangeCode,
+    });
+
+    // The exchange code is short-lived, single-use and is removed from
+    // browser history immediately by the frontend callback page.
     reply.redirect(
-      `${frontendUrl}/auth/facebook/callback#exchangeCode=${encodeURIComponent(result.exchangeCode)}`,
+      `${frontendUrl}/auth/facebook/callback?${callbackQuery.toString()}`,
     );
+  },
+
+  async facebookLinkExisting(
+    request: FastifyRequest<{ Body: FacebookExistingAccountLinkInput }>,
+    reply: FastifyReply,
+  ): Promise<void> {
+    const parsed = facebookExistingAccountLinkSchema.safeParse(
+      request.body,
+    );
+
+    if (!parsed.success) {
+      sendError(reply, {
+        code: "VALIDATION_ERROR",
+        message:
+          parsed.error.issues[0]?.message ??
+          "Los datos para vincular Facebook no son válidos.",
+        statusCode: 400,
+      });
+      return;
+    }
+
+    const appSecret = getRequiredEnv("FACEBOOK_APP_SECRET");
+    const linkPayload = readFacebookExistingAccountLinkToken(
+      parsed.data.linkToken,
+      appSecret,
+    );
+
+    if (!linkPayload) {
+      sendError(reply, {
+        code: "AUTH_FACEBOOK_LINK_EXPIRED",
+        message:
+          "La vinculación con Facebook expiró. Vuelve a presionar Continuar con Facebook.",
+        statusCode: 401,
+      });
+      return;
+    }
+
+    const result =
+      await authService.completeFacebookExistingAccountLink({
+        linkCode: linkPayload.linkCode,
+        email: linkPayload.email,
+        facebookId: linkPayload.facebookId,
+        name: linkPayload.name,
+        avatarUrl: linkPayload.avatarUrl ?? null,
+        password: parsed.data.password,
+      });
+
+    reply
+      .header("Cache-Control", "no-store")
+      .header("Pragma", "no-cache")
+      .status(result.ok ? 200 : result.statusCode)
+      .send(result);
+  },
+
+  async facebookSetup(
+    request: FastifyRequest<{ Body: FacebookAccountSetupInput }>,
+    reply: FastifyReply,
+  ): Promise<void> {
+    const parsed = facebookAccountSetupSchema.safeParse(request.body);
+
+    if (!parsed.success) {
+      sendError(reply, {
+        code: "VALIDATION_ERROR",
+        message:
+          parsed.error.issues[0]?.message ??
+          "Los datos del pasajero no son válidos.",
+        statusCode: 400,
+      });
+      return;
+    }
+
+    const userAgent = request.headers["user-agent"];
+    const result = await authService.completeFacebookAccountSetup(
+      parsed.data,
+      {
+        ipAddress: request.ip,
+        ...(typeof userAgent === "string" ? { userAgent } : {}),
+      },
+    );
+
+    reply
+      .header("Cache-Control", "no-store")
+      .header("Pragma", "no-cache")
+      .status(result.ok ? 200 : result.statusCode)
+      .send(result);
   },
 
   async facebookExchange(
@@ -639,35 +1114,5 @@ export const authController = {
       .header("Pragma", "no-cache")
       .status(result.ok ? 200 : (result.statusCode ?? 401))
       .send(result);
-  },
-
-  async refresh(
-    request: FastifyRequest<{ Body: { refreshToken: string } }>,
-    reply: FastifyReply,
-  ): Promise<void> {
-    const raw = request.body?.refreshToken;
-    if (!raw || typeof raw !== "string") {
-      sendError(reply, { code: "VALIDATION_ERROR", message: "refreshToken is required.", statusCode: 400 });
-      return;
-    }
-    const result = await authService.refreshSession(raw);
-    reply.status(result.ok ? 200 : (result.statusCode ?? 401)).send(result);
-  },
-
-  async apple(
-    request: FastifyRequest<{ Body: AppleAuthRequest }>,
-    reply: FastifyReply,
-  ): Promise<void> {
-    const parsed = appleAuthRequestSchema.safeParse(request.body);
-    if (!parsed.success) {
-      sendError(reply, { code: "VALIDATION_ERROR", message: parsed.error.message, statusCode: 400 });
-      return;
-    }
-    const result = await appleAuthService.signIn(parsed.data);
-    if (!result.ok) {
-      reply.status(result.statusCode ?? 401).send(result);
-      return;
-    }
-    reply.status(200).send(result);
   },
 };
