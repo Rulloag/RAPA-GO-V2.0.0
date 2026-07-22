@@ -47,6 +47,16 @@ export type FacebookAccountSetupResponse = {
   exchangeCode: string;
 };
 
+export type FacebookExistingAccountLinkPayload = {
+  linkToken: string;
+  password: string;
+};
+
+export type FacebookExistingAccountLinkResponse = {
+  ok: true;
+  exchangeCode: string;
+};
+
 export type FacebookResidentPrecheckResponse = {
   ok: true;
   status: "pending" | "approved";
@@ -136,6 +146,27 @@ export const authService = {
     return result.data;
   },
 
+
+  async completeFacebookExistingAccountLink(
+    payload: FacebookExistingAccountLinkPayload,
+  ): Promise<FacebookExistingAccountLinkResponse> {
+    const result =
+      await apiClient.post<FacebookExistingAccountLinkResponse>(
+        "/auth/facebook/link-existing",
+        payload,
+        undefined,
+        0,
+      );
+
+    if (result.ok === false) {
+      throw new Error(
+        result.message ??
+          "No se pudo vincular Facebook con tu cuenta RAPA GO.",
+      );
+    }
+
+    return result.data;
+  },
 
   async completeFacebookAccountSetup(
     payload: FacebookAccountSetupPayload,

@@ -785,6 +785,15 @@ export function LoginPage(): JSX.Element {
 
   const [showFacebookStep, setShowFacebookStep] = useState(false);
   const [facebookSetupCode, setFacebookSetupCode] = useState("");
+  const [showFacebookLinkStep, setShowFacebookLinkStep] =
+    useState(false);
+  const [facebookLinkToken, setFacebookLinkToken] = useState("");
+  const [facebookLinkEmail, setFacebookLinkEmail] = useState("");
+  const [facebookLinkPassword, setFacebookLinkPassword] =
+    useState("");
+  const [facebookLinkError, setFacebookLinkError] = useState("");
+  const [facebookLinkLoading, setFacebookLinkLoading] =
+    useState(false);
   const [passengerCondition, setPassengerCondition] =
     useState<PassengerCondition>(getStoredPassengerCondition());
 
@@ -866,6 +875,44 @@ export function LoginPage(): JSX.Element {
     setShowFacebookStep(true);
   }, []);
 
+  useEffect(() => {
+    const searchParams = new URLSearchParams(window.location.search);
+
+    if (searchParams.get("facebook") !== "link_required") {
+      return;
+    }
+
+    const fragment = new URLSearchParams(
+      window.location.hash.startsWith("#")
+        ? window.location.hash.slice(1)
+        : window.location.hash,
+    );
+
+    const linkToken = fragment.get("linkToken")?.trim() ?? "";
+    const linkEmail = normalizeEmail(fragment.get("email") ?? "");
+
+    window.history.replaceState(
+      null,
+      document.title,
+      ROUTES.AUTH.LOGIN,
+    );
+
+    if (!linkToken || !linkEmail) {
+      setServerError(
+        "No se pudo preparar la vinculación con Facebook. Intenta nuevamente.",
+      );
+      return;
+    }
+
+    setServerError("");
+    setFacebookLinkError("");
+    setFacebookLinkToken(linkToken);
+    setFacebookLinkEmail(linkEmail);
+    setFacebookLinkPassword("");
+    setEmail(linkEmail);
+    setShowFacebookLinkStep(true);
+  }, []);
+
   async function handleSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
 
@@ -918,6 +965,59 @@ export function LoginPage(): JSX.Element {
     } finally {
       setLoading(false);
     }
+  }
+
+  async function confirmFacebookExistingAccountLink(): Promise<void> {
+    setFacebookLinkError("");
+
+    if (!facebookLinkToken) {
+      setFacebookLinkError(
+        "La vinculación con Facebook expiró. Vuelve a presionar Continuar con Facebook.",
+      );
+      return;
+    }
+
+    if (facebookLinkPassword.length < 8) {
+      setFacebookLinkError(
+        "Ingresa la contraseña de tu cuenta RAPA GO.",
+      );
+      return;
+    }
+
+    setFacebookLinkLoading(true);
+
+    try {
+      const completed =
+        await authService.completeFacebookExistingAccountLink({
+          linkToken: facebookLinkToken,
+          password: facebookLinkPassword,
+        });
+
+      setShowFacebookLinkStep(false);
+      setFacebookLinkPassword("");
+      setFacebookLinkToken("");
+
+      window.location.replace(
+        `${ROUTES.AUTH.FACEBOOK_CALLBACK}#exchangeCode=${encodeURIComponent(completed.exchangeCode)}`,
+      );
+    } catch (error) {
+      setFacebookLinkError(
+        error instanceof Error
+          ? error.message
+          : "No se pudo vincular Facebook con tu cuenta RAPA GO.",
+      );
+    } finally {
+      setFacebookLinkLoading(false);
+    }
+  }
+
+  function closeFacebookExistingAccountLink(): void {
+    if (facebookLinkLoading) return;
+
+    setShowFacebookLinkStep(false);
+    setFacebookLinkPassword("");
+    setFacebookLinkToken("");
+    setFacebookLinkError("");
   }
 
   function startFacebookLogin(): void {
@@ -1612,6 +1712,203 @@ export function LoginPage(): JSX.Element {
             ¿No tienes cuenta? Crear cuenta
           </IonButton>
         </form>
+
+        <IonModal
+          className="facebook-link-modal"
+          isOpen={showFacebookLinkStep}
+          backdropDismiss={!facebookLinkLoading}
+          onDidDismiss={closeFacebookExistingAccountLink}
+          style={
+            {
+              "--width": "min(92vw, 520px)",
+              "--height": "auto",
+              "--max-height": "88vh",
+              "--border-radius": "28px",
+            } as CSSProperties
+          }
+        >
+          <IonContent
+            className="ion-padding"
+            scrollY={true}
+            style={
+              {
+                "--background":
+                  "linear-gradient(180deg,#fffaf0,#f3dfb9)",
+              } as CSSProperties
+            }
+          >
+            <div
+              style={{
+                maxWidth: 460,
+                margin: "0 auto",
+                padding: "10px 4px 18px",
+                color: "#25170f",
+              }}
+            >
+              <div
+                style={{
+                  width: 58,
+                  height: 58,
+                  borderRadius: 20,
+                  display: "grid",
+                  placeItems: "center",
+                  marginBottom: 14,
+                  background:
+                    "linear-gradient(135deg,#1877F2,#0f58ba)",
+                  color: "#fff",
+                  fontSize: "1.55rem",
+                  fontWeight: 950,
+                  boxShadow: "0 12px 28px rgba(24,119,242,.28)",
+                }}
+              >
+                f
+              </div>
+
+              <IonText>
+                <h2
+                  style={{
+                    margin: "0 0 8px",
+                    fontSize: "1.42rem",
+                    fontWeight: 950,
+                  }}
+                >
+                  Vincular Facebook una sola vez
+                </h2>
+              </IonText>
+
+              <IonText>
+                <p
+                  style={{
+                    margin: "0 0 18px",
+                    color: "#654a36",
+                    lineHeight: 1.45,
+                    fontWeight: 750,
+                  }}
+                >
+                  Ya existe una cuenta RAPA GO con este correo.
+                  Confirma tu contraseña para vincular Facebook de forma
+                  segura. Después podrás entrar directamente con el botón
+                  Facebook.
+                </p>
+              </IonText>
+
+              <IonItem
+                lines="none"
+                style={
+                  {
+                    "--background": "rgba(255,255,255,.72)",
+                    "--border-radius": "16px",
+                    marginBottom: 12,
+                    border: "1px solid rgba(91,62,34,.16)",
+                  } as CSSProperties
+                }
+              >
+                <IonLabel position="stacked">Correo de la cuenta</IonLabel>
+                <IonInput
+                  type="email"
+                  value={facebookLinkEmail}
+                  readonly={true}
+                />
+              </IonItem>
+
+              <IonItem
+                lines="none"
+                style={
+                  {
+                    "--background": "rgba(255,255,255,.82)",
+                    "--border-radius": "16px",
+                    marginBottom: 10,
+                    border: "1px solid rgba(91,62,34,.20)",
+                  } as CSSProperties
+                }
+              >
+                <IonLabel position="stacked">Contraseña RAPA GO</IonLabel>
+                <IonInput
+                  type="password"
+                  value={facebookLinkPassword}
+                  minlength={8}
+                  maxlength={128}
+                  autocomplete="current-password"
+                  placeholder="Ingresa tu contraseña"
+                  disabled={facebookLinkLoading}
+                  onIonInput={(event) => {
+                    setFacebookLinkPassword(
+                      String(event.detail.value ?? ""),
+                    );
+                    setFacebookLinkError("");
+                  }}
+                />
+              </IonItem>
+
+              {facebookLinkError && (
+                <IonText color="danger">
+                  <p
+                    style={{
+                      margin: "10px 2px",
+                      padding: "10px 12px",
+                      borderRadius: 14,
+                      background: "rgba(220,38,38,.10)",
+                      fontWeight: 900,
+                    }}
+                  >
+                    {facebookLinkError}
+                  </p>
+                </IonText>
+              )}
+
+              <IonButton
+                expand="block"
+                type="button"
+                disabled={facebookLinkLoading}
+                onClick={() =>
+                  void confirmFacebookExistingAccountLink()
+                }
+                style={
+                  {
+                    marginTop: 16,
+                    height: 52,
+                    "--border-radius": "17px",
+                    "--background":
+                      "linear-gradient(135deg,#1877F2,#0f58ba)",
+                    "--color": "#fff",
+                    fontWeight: 950,
+                    textTransform: "none",
+                  } as CSSProperties
+                }
+              >
+                {facebookLinkLoading ? (
+                  <>
+                    <IonSpinner
+                      name="crescent"
+                      style={{ marginRight: 8 }}
+                    />
+                    Vinculando...
+                  </>
+                ) : (
+                  "Vincular Facebook y entrar"
+                )}
+              </IonButton>
+
+              <IonButton
+                expand="block"
+                fill="clear"
+                type="button"
+                disabled={facebookLinkLoading}
+                onClick={closeFacebookExistingAccountLink}
+                style={
+                  {
+                    marginTop: 8,
+                    "--color": "#5b4632",
+                    fontWeight: 900,
+                    textTransform: "none",
+                  } as CSSProperties
+                }
+              >
+                Volver al inicio de sesión
+              </IonButton>
+            </div>
+          </IonContent>
+        </IonModal>
 
         <IonModal
           className="facebook-step-modal"

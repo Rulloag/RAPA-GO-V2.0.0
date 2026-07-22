@@ -28,13 +28,22 @@ export type PasswordResetServiceResult =
 export type FacebookLoginPreparationResult =
   | {
       ok: true;
-      setupRequired: false;
+      kind: "login";
       exchangeCode: string;
     }
   | {
       ok: true;
-      setupRequired: true;
+      kind: "setup";
       setupCode: string;
+    }
+  | {
+      ok: true;
+      kind: "link_existing";
+      linkCode: string;
+      email: string;
+      facebookId: string;
+      name: string;
+      avatarUrl?: string | null;
     }
   | {
       ok: false;

@@ -9,6 +9,7 @@ import {
   appleAuthRequestSchema,
   createPasswordRequestSchema,
   facebookAccountSetupSchema,
+  facebookExistingAccountLinkSchema,
   facebookLoginExchangeSchema,
   facebookResidentPrecheckSchema,
   facebookResidentStatusSchema,
@@ -27,6 +28,7 @@ import type {
   AppleAuthRequestInput,
   CreatePasswordRequestInput,
   FacebookAccountSetupInput,
+  FacebookExistingAccountLinkInput,
   FacebookLoginExchangeInput,
   FacebookResidentPrecheckInput,
   FacebookResidentStatusInput,
@@ -41,6 +43,7 @@ const appleAuthService = new AppleAuthService();
 
 const FACEBOOK_STATE_COOKIE = "rapago_fb_oauth_state";
 const FACEBOOK_STATE_TTL_SECONDS = 15 * 60;
+const FACEBOOK_EXISTING_LINK_TTL_SECONDS = 5 * 60;
 const FACEBOOK_HTTP_TIMEOUT_MS = 10_000;
 
 function getRequiredEnv(name: string): string {
@@ -180,6 +183,104 @@ function readFacebookOAuthState(
       /^\+?[0-9]{8,15}$/.test(parsed.phone)
         ? { phone: parsed.phone }
         : {}),
+    };
+  } catch {
+    return null;
+  }
+}
+
+type FacebookExistingAccountLinkToken = {
+  version: 1;
+  linkCode: string;
+  facebookId: string;
+  email: string;
+  name: string;
+  avatarUrl?: string | null;
+  expiresAt: number;
+};
+
+function createFacebookExistingAccountLinkToken(
+  input: Omit<FacebookExistingAccountLinkToken, "version" | "expiresAt">,
+  secret: string,
+): string {
+  const payload: FacebookExistingAccountLinkToken = {
+    version: 1,
+    ...input,
+    expiresAt:
+      Date.now() + FACEBOOK_EXISTING_LINK_TTL_SECONDS * 1000,
+  };
+  const encodedPayload = Buffer.from(
+    JSON.stringify(payload),
+    "utf8",
+  ).toString("base64url");
+  const signature = createHmac("sha256", secret)
+    .update(encodedPayload)
+    .digest("base64url");
+
+  return `${encodedPayload}.${signature}`;
+}
+
+function readFacebookExistingAccountLinkToken(
+  value: string | undefined,
+  secret: string,
+): FacebookExistingAccountLinkToken | null {
+  if (!value) return null;
+
+  const [encodedPayload, receivedSignature] = value.split(".");
+
+  if (!encodedPayload || !receivedSignature) return null;
+
+  const expectedSignature = createHmac("sha256", secret)
+    .update(encodedPayload)
+    .digest("base64url");
+  const receivedBuffer = Buffer.from(receivedSignature, "utf8");
+  const expectedBuffer = Buffer.from(expectedSignature, "utf8");
+
+  if (
+    receivedBuffer.length !== expectedBuffer.length ||
+    !timingSafeEqual(receivedBuffer, expectedBuffer)
+  ) {
+    return null;
+  }
+
+  try {
+    const parsed = JSON.parse(
+      Buffer.from(encodedPayload, "base64url").toString("utf8"),
+    ) as Partial<FacebookExistingAccountLinkToken>;
+
+    const avatarUrl =
+      typeof parsed.avatarUrl === "string" && parsed.avatarUrl.length <= 2048
+        ? parsed.avatarUrl
+        : null;
+
+    if (
+      parsed.version !== 1 ||
+      typeof parsed.linkCode !== "string" ||
+      !/^[A-Za-z0-9_-]{32,128}$/.test(parsed.linkCode) ||
+      typeof parsed.facebookId !== "string" ||
+      parsed.facebookId.length < 1 ||
+      parsed.facebookId.length > 128 ||
+      typeof parsed.email !== "string" ||
+      parsed.email.length < 3 ||
+      parsed.email.length > 255 ||
+      !parsed.email.includes("@") ||
+      typeof parsed.name !== "string" ||
+      parsed.name.trim().length < 1 ||
+      parsed.name.length > 200 ||
+      typeof parsed.expiresAt !== "number" ||
+      parsed.expiresAt < Date.now()
+    ) {
+      return null;
+    }
+
+    return {
+      version: 1,
+      linkCode: parsed.linkCode,
+      facebookId: parsed.facebookId,
+      email: parsed.email.trim().toLowerCase(),
+      name: parsed.name.trim(),
+      avatarUrl,
+      expiresAt: parsed.expiresAt,
     };
   } catch {
     return null;
@@ -851,7 +952,29 @@ export const authController = {
       return;
     }
 
-    if (result.setupRequired) {
+    if (result.kind === "link_existing") {
+      const linkToken = createFacebookExistingAccountLinkToken(
+        {
+          linkCode: result.linkCode,
+          facebookId: result.facebookId,
+          email: result.email,
+          name: result.name,
+          avatarUrl: result.avatarUrl ?? null,
+        },
+        appSecret,
+      );
+      const fragment = new URLSearchParams({
+        linkToken,
+        email: result.email,
+      });
+
+      reply.redirect(
+        `${frontendUrl}/auth/login?facebook=link_required#${fragment.toString()}`,
+      );
+      return;
+    }
+
+    if (result.kind === "setup") {
       const fragment = new URLSearchParams({
         setupCode: result.setupCode,
         email: profile.email,
@@ -868,6 +991,58 @@ export const authController = {
     reply.redirect(
       `${frontendUrl}/auth/facebook/callback#exchangeCode=${encodeURIComponent(result.exchangeCode)}`,
     );
+  },
+
+  async facebookLinkExisting(
+    request: FastifyRequest<{ Body: FacebookExistingAccountLinkInput }>,
+    reply: FastifyReply,
+  ): Promise<void> {
+    const parsed = facebookExistingAccountLinkSchema.safeParse(
+      request.body,
+    );
+
+    if (!parsed.success) {
+      sendError(reply, {
+        code: "VALIDATION_ERROR",
+        message:
+          parsed.error.issues[0]?.message ??
+          "Los datos para vincular Facebook no son válidos.",
+        statusCode: 400,
+      });
+      return;
+    }
+
+    const appSecret = getRequiredEnv("FACEBOOK_APP_SECRET");
+    const linkPayload = readFacebookExistingAccountLinkToken(
+      parsed.data.linkToken,
+      appSecret,
+    );
+
+    if (!linkPayload) {
+      sendError(reply, {
+        code: "AUTH_FACEBOOK_LINK_EXPIRED",
+        message:
+          "La vinculación con Facebook expiró. Vuelve a presionar Continuar con Facebook.",
+        statusCode: 401,
+      });
+      return;
+    }
+
+    const result =
+      await authService.completeFacebookExistingAccountLink({
+        linkCode: linkPayload.linkCode,
+        email: linkPayload.email,
+        facebookId: linkPayload.facebookId,
+        name: linkPayload.name,
+        avatarUrl: linkPayload.avatarUrl ?? null,
+        password: parsed.data.password,
+      });
+
+    reply
+      .header("Cache-Control", "no-store")
+      .header("Pragma", "no-cache")
+      .status(result.ok ? 200 : result.statusCode)
+      .send(result);
   },
 
   async facebookSetup(

@@ -204,6 +204,22 @@ export type FacebookLoginExchangeInput = z.infer<
   typeof facebookLoginExchangeSchema
 >;
 
+export const facebookExistingAccountLinkSchema = z.object({
+  linkToken: z
+    .string()
+    .trim()
+    .min(64, "La vinculación con Facebook no es válida.")
+    .max(4096, "La vinculación con Facebook no es válida."),
+  password: z
+    .string()
+    .min(8, "Ingresa la contraseña de tu cuenta RAPA GO.")
+    .max(128, "La contraseña es demasiado larga."),
+});
+
+export type FacebookExistingAccountLinkInput = z.infer<
+  typeof facebookExistingAccountLinkSchema
+>;
+
 export type FacebookResidentPrecheckInput = z.infer<
   typeof facebookResidentPrecheckSchema
 >;

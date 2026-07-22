@@ -55,6 +55,37 @@ export class FacebookLoginExchangeRepository {
     }
   }
 
+  async peek(
+    code: string,
+    purpose: FacebookExchangePurpose = "login",
+  ): Promise<string | null> {
+    const cleanCode = code.trim();
+    if (!cleanCode) return null;
+
+    const now = new Date();
+
+    try {
+      const rows = await db
+        .select({ userId: facebookLoginExchanges.userId })
+        .from(facebookLoginExchanges)
+        .where(
+          and(
+            eq(facebookLoginExchanges.codeHash, hashCode(cleanCode)),
+            eq(facebookLoginExchanges.purpose, purpose),
+            isNull(facebookLoginExchanges.usedAt),
+            gt(facebookLoginExchanges.expiresAt, now),
+          ),
+        )
+        .limit(1);
+
+      return rows[0]?.userId ?? null;
+    } catch (error) {
+      throw AppError.internal(
+        `Failed to inspect Facebook login exchange: ${String(error)}`,
+      );
+    }
+  }
+
   async consume(
     code: string,
     purpose: FacebookExchangePurpose = "login",

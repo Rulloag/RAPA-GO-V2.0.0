@@ -1108,13 +1108,38 @@ export class AuthService {
             "facebook",
           );
 
-        if (credentials || existingFacebookIdentity) {
+        if (existingFacebookIdentity) {
           return {
             ok: false,
-            code: "AUTH_FACEBOOK_LINK_REQUIRED",
+            code: "AUTH_FACEBOOK_ALREADY_LINKED",
             message:
-              "Ya existe una cuenta RAPA GO con este correo. Inicia sesión con tu contraseña y vincula Facebook desde Perfil > Seguridad.",
+              "Esta cuenta RAPA GO ya tiene otra identidad de Facebook vinculada. Ingresa con tu método habitual o contacta a soporte.",
             statusCode: 409,
+          };
+        }
+
+        if (credentials) {
+          const linkCode = await facebookLoginExchangeRepo.create(
+            existingByEmail.id,
+            "link",
+          );
+
+          auditService.recordSafe({
+            eventType: "auth.facebook.existing_account_link_required",
+            entityType: "user",
+            entityId: existingByEmail.id,
+            actorUserId: existingByEmail.id,
+            metadata: { provider: "facebook" },
+          });
+
+          return {
+            ok: true,
+            kind: "link_existing",
+            linkCode,
+            email,
+            facebookId: profile.facebookId,
+            name: profile.name,
+            avatarUrl: profile.avatarUrl ?? null,
           };
         }
 
@@ -1230,7 +1255,7 @@ export class AuthService {
 
       return {
         ok: true,
-        setupRequired: true,
+        kind: "setup",
         setupCode,
       };
     }
@@ -1265,7 +1290,7 @@ export class AuthService {
 
     return {
       ok: true,
-      setupRequired: false,
+      kind: "login",
       exchangeCode,
     };
   }
@@ -1404,6 +1429,215 @@ export class AuthService {
         provider: "facebook",
         passengerFareType: input.passengerFareType,
       },
+    });
+
+    return { ok: true, exchangeCode };
+  }
+
+  async completeFacebookExistingAccountLink(input: {
+    linkCode: string;
+    email: string;
+    facebookId: string;
+    name: string;
+    avatarUrl?: string | null;
+    password: string;
+  }): Promise<
+    | { ok: true; exchangeCode: string }
+    | {
+        ok: false;
+        code: string;
+        message: string;
+        statusCode: number;
+      }
+  > {
+    const userId = await facebookLoginExchangeRepo.peek(
+      input.linkCode,
+      "link",
+    );
+
+    if (!userId) {
+      return {
+        ok: false,
+        code: "AUTH_FACEBOOK_LINK_EXPIRED",
+        message:
+          "La vinculación con Facebook expiró. Vuelve a presionar Continuar con Facebook.",
+        statusCode: 401,
+      };
+    }
+
+    let user = await usersRepository.findById(userId);
+
+    if (!user) {
+      return {
+        ok: false,
+        code: "UNAUTHORIZED",
+        message: "Usuario no encontrado.",
+        statusCode: 401,
+      };
+    }
+
+    if (user.email.trim().toLowerCase() !== input.email.trim().toLowerCase()) {
+      return {
+        ok: false,
+        code: "AUTH_FACEBOOK_LINK_INVALID",
+        message: "La cuenta de Facebook no coincide con la cuenta RAPA GO.",
+        statusCode: 409,
+      };
+    }
+
+    if (user.role === "admin") {
+      return {
+        ok: false,
+        code: "AUTH_FORBIDDEN",
+        message: "Las cuentas administrativas no pueden vincularse desde este flujo.",
+        statusCode: 403,
+      };
+    }
+
+    if (user.status === "deleted") {
+      return {
+        ok: false,
+        code: "AUTH_ACCOUNT_DELETED",
+        message: "Esta cuenta fue eliminada.",
+        statusCode: 403,
+      };
+    }
+
+    user = await reactivatePassengerResidenceAccount(user);
+
+    if (user.status === "pending") {
+      return {
+        ok: false,
+        code: "AUTH_ACCOUNT_PENDING",
+        message: "Tu cuenta todavía está pendiente de aprobación.",
+        statusCode: 403,
+      };
+    }
+
+    if (user.status === "suspended" || user.status === "banned") {
+      return {
+        ok: false,
+        code: "AUTH_ACCOUNT_SUSPENDED",
+        message: "Esta cuenta está bloqueada. Contacta a soporte.",
+        statusCode: 403,
+      };
+    }
+
+    const credentials = await credentialsRepo.findByUserId(user.id);
+
+    if (!credentials) {
+      return {
+        ok: false,
+        code: "AUTH_PASSWORD_NOT_CONFIGURED",
+        message:
+          "Esta cuenta no tiene contraseña configurada. Ingresa con tu método habitual o contacta a soporte.",
+        statusCode: 409,
+      };
+    }
+
+    if (credentials.lockedUntil && credentials.lockedUntil > new Date()) {
+      return {
+        ok: false,
+        code: "AUTH_ACCOUNT_LOCKED",
+        message:
+          "La cuenta está bloqueada temporalmente por seguridad. Intenta nuevamente más tarde.",
+        statusCode: 423,
+      };
+    }
+
+    const validPassword = await passwordService.verifyPassword(
+      credentials.passwordHash,
+      input.password,
+    );
+
+    if (!validPassword) {
+      const updated = await credentialsRepo.incrementFailedAttempts(user.id);
+
+      if (updated.failedLoginAttempts >= MAX_FAILED_ATTEMPTS) {
+        const until = new Date(Date.now() + LOCKOUT_MINUTES * 60 * 1000);
+        await credentialsRepo.lockUntil(user.id, until);
+      }
+
+      auditService.recordSafe({
+        eventType: "auth.facebook.existing_account_link_failure",
+        entityType: "user",
+        entityId: user.id,
+        actorUserId: user.id,
+        metadata: {
+          reason: "invalid_password",
+          attempts: updated.failedLoginAttempts,
+        },
+      });
+
+      return {
+        ok: false,
+        code: "AUTH_INVALID_CREDENTIALS",
+        message: "La contraseña de RAPA GO no es correcta.",
+        statusCode: 401,
+      };
+    }
+
+    const consumedUserId = await facebookLoginExchangeRepo.consume(
+      input.linkCode,
+      "link",
+    );
+
+    if (consumedUserId !== user.id) {
+      return {
+        ok: false,
+        code: "AUTH_FACEBOOK_LINK_EXPIRED",
+        message:
+          "La vinculación con Facebook expiró o ya fue utilizada. Inicia el proceso nuevamente.",
+        statusCode: 401,
+      };
+    }
+
+    try {
+      await authIdentitiesRepo.link({
+        userId: user.id,
+        provider: "facebook",
+        providerSubject: input.facebookId,
+        providerEmail: input.email,
+        emailVerified: true,
+      });
+    } catch (error) {
+      if (error instanceof AppError) {
+        return {
+          ok: false,
+          code: error.code,
+          message: error.message,
+          statusCode: error.statusCode,
+        };
+      }
+      throw error;
+    }
+
+    await credentialsRepo.resetFailedAttempts(user.id);
+
+    if (!user.avatarUrl && input.avatarUrl) {
+      const rows = await db
+        .update(users)
+        .set({
+          avatarUrl: input.avatarUrl,
+          updatedAt: new Date(),
+        })
+        .where(eq(users.id, user.id))
+        .returning();
+
+      user = rows[0] ?? user;
+    }
+
+    const exchangeCode = await facebookLoginExchangeRepo.create(
+      user.id,
+      "login",
+    );
+
+    auditService.recordSafe({
+      eventType: "auth.facebook.existing_account_linked",
+      entityType: "user",
+      entityId: user.id,
+      actorUserId: user.id,
+      metadata: { provider: "facebook" },
     });
 
     return { ok: true, exchangeCode };
