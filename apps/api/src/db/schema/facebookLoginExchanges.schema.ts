@@ -24,6 +24,7 @@ export const facebookLoginExchanges = pgTable(
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
     codeHash: varchar("code_hash", { length: 64 }).notNull(),
+    purpose: varchar("purpose", { length: 20 }).notNull().default("login"),
     expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
     usedAt: timestamp("used_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true })

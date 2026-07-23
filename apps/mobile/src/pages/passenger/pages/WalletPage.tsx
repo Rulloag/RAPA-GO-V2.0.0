@@ -33,6 +33,10 @@ import {
   type CashOverpaymentBenefitData,
   type WalletData,
 } from "../../../features/wallet/wallet.service.js";
+import {
+  cashRefundsService,
+  type CashOverpaymentRefundData,
+} from "../../../features/cashRefunds/cashRefunds.service.js";
 
 const WALLET_BG =
   "linear-gradient(180deg, rgba(14,12,10,.92), rgba(14,12,10,.96)), url('/assets/rapa-go-bg.jpg') center/cover no-repeat";
@@ -94,12 +98,26 @@ function benefitAmount(benefit: CashOverpaymentBenefitData): number {
   return Math.max(0, Math.round(benefit.requestedAmountClp));
 }
 
+function refundStatusInfo(status: string): {
+  label: string;
+  color: "warning" | "success" | "danger" | "medium";
+} {
+  if (status === "completed") return { label: "Transferida", color: "success" };
+  if (status === "approved_for_transfer") {
+    return { label: "Aprobada para transferencia", color: "success" };
+  }
+  if (status === "rejected") return { label: "Rechazada", color: "danger" };
+  return { label: "Pendiente de revisión", color: "warning" };
+}
+
+
 export default function WalletPage(): JSX.Element {
   const { session } = useAuth();
   const [wallet, setWallet] = useState<WalletData | null>(null);
   const [requests, setRequests] = useState<
     CashOverpaymentBenefitData[]
   >([]);
+  const [refunds, setRefunds] = useState<CashOverpaymentRefundData[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -107,6 +125,7 @@ export default function WalletPage(): JSX.Element {
     if (!session?.accessToken) {
       setWallet(null);
       setRequests([]);
+      setRefunds([]);
       setLoading(false);
       return;
     }
@@ -115,16 +134,24 @@ export default function WalletPage(): JSX.Element {
     setError(null);
 
     try {
-      const [walletData, requestData] = await Promise.all([
+      const [walletData, requestData, refundData] = await Promise.all([
         walletService.getMyWallet(session.accessToken),
         walletService.listMyCashOverpaymentBenefits(
           session.accessToken,
         ),
+        cashRefundsService.listMine(session.accessToken),
       ]);
 
       setWallet(walletData);
       setRequests(
         [...requestData].sort(
+          (a, b) =>
+            new Date(b.createdAt).getTime() -
+            new Date(a.createdAt).getTime(),
+        ),
+      );
+      setRefunds(
+        [...refundData].sort(
           (a, b) =>
             new Date(b.createdAt).getTime() -
             new Date(a.createdAt).getTime(),
@@ -473,6 +500,77 @@ export default function WalletPage(): JSX.Element {
                       >
                         <strong>Respuesta del administrador:</strong>{" "}
                         {request.adminDecisionReason}
+                      </p>
+                    )}
+                  </IonCardContent>
+                </IonCard>
+              );
+            })
+          )}
+
+          <h2
+            style={{
+              color: "#fff",
+              fontSize: "1.05rem",
+              fontWeight: 950,
+              margin: "24px 4px 12px",
+            }}
+          >
+            Devoluciones bancarias
+          </h2>
+
+          {refunds.length === 0 ? (
+            <IonCard
+              style={{
+                margin: 0,
+                borderRadius: 24,
+                background: "rgba(255,255,255,.96)",
+              }}
+            >
+              <IonCardContent style={{ textAlign: "center", padding: 22 }}>
+                <IonIcon icon={cashOutline} style={{ fontSize: 34, color: "#B7791F" }} />
+                <p style={{ margin: "8px 0 0", color: "#655B50", lineHeight: 1.45 }}>
+                  Las devoluciones de dinero pagado de más en efectivo aparecerán aquí.
+                </p>
+              </IonCardContent>
+            </IonCard>
+          ) : (
+            refunds.map((refund) => {
+              const info = refundStatusInfo(refund.status);
+              const amount = refund.approvedAmountClp ?? refund.requestedAmountClp;
+              return (
+                <IonCard
+                  key={refund.id}
+                  style={{
+                    margin: "0 0 12px",
+                    borderRadius: 24,
+                    background: "rgba(255,255,255,.97)",
+                  }}
+                >
+                  <IonCardContent>
+                    <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
+                      <div>
+                        <div style={{ fontWeight: 950 }}>Devolución a cuenta bancaria</div>
+                        <div style={{ fontSize: "1.2rem", fontWeight: 950, marginTop: 7 }}>
+                          {formatClp(amount)}
+                        </div>
+                      </div>
+                      <IonBadge color={info.color}>{info.label}</IonBadge>
+                    </div>
+                    <p style={{ margin: "12px 0 0", color: "#5F564B", fontSize: ".8rem" }}>
+                      {refund.bankAccount.bankName} · •••• {refund.bankAccount.accountNumberLast4}
+                    </p>
+                    <p style={{ margin: "6px 0 0", color: "#6B6257", fontSize: ".78rem" }}>
+                      Solicitada: {formatDate(refund.requestedAt)}
+                    </p>
+                    {refund.transferReference && (
+                      <p style={{ margin: "8px 0 0", color: "#14532D", fontSize: ".8rem", fontWeight: 850 }}>
+                        Comprobante: {refund.transferReference}
+                      </p>
+                    )}
+                    {refund.adminDecisionReason && (
+                      <p style={{ margin: "9px 0 0", padding: "9px 11px", borderRadius: 14, background: "#F5F1EA", color: "#463D34", fontSize: ".8rem" }}>
+                        <strong>Respuesta:</strong> {refund.adminDecisionReason}
                       </p>
                     )}
                   </IonCardContent>

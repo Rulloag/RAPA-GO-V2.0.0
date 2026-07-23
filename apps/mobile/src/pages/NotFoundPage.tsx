@@ -29,7 +29,7 @@ export function NotFoundPage(): JSX.Element {
         <IonButton
           expand="block"
           fill="outline"
-          onClick={() => { history.replace(ROUTES.WELCOME); }}
+          onClick={() => { history.replace(ROUTES.ROOT); }}
         >
           <IonIcon slot="start" icon={homeOutline} />
           Volver al inicio

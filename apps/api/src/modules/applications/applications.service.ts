@@ -15,6 +15,7 @@
   } from "./applications.types.js";
   import type { Application } from "../../db/schema/index.js";
   import type { UserRole } from "@rapa-go/shared";
+  import { isApplicationTypeEnabled } from "../../config/features.js";
 
   const tokenService   = new TokenService();
   const sessionService = new SessionService();
@@ -103,6 +104,15 @@
       input: CreateApplicationInput,
     ): Promise<CreateApplicationResult> {
       try {
+        if (!isApplicationTypeEnabled(input.type)) {
+          return {
+            ok: false,
+            code: "FEATURE_NOT_AVAILABLE",
+            message: "Esta postulación no está disponible en la versión actual de RAPA GO.",
+            statusCode: 404,
+          };
+        }
+
         let userId: string | null = null;
         if (accessToken) {
           const auth = await authenticate(accessToken);

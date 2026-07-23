@@ -51,6 +51,7 @@ import {
 import { walletService } from "../../../features/wallet/wallet.service.js";
 import { RIDE_STATUS_LABEL } from "../shared.js";
 import { getApiOrigin as getConfiguredApiOrigin } from "../../../services/api/apiBaseUrl.js";
+import { preSearchLocationService } from "../../../features/location/preSearchLocation.service.js";
 
 
 const LOCAL_PASSENGER_RIDES_KEY = "rapago_local_passenger_rides";
@@ -2273,7 +2274,7 @@ function normalizePassengerFareType(value: unknown): PassengerFareType | null {
   // Orden seguro:
   // 1) Turista chileno / chileno no residente.
   // 2) Turista extranjero / extranjero.
-  // 3) Residente Rapa Nui.
+  // 3) RAPA NUI / RESIDENTE RAPA NUI.
   // "Turista chileno" contiene la palabra "turista", por eso debe ir antes
   // de la detección genérica de turista/extranjero.
   if (
@@ -2309,12 +2310,20 @@ function normalizePassengerFareType(value: unknown): PassengerFareType | null {
   }
 
   if (
+    raw === "rapanui" ||
+    raw === "rapanui normal" ||
+    raw === "rapa nui normal"
+  ) {
+    // Valor legado eliminado: nunca debe otorgar tarifa residente.
+    return "chilean";
+  }
+
+  if (
     raw.includes("residente rapa nui") ||
-    raw.includes("rapa nui") ||
-    raw.includes("rapanui") ||
-    raw.includes("resident") ||
-    raw.includes("residente") ||
-    raw.includes("local") ||
+    raw === "resident" ||
+    raw === "residente" ||
+    raw === "resident approved" ||
+    raw === "residente aprobado" ||
     raw === "true" ||
     raw === "1"
   ) {
@@ -2389,10 +2398,10 @@ function readPassengerFareType(user?: unknown): PassengerFareType {
       if (stored) return stored;
     }
   } catch {
-    // Si no existe dato guardado, se usa residente como valor seguro por defecto.
+    // Si no existe dato guardado, se usa Turista chileno como valor seguro.
   }
 
-  return "resident";
+  return "chilean";
 }
 
 function vehicleCategoryLabel(category: VehicleCategory): string {
@@ -2426,7 +2435,7 @@ function tripFareModeDescription(mode: TripFareMode): string {
 }
 
 function passengerFareTypeLabel(type: PassengerFareType): string {
-  if (type === "resident") return "Residente Rapa Nui";
+  if (type === "resident") return "RAPA NUI / RESIDENTE RAPA NUI";
   if (type === "chilean") return "Turista chileno";
   return "Turista extranjero";
 }
@@ -2772,7 +2781,7 @@ function calculateRapaGoFare(
   km: number,
   minutes: number,
   rules: RapaGoFareRules = DEFAULT_RAPAGO_FARE_RULES,
-  passengerType: PassengerFareType = "resident",
+  passengerType: PassengerFareType = "chilean",
   vehicleCategory: VehicleCategory = "standard",
   destinationText = "",
   tripFareMode: TripFareMode = "one_way",
@@ -2846,7 +2855,7 @@ function calculateEstimatedFareFromPoints(
   origin: { lat: number; lng: number },
   destination: { lat: number; lng: number },
   rules: RapaGoFareRules = DEFAULT_RAPAGO_FARE_RULES,
-  passengerType: PassengerFareType = "resident",
+  passengerType: PassengerFareType = "chilean",
   vehicleCategory: VehicleCategory = "standard",
   destinationText = "",
   tripFareMode: TripFareMode = "one_way",
@@ -4555,15 +4564,9 @@ function formatDuration(seconds: number): string {
   return `${mins} min`;
 }
 
-function hasDuplicatePoints(origin: MapPoint, dests: MapPoint[]): boolean {
-  const all    = [origin, ...dests];
-  const coords = all.map(p => `${p.position.lat.toFixed(6)},${p.position.lng.toFixed(6)}`);
-  return new Set(coords).size < coords.length;
-}
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
-type RideMode  = "immediate" | "scheduled";
 type PageStatus =
   | "idle"
   | "calculating_route"
@@ -4577,6 +4580,11 @@ type PageStatus =
 export default function RequestRidePage(): JSX.Element {
   const { session } = useAuth();
   const history = useHistory();
+
+  useEffect(() => {
+    preSearchLocationService.read();
+    return () => preSearchLocationService.clear();
+  }, []);
 
   const [originPoint, setOriginPoint] = useState<ConfirmedPoint | null>(null);
   const [destinationPoint, setDestinationPoint] =
@@ -5066,6 +5074,7 @@ export default function RequestRidePage(): JSX.Element {
 
     navigator.geolocation.getCurrentPosition(
       (position) => {
+        preSearchLocationService.remember(position);
         const gpsPoint = {
           lat: position.coords.latitude,
           lng: position.coords.longitude,
@@ -5607,9 +5616,6 @@ export default function RequestRidePage(): JSX.Element {
         resolved.origin.walkMeters > 8
       ) {
         notes.push(
-          `Ubicación real del pasajero: ${resolved.origin.originalLat.toFixed(6)}, ${resolved.origin.originalLng.toFixed(6)}.`,
-        );
-        notes.push(
           `Punto accesible de recogida ajustado a calle. El pasajero debe caminar aprox. ${resolved.origin.walkMeters} m.`,
         );
       }
@@ -5763,6 +5769,7 @@ export default function RequestRidePage(): JSX.Element {
         session.accessToken,
         input,
       );
+      preSearchLocationService.clear();
 
       const createdRideId = extractRideRequestIdFromResponse(createdRideResponse);
       const appliedBenefitClp = Math.max(
@@ -6063,9 +6070,6 @@ export default function RequestRidePage(): JSX.Element {
           resolved.origin.walkMeters != null &&
           resolved.origin.walkMeters > 8
         ) {
-          localNotes.push(
-            `Ubicación real del pasajero: ${resolved.origin.originalLat.toFixed(6)}, ${resolved.origin.originalLng.toFixed(6)}.`,
-          );
           localNotes.push(
             `Punto accesible de recogida ajustado a calle. El pasajero debe caminar aprox. ${resolved.origin.walkMeters} m.`,
           );

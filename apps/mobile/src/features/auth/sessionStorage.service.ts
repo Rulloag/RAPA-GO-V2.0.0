@@ -3,6 +3,7 @@ import type { UserRole } from "@rapa-go/shared";
 import type { AuthSession } from "./auth.types.js";
 
 const SESSION_KEY = "rapa_go_session";
+const REFRESH_KEY = "rapa_go_refresh_token";
 const VALID_ROLES = new Set<UserRole>([
   "passenger",
   "driver",
@@ -97,11 +98,10 @@ class SessionStorageService {
   }
 
   async clearSession(): Promise<void> {
-    try {
-      await SecureStorage.remove(SESSION_KEY);
-    } catch {
-      // No bloquea el cierre local.
-    }
+    await Promise.allSettled([
+      SecureStorage.remove(SESSION_KEY),
+      SecureStorage.remove(REFRESH_KEY),
+    ]);
   }
 }
 

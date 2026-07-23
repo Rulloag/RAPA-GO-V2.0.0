@@ -1031,7 +1031,7 @@ function normalizePassengerFareType(value: unknown): PassengerFareType | null {
   // Orden seguro:
   // 1) Turista chileno / chileno no residente.
   // 2) Turista extranjero / extranjero.
-  // 3) Residente Rapa Nui.
+  // 3) RAPA NUI / RESIDENTE RAPA NUI.
   // "Turista chileno" contiene la palabra "turista", por eso debe ir antes
   // de la detección genérica de turista/extranjero.
   if (
@@ -1067,12 +1067,17 @@ function normalizePassengerFareType(value: unknown): PassengerFareType | null {
   }
 
   if (
+    raw === "rapanui" ||
+    raw === "rapanui normal" ||
+    raw === "rapa nui normal"
+  ) {
+    return "chilean";
+  }
+
+  if (
     raw.includes("residente rapa nui") ||
-    raw.includes("rapa nui") ||
-    raw.includes("rapanui") ||
-    raw.includes("resident") ||
-    raw.includes("residente") ||
-    raw.includes("local") ||
+    raw === "resident" ||
+    raw === "residente" ||
     raw === "true" ||
     raw === "1"
   ) {
@@ -1149,10 +1154,10 @@ function readPassengerFareType(user?: unknown): PassengerFareType {
 
     if (globalStored && storedBelongsToThisUser) return globalStored;
   } catch {
-    // Si no existe dato guardado, usa residente como valor seguro por defecto.
+    // Si no existe dato guardado, usa Turista chileno como valor seguro por defecto.
   }
 
-  return "resident";
+  return "chilean";
 }
 
 function readAdminFareEngineConfig(): FareEngineConfig | null {
@@ -1232,7 +1237,7 @@ function passengerFareSuffix(type: PassengerFareType): string {
 }
 
 function passengerFareTypeLabel(type: PassengerFareType): string {
-  if (type === "resident") return "Residente Rapa Nui";
+  if (type === "resident") return "RAPA NUI / RESIDENTE RAPA NUI";
   if (type === "chilean") return "Turista chileno";
   return "Turista extranjero";
 }
@@ -1257,7 +1262,7 @@ type ResidentVerificationState = {
 const RESIDENT_VERIFICATION_REQUESTS_KEY = "rapago_resident_verification_requests_v1";
 
 const DEFAULT_RESIDENT_REJECTION_MESSAGE =
-  "Tu documento de Residente Rapa Nui fue rechazado. Por favor elige otro tipo de usuario: Turista chileno o Turista extranjero, o vuelve a adjuntar un documento de residencia válido.";
+  "Tu documento de RAPA NUI / RESIDENTE RAPA NUI fue rechazado. Por favor elige otro tipo de usuario: Turista chileno o Turista extranjero, o vuelve a adjuntar un documento de residencia válido.";
 
 function normalizeResidenceVerificationStatus(value: unknown): ResidenceVerificationStatus | null {
   const raw = String(value ?? "")
@@ -1415,7 +1420,7 @@ function getResidentRequestMessage(
   }
 
   if (status === "approved") {
-    return "Tu documento fue aprobado. Tu tarifa de Residente Rapa Nui ya está habilitada.";
+    return "Tu documento fue aprobado. Tu tarifa de RAPA NUI / RESIDENTE RAPA NUI ya está habilitada.";
   }
 
   if (status === "rejected") {
@@ -1423,11 +1428,11 @@ function getResidentRequestMessage(
   }
 
   if (status === "missing_document") {
-    return "Para usar tarifa de Residente Rapa Nui debes adjuntar un documento de residencia.";
+    return "Para usar tarifa de RAPA NUI / RESIDENTE RAPA NUI debes adjuntar un documento de residencia.";
   }
 
   if (status === "pending") {
-    return "Tu documento de Residente Rapa Nui está pendiente de revisión por el administrador.";
+    return "Tu documento de RAPA NUI / RESIDENTE RAPA NUI está pendiente de revisión por el administrador.";
   }
 
   return "";
@@ -1450,8 +1455,8 @@ function syncResidentVerificationStorage(
       localStorage.setItem("rapago_profile_passenger_type", "resident");
       localStorage.setItem("rapago_fare_passenger_type", "resident");
       localStorage.setItem("rapago_passenger_type", "resident");
-      localStorage.setItem("rapago_profile_nationality", "Residente Rapa Nui");
-      localStorage.setItem("rapago_nationality", "Residente Rapa Nui");
+      localStorage.setItem("rapago_profile_nationality", "RAPA NUI / RESIDENTE RAPA NUI");
+      localStorage.setItem("rapago_nationality", "RAPA NUI / RESIDENTE RAPA NUI");
     }
   } catch {
     // No bloquea la vista del pasajero.
@@ -1960,7 +1965,7 @@ function calculateRapaGoFareFromCompatibilityRules(
 function calculateRapaGoFare(
   km: number,
   minutes?: number,
-  passengerType: PassengerFareType = "resident",
+  passengerType: PassengerFareType = "chilean",
   originOrDestinationText = "",
   vehicleCategory: VehicleFareCategory = "standard",
 ): {
@@ -2346,7 +2351,7 @@ export function PassengerHomePage(): JSX.Element {
             <div style={{ margin: "12px 0 0", background: "#fff3cd", border: "1px solid #ffc107", borderRadius: "12px", padding: "10px 14px" }}>
               <IonText>
                 <p style={{ margin: 0, fontSize: "0.82rem", color: "#6b4700" }}>
-               
+
                 </p>
               </IonText>
             </div>
@@ -5166,6 +5171,7 @@ function TripsPage(): JSX.Element {
   const [ratingRideId,  setRatingRideId]  = useState<string | null>(null);
   const [ratingStars,   setRatingStars]   = useState(5);
   const [ratingComment, setRatingComment] = useState("");
+  const [ratingPrivateComment, setRatingPrivateComment] = useState(false);
   const [submittingRating, setSubmittingRating] = useState(false);
   const [ratingError,   setRatingError]   = useState<string | null>(null);
   const [ratedIds,      setRatedIds]      = useState<Set<string>>(new Set());
@@ -5270,11 +5276,17 @@ function TripsPage(): JSX.Element {
     setSubmittingRating(true);
     setRatingError(null);
     try {
-      await ridesService.rateRide(session.accessToken, ratingRideId, ratingStars, ratingComment.trim() || undefined);
+      await ridesService.rateRide(
+        session.accessToken,
+        ratingRideId,
+        ratingStars,
+        ratingComment.trim() || undefined,
+      );
       setRatedIds((prev) => new Set([...prev, ratingRideId]));
       setRatingRideId(null);
       setRatingStars(5);
       setRatingComment("");
+      setRatingPrivateComment(false);
     } catch (err) {
       setRatingError(safePassengerErrorMessage(err instanceof Error ? err.message : "Error al calificar el viaje."));
     } finally {
@@ -5726,12 +5738,19 @@ function TripsPage(): JSX.Element {
                   rows={2}
                 />
               </IonItem>
+              <IonItem lines="none">
+                <IonLabel>
+                  <div>Comentario solo para RAPA GO</div>
+                  <IonNote>El conductor no verá el texto privado.</IonNote>
+                </IonLabel>
+                <IonToggle checked={ratingPrivateComment} onIonChange={(event) => setRatingPrivateComment(event.detail.checked)} />
+              </IonItem>
               {ratingError && <IonText color="danger"><p style={{ fontSize: "0.82rem", margin: "4px 0" }}>{ratingError}</p></IonText>}
               <div style={{ display: "flex", gap: "8px", marginTop: "8px" }}>
                 <IonButton size="small" onClick={() => void handleSubmitRating()} disabled={submittingRating}>
                   {submittingRating ? <IonSpinner name="dots" /> : "Enviar"}
                 </IonButton>
-                <IonButton size="small" fill="outline" color="medium" onClick={() => setRatingRideId(null)}>
+                <IonButton size="small" fill="outline" color="medium" onClick={() => { setRatingRideId(null); setRatingPrivateComment(false); }}>
                   Cancelar
                 </IonButton>
               </div>

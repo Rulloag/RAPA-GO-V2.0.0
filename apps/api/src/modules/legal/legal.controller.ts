@@ -1,6 +1,7 @@
 import type { FastifyRequest, FastifyReply } from "fastify";
 import { LegalService } from "./legal.service.js";
 import { sendOk, sendError } from "../../shared/http/apiResponse.js";
+import { createLegalAcceptanceSchema, createLegalDocumentSchema, updateLegalDocumentSchema } from "./legal.schemas.js";
 
 const service = new LegalService();
 
@@ -36,8 +37,12 @@ export const legalController = {
   async createDocument(request: FastifyRequest, reply: FastifyReply): Promise<void> {
     const token = extractBearer(request);
     if (!token) { sendError(reply, { code: "UNAUTHORIZED", message: "Missing Bearer token.", statusCode: 401 }); return; }
-    const body = request.body as { type: string; version: string; title: string; content: string; effectiveDate: string };
-    const result = await service.createDocument(token, body);
+    const parsed = createLegalDocumentSchema.safeParse(request.body);
+    if (!parsed.success) {
+      sendError(reply, { code: "VALIDATION_ERROR", message: parsed.error.errors[0]?.message ?? "Documento legal inválido.", statusCode: 400 });
+      return;
+    }
+    const result = await service.createDocument(token, parsed.data);
     if (!result.ok) { sendError(reply, result); return; }
     sendOk(reply, { document: result.document }, 201);
   },
@@ -45,8 +50,22 @@ export const legalController = {
   async updateDocument(request: FastifyRequest<{ Params: { id: string } }>, reply: FastifyReply): Promise<void> {
     const token = extractBearer(request);
     if (!token) { sendError(reply, { code: "UNAUTHORIZED", message: "Missing Bearer token.", statusCode: 401 }); return; }
-    const body = request.body as { title?: string; content?: string; effectiveDate?: string; isActive?: boolean };
-    const result = await service.updateDocument(token, request.params.id, body);
+    const parsed = updateLegalDocumentSchema.safeParse(request.body);
+    if (!parsed.success) {
+      sendError(reply, { code: "VALIDATION_ERROR", message: parsed.error.errors[0]?.message ?? "Documento legal inválido.", statusCode: 400 });
+      return;
+    }
+    const updateInput: {
+      title?: string;
+      content?: string;
+      effectiveDate?: string;
+      isActive?: boolean;
+    } = {};
+    if (parsed.data.title !== undefined) updateInput.title = parsed.data.title;
+    if (parsed.data.content !== undefined) updateInput.content = parsed.data.content;
+    if (parsed.data.effectiveDate !== undefined) updateInput.effectiveDate = parsed.data.effectiveDate;
+    if (parsed.data.isActive !== undefined) updateInput.isActive = parsed.data.isActive;
+    const result = await service.updateDocument(token, request.params.id, updateInput);
     if (!result.ok) { sendError(reply, result); return; }
     sendOk(reply, { document: result.document });
   },
@@ -56,8 +75,12 @@ export const legalController = {
     if (!token) { sendError(reply, { code: "UNAUTHORIZED", message: "Missing Bearer token.", statusCode: 401 }); return; }
     const ip = request.ip ?? (request.socket as { remoteAddress?: string } | undefined)?.remoteAddress ?? undefined;
     const ua = request.headers["user-agent"] ?? undefined;
-    const body = request.body as { legalDocumentId: string; version: string };
-    const result = await service.createAcceptance(token, body, ip, ua);
+    const parsed = createLegalAcceptanceSchema.safeParse(request.body);
+    if (!parsed.success) {
+      sendError(reply, { code: "VALIDATION_ERROR", message: parsed.error.errors[0]?.message ?? "Aceptación inválida.", statusCode: 400 });
+      return;
+    }
+    const result = await service.createAcceptance(token, parsed.data, ip, ua);
     if (!result.ok) { sendError(reply, result); return; }
     sendOk(reply, { acceptance: result.acceptance }, 201);
   },

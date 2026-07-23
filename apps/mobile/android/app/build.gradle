@@ -1,5 +1,14 @@
 apply plugin: 'com.android.application'
 
+def releaseKeystorePath = System.getenv('RAPAGO_ANDROID_KEYSTORE_PATH')
+def releaseKeystorePassword = System.getenv('RAPAGO_ANDROID_KEYSTORE_PASSWORD')
+def releaseKeyAlias = System.getenv('RAPAGO_ANDROID_KEY_ALIAS')
+def releaseKeyPassword = System.getenv('RAPAGO_ANDROID_KEY_PASSWORD')
+def hasReleaseSigning = releaseKeystorePath && releaseKeystorePassword && releaseKeyAlias && releaseKeyPassword
+
+def releaseVersionCode = Integer.parseInt(System.getenv('RAPAGO_VERSION_CODE') ?: '20000')
+def releaseVersionName = System.getenv('RAPAGO_VERSION_NAME') ?: '2.0.0'
+
 android {
     namespace = "cl.rapago.app"
     compileSdk = rootProject.ext.compileSdkVersion
@@ -8,18 +17,31 @@ android {
         applicationId "cl.rapago.app"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 1
-        versionName "1.0"
+        versionCode releaseVersionCode
+        versionName releaseVersionName
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
 
         aaptOptions {
-            // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
             ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
+        }
+    }
+
+    signingConfigs {
+        if (hasReleaseSigning) {
+            release {
+                storeFile file(releaseKeystorePath)
+                storePassword releaseKeystorePassword
+                keyAlias releaseKeyAlias
+                keyPassword releaseKeyPassword
+            }
         }
     }
 
     buildTypes {
         release {
+            if (hasReleaseSigning) {
+                signingConfig signingConfigs.release
+            }
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
         }
@@ -34,7 +56,6 @@ repositories {
 
 apply from: 'capacitor.build.gradle'
 
-
 dependencies {
     implementation fileTree(include: ['*.jar'], dir: 'libs')
     implementation "androidx.appcompat:appcompat:$androidxAppCompatVersion"
@@ -42,4 +63,16 @@ dependencies {
     implementation "androidx.core:core-splashscreen:$coreSplashScreenVersion"
     implementation project(':capacitor-android')
     implementation project(':capacitor-cordova-android-plugins')
+}
+
+tasks.configureEach { task ->
+    if (task.name == 'bundleRelease' || task.name == 'assembleRelease') {
+        task.doFirst {
+            if (!hasReleaseSigning) {
+                throw new GradleException(
+                    'Faltan RAPAGO_ANDROID_KEYSTORE_PATH, RAPAGO_ANDROID_KEYSTORE_PASSWORD, RAPAGO_ANDROID_KEY_ALIAS o RAPAGO_ANDROID_KEY_PASSWORD.'
+                )
+            }
+        }
+    }
 }

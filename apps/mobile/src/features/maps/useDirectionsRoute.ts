@@ -75,8 +75,8 @@ export function useDirectionsRoute(): RouteState & {
       rendererRef.current.setDirections(result);
 
       const leg = result.routes[0]?.legs[0];
-      if (!leg) {
-        setState(set("error", null, "La ruta no devolvió datos de tramo."));
+      if (!leg?.distance || !leg.duration) {
+        setState(set("error", null, "La ruta no devolvió distancia o duración."));
         return;
       }
 

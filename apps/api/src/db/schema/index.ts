@@ -1,6 +1,7 @@
 export * from "./users.schema.js";
 export * from "./auth.schema.js";
 export * from "./authCredentials.schema.js";
+export * from "./authIdentities.schema.js";
 export * from "./passwordResetTokens.schema.js";
 export * from "./facebookLoginExchanges.schema.js";
 export * from "./audit.schema.js";
@@ -11,6 +12,8 @@ export * from "./rides.schema.js";
 export * from "./rideLocationUpdates.schema.js";
 export * from "./ridePolicyCharges.schema.js";
 export * from "./ratings.schema.js";
+export * from "./cashPaymentClosures.schema.js";
+export * from "./paymentWebhookEvents.schema.js";
 export * from "./supportCases.schema.js";
 export * from "./driverStatuses.schema.js";
 export * from "./driverCompliance.schema.js";
@@ -19,13 +22,14 @@ export * from "./driverProfiles.schema.js";
 export * from "./passengerProfiles.schema.js";
 export * from "./payments.schema.js";
 export * from "./wallets.schema.js";
+export * from "./cashOverpaymentRefunds.schema.js";
 export * from "./touristServices.schema.js";
 export * from "./rentalVehicles.schema.js";
 export * from "./servicePricingTiers.schema.js";
 export * from "./notifications.schema.js";
+export * from "./oauthIdentities.schema.js";
 export * from "./rideAssignmentOffers.schema.js";
 export * from "./rideStops.schema.js";
-export * from "./oauthIdentities.schema.js";
 export * from "./whatsappMessages.schema.js";
 
 export {

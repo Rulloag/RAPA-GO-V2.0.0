@@ -10,6 +10,7 @@ import { SessionService } from "../auth/session.service.js";
 import { RidesRepository } from "../rides/rides.repository.js";
 import { UsersRepository } from "../users/users.repository.js";
 import { WalletRepository } from "./wallet.repository.js";
+import { CashPaymentsRepository } from "../cashPayments/cashPayments.repository.js";
 import type {
   AdminCreateWalletCreditInput,
   AdminReviewCashOverpaymentBenefitInput,
@@ -23,6 +24,7 @@ const sessionService = new SessionService();
 const usersRepo = new UsersRepository();
 const ridesRepo = new RidesRepository();
 const walletRepo = new WalletRepository();
+const cashPaymentsRepository = new CashPaymentsRepository();
 
 type AuthResult =
   | { ok: true; userId: string; role: string }
@@ -332,12 +334,16 @@ export class WalletService {
       };
     }
 
-    const fareClp = Math.max(
-      0,
-      Math.round(Number(ride.estimatedFareClp ?? 0)),
-    );
-    const paidClp = Math.max(0, Math.round(Number(input.paidClp)));
-    const requestedAmountClp = paidClp - fareClp;
+    const closure = await walletRepo.findCashPaymentClosureByRideId(ride.id);
+    if (!closure) {
+      return { ok: false as const, code: "CASH_CLOSURE_REQUIRED", message: "El conductor todavía no ha confirmado en el backend el efectivo recibido.", statusCode: 409 };
+    }
+    const fareClp = closure.fareClp;
+    const paidClp = closure.paidClp;
+    const requestedAmountClp = closure.overpaidClp;
+    if (input.paidClp != null && Math.round(input.paidClp) !== paidClp) {
+      return { ok: false as const, code: "CASH_AMOUNT_MISMATCH", message: "El monto informado no coincide con el cierre confirmado por el conductor.", statusCode: 409 };
+    }
 
     if (fareClp <= 0) {
       return {
@@ -355,6 +361,19 @@ export class WalletService {
         message:
           "El total pagado debe ser mayor que la tarifa final del viaje.",
         statusCode: 422,
+      };
+    }
+
+    const existingRefund =
+      await walletRepo.findCashOverpaymentRefundByRideId(ride.id);
+
+    if (existingRefund) {
+      return {
+        ok: false as const,
+        code: "CASH_OVERPAYMENT_RESOLUTION_ALREADY_SELECTED",
+        message:
+          "Este viaje ya tiene una solicitud de devolución bancaria. No puede guardarse también como Beneficio.",
+        statusCode: 409,
       };
     }
 
@@ -389,6 +408,12 @@ export class WalletService {
       requestedAmountClp,
       requestReason: input.reason?.trim() || null,
       updatedAt: new Date(),
+    });
+
+    await cashPaymentsRepository.markResolution({
+      rideRequestId: ride.id,
+      type: "benefit",
+      referenceId: created.id,
     });
 
     return {
@@ -503,6 +528,12 @@ export class WalletService {
         statusCode: 409,
       };
     }
+
+    await cashPaymentsRepository.markResolved({
+      rideRequestId: result.benefit.sourceRideId,
+      type: "benefit",
+      referenceId: result.benefit.id,
+    });
 
     return {
       ok: true as const,

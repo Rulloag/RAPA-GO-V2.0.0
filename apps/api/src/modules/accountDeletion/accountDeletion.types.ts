@@ -3,6 +3,7 @@ export type AccountDeletionRequestStatus =
   | "approved"
   | "processing"
   | "completed"
+  | "deferred"
   | "rejected"
   | "failed"
   | "cancelled";
@@ -33,6 +34,10 @@ export interface AccountDeletionRequestResponse {
   status: AccountDeletionRequestStatus;
   adminNote: string | null;
   requestedAt: string;
+  deadlineAt: string;
+  deferredUntil: string | null;
+  decisionReasonCode: string | null;
+  retentionSummary: string | null;
   reviewedAt: string | null;
   processingAt: string | null;
   completedAt: string | null;
@@ -44,10 +49,14 @@ export interface PublicAccountDeletionStatusResponse {
   trackingCode: string;
   status: AccountDeletionRequestStatus;
   requestedAt: string;
+  deadlineAt: string;
+  deferredUntil: string | null;
+  decisionReasonCode: string | null;
   reviewedAt: string | null;
   completedAt: string | null;
   adminNote: string | null;
   failureReason: string | null;
+  retentionSummary: string | null;
 }
 
 export interface AccountDeletionDocumentSummary {
@@ -119,6 +128,7 @@ export interface AccountDeletionAdminResponse
     activeServiceBookings: number;
     activeRentalBookings: number;
     activeEventTickets: number;
+    openSupportCases: number;
   };
 
   blockers: string[];

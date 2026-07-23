@@ -1,9 +1,9 @@
 import {
   IonAlert,
-  IonBadge, IonButton, IonCard, IonCardContent, IonChip, IonContent, IonHeader,
+  IonBadge, IonButton, IonIcon, IonCard, IonCardContent, IonChip, IonContent, IonHeader,
 IonInfiniteScroll, IonInfiniteScrollContent, IonLabel, IonModal, IonPage,
   IonRefresher, IonRefresherContent, IonSpinner, IonText, IonTextarea, IonTitle,
-  IonToolbar, IonItem, IonToast, IonInput,
+  IonToolbar, IonItem, IonToast, IonInput, IonToggle,
 } from "@ionic/react";
 import { useState, useCallback, useEffect, useRef, type CSSProperties } from "react";
 import { useHistory } from "react-router-dom";
@@ -19,6 +19,7 @@ import { loadRapaGoGoogleMaps } from "../../../components/MapFallback.js";
 import { useAuth } from "../../../features/auth/index.js";
 import { ridesService, type RideRequestData } from "../../../features/rides/rides.service.js";
 import { walletService } from "../../../features/wallet/wallet.service.js";
+import { cashRefundsService } from "../../../features/cashRefunds/cashRefunds.service.js";
 import { ROUTES } from "../../../navigation/routes.js";
 import { RAPAGO_CONTACT, WA_MESSAGES } from "@rapa-go/shared";
 import { RIDE_STATUS_LABEL, RIDE_STATUS_COLOR } from "../shared.js";
@@ -250,7 +251,7 @@ const RAPAGO_FAST_SEARCH_EVENT = "rapago:passenger-fast-search-updated";
 const RAPAGO_FAST_SEARCH_FEE_CLP = 800;
 const RAPAGO_FAST_SEARCH_PROMPT_AFTER_MS = 2 * 60 * 1000;
 // Política comercial RAPA GO:
-// - Cancelación gratuita durante los primeros 2 minutos desde la aceptación/asignación.
+// - Cancelación gratuita durante los primeros 2 minutos desde la aceptación confirmada del conductor.
 // - Desde el minuto 3: 30% de la tarifa aplicable, con tope de $3.000.
 // - No show después de 5 minutos: 50% de la tarifa aplicable, con tope de $5.000.
 // - Viajes programados: cancelación gratuita hasta 30 minutos antes; dentro de los últimos 30 minutos,
@@ -392,6 +393,7 @@ type RapaGoDriverRatingRecord = {
   stars: number;
   comment?: string | null;
   extras?: string[];
+  commentVisibility?: "participants_and_admin" | "admin_only";
   originText?: string | null;
   destinationText?: string | null;
   createdAt: string;
@@ -469,26 +471,28 @@ function getRideDriverRatingKey(ride: Partial<RideRequestData> & Record<string, 
   return "driver:unknown";
 }
 
-function readRapaGoDriverRatings(): RapaGoDriverRatingRecord[] {
+function parseRapaGoDriverRatings(raw: string | null): RapaGoDriverRatingRecord[] {
   try {
-    const raw = localStorage.getItem(RAPAGO_DRIVER_RATINGS_KEY);
     const parsed = raw ? (JSON.parse(raw) as RapaGoDriverRatingRecord[]) : [];
     return Array.isArray(parsed)
       ? parsed.filter((item) => item && typeof item === "object" && Number.isFinite(Number(item.stars)))
       : [];
-  } catch {
-    return [];
-  }
+  } catch { return []; }
+}
+
+function readRapaGoDriverRatings(): RapaGoDriverRatingRecord[] {
+  const sessionItems = parseRapaGoDriverRatings(sessionStorage.getItem(RAPAGO_DRIVER_RATINGS_KEY));
+  return sessionItems.length > 0 ? sessionItems : parseRapaGoDriverRatings(localStorage.getItem(RAPAGO_DRIVER_RATINGS_KEY));
 }
 
 function writeRapaGoDriverRatings(records: RapaGoDriverRatingRecord[]): void {
   try {
-    localStorage.setItem(RAPAGO_DRIVER_RATINGS_KEY, JSON.stringify(records.slice(0, 600)));
-    window.dispatchEvent(new CustomEvent(RAPAGO_DRIVER_RATINGS_EVENT, { detail: { ratings: records } }));
-    window.dispatchEvent(new CustomEvent("rapago:driver-profile-updated", { detail: { ratings: records } }));
-  } catch {
-    // No bloquea la calificación si el navegador no permite guardar.
-  }
+    const limited = records.slice(0, 600);
+    sessionStorage.setItem(RAPAGO_DRIVER_RATINGS_KEY, JSON.stringify(limited));
+    localStorage.setItem(RAPAGO_DRIVER_RATINGS_KEY, JSON.stringify(limited.map((item) => ({ ...item, comment: null }))));
+    window.dispatchEvent(new CustomEvent(RAPAGO_DRIVER_RATINGS_EVENT, { detail: { ratings: limited } }));
+    window.dispatchEvent(new CustomEvent("rapago:driver-profile-updated", { detail: { ratings: limited } }));
+  } catch { /* No bloquea la calificación. */ }
 }
 
 function upsertPassengerDriverRating(
@@ -497,6 +501,7 @@ function upsertPassengerDriverRating(
   comment: string,
   user: unknown,
   extras: string[] = [],
+  commentVisibility: "participants_and_admin" | "admin_only" = "participants_and_admin",
 ): RapaGoDriverRatingRecord {
   const rideRecord = ride as RideRequestData & Record<string, unknown>;
   const rideKey = getPassengerRatingRideKey(rideRecord);
@@ -1639,7 +1644,7 @@ function getPassengerCancellationPolicyForRide(ride: RideRequestData): Passenger
       feeCapClp: RAPAGO_NO_SHOW_FEE_CAP_CLP,
       title: "No presentación por revisar",
       message: `El conductor llegó al punto y esperó 5 minutos. El cargo referencial es ${formatClp(fee)}.`,
-      detail: `No show: ${RAPAGO_NO_SHOW_PERCENT}% de la tarifa aplicable, con tope de ${formatClp(RAPAGO_NO_SHOW_FEE_CAP_CLP)}. El administrador debe validar la llegada, la espera y la evidencia antes de cobrar.`,
+      detail: `No show: ${RAPAGO_NO_SHOW_PERCENT}% de la tarifa aplicable, con tope de ${formatClp(RAPAGO_NO_SHOW_FEE_CAP_CLP)}. El administrador debe validar la llegada, la espera y la evidencia antes de cobrar. Una vez recaudado, el cargo se distribuye 50% al conductor y 50% a Rapa Go.`,
       acceptedElapsedMs,
       arrivedElapsedMs,
       requiresAdminReview: true,
@@ -1707,7 +1712,7 @@ function getPassengerCancellationPolicyForRide(ride: RideRequestData): Passenger
       feePercent: 0,
       feeCapClp: 0,
       title: "Cancelación gratuita",
-      message: "Puedes cancelar gratuitamente durante los primeros 2 minutos desde la aceptación o asignación del conductor.",
+      message: "Puedes cancelar gratuitamente durante los primeros 2 minutos desde que el conductor acepta la solicitud y la aplicación confirma su asignación.",
       detail: "No corresponde cargo por cancelación.",
       acceptedElapsedMs,
       arrivedElapsedMs,
@@ -3463,12 +3468,17 @@ function normalizeRidePassengerFareType(value: unknown): PassengerFareType | nul
   }
 
   if (
+    raw === "rapanui" ||
+    raw === "rapanui normal" ||
+    raw === "rapa nui normal"
+  ) {
+    return "chilean";
+  }
+
+  if (
     raw.includes("residente rapa nui") ||
-    raw.includes("rapa nui") ||
-    raw.includes("rapanui") ||
-    raw.includes("resident") ||
-    raw.includes("residente") ||
-    raw.includes("local") ||
+    raw === "resident" ||
+    raw === "residente" ||
     raw === "true" ||
     raw === "1"
   ) {
@@ -3483,7 +3493,7 @@ function normalizeRidePassengerFareType(value: unknown): PassengerFareType | nul
 }
 
 function passengerFareTypeLabel(type: PassengerFareType): string {
-  if (type === "resident") return "Residente Rapa Nui";
+  if (type === "resident") return "RAPA NUI / RESIDENTE RAPA NUI";
   if (type === "chilean") return "Turista chileno";
   return "Turista extranjero";
 }
@@ -6608,7 +6618,7 @@ function PassengerLiveRouteMap({
 }
 
 
-type PassengerCashPaymentDecision = "exact" | "wallet_credit" | "refund_whatsapp";
+type PassengerCashPaymentDecision = "exact" | "wallet_credit" | "bank_refund" | "refund_whatsapp";
 
 type PassengerCashPaymentReview = {
   id: string;
@@ -6771,7 +6781,7 @@ function savePassengerCashPaymentReview(
     passengerOverpaidClp: input.overpaidClp,
     passengerDecision: input.decision,
     passengerWantsWalletCredit: input.decision === "wallet_credit",
-    passengerWantsRefund: input.decision === "refund_whatsapp",
+    passengerWantsRefund: input.decision === "bank_refund" || input.decision === "refund_whatsapp",
   };
 
   const reviews = readPassengerCashPaymentReviews();
@@ -7001,6 +7011,7 @@ function PassengerCashPaymentAfterRideCard({
   const [showOverpaidForm, setShowOverpaidForm] = useState(false);
   const [paidAmountText, setPaidAmountText] = useState("");
   const [submittingBenefit, setSubmittingBenefit] = useState(false);
+  const [submittingRefund, setSubmittingRefund] = useState(false);
   const [benefitError, setBenefitError] = useState<string | null>(null);
   const [review, setReview] = useState<PassengerCashPaymentReview | null>(() =>
     getPassengerCashPaymentReview(ride),
@@ -7011,6 +7022,7 @@ function PassengerCashPaymentAfterRideCard({
     setShowOverpaidForm(false);
     setPaidAmountText("");
     setSubmittingBenefit(false);
+    setSubmittingRefund(false);
     setBenefitError(null);
   }, [ride.id]);
 
@@ -7096,25 +7108,61 @@ function PassengerCashPaymentAfterRideCard({
     }
   }
 
-  function requestRefund(): void {
-    if (!canConfirmOverpay) return;
+  async function requestRefund(): Promise<void> {
+    if (!canConfirmOverpay || submittingRefund) return;
 
-    const saved = savePassengerCashPaymentReview(ride, {
-      fareClp: displayFareClp,
-      paidClp: paidAmountClp,
-      overpaidClp,
-      decision: "refund_whatsapp",
-      status: "pending_refund",
-      adminReviewStatus: "refund_requested",
-    });
+    if (!session?.accessToken) {
+      setBenefitError(
+        "Tu sesión terminó. Vuelve a iniciar sesión para solicitar la devolución.",
+      );
+      return;
+    }
 
-    setReview(saved);
-    openPassengerRefundWhatsApp(ride, saved);
+    setSubmittingRefund(true);
+    setBenefitError(null);
+
+    try {
+      const refund = await cashRefundsService.request(
+        session.accessToken,
+        {
+          rideId: ride.id,
+          paidClp: paidAmountClp,
+          reason:
+            "El usuario solicita devolución bancaria del dinero pagado de más en efectivo.",
+        },
+      );
+
+      const saved = savePassengerCashPaymentReview(ride, {
+        fareClp: refund.fareClp,
+        paidClp: refund.paidClp,
+        overpaidClp: refund.requestedAmountClp,
+        decision: "bank_refund",
+        status: "pending_refund",
+        adminReviewStatus:
+          refund.status === "completed"
+            ? "refund_completed"
+            : "refund_requested",
+      });
+
+      setReview(saved);
+      setShowOverpaidForm(false);
+      setPaidAmountText("");
+    } catch (err) {
+      setBenefitError(
+        err instanceof Error
+          ? err.message
+          : "No se pudo solicitar la devolución bancaria.",
+      );
+    } finally {
+      setSubmittingRefund(false);
+    }
   }
 
   if (review) {
     const isWallet = review.decision === "wallet_credit";
-    const isRefund = review.decision === "refund_whatsapp";
+    const isRefund =
+      review.decision === "bank_refund" ||
+      review.decision === "refund_whatsapp";
 
     return (
       <div
@@ -7131,7 +7179,7 @@ function PassengerCashPaymentAfterRideCard({
         <div style={{ fontWeight: 950, fontSize: ".9rem" }}>
           {review.decision === "exact" && "✅ Pago en efectivo confirmado"}
           {isWallet && "💚 Saldo para próximo viaje enviado a revisión"}
-          {isRefund && "📲 Devolución solicitada por WhatsApp"}
+          {isRefund && "🏦 Devolución bancaria enviada a revisión"}
         </div>
 
         <div style={{ marginTop: 5, fontSize: ".78rem", lineHeight: 1.35, fontWeight: 800 }}>
@@ -7143,19 +7191,19 @@ function PassengerCashPaymentAfterRideCard({
           )}
           {isRefund && (
             <>
-              Abrimos WhatsApp con el detalle de la devolución por <strong>{formatClp(review.overpaidClp)}</strong>. También quedó registrado para revisión del administrador.
+              La devolución por <strong>{formatClp(review.overpaidClp)}</strong> quedó registrada en el backend y pendiente de revisión administrativa. El depósito se realizará en la cuenta bancaria registrada en tu Perfil.
             </>
           )}
         </div>
 
-        {isRefund && (
+        {review.decision === "refund_whatsapp" && (
           <IonButton
             size="small"
             color="warning"
             style={{ "--border-radius": "999px", marginTop: 8, fontWeight: 950 } as React.CSSProperties}
             onClick={() => openPassengerRefundWhatsApp(ride, review)}
           >
-            Abrir WhatsApp de devolución
+            Abrir WhatsApp de devolución anterior
           </IonButton>
         )}
       </div>
@@ -7236,7 +7284,7 @@ function PassengerCashPaymentAfterRideCard({
           <div style={{ color: "rgba(255,255,255,.82)", fontSize: ".76rem", lineHeight: 1.35, fontWeight: 800 }}>
             {canConfirmOverpay ? (
               <>
-                Has pagado de más: <strong>{formatClp(overpaidClp)}</strong>. ¿Quieres usar ese dinero como saldo a favor o quieres que te devolvamos ese dinero por WhatsApp?
+                Has pagado de más: <strong>{formatClp(overpaidClp)}</strong>. ¿Quieres usar ese dinero como saldo a favor o solicitar una devolución a tu cuenta bancaria registrada?
               </>
             ) : (
               <>
@@ -7276,11 +7324,13 @@ function PassengerCashPaymentAfterRideCard({
             <IonButton
               size="small"
               color="warning"
-              disabled={!canConfirmOverpay}
+              disabled={!canConfirmOverpay || submittingRefund}
               style={{ "--border-radius": "999px", fontWeight: 950 } as React.CSSProperties}
-              onClick={requestRefund}
+              onClick={() => void requestRefund()}
             >
-              Quiero que me devuelvan ese dinero
+              {submittingRefund
+                ? "Enviando devolución…"
+                : "Solicitar devolución bancaria"}
             </IonButton>
 
             <IonButton
@@ -8505,6 +8555,7 @@ export default function TripsPage(): JSX.Element {
   const [ratingStars,      setRatingStars]      = useState(5);
   const [ratingComment,    setRatingComment]    = useState("");
   const [ratingExtras,     setRatingExtras]     = useState<string[]>([]);
+  const [ratingPrivateComment, setRatingPrivateComment] = useState(false);
   const [submittingRating, setSubmittingRating] = useState(false);
   const [ratingError,      setRatingError]      = useState<string | null>(null);
   const [ratedIds,         setRatedIds]         = useState<Set<string>>(new Set());
@@ -9003,7 +9054,8 @@ export default function TripsPage(): JSX.Element {
       ].filter(Boolean).join("\n");
 
       // Primero guardamos localmente para que el conductor vea sus estrellas al instante.
-      upsertPassengerDriverRating(targetRide, ratingStars, ratingCommentWithExtras, session?.user, ratingExtras);
+      const commentVisibility = ratingPrivateComment ? "admin_only" : "participants_and_admin";
+      upsertPassengerDriverRating(targetRide, ratingStars, ratingCommentWithExtras, session?.user, ratingExtras, commentVisibility);
 
       if (
         session?.accessToken &&
@@ -9040,6 +9092,7 @@ export default function TripsPage(): JSX.Element {
       setRatingStars(5);
       setRatingComment("");
       setRatingExtras([]);
+      setRatingPrivateComment(false);
     } catch (err) {
       const message = err instanceof Error ? err.message : "Error al calificar el viaje.";
       setRatingError(safeTripsErrorMessage(message) ?? "No se pudo guardar la calificación.");
@@ -9620,6 +9673,19 @@ export default function TripsPage(): JSX.Element {
                     />
                   </IonItem>
 
+                  <IonItem lines="none" style={{ "--background": "transparent", "--padding-start": "0" } as CSSProperties}>
+                    <IonLabel>
+                      <div style={{ fontWeight: 900 }}>Comentario solo para RAPA GO</div>
+                      <div style={{ fontSize: ".74rem", color: "#6B7280" }}>
+                        Al activarlo, el conductor no verá el texto. La calificación numérica sí cuenta para su promedio.
+                      </div>
+                    </IonLabel>
+                    <IonToggle
+                      checked={ratingPrivateComment}
+                      onIonChange={(event) => setRatingPrivateComment(event.detail.checked)}
+                    />
+                  </IonItem>
+
                   {ratingError && (
                     <IonText color="danger">
                       <p style={{ fontSize: "0.82rem", margin: "8px 0 0", fontWeight: 850 }}>
@@ -9637,6 +9703,7 @@ export default function TripsPage(): JSX.Element {
                         setRatingRideId(null);
                         setRatingExtras([]);
                         setRatingComment("");
+                        setRatingPrivateComment(false);
                         setRatingError(null);
                       }}
                       disabled={submittingRating}

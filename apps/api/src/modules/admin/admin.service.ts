@@ -25,6 +25,24 @@ const offlineRepo      = new OfflineRepository();
 const ridesRepo        = new RidesRepository();
 const offersRepo       = new RideAssignmentOffersRepository();
 
+const RESIDENCE_DOCUMENT_TYPES = new Set([
+  "rapa_nui_residence",
+  "residence_document",
+  "rapanui_residence",
+  "resident_certificate",
+  "rapa_nui_resident_certificate",
+  "residente_rapa_nui_document",
+]);
+
+function isResidenceDocumentType(value: string): boolean {
+  const normalized = value.trim().toLowerCase();
+  return (
+    RESIDENCE_DOCUMENT_TYPES.has(normalized) ||
+    normalized.includes("residen") ||
+    normalized.includes("rapa")
+  );
+}
+
 function toRideResponse(r: AdminRideRow): AdminRideResponse {
   return {
     id:                 r.id,
@@ -218,15 +236,57 @@ export class AdminService {
       return { ok: false, code: "NOT_FOUND", message: "Document not found.", statusCode: 404 };
     }
 
-    const rejectionReason = input.status === "approved" ? null : (input.rejectionReason ?? null);
-    const updated = await adminRepo.reviewDocument(documentId, input.status, rejectionReason);
+    const rejectionReason =
+      input.status === "approved" ? null : (input.rejectionReason ?? null);
+    const isResidenceDocument = isResidenceDocumentType(existing.documentType);
+
+    if (
+      isResidenceDocument &&
+      input.status === "rejected" &&
+      !input.reclassifiedFareType
+    ) {
+      return {
+        ok: false,
+        code: "ADMIN_RESIDENCE_RECLASSIFICATION_REQUIRED",
+        message:
+          "Debes elegir Turista chileno o Turista extranjero al rechazar la acreditación.",
+        statusCode: 400,
+      };
+    }
+
+    const updated = isResidenceDocument
+      ? await adminRepo.reviewResidenceDocument({
+          documentId,
+          adminUserId: auth.userId,
+          status: input.status,
+          rejectionReason,
+          ...(input.reclassifiedFareType
+            ? { reclassifiedFareType: input.reclassifiedFareType }
+            : {}),
+        })
+      : await adminRepo.reviewDocument(
+          documentId,
+          input.status,
+          rejectionReason,
+        );
+
     if (!updated) {
       return { ok: false, code: "NOT_FOUND", message: "Document not found.", statusCode: 404 };
     }
 
     auditService.recordSafe({
       eventType: "admin.document_reviewed",
-      metadata:  { adminUserId: auth.userId, documentId, previousStatus: existing.status, newStatus: input.status },
+      metadata: {
+        adminUserId: auth.userId,
+        documentId,
+        previousStatus: existing.status,
+        newStatus: input.status,
+        fareType: isResidenceDocument
+          ? input.status === "approved"
+            ? "resident"
+            : (input.reclassifiedFareType ?? null)
+          : null,
+      },
     });
 
     return { ok: true, document: toDocResponse(updated) };

@@ -1,34 +1,65 @@
-import type { AuthUser, AuthSession, AuthStatus, LoginRequest, RegisterRequest, AuthResponse, UserRole } from "@rapa-go/shared";
+import type {
+  AuthUser,
+  AuthSession,
+  AuthStatus,
+  LoginRequest,
+  RegisterRequest,
+  AuthResponse,
+  ResidenceAccreditationInput,
+  UserRole,
+} from "@rapa-go/shared";
 
-export type { AuthUser, AuthSession, AuthStatus, LoginRequest, RegisterRequest, AuthResponse };
+export type {
+  AuthUser,
+  AuthSession,
+  AuthStatus,
+  LoginRequest,
+  RegisterRequest,
+  AuthResponse,
+};
+
+export type ApplePassengerFareType =
+  | "resident"
+  | "chilean"
+  | "foreigner";
+
+export interface AppleLegalAcceptance {
+  legalDocumentId: string;
+  version: string;
+}
 
 /**
  * Payload sent to POST /api/auth/apple.
  *
- * SECURITY: intentionally has no `email`, `sub`, or `isPrivateEmail` field —
- * the backend takes those exclusively from the verified identityToken.
+ * SECURITY: email, Apple subject and private-email status are intentionally
+ * absent. The backend takes them only from the verified Apple identity token.
  */
 export interface AppleSignInRequest {
   identityToken: string;
   authorizationCode: string;
-  /** Raw (unhashed) nonce — the backend hashes it once itself to compare. */
+  /** Raw nonce; the backend hashes it once when verifying Apple's token. */
   nonce: string;
   name?: {
     givenName?: string;
     familyName?: string;
   };
-  /** Only sent when the backend needs it to create a brand-new account. */
+  /** Required only for creation of a new account. */
   role?: UserRole;
+  phone?: string;
+  passengerFareType?: ApplePassengerFareType;
+  legalAcceptances?: AppleLegalAcceptance[];
+  residenceAccreditation?: ResidenceAccreditationInput;
 }
 
-/** Shape exposed by the AuthContext to the rest of the app. */
+/** Shape exposed by AuthContext. */
 export interface AuthContextValue {
   status: AuthStatus;
   user: AuthUser | null;
-  /** Session is persisted via SessionStorageService (native Keychain/Keystore). */
+  /** Session is persisted through SessionStorageService. */
   session: AuthSession | null;
   login: (payload: LoginRequest) => Promise<AuthResponse>;
   register: (payload: RegisterRequest) => Promise<AuthResponse>;
   signInWithApple: (payload: AppleSignInRequest) => Promise<AuthResponse>;
+  refreshSession: () => Promise<void>;
   logout: () => Promise<void>;
 }

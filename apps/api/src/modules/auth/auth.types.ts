@@ -26,10 +26,46 @@ export type PasswordResetServiceResult =
       statusCode: number;
     };
 export type FacebookLoginPreparationResult =
-  | { ok: true; exchangeCode: string }
+  | {
+      ok: true;
+      kind: "login";
+      exchangeCode: string;
+    }
+  | {
+      ok: true;
+      kind: "setup";
+      setupCode: string;
+    }
+  | {
+      ok: true;
+      kind: "link_existing";
+      linkCode: string;
+      email: string;
+      facebookId: string;
+      name: string;
+      avatarUrl?: string | null;
+    }
   | {
       ok: false;
       code: string;
       message: string;
       statusCode?: number;
+    };
+
+export type AuthActionResult =
+  | { ok: true; message: string }
+  | {
+      ok: false;
+      code: string;
+      message: string;
+      statusCode: number;
+    };
+
+export type FacebookLinkStartResult =
+  | { ok: true; linkCode: string }
+  | {
+      ok: false;
+      code: string;
+      message: string;
+      statusCode: number;
     };

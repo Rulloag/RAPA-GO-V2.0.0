@@ -38,7 +38,7 @@ export function LegalPage(): React.ReactElement {
   }, [type]);
 
   const title = TYPE_TITLES[type ?? ""] ?? "Documento Legal";
-  const placeholder = "Este documento está en preparación. Será actualizado próximamente por el equipo legal de Rapa Go.";
+  const unavailable = "Este documento legal no está disponible en este momento. No puedes aceptarlo ni continuar una operación que lo requiera. Comunícate con privacidad@rapago.cl o soporte@rapago.cl.";
 
   return (
     <IonPage>
@@ -59,7 +59,7 @@ export function LegalPage(): React.ReactElement {
               </div>
             )}
             <div style={{ whiteSpace: "pre-wrap", lineHeight: 1.7 }}>
-              {doc?.content ?? placeholder}
+              {doc?.content ?? unavailable}
             </div>
             {doc && (
               <p style={{ marginTop: "2rem", textAlign: "center" }}>

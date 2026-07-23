@@ -1,0 +1,41 @@
+# RAPA GO — Matriz de datos personales
+
+**Versión:** 1.0
+**Ámbito:** pasajero, conductor, administrador, guías, rent a car y soporte.
+**Regla general:** el backend es la fuente de verdad. La aplicación cliente solo conserva preferencias visuales y copias temporales no autoritativas que se eliminan al cerrar sesión.
+
+| Categoría / dato | Titular | Finalidad | Base operacional | Almacenamiento principal | Acceso autorizado | Proveedor relacionado | Conservación / eliminación |
+|---|---|---|---|---|---|---|---|
+| ID interno, nombre, correo y teléfono | Todos | Crear y operar la cuenta | Ejecución del servicio | PostgreSQL | Titular, soporte y administradores autorizados | Supabase/hosting | Mientras la cuenta esté activa; luego eliminación o anonimización según la política de cuenta |
+| RUT o pasaporte | Pasajero/conductor | Identidad, prevención de duplicados y requisitos operacionales | Verificación solicitada por el servicio | PostgreSQL | Titular y administradores autorizados | Supabase/hosting | Hasta cierre de cuenta, salvo obligación o controversia pendiente |
+| Nacionalidad y tipo tarifario solicitado/efectivo | Pasajero/conductor como usuario | Aplicar tarifa y validar residencia | Ejecución del servicio | PostgreSQL | Titular, operación y administradores | Supabase/hosting | Mientras sea necesario para tarifas, auditoría y reclamos |
+| Documento de residencia Rapa Nui | Usuario que solicita tarifa residente | Verificar categoría tarifaria | Solicitud del titular | Almacenamiento documental/backend | Titular y revisores administrativos | Infraestructura de archivos configurada | Se elimina o anonimiza al cerrar cuenta cuando no exista obligación de conservación |
+| Contraseña cifrada y proveedores de identidad | Todos | Autenticación y recuperación | Seguridad y ejecución del servicio | PostgreSQL; hash Argon2; tabla de identidades | Sistemas de autenticación; administradores no ven contraseña | Meta para Facebook cuando se usa | Hasta desvinculación o eliminación de cuenta |
+| Tokens y sesiones | Todos | Mantener acceso autenticado | Seguridad | Backend; token local en almacenamiento seguro nativo | Titular y sistema de autenticación | Secure Storage del dispositivo | Sesión vigente; se revocan al cerrar sesión o eliminar cuenta |
+| Foto de perfil | Pasajero/conductor | Identificación durante el servicio | Ejecución del servicio | Backend/URL de archivo | Titular, contraparte del viaje y operación | Infraestructura de archivos configurada | Mientras la cuenta esté activa o exista viaje/reclamo relacionado |
+| Licencia, documentos del conductor y antecedentes operacionales | Conductor | Evaluar y habilitar al conductor | Ejecución y seguridad | PostgreSQL/archivos | Conductor y administradores autorizados | Infraestructura de archivos configurada | Mientras sea conductor y por el período de auditoría definido |
+| Marca, modelo, color, año, patente y foto de vehículo | Conductor | Mostrar el vehículo asignado y verificar consistencia | Ejecución y seguridad | PostgreSQL/archivos | Conductor, pasajero del viaje y administradores | Infraestructura de archivos configurada | Mientras el vehículo esté activo y durante reclamos asociados |
+| Coordenadas de origen y destino | Pasajero | Solicitar y calcular el viaje | Ejecución del servicio | PostgreSQL | Pasajero, conductor asignado y operación | Google Maps | Durante la operación y el período necesario para viajes, soporte y auditoría |
+| Ubicación en tiempo real durante viaje | Pasajero/conductor | Seguimiento, seguridad y evidencia de ruta | Ejecución y seguridad | Backend; copia temporal en `sessionStorage` | Participantes del viaje y administradores autorizados | Google Maps/servicios del dispositivo | Solo durante el flujo activo; la copia cliente desaparece al cerrar sesión/navegador |
+| Historial y estados de viaje | Pasajero/conductor | Prestación, soporte, liquidación y auditoría | Ejecución del servicio | PostgreSQL | Titular, contraparte limitada y administradores | Supabase/hosting | Según período operacional, reclamos y obligaciones aplicables |
+| Calificaciones y comentario de viaje | Pasajero/conductor | Calidad y seguridad | Interés operacional y ejecución | PostgreSQL | Titular según corresponda y administradores | Supabase/hosting | Mientras sea necesario para calidad, seguridad y controversias |
+| Comentarios privados, incidencias y fotografías adjuntas | Participantes | Resolver seguridad, cancelaciones y reclamos | Solicitud del titular/seguridad | PostgreSQL/archivos | Participantes autorizados y administradores | Infraestructura de archivos configurada | Hasta cierre del caso y período de auditoría; luego anonimización/eliminación |
+| Datos de órdenes y transacciones con tarjeta | Pagador | Procesar, conciliar y devolver pagos | Ejecución del pago | PostgreSQL; proveedor de pago | Titular y administradores financieros | Mercado Pago | Según conciliación, contracargos y obligaciones financieras |
+| No se almacenan número completo, CVV ni credenciales de tarjeta | Pagador | Minimización | Seguridad | No se almacenan en RAPA GO | No aplica | Mercado Pago procesa esos datos | Según políticas del proveedor |
+| Pago en efectivo, tarifa, monto informado y exceso | Pasajero/conductor como usuario | Cerrar viaje y gestionar Beneficio o devolución | Ejecución del servicio | PostgreSQL | Titular y administradores financieros | Supabase/hosting | Según conciliación y reclamos |
+| Beneficio por pago de más | Cuenta pagadora | Descontar del próximo viaje de la misma cuenta | Solicitud y aprobación administrativa | PostgreSQL | Titular y administradores financieros | Supabase/hosting | Hasta uso, rechazo o eliminación/anonimización aplicable |
+| Titular, banco, tipo y número de cuenta bancaria | Usuario que solicita devolución | Realizar devolución aprobada | Solicitud del titular | PostgreSQL; número completo cifrado AES-256-GCM | Titular ve últimos 4; número completo solo admin financiero al abrir detalle | Banco receptor fuera de la plataforma | Mientras exista devolución o controversia; luego se elimina/anonimiza conforme a política |
+| Referencia y comprobante de transferencia | Usuario | Evidenciar devolución | Ejecución y auditoría | PostgreSQL/URL de comprobante | Titular y administradores financieros | Infraestructura de archivos configurada | Según período financiero y de reclamos |
+| Solicitudes de soporte, folio y mensajes | Solicitante | Atender consultas, reclamos y emergencias | Solicitud del titular/seguridad | PostgreSQL | Solicitante y equipo autorizado | Correo/WhatsApp cuando el usuario los usa | Hasta cierre y período de auditoría; luego anonimización/eliminación |
+| Solicitud de eliminación, motivo, seguimiento y decisión | Usuario | Cumplir derecho de eliminación y auditar la decisión | Solicitud del titular | PostgreSQL | Titular y administradores autorizados | Correo para verificación | Hasta completar y por el período mínimo necesario para demostrar cumplimiento |
+| Dirección IP, user-agent, logs y eventos de error | Usuarios | Seguridad, prevención de fraude y diagnóstico | Seguridad e interés operacional | Logs del backend/observabilidad | Personal técnico autorizado | Hosting; Sentry solo si está configurado | Período corto y limitado; sin secretos, contraseñas ni números bancarios completos |
+| Idioma y modo visual | Usuario | Preferencias de interfaz | Preferencia del usuario | `localStorage` permitido | Solo dispositivo del usuario | Ninguno | Hasta que el usuario lo cambie o borre datos del navegador |
+
+## Controles obligatorios
+
+1. No registrar contraseñas, códigos de verificación, tokens, CVV, secretos ni números bancarios completos en logs.
+2. El número de cuenta bancaria se cifra con una clave exclusiva del servidor (`BANK_ACCOUNT_ENCRYPTION_KEY`).
+3. Solo el administrador financiero autenticado puede solicitar el descifrado temporal de una cuenta para ejecutar una transferencia.
+4. La aplicación elimina copias locales personales y operacionales al cerrar sesión, al revocar la sesión o antes de autenticar otra cuenta.
+5. Los proveedores y SDK activos se mantienen en `docs/privacy/PROVIDERS_AND_SDK.md`.
+6. Los plazos concretos de conservación deben ajustarse a obligaciones legales y contractuales antes de publicación final.

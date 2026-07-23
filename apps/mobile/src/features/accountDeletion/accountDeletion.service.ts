@@ -8,6 +8,7 @@ export type AccountDeletionRequestStatus =
   | "approved"
   | "processing"
   | "completed"
+  | "deferred"
   | "rejected"
   | "failed"
   | "cancelled";
@@ -38,6 +39,10 @@ export interface AccountDeletionRequestData {
   status: AccountDeletionRequestStatus;
   adminNote: string | null;
   requestedAt: string;
+  deadlineAt: string;
+  deferredUntil: string | null;
+  decisionReasonCode: string | null;
+  retentionSummary: string | null;
   reviewedAt: string | null;
   processingAt: string | null;
   completedAt: string | null;
@@ -114,6 +119,7 @@ export interface AdminAccountDeletionRequestData
     activeServiceBookings: number;
     activeRentalBookings: number;
     activeEventTickets: number;
+    openSupportCases: number;
   };
 
   blockers: string[];
@@ -153,9 +159,24 @@ export const accountDeletionService = {
     );
   },
 
+  async requestVerificationCode(
+    accessToken: string,
+  ): Promise<{ message: string; expiresMinutes: number }> {
+    const result = await apiClient.post<
+      Envelope<{ message: string; expiresMinutes: number }>
+    >(
+      "/account-deletion/reauth/code",
+      {},
+      { token: accessToken },
+    );
+
+    return unwrap(result, "No se pudo enviar el código de verificación.");
+  },
+
   async create(
     accessToken: string,
     payload: {
+      verificationCode: string;
       reason: string;
       comment?: string;
       requesterSnapshot?: AccountDeletionClientSnapshot;
@@ -215,22 +236,33 @@ export const accountDeletionService = {
     );
   },
 
-  async reject(
+  async defer(
     accessToken: string,
     requestId: string,
-    note: string,
+    payload: {
+      reasonCode:
+        | "active_ride"
+        | "pending_payment"
+        | "wallet_balance"
+        | "open_claim"
+        | "chargeback_or_fraud"
+        | "identity_unverified"
+        | "legal_retention";
+      note: string;
+      deferUntil?: string;
+    },
   ): Promise<AccountDeletionRequestData> {
     const result = await apiClient.post<
       Envelope<AccountDeletionRequestData>
     >(
-      `/admin/account-deletion/requests/${requestId}/reject`,
-      { note },
+      `/admin/account-deletion/requests/${requestId}/defer`,
+      payload,
       { token: accessToken },
     );
 
     return unwrap(
       result,
-      "No se pudo rechazar la solicitud.",
+      "No se pudo aplazar la solicitud.",
     );
   },
 };

@@ -5,6 +5,7 @@ export const ACCOUNT_DELETION_STATUSES = [
   "approved",
   "processing",
   "completed",
+  "deferred",
   "rejected",
   "failed",
   "cancelled",
@@ -43,6 +44,10 @@ export const accountDeletionClientSnapshotSchema = z.object({
 });
 
 export const createAccountDeletionRequestSchema = z.object({
+  verificationCode: z
+    .string()
+    .trim()
+    .regex(/^\d{6}$/, "El código de verificación debe tener 6 números."),
   reason: reasonSchema,
   comment: commentSchema,
   requesterSnapshot: accountDeletionClientSnapshotSchema.optional(),
@@ -108,3 +113,25 @@ export const reviewAccountDeletionRequestSchema = z.object({
 
 export type ReviewAccountDeletionRequestInput =
   z.infer<typeof reviewAccountDeletionRequestSchema>;
+
+
+export const deferAccountDeletionRequestSchema = z.object({
+  reasonCode: z.enum([
+    "active_ride",
+    "pending_payment",
+    "wallet_balance",
+    "open_claim",
+    "chargeback_or_fraud",
+    "identity_unverified",
+    "legal_retention",
+  ]),
+  note: z
+    .string()
+    .trim()
+    .min(3, "Debes explicar la causa objetiva del aplazamiento.")
+    .max(1000, "La observación no puede superar 1000 caracteres."),
+  deferUntil: z.string().datetime().optional(),
+});
+
+export type DeferAccountDeletionRequestInput =
+  z.infer<typeof deferAccountDeletionRequestSchema>;

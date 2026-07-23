@@ -73,82 +73,15 @@ export interface PlaceAutocompleteResult {
   position: LatLng;
 }
 
-// ── Google Maps ambient instance types (no @types/google.maps needed) ────────
+// ── Google Maps SDK instance aliases ─────────────────────────────────────────
+//
+// The project includes @types/google.maps. Reusing the official SDK types
+// avoids incompatible duplicate declarations across maps, places and routes.
 
-export interface GoogleMapInstance {
-  setCenter(latLng: unknown): void;
-  setZoom(zoom: number): void;
-}
-
-export interface GoogleMarkerInstance {
-  setMap(map: GoogleMapInstance | null): void;
-  setPosition(latLng: unknown): void;
-}
-
-export interface GoogleDirectionsResult {
-  routes: Array<{
-    legs: Array<{
-      distance: { text: string; value: number };
-      duration: { text: string; value: number };
-    }>;
-  }>;
-}
-
-export interface GoogleDirectionsService {
-  route(request: Record<string, unknown>): Promise<GoogleDirectionsResult>;
-}
-
-export interface GoogleDirectionsRenderer {
-  setMap(map: GoogleMapInstance | null): void;
-  setDirections(result: GoogleDirectionsResult): void;
-}
-
-export interface GooglePlace {
-  name?:              string;
-  formatted_address?: string;
-  geometry?: {
-    location: {
-      lat(): number;
-      lng(): number;
-    };
-  };
-}
-
-export interface GoogleAutocomplete {
-  addListener(event: string, handler: () => void): { remove(): void };
-  getPlace(): GooglePlace;
-  setBounds(bounds: unknown): void;
-}
-
-// ── Ambient window augmentation ──────────────────────────────────────────────
-
-declare global {
-  interface Window {
-    google?: {
-      maps?: {
-        Map?:                new (container: HTMLElement, opts: Record<string, unknown>) => GoogleMapInstance;
-        Marker?:             new (opts: Record<string, unknown>) => GoogleMarkerInstance;
-        LatLng?:             new (lat: number, lng: number) => unknown;
-        DirectionsService?:  new () => GoogleDirectionsService;
-        DirectionsRenderer?: new (opts?: Record<string, unknown>) => GoogleDirectionsRenderer;
-        TravelMode?: {
-          DRIVING:   string;
-          WALKING:   string;
-          BICYCLING: string;
-          TRANSIT:   string;
-        };
-        event?: {
-          clearInstanceListeners(instance: unknown): void;
-        };
-        places?: {
-          Autocomplete?: new (
-            input: HTMLInputElement,
-            opts?: Record<string, unknown>,
-          ) => GoogleAutocomplete;
-        };
-        /** Available when SDK loaded with loading=async */
-        importLibrary?: (libraryName: string) => Promise<Record<string, unknown>>;
-      };
-    };
-  }
-}
+export type GoogleMapInstance = google.maps.Map;
+export type GoogleMarkerInstance = google.maps.Marker;
+export type GoogleDirectionsResult = google.maps.DirectionsResult;
+export type GoogleDirectionsService = google.maps.DirectionsService;
+export type GoogleDirectionsRenderer = google.maps.DirectionsRenderer;
+export type GooglePlace = google.maps.places.PlaceResult;
+export type GoogleAutocomplete = google.maps.places.Autocomplete;

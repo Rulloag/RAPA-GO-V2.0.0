@@ -1,9 +1,7 @@
 import { IonRouterOutlet } from "@ionic/react";
-import { Redirect, Route, Switch } from "react-router-dom";
+import { Redirect, Route, useLocation } from "react-router-dom";
 import { ROUTES } from "./routes";
-import { RouteGuard, ROLE_HOME } from "./RouteGuard";
-import { useAuth } from "../features/auth";
-import { WelcomePage } from "../pages/WelcomePage";
+import { RouteErrorBoundary } from "./RouteErrorBoundary.js";
 import { NotFoundPage } from "../pages/NotFoundPage";
 import { LoginPage, RegisterPage } from "../features/auth";
 import { FacebookCallbackPage } from "../features/auth/FacebookCallbackPage";
@@ -23,8 +21,6 @@ import {
 } from "../pages/profile";
 import { NotificationPage } from "../pages/notifications/NotificationPage";
 import { SupportCenterPage } from "../pages/support/SupportCenterPage.js";
-import { RatingSyncRuntime } from "../features/ratings/RatingSyncRuntime.js";
-import { SupportQuickAccess } from "../features/support/SupportQuickAccess.js";
 import {
   ApplicationDriverPage,
   ApplicationGuidePage,
@@ -38,127 +34,138 @@ import {
   SupportPublicPage,
   TermsPublicPage,
 } from "../pages/public/PublicLegalPages.js";
+import { RELEASE_FEATURES } from "../config/releaseFeatures.js";
 
-function getPreferredHome(role: string): string {
-  const mode =
-    localStorage.getItem("rapago_active_role") ??
-    localStorage.getItem("rapago_selected_role") ??
-    localStorage.getItem("rapago_view_mode") ??
-    localStorage.getItem("rapago_active_mode");
+/**
+ * MODO DE RECUPERACIÓN VISUAL
+ *
+ * No se aplican bloqueos, validaciones de rol ni redirecciones por sesión en
+ * el frontend. La API sigue siendo la responsable de autorizar operaciones y
+ * datos privados.
+ *
+ * Importante: los layouts con pestañas se renderizan fuera del
+ * IonRouterOutlet superior. De este modo nunca se anida un IonRouterOutlet
+ * dentro de otro, una combinación que puede dejar las IonPage ocultas y
+ * producir una pantalla negra sin errores en consola.
+ */
 
-  if (role === "driver" && mode === "passenger") {
-    return ROUTES.PASSENGER.HOME;
-  }
-
-  if (role === "driver" && mode === "driver") {
-    return ROUTES.DRIVER.HOME;
-  }
-
-  return ROLE_HOME[role as keyof typeof ROLE_HOME] ?? ROUTES.WELCOME;
+function isPathInside(pathname: string, base: string): boolean {
+  return pathname === base || pathname.startsWith(`${base}/`);
 }
 
-function PrivateRoute({
-  path,
-  component: Component,
-  exact,
-}: {
-  path: string;
-  component: React.ComponentType;
-  exact?: boolean;
-}): JSX.Element {
+function StandaloneRoutes(): JSX.Element {
   return (
-    <Route
-      path={path}
-      exact={exact}
-      render={() => (
-        <RouteGuard path={path}>
-          <Component />
-        </RouteGuard>
-      )}
-    />
-  );
-}
+    <IonRouterOutlet animated={false} className="rapago-root-outlet">
+      <Route exact path={ROUTES.ROOT} component={LoginPage} />
+      <Route exact path={ROUTES.WELCOME} component={LoginPage} />
+      <Route exact path={ROUTES.AUTH.BASE} component={LoginPage} />
+      <Route exact path={ROUTES.AUTH.LOGIN} component={LoginPage} />
+      <Route exact path={ROUTES.AUTH.REGISTER} component={RegisterPage} />
+      <Route
+        exact
+        path={ROUTES.AUTH.FACEBOOK_CALLBACK}
+        component={FacebookCallbackPage}
+      />
+      <Route
+        exact
+        path="/auth/forgot-password"
+        component={ForgotPasswordPage}
+      />
+      <Route
+        exact
+        path="/auth/reset-password"
+        component={ResetPasswordPage}
+      />
 
-function AuthRoute({
-  path,
-  component: Component,
-}: {
-  path: string;
-  component: React.ComponentType;
-}): JSX.Element {
-  const { status, user } = useAuth();
+      <Route exact path={ROUTES.PUBLIC.PRIVACY} component={PrivacyPublicPage} />
+      <Route exact path={ROUTES.PUBLIC.TERMS} component={TermsPublicPage} />
+      <Route exact path={ROUTES.PUBLIC.SUPPORT} component={SupportPublicPage} />
+      <Route exact path={ROUTES.PUBLIC.EULA} component={EulaPublicPage} />
+      <Route
+        exact
+        path={ROUTES.PUBLIC.DELETE_ACCOUNT}
+        component={PublicAccountDeletionPage}
+      />
 
-  return (
-    <Route
-      exact
-      path={path}
-      render={() => {
-        if (status === "authenticated" && user) {
-          return <Redirect to={getPreferredHome(user.role)} />;
+      <Route exact path={ROUTES.APPLY.DRIVER} component={ApplicationDriverPage} />
+      <Route
+        exact
+        path={ROUTES.APPLY.GUIDE}
+        render={() =>
+          RELEASE_FEATURES.tourism ? (
+            <ApplicationGuidePage />
+          ) : (
+            <Redirect to={ROUTES.NOT_FOUND} />
+          )
         }
+      />
+      <Route exact path={ROUTES.APPLY.STATUS} component={ApplicationStatusPage} />
 
-        return <Component />;
-      }}
-    />
+      <Route exact path="/legal/:type" component={LegalPage} />
+
+      <Route exact path={ROUTES.PROFILE.INDEX} component={ProfileIndexPage} />
+      <Route exact path={ROUTES.PROFILE.DOCUMENTS} component={ProfileDocumentsPage} />
+      <Route exact path={ROUTES.PROFILE.BANK_ACCOUNT} component={ProfileBankAccountPage} />
+      <Route exact path={ROUTES.PROFILE.SECURITY} component={ProfileSecurityPage} />
+      <Route exact path={ROUTES.PROFILE.NOTIFICATIONS} component={ProfileNotificationsPage} />
+      <Route exact path="/notifications" component={NotificationPage} />
+      <Route exact path={ROUTES.SUPPORT.CENTER} component={SupportCenterPage} />
+
+      <Route exact path={ROUTES.NOT_FOUND} component={NotFoundPage} />
+    </IonRouterOutlet>
   );
 }
 
 export function AppRouter(): JSX.Element {
+  const { pathname } = useLocation();
+
+  if (isPathInside(pathname, ROUTES.PASSENGER.BASE)) {
+    return (
+      <RouteErrorBoundary>
+        <PassengerLayout />
+      </RouteErrorBoundary>
+    );
+  }
+
+  if (isPathInside(pathname, ROUTES.DRIVER.BASE)) {
+    return (
+      <RouteErrorBoundary>
+        <DriverLayout />
+      </RouteErrorBoundary>
+    );
+  }
+
+  if (isPathInside(pathname, ROUTES.ADMIN.BASE)) {
+    return (
+      <RouteErrorBoundary>
+        <AdminLayout />
+      </RouteErrorBoundary>
+    );
+  }
+
+  if (isPathInside(pathname, ROUTES.GUIDE.BASE)) {
+    return RELEASE_FEATURES.tourism ? (
+      <RouteErrorBoundary>
+        <GuideLayout />
+      </RouteErrorBoundary>
+    ) : (
+      <Redirect to={ROUTES.NOT_FOUND} />
+    );
+  }
+
+  if (isPathInside(pathname, ROUTES.RENTAL.BASE)) {
+    return RELEASE_FEATURES.rentals ? (
+      <RouteErrorBoundary>
+        <RentalLayout />
+      </RouteErrorBoundary>
+    ) : (
+      <Redirect to={ROUTES.NOT_FOUND} />
+    );
+  }
+
   return (
-    <>
-      <RatingSyncRuntime />
-      <SupportQuickAccess />
-      <IonRouterOutlet>
-        <Switch>
-        {/* Facebook callback debe ir arriba para que no lo tome otra ruta */}
-        <Route
-          exact
-          path={ROUTES.AUTH.FACEBOOK_CALLBACK}
-          component={FacebookCallbackPage}
-        />
-
-        <Redirect exact from={ROUTES.ROOT} to={ROUTES.WELCOME} />
-
-        <Route exact path={ROUTES.WELCOME} component={WelcomePage} />
-        <Route exact path={ROUTES.PUBLIC.PRIVACY} component={PrivacyPublicPage} />
-        <Route exact path={ROUTES.PUBLIC.TERMS} component={TermsPublicPage} />
-        <Route exact path={ROUTES.PUBLIC.SUPPORT} component={SupportPublicPage} />
-        <Route exact path={ROUTES.PUBLIC.EULA} component={EulaPublicPage} />
-        <Route
-          exact
-          path={ROUTES.PUBLIC.DELETE_ACCOUNT}
-          component={PublicAccountDeletionPage}
-        />
-        <Route exact path={ROUTES.NOT_FOUND} component={NotFoundPage} />
-
-        <Route exact path={ROUTES.APPLY.DRIVER} component={ApplicationDriverPage} />
-        <Route exact path={ROUTES.APPLY.GUIDE} component={ApplicationGuidePage} />
-        <Route exact path={ROUTES.APPLY.STATUS} component={ApplicationStatusPage} />
-
-        <Route exact path="/legal/:type" component={LegalPage} />
-
-        <AuthRoute path={ROUTES.AUTH.LOGIN} component={LoginPage} />
-        <AuthRoute path="/auth/forgot-password" component={ForgotPasswordPage} />
-        <AuthRoute path="/auth/reset-password" component={ResetPasswordPage} />
-        <AuthRoute path={ROUTES.AUTH.REGISTER} component={RegisterPage} />
-
-        <PrivateRoute path={ROUTES.PASSENGER.BASE} component={PassengerLayout} />
-        <PrivateRoute path={ROUTES.DRIVER.BASE} component={DriverLayout} />
-        <PrivateRoute path={ROUTES.GUIDE.BASE} component={GuideLayout} />
-        <PrivateRoute path={ROUTES.RENTAL.BASE} component={RentalLayout} />
-        <PrivateRoute path={ROUTES.ADMIN.BASE} component={AdminLayout} />
-
-        <PrivateRoute exact path={ROUTES.PROFILE.INDEX} component={ProfileIndexPage} />
-        <PrivateRoute exact path={ROUTES.PROFILE.DOCUMENTS} component={ProfileDocumentsPage} />
-        <PrivateRoute exact path={ROUTES.PROFILE.BANK_ACCOUNT} component={ProfileBankAccountPage} />
-        <PrivateRoute exact path={ROUTES.PROFILE.SECURITY} component={ProfileSecurityPage} />
-        <PrivateRoute exact path={ROUTES.PROFILE.NOTIFICATIONS} component={ProfileNotificationsPage} />
-        <PrivateRoute exact path="/notifications" component={NotificationPage} />
-        <PrivateRoute exact path={ROUTES.SUPPORT.CENTER} component={SupportCenterPage} />
-
-        <Route render={() => <Redirect to={ROUTES.NOT_FOUND} />} />
-        </Switch>
-      </IonRouterOutlet>
-    </>
+    <RouteErrorBoundary>
+      <StandaloneRoutes />
+    </RouteErrorBoundary>
   );
 }

@@ -1,0 +1,45 @@
+RAPA GO V2.0.0 — CORRECCIÓN DE PANTALLAS/RUTAS NEGRAS
+Fecha: 21-07-2026
+
+CAUSA ENCONTRADA
+El proyecto instalaba dos versiones de React al mismo tiempo:
+- raíz: React 18.2.0
+- apps/mobile: React 18.3.1
+
+React Router usaba una copia y la aplicación móvil otra. Esto provocaba
+"Invalid hook call" al ejecutar useHistory/useContext y dejaba <ion-app>
+vacío, por eso todas las rutas se veían negras.
+
+CORRECCIONES APLICADAS
+1. React y React DOM unificados en 18.3.1.
+2. Overrides en package.json para impedir otra copia de React.
+3. Vite deduplica react, react-dom, react-router y react-router-dom.
+4. RouteErrorBoundary protege también IonReactRouter y AppProviders.
+5. #root e ion-app usan altura completa.
+6. Mobile compila automáticamente @rapa-go/shared antes del typecheck/build.
+7. Verificador de rutas valida que React no vuelva a duplicarse.
+
+COMANDOS PARA INSTALAR Y VALIDAR EN POWERSHELL
+Desde la raíz del proyecto:
+
+Remove-Item -Recurse -Force node_modules -ErrorAction SilentlyContinue
+Remove-Item -Recurse -Force apps\mobile\node_modules -ErrorAction SilentlyContinue
+Remove-Item -Recurse -Force apps\api\node_modules -ErrorAction SilentlyContinue
+Remove-Item -Recurse -Force packages\shared\node_modules -ErrorAction SilentlyContinue
+npm ci
+npm run verify:routes
+npm run typecheck --workspace=apps/mobile
+npm run build:prod --workspace=apps/mobile
+npm ls react react-dom
+
+RESULTADO ESPERADO
+- verify:routes: OK
+- typecheck: sin errores
+- build:prod: compilación terminada
+- npm ls: una sola versión React/React DOM 18.3.1
+- carpeta lista para Hostinger: apps\mobile\dist
+
+PARA HOSTINGER
+Borra los archivos antiguos de la raíz del subdominio app.rapago.cl y sube
+TODO el contenido de apps\mobile\dist, incluyendo el archivo oculto .htaccess.
+Después limpia la caché de Hostinger/Cloudflare y prueba en una ventana incógnita.

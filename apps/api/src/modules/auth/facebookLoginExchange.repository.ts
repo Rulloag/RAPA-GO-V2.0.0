@@ -6,17 +6,25 @@ import { AppError } from "../../shared/errors/AppError.js";
 
 const EXCHANGE_CODE_BYTES = 32;
 const EXCHANGE_TTL_MS = 3 * 60 * 1000;
+const SETUP_EXCHANGE_TTL_MS = 30 * 60 * 1000;
 const CLEANUP_RETENTION_MS = 24 * 60 * 60 * 1000;
+
+type FacebookExchangePurpose = "login" | "link" | "setup";
 
 function hashCode(code: string): string {
   return createHash("sha256").update(code).digest("hex");
 }
 
 export class FacebookLoginExchangeRepository {
-  async create(userId: string): Promise<string> {
+  async create(
+    userId: string,
+    purpose: FacebookExchangePurpose = "login",
+  ): Promise<string> {
     const code = randomBytes(EXCHANGE_CODE_BYTES).toString("base64url");
     const now = new Date();
-    const expiresAt = new Date(now.getTime() + EXCHANGE_TTL_MS);
+    const ttlMs =
+      purpose === "setup" ? SETUP_EXCHANGE_TTL_MS : EXCHANGE_TTL_MS;
+    const expiresAt = new Date(now.getTime() + ttlMs);
 
     try {
       await db.delete(facebookLoginExchanges).where(
@@ -35,6 +43,7 @@ export class FacebookLoginExchangeRepository {
       await db.insert(facebookLoginExchanges).values({
         userId,
         codeHash: hashCode(code),
+        purpose,
         expiresAt,
       });
 
@@ -46,7 +55,41 @@ export class FacebookLoginExchangeRepository {
     }
   }
 
-  async consume(code: string): Promise<string | null> {
+  async peek(
+    code: string,
+    purpose: FacebookExchangePurpose = "login",
+  ): Promise<string | null> {
+    const cleanCode = code.trim();
+    if (!cleanCode) return null;
+
+    const now = new Date();
+
+    try {
+      const rows = await db
+        .select({ userId: facebookLoginExchanges.userId })
+        .from(facebookLoginExchanges)
+        .where(
+          and(
+            eq(facebookLoginExchanges.codeHash, hashCode(cleanCode)),
+            eq(facebookLoginExchanges.purpose, purpose),
+            isNull(facebookLoginExchanges.usedAt),
+            gt(facebookLoginExchanges.expiresAt, now),
+          ),
+        )
+        .limit(1);
+
+      return rows[0]?.userId ?? null;
+    } catch (error) {
+      throw AppError.internal(
+        `Failed to inspect Facebook login exchange: ${String(error)}`,
+      );
+    }
+  }
+
+  async consume(
+    code: string,
+    purpose: FacebookExchangePurpose = "login",
+  ): Promise<string | null> {
     const cleanCode = code.trim();
     if (!cleanCode) return null;
 
@@ -59,6 +102,7 @@ export class FacebookLoginExchangeRepository {
         .where(
           and(
             eq(facebookLoginExchanges.codeHash, hashCode(cleanCode)),
+            eq(facebookLoginExchanges.purpose, purpose),
             isNull(facebookLoginExchanges.usedAt),
             gt(facebookLoginExchanges.expiresAt, now),
           ),

@@ -1,4 +1,5 @@
 import {
+  IonButton,
   IonCard,
   IonCardContent,
   IonIcon,
@@ -307,7 +308,7 @@ const ES_TO_EN: Record<string, string> = {
   "Residencia Rapa Nui aprobada": "Rapa Nui residence approved",
   "Turista chileno": "Chilean tourist",
   "Turista extranjero": "Foreign tourist",
-  "Residente Rapa Nui": "Rapa Nui resident",
+  "RAPA NUI / RESIDENTE RAPA NUI": "Rapa Nui resident",
   "Volver a adjuntar documento": "Upload document again",
   "Collar de flores": "Flower lei",
   "Collar de flores Rapa Nui": "Rapa Nui flower lei",
@@ -364,7 +365,7 @@ const ES_TO_EN: Record<string, string> = {
   "Ofertas destacadas": "Featured offers",
   "Ida y vuelta con precio cerrado": "Round trip with fixed price",
   "Promociones disponibles para Rapa Nui resident.": "Promotions available for Rapa Nui resident.",
-  "Promociones disponibles para Residente Rapa Nui.": "Promotions available for Rapa Nui resident.",
+  "Promociones disponibles para RAPA NUI / RESIDENTE RAPA NUI.": "Promotions available for Rapa Nui resident.",
   "Promociones disponibles para residente Rapa Nui.": "Promotions available for Rapa Nui resident.",
   "El destino se completa solo y tú eliges el punto de recogida.": "The destination is filled automatically and you choose the pickup point.",
   "El destino se completa solo y tu eliges el punto de recogida.": "The destination is filled automatically and you choose the pickup point.",
@@ -372,7 +373,7 @@ const ES_TO_EN: Record<string, string> = {
   "Escapada a Anakena": "Anakena getaway",
   "Anakena - Ida y vuelta": "Anakena - Round trip",
   "Especial para Rapa Nui resident": "Special for Rapa Nui resident",
-  "Especial para Residente Rapa Nui": "Special for Rapa Nui resident",
+  "Especial para RAPA NUI / RESIDENTE RAPA NUI": "Special for Rapa Nui resident",
   "Especial para residente Rapa Nui": "Special for Rapa Nui resident",
   "Destino automático": "Automatic destination",
   "Destino automatico": "Automatic destination",
@@ -466,14 +467,14 @@ function translateDynamicText(text: string, language: RapaGoLanguage): string | 
       return trimmed.replace("Especial para Rapa Nui resident", "Special for Rapa Nui resident");
     }
 
-    if (trimmed.includes("Especial para Residente Rapa Nui")) {
-      return trimmed.replace("Especial para Residente Rapa Nui", "Special for Rapa Nui resident");
+    if (trimmed.includes("Especial para RAPA NUI / RESIDENTE RAPA NUI")) {
+      return trimmed.replace("Especial para RAPA NUI / RESIDENTE RAPA NUI", "Special for Rapa Nui resident");
     }
 
     if (trimmed.includes("Promociones disponibles para")) {
       return trimmed
         .replace("Promociones disponibles para", "Promotions available for")
-        .replace("Residente Rapa Nui", "Rapa Nui resident")
+        .replace("RAPA NUI / RESIDENTE RAPA NUI", "Rapa Nui resident")
         .replace("residente Rapa Nui", "Rapa Nui resident");
     }
     let match = trimmed.match(/^Hola,\s*(.+?)\s*👋$/i);
@@ -771,6 +772,41 @@ export function RapaGoLanguageRuntime(): null {
   }, []);
 
   return null;
+}
+
+export function RapaGoLanguageToolbarButton(): JSX.Element {
+  const { language, setLanguage } = useRapaGoLanguage();
+  const nextLanguage: RapaGoLanguage =
+    language === "es" ? "en" : "es";
+
+  return (
+    <IonButton
+      type="button"
+      aria-label={
+        language === "es"
+          ? "Cambiar aplicación a inglés"
+          : "Switch app to Spanish"
+      }
+      title={
+        language === "es"
+          ? "Cambiar a English"
+          : "Cambiar a Español"
+      }
+      onClick={() => setLanguage(nextLanguage)}
+      style={
+        {
+          "--border-radius": "999px",
+          "--background": "rgba(255,255,255,.16)",
+          "--color": "#ffffff",
+          fontWeight: 950,
+          minWidth: 72,
+        } as CSSProperties
+      }
+    >
+      <IonIcon icon={globeOutline} slot="start" />
+      {language === "es" ? "EN" : "ES"}
+    </IonButton>
+  );
 }
 
 export function RapaGoLanguageCard(): JSX.Element {

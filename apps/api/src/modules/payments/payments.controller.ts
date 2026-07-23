@@ -76,6 +76,28 @@ export const paymentsController = {
     sendOk(reply, result.payment);
   },
 
+
+  async getPaymentReceipt(request: FastifyRequest, reply: FastifyReply): Promise<void> {
+    const token = extractBearer(request);
+    if (!token) {
+      sendError(reply, { code: "UNAUTHORIZED", message: "Missing Bearer token.", statusCode: 401 });
+      return;
+    }
+    const paymentId = String(
+      (request.params as Record<string, unknown> | undefined)?.["paymentId"] ?? "",
+    ).trim();
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(paymentId)) {
+      sendError(reply, { code: "VALIDATION_ERROR", message: "paymentId must be a valid UUID.", statusCode: 400 });
+      return;
+    }
+    const result = await paymentsService.getPaymentReceipt(token, paymentId);
+    if (!result.ok) {
+      sendError(reply, result);
+      return;
+    }
+    sendOk(reply, result.receipt);
+  },
+
   async prontoPagaWebhook(request: FastifyRequest, reply: FastifyReply): Promise<void> {
     const parsed = prontoPagaWebhookSchema.safeParse(request.body);
     if (!parsed.success) {

@@ -1,122 +1,117 @@
-import fp from "fastify-plugin";
-import type {
-  FastifyInstance,
-  FastifyReply,
-  FastifyRequest,
-} from "fastify";
+import type { FastifyCorsOptions } from "@fastify/cors";
 
-const PRODUCTION_WEB_ORIGINS = [
+/**
+ * Orígenes autorizados oficialmente por RAPA GO.
+ *
+ * CORS_ORIGIN y FRONTEND_URL pueden añadir más direcciones
+ * separadas por comas sin eliminar estos valores predeterminados.
+ */
+const DEFAULT_ALLOWED_ORIGINS = [
+  "https://api.rapago.cl",
+  "https://app.rapago.cl",
   "https://rapago.cl",
   "https://www.rapago.cl",
-  "https://orange-chicken-512082.hostingersite.com",
-];
 
-// Capacitor/Ionic WebView origins are exact values, not arbitrary LAN hosts.
-const NATIVE_APP_ORIGINS = [
+  "http://localhost:5173",
+  "http://127.0.0.1:5173",
+  "http://localhost:5174",
+  "http://127.0.0.1:5174",
+  "http://localhost:8100",
+  "http://127.0.0.1:8100",
+
   "capacitor://localhost",
   "ionic://localhost",
   "http://localhost",
   "https://localhost",
-];
+] as const;
 
-const DEVELOPMENT_ORIGINS = [
-  "http://localhost:5173",
-  "http://localhost:5174",
-  "http://localhost:8100",
-  "http://127.0.0.1:5173",
-  "http://127.0.0.1:5174",
-  "http://127.0.0.1:8100",
-];
+function normalizeOrigin(value: string): string | null {
+  const cleanValue = value.trim();
 
-function readAllowedOrigins(): Set<string> {
-  const configured = (process.env["CORS_ORIGIN"] ?? "")
-    .split(",")
-    .map((origin) => origin.trim())
-    .filter(Boolean);
-  const isProduction = process.env["NODE_ENV"] === "production";
-
-  return new Set([
-    ...PRODUCTION_WEB_ORIGINS,
-    ...NATIVE_APP_ORIGINS,
-    ...(isProduction ? [] : DEVELOPMENT_ORIGINS),
-    ...configured,
-  ]);
-}
-
-function normalizeOrigin(origin: unknown): string | null {
-  if (typeof origin !== "string" || !origin.trim()) return null;
+  if (!cleanValue) {
+    return null;
+  }
 
   try {
-    const parsed = new URL(origin.trim());
-    return parsed.origin;
+    return new URL(cleanValue).origin;
   } catch {
     return null;
   }
 }
 
-function getAllowedOrigin(origin: unknown): string | null {
-  const normalized = normalizeOrigin(origin);
-  if (!normalized) return null;
+function readConfiguredOrigins(): string[] {
+  const configuredValues = [
+    process.env["CORS_ORIGIN"] ?? "",
+    process.env["FRONTEND_URL"] ?? "",
+  ];
 
-  return readAllowedOrigins().has(normalized) ? normalized : null;
+  return configuredValues
+    .flatMap((value) => value.split(","))
+    .map((value) => normalizeOrigin(value))
+    .filter((value): value is string => value !== null);
 }
 
-function applyCorsHeaders(
-  request: FastifyRequest,
-  reply: FastifyReply,
-): void {
-  const allowedOrigin = getAllowedOrigin(request.headers.origin);
-  if (!allowedOrigin) return;
+export function getAllowedCorsOrigins(): ReadonlySet<string> {
+  const defaultOrigins = DEFAULT_ALLOWED_ORIGINS
+    .map((origin) => normalizeOrigin(origin))
+    .filter((origin): origin is string => origin !== null);
 
-  reply.header("Vary", "Origin");
-  reply.header("Access-Control-Allow-Origin", allowedOrigin);
-  reply.header("Access-Control-Allow-Credentials", "true");
-  reply.header(
-    "Access-Control-Allow-Methods",
-    "GET, POST, PUT, PATCH, DELETE, OPTIONS",
-  );
-  reply.header(
-    "Access-Control-Allow-Headers",
-    "Content-Type, Authorization, Accept, Origin, X-Requested-With",
-  );
-  reply.header("Access-Control-Max-Age", "600");
+  return new Set([
+    ...defaultOrigins,
+    ...readConfiguredOrigins(),
+  ]);
 }
 
-async function corsPluginImpl(app: FastifyInstance): Promise<void> {
-  app.addHook("onRequest", async (request, reply) => {
-    applyCorsHeaders(request, reply);
+/**
+ * Estas opciones deben registrarse directamente en la instancia
+ * principal de Fastify para que el hook CORS alcance todas las
+ * rutas del backend, incluidas /api/auth/*.
+ */
+export function createCorsOptions(): FastifyCorsOptions {
+  const allowedOrigins = getAllowedCorsOrigins();
 
-    if (request.method !== "OPTIONS") return undefined;
+  return {
+    origin(origin, callback) {
+      // Herramientas CLI, health checks y comunicación servidor-servidor
+      // pueden no enviar la cabecera Origin.
+      if (!origin) {
+        callback(null, true);
+        return;
+      }
 
-    const origin = request.headers.origin;
-    const allowedOrigin = getAllowedOrigin(origin);
+      const normalizedOrigin = normalizeOrigin(origin);
 
-    if (!origin || allowedOrigin) {
-      return reply.code(204).send();
-    }
+      const isAllowed =
+        normalizedOrigin !== null &&
+        allowedOrigins.has(normalizedOrigin);
 
-    return reply.code(403).send({
-      ok: false,
-      code: "CORS_ORIGIN_BLOCKED",
-      message: "Origin not allowed.",
-    });
-  });
+      callback(null, isAllowed);
+    },
 
-  app.addHook("onSend", async (request, reply, payload) => {
-    applyCorsHeaders(request, reply);
-    return payload;
-  });
+    credentials: true,
 
-  app.addHook("onError", async (request, reply) => {
-    applyCorsHeaders(request, reply);
-  });
+    methods: [
+      "GET",
+      "HEAD",
+      "POST",
+      "PUT",
+      "PATCH",
+      "DELETE",
+      "OPTIONS",
+    ],
 
-  app.options("/*", async (request, reply) => {
-    applyCorsHeaders(request, reply);
-    return reply.code(204).send();
-  });
+    // No se fija allowedHeaders manualmente.
+    // @fastify/cors reflejará los encabezados solicitados por el frontend.
+
+    exposedHeaders: [
+      "Content-Disposition",
+      "X-Request-Id",
+    ],
+
+    maxAge: 86_400,
+    preflight: true,
+    preflightContinue: false,
+    optionsSuccessStatus: 204,
+    strictPreflight: true,
+  };
 }
-
-export const corsPlugin = fp(corsPluginImpl, {
-  name: "rapago-cors-plugin",
-});

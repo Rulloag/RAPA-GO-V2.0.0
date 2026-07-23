@@ -7,6 +7,7 @@ export interface ProfileData {
   role:       string;
   status:     string;
   avatarUrl:  string | null;
+  phone:      string | null;
   isVerified: boolean;
   createdAt:  string;
 }
@@ -14,6 +15,7 @@ export interface ProfileData {
 export interface UpdateProfilePayload {
   name?: string;
   avatarUrl?: string | null;
+  phone?: string;
 }
 
 type ProfileEnvelope = { ok: true; data: ProfileData; statusCode: number };

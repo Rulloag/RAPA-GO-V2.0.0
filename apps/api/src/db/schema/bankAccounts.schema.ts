@@ -8,8 +8,7 @@ export const userBankAccounts = pgTable("user_bank_accounts", {
   bankName:               varchar("bank_name",           { length: 100 }).notNull(),
   accountType:            varchar("account_type",        { length: 50  }).notNull(),
   accountNumberLast4:     varchar("account_number_last4",{ length: 4   }).notNull(),
-  // TODO(security): encrypt with AES-256-GCM before storing when KMS/Vault is available.
-  // Until then, full account number is never persisted — only last4 is stored.
+  // AES-256-GCM aplicado en backend. Nunca se expone al cliente.
   accountNumberEncrypted: text("account_number_encrypted"),
   status:                 varchar("status", { length: 20 }).notNull().default("pending"),
   createdAt:              timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),

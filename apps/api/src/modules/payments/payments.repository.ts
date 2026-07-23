@@ -2,10 +2,13 @@ import { and, desc, eq, inArray, isNull, or } from "drizzle-orm";
 
 import { db } from "../../db/client.js";
 import {
+  paymentWebhookEvents,
   payments,
   type NewPayment,
+  type NewPaymentWebhookEvent,
   type Payment,
-} from "../../db/schema/payments.schema.js";
+  type PaymentWebhookEvent,
+} from "../../db/schema/index.js";
 
 export type PaymentPurpose = "ride" | "fast_search";
 
@@ -321,6 +324,91 @@ export class PaymentsRepository {
     }
 
     return row;
+  }
+
+  async claimWebhookEvent(
+    input: NewPaymentWebhookEvent,
+  ): Promise<{ claimed: boolean; event: PaymentWebhookEvent }> {
+    const inserted = await db
+      .insert(paymentWebhookEvents)
+      .values(input)
+      .onConflictDoNothing({
+        target: [paymentWebhookEvents.provider, paymentWebhookEvents.eventKey],
+      })
+      .returning();
+
+    if (inserted[0]) return { claimed: true, event: inserted[0] };
+
+    const [existing] = await db
+      .select()
+      .from(paymentWebhookEvents)
+      .where(
+        and(
+          eq(paymentWebhookEvents.provider, input.provider),
+          eq(paymentWebhookEvents.eventKey, input.eventKey),
+        ),
+      )
+      .limit(1);
+
+    if (!existing) throw new Error("Webhook event conflict returned no row.");
+
+    if (existing.status === "failed") {
+      const [retried] = await db
+        .update(paymentWebhookEvents)
+        .set({
+          status: "processing",
+          errorMessage: null,
+          payload: input.payload,
+          payloadHash: input.payloadHash,
+          requestId: input.requestId ?? existing.requestId,
+          action: input.action ?? existing.action,
+          processedAt: null,
+          updatedAt: new Date(),
+        })
+        .where(
+          and(
+            eq(paymentWebhookEvents.id, existing.id),
+            eq(paymentWebhookEvents.status, "failed"),
+          ),
+        )
+        .returning();
+
+      if (retried) return { claimed: true, event: retried };
+    }
+
+    return { claimed: false, event: existing };
+  }
+
+  async completeWebhookEvent(input: {
+    id: string;
+    paymentId?: string | null;
+    providerPaymentId?: string | null;
+    action?: string | null;
+  }): Promise<void> {
+    await db
+      .update(paymentWebhookEvents)
+      .set({
+        status: "processed",
+        paymentId: input.paymentId ?? null,
+        providerPaymentId: input.providerPaymentId ?? null,
+        action: input.action ?? null,
+        errorMessage: null,
+        processedAt: new Date(),
+        updatedAt: new Date(),
+      })
+      .where(eq(paymentWebhookEvents.id, input.id));
+  }
+
+  async failWebhookEvent(id: string, errorMessage: string): Promise<void> {
+    await db
+      .update(paymentWebhookEvents)
+      .set({
+        status: "failed",
+        errorMessage: errorMessage.slice(0, 2000),
+        processedAt: new Date(),
+        updatedAt: new Date(),
+      })
+      .where(eq(paymentWebhookEvents.id, id));
   }
 
 }

@@ -1,5 +1,18 @@
-import type { UserRole } from "@rapa-go/shared";
+import type {
+  ResidenceAccreditationInput,
+  UserRole,
+} from "@rapa-go/shared";
 import type { AuthServiceResult } from "./auth.types.js";
+
+export type ApplePassengerFareType =
+  | "resident"
+  | "chilean"
+  | "foreigner";
+
+export interface AppleLegalAcceptanceInput {
+  legalDocumentId: string;
+  version: string;
+}
 
 export interface AppleAuthName {
   givenName?: string | undefined;
@@ -9,17 +22,30 @@ export interface AppleAuthName {
 /**
  * Request body for POST /api/auth/apple.
  *
- * SECURITY: email, sub, and isPrivateEmail are deliberately NOT accepted
- * here — those properties are only ever taken from the verified
- * identityToken, never trusted from client-supplied fields.
+ * SECURITY: email, sub and private-email status are deliberately not accepted
+ * from the client. They are obtained exclusively from Apple's verified token.
  */
 export interface AppleAuthRequest {
   identityToken: string;
   authorizationCode: string;
   nonce?: string | undefined;
   name?: AppleAuthName | undefined;
-  /** Only used when creating a brand-new account; ignored for an existing one. */
+  /** Required only when creating a new account. */
   role?: UserRole | undefined;
+  /** Passenger setup fields, ignored for an existing Apple identity. */
+  phone?: string | undefined;
+  passengerFareType?: ApplePassengerFareType | undefined;
+  legalAcceptances?: AppleLegalAcceptanceInput[] | undefined;
+  residenceAccreditation?: ResidenceAccreditationInput | undefined;
 }
 
 export type AppleAuthResult = AuthServiceResult;
+
+export type AppleLinkResult =
+  | { ok: true; message: string }
+  | {
+      ok: false;
+      code: string;
+      message: string;
+      statusCode: number;
+    };

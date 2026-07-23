@@ -23,7 +23,11 @@ import {
   eyeOffOutline,
 } from "ionicons/icons";
 import { useHistory } from "react-router-dom";
-import { registerRequestSchema, type UserRole } from "@rapa-go/shared";
+import {
+  registerRequestSchema,
+  type LegalAcceptanceInput,
+  type UserRole,
+} from "@rapa-go/shared";
 import { useAuth } from "./useAuth.js";
 import { authService } from "./auth.service.js";
 import { sessionStorageService } from "./sessionStorage.service.js";
@@ -54,7 +58,7 @@ type RegisterField =
   | "terms";
 
 
-type PassengerFareType = "resident" | "rapanui" | "chilean" | "foreigner";
+type PassengerFareType = "resident" | "chilean" | "foreigner";
 type ResidenceVerificationStatus = "pending" | "approved" | "rejected" | "not_required";
 
 const PASSENGER_FARE_TYPES: Array<{
@@ -66,16 +70,9 @@ const PASSENGER_FARE_TYPES: Array<{
 }> = [
   {
     value: "resident",
-    label: "Residente Rapa Nui",
-    helper: "Requiere documento de residencia para validación del equipo Rapa Go.",
-    badge: "Rapa Nui",
-    multiplier: "1,00",
-  },
-  {
-    value: "rapanui",
-    label: "Rapanui normal",
-    helper: "Persona Rapanui/local. No requiere documento de residencia.",
-    badge: "Rapanui",
+    label: "RAPA NUI / RESIDENTE RAPA NUI",
+    helper: "La categoría se activa inmediatamente y queda sujeta a revisión administrativa.",
+    badge: "RAPA NUI",
     multiplier: "1,00",
   },
   {
@@ -121,7 +118,7 @@ function getPassengerFareTypeLabel(value: PassengerFareType): string {
 }
 
 function isPassengerFareType(value: string): value is PassengerFareType {
-  return value === "resident" || value === "rapanui" || value === "chilean" || value === "foreigner";
+  return value === "resident" || value === "chilean" || value === "foreigner";
 }
 
 function cleanEmailInput(value: string): string {
@@ -318,7 +315,7 @@ function persistRegistrationProfile(data: {
     localStorage.setItem("rapago_driver_fare_passenger_type", data.passengerFareType);
     localStorage.setItem("rapago_driver_nationality", data.passengerFareLabel);
     localStorage.setItem("rapago_driver_is_resident", String(data.passengerFareType === "resident"));
-    localStorage.setItem("rapago_driver_is_rapanui_normal", String(data.passengerFareType === "rapanui"));
+    localStorage.setItem("rapago_driver_is_rapanui_normal", String(data.passengerFareType === "resident"));
 
     localStorage.removeItem("rapago_resident_document_name");
     localStorage.removeItem("rapago_resident_document_uploaded_at");
@@ -367,8 +364,8 @@ function persistResidentVerificationRequest(input: {
       phone: input.phone,
       email: input.email,
       passengerFareType: "resident",
-      passengerFareLabel: "Residente Rapa Nui",
-      nationality: "Residente Rapa Nui",
+      passengerFareLabel: "RAPA NUI / RESIDENTE RAPA NUI",
+      nationality: "RAPA NUI / RESIDENTE RAPA NUI",
       registrationProvider: "email",
       authProvider: "email",
       documentName: input.document.name,
@@ -378,7 +375,7 @@ function persistResidentVerificationRequest(input: {
       documentDataUrl: null,
       documentStorage: "backend",
       reason: "Validacion de residencia Rapa Nui",
-      userMessage: "Tu documento de Residente Rapa Nui esta pendiente de revision por el administrador.",
+      userMessage: "Tu documento de RAPA NUI / RESIDENTE RAPA NUI esta pendiente de revision por el administrador.",
       storageScope: "backend",
     };
 
@@ -389,8 +386,8 @@ function persistResidentVerificationRequest(input: {
       createdAt: now,
       updatedAt: now,
       passengerFareType: "resident",
-      passengerFareLabel: "Residente Rapa Nui",
-      nationality: "Residente Rapa Nui",
+      passengerFareLabel: "RAPA NUI / RESIDENTE RAPA NUI",
+      nationality: "RAPA NUI / RESIDENTE RAPA NUI",
       registrationProvider: "email",
       authProvider: "email",
       documentType: input.document.type,
@@ -400,7 +397,7 @@ function persistResidentVerificationRequest(input: {
       documentStorage: "backend",
       piiStorage: "minimal_local_mirror",
       reason: "Validacion de residencia Rapa Nui",
-      userMessage: "Tu documento de Residente Rapa Nui esta pendiente de revision por el administrador.",
+      userMessage: "Tu documento de RAPA NUI / RESIDENTE RAPA NUI esta pendiente de revision por el administrador.",
     };
 
     const sessionRaw = sessionStorage.getItem(RAPAGO_RESIDENT_VERIFICATION_SESSION_KEY);
@@ -463,7 +460,7 @@ function passengerFareRequiresPassport(value: PassengerFareType | ""): boolean {
 }
 
 function passengerFareRequiresRut(value: PassengerFareType | ""): boolean {
-  return value === "chilean" || value === "rapanui" || value === "resident";
+  return value === "chilean" || value === "resident";
 }
 
 function validatePhone(value: string): boolean {
@@ -763,15 +760,17 @@ export function RegisterPage(): JSX.Element {
     }
   }
 
-  async function acceptLegalDocuments(accessToken: string): Promise<void> {
+  async function loadRequiredLegalAcceptances(): Promise<
+    LegalAcceptanceInput[]
+  > {
     const requiredTypes = [
       "terms_and_conditions",
       "privacy_policy",
       "user_conditions",
-    ];
+    ] as const;
     const documents = await legalService.getActive();
 
-    const requiredDocuments = requiredTypes.map((type) => {
+    return requiredTypes.map((type) => {
       const document = documents.find(
         (item) => item.type === type && item.isActive,
       );
@@ -782,18 +781,11 @@ export function RegisterPage(): JSX.Element {
         );
       }
 
-      return document;
+      return {
+        legalDocumentId: document.id,
+        version: document.version,
+      };
     });
-
-    await Promise.all(
-      requiredDocuments.map((document) =>
-        legalService.accept(
-          accessToken,
-          document.id,
-          document.version,
-        ),
-      ),
-    );
   }
 
   async function applyReferralCode(userId: string): Promise<void> {
@@ -863,8 +855,12 @@ export function RegisterPage(): JSX.Element {
       nextErrors.passengerType = "Selecciona tu nacionalidad.";
     }
 
-    if (cleanPassengerFareType === "resident" && !residentDocument) {
-      nextErrors.residentDocument = "Adjunta un documento para validar residencia Rapa Nui.";
+    if (
+      cleanPassengerFareType === "resident" &&
+      !residentDocument
+    ) {
+      nextErrors.residentDocument =
+        "Debes adjuntar tu acreditación de residencia para continuar.";
     }
 
     if (!cleanEmailValue) {
@@ -894,23 +890,65 @@ export function RegisterPage(): JSX.Element {
       return;
     }
 
+    setLoading(true);
+
+    let legalAcceptances: LegalAcceptanceInput[];
+    try {
+      legalAcceptances = await loadRequiredLegalAcceptances();
+    } catch (error) {
+      setServerError(
+        error instanceof Error
+          ? error.message
+          : "No fue posible cargar los documentos legales vigentes.",
+      );
+      setLoading(false);
+      return;
+    }
+
     const payload = {
       name: fullName,
       email: cleanEmailValue,
       password,
       role: "passenger" as const,
+      phone: cleanPhoneValue,
+      rut:
+        cleanPassengerFareType === "foreigner"
+          ? undefined
+          : cleanRutValue,
+      passport:
+        cleanPassengerFareType === "foreigner"
+          ? cleanPassportValue
+          : undefined,
+      passengerFareType: cleanPassengerFareType,
+      residenceAccreditation:
+        cleanPassengerFareType === "resident" && residentDocument
+          ? {
+              documentName: residentDocument.name,
+              documentType: residentDocument.type as
+                | "application/pdf"
+                | "image/jpeg"
+                | "image/png"
+                | "image/webp",
+              documentSize: residentDocument.sizeBytes,
+              documentDataUrl: residentDocument.dataUrl,
+            }
+          : undefined,
+      legalAcceptances,
     };
 
     const parsed = registerRequestSchema.safeParse(payload);
 
     if (!parsed.success) {
       setFieldErrors(getFirstFieldError(parsed.error.issues));
+      setLoading(false);
       return;
     }
 
-    const selectedPassengerFareType = cleanPassengerFareType as PassengerFareType;
+    const selectedPassengerFareType =
+      cleanPassengerFareType as PassengerFareType;
+    const initialEffectivePassengerFareType: PassengerFareType =
+      selectedPassengerFareType;
 
-    setLoading(true);
     let createdAccessToken: string | null = null;
 
     try {
@@ -958,42 +996,23 @@ export function RegisterPage(): JSX.Element {
       const userId = result.session.user.id;
       const registeredRole = result.session.user.role;
 
-      await acceptLegalDocuments(accessToken);
       await applyReferralCode(userId);
 
-      if (selectedPassengerFareType === "resident" && residentDocument) {
-        const submitted =
-          await authService.submitFacebookResidentPrecheck({
-            provider: "email",
-            email: cleanEmailValue,
-            phone: cleanPhoneValue,
-            rut: cleanRutValue,
-            documentName: residentDocument.name,
-            documentType: residentDocument.type as
-              | "application/pdf"
-              | "image/jpeg"
-              | "image/png"
-              | "image/webp",
-            documentSize: residentDocument.sizeBytes,
-            documentDataUrl: residentDocument.dataUrl,
-          });
+      const effectivePassengerFareType: PassengerFareType =
+        initialEffectivePassengerFareType;
+      const residenceVerificationStatus: ResidenceVerificationStatus =
+        selectedPassengerFareType === "resident"
+          ? "pending"
+          : "not_required";
+      const residenceVerificationMessage =
+        selectedPassengerFareType === "resident"
+          ? "Tu categoría RAPA NUI / RESIDENTE RAPA NUI está activa y tu acreditación quedó pendiente de revisión administrativa."
+          : "";
 
-        persistRegistrationProfile({
-          name: fullName,
-          firstName: cleanName,
-          lastName: cleanLastName,
-          rut: cleanRutValue,
-          passport: "",
-          phone: cleanPhoneValue,
-          email: cleanEmailValue,
-          passengerFareType: selectedPassengerFareType,
-          passengerFareLabel:
-            getPassengerFareTypeLabel(selectedPassengerFareType),
-          residenceVerificationStatus: submitted.status,
-          residenceVerificationMessage: submitted.message,
-          residentDocument,
-        });
-
+      if (
+        selectedPassengerFareType === "resident" &&
+        residentDocument
+      ) {
         persistResidentVerificationRequest({
           userId,
           name: fullName,
@@ -1003,37 +1022,6 @@ export function RegisterPage(): JSX.Element {
           phone: cleanPhoneValue,
           email: cleanEmailValue,
           document: residentDocument,
-        });
-
-        if (submitted.status === "pending") {
-          await authService.logout(accessToken).catch(() => {});
-          await sessionStorageService.clearSession();
-          window.location.replace(
-            `${ROUTES.AUTH.LOGIN}?registration=resident_pending`,
-          );
-          return;
-        }
-      } else {
-        persistRegistrationProfile({
-          name: fullName,
-          firstName: cleanName,
-          lastName: cleanLastName,
-          rut:
-            selectedPassengerFareType === "foreigner"
-              ? cleanPassportValue
-              : cleanRutValue,
-          passport:
-            selectedPassengerFareType === "foreigner"
-              ? cleanPassportValue
-              : "",
-          phone: cleanPhoneValue,
-          email: cleanEmailValue,
-          passengerFareType: selectedPassengerFareType,
-          passengerFareLabel:
-            getPassengerFareTypeLabel(selectedPassengerFareType),
-          residenceVerificationStatus: "not_required",
-          residenceVerificationMessage: "",
-          residentDocument: null,
         });
       }
 
@@ -1100,7 +1088,7 @@ export function RegisterPage(): JSX.Element {
 
           <IonText>
             <p className="rapago-auth-subtitle">
-              Crea tu cuenta RAPA GO, una nueva visión de viajar.
+              Crea tu cuenta RAPA GO. Si eliges RAPA NUI / RESIDENTE RAPA NUI, debes adjuntar una acreditación; la categoría se activa inmediatamente y queda sujeta a revisión administrativa.
             </p>
           </IonText>
 
@@ -1209,11 +1197,11 @@ export function RegisterPage(): JSX.Element {
                 />
 
                 <div style={{ fontWeight: 950, marginBottom: 6 }}>
-                  Documento de residencia Rapa Nui *
+                  ACREDITACIÓN RESIDENCIA *
                 </div>
 
                 <IonNote style={{ color: "rgba(246, 242, 236, 0.72)", display: "block", marginBottom: 10, lineHeight: 1.35 }}>
-                  Adjunta certificado, comprobante o documento que permita validar que eres residente.
+                  Si eres Rapanui, adjunta una fotografía clara de tu cédula de identidad. Si eres residente, adjunta tu resolución de residencia vigente emitida por la Delegación Presidencial Provincial de Isla de Pascua. Formatos: PDF, JPG, JPEG, PNG o WEBP.
                 </IonNote>
 
                 <IonButton
@@ -1225,13 +1213,13 @@ export function RegisterPage(): JSX.Element {
                   onClick={() => residentDocumentInputRef.current?.click()}
                   style={{ "--border-radius": "14px", fontWeight: 950 } as CSSProperties}
                 >
-                  {residentDocument ? "Cambiar documento" : "Adjuntar documento"}
+                  {residentDocument ? "Cambiar acreditación" : "Adjuntar acreditación"}
                 </IonButton>
 
                 {residentDocument && (
                   <IonText color="success">
                     <p style={{ margin: "10px 2px 0", fontSize: "0.82rem", fontWeight: 850 }}>
-                      Documento adjunto: {residentDocument.name}
+                      Acreditación adjunta: {residentDocument.name}
                     </p>
                   </IonText>
                 )}

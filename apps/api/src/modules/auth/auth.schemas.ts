@@ -1,5 +1,11 @@
 import { z } from "zod";
-import { loginRequestSchema, registerRequestSchema, authSessionSchema } from "@rapa-go/shared";
+import {
+  authSessionSchema,
+  legalAcceptanceInputSchema,
+  loginRequestSchema,
+  registerRequestSchema,
+  residenceAccreditationSchema,
+} from "@rapa-go/shared";
 
 export { loginRequestSchema, registerRequestSchema, authSessionSchema };
 
@@ -46,6 +52,29 @@ export const resetPasswordRequestSchema = z
       });
     }
   });
+
+
+export const createPasswordRequestSchema = z
+  .object({
+    newPassword: z
+      .string()
+      .min(8, "La contraseña debe tener al menos 8 caracteres.")
+      .max(128, "La contraseña es demasiado larga."),
+    confirmPassword: z.string(),
+  })
+  .superRefine((value, context) => {
+    if (value.newPassword !== value.confirmPassword) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["confirmPassword"],
+        message: "Las contraseñas no coinciden.",
+      });
+    }
+  });
+
+export type CreatePasswordRequestInput = z.infer<
+  typeof createPasswordRequestSchema
+>;
 
 const FACEBOOK_RESIDENT_DOCUMENT_MIME_TYPES = [
   "application/pdf",
@@ -112,6 +141,69 @@ export const facebookResidentStatusSchema = z.object({
   rut: facebookResidentRutSchema,
 });
 
+
+export const facebookAccountSetupSchema = z
+  .object({
+    setupCode: z
+      .string()
+      .trim()
+      .min(32, "El código de Facebook no es válido.")
+      .max(128, "El código de Facebook no es válido.")
+      .regex(
+        /^[A-Za-z0-9_-]+$/,
+        "El código de Facebook no es válido.",
+      ),
+    passengerFareType: z.enum([
+      "resident",
+      "chilean",
+      "foreigner",
+    ]),
+    phone: z
+      .string()
+      .trim()
+      .regex(
+        /^\+?[0-9]{8,15}$/,
+        "Ingresa un celular válido.",
+      ),
+    rut: z.string().trim().max(20).optional(),
+    passport: z.string().trim().max(30).optional(),
+    legalAcceptances: z
+      .array(legalAcceptanceInputSchema)
+      .min(
+        3,
+        "Debes aceptar todos los documentos legales obligatorios.",
+      )
+      .max(12),
+  })
+  .superRefine((value, context) => {
+    if (
+      (value.passengerFareType === "resident" ||
+        value.passengerFareType === "chilean") &&
+      !value.rut?.trim()
+    ) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["rut"],
+        message: "Ingresa tu RUT para continuar.",
+      });
+    }
+
+    if (
+      value.passengerFareType === "foreigner" &&
+      !value.passport?.trim()
+    ) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["passport"],
+        message: "Ingresa tu pasaporte para continuar.",
+      });
+    }
+  });
+
+export type FacebookAccountSetupInput = z.infer<
+  typeof facebookAccountSetupSchema
+>;
+
 export const facebookLoginExchangeSchema = z.object({
   exchangeCode: z
     .string()
@@ -125,6 +217,22 @@ export type FacebookLoginExchangeInput = z.infer<
   typeof facebookLoginExchangeSchema
 >;
 
+export const facebookExistingAccountLinkSchema = z.object({
+  linkToken: z
+    .string()
+    .trim()
+    .min(64, "La vinculación con Facebook no es válida.")
+    .max(4096, "La vinculación con Facebook no es válida."),
+  password: z
+    .string()
+    .min(8, "Ingresa la contraseña de tu cuenta RAPA GO.")
+    .max(128, "La contraseña es demasiado larga."),
+});
+
+export type FacebookExistingAccountLinkInput = z.infer<
+  typeof facebookExistingAccountLinkSchema
+>;
+
 export type FacebookResidentPrecheckInput = z.infer<
   typeof facebookResidentPrecheckSchema
 >;
@@ -133,3 +241,43 @@ export type FacebookResidentStatusInput = z.infer<
   typeof facebookResidentStatusSchema
 >;
 
+
+
+export const appleAuthRequestSchema = z.object({
+  identityToken: z.string().trim().min(100).max(12000),
+  authorizationCode: z.string().trim().min(8).max(4096),
+  nonce: z
+    .string()
+    .trim()
+    .regex(/^[a-f0-9]{64}$/i, "El nonce de Apple no es válido."),
+  name: z
+    .object({
+      givenName: z.string().trim().max(50).optional(),
+      familyName: z.string().trim().max(50).optional(),
+    })
+    .optional(),
+  role: z
+    .enum(["passenger", "driver", "guide", "rental_operator"])
+    .optional(),  phone: z
+    .string()
+    .trim()
+    .regex(/^\+?[0-9]{8,15}$/, "El teléfono de Apple no es válido.")
+    .optional(),
+  passengerFareType: z
+    .enum(["resident", "chilean", "foreigner"])
+    .optional(),
+  legalAcceptances: z
+    .array(
+      z.object({
+        legalDocumentId: z.string().uuid(),
+        version: z.string().trim().min(1).max(30),
+      }),
+    )
+    .max(12)
+    .optional(),
+  residenceAccreditation: residenceAccreditationSchema.optional(),
+});
+
+export type AppleAuthRequestInput = z.infer<
+  typeof appleAuthRequestSchema
+>;

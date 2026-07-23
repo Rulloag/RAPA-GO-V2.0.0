@@ -54,6 +54,44 @@ export interface PaymentOrderData {
   createdAt: string;
 }
 
+export interface PaymentStatusData {
+  id: string;
+  rideRequestId: string;
+  status: string;
+  paymentPurpose: "ride" | "fast_search";
+  amountClp: number;
+  provider: string;
+  paidAt: string | null;
+  rejectedAt: string | null;
+  failedAt: string | null;
+  providerOrderId: string | null;
+  providerPaymentId: string | null;
+  refundStatus: string | null;
+  refundProviderId: string | null;
+  refundedAt: string | null;
+  receiptNumber: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface PaymentReceiptData {
+  receiptNumber: string;
+  paymentId: string;
+  rideRequestId: string;
+  paymentPurpose: "ride" | "fast_search";
+  amountClp: number;
+  currency: "CLP";
+  provider: string;
+  status: string;
+  providerOrderId: string | null;
+  providerPaymentId: string | null;
+  refundStatus: string | null;
+  refundProviderId: string | null;
+  paidAt: string | null;
+  refundedAt: string | null;
+  issuedAt: string;
+}
+
 export interface RequestCashOverpaymentBenefitPayload {
   rideId: string;
   paidClp: number;
@@ -238,6 +276,28 @@ export const walletService = {
       { token: accessToken },
     );
     return unwrap(result, "No se pudo aprobar el Beneficio.");
+  },
+
+  async getPaymentStatus(
+    accessToken: string,
+    paymentId: string,
+  ): Promise<PaymentStatusData> {
+    const result = await apiClient.get<Envelope<PaymentStatusData>>(
+      `/payments/${encodeURIComponent(paymentId)}/status`,
+      { token: accessToken },
+    );
+    return unwrap(result, "No se pudo consultar el estado del pago.");
+  },
+
+  async getPaymentReceipt(
+    accessToken: string,
+    paymentId: string,
+  ): Promise<PaymentReceiptData> {
+    const result = await apiClient.get<Envelope<PaymentReceiptData>>(
+      `/payments/${encodeURIComponent(paymentId)}/receipt`,
+      { token: accessToken },
+    );
+    return unwrap(result, "No se pudo cargar el comprobante de pago.");
   },
 
   async createPaymentOrder(

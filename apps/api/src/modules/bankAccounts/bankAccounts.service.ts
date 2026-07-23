@@ -3,6 +3,7 @@ import { SessionService } from "../auth/session.service.js";
 import { UsersRepository } from "../users/users.repository.js";
 import { BankAccountsRepository } from "./bankAccounts.repository.js";
 import { AppError } from "../../shared/errors/AppError.js";
+import { encryptSensitiveValue } from "../../shared/security/fieldEncryption.js";
 import type { BankAccountResponse, BankAccountResult, BankAccountGetResult } from "./bankAccounts.types.js";
 import type { UserBankAccount } from "../../db/schema/index.js";
 import type { UpsertBankAccountInput } from "./bankAccounts.schemas.js";
@@ -68,11 +69,25 @@ export class BankAccountsService {
 
     const last4 = input.accountNumber.slice(-4);
 
+    let encryptedAccountNumber: string;
+    try {
+      encryptedAccountNumber = encryptSensitiveValue(input.accountNumber);
+    } catch {
+      return {
+        ok: false as const,
+        code: "BANK_ACCOUNT_ENCRYPTION_NOT_CONFIGURED",
+        message:
+          "La protección de cuentas bancarias no está configurada. Define BANK_ACCOUNT_ENCRYPTION_KEY en el servidor antes de guardar datos bancarios.",
+        statusCode: 503,
+      };
+    }
+
     const row = await bankAccountsRepository.upsert(auth.userId, {
       accountHolderName:  input.accountHolderName,
       bankName:           input.bankName,
       accountType:        input.accountType,
       accountNumberLast4: last4,
+      accountNumberEncrypted: encryptedAccountNumber,
     });
 
     return { ok: true, account: toResponse(row) };

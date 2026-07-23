@@ -44,6 +44,13 @@ export class LegalRepository {
   }
 
   async update(id: string, data: { title?: string; content?: string; effectiveDate?: string; isActive?: boolean }): Promise<LegalDocument | null> {
+    const current = await this.findById(id);
+    if (!current) return null;
+    if (data.isActive === true) {
+      await db.update(legalDocuments)
+        .set({ isActive: false, updatedAt: new Date() })
+        .where(and(eq(legalDocuments.type, current.type), eq(legalDocuments.isActive, true)));
+    }
     const set: Record<string, unknown> = { updatedAt: new Date() };
     if (data.title         !== undefined) set["title"]         = data.title;
     if (data.content       !== undefined) set["content"]       = data.content;

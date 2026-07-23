@@ -47,9 +47,10 @@ export const profileController = {
 
     // Build input object conditionally — required by exactOptionalPropertyTypes
     const input: UpdateProfileInput = {};
-    if (typeof parsed.data.name === "string")                            input.name      = parsed.data.name;
+    if (typeof parsed.data.name === "string") input.name = parsed.data.name;
     const av = parsed.data.avatarUrl;
-    if ("avatarUrl" in parsed.data && av !== undefined)                  input.avatarUrl = av;
+    if ("avatarUrl" in parsed.data && av !== undefined) input.avatarUrl = av;
+    if (typeof parsed.data.phone === "string") input.phone = parsed.data.phone;
 
     const result = await profileService.updateProfile(token, input);
     if (!result.ok) {

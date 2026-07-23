@@ -44,7 +44,7 @@ function activeRideOf(rides: DriverRideData[]): DriverRideData | null {
 
 function readMap(): Record<string, Record<string, unknown>> {
   try {
-    const raw = localStorage.getItem(LIVE_LOCATION_KEY);
+    const raw = sessionStorage.getItem(LIVE_LOCATION_KEY);
     const parsed = raw ? (JSON.parse(raw) as unknown) : {};
     return parsed && typeof parsed === "object" && !Array.isArray(parsed)
       ? (parsed as Record<string, Record<string, unknown>>)
@@ -99,9 +99,9 @@ function publishCompatibilityLocation(
     if (ride?.id) {
       const map = readMap();
       map[ride.id] = payload;
-      localStorage.setItem(LIVE_LOCATION_KEY, JSON.stringify(map));
+      sessionStorage.setItem(LIVE_LOCATION_KEY, JSON.stringify(map));
     }
-    localStorage.setItem(CURRENT_LOCATION_KEY, JSON.stringify(payload));
+    sessionStorage.setItem(CURRENT_LOCATION_KEY, JSON.stringify(payload));
   } catch {
     // Compatibilidad local no debe bloquear el GPS real.
   }

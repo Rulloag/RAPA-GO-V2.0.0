@@ -16,6 +16,7 @@ import {
   type FormEvent,
 } from "react";
 
+import { RAPAGO_CONTACT } from "@rapa-go/shared";
 import {
   publicAccountDeletionService,
   type PublicAccountDeletionStatusData,
@@ -48,6 +49,8 @@ function statusLabel(status: PublicAccountDeletionStatusData["status"]): string 
   switch (status) {
     case "pending":
       return "Pendiente de revisión";
+    case "deferred":
+      return "Aplazada temporalmente";
     case "approved":
       return "Aprobada";
     case "processing":
@@ -172,7 +175,7 @@ export function PublicAccountDeletionPage(): JSX.Element {
       setStatusEmail(normalizeEmail(email));
       setStatusCode(request.trackingCode);
       setMessage(
-        "Solicitud enviada. La cuenta continúa activa hasta que un administrador la apruebe.",
+        "Solicitud enviada. La cuenta continúa activa durante la revisión. El plazo ordinario máximo es de 30 días.",
       );
     } catch (submitError) {
       setError(
@@ -232,7 +235,8 @@ export function PublicAccountDeletionPage(): JSX.Element {
           <li>La solicitud llega al panel administrativo.</li>
           <li>La cuenta no se elimina automáticamente.</li>
           <li>Si se aprueba, se anonimizan los datos no necesarios y se cierran las sesiones.</li>
-          <li>Si se rechaza, la cuenta sigue activa y se informa el motivo.</li>
+          <li>No existe rechazo discrecional. Solo puede aplazarse por una causa objetiva y temporal informada.</li>
+          <li>El plazo ordinario máximo de procesamiento es de 30 días.</li>
         </ol>
       </section>
 
@@ -377,7 +381,7 @@ export function PublicAccountDeletionPage(): JSX.Element {
                   />
                   <IonLabel className="ion-text-wrap">
                     Confirmo que deseo solicitar la eliminación de esta cuenta
-                    y entiendo que será revisada por un administrador.
+                    y entiendo que será revisada, con reautenticación y sin rechazo discrecional.
                   </IonLabel>
                 </IonItem>
 
@@ -477,6 +481,10 @@ export function PublicAccountDeletionPage(): JSX.Element {
             <p><strong>Seguimiento:</strong> {statusData.trackingCode}</p>
             <p><strong>Estado:</strong> {statusLabel(statusData.status)}</p>
             <p><strong>Solicitud:</strong> {dateLabel(statusData.requestedAt)}</p>
+            <p><strong>Plazo máximo:</strong> {dateLabel(statusData.deadlineAt)}</p>
+            {statusData.deferredUntil && (
+              <p><strong>Aplazada hasta:</strong> {dateLabel(statusData.deferredUntil)}</p>
+            )}
             {statusData.reviewedAt && (
               <p><strong>Revisión:</strong> {dateLabel(statusData.reviewedAt)}</p>
             )}
@@ -489,8 +497,23 @@ export function PublicAccountDeletionPage(): JSX.Element {
             {statusData.failureReason && (
               <p><strong>Detalle:</strong> {statusData.failureReason}</p>
             )}
+            {statusData.retentionSummary && (
+              <p><strong>Datos conservados:</strong> {statusData.retentionSummary}</p>
+            )}
           </div>
         )}
+      </section>
+
+      <section style={publicSiteStyles.card}>
+        <h2 style={{ margin: "0 0 10px", color: "#f8d879" }}>
+          Contacto de privacidad
+        </h2>
+        <p style={publicSiteStyles.muted}>
+          Para consultas sobre identidad, conservación legal, saldos o el estado de una solicitud, escribe a{" "}
+          <a href={`mailto:${RAPAGO_CONTACT.privacyEmail}`} style={{ color: "#f8d879", fontWeight: 900 }}>
+            {RAPAGO_CONTACT.privacyEmail}
+          </a>. La solicitud también puede realizarse desde el Perfil de la aplicación.
+        </p>
       </section>
     </PublicSiteShell>
   );

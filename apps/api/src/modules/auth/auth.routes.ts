@@ -6,6 +6,7 @@ const LOGIN_RATE_LIMIT = {
 } as const;
 
 const REGISTER_RATE_LIMIT = {
+  bodyLimit: 3 * 1024 * 1024,
   config: { rateLimit: { max: 5, timeWindow: "1 hour" } },
 } as const;
 
@@ -22,6 +23,20 @@ export async function authRoutes(
     "/register",
     REGISTER_RATE_LIMIT,
     authController.register,
+  );
+
+  fastify.post(
+    "/apple",
+    {
+      bodyLimit: 3 * 1024 * 1024,
+      config: { rateLimit: { max: 10, timeWindow: "15 minutes" } },
+    },
+    authController.appleLogin,
+  );
+  fastify.post(
+    "/apple/link",
+    { config: { rateLimit: { max: 5, timeWindow: "15 minutes" } } },
+    authController.appleLink,
   );
   fastify.post("/logout", authController.logout);
   fastify.get("/me", authController.me);
@@ -47,6 +62,16 @@ export async function authRoutes(
   );
 
   fastify.post(
+    "/password/create",
+    {
+      config: {
+        rateLimit: { max: 5, timeWindow: "15 minutes" },
+      },
+    },
+    authController.createPassword,
+  );
+
+  fastify.post(
     "/facebook/resident-precheck",
     {
       bodyLimit: 3 * 1024 * 1024,
@@ -68,10 +93,25 @@ export async function authRoutes(
     FACEBOOK_RATE_LIMIT,
     authController.facebookLogin,
   );
+  fastify.post(
+    "/facebook/link/start",
+    FACEBOOK_RATE_LIMIT,
+    authController.facebookLinkStart,
+  );
   fastify.get(
     "/facebook/callback",
     FACEBOOK_RATE_LIMIT,
     authController.facebookCallback,
+  );
+  fastify.post(
+    "/facebook/link-existing",
+    FACEBOOK_RATE_LIMIT,
+    authController.facebookLinkExisting,
+  );
+  fastify.post(
+    "/facebook/setup",
+    FACEBOOK_RATE_LIMIT,
+    authController.facebookSetup,
   );
   fastify.post(
     "/facebook/exchange",

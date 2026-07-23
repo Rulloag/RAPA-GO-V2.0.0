@@ -4,24 +4,32 @@ const DEFAULT_TIMEOUT_MS = 25_000;
 
 export { DEFAULT_TIMEOUT_MS };
 
-export function networkError(message = "Network request failed."): ApiErrorResponse {
-  return { ok: false, code: "NETWORK_ERROR", message, statusCode: 0 };
-}
-
-export function timeoutError(timeoutMs: number): ApiErrorResponse {
+export function networkError(_detail?: string): ApiErrorResponse {
   return {
     ok: false,
-    code: "TIMEOUT",
-    message: `Request timed out after ${timeoutMs}ms.`,
+    code: "NETWORK_ERROR",
+    message:
+      "No fue posible comunicarse con el servidor de RAPA GO. Inténtalo nuevamente en unos segundos.",
     statusCode: 0,
   };
 }
 
-export function invalidResponseError(detail?: string): ApiErrorResponse {
+export function timeoutError(_timeoutMs: number): ApiErrorResponse {
+  return {
+    ok: false,
+    code: "TIMEOUT",
+    message:
+      "El servidor de RAPA GO tardó demasiado en responder. Inténtalo nuevamente.",
+    statusCode: 0,
+  };
+}
+
+export function invalidResponseError(_detail?: string): ApiErrorResponse {
   return {
     ok: false,
     code: "INVALID_RESPONSE",
-    message: detail ?? "Server returned an unexpected response format.",
+    message:
+      "El servicio respondió de una forma inesperada. Inténtalo nuevamente en unos segundos.",
     statusCode: 0,
   };
 }
@@ -67,7 +75,10 @@ export function parseErrorBody(body: unknown, statusCode: number): ApiErrorRespo
   return {
     ok: false,
     code: "INTERNAL_SERVER_ERROR",
-    message: `Unexpected server error (HTTP ${statusCode}).`,
+    message:
+      statusCode >= 500
+        ? "El servidor de RAPA GO presentó un problema temporal. Inténtalo nuevamente."
+        : "No se pudo completar la solicitud. Revisa los datos e inténtalo nuevamente.",
     statusCode,
   };
 }
