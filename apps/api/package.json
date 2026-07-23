@@ -24,9 +24,9 @@
     "seed:dev": "tsx scripts/seed-dev-users.ts"
   },
   "dependencies": {
-    "@fastify/cors": "11.3.0",
-    "@fastify/helmet": "13.1.0",
-    "@fastify/rate-limit": "11.1.0",
+    "@fastify/cors": "8.5.0",
+    "@fastify/helmet": "11.1.1",
+    "@fastify/rate-limit": "9.1.0",
     "@supabase/supabase-js": "2.43.4",
     "argon2": "0.44.0",
     "dotenv": "17.4.2",
