@@ -464,7 +464,7 @@ export class AccountDeletionRepository {
 
       if (!updated) {
         throw AppError.notFound(
-          "No se encontró la solicitud de eliminación.",
+          "No se encontrÃ³ la solicitud de eliminaciÃ³n.",
         );
       }
 
@@ -796,7 +796,7 @@ export class AccountDeletionRepository {
 
     if (activeServiceBookings > 0) {
       blockers.push(
-        `La cuenta tiene ${activeServiceBookings} reserva(s) turística(s) activa(s).`,
+        `La cuenta tiene ${activeServiceBookings} reserva(s) turÃ­stica(s) activa(s).`,
       );
     }
 
@@ -970,7 +970,7 @@ export class AccountDeletionRepository {
   ): Promise<AccountDeletionRequestResponse> {
     const now = new Date();
     const anonymizedEmail = `deleted+${userId}@deleted.rapago.local`;
-    let currentStep = "inicialización";
+    let currentStep = "inicializaciÃ³n";
 
     try {
       return await db.transaction(async (tx) => {
@@ -989,7 +989,7 @@ export class AccountDeletionRepository {
 
         if (!account) {
           throw AppError.notFound(
-            "No se encontró la cuenta asociada a la solicitud.",
+            "No se encontrÃ³ la cuenta asociada a la solicitud.",
           );
         }
 
@@ -1024,7 +1024,7 @@ export class AccountDeletionRepository {
           throw new AppError({
             code: "ACCOUNT_DELETION_NOT_PENDING",
             message:
-              "La solicitud ya fue completada o no se encuentra disponible para revisión.",
+              "La solicitud ya fue completada o no se encuentra disponible para revisiÃ³n.",
             statusCode: 409,
           });
         }
@@ -1118,7 +1118,7 @@ export class AccountDeletionRepository {
           sql`DELETE FROM public.connectivity_logs WHERE user_id = ${userId}::uuid`,
         );
 
-        currentStep = "buscar postulación vinculada";
+        currentStep = "buscar postulaciÃ³n vinculada";
 
         const applicationWhere = or(
           eq(applications.userId, userId),
@@ -1132,11 +1132,11 @@ export class AccountDeletionRepository {
           .limit(1);
 
         /*
-         * No todas las cuentas tienen una postulación. Evitamos ejecutar un
+         * No todas las cuentas tienen una postulaciÃ³n. Evitamos ejecutar un
          * UPDATE innecesario cuando no existe ninguna fila vinculada.
          */
         if (linkedApplications.length > 0) {
-          currentStep = "anonimizar postulación";
+          currentStep = "anonimizar postulaciÃ³n";
 
           await tx
             .update(applications)
@@ -1174,7 +1174,7 @@ export class AccountDeletionRepository {
 
         await tx.execute(sql`
           UPDATE public.wallets
-          SET status = 'closed', balance = 0, updated_at = ${now}
+          SET status = 'closed', balance = 0, updated_at = CURRENT_TIMESTAMP
           WHERE user_id = ${userId}::uuid
         `);
 
@@ -1201,7 +1201,7 @@ export class AccountDeletionRepository {
 
         if (!anonymizedUsers[0]) {
           throw AppError.internal(
-            "La anonimización del usuario no modificó ninguna fila.",
+            "La anonimizaciÃ³n del usuario no modificÃ³ ninguna fila.",
           );
         }
 
@@ -1259,7 +1259,7 @@ export class AccountDeletionRepository {
           status: "failed",
           failedAt: new Date(),
           failureReason:
-            `No se pudo completar la anonimización en el paso "${currentStep}". ` +
+            `No se pudo completar la anonimizaciÃ³n en el paso "${currentStep}". ` +
             "Reintenta desde Admin.",
           updatedAt: new Date(),
         })
@@ -1302,14 +1302,14 @@ export class AccountDeletionRepository {
           userId: admin.id,
           type: "account_deletion_request",
           title: "Nueva solicitud para eliminar cuenta",
-          message: `${requesterName} (${requesterRole}) solicitó eliminar su cuenta.`,
+          message: `${requesterName} (${requesterRole}) solicitÃ³ eliminar su cuenta.`,
           entityType: "account_deletion_request",
           entityId: requestId,
           actionUrl: "/admin",
         })),
       );
     } catch {
-      // La notificación no debe impedir crear la solicitud.
+      // La notificaciÃ³n no debe impedir crear la solicitud.
     }
   }
 
@@ -1323,7 +1323,7 @@ export class AccountDeletionRepository {
       await db.insert(notifications).values({
         userId,
         type: "account_deletion_deferred",
-        title: "Solicitud de eliminación aplazada",
+        title: "Solicitud de eliminaciÃ³n aplazada",
         message: `Tu solicitud sigue vigente. Causa temporal: ${note}`,
         entityType: "account_deletion_request",
         entityId: requestId,
@@ -1333,7 +1333,7 @@ export class AccountDeletionRepository {
             : "/passenger/profile",
       });
     } catch {
-      // La respuesta administrativa sigue siendo válida aunque falle el aviso.
+      // La respuesta administrativa sigue siendo vÃ¡lida aunque falle el aviso.
     }
   }
 }
