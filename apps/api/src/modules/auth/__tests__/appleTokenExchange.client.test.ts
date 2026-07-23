@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { AppleTokenExchangeClient } from "../appleTokenExchange.client.js";
-import { fakeFetch, throwingFetch, generateAppleKeyPair, TEST_CLIENT_ID } from "./appleTestFixtures.js";
+import { fakeFetch, throwingFetch, createEcPrivateKeyPem, TEST_CLIENT_ID } from "./appleTestFixtures.js";
 
 describe("AppleTokenExchangeClient", () => {
   const originalEnv = { ...process.env };
@@ -12,8 +12,8 @@ describe("AppleTokenExchangeClient", () => {
     // A real, freshly generated EC PKCS8 PEM (test-only key pair, never a
     // real Apple credential) — the client needs a key jose can actually
     // import and sign a client_secret JWT with.
-    const key = await generateAppleKeyPair();
-    process.env["APPLE_PRIVATE_KEY"] = key.pkcs8.replace(/\n/g, "\\n");
+    const privateKeyPem = await createEcPrivateKeyPem();
+    process.env["APPLE_PRIVATE_KEY"] = privateKeyPem.replace(/\n/g, "\\n");
   });
 
   afterEach(() => {

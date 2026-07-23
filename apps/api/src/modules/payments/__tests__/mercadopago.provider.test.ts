@@ -51,13 +51,13 @@ describe("MercadoPagoProvider.verifyWebhookSignature", () => {
     )).toBe(false);
   });
 
-  it("returns true when MERCADOPAGO_WEBHOOK_SECRET is not set (dev bypass)", () => {
+  it("returns false when MERCADOPAGO_WEBHOOK_SECRET is not set (fails closed)", () => {
     delete process.env["MERCADOPAGO_WEBHOOK_SECRET"];
 
     expect(provider.verifyWebhookSignature(
       { type: "payment", data: { id: dataId } },
       {},
-    )).toBe(true);
+    )).toBe(false);
   });
 
   it("returns false when MERCADOPAGO_ACCESS_TOKEN is missing", () => {

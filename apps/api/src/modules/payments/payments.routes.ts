@@ -5,6 +5,23 @@ export async function paymentsRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.post("/payments/create", paymentsController.createPayment);
   fastify.get("/payments/:paymentId/status", paymentsController.getPaymentStatus);
   fastify.get("/payments/:paymentId/receipt", paymentsController.getPaymentReceipt);
-  fastify.post("/payments/webhook/prontopaga", paymentsController.prontoPagaWebhook);
-  fastify.post("/payments/webhook/mercadopago", paymentsController.mercadoPagoWebhook);
+  const webhookOptions = {
+    config: {
+      // Los proveedores reintentan automáticamente sus notificaciones.
+      // La firma criptográfica es la protección de estas rutas; aplicar el
+      // límite global puede perder confirmaciones de pago legítimas.
+      rateLimit: false,
+    },
+  } as const;
+
+  fastify.post(
+    "/payments/webhook/prontopaga",
+    webhookOptions,
+    paymentsController.prontoPagaWebhook,
+  );
+  fastify.post(
+    "/payments/webhook/mercadopago",
+    webhookOptions,
+    paymentsController.mercadoPagoWebhook,
+  );
 }

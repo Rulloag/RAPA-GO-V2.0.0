@@ -325,7 +325,9 @@ export class MercadoPagoProvider implements PaymentProvider {
     try {
       const config = getConfig();
 
-      if (!config.webhookSecret) return true;
+      if (!config.webhookSecret) {
+        return false;
+      }
 
       const xSignature = headers["x-signature"] ?? "";
       const xRequestId = headers["x-request-id"] ?? "";

@@ -1,69 +1,44 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
-// ── Mocks must be declared before the import under test ──────────────────────
+const mockVerifyAccessToken = vi.fn();
+const mockHashToken = vi.fn();
+const mockIsSessionValid = vi.fn();
+const mockFindUserById = vi.fn();
 
-const mockCreate         = vi.fn();
-const mockFindById       = vi.fn();
-const mockFindByPassenger = vi.fn();
-const mockFindByPassengerWithDriver = vi.fn();
-const mockMarkEnRoute    = vi.fn();
-const mockMarkArrived    = vi.fn();
-const mockMarkNoShow     = vi.fn();
-const mockWalletGetOrCreate  = vi.fn();
-const mockWalletUpdateBalance = vi.fn();
-const mockWalletCreateTransaction = vi.fn();
-const mockIsSessionValid = vi.fn().mockResolvedValue(true);
-const mockFindUserById   = vi.fn();
-const mockFindDriverStatusById         = vi.fn();
-const mockFindAvailableWithLocation    = vi.fn().mockResolvedValue([]);
-const mockFindBusyEligibleForQueuedOffer = vi.fn().mockResolvedValue([]);
-const mockAccept                       = vi.fn();
-const mockSetBusy                      = vi.fn();
-const mockSetAvailable                 = vi.fn();
-const mockSetQueuedRide                = vi.fn();
-const mockClearQueuedRide              = vi.fn();
-const mockFareSettingsFindByType       = vi.fn().mockResolvedValue(null);
-const mockStopsCreateMany              = vi.fn().mockResolvedValue([]);
-const mockStopsFindManyByRideIds       = vi.fn().mockResolvedValue([]);
-const mockOffersExpireStale            = vi.fn().mockResolvedValue(undefined);
-const mockOffersCreateOffer            = vi.fn();
-const mockOffersMarkCancelledByRide    = vi.fn();
-const mockRidesComplete                    = vi.fn();
-const mockClearPreferredDriverGender       = vi.fn();
+const mockCreateWithApprovedPolicyCharges = vi.fn();
+const mockFindById = vi.fn();
+const mockFindByIdAndPassenger = vi.fn();
+const mockFindByPassengerIdWithDriver = vi.fn();
+const mockFindByDriverId = vi.fn();
+const mockFindAvailable = vi.fn();
+const mockAccept = vi.fn();
+const mockComplete = vi.fn();
+const mockStart = vi.fn();
+const mockCancel = vi.fn();
+const mockCancelAccepted = vi.fn();
+const mockMarkEnRoute = vi.fn();
+const mockMarkArrived = vi.fn();
+const mockMarkNoShow = vi.fn();
+const mockCreatePolicyCharge = vi.fn();
 
-vi.mock("../rides.repository.js", () => ({
-  RidesRepository: vi.fn().mockImplementation(() => ({
-    create:                       mockCreate,
-    findById:                     mockFindById,
-    findByIdAndPassenger:         mockFindByPassenger,
-    findByPassengerId:            vi.fn().mockResolvedValue([]),
-    findByPassengerIdWithDriver:  mockFindByPassengerWithDriver.mockResolvedValue([]),
-    findAvailable:                vi.fn().mockResolvedValue([]),
-    findByDriverId:               vi.fn().mockResolvedValue([]),
-    accept:                       mockAccept,
-    complete:                     mockRidesComplete,
-    start:                        vi.fn(),
-    cancel:                       vi.fn(),
-    cancelAccepted:               vi.fn(),
-    markEnRoute:                  mockMarkEnRoute,
-    markArrived:                  mockMarkArrived,
-    markNoShow:                   mockMarkNoShow,
-    clearPreferredDriverGender:   mockClearPreferredDriverGender,
-  })),
-}));
+const mockReleaseDriverAfterRide = vi.fn();
+const mockAssertDriverCanAcceptRide = vi.fn();
 
-vi.mock("../../wallet/wallet.repository.js", () => ({
-  WalletRepository: vi.fn().mockImplementation(() => ({
-    getOrCreate:      mockWalletGetOrCreate,
-    updateBalance:    mockWalletUpdateBalance,
-    createTransaction: mockWalletCreateTransaction,
-  })),
-}));
+const mockFindSuccessfulPaymentByRideId = vi.fn();
+const mockFareFindByType = vi.fn();
+const mockFareFindZoneByRoute = vi.fn();
+const mockFindReferralUse = vi.fn();
+
+const mockAuditRecordSafe = vi.fn();
+const mockNotifyAssigned = vi.fn();
+const mockNotifyEnRoute = vi.fn();
+const mockNotifyArrived = vi.fn();
+const mockNotifyCompleted = vi.fn();
 
 vi.mock("../../auth/token.service.js", () => ({
   TokenService: vi.fn().mockImplementation(() => ({
-    verifyAccessToken: vi.fn().mockReturnValue({ sub: "user-123" }),
-    hashToken:         vi.fn().mockReturnValue("hash"),
+    verifyAccessToken: mockVerifyAccessToken,
+    hashToken: mockHashToken,
   })),
 }));
 
@@ -79,1850 +54,725 @@ vi.mock("../../users/users.repository.js", () => ({
   })),
 }));
 
+vi.mock("../rides.repository.js", () => ({
+  RidesRepository: vi.fn().mockImplementation(() => ({
+    createWithApprovedPolicyCharges: mockCreateWithApprovedPolicyCharges,
+    findById: mockFindById,
+    findByIdAndPassenger: mockFindByIdAndPassenger,
+    findByPassengerIdWithDriver: mockFindByPassengerIdWithDriver,
+    findByDriverId: mockFindByDriverId,
+    findAvailable: mockFindAvailable,
+    accept: mockAccept,
+    complete: mockComplete,
+    start: mockStart,
+    cancel: mockCancel,
+    cancelAccepted: mockCancelAccepted,
+    markEnRoute: mockMarkEnRoute,
+    markArrived: mockMarkArrived,
+    markNoShow: mockMarkNoShow,
+    createPolicyCharge: mockCreatePolicyCharge,
+  })),
+}));
+
+vi.mock("../../drivers/driverCompliance.service.js", () => ({
+  DriverComplianceService: vi.fn().mockImplementation(() => ({
+    releaseDriverAfterRide: mockReleaseDriverAfterRide,
+    assertDriverCanAcceptRide: mockAssertDriverCanAcceptRide,
+  })),
+}));
+
 vi.mock("../../drivers/driverStatus.repository.js", () => ({
   DriverStatusRepository: vi.fn().mockImplementation(() => ({
-    findByDriverId:                  mockFindDriverStatusById,
-    findAvailableWithLocation:       mockFindAvailableWithLocation,
-    findBusyEligibleForQueuedOffer:  mockFindBusyEligibleForQueuedOffer,
-    setBusy:                         mockSetBusy,
-    setAvailable:                    mockSetAvailable,
-    setQueuedRide:                   mockSetQueuedRide,
-    clearQueuedRide:                 mockClearQueuedRide,
-    updateLocation:                  vi.fn(),
-  })),
-}));
-
-vi.mock("../rideAssignmentOffers.repository.js", () => ({
-  RideAssignmentOffersRepository: vi.fn().mockImplementation(() => ({
-    expireStale:          mockOffersExpireStale,
-    createOffer:          mockOffersCreateOffer,
-    markCancelledByRideId: mockOffersMarkCancelledByRide,
-  })),
-}));
-
-vi.mock("../../fareSettings/fareSettings.repository.js", () => ({
-  FareSettingsRepository: vi.fn().mockImplementation(() => ({
-    findByType: mockFareSettingsFindByType,
+    setBusy: vi.fn(),
+    setAvailable: vi.fn(),
   })),
 }));
 
 vi.mock("../rideStops.repository.js", () => ({
-  RideStopsRepository: vi.fn().mockImplementation(() => ({
-    createMany:          mockStopsCreateMany,
-    findManyByRideIds:   mockStopsFindManyByRideIds,
+  RideStopsRepository: vi.fn().mockImplementation(() => ({})),
+}));
+
+vi.mock("../rideAssignmentOffers.repository.js", () => ({
+  RideAssignmentOffersRepository: vi.fn().mockImplementation(() => ({})),
+}));
+
+vi.mock("../../wallet/wallet.repository.js", () => ({
+  WalletRepository: vi.fn().mockImplementation(() => ({})),
+}));
+
+vi.mock("../../fareSettings/fareSettings.repository.js", () => ({
+  FareSettingsRepository: vi.fn().mockImplementation(() => ({
+    findByType: mockFareFindByType,
+    findZoneFareByRoute: mockFareFindZoneByRoute,
   })),
 }));
 
-// ── Import after mocks ────────────────────────────────────────────────────────
+vi.mock("../../payments/payments.repository.js", () => ({
+  PaymentsRepository: vi.fn().mockImplementation(() => ({
+    findSuccessfulByRideId: mockFindSuccessfulPaymentByRideId,
+  })),
+}));
+
+vi.mock("../../referrals/referrals.repository.js", () => ({
+  ReferralsRepository: vi.fn().mockImplementation(() => ({
+    findUseByReferredUserId: mockFindReferralUse,
+  })),
+}));
+
+vi.mock("../../audit/audit.service.js", () => ({
+  AuditService: vi.fn().mockImplementation(() => ({
+    recordSafe: mockAuditRecordSafe,
+  })),
+}));
+
+vi.mock("../../notifications/notifications.helpers.js", () => ({
+  notifyPassengerDriverAssigned: mockNotifyAssigned,
+  notifyPassengerDriverEnRoute: mockNotifyEnRoute,
+  notifyPassengerDriverArrived: mockNotifyArrived,
+  notifyPassengerRideCompleted: mockNotifyCompleted,
+}));
+
 const { RidesService } = await import("../rides.service.js");
-const { createRideRequestSchema } = await import("../rides.schemas.js");
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
+const NOW = new Date("2026-07-23T12:00:00.000Z");
 
-const NOW = new Date();
-
-function makeRide(overrides: Partial<Record<string, unknown>> = {}) {
+function makeRide(overrides: Record<string, unknown> = {}) {
   return {
-    id:                    "ride-1",
-    passengerUserId:       "user-123",
-    driverUserId:          null,
-    originText:            "Hanga Roa",
-    destinationText:       "Aeropuerto Mataveri",
-    notes:                 null,
-    estimatedFareClp:      5000,
-    originLat:             -27.15,
-    originLng:             -109.43,
-    destinationLat:        -27.16,
-    destinationLng:        -109.42,
-    distanceMeters:        2000,
-    durationSeconds:       300,
-    fareCalculationSource: "google_maps",
-    status:                "requested",
-    requestedAt:           NOW,
-    acceptedAt:            null,
-    enRouteAt:             null,
-    arrivedAt:             null,
-    startedAt:             null,
-    completedAt:           null,
-    cancelledAt:           null,
-    cancellationReason:    null,
-    cancelledByUserId:     null,
-    cancelledByRole:       null,
-    isOfflineBooking:      null,
-    offlinePassengerName:  null,
+    id: "ride-1",
+    passengerUserId: "user-123",
+    driverUserId: null,
+    originText: "Hanga Roa",
+    destinationText: "Aeropuerto Mataveri",
+    notes: "PaymentMethod: cash",
+    estimatedFareClp: 5000,
+    paymentMethod: "cash",
+    paymentProvider: null,
+    walletBenefitRequested: false,
+    walletBenefitAppliedClp: 0,
+    walletBenefitReversedClp: 0,
+    walletBenefitReversedAt: null,
+    fareBeforeWalletBenefitClp: 5000,
+    originLat: null,
+    originLng: null,
+    destinationLat: null,
+    destinationLng: null,
+    distanceMeters: null,
+    durationSeconds: null,
+    fareCalculationSource: "server_estimate",
+    status: "requested",
+    requestedAt: NOW,
+    acceptedAt: null,
+    enRouteAt: null,
+    arrivedAt: null,
+    startedAt: null,
+    completedAt: null,
+    cancelledAt: null,
+    cancellationReason: null,
+    cancelledByUserId: null,
+    cancelledByRole: null,
+    isOfflineBooking: null,
+    offlinePassengerName: null,
     offlinePassengerPhone: null,
     offlinePassengerEmail: null,
-    rideType:              "immediate",
-    scheduledPickupAt:     null,
-    priorityFeeClp:        null,
-    flightNumber:          null,
-    createdAt:             NOW,
-    updatedAt:             NOW,
+    rideType: "immediate",
+    scheduledPickupAt: null,
+    priorityFeeClp: null,
+    flightNumber: null,
+    preferredDriverGender: null,
+    createdAt: NOW,
+    updatedAt: NOW,
     ...overrides,
   };
 }
 
-const VALID_INPUT = {
-  originText:      "Hanga Roa",
+function makeNoShowCharge(overrides: Record<string, unknown> = {}) {
+  return {
+    id: "charge-1",
+    sourceRideId: "ride-1",
+    ownerUserId: "user-123",
+    type: "no_show",
+    status: "pending_admin_review",
+    paymentMethod: "cash",
+    applicableFareClp: 12000,
+    feePercent: 50,
+    feeCapClp: 5000,
+    calculatedAmountClp: 5000,
+    approvedAmountClp: null,
+    reason: "Pasajero no se presentó después de 5 minutos.",
+    adminDecisionReason: null,
+    reviewedByUserId: null,
+    reviewedAt: null,
+    appliedToRideId: null,
+    appliedAt: null,
+    settledAt: null,
+    createdAt: NOW,
+    updatedAt: NOW,
+    ...overrides,
+  };
+}
+
+const IMMEDIATE_CASH_INPUT = {
+  originText: "Hanga Roa",
   destinationText: "Aeropuerto Mataveri",
-  originLat:       -27.15,
-  originLng:       -109.43,
-  destinationLat:  -27.16,
-  destinationLng:  -109.42,
-  distanceMeters:  2000,
-  durationSeconds: 300,
-  rideType:        "immediate" as const,
+  paymentMethod: "cash" as const,
 };
 
-// 60 minutes from now in ISO 8601 format — valid for scheduled rides
-function scheduledAt(minutesFromNow = 60): string {
-  return new Date(Date.now() + minutesFromNow * 60 * 1000).toISOString();
-}
-
-const SCHEDULED_INPUT = {
-  originText:        "Hanga Roa",
-  destinationText:   "Aeropuerto Mataveri",
-  originLat:         -27.15,
-  originLng:         -109.43,
-  destinationLat:    -27.16,
-  destinationLng:    -109.42,
-  distanceMeters:    2000,
-  durationSeconds:   300,
-  rideType:          "scheduled" as const,
-  scheduledPickupAt: scheduledAt(60),
-  paymentMethod:     "card" as const,
-};
-
-// ── Tests ─────────────────────────────────────────────────────────────────────
-
-describe("RidesService.createRideRequest", () => {
+describe("RidesService - contrato actual", () => {
   let service: InstanceType<typeof RidesService>;
 
   beforeEach(() => {
     vi.clearAllMocks();
+
+    mockVerifyAccessToken.mockReturnValue({ sub: "user-123" });
+    mockHashToken.mockReturnValue("token-hash");
     mockIsSessionValid.mockResolvedValue(true);
-    mockFindAvailableWithLocation.mockResolvedValue([]);  // no auto-assignment by default
-    mockAccept.mockResolvedValue(null);
+    mockFindUserById.mockResolvedValue({
+      id: "user-123",
+      role: "passenger",
+    });
+
+    mockFareFindByType.mockResolvedValue(null);
+    mockFareFindZoneByRoute.mockResolvedValue(null);
+    mockFindReferralUse.mockResolvedValue(null);
+    mockFindSuccessfulPaymentByRideId.mockResolvedValue(null);
+    mockFindByPassengerIdWithDriver.mockResolvedValue([]);
+    mockFindByDriverId.mockResolvedValue([]);
+    mockFindAvailable.mockResolvedValue([]);
+    mockReleaseDriverAfterRide.mockResolvedValue(undefined);
+    mockAssertDriverCanAcceptRide.mockResolvedValue(undefined);
+
+    mockCreateWithApprovedPolicyCharges.mockImplementation(
+      async (
+        passengerUserId: string,
+        originText: string,
+        destinationText: string,
+        notes: string | null,
+        baseEstimatedFareClp: number,
+        initialStatus: "requested" | "pending_payment",
+        options: {
+          paymentMethod?: "cash" | "card";
+          paymentProvider?: string | null;
+          useWalletBenefit?: boolean;
+        },
+      ) => ({
+        ride: makeRide({
+          passengerUserId,
+          originText,
+          destinationText,
+          notes,
+          estimatedFareClp: baseEstimatedFareClp,
+          fareBeforeWalletBenefitClp: baseEstimatedFareClp,
+          status: initialStatus,
+          paymentMethod: options.paymentMethod ?? null,
+          paymentProvider: options.paymentProvider ?? null,
+          walletBenefitRequested: options.useWalletBenefit === true,
+        }),
+        appliedChargesTotalClp: 0,
+        appliedCharges: [],
+        fareBeforeWalletBenefitClp: baseEstimatedFareClp,
+        walletBenefitRequested: options.useWalletBenefit === true,
+        walletBenefitAppliedClp: 0,
+        walletBenefitRemainingClp: 0,
+      }),
+    );
+
     service = new RidesService();
   });
 
-  it("passenger can create ride with valid coordinates", async () => {
-    mockFindUserById.mockResolvedValue({ id: "user-123", role: "passenger" });
-    const ride = makeRide();
-    mockCreate.mockResolvedValue(ride);
-
-    const result = await service.createRideRequest("token", VALID_INPUT);
-
-    expect(result.ok).toBe(true);
-    if (!result.ok) return;
-    expect(result.ride.originLat).toBe(-27.15);
-    expect(result.ride.distanceMeters).toBe(2000);
-    expect(result.ride.fareCalculationSource).toBe("google_maps");
-    expect(mockCreate).toHaveBeenCalledOnce();
-    const createArg = mockCreate.mock.calls[0]![0] as Record<string, unknown>;
-    expect(createArg["originLat"]).toBe(-27.15);
-    expect(createArg["distanceMeters"]).toBe(2000);
-  });
-
-  it("driver role returns 403", async () => {
-    mockFindUserById.mockResolvedValue({ id: "user-123", role: "driver" });
-
-    const result = await service.createRideRequest("token", VALID_INPUT);
-
-    expect(result.ok).toBe(false);
-    if (result.ok) return;
-    expect(result.statusCode).toBe(403);
-    expect(mockCreate).not.toHaveBeenCalled();
-  });
-
-  it("calculates fare from distanceMeters — 2 km should yield at least 3000 CLP", async () => {
-    mockFindUserById.mockResolvedValue({ id: "user-123", role: "passenger" });
-    mockCreate.mockImplementation((data: Record<string, unknown>) =>
-      Promise.resolve(makeRide({ estimatedFareClp: data["estimatedFareClp"] as number })),
-    );
-
-    const result = await service.createRideRequest("token", { ...VALID_INPUT, distanceMeters: 2000 });
-
-    expect(result.ok).toBe(true);
-    if (!result.ok) return;
-    // 2 km × 2300 CLP/km = 4600 CLP, min 3000 → should be 4600
-    expect(result.ride.estimatedFareClp).toBe(4600);
-  });
-
-  it("respects minimum fare — very short ride (1 m) returns minimum", async () => {
-    mockFindUserById.mockResolvedValue({ id: "user-123", role: "passenger" });
-    mockCreate.mockImplementation((data: Record<string, unknown>) =>
-      Promise.resolve(makeRide({ estimatedFareClp: data["estimatedFareClp"] as number })),
-    );
-
-    const shortInput = { ...VALID_INPUT, distanceMeters: 1 };
-    const result = await service.createRideRequest("token", shortInput);
-
-    expect(result.ok).toBe(true);
-    if (!result.ok) return;
-    // 0.001 km × 2300 = 2.3 CLP → below min → should be 3000
-    expect(result.ride.estimatedFareClp).toBeGreaterThanOrEqual(3000);
-  });
-
-  it("never returns a negative fare", async () => {
-    mockFindUserById.mockResolvedValue({ id: "user-123", role: "passenger" });
-    mockCreate.mockImplementation((data: Record<string, unknown>) =>
-      Promise.resolve(makeRide({ estimatedFareClp: data["estimatedFareClp"] as number })),
-    );
-
-    const result = await service.createRideRequest("token", VALID_INPUT);
-
-    expect(result.ok).toBe(true);
-    if (!result.ok) return;
-    expect(result.ride.estimatedFareClp).toBeGreaterThanOrEqual(0);
-  });
-
-  it("stores coordinates in the created ride", async () => {
-    mockFindUserById.mockResolvedValue({ id: "user-123", role: "passenger" });
-    mockCreate.mockResolvedValue(makeRide());
-
-    await service.createRideRequest("token", VALID_INPUT);
-
-    const callArg = mockCreate.mock.calls[0]![0] as Record<string, unknown>;
-    expect(callArg["originLat"]).toBe(VALID_INPUT.originLat);
-    expect(callArg["originLng"]).toBe(VALID_INPUT.originLng);
-    expect(callArg["destinationLat"]).toBe(VALID_INPUT.destinationLat);
-    expect(callArg["destinationLng"]).toBe(VALID_INPUT.destinationLng);
-    expect(callArg["durationSeconds"]).toBe(VALID_INPUT.durationSeconds);
-  });
-});
-
-// ── markEnRoute ───────────────────────────────────────────────────────────────
-
-describe("RidesService.markEnRoute", () => {
-  let service: InstanceType<typeof RidesService>;
-
-  beforeEach(() => {
-    vi.clearAllMocks();
-    mockIsSessionValid.mockResolvedValue(true);
-    service = new RidesService();
-  });
-
-  it("driver can mark en-route an accepted ride assigned to them", async () => {
-    mockFindUserById.mockResolvedValue({ id: "driver-1", role: "driver" });
-    const ride = makeRide({ status: "driver_en_route", driverUserId: "driver-1", enRouteAt: new Date() });
-    mockMarkEnRoute.mockResolvedValue(ride);
-
-    const result = await service.markEnRoute("token", "ride-1");
-
-    expect(result.ok).toBe(true);
-    if (!result.ok) return;
-    expect(result.ride.status).toBe("driver_en_route");
-    expect(mockMarkEnRoute).toHaveBeenCalledWith("ride-1", "driver-1");
-  });
-
-  it("passenger role returns 403", async () => {
-    mockFindUserById.mockResolvedValue({ id: "user-123", role: "passenger" });
-
-    const result = await service.markEnRoute("token", "ride-1");
-
-    expect(result.ok).toBe(false);
-    if (result.ok) return;
-    expect(result.statusCode).toBe(403);
-    expect(mockMarkEnRoute).not.toHaveBeenCalled();
-  });
-
-  it("returns 409 when ride is not in accepted status", async () => {
-    mockFindUserById.mockResolvedValue({ id: "driver-1", role: "driver" });
-    mockMarkEnRoute.mockResolvedValue(null);
-    mockFindById.mockResolvedValue(makeRide({ status: "in_progress", driverUserId: "driver-1" }));
-
-    const result = await service.markEnRoute("token", "ride-1");
-
-    expect(result.ok).toBe(false);
-    if (result.ok) return;
-    expect(result.statusCode).toBe(409);
-    expect(result.code).toBe("RIDE_CANNOT_MARK_EN_ROUTE");
-  });
-
-  it("returns 403 when ride belongs to a different driver", async () => {
-    mockFindUserById.mockResolvedValue({ id: "driver-1", role: "driver" });
-    mockMarkEnRoute.mockResolvedValue(null);
-    mockFindById.mockResolvedValue(makeRide({ status: "accepted", driverUserId: "driver-99" }));
-
-    const result = await service.markEnRoute("token", "ride-1");
-
-    expect(result.ok).toBe(false);
-    if (result.ok) return;
-    expect(result.statusCode).toBe(403);
-  });
-});
-
-// ── markArrived ───────────────────────────────────────────────────────────────
-
-describe("RidesService.markArrived", () => {
-  let service: InstanceType<typeof RidesService>;
-
-  beforeEach(() => {
-    vi.clearAllMocks();
-    mockIsSessionValid.mockResolvedValue(true);
-    service = new RidesService();
-  });
-
-  it("driver can mark arrived after driver_en_route", async () => {
-    mockFindUserById.mockResolvedValue({ id: "driver-1", role: "driver" });
-    const ride = makeRide({ status: "driver_arrived", driverUserId: "driver-1", arrivedAt: new Date() });
-    mockMarkArrived.mockResolvedValue(ride);
-
-    const result = await service.markArrived("token", "ride-1");
-
-    expect(result.ok).toBe(true);
-    if (!result.ok) return;
-    expect(result.ride.status).toBe("driver_arrived");
-    expect(mockMarkArrived).toHaveBeenCalledWith("ride-1", "driver-1");
-  });
-
-  it("passenger role returns 403", async () => {
-    mockFindUserById.mockResolvedValue({ id: "user-123", role: "passenger" });
-
-    const result = await service.markArrived("token", "ride-1");
-
-    expect(result.ok).toBe(false);
-    if (result.ok) return;
-    expect(result.statusCode).toBe(403);
-    expect(mockMarkArrived).not.toHaveBeenCalled();
-  });
-
-  it("returns 409 when ride is not in driver_en_route status", async () => {
-    mockFindUserById.mockResolvedValue({ id: "driver-1", role: "driver" });
-    mockMarkArrived.mockResolvedValue(null);
-    mockFindById.mockResolvedValue(makeRide({ status: "accepted", driverUserId: "driver-1" }));
-
-    const result = await service.markArrived("token", "ride-1");
-
-    expect(result.ok).toBe(false);
-    if (result.ok) return;
-    expect(result.statusCode).toBe(409);
-    expect(result.code).toBe("RIDE_CANNOT_MARK_ARRIVED");
-  });
-
-  it("returns 403 when ride belongs to a different driver", async () => {
-    mockFindUserById.mockResolvedValue({ id: "driver-1", role: "driver" });
-    mockMarkArrived.mockResolvedValue(null);
-    mockFindById.mockResolvedValue(makeRide({ status: "driver_en_route", driverUserId: "driver-99" }));
-
-    const result = await service.markArrived("token", "ride-1");
-
-    expect(result.ok).toBe(false);
-    if (result.ok) return;
-    expect(result.statusCode).toBe(403);
-  });
-});
-
-describe("RidesService.confirmNoShow", () => {
-  let service: InstanceType<typeof RidesService>;
-
-  beforeEach(() => {
-    vi.clearAllMocks();
-    mockIsSessionValid.mockResolvedValue(true);
-    mockWalletGetOrCreate.mockResolvedValue({ id: "wallet-1", balance: 10000 });
-    service = new RidesService();
-  });
-
-  it("driver can confirm no-show and passenger is charged the authoritative fare", async () => {
-    mockFindUserById.mockResolvedValue({ id: "driver-1", role: "driver" });
-    const ride = makeRide({
-      status: "no_show", driverUserId: "driver-1", passengerUserId: "passenger-1", estimatedFareClp: 7000,
-    });
-    mockMarkNoShow.mockResolvedValue(ride);
-
-    const result = await service.confirmNoShow("token", "ride-1");
-
-    expect(result.ok).toBe(true);
-    if (!result.ok) return;
-    expect(mockMarkNoShow).toHaveBeenCalledWith("ride-1", "driver-1");
-    expect(mockWalletUpdateBalance).toHaveBeenCalledWith("wallet-1", 10000 - 7000);
-    expect(mockWalletCreateTransaction).toHaveBeenCalledWith(
-      expect.objectContaining({ type: "no_show_charge", amount: -7000, userId: "passenger-1" }),
-    );
-  });
-
-  it("passenger role returns 403 and never charges", async () => {
-    mockFindUserById.mockResolvedValue({ id: "user-123", role: "passenger" });
-
-    const result = await service.confirmNoShow("token", "ride-1");
-
-    expect(result.ok).toBe(false);
-    if (result.ok) return;
-    expect(result.statusCode).toBe(403);
-    expect(mockMarkNoShow).not.toHaveBeenCalled();
-    expect(mockWalletUpdateBalance).not.toHaveBeenCalled();
-  });
-
-  it("second confirmation on the same ride is rejected — no double charge", async () => {
-    mockFindUserById.mockResolvedValue({ id: "driver-1", role: "driver" });
-    mockMarkNoShow.mockResolvedValue(null);
-    mockFindById.mockResolvedValue(makeRide({ status: "no_show", driverUserId: "driver-1" }));
-
-    const result = await service.confirmNoShow("token", "ride-1");
-
-    expect(result.ok).toBe(false);
-    if (result.ok) return;
-    expect(result.statusCode).toBe(409);
-    expect(mockWalletUpdateBalance).not.toHaveBeenCalled();
-  });
-
-  it("returns 403 when ride belongs to a different driver", async () => {
-    mockFindUserById.mockResolvedValue({ id: "driver-1", role: "driver" });
-    mockMarkNoShow.mockResolvedValue(null);
-    mockFindById.mockResolvedValue(makeRide({ status: "driver_arrived", driverUserId: "driver-99" }));
-
-    const result = await service.confirmNoShow("token", "ride-1");
-
-    expect(result.ok).toBe(false);
-    if (result.ok) return;
-    expect(result.statusCode).toBe(403);
-  });
-});
-
-describe("RidesService.getDriverLocation", () => {
-  let service: InstanceType<typeof RidesService>;
-
-  beforeEach(() => {
-    vi.clearAllMocks();
-    mockIsSessionValid.mockResolvedValue(true);
-    service = new RidesService();
-  });
-
-  it("returns location when passenger owns the ride and driver shared location", async () => {
-    mockFindUserById.mockResolvedValue({ id: "user-123", role: "passenger" });
-    mockFindById.mockResolvedValue(makeRide({ driverUserId: "driver-1", passengerUserId: "user-123" }));
-    mockFindDriverStatusById.mockResolvedValue({ currentLat: -27.15, currentLng: -109.43, locationUpdatedAt: new Date() });
-
-    const result = await service.getDriverLocation("token", "ride-1");
-
-    expect(result.ok).toBe(true);
-    if (!result.ok) return;
-    expect(result.location).not.toBeNull();
-    expect(result.location!.lat).toBe(-27.15);
-    expect(result.location!.lng).toBe(-109.43);
-  });
-
-  it("returns null location when driver has not shared location", async () => {
-    mockFindUserById.mockResolvedValue({ id: "user-123", role: "passenger" });
-    mockFindById.mockResolvedValue(makeRide({ driverUserId: "driver-1", passengerUserId: "user-123" }));
-    mockFindDriverStatusById.mockResolvedValue({ currentLat: null, currentLng: null, locationUpdatedAt: null });
-
-    const result = await service.getDriverLocation("token", "ride-1");
-
-    expect(result.ok).toBe(true);
-    if (!result.ok) return;
-    expect(result.location).toBeNull();
-  });
-
-  it("returns null location when no driver assigned to ride", async () => {
-    mockFindUserById.mockResolvedValue({ id: "user-123", role: "passenger" });
-    mockFindById.mockResolvedValue(makeRide({ driverUserId: null, passengerUserId: "user-123" }));
-
-    const result = await service.getDriverLocation("token", "ride-1");
-
-    expect(result.ok).toBe(true);
-    if (!result.ok) return;
-    expect(result.location).toBeNull();
-  });
-
-  it("returns 403 when passenger does not own the ride", async () => {
-    mockFindUserById.mockResolvedValue({ id: "user-123", role: "passenger" });
-    mockFindById.mockResolvedValue(makeRide({ driverUserId: "driver-1", passengerUserId: "other-user" }));
-
-    const result = await service.getDriverLocation("token", "ride-1");
-
-    expect(result.ok).toBe(false);
-    if (result.ok) return;
-    expect(result.statusCode).toBe(403);
-  });
-
-  it("returns 404 when ride not found", async () => {
-    mockFindUserById.mockResolvedValue({ id: "user-123", role: "passenger" });
-    mockFindById.mockResolvedValue(null);
-
-    const result = await service.getDriverLocation("token", "nonexistent");
-
-    expect(result.ok).toBe(false);
-    if (result.ok) return;
-    expect(result.statusCode).toBe(404);
-  });
-
-  it("returns 403 when driver tries to call this endpoint", async () => {
-    mockFindUserById.mockResolvedValue({ id: "driver-1", role: "driver" });
-
-    const result = await service.getDriverLocation("token", "ride-1");
-
-    expect(result.ok).toBe(false);
-    if (result.ok) return;
-    expect(result.statusCode).toBe(403);
-  });
-
-  it("admin can view location of any ride", async () => {
-    mockFindUserById.mockResolvedValue({ id: "admin-1", role: "admin" });
-    mockFindById.mockResolvedValue(makeRide({ driverUserId: "driver-1", passengerUserId: "other-user" }));
-    mockFindDriverStatusById.mockResolvedValue({ currentLat: -27.15, currentLng: -109.43, locationUpdatedAt: new Date() });
-
-    const result = await service.getDriverLocation("token", "ride-1");
-
-    expect(result.ok).toBe(true);
-    if (!result.ok) return;
-    expect(result.location).not.toBeNull();
-  });
-});
-
-// ── Auto-assignment ───────────────────────────────────────────────────────────
-
-const NOW_AUTO = new Date();
-
-function makeCandidate(overrides: Partial<Record<string, unknown>> = {}) {
-  return {
-    driverUserId:      "driver-1",
-    currentLat:        -27.150,   // ~0 km from VALID_INPUT origin
-    currentLng:        -109.430,
-    locationUpdatedAt: NOW_AUTO,
-    lastSeenAt:        NOW_AUTO,
-    currentZone:       null,
-    ...overrides,
-  };
-}
-
-function makeAcceptedRide(driverUserId: string) {
-  return makeRide({ status: "accepted", driverUserId, acceptedAt: NOW_AUTO });
-}
-
-describe("RidesService.createRideRequest — auto-assignment", () => {
-  let service: InstanceType<typeof RidesService>;
-
-  beforeEach(() => {
-    vi.clearAllMocks();
-    mockIsSessionValid.mockResolvedValue(true);
-    mockFindUserById.mockResolvedValue({ id: "user-123", role: "passenger" });
-    mockCreate.mockResolvedValue(makeRide());
-    mockAccept.mockResolvedValue(null);
-    mockFindAvailableWithLocation.mockResolvedValue([]);
-    service = new RidesService();
-  });
-
-  it("assigns nearest driver when one is available and close", async () => {
-    const candidate = makeCandidate();
-    mockFindAvailableWithLocation.mockResolvedValue([candidate]);
-    mockAccept.mockResolvedValue(makeAcceptedRide("driver-1"));
-
-    const result = await service.createRideRequest("token", VALID_INPUT);
-
-    expect(result.ok).toBe(true);
-    if (!result.ok) return;
-    expect(result.ride.status).toBe("accepted");
-    expect(result.ride.autoAssigned).toBe(true);
-    expect(mockAccept).toHaveBeenCalledWith("ride-1", "driver-1");
-    expect(mockSetBusy).toHaveBeenCalledWith("driver-1", "ride-1");
-  });
-
-  it("picks closer driver over farther when two are available", async () => {
-    // driver-2 is 1 km away, driver-1 is 5 km away
-    const close = makeCandidate({ driverUserId: "driver-2", currentLat: -27.159, currentLng: -109.430 });
-    const far   = makeCandidate({ driverUserId: "driver-1", currentLat: -27.195, currentLng: -109.430 });
-    mockFindAvailableWithLocation.mockResolvedValue([far, close]); // intentionally wrong order
-    mockAccept.mockResolvedValue(makeAcceptedRide("driver-2"));
-
-    const result = await service.createRideRequest("token", VALID_INPUT);
-
-    expect(result.ok).toBe(true);
-    if (!result.ok) return;
-    // First accept call should be with the closer driver
-    expect(mockAccept.mock.calls[0]![1]).toBe("driver-2");
-  });
-
-  it("falls back to requested when no driver available", async () => {
-    mockFindAvailableWithLocation.mockResolvedValue([]);
-
-    const result = await service.createRideRequest("token", VALID_INPUT);
-
-    expect(result.ok).toBe(true);
-    if (!result.ok) return;
-    expect(result.ride.status).toBe("requested");
-    expect(result.ride.autoAssigned).toBeUndefined();
-    expect(mockAccept).not.toHaveBeenCalled();
-  });
-
-  it("ignores driver beyond 15 km radius", async () => {
-    // ~20 km north of origin
-    const farDriver = makeCandidate({ currentLat: -26.970, currentLng: -109.430 });
-    mockFindAvailableWithLocation.mockResolvedValue([farDriver]);
-
-    const result = await service.createRideRequest("token", VALID_INPUT);
-
-    expect(result.ok).toBe(true);
-    if (!result.ok) return;
-    expect(result.ride.status).toBe("requested");
-    expect(mockAccept).not.toHaveBeenCalled();
-  });
-
-  it("ignores driver with stale location (filtered by repository cutoff)", async () => {
-    // Repository filters by locationUpdatedAt — simulate empty result (already filtered)
-    mockFindAvailableWithLocation.mockResolvedValue([]);
-
-    const result = await service.createRideRequest("token", VALID_INPUT);
-
-    expect(result.ok).toBe(true);
-    if (!result.ok) return;
-    expect(result.ride.status).toBe("requested");
-  });
-
-  it("ignores driver with stale lastSeenAt (filtered by repository cutoff)", async () => {
-    // Repository filters by lastSeenAt — simulate empty result (already filtered)
-    mockFindAvailableWithLocation.mockResolvedValue([]);
-
-    const result = await service.createRideRequest("token", VALID_INPUT);
-
-    expect(result.ok).toBe(true);
-    if (!result.ok) return;
-    expect(result.ride.status).toBe("requested");
-  });
-
-  it("ignores driver without location (no candidates returned)", async () => {
-    mockFindAvailableWithLocation.mockResolvedValue([]);
-
-    const result = await service.createRideRequest("token", VALID_INPUT);
-
-    expect(result.ok).toBe(true);
-    if (!result.ok) return;
-    expect(result.ride.status).toBe("requested");
-  });
-
-  it("tries next driver if first accept fails (race condition)", async () => {
-    const first  = makeCandidate({ driverUserId: "driver-1", currentLat: -27.150, currentLng: -109.430 });
-    const second = makeCandidate({ driverUserId: "driver-2", currentLat: -27.151, currentLng: -109.430 });
-    mockFindAvailableWithLocation.mockResolvedValue([first, second]);
-    // First accept fails (driver taken), second succeeds
-    mockAccept
-      .mockResolvedValueOnce(null)
-      .mockResolvedValueOnce(makeAcceptedRide("driver-2"));
-
-    const result = await service.createRideRequest("token", VALID_INPUT);
-
-    expect(result.ok).toBe(true);
-    if (!result.ok) return;
-    expect(result.ride.status).toBe("accepted");
-    expect(result.ride.autoAssigned).toBe(true);
-    expect(mockAccept).toHaveBeenCalledTimes(2);
-    expect(mockSetBusy).toHaveBeenCalledWith("driver-2", "ride-1");
-  });
-
-  it("ride stays requested when all candidates fail (all races lost)", async () => {
-    const first  = makeCandidate({ driverUserId: "driver-1" });
-    const second = makeCandidate({ driverUserId: "driver-2" });
-    mockFindAvailableWithLocation.mockResolvedValue([first, second]);
-    mockAccept.mockResolvedValue(null); // both fail
-
-    const result = await service.createRideRequest("token", VALID_INPUT);
-
-    expect(result.ok).toBe(true);
-    if (!result.ok) return;
-    expect(result.ride.status).toBe("requested");
-    expect(mockSetBusy).not.toHaveBeenCalled();
-  });
-
-  it("marks assigned driver as busy with correct rideId", async () => {
-    const candidate = makeCandidate({ driverUserId: "driver-99" });
-    mockFindAvailableWithLocation.mockResolvedValue([candidate]);
-    mockAccept.mockResolvedValue(makeAcceptedRide("driver-99"));
-
-    await service.createRideRequest("token", VALID_INPUT);
-
-    expect(mockSetBusy).toHaveBeenCalledWith("driver-99", "ride-1");
-  });
-
-  it("auto-assignment failure is non-fatal — ride still returns as requested", async () => {
-    mockFindAvailableWithLocation.mockRejectedValue(new Error("DB error"));
-
-    const result = await service.createRideRequest("token", VALID_INPUT);
-
-    expect(result.ok).toBe(true);
-    if (!result.ok) return;
-    expect(result.ride.status).toBe("requested");
-  });
-
-  it("admin assign (ridesRepo.accept) still works for requested rides", async () => {
-    // Simulate admin calling acceptRideRequest (separate flow — uses same ridesRepo.accept)
-    mockFindUserById.mockResolvedValue({ id: "driver-1", role: "driver" });
-    mockAccept.mockResolvedValue(makeAcceptedRide("driver-1"));
-
-    const adminService = new RidesService();
-    const result = await adminService.acceptRideRequest("token", "ride-1");
-
-    expect(result.ok).toBe(true);
-    if (!result.ok) return;
-    expect(result.ride.status).toBe("accepted");
-    expect(mockAccept).toHaveBeenCalledWith("ride-1", "driver-1");
-  });
-});
-
-// ── Scheduled rides ───────────────────────────────────────────────────────────
-
-describe("RidesService.createRideRequest — scheduled rides", () => {
-  let service: InstanceType<typeof RidesService>;
-
-  beforeEach(() => {
-    vi.clearAllMocks();
-    mockIsSessionValid.mockResolvedValue(true);
-    mockFindUserById.mockResolvedValue({ id: "user-123", role: "passenger" });
-    mockFindAvailableWithLocation.mockResolvedValue([]);
-    mockAccept.mockResolvedValue(null);
-    mockFareSettingsFindByType.mockResolvedValue(null);
-    service = new RidesService();
-  });
-
-  it("scheduled ride without paymentMethod='card' is rejected", async () => {
-    const result = await service.createRideRequest("token", { ...SCHEDULED_INPUT, paymentMethod: undefined });
-
-    expect(result.ok).toBe(false);
-    if (result.ok) return;
-    expect(result.code).toBe("SCHEDULED_RIDE_REQUIRES_CARD");
-    expect(mockCreate).not.toHaveBeenCalled();
-  });
-
-  it("scheduled ride with paymentMethod='cash' is rejected", async () => {
-    const result = await service.createRideRequest("token", { ...SCHEDULED_INPUT, paymentMethod: "cash" });
-
-    expect(result.ok).toBe(false);
-    if (result.ok) return;
-    expect(result.code).toBe("SCHEDULED_RIDE_REQUIRES_CARD");
-  });
-
-  it("scheduled ride is created with rideType='scheduled'", async () => {
-    mockCreate.mockImplementation((data: Record<string, unknown>) =>
-      Promise.resolve(makeRide({ ...data, status: "requested", rideType: "scheduled" })),
-    );
-
-    const result = await service.createRideRequest("token", SCHEDULED_INPUT);
-
-    expect(result.ok).toBe(true);
-    if (!result.ok) return;
-    expect(result.ride.rideType).toBe("scheduled");
-    const createArg = mockCreate.mock.calls[0]![0] as Record<string, unknown>;
-    expect(createArg["rideType"]).toBe("scheduled");
-  });
-
-  it("scheduled ride stays 'requested' — auto-assignment is skipped", async () => {
-    const candidate = makeCandidate();
-    mockFindAvailableWithLocation.mockResolvedValue([candidate]);
-    mockAccept.mockResolvedValue(makeAcceptedRide("driver-1"));
-    mockCreate.mockResolvedValue(makeRide({ rideType: "scheduled", status: "requested" }));
-
-    const result = await service.createRideRequest("token", SCHEDULED_INPUT);
-
-    expect(result.ok).toBe(true);
-    if (!result.ok) return;
-    expect(result.ride.status).toBe("requested");
-    expect(mockAccept).not.toHaveBeenCalled();
-  });
-
-  it("autoAssigned is not set on a scheduled ride", async () => {
-    mockCreate.mockResolvedValue(makeRide({ rideType: "scheduled", status: "requested" }));
-
-    const result = await service.createRideRequest("token", SCHEDULED_INPUT);
-
-    expect(result.ok).toBe(true);
-    if (!result.ok) return;
-    expect(result.ride.autoAssigned).toBeUndefined();
-  });
-
-  it("scheduledPickupAt is stored and returned", async () => {
-    const pickupAt = scheduledAt(90);
-    const pickupDate = new Date(pickupAt);
-    mockCreate.mockResolvedValue(makeRide({ rideType: "scheduled", scheduledPickupAt: pickupDate }));
-
-    const result = await service.createRideRequest("token", { ...SCHEDULED_INPUT, scheduledPickupAt: pickupAt });
-
-    expect(result.ok).toBe(true);
-    if (!result.ok) return;
-    expect(result.ride.scheduledPickupAt).toBe(pickupDate.toISOString());
-    const createArg = mockCreate.mock.calls[0]![0] as Record<string, unknown>;
-    expect(createArg["scheduledPickupAt"]).toBeInstanceOf(Date);
-  });
-
-  it("priority surcharge from fare_settings is applied to scheduled fare", async () => {
-    mockFareSettingsFindByType.mockResolvedValue({ isActive: true, value: 3000 });
-    mockCreate.mockImplementation((data: Record<string, unknown>) =>
-      Promise.resolve(makeRide({
-        rideType: "scheduled",
-        estimatedFareClp: data["estimatedFareClp"] as number,
-        priorityFeeClp: data["priorityFeeClp"] as number,
-      })),
-    );
-
-    const result = await service.createRideRequest("token", SCHEDULED_INPUT);
-
-    expect(result.ok).toBe(true);
-    if (!result.ok) return;
-    // 2 km × 2300 = 4600 base + 3000 surcharge = 7600
-    expect(result.ride.estimatedFareClp).toBe(7600);
-    expect(result.ride.priorityFeeClp).toBe(3000);
-  });
-
-  it("falls back to DEFAULT_PRIORITY_SURCHARGE_CLP (2000) when fare_settings returns null", async () => {
-    mockFareSettingsFindByType.mockResolvedValue(null);
-    mockCreate.mockImplementation((data: Record<string, unknown>) =>
-      Promise.resolve(makeRide({
-        rideType: "scheduled",
-        estimatedFareClp: data["estimatedFareClp"] as number,
-        priorityFeeClp: data["priorityFeeClp"] as number,
-      })),
-    );
-
-    const result = await service.createRideRequest("token", SCHEDULED_INPUT);
-
-    expect(result.ok).toBe(true);
-    if (!result.ok) return;
-    // 4600 base + 2000 default surcharge = 6600
-    expect(result.ride.estimatedFareClp).toBe(6600);
-    expect(result.ride.priorityFeeClp).toBe(2000);
-  });
-
-  it("falls back to DEFAULT_PRIORITY_SURCHARGE_CLP when fare_settings throws", async () => {
-    mockFareSettingsFindByType.mockRejectedValue(new Error("DB error"));
-    mockCreate.mockImplementation((data: Record<string, unknown>) =>
-      Promise.resolve(makeRide({
-        rideType: "scheduled",
-        estimatedFareClp: data["estimatedFareClp"] as number,
-        priorityFeeClp: data["priorityFeeClp"] as number,
-      })),
-    );
-
-    const result = await service.createRideRequest("token", SCHEDULED_INPUT);
-
-    expect(result.ok).toBe(true);
-    if (!result.ok) return;
-    expect(result.ride.estimatedFareClp).toBe(6600);
-  });
-
-  it("falls back to default when fare_settings setting is inactive", async () => {
-    mockFareSettingsFindByType.mockResolvedValue({ isActive: false, value: 5000 });
-    mockCreate.mockImplementation((data: Record<string, unknown>) =>
-      Promise.resolve(makeRide({
-        rideType: "scheduled",
-        estimatedFareClp: data["estimatedFareClp"] as number,
-        priorityFeeClp: data["priorityFeeClp"] as number,
-      })),
-    );
-
-    const result = await service.createRideRequest("token", SCHEDULED_INPUT);
-
-    expect(result.ok).toBe(true);
-    if (!result.ok) return;
-    // inactive setting → fallback 2000
-    expect(result.ride.estimatedFareClp).toBe(6600);
-  });
-
-  it("fareCalculationSource includes '_scheduled' suffix for scheduled rides", async () => {
-    mockCreate.mockImplementation((data: Record<string, unknown>) =>
-      Promise.resolve(makeRide({
-        rideType: "scheduled",
-        fareCalculationSource: data["fareCalculationSource"] as string,
-      })),
-    );
-
-    const result = await service.createRideRequest("token", SCHEDULED_INPUT);
-
-    expect(result.ok).toBe(true);
-    if (!result.ok) return;
-    expect(result.ride.fareCalculationSource).toContain("_scheduled");
-  });
-
-  it("flightNumber is stored on scheduled ride when provided", async () => {
-    mockCreate.mockImplementation((data: Record<string, unknown>) =>
-      Promise.resolve(makeRide({ rideType: "scheduled", flightNumber: data["flightNumber"] as string })),
-    );
-
-    const result = await service.createRideRequest("token", {
-      ...SCHEDULED_INPUT,
-      flightNumber: "LA800",
+  describe("autenticacion", () => {
+    it("rechaza una sesion revocada", async () => {
+      mockIsSessionValid.mockResolvedValue(false);
+
+      const result = await service.createRideRequest(
+        "token",
+        IMMEDIATE_CASH_INPUT,
+      );
+
+      expect(result.ok).toBe(false);
+      if (result.ok) return;
+      expect(result.code).toBe("AUTH_SESSION_REVOKED");
+      expect(result.statusCode).toBe(401);
     });
 
-    expect(result.ok).toBe(true);
-    if (!result.ok) return;
-    expect(result.ride.flightNumber).toBe("LA800");
-    const createArg = mockCreate.mock.calls[0]![0] as Record<string, unknown>;
-    expect(createArg["flightNumber"]).toBe("LA800");
-  });
-
-  it("priorityFeeClp is null for immediate rides", async () => {
-    mockCreate.mockImplementation((data: Record<string, unknown>) =>
-      Promise.resolve(makeRide({ estimatedFareClp: data["estimatedFareClp"] as number, priorityFeeClp: data["priorityFeeClp"] as null })),
-    );
-
-    const result = await service.createRideRequest("token", VALID_INPUT);
-
-    expect(result.ok).toBe(true);
-    if (!result.ok) return;
-    expect(result.ride.priorityFeeClp).toBeNull();
-    expect(mockFareSettingsFindByType).not.toHaveBeenCalled();
-  });
-
-  it("scheduledPickupAt is null for immediate rides", async () => {
-    mockCreate.mockResolvedValue(makeRide());
-
-    const result = await service.createRideRequest("token", VALID_INPUT);
-
-    expect(result.ok).toBe(true);
-    if (!result.ok) return;
-    expect(result.ride.scheduledPickupAt).toBeNull();
-    const createArg = mockCreate.mock.calls[0]![0] as Record<string, unknown>;
-    expect(createArg["scheduledPickupAt"]).toBeNull();
-  });
-
-  it("driver role cannot create a scheduled ride — 403", async () => {
-    mockFindUserById.mockResolvedValue({ id: "driver-1", role: "driver" });
-
-    const result = await service.createRideRequest("token", SCHEDULED_INPUT);
-
-    expect(result.ok).toBe(false);
-    if (result.ok) return;
-    expect(result.statusCode).toBe(403);
-    expect(mockCreate).not.toHaveBeenCalled();
-  });
-
-  it("fareSettingsFindByType is called with 'priority_surcharge' for scheduled rides", async () => {
-    mockCreate.mockResolvedValue(makeRide({ rideType: "scheduled" }));
-
-    await service.createRideRequest("token", SCHEDULED_INPUT);
-
-    expect(mockFareSettingsFindByType).toHaveBeenCalledWith("priority_surcharge");
-  });
-
-  it("priority surcharge is added on top of base fare — not replacing it", async () => {
-    mockFareSettingsFindByType.mockResolvedValue({ isActive: true, value: 1000 });
-    mockCreate.mockImplementation((data: Record<string, unknown>) =>
-      Promise.resolve(makeRide({
-        rideType: "scheduled",
-        estimatedFareClp: data["estimatedFareClp"] as number,
-      })),
-    );
-
-    const result = await service.createRideRequest("token", SCHEDULED_INPUT);
-
-    expect(result.ok).toBe(true);
-    if (!result.ok) return;
-    // base 4600 + surcharge 1000 = 5600 (not just 1000)
-    expect(result.ride.estimatedFareClp).toBe(5600);
-    expect(result.ride.estimatedFareClp).toBeGreaterThan(1000);
-  });
-});
-
-// ── Multi-destination ─────────────────────────────────────────────────────────
-
-// Origin: -27.15, -109.43
-// Stop 1: -27.16, -109.42 (3000 m, 400 s)
-// Stop 2: -27.17, -109.41 (2000 m, 300 s)
-// Total:  5000 m, 700 s
-const MULTI_DEST_INPUT = {
-  originText:      "Hanga Roa",
-  originLat:       -27.15,
-  originLng:       -109.43,
-  rideType:        "immediate" as const,
-  destinations: [
-    { text: "Punto A", lat: -27.16, lng: -109.42, order: 1 },
-    { text: "Punto B", lat: -27.17, lng: -109.41, order: 2 },
-  ],
-  segments: [
-    { fromOrder: 0, toOrder: 1, distanceMeters: 3000, durationSeconds: 400 },
-    { fromOrder: 1, toOrder: 2, distanceMeters: 2000, durationSeconds: 300 },
-  ],
-};
-
-const MULTI_DEST_SCHEDULED_INPUT = {
-  ...MULTI_DEST_INPUT,
-  rideType:          "scheduled" as const,
-  scheduledPickupAt: new Date(Date.now() + 90 * 60 * 1000).toISOString(),
-  paymentMethod:     "card" as const,
-};
-
-function makeStop(overrides: Partial<Record<string, unknown>> = {}) {
-  return {
-    id:                     "stop-1",
-    rideRequestId:          "ride-1",
-    stopOrder:              1,
-    label:                  "Punto A",
-    lat:                    -27.16,
-    lng:                    -109.42,
-    segmentDistanceMeters:  3000,
-    segmentDurationSeconds: 400,
-    segmentFareClp:         6900,
-    arrivedAt:              null,
-    completedAt:            null,
-    createdAt:              NOW,
-    updatedAt:              NOW,
-    ...overrides,
-  };
-}
-
-describe("RidesService.createRideRequest — multi-destination", () => {
-  let service: InstanceType<typeof RidesService>;
-
-  beforeEach(() => {
-    vi.clearAllMocks();
-    mockIsSessionValid.mockResolvedValue(true);
-    mockFindUserById.mockResolvedValue({ id: "user-123", role: "passenger" });
-    mockFindAvailableWithLocation.mockResolvedValue([]);
-    mockAccept.mockResolvedValue(null);
-    mockFareSettingsFindByType.mockResolvedValue(null);
-    mockStopsCreateMany.mockResolvedValue([]);
-    service = new RidesService();
-  });
-
-  // Test 3: multi-destino immediate crea ride con destination final = último destino
-  it("sets destinationText/Lat/Lng from last destination", async () => {
-    mockCreate.mockImplementation((data: Record<string, unknown>) => Promise.resolve(makeRide(data)));
-
-    await service.createRideRequest("token", MULTI_DEST_INPUT);
-
-    const arg = mockCreate.mock.calls[0]![0] as Record<string, unknown>;
-    expect(arg["destinationText"]).toBe("Punto B");
-    expect(arg["destinationLat"]).toBe(-27.17);
-    expect(arg["destinationLng"]).toBe(-109.41);
-  });
-
-  // Test 4: multi-destino immediate suma distanceMeters/durationSeconds desde segments
-  it("sums distanceMeters and durationSeconds from segments", async () => {
-    mockCreate.mockImplementation((data: Record<string, unknown>) => Promise.resolve(makeRide(data)));
-
-    await service.createRideRequest("token", MULTI_DEST_INPUT);
-
-    const arg = mockCreate.mock.calls[0]![0] as Record<string, unknown>;
-    expect(arg["distanceMeters"]).toBe(5000);
-    expect(arg["durationSeconds"]).toBe(700);
-  });
-
-  // Test 5: multi-destino calccula estimatedFareClp sobre distancia total
-  it("calculates estimatedFareClp from total distance", async () => {
-    mockCreate.mockImplementation((data: Record<string, unknown>) =>
-      Promise.resolve(makeRide({ estimatedFareClp: data["estimatedFareClp"] as number })),
-    );
-
-    const result = await service.createRideRequest("token", MULTI_DEST_INPUT);
-
-    expect(result.ok).toBe(true);
-    if (!result.ok) return;
-    // 5 km × 2300 = 11500 CLP
-    expect(result.ride.estimatedFareClp).toBe(11500);
-  });
-
-  // Test 6: multi-destino crea ride_stops en orden
-  it("creates ride_stops ordered by stopOrder", async () => {
-    mockCreate.mockResolvedValue(makeRide({ id: "ride-1" }));
-    mockStopsCreateMany.mockResolvedValue([makeStop(), makeStop({ id: "stop-2", stopOrder: 2, label: "Punto B" })]);
-
-    const result = await service.createRideRequest("token", MULTI_DEST_INPUT);
-
-    expect(mockStopsCreateMany).toHaveBeenCalledOnce();
-    const [rideId, stops] = mockStopsCreateMany.mock.calls[0] as [string, unknown[]];
-    expect(rideId).toBe("ride-1");
-    expect(stops).toHaveLength(2);
-    expect((stops[0] as Record<string, unknown>)["stopOrder"]).toBe(1);
-    expect((stops[1] as Record<string, unknown>)["stopOrder"]).toBe(2);
-    expect(result.ok).toBe(true);
-    if (!result.ok) return;
-    expect(result.ride.stops).toHaveLength(2);
-  });
-
-  // Test 7: segmentFareClp se distribuye proporcionalmente y suma baseFare
-  it("distributes segmentFareClp proportionally summing to baseFare", async () => {
-    mockCreate.mockResolvedValue(makeRide({ id: "ride-1" }));
-    mockStopsCreateMany.mockImplementation((_id: string, stops: unknown[]) =>
-      Promise.resolve(stops.map((s, i) => ({ ...(s as object), id: `stop-${i}`, rideRequestId: "ride-1", arrivedAt: null, completedAt: null, createdAt: NOW, updatedAt: NOW }))),
-    );
-
-    await service.createRideRequest("token", MULTI_DEST_INPUT);
-
-    const [, stopsArg] = mockStopsCreateMany.mock.calls[0] as [string, Array<Record<string, unknown>>];
-    // baseFare for 5 km = 11500
-    // seg1: 3000/5000 * 11500 = 6900, seg2: 2000/5000 * 11500 = 4600
-    expect(stopsArg[0]!["segmentFareClp"]).toBe(6900);
-    expect(stopsArg[1]!["segmentFareClp"]).toBe(4600);
-    // sum must equal baseFare
-    const sum = (stopsArg[0]!["segmentFareClp"] as number) + (stopsArg[1]!["segmentFareClp"] as number);
-    expect(sum).toBe(11500);
-  });
-
-  // Test 8: multi-destino scheduled suma priorityFeeClp
-  it("adds priorityFeeClp to total for scheduled multi-destination", async () => {
-    mockFareSettingsFindByType.mockImplementation((type: string) => {
-      if (type === "priority_surcharge") return Promise.resolve({ isActive: true, value: 2000 });
-      return Promise.resolve(null);
-    });
-    mockCreate.mockImplementation((data: Record<string, unknown>) =>
-      Promise.resolve(makeRide({ estimatedFareClp: data["estimatedFareClp"] as number, priorityFeeClp: data["priorityFeeClp"] as number })),
-    );
-
-    const result = await service.createRideRequest("token", MULTI_DEST_SCHEDULED_INPUT);
-
-    expect(result.ok).toBe(true);
-    if (!result.ok) return;
-    // 5 km × 2300 = 11500 + 2000 priority = 13500
-    expect(result.ride.estimatedFareClp).toBe(13500);
-    expect(result.ride.priorityFeeClp).toBe(2000);
-  });
-
-  // Test 9: extra_stop_fee inactivo no suma
-  it("does not add extra_stop_fee when setting is inactive", async () => {
-    mockFareSettingsFindByType.mockImplementation((type: string) => {
-      if (type === "extra_stop_fee") return Promise.resolve({ isActive: false, value: 500 });
-      return Promise.resolve(null);
-    });
-    mockCreate.mockImplementation((data: Record<string, unknown>) =>
-      Promise.resolve(makeRide({ estimatedFareClp: data["estimatedFareClp"] as number })),
-    );
-
-    const result = await service.createRideRequest("token", MULTI_DEST_INPUT);
-
-    expect(result.ok).toBe(true);
-    if (!result.ok) return;
-    expect(result.ride.estimatedFareClp).toBe(11500);
-  });
-
-  // Test 10: extra_stop_fee activo suma por destino adicional
-  it("adds extra_stop_fee per additional stop when active", async () => {
-    mockFareSettingsFindByType.mockImplementation((type: string) => {
-      if (type === "extra_stop_fee") return Promise.resolve({ isActive: true, value: 500 });
-      return Promise.resolve(null);
-    });
-    mockCreate.mockImplementation((data: Record<string, unknown>) =>
-      Promise.resolve(makeRide({ estimatedFareClp: data["estimatedFareClp"] as number })),
-    );
-
-    const result = await service.createRideRequest("token", MULTI_DEST_INPUT);
-
-    expect(result.ok).toBe(true);
-    if (!result.ok) return;
-    // 11500 base + 1 additional stop × 500 = 12000
-    expect(result.ride.estimatedFareClp).toBe(12000);
-  });
-
-  // Test 11: rechaza más de 3 destinos (Zod level)
-  it("Zod schema rejects more than 3 destinations", () => {
-    const input = {
-      ...MULTI_DEST_INPUT,
-      destinations: [
-        { text: "A", lat: -27.16, lng: -109.42, order: 1 },
-        { text: "B", lat: -27.17, lng: -109.41, order: 2 },
-        { text: "C", lat: -27.18, lng: -109.40, order: 3 },
-        { text: "D", lat: -27.19, lng: -109.39, order: 4 },
-      ],
-      segments: [
-        { fromOrder: 0, toOrder: 1, distanceMeters: 1000, durationSeconds: 100 },
-        { fromOrder: 1, toOrder: 2, distanceMeters: 1000, durationSeconds: 100 },
-        { fromOrder: 2, toOrder: 3, distanceMeters: 1000, durationSeconds: 100 },
-        { fromOrder: 3, toOrder: 4, distanceMeters: 1000, durationSeconds: 100 },
-      ],
-    };
-    const result = createRideRequestSchema.safeParse(input);
-    expect(result.success).toBe(false);
-  });
-
-  // Test 12: rechaza 0 destinos si destinations viene vacío (Zod level)
-  it("Zod schema rejects empty destinations array", () => {
-    const input = { ...MULTI_DEST_INPUT, destinations: [], segments: [] };
-    const result = createRideRequestSchema.safeParse(input);
-    expect(result.success).toBe(false);
-  });
-
-  // Test 13: rechaza orders no secuenciales (Zod level)
-  it("Zod schema rejects non-sequential destination orders", () => {
-    const input = {
-      ...MULTI_DEST_INPUT,
-      destinations: [
-        { text: "A", lat: -27.16, lng: -109.42, order: 1 },
-        { text: "B", lat: -27.17, lng: -109.41, order: 3 }, // gap: 2 is missing
-      ],
-    };
-    const result = createRideRequestSchema.safeParse(input);
-    expect(result.success).toBe(false);
-  });
-
-  // Test 14: rechaza segments inconsistentes (Zod level)
-  it("Zod schema rejects segments with wrong fromOrder/toOrder sequence", () => {
-    const input = {
-      ...MULTI_DEST_INPUT,
-      segments: [
-        { fromOrder: 0, toOrder: 2, distanceMeters: 3000, durationSeconds: 400 }, // wrong: skips 1
-        { fromOrder: 1, toOrder: 2, distanceMeters: 2000, durationSeconds: 300 },
-      ],
-    };
-    const result = createRideRequestSchema.safeParse(input);
-    expect(result.success).toBe(false);
-  });
-
-  // Test 15: rechaza coordenadas duplicadas (Zod level)
-  it("Zod schema rejects duplicate destination coordinates", () => {
-    const input = {
-      ...MULTI_DEST_INPUT,
-      destinations: [
-        { text: "A", lat: -27.16, lng: -109.42, order: 1 },
-        { text: "B", lat: -27.16, lng: -109.42, order: 2 }, // same coords
-      ],
-    };
-    const result = createRideRequestSchema.safeParse(input);
-    expect(result.success).toBe(false);
-  });
-
-  // Test 16: immediate multi-destino sigue auto-asignando por origen
-  it("immediate multi-destination auto-assigns by origin", async () => {
-    const candidate = {
-      driverUserId: "driver-1",
-      currentLat:   -27.150,
-      currentLng:   -109.430,
-      locationUpdatedAt: NOW,
-      lastSeenAt:        NOW,
-      currentZone:       null,
-    };
-    mockFindAvailableWithLocation.mockResolvedValue([candidate]);
-    mockCreate.mockResolvedValue(makeRide({ id: "ride-1" }));
-    mockAccept.mockResolvedValue(makeRide({ id: "ride-1", status: "accepted", driverUserId: "driver-1", acceptedAt: NOW }));
-
-    const result = await service.createRideRequest("token", MULTI_DEST_INPUT);
-
-    expect(result.ok).toBe(true);
-    if (!result.ok) return;
-    expect(result.ride.autoAssigned).toBe(true);
-    expect(mockAccept).toHaveBeenCalledWith("ride-1", "driver-1");
-  });
-
-  // Test 17: scheduled multi-destino NO auto-asigna
-  it("scheduled multi-destination does not auto-assign", async () => {
-    const candidate = {
-      driverUserId: "driver-1",
-      currentLat:   -27.150,
-      currentLng:   -109.430,
-      locationUpdatedAt: NOW,
-      lastSeenAt:        NOW,
-      currentZone:       null,
-    };
-    mockFindAvailableWithLocation.mockResolvedValue([candidate]);
-    mockAccept.mockResolvedValue(makeRide({ status: "accepted", driverUserId: "driver-1" }));
-    mockCreate.mockResolvedValue(makeRide({ rideType: "scheduled", status: "requested" }));
-    mockFareSettingsFindByType.mockResolvedValue(null);
-
-    const result = await service.createRideRequest("token", MULTI_DEST_SCHEDULED_INPUT);
-
-    expect(result.ok).toBe(true);
-    if (!result.ok) return;
-    expect(mockAccept).not.toHaveBeenCalled();
-    expect(result.ride.autoAssigned).toBeUndefined();
-  });
-
-  // Test 18: priorityFeeClp no puede venir del cliente
-  it("client cannot supply priorityFeeClp — it is always calculated server-side", async () => {
-    mockFareSettingsFindByType.mockResolvedValue(null);
-    mockCreate.mockImplementation((data: Record<string, unknown>) =>
-      Promise.resolve(makeRide({ priorityFeeClp: data["priorityFeeClp"] as number | null })),
-    );
-
-    // Client-injected priorityFeeClp should be absent from input type entirely
-    const result = await service.createRideRequest("token", MULTI_DEST_INPUT);
-
-    expect(result.ok).toBe(true);
-    if (!result.ok) return;
-    // immediate ride — priorityFeeClp must be null
-    expect(result.ride.priorityFeeClp).toBeNull();
-    const createArg = mockCreate.mock.calls[0]![0] as Record<string, unknown>;
-    expect(createArg["priorityFeeClp"]).toBeNull();
-  });
-
-  // Test 1 (regression): viaje simple immediate sigue igual
-  it("simple immediate ride still works unchanged", async () => {
-    mockCreate.mockImplementation((data: Record<string, unknown>) =>
-      Promise.resolve(makeRide({ estimatedFareClp: data["estimatedFareClp"] as number })),
-    );
-
-    const result = await service.createRideRequest("token", VALID_INPUT);
-
-    expect(result.ok).toBe(true);
-    if (!result.ok) return;
-    expect(result.ride.estimatedFareClp).toBe(4600);
-    expect(mockStopsCreateMany).not.toHaveBeenCalled();
-  });
-
-  // Test 2 (regression): viaje simple scheduled sigue igual
-  it("simple scheduled ride still works unchanged", async () => {
-    mockFareSettingsFindByType.mockResolvedValue({ isActive: true, value: 2000 });
-    mockCreate.mockImplementation((data: Record<string, unknown>) =>
-      Promise.resolve(makeRide({ estimatedFareClp: data["estimatedFareClp"] as number, rideType: "scheduled" })),
-    );
-
-    const result = await service.createRideRequest("token", SCHEDULED_INPUT);
-
-    expect(result.ok).toBe(true);
-    if (!result.ok) return;
-    // 4600 + 2000 = 6600
-    expect(result.ride.estimatedFareClp).toBe(6600);
-    expect(mockStopsCreateMany).not.toHaveBeenCalled();
-  });
-});
-
-// ── Tests: queued offer fallback + completeRide ───────────────────────────────
-
-describe("RidesService — queued offer fallback + completeRide", () => {
-  let service: InstanceType<typeof RidesService>;
-
-  beforeEach(() => {
-    vi.clearAllMocks();
-    mockIsSessionValid.mockResolvedValue(true);
-    mockFindAvailableWithLocation.mockResolvedValue([]);
-    mockFindBusyEligibleForQueuedOffer.mockResolvedValue([]);
-    mockOffersExpireStale.mockResolvedValue(undefined);
-    mockOffersCreateOffer.mockResolvedValue(null);
-    service = new RidesService();
-  });
-
-  // Test 11 — immediate without available → queued offer created for busy eligible
-  it("createRideRequest immediate: creates queued offer when busy driver eligible", async () => {
-    mockFindUserById.mockResolvedValue({ id: "user-123", role: "passenger" });
-    mockCreate.mockResolvedValue(makeRide({ id: "ride-new" }));
-    // No available drivers
-    mockFindAvailableWithLocation.mockResolvedValue([]);
-    mockAccept.mockResolvedValue(null);
-    // One busy eligible driver near the pickup
-    mockFindBusyEligibleForQueuedOffer.mockResolvedValue([{
-      driverUserId:  "driver-busy",
-      currentLat:    -27.151,
-      currentLng:    -109.431,
-      currentRideId: "current-ride",
-    }]);
-    const futureExpiry = new Date(Date.now() + 20000);
-    mockOffersCreateOffer.mockResolvedValue({
-      id: "offer-new", rideRequestId: "ride-new", driverUserId: "driver-busy",
-      status: "pending", offeredAt: new Date(), expiresAt: futureExpiry,
-      respondedAt: null, responseSource: null, attemptOrder: 1,
-      createdAt: new Date(), updatedAt: new Date(),
+    it("rechaza un rol administrativo al crear un viaje", async () => {
+      mockFindUserById.mockResolvedValue({
+        id: "admin-1",
+        role: "admin",
+      });
+
+      const result = await service.createRideRequest(
+        "token",
+        IMMEDIATE_CASH_INPUT,
+      );
+
+      expect(result.ok).toBe(false);
+      if (result.ok) return;
+      expect(result.code).toBe("AUTH_FORBIDDEN");
+      expect(result.statusCode).toBe(403);
+      expect(mockCreateWithApprovedPolicyCharges).not.toHaveBeenCalled();
     });
 
-    const result = await service.createRideRequest("token", VALID_INPUT);
+    it("permite que un conductor utilice la aplicacion como usuario", async () => {
+      mockFindUserById.mockResolvedValue({
+        id: "driver-1",
+        role: "driver",
+      });
 
-    expect(result.ok).toBe(true);
-    if (!result.ok) return;
-    expect(mockOffersCreateOffer).toHaveBeenCalledOnce();
-    expect((result.ride as unknown as Record<string, unknown>)["queuedOfferPending"]).toBe(true);
-  });
+      const result = await service.createRideRequest(
+        "token",
+        IMMEDIATE_CASH_INPUT,
+      );
 
-  // Test 12 — scheduled ride → no queued offer
-  it("createRideRequest scheduled: does NOT create queued offer", async () => {
-    mockFindUserById.mockResolvedValue({ id: "user-123", role: "passenger" });
-    mockFareSettingsFindByType.mockResolvedValue({ isActive: true, value: 2000 });
-    mockCreate.mockResolvedValue(makeRide({ rideType: "scheduled" }));
-    // Even if there are busy eligible drivers, should not create offer for scheduled
-    mockFindBusyEligibleForQueuedOffer.mockResolvedValue([{
-      driverUserId:  "driver-busy",
-      currentLat:    -27.151,
-      currentLng:    -109.431,
-      currentRideId: "current-ride",
-    }]);
-
-    const result = await service.createRideRequest("token", SCHEDULED_INPUT);
-
-    expect(result.ok).toBe(true);
-    expect(mockOffersCreateOffer).not.toHaveBeenCalled();
-  });
-
-  // Test 13 — immediate with available driver → auto-assigns, no queued offer
-  it("createRideRequest immediate: auto-assigns available driver, skips queued offer", async () => {
-    mockFindUserById.mockResolvedValue({ id: "user-123", role: "passenger" });
-    const availableDriver = {
-      driverUserId: "driver-avail",
-      currentLat:   -27.151,
-      currentLng:   -109.431,
-      lastSeenAt:   new Date(),
-      locationUpdatedAt: new Date(),
-      vehicleBrand: null, vehicleModel: null, vehicleYear: null,
-      vehiclePlate: null, vehicleColor: null,
-      ratingAverage: null, ratingCount: 0,
-    };
-    mockFindAvailableWithLocation.mockResolvedValue([availableDriver]);
-    const acceptedRide = makeRide({ status: "accepted", driverUserId: "driver-avail" });
-    mockCreate.mockResolvedValue(makeRide());
-    mockAccept.mockResolvedValue(acceptedRide);
-    mockSetBusy.mockResolvedValue(undefined);
-
-    const result = await service.createRideRequest("token", VALID_INPUT);
-
-    expect(result.ok).toBe(true);
-    if (!result.ok) return;
-    expect(mockAccept).toHaveBeenCalledOnce();
-    expect(mockOffersCreateOffer).not.toHaveBeenCalled();
-  });
-
-  // Test 14 — completeRide with queuedRideId → moves queuedRideId to currentRideId, no setAvailable
-  it("completeRide with queuedRideId: sets busy with queued ride, no setAvailable", async () => {
-    mockFindUserById.mockResolvedValue({ id: "driver-1", role: "driver" });
-    const completedRide = makeRide({
-      id: "ride-1", status: "completed", driverUserId: "driver-1",
-      startedAt: new Date(), completedAt: new Date(),
+      expect(result.ok).toBe(true);
+      expect(mockCreateWithApprovedPolicyCharges).toHaveBeenCalledWith(
+        "driver-1",
+        "Hanga Roa",
+        "Aeropuerto Mataveri",
+        expect.anything(),
+        expect.any(Number),
+        "requested",
+        expect.objectContaining({ paymentMethod: "cash" }),
+      );
     });
-    mockRidesComplete.mockResolvedValue(completedRide);
-    mockFindDriverStatusById.mockResolvedValue({
-      driverUserId: "driver-1", availability: "busy",
-      currentRideId: "ride-1", queuedRideId: "queued-ride-99",
-      driverLat: null, driverLng: null, lastSeenAt: null, locationUpdatedAt: null,
-      createdAt: new Date(), updatedAt: new Date(),
+  });
+
+  describe("creacion de viajes", () => {
+    it("crea un viaje inmediato en efectivo como requested", async () => {
+      const result = await service.createRideRequest(
+        "token",
+        IMMEDIATE_CASH_INPUT,
+      );
+
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+
+      expect(result.ride.status).toBe("requested");
+      expect(result.ride.paymentMethod).toBe("cash");
+      expect(result.ride.estimatedFareClp).toBeGreaterThan(0);
+
+      expect(mockCreateWithApprovedPolicyCharges).toHaveBeenCalledWith(
+        "user-123",
+        "Hanga Roa",
+        "Aeropuerto Mataveri",
+        expect.stringContaining("PaymentMethod: cash"),
+        expect.any(Number),
+        "requested",
+        {
+          paymentMethod: "cash",
+          paymentProvider: null,
+          useWalletBenefit: false,
+        },
+      );
     });
 
-    await service.completeRide("token", "ride-1");
+    it("crea un viaje con tarjeta como pending_payment", async () => {
+      const result = await service.createRideRequest("token", {
+        originText: "Hanga Roa",
+        destinationText: "Anakena",
+        paymentMethod: "card",
+        paymentProvider: "mercadopago",
+      });
 
-    expect(mockSetBusy).toHaveBeenCalledWith("driver-1", "queued-ride-99");
-    expect(mockClearQueuedRide).toHaveBeenCalledWith("driver-1");
-    expect(mockSetAvailable).not.toHaveBeenCalled();
-  });
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
 
-  // Test 15 — completeRide without queuedRideId → setAvailable (current behavior)
-  it("completeRide without queuedRideId: sets driver available", async () => {
-    mockFindUserById.mockResolvedValue({ id: "driver-1", role: "driver" });
-    const completedRide = makeRide({
-      id: "ride-1", status: "completed", driverUserId: "driver-1",
-      startedAt: new Date(), completedAt: new Date(),
-    });
-    mockRidesComplete.mockResolvedValue(completedRide);
-    mockFindDriverStatusById.mockResolvedValue({
-      driverUserId: "driver-1", availability: "busy",
-      currentRideId: "ride-1", queuedRideId: null,
-      driverLat: null, driverLng: null, lastSeenAt: null, locationUpdatedAt: null,
-      createdAt: new Date(), updatedAt: new Date(),
-    });
+      expect(result.ride.status).toBe("pending_payment");
+      expect(result.ride.paymentMethod).toBe("card");
+      expect(result.ride.paymentProvider).toBe("mercadopago");
 
-    await service.completeRide("token", "ride-1");
-
-    expect(mockSetAvailable).toHaveBeenCalledWith("driver-1");
-    expect(mockSetBusy).not.toHaveBeenCalled();
-    expect(mockClearQueuedRide).not.toHaveBeenCalled();
-  });
-});
-
-// ── listMyRides — stops (B2 fix) ──────────────────────────────────────────────
-
-describe("RidesService.listMyRides — stops", () => {
-  let service: InstanceType<typeof RidesService>;
-
-  beforeEach(() => {
-    vi.clearAllMocks();
-    mockIsSessionValid.mockResolvedValue(true);
-    service = new RidesService();
-  });
-
-  it("returns stops for multi-destination rides", async () => {
-    mockFindUserById.mockResolvedValue({ id: "user-123", role: "passenger" });
-    const ride = makeRide({ id: "ride-1", status: "accepted" });
-    mockFindByPassengerWithDriver.mockResolvedValue([ride]);
-    mockStopsFindManyByRideIds.mockResolvedValue([
-      {
-        id: "stop-1", rideRequestId: "ride-1", stopOrder: 1, label: "Parada 1",
-        lat: -27.12, lng: -109.28,
-        segmentDistanceMeters: 3100, segmentDurationSeconds: 460, segmentFareClp: 7130,
-        arrivedAt: null, completedAt: null, createdAt: new Date(), updatedAt: new Date(),
-      },
-      {
-        id: "stop-2", rideRequestId: "ride-1", stopOrder: 2, label: "Parada 2",
-        lat: -27.13, lng: -109.29,
-        segmentDistanceMeters: 2100, segmentDurationSeconds: 320, segmentFareClp: 4830,
-        arrivedAt: null, completedAt: null, createdAt: new Date(), updatedAt: new Date(),
-      },
-    ]);
-
-    const result = await service.listMyRides("token");
-
-    expect(result.ok).toBe(true);
-    if (!result.ok) return;
-    expect(result.rides).toHaveLength(1);
-    expect(result.rides[0]?.stops).toHaveLength(2);
-    expect(result.rides[0]?.stops?.[0]?.stopOrder).toBe(1);
-    expect(result.rides[0]?.stops?.[1]?.stopOrder).toBe(2);
-    expect(mockStopsFindManyByRideIds).toHaveBeenCalledWith(["ride-1"]);
-  });
-
-  it("simple ride has no stops key when no stops exist", async () => {
-    mockFindUserById.mockResolvedValue({ id: "user-123", role: "passenger" });
-    const ride = makeRide({ id: "ride-1", status: "completed" });
-    mockFindByPassengerWithDriver.mockResolvedValue([ride]);
-    mockStopsFindManyByRideIds.mockResolvedValue([]);
-
-    const result = await service.listMyRides("token");
-
-    expect(result.ok).toBe(true);
-    if (!result.ok) return;
-    expect(result.rides[0]?.stops).toBeUndefined();
-  });
-
-  it("returns empty rides list without querying stops", async () => {
-    mockFindUserById.mockResolvedValue({ id: "user-123", role: "passenger" });
-    mockFindByPassengerWithDriver.mockResolvedValue([]);
-
-    const result = await service.listMyRides("token");
-
-    expect(result.ok).toBe(true);
-    if (!result.ok) return;
-    expect(result.rides).toHaveLength(0);
-    expect(mockStopsFindManyByRideIds).not.toHaveBeenCalled();
-  });
-});
-
-// ── markEnRoute — setBusy (B3 fix) ────────────────────────────────────────────
-
-describe("RidesService.markEnRoute — setBusy", () => {
-  let service: InstanceType<typeof RidesService>;
-
-  beforeEach(() => {
-    vi.clearAllMocks();
-    mockIsSessionValid.mockResolvedValue(true);
-    service = new RidesService();
-  });
-
-  it("calls setBusy after marking immediate ride en-route", async () => {
-    mockFindUserById.mockResolvedValue({ id: "driver-1", role: "driver" });
-    const ride = makeRide({ status: "driver_en_route", driverUserId: "driver-1", enRouteAt: new Date() });
-    mockMarkEnRoute.mockResolvedValue(ride);
-    mockSetBusy.mockResolvedValue(undefined);
-
-    const result = await service.markEnRoute("token", "ride-1");
-
-    expect(result.ok).toBe(true);
-    expect(mockSetBusy).toHaveBeenCalledWith("driver-1", "ride-1");
-  });
-
-  it("calls setBusy after marking scheduled ride en-route (deferred from admin assign)", async () => {
-    mockFindUserById.mockResolvedValue({ id: "driver-1", role: "driver" });
-    const ride = makeRide({ status: "driver_en_route", driverUserId: "driver-1", rideType: "scheduled", enRouteAt: new Date() });
-    mockMarkEnRoute.mockResolvedValue(ride);
-    mockSetBusy.mockResolvedValue(undefined);
-
-    const result = await service.markEnRoute("token", "ride-1");
-
-    expect(result.ok).toBe(true);
-    expect(mockSetBusy).toHaveBeenCalledWith("driver-1", "ride-1");
-  });
-
-  it("does not call setBusy when markEnRoute fails", async () => {
-    mockFindUserById.mockResolvedValue({ id: "driver-1", role: "driver" });
-    mockMarkEnRoute.mockResolvedValue(null);
-    mockFindById.mockResolvedValue(makeRide({ status: "in_progress", driverUserId: "driver-1" }));
-
-    const result = await service.markEnRoute("token", "ride-1");
-
-    expect(result.ok).toBe(false);
-    expect(mockSetBusy).not.toHaveBeenCalled();
-  });
-});
-
-describe("RidesService.createRideRequest — preferredDriverGender", () => {
-  let service: InstanceType<typeof RidesService>;
-
-  beforeEach(() => {
-    vi.clearAllMocks();
-    mockIsSessionValid.mockResolvedValue(true);
-    mockFindAvailableWithLocation.mockResolvedValue([]);
-    mockAccept.mockResolvedValue(null);
-    service = new RidesService();
-  });
-
-  it("persists preferredDriverGender='female' when provided", async () => {
-    mockFindUserById.mockResolvedValue({ id: "user-123", role: "passenger" });
-    mockCreate.mockResolvedValue(makeRide({ preferredDriverGender: "female" }));
-
-    const result = await service.createRideRequest("token", {
-      ...VALID_INPUT,
-      preferredDriverGender: "female",
+      expect(mockCreateWithApprovedPolicyCharges).toHaveBeenCalledWith(
+        "user-123",
+        "Hanga Roa",
+        "Anakena",
+        expect.stringContaining("PaymentProvider: mercadopago"),
+        expect.any(Number),
+        "pending_payment",
+        {
+          paymentMethod: "card",
+          paymentProvider: "mercadopago",
+          useWalletBenefit: false,
+        },
+      );
     });
 
-    expect(result.ok).toBe(true);
-    expect(mockCreate).toHaveBeenCalledWith(
-      expect.objectContaining({ preferredDriverGender: "female" }),
-    );
-  });
+    it("rechaza usar Beneficio en un viaje con tarjeta", async () => {
+      const result = await service.createRideRequest("token", {
+        originText: "Hanga Roa",
+        destinationText: "Anakena",
+        paymentMethod: "card",
+        paymentProvider: "mercadopago",
+        useWalletBenefit: true,
+      });
 
-  it("persists preferredDriverGender=null when not provided", async () => {
-    mockFindUserById.mockResolvedValue({ id: "user-123", role: "passenger" });
-    mockCreate.mockResolvedValue(makeRide({ preferredDriverGender: null }));
-
-    const result = await service.createRideRequest("token", VALID_INPUT);
-
-    expect(result.ok).toBe(true);
-    expect(mockCreate).toHaveBeenCalledWith(
-      expect.objectContaining({ preferredDriverGender: null }),
-    );
-  });
-
-  it("Zod schema rejects an invalid gender value", () => {
-    const parsed = createRideRequestSchema.safeParse({
-      ...VALID_INPUT,
-      preferredDriverGender: "male",
-    });
-    expect(parsed.success).toBe(false);
-  });
-
-  it("Zod schema accepts preferredDriverGender='female'", () => {
-    const parsed = createRideRequestSchema.safeParse({
-      ...VALID_INPUT,
-      preferredDriverGender: "female",
-    });
-    expect(parsed.success).toBe(true);
-  });
-
-  it("Zod schema accepts missing preferredDriverGender (no preference)", () => {
-    const parsed = createRideRequestSchema.safeParse(VALID_INPUT);
-    expect(parsed.success).toBe(true);
-    if (parsed.success) {
-      expect(parsed.data.preferredDriverGender).toBeUndefined();
-    }
-  });
-});
-
-// ── Gender preference: auto-assignment filtering ───────────────────────────────
-
-function makeDriverCandidate(overrides: Partial<Record<string, unknown>> = {}) {
-  return {
-    driverUserId:       "driver-female-1",
-    currentLat:         -27.16,
-    currentLng:         -109.43,
-    locationUpdatedAt:  new Date(),
-    lastSeenAt:         new Date(),
-    currentZone:        "hanga_roa",
-    ...overrides,
-  };
-}
-
-describe("RidesService.createRideRequest — genderFilter auto-assignment", () => {
-  let service: InstanceType<typeof RidesService>;
-
-  beforeEach(() => {
-    vi.clearAllMocks();
-    mockIsSessionValid.mockResolvedValue(true);
-    mockFindAvailableWithLocation.mockResolvedValue([]);
-    mockFindBusyEligibleForQueuedOffer.mockResolvedValue([]);
-    mockAccept.mockResolvedValue(null);
-    service = new RidesService();
-  });
-
-  it("no preference: auto-assigns any available driver, genderFilter not passed", async () => {
-    mockFindUserById.mockResolvedValue({ id: "user-123", role: "passenger" });
-    const candidate = makeDriverCandidate({ driverUserId: "driver-any" });
-    mockFindAvailableWithLocation.mockResolvedValue([candidate]);
-    const assigned = makeRide({ driverUserId: "driver-any", status: "accepted" });
-    mockCreate.mockResolvedValue(makeRide());
-    mockAccept.mockResolvedValue(assigned);
-
-    const result = await service.createRideRequest("token", VALID_INPUT);
-
-    expect(result.ok).toBe(true);
-    if (result.ok) expect(result.ride.autoAssigned).toBe(true);
-    // genderFilter not passed — called without genderFilter key
-    expect(mockFindAvailableWithLocation).toHaveBeenCalledWith(
-      expect.not.objectContaining({ genderFilter: expect.anything() }),
-    );
-  });
-
-  it("preferredDriverGender=female + female available: assigns female driver", async () => {
-    mockFindUserById.mockResolvedValue({ id: "user-123", role: "passenger" });
-    const femaleCandidate = makeDriverCandidate({ driverUserId: "driver-f" });
-    mockFindAvailableWithLocation.mockResolvedValue([femaleCandidate]);
-    mockCreate.mockResolvedValue(makeRide({ preferredDriverGender: "female" }));
-    mockAccept.mockResolvedValue(makeRide({ driverUserId: "driver-f", status: "accepted", preferredDriverGender: "female" }));
-
-    const result = await service.createRideRequest("token", { ...VALID_INPUT, preferredDriverGender: "female" });
-
-    expect(result.ok).toBe(true);
-    if (result.ok) expect(result.ride.autoAssigned).toBe(true);
-    expect(mockFindAvailableWithLocation).toHaveBeenCalledWith(
-      expect.objectContaining({ genderFilter: "female" }),
-    );
-  });
-
-  it("preferredDriverGender=female + only male available: does NOT assign male driver", async () => {
-    mockFindUserById.mockResolvedValue({ id: "user-123", role: "passenger" });
-    // findAvailableWithLocation returns empty when genderFilter=female (no female drivers)
-    mockFindAvailableWithLocation.mockResolvedValue([]);
-    mockFindBusyEligibleForQueuedOffer.mockResolvedValue([]);
-    mockCreate.mockResolvedValue(makeRide({ preferredDriverGender: "female" }));
-
-    const result = await service.createRideRequest("token", { ...VALID_INPUT, preferredDriverGender: "female" });
-
-    expect(result.ok).toBe(true);
-    expect(mockAccept).not.toHaveBeenCalled();
-  });
-
-  it("preferredDriverGender=female + no driver available: returns preferredDriverUnavailable=true", async () => {
-    mockFindUserById.mockResolvedValue({ id: "user-123", role: "passenger" });
-    mockFindAvailableWithLocation.mockResolvedValue([]);
-    mockFindBusyEligibleForQueuedOffer.mockResolvedValue([]);
-    mockCreate.mockResolvedValue(makeRide({ preferredDriverGender: "female" }));
-
-    const result = await service.createRideRequest("token", { ...VALID_INPUT, preferredDriverGender: "female" });
-
-    expect(result.ok).toBe(true);
-    if (result.ok) expect(result.ride.preferredDriverUnavailable).toBe(true);
-  });
-
-  it("preferredDriverGender=female + female busy eligible: creates queued offer with genderFilter", async () => {
-    mockFindUserById.mockResolvedValue({ id: "user-123", role: "passenger" });
-    mockFindAvailableWithLocation.mockResolvedValue([]);
-    const busyFemale = {
-      driverUserId: "driver-f-busy",
-      currentLat: -27.16, currentLng: -109.43,
-      locationUpdatedAt: new Date(), lastSeenAt: new Date(),
-      currentRideId: "other-ride",
-    };
-    mockFindBusyEligibleForQueuedOffer.mockResolvedValue([busyFemale]);
-    mockCreate.mockResolvedValue(makeRide({ preferredDriverGender: "female" }));
-    mockOffersCreateOffer.mockResolvedValue({ expiresAt: new Date(Date.now() + 20000) });
-
-    const result = await service.createRideRequest("token", { ...VALID_INPUT, preferredDriverGender: "female" });
-
-    expect(result.ok).toBe(true);
-    if (result.ok) expect(result.ride.queuedOfferPending).toBe(true);
-    expect(mockFindBusyEligibleForQueuedOffer).toHaveBeenCalledWith(
-      expect.objectContaining({ genderFilter: "female" }),
-    );
-  });
-
-  it("preferredDriverGender=female + only male busy eligible: does NOT create queued offer", async () => {
-    mockFindUserById.mockResolvedValue({ id: "user-123", role: "passenger" });
-    mockFindAvailableWithLocation.mockResolvedValue([]);
-    // findBusyEligibleForQueuedOffer returns empty when genderFilter=female
-    mockFindBusyEligibleForQueuedOffer.mockResolvedValue([]);
-    mockCreate.mockResolvedValue(makeRide({ preferredDriverGender: "female" }));
-
-    const result = await service.createRideRequest("token", { ...VALID_INPUT, preferredDriverGender: "female" });
-
-    expect(result.ok).toBe(true);
-    expect(mockOffersCreateOffer).not.toHaveBeenCalled();
-  });
-
-  it("scheduled + preferredDriverGender=female: saves preference, no auto-assign, no preferredDriverUnavailable", async () => {
-    mockFindUserById.mockResolvedValue({ id: "user-123", role: "passenger" });
-    mockCreate.mockResolvedValue(makeRide({ preferredDriverGender: "female", rideType: "scheduled" }));
-
-    const result = await service.createRideRequest("token", {
-      ...SCHEDULED_INPUT,
-      preferredDriverGender: "female",
+      expect(result.ok).toBe(false);
+      if (result.ok) return;
+      expect(result.code).toBe("WALLET_BENEFIT_CASH_ONLY");
+      expect(result.statusCode).toBe(422);
+      expect(mockCreateWithApprovedPolicyCharges).not.toHaveBeenCalled();
     });
 
-    expect(result.ok).toBe(true);
-    if (result.ok) {
-      expect(result.ride.rideType).toBe("scheduled");
-      expect(result.ride.preferredDriverUnavailable).toBeFalsy();
-    }
-    expect(mockFindAvailableWithLocation).not.toHaveBeenCalled();
-    expect(mockAccept).not.toHaveBeenCalled();
-  });
-});
+    it("permite solicitar Beneficio solamente con efectivo", async () => {
+      const result = await service.createRideRequest("token", {
+        ...IMMEDIATE_CASH_INPUT,
+        useWalletBenefit: true,
+      });
 
-// ── acceptAnyDriver ───────────────────────────────────────────────────────────
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      expect(result.ride.walletBenefitRequested).toBe(true);
 
-describe("RidesService.acceptAnyDriver", () => {
-  let service: InstanceType<typeof RidesService>;
+      expect(mockCreateWithApprovedPolicyCharges).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.any(String),
+        expect.any(String),
+        expect.anything(),
+        expect.any(Number),
+        "requested",
+        expect.objectContaining({
+          paymentMethod: "cash",
+          useWalletBenefit: true,
+        }),
+      );
+    });
 
-  beforeEach(() => {
-    vi.clearAllMocks();
-    mockIsSessionValid.mockResolvedValue(true);
-    mockFindAvailableWithLocation.mockResolvedValue([]);
-    mockFindBusyEligibleForQueuedOffer.mockResolvedValue([]);
-    mockAccept.mockResolvedValue(null);
-    service = new RidesService();
-  });
+    it("rechaza un viaje agendado sin tarjeta", async () => {
+      const pickup = new Date(Date.now() + 60 * 60 * 1000).toISOString();
 
-  it("clears preferredDriverGender on the ride", async () => {
-    mockFindUserById.mockResolvedValue({ id: "user-123", role: "passenger" });
-    const rideWithPref = makeRide({ passengerUserId: "user-123", status: "requested", preferredDriverGender: "female" });
-    mockFindById.mockResolvedValue(rideWithPref);
-    mockClearPreferredDriverGender.mockResolvedValue(makeRide({ passengerUserId: "user-123", status: "requested", preferredDriverGender: null }));
+      const result = await service.createRideRequest("token", {
+        originText: "Hotel",
+        destinationText: "Aeropuerto",
+        rideMode: "scheduled",
+        scheduledPickupAt: pickup,
+        paymentMethod: "cash",
+      });
 
-    await service.acceptAnyDriver("token", "ride-1");
+      expect(result.ok).toBe(false);
+      if (result.ok) return;
+      expect(result.code).toBe("SCHEDULED_RIDE_REQUIRES_CARD");
+      expect(result.statusCode).toBe(400);
+    });
 
-    expect(mockClearPreferredDriverGender).toHaveBeenCalledWith("ride-1");
-  });
+    it("guarda la metadata de una reserva con tarjeta", async () => {
+      const pickup = new Date(Date.now() + 90 * 60 * 1000).toISOString();
 
-  it("retries auto-assignment without genderFilter", async () => {
-    mockFindUserById.mockResolvedValue({ id: "user-123", role: "passenger" });
-    const rideWithPref = makeRide({ passengerUserId: "user-123", status: "requested", preferredDriverGender: "female", originLat: -27.15, originLng: -109.43 });
-    mockFindById.mockResolvedValue(rideWithPref);
-    mockClearPreferredDriverGender.mockResolvedValue(makeRide({ passengerUserId: "user-123", status: "requested", preferredDriverGender: null, originLat: -27.15, originLng: -109.43 }));
+      const result = await service.createRideRequest("token", {
+        originText: "Hotel",
+        destinationText: "Aeropuerto",
+        rideMode: "scheduled",
+        tripFareMode: "one_way",
+        scheduledPickupAt: pickup,
+        paymentMethod: "card",
+        paymentProvider: "mercadopago",
+      });
 
-    await service.acceptAnyDriver("token", "ride-1");
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
 
-    expect(mockFindAvailableWithLocation).toHaveBeenCalledWith(
-      expect.not.objectContaining({ genderFilter: expect.anything() }),
-    );
-  });
+      expect(result.ride.status).toBe("pending_payment");
+      expect((result.ride as Record<string, unknown>)["isScheduled"]).toBe(
+        true,
+      );
+      expect((result.ride as Record<string, unknown>)["rideMode"]).toBe(
+        "scheduled",
+      );
+      expect(
+        (result.ride as Record<string, unknown>)["scheduledPickupAt"],
+      ).toBe(pickup);
 
-  it("assigns available driver after clearing preference", async () => {
-    mockFindUserById.mockResolvedValue({ id: "user-123", role: "passenger" });
-    const rideWithPref = makeRide({ passengerUserId: "user-123", status: "requested", preferredDriverGender: "female", originLat: -27.15, originLng: -109.43 });
-    mockFindById.mockResolvedValue(rideWithPref);
-    mockClearPreferredDriverGender.mockResolvedValue(makeRide({ passengerUserId: "user-123", status: "requested", preferredDriverGender: null, originLat: -27.15, originLng: -109.43 }));
-    mockFindAvailableWithLocation.mockResolvedValue([makeDriverCandidate({ driverUserId: "driver-m" })]);
-    mockAccept.mockResolvedValue(makeRide({ driverUserId: "driver-m", status: "accepted" }));
+      const notes =
+        mockCreateWithApprovedPolicyCharges.mock.calls[0]?.[3];
 
-    const result = await service.acceptAnyDriver("token", "ride-1");
+      expect(notes).toContain("Tipo de solicitud: viaje agendado.");
+      expect(notes).toContain(
+        `Fecha y hora de recogida agendada: ${pickup}`,
+      );
+      expect(notes).toContain("PaymentMethod: card");
+    });
 
-    expect(result.ok).toBe(true);
-    if (result.ok) expect(result.ride.autoAssigned).toBe(true);
-  });
+    it("rechaza un proveedor no permitido para una reserva", async () => {
+      const pickup = new Date(Date.now() + 60 * 60 * 1000).toISOString();
 
-  it("rejects if ride does not belong to passenger", async () => {
-    mockFindUserById.mockResolvedValue({ id: "user-123", role: "passenger" });
-    mockFindById.mockResolvedValue(makeRide({ passengerUserId: "other-user", status: "requested", preferredDriverGender: "female" }));
+      const result = await service.createRideRequest("token", {
+        originText: "Hotel",
+        destinationText: "Aeropuerto",
+        rideMode: "scheduled",
+        scheduledPickupAt: pickup,
+        paymentMethod: "card",
+        paymentProvider: "proveedor-falso",
+      } as never);
 
-    const result = await service.acceptAnyDriver("token", "ride-1");
-
-    expect(result.ok).toBe(false);
-    if (!result.ok) expect(result.code).toBe("AUTH_FORBIDDEN");
-  });
-
-  it("rejects if ride status is not requested", async () => {
-    mockFindUserById.mockResolvedValue({ id: "user-123", role: "passenger" });
-    mockFindById.mockResolvedValue(makeRide({ passengerUserId: "user-123", status: "accepted", preferredDriverGender: "female" }));
-
-    const result = await service.acceptAnyDriver("token", "ride-1");
-
-    expect(result.ok).toBe(false);
-    if (!result.ok) expect(result.code).toBe("RIDE_CANNOT_ACCEPT_ANY");
-  });
-
-  it("rejects if ride has no gender preference", async () => {
-    mockFindUserById.mockResolvedValue({ id: "user-123", role: "passenger" });
-    mockFindById.mockResolvedValue(makeRide({ passengerUserId: "user-123", status: "requested", preferredDriverGender: null }));
-
-    const result = await service.acceptAnyDriver("token", "ride-1");
-
-    expect(result.ok).toBe(false);
-    if (!result.ok) expect(result.code).toBe("RIDE_NO_GENDER_PREFERENCE");
-  });
-
-  it("creates queued offer without genderFilter if no available driver", async () => {
-    mockFindUserById.mockResolvedValue({ id: "user-123", role: "passenger" });
-    const rideWithPref = makeRide({ passengerUserId: "user-123", status: "requested", preferredDriverGender: "female", originLat: -27.15, originLng: -109.43 });
-    mockFindById.mockResolvedValue(rideWithPref);
-    mockClearPreferredDriverGender.mockResolvedValue(makeRide({ passengerUserId: "user-123", status: "requested", preferredDriverGender: null, originLat: -27.15, originLng: -109.43 }));
-    mockFindAvailableWithLocation.mockResolvedValue([]);
-    const busyAny = { driverUserId: "driver-m-busy", currentLat: -27.16, currentLng: -109.43, locationUpdatedAt: new Date(), lastSeenAt: new Date(), currentRideId: "r2" };
-    mockFindBusyEligibleForQueuedOffer.mockResolvedValue([busyAny]);
-    mockOffersCreateOffer.mockResolvedValue({ expiresAt: new Date(Date.now() + 20000) });
-
-    const result = await service.acceptAnyDriver("token", "ride-1");
-
-    expect(result.ok).toBe(true);
-    if (result.ok) expect(result.ride.queuedOfferPending).toBe(true);
-    expect(mockFindBusyEligibleForQueuedOffer).toHaveBeenCalledWith(
-      expect.not.objectContaining({ genderFilter: expect.anything() }),
-    );
+      expect(result.ok).toBe(false);
+      if (result.ok) return;
+      expect(result.code).toBe("INVALID_PAYMENT_PROVIDER");
+      expect(result.statusCode).toBe(400);
+    });
   });
 
-  it("genderFilter undefined/null: does not filter drivers", async () => {
-    mockFindUserById.mockResolvedValue({ id: "user-123", role: "passenger" });
-    mockCreate.mockResolvedValue(makeRide({ preferredDriverGender: null }));
+  describe("seguimiento del estado del viaje", () => {
+    it("permite al conductor marcar en camino", async () => {
+      mockFindUserById.mockResolvedValue({
+        id: "driver-1",
+        role: "driver",
+      });
 
-    const result = await service.createRideRequest("token", VALID_INPUT);
+      mockFindById.mockResolvedValue(
+        makeRide({
+          status: "accepted",
+          driverUserId: "driver-1",
+          notes: "PaymentMethod: cash",
+        }),
+      );
 
-    expect(result.ok).toBe(true);
-    expect(mockFindAvailableWithLocation).toHaveBeenCalledWith(
-      expect.not.objectContaining({ genderFilter: expect.anything() }),
-    );
+      mockMarkEnRoute.mockResolvedValue(
+        makeRide({
+          status: "driver_en_route",
+          driverUserId: "driver-1",
+          enRouteAt: NOW,
+        }),
+      );
+
+      const result = await service.markEnRoute("token", "ride-1");
+
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      expect(result.ride.status).toBe("driver_en_route");
+      expect(mockMarkEnRoute).toHaveBeenCalledWith(
+        "ride-1",
+        "driver-1",
+      );
+      expect(mockAuditRecordSafe).toHaveBeenCalled();
+    });
+
+    it("bloquea en camino si la tarjeta no tiene pago aprobado", async () => {
+      mockFindUserById.mockResolvedValue({
+        id: "driver-1",
+        role: "driver",
+      });
+
+      mockFindById.mockResolvedValue(
+        makeRide({
+          status: "accepted",
+          driverUserId: "driver-1",
+          notes:
+            "PaymentMethod: card\nPaymentProvider: mercadopago",
+          paymentMethod: "card",
+        }),
+      );
+
+      mockFindSuccessfulPaymentByRideId.mockResolvedValue(null);
+
+      const result = await service.markEnRoute("token", "ride-1");
+
+      expect(result.ok).toBe(false);
+      if (result.ok) return;
+      expect(result.code).toBe("PAYMENT_NOT_APPROVED");
+      expect(result.statusCode).toBe(409);
+      expect(mockMarkEnRoute).not.toHaveBeenCalled();
+    });
+
+    it("permite al conductor marcar que llego al origen", async () => {
+      mockFindUserById.mockResolvedValue({
+        id: "driver-1",
+        role: "driver",
+      });
+
+      mockFindById.mockResolvedValue(
+        makeRide({
+          status: "driver_en_route",
+          driverUserId: "driver-1",
+          notes: "PaymentMethod: cash",
+        }),
+      );
+
+      mockMarkArrived.mockResolvedValue(
+        makeRide({
+          status: "driver_arrived",
+          driverUserId: "driver-1",
+          arrivedAt: NOW,
+        }),
+      );
+
+      const result = await service.markArrived("token", "ride-1");
+
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      expect(result.ride.status).toBe("driver_arrived");
+      expect(mockMarkArrived).toHaveBeenCalledWith(
+        "ride-1",
+        "driver-1",
+      );
+    });
+
+    it("permite completar el viaje y libera al conductor", async () => {
+      mockFindUserById.mockResolvedValue({
+        id: "driver-1",
+        role: "driver",
+      });
+
+      mockFindById.mockResolvedValue(
+        makeRide({
+          status: "in_progress",
+          driverUserId: "driver-1",
+          notes: "PaymentMethod: cash",
+        }),
+      );
+
+      mockComplete.mockResolvedValue(
+        makeRide({
+          status: "completed",
+          driverUserId: "driver-1",
+          completedAt: NOW,
+        }),
+      );
+
+      const result = await service.completeRide("token", "ride-1");
+
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      expect(result.ride.status).toBe("completed");
+      expect(mockReleaseDriverAfterRide).toHaveBeenCalledWith(
+        "driver-1",
+      );
+    });
+  });
+
+  describe("no show", () => {
+    it("rechaza no show antes de marcar llegada", async () => {
+      mockFindUserById.mockResolvedValue({
+        id: "driver-1",
+        role: "driver",
+      });
+
+      mockFindById.mockResolvedValue(
+        makeRide({
+          status: "driver_en_route",
+          driverUserId: "driver-1",
+          arrivedAt: null,
+        }),
+      );
+
+      const result = await service.declareNoShow(
+        "token",
+        "ride-1",
+      );
+
+      expect(result.ok).toBe(false);
+      if (result.ok) return;
+      expect(result.code).toBe("RIDE_NO_SHOW_NOT_ALLOWED");
+      expect(result.statusCode).toBe(409);
+    });
+
+    it("exige esperar cinco minutos desde la llegada", async () => {
+      mockFindUserById.mockResolvedValue({
+        id: "driver-1",
+        role: "driver",
+      });
+
+      mockFindById.mockResolvedValue(
+        makeRide({
+          status: "driver_arrived",
+          driverUserId: "driver-1",
+          arrivedAt: new Date(Date.now() - 2 * 60 * 1000),
+        }),
+      );
+
+      const result = await service.declareNoShow(
+        "token",
+        "ride-1",
+      );
+
+      expect(result.ok).toBe(false);
+      if (result.ok) return;
+      expect(result.code).toBe("RIDE_NO_SHOW_WAIT_REQUIRED");
+      expect(result.statusCode).toBe(409);
+      expect(mockMarkNoShow).not.toHaveBeenCalled();
+    });
+
+    it("calcula 50 por ciento con tope de 5000 CLP", async () => {
+      mockFindUserById.mockResolvedValue({
+        id: "driver-1",
+        role: "driver",
+      });
+
+      const existing = makeRide({
+        status: "driver_arrived",
+        driverUserId: "driver-1",
+        arrivedAt: new Date(Date.now() - 6 * 60 * 1000),
+        estimatedFareClp: 12000,
+        notes: "PaymentMethod: cash",
+      });
+
+      mockFindById.mockResolvedValue(existing);
+      mockMarkNoShow.mockResolvedValue(
+        makeRide({
+          ...existing,
+          status: "no_show",
+          cancelledAt: NOW,
+        }),
+      );
+      mockCreatePolicyCharge.mockResolvedValue(
+        makeNoShowCharge(),
+      );
+
+      const result = await service.declareNoShow(
+        "token",
+        "ride-1",
+      );
+
+      expect(result.ok).toBe(true);
+      expect(mockMarkNoShow).toHaveBeenCalledWith(
+        "ride-1",
+        "driver-1",
+      );
+      expect(mockReleaseDriverAfterRide).toHaveBeenCalledWith(
+        "driver-1",
+      );
+      expect(mockCreatePolicyCharge).toHaveBeenCalledWith(
+        expect.objectContaining({
+          sourceRideId: "ride-1",
+          ownerUserId: "user-123",
+          type: "no_show",
+          feePercent: 50,
+          feeCapClp: 5000,
+          calculatedAmountClp: 5000,
+        }),
+      );
+    });
+  });
+
+  describe("listado del pasajero", () => {
+    it("lista los viajes del usuario autenticado", async () => {
+      mockFindByPassengerIdWithDriver.mockResolvedValue([
+        makeRide(),
+      ]);
+
+      const result = await service.listMyRides("token");
+
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      expect(result.rides).toHaveLength(1);
+      expect(result.rides[0]?.id).toBe("ride-1");
+      expect(mockFindByPassengerIdWithDriver).toHaveBeenCalledWith(
+        "user-123",
+      );
+    });
+
+    it("oculta como pending_payment un viaje antiguo con tarjeta sin pago", async () => {
+      mockFindByPassengerIdWithDriver.mockResolvedValue([
+        makeRide({
+          status: "requested",
+          notes:
+            "PaymentMethod: card\nPaymentProvider: mercadopago",
+          paymentMethod: "card",
+        }),
+      ]);
+      mockFindSuccessfulPaymentByRideId.mockResolvedValue(null);
+
+      const result = await service.listMyRides("token");
+
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      expect(result.rides[0]?.status).toBe("pending_payment");
+    });
   });
 });
