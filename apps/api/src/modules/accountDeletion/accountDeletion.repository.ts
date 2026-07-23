@@ -113,6 +113,81 @@ function newTrackingCode(): string {
     .toUpperCase()}`;
 }
 
+type DatabaseErrorDetails = {
+  message: string;
+  code: string | null;
+  detail: string | null;
+  hint: string | null;
+  constraint: string | null;
+  schema: string | null;
+  table: string | null;
+  column: string | null;
+};
+
+function getDatabaseErrorDetails(error: unknown): DatabaseErrorDetails {
+  let current: unknown = error;
+  const visited = new Set<unknown>();
+
+  for (let depth = 0; depth < 8; depth += 1) {
+    if (!current || typeof current !== "object" || visited.has(current)) {
+      break;
+    }
+
+    visited.add(current);
+
+    const candidate = current as {
+      message?: unknown;
+      code?: unknown;
+      detail?: unknown;
+      hint?: unknown;
+      constraint?: unknown;
+      schema?: unknown;
+      table?: unknown;
+      column?: unknown;
+      cause?: unknown;
+    };
+
+    const hasPostgresDetails =
+      typeof candidate.code === "string" ||
+      typeof candidate.detail === "string" ||
+      typeof candidate.constraint === "string" ||
+      typeof candidate.table === "string" ||
+      typeof candidate.column === "string";
+
+    if (hasPostgresDetails) {
+      return {
+        message:
+          typeof candidate.message === "string"
+            ? candidate.message
+            : String(error),
+        code: typeof candidate.code === "string" ? candidate.code : null,
+        detail: typeof candidate.detail === "string" ? candidate.detail : null,
+        hint: typeof candidate.hint === "string" ? candidate.hint : null,
+        constraint:
+          typeof candidate.constraint === "string"
+            ? candidate.constraint
+            : null,
+        schema: typeof candidate.schema === "string" ? candidate.schema : null,
+        table: typeof candidate.table === "string" ? candidate.table : null,
+        column: typeof candidate.column === "string" ? candidate.column : null,
+      };
+    }
+
+    current = candidate.cause;
+  }
+
+  return {
+    message: error instanceof Error ? error.message : String(error),
+    code: null,
+    detail: null,
+    hint: null,
+    constraint: null,
+    schema: null,
+    table: null,
+    column: null,
+  };
+}
+
 export class AccountDeletionRepository {
   async findLatestByUserId(
     userId: string,
@@ -148,6 +223,7 @@ export class AccountDeletionRepository {
               "deferred",
               "approved",
               "processing",
+              "failed",
             ]),
           ),
         )
@@ -518,7 +594,9 @@ export class AccountDeletionRepository {
         },
         blockers: [],
         canApprove:
-          row.status === "pending" || row.status === "deferred",
+          row.status === "pending" ||
+          row.status === "deferred" ||
+          row.status === "failed",
       };
     }
 
@@ -824,7 +902,11 @@ export class AccountDeletionRepository {
       blockers,
 
       canApprove:
-        (row.status === "pending" || row.status === "deferred") &&
+        (
+          row.status === "pending" ||
+          row.status === "deferred" ||
+          row.status === "failed"
+        ) &&
         user?.status !== "deleted" &&
         blockers.length === 0,
     };
@@ -888,9 +970,31 @@ export class AccountDeletionRepository {
   ): Promise<AccountDeletionRequestResponse> {
     const now = new Date();
     const anonymizedEmail = `deleted+${userId}@deleted.rapago.local`;
+    let currentStep = "inicialización";
 
     try {
       return await db.transaction(async (tx) => {
+        currentStep = "cargar cuenta";
+
+        const userRows = await tx
+          .select({
+            id: users.id,
+            email: users.email,
+          })
+          .from(users)
+          .where(eq(users.id, userId))
+          .limit(1);
+
+        const account = userRows[0];
+
+        if (!account) {
+          throw AppError.notFound(
+            "No se encontró la cuenta asociada a la solicitud.",
+          );
+        }
+
+        currentStep = "aprobar solicitud";
+
         const approvedRows = await tx
           .update(accountDeletionRequests)
           .set({
@@ -898,12 +1002,20 @@ export class AccountDeletionRepository {
             reviewedByUserId: adminUserId,
             adminNote,
             reviewedAt: now,
+            processingAt: null,
+            completedAt: null,
+            failedAt: null,
+            failureReason: null,
             updatedAt: now,
           })
           .where(
             and(
               eq(accountDeletionRequests.id, requestId),
-              inArray(accountDeletionRequests.status, ["pending", "deferred"]),
+              inArray(accountDeletionRequests.status, [
+                "pending",
+                "deferred",
+                "failed",
+              ]),
             ),
           )
           .returning();
@@ -912,10 +1024,12 @@ export class AccountDeletionRepository {
           throw new AppError({
             code: "ACCOUNT_DELETION_NOT_PENDING",
             message:
-              "La solicitud ya fue revisada o no se encuentra pendiente.",
+              "La solicitud ya fue completada o no se encuentra disponible para revisión.",
             statusCode: 409,
           });
         }
+
+        currentStep = "marcar procesamiento";
 
         await tx
           .update(accountDeletionRequests)
@@ -925,6 +1039,8 @@ export class AccountDeletionRepository {
             updatedAt: now,
           })
           .where(eq(accountDeletionRequests.id, requestId));
+
+        currentStep = "revocar sesiones";
 
         await tx
           .update(authSessions)
@@ -946,13 +1062,14 @@ export class AccountDeletionRepository {
             ),
           );
 
-        // Datos de autenticación y recuperación.
+        currentStep = "eliminar credenciales";
+
         await tx.execute(
-          sql`DELETE FROM auth_credentials WHERE user_id = ${userId}::uuid`,
+          sql`DELETE FROM public.auth_credentials WHERE user_id = ${userId}::uuid`,
         );
 
         await tx.execute(
-          sql`DELETE FROM password_reset_tokens WHERE user_id = ${userId}::uuid`,
+          sql`DELETE FROM public.password_reset_tokens WHERE user_id = ${userId}::uuid`,
         );
 
         await tx
@@ -963,91 +1080,113 @@ export class AccountDeletionRepository {
           .delete(facebookLoginExchanges)
           .where(eq(facebookLoginExchanges.userId, userId));
 
-        // Información privada que no debe conservarse después del cierre.
+        currentStep = "eliminar datos privados";
+
         await tx.execute(
-          sql`DELETE FROM payment_methods WHERE user_id = ${userId}::uuid`,
+          sql`DELETE FROM public.payment_methods WHERE user_id = ${userId}::uuid`,
         );
 
         await tx.execute(
-          sql`DELETE FROM user_bank_accounts WHERE user_id = ${userId}::uuid`,
+          sql`DELETE FROM public.user_bank_accounts WHERE user_id = ${userId}::uuid`,
         );
 
         await tx.execute(
-          sql`DELETE FROM user_documents WHERE user_id = ${userId}::uuid`,
+          sql`DELETE FROM public.user_documents WHERE user_id = ${userId}::uuid`,
         );
 
         await tx.execute(
-          sql`DELETE FROM passenger_profiles WHERE user_id = ${userId}::uuid`,
+          sql`DELETE FROM public.passenger_profiles WHERE user_id = ${userId}::uuid`,
         );
 
         await tx.execute(
-          sql`DELETE FROM driver_profiles WHERE user_id = ${userId}::uuid`,
+          sql`DELETE FROM public.driver_profiles WHERE user_id = ${userId}::uuid`,
         );
 
         await tx.execute(
-          sql`DELETE FROM driver_statuses WHERE driver_user_id = ${userId}::uuid`,
+          sql`DELETE FROM public.driver_statuses WHERE driver_user_id = ${userId}::uuid`,
         );
 
         await tx.execute(
-          sql`DELETE FROM notifications WHERE user_id = ${userId}::uuid`,
+          sql`DELETE FROM public.notifications WHERE user_id = ${userId}::uuid`,
         );
 
         await tx.execute(
-          sql`DELETE FROM sync_queue WHERE user_id = ${userId}::uuid`,
+          sql`DELETE FROM public.sync_queue WHERE user_id = ${userId}::uuid`,
         );
 
         await tx.execute(
-          sql`DELETE FROM connectivity_logs WHERE user_id = ${userId}::uuid`,
+          sql`DELETE FROM public.connectivity_logs WHERE user_id = ${userId}::uuid`,
         );
 
-        // Las postulaciones se conservan como registro operativo, pero sin PII.
+        currentStep = "buscar postulación vinculada";
+
+        const applicationWhere = or(
+          eq(applications.userId, userId),
+          eq(applications.email, account.email),
+        );
+
+        const linkedApplications = await tx
+          .select({ id: applications.id })
+          .from(applications)
+          .where(applicationWhere)
+          .limit(1);
+
+        /*
+         * No todas las cuentas tienen una postulación. Evitamos ejecutar un
+         * UPDATE innecesario cuando no existe ninguna fila vinculada.
+         */
+        if (linkedApplications.length > 0) {
+          currentStep = "anonimizar postulación";
+
+          await tx
+            .update(applications)
+            .set({
+              status: "withdrawn_account_deleted",
+              firstName: "Cuenta",
+              lastName: "Eliminada",
+              email: anonymizedEmail,
+              phone: "ELIMINADO",
+              rut: null,
+              birthDate: null,
+              city: null,
+              emergencyContactName: null,
+              emergencyContactPhone: null,
+              vehicleBrand: null,
+              vehicleModel: null,
+              vehicleYear: null,
+              vehiclePlate: null,
+              vehicleColor: null,
+              licenseNumber: null,
+              licenseExpiry: null,
+              idFrontUrl: null,
+              idBackUrl: null,
+              licenseFrontUrl: null,
+              licenseBackUrl: null,
+              certificateUrl: null,
+              profilePhotoUrl: null,
+              notes: null,
+              updatedAt: now,
+            })
+            .where(applicationWhere);
+        }
+
+        currentStep = "cerrar beneficios";
+
         await tx.execute(sql`
-          UPDATE applications
-          SET
-            status = 'withdrawn_account_deleted',
-            first_name = 'Cuenta',
-            last_name = 'Eliminada',
-            email = ${anonymizedEmail},
-            phone = 'ELIMINADO',
-            rut = NULL,
-            birth_date = NULL,
-            city = NULL,
-            emergency_contact_name = NULL,
-            emergency_contact_phone = NULL,
-            vehicle_brand = NULL,
-            vehicle_model = NULL,
-            vehicle_year = NULL,
-            vehicle_plate = NULL,
-            vehicle_color = NULL,
-            license_number = NULL,
-            license_expiry = NULL,
-            id_front_url = NULL,
-            id_back_url = NULL,
-            license_front_url = NULL,
-            license_back_url = NULL,
-            certificate_url = NULL,
-            profile_photo_url = NULL,
-            notes = NULL,
-            updated_at = ${now}
-          WHERE user_id = ${userId}::uuid
-        `);
-
-        // Beneficios: la aprobación solo se permite con saldo cero.
-        await tx.execute(sql`
-          UPDATE wallets
+          UPDATE public.wallets
           SET status = 'closed', balance = 0, updated_at = ${now}
           WHERE user_id = ${userId}::uuid
         `);
 
         await tx.execute(sql`
-          UPDATE referral_codes
+          UPDATE public.referral_codes
           SET is_active = FALSE
           WHERE user_id = ${userId}::uuid
         `);
 
-        // No se borran viajes, pagos, comprobantes ni aceptaciones legales.
-        // Se conserva el usuario anonimizado para mantener integridad referencial.
-        await tx
+        currentStep = "anonimizar usuario";
+
+        const anonymizedUsers = await tx
           .update(users)
           .set({
             email: anonymizedEmail,
@@ -1057,7 +1196,16 @@ export class AccountDeletionRepository {
             isVerified: false,
             updatedAt: now,
           })
-          .where(eq(users.id, userId));
+          .where(eq(users.id, userId))
+          .returning({ id: users.id });
+
+        if (!anonymizedUsers[0]) {
+          throw AppError.internal(
+            "La anonimización del usuario no modificó ninguna fila.",
+          );
+        }
+
+        currentStep = "completar solicitud";
 
         const completedRows = await tx
           .update(accountDeletionRequests)
@@ -1093,6 +1241,16 @@ export class AccountDeletionRepository {
         return toPublicResponse(completed);
       });
     } catch (error) {
+      const databaseError = getDatabaseErrorDetails(error);
+
+      console.error("[AccountDeletion] approveAndAnonymize failed", {
+        requestId,
+        userId,
+        step: currentStep,
+        databaseError,
+        error,
+      });
+
       if (error instanceof AppError) throw error;
 
       await db
@@ -1101,14 +1259,22 @@ export class AccountDeletionRepository {
           status: "failed",
           failedAt: new Date(),
           failureReason:
-            "No se pudo completar la anonimización. Reintenta desde Admin.",
+            `No se pudo completar la anonimización en el paso "${currentStep}". ` +
+            "Reintenta desde Admin.",
           updatedAt: new Date(),
         })
         .where(eq(accountDeletionRequests.id, requestId))
-        .catch(() => {});
+        .catch((failureUpdateError) => {
+          console.error(
+            "[AccountDeletion] failed to persist failure status",
+            failureUpdateError,
+          );
+        });
 
       throw AppError.internal(
-        `Failed to approve account deletion request: ${String(error)}`,
+        `Failed to approve account deletion request at step "${currentStep}". ` +
+          `Database code: ${databaseError.code ?? "unknown"}. ` +
+          `Cause: ${databaseError.message}`,
       );
     }
   }
