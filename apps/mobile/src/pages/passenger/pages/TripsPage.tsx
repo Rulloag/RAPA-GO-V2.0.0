@@ -1,6 +1,6 @@
 import {
   IonAlert,
-  IonBadge, IonButton, IonCard, IonCardContent, IonChip, IonContent, IonHeader,
+  IonBadge, IonButton, IonIcon, IonCard, IonCardContent, IonChip, IonContent, IonHeader,
 IonInfiniteScroll, IonInfiniteScrollContent, IonLabel, IonModal, IonPage,
   IonRefresher, IonRefresherContent, IonSpinner, IonText, IonTextarea, IonTitle,
   IonToolbar, IonItem, IonToast, IonInput, IonToggle,
@@ -3493,7 +3493,7 @@ function normalizeRidePassengerFareType(value: unknown): PassengerFareType | nul
 }
 
 function passengerFareTypeLabel(type: PassengerFareType): string {
-  if (type === "resident") return "Residente Rapa Nui";
+  if (type === "resident") return "RAPA NUI / RESIDENTE RAPA NUI";
   if (type === "chilean") return "Turista chileno";
   return "Turista extranjero";
 }
@@ -9068,7 +9068,6 @@ export default function TripsPage(): JSX.Element {
             ratingRideId,
             ratingStars,
             ratingCommentWithExtras || undefined,
-            commentVisibility,
           );
         } catch {
           // Si el backend todavía no guarda rating, el respaldo local mantiene la experiencia tipo Uber.

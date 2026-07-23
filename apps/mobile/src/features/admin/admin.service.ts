@@ -127,10 +127,18 @@ export const adminService = {
     documentId: string,
     status: "approved" | "rejected",
     rejectionReason?: string,
+    reclassifiedFareType?: "chilean" | "foreigner",
   ): Promise<AdminDocumentData> {
     type Envelope = { ok: true; data: AdminDocumentData; statusCode: number };
-    const body: { status: string; rejectionReason?: string } = { status };
+    const body: {
+      status: string;
+      rejectionReason?: string;
+      reclassifiedFareType?: "chilean" | "foreigner";
+    } = { status };
     if (rejectionReason) body.rejectionReason = rejectionReason;
+    if (reclassifiedFareType) {
+      body.reclassifiedFareType = reclassifiedFareType;
+    }
     const result = await apiClient.patch<Envelope>(
       `/admin/documents/${documentId}/review`,
       body,

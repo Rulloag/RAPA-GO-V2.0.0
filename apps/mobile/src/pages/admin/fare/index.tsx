@@ -147,7 +147,7 @@ const USD_RATE_STORAGE_KEY = "rapago_admin_fare_cards_usd_rate_v1";
 const AUDIT_STORAGE_KEY = "rapago_admin_fare_engine_audit_v1";
 
 const PASSENGER_LABEL: Record<PassengerKey, string> = {
-  resident: "Residente Rapa Nui",
+  resident: "RAPA NUI / RESIDENTE RAPA NUI",
   chilean: "Turista chileno",
   foreigner: "Turista extranjero",
 };
@@ -530,7 +530,7 @@ function buildCompatibilityRules(config: FareEngineConfig): CompatibilityFareRul
       kmClp: config.urban.baseKmClp,
       ruralKmClp: config.urban.baseKmClp * getRuralFactor(config),
       fixedClp: null,
-      description: `Valor base por km adicional urbano. El KM rural Residente Rapa Nui estándar queda en ${formatClp(config.urban.baseKmClp * getRuralFactor(config))}.`,
+      description: `Valor base por km adicional urbano. El KM rural RAPA NUI / RESIDENTE RAPA NUI estándar queda en ${formatClp(config.urban.baseKmClp * getRuralFactor(config))}.`,
       active: true,
       editableKind: "base_km",
     },
@@ -816,7 +816,7 @@ export function AdminFareSettingsPage(): React.ReactElement {
     setEditor({
       kind: "fixed_destination",
       title: destination ? "Editar destino fijo" : "Agregar destino fijo",
-      helper: "La tarifa base corresponde a Residente Rapa Nui. Turista chileno y Turista extranjero se calculan automáticamente mediante sus multiplicadores.",
+      helper: "La tarifa base corresponde a RAPA NUI / RESIDENTE RAPA NUI. Turista chileno y Turista extranjero se calculan automáticamente mediante sus multiplicadores.",
       destinationId: destination?.id ?? null,
       name: destination?.title ?? "",
       tripType: destination?.tripType ?? "Ida y vuelta",
@@ -853,7 +853,7 @@ export function AdminFareSettingsPage(): React.ReactElement {
     setEditor({
       kind: "generated_fixed",
       title: `Editar ${destination.title} · ${PASSENGER_LABEL[rule.passenger]}`,
-      helper: "Esta tarifa fija se genera con tarifa base Residente Rapa Nui x multiplicador del pasajero.",
+      helper: "Esta tarifa fija se genera con tarifa base RAPA NUI / RESIDENTE RAPA NUI x multiplicador del pasajero.",
       destinationId: destination.id,
       passenger: rule.passenger,
       name: destination.title,
@@ -871,7 +871,7 @@ export function AdminFareSettingsPage(): React.ReactElement {
       openCurrencyEditor(
         "base_minimum",
         "Editar tarifa mínima base",
-        "Valor base Residente Rapa Nui para vehículo estándar. También puedes editarlo en USD.",
+        "Valor base RAPA NUI / RESIDENTE RAPA NUI para vehículo estándar. También puedes editarlo en USD.",
         config.urban.baseMinimumClp,
       );
       return;
@@ -1177,7 +1177,7 @@ export function AdminFareSettingsPage(): React.ReactElement {
         }
 
         if (baseResidentClp <= 0) {
-          setError("La tarifa base Residente Rapa Nui debe ser mayor que cero.");
+          setError("La tarifa base RAPA NUI / RESIDENTE RAPA NUI debe ser mayor que cero.");
           return;
         }
 
@@ -1722,7 +1722,7 @@ export function AdminFareSettingsPage(): React.ReactElement {
             </IonItem>
 
             <IonItem lines="full">
-              <IonLabel position="stacked">Tarifa base Residente Rapa Nui CLP</IonLabel>
+              <IonLabel position="stacked">Tarifa base RAPA NUI / RESIDENTE RAPA NUI CLP</IonLabel>
               <IonInput
                 inputmode="numeric"
                 value={editor.baseResidentClp}
@@ -1734,7 +1734,7 @@ export function AdminFareSettingsPage(): React.ReactElement {
             </IonItem>
 
             <IonItem lines="full">
-              <IonLabel position="stacked">Tarifa base Residente Rapa Nui USD</IonLabel>
+              <IonLabel position="stacked">Tarifa base RAPA NUI / RESIDENTE RAPA NUI USD</IonLabel>
               <IonInput
                 inputmode="decimal"
                 value={editor.baseResidentUsd}
@@ -1832,7 +1832,7 @@ export function AdminFareSettingsPage(): React.ReactElement {
                 Motor de tarifas Rapa Go
               </div>
               <div style={{ marginTop: 6, fontSize: ".86rem", color: "#333", fontWeight: 800, lineHeight: 1.35 }}>
-                Todo queda editable desde el panel: CLP, USD referencial, multiplicadores de Residente Rapa Nui, Turista chileno y Turista extranjero, zona urbana/rural, descuento rural, redondeo final, categorías de vehículo y destinos fijos.
+                Todo queda editable desde el panel: CLP, USD referencial, multiplicadores de RAPA NUI / RESIDENTE RAPA NUI, Turista chileno y Turista extranjero, zona urbana/rural, descuento rural, redondeo final, categorías de vehículo y destinos fijos.
               </div>
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 12 }}>
                 <IonButton
@@ -1889,7 +1889,7 @@ export function AdminFareSettingsPage(): React.ReactElement {
                     openCurrencyEditor(
                       "base_minimum",
                       "Editar tarifa mínima base",
-                      "Valor base Residente Rapa Nui para vehículo estándar.",
+                      "Valor base RAPA NUI / RESIDENTE RAPA NUI para vehículo estándar.",
                       config.urban.baseMinimumClp,
                     ),
                 )}
@@ -1904,7 +1904,7 @@ export function AdminFareSettingsPage(): React.ReactElement {
                     openCurrencyEditor(
                       "base_km",
                       "Editar tarifa por km adicional",
-                      "Valor base por kilómetro adicional para Residente Rapa Nui estándar.",
+                      "Valor base por kilómetro adicional para RAPA NUI / RESIDENTE RAPA NUI estándar.",
                       config.urban.baseKmClp,
                     ),
                 )}
@@ -2039,7 +2039,7 @@ export function AdminFareSettingsPage(): React.ReactElement {
                           </div>
 
                           <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 10 }}>
-                            {renderValueBlock("Residente Rapa Nui", getFixedFare(config, destination, "resident"))}
+                            {renderValueBlock("RAPA NUI / RESIDENTE RAPA NUI", getFixedFare(config, destination, "resident"))}
                             {renderValueBlock("Turista chileno", getFixedFare(config, destination, "chilean"))}
                             {renderValueBlock("Turista extranjero", getFixedFare(config, destination, "foreigner"))}
                           </div>
@@ -2110,7 +2110,7 @@ export function AdminFareSettingsPage(): React.ReactElement {
                       >
                         <strong>{row.km} km</strong>
                         <div style={{ display: "flex", gap: 7, flexWrap: "wrap", fontSize: ".78rem", fontWeight: 900 }}>
-                          <span>Residente Rapa Nui: {formatClp(row.resident)} / USD {formatUsd(row.resident, config.usdRate)}</span>
+                          <span>RAPA NUI / RESIDENTE RAPA NUI: {formatClp(row.resident)} / USD {formatUsd(row.resident, config.usdRate)}</span>
                           <span>Turista chileno: {formatClp(row.chilean)} / USD {formatUsd(row.chilean, config.usdRate)}</span>
                           <span>Turista extranjero: {formatClp(row.foreigner)} / USD {formatUsd(row.foreigner, config.usdRate)}</span>
                         </div>
@@ -2146,7 +2146,7 @@ export function AdminFareSettingsPage(): React.ReactElement {
                           {row.km} km total · {formatClpInput(row.urbanKm)} km urbanos · {formatClpInput(row.ruralKm)} km rurales
                         </div>
                         <div style={{ display: "flex", gap: 7, flexWrap: "wrap", fontSize: ".78rem", fontWeight: 900, marginTop: 7 }}>
-                          <span>Residente Rapa Nui: {formatClp(row.resident)} / USD {formatUsd(row.resident, config.usdRate)}</span>
+                          <span>RAPA NUI / RESIDENTE RAPA NUI: {formatClp(row.resident)} / USD {formatUsd(row.resident, config.usdRate)}</span>
                           <span>Turista chileno: {formatClp(row.chilean)} / USD {formatUsd(row.chilean, config.usdRate)}</span>
                           <span>Turista extranjero: {formatClp(row.foreigner)} / USD {formatUsd(row.foreigner, config.usdRate)}</span>
                         </div>

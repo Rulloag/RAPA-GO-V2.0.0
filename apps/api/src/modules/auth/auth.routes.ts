@@ -6,6 +6,7 @@ const LOGIN_RATE_LIMIT = {
 } as const;
 
 const REGISTER_RATE_LIMIT = {
+  bodyLimit: 3 * 1024 * 1024,
   config: { rateLimit: { max: 5, timeWindow: "1 hour" } },
 } as const;
 
@@ -26,7 +27,10 @@ export async function authRoutes(
 
   fastify.post(
     "/apple",
-    { config: { rateLimit: { max: 10, timeWindow: "15 minutes" } } },
+    {
+      bodyLimit: 3 * 1024 * 1024,
+      config: { rateLimit: { max: 10, timeWindow: "15 minutes" } },
+    },
     authController.appleLogin,
   );
   fastify.post(

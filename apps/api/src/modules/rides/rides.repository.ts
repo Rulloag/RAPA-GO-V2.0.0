@@ -1,4 +1,4 @@
-import { and, asc, avg, count, desc, eq, inArray, isNull, sql } from "drizzle-orm";
+import { and, asc, avg, count, desc, eq, gte, inArray, isNull, lt, ne, sql } from "drizzle-orm";
 import { db } from "../../db/client.js";
 import {
   driverProfiles,
@@ -559,6 +559,37 @@ export class RidesRepository {
     }
   }
 
+  async findCompletedByDriverIdOnDate(
+    driverUserId: string,
+    date: Date,
+  ): Promise<RideRequest[]> {
+    try {
+      const start = new Date(Date.UTC(
+        date.getUTCFullYear(),
+        date.getUTCMonth(),
+        date.getUTCDate(),
+      ));
+      const end = new Date(start.getTime() + 24 * 60 * 60 * 1000);
+
+      return await db
+        .select()
+        .from(rideRequests)
+        .where(
+          and(
+            eq(rideRequests.driverUserId, driverUserId),
+            eq(rideRequests.status, "completed"),
+            gte(rideRequests.completedAt, start),
+            lt(rideRequests.completedAt, end),
+          ),
+        )
+        .orderBy(desc(rideRequests.completedAt));
+    } catch (err) {
+      throw AppError.internal(
+        `Failed to query completed driver rides: ${String(err)}`,
+      );
+    }
+  }
+
   async findAvailable(): Promise<RideRequest[]> {
     try {
       return await db
@@ -753,37 +784,6 @@ export class RidesRepository {
     } catch (err) {
       if (err instanceof AppError) throw err;
       throw AppError.internal(`Failed to mark ride arrived: ${String(err)}`);
-    }
-  }
-
-  /**
-   * Atomically transition status='driver_arrived' -> 'no_show', only when the driver matches.
-   * The conditional WHERE is the concurrency guard: two simultaneous calls can only have one
-   * match (whichever commits first flips the status away from 'driver_arrived'), so the caller
-   * can treat a non-null return as "I own this transition, charge exactly once".
-   */
-  async markNoShow(id: string, driverUserId: string): Promise<RideRequest | null> {
-    try {
-      const rows = await db
-        .update(rideRequests)
-        .set({
-          status:             "no_show",
-          cancelledAt:        new Date(),
-          cancellationReason: "passenger_no_show",
-          cancelledByUserId:  driverUserId,
-          cancelledByRole:    "driver",
-          updatedAt:          new Date(),
-        })
-        .where(and(
-          eq(rideRequests.id, id),
-          eq(rideRequests.status, "driver_arrived"),
-          eq(rideRequests.driverUserId, driverUserId),
-        ))
-        .returning();
-      return rows[0] ?? null;
-    } catch (err) {
-      if (err instanceof AppError) throw err;
-      throw AppError.internal(`Failed to mark ride as no-show: ${String(err)}`);
     }
   }
 

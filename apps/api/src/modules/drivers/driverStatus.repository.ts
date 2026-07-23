@@ -73,6 +73,30 @@ export class DriverStatusRepository {
     }
   }
 
+
+  async setQueuedRide(driverUserId: string, rideId: string): Promise<void> {
+    try {
+      const now = new Date();
+      await db
+        .insert(driverStatuses)
+        .values({
+          driverUserId,
+          availability: "busy",
+          queuedRideId: rideId,
+          lastSeenAt: now,
+        })
+        .onConflictDoUpdate({
+          target: driverStatuses.driverUserId,
+          set: {
+            queuedRideId: rideId,
+            updatedAt: now,
+          },
+        });
+    } catch (err) {
+      throw AppError.internal(`Failed to set queued ride: ${String(err)}`);
+    }
+  }
+
   async updateLocation(driverUserId: string, lat: number, lng: number): Promise<void> {
     try {
       await db

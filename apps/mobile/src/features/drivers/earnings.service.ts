@@ -14,7 +14,7 @@ type Envelope = { ok: true; data: TodayEarnings; statusCode: number };
 export const earningsService = {
   async getTodayEarnings(accessToken: string): Promise<TodayEarnings> {
     const result = await apiClient.get<Envelope>("/drivers/me/earnings/today", { token: accessToken });
-    if (!result.ok) throw new Error(result.message ?? "Error al cargar ganancias.");
+    if (result.ok === false) throw new Error(result.message ?? "Error al cargar ganancias.");
     return (result.data as Envelope).data;
   },
 };

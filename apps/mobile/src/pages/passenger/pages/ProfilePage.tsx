@@ -84,7 +84,7 @@ const STATUS_LABEL: Record<string, string> = {
 type PassengerFareType = "resident" | "chilean" | "foreigner";
 
 const PASSENGER_FARE_LABEL: Record<PassengerFareType, string> = {
-  resident: "Residente Rapa Nui",
+  resident: "RAPA NUI / RESIDENTE RAPA NUI",
   chilean: "Turista chileno",
   foreigner: "Turista extranjero",
 };

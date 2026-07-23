@@ -130,13 +130,27 @@ export type LegalAcceptanceInput = {
 };
 
 /** Payload sent to POST /api/auth/register */
+export type ResidenceAccreditationInput = {
+  documentName: string;
+  documentType:
+    | "application/pdf"
+    | "image/jpeg"
+    | "image/png"
+    | "image/webp";
+  documentSize: number;
+  documentDataUrl: string;
+};
+
 export type RegisterRequest = {
   email: string;
   password: string;
   name: string;
   role: UserRole;
   phone?: string | undefined;
+  rut?: string | undefined;
+  passport?: string | undefined;
   passengerFareType?: PassengerFareType | undefined;
+  residenceAccreditation?: ResidenceAccreditationInput | undefined;
   legalAcceptances: LegalAcceptanceInput[];
 };
 

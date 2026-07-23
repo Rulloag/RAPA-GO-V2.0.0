@@ -4,6 +4,7 @@ import {
   legalAcceptanceInputSchema,
   loginRequestSchema,
   registerRequestSchema,
+  residenceAccreditationSchema,
 } from "@rapa-go/shared";
 
 export { loginRequestSchema, registerRequestSchema, authSessionSchema };
@@ -255,7 +256,9 @@ export const appleAuthRequestSchema = z.object({
       familyName: z.string().trim().max(50).optional(),
     })
     .optional(),
-  phone: z
+  role: z
+    .enum(["passenger", "driver", "guide", "rental_operator"])
+    .optional(),  phone: z
     .string()
     .trim()
     .regex(/^\+?[0-9]{8,15}$/, "El teléfono de Apple no es válido.")
@@ -272,6 +275,7 @@ export const appleAuthRequestSchema = z.object({
     )
     .max(12)
     .optional(),
+  residenceAccreditation: residenceAccreditationSchema.optional(),
 });
 
 export type AppleAuthRequestInput = z.infer<

@@ -112,7 +112,9 @@ export function useMultiStopRoute(): MultiStopState & {
         renderer.setDirections(result);
 
         const leg = result.routes[0]?.legs[0];
-        if (!leg) throw new Error("La ruta no devolvió datos de tramo.");
+        if (!leg?.distance || !leg.duration) {
+          throw new Error("La ruta no devolvió distancia o duración.");
+        }
 
         segments.push({
           fromOrder:       i,

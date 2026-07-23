@@ -2274,7 +2274,7 @@ function normalizePassengerFareType(value: unknown): PassengerFareType | null {
   // Orden seguro:
   // 1) Turista chileno / chileno no residente.
   // 2) Turista extranjero / extranjero.
-  // 3) Residente Rapa Nui.
+  // 3) RAPA NUI / RESIDENTE RAPA NUI.
   // "Turista chileno" contiene la palabra "turista", por eso debe ir antes
   // de la detección genérica de turista/extranjero.
   if (
@@ -2435,7 +2435,7 @@ function tripFareModeDescription(mode: TripFareMode): string {
 }
 
 function passengerFareTypeLabel(type: PassengerFareType): string {
-  if (type === "resident") return "Residente Rapa Nui";
+  if (type === "resident") return "RAPA NUI / RESIDENTE RAPA NUI";
   if (type === "chilean") return "Turista chileno";
   return "Turista extranjero";
 }
@@ -4564,15 +4564,9 @@ function formatDuration(seconds: number): string {
   return `${mins} min`;
 }
 
-function hasDuplicatePoints(origin: MapPoint, dests: MapPoint[]): boolean {
-  const all    = [origin, ...dests];
-  const coords = all.map(p => `${p.position.lat.toFixed(6)},${p.position.lng.toFixed(6)}`);
-  return new Set(coords).size < coords.length;
-}
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
-type RideMode  = "immediate" | "scheduled";
 type PageStatus =
   | "idle"
   | "calculating_route"

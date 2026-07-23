@@ -1,5 +1,12 @@
 import { db } from "../../db/client.js";
-import { users, userDocuments, rideRequests, driverStatuses } from "../../db/schema/index.js";
+import {
+  users,
+  userDocuments,
+  passengerProfiles,
+  notifications,
+  rideRequests,
+  driverStatuses,
+} from "../../db/schema/index.js";
 import { eq, and, or, ilike, inArray, type SQL } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import { AppError } from "../../shared/errors/AppError.js";
@@ -182,6 +189,115 @@ export class AdminRepository {
       return this.findDocumentById(id);
     } catch (err) {
       throw AppError.internal(`Failed to review document: ${String(err)}`);
+    }
+  }
+
+
+  async reviewResidenceDocument(input: {
+    documentId: string;
+    adminUserId: string;
+    status: "approved" | "rejected";
+    rejectionReason: string | null;
+    reclassifiedFareType?: "chilean" | "foreigner" | undefined;
+  }): Promise<AdminDocumentRow | null> {
+    try {
+      const now = new Date();
+
+      await db.transaction(async (tx) => {
+        const documentRows = await tx
+          .update(userDocuments)
+          .set({
+            status: input.status,
+            rejectionReason: input.rejectionReason,
+            reviewedAt: now,
+            updatedAt: now,
+          })
+          .where(eq(userDocuments.id, input.documentId))
+          .returning({ userId: userDocuments.userId });
+
+        const document = documentRows[0];
+        if (!document) {
+          throw AppError.notFound("Document not found.");
+        }
+
+        const effectiveFareType =
+          input.status === "approved"
+            ? "resident"
+            : input.reclassifiedFareType;
+
+        if (!effectiveFareType) {
+          throw AppError.internal(
+            "Missing residence reclassification fare type.",
+          );
+        }
+
+        const requestedFareType =
+          input.status === "approved" ? "resident" : effectiveFareType;
+
+        await tx
+          .insert(passengerProfiles)
+          .values({
+            userId: document.userId,
+            requestedFareType,
+            effectiveFareType,
+            residenceVerificationStatus:
+              input.status === "approved" ? "approved" : "rejected",
+            residenceRequestedAt: now,
+            residenceReviewedAt: now,
+            residenceReviewedBy: input.adminUserId,
+            residenceRejectionReason:
+              input.status === "approved" ? null : input.rejectionReason,
+            updatedAt: now,
+          })
+          .onConflictDoUpdate({
+            target: passengerProfiles.userId,
+            set: {
+              requestedFareType,
+              effectiveFareType,
+              residenceVerificationStatus:
+                input.status === "approved" ? "approved" : "rejected",
+              residenceReviewedAt: now,
+              residenceReviewedBy: input.adminUserId,
+              residenceRejectionReason:
+                input.status === "approved" ? null : input.rejectionReason,
+              updatedAt: now,
+            },
+          });
+
+        const reclassifiedLabel =
+          effectiveFareType === "foreigner"
+            ? "Turista extranjero"
+            : effectiveFareType === "chilean"
+              ? "Turista chileno"
+              : "RAPA NUI / RESIDENTE RAPA NUI";
+
+        await tx.insert(notifications).values({
+          userId: document.userId,
+          type:
+            input.status === "approved"
+              ? "residence_accreditation_approved"
+              : "residence_accreditation_reclassified",
+          title:
+            input.status === "approved"
+              ? "Acreditación de residencia aprobada"
+              : "Categoría tarifaria actualizada",
+          message:
+            input.status === "approved"
+              ? "Tu acreditación fue aprobada. Mantienes la categoría RAPA NUI / RESIDENTE RAPA NUI."
+              : `Tu acreditación no fue aprobada. Tu categoría cambió a ${reclassifiedLabel}. Motivo: ${input.rejectionReason ?? "No informado"}`,
+          entityType: "user_document",
+          entityId: input.documentId,
+          actionUrl: "/profile/documents",
+          createdAt: now,
+        });
+      });
+
+      return this.findDocumentById(input.documentId);
+    } catch (err) {
+      if (err instanceof AppError) throw err;
+      throw AppError.internal(
+        `Failed to review residence document: ${String(err)}`,
+      );
     }
   }
 

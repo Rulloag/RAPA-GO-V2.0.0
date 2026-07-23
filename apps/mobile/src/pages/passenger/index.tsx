@@ -1031,7 +1031,7 @@ function normalizePassengerFareType(value: unknown): PassengerFareType | null {
   // Orden seguro:
   // 1) Turista chileno / chileno no residente.
   // 2) Turista extranjero / extranjero.
-  // 3) Residente Rapa Nui.
+  // 3) RAPA NUI / RESIDENTE RAPA NUI.
   // "Turista chileno" contiene la palabra "turista", por eso debe ir antes
   // de la detección genérica de turista/extranjero.
   if (
@@ -1237,7 +1237,7 @@ function passengerFareSuffix(type: PassengerFareType): string {
 }
 
 function passengerFareTypeLabel(type: PassengerFareType): string {
-  if (type === "resident") return "Residente Rapa Nui";
+  if (type === "resident") return "RAPA NUI / RESIDENTE RAPA NUI";
   if (type === "chilean") return "Turista chileno";
   return "Turista extranjero";
 }
@@ -1262,7 +1262,7 @@ type ResidentVerificationState = {
 const RESIDENT_VERIFICATION_REQUESTS_KEY = "rapago_resident_verification_requests_v1";
 
 const DEFAULT_RESIDENT_REJECTION_MESSAGE =
-  "Tu documento de Residente Rapa Nui fue rechazado. Por favor elige otro tipo de usuario: Turista chileno o Turista extranjero, o vuelve a adjuntar un documento de residencia válido.";
+  "Tu documento de RAPA NUI / RESIDENTE RAPA NUI fue rechazado. Por favor elige otro tipo de usuario: Turista chileno o Turista extranjero, o vuelve a adjuntar un documento de residencia válido.";
 
 function normalizeResidenceVerificationStatus(value: unknown): ResidenceVerificationStatus | null {
   const raw = String(value ?? "")
@@ -1420,7 +1420,7 @@ function getResidentRequestMessage(
   }
 
   if (status === "approved") {
-    return "Tu documento fue aprobado. Tu tarifa de Residente Rapa Nui ya está habilitada.";
+    return "Tu documento fue aprobado. Tu tarifa de RAPA NUI / RESIDENTE RAPA NUI ya está habilitada.";
   }
 
   if (status === "rejected") {
@@ -1428,11 +1428,11 @@ function getResidentRequestMessage(
   }
 
   if (status === "missing_document") {
-    return "Para usar tarifa de Residente Rapa Nui debes adjuntar un documento de residencia.";
+    return "Para usar tarifa de RAPA NUI / RESIDENTE RAPA NUI debes adjuntar un documento de residencia.";
   }
 
   if (status === "pending") {
-    return "Tu documento de Residente Rapa Nui está pendiente de revisión por el administrador.";
+    return "Tu documento de RAPA NUI / RESIDENTE RAPA NUI está pendiente de revisión por el administrador.";
   }
 
   return "";
@@ -1455,8 +1455,8 @@ function syncResidentVerificationStorage(
       localStorage.setItem("rapago_profile_passenger_type", "resident");
       localStorage.setItem("rapago_fare_passenger_type", "resident");
       localStorage.setItem("rapago_passenger_type", "resident");
-      localStorage.setItem("rapago_profile_nationality", "Residente Rapa Nui");
-      localStorage.setItem("rapago_nationality", "Residente Rapa Nui");
+      localStorage.setItem("rapago_profile_nationality", "RAPA NUI / RESIDENTE RAPA NUI");
+      localStorage.setItem("rapago_nationality", "RAPA NUI / RESIDENTE RAPA NUI");
     }
   } catch {
     // No bloquea la vista del pasajero.
@@ -5281,7 +5281,6 @@ function TripsPage(): JSX.Element {
         ratingRideId,
         ratingStars,
         ratingComment.trim() || undefined,
-        ratingPrivateComment ? "admin_only" : "participants_and_admin",
       );
       setRatedIds((prev) => new Set([...prev, ratingRideId]));
       setRatingRideId(null);

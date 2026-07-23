@@ -19,7 +19,6 @@ import type {
   RegisterRequest,
   AppleSignInRequest,
   AuthResponse,
-  AppleSignInRequest,
 } from "./auth.types.js";
 
 export const AuthContext = createContext<AuthContextValue | null>(null);
@@ -183,7 +182,7 @@ export function AuthProvider({ children }: AuthProviderProps): JSX.Element {
       const response = await authService.login(payload);
 
       if (response.ok) {
-        await sessionStorageService.saveSession(response.session);
+        await sessionStorageService.saveSession(response.session, response.refreshToken);
         setSession(response.session);
         setUser(response.session.user);
         setStatus("authenticated");
@@ -203,7 +202,7 @@ export function AuthProvider({ children }: AuthProviderProps): JSX.Element {
       const response = await authService.register(payload);
 
       if (response.ok) {
-        await sessionStorageService.saveSession(response.session);
+        await sessionStorageService.saveSession(response.session, response.refreshToken);
         setSession(response.session);
         setUser(response.session.user);
         setStatus("authenticated");
@@ -223,7 +222,7 @@ export function AuthProvider({ children }: AuthProviderProps): JSX.Element {
       const response = await authService.signInWithApple(payload);
 
       if (response.ok) {
-        await sessionStorageService.saveSession(response.session);
+        await sessionStorageService.saveSession(response.session, response.refreshToken);
         setSession(response.session);
         setUser(response.session.user);
         setStatus("authenticated");

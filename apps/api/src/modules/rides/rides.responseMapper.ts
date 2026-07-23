@@ -72,7 +72,7 @@ export function toResponse(
     priorityFeeClp:        r.priorityFeeClp ?? null,
     flightNumber:          r.flightNumber ?? null,
     preferredDriverGender: (r.preferredDriverGender as "female" | null | undefined) ?? null,
-    stops:                 stops,
+    ...(stops ? { stops } : {}),
   };
 }
 

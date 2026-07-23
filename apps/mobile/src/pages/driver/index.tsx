@@ -66,6 +66,12 @@ import {
   MapFallback,
   loadRapaGoGoogleMaps,
 } from "../../components/MapFallback";
+import {
+  MapView,
+  useDirectionsRoute,
+  type LatLng,
+  type GoogleMapInstance,
+} from "../../features/maps/index.js";
 import { WhatsAppButton } from "../../components/WhatsAppButton";
 import { DriverRestScheduleCard } from "./components/DriverRestScheduleCard";
 import { AccountDeletionCard } from "../../components/accountDeletion/AccountDeletionCard.js";
@@ -75,6 +81,8 @@ type AvailableRideData =
   import("../../features/rides/rides.service").AvailableRideData;
 type DriverRideData =
   import("../../features/rides/rides.service").DriverRideData;
+type ActiveRideOfferData =
+  import("../../features/rides/rides.service").ActiveRideOfferData;
 
 type RapaGoConnectivityMode = "checking" | "online" | "poor" | "offline";
 type RapaGoConnectivityRole = "driver" | "passenger" | "admin";
@@ -2993,7 +3001,7 @@ function getDriverLiveUserField(user: unknown, key: string): string | null {
 type DriverPassengerFareType = "resident" | "chilean" | "foreigner";
 
 function getDriverPassengerFareTypeLabel(type: DriverPassengerFareType): string {
-  if (type === "resident") return "Residente Rapa Nui";
+  if (type === "resident") return "RAPA NUI / RESIDENTE RAPA NUI";
   if (type === "chilean") return "Turista chileno";
   return "Turista extranjero";
 }
@@ -13624,17 +13632,6 @@ La reserva fue retirada. No continúes hacia la recogida.`,
       const cashPatch = buildDriverCashClosureRidePatch(currentRide, cashClosure);
 
       if (cashClosure) {
-        try {
-          await ridesService.closeCashPayment(session.accessToken, rideId, {
-            paidClp: cashClosure.paidClp,
-            decision: cashClosure.decision,
-            ...(cashClosure.notes ? { note: cashClosure.notes } : {}),
-          });
-        } catch (cashError) {
-          setError(cashError instanceof Error
-            ? `Viaje completado. Cierre efectivo pendiente de sincronizar: ${cashError.message}`
-            : "Viaje completado. El cierre efectivo quedó pendiente de sincronizar.");
-        }
         persistDriverCashClosureForAdmin(
           { ...(currentRide as unknown as Record<string, unknown>), ...cashPatch, completedAt, closedByDriverAt: completedAt },
           cashClosure,
@@ -16789,17 +16786,6 @@ function DriverMyRidesPage(): JSX.Element {
       const cashPatch = buildDriverCashClosureRidePatch(ride, cashClosure);
 
       if (cashClosure) {
-        try {
-          await ridesService.closeCashPayment(session.accessToken, ride.id, {
-            paidClp: cashClosure.paidClp,
-            decision: cashClosure.decision,
-            ...(cashClosure.notes ? { note: cashClosure.notes } : {}),
-          });
-        } catch (cashError) {
-          setLoadError(cashError instanceof Error
-            ? `Viaje completado. Cierre efectivo pendiente de sincronizar: ${cashError.message}`
-            : "Viaje completado. El cierre efectivo quedó pendiente de sincronizar.");
-        }
         persistDriverCashClosureForAdmin(
           { ...(ride as unknown as Record<string, unknown>), ...cashPatch, completedAt, closedByDriverAt: completedAt },
           cashClosure,
@@ -16985,7 +16971,8 @@ function DriverMyRidesPage(): JSX.Element {
   }
 
 
-  const hasAcceptedQueuedRide = hasInProgressRide && rides.some(r => r.status === "accepted");
+  const hasInProgressRide = rides.some((ride) => ride.status === "in_progress");
+  const hasAcceptedQueuedRide = hasInProgressRide && rides.some((ride) => ride.status === "accepted");
 
   return (
     <IonPage>

@@ -42,6 +42,16 @@ export type FacebookResidentPrecheckResponse = {
   rejectionReason?: string | null;
 };
 
+type MessageResponse = {
+  ok: true;
+  message: string;
+};
+
+type FacebookLinkStartResponse = {
+  ok: true;
+  authorizationUrl: string;
+};
+
 /**
  * AuthService (mobile) — communicates with the backend auth endpoints.
  * Uses the centralized apiClient — never calls fetch, Supabase, or any
@@ -138,7 +148,7 @@ export const authService = {
 
   async refresh(refreshToken: string): Promise<AuthResponse> {
     const result = await apiClient.post<AuthResponse>("/auth/refresh", { refreshToken }, undefined, 0);
-    if (!result.ok) {
+    if (result.ok === false) {
       return { ok: false, code: result.code, message: result.message };
     }
     return result.data;
@@ -154,9 +164,56 @@ export const authService = {
    */
   async signInWithApple(payload: AppleSignInRequest): Promise<AuthResponse> {
     const result = await apiClient.post<AuthResponse>("/auth/apple", payload, undefined, 0);
-    if (!result.ok) {
+    if (result.ok === false) {
       return { ok: false, code: result.code, message: result.message };
     }
     return result.data;
+  },
+
+  async linkApple(
+    accessToken: string,
+    payload: AppleSignInRequest,
+  ): Promise<MessageResponse> {
+    const result = await apiClient.post<MessageResponse>(
+      "/auth/apple/link",
+      payload,
+      { token: accessToken },
+      0,
+    );
+    if (result.ok === false) {
+      throw new Error(result.message ?? "No se pudo vincular Apple.");
+    }
+    return result.data;
+  },
+
+  async createPassword(
+    accessToken: string,
+    payload: { newPassword: string; confirmPassword: string },
+  ): Promise<MessageResponse> {
+    const result = await apiClient.post<MessageResponse>(
+      "/auth/password/create",
+      payload,
+      { token: accessToken },
+      0,
+    );
+    if (result.ok === false) {
+      throw new Error(result.message ?? "No se pudo crear la contraseña.");
+    }
+    return result.data;
+  },
+
+  async startFacebookLink(accessToken: string): Promise<string> {
+    const result = await apiClient.post<FacebookLinkStartResponse>(
+      "/auth/facebook/link/start",
+      {},
+      { token: accessToken },
+      0,
+    );
+    if (result.ok === false) {
+      throw new Error(
+        result.message ?? "No se pudo iniciar la vinculación con Facebook.",
+      );
+    }
+    return result.data.authorizationUrl;
   },
 };

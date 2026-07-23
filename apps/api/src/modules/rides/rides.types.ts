@@ -1,3 +1,17 @@
+export interface RideStopResponse {
+  id: string;
+  rideRequestId: string;
+  stopOrder: number;
+  label: string;
+  lat: number;
+  lng: number;
+  segmentDistanceMeters: number | null;
+  segmentDurationSeconds: number | null;
+  segmentFareClp: number | null;
+  arrivedAt: string | null;
+  completedAt: string | null;
+}
+
 export interface RidePolicyChargeResponse {
   id: string;
   sourceRideId: string;
@@ -38,6 +52,13 @@ export interface RideRequestResponse {
   destinationText:     string;
   notes:               string | null;
   estimatedFareClp:    number | null;
+  originLat?:           number | null;
+  originLng?:           number | null;
+  destinationLat?:      number | null;
+  destinationLng?:      number | null;
+  distanceMeters?:      number | null;
+  durationSeconds?:     number | null;
+  fareCalculationSource?: string;
   status:              string;
   requestedAt:         string;
   acceptedAt:          string | null;
@@ -60,6 +81,12 @@ export interface RideRequestResponse {
   discountApplied:      boolean;
   discountPercent:      number | null;
   originalFareClp:      number | null;
+  rideType?:             string;
+  scheduledPickupAt?:    string | null;
+  priorityFeeClp?:       number | null;
+  flightNumber?:         string | null;
+  preferredDriverGender?: "female" | null;
+  stops?:                RideStopResponse[] | undefined;
 
   /** Forma de pago persistida por el backend para este viaje. */
   paymentMethod?: "cash" | "card" | null;
@@ -126,7 +153,7 @@ export interface DriverRideResponse {
   scheduledPickupAt:     string | null;
   priorityFeeClp:        number | null;
   flightNumber:          string | null;
-  stops?:                RideStopResponse[];
+  stops?:                RideStopResponse[] | undefined;
 }
 
 export type DriverRidesListResult =
@@ -140,6 +167,9 @@ export interface AvailableRideResponse {
   destinationText:  string;
   notes:            string | null;
   estimatedFareClp: number | null;
+  distanceMeters?:  number | null;
+  durationSeconds?: number | null;
+  fareCalculationSource?: string;
   status:           string;
   requestedAt:      string;
   createdAt:        string;

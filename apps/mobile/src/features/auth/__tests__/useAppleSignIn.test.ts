@@ -10,7 +10,10 @@ vi.mock("../useAuth.js", () => ({
 }));
 
 vi.mock("@capacitor/core", () => ({
-  Capacitor: { getPlatform: () => mockPlatform },
+  Capacitor: {
+    getPlatform: () => mockPlatform,
+    isNativePlatform: () => mockPlatform !== "web",
+  },
 }));
 
 vi.mock("@capawesome/capacitor-apple-sign-in", () => ({
@@ -216,8 +219,12 @@ describe("useAppleSignIn", () => {
     expect(mockSignInWithApple).toHaveBeenCalledTimes(1);
 
     let outcome: AppleSignInOutcome | undefined;
-    // @ts-expect-error — intentionally attempting to pass a disallowed role at runtime
-    await act(async () => { outcome = await result.current.submitRole("admin"); });
+    const submitManipulatedRole = result.current.submitRole as unknown as (
+      role: string,
+    ) => Promise<AppleSignInOutcome>;
+    await act(async () => {
+      outcome = await submitManipulatedRole("admin");
+    });
 
     // The runtime guard rejects it before ever calling the backend again.
     expect(mockSignInWithApple).toHaveBeenCalledTimes(1);

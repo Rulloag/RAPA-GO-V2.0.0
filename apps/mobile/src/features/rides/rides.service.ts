@@ -93,6 +93,20 @@ export interface RideRequestData {
   policyChargesAppliedClp?: number;
 }
 
+export interface RideStopData {
+  id: string;
+  rideRequestId: string;
+  stopOrder: number;
+  label: string;
+  lat: number;
+  lng: number;
+  segmentDistanceMeters: number | null;
+  segmentDurationSeconds: number | null;
+  segmentFareClp: number | null;
+  arrivedAt: string | null;
+  completedAt: string | null;
+}
+
 /** Subset returned to drivers for their own rides. */
 export interface DriverRideData {
   id:                 string;
@@ -292,14 +306,14 @@ export const ridesService = {
   async getDriverLocation(accessToken: string, rideId: string): Promise<{ driverUserId: string; lat: number; lng: number; updatedAt: string | null } | null> {
     type Envelope = { ok: true; data: { location: { driverUserId: string; lat: number; lng: number; updatedAt: string | null } | null }; statusCode: number };
     const result = await apiClient.get<Envelope>(`/rides/${rideId}/driver-location`, { token: accessToken });
-    if (!result.ok) throw new Error(result.message ?? "Failed to get driver location.");
+    if (result.ok === false) throw new Error(result.message ?? "Failed to get driver location.");
     return (result.data as Envelope).data.location;
   },
 
   async updateDriverLocation(accessToken: string, lat: number, lng: number): Promise<{ updatedAt: string }> {
     type Envelope = { ok: true; data: { updatedAt: string }; statusCode: number };
     const result = await apiClient.patch<Envelope>("/drivers/me/location", { lat, lng }, { token: accessToken });
-    if (!result.ok) throw new Error(result.message ?? "Failed to update location.");
+    if (result.ok === false) throw new Error(result.message ?? "Failed to update location.");
     return (result.data as Envelope).data;
   },
 
@@ -312,7 +326,7 @@ export const ridesService = {
 
   async acceptDriverOffer(accessToken: string, offerId: string): Promise<RideRequestData> {
     const result = await apiClient.post<RideEnvelope>(`/drivers/me/offers/${offerId}/accept`, {}, { token: accessToken });
-    if (!result.ok) throw new Error(result.message ?? "Error al aceptar oferta.");
+    if (result.ok === false) throw new Error(result.message ?? "Error al aceptar oferta.");
     return (result.data as RideEnvelope).data;
   },
 
@@ -320,12 +334,12 @@ export const ridesService = {
     const result = await apiClient.post<{ ok: true; data: { rejected: boolean }; statusCode: number }>(
       `/drivers/me/offers/${offerId}/reject`, {}, { token: accessToken },
     );
-    if (!result.ok) throw new Error(result.message ?? "Error al rechazar oferta.");
+    if (result.ok === false) throw new Error(result.message ?? "Error al rechazar oferta.");
   },
 
   async acceptAnyDriver(accessToken: string, rideId: string): Promise<RideRequestData> {
     const result = await apiClient.patch<RideEnvelope>(`/rides/${rideId}/accept-any-driver`, {}, { token: accessToken });
-    if (!result.ok) throw new Error(result.message ?? "Failed to accept any driver.");
+    if (result.ok === false) throw new Error(result.message ?? "Failed to accept any driver.");
     return (result.data as RideEnvelope).data;
   },
 
