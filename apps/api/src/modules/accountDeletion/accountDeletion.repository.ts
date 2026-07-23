@@ -522,10 +522,58 @@ export class AccountDeletionRepository {
       };
     }
 
+    const userRows = await db
+      .select()
+      .from(users)
+      .where(eq(users.id, userId))
+      .limit(1);
+
+    const user = userRows[0] ?? null;
+
+    /*
+     * The deletion list must not query every column from both profile tables.
+     * Production may legitimately have only the profile that matches the
+     * account role, and selecting the complete Drizzle model can reference
+     * optional columns that have not been deployed yet.
+     *
+     * Load only the fields required by AccountDeletionAdminResponse and only
+     * from the table that corresponds to the actual account role.
+     */
+    const passengerRows =
+      user?.role === "passenger"
+        ? await db
+            .select({
+              phone: passengerProfiles.phone,
+              preferredLanguage: passengerProfiles.preferredLanguage,
+              emergencyContactName:
+                passengerProfiles.emergencyContactName,
+              emergencyContactPhone:
+                passengerProfiles.emergencyContactPhone,
+            })
+            .from(passengerProfiles)
+            .where(eq(passengerProfiles.userId, userId))
+            .limit(1)
+        : [];
+
+    const driverRows =
+      user?.role === "driver"
+        ? await db
+            .select({
+              phone: driverProfiles.phone,
+              vehicleBrand: driverProfiles.vehicleBrand,
+              vehicleModel: driverProfiles.vehicleModel,
+              vehicleYear: driverProfiles.vehicleYear,
+              vehiclePlate: driverProfiles.vehiclePlate,
+              vehicleColor: driverProfiles.vehicleColor,
+              licenseNumber: driverProfiles.licenseNumber,
+              licenseExpiry: driverProfiles.licenseExpiry,
+            })
+            .from(driverProfiles)
+            .where(eq(driverProfiles.userId, userId))
+            .limit(1)
+        : [];
+
     const [
-      userRows,
-      passengerRows,
-      driverRows,
       documentRows,
       rideRows,
       paymentRows,
@@ -536,20 +584,6 @@ export class AccountDeletionRepository {
       ticketRows,
       supportRows,
     ] = await Promise.all([
-      db.select().from(users).where(eq(users.id, userId)).limit(1),
-
-      db
-        .select()
-        .from(passengerProfiles)
-        .where(eq(passengerProfiles.userId, userId))
-        .limit(1),
-
-      db
-        .select()
-        .from(driverProfiles)
-        .where(eq(driverProfiles.userId, userId))
-        .limit(1),
-
       db
         .select()
         .from(userDocuments)
@@ -612,8 +646,6 @@ export class AccountDeletionRepository {
         .from(supportCases)
         .where(eq(supportCases.requesterUserId, userId)),
     ]);
-
-    const user = userRows[0] ?? null;
 
     const applicationRows = user
       ? await db
