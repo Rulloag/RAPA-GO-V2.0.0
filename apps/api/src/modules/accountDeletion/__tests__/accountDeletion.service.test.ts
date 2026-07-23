@@ -194,10 +194,7 @@ describe("AccountDeletionService", () => {
       requesterRole: user.role,
     });
 
-    mockVerifyAndConsumePublicCode.mockResolvedValue(user.id);
-
     const result = await service.createRequest("access-token", {
-      verificationCode: "123456",
       reason: "Ya no utilizaré la aplicación.",
       requesterSnapshot: {
         sourceView: user.role as "passenger" | "driver",
@@ -205,6 +202,8 @@ describe("AccountDeletionService", () => {
     });
 
     expect(result.ok).toBe(true);
+    expect(mockVerifyAndConsumePublicCode).not.toHaveBeenCalled();
+    expect(mockSendVerificationCode).not.toHaveBeenCalled();
     expect(mockCreate).toHaveBeenCalledWith(
       user.id,
       user.role,
@@ -221,7 +220,6 @@ describe("AccountDeletionService", () => {
     mockFindPendingByUserId.mockResolvedValue(pendingRequest);
 
     const result = await service.createRequest("access-token", {
-      verificationCode: "123456",
       reason: "Quiero cerrar definitivamente mi cuenta.",
     });
 

@@ -44,10 +44,6 @@ export const accountDeletionClientSnapshotSchema = z.object({
 });
 
 export const createAccountDeletionRequestSchema = z.object({
-  verificationCode: z
-    .string()
-    .trim()
-    .regex(/^\d{6}$/, "El código de verificación debe tener 6 números."),
   reason: reasonSchema,
   comment: commentSchema,
   requesterSnapshot: accountDeletionClientSnapshotSchema.optional(),

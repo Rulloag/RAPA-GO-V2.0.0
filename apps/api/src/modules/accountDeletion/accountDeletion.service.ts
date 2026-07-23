@@ -179,57 +179,6 @@ export class AccountDeletionService {
     return { ok: true, request };
   }
 
-  async requestAppVerification(
-    accessToken: string,
-  ): Promise<PublicCodeResult> {
-    const auth = await authenticate(accessToken);
-    if (isFailure(auth)) return auth;
-
-    const emailHash = sha256(auth.email.trim().toLowerCase());
-    const expiresMinutes = 10;
-    const recent = await repository.hasRecentPublicVerification(
-      emailHash,
-      new Date(Date.now() - 60_000),
-    );
-
-    if (!recent) {
-      const code = randomInt(0, 1_000_000)
-        .toString()
-        .padStart(6, "0");
-      const codeHash = sha256(`${emailHash}:${code}`);
-      const verificationId = await repository.createPublicVerification({
-        userId: auth.id,
-        emailHash,
-        codeHash,
-        expiresAt: new Date(Date.now() + expiresMinutes * 60_000),
-        requestIp: null,
-        requestUserAgent: null,
-      });
-
-      try {
-        await mailService.sendAccountDeletionVerificationCode(
-          auth.email,
-          code,
-          expiresMinutes,
-        );
-      } catch {
-        await repository.revokePublicVerification(verificationId).catch(() => {});
-        return {
-          ok: false,
-          code: "ACCOUNT_DELETION_CODE_DELIVERY_FAILED",
-          message: "No pudimos enviar el código de verificación.",
-          statusCode: 503,
-        };
-      }
-    }
-
-    return {
-      ok: true,
-      message: "Enviamos un código de verificación al correo de tu cuenta.",
-      expiresMinutes,
-    };
-  }
-
   async createRequest(
     accessToken: string,
     input: CreateAccountDeletionRequestInput,
@@ -256,22 +205,6 @@ export class AccountDeletionService {
         message:
           "Ya existe una solicitud pendiente de revisión para esta cuenta.",
         statusCode: 409,
-      };
-    }
-
-    const emailHash = sha256(auth.email.trim().toLowerCase());
-    const codeHash = sha256(`${emailHash}:${input.verificationCode}`);
-    const verifiedUserId = await repository.verifyAndConsumePublicCode(
-      emailHash,
-      codeHash,
-    );
-
-    if (verifiedUserId !== auth.id) {
-      return {
-        ok: false,
-        code: "ACCOUNT_DELETION_REAUTH_REQUIRED",
-        message: "El código de verificación es inválido o venció.",
-        statusCode: 400,
       };
     }
 
@@ -453,7 +386,6 @@ export class AccountDeletionService {
     }
 
     const requestInput: CreateAccountDeletionRequestInput = {
-      verificationCode: input.code,
       reason: input.reason,
     };
 

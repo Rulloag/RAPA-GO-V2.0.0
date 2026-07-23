@@ -159,24 +159,9 @@ export const accountDeletionService = {
     );
   },
 
-  async requestVerificationCode(
-    accessToken: string,
-  ): Promise<{ message: string; expiresMinutes: number }> {
-    const result = await apiClient.post<
-      Envelope<{ message: string; expiresMinutes: number }>
-    >(
-      "/account-deletion/reauth/code",
-      {},
-      { token: accessToken },
-    );
-
-    return unwrap(result, "No se pudo enviar el código de verificación.");
-  },
-
   async create(
     accessToken: string,
     payload: {
-      verificationCode: string;
       reason: string;
       comment?: string;
       requesterSnapshot?: AccountDeletionClientSnapshot;
