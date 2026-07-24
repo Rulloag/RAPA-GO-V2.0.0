@@ -111,7 +111,7 @@ function buildFakes(opts: {
   const usersRepository = { findById: mockFindById, findByEmail: mockFindByEmail } as never;
   const identitiesRepository = {
     findByProviderAndSub:  mockFindByProviderAndSub,
-    updateEncryptedRefreshToken: mockUpdateRefreshToken,
+    updateProviderCredentials: mockUpdateRefreshToken,
     createUserWithIdentity: mockCreateUserWithIdentity,
   } as never;
   const auditService = { recordSafe: mockRecordSafe } as never;
@@ -444,6 +444,7 @@ describe("AppleAuthService.signIn", () => {
 
     expect(fakes.mockUpdateRefreshToken).toHaveBeenCalledWith(
       "identity-existing2",
+      "cl.rapago.app",
       expect.not.stringContaining("apple-refresh-token-raw"),
     );
   });

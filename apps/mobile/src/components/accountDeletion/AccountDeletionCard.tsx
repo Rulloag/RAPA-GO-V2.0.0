@@ -39,6 +39,7 @@ const OPEN_STATUSES = new Set<AccountDeletionRequestStatus>([
   "deferred",
   "approved",
   "processing",
+  "failed",
 ]);
 
 function statusLabel(status: AccountDeletionRequestStatus): string {
@@ -53,8 +54,8 @@ function statusLabel(status: AccountDeletionRequestStatus): string {
       return "Procesando eliminación";
     case "completed":
       return "Cuenta eliminada";
-    case "rejected":
-      return "Rechazada";
+    case "identity_not_verified":
+      return "No procesada: identidad no verificada";
     case "failed":
       return "Error de procesamiento";
     case "cancelled":
@@ -146,12 +147,6 @@ export function AccountDeletionCard({
 
     const cleanReason = reason.trim();
     const cleanComment = comment.trim();
-    if (cleanReason.length < 10) {
-      setError(
-        "Escribe el motivo con al menos 10 caracteres.",
-      );
-      return;
-    }
 
     if (!confirmed) {
       setError(
@@ -166,13 +161,12 @@ export function AccountDeletionCard({
 
     try {
       const payload: {
-        reason: string;
+        reason?: string;
         comment?: string;
         requesterSnapshot?: AccountDeletionClientSnapshot;
-      } = {
-        reason: cleanReason,
-      };
+      } = {};
 
+      if (cleanReason) payload.reason = cleanReason;
       if (cleanComment) payload.comment = cleanComment;
 
       if (requesterSnapshot) {
@@ -206,10 +200,7 @@ export function AccountDeletionCard({
   const hasOpenRequest =
     request != null && OPEN_STATUSES.has(request.status);
 
-  const canSubmit =
-    reason.trim().length >= 10 &&
-    confirmed &&
-    !submitting;
+  const canSubmit = confirmed && !submitting;
 
   const cardStyle = {
     margin: "14px 0",
@@ -246,8 +237,9 @@ export function AccountDeletionCard({
           }}
         >
           La cuenta no se elimina automáticamente. Tu solicitud
-          llegará al administrador, quien revisará el motivo, los
-          viajes, pagos, beneficios y documentos pendientes.
+          llegará al administrador, quien verificará tu identidad y
+          revisará únicamente viajes, pagos, beneficios o casos pendientes.
+          Informar un motivo es voluntario.
         </p>
 
         {loading && (
@@ -282,9 +274,11 @@ export function AccountDeletionCard({
               </IonBadge>
             </div>
 
-            <p style={{ margin: "8px 0 0", fontWeight: 800 }}>
-              <strong>Motivo:</strong> {request.reason}
-            </p>
+            {request.reason && (
+              <p style={{ margin: "8px 0 0", fontWeight: 800 }}>
+                <strong>Motivo informado:</strong> {request.reason}
+              </p>
+            )}
 
             <p
               style={{
@@ -385,7 +379,7 @@ export function AccountDeletionCard({
                   } as CSSProperties}
                 >
                   <IonLabel position="stacked">
-                    Motivo obligatorio
+                    Motivo (opcional)
                   </IonLabel>
 
                   <IonTextarea
@@ -394,7 +388,7 @@ export function AccountDeletionCard({
                       setReason(String(event.detail.value ?? ""));
                       setError("");
                     }}
-                    placeholder="Explica por qué quieres eliminar la cuenta"
+                    placeholder="Puedes explicar por qué quieres eliminar la cuenta"
                     maxlength={500}
                     counter
                     autoGrow
@@ -402,7 +396,7 @@ export function AccountDeletionCard({
                   />
 
                   <IonNote slot="helper">
-                    Mínimo 10 caracteres.
+                    Opcional. Máximo 500 caracteres.
                   </IonNote>
                 </IonItem>
 

@@ -3,6 +3,7 @@ import { AppError } from "../../shared/errors/AppError.js";
 export const APPLE_ISSUER = "https://appleid.apple.com";
 export const APPLE_JWKS_URL = "https://appleid.apple.com/auth/keys";
 export const APPLE_TOKEN_URL = "https://appleid.apple.com/auth/token";
+export const APPLE_REVOKE_URL = "https://appleid.apple.com/auth/revoke";
 
 export interface AppleAuthConfig {
   allowedClientIds: string[];

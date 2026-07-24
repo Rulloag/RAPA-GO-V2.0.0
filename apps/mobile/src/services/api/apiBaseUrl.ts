@@ -56,7 +56,7 @@ function readConfiguredValue(): string {
  *
  * Ejemplos:
  * - Navegador local: /api
- * - Producción: https://api.rapago.cl/api
+ * - Producción: https://backend.rapago.cl/api
  */
 export function getApiBaseUrl(): string {
   const configured = readConfiguredValue();

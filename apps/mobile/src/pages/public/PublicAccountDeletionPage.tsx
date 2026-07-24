@@ -57,8 +57,8 @@ function statusLabel(status: PublicAccountDeletionStatusData["status"]): string 
       return "Procesando";
     case "completed":
       return "Completada";
-    case "rejected":
-      return "Rechazada";
+    case "identity_not_verified":
+      return "No procesada: identidad no verificada";
     case "failed":
       return "Fallida";
     case "cancelled":
@@ -112,9 +112,8 @@ export function PublicAccountDeletionPage(): JSX.Element {
     () =>
       validEmail(normalizeEmail(email)) &&
       /^\d{6}$/.test(code.trim()) &&
-      reason.trim().length >= 10 &&
       accepted,
-    [accepted, code, email, reason],
+    [accepted, code, email],
   );
 
   async function requestCode(): Promise<void> {
@@ -155,7 +154,7 @@ export function PublicAccountDeletionPage(): JSX.Element {
 
     if (!canSubmit) {
       setError(
-        "Completa el correo, el código, un motivo de al menos 10 caracteres y la confirmación.",
+        "Completa el correo, el código y la confirmación.",
       );
       return;
     }
@@ -163,10 +162,11 @@ export function PublicAccountDeletionPage(): JSX.Element {
     setLoading(true);
 
     try {
+      const cleanReason = reason.trim();
       const request = await publicAccountDeletionService.submit({
         email: normalizeEmail(email),
         code: code.trim(),
-        reason: reason.trim(),
+        ...(cleanReason ? { reason: cleanReason } : {}),
         comment: comment.trim() || undefined,
         accepted: true,
       });
@@ -231,7 +231,7 @@ export function PublicAccountDeletionPage(): JSX.Element {
         </h2>
         <ol style={{ ...publicSiteStyles.muted, paddingLeft: 22 }}>
           <li>Verificamos el correo mediante un código de 6 números.</li>
-          <li>Registramos el motivo y generamos un número de seguimiento.</li>
+          <li>El motivo es opcional y generamos un número de seguimiento.</li>
           <li>La solicitud llega al panel administrativo.</li>
           <li>La cuenta no se elimina automáticamente.</li>
           <li>Si se aprueba, se anonimizan los datos no necesarios y se cierran las sesiones.</li>
@@ -331,20 +331,20 @@ export function PublicAccountDeletionPage(): JSX.Element {
                 </IonItem>
 
                 <IonItem style={inputStyle}>
-                  <IonLabel position="stacked">Motivo obligatorio</IonLabel>
+                  <IonLabel position="stacked">Motivo (opcional)</IonLabel>
                   <IonTextarea
                     autoGrow
                     maxlength={500}
                     value={reason}
                     disabled={loading}
-                    placeholder="Explica por qué deseas eliminar la cuenta"
+                    placeholder="Puedes explicar por qué deseas eliminar la cuenta"
                     onIonInput={(event) => {
                       setReason(String(event.detail.value ?? ""));
                       setError("");
                     }}
                   />
                   <IonNote slot="helper">
-                    Mínimo 10 y máximo 500 caracteres.
+                    Opcional. Máximo 500 caracteres.
                   </IonNote>
                 </IonItem>
 

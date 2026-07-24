@@ -23,6 +23,7 @@ import {
   eventTickets,
   facebookLoginExchanges,
   notifications,
+  oauthIdentities,
   passengerProfiles,
   paymentOrders,
   payments,
@@ -94,6 +95,7 @@ function toPublicResponse(
     status: row.status as AccountDeletionRequestStatus,
     adminNote: row.adminNote,
     requestedAt: row.requestedAt.toISOString(),
+    verifiedAt: row.verifiedAt.toISOString(),
     deadlineAt: row.deadlineAt.toISOString(),
     deferredUntil: iso(row.deferredUntil),
     decisionReasonCode: row.decisionReasonCode,
@@ -103,6 +105,11 @@ function toPublicResponse(
     completedAt: iso(row.completedAt),
     failedAt: iso(row.failedAt),
     failureReason: row.failureReason,
+    appleRevocationStatus:
+      row.appleRevocationStatus as AccountDeletionRequestResponse["appleRevocationStatus"],
+    appleRevocationAttemptedAt: iso(row.appleRevocationAttemptedAt),
+    appleRevokedAt: iso(row.appleRevokedAt),
+    appleRevocationError: row.appleRevocationError,
   };
 }
 
@@ -244,6 +251,7 @@ export class AccountDeletionRepository {
     input: CreateAccountDeletionRequestInput,
   ): Promise<AccountDeletionRequestResponse> {
     try {
+      const verifiedAt = new Date();
       const rows = await db
         .insert(accountDeletionRequests)
         .values({
@@ -251,11 +259,14 @@ export class AccountDeletionRepository {
           trackingCode: newTrackingCode(),
           requestChannel: "app",
           requesterRole,
-          reason: input.reason,
+          reason: input.reason?.trim() || null,
           comment: input.comment?.trim() || null,
           requesterSnapshot: input.requesterSnapshot ?? null,
           status: "pending",
-          deadlineAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+          verifiedAt,
+          deadlineAt: new Date(
+            verifiedAt.getTime() + 30 * 24 * 60 * 60 * 1000,
+          ),
         })
         .returning();
 
@@ -413,6 +424,7 @@ export class AccountDeletionRepository {
     input: CreateAccountDeletionRequestInput,
   ): Promise<AccountDeletionRequestResponse> {
     try {
+      const verifiedAt = new Date();
       const rows = await db
         .insert(accountDeletionRequests)
         .values({
@@ -421,11 +433,14 @@ export class AccountDeletionRepository {
           requestChannel: "web",
           contactEmailHash: emailHash,
           requesterRole,
-          reason: input.reason,
+          reason: input.reason?.trim() || null,
           comment: input.comment?.trim() || null,
           requesterSnapshot: null,
           status: "pending",
-          deadlineAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+          verifiedAt,
+          deadlineAt: new Date(
+            verifiedAt.getTime() + 30 * 24 * 60 * 60 * 1000,
+          ),
         })
         .returning();
 
@@ -501,6 +516,7 @@ export class AccountDeletionRepository {
         trackingCode: row.trackingCode,
         status: row.status as AccountDeletionRequestStatus,
         requestedAt: row.requestedAt.toISOString(),
+        verifiedAt: row.verifiedAt.toISOString(),
         deadlineAt: row.deadlineAt.toISOString(),
         deferredUntil: iso(row.deferredUntil),
         decisionReasonCode: row.decisionReasonCode,
@@ -912,6 +928,78 @@ export class AccountDeletionRepository {
     };
   }
 
+  async recordAppleRevocationResult(
+    requestId: string,
+    result: {
+      applicable: boolean;
+      revokedTokens: number;
+      alreadyInvalidTokens: number;
+    },
+  ): Promise<void> {
+    const now = new Date();
+    const allAlreadyInvalid =
+      result.applicable &&
+      result.revokedTokens > 0 &&
+      result.revokedTokens === result.alreadyInvalidTokens;
+
+    try {
+      await db
+        .update(accountDeletionRequests)
+        .set({
+          appleRevocationStatus: result.applicable
+            ? allAlreadyInvalid
+              ? "already_invalid"
+              : "revoked"
+            : "not_applicable",
+          appleRevocationAttemptedAt: result.applicable ? now : null,
+          appleRevokedAt: result.applicable ? now : null,
+          appleRevocationError: null,
+          failureReason: null,
+          failedAt: null,
+          updatedAt: now,
+        })
+        .where(eq(accountDeletionRequests.id, requestId));
+    } catch (error) {
+      throw AppError.internal(
+        `Failed to persist Apple revocation result: ${String(error)}`,
+      );
+    }
+  }
+
+  async markAppleRevocationFailure(
+    requestId: string,
+    error: unknown,
+  ): Promise<void> {
+    const now = new Date();
+    const safeMessage =
+      error instanceof AppError
+        ? `${error.code}: ${error.message}`
+        : error instanceof Error
+          ? error.message
+          : String(error);
+
+    try {
+      await db
+        .update(accountDeletionRequests)
+        .set({
+          status: "failed",
+          appleRevocationStatus: "failed",
+          appleRevocationAttemptedAt: now,
+          appleRevocationError: safeMessage.slice(0, 1000),
+          failedAt: now,
+          failureReason:
+            "No se pudo revocar la vinculación de Sign in with Apple. La solicitud puede reintentarse desde Administración después de corregir la configuración o volver a autenticar la cuenta.",
+          updatedAt: now,
+        })
+        .where(eq(accountDeletionRequests.id, requestId));
+    } catch (persistError) {
+      console.error(
+        "[AccountDeletion] failed to persist Apple revocation failure",
+        persistError,
+      );
+    }
+  }
+
   async defer(
     requestId: string,
     adminUserId: string,
@@ -925,11 +1013,17 @@ export class AccountDeletionRepository {
       const rows = await db
         .update(accountDeletionRequests)
         .set({
-          status: "deferred",
+          status:
+            input.reasonCode === "identity_unverified"
+              ? "identity_not_verified"
+              : "deferred",
           reviewedByUserId: adminUserId,
           adminNote: input.note,
           reviewedAt: new Date(),
-          deferredUntil: input.deferUntil,
+          deferredUntil:
+            input.reasonCode === "identity_unverified"
+              ? null
+              : input.deferUntil,
           decisionReasonCode: input.reasonCode,
           updatedAt: new Date(),
           failureReason: null,
@@ -1075,6 +1169,10 @@ export class AccountDeletionRepository {
         await tx
           .delete(authIdentities)
           .where(eq(authIdentities.userId, userId));
+
+        await tx
+          .delete(oauthIdentities)
+          .where(eq(oauthIdentities.userId, userId));
 
         await tx
           .delete(facebookLoginExchanges)

@@ -38,6 +38,7 @@ export const oauthIdentities = pgTable(
     providerEmail:               varchar("provider_email", { length: 255 }),
     providerEmailVerified:       boolean("provider_email_verified").notNull().default(false),
     providerIsPrivateEmail:      boolean("provider_is_private_email").notNull().default(false),
+    providerClientId:            varchar("provider_client_id", { length: 255 }),
 
     encryptedRefreshToken:  text("encrypted_refresh_token"),
 

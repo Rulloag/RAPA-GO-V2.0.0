@@ -3,8 +3,11 @@ import react from "@vitejs/plugin-react";
 import { resolve } from "path";
 
 export default defineConfig({
+  base: "/",
+  appType: "spa",
   plugins: [react()],
   resolve: {
+    dedupe: ["react", "react-dom", "react-router", "react-router-dom"],
     alias: {
       "@": resolve(__dirname, "src"),
       "@components": resolve(__dirname, "src/components"),

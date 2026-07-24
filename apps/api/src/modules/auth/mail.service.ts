@@ -235,6 +235,39 @@ export class MailService {
     });
   }
 
+  async sendAccountDeletionIdentityNotVerified(
+    to: string,
+    reason: string,
+  ): Promise<void> {
+    const safeReason = reason.replace(/[<>]/g, "");
+
+    await this.getTransporter().sendMail({
+      from: this.getFrom(),
+      to,
+      subject: "No fue posible verificar la identidad de tu solicitud",
+      text: [
+        "No fue posible completar la solicitud de eliminación porque no pudimos verificar la identidad de la cuenta.",
+        "",
+        `Detalle: ${reason}`,
+        "",
+        "Puedes iniciar una nueva solicitud y completar nuevamente la verificación de identidad.",
+        "La cuenta continúa activa y no fue eliminada.",
+      ].join("\n"),
+      html: `
+        <div style="font-family:Arial,sans-serif;background:#f4efe7;padding:28px;color:#171717">
+          <div style="max-width:560px;margin:auto;background:#ffffff;border-radius:20px;padding:28px;border:1px solid #d6a640">
+            <h1 style="margin:0 0 14px;color:#8f3c24">RAPA GO</h1>
+            <h2 style="margin:0 0 14px">Identidad no verificada</h2>
+            <p>No fue posible completar la solicitud de eliminación porque no pudimos verificar la identidad de la cuenta.</p>
+            <p><strong>Detalle:</strong> ${safeReason}</p>
+            <p>Puedes iniciar una nueva solicitud y completar nuevamente la verificación de identidad.</p>
+            <p>La cuenta continúa activa y no fue eliminada.</p>
+          </div>
+        </div>
+      `,
+    });
+  }
+
   async sendAccountDeletionCompleted(
     to: string,
   ): Promise<void> {

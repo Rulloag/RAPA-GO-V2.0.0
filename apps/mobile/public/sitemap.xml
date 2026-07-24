@@ -1,9 +1,9 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
-  <url><loc>https://rapago.cl/</loc></url>
-  <url><loc>https://rapago.cl/privacidad</loc></url>
-  <url><loc>https://rapago.cl/terminos</loc></url>
-  <url><loc>https://rapago.cl/eula</loc></url>
-  <url><loc>https://rapago.cl/soporte</loc></url>
-  <url><loc>https://rapago.cl/eliminar-cuenta</loc></url>
+  <url><loc>https://api.rapago.cl/</loc></url>
+  <url><loc>https://api.rapago.cl/privacidad</loc></url>
+  <url><loc>https://api.rapago.cl/terminos</loc></url>
+  <url><loc>https://api.rapago.cl/eula</loc></url>
+  <url><loc>https://api.rapago.cl/soporte</loc></url>
+  <url><loc>https://api.rapago.cl/eliminar-cuenta</loc></url>
 </urlset>

@@ -11,6 +11,7 @@ import {
 import { Redirect, Route } from "react-router-dom";
 import { IonContent, IonPage, IonSpinner } from "@ionic/react";
 import { RoleLayout } from "./RoleLayout";
+import { UnknownRolePathRedirect } from "./UnknownRolePathRedirect.js";
 import { ROUTES } from "../navigation/routes";
 import { PassengerLocationRuntime } from "../features/location/index.js";
 import {
@@ -78,6 +79,25 @@ function PageSuspense({ children }: { children: ReactNode }): JSX.Element {
     </Suspense>
   );
 }
+
+const PASSENGER_ALLOWED_PATHS = [
+  ROUTES.PASSENGER.BASE,
+  ROUTES.PASSENGER.HOME,
+  ROUTES.PASSENGER.REQUEST_RIDE,
+  ROUTES.PASSENGER.TRIPS,
+  ROUTES.PASSENGER.TRIP_DETAIL_PATTERN,
+  ROUTES.PASSENGER.WALLET,
+  ROUTES.PASSENGER.PROFILE,
+  ...(RELEASE_FEATURES.tourism
+    ? [ROUTES.PASSENGER.GUIDES, ROUTES.PASSENGER.GUIDE_DETAIL_PATTERN]
+    : []),
+  ...(RELEASE_FEATURES.rentals
+    ? [ROUTES.PASSENGER.RENTALS, ROUTES.PASSENGER.RENTAL_DETAIL_PATTERN]
+    : []),
+  ...(RELEASE_FEATURES.events
+    ? [ROUTES.PASSENGER.EVENTS, ROUTES.PASSENGER.EVENT_TICKETS]
+    : []),
+] as const;
 
 export function PassengerLayout(): JSX.Element {
   return (
@@ -155,6 +175,16 @@ export function PassengerLayout(): JSX.Element {
             render={() => <Redirect to={ROUTES.NOT_FOUND} />}
           />
         )}
+
+        <Route
+          path={ROUTES.PASSENGER.BASE}
+          render={() => (
+            <UnknownRolePathRedirect
+              basePath={ROUTES.PASSENGER.BASE}
+              allowedPaths={PASSENGER_ALLOWED_PATHS}
+            />
+          )}
+        />
 
       </RoleLayout>
     </>

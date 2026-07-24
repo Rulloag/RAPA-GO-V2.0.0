@@ -44,8 +44,8 @@ function statusLabel(status: AccountDeletionRequestStatus): string {
       return "Procesando";
     case "completed":
       return "Completada";
-    case "rejected":
-      return "Rechazada";
+    case "identity_not_verified":
+      return "No procesada: identidad no verificada";
     case "failed":
       return "Fallida";
     case "cancelled":
@@ -378,7 +378,9 @@ export function AccountDeletionAdminPanel(): JSX.Element {
 
   const pendingCount = requests.filter(
     (request) =>
-      request.status === "pending" || request.status === "deferred",
+      request.status === "pending" ||
+      request.status === "deferred" ||
+      request.status === "failed",
   ).length;
 
   return (
@@ -563,7 +565,7 @@ export function AccountDeletionAdminPanel(): JSX.Element {
                       lineHeight: 1.4,
                     }}
                   >
-                    {request.reason}
+                    {request.reason || "No se informó un motivo, lo que no impide procesar la solicitud."}
                   </p>
 
                   {request.comment && (
@@ -578,6 +580,25 @@ export function AccountDeletionAdminPanel(): JSX.Element {
                       {request.comment}
                     </p>
                   )}
+
+                  <p
+                    style={{
+                      margin: "8px 0 0",
+                      color: "#5b4632",
+                      fontWeight: 800,
+                    }}
+                  >
+                    <strong>Revocación Apple:</strong>{" "}
+                    {request.appleRevocationStatus === "not_applicable"
+                      ? "No aplica o aún no se intenta"
+                      : request.appleRevocationStatus === "revoked"
+                        ? "Revocada"
+                        : request.appleRevocationStatus === "already_invalid"
+                          ? "La autorización ya estaba inválida"
+                          : request.appleRevocationStatus === "failed"
+                            ? "Falló; puede reintentarse"
+                            : "Pendiente"}
+                  </p>
                 </div>
 
                 <div
@@ -849,7 +870,9 @@ export function AccountDeletionAdminPanel(): JSX.Element {
                   </IonNote>
                 )}
 
-                {(request.status === "pending" || request.status === "deferred") && (
+                {(request.status === "pending" ||
+                  request.status === "deferred" ||
+                  request.status === "failed") && (
                   <div
                     style={{
                       display: "flex",
@@ -872,24 +895,29 @@ export function AccountDeletionAdminPanel(): JSX.Element {
                               icon={checkmarkCircleOutline}
                               slot="start"
                             />
-                            Aprobar eliminación
+                            {request.status === "failed"
+                              ? "Reintentar eliminación"
+                              : "Aprobar eliminación"}
                           </>
                         )}
                     </IonButton>
 
-                    <IonButton
-                      color="warning"
-                      fill="outline"
-                      size="small"
-                      onClick={() => askDefer(request)}
-                      disabled={busy}
-                    >
-                      <IonIcon
-                        icon={warningOutline}
-                        slot="start"
-                      />
-                      Aplazar con causa
-                    </IonButton>
+                    {(request.status === "pending" ||
+                      request.status === "deferred") && (
+                      <IonButton
+                        color="warning"
+                        fill="outline"
+                        size="small"
+                        onClick={() => askDefer(request)}
+                        disabled={busy}
+                      >
+                        <IonIcon
+                          icon={warningOutline}
+                          slot="start"
+                        />
+                        Aplazar con causa
+                      </IonButton>
+                    )}
                   </div>
                 )}
               </IonCardContent>

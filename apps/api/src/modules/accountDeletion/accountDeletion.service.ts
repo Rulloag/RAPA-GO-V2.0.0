@@ -2,6 +2,7 @@ import { createHash, randomInt } from "node:crypto";
 
 import { AppError } from "../../shared/errors/AppError.js";
 import { AuditService } from "../audit/audit.service.js";
+import { AppleAccountRevocationService } from "../auth/appleAccountRevocation.service.js";
 import { MailService } from "../auth/mail.service.js";
 import { SessionService } from "../auth/session.service.js";
 import { TokenService } from "../auth/token.service.js";
@@ -26,6 +27,8 @@ const tokenService = new TokenService();
 const sessionService = new SessionService();
 const usersRepository = new UsersRepository();
 const repository = new AccountDeletionRepository();
+const appleAccountRevocationService =
+  new AppleAccountRevocationService();
 const auditService = new AuditService();
 const mailService = new MailService();
 
@@ -507,12 +510,15 @@ export class AccountDeletionService {
       };
     }
 
+    const identityNotVerified =
+      input.reasonCode === "identity_unverified";
     const maximumDeadline = new Date(detail.deadlineAt);
     const requestedUntil = input.deferUntil
       ? new Date(input.deferUntil)
       : maximumDeadline;
-    const deferUntil =
-      requestedUntil.getTime() > maximumDeadline.getTime()
+    const deferUntil = identityNotVerified
+      ? null
+      : requestedUntil.getTime() > maximumDeadline.getTime()
         ? maximumDeadline
         : requestedUntil;
 
@@ -533,24 +539,31 @@ export class AccountDeletionService {
 
     auditService.recordSafe({
       actorUserId: auth.id,
-      eventType: "account_deletion.deferred",
+      eventType: identityNotVerified
+        ? "account_deletion.identity_not_verified"
+        : "account_deletion.deferred",
       entityType: "account_deletion_request",
       entityId: request.id,
       metadata: {
         requesterRole: request.requesterRole,
         reasonCode: input.reasonCode,
-        deferUntil: deferUntil.toISOString(),
+        deferUntil: deferUntil?.toISOString() ?? null,
       },
     });
 
     if (detail.requester?.email) {
-      void mailService
-        .sendAccountDeletionDeferred(
-          detail.requester.email,
-          input.note,
-          deferUntil,
-        )
-        .catch(() => {});
+      const notification = identityNotVerified
+        ? mailService.sendAccountDeletionIdentityNotVerified(
+            detail.requester.email,
+            input.note,
+          )
+        : mailService.sendAccountDeletionDeferred(
+            detail.requester.email,
+            input.note,
+            deferUntil ?? maximumDeadline,
+          );
+
+      void notification.catch(() => {});
     }
 
     return { ok: true, request };
@@ -584,11 +597,12 @@ export class AccountDeletionService {
       };
     }
 
-    if (!["pending", "deferred"].includes(detail.status)) {
+    if (!["pending", "deferred", "failed"].includes(detail.status)) {
       return {
         ok: false,
         code: "ACCOUNT_DELETION_NOT_PENDING",
-        message: "La solicitud ya fue revisada.",
+        message:
+          "La solicitud ya fue completada o no se encuentra disponible para reintento.",
         statusCode: 409,
       };
     }
@@ -614,8 +628,33 @@ export class AccountDeletionService {
     }
 
     const originalEmail = detail.requester.email;
+    let appleRevocationPersisted = false;
 
     try {
+      const appleRevocation =
+        await appleAccountRevocationService.revokeForUser(
+          detail.userId,
+        );
+
+      await repository.recordAppleRevocationResult(
+        requestId,
+        appleRevocation,
+      );
+      appleRevocationPersisted = true;
+
+      auditService.recordSafe({
+        actorUserId: auth.id,
+        eventType: "account_deletion.apple_revocation.completed",
+        entityType: "account_deletion_request",
+        entityId: requestId,
+        metadata: {
+          applicable: appleRevocation.applicable,
+          revokedTokens: appleRevocation.revokedTokens,
+          alreadyInvalidTokens:
+            appleRevocation.alreadyInvalidTokens,
+        },
+      });
+
       const request = await repository.approveAndAnonymize(
         requestId,
         auth.id,
@@ -641,6 +680,13 @@ export class AccountDeletionService {
 
       return { ok: true, request };
     } catch (error) {
+      if (!appleRevocationPersisted) {
+        await repository.markAppleRevocationFailure(
+          requestId,
+          error,
+        );
+      }
+
       if (error instanceof AppError) {
         return {
           ok: false,

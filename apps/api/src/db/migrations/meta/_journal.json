@@ -239,6 +239,20 @@
             "when": 1784650800000,
             "tag": "0040_apple_identity_support",
             "breakpoints": true
+        },
+        {
+            "idx": 34,
+            "version": "7",
+            "when": 1784838600034,
+            "tag": "0041_fix_resident_registration_trigger",
+            "breakpoints": true
+        },
+        {
+            "idx": 35,
+            "version": "7",
+            "when": 1784838600035,
+            "tag": "0042_production_closure",
+            "breakpoints": true
         }
     ]
 }

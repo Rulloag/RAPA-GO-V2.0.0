@@ -373,18 +373,18 @@ export class AppleAuthService {
     }
 
     if (existing) {
-      if (exchanged.encryptedRefreshToken !== undefined) {
-        await this.identitiesRepository.updateEncryptedRefreshToken(
-          existing.id,
-          exchanged.encryptedRefreshToken,
-        );
-      }
+      await this.identitiesRepository.updateProviderCredentials(
+        existing.id,
+        identityClaims.aud,
+        exchanged.encryptedRefreshToken,
+      );
     } else {
       const attached =
         await this.identitiesRepository.attachToExistingUser({
           userId: user.id,
           provider: PROVIDER,
           providerUserId: identityClaims.sub,
+          providerClientId: identityClaims.aud,
           providerEmail: identityClaims.email,
           providerEmailVerified: identityClaims.emailVerified,
           providerIsPrivateEmail: identityClaims.isPrivateEmail,
@@ -701,6 +701,7 @@ export class AppleAuthService {
       user,
       identityId,
       exchanged.encryptedRefreshToken,
+      identityClaims.aud,
     );
   }
 
@@ -708,13 +709,13 @@ export class AppleAuthService {
     user: User,
     identityId: string,
     encryptedRefreshToken: string | undefined,
+    providerClientId: string,
   ): Promise<AppleAuthResult> {
-    if (encryptedRefreshToken !== undefined) {
-      await this.identitiesRepository.updateEncryptedRefreshToken(
-        identityId,
-        encryptedRefreshToken,
-      );
-    }
+    await this.identitiesRepository.updateProviderCredentials(
+      identityId,
+      providerClientId,
+      encryptedRefreshToken,
+    );
 
     const session = await this.issueSession(user);
 
@@ -782,6 +783,7 @@ export class AppleAuthService {
       isVerified: identityClaims.emailVerified,
       provider: PROVIDER,
       providerUserId: identityClaims.sub,
+      providerClientId: identityClaims.aud,
       providerEmail: email,
       providerEmailVerified: identityClaims.emailVerified,
       providerIsPrivateEmail: identityClaims.isPrivateEmail,
@@ -828,6 +830,7 @@ export class AppleAuthService {
         winnerUser,
         identity.id,
         exchanged.encryptedRefreshToken,
+        identityClaims.aud,
       );
     }
 
