@@ -19,25 +19,17 @@ import {
   RELEASE_FEATURES,
 } from "../config/releaseFeatures.js";
 
-const HomePage = lazy(() => import("../pages/passenger/pages/HomePage.js"));
-const RequestRidePage = lazy(
-  () => import("../pages/passenger/pages/RequestRidePage.js"),
-);
-const TripsPage = lazy(() => import("../pages/passenger/pages/TripsPage.js"));
-const WalletPage = lazy(() => import("../pages/passenger/pages/WalletPage.js"));
-const ProfilePage = lazy(() => import("../pages/passenger/pages/ProfilePage.js"));
-const GuidesPage = lazy(() => import("../pages/passenger/pages/GuidesPage.js"));
-const RentalsPage = lazy(() => import("../pages/passenger/pages/RentalsPage.js"));
-const PassengerEventsPage = lazy(() =>
-  import("../pages/passenger/events/index.js").then((module) => ({
-    default: module.PassengerEventsPage,
-  })),
-);
-const PassengerEventTicketsPage = lazy(() =>
-  import("../pages/passenger/events/index.js").then((module) => ({
-    default: module.PassengerEventTicketsPage,
-  })),
-);
+import HomePage from "../pages/passenger/pages/HomePage.js";
+import RequestRidePage from "../pages/passenger/pages/RequestRidePage.js";
+import TripsPage from "../pages/passenger/pages/TripsPage.js";
+import WalletPage from "../pages/passenger/pages/WalletPage.js";
+import ProfilePage from "../pages/passenger/pages/ProfilePage.js";
+import GuidesPage from "../pages/passenger/pages/GuidesPage.js";
+import RentalsPage from "../pages/passenger/pages/RentalsPage.js";
+import {
+  PassengerEventsPage,
+  PassengerEventTicketsPage,
+} from "../pages/passenger/events/index.js";
 
 const TABS = [
   { path: ROUTES.PASSENGER.HOME, label: "Inicio", icon: homeOutline },
@@ -109,39 +101,39 @@ export function PassengerLayout(): JSX.Element {
         <Route
           exact
           path={ROUTES.PASSENGER.HOME}
-          render={() => <PageSuspense><HomePage /></PageSuspense>}
+          component={HomePage}
         />
         <Route
           exact
           path={ROUTES.PASSENGER.REQUEST_RIDE}
-          render={() => <PageSuspense><RequestRidePage /></PageSuspense>}
+          component={RequestRidePage}
         />
         <Route
           exact
           path={ROUTES.PASSENGER.TRIPS}
-          render={() => <PageSuspense><TripsPage /></PageSuspense>}
+          component={TripsPage}
         />
         <Route
           exact
           path={ROUTES.PASSENGER.TRIP_DETAIL_PATTERN}
-          render={() => <PageSuspense><TripsPage /></PageSuspense>}
+          component={TripsPage}
         />
         <Route
           exact
           path={ROUTES.PASSENGER.WALLET}
-          render={() => <PageSuspense><WalletPage /></PageSuspense>}
+          component={WalletPage}
         />
         <Route
           exact
           path={ROUTES.PASSENGER.PROFILE}
-          render={() => <PageSuspense><ProfilePage /></PageSuspense>}
+          component={ProfilePage}
         />
 
         {RELEASE_FEATURES.tourism && (
           <Route
             exact
             path={[ROUTES.PASSENGER.GUIDES, ROUTES.PASSENGER.GUIDE_DETAIL_PATTERN]}
-            render={() => <PageSuspense><GuidesPage /></PageSuspense>}
+            component={GuidesPage}
           />
         )}
 
@@ -149,7 +141,7 @@ export function PassengerLayout(): JSX.Element {
           <Route
             exact
             path={[ROUTES.PASSENGER.RENTALS, ROUTES.PASSENGER.RENTAL_DETAIL_PATTERN]}
-            render={() => <PageSuspense><RentalsPage /></PageSuspense>}
+            component={RentalsPage}
           />
         )}
 
@@ -157,7 +149,7 @@ export function PassengerLayout(): JSX.Element {
           <Route
             exact
             path={ROUTES.PASSENGER.EVENTS}
-            render={() => <PageSuspense><PassengerEventsPage /></PageSuspense>}
+            component={PassengerEventsPage}
           />
         )}
 
@@ -165,7 +157,7 @@ export function PassengerLayout(): JSX.Element {
           <Route
             exact
             path={ROUTES.PASSENGER.EVENT_TICKETS}
-            render={() => <PageSuspense><PassengerEventTicketsPage /></PageSuspense>}
+            component={PassengerEventTicketsPage}
           />
         )}
 
@@ -190,3 +182,4 @@ export function PassengerLayout(): JSX.Element {
     </>
   );
 }
+
