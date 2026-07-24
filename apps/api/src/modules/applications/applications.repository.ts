@@ -4,6 +4,16 @@ import { applications } from "../../db/schema/index.js";
 import { AppError } from "../../shared/errors/AppError.js";
 import type { Application } from "../../db/schema/index.js";
 
+type ApplicationAssetChanges = Partial<Pick<
+  typeof applications.$inferInsert,
+  | "idFrontUrl"
+  | "idBackUrl"
+  | "licenseFrontUrl"
+  | "licenseBackUrl"
+  | "profilePhotoUrl"
+  | "vehiclePhotoUrl"
+>>;
+
 export class ApplicationsRepository {
   async create(data: typeof applications.$inferInsert): Promise<Application> {
     try {
@@ -27,9 +37,15 @@ export class ApplicationsRepository {
       .orderBy(desc(applications.createdAt));
   }
 
-  async list(filters: { type?: string; status?: string; page: number; limit: number }): Promise<{ items: Application[]; total: number }> {
+  async list(filters: {
+    type?: string;
+    status?: string;
+    page: number;
+    limit: number;
+  }): Promise<{ items: Application[]; total: number }> {
     const conditions: ReturnType<typeof eq>[] = [];
-    if (filters.type)   conditions.push(eq(applications.type, filters.type));
+
+    if (filters.type) conditions.push(eq(applications.type, filters.type));
     if (filters.status) conditions.push(eq(applications.status, filters.status));
 
     const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
@@ -39,26 +55,63 @@ export class ApplicationsRepository {
         ? db.select({ count: sql<number>`count(*)::int` }).from(applications).where(whereClause)
         : db.select({ count: sql<number>`count(*)::int` }).from(applications),
       whereClause
-        ? db.select().from(applications).where(whereClause).orderBy(desc(applications.createdAt)).limit(filters.limit).offset((filters.page - 1) * filters.limit)
-        : db.select().from(applications).orderBy(desc(applications.createdAt)).limit(filters.limit).offset((filters.page - 1) * filters.limit),
+        ? db.select().from(applications).where(whereClause)
+          .orderBy(desc(applications.createdAt))
+          .limit(filters.limit)
+          .offset((filters.page - 1) * filters.limit)
+        : db.select().from(applications)
+          .orderBy(desc(applications.createdAt))
+          .limit(filters.limit)
+          .offset((filters.page - 1) * filters.limit),
     ]);
 
-    return { items, total: countResult[0]?.count ?? 0 };
+    return {
+      items,
+      total: countResult[0]?.count ?? 0,
+    };
   }
 
-  async updateStatus(id: string, reviewedBy: string, input: {
-    status: string;
-    rejectionReason?: string | null;
-    notes?: string | null;
-  }): Promise<Application | null> {
+  async updateStatus(
+    id: string,
+    reviewedBy: string,
+    input: {
+      status: string;
+      rejectionReason?: string | null;
+      notes?: string | null;
+    },
+  ): Promise<Application | null> {
     const rows = await db.update(applications).set({
       status: input.status,
       reviewedBy,
       reviewedAt: new Date(),
-      ...(input.rejectionReason !== undefined ? { rejectionReason: input.rejectionReason } : {}),
+      ...(input.rejectionReason !== undefined
+        ? { rejectionReason: input.rejectionReason }
+        : {}),
       ...(input.notes !== undefined ? { notes: input.notes } : {}),
       updatedAt: new Date(),
     }).where(eq(applications.id, id)).returning();
+
+    return rows[0] ?? null;
+  }
+
+  async attachUser(id: string, userId: string): Promise<Application | null> {
+    const rows = await db.update(applications).set({
+      userId,
+      updatedAt: new Date(),
+    }).where(eq(applications.id, id)).returning();
+
+    return rows[0] ?? null;
+  }
+
+  async updateAssets(
+    id: string,
+    changes: ApplicationAssetChanges,
+  ): Promise<Application | null> {
+    const rows = await db.update(applications).set({
+      ...changes,
+      updatedAt: new Date(),
+    }).where(eq(applications.id, id)).returning();
+
     return rows[0] ?? null;
   }
 }

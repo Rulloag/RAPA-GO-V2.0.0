@@ -5,14 +5,6 @@ import type {
 } from "fastify";
 import { applicationsController } from "./applications.controller.js";
 
-/**
- * Obtiene una clave segura para limitar postulaciones.
- *
- * Los usuarios autenticados se limitan por sesión y no por la IP
- * compartida del hotel, oficina o red móvil.
- *
- * Las postulaciones sin sesión continúan limitándose por IP.
- */
 function getApplicationRateLimitKey(
   request: FastifyRequest,
 ): string {
@@ -37,15 +29,35 @@ function getApplicationRateLimitKey(
 }
 
 const APPLICATION_RATE_LIMIT = {
-  // Permite corregir datos y repetir pruebas sin bloquear todo el día.
   max: 10,
   timeWindow: "1 hour",
   keyGenerator: getApplicationRateLimitKey,
 } as const;
 
+const APPLICATION_FILE_RATE_LIMIT = {
+  max: 40,
+  timeWindow: "1 hour",
+  keyGenerator: getApplicationRateLimitKey,
+} as const;
+
+const APPLICATION_FILE_BODY_LIMIT = 700_000;
+const APPLICATION_FILE_CONTENT_TYPE =
+  /^(?:image\/jpeg|image\/png|image\/webp|application\/pdf)(?:\s*;.*)?$/i;
+
 export async function applicationsRoutes(
   fastify: FastifyInstance,
 ): Promise<void> {
+  fastify.addContentTypeParser(
+    APPLICATION_FILE_CONTENT_TYPE,
+    {
+      parseAs: "buffer",
+      bodyLimit: APPLICATION_FILE_BODY_LIMIT,
+    },
+    (_request, body, done) => {
+      done(null, body);
+    },
+  );
+
   fastify.post(
     "/applications",
     {
@@ -54,6 +66,17 @@ export async function applicationsRoutes(
       },
     },
     applicationsController.createApplication,
+  );
+
+  fastify.post(
+    "/applications/:id/files/:kind",
+    {
+      bodyLimit: APPLICATION_FILE_BODY_LIMIT,
+      config: {
+        rateLimit: APPLICATION_FILE_RATE_LIMIT,
+      },
+    },
+    applicationsController.uploadApplicationFile,
   );
 
   fastify.get(

@@ -56,7 +56,7 @@ import {
   volumeHighOutline,
   logOutOutline,
 } from "ionicons/icons";
-import { driverProfileService } from "../../features/drivers/driverProfile.service";
+import { driverProfileService, type DriverProfileData } from "../../features/drivers/driverProfile.service";
 import { ActionCard } from "../../components/ActionCard";
 import { ROUTE_METADATA } from "../../navigation/routeConfig";
 import { ROUTES } from "../../navigation/routes";
@@ -5204,6 +5204,84 @@ function readSelectedDriverVehicle(user?: unknown): DriverVehicleRecord | null {
   }
 
   return vehicles.find((vehicle) => vehicle.primary) ?? vehicles[0] ?? null;
+}
+
+function hydrateApprovedDriverProfileLocally(
+  profile: DriverProfileData | null,
+  user?: unknown,
+): DriverVehicleRecord | null {
+  if (!profile) return null;
+
+  if (profile.profilePhotoUrl?.trim()) {
+    persistStoredDriverProfilePhotoUrl(
+      profile.profilePhotoUrl,
+      user,
+    );
+  }
+
+  const brand = profile.vehicleBrand?.trim() ?? "";
+  const model = profile.vehicleModel?.trim() ?? "";
+  const plate = profile.vehiclePlate?.trim().toUpperCase() ?? "";
+  const color = profile.vehicleColor?.trim() ?? "";
+  const year =
+    profile.vehicleYear != null
+      ? String(profile.vehicleYear)
+      : "";
+
+  if (!brand && !model && !plate && !color && !year) {
+    return null;
+  }
+
+  const ownerKey = getDriverVehicleOwnerKey(user);
+  const vehicle: DriverVehicleRecord = {
+    id: "vehicle-from-approved-application",
+    ownerKey,
+    ownership: "own",
+    brand,
+    model,
+    plate,
+    color,
+    year,
+    label:
+      [brand, model, year].filter(Boolean).join(" ") ||
+      plate ||
+      "Vehículo principal",
+    imageDataUrl: profile.vehiclePhotoUrl?.trim() || null,
+    imageName: profile.vehiclePhotoUrl ? "vehiculo-aprobado" : null,
+    createdAt: profile.createdAt,
+    expiresAt: null,
+    primary: true,
+    applicationStatus: "approved",
+  };
+
+  const current = readAllDriverVehicles(user).filter(
+    (entry) =>
+      !(
+        entry.ownerKey === ownerKey &&
+        entry.id === vehicle.id
+      ),
+  );
+
+  saveAllDriverVehicles([...current, vehicle]);
+  writeSelectedDriverVehicleId(vehicle.id, user);
+
+  if (vehicle.imageDataUrl) {
+    persistStoredDriverVehicleImageDataUrl(
+      vehicle.imageDataUrl,
+      vehicle.imageName,
+      user,
+    );
+  }
+
+  return vehicle;
+}
+
+async function hydrateApprovedDriverProfileFromServer(
+  accessToken: string,
+  user?: unknown,
+): Promise<DriverVehicleRecord | null> {
+  const profile = await driverProfileService.getMyProfile(accessToken);
+  return hydrateApprovedDriverProfileLocally(profile, user);
 }
 
 function getDriverVehicleLabel(vehicle: DriverVehicleRecord | null): string {
@@ -13128,6 +13206,13 @@ La solicitud fue retirada de tu pantalla. No debes continuar hacia la recogida.`
     }
 
     try {
+      if (!readSelectedDriverVehicleId(session?.user)) {
+        await hydrateApprovedDriverProfileFromServer(
+          session.accessToken,
+          session?.user,
+        ).catch(() => null);
+      }
+
       const mine = await ridesService.listDriverRides(session.accessToken);
 
       const recentPassengerCancellation = mine
@@ -18243,6 +18328,7 @@ export function DriverProfilePage(): JSX.Element {
       const profile = await driverProfileService.getMyProfile(
         session.accessToken,
       );
+      hydrateApprovedDriverProfileLocally(profile, session.user);
       const autoPhone = getAutoDriverPhone(session.user, profile?.phone);
 
       const selectedVehicle = readSelectedDriverVehicle(session.user);
@@ -18286,7 +18372,8 @@ export function DriverProfilePage(): JSX.Element {
           profile.vehicleColor ?? String(storedProfile.vehicleColor ?? ""),
         );
         setVehicleImageDataUrl(
-          String(storedProfile.vehicleImageDataUrl ?? getStoredDriverVehicleImageDataUrl(session?.user)),
+          profile.vehiclePhotoUrl ??
+            String(storedProfile.vehicleImageDataUrl ?? getStoredDriverVehicleImageDataUrl(session?.user)),
         );
         setVehicleImageName(String(storedProfile.vehicleImageName ?? ""));
       } else {

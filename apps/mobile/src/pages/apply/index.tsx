@@ -27,7 +27,7 @@
   import { useEffect, useState, type CSSProperties, type Dispatch, type SetStateAction } from "react";
   import { useHistory } from "react-router-dom";
   import { useAuth } from "../../features/auth/index.js";
-  import { applicationsService, type ApplicationData } from "../../features/applications/applications.service.js";
+  import { applicationsService, type ApplicationData, type UploadApplicationFilePayload } from "../../features/applications/applications.service.js";
 
   const SPECIALTIES = ["Arqueología", "Botánica", "Astronomía", "Historia", "Cultura Rapa Nui", "Senderismo"];
   const OFFERED_TOURS = ["Ahu Tongariki", "Rano Raraku", "Anakena", "Orongo", "Tahai", "Custom"];
@@ -540,6 +540,41 @@ function isRutValid(value: string): boolean {
     return file?.dataUrl ?? file?.url ?? file?.previewUrl ?? null;
   }
 
+
+  function applicationFileMimeType(
+    file: ApplicationFilePayload | null | undefined,
+  ): UploadApplicationFilePayload["mimeType"] {
+    const dataUrl = applicationFileUrl(file);
+    const match = /^data:([^;]+);base64,/.exec(dataUrl ?? "");
+    const mimeType = match?.[1] ?? file?.fileType ?? "image/jpeg";
+
+    if (
+      mimeType === "image/png" ||
+      mimeType === "image/webp" ||
+      mimeType === "application/pdf"
+    ) {
+      return mimeType;
+    }
+
+    return "image/jpeg";
+  }
+
+  function applicationFileUploadPayload(
+    kind: UploadApplicationFilePayload["kind"],
+    file: ApplicationFilePayload | null | undefined,
+    fallbackName: string,
+  ): UploadApplicationFilePayload | null {
+    const dataUrl = applicationFileUrl(file);
+    if (!dataUrl) return null;
+
+    return {
+      kind,
+      fileName: file?.fileName?.trim() || fallbackName,
+      mimeType: applicationFileMimeType(file),
+      dataUrl,
+    };
+  }
+
   function safeRemoveApplicationStorageItem(key: string): void {
     try {
       localStorage.removeItem(key);
@@ -1045,12 +1080,38 @@ function isRutValid(value: string): boolean {
             return url.toString();
           }
         } catch {
-          // Se omiten data:, blob:, pending-storage: y valores no públicos.
+          // Los data URL se suben después, uno por uno.
         }
       }
 
       return undefined;
     };
+
+    const safeVehicles = vehicles
+      .filter((entry): entry is Record<string, unknown> =>
+        Boolean(entry && typeof entry === "object"),
+      )
+      .slice(0, 8)
+      .map((entry, index) => ({
+        id: readString(entry.id) ?? `vehicle-${index + 1}`,
+        order: readInteger(entry.order) ?? index + 1,
+        primary: readBoolean(entry.primary) ?? index === 0,
+        ownership:
+          readString(entry.ownership) === "optional"
+            ? "optional"
+            : "own",
+        brand: readString(entry.brand) ?? "",
+        model: readString(entry.model) ?? "",
+        year: readString(entry.year) ?? readInteger(entry.year) ?? "",
+        plate: readString(entry.plate) ?? "",
+        color: readString(entry.color) ?? "",
+        label: readString(entry.label) ?? "",
+        expiresAt: readString(entry.expiresAt) ?? null,
+        photoFileName: readString(
+          entry.photoFileName,
+          entry.imageName,
+        ) ?? null,
+      }));
 
     const safe: Record<string, unknown> = {
       type: "driver",
@@ -1058,6 +1119,7 @@ function isRutValid(value: string): boolean {
       lastName: readString(source.lastName) ?? "",
       email: readString(source.email)?.toLowerCase() ?? "",
       phone: readString(source.phone) ?? "",
+      vehicles: safeVehicles,
     };
 
     const optionalFields: Record<string, unknown> = {
@@ -1066,7 +1128,6 @@ function isRutValid(value: string): boolean {
       city: readString(source.city),
       emergencyContactName: readString(source.emergencyContactName),
       emergencyContactPhone: readString(source.emergencyContactPhone),
-
       vehicleBrand: readString(
         source.vehicleBrand,
         primaryVehicle.brand,
@@ -1098,14 +1159,12 @@ function isRutValid(value: string): boolean {
         source.hasOwnVehicle,
         vehicle.hasOwnVehicle,
       ),
-
-      // Solo se envían URLs públicas reales. Los data URL, blob y
-      // pending-storage provocaban un 403 en la capa de seguridad de Hostinger.
       idFrontUrl: readPublicHttpUrl(source.idFrontUrl),
       idBackUrl: readPublicHttpUrl(source.idBackUrl),
       profilePhotoUrl: readPublicHttpUrl(source.profilePhotoUrl),
       licenseFrontUrl: readPublicHttpUrl(source.licenseFrontUrl),
       licenseBackUrl: readPublicHttpUrl(source.licenseBackUrl),
+      vehiclePhotoUrl: readPublicHttpUrl(source.vehiclePhotoUrl),
     };
 
     for (const [key, value] of Object.entries(optionalFields)) {
@@ -1120,7 +1179,7 @@ function isRutValid(value: string): boolean {
 
     if (payloadBytes > 50_000) {
       throw new Error(
-        "La postulación contiene demasiados datos. Vuelve a cargar la página e inténtalo nuevamente.",
+        "La postulación contiene demasiados metadatos. Vuelve a cargar la página e inténtalo nuevamente.",
       );
     }
 
@@ -1723,20 +1782,88 @@ function isRutValid(value: string): boolean {
 
         persistSubmittedDriverApplicationForAdmin(input, session?.user);
 
-        try {
-          const apiInput = buildApiSafeApplicationInput(input);
-          const result = await applicationsService.createApplication(apiInput, session?.accessToken);
-          setSuccessMessage(result.message || "Tu solicitud fue enviada correctamente. Cuando el admin la apruebe, tu perfil de conductor quedará listo con estos datos.");
-        } catch (apiError) {
-          if (!isRecoverableApplicationApiError(apiError)) {
-            throw apiError;
-          }
-
-          setSuccessMessage(
-            "Tu solicitud quedó guardada para revisión del admin. La API rechazó algunos metadatos, pero el panel Admin tomará los documentos desde Inscripción.",
+        if (!session?.accessToken) {
+          throw new Error(
+            "Tu sesión no está disponible. Vuelve a iniciar sesión antes de enviar la postulación.",
           );
         }
 
+        const apiInput = buildApiSafeApplicationInput(input);
+        const result = await applicationsService.createApplication(
+          apiInput,
+          session.accessToken,
+        );
+
+        const vehiclePhotoDoc: ApplicationFilePayload = {
+          provided: Boolean(primaryVehiclePhotoUrl),
+          fileName:
+            vehiclePayloads[0]?.photoFileName ??
+            vehiclePayloads[0]?.imageName ??
+            "vehiculo-principal.jpg",
+          fileType:
+            vehiclePayloads[0]?.photoFileType ??
+            "image/jpeg",
+          fileSize:
+            vehiclePayloads[0]?.photoFileSize,
+          dataUrl: primaryVehiclePhotoUrl,
+          url: primaryVehiclePhotoUrl,
+          previewUrl: primaryVehiclePhotoUrl,
+          uploadedAt: primaryVehiclePhotoUrl ? nowIso : null,
+        };
+
+        const uploads = [
+          applicationFileUploadPayload(
+            "id_front",
+            identityFrontDoc,
+            "cedula-frente.jpg",
+          ),
+          applicationFileUploadPayload(
+            "id_back",
+            identityBackDoc,
+            "cedula-reverso.jpg",
+          ),
+          applicationFileUploadPayload(
+            "license_front",
+            licenseFrontDoc,
+            "licencia-frente.jpg",
+          ),
+          applicationFileUploadPayload(
+            "license_back",
+            licenseBackDoc,
+            "licencia-reverso.jpg",
+          ),
+          applicationFileUploadPayload(
+            "profile_photo",
+            profilePhotoDoc,
+            "foto-perfil.jpg",
+          ),
+          applicationFileUploadPayload(
+            "vehicle_photo",
+            vehiclePhotoDoc,
+            "vehiculo-principal.jpg",
+          ),
+        ].filter(
+          (upload): upload is UploadApplicationFilePayload =>
+            upload != null,
+        );
+
+        if (uploads.length !== 6) {
+          throw new Error(
+            "No se pudieron preparar los seis archivos obligatorios de la postulación.",
+          );
+        }
+
+        for (const upload of uploads) {
+          await applicationsService.uploadApplicationFile(
+            session.accessToken,
+            result.id,
+            upload,
+          );
+        }
+
+        setSuccessMessage(
+          "Tu solicitud, fotografías, documentos y vehículo fueron guardados. Cuando el administrador apruebe, aparecerán automáticamente en tu perfil de conductor.",
+        );
         setShowSuccess(true);
       } catch (err) {
         setError(err instanceof Error ? err.message : "Error inesperado al enviar la postulación.");
