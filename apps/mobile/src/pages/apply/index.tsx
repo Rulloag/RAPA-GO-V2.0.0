@@ -986,13 +986,143 @@ function isRutValid(value: string): boolean {
   }
 
   function buildApiSafeApplicationInput(input: Record<string, unknown>): Record<string, unknown> {
-    const safe = removeNullishForApi(stripHeavyApplicationPayload(input)) as Record<string, unknown>;
+    const source = input as Record<string, unknown>;
+    const vehicle =
+      source.vehicle && typeof source.vehicle === "object"
+        ? (source.vehicle as Record<string, unknown>)
+        : {};
+    const vehicles = Array.isArray(source.vehicles)
+      ? source.vehicles
+      : [];
+    const primaryVehicle =
+      vehicles[0] && typeof vehicles[0] === "object"
+        ? (vehicles[0] as Record<string, unknown>)
+        : vehicle;
 
-    // La API queda liviana: recibe datos y metadatos. Las fotos reales quedan
-    // guardadas localmente para Admin Applications.
-    safe.localDocumentsSaved = true;
-    safe.localDocumentsNotice =
-      "Documentos e imágenes guardados localmente para el panel Admin. API recibe solo metadatos para evitar corte por payload pesado.";
+    const readString = (...values: unknown[]): string | undefined => {
+      for (const value of values) {
+        if (typeof value !== "string") continue;
+        const clean = value.trim();
+        if (clean) return clean;
+      }
+
+      return undefined;
+    };
+
+    const readBoolean = (...values: unknown[]): boolean | undefined => {
+      for (const value of values) {
+        if (typeof value === "boolean") return value;
+      }
+
+      return undefined;
+    };
+
+    const readInteger = (...values: unknown[]): number | undefined => {
+      for (const value of values) {
+        if (typeof value === "number" && Number.isInteger(value)) {
+          return value;
+        }
+
+        if (typeof value === "string" && value.trim()) {
+          const parsed = Number(value);
+          if (Number.isInteger(parsed)) return parsed;
+        }
+      }
+
+      return undefined;
+    };
+
+    const readPublicHttpUrl = (...values: unknown[]): string | undefined => {
+      for (const value of values) {
+        if (typeof value !== "string") continue;
+
+        const clean = value.trim();
+        if (!clean) continue;
+
+        try {
+          const url = new URL(clean);
+          if (url.protocol === "https:" || url.protocol === "http:") {
+            return url.toString();
+          }
+        } catch {
+          // Se omiten data:, blob:, pending-storage: y valores no públicos.
+        }
+      }
+
+      return undefined;
+    };
+
+    const safe: Record<string, unknown> = {
+      type: "driver",
+      firstName: readString(source.firstName) ?? "",
+      lastName: readString(source.lastName) ?? "",
+      email: readString(source.email)?.toLowerCase() ?? "",
+      phone: readString(source.phone) ?? "",
+    };
+
+    const optionalFields: Record<string, unknown> = {
+      rut: readString(source.rut),
+      birthDate: readString(source.birthDate),
+      city: readString(source.city),
+      emergencyContactName: readString(source.emergencyContactName),
+      emergencyContactPhone: readString(source.emergencyContactPhone),
+
+      vehicleBrand: readString(
+        source.vehicleBrand,
+        primaryVehicle.brand,
+        vehicle.brand,
+      ),
+      vehicleModel: readString(
+        source.vehicleModel,
+        primaryVehicle.model,
+        vehicle.model,
+      ),
+      vehicleYear: readInteger(
+        source.vehicleYear,
+        primaryVehicle.year,
+        vehicle.year,
+      ),
+      vehiclePlate: readString(
+        source.vehiclePlate,
+        primaryVehicle.plate,
+        vehicle.plate,
+      ),
+      vehicleColor: readString(
+        source.vehicleColor,
+        primaryVehicle.color,
+        vehicle.color,
+      ),
+      licenseNumber: readString(source.licenseNumber),
+      licenseExpiry: readString(source.licenseExpiry),
+      hasOwnVehicle: readBoolean(
+        source.hasOwnVehicle,
+        vehicle.hasOwnVehicle,
+      ),
+
+      // Solo se envían URLs públicas reales. Los data URL, blob y
+      // pending-storage provocaban un 403 en la capa de seguridad de Hostinger.
+      idFrontUrl: readPublicHttpUrl(source.idFrontUrl),
+      idBackUrl: readPublicHttpUrl(source.idBackUrl),
+      profilePhotoUrl: readPublicHttpUrl(source.profilePhotoUrl),
+      licenseFrontUrl: readPublicHttpUrl(source.licenseFrontUrl),
+      licenseBackUrl: readPublicHttpUrl(source.licenseBackUrl),
+    };
+
+    for (const [key, value] of Object.entries(optionalFields)) {
+      if (value !== undefined) {
+        safe[key] = value;
+      }
+    }
+
+    const payloadBytes = new TextEncoder().encode(
+      JSON.stringify(safe),
+    ).byteLength;
+
+    if (payloadBytes > 50_000) {
+      throw new Error(
+        "La postulación contiene demasiados datos. Vuelve a cargar la página e inténtalo nuevamente.",
+      );
+    }
 
     return safe;
   }
