@@ -84,6 +84,7 @@ export class RetentionJob {
     this.running = true;
 
     try {
+      const nowIso = now.toISOString();
       const purgedRideLocations =
         await this.rideTrackingRepository.purgeExpired(now);
 
@@ -92,14 +93,14 @@ export class RetentionJob {
       await db.execute(sql`
         DELETE FROM public.account_deletion_verifications
         WHERE expires_at <
-          (${now}::timestamptz - interval '30 days')
+          (${nowIso}::timestamptz - interval '30 days')
       `);
 
       // Los intercambios de Facebook son credenciales efímeras.
       await db.execute(sql`
         DELETE FROM public.facebook_login_exchanges
         WHERE expires_at <
-          (${now}::timestamptz - interval '7 days')
+          (${nowIso}::timestamptz - interval '7 days')
       `);
 
       // Después de 30 días se elimina el número bancario cifrado y
@@ -109,11 +110,11 @@ export class RetentionJob {
         SET
           bank_account_number_encrypted = NULL,
           transfer_proof_url = NULL,
-          sensitive_data_purged_at = ${now}::timestamptz,
-          updated_at = ${now}::timestamptz
+          sensitive_data_purged_at = ${nowIso}::timestamptz,
+          updated_at = ${nowIso}::timestamptz
         WHERE completed_at IS NOT NULL
           AND completed_at <
-            (${now}::timestamptz - interval '30 days')
+            (${nowIso}::timestamptz - interval '30 days')
           AND sensitive_data_purged_at IS NULL
       `);
 

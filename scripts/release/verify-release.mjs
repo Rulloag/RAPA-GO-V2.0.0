@@ -49,6 +49,7 @@ const [
   retentionJob,
   appSource,
   migration0042,
+  migration0043,
   sitemap,
   robots,
   playNotes,
@@ -74,6 +75,7 @@ const [
   text("apps/api/src/jobs/retention.job.ts"),
   text("apps/api/src/app.ts"),
   text("apps/api/src/db/migrations/0042_production_closure.sql"),
+  text("apps/api/src/db/migrations/0043_runtime_schema_repair.sql"),
   text("apps/mobile/public/sitemap.xml"),
   text("apps/mobile/public/robots.txt"),
   text("docs/release/GOOGLE_PLAY_REVIEW_NOTES_TEMPLATE.md"),
@@ -298,6 +300,17 @@ check(
   "El job debe minimizar antecedentes bancarios después de 30 días",
 );
 check(
+  retentionJob.includes("const nowIso = now.toISOString()") &&
+    retentionJob.includes("${nowIso}::timestamptz"),
+  "El job de conservación debe enlazar fechas como ISO para postgres-js",
+);
+check(
+  migration0043.includes("ADD COLUMN IF NOT EXISTS payment_method") &&
+    migration0043.includes("ADD COLUMN IF NOT EXISTS wallet_benefit_requested") &&
+    migration0043.includes("ADD COLUMN IF NOT EXISTS assignment_mode"),
+  "La migración 0043 debe reparar el esquema runtime de ride_requests",
+);
+check(
   appSource.includes("new RetentionJob"),
   "La API debe registrar el job de conservación",
 );
@@ -334,6 +347,9 @@ for (const relative of [
   "scripts/release/prepare-production-release.ps1",
   "apps/api/src/db/migrations/0042_production_closure.sql",
   "docs/release/sql/0042_production_closure_verify.sql",
+  "apps/api/src/db/migrations/0043_runtime_schema_repair.sql",
+  "docs/release/sql/0043_runtime_schema_verify.sql",
+  "apps/api/scripts/diagnose-runtime-schema.mjs",
 ]) {
   check(await exists(relative), `${relative} debe existir`);
 }

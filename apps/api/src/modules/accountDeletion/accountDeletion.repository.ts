@@ -37,6 +37,7 @@ import {
   wallets,
 } from "../../db/schema/index.js";
 import { AppError } from "../../shared/errors/AppError.js";
+import { formatDatabaseErrorDetails } from "../../shared/errors/databaseErrorDetails.js";
 import type {
   AccountDeletionAdminResponse,
   AccountDeletionClientSnapshot,
@@ -210,7 +211,7 @@ export class AccountDeletionRepository {
       return rows[0] ? toPublicResponse(rows[0]) : null;
     } catch (error) {
       throw AppError.internal(
-        `Failed to load account deletion request: ${String(error)}`,
+        "Failed to load account deletion request: " + formatDatabaseErrorDetails(error),
       );
     }
   }
@@ -577,7 +578,7 @@ export class AccountDeletionRepository {
     } catch (error) {
       if (error instanceof AppError) throw error;
       throw AppError.internal(
-        `Failed to load account deletion request: ${String(error)}`,
+        "Failed to load account deletion request: " + formatDatabaseErrorDetails(error),
       );
     }
   }
