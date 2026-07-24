@@ -5480,12 +5480,8 @@ export function AdminUsersPage(): JSX.Element {
 
       <IonContent className="ion-padding">
         <IonCard
-          style={{
-            margin: "0 0 12px",
-            borderRadius: 18,
-            background: "linear-gradient(135deg, #2b120f, #8f1d18)",
-            color: "#fff",
-          }}
+          className="rapago-accent-card"
+          style={{ margin: "0 0 12px", borderRadius: 18 }}
         >
           <IonCardContent style={{ padding: "14px 16px" }}>
             <div style={{ fontWeight: 950, fontSize: "1rem" }}>
@@ -7183,12 +7179,8 @@ export function AdminDriversPage(): JSX.Element {
                 </IonCard>
 
                 <IonCard
-                  style={{
-                    margin: 0,
-                    borderRadius: "18px",
-                    background: "#111",
-                    color: "#f6f2ec",
-                  }}
+                  className="rapago-accent-card"
+                  style={{ margin: 0, borderRadius: "18px" }}
                 >
                   <IonCardContent
                     style={{ fontSize: ".84rem", lineHeight: 1.45 }}
@@ -14666,12 +14658,8 @@ export function AdminDocumentsPage(): JSX.Element {
 
       <IonContent className="ion-padding">
         <IonCard
-          style={{
-            margin: "0 0 12px",
-            borderRadius: 18,
-            background: "linear-gradient(135deg, #2b120f, #8f1d18)",
-            color: "#fff",
-          }}
+          className="rapago-accent-card"
+          style={{ margin: "0 0 12px", borderRadius: 18 }}
         >
           <IonCardContent style={{ padding: "14px 16px" }}>
             <div style={{ fontWeight: 950, fontSize: "1rem" }}>
@@ -14688,12 +14676,8 @@ export function AdminDocumentsPage(): JSX.Element {
 
 
         <IonCard
-          style={{
-            margin: "0 0 12px",
-            borderRadius: 18,
-            background: "linear-gradient(135deg,#0f172a,#173f39)",
-            color: "#fff",
-          }}
+          className="rapago-accent-card"
+          style={{ margin: "0 0 12px", borderRadius: 18 }}
         >
           <IonCardContent style={{ padding: "14px 16px" }}>
             <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "flex-start" }}>
@@ -14712,12 +14696,7 @@ export function AdminDocumentsPage(): JSX.Element {
 
             <IonItem
               lines="none"
-              style={{
-                marginTop: 12,
-                borderRadius: 14,
-                "--background": "rgba(255,255,255,.08)",
-                "--color": "#fff",
-              } as CSSProperties}
+              style={{ marginTop: 12, borderRadius: 14 }}
             >
               <IonLabel position="stacked" style={{ fontSize: ".76rem", fontWeight: 850 }}>
                 Filtro de postulación

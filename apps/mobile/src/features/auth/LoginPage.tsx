@@ -15,7 +15,8 @@ import {
   IonSpinner,
   IonText,
 } from "@ionic/react";
-import { arrowBackOutline, mailOutline, lockClosedOutline, logoFacebook, eyeOutline, eyeOffOutline } from "ionicons/icons";
+import { arrowBackOutline, mailOutline, lockClosedOutline, logoFacebook, eyeOutline, eyeOffOutline, moonOutline, sunnyOutline } from "ionicons/icons";
+import { useRapagoSectionTheme } from "../../theme/rapagoTheme.js";
 import { useHistory } from "react-router-dom";
 import { loginRequestSchema, type UserRole } from "@rapa-go/shared";
 import { useAuth } from "./useAuth.js";
@@ -584,6 +585,8 @@ export function LoginPage(): JSX.Element {
   const history = useHistory();
   const { login } = useAuth();
   const apple = useAppleSignIn();
+  /* Tema propio del flujo de acceso (compartido con Registro). */
+  const { theme, isDark, toggleTheme } = useRapagoSectionTheme("auth");
 
   function handleAppleOutcome(outcome: AppleSignInOutcome): void {
     if (outcome.kind === "success") {
@@ -1244,7 +1247,7 @@ export function LoginPage(): JSX.Element {
   ];
 
   return (
-    <IonPage className="rapago-auth-dark">
+    <IonPage className="rapago-auth-dark" data-rapago-theme={theme}>
       <IonContent className="ion-padding" style={pageStyle}>
         <form
           onSubmit={(e) => {
@@ -1270,6 +1273,19 @@ export function LoginPage(): JSX.Element {
                 className="passenger-home-logo rapago-auth-brand-logo"
               />
             </div>
+
+            {/* Ocupa la tercera columna de la grilla 42px/1fr/42px de la
+                cabecera, que hasta ahora quedaba vacía. Permite elegir el tema
+                antes de entrar. */}
+            <button
+              type="button"
+              className="rapago-auth-theme-btn"
+              onClick={toggleTheme}
+              aria-label={isDark ? "Activar modo día" : "Activar modo nocturno"}
+              title={isDark ? "Modo día" : "Modo nocturno"}
+            >
+              <IonIcon icon={isDark ? sunnyOutline : moonOutline} />
+            </button>
           </div>
 
           <IonText>

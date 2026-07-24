@@ -1,15 +1,12 @@
 import {
   IonBadge,
   IonButton,
-  IonCard,
-  IonCardContent,
   IonContent,
   IonHeader,
   IonIcon,
   IonInput,
   IonItem,
   IonLabel,
-  IonList,
   IonModal,
   IonNote,
   IonPage,
@@ -21,10 +18,9 @@ import {
   IonTextarea,
   IonTitle,
   IonToolbar,
-  IonButtons,
 } from "@ionic/react";
-import { useCallback, useEffect, useMemo, useState, type CSSProperties } from "react";
-import { arrowBackOutline, homeOutline } from "ionicons/icons";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { alertCircleOutline, checkmarkCircleOutline, logoWhatsapp } from "ionicons/icons";
 import { useHistory } from "react-router-dom";
 import { useAuth } from "../../features/auth/index.js";
 import { ridesService, type DriverRideData, type RideRequestData } from "../../features/rides/rides.service.js";
@@ -35,6 +31,8 @@ import {
   type SupportCategory,
   type SupportPriority,
 } from "../../features/support/support.service.js";
+import { RapagoSectionHeader } from "../../components/RapagoSectionHeader.js";
+import { useRapagoSectionTheme } from "../../theme/rapagoTheme.js";
 
 const SUPPORT_PHONE = "56947964171";
 const CATEGORY_LABEL: Record<SupportCategory, string> = {
@@ -72,19 +70,6 @@ const STATUS_ACCENT: Record<string, string> = {
   rejected: "#b84f2e",
 };
 
-const formItemStyle = {
-  "--background": "#ffffff",
-  "--border-color": "transparent",
-  "--highlight-color-focused": "#c89b3c",
-  "--padding-start": "14px",
-  "--inner-padding-end": "12px",
-  border: "1.5px solid rgba(200,155,60,.30)",
-  borderRadius: "14px",
-  marginBottom: "10px",
-  boxShadow: "0 4px 14px rgba(120,84,20,.06)",
-  overflow: "hidden",
-} as CSSProperties;
-
 type RideOption = Pick<RideRequestData, "id" | "originText" | "destinationText" | "status" | "completedAt"> | Pick<DriverRideData, "id" | "originText" | "destinationText" | "status" | "completedAt">;
 
 function formatDate(value: string | null | undefined): string {
@@ -95,6 +80,7 @@ function formatDate(value: string | null | undefined): string {
 export function SupportCenterPage(): JSX.Element {
   const history = useHistory();
   const { session, user } = useAuth();
+  const { theme, isDark, toggleTheme } = useRapagoSectionTheme("support");
 
   const handleGoHome = (): void => {
     if (user?.role === "driver") {
@@ -226,190 +212,216 @@ export function SupportCenterPage(): JSX.Element {
   const whatsappUrl = `https://wa.me/${SUPPORT_PHONE}?text=${encodeURIComponent("Hola RAPA GO, necesito ayuda con mi cuenta o un viaje.")}`;
 
   return (
-    <IonPage>
-      <IonHeader>
-        <IonToolbar color="warning">
-          <IonButtons slot="start">
-            <IonButton
-              type="button"
-              fill="clear"
-              onClick={handleGoHome}
-              aria-label="Volver al inicio"
-              title="Volver al inicio"
-              style={{
-                "--color": "#111111",
-                fontWeight: 900,
-                textTransform: "none",
-                marginLeft: 4,
-              } as CSSProperties}
-            >
-              <IonIcon
-                slot="start"
-                icon={arrowBackOutline}
-                style={{ fontSize: 22 }}
-              />
-              <IonIcon
-                icon={homeOutline}
-                style={{ fontSize: 20, marginRight: 6 }}
-              />
-              Inicio
-            </IonButton>
-          </IonButtons>
-
-          <IonTitle
-            style={{
-              color: "#111111",
-              fontWeight: 950,
-              textAlign: "center",
-            }}
-          >
-            Centro de ayuda
-          </IonTitle>
-        </IonToolbar>
-      </IonHeader>
-      <IonContent className="ion-padding" style={{ "--background": "linear-gradient(180deg,#fff7e8,#eed5a4)" } as CSSProperties}>
+    <IonPage
+      className="rapago-section-page rapago-support-page"
+      data-rapago-theme={theme}
+    >
+      <RapagoSectionHeader
+        title="Centro de ayuda"
+        isDark={isDark}
+        onToggleTheme={toggleTheme}
+        onBack={handleGoHome}
+        backLabel="Volver al inicio"
+      />
+      <IonContent>
         <IonRefresher slot="fixed" onIonRefresh={(event) => void load().finally(() => event.detail.complete())}><IonRefresherContent /></IonRefresher>
-        <div style={{ maxWidth: 760, margin: "0 auto", paddingBottom: 90 }}>
-          <IonCard
-            style={{
-              borderRadius: 24,
-              background: "linear-gradient(135deg,#171717 0%,#241d14 60%,#3a2c12 100%)",
-              color: "#fff",
-              border: "1px solid rgba(214,166,64,.45)",
-              boxShadow: "0 22px 56px rgba(60,40,10,.35)",
-              position: "relative",
-              overflow: "hidden",
-            }}
-          >
-            <div
-              aria-hidden
-              style={{
-                position: "absolute",
-                top: 0,
-                left: 0,
-                right: 0,
-                height: 4,
-                background: "linear-gradient(90deg, transparent, #f8d879 30%, #d6a640 55%, #f8d879 70%, transparent)",
-              }}
-            />
-            <IonCardContent style={{ padding: "22px 20px" }}>
-              <p style={{ margin: "0 0 6px", color: "#f8d879", fontWeight: 950, letterSpacing: ".08em", textTransform: "uppercase", fontSize: ".72rem" }}>Centro de ayuda</p>
-              <h1 style={{ margin: 0, fontSize: "1.4rem", fontWeight: 950, lineHeight: 1.15 }}>Soporte RAPA GO</h1>
-              <p style={{ color: "rgba(255,255,255,.78)", lineHeight: 1.5, margin: "10px 0 16px" }}>Crea un reclamo, reporta un objeto perdido o revisa el seguimiento administrativo con un folio único.</p>
-              <IonButton href={whatsappUrl} target="_blank" color="success" expand="block" style={{ "--border-radius": "16px", height: "50px", fontWeight: 900, letterSpacing: ".02em", textTransform: "none" }}>WhatsApp para urgencias</IonButton>
-            </IonCardContent>
-          </IonCard>
+
+        <div className="rp-shell">
+          <section className="rp-hero rp-hero--surface" aria-label="Soporte RAPA GO">
+            <p className="rp-hero__kicker">Centro de ayuda</p>
+            <h1 className="rp-hero__title">Soporte RAPA GO</h1>
+            <p className="rp-hero__note">
+              Crea un reclamo, reporta un objeto perdido o revisa el
+              seguimiento administrativo con un folio único.
+            </p>
+            <IonButton
+              className="rp-cta"
+              href={whatsappUrl}
+              target="_blank"
+              color="success"
+              expand="block"
+              style={{ marginTop: 14 }}
+            >
+              <IonIcon icon={logoWhatsapp} slot="start" />
+              WhatsApp para urgencias
+            </IonButton>
+          </section>
 
           {error && (
-            <div style={{ margin: "14px 0", padding: "12px 14px", borderRadius: 16, background: "rgba(184,79,46,.12)", border: "1.5px solid rgba(184,79,46,.45)", color: "#8a2f18", fontWeight: 850, lineHeight: 1.4 }}>
-              {error}
+            <div className="rp-banner rp-banner--error" role="alert">
+              <IonIcon icon={alertCircleOutline} />
+              <span>{error}</span>
             </div>
           )}
           {success && (
-            <div style={{ margin: "14px 0", padding: "12px 14px", borderRadius: 16, background: "rgba(200,155,60,.16)", border: "1.5px solid rgba(200,155,60,.55)", color: "#6b4f12", fontWeight: 900, lineHeight: 1.4 }}>
-              {success}
+            <div className="rp-banner rp-banner--success" role="status">
+              <IonIcon icon={checkmarkCircleOutline} />
+              <span>{success}</span>
             </div>
           )}
 
-          <IonCard style={{ borderRadius: 24, border: "1px solid rgba(200,155,60,.35)", boxShadow: "0 18px 46px rgba(120,84,20,.14)" }}>
-            <IonCardContent style={{ padding: "22px 20px" }}>
-              <h2 style={{ margin: "0 0 14px", fontWeight: 950, display: "flex", alignItems: "center", gap: 10, color: "#1a1a1a" }}>
-                <span aria-hidden style={{ width: 20, height: 4, borderRadius: 2, background: "linear-gradient(90deg,#d6a640,#c89b3c)", boxShadow: "0 2px 8px rgba(200,155,60,.40)" }} />
-                Nueva solicitud
-              </h2>
-              <IonItem style={formItemStyle}><IonLabel position="stacked">Tipo</IonLabel><IonSelect value={category} onIonChange={(event) => { setCategory(event.detail.value as SupportCategory); setRideId(""); }}>
+          <h2 className="rapago-section-label">Nueva solicitud</h2>
+
+          <section className="rp-card">
+            <IonItem>
+              <IonLabel position="stacked">Tipo</IonLabel>
+              <IonSelect value={category} onIonChange={(event) => { setCategory(event.detail.value as SupportCategory); setRideId(""); }}>
                 {Object.entries(CATEGORY_LABEL).map(([value, label]) => <IonSelectOption key={value} value={value}>{label}</IonSelectOption>)}
-              </IonSelect></IonItem>
-              <IonItem style={formItemStyle}><IonLabel position="stacked">Prioridad</IonLabel><IonSelect value={category === "safety" ? "urgent" : priority} disabled={category === "safety"} onIonChange={(event) => setPriority(event.detail.value as SupportPriority)}>
+              </IonSelect>
+            </IonItem>
+            <IonItem style={{ marginTop: 10 }}>
+              <IonLabel position="stacked">Prioridad</IonLabel>
+              <IonSelect value={category === "safety" ? "urgent" : priority} disabled={category === "safety"} onIonChange={(event) => setPriority(event.detail.value as SupportPriority)}>
                 <IonSelectOption value="low">Baja</IonSelectOption><IonSelectOption value="normal">Normal</IonSelectOption><IonSelectOption value="high">Alta</IonSelectOption><IonSelectOption value="urgent">Urgente</IonSelectOption>
-              </IonSelect></IonItem>
-              <IonItem style={formItemStyle}><IonLabel position="stacked">Viaje relacionado</IonLabel><IonSelect value={rideId} placeholder="Sin viaje relacionado" onIonChange={(event) => setRideId(String(event.detail.value ?? ""))}>
+              </IonSelect>
+            </IonItem>
+            <IonItem style={{ marginTop: 10 }}>
+              <IonLabel position="stacked">Viaje relacionado</IonLabel>
+              <IonSelect value={rideId} placeholder="Sin viaje relacionado" onIonChange={(event) => setRideId(String(event.detail.value ?? ""))}>
                 <IonSelectOption value="">Sin viaje relacionado</IonSelectOption>
                 {selectableRides.map((ride) => <IonSelectOption key={ride.id} value={ride.id}>{ride.originText} → {ride.destinationText} · {ride.status}</IonSelectOption>)}
-              </IonSelect><IonNote slot="helper">Objetos perdidos: solo viajes completados.</IonNote></IonItem>
-              <IonItem style={formItemStyle}><IonLabel position="stacked">Asunto</IonLabel><IonInput value={subject} maxlength={140} onIonInput={(event) => setSubject(String(event.detail.value ?? ""))} /></IonItem>
-              <IonItem style={formItemStyle}><IonLabel position="stacked">Descripción</IonLabel><IonTextarea value={description} maxlength={4000} rows={5} autoGrow onIonInput={(event) => setDescription(String(event.detail.value ?? ""))} /></IonItem>
-              {category === "lost_item" && <>
-                <IonItem style={formItemStyle}><IonLabel position="stacked">Objeto perdido</IonLabel><IonInput value={lostItem} maxlength={1500} onIonInput={(event) => setLostItem(String(event.detail.value ?? ""))} /></IonItem>
-                <IonItem style={formItemStyle}><IonLabel position="stacked">Última vez que lo viste</IonLabel><IonInput type="datetime-local" value={lastSeenAt} onIonInput={(event) => setLastSeenAt(String(event.detail.value ?? ""))} /></IonItem>
-              </>}
-              <IonItem style={formItemStyle}><IonLabel position="stacked">Celular de contacto (opcional)</IonLabel><IonInput type="tel" value={phone} maxlength={30} onIonInput={(event) => setPhone(String(event.detail.value ?? ""))} /></IonItem>
-              <IonButton expand="block" color="warning" disabled={creating} onClick={() => void createCase()} style={{ marginTop: 16, "--border-radius": "16px", height: "52px", fontWeight: 950, letterSpacing: ".02em", textTransform: "none" }}>
-                {creating ? <IonSpinner name="dots" /> : "Enviar a administración"}
-              </IonButton>
-            </IonCardContent>
-          </IonCard>
+              </IonSelect>
+              <IonNote slot="helper">Objetos perdidos: solo viajes completados.</IonNote>
+            </IonItem>
+            <IonItem style={{ marginTop: 10 }}>
+              <IonLabel position="stacked">Asunto</IonLabel>
+              <IonInput value={subject} maxlength={140} onIonInput={(event) => setSubject(String(event.detail.value ?? ""))} />
+            </IonItem>
+            <IonItem style={{ marginTop: 10 }}>
+              <IonLabel position="stacked">Descripción</IonLabel>
+              <IonTextarea value={description} maxlength={4000} rows={5} autoGrow onIonInput={(event) => setDescription(String(event.detail.value ?? ""))} />
+            </IonItem>
+            {category === "lost_item" && <>
+              <IonItem style={{ marginTop: 10 }}>
+                <IonLabel position="stacked">Objeto perdido</IonLabel>
+                <IonInput value={lostItem} maxlength={1500} onIonInput={(event) => setLostItem(String(event.detail.value ?? ""))} />
+              </IonItem>
+              <IonItem style={{ marginTop: 10 }}>
+                <IonLabel position="stacked">Última vez que lo viste</IonLabel>
+                <IonInput type="datetime-local" value={lastSeenAt} onIonInput={(event) => setLastSeenAt(String(event.detail.value ?? ""))} />
+              </IonItem>
+            </>}
+            <IonItem style={{ marginTop: 10 }}>
+              <IonLabel position="stacked">Celular de contacto (opcional)</IonLabel>
+              <IonInput type="tel" value={phone} maxlength={30} onIonInput={(event) => setPhone(String(event.detail.value ?? ""))} />
+            </IonItem>
+            <IonButton
+              className="rp-cta"
+              expand="block"
+              disabled={creating}
+              onClick={() => void createCase()}
+              style={{ marginTop: 16 }}
+            >
+              {creating ? <IonSpinner name="dots" /> : "Enviar a administración"}
+            </IonButton>
+          </section>
 
-          <h2 style={{ fontWeight: 950, margin: "26px 4px 10px", display: "flex", alignItems: "center", gap: 10, color: "#1a1a1a" }}>
-            <span aria-hidden style={{ width: 20, height: 4, borderRadius: 2, background: "linear-gradient(90deg,#d6a640,#c89b3c)", boxShadow: "0 2px 8px rgba(200,155,60,.40)" }} />
-            Mis solicitudes
-          </h2>
+          <h2 className="rapago-section-label">Mis solicitudes</h2>
+
           {loading ? (
             <div style={{ textAlign: "center", padding: 24 }}><IonSpinner /></div>
           ) : cases.length === 0 ? (
-            <IonCard style={{ borderRadius: 20, border: "1px dashed rgba(200,155,60,.50)", boxShadow: "none" }}>
-              <IonCardContent style={{ textAlign: "center", padding: "26px 18px", color: "#6b5f43", fontWeight: 750 }}>No tienes solicitudes todavía.</IonCardContent>
-            </IonCard>
+            <div className="rp-empty">
+              <p className="rp-empty__body">No tienes solicitudes todavía.</p>
+            </div>
           ) : (
-            <IonList style={{ background: "transparent" }}>
-              {cases.map((item) => (
-                <IonCard
-                  key={item.id}
-                  button
-                  onClick={() => void openDetail(item.id)}
-                  style={{
-                    borderRadius: 20,
-                    border: "1px solid rgba(200,155,60,.28)",
-                    borderLeft: `5px solid ${STATUS_ACCENT[item.status] ?? "#c89b3c"}`,
-                    boxShadow: "0 12px 30px rgba(120,84,20,.10)",
-                    marginInline: 0,
-                  }}
-                >
-                  <IonCardContent style={{ padding: "16px 16px" }}>
-                    <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "flex-start" }}>
-                      <div style={{ minWidth: 0 }}>
-                        <strong style={{ fontSize: ".98rem", lineHeight: 1.3 }}>{item.subject}</strong>
-                        <div style={{ fontSize: ".76rem", color: "#8a7a55", marginTop: 5, fontWeight: 750, letterSpacing: ".02em" }}>{item.trackingCode} · {CATEGORY_LABEL[item.category]}</div>
-                      </div>
-                      <IonBadge color={STATUS_COLOR[item.status] ?? "medium"} style={{ flexShrink: 0, borderRadius: 999, padding: "5px 10px", fontWeight: 850 }}>{STATUS_LABEL[item.status] ?? item.status}</IonBadge>
-                    </div>
-                    <div style={{ marginTop: 10, fontSize: ".78rem", color: "#6b5f43", fontWeight: 650 }}>Actualizado: {formatDate(item.updatedAt)}</div>
-                  </IonCardContent>
-                </IonCard>
-              ))}
-            </IonList>
+            cases.map((item) => (
+              <button
+                type="button"
+                key={item.id}
+                className="rp-card rp-card--tap rp-card--accent"
+                style={{ "--rp-card-accent": STATUS_ACCENT[item.status] ?? "#c89b3c" } as React.CSSProperties}
+                onClick={() => void openDetail(item.id)}
+              >
+                <div className="rp-card__row">
+                  <div className="rp-card__main">
+                    <h3 className="rp-card__title">{item.subject}</h3>
+                    <p className="rp-card__foot" style={{ marginTop: 5 }}>
+                      {item.trackingCode} · {CATEGORY_LABEL[item.category]}
+                    </p>
+                  </div>
+                  <IonBadge color={STATUS_COLOR[item.status] ?? "medium"}>{STATUS_LABEL[item.status] ?? item.status}</IonBadge>
+                </div>
+                <p className="rp-card__foot">Actualizado: {formatDate(item.updatedAt)}</p>
+              </button>
+            ))
           )}
         </div>
 
         <IonModal isOpen={detail !== null || detailLoading} onDidDismiss={() => setDetail(null)}>
-          <IonHeader>
-            <IonToolbar
-              style={{
-                "--background": "linear-gradient(135deg,#171717 0%,#241d14 60%,#3a2c12 100%)",
-                "--color": "#f6f2ec",
-                "border-bottom": "2px solid rgba(214,166,64,.45)",
-              } as CSSProperties}
-            >
-              <IonTitle style={{ fontWeight: 950, letterSpacing: ".02em" }}>{detail?.supportCase.trackingCode ?? "Cargando caso"}</IonTitle>
-              <IonButton slot="end" fill="clear" style={{ "--color": "#f8d879", fontWeight: 900, textTransform: "none" } as CSSProperties} onClick={() => setDetail(null)}>Cerrar</IonButton>
+          <IonHeader className="rapago-section-header">
+            <IonToolbar className="rapago-modal-toolbar">
+              <IonTitle className="rapago-section-title">{detail?.supportCase.trackingCode ?? "Cargando caso"}</IonTitle>
+              <IonButton slot="end" fill="clear" className="rapago-modal-close" onClick={() => setDetail(null)}>Cerrar</IonButton>
             </IonToolbar>
           </IonHeader>
-          <IonContent className="ion-padding" style={{ "--background": "linear-gradient(180deg,#fff7e8,#eed5a4)" } as CSSProperties}>
-            {detailLoading && !detail ? <div style={{ textAlign: "center", padding: 30 }}><IonSpinner /></div> : detail && <div style={{ maxWidth: 680, margin: "0 auto" }}>
-              <IonCard style={{ borderRadius: 20, border: "1px solid rgba(200,155,60,.35)", borderLeft: `5px solid ${STATUS_ACCENT[detail.supportCase.status] ?? "#c89b3c"}`, boxShadow: "0 14px 36px rgba(120,84,20,.12)" }}>
-                <IonCardContent>
-                  <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "flex-start" }}><h2 style={{ margin: 0, fontWeight: 950, lineHeight: 1.25 }}>{detail.supportCase.subject}</h2><IonBadge color={STATUS_COLOR[detail.supportCase.status] ?? "medium"} style={{ flexShrink: 0, borderRadius: 999, padding: "5px 10px", fontWeight: 850 }}>{STATUS_LABEL[detail.supportCase.status] ?? detail.supportCase.status}</IonBadge></div>
-                  <p style={{ lineHeight: 1.55 }}>{detail.supportCase.description}</p>
-                  {detail.supportCase.adminResolution && <p style={{ padding: "10px 12px", borderRadius: 12, background: "rgba(200,155,60,.14)", border: "1px solid rgba(200,155,60,.40)" }}><strong>Resolución:</strong> {detail.supportCase.adminResolution}</p>}
-                </IonCardContent>
-              </IonCard>
-              <h3 style={{ fontWeight: 950, display: "flex", alignItems: "center", gap: 10, margin: "20px 4px 10px" }}>
-                <span aria-hidden style={{ width: 18, height: 4, borderRadius: 2, background: "linear-gradient(90deg,#d6a640,#c89b3c)" }} />
-                Seguimiento
-              </h3>
-              {detail.events.map((event) => <IonCard key={event.id} style={{ borderRadius: 16, border: "1px solid rgba(200,155,60,.24)", boxShadow: "0 8px 22px rgba(120,84,20,.08)" }}><IonCardContent style={{ padding: "14px 16px" }}><div style={{ fontSize: ".76rem", color: "#8a7a55", fontWeight: 750, letterSpacing: ".02em" }}>{formatDate(event.createdAt)} · {event.actorRole}</div>{event.publicMessage && <p style={{ marginBottom: 0, lineHeight: 1.5 }}>{event.publicMessage}</p>}{event.fromStatus !== event.toStatus && event.toStatus && <IonBadge color={STATUS_COLOR[event.toStatus] ?? "medium"} style={{ borderRadius: 999, padding: "4px 10px", fontWeight: 850 }}>{STATUS_LABEL[event.toStatus] ?? event.toStatus}</IonBadge>}</IonCardContent></IonCard>)}
-              {!['closed','rejected'].includes(detail.supportCase.status) && <IonCard style={{ borderRadius: 20, border: "1px solid rgba(200,155,60,.35)", boxShadow: "0 14px 36px rgba(120,84,20,.12)" }}><IonCardContent><IonItem style={formItemStyle}><IonLabel position="stacked">Responder a soporte</IonLabel><IonTextarea value={reply} rows={4} maxlength={3000} onIonInput={(event) => setReply(String(event.detail.value ?? ""))} /></IonItem><IonButton expand="block" color="warning" disabled={sendingReply || reply.trim().length < 2} onClick={() => void sendReply()} style={{ "--border-radius": "16px", height: "48px", fontWeight: 950, letterSpacing: ".02em", textTransform: "none" }}>{sendingReply ? <IonSpinner name="dots" /> : "Enviar respuesta"}</IonButton></IonCardContent></IonCard>}
-            </div>}
+          <IonContent className="rapago-modal-content">
+            <div className="rapago-section-page rapago-modal-body" data-rapago-theme={theme}>
+              {detailLoading && !detail ? (
+                <div style={{ textAlign: "center", padding: 30 }}><IonSpinner /></div>
+              ) : detail && (
+                <div className="rp-modal-inner">
+                  <article
+                    className="rp-card rp-card--accent"
+                    style={{ "--rp-card-accent": STATUS_ACCENT[detail.supportCase.status] ?? "#c89b3c" } as React.CSSProperties}
+                  >
+                    <div className="rp-card__row">
+                      <div className="rp-card__main">
+                        <h2 className="rp-card__title">{detail.supportCase.subject}</h2>
+                      </div>
+                      <IonBadge color={STATUS_COLOR[detail.supportCase.status] ?? "medium"}>{STATUS_LABEL[detail.supportCase.status] ?? detail.supportCase.status}</IonBadge>
+                    </div>
+                    <p className="rp-card__foot" style={{ fontSize: "var(--rp-fs-body)", color: "var(--rp-text)", lineHeight: 1.55 }}>
+                      {detail.supportCase.description}
+                    </p>
+                    {detail.supportCase.adminResolution && (
+                      <p className="rp-card__quote">
+                        <strong>Resolución:</strong> {detail.supportCase.adminResolution}
+                      </p>
+                    )}
+                  </article>
+
+                  <h3 className="rapago-section-label">Seguimiento</h3>
+
+                  {detail.events.map((event) => (
+                    <article className="rp-card" key={event.id}>
+                      <p className="rp-card__foot" style={{ marginTop: 0 }}>
+                        {formatDate(event.createdAt)} · {event.actorRole}
+                      </p>
+                      {event.publicMessage && (
+                        <p style={{ margin: "8px 0 0", lineHeight: 1.5 }}>{event.publicMessage}</p>
+                      )}
+                      {event.fromStatus !== event.toStatus && event.toStatus && (
+                        <IonBadge
+                          color={STATUS_COLOR[event.toStatus] ?? "medium"}
+                          style={{ marginTop: 8 }}
+                        >
+                          {STATUS_LABEL[event.toStatus] ?? event.toStatus}
+                        </IonBadge>
+                      )}
+                    </article>
+                  ))}
+
+                  {!["closed", "rejected"].includes(detail.supportCase.status) && (
+                    <article className="rp-card">
+                      <IonItem>
+                        <IonLabel position="stacked">Responder a soporte</IonLabel>
+                        <IonTextarea value={reply} rows={4} maxlength={3000} onIonInput={(event) => setReply(String(event.detail.value ?? ""))} />
+                      </IonItem>
+                      <IonButton
+                        className="rp-cta"
+                        expand="block"
+                        disabled={sendingReply || reply.trim().length < 2}
+                        onClick={() => void sendReply()}
+                        style={{ marginTop: 12 }}
+                      >
+                        {sendingReply ? <IonSpinner name="dots" /> : "Enviar respuesta"}
+                      </IonButton>
+                    </article>
+                  )}
+                </div>
+              )}
+            </div>
           </IonContent>
         </IonModal>
       </IonContent>

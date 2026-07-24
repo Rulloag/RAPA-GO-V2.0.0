@@ -52,6 +52,8 @@ import { walletService } from "../../../features/wallet/wallet.service.js";
 import { RIDE_STATUS_LABEL } from "../shared.js";
 import { getApiOrigin as getConfiguredApiOrigin } from "../../../services/api/apiBaseUrl.js";
 import { preSearchLocationService } from "../../../features/location/preSearchLocation.service.js";
+import { RapagoSectionHeader } from "../../../components/RapagoSectionHeader.js";
+import { useRapagoSectionTheme } from "../../../theme/rapagoTheme.js";
 
 
 const LOCAL_PASSENGER_RIDES_KEY = "rapago_local_passenger_rides";
@@ -3834,7 +3836,7 @@ function MapPointPicker({
         onCancel();
       }}
     >
-      <IonPage>
+      <IonPage className="rapago-section-page rapago-request-page">
       <style>{`
         .rapago-request-light ion-item::part(native) {
           background: transparent !important;
@@ -3863,7 +3865,7 @@ function MapPointPicker({
               slot="start"
               onClick={onCancel}
               aria-label="Volver"
-              style={{ "--color": "#111111", fontWeight: 900 } as CSSProperties}
+              style={{ "--color": "var(--rp-text)", fontWeight: 900 } as CSSProperties}
             >
               <IonIcon slot="start" icon={arrowBackOutline} style={{ fontSize: 20 }} />
               Volver
@@ -4580,6 +4582,7 @@ type PageStatus =
 export default function RequestRidePage(): JSX.Element {
   const { session } = useAuth();
   const history = useHistory();
+  const { theme, isDark, toggleTheme } = useRapagoSectionTheme("request-ride");
 
   useEffect(() => {
     preSearchLocationService.read();
@@ -6317,24 +6320,17 @@ export default function RequestRidePage(): JSX.Element {
   );
 
 return (
-    <IonPage className="rapago-request-page">
-      <IonHeader>
-        <IonToolbar color="primary">
-          <IonButtons slot="start">
-            <IonButton
-              fill="clear"
-              onClick={() => history.replace(ROUTES.PASSENGER.HOME)}
-              aria-label="Volver al inicio"
-              title="Volver al inicio"
-              style={{ "--color": "#111111", fontWeight: 900 } as CSSProperties}
-            >
-              <IonIcon slot="start" icon={arrowBackOutline} style={{ fontSize: 22 }} />
-              Volver
-            </IonButton>
-          </IonButtons>
-          <IonTitle style={{ fontWeight: 950 }}>Solicitar Viaje</IonTitle>
-        </IonToolbar>
-      </IonHeader>
+    <IonPage
+      className="rapago-section-page rapago-request-page"
+      data-rapago-theme={theme}
+    >
+      <RapagoSectionHeader
+        title="Solicitar Viaje"
+        isDark={isDark}
+        onToggleTheme={toggleTheme}
+        onBack={() => history.replace(ROUTES.PASSENGER.HOME)}
+        backLabel="Volver al inicio"
+      />
 
       <IonContent fullscreen className="rapago-request-light" style={{ "--background": "#f6ead6" } as CSSProperties}>
         <div

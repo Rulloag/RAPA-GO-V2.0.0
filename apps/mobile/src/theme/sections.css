@@ -1,0 +1,870 @@
+/* ==========================================================================
+   RAPA GO — Capa de coherencia para Solicitar viaje, Mis viajes,
+   Centro de ayuda y Beneficios (Wallet).
+
+   POR QUÉ ESTA CAPA Y NO UN REDISEÑO DEL JSX
+   RequestRidePage tiene 8.018 líneas y TripsPage 9.799. Reescribir esos
+   renders como se hizo con Home y Perfil no es una operación que se pueda
+   verificar de forma fiable: son las pantallas donde vive el flujo de viaje.
+   En vez de eso, estas reglas conectan los componentes Ionic que ya usan al
+   sistema de tokens, de modo que las cuatro pantallas comparten colores,
+   bordes, radios y tipografía, y responden al modo día/noche.
+
+   LÍMITE CONOCIDO
+   Solo alcanza a componentes Ionic y a elementos con clase. Los <div> con
+   `style={{ background: ... }}` incrustado (171 en RequestRide, 137 en Trips)
+   siguen fuera: un override genérico sobre todos los div rompería mapas,
+   badges de estado y timelines. Esos bloques necesitan pasar a clases, que es
+   trabajo de refactor del JSX, no de CSS.
+
+   Se importa DESPUÉS de global.css. El !important es necesario dos veces:
+   contra las reglas de tipo de global.css, y porque el CSS de autor con
+   !important es lo único que gana a un `style=""` inline.
+   ========================================================================== */
+
+/* ── Cabecera compartida (RapagoSectionHeader) ──────────────────────────── */
+/* Sustituye a los tres toolbars que cada pantalla traía por su cuenta —
+   dorado, amarillo y degradado inline— por una sola cabecera transparente
+   con el interruptor de tema siempre a mano. */
+.rapago-section-header,
+.rapago-section-subheader {
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+.rapago-section-header::after,
+.rapago-section-subheader::after {
+  display: none !important;
+}
+
+.rapago-section-toolbar {
+  --background: transparent !important;
+  --ion-color-base: transparent !important;
+  --border-width: 0 !important;
+  --min-height: 56px !important;
+}
+
+.rapago-section-page .rapago-section-title {
+  color: var(--rp-text) !important;
+  font-size: var(--rp-fs-h2) !important;
+  font-weight: 800 !important;
+  letter-spacing: -0.01em !important;
+}
+
+/* La cabecera secundaria solo aloja los filtros: sin borde ni fondo propio. */
+.rapago-section-subheader ion-toolbar {
+  --background: transparent !important;
+  --ion-color-base: transparent !important;
+  --border-width: 0 !important;
+  --min-height: 0 !important;
+}
+
+/* ── Chips de filtro (Mis viajes) ───────────────────────────────────────── */
+/* Antes eran blancos sobre un toolbar dorado y se salían de pantalla. */
+.rapago-section-page .rapago-filter-chip {
+  --background: var(--rp-surface-soft);
+  --color: var(--rp-muted);
+  flex-shrink: 0;
+  height: 34px;
+  font-size: var(--rp-fs-sub);
+  font-weight: 750;
+  border: 1px solid var(--rp-icon-bd);
+  transition:
+    background 0.18s ease,
+    color 0.18s ease;
+}
+
+.rapago-section-page .rapago-filter-chip.is-active {
+  --background: var(--rp-btn-primary);
+  --color: var(--rp-btn-primary-fg);
+  font-weight: 850;
+  border-color: transparent;
+}
+
+/* ── Superficie de página ───────────────────────────────────────────────── */
+/* El fondo del IonPage lo pinta rapago-shell.css, que ya incluye
+   .rapago-section-page en la regla con el !important que hace falta para
+   ganarle a `.ion-page` de global.css:2074. */
+.rapago-section-page ion-content {
+  --background: transparent !important;
+}
+
+/* ── Cabecera ───────────────────────────────────────────────────────────── */
+/* global.css:2094 y :2099 imponen fondo volcánico y degradado terracota. */
+.rapago-section-page ion-header {
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+.rapago-section-page ion-header::after {
+  display: none !important;
+}
+
+/* El `color="primary"` de Mis viajes y el `color="warning"` de Ayuda generan
+   `.ion-color-*`, que fija --ion-color-base con !important. Hay que anular
+   tanto --background como --ion-color-base para que el toolbar sea de verdad
+   transparente y deje ver el fondo de la página. */
+.rapago-section-page ion-toolbar,
+.rapago-section-page ion-toolbar[color],
+.rapago-section-page ion-toolbar.ion-color {
+  --background: transparent !important;
+  --ion-color-base: transparent !important;
+  --color: var(--rp-text) !important;
+  --border-width: 0 !important;
+  border-bottom: 1px solid var(--rp-divider) !important;
+  --min-height: 56px !important;
+}
+
+.rapago-section-page ion-toolbar::part(background) {
+  background: transparent !important;
+}
+
+/* ESCALA TIPOGRÁFICA
+   global.css:2110 pone `ion-title { font-weight: 950 !important }`, y ese 950
+   se repite por toda la hoja. Con todo en el peso máximo no hay jerarquía:
+   el título de la pantalla, el de una tarjeta y una etiqueta pesan igual, y
+   el conjunto se lee como un bloque compacto y duro.
+   Aquí el título de sección baja a 800 y el resto de niveles se apoyan en la
+   escala fluida de rapago-shell.css. */
+.rapago-section-page ion-title {
+  color: var(--rp-text) !important;
+  font-size: var(--rp-fs-h2) !important;
+  font-weight: 800 !important;
+  letter-spacing: -0.01em !important;
+}
+
+.rapago-section-page .rapago-section-header {
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+/* Segmentos de filtro (Todos / Activos / Completados) — en Mis viajes se
+   salían de pantalla. Con scroll horizontal propio dejan de recortarse. */
+.rapago-section-page ion-segment {
+  overflow-x: auto !important;
+  scrollbar-width: none;
+}
+
+.rapago-section-page ion-segment::-webkit-scrollbar {
+  display: none;
+}
+
+/* global.css:3691 fuerza los botones de cabecera a blanco. */
+.rapago-section-page ion-header ion-buttons ion-button,
+.rapago-section-page ion-toolbar ion-buttons ion-button {
+  --color: var(--rp-icon-fg) !important;
+  color: var(--rp-icon-fg) !important;
+}
+
+.rapago-section-page ion-header ion-buttons ion-button::part(native),
+.rapago-section-page ion-toolbar ion-buttons ion-button::part(native) {
+  color: var(--rp-icon-fg) !important;
+}
+
+.rapago-section-page ion-back-button {
+  --color: var(--rp-icon-fg) !important;
+  color: var(--rp-icon-fg) !important;
+}
+
+/* ── Tarjetas ───────────────────────────────────────────────────────────── */
+/* global.css:883 y :2149 fijan `ion-card` en ivory con texto #1a1a1a. Aquí
+   pasan a la superficie del tema, con el mismo borde dorado que Home y
+   Perfil. */
+.rapago-section-page ion-card {
+  border: var(--rp-border-w) solid var(--rp-border-c) !important;
+  border-radius: var(--rp-radius) !important;
+  box-shadow: var(--rp-shadow) !important;
+  margin-inline: 0 !important;
+}
+
+/* SUPERFICIE CLARA EN LAS CUATRO SECCIONES
+   Estas pantallas escriben el color del texto dentro del propio `style=""`,
+   casi siempre en tonos oscuros: 31 casos en Solicitar viaje, 27 en Mis
+   viajes, y bastantes más repartidos en Ayuda y Beneficios. Al forzar la
+   tarjeta a superficie oscura en modo noche, ese texto quedaba negro sobre
+   negro — "Soporte RAPA GO", "Nueva solicitud", "Sin solicitudes" y las
+   tarjetas de Aprobados/Pendiente desaparecían por completo.
+
+   Forzar también el color del texto no sirve: borraría los verdes y rojos
+   que comunican estado de viaje, de pago y de solicitud, que es información,
+   no decoración.
+
+   Así que la tarjeta se mantiene sobre fondo claro en AMBOS temas. Sigue
+   adoptando el borde dorado, el radio, la sombra, la tipografía y todo el
+   cromo de la pantalla, de modo que el conjunto se lee como la misma app.
+   Es deuda técnica con nombre: desaparece cuando esos `style=""` pasen a
+   clases y el texto pueda heredar del tema. */
+.rapago-section-page ion-card {
+  background: var(--rp-surface-legacy) !important;
+  color: var(--rp-text-legacy) !important;
+}
+
+.rapago-section-page ion-card-title,
+.rapago-section-page ion-card-header ion-card-title {
+  color: var(--rp-accent-legacy) !important;
+  font-size: var(--rp-fs-h2) !important;
+  font-weight: 800 !important;
+  letter-spacing: -0.01em;
+}
+
+.rapago-section-page ion-card-subtitle {
+  color: rgba(26, 26, 26, 0.6) !important;
+  font-size: var(--rp-fs-label) !important;
+  font-weight: 750 !important;
+  letter-spacing: 0.08em;
+}
+
+.rapago-section-page ion-card-content {
+  color: var(--rp-text-legacy) !important;
+  font-size: var(--rp-fs-body) !important;
+}
+
+/* Los títulos sueltos dentro de la tarjeta heredan el color legible en vez
+   del del tema, que sobre superficie clara sería ivory sobre blanco. */
+.rapago-section-page ion-card :is(h1, h2, h3, h4, h5, p, li, dt, dd) {
+  color: inherit;
+}
+
+/* Campos dentro de tarjeta: la tarjeta es clara, así que el campo va blanco
+   con texto oscuro pase lo que pase el tema. */
+.rapago-section-page ion-card ion-item {
+  --background: #ffffff !important;
+  --color: var(--rp-text-legacy) !important;
+  border-color: rgba(200, 155, 60, 0.42) !important;
+}
+
+.rapago-section-page ion-card ion-item ion-label,
+.rapago-section-page ion-card ion-item ion-label.label-stacked {
+  color: var(--rp-accent-legacy) !important;
+}
+
+.rapago-section-page ion-card ion-item ion-label :is(h1, h2, h3, p) {
+  color: var(--rp-text-legacy) !important;
+}
+
+.rapago-section-page ion-card :is(ion-input, ion-textarea, ion-select) {
+  --color: #111111 !important;
+  --placeholder-color: rgba(17, 17, 17, 0.45) !important;
+  color: #111111 !important;
+}
+
+.rapago-section-page ion-card :is(ion-input, ion-textarea) :is(input, textarea),
+.rapago-section-page ion-card ion-input::part(native),
+.rapago-section-page ion-card ion-textarea::part(native) {
+  color: #111111 !important;
+  -webkit-text-fill-color: #111111 !important;
+}
+
+.rapago-section-page ion-card ion-note {
+  color: rgba(26, 26, 26, 0.62) !important;
+}
+
+/* ── Listas y filas ─────────────────────────────────────────────────────── */
+.rapago-section-page ion-list {
+  background: transparent !important;
+}
+
+.rapago-section-page ion-item {
+  --background: var(--rp-field-bg) !important;
+  --color: var(--rp-text) !important;
+  --border-color: var(--rp-divider) !important;
+  --border-radius: var(--rp-radius-sm) !important;
+  border: 1px solid var(--rp-border-c) !important;
+  border-radius: var(--rp-radius-sm) !important;
+}
+
+/* global.css:2982 fuerza las etiquetas a #111111: en modo noche quedarían
+   negras sobre superficie negra. */
+.rapago-section-page ion-item ion-label,
+.rapago-section-page ion-item ion-label.label-stacked {
+  color: var(--rp-label) !important;
+  opacity: 1 !important;
+}
+
+.rapago-section-page ion-item ion-label h1,
+.rapago-section-page ion-item ion-label h2,
+.rapago-section-page ion-item ion-label h3,
+.rapago-section-page ion-item ion-label p {
+  color: var(--rp-text) !important;
+}
+
+/* ── Campos ─────────────────────────────────────────────────────────────── */
+/* global.css:2992 y variables.css:49 fuerzan el texto de los inputs, uno a
+   #111111 y el otro a #ffffff. Sin este bloque, uno de los dos temas queda
+   siempre con texto invisible. */
+.rapago-section-page ion-input,
+.rapago-section-page ion-textarea,
+.rapago-section-page ion-searchbar {
+  --color: var(--rp-field-fg) !important;
+  --placeholder-color: var(--rp-field-ph) !important;
+  --placeholder-opacity: 1 !important;
+  color: var(--rp-field-fg) !important;
+}
+
+.rapago-section-page ion-input input,
+.rapago-section-page ion-input::part(native),
+.rapago-section-page ion-textarea textarea,
+.rapago-section-page ion-textarea::part(native),
+.rapago-section-page ion-searchbar input {
+  color: var(--rp-field-fg) !important;
+  -webkit-text-fill-color: var(--rp-field-fg) !important;
+  caret-color: var(--rp-gold) !important;
+}
+
+.rapago-section-page ion-input input::placeholder,
+.rapago-section-page ion-textarea textarea::placeholder {
+  color: var(--rp-field-ph) !important;
+  -webkit-text-fill-color: var(--rp-field-ph) !important;
+  opacity: 1 !important;
+}
+
+.rapago-section-page ion-searchbar {
+  --background: var(--rp-field-bg) !important;
+  --border-radius: var(--rp-radius-sm) !important;
+  --box-shadow: none !important;
+  --icon-color: var(--rp-icon-fg) !important;
+}
+
+.rapago-section-page ion-select {
+  --placeholder-color: var(--rp-field-ph) !important;
+  color: var(--rp-field-fg) !important;
+}
+
+.rapago-section-page ion-note {
+  color: var(--rp-muted) !important;
+}
+
+.rapago-section-page ion-note[slot="error"] {
+  color: var(--rp-err-fg) !important;
+}
+
+/* ── Botones ────────────────────────────────────────────────────────────── */
+/* global.css:2115 impone --border-radius: 15px a todos los ion-button. */
+.rapago-section-page ion-button {
+  --border-radius: var(--rp-radius-sm) !important;
+  text-transform: none !important;
+}
+
+/* El botón sólido sin color explícito es la acción principal de la pantalla:
+   toma el degradado dorado de la marca, igual que en Home y Perfil. */
+.rapago-section-page ion-button:not([fill]):not([color]),
+.rapago-section-page ion-button[fill="solid"]:not([color]),
+.rapago-section-page ion-button[color="primary"] {
+  --background: var(--rp-btn-primary) !important;
+  --background-activated: linear-gradient(135deg, #c89b3c, #b84f2e) !important;
+  --color: var(--rp-btn-primary-fg) !important;
+  color: var(--rp-btn-primary-fg) !important;
+}
+
+.rapago-section-page ion-button[fill="outline"]:not([color="danger"]) {
+  --border-color: var(--rp-border-c) !important;
+  --border-width: var(--rp-border-w) !important;
+  --color: var(--rp-icon-fg) !important;
+  --background: transparent !important;
+  --background-activated: var(--rp-icon-bg) !important;
+  color: var(--rp-icon-fg) !important;
+}
+
+.rapago-section-page ion-button[fill="clear"]:not([color="danger"]) {
+  --color: var(--rp-icon-fg) !important;
+  color: var(--rp-icon-fg) !important;
+}
+
+.rapago-section-page ion-button[color="danger"] {
+  --border-color: var(--rp-danger-bd) !important;
+  --color: var(--rp-danger-fg) !important;
+  color: var(--rp-danger-fg) !important;
+}
+
+/* Los colores semánticos (éxito, aviso, error) se dejan intactos a propósito:
+   comunican estado de viaje o de pago, no identidad de marca. */
+
+/* ── Segmentos y pestañas internas ──────────────────────────────────────── */
+.rapago-section-page ion-segment {
+  --background: var(--rp-seg-track) !important;
+  border: 1px solid var(--rp-icon-bd) !important;
+  border-radius: 14px !important;
+}
+
+.rapago-section-page ion-segment-button {
+  --color: var(--rp-muted) !important;
+  --color-checked: var(--rp-btn-primary-fg) !important;
+  --background-checked: var(--rp-btn-primary) !important;
+  --indicator-color: transparent !important;
+  --border-radius: 11px !important;
+  text-transform: none !important;
+  font-weight: 800 !important;
+}
+
+/* ── Acordeones y modales ───────────────────────────────────────────────── */
+.rapago-section-page ion-accordion,
+.rapago-section-page ion-accordion ion-item[slot="header"] {
+  --background: var(--rp-surface) !important;
+  color: var(--rp-text) !important;
+}
+
+.rapago-section-page ion-accordion [slot="content"] {
+  background: var(--rp-surface) !important;
+  color: var(--rp-text) !important;
+}
+
+.rapago-section-page ion-spinner {
+  color: var(--rp-icon-fg) !important;
+}
+
+.rapago-section-page ion-refresher ion-refresher-content {
+  --color: var(--rp-icon-fg) !important;
+}
+
+/* ── Texto suelto dentro del contenido ──────────────────────────────────── */
+/* Solo encabezados y párrafos directos del contenido, no cualquier div: los
+   bloques con estilo inline (mapa, timeline, badges de estado) deben seguir
+   controlando su propio color. */
+.rapago-section-page ion-content > h1,
+.rapago-section-page ion-content > h2,
+.rapago-section-page ion-content > h3,
+.rapago-section-page ion-content > p {
+  color: var(--rp-text);
+}
+
+/* ==========================================================================
+   UI KIT DE SECCIONES — Beneficios (Wallet) y Centro de ayuda
+   Estas dos pantallas ya NO usan colores inline: todo su cromo sale de los
+   tokens de rapago-shell.css, así que responden al tema por pantalla y no
+   pueden volver a quedar con texto invisible. Las tarjetas dejaron de ser
+   ion-card a propósito: así no las alcanza la excepción "legacy" de arriba.
+   ========================================================================== */
+
+/* Columna de lectura: mismo ancho y ritmo que Home y Perfil. */
+.rapago-section-page .rp-shell {
+  width: min(100%, 460px);
+  margin: 0 auto;
+  padding: 8px var(--rp-pad-x) calc(96px + env(safe-area-inset-bottom, 0px));
+  display: flex;
+  flex-direction: column;
+  gap: var(--rp-gap);
+}
+
+/* ── Héroe de marca ─────────────────────────────────────────────────────── */
+/* Oro de marca constante en ambos temas. El texto va en tinta volcánica
+   (#201607), no en blanco: sobre el degradado dorado el blanco daba ~1.9:1
+   de contraste y el encabezado se perdía. La tinta oscura da >7:1. */
+.rp-hero {
+  border-radius: var(--rp-radius);
+  padding: var(--rp-pad);
+  background: var(--rp-btn-primary);
+  color: var(--rp-btn-primary-fg);
+  border: var(--rp-border-w) solid rgba(122, 53, 31, 0.35);
+  box-shadow: var(--rp-shadow-accent);
+}
+
+.rp-hero__top {
+  display: flex;
+  align-items: center;
+  gap: var(--rp-gap-sm);
+}
+
+.rp-hero__icon {
+  width: var(--rp-icon-size);
+  height: var(--rp-icon-size);
+  flex-shrink: 0;
+  border-radius: var(--rp-radius-sm);
+  background: rgba(32, 22, 7, 0.14);
+  display: grid;
+  place-items: center;
+  font-size: 24px;
+}
+
+.rp-hero__kicker {
+  margin: 0;
+  font-size: var(--rp-fs-label);
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  opacity: 0.78;
+}
+
+.rp-hero__amount {
+  margin: 2px 0 0;
+  font-size: var(--rp-fs-hero);
+  font-weight: 850;
+  letter-spacing: -0.02em;
+  line-height: 1.1;
+}
+
+.rp-hero__note {
+  margin: var(--rp-gap-sm) 0 0;
+  font-size: var(--rp-fs-body);
+  font-weight: 600;
+  line-height: 1.5;
+  opacity: 0.88;
+}
+
+/* Héroe alternativo sobre superficie del tema (Centro de ayuda). */
+.rp-hero--surface {
+  background: var(--rp-surface);
+  color: var(--rp-text);
+  border: var(--rp-border-w) solid var(--rp-border-strong);
+  box-shadow: var(--rp-shadow-accent);
+}
+
+.rp-hero--surface .rp-hero__kicker {
+  color: var(--rp-accent);
+  opacity: 1;
+}
+
+.rp-hero--surface .rp-hero__title {
+  margin: 2px 0 0;
+  font-size: var(--rp-fs-hero);
+  font-weight: 850;
+  letter-spacing: -0.02em;
+  line-height: 1.15;
+  color: var(--rp-text);
+}
+
+.rp-hero--surface .rp-hero__note {
+  color: var(--rp-muted);
+  opacity: 1;
+}
+
+/* ── Tiles de resumen (Aprobado / Pendiente) ────────────────────────────── */
+.rp-tile-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--rp-gap-sm);
+}
+
+.rp-tile {
+  border-radius: var(--rp-radius);
+  padding: var(--rp-pad);
+  background: var(--rp-surface);
+  border: var(--rp-border-w) solid var(--rp-border-c);
+  box-shadow: var(--rp-shadow);
+  color: var(--rp-text);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.rp-tile__icon {
+  width: var(--rp-icon-size-sm);
+  height: var(--rp-icon-size-sm);
+  border-radius: 10px;
+  display: grid;
+  place-items: center;
+  font-size: 18px;
+}
+
+.rp-tile--ok .rp-tile__icon {
+  color: var(--rp-ok-fg);
+  background: var(--rp-ok-bg);
+  border: 1px solid var(--rp-ok-bd);
+}
+
+.rp-tile--warn .rp-tile__icon {
+  color: var(--rp-accent);
+  background: var(--rp-icon-bg);
+  border: 1px solid var(--rp-icon-bd);
+}
+
+.rp-tile__label {
+  font-size: var(--rp-fs-label);
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--rp-muted);
+}
+
+.rp-tile__value {
+  font-size: var(--rp-fs-stat);
+  font-weight: 850;
+  letter-spacing: -0.01em;
+}
+
+/* ── Tarjeta de lista (solicitud, devolución, caso de soporte) ──────────── */
+.rp-card {
+  border-radius: var(--rp-radius);
+  padding: var(--rp-pad);
+  background: var(--rp-surface);
+  border: var(--rp-border-w) solid var(--rp-border-c);
+  box-shadow: var(--rp-shadow);
+  color: var(--rp-text);
+}
+
+/* Variante clicable (casos de soporte). */
+.rp-card--tap {
+  width: 100%;
+  text-align: left;
+  font: inherit;
+  cursor: pointer;
+  transition:
+    border-color 0.18s ease,
+    transform 0.18s ease;
+}
+
+.rp-card--tap:active {
+  transform: scale(0.985);
+  border-color: var(--rp-border-strong);
+}
+
+/* Acento lateral de estado: el color llega por style="--rp-card-accent".
+   Es información (estado del caso), no decoración, por eso sigue inline. */
+.rp-card--accent {
+  border-left: 5px solid var(--rp-card-accent, var(--rp-gold));
+}
+
+.rp-card__row {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: var(--rp-gap-sm);
+}
+
+.rp-card__row > .rp-card__main {
+  min-width: 0;
+}
+
+.rp-card__title {
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: var(--rp-fs-body);
+  font-weight: 800;
+  color: var(--rp-text);
+  line-height: 1.3;
+}
+
+.rp-card__title ion-icon {
+  color: var(--rp-icon-fg);
+  flex-shrink: 0;
+}
+
+.rp-card__amount {
+  margin: 6px 0 0;
+  font-size: var(--rp-fs-stat);
+  font-weight: 850;
+  letter-spacing: -0.01em;
+  color: var(--rp-text);
+}
+
+.rp-card__meta {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-top: var(--rp-gap-sm);
+  font-size: var(--rp-fs-sub);
+  color: var(--rp-muted);
+}
+
+.rp-card__meta strong {
+  color: var(--rp-text);
+  font-weight: 800;
+}
+
+.rp-card__foot {
+  margin: var(--rp-gap-sm) 0 0;
+  font-size: var(--rp-fs-sub);
+  color: var(--rp-muted-soft);
+}
+
+.rp-card__ok {
+  margin: 8px 0 0;
+  font-size: var(--rp-fs-sub);
+  font-weight: 800;
+  color: var(--rp-ok-fg);
+}
+
+/* Respuesta del administrador: inset suave sobre la superficie. */
+.rp-card__quote {
+  margin: var(--rp-gap-sm) 0 0;
+  padding: 10px 12px;
+  border-radius: var(--rp-radius-sm);
+  background: var(--rp-surface-soft);
+  border: 1px solid var(--rp-divider);
+  font-size: var(--rp-fs-sub);
+  line-height: 1.45;
+  color: var(--rp-text);
+}
+
+.rp-card__quote strong {
+  color: var(--rp-accent);
+}
+
+/* Los badges de estado conservan los colores semánticos de Ionic, pero con
+   forma de píldora consistente. */
+.rp-card ion-badge,
+.rapago-section-page .rp-badge {
+  flex-shrink: 0;
+  border-radius: 999px;
+  padding: 5px 10px;
+  font-weight: 800;
+  font-size: var(--rp-fs-micro);
+  text-transform: none;
+}
+
+/* ── Estado vacío ───────────────────────────────────────────────────────── */
+.rp-empty {
+  border-radius: var(--rp-radius);
+  padding: clamp(22px, 6vw, 30px) var(--rp-pad);
+  background: var(--rp-surface);
+  border: var(--rp-border-w) dashed var(--rp-border-c);
+  text-align: center;
+  color: var(--rp-text);
+}
+
+.rp-empty__icon {
+  width: var(--rp-icon-size);
+  height: var(--rp-icon-size);
+  margin: 0 auto;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font-size: 22px;
+  color: var(--rp-icon-fg);
+  background: var(--rp-icon-bg);
+  border: 1px solid var(--rp-icon-bd);
+}
+
+.rp-empty__title {
+  margin: 10px 0 4px;
+  font-size: var(--rp-fs-h2);
+  font-weight: 800;
+  color: var(--rp-text);
+}
+
+.rp-empty__body {
+  margin: 0;
+  font-size: var(--rp-fs-body);
+  line-height: 1.5;
+  color: var(--rp-muted);
+}
+
+/* ── Avisos (error / éxito) ─────────────────────────────────────────────── */
+.rp-banner {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 12px 14px;
+  border-radius: var(--rp-radius-sm);
+  font-size: var(--rp-fs-body);
+  font-weight: 700;
+  line-height: 1.45;
+}
+
+.rp-banner ion-icon {
+  flex-shrink: 0;
+  font-size: 20px;
+  margin-top: 1px;
+}
+
+.rp-banner--error {
+  background: var(--rp-err-bg);
+  border: 1.5px solid var(--rp-err-bd);
+  color: var(--rp-err-fg);
+}
+
+.rp-banner--success {
+  background: var(--rp-ok-bg);
+  border: 1.5px solid var(--rp-ok-bd);
+  color: var(--rp-ok-fg);
+}
+
+/* ── Botón de acción principal de sección ───────────────────────────────── */
+.rapago-section-page .rp-cta,
+.rapago-modal-body .rp-cta {
+  --border-radius: var(--rp-radius-sm) !important;
+  height: var(--rp-control-h);
+  font-weight: 800;
+  font-size: var(--rp-fs-body);
+  text-transform: none !important;
+  letter-spacing: 0.01em;
+}
+
+/* ── Cuerpo de modal (Ionic lo monta FUERA de la página) ────────────────── */
+/* El IonModal no es descendiente del IonPage, así que no hereda ni el scope
+   .rapago-section-page ni el atributo de tema de la página. La página envuelve
+   el contenido del modal en .rapago-modal-body y le pone su propio
+   data-rapago-theme: con eso los tokens y las reglas de campos aplican. */
+.rapago-modal-body {
+  min-height: 100%;
+  background: var(--rp-page-bg);
+  color: var(--rp-text);
+  padding: var(--rp-pad);
+}
+
+.rapago-modal-body .rp-modal-inner {
+  max-width: 460px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--rp-gap);
+}
+
+/* Cabecera y fondo del modal: fuera de la página, resuelven contra :root,
+   que useRapagoSectionTheme mantiene espejado al tema de la pantalla activa. */
+ion-toolbar.rapago-modal-toolbar {
+  --background: var(--rp-surface) !important;
+  --ion-color-base: transparent !important;
+  --color: var(--rp-text) !important;
+  --border-width: 0 !important;
+  border-bottom: var(--rp-border-w) solid var(--rp-border-c) !important;
+  --min-height: 56px !important;
+}
+
+ion-toolbar.rapago-modal-toolbar ion-title {
+  color: var(--rp-text) !important;
+  font-size: var(--rp-fs-h2) !important;
+  font-weight: 800 !important;
+  letter-spacing: -0.01em !important;
+}
+
+ion-toolbar.rapago-modal-toolbar .rapago-modal-close {
+  --color: var(--rp-icon-fg) !important;
+  color: var(--rp-icon-fg) !important;
+  font-weight: 800;
+  text-transform: none !important;
+}
+
+ion-content.rapago-modal-content {
+  --background: var(--rp-page-bg) !important;
+}
+
+/* Los campos del modal viven bajo .rapago-modal-body, no bajo el IonPage,
+   así que se replican aquí las reglas mínimas de campos sobre superficie. */
+.rapago-modal-body ion-item {
+  --background: var(--rp-field-bg) !important;
+  --color: var(--rp-text) !important;
+  --border-color: var(--rp-divider) !important;
+  --border-radius: var(--rp-radius-sm) !important;
+  border: 1px solid var(--rp-border-c) !important;
+  border-radius: var(--rp-radius-sm) !important;
+}
+
+.rapago-modal-body ion-item ion-label,
+.rapago-modal-body ion-item ion-label.label-stacked {
+  color: var(--rp-label) !important;
+  opacity: 1 !important;
+}
+
+.rapago-modal-body ion-textarea,
+.rapago-modal-body ion-input {
+  --color: var(--rp-field-fg) !important;
+  --placeholder-color: var(--rp-field-ph) !important;
+  color: var(--rp-field-fg) !important;
+}
+
+.rapago-modal-body ion-textarea textarea,
+.rapago-modal-body ion-textarea::part(native),
+.rapago-modal-body ion-input input,
+.rapago-modal-body ion-input::part(native) {
+  color: var(--rp-field-fg) !important;
+  -webkit-text-fill-color: var(--rp-field-fg) !important;
+  caret-color: var(--rp-gold) !important;
+}
+
+.rapago-modal-body ion-button:not([fill]):not([color]) {
+  --background: var(--rp-btn-primary) !important;
+  --color: var(--rp-btn-primary-fg) !important;
+  color: var(--rp-btn-primary-fg) !important;
+}

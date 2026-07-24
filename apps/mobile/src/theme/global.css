@@ -2212,6 +2212,68 @@ ion-card ion-select {
   color: var(--rapago-volcanic) !important;
 }
 
+/* Texto secundario/caption (IonText color="medium", IonNote): el gris de
+   fábrica de Ionic (#92949c) nunca fue adaptado a esta paleta y queda con
+   bajo contraste sobre las tarjetas ivory — se "no nota" en el panel admin.
+   Se define por contexto: oscuro sobre tarjetas claras, arena sobre fondo
+   oscuro. Debe ganarle a los selectores de arriba, por eso va después. */
+ion-text[color="medium"],
+ion-note[color="medium"],
+.ion-color-medium,
+ion-note:not([slot="error"]) {
+  color: rgba(217, 195, 160, 0.78) !important;
+}
+
+ion-card ion-text[color="medium"],
+ion-card ion-note[color="medium"],
+ion-card .ion-color-medium,
+ion-card ion-note:not([slot="error"]) {
+  color: rgba(26, 26, 26, 0.62) !important;
+}
+
+/* ==========================================================================
+   RAPA GO — Admin: tarjeta de acento oscura (para bloques destacados /
+   urgentes que deben distinguirse de la tarjeta ivory estándar). Reemplaza
+   los degradados ad-hoc (marrón, azul marino, negro puro) que había sueltos
+   en admin/index.tsx por un único estilo coherente con el resto de la app.
+   Debe ir después de "Cards globales" para ganarle a `ion-card` por
+   especificidad (selector de clase > selector de tipo).
+   ========================================================================== */
+ion-card.rapago-accent-card {
+  background: linear-gradient(135deg, var(--rapago-volcanic) 0%, #2b2119 55%, var(--rapago-terracotta) 100%) !important;
+  border: 1px solid rgba(200, 155, 60, 0.4) !important;
+  color: var(--rapago-ivory) !important;
+}
+
+ion-card.rapago-accent-card ion-card-title,
+ion-card.rapago-accent-card ion-card-subtitle,
+ion-card.rapago-accent-card h1,
+ion-card.rapago-accent-card h2,
+ion-card.rapago-accent-card h3,
+ion-card.rapago-accent-card h4,
+ion-card.rapago-accent-card strong,
+ion-card.rapago-accent-card p,
+ion-card.rapago-accent-card div,
+ion-card.rapago-accent-card ion-note,
+ion-card.rapago-accent-card ion-card-content {
+  color: var(--rapago-ivory) !important;
+}
+
+ion-card.rapago-accent-card ion-item {
+  --background: rgba(255, 255, 255, 0.08) !important;
+  --color: var(--rapago-ivory) !important;
+  border-color: rgba(246, 242, 236, 0.18) !important;
+}
+
+ion-card.rapago-accent-card ion-label {
+  color: var(--rapago-ivory) !important;
+}
+
+ion-card.rapago-accent-card ion-select {
+  --color: var(--rapago-ivory) !important;
+  color: var(--rapago-ivory) !important;
+}
+
 /* Badges / chips */
 ion-chip {
   --background: linear-gradient(135deg, var(--rapago-ivory) 0%, var(--rapago-sand) 100%) !important;
@@ -4351,7 +4413,10 @@ ion-modal.facebook-step-modal::part(content) {
 
 /* Card / form shell */
 .rapago-auth-card {
-  width: min(92vw, 460px);
+  /* 100% del contenedor con ion-padding, no del viewport: min(NNvw, ...)
+     ignora el padding lateral del IonContent y desborda ~6-10px en
+     pantallas angostas (320-375px). */
+  width: min(100%, 460px);
   margin: 26px auto 26px;
   padding: 22px 22px 26px;
   border-radius: 28px;
@@ -4682,7 +4747,7 @@ ion-modal.facebook-step-modal::part(content) {
 /* Responsive: mobile-first refinements */
 @media (max-width: 600px) {
   .rapago-auth-card {
-    width: min(94vw, 440px);
+    width: min(100%, 440px);
     margin: 18px auto 22px;
     padding: 18px 16px 22px;
     border-radius: 24px;

@@ -24,27 +24,37 @@ import {
 import { useEffect, useRef, useState, useCallback, type CSSProperties, type ChangeEvent } from "react";
 import { useHistory } from "react-router-dom";
 import {
+  alertCircleOutline,
   arrowBackOutline,
   cameraOutline,
   carOutline,
+  cashOutline,
   checkmarkCircleOutline,
+  chevronForwardOutline,
   copyOutline,
+  createOutline,
   enterOutline,
   exitOutline,
   giftOutline,
+  helpCircleOutline,
   languageOutline,
   keyOutline,
   linkOutline,
   lockClosedOutline,
   logoFacebook,
   mailOutline,
+  moonOutline,
+  peopleOutline,
   personOutline,
   saveOutline,
   shareSocialOutline,
   shieldCheckmarkOutline,
   sparklesOutline,
+  sunnyOutline,
+  timeOutline,
   trashOutline,
 } from "ionicons/icons";
+import { useRapagoSectionTheme } from "../../../theme/rapagoTheme.js";
 import { ModulePlaceholderPage } from "../../../components/ModulePlaceholderPage";
 import { AccountDeletionCard } from "../../../components/accountDeletion/AccountDeletionCard.js";
 import { ROUTE_METADATA } from "../../../navigation/routeConfig";
@@ -208,6 +218,27 @@ const PROFILE_TEXT: Record<ProfileLanguage, Record<string, string>> = {
     safeBadge: "Protegido",
     verifiedBadge: "Verificación",
     activeBadge: "Cuenta activa",
+    statInvited: "Invitados",
+    statEarned: "Ganado",
+    statMember: "Miembro",
+    quickActions: "Acciones rápidas",
+    myInfo: "Mi información",
+    preferences: "Preferencias",
+    accountZone: "Cuenta",
+    actionEditSub: "Nombre y teléfono",
+    actionInviteSub: "Gana beneficios",
+    actionTrips: "Mis viajes",
+    actionTripsSub: "Historial y estado",
+    actionHelp: "Ayuda",
+    actionHelpSub: "Soporte Rapa Go",
+    completePhoneCta: "Completar ahora",
+    emptyReferralTitle: "Todavía no tienes código",
+    retry: "Reintentar",
+    unverified: "Sin verificar",
+    themeTitle: "Apariencia",
+    themeSubtitle: "El modo nocturno descansa la vista; el modo día se lee mejor con sol.",
+    themeDark: "Nocturno",
+    themeLight: "Día",
   },
   en: {
     home: "Home",
@@ -271,8 +302,49 @@ const PROFILE_TEXT: Record<ProfileLanguage, Record<string, string>> = {
     safeBadge: "Protected",
     verifiedBadge: "Verification",
     activeBadge: "Active account",
+    statInvited: "Invited",
+    statEarned: "Earned",
+    statMember: "Member",
+    quickActions: "Quick actions",
+    myInfo: "My information",
+    preferences: "Preferences",
+    accountZone: "Account",
+    actionEditSub: "Name and phone",
+    actionInviteSub: "Earn benefits",
+    actionTrips: "My rides",
+    actionTripsSub: "History and status",
+    actionHelp: "Help",
+    actionHelpSub: "Rapa Go support",
+    completePhoneCta: "Complete now",
+    emptyReferralTitle: "You don't have a code yet",
+    retry: "Retry",
+    unverified: "Unverified",
+    themeTitle: "Appearance",
+    themeSubtitle: "Night mode is easier on the eyes; day mode reads better in sunlight.",
+    themeDark: "Night",
+    themeLight: "Day",
   },
 };
+
+/* Las estadísticas viven en una grilla de 3 columnas: a 320px cada tile mide
+   ~93px, así que un "$120.000" sin abreviar rompe la grilla. */
+function formatCompactReward(value: number, language: ProfileLanguage): string {
+  if (!Number.isFinite(value) || value <= 0) return "$0";
+  if (value >= 1_000_000) return `$${(value / 1_000_000).toFixed(1)}M`;
+  if (value >= 10_000) return `$${Math.round(value / 1000)}k`;
+  return `$${value.toLocaleString(language === "en" ? "en-US" : "es-CL")}`;
+}
+
+function getProfileInitials(source: string): string {
+  return (
+    sanitizeProfileText(source, 40)
+      .split(" ")
+      .slice(0, 2)
+      .map((word) => word[0] ?? "")
+      .join("")
+      .toUpperCase() || "R"
+  );
+}
 
 function normalizeProfileLanguage(value: unknown): ProfileLanguage {
   return String(value ?? "").toLowerCase().startsWith("en") ? "en" : "es";
@@ -819,6 +891,8 @@ export function ProfileIndexPage(): JSX.Element {
 
   const { session } = auth;
   const history = useHistory();
+  /* Tema propio del Perfil: independiente del resto de pantallas. */
+  const { theme, isDark, setTheme } = useRapagoSectionTheme("profile");
 
   type StoredRegistrationProfile = {
     name?: string | null;
@@ -1146,6 +1220,8 @@ export function ProfileIndexPage(): JSX.Element {
   const [nameInput,      setNameInput]      = useState("");
   const [avatarInput,    setAvatarInput]    = useState("");
   const avatarPhotoInputRef = useRef<HTMLInputElement | null>(null);
+  const editSectionRef = useRef<HTMLElement | null>(null);
+  const inviteSectionRef = useRef<HTMLElement | null>(null);
   const [avatarPhotoError, setAvatarPhotoError] = useState<string | null>(null);
   const [phoneInput,     setPhoneInput]     = useState("");
   const [passengerFareType, setPassengerFareType] = useState<PassengerFareType | null>(null);
@@ -1421,6 +1497,18 @@ export function ProfileIndexPage(): JSX.Element {
     persistProfileLanguage(nextLanguage);
   }
 
+  /* Las acciones rápidas de "Editar" e "Invitar" llevan a secciones que ya
+     están en esta misma página: hacer scroll evita una navegación innecesaria
+     y mantiene el contexto del usuario. */
+  function scrollToSection(ref: typeof editSectionRef): void {
+    ref.current?.scrollIntoView({
+      behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches
+        ? "auto"
+        : "smooth",
+      block: "start",
+    });
+  }
+
   function handleGoToDriverMode(): void {
     try {
       localStorage.setItem("rapago_active_mode", "driver");
@@ -1447,66 +1535,36 @@ export function ProfileIndexPage(): JSX.Element {
   }
 
   return (
-    <IonPage>
+    <IonPage className="rapago-profile-page" data-rapago-theme={theme}>
       <IonHeader>
-        <IonToolbar
-          style={
-            {
-              "--background": "linear-gradient(135deg,#d2a43a,#b87828)",
-              "--color": "#ffffff",
-              "--border-width": "0",
-              "--min-height": "70px",
-            } as CSSProperties
-          }
-        >
+        {/* Toolbar transparente sobre el fondo, como el Login. La barra dorada
+            sólida anterior competía con el hero y con el botón "Inicio". */}
+        <IonToolbar className="rapago-profile-toolbar">
           {roleHome && (
             <IonButtons slot="start">
               <IonButton
+                className="rapago-profile-iconbtn"
                 onClick={() => history.push(roleHome)}
-                style={
-                  {
-                    "--border-radius": "999px",
-                    "--background": "rgba(255,255,255,.28)",
-                    "--color": "#111111",
-                    fontWeight: 950,
-                    marginLeft: 8,
-                  } as CSSProperties
-                }
+                aria-label={profileText.home}
+                title={profileText.home}
               >
-                <IonIcon icon={arrowBackOutline} slot="start" />
-                {profileText.home}
+                <IonIcon icon={arrowBackOutline} slot="icon-only" />
               </IonButton>
             </IonButtons>
           )}
 
-          <IonTitle style={{ fontWeight: 950, fontSize: "1.2rem" }}>
-            {profileText.profile}
-          </IonTitle>
+          <IonTitle className="rapago-profile-title">{profileText.profile}</IonTitle>
 
           <IonButtons slot="end">
             <IonButton
+              className="rapago-profile-iconbtn"
               aria-label={
                 language === "es"
                   ? "Cambiar aplicación a inglés"
                   : "Switch app to Spanish"
               }
-              title={
-                language === "es"
-                  ? "Cambiar a English"
-                  : "Cambiar a Español"
-              }
-              onClick={() =>
-                handleLanguageChange(language === "es" ? "en" : "es")
-              }
-              style={
-                {
-                  "--border-radius": "999px",
-                  "--background": "rgba(17,24,39,.22)",
-                  "--color": "#ffffff",
-                  fontWeight: 950,
-                  marginRight: 8,
-                } as CSSProperties
-              }
+              title={language === "es" ? "Cambiar a English" : "Cambiar a Español"}
+              onClick={() => handleLanguageChange(language === "es" ? "en" : "es")}
             >
               <IonIcon icon={languageOutline} slot="start" />
               {language === "es" ? "EN" : "ES"}
@@ -1515,676 +1573,653 @@ export function ProfileIndexPage(): JSX.Element {
         </IonToolbar>
       </IonHeader>
 
-      <IonContent
-        className="ion-padding"
-        style={
-          {
-            "--background":
-              "linear-gradient(180deg, rgba(15,15,15,.84), rgba(15,15,15,.94)), url('/assets/rapa-go-bg.jpg') center/cover no-repeat",
-          } as CSSProperties
-        }
-      >
+      <IonContent className="rapago-profile-content">
         {loading && (
-          <div style={{ display: "flex", justifyContent: "center", paddingTop: "40px" }}>
-            <IonSpinner name="crescent" />
+          <div className="rapago-profile-loading">
+            <IonSpinner name="crescent" color="warning" />
           </div>
         )}
 
-        {loadError && (
-          <IonText color="danger">
-            <p style={{ fontWeight: 900 }}>{loadError}</p>
-          </IonText>
+        {/* Error de carga sin perfil en caché: estado de error con reintento,
+            en vez del párrafo rojo suelto que había antes. */}
+        {!loading && loadError && !profile && (
+          <div className="rapago-profile-shell">
+            <section className="rapago-profile-card">
+              <div className="rapago-profile-empty">
+                <div className="rapago-profile-empty-icon">
+                  <IonIcon icon={alertCircleOutline} />
+                </div>
+                <p className="rapago-profile-empty-text">{loadError}</p>
+                <IonButton
+                  expand="block"
+                  className="rapago-profile-btn-primary"
+                  onClick={() => void loadProfile()}
+                >
+                  {profileText.retry}
+                </IonButton>
+              </div>
+            </section>
+          </div>
         )}
 
         {!loading && profile && (
-          <div style={{ maxWidth: 560, margin: "0 auto", paddingBottom: 96 }}>
-            <section
-              style={{
-                position: "relative",
-                overflow: "hidden",
-                borderRadius: 28,
-                marginBottom: 14,
-                padding: 18,
-                color: "#ffffff",
-                background:
-                  "linear-gradient(135deg, rgba(17,17,17,.98) 0%, rgba(47,30,22,.98) 46%, rgba(210,164,58,.95) 100%)",
-                border: "1px solid rgba(255,255,255,.14)",
-                boxShadow: "0 24px 54px rgba(0,0,0,.34)",
-              }}
-            >
-              <div
-                style={{
-                  position: "absolute",
-                  right: -48,
-                  top: -62,
-                  width: 172,
-                  height: 172,
-                  borderRadius: 999,
-                  background: "rgba(255,255,255,.14)",
-                }}
-              />
-              <div
-                style={{
-                  position: "relative",
-                  zIndex: 1,
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 14,
-                }}
-              >
-                <div
-                  style={{
-                    width: 76,
-                    height: 76,
-                    borderRadius: 26,
-                    overflow: "hidden",
-                    background: "linear-gradient(135deg,#2dd36f,#d2a43a)",
-                    border: "2px solid rgba(255,255,255,.38)",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    fontWeight: 950,
-                    fontSize: "1.35rem",
-                    boxShadow: "0 16px 34px rgba(0,0,0,.32)",
-                    flexShrink: 0,
-                  }}
-                >
+          <div className="rapago-profile-shell">
+            {/* ── Hero ──────────────────────────────────────────────────── */}
+            <header className="rapago-profile-hero">
+              <div className="rapago-profile-avatar-wrap">
+                <div className="rapago-profile-avatar">
                   {getSafePassengerProfilePhotoSource(avatarInput) ? (
                     <img
                       src={getSafePassengerProfilePhotoSource(avatarInput)}
-                      alt="Foto de perfil"
-                      style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                      alt={profileText.avatarUrl}
                     />
                   ) : (
-                    sanitizeProfileText(profile.name || session?.user?.email || "R", 40)
-                      .split(" ")
-                      .slice(0, 2)
-                      .map((word) => word[0] ?? "")
-                      .join("")
-                      .toUpperCase() || "R"
+                    getProfileInitials(
+                      nameInput || profile.name || session?.user?.email || "R",
+                    )
                   )}
                 </div>
 
-                <div style={{ minWidth: 0, flex: 1 }}>
-                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 8 }}>
-                    <IonBadge color="success" style={{ fontWeight: 950 }}>
-                      <IonIcon icon={shieldCheckmarkOutline} style={{ marginRight: 4, verticalAlign: "-2px" }} />
-                      {profileText.safeBadge}
-                    </IonBadge>
-                    {profile.status === "active" && (
-                      <IonBadge color="warning" style={{ fontWeight: 950 }}>
-                        {profileText.activeBadge}
-                      </IonBadge>
-                    )}
+                {/* Sustituye al bloque de foto que duplicaba el avatar dentro
+                    de "Editar perfil". */}
+                <button
+                  type="button"
+                  className="rapago-profile-avatar-edit"
+                  onClick={() => avatarPhotoInputRef.current?.click()}
+                  aria-label={
+                    getSafePassengerProfilePhotoSource(avatarInput)
+                      ? profileText.avatarChange
+                      : profileText.avatarAttach
+                  }
+                  title={
+                    getSafePassengerProfilePhotoSource(avatarInput)
+                      ? profileText.avatarChange
+                      : profileText.avatarAttach
+                  }
+                >
+                  <IonIcon icon={cameraOutline} />
+                </button>
+              </div>
+
+              <input
+                ref={avatarPhotoInputRef}
+                type="file"
+                accept="image/*"
+                onChange={handleAvatarPhotoChange}
+                style={{ display: "none" }}
+              />
+
+              <h1 className="rapago-profile-name">
+                {sanitizeProfileText(nameInput || profile.name, 80)}
+              </h1>
+              <p className="rapago-profile-email">
+                {sanitizeProfileText(profile.email, 160)}
+              </p>
+
+              <div className="rapago-profile-chips">
+                <span className="rapago-profile-chip rapago-profile-chip--gold">
+                  <IonIcon icon={shieldCheckmarkOutline} />
+                  {profileText.safeBadge}
+                </span>
+                {profile.status === "active" && (
+                  <span className="rapago-profile-chip rapago-profile-chip--green">
+                    <IonIcon icon={checkmarkCircleOutline} />
+                    {profileText.activeBadge}
+                  </span>
+                )}
+                <span
+                  className={`rapago-profile-chip ${
+                    profile.isVerified
+                      ? "rapago-profile-chip--green"
+                      : "rapago-profile-chip--muted"
+                  }`}
+                >
+                  <IonIcon
+                    icon={profile.isVerified ? checkmarkCircleOutline : alertCircleOutline}
+                  />
+                  {profile.isVerified ? profileText.verifiedBadge : profileText.unverified}
+                </span>
+              </div>
+
+              {avatarPhotoError && (
+                <div className="rapago-profile-feedback rapago-profile-feedback--error">
+                  <IonIcon icon={alertCircleOutline} />
+                  {avatarPhotoError}
+                </div>
+              )}
+            </header>
+
+            {/* ── Estadísticas ──────────────────────────────────────────── */}
+            {/* Datos que ya existían pero estaban enterrados en texto corrido. */}
+            <div className="rapago-profile-stats">
+              <div className="rapago-profile-stat">
+                <div className="rapago-profile-stat-value">
+                  {referral?.usedCount ?? 0}
+                </div>
+                <div className="rapago-profile-stat-label">
+                  {profileText.statInvited}
+                </div>
+              </div>
+              <div className="rapago-profile-stat">
+                <div className="rapago-profile-stat-value">
+                  {formatCompactReward(referral?.totalReward ?? 0, language)}
+                </div>
+                <div className="rapago-profile-stat-label">
+                  {profileText.statEarned}
+                </div>
+              </div>
+              <div className="rapago-profile-stat">
+                <div className="rapago-profile-stat-value">
+                  {new Date(profile.createdAt).getFullYear()}
+                </div>
+                <div className="rapago-profile-stat-label">
+                  {profileText.statMember}
+                </div>
+              </div>
+            </div>
+
+            {/* ── Aviso accionable ──────────────────────────────────────── */}
+            {/* Antes era un banner informativo sin salida. Ahora lleva al campo
+                que hay que completar. */}
+            {!phoneInput.trim() && (
+              <button
+                type="button"
+                className="rapago-profile-alert"
+                onClick={() => scrollToSection(editSectionRef)}
+              >
+                <IonIcon icon={alertCircleOutline} />
+                <span>
+                  {profileText.completePhone}
+                  <br />
+                  <strong>{profileText.completePhoneCta}</strong>
+                </span>
+                <IonIcon
+                  icon={chevronForwardOutline}
+                  className="rapago-profile-alert-arrow"
+                />
+              </button>
+            )}
+
+            {/* ── Acciones rápidas ──────────────────────────────────────── */}
+            <div className="rapago-profile-section-label">
+              {profileText.quickActions}
+            </div>
+
+            <div className="rapago-profile-actions">
+              <button
+                type="button"
+                className="rapago-profile-action"
+                onClick={() => scrollToSection(editSectionRef)}
+              >
+                <span className="rapago-profile-action-icon">
+                  <IonIcon icon={createOutline} />
+                </span>
+                <span>
+                  <span className="rapago-profile-action-title">
+                    {profileText.editProfile}
+                  </span>
+                  <span className="rapago-profile-action-sub">
+                    {profileText.actionEditSub}
+                  </span>
+                </span>
+              </button>
+
+              <button
+                type="button"
+                className="rapago-profile-action"
+                onClick={() => scrollToSection(inviteSectionRef)}
+              >
+                <span className="rapago-profile-action-icon">
+                  <IonIcon icon={giftOutline} />
+                </span>
+                <span>
+                  <span className="rapago-profile-action-title">
+                    {profileText.inviteTitle}
+                  </span>
+                  <span className="rapago-profile-action-sub">
+                    {profileText.actionInviteSub}
+                  </span>
+                </span>
+              </button>
+
+              <button
+                type="button"
+                className="rapago-profile-action"
+                onClick={() => history.push(ROUTES.PASSENGER.TRIPS)}
+              >
+                <span className="rapago-profile-action-icon">
+                  <IonIcon icon={timeOutline} />
+                </span>
+                <span>
+                  <span className="rapago-profile-action-title">
+                    {profileText.actionTrips}
+                  </span>
+                  <span className="rapago-profile-action-sub">
+                    {profileText.actionTripsSub}
+                  </span>
+                </span>
+              </button>
+
+              <button
+                type="button"
+                className="rapago-profile-action"
+                onClick={() => history.push(ROUTES.SUPPORT.CENTER)}
+              >
+                <span className="rapago-profile-action-icon">
+                  <IonIcon icon={helpCircleOutline} />
+                </span>
+                <span>
+                  <span className="rapago-profile-action-title">
+                    {profileText.actionHelp}
+                  </span>
+                  <span className="rapago-profile-action-sub">
+                    {profileText.actionHelpSub}
+                  </span>
+                </span>
+              </button>
+            </div>
+
+            {/* ── Modo conductor ────────────────────────────────────────── */}
+            {canOpenDriverMode && (
+              <section className="rapago-profile-card rapago-profile-card--accent">
+                <div className="rapago-profile-driver">
+                  <span className="rapago-profile-card-icon">
+                    <IonIcon icon={carOutline} />
+                  </span>
+
+                  <div className="rapago-profile-driver-body">
+                    <div className="rapago-profile-driver-tag">
+                      <IonIcon icon={checkmarkCircleOutline} />
+                      {profileText.driverApproved}
+                    </div>
+                    <h2 className="rapago-profile-card-title">
+                      {profileText.driverMode}
+                    </h2>
+                    <p className="rapago-profile-card-sub">
+                      {profileText.driverModeSubtitle}
+                    </p>
                   </div>
-                  <div style={{ fontSize: "1.45rem", fontWeight: 950, lineHeight: 1.08 }}>
-                    {sanitizeProfileText(nameInput || profile.name, 80)}
+                </div>
+
+                <IonButton
+                  expand="block"
+                  className="rapago-profile-btn-primary"
+                  style={{ marginTop: 14 }}
+                  onClick={handleGoToDriverMode}
+                >
+                  <IonIcon icon={enterOutline} slot="start" />
+                  {profileText.switchDriver}
+                </IonButton>
+              </section>
+            )}
+
+            {/* ── Mi información ────────────────────────────────────────── */}
+            <div className="rapago-profile-section-label">
+              {profileText.myInfo}
+            </div>
+
+            <section className="rapago-profile-card">
+              <div className="rapago-profile-rows">
+                {[
+                  {
+                    icon: mailOutline,
+                    label: profileText.email,
+                    value: profile.email,
+                  },
+                  {
+                    icon: sparklesOutline,
+                    label: profileText.nationality,
+                    value: passengerFareLabel,
+                    helper: passengerFareDescription,
+                  },
+                  {
+                    icon: personOutline,
+                    label: profileText.role,
+                    value: accountRoleLabel,
+                  },
+                  {
+                    icon: shieldCheckmarkOutline,
+                    label: profileText.status,
+                    value: getProfileStatusLabel(profile.status, language),
+                  },
+                  {
+                    icon: cashOutline,
+                    label: profileText.memberSince,
+                    value: new Date(profile.createdAt).toLocaleDateString(
+                      language === "en" ? "en-US" : "es-CL",
+                    ),
+                  },
+                ].map((item) => (
+                  <div className="rapago-profile-row" key={item.label}>
+                    <span className="rapago-profile-row-icon">
+                      <IonIcon icon={item.icon} />
+                    </span>
+                    <div>
+                      <div className="rapago-profile-row-label">{item.label}</div>
+                      <div className="rapago-profile-row-value">
+                        {sanitizeProfileText(item.value, 180)}
+                      </div>
+                      {item.helper && (
+                        <div className="rapago-profile-row-helper">{item.helper}</div>
+                      )}
+                    </div>
                   </div>
-                  <div style={{ marginTop: 5, fontSize: ".86rem", opacity: .88, fontWeight: 800 }}>
-                    {profileText.hello}
+                ))}
+              </div>
+
+              {/* Nota de seguridad: antes ocupaba una tarjeta completa para un
+                  mensaje que es contexto, no acción. */}
+              <div className="rapago-profile-row" style={{ borderBottom: 0 }}>
+                <span className="rapago-profile-row-icon">
+                  <IonIcon icon={lockClosedOutline} />
+                </span>
+                <div>
+                  <div className="rapago-profile-row-label">
+                    {profileText.securityTitle}
                   </div>
-                  <div style={{ marginTop: 8, fontSize: ".76rem", opacity: .82, fontWeight: 800 }}>
-                    {sanitizeProfileText(profile.email, 160)}
+                  <div className="rapago-profile-row-helper">
+                    {profileText.securitySubtitle}
                   </div>
                 </div>
               </div>
             </section>
 
-            {!phoneInput.trim() && (
-              <IonCard
-                style={rapagoProfileCard({
-                  background: "linear-gradient(135deg,#fff3cd,#fff9e8)",
-                  border: "1px solid rgba(210,164,58,.62)",
-                })}
+            {/* ── Editar perfil ─────────────────────────────────────────── */}
+            <div className="rapago-profile-section-label">
+              {profileText.editProfile}
+            </div>
+
+            <section className="rapago-profile-card" ref={editSectionRef}>
+              <div className="rapago-profile-card-head">
+                <span className="rapago-profile-card-icon">
+                  <IonIcon icon={saveOutline} />
+                </span>
+                <div>
+                  <h2 className="rapago-profile-card-title">
+                    {profileText.editProfile}
+                  </h2>
+                  <p className="rapago-profile-card-sub">
+                    {profileText.editSubtitle}
+                  </p>
+                </div>
+              </div>
+
+              <IonItem lines="none" className="rapago-profile-field">
+                <IonLabel position="stacked">{profileText.name}</IonLabel>
+                <IonInput
+                  value={nameInput}
+                  onIonInput={(e) => setNameInput(sanitizeProfileText(e.detail.value, 100))}
+                  placeholder={profileText.namePlaceholder}
+                  maxlength={100}
+                  clearInput
+                />
+              </IonItem>
+
+              <IonItem lines="none" className="rapago-profile-field">
+                <IonLabel position="stacked">{profileText.phone}</IonLabel>
+                <IonInput
+                  value={phoneInput}
+                  onIonInput={(e) => setPhoneInput(sanitizeProfilePhone(e.detail.value))}
+                  placeholder={profileText.phonePlaceholder}
+                  type="tel"
+                  maxlength={20}
+                  clearInput
+                />
+              </IonItem>
+
+              <IonItem
+                lines="none"
+                className="rapago-profile-field rapago-profile-field--readonly"
               >
-                <IonCardContent style={{ padding: "12px 14px", fontWeight: 900, color: "#6b4700" }}>
-                  📱 {profileText.completePhone}
-                </IonCardContent>
-              </IonCard>
-            )}
+                <IonLabel position="stacked">{profileText.nationality}</IonLabel>
+                <IonInput value={passengerFareLabel} readonly />
+                <IonNote slot="helper">{profileText.fareHelper}</IonNote>
+              </IonItem>
 
-            <IonCard style={rapagoProfileCard()}>
-              <IonCardContent style={{ padding: 16 }}>
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0 }}>
-                    <div
-                      style={{
-                        width: 46,
-                        height: 46,
-                        borderRadius: 16,
-                        background: "linear-gradient(135deg,#111827,#8F3F25)",
-                        color: "#f8d879",
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        flexShrink: 0,
-                      }}
-                    >
-                      <IonIcon icon={languageOutline} style={{ fontSize: 26 }} />
-                    </div>
-                    <div style={{ minWidth: 0 }}>
-                      <div style={{ fontWeight: 950, fontSize: "1rem" }}>{profileText.languageTitle}</div>
-                      <div style={{ color: "#555", fontSize: ".76rem", fontWeight: 800, marginTop: 2, lineHeight: 1.35 }}>
-                        {profileText.languageSubtitle}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginTop: 14 }}>
-                  <IonButton
-                    expand="block"
-                    color={language === "es" ? "success" : "medium"}
-                    fill={language === "es" ? "solid" : "outline"}
-                    onClick={() => handleLanguageChange("es")}
-                    style={{ "--border-radius": "16px", height: "48px", fontWeight: 950 } as CSSProperties}
-                  >
-                    🇨🇱 {profileText.spanish}
-                  </IonButton>
-                  <IonButton
-                    expand="block"
-                    color={language === "en" ? "success" : "medium"}
-                    fill={language === "en" ? "solid" : "outline"}
-                    onClick={() => handleLanguageChange("en")}
-                    style={{ "--border-radius": "16px", height: "48px", fontWeight: 950 } as CSSProperties}
-                  >
-                    🇺🇸 {profileText.english}
-                  </IonButton>
-                </div>
-              </IonCardContent>
-            </IonCard>
-
-            <IonCard style={rapagoProfileCard()}>
-              <IonCardContent style={{ padding: 16 }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 14 }}>
-                  <div
-                    style={{
-                      width: 46,
-                      height: 46,
-                      borderRadius: 16,
-                      background: "rgba(34,197,94,.14)",
-                      color: "#15803d",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      flexShrink: 0,
-                    }}
-                  >
-                    <IonIcon icon={lockClosedOutline} style={{ fontSize: 25 }} />
-                  </div>
-                  <div>
-                    <div style={{ fontWeight: 950, fontSize: "1rem" }}>{profileText.securityTitle}</div>
-                    <div style={{ color: "#555", fontSize: ".76rem", fontWeight: 800, marginTop: 2, lineHeight: 1.35 }}>
-                      {profileText.securitySubtitle}
-                    </div>
-                  </div>
-                </div>
-
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-                  <div style={{ borderRadius: 18, background: "#ffffff", padding: 12, border: "1px solid rgba(210,164,58,.28)" }}>
-                    <div style={{ color: "#8a6418", fontWeight: 950, fontSize: ".70rem" }}>{profileText.verifiedBadge}</div>
-                    <div style={{ marginTop: 5, fontWeight: 950 }}>{profile.isVerified ? profileText.yes : profileText.no}</div>
-                  </div>
-                  <div style={{ borderRadius: 18, background: "#ffffff", padding: 12, border: "1px solid rgba(210,164,58,.28)" }}>
-                    <div style={{ color: "#8a6418", fontWeight: 950, fontSize: ".70rem" }}>{profileText.status}</div>
-                    <div style={{ marginTop: 5, fontWeight: 950 }}>{getProfileStatusLabel(profile.status, language)}</div>
-                  </div>
-                </div>
-              </IonCardContent>
-            </IonCard>
-
-            <IonCard style={rapagoProfileCard()}>
-              <IonCardContent style={{ padding: 16 }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 14 }}>
-                  <div
-                    style={{
-                      width: 46,
-                      height: 46,
-                      borderRadius: 16,
-                      background: "linear-gradient(135deg,#d2a43a,#f0d9aa)",
-                      color: "#111",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      flexShrink: 0,
-                    }}
-                  >
-                    <IonIcon icon={personOutline} style={{ fontSize: 25 }} />
-                  </div>
-                  <div>
-                    <div style={{ fontWeight: 950, fontSize: "1.05rem" }}>{profileText.accountData}</div>
-                    <div style={{ color: "#555", fontSize: ".76rem", fontWeight: 800, marginTop: 2, lineHeight: 1.35 }}>
-                      {profileText.accountSubtitle}
-                    </div>
-                  </div>
-                </div>
-
-                <div style={{ display: "grid", gap: 10 }}>
-                  {[
-                    { icon: mailOutline, label: profileText.email, value: profile.email },
-                    { icon: sparklesOutline, label: profileText.nationality, value: passengerFareLabel, helper: passengerFareDescription },
-                    { icon: personOutline, label: profileText.role, value: accountRoleLabel },
-                    { icon: shieldCheckmarkOutline, label: profileText.verified, value: profile.isVerified ? profileText.yes : profileText.no },
-                  ].map((item) => (
-                    <div
-                      key={item.label}
-                      style={{
-                        display: "grid",
-                        gridTemplateColumns: "34px 1fr",
-                        gap: 10,
-                        alignItems: "center",
-                        borderRadius: 18,
-                        background: "#ffffff",
-                        padding: "10px 12px",
-                        border: "1px solid rgba(210,164,58,.24)",
-                      }}
-                    >
-                      <div
-                        style={{
-                          width: 34,
-                          height: 34,
-                          borderRadius: 12,
-                          background: "rgba(210,164,58,.14)",
-                          color: "#8a6418",
-                          display: "flex",
-                          alignItems: "center",
-                          justifyContent: "center",
-                        }}
-                      >
-                        <IonIcon icon={item.icon} />
-                      </div>
-                      <div style={{ minWidth: 0 }}>
-                        <div style={{ color: "#6f4d12", fontSize: ".68rem", fontWeight: 950, textTransform: "uppercase" }}>
-                          {item.label}
-                        </div>
-                        <div style={{ fontWeight: 950, fontSize: ".92rem", marginTop: 2, wordBreak: "break-word" }}>
-                          {sanitizeProfileText(item.value, 180)}
-                        </div>
-                        {item.helper && (
-                          <div style={{ color: "#666", fontSize: ".72rem", fontWeight: 750, marginTop: 2, lineHeight: 1.3 }}>
-                            {item.helper}
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  ))}
-
-                  <div style={{ color: "#666", fontSize: ".75rem", fontWeight: 850, padding: "0 2px" }}>
-                    {profileText.memberSince} {new Date(profile.createdAt).toLocaleDateString(language === "en" ? "en-US" : "es-CL")}
-                  </div>
-                </div>
-              </IonCardContent>
-            </IonCard>
-
-            {canOpenDriverMode && (
-              <IonCard
-                style={rapagoProfileCard({
-                  background: "linear-gradient(135deg, rgba(17,17,17,.98), rgba(58,45,27,.97) 58%, rgba(210,164,58,.92))",
-                  color: "#ffffff",
-                  border: "1px solid rgba(210,164,58,.46)",
-                })}
-              >
-                <IonCardContent style={{ padding: 14, display: "flex", gap: 12, alignItems: "center" }}>
-                  <div
-                    style={{
-                      width: 52,
-                      height: 52,
-                      borderRadius: 18,
-                      background: "rgba(255,255,255,.14)",
-                      border: "1px solid rgba(255,255,255,.18)",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      flexShrink: 0,
-                    }}
-                  >
-                    <IonIcon icon={carOutline} style={{ fontSize: 28, color: "#F8D879" }} />
-                  </div>
-
-                  <div style={{ minWidth: 0, flex: 1 }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: 6, color: "#BBF7D0", fontSize: ".68rem", fontWeight: 950, textTransform: "uppercase", marginBottom: 3 }}>
-                      <IonIcon icon={checkmarkCircleOutline} />
-                      {profileText.driverApproved}
-                    </div>
-                    <div style={{ fontWeight: 950, fontSize: "1.05rem", lineHeight: 1.15 }}>{profileText.driverMode}</div>
-                    <div style={{ marginTop: 3, color: "rgba(255,255,255,.76)", fontSize: ".74rem", fontWeight: 750, lineHeight: 1.28 }}>
-                      {profileText.driverModeSubtitle}
-                    </div>
-                  </div>
-
-                  <IonButton
-                    size="small"
-                    onClick={handleGoToDriverMode}
-                    style={
-                      {
-                        "--border-radius": "999px",
-                        "--background": "linear-gradient(135deg, #D8A83E 0%, #F0D9AA 100%)",
-                        "--background-activated": "#d2a43a",
-                        "--color": "#111111",
-                        height: "42px",
-                        minHeight: "42px",
-                        fontWeight: 950,
-                        fontSize: ".76rem",
-                        margin: 0,
-                        flexShrink: 0,
-                      } as CSSProperties
-                    }
-                  >
-                    <IonIcon icon={enterOutline} slot="start" />
-                    {profileText.switchDriver}
-                  </IonButton>
-                </IonCardContent>
-              </IonCard>
-            )}
-
-            <IonCard style={rapagoProfileCard()}>
-              <IonCardContent style={{ padding: 16 }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 10 }}>
-                  <div
-                    style={{
-                      width: 46,
-                      height: 46,
-                      borderRadius: 16,
-                      background: "rgba(210,164,58,.16)",
-                      color: "#8a6418",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      flexShrink: 0,
-                    }}
-                  >
-                    <IonIcon icon={saveOutline} style={{ fontSize: 24 }} />
-                  </div>
-                  <div>
-                    <div style={{ fontWeight: 950, fontSize: "1.05rem" }}>{profileText.editProfile}</div>
-                    <div style={{ color: "#555", fontSize: ".76rem", fontWeight: 800, marginTop: 2, lineHeight: 1.35 }}>
-                      {profileText.editSubtitle}
-                    </div>
-                  </div>
-                </div>
-
-                <IonItem lines="none" style={rapagoInputStyle()}>
-                  <IonLabel position="stacked" style={rapagoLabelStyle()}>{profileText.name}</IonLabel>
-                  <IonInput
-                    style={rapagoFieldStyle()}
-                    value={nameInput}
-                    onIonInput={(e) => setNameInput(sanitizeProfileText(e.detail.value, 100))}
-                    placeholder={profileText.namePlaceholder}
-                    maxlength={100}
-                    clearInput
-                  />
-                </IonItem>
-
-                <IonItem lines="none" style={rapagoInputStyle()}>
-                  <IonLabel position="stacked" style={rapagoLabelStyle()}>{profileText.phone}</IonLabel>
-                  <IonInput
-                    style={rapagoFieldStyle()}
-                    value={phoneInput}
-                    onIonInput={(e) => setPhoneInput(sanitizeProfilePhone(e.detail.value))}
-                    placeholder={profileText.phonePlaceholder}
-                    type="tel"
-                    maxlength={20}
-                    clearInput
-                  />
-                </IonItem>
-
-                <IonItem lines="none" style={rapagoInputStyle()}>
-                  <IonLabel position="stacked" style={rapagoLabelStyle()}>{profileText.nationality}</IonLabel>
-                  <IonInput
-                    style={rapagoFieldStyle()}
-                    value={passengerFareLabel}
-                    readonly
-                  />
-                  <IonNote slot="helper" style={{ fontSize: ".70rem", fontWeight: 750 }}>
-                    {profileText.fareHelper}
-                  </IonNote>
-                </IonItem>
-
-                <div
-                  style={{
-                    marginTop: 12,
-                    padding: 14,
-                    borderRadius: 20,
-                    background: "linear-gradient(135deg,#ffffff 0%,#fff8e6 100%)",
-                    border: "1.5px dashed rgba(210,164,58,.62)",
-                    boxShadow: "0 12px 26px rgba(0,0,0,.08)",
-                  }}
+              {/* La foto se gestiona desde el avatar del hero; aquí solo se
+                  ofrece quitarla, que es la acción que allí no cabe. */}
+              {getSafePassengerProfilePhotoSource(avatarInput) && (
+                <IonButton
+                  expand="block"
+                  className="rapago-profile-btn-outline"
+                  onClick={handleRemoveAvatarPhoto}
+                  style={{ marginBottom: 12 }}
                 >
-                  <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                    <div
-                      style={{
-                        width: 70,
-                        height: 70,
-                        borderRadius: 22,
-                        overflow: "hidden",
-                        background: "linear-gradient(135deg,#2dd36f,#d2a43a)",
-                        color: "#fff",
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        fontWeight: 950,
-                        fontSize: "1.18rem",
-                        boxShadow: "0 12px 24px rgba(0,0,0,.18)",
-                        flexShrink: 0,
-                      }}
-                    >
-                      {getSafePassengerProfilePhotoSource(avatarInput) ? (
-                        <img
-                          src={getSafePassengerProfilePhotoSource(avatarInput)}
-                          alt="Foto de perfil"
-                          style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
-                        />
-                      ) : (
-                        sanitizeProfileText(nameInput || profile.name || session?.user?.email || "R", 40)
-                          .split(" ")
-                          .slice(0, 2)
-                          .map((word) => word[0] ?? "")
-                          .join("")
-                          .toUpperCase() || "R"
-                      )}
-                    </div>
+                  <IonIcon icon={trashOutline} slot="start" />
+                  {profileText.avatarRemove}
+                </IonButton>
+              )}
 
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontWeight: 950, color: "#111", fontSize: ".95rem" }}>
-                        {profileText.avatarUrl}
-                      </div>
-                      <div style={{ color: "#555", fontSize: ".76rem", fontWeight: 800, lineHeight: 1.35, marginTop: 3 }}>
-                        {profileText.avatarHelper}
-                      </div>
-                      {getSafePassengerProfilePhotoSource(avatarInput) && (
-                        <div style={{ color: "#0F8A3A", fontSize: ".74rem", fontWeight: 950, marginTop: 5 }}>
-                          ✓ {profileText.avatarSelected}
-                        </div>
-                      )}
+              {saveSuccess && (
+                <div className="rapago-profile-feedback rapago-profile-feedback--ok">
+                  <IonIcon icon={checkmarkCircleOutline} />
+                  {profileText.saved}
+                </div>
+              )}
+              {saveError && (
+                <div className="rapago-profile-feedback rapago-profile-feedback--error">
+                  <IonIcon icon={alertCircleOutline} />
+                  {saveError}
+                </div>
+              )}
+
+              <IonButton
+                expand="block"
+                className="rapago-profile-btn-primary"
+                style={{ marginTop: 16 }}
+                onClick={() => void handleSave()}
+                disabled={saving}
+              >
+                {saving ? <IonSpinner name="dots" /> : profileText.save}
+              </IonButton>
+            </section>
+
+            {/* ── Invita y Gana ─────────────────────────────────────────── */}
+            <div className="rapago-profile-section-label">
+              {profileText.inviteTitle}
+            </div>
+
+            <section className="rapago-profile-card" ref={inviteSectionRef}>
+              <div className="rapago-profile-card-head">
+                <span className="rapago-profile-card-icon">
+                  <IonIcon icon={giftOutline} />
+                </span>
+                <div>
+                  <h2 className="rapago-profile-card-title">
+                    {profileText.inviteTitle}
+                  </h2>
+                  <p className="rapago-profile-card-sub">
+                    {profileText.inviteSubtitle}
+                  </p>
+                </div>
+              </div>
+
+              {referral && referral.code ? (
+                <>
+                  <div className="rapago-profile-code">
+                    <div className="rapago-profile-row-label">
+                      {profileText.yourCode}
+                    </div>
+                    <div className="rapago-profile-code-value">
+                      {sanitizeProfileText(referral.code, 40)}
+                    </div>
+                    <div className="rapago-profile-code-meta">
+                      {profileText.invited} <strong>{referral.usedCount}</strong>{" "}
+                      {profileText.people} · {profileText.earned}{" "}
+                      <strong>
+                        $
+                        {referral.totalReward.toLocaleString(
+                          language === "en" ? "en-US" : "es-CL",
+                        )}{" "}
+                        CLP
+                      </strong>
                     </div>
                   </div>
 
-                  <input
-                    ref={avatarPhotoInputRef}
-                    type="file"
-                    accept="image/*"
-                    onChange={handleAvatarPhotoChange}
-                    style={{ display: "none" }}
-                  />
-
-                  <div
-                    style={{
-                      display: "grid",
-                      gridTemplateColumns: getSafePassengerProfilePhotoSource(avatarInput) ? "1fr 1fr" : "1fr",
-                      gap: 10,
-                      marginTop: 14,
-                    }}
-                  >
+                  <div className="rapago-profile-btn-grid">
                     <IonButton
                       expand="block"
-                      color="success"
-                      onClick={() => avatarPhotoInputRef.current?.click()}
-                      style={{ "--border-radius": "16px", height: "48px", fontWeight: 950 } as CSSProperties}
+                      className="rapago-profile-btn-primary"
+                      onClick={() => void handleCopyCode(referral.code)}
                     >
-                      <IonIcon icon={cameraOutline} slot="start" />
-                      {getSafePassengerProfilePhotoSource(avatarInput) ? profileText.avatarChange : profileText.avatarAttach}
+                      <IonIcon icon={copyOutline} slot="start" />
+                      {copiedCode ? profileText.copied : profileText.copyCode}
                     </IonButton>
-
-                    {getSafePassengerProfilePhotoSource(avatarInput) && (
-                      <IonButton
-                        expand="block"
-                        fill="outline"
-                        color="danger"
-                        onClick={handleRemoveAvatarPhoto}
-                        style={{ "--border-radius": "16px", height: "48px", fontWeight: 950 } as CSSProperties}
-                      >
-                        <IonIcon icon={trashOutline} slot="start" />
-                        {profileText.avatarRemove}
-                      </IonButton>
-                    )}
-                  </div>
-
-                  {avatarPhotoError && (
-                    <IonText color="danger">
-                      <p style={{ margin: "8px 0 0", fontSize: ".78rem", fontWeight: 850 }}>
-                        {avatarPhotoError}
-                      </p>
-                    </IonText>
-                  )}
-                </div>
-
-                {saveSuccess && (
-                  <IonText color="success">
-                    <p style={{ margin: "10px 0 0", fontSize: ".85rem", fontWeight: 900 }}>✓ {profileText.saved}</p>
-                  </IonText>
-                )}
-                {saveError && (
-                  <IonText color="danger">
-                    <p style={{ margin: "10px 0 0", fontSize: ".85rem", fontWeight: 900 }}>{saveError}</p>
-                  </IonText>
-                )}
-
-                <IonButton
-                  expand="block"
-                  color="warning"
-                  style={{ "--border-radius": "18px", "--color": "#111", height: "52px", marginTop: 16, fontWeight: 950 } as CSSProperties}
-                  onClick={() => void handleSave()}
-                  disabled={saving}
-                >
-                  {saving ? <IonSpinner name="dots" /> : profileText.save}
-                </IonButton>
-              </IonCardContent>
-            </IonCard>
-
-            <IonCard style={rapagoProfileCard({ background: "linear-gradient(135deg,#fff7dc,#f6f2ec)" })}>
-              <IonCardContent style={{ padding: 16 }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 12 }}>
-                  <div
-                    style={{
-                      width: 46,
-                      height: 46,
-                      borderRadius: 16,
-                      background: "linear-gradient(135deg,#d2a43a,#f0d9aa)",
-                      color: "#111",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      flexShrink: 0,
-                    }}
-                  >
-                    <IonIcon icon={giftOutline} style={{ fontSize: 25 }} />
-                  </div>
-                  <div>
-                    <div style={{ fontWeight: 950, fontSize: "1.05rem" }}>{profileText.inviteTitle}</div>
-                    <div style={{ color: "#555", fontSize: ".76rem", fontWeight: 800, marginTop: 2, lineHeight: 1.35 }}>
-                      {profileText.inviteSubtitle}
-                    </div>
-                  </div>
-                </div>
-
-                {referral && referral.code ? (
-                  <>
-                    <div
-                      style={{
-                        borderRadius: 18,
-                        background: "#ffffff",
-                        border: "1px solid rgba(210,164,58,.35)",
-                        padding: "13px 14px",
-                        marginBottom: 12,
+                    <IonButton
+                      expand="block"
+                      className="rapago-profile-btn-outline"
+                      onClick={() => {
+                        const shareData = {
+                          title: profileText.shareTitle,
+                          text: profileText.shareText,
+                          url: referral.link,
+                        };
+                        if (navigator.share) {
+                          void navigator.share(shareData);
+                        } else {
+                          void handleCopyCode(referral.link);
+                        }
                       }}
                     >
-                      <div style={{ color: "#8a6418", fontWeight: 950, fontSize: ".70rem", textTransform: "uppercase" }}>
-                        {profileText.yourCode}
-                      </div>
-                      <div style={{ fontFamily: "monospace", fontSize: "1.35rem", fontWeight: 950, marginTop: 3 }}>
-                        {sanitizeProfileText(referral.code, 40)}
-                      </div>
-                      <div style={{ marginTop: 8, color: "#555", fontSize: ".78rem", fontWeight: 800, lineHeight: 1.35 }}>
-                        {profileText.invited} <strong>{referral.usedCount}</strong> {profileText.people} · {profileText.earned} <strong>${referral.totalReward.toLocaleString(language === "en" ? "en-US" : "es-CL")} CLP</strong>
-                      </div>
-                    </div>
-                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-                      <IonButton
-                        expand="block"
-                        color="warning"
-                        onClick={() => void handleCopyCode(referral.code)}
-                        style={{ "--border-radius": "16px", "--color": "#111", fontWeight: 950 } as CSSProperties}
-                      >
-                        <IonIcon icon={copyOutline} slot="start" />
-                        {copiedCode ? profileText.copied : profileText.copyCode}
-                      </IonButton>
-                      <IonButton
-                        expand="block"
-                        fill="outline"
-                        color="dark"
-                        onClick={() => {
-                          const shareData = { title: profileText.shareTitle, text: profileText.shareText, url: referral.link };
-                          if (navigator.share) {
-                            void navigator.share(shareData);
-                          } else {
-                            void handleCopyCode(referral.link);
-                          }
-                        }}
-                        style={{ "--border-radius": "16px", fontWeight: 950 } as CSSProperties}
-                      >
-                        <IonIcon icon={shareSocialOutline} slot="start" />
-                        {profileText.shareLink}
-                      </IonButton>
-                    </div>
-                  </>
-                ) : (
+                      <IonIcon icon={shareSocialOutline} slot="start" />
+                      {profileText.shareLink}
+                    </IonButton>
+                  </div>
+                </>
+              ) : (
+                /* Estado vacío con ilustración y explicación, no solo un botón. */
+                <div className="rapago-profile-empty">
+                  <div className="rapago-profile-empty-icon">
+                    <IonIcon icon={peopleOutline} />
+                  </div>
+                  <p className="rapago-profile-empty-text">
+                    <strong>{profileText.emptyReferralTitle}</strong>
+                    <br />
+                    {profileText.inviteSubtitle}
+                  </p>
                   <IonButton
                     expand="block"
-                    color="warning"
+                    className="rapago-profile-btn-primary"
                     onClick={() => void handleGenerateCode()}
                     disabled={generatingCode}
-                    style={{ "--border-radius": "18px", "--color": "#111", height: "52px", fontWeight: 950 } as CSSProperties}
                   >
-                    {generatingCode ? <IonSpinner name="dots" /> : profileText.generateCode}
+                    {generatingCode ? (
+                      <IonSpinner name="dots" />
+                    ) : (
+                      profileText.generateCode
+                    )}
                   </IonButton>
-                )}
-              </IonCardContent>
-            </IonCard>
+                </div>
+              )}
+            </section>
 
-            <AccountDeletionCard
-              requesterSnapshot={{
-                phone: phoneInput.trim() || null,
-                rut: readStoredRegistrationProfile().rut ?? null,
-                passengerType: passengerFareType,
-                sourceView: "passenger",
-              }}
-            />
+            {/* ── Preferencias ──────────────────────────────────────────── */}
+            <div className="rapago-profile-section-label">
+              {profileText.preferences}
+            </div>
 
-            <IonCard style={rapagoProfileCard({ marginBottom: 20 })}>
-              <IonCardContent style={{ padding: 16 }}>
-                <IonButton
-                  expand="block"
-                  color="danger"
-                  fill="outline"
-                  onClick={() => void handleLogout()}
-                  disabled={saving}
-                  style={{ "--border-radius": "18px", height: "52px", fontWeight: 950 } as CSSProperties}
+            {/* Apariencia: mismo control que el atajo sol/luna del header de la
+                Home. Ambos leen y escriben la misma preferencia. */}
+            <section className="rapago-profile-card">
+              <div className="rapago-profile-card-head">
+                <span className="rapago-profile-card-icon">
+                  <IonIcon icon={isDark ? moonOutline : sunnyOutline} />
+                </span>
+                <div>
+                  <h2 className="rapago-profile-card-title">
+                    {profileText.themeTitle}
+                  </h2>
+                  <p className="rapago-profile-card-sub">
+                    {profileText.themeSubtitle}
+                  </p>
+                </div>
+              </div>
+
+              <div className="rapago-profile-segment" role="group">
+                <button
+                  type="button"
+                  className="rapago-profile-segment-btn"
+                  aria-pressed={isDark}
+                  onClick={() => setTheme("dark")}
                 >
-                  <IonIcon icon={exitOutline} slot="start" />
-                  {profileText.logout}
-                </IonButton>
-              </IonCardContent>
-            </IonCard>
+                  <IonIcon icon={moonOutline} />
+                  {profileText.themeDark}
+                </button>
+                <button
+                  type="button"
+                  className="rapago-profile-segment-btn"
+                  aria-pressed={!isDark}
+                  onClick={() => setTheme("light")}
+                >
+                  <IonIcon icon={sunnyOutline} />
+                  {profileText.themeLight}
+                </button>
+              </div>
+            </section>
+
+            <section className="rapago-profile-card">
+              <div className="rapago-profile-card-head">
+                <span className="rapago-profile-card-icon">
+                  <IonIcon icon={languageOutline} />
+                </span>
+                <div>
+                  <h2 className="rapago-profile-card-title">
+                    {profileText.languageTitle}
+                  </h2>
+                  <p className="rapago-profile-card-sub">
+                    {profileText.languageSubtitle}
+                  </p>
+                </div>
+              </div>
+
+              {/* Segmented control: una preferencia que se toca una vez no
+                  justifica dos botones de 48px. */}
+              <div className="rapago-profile-segment" role="group">
+                <button
+                  type="button"
+                  className="rapago-profile-segment-btn"
+                  aria-pressed={language === "es"}
+                  onClick={() => handleLanguageChange("es")}
+                >
+                  {profileText.spanish}
+                </button>
+                <button
+                  type="button"
+                  className="rapago-profile-segment-btn"
+                  aria-pressed={language === "en"}
+                  onClick={() => handleLanguageChange("en")}
+                >
+                  {profileText.english}
+                </button>
+              </div>
+            </section>
+
+            {/* ── Zona de cuenta ────────────────────────────────────────── */}
+            {/* Acciones irreversibles agrupadas al final, lejos del uso diario. */}
+            <div className="rapago-profile-section-label">
+              {profileText.accountZone}
+            </div>
+
+            <div className="rapago-profile-danger-slot">
+              <AccountDeletionCard
+                requesterSnapshot={{
+                  phone: phoneInput.trim() || null,
+                  rut: readStoredRegistrationProfile().rut ?? null,
+                  passengerType: passengerFareType,
+                  sourceView: "passenger",
+                }}
+              />
+            </div>
+
+            <IonButton
+              expand="block"
+              className="rapago-profile-btn-danger"
+              onClick={() => void handleLogout()}
+              disabled={saving}
+            >
+              <IonIcon icon={exitOutline} slot="start" />
+              {profileText.logout}
+            </IonButton>
           </div>
         )}
       </IonContent>

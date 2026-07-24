@@ -1,0 +1,907 @@
+/* ==========================================================================
+   RAPA GO — Perfil de usuario (/passenger/profile)
+
+   Los tokens (colores, escala fluida, temas claro/oscuro) viven en
+   rapago-shell.css, que se importa antes que este archivo. Aquí solo está lo
+   propio del perfil.
+
+   Todo va scoped bajo .rapago-profile-page: este archivo no puede afectar a
+   ninguna otra pantalla. Se importa DESPUÉS de global.css para ganar la
+   cascada sin necesidad de !important en todas partes.
+
+   Se usan <section>/<div> en vez de <ion-card> a propósito: las reglas
+   globales de `ion-card` fuerzan fondo ivory y texto #1a1a1a con !important,
+   y pelear contra ellas exigiría una cascada de overrides frágil.
+   ========================================================================== */
+
+/* Transparente a propósito: el fondo lo pinta el IonPage (rapago-shell.css)
+   para que el IonHeader, que vive fuera del IonContent, lo comparta. */
+.rapago-profile-page .rapago-profile-content {
+  --background: transparent;
+  --padding-start: 0;
+  --padding-end: 0;
+  --padding-top: 0;
+  --padding-bottom: 0;
+}
+
+.rapago-profile-shell {
+  width: min(100%, 460px);
+  margin: 0 auto;
+  padding: 8px var(--rp-pad-x) calc(96px + env(safe-area-inset-bottom, 0px));
+  display: flex;
+  flex-direction: column;
+  gap: var(--rp-gap);
+}
+
+/* ── Header ─────────────────────────────────────────────────────────────── */
+/* Transparente sobre el fondo, como el Login: sin barra dorada sólida. */
+.rapago-profile-page .rapago-profile-toolbar {
+  --background: transparent;
+  --border-width: 0;
+  --color: var(--rp-text);
+  --min-height: 58px;
+}
+
+.rapago-profile-page .rapago-profile-toolbar::after {
+  display: none;
+}
+
+.rapago-profile-page .rapago-profile-title {
+  font-size: var(--rp-fs-h2);
+  font-weight: 800;
+  letter-spacing: 0.01em;
+  color: var(--rp-text);
+}
+
+.rapago-profile-page .rapago-profile-iconbtn {
+  --border-radius: 12px;
+  --background: var(--rp-chrome);
+  --background-hover: var(--rp-icon-bg);
+  --background-activated: var(--rp-icon-bg);
+  --color: var(--rp-icon-fg);
+  --padding-start: 10px;
+  --padding-end: 10px;
+  height: 40px;
+  min-height: 40px;
+  font-weight: 800;
+  font-size: var(--rp-fs-sub);
+  text-transform: none;
+  border: 1px solid var(--rp-icon-bd);
+  border-radius: 12px;
+  margin: 0 4px;
+}
+
+/* ── Hero: avatar + identidad ───────────────────────────────────────────── */
+.rapago-profile-hero {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  padding: 4px 0 0;
+}
+
+.rapago-profile-avatar-wrap {
+  position: relative;
+  width: var(--rp-avatar);
+  height: var(--rp-avatar);
+  margin-bottom: 14px;
+}
+
+.rapago-profile-avatar {
+  width: var(--rp-avatar);
+  height: var(--rp-avatar);
+  border-radius: clamp(24px, 7vw, 30px);
+  overflow: hidden;
+  display: grid;
+  place-items: center;
+  background: var(--rp-btn-primary);
+  color: var(--rp-btn-primary-fg);
+  font-size: clamp(1.6rem, 6.5vw, 2rem);
+  font-weight: 900;
+  letter-spacing: 0.02em;
+  /* Mismo halo dorado que el logo del Login (.rapago-auth-brand-logo). */
+  box-shadow:
+    0 0 0 3px rgba(214, 166, 64, 0.55),
+    0 0 0 6px rgba(214, 166, 64, 0.12),
+    0 18px 40px rgba(0, 0, 0, 0.45);
+}
+
+.rapago-profile-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+/* Botón cámara superpuesto: reemplaza el bloque de foto con avatar duplicado
+   que antes vivía dentro de "Editar perfil". */
+.rapago-profile-avatar-edit {
+  position: absolute;
+  right: -4px;
+  bottom: -4px;
+  width: clamp(32px, 9vw, 36px);
+  height: clamp(32px, 9vw, 36px);
+  border-radius: 50%;
+  border: 2px solid var(--rp-page-edge, rgba(20, 16, 12, 0.92));
+  background: linear-gradient(135deg, #f8d879, #d6a640);
+  color: #201607;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.4);
+  transition: transform 0.18s ease;
+}
+
+:root[data-rapago-theme="light"] .rapago-profile-avatar-edit {
+  --rp-page-edge: #fffdf9;
+}
+
+.rapago-profile-avatar-edit:active {
+  transform: scale(0.92);
+}
+
+.rapago-profile-avatar-edit ion-icon {
+  font-size: 1.05rem;
+}
+
+.rapago-profile-name {
+  margin: 0;
+  font-size: var(--rp-fs-hero);
+  line-height: 1.15;
+  font-weight: 900;
+  color: var(--rp-text);
+  letter-spacing: 0.005em;
+  word-break: break-word;
+  text-wrap: balance;
+}
+
+.rapago-profile-email {
+  margin: 5px 0 0;
+  font-size: var(--rp-fs-body);
+  font-weight: 650;
+  color: var(--rp-muted);
+  word-break: break-all;
+}
+
+.rapago-profile-chips {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.rapago-profile-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  font-size: var(--rp-fs-micro);
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  border: 1px solid transparent;
+}
+
+.rapago-profile-chip ion-icon {
+  font-size: 0.92rem;
+}
+
+.rapago-profile-chip--gold {
+  background: var(--rp-icon-bg);
+  border-color: var(--rp-icon-bd);
+  color: var(--rp-icon-fg);
+}
+
+.rapago-profile-chip--green {
+  background: var(--rp-ok-bg);
+  border-color: var(--rp-ok-bd);
+  color: var(--rp-ok-fg);
+}
+
+.rapago-profile-chip--muted {
+  background: var(--rp-surface-soft);
+  border-color: var(--rp-divider);
+  color: var(--rp-muted);
+}
+
+/* ── Estadísticas ───────────────────────────────────────────────────────── */
+.rapago-profile-stats {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--rp-gap-sm);
+}
+
+.rapago-profile-stat {
+  background: var(--rp-surface);
+  border: var(--rp-border-w) solid var(--rp-border-c);
+  border-radius: var(--rp-radius-sm);
+  padding: clamp(11px, 3.4vw, 14px) 6px;
+  text-align: center;
+  box-shadow: var(--rp-shadow);
+}
+
+.rapago-profile-stat-value {
+  font-size: var(--rp-fs-stat);
+  font-weight: 900;
+  color: var(--rp-accent);
+  line-height: 1.1;
+  font-variant-numeric: tabular-nums;
+  /* Evita que "$120.000" rompa la grilla de 3 columnas a 320px de ancho. */
+  overflow-wrap: anywhere;
+}
+
+.rapago-profile-stat-label {
+  margin-top: 5px;
+  font-size: var(--rp-fs-label);
+  font-weight: 750;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--rp-muted-soft);
+}
+
+/* ── Etiqueta de sección ────────────────────────────────────────────────── */
+.rapago-profile-section-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 4px 2px -10px;
+  font-size: var(--rp-fs-label);
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--rp-muted-soft);
+}
+
+.rapago-profile-section-label::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: linear-gradient(90deg, var(--rp-border-c), transparent);
+}
+
+/* ── Acciones rápidas ───────────────────────────────────────────────────── */
+.rapago-profile-actions {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: var(--rp-gap-sm);
+}
+
+.rapago-profile-action {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
+  padding: var(--rp-pad-x);
+  border-radius: var(--rp-radius-sm);
+  background: var(--rp-surface);
+  border: var(--rp-border-w) solid var(--rp-border-c);
+  box-shadow: var(--rp-shadow);
+  color: var(--rp-text);
+  text-align: left;
+  cursor: pointer;
+  font-family: inherit;
+  transition:
+    border-color 0.18s ease,
+    transform 0.18s ease;
+}
+
+.rapago-profile-action:active {
+  transform: scale(0.975);
+  border-color: var(--rp-border-strong);
+}
+
+.rapago-profile-action-icon {
+  width: var(--rp-icon-size);
+  height: var(--rp-icon-size);
+  border-radius: 13px;
+  display: grid;
+  place-items: center;
+  background: var(--rp-icon-bg);
+  border: 1px solid var(--rp-icon-bd);
+  color: var(--rp-icon-fg);
+  font-size: 1.2rem;
+}
+
+.rapago-profile-action-title {
+  display: block;
+  font-size: var(--rp-fs-body);
+  font-weight: 800;
+  line-height: 1.2;
+}
+
+.rapago-profile-action-sub {
+  display: block;
+  margin-top: 2px;
+  font-size: var(--rp-fs-micro);
+  font-weight: 650;
+  color: var(--rp-muted);
+  line-height: 1.3;
+}
+
+/* ── Tarjeta genérica ───────────────────────────────────────────────────── */
+.rapago-profile-card {
+  background: var(--rp-surface);
+  border: var(--rp-border-w) solid var(--rp-border-c);
+  border-radius: var(--rp-radius);
+  box-shadow: var(--rp-shadow);
+  padding: var(--rp-pad) var(--rp-pad-x);
+  color: var(--rp-text);
+}
+
+.rapago-profile-card--accent {
+  border-color: var(--rp-border-strong);
+  box-shadow: var(--rp-shadow-accent);
+}
+
+.rapago-profile-card-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: var(--rp-pad-x);
+}
+
+.rapago-profile-card-icon {
+  width: var(--rp-icon-size);
+  height: var(--rp-icon-size);
+  border-radius: 14px;
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  background: var(--rp-icon-bg);
+  border: 1px solid var(--rp-icon-bd);
+  color: var(--rp-icon-fg);
+  font-size: 1.28rem;
+}
+
+.rapago-profile-card-title {
+  margin: 0;
+  font-size: var(--rp-fs-h2);
+  font-weight: 850;
+  color: var(--rp-accent);
+  line-height: 1.2;
+}
+
+.rapago-profile-card-sub {
+  margin: 3px 0 0;
+  font-size: var(--rp-fs-sub);
+  font-weight: 650;
+  color: var(--rp-muted);
+  line-height: 1.38;
+}
+
+/* ── Filas de información ───────────────────────────────────────────────── */
+.rapago-profile-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.rapago-profile-row {
+  display: grid;
+  grid-template-columns: var(--rp-icon-size-sm) 1fr;
+  gap: 12px;
+  align-items: start;
+  padding: 12px 2px;
+  border-bottom: 1px solid var(--rp-divider);
+}
+
+.rapago-profile-row:last-child {
+  border-bottom: 0;
+  padding-bottom: 2px;
+}
+
+.rapago-profile-row-icon {
+  width: var(--rp-icon-size-sm);
+  height: var(--rp-icon-size-sm);
+  border-radius: 10px;
+  display: grid;
+  place-items: center;
+  background: var(--rp-surface-soft);
+  color: var(--rp-icon-fg);
+  font-size: 1rem;
+}
+
+.rapago-profile-row-label {
+  font-size: var(--rp-fs-label);
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--rp-muted-soft);
+}
+
+.rapago-profile-row-value {
+  margin-top: 3px;
+  font-size: var(--rp-fs-body);
+  font-weight: 750;
+  color: var(--rp-text);
+  word-break: break-word;
+  line-height: 1.35;
+}
+
+.rapago-profile-row-helper {
+  margin-top: 3px;
+  font-size: var(--rp-fs-micro);
+  font-weight: 600;
+  color: var(--rp-muted);
+  line-height: 1.35;
+}
+
+/* ── Segmented control (idioma, tema) ───────────────────────────────────── */
+/* Reemplaza los dos botones de 48px que ocupaban una tarjeta entera para una
+   preferencia que se toca una vez. */
+.rapago-profile-segment {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px;
+  padding: 4px;
+  border-radius: 14px;
+  background: var(--rp-seg-track);
+  border: 1px solid var(--rp-icon-bd);
+}
+
+.rapago-profile-segment-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 10px 8px;
+  border: 0;
+  border-radius: 11px;
+  background: transparent;
+  color: var(--rp-muted);
+  font-family: inherit;
+  font-size: var(--rp-fs-sub);
+  font-weight: 800;
+  cursor: pointer;
+  transition:
+    background 0.18s ease,
+    color 0.18s ease;
+}
+
+.rapago-profile-segment-btn ion-icon {
+  font-size: 1.05rem;
+}
+
+.rapago-profile-segment-btn[aria-pressed="true"] {
+  background: linear-gradient(135deg, #f8d879, #d6a640);
+  color: #201607;
+  box-shadow: 0 4px 12px rgba(214, 166, 64, 0.28);
+}
+
+/* ── Campos de formulario ───────────────────────────────────────────────── */
+/* Réplica de .rapago-auth-field para que editar el perfil se sienta igual
+   que iniciar sesión. */
+.rapago-profile-page .rapago-profile-field {
+  --background: var(--rp-field-bg);
+  --border-color: transparent;
+  --highlight-color-focused: var(--rp-gold);
+  --highlight-color-valid: var(--rp-gold);
+  --highlight-color-invalid: var(--rp-terracotta);
+  --padding-start: 14px;
+  --inner-padding-end: 10px;
+  --min-height: 62px;
+  --color: var(--rp-field-fg);
+  border: var(--rp-border-w) solid var(--rp-border-c);
+  border-radius: var(--rp-radius-sm);
+  margin-bottom: 12px;
+  overflow: hidden;
+  transition:
+    border-color 0.2s ease,
+    box-shadow 0.2s ease;
+}
+
+.rapago-profile-page .rapago-profile-field.item-has-focus {
+  border-color: var(--rp-border-strong);
+  box-shadow: 0 0 0 3px rgba(214, 166, 64, 0.16);
+}
+
+/* Solo lectura (tipo de pasajero): se marca en borde punteado para que el
+   usuario entienda que no es editable antes de intentar tocarlo. */
+.rapago-profile-page .rapago-profile-field--readonly {
+  --background: var(--rp-surface-soft);
+  border-style: dashed;
+}
+
+/* ── Botones ────────────────────────────────────────────────────────────── */
+.rapago-profile-page .rapago-profile-btn-primary {
+  --border-radius: var(--rp-radius-sm);
+  --background: var(--rp-btn-primary);
+  --background-activated: linear-gradient(135deg, #c89b3c, #b84f2e);
+  --box-shadow: 0 14px 28px rgba(214, 166, 64, 0.3);
+  --color: var(--rp-btn-primary-fg);
+  color: var(--rp-btn-primary-fg);
+  height: var(--rp-control-h);
+  font-weight: 900;
+  text-transform: none;
+  letter-spacing: 0.01em;
+  margin: 0;
+}
+
+.rapago-profile-page .rapago-profile-btn-outline {
+  --border-radius: var(--rp-radius-sm);
+  --border-color: var(--rp-border-c);
+  --border-width: var(--rp-border-w);
+  --color: var(--rp-icon-fg);
+  --background: transparent;
+  --background-activated: var(--rp-icon-bg);
+  height: calc(var(--rp-control-h) - 4px);
+  font-weight: 800;
+  text-transform: none;
+  margin: 0;
+}
+
+.rapago-profile-page .rapago-profile-btn-danger {
+  --border-radius: var(--rp-radius-sm);
+  --border-color: var(--rp-danger-bd);
+  --border-width: var(--rp-border-w);
+  --color: var(--rp-danger-fg);
+  --background: var(--rp-err-bg);
+  --background-activated: var(--rp-err-bg);
+  height: calc(var(--rp-control-h) - 4px);
+  font-weight: 800;
+  text-transform: none;
+  margin: 0;
+}
+
+.rapago-profile-btn-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--rp-gap-sm);
+}
+
+/* ── Código de referido ─────────────────────────────────────────────────── */
+.rapago-profile-code {
+  border-radius: var(--rp-radius-sm);
+  background: var(--rp-seg-track);
+  border: 1px dashed var(--rp-border-c);
+  padding: var(--rp-pad-x);
+  text-align: center;
+  margin-bottom: 12px;
+}
+
+.rapago-profile-code-value {
+  font-family: "SFMono-Regular", ui-monospace, Menlo, Consolas, monospace;
+  font-size: clamp(1.2rem, 5.4vw, 1.5rem);
+  font-weight: 900;
+  color: var(--rp-icon-fg);
+  letter-spacing: 0.14em;
+  word-break: break-all;
+}
+
+.rapago-profile-code-meta {
+  margin-top: 8px;
+  font-size: var(--rp-fs-sub);
+  font-weight: 650;
+  color: var(--rp-muted);
+}
+
+.rapago-profile-code-meta strong {
+  color: var(--rp-text);
+  font-weight: 850;
+}
+
+/* ── Estados: vacío, alerta, éxito, error ───────────────────────────────── */
+.rapago-profile-empty {
+  text-align: center;
+  padding: 8px 4px 16px;
+}
+
+.rapago-profile-empty-icon {
+  width: clamp(48px, 14vw, 56px);
+  height: clamp(48px, 14vw, 56px);
+  margin: 0 auto 12px;
+  border-radius: 18px;
+  display: grid;
+  place-items: center;
+  background: var(--rp-icon-bg);
+  border: 1px dashed var(--rp-border-c);
+  color: var(--rp-icon-fg);
+  font-size: 1.6rem;
+}
+
+.rapago-profile-empty-text {
+  font-size: var(--rp-fs-sub);
+  font-weight: 650;
+  color: var(--rp-muted);
+  line-height: 1.45;
+  margin: 0 0 16px;
+}
+
+/* Banner de acción pendiente (ej. falta teléfono). Es un <button> para que,
+   además de avisar, lleve al campo que hay que completar. */
+.rapago-profile-alert {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 13px 14px;
+  border-radius: var(--rp-radius-sm);
+  background: var(--rp-icon-bg);
+  border: var(--rp-border-w) solid var(--rp-border-c);
+  color: var(--rp-icon-fg);
+  font-family: inherit;
+  font-size: var(--rp-fs-sub);
+  font-weight: 750;
+  line-height: 1.35;
+  text-align: left;
+  cursor: pointer;
+}
+
+.rapago-profile-alert ion-icon {
+  font-size: 1.25rem;
+  flex-shrink: 0;
+}
+
+.rapago-profile-alert-arrow {
+  margin-left: auto;
+  flex-shrink: 0;
+  opacity: 0.7;
+}
+
+.rapago-profile-feedback {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 12px 0 0;
+  padding: 11px 13px;
+  border-radius: 14px;
+  font-size: var(--rp-fs-sub);
+  font-weight: 800;
+  line-height: 1.35;
+}
+
+.rapago-profile-feedback ion-icon {
+  font-size: 1.05rem;
+  flex-shrink: 0;
+}
+
+.rapago-profile-feedback--ok {
+  background: var(--rp-ok-bg);
+  border: 1px solid var(--rp-ok-bd);
+  color: var(--rp-ok-fg);
+}
+
+.rapago-profile-feedback--error {
+  background: var(--rp-err-bg);
+  border: 1px solid var(--rp-err-bd);
+  color: var(--rp-err-fg);
+}
+
+/* ── Modo conductor ─────────────────────────────────────────────────────── */
+.rapago-profile-driver {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.rapago-profile-driver-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.rapago-profile-driver-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: var(--rp-fs-label);
+  font-weight: 850;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--rp-ok-fg);
+  margin-bottom: 3px;
+}
+
+/* ── Carga ──────────────────────────────────────────────────────────────── */
+.rapago-profile-loading {
+  display: grid;
+  place-items: center;
+  padding: 72px 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rapago-profile-action,
+  .rapago-profile-avatar-edit {
+    transition: none;
+  }
+}
+
+/* ==========================================================================
+   OVERRIDES DE REGLAS GLOBALES
+
+   global.css aplica estilos a los tipos de Ionic (ion-header, ion-toolbar,
+   ion-item, ion-button, ion-card) usando !important. Una declaración normal
+   nunca le gana a un !important por mucha especificidad que tenga, así que
+   estos overrides también lo necesitan.
+
+   Todo va scoped bajo .rapago-profile-page: ninguna otra pantalla se ve
+   afectada. Cada bloque documenta qué regla global está neutralizando.
+   ========================================================================== */
+
+/* global.css:2094 — `ion-header { background: volcanic !important }` pinta una
+   barra negra sólida encima del fondo. */
+.rapago-profile-page ion-header {
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+.rapago-profile-page ion-header::after {
+  display: none !important;
+}
+
+/* global.css:2099 — `ion-toolbar` impone un degradado negro→terracota y un
+   borde inferior dorado que corta el hero. */
+.rapago-profile-page .rapago-profile-toolbar {
+  --background: transparent !important;
+  --border-width: 0 !important;
+  border-bottom: 0 !important;
+}
+
+/* global.css:2108 — `ion-title { font-weight: 950 !important }`. En el header
+   el título es secundario: el nombre del hero es el elemento dominante. */
+.rapago-profile-page .rapago-profile-title {
+  font-weight: 800 !important;
+  font-size: var(--rp-fs-h2) !important;
+  letter-spacing: 0.01em !important;
+  color: var(--rp-text) !important;
+}
+
+/* global.css:3691 — `ion-header ion-buttons ion-button { color: #fff
+   !important }` apagaría el dorado (o el bronce, en tema claro) de los
+   botones del toolbar. */
+.rapago-profile-page .rapago-profile-iconbtn {
+  --color: var(--rp-icon-fg) !important;
+  --border-radius: 12px !important;
+  color: var(--rp-icon-fg) !important;
+}
+
+.rapago-profile-page .rapago-profile-iconbtn::part(native) {
+  color: var(--rp-icon-fg) !important;
+}
+
+/* global.css:2115 — `ion-button { --border-radius: 15px !important }`. */
+.rapago-profile-page .rapago-profile-btn-primary,
+.rapago-profile-page .rapago-profile-btn-outline,
+.rapago-profile-page .rapago-profile-btn-danger {
+  --border-radius: var(--rp-radius-sm) !important;
+}
+
+.rapago-profile-page .rapago-profile-btn-primary {
+  --color: var(--rp-btn-primary-fg) !important;
+  color: var(--rp-btn-primary-fg) !important;
+}
+
+.rapago-profile-page .rapago-profile-btn-outline {
+  --color: var(--rp-icon-fg) !important;
+  color: var(--rp-icon-fg) !important;
+}
+
+.rapago-profile-page .rapago-profile-btn-danger {
+  --color: var(--rp-danger-fg) !important;
+  color: var(--rp-danger-fg) !important;
+}
+
+/* global.css:2174 — `ion-item` fuerza fondo, borde y radio propios sobre los
+   campos del formulario. */
+.rapago-profile-page .rapago-profile-field {
+  --background: var(--rp-field-bg) !important;
+  --border-radius: var(--rp-radius-sm) !important;
+  --inner-border-width: 0 !important;
+  border: var(--rp-border-w) solid var(--rp-border-c) !important;
+  border-radius: var(--rp-radius-sm) !important;
+}
+
+.rapago-profile-page .rapago-profile-field.item-has-focus {
+  border-color: var(--rp-border-strong) !important;
+  box-shadow: 0 0 0 3px rgba(214, 166, 64, 0.16) !important;
+}
+
+.rapago-profile-page .rapago-profile-field--readonly {
+  --background: var(--rp-surface-soft) !important;
+  border-style: dashed !important;
+}
+
+/* global.css:2982 y 2992 — `ion-item ion-label` e `ion-item ion-input` fuerzan
+   color #111111. En tema oscuro eso deja el texto de los campos prácticamente
+   invisible, así que el color se toma del token y sirve para ambos temas. */
+.rapago-profile-page .rapago-profile-field ion-label,
+.rapago-profile-page .rapago-profile-field ion-label.label-stacked {
+  color: var(--rp-label) !important;
+  font-weight: 800 !important;
+  font-size: var(--rp-fs-sub) !important;
+  opacity: 1 !important;
+}
+
+.rapago-profile-page .rapago-profile-field ion-input {
+  --color: var(--rp-field-fg) !important;
+  --placeholder-color: var(--rp-field-ph) !important;
+  --placeholder-opacity: 1 !important;
+  color: var(--rp-field-fg) !important;
+  font-weight: 700;
+}
+
+/* Este build de Ionic renderiza el <input> real en light DOM (scoped, no
+   shadow), así que hay que apuntarlo directo además de ::part(native).
+   variables.css fuerza además `ion-input::part(native) { color: #fff }` a
+   nivel global, que en tema claro dejaría el texto blanco sobre blanco. */
+.rapago-profile-page .rapago-profile-field ion-input input,
+.rapago-profile-page .rapago-profile-field ion-input::part(native) {
+  color: var(--rp-field-fg) !important;
+  -webkit-text-fill-color: var(--rp-field-fg) !important;
+  caret-color: var(--rp-gold) !important;
+}
+
+.rapago-profile-page .rapago-profile-field ion-input input::placeholder {
+  color: var(--rp-field-ph) !important;
+  -webkit-text-fill-color: var(--rp-field-ph) !important;
+  opacity: 1 !important;
+}
+
+.rapago-profile-page .rapago-profile-field ion-input::part(clear-button) {
+  color: var(--rp-muted) !important;
+}
+
+.rapago-profile-page .rapago-profile-field ion-note[slot="helper"] {
+  color: var(--rp-muted) !important;
+  font-size: var(--rp-fs-micro);
+  font-weight: 600;
+}
+
+/* AccountDeletionCard se comparte con otras pantallas, así que su archivo no
+   se toca: aquí se reencuadra a la superficie del perfil conservando el
+   acento rojo que identifica la acción destructiva.
+   Neutraliza global.css:883 y :2149 (`ion-card` fondo ivory + texto #1a1a1a). */
+.rapago-profile-page .rapago-profile-danger-slot ion-card {
+  margin: 0 !important;
+  border-radius: var(--rp-radius) !important;
+  background: var(--rp-surface) !important;
+  border: var(--rp-border-w) solid var(--rp-danger-bd) !important;
+  box-shadow: var(--rp-shadow) !important;
+  color: var(--rp-text) !important;
+}
+
+.rapago-profile-page .rapago-profile-danger-slot ion-card ion-card-title,
+.rapago-profile-page .rapago-profile-danger-slot ion-card ion-card-title *,
+.rapago-profile-page .rapago-profile-danger-slot ion-card h1,
+.rapago-profile-page .rapago-profile-danger-slot ion-card h2,
+.rapago-profile-page .rapago-profile-danger-slot ion-card h3,
+.rapago-profile-page .rapago-profile-danger-slot ion-card strong {
+  color: var(--rp-danger-fg) !important;
+}
+
+.rapago-profile-page .rapago-profile-danger-slot ion-card p,
+.rapago-profile-page .rapago-profile-danger-slot ion-card div,
+.rapago-profile-page .rapago-profile-danger-slot ion-card span,
+.rapago-profile-page .rapago-profile-danger-slot ion-card ion-note,
+.rapago-profile-page .rapago-profile-danger-slot ion-card ion-card-content {
+  color: var(--rp-muted) !important;
+}
+
+.rapago-profile-page .rapago-profile-danger-slot ion-card ion-label {
+  color: var(--rp-text) !important;
+}
+
+.rapago-profile-page .rapago-profile-danger-slot ion-card ion-item {
+  --background: var(--rp-field-bg) !important;
+  --color: var(--rp-text) !important;
+  border-color: var(--rp-danger-bd) !important;
+}
+
+.rapago-profile-page .rapago-profile-danger-slot ion-card ion-input,
+.rapago-profile-page .rapago-profile-danger-slot ion-card ion-textarea {
+  --color: var(--rp-field-fg) !important;
+  color: var(--rp-field-fg) !important;
+}
+
+.rapago-profile-page .rapago-profile-danger-slot ion-card ion-input input,
+.rapago-profile-page .rapago-profile-danger-slot ion-card ion-textarea textarea {
+  color: var(--rp-field-fg) !important;
+  -webkit-text-fill-color: var(--rp-field-fg) !important;
+}
+
+/* 16px en los inputs evita el auto-zoom de iOS al enfocar. */
+@media (max-width: 600px) {
+  .rapago-profile-page .rapago-profile-field ion-input {
+    font-size: 16px !important;
+  }
+}

@@ -29,6 +29,7 @@
   "dependencies": {
     "@capacitor/geolocation": "8.2.0",
     "@capacitor/google-maps": "8.0.1",
+    "@capawesome/capacitor-apple-sign-in": "0.1.2",
     "@react-google-maps/api": "2.20.8",
     "drizzle-orm": "0.45.2",
     "leaflet": "1.9.4",
