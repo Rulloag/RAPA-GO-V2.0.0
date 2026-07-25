@@ -4042,6 +4042,7 @@ function MapPointPicker({
             <div className="rp-request-map-sheet">
               <div className="rp-request-map-grip" />
 
+              <div className="rp-request-map-sheet-scroll">
               <div
                 style={{
                   color: "var(--rp-text)",
@@ -4295,6 +4296,7 @@ function MapPointPicker({
                   </div>
                 </div>
               )}
+              </div>
 
               <IonButton
                 className="rp-request-confirm"
