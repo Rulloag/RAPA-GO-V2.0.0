@@ -130,6 +130,18 @@
   flex-direction: column;
 }
 
+/* La hoja llegaba a 52dvh y, con el solape de -20px, dejaba el mapa con menos
+   alto que el propio texto que lo describe: se confirmaba un punto casi sin
+   verlo. Ahora se limita a 42dvh, de modo que el mapa —el elemento sobre el que
+   se decide— conserve siempre la mayor parte de la pantalla.
+
+   Es un contenedor flex en columna, NO el que hace scroll: antes esta misma
+   caja tenía `overflow-y: auto` y el botón de confirmar era `position: sticky`
+   dentro de ella. Esa combinación (sticky + max-height + overflow en el MISMO
+   elemento) es la que dejaba un hueco vacío enorme entre el botón y el borde
+   inferior en algunos WebView. Ahora el scroll vive en un hijo aparte
+   (.rp-request-map-sheet-scroll) y el botón es un hermano normal, sin sticky:
+   la caja completa vuelve a medir exactamente lo que mide su contenido. */
 .rapago-request-page .rp-request-map-sheet {
   background: var(--rp-surface);
   border-top-left-radius: 28px;
@@ -137,19 +149,42 @@
   margin-top: -20px;
   position: relative;
   z-index: 20;
-  padding: 18px 18px max(22px, env(safe-area-inset-bottom));
+  padding: 14px 18px max(20px, env(safe-area-inset-bottom));
   box-shadow: 0 -18px 38px rgba(0, 0, 0, 0.28);
   flex: 0 0 auto;
-  max-height: 52dvh;
-  overflow-y: auto;
-  -webkit-overflow-scrolling: touch;
+  max-height: 42dvh;
+  display: flex;
+  flex-direction: column;
   color: var(--rp-text);
 }
 
+/* Único elemento que hace scroll dentro de la hoja. min-height: 0 es lo que
+   permite que, dentro de un flex column, este bloque se achique en vez de
+   desbordar cuando el contenido más el botón no caben en 42dvh. */
+.rapago-request-page .rp-request-map-sheet-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain; /* el scroll no se propaga al mapa de debajo */
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Separador visual, NO una afordancia de arrastre: antes parecía un tirador de
+   hoja deslizable pero no tenía ningún manejador, así que arrastrarlo no hacía
+   nada. Se hace más discreto y ancho para que no invite a tirar de él. */
 .rapago-request-page .rp-request-map-grip {
-  width: 42px;
-  height: 4px;
+  flex: 0 0 auto;
+  width: 64px;
+  height: 3px;
   border-radius: 999px;
-  background: var(--rp-border-c);
-  margin: 0 auto 22px;
+  background: var(--rp-divider);
+  margin: 0 auto 14px;
+}
+
+/* Hermano normal al final del flex column, NO sticky: con el scroll ya
+   contenido en .rp-request-map-sheet-scroll, el botón queda siempre visible
+   sin necesitar position: sticky ni la superficie duplicada que eso exigía. */
+.rapago-request-page .rp-request-map-sheet .rp-request-confirm {
+  flex: 0 0 auto;
+  margin: 14px 0 0;
 }

@@ -7,15 +7,11 @@ import {
   IonTitle,
   IonToolbar,
 } from "@ionic/react";
-import { arrowBackOutline, moonOutline, sunnyOutline } from "ionicons/icons";
+import { arrowBackOutline } from "ionicons/icons";
 import { useHistory } from "react-router-dom";
 
 interface RapagoSectionHeaderProps {
   title: string;
-  /** Estado del tema de ESTA pantalla (useRapagoSectionTheme). */
-  isDark: boolean;
-  /** Alterna el tema de ESTA pantalla, no el de la app entera. */
-  onToggleTheme: () => void;
   /** Ruta del botón volver. Si se omite, no se muestra. */
   backHref?: string;
   /** Alternativa a backHref para lógica propia de retroceso. */
@@ -40,14 +36,16 @@ interface RapagoSectionHeaderProps {
  * Aquí el toolbar no lleva `color`: el fondo es transparente y deja ver el
  * de la página, igual que en Home, Perfil y Login.
  *
- * El interruptor día/noche es POR PANTALLA: el estado llega por props desde
- * la página (useRapagoSectionTheme), de modo que cada sección recuerda su
- * propio modo y cambiarlo aquí no toca a las demás.
+ * Esta cabecera YA NO lleva interruptor día/noche. Antes cada sección tenía el
+ * suyo y su propia preferencia, así que cambiarlo en Viajes no afectaba a
+ * Beneficios ni a Ayuda: el usuario repetía el gesto pantalla por pantalla y la
+ * app se quedaba a dos luces. Ahora todas las pantallas de pasajero comparten un
+ * único ámbito de tema (`scopeOfSection` en rapagoTheme.ts), gobernado desde el
+ * botón del encabezado de Inicio, con Perfil → Preferencias como segundo punto
+ * de acceso al mismo ajuste.
  */
 export function RapagoSectionHeader({
   title,
-  isDark,
-  onToggleTheme,
   backHref,
   onBack,
   backLabel = "Volver",
@@ -103,15 +101,6 @@ export function RapagoSectionHeader({
               )}
             </IonButton>
           )}
-
-          <IonButton
-            className="rapago-chrome-btn"
-            onClick={onToggleTheme}
-            aria-label={isDark ? "Activar modo día" : "Activar modo nocturno"}
-            title={isDark ? "Modo día" : "Modo nocturno"}
-          >
-            <IonIcon icon={isDark ? sunnyOutline : moonOutline} slot="icon-only" />
-          </IonButton>
         </IonButtons>
       </IonToolbar>
     </IonHeader>
