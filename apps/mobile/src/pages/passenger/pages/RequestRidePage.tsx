@@ -31,6 +31,7 @@ import {
   navigateOutline,
   searchOutline,
   timeOutline,
+  alertCircleOutline,
 } from "ionicons/icons";
 import {
   useCallback,
@@ -3312,6 +3313,9 @@ function MapPointPicker({
     [],
   );
   const [modalReady, setModalReady] = useState(false);
+  /* Fallo al cargar Google Maps. Se mantiene APARTE de `selected`: un error no
+     es un lugar válido, así que el botón de confirmar debe seguir inhabilitado. */
+  const [mapError, setMapError] = useState<string | null>(null);
 
 
   function drawAccessiblePickupPreview(point: PickerResult | null): void {
@@ -3603,6 +3607,8 @@ function MapPointPicker({
     setSelected(null);
     setSearchText("");
     setPickerSuggestions([]);
+    // Cada apertura del modal reintenta la carga: se limpia el error anterior.
+    setMapError(null);
 
     let cancelled = false;
 
@@ -3722,13 +3728,14 @@ function MapPointPicker({
       })
       .catch(() => {
         setReady(true);
-        setSelected({
-          text: "No se pudo cargar el mapa",
-          address: "Revisa la API Key de Google Maps y vuelve a intentar.",
-          lat: RAPA_NUI_CENTER.lat,
-          lng: RAPA_NUI_CENTER.lng,
-          placeId: null,
-        });
+        // ANTES: se escribía el error en `selected` con las coordenadas del
+        // centro de la isla. Como el botón solo mira `disabled={!selected}`, el
+        // pasajero podía confirmar y se despachaba un conductor al centro
+        // geográfico de Rapa Nui. El error se reporta ahora por su propia vía y
+        // `selected` sigue en null, así que confirmar queda inhabilitado.
+        setMapError(
+          "No se pudo cargar el mapa. Revisa tu conexión e inténtalo de nuevo.",
+        );
       });
 
     return () => {
@@ -4131,6 +4138,48 @@ function MapPointPicker({
                 </div>
               )}
 
+              {mapError && (
+                <div
+                  className="rp-request-note"
+                  role="alert"
+                  style={{
+                    padding: "14px 16px",
+                    marginBottom: 12,
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 12,
+                    borderColor: "var(--rp-danger-bd)",
+                  }}
+                >
+                  <IonIcon
+                    icon={alertCircleOutline}
+                    style={{ color: "var(--rp-danger-fg)", fontSize: 24, flexShrink: 0 }}
+                  />
+                  <div style={{ flex: 1 }}>
+                    <div
+                      style={{
+                        color: "var(--rp-danger-fg)",
+                        fontWeight: 850,
+                        fontSize: ".9rem",
+                        marginBottom: 4,
+                      }}
+                    >
+                      No se pudo cargar el mapa
+                    </div>
+                    <div
+                      style={{
+                        color: "var(--rp-muted)",
+                        fontSize: ".82rem",
+                        lineHeight: 1.35,
+                      }}
+                    >
+                      {mapError}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {!mapError && (
               <div
                 className="rp-request-note"
                 style={{
@@ -4183,6 +4232,7 @@ function MapPointPicker({
                 </div>
                 <IonIcon icon={createOutline} style={{ color: "var(--rp-icon-fg)", fontSize: 22, flexShrink: 0 }} />
               </div>
+              )}
 
               {mode === "origin" &&
                 selected?.walkMeters != null &&
