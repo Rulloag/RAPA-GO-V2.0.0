@@ -3859,8 +3859,11 @@ function MapPointPicker({
               <IonIcon slot="start" icon={arrowBackOutline} style={{ fontSize: 20 }} />
               Volver
             </IonButton>
+            {/* Sin aria-label propio: el nombre accesible debe COINCIDIR con el
+                texto visible. Antes el atributo decía "Confirma el punto de
+                partida" y en pantalla ponía "Confirmar recogida", lo que rompe
+                el control por voz (WCAG 2.5.3). */}
             <IonTitle
-              aria-label={title}
               style={{
                 textAlign: "center",
                 fontWeight: 950,
@@ -4294,6 +4297,7 @@ function MapPointPicker({
               )}
 
               <IonButton
+                className="rp-request-confirm"
                 expand="block"
                 disabled={!selected}
                 onClick={() => {
@@ -4312,7 +4316,7 @@ function MapPointPicker({
                   } as CSSProperties
                 }
               >
-                {mode === "origin" ? "Confirmar punto de partida" : "Confirmar destino"}
+                {mode === "origin" ? "Confirmar recogida" : "Confirmar destino"}
               </IonButton>
             </div>
           </div>
@@ -7920,7 +7924,7 @@ return (
         {pickerTarget && (
           <MapPointPicker
             isOpen={pickerTarget !== null}
-            title={pickerTarget === "origin" ? "Confirma el punto de partida" : "Confirma el destino"}
+            title={pickerTarget === "origin" ? "Confirmar recogida" : "Confirmar destino"}
             mode={pickerTarget}
             initialPoint={pickerInitialPoint}
             onCancel={() => setPickerTarget(null)}
