@@ -1,28 +1,25 @@
-import {
-  IonButton,
-  IonCard,
-  IonCardContent,
-  IonCardHeader,
-  IonCardTitle,
-  IonContent,
-  IonIcon,
-  IonPage,
-  IonText,
-} from "@ionic/react";
-import { useEffect, useState, type CSSProperties } from "react";
+import { IonButton, IonContent, IonIcon, IonPage } from "@ionic/react";
+import { useEffect, useState } from "react";
 import { useHistory } from "react-router-dom";
 import {
+  alertCircleOutline,
   carOutline,
   carSportOutline,
+  cellularOutline,
   chevronForwardOutline,
   giftOutline,
   mapOutline,
   logoWhatsapp,
+  moonOutline,
   newspaperOutline,
+  peopleOutline,
+  sparklesOutline,
+  sunnyOutline,
   ticketOutline,
   walletOutline,
 } from "ionicons/icons";
 
+import { useRapagoSectionTheme } from "../../../theme/rapagoTheme.js";
 import { ServiceCard } from "../../../components/ServiceCard.js";
 import { WhatsAppButton } from "../../../components/WhatsAppButton.js";
 import {
@@ -341,6 +338,8 @@ export default function HomePage(): JSX.Element {
   const history = useHistory();
   const isOnline = useConnectivity();
   const { session } = useAuth();
+  /* Tema propio de la Home: independiente del resto de pantallas. */
+  const { theme, isDark, toggleTheme } = useRapagoSectionTheme("home");
 
   const [profile, setProfile] = useState<PassengerProfileData | null>(null);
   const [carouselIndex, setCarouselIndex] = useState(0);
@@ -419,101 +418,135 @@ export default function HomePage(): JSX.Element {
   )}`;
 
   return (
-    <IonPage>
-      <div className="passenger-home-header">
-        <div className="passenger-home-header-row">
-          <div className="passenger-home-user">
-            {/* width/height HTML evitan el salto de layout (FOUC) antes de que cargue el CSS */}
-            <img
-              src={logoRapago}
-              alt="Rapa Go"
-              className="passenger-home-logo"
-              width={56}
-              height={56}
-            />
+    <IonPage className="rapago-home-page" data-rapago-theme={theme}>
+      {/* Header transparente sobre el fondo, igual que el Login y el perfil.
+          No usa ion-header para evitar la barra volcánica sólida que
+          global.css impone a ese elemento. */}
+      <div className="rapago-home-header">
+        <div className="rapago-home-brand">
+          {/* width/height HTML evitan el salto de layout (FOUC) antes de que cargue el CSS */}
+          <img
+            src={logoRapago}
+            alt="Rapa Go"
+            className="rapago-home-logo"
+            width={50}
+            height={50}
+          />
 
-            <div className="passenger-home-user-text">
-              <div className="passenger-home-greeting">Hola, {firstName}</div>
-              <div className="passenger-home-question">¿A dónde quieres ir?</div>
-            </div>
+          <div style={{ minWidth: 0 }}>
+            <div className="rapago-home-greeting">Hola, {firstName}</div>
+            <div className="rapago-home-question">¿A dónde quieres ir?</div>
           </div>
+        </div>
 
-          <div
-            className="profile-top-button"
-            role="button"
-            tabIndex={0}
-            aria-label="Ir al perfil"
-            onClick={goToProfile}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") goToProfile();
-            }}
+        <div className="rapago-home-header-actions">
+          <button
+            type="button"
+            className="rapago-home-theme-btn"
+            onClick={toggleTheme}
+            aria-label={isDark ? "Activar modo día" : "Activar modo nocturno"}
+            title={isDark ? "Modo día" : "Modo nocturno"}
           >
-            <div className="profile-top-avatar">{initials}</div>
-            <span className="profile-top-text">Perfil</span>
-          </div>
+            <IonIcon icon={isDark ? sunnyOutline : moonOutline} />
+          </button>
+
+          <button
+            type="button"
+            className="rapago-home-avatar-btn"
+            onClick={goToProfile}
+            aria-label="Ir al perfil"
+          >
+            <span className="rapago-home-avatar">{initials}</span>
+            <span className="rapago-home-avatar-text">Perfil</span>
+          </button>
         </div>
       </div>
 
-      <IonContent>
-        <div className="passenger-home-content">
-          <section className="home-image-carousel">
+      <IonContent className="rapago-home-content">
+        <div className="rapago-home-shell">
+
+          {/* ── Hero / carrusel ────────────────────────────────────────── */}
+          <section
+            className="rapago-home-hero"
+            aria-roledescription="carrusel"
+            aria-label="Destinos de Rapa Nui"
+          >
             <img
               src={activeImage.src}
               alt={activeImage.title}
-              className="home-image-carousel-img"
+              className="rapago-home-hero-img"
             />
 
-            <div className="home-image-carousel-overlay" />
+            <div className="rapago-home-hero-veil" />
 
-            <div className="home-image-carousel-text">
-              <div className="home-image-carousel-title">{activeImage.title}</div>
-              <div className="home-image-carousel-subtitle">
-                {activeImage.subtitle}
-              </div>
-
-              <IonButton
-                expand="block"
-                className="rapago-hero-cta"
-                onClick={() => history.push(ROUTES.PASSENGER.REQUEST_RIDE)}
-              >
-                Solicitar Viaje
-              </IonButton>
-            </div>
-
-            <div className="home-image-carousel-dots">
+            <div className="rapago-home-hero-dots">
               {HOME_CAROUSEL_IMAGES.map((img, index) => (
                 <button
                   key={img.src}
                   type="button"
-                  aria-label={`Ver imagen ${index + 1}`}
+                  aria-label={`Ver imagen ${index + 1} de ${HOME_CAROUSEL_IMAGES.length}`}
+                  aria-current={carouselIndex === index}
                   className={
                     carouselIndex === index
-                      ? "home-image-carousel-dot active"
-                      : "home-image-carousel-dot"
+                      ? "rapago-home-hero-dot active"
+                      : "rapago-home-hero-dot"
                   }
                   onClick={() => setCarouselIndex(index)}
                 />
               ))}
             </div>
+
+            <div className="rapago-home-hero-body">
+              <span className="rapago-home-hero-eyebrow">
+                <IonIcon icon={sparklesOutline} />
+                Rapa Nui
+              </span>
+
+              <div className="rapago-home-hero-title">{activeImage.title}</div>
+              <div className="rapago-home-hero-sub">{activeImage.subtitle}</div>
+
+              <IonButton
+                expand="block"
+                className="rapago-home-hero-cta"
+                onClick={() => history.push(ROUTES.PASSENGER.REQUEST_RIDE)}
+              >
+                <IonIcon icon={carOutline} slot="start" />
+                Solicitar Viaje
+              </IonButton>
+            </div>
           </section>
 
+          {/* ── Aviso: falta teléfono ──────────────────────────────────── */}
+          {/* Antes este bloque se renderizaba vacío: mostraba una caja amarilla
+              sin texto. Ahora dice qué falta y lleva al perfil a completarlo. */}
           {profile !== null && !hasPhone && (
-            <div className="passenger-warning-box">
-              <IonText>
-                <p className="passenger-warning-text">
-               
-                </p>
-              </IonText>
-            </div>
+            <button
+              type="button"
+              className="rapago-home-alert"
+              onClick={goToProfile}
+            >
+              <IonIcon icon={alertCircleOutline} />
+              <span>
+                Completa tu teléfono para solicitar viajes.
+                <br />
+                <strong>Ir a mi perfil</strong>
+              </span>
+              <IonIcon
+                icon={chevronForwardOutline}
+                className="rapago-home-alert-arrow"
+              />
+            </button>
           )}
 
+          {/* ── Aviso: sin conexión ────────────────────────────────────── */}
           {!isOnline && (
-            <div className="passenger-warning-box" role="alert">
-              <IonText>
-                <p className="passenger-warning-text">
+            <div className="rapago-home-alert rapago-home-alert--offline" role="alert">
+              <div className="rapago-home-alert-head">
+                <IonIcon icon={cellularOutline} />
+                <span>
                   Modo offline — tus viajes se sincronizarán cuando recuperes conexión.
-                </p>
-              </IonText>
+                </span>
+              </div>
 
               <WhatsAppButton
                 phone={RAPAGO_CONTACT.adminPhone}
@@ -525,16 +558,16 @@ export default function HomePage(): JSX.Element {
                 label="Contactar operador"
                 size="small"
                 fill="solid"
-                style={{ marginTop: "12px" }}
+                style={{ marginTop: "10px", width: "100%" }}
               />
             </div>
           )}
 
-          <section className="passenger-home-section">
-            <div className="passenger-home-section-eyebrow">Servicios</div>
-            <h2 className="passenger-home-section-title">¿Qué necesitas?</h2>
+          {/* ── Servicios ──────────────────────────────────────────────── */}
+          <section className="rapago-home-section">
+            <div className="rapago-home-section-label">Servicios</div>
 
-            <div className="services-grid">
+            <div className="rapago-home-services">
               <ServiceCard
                 icon={carOutline}
                 title="Viaje"
@@ -576,192 +609,144 @@ export default function HomePage(): JSX.Element {
             </div>
           </section>
 
-          <section className="passenger-home-section">
-            <div className="passenger-home-section-eyebrow">Módulos</div>
-            <h2 className="passenger-home-section-title">Próximamente</h2>
+          {/* ── Accesos rápidos ────────────────────────────────────────── */}
+          <section className="rapago-home-section">
+            <div className="rapago-home-section-label">Accesos rápidos</div>
 
-            <div
-              style={{
-                display: "flex",
-                gap: "12px",
-                overflowX: "auto",
-                padding: "2px 2px 8px",
-                scrollSnapType: "x mandatory",
-              }}
-            >
+            <div className="rapago-home-quick">
+              <button
+                type="button"
+                className="rapago-home-quick-card"
+                onClick={() => history.push(ROUTES.PASSENGER.TRIPS)}
+              >
+                <span className="rapago-home-quick-icon">
+                  <IonIcon icon={carOutline} />
+                </span>
+                <span>
+                  <span className="rapago-home-quick-title">Mis Viajes</span>
+                  <span className="rapago-home-quick-sub">Historial</span>
+                </span>
+              </button>
+
+              <button
+                type="button"
+                className={
+                  walletBalanceClp > 0
+                    ? "rapago-home-quick-card rapago-home-quick-card--highlight"
+                    : "rapago-home-quick-card"
+                }
+                onClick={openWallet}
+              >
+                <span className="rapago-home-quick-icon">
+                  <IonIcon icon={walletOutline} />
+                </span>
+                <span>
+                  <span className="rapago-home-quick-title">Wallet</span>
+                  <span className="rapago-home-quick-sub">
+                    {walletBalanceClp > 0
+                      ? `Saldo a favor: ${formatWalletClp(walletBalanceClp)}`
+                      : "Saldo y beneficios"}
+                  </span>
+                </span>
+              </button>
+            </div>
+          </section>
+
+          {/* ── Próximamente ───────────────────────────────────────────── */}
+          <section className="rapago-home-section">
+            <div className="rapago-home-section-label">Próximamente</div>
+
+            <div className="rapago-home-news">
               {RAPA_NUI_NEWS.map((news) => (
-                <IonCard
+                <article
                   key={news.title}
+                  className="rapago-home-news-card"
                   aria-disabled="true"
-                  style={{
-                    minWidth: "255px",
-                    maxWidth: "280px",
-                    margin: 0,
-                    borderRadius: "22px",
-                    background: "linear-gradient(135deg, rgba(255,255,255,.96), rgba(244,226,185,.96))",
-                    color: "#181818",
-                    boxShadow: "0 14px 28px rgba(0,0,0,.18)",
-                    scrollSnapAlign: "start",
-                  }}
                 >
-                  <IonCardContent
-                    style={{
-                      padding: "16px",
-                      display: "flex",
-                      alignItems: "flex-start",
-                      gap: "12px",
-                    }}
-                  >
-                    <div
-                      style={{
-                        width: "44px",
-                        height: "44px",
-                        borderRadius: "16px",
-                        background: "linear-gradient(135deg,#C89B3C,#F3D891)",
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        flexShrink: 0,
-                        boxShadow: "0 10px 22px rgba(200,155,60,.28)",
-                      }}
-                    >
-                      <IonIcon
-                        icon={news.icon}
-                        style={{ fontSize: "1.35rem", color: "#111" }}
-                      />
-                    </div>
+                  <span className="rapago-home-news-icon">
+                    <IonIcon icon={news.icon} />
+                  </span>
 
-                    <div style={{ minWidth: 0 }}>
-                      <div
-                        style={{
-                          fontSize: ".68rem",
-                          fontWeight: 950,
-                          letterSpacing: ".05em",
-                          textTransform: "uppercase",
-                          color: "#9A6A16",
-                          marginBottom: "5px",
-                        }}
-                      >
-                        {news.tag}
-                      </div>
-
-                      <div
-                        style={{
-                          fontSize: ".92rem",
-                          fontWeight: 950,
-                          lineHeight: 1.15,
-                          color: "#151515",
-                        }}
-                      >
-                        {news.title}
-                      </div>
-
-                      <div
-                        style={{
-                          marginTop: "6px",
-                          fontSize: ".74rem",
-                          lineHeight: 1.35,
-                          color: "rgba(20,20,20,.68)",
-                        }}
-                      >
-                        {news.subtitle}
-                      </div>
-                    </div>
-                  </IonCardContent>
-                </IonCard>
+                  <div style={{ minWidth: 0 }}>
+                    <div className="rapago-home-news-tag">{news.tag}</div>
+                    <div className="rapago-home-news-title">{news.title}</div>
+                    <div className="rapago-home-news-sub">{news.subtitle}</div>
+                  </div>
+                </article>
               ))}
             </div>
           </section>
 
-          <div className="quick-access-grid">
-            <IonCard className="quick-access-card ion-activatable" routerLink={ROUTES.PASSENGER.TRIPS}>
-              <IonCardContent className="quick-access-content">
-                <IonIcon icon={carOutline} className="quick-access-icon trips" />
-                <div>
-                  <div className="quick-access-title">Mis Viajes</div>
-                  <div className="quick-access-subtitle">Historial</div>
-                </div>
-              </IonCardContent>
-            </IonCard>
-
-            <IonCard
-              className="quick-access-card ion-activatable"
-              button
-              onClick={openWallet}
-              style={{
-                background: walletBalanceClp > 0
-                  ? "linear-gradient(135deg,#fff7dc,#e8fff1)"
-                  : undefined,
-              }}
-            >
-              <IonCardContent className="quick-access-content">
-                <IonIcon icon={walletOutline} className="quick-access-icon wallet" />
-                <div>
-                  <div className="quick-access-title">Wallet</div>
-                  <div className="quick-access-subtitle">
-                    {walletBalanceClp > 0
-                      ? `Saldo a favor: ${formatWalletClp(walletBalanceClp)}`
-                      : "Saldo y beneficios"}
-                  </div>
-                </div>
-              </IonCardContent>
-            </IonCard>
-          </div>
-
-          <div
-            className="referral-banner"
-            role="button"
-            tabIndex={0}
-            aria-label="Banner referidos: invita amigos y gana crédito"
+          {/* ── Referidos ──────────────────────────────────────────────── */}
+          <button
+            type="button"
+            className="rapago-home-referral"
+            aria-label="Invita amigos y gana crédito"
             onClick={() => history.push(ROUTES.PROFILE.INDEX)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") history.push(ROUTES.PROFILE.INDEX);
-            }}
           >
-            <IonIcon icon={giftOutline} className="referral-icon" />
+            <span className="rapago-home-referral-icon">
+              <IonIcon icon={giftOutline} />
+            </span>
 
-            <div className="referral-content">
-              <div className="referral-title">Invita amigos y gana</div>
-              <div className="referral-subtitle">
+            <span className="rapago-home-referral-body">
+              <span className="rapago-home-referral-title">
+                Invita amigos y gana
+              </span>
+              <span className="rapago-home-referral-sub">
                 Comparte tu código y obtén descuentos en tus próximos viajes
+              </span>
+            </span>
+
+            <IonIcon
+              icon={chevronForwardOutline}
+              className="rapago-home-referral-arrow"
+            />
+          </button>
+
+          {/* ── Únete a Rapa Go ────────────────────────────────────────── */}
+          <section className="rapago-home-join">
+            <div className="rapago-home-join-head">
+              <span className="rapago-home-join-icon">
+                <IonIcon icon={peopleOutline} />
+              </span>
+              <div>
+                <h2 className="rapago-home-join-title">
+                  ¿Quieres unirte a Rapa Go?
+                </h2>
+                <p className="rapago-home-join-sub">
+                  Postula como conductor o guía turístico de la isla.
+                </p>
               </div>
             </div>
 
-            <IonIcon icon={chevronForwardOutline} className="referral-arrow" />
-          </div>
-
-          <IonCard className="join-card">
-            <IonCardHeader>
-              <IonCardTitle className="join-card-title">
-                ¿Quieres unirte a Rapa Go?
-              </IonCardTitle>
-            </IonCardHeader>
-
-            <IonCardContent>
-              <IonButton expand="block" routerLink="/apply/driver" color="primary">
+            <div className="rapago-home-join-actions">
+              <IonButton
+                expand="block"
+                className="rapago-home-btn-primary"
+                routerLink="/apply/driver"
+              >
+                <IonIcon icon={carOutline} slot="start" />
                 Inscríbete como conductor
               </IonButton>
 
               <IonButton
                 expand="block"
+                className="rapago-home-btn-outline"
                 routerLink="/apply/guide"
-                color="secondary"
-                className="join-card-button"
               >
+                <IonIcon icon={mapOutline} slot="start" />
                 Inscríbete como guía
               </IonButton>
 
               <IonButton
                 expand="block"
-                fill="outline"
+                className="rapago-home-btn-outline"
                 routerLink="/apply/status"
-                color="medium"
-                className="join-card-button"
               >
                 Estado de mi postulación
               </IonButton>
-            </IonCardContent>
-          </IonCard>
+            </div>
+          </section>
         </div>
       </IonContent>
 
@@ -771,41 +756,10 @@ export default function HomePage(): JSX.Element {
         rel="noopener noreferrer"
         aria-label="Abrir Mesa de Ayuda de RAPA GO en WhatsApp"
         title="Mesa de Ayuda"
-        style={{
-          position: "fixed",
-          right: "18px",
-          bottom: "88px",
-          zIndex: 1200,
-          width: "62px",
-          height: "62px",
-          borderRadius: "50%",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          background: "linear-gradient(145deg,#25D366,#128C7E)",
-          color: "#fff",
-          border: "3px solid rgba(255,255,255,.92)",
-          boxShadow: "0 14px 32px rgba(0,0,0,.32)",
-          textDecoration: "none",
-        }}
+        className="rapago-home-wa"
       >
-        <IonIcon icon={logoWhatsapp} style={{ fontSize: "2rem" }} />
-        <span
-          style={{
-            position: "absolute",
-            right: 54,
-            whiteSpace: "nowrap",
-            padding: "7px 10px",
-            borderRadius: 999,
-            background: "rgba(17,17,17,.92)",
-            color: "#fff",
-            fontSize: ".68rem",
-            fontWeight: 950,
-            boxShadow: "0 8px 20px rgba(0,0,0,.22)",
-          }}
-        >
-          Mesa de Ayuda
-        </span>
+        <IonIcon icon={logoWhatsapp} />
+        <span className="rapago-home-wa-label">Mesa de Ayuda</span>
       </a>
     </IonPage>
   );

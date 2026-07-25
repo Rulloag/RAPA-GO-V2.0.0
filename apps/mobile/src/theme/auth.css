@@ -1,0 +1,216 @@
+/* ==========================================================================
+   RAPA GO — Login y Registro con soporte de tema
+
+   global.css:4408+ define el sistema de auth con colores fijos (era dark-only,
+   de ahí el nombre .rapago-auth-dark). Este archivo reconecta esas mismas
+   clases a los tokens de rapago-shell.css para que respondan al modo día.
+
+   No se renombra .rapago-auth-dark: la clase está en LoginPage, RegisterPage
+   y en las reglas de global.css, y renombrarla obligaría a tocar los tres
+   sitios sin ganar nada. Lo que cambia es de dónde saca los colores.
+
+   Se importa DESPUÉS de global.css. TODAS las propiedades de este archivo
+   llevan !important, aunque la especificidad del selector ya debería bastar:
+   .rapago-auth-dark .rapago-auth-card (dos clases) le gana en teoría a
+   .rapago-auth-card de global.css (una clase). En la práctica, sin
+   !important, algunas propiedades sí ganaban (color del título) y otras no
+   (fondo de la tarjeta, fondo de los botones outline) de forma inconsistente
+   — probablemente por orden de inyección de <style> en dev/HMR, que no
+   garantiza el mismo orden que un build de producción. En vez de depender de
+   que la especificidad alcance, se fuerza explícitamente en todas partes,
+   igual que ya se hace en sections.css y profile.css. */
+
+/* El fondo del IonPage lo pinta rapago-shell.css, que ya incluye
+   .rapago-auth-dark en la regla con !important necesaria para ganarle a
+   `.ion-page` de global.css:2074. */
+.rapago-auth-dark ion-content {
+  --background: transparent !important;
+}
+
+/* ── Tarjeta ────────────────────────────────────────────────────────────── */
+.rapago-auth-dark .rapago-auth-card {
+  background: var(--rp-surface) !important;
+  border: var(--rp-auth-border-w) solid var(--rp-auth-border-c) !important;
+  box-shadow: var(--rp-auth-glow) !important;
+  color: var(--rp-text) !important;
+  border-radius: var(--rp-radius) !important;
+  padding: var(--rp-pad) var(--rp-pad) calc(var(--rp-pad) + 4px) !important;
+}
+
+.rapago-auth-dark .rapago-auth-card:focus-within {
+  border-color: var(--rp-border-strong) !important;
+  box-shadow: var(--rp-auth-glow-focus) !important;
+}
+
+/* ── Tipografía ─────────────────────────────────────────────────────────── */
+.rapago-auth-dark .rapago-auth-title {
+  color: var(--rp-accent) !important;
+  font-size: clamp(1.4rem, 6vw, 1.72rem) !important;
+  text-wrap: balance;
+}
+
+.rapago-auth-dark .rapago-auth-subtitle,
+.rapago-auth-dark .rapago-auth-tagline {
+  color: var(--rp-muted) !important;
+  font-size: clamp(0.78rem, 3vw, 0.95rem) !important;
+}
+
+.rapago-auth-dark .rapago-auth-divider {
+  color: var(--rp-muted-soft) !important;
+}
+
+.rapago-auth-dark .rapago-auth-divider::before,
+.rapago-auth-dark .rapago-auth-divider::after {
+  background: linear-gradient(90deg, transparent, var(--rp-border-c), transparent) !important;
+}
+
+/* ── Botón de volver y logo ─────────────────────────────────────────────── */
+.rapago-auth-dark .rapago-auth-back-button {
+  background: var(--rp-chrome) !important;
+  border: 1px solid var(--rp-icon-bd) !important;
+  color: var(--rp-icon-fg) !important;
+}
+
+.rapago-auth-dark .rapago-auth-back-button:hover {
+  background: var(--rp-icon-bg) !important;
+}
+
+/* ── Campos ─────────────────────────────────────────────────────────────── */
+.rapago-auth-dark .rapago-auth-field {
+  --background: var(--rp-field-bg) !important;
+  --color: var(--rp-field-fg) !important;
+  border: var(--rp-border-w) solid var(--rp-border-c) !important;
+  border-radius: var(--rp-radius-sm) !important;
+}
+
+.rapago-auth-dark .rapago-auth-field.item-has-focus {
+  border-color: var(--rp-border-strong) !important;
+  box-shadow: 0 0 0 3px rgba(214, 166, 64, 0.16) !important;
+}
+
+.rapago-auth-dark .rapago-auth-field.ion-invalid {
+  border-color: var(--rp-danger-bd) !important;
+}
+
+.rapago-auth-dark .rapago-auth-field ion-label {
+  color: var(--rp-label) !important;
+}
+
+.rapago-auth-field-icon {
+  color: var(--rp-icon-fg) !important;
+}
+
+/* global.css:4610-4656 fuerza el texto de los inputs a #ffffff para todo lo
+   que esté dentro de .rapago-auth-dark. En modo día eso deja el texto blanco
+   sobre campo blanco: invisible. Este es el override crítico del archivo. */
+.rapago-auth-dark .rapago-auth-field ion-input,
+.rapago-auth-dark ion-item ion-input,
+.rapago-auth-dark ion-input {
+  --color: var(--rp-field-fg) !important;
+  --placeholder-color: var(--rp-field-ph) !important;
+  color: var(--rp-field-fg) !important;
+}
+
+.rapago-auth-dark ion-input input,
+.rapago-auth-dark ion-input::part(native),
+.rapago-auth-dark ion-textarea textarea,
+.rapago-auth-dark ion-textarea::part(native) {
+  color: var(--rp-field-fg) !important;
+  -webkit-text-fill-color: var(--rp-field-fg) !important;
+  caret-color: var(--rp-gold) !important;
+}
+
+.rapago-auth-dark ion-input input::placeholder,
+.rapago-auth-dark ion-textarea textarea::placeholder {
+  color: var(--rp-field-ph) !important;
+  -webkit-text-fill-color: var(--rp-field-ph) !important;
+}
+
+/* El autofill del navegador vuelve a imponer su color de texto. */
+.rapago-auth-dark ion-input input:-webkit-autofill,
+.rapago-auth-dark ion-input input:-webkit-autofill:hover,
+.rapago-auth-dark ion-input input:-webkit-autofill:focus,
+.rapago-auth-dark ion-input::part(native):-webkit-autofill {
+  -webkit-text-fill-color: var(--rp-field-fg) !important;
+  caret-color: var(--rp-gold) !important;
+}
+
+.rapago-auth-dark .rapago-auth-eye {
+  --color: var(--rp-icon-fg) !important;
+  --background-hover: var(--rp-icon-bg) !important;
+  --background-activated: var(--rp-icon-bg) !important;
+}
+
+/* ── Botones ────────────────────────────────────────────────────────────── */
+.rapago-auth-dark .rapago-auth-btn-primary {
+  --background: var(--rp-btn-primary) !important;
+  --color: var(--rp-btn-primary-fg) !important;
+  --border-radius: var(--rp-radius-sm) !important;
+  color: var(--rp-btn-primary-fg) !important;
+  height: var(--rp-control-h);
+}
+
+.rapago-auth-dark .rapago-auth-btn-outline {
+  --border-color: var(--rp-border-c) !important;
+  --border-width: var(--rp-border-w) !important;
+  --color: var(--rp-icon-fg) !important;
+  --background: transparent !important;
+  --background-activated: var(--rp-icon-bg) !important;
+  --border-radius: var(--rp-radius-sm) !important;
+  color: var(--rp-icon-fg) !important;
+}
+
+.rapago-auth-dark .rapago-auth-btn-clear,
+.rapago-auth-dark .rapago-auth-forgot ion-button {
+  --color: var(--rp-icon-fg) !important;
+  color: var(--rp-icon-fg) !important;
+}
+
+/* ── Errores ────────────────────────────────────────────────────────────── */
+.rapago-auth-dark .rapago-auth-error {
+  background: var(--rp-err-bg) !important;
+  border: 1px solid var(--rp-err-bd) !important;
+  color: var(--rp-err-fg) !important;
+}
+
+.rapago-auth-dark ion-note[slot="error"],
+.rapago-auth-dark .ion-color-danger {
+  color: var(--rp-err-fg) !important;
+}
+
+/* ── Toggle de tema ─────────────────────────────────────────────────────── */
+/* Va en la cabecera de la tarjeta, en la tercera columna de la grilla
+   42px / 1fr / 42px que global.css:4448 ya reserva y que hasta ahora
+   quedaba vacía. */
+.rapago-auth-theme-btn {
+  grid-column: 3;
+  justify-self: end;
+  width: 42px;
+  height: 42px;
+  border-radius: 12px;
+  display: grid;
+  place-items: center;
+  background: var(--rp-chrome);
+  border: 1px solid var(--rp-icon-bd);
+  color: var(--rp-icon-fg);
+  cursor: pointer;
+  padding: 0;
+  font-size: 1.15rem;
+  transition:
+    background 0.2s ease,
+    transform 0.2s ease;
+}
+
+.rapago-auth-theme-btn:hover {
+  background: var(--rp-icon-bg);
+}
+
+.rapago-auth-theme-btn:active {
+  transform: scale(0.92);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rapago-auth-theme-btn {
+    transition: none;
+  }
+}

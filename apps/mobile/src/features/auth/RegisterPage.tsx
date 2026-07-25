@@ -21,7 +21,10 @@ import {
   lockClosedOutline,
   eyeOutline,
   eyeOffOutline,
+  moonOutline,
+  sunnyOutline,
 } from "ionicons/icons";
+import { useRapagoSectionTheme } from "../../theme/rapagoTheme.js";
 import { useHistory } from "react-router-dom";
 import {
   registerRequestSchema,
@@ -623,6 +626,8 @@ const phonePrefixStyle: CSSProperties = {
 export function RegisterPage(): JSX.Element {
   const history = useHistory();
   const { register } = useAuth();
+  /* Tema propio del flujo de acceso (compartido con Login). */
+  const { theme, isDark, toggleTheme } = useRapagoSectionTheme("auth");
   const residentDocumentInputRef = useRef<HTMLInputElement | null>(null);
 
   const [name, setName] = useState("");
@@ -1049,7 +1054,7 @@ export function RegisterPage(): JSX.Element {
   }
 
   return (
-    <IonPage className="rapago-auth-dark">
+    <IonPage className="rapago-auth-dark" data-rapago-theme={theme}>
       <IonContent className="ion-padding" style={pageContentStyle}>
         <form
           onSubmit={(event) => {
@@ -1076,6 +1081,16 @@ export function RegisterPage(): JSX.Element {
                 className="passenger-home-logo rapago-auth-brand-logo"
               />
             </div>
+
+            <button
+              type="button"
+              className="rapago-auth-theme-btn"
+              onClick={toggleTheme}
+              aria-label={isDark ? "Activar modo día" : "Activar modo nocturno"}
+              title={isDark ? "Modo día" : "Modo nocturno"}
+            >
+              <IonIcon icon={isDark ? sunnyOutline : moonOutline} />
+            </button>
           </div>
 
           <IonText>

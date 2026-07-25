@@ -1,0 +1,345 @@
+/* ==========================================================================
+   RAPA GO — Tokens compartidos: Home y Perfil del pasajero
+
+   Un único juego de variables alimenta las dos pantallas rediseñadas, así que
+   ambas se mantienen sincronizadas sin duplicar valores.
+
+   TEMAS
+   El atributo `data-rapago-theme` lo pone theme/rapagoTheme.ts sobre <html>.
+   - dark  (defecto) — hereda del Login: superficie volcánica + borde dorado.
+   - light — "arena volcánica": fondo arena, tarjeta blanco cálido, borde
+     bronce de 2px. Misma familia cromática, no un tema distinto.
+
+   Los selectores siguen scoped a .rapago-home-page / .rapago-profile-page: el
+   atributo puede estar presente en toda la app sin afectar a ninguna pantalla
+   que no haya sido rediseñada.
+
+   ESCALA FLUIDA
+   Los tamaños usan clamp(mínimo, preferido en vw, máximo) para que la
+   tipografía y los espacios acompañen al ancho del dispositivo sin necesidad
+   de media queries por cada valor. Los mínimos están calculados para 320px y
+   los máximos se alcanzan cerca de 460px, que es el ancho de la columna.
+   ========================================================================== */
+
+/* Los tokens viven en :root, no en las clases de página.
+   Motivo: el tab bar de navegación se renderiza en RoleLayout como HERMANO
+   del IonRouterOutlet, así que nunca es descendiente de .rapago-home-page y
+   no alcanzaba los tokens. Definirlos en :root los hace visibles en toda la
+   app sin cambiar nada: solo los usa quien escribe var(--rp-*).
+
+   TEMA POR PANTALLA
+   El selector [data-rapago-theme] SIN :root existe porque ahora cada página
+   pone el atributo en su propio IonPage (useRapagoSectionTheme). Las custom
+   properties se heredan: definirlas en el elemento de la página hace que todo
+   su subárbol resuelva a su tema, aunque <html> tenga otro. El bloque dark se
+   repite en [data-rapago-theme="dark"] para que una página en modo noche siga
+   oscura aunque la pantalla anterior haya dejado <html> en "light". */
+:root,
+[data-rapago-theme="dark"] {
+  /* ── Tipografía fluida ────────────────────────────────────────────────── */
+  --rp-fs-hero: clamp(1.32rem, 5.4vw, 1.72rem);
+  --rp-fs-h2: clamp(0.94rem, 3.5vw, 1.08rem);
+  --rp-fs-stat: clamp(1rem, 4.2vw, 1.28rem);
+  --rp-fs-body: clamp(0.82rem, 3.1vw, 0.92rem);
+  --rp-fs-sub: clamp(0.69rem, 2.7vw, 0.78rem);
+  --rp-fs-micro: clamp(0.62rem, 2.5vw, 0.72rem);
+  --rp-fs-label: clamp(0.6rem, 2.3vw, 0.68rem);
+
+  /* ── Espaciado y forma fluidos ────────────────────────────────────────── */
+  --rp-gap: clamp(14px, 4.2vw, 20px);
+  --rp-gap-sm: clamp(8px, 2.6vw, 12px);
+  --rp-pad: clamp(14px, 4.2vw, 18px);
+  --rp-pad-x: clamp(12px, 4vw, 16px);
+  --rp-radius: clamp(18px, 5.2vw, 24px);
+  --rp-radius-sm: clamp(13px, 3.8vw, 16px);
+  --rp-icon-size: clamp(36px, 10vw, 42px);
+  --rp-icon-size-sm: clamp(28px, 8vw, 32px);
+  --rp-avatar: clamp(76px, 24vw, 96px);
+  --rp-control-h: clamp(46px, 13vw, 52px);
+
+  /* ── Marca (constante en ambos temas) ─────────────────────────────────── */
+  --rp-gold: #d6a640;
+  --rp-gold-light: #f8d879;
+  --rp-terracotta: #b84f2e;
+  --rp-btn-primary: linear-gradient(135deg, #f8d879 0%, #d6a640 46%, #b84f2e 100%);
+  --rp-btn-primary-fg: #201607;
+
+  /* ── Tema oscuro (defecto) ────────────────────────────────────────────── */
+  /* Sin background-attachment: fixed — en móvil obliga a repintar una capa
+     completa en cada frame de scroll. */
+  --rp-page-bg:
+    linear-gradient(180deg, rgba(20, 16, 12, 0.86), rgba(12, 10, 9, 0.95)),
+    url("/assets/rapa-go-bg.jpg") center / cover no-repeat;
+  --rp-surface: linear-gradient(180deg, rgba(28, 26, 23, 0.97), rgba(14, 13, 12, 0.98));
+  --rp-surface-soft: rgba(255, 255, 255, 0.05);
+  --rp-border-w: 1.5px;
+  --rp-border-c: rgba(214, 166, 64, 0.42);
+  --rp-border-strong: rgba(214, 166, 64, 0.72);
+  --rp-text: #f6f2ec;
+  --rp-muted: rgba(246, 242, 236, 0.64);
+  --rp-muted-soft: rgba(246, 242, 236, 0.46);
+  --rp-divider: rgba(246, 242, 236, 0.08);
+  --rp-accent: #f1c864;
+  --rp-icon-fg: #f8d879;
+  --rp-icon-bg: rgba(214, 166, 64, 0.14);
+  --rp-icon-bd: rgba(214, 166, 64, 0.3);
+  --rp-field-bg: rgba(255, 255, 255, 0.055);
+  --rp-field-fg: #ffffff;
+  --rp-field-ph: rgba(255, 255, 255, 0.42);
+  --rp-label: #f8d879;
+  --rp-chrome: rgba(255, 255, 255, 0.07);
+  --rp-seg-track: rgba(0, 0, 0, 0.28);
+  --rp-shadow:
+    0 0 0 1px rgba(214, 166, 64, 0.1),
+    0 18px 44px rgba(0, 0, 0, 0.44);
+  --rp-shadow-accent:
+    0 0 0 1px rgba(214, 166, 64, 0.16),
+    0 0 26px rgba(214, 166, 64, 0.12),
+    0 18px 44px rgba(0, 0, 0, 0.46);
+  --rp-ok-fg: #86efac;
+  --rp-ok-bg: rgba(34, 197, 94, 0.13);
+  --rp-ok-bd: rgba(34, 197, 94, 0.36);
+  --rp-err-fg: #f3c6b4;
+  --rp-err-bg: rgba(184, 79, 46, 0.16);
+  --rp-err-bd: rgba(184, 79, 46, 0.4);
+  --rp-danger-fg: #f0906e;
+  --rp-danger-bd: rgba(184, 79, 46, 0.6);
+
+  /* Barra de navegación inferior. */
+  --rp-nav-bg: #1a1a1a;
+  --rp-nav-fg: #d9c3a0;
+  --rp-nav-active: #c89b3c;
+  --rp-nav-border: rgba(200, 155, 60, 0.28);
+  --rp-nav-shadow: 0 -8px 20px rgba(0, 0, 0, 0.42);
+
+  /* Superficie "legacy": clara en ambos temas. La usan solo las tarjetas de
+     Solicitar viaje y Mis viajes, cuyo texto está escrito en oscuro dentro de
+     `style=""` y quedaría ilegible sobre fondo oscuro. Ver la excepción
+     documentada en sections.css. Es deuda técnica con nombre, no una decisión
+     de diseño: desaparece cuando esos estilos pasen a clases. */
+  --rp-surface-legacy: linear-gradient(180deg, #fffdf9, #f6f2ec);
+  --rp-text-legacy: #1a1a1a;
+  --rp-accent-legacy: #8a641c;
+
+  /* Tarjeta de Login/Registro: borde y halo más marcados que una tarjeta
+     normal, porque es el único elemento en pantalla. */
+  --rp-auth-border-w: 2px;
+  --rp-auth-border-c: rgba(214, 166, 64, 0.55);
+  --rp-auth-glow:
+    0 0 0 4px rgba(214, 166, 64, 0.08),
+    0 0 32px rgba(214, 166, 64, 0.16),
+    0 26px 70px rgba(0, 0, 0, 0.5);
+  --rp-auth-glow-focus:
+    0 0 0 6px rgba(214, 166, 64, 0.1),
+    0 0 42px rgba(214, 166, 64, 0.24),
+    0 26px 70px rgba(0, 0, 0, 0.5);
+}
+
+/* ── Tema claro: "arena volcánica" ──────────────────────────────────────── */
+/* El borde sube a 2px y pasa a bronce sólido: sobre superficie clara el oro
+   translúcido del modo noche desaparece, y el encargo pedía un borde con
+   presencia. La foto de fondo se conserva bajo un velo arena para que la
+   pantalla siga siendo reconociblemente Rapa Nui. */
+:root[data-rapago-theme="light"],
+[data-rapago-theme="light"] {
+  --rp-page-bg:
+    linear-gradient(180deg, rgba(243, 237, 226, 0.94), rgba(233, 222, 203, 0.97)),
+    url("/assets/rapa-go-bg.jpg") center / cover no-repeat;
+  --rp-surface: linear-gradient(180deg, #fffdf9, #fdf7ec);
+  --rp-surface-soft: rgba(26, 26, 26, 0.045);
+  --rp-border-w: 2px;
+  --rp-border-c: #c89b3c;
+  --rp-border-strong: #a8781f;
+  --rp-text: #1a1a1a;
+  /* Sobre la superficie clara, .50 dejaba las etiquetas de sección en ~3.9:1,
+     bajo el mínimo AA de 4.5:1. A .62 quedan en ~4.8:1. */
+  --rp-muted: rgba(26, 26, 26, 0.72);
+  --rp-muted-soft: rgba(26, 26, 26, 0.62);
+  --rp-divider: rgba(26, 26, 26, 0.1);
+  --rp-accent: #8a641c;
+  --rp-icon-fg: #8a641c;
+  --rp-icon-bg: rgba(200, 155, 60, 0.16);
+  --rp-icon-bd: rgba(200, 155, 60, 0.42);
+  --rp-field-bg: #ffffff;
+  --rp-field-fg: #111111;
+  --rp-field-ph: rgba(17, 17, 17, 0.42);
+  --rp-label: #8a641c;
+  --rp-chrome: rgba(26, 26, 26, 0.06);
+  --rp-seg-track: rgba(26, 26, 26, 0.07);
+  --rp-shadow:
+    0 1px 0 rgba(200, 155, 60, 0.16),
+    0 14px 30px rgba(90, 60, 20, 0.13);
+  --rp-shadow-accent:
+    0 0 0 1px rgba(200, 155, 60, 0.28),
+    0 14px 34px rgba(90, 60, 20, 0.18);
+  --rp-ok-fg: #14783f;
+  --rp-ok-bg: rgba(20, 120, 63, 0.1);
+  --rp-ok-bd: rgba(20, 120, 63, 0.34);
+  --rp-err-fg: #9a3412;
+  --rp-err-bg: rgba(184, 79, 46, 0.1);
+  --rp-err-bd: rgba(184, 79, 46, 0.38);
+  --rp-danger-fg: #b03a1c;
+  --rp-danger-bd: rgba(184, 79, 46, 0.55);
+
+  /* En modo día la barra pasa a superficie clara. El inactivo es #6b5a3e y no
+     un gris al 50%: sobre blanco cálido da ~5.2:1, por encima del mínimo AA. */
+  --rp-nav-bg: #fffdf9;
+  --rp-nav-fg: #6b5a3e;
+  --rp-nav-active: #8a641c;
+  --rp-nav-border: rgba(200, 155, 60, 0.5);
+  --rp-nav-shadow: 0 -6px 18px rgba(90, 60, 20, 0.14);
+
+  /* Sobre fondo claro el halo dorado no se percibe: se cambia por un borde
+     bronce sólido y una sombra proyectada. */
+  --rp-auth-border-c: #c89b3c;
+  --rp-auth-glow:
+    0 0 0 4px rgba(200, 155, 60, 0.14),
+    0 22px 50px rgba(90, 60, 20, 0.2);
+  --rp-auth-glow-focus:
+    0 0 0 6px rgba(200, 155, 60, 0.2),
+    0 22px 50px rgba(90, 60, 20, 0.24);
+}
+
+/* ==========================================================================
+   PRIMITIVAS COMPARTIDAS
+   ========================================================================== */
+
+/* Fondo de página.
+   Va sobre el IonPage, no sobre el IonContent: la cabecera de la Home y el
+   IonHeader del perfil viven FUERA del IonContent, así que si el fondo se
+   pinta solo ahí quedan sobre el fondo por defecto de Ionic (oscuro) y en
+   modo día el texto oscuro se vuelve ilegible. El IonContent se hace
+   transparente para dejar ver el del IonPage. */
+/* El !important no es opcional: global.css:2074 declara
+   `.ion-page { background: var(--rapago-volcanic) !important }`, y esa clase
+   la pone Ionic en EL MISMO elemento que estas. Con igual especificidad, el
+   !important gana siempre, así que sin él el fondo se queda negro en modo día
+   y el texto oscuro resulta invisible.
+   El color se fija por el mismo motivo (global.css:2079 y :3093 lo fuerzan a
+   ivory): así lo que no declara color propio hereda el del tema. */
+.rapago-home-page,
+.rapago-profile-page,
+.rapago-auth-dark,
+.rapago-section-page {
+  background: var(--rp-page-bg) !important;
+  color: var(--rp-text) !important;
+}
+
+.rapago-home-page .rapago-home-content,
+.rapago-profile-page .rapago-profile-content,
+.rapago-home-page .rapago-shell-content,
+.rapago-profile-page .rapago-shell-content {
+  --background: transparent;
+  --padding-start: 0;
+  --padding-end: 0;
+  --padding-top: 0;
+  --padding-bottom: 0;
+}
+
+/* ==========================================================================
+   BARRA DE NAVEGACIÓN INFERIOR
+
+   global.css:1700 fija `ion-tab-bar { background: #1A1A1A !important }` y
+   :1747 fija los colores de los botones, todo hardcodeado. Por eso la barra
+   se quedaba negra al pasar a modo día. Estos overrides la conectan a los
+   tokens; necesitan !important porque compiten contra !important.
+
+   No van scoped a una pantalla: la barra es común a todas las pestañas del
+   rol, así que el cambio alcanza también a Viajes, Wallet y Ayuda.
+   ========================================================================== */
+ion-tab-bar.rapago-role-tabbar {
+  --background: var(--rp-nav-bg) !important;
+  background: var(--rp-nav-bg) !important;
+  border-top: 1px solid var(--rp-nav-border) !important;
+  box-shadow: var(--rp-nav-shadow) !important;
+}
+
+ion-tab-bar.rapago-role-tabbar ion-tab-button {
+  --color: var(--rp-nav-fg) !important;
+  --color-selected: var(--rp-nav-active) !important;
+  color: var(--rp-nav-fg) !important;
+}
+
+ion-tab-bar.rapago-role-tabbar ion-tab-button.tab-selected,
+ion-tab-bar.rapago-role-tabbar ion-tab-button[aria-selected="true"] {
+  color: var(--rp-nav-active) !important;
+}
+
+ion-tab-bar.rapago-role-tabbar ion-tab-button.tab-selected ion-icon,
+ion-tab-bar.rapago-role-tabbar ion-tab-button.tab-selected ion-label,
+ion-tab-bar.rapago-role-tabbar ion-tab-button[aria-selected="true"] ion-icon,
+ion-tab-bar.rapago-role-tabbar ion-tab-button[aria-selected="true"] ion-label {
+  color: var(--rp-nav-active) !important;
+}
+
+/* Columna de lectura: el mismo ancho que .rapago-auth-card del Login. */
+.rapago-shell {
+  width: min(100%, 460px);
+  margin: 0 auto;
+  padding: 8px var(--rp-pad-x) calc(96px + env(safe-area-inset-bottom, 0px));
+  display: flex;
+  flex-direction: column;
+  gap: var(--rp-gap);
+}
+
+/* Superficie con borde dorado: la base de tarjetas, tiles y acciones. */
+.rapago-surface {
+  background: var(--rp-surface);
+  border: var(--rp-border-w) solid var(--rp-border-c);
+  box-shadow: var(--rp-shadow);
+  color: var(--rp-text);
+}
+
+.rapago-surface--accent {
+  border-color: var(--rp-border-strong);
+  box-shadow: var(--rp-shadow-accent);
+}
+
+/* Etiqueta de sección con filete degradado. */
+.rapago-section-label {
+  display: flex;
+  align-items: center;
+  gap: var(--rp-gap-sm);
+  margin: 4px 2px -10px;
+  font-size: var(--rp-fs-label);
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--rp-muted-soft);
+}
+
+.rapago-section-label::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: linear-gradient(90deg, var(--rp-border-c), transparent);
+}
+
+/* Botón de chrome (header): sol/luna, idioma, volver. */
+.rapago-home-page .rapago-chrome-btn,
+.rapago-profile-page .rapago-chrome-btn,
+.rapago-section-page .rapago-chrome-btn {
+  --border-radius: 12px;
+  --background: var(--rp-chrome);
+  --background-hover: var(--rp-icon-bg);
+  --background-activated: var(--rp-icon-bg);
+  --color: var(--rp-icon-fg);
+  --padding-start: 10px;
+  --padding-end: 10px;
+  height: 40px;
+  min-height: 40px;
+  font-weight: 800;
+  font-size: var(--rp-fs-sub);
+  text-transform: none;
+  border: 1px solid var(--rp-icon-bd);
+  border-radius: 12px;
+  margin: 0 4px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rapago-home-page *,
+  .rapago-profile-page * {
+    animation-duration: 0.001ms !important;
+    transition-duration: 0.001ms !important;
+  }
+}
