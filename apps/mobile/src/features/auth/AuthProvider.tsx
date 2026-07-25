@@ -9,6 +9,7 @@ import { useHistory } from "react-router-dom";
 import { authService } from "./auth.service.js";
 import { sessionStorageService } from "./sessionStorage.service.js";
 import { ROUTES } from "../../navigation/routes.js";
+import { clientStoragePolicy } from "../../services/storage/clientStoragePolicy.js";
 import type {
   AuthContextValue,
   AuthUser,
@@ -26,6 +27,23 @@ interface AuthProviderProps {
   children: ReactNode;
 }
 
+const SESSION_RESTORE_TIMEOUT_MS = 12000;
+
+async function verifySessionWithTimeout(accessToken: string): Promise<AuthResponse> {
+  return Promise.race([
+    authService.me(accessToken),
+    new Promise<AuthResponse>((resolve) => {
+      window.setTimeout(() => {
+        resolve({
+          ok: false,
+          code: "AUTH_RESTORE_TIMEOUT",
+          message: "No se pudo restaurar la sesión a tiempo.",
+        });
+      }, SESSION_RESTORE_TIMEOUT_MS);
+    }),
+  ]);
+}
+
 export function AuthProvider({ children }: AuthProviderProps): JSX.Element {
   const history = useHistory();
   const [status, setStatus] = useState<AuthStatus>("loading");
@@ -34,6 +52,7 @@ export function AuthProvider({ children }: AuthProviderProps): JSX.Element {
 
   const clearLocalSession = useCallback(async (): Promise<void> => {
     await sessionStorageService.clearSession();
+    clientStoragePolicy.clearSensitiveClientStorage();
     setSession(null);
     setUser(null);
     setStatus("unauthenticated");
@@ -51,11 +70,12 @@ export function AuthProvider({ children }: AuthProviderProps): JSX.Element {
         return;
       }
 
-      const verified = await authService.me(persisted.accessToken);
+      const verified = await verifySessionWithTimeout(persisted.accessToken);
       if (cancelled) return;
 
       if (!verified.ok) {
         await sessionStorageService.clearSession();
+        clientStoragePolicy.clearSensitiveClientStorage();
         if (!cancelled) {
           setSession(null);
           setUser(null);
@@ -74,6 +94,7 @@ export function AuthProvider({ children }: AuthProviderProps): JSX.Element {
 
     void restore().catch(async () => {
       await sessionStorageService.clearSession();
+      clientStoragePolicy.clearSensitiveClientStorage();
       if (!cancelled) {
         setSession(null);
         setUser(null);
@@ -85,6 +106,60 @@ export function AuthProvider({ children }: AuthProviderProps): JSX.Element {
       cancelled = true;
     };
   }, []);
+
+  useEffect(() => {
+    if (status !== "authenticated" || !session?.accessToken) return;
+
+    let cancelled = false;
+    let refreshing = false;
+
+    const refreshSessionUser = async (): Promise<void> => {
+      if (refreshing || cancelled) return;
+      refreshing = true;
+
+      try {
+        const verified = await authService.me(session.accessToken);
+        if (cancelled || !verified.ok) return;
+
+        await sessionStorageService.saveSession(verified.session);
+        if (cancelled) return;
+
+        setSession(verified.session);
+        setUser(verified.session.user);
+      } finally {
+        refreshing = false;
+      }
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        void refreshSessionUser();
+      }
+    };
+
+    window.addEventListener("focus", refreshSessionUser);
+    document.addEventListener(
+      "visibilitychange",
+      handleVisibilityChange,
+    );
+    window.addEventListener(
+      "rapago:resident-verification-updated",
+      refreshSessionUser,
+    );
+
+    return () => {
+      cancelled = true;
+      window.removeEventListener("focus", refreshSessionUser);
+      document.removeEventListener(
+        "visibilitychange",
+        handleVisibilityChange,
+      );
+      window.removeEventListener(
+        "rapago:resident-verification-updated",
+        refreshSessionUser,
+      );
+    };
+  }, [session?.accessToken, status]);
 
   useEffect(() => {
     const forceLogout = () => {
@@ -103,10 +178,11 @@ export function AuthProvider({ children }: AuthProviderProps): JSX.Element {
   const login = useCallback(
     async (payload: LoginRequest): Promise<AuthResponse> => {
       setStatus("loading");
+      clientStoragePolicy.prepareClientStorageForAuthentication();
       const response = await authService.login(payload);
 
       if (response.ok) {
-        await sessionStorageService.saveSession(response.session);
+        await sessionStorageService.saveSession(response.session, response.refreshToken);
         setSession(response.session);
         setUser(response.session.user);
         setStatus("authenticated");
@@ -122,10 +198,11 @@ export function AuthProvider({ children }: AuthProviderProps): JSX.Element {
   const register = useCallback(
     async (payload: RegisterRequest): Promise<AuthResponse> => {
       setStatus("loading");
+      clientStoragePolicy.prepareClientStorageForAuthentication();
       const response = await authService.register(payload);
 
       if (response.ok) {
-        await sessionStorageService.saveSession(response.session);
+        await sessionStorageService.saveSession(response.session, response.refreshToken);
         setSession(response.session);
         setUser(response.session.user);
         setStatus("authenticated");
@@ -137,6 +214,38 @@ export function AuthProvider({ children }: AuthProviderProps): JSX.Element {
     },
     [],
   );
+
+  const signInWithApple = useCallback(
+    async (payload: AppleSignInRequest): Promise<AuthResponse> => {
+      setStatus("loading");
+      clientStoragePolicy.prepareClientStorageForAuthentication();
+      const response = await authService.signInWithApple(payload);
+
+      if (response.ok) {
+        await sessionStorageService.saveSession(response.session, response.refreshToken);
+        setSession(response.session);
+        setUser(response.session.user);
+        setStatus("authenticated");
+      } else {
+        setStatus("unauthenticated");
+      }
+
+      return response;
+    },
+    [],
+  );
+
+  const refreshSession = useCallback(async (): Promise<void> => {
+    if (!session?.accessToken) return;
+
+    const verified = await authService.me(session.accessToken);
+    if (!verified.ok) return;
+
+    await sessionStorageService.saveSession(verified.session);
+    setSession(verified.session);
+    setUser(verified.session.user);
+    setStatus("authenticated");
+  }, [session?.accessToken]);
 
   const logout = useCallback(async (): Promise<void> => {
     let ok = true;
@@ -168,7 +277,7 @@ export function AuthProvider({ children }: AuthProviderProps): JSX.Element {
 
   return (
     <AuthContext.Provider
-      value={{ status, user, session, login, register, logout }}
+      value={{ status, user, session, login, register, signInWithApple, logout, refreshSession }}
     >
       {children}
     </AuthContext.Provider>

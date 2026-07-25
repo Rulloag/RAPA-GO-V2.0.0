@@ -1,0 +1,827 @@
+/* ==========================================================================
+   RAPA GO — Home del pasajero (/passenger/home)
+
+   Comparte tokens con el perfil vía rapago-shell.css: misma superficie, mismo
+   borde dorado, misma escala fluida y los mismos temas claro/oscuro.
+
+   Todo va scoped bajo .rapago-home-page. Se importa DESPUÉS de global.css
+   para ganar la cascada.
+   ========================================================================== */
+
+/* Transparente a propósito: el fondo lo pinta el IonPage (rapago-shell.css)
+   para que la cabecera, que vive fuera del IonContent, lo comparta. */
+.rapago-home-page .rapago-home-content {
+  --background: transparent;
+  --padding-start: 0;
+  --padding-end: 0;
+  --padding-top: 0;
+  --padding-bottom: 0;
+}
+
+.rapago-home-shell {
+  width: min(100%, 460px);
+  margin: 0 auto;
+  padding: var(--rp-gap-sm) var(--rp-pad-x) calc(104px + env(safe-area-inset-bottom, 0px));
+  display: flex;
+  flex-direction: column;
+  gap: var(--rp-gap);
+}
+
+/* ── Header ─────────────────────────────────────────────────────────────── */
+/* Transparente sobre el fondo, igual que el Login y el perfil. */
+.rapago-home-header {
+  width: min(100%, 460px);
+  margin: 0 auto;
+  padding: calc(10px + env(safe-area-inset-top, 0px)) var(--rp-pad-x) 6px;
+  display: flex;
+  align-items: center;
+  gap: var(--rp-gap-sm);
+}
+
+.rapago-home-brand {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  min-width: 0;
+  flex: 1;
+}
+
+.rapago-home-logo {
+  width: clamp(42px, 12vw, 50px);
+  height: clamp(42px, 12vw, 50px);
+  border-radius: clamp(13px, 4vw, 16px);
+  object-fit: cover;
+  background: #ffffff;
+  flex-shrink: 0;
+  /* Mismo halo dorado que el logo del Login. */
+  box-shadow:
+    0 0 0 2px rgba(214, 166, 64, 0.55),
+    0 0 0 4px rgba(214, 166, 64, 0.12),
+    0 10px 24px rgba(0, 0, 0, 0.35);
+}
+
+.rapago-home-greeting {
+  font-size: var(--rp-fs-h2);
+  font-weight: 900;
+  color: var(--rp-text);
+  line-height: 1.15;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.rapago-home-question {
+  margin-top: 2px;
+  font-size: var(--rp-fs-micro);
+  font-weight: 650;
+  color: var(--rp-muted);
+  line-height: 1.25;
+}
+
+.rapago-home-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+/* Toggle sol/luna. Es un <button> nativo, no un IonButton, para que las
+   reglas globales de `ion-button` no impongan su radio y su color. */
+.rapago-home-theme-btn {
+  width: clamp(38px, 11vw, 42px);
+  height: clamp(38px, 11vw, 42px);
+  border-radius: 13px;
+  display: grid;
+  place-items: center;
+  background: var(--rp-chrome);
+  border: 1px solid var(--rp-icon-bd);
+  color: var(--rp-icon-fg);
+  font-size: 1.15rem;
+  cursor: pointer;
+  padding: 0;
+  transition:
+    transform 0.18s ease,
+    border-color 0.18s ease;
+}
+
+.rapago-home-theme-btn:active {
+  transform: scale(0.92);
+  border-color: var(--rp-border-strong);
+}
+
+.rapago-home-avatar-btn {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 5px 11px 5px 5px;
+  border-radius: 999px;
+  background: var(--rp-chrome);
+  border: 1px solid var(--rp-icon-bd);
+  cursor: pointer;
+  font-family: inherit;
+  transition:
+    transform 0.18s ease,
+    border-color 0.18s ease;
+}
+
+.rapago-home-avatar-btn:active {
+  transform: scale(0.96);
+  border-color: var(--rp-border-strong);
+}
+
+.rapago-home-avatar {
+  width: clamp(28px, 8vw, 32px);
+  height: clamp(28px, 8vw, 32px);
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: var(--rp-btn-primary);
+  color: var(--rp-btn-primary-fg);
+  font-size: var(--rp-fs-micro);
+  font-weight: 900;
+  flex-shrink: 0;
+}
+
+.rapago-home-avatar-text {
+  font-size: var(--rp-fs-micro);
+  font-weight: 800;
+  color: var(--rp-icon-fg);
+}
+
+/* ── Hero / carrusel ────────────────────────────────────────────────────── */
+.rapago-home-hero {
+  position: relative;
+  border-radius: var(--rp-radius);
+  overflow: hidden;
+  border: var(--rp-border-w) solid var(--rp-border-c);
+  box-shadow: var(--rp-shadow);
+  aspect-ratio: 4 / 3.05;
+  max-height: clamp(300px, 62vw, 360px);
+  isolation: isolate;
+}
+
+.rapago-home-hero-img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  z-index: 0;
+}
+
+/* Velo inferior: sin él, el texto blanco desaparece sobre las zonas claras
+   de la foto. Se mantiene oscuro en ambos temas porque va sobre la imagen. */
+.rapago-home-hero-veil {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  background: linear-gradient(
+    180deg,
+    rgba(12, 10, 8, 0.08) 0%,
+    rgba(12, 10, 8, 0.52) 46%,
+    rgba(12, 10, 8, 0.9) 100%
+  );
+}
+
+.rapago-home-hero-body {
+  position: absolute;
+  inset: auto 0 0 0;
+  z-index: 2;
+  padding: var(--rp-pad);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.rapago-home-hero-eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  align-self: flex-start;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: rgba(214, 166, 64, 0.2);
+  border: 1px solid rgba(214, 166, 64, 0.5);
+  color: #f8d879;
+  font-size: var(--rp-fs-label);
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  margin-bottom: 6px;
+}
+
+.rapago-home-hero-title {
+  font-size: var(--rp-fs-hero);
+  font-weight: 900;
+  color: #ffffff;
+  line-height: 1.12;
+  text-wrap: balance;
+  text-shadow: 0 2px 14px rgba(0, 0, 0, 0.5);
+}
+
+.rapago-home-hero-sub {
+  font-size: var(--rp-fs-sub);
+  font-weight: 650;
+  color: rgba(255, 255, 255, 0.82);
+  line-height: 1.35;
+  margin-bottom: 12px;
+}
+
+.rapago-home-page .rapago-home-hero-cta {
+  --border-radius: var(--rp-radius-sm);
+  --background: var(--rp-btn-primary);
+  --background-activated: linear-gradient(135deg, #c89b3c, #b84f2e);
+  --box-shadow: 0 12px 26px rgba(0, 0, 0, 0.4);
+  --color: var(--rp-btn-primary-fg);
+  color: var(--rp-btn-primary-fg);
+  height: var(--rp-control-h);
+  font-weight: 900;
+  text-transform: none;
+  margin: 0;
+}
+
+.rapago-home-hero-dots {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  z-index: 3;
+  display: flex;
+  gap: 6px;
+}
+
+.rapago-home-hero-dot {
+  width: 7px;
+  height: 7px;
+  padding: 0;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.5);
+  background: rgba(255, 255, 255, 0.25);
+  cursor: pointer;
+  transition:
+    width 0.25s ease,
+    background 0.25s ease;
+}
+
+.rapago-home-hero-dot.active {
+  width: 20px;
+  background: #f8d879;
+  border-color: #f8d879;
+}
+
+/* ── Avisos ─────────────────────────────────────────────────────────────── */
+.rapago-home-alert {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 13px 14px;
+  border-radius: var(--rp-radius-sm);
+  background: var(--rp-icon-bg);
+  border: var(--rp-border-w) solid var(--rp-border-c);
+  color: var(--rp-icon-fg);
+  font-size: var(--rp-fs-sub);
+  font-weight: 750;
+  line-height: 1.38;
+  text-align: left;
+  width: 100%;
+  font-family: inherit;
+}
+
+.rapago-home-alert--offline {
+  flex-direction: column;
+  background: var(--rp-err-bg);
+  border-color: var(--rp-err-bd);
+  color: var(--rp-err-fg);
+}
+
+.rapago-home-alert-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.rapago-home-alert ion-icon {
+  font-size: 1.25rem;
+  flex-shrink: 0;
+}
+
+.rapago-home-alert-arrow {
+  margin-left: auto;
+  flex-shrink: 0;
+  opacity: 0.7;
+}
+
+/* ── Sección ────────────────────────────────────────────────────────────── */
+.rapago-home-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--rp-gap-sm);
+}
+
+.rapago-home-section-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 2px;
+  font-size: var(--rp-fs-label);
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--rp-muted-soft);
+}
+
+.rapago-home-section-label::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: linear-gradient(90deg, var(--rp-border-c), transparent);
+}
+
+/* ── Servicios (reestilado de components/ServiceCard.tsx) ───────────────── */
+/* El componente se comparte por si otra pantalla lo adopta, así que no se
+   toca su archivo: solo se reestilan sus clases dentro de la Home. */
+.rapago-home-services {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: var(--rp-gap-sm);
+}
+
+.rapago-home-page .rapago-service-card {
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
+  padding: var(--rp-pad-x);
+  border-radius: var(--rp-radius-sm);
+  background: var(--rp-surface);
+  border: var(--rp-border-w) solid var(--rp-border-c);
+  box-shadow: var(--rp-shadow);
+  color: var(--rp-text);
+  cursor: pointer;
+  min-height: clamp(112px, 32vw, 132px);
+  transition:
+    transform 0.18s ease,
+    border-color 0.18s ease;
+}
+
+.rapago-home-page .rapago-service-card:active {
+  transform: scale(0.975);
+  border-color: var(--rp-border-strong);
+}
+
+/* El servicio activo lleva el borde reforzado: es la acción principal. */
+.rapago-home-page .rapago-service-card--featured {
+  border-color: var(--rp-border-strong);
+  box-shadow: var(--rp-shadow-accent);
+}
+
+.rapago-home-page .rapago-service-card--disabled {
+  cursor: default;
+  opacity: 0.62;
+  border-style: dashed;
+  box-shadow: none;
+}
+
+.rapago-home-page .rapago-service-card--disabled:active {
+  transform: none;
+}
+
+.rapago-home-page .rapago-service-card__badge {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: var(--rp-surface-soft);
+  border: 1px solid var(--rp-icon-bd);
+  color: var(--rp-muted);
+  font-size: 0.58rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.rapago-home-page .rapago-service-card__icon-wrap {
+  width: var(--rp-icon-size);
+  height: var(--rp-icon-size);
+  border-radius: 13px;
+  display: grid;
+  place-items: center;
+  background: var(--rp-icon-bg);
+  border: 1px solid var(--rp-icon-bd);
+  flex-shrink: 0;
+}
+
+/* El servicio destacado invierte el icono para separarlo de los "Pronto". */
+.rapago-home-page .rapago-service-card--featured .rapago-service-card__icon-wrap {
+  background: var(--rp-btn-primary);
+  border-color: transparent;
+  box-shadow: 0 8px 18px rgba(214, 166, 64, 0.3);
+}
+
+.rapago-home-page .rapago-service-card__icon {
+  font-size: 1.32rem;
+  color: var(--rp-icon-fg);
+}
+
+.rapago-home-page .rapago-service-card--featured .rapago-service-card__icon {
+  color: var(--rp-btn-primary-fg);
+}
+
+.rapago-home-page .rapago-service-card__title {
+  font-size: var(--rp-fs-body);
+  font-weight: 850;
+  line-height: 1.2;
+  color: var(--rp-text);
+}
+
+.rapago-home-page .rapago-service-card__subtitle {
+  margin-top: -6px;
+  font-size: var(--rp-fs-micro);
+  font-weight: 650;
+  color: var(--rp-muted);
+  line-height: 1.3;
+}
+
+/* ── Accesos rápidos ────────────────────────────────────────────────────── */
+.rapago-home-quick {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: var(--rp-gap-sm);
+}
+
+.rapago-home-quick-card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
+  padding: var(--rp-pad-x);
+  border-radius: var(--rp-radius-sm);
+  background: var(--rp-surface);
+  border: var(--rp-border-w) solid var(--rp-border-c);
+  box-shadow: var(--rp-shadow);
+  color: var(--rp-text);
+  text-align: left;
+  cursor: pointer;
+  font-family: inherit;
+  transition:
+    transform 0.18s ease,
+    border-color 0.18s ease;
+}
+
+.rapago-home-quick-card:active {
+  transform: scale(0.975);
+  border-color: var(--rp-border-strong);
+}
+
+/* Wallet con saldo a favor: se refuerza el borde en vez de cambiar el fondo a
+   verde, que rompía la paleta. */
+.rapago-home-quick-card--highlight {
+  border-color: var(--rp-ok-bd);
+  box-shadow:
+    0 0 0 1px var(--rp-ok-bd),
+    var(--rp-shadow);
+}
+
+.rapago-home-quick-icon {
+  width: var(--rp-icon-size);
+  height: var(--rp-icon-size);
+  border-radius: 13px;
+  display: grid;
+  place-items: center;
+  background: var(--rp-icon-bg);
+  border: 1px solid var(--rp-icon-bd);
+  color: var(--rp-icon-fg);
+  font-size: 1.2rem;
+}
+
+.rapago-home-quick-card--highlight .rapago-home-quick-icon {
+  background: var(--rp-ok-bg);
+  border-color: var(--rp-ok-bd);
+  color: var(--rp-ok-fg);
+}
+
+.rapago-home-quick-title {
+  display: block;
+  font-size: var(--rp-fs-body);
+  font-weight: 850;
+  line-height: 1.2;
+}
+
+.rapago-home-quick-sub {
+  display: block;
+  margin-top: 2px;
+  font-size: var(--rp-fs-micro);
+  font-weight: 650;
+  color: var(--rp-muted);
+  line-height: 1.3;
+}
+
+.rapago-home-quick-card--highlight .rapago-home-quick-sub {
+  color: var(--rp-ok-fg);
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── Próximamente (carrusel horizontal) ─────────────────────────────────── */
+/* Scroll propio con overflow-x: el body de la página nunca se desplaza en
+   horizontal. */
+.rapago-home-news {
+  display: flex;
+  gap: var(--rp-gap-sm);
+  overflow-x: auto;
+  padding: 2px 2px 8px;
+  scroll-snap-type: x mandatory;
+  scrollbar-width: none;
+}
+
+.rapago-home-news::-webkit-scrollbar {
+  display: none;
+}
+
+.rapago-home-news-card {
+  flex: 0 0 auto;
+  width: clamp(228px, 68vw, 262px);
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: var(--rp-pad-x);
+  border-radius: var(--rp-radius-sm);
+  background: var(--rp-surface);
+  border: var(--rp-border-w) solid var(--rp-border-c);
+  box-shadow: var(--rp-shadow);
+  color: var(--rp-text);
+  scroll-snap-align: start;
+}
+
+.rapago-home-news-icon {
+  width: var(--rp-icon-size);
+  height: var(--rp-icon-size);
+  border-radius: 13px;
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  background: var(--rp-icon-bg);
+  border: 1px solid var(--rp-icon-bd);
+  color: var(--rp-icon-fg);
+  font-size: 1.25rem;
+}
+
+.rapago-home-news-tag {
+  font-size: var(--rp-fs-label);
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--rp-muted-soft);
+}
+
+.rapago-home-news-title {
+  margin-top: 4px;
+  font-size: var(--rp-fs-body);
+  font-weight: 850;
+  line-height: 1.18;
+  color: var(--rp-text);
+}
+
+.rapago-home-news-sub {
+  margin-top: 5px;
+  font-size: var(--rp-fs-micro);
+  font-weight: 650;
+  line-height: 1.35;
+  color: var(--rp-muted);
+}
+
+/* ── Banner de referidos ────────────────────────────────────────────────── */
+.rapago-home-referral {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: var(--rp-pad-x);
+  border-radius: var(--rp-radius);
+  background: var(--rp-surface);
+  border: var(--rp-border-w) solid var(--rp-border-strong);
+  box-shadow: var(--rp-shadow-accent);
+  color: var(--rp-text);
+  text-align: left;
+  cursor: pointer;
+  font-family: inherit;
+  transition: transform 0.18s ease;
+}
+
+.rapago-home-referral:active {
+  transform: scale(0.985);
+}
+
+.rapago-home-referral-icon {
+  width: var(--rp-icon-size);
+  height: var(--rp-icon-size);
+  border-radius: 14px;
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  background: var(--rp-btn-primary);
+  color: var(--rp-btn-primary-fg);
+  font-size: 1.3rem;
+  box-shadow: 0 8px 18px rgba(214, 166, 64, 0.28);
+}
+
+.rapago-home-referral-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.rapago-home-referral-title {
+  display: block;
+  font-size: var(--rp-fs-body);
+  font-weight: 850;
+  color: var(--rp-accent);
+  line-height: 1.2;
+}
+
+.rapago-home-referral-sub {
+  display: block;
+  margin-top: 3px;
+  font-size: var(--rp-fs-micro);
+  font-weight: 650;
+  color: var(--rp-muted);
+  line-height: 1.35;
+}
+
+.rapago-home-referral-arrow {
+  flex-shrink: 0;
+  color: var(--rp-icon-fg);
+  font-size: 1.15rem;
+  opacity: 0.8;
+}
+
+/* ── Tarjeta "Únete" ────────────────────────────────────────────────────── */
+.rapago-home-join {
+  padding: var(--rp-pad) var(--rp-pad-x);
+  border-radius: var(--rp-radius);
+  background: var(--rp-surface);
+  border: var(--rp-border-w) solid var(--rp-border-c);
+  box-shadow: var(--rp-shadow);
+  color: var(--rp-text);
+}
+
+.rapago-home-join-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: var(--rp-pad-x);
+}
+
+.rapago-home-join-icon {
+  width: var(--rp-icon-size);
+  height: var(--rp-icon-size);
+  border-radius: 14px;
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  background: var(--rp-icon-bg);
+  border: 1px solid var(--rp-icon-bd);
+  color: var(--rp-icon-fg);
+  font-size: 1.25rem;
+}
+
+.rapago-home-join-title {
+  margin: 0;
+  font-size: var(--rp-fs-h2);
+  font-weight: 850;
+  color: var(--rp-accent);
+  line-height: 1.2;
+}
+
+.rapago-home-join-sub {
+  margin: 3px 0 0;
+  font-size: var(--rp-fs-sub);
+  font-weight: 650;
+  color: var(--rp-muted);
+  line-height: 1.38;
+}
+
+.rapago-home-join-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.rapago-home-page .rapago-home-btn-primary {
+  --border-radius: var(--rp-radius-sm);
+  --background: var(--rp-btn-primary);
+  --background-activated: linear-gradient(135deg, #c89b3c, #b84f2e);
+  --box-shadow: 0 12px 24px rgba(214, 166, 64, 0.26);
+  --color: var(--rp-btn-primary-fg);
+  color: var(--rp-btn-primary-fg);
+  height: var(--rp-control-h);
+  font-weight: 900;
+  text-transform: none;
+  margin: 0;
+}
+
+.rapago-home-page .rapago-home-btn-outline {
+  --border-radius: var(--rp-radius-sm);
+  --border-color: var(--rp-border-c);
+  --border-width: var(--rp-border-w);
+  --color: var(--rp-icon-fg);
+  --background: transparent;
+  --background-activated: var(--rp-icon-bg);
+  height: calc(var(--rp-control-h) - 4px);
+  font-weight: 800;
+  text-transform: none;
+  margin: 0;
+}
+
+/* ── FAB de WhatsApp ────────────────────────────────────────────────────── */
+/* El verde de WhatsApp es la marca del canal y se mantiene en ambos temas:
+   cambiarlo lo haría irreconocible. */
+.rapago-home-wa {
+  position: fixed;
+  right: 18px;
+  bottom: calc(88px + env(safe-area-inset-bottom, 0px));
+  z-index: 1200;
+  width: clamp(54px, 15vw, 60px);
+  height: clamp(54px, 15vw, 60px);
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: linear-gradient(145deg, #25d366, #128c7e);
+  color: #ffffff;
+  border: 3px solid rgba(255, 255, 255, 0.9);
+  box-shadow: 0 14px 32px rgba(0, 0, 0, 0.32);
+  text-decoration: none;
+  transition: transform 0.18s ease;
+}
+
+.rapago-home-wa:active {
+  transform: scale(0.92);
+}
+
+.rapago-home-wa ion-icon {
+  font-size: 1.85rem;
+}
+
+.rapago-home-wa-label {
+  position: absolute;
+  right: calc(100% + 8px);
+  white-space: nowrap;
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: var(--rp-surface);
+  border: 1px solid var(--rp-border-c);
+  color: var(--rp-text);
+  font-size: var(--rp-fs-label);
+  font-weight: 800;
+  box-shadow: var(--rp-shadow);
+}
+
+/* ── Carga ──────────────────────────────────────────────────────────────── */
+.rapago-home-loading {
+  display: grid;
+  place-items: center;
+  padding: 72px 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rapago-home-page .rapago-service-card,
+  .rapago-home-quick-card,
+  .rapago-home-referral,
+  .rapago-home-theme-btn,
+  .rapago-home-avatar-btn,
+  .rapago-home-wa,
+  .rapago-home-hero-dot {
+    transition: none;
+  }
+}
+
+/* ==========================================================================
+   OVERRIDES DE REGLAS GLOBALES
+   Mismo motivo que en profile.css: global.css estiliza los tipos de Ionic con
+   !important y una declaración normal nunca le gana. Scoped a la Home.
+   ========================================================================== */
+
+/* global.css:2115 — `ion-button { --border-radius: 15px !important }`. */
+.rapago-home-page .rapago-home-hero-cta,
+.rapago-home-page .rapago-home-btn-primary,
+.rapago-home-page .rapago-home-btn-outline {
+  --border-radius: var(--rp-radius-sm) !important;
+}
+
+.rapago-home-page .rapago-home-hero-cta,
+.rapago-home-page .rapago-home-btn-primary {
+  --color: var(--rp-btn-primary-fg) !important;
+  color: var(--rp-btn-primary-fg) !important;
+}
+
+.rapago-home-page .rapago-home-btn-outline {
+  --color: var(--rp-icon-fg) !important;
+  color: var(--rp-icon-fg) !important;
+}
+
+/* El tema global de Ionic fija --background en ion-content; aquí tiene que
+   ganar la transparencia para que se vea el fondo del IonPage. */
+.rapago-home-page ion-content.rapago-home-content {
+  --background: transparent !important;
+}

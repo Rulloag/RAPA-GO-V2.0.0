@@ -51,6 +51,9 @@ import {
 import { walletService } from "../../../features/wallet/wallet.service.js";
 import { RIDE_STATUS_LABEL } from "../shared.js";
 import { getApiOrigin as getConfiguredApiOrigin } from "../../../services/api/apiBaseUrl.js";
+import { preSearchLocationService } from "../../../features/location/preSearchLocation.service.js";
+import { RapagoSectionHeader } from "../../../components/RapagoSectionHeader.js";
+import { useRapagoSectionTheme } from "../../../theme/rapagoTheme.js";
 
 
 const LOCAL_PASSENGER_RIDES_KEY = "rapago_local_passenger_rides";
@@ -1670,18 +1673,18 @@ const TOURIST_DESTINATION_SUGGESTIONS = [
 
 function inputItemStyle(extra?: CSSProperties): CSSProperties {
   return {
-    "--background": "#fffaf0",
-    "--border-radius": "18px",
+    "--background": "var(--rp-field-bg)",
+    "--border-radius": "var(--rp-radius-sm)",
     "--padding-start": "14px",
     "--inner-padding-end": "12px",
     "--min-height": "56px",
-    "--color": "#111827",
-    "--placeholder-color": "rgba(17,24,39,.50)",
-    "--highlight-color-focused": "#D2A43A",
-    color: "#111827",
+    "--color": "var(--rp-field-fg)",
+    "--placeholder-color": "var(--rp-field-ph)",
+    "--highlight-color-focused": "var(--rp-gold)",
+    color: "var(--rp-field-fg)",
     marginBottom: "14px",
-    border: "1px solid rgba(210,164,58,.38)",
-    boxShadow: "0 12px 28px rgba(17,24,39,.10)",
+    border: "var(--rp-border-w) solid var(--rp-border-c)",
+    boxShadow: "var(--rp-shadow)",
     overflow: "hidden",
     ...extra,
   } as CSSProperties;
@@ -1689,10 +1692,10 @@ function inputItemStyle(extra?: CSSProperties): CSSProperties {
 
 function sectionLabelStyle(): CSSProperties {
   return {
-    color: "#6B5A42",
-    fontSize: "0.74rem",
-    fontWeight: 950,
-    letterSpacing: "0.04em",
+    color: "var(--rp-label)",
+    fontSize: "var(--rp-fs-label)",
+    fontWeight: 800,
+    letterSpacing: "0.06em",
     margin: "0 0 8px 2px",
     textTransform: "uppercase",
   };
@@ -1701,11 +1704,11 @@ function sectionLabelStyle(): CSSProperties {
 function suggestionBoxStyle(): CSSProperties {
   return {
     margin: "-8px 0 14px",
-    border: "1px solid rgba(210,164,58,.32)",
-    borderRadius: "18px",
+    border: "var(--rp-border-w) solid var(--rp-border-c)",
+    borderRadius: "var(--rp-radius-sm)",
     overflow: "hidden",
-    background: "#fffaf0",
-    boxShadow: "0 16px 34px rgba(17,24,39,.12)",
+    background: "var(--rp-surface)",
+    boxShadow: "var(--rp-shadow)",
   };
 }
 
@@ -2273,7 +2276,7 @@ function normalizePassengerFareType(value: unknown): PassengerFareType | null {
   // Orden seguro:
   // 1) Turista chileno / chileno no residente.
   // 2) Turista extranjero / extranjero.
-  // 3) Residente Rapa Nui.
+  // 3) RAPA NUI / RESIDENTE RAPA NUI.
   // "Turista chileno" contiene la palabra "turista", por eso debe ir antes
   // de la detección genérica de turista/extranjero.
   if (
@@ -2309,12 +2312,20 @@ function normalizePassengerFareType(value: unknown): PassengerFareType | null {
   }
 
   if (
+    raw === "rapanui" ||
+    raw === "rapanui normal" ||
+    raw === "rapa nui normal"
+  ) {
+    // Valor legado eliminado: nunca debe otorgar tarifa residente.
+    return "chilean";
+  }
+
+  if (
     raw.includes("residente rapa nui") ||
-    raw.includes("rapa nui") ||
-    raw.includes("rapanui") ||
-    raw.includes("resident") ||
-    raw.includes("residente") ||
-    raw.includes("local") ||
+    raw === "resident" ||
+    raw === "residente" ||
+    raw === "resident approved" ||
+    raw === "residente aprobado" ||
     raw === "true" ||
     raw === "1"
   ) {
@@ -2389,10 +2400,10 @@ function readPassengerFareType(user?: unknown): PassengerFareType {
       if (stored) return stored;
     }
   } catch {
-    // Si no existe dato guardado, se usa residente como valor seguro por defecto.
+    // Si no existe dato guardado, se usa Turista chileno como valor seguro.
   }
 
-  return "resident";
+  return "chilean";
 }
 
 function vehicleCategoryLabel(category: VehicleCategory): string {
@@ -2426,7 +2437,7 @@ function tripFareModeDescription(mode: TripFareMode): string {
 }
 
 function passengerFareTypeLabel(type: PassengerFareType): string {
-  if (type === "resident") return "Residente Rapa Nui";
+  if (type === "resident") return "RAPA NUI / RESIDENTE RAPA NUI";
   if (type === "chilean") return "Turista chileno";
   return "Turista extranjero";
 }
@@ -2772,7 +2783,7 @@ function calculateRapaGoFare(
   km: number,
   minutes: number,
   rules: RapaGoFareRules = DEFAULT_RAPAGO_FARE_RULES,
-  passengerType: PassengerFareType = "resident",
+  passengerType: PassengerFareType = "chilean",
   vehicleCategory: VehicleCategory = "standard",
   destinationText = "",
   tripFareMode: TripFareMode = "one_way",
@@ -2846,7 +2857,7 @@ function calculateEstimatedFareFromPoints(
   origin: { lat: number; lng: number },
   destination: { lat: number; lng: number },
   rules: RapaGoFareRules = DEFAULT_RAPAGO_FARE_RULES,
-  passengerType: PassengerFareType = "resident",
+  passengerType: PassengerFareType = "chilean",
   vehicleCategory: VehicleCategory = "standard",
   destinationText = "",
   tripFareMode: TripFareMode = "one_way",
@@ -3238,22 +3249,22 @@ function SuggestionList({
             border: 0,
             borderBottom:
               index < suggestions.length - 1
-                ? "1px solid rgba(210,164,58,.20)"
+                ? "1px solid var(--rp-divider)"
                 : 0,
             background: "transparent",
-            color: "#111827",
+            color: "var(--rp-text)",
             padding: "12px 14px",
             textAlign: "left",
             cursor: "pointer",
           }}
         >
-          <div style={{ fontWeight: 900, fontSize: ".84rem", lineHeight: 1.25 }}>
+          <div style={{ fontWeight: 800, fontSize: ".84rem", lineHeight: 1.25, color: "var(--rp-text)" }}>
             {suggestion.mainText}
           </div>
           <div
             style={{
               marginTop: "3px",
-              color: "#6B5A42",
+              color: "var(--rp-muted)",
               fontSize: ".72rem",
               fontWeight: 650,
               lineHeight: 1.25,
@@ -3825,25 +3836,7 @@ function MapPointPicker({
         onCancel();
       }}
     >
-      <IonPage>
-      <style>{`
-        .rapago-request-light ion-item::part(native) {
-          background: transparent !important;
-          color: #111827 !important;
-        }
-        .rapago-request-light ion-input,
-        .rapago-request-light ion-textarea {
-          --color: #111827 !important;
-          --placeholder-color: rgba(17,24,39,.50) !important;
-        }
-        .rapago-request-light input,
-        .rapago-request-light textarea {
-          color: #111827 !important;
-        }
-        .rapago-request-light .item-native {
-          background: transparent !important;
-        }
-      `}</style>
+      <IonPage className="rapago-section-page rapago-request-page">
         <IonHeader>
           <IonToolbar
             color="primary"
@@ -3854,7 +3847,7 @@ function MapPointPicker({
               slot="start"
               onClick={onCancel}
               aria-label="Volver"
-              style={{ "--color": "#111111", fontWeight: 900 } as CSSProperties}
+              style={{ "--color": "var(--rp-text)", fontWeight: 900 } as CSSProperties}
             >
               <IonIcon slot="start" icon={arrowBackOutline} style={{ fontSize: 20 }} />
               Volver
@@ -3873,15 +3866,8 @@ function MapPointPicker({
           </IonToolbar>
         </IonHeader>
 
-        <IonContent fullscreen className="rapago-request-light" style={{ "--background": "#f6ead6" } as CSSProperties}>
-          <div
-            style={{
-              height: "100%",
-              background: "linear-gradient(180deg,#f6ead6,#fffaf0)",
-              display: "flex",
-              flexDirection: "column",
-            }}
-          >
+        <IonContent fullscreen style={{ "--background": "transparent" } as CSSProperties}>
+          <div className="rp-request-map-shell">
             <div
               style={{
                 position: "relative",
@@ -3911,17 +3897,17 @@ function MapPointPicker({
                   lines="none"
                   style={
                     {
-                      "--background": "#ffffff",
+                      "--background": "var(--rp-field-bg)",
                       "--border-radius": "999px",
                       "--padding-start": "14px",
                       "--inner-padding-end": "10px",
-                      "--highlight-color-focused": "#D2A43A",
-                      border: "1.5px solid rgba(210,164,58,.45)",
-                      boxShadow: "0 10px 28px rgba(0,0,0,.25)",
+                      "--highlight-color-focused": "var(--rp-gold)",
+                      border: "var(--rp-border-w) solid var(--rp-border-c)",
+                      boxShadow: "var(--rp-shadow)",
                     } as CSSProperties
                   }
                 >
-                  <IonIcon icon={searchOutline} slot="start" style={{ color: "#9A6A10" }} />
+                  <IonIcon icon={searchOutline} slot="start" style={{ color: "var(--rp-icon-fg)" }} />
                   <IonInput
                     value={searchText}
                     placeholder="Buscar dirección o lugar"
@@ -3936,10 +3922,10 @@ function MapPointPicker({
                     style={{
                       marginTop: 8,
                       borderRadius: 16,
-                      background: "#ffffff",
+                      background: "var(--rp-surface)",
                       overflow: "hidden",
-                      border: "1.5px solid rgba(210,164,58,.40)",
-                      boxShadow: "0 14px 30px rgba(0,0,0,.25)",
+                      border: "var(--rp-border-w) solid var(--rp-border-c)",
+                      boxShadow: "var(--rp-shadow)",
                     }}
                   >
                     {pickerSuggestions.map((suggestion, index) => (
@@ -3953,19 +3939,19 @@ function MapPointPicker({
                           border: 0,
                           borderBottom:
                             index < pickerSuggestions.length - 1
-                              ? "1px solid rgba(210,164,58,.20)"
+                              ? "1px solid var(--rp-divider)"
                               : 0,
-                          background: "#ffffff",
-                          color: "#111827",
+                          background: "transparent",
+                          color: "var(--rp-text)",
                           padding: "12px 14px",
                           textAlign: "left",
                           cursor: "pointer",
                         }}
                       >
-                        <div style={{ fontWeight: 900, fontSize: ".86rem", lineHeight: 1.25 }}>
+                        <div style={{ fontWeight: 800, fontSize: ".86rem", lineHeight: 1.25, color: "var(--rp-text)" }}>
                           {suggestion.mainText}
                         </div>
-                        <div style={{ fontSize: ".74rem", color: "#6B5A42", fontWeight: 650, marginTop: 2 }}>
+                        <div style={{ fontSize: ".74rem", color: "var(--rp-muted)", fontWeight: 650, marginTop: 2 }}>
                           {suggestion.secondaryText}
                         </div>
                       </button>
@@ -4013,10 +3999,10 @@ function MapPointPicker({
                   width: 56,
                   height: 56,
                   borderRadius: 999,
-                  background: "#fffaf0",
-                  color: "#111827",
-                  border: "1px solid rgba(210,164,58,.35)",
-                  boxShadow: "0 14px 30px rgba(17,24,39,.18)",
+                  background: "var(--rp-surface)",
+                  color: "var(--rp-icon-fg)",
+                  border: "var(--rp-border-w) solid var(--rp-border-c)",
+                  boxShadow: "var(--rp-shadow)",
                   display: "flex",
                   alignItems: "center",
                   justifyContent: "center",
@@ -4043,36 +4029,13 @@ function MapPointPicker({
               )}
             </div>
 
-            <div
-              style={{
-                background: "linear-gradient(180deg,#fffaf0,#f8ead0)",
-                borderTopLeftRadius: 28,
-                borderTopRightRadius: 28,
-                marginTop: -20,
-                position: "relative",
-                zIndex: 20,
-                padding: "18px 18px max(22px, env(safe-area-inset-bottom))",
-                boxShadow: "0 -18px 38px rgba(17,24,39,.20)",
-                flex: "0 0 auto",
-                maxHeight: "52dvh",
-                overflowY: "auto",
-                WebkitOverflowScrolling: "touch",
-              }}
-            >
-              <div
-                style={{
-                  width: 42,
-                  height: 4,
-                  borderRadius: 999,
-                  background: "rgba(210,164,58,.55)",
-                  margin: "0 auto 22px",
-                }}
-              />
+            <div className="rp-request-map-sheet">
+              <div className="rp-request-map-grip" />
 
               <div
                 style={{
-                  color: "#111827",
-                  fontWeight: 950,
+                  color: "var(--rp-text)",
+                  fontWeight: 850,
                   fontSize: "1.05rem",
                   lineHeight: 1.2,
                   marginBottom: 14,
@@ -4087,8 +4050,7 @@ function MapPointPicker({
                     width: 20,
                     height: 4,
                     borderRadius: 2,
-                    background: "linear-gradient(90deg,#D2A43A,#C89B3C)",
-                    boxShadow: "0 2px 8px rgba(210,164,58,.40)",
+                    background: "var(--rp-btn-primary)",
                     flexShrink: 0,
                   }}
                 />
@@ -4098,21 +4060,17 @@ function MapPointPicker({
 
               {mode === "destination" && pickerSuggestions.length === 0 && (
                 <div
+                  className="rp-request-note"
                   style={{
                     margin: "0 0 14px",
-                    borderRadius: 18,
-                    background: "#fff7e8",
-                    color: "#111827",
                     padding: "12px",
-                    border: "1px solid rgba(210,164,58,.32)",
-                    boxShadow: "0 12px 26px rgba(17,24,39,.08)",
                   }}
                 >
                   <div
                     style={{
                       fontSize: ".72rem",
-                      fontWeight: 950,
-                      color: "#9A6A10",
+                      fontWeight: 800,
+                      color: "var(--rp-label)",
                       margin: "0 2px 10px",
                       letterSpacing: ".04em",
                       textTransform: "uppercase",
@@ -4127,7 +4085,7 @@ function MapPointPicker({
                         width: 16,
                         height: 3,
                         borderRadius: 2,
-                        background: "linear-gradient(90deg,#D2A43A,#C89B3C)",
+                        background: "var(--rp-btn-primary)",
                         flexShrink: 0,
                       }}
                     />
@@ -4153,18 +4111,18 @@ function MapPointPicker({
                           type="button"
                           onClick={() => void pickTouristDestination(item)}
                           style={{
-                            border: "1px solid rgba(210,164,58,.38)",
+                            border: "1px solid var(--rp-border-c)",
                             borderRadius: 14,
-                            background: "linear-gradient(135deg,#fffaf0,#f2dfb8)",
-                            color: "#111827",
+                            background: "var(--rp-field-bg)",
+                            color: "var(--rp-text)",
                             padding: "10px",
                             textAlign: "left",
                           }}
                         >
-                          <div style={{ fontWeight: 950, fontSize: ".78rem", lineHeight: 1.2 }}>
+                          <div style={{ fontWeight: 800, fontSize: ".78rem", lineHeight: 1.2, color: "var(--rp-text)" }}>
                             {item.name}
                           </div>
-                          <div style={{ color: "rgba(17,24,39,.62)", fontSize: ".68rem", marginTop: 3 }}>
+                          <div style={{ color: "var(--rp-muted)", fontSize: ".68rem", marginTop: 3 }}>
                             {item.subtitle}
                           </div>
                         </button>
@@ -4174,13 +4132,10 @@ function MapPointPicker({
               )}
 
               <div
+                className="rp-request-note"
                 style={{
-                  background: "#fffaf0",
-                  borderRadius: 18,
                   padding: "12px 14px",
                   marginBottom: 12,
-                  border: "1px solid rgba(210,164,58,.32)",
-                  boxShadow: "0 12px 28px rgba(17,24,39,.10)",
                   display: "flex",
                   alignItems: "center",
                   gap: 12,
@@ -4199,8 +4154,8 @@ function MapPointPicker({
                 <div style={{ flex: 1 }}>
                   <div
                     style={{
-                      color: "#111827",
-                      fontWeight: 950,
+                      color: "var(--rp-text)",
+                      fontWeight: 850,
                       fontSize: ".9rem",
                       marginBottom: 4,
                     }}
@@ -4215,7 +4170,7 @@ function MapPointPicker({
                   </div>
                   <div
                     style={{
-                      color: "rgba(17,24,39,.62)",
+                      color: "var(--rp-muted)",
                       fontSize: ".82rem",
                       lineHeight: 1.35,
                     }}
@@ -4226,20 +4181,17 @@ function MapPointPicker({
                         "Mueve el mapa. Rapa Go ajustará el punto a una calle accesible."}
                   </div>
                 </div>
-                <IonIcon icon={createOutline} style={{ color: "#9A6A10", fontSize: 22, flexShrink: 0 }} />
+                <IonIcon icon={createOutline} style={{ color: "var(--rp-icon-fg)", fontSize: 22, flexShrink: 0 }} />
               </div>
 
               {mode === "origin" &&
                 selected?.walkMeters != null &&
                 selected.walkMeters > 8 && (
                 <div
+                  className="rp-request-note"
                   style={{
-                    background: "#fff7e8",
-                    borderRadius: 18,
                     padding: "14px 16px",
                     marginBottom: 18,
-                    border: "1px solid rgba(210,164,58,.32)",
-                    boxShadow: "0 12px 28px rgba(17,24,39,.08)",
                     display: "grid",
                     gridTemplateColumns: "42px 1fr auto",
                     gap: 12,
@@ -4250,8 +4202,8 @@ function MapPointPicker({
                   <div>
                     <div
                       style={{
-                        color: "#111827",
-                        fontWeight: 950,
+                        color: "var(--rp-text)",
+                        fontWeight: 850,
                         fontSize: ".86rem",
                         marginBottom: 4,
                       }}
@@ -4260,7 +4212,7 @@ function MapPointPicker({
                     </div>
                     <div
                       style={{
-                        color: "rgba(17,24,39,.64)",
+                        color: "var(--rp-muted)",
                         fontSize: ".82rem",
                         lineHeight: 1.35,
                       }}
@@ -4270,8 +4222,8 @@ function MapPointPicker({
                   </div>
                   <div
                     style={{
-                      color: "#22c55e",
-                      fontWeight: 950,
+                      color: "var(--rp-ok-fg)",
+                      fontWeight: 850,
                       fontSize: ".92rem",
                       textAlign: "right",
                     }}
@@ -4279,7 +4231,7 @@ function MapPointPicker({
                     {selected.walkMeters} m
                     <div
                       style={{
-                        color: "rgba(17,24,39,.62)",
+                        color: "var(--rp-muted)",
                         fontWeight: 700,
                         fontSize: ".78rem",
                         marginTop: 4,
@@ -4299,14 +4251,14 @@ function MapPointPicker({
                 }}
                 style={
                   {
-                    "--background": "linear-gradient(135deg,#FACC15,#F2D48B)",
-                    "--color": "#111827",
-                    "--border-radius": "18px",
-                    "--box-shadow": "0 14px 30px rgba(210,164,58,.24)",
+                    "--background": "var(--rp-btn-primary)",
+                    "--color": "var(--rp-btn-primary-fg)",
+                    "--border-radius": "var(--rp-radius-sm)",
+                    "--box-shadow": "var(--rp-shadow-accent)",
                     height: "54px",
                     minHeight: "54px",
                     fontSize: "1rem",
-                    fontWeight: 950,
+                    fontWeight: 850,
                   } as CSSProperties
                 }
               >
@@ -4555,15 +4507,9 @@ function formatDuration(seconds: number): string {
   return `${mins} min`;
 }
 
-function hasDuplicatePoints(origin: MapPoint, dests: MapPoint[]): boolean {
-  const all    = [origin, ...dests];
-  const coords = all.map(p => `${p.position.lat.toFixed(6)},${p.position.lng.toFixed(6)}`);
-  return new Set(coords).size < coords.length;
-}
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
-type RideMode  = "immediate" | "scheduled";
 type PageStatus =
   | "idle"
   | "calculating_route"
@@ -4577,6 +4523,12 @@ type PageStatus =
 export default function RequestRidePage(): JSX.Element {
   const { session } = useAuth();
   const history = useHistory();
+  const { theme, isDark, toggleTheme } = useRapagoSectionTheme("request-ride");
+
+  useEffect(() => {
+    preSearchLocationService.read();
+    return () => preSearchLocationService.clear();
+  }, []);
 
   const [originPoint, setOriginPoint] = useState<ConfirmedPoint | null>(null);
   const [destinationPoint, setDestinationPoint] =
@@ -5066,6 +5018,7 @@ export default function RequestRidePage(): JSX.Element {
 
     navigator.geolocation.getCurrentPosition(
       (position) => {
+        preSearchLocationService.remember(position);
         const gpsPoint = {
           lat: position.coords.latitude,
           lng: position.coords.longitude,
@@ -5607,9 +5560,6 @@ export default function RequestRidePage(): JSX.Element {
         resolved.origin.walkMeters > 8
       ) {
         notes.push(
-          `Ubicación real del pasajero: ${resolved.origin.originalLat.toFixed(6)}, ${resolved.origin.originalLng.toFixed(6)}.`,
-        );
-        notes.push(
           `Punto accesible de recogida ajustado a calle. El pasajero debe caminar aprox. ${resolved.origin.walkMeters} m.`,
         );
       }
@@ -5763,6 +5713,7 @@ export default function RequestRidePage(): JSX.Element {
         session.accessToken,
         input,
       );
+      preSearchLocationService.clear();
 
       const createdRideId = extractRideRequestIdFromResponse(createdRideResponse);
       const appliedBenefitClp = Math.max(
@@ -6064,9 +6015,6 @@ export default function RequestRidePage(): JSX.Element {
           resolved.origin.walkMeters > 8
         ) {
           localNotes.push(
-            `Ubicación real del pasajero: ${resolved.origin.originalLat.toFixed(6)}, ${resolved.origin.originalLng.toFixed(6)}.`,
-          );
-          localNotes.push(
             `Punto accesible de recogida ajustado a calle. El pasajero debe caminar aprox. ${resolved.origin.walkMeters} m.`,
           );
         }
@@ -6313,35 +6261,20 @@ export default function RequestRidePage(): JSX.Element {
   );
 
 return (
-    <IonPage className="rapago-request-page">
-      <IonHeader>
-        <IonToolbar color="primary">
-          <IonButtons slot="start">
-            <IonButton
-              fill="clear"
-              onClick={() => history.replace(ROUTES.PASSENGER.HOME)}
-              aria-label="Volver al inicio"
-              title="Volver al inicio"
-              style={{ "--color": "#111111", fontWeight: 900 } as CSSProperties}
-            >
-              <IonIcon slot="start" icon={arrowBackOutline} style={{ fontSize: 22 }} />
-              Volver
-            </IonButton>
-          </IonButtons>
-          <IonTitle style={{ fontWeight: 950 }}>Solicitar Viaje</IonTitle>
-        </IonToolbar>
-      </IonHeader>
+    <IonPage
+      className="rapago-section-page rapago-request-page"
+      data-rapago-theme={theme}
+    >
+      <RapagoSectionHeader
+        title="Solicitar Viaje"
+        isDark={isDark}
+        onToggleTheme={toggleTheme}
+        onBack={() => history.replace(ROUTES.PASSENGER.HOME)}
+        backLabel="Volver al inicio"
+      />
 
-      <IonContent fullscreen className="rapago-request-light" style={{ "--background": "#f6ead6" } as CSSProperties}>
-        <div
-          style={{
-            maxWidth: "430px",
-            minHeight: "100%",
-            margin: "0 auto",
-            background: "linear-gradient(180deg,#f6ead6 0%,#fffaf0 34%,#f8ead0 100%)",
-            paddingBottom: "90px",
-          }}
-        >
+      <IonContent fullscreen style={{ "--background": "transparent" } as CSSProperties}>
+        <div className="rp-request-scroll">
           <MapFallback
             origin={mapOrigin}
             destination={mapDestination}
@@ -6393,13 +6326,9 @@ return (
 
             {originPoint?.walkMeters != null && originPoint.walkMeters > 8 && (
               <div
+                className="rp-request-note"
                 style={{
                   margin: "-6px 0 14px",
-                  background: "#fff7e8",
-                  border: "1px solid rgba(210,164,58,.38)",
-                  color: "#111827",
-                  borderRadius: "16px",
-                  boxShadow: "0 12px 24px rgba(17,24,39,.08)",
                   padding: "10px 12px",
                   fontSize: ".78rem",
                   lineHeight: 1.35,
@@ -6416,9 +6345,9 @@ return (
               <div
                 style={{
                   margin: "-4px 0 22px",
-                  color: "#D2A43A",
+                  color: "var(--rp-accent)",
                   fontSize: ".78rem",
-                  fontWeight: 950,
+                  fontWeight: 900,
                   lineHeight: 1.35,
                 }}
               >
@@ -6436,7 +6365,7 @@ return (
                   style={
                     {
                       margin: "-4px 0 10px",
-                      "--color": "#D2A43A",
+                      "--color": "var(--rp-accent)",
                       fontWeight: 900,
                       letterSpacing: ".02em",
                     } as CSSProperties
@@ -6454,7 +6383,7 @@ return (
                   style={
                     {
                       margin: "-4px 0 22px",
-                      "--color": "#D2A43A",
+                      "--color": "var(--rp-accent)",
                       fontWeight: 900,
                       letterSpacing: ".02em",
                     } as CSSProperties
@@ -7067,39 +6996,9 @@ return (
             )}
 
             {(rideMode === "scheduled" || selectedRoundTripPromotion) && (
-              <div
-                style={{
-                  background: "#fff7e8",
-                  border: "1.5px solid rgba(210,164,58,.32)",
-                  borderRadius: "18px",
-                  padding: "16px",
-                  marginBottom: "18px",
-                  boxShadow: "0 12px 26px rgba(120,84,20,.08)",
-                }}
-              >
-                <div
-                  style={{
-                    color: "#6B5A42",
-                    fontSize: "0.72rem",
-                    fontWeight: 900,
-                    marginBottom: "8px",
-                    textTransform: "uppercase",
-                    letterSpacing: ".04em",
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 8,
-                  }}
-                >
-                  <span
-                    aria-hidden
-                    style={{
-                      width: 16,
-                      height: 3,
-                      borderRadius: 2,
-                      background: "linear-gradient(90deg,#D2A43A,#C89B3C)",
-                      flexShrink: 0,
-                    }}
-                  />
+              <div className="rp-request-panel">
+                <div className="rp-request-label">
+                  <span aria-hidden className="rp-request-label__tick" />
                   {selectedRoundTripPromotion
                     ? "Agenda tu recogida de regreso"
                     : "Agenda tu recogida para aeropuerto"}
@@ -7116,14 +7015,14 @@ return (
                           "--padding-start": "14px",
                           "--inner-padding-end": "12px",
                           "--min-height": "50px",
-                          "--highlight-color-focused": "#D2A43A",
+                          "--highlight-color-focused": "var(--rp-gold)",
                           border: "1.5px solid rgba(210,164,58,.30)",
                           marginBottom: "10px",
                           overflow: "hidden",
                         } as CSSProperties
                       }
                     >
-                      <IonIcon icon={calendarOutline} slot="end" style={{ color: "#9A6A10" }} />
+                      <IonIcon icon={calendarOutline} slot="end" style={{ color: "var(--rp-icon-fg)" }} />
                       <IonInput
                         type="datetime-local"
                         value={scheduledAt}
@@ -7140,7 +7039,7 @@ return (
                         fontSize: "0.72rem",
                         display: "block",
                         marginBottom: "14px",
-                        color: "#6B5A42",
+                        color: "var(--rp-label)",
                         lineHeight: 1.45,
                       }}
                     >
@@ -7157,7 +7056,7 @@ return (
                       fontSize: "0.72rem",
                       display: "block",
                       marginBottom: "14px",
-                      color: "#6B5A42",
+                      color: "var(--rp-label)",
                       lineHeight: 1.45,
                     }}
                   >
@@ -7169,7 +7068,7 @@ return (
                   <>
                     <div
                       style={{
-                        color: "#6B5A42",
+                        color: "var(--rp-label)",
                         fontSize: "0.72rem",
                         fontWeight: 900,
                         marginBottom: "8px",
@@ -7189,14 +7088,14 @@ return (
                           "--padding-start": "14px",
                           "--inner-padding-end": "12px",
                           "--min-height": "50px",
-                          "--highlight-color-focused": "#D2A43A",
+                          "--highlight-color-focused": "var(--rp-gold)",
                           border: "1.5px solid rgba(210,164,58,.30)",
                           marginBottom: "14px",
                           overflow: "hidden",
                         } as CSSProperties
                       }
                     >
-                      <IonIcon icon={calendarOutline} slot="end" style={{ color: "#9A6A10" }} />
+                      <IonIcon icon={calendarOutline} slot="end" style={{ color: "var(--rp-icon-fg)" }} />
                       <IonInput
                         type="datetime-local"
                         value={returnScheduledAt}
@@ -7214,7 +7113,7 @@ return (
                   <>
                 <div
                   style={{
-                    color: "#6B5A42",
+                    color: "var(--rp-label)",
                     fontSize: "0.72rem",
                     fontWeight: 900,
                     marginBottom: "8px",
@@ -7234,14 +7133,14 @@ return (
                       "--padding-start": "14px",
                       "--inner-padding-end": "12px",
                       "--min-height": "50px",
-                      "--highlight-color-focused": "#D2A43A",
+                      "--highlight-color-focused": "var(--rp-gold)",
                       border: "1.5px solid rgba(210,164,58,.30)",
                       marginBottom: "12px",
                       overflow: "hidden",
                     } as CSSProperties
                   }
                 >
-                  <IonIcon icon={timeOutline} slot="start" style={{ color: "#9A6A10" }} />
+                  <IonIcon icon={timeOutline} slot="start" style={{ color: "var(--rp-icon-fg)" }} />
                   <IonInput
                     value={flightNumber}
                     placeholder="Ej: LA800"
@@ -7254,7 +7153,7 @@ return (
 
                 <div
                   style={{
-                    color: "#6B5A42",
+                    color: "var(--rp-label)",
                     fontSize: "0.72rem",
                     fontWeight: 900,
                     marginBottom: "8px",
@@ -7930,14 +7829,14 @@ return (
               disabled={!canRequest || submitting}
               style={
                 {
-                  "--background": "#D2A43A",
-                  "--background-activated": "#B98B2C",
-                  "--color": "#111111",
-                  "--border-radius": "12px",
+                  "--background": "var(--rp-btn-primary)",
+                  "--background-activated": "linear-gradient(135deg,#c89b3c,#b84f2e)",
+                  "--color": "var(--rp-btn-primary-fg)",
+                  "--border-radius": "var(--rp-radius-sm)",
                   height: "48px",
-                  fontWeight: 900,
+                  fontWeight: 850,
                   letterSpacing: ".03em",
-                  boxShadow: "0 10px 25px rgba(210,164,58,.25)",
+                  boxShadow: "var(--rp-shadow-accent)",
                 } as CSSProperties
               }
             >

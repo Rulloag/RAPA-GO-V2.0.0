@@ -1,13 +1,16 @@
 import {
   IonAlert,
-  IonBadge, IonButton, IonCard, IonCardContent, IonChip, IonContent, IonHeader,
+  IonBadge, IonButton, IonIcon, IonCard, IonCardContent, IonChip, IonContent, IonHeader,
 IonInfiniteScroll, IonInfiniteScrollContent, IonLabel, IonModal, IonPage,
   IonRefresher, IonRefresherContent, IonSpinner, IonText, IonTextarea, IonTitle,
   IonToolbar, IonItem, IonToast, IonInput, IonToggle,
 } from "@ionic/react";
 import { useState, useCallback, useEffect, useRef, type CSSProperties } from "react";
 import { useHistory } from "react-router-dom";
-import { carOutline } from "ionicons/icons";
+import { carOutline, refreshOutline, locationOutline } from "ionicons/icons";
+import { MapView } from "../../../features/maps/MapView.js";
+import { useDirectionsRoute } from "../../../features/maps/useDirectionsRoute.js";
+import type { GoogleMapInstance } from "../../../features/maps/maps.types.js";
 import { EmptyState } from "../../../components/EmptyState.js";
 import { TripTimeline } from "../../../components/TripTimeline.js";
 import { SkeletonList } from "../../../components/SkeletonCard.js";
@@ -17,6 +20,8 @@ import { useAuth } from "../../../features/auth/index.js";
 import { ridesService, type RideRequestData } from "../../../features/rides/rides.service.js";
 import { walletService } from "../../../features/wallet/wallet.service.js";
 import { cashRefundsService } from "../../../features/cashRefunds/cashRefunds.service.js";
+import { RapagoSectionHeader } from "../../../components/RapagoSectionHeader.js";
+import { useRapagoSectionTheme } from "../../../theme/rapagoTheme.js";
 import { ROUTES } from "../../../navigation/routes.js";
 import { RAPAGO_CONTACT, WA_MESSAGES } from "@rapa-go/shared";
 import { RIDE_STATUS_LABEL, RIDE_STATUS_COLOR } from "../shared.js";
@@ -3490,7 +3495,7 @@ function normalizeRidePassengerFareType(value: unknown): PassengerFareType | nul
 }
 
 function passengerFareTypeLabel(type: PassengerFareType): string {
-  if (type === "resident") return "Residente Rapa Nui";
+  if (type === "resident") return "RAPA NUI / RESIDENTE RAPA NUI";
   if (type === "chilean") return "Turista chileno";
   return "Turista extranjero";
 }
@@ -8541,6 +8546,7 @@ function PassengerRideCard({
 export default function TripsPage(): JSX.Element {
   const history = useHistory();
   const { session } = useAuth();
+  const { theme, isDark, toggleTheme } = useRapagoSectionTheme("trips");
 
   const [allRides,    setAllRides]    = useState<RideRequestData[]>([]);
   const [page,        setPage]        = useState(1);
@@ -9065,7 +9071,6 @@ export default function TripsPage(): JSX.Element {
             ratingRideId,
             ratingStars,
             ratingCommentWithExtras || undefined,
-            commentVisibility,
           );
         } catch {
           // Si el backend todavía no guarda rating, el respaldo local mantiene la experiencia tipo Uber.
@@ -9123,7 +9128,10 @@ export default function TripsPage(): JSX.Element {
   }
 
   return (
-    <IonPage>
+    <IonPage
+      className="rapago-section-page rapago-trips-page"
+      data-rapago-theme={theme}
+    >
       <style>{`
         /* ==========================================================
            RAPA GO — Alerta de cancelación / No Show
@@ -9321,11 +9329,17 @@ export default function TripsPage(): JSX.Element {
           }
         }
       `}</style>
-      <IonHeader>
-        <IonToolbar color="primary">
-          <IonTitle>Mis Viajes</IonTitle>
-        </IonToolbar>
-        <IonToolbar style={{ "--background": "var(--ion-color-primary)", "--border-width": "0" }}>
+      <RapagoSectionHeader
+        title="Mis Viajes"
+        isDark={isDark}
+        onToggleTheme={toggleTheme}
+        actionIcon={refreshOutline}
+        actionLabel="Actualizar"
+        actionLoading={loading}
+        onAction={() => void loadRides()}
+      />
+      <IonHeader className="rapago-section-subheader">
+        <IonToolbar>
           <div style={{ display: "flex", gap: "8px", padding: "0 12px 10px", overflowX: "auto" }}>
             {(["all", "active", "completed", "cancelled"] as const).map((f) => {
               const labels = { all: "Todos", active: "Activos", completed: "Completados", cancelled: "Cancelados" };
@@ -9333,13 +9347,7 @@ export default function TripsPage(): JSX.Element {
               return (
                 <IonChip key={f}
                   aria-label={`Filtrar por ${labels[f]}`}
-                  style={{
-                    flexShrink: 0,
-                    "--background": active ? "#fff" : "rgba(255,255,255,0.2)",
-                    "--color": active ? "var(--ion-color-primary)" : "#fff",
-                    fontSize: "0.78rem", height: "36px",
-                    fontWeight: active ? 700 : 400,
-                  }}
+                  className={active ? "rapago-filter-chip is-active" : "rapago-filter-chip"}
                   onClick={() => setStatusFilter(f)}
                 >
                   {labels[f]}{counts[f] > 0 ? ` (${counts[f]})` : ""}
@@ -9349,7 +9357,7 @@ export default function TripsPage(): JSX.Element {
           </div>
         </IonToolbar>
 
-        <IonToolbar style={{ "--background": "#111111", "--border-width": "0" }}>
+        <IonToolbar style={{ "--background": "transparent", "--border-width": "0" }}>
           <div
             style={{
               display: "flex",
@@ -9357,12 +9365,12 @@ export default function TripsPage(): JSX.Element {
               justifyContent: "space-between",
               gap: 10,
               padding: "8px 14px 10px",
-              color: "#F6F2EC",
+              color: "var(--rp-text)",
               fontSize: ".78rem",
             }}
           >
             <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
-              <span style={{ color: "#C89B3C", fontSize: 18, lineHeight: 1 }}>🔔</span>
+              <span style={{ color: "var(--rp-accent)", fontSize: 18, lineHeight: 1 }}>🔔</span>
               <span>
                 {counts.active > 0
                   ? "Tienes viajes o reservas activas. Revisa el detalle y el mapa cuando el conductor esté en camino."
@@ -9384,7 +9392,7 @@ export default function TripsPage(): JSX.Element {
           {lastRefreshAt && (
             <div
               style={{
-                color: "rgba(246,242,236,.64)",
+                color: "var(--rp-muted)",
                 fontSize: ".68rem",
                 padding: "0 14px 8px",
               }}

@@ -1,38 +1,65 @@
-import type { AuthUser, AuthSession, AuthStatus, LoginRequest, RegisterRequest, AuthResponse } from "@rapa-go/shared";
+import type {
+  AuthUser,
+  AuthSession,
+  AuthStatus,
+  LoginRequest,
+  RegisterRequest,
+  AuthResponse,
+  ResidenceAccreditationInput,
+  UserRole,
+} from "@rapa-go/shared";
 
-export type { AuthUser, AuthSession, AuthStatus, LoginRequest, RegisterRequest, AuthResponse };
+export type {
+  AuthUser,
+  AuthSession,
+  AuthStatus,
+  LoginRequest,
+  RegisterRequest,
+  AuthResponse,
+};
 
-
-export type ApplePassengerFareType = "resident" | "chilean" | "foreigner";
+export type ApplePassengerFareType =
+  | "resident"
+  | "chilean"
+  | "foreigner";
 
 export interface AppleLegalAcceptance {
   legalDocumentId: string;
   version: string;
 }
 
+/**
+ * Payload sent to POST /api/auth/apple.
+ *
+ * SECURITY: email, Apple subject and private-email status are intentionally
+ * absent. The backend takes them only from the verified Apple identity token.
+ */
 export interface AppleSignInRequest {
   identityToken: string;
   authorizationCode: string;
+  /** Raw nonce; the backend hashes it once when verifying Apple's token. */
   nonce: string;
-  name?: { givenName?: string; familyName?: string };
+  name?: {
+    givenName?: string;
+    familyName?: string;
+  };
+  /** Required only for creation of a new account. */
+  role?: UserRole;
   phone?: string;
   passengerFareType?: ApplePassengerFareType;
   legalAcceptances?: AppleLegalAcceptance[];
+  residenceAccreditation?: ResidenceAccreditationInput;
 }
 
-/** Shape exposed by the AuthContext to the rest of the app. */
+/** Shape exposed by AuthContext. */
 export interface AuthContextValue {
   status: AuthStatus;
   user: AuthUser | null;
-  /**
-   * Session is held in memory only.
-   * TODO(phase-auth-persistence): implement secure token storage via
-   * Capacitor Secure Storage or equivalent — never localStorage.
-   */
+  /** Session is persisted through SessionStorageService. */
   session: AuthSession | null;
   login: (payload: LoginRequest) => Promise<AuthResponse>;
   register: (payload: RegisterRequest) => Promise<AuthResponse>;
   signInWithApple: (payload: AppleSignInRequest) => Promise<AuthResponse>;
-  logout: () => Promise<void>;
   refreshSession: () => Promise<void>;
+  logout: () => Promise<void>;
 }
