@@ -25,6 +25,14 @@ const RequestRidePage = lazy(
 const TripsPage = lazy(() => import("../pages/passenger/pages/TripsPage.js"));
 const WalletPage = lazy(() => import("../pages/passenger/pages/WalletPage.js"));
 const ProfilePage = lazy(() => import("../pages/passenger/pages/ProfilePage.js"));
+/* Centro de ayuda: la pestaña "Ayuda" apunta a /support-center, que está fuera
+   del prefijo /passenger. Se monta aquí dentro para que la barra inferior no
+   desaparezca al entrar (ver el caso especial en AppRouter). */
+const SupportCenterPage = lazy(() =>
+  import("../pages/support/SupportCenterPage.js").then((module) => ({
+    default: module.SupportCenterPage,
+  })),
+);
 const GuidesPage = lazy(() => import("../pages/passenger/pages/GuidesPage.js"));
 const RentalsPage = lazy(() => import("../pages/passenger/pages/RentalsPage.js"));
 const PassengerEventsPage = lazy(() =>
@@ -115,6 +123,11 @@ export function PassengerLayout(): JSX.Element {
           exact
           path={ROUTES.PASSENGER.PROFILE}
           render={() => <PageSuspense><ProfilePage /></PageSuspense>}
+        />
+        <Route
+          exact
+          path={ROUTES.SUPPORT.CENTER}
+          render={() => <PageSuspense><SupportCenterPage /></PageSuspense>}
         />
 
         {RELEASE_FEATURES.tourism && (
