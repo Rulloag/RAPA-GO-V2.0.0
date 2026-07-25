@@ -4,12 +4,14 @@ import { UsersRepository } from "../users/users.repository.js";
 import { DriverStatusRepository } from "./driverStatus.repository.js";
 import { RidesRepository } from "../rides/rides.repository.js";
 import { AppError } from "../../shared/errors/AppError.js";
+import { DriverComplianceService } from "./driverCompliance.service.js";
 
 const tokenService     = new TokenService();
 const sessionService   = new SessionService();
 const usersRepo        = new UsersRepository();
 const driverStatusRepo = new DriverStatusRepository();
 const ridesRepo        = new RidesRepository();
+const complianceService = new DriverComplianceService();
 
 type AuthResult =
   | { ok: true; userId: string; role: string }
@@ -68,7 +70,24 @@ export class DriverStatusService {
     if (availability === "available") {
       const current = await driverStatusRepo.findByDriverId(auth.userId);
       if (current?.currentRideId) {
-        return { ok: false, code: "DRIVER_HAS_ACTIVE_RIDE", message: "Cannot set available while on an active ride.", statusCode: 409 };
+        return {
+          ok: false as const,
+          code: "DRIVER_HAS_ACTIVE_RIDE",
+          message: "No puedes marcarte Disponible mientras tienes un viaje activo.",
+          statusCode: 409,
+        };
+      }
+
+      const rest = await complianceService.canReceiveNewOffers(auth.userId);
+      if (!rest.allowed) {
+        await driverStatusRepo.setUnavailableForRest(auth.userId);
+        return {
+          ok: false as const,
+          code: "DRIVER_REST_ACTIVE",
+          message: rest.state.message,
+          statusCode: 409,
+          restState: rest.state,
+        };
       }
     }
 

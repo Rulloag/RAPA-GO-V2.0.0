@@ -57,6 +57,7 @@ import {
   logOutOutline,
 } from "ionicons/icons";
 import { driverProfileService, type DriverProfileData } from "../../features/drivers/driverProfile.service";
+import { driverStatusService } from "../../features/drivers/driverStatus.service";
 import { ActionCard } from "../../components/ActionCard";
 import { ROUTE_METADATA } from "../../navigation/routeConfig";
 import { ROUTES } from "../../navigation/routes";
@@ -4318,9 +4319,11 @@ function DriverHeaderWithoutNotifications(): JSX.Element {
 function DriverAvailabilityControl({
   value,
   onChange,
+  disabled = false,
 }: {
   value: DriverAvailability;
-  onChange: (value: DriverAvailability) => void;
+  onChange: (value: DriverAvailability) => void | Promise<void>;
+  disabled?: boolean;
 }): JSX.Element {
   const isAvailable = value === "available";
 
@@ -4348,8 +4351,11 @@ function DriverAvailabilityControl({
           className={`driver-availability-button ${
             isAvailable ? "is-active is-available" : "is-inactive"
           }`}
-          onClick={() => onChange("available")}
+          onClick={() => {
+            void onChange("available");
+          }}
           aria-pressed={isAvailable}
+          disabled={disabled}
         >
           <IonIcon icon={checkmarkCircleOutline} />
           Disponible
@@ -4360,8 +4366,11 @@ function DriverAvailabilityControl({
           className={`driver-availability-button ${
             !isAvailable ? "is-active is-unavailable" : "is-inactive"
           }`}
-          onClick={() => onChange("unavailable")}
+          onClick={() => {
+            void onChange("unavailable");
+          }}
           aria-pressed={!isAvailable}
+          disabled={disabled}
         >
           <IonIcon icon={closeOutline} />
           No disponible
@@ -7352,10 +7361,43 @@ export function DriverHomePage(): JSX.Element {
       readDriverAvailability(driverAvailabilityUser),
     );
   const [restBlocked, setRestBlocked] = useState(false);
+  const [availabilitySaving, setAvailabilitySaving] = useState(false);
+  const [availabilityError, setAvailabilityError] = useState<string | null>(null);
 
   useEffect(() => {
     setDriverAvailability(readDriverAvailability(driverAvailabilityUser));
   }, [
+    driverAvailabilityUser?.id,
+    driverAvailabilityUser?.userId,
+    driverAvailabilityUser?.email,
+    driverAvailabilityUser?.name,
+  ]);
+
+  useEffect(() => {
+    if (!session?.accessToken) return;
+
+    let cancelled = false;
+
+    void driverStatusService
+      .getMyStatus(session.accessToken)
+      .then((status) => {
+        if (cancelled) return;
+
+        const next: DriverAvailability =
+          status.availability === "available" ? "available" : "unavailable";
+
+        setDriverAvailability(next);
+        saveDriverAvailability(next, driverAvailabilityUser);
+      })
+      .catch(() => {
+        // Conserva el estado local si el backend no está disponible.
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    session?.accessToken,
     driverAvailabilityUser?.id,
     driverAvailabilityUser?.userId,
     driverAvailabilityUser?.email,
@@ -7446,24 +7488,65 @@ export function DriverHomePage(): JSX.Element {
     isDriverAvailable,
   ]);
 
-  function handleAvailabilityChange(value: DriverAvailability): void {
+  async function handleAvailabilityChange(
+    value: DriverAvailability,
+  ): Promise<void> {
+    if (availabilitySaving) return;
+
+    setAvailabilityError(null);
+
     if (value === "available" && restBlocked) {
       setDriverAvailability("unavailable");
       saveDriverAvailability("unavailable", driverAvailabilityUser);
+      setAvailabilityError(
+        "Tu descanso continuo todavía está activo. Podrás marcarte Disponible cuando el backend confirme que finalizó.",
+      );
       return;
     }
 
     if (value === "available" && driverConnection.blocked) {
       setDriverAvailability("unavailable");
       saveDriverAvailability("unavailable", driverAvailabilityUser);
+      setAvailabilityError(
+        "Necesitas una conexión estable antes de marcarte Disponible.",
+      );
       return;
     }
 
-    setDriverAvailability(value);
-    saveDriverAvailability(value, driverAvailabilityUser);
+    if (!session?.accessToken) {
+      setAvailabilityError(
+        "Tu sesión no está disponible. Vuelve a iniciar sesión.",
+      );
+      return;
+    }
 
-    if (value === "available") {
-      enableDriverRideAlerts();
+    setAvailabilitySaving(true);
+
+    try {
+      const updated = await driverStatusService.updateMyStatus(
+        session.accessToken,
+        value,
+      );
+
+      const confirmed: DriverAvailability =
+        updated.availability === "available" ? "available" : "unavailable";
+
+      setDriverAvailability(confirmed);
+      saveDriverAvailability(confirmed, driverAvailabilityUser);
+
+      if (confirmed === "available") {
+        enableDriverRideAlerts();
+      }
+    } catch (caught) {
+      setDriverAvailability("unavailable");
+      saveDriverAvailability("unavailable", driverAvailabilityUser);
+      setAvailabilityError(
+        caught instanceof Error
+          ? caught.message
+          : "No se pudo actualizar tu disponibilidad.",
+      );
+    } finally {
+      setAvailabilitySaving(false);
     }
   }
 
@@ -7571,9 +7654,34 @@ export function DriverHomePage(): JSX.Element {
           <DriverAvailabilityControl
             value={isDriverAvailable ? "available" : "unavailable"}
             onChange={handleAvailabilityChange}
+            disabled={availabilitySaving}
           />
 
-          <DriverRestScheduleCard onBlockedChange={setRestBlocked} />
+          {availabilityError && (
+            <div
+              role="alert"
+              style={{
+                margin: "0 0 12px",
+                padding: "11px 13px",
+                borderRadius: 14,
+                border: "1px solid rgba(220,38,38,.28)",
+                background: "rgba(254,226,226,.96)",
+                color: "#991b1b",
+                fontSize: ".78rem",
+                fontWeight: 850,
+                lineHeight: 1.4,
+              }}
+            >
+              {availabilityError}
+            </div>
+          )}
+
+          <DriverRestScheduleCard
+            onBlockedChange={(blocked) => {
+              setRestBlocked(blocked);
+              if (!blocked) setAvailabilityError(null);
+            }}
+          />
 
           <section className="driver-home-hero">
             <div className="driver-home-hero__top">
@@ -7698,7 +7806,7 @@ export function DriverHomePage(): JSX.Element {
                 if (isDriverAvailable) {
                   history.push(ROUTES.DRIVER.REQUESTS);
                 } else {
-                  handleAvailabilityChange("available");
+                  void handleAvailabilityChange("available");
                 }
               }}
             >
