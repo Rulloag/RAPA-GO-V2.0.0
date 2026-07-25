@@ -80,7 +80,8 @@ function formatDate(value: string | null | undefined): string {
 export function SupportCenterPage(): JSX.Element {
   const history = useHistory();
   const { session, user } = useAuth();
-  const { theme, isDark, toggleTheme } = useRapagoSectionTheme("support");
+  // Solo se lee: el interruptor único vive en el encabezado de Inicio.
+  const { theme } = useRapagoSectionTheme("support");
 
   const handleGoHome = (): void => {
     if (user?.role === "driver") {
@@ -218,8 +219,6 @@ export function SupportCenterPage(): JSX.Element {
     >
       <RapagoSectionHeader
         title="Centro de ayuda"
-        isDark={isDark}
-        onToggleTheme={toggleTheme}
         onBack={handleGoHome}
         backLabel="Volver al inicio"
       />

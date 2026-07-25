@@ -31,6 +31,7 @@ import {
   navigateOutline,
   searchOutline,
   timeOutline,
+  alertCircleOutline,
 } from "ionicons/icons";
 import {
   useCallback,
@@ -3312,6 +3313,9 @@ function MapPointPicker({
     [],
   );
   const [modalReady, setModalReady] = useState(false);
+  /* Fallo al cargar Google Maps. Se mantiene APARTE de `selected`: un error no
+     es un lugar válido, así que el botón de confirmar debe seguir inhabilitado. */
+  const [mapError, setMapError] = useState<string | null>(null);
 
 
   function drawAccessiblePickupPreview(point: PickerResult | null): void {
@@ -3603,6 +3607,8 @@ function MapPointPicker({
     setSelected(null);
     setSearchText("");
     setPickerSuggestions([]);
+    // Cada apertura del modal reintenta la carga: se limpia el error anterior.
+    setMapError(null);
 
     let cancelled = false;
 
@@ -3722,13 +3728,14 @@ function MapPointPicker({
       })
       .catch(() => {
         setReady(true);
-        setSelected({
-          text: "No se pudo cargar el mapa",
-          address: "Revisa la API Key de Google Maps y vuelve a intentar.",
-          lat: RAPA_NUI_CENTER.lat,
-          lng: RAPA_NUI_CENTER.lng,
-          placeId: null,
-        });
+        // ANTES: se escribía el error en `selected` con las coordenadas del
+        // centro de la isla. Como el botón solo mira `disabled={!selected}`, el
+        // pasajero podía confirmar y se despachaba un conductor al centro
+        // geográfico de Rapa Nui. El error se reporta ahora por su propia vía y
+        // `selected` sigue en null, así que confirmar queda inhabilitado.
+        setMapError(
+          "No se pudo cargar el mapa. Revisa tu conexión e inténtalo de nuevo.",
+        );
       });
 
     return () => {
@@ -3852,8 +3859,11 @@ function MapPointPicker({
               <IonIcon slot="start" icon={arrowBackOutline} style={{ fontSize: 20 }} />
               Volver
             </IonButton>
+            {/* Sin aria-label propio: el nombre accesible debe COINCIDIR con el
+                texto visible. Antes el atributo decía "Confirma el punto de
+                partida" y en pantalla ponía "Confirmar recogida", lo que rompe
+                el control por voz (WCAG 2.5.3). */}
             <IonTitle
-              aria-label={title}
               style={{
                 textAlign: "center",
                 fontWeight: 950,
@@ -4032,6 +4042,7 @@ function MapPointPicker({
             <div className="rp-request-map-sheet">
               <div className="rp-request-map-grip" />
 
+              <div className="rp-request-map-sheet-scroll">
               <div
                 style={{
                   color: "var(--rp-text)",
@@ -4131,6 +4142,48 @@ function MapPointPicker({
                 </div>
               )}
 
+              {mapError && (
+                <div
+                  className="rp-request-note"
+                  role="alert"
+                  style={{
+                    padding: "14px 16px",
+                    marginBottom: 12,
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 12,
+                    borderColor: "var(--rp-danger-bd)",
+                  }}
+                >
+                  <IonIcon
+                    icon={alertCircleOutline}
+                    style={{ color: "var(--rp-danger-fg)", fontSize: 24, flexShrink: 0 }}
+                  />
+                  <div style={{ flex: 1 }}>
+                    <div
+                      style={{
+                        color: "var(--rp-danger-fg)",
+                        fontWeight: 850,
+                        fontSize: ".9rem",
+                        marginBottom: 4,
+                      }}
+                    >
+                      No se pudo cargar el mapa
+                    </div>
+                    <div
+                      style={{
+                        color: "var(--rp-muted)",
+                        fontSize: ".82rem",
+                        lineHeight: 1.35,
+                      }}
+                    >
+                      {mapError}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {!mapError && (
               <div
                 className="rp-request-note"
                 style={{
@@ -4183,6 +4236,7 @@ function MapPointPicker({
                 </div>
                 <IonIcon icon={createOutline} style={{ color: "var(--rp-icon-fg)", fontSize: 22, flexShrink: 0 }} />
               </div>
+              )}
 
               {mode === "origin" &&
                 selected?.walkMeters != null &&
@@ -4242,8 +4296,10 @@ function MapPointPicker({
                   </div>
                 </div>
               )}
+              </div>
 
               <IonButton
+                className="rp-request-confirm"
                 expand="block"
                 disabled={!selected}
                 onClick={() => {
@@ -4262,7 +4318,7 @@ function MapPointPicker({
                   } as CSSProperties
                 }
               >
-                {mode === "origin" ? "Confirmar punto de partida" : "Confirmar destino"}
+                {mode === "origin" ? "Confirmar recogida" : "Confirmar destino"}
               </IonButton>
             </div>
           </div>
@@ -4523,7 +4579,8 @@ type PageStatus =
 export default function RequestRidePage(): JSX.Element {
   const { session } = useAuth();
   const history = useHistory();
-  const { theme, isDark, toggleTheme } = useRapagoSectionTheme("request-ride");
+  // Solo se lee: el interruptor único vive en el encabezado de Inicio.
+  const { theme } = useRapagoSectionTheme("request-ride");
 
   useEffect(() => {
     preSearchLocationService.read();
@@ -4544,6 +4601,9 @@ export default function RequestRidePage(): JSX.Element {
 
   const originSearchSeq = useRef(0);
   const destSearchSeq = useRef(0);
+  /* Evita que el mapa se reabra solo al devolver el foco al input justo
+     después de confirmar un punto (decisión de producto: tocar el campo abre
+     el mapa al instante, así que hace falta este freno de 900ms). */
   const suppressPickerOpenRef = useRef(false);
 
   const [pickerTarget, setPickerTarget] = useState<PickerTarget | null>(null);
@@ -6267,8 +6327,6 @@ return (
     >
       <RapagoSectionHeader
         title="Solicitar Viaje"
-        isDark={isDark}
-        onToggleTheme={toggleTheme}
         onBack={() => history.replace(ROUTES.PASSENGER.HOME)}
         backLabel="Volver al inicio"
       />
@@ -7816,7 +7874,9 @@ return (
             )}
 
             {submitError && (
-              <IonText color="danger">
+              /* role="alert" para que el lector de pantalla lo anuncie: es un
+                 error que aparece DESPUÉS de pulsar, sin mover el foco. */
+              <IonText color="danger" role="alert">
                 <p style={{ fontWeight: 700, fontSize: ".84rem" }}>
                   {submitError}
                 </p>
@@ -7886,7 +7946,7 @@ return (
         {pickerTarget && (
           <MapPointPicker
             isOpen={pickerTarget !== null}
-            title={pickerTarget === "origin" ? "Confirma el punto de partida" : "Confirma el destino"}
+            title={pickerTarget === "origin" ? "Confirmar recogida" : "Confirmar destino"}
             mode={pickerTarget}
             initialPoint={pickerInitialPoint}
             onCancel={() => setPickerTarget(null)}

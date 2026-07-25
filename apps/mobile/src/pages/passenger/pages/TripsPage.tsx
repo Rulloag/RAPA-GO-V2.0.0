@@ -5225,12 +5225,12 @@ function PassengerDriverAndVehicleDetails({
     <div
       style={{
         marginBottom: 14,
-        background: "#ffffff",
+        background: "var(--rp-surface)",
         borderRadius: 26,
         padding: "14px",
         border: "1px solid rgba(0,0,0,.07)",
         boxShadow: "0 14px 34px rgba(0,0,0,.12)",
-        color: "#111111",
+        color: "var(--rp-text)",
       }}
     >
       <div style={{ fontWeight: 950, fontSize: "1rem", textAlign: "center", marginBottom: 12 }}>
@@ -5247,7 +5247,7 @@ function PassengerDriverAndVehicleDetails({
           alignItems: "center",
           gap: 10,
           marginBottom: 14,
-          background: "#ffffff",
+          background: "var(--rp-surface)",
         }}
       >
         <div>
@@ -5271,10 +5271,10 @@ function PassengerDriverAndVehicleDetails({
             width: 42,
             height: 42,
             borderRadius: 12,
-            background: "#f3f4f6",
+            background: "var(--rp-surface-soft)",
             fontSize: "1.25rem",
             fontWeight: 950,
-            color: "#111111",
+            color: "var(--rp-text)",
           }}
           aria-label="Más detalles del viaje"
         >
@@ -5298,11 +5298,11 @@ function PassengerDriverAndVehicleDetails({
               height: 58,
               borderRadius: 999,
               overflow: "hidden",
-              background: "#D8A83E",
+              background: "var(--rp-accent)",
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
-              color: "#111",
+              color: "var(--rp-text)",
               fontWeight: 950,
               fontSize: "1.25rem",
               border: "3px solid #ffffff",
@@ -5325,7 +5325,7 @@ function PassengerDriverAndVehicleDetails({
         </div>
 
         <div style={{ minWidth: 0, textAlign: "center" }}>
-          <div style={{ fontWeight: 950, fontSize: ".86rem", color: "#007f69", letterSpacing: ".02em" }}>
+          <div style={{ fontWeight: 950, fontSize: ".86rem", color: "var(--rp-ok-fg)", letterSpacing: ".02em" }}>
             {driverName}
           </div>
           <div style={{ marginTop: 4, fontWeight: 850, fontSize: ".74rem", color: "rgba(17,17,17,.62)", lineHeight: 1.25 }}>
@@ -6578,8 +6578,8 @@ function PassengerLiveRouteMap({
                 width: 38,
                 height: 38,
                 borderRadius: 999,
-                background: "#FACC15",
-                color: "#111827",
+                background: "var(--rp-accent)",
+                color: "var(--rp-text)",
                 display: "grid",
                 placeItems: "center",
                 fontWeight: 950,
@@ -7262,7 +7262,7 @@ function PassengerCashPaymentAfterRideCard({
           <IonItem
             lines="none"
             style={{
-              "--background": "#ffffff",
+              "--background": "var(--rp-surface)",
               "--border-radius": "16px",
               "--padding-start": "12px",
               "--inner-padding-end": "12px",
@@ -7301,8 +7301,8 @@ function PassengerCashPaymentAfterRideCard({
                 marginTop: 10,
                 borderRadius: 14,
                 padding: "9px 11px",
-                background: "#FEE2E2",
-                color: "#991B1B",
+                background: "var(--rp-err-bg)",
+                color: "var(--rp-err-fg)",
                 fontWeight: 850,
                 fontSize: ".78rem",
                 lineHeight: 1.35,
@@ -7749,7 +7749,7 @@ function PassengerRideCard({
         margin: 0,
         borderRadius: "22px",
         overflow: "hidden",
-        background: "#F6F2EC",
+        background: "var(--rp-surface)",
         border: "2px solid rgba(210,164,58,.65)",
         boxShadow: "0 12px 32px rgba(0,0,0,.16)",
       }}
@@ -7762,16 +7762,16 @@ function PassengerRideCard({
 
         </div>
 
-        <div style={{ padding: showMap ? "16px" : "12px 16px", color: "#111111" }}>
+        <div style={{ padding: showMap ? "16px" : "12px 16px", color: "var(--rp-text)" }}>
           {effectiveStatus === "pending_payment" && (
             <div
               style={{
                 marginBottom: 12,
-                background: "#fff7db",
+                background: "var(--rp-warn-bg)",
                 borderRadius: 18,
                 padding: "12px",
                 border: "1px solid rgba(210,164,58,.62)",
-                color: "#5f3f00",
+                color: "var(--rp-warn-fg)",
                 fontWeight: 900,
                 lineHeight: 1.35,
               }}
@@ -7785,11 +7785,11 @@ function PassengerRideCard({
             <div
               style={{
                 marginBottom: 12,
-                background: "#fff1f2",
+                background: "var(--rp-err-bg)",
                 borderRadius: 18,
                 padding: "12px",
                 border: "1px solid rgba(220,38,38,.32)",
-                color: "#7f1d1d",
+                color: "var(--rp-err-fg)",
                 fontWeight: 900,
                 lineHeight: 1.35,
               }}
@@ -7830,11 +7830,11 @@ function PassengerRideCard({
             <div
               style={{
                 marginBottom: 12,
-                background: "#fff1f2",
+                background: "var(--rp-err-bg)",
                 borderRadius: 18,
                 padding: "12px",
                 border: "1px solid rgba(220,38,38,.30)",
-                color: "#7f1d1d",
+                color: "var(--rp-err-fg)",
                 fontWeight: 900,
                 lineHeight: 1.35,
               }}
@@ -7849,11 +7849,11 @@ function PassengerRideCard({
             <div
               style={{
                 marginBottom: 12,
-                background: "#fff7db",
+                background: "var(--rp-warn-bg)",
                 borderRadius: 18,
                 padding: "12px",
                 border: "1px solid rgba(210,164,58,.62)",
-                color: "#5f3f00",
+                color: "var(--rp-warn-fg)",
                 fontWeight: 900,
                 lineHeight: 1.35,
               }}
@@ -7891,7 +7891,7 @@ function PassengerRideCard({
                 borderRadius: 18,
                 padding: "12px",
                 border: "1px solid rgba(210,164,58,.62)",
-                color: "#5f3f00",
+                color: "var(--rp-warn-fg)",
                 fontWeight: 900,
                 lineHeight: 1.35,
               }}
@@ -7914,7 +7914,7 @@ function PassengerRideCard({
             isScheduledPending ? (
               <div
                 style={{
-                  background: "#fff7db",
+                  background: "var(--rp-warn-bg)",
                   borderRadius: 18,
                   padding: "12px",
                   border: "1px solid rgba(210,164,58,.55)",
@@ -7929,7 +7929,7 @@ function PassengerRideCard({
                         ? "Agendamiento de recogida creado"
                         : "Viaje agendado correctamente"}
                     </div>
-                    <div style={{ color: "#5f4a18", fontSize: ".78rem", marginTop: 3, lineHeight: 1.35 }}>
+                    <div style={{ color: "var(--rp-warn-fg)", fontSize: ".78rem", marginTop: 3, lineHeight: 1.35 }}>
                       {isRoundTripReturnPickupRide(ride as RideRequestData & Record<string, unknown>)
                         ? "Tu recogida de regreso quedó agendada para "
                         : "Has agendado tu viaje para "}<strong>{formatPassengerScheduleDate(scheduleInfo.pickupAt)}</strong>.
@@ -7948,7 +7948,7 @@ function PassengerRideCard({
             ) : (
               <div
                 style={{
-                  background: "#ffffff",
+                  background: "var(--rp-surface)",
                   borderRadius: 18,
                   padding: "12px",
                   border: "1px solid rgba(0,0,0,.06)",
@@ -7959,7 +7959,7 @@ function PassengerRideCard({
                   <IonSpinner name="crescent" />
                   <div style={{ flex: 1 }}>
                     <div style={{ fontWeight: 950, fontSize: ".9rem" }}>Buscando conductor</div>
-                    <div style={{ color: "#666", fontSize: ".78rem", marginTop: 2, lineHeight: 1.35 }}>
+                    <div style={{ color: "var(--rp-muted)", fontSize: ".78rem", marginTop: 2, lineHeight: 1.35 }}>
                       Tu solicitud ya fue enviada a conductores cercanos.
                       <br />Tiempo buscando: <strong>{searchingElapsedLabel}</strong>
                     </div>
@@ -7972,9 +7972,9 @@ function PassengerRideCard({
                       marginTop: 12,
                       padding: "10px 12px",
                       borderRadius: 14,
-                      background: "#fff8dc",
+                      background: "var(--rp-warn-bg)",
                       border: "1px solid #e6bd52",
-                      color: "#3f2d00",
+                      color: "var(--rp-warn-fg)",
                       fontSize: ".76rem",
                       fontWeight: 900,
                       lineHeight: 1.4,
@@ -7999,7 +7999,7 @@ function PassengerRideCard({
                       padding: "16px",
                       background: "linear-gradient(145deg,#fffdf6 0%,#fff1b8 58%,#f4cb55 100%)",
                       border: "2px solid #d49b16",
-                      color: "#211700",
+                      color: "var(--rp-warn-fg)",
                       boxShadow: "0 14px 30px rgba(92,62,0,.22)",
                     }}
                   >
@@ -8031,7 +8031,7 @@ function PassengerRideCard({
                       <div style={{ minWidth: 0, flex: 1 }}>
                         <div
                           style={{
-                            color: "#755000",
+                            color: "var(--rp-warn-fg)",
                             fontSize: ".68rem",
                             fontWeight: 950,
                             letterSpacing: ".08em",
@@ -8044,7 +8044,7 @@ function PassengerRideCard({
                         <div
                           style={{
                             marginTop: 3,
-                            color: "#171100",
+                            color: "var(--rp-warn-fg)",
                             fontWeight: 950,
                             fontSize: "1rem",
                             lineHeight: 1.2,
@@ -8062,7 +8062,7 @@ function PassengerRideCard({
                         borderRadius: 14,
                         background: "rgba(255,255,255,.82)",
                         border: "1px solid rgba(117,80,0,.22)",
-                        color: "#3d2d05",
+                        color: "var(--rp-warn-fg)",
                         fontSize: ".8rem",
                         lineHeight: 1.45,
                         fontWeight: 800,
@@ -8130,8 +8130,8 @@ function PassengerRideCard({
                           border: "2px solid #6b4b00",
                           borderRadius: 14,
                           padding: "9px 14px",
-                          background: "#ffffff",
-                          color: "#3a2900",
+                          background: "var(--rp-surface)",
+                          color: "var(--rp-warn-fg)",
                           fontSize: ".82rem",
                           fontWeight: 950,
                           lineHeight: 1.2,
@@ -8149,9 +8149,9 @@ function PassengerRideCard({
                           marginTop: 10,
                           padding: "10px 12px",
                           borderRadius: 12,
-                          background: "#fff1f2",
+                          background: "var(--rp-err-bg)",
                           border: "1px solid #e11d48",
-                          color: "#881337",
+                          color: "var(--rp-err-fg)",
                           fontSize: ".75rem",
                           fontWeight: 900,
                           lineHeight: 1.35,
@@ -8164,7 +8164,7 @@ function PassengerRideCard({
                     <div
                       style={{
                         marginTop: 10,
-                        color: "#5e4408",
+                        color: "var(--rp-warn-fg)",
                         fontSize: ".68rem",
                         fontWeight: 800,
                         lineHeight: 1.35,
@@ -8185,7 +8185,7 @@ function PassengerRideCard({
                       borderRadius: 18,
                       padding: "12px 14px",
                       background: "linear-gradient(135deg,#ecfdf3,#c9f7da)",
-                      color: "#0f4b2b",
+                      color: "var(--rp-ok-fg)",
                       border: "2px solid #38a169",
                       fontSize: ".8rem",
                       fontWeight: 900,
@@ -8210,7 +8210,7 @@ function PassengerRideCard({
             <div
               style={{
                 marginBottom: 14,
-                background: "#ffffff",
+                background: "var(--rp-surface)",
                 borderRadius: 18,
                 padding: "12px",
                 border: "1px solid rgba(34,197,94,.30)",
@@ -8220,10 +8220,10 @@ function PassengerRideCard({
               <div style={{ display: "flex", alignItems: "flex-start", gap: 10 }}>
                 <span style={{ fontSize: "1.25rem" }}>🚕</span>
                 <div style={{ minWidth: 0 }}>
-                  <div style={{ fontWeight: 950, fontSize: ".92rem", color: "#14532d" }}>
+                  <div style={{ fontWeight: 950, fontSize: ".92rem", color: "var(--rp-ok-fg)" }}>
                     Tu conductor fue asignado
                   </div>
-                  <div style={{ color: "#166534", fontSize: ".78rem", marginTop: 3, lineHeight: 1.35 }}>
+                  <div style={{ color: "var(--rp-ok-fg)", fontSize: ".78rem", marginTop: 3, lineHeight: 1.35 }}>
                     {ride.driverName ?? "Tu conductor"} aceptó tu viaje.
                     <br />Sigue su GPS real en tiempo real en el mapa.
                   </div>
@@ -8234,8 +8234,8 @@ function PassengerRideCard({
                 <div
                   style={{
                     marginTop: 10,
-                    background: "#f0fdf4",
-                    color: "#14532d",
+                    background: "var(--rp-ok-bg)",
+                    color: "var(--rp-ok-fg)",
                     borderRadius: 14,
                     padding: "9px 10px",
                     fontSize: ".76rem",
@@ -8256,7 +8256,7 @@ function PassengerRideCard({
 
           <div
             style={{
-              background: "#ffffff",
+              background: "var(--rp-surface)",
               borderRadius: 18,
               padding: "12px",
               border: "1px solid rgba(0,0,0,.06)",
@@ -8269,34 +8269,34 @@ function PassengerRideCard({
             <div style={{ display: "grid", gridTemplateColumns: "20px 1fr", gap: 9, fontSize: ".84rem", lineHeight: 1.35 }}>
               {nav.passengerOriginalLat != null && nav.passengerOriginalLng != null && (
                 <>
-                  <span style={{ color: "#2563eb", fontSize: "1rem" }}>●</span>
+                  <span style={{ color: "var(--rp-info-fg)", fontSize: "1rem" }}>●</span>
                   <div>
                     <strong>Tu ubicación:</strong> punto donde estás ahora
-                    <div style={{ color: "#666", fontSize: ".76rem", marginTop: 2 }}>
+                    <div style={{ color: "var(--rp-muted)", fontSize: ".76rem", marginTop: 2 }}>
                       En el mapa aparece en azul. Camina hacia el punto verde recomendado.
                     </div>
                   </div>
                 </>
               )}
 
-              <span style={{ color: "#22c55e", fontSize: "1rem" }}>●</span>
+              <span style={{ color: "var(--rp-ok-fg)", fontSize: "1rem" }}>●</span>
               <div>
                 <strong>Recogida accesible en calle:</strong> {ride.originText}
                 {nav.pickupWalkMeters != null && nav.pickupWalkMeters > 8 && (
-                  <div style={{ color: "#666", fontSize: ".76rem", marginTop: 2 }}>
+                  <div style={{ color: "var(--rp-muted)", fontSize: ".76rem", marginTop: 2 }}>
                     Camina aprox. {Math.round(nav.pickupWalkMeters)} m hasta este punto para que el conductor te encuentre.
                   </div>
                 )}
               </div>
 
-              <span style={{ color: "#ef4444", fontSize: "1rem" }}>●</span>
+              <span style={{ color: "var(--rp-err-fg)", fontSize: "1rem" }}>●</span>
               <div>
                 <strong>Destino:</strong> {ride.destinationText}
               </div>
 
               {isRoundTripReturnPickupRide(ride as RideRequestData & Record<string, unknown>) && (
                 <>
-                  <span style={{ color: "#d97706", fontSize: "1rem" }}>●</span>
+                  <span style={{ color: "var(--rp-warn-fg)", fontSize: "1rem" }}>●</span>
                   <div>
                     <strong>Incluido en promoción:</strong> esta recogida de regreso no se cobra nuevamente.
                   </div>
@@ -8314,10 +8314,10 @@ function PassengerRideCard({
                 background: "linear-gradient(135deg,#fff9e8 0%,#f1d58a 100%)",
                 border: "1px solid rgba(210,164,58,.70)",
                 boxShadow: "0 8px 22px rgba(0,0,0,.10)",
-                color: "#111111",
+                color: "var(--rp-text)",
               }}
             >
-              <div style={{ fontSize: ".72rem", fontWeight: 950, color: "#8a6418", letterSpacing: ".04em" }}>
+              <div style={{ fontSize: ".72rem", fontWeight: 950, color: "var(--rp-warn-fg)", letterSpacing: ".04em" }}>
                 MONTO A PAGAR
               </div>
               <div style={{ fontSize: "1.35rem", fontWeight: 950, lineHeight: 1.1, marginTop: 3 }}>
@@ -8327,7 +8327,7 @@ function PassengerRideCard({
                 💵 Pago: {paymentLabel}
               </div>
               {fastSearchFeeClp > 0 && (
-                <div style={{ marginTop: 4, fontSize: ".76rem", color: "#14532d", fontWeight: 900 }}>
+                <div style={{ marginTop: 4, fontSize: ".76rem", color: "var(--rp-ok-fg)", fontWeight: 900 }}>
                   ⚡ RapaGo más veloz: +{formatClp(fastSearchFeeClp)} incluido en este monto.
                 </div>
               )}
@@ -8451,9 +8451,9 @@ function PassengerRideCard({
                 marginTop: 12,
                 borderRadius: 18,
                 padding: "11px 12px",
-                background: "#fff1f2",
+                background: "var(--rp-err-bg)",
                 border: "1px solid rgba(220,38,38,.28)",
-                color: "#7f1d1d",
+                color: "var(--rp-err-fg)",
                 fontSize: ".78rem",
                 lineHeight: 1.35,
                 fontWeight: 900,
@@ -8466,7 +8466,7 @@ function PassengerRideCard({
           )}
 
           {cleanRideNotes(ride.notes) && (
-            <div style={{ marginTop: 8, color: "#666", fontSize: ".78rem" }}>
+            <div style={{ marginTop: 8, color: "var(--rp-muted)", fontSize: ".78rem" }}>
               {cleanRideNotes(ride.notes)}
             </div>
           )}
@@ -8546,7 +8546,8 @@ function PassengerRideCard({
 export default function TripsPage(): JSX.Element {
   const history = useHistory();
   const { session } = useAuth();
-  const { theme, isDark, toggleTheme } = useRapagoSectionTheme("trips");
+  // Solo se lee: el interruptor único vive en el encabezado de Inicio.
+  const { theme } = useRapagoSectionTheme("trips");
 
   const [allRides,    setAllRides]    = useState<RideRequestData[]>([]);
   const [page,        setPage]        = useState(1);
@@ -9331,8 +9332,6 @@ export default function TripsPage(): JSX.Element {
       `}</style>
       <RapagoSectionHeader
         title="Mis Viajes"
-        isDark={isDark}
-        onToggleTheme={toggleTheme}
         actionIcon={refreshOutline}
         actionLabel="Actualizar"
         actionLoading={loading}
@@ -9340,15 +9339,33 @@ export default function TripsPage(): JSX.Element {
       />
       <IonHeader className="rapago-section-subheader">
         <IonToolbar>
-          <div style={{ display: "flex", gap: "8px", padding: "0 12px 10px", overflowX: "auto" }}>
+          <div
+            role="radiogroup"
+            aria-label="Filtrar viajes por estado"
+            style={{ display: "flex", gap: "8px", padding: "0 12px 10px", overflowX: "auto" }}
+          >
             {(["all", "active", "completed", "cancelled"] as const).map((f) => {
               const labels = { all: "Todos", active: "Activos", completed: "Completados", cancelled: "Cancelados" };
               const active = statusFilter === f;
               return (
+                /* IonChip no es focalizable ni accionable por teclado por sí
+                   solo, y el estado activo se comunicaba únicamente por color.
+                   Con role="radio" + aria-checked el lector anuncia cuál está
+                   seleccionado, y tabIndex + onKeyDown permiten usarlo sin
+                   ratón ni pantalla táctil. */
                 <IonChip key={f}
+                  role="radio"
+                  aria-checked={active}
                   aria-label={`Filtrar por ${labels[f]}`}
+                  tabIndex={0}
                   className={active ? "rapago-filter-chip is-active" : "rapago-filter-chip"}
                   onClick={() => setStatusFilter(f)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" || event.key === " ") {
+                      event.preventDefault();
+                      setStatusFilter(f);
+                    }
+                  }}
                 >
                   {labels[f]}{counts[f] > 0 ? ` (${counts[f]})` : ""}
                 </IonChip>
@@ -9453,7 +9470,7 @@ export default function TripsPage(): JSX.Element {
         )}
 
         {passengerNotice && (
-          <IonCard style={{ margin: "12px 14px 0", borderRadius: 18, background: "#fff7db", color: "#111", border: "1px solid rgba(210,164,58,.65)", boxShadow: "0 10px 24px rgba(0,0,0,.16)" }}>
+          <IonCard style={{ margin: "12px 14px 0", borderRadius: 18, background: "var(--rp-warn-bg)", color: "var(--rp-text)", border: "1px solid rgba(210,164,58,.65)", boxShadow: "0 10px 24px rgba(0,0,0,.16)" }}>
             <IonCardContent style={{ padding: "12px 14px" }}>
               <div style={{ fontWeight: 950, fontSize: ".92rem" }}>{passengerNotice.title}</div>
               <div style={{ marginTop: 4, color: "rgba(17,17,17,.70)", fontSize: ".8rem", lineHeight: 1.35 }}>{passengerNotice.body}</div>
@@ -9489,7 +9506,7 @@ export default function TripsPage(): JSX.Element {
         {loading && <SkeletonList count={3} height="140px" />}
 
         {loadError && (
-          <div style={{ padding: "16px" }}>
+          <div style={{ padding: "16px" }} role="alert">
             <IonText color="danger"><p>{loadError}</p></IonText>
           </div>
         )}
@@ -9544,7 +9561,7 @@ export default function TripsPage(): JSX.Element {
         </IonInfiniteScroll>
 
         {cancelError && (
-          <div style={{ padding: "0 16px" }}>
+          <div style={{ padding: "0 16px" }} role="alert">
             <IonText color="danger"><p style={{ fontSize: "0.85rem" }}>{cancelError}</p></IonText>
           </div>
         )}
@@ -9578,7 +9595,7 @@ export default function TripsPage(): JSX.Element {
                   borderRadius: 28,
                   overflow: "hidden",
                   background: "linear-gradient(180deg,#fffaf0,#f8ead0)",
-                  color: "#111827",
+                  color: "var(--rp-text)",
                   boxShadow: "0 28px 80px rgba(0,0,0,.45)",
                   border: "1px solid rgba(214,168,62,.34)",
                 }}
@@ -9613,7 +9630,7 @@ export default function TripsPage(): JSX.Element {
                       <div style={{ fontWeight: 950, fontSize: "1.16rem", lineHeight: 1.16 }}>
                         ¿Quieres calificar al conductor que te recogió?
                       </div>
-                      <div style={{ marginTop: 5, color: "#4B5563", fontSize: ".84rem", fontWeight: 800, lineHeight: 1.35 }}>
+                      <div style={{ marginTop: 5, color: "var(--rp-muted)", fontSize: ".84rem", fontWeight: 800, lineHeight: 1.35 }}>
                         Evalúa a <strong>{ratingDriverName}</strong> y agrega extras del servicio para mejorar la experiencia RAPA GO.
                       </div>
                     </div>
@@ -9627,7 +9644,7 @@ export default function TripsPage(): JSX.Element {
                         borderRadius: 18,
                         background: "rgba(255,255,255,.70)",
                         border: "1px solid rgba(214,168,62,.24)",
-                        color: "#374151",
+                        color: "var(--rp-muted)",
                         fontSize: ".78rem",
                         fontWeight: 850,
                         lineHeight: 1.35,
@@ -9645,7 +9662,7 @@ export default function TripsPage(): JSX.Element {
                   <div style={{ fontWeight: 950, fontSize: ".86rem", marginTop: 12 }}>
                     Extras del conductor
                   </div>
-                  <div style={{ color: "#6B7280", fontSize: ".76rem", fontWeight: 800, marginTop: 2 }}>
+                  <div style={{ color: "var(--rp-muted)", fontSize: ".76rem", fontWeight: 800, marginTop: 2 }}>
                     Toca una o varias opciones.
                   </div>
                   <RatingExtrasSelector selected={ratingExtras} onToggle={toggleRatingExtra} />
@@ -9666,11 +9683,11 @@ export default function TripsPage(): JSX.Element {
                       maxlength={500}
                       rows={3}
                       style={{
-                        background: "#ffffff",
+                        background: "var(--rp-surface)",
                         borderRadius: 18,
                         border: "1px solid rgba(214,168,62,.34)",
                         padding: "10px 12px",
-                        color: "#111827",
+                        color: "var(--rp-text)",
                         fontWeight: 800,
                       } as CSSProperties}
                     />
@@ -9679,7 +9696,7 @@ export default function TripsPage(): JSX.Element {
                   <IonItem lines="none" style={{ "--background": "transparent", "--padding-start": "0" } as CSSProperties}>
                     <IonLabel>
                       <div style={{ fontWeight: 900 }}>Comentario solo para RAPA GO</div>
-                      <div style={{ fontSize: ".74rem", color: "#6B7280" }}>
+                      <div style={{ fontSize: ".74rem", color: "var(--rp-muted)" }}>
                         Al activarlo, el conductor no verá el texto. La calificación numérica sí cuenta para su promedio.
                       </div>
                     </IonLabel>
@@ -9720,7 +9737,7 @@ export default function TripsPage(): JSX.Element {
                       color="warning"
                       onClick={() => void handleSubmitRating()}
                       disabled={submittingRating}
-                      style={{ "--border-radius": "16px", "--color": "#111827", fontWeight: 950 } as CSSProperties}
+                      style={{ "--border-radius": "16px", "--color": "var(--rp-text)", fontWeight: 950 } as CSSProperties}
                     >
                       {submittingRating ? <IonSpinner name="dots" /> : "Enviar calificación"}
                     </IonButton>

@@ -3,7 +3,7 @@ import { Redirect, Route, useLocation } from "react-router-dom";
 import { ROUTES } from "./routes";
 import { RouteErrorBoundary } from "./RouteErrorBoundary.js";
 import { NotFoundPage } from "../pages/NotFoundPage";
-import { LoginPage, RegisterPage } from "../features/auth";
+import { LoginPage, RegisterPage, useAuth } from "../features/auth";
 import { FacebookCallbackPage } from "../features/auth/FacebookCallbackPage";
 import { ForgotPasswordPage } from "../features/auth/ForgotPasswordPage";
 import { ResetPasswordPage } from "../features/auth/ResetPasswordPage";
@@ -118,8 +118,22 @@ function StandaloneRoutes(): JSX.Element {
 
 export function AppRouter(): JSX.Element {
   const { pathname } = useLocation();
+  const { user } = useAuth();
 
-  if (isPathInside(pathname, ROUTES.PASSENGER.BASE)) {
+  /**
+   * Centro de ayuda: vive en /support-center, fuera del prefijo /passenger, y
+   * la pestaña "Ayuda" del pasajero apunta ahí (PassengerLayout). Sin este
+   * caso, entrar a Ayuda desmontaba PassengerLayout entero y con él la barra
+   * inferior, dejando al usuario sin navegación.
+   *
+   * La pantalla es multi-rol (SupportCenterPage ramifica a driver/admin/
+   * pasajero), así que solo se monta dentro del layout de pasajero cuando el
+   * rol activo es de pasajero. Conductor, admin y visitantes sin sesión
+   * conservan la ruta standalone de siempre.
+   */
+  const isPassengerRole = user != null && user.role !== "driver" && user.role !== "admin";
+
+  if (isPathInside(pathname, ROUTES.PASSENGER.BASE) || (pathname === ROUTES.SUPPORT.CENTER && isPassengerRole)) {
     return (
       <RouteErrorBoundary>
         <PassengerLayout />
