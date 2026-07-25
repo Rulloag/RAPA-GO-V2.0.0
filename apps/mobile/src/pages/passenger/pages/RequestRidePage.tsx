@@ -7854,7 +7854,9 @@ return (
             )}
 
             {submitError && (
-              <IonText color="danger">
+              /* role="alert" para que el lector de pantalla lo anuncie: es un
+                 error que aparece DESPUÉS de pulsar, sin mover el foco. */
+              <IonText color="danger" role="alert">
                 <p style={{ fontWeight: 700, fontSize: ".84rem" }}>
                   {submitError}
                 </p>

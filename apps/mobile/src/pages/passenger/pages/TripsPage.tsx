@@ -9339,15 +9339,33 @@ export default function TripsPage(): JSX.Element {
       />
       <IonHeader className="rapago-section-subheader">
         <IonToolbar>
-          <div style={{ display: "flex", gap: "8px", padding: "0 12px 10px", overflowX: "auto" }}>
+          <div
+            role="radiogroup"
+            aria-label="Filtrar viajes por estado"
+            style={{ display: "flex", gap: "8px", padding: "0 12px 10px", overflowX: "auto" }}
+          >
             {(["all", "active", "completed", "cancelled"] as const).map((f) => {
               const labels = { all: "Todos", active: "Activos", completed: "Completados", cancelled: "Cancelados" };
               const active = statusFilter === f;
               return (
+                /* IonChip no es focalizable ni accionable por teclado por sí
+                   solo, y el estado activo se comunicaba únicamente por color.
+                   Con role="radio" + aria-checked el lector anuncia cuál está
+                   seleccionado, y tabIndex + onKeyDown permiten usarlo sin
+                   ratón ni pantalla táctil. */
                 <IonChip key={f}
+                  role="radio"
+                  aria-checked={active}
                   aria-label={`Filtrar por ${labels[f]}`}
+                  tabIndex={0}
                   className={active ? "rapago-filter-chip is-active" : "rapago-filter-chip"}
                   onClick={() => setStatusFilter(f)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" || event.key === " ") {
+                      event.preventDefault();
+                      setStatusFilter(f);
+                    }
+                  }}
                 >
                   {labels[f]}{counts[f] > 0 ? ` (${counts[f]})` : ""}
                 </IonChip>
@@ -9488,7 +9506,7 @@ export default function TripsPage(): JSX.Element {
         {loading && <SkeletonList count={3} height="140px" />}
 
         {loadError && (
-          <div style={{ padding: "16px" }}>
+          <div style={{ padding: "16px" }} role="alert">
             <IonText color="danger"><p>{loadError}</p></IonText>
           </div>
         )}
@@ -9543,7 +9561,7 @@ export default function TripsPage(): JSX.Element {
         </IonInfiniteScroll>
 
         {cancelError && (
-          <div style={{ padding: "0 16px" }}>
+          <div style={{ padding: "0 16px" }} role="alert">
             <IonText color="danger"><p style={{ fontSize: "0.85rem" }}>{cancelError}</p></IonText>
           </div>
         )}

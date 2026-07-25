@@ -361,3 +361,30 @@ ion-tab-bar.rapago-role-tabbar ion-tab-button[aria-selected="true"] ion-label {
     transition-duration: 0.001ms !important;
   }
 }
+
+/* ==========================================================================
+   FOCO VISIBLE
+   No existía en toda la app: quien navega con teclado o con un mando de TV no
+   tenía forma de saber dónde estaba. Se usa :focus-visible (no :focus) para que
+   el anillo NO aparezca al tocar con el dedo o pulsar con el ratón, solo cuando
+   el navegador determina que hace falta.
+
+   El color sale de --rp-border-strong, que ya existe en ambos temas, así que el
+   anillo contrasta tanto sobre la superficie clara como sobre la volcánica.
+   ========================================================================== */
+.rapago-section-page :focus-visible,
+.rapago-home-page :focus-visible,
+.rapago-profile-page :focus-visible {
+  outline: 3px solid var(--rp-border-strong);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+
+/* Los controles de Ionic pintan su propio foco dentro del shadow DOM: se les
+   aplica sobre el host para que el anillo no quede recortado. */
+.rapago-section-page ion-button:focus-visible,
+.rapago-section-page ion-chip:focus-visible,
+.rapago-home-page ion-button:focus-visible {
+  outline: 3px solid var(--rp-border-strong);
+  outline-offset: 3px;
+}
