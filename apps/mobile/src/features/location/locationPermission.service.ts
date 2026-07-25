@@ -3,6 +3,51 @@ import { Geolocation, type PermissionStatus } from "@capacitor/geolocation";
 import { NativeBackgroundLocation } from "./nativeBackgroundLocation.plugin.js";
 import type { RapaGoPermissionSnapshot } from "./location.types.js";
 
+const WEB_FOREGROUND_GRANTED_KEY =
+  "rapago_web_location_foreground_granted_v1";
+
+function readRememberedWebGrant(): boolean {
+  if (typeof window === "undefined") {
+    return false;
+  }
+
+  try {
+    return window.localStorage.getItem(WEB_FOREGROUND_GRANTED_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+function rememberWebGrant(granted: boolean): void {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  try {
+    if (granted) {
+      window.localStorage.setItem(WEB_FOREGROUND_GRANTED_KEY, "1");
+    } else {
+      window.localStorage.removeItem(WEB_FOREGROUND_GRANTED_KEY);
+    }
+  } catch {
+    // El almacenamiento puede estar bloqueado en navegación privada.
+  }
+}
+
+function webSnapshot(
+  foreground: RapaGoPermissionSnapshot["foreground"],
+): RapaGoPermissionSnapshot {
+  return {
+    platform: "web",
+    foreground,
+    coarse: foreground,
+    background: "not-applicable",
+    notifications: "not-applicable",
+    locationServicesEnabled:
+      typeof navigator !== "undefined" && Boolean(navigator.geolocation),
+  };
+}
+
 function normalizePermission(
   value: PermissionStatus["location"] | undefined,
 ): RapaGoPermissionSnapshot["foreground"] {
@@ -27,13 +72,6 @@ function platform(): RapaGoPermissionSnapshot["platform"] {
   return "web";
 }
 
-async function webServiceEnabled(): Promise<boolean | null> {
-  if (typeof navigator === "undefined") {
-    return null;
-  }
-
-  return Boolean(navigator.geolocation);
-}
 
 async function getWebForegroundPermission(): Promise<
   RapaGoPermissionSnapshot["foreground"]
@@ -42,6 +80,7 @@ async function getWebForegroundPermission(): Promise<
     typeof navigator === "undefined" ||
     !navigator.geolocation
   ) {
+    rememberWebGrant(false);
     return "denied";
   }
 
@@ -52,19 +91,21 @@ async function getWebForegroundPermission(): Promise<
       });
 
       if (result.state === "granted") {
+        rememberWebGrant(true);
         return "granted";
       }
 
       if (result.state === "denied") {
+        rememberWebGrant(false);
         return "denied";
       }
     }
   } catch {
-    // Algunos navegadores no permiten consultar geolocation
-    // mediante Permissions API. El permiso se solicita al usar GPS.
+    // Safari y Chrome en iPhone pueden no exponer geolocation
+    // mediante Permissions API aunque el GPS ya esté autorizado.
   }
 
-  return "prompt";
+  return readRememberedWebGrant() ? "granted" : "prompt";
 }
 
 export const locationPermissionService = {
@@ -73,15 +114,7 @@ export const locationPermissionService = {
 
     if (!Capacitor.isNativePlatform()) {
       const foreground = await getWebForegroundPermission();
-
-      return {
-        platform: currentPlatform,
-        foreground,
-        coarse: foreground,
-        background: "not-applicable",
-        notifications: "not-applicable",
-        locationServicesEnabled: await webServiceEnabled(),
-      };
+      return webSnapshot(foreground);
     }
 
     let geo: PermissionStatus;
@@ -143,8 +176,15 @@ export const locationPermissionService = {
 
     await new Promise<void>((resolve, reject) => {
       navigator.geolocation.getCurrentPosition(
-        () => resolve(),
+        () => {
+          rememberWebGrant(true);
+          resolve();
+        },
         (error) => {
+          if (error.code === error.PERMISSION_DENIED) {
+            rememberWebGrant(false);
+          }
+
           const message =
             error.code === error.PERMISSION_DENIED
               ? "Permiso de ubicación denegado. Permite la ubicación desde la configuración del sitio."
@@ -164,7 +204,7 @@ export const locationPermissionService = {
       );
     });
 
-    return this.check();
+    return webSnapshot("granted");
   },
 
   async requestBackground(): Promise<RapaGoPermissionSnapshot> {
@@ -183,6 +223,12 @@ export const locationPermissionService = {
 
     await NativeBackgroundLocation.requestNotificationPermission();
     return this.check();
+  },
+
+  clearRememberedWebGrant(): void {
+    if (!Capacitor.isNativePlatform()) {
+      rememberWebGrant(false);
+    }
   },
 
   async openSettings(): Promise<void> {
