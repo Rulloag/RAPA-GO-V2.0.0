@@ -5225,7 +5225,7 @@ function PassengerDriverAndVehicleDetails({
     <div
       style={{
         marginBottom: 14,
-        background: "#ffffff",
+        background: "var(--rp-surface)",
         borderRadius: 26,
         padding: "14px",
         border: "1px solid rgba(0,0,0,.07)",
@@ -5247,7 +5247,7 @@ function PassengerDriverAndVehicleDetails({
           alignItems: "center",
           gap: 10,
           marginBottom: 14,
-          background: "#ffffff",
+          background: "var(--rp-surface)",
         }}
       >
         <div>
@@ -5271,7 +5271,7 @@ function PassengerDriverAndVehicleDetails({
             width: 42,
             height: 42,
             borderRadius: 12,
-            background: "#f3f4f6",
+            background: "var(--rp-surface-soft)",
             fontSize: "1.25rem",
             fontWeight: 950,
             color: "var(--rp-text)",
@@ -5298,7 +5298,7 @@ function PassengerDriverAndVehicleDetails({
               height: 58,
               borderRadius: 999,
               overflow: "hidden",
-              background: "#D8A83E",
+              background: "var(--rp-accent)",
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
@@ -6578,7 +6578,7 @@ function PassengerLiveRouteMap({
                 width: 38,
                 height: 38,
                 borderRadius: 999,
-                background: "#FACC15",
+                background: "var(--rp-accent)",
                 color: "var(--rp-text)",
                 display: "grid",
                 placeItems: "center",
@@ -7262,7 +7262,7 @@ function PassengerCashPaymentAfterRideCard({
           <IonItem
             lines="none"
             style={{
-              "--background": "#ffffff",
+              "--background": "var(--rp-surface)",
               "--border-radius": "16px",
               "--padding-start": "12px",
               "--inner-padding-end": "12px",
@@ -7301,7 +7301,7 @@ function PassengerCashPaymentAfterRideCard({
                 marginTop: 10,
                 borderRadius: 14,
                 padding: "9px 11px",
-                background: "#FEE2E2",
+                background: "var(--rp-err-bg)",
                 color: "var(--rp-err-fg)",
                 fontWeight: 850,
                 fontSize: ".78rem",
@@ -7749,7 +7749,7 @@ function PassengerRideCard({
         margin: 0,
         borderRadius: "22px",
         overflow: "hidden",
-        background: "#F6F2EC",
+        background: "var(--rp-surface)",
         border: "2px solid rgba(210,164,58,.65)",
         boxShadow: "0 12px 32px rgba(0,0,0,.16)",
       }}
@@ -7767,7 +7767,7 @@ function PassengerRideCard({
             <div
               style={{
                 marginBottom: 12,
-                background: "#fff7db",
+                background: "var(--rp-warn-bg)",
                 borderRadius: 18,
                 padding: "12px",
                 border: "1px solid rgba(210,164,58,.62)",
@@ -7785,7 +7785,7 @@ function PassengerRideCard({
             <div
               style={{
                 marginBottom: 12,
-                background: "#fff1f2",
+                background: "var(--rp-err-bg)",
                 borderRadius: 18,
                 padding: "12px",
                 border: "1px solid rgba(220,38,38,.32)",
@@ -7830,7 +7830,7 @@ function PassengerRideCard({
             <div
               style={{
                 marginBottom: 12,
-                background: "#fff1f2",
+                background: "var(--rp-err-bg)",
                 borderRadius: 18,
                 padding: "12px",
                 border: "1px solid rgba(220,38,38,.30)",
@@ -7849,7 +7849,7 @@ function PassengerRideCard({
             <div
               style={{
                 marginBottom: 12,
-                background: "#fff7db",
+                background: "var(--rp-warn-bg)",
                 borderRadius: 18,
                 padding: "12px",
                 border: "1px solid rgba(210,164,58,.62)",
@@ -7914,7 +7914,7 @@ function PassengerRideCard({
             isScheduledPending ? (
               <div
                 style={{
-                  background: "#fff7db",
+                  background: "var(--rp-warn-bg)",
                   borderRadius: 18,
                   padding: "12px",
                   border: "1px solid rgba(210,164,58,.55)",
@@ -7948,7 +7948,7 @@ function PassengerRideCard({
             ) : (
               <div
                 style={{
-                  background: "#ffffff",
+                  background: "var(--rp-surface)",
                   borderRadius: 18,
                   padding: "12px",
                   border: "1px solid rgba(0,0,0,.06)",
@@ -7972,7 +7972,7 @@ function PassengerRideCard({
                       marginTop: 12,
                       padding: "10px 12px",
                       borderRadius: 14,
-                      background: "#fff8dc",
+                      background: "var(--rp-warn-bg)",
                       border: "1px solid #e6bd52",
                       color: "var(--rp-warn-fg)",
                       fontSize: ".76rem",
@@ -8130,7 +8130,7 @@ function PassengerRideCard({
                           border: "2px solid #6b4b00",
                           borderRadius: 14,
                           padding: "9px 14px",
-                          background: "#ffffff",
+                          background: "var(--rp-surface)",
                           color: "var(--rp-warn-fg)",
                           fontSize: ".82rem",
                           fontWeight: 950,
@@ -8149,7 +8149,7 @@ function PassengerRideCard({
                           marginTop: 10,
                           padding: "10px 12px",
                           borderRadius: 12,
-                          background: "#fff1f2",
+                          background: "var(--rp-err-bg)",
                           border: "1px solid #e11d48",
                           color: "var(--rp-err-fg)",
                           fontSize: ".75rem",
@@ -8210,7 +8210,7 @@ function PassengerRideCard({
             <div
               style={{
                 marginBottom: 14,
-                background: "#ffffff",
+                background: "var(--rp-surface)",
                 borderRadius: 18,
                 padding: "12px",
                 border: "1px solid rgba(34,197,94,.30)",
@@ -8234,7 +8234,7 @@ function PassengerRideCard({
                 <div
                   style={{
                     marginTop: 10,
-                    background: "#f0fdf4",
+                    background: "var(--rp-ok-bg)",
                     color: "var(--rp-ok-fg)",
                     borderRadius: 14,
                     padding: "9px 10px",
@@ -8256,7 +8256,7 @@ function PassengerRideCard({
 
           <div
             style={{
-              background: "#ffffff",
+              background: "var(--rp-surface)",
               borderRadius: 18,
               padding: "12px",
               border: "1px solid rgba(0,0,0,.06)",
@@ -8451,7 +8451,7 @@ function PassengerRideCard({
                 marginTop: 12,
                 borderRadius: 18,
                 padding: "11px 12px",
-                background: "#fff1f2",
+                background: "var(--rp-err-bg)",
                 border: "1px solid rgba(220,38,38,.28)",
                 color: "var(--rp-err-fg)",
                 fontSize: ".78rem",
@@ -9453,7 +9453,7 @@ export default function TripsPage(): JSX.Element {
         )}
 
         {passengerNotice && (
-          <IonCard style={{ margin: "12px 14px 0", borderRadius: 18, background: "#fff7db", color: "var(--rp-text)", border: "1px solid rgba(210,164,58,.65)", boxShadow: "0 10px 24px rgba(0,0,0,.16)" }}>
+          <IonCard style={{ margin: "12px 14px 0", borderRadius: 18, background: "var(--rp-warn-bg)", color: "var(--rp-text)", border: "1px solid rgba(210,164,58,.65)", boxShadow: "0 10px 24px rgba(0,0,0,.16)" }}>
             <IonCardContent style={{ padding: "12px 14px" }}>
               <div style={{ fontWeight: 950, fontSize: ".92rem" }}>{passengerNotice.title}</div>
               <div style={{ marginTop: 4, color: "rgba(17,17,17,.70)", fontSize: ".8rem", lineHeight: 1.35 }}>{passengerNotice.body}</div>
@@ -9666,7 +9666,7 @@ export default function TripsPage(): JSX.Element {
                       maxlength={500}
                       rows={3}
                       style={{
-                        background: "#ffffff",
+                        background: "var(--rp-surface)",
                         borderRadius: 18,
                         border: "1px solid rgba(214,168,62,.34)",
                         padding: "10px 12px",
