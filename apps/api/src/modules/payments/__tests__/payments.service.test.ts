@@ -13,6 +13,7 @@ const {
   mockMarkProcessing,
   mockMarkFailed,
   mockMarkSuccess,
+  mockMarkSuccessAndActivateRide,
   mockMarkRejected,
   mockFindById,
   mockFindRefundableByRideId,
@@ -38,6 +39,7 @@ const {
   mockMarkProcessing:         vi.fn(),
   mockMarkFailed:             vi.fn(),
   mockMarkSuccess:            vi.fn(),
+  mockMarkSuccessAndActivateRide: vi.fn(),
   mockMarkRejected:           vi.fn(),
   mockFindById:               vi.fn(),
   mockFindRefundableByRideId:   vi.fn(),
@@ -85,6 +87,7 @@ vi.mock("../payments.repository.js", () => ({
     markProcessing:     mockMarkProcessing,
     markFailed:         mockMarkFailed,
     markSuccess:        mockMarkSuccess,
+    markSuccessAndActivateRide: mockMarkSuccessAndActivateRide,
     markRejected:       mockMarkRejected,
     findById:           mockFindById,
     findRefundableByRideId: mockFindRefundableByRideId,
@@ -294,7 +297,13 @@ describe("PaymentsService.handleWebhook", () => {
 
     expect(result.ok).toBe(true);
     if (result.ok) expect(result.processed).toBe(true);
-    expect(mockMarkSuccess).toHaveBeenCalledWith(PAYMENT_ID, "ext-1", expect.any(Object));
+    expect(mockMarkSuccessAndActivateRide).toHaveBeenCalledWith({
+      id: PAYMENT_ID,
+      rideRequestId: RIDE_ID,
+      externalId: "ext-1",
+      providerPayload: expect.any(Object),
+    });
+    expect(mockMarkSuccess).not.toHaveBeenCalled();
   });
 
   it("processes success using 'order' field (prontopaga payload)", async () => {
@@ -310,7 +319,13 @@ describe("PaymentsService.handleWebhook", () => {
 
     expect(result.ok).toBe(true);
     if (result.ok) expect(result.processed).toBe(true);
-    expect(mockMarkSuccess).toHaveBeenCalled();
+    expect(mockMarkSuccessAndActivateRide).toHaveBeenCalledWith({
+      id: PAYMENT_ID,
+      rideRequestId: RIDE_ID,
+      externalId: "",
+      providerPayload: expect.any(Object),
+    });
+    expect(mockMarkSuccess).not.toHaveBeenCalled();
   });
 
   it("processes success using 'order_id' field (prontopaga fallback)", async () => {
@@ -326,7 +341,13 @@ describe("PaymentsService.handleWebhook", () => {
 
     expect(result.ok).toBe(true);
     if (result.ok) expect(result.processed).toBe(true);
-    expect(mockMarkSuccess).toHaveBeenCalled();
+    expect(mockMarkSuccessAndActivateRide).toHaveBeenCalledWith({
+      id: PAYMENT_ID,
+      rideRequestId: RIDE_ID,
+      externalId: "",
+      providerPayload: expect.any(Object),
+    });
+    expect(mockMarkSuccess).not.toHaveBeenCalled();
   });
 
   it("processes rejected status correctly", async () => {
@@ -536,6 +557,13 @@ describe("PaymentsService.reconcileMercadoPagoPayment", () => {
     mockIsSessionValid.mockResolvedValue(true);
     setupPassengerAuth();
     process.env["MERCADOPAGO_ACCESS_TOKEN"] = "APP_USR-test-token";
+    mockMarkSuccessAndActivateRide.mockResolvedValue({
+      payment: {
+        id: PAYMENT_ID,
+        status: "success",
+      },
+      rideActivated: true,
+    });
   });
 
   it("confirms an approved payment by querying Mercado Pago directly", async () => {
@@ -579,15 +607,16 @@ describe("PaymentsService.reconcileMercadoPagoPayment", () => {
       expect(result.payment.providerPaymentId).toBe("987654321");
       expect(result.payment.activated).toBe(true);
     }
-    expect(mockMarkSuccess).toHaveBeenCalledWith(
-      PAYMENT_ID,
-      "987654321",
-      expect.objectContaining({
+    expect(mockMarkSuccessAndActivateRide).toHaveBeenCalledWith({
+      id: PAYMENT_ID,
+      rideRequestId: RIDE_ID,
+      externalId: "987654321",
+      providerPayload: expect.objectContaining({
         external_reference: PAYMENT_ID,
         transaction_amount: 5000,
         currency_id: "CLP",
       }),
-    );
+    });
 
     vi.unstubAllGlobals();
   });
@@ -628,6 +657,7 @@ describe("PaymentsService.reconcileMercadoPagoPayment", () => {
       expect(result.statusCode).toBe(409);
     }
     expect(mockMarkSuccess).not.toHaveBeenCalled();
+    expect(mockMarkSuccessAndActivateRide).not.toHaveBeenCalled();
 
     vi.unstubAllGlobals();
   });

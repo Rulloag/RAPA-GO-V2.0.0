@@ -275,37 +275,111 @@ async function authenticate(
   };
 }
 
-function normalizePaymentReturnUrl(value: string): string {
-  const trimmed = value.trim();
+type PaymentReturnMarker =
+  | "approved_return"
+  | "pending_return"
+  | "failure_return";
+
+function getPaymentFrontendReturnUrl(): string {
+  const configuredUrl = String(
+    process.env["PAYMENT_SUCCESS_URL"] ?? "",
+  ).trim();
+
+  if (configuredUrl) return configuredUrl;
+
+  const frontendUrl = String(process.env["FRONTEND_URL"] ?? "").trim();
+
+  if (frontendUrl) {
+    return `${frontendUrl.replace(/\/+$/, "")}/passenger/trips`;
+  }
+
+  const mobileDeepLink = String(
+    process.env["MOBILE_APP_DEEP_LINK"] ?? "rapago://",
+  ).trim();
+
+  return `${mobileDeepLink.replace(/\/+$/, "")}/payment/result`;
+}
+
+function buildPaymentFrontendResultUrl(input: {
+  marker: PaymentReturnMarker;
+  externalReference?: string;
+  providerPaymentId?: string;
+  reason?: string;
+}): string {
+  const baseUrl = getPaymentFrontendReturnUrl();
 
   try {
-    const url = new URL(trimmed);
-    // Esta marca solo indica que el usuario volvió desde la pasarela.
-    // Nunca representa aprobación del pago.
-    url.searchParams.set("payment", "return");
+    const url = new URL(baseUrl);
+    url.searchParams.set("payment", input.marker);
+    url.searchParams.set("backend_reconciled", "1");
+
+    if (input.externalReference) {
+      url.searchParams.set("external_reference", input.externalReference);
+    }
+
+    if (input.providerPaymentId) {
+      url.searchParams.set("payment_id", input.providerPaymentId);
+    }
+
+    if (input.reason) {
+      url.searchParams.set("reconcile_result", input.reason);
+    }
+
     return url.toString();
   } catch {
-    return trimmed.replace(/([?&])payment=success\b/i, "$1payment=return");
+    const separator = baseUrl.includes("?") ? "&" : "?";
+    const params = new URLSearchParams({
+      payment: input.marker,
+      backend_reconciled: "1",
+      ...(input.externalReference
+        ? { external_reference: input.externalReference }
+        : {}),
+      ...(input.providerPaymentId
+        ? { payment_id: input.providerPaymentId }
+        : {}),
+      ...(input.reason ? { reconcile_result: input.reason } : {}),
+    });
+
+    return `${baseUrl}${separator}${params.toString()}`;
   }
 }
 
-function buildPaymentReturnUrl(): string {
-  const configuredUrl = process.env["PAYMENT_SUCCESS_URL"];
+function buildMercadoPagoBackendReturnUrl(): string {
+  const configured = String(
+    process.env["PAYMENT_MERCADOPAGO_RETURN_URL"] ?? "",
+  ).trim();
+  const webhookBase = String(
+    process.env["PAYMENT_WEBHOOK_BASE_URL"] ?? "",
+  )
+    .trim()
+    .replace(/\/+$/, "");
+  const candidate =
+    configured ||
+    (webhookBase
+      ? `${webhookBase}/api/payments/return/mercadopago`
+      : "");
 
-  if (configuredUrl?.trim()) {
-    return normalizePaymentReturnUrl(configuredUrl);
+  try {
+    const url = new URL(candidate);
+
+    if (url.protocol !== "https:") {
+      throw new Error("Mercado Pago return URL must use HTTPS.");
+    }
+
+    return url.toString();
+  } catch {
+    throw new Error(
+      "Falta una URL HTTPS válida para el regreso de Mercado Pago. Configura PAYMENT_MERCADOPAGO_RETURN_URL o PAYMENT_WEBHOOK_BASE_URL.",
+    );
   }
-
-  const frontendUrl = process.env["FRONTEND_URL"];
-
-  if (frontendUrl?.trim()) {
-    return `${frontendUrl.replace(/\/+$/, "")}/passenger/trips?payment=return`;
-  }
-
-  const mobileDeepLink = process.env["MOBILE_APP_DEEP_LINK"] ?? "rapago://";
-
-  return `${mobileDeepLink}payment/result`;
 }
+
+function buildPaymentReturnUrl(providerName: string): string {
+  return normalizePaymentText(providerName) === "mercadopago"
+    ? buildMercadoPagoBackendReturnUrl()
+    : buildPaymentFrontendResultUrl({ marker: "pending_return" });
+}
+
 
 function isPaymentRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value && typeof value === "object");
@@ -697,6 +771,281 @@ function buildReceiptNumber(paymentId: string, createdAt: Date): string {
   return `RPG-${date}-${paymentId.slice(0, 8).toUpperCase()}`;
 }
 
+type MercadoPagoReconciliationPayment = {
+  id: string;
+  rideRequestId: string;
+  status: string;
+  paymentPurpose: PaymentPurpose;
+  providerPaymentId: string | null;
+  activated: boolean;
+  reconciled: boolean;
+};
+
+type StoredPayment = NonNullable<
+  Awaited<ReturnType<PaymentsRepository["findById"]>>
+>;
+
+async function reconcileStoredMercadoPagoPayment(
+  payment: StoredPayment,
+  providerPaymentId?: string,
+): Promise<Result<{ payment: MercadoPagoReconciliationPayment }>> {
+  const paymentPurpose = getPaymentPurpose(payment.paymentPurpose);
+  let activated = false;
+
+  if (payment.status === "success") {
+    try {
+      if (paymentPurpose === "fast_search") {
+        await activateFastSearchAfterPayment(payment.rideRequestId, "card");
+      } else {
+        activated = await activateRideAfterApprovedPayment(
+          payment.rideRequestId,
+        );
+      }
+
+      if (paymentPurpose === "fast_search") {
+        activated = true;
+      }
+    } catch (err) {
+      console.warn("[MercadoPago] Pago ya aprobado, pero la reactivación no terminó:", {
+        paymentId: payment.id,
+        rideRequestId: payment.rideRequestId,
+        error: String(err),
+      });
+    }
+
+    return {
+      ok: true,
+      payment: {
+        id: payment.id,
+        rideRequestId: payment.rideRequestId,
+        status: payment.status,
+        paymentPurpose,
+        providerPaymentId: payment.providerPaymentId ?? null,
+        activated,
+        reconciled: false,
+      },
+    };
+  }
+
+  let providerPayment: MercadoPagoPaymentSnapshot | null = null;
+
+  try {
+    const normalizedProviderPaymentId = String(
+      providerPaymentId ?? "",
+    ).trim();
+
+    if (normalizedProviderPaymentId) {
+      if (!/^\d+$/.test(normalizedProviderPaymentId)) {
+        return {
+          ok: false,
+          code: "VALIDATION_ERROR",
+          message: "providerPaymentId must contain only digits.",
+          statusCode: 400,
+        };
+      }
+
+      providerPayment = await fetchMercadoPagoPayment(
+        normalizedProviderPaymentId,
+      );
+    } else {
+      providerPayment = await searchMercadoPagoPaymentByExternalReference(
+        payment.id,
+      );
+    }
+  } catch (err) {
+    console.error("[MercadoPago] Falló la conciliación con la API:", {
+      paymentId: payment.id,
+      rideRequestId: payment.rideRequestId,
+      hasProviderPaymentId: Boolean(providerPaymentId),
+      error: String(err),
+    });
+
+    return {
+      ok: false,
+      code: "PAYMENT_RECONCILIATION_PROVIDER_ERROR",
+      message:
+        "No se pudo consultar el pago directamente en Mercado Pago. Intenta actualizar nuevamente.",
+      statusCode: 502,
+    };
+  }
+
+  if (!providerPayment) {
+    return {
+      ok: true,
+      payment: {
+        id: payment.id,
+        rideRequestId: payment.rideRequestId,
+        status: payment.status,
+        paymentPurpose,
+        providerPaymentId: payment.providerPaymentId ?? null,
+        activated: false,
+        reconciled: false,
+      },
+    };
+  }
+
+  const externalReference = String(
+    providerPayment.external_reference ?? "",
+  ).trim();
+  const resolvedProviderPaymentId = String(
+    providerPayment.id ?? providerPaymentId ?? "",
+  ).trim();
+
+  if (externalReference !== payment.id) {
+    console.warn("[MercadoPago] Conciliación rechazada por external_reference:", {
+      paymentId: payment.id,
+      providerPaymentId: resolvedProviderPaymentId || null,
+      externalReference: externalReference || null,
+    });
+    return {
+      ok: false,
+      code: "PAYMENT_EXTERNAL_REFERENCE_MISMATCH",
+      message: "El pago de Mercado Pago no corresponde a esta solicitud.",
+      statusCode: 409,
+    };
+  }
+
+  const normalizedStatus = mapMercadoPagoPaymentStatus(
+    providerPayment.status,
+  );
+  const paidAmountClp = getMercadoPagoSnapshotAmountClp(providerPayment);
+  const currency = getMercadoPagoSnapshotCurrency(providerPayment);
+  const expectedAmountClp = Math.round(Number(payment.amountClp));
+  const amountMatches =
+    paidAmountClp != null && paidAmountClp === expectedAmountClp;
+  const currencyMatches = !currency || currency === "CLP";
+
+  console.log("[MercadoPago] Conciliación segura:", {
+    paymentId: payment.id,
+    rideRequestId: payment.rideRequestId,
+    providerPaymentId: resolvedProviderPaymentId || null,
+    providerStatus: String(providerPayment.status ?? ""),
+    normalizedStatus,
+    expectedAmountClp,
+    paidAmountClp,
+    currency: currency || null,
+  });
+
+  if (normalizedStatus === "success") {
+    if (!amountMatches || !currencyMatches) {
+      return {
+        ok: false,
+        code: "PAYMENT_AMOUNT_OR_CURRENCY_MISMATCH",
+        message:
+          "El monto o la moneda informada por Mercado Pago no coincide con la solicitud.",
+        statusCode: 409,
+      };
+    }
+
+    try {
+      if (paymentPurpose === "fast_search") {
+        await paymentsRepo.markSuccess(
+          payment.id,
+          resolvedProviderPaymentId,
+          providerPayment,
+        );
+        await activateFastSearchAfterPayment(payment.rideRequestId, "card");
+        activated = true;
+      } else {
+        const confirmed = await paymentsRepo.markSuccessAndActivateRide({
+          id: payment.id,
+          rideRequestId: payment.rideRequestId,
+          externalId: resolvedProviderPaymentId,
+          providerPayload: providerPayment,
+        });
+        activated = confirmed.rideActivated;
+      }
+
+      if (!activated) {
+        throw new Error(
+          "El viaje no salió de pending_payment después de confirmar el pago.",
+        );
+      }
+    } catch (err) {
+      console.error("[MercadoPago] Pago conciliado, pero falló la activación:", {
+        paymentId: payment.id,
+        rideRequestId: payment.rideRequestId,
+        error: String(err),
+      });
+
+      return {
+        ok: false,
+        code: "PAYMENT_APPROVED_RIDE_ACTIVATION_ERROR",
+        message:
+          "El pago fue confirmado, pero el viaje no pudo activarse automáticamente. No vuelvas a pagar.",
+        statusCode: 500,
+      };
+    }
+
+    auditService.recordSafe({
+      actorUserId: payment.passengerUserId,
+      eventType: "payment.reconciled_success",
+      entityType: "payment",
+      entityId: payment.id,
+      metadata: {
+        rideId: payment.rideRequestId,
+        amountClp: payment.amountClp,
+        providerPaymentId: resolvedProviderPaymentId,
+        paymentPurpose,
+      },
+    });
+
+    return {
+      ok: true,
+      payment: {
+        id: payment.id,
+        rideRequestId: payment.rideRequestId,
+        status: "success",
+        paymentPurpose,
+        providerPaymentId: resolvedProviderPaymentId || null,
+        activated,
+        reconciled: true,
+      },
+    };
+  }
+
+  if (normalizedStatus === "rejected") {
+    await paymentsRepo.markRejected(payment.id, providerPayment);
+
+    if (paymentPurpose === "ride") {
+      try {
+        await cancelRideAfterRejectedPayment(
+          payment.rideRequestId,
+          "Mercado Pago informó que el pago fue rechazado o cancelado.",
+        );
+      } catch {
+        // La conciliación del pago sigue siendo la autoridad.
+      }
+    }
+
+    return {
+      ok: true,
+      payment: {
+        id: payment.id,
+        rideRequestId: payment.rideRequestId,
+        status: "rejected",
+        paymentPurpose,
+        providerPaymentId: resolvedProviderPaymentId || null,
+        activated: false,
+        reconciled: true,
+      },
+    };
+  }
+
+  return {
+    ok: true,
+    payment: {
+      id: payment.id,
+      rideRequestId: payment.rideRequestId,
+      status: payment.status,
+      paymentPurpose,
+      providerPaymentId: resolvedProviderPaymentId || null,
+      activated: false,
+      reconciled: true,
+    },
+  };
+}
+
 export class PaymentsService {
   async createPayment(
     accessToken: string,
@@ -935,7 +1284,7 @@ export class PaymentsService {
             : `Viaje Rapa Go — ${ride.originText} → ${ride.destinationText}`,
         passengerEmail: user?.email ?? "",
         passengerName: user?.name ?? "Pasajero",
-        returnUrl: buildPaymentReturnUrl(),
+        returnUrl: buildPaymentReturnUrl(provider.name),
         webhookUrl: `${webhookBaseUrl.replace(/\/+$/, "")}/api/payments/webhook/${provider.name}`,
       });
 
@@ -1008,17 +1357,7 @@ export class PaymentsService {
     accessToken: string,
     paymentId: string,
     providerPaymentId?: string,
-  ): Promise<Result<{
-    payment: {
-      id: string;
-      rideRequestId: string;
-      status: string;
-      paymentPurpose: PaymentPurpose;
-      providerPaymentId: string | null;
-      activated: boolean;
-      reconciled: boolean;
-    };
-  }>> {
+  ): Promise<Result<{ payment: MercadoPagoReconciliationPayment }>> {
     const auth = await authenticate(accessToken);
     if (!auth.ok) return auth;
 
@@ -1054,262 +1393,129 @@ export class PaymentsService {
       };
     }
 
-    const paymentPurpose = getPaymentPurpose(payment.paymentPurpose);
-    let activated = false;
+    return reconcileStoredMercadoPagoPayment(payment, providerPaymentId);
+  }
 
-    if (payment.status === "success") {
-      try {
-        if (paymentPurpose === "fast_search") {
-          await activateFastSearchAfterPayment(payment.rideRequestId, "card");
-        } else {
-          activated = await activateRideAfterApprovedPayment(
-            payment.rideRequestId,
-          );
-        }
+  async reconcileMercadoPagoReturn(
+    externalReference: string,
+    providerPaymentId?: string,
+  ): Promise<Result<{ payment: MercadoPagoReconciliationPayment }>> {
+    const paymentId = String(externalReference ?? "").trim();
 
-        if (paymentPurpose === "fast_search") {
-          activated = true;
-        }
-      } catch (err) {
-        console.warn("[MercadoPago] Pago ya aprobado, pero la reactivación no terminó:", {
-          paymentId: payment.id,
-          rideRequestId: payment.rideRequestId,
-          error: String(err),
-        });
-      }
-
-      return {
-        ok: true,
-        payment: {
-          id: payment.id,
-          rideRequestId: payment.rideRequestId,
-          status: payment.status,
-          paymentPurpose,
-          providerPaymentId: payment.providerPaymentId ?? null,
-          activated,
-          reconciled: false,
-        },
-      };
-    }
-
-    let providerPayment: MercadoPagoPaymentSnapshot | null = null;
-
-    try {
-      const normalizedProviderPaymentId = String(
-        providerPaymentId ?? "",
-      ).trim();
-
-      if (normalizedProviderPaymentId) {
-        if (!/^\d+$/.test(normalizedProviderPaymentId)) {
-          return {
-            ok: false,
-            code: "VALIDATION_ERROR",
-            message: "providerPaymentId must contain only digits.",
-            statusCode: 400,
-          };
-        }
-
-        providerPayment = await fetchMercadoPagoPayment(
-          normalizedProviderPaymentId,
-        );
-      } else {
-        providerPayment = await searchMercadoPagoPaymentByExternalReference(
-          payment.id,
-        );
-      }
-    } catch (err) {
-      console.error("[MercadoPago] Falló la conciliación con la API:", {
-        paymentId: payment.id,
-        rideRequestId: payment.rideRequestId,
-        hasProviderPaymentId: Boolean(providerPaymentId),
-        error: String(err),
-      });
-
+    if (
+      !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+        paymentId,
+      )
+    ) {
       return {
         ok: false,
-        code: "PAYMENT_RECONCILIATION_PROVIDER_ERROR",
-        message:
-          "No se pudo consultar el pago directamente en Mercado Pago. Intenta actualizar nuevamente.",
-        statusCode: 502,
+        code: "VALIDATION_ERROR",
+        message: "external_reference must be a valid payment UUID.",
+        statusCode: 400,
       };
     }
 
-    if (!providerPayment) {
-      return {
-        ok: true,
-        payment: {
-          id: payment.id,
-          rideRequestId: payment.rideRequestId,
-          status: payment.status,
-          paymentPurpose,
-          providerPaymentId: payment.providerPaymentId ?? null,
-          activated: false,
-          reconciled: false,
-        },
-      };
-    }
-
-    const externalReference = String(
-      providerPayment.external_reference ?? "",
-    ).trim();
-    const resolvedProviderPaymentId = String(
-      providerPayment.id ?? providerPaymentId ?? "",
-    ).trim();
-
-    if (externalReference !== payment.id) {
-      console.warn("[MercadoPago] Conciliación rechazada por external_reference:", {
-        paymentId: payment.id,
-        providerPaymentId: resolvedProviderPaymentId || null,
-        externalReference: externalReference || null,
-      });
+    const payment = await paymentsRepo.findById(paymentId);
+    if (!payment) {
       return {
         ok: false,
-        code: "PAYMENT_EXTERNAL_REFERENCE_MISMATCH",
-        message: "El pago de Mercado Pago no corresponde a esta solicitud.",
+        code: "NOT_FOUND",
+        message: "Payment not found.",
+        statusCode: 404,
+      };
+    }
+
+    if (normalizePaymentText(payment.provider) !== "mercadopago") {
+      return {
+        ok: false,
+        code: "PAYMENT_PROVIDER_MISMATCH",
+        message: "This payment was not created with Mercado Pago.",
         statusCode: 409,
       };
     }
 
-    const normalizedStatus = mapMercadoPagoPaymentStatus(
-      providerPayment.status,
-    );
-    const paidAmountClp = getMercadoPagoSnapshotAmountClp(providerPayment);
-    const currency = getMercadoPagoSnapshotCurrency(providerPayment);
-    const expectedAmountClp = Math.round(Number(payment.amountClp));
-    const amountMatches =
-      paidAmountClp != null && paidAmountClp === expectedAmountClp;
-    const currencyMatches = !currency || currency === "CLP";
+    return reconcileStoredMercadoPagoPayment(payment, providerPaymentId);
+  }
 
-    console.log("[MercadoPago] Conciliación segura:", {
-      paymentId: payment.id,
-      rideRequestId: payment.rideRequestId,
-      providerPaymentId: resolvedProviderPaymentId || null,
-      providerStatus: String(providerPayment.status ?? ""),
-      normalizedStatus,
-      expectedAmountClp,
-      paidAmountClp,
-      currency: currency || null,
-    });
+  async resolveMercadoPagoBrowserReturn(input: {
+    externalReference?: string;
+    providerPaymentId?: string;
+  }): Promise<{ redirectUrl: string }> {
+    const externalReference = String(
+      input.externalReference ?? "",
+    ).trim();
+    const providerPaymentId = String(
+      input.providerPaymentId ?? "",
+    ).trim();
 
-    if (normalizedStatus === "success") {
-      if (!amountMatches || !currencyMatches) {
-        return {
-          ok: false,
-          code: "PAYMENT_AMOUNT_OR_CURRENCY_MISMATCH",
-          message:
-            "El monto o la moneda informada por Mercado Pago no coincide con la solicitud.",
-          statusCode: 409,
-        };
-      }
+    let marker: PaymentReturnMarker = "pending_return";
+    let reason = "pending";
 
-      await paymentsRepo.markSuccess(
-        payment.id,
-        resolvedProviderPaymentId,
-        providerPayment,
+    try {
+      const result = await this.reconcileMercadoPagoReturn(
+        externalReference,
+        providerPaymentId || undefined,
       );
 
-      try {
-        if (paymentPurpose === "fast_search") {
-          await activateFastSearchAfterPayment(payment.rideRequestId, "card");
+      if (result.ok) {
+        const status = normalizePaymentText(result.payment.status);
+
+        if (status === "success" && result.payment.activated) {
+          marker = "approved_return";
+          reason = "approved";
+        } else if (
+          ["rejected", "failed", "refunded", "cancelled"].includes(status)
+        ) {
+          marker = "failure_return";
+          reason = status || "rejected";
         } else {
-          activated = await activateRideAfterApprovedPayment(
-            payment.rideRequestId,
-          );
+          marker = "pending_return";
+          reason = status || "pending";
         }
-
-        if (paymentPurpose === "fast_search") {
-          activated = true;
-        }
-
-        if (!activated) {
-          throw new Error(
-            "El viaje no salió de pending_payment después de confirmar el pago.",
-          );
-        }
-      } catch (err) {
-        console.error("[MercadoPago] Pago conciliado, pero falló la activación:", {
-          paymentId: payment.id,
-          rideRequestId: payment.rideRequestId,
-          error: String(err),
-        });
-
-        return {
-          ok: false,
-          code: "PAYMENT_APPROVED_RIDE_ACTIVATION_ERROR",
-          message:
-            "El pago fue confirmado, pero el viaje no pudo activarse automáticamente. No vuelvas a pagar.",
-          statusCode: 500,
-        };
+      } else if (
+        ["NOT_FOUND", "VALIDATION_ERROR", "PAYMENT_PROVIDER_MISMATCH"].includes(
+          result.code,
+        )
+      ) {
+        marker = "failure_return";
+        reason = result.code.toLowerCase();
+      } else {
+        marker = "pending_return";
+        reason = result.code.toLowerCase();
       }
-
-      auditService.recordSafe({
-        actorUserId: payment.passengerUserId,
-        eventType: "payment.reconciled_success",
-        entityType: "payment",
-        entityId: payment.id,
-        metadata: {
-          rideId: payment.rideRequestId,
-          amountClp: payment.amountClp,
-          providerPaymentId: resolvedProviderPaymentId,
-          paymentPurpose,
-        },
+    } catch (error) {
+      console.error("[MercadoPago] Error resolviendo regreso del navegador:", {
+        externalReference: externalReference || null,
+        providerPaymentId: providerPaymentId || null,
+        error: String(error),
       });
-
-      return {
-        ok: true,
-        payment: {
-          id: payment.id,
-          rideRequestId: payment.rideRequestId,
-          status: "success",
-          paymentPurpose,
-          providerPaymentId: resolvedProviderPaymentId || null,
-          activated,
-          reconciled: true,
-        },
-      };
+      marker = "pending_return";
+      reason = "provider_error";
     }
 
-    if (normalizedStatus === "rejected") {
-      await paymentsRepo.markRejected(payment.id, providerPayment);
-
-      if (paymentPurpose === "ride") {
-        try {
-          await cancelRideAfterRejectedPayment(
-            payment.rideRequestId,
-            "Mercado Pago informó que el pago fue rechazado o cancelado.",
-          );
-        } catch {
-          // La conciliación del pago sigue siendo la autoridad.
-        }
-      }
-
-      return {
-        ok: true,
-        payment: {
-          id: payment.id,
-          rideRequestId: payment.rideRequestId,
-          status: "rejected",
-          paymentPurpose,
-          providerPaymentId: resolvedProviderPaymentId || null,
-          activated: false,
-          reconciled: true,
-        },
-      };
-    }
+    console.log("[MercadoPago] Regreso del navegador resuelto:", {
+      externalReference: externalReference || null,
+      providerPaymentId: providerPaymentId || null,
+      marker,
+      reason,
+    });
 
     return {
-      ok: true,
-      payment: {
-        id: payment.id,
-        rideRequestId: payment.rideRequestId,
-        status: payment.status,
-        paymentPurpose,
-        providerPaymentId: resolvedProviderPaymentId || null,
-        activated: false,
-        reconciled: true,
-      },
+      redirectUrl: buildPaymentFrontendResultUrl({
+        marker,
+        ...(/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+          externalReference,
+        )
+          ? { externalReference }
+          : {}),
+        ...(/^\d+$/.test(providerPaymentId)
+          ? { providerPaymentId }
+          : {}),
+        reason,
+      }),
     };
   }
+
 
   async getPaymentStatus(
     accessToken: string,
@@ -1755,11 +1961,20 @@ export class PaymentsService {
           }
         }
 
-        await paymentsRepo.markSuccess(payment.id, externalId, rawPayload);
         if (paymentPurpose === "fast_search") {
+          await paymentsRepo.markSuccess(
+            payment.id,
+            externalId,
+            rawPayload,
+          );
           await activateFastSearchAfterPayment(payment.rideRequestId, "card");
         } else {
-          await activateRideAfterApprovedPayment(payment.rideRequestId);
+          await paymentsRepo.markSuccessAndActivateRide({
+            id: payment.id,
+            rideRequestId: payment.rideRequestId,
+            externalId,
+            providerPayload: rawPayload,
+          });
         }
         auditService.recordSafe({
           actorUserId: payment.passengerUserId,

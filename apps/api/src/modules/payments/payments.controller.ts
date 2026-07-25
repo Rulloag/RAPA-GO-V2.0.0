@@ -155,6 +155,35 @@ export const paymentsController = {
     sendOk(reply, result.receipt);
   },
 
+  async mercadoPagoBrowserReturn(
+    request: FastifyRequest,
+    reply: FastifyReply,
+  ): Promise<void> {
+    const query = (
+      request.query && typeof request.query === "object"
+        ? request.query
+        : {}
+    ) as Record<string, unknown>;
+
+    const externalReference = String(
+      query["external_reference"] ?? "",
+    ).trim();
+    const providerPaymentId = String(
+      query["payment_id"] ??
+        query["collection_id"] ??
+        "",
+    ).trim();
+
+    const result = await paymentsService.resolveMercadoPagoBrowserReturn({
+      externalReference,
+      providerPaymentId,
+    });
+
+    reply.header("Cache-Control", "no-store, max-age=0");
+    reply.header("Pragma", "no-cache");
+    reply.redirect(303, result.redirectUrl);
+  },
+
   async prontoPagaWebhook(request: FastifyRequest, reply: FastifyReply): Promise<void> {
     const parsed = prontoPagaWebhookSchema.safeParse(request.body);
     if (!parsed.success) {

@@ -1007,11 +1007,13 @@ export class RidesRepository {
 
   async activateAfterApprovedPayment(id: string): Promise<RideRequest | null> {
     try {
+      const activatedAt = new Date();
       const [row] = await db
         .update(rideRequests)
         .set({
           status: "requested",
-          updatedAt: new Date(),
+          requestedAt: activatedAt,
+          updatedAt: activatedAt,
         })
         .where(
           and(

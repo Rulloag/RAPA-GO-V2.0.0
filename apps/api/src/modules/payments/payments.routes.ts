@@ -5,6 +5,10 @@ export async function paymentsRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.post("/payments/create", paymentsController.createPayment);
   fastify.get("/payments/:paymentId/status", paymentsController.getPaymentStatus);
   fastify.get("/payments/:paymentId/receipt", paymentsController.getPaymentReceipt);
+  fastify.get(
+    "/payments/return/mercadopago",
+    paymentsController.mercadoPagoBrowserReturn,
+  );
   fastify.post(
     "/payments/:paymentId/reconcile/mercadopago",
     paymentsController.reconcileMercadoPagoPayment,

@@ -207,9 +207,15 @@ export class MercadoPagoProvider implements PaymentProvider {
     const publicWebhookUrl = normalizePublicHttpsUrl(params.webhookUrl);
     const payerEmail = normalizePayerEmail(params.passengerEmail);
 
+    if (!publicReturnUrl) {
+      throw new Error(
+        "Mercado Pago requiere una URL HTTPS pública de retorno para confirmar el pago y publicar el viaje inmediatamente.",
+      );
+    }
+
     if (!publicWebhookUrl) {
       throw new Error(
-        "Mercado Pago requiere una URL HTTPS pÃºblica de webhook. El viaje no puede activarse usando solamente la URL de retorno.",
+        "Mercado Pago requiere una URL HTTPS pública de webhook como respaldo de seguridad.",
       );
     }
 
@@ -271,12 +277,6 @@ export class MercadoPagoProvider implements PaymentProvider {
       {
         name: "sin payment_methods",
         payload: withoutKeys(preference, ["payment_methods"]),
-      },
-      {
-        // Nunca quitamos notification_url: el webhook es la Ãºnica autoridad
-        // que puede desbloquear un viaje pagado con tarjeta.
-        name: "mÃ­nima conservando webhook",
-        payload: withoutKeys(preference, ["payment_methods", "back_urls", "auto_return"]),
       },
     ];
 
