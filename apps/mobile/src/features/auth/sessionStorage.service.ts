@@ -3,6 +3,7 @@ import type { UserRole } from "@rapa-go/shared";
 import type { AuthSession } from "./auth.types.js";
 
 const SESSION_KEY = "rapa_go_session";
+const REFRESH_KEY = "rapa_go_refresh_token";
 const VALID_ROLES = new Set<UserRole>([
   "passenger",
   "driver",
@@ -45,7 +46,7 @@ function isPersistedSession(value: unknown): value is PersistedSession {
 }
 
 class SessionStorageService {
-  async saveSession(session: AuthSession): Promise<void> {
+  async saveSession(session: AuthSession, refreshToken?: string): Promise<void> {
     const persisted: PersistedSession = {
       accessToken: session.accessToken,
       expiresAt: session.expiresAt,
@@ -58,6 +59,9 @@ class SessionStorageService {
     };
 
     await SecureStorage.set(SESSION_KEY, JSON.stringify(persisted));
+    if (refreshToken) {
+      await SecureStorage.set(REFRESH_KEY, refreshToken);
+    }
   }
 
   async loadSession(): Promise<PersistedSession | null> {
@@ -84,12 +88,20 @@ class SessionStorageService {
     }
   }
 
-  async clearSession(): Promise<void> {
+  async loadRefreshToken(): Promise<string | null> {
     try {
-      await SecureStorage.remove(SESSION_KEY);
+      const raw = await SecureStorage.get(REFRESH_KEY);
+      return raw ? (raw as string) : null;
     } catch {
-      // No bloquea el cierre local.
+      return null;
     }
+  }
+
+  async clearSession(): Promise<void> {
+    await Promise.allSettled([
+      SecureStorage.remove(SESSION_KEY),
+      SecureStorage.remove(REFRESH_KEY),
+    ]);
   }
 }
 

@@ -52,6 +52,12 @@ export interface RideRequestData {
   destinationText:  string;
   notes:            string | null;
   estimatedFareClp: number | null;
+  originLat:        number | null;
+  originLng:        number | null;
+  destinationLat:   number | null;
+  destinationLng:   number | null;
+  distanceMeters:   number | null;
+  durationSeconds:  number | null;
   status:           string;
   requestedAt:     string;
   acceptedAt:      string | null;
@@ -87,6 +93,20 @@ export interface RideRequestData {
   policyChargesAppliedClp?: number;
 }
 
+export interface RideStopData {
+  id: string;
+  rideRequestId: string;
+  stopOrder: number;
+  label: string;
+  lat: number;
+  lng: number;
+  segmentDistanceMeters: number | null;
+  segmentDurationSeconds: number | null;
+  segmentFareClp: number | null;
+  arrivedAt: string | null;
+  completedAt: string | null;
+}
+
 /** Subset returned to drivers for their own rides. */
 export interface DriverRideData {
   id:                 string;
@@ -94,6 +114,10 @@ export interface DriverRideData {
   destinationText:    string;
   notes:              string | null;
   estimatedFareClp:   number | null;
+  originLat:          number | null;
+  originLng:          number | null;
+  destinationLat:     number | null;
+  destinationLng:     number | null;
   status:             string;
   requestedAt:        string;
   acceptedAt:         string | null;
@@ -105,6 +129,11 @@ export interface DriverRideData {
   cancellationReason: string | null;
   cancelledByRole:    string | null;
   createdAt:          string;
+  rideType:           string;
+  scheduledPickupAt:  string | null;
+  priorityFeeClp:     number | null;
+  flightNumber:       string | null;
+  stops?:             RideStopData[];
 }
 
 /** Subset returned to drivers — no passenger identity. */
@@ -119,6 +148,34 @@ export interface AvailableRideData {
   createdAt:       string;
 }
 
+export interface ActiveRideOfferRideData {
+  id:               string;
+  originText:       string;
+  destinationText:  string;
+  estimatedFareClp: number | null;
+  distanceMeters:   number | null;
+  durationSeconds:  number | null;
+  rideType:         string;
+  scheduledPickupAt: string | null;
+  priorityFeeClp:   number | null;
+  flightNumber:     string | null;
+}
+
+export interface ActiveRideOfferData {
+  offer: {
+    id:             string;
+    rideRequestId:  string;
+    driverUserId:   string;
+    status:         string;
+    offeredAt:      string;
+    expiresAt:      string;
+    respondedAt:    string | null;
+    responseSource: string | null;
+    attemptOrder:   number;
+  };
+  ride: ActiveRideOfferRideData;
+}
+
 export interface RatingData {
   id:            string;
   rideRequestId: string;
@@ -127,28 +184,22 @@ export interface RatingData {
   raterRole:     string;
   rating:        number;
   comment:       string | null;
-  commentVisibility?: "participants_and_admin" | "admin_only";
-  moderationStatus?: "visible" | "hidden";
   createdAt:     string;
   updatedAt:     string;
 }
 
-export interface CashPaymentClosureData {
-  id: string;
-  rideRequestId: string;
-  passengerUserId: string;
-  driverUserId: string;
-  fareClp: number;
-  paidClp: number;
-  overpaidClp: number;
-  decision: "exact" | "overpaid";
-  status: string;
-  resolutionType: "benefit" | "bank_refund" | null;
-  resolutionReferenceId: string | null;
-  driverNote: string | null;
-  closedAt: string;
-  createdAt: string;
-  updatedAt: string;
+export interface RideDestinationInput {
+  text:  string;
+  lat:   number;
+  lng:   number;
+  order: number;
+}
+
+export interface RideSegmentInput {
+  fromOrder:       number;
+  toOrder:         number;
+  distanceMeters:  number;
+  durationSeconds: number;
 }
 
 export interface CreateRideInput {
@@ -252,36 +303,52 @@ export const ridesService = {
     return (result.data as DriverRidesEnvelope).data;
   },
 
-  async rateRide(
-    accessToken: string,
-    rideId: string,
-    rating: number,
-    comment?: string,
-    commentVisibility: "participants_and_admin" | "admin_only" = "participants_and_admin",
-  ): Promise<RatingData> {
+  async getDriverLocation(accessToken: string, rideId: string): Promise<{ driverUserId: string; lat: number; lng: number; updatedAt: string | null } | null> {
+    type Envelope = { ok: true; data: { location: { driverUserId: string; lat: number; lng: number; updatedAt: string | null } | null }; statusCode: number };
+    const result = await apiClient.get<Envelope>(`/rides/${rideId}/driver-location`, { token: accessToken });
+    if (result.ok === false) throw new Error(result.message ?? "Failed to get driver location.");
+    return (result.data as Envelope).data.location;
+  },
+
+  async updateDriverLocation(accessToken: string, lat: number, lng: number): Promise<{ updatedAt: string }> {
+    type Envelope = { ok: true; data: { updatedAt: string }; statusCode: number };
+    const result = await apiClient.patch<Envelope>("/drivers/me/location", { lat, lng }, { token: accessToken });
+    if (result.ok === false) throw new Error(result.message ?? "Failed to update location.");
+    return (result.data as Envelope).data;
+  },
+
+  async getActiveDriverOffer(accessToken: string): Promise<ActiveRideOfferData | null> {
+    type Envelope = { ok: true; data: ActiveRideOfferData | null; statusCode: number };
+    const result = await apiClient.get<Envelope>("/drivers/me/offers/active", { token: accessToken });
+    if (!result.ok) return null;
+    return (result.data as Envelope).data;
+  },
+
+  async acceptDriverOffer(accessToken: string, offerId: string): Promise<RideRequestData> {
+    const result = await apiClient.post<RideEnvelope>(`/drivers/me/offers/${offerId}/accept`, {}, { token: accessToken });
+    if (result.ok === false) throw new Error(result.message ?? "Error al aceptar oferta.");
+    return (result.data as RideEnvelope).data;
+  },
+
+  async rejectDriverOffer(accessToken: string, offerId: string): Promise<void> {
+    const result = await apiClient.post<{ ok: true; data: { rejected: boolean }; statusCode: number }>(
+      `/drivers/me/offers/${offerId}/reject`, {}, { token: accessToken },
+    );
+    if (result.ok === false) throw new Error(result.message ?? "Error al rechazar oferta.");
+  },
+
+  async acceptAnyDriver(accessToken: string, rideId: string): Promise<RideRequestData> {
+    const result = await apiClient.patch<RideEnvelope>(`/rides/${rideId}/accept-any-driver`, {}, { token: accessToken });
+    if (result.ok === false) throw new Error(result.message ?? "Failed to accept any driver.");
+    return (result.data as RideEnvelope).data;
+  },
+
+  async rateRide(accessToken: string, rideId: string, rating: number, comment?: string): Promise<RatingData> {
     type RatingEnvelope = { ok: true; data: RatingData; statusCode: number };
-    const body: { rating: number; comment?: string; commentVisibility: "participants_and_admin" | "admin_only" } = {
-      rating,
-      commentVisibility,
-    };
+    const body: { rating: number; comment?: string } = { rating };
     if (comment) body.comment = comment;
     const result = await apiClient.post<RatingEnvelope>(`/rides/${rideId}/rate`, body, { token: accessToken });
     if (result.ok === false) throw new Error(result.message ?? "Failed to submit rating.");
     return (result.data as RatingEnvelope).data;
-  },
-
-  async closeCashPayment(
-    accessToken: string,
-    rideId: string,
-    input: { paidClp: number; decision: "exact" | "overpaid"; note?: string },
-  ): Promise<CashPaymentClosureData> {
-    type ClosureEnvelope = { ok: true; data: CashPaymentClosureData; statusCode: number };
-    const result = await apiClient.post<ClosureEnvelope>(
-      `/cash-payments/rides/${rideId}/close`,
-      input,
-      { token: accessToken },
-    );
-    if (result.ok === false) throw new Error(result.message ?? "No se pudo registrar el pago en efectivo.");
-    return (result.data as ClosureEnvelope).data;
   },
 };

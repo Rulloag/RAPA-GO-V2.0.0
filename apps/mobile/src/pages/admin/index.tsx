@@ -31,6 +31,7 @@ import {
   IonSelectOption,
   IonSpinner,
   IonText,
+  IonTextarea,
   IonTitle,
   IonToast,
   IonToolbar,
@@ -98,6 +99,7 @@ import { RAPAGO_CONTACT, WA_MESSAGES } from "@rapa-go/shared";
 import { WhatsAppButton } from "../../components/WhatsAppButton";
 import { loadRapaGoGoogleMaps } from "../../components/MapFallback";
 import { AccountDeletionAdminPanel } from "../../components/accountDeletion/AccountDeletionAdminPanel.js";
+import { CashOverpaymentRefundAdminPanel } from "../../components/payments/CashOverpaymentRefundAdminPanel.js";
 import { getApiOrigin as getConfiguredApiOrigin } from "../../services/api/apiBaseUrl.js";
 
 const ADMIN_DRIVERS_ROUTE = "/admin/drivers";
@@ -214,6 +216,10 @@ type AdminPassengerPendingCharge = {
   originalNoShowServiceAmountClp?: number | null;
   feePercent?: number | null;
   feeCapClp?: number | null;
+  driverSharePercent?: number | null;
+  platformSharePercent?: number | null;
+  driverShareClp?: number | null;
+  platformShareClp?: number | null;
   type?: "late_cancel" | "no_show" | string | null;
   paymentMethod?: string | null;
   status: "pending_admin_review" | "pending_next_ride" | "applied_to_next_ride" | "paid" | "waived" | string;
@@ -949,6 +955,10 @@ function readAdminPassengerPendingCharges(): AdminPassengerPendingCharge[] {
         originalNoShowServiceAmountClp: Number.isFinite(Number(item.originalNoShowServiceAmountClp)) ? Math.round(Number(item.originalNoShowServiceAmountClp)) : null,
         feePercent: Number.isFinite(Number(item.feePercent)) ? Number(item.feePercent) : null,
         feeCapClp: Number.isFinite(Number(item.feeCapClp)) ? Math.round(Number(item.feeCapClp)) : null,
+        driverSharePercent: item.driverSharePercent != null && Number.isFinite(Number(item.driverSharePercent)) ? Number(item.driverSharePercent) : null,
+        platformSharePercent: item.platformSharePercent != null && Number.isFinite(Number(item.platformSharePercent)) ? Number(item.platformSharePercent) : null,
+        driverShareClp: item.driverShareClp != null && Number.isFinite(Number(item.driverShareClp)) ? Math.round(Number(item.driverShareClp)) : null,
+        platformShareClp: item.platformShareClp != null && Number.isFinite(Number(item.platformShareClp)) ? Math.round(Number(item.platformShareClp)) : null,
         type: typeof item.type === "string" ? item.type : null,
         paymentMethod: typeof item.paymentMethod === "string" ? item.paymentMethod : null,
         status: String(item.status ?? "pending_admin_review"),
@@ -1004,6 +1014,10 @@ type BackendAdminPolicyCharge = {
   calculatedAmountClp: number;
   approvedAmountClp: number | null;
   amountClp: number;
+  driverSharePercent: number | null;
+  platformSharePercent: number | null;
+  driverShareClp: number | null;
+  platformShareClp: number | null;
   reason: string | null;
   adminDecisionReason: string | null;
   appliedToRideId: string | null;
@@ -1072,6 +1086,10 @@ function mapBackendPolicyChargeToAdmin(
         : null,
     feePercent: item.feePercent,
     feeCapClp: item.feeCapClp,
+    driverSharePercent: item.driverSharePercent,
+    platformSharePercent: item.platformSharePercent,
+    driverShareClp: item.driverShareClp,
+    platformShareClp: item.platformShareClp,
     type:
       item.type === "no_show"
         ? "no_show"
@@ -1690,6 +1708,35 @@ function calculateAdminPassengerChargeAmount(
   return { amountClp, applicableFareClp, percent, capClp };
 }
 
+function getAdminNoShowDistribution(
+  charge: AdminPassengerPendingCharge,
+): {
+  driverShareClp: number;
+  platformShareClp: number;
+} {
+  const amountClp = Math.max(
+    0,
+    Math.round(Number(charge.amountClp ?? 0)),
+  );
+
+  const driverShareClp =
+    charge.driverShareClp != null &&
+    Number.isFinite(Number(charge.driverShareClp))
+      ? Math.max(0, Math.round(Number(charge.driverShareClp)))
+      : Math.floor(amountClp / 2);
+
+  const platformShareClp =
+    charge.platformShareClp != null &&
+    Number.isFinite(Number(charge.platformShareClp))
+      ? Math.max(0, Math.round(Number(charge.platformShareClp)))
+      : Math.max(0, amountClp - driverShareClp);
+
+  return {
+    driverShareClp,
+    platformShareClp,
+  };
+}
+
 function approveAdminPassengerChargeForNextRide(
   charge: AdminPassengerPendingCharge,
 ): void {
@@ -1708,6 +1755,14 @@ function approveAdminPassengerChargeForNextRide(
       applicableFareClp: calculation.applicableFareClp,
       feePercent: calculation.percent,
       feeCapClp: calculation.capClp,
+      driverSharePercent: isAdminNoShowCharge(item) ? 50 : null,
+      platformSharePercent: isAdminNoShowCharge(item) ? 50 : null,
+      driverShareClp: isAdminNoShowCharge(item)
+        ? Math.floor(calculation.amountClp / 2)
+        : null,
+      platformShareClp: isAdminNoShowCharge(item)
+        ? calculation.amountClp - Math.floor(calculation.amountClp / 2)
+        : null,
       status: "pending_next_ride",
       adminReviewStatus: "charge_pending_next_ride",
       requestedExemption: Boolean(item.requestedExemption),
@@ -1725,7 +1780,9 @@ function approveAdminPassengerChargeForNextRide(
       title: isAdminNoShowCharge(item)
         ? "No show aprobado"
         : "Cargo por cancelación aprobado",
-      description: `${isAdminNoShowCharge(item) ? "No show" : "Cancelación"} aprobado: ${calculation.percent}% de la tarifa aplicable, con tope de $${calculation.capClp.toLocaleString("es-CL")}. Cargo aprobado: $${calculation.amountClp.toLocaleString("es-CL")} CLP.`,
+      description: isAdminNoShowCharge(item)
+        ? `No show aprobado: ${calculation.percent}% de la tarifa aplicable, con tope de $${calculation.capClp.toLocaleString("es-CL")}. Cargo aprobado: $${calculation.amountClp.toLocaleString("es-CL")} CLP. Distribución: 50% conductor y 50% Rapa Go.`
+        : `Cancelación aprobada: ${calculation.percent}% de la tarifa aplicable, con tope de $${calculation.capClp.toLocaleString("es-CL")}. Cargo aprobado: $${calculation.amountClp.toLocaleString("es-CL")} CLP.`,
     } as AdminPassengerPendingCharge;
   });
 
@@ -3111,7 +3168,7 @@ export function AdminHomePage(): JSX.Element {
                 </IonCard>
               )}
 
-              
+
               <IonModal
                 isOpen={showAccountDeletionModal}
                 onDidDismiss={() => setShowAccountDeletionModal(false)}
@@ -3326,9 +3383,9 @@ export function AdminHomePage(): JSX.Element {
                                 </IonBadge>
                               </div>
 
-                              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                              <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 8 }}>
                                 <div style={{ background: "#fff7e6", borderRadius: 14, padding: 10 }}>
-                                  <strong>Cargo</strong>
+                                  <strong>Cargo total</strong>
                                   <div style={{ fontWeight: 950 }}>
                                     {formatAdminCashClp(charge.amountClp)}
                                   </div>
@@ -3338,6 +3395,20 @@ export function AdminHomePage(): JSX.Element {
                                   <strong>Cobro</strong>
                                   <div style={{ fontWeight: 950 }}>
                                     {adminPassengerChargeBillingLabel(charge)}
+                                  </div>
+                                </div>
+
+                                <div style={{ background: "#eefbf1", borderRadius: 14, padding: 10 }}>
+                                  <strong>Conductor · 50%</strong>
+                                  <div style={{ fontWeight: 950 }}>
+                                    {formatAdminCashClp(getAdminNoShowDistribution(charge).driverShareClp)}
+                                  </div>
+                                </div>
+
+                                <div style={{ background: "#eef4ff", borderRadius: 14, padding: 10 }}>
+                                  <strong>Rapa Go · 50%</strong>
+                                  <div style={{ fontWeight: 950 }}>
+                                    {formatAdminCashClp(getAdminNoShowDistribution(charge).platformShareClp)}
                                   </div>
                                 </div>
                               </div>
@@ -3379,7 +3450,7 @@ export function AdminHomePage(): JSX.Element {
                                       )
                                         .then(() => {
                                           setCashReviewsRevision((current) => current + 1);
-                                          setAdminCashToast("No Show aprobado: 50% de la tarifa aplicable, con tope de $5.000. Quedó guardado en backend y se sumará al próximo viaje.");
+                                          setAdminCashToast("No Show aprobado: 50% de la tarifa aplicable, tope $5.000. Al recaudarse se distribuirá 50% al conductor y 50% a Rapa Go.");
                                         })
                                         .catch((err) => {
                                           setAdminCashToast(
@@ -4517,7 +4588,7 @@ const RESIDENCE_DOCUMENT_TYPES = new Set([
 ]);
 
 const RAPANUI_RESIDENCE_REJECTION_USER_MESSAGE =
-  "Tu documento de Rapa Nui normal fue rechazado. Por favor elige otro tipo de usuario, como Turista chileno o Turista extranjero, o vuelve a adjuntar un documento de residencia válido.";
+  "Tu acreditación RAPA NUI / RESIDENTE RAPA NUI fue rechazada. El administrador actualizará tu categoría a Turista chileno o Turista extranjero según los antecedentes revisados.";
 
 function valueFromRecord(
   source: Record<string, unknown> | null | undefined,
@@ -4626,7 +4697,7 @@ function isRapaNuiResidentUser(
 function getPassengerLabel(user: AdminUserData): string {
   const text = normalizeAdminText(getPassengerConditionText(user));
 
-  if (isRapaNuiResidentUser(user)) return "Rapa Nui normal";
+  if (isRapaNuiResidentUser(user)) return "RAPA NUI / RESIDENTE RAPA NUI";
   if (text.includes("turista_chileno") || text.includes("chileno")) return "Turista chileno";
   if (text.includes("turista_extranjero") || text.includes("extranjero") || text.includes("foreigner")) return "Turista extranjero";
 
@@ -5106,17 +5177,6 @@ export function AdminUsersPage(): JSX.Element {
       return;
     }
 
-    if (
-      user &&
-      normalizedNewStatus === "active" &&
-      isRapaNuiResidentUser(user, docs) &&
-      residenceStatus !== "approved"
-    ) {
-      setUpdateError(
-        "No puedes activar este usuario como Rapa Nui normal hasta aprobar su documento de residencia.",
-      );
-      return;
-    }
 
     setUpdatingId(userId);
     setUpdateError(null);
@@ -5180,17 +5240,6 @@ export function AdminUsersPage(): JSX.Element {
           ? "suspended"
           : "active";
 
-    if (
-      (action === "unblock" || action === "restore") &&
-      isRapaNuiResidentUser(user, docs) &&
-      getResidenceVerificationStatus(user, docs) !== "approved"
-    ) {
-      setUpdateError(
-        "No puedes restaurar/activar este usuario como Rapa Nui normal hasta aprobar su documento.",
-      );
-      setConfirmAccountAction(null);
-      return;
-    }
 
     setUpdatingId(user.id);
     setUpdateError(null);
@@ -5258,7 +5307,7 @@ export function AdminUsersPage(): JSX.Element {
     setResidentRequests(
       reviewLocalResidentVerificationRequestForAdmin(requestId, "approved"),
     );
-    setToastMessage("Residencia Rapa Nui aprobada. El pasajero podrá continuar cuando vuelva a abrir Facebook.");
+    setToastMessage("Acreditación aprobada. La categoría RAPA NUI / RESIDENTE RAPA NUI se mantiene activa.");
   }
 
   function rejectLocalResidentRequest(requestId: string): void {
@@ -5269,7 +5318,7 @@ export function AdminUsersPage(): JSX.Element {
         RAPANUI_RESIDENCE_REJECTION_USER_MESSAGE,
       ),
     );
-    setToastMessage("Documento Rapa Nui rechazado. El pasajero verá el aviso para corregir su registro.");
+    setToastMessage("Acreditación rechazada. Debes confirmar la categoría correcta del usuario desde Documentos.");
   }
 
   async function approveRapaNuiUser(user: AdminUserData) {
@@ -5279,13 +5328,13 @@ export function AdminUsersPage(): JSX.Element {
 
     if (!doc) {
       setUpdateError(
-        "Este residente Rapa Nui todavía no tiene documento adjunto para revisar.",
+        "Este usuario todavía no tiene una acreditación adjunta para revisar.",
       );
       return;
     }
 
     if (!isResidenceDocument(doc)) {
-      setUpdateError("El documento encontrado no corresponde a residencia Rapa Nui.");
+      setUpdateError("El archivo encontrado no corresponde a una acreditación de residencia.");
       return;
     }
 
@@ -5316,13 +5365,13 @@ export function AdminUsersPage(): JSX.Element {
       );
 
       setToastMessage(
-        "Residencia Rapa Nui aprobada. La cuenta quedó habilitada.",
+        "Acreditación aprobada. La cuenta permanece activa como RAPA NUI / RESIDENTE RAPA NUI.",
       );
     } catch (err) {
       setUpdateError(
         err instanceof Error
           ? err.message
-          : "No se pudo aprobar la residencia y activar la cuenta.",
+          : "No se pudo aprobar la residencia.",
       );
     } finally {
       setUpdatingId(null);
@@ -5339,6 +5388,38 @@ export function AdminUsersPage(): JSX.Element {
       return;
     }
 
+    const classificationInput = window.prompt(
+      "Clasificación correcta: escribe CHILENO o EXTRANJERO.",
+      "CHILENO",
+    );
+    const normalizedClassification = String(
+      classificationInput ?? "",
+    )
+      .trim()
+      .toLowerCase();
+    const reclassifiedFareType = normalizedClassification.startsWith("e")
+      ? "foreigner"
+      : normalizedClassification.startsWith("c")
+        ? "chilean"
+        : null;
+
+    if (!reclassifiedFareType) {
+      setUpdateError(
+        "Debes elegir Turista chileno o Turista extranjero.",
+      );
+      return;
+    }
+
+    const reason = window.prompt(
+      "Escribe el motivo de la reclasificación (obligatorio).",
+      RAPANUI_RESIDENCE_REJECTION_USER_MESSAGE,
+    );
+
+    if (!reason?.trim()) {
+      setUpdateError("El motivo de rechazo es obligatorio.");
+      return;
+    }
+
     setUpdatingId(user.id);
     setUpdateError(null);
 
@@ -5347,13 +5428,14 @@ export function AdminUsersPage(): JSX.Element {
         session.accessToken,
         doc.id,
         "rejected",
-        RAPANUI_RESIDENCE_REJECTION_USER_MESSAGE,
+        reason.trim(),
+        reclassifiedFareType,
       );
 
       const updatedUser = await adminService.updateUserStatus(
         session.accessToken,
         user.id,
-        "pending",
+        "active",
       );
 
       setDocs((prev) =>
@@ -5364,7 +5446,11 @@ export function AdminUsersPage(): JSX.Element {
       );
 
       setToastMessage(
-        "Documento rechazado. El pasajero verá el aviso para elegir otro tipo de usuario o subir otro documento.",
+        `Acreditación rechazada. La categoría cambió a ${
+          reclassifiedFareType === "foreigner"
+            ? "Turista extranjero"
+            : "Turista chileno"
+        }.`,
       );
     } catch (err) {
       setUpdateError(
@@ -5394,21 +5480,15 @@ export function AdminUsersPage(): JSX.Element {
 
       <IonContent className="ion-padding">
         <IonCard
-          style={{
-            margin: "0 0 12px",
-            borderRadius: 18,
-            background: "linear-gradient(135deg, #2b120f, #8f1d18)",
-            color: "#fff",
-          }}
+          className="rapago-accent-card"
+          style={{ margin: "0 0 12px", borderRadius: 18 }}
         >
           <IonCardContent style={{ padding: "14px 16px" }}>
             <div style={{ fontWeight: 950, fontSize: "1rem" }}>
               Validación Rapa Nui
             </div>
             <p style={{ margin: "6px 0 0", fontSize: ".84rem", lineHeight: 1.35 }}>
-              El admin revisa registros normales y registros con Facebook. Si el
-              pasajero seleccionó Rapa Nui normal, debe tener documento
-              aprobado para activar la cuenta.
+              El admin revisa registros normales y registros con Facebook. La categoría RAPA NUI / RESIDENTE RAPA NUI permanece activa mientras la acreditación está pendiente. Si se rechaza, el administrador la cambia a Turista chileno o Turista extranjero.
             </p>
             <IonBadge color={pendingRapaNuiCount > 0 ? "warning" : "success"} style={{ marginTop: 10 }}>
               {pendingRapaNuiCount} pendiente{pendingRapaNuiCount !== 1 ? "s" : ""}
@@ -5514,7 +5594,7 @@ export function AdminUsersPage(): JSX.Element {
                       }}
                     >
                       <strong style={{ fontSize: ".82rem", color: "#111" }}>
-                        Documento Rapa Nui normal
+                        Documento de RAPA NUI / RESIDENTE RAPA NUI
                       </strong>
                       <p style={{ margin: "4px 0 0", color: "#555", fontSize: ".76rem" }}>
                         {request.documentName || "Documento adjunto"}
@@ -5695,7 +5775,7 @@ export function AdminUsersPage(): JSX.Element {
               const isResident =
                 isRapaNuiResidentUser(user, docs);
               const passengerLabel = isResident
-                ? "Rapa Nui normal"
+                ? "RAPA NUI / RESIDENTE RAPA NUI"
                 : getPassengerLabel(user);
               const providerLabel =
                 residenceMetadata?.provider === "facebook"
@@ -5870,7 +5950,7 @@ export function AdminUsersPage(): JSX.Element {
                         >
                           <div>
                             <strong style={{ fontSize: ".86rem" }}>
-                              Documento Rapa Nui normal
+                              Documento de RAPA NUI / RESIDENTE RAPA NUI
                             </strong>
                             <p
                               style={{
@@ -5935,7 +6015,7 @@ export function AdminUsersPage(): JSX.Element {
                             }
                             onClick={() => void approveRapaNuiUser(user)}
                           >
-                            {isProcessing ? <IonSpinner name="dots" /> : "Aprobar y activar"}
+                            {isProcessing ? <IonSpinner name="dots" /> : "Aprobar residencia"}
                           </IonButton>
 
                           <IonButton
@@ -7099,12 +7179,8 @@ export function AdminDriversPage(): JSX.Element {
                 </IonCard>
 
                 <IonCard
-                  style={{
-                    margin: 0,
-                    borderRadius: "18px",
-                    background: "#111",
-                    color: "#f6f2ec",
-                  }}
+                  className="rapago-accent-card"
+                  style={{ margin: 0, borderRadius: "18px" }}
                 >
                   <IonCardContent
                     style={{ fontSize: ".84rem", lineHeight: 1.45 }}
@@ -11223,6 +11299,7 @@ export function AdminTripsPage(): JSX.Element {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [filterStatus, setFilterStatus] = useState("");
+  const [viewMode, setViewMode] = useState<"all" | "scheduled">("all");
   const [autoRefreshing, setAutoRefreshing] = useState(false);
 
   // Cancel state per-ride
@@ -11262,9 +11339,12 @@ export function AdminTripsPage(): JSX.Element {
           ...buildAdminReturnReservationsFromRides(localScheduled),
         ];
         const merged = mergeAdminRides([...localScheduled, ...returnReservations, ...ridesData]);
-        const visible = filterStatus
-          ? merged.filter((ride) => getEffectiveAdminRideStatus(ride) === filterStatus)
+        const byViewMode = viewMode === "scheduled"
+          ? merged.filter((ride) => getAdminRideScheduleInfo(ride).isScheduled)
           : merged;
+        const visible = filterStatus
+          ? byViewMode.filter((ride) => getEffectiveAdminRideStatus(ride) === filterStatus)
+          : byViewMode;
 
         setRides(sortAdminRidesForOperations(visible));
       } catch (err) {
@@ -11279,7 +11359,7 @@ export function AdminTripsPage(): JSX.Element {
         }
       }
     },
-    [session?.accessToken, filterStatus],
+    [session?.accessToken, filterStatus, viewMode],
   );
 
   useEffect(() => {
@@ -11756,6 +11836,15 @@ export function AdminTripsPage(): JSX.Element {
                     .toLowerCase()
                     .includes("admin_auto"),
               );
+              const scheduledAtMs = scheduleInfo.displayScheduledAt
+                ? Date.parse(scheduleInfo.displayScheduledAt)
+                : Number.NaN;
+              const alertaSoon =
+                scheduleInfo.isScheduled &&
+                !hasAdminAssignedDriver(ride) &&
+                Number.isFinite(scheduledAtMs) &&
+                scheduledAtMs >= Date.now() &&
+                scheduledAtMs <= Date.now() + 2 * 60 * 60 * 1000;
               return (
                 <IonCard
                   key={`${String(ride.id || getRideUnknownField(ride, "rideId") || getRideUnknownField(ride, "originalRideId") || "admin-ride")}::${rideIndex}`}
@@ -12185,29 +12274,6 @@ export function AdminTripsPage(): JSX.Element {
             })}
           </div>
         )}
-
-        {/* Female preference warning alert */}
-        <IonAlert
-          isOpen={femaleWarnRideId !== null}
-          header="Preferencia de conductora"
-          message="Este pasajero solicitó una conductora mujer. No se puede verificar el género del conductor seleccionado desde este panel. ¿Deseas asignar de todas formas?"
-          buttons={[
-            {
-              text: "Volver",
-              role: "cancel",
-              handler: () => setFemaleWarnRideId(null),
-            },
-            {
-              text: "Asignar de todas formas",
-              handler: () => {
-                const rideId = femaleWarnRideId;
-                setFemaleWarnRideId(null);
-                if (rideId) void handleAssign(rideId);
-              },
-            },
-          ]}
-          onDidDismiss={() => setFemaleWarnRideId(null)}
-        />
 
         {/* Cancel alert */}
         <IonAlert
@@ -12770,93 +12836,11 @@ export function AdminPaymentsPage(): JSX.Element {
     <IonPage>
       <IonHeader>
         <IonToolbar color="danger">
-          <IonTitle>Pagos</IonTitle>
+          <IonTitle>Pagos y devoluciones</IonTitle>
         </IonToolbar>
       </IonHeader>
       <IonContent className="ion-padding">
-        {/* Stats */}
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "1fr 1fr 1fr",
-            gap: "10px",
-            marginBottom: "16px",
-          }}
-        >
-          {[
-            { label: "Total órdenes", value: "—", color: "primary" },
-            { label: "Pendientes", value: "—", color: "warning" },
-            { label: "Pagadas", value: "—", color: "success" },
-          ].map((stat) => (
-            <IonCard key={stat.label} style={{ margin: 0 }}>
-              <IonCardContent
-                style={{ padding: "12px 10px", textAlign: "center" }}
-              >
-                <div
-                  style={{
-                    fontSize: "1.4rem",
-                    fontWeight: 700,
-                    color: `var(--ion-color-${stat.color})`,
-                  }}
-                >
-                  {stat.value}
-                </div>
-                <div
-                  style={{
-                    fontSize: "0.7rem",
-                    color: "var(--ion-color-medium)",
-                    marginTop: "2px",
-                  }}
-                >
-                  {stat.label}
-                </div>
-              </IonCardContent>
-            </IonCard>
-          ))}
-        </div>
-
-        <IonCard>
-          <IonCardContent style={{ padding: "16px" }}>
-            <div style={{ fontWeight: 600, marginBottom: "8px" }}>
-              Estado de integración de pagos
-            </div>
-            <IonText color="medium">
-              <p style={{ margin: 0, fontSize: "0.85rem" }}>
-                Los pagos se procesarán cuando se integre el proveedor de pagos.
-                Esta sección mostrará órdenes, estados y detalles de
-                transacciones una vez habilitada la integración.
-              </p>
-            </IonText>
-            <div
-              style={{
-                marginTop: "12px",
-                display: "flex",
-                gap: "8px",
-                flexWrap: "wrap",
-              }}
-            >
-              {["pending", "paid", "failed", "cancelled"].map((s) => {
-                const color =
-                  s === "pending"
-                    ? "warning"
-                    : s === "paid"
-                      ? "success"
-                      : s === "failed"
-                        ? "danger"
-                        : "medium";
-                return (
-                  <IonBadge
-                    key={s}
-                    color={color}
-                    style={{ fontSize: "0.72rem" }}
-                  >
-                    {s}
-                  </IonBadge>
-                );
-              })}
-            </div>
-          </IonCardContent>
-        </IonCard>
+        <CashOverpaymentRefundAdminPanel />
       </IonContent>
     </IonPage>
   );
@@ -12973,28 +12957,6 @@ export function AdminSettingsPage(): JSX.Element {
             </IonCardContent>
           </IonCard>
         ))}
-
-        <div style={{ marginTop: "24px" }}>
-          <IonCard style={{ background: "var(--ion-color-light)" }}>
-            <IonCardContent
-              style={{ fontSize: "0.78rem", color: "var(--ion-color-medium)" }}
-            >
-              <div
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "8px",
-                  marginBottom: "6px",
-                }}
-              >
-                <IonIcon icon={settingsOutline} />
-                <strong>Próximamente</strong>
-              </div>
-              Parámetros del sistema · Integraciones de pago · Notificaciones
-              globales · Comisiones de plataforma
-            </IonCardContent>
-          </IonCard>
-        </div>
       </IonContent>
     </IonPage>
   );
@@ -14219,18 +14181,6 @@ function publishApprovedDriverApplicationToProfile(item: AdminDriverApplicationR
     rut: item.rut ?? "",
     birthDate: item.birthDate ?? "",
     driverApplicationStatus: "approved",
-    passengerFareType: "resident",
-    farePassengerType: "resident",
-    passengerType: "resident",
-    passengerFareLabel: "Rapa Nui normal",
-    passengerTypeLabel: "Rapa Nui normal",
-    nationality: "Rapa Nui normal",
-    isResident: true,
-    is_resident: true,
-    residenceVerificationStatus: "approved",
-    driverPassengerFareType: "resident",
-    driverNationality: "Rapa Nui normal",
-    driverIsResident: true,
     role: "driver",
     status: "active",
     isVerified: true,
@@ -14269,16 +14219,6 @@ function publishApprovedDriverApplicationToProfile(item: AdminDriverApplicationR
     vehicleImageDataUrl: primaryVehicle?.imageDataUrl ?? item.vehicle?.photoDataUrl ?? null,
     vehiclePhotoDataUrl: primaryVehicle?.imageDataUrl ?? item.vehicle?.photoDataUrl ?? null,
     applicationStatus: "approved",
-    driverProfileResidentStatus: "approved",
-    passengerFareType: "resident",
-    farePassengerType: "resident",
-    passengerType: "resident",
-    passengerFareLabel: "Rapa Nui normal",
-    passengerTypeLabel: "Rapa Nui normal",
-    nationality: "Rapa Nui normal",
-    isResident: true,
-    is_resident: true,
-    residenceVerificationStatus: "approved",
     role: "driver",
     status: "active",
     isVerified: true,
@@ -14318,218 +14258,6 @@ function publishApprovedDriverApplicationToProfile(item: AdminDriverApplicationR
   }
 }
 
-function markApprovedDriverApplicationAsRapaNuiResident(item: AdminDriverApplicationRecord): void {
-  try {
-    const label = "Rapa Nui normal";
-    const email = String(item.email ?? "").trim().toLowerCase();
-    const ownerKey = String(item.email ?? item.id ?? "driver-global").trim().toLowerCase();
-
-    const patchResidentFields = (record: Record<string, unknown>): Record<string, unknown> => ({
-      ...record,
-      ownerKey: String(record.ownerKey ?? ownerKey),
-      driverOwnerKey: String(record.driverOwnerKey ?? ownerKey),
-      email: String(record.email ?? item.email ?? ""),
-      driverEmail: String(record.driverEmail ?? item.email ?? ""),
-      role: "driver",
-      status: "active",
-      isVerified: true,
-      is_verified: true,
-      passengerFareType: "resident",
-      farePassengerType: "resident",
-      passengerType: "resident",
-      driverPassengerFareType: "resident",
-      driverFarePassengerType: "resident",
-      passengerFareLabel: label,
-      passengerTypeLabel: label,
-      nationality: label,
-      driverNationality: label,
-      isResident: true,
-      is_resident: true,
-      driverIsResident: true,
-      residenceVerificationStatus: "approved",
-      residentVerificationStatus: "approved",
-      rapaNuiResidentApprovedByAdmin: true,
-      rapaNuiResidentApprovedAt: new Date().toISOString(),
-    });
-
-    const shouldPatchRecord = (record: Record<string, unknown>): boolean => {
-      const recordEmail = String(
-        record.email ??
-        record.userEmail ??
-        record.passengerEmail ??
-        record.driverEmail ??
-        record.profileEmail ??
-        ""
-      ).trim().toLowerCase();
-
-      const recordOwnerKey = String(record.ownerKey ?? record.driverOwnerKey ?? "").trim().toLowerCase();
-
-      return (
-        Boolean(email && recordEmail === email) ||
-        Boolean(ownerKey && recordOwnerKey === ownerKey) ||
-        Boolean(email && JSON.stringify(record).toLowerCase().includes(email))
-      );
-    };
-
-    const patchValue = (value: unknown): unknown => {
-      if (Array.isArray(value)) {
-        return value.map((entry) => patchValue(entry));
-      }
-
-      if (value && typeof value === "object") {
-        const source = value as Record<string, unknown>;
-        const next: Record<string, unknown> = {};
-
-        for (const [key, entry] of Object.entries(source)) {
-          next[key] = patchValue(entry);
-        }
-
-        if (shouldPatchRecord(next)) {
-          return patchResidentFields(next);
-        }
-
-        return next;
-      }
-
-      if (typeof value === "string") {
-        const raw = value.trim().toLowerCase();
-        if (raw === "foreigner" || raw === "tourist_foreigner" || raw.includes("turista extranjero")) {
-          return label;
-        }
-      }
-
-      return value;
-    };
-
-    const localKeysToPatch: string[] = [];
-    for (let i = 0; i < localStorage.length; i += 1) {
-      const key = localStorage.key(i);
-      if (key && key.includes("rapago")) localKeysToPatch.push(key);
-    }
-
-    localKeysToPatch.forEach((key) => {
-      const raw = localStorage.getItem(key);
-      if (!raw) return;
-
-      try {
-        const parsed = JSON.parse(raw) as unknown;
-        localStorage.setItem(key, JSON.stringify(patchValue(parsed)));
-      } catch {
-        // No todos los valores rapago son JSON.
-      }
-    });
-
-    const residentProfile = patchResidentFields({
-      ownerKey,
-      driverOwnerKey: ownerKey,
-      email: item.email ?? "",
-      driverEmail: item.email ?? "",
-      name: getDriverApplicationFullName(item),
-      firstName: item.firstName ?? "",
-      lastName: item.lastName ?? "",
-      phone: item.phone ?? "",
-      rut: item.rut ?? "",
-      driverApplicationStatus: "approved",
-      updatedAt: new Date().toISOString(),
-    });
-
-    localStorage.setItem("rapago_registration_profile", JSON.stringify(residentProfile));
-    localStorage.setItem("rapago_driver_registration_profile", JSON.stringify(residentProfile));
-    localStorage.setItem("rapago_profile_nationality", label);
-    localStorage.setItem("rapago_nationality", label);
-    localStorage.setItem("rapago_driver_nationality", label);
-    localStorage.setItem("rapago_passenger_fare_type", "resident");
-    localStorage.setItem("rapago_profile_passenger_type", "resident");
-    localStorage.setItem("rapago_fare_passenger_type", "resident");
-    localStorage.setItem("rapago_driver_passenger_fare_type", "resident");
-    localStorage.setItem("rapago_driver_fare_passenger_type", "resident");
-    localStorage.setItem("rapago_is_resident", "true");
-    localStorage.setItem("rapago_driver_is_resident", "true");
-    localStorage.setItem("rapago_residence_verification_status", "approved");
-
-    window.dispatchEvent(new CustomEvent("rapago:passenger-profile-updated", {
-      detail: {
-        email,
-        role: "driver",
-        status: "active",
-        passengerFareType: "resident",
-        farePassengerType: "resident",
-        nationality: label,
-        isResident: true,
-        isVerified: true,
-      },
-    }));
-
-    window.dispatchEvent(new CustomEvent("rapago:driver-application-approved-resident", {
-      detail: {
-        email,
-        ownerKey,
-        passengerFareType: "resident",
-        nationality: label,
-        isResident: true,
-      },
-    }));
-  } catch {
-    // No bloquea la aprobación del conductor.
-  }
-}
-
-async function trySyncApprovedDriverResidentToApi(
-  token: string | null | undefined,
-  userId: string | null | undefined,
-  item: AdminDriverApplicationRecord,
-): Promise<void> {
-  if (!token || !userId) return;
-
-  const apiBase =
-    (import.meta as unknown as { env?: Record<string, string | undefined> }).env?.VITE_API_BASE_URL ??
-    (import.meta as unknown as { env?: Record<string, string | undefined> }).env?.VITE_API_URL ??
-    "";
-
-  const base = String(apiBase || "").replace(/\/$/, "");
-  if (!base) return;
-
-  const payload = {
-    role: "driver",
-    status: "active",
-    isVerified: true,
-    is_verified: true,
-    passengerFareType: "resident",
-    farePassengerType: "resident",
-    passengerType: "resident",
-    nationality: "Rapa Nui normal",
-    isResident: true,
-    is_resident: true,
-    driverApplicationId: item.id,
-    driverApplicationStatus: "approved",
-    driverApprovedAt: new Date().toISOString(),
-  };
-
-  const endpoints = [
-    `${base}/admin/users/${userId}/approve-driver-resident`,
-    `${base}/admin/users/${userId}/driver-resident`,
-    `${base}/admin/users/${userId}`,
-    `${base}/admin/users/${userId}/status`,
-  ];
-
-  for (const url of endpoints) {
-    try {
-      const response = await fetch(url, {
-        method: url.endsWith("/status") ? "PATCH" : "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify(payload),
-      });
-
-      if (response.ok) return;
-    } catch {
-      // Prueba el siguiente endpoint.
-    }
-  }
-}
-
 const DOC_STATUS_COLOR: Record<string, string> = {
   pending: "warning",
   uploaded: "primary",
@@ -14547,10 +14275,10 @@ const DOC_STATUS_LABEL: Record<string, string> = {
 };
 
 const DOC_TYPE_LABEL: Record<string, string> = {
-  residence_document: "Residencia Rapa Nui",
-  rapa_nui_residence: "Residencia Rapa Nui",
-  rapanui_residence: "Residencia Rapa Nui",
-  resident_certificate: "Certificado de residencia",
+  residence_document: "ACREDITACIÓN RESIDENCIA",
+  rapa_nui_residence: "ACREDITACIÓN RESIDENCIA",
+  rapanui_residence: "ACREDITACIÓN RESIDENCIA",
+  resident_certificate: "ACREDITACIÓN RESIDENCIA",
   identity_document: "Cédula de identidad",
   driver_license: "Licencia de conducir",
   vehicle_registration: "Registro de vehículo",
@@ -14576,6 +14304,9 @@ export function AdminDocumentsPage(): JSX.Element {
     null,
   );
   const [rejectReason, setRejectReason] = useState("");
+  const [rejectFareType, setRejectFareType] = useState<
+    "chilean" | "foreigner"
+  >("chilean");
   const [actioning, setActioning] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
@@ -14655,7 +14386,7 @@ export function AdminDocumentsPage(): JSX.Element {
 
     if (!user) {
       throw new Error(
-        "Documento aprobado, pero no encontré el usuario para activar la cuenta.",
+        "Documento aprobado, pero no encontré el usuario asociado.",
       );
     }
 
@@ -14672,7 +14403,7 @@ export function AdminDocumentsPage(): JSX.Element {
     return updatedUser;
   }
 
-  async function keepUserPendingIfResidenceRejected(doc: AdminDocumentData) {
+  async function keepUserActiveIfResidenceRejected(doc: AdminDocumentData) {
     if (!session?.accessToken || !isResidenceDocument(doc)) return null;
 
     const user = findDocumentUser(doc);
@@ -14681,7 +14412,7 @@ export function AdminDocumentsPage(): JSX.Element {
     const updatedUser = await adminService.updateUserStatus(
       session.accessToken,
       user.id,
-      "pending",
+      "active",
     );
 
     setUsers((prev) =>
@@ -14712,7 +14443,7 @@ export function AdminDocumentsPage(): JSX.Element {
       if (isResidenceDocument(updated)) {
         await activateUserIfResidenceDocument(updated);
         setToastMessage(
-          "Documento Rapa Nui aprobado. La cuenta del pasajero quedó activa.",
+          "Acreditación aprobada. La cuenta permanece activa como RAPA NUI / RESIDENTE RAPA NUI.",
         );
       } else {
         setToastMessage("Documento aprobado.");
@@ -14721,7 +14452,7 @@ export function AdminDocumentsPage(): JSX.Element {
       setActionError(
         err instanceof Error
           ? err.message
-          : "Error al aprobar documento y activar cuenta.",
+          : "Error al aprobar el documento de residencia.",
       );
     } finally {
       setActioning(false);
@@ -14741,6 +14472,17 @@ export function AdminDocumentsPage(): JSX.Element {
     const doc = docs.find((item) => item.id === actionId);
     if (!doc) return;
 
+    if (
+      isResidenceDocument(doc) &&
+      rejectFareType !== "chilean" &&
+      rejectFareType !== "foreigner"
+    ) {
+      setActionError(
+        "Debes elegir Turista chileno o Turista extranjero.",
+      );
+      return;
+    }
+
     setActioning(true);
     setActionError(null);
 
@@ -14752,20 +14494,26 @@ export function AdminDocumentsPage(): JSX.Element {
         actionId,
         "rejected",
         isResidenceDocument(doc) ? passengerRejectMessage : rejectReason.trim(),
+        isResidenceDocument(doc) ? rejectFareType : undefined,
       );
 
       setDocs((prev) => prev.map((d) => (d.id === actionId ? updated : d)));
 
       if (isResidenceDocument(updated)) {
-        await keepUserPendingIfResidenceRejected(updated);
+        await keepUserActiveIfResidenceRejected(updated);
         setToastMessage(
-          "Documento Rapa Nui rechazado. El pasajero verá el aviso para elegir otro tipo de usuario o subir otro documento.",
+          `Acreditación rechazada. La categoría cambió a ${
+            rejectFareType === "foreigner"
+              ? "Turista extranjero"
+              : "Turista chileno"
+          }.`,
         );
       } else {
         setToastMessage("Documento rechazado.");
       }
 
       setRejectReason("");
+      setRejectFareType("chilean");
       setActionId(null);
       setActionType(null);
     } catch (err) {
@@ -14830,45 +14578,45 @@ export function AdminDocumentsPage(): JSX.Element {
 
       if (status === "approved") {
         publishApprovedDriverApplicationToProfile(reviewed);
-        markApprovedDriverApplicationAsRapaNuiResident(reviewed);
 
         const matchedUser = users.find(
-          (user) => normalizeAdminText(user.email) === normalizeAdminText(reviewed.email),
+          (user) =>
+            normalizeAdminText(user.email) ===
+            normalizeAdminText(reviewed.email),
         );
 
         if (matchedUser && session?.accessToken) {
           try {
-            const updatedUser = await adminService.updateUserStatus(
-              session.accessToken,
-              matchedUser.id,
-              "active",
-            );
+            const updatedUser =
+              await adminService.updateUserStatus(
+                session.accessToken,
+                matchedUser.id,
+                "active",
+              );
 
-            await trySyncApprovedDriverResidentToApi(session.accessToken, matchedUser.id, reviewed);
-
-            const residentDriverUser = {
+            const activeDriverUser = {
               ...updatedUser,
               role: "driver",
               status: "active",
               isVerified: true,
-              passengerFareType: "resident",
-              farePassengerType: "resident",
-              passengerType: "resident",
-              passengerFareLabel: "Rapa Nui normal",
-              nationality: "Rapa Nui normal",
-              isResident: true,
             } as AdminUserData;
 
             setUsers((prev) =>
-              prev.map((user) => (user.id === updatedUser.id ? residentDriverUser : user)),
+              prev.map((user) =>
+                user.id === updatedUser.id
+                  ? activeDriverUser
+                  : user,
+              ),
             );
           } catch {
-            await trySyncApprovedDriverResidentToApi(session?.accessToken, matchedUser.id, reviewed);
-            // Si el backend no permite activar desde aquí, igual queda aprobada localmente.
+            // Si el backend no permite activar desde aquí,
+            // la postulación igualmente queda aprobada localmente.
           }
         }
 
-        setToastMessage("Postulación de conductor aprobada. El perfil, vehículo y tarifa Rapa Nui normal quedaron habilitados.");
+        setToastMessage(
+          "Postulación de conductor aprobada. El perfil y vehículo quedaron habilitados. Su categoría tarifaria como pasajero no cambia automáticamente.",
+        );
       } else if (status === "rejected") {
         setToastMessage("Postulación de conductor rechazada.");
       } else if (status === "on_hold") {
@@ -14910,20 +14658,15 @@ export function AdminDocumentsPage(): JSX.Element {
 
       <IonContent className="ion-padding">
         <IonCard
-          style={{
-            margin: "0 0 12px",
-            borderRadius: 18,
-            background: "linear-gradient(135deg, #2b120f, #8f1d18)",
-            color: "#fff",
-          }}
+          className="rapago-accent-card"
+          style={{ margin: "0 0 12px", borderRadius: 18 }}
         >
           <IonCardContent style={{ padding: "14px 16px" }}>
             <div style={{ fontWeight: 950, fontSize: "1rem" }}>
               Documentos Rapa Nui
             </div>
             <p style={{ margin: "6px 0 0", fontSize: ".84rem", lineHeight: 1.35 }}>
-              Al aprobar un documento de residencia Rapa Nui, la cuenta del
-              pasajero queda automáticamente habilitada.
+              La categoría RAPA NUI / RESIDENTE RAPA NUI permanece activa durante la revisión. Al aprobar, se mantiene; al rechazar, el administrador elige Turista chileno o Turista extranjero.
             </p>
             <IonBadge color={pendingResidenceDocs > 0 ? "warning" : "success"} style={{ marginTop: 10 }}>
               {pendingResidenceDocs} residencia{pendingResidenceDocs !== 1 ? "s" : ""} pendiente{pendingResidenceDocs !== 1 ? "s" : ""}
@@ -14933,12 +14676,8 @@ export function AdminDocumentsPage(): JSX.Element {
 
 
         <IonCard
-          style={{
-            margin: "0 0 12px",
-            borderRadius: 18,
-            background: "linear-gradient(135deg,#0f172a,#173f39)",
-            color: "#fff",
-          }}
+          className="rapago-accent-card"
+          style={{ margin: "0 0 12px", borderRadius: 18 }}
         >
           <IonCardContent style={{ padding: "14px 16px" }}>
             <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "flex-start" }}>
@@ -14947,7 +14686,7 @@ export function AdminDocumentsPage(): JSX.Element {
                   Postulaciones de conductores
                 </div>
                 <p style={{ margin: "6px 0 0", fontSize: ".84rem", lineHeight: 1.35 }}>
-                  Revisa cédula, licencia, vehículos, fotos y datos enviados desde inscripción. Al aprobar, queda como Rapa Nui normal y usa tarifa Rapa Nui normal.
+                  Revisa cédula, licencia, vehículos, fotos y datos enviados desde inscripción. Aprobar la postulación habilita al conductor, pero no cambia automáticamente su categoría tarifaria como pasajero.
                 </p>
               </div>
               <IonBadge color={pendingDriverApplications > 0 ? "warning" : "success"}>
@@ -14957,12 +14696,7 @@ export function AdminDocumentsPage(): JSX.Element {
 
             <IonItem
               lines="none"
-              style={{
-                marginTop: 12,
-                borderRadius: 14,
-                "--background": "rgba(255,255,255,.08)",
-                "--color": "#fff",
-              } as CSSProperties}
+              style={{ marginTop: 12, borderRadius: 14 }}
             >
               <IonLabel position="stacked" style={{ fontSize: ".76rem", fontWeight: 850 }}>
                 Filtro de postulación
@@ -15223,6 +14957,13 @@ export function AdminDocumentsPage(): JSX.Element {
                 getResidentDocumentMetadata(doc);
               const documentPreviewUrl =
                 getResidentDocumentPreviewUrl(doc);
+              const documentIsImage = documentPreviewUrl.startsWith("data:image/");
+              const documentIsPdf = documentPreviewUrl.startsWith("data:application/pdf");
+              const documentDownloadName =
+                residentMetadata?.documentName ||
+                (documentIsPdf
+                  ? "acreditacion-residencia.pdf"
+                  : "acreditacion-residencia");
               const actioningThis = actioning && actionId === doc.id;
 
               return (
@@ -15297,7 +15038,7 @@ export function AdminDocumentsPage(): JSX.Element {
 
                           {residentDoc && (
                             <IonBadge color="tertiary" style={{ fontSize: "0.68rem" }}>
-                              Activa cuenta al aprobar
+                              Categoría activa · pendiente de revisión
                             </IonBadge>
                           )}
                         </div>
@@ -15351,21 +15092,69 @@ export function AdminDocumentsPage(): JSX.Element {
                           </div>
                         )}
 
+                        {documentIsImage && (
+                          <img
+                            src={documentPreviewUrl}
+                            alt="Vista previa de la acreditación"
+                            loading="lazy"
+                            style={{
+                              display: "block",
+                              width: "100%",
+                              maxWidth: 420,
+                              maxHeight: 260,
+                              objectFit: "contain",
+                              marginTop: 10,
+                              borderRadius: 14,
+                              background: "#f3efe8",
+                              border: "1px solid rgba(0,0,0,.10)",
+                            }}
+                          />
+                        )}
+
                         {documentPreviewUrl && (
-                          <IonButton
-                            size="small"
-                            fill="clear"
-                            color="primary"
-                            onClick={() =>
-                              window.open(
-                                documentPreviewUrl,
-                                "_blank",
-                              )
-                            }
-                            style={{ marginTop: 6 }}
+                          <div
+                            style={{
+                              display: "flex",
+                              flexWrap: "wrap",
+                              gap: 8,
+                              marginTop: 6,
+                            }}
                           >
-                            Ver documento
-                          </IonButton>
+                            <IonButton
+                              size="small"
+                              fill="clear"
+                              color="primary"
+                              onClick={() =>
+                                window.open(
+                                  documentPreviewUrl,
+                                  "_blank",
+                                  "noopener,noreferrer",
+                                )
+                              }
+                            >
+                              {documentIsPdf
+                                ? "Abrir PDF"
+                                : documentIsImage
+                                  ? "Abrir imagen"
+                                  : "Ver documento"}
+                            </IonButton>
+
+                            <a
+                              href={documentPreviewUrl}
+                              download={documentDownloadName}
+                              style={{
+                                display: "inline-flex",
+                                alignItems: "center",
+                                minHeight: 32,
+                                padding: "0 10px",
+                                fontSize: ".78rem",
+                                fontWeight: 900,
+                                textDecoration: "none",
+                              }}
+                            >
+                              Descargar archivo
+                            </a>
+                          </div>
                         )}
 
                         {extendedDoc.rejectionReason && (
@@ -15428,7 +15217,7 @@ export function AdminDocumentsPage(): JSX.Element {
                         {actioningThis ? (
                           <IonSpinner name="dots" />
                         ) : residentDoc ? (
-                          "Aprobar y activar"
+                          "Aprobar residencia"
                         ) : (
                           "Aprobar"
                         )}
@@ -15443,6 +15232,7 @@ export function AdminDocumentsPage(): JSX.Element {
                           setActionId(doc.id);
                           setActionType("reject");
                           setRejectReason("");
+                          setRejectFareType("chilean");
                           setActionError(null);
                         }}
                         style={{ flex: 1 }}
@@ -15716,8 +15506,116 @@ export function AdminDocumentsPage(): JSX.Element {
           </IonText>
         )}
 
+        <IonModal
+          isOpen={
+            actionType === "reject" &&
+            actionId !== null &&
+            isResidenceDocument(
+              docs.find((item) => item.id === actionId) ??
+                ({} as AdminDocumentData),
+            )
+          }
+          onDidDismiss={() => {
+            if (!actioning) {
+              setActionId(null);
+              setActionType(null);
+              setRejectReason("");
+              setRejectFareType("chilean");
+              setActionError(null);
+            }
+          }}
+          breakpoints={[0, 0.58, 0.86]}
+          initialBreakpoint={0.58}
+        >
+          <IonHeader>
+            <IonToolbar color="dark">
+              <IonTitle>Reclasificar acreditación</IonTitle>
+            </IonToolbar>
+          </IonHeader>
+          <IonContent className="ion-padding">
+            <IonText>
+              <p style={{ marginTop: 0, fontWeight: 800 }}>
+                La acreditación no corresponde. Selecciona la categoría
+                tarifaria correcta y escribe el motivo obligatorio.
+              </p>
+            </IonText>
+
+            <IonItem>
+              <IonLabel position="stacked">Categoría correcta *</IonLabel>
+              <IonSelect
+                value={rejectFareType}
+                disabled={actioning}
+                onIonChange={(event) =>
+                  setRejectFareType(
+                    event.detail.value as "chilean" | "foreigner",
+                  )
+                }
+              >
+                <IonSelectOption value="chilean">
+                  Turista chileno
+                </IonSelectOption>
+                <IonSelectOption value="foreigner">
+                  Turista extranjero
+                </IonSelectOption>
+              </IonSelect>
+            </IonItem>
+
+            <IonItem style={{ marginTop: 12 }}>
+              <IonLabel position="stacked">Motivo *</IonLabel>
+              <IonTextarea
+                value={rejectReason}
+                maxlength={500}
+                autoGrow
+                disabled={actioning}
+                placeholder="Ej: La documentación no acredita residencia vigente."
+                onIonInput={(event) =>
+                  setRejectReason(String(event.detail.value ?? ""))
+                }
+              />
+            </IonItem>
+
+            {actionError && (
+              <IonText color="danger">
+                <p style={{ fontWeight: 800 }}>{actionError}</p>
+              </IonText>
+            )}
+
+            <IonButton
+              expand="block"
+              color="danger"
+              disabled={actioning || !rejectReason.trim()}
+              onClick={() => void handleReject()}
+              style={{ marginTop: 18, fontWeight: 900 }}
+            >
+              {actioning ? <IonSpinner name="dots" /> : "Rechazar y cambiar categoría"}
+            </IonButton>
+
+            <IonButton
+              expand="block"
+              fill="clear"
+              disabled={actioning}
+              onClick={() => {
+                setActionId(null);
+                setActionType(null);
+                setRejectReason("");
+                setRejectFareType("chilean");
+                setActionError(null);
+              }}
+            >
+              Cancelar
+            </IonButton>
+          </IonContent>
+        </IonModal>
+
         <IonAlert
-          isOpen={actionType === "reject" && actionId !== null}
+          isOpen={
+            actionType === "reject" &&
+            actionId !== null &&
+            !isResidenceDocument(
+              docs.find((item) => item.id === actionId) ??
+                ({} as AdminDocumentData),
+            )
+          }
           header="Rechazar documento"
           message="Ingresa el motivo de rechazo (obligatorio)."
           inputs={[

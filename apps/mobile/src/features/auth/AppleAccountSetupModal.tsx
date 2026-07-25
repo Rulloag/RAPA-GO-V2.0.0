@@ -1,4 +1,10 @@
-import { useEffect, useMemo, useState } from "react";
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ChangeEvent,
+} from "react";
 import {
   IonButton,
   IonCheckbox,
@@ -16,6 +22,7 @@ import {
   IonToolbar,
 } from "@ionic/react";
 import type { LegalDocumentData } from "../legal/legal.service.js";
+import type { ResidenceAccreditationInput } from "@rapa-go/shared";
 import type { ApplePassengerFareType } from "./auth.types.js";
 
 interface AppleAccountSetupModalProps {
@@ -27,14 +34,41 @@ interface AppleAccountSetupModalProps {
     passengerFareType: ApplePassengerFareType;
     acceptedDocumentIds: string[];
     phone: string;
+    residenceAccreditation?: ResidenceAccreditationInput;
   }) => void;
 }
 
 const FARE_LABELS: Record<ApplePassengerFareType, string> = {
   chilean: "Turista chileno",
   foreigner: "Turista extranjero",
-  resident: "Residente Rapa Nui",
+  resident: "RAPA NUI / RESIDENTE RAPA NUI",
 };
+
+const RESIDENCE_MAX_BYTES = Math.floor(1.5 * 1024 * 1024);
+const RESIDENCE_MIME_TYPES = new Set([
+  "application/pdf",
+  "image/jpeg",
+  "image/png",
+  "image/webp",
+]);
+
+function readFileAsDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result ?? ""));
+    reader.onerror = () => reject(new Error("No se pudo leer el archivo."));
+    reader.readAsDataURL(file);
+  });
+}
+
+function sanitizeAccreditationName(value: string): string {
+  const clean = value
+    .replace(/[\\/<>:"'|?*{}()[\];]/g, "")
+    .replace(/\s{2,}/g, " ")
+    .trim()
+    .slice(0, 90);
+  return clean || "acreditacion-residencia";
+}
 
 export function AppleAccountSetupModal({
   isOpen,
@@ -48,6 +82,10 @@ export function AppleAccountSetupModal({
   const [accepted, setAccepted] = useState<Record<string, boolean>>({});
   const [phone, setPhone] = useState("");
   const [phoneTouched, setPhoneTouched] = useState(false);
+  const accreditationInputRef = useRef<HTMLInputElement | null>(null);
+  const [residenceAccreditation, setResidenceAccreditation] =
+    useState<ResidenceAccreditationInput | null>(null);
+  const [accreditationError, setAccreditationError] = useState("");
 
   useEffect(() => {
     if (!isOpen) return;
@@ -55,6 +93,11 @@ export function AppleAccountSetupModal({
     setAccepted({});
     setPhone("");
     setPhoneTouched(false);
+    setResidenceAccreditation(null);
+    setAccreditationError("");
+    if (accreditationInputRef.current) {
+      accreditationInputRef.current.value = "";
+    }
   }, [isOpen]);
 
   const normalizedPhone = phone
@@ -70,6 +113,56 @@ export function AppleAccountSetupModal({
       documents.every((document) => accepted[document.id] === true),
     [accepted, documents],
   );
+
+  async function handleAccreditationChange(
+    event: ChangeEvent<HTMLInputElement>,
+  ): Promise<void> {
+    const file = event.target.files?.[0] ?? null;
+    if (!file) return;
+
+    setAccreditationError("");
+    const safeName = sanitizeAccreditationName(file.name);
+    const lowerName = safeName.toLowerCase();
+    const inferredType = lowerName.endsWith(".pdf")
+      ? "application/pdf"
+      : lowerName.endsWith(".png")
+        ? "image/png"
+        : lowerName.endsWith(".webp")
+          ? "image/webp"
+          : lowerName.endsWith(".jpg") || lowerName.endsWith(".jpeg")
+            ? "image/jpeg"
+            : "";
+    const documentType = file.type || inferredType;
+
+    if (!RESIDENCE_MIME_TYPES.has(documentType)) {
+      setResidenceAccreditation(null);
+      setAccreditationError("Adjunta un PDF o una imagen JPG, PNG o WEBP.");
+      return;
+    }
+
+    if (file.size > RESIDENCE_MAX_BYTES) {
+      setResidenceAccreditation(null);
+      setAccreditationError("La acreditación debe pesar máximo 1.5 MB.");
+      return;
+    }
+
+    try {
+      setResidenceAccreditation({
+        documentName: safeName,
+        documentType: documentType as ResidenceAccreditationInput["documentType"],
+        documentSize: file.size,
+        documentDataUrl: await readFileAsDataUrl(file),
+      });
+    } catch (error) {
+      setResidenceAccreditation(null);
+      setAccreditationError(
+        error instanceof Error ? error.message : "No se pudo leer el archivo.",
+      );
+    }
+  }
+
+  const residentAccreditationReady =
+    fareType !== "resident" || residenceAccreditation !== null;
 
   return (
     <IonModal isOpen={isOpen} onDidDismiss={onCancel}>
@@ -129,10 +222,55 @@ export function AppleAccountSetupModal({
         </IonItem>
 
         {fareType === "resident" && (
-          <IonNote color="warning">
-            La cuenta quedará activa con tarifa Turista chileno hasta que el
-            administrador apruebe el documento de residencia.
-          </IonNote>
+          <div
+            style={{
+              marginTop: 14,
+              padding: 14,
+              borderRadius: 16,
+              border: "1px dashed rgba(200,155,60,.72)",
+            }}
+          >
+            <strong>ACREDITACIÓN RESIDENCIA *</strong>
+            <IonNote
+              style={{ display: "block", margin: "6px 0 10px" }}
+            >
+              Si eres Rapanui, adjunta una fotografía clara de tu cédula de
+              identidad. Si eres residente, adjunta tu resolución de residencia
+              vigente emitida por la Delegación Presidencial Provincial de Isla
+              de Pascua. Se acepta PDF, JPG, JPEG, PNG o WEBP.
+            </IonNote>
+
+            <input
+              ref={accreditationInputRef}
+              type="file"
+              accept="application/pdf,image/jpeg,image/png,image/webp,.pdf,.jpg,.jpeg,.png,.webp"
+              hidden
+              disabled={loading}
+              onChange={(event) => void handleAccreditationChange(event)}
+            />
+
+            <IonButton
+              type="button"
+              expand="block"
+              fill="outline"
+              disabled={loading}
+              onClick={() => accreditationInputRef.current?.click()}
+            >
+              {residenceAccreditation
+                ? "Cambiar acreditación"
+                : "Adjuntar acreditación"}
+            </IonButton>
+
+            {residenceAccreditation && (
+              <IonNote color="success">
+                Acreditación adjunta: {residenceAccreditation.documentName}
+              </IonNote>
+            )}
+
+            {accreditationError && (
+              <IonNote color="danger">{accreditationError}</IonNote>
+            )}
+          </div>
         )}
 
         <div style={{ marginTop: 18, display: "grid", gap: 10 }}>
@@ -166,12 +304,20 @@ export function AppleAccountSetupModal({
 
         <IonButton
           expand="block"
-          disabled={!allAccepted || !phoneIsValid || loading}
+          disabled={
+            !allAccepted ||
+            !phoneIsValid ||
+            !residentAccreditationReady ||
+            loading
+          }
           onClick={() =>
             onConfirm({
               passengerFareType: fareType,
               acceptedDocumentIds: documents.map((document) => document.id),
               phone: normalizedPhone,
+              ...(residenceAccreditation
+                ? { residenceAccreditation }
+                : {}),
             })
           }
           style={{ marginTop: 20, fontWeight: 900 }}

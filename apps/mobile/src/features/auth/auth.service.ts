@@ -1,6 +1,6 @@
 import { apiClient } from "../../services/api/index.js";
 import type { AuthResponse } from "./auth.types.js";
-import type { AppleSignInRequest, LoginRequest, RegisterRequest } from "./auth.types.js";
+import type { LoginRequest, RegisterRequest, AppleSignInRequest } from "./auth.types.js";
 
 
 export type FacebookResidentVerificationStatus =
@@ -33,34 +33,6 @@ export type FacebookResidentPrecheckPayload = {
   documentDataUrl: string;
 };
 
-
-export type FacebookAccountSetupPayload = {
-  setupCode: string;
-  passengerFareType: "resident" | "chilean" | "foreigner";
-  phone: string;
-  rut?: string;
-  passport?: string;
-  legalAcceptances: Array<{
-    legalDocumentId: string;
-    version: string;
-  }>;
-};
-
-export type FacebookAccountSetupResponse = {
-  ok: true;
-  exchangeCode: string;
-};
-
-export type FacebookExistingAccountLinkPayload = {
-  linkToken: string;
-  password: string;
-};
-
-export type FacebookExistingAccountLinkResponse = {
-  ok: true;
-  exchangeCode: string;
-};
-
 export type FacebookResidentPrecheckResponse = {
   ok: true;
   status: "pending" | "approved";
@@ -70,13 +42,20 @@ export type FacebookResidentPrecheckResponse = {
   rejectionReason?: string | null;
 };
 
+type MessageResponse = {
+  ok: true;
+  message: string;
+};
+
+type FacebookLinkStartResponse = {
+  ok: true;
+  authorizationUrl: string;
+};
+
 /**
  * AuthService (mobile) — communicates with the backend auth endpoints.
  * Uses the centralized apiClient — never calls fetch, Supabase, or any
  * external auth provider directly.
- *
- * TODO(phase-auth-provider): endpoints currently return AUTH_NOT_IMPLEMENTED
- * from the backend until the auth provider is configured server-side.
  */
 export const authService = {
   async login(payload: LoginRequest): Promise<AuthResponse> {
@@ -96,39 +75,6 @@ export const authService = {
     return result.data;
   },
 
-  async signInWithApple(payload: AppleSignInRequest): Promise<AuthResponse> {
-    const result = await apiClient.post<AuthResponse>(
-      "/auth/apple",
-      payload,
-      undefined,
-      0,
-    );
-
-    if (result.ok === false) {
-      return { ok: false, code: result.code, message: result.message };
-    }
-
-    return result.data;
-  },
-
-  async linkApple(
-    accessToken: string,
-    payload: AppleSignInRequest,
-  ): Promise<{ message: string }> {
-    const result = await apiClient.post<{ ok: true; message: string }>(
-      "/auth/apple/link",
-      payload,
-      { token: accessToken },
-      0,
-    );
-
-    if (result.ok === false) {
-      throw new Error(result.message);
-    }
-
-    return { message: result.data.message };
-  },
-
   async exchangeFacebookLogin(
     exchangeCode: string,
   ): Promise<AuthResponse> {
@@ -145,49 +91,6 @@ export const authService = {
         code: result.code,
         message: result.message,
       };
-    }
-
-    return result.data;
-  },
-
-
-  async completeFacebookExistingAccountLink(
-    payload: FacebookExistingAccountLinkPayload,
-  ): Promise<FacebookExistingAccountLinkResponse> {
-    const result =
-      await apiClient.post<FacebookExistingAccountLinkResponse>(
-        "/auth/facebook/link-existing",
-        payload,
-        undefined,
-        0,
-      );
-
-    if (result.ok === false) {
-      throw new Error(
-        result.message ??
-          "No se pudo vincular Facebook con tu cuenta RAPA GO.",
-      );
-    }
-
-    return result.data;
-  },
-
-  async completeFacebookAccountSetup(
-    payload: FacebookAccountSetupPayload,
-  ): Promise<FacebookAccountSetupResponse> {
-    const result =
-      await apiClient.post<FacebookAccountSetupResponse>(
-        "/auth/facebook/setup",
-        payload,
-        undefined,
-        0,
-      );
-
-    if (result.ok === false) {
-      throw new Error(
-        result.message ??
-          "No se pudo completar el registro con Facebook.",
-      );
     }
 
     return result.data;
@@ -231,46 +134,6 @@ export const authService = {
     return result.data;
   },
 
-
-  async createPassword(
-    accessToken: string,
-    payload: { newPassword: string; confirmPassword: string },
-  ): Promise<{ message: string }> {
-    const result = await apiClient.post<{
-      ok: true;
-      message: string;
-    }>(
-      "/auth/password/create",
-      payload,
-      { token: accessToken },
-    );
-
-    if (result.ok === false) {
-      throw new Error(result.message);
-    }
-
-    return { message: result.data.message };
-  },
-
-  async startFacebookLink(
-    accessToken: string,
-  ): Promise<string> {
-    const result = await apiClient.post<{
-      ok: true;
-      authorizationUrl: string;
-    }>(
-      "/auth/facebook/link/start",
-      undefined,
-      { token: accessToken },
-    );
-
-    if (result.ok === false) {
-      throw new Error(result.message);
-    }
-
-    return result.data.authorizationUrl;
-  },
-
   async logout(accessToken: string): Promise<void> {
     await apiClient.post("/auth/logout", undefined, { token: accessToken });
   },
@@ -281,5 +144,76 @@ export const authService = {
       return { ok: false, code: result.code, message: result.message };
     }
     return result.data;
+  },
+
+  async refresh(refreshToken: string): Promise<AuthResponse> {
+    const result = await apiClient.post<AuthResponse>("/auth/refresh", { refreshToken }, undefined, 0);
+    if (result.ok === false) {
+      return { ok: false, code: result.code, message: result.message };
+    }
+    return result.data;
+  },
+
+  /**
+   * Exchanges a verified Apple identity for a Rapa Go session.
+   * Never sent: client-reported email, Apple's `sub`, isPrivateEmail, or any
+   * of Apple's own tokens (access/refresh) — only what auth.types.ts's
+   * AppleSignInRequest declares. retries=0: this call is not safe to
+   * silently retry (a retried authorizationCode exchange would fail on
+   * Apple's side, since codes are single-use).
+   */
+  async signInWithApple(payload: AppleSignInRequest): Promise<AuthResponse> {
+    const result = await apiClient.post<AuthResponse>("/auth/apple", payload, undefined, 0);
+    if (result.ok === false) {
+      return { ok: false, code: result.code, message: result.message };
+    }
+    return result.data;
+  },
+
+  async linkApple(
+    accessToken: string,
+    payload: AppleSignInRequest,
+  ): Promise<MessageResponse> {
+    const result = await apiClient.post<MessageResponse>(
+      "/auth/apple/link",
+      payload,
+      { token: accessToken },
+      0,
+    );
+    if (result.ok === false) {
+      throw new Error(result.message ?? "No se pudo vincular Apple.");
+    }
+    return result.data;
+  },
+
+  async createPassword(
+    accessToken: string,
+    payload: { newPassword: string; confirmPassword: string },
+  ): Promise<MessageResponse> {
+    const result = await apiClient.post<MessageResponse>(
+      "/auth/password/create",
+      payload,
+      { token: accessToken },
+      0,
+    );
+    if (result.ok === false) {
+      throw new Error(result.message ?? "No se pudo crear la contraseña.");
+    }
+    return result.data;
+  },
+
+  async startFacebookLink(accessToken: string): Promise<string> {
+    const result = await apiClient.post<FacebookLinkStartResponse>(
+      "/auth/facebook/link/start",
+      {},
+      { token: accessToken },
+      0,
+    );
+    if (result.ok === false) {
+      throw new Error(
+        result.message ?? "No se pudo iniciar la vinculación con Facebook.",
+      );
+    }
+    return result.data.authorizationUrl;
   },
 };
