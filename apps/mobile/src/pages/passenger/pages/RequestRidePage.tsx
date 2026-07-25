@@ -4601,6 +4601,10 @@ export default function RequestRidePage(): JSX.Element {
 
   const originSearchSeq = useRef(0);
   const destSearchSeq = useRef(0);
+  /* Evita que el mapa se reabra solo al devolver el foco al input justo
+     después de confirmar un punto (decisión de producto: tocar el campo abre
+     el mapa al instante, así que hace falta este freno de 900ms). */
+  const suppressPickerOpenRef = useRef(false);
 
   const [pickerTarget, setPickerTarget] = useState<PickerTarget | null>(null);
 
@@ -6353,6 +6357,11 @@ return (
               <IonInput
                 value={originInput}
                 placeholder="¿Dónde te recogemos?"
+                onIonFocus={() => {
+                  if (!canChooseOrigin) return;
+                  if (suppressPickerOpenRef.current) return;
+                  setPickerTarget("origin");
+                }}
                 onIonInput={(event) => {
                   if (!canChooseOrigin) {
                     applyRapaNuiAirportOrigin();
@@ -6407,7 +6416,10 @@ return (
                 <IonButton
                   fill="clear"
                   size="small"
-                  onClick={() => setPickerTarget("origin")}
+                  onClick={() => {
+                    if (suppressPickerOpenRef.current) return;
+                    setPickerTarget("origin");
+                  }}
                   style={
                     {
                       margin: "-4px 0 10px",
@@ -6454,6 +6466,11 @@ return (
               <IonInput
                 value={destInput}
                 placeholder="¿A dónde vas?"
+                onIonFocus={() => {
+                  if (selectedRoundTripPromotion) return;
+                  if (suppressPickerOpenRef.current) return;
+                  setPickerTarget("destination");
+                }}
                 onIonInput={(event) => {
                   if (selectedRoundTripPromotion) return;
                   setDestInput(String(event.detail.value ?? ""));
@@ -6475,6 +6492,7 @@ return (
               size="small"
               onClick={() => {
                 if (selectedRoundTripPromotion) return;
+                if (suppressPickerOpenRef.current) return;
                 setPickerTarget("destination");
               }}
               disabled={Boolean(selectedRoundTripPromotion)}
@@ -7933,6 +7951,8 @@ return (
             initialPoint={pickerInitialPoint}
             onCancel={() => setPickerTarget(null)}
             onConfirm={(point) => {
+              suppressPickerOpenRef.current = true;
+
               if (pickerTarget === "origin") {
                 applyOrigin(point);
               } else {
@@ -7940,6 +7960,10 @@ return (
               }
 
               setPickerTarget(null);
+
+              window.setTimeout(() => {
+                suppressPickerOpenRef.current = false;
+              }, 900);
             }}
           />
         )}
