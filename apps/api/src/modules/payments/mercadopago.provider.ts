@@ -349,7 +349,14 @@ export class MercadoPagoProvider implements PaymentProvider {
 
       if (!ts || !v1) return false;
 
-      const dataId = String((payload["data"] as Record<string, unknown>)?.["id"] ?? "");
+      const dataId = String(
+        headers["x-data-id"] ??
+          (payload["data"] as Record<string, unknown> | undefined)?.["id"] ??
+          "",
+      ).trim();
+
+      if (!dataId || !xRequestId) return false;
+
       const manifest = `id:${dataId};request-id:${xRequestId};ts:${ts};`;
       const expected = crypto
         .createHmac("sha256", config.webhookSecret)
@@ -379,7 +386,11 @@ export class MercadoPagoProvider implements PaymentProvider {
       };
     }
 
-    const paymentId = String((payload["data"] as Record<string, unknown>)?.["id"] ?? "");
+    const paymentId = String(
+      _headers["x-data-id"] ??
+        (payload["data"] as Record<string, unknown> | undefined)?.["id"] ??
+        "",
+    ).trim();
 
     if (!paymentId) {
       return {

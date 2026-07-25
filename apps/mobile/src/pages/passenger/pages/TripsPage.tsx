@@ -1472,6 +1472,66 @@ async function fetchPassengerFastSearchPaymentStatus(
   return String(payload.status ?? "").trim().toLowerCase();
 }
 
+type MercadoPagoReconciliationResult = {
+  id: string;
+  rideRequestId: string;
+  status: string;
+  paymentPurpose: "ride" | "fast_search";
+  providerPaymentId: string | null;
+  activated: boolean;
+  reconciled: boolean;
+};
+
+async function reconcileMercadoPagoReturnWithBackend(
+  accessToken: string,
+  paymentId: string,
+  providerPaymentId?: string,
+): Promise<MercadoPagoReconciliationResult> {
+  const response = await fetch(
+    `${getTripsApiBaseUrl()}/api/payments/${encodeURIComponent(paymentId)}/reconcile/mercadopago`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${accessToken}`,
+      },
+      body: JSON.stringify({
+        ...(providerPaymentId ? { providerPaymentId } : {}),
+      }),
+    },
+  );
+
+  const raw = await response.json().catch(() => ({}));
+  const payload = unwrapTripsApiPayload(raw);
+
+  if (!response.ok) {
+    throw new Error(
+      String(
+        payload.message ??
+          payload.error ??
+          "No se pudo conciliar el pago con Mercado Pago.",
+      ),
+    );
+  }
+
+  return {
+    id: String(payload.id ?? paymentId),
+    rideRequestId: String(payload.rideRequestId ?? ""),
+    status: String(payload.status ?? "").trim().toLowerCase(),
+    paymentPurpose:
+      String(payload.paymentPurpose ?? "").trim().toLowerCase() === "fast_search"
+        ? "fast_search"
+        : "ride",
+    providerPaymentId:
+      typeof payload.providerPaymentId === "string" &&
+      payload.providerPaymentId.trim()
+        ? payload.providerPaymentId.trim()
+        : null,
+    activated: payload.activated === true,
+    reconciled: payload.reconciled === true,
+  };
+}
+
 async function applyPassengerFastSearchChoice(
   ride: RideRequestData,
   accepted: boolean,
@@ -8655,11 +8715,21 @@ export default function TripsPage(): JSX.Element {
 
   useEffect(() => {
     let returnMarker = "";
+    let returnProviderPaymentId = "";
+    let returnExternalReference = "";
 
     try {
-      returnMarker = new URLSearchParams(window.location.search).get("payment") ?? "";
+      const params = new URLSearchParams(window.location.search);
+      returnMarker = params.get("payment") ?? "";
+      returnProviderPaymentId =
+        params.get("payment_id") ??
+        params.get("collection_id") ??
+        "";
+      returnExternalReference = params.get("external_reference") ?? "";
     } catch {
       returnMarker = "";
+      returnProviderPaymentId = "";
+      returnExternalReference = "";
     }
 
     const supportedMarkers = new Set([
@@ -8669,8 +8739,13 @@ export default function TripsPage(): JSX.Element {
       "failure_return",
       "pending_return",
     ]);
+    const hasPendingLocalPayment = Boolean(
+      readPendingCardPayment() ?? readPendingFastSearchPayment(),
+    );
 
-    if (!supportedMarkers.has(returnMarker)) return;
+    // También reintenta al abrir Mis Viajes si el navegador conservó una
+    // conciliación pendiente aunque Mercado Pago ya haya limpiado la query.
+    if (!supportedMarkers.has(returnMarker) && !hasPendingLocalPayment) return;
 
     let disposed = false;
     let waitTimer: number | null = null;
@@ -8690,6 +8765,54 @@ export default function TripsPage(): JSX.Element {
       const pending = readPendingCardPayment();
       const pendingFastSearch = readPendingFastSearchPayment();
       const accessToken = session?.accessToken;
+      const internalPaymentId = String(
+        pendingFastSearch?.paymentId ??
+          pending?.paymentId ??
+          returnExternalReference ??
+          "",
+      ).trim();
+
+      // La URL de retorno no es autoridad. Se envía el payment_id al backend,
+      // que consulta directamente la API de Mercado Pago y verifica:
+      // external_reference, monto, moneda y estado.
+      if (accessToken && internalPaymentId && !pending && !pendingFastSearch) {
+        try {
+          const reconciled = await reconcileMercadoPagoReturnWithBackend(
+            accessToken,
+            internalPaymentId,
+            returnProviderPaymentId || undefined,
+          );
+
+          cleanPaymentReturnQuery();
+
+          if (reconciled.status === "success") {
+            setPaymentReturnMessage({
+              tone: "approved",
+              title: "Pago aprobado",
+              body: "Mercado Pago confirmó el cobro y el backend habilitó el viaje.",
+            });
+          } else if (
+            ["rejected", "failed", "refunded"].includes(reconciled.status)
+          ) {
+            setPaymentReturnMessage({
+              tone: "rejected",
+              title: "Pago no aprobado",
+              body: "Mercado Pago informó que el pago fue rechazado o cancelado.",
+            });
+          } else {
+            setPaymentReturnMessage({
+              tone: "pending",
+              title: "Pago pendiente de confirmación",
+              body: "El backend todavía no encontró una aprobación definitiva en Mercado Pago.",
+            });
+          }
+
+          await loadRides();
+          return;
+        } catch (err) {
+          console.warn("[MercadoPago] No se pudo recuperar el regreso sin almacenamiento local:", err);
+        }
+      }
 
       if (accessToken && pendingFastSearch) {
         setPaymentReturnMessage({
@@ -8700,6 +8823,14 @@ export default function TripsPage(): JSX.Element {
 
         for (let attempt = 0; attempt < 15 && !disposed; attempt += 1) {
           try {
+            await reconcileMercadoPagoReturnWithBackend(
+              accessToken,
+              pendingFastSearch.paymentId,
+              attempt === 0
+                ? returnProviderPaymentId || undefined
+                : undefined,
+            );
+
             const status = await fetchPassengerFastSearchPaymentStatus(
               accessToken,
               pendingFastSearch.paymentId,
@@ -8772,7 +8903,9 @@ export default function TripsPage(): JSX.Element {
           setPaymentReturnMessage({
             tone: "pending",
             title: "Pago todavía no confirmado",
-            body: "No encontramos una confirmación local para este regreso. El servicio no se activará hasta que el backend reciba un pago aprobado.",
+            body: accessToken
+              ? "No pudimos relacionar este regreso con una solicitud local. Revisa nuevamente Mis Viajes; el backend seguirá siendo la autoridad."
+              : "Tu sesión expiró. Inicia sesión nuevamente para consultar el pago sin volver a pagar.",
           });
           void loadRides();
         }
@@ -8781,6 +8914,20 @@ export default function TripsPage(): JSX.Element {
 
       for (let attempt = 0; attempt < 15 && !disposed; attempt += 1) {
         try {
+          const paymentId = String(
+            pending.paymentId ?? returnExternalReference ?? "",
+          ).trim();
+
+          if (paymentId) {
+            await reconcileMercadoPagoReturnWithBackend(
+              accessToken,
+              paymentId,
+              attempt === 0
+                ? returnProviderPaymentId || undefined
+                : undefined,
+            );
+          }
+
           const serverRides = await ridesService.listMyRides(accessToken);
           const serverRide = serverRides.find((ride) => ride.id === pending.rideRequestId);
           const status = String(serverRide?.status ?? "").trim().toLowerCase();

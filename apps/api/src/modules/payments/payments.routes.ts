@@ -5,6 +5,10 @@ export async function paymentsRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.post("/payments/create", paymentsController.createPayment);
   fastify.get("/payments/:paymentId/status", paymentsController.getPaymentStatus);
   fastify.get("/payments/:paymentId/receipt", paymentsController.getPaymentReceipt);
+  fastify.post(
+    "/payments/:paymentId/reconcile/mercadopago",
+    paymentsController.reconcileMercadoPagoPayment,
+  );
   const webhookOptions = {
     config: {
       // Los proveedores reintentan automáticamente sus notificaciones.

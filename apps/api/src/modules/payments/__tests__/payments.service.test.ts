@@ -106,6 +106,9 @@ vi.mock("../../../modules/audit/audit.service.js", () => ({
 vi.mock("../../../modules/rides/rides.repository.js", () => ({
   RidesRepository: vi.fn().mockImplementation(() => ({
     findById: mockFindRideById,
+    activateAfterApprovedPayment: vi.fn().mockResolvedValue({
+      status: "requested",
+    }),
   })),
 }));
 
@@ -517,6 +520,163 @@ describe("PaymentsService.refundCardPaymentForCancelledRide", () => {
     }
     expect(mockClaimRefund).not.toHaveBeenCalled();
     expect(fetchMock).not.toHaveBeenCalled();
+
+    vi.unstubAllGlobals();
+  });
+});
+
+
+describe("PaymentsService.reconcileMercadoPagoPayment", () => {
+  let service: PaymentsService;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.unstubAllGlobals();
+    service = new PaymentsService();
+    mockIsSessionValid.mockResolvedValue(true);
+    setupPassengerAuth();
+    process.env["MERCADOPAGO_ACCESS_TOKEN"] = "APP_USR-test-token";
+  });
+
+  it("confirms an approved payment by querying Mercado Pago directly", async () => {
+    mockFindById.mockResolvedValue({
+      id: PAYMENT_ID,
+      rideRequestId: RIDE_ID,
+      passengerUserId: PASSENGER_ID,
+      amountClp: 5000,
+      paymentPurpose: "ride",
+      provider: "mercadopago",
+      status: "processing",
+      providerPaymentId: null,
+    });
+    mockMarkSuccess.mockResolvedValue({
+      id: PAYMENT_ID,
+      status: "success",
+    });
+
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      text: vi.fn().mockResolvedValue(JSON.stringify({
+        id: 987654321,
+        status: "approved",
+        external_reference: PAYMENT_ID,
+        transaction_amount: 5000,
+        currency_id: "CLP",
+      })),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await service.reconcileMercadoPagoPayment(
+      "tok",
+      PAYMENT_ID,
+      "987654321",
+    );
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.payment.status).toBe("success");
+      expect(result.payment.providerPaymentId).toBe("987654321");
+      expect(result.payment.activated).toBe(true);
+    }
+    expect(mockMarkSuccess).toHaveBeenCalledWith(
+      PAYMENT_ID,
+      "987654321",
+      expect.objectContaining({
+        external_reference: PAYMENT_ID,
+        transaction_amount: 5000,
+        currency_id: "CLP",
+      }),
+    );
+
+    vi.unstubAllGlobals();
+  });
+
+  it("rejects a return payment that belongs to another external_reference", async () => {
+    mockFindById.mockResolvedValue({
+      id: PAYMENT_ID,
+      rideRequestId: RIDE_ID,
+      passengerUserId: PASSENGER_ID,
+      amountClp: 5000,
+      paymentPurpose: "ride",
+      provider: "mercadopago",
+      status: "processing",
+      providerPaymentId: null,
+    });
+
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      text: vi.fn().mockResolvedValue(JSON.stringify({
+        id: 987654321,
+        status: "approved",
+        external_reference: "another-payment-id",
+        transaction_amount: 5000,
+        currency_id: "CLP",
+      })),
+    }));
+
+    const result = await service.reconcileMercadoPagoPayment(
+      "tok",
+      PAYMENT_ID,
+      "987654321",
+    );
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.code).toBe("PAYMENT_EXTERNAL_REFERENCE_MISMATCH");
+      expect(result.statusCode).toBe(409);
+    }
+    expect(mockMarkSuccess).not.toHaveBeenCalled();
+
+    vi.unstubAllGlobals();
+  });
+
+  it("searches by external_reference when the return URL no longer has payment_id", async () => {
+    mockFindById.mockResolvedValue({
+      id: PAYMENT_ID,
+      rideRequestId: RIDE_ID,
+      passengerUserId: PASSENGER_ID,
+      amountClp: 5000,
+      paymentPurpose: "ride",
+      provider: "mercadopago",
+      status: "processing",
+      providerPaymentId: null,
+    });
+    mockMarkSuccess.mockResolvedValue({
+      id: PAYMENT_ID,
+      status: "success",
+    });
+
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      text: vi.fn().mockResolvedValue(JSON.stringify({
+        results: [{
+          id: 123456789,
+          status: "approved",
+          external_reference: PAYMENT_ID,
+          transaction_amount: 5000,
+          currency_id: "CLP",
+        }],
+      })),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await service.reconcileMercadoPagoPayment(
+      "tok",
+      PAYMENT_ID,
+    );
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.payment.status).toBe("success");
+      expect(result.payment.providerPaymentId).toBe("123456789");
+    }
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringContaining("/v1/payments/search?"),
+      expect.objectContaining({ method: "GET" }),
+    );
 
     vi.unstubAllGlobals();
   });
