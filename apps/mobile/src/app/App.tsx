@@ -20,6 +20,7 @@ import "../theme/auth.css";
 import "../theme/profile.css";
 import "../theme/home.css";
 import "../theme/sections.css";
+import "../theme/request-ride.css";
 
 import { initRapagoTheme } from "../theme/rapagoTheme";
 

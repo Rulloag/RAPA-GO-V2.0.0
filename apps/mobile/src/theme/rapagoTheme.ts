@@ -31,7 +31,13 @@ const STORAGE_KEY = "rapago_ui_theme_v1";
 const THEME_EVENT = "rapago:theme-changed";
 const THEME_ATTRIBUTE = "data-rapago-theme";
 
-/** El modo noche es el look que hereda del Login, así que es el defecto. */
+/**
+ * Defecto de última instancia (dato corrupto en storage, etc.). El modo
+ * noche es el look que hereda del Login, así que se mantiene como red de
+ * seguridad, pero YA NO es el fallback cuando simplemente no hay preferencia
+ * guardada: en ese caso se prefiere `deriveThemeFromLocalTime()` (ver más
+ * abajo) para que el arranque sea coherente con la hora del usuario.
+ */
 const DEFAULT_THEME: RapagoTheme = "dark";
 
 function normalizeTheme(value: unknown): RapagoTheme {
@@ -43,10 +49,12 @@ export function readStoredTheme(): RapagoTheme {
     const stored = localStorage.getItem(STORAGE_KEY);
     if (stored) return normalizeTheme(stored);
   } catch {
-    // Modo privado o storage bloqueado: se usa el defecto.
+    // Modo privado o storage bloqueado: se usa el auto-derivado por hora.
   }
 
-  return DEFAULT_THEME;
+  // Sin preferencia global guardada: se auto-deriva por hora local en vez de
+  // caer siempre en "dark" (ver `deriveThemeFromLocalTime` más abajo).
+  return deriveThemeFromLocalTime();
 }
 
 export function applyTheme(theme: RapagoTheme): void {
@@ -143,17 +151,56 @@ function sectionStorageKey(sectionId: RapagoSection): string {
   return `${STORAGE_KEY}:${sectionId}`;
 }
 
+/**
+ * AUTO-DETECCIÓN DE TEMA POR HORA LOCAL DEL DISPOSITIVO
+ * ------------------------------------------------------
+ * El encargo pide que el tema "se auto-derive según dónde se encuentra el
+ * usuario" para que la app arranque coherente con el día/noche real de esa
+ * persona. La forma pragmática de lograrlo SIN pedir permisos de
+ * geolocalización y SIN depender de red (la app debe funcionar offline) es
+ * usar la hora local del dispositivo: `Date.getHours()` ya refleja la zona
+ * horaria configurada en el teléfono, que en la enorme mayoría de los casos
+ * coincide con la ubicación real del usuario.
+ *
+ * MEJORA FUTURA (fuera de alcance ahora): si algún día se cuenta con permiso
+ * de geolocalización, se podría calcular el amanecer/atardecer exacto de las
+ * coordenadas del usuario (p. ej. con una fórmula solar o una librería como
+ * suncalc) para un umbral más preciso que estas horas fijas. Por ahora, hora
+ * local es suficiente y no tiene costo de permisos ni de red.
+ */
+
+/** 07:00 (inclusive) es el inicio del rango "de día" → tema claro. */
+const DAY_START_HOUR = 7;
+/** 19:00 (inclusive) es el inicio del rango "de noche" → tema oscuro. */
+const NIGHT_START_HOUR = 19;
+
+/**
+ * Deriva el tema a partir de la hora local, sin tocar storage ni el DOM
+ * (función pura, fácil de probar). Rango día: [DAY_START_HOUR, NIGHT_START_HOUR)
+ * → "light". Fuera de ese rango (noche/madrugada) → "dark".
+ */
+export function deriveThemeFromLocalTime(now: Date = new Date()): RapagoTheme {
+  const hour = now.getHours();
+  const isDaytime = hour >= DAY_START_HOUR && hour < NIGHT_START_HOUR;
+  return isDaytime ? "light" : "dark";
+}
+
 export function readStoredSectionTheme(sectionId: RapagoSection): RapagoTheme {
   try {
     const stored = localStorage.getItem(sectionStorageKey(sectionId));
+    // Si la sección ya tiene una preferencia guardada, es porque el usuario
+    // la eligió a mano (con el botón sol/luna) alguna vez: esa elección
+    // manual gana SIEMPRE sobre cualquier auto-detección, para siempre.
     if (stored) return normalizeTheme(stored);
   } catch {
-    // Modo privado o storage bloqueado: cae al valor heredado.
+    // Modo privado o storage bloqueado: cae al auto-derivado por hora.
   }
 
-  // Migración suave: si la sección nunca eligió tema, hereda la preferencia
-  // global antigua para que el cambio no "resetee" a nadie a modo noche.
-  return readStoredTheme();
+  // No hay preferencia explícita para esta sección: en vez de heredar la
+  // vieja preferencia global fija (que siempre caía en "dark"), se deriva
+  // el tema de la hora local del dispositivo para que la primera impresión
+  // sea coherente con el momento del día del usuario.
+  return deriveThemeFromLocalTime();
 }
 
 export function persistSectionTheme(
