@@ -8546,7 +8546,8 @@ function PassengerRideCard({
 export default function TripsPage(): JSX.Element {
   const history = useHistory();
   const { session } = useAuth();
-  const { theme, isDark, toggleTheme } = useRapagoSectionTheme("trips");
+  // Solo se lee: el interruptor único vive en el encabezado de Inicio.
+  const { theme } = useRapagoSectionTheme("trips");
 
   const [allRides,    setAllRides]    = useState<RideRequestData[]>([]);
   const [page,        setPage]        = useState(1);
@@ -9331,8 +9332,6 @@ export default function TripsPage(): JSX.Element {
       `}</style>
       <RapagoSectionHeader
         title="Mis Viajes"
-        isDark={isDark}
-        onToggleTheme={toggleTheme}
         actionIcon={refreshOutline}
         actionLabel="Actualizar"
         actionLoading={loading}

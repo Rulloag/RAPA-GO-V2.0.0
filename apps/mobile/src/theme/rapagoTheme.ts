@@ -86,7 +86,11 @@ export function persistTheme(theme: RapagoTheme): void {
  * ya esté puesto y no haya un parpadeo de tema.
  */
 export function initRapagoTheme(): void {
-  applyTheme(readStoredTheme());
+  // Se lee el ámbito de pasajero, que es lo que realmente se persiste. Antes se
+  // leía `rapago_ui_theme_v1` sin sufijo —una clave que ya nadie escribe—, así
+  // que el arranque siempre caía en el derivado por hora y la barra inferior
+  // parpadeaba al montarse la primera pantalla con su tema real.
+  applyTheme(readScopeTheme("passenger"));
 }
 
 /**
@@ -147,8 +151,49 @@ export type RapagoSection =
   | "request-ride"
   | "auth";
 
-function sectionStorageKey(sectionId: RapagoSection): string {
+/**
+ * ÁMBITO DE TEMA
+ * --------------
+ * Antes cada sección guardaba su propio tema, así que cambiarlo en Inicio no
+ * afectaba a Viajes, Beneficios ni Ayuda: el usuario tenía que repetir el mismo
+ * gesto en cada pestaña y la app se veía a dos luces. Ahora las pantallas se
+ * agrupan en ÁMBITOS y todas las del mismo ámbito comparten una preferencia.
+ *
+ * `auth` queda aparte a propósito: Login y Registro son previos a la sesión, no
+ * se sabe todavía el rol de quien mira, y tienen su propia superficie visual.
+ */
+export type RapagoThemeScope = "passenger" | "auth";
+
+const SECTION_SCOPE: Record<RapagoSection, RapagoThemeScope> = {
+  home: "passenger",
+  profile: "passenger",
+  trips: "passenger",
+  wallet: "passenger",
+  support: "passenger",
+  "request-ride": "passenger",
+  auth: "auth",
+};
+
+/**
+ * Claves antiguas (una por sección) de las que se migra la preferencia la
+ * primera vez, para no resetear el tema a quien ya lo tenía elegido. Se lee en
+ * este orden: Inicio manda, porque es donde vive el interruptor principal.
+ */
+const LEGACY_SECTIONS_BY_SCOPE: Record<RapagoThemeScope, RapagoSection[]> = {
+  passenger: ["home", "profile", "trips", "wallet", "support", "request-ride"],
+  auth: ["auth"],
+};
+
+function scopeStorageKey(scope: RapagoThemeScope): string {
+  return `${STORAGE_KEY}:${scope}`;
+}
+
+function legacySectionStorageKey(sectionId: RapagoSection): string {
   return `${STORAGE_KEY}:${sectionId}`;
+}
+
+export function scopeOfSection(sectionId: RapagoSection): RapagoThemeScope {
+  return SECTION_SCOPE[sectionId] ?? "passenger";
 }
 
 /**
@@ -185,36 +230,60 @@ export function deriveThemeFromLocalTime(now: Date = new Date()): RapagoTheme {
   return isDaytime ? "light" : "dark";
 }
 
-export function readStoredSectionTheme(sectionId: RapagoSection): RapagoTheme {
+export function readScopeTheme(scope: RapagoThemeScope): RapagoTheme {
   try {
-    const stored = localStorage.getItem(sectionStorageKey(sectionId));
-    // Si la sección ya tiene una preferencia guardada, es porque el usuario
-    // la eligió a mano (con el botón sol/luna) alguna vez: esa elección
-    // manual gana SIEMPRE sobre cualquier auto-detección, para siempre.
+    const stored = localStorage.getItem(scopeStorageKey(scope));
+    // Elección manual del usuario: gana siempre sobre la auto-detección.
     if (stored) return normalizeTheme(stored);
+
+    // Migración desde el modelo anterior (una clave por sección). Se adopta la
+    // primera preferencia encontrada y se reescribe ya en el formato nuevo, así
+    // que esto ocurre una sola vez por dispositivo.
+    for (const sectionId of LEGACY_SECTIONS_BY_SCOPE[scope]) {
+      const heredado = localStorage.getItem(legacySectionStorageKey(sectionId));
+      if (heredado) {
+        const tema = normalizeTheme(heredado);
+        localStorage.setItem(scopeStorageKey(scope), tema);
+        return tema;
+      }
+    }
   } catch {
     // Modo privado o storage bloqueado: cae al auto-derivado por hora.
   }
 
-  // No hay preferencia explícita para esta sección: en vez de heredar la
-  // vieja preferencia global fija (que siempre caía en "dark"), se deriva
-  // el tema de la hora local del dispositivo para que la primera impresión
-  // sea coherente con el momento del día del usuario.
+  // Sin preferencia previa: se deriva de la hora local del dispositivo para que
+  // la primera impresión sea coherente con el momento del día del usuario.
   return deriveThemeFromLocalTime();
+}
+
+export function readStoredSectionTheme(sectionId: RapagoSection): RapagoTheme {
+  return readScopeTheme(scopeOfSection(sectionId));
 }
 
 export function persistSectionTheme(
   sectionId: RapagoSection,
   theme: RapagoTheme,
 ): void {
+  const scope = scopeOfSection(sectionId);
+
   // La barra de pestañas inferior es hermana del router outlet: solo puede
   // seguir el tema vía :root, así que el de la pantalla activa se espeja ahí.
   applyTheme(theme);
 
   try {
-    localStorage.setItem(sectionStorageKey(sectionId), theme);
+    localStorage.setItem(scopeStorageKey(scope), theme);
   } catch {
     // No bloquea el cambio visual si no se puede persistir.
+  }
+
+  // Ionic mantiene montadas las pantallas ya visitadas: sin este aviso, Viajes
+  // o Beneficios seguirían pintando el tema anterior hasta recargarlas.
+  try {
+    window.dispatchEvent(
+      new CustomEvent(THEME_EVENT, { detail: { theme, scope } }),
+    );
+  } catch {
+    // No bloquea la app.
   }
 }
 
@@ -246,6 +315,31 @@ export function useRapagoSectionTheme(sectionId: RapagoSection): {
   // Primer montaje (useIonViewWillEnter no cubre rutas fuera de un outlet).
   useEffect(() => {
     applyTheme(readStoredSectionTheme(sectionId));
+  }, [sectionId]);
+
+  /**
+   * Sincronización entre pantallas del mismo ámbito. Ionic no desmonta las
+   * páginas ya visitadas, así que sin esto Viajes seguiría en el tema viejo
+   * después de cambiarlo desde Inicio. Solo se reacciona a los cambios del
+   * ámbito propio: el tema de Acceso no debe arrastrar al de pasajero.
+   */
+  useEffect(() => {
+    const scope = scopeOfSection(sectionId);
+
+    function sincronizar(event: Event): void {
+      const detalle = (event as CustomEvent<{ scope?: RapagoThemeScope }>).detail;
+      // El evento `storage` (otra pestaña del navegador) no trae detalle.
+      if (detalle?.scope != null && detalle.scope !== scope) return;
+      setThemeState(readScopeTheme(scope));
+    }
+
+    window.addEventListener(THEME_EVENT, sincronizar);
+    window.addEventListener("storage", sincronizar);
+
+    return () => {
+      window.removeEventListener(THEME_EVENT, sincronizar);
+      window.removeEventListener("storage", sincronizar);
+    };
   }, [sectionId]);
 
   const setTheme = useCallback(

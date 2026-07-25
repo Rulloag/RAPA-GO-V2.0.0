@@ -4573,7 +4573,8 @@ type PageStatus =
 export default function RequestRidePage(): JSX.Element {
   const { session } = useAuth();
   const history = useHistory();
-  const { theme, isDark, toggleTheme } = useRapagoSectionTheme("request-ride");
+  // Solo se lee: el interruptor único vive en el encabezado de Inicio.
+  const { theme } = useRapagoSectionTheme("request-ride");
 
   useEffect(() => {
     preSearchLocationService.read();
@@ -6317,8 +6318,6 @@ return (
     >
       <RapagoSectionHeader
         title="Solicitar Viaje"
-        isDark={isDark}
-        onToggleTheme={toggleTheme}
         onBack={() => history.replace(ROUTES.PASSENGER.HOME)}
         backLabel="Volver al inicio"
       />
