@@ -105,6 +105,16 @@
   --rp-danger-fg: #f0906e;
   --rp-danger-bd: rgba(184, 79, 46, 0.6);
 
+  /* Aviso (ámbar) e informativo (azul). Faltaban: las pantallas los resolvían
+     con hex fijos de modo día (#fff7db/#5f3f00, #dbeafe/#2563eb) que quedaban
+     ilegibles de noche. Ratios sobre la superficie oscura: 11,75:1 y 10,38:1. */
+  --rp-warn-fg: #f1c864;
+  --rp-warn-bg: rgba(241, 200, 100, 0.13);
+  --rp-warn-bd: rgba(241, 200, 100, 0.36);
+  --rp-info-fg: #93c5fd;
+  --rp-info-bg: rgba(147, 197, 253, 0.13);
+  --rp-info-bd: rgba(147, 197, 253, 0.36);
+
   /* Barra de navegación inferior. */
   --rp-nav-bg: #1a1a1a;
   --rp-nav-fg: #d9c3a0;
@@ -180,6 +190,14 @@
   --rp-err-bd: rgba(184, 79, 46, 0.38);
   --rp-danger-fg: #b03a1c;
   --rp-danger-bd: rgba(184, 79, 46, 0.55);
+
+  /* Contrapartes de día. Ratios sobre la superficie clara: 7,73:1 y 6,49:1. */
+  --rp-warn-fg: #6b4b00;
+  --rp-warn-bg: rgba(107, 75, 0, 0.1);
+  --rp-warn-bd: rgba(107, 75, 0, 0.34);
+  --rp-info-fg: #1d4ed8;
+  --rp-info-bg: rgba(29, 78, 216, 0.09);
+  --rp-info-bd: rgba(29, 78, 216, 0.32);
 
   /* En modo día la barra pasa a superficie clara. El inactivo es #6b5a3e y no
      un gris al 50%: sobre blanco cálido da ~5.2:1, por encima del mínimo AA. */
