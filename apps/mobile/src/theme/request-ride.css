@@ -28,6 +28,98 @@
   padding-bottom: calc(90px + env(safe-area-inset-bottom, 0px));
 }
 
+/* ── Fila de información (tarjetas de la hoja del mapa) ──────────────────── */
+/* UNA sola rejilla para todas las filas. Antes cada tarjeta traía su propio
+   layout inline: la de la dirección iba en flex con un punto de 14px y padding
+   de 14, y la de la caminata en grid con una columna de 42px y padding de 16.
+   Resultado: el texto de una empezaba 30px más a la derecha que el de la otra
+   y los bordes derechos tampoco coincidían — se veían descuadradas entre sí
+   aunque cada una por separado estuviera bien.
+
+   Con la columna de iconos a ancho fijo, el texto y el dato de la derecha caen
+   siempre en la misma vertical, tenga la fila el icono que tenga. */
+.rapago-request-page .rp-request-row {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 16px;
+  margin-bottom: 12px;
+}
+
+/* Centra en la columna cualquier icono, mida lo que mida: el punto de color de
+   una fila y el emoji de otra tienen tamaños distintos, y así ambos quedan en
+   el mismo eje en lugar de cada uno pegado a un lado. */
+.rapago-request-page .rp-request-row__icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 24px;
+  line-height: 1;
+}
+
+.rapago-request-page .rp-request-row__title {
+  color: var(--rp-text);
+  font-weight: 850;
+  font-size: 0.88rem;
+  margin-bottom: 4px;
+}
+
+.rapago-request-page .rp-request-row__sub {
+  color: var(--rp-muted);
+  font-size: 0.82rem;
+  line-height: 1.35;
+}
+
+.rapago-request-page .rp-request-row__value {
+  color: var(--rp-ok-fg);
+  font-weight: 850;
+  font-size: 0.92rem;
+  text-align: right;
+}
+
+.rapago-request-page .rp-request-row__value-sub {
+  color: var(--rp-muted);
+  font-weight: 700;
+  font-size: 0.78rem;
+  margin-top: 4px;
+}
+
+/* ── Controles flotantes sobre el mapa ───────────────────────────────────── */
+/* Una única columna alineada al borde derecho, con todos los botones del mismo
+   tamaño y separación. Antes el zoom lo pintaba Google donde él decidía y el
+   botón de centrar iba aparte en `position: absolute`, de otro tamaño: los dos
+   acababan superpuestos y sin compartir eje.
+
+   `bottom` deja libre la franja de atribución de Google, que es obligatoria y
+   no se puede tapar. 48px de lado mantiene el objetivo táctil por encima del
+   mínimo accesible de 44px. */
+.rapago-request-page .rp-map-controls {
+  position: absolute;
+  right: 14px;
+  bottom: 34px;
+  z-index: 12;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.rapago-request-page .rp-map-control {
+  width: 48px;
+  height: 48px;
+  padding: 0;
+  border-radius: 999px;
+  border: var(--rp-border-w) solid var(--rp-border-c);
+  background: var(--rp-surface);
+  color: var(--rp-icon-fg);
+  box-shadow: var(--rp-shadow);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 22px;
+  cursor: pointer;
+}
+
 /* ── Etiqueta de sección ─────────────────────────────────────────────────── */
 .rapago-request-page .rp-request-label {
   display: flex;
@@ -123,26 +215,84 @@
 /* El IonModal monta su propio IonPage con .rapago-section-page.rapago-request-page,
    pero fuera del árbol de la página; los tokens resuelven contra :root, que
    useRapagoSectionTheme mantiene espejado al tema activo. */
+/* Se ancla con inset:0, NO con `height: 100%`. Parece lo mismo y no lo es:
+   el padre es el .inner-scroll de Ionic, que lleva
+   `padding-bottom: calc(... + área segura)` y `box-sizing: border-box`. Un
+   `height: 100%` resuelve contra su caja de CONTENIDO, o sea sin ese padding,
+   y la shell quedaba más corta que el hueco disponible: por debajo asomaba el
+   fondo de la página, la franja clara entre el mapa y la hoja. Posicionada,
+   ocupa la caja de relleno completa y ese desajuste desaparece. */
 .rapago-request-page .rp-request-map-shell {
-  height: 100%;
+  position: absolute;
+  inset: 0;
   background: transparent;
   display: flex;
   flex-direction: column;
 }
 
-/* La hoja llegaba a 52dvh y, con el solape de -20px, dejaba el mapa con menos
-   alto que el propio texto que lo describe: se confirmaba un punto casi sin
-   verlo. Ahora se limita a 42dvh, de modo que el mapa —el elemento sobre el que
-   se decide— conserve siempre la mayor parte de la pantalla.
+/* EL REPARTO. Los dos únicos hijos de la shell se llevan el 100% entre ambos,
+   así que no puede quedar hueco entre ellos por construcción.
+
+   El mapa va con proporción FIJA a propósito. Antes mandaba el alto de la hoja
+   y el mapa se quedaba con el resto; como la hoja crece cuando llega la
+   dirección y cuando aparece la tarjeta de caminata, el mapa se encogía sola
+   mientras el usuario lo estaba mirando. Con una fracción fija el mapa mide
+   siempre lo mismo, cargue lo que cargue debajo.
+
+   El valor concreto lo pone el componente en `--rp-map-share` porque el panel
+   se puede arrastrar: reposa al 50% (mitad y mitad) y el usuario lo sube o lo
+   baja. El fallback del 50% mantiene la pantalla usable si por lo que sea la
+   variable no llegara. */
+.rapago-request-page .rp-request-map-canvas {
+  position: relative;
+  flex: 0 0 var(--rp-map-share, 50%);
+  min-height: 0;
+  /* Curva con un punto de rebasamiento: el panel llega, se pasa un pelo y
+     asienta. Una curva que solo frena llega "muerta"; este pequeño exceso es lo
+     que hace que se lea como un objeto con peso y no como una caja que cambia
+     de tamaño. */
+  transition: flex-basis 0.42s cubic-bezier(0.34, 1.28, 0.52, 1);
+}
+
+/* Durante el arrastre el panel tiene que ir pegado al dedo. Con la transición
+   puesta iría siempre un poco por detrás y se sentiría blando. */
+.rapago-request-page .rp-request-map-shell.is-dragging .rp-request-map-canvas {
+  transition: none;
+}
+
+/* Cuanto más alto está el panel, más profunda su sombra: refuerza que se ha
+   levantado por encima del mapa en vez de estar apoyado abajo. La transición
+   es la misma que la del reparto para que ambas cosas viajen juntas. */
+.rapago-request-page .rp-request-map-shell.is-sheet-tall .rp-request-map-sheet {
+  box-shadow: 0 -26px 56px rgba(0, 0, 0, 0.44);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rapago-request-page .rp-request-map-canvas,
+  .rapago-request-page .rp-request-map-sheet,
+  .rapago-request-page .rp-request-map-grip__bar {
+    transition: none;
+  }
+}
+
+/* La hoja se queda EXACTAMENTE con lo que no ocupa el mapa. No lleva altura
+   propia ni tope: al ser el otro miembro del reparto, cualquier número aquí
+   sería una segunda fuente de verdad que podría no cuadrar con la primera, y
+   ese desacuerdo es justo lo que dejaba huecos. Si su contenido no cabe, se
+   desplaza por dentro (.rp-request-map-sheet-scroll); nunca empuja al mapa.
 
    Es un contenedor flex en columna, NO el que hace scroll: antes esta misma
    caja tenía `overflow-y: auto` y el botón de confirmar era `position: sticky`
    dentro de ella. Esa combinación (sticky + max-height + overflow en el MISMO
    elemento) es la que dejaba un hueco vacío enorme entre el botón y el borde
    inferior en algunos WebView. Ahora el scroll vive en un hijo aparte
-   (.rp-request-map-sheet-scroll) y el botón es un hermano normal, sin sticky:
-   la caja completa vuelve a medir exactamente lo que mide su contenido. */
+   (.rp-request-map-sheet-scroll) y el botón es un hermano normal, sin sticky.
+
+   El `margin-top: -20px` monta la hoja sobre el mapa: es lo que la hace leer
+   como una hoja apoyada encima y no como una franja pegada al borde. */
 .rapago-request-page .rp-request-map-sheet {
+  flex: 1 1 auto;
+  min-height: 0;
   background: var(--rp-surface);
   border-top-left-radius: 28px;
   border-top-right-radius: 28px;
@@ -151,8 +301,7 @@
   z-index: 20;
   padding: 14px 18px max(20px, env(safe-area-inset-bottom));
   box-shadow: 0 -18px 38px rgba(0, 0, 0, 0.28);
-  flex: 0 0 auto;
-  max-height: 42dvh;
+  transition: box-shadow 0.42s cubic-bezier(0.34, 1.28, 0.52, 1);
   display: flex;
   flex-direction: column;
   color: var(--rp-text);
@@ -160,25 +309,76 @@
 
 /* Único elemento que hace scroll dentro de la hoja. min-height: 0 es lo que
    permite que, dentro de un flex column, este bloque se achique en vez de
-   desbordar cuando el contenido más el botón no caben en 42dvh. */
+   desbordar cuando el contenido más el botón no caben.
+
+   El degradado del final NO es adorno. Cuando el contenido no cabe, la última
+   tarjeta quedaba cortada en seco a media palabra: eso se lee como un fallo de
+   maquetación, no como algo desplazable, así que el usuario no tenía ningún
+   motivo para arrastrar y se perdía lo de abajo. Difuminada, la misma tarjeta
+   dice "sigue hacia abajo" sin necesidad de explicarlo. El padding inferior
+   hace que, cuando el contenido SÍ cabe entero, el degradado caiga sobre el
+   hueco vacío y no se note. */
 .rapago-request-page .rp-request-map-sheet-scroll {
   flex: 1 1 auto;
   min-height: 0;
   overflow-y: auto;
   overscroll-behavior: contain; /* el scroll no se propaga al mapa de debajo */
   -webkit-overflow-scrolling: touch;
+  padding-bottom: 12px;
+  -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 24px), transparent);
+  mask-image: linear-gradient(to bottom, #000 calc(100% - 24px), transparent);
 }
 
-/* Separador visual, NO una afordancia de arrastre: antes parecía un tirador de
-   hoja deslizable pero no tenía ningún manejador, así que arrastrarlo no hacía
-   nada. Se hace más discreto y ancho para que no invite a tirar de él. */
+/* Tirador del panel. En su día se dejó deliberadamente discreto porque no
+   hacía nada y parecer arrastrable era engañar; ahora arrastra de verdad, así
+   que vuelve a tener presencia de agarradero.
+
+   La barra visible es fina, pero el botón que la envuelve ocupa todo el ancho
+   y 30px de alto: el objetivo táctil tiene que ser cómodo aunque el adorno sea
+   pequeño. `touch-action: none` es imprescindible — sin él, iOS interpreta el
+   gesto vertical como scroll y se queda con él antes de que lleguen los
+   eventos de puntero. */
 .rapago-request-page .rp-request-map-grip {
   flex: 0 0 auto;
-  width: 64px;
-  height: 3px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 30px;
+  margin: -8px 0 6px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  touch-action: none;
+  cursor: grab;
+}
+
+.rapago-request-page .rp-request-map-shell.is-dragging .rp-request-map-grip {
+  cursor: grabbing;
+}
+
+/* El tirador se ensancha y se enciende mientras se arrastra. Es la única señal
+   de que el gesto fue reconocido: sin ella, si el panel tarda un frame en
+   moverse, el usuario duda de si lo ha agarrado y suelta. */
+.rapago-request-page .rp-request-map-grip__bar {
+  width: 52px;
+  height: 5px;
   border-radius: 999px;
-  background: var(--rp-divider);
-  margin: 0 auto 14px;
+  background: var(--rp-muted-soft);
+  transition:
+    width 0.2s ease,
+    background-color 0.2s ease;
+}
+
+.rapago-request-page .rp-request-map-shell.is-dragging .rp-request-map-grip__bar {
+  width: 72px;
+  background: var(--rp-accent);
+}
+
+.rapago-request-page .rp-request-map-grip:focus-visible {
+  outline: 2px solid var(--rp-border-strong);
+  outline-offset: -4px;
+  border-radius: 12px;
 }
 
 /* Hermano normal al final del flex column, NO sticky: con el scroll ya
