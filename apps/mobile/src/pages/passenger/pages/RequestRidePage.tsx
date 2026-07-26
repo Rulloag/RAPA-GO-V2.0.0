@@ -39,6 +39,7 @@ import {
   useRef,
   useState,
   type CSSProperties,
+  type PointerEvent as ReactPointerEvent,
 } from "react";
 import { useHistory } from "react-router-dom";
 import { ROUTES } from "../../../navigation/routes.js";
@@ -1576,13 +1577,18 @@ type PickerResult = {
   lng: number;
   placeId?: string | null;
 
-  // Punto real donde estaba el usuario/pin antes de ajustar a calle.
+  // Punto real donde estaba el usuario/pin antes de ajustar a una vía accesible.
   originalLat?: number | null;
   originalLng?: number | null;
 
-  // Distancia caminando aproximada desde el punto real hasta la calle accesible.
+  // Datos calculados automáticamente con Google Maps.
   walkMeters?: number;
+  walkMinutes?: number;
   isAccessiblePickup?: boolean;
+  streetName?: string | null;
+  referenceName?: string | null;
+  referenceDistanceMeters?: number | null;
+  candidateId?: string;
 };
 
 type MapPointMovedPayload = {
@@ -1799,36 +1805,173 @@ function buildPlaceStreetTitle(placeName: unknown, streetName: unknown): string 
   return place || street || null;
 }
 
-const RAPA_NUI_VISIBLE_PLACE_REFERENCES: Array<{ name: string; lat: number; lng: number }> = [
-  { name: "Hotel Taha Tai", lat: -27.15055, lng: -109.43105 },
-  { name: "Apina Tupuna", lat: -27.15125, lng: -109.43165 },
-  { name: "Ahu Tahai", lat: -27.1398, lng: -109.4298 },
-  { name: "Playa Pea", lat: -27.1482, lng: -109.4336 },
-  { name: "Playa Poko Poko", lat: -27.149, lng: -109.4319 },
-  { name: "Caleta Hanga Roa", lat: -27.1478, lng: -109.4356 },
-  { name: "Mercado Artesanal Rapa Nui", lat: -27.1508, lng: -109.4289 },
-  { name: "Feria Artesanal Hare Umanga", lat: -27.1503, lng: -109.4277 },
-  { name: "Iglesia de la Santa Cruz Rapa Nui", lat: -27.1506, lng: -109.4271 },
-  { name: "Comisaría Rapa Nui", lat: -27.1497, lng: -109.4268 },
-  { name: "Hospital de Hanga Roa", lat: -27.1502, lng: -109.4216 },
-  { name: "Aeropuerto Internacional Mataveri", lat: -27.16395, lng: -109.42465 },
-  { name: "Jardín Botánico TauKiani", lat: -27.1482, lng: -109.4069 },
-  { name: "Anakena", lat: -27.0732, lng: -109.3233 },
-  { name: "Terevaka", lat: -27.0917, lng: -109.382 },
-];
+type GoogleNearbyReference = {
+  name: string;
+  placeId: string | null;
+  lat: number;
+  lng: number;
+  formattedAddress: string | null;
+  primaryType: string | null;
+  distanceMeters: number;
+};
 
-function getNearestKnownRapaNuiPlaceName(point: { lat: number; lng: number }, maxMeters = 190): string | null {
-  const nearest = RAPA_NUI_VISIBLE_PLACE_REFERENCES
-    .map((item) => ({ ...item, meters: distanceMeters(point, { lat: item.lat, lng: item.lng }) }))
-    .sort((a, b) => a.meters - b.meters)[0];
+type GooglePlaceNewLike = {
+  id?: string | null;
+  displayName?: string | null;
+  location?: google.maps.LatLng | google.maps.LatLngLiteral | null;
+  formattedAddress?: string | null;
+  primaryType?: string | null;
+  businessStatus?: string | null;
+};
 
-  return nearest && nearest.meters <= maxMeters ? nearest.name : null;
+function readGoogleLatLng(
+  value: google.maps.LatLng | google.maps.LatLngLiteral | null | undefined,
+): { lat: number; lng: number } | null {
+  if (!value) return null;
+
+  if (
+    typeof (value as google.maps.LatLng).lat === "function" &&
+    typeof (value as google.maps.LatLng).lng === "function"
+  ) {
+    return {
+      lat: (value as google.maps.LatLng).lat(),
+      lng: (value as google.maps.LatLng).lng(),
+    };
+  }
+
+  const literal = value as google.maps.LatLngLiteral;
+
+  if (!Number.isFinite(literal.lat) || !Number.isFinite(literal.lng)) {
+    return null;
+  }
+
+  return {
+    lat: Number(literal.lat),
+    lng: Number(literal.lng),
+  };
 }
 
-async function getNearbyGooglePlaceName(point: { lat: number; lng: number }): Promise<string | null> {
+function isUsefulGoogleReference(
+  name: unknown,
+  streetName?: string | null,
+): boolean {
+  if (!isUsefulPlaceStreetValue(name)) return false;
+
+  const referenceKey = normalizePlaceStreetCompare(name);
+  const streetKey = normalizePlaceStreetCompare(streetName);
+
+  if (streetKey && referenceKey === streetKey) return false;
+
+  return ![
+    "unnamed road",
+    "calle sin nombre",
+    "ruta sin nombre",
+    "rapa nui chile",
+    "hanga roa chile",
+  ].includes(referenceKey);
+}
+
+function dedupeGoogleReferences(
+  references: GoogleNearbyReference[],
+): GoogleNearbyReference[] {
+  const seen = new Set<string>();
+
+  return references
+    .sort((a, b) => a.distanceMeters - b.distanceMeters)
+    .filter((reference) => {
+      const key = normalizePlaceStreetCompare(reference.name);
+      if (!key || seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+}
+
+async function getNearbyGoogleReferencesNew(
+  point: { lat: number; lng: number },
+  radiusMeters: number,
+): Promise<GoogleNearbyReference[]> {
   try {
     await loadRapaGoGoogleMaps();
-    if (!window.google?.maps?.places?.PlacesService) return null;
+
+    const placesNamespace = google.maps.places as unknown as {
+      Place?: {
+        searchNearby?: (
+          request: Record<string, unknown>,
+        ) => Promise<{ places?: GooglePlaceNewLike[] }>;
+      };
+      SearchNearbyRankPreference?: {
+        DISTANCE?: unknown;
+      };
+    };
+
+    const PlaceApi = placesNamespace.Place;
+    if (!PlaceApi?.searchNearby) return [];
+
+    const response = await PlaceApi.searchNearby({
+      fields: [
+        "id",
+        "displayName",
+        "location",
+        "formattedAddress",
+        "primaryType",
+        "businessStatus",
+      ],
+      locationRestriction: {
+        center: new google.maps.LatLng(point.lat, point.lng),
+        radius: radiusMeters,
+      },
+      maxResultCount: 15,
+      rankPreference:
+        placesNamespace.SearchNearbyRankPreference?.DISTANCE ?? "DISTANCE",
+      language: "es",
+      region: "CL",
+    });
+
+    return dedupeGoogleReferences(
+      (response.places ?? [])
+        .map((place): GoogleNearbyReference | null => {
+          const name = normalizePlaceStreetText(place.displayName ?? "");
+          const location = readGoogleLatLng(place.location);
+
+          if (
+            !location ||
+            !isUsefulGoogleReference(name) ||
+            String(place.businessStatus ?? "").toUpperCase() ===
+              "CLOSED_PERMANENTLY"
+          ) {
+            return null;
+          }
+
+          return {
+            name,
+            placeId: place.id ? String(place.id) : null,
+            lat: location.lat,
+            lng: location.lng,
+            formattedAddress: place.formattedAddress
+              ? String(place.formattedAddress)
+              : null,
+            primaryType: place.primaryType ? String(place.primaryType) : null,
+            distanceMeters: Math.round(distanceMeters(point, location)),
+          };
+        })
+        .filter(
+          (reference): reference is GoogleNearbyReference =>
+            reference !== null &&
+            reference.distanceMeters <= radiusMeters,
+        ),
+    );
+  } catch {
+    return [];
+  }
+}
+
+async function getNearbyGoogleReferencesLegacy(
+  point: { lat: number; lng: number },
+  radiusMeters: number,
+): Promise<GoogleNearbyReference[]> {
+  try {
+    await loadRapaGoGoogleMaps();
+    if (!window.google?.maps?.places?.PlacesService) return [];
 
     const container = document.createElement("div");
     const service = new google.maps.places.PlacesService(container);
@@ -1837,35 +1980,81 @@ async function getNearbyGooglePlaceName(point: { lat: number; lng: number }): Pr
       service.nearbySearch(
         {
           location: new google.maps.LatLng(point.lat, point.lng),
-          radius: 120,
+          radius: radiusMeters,
           type: "point_of_interest",
         } as google.maps.places.PlaceSearchRequest,
         (results, status) => {
-          if (status !== google.maps.places.PlacesServiceStatus.OK || !results?.length) {
-            resolve(null);
+          if (
+            status !== google.maps.places.PlacesServiceStatus.OK ||
+            !results?.length
+          ) {
+            resolve([]);
             return;
           }
 
-          const best = results.find((item) => isUsefulPlaceStreetValue(item.name));
-          resolve(best?.name ?? null);
+          resolve(
+            dedupeGoogleReferences(
+              results
+                .map((place): GoogleNearbyReference | null => {
+                  const name = normalizePlaceStreetText(place.name ?? "");
+                  const location = readGoogleLatLng(
+                    place.geometry?.location ?? null,
+                  );
+
+                  if (!location || !isUsefulGoogleReference(name)) {
+                    return null;
+                  }
+
+                  return {
+                    name,
+                    placeId: place.place_id ?? null,
+                    lat: location.lat,
+                    lng: location.lng,
+                    formattedAddress: place.vicinity ?? null,
+                    primaryType: place.types?.[0] ?? null,
+                    distanceMeters: Math.round(
+                      distanceMeters(point, location),
+                    ),
+                  };
+                })
+                .filter(
+                  (reference): reference is GoogleNearbyReference =>
+                    reference !== null &&
+                    reference.distanceMeters <= radiusMeters,
+                ),
+            ),
+          );
         },
       );
     });
   } catch {
-    return null;
+    return [];
   }
+}
+
+async function getNearbyGoogleReferences(
+  point: { lat: number; lng: number },
+  radiusMeters = 180,
+): Promise<GoogleNearbyReference[]> {
+  const newPlaces = await getNearbyGoogleReferencesNew(point, radiusMeters);
+  if (newPlaces.length > 0) return newPlaces;
+
+  return getNearbyGoogleReferencesLegacy(point, radiusMeters);
 }
 
 async function getBestVisiblePlaceNameForPoint(
   point: { lat: number; lng: number },
   geocodePlaceName?: string | null,
 ): Promise<string | null> {
-  const geocodePlace = isUsefulPlaceStreetValue(geocodePlaceName) ? normalizePlaceStreetText(geocodePlaceName) : null;
-  const knownPlace = getNearestKnownRapaNuiPlaceName(point);
-  const googlePlace = await getNearbyGooglePlaceName(point);
+  const references = await getNearbyGoogleReferences(point);
+  const googlePlace = references[0]?.name ?? null;
+  const geocodePlace = isUsefulPlaceStreetValue(geocodePlaceName)
+    ? normalizePlaceStreetText(geocodePlaceName)
+    : null;
 
-  return knownPlace ?? googlePlace ?? geocodePlace ?? null;
+  return googlePlace ?? geocodePlace;
 }
+
 
 function getShortAddress(result: google.maps.GeocoderResult | null): {
   title: string;
@@ -3229,6 +3418,471 @@ async function getPlaceDetails(placeId: string): Promise<PickerResult | null> {
   });
 }
 
+type RoadPickupProbe = {
+  lat: number;
+  lng: number;
+  placeId: string | null;
+  streetName: string;
+  formattedAddress: string;
+};
+
+type WalkingMetrics = {
+  meters: number;
+  minutes: number;
+};
+
+const GOOGLE_PICKUP_CACHE = new Map<string, Promise<PickerResult[]>>();
+const MAX_GOOGLE_PICKUP_CACHE_ENTRIES = 60;
+
+function createPickupCacheKey(point: { lat: number; lng: number }): string {
+  return `${point.lat.toFixed(4)}:${point.lng.toFixed(4)}`;
+}
+
+function offsetPointByMeters(
+  point: { lat: number; lng: number },
+  meters: number,
+  bearingDegrees: number,
+): { lat: number; lng: number } {
+  const earthRadius = 6371000;
+  const angularDistance = meters / earthRadius;
+  const bearing = toRad(bearingDegrees);
+  const lat1 = toRad(point.lat);
+  const lng1 = toRad(point.lng);
+
+  const lat2 = Math.asin(
+    Math.sin(lat1) * Math.cos(angularDistance) +
+      Math.cos(lat1) * Math.sin(angularDistance) * Math.cos(bearing),
+  );
+
+  const lng2 =
+    lng1 +
+    Math.atan2(
+      Math.sin(bearing) *
+        Math.sin(angularDistance) *
+        Math.cos(lat1),
+      Math.cos(angularDistance) -
+        Math.sin(lat1) * Math.sin(lat2),
+    );
+
+  return {
+    lat: (lat2 * 180) / Math.PI,
+    lng: (lng2 * 180) / Math.PI,
+  };
+}
+
+function buildPickupProbePoints(
+  point: { lat: number; lng: number },
+): Array<{ lat: number; lng: number }> {
+  const probes: Array<{ lat: number; lng: number }> = [point];
+
+  for (const bearing of [0, 45, 90, 135, 180, 225, 270, 315]) {
+    probes.push(offsetPointByMeters(point, 45, bearing));
+  }
+
+  for (const bearing of [0, 90, 180, 270]) {
+    probes.push(offsetPointByMeters(point, 110, bearing));
+  }
+
+  return probes;
+}
+
+async function mapWithConcurrency<T, R>(
+  items: T[],
+  concurrency: number,
+  mapper: (item: T, index: number) => Promise<R>,
+): Promise<R[]> {
+  const results = new Array<R>(items.length);
+  let nextIndex = 0;
+
+  async function worker(): Promise<void> {
+    while (nextIndex < items.length) {
+      const currentIndex = nextIndex;
+      nextIndex += 1;
+      results[currentIndex] = await mapper(
+        items[currentIndex] as T,
+        currentIndex,
+      );
+    }
+  }
+
+  const workers = Array.from(
+    {
+      length: Math.max(1, Math.min(concurrency, items.length)),
+    },
+    () => worker(),
+  );
+
+  await Promise.all(workers);
+  return results;
+}
+
+async function geocodeRoadProbe(
+  geocoder: google.maps.Geocoder,
+  point: { lat: number; lng: number },
+): Promise<RoadPickupProbe | null> {
+  return new Promise((resolve) => {
+    geocoder.geocode(
+      {
+        location: point,
+      },
+      (results, status) => {
+        if (
+          status !== google.maps.GeocoderStatus.OK ||
+          !results?.length
+        ) {
+          resolve(null);
+          return;
+        }
+
+        const roadResult = findNearestRoadResult(results);
+        const streetName = getGeocodeStreetName(roadResult);
+
+        if (!roadResult || !streetName) {
+          resolve(null);
+          return;
+        }
+
+        const roadLocation = readGoogleLatLng(
+          roadResult.geometry?.location ?? null,
+        );
+
+        if (!roadLocation) {
+          resolve(null);
+          return;
+        }
+
+        if (distanceMeters(point, roadLocation) > 100) {
+          resolve(null);
+          return;
+        }
+
+        resolve({
+          lat: roadLocation.lat,
+          lng: roadLocation.lng,
+          placeId: roadResult.place_id ?? null,
+          streetName,
+          formattedAddress: roadResult.formatted_address,
+        });
+      },
+    );
+  });
+}
+
+function dedupeRoadPickupProbes(
+  probes: RoadPickupProbe[],
+  origin: { lat: number; lng: number },
+): RoadPickupProbe[] {
+  const bestByStreet = new Map<
+    string,
+    RoadPickupProbe & { straightMeters: number }
+  >();
+
+  for (const probe of probes) {
+    const streetKey = normalizePlaceStreetCompare(probe.streetName);
+    if (!streetKey) continue;
+
+    const candidate = {
+      ...probe,
+      straightMeters: distanceMeters(origin, probe),
+    };
+
+    const previous = bestByStreet.get(streetKey);
+
+    if (!previous || candidate.straightMeters < previous.straightMeters) {
+      bestByStreet.set(streetKey, candidate);
+    }
+  }
+
+  return Array.from(bestByStreet.values())
+    .sort((a, b) => a.straightMeters - b.straightMeters)
+    .slice(0, 5)
+    .map(({ straightMeters: _straightMeters, ...probe }) => probe);
+}
+
+async function getWalkingMetricsWithRouteClass(
+  origin: { lat: number; lng: number },
+  destination: { lat: number; lng: number },
+): Promise<WalkingMetrics | null> {
+  try {
+    const routesNamespace = (await google.maps.importLibrary(
+      "routes",
+    )) as unknown as {
+      Route?: {
+        computeRoutes?: (
+          request: Record<string, unknown>,
+        ) => Promise<{
+          routes?: Array<{
+            distanceMeters?: number | null;
+            durationMillis?: number | null;
+          }>;
+        }>;
+      };
+    };
+
+    const computeRoutes = routesNamespace.Route?.computeRoutes;
+    if (!computeRoutes) return null;
+
+    const response = await computeRoutes({
+      origin,
+      destination,
+      travelMode: "WALKING",
+      fields: ["distanceMeters", "durationMillis"],
+      language: "es",
+      region: "CL",
+    });
+
+    const route = response.routes?.[0];
+    const meters = Number(route?.distanceMeters);
+    const durationMillis = Number(route?.durationMillis);
+
+    if (!Number.isFinite(meters) || meters < 0) return null;
+
+    return {
+      meters: Math.round(meters),
+      minutes:
+        Number.isFinite(durationMillis) && durationMillis > 0
+          ? Math.max(1, Math.ceil(durationMillis / 60000))
+          : Math.max(1, Math.ceil(meters / 75)),
+    };
+  } catch {
+    return null;
+  }
+}
+
+async function getWalkingMetricsLegacy(
+  origin: { lat: number; lng: number },
+  destination: { lat: number; lng: number },
+): Promise<WalkingMetrics | null> {
+  try {
+    const service = new google.maps.DirectionsService();
+
+    const result = await service.route({
+      origin,
+      destination,
+      travelMode: google.maps.TravelMode.WALKING,
+      provideRouteAlternatives: false,
+    });
+
+    const leg = result.routes[0]?.legs[0];
+    const meters = leg?.distance?.value;
+    const seconds = leg?.duration?.value;
+
+    if (!Number.isFinite(meters) || Number(meters) < 0) return null;
+
+    return {
+      meters: Math.round(Number(meters)),
+      minutes:
+        Number.isFinite(seconds) && Number(seconds) > 0
+          ? Math.max(1, Math.ceil(Number(seconds) / 60))
+          : Math.max(1, Math.ceil(Number(meters) / 75)),
+    };
+  } catch {
+    return null;
+  }
+}
+
+async function getGoogleWalkingMetrics(
+  origin: { lat: number; lng: number },
+  destination: { lat: number; lng: number },
+): Promise<WalkingMetrics> {
+  const directMeters = distanceMeters(origin, destination);
+
+  if (directMeters <= 8) {
+    return {
+      meters: Math.round(directMeters),
+      minutes: 1,
+    };
+  }
+
+  const routeClass = await getWalkingMetricsWithRouteClass(
+    origin,
+    destination,
+  );
+
+  if (routeClass) return routeClass;
+
+  const legacyRoute = await getWalkingMetricsLegacy(origin, destination);
+  if (legacyRoute) return legacyRoute;
+
+  const estimatedMeters = Math.round(directMeters * 1.18);
+
+  return {
+    meters: estimatedMeters,
+    minutes: Math.max(1, Math.ceil(estimatedMeters / 75)),
+  };
+}
+
+function getReferenceForRoadCandidate(
+  references: GoogleNearbyReference[],
+  road: RoadPickupProbe,
+): GoogleNearbyReference | null {
+  const useful = references
+    .filter((reference) =>
+      isUsefulGoogleReference(reference.name, road.streetName),
+    )
+    .map((reference) => ({
+      ...reference,
+      distanceFromRoad: distanceMeters(reference, road),
+    }))
+    .filter((reference) => reference.distanceFromRoad <= 180)
+    .sort((a, b) => a.distanceFromRoad - b.distanceFromRoad)[0];
+
+  if (!useful) return null;
+
+  return {
+    name: useful.name,
+    placeId: useful.placeId,
+    lat: useful.lat,
+    lng: useful.lng,
+    formattedAddress: useful.formattedAddress,
+    primaryType: useful.primaryType,
+    distanceMeters: Math.round(useful.distanceFromRoad),
+  };
+}
+
+function buildAutomaticPickupText(
+  streetName: string,
+  reference: GoogleNearbyReference | null,
+): string {
+  if (!reference) return `Recogida en ${streetName}`;
+
+  const relation =
+    reference.distanceMeters <= 35 ? "frente a" : "cerca de";
+
+  return `Recogida en ${streetName}, ${relation} ${reference.name}`;
+}
+
+async function computeGooglePickupCandidates(
+  point: { lat: number; lng: number },
+): Promise<PickerResult[]> {
+  await loadRapaGoGoogleMaps();
+
+  const geocoder = new google.maps.Geocoder();
+  const probes = buildPickupProbePoints(point);
+
+  const roadResults = await mapWithConcurrency(
+    probes,
+    4,
+    async (probe) => geocodeRoadProbe(geocoder, probe),
+  );
+
+  const roads = dedupeRoadPickupProbes(
+    roadResults.filter(
+      (road): road is RoadPickupProbe => road !== null,
+    ),
+    point,
+  );
+
+  if (roads.length === 0) {
+    const exact = await reverseGeocodeExact(point);
+
+    return [
+      {
+        ...exact,
+        originalLat: point.lat,
+        originalLng: point.lng,
+        walkMeters: 0,
+        walkMinutes: 1,
+        isAccessiblePickup: false,
+        referenceName: null,
+        referenceDistanceMeters: null,
+        streetName: null,
+        candidateId: `exact:${point.lat.toFixed(5)}:${point.lng.toFixed(5)}`,
+      },
+    ];
+  }
+
+  const references = await getNearbyGoogleReferences(point, 200);
+
+  const enriched = await mapWithConcurrency(
+    roads,
+    3,
+    async (road): Promise<PickerResult & { score: number }> => {
+      const walking = await getGoogleWalkingMetrics(point, road);
+      const reference = getReferenceForRoadCandidate(references, road);
+      const text = buildAutomaticPickupText(
+        road.streetName,
+        reference,
+      );
+
+      const score =
+        walking.meters +
+        (reference ? Math.min(reference.distanceMeters, 150) * 0.08 : 28);
+
+      return {
+        text,
+        address: road.formattedAddress,
+        lat: road.lat,
+        lng: road.lng,
+        placeId: road.placeId,
+        originalLat: point.lat,
+        originalLng: point.lng,
+        walkMeters: walking.meters,
+        walkMinutes: walking.minutes,
+        isAccessiblePickup: true,
+        streetName: road.streetName,
+        referenceName: reference?.name ?? null,
+        referenceDistanceMeters: reference?.distanceMeters ?? null,
+        candidateId: `${normalizePlaceStreetCompare(
+          road.streetName,
+        )}:${road.lat.toFixed(5)}:${road.lng.toFixed(5)}`,
+        score,
+      };
+    },
+  );
+
+  const withinRecommendedWalk = enriched.filter(
+    (candidate) => (candidate.walkMeters ?? 0) <= 220,
+  );
+
+  const pool =
+    withinRecommendedWalk.length > 0
+      ? withinRecommendedWalk
+      : enriched;
+
+  return pool
+    .sort((a, b) => a.score - b.score)
+    .slice(0, 3)
+    .map(({ score: _score, ...candidate }) => candidate);
+}
+
+async function getGooglePickupCandidates(
+  point: { lat: number; lng: number },
+): Promise<PickerResult[]> {
+  const key = createPickupCacheKey(point);
+  const cached = GOOGLE_PICKUP_CACHE.get(key);
+
+  if (cached) return cached;
+
+  const pending = computeGooglePickupCandidates(point).catch(async () => {
+    const fallback = await reverseGeocode(point);
+
+    return [
+      {
+        ...fallback,
+        walkMinutes: Math.max(
+          1,
+          Math.ceil(Number(fallback.walkMeters ?? 0) / 75),
+        ),
+        candidateId: `fallback:${point.lat.toFixed(5)}:${point.lng.toFixed(5)}`,
+      },
+    ];
+  });
+
+  GOOGLE_PICKUP_CACHE.set(key, pending);
+
+  if (GOOGLE_PICKUP_CACHE.size > MAX_GOOGLE_PICKUP_CACHE_ENTRIES) {
+    const firstKey = GOOGLE_PICKUP_CACHE.keys().next().value as
+      | string
+      | undefined;
+
+    if (firstKey) GOOGLE_PICKUP_CACHE.delete(firstKey);
+  }
+
+  return pending;
+}
+
+
 function SuggestionList({
   suggestions,
   onPick,
@@ -3298,40 +3952,62 @@ function MapPointPicker({
   const mapElementRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<google.maps.Map | null>(null);
   const geocodeTimerRef = useRef<number | null>(null);
+  const requestSequenceRef = useRef(0);
+  const lastResolvedCenterRef = useRef<{ lat: number; lng: number } | null>(
+    null,
+  );
   const realPointMarkerRef = useRef<google.maps.Marker | null>(null);
   const pickupPointMarkerRef = useRef<google.maps.Marker | null>(null);
+  const candidateMarkersRef = useRef<google.maps.Marker[]>([]);
   const realPointCircleRef = useRef<google.maps.Circle | null>(null);
   const walkingDotsRef = useRef<google.maps.Polyline | null>(null);
   const walkingDotsShadowRef = useRef<google.maps.Polyline | null>(null);
-  const realPointInfoRef = useRef<google.maps.InfoWindow | null>(null);
-  const pickupPointInfoRef = useRef<google.maps.InfoWindow | null>(null);
+  const sheetDragRef = useRef<{
+    pointerId: number;
+    startY: number;
+    startedExpanded: boolean;
+  } | null>(null);
+  const suppressSheetClickRef = useRef(false);
 
   const [ready, setReady] = useState(false);
   const [selected, setSelected] = useState<PickerResult | null>(null);
+  const [pickupCandidates, setPickupCandidates] = useState<PickerResult[]>([]);
   const [loadingAddress, setLoadingAddress] = useState(false);
   const [searchText, setSearchText] = useState("");
   const [pickerSuggestions, setPickerSuggestions] = useState<GoogleSuggestion[]>(
     [],
   );
   const [modalReady, setModalReady] = useState(false);
+  const [sheetExpanded, setSheetExpanded] = useState(true);
+  const [sheetDragY, setSheetDragY] = useState(0);
+  const [sheetDragging, setSheetDragging] = useState(false);
 
+  function clearMapPreview(): void {
+    realPointMarkerRef.current?.setMap(null);
+    pickupPointMarkerRef.current?.setMap(null);
+    candidateMarkersRef.current.forEach((marker) => marker.setMap(null));
+    candidateMarkersRef.current = [];
+    realPointCircleRef.current?.setMap(null);
+    walkingDotsRef.current?.setMap(null);
+    walkingDotsShadowRef.current?.setMap(null);
+  }
 
-  function drawAccessiblePickupPreview(point: PickerResult | null): void {
+  function selectPickupCandidate(candidate: PickerResult): void {
+    setSelected(candidate);
+    drawAccessiblePickupPreview(candidate, pickupCandidates);
+  }
+
+  function drawAccessiblePickupPreview(
+    point: PickerResult | null,
+    candidates: PickerResult[] = pickupCandidates,
+  ): void {
     const map = mapRef.current;
 
     if (!map || !window.google?.maps) return;
 
-    realPointMarkerRef.current?.setMap(null);
-    realPointCircleRef.current?.setMap(null);
-    pickupPointMarkerRef.current?.setMap(null);
-    walkingDotsRef.current?.setMap(null);
-    walkingDotsShadowRef.current?.setMap(null);
-    realPointInfoRef.current?.close();
-    pickupPointInfoRef.current?.close();
+    clearMapPreview();
 
-    if (!point) {
-      return;
-    }
+    if (!point) return;
 
     const realPoint = {
       lat: point.originalLat ?? point.lat,
@@ -3359,7 +4035,7 @@ function MapPointPicker({
       realPointMarkerRef.current = new google.maps.Marker({
         map,
         position: pickupPoint,
-        title: "Mantén presionado y mueve el destino rojo",
+        title: "Mantén presionado y mueve el destino",
         draggable: true,
         cursor: "grab",
         icon: {
@@ -3399,35 +4075,21 @@ function MapPointPicker({
 
         if (!position) return;
 
-        setLoadingAddress(true);
-
-        void reverseGeocodeExact({
+        void resolveDestinationPoint({
           lat: position.lat(),
           lng: position.lng(),
-          placeId: null,
-        })
-          .then((nextPoint) => {
-            setSelected(nextPoint);
-            drawAccessiblePickupPreview(nextPoint);
-          })
-          .finally(() => setLoadingAddress(false));
+        });
       });
 
       return;
     }
 
-    const shouldShowAccessiblePickup =
-      point.originalLat != null &&
-      point.originalLng != null &&
-      point.walkMeters != null &&
-      point.walkMeters > 8;
-
     realPointCircleRef.current = new google.maps.Circle({
       map,
       center: realPoint,
-      radius: 45,
+      radius: 44,
       fillColor: "#2563eb",
-      fillOpacity: 0.22,
+      fillOpacity: 0.2,
       strokeColor: "#2563eb",
       strokeOpacity: 0,
       strokeWeight: 0,
@@ -3437,7 +4099,7 @@ function MapPointPicker({
     realPointMarkerRef.current = new google.maps.Marker({
       map,
       position: realPoint,
-      title: "Mantén presionado y mueve tu punto azul",
+      title: "Tu ubicación o punto indicado",
       draggable: true,
       cursor: "grab",
       icon: {
@@ -3448,7 +4110,7 @@ function MapPointPicker({
         strokeColor: "#ffffff",
         strokeWeight: 4,
       },
-      zIndex: 30,
+      zIndex: 40,
     });
 
     realPointMarkerRef.current.addListener("dragstart", () => {
@@ -3466,25 +4128,8 @@ function MapPointPicker({
 
       realPointCircleRef.current?.setCenter(movedPoint);
 
-      if (walkingDotsRef.current) {
-        walkingDotsRef.current.setPath([
-          movedPoint,
-          {
-            lat: point.lat,
-            lng: point.lng,
-          },
-        ]);
-      }
-
-      if (walkingDotsShadowRef.current) {
-        walkingDotsShadowRef.current.setPath([
-          movedPoint,
-          {
-            lat: point.lat,
-            lng: point.lng,
-          },
-        ]);
-      }
+      walkingDotsRef.current?.setPath([movedPoint, pickupPoint]);
+      walkingDotsShadowRef.current?.setPath([movedPoint, pickupPoint]);
     });
 
     realPointMarkerRef.current.addListener("dragend", () => {
@@ -3498,29 +4143,51 @@ function MapPointPicker({
         lng: position.lng(),
       };
 
-      setLoadingAddress(true);
-
-      void reverseGeocode(movedPoint)
-        .then((nextPoint) => {
-          setSelected(nextPoint);
-          drawAccessiblePickupPreview(nextPoint);
-        })
-        .finally(() => setLoadingAddress(false));
+      map.setCenter(movedPoint);
+      void resolveOriginPoint(movedPoint);
     });
 
-    if (!shouldShowAccessiblePickup) {
-      return;
+    for (const candidate of candidates) {
+      if (
+        candidate.candidateId === point.candidateId ||
+        (Math.abs(candidate.lat - point.lat) < 0.000001 &&
+          Math.abs(candidate.lng - point.lng) < 0.000001)
+      ) {
+        continue;
+      }
+
+      const marker = new google.maps.Marker({
+        map,
+        position: {
+          lat: candidate.lat,
+          lng: candidate.lng,
+        },
+        title: candidate.text.replace(/^Recogida en\s+/i, ""),
+        cursor: "pointer",
+        icon: {
+          path: google.maps.SymbolPath.CIRCLE,
+          scale: 10,
+          fillColor: "#ffffff",
+          fillOpacity: 1,
+          strokeColor: "#22c55e",
+          strokeWeight: 4,
+        },
+        zIndex: 25,
+      });
+
+      marker.addListener("click", () => {
+        setSelected(candidate);
+        drawAccessiblePickupPreview(candidate, candidates);
+        setSheetExpanded(true);
+      });
+
+      candidateMarkersRef.current.push(marker);
     }
 
     pickupPointMarkerRef.current = new google.maps.Marker({
       map,
       position: pickupPoint,
-      title: "Punto accesible de recogida",
-      label: {
-        text: "●",
-        color: "#ffffff",
-        fontSize: "18px",
-      },
+      title: "Punto accesible recomendado",
       icon: {
         path: google.maps.SymbolPath.CIRCLE,
         scale: 18,
@@ -3529,73 +4196,140 @@ function MapPointPicker({
         strokeColor: "#0b3d16",
         strokeWeight: 5,
       },
+      label: {
+        text: "✓",
+        color: "#ffffff",
+        fontSize: "14px",
+        fontWeight: "900",
+      },
+      zIndex: 55,
     });
 
-    // Línea punteada tipo Uber: sombra negra + puntos blancos.
-    walkingDotsShadowRef.current = new google.maps.Polyline({
-      map,
-      path: [realPoint, pickupPoint],
-      strokeColor: "#111111",
-      strokeOpacity: 0,
-      strokeWeight: 0,
-      zIndex: 20,
-      icons: [
-        {
-          icon: {
-            path: google.maps.SymbolPath.CIRCLE,
-            fillColor: "#111111",
-            fillOpacity: 0.75,
-            strokeColor: "#111111",
-            strokeOpacity: 0.75,
-            scale: 6,
+    if ((point.walkMeters ?? 0) > 8) {
+      walkingDotsShadowRef.current = new google.maps.Polyline({
+        map,
+        path: [realPoint, pickupPoint],
+        strokeOpacity: 0,
+        zIndex: 20,
+        icons: [
+          {
+            icon: {
+              path: google.maps.SymbolPath.CIRCLE,
+              fillColor: "#111111",
+              fillOpacity: 0.72,
+              strokeColor: "#111111",
+              strokeOpacity: 0.72,
+              scale: 6,
+            },
+            offset: "0",
+            repeat: "18px",
           },
-          offset: "0",
-          repeat: "18px",
-        },
-      ],
-    });
+        ],
+      });
 
-    walkingDotsRef.current = new google.maps.Polyline({
-      map,
-      path: [realPoint, pickupPoint],
-      strokeColor: "#ffffff",
-      strokeOpacity: 0,
-      strokeWeight: 0,
-      zIndex: 21,
-      icons: [
-        {
-          icon: {
-            path: google.maps.SymbolPath.CIRCLE,
-            fillColor: "#ffffff",
-            fillOpacity: 1,
-            strokeColor: "#ffffff",
-            strokeOpacity: 1,
-            scale: 3.8,
+      walkingDotsRef.current = new google.maps.Polyline({
+        map,
+        path: [realPoint, pickupPoint],
+        strokeOpacity: 0,
+        zIndex: 21,
+        icons: [
+          {
+            icon: {
+              path: google.maps.SymbolPath.CIRCLE,
+              fillColor: "#ffffff",
+              fillOpacity: 1,
+              strokeColor: "#ffffff",
+              strokeOpacity: 1,
+              scale: 3.8,
+            },
+            offset: "0",
+            repeat: "18px",
           },
-          offset: "0",
-          repeat: "18px",
-        },
-      ],
-    });
-
-    // No usamos globos blancos de Google para mantener estilo tipo Uber.
-
+        ],
+      });
+    }
   }
 
+  async function resolveOriginPoint(point: {
+    lat: number;
+    lng: number;
+  }): Promise<void> {
+    const sequence = ++requestSequenceRef.current;
+    setLoadingAddress(true);
+
+    try {
+      const candidates = await getGooglePickupCandidates(point);
+
+      if (sequence !== requestSequenceRef.current) return;
+
+      const next = candidates[0] ?? null;
+      setPickupCandidates(candidates);
+      setSelected(next);
+      drawAccessiblePickupPreview(next, candidates);
+    } finally {
+      if (sequence === requestSequenceRef.current) {
+        setLoadingAddress(false);
+      }
+    }
+  }
+
+  async function resolveDestinationPoint(point: {
+    lat: number;
+    lng: number;
+  }): Promise<void> {
+    const sequence = ++requestSequenceRef.current;
+    setLoadingAddress(true);
+
+    try {
+      const result = await reverseGeocodeExact(point);
+
+      if (sequence !== requestSequenceRef.current) return;
+
+      setPickupCandidates([]);
+      setSelected(result);
+      drawAccessiblePickupPreview(result, []);
+    } finally {
+      if (sequence === requestSequenceRef.current) {
+        setLoadingAddress(false);
+      }
+    }
+  }
+
+  function resolveMapPoint(
+    point: {
+      lat: number;
+      lng: number;
+    },
+    force = false,
+  ): Promise<void> {
+    const previous = lastResolvedCenterRef.current;
+
+    if (
+      !force &&
+      previous &&
+      distanceMeters(previous, point) < 18
+    ) {
+      return Promise.resolve();
+    }
+
+    lastResolvedCenterRef.current = point;
+
+    return mode === "origin"
+      ? resolveOriginPoint(point)
+      : resolveDestinationPoint(point);
+  }
 
   useEffect(() => {
     if (!isOpen) {
       setModalReady(false);
-      realPointMarkerRef.current?.setMap(null);
-    realPointCircleRef.current?.setMap(null);
-      pickupPointMarkerRef.current?.setMap(null);
-      walkingDotsRef.current?.setMap(null);
-    walkingDotsShadowRef.current?.setMap(null);
-    realPointInfoRef.current?.close();
-    pickupPointInfoRef.current?.close();
+      clearMapPreview();
+      lastResolvedCenterRef.current = null;
       mapRef.current = null;
       return;
     }
+
+    setSheetExpanded(true);
+    setSheetDragY(0);
   }, [isOpen]);
 
   useEffect(() => {
@@ -3603,16 +4337,23 @@ function MapPointPicker({
 
     setReady(false);
     setSelected(null);
+    setPickupCandidates([]);
     setSearchText("");
     setPickerSuggestions([]);
 
     let cancelled = false;
 
     void loadRapaGoGoogleMaps()
-.then(async () => {
-        await new Promise((resolve) => window.setTimeout(resolve, 250));
+      .then(async () => {
+        await new Promise((resolve) => window.setTimeout(resolve, 200));
 
-        if (cancelled || !mapElementRef.current || !window.google?.maps) return;
+        if (
+          cancelled ||
+          !mapElementRef.current ||
+          !window.google?.maps
+        ) {
+          return;
+        }
 
         const center = initialPoint ?? RAPA_NUI_CENTER;
 
@@ -3626,36 +4367,7 @@ function MapPointPicker({
           gestureHandling: "greedy",
           disableDefaultUI: true,
           zoomControl: true,
-          styles: [
-            { elementType: "geometry", stylers: [{ color: "#242f3e" }] },
-            { elementType: "labels.text.stroke", stylers: [{ color: "#242f3e" }] },
-            { elementType: "labels.text.fill", stylers: [{ color: "#d7dde8" }] },
-            {
-              featureType: "road",
-              elementType: "geometry",
-              stylers: [{ color: "#38465a" }],
-            },
-            {
-              featureType: "road",
-              elementType: "geometry.stroke",
-              stylers: [{ color: "#1f2937" }],
-            },
-            {
-              featureType: "road",
-              elementType: "labels.text.fill",
-              stylers: [{ color: "#ffffff" }],
-            },
-            {
-              featureType: "poi",
-              elementType: "labels.text.fill",
-              stylers: [{ color: "#cbd5e1" }],
-            },
-            {
-              featureType: "water",
-              elementType: "geometry",
-              stylers: [{ color: "#0f172a" }],
-            },
-          ],
+          mapTypeId: google.maps.MapTypeId.ROADMAP,
         });
 
         mapRef.current = map;
@@ -3666,25 +4378,15 @@ function MapPointPicker({
           map.setCenter(center);
           map.setZoom(17);
           setReady(true);
-        }, 150);
+        }, 120);
 
-        const first =
-          mode === "origin"
-            ? await reverseGeocode({
-                lat: center.lat,
-                lng: center.lng,
-                placeId: initialPoint?.placeId ?? null,
-              })
-            : await reverseGeocodeExact({
-                lat: center.lat,
-                lng: center.lng,
-                placeId: initialPoint?.placeId ?? null,
-              });
-
-        if (!cancelled) {
-          setSelected(first);
-          drawAccessiblePickupPreview(first);
-        }
+        await resolveMapPoint(
+          {
+            lat: center.lat,
+            lng: center.lng,
+          },
+          true,
+        );
 
         map.addListener("idle", () => {
           if (geocodeTimerRef.current) {
@@ -3693,40 +4395,21 @@ function MapPointPicker({
 
           geocodeTimerRef.current = window.setTimeout(() => {
             const currentCenter = map.getCenter();
+            if (!currentCenter || cancelled) return;
 
-            if (!currentCenter) return;
-
-            setLoadingAddress(true);
-
-            void (mode === "origin"
-              ? reverseGeocode({
-                  lat: currentCenter.lat(),
-                  lng: currentCenter.lng(),
-                })
-              : reverseGeocodeExact({
-                  lat: currentCenter.lat(),
-                  lng: currentCenter.lng(),
-                }))
-              .then((result) => {
-                if (!cancelled) {
-                  setSelected(result);
-                  // Mantener siempre visible el marcador rojo del destino.
-                  // Antes, en modo destino se limpiaba el preview con null y el pin rojo desaparecía
-                  // al quedar el mapa en reposo. Ahora se vuelve a dibujar hasta que el usuario confirme.
-                  drawAccessiblePickupPreview(result);
-                }
-              })
-              .finally(() => {
-                if (!cancelled) setLoadingAddress(false);
-              });
-          }, 450);
+            void resolveMapPoint({
+              lat: currentCenter.lat(),
+              lng: currentCenter.lng(),
+            });
+          }, 650);
         });
       })
       .catch(() => {
         setReady(true);
         setSelected({
           text: "No se pudo cargar el mapa",
-          address: "Revisa la API Key de Google Maps y vuelve a intentar.",
+          address:
+            "Revisa la configuración de Google Maps y vuelve a intentar.",
           lat: RAPA_NUI_CENTER.lat,
           lng: RAPA_NUI_CENTER.lng,
           placeId: null,
@@ -3735,16 +4418,19 @@ function MapPointPicker({
 
     return () => {
       cancelled = true;
+      requestSequenceRef.current += 1;
 
       if (geocodeTimerRef.current) {
         window.clearTimeout(geocodeTimerRef.current);
       }
 
+      clearMapPreview();
       mapRef.current = null;
     };
   }, [
     isOpen,
     modalReady,
+    mode,
     initialPoint?.lat,
     initialPoint?.lng,
     initialPoint?.placeId,
@@ -3757,51 +4443,38 @@ function MapPointPicker({
     }
 
     const timeout = window.setTimeout(() => {
-      void getGooglePredictions(searchText.trim()).then(setPickerSuggestions);
+      void getGooglePredictions(searchText.trim()).then(
+        setPickerSuggestions,
+      );
     }, 300);
 
     return () => window.clearTimeout(timeout);
   }, [isOpen, searchText]);
 
-  async function pickSuggestion(suggestion: GoogleSuggestion): Promise<void> {
-    const details =
-      mode === "origin"
-        ? await getPlaceDetails(suggestion.placeId)
-        : await getPlaceDetailsExact(suggestion.placeId);
-
-    if (!details || !mapRef.current) return;
-
-    setSelected(details);
-    drawAccessiblePickupPreview(details);
-    setSearchText(details.text);
-    setPickerSuggestions([]);
-
-    mapRef.current.setCenter({
-      lat: details.lat,
-      lng: details.lng,
-    });
-
-    mapRef.current.setZoom(18);
-  }
-
-  async function pickTouristDestination(destination: typeof TOURIST_DESTINATION_SUGGESTIONS[number]): Promise<void> {
-    setSearchText(destination.name);
-    setPickerSuggestions([]);
+  async function pickSuggestion(
+    suggestion: GoogleSuggestion,
+  ): Promise<void> {
     setLoadingAddress(true);
 
     try {
-      const details = await geocodeTextExact(destination.search);
-      if (!details || !mapRef.current) return;
+      const exact = await getPlaceDetailsExact(suggestion.placeId);
+      if (!exact || !mapRef.current) return;
 
-      const nextPoint = {
-        ...details,
-        text: destination.name,
-      };
-
-      setSelected(nextPoint);
-      drawAccessiblePickupPreview(nextPoint);
-      mapRef.current.setCenter({ lat: nextPoint.lat, lng: nextPoint.lng });
+      setSearchText(exact.text);
+      setPickerSuggestions([]);
+      mapRef.current.setCenter({
+        lat: exact.lat,
+        lng: exact.lng,
+      });
       mapRef.current.setZoom(18);
+
+      await resolveMapPoint(
+        {
+          lat: exact.lat,
+          lng: exact.lng,
+        },
+        true,
+      );
     } finally {
       setLoadingAddress(false);
     }
@@ -3819,6 +4492,7 @@ function MapPointPicker({
 
         mapRef.current?.setCenter(point);
         mapRef.current?.setZoom(18);
+        void resolveMapPoint(point, true);
       },
       () => {},
       {
@@ -3829,444 +4503,387 @@ function MapPointPicker({
     );
   }
 
+  function beginSheetDrag(
+    event: ReactPointerEvent<HTMLButtonElement>,
+  ): void {
+    sheetDragRef.current = {
+      pointerId: event.pointerId,
+      startY: event.clientY,
+      startedExpanded: sheetExpanded,
+    };
+
+    event.currentTarget.setPointerCapture(event.pointerId);
+    suppressSheetClickRef.current = false;
+    setSheetDragging(true);
+    setSheetDragY(0);
+  }
+
+  function moveSheetDrag(
+    event: ReactPointerEvent<HTMLButtonElement>,
+  ): void {
+    const drag = sheetDragRef.current;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+
+    const delta = event.clientY - drag.startY;
+
+    if (Math.abs(delta) > 8) {
+      suppressSheetClickRef.current = true;
+    }
+
+    const bounded = drag.startedExpanded
+      ? Math.max(0, Math.min(360, delta))
+      : Math.min(0, Math.max(-360, delta));
+
+    setSheetDragY(bounded);
+  }
+
+  function endSheetDrag(
+    event: ReactPointerEvent<HTMLButtonElement>,
+  ): void {
+    const drag = sheetDragRef.current;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+
+    const delta = event.clientY - drag.startY;
+
+    if (drag.startedExpanded && delta > 55) {
+      setSheetExpanded(false);
+    } else if (!drag.startedExpanded && delta < -55) {
+      setSheetExpanded(true);
+    }
+
+    sheetDragRef.current = null;
+    setSheetDragging(false);
+    setSheetDragY(0);
+
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+  }
+
+  const selectedStreet =
+    selected?.streetName ??
+    selected?.text.replace(/^Recogida en\s+/i, "").split(",")[0] ??
+    (mode === "origin" ? "Vía accesible" : "Destino seleccionado");
+
+  const selectedWalkMeters = Math.max(
+    0,
+    Math.round(Number(selected?.walkMeters ?? 0)),
+  );
+
+  const selectedWalkMinutes = Math.max(
+    1,
+    Math.round(
+      Number(
+        selected?.walkMinutes ??
+          Math.max(1, Math.ceil(selectedWalkMeters / 75)),
+      ),
+    ),
+  );
+
   return (
     <IonModal
       isOpen={isOpen}
+      className="request-map-modal"
       onDidPresent={() => setModalReady(true)}
       onDidDismiss={() => {
         setModalReady(false);
         onCancel();
       }}
     >
-      <IonPage className="rapago-section-page rapago-request-page">
-        <IonHeader>
-          <IonToolbar
-            color="primary"
-            style={{ "--padding-start": "0px", "--padding-end": "0px" } as CSSProperties}
-          >
-            <IonButton
-              fill="clear"
-              slot="start"
-              onClick={onCancel}
-              aria-label="Volver"
-              style={{ "--color": "var(--rp-text)", fontWeight: 900 } as CSSProperties}
-            >
-              <IonIcon slot="start" icon={arrowBackOutline} style={{ fontSize: 20 }} />
-              Volver
-            </IonButton>
-            <IonTitle
-              aria-label={title}
-              style={{
-                textAlign: "center",
-                fontWeight: 950,
-                fontSize: "1rem",
-                paddingInline: "72px",
-              }}
-            >
-              {mode === "origin" ? "Confirmar recogida" : "Confirmar destino"}
+      <IonPage className="rapago-section-page rapago-request-page request-map-page">
+        <IonHeader className="request-map-header">
+          <IonToolbar>
+            <IonButtons slot="start">
+              <IonButton
+                fill="clear"
+                onClick={onCancel}
+                aria-label="Volver"
+                className="request-map-back"
+              >
+                <IonIcon slot="start" icon={arrowBackOutline} />
+                Volver
+              </IonButton>
+            </IonButtons>
+
+            <IonTitle aria-label={title}>
+              {mode === "origin"
+                ? "Confirmar recogida"
+                : "Confirmar destino"}
             </IonTitle>
           </IonToolbar>
         </IonHeader>
 
-        <IonContent fullscreen style={{ "--background": "transparent" } as CSSProperties}>
-          <div className="rp-request-map-shell">
+        <IonContent
+          fullscreen
+          className="request-map-content"
+          scrollY={false}
+        >
+          <div className="request-map-shell">
             <div
-              style={{
-                position: "relative",
-                flex: "1 1 auto",
-                minHeight: 0,
-              }}
-            >
-              <div
-                ref={mapElementRef}
-                style={{
-                  width: "100%",
-                  height: "100%",
-                  background: "#e8eef4",
-                }}
-              />
+              ref={mapElementRef}
+              className="request-map-canvas"
+              aria-label="Mapa para elegir el punto"
+            />
 
-              <div
-                style={{
-                  position: "absolute",
-                  top: 14,
-                  left: 14,
-                  right: 14,
-                  zIndex: 10,
-                }}
-              >
-                <IonItem
-                  lines="none"
-                  style={
-                    {
-                      "--background": "var(--rp-field-bg)",
-                      "--border-radius": "999px",
-                      "--padding-start": "14px",
-                      "--inner-padding-end": "10px",
-                      "--highlight-color-focused": "var(--rp-gold)",
-                      border: "var(--rp-border-w) solid var(--rp-border-c)",
-                      boxShadow: "var(--rp-shadow)",
-                    } as CSSProperties
+            <div className="request-map-search">
+              <IonItem lines="none" className="request-map-search__field">
+                <IonIcon icon={searchOutline} slot="start" />
+                <IonInput
+                  value={searchText}
+                  placeholder="Buscar dirección o lugar en Google Maps"
+                  onIonInput={(event) =>
+                    setSearchText(String(event.detail.value ?? ""))
                   }
-                >
-                  <IonIcon icon={searchOutline} slot="start" style={{ color: "var(--rp-icon-fg)" }} />
-                  <IonInput
-                    value={searchText}
-                    placeholder="Buscar dirección o lugar"
-                    onIonInput={(event) =>
-                      setSearchText(String(event.detail.value ?? ""))
-                    }
-                  />
-                </IonItem>
+                />
+              </IonItem>
 
-                {pickerSuggestions.length > 0 && (
-                  <div
-                    style={{
-                      marginTop: 8,
-                      borderRadius: 16,
-                      background: "var(--rp-surface)",
-                      overflow: "hidden",
-                      border: "var(--rp-border-w) solid var(--rp-border-c)",
-                      boxShadow: "var(--rp-shadow)",
-                    }}
-                  >
-                    {pickerSuggestions.map((suggestion, index) => (
-                      <button
-                        key={suggestion.placeId}
-                        type="button"
-                        className="rapago-suggestion-item"
-                        onClick={() => void pickSuggestion(suggestion)}
-                        style={{
-                          width: "100%",
-                          border: 0,
-                          borderBottom:
-                            index < pickerSuggestions.length - 1
-                              ? "1px solid var(--rp-divider)"
-                              : 0,
-                          background: "transparent",
-                          color: "var(--rp-text)",
-                          padding: "12px 14px",
-                          textAlign: "left",
-                          cursor: "pointer",
-                        }}
-                      >
-                        <div style={{ fontWeight: 800, fontSize: ".86rem", lineHeight: 1.25, color: "var(--rp-text)" }}>
-                          {suggestion.mainText}
-                        </div>
-                        <div style={{ fontSize: ".74rem", color: "var(--rp-muted)", fontWeight: 650, marginTop: 2 }}>
-                          {suggestion.secondaryText}
-                        </div>
-                      </button>
-                    ))}
+              {pickerSuggestions.length > 0 && (
+                <div className="request-map-suggestions">
+                  {pickerSuggestions.map((suggestion) => (
+                    <button
+                      key={suggestion.placeId}
+                      type="button"
+                      className="request-map-suggestion"
+                      onClick={() => void pickSuggestion(suggestion)}
+                    >
+                      <strong>{suggestion.mainText}</strong>
+                      <span>{suggestion.secondaryText}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {mode === "origin" && selected && (
+              <div className="request-map-start-label">
+                Inicio del viaje en {selectedStreet}
+              </div>
+            )}
+
+            <button
+              type="button"
+              onClick={useCurrentLocation}
+              className="request-map-location-button"
+              aria-label="Usar mi ubicación actual"
+            >
+              <IonIcon icon={locateOutline} />
+            </button>
+
+            {modalReady && (!ready || loadingAddress) && (
+              <div
+                className="request-map-loading"
+                aria-live="polite"
+              >
+                <IonSpinner name="crescent" />
+                <span>
+                  {mode === "origin"
+                    ? "Buscando calles accesibles y referencias..."
+                    : "Buscando el destino..."}
+                </span>
+              </div>
+            )}
+
+            <section
+              className={`request-map-sheet ${
+                sheetExpanded
+                  ? "request-map-sheet--expanded"
+                  : "request-map-sheet--collapsed"
+              } ${
+                sheetDragging ? "request-map-sheet--dragging" : ""
+              }`}
+              style={
+                {
+                  "--request-sheet-drag-y": `${sheetDragY}px`,
+                } as CSSProperties
+              }
+              aria-label="Información del punto seleccionado"
+            >
+              <button
+                type="button"
+                className="request-map-sheet__drag"
+                onPointerDown={beginSheetDrag}
+                onPointerMove={moveSheetDrag}
+                onPointerUp={endSheetDrag}
+                onPointerCancel={endSheetDrag}
+                onClick={() => {
+                  if (suppressSheetClickRef.current) {
+                    suppressSheetClickRef.current = false;
+                    return;
+                  }
+
+                  setSheetExpanded((current) => !current);
+                }}
+                aria-expanded={sheetExpanded}
+                aria-label={
+                  sheetExpanded
+                    ? "Bajar la tarjeta del mapa"
+                    : "Subir la tarjeta del mapa"
+                }
+              >
+                <span className="request-map-sheet__grip" />
+                <span>
+                  {sheetExpanded
+                    ? "Desliza hacia abajo para ver más mapa"
+                    : "Desliza hacia arriba para ver los detalles"}
+                </span>
+              </button>
+
+              <div className="request-map-sheet__body">
+                <div className="request-map-sheet__heading">
+                  <span className="request-map-sheet__heading-mark" />
+                  <div>
+                    <strong>
+                      {mode === "origin"
+                        ? "Punto accesible recomendado"
+                        : "Destino seleccionado"}
+                    </strong>
+                    <span>
+                      {mode === "origin"
+                        ? "Google Maps combina una vía cercana con un punto de referencia real."
+                        : "Mueve el mapa o busca el lugar exacto."}
+                    </span>
+                  </div>
+                </div>
+
+                {mode === "origin" && pickupCandidates.length > 0 && (
+                  <div className="request-map-candidates">
+                    {pickupCandidates.map((candidate, index) => {
+                      const active =
+                        candidate.candidateId === selected?.candidateId;
+
+                      return (
+                        <button
+                          key={
+                            candidate.candidateId ??
+                            `${candidate.lat}:${candidate.lng}`
+                          }
+                          type="button"
+                          className={`request-map-candidate ${
+                            active
+                              ? "request-map-candidate--active"
+                              : ""
+                          }`}
+                          onClick={() => selectPickupCandidate(candidate)}
+                        >
+                          <span className="request-map-candidate__number">
+                            {index + 1}
+                          </span>
+
+                          <span className="request-map-candidate__content">
+                            <strong>
+                              {candidate.streetName ??
+                                candidate.text.replace(
+                                  /^Recogida en\s+/i,
+                                  "",
+                                )}
+                            </strong>
+
+                            <span>
+                              {candidate.referenceName
+                                ? `Referencia de Google Maps: ${
+                                    (candidate.referenceDistanceMeters ?? 999) <=
+                                    35
+                                      ? "frente a"
+                                      : "cerca de"
+                                  } ${candidate.referenceName}`
+                                : "Vía detectada por Google Maps, sin local cercano visible."}
+                            </span>
+                          </span>
+
+                          <span className="request-map-candidate__walk">
+                            {Math.round(candidate.walkMeters ?? 0)} m
+                            <small>
+                              {Math.max(
+                                1,
+                                candidate.walkMinutes ??
+                                  Math.ceil(
+                                    Number(candidate.walkMeters ?? 0) /
+                                      75,
+                                  ),
+                              )}{" "}
+                              min
+                            </small>
+                          </span>
+                        </button>
+                      );
+                    })}
                   </div>
                 )}
 
+                <div className="request-map-selected">
+                  <span
+                    className={`request-map-selected__dot ${
+                      mode === "origin"
+                        ? "request-map-selected__dot--pickup"
+                        : "request-map-selected__dot--destination"
+                    }`}
+                  />
 
-              </div>
-
-              {mode === "origin" &&
-                selected?.walkMeters != null &&
-                selected.walkMeters > 8 && (
-                <div
-                  style={{
-                    position: "absolute",
-                    left: "50%",
-                    top: "47%",
-                    transform: "translate(-50%, -110%)",
-                    zIndex: 35,
-                    background: "rgba(17,17,17,.94)",
-                    color: "#ffffff",
-                    border: "1px solid rgba(34,197,94,.65)",
-                    borderRadius: "16px",
-                    padding: "6px 12px",
-                    fontWeight: 800,
-                    fontSize: ".72rem",
-                    boxShadow: "0 5px 14px rgba(0,0,0,.35)",
-                    whiteSpace: "nowrap",
-                    pointerEvents: "none",
-                  }}
-                >
-                  Inicio de viaje en {selected.text.replace("Recogida en ", "")}
-                </div>
-              )}
-
-              <button
-                type="button"
-                onClick={useCurrentLocation}
-                style={{
-                  position: "absolute",
-                  right: 16,
-                  bottom: 22,
-                  zIndex: 9,
-                  width: 56,
-                  height: 56,
-                  borderRadius: 999,
-                  background: "var(--rp-surface)",
-                  color: "var(--rp-icon-fg)",
-                  border: "var(--rp-border-w) solid var(--rp-border-c)",
-                  boxShadow: "var(--rp-shadow)",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  fontSize: 25,
-                }}
-              >
-                <IonIcon icon={locateOutline} />
-              </button>
-
-              {modalReady && !ready && (
-                <div
-                  style={{
-                    position: "absolute",
-                    inset: 0,
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    background: "rgba(17,17,17,.25)",
-                    zIndex: 20,
-                  }}
-                >
-                  <IonSpinner name="crescent" />
-                </div>
-              )}
-            </div>
-
-            <div className="rp-request-map-sheet">
-              <div className="rp-request-map-grip" />
-
-              <div
-                style={{
-                  color: "var(--rp-text)",
-                  fontWeight: 850,
-                  fontSize: "1.05rem",
-                  lineHeight: 1.2,
-                  marginBottom: 14,
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 10,
-                }}
-              >
-                <span
-                  aria-hidden
-                  style={{
-                    width: 20,
-                    height: 4,
-                    borderRadius: 2,
-                    background: "var(--rp-btn-primary)",
-                    flexShrink: 0,
-                  }}
-                />
-                {mode === "origin" ? "Punto accesible recomendado" : "Destino seleccionado"}
-              </div>
-
-
-              {mode === "destination" && pickerSuggestions.length === 0 && (
-                <div
-                  className="rp-request-note"
-                  style={{
-                    margin: "0 0 14px",
-                    padding: "12px",
-                  }}
-                >
-                  <div
-                    style={{
-                      fontSize: ".72rem",
-                      fontWeight: 800,
-                      color: "var(--rp-label)",
-                      margin: "0 2px 10px",
-                      letterSpacing: ".04em",
-                      textTransform: "uppercase",
-                      display: "flex",
-                      alignItems: "center",
-                      gap: 8,
-                    }}
-                  >
-                    <span
-                      aria-hidden
-                      style={{
-                        width: 16,
-                        height: 3,
-                        borderRadius: 2,
-                        background: "var(--rp-btn-primary)",
-                        flexShrink: 0,
-                      }}
-                    />
-                    Destinos frecuentes
-                  </div>
-
-                  <div
-                    style={{
-                      display: "grid",
-                      gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
-                      gap: 8,
-                    }}
-                  >
-                    {TOURIST_DESTINATION_SUGGESTIONS
-                      .filter((item) => {
-                        const term = searchText.trim().toLowerCase();
-                        if (term.length < 2) return true;
-                        return `${item.name} ${item.subtitle}`.toLowerCase().includes(term);
-                      })
-                      .map((item) => (
-                        <button
-                          key={item.name}
-                          type="button"
-                          onClick={() => void pickTouristDestination(item)}
-                          style={{
-                            border: "1px solid var(--rp-border-c)",
-                            borderRadius: 14,
-                            background: "var(--rp-field-bg)",
-                            color: "var(--rp-text)",
-                            padding: "10px",
-                            textAlign: "left",
-                          }}
-                        >
-                          <div style={{ fontWeight: 800, fontSize: ".78rem", lineHeight: 1.2, color: "var(--rp-text)" }}>
-                            {item.name}
-                          </div>
-                          <div style={{ color: "var(--rp-muted)", fontSize: ".68rem", marginTop: 3 }}>
-                            {item.subtitle}
-                          </div>
-                        </button>
-                      ))}
-                  </div>
-                </div>
-              )}
-
-              <div
-                className="rp-request-note"
-                style={{
-                  padding: "12px 14px",
-                  marginBottom: 12,
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 12,
-                }}
-              >
-                <div
-                  style={{
-                    width: 14,
-                    height: 14,
-                    borderRadius: 999,
-                    background: mode === "origin" ? "#22c55e" : "#ef4444",
-                    boxShadow: mode === "origin" ? "0 0 0 5px rgba(34,197,94,.16)" : "0 0 0 5px rgba(239,68,68,.16)",
-                    flexShrink: 0,
-                  }}
-                />
-                <div style={{ flex: 1 }}>
-                  <div
-                    style={{
-                      color: "var(--rp-text)",
-                      fontWeight: 850,
-                      fontSize: ".9rem",
-                      marginBottom: 4,
-                    }}
-                  >
-                    {loadingAddress
-                      ? mode === "origin"
-                        ? "Buscando calle accesible..."
-                        : "Buscando destino..."
-                      : selected?.walkMeters != null && selected.walkMeters > 8
-                        ? selected.text.replace("Recogida en ", "")
-                        : selected?.text ?? (mode === "origin" ? "Punto seleccionado" : "Destino seleccionado")}
-                  </div>
-                  <div
-                    style={{
-                      color: "var(--rp-muted)",
-                      fontSize: ".82rem",
-                      lineHeight: 1.35,
-                    }}
-                  >
-                    {selected?.walkMeters != null && selected.walkMeters > 8
-                      ? `${String(selected.address ?? "").split(" · ")[0] || "Calle accesible"} · A ${selected.walkMeters} m de tu ubicación`
-                      : selected?.address ??
-                        "Mueve el mapa. Rapa Go ajustará el punto a una calle accesible."}
-                  </div>
-                </div>
-                <IonIcon icon={createOutline} style={{ color: "var(--rp-icon-fg)", fontSize: 22, flexShrink: 0 }} />
-              </div>
-
-              {mode === "origin" &&
-                selected?.walkMeters != null &&
-                selected.walkMeters > 8 && (
-                <div
-                  className="rp-request-note"
-                  style={{
-                    padding: "14px 16px",
-                    marginBottom: 18,
-                    display: "grid",
-                    gridTemplateColumns: "42px 1fr auto",
-                    gap: 12,
-                    alignItems: "center",
-                  }}
-                >
-                  <div style={{ fontSize: 28 }}>🚶</div>
                   <div>
-                    <div
-                      style={{
-                        color: "var(--rp-text)",
-                        fontWeight: 850,
-                        fontSize: ".86rem",
-                        marginBottom: 4,
-                      }}
-                    >
-                      Camina hasta la calle
-                    </div>
-                    <div
-                      style={{
-                        color: "var(--rp-muted)",
-                        fontSize: ".82rem",
-                        lineHeight: 1.35,
-                      }}
-                    >
-                      Es la mejor ubicación para que el conductor te encuentre
-                    </div>
-                  </div>
-                  <div
-                    style={{
-                      color: "var(--rp-ok-fg)",
-                      fontWeight: 850,
-                      fontSize: ".92rem",
-                      textAlign: "right",
-                    }}
-                  >
-                    {selected.walkMeters} m
-                    <div
-                      style={{
-                        color: "var(--rp-muted)",
-                        fontWeight: 700,
-                        fontSize: ".78rem",
-                        marginTop: 4,
-                      }}
-                    >
-                      {Math.max(1, Math.round(selected.walkMeters / 80))} min
-                    </div>
-                  </div>
-                </div>
-              )}
+                    <strong>
+                      {loadingAddress
+                        ? "Actualizando el punto..."
+                        : selected?.text ??
+                          (mode === "origin"
+                            ? "Punto de recogida"
+                            : "Destino")}
+                    </strong>
 
-              <IonButton
-                expand="block"
-                disabled={!selected}
-                onClick={() => {
-                  if (selected) onConfirm(selected);
-                }}
-                style={
-                  {
-                    "--background": "var(--rp-btn-primary)",
-                    "--color": "var(--rp-btn-primary-fg)",
-                    "--border-radius": "var(--rp-radius-sm)",
-                    "--box-shadow": "var(--rp-shadow-accent)",
-                    height: "54px",
-                    minHeight: "54px",
-                    fontSize: "1rem",
-                    fontWeight: 850,
-                  } as CSSProperties
-                }
-              >
-                {mode === "origin" ? "Confirmar punto de partida" : "Confirmar destino"}
-              </IonButton>
-            </div>
+                    <span>
+                      {selected?.address ??
+                        "Mueve el mapa para elegir la ubicación."}
+                    </span>
+                  </div>
+
+                  <IonIcon icon={createOutline} />
+                </div>
+
+                {mode === "origin" && selected && (
+                  <div className="request-map-walk">
+                    <div className="request-map-walk__icon">🚶</div>
+
+                    <div className="request-map-walk__text">
+                      <strong>
+                        {selectedWalkMeters <= 8
+                          ? "El vehículo puede llegar a tu punto"
+                          : "Camina hasta la vía accesible"}
+                      </strong>
+
+                      <span>
+                        {selected.referenceName
+                          ? `Usa ${selected.referenceName} como referencia para encontrar al conductor.`
+                          : "El punto verde facilita que el conductor pueda encontrarte."}
+                      </span>
+                    </div>
+
+                    <div className="request-map-walk__metrics">
+                      {selectedWalkMeters} m
+                      <small>{selectedWalkMinutes} min</small>
+                    </div>
+                  </div>
+                )}
+
+                {mode === "origin" && (
+                  <p className="request-map-walking-warning">
+                    La ruta a pie es una estimación de Google Maps. Revisa
+                    que el camino sea seguro antes de confirmar.
+                  </p>
+                )}
+
+                <IonButton
+                  expand="block"
+                  disabled={!selected || loadingAddress}
+                  onClick={() => {
+                    if (selected) onConfirm(selected);
+                  }}
+                  className="request-map-confirm"
+                >
+                  {mode === "origin"
+                    ? "Confirmar punto de partida"
+                    : "Confirmar destino"}
+                </IonButton>
+              </div>
+            </section>
           </div>
         </IonContent>
       </IonPage>

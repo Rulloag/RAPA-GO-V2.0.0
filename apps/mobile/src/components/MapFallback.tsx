@@ -135,6 +135,7 @@ export function loadRapaGoGoogleMaps(): Promise<void> {
 
   const scriptUrl =
     `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(apiKey)}` +
+    `&v=weekly&language=es&region=CL&loading=async` +
     `&libraries=places,geometry&callback=${GOOGLE_MAPS_CALLBACK_NAME}`;
 
   for (const script of oldScripts) {
