@@ -1,6 +1,7 @@
 import type { FastifyInstance } from "fastify";
 import { driverProfileController } from "./driverProfile.controller.js";
 import { driverComplianceController } from "./driverCompliance.controller.js";
+import { driverVehiclePhotoRoutes } from "./driverVehiclePhoto.routes.js";
 
 export async function driverProfileRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.get("/drivers/me/profile",          driverProfileController.getMyProfile);
@@ -9,4 +10,6 @@ export async function driverProfileRoutes(fastify: FastifyInstance): Promise<voi
 
   fastify.get("/drivers/me/rest-schedule", driverComplianceController.getMyRestSchedule);
   fastify.patch("/drivers/me/rest-schedule", driverComplianceController.upsertMyRestSchedule);
+
+  await driverVehiclePhotoRoutes(fastify);
 }
