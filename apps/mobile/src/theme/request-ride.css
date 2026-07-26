@@ -1,506 +1,1054 @@
 /* ==========================================================================
-   RAPA GO — Solicitar viaje (RequestRidePage)
+   RAPA GO — Selector de mapa del Request
+   v12 — tema claro fijo, isla Rapa Nui, sin conflicto de cascada
 
-   POR QUÉ ESTE ARCHIVO
-   RequestRidePage forzaba una paleta clara fija ("arena volcánica") mediante
-   estilos inline y un bloque <style> con la clase `.rapago-request-light`, que
-   fijaba el texto en #111827. En modo noche el texto quedaba negro sobre
-   superficie oscura. Estas clases sustituyen esos bloques repetidos por
-   superficies, textos y bordes construidos con los tokens de rapago-shell.css,
-   de modo que la pantalla responde al tema día/noche igual que Home, Perfil,
-   Wallet y Ayuda.
-
-   Todo va scoped bajo `.rapago-section-page.rapago-request-page` para no
-   filtrar a ninguna otra pantalla. Se importa DESPUÉS de sections.css, así que
-   comparte su UI kit (.rp-card, .rp-hero, la temización de ion-item / ion-input
-   / ion-button) y puede apoyarse en él.
+   FIX respecto a v11:
+   - Se eliminaron los 3 bloques que peleaban por el color de los chips
+     de "destinos frecuentes" (el override de @media prefers-color-scheme,
+     el override .dark / [data-theme="dark"], y el intento de "forzar
+     claro" de V10). Esos tres bloques tenían la MISMA especificidad de
+     selector, así que si algún toggle de tema en JS llega a escribir
+     estas custom properties como inline style en el elemento
+     (element.style.setProperty(...)), le gana a CUALQUIER regla de
+     clase sin !important — por eso el "forzado a claro" no alcanzaba
+     a pisar el inline style y los chips seguían viéndose oscuros con
+     texto casi negro sobre negro.
+   - Ahora hay UNA sola fuente de verdad para los tokens de chip, y esos
+     tokens llevan !important, que sí gana incluso sobre un inline style
+     sin !important. Esta pantalla es de tema claro fijo (ya lo definiste
+     así en v10), así que no hace falta variante oscura.
+   - Paleta ajustada a Rapa Nui: el rojo genérico de "peligro" pasa a un
+     coral/terracota (atardecer del Pacífico), reservado solo para el
+     pin de destino activo. El resto de los pines usan dorado por
+     defecto para que no compitan visualmente con el estado seleccionado.
    ========================================================================== */
 
-/* ── Columna de contenido ────────────────────────────────────────────────── */
-/* Transparente para dejar ver el fondo temizado del IonPage (var(--rp-page-bg),
-   que ya pinta rapago-shell.css). Antes era un degradado arena fijo que tapaba
-   el tema. */
-.rapago-request-page .rp-request-scroll {
-  max-width: 460px;
-  min-height: 100%;
-  margin: 0 auto;
-  background: transparent;
-  padding-bottom: calc(90px + env(safe-area-inset-bottom, 0px));
+.request-map-page {
+  color-scheme: light !important;
+
+  /* ---- Superficie / texto ---- */
+  --rp-bg: #f3ecdd;
+  --rp-bg-elevated: #f8f2e4;
+  --rp-surface: #ffffff;
+  --rp-text: #2f2418;
+  --rp-muted: #7c6a52;
+  --rp-border-c: rgba(47, 36, 24, 0.14);
+  --rp-field-bg: #fffaf0;
+  --rp-icon-fg: #2f2418;
+
+  /* ---- Marca / isla ---- */
+  --rp-gold: #d9a62e;
+  --rp-gold-dark: #b9820f;
+  --rp-gold-soft: #f2c563;
+  --rp-btn-primary: var(--rp-gold);
+  --rp-btn-primary-fg: #241a06;
+  --rp-shadow-accent: 0 10px 26px rgba(185, 126, 22, 0.32);
+
+  /* Verde "laguna" para punto de partida / candidatos / a pie */
+  --rp-ok-bg: #dcf3e6;
+  --rp-ok-fg: #146b45;
+  --rp-lagoon: #1f9d63;
+  --rp-lagoon-dark: #14713f;
+
+  /* Coral/terracota — reservado SOLO para el destino activo/seleccionado.
+     Ya no es un rojo de alerta genérico: es el color que distingue un
+     pin elegido del resto, nada más. */
+  --rp-danger: #e2543b;
+  --rp-danger-bg: #fbe4de;
+
+  /* Chips de "destinos frecuentes": única definición, sin variantes de
+     tema en conflicto. !important porque estos valores deben ganarle
+     incluso a un inline style de un toggle de tema mal ubicado. */
+  --rp-chip-bg: #fbf1de !important;
+  --rp-chip-bg-hover: #f6e7c8 !important;
+  --rp-chip-border: rgba(185, 130, 15, 0.24) !important;
+  --rp-chip-text: #3a2c12 !important;
+  --rp-chip-muted: #7c6848 !important;
+  --rp-chip-shadow-hover: 0 4px 14px rgba(120, 90, 30, 0.16) !important;
+  --rp-chip-icon-bg: #f2dcae !important;
+  --rp-chip-icon-fg: #9a680d !important;
+
+  /* ---- Escala ---- */
+  --rp-radius-sm: 12px;
+  --rp-radius-md: 16px;
+  --rp-radius-lg: 22px;
+  --rp-radius-xl: 28px;
+  --rp-ease: cubic-bezier(0.22, 1, 0.36, 1);
+
+  --request-sheet-peek: 52px;
+  --request-sheet-expanded-height: min(58dvh, 560px);
+
+  background: radial-gradient(
+      120% 90% at 50% -10%,
+      color-mix(in srgb, var(--rp-gold) 8%, var(--rp-bg)) 0%,
+      var(--rp-bg) 46%
+    ),
+    var(--rp-bg) !important;
+
+  height: 100dvh;
+  min-height: 100dvh;
+  overflow: hidden;
 }
 
-/* ── Fila de información (tarjetas de la hoja del mapa) ──────────────────── */
-/* UNA sola rejilla para todas las filas. Antes cada tarjeta traía su propio
-   layout inline: la de la dirección iba en flex con un punto de 14px y padding
-   de 14, y la de la caminata en grid con una columna de 42px y padding de 16.
-   Resultado: el texto de una empezaba 30px más a la derecha que el de la otra
-   y los bordes derechos tampoco coincidían — se veían descuadradas entre sí
-   aunque cada una por separado estuviera bien.
-
-   Con la columna de iconos a ancho fijo, el texto y el dato de la derecha caen
-   siempre en la misma vertical, tenga la fila el icono que tenga. */
-.rapago-request-page .rp-request-row {
-  display: grid;
-  grid-template-columns: 28px minmax(0, 1fr) auto;
-  align-items: center;
-  gap: 12px;
-  padding: 14px 16px;
-  margin-bottom: 12px;
+.request-map-page,
+.request-map-page * {
+  transition: background-color 200ms var(--rp-ease, ease),
+    border-color 200ms var(--rp-ease, ease), color 160ms var(--rp-ease, ease),
+    box-shadow 200ms var(--rp-ease, ease);
 }
 
-/* Centra en la columna cualquier icono, mida lo que mida: el punto de color de
-   una fila y el emoji de otra tienen tamaños distintos, y así ambos quedan en
-   el mismo eje en lugar de cada uno pegado a un lado. */
-.rapago-request-page .rp-request-row__icon {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 24px;
-  line-height: 1;
+.request-map-page .request-map-frequent__item,
+.request-map-page .request-map-candidate,
+.request-map-page .request-map-location-button,
+.request-map-page .request-map-back,
+.request-map-page .request-map-confirm,
+.request-map-page .request-map-suggestion,
+.request-map-page .request-map-sheet,
+.request-map-page .request-map-selected ion-icon {
+  transition: border-color 150ms var(--rp-ease, ease), background-color 150ms var(--rp-ease, ease),
+    transform 120ms var(--rp-ease, ease), box-shadow 150ms var(--rp-ease, ease);
 }
 
-.rapago-request-page .rp-request-row__title {
+/* ---- Encabezado ---- */
+.request-map-header {
+  position: sticky;
+  top: 0;
+  z-index: 100;
+}
+
+.request-map-header ion-toolbar {
+  --background: linear-gradient(180deg, #fffaf0 0%, #f7e7bd 100%);
+  --color: var(--rp-text);
+  --border-color: rgba(185, 130, 15, 0.22);
+  --min-height: 58px;
+  box-shadow: 0 4px 18px rgba(47, 36, 24, 0.12);
+}
+
+.request-map-header ion-title {
   color: var(--rp-text);
-  font-weight: 850;
-  font-size: 0.88rem;
-  margin-bottom: 4px;
+  font-size: 0.98rem;
+  font-weight: 900;
+  text-align: center;
+  letter-spacing: 0.01em;
 }
 
-.rapago-request-page .rp-request-row__sub {
-  color: var(--rp-muted);
+.request-map-back {
+  --color: var(--rp-text);
   font-size: 0.82rem;
-  line-height: 1.35;
-}
-
-.rapago-request-page .rp-request-row__value {
-  color: var(--rp-ok-fg);
   font-weight: 850;
-  font-size: 0.92rem;
-  text-align: right;
-}
-
-.rapago-request-page .rp-request-row__value-sub {
-  color: var(--rp-muted);
-  font-weight: 700;
-  font-size: 0.78rem;
-  margin-top: 4px;
-}
-
-/* ── Campo de búsqueda sobre el mapa ─────────────────────────────────────── */
-/* El borde se veía irregular, medio transparente a trozos. Eran dos cosas
-   sumándose:
-
-   · sections.css:267-274 fija con !important `border`, `border-radius` y
-     `--border-radius` en TODOS los ion-item de la pantalla. Los valores que
-     este campo declaraba en línea —999px de radio, grosor `--rp-border-w`—
-     nunca llegaban a aplicarse, porque !important gana a los estilos en línea.
-     El código decía una cosa y la pantalla mostraba otra.
-   · Encima, `--rp-shadow` incluye un anillo de 1px (`0 0 0 1px rgba(...,.1)`)
-     que caía justo por fuera del borde translúcido de 1px: dos anillos dorados
-     concéntricos con distinta opacidad. Sobre un mapa, que cambia de color por
-     debajo, esa doble línea se lee como un borde a medio pintar.
-
-   Aquí el canto se define UNA sola vez. Gana por especificidad (dos clases
-   frente a una clase más un elemento), no por orden de importación.
-
-   El color pasa a `--rp-gold`, que es sólido en ambos temas: un borde
-   translúcido flotando sobre un mapa cambia de aspecto según lo que tenga
-   detrás, y era parte de la sensación de "transparente a ratos". */
-.rapago-request-page .rp-request-search-field {
-  --background: var(--rp-field-bg) !important;
-  --border-radius: 999px !important;
-  --padding-start: 16px;
-  --inner-padding-end: 12px;
-  --highlight-color-focused: var(--rp-gold);
-  border: 1.5px solid var(--rp-gold) !important;
-  border-radius: 999px !important;
-  /* Recorta el fondo interior al contorno redondeado: sin esto asoma por las
-     esquinas y vuelve a verse un canto sucio. */
-  overflow: hidden;
-  /* Sombra de caída sin anillo: el borde ya es la única línea. */
-  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.3);
-}
-
-/* ── Controles flotantes sobre el mapa ───────────────────────────────────── */
-/* Una única columna alineada al borde derecho, con todos los botones del mismo
-   tamaño y separación. Antes el zoom lo pintaba Google donde él decidía y el
-   botón de centrar iba aparte en `position: absolute`, de otro tamaño: los dos
-   acababan superpuestos y sin compartir eje.
-
-   `bottom` deja libre la franja de atribución de Google, que es obligatoria y
-   no se puede tapar. 48px de lado mantiene el objetivo táctil por encima del
-   mínimo accesible de 44px. */
-.rapago-request-page .rp-map-controls {
-  position: absolute;
-  right: 14px;
-  bottom: 34px;
-  z-index: 12;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.rapago-request-page .rp-map-control {
-  width: 48px;
-  height: 48px;
-  padding: 0;
-  border-radius: 999px;
-  border: var(--rp-border-w) solid var(--rp-border-c);
-  background: var(--rp-surface);
-  color: var(--rp-icon-fg);
-  box-shadow: var(--rp-shadow);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 22px;
-  cursor: pointer;
-}
-
-/* ── Etiqueta de sección ─────────────────────────────────────────────────── */
-.rapago-request-page .rp-request-label {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin: 0 0 8px 2px;
-  color: var(--rp-label);
-  font-size: var(--rp-fs-label);
-  font-weight: 800;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-}
-
-.rapago-request-page .rp-request-label__tick {
-  flex-shrink: 0;
-  width: 16px;
-  height: 3px;
-  border-radius: 2px;
-  background: var(--rp-btn-primary);
-}
-
-/* ── Caja de sugerencias de dirección ────────────────────────────────────── */
-.rapago-request-page .rp-request-suggest {
-  margin: -8px 0 14px;
-  border: var(--rp-border-w) solid var(--rp-border-c);
   border-radius: var(--rp-radius-sm);
-  overflow: hidden;
-  background: var(--rp-surface);
-  box-shadow: var(--rp-shadow);
+  transition: opacity 160ms var(--rp-ease), transform 160ms var(--rp-ease);
 }
 
-.rapago-request-page .rp-request-suggest__item {
+.request-map-back:active {
+  opacity: 0.6;
+  transform: translateX(-1px);
+}
+
+.request-map-back:focus-visible {
+  outline: 2px solid var(--rp-gold);
+  outline-offset: 3px;
+}
+
+.request-map-content {
+  --background: transparent;
+}
+
+.request-map-content::part(scroll) {
+  overflow: hidden;
+}
+
+.request-map-shell {
+  position: relative;
   width: 100%;
-  border: 0;
-  background: transparent;
-  color: var(--rp-text);
-  padding: 12px 14px;
-  text-align: left;
-  cursor: pointer;
+  height: 100%;
+  min-height: 100%;
+  overflow: hidden;
+  background: radial-gradient(
+    130% 70% at 50% 0%,
+    color-mix(in srgb, var(--rp-gold) 7%, var(--rp-bg-elevated)) 0%,
+    var(--rp-bg) 55%
+  );
+  isolation: isolate;
 }
 
-.rapago-request-page .rp-request-suggest__item + .rp-request-suggest__item {
-  border-top: 1px solid var(--rp-divider);
-}
-
-.rapago-request-page .rp-request-suggest__main {
-  font-weight: 800;
-  font-size: 0.84rem;
-  line-height: 1.25;
-  color: var(--rp-text);
-}
-
-.rapago-request-page .rp-request-suggest__sub {
-  margin-top: 3px;
-  color: var(--rp-muted);
-  font-size: 0.72rem;
-  font-weight: 650;
-  line-height: 1.25;
-}
-
-/* ── Tarjeta de nota / aviso sobre superficie del tema ───────────────────── */
-/* Sustituye a los recuadros crema (#fff7e8) con texto tinta que no se
-   adaptaban al modo noche. */
-.rapago-request-page .rp-request-note {
-  background: var(--rp-surface);
-  border: var(--rp-border-w) solid var(--rp-border-c);
-  border-radius: var(--rp-radius-sm);
-  box-shadow: var(--rp-shadow);
-  color: var(--rp-text);
-}
-
-.rapago-request-page .rp-request-note__title {
-  color: var(--rp-text);
-  font-weight: 800;
-}
-
-.rapago-request-page .rp-request-note__sub {
-  color: var(--rp-muted);
-}
-
-/* ── Panel agrupador (bloque "agendar recogida") ─────────────────────────── */
-.rapago-request-page .rp-request-panel {
-  background: var(--rp-surface);
-  border: var(--rp-border-w) solid var(--rp-border-c);
-  border-radius: var(--rp-radius);
-  box-shadow: var(--rp-shadow);
-  color: var(--rp-text);
-  padding: 16px;
-  margin-bottom: 18px;
-}
-
-/* ── Modal de confirmación de ubicación en el mapa ───────────────────────── */
-/* El IonModal monta su propio IonPage con .rapago-section-page.rapago-request-page,
-   pero fuera del árbol de la página; los tokens resuelven contra :root, que
-   useRapagoSectionTheme mantiene espejado al tema activo. */
-/* Se ancla con inset:0, NO con `height: 100%`. Parece lo mismo y no lo es:
-   el padre es el .inner-scroll de Ionic, que lleva
-   `padding-bottom: calc(... + área segura)` y `box-sizing: border-box`. Un
-   `height: 100%` resuelve contra su caja de CONTENIDO, o sea sin ese padding,
-   y la shell quedaba más corta que el hueco disponible: por debajo asomaba el
-   fondo de la página, la franja clara entre el mapa y la hoja. Posicionada,
-   ocupa la caja de relleno completa y ese desajuste desaparece. */
-.rapago-request-page .rp-request-map-shell {
+.request-map-canvas {
   position: absolute;
   inset: 0;
-  background: transparent;
-  display: flex;
-  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  background: var(--rp-bg);
 }
 
-/* EL REPARTO. Los dos únicos hijos de la shell se llevan el 100% entre ambos,
-   así que no puede quedar hueco entre ellos por construcción.
-
-   El mapa va con proporción FIJA a propósito. Antes mandaba el alto de la hoja
-   y el mapa se quedaba con el resto; como la hoja crece cuando llega la
-   dirección y cuando aparece la tarjeta de caminata, el mapa se encogía sola
-   mientras el usuario lo estaba mirando. Con una fracción fija el mapa mide
-   siempre lo mismo, cargue lo que cargue debajo.
-
-   El valor concreto lo pone el componente en `--rp-map-share` porque el panel
-   se puede arrastrar: reposa al 50% (mitad y mitad) y el usuario lo sube o lo
-   baja. El fallback del 50% mantiene la pantalla usable si por lo que sea la
-   variable no llegara. */
-.rapago-request-page .rp-request-map-canvas {
-  position: relative;
-  /* `0 1` y no `0 0`: el mapa pide su reparto pero CEDE si la hoja se queda sin
-     el mínimo de abajo. Es la red para pantallas muy bajas o en horizontal,
-     donde ningún porcentaje da de sí. */
-  flex: 0 1 var(--rp-map-share, 50%);
-  min-height: 22%;
-  /* Curva con un punto de rebasamiento: el panel llega, se pasa un pelo y
-     asienta. Una curva que solo frena llega "muerta"; este pequeño exceso es lo
-     que hace que se lea como un objeto con peso y no como una caja que cambia
-     de tamaño. */
-  transition: flex-basis 0.42s cubic-bezier(0.34, 1.28, 0.52, 1);
+/* ---- Buscador ---- */
+.request-map-search {
+  position: absolute;
+  top: max(14px, env(safe-area-inset-top, 0px));
+  left: 14px;
+  right: 14px;
+  z-index: 40;
+  max-width: 680px;
+  margin: 0 auto;
 }
 
-/* Durante el arrastre el panel tiene que ir pegado al dedo. Con la transición
-   puesta iría siempre un poco por detrás y se sentiría blando. */
-.rapago-request-page .rp-request-map-shell.is-dragging .rp-request-map-canvas {
-  transition: none;
+.request-map-search__field {
+  --background: var(--rp-field-bg);
+  --color: var(--rp-text);
+  --placeholder-color: var(--rp-muted);
+  --padding-start: 14px;
+  --inner-padding-end: 12px;
+  --min-height: 52px;
+  --border-radius: 999px;
+  color: var(--rp-text);
+  border: 1px solid var(--rp-border-c);
+  border-radius: 999px;
+  box-shadow: 0 10px 28px rgba(47, 36, 24, 0.16);
+  overflow: hidden;
+  transition: box-shadow 180ms var(--rp-ease), border-color 180ms var(--rp-ease);
 }
 
-/* Cuanto más alto está el panel, más profunda su sombra: refuerza que se ha
-   levantado por encima del mapa en vez de estar apoyado abajo. La transición
-   es la misma que la del reparto para que ambas cosas viajen juntas. */
-.rapago-request-page .rp-request-map-shell.is-sheet-tall .rp-request-map-sheet {
-  box-shadow: 0 -26px 56px rgba(0, 0, 0, 0.44);
+.request-map-search__field.ion-focused,
+.request-map-search__field:focus-within {
+  border-color: color-mix(in srgb, var(--rp-gold) 55%, transparent);
+  box-shadow: 0 10px 28px rgba(47, 36, 24, 0.18),
+    0 0 0 3px color-mix(in srgb, var(--rp-gold) 22%, transparent);
 }
 
-/* NO hay regla de "hoja cerrada", y es a propósito. La hubo: desvanecía el
-   contenido con `opacity` pero le seguía reservando su espacio, así que el
-   panel quedaba como una caja negra vacía bajo el título. Ese hueco era
-   justamente el que tenía que ser mapa.
+.request-map-search__field ion-icon {
+  color: var(--rp-text);
+  font-size: 21px;
+}
 
-   Al no existir, encoger la hoja recorta su contenido por la propia caja y el
-   mapa ocupa de verdad lo que ella deja. Es imposible que quede espacio
-   reservado sin nada dentro. */
+.request-map-search__field ion-input {
+  --color: var(--rp-text);
+  --placeholder-color: var(--rp-muted);
+  font-size: 0.92rem;
+  font-weight: 700;
+}
 
-@media (prefers-reduced-motion: reduce) {
-  .rapago-request-page .rp-request-map-canvas,
-  .rapago-request-page .rp-request-map-sheet,
-  .rapago-request-page .rp-request-map-sheet-scroll,
-  .rapago-request-page .rp-request-map-grip__bar {
-    transition: none;
+.request-map-suggestions {
+  max-height: min(40dvh, 320px);
+  margin-top: 8px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  background: var(--rp-surface);
+  border: 1px solid var(--rp-border-c);
+  border-radius: var(--rp-radius-lg);
+  box-shadow: 0 14px 34px rgba(47, 36, 24, 0.18);
+  animation: rp-suggestions-in 160ms var(--rp-ease);
+}
+
+@keyframes rp-suggestions-in {
+  from {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
   }
 }
 
-/* La hoja se queda EXACTAMENTE con lo que no ocupa el mapa. No lleva altura
-   propia ni tope: al ser el otro miembro del reparto, cualquier número aquí
-   sería una segunda fuente de verdad que podría no cuadrar con la primera, y
-   ese desacuerdo es justo lo que dejaba huecos. Si su contenido no cabe, se
-   desplaza por dentro (.rp-request-map-sheet-scroll); nunca empuja al mapa.
-
-   Es un contenedor flex en columna, NO el que hace scroll: antes esta misma
-   caja tenía `overflow-y: auto` y el botón de confirmar era `position: sticky`
-   dentro de ella. Esa combinación (sticky + max-height + overflow en el MISMO
-   elemento) es la que dejaba un hueco vacío enorme entre el botón y el borde
-   inferior en algunos WebView. Ahora el scroll vive en un hijo aparte
-   (.rp-request-map-sheet-scroll) y el botón es un hermano normal, sin sticky.
-
-   El `margin-top: -20px` monta la hoja sobre el mapa: es lo que la hace leer
-   como una hoja apoyada encima y no como una franja pegada al borde. */
-.rapago-request-page .rp-request-map-sheet {
-  flex: 1 1 auto;
-  /* Suelo = exactamente su cabecera: relleno superior + barra y título + el
-     inferior, que depende del área segura y por eso se compone con `max()` en
-     vez de darlo por hecho. Es hasta donde puede encoger la hoja al bajar la
-     barra, y por tanto hasta dónde puede crecer el mapa — así que cada píxel
-     de más aquí es un píxel de mapa de menos.
-
-     56px es la cabecera YA recortada (ver rp-request-map-sheet-head): antes
-     este número era 82px, con relleno propio de la cabecera además del de
-     aquí. Ese sobrante no se veía como "espacio de más" — se sentía como que
-     el panel no bajaba todo lo que debía.
-
-     Va en píxeles y no en porcentaje porque la cabecera mide lo mismo en todos
-     los aparatos; en % volvería a quedarse corto justo en las pantallas
-     pequeñas. Se acota con `min()` para que en horizontal, donde el alto total
-     es poco, este suelo no se coma la pantalla. */
-  min-height: min(calc(56px + max(20px, env(safe-area-inset-bottom))), 40%);
-  background: var(--rp-surface);
-  border-top-left-radius: 28px;
-  border-top-right-radius: 28px;
-  margin-top: -20px;
-  position: relative;
-  z-index: 20;
-  /* El 14px de arriba bajó a 10px: es el otro tramo del suelo, junto con el
-     56px de la cabecera de la regla de arriba. El lateral y el inferior se
-     quedan igual — el inferior es el que de verdad importa (zona del gesto de
-     inicio en iOS) y no debe recortarse. */
-  padding: 10px 18px max(20px, env(safe-area-inset-bottom));
-  box-shadow: 0 -18px 38px rgba(0, 0, 0, 0.28);
-  transition: box-shadow 0.42s cubic-bezier(0.34, 1.28, 0.52, 1);
-  display: flex;
-  flex-direction: column;
+.request-map-suggestion {
+  display: grid;
+  width: 100%;
+  gap: 3px;
+  padding: 12px 15px;
+  border: 0;
+  border-bottom: 1px solid var(--rp-border-c);
+  background: transparent;
   color: var(--rp-text);
+  text-align: left;
+  transition: background-color 120ms var(--rp-ease);
 }
 
-/* Único elemento que hace scroll dentro de la hoja. min-height: 0 es lo que
-   permite que, dentro de un flex column, este bloque se achique en vez de
-   desbordar cuando el contenido más el botón no caben.
-
-   El degradado del final NO es adorno. Cuando el contenido no cabe, la última
-   tarjeta quedaba cortada en seco a media palabra: eso se lee como un fallo de
-   maquetación, no como algo desplazable, así que el usuario no tenía ningún
-   motivo para arrastrar y se perdía lo de abajo. Difuminada, la misma tarjeta
-   dice "sigue hacia abajo" sin necesidad de explicarlo. El padding inferior
-   hace que, cuando el contenido SÍ cabe entero, el degradado caiga sobre el
-   hueco vacío y no se note. */
-.rapago-request-page .rp-request-map-sheet-scroll {
-  flex: 1 1 auto;
-  min-height: 0;
-  overflow-y: auto;
-  overscroll-behavior: contain; /* el scroll no se propaga al mapa de debajo */
-  -webkit-overflow-scrolling: touch;
-  /* Holgura mayor que el degradado (24px): ahora el último elemento es el botón
-     de confirmar, y al llegar abajo del todo el difuminado tiene que caer sobre
-     hueco vacío y no sobre él. Un botón principal con el canto lavado se lee
-     como deshabilitado. */
-  padding-bottom: 30px;
-  -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 24px), transparent);
-  mask-image: linear-gradient(to bottom, #000 calc(100% - 24px), transparent);
-  transition: opacity 0.22s ease;
+.request-map-suggestion:last-child {
+  border-bottom: 0;
 }
 
-/* CABECERA DEL PANEL — la superficie de arrastre entera, no solo la rayita.
-   Antes el gesto vivía en un botón de 30px y había que apuntarle; agarrando por
-   toda esta zona (rayita + título) el panel responde al primer intento, que es
-   lo que hace que se sienta del sistema y no de la app.
+.request-map-suggestion:hover {
+  background: var(--rp-field-bg);
+}
 
-   `touch-action: none` es imprescindible: sin él iOS interpreta el gesto
-   vertical como scroll y se queda con él antes de que lleguen los eventos de
-   puntero. `user-select: none` evita que arrastrar sobre el título acabe
-   seleccionando texto a media maniobra. */
-.rapago-request-page .rp-request-map-sheet-head {
-  flex: 0 0 auto;
+.request-map-suggestion:active {
+  background: #f3e9d2;
+}
+
+.request-map-suggestion:focus-visible {
+  outline: 2px solid var(--rp-gold);
+  outline-offset: -2px;
+  background: var(--rp-field-bg);
+}
+
+.request-map-suggestion strong {
+  color: var(--rp-text);
+  font-size: 0.86rem;
+  font-weight: 850;
+  line-height: 1.25;
+}
+
+.request-map-suggestion span {
+  color: var(--rp-muted);
+  font-size: 0.73rem;
+  font-weight: 650;
+  line-height: 1.3;
+}
+
+.request-map-start-label {
+  position: absolute;
+  top: 46%;
+  left: 50%;
+  z-index: 32;
+  max-width: min(82vw, 420px);
+  padding: 7px 12px;
+  transform: translate(-50%, -110%);
+  overflow: hidden;
+  background: var(--rp-text);
+  color: #fffaf0;
+  border: 1px solid var(--rp-lagoon);
+  border-radius: var(--rp-radius-md);
+  box-shadow: 0 7px 18px rgba(47, 36, 24, 0.3);
+  font-size: 0.74rem;
+  font-weight: 850;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.request-map-location-button {
+  position: absolute;
+  right: 16px;
+  bottom: calc(var(--request-sheet-peek) + 18px);
+  z-index: 35;
+  display: grid;
+  width: 54px;
+  height: 54px;
+  place-items: center;
+  padding: 0;
+  background: var(--rp-surface);
+  color: var(--rp-text);
+  border: 1px solid var(--rp-border-c);
+  border-radius: 999px;
+  box-shadow: 0 10px 25px rgba(47, 36, 24, 0.16);
+  font-size: 24px;
+  transition: transform 140ms var(--rp-ease), box-shadow 140ms var(--rp-ease),
+    background-color 140ms var(--rp-ease);
+}
+
+@media (hover: hover) {
+  .request-map-location-button:hover {
+    background: #ffffff;
+    box-shadow: 0 12px 28px rgba(47, 36, 24, 0.22);
+  }
+}
+
+.request-map-location-button:active {
+  transform: scale(0.94);
+  box-shadow: 0 6px 16px rgba(47, 36, 24, 0.18);
+}
+
+.request-map-location-button:focus-visible {
+  outline: 2px solid var(--rp-gold);
+  outline-offset: 3px;
+}
+
+.request-map-loading {
+  position: absolute;
+  top: 84px;
+  left: 50%;
+  z-index: 45;
   display: flex;
-  flex-direction: column;
   align-items: center;
-  gap: 8px;
-  /* Recortado a lo justo: antes tenía `padding-top: 8px` propio además del
-     padding de la hoja, y `margin-bottom: 12px`. Esa holgura de más era
-     exactamente lo que le restaba altura al mapa cuando el panel está en su
-     punto más bajo — este bloque, con flex-shrink:0, NUNCA se encoge, así que
-     todo lo que mida aquí es techo que el mapa no puede alcanzar. Se mantiene
-     el gesto de 45px de alto porque sigue siendo el tirador entero (WCAG
-     2.5.5, objetivo táctil mínimo 44px), no solo la rayita. */
-  margin: -6px 0 6px;
-  touch-action: none;
-  cursor: grab;
-  user-select: none;
-  -webkit-user-select: none;
+  gap: 9px;
+  max-width: calc(100vw - 40px);
+  padding: 8px 13px;
+  transform: translateX(-50%);
+  background: var(--rp-text);
+  color: #fffaf0;
+  border-radius: 999px;
+  box-shadow: 0 8px 20px rgba(47, 36, 24, 0.26);
+  font-size: 0.73rem;
+  font-weight: 750;
+  white-space: nowrap;
+  pointer-events: none;
 }
 
-.rapago-request-page .rp-request-map-shell.is-dragging .rp-request-map-sheet-head {
+.request-map-loading ion-spinner {
+  width: 17px;
+  height: 17px;
+  color: var(--rp-gold-soft);
+}
+
+/* ---- Hoja inferior ---- */
+.request-map-sheet {
+  --request-sheet-drag-y: 0px;
+
+  position: absolute !important;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 50;
+  height: var(--request-sheet-expanded-height);
+  min-height: var(--request-sheet-peek);
+  background: var(--rp-surface);
+  color: var(--rp-text);
+  border-top: 1px solid var(--rp-border-c);
+  border-radius: var(--rp-radius-xl) var(--rp-radius-xl) 0 0;
+  box-shadow: 0 -18px 42px rgba(47, 36, 24, 0.2);
+  overscroll-behavior: none;
+  will-change: transform;
+  transition: transform 220ms var(--rp-ease);
+}
+
+.request-map-sheet--expanded {
+  transform: translateY(var(--request-sheet-drag-y));
+}
+
+.request-map-sheet--collapsed {
+  transform: translateY(
+    calc(100% - var(--request-sheet-peek) + var(--request-sheet-drag-y))
+  );
+}
+
+.request-map-sheet--dragging {
+  transition: none;
+}
+
+/* Con la hoja colapsada, solo queda visible el asa: nada de bloque
+   vacío color arena flotando encima del mapa. */
+.request-map-sheet--collapsed .request-map-sheet__body {
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.request-map-sheet--expanded .request-map-sheet__body {
+  visibility: visible;
+  pointer-events: auto;
+}
+
+.request-map-sheet__drag {
+  display: grid;
+  width: 100%;
+  min-height: 52px;
+  place-items: center;
+  gap: 4px;
+  padding: 8px 18px 5px;
+  touch-action: none !important;
+  user-select: none;
+  background: transparent;
+  color: var(--rp-muted);
+  border: 0;
+  border-radius: var(--rp-radius-xl) var(--rp-radius-xl) 0 0;
+  font-size: 0.65rem;
+  font-weight: 750;
+  cursor: grab;
+}
+
+.request-map-sheet__drag:active {
   cursor: grabbing;
 }
 
-/* El botón se queda como control accesible —foco de teclado y flechas—, pero
-   ya no necesita ser el objetivo táctil: de eso se encarga la cabecera entera.
-   Por eso se encoge a la rayita y nada más. */
-.rapago-request-page .rp-request-map-grip {
-  flex: 0 0 auto;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 72px;
-  height: 16px;
-  padding: 0;
-  border: 0;
-  background: transparent;
-  touch-action: none;
-  cursor: inherit;
+.request-map-sheet__drag:focus-visible {
+  outline: 2px solid var(--rp-gold);
+  outline-offset: -3px;
 }
 
-/* El título deja de estar dentro del área con scroll: se queda fijo aquí, así
-   que sigue diciendo qué se mira mientras el contenido se desplaza. */
-.rapago-request-page .rp-request-map-sheet-title {
-  width: 100%;
-  margin: 0;
+.request-map-sheet__grip {
+  display: block;
+  width: 44px;
+  height: 5px;
+  background: var(--rp-border-c);
+  border-radius: 999px;
+  transition: background-color 140ms var(--rp-ease);
+}
+
+.request-map-sheet__drag:hover .request-map-sheet__grip,
+.request-map-sheet__drag:active .request-map-sheet__grip {
+  background: color-mix(in srgb, var(--rp-gold) 55%, var(--rp-border-c));
+}
+
+.request-map-sheet__body {
+  height: calc(100% - 42px);
+  padding: 4px 17px max(18px, env(safe-area-inset-bottom, 0px));
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  touch-action: pan-y;
+}
+
+.request-map-sheet__heading {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 10px;
+  margin-bottom: 10px;
+}
+
+.request-map-sheet__heading-mark {
+  flex: 0 0 auto;
+  width: 18px;
+  height: 4px;
+  margin-top: 8px;
+  background: linear-gradient(90deg, var(--rp-gold), var(--rp-gold-soft));
+  border-radius: 999px;
+}
+
+.request-map-sheet__heading div {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.request-map-sheet__heading strong {
   color: var(--rp-text);
-  font-size: 1.05rem;
-  font-weight: 850;
+  font-size: 0.98rem;
+  font-weight: 900;
   line-height: 1.2;
 }
 
-.rapago-request-page .rp-request-map-sheet-title__tick {
-  flex-shrink: 0;
-  width: 20px;
-  height: 4px;
-  border-radius: 2px;
-  background: var(--rp-btn-primary);
+.request-map-sheet__heading span {
+  color: var(--rp-muted);
+  font-size: 0.72rem;
+  font-weight: 650;
+  line-height: 1.35;
 }
 
-/* El tirador se ensancha y se enciende mientras se arrastra. Es la única señal
-   de que el gesto fue reconocido: sin ella, si el panel tarda un frame en
-   moverse, el usuario duda de si lo ha agarrado y suelta. */
-.rapago-request-page .rp-request-map-grip__bar {
-  width: 52px;
-  height: 5px;
+/* ---- Destinos frecuentes ---- */
+.request-map-frequent {
+  display: grid;
+  gap: 9px;
+  margin-bottom: 12px;
+}
+
+.request-map-frequent__heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.request-map-frequent__heading div {
+  display: grid;
+  gap: 2px;
+}
+
+.request-map-frequent__heading strong {
+  color: var(--rp-text);
+  font-size: 0.8rem;
+  font-weight: 900;
+}
+
+.request-map-frequent__heading span {
+  color: var(--rp-muted);
+  font-size: 0.67rem;
+  font-weight: 650;
+  line-height: 1.3;
+}
+
+.request-map-frequent__list {
+  display: grid;
+  grid-auto-flow: column;
+  grid-template-rows: repeat(2, minmax(58px, auto));
+  grid-auto-columns: minmax(148px, 44%);
+  gap: 8px;
+  width: 100%;
+  padding: 1px 1px 6px;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scroll-snap-type: x proximity;
+  scrollbar-width: thin;
+  -webkit-overflow-scrolling: touch;
+}
+
+.request-map-frequent__item {
+  display: grid;
+  grid-template-columns: 25px minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  padding: 9px 10px;
+  /* !important: en global.css existe button[aria-pressed="false"] con
+     background/color/border en !important (pensado para otros botones
+     tipo tab/switch). Estos chips también son <button aria-pressed=...>,
+     así que sin !important aquí, esa regla global les ganaba y dejaba
+     texto oscuro sobre fondo oscuro casi ilegible. */
+  background: var(--rp-chip-bg) !important;
+  color: var(--rp-chip-text) !important;
+  border: 1px solid var(--rp-chip-border) !important;
+  border-radius: var(--rp-radius-md);
+  text-align: left;
+  scroll-snap-align: start;
+  cursor: pointer;
+  transition: border-color 150ms var(--rp-ease), background-color 150ms var(--rp-ease),
+    transform 120ms var(--rp-ease), box-shadow 150ms var(--rp-ease);
+}
+
+@media (hover: hover) {
+  .request-map-frequent__item:hover:not(:disabled) {
+    background: var(--rp-chip-bg-hover);
+    border-color: color-mix(in srgb, var(--rp-gold) 55%, var(--rp-chip-border));
+    box-shadow: var(--rp-chip-shadow-hover);
+  }
+}
+
+.request-map-frequent__item:active:not(:disabled) {
+  transform: scale(0.98);
+}
+
+.request-map-frequent__item:focus-visible {
+  outline: 2px solid var(--rp-gold);
+  outline-offset: 2px;
+}
+
+.request-map-frequent__item ion-icon {
+  width: 24px;
+  height: 24px;
+  padding: 5px;
+  box-sizing: border-box;
+  background: var(--rp-chip-icon-bg);
+  color: var(--rp-chip-icon-fg);
   border-radius: 999px;
-  background: var(--rp-muted-soft);
-  transition:
-    width 0.2s ease,
-    background-color 0.2s ease;
+  transition: background-color 150ms var(--rp-ease), color 150ms var(--rp-ease);
 }
 
-.rapago-request-page .rp-request-map-shell.is-dragging .rp-request-map-grip__bar {
-  width: 72px;
-  background: var(--rp-accent);
+.request-map-frequent__item span {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
 }
 
-.rapago-request-page .rp-request-map-grip:focus-visible {
-  outline: 2px solid var(--rp-border-strong);
-  outline-offset: -4px;
-  border-radius: 12px;
+.request-map-frequent__item strong {
+  overflow: hidden;
+  color: var(--rp-chip-text);
+  font-size: 0.72rem;
+  font-weight: 850;
+  line-height: 1.2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-/* Último elemento DENTRO del área que se desplaza, no hermano anclado abajo.
-   Así se recoge junto a las tarjetas cuando se baja el panel, en vez de
-   quedarse flotando suelto sobre el mapa. El margen superior lo separa de la
-   última tarjeta lo mismo que las tarjetas se separan entre sí. */
-.rapago-request-page .rp-request-map-sheet-scroll .rp-request-confirm {
-  margin: 14px 0 0;
+.request-map-frequent__item small {
+  overflow: hidden;
+  color: var(--rp-chip-muted);
+  font-size: 0.62rem;
+  font-weight: 650;
+  line-height: 1.2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Único chip que usa coral: el seleccionado. Así se distingue de un
+   vistazo sin que el resto de los pines compita en rojo. */
+.request-map-frequent__item--active {
+  /* !important por la misma razón: button[aria-pressed="true"] en
+     global.css trae su propio background/color en !important. */
+  background: var(--rp-danger-bg) !important;
+  color: #7a2416 !important;
+  border-color: var(--rp-danger) !important;
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--rp-danger) 30%, transparent);
+}
+
+.request-map-frequent__item--active strong,
+.request-map-frequent__item--active small {
+  color: #7a2416 !important;
+}
+
+.request-map-frequent__item--active ion-icon {
+  background: var(--rp-danger);
+  color: #ffffff;
+}
+
+.request-map-frequent__item:disabled {
+  cursor: wait;
+  opacity: 0.55;
+  transform: none;
+  box-shadow: none;
+}
+
+/* ---- Candidatos de dirección ---- */
+.request-map-candidates {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.request-map-candidate {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 10px;
+  background: var(--rp-field-bg);
+  color: var(--rp-text);
+  border: 1px solid var(--rp-border-c);
+  border-radius: var(--rp-radius-lg);
+  text-align: left;
+  transition: border-color 150ms var(--rp-ease), background-color 150ms var(--rp-ease),
+    transform 120ms var(--rp-ease);
+}
+
+@media (hover: hover) {
+  .request-map-candidate:hover {
+    border-color: color-mix(in srgb, var(--rp-lagoon) 40%, var(--rp-border-c));
+  }
+}
+
+.request-map-candidate:active {
+  transform: scale(0.99);
+}
+
+.request-map-candidate:focus-visible {
+  outline: 2px solid var(--rp-lagoon);
+  outline-offset: 2px;
+}
+
+.request-map-candidate--active {
+  background: color-mix(in srgb, var(--rp-ok-bg) 62%, var(--rp-surface));
+  border-color: var(--rp-lagoon);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--rp-lagoon) 16%, transparent);
+}
+
+.request-map-candidate__number {
+  display: grid;
+  width: 27px;
+  height: 27px;
+  place-items: center;
+  background: linear-gradient(160deg, var(--rp-lagoon), var(--rp-lagoon-dark));
+  color: #ffffff;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 900;
+}
+
+.request-map-candidate__content {
+  display: grid;
+  min-width: 0;
+  gap: 3px;
+}
+
+.request-map-candidate__content strong {
+  overflow: hidden;
+  color: var(--rp-text);
+  font-size: 0.79rem;
+  font-weight: 850;
+  line-height: 1.2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.request-map-candidate__content span {
+  display: -webkit-box;
+  overflow: hidden;
+  color: var(--rp-muted);
+  font-size: 0.68rem;
+  font-weight: 650;
+  line-height: 1.3;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.request-map-candidate__walk {
+  display: grid;
+  min-width: 44px;
+  gap: 2px;
+  color: var(--rp-ok-fg);
+  font-size: 0.79rem;
+  font-weight: 900;
+  text-align: right;
+}
+
+.request-map-candidate__walk small {
+  color: var(--rp-muted);
+  font-size: 0.65rem;
+  font-weight: 700;
+}
+
+/* ---- Resumen origen/destino seleccionado ---- */
+.request-map-selected {
+  display: grid;
+  grid-template-columns: 14px minmax(0, 1fr) 22px;
+  align-items: center;
+  gap: 11px;
+  margin-bottom: 11px;
+  padding: 12px 13px;
+  background: var(--rp-field-bg);
+  border: 1px solid var(--rp-border-c);
+  border-radius: var(--rp-radius-md);
+}
+
+.request-map-selected__dot {
+  width: 13px;
+  height: 13px;
+  border: 3px solid #ffffff;
+  border-radius: 999px;
+  box-shadow: 0 0 0 2px currentColor;
+}
+
+.request-map-selected__dot--pickup {
+  background: var(--rp-lagoon);
+  color: var(--rp-lagoon);
+}
+
+.request-map-selected__dot--destination {
+  background: var(--rp-danger);
+  color: var(--rp-danger);
+}
+
+.request-map-selected > div {
+  display: grid;
+  min-width: 0;
+  gap: 3px;
+}
+
+.request-map-selected strong {
+  overflow: hidden;
+  color: var(--rp-text);
+  font-size: 0.84rem;
+  font-weight: 850;
+  line-height: 1.25;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.request-map-selected span {
+  display: -webkit-box;
+  overflow: hidden;
+  color: var(--rp-muted);
+  font-size: 0.7rem;
+  font-weight: 650;
+  line-height: 1.35;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.request-map-selected ion-icon {
+  color: var(--rp-icon-fg);
+  font-size: 20px;
+  transition: transform 140ms var(--rp-ease), color 140ms var(--rp-ease);
+  cursor: pointer;
+}
+
+.request-map-selected ion-icon:hover {
+  color: var(--rp-gold-dark);
+  transform: scale(1.08);
+}
+
+/* ---- Banner "a pie" ---- */
+.request-map-walk {
+  display: grid;
+  grid-template-columns: 38px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 11px;
+  margin-bottom: 10px;
+  padding: 12px 13px;
+  background: var(--rp-ok-bg);
+  color: var(--rp-ok-fg);
+  border: 1px solid color-mix(in srgb, var(--rp-lagoon) 36%, transparent);
+  border-radius: var(--rp-radius-md);
+}
+
+.request-map-walk__icon {
+  font-size: 25px;
+  line-height: 1;
+}
+
+.request-map-walk__text {
+  display: grid;
+  min-width: 0;
+  gap: 3px;
+}
+
+.request-map-walk__text strong {
+  font-size: 0.8rem;
+  font-weight: 900;
+  line-height: 1.25;
+}
+
+.request-map-walk__text span {
+  color: var(--rp-muted);
+  font-size: 0.68rem;
+  font-weight: 650;
+  line-height: 1.35;
+}
+
+.request-map-walk__metrics {
+  display: grid;
+  min-width: 46px;
+  gap: 2px;
+  font-size: 0.86rem;
+  font-weight: 900;
+  text-align: right;
+}
+
+.request-map-walk__metrics small {
+  color: var(--rp-muted);
+  font-size: 0.66rem;
+  font-weight: 700;
+}
+
+.request-map-walking-warning {
+  margin: 0 2px 10px;
+  color: var(--rp-muted);
+  font-size: 0.63rem;
+  font-weight: 620;
+  line-height: 1.35;
+}
+
+/* ---- Botón confirmar ---- */
+.request-map-confirm {
+  --background: linear-gradient(165deg, var(--rp-gold-soft) 0%, var(--rp-btn-primary) 55%, var(--rp-gold-dark) 100%);
+  --background-activated: var(--rp-gold-dark);
+  --background-hover: var(--rp-gold-soft);
+  --color: var(--rp-btn-primary-fg);
+  --border-radius: var(--rp-radius-md);
+  --box-shadow: var(--rp-shadow-accent);
+  --ripple-color: rgba(36, 26, 6, 0.18);
+  min-height: 52px;
+  margin: 0;
+  font-size: 0.9rem;
+  font-weight: 900;
+  letter-spacing: 0.01em;
+  transition: transform 120ms var(--rp-ease), box-shadow 160ms var(--rp-ease);
+}
+
+.request-map-confirm:not([disabled]):active {
+  transform: translateY(1px) scale(0.995);
+}
+
+.request-map-confirm[disabled] {
+  --background: var(--rp-border-c);
+  --box-shadow: none;
+  --color: var(--rp-muted);
+  opacity: 0.7;
+}
+
+.request-map-confirm:focus-visible {
+  outline: 2px solid var(--rp-gold-dark);
+  outline-offset: 3px;
+}
+
+/* ---- Responsive ---- */
+@media (min-width: 720px) {
+  .request-map-page {
+    --request-sheet-peek: 52px;
+    --request-sheet-expanded-height: min(55dvh, 520px);
+  }
+
+  .request-map-sheet {
+    right: max(18px, calc((100vw - 680px) / 2));
+    bottom: 18px;
+    left: max(18px, calc((100vw - 680px) / 2));
+    border: 1px solid var(--rp-border-c);
+    border-radius: var(--rp-radius-xl);
+    overflow: hidden;
+  }
+
+  .request-map-location-button {
+    right: max(28px, calc((100vw - 760px) / 2));
+  }
+}
+
+@media (max-height: 680px) {
+  .request-map-page {
+    --request-sheet-peek: 52px;
+    --request-sheet-expanded-height: 62dvh;
+  }
+
+  .request-map-sheet__body {
+    padding-bottom: max(12px, env(safe-area-inset-bottom, 0px));
+  }
+
+  .request-map-sheet__heading {
+    margin-bottom: 8px;
+  }
+
+  .request-map-candidate {
+    padding-block: 8px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .request-map-page,
+  .request-map-page *,
+  .request-map-sheet,
+  .request-map-location-button,
+  .request-map-back,
+  .request-map-suggestion,
+  .request-map-frequent__item,
+  .request-map-candidate,
+  .request-map-selected ion-icon,
+  .request-map-confirm {
+    transition: none;
+    animation: none;
+  }
+}
+
+/* ==========================================================================
+   FIX — global.css intercepta cualquier <button aria-pressed> o
+   <button role="tab"> de toda la app (regla "CONTRASTE PROFESIONAL
+   DEFINITIVO") con !important, pisando el fondo/color que esta pantalla
+   pone por inline style (React no permite !important en el atributo
+   style). Afecta: toggle Ahora/Agendar, tarjeta "Solo ida", tarjetas de
+   vehículo y tarjetas de promoción — todas quedaban con el fondo café
+   oscuro por defecto en vez del dorado/crema que pide el diseño.
+
+   Se restaura el look correcto aquí, con más especificidad
+   (.rapago-request-page + atributo) y !important, para ganarle a esa
+   regla global sin tener que tocarla ni romper otras pantallas que sí
+   la necesitan. */
+.rapago-request-page button[aria-pressed],
+.rapago-request-page button[role="tab"] {
+  color: #111111 !important;
+}
+
+.rapago-request-page button[aria-pressed="false"],
+.rapago-request-page button[role="tab"][aria-selected="false"] {
+  background: linear-gradient(180deg, #fffdf7 0%, #f2e5c9 100%) !important;
+  border: 1.5px solid rgba(138, 100, 28, 0.42) !important;
+}
+
+.rapago-request-page button[aria-pressed="true"],
+.rapago-request-page button[role="tab"][aria-selected="true"] {
+  background: linear-gradient(135deg, #d2a43a 0%, #f8d879 100%) !important;
+  border: 2px solid #b98517 !important;
+}
+
+/* ==========================================================================
+   FIX — el panel "Ofertas destacadas" (rp-request-promotion-panel) y las
+   tarjetas rp-request-trip-card / rp-request-vehicle-card /
+   rp-request-promotion-card / rp-request-panel traen su fondo OSCURO
+   puesto directo por inline style en el JSX (background: #191919/#0d0d0d).
+   Esta regla estaba en el archivo original y se perdió al reescribir el
+   CSS para arreglar los chips — se repone aquí para que el panel de
+   promociones y sus tarjetas queden en modo claro con texto legible,
+   igual que el resto de la pantalla. */
+.rp-request-trip-card,
+.rp-request-vehicle-card,
+.rp-request-promotion-panel,
+.rp-request-promotion-card,
+.rp-request-panel {
+  color: #111827 !important;
+  border-color: rgba(155, 105, 16, 0.28) !important;
+  text-shadow: none !important;
+}
+
+.rp-request-trip-card:not([aria-pressed="true"]),
+.rp-request-vehicle-card:not([aria-pressed="true"]),
+.rp-request-promotion-card:not([aria-pressed="true"]),
+.rp-request-panel {
+  background: linear-gradient(180deg, #ffffff 0%, #f7ead0 100%) !important;
+  box-shadow: 0 8px 18px rgba(15, 23, 42, 0.10) !important;
+}
+
+.rp-request-promotion-panel {
+  background:
+    radial-gradient(circle at top left, rgba(248, 216, 121, 0.34), transparent 38%),
+    linear-gradient(145deg, #fffdf7 0%, #f7e9c9 52%, #f2e0b8 100%) !important;
+  box-shadow: 0 12px 28px rgba(155, 105, 16, 0.16) !important;
+}
+
+.rp-request-promotion-panel *,
+.rp-request-promotion-card * {
+  color: #111827 !important;
+  text-shadow: none !important;
 }
