@@ -19331,34 +19331,6 @@ export function DriverProfilePage(): JSX.Element {
                     )}
                   </div>
 
-                  <IonItem
-                    lines="none"
-                    style={{ ...driverInputItemStyle(), marginTop: 12 }}
-                  >
-                    <IonLabel
-                      position="stacked"
-                      style={driverFieldLabelStyle()}
-                    >
-                      URL opcional
-                    </IonLabel>
-                    <IonInput
-                      style={driverFieldTextStyle()}
-                      value={
-                        profilePhotoUrl.startsWith("data:")
-                          ? ""
-                          : profilePhotoUrl
-                      }
-                      onIonInput={(event) => {
-                        const value = String(event.detail.value ?? "");
-                        setProfilePhotoUrl(value);
-                        persistStoredDriverProfilePhotoUrl(value, session?.user);
-                      }}
-                      placeholder="https://..."
-                      type="url"
-                      clearInput
-                    />
-                  </IonItem>
-
                   {photoError && (
                     <IonText color="danger">
                       <p
