@@ -250,8 +250,16 @@
 /* El IonModal monta su propio IonPage con .rapago-section-page.rapago-request-page,
    pero fuera del árbol de la página; los tokens resuelven contra :root, que
    useRapagoSectionTheme mantiene espejado al tema activo. */
+/* Se ancla con inset:0, NO con `height: 100%`. Parece lo mismo y no lo es:
+   el padre es el .inner-scroll de Ionic, que lleva
+   `padding-bottom: calc(... + área segura)` y `box-sizing: border-box`. Un
+   `height: 100%` resuelve contra su caja de CONTENIDO, o sea sin ese padding,
+   y la shell quedaba más corta que el hueco disponible: por debajo asomaba el
+   fondo de la página, la franja clara entre el mapa y la hoja. Posicionada,
+   ocupa la caja de relleno completa y ese desajuste desaparece. */
 .rapago-request-page .rp-request-map-shell {
-  height: 100%;
+  position: absolute;
+  inset: 0;
   background: transparent;
   display: flex;
   flex-direction: column;
@@ -360,10 +368,9 @@
      inicio en iOS) y no debe recortarse. */
   padding: 10px 18px max(20px, env(safe-area-inset-bottom));
   box-shadow: 0 -18px 38px rgba(0, 0, 0, 0.28);
-  flex: 0 0 auto;
-  max-height: 52dvh;
-  overflow-y: auto;
-  -webkit-overflow-scrolling: touch;
+  transition: box-shadow 0.42s cubic-bezier(0.34, 1.28, 0.52, 1);
+  display: flex;
+  flex-direction: column;
   color: var(--rp-text);
 }
 

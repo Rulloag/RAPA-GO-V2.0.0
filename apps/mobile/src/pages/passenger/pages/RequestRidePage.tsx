@@ -25,8 +25,10 @@ import {
   locationOutline,
   locateOutline,
   navigateOutline,
+  removeOutline,
   searchOutline,
   timeOutline,
+  alertCircleOutline,
 } from "ionicons/icons";
 import {
   useCallback,
@@ -35,6 +37,7 @@ import {
   useRef,
   useState,
   type CSSProperties,
+  type KeyboardEvent as ReactKeyboardEvent,
   type PointerEvent as ReactPointerEvent,
 } from "react";
 import { useHistory } from "react-router-dom";
@@ -49,10 +52,8 @@ import { walletService } from "../../../features/wallet/wallet.service.js";
 import { RIDE_STATUS_LABEL } from "../shared.js";
 import { getApiOrigin as getConfiguredApiOrigin } from "../../../services/api/apiBaseUrl.js";
 import { preSearchLocationService } from "../../../features/location/preSearchLocation.service.js";
-
 import { RapagoSectionHeader } from "../../../components/RapagoSectionHeader.js";
 import { useRapagoSectionTheme } from "../../../theme/rapagoTheme.js";
-
 
 
 const LOCAL_PASSENGER_RIDES_KEY = "rapago_local_passenger_rides";
@@ -1573,18 +1574,13 @@ type PickerResult = {
   lng: number;
   placeId?: string | null;
 
-  // Punto real donde estaba el usuario/pin antes de ajustar a una vía accesible.
+  // Punto real donde estaba el usuario/pin antes de ajustar a calle.
   originalLat?: number | null;
   originalLng?: number | null;
 
-  // Datos calculados automáticamente con Google Maps.
+  // Distancia caminando aproximada desde el punto real hasta la calle accesible.
   walkMeters?: number;
-  walkMinutes?: number;
   isAccessiblePickup?: boolean;
-  streetName?: string | null;
-  referenceName?: string | null;
-  referenceDistanceMeters?: number | null;
-  candidateId?: string;
 };
 
 type MapPointMovedPayload = {
@@ -1801,173 +1797,36 @@ function buildPlaceStreetTitle(placeName: unknown, streetName: unknown): string 
   return place || street || null;
 }
 
-type GoogleNearbyReference = {
-  name: string;
-  placeId: string | null;
-  lat: number;
-  lng: number;
-  formattedAddress: string | null;
-  primaryType: string | null;
-  distanceMeters: number;
-};
+const RAPA_NUI_VISIBLE_PLACE_REFERENCES: Array<{ name: string; lat: number; lng: number }> = [
+  { name: "Hotel Taha Tai", lat: -27.15055, lng: -109.43105 },
+  { name: "Apina Tupuna", lat: -27.15125, lng: -109.43165 },
+  { name: "Ahu Tahai", lat: -27.1398, lng: -109.4298 },
+  { name: "Playa Pea", lat: -27.1482, lng: -109.4336 },
+  { name: "Playa Poko Poko", lat: -27.149, lng: -109.4319 },
+  { name: "Caleta Hanga Roa", lat: -27.1478, lng: -109.4356 },
+  { name: "Mercado Artesanal Rapa Nui", lat: -27.1508, lng: -109.4289 },
+  { name: "Feria Artesanal Hare Umanga", lat: -27.1503, lng: -109.4277 },
+  { name: "Iglesia de la Santa Cruz Rapa Nui", lat: -27.1506, lng: -109.4271 },
+  { name: "Comisaría Rapa Nui", lat: -27.1497, lng: -109.4268 },
+  { name: "Hospital de Hanga Roa", lat: -27.1502, lng: -109.4216 },
+  { name: "Aeropuerto Internacional Mataveri", lat: -27.16395, lng: -109.42465 },
+  { name: "Jardín Botánico TauKiani", lat: -27.1482, lng: -109.4069 },
+  { name: "Anakena", lat: -27.0732, lng: -109.3233 },
+  { name: "Terevaka", lat: -27.0917, lng: -109.382 },
+];
 
-type GooglePlaceNewLike = {
-  id?: string | null;
-  displayName?: string | null;
-  location?: google.maps.LatLng | google.maps.LatLngLiteral | null;
-  formattedAddress?: string | null;
-  primaryType?: string | null;
-  businessStatus?: string | null;
-};
+function getNearestKnownRapaNuiPlaceName(point: { lat: number; lng: number }, maxMeters = 190): string | null {
+  const nearest = RAPA_NUI_VISIBLE_PLACE_REFERENCES
+    .map((item) => ({ ...item, meters: distanceMeters(point, { lat: item.lat, lng: item.lng }) }))
+    .sort((a, b) => a.meters - b.meters)[0];
 
-function readGoogleLatLng(
-  value: google.maps.LatLng | google.maps.LatLngLiteral | null | undefined,
-): { lat: number; lng: number } | null {
-  if (!value) return null;
-
-  if (
-    typeof (value as google.maps.LatLng).lat === "function" &&
-    typeof (value as google.maps.LatLng).lng === "function"
-  ) {
-    return {
-      lat: (value as google.maps.LatLng).lat(),
-      lng: (value as google.maps.LatLng).lng(),
-    };
-  }
-
-  const literal = value as google.maps.LatLngLiteral;
-
-  if (!Number.isFinite(literal.lat) || !Number.isFinite(literal.lng)) {
-    return null;
-  }
-
-  return {
-    lat: Number(literal.lat),
-    lng: Number(literal.lng),
-  };
+  return nearest && nearest.meters <= maxMeters ? nearest.name : null;
 }
 
-function isUsefulGoogleReference(
-  name: unknown,
-  streetName?: string | null,
-): boolean {
-  if (!isUsefulPlaceStreetValue(name)) return false;
-
-  const referenceKey = normalizePlaceStreetCompare(name);
-  const streetKey = normalizePlaceStreetCompare(streetName);
-
-  if (streetKey && referenceKey === streetKey) return false;
-
-  return ![
-    "unnamed road",
-    "calle sin nombre",
-    "ruta sin nombre",
-    "rapa nui chile",
-    "hanga roa chile",
-  ].includes(referenceKey);
-}
-
-function dedupeGoogleReferences(
-  references: GoogleNearbyReference[],
-): GoogleNearbyReference[] {
-  const seen = new Set<string>();
-
-  return references
-    .sort((a, b) => a.distanceMeters - b.distanceMeters)
-    .filter((reference) => {
-      const key = normalizePlaceStreetCompare(reference.name);
-      if (!key || seen.has(key)) return false;
-      seen.add(key);
-      return true;
-    });
-}
-
-async function getNearbyGoogleReferencesNew(
-  point: { lat: number; lng: number },
-  radiusMeters: number,
-): Promise<GoogleNearbyReference[]> {
+async function getNearbyGooglePlaceName(point: { lat: number; lng: number }): Promise<string | null> {
   try {
     await loadRapaGoGoogleMaps();
-
-    const placesNamespace = google.maps.places as unknown as {
-      Place?: {
-        searchNearby?: (
-          request: Record<string, unknown>,
-        ) => Promise<{ places?: GooglePlaceNewLike[] }>;
-      };
-      SearchNearbyRankPreference?: {
-        DISTANCE?: unknown;
-      };
-    };
-
-    const PlaceApi = placesNamespace.Place;
-    if (!PlaceApi?.searchNearby) return [];
-
-    const response = await PlaceApi.searchNearby({
-      fields: [
-        "id",
-        "displayName",
-        "location",
-        "formattedAddress",
-        "primaryType",
-        "businessStatus",
-      ],
-      locationRestriction: {
-        center: new google.maps.LatLng(point.lat, point.lng),
-        radius: radiusMeters,
-      },
-      maxResultCount: 15,
-      rankPreference:
-        placesNamespace.SearchNearbyRankPreference?.DISTANCE ?? "DISTANCE",
-      language: "es",
-      region: "CL",
-    });
-
-    return dedupeGoogleReferences(
-      (response.places ?? [])
-        .map((place): GoogleNearbyReference | null => {
-          const name = normalizePlaceStreetText(place.displayName ?? "");
-          const location = readGoogleLatLng(place.location);
-
-          if (
-            !location ||
-            !isUsefulGoogleReference(name) ||
-            String(place.businessStatus ?? "").toUpperCase() ===
-              "CLOSED_PERMANENTLY"
-          ) {
-            return null;
-          }
-
-          return {
-            name,
-            placeId: place.id ? String(place.id) : null,
-            lat: location.lat,
-            lng: location.lng,
-            formattedAddress: place.formattedAddress
-              ? String(place.formattedAddress)
-              : null,
-            primaryType: place.primaryType ? String(place.primaryType) : null,
-            distanceMeters: Math.round(distanceMeters(point, location)),
-          };
-        })
-        .filter(
-          (reference): reference is GoogleNearbyReference =>
-            reference !== null &&
-            reference.distanceMeters <= radiusMeters,
-        ),
-    );
-  } catch {
-    return [];
-  }
-}
-
-async function getNearbyGoogleReferencesLegacy(
-  point: { lat: number; lng: number },
-  radiusMeters: number,
-): Promise<GoogleNearbyReference[]> {
-  try {
-    await loadRapaGoGoogleMaps();
-    if (!window.google?.maps?.places?.PlacesService) return [];
+    if (!window.google?.maps?.places?.PlacesService) return null;
 
     const container = document.createElement("div");
     const service = new google.maps.places.PlacesService(container);
@@ -1976,81 +1835,35 @@ async function getNearbyGoogleReferencesLegacy(
       service.nearbySearch(
         {
           location: new google.maps.LatLng(point.lat, point.lng),
-          radius: radiusMeters,
+          radius: 120,
           type: "point_of_interest",
         } as google.maps.places.PlaceSearchRequest,
         (results, status) => {
-          if (
-            status !== google.maps.places.PlacesServiceStatus.OK ||
-            !results?.length
-          ) {
-            resolve([]);
+          if (status !== google.maps.places.PlacesServiceStatus.OK || !results?.length) {
+            resolve(null);
             return;
           }
 
-          resolve(
-            dedupeGoogleReferences(
-              results
-                .map((place): GoogleNearbyReference | null => {
-                  const name = normalizePlaceStreetText(place.name ?? "");
-                  const location = readGoogleLatLng(
-                    place.geometry?.location ?? null,
-                  );
-
-                  if (!location || !isUsefulGoogleReference(name)) {
-                    return null;
-                  }
-
-                  return {
-                    name,
-                    placeId: place.place_id ?? null,
-                    lat: location.lat,
-                    lng: location.lng,
-                    formattedAddress: place.vicinity ?? null,
-                    primaryType: place.types?.[0] ?? null,
-                    distanceMeters: Math.round(
-                      distanceMeters(point, location),
-                    ),
-                  };
-                })
-                .filter(
-                  (reference): reference is GoogleNearbyReference =>
-                    reference !== null &&
-                    reference.distanceMeters <= radiusMeters,
-                ),
-            ),
-          );
+          const best = results.find((item) => isUsefulPlaceStreetValue(item.name));
+          resolve(best?.name ?? null);
         },
       );
     });
   } catch {
-    return [];
+    return null;
   }
-}
-
-async function getNearbyGoogleReferences(
-  point: { lat: number; lng: number },
-  radiusMeters = 180,
-): Promise<GoogleNearbyReference[]> {
-  const newPlaces = await getNearbyGoogleReferencesNew(point, radiusMeters);
-  if (newPlaces.length > 0) return newPlaces;
-
-  return getNearbyGoogleReferencesLegacy(point, radiusMeters);
 }
 
 async function getBestVisiblePlaceNameForPoint(
   point: { lat: number; lng: number },
   geocodePlaceName?: string | null,
 ): Promise<string | null> {
-  const references = await getNearbyGoogleReferences(point);
-  const googlePlace = references[0]?.name ?? null;
-  const geocodePlace = isUsefulPlaceStreetValue(geocodePlaceName)
-    ? normalizePlaceStreetText(geocodePlaceName)
-    : null;
+  const geocodePlace = isUsefulPlaceStreetValue(geocodePlaceName) ? normalizePlaceStreetText(geocodePlaceName) : null;
+  const knownPlace = getNearestKnownRapaNuiPlaceName(point);
+  const googlePlace = await getNearbyGooglePlaceName(point);
 
-  return googlePlace ?? geocodePlace;
+  return knownPlace ?? googlePlace ?? geocodePlace ?? null;
 }
-
 
 function getShortAddress(result: google.maps.GeocoderResult | null): {
   title: string;
@@ -3414,471 +3227,6 @@ async function getPlaceDetails(placeId: string): Promise<PickerResult | null> {
   });
 }
 
-type RoadPickupProbe = {
-  lat: number;
-  lng: number;
-  placeId: string | null;
-  streetName: string;
-  formattedAddress: string;
-};
-
-type WalkingMetrics = {
-  meters: number;
-  minutes: number;
-};
-
-const GOOGLE_PICKUP_CACHE = new Map<string, Promise<PickerResult[]>>();
-const MAX_GOOGLE_PICKUP_CACHE_ENTRIES = 60;
-
-function createPickupCacheKey(point: { lat: number; lng: number }): string {
-  return `${point.lat.toFixed(4)}:${point.lng.toFixed(4)}`;
-}
-
-function offsetPointByMeters(
-  point: { lat: number; lng: number },
-  meters: number,
-  bearingDegrees: number,
-): { lat: number; lng: number } {
-  const earthRadius = 6371000;
-  const angularDistance = meters / earthRadius;
-  const bearing = toRad(bearingDegrees);
-  const lat1 = toRad(point.lat);
-  const lng1 = toRad(point.lng);
-
-  const lat2 = Math.asin(
-    Math.sin(lat1) * Math.cos(angularDistance) +
-      Math.cos(lat1) * Math.sin(angularDistance) * Math.cos(bearing),
-  );
-
-  const lng2 =
-    lng1 +
-    Math.atan2(
-      Math.sin(bearing) *
-        Math.sin(angularDistance) *
-        Math.cos(lat1),
-      Math.cos(angularDistance) -
-        Math.sin(lat1) * Math.sin(lat2),
-    );
-
-  return {
-    lat: (lat2 * 180) / Math.PI,
-    lng: (lng2 * 180) / Math.PI,
-  };
-}
-
-function buildPickupProbePoints(
-  point: { lat: number; lng: number },
-): Array<{ lat: number; lng: number }> {
-  const probes: Array<{ lat: number; lng: number }> = [point];
-
-  for (const bearing of [0, 45, 90, 135, 180, 225, 270, 315]) {
-    probes.push(offsetPointByMeters(point, 45, bearing));
-  }
-
-  for (const bearing of [0, 90, 180, 270]) {
-    probes.push(offsetPointByMeters(point, 110, bearing));
-  }
-
-  return probes;
-}
-
-async function mapWithConcurrency<T, R>(
-  items: T[],
-  concurrency: number,
-  mapper: (item: T, index: number) => Promise<R>,
-): Promise<R[]> {
-  const results = new Array<R>(items.length);
-  let nextIndex = 0;
-
-  async function worker(): Promise<void> {
-    while (nextIndex < items.length) {
-      const currentIndex = nextIndex;
-      nextIndex += 1;
-      results[currentIndex] = await mapper(
-        items[currentIndex] as T,
-        currentIndex,
-      );
-    }
-  }
-
-  const workers = Array.from(
-    {
-      length: Math.max(1, Math.min(concurrency, items.length)),
-    },
-    () => worker(),
-  );
-
-  await Promise.all(workers);
-  return results;
-}
-
-async function geocodeRoadProbe(
-  geocoder: google.maps.Geocoder,
-  point: { lat: number; lng: number },
-): Promise<RoadPickupProbe | null> {
-  return new Promise((resolve) => {
-    geocoder.geocode(
-      {
-        location: point,
-      },
-      (results, status) => {
-        if (
-          status !== google.maps.GeocoderStatus.OK ||
-          !results?.length
-        ) {
-          resolve(null);
-          return;
-        }
-
-        const roadResult = findNearestRoadResult(results);
-        const streetName = getGeocodeStreetName(roadResult);
-
-        if (!roadResult || !streetName) {
-          resolve(null);
-          return;
-        }
-
-        const roadLocation = readGoogleLatLng(
-          roadResult.geometry?.location ?? null,
-        );
-
-        if (!roadLocation) {
-          resolve(null);
-          return;
-        }
-
-        if (distanceMeters(point, roadLocation) > 100) {
-          resolve(null);
-          return;
-        }
-
-        resolve({
-          lat: roadLocation.lat,
-          lng: roadLocation.lng,
-          placeId: roadResult.place_id ?? null,
-          streetName,
-          formattedAddress: roadResult.formatted_address,
-        });
-      },
-    );
-  });
-}
-
-function dedupeRoadPickupProbes(
-  probes: RoadPickupProbe[],
-  origin: { lat: number; lng: number },
-): RoadPickupProbe[] {
-  const bestByStreet = new Map<
-    string,
-    RoadPickupProbe & { straightMeters: number }
-  >();
-
-  for (const probe of probes) {
-    const streetKey = normalizePlaceStreetCompare(probe.streetName);
-    if (!streetKey) continue;
-
-    const candidate = {
-      ...probe,
-      straightMeters: distanceMeters(origin, probe),
-    };
-
-    const previous = bestByStreet.get(streetKey);
-
-    if (!previous || candidate.straightMeters < previous.straightMeters) {
-      bestByStreet.set(streetKey, candidate);
-    }
-  }
-
-  return Array.from(bestByStreet.values())
-    .sort((a, b) => a.straightMeters - b.straightMeters)
-    .slice(0, 5)
-    .map(({ straightMeters: _straightMeters, ...probe }) => probe);
-}
-
-async function getWalkingMetricsWithRouteClass(
-  origin: { lat: number; lng: number },
-  destination: { lat: number; lng: number },
-): Promise<WalkingMetrics | null> {
-  try {
-    const routesNamespace = (await google.maps.importLibrary(
-      "routes",
-    )) as unknown as {
-      Route?: {
-        computeRoutes?: (
-          request: Record<string, unknown>,
-        ) => Promise<{
-          routes?: Array<{
-            distanceMeters?: number | null;
-            durationMillis?: number | null;
-          }>;
-        }>;
-      };
-    };
-
-    const computeRoutes = routesNamespace.Route?.computeRoutes;
-    if (!computeRoutes) return null;
-
-    const response = await computeRoutes({
-      origin,
-      destination,
-      travelMode: "WALKING",
-      fields: ["distanceMeters", "durationMillis"],
-      language: "es",
-      region: "CL",
-    });
-
-    const route = response.routes?.[0];
-    const meters = Number(route?.distanceMeters);
-    const durationMillis = Number(route?.durationMillis);
-
-    if (!Number.isFinite(meters) || meters < 0) return null;
-
-    return {
-      meters: Math.round(meters),
-      minutes:
-        Number.isFinite(durationMillis) && durationMillis > 0
-          ? Math.max(1, Math.ceil(durationMillis / 60000))
-          : Math.max(1, Math.ceil(meters / 75)),
-    };
-  } catch {
-    return null;
-  }
-}
-
-async function getWalkingMetricsLegacy(
-  origin: { lat: number; lng: number },
-  destination: { lat: number; lng: number },
-): Promise<WalkingMetrics | null> {
-  try {
-    const service = new google.maps.DirectionsService();
-
-    const result = await service.route({
-      origin,
-      destination,
-      travelMode: google.maps.TravelMode.WALKING,
-      provideRouteAlternatives: false,
-    });
-
-    const leg = result.routes[0]?.legs[0];
-    const meters = leg?.distance?.value;
-    const seconds = leg?.duration?.value;
-
-    if (!Number.isFinite(meters) || Number(meters) < 0) return null;
-
-    return {
-      meters: Math.round(Number(meters)),
-      minutes:
-        Number.isFinite(seconds) && Number(seconds) > 0
-          ? Math.max(1, Math.ceil(Number(seconds) / 60))
-          : Math.max(1, Math.ceil(Number(meters) / 75)),
-    };
-  } catch {
-    return null;
-  }
-}
-
-async function getGoogleWalkingMetrics(
-  origin: { lat: number; lng: number },
-  destination: { lat: number; lng: number },
-): Promise<WalkingMetrics> {
-  const directMeters = distanceMeters(origin, destination);
-
-  if (directMeters <= 8) {
-    return {
-      meters: Math.round(directMeters),
-      minutes: 1,
-    };
-  }
-
-  const routeClass = await getWalkingMetricsWithRouteClass(
-    origin,
-    destination,
-  );
-
-  if (routeClass) return routeClass;
-
-  const legacyRoute = await getWalkingMetricsLegacy(origin, destination);
-  if (legacyRoute) return legacyRoute;
-
-  const estimatedMeters = Math.round(directMeters * 1.18);
-
-  return {
-    meters: estimatedMeters,
-    minutes: Math.max(1, Math.ceil(estimatedMeters / 75)),
-  };
-}
-
-function getReferenceForRoadCandidate(
-  references: GoogleNearbyReference[],
-  road: RoadPickupProbe,
-): GoogleNearbyReference | null {
-  const useful = references
-    .filter((reference) =>
-      isUsefulGoogleReference(reference.name, road.streetName),
-    )
-    .map((reference) => ({
-      ...reference,
-      distanceFromRoad: distanceMeters(reference, road),
-    }))
-    .filter((reference) => reference.distanceFromRoad <= 180)
-    .sort((a, b) => a.distanceFromRoad - b.distanceFromRoad)[0];
-
-  if (!useful) return null;
-
-  return {
-    name: useful.name,
-    placeId: useful.placeId,
-    lat: useful.lat,
-    lng: useful.lng,
-    formattedAddress: useful.formattedAddress,
-    primaryType: useful.primaryType,
-    distanceMeters: Math.round(useful.distanceFromRoad),
-  };
-}
-
-function buildAutomaticPickupText(
-  streetName: string,
-  reference: GoogleNearbyReference | null,
-): string {
-  if (!reference) return `Recogida en ${streetName}`;
-
-  const relation =
-    reference.distanceMeters <= 35 ? "frente a" : "cerca de";
-
-  return `Recogida en ${streetName}, ${relation} ${reference.name}`;
-}
-
-async function computeGooglePickupCandidates(
-  point: { lat: number; lng: number },
-): Promise<PickerResult[]> {
-  await loadRapaGoGoogleMaps();
-
-  const geocoder = new google.maps.Geocoder();
-  const probes = buildPickupProbePoints(point);
-
-  const roadResults = await mapWithConcurrency(
-    probes,
-    4,
-    async (probe) => geocodeRoadProbe(geocoder, probe),
-  );
-
-  const roads = dedupeRoadPickupProbes(
-    roadResults.filter(
-      (road): road is RoadPickupProbe => road !== null,
-    ),
-    point,
-  );
-
-  if (roads.length === 0) {
-    const exact = await reverseGeocodeExact(point);
-
-    return [
-      {
-        ...exact,
-        originalLat: point.lat,
-        originalLng: point.lng,
-        walkMeters: 0,
-        walkMinutes: 1,
-        isAccessiblePickup: false,
-        referenceName: null,
-        referenceDistanceMeters: null,
-        streetName: null,
-        candidateId: `exact:${point.lat.toFixed(5)}:${point.lng.toFixed(5)}`,
-      },
-    ];
-  }
-
-  const references = await getNearbyGoogleReferences(point, 200);
-
-  const enriched = await mapWithConcurrency(
-    roads,
-    3,
-    async (road): Promise<PickerResult & { score: number }> => {
-      const walking = await getGoogleWalkingMetrics(point, road);
-      const reference = getReferenceForRoadCandidate(references, road);
-      const text = buildAutomaticPickupText(
-        road.streetName,
-        reference,
-      );
-
-      const score =
-        walking.meters +
-        (reference ? Math.min(reference.distanceMeters, 150) * 0.08 : 28);
-
-      return {
-        text,
-        address: road.formattedAddress,
-        lat: road.lat,
-        lng: road.lng,
-        placeId: road.placeId,
-        originalLat: point.lat,
-        originalLng: point.lng,
-        walkMeters: walking.meters,
-        walkMinutes: walking.minutes,
-        isAccessiblePickup: true,
-        streetName: road.streetName,
-        referenceName: reference?.name ?? null,
-        referenceDistanceMeters: reference?.distanceMeters ?? null,
-        candidateId: `${normalizePlaceStreetCompare(
-          road.streetName,
-        )}:${road.lat.toFixed(5)}:${road.lng.toFixed(5)}`,
-        score,
-      };
-    },
-  );
-
-  const withinRecommendedWalk = enriched.filter(
-    (candidate) => (candidate.walkMeters ?? 0) <= 220,
-  );
-
-  const pool =
-    withinRecommendedWalk.length > 0
-      ? withinRecommendedWalk
-      : enriched;
-
-  return pool
-    .sort((a, b) => a.score - b.score)
-    .slice(0, 3)
-    .map(({ score: _score, ...candidate }) => candidate);
-}
-
-async function getGooglePickupCandidates(
-  point: { lat: number; lng: number },
-): Promise<PickerResult[]> {
-  const key = createPickupCacheKey(point);
-  const cached = GOOGLE_PICKUP_CACHE.get(key);
-
-  if (cached) return cached;
-
-  const pending = computeGooglePickupCandidates(point).catch(async () => {
-    const fallback = await reverseGeocode(point);
-
-    return [
-      {
-        ...fallback,
-        walkMinutes: Math.max(
-          1,
-          Math.ceil(Number(fallback.walkMeters ?? 0) / 75),
-        ),
-        candidateId: `fallback:${point.lat.toFixed(5)}:${point.lng.toFixed(5)}`,
-      },
-    ];
-  });
-
-  GOOGLE_PICKUP_CACHE.set(key, pending);
-
-  if (GOOGLE_PICKUP_CACHE.size > MAX_GOOGLE_PICKUP_CACHE_ENTRIES) {
-    const firstKey = GOOGLE_PICKUP_CACHE.keys().next().value as
-      | string
-      | undefined;
-
-    if (firstKey) GOOGLE_PICKUP_CACHE.delete(firstKey);
-  }
-
-  return pending;
-}
-
-
 function SuggestionList({
   suggestions,
   onPick,
@@ -4039,35 +3387,26 @@ function MapPointPicker({
   const mapElementRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<google.maps.Map | null>(null);
   const geocodeTimerRef = useRef<number | null>(null);
-  const requestSequenceRef = useRef(0);
-  const lastResolvedCenterRef = useRef<{ lat: number; lng: number } | null>(
-    null,
-  );
   const realPointMarkerRef = useRef<google.maps.Marker | null>(null);
   const pickupPointMarkerRef = useRef<google.maps.Marker | null>(null);
-  const candidateMarkersRef = useRef<google.maps.Marker[]>([]);
   const realPointCircleRef = useRef<google.maps.Circle | null>(null);
   const walkingDotsRef = useRef<google.maps.Polyline | null>(null);
   const walkingDotsShadowRef = useRef<google.maps.Polyline | null>(null);
-  const sheetDragRef = useRef<{
-    pointerId: number;
-    startY: number;
-    startedExpanded: boolean;
-  } | null>(null);
-  const suppressSheetClickRef = useRef(false);
+  const realPointInfoRef = useRef<google.maps.InfoWindow | null>(null);
+  const pickupPointInfoRef = useRef<google.maps.InfoWindow | null>(null);
+  const mapResizeObserverRef = useRef<ResizeObserver | null>(null);
 
   const [ready, setReady] = useState(false);
   const [selected, setSelected] = useState<PickerResult | null>(null);
-  const [pickupCandidates, setPickupCandidates] = useState<PickerResult[]>([]);
   const [loadingAddress, setLoadingAddress] = useState(false);
   const [searchText, setSearchText] = useState("");
   const [pickerSuggestions, setPickerSuggestions] = useState<GoogleSuggestion[]>(
     [],
   );
   const [modalReady, setModalReady] = useState(false);
-  const [sheetExpanded, setSheetExpanded] = useState(true);
-  const [sheetDragY, setSheetDragY] = useState(0);
-  const [sheetDragging, setSheetDragging] = useState(false);
+  /* Fallo al cargar Google Maps. Se mantiene APARTE de `selected`: un error no
+     es un lugar válido, así que el botón de confirmar debe seguir inhabilitado. */
+  const [mapError, setMapError] = useState<string | null>(null);
 
   /* Panel arrastrable. El reparto mapa/hoja es estado, no un número fijo en
      CSS, porque ahora lo decide el usuario: hay quien quiere ver bien el mapa
@@ -4321,9 +3660,17 @@ function MapPointPicker({
 
     if (!map || !window.google?.maps) return;
 
-    clearMapPreview();
+    realPointMarkerRef.current?.setMap(null);
+    realPointCircleRef.current?.setMap(null);
+    pickupPointMarkerRef.current?.setMap(null);
+    walkingDotsRef.current?.setMap(null);
+    walkingDotsShadowRef.current?.setMap(null);
+    realPointInfoRef.current?.close();
+    pickupPointInfoRef.current?.close();
 
-    if (!point) return;
+    if (!point) {
+      return;
+    }
 
     const realPoint = {
       lat: point.originalLat ?? point.lat,
@@ -4351,7 +3698,7 @@ function MapPointPicker({
       realPointMarkerRef.current = new google.maps.Marker({
         map,
         position: pickupPoint,
-        title: "Mantén presionado y mueve el destino",
+        title: "Mantén presionado y mueve el destino rojo",
         draggable: true,
         cursor: "grab",
         icon: {
@@ -4391,21 +3738,35 @@ function MapPointPicker({
 
         if (!position) return;
 
-        void resolveDestinationPoint({
+        setLoadingAddress(true);
+
+        void reverseGeocodeExact({
           lat: position.lat(),
           lng: position.lng(),
-        });
+          placeId: null,
+        })
+          .then((nextPoint) => {
+            setSelected(nextPoint);
+            drawAccessiblePickupPreview(nextPoint);
+          })
+          .finally(() => setLoadingAddress(false));
       });
 
       return;
     }
 
+    const shouldShowAccessiblePickup =
+      point.originalLat != null &&
+      point.originalLng != null &&
+      point.walkMeters != null &&
+      point.walkMeters > 8;
+
     realPointCircleRef.current = new google.maps.Circle({
       map,
       center: realPoint,
-      radius: 44,
+      radius: 45,
       fillColor: "#2563eb",
-      fillOpacity: 0.2,
+      fillOpacity: 0.22,
       strokeColor: "#2563eb",
       strokeOpacity: 0,
       strokeWeight: 0,
@@ -4415,7 +3776,7 @@ function MapPointPicker({
     realPointMarkerRef.current = new google.maps.Marker({
       map,
       position: realPoint,
-      title: "Tu ubicación o punto indicado",
+      title: "Mantén presionado y mueve tu punto azul",
       draggable: true,
       cursor: "grab",
       icon: {
@@ -4426,7 +3787,7 @@ function MapPointPicker({
         strokeColor: "#ffffff",
         strokeWeight: 4,
       },
-      zIndex: 40,
+      zIndex: 30,
     });
 
     realPointMarkerRef.current.addListener("dragstart", () => {
@@ -4444,8 +3805,25 @@ function MapPointPicker({
 
       realPointCircleRef.current?.setCenter(movedPoint);
 
-      walkingDotsRef.current?.setPath([movedPoint, pickupPoint]);
-      walkingDotsShadowRef.current?.setPath([movedPoint, pickupPoint]);
+      if (walkingDotsRef.current) {
+        walkingDotsRef.current.setPath([
+          movedPoint,
+          {
+            lat: point.lat,
+            lng: point.lng,
+          },
+        ]);
+      }
+
+      if (walkingDotsShadowRef.current) {
+        walkingDotsShadowRef.current.setPath([
+          movedPoint,
+          {
+            lat: point.lat,
+            lng: point.lng,
+          },
+        ]);
+      }
     });
 
     realPointMarkerRef.current.addListener("dragend", () => {
@@ -4459,51 +3837,29 @@ function MapPointPicker({
         lng: position.lng(),
       };
 
-      map.setCenter(movedPoint);
-      void resolveOriginPoint(movedPoint);
+      setLoadingAddress(true);
+
+      void reverseGeocode(movedPoint)
+        .then((nextPoint) => {
+          setSelected(nextPoint);
+          drawAccessiblePickupPreview(nextPoint);
+        })
+        .finally(() => setLoadingAddress(false));
     });
 
-    for (const candidate of candidates) {
-      if (
-        candidate.candidateId === point.candidateId ||
-        (Math.abs(candidate.lat - point.lat) < 0.000001 &&
-          Math.abs(candidate.lng - point.lng) < 0.000001)
-      ) {
-        continue;
-      }
-
-      const marker = new google.maps.Marker({
-        map,
-        position: {
-          lat: candidate.lat,
-          lng: candidate.lng,
-        },
-        title: candidate.text.replace(/^Recogida en\s+/i, ""),
-        cursor: "pointer",
-        icon: {
-          path: google.maps.SymbolPath.CIRCLE,
-          scale: 10,
-          fillColor: "#ffffff",
-          fillOpacity: 1,
-          strokeColor: "#22c55e",
-          strokeWeight: 4,
-        },
-        zIndex: 25,
-      });
-
-      marker.addListener("click", () => {
-        setSelected(candidate);
-        drawAccessiblePickupPreview(candidate, candidates);
-        setSheetExpanded(true);
-      });
-
-      candidateMarkersRef.current.push(marker);
+    if (!shouldShowAccessiblePickup) {
+      return;
     }
 
     pickupPointMarkerRef.current = new google.maps.Marker({
       map,
       position: pickupPoint,
-      title: "Punto accesible recomendado",
+      title: "Punto accesible de recogida",
+      label: {
+        text: "●",
+        color: "#ffffff",
+        fontSize: "18px",
+      },
       icon: {
         path: google.maps.SymbolPath.CIRCLE,
         scale: 18,
@@ -4512,140 +3868,73 @@ function MapPointPicker({
         strokeColor: "#0b3d16",
         strokeWeight: 5,
       },
-      label: {
-        text: "✓",
-        color: "#ffffff",
-        fontSize: "14px",
-        fontWeight: "900",
-      },
-      zIndex: 55,
     });
 
-    if ((point.walkMeters ?? 0) > 8) {
-      walkingDotsShadowRef.current = new google.maps.Polyline({
-        map,
-        path: [realPoint, pickupPoint],
-        strokeOpacity: 0,
-        zIndex: 20,
-        icons: [
-          {
-            icon: {
-              path: google.maps.SymbolPath.CIRCLE,
-              fillColor: "#111111",
-              fillOpacity: 0.72,
-              strokeColor: "#111111",
-              strokeOpacity: 0.72,
-              scale: 6,
-            },
-            offset: "0",
-            repeat: "18px",
+    // Línea punteada tipo Uber: sombra negra + puntos blancos.
+    walkingDotsShadowRef.current = new google.maps.Polyline({
+      map,
+      path: [realPoint, pickupPoint],
+      strokeColor: "#111111",
+      strokeOpacity: 0,
+      strokeWeight: 0,
+      zIndex: 20,
+      icons: [
+        {
+          icon: {
+            path: google.maps.SymbolPath.CIRCLE,
+            fillColor: "#111111",
+            fillOpacity: 0.75,
+            strokeColor: "#111111",
+            strokeOpacity: 0.75,
+            scale: 6,
           },
-        ],
-      });
+          offset: "0",
+          repeat: "18px",
+        },
+      ],
+    });
 
-      walkingDotsRef.current = new google.maps.Polyline({
-        map,
-        path: [realPoint, pickupPoint],
-        strokeOpacity: 0,
-        zIndex: 21,
-        icons: [
-          {
-            icon: {
-              path: google.maps.SymbolPath.CIRCLE,
-              fillColor: "#ffffff",
-              fillOpacity: 1,
-              strokeColor: "#ffffff",
-              strokeOpacity: 1,
-              scale: 3.8,
-            },
-            offset: "0",
-            repeat: "18px",
+    walkingDotsRef.current = new google.maps.Polyline({
+      map,
+      path: [realPoint, pickupPoint],
+      strokeColor: "#ffffff",
+      strokeOpacity: 0,
+      strokeWeight: 0,
+      zIndex: 21,
+      icons: [
+        {
+          icon: {
+            path: google.maps.SymbolPath.CIRCLE,
+            fillColor: "#ffffff",
+            fillOpacity: 1,
+            strokeColor: "#ffffff",
+            strokeOpacity: 1,
+            scale: 3.8,
           },
-        ],
-      });
-    }
+          offset: "0",
+          repeat: "18px",
+        },
+      ],
+    });
+
+    // No usamos globos blancos de Google para mantener estilo tipo Uber.
+
   }
 
-  async function resolveOriginPoint(point: {
-    lat: number;
-    lng: number;
-  }): Promise<void> {
-    const sequence = ++requestSequenceRef.current;
-    setLoadingAddress(true);
-
-    try {
-      const candidates = await getGooglePickupCandidates(point);
-
-      if (sequence !== requestSequenceRef.current) return;
-
-      const next = candidates[0] ?? null;
-      setPickupCandidates(candidates);
-      setSelected(next);
-      drawAccessiblePickupPreview(next, candidates);
-    } finally {
-      if (sequence === requestSequenceRef.current) {
-        setLoadingAddress(false);
-      }
-    }
-  }
-
-  async function resolveDestinationPoint(point: {
-    lat: number;
-    lng: number;
-  }): Promise<void> {
-    const sequence = ++requestSequenceRef.current;
-    setLoadingAddress(true);
-
-    try {
-      const result = await reverseGeocodeExact(point);
-
-      if (sequence !== requestSequenceRef.current) return;
-
-      setPickupCandidates([]);
-      setSelected(result);
-      drawAccessiblePickupPreview(result, []);
-    } finally {
-      if (sequence === requestSequenceRef.current) {
-        setLoadingAddress(false);
-      }
-    }
-  }
-
-  function resolveMapPoint(
-    point: {
-      lat: number;
-      lng: number;
-    },
-    force = false,
-  ): Promise<void> {
-    const previous = lastResolvedCenterRef.current;
-
-    if (
-      !force &&
-      previous &&
-      distanceMeters(previous, point) < 18
-    ) {
-      return Promise.resolve();
-    }
-
-    lastResolvedCenterRef.current = point;
-
-    return mode === "origin"
-      ? resolveOriginPoint(point)
-      : resolveDestinationPoint(point);
-  }
 
   useEffect(() => {
     if (!isOpen) {
       setModalReady(false);
-      clearMapPreview();
-      lastResolvedCenterRef.current = null;
+      realPointMarkerRef.current?.setMap(null);
+    realPointCircleRef.current?.setMap(null);
+      pickupPointMarkerRef.current?.setMap(null);
+      walkingDotsRef.current?.setMap(null);
+    walkingDotsShadowRef.current?.setMap(null);
+    realPointInfoRef.current?.close();
+    pickupPointInfoRef.current?.close();
       mapRef.current = null;
       return;
     }
-
-    setSheetExpanded(true);
-    setSheetDragY(0);
   }, [isOpen]);
 
   useEffect(() => {
@@ -4653,23 +3942,18 @@ function MapPointPicker({
 
     setReady(false);
     setSelected(null);
-    setPickupCandidates([]);
     setSearchText("");
     setPickerSuggestions([]);
+    // Cada apertura del modal reintenta la carga: se limpia el error anterior.
+    setMapError(null);
 
     let cancelled = false;
 
     void loadRapaGoGoogleMaps()
-      .then(async () => {
-        await new Promise((resolve) => window.setTimeout(resolve, 200));
+.then(async () => {
+        await new Promise((resolve) => window.setTimeout(resolve, 250));
 
-        if (
-          cancelled ||
-          !mapElementRef.current ||
-          !window.google?.maps
-        ) {
-          return;
-        }
+        if (cancelled || !mapElementRef.current || !window.google?.maps) return;
 
         const center = initialPoint ?? RAPA_NUI_CENTER;
 
@@ -4682,11 +3966,76 @@ function MapPointPicker({
           clickableIcons: true,
           gestureHandling: "greedy",
           disableDefaultUI: true,
-          zoomControl: true,
-          mapTypeId: google.maps.MapTypeId.ROADMAP,
+          /* El zoom lo dibujamos nosotros en .rp-map-controls, junto al botón de
+             centrar y con su mismo tamaño. El control de Google se colocaba por
+             su cuenta y se superponía al nuestro. */
+          zoomControl: false,
+          styles: [
+            { elementType: "geometry", stylers: [{ color: "#242f3e" }] },
+            { elementType: "labels.text.stroke", stylers: [{ color: "#242f3e" }] },
+            { elementType: "labels.text.fill", stylers: [{ color: "#d7dde8" }] },
+            {
+              featureType: "road",
+              elementType: "geometry",
+              stylers: [{ color: "#38465a" }],
+            },
+            {
+              featureType: "road",
+              elementType: "geometry.stroke",
+              stylers: [{ color: "#1f2937" }],
+            },
+            {
+              featureType: "road",
+              elementType: "labels.text.fill",
+              stylers: [{ color: "#ffffff" }],
+            },
+            {
+              featureType: "poi",
+              elementType: "labels.text.fill",
+              stylers: [{ color: "#cbd5e1" }],
+            },
+            {
+              featureType: "water",
+              elementType: "geometry",
+              stylers: [{ color: "#0f172a" }],
+            },
+          ],
         });
 
         mapRef.current = map;
+
+        /* El alto del mapa cambia DESPUÉS de crearlo: la hoja de abajo crece o
+           se encoge según cuánta información tenga (una dirección larga, la
+           tarjeta de caminata que solo aparece si hay que caminar...), y el
+           mapa se queda con el hueco restante. Google Maps no repinta siempre
+           al crecer su contenedor: dejaba el lienzo al tamaño viejo y por
+           debajo asomaba el fondo del div, la franja clara que quedaba entre
+           el mapa y la hoja.
+
+           El `trigger("resize")` de abajo solo corre una vez al abrir, así que
+           no cubría esos cambios posteriores. Observando el contenedor, el mapa
+           vuelve a llenar su hueco cada vez que cambia. Se guarda y repone el
+           centro porque el resize lo desplaza. */
+        if (typeof ResizeObserver !== "undefined" && mapElementRef.current) {
+          const observer = new ResizeObserver(() => {
+            if (cancelled) return;
+
+            /* Mientras se arrastra el panel, el contenedor cambia en cada frame.
+               Google Maps ya reacciona por su cuenta al cambio de tamaño; este
+               aviso explícito es una red por si se le escapa, y repetirlo
+               sesenta veces por segundo durante el gesto es trabajo tirado que
+               se paga en fluidez justo cuando más se nota. Al soltar, el
+               contenedor se estabiliza y el observador vuelve a actuar. */
+            if (draggingSheetRef.current) return;
+
+            const currentCenter = map.getCenter();
+            google.maps.event.trigger(map, "resize");
+            if (currentCenter) map.setCenter(currentCenter);
+          });
+
+          observer.observe(mapElementRef.current);
+          mapResizeObserverRef.current = observer;
+        }
 
         window.setTimeout(() => {
           if (cancelled) return;
@@ -4694,15 +4043,25 @@ function MapPointPicker({
           map.setCenter(center);
           map.setZoom(17);
           setReady(true);
-        }, 120);
+        }, 150);
 
-        await resolveMapPoint(
-          {
-            lat: center.lat,
-            lng: center.lng,
-          },
-          true,
-        );
+        const first =
+          mode === "origin"
+            ? await reverseGeocode({
+                lat: center.lat,
+                lng: center.lng,
+                placeId: initialPoint?.placeId ?? null,
+              })
+            : await reverseGeocodeExact({
+                lat: center.lat,
+                lng: center.lng,
+                placeId: initialPoint?.placeId ?? null,
+              });
+
+        if (!cancelled) {
+          setSelected(first);
+          drawAccessiblePickupPreview(first);
+        }
 
         map.addListener("idle", () => {
           if (geocodeTimerRef.current) {
@@ -4711,42 +4070,61 @@ function MapPointPicker({
 
           geocodeTimerRef.current = window.setTimeout(() => {
             const currentCenter = map.getCenter();
-            if (!currentCenter || cancelled) return;
 
-            void resolveMapPoint({
-              lat: currentCenter.lat(),
-              lng: currentCenter.lng(),
-            });
-          }, 650);
+            if (!currentCenter) return;
+
+            setLoadingAddress(true);
+
+            void (mode === "origin"
+              ? reverseGeocode({
+                  lat: currentCenter.lat(),
+                  lng: currentCenter.lng(),
+                })
+              : reverseGeocodeExact({
+                  lat: currentCenter.lat(),
+                  lng: currentCenter.lng(),
+                }))
+              .then((result) => {
+                if (!cancelled) {
+                  setSelected(result);
+                  // Mantener siempre visible el marcador rojo del destino.
+                  // Antes, en modo destino se limpiaba el preview con null y el pin rojo desaparecía
+                  // al quedar el mapa en reposo. Ahora se vuelve a dibujar hasta que el usuario confirme.
+                  drawAccessiblePickupPreview(result);
+                }
+              })
+              .finally(() => {
+                if (!cancelled) setLoadingAddress(false);
+              });
+          }, 450);
         });
       })
       .catch(() => {
         setReady(true);
-        setSelected({
-          text: "No se pudo cargar el mapa",
-          address:
-            "Revisa la configuración de Google Maps y vuelve a intentar.",
-          lat: RAPA_NUI_CENTER.lat,
-          lng: RAPA_NUI_CENTER.lng,
-          placeId: null,
-        });
+        // ANTES: se escribía el error en `selected` con las coordenadas del
+        // centro de la isla. Como el botón solo mira `disabled={!selected}`, el
+        // pasajero podía confirmar y se despachaba un conductor al centro
+        // geográfico de Rapa Nui. El error se reporta ahora por su propia vía y
+        // `selected` sigue en null, así que confirmar queda inhabilitado.
+        setMapError(
+          "No se pudo cargar el mapa. Revisa tu conexión e inténtalo de nuevo.",
+        );
       });
 
     return () => {
       cancelled = true;
-      requestSequenceRef.current += 1;
 
       if (geocodeTimerRef.current) {
         window.clearTimeout(geocodeTimerRef.current);
       }
 
-      clearMapPreview();
+      mapResizeObserverRef.current?.disconnect();
+      mapResizeObserverRef.current = null;
       mapRef.current = null;
     };
   }, [
     isOpen,
     modalReady,
-    mode,
     initialPoint?.lat,
     initialPoint?.lng,
     initialPoint?.placeId,
@@ -4759,110 +4137,53 @@ function MapPointPicker({
     }
 
     const timeout = window.setTimeout(() => {
-      void getGooglePredictions(searchText.trim()).then(
-        setPickerSuggestions,
-      );
+      void getGooglePredictions(searchText.trim()).then(setPickerSuggestions);
     }, 300);
 
     return () => window.clearTimeout(timeout);
   }, [isOpen, searchText]);
 
-  async function pickSuggestion(
-    suggestion: GoogleSuggestion,
-  ): Promise<void> {
-    setLoadingAddress(true);
+  async function pickSuggestion(suggestion: GoogleSuggestion): Promise<void> {
+    const details =
+      mode === "origin"
+        ? await getPlaceDetails(suggestion.placeId)
+        : await getPlaceDetailsExact(suggestion.placeId);
 
-    try {
-      const exact = await getPlaceDetailsExact(suggestion.placeId);
-      if (!exact || !mapRef.current) return;
+    if (!details || !mapRef.current) return;
 
-      setSearchText(exact.text);
-      setPickerSuggestions([]);
-      mapRef.current.setCenter({
-        lat: exact.lat,
-        lng: exact.lng,
-      });
-      mapRef.current.setZoom(18);
-
-      await resolveMapPoint(
-        {
-          lat: exact.lat,
-          lng: exact.lng,
-        },
-        true,
-      );
-    } finally {
-      setLoadingAddress(false);
-    }
-  }
-
-  async function pickFrequentDestination(
-    destination: (typeof TOURIST_DESTINATION_SUGGESTIONS)[number],
-  ): Promise<void> {
-    const map = mapRef.current;
-    if (!map) return;
-
-    const sequence = ++requestSequenceRef.current;
-    setLoadingAddress(true);
-    setSearchText(destination.name);
+    setSelected(details);
+    drawAccessiblePickupPreview(details);
+    setSearchText(details.text);
     setPickerSuggestions([]);
 
+    mapRef.current.setCenter({
+      lat: details.lat,
+      lng: details.lng,
+    });
+
+    mapRef.current.setZoom(18);
+  }
+
+  async function pickTouristDestination(destination: typeof TOURIST_DESTINATION_SUGGESTIONS[number]): Promise<void> {
+    setSearchText(destination.name);
+    setPickerSuggestions([]);
+    setLoadingAddress(true);
+
     try {
-      const predictions = await getGooglePredictions(destination.search);
+      const details = await geocodeTextExact(destination.search);
+      if (!details || !mapRef.current) return;
 
-      if (sequence !== requestSequenceRef.current) return;
-
-      const targetKey = normalizePlaceStreetCompare(destination.name);
-      const preferred =
-        predictions.find((prediction) => {
-          const predictionKey = normalizePlaceStreetCompare(
-            prediction.mainText,
-          );
-
-          return (
-            predictionKey === targetKey ||
-            predictionKey.includes(targetKey) ||
-            targetKey.includes(predictionKey)
-          );
-        }) ??
-        predictions[0] ??
-        null;
-
-      const details = preferred
-        ? await getPlaceDetailsExact(preferred.placeId)
-        : await geocodeTextExact(destination.search);
-
-      if (
-        sequence !== requestSequenceRef.current ||
-        !details ||
-        !mapRef.current
-      ) {
-        return;
-      }
-
-      const nextPoint: PickerResult = {
+      const nextPoint = {
         ...details,
         text: destination.name,
       };
 
-      const point = {
-        lat: nextPoint.lat,
-        lng: nextPoint.lng,
-      };
-
-      // Evita que el evento idle reemplace el nombre frecuente por un
-      // comercio o dirección cercana después de centrar el mapa.
-      lastResolvedCenterRef.current = point;
-      setPickupCandidates([]);
       setSelected(nextPoint);
-      drawAccessiblePickupPreview(nextPoint, []);
-
-      mapRef.current.setCenter(point);
+      drawAccessiblePickupPreview(nextPoint);
+      mapRef.current.setCenter({ lat: nextPoint.lat, lng: nextPoint.lng });
       mapRef.current.setZoom(18);
     } finally {
-      if (sequence === requestSequenceRef.current) {
-        setLoadingAddress(false);
-      }
+      setLoadingAddress(false);
     }
   }
 
@@ -4878,7 +4199,6 @@ function MapPointPicker({
 
         mapRef.current?.setCenter(point);
         mapRef.current?.setZoom(18);
-        void resolveMapPoint(point, true);
       },
       () => {},
       {
@@ -4889,87 +4209,9 @@ function MapPointPicker({
     );
   }
 
-  function beginSheetDrag(
-    event: ReactPointerEvent<HTMLButtonElement>,
-  ): void {
-    sheetDragRef.current = {
-      pointerId: event.pointerId,
-      startY: event.clientY,
-      startedExpanded: sheetExpanded,
-    };
-
-    event.currentTarget.setPointerCapture(event.pointerId);
-    suppressSheetClickRef.current = false;
-    setSheetDragging(true);
-    setSheetDragY(0);
-  }
-
-  function moveSheetDrag(
-    event: ReactPointerEvent<HTMLButtonElement>,
-  ): void {
-    const drag = sheetDragRef.current;
-    if (!drag || drag.pointerId !== event.pointerId) return;
-
-    const delta = event.clientY - drag.startY;
-
-    if (Math.abs(delta) > 8) {
-      suppressSheetClickRef.current = true;
-    }
-
-    const bounded = drag.startedExpanded
-      ? Math.max(0, Math.min(360, delta))
-      : Math.min(0, Math.max(-360, delta));
-
-    setSheetDragY(bounded);
-  }
-
-  function endSheetDrag(
-    event: ReactPointerEvent<HTMLButtonElement>,
-  ): void {
-    const drag = sheetDragRef.current;
-    if (!drag || drag.pointerId !== event.pointerId) return;
-
-    const delta = event.clientY - drag.startY;
-
-    if (drag.startedExpanded && delta > 55) {
-      setSheetExpanded(false);
-    } else if (!drag.startedExpanded && delta < -55) {
-      setSheetExpanded(true);
-    }
-
-    sheetDragRef.current = null;
-    setSheetDragging(false);
-    setSheetDragY(0);
-
-    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
-      event.currentTarget.releasePointerCapture(event.pointerId);
-    }
-  }
-
-  const selectedStreet =
-    selected?.streetName ??
-    selected?.text.replace(/^Recogida en\s+/i, "").split(",")[0] ??
-    (mode === "origin" ? "Vía accesible" : "Destino seleccionado");
-
-  const selectedWalkMeters = Math.max(
-    0,
-    Math.round(Number(selected?.walkMeters ?? 0)),
-  );
-
-  const selectedWalkMinutes = Math.max(
-    1,
-    Math.round(
-      Number(
-        selected?.walkMinutes ??
-          Math.max(1, Math.ceil(selectedWalkMeters / 75)),
-      ),
-    ),
-  );
-
   return (
     <IonModal
       isOpen={isOpen}
-      className="request-map-modal"
       onDidPresent={() => setModalReady(true)}
       onDidDismiss={() => {
         setModalReady(false);
@@ -5003,10 +4245,29 @@ function MapPointPicker({
           onBack={onCancel}
         />
 
+        {/* Mapa y hoja se reparten el contenido con UN solo flex (.rp-request-map-shell),
+            en proporción fija. El motivo es de comportamiento, no de estética:
+            la hoja crece cuando llega la dirección geocodificada y cuando
+            aparece la tarjeta de caminata. Mientras el alto de la hoja mandaba,
+            cada dato que cargaba encogía el mapa a media interacción. Con el
+            reparto fijo el mapa mide siempre lo mismo y es la hoja la que se
+            desplaza por dentro.
+
+            Evita además dos trampas que ya costaron sendas correcciones:
+            · `<IonContent fullscreen>` suma `padding-top: var(--offset-top)`
+              (el alto del header) al elemento de scroll; con el contenido ya a
+              `height: 100%`, el conjunto medía viewport + header.
+            · `height: 100%` desde aquí dentro resuelve contra la caja de
+              CONTENIDO de .inner-scroll, a la que Ionic añade padding inferior
+              por área segura, así que se quedaba corto y por debajo asomaba el
+              fondo de la página. Por eso la shell se ancla con inset:0.
+
+            `scrollY={false}` en lugar de forzar `--overflow: hidden`: el mapa se
+            desplaza solo, la página no debe hacerlo. Es la prop que Ionic tiene
+            para esto, no un recorte a posteriori. */}
         <IonContent
-          fullscreen
-          className="request-map-content"
           scrollY={false}
+          style={{ "--background": "transparent" } as CSSProperties}
         >
           <div
             ref={shellRef}
@@ -5055,19 +4316,144 @@ function MapPointPicker({
                   />
                 </IonItem>
 
-              {pickerSuggestions.length > 0 && (
-                <div className="request-map-suggestions">
-                  {pickerSuggestions.map((suggestion) => (
-                    <button
-                      key={suggestion.placeId}
-                      type="button"
-                      className="request-map-suggestion"
-                      onClick={() => void pickSuggestion(suggestion)}
-                    >
-                      <strong>{suggestion.mainText}</strong>
-                      <span>{suggestion.secondaryText}</span>
-                    </button>
-                  ))}
+                {pickerSuggestions.length > 0 && (
+                  <div
+                    style={{
+                      marginTop: 8,
+                      borderRadius: 16,
+                      background: "var(--rp-surface)",
+                      overflow: "hidden",
+                      border: "var(--rp-border-w) solid var(--rp-border-c)",
+                      boxShadow: "var(--rp-shadow)",
+                    }}
+                  >
+                    {pickerSuggestions.map((suggestion, index) => (
+                      <button
+                        key={suggestion.placeId}
+                        type="button"
+                        className="rapago-suggestion-item"
+                        onClick={() => void pickSuggestion(suggestion)}
+                        style={{
+                          width: "100%",
+                          border: 0,
+                          borderBottom:
+                            index < pickerSuggestions.length - 1
+                              ? "1px solid var(--rp-divider)"
+                              : 0,
+                          background: "transparent",
+                          color: "var(--rp-text)",
+                          padding: "12px 14px",
+                          textAlign: "left",
+                          cursor: "pointer",
+                        }}
+                      >
+                        <div style={{ fontWeight: 800, fontSize: ".86rem", lineHeight: 1.25, color: "var(--rp-text)" }}>
+                          {suggestion.mainText}
+                        </div>
+                        <div style={{ fontSize: ".74rem", color: "var(--rp-muted)", fontWeight: 650, marginTop: 2 }}>
+                          {suggestion.secondaryText}
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                )}
+
+                {/* El aviso va DENTRO de la misma pila que el buscador, en flujo
+                    normal y con sus mismos márgenes laterales, no flotando en
+                    `top: 47%` del mapa. Antes se posicionaba respecto al alto
+                    del mapa: al encogerse el mapa, ese 47% lo subía hasta
+                    montarse sobre el buscador. Aquí no puede solaparse con nada
+                    porque va en el flujo, y comparte borde izquierdo y derecho
+                    con el campo de búsqueda, que es lo que hace que se lean como
+                    un bloque ordenado. Se oculta mientras hay sugerencias para
+                    no competir con ellas por el mismo sitio. */}
+                {mode === "origin" &&
+                  pickerSuggestions.length === 0 &&
+                  selected?.walkMeters != null &&
+                  selected.walkMeters > 8 && (
+                <div
+                  style={{
+                    marginTop: 8,
+                    background: "rgba(17,17,17,.94)",
+                    color: "#ffffff",
+                    border: "1px solid rgba(34,197,94,.65)",
+                    borderRadius: "16px",
+                    padding: "8px 14px",
+                    textAlign: "center",
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    fontWeight: 800,
+                    fontSize: ".72rem",
+                    boxShadow: "0 5px 14px rgba(0,0,0,.35)",
+                    whiteSpace: "nowrap",
+                    pointerEvents: "none",
+                  }}
+                >
+                  Inicio de viaje en {selected.text.replace("Recogida en ", "")}
+                </div>
+                )}
+              </div>
+
+              {/* Los tres controles en UNA columna, mismo tamaño y mismo borde
+                  derecho. Antes el zoom lo pintaba Google en su propia posición
+                  y acababa montado sobre el botón de centrar, que además era de
+                  otro tamaño: dos elementos superpuestos y descuadrados entre
+                  sí. Son botones propios, no el control de Google, para que los
+                  tres compartan medida y estilo.
+
+                  El zoom sigue existiendo a propósito: el mapa usa
+                  `gestureHandling: "greedy"`, así que la pinza funciona, pero
+                  quien no puede hacer un gesto de dos dedos necesita una
+                  alternativa de un solo puntero (WCAG 2.5.1). Quitar los
+                  botones habría dejado a esas personas sin zoom. */}
+              <div className="rp-map-controls">
+                <button
+                  type="button"
+                  className="rp-map-control"
+                  aria-label="Acercar el mapa"
+                  onClick={() => {
+                    const map = mapRef.current;
+                    if (map) map.setZoom((map.getZoom() ?? 17) + 1);
+                  }}
+                >
+                  <IonIcon icon={addOutline} />
+                </button>
+
+                <button
+                  type="button"
+                  className="rp-map-control"
+                  aria-label="Alejar el mapa"
+                  onClick={() => {
+                    const map = mapRef.current;
+                    if (map) map.setZoom((map.getZoom() ?? 17) - 1);
+                  }}
+                >
+                  <IonIcon icon={removeOutline} />
+                </button>
+
+                <button
+                  type="button"
+                  className="rp-map-control"
+                  aria-label="Centrar en mi ubicación"
+                  onClick={useCurrentLocation}
+                >
+                  <IonIcon icon={locateOutline} />
+                </button>
+              </div>
+
+              {modalReady && !ready && (
+                <div
+                  style={{
+                    position: "absolute",
+                    inset: 0,
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    background: "rgba(17,17,17,.25)",
+                    zIndex: 20,
+                  }}
+                >
+                  <IonSpinner name="crescent" />
                 </div>
               )}
             </div>
@@ -5312,18 +4698,19 @@ function MapPointPicker({
                 expand="block"
                 disabled={!selected}
                 onClick={() => {
-                  if (suppressSheetClickRef.current) {
-                    suppressSheetClickRef.current = false;
-                    return;
-                  }
-
-                  setSheetExpanded((current) => !current);
+                  if (selected) onConfirm(selected);
                 }}
-                aria-expanded={sheetExpanded}
-                aria-label={
-                  sheetExpanded
-                    ? "Bajar la tarjeta del mapa"
-                    : "Subir la tarjeta del mapa"
+                style={
+                  {
+                    "--background": "var(--rp-btn-primary)",
+                    "--color": "var(--rp-btn-primary-fg)",
+                    "--border-radius": "var(--rp-radius-sm)",
+                    "--box-shadow": "var(--rp-shadow-accent)",
+                    height: "54px",
+                    minHeight: "54px",
+                    fontSize: "1rem",
+                    fontWeight: 850,
+                  } as CSSProperties
                 }
               >
                 {mode === "origin" ? "Confirmar recogida" : "Confirmar destino"}
@@ -5588,12 +4975,8 @@ type PageStatus =
 export default function RequestRidePage(): JSX.Element {
   const { session } = useAuth();
   const history = useHistory();
-  const { theme, isDark, toggleTheme } = useRapagoSectionTheme("request-ride");
-
-  useEffect(() => {
-    preSearchLocationService.read();
-    return () => preSearchLocationService.clear();
-  }, []);
+  // Solo se lee: el interruptor único vive en el encabezado de Inicio.
+  const { theme } = useRapagoSectionTheme("request-ride");
 
   useEffect(() => {
     preSearchLocationService.read();
@@ -5614,6 +4997,9 @@ export default function RequestRidePage(): JSX.Element {
 
   const originSearchSeq = useRef(0);
   const destSearchSeq = useRef(0);
+  /* Evita que el mapa se reabra solo al devolver el foco al input justo
+     después de confirmar un punto (decisión de producto: tocar el campo abre
+     el mapa al instante, así que hace falta este freno de 900ms). */
   const suppressPickerOpenRef = useRef(false);
 
   const [pickerTarget, setPickerTarget] = useState<PickerTarget | null>(null);
@@ -7337,8 +6723,6 @@ return (
     >
       <RapagoSectionHeader
         title="Solicitar Viaje"
-        isDark={isDark}
-        onToggleTheme={toggleTheme}
         onBack={() => history.replace(ROUTES.PASSENGER.HOME)}
         backLabel="Volver al inicio"
       />
@@ -8886,7 +8270,9 @@ return (
             )}
 
             {submitError && (
-              <IonText color="danger">
+              /* role="alert" para que el lector de pantalla lo anuncie: es un
+                 error que aparece DESPUÉS de pulsar, sin mover el foco. */
+              <IonText color="danger" role="alert">
                 <p style={{ fontWeight: 700, fontSize: ".84rem" }}>
                   {submitError}
                 </p>
@@ -8956,7 +8342,7 @@ return (
         {pickerTarget && (
           <MapPointPicker
             isOpen={pickerTarget !== null}
-            title={pickerTarget === "origin" ? "Confirma el punto de partida" : "Confirma el destino"}
+            title={pickerTarget === "origin" ? "Confirmar recogida" : "Confirmar destino"}
             mode={pickerTarget}
             initialPoint={pickerInitialPoint}
             onCancel={() => setPickerTarget(null)}
