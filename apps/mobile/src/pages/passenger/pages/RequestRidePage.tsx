@@ -2,11 +2,9 @@ import {
   IonAlert,
   IonBadge,
   IonButton,
-  IonButtons,
   IonCard,
   IonCardContent,
   IonContent,
-  IonHeader,
   IonIcon,
   IonInput,
   IonItem,
@@ -17,11 +15,9 @@ import {
   IonSpinner,
   IonText,
   IonTextarea,
-  IonTitle,
-  IonToolbar,
 } from "@ionic/react";
 import {
-  arrowBackOutline,
+  addOutline,
   calendarOutline,
   checkmarkCircleOutline,
   createOutline,
@@ -3934,6 +3930,97 @@ function SuggestionList({
   );
 }
 
+/* Reparto de alto entre mapa y hoja, en % del contenedor, expresado como cuánto
+   se lleva el MAPA. El panel es de colocación LIBRE: se queda exactamente donde
+   se suelte, sin posiciones de encaje. Las hubo —tres reposos con salto por
+   impulso— y eran la causa de que el panel "no obedeciera": el usuario lo
+   dejaba a su gusto y medio segundo después se recolocaba solo en el reposo más
+   cercano, deshaciéndole el gesto. Un control cuyo resultado no coincide con
+   donde lo dejaste se siente roto, por bien calibrado que esté el salto.
+
+   Los valores de referencia NO son porcentajes fijos. El contenido de la hoja mide
+   siempre lo mismo en píxeles —la tarjeta de dirección, la de caminata y el
+   botón no encogen con la pantalla—, así que un reparto fijo da resultados
+   distintos en cada aparato: un 50% son 390px de hoja en un teléfono alto,
+   donde sobra sitio, y 252px en uno bajo, donde el mismo contenido no entra.
+   El porcentaje escala a ciegas; lo que hay que repartir es el alto REAL. */
+
+/* Alto de la hoja en reposo. Con este valor el panel queda a media pantalla:
+   se leen la dirección y la caminata, y el mapa se lleva algo más de la mitad,
+   que es el reparto de referencia pedido. */
+const SHEET_CONTENT_PX = 295;
+
+/* Márgenes del reparto calculado. Por debajo del mínimo el mapa deja de servir
+   para reconocer dónde cae el punto; por encima del máximo la hoja no da ni
+   para la dirección. Entre ambos manda el contenido. */
+const MAP_SHARE_FIT_MIN = 30;
+const MAP_SHARE_FIT_MAX = 66;
+
+/* Solo se usa antes de la primera medición, mientras no se sabe el alto real. */
+const MAP_SHARE_DEFAULT = 50;
+
+/* Extremos del recorrido. El máximo deja la hoja reducida a su cabecera —barra
+   y título, sin ninguna tarjeta—, que es hasta donde puede crecer el mapa sin
+   que quede un panel sin nada dentro.
+
+   No hace falta que sea exacto: quien manda de verdad es el suelo en CSS
+   (request-ride.css, `.rp-request-map-sheet`), que varía con el área segura de
+   cada aparato vía `env(safe-area-inset-bottom)` — algo que un solo número de
+   JS no puede replicar, porque ese margen cambia de un iPhone con muesca a uno
+   sin ella. Aquí basta con un techo GENEROSO: en aparatos con poca área segura
+   el suelo real de CSS permite más que este valor y manda él; en los que
+   necesitan más margen abajo, el mismo suelo se ocupa de frenar antes. El mapa
+   cede sin pelear porque es `flex: 0 1`. */
+const MAP_SHARE_MIN = 22;
+const MAP_SHARE_MAX = 90;
+
+/* Margen para distinguir un toque de un arrastre. 10px y no 4: un dedo real se
+   desplaza varios píxeles mientras toca, y con el listón tan bajo el toque se
+   leía como arrastre — el interruptor no llegaba a dispararse nunca y pulsar la
+   barra parecía no hacer nada. Es el margen que usan iOS y Android. */
+const TAP_SLOP_PX = 10;
+
+/* Reparto de reposo para un alto disponible concreto: a la hoja se le da lo que
+   su contenido pide y el mapa se queda con el resto, acotado. En una pantalla
+   alta sobra sitio y el mapa crece; en una baja el mapa cede para que la
+   información siga entrando. Es lo que hace que el equilibrio se sienta igual
+   en cualquier dispositivo en vez de escalar a ciegas. */
+function fitMapShare(shellHeight: number): number {
+  if (shellHeight <= 0) return MAP_SHARE_DEFAULT;
+
+  const sheetShare = (SHEET_CONTENT_PX / shellHeight) * 100;
+
+  return Math.min(
+    MAP_SHARE_FIT_MAX,
+    Math.max(MAP_SHARE_FIT_MIN, 100 - sheetShare),
+  );
+}
+
+/* Tope superior del panel (= mínimo del mapa) para un alto dado: un poco más de
+   hoja que el reposo. El contenido ya se enseña entero en el reposo, así que
+   subir más allá de este margen solo añadiría panel vacío. Cuelga del reparto
+   ajustado, no de un número absoluto, para significar lo mismo en cualquier
+   pantalla. */
+function minMapShare(shellHeight: number): number {
+  return Math.max(MAP_SHARE_MIN, fitMapShare(shellHeight) - 18);
+}
+
+/* Resistencia elástica fuera del recorrido útil. Un tope seco se siente como
+   que algo se rompió; que el panel ceda cada vez menos y vuelva solo al soltar
+   se siente deliberado.
+
+   Los límites se pasan explícitos y no se sacan de las posiciones de reposo: el
+   recorrido real llega desde la posición más abierta hasta la hoja CERRADA, que
+   no es un reposo pero sí un extremo legítimo. Tomando el último reposo como
+   techo, tirar de una hoja cerrada la hacía saltar hacia arriba en el primer
+   píxel del gesto, porque ya arrancaba fuera de la banda. */
+function rubberBandShare(value: number, min: number, max: number): number {
+  if (value < min) return min - (min - value) * 0.35;
+  if (value > max) return max + (value - max) * 0.35;
+
+  return value;
+}
+
 function MapPointPicker({
   isOpen,
   title,
@@ -3982,25 +4069,254 @@ function MapPointPicker({
   const [sheetDragY, setSheetDragY] = useState(0);
   const [sheetDragging, setSheetDragging] = useState(false);
 
-  function clearMapPreview(): void {
-    realPointMarkerRef.current?.setMap(null);
-    pickupPointMarkerRef.current?.setMap(null);
-    candidateMarkersRef.current.forEach((marker) => marker.setMap(null));
-    candidateMarkersRef.current = [];
-    realPointCircleRef.current?.setMap(null);
-    walkingDotsRef.current?.setMap(null);
-    walkingDotsShadowRef.current?.setMap(null);
+  /* Panel arrastrable. El reparto mapa/hoja es estado, no un número fijo en
+     CSS, porque ahora lo decide el usuario: hay quien quiere ver bien el mapa
+     antes de confirmar y quien quiere leer la dirección entera. */
+  const [mapShare, setMapShare] = useState<number>(MAP_SHARE_DEFAULT);
+  const [draggingSheet, setDraggingSheet] = useState(false);
+  const shellRef = useRef<HTMLDivElement | null>(null);
+
+  /* Alto realmente disponible. No se sabe hasta que el modal está montado, y
+     cambia al girar el aparato o cuando la barra del navegador se encoge, así
+     que se mide en vivo en lugar de suponerlo. */
+  const [shellHeight, setShellHeight] = useState(0);
+  const minShare = useMemo(() => minMapShare(shellHeight), [shellHeight]);
+
+  /* Tope inferior REAL del panel, leído del CSS en vez de supuesto.
+
+     Antes esto era la constante MAP_SHARE_MAX y no cuadraba con la realidad:
+     quien frena el panel es su `min-height`, que se compone con
+     `env(safe-area-inset-bottom)` y por tanto vale distinto en cada aparato.
+     Al pedir el JS más de lo que el CSS concede quedaba una zona muerta al
+     final del recorrido —entre 2% y 5% según el teléfono— donde el dedo seguía
+     bajando y el panel ya no se movía. Se siente exactamente como "no baja
+     más", que es lo que se estaba reportando: el gesto corría en vacío justo
+     donde uno empuja para llegar al fondo.
+
+     Midiéndolo, el arrastre termina justo donde el panel deja de moverse. */
+  const [maxShare, setMaxShare] = useState(MAP_SHARE_MAX);
+  const sheetRef = useRef<HTMLDivElement | null>(null);
+
+  /* NO hay un estado "cerrado" aparte, y es a propósito. Lo hubo: desvanecía el
+     contenido con `opacity` pero seguía reservándole su espacio, así que el
+     panel se quedaba como una caja negra vacía con el título encima. Ese hueco
+     era precisamente el que debía ser mapa.
+
+     Ahora hay una sola magnitud —cuánto se lleva el mapa— y la hoja es siempre
+     el resto. Al encogerla, el contenido se recorta solo porque su caja mengua;
+     no hay nada que ocultar por separado y por tanto no puede quedar espacio
+     reservado y vacío. Subir la barra encoge el mapa y bajarla lo agranda, de
+     forma continua. */
+
+  /* En cuanto el usuario coloca el panel a mano, manda él: recolocárselo por
+     debajo al recalcular sería deshacerle el gesto. */
+  const sheetAdjustedByUserRef = useRef(false);
+  /* Última posición abierta conocida. El toque que reabre vuelve aquí: a donde
+     el usuario lo tenía, no a un sitio decidido por la app. */
+  const lastOpenShareRef = useRef<number | null>(null);
+  const sheetDragRef = useRef<{
+    startY: number;
+    startShare: number;
+    shellHeight: number;
+    /* Última posición aplicada. Se guarda aquí y no se lee del estado porque al
+       soltar hay que decidir con el valor real del gesto, y el de React podría
+       ir un render por detrás. */
+    share: number;
+  } | null>(null);
+  /* Espejo de `draggingSheet` en ref: el ResizeObserver del mapa se crea una
+     sola vez y no vería los cambios de estado, pero necesita saber si hay un
+     arrastre en curso. */
+  const draggingSheetRef = useRef(false);
+  /* Distingue un arrastre de una pulsación: en táctil, al soltar tras arrastrar
+     también llega un `click`, y sin esto el panel saltaría de posición justo
+     después de que el usuario acabara de colocarlo a mano. */
+  const sheetDraggedRef = useRef(false);
+  /* Marca que el toque ya se atendió en `pointerup`, para que el `click` que
+     llega después no lo repita y deje el panel como estaba. */
+  const tapHandledRef = useRef(false);
+
+  /* Mide el hueco disponible y lo mantiene al día. El ResizeObserver cubre el
+     giro de pantalla y el encogido de la barra del navegador, que en iOS pasa
+     constantemente al desplazarse. */
+  useEffect(() => {
+    const shell = shellRef.current;
+
+    if (!isOpen || !shell || typeof ResizeObserver === "undefined") return;
+
+    const measure = (): void => {
+      const height = shell.getBoundingClientRect().height;
+      setShellHeight(height);
+
+      const sheet = sheetRef.current;
+      if (!sheet || height <= 0) return;
+
+      /* `min-height` resuelto por el navegador: ya trae aplicados el `min()`,
+         el `calc()` y el área segura concreta de este aparato. */
+      const floorPx = parseFloat(window.getComputedStyle(sheet).minHeight);
+      if (!Number.isFinite(floorPx) || floorPx <= 0) return;
+
+      setMaxShare(
+        Math.min(95, Math.max(50, 100 - (floorPx / height) * 100)),
+      );
+    };
+
+    const observer = new ResizeObserver(measure);
+    observer.observe(shell);
+    measure();
+
+    return () => observer.disconnect();
+  }, [isOpen, modalReady]);
+
+  /* Mientras el usuario no haya movido el panel, sigue al reparto ajustado: al
+     abrir, al girar el teléfono o al cambiar el alto útil, la hoja vuelve a
+     pedir exactamente lo que su contenido necesita. */
+  useEffect(() => {
+    if (sheetAdjustedByUserRef.current || shellHeight <= 0) return;
+
+    setMapShare(fitMapShare(shellHeight));
+  }, [shellHeight]);
+
+  function handleGripPointerDown(event: ReactPointerEvent<HTMLElement>): void {
+    const shellHeight = shellRef.current?.getBoundingClientRect().height ?? 0;
+    if (shellHeight <= 0) return;
+
+    event.currentTarget.setPointerCapture(event.pointerId);
+    sheetDragRef.current = {
+      startY: event.clientY,
+      startShare: mapShare,
+      shellHeight,
+      share: mapShare,
+    };
+    sheetDraggedRef.current = false;
+    draggingSheetRef.current = true;
+    setDraggingSheet(true);
   }
 
-  function selectPickupCandidate(candidate: PickerResult): void {
-    setSelected(candidate);
-    drawAccessiblePickupPreview(candidate, pickupCandidates);
+  function handleGripPointerMove(event: ReactPointerEvent<HTMLElement>): void {
+    const drag = sheetDragRef.current;
+    if (!drag) return;
+
+    const deltaPx = event.clientY - drag.startY;
+
+    if (Math.abs(deltaPx) > TAP_SLOP_PX) sheetDraggedRef.current = true;
+
+    /* clientY crece hacia abajo, así que arrastrar hacia abajo encoge la hoja y
+       agranda el mapa: el delta se suma tal cual a la parte del mapa. */
+    const raw = drag.startShare + (deltaPx / drag.shellHeight) * 100;
+
+    /* Entre los dos extremos el panel sigue al dedo sin resistencia; fuera cede
+       cada vez menos. El tope duro deja un margen para que se note la
+       elasticidad antes de frenar del todo. */
+    const next = Math.min(
+      maxShare + 5,
+      Math.max(MAP_SHARE_MIN, rubberBandShare(raw, minShare, maxShare)),
+    );
+
+    drag.share = next;
+    setMapShare(next);
   }
 
-  function drawAccessiblePickupPreview(
-    point: PickerResult | null,
-    candidates: PickerResult[] = pickupCandidates,
-  ): void {
+  function handleGripPointerUp(event: ReactPointerEvent<HTMLElement>): void {
+    const drag = sheetDragRef.current;
+    if (!drag) return;
+
+    const { share } = drag;
+
+    sheetDragRef.current = null;
+    draggingSheetRef.current = false;
+    sheetAdjustedByUserRef.current = true;
+    setDraggingSheet(false);
+
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+
+    /* El dedo no llegó a arrastrar: es un toque, y se resuelve AQUÍ.
+
+       Antes esto vivía en el `onClick`, y era un error: con `setPointerCapture`
+       activo el navegador redirige los eventos al elemento que captura, y el
+       `click` posterior no llega de forma fiable en todos los motores. El
+       interruptor dependía de un evento que a veces no existía. `pointerup`
+       siempre llega. */
+    if (!sheetDraggedRef.current) {
+      tapHandledRef.current = true;
+      toggleSheet();
+      return;
+    }
+
+    /* SIN encaje: el panel se queda EXACTAMENTE donde se soltó. Lo único que
+       ocurre al soltar es deshacer el estiramiento elástico si el gesto terminó
+       fuera del recorrido. Colocarlo es del usuario; recolocarlo no es nuestro. */
+    const resolved = Math.min(maxShare, Math.max(minShare, share));
+
+    /* Si quedó abierta, esta pasa a ser la posición a la que volverá el toque
+       que reabra: se respeta dónde la dejó el usuario, venga de donde venga. */
+    if (resolved < maxShare - 4) lastOpenShareRef.current = resolved;
+
+    setMapShare(resolved);
+  }
+
+  /* Pulsar la barra es un INTERRUPTOR: un toque pliega el panel hasta dejar
+     solo la barra y el título —mapa entero a la vista— y el siguiente lo
+     reabre.
+
+     Hubo un intento anterior de esto que confundía, y conviene recordar por
+     qué antes de "mejorarlo": aquel cierre ocultaba el contenido con `opacity`
+     pero le reservaba el sitio, así que quedaba una caja negra vacía y parecía
+     que la información se había perdido. Ahora cerrar es solo llevar el
+     reparto a su extremo: el panel se pliega de verdad (el suelo en CSS lo
+     detiene justo en la cabecera), la barra y el título quedan siempre a la
+     vista como asa para volver, y el movimiento es una animación continua que
+     enseña adónde se fue.
+
+     La reapertura vuelve a la última posición abierta, no a una fija: si el
+     usuario había colocado el panel a su gusto, eso es suyo. Sin posición
+     previa, vuelve al reparto ajustado a la pantalla. */
+  function toggleSheet(): void {
+    sheetAdjustedByUserRef.current = true;
+
+    const closed = mapShare >= maxShare - 4;
+
+    if (closed) {
+      setMapShare(lastOpenShareRef.current ?? fitMapShare(shellHeight));
+      return;
+    }
+
+    lastOpenShareRef.current = mapShare;
+    setMapShare(maxShare);
+  }
+
+  /* Solo cubre el `click` que NO viene del dedo: Enter o Espacio sobre el botón
+     con el foco puesto. El táctil ya se atendió en `pointerup`. */
+  function handleGripClick(): void {
+    if (tapHandledRef.current) {
+      tapHandledRef.current = false;
+      return;
+    }
+
+    if (sheetDraggedRef.current) return;
+
+    toggleSheet();
+  }
+
+  function handleGripKeyDown(event: ReactKeyboardEvent<HTMLButtonElement>): void {
+    if (event.key !== "ArrowUp" && event.key !== "ArrowDown") return;
+
+    event.preventDefault();
+    sheetAdjustedByUserRef.current = true;
+
+    /* Pasos fijos, espejo del arrastre libre: sin posiciones privilegiadas,
+       solo un recorrido acotado. Arriba agranda la hoja (menos mapa); abajo,
+       al revés. */
+    const delta = event.key === "ArrowUp" ? -8 : 8;
+
+    setMapShare((current) =>
+      Math.min(maxShare, Math.max(minShare, current + delta)),
+    );
+  }
+
+
+  function drawAccessiblePickupPreview(point: PickerResult | null): void {
     const map = mapRef.current;
 
     if (!map || !window.google?.maps) return;
@@ -4657,55 +4973,87 @@ function MapPointPicker({
       onDidPresent={() => setModalReady(true)}
       onDidDismiss={() => {
         setModalReady(false);
+        /* Cada apertura vuelve a empezar con el reparto ajustado: la colocación
+           manual pertenece a esa sesión concreta, no al componente. */
+        sheetAdjustedByUserRef.current = false;
+        lastOpenShareRef.current = null;
         onCancel();
       }}
     >
-      <IonPage className="rapago-section-page rapago-request-page request-map-page">
-        <IonHeader className="request-map-header">
-          <IonToolbar>
-            <IonButtons slot="start">
-              <IonButton
-                fill="clear"
-                onClick={onCancel}
-                aria-label="Volver"
-                className="request-map-back"
-              >
-                <IonIcon slot="start" icon={arrowBackOutline} />
-                Volver
-              </IonButton>
-            </IonButtons>
+      <IonPage className="rapago-section-page rapago-request-page">
+        {/* La misma cabecera que Mis viajes, Beneficios y Ayuda. Antes esta era
+            la única barra del proyecto que no seguía ningún patrón, y de ahí
+            salían cuatro fallos que no se veían leyendo solo este archivo:
 
-            <IonTitle aria-label={title}>
-              {mode === "origin"
-                ? "Confirmar recogida"
-                : "Confirmar destino"}
-            </IonTitle>
-          </IonToolbar>
-        </IonHeader>
+            · `color="primary"` no pintaba nada: sections.css:107 fuerza
+              `--background: transparent !important` en los toolbar de
+              .rapago-section-page.
+            · El `fontWeight: 950` y el `fontSize` en línea del título los
+              anulaba sections.css:129, que los declara !important.
+            · El botón "Volver" salía BLANCO, ilegible en tema claro: global.css
+              :3676 fuerza blanco en `ion-toolbar ion-button[fill="clear"]`, y el
+              contra-override de sections.css:153 solo alcanza a los botones
+              envueltos en <IonButtons>. Este estaba suelto con slot="start".
+            · El título se truncaba a "Confirmar reco…" porque el botón con
+              texto se comía ~110px y el `paddingInline: 72px` otros 144px. Con
+              el botón de solo icono y sin ese padding, el título entra entero
+              sin necesidad de números mágicos. */}
+        <RapagoSectionHeader
+          title={mode === "origin" ? "Confirmar recogida" : "Confirmar destino"}
+          onBack={onCancel}
+        />
 
         <IonContent
           fullscreen
           className="request-map-content"
           scrollY={false}
         >
-          <div className="request-map-shell">
-            <div
-              ref={mapElementRef}
-              className="request-map-canvas"
-              aria-label="Mapa para elegir el punto"
-            />
+          <div
+            ref={shellRef}
+            className={[
+              "rp-request-map-shell",
+              draggingSheet ? "is-dragging" : "",
+              // Panel en su posición más alta: la sombra se refuerza.
+              mapShare <= minShare + 4 ? "is-sheet-tall" : "",
+            ]
+              .filter(Boolean)
+              .join(" ")}
+            style={{ "--rp-map-share": `${mapShare}%` } as CSSProperties}
+          >
+            <div className="rp-request-map-canvas">
+              <div
+                ref={mapElementRef}
+                style={{
+                  width: "100%",
+                  height: "100%",
+                  background: "#e8eef4",
+                }}
+              />
 
-            <div className="request-map-search">
-              <IonItem lines="none" className="request-map-search__field">
-                <IonIcon icon={searchOutline} slot="start" />
-                <IonInput
-                  value={searchText}
-                  placeholder="Buscar dirección o lugar en Google Maps"
-                  onIonInput={(event) =>
-                    setSearchText(String(event.detail.value ?? ""))
-                  }
-                />
-              </IonItem>
+              <div
+                style={{
+                  position: "absolute",
+                  top: 14,
+                  left: 14,
+                  right: 14,
+                  zIndex: 10,
+                }}
+              >
+                {/* El canto se define entero en .rp-request-search-field, no
+                    aquí: sections.css:267-274 fija `border`, `border-radius` y
+                    `--border-radius` con !important en todos los ion-item de la
+                    pantalla, y el !important gana a los estilos en línea. Los
+                    valores que había aquí eran código muerto. */}
+                <IonItem lines="none" className="rp-request-search-field">
+                  <IonIcon icon={searchOutline} slot="start" style={{ color: "var(--rp-icon-fg)" }} />
+                  <IonInput
+                    value={searchText}
+                    placeholder="Buscar dirección o lugar"
+                    onIonInput={(event) =>
+                      setSearchText(String(event.detail.value ?? ""))
+                    }
+                  />
+                </IonItem>
 
               {pickerSuggestions.length > 0 && (
                 <div className="request-map-suggestions">
@@ -4724,57 +5072,245 @@ function MapPointPicker({
               )}
             </div>
 
-            {mode === "origin" && selected && (
-              <div className="request-map-start-label">
-                Inicio del viaje en {selectedStreet}
-              </div>
-            )}
+            <div ref={sheetRef} className="rp-request-map-sheet">
+              {/* CABECERA DEL PANEL: toda ella arrastra, no solo la rayita.
+                  Antes el gesto vivía en un botón de 30px y había que acertarle;
+                  aquí se agarra el panel por cualquier punto de su parte
+                  superior —incluido el título—, que es como se comportan los
+                  paneles del sistema y lo que hace que "suba solo" sin buscar el
+                  tirador.
 
-            <button
-              type="button"
-              onClick={useCurrentLocation}
-              className="request-map-location-button"
-              aria-label="Usar mi ubicación actual"
-            >
-              <IonIcon icon={locateOutline} />
-            </button>
+                  El título sale del área con scroll y se queda aquí fijo: al
+                  desplazar el contenido sigue diciendo qué se está mirando, y de
+                  paso agranda la superficie de agarre.
 
-            {modalReady && (!ready || loadingAddress) && (
+                  Los eventos de puntero van en el contenedor y el <button>
+                  interior se queda como control accesible: mantiene el foco de
+                  teclado y las flechas, y su pulsación burbujea hasta el onClick
+                  de aquí. Se separa así a propósito porque `setPointerCapture`
+                  redirige los eventos al elemento que captura, y dejar el click
+                  en el botón lo haría depender de cómo resuelva cada navegador
+                  esa redirección. Arrastrar no es viable para todo el mundo, así
+                  que la vía de pulsación y teclado tiene que ser sólida
+                  (WCAG 2.5.7). */}
               <div
-                className="request-map-loading"
-                aria-live="polite"
+                className="rp-request-map-sheet-head"
+                onPointerDown={handleGripPointerDown}
+                onPointerMove={handleGripPointerMove}
+                onPointerUp={handleGripPointerUp}
+                onPointerCancel={handleGripPointerUp}
+                onClick={handleGripClick}
               >
-                <IonSpinner name="crescent" />
-                <span>
-                  {mode === "origin"
-                    ? "Buscando calles accesibles y referencias..."
-                    : "Buscando el destino..."}
-                </span>
-              </div>
-            )}
+                <button
+                  type="button"
+                  className="rp-request-map-grip"
+                  /* `aria-expanded` porque pulsar es un interruptor: quien use
+                     lector de pantalla necesita saber en cuál de los dos
+                     estados está antes de tocar. El arrastre se anuncia aparte
+                     porque es la otra acción, con otro resultado. */
+                  aria-expanded={mapShare < maxShare - 4}
+                  aria-label={
+                    mapShare >= maxShare - 4
+                      ? "Mostrar los detalles del punto. También puedes arrastrar esta barra."
+                      : "Plegar el panel y ver el mapa completo. También puedes arrastrar esta barra."
+                  }
+                  onKeyDown={handleGripKeyDown}
+                >
+                  <span className="rp-request-map-grip__bar" aria-hidden />
+                </button>
 
-            <section
-              className={`request-map-sheet ${
-                sheetExpanded
-                  ? "request-map-sheet--expanded"
-                  : "request-map-sheet--collapsed"
-              } ${
-                sheetDragging ? "request-map-sheet--dragging" : ""
-              }`}
-              style={
-                {
-                  "--request-sheet-drag-y": `${sheetDragY}px`,
-                } as CSSProperties
-              }
-              aria-label="Información del punto seleccionado"
-            >
-              <button
-                type="button"
-                className="request-map-sheet__drag"
-                onPointerDown={beginSheetDrag}
-                onPointerMove={moveSheetDrag}
-                onPointerUp={endSheetDrag}
-                onPointerCancel={endSheetDrag}
+                <h2 className="rp-request-map-sheet-title">
+                  <span className="rp-request-map-sheet-title__tick" aria-hidden />
+                  {mode === "origin" ? "Punto accesible recomendado" : "Destino seleccionado"}
+                </h2>
+              </div>
+
+              <div className="rp-request-map-sheet-scroll">
+
+              {mode === "destination" && pickerSuggestions.length === 0 && (
+                <div
+                  className="rp-request-note"
+                  style={{
+                    margin: "0 0 14px",
+                    padding: "12px",
+                  }}
+                >
+                  <div
+                    style={{
+                      fontSize: ".72rem",
+                      fontWeight: 800,
+                      color: "var(--rp-label)",
+                      margin: "0 2px 10px",
+                      letterSpacing: ".04em",
+                      textTransform: "uppercase",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 8,
+                    }}
+                  >
+                    <span
+                      aria-hidden
+                      style={{
+                        width: 16,
+                        height: 3,
+                        borderRadius: 2,
+                        background: "var(--rp-btn-primary)",
+                        flexShrink: 0,
+                      }}
+                    />
+                    Destinos frecuentes
+                  </div>
+
+                  <div
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+                      gap: 8,
+                    }}
+                  >
+                    {TOURIST_DESTINATION_SUGGESTIONS
+                      .filter((item) => {
+                        const term = searchText.trim().toLowerCase();
+                        if (term.length < 2) return true;
+                        return `${item.name} ${item.subtitle}`.toLowerCase().includes(term);
+                      })
+                      .map((item) => (
+                        <button
+                          key={item.name}
+                          type="button"
+                          onClick={() => void pickTouristDestination(item)}
+                          style={{
+                            border: "1px solid var(--rp-border-c)",
+                            borderRadius: 14,
+                            background: "var(--rp-field-bg)",
+                            color: "var(--rp-text)",
+                            padding: "10px",
+                            textAlign: "left",
+                          }}
+                        >
+                          <div style={{ fontWeight: 800, fontSize: ".78rem", lineHeight: 1.2, color: "var(--rp-text)" }}>
+                            {item.name}
+                          </div>
+                          <div style={{ color: "var(--rp-muted)", fontSize: ".68rem", marginTop: 3 }}>
+                            {item.subtitle}
+                          </div>
+                        </button>
+                      ))}
+                  </div>
+                </div>
+              )}
+
+              {mapError && (
+                <div
+                  className="rp-request-note"
+                  role="alert"
+                  style={{
+                    padding: "14px 16px",
+                    marginBottom: 12,
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 12,
+                    borderColor: "var(--rp-danger-bd)",
+                  }}
+                >
+                  <IonIcon
+                    icon={alertCircleOutline}
+                    style={{ color: "var(--rp-danger-fg)", fontSize: 24, flexShrink: 0 }}
+                  />
+                  <div style={{ flex: 1 }}>
+                    <div
+                      style={{
+                        color: "var(--rp-danger-fg)",
+                        fontWeight: 850,
+                        fontSize: ".9rem",
+                        marginBottom: 4,
+                      }}
+                    >
+                      No se pudo cargar el mapa
+                    </div>
+                    <div
+                      style={{
+                        color: "var(--rp-muted)",
+                        fontSize: ".82rem",
+                        lineHeight: 1.35,
+                      }}
+                    >
+                      {mapError}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {!mapError && (
+              <div className="rp-request-note rp-request-row">
+                <div className="rp-request-row__icon">
+                  <span
+                    style={{
+                      width: 14,
+                      height: 14,
+                      borderRadius: 999,
+                      background: mode === "origin" ? "#22c55e" : "#ef4444",
+                      boxShadow: mode === "origin" ? "0 0 0 5px rgba(34,197,94,.16)" : "0 0 0 5px rgba(239,68,68,.16)",
+                    }}
+                  />
+                </div>
+                <div>
+                  <div className="rp-request-row__title">
+                    {loadingAddress
+                      ? mode === "origin"
+                        ? "Buscando calle accesible..."
+                        : "Buscando destino..."
+                      : selected?.walkMeters != null && selected.walkMeters > 8
+                        ? selected.text.replace("Recogida en ", "")
+                        : selected?.text ?? (mode === "origin" ? "Punto seleccionado" : "Destino seleccionado")}
+                  </div>
+                  <div className="rp-request-row__sub">
+                    {selected?.walkMeters != null && selected.walkMeters > 8
+                      ? `${String(selected.address ?? "").split(" · ")[0] || "Calle accesible"} · A ${selected.walkMeters} m de tu ubicación`
+                      : selected?.address ??
+                        "Mueve el mapa. Rapa Go ajustará el punto a una calle accesible."}
+                  </div>
+                </div>
+                <IonIcon icon={createOutline} style={{ color: "var(--rp-icon-fg)", fontSize: 22 }} />
+              </div>
+              )}
+
+              {mode === "origin" &&
+                selected?.walkMeters != null &&
+                selected.walkMeters > 8 && (
+                <div className="rp-request-note rp-request-row">
+                  <div className="rp-request-row__icon" aria-hidden>🚶</div>
+                  <div>
+                    <div className="rp-request-row__title">
+                      Camina hasta la calle
+                    </div>
+                    <div className="rp-request-row__sub">
+                      Es la mejor ubicación para que el conductor te encuentre
+                    </div>
+                  </div>
+                  <div className="rp-request-row__value">
+                    {selected.walkMeters} m
+                    <div className="rp-request-row__value-sub">
+                      {Math.max(1, Math.round(selected.walkMeters / 80))} min
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* El botón vive DENTRO del área que se desplaza, con las tarjetas.
+                  Antes era hermano del panel y quedaba anclado abajo: al bajar
+                  la hoja, las opciones desaparecían pero él se quedaba fuera,
+                  flotando suelto sobre el mapa. Aquí acompaña a la información
+                  a la que pertenece y se esconde con ella.
+
+                  Contrapartida asumida: con el panel en su posición más baja
+                  hay que desplazar para alcanzarlo. Es aceptable porque la
+                  posición de reposo por defecto lo deja a la vista, y esconderlo
+                  al recoger el panel es justo el comportamiento pedido. */}
+              <IonButton
+                className="rp-request-confirm"
+                expand="block"
+                disabled={!selected}
                 onClick={() => {
                   if (suppressSheetClickRef.current) {
                     suppressSheetClickRef.current = false;
@@ -4790,224 +5326,10 @@ function MapPointPicker({
                     : "Subir la tarjeta del mapa"
                 }
               >
-                <span className="request-map-sheet__grip" />
-                <span>
-                  {sheetExpanded
-                    ? "Desliza hacia abajo para ver más mapa"
-                    : "Desliza hacia arriba para ver los detalles"}
-                </span>
-              </button>
-
-              <div className="request-map-sheet__body">
-                <div className="request-map-sheet__heading">
-                  <span className="request-map-sheet__heading-mark" />
-                  <div>
-                    <strong>
-                      {mode === "origin"
-                        ? "Punto accesible recomendado"
-                        : "Destino seleccionado"}
-                    </strong>
-                    <span>
-                      {mode === "origin"
-                        ? "Google Maps combina una vía cercana con un punto de referencia real."
-                        : "Mueve el mapa o busca el lugar exacto."}
-                    </span>
-                  </div>
-                </div>
-
-                {mode === "destination" && (
-                  <section
-                    className="request-map-frequent"
-                    aria-label="Destinos frecuentes de Rapa Nui"
-                  >
-                    <div className="request-map-frequent__heading">
-                      <div>
-                        <strong>Destinos frecuentes</strong>
-                        <span>
-                          Toca uno y Google Maps buscará su acceso exacto.
-                        </span>
-                      </div>
-                    </div>
-
-                    <div className="request-map-frequent__list">
-                      {TOURIST_DESTINATION_SUGGESTIONS.map(
-                        (destination) => {
-                          const active =
-                            normalizePlaceStreetCompare(
-                              selected?.text ?? "",
-                            ) ===
-                            normalizePlaceStreetCompare(
-                              destination.name,
-                            );
-
-                          return (
-                            <button
-                              key={destination.name}
-                              type="button"
-                              className={`request-map-frequent__item ${
-                                active
-                                  ? "request-map-frequent__item--active"
-                                  : ""
-                              }`}
-                              onClick={() =>
-                                void pickFrequentDestination(destination)
-                              }
-                              disabled={loadingAddress}
-                              aria-pressed={active}
-                            >
-                              <IonIcon icon={locationOutline} />
-
-                              <span>
-                                <strong>{destination.name}</strong>
-                                <small>{destination.subtitle}</small>
-                              </span>
-                            </button>
-                          );
-                        },
-                      )}
-                    </div>
-                  </section>
-                )}
-
-                {mode === "origin" && pickupCandidates.length > 0 && (
-                  <div className="request-map-candidates">
-                    {pickupCandidates.map((candidate, index) => {
-                      const active =
-                        candidate.candidateId === selected?.candidateId;
-
-                      return (
-                        <button
-                          key={
-                            candidate.candidateId ??
-                            `${candidate.lat}:${candidate.lng}`
-                          }
-                          type="button"
-                          className={`request-map-candidate ${
-                            active
-                              ? "request-map-candidate--active"
-                              : ""
-                          }`}
-                          onClick={() => selectPickupCandidate(candidate)}
-                        >
-                          <span className="request-map-candidate__number">
-                            {index + 1}
-                          </span>
-
-                          <span className="request-map-candidate__content">
-                            <strong>
-                              {candidate.streetName ??
-                                candidate.text.replace(
-                                  /^Recogida en\s+/i,
-                                  "",
-                                )}
-                            </strong>
-
-                            <span>
-                              {candidate.referenceName
-                                ? `Referencia de Google Maps: ${
-                                    (candidate.referenceDistanceMeters ?? 999) <=
-                                    35
-                                      ? "frente a"
-                                      : "cerca de"
-                                  } ${candidate.referenceName}`
-                                : "Vía detectada por Google Maps, sin local cercano visible."}
-                            </span>
-                          </span>
-
-                          <span className="request-map-candidate__walk">
-                            {Math.round(candidate.walkMeters ?? 0)} m
-                            <small>
-                              {Math.max(
-                                1,
-                                candidate.walkMinutes ??
-                                  Math.ceil(
-                                    Number(candidate.walkMeters ?? 0) /
-                                      75,
-                                  ),
-                              )}{" "}
-                              min
-                            </small>
-                          </span>
-                        </button>
-                      );
-                    })}
-                  </div>
-                )}
-
-                <div className="request-map-selected">
-                  <span
-                    className={`request-map-selected__dot ${
-                      mode === "origin"
-                        ? "request-map-selected__dot--pickup"
-                        : "request-map-selected__dot--destination"
-                    }`}
-                  />
-
-                  <div>
-                    <strong>
-                      {loadingAddress
-                        ? "Actualizando el punto..."
-                        : selected?.text ??
-                          (mode === "origin"
-                            ? "Punto de recogida"
-                            : "Destino")}
-                    </strong>
-
-                    <span>
-                      {selected?.address ??
-                        "Mueve el mapa para elegir la ubicación."}
-                    </span>
-                  </div>
-
-                  <IonIcon icon={createOutline} />
-                </div>
-
-                {mode === "origin" && selected && (
-                  <div className="request-map-walk">
-                    <div className="request-map-walk__icon">🚶</div>
-
-                    <div className="request-map-walk__text">
-                      <strong>
-                        {selectedWalkMeters <= 8
-                          ? "El vehículo puede llegar a tu punto"
-                          : "Camina hasta la vía accesible"}
-                      </strong>
-
-                      <span>
-                        {selected.referenceName
-                          ? `Usa ${selected.referenceName} como referencia para encontrar al conductor.`
-                          : "El punto verde facilita que el conductor pueda encontrarte."}
-                      </span>
-                    </div>
-
-                    <div className="request-map-walk__metrics">
-                      {selectedWalkMeters} m
-                      <small>{selectedWalkMinutes} min</small>
-                    </div>
-                  </div>
-                )}
-
-                {mode === "origin" && (
-                  <p className="request-map-walking-warning">
-                    La ruta a pie es una estimación de Google Maps. Revisa
-                    que el camino sea seguro antes de confirmar.
-                  </p>
-                )}
-
-                <IonButton
-                  expand="block"
-                  disabled={!selected || loadingAddress}
-                  onClick={() => {
-                    if (selected) onConfirm(selected);
-                  }}
-                  className="request-map-confirm"
-                >
-                  {mode === "origin"
-                    ? "Confirmar punto de partida"
-                    : "Confirmar destino"}
-                </IonButton>
+                {mode === "origin" ? "Confirmar recogida" : "Confirmar destino"}
+              </IonButton>
               </div>
-            </section>
+            </div>
           </div>
         </IonContent>
       </IonPage>
