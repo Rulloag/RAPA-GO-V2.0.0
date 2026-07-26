@@ -4407,6 +4407,12 @@ const BORROWED_VEHICLE_DAYS = 5;
 
 const RAPAGO_DRIVER_CANONICAL_VEHICLE_IMAGE_KEY = "rapago_driver_vehicle_image_data_url";
 const RAPAGO_DRIVER_CANONICAL_PROFILE_PHOTO_KEY = "rapago_driver_profile_photo";
+
+// Marca por conductor que impide que una foto eliminada vuelva a aparecer
+// desde una respuesta antigua del backend o desde un snapshot local.
+const RAPAGO_DRIVER_PROFILE_PHOTO_REMOVED_AT_KEY =
+  "rapago_driver_profile_photo_removed_at";
+
 const RAPAGO_DRIVER_HEAVY_STORAGE_KEYS = [
   "rapago_driver_vehicle_photo",
   "rapago_vehicle_photo_data_url",
@@ -5221,11 +5227,18 @@ function hydrateApprovedDriverProfileLocally(
 ): DriverVehicleRecord | null {
   if (!profile) return null;
 
-  if (profile.profilePhotoUrl?.trim()) {
-    persistStoredDriverProfilePhotoUrl(
-      profile.profilePhotoUrl,
-      user,
-    );
+  const localProfilePhoto = getStoredDriverProfilePhotoUrl(user);
+  const localPhotoWasRemoved = hasDriverProfilePhotoRemovalMarker(user);
+
+  // Una foto elegida en este dispositivo (data:image) o una eliminación
+  // confirmada por el usuario siempre tienen prioridad sobre la URL antigua
+  // que pueda devolver el backend al volver a iniciar sesión.
+  if (
+    !localPhotoWasRemoved &&
+    !localProfilePhoto.startsWith("data:image/") &&
+    profile.profilePhotoUrl?.trim()
+  ) {
+    persistStoredDriverProfilePhotoUrl(profile.profilePhotoUrl, user);
   }
 
   const brand = profile.vehicleBrand?.trim() ?? "";
@@ -17892,8 +17905,83 @@ function normalizeDriverLanguages(
   return cleaned.length > 0 ? cleaned : ["es"];
 }
 
+function hasDriverProfilePhotoRemovalMarker(user?: unknown): boolean {
+  return Boolean(
+    readDriverScopedStorageItem(
+      RAPAGO_DRIVER_PROFILE_PHOTO_REMOVED_AT_KEY,
+      user,
+    ),
+  );
+}
+
+function markDriverProfilePhotoRemoved(user?: unknown): string {
+  const removedAt = new Date().toISOString();
+  writeDriverScopedStorageItem(
+    RAPAGO_DRIVER_PROFILE_PHOTO_REMOVED_AT_KEY,
+    removedAt,
+    user,
+  );
+  return removedAt;
+}
+
+function clearDriverProfilePhotoRemovalMarker(user?: unknown): void {
+  removeDriverScopedStorageItem(
+    RAPAGO_DRIVER_PROFILE_PHOTO_REMOVED_AT_KEY,
+    user,
+  );
+}
+
+function isLocalDriverProfilePhoto(value: unknown): boolean {
+  return String(value ?? "").trim().startsWith("data:image/");
+}
+
+function getPreferredDriverProfilePhoto(
+  profile: DriverProfileData | null,
+  user?: unknown,
+): string {
+  if (hasDriverProfilePhotoRemovalMarker(user)) return "";
+
+  const localPhoto = getStoredDriverProfilePhotoUrl(user);
+  const serverPhoto = String(profile?.profilePhotoUrl ?? "").trim();
+
+  // Las imágenes elegidas por el usuario se guardan como data:image y deben
+  // sobrevivir a cerrar sesión/cambiar de cuenta en este mismo dispositivo.
+  if (isLocalDriverProfilePhoto(localPhoto)) return localPhoto;
+
+  return serverPhoto || localPhoto;
+}
+
+async function clearDriverProfilePhotoOnServer(
+  accessToken: string,
+): Promise<boolean> {
+  try {
+    await driverProfileService.upsertMyProfile(
+      accessToken,
+      { profilePhotoUrl: null } as unknown as Parameters<
+        typeof driverProfileService.upsertMyProfile
+      >[1],
+    );
+    return true;
+  } catch {
+    try {
+      await driverProfileService.upsertMyProfile(accessToken, {
+        profilePhotoUrl: "",
+      });
+      return true;
+    } catch (error) {
+      console.warn(
+        "La foto se eliminó localmente, pero el backend no confirmó el borrado.",
+        error,
+      );
+      return false;
+    }
+  }
+}
+
 function getStoredDriverProfilePhotoUrl(user?: unknown): string {
   try {
+    if (hasDriverProfilePhotoRemovalMarker(user)) return "";
+
     const keys = [
       RAPAGO_DRIVER_CANONICAL_PROFILE_PHOTO_KEY,
       "rapago_driver_profile_image_data_url",
@@ -17962,6 +18050,7 @@ function persistStoredDriverProfilePhotoUrl(value: string, user?: unknown): void
 
     if (clean) {
       const profilePhotoUpdatedAt = new Date().toISOString();
+      clearDriverProfilePhotoRemovalMarker(user);
 
       for (const key of profileKeys) {
         writeDriverScopedStorageItem(key, clean, user);
@@ -17986,12 +18075,29 @@ function persistStoredDriverProfilePhotoUrl(value: string, user?: unknown): void
       }));
       window.dispatchEvent(new CustomEvent("rapago:passenger-rides-updated"));
     } else {
+      const profilePhotoRemovedAt = markDriverProfilePhotoRemoved(user);
+
       for (const key of profileKeys) {
         removeDriverScopedStorageItem(key, user);
       }
-      removeDriverScopedStorageItem("rapago_driver_profile_photo_updated_at", user);
-      removeDriverScopedStorageItem("rapago_driver_profile_updated_at", user);
-      removeDriverScopedStorageItem("rapago_public_driver_profile_photo_updated_at", user);
+
+      // Conservamos una fecha de actualización posterior a la foto antigua.
+      // Así las vistas del pasajero no vuelven a escoger una copia obsoleta.
+      writeDriverScopedStorageItem(
+        "rapago_driver_profile_photo_updated_at",
+        profilePhotoRemovedAt,
+        user,
+      );
+      writeDriverScopedStorageItem(
+        "rapago_driver_profile_updated_at",
+        profilePhotoRemovedAt,
+        user,
+      );
+      writeDriverScopedStorageItem(
+        "rapago_public_driver_profile_photo_updated_at",
+        profilePhotoRemovedAt,
+        user,
+      );
 
       window.dispatchEvent(new CustomEvent("rapago:driver-public-profile-updated", {
         detail: {
@@ -18000,9 +18106,20 @@ function persistStoredDriverProfilePhotoUrl(value: string, user?: unknown): void
           driverEmail: getDriverLiveUserField(user, "email"),
           driverProfilePhotoUrl: null,
           driverProfileImageDataUrl: null,
-          profilePhotoUpdatedAt: new Date().toISOString(),
+          profilePhotoUrl: null,
+          profileImageDataUrl: null,
+          profilePhotoDataUrl: null,
+          driverPhotoUrl: null,
+          driverPhotoDataUrl: null,
+          avatarDataUrl: null,
+          profilePhotoRemoved: true,
+          profilePhotoRemovedAt,
+          profilePhotoUpdatedAt: profilePhotoRemovedAt,
+          driverProfilePhotoUpdatedAt: profilePhotoRemovedAt,
+          updatedAt: profilePhotoRemovedAt,
         },
       }));
+      window.dispatchEvent(new CustomEvent("rapago:passenger-rides-updated"));
     }
   } catch {
     // No bloquea el perfil si localStorage no está disponible.
@@ -18402,6 +18519,10 @@ export function DriverProfilePage(): JSX.Element {
   );
   const [photoError, setPhotoError] = useState<string | null>(null);
   const profilePhotoFileRef = useRef<HTMLInputElement | null>(null);
+  const profilePhotoUserEditedRef = useRef(false);
+  const activeDriverProfileOwnerKey = session?.user
+    ? getDriverScopedOwnerKey(session.user)
+    : "driver-no-session";
   const [bio, setBio] = useState("");
   const [languages, setLanguages] = useState<string[]>(["es"]);
   const [driverVehicles, setDriverVehicles] = useState<DriverVehicleRecord[]>(() =>
@@ -18420,6 +18541,19 @@ export function DriverProfilePage(): JSX.Element {
   const [driverRatingSummary, setDriverRatingSummary] = useState<DriverRatingSummary>(() =>
     readDriverRatingSummary(session?.user, phone),
   );
+
+  useEffect(() => {
+    // Ionic puede mantener la página montada al cerrar sesión. Al cambiar de
+    // cuenta limpiamos inmediatamente la foto anterior y cargamos solo la que
+    // pertenece al nuevo conductor.
+    profilePhotoUserEditedRef.current = false;
+    setPhotoError(null);
+    setProfilePhotoUrl(
+      session?.user
+        ? getStoredDriverProfilePhotoUrl(session.user)
+        : "",
+    );
+  }, [activeDriverProfileOwnerKey]);
 
   const loadProfile = useCallback(async () => {
     if (!session?.accessToken) {
@@ -18496,9 +18630,11 @@ export function DriverProfilePage(): JSX.Element {
         profile?.licenseNumber ?? String(storedProfile.licenseNumber ?? ""),
       );
       setLicenseExpiry(profile?.licenseExpiry ?? "");
-      setProfilePhotoUrl(
-        profile?.profilePhotoUrl ?? getStoredDriverProfilePhotoUrl(session?.user),
-      );
+      if (!profilePhotoUserEditedRef.current) {
+        setProfilePhotoUrl(
+          getPreferredDriverProfilePhoto(profile, session.user),
+        );
+      }
       setBio(profile?.bio ?? "");
       setLanguages(profile ? normalizeDriverLanguages(profile.languages) : ["es"]);
 
@@ -18564,6 +18700,9 @@ export function DriverProfilePage(): JSX.Element {
     const cleanVehicleImageDataUrl = vehicleImageDataUrl.trim();
     const cleanVehicleImageName = vehicleImageName.trim();
     const cleanProfilePhotoUrl = profilePhotoUrl.trim();
+    const profilePhotoWasRemoved = hasDriverProfilePhotoRemovalMarker(
+      session?.user,
+    );
     const cleanLicenseNumber = licenseNumber.trim();
     const cleanBio = bio.trim();
     const cleanLanguages = normalizeDriverLanguages(languages);
@@ -18660,8 +18799,13 @@ export function DriverProfilePage(): JSX.Element {
 
         try {
           await driverProfileService.upsertMyProfile(session.accessToken, payload);
+
+          if (profilePhotoWasRemoved) {
+            await clearDriverProfilePhotoOnServer(session.accessToken);
+          }
         } catch (backendError) {
-          // El perfil queda guardado en este dispositivo igual.
+          // El perfil y la decisión de quitar/cambiar la foto quedan guardados
+          // por conductor en este dispositivo aunque el backend falle.
           console.warn("Perfil guardado localmente. Backend no actualizó:", backendError);
         }
       }
@@ -18772,6 +18916,7 @@ export function DriverProfilePage(): JSX.Element {
           return;
         }
 
+        profilePhotoUserEditedRef.current = true;
         setProfilePhotoUrl(result);
         persistStoredDriverProfilePhotoUrl(result, session?.user);
         publishDriverProfileVehicleSnapshot({
@@ -18789,9 +18934,24 @@ export function DriverProfilePage(): JSX.Element {
   }
 
   function handleRemoveProfilePhoto(): void {
+    profilePhotoUserEditedRef.current = true;
     setProfilePhotoUrl("");
     setPhotoError(null);
+    setSuccess(false);
+
     persistStoredDriverProfilePhotoUrl("", session?.user);
+
+    // Reescribe todos los snapshots públicos sin foto. Esto evita que la
+    // miniatura antigua reaparezca en Perfil o en la vista del pasajero.
+    publishDriverProfileVehicleSnapshot({
+      user: session?.user,
+      phone: phone.trim(),
+      vehicle: readSelectedDriverVehicle(session?.user),
+    });
+
+    if (session?.accessToken) {
+      void clearDriverProfilePhotoOnServer(session.accessToken);
+    }
   }
 
   async function handleVehiclePhotoFileChange(
@@ -19298,7 +19458,12 @@ export function DriverProfilePage(): JSX.Element {
                     <IonButton
                       expand="block"
                       color="success"
-                      onClick={() => profilePhotoFileRef.current?.click()}
+                      onClick={() => {
+                        const input = profilePhotoFileRef.current;
+                        if (!input) return;
+                        input.value = "";
+                        input.click();
+                      }}
                       style={
                         {
                           "--border-radius": "16px",
@@ -19330,6 +19495,7 @@ export function DriverProfilePage(): JSX.Element {
                       </IonButton>
                     )}
                   </div>
+
 
                   {photoError && (
                     <IonText color="danger">
