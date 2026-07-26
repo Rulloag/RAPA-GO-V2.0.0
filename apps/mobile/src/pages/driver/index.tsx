@@ -5255,6 +5255,15 @@ function hydrateApprovedDriverProfileLocally(
   }
 
   const ownerKey = getDriverVehicleOwnerKey(user);
+  const currentVehicles = purgeExpiredDriverVehicles(user);
+  const previousSelectedVehicleId = readSelectedDriverVehicleId(user);
+  const previousApprovedVehicle =
+    currentVehicles.find(
+      (entry) =>
+        entry.ownerKey === ownerKey &&
+        entry.id === "vehicle-from-approved-application",
+    ) ?? null;
+
   const vehicle: DriverVehicleRecord = {
     id: "vehicle-from-approved-application",
     ownerKey,
@@ -5268,32 +5277,56 @@ function hydrateApprovedDriverProfileLocally(
       [brand, model, year].filter(Boolean).join(" ") ||
       plate ||
       "Vehículo principal",
-    imageDataUrl: profile.vehiclePhotoUrl?.trim() || null,
-    imageName: profile.vehiclePhotoUrl ? "vehiculo-aprobado" : null,
-    createdAt: profile.createdAt,
+    // La foto local editada tiene prioridad sobre una URL antigua del backend.
+    imageDataUrl: previousApprovedVehicle
+      ? previousApprovedVehicle.imageDataUrl ?? null
+      : profile.vehiclePhotoUrl?.trim() || null,
+    imageName: previousApprovedVehicle
+      ? previousApprovedVehicle.imageName ?? null
+      : profile.vehiclePhotoUrl
+        ? "vehiculo-aprobado"
+        : null,
+    createdAt:
+      previousApprovedVehicle?.createdAt ||
+      profile.createdAt ||
+      new Date().toISOString(),
     expiresAt: null,
     primary: true,
     applicationStatus: "approved",
   };
 
-  const current = readAllDriverVehicles(user).filter(
-    (entry) =>
-      !(
-        entry.ownerKey === ownerKey &&
-        entry.id === vehicle.id
-      ),
+  const nextVehicles = [
+    vehicle,
+    ...currentVehicles.filter(
+      (entry) =>
+        !(
+          entry.ownerKey === ownerKey &&
+          entry.id === vehicle.id
+        ),
+    ),
+  ];
+
+  saveAllDriverVehicles(nextVehicles);
+
+  // No volvemos a seleccionar por la fuerza el vehículo de la inscripción.
+  // Si el conductor tenía activo un opcional, se conserva después del login.
+  const selectedVehicle =
+    previousSelectedVehicleId
+      ? nextVehicles.find(
+          (entry) =>
+            entry.ownerKey === ownerKey &&
+            entry.id === previousSelectedVehicleId,
+        ) ?? null
+      : null;
+  const effectiveSelectedVehicle = selectedVehicle ?? vehicle;
+
+  writeSelectedDriverVehicleId(effectiveSelectedVehicle.id, user);
+
+  persistStoredDriverVehicleImageDataUrl(
+    effectiveSelectedVehicle.imageDataUrl ?? "",
+    effectiveSelectedVehicle.imageName ?? null,
+    user,
   );
-
-  saveAllDriverVehicles([...current, vehicle]);
-  writeSelectedDriverVehicleId(vehicle.id, user);
-
-  if (vehicle.imageDataUrl) {
-    persistStoredDriverVehicleImageDataUrl(
-      vehicle.imageDataUrl,
-      vehicle.imageName,
-      user,
-    );
-  }
 
   return vehicle;
 }
@@ -7287,6 +7320,9 @@ function getDriverScheduledReservationDateText(ride: DriverAcceptedRideBridgeRec
 
 function addDriverVehicle(input: {
   user?: unknown;
+  vehicleId?: string | null;
+  createdAt?: string | null;
+  primary?: boolean | null;
   ownership: DriverVehicleOwnership;
   brand: string;
   model: string;
@@ -7307,6 +7343,26 @@ function addDriverVehicle(input: {
   if (!brand || !model || !plate) return null;
 
   const now = new Date();
+  const currentVehicles = purgeExpiredDriverVehicles(input.user);
+  const existingById = input.vehicleId
+    ? currentVehicles.find(
+        (item) =>
+          item.ownerKey === ownerKey &&
+          item.id === input.vehicleId,
+      ) ?? null
+    : null;
+  const existingByPlate =
+    currentVehicles.find(
+      (item) =>
+        item.ownerKey === ownerKey &&
+        item.plate.toUpperCase() === plate.toUpperCase(),
+    ) ?? null;
+  const existing = existingById ?? existingByPlate;
+  const vehicleId =
+    existing?.id ??
+    input.vehicleId?.trim() ??
+    `vehicle-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+
   const expiresAt =
     input.ownership === "borrowed"
       ? input.expiresAt
@@ -7314,8 +7370,16 @@ function addDriverVehicle(input: {
         : new Date(now.getTime() + BORROWED_VEHICLE_DAYS * 24 * 60 * 60_000).toISOString()
       : null;
 
+  const hasOtherOwnPrimary = currentVehicles.some(
+    (item) =>
+      item.ownerKey === ownerKey &&
+      item.id !== vehicleId &&
+      item.ownership === "own" &&
+      Boolean(item.primary),
+  );
+
   const vehicle: DriverVehicleRecord = {
-    id: `vehicle-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+    id: vehicleId,
     ownerKey,
     ownership: input.ownership,
     brand,
@@ -7324,18 +7388,32 @@ function addDriverVehicle(input: {
     color,
     year: year || null,
     label: [brand, model, year, color].filter(Boolean).join(" ").trim(),
-    imageDataUrl: input.imageDataUrl ?? null,
-    imageName: input.imageName ?? null,
-    createdAt: now.toISOString(),
+    imageDataUrl: input.imageDataUrl?.trim() || null,
+    imageName: input.imageName?.trim() || null,
+    createdAt:
+      input.createdAt?.trim() ||
+      existing?.createdAt ||
+      now.toISOString(),
     expiresAt,
-    primary: input.ownership === "own",
+    primary:
+      input.ownership === "own"
+        ? Boolean(input.primary ?? existing?.primary ?? !hasOtherOwnPrimary)
+        : false,
+    applicationStatus: existing?.applicationStatus ?? null,
   };
 
-  const all = purgeExpiredDriverVehicles(input.user).filter(
-    (item) => !(item.ownerKey === ownerKey && item.plate.toUpperCase() === plate.toUpperCase()),
+  const remaining = currentVehicles.filter(
+    (item) =>
+      !(
+        item.ownerKey === ownerKey &&
+        (
+          item.id === vehicleId ||
+          item.plate.toUpperCase() === plate.toUpperCase()
+        )
+      ),
   );
 
-  saveAllDriverVehicles([vehicle, ...all]);
+  saveAllDriverVehicles([vehicle, ...remaining]);
   writeSelectedDriverVehicleId(vehicle.id, input.user);
 
   return vehicle;
@@ -18533,6 +18611,11 @@ export function DriverProfilePage(): JSX.Element {
   );
   const [vehicleOwnership, setVehicleOwnership] = useState<DriverVehicleOwnership>("own");
   const [vehicleExpiresAt, setVehicleExpiresAt] = useState("");
+  const [editingVehicleId, setEditingVehicleId] = useState<string | null>(null);
+  const [vehicleSaveMessage, setVehicleSaveMessage] = useState<string | null>(null);
+  const [vehicleFormError, setVehicleFormError] = useState<string | null>(null);
+  const [vehicleDraftDirty, setVehicleDraftDirty] = useState(false);
+  const [savingVehicle, setSavingVehicle] = useState(false);
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -18579,6 +18662,7 @@ export function DriverProfilePage(): JSX.Element {
       setSelectedVehicleId(readSelectedDriverVehicleId(session.user));
 
       if (selectedVehicle) {
+        setEditingVehicleId(selectedVehicle.id);
         setVehicleBrand(selectedVehicle.brand);
         setVehicleModel(selectedVehicle.model);
         setVehicleYear(String(selectedVehicle.year ?? ""));
@@ -18625,6 +18709,8 @@ export function DriverProfilePage(): JSX.Element {
         setVehicleImageName(String(storedProfile.vehicleImageName ?? ""));
       }
 
+      setVehicleDraftDirty(false);
+      setVehicleSaveMessage(null);
       setPhone(autoPhone);
       setLicenseNumber(
         profile?.licenseNumber ?? String(storedProfile.licenseNumber ?? ""),
@@ -18685,6 +18771,209 @@ export function DriverProfilePage(): JSX.Element {
       window.removeEventListener("storage", refreshRatings as EventListener);
     };
   }, [session?.user, phone]);
+
+  function getCurrentEditingVehicle(): DriverVehicleRecord | null {
+    if (!editingVehicleId) return null;
+
+    return (
+      readDriverVehicles(session?.user).find(
+        (vehicle) => vehicle.id === editingVehicleId,
+      ) ?? null
+    );
+  }
+
+  function validateVehicleDraft(requirePhoto: boolean): string | null {
+    const brand = vehicleBrand.trim();
+    const model = vehicleModel.trim();
+    const plate = vehiclePlate.trim();
+    const year = vehicleYear.trim();
+    const image = vehicleImageDataUrl.trim();
+
+    if (!brand) return "Debes escribir la marca del vehículo.";
+    if (!model) return "Debes escribir el modelo del vehículo.";
+    if (!plate) return "Debes escribir la patente del vehículo.";
+
+    if (year) {
+      const parsedYear = Number(year);
+      const maxYear = new Date().getFullYear() + 1;
+
+      if (
+        !Number.isInteger(parsedYear) ||
+        parsedYear < 1950 ||
+        parsedYear > maxYear
+      ) {
+        return `El año debe estar entre 1950 y ${maxYear}.`;
+      }
+    }
+
+    if (vehicleOwnership === "borrowed") {
+      if (!vehicleExpiresAt.trim()) {
+        return "El vehículo opcional debe tener una fecha de expiración.";
+      }
+
+      const expirationMs = new Date(`${vehicleExpiresAt}T23:59:59`).getTime();
+      if (!Number.isFinite(expirationMs) || expirationMs <= Date.now()) {
+        return "La fecha de expiración del vehículo opcional debe ser futura.";
+      }
+    }
+
+    if (requirePhoto && !image) {
+      return "Debes adjuntar la foto correspondiente a este vehículo.";
+    }
+
+    return null;
+  }
+
+  function saveVehicleDraftLocally(input?: {
+    requirePhoto?: boolean;
+    showSuccess?: boolean;
+  }): DriverVehicleRecord | null {
+    const validationError = validateVehicleDraft(input?.requirePhoto ?? true);
+
+    setVehicleFormError(validationError);
+    setVehicleSaveMessage(null);
+    setSuccess(false);
+
+    if (validationError) return null;
+
+    const existing = getCurrentEditingVehicle();
+    const savedVehicle = addDriverVehicle({
+      user: session?.user,
+      vehicleId: existing?.id ?? editingVehicleId,
+      createdAt: existing?.createdAt ?? null,
+      primary: existing?.primary ?? null,
+      ownership: vehicleOwnership,
+      brand: vehicleBrand,
+      model: vehicleModel,
+      year: vehicleYear,
+      plate: vehiclePlate,
+      color: vehicleColor,
+      expiresAt: vehicleOwnership === "borrowed" ? vehicleExpiresAt : null,
+      imageDataUrl: vehicleImageDataUrl.trim() || null,
+      imageName: vehicleImageName.trim() || null,
+    });
+
+    if (!savedVehicle) {
+      setVehicleFormError(
+        "No se pudo guardar el vehículo. Revisa marca, modelo y patente.",
+      );
+      return null;
+    }
+
+    persistStoredDriverVehicleImageDataUrl(
+      savedVehicle.imageDataUrl ?? "",
+      savedVehicle.imageName ?? null,
+      session?.user,
+    );
+
+    persistStoredDriverRegistrationProfile(
+      {
+        phone: phone.trim(),
+        email: session?.user?.email ?? null,
+        name: session?.user?.name ?? null,
+        vehicleBrand: savedVehicle.brand,
+        vehicleModel: savedVehicle.model,
+        vehicleYear: savedVehicle.year ?? "",
+        vehiclePlate: savedVehicle.plate,
+        vehicleColor: savedVehicle.color,
+        vehicleImageDataUrl: savedVehicle.imageDataUrl ?? "",
+        vehicleImageName: savedVehicle.imageName ?? "",
+        licenseNumber: licenseNumber.trim(),
+      },
+      session?.user,
+    );
+
+    writeSelectedDriverVehicleId(savedVehicle.id, session?.user);
+    setEditingVehicleId(savedVehicle.id);
+    setSelectedVehicleId(savedVehicle.id);
+    setDriverVehicles(readDriverVehicles(session?.user));
+    setVehicleBrand(savedVehicle.brand);
+    setVehicleModel(savedVehicle.model);
+    setVehicleYear(String(savedVehicle.year ?? ""));
+    setVehiclePlate(savedVehicle.plate);
+    setVehicleColor(savedVehicle.color);
+    setVehicleImageDataUrl(savedVehicle.imageDataUrl ?? "");
+    setVehicleImageName(savedVehicle.imageName ?? "");
+    setVehicleExpiresAt(
+      savedVehicle.expiresAt ? savedVehicle.expiresAt.slice(0, 10) : "",
+    );
+    setVehicleDraftDirty(false);
+
+    publishDriverProfileVehicleSnapshot({
+      user: session?.user,
+      phone: phone.trim(),
+      vehicle: savedVehicle,
+    });
+
+    window.dispatchEvent(new CustomEvent("rapago:driver-vehicles-updated"));
+    window.dispatchEvent(
+      new CustomEvent("rapago:driver-selected-vehicle-updated"),
+    );
+    window.dispatchEvent(new CustomEvent("rapago:driver-public-profile-updated"));
+    window.dispatchEvent(new CustomEvent("rapago:passenger-rides-updated"));
+
+    if (input?.showSuccess ?? true) {
+      setVehicleSaveMessage(
+        savedVehicle.ownership === "borrowed"
+          ? "Vehículo opcional creado y guardado con su foto."
+          : existing
+            ? "Vehículo actualizado correctamente."
+            : "Vehículo propio creado y guardado correctamente.",
+      );
+      setSuccess(true);
+    }
+
+    return savedVehicle;
+  }
+
+  async function handleSaveVehicleOnly(): Promise<void> {
+    setSavingVehicle(true);
+    setError(null);
+
+    try {
+      const savedVehicle = saveVehicleDraftLocally({
+        requirePhoto: true,
+        showSuccess: true,
+      });
+
+      if (!savedVehicle) return;
+
+      // El backend actual guarda el vehículo activo del perfil. La lista
+      // completa de vehículos continúa separada por conductor en el dispositivo.
+      if (
+        session?.accessToken &&
+        savedVehicle.ownership === "own"
+      ) {
+        const payload: Parameters<
+          typeof driverProfileService.upsertMyProfile
+        >[1] = {
+          vehicleBrand: savedVehicle.brand,
+          vehicleModel: savedVehicle.model,
+          vehiclePlate: savedVehicle.plate,
+          vehicleColor: savedVehicle.color,
+        };
+
+        if (savedVehicle.year) {
+          const parsedYear = Number(savedVehicle.year);
+          if (Number.isFinite(parsedYear)) payload.vehicleYear = parsedYear;
+        }
+
+        try {
+          await driverProfileService.upsertMyProfile(
+            session.accessToken,
+            payload,
+          );
+        } catch (backendError) {
+          console.warn(
+            "Vehículo guardado localmente. Backend no actualizó:",
+            backendError,
+          );
+        }
+      }
+    } finally {
+      setSavingVehicle(false);
+    }
+  }
 
   async function handleSave() {
     setSaving(true);
@@ -18753,8 +19042,13 @@ export function DriverProfilePage(): JSX.Element {
       // El vehículo principal del perfil se transforma en vehículo activo público.
       // Es el dato que leerá el pasajero cuando el conductor acepte un viaje.
       if (cleanVehicleBrand && cleanVehicleModel && cleanVehiclePlate) {
+        const existingVehicle = getCurrentEditingVehicle();
+
         savedVehicle = addDriverVehicle({
           user: session?.user,
+          vehicleId: existingVehicle?.id ?? editingVehicleId,
+          createdAt: existingVehicle?.createdAt ?? null,
+          primary: existingVehicle?.primary ?? null,
           ownership: vehicleOwnership,
           brand: cleanVehicleBrand,
           model: cleanVehicleModel,
@@ -18765,6 +19059,17 @@ export function DriverProfilePage(): JSX.Element {
           imageDataUrl: cleanVehicleImageDataUrl || null,
           imageName: cleanVehicleImageName || null,
         });
+
+        if (savedVehicle) {
+          setEditingVehicleId(savedVehicle.id);
+          setVehicleSaveMessage(
+            savedVehicle.ownership === "borrowed"
+              ? "Vehículo opcional guardado correctamente."
+              : "Vehículo guardado correctamente.",
+          );
+          setVehicleFormError(null);
+          setVehicleDraftDirty(false);
+        }
       }
 
       publishDriverProfileVehicleSnapshot({
@@ -18781,14 +19086,21 @@ export function DriverProfilePage(): JSX.Element {
         >[1] = {};
 
         if (trimPhone) payload.phone = trimPhone;
-        if (cleanVehicleBrand) payload.vehicleBrand = cleanVehicleBrand;
-        if (cleanVehicleModel) payload.vehicleModel = cleanVehicleModel;
-        if (cleanVehicleYear) {
-          const parsedYear = parseInt(cleanVehicleYear, 10);
-          if (Number.isFinite(parsedYear)) payload.vehicleYear = parsedYear;
+
+        // El backend actual conserva el vehículo principal aprobado.
+        // Los vehículos opcionales se guardan en la lista separada del conductor
+        // y no deben reemplazar los datos del vehículo principal.
+        if (vehicleOwnership === "own") {
+          if (cleanVehicleBrand) payload.vehicleBrand = cleanVehicleBrand;
+          if (cleanVehicleModel) payload.vehicleModel = cleanVehicleModel;
+          if (cleanVehicleYear) {
+            const parsedYear = parseInt(cleanVehicleYear, 10);
+            if (Number.isFinite(parsedYear)) payload.vehicleYear = parsedYear;
+          }
+          if (cleanVehiclePlate) payload.vehiclePlate = cleanVehiclePlate;
+          if (cleanVehicleColor) payload.vehicleColor = cleanVehicleColor;
         }
-        if (cleanVehiclePlate) payload.vehiclePlate = cleanVehiclePlate;
-        if (cleanVehicleColor) payload.vehicleColor = cleanVehicleColor;
+
         if (cleanLicenseNumber) payload.licenseNumber = cleanLicenseNumber;
         if (licenseExpiry) payload.licenseExpiry = licenseExpiry;
         if (cleanProfilePhotoUrl && !cleanProfilePhotoUrl.startsWith("data:")) {
@@ -18978,12 +19290,11 @@ export function DriverProfilePage(): JSX.Element {
       const result = await resizeDriverVehicleImage(file);
       setVehicleImageDataUrl(result);
       setVehicleImageName(file.name);
-      persistStoredDriverVehicleImageDataUrl(result, file.name, session?.user);
-      publishDriverProfileVehicleSnapshot({
-        user: session?.user,
-        phone: phone.trim(),
-        vehicle: readSelectedDriverVehicle(session?.user),
-      });
+      setVehicleDraftDirty(true);
+      setVehicleFormError(null);
+      setVehicleSaveMessage(
+        "Foto preparada. Pulsa Guardar vehículo para registrarla.",
+      );
     } catch (err) {
       setVehiclePhotoError(
         err instanceof Error ? err.message : "No se pudo cargar la foto del vehículo.",
@@ -18997,7 +19308,11 @@ export function DriverProfilePage(): JSX.Element {
     setVehicleImageDataUrl("");
     setVehicleImageName("");
     setVehiclePhotoError(null);
-    persistStoredDriverVehicleImageDataUrl("", null, session?.user);
+    setVehicleDraftDirty(true);
+    setVehicleFormError(null);
+    setVehicleSaveMessage(
+      "La foto se quitará cuando guardes este vehículo.",
+    );
   }
 
   function refreshDriverVehicleList(): void {
@@ -19008,6 +19323,7 @@ export function DriverProfilePage(): JSX.Element {
   function handleSelectDriverVehicle(vehicle: DriverVehicleRecord): void {
     writeSelectedDriverVehicleId(vehicle.id, session?.user);
     setSelectedVehicleId(vehicle.id);
+    setEditingVehicleId(vehicle.id);
     setVehicleBrand(vehicle.brand);
     setVehicleModel(vehicle.model);
     setVehicleYear(String(vehicle.year ?? ""));
@@ -19017,16 +19333,25 @@ export function DriverProfilePage(): JSX.Element {
     setVehicleImageName(vehicle.imageName ?? "");
     setVehicleOwnership(vehicle.ownership);
     setVehicleExpiresAt(vehicle.expiresAt ? vehicle.expiresAt.slice(0, 10) : "");
+    persistStoredDriverVehicleImageDataUrl(
+      vehicle.imageDataUrl ?? "",
+      vehicle.imageName ?? null,
+      session?.user,
+    );
     publishDriverProfileVehicleSnapshot({
       user: session?.user,
       phone: phone.trim(),
       vehicle,
     });
     refreshDriverVehicleList();
+    setVehicleDraftDirty(false);
+    setVehicleFormError(null);
+    setVehicleSaveMessage("Vehículo activo seleccionado.");
     setSuccess(true);
   }
 
   function handleEditDriverVehicle(vehicle: DriverVehicleRecord): void {
+    setEditingVehicleId(vehicle.id);
     setVehicleBrand(vehicle.brand);
     setVehicleModel(vehicle.model);
     setVehicleYear(String(vehicle.year ?? ""));
@@ -19036,14 +19361,34 @@ export function DriverProfilePage(): JSX.Element {
     setVehicleImageName(vehicle.imageName ?? "");
     setVehicleOwnership(vehicle.ownership);
     setVehicleExpiresAt(vehicle.expiresAt ? vehicle.expiresAt.slice(0, 10) : "");
+    setVehicleDraftDirty(false);
+    setVehicleFormError(null);
+    setVehicleSaveMessage("Editando este vehículo. Guarda los cambios al terminar.");
   }
 
   function handleRemoveDriverVehicle(vehicleId: string): void {
     removeDriverVehicle(vehicleId, session?.user);
+
+    if (editingVehicleId === vehicleId) {
+      setEditingVehicleId(null);
+      setVehicleBrand("");
+      setVehicleModel("");
+      setVehicleYear("");
+      setVehiclePlate("");
+      setVehicleColor("");
+      setVehicleImageDataUrl("");
+      setVehicleImageName("");
+      setVehicleExpiresAt(getDefaultBorrowedVehicleExpiry());
+      setVehicleDraftDirty(false);
+    }
+
+    setVehicleFormError(null);
+    setVehicleSaveMessage("Vehículo opcional eliminado.");
     refreshDriverVehicleList();
   }
 
   function handlePrepareNewVehicle(ownership: DriverVehicleOwnership): void {
+    setEditingVehicleId(null);
     setVehicleOwnership(ownership);
     setVehicleBrand("");
     setVehicleModel("");
@@ -19053,6 +19398,15 @@ export function DriverProfilePage(): JSX.Element {
     setVehicleImageDataUrl("");
     setVehicleImageName("");
     setVehicleExpiresAt(ownership === "borrowed" ? getDefaultBorrowedVehicleExpiry() : "");
+    setVehiclePhotoError(null);
+    setVehicleFormError(null);
+    setVehicleDraftDirty(true);
+    setVehicleSaveMessage(
+      ownership === "borrowed"
+        ? "Completa los datos, adjunta la foto y pulsa Crear vehículo opcional."
+        : "Completa los datos, adjunta la foto y pulsa Guardar vehículo propio.",
+    );
+    setSuccess(false);
   }
 
   const displayName = session?.user?.name ?? "Conductor";
@@ -19686,9 +20040,11 @@ export function DriverProfilePage(): JSX.Element {
                   <IonInput
                     style={driverFieldTextStyle()}
                     value={vehicleBrand}
-                    onIonInput={(event) =>
-                      setVehicleBrand(String(event.detail.value ?? ""))
-                    }
+                    onIonInput={(event) => {
+                      setVehicleBrand(String(event.detail.value ?? ""));
+                      setVehicleDraftDirty(true);
+                      setVehicleFormError(null);
+                    }}
                     placeholder="Toyota"
                     clearInput
                   />
@@ -19701,9 +20057,11 @@ export function DriverProfilePage(): JSX.Element {
                   <IonInput
                     style={driverFieldTextStyle()}
                     value={vehicleModel}
-                    onIonInput={(event) =>
-                      setVehicleModel(String(event.detail.value ?? ""))
-                    }
+                    onIonInput={(event) => {
+                      setVehicleModel(String(event.detail.value ?? ""));
+                      setVehicleDraftDirty(true);
+                      setVehicleFormError(null);
+                    }}
                     placeholder="Yaris"
                     clearInput
                   />
@@ -19716,9 +20074,11 @@ export function DriverProfilePage(): JSX.Element {
                   <IonInput
                     style={driverFieldTextStyle()}
                     value={vehicleYear}
-                    onIonInput={(event) =>
-                      setVehicleYear(String(event.detail.value ?? ""))
-                    }
+                    onIonInput={(event) => {
+                      setVehicleYear(String(event.detail.value ?? ""));
+                      setVehicleDraftDirty(true);
+                      setVehicleFormError(null);
+                    }}
                     placeholder="2025"
                     inputmode="numeric"
                     clearInput
@@ -19732,11 +20092,13 @@ export function DriverProfilePage(): JSX.Element {
                   <IonInput
                     style={driverFieldTextStyle()}
                     value={vehiclePlate}
-                    onIonInput={(event) =>
+                    onIonInput={(event) => {
                       setVehiclePlate(
                         String(event.detail.value ?? "").toUpperCase(),
-                      )
-                    }
+                      );
+                      setVehicleDraftDirty(true);
+                      setVehicleFormError(null);
+                    }}
                     placeholder="ABCD12"
                     clearInput
                   />
@@ -19749,9 +20111,11 @@ export function DriverProfilePage(): JSX.Element {
                   <IonInput
                     style={driverFieldTextStyle()}
                     value={vehicleColor}
-                    onIonInput={(event) =>
-                      setVehicleColor(String(event.detail.value ?? ""))
-                    }
+                    onIonInput={(event) => {
+                      setVehicleColor(String(event.detail.value ?? ""));
+                      setVehicleDraftDirty(true);
+                      setVehicleFormError(null);
+                    }}
                     placeholder="Rojo"
                     clearInput
                   />
@@ -19766,7 +20130,11 @@ export function DriverProfilePage(): JSX.Element {
                       style={driverFieldTextStyle()}
                       type="date"
                       value={vehicleExpiresAt}
-                      onIonInput={(event) => setVehicleExpiresAt(String(event.detail.value ?? ""))}
+                      onIonInput={(event) => {
+                        setVehicleExpiresAt(String(event.detail.value ?? ""));
+                        setVehicleDraftDirty(true);
+                        setVehicleFormError(null);
+                      }}
                     />
                   </IonItem>
                 )}
@@ -19841,7 +20209,12 @@ export function DriverProfilePage(): JSX.Element {
                     <IonButton
                       expand="block"
                       color="success"
-                      onClick={() => vehiclePhotoFileRef.current?.click()}
+                      onClick={() => {
+                        const input = vehiclePhotoFileRef.current;
+                        if (!input) return;
+                        input.value = "";
+                        input.click();
+                      }}
                       style={
                         {
                           "--border-radius": "16px",
@@ -19887,6 +20260,86 @@ export function DriverProfilePage(): JSX.Element {
                       </p>
                     </IonText>
                   )}
+                </div>
+
+                {vehicleFormError && (
+                  <div
+                    role="alert"
+                    style={{
+                      marginTop: 12,
+                      padding: "11px 12px",
+                      borderRadius: 16,
+                      border: "1px solid rgba(220,38,38,.35)",
+                      background: "#FEF2F2",
+                      color: "#991B1B",
+                      fontSize: ".8rem",
+                      lineHeight: 1.4,
+                      fontWeight: 900,
+                    }}
+                  >
+                    {vehicleFormError}
+                  </div>
+                )}
+
+                {vehicleSaveMessage && !vehicleFormError && (
+                  <div
+                    role="status"
+                    style={{
+                      marginTop: 12,
+                      padding: "11px 12px",
+                      borderRadius: 16,
+                      border: vehicleDraftDirty
+                        ? "1px solid rgba(210,164,58,.45)"
+                        : "1px solid rgba(34,197,94,.35)",
+                      background: vehicleDraftDirty ? "#FFF8E6" : "#ECFDF3",
+                      color: vehicleDraftDirty ? "#7C5A13" : "#166534",
+                      fontSize: ".8rem",
+                      lineHeight: 1.4,
+                      fontWeight: 900,
+                    }}
+                  >
+                    {vehicleSaveMessage}
+                  </div>
+                )}
+
+                <IonButton
+                  expand="block"
+                  color={vehicleOwnership === "borrowed" ? "warning" : "success"}
+                  onClick={() => void handleSaveVehicleOnly()}
+                  disabled={savingVehicle}
+                  style={
+                    {
+                      "--border-radius": "16px",
+                      height: "52px",
+                      marginTop: 14,
+                      fontWeight: 950,
+                      "--color":
+                        vehicleOwnership === "borrowed" ? "#111" : "#fff",
+                    } as CSSProperties
+                  }
+                >
+                  {savingVehicle ? (
+                    <IonSpinner name="dots" />
+                  ) : editingVehicleId ? (
+                    "Guardar cambios del vehículo"
+                  ) : vehicleOwnership === "borrowed" ? (
+                    "Crear vehículo opcional"
+                  ) : (
+                    "Guardar vehículo propio"
+                  )}
+                </IonButton>
+
+                <div
+                  style={{
+                    marginTop: 8,
+                    color: "#555",
+                    fontSize: ".72rem",
+                    fontWeight: 800,
+                    lineHeight: 1.35,
+                    textAlign: "center",
+                  }}
+                >
+                  La foto y los datos quedan asociados a este vehículo y a este conductor.
                 </div>
               </IonCardContent>
             </IonCard>
