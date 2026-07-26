@@ -6,6 +6,7 @@ import { DriverStatusRepository } from "./driverStatus.repository.js";
 import {
   DriverComplianceRepository,
   type DriverRestPeriodReportRow,
+  type DriverServiceScheduleReportRow,
   type RideDriverAssignmentReportRow,
 } from "./driverCompliance.repository.js";
 import type {
@@ -23,11 +24,6 @@ const driverStatusRepo = new DriverStatusRepository();
 export const DRIVER_REST_TIMEZONE = "Pacific/Easter";
 export const DRIVER_REST_DURATION_MINUTES = 12 * 60;
 
-const ACTIVE_REST_STATUSES = new Set([
-  "scheduled",
-  "pending_trip_completion",
-  "active",
-]);
 
 type AuthResult =
   | { ok: true; userId: string; role: string }
@@ -37,13 +33,19 @@ export type DriverRestState = {
   blockedForNewOffers: boolean;
   status:
     | "not_configured"
-    | "outside_rest_window"
-    | "pending_trip_completion"
+    | "scheduled"
+    | "reminder_due"
+    | "working"
     | "active"
     | "completed";
   message: string;
   activePeriod: ReturnType<typeof serializePeriod>;
   nextScheduledStartAt: string | null;
+  reminderDue: boolean;
+  workingSelected: boolean;
+  canStartRest: boolean;
+  canContinueWorking: boolean;
+  hasActiveRide: boolean;
 };
 
 async function authenticate(accessToken: string): Promise<AuthResult> {
@@ -211,7 +213,14 @@ function serializeSchedule(schedule: DriverRestSchedule | null) {
   return {
     id: schedule.id,
     driverUserId: schedule.driverUserId,
+    // startTime se conserva para clientes antiguos.
     startTime: formatStartTime(schedule.startMinuteLocal),
+    serviceStartTime: formatStartTime(
+      schedule.serviceStartMinuteLocal ?? 600,
+    ),
+    serviceEndTime: formatStartTime(schedule.startMinuteLocal),
+    serviceStartMinuteLocal:
+      schedule.serviceStartMinuteLocal ?? 600,
     startMinuteLocal: schedule.startMinuteLocal,
     durationMinutes: schedule.durationMinutes,
     durationHours: schedule.durationMinutes / 60,
@@ -234,6 +243,11 @@ function serializePeriod(period: DriverRestPeriod | null) {
     requiredEndAt: period.requiredEndAt?.toISOString() ?? null,
     completedAt: period.completedAt?.toISOString() ?? null,
     status: period.status,
+    decision:
+      period.decision === "rest" || period.decision === "work"
+        ? period.decision
+        : null,
+    decisionAt: period.decisionAt?.toISOString() ?? null,
     delayedByRideId: period.delayedByRideId ?? null,
     durationMinutes: period.durationMinutes,
     durationHours: period.durationMinutes / 60,
@@ -272,8 +286,25 @@ function serializeRestReport(row: DriverRestPeriodReportRow) {
     ...period,
     driverName: row.driverName ?? null,
     driverEmail: row.driverEmail ?? null,
+    // Compatibilidad con el Excel anterior.
     startTime: formatStartTime(row.startMinuteLocal),
+    serviceStartTime: formatStartTime(
+      row.serviceStartMinuteLocal ?? 600,
+    ),
+    serviceEndTime: formatStartTime(row.startMinuteLocal),
     timezone: row.timezone,
+  };
+}
+
+function serializeServiceScheduleReport(
+  row: DriverServiceScheduleReportRow,
+  nextScheduledEndAt: Date | null,
+) {
+  return {
+    ...serializeSchedule(row),
+    driverName: row.driverName ?? null,
+    driverEmail: row.driverEmail ?? null,
+    nextScheduledEndAt: nextScheduledEndAt?.toISOString() ?? null,
   };
 }
 
@@ -300,6 +331,8 @@ export class DriverComplianceService {
 
     return {
       schedule,
+      // La hora guardada es el término del horario de servicios. Al llegar,
+      // solo se muestra el aviso: no se activa el descanso automáticamente.
       scheduledStartAt: zonedLocalToUtc(
         localDateKey,
         schedule.startMinuteLocal,
@@ -316,7 +349,10 @@ export class DriverComplianceService {
       schedule: DriverRestSchedule;
       scheduledStartAt: Date;
     } | null;
-    nextScheduledStartAt: Date | null;
+    next: {
+      schedule: DriverRestSchedule;
+      scheduledStartAt: Date;
+    } | null;
   }> {
     const today = getLocalDateKey(now);
     const yesterday = addLocalDays(today, -1);
@@ -329,122 +365,226 @@ export class DriverComplianceService {
         this.findCandidateForDate(driverUserId, tomorrow),
       ]);
 
-    const current = [yesterdayCandidate, todayCandidate]
-      .filter(
-        (
-          item,
-        ): item is {
-          schedule: DriverRestSchedule;
-          scheduledStartAt: Date;
-        } => Boolean(item && item.scheduledStartAt.getTime() <= now.getTime()),
-      )
-      .sort(
-        (a, b) =>
-          b.scheduledStartAt.getTime() - a.scheduledStartAt.getTime(),
-      )[0] ?? null;
+    const current =
+      [yesterdayCandidate, todayCandidate]
+        .filter(
+          (
+            item,
+          ): item is {
+            schedule: DriverRestSchedule;
+            scheduledStartAt: Date;
+          } => Boolean(item && item.scheduledStartAt.getTime() <= now.getTime()),
+        )
+        .sort(
+          (a, b) =>
+            b.scheduledStartAt.getTime() - a.scheduledStartAt.getTime(),
+        )[0] ?? null;
 
-    const nextScheduledStartAt = [todayCandidate, tomorrowCandidate]
-      .filter(
-        (
-          item,
-        ): item is {
-          schedule: DriverRestSchedule;
-          scheduledStartAt: Date;
-        } => Boolean(item && item.scheduledStartAt.getTime() > now.getTime()),
-      )
-      .sort(
-        (a, b) =>
-          a.scheduledStartAt.getTime() - b.scheduledStartAt.getTime(),
-      )[0]?.scheduledStartAt ?? null;
+    const next =
+      [todayCandidate, tomorrowCandidate]
+        .filter(
+          (
+            item,
+          ): item is {
+            schedule: DriverRestSchedule;
+            scheduledStartAt: Date;
+          } => Boolean(item && item.scheduledStartAt.getTime() > now.getTime()),
+        )
+        .sort(
+          (a, b) =>
+            a.scheduledStartAt.getTime() - b.scheduledStartAt.getTime(),
+        )[0] ?? null;
 
-    return { current, nextScheduledStartAt };
+    return { current, next };
+  }
+
+  private async createManualScheduleIfMissing(
+    driverUserId: string,
+    now: Date,
+  ): Promise<DriverRestSchedule> {
+    const today = getLocalDateKey(now);
+    const serviceEndMinute = getLocalMinute(now);
+    const serviceStartMinute =
+      (serviceEndMinute - DRIVER_REST_DURATION_MINUTES + 1440) % 1440;
+
+    return complianceRepo.replaceSchedule({
+      driverUserId,
+      serviceStartMinuteLocal: serviceStartMinute,
+      startMinuteLocal: serviceEndMinute,
+      durationMinutes: DRIVER_REST_DURATION_MINUTES,
+      timezone: DRIVER_REST_TIMEZONE,
+      effectiveFrom: today,
+      createdByUserId: driverUserId,
+    });
+  }
+
+  private async getActionCandidate(
+    driverUserId: string,
+    now: Date,
+  ): Promise<{
+    schedule: DriverRestSchedule;
+    scheduledStartAt: Date;
+  }> {
+    let candidates = await this.findCurrentAndNextCandidate(
+      driverUserId,
+      now,
+    );
+
+    const existing = candidates.current ?? candidates.next;
+    if (existing) return existing;
+
+    const schedule = await this.createManualScheduleIfMissing(
+      driverUserId,
+      now,
+    );
+    const localDateKey = getLocalDateKey(now, schedule.timezone);
+
+    return {
+      schedule,
+      scheduledStartAt: zonedLocalToUtc(
+        localDateKey,
+        schedule.startMinuteLocal,
+        schedule.timezone,
+      ),
+    };
+  }
+
+  private buildState(input: {
+    blockedForNewOffers: boolean;
+    status: DriverRestState["status"];
+    message: string;
+    activePeriod?: DriverRestPeriod | null;
+    nextScheduledStartAt?: Date | null;
+    reminderDue?: boolean;
+    workingSelected?: boolean;
+    canStartRest?: boolean;
+    canContinueWorking?: boolean;
+    hasActiveRide?: boolean;
+  }): DriverRestState {
+    return {
+      blockedForNewOffers: input.blockedForNewOffers,
+      status: input.status,
+      message: input.message,
+      activePeriod: serializePeriod(input.activePeriod ?? null),
+      nextScheduledStartAt:
+        input.nextScheduledStartAt?.toISOString() ?? null,
+      reminderDue: Boolean(input.reminderDue),
+      workingSelected: Boolean(input.workingSelected),
+      canStartRest: Boolean(input.canStartRest),
+      canContinueWorking: Boolean(input.canContinueWorking),
+      hasActiveRide: Boolean(input.hasActiveRide),
+    };
   }
 
   async evaluateDriverRest(
     driverUserId: string,
     now = new Date(),
   ): Promise<DriverRestState> {
-    let openPeriod = await complianceRepo.findLatestOpenPeriod(driverUserId);
-    const [driverStatus, activeRideFromDatabase] = await Promise.all([
-      driverStatusRepo.findByDriverId(driverUserId),
-      complianceRepo.findActiveRideIdForDriver(driverUserId),
-    ]);
+    const [activePeriod, driverStatus, activeRideFromDatabase] =
+      await Promise.all([
+        complianceRepo.findLatestOpenPeriod(driverUserId),
+        driverStatusRepo.findByDriverId(driverUserId),
+        complianceRepo.findActiveRideIdForDriver(driverUserId),
+      ]);
+
     const activeRideId =
       driverStatus?.currentRideId ?? activeRideFromDatabase ?? null;
+    const hasActiveRide = Boolean(activeRideId);
 
-    // Un período pendiente o activo prevalece aunque ya haya comenzado la
-    // franja del día siguiente. Así se resguardan doce horas continuas reales.
-    if (openPeriod && ACTIVE_REST_STATUSES.has(openPeriod.status)) {
-      if (openPeriod.status === "pending_trip_completion") {
-        if (activeRideId) {
-          return {
-            blockedForNewOffers: true,
-            status: "pending_trip_completion",
-            message:
-              "Tu descanso de 12 horas ya comenzó. Puedes finalizar el viaje actual, pero no recibirás nuevas ofertas.",
-            activePeriod: serializePeriod(openPeriod),
-            nextScheduledStartAt: null,
-          };
-        }
+    // Solo un descanso iniciado manualmente puede bloquear al conductor.
+    if (activePeriod?.status === "active") {
+      const requiredEndAt = activePeriod.requiredEndAt;
 
-        openPeriod =
-          (await complianceRepo.activatePeriod(
-            openPeriod.id,
-            now,
-            openPeriod.durationMinutes,
-          )) ?? openPeriod;
-      }
+      if (requiredEndAt && requiredEndAt.getTime() <= now.getTime()) {
+        const completed =
+          (await complianceRepo.completePeriod(activePeriod.id, now)) ??
+          activePeriod;
+        const candidates = await this.findCurrentAndNextCandidate(
+          driverUserId,
+          now,
+        );
 
-      if (openPeriod.status === "active" || openPeriod.actualStartAt) {
-        const requiredEndAt = openPeriod.requiredEndAt;
-        if (requiredEndAt && requiredEndAt.getTime() <= now.getTime()) {
-          const completed =
-            (await complianceRepo.completePeriod(openPeriod.id, now)) ??
-            openPeriod;
-          const candidates = await this.findCurrentAndNextCandidate(
-            driverUserId,
-            now,
-          );
-          return {
-            blockedForNewOffers: false,
-            status: "completed",
-            message:
-              "Completaste tus 12 horas continuas. Activa Disponible cuando quieras volver a trabajar.",
-            activePeriod: serializePeriod(completed),
-            nextScheduledStartAt:
-              candidates.nextScheduledStartAt?.toISOString() ?? null,
-          };
-        }
-
-        await driverStatusRepo.setUnavailableForRest(driverUserId);
-        return {
-          blockedForNewOffers: true,
-          status: "active",
+        return this.buildState({
+          blockedForNewOffers: false,
+          status: "completed",
           message:
-            "Estás en tu período continuo de 12 horas. El backend mantiene bloqueadas las nuevas ofertas.",
-          activePeriod: serializePeriod(openPeriod),
-          nextScheduledStartAt: null,
-        };
+            "Completaste tus 12 horas continuas. Puedes trabajar cuando tú decidas marcarte Disponible.",
+          activePeriod: completed,
+          nextScheduledStartAt: candidates.next?.scheduledStartAt ?? null,
+          canStartRest: false,
+          canContinueWorking: false,
+          hasActiveRide,
+        });
       }
+
+      await driverStatusRepo.setUnavailableForRest(driverUserId);
+
+      return this.buildState({
+        blockedForNewOffers: true,
+        status: "active",
+        message:
+          "Tu descanso continuo está activo. El botón Trabajar permanecerá deshabilitado hasta completar las 12 horas.",
+        activePeriod,
+        reminderDue: false,
+        workingSelected: false,
+        canStartRest: false,
+        canContinueWorking: false,
+        hasActiveRide,
+      });
     }
 
-    const candidates = await this.findCurrentAndNextCandidate(driverUserId, now);
+    const candidates = await this.findCurrentAndNextCandidate(
+      driverUserId,
+      now,
+    );
+
     if (!candidates.current) {
-      const hasFutureSchedule = Boolean(candidates.nextScheduledStartAt);
-      if (!hasFutureSchedule) {
-        await driverStatusRepo.setUnavailableForRest(driverUserId);
+      if (!candidates.next) {
+        return this.buildState({
+          blockedForNewOffers: false,
+          status: "not_configured",
+          message:
+            "Configura tu horario de servicios. El horario solo sirve para organizarte y nunca cambia tu disponibilidad automáticamente.",
+          canStartRest: !hasActiveRide,
+          canContinueWorking: true,
+          hasActiveRide,
+        });
       }
 
-      return {
-        blockedForNewOffers: !hasFutureSchedule,
-        status: "not_configured",
-        message: hasFutureSchedule
-          ? "Tu franja de descanso quedó programada y todavía no comienza."
-          : "Debes elegir una franja diaria de 12 horas antes de recibir nuevas ofertas.",
-        activePeriod: null,
-        nextScheduledStartAt:
-          candidates.nextScheduledStartAt?.toISOString() ?? null,
-      };
+      const upcomingPeriod =
+        await complianceRepo.findPeriodByScheduledStart(
+          driverUserId,
+          candidates.next.scheduledStartAt,
+        );
+
+      if (
+        upcomingPeriod?.status === "working" ||
+        upcomingPeriod?.decision === "work"
+      ) {
+        return this.buildState({
+          blockedForNewOffers: false,
+          status: "working",
+          message:
+            "Elegiste Trabajar para el próximo ciclo. Tomar descanso permanecerá deshabilitado hasta el siguiente horario.",
+          activePeriod: upcomingPeriod,
+          nextScheduledStartAt: candidates.next.scheduledStartAt,
+          workingSelected: true,
+          canStartRest: false,
+          canContinueWorking: true,
+          hasActiveRide,
+        });
+      }
+
+      return this.buildState({
+        blockedForNewOffers: false,
+        status: "scheduled",
+        message:
+          "Tu horario de servicios está programado. Cuando llegue la hora de término podrás elegir Tomar descanso o Trabajar.",
+        nextScheduledStartAt: candidates.next.scheduledStartAt,
+        canStartRest: !hasActiveRide,
+        canContinueWorking: true,
+        hasActiveRide,
+      });
     }
 
     const { schedule, scheduledStartAt } = candidates.current;
@@ -452,6 +592,7 @@ export class DriverComplianceService {
       driverUserId,
       scheduledStartAt,
     );
+
     if (!period) {
       period = await complianceRepo.createPeriod({
         driverUserId,
@@ -461,62 +602,59 @@ export class DriverComplianceService {
       });
     }
 
-    if (activeRideId) {
-      const pending =
-        (await complianceRepo.markPeriodPending(period.id, activeRideId)) ??
+    if (
+      period.status === "scheduled" ||
+      period.status === "pending_trip_completion"
+    ) {
+      period =
+        (await complianceRepo.markPeriodReminderDue(period.id)) ??
         period;
-      return {
-        blockedForNewOffers: true,
-        status: "pending_trip_completion",
-        message:
-          "Tu franja de descanso comenzó durante un viaje. Finalízalo y luego se contarán 12 horas continuas completas.",
-        activePeriod: serializePeriod(pending),
-        nextScheduledStartAt: null,
-      };
     }
 
-    const actualStartAt = scheduledStartAt;
-    const scheduledEndAt = new Date(
-      actualStartAt.getTime() + schedule.durationMinutes * 60_000,
-    );
+    if (period.status === "working" || period.decision === "work") {
+      return this.buildState({
+        blockedForNewOffers: false,
+        status: "working",
+        message:
+          "Elegiste Trabajar para este ciclo. El descanso quedó deshabilitado hasta el próximo término de tu horario de servicios.",
+        activePeriod: period,
+        nextScheduledStartAt: candidates.next?.scheduledStartAt ?? null,
+        workingSelected: true,
+        canStartRest: false,
+        canContinueWorking: true,
+        hasActiveRide,
+      });
+    }
 
-    if (scheduledEndAt.getTime() <= now.getTime()) {
-      const activated =
-        (await complianceRepo.activatePeriod(
-          period.id,
-          actualStartAt,
-          schedule.durationMinutes,
-        )) ?? period;
-      const completed =
-        (await complianceRepo.completePeriod(activated.id, scheduledEndAt)) ??
-        activated;
-      return {
+    if (period.status === "completed") {
+      return this.buildState({
         blockedForNewOffers: false,
         status: "completed",
         message:
-          "La franja diaria anterior ya fue completada. Activa Disponible cuando corresponda.",
-        activePeriod: serializePeriod(completed),
-        nextScheduledStartAt:
-          candidates.nextScheduledStartAt?.toISOString() ?? null,
-      };
+          "El descanso de este ciclo ya fue completado. Tu disponibilidad sigue bajo tu control.",
+        activePeriod: period,
+        nextScheduledStartAt: candidates.next?.scheduledStartAt ?? null,
+        canStartRest: false,
+        canContinueWorking: false,
+        hasActiveRide,
+      });
     }
 
-    const active =
-      (await complianceRepo.activatePeriod(
-        period.id,
-        actualStartAt,
-        schedule.durationMinutes,
-      )) ?? period;
-    await driverStatusRepo.setUnavailableForRest(driverUserId);
-
-    return {
-      blockedForNewOffers: true,
-      status: "active",
-      message:
-        "Estás en tu período continuo de 12 horas. No recibirás nuevas ofertas hasta completarlo.",
-      activePeriod: serializePeriod(active),
-      nextScheduledStartAt: null,
-    };
+    // Llegó la hora de término del servicio: solo se genera un aviso. No se
+    // cambia Disponible/No disponible y no se bloquean nuevas ofertas.
+    return this.buildState({
+      blockedForNewOffers: false,
+      status: "reminder_due",
+      message: hasActiveRide
+        ? "Terminó tu horario de servicios. Finaliza el viaje actual y luego podrás iniciar tus 12 horas, o elige Trabajar para continuar."
+        : "Terminó tu horario de servicios. Elige Tomar descanso para iniciar las 12 horas o Trabajar para continuar.",
+      activePeriod: period,
+      nextScheduledStartAt: candidates.next?.scheduledStartAt ?? null,
+      reminderDue: true,
+      canStartRest: !hasActiveRide,
+      canContinueWorking: true,
+      hasActiveRide,
+    });
   }
 
   async canReceiveNewOffers(driverUserId: string): Promise<{
@@ -527,24 +665,31 @@ export class DriverComplianceService {
     return { allowed: !state.blockedForNewOffers, state };
   }
 
-  async releaseDriverAfterRide(driverUserId: string): Promise<DriverRestState> {
+  async releaseDriverAfterRide(
+    driverUserId: string,
+  ): Promise<DriverRestState> {
     const state = await this.evaluateDriverRest(driverUserId);
+
     if (state.blockedForNewOffers) {
       await driverStatusRepo.setUnavailableForRest(driverUserId);
     } else {
+      // El horario de servicios no modifica la disponibilidad. Se conserva el
+      // comportamiento normal de cierre de viaje de la aplicación.
       await driverStatusRepo.setAvailable(driverUserId);
     }
+
     return state;
   }
 
   async getMyRestSchedule(accessToken: string) {
     const auth = await authenticate(accessToken);
     if (auth.ok === false) return auth;
+
     if (auth.role !== "driver") {
       return {
         ok: false as const,
         code: "AUTH_FORBIDDEN",
-        message: "Only drivers can access rest schedules.",
+        message: "Only drivers can access service schedules.",
         statusCode: 403,
       };
     }
@@ -572,31 +717,44 @@ export class DriverComplianceService {
   ) {
     const auth = await authenticate(accessToken);
     if (auth.ok === false) return auth;
+
     if (auth.role !== "driver") {
       return {
         ok: false as const,
         code: "AUTH_FORBIDDEN",
-        message: "Only drivers can update rest schedules.",
+        message: "Only drivers can update service schedules.",
         statusCode: 403,
       };
     }
 
     const now = new Date();
     const today = getLocalDateKey(now);
-    const tomorrow = addLocalDays(today, 1);
-    const startMinuteLocal = parseStartTime(input.startTime);
     const latest = await complianceRepo.findLatestSchedule(auth.userId);
+    const serviceEndTime = input.serviceEndTime ?? input.startTime;
 
-    // Primera configuración: puede comenzar hoy solo si la franja aún no ha
-    // iniciado. Toda modificación posterior rige desde el día siguiente.
-    const effectiveFrom =
-      !latest && startMinuteLocal > getLocalMinute(now)
-        ? today
-        : tomorrow;
+    if (!serviceEndTime) {
+      return {
+        ok: false as const,
+        code: "VALIDATION_ERROR",
+        message: "Debes indicar la hora de término del servicio.",
+        statusCode: 400,
+      };
+    }
+
+    const serviceStartTime =
+      input.serviceStartTime ??
+      (latest
+        ? formatStartTime(latest.serviceStartMinuteLocal ?? 600)
+        : "10:00");
+
+    const serviceStartMinuteLocal = parseStartTime(serviceStartTime);
+    const serviceEndMinuteLocal = parseStartTime(serviceEndTime);
 
     if (
       latest &&
-      latest.startMinuteLocal === startMinuteLocal &&
+      (latest.serviceStartMinuteLocal ?? 600) ===
+        serviceStartMinuteLocal &&
+      latest.startMinuteLocal === serviceEndMinuteLocal &&
       latest.durationMinutes === DRIVER_REST_DURATION_MINUTES &&
       latest.timezone === DRIVER_REST_TIMEZONE
     ) {
@@ -613,16 +771,20 @@ export class DriverComplianceService {
       };
     }
 
+    // El horario elegido por el conductor comienza a regir hoy. Es
+    // planificación, por lo que modificarlo no inicia ni cancela un descanso.
     const schedule = await complianceRepo.replaceSchedule({
       driverUserId: auth.userId,
-      startMinuteLocal,
+      serviceStartMinuteLocal,
+      startMinuteLocal: serviceEndMinuteLocal,
       durationMinutes: DRIVER_REST_DURATION_MINUTES,
       timezone: DRIVER_REST_TIMEZONE,
-      effectiveFrom,
+      effectiveFrom: today,
       createdByUserId: auth.userId,
     });
 
     const state = await this.evaluateDriverRest(auth.userId);
+
     return {
       ok: true as const,
       compliance: {
@@ -632,6 +794,277 @@ export class DriverComplianceService {
         latestSchedule: serializeSchedule(schedule),
         state,
       },
+    };
+  }
+
+  async startMyRest(accessToken: string) {
+    const auth = await authenticate(accessToken);
+    if (auth.ok === false) return auth;
+
+    if (auth.role !== "driver") {
+      return {
+        ok: false as const,
+        code: "AUTH_FORBIDDEN",
+        message: "Only drivers can start a rest period.",
+        statusCode: 403,
+      };
+    }
+
+    const now = new Date();
+    const [driverStatus, activeRideFromDatabase, activeRest] =
+      await Promise.all([
+        driverStatusRepo.findByDriverId(auth.userId),
+        complianceRepo.findActiveRideIdForDriver(auth.userId),
+        complianceRepo.findLatestOpenPeriod(auth.userId),
+      ]);
+
+    const activeRideId =
+      driverStatus?.currentRideId ?? activeRideFromDatabase ?? null;
+
+    if (activeRideId) {
+      return {
+        ok: false as const,
+        code: "DRIVER_HAS_ACTIVE_RIDE",
+        message:
+          "Finaliza el viaje actual antes de comenzar las 12 horas de descanso. El viaje no será interrumpido.",
+        statusCode: 409,
+      };
+    }
+
+    if (activeRest?.status === "active") {
+      const state = await this.evaluateDriverRest(auth.userId, now);
+      const today = getLocalDateKey(now);
+      return {
+        ok: true as const,
+        compliance: {
+          effectiveSchedule: serializeSchedule(
+            await complianceRepo.findScheduleForDate(auth.userId, today),
+          ),
+          latestSchedule: serializeSchedule(
+            await complianceRepo.findLatestSchedule(auth.userId),
+          ),
+          state,
+        },
+      };
+    }
+
+    const candidate = await this.getActionCandidate(auth.userId, now);
+    let period = await complianceRepo.findPeriodByScheduledStart(
+      auth.userId,
+      candidate.scheduledStartAt,
+    );
+
+    if (!period) {
+      period = await complianceRepo.createPeriod({
+        driverUserId: auth.userId,
+        scheduleId: candidate.schedule.id,
+        scheduledStartAt: candidate.scheduledStartAt,
+        durationMinutes: candidate.schedule.durationMinutes,
+      });
+    }
+
+    if (period.status === "working" || period.decision === "work") {
+      return {
+        ok: false as const,
+        code: "DRIVER_REST_DISABLED_FOR_CYCLE",
+        message:
+          "Elegiste Trabajar para este ciclo. Podrás tomar descanso cuando comience el siguiente ciclo de tu horario.",
+        statusCode: 409,
+      };
+    }
+
+    if (period.status === "completed") {
+      return {
+        ok: false as const,
+        code: "DRIVER_REST_ALREADY_COMPLETED",
+        message: "El descanso de este ciclo ya fue completado.",
+        statusCode: 409,
+      };
+    }
+
+    const active =
+      (await complianceRepo.activatePeriod(
+        period.id,
+        now,
+        candidate.schedule.durationMinutes,
+      )) ?? period;
+
+    await driverStatusRepo.setUnavailableForRest(auth.userId);
+
+    const today = getLocalDateKey(now);
+    return {
+      ok: true as const,
+      compliance: {
+        effectiveSchedule: serializeSchedule(
+          await complianceRepo.findScheduleForDate(auth.userId, today),
+        ),
+        latestSchedule: serializeSchedule(
+          await complianceRepo.findLatestSchedule(auth.userId),
+        ),
+        state: this.buildState({
+          blockedForNewOffers: true,
+          status: "active",
+          message:
+            "Comenzaste tu descanso continuo. Trabajar queda deshabilitado hasta completar las 12 horas.",
+          activePeriod: active,
+          canStartRest: false,
+          canContinueWorking: false,
+          hasActiveRide: false,
+        }),
+      },
+    };
+  }
+
+  async continueWorking(accessToken: string) {
+    const auth = await authenticate(accessToken);
+    if (auth.ok === false) return auth;
+
+    if (auth.role !== "driver") {
+      return {
+        ok: false as const,
+        code: "AUTH_FORBIDDEN",
+        message: "Only drivers can continue working.",
+        statusCode: 403,
+      };
+    }
+
+    const now = new Date();
+    const [activeRest, driverStatus, activeRideFromDatabase] =
+      await Promise.all([
+        complianceRepo.findLatestOpenPeriod(auth.userId),
+        driverStatusRepo.findByDriverId(auth.userId),
+        complianceRepo.findActiveRideIdForDriver(auth.userId),
+      ]);
+    const hasActiveRide = Boolean(
+      driverStatus?.currentRideId ?? activeRideFromDatabase ?? null,
+    );
+
+    if (activeRest?.status === "active") {
+      return {
+        ok: false as const,
+        code: "DRIVER_REST_ACTIVE",
+        message:
+          "No puedes elegir Trabajar mientras el descanso de 12 horas está activo.",
+        statusCode: 409,
+      };
+    }
+
+    const candidatesBeforeDecision =
+      await this.findCurrentAndNextCandidate(auth.userId, now);
+
+    let candidate =
+      candidatesBeforeDecision.current ??
+      candidatesBeforeDecision.next ??
+      (await this.getActionCandidate(auth.userId, now));
+
+    let period = await complianceRepo.findPeriodByScheduledStart(
+      auth.userId,
+      candidate.scheduledStartAt,
+    );
+
+    // Si el ciclo anterior ya terminó o ya fue descartado y existe un ciclo
+    // próximo, el botón Trabajar se aplica a ese próximo aviso.
+    if (
+      period &&
+      (period.status === "completed" ||
+        period.status === "working" ||
+        period.decision === "work") &&
+      candidatesBeforeDecision.next
+    ) {
+      candidate = candidatesBeforeDecision.next;
+      period = await complianceRepo.findPeriodByScheduledStart(
+        auth.userId,
+        candidate.scheduledStartAt,
+      );
+    }
+
+    if (!period) {
+      period = await complianceRepo.createPeriod({
+        driverUserId: auth.userId,
+        scheduleId: candidate.schedule.id,
+        scheduledStartAt: candidate.scheduledStartAt,
+        durationMinutes: candidate.schedule.durationMinutes,
+      });
+    }
+
+    const working =
+      (await complianceRepo.markPeriodWorking(period.id, now)) ??
+      period;
+
+    const today = getLocalDateKey(now);
+    const candidates = await this.findCurrentAndNextCandidate(
+      auth.userId,
+      now,
+    );
+
+    return {
+      ok: true as const,
+      compliance: {
+        effectiveSchedule: serializeSchedule(
+          await complianceRepo.findScheduleForDate(auth.userId, today),
+        ),
+        latestSchedule: serializeSchedule(
+          await complianceRepo.findLatestSchedule(auth.userId),
+        ),
+        state: this.buildState({
+          blockedForNewOffers: false,
+          status: "working",
+          message:
+            "Elegiste Trabajar. El descanso quedó deshabilitado para este ciclo y tu disponibilidad continúa bajo tu control.",
+          activePeriod: working,
+          nextScheduledStartAt:
+            candidates.next?.scheduledStartAt ?? null,
+          workingSelected: true,
+          canStartRest: false,
+          canContinueWorking: true,
+          hasActiveRide,
+        }),
+      },
+    };
+  }
+
+  async adminListServiceScheduleReport(
+    accessToken: string,
+    query: Record<string, unknown>,
+  ) {
+    const auth = await authenticate(accessToken);
+    if (auth.ok === false) return auth;
+
+    if (auth.role !== "admin") {
+      return {
+        ok: false as const,
+        code: "AUTH_FORBIDDEN",
+        message: "Admin access required.",
+        statusCode: 403,
+      };
+    }
+
+    const driverUserId = String(query["driverUserId"] ?? "").trim();
+    const rows = await complianceRepo.listServiceScheduleReport(
+      driverUserId ? { driverUserId } : {},
+    );
+    const now = new Date();
+
+    return {
+      ok: true as const,
+      schedules: rows.map((row) => {
+        const today = getLocalDateKey(now, row.timezone);
+        const todayEnd = zonedLocalToUtc(
+          today,
+          row.startMinuteLocal,
+          row.timezone,
+        );
+        const nextEnd =
+          todayEnd.getTime() > now.getTime()
+            ? todayEnd
+            : zonedLocalToUtc(
+                addLocalDays(today, 1),
+                row.startMinuteLocal,
+                row.timezone,
+              );
+
+        return serializeServiceScheduleReport(row, nextEnd);
+      }),
     };
   }
 

@@ -10,6 +10,8 @@ export async function driverProfileRoutes(fastify: FastifyInstance): Promise<voi
 
   fastify.get("/drivers/me/rest-schedule", driverComplianceController.getMyRestSchedule);
   fastify.patch("/drivers/me/rest-schedule", driverComplianceController.upsertMyRestSchedule);
+  fastify.post("/drivers/me/rest/start", driverComplianceController.startMyRest);
+  fastify.post("/drivers/me/rest/work", driverComplianceController.continueWorking);
 
   await driverVehiclePhotoRoutes(fastify);
 }

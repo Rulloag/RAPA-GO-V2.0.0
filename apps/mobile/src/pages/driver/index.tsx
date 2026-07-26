@@ -7591,7 +7591,7 @@ export function DriverHomePage(): JSX.Element {
       setDriverAvailability("unavailable");
       saveDriverAvailability("unavailable", driverAvailabilityUser);
       setAvailabilityError(
-        "Tu descanso continuo todavía está activo. Podrás marcarte Disponible cuando el backend confirme que finalizó.",
+        "Tu descanso continuo está activo. Podrás marcarte Disponible cuando completes las 12 horas.",
       );
       return;
     }
