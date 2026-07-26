@@ -127,6 +127,33 @@ export class DriverStatusRepository {
   }
 
   /**
+   * Limpia un viaje fantasma guardado en driver_statuses.
+   *
+   * La tabla ride_requests es la fuente de verdad. Si ya no existe un viaje
+   * aceptado/en ruta/llegado/en progreso, currentRideId no puede seguir
+   * impidiendo que el conductor vuelva a ponerse Disponible.
+   */
+  async clearStaleCurrentRide(driverUserId: string): Promise<void> {
+    try {
+      const now = new Date();
+
+      await db
+        .update(driverStatuses)
+        .set({
+          availability: "unavailable",
+          currentRideId: null,
+          lastSeenAt: now,
+          updatedAt: now,
+        })
+        .where(eq(driverStatuses.driverUserId, driverUserId));
+    } catch (err) {
+      throw AppError.internal(
+        `Failed to clear stale driver ride: ${String(err)}`,
+      );
+    }
+  }
+
+  /**
    * Deja al conductor fuera de la recepción de ofertas sin borrar un viaje
    * activo. Se utiliza al comenzar la franja legal de desconexión.
    */

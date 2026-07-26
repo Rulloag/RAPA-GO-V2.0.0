@@ -449,6 +449,33 @@ export class DriverComplianceService {
     };
   }
 
+  /**
+   * ride_requests es la fuente de verdad para saber si existe un viaje activo.
+   * driver_statuses.currentRideId puede quedar obsoleto después de cierres,
+   * cancelaciones antiguas o despliegues incompletos.
+   */
+  private async resolveRealActiveRideId(
+    driverUserId: string,
+  ): Promise<string | null> {
+    const [driverStatus, activeRideId] = await Promise.all([
+      driverStatusRepo.findByDriverId(driverUserId),
+      complianceRepo.findActiveRideIdForDriver(driverUserId),
+    ]);
+
+    if (activeRideId) {
+      if (driverStatus?.currentRideId !== activeRideId) {
+        await driverStatusRepo.setBusy(driverUserId, activeRideId);
+      }
+      return activeRideId;
+    }
+
+    if (driverStatus?.currentRideId) {
+      await driverStatusRepo.clearStaleCurrentRide(driverUserId);
+    }
+
+    return null;
+  }
+
   private buildState(input: {
     blockedForNewOffers: boolean;
     status: DriverRestState["status"];
@@ -480,15 +507,11 @@ export class DriverComplianceService {
     driverUserId: string,
     now = new Date(),
   ): Promise<DriverRestState> {
-    const [activePeriod, driverStatus, activeRideFromDatabase] =
-      await Promise.all([
-        complianceRepo.findLatestOpenPeriod(driverUserId),
-        driverStatusRepo.findByDriverId(driverUserId),
-        complianceRepo.findActiveRideIdForDriver(driverUserId),
-      ]);
+    const [activePeriod, activeRideId] = await Promise.all([
+      complianceRepo.findLatestOpenPeriod(driverUserId),
+      this.resolveRealActiveRideId(driverUserId),
+    ]);
 
-    const activeRideId =
-      driverStatus?.currentRideId ?? activeRideFromDatabase ?? null;
     const hasActiveRide = Boolean(activeRideId);
 
     // Solo un descanso iniciado manualmente puede bloquear al conductor.
@@ -811,15 +834,10 @@ export class DriverComplianceService {
     }
 
     const now = new Date();
-    const [driverStatus, activeRideFromDatabase, activeRest] =
-      await Promise.all([
-        driverStatusRepo.findByDriverId(auth.userId),
-        complianceRepo.findActiveRideIdForDriver(auth.userId),
-        complianceRepo.findLatestOpenPeriod(auth.userId),
-      ]);
-
-    const activeRideId =
-      driverStatus?.currentRideId ?? activeRideFromDatabase ?? null;
+    const [activeRideId, activeRest] = await Promise.all([
+      this.resolveRealActiveRideId(auth.userId),
+      complianceRepo.findLatestOpenPeriod(auth.userId),
+    ]);
 
     if (activeRideId) {
       return {
@@ -929,15 +947,11 @@ export class DriverComplianceService {
     }
 
     const now = new Date();
-    const [activeRest, driverStatus, activeRideFromDatabase] =
-      await Promise.all([
-        complianceRepo.findLatestOpenPeriod(auth.userId),
-        driverStatusRepo.findByDriverId(auth.userId),
-        complianceRepo.findActiveRideIdForDriver(auth.userId),
-      ]);
-    const hasActiveRide = Boolean(
-      driverStatus?.currentRideId ?? activeRideFromDatabase ?? null,
-    );
+    const [activeRest, activeRideId] = await Promise.all([
+      complianceRepo.findLatestOpenPeriod(auth.userId),
+      this.resolveRealActiveRideId(auth.userId),
+    ]);
+    const hasActiveRide = Boolean(activeRideId);
 
     if (activeRest?.status === "active") {
       return {

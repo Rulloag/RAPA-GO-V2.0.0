@@ -4342,7 +4342,7 @@ function DriverAvailabilityControl({
               isAvailable ? "is-available" : "is-unavailable"
             }`}
           />
-          {isAvailable ? "En línea" : "Fuera de línea"}
+          {isAvailable ? "Disponible" : "No disponible"}
         </div>
       </div>
 
