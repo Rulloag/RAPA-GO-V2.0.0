@@ -9,6 +9,23 @@ export const createPaymentSchema = z.object({
 
 export type CreatePaymentInput = z.input<typeof createPaymentSchema>;
 
+
+// ── Conciliación segura del regreso de Mercado Pago ───────────────────────────
+
+export const reconcileMercadoPagoPaymentSchema = z.object({
+  providerPaymentId: z
+    .union([z.string(), z.number()])
+    .optional()
+    .transform((value) => value == null ? undefined : String(value).trim())
+    .refine((value) => value == null || /^\d+$/.test(value), {
+      message: "providerPaymentId must contain only digits.",
+    }),
+});
+
+export type ReconcileMercadoPagoPaymentInput = z.infer<
+  typeof reconcileMercadoPagoPaymentSchema
+>;
+
 // ── ProntoPaga webhook ─────────────────────────────────────────────────────────
 
 export const prontoPagaWebhookSchema = z

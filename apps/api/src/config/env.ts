@@ -31,4 +31,33 @@ export const env = {
 
   // Platform
   platformCommissionPercent: Number(optionalEnv("PLATFORM_COMMISSION_PERCENT", "15")),
+
+  // WhatsApp Business Cloud API (Meta)
+  // Credentials are only required when whatsapp.enabled = true.
+  // Never log these values.
+  get whatsapp() {
+    const enabled = optionalEnv("WHATSAPP_ENABLED", "false") === "true";
+
+    if (enabled) {
+      const missing: string[] = [];
+      if (!process.env["WHATSAPP_PHONE_NUMBER_ID"])   missing.push("WHATSAPP_PHONE_NUMBER_ID");
+      if (!process.env["WHATSAPP_ACCESS_TOKEN"])       missing.push("WHATSAPP_ACCESS_TOKEN");
+      if (!process.env["WHATSAPP_APP_SECRET"])         missing.push("WHATSAPP_APP_SECRET");
+      if (!process.env["WHATSAPP_VERIFY_TOKEN"])       missing.push("WHATSAPP_VERIFY_TOKEN");
+      if (missing.length > 0) {
+        throw new Error(`WHATSAPP_ENABLED=true but missing required variables: ${missing.join(", ")}`);
+      }
+    }
+
+    return {
+      enabled,
+      provider:           optionalEnv("WHATSAPP_PROVIDER",             "meta"),
+      phoneNumberId:      optionalEnv("WHATSAPP_PHONE_NUMBER_ID",      ""),
+      businessAccountId:  optionalEnv("WHATSAPP_BUSINESS_ACCOUNT_ID",  ""),
+      accessToken:        optionalEnv("WHATSAPP_ACCESS_TOKEN",         ""),
+      appSecret:          optionalEnv("WHATSAPP_APP_SECRET",           ""),
+      verifyToken:        optionalEnv("WHATSAPP_VERIFY_TOKEN",         ""),
+      apiVersion:         optionalEnv("WHATSAPP_API_VERSION",          "v20.0"),
+    } as const;
+  },
 } as const;

@@ -1,22 +1,20 @@
-import { and, eq, inArray, isNull } from "drizzle-orm";
+import type { UserRole } from "@rapa-go/shared";
+import { and, eq, inArray } from "drizzle-orm";
 
 import { db } from "../../db/client.js";
 import {
-  authIdentities,
   legalDocuments,
   passengerProfiles,
   userAcceptances,
+  userDocuments,
   users,
+  type User,
 } from "../../db/schema/index.js";
 import { AppError } from "../../shared/errors/AppError.js";
 import { OAuthTokenCrypto } from "../../shared/security/oauthTokenCrypto.js";
 import { AuditService } from "../audit/audit.service.js";
 import { UsersRepository } from "../users/users.repository.js";
-import {
-  authenticateActiveAccessToken,
-  buildAuthUser,
-} from "./auth.service.js";
-import { AuthIdentitiesRepository } from "./authIdentities.repository.js";
+import { OAuthIdentitiesRepository } from "./oauthIdentities.repository.js";
 import type {
   AppleAuthRequest,
   AppleAuthResult,
@@ -25,42 +23,74 @@ import type {
 } from "./appleAuth.types.js";
 import { AppleIdentityTokenVerifier } from "./appleIdentityToken.verifier.js";
 import { AppleTokenExchangeClient } from "./appleTokenExchange.client.js";
+import type { AuthUser } from "./auth.types.js";
 import { SessionService } from "./session.service.js";
 import { TokenService } from "./token.service.js";
 
+const PROVIDER = "apple";
 const REQUIRED_LEGAL_TYPES = [
   "terms_and_conditions",
   "privacy_policy",
   "user_conditions",
 ] as const;
-const PROVIDER = "apple" as const;
+const RESIDENCE_DOCUMENT_TYPE = "rapa_nui_residence";
+const RESIDENCE_DOCUMENT_MAX_BYTES = Math.floor(1.5 * 1024 * 1024);
+const RESIDENCE_META_MARKER = "#rapagoMeta=";
 
-function sanitizeNamePart(value: string | undefined): string {
-  return (value ?? "").trim().replace(/\s+/g, " ").slice(0, 50);
+type AppleAuthFailure = Extract<AppleAuthResult, { ok: false }>;
+
+type VerifiedAppleClaims = Awaited<
+  ReturnType<AppleIdentityTokenVerifier["verify"]>
+>;
+
+type AppleRequestMetadata = {
+  ipAddress?: string;
+  userAgent?: string;
+};
+
+type PassengerSetup = {
+  phone: string;
+  requestedFareType: ApplePassengerFareType;
+  legalDocumentsToAccept: Array<typeof legalDocuments.$inferSelect>;
+  storedResidenceAccreditation: string | null;
+};
+
+function toUserRole(raw: string): UserRole {
+  return raw as UserRole;
 }
 
-function buildDisplayName(
-  name: AppleAuthRequest["name"],
-  email: string,
-): string {
-  const fullName = [
-    sanitizeNamePart(name?.givenName),
-    sanitizeNamePart(name?.familyName),
-  ]
-    .filter(Boolean)
-    .join(" ")
-    .trim();
+/** Mirrors AuthService's role-to-initial-status rule. */
+function roleInitialStatus(role: UserRole): "active" | "pending" {
+  return role === "passenger" ? "active" : "pending";
+}
 
-  if (fullName.length >= 2) return fullName.slice(0, 100);
-  const emailName = sanitizeNamePart(email.split("@")[0]);
-  return emailName.length >= 2 ? emailName : "Usuario Apple";
+function sanitizeNamePart(part: string | undefined): string {
+  return (part ?? "").trim().replace(/\s+/g, " ").slice(0, 50);
+}
+
+function buildName(name: AppleAuthRequest["name"], email: string): string {
+  const given = sanitizeNamePart(name?.givenName);
+  const family = sanitizeNamePart(name?.familyName);
+  const full = [given, family].filter(Boolean).join(" ").trim();
+
+  if (full.length >= 2) return full.slice(0, 100);
+
+  const localPart = sanitizeNamePart(email.split("@")[0]);
+  return localPart.length >= 2 ? localPart : "Usuario Apple";
 }
 
 function normalizeFareType(
   value: ApplePassengerFareType | undefined,
-): ApplePassengerFareType {
-  if (value === "resident" || value === "foreigner") return value;
-  return "chilean";
+): ApplePassengerFareType | null {
+  if (
+    value === "resident" ||
+    value === "chilean" ||
+    value === "foreigner"
+  ) {
+    return value;
+  }
+
+  return null;
 }
 
 function normalizeApplePhone(value: string | undefined): string {
@@ -74,21 +104,93 @@ function isValidApplePhone(value: string): boolean {
   return /^\+?[0-9]{8,15}$/.test(value);
 }
 
-function isUniqueViolation(error: unknown): boolean {
-  if (!error || typeof error !== "object") return false;
-  const code = "code" in error ? String(error.code) : "";
-  const cause = "cause" in error ? error.cause : undefined;
-  const causeCode =
-    cause && typeof cause === "object" && "code" in cause
-      ? String(cause.code)
-      : "";
-  return code === "23505" || causeCode === "23505";
+function validateAppleResidenceAccreditation(
+  input: NonNullable<AppleAuthRequest["residenceAccreditation"]>,
+): { ok: true; storedDataUrl: string } | { ok: false; message: string } {
+  const match = input.documentDataUrl
+    .trim()
+    .match(
+      /^data:(application\/pdf|image\/jpeg|image\/png|image\/webp);base64,([A-Za-z0-9+/=\r\n]+)$/i,
+    );
+
+  if (!match) {
+    return {
+      ok: false,
+      message: "La acreditación debe ser PDF, JPG, PNG o WEBP.",
+    };
+  }
+
+  const mimeType = String(match[1] ?? "").toLowerCase();
+  if (mimeType !== input.documentType.toLowerCase()) {
+    return {
+      ok: false,
+      message:
+        "El tipo real de la acreditación no coincide con el archivo enviado.",
+    };
+  }
+
+  const bytes = Buffer.from(
+    String(match[2] ?? "").replace(/\s+/g, ""),
+    "base64",
+  );
+  const signatureIsValid =
+    (mimeType === "application/pdf" &&
+      bytes.subarray(0, 5).toString("ascii") === "%PDF-") ||
+    (mimeType === "image/jpeg" &&
+      bytes.length >= 3 &&
+      bytes[0] === 0xff &&
+      bytes[1] === 0xd8 &&
+      bytes[2] === 0xff) ||
+    (mimeType === "image/png" &&
+      bytes.length >= 8 &&
+      bytes.subarray(0, 8).equals(
+        Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+      )) ||
+    (mimeType === "image/webp" &&
+      bytes.length >= 12 &&
+      bytes.subarray(0, 4).toString("ascii") === "RIFF" &&
+      bytes.subarray(8, 12).toString("ascii") === "WEBP");
+
+  if (!signatureIsValid) {
+    return {
+      ok: false,
+      message:
+        "El contenido real no corresponde a un PDF o imagen permitida.",
+    };
+  }
+
+  if (
+    bytes.byteLength <= 0 ||
+    bytes.byteLength > RESIDENCE_DOCUMENT_MAX_BYTES ||
+    input.documentSize <= 0 ||
+    input.documentSize > RESIDENCE_DOCUMENT_MAX_BYTES
+  ) {
+    return {
+      ok: false,
+      message: "La acreditación supera el máximo de 1.5 MB.",
+    };
+  }
+
+  const metadata = encodeURIComponent(
+    JSON.stringify({
+      version: 1,
+      provider: PROVIDER,
+      documentName: input.documentName.trim(),
+      documentType: input.documentType,
+      uploadedAt: new Date().toISOString(),
+    }),
+  );
+
+  return {
+    ok: true,
+    storedDataUrl: `${input.documentDataUrl.trim()}${RESIDENCE_META_MARKER}${metadata}`,
+  };
 }
 
 export class AppleAuthService {
   constructor(
     private readonly usersRepository = new UsersRepository(),
-    private readonly identitiesRepository = new AuthIdentitiesRepository(),
+    private readonly identitiesRepository = new OAuthIdentitiesRepository(),
     private readonly auditService = new AuditService(),
     private readonly identityTokenVerifier = new AppleIdentityTokenVerifier(),
     private readonly tokenExchangeClient = new AppleTokenExchangeClient(),
@@ -96,10 +198,21 @@ export class AppleAuthService {
     private readonly sessionService = new SessionService(),
   ) {}
 
-  private async issueSession(
-    user: typeof users.$inferSelect,
-  ): Promise<AppleAuthResult> {
-    const authUser = await buildAuthUser(user);
+  private async issueSession(user: User): Promise<{
+    authUser: AuthUser;
+    accessToken: string;
+    refreshToken: string;
+    expiresAt: string;
+  }> {
+    const authUser: AuthUser = {
+      id: user.id,
+      email: user.email,
+      name: user.name,
+      role: toUserRole(user.role),
+      avatarUrl: user.avatarUrl,
+      isVerified: user.isVerified,
+    };
+
     const accessToken = this.tokenService.issueAccessToken(authUser);
     const refreshToken = this.tokenService.issueRefreshToken();
 
@@ -115,52 +228,326 @@ export class AppleAuthService {
     });
 
     return {
-      ok: true,
-      session: {
-        accessToken: accessToken.token,
-        expiresAt: accessToken.expiresAt.toISOString(),
-        user: authUser,
-      },
+      authUser,
+      accessToken: accessToken.token,
+      refreshToken: refreshToken.token,
+      expiresAt: accessToken.expiresAt.toISOString(),
     };
   }
 
-  private async verifyAndExchange(payload: AppleAuthRequest): Promise<{
-    claims: Awaited<ReturnType<AppleIdentityTokenVerifier["verify"]>>;
-    encryptedRefreshToken?: string;
-  }> {
-    const claims = await this.identityTokenVerifier.verify(
+  async signIn(
+    payload: AppleAuthRequest,
+    metadata?: AppleRequestMetadata,
+  ): Promise<AppleAuthResult> {
+    // Verificamos primero el identity token. El authorizationCode es de un
+    // solo uso y no debe consumirse antes de que el usuario termine el rol y,
+    // para pasajeros, la configuración obligatoria.
+    const identityClaims = await this.identityTokenVerifier.verify(
       payload.identityToken,
-      { expectedNonce: payload.nonce },
+      {
+        ...(payload.nonce !== undefined
+          ? { expectedNonce: payload.nonce }
+          : {}),
+      },
     );
 
-    const exchanged = await this.tokenExchangeClient.exchange(
-      payload.authorizationCode,
-      claims.aud,
-    );
-    const exchangedClaims = await this.identityTokenVerifier.verify(
-      exchanged.idToken,
-    );
+    const existing =
+      await this.identitiesRepository.findByProviderAndSub(
+        PROVIDER,
+        identityClaims.sub,
+      );
 
-    if (
-      exchangedClaims.sub !== claims.sub ||
-      exchangedClaims.aud !== claims.aud
-    ) {
-      throw new AppError({
-        code: "AUTH_APPLE_TOKEN_INCOHERENT",
-        message: "La respuesta de Apple no coincide con la identidad presentada.",
+    if (existing) {
+      return this.signInExisting(
+        payload,
+        identityClaims,
+        existing.userId,
+        existing.id,
+      );
+    }
+
+    const precondition = this.checkNewAccountPreconditions(
+      payload,
+      identityClaims,
+    );
+    if (precondition) return precondition;
+
+    let passengerSetup: PassengerSetup | null = null;
+    if (payload.role === "passenger") {
+      const prepared = await this.preparePassengerSetup(payload);
+      if (!prepared.ok) return prepared.result;
+      passengerSetup = prepared.setup;
+    }
+
+    return this.exchangeAndCompleteNewAccount(
+      payload,
+      identityClaims,
+      passengerSetup,
+      metadata,
+    );
+  }
+
+  async link(
+    accessToken: string,
+    payload: AppleAuthRequest,
+  ): Promise<AppleLinkResult> {
+    let tokenPayload;
+
+    try {
+      tokenPayload = this.tokenService.verifyAccessToken(accessToken);
+    } catch (error) {
+      if (error instanceof AppError) {
+        return {
+          ok: false,
+          code: error.code,
+          message: error.message,
+          statusCode: error.statusCode,
+        };
+      }
+
+      return {
+        ok: false,
+        code: "UNAUTHORIZED",
+        message: "La sesión no es válida.",
         statusCode: 401,
-      });
+      };
+    }
+
+    const accessTokenHash = this.tokenService.hashToken(accessToken);
+    const sessionIsValid =
+      await this.sessionService.isSessionValid(accessTokenHash);
+
+    if (!sessionIsValid) {
+      return {
+        ok: false,
+        code: "AUTH_SESSION_REVOKED",
+        message: "La sesión fue revocada.",
+        statusCode: 401,
+      };
+    }
+
+    const user = await this.usersRepository.findById(tokenPayload.sub);
+
+    if (!user || user.status !== "active") {
+      return {
+        ok: false,
+        code: "AUTH_ACCOUNT_UNAVAILABLE",
+        message: "La cuenta no está disponible para vincular Apple.",
+        statusCode: 403,
+      };
+    }
+
+    const identityClaims = await this.identityTokenVerifier.verify(
+      payload.identityToken,
+      {
+        ...(payload.nonce !== undefined
+          ? { expectedNonce: payload.nonce }
+          : {}),
+      },
+    );
+
+    const existing =
+      await this.identitiesRepository.findByProviderAndSub(
+        PROVIDER,
+        identityClaims.sub,
+      );
+
+    if (existing && existing.userId !== user.id) {
+      return {
+        ok: false,
+        code: "AUTH_IDENTITY_ALREADY_LINKED",
+        message:
+          "Esta cuenta de Apple ya está vinculada a otra cuenta RAPA GO.",
+        statusCode: 409,
+      };
+    }
+
+    const exchanged = await this.exchangeIdentity(payload, identityClaims);
+    if (!exchanged.ok) {
+      return {
+        ok: false,
+        code: exchanged.result.code,
+        message: exchanged.result.message,
+        statusCode: exchanged.result.statusCode ?? 401,
+      };
+    }
+
+    if (existing) {
+      await this.identitiesRepository.updateProviderCredentials(
+        existing.id,
+        identityClaims.aud,
+        exchanged.encryptedRefreshToken,
+      );
+    } else {
+      const attached =
+        await this.identitiesRepository.attachToExistingUser({
+          userId: user.id,
+          provider: PROVIDER,
+          providerUserId: identityClaims.sub,
+          providerClientId: identityClaims.aud,
+          providerEmail: identityClaims.email,
+          providerEmailVerified: identityClaims.emailVerified,
+          providerIsPrivateEmail: identityClaims.isPrivateEmail,
+          encryptedRefreshToken: exchanged.encryptedRefreshToken,
+        });
+
+      if (!attached) {
+        const winner =
+          await this.identitiesRepository.findByProviderAndSub(
+            PROVIDER,
+            identityClaims.sub,
+          );
+
+        if (!winner || winner.userId !== user.id) {
+          return {
+            ok: false,
+            code: "AUTH_IDENTITY_ALREADY_LINKED",
+            message:
+              "Esta cuenta de Apple ya está vinculada a otra cuenta RAPA GO.",
+            statusCode: 409,
+          };
+        }
+      }
+    }
+
+    this.auditService.recordSafe({
+      eventType: "auth.apple.link.success",
+      entityType: "user",
+      entityId: user.id,
+      actorUserId: user.id,
+      metadata: { role: user.role },
+    });
+
+    return {
+      ok: true,
+      message: "Cuenta de Apple vinculada correctamente.",
+    };
+  }
+
+  private checkNewAccountPreconditions(
+    payload: AppleAuthRequest,
+    identityClaims: VerifiedAppleClaims,
+  ): AppleAuthResult | null {
+    const email = identityClaims.email?.toLowerCase().trim();
+
+    if (!email || !identityClaims.emailVerified) {
+      return {
+        ok: false,
+        code: "AUTH_APPLE_EMAIL_MISSING",
+        message:
+          "Apple no entregó un correo verificado para crear esta cuenta.",
+        statusCode: 400,
+      };
+    }
+
+    if (!payload.role) {
+      return {
+        ok: false,
+        code: "VALIDATION_ERROR",
+        message: "role is required to create a new account.",
+        statusCode: 400,
+      };
+    }
+
+    if (payload.role === "admin") {
+      return {
+        ok: false,
+        code: "AUTH_FORBIDDEN",
+        message:
+          "Las cuentas administradoras no pueden registrarse públicamente.",
+        statusCode: 403,
+      };
+    }
+
+    return null;
+  }
+
+  private async preparePassengerSetup(
+    payload: AppleAuthRequest,
+  ): Promise<
+    | { ok: true; setup: PassengerSetup }
+    | { ok: false; result: AppleAuthFailure }
+  > {
+    const phone = normalizeApplePhone(payload.phone);
+    const requestedFareType = normalizeFareType(payload.passengerFareType);
+
+    if (!isValidApplePhone(phone) || !requestedFareType) {
+      return {
+        ok: false,
+        result: {
+          ok: false,
+          code: "AUTH_APPLE_SETUP_REQUIRED",
+          message:
+            "Completa tu celular, categoría de pasajero y documentos legales para crear la cuenta con Apple.",
+          statusCode: 409,
+        },
+      };
+    }
+
+    let legalDocumentsToAccept: Array<
+      typeof legalDocuments.$inferSelect
+    >;
+
+    try {
+      legalDocumentsToAccept = await this.validateLegalAcceptances(payload);
+    } catch (error) {
+      if (error instanceof AppError) {
+        return {
+          ok: false,
+          result: {
+            ok: false,
+            code: error.code,
+            message: error.message,
+            statusCode: error.statusCode,
+          },
+        };
+      }
+      throw error;
+    }
+
+    let storedResidenceAccreditation: string | null = null;
+
+    if (requestedFareType === "resident") {
+      if (!payload.residenceAccreditation) {
+        return {
+          ok: false,
+          result: {
+            ok: false,
+            code: "AUTH_RESIDENCE_ACCREDITATION_REQUIRED",
+            message:
+              "Debes adjuntar tu acreditación de residencia para continuar.",
+            statusCode: 400,
+          },
+        };
+      }
+
+      const validation = validateAppleResidenceAccreditation(
+        payload.residenceAccreditation,
+      );
+
+      if (!validation.ok) {
+        return {
+          ok: false,
+          result: {
+            ok: false,
+            code: "AUTH_RESIDENCE_ACCREDITATION_INVALID",
+            message: validation.message,
+            statusCode: 400,
+          },
+        };
+      }
+
+      storedResidenceAccreditation = validation.storedDataUrl;
     }
 
     return {
-      claims,
-      ...(exchanged.refreshToken
-        ? {
-            encryptedRefreshToken: OAuthTokenCrypto.encrypt(
-              exchanged.refreshToken,
-            ),
-          }
-        : {}),
+      ok: true,
+      setup: {
+        phone,
+        requestedFareType,
+        legalDocumentsToAccept,
+        storedResidenceAccreditation,
+      },
     };
   }
 
@@ -189,6 +576,7 @@ export class AppleAuthService {
 
     for (const type of REQUIRED_LEGAL_TYPES) {
       const document = activeByType.get(type);
+
       if (!document) {
         throw new AppError({
           code: "LEGAL_DOCUMENT_UNAVAILABLE",
@@ -196,6 +584,7 @@ export class AppleAuthService {
           statusCode: 503,
         });
       }
+
       if (submittedById.get(document.id) !== document.version) {
         throw new AppError({
           code: "LEGAL_ACCEPTANCE_REQUIRED",
@@ -208,344 +597,353 @@ export class AppleAuthService {
 
     return REQUIRED_LEGAL_TYPES.map((type) => {
       const document = activeByType.get(type);
-      if (!document) throw AppError.internal("Missing active legal document.");
+      if (!document) {
+        throw AppError.internal("Missing active legal document.");
+      }
       return document;
     });
   }
 
-  async signIn(
+  private async exchangeIdentity(
     payload: AppleAuthRequest,
-    metadata?: { ipAddress?: string; userAgent?: string },
-  ): Promise<AppleAuthResult> {
-    let verifiedClaims: Awaited<
-      ReturnType<AppleIdentityTokenVerifier["verify"]>
-    >;
-    try {
-      verifiedClaims = await this.identityTokenVerifier.verify(
-        payload.identityToken,
-        { expectedNonce: payload.nonce },
-      );
-    } catch (error) {
-      if (error instanceof AppError) {
-        return {
-          ok: false,
-          code: error.code,
-          message: error.message,
-          statusCode: error.statusCode,
-        };
-      }
-      throw error;
-    }
+    identityClaims: VerifiedAppleClaims,
+  ): Promise<
+    | { ok: true; encryptedRefreshToken: string | undefined }
+    | { ok: false; result: AppleAuthFailure }
+  > {
+    const exchange = await this.tokenExchangeClient.exchange(
+      payload.authorizationCode,
+      identityClaims.aud,
+    );
+    const exchangedClaims = await this.identityTokenVerifier.verify(
+      exchange.idToken,
+      {},
+    );
 
-    const existingIdentity =
-      await this.identitiesRepository.findActiveByProviderSubject(
-        PROVIDER,
-        verifiedClaims.sub,
-      );
+    if (
+      exchangedClaims.sub !== identityClaims.sub ||
+      exchangedClaims.aud !== identityClaims.aud
+    ) {
+      this.auditService.recordSafe({
+        eventType: "auth.apple.login.failure",
+        entityType: "auth",
+        metadata: { reason: "token_incoherent" },
+      });
 
-    if (existingIdentity) {
-      try {
-        const exchanged = await this.verifyAndExchange(payload);
-        if (exchanged.encryptedRefreshToken) {
-          await this.identitiesRepository.updateEncryptedRefreshToken(
-            existingIdentity.id,
-            exchanged.encryptedRefreshToken,
-          );
-        }
-        await this.identitiesRepository.touchLastLogin(existingIdentity.id);
-
-        const user = await this.usersRepository.findById(
-          existingIdentity.userId,
-        );
-        if (!user) {
-          return {
-            ok: false,
-            code: "UNAUTHORIZED",
-            message: "La cuenta asociada a Apple no existe.",
-            statusCode: 401,
-          };
-        }
-        if (user.status !== "active") {
-          return {
-            ok: false,
-            code:
-              user.status === "deleted"
-                ? "AUTH_ACCOUNT_DELETED"
-                : user.status === "pending"
-                  ? "AUTH_ACCOUNT_PENDING"
-                  : "AUTH_ACCOUNT_SUSPENDED",
-            message:
-              user.status === "pending"
-                ? "La cuenta todavía está pendiente de aprobación."
-                : user.status === "deleted"
-                  ? "Esta cuenta fue eliminada."
-                  : "Esta cuenta está bloqueada.",
-            statusCode: 403,
-          };
-        }
-
-        this.auditService.recordSafe({
-          eventType: "auth.apple.login.success",
-          entityType: "user",
-          entityId: user.id,
-          actorUserId: user.id,
-          metadata: { provider: PROVIDER },
-        });
-        return await this.issueSession(user);
-      } catch (error) {
-        if (error instanceof AppError) {
-          return {
-            ok: false,
-            code: error.code,
-            message: error.message,
-            statusCode: error.statusCode,
-          };
-        }
-        throw error;
-      }
-    }
-
-    const email = verifiedClaims.email?.trim().toLowerCase();
-    if (!email || !verifiedClaims.emailVerified) {
       return {
         ok: false,
-        code: "AUTH_APPLE_EMAIL_MISSING",
-        message:
-          "Apple no entregó un correo verificado para crear la cuenta.",
-        statusCode: 400,
+        result: {
+          ok: false,
+          code: "AUTH_APPLE_TOKEN_INCOHERENT",
+          message:
+            "La respuesta de Apple no coincide con la identidad presentada.",
+          statusCode: 401,
+        },
       };
     }
 
+    const encryptedRefreshToken =
+      exchange.refreshToken !== undefined
+        ? OAuthTokenCrypto.encrypt(exchange.refreshToken)
+        : undefined;
+
+    return { ok: true, encryptedRefreshToken };
+  }
+
+  private async signInExisting(
+    payload: AppleAuthRequest,
+    identityClaims: VerifiedAppleClaims,
+    userId: string,
+    identityId: string,
+  ): Promise<AppleAuthResult> {
+    const user = await this.usersRepository.findById(userId);
+
+    if (!user) {
+      return {
+        ok: false,
+        code: "UNAUTHORIZED",
+        message: "La cuenta asociada a Apple no existe.",
+        statusCode: 401,
+      };
+    }
+
+    if (
+      user.status === "suspended" ||
+      user.status === "banned" ||
+      user.status === "deleted"
+    ) {
+      this.auditService.recordSafe({
+        eventType: "auth.apple.login.failure",
+        entityType: "user",
+        entityId: user.id,
+        actorUserId: user.id,
+        metadata: { reason: "account_unavailable" },
+      });
+
+      return {
+        ok: false,
+        code:
+          user.status === "deleted"
+            ? "AUTH_ACCOUNT_DELETED"
+            : "AUTH_ACCOUNT_SUSPENDED",
+        message:
+          user.status === "deleted"
+            ? "Esta cuenta fue eliminada."
+            : "Esta cuenta está bloqueada.",
+        statusCode: 403,
+      };
+    }
+
+    const exchanged = await this.exchangeIdentity(payload, identityClaims);
+    if (!exchanged.ok) return exchanged.result;
+
+    return this.completeExistingUserSignIn(
+      user,
+      identityId,
+      exchanged.encryptedRefreshToken,
+      identityClaims.aud,
+    );
+  }
+
+  private async completeExistingUserSignIn(
+    user: User,
+    identityId: string,
+    encryptedRefreshToken: string | undefined,
+    providerClientId: string,
+  ): Promise<AppleAuthResult> {
+    await this.identitiesRepository.updateProviderCredentials(
+      identityId,
+      providerClientId,
+      encryptedRefreshToken,
+    );
+
+    const session = await this.issueSession(user);
+
+    this.auditService.recordSafe({
+      eventType: "auth.apple.login.success",
+      entityType: "user",
+      entityId: user.id,
+      actorUserId: user.id,
+      metadata: { role: user.role },
+    });
+
+    return {
+      ok: true,
+      session: {
+        accessToken: session.accessToken,
+        expiresAt: session.expiresAt,
+        user: session.authUser,
+      },
+      refreshToken: session.refreshToken,
+    };
+  }
+
+  private async exchangeAndCompleteNewAccount(
+    payload: AppleAuthRequest,
+    identityClaims: VerifiedAppleClaims,
+    passengerSetup: PassengerSetup | null,
+    metadata?: AppleRequestMetadata,
+  ): Promise<AppleAuthResult> {
+    const email = identityClaims.email?.toLowerCase().trim();
+
+    if (!email || !payload.role || payload.role === "admin") {
+      throw AppError.internal(
+        "exchangeAndCompleteNewAccount called without validated preconditions.",
+      );
+    }
+
+    // Nunca vinculamos cuentas por coincidencia de correo sin que el dueño
+    // primero se autentique con su método actual.
     const emailOwner = await this.usersRepository.findByEmail(email);
     if (emailOwner) {
+      this.auditService.recordSafe({
+        eventType: "auth.apple.login.conflict",
+        entityType: "user",
+        entityId: emailOwner.id,
+        metadata: { reason: "email_taken" },
+      });
+
       return {
         ok: false,
         code: "AUTH_APPLE_ACCOUNT_LINKING_REQUIRED",
         message:
-          "Ya existe una cuenta con ese correo. Ingresa con tu método actual y vincula Apple desde Perfil > Seguridad.",
+          "Ya existe una cuenta con ese correo. Ingresa con tu método actual para vincular Apple.",
         statusCode: 409,
       };
     }
 
-    let legalDocumentsToAccept;
-    try {
-      legalDocumentsToAccept = await this.validateLegalAcceptances(payload);
-    } catch (error) {
-      if (error instanceof AppError) {
+    const exchanged = await this.exchangeIdentity(payload, identityClaims);
+    if (!exchanged.ok) return exchanged.result;
+
+    const created = await this.identitiesRepository.createUserWithIdentity({
+      email,
+      name: buildName(payload.name, email),
+      role: payload.role,
+      status: roleInitialStatus(payload.role),
+      isVerified: identityClaims.emailVerified,
+      provider: PROVIDER,
+      providerUserId: identityClaims.sub,
+      providerClientId: identityClaims.aud,
+      providerEmail: email,
+      providerEmailVerified: identityClaims.emailVerified,
+      providerIsPrivateEmail: identityClaims.isPrivateEmail,
+      encryptedRefreshToken: exchanged.encryptedRefreshToken,
+    });
+
+    if (!created) {
+      const identity =
+        await this.identitiesRepository.findByProviderAndSub(
+          PROVIDER,
+          identityClaims.sub,
+        );
+
+      if (!identity) {
+        throw AppError.internal(
+          "OAuth identity creation race could not be resolved.",
+        );
+      }
+
+      const winnerUser = await this.usersRepository.findById(identity.userId);
+      if (!winnerUser) {
         return {
           ok: false,
-          code: error.code,
-          message: error.message,
-          statusCode: error.statusCode,
+          code: "UNAUTHORIZED",
+          message: "La cuenta asociada a Apple no existe.",
+          statusCode: 401,
         };
       }
-      throw error;
-    }
 
-    let exchanged;
-    try {
-      exchanged = await this.verifyAndExchange(payload);
-    } catch (error) {
-      if (error instanceof AppError) {
+      if (
+        winnerUser.status === "suspended" ||
+        winnerUser.status === "banned" ||
+        winnerUser.status === "deleted"
+      ) {
         return {
           ok: false,
-          code: error.code,
-          message: error.message,
-          statusCode: error.statusCode,
+          code: "AUTH_ACCOUNT_SUSPENDED",
+          message: "Esta cuenta está bloqueada.",
+          statusCode: 403,
         };
       }
-      throw error;
+
+      return this.completeExistingUserSignIn(
+        winnerUser,
+        identity.id,
+        exchanged.encryptedRefreshToken,
+        identityClaims.aud,
+      );
     }
 
-    const phone = normalizeApplePhone(payload.phone);
-    if (!isValidApplePhone(phone)) {
-      return {
-        ok: false,
-        code: "AUTH_APPLE_PHONE_REQUIRED",
-        message:
-          "Apple no comparte tu número de teléfono. Ingresa un celular válido para completar tu cuenta RAPA GO.",
-        statusCode: 400,
-      };
+    if (payload.role === "passenger") {
+      if (!passengerSetup) {
+        throw AppError.internal(
+          "Passenger account created without validated setup.",
+        );
+      }
+
+      try {
+        await this.persistPassengerSetup(
+          created.user.id,
+          passengerSetup,
+          metadata,
+        );
+      } catch (error) {
+        this.auditService.recordSafe({
+          eventType: "auth.apple.register.failure",
+          entityType: "user",
+          entityId: created.user.id,
+          actorUserId: created.user.id,
+          metadata: { reason: "passenger_setup_persistence_failed" },
+        });
+
+        // Intento compensatorio. Si las FK tienen CASCADE, también elimina la
+        // identidad OAuth creada por el repositorio. Nunca ocultamos el error
+        // original si la limpieza no puede completarse.
+        try {
+          await db.delete(users).where(eq(users.id, created.user.id));
+        } catch {
+          // La auditoría anterior deja evidencia para reparación administrativa.
+        }
+
+        throw error;
+      }
     }
 
-    const requestedFareType = normalizeFareType(payload.passengerFareType);
-    const verificationStatus =
-      requestedFareType === "resident" ? "pending" : "not_required";
-    const effectiveFareType =
-      requestedFareType === "resident" ? "chilean" : requestedFareType;
+    const session = await this.issueSession(created.user);
+
+    this.auditService.recordSafe({
+      eventType: "auth.apple.register.success",
+      entityType: "user",
+      entityId: created.user.id,
+      actorUserId: created.user.id,
+      metadata: {
+        role: created.user.role,
+        isPrivateEmail: identityClaims.isPrivateEmail,
+        passengerFareType:
+          passengerSetup?.requestedFareType ?? null,
+      },
+    });
+
+    return {
+      ok: true,
+      session: {
+        accessToken: session.accessToken,
+        expiresAt: session.expiresAt,
+        user: session.authUser,
+      },
+      refreshToken: session.refreshToken,
+    };
+  }
+
+  private async persistPassengerSetup(
+    userId: string,
+    setup: PassengerSetup,
+    metadata?: AppleRequestMetadata,
+  ): Promise<void> {
     const now = new Date();
 
-    try {
-      const createdUser = await db.transaction(async (tx) => {
-        const userRows = await tx
-          .insert(users)
-          .values({
-            email,
-            name: buildDisplayName(payload.name, email),
-            role: "passenger",
-            status: "active",
-            isVerified: true,
-          })
-          .returning();
-        const user = userRows[0];
-        if (!user) throw AppError.internal("User insert returned no rows.");
+    await db.transaction(async (tx) => {
+      await tx.insert(passengerProfiles).values({
+        userId,
+        phone: setup.phone,
+        requestedFareType: setup.requestedFareType,
+        effectiveFareType: setup.requestedFareType,
+        residenceVerificationStatus:
+          setup.requestedFareType === "resident"
+            ? "pending"
+            : "not_required",
+        residenceRequestedAt:
+          setup.requestedFareType === "resident" ? now : null,
+        updatedAt: now,
+      });
 
-        await tx.insert(passengerProfiles).values({
-          userId: user.id,
-          phone,
-          requestedFareType,
-          effectiveFareType,
-          residenceVerificationStatus: verificationStatus,
-          residenceRequestedAt:
-            requestedFareType === "resident" ? now : null,
+      if (
+        setup.requestedFareType === "resident" &&
+        setup.storedResidenceAccreditation
+      ) {
+        await tx.insert(userDocuments).values({
+          userId,
+          documentType: RESIDENCE_DOCUMENT_TYPE,
+          status: "uploaded",
+          fileUrl: setup.storedResidenceAccreditation,
+          rejectionReason: null,
+          uploadedAt: now,
+          reviewedAt: null,
+          createdAt: now,
           updatedAt: now,
         });
-
-        await tx.insert(authIdentities).values({
-          userId: user.id,
-          provider: PROVIDER,
-          providerSubject: exchanged.claims.sub,
-          providerEmail: email,
-          emailVerified: exchanged.claims.emailVerified,
-          providerIsPrivateEmail: exchanged.claims.isPrivateEmail,
-          encryptedRefreshToken:
-            exchanged.encryptedRefreshToken ?? null,
-          linkedAt: now,
-          lastLoginAt: now,
-        });
-
-        await tx.insert(userAcceptances).values(
-          legalDocumentsToAccept.map((document) => ({
-            userId: user.id,
-            legalDocumentId: document.id,
-            versionAccepted: document.version,
-            ipAddress: metadata?.ipAddress ?? null,
-            userAgent: metadata?.userAgent ?? null,
-          })),
-        );
-
-        return user;
-      });
-
-      this.auditService.recordSafe({
-        eventType: "auth.apple.register.success",
-        entityType: "user",
-        entityId: createdUser.id,
-        actorUserId: createdUser.id,
-        metadata: {
-          provider: PROVIDER,
-          isPrivateEmail: exchanged.claims.isPrivateEmail,
-          passengerFareType: requestedFareType,
-        },
-      });
-
-      return await this.issueSession(createdUser);
-    } catch (error) {
-      if (isUniqueViolation(error)) {
-        const concurrentIdentity =
-          await this.identitiesRepository.findActiveByProviderSubject(
-            PROVIDER,
-            exchanged.claims.sub,
-          );
-        if (concurrentIdentity) {
-          const user = await this.usersRepository.findById(
-            concurrentIdentity.userId,
-          );
-          if (user?.status === "active") return await this.issueSession(user);
-        }
-        return {
-          ok: false,
-          code: "AUTH_APPLE_ACCOUNT_LINKING_REQUIRED",
-          message:
-            "La cuenta ya existe. Ingresa con tu método actual y vincula Apple desde Perfil > Seguridad.",
-          statusCode: 409,
-        };
-      }
-      if (error instanceof AppError) {
-        return {
-          ok: false,
-          code: error.code,
-          message: error.message,
-          statusCode: error.statusCode,
-        };
-      }
-      throw error;
-    }
-  }
-
-  async link(
-    accessToken: string,
-    payload: AppleAuthRequest,
-  ): Promise<AppleLinkResult> {
-    const auth = await authenticateActiveAccessToken(accessToken);
-    if (!auth.ok) return auth;
-
-    try {
-      const exchanged = await this.verifyAndExchange(payload);
-      const alreadyLinked =
-        await this.identitiesRepository.findActiveByProviderSubject(
-          PROVIDER,
-          exchanged.claims.sub,
-        );
-
-      if (alreadyLinked && alreadyLinked.userId !== auth.user.id) {
-        return {
-          ok: false,
-          code: "AUTH_IDENTITY_ALREADY_LINKED",
-          message:
-            "Esta cuenta de Apple ya está vinculada a otra cuenta RAPA GO.",
-          statusCode: 409,
-        };
       }
 
-      await this.identitiesRepository.link({
-        userId: auth.user.id,
-        provider: PROVIDER,
-        providerSubject: exchanged.claims.sub,
-        providerEmail: exchanged.claims.email ?? null,
-        emailVerified: exchanged.claims.emailVerified,
-        providerIsPrivateEmail: exchanged.claims.isPrivateEmail,
-        encryptedRefreshToken:
-          exchanged.encryptedRefreshToken ?? null,
-      });
-
-      this.auditService.recordSafe({
-        eventType: "auth.identity.linked",
-        entityType: "user",
-        entityId: auth.user.id,
-        actorUserId: auth.user.id,
-        metadata: { provider: PROVIDER },
-      });
-
-      return {
-        ok: true,
-        message: "Apple quedó vinculado correctamente.",
-      };
-    } catch (error) {
-      if (error instanceof AppError) {
-        return {
-          ok: false,
-          code: error.code,
-          message: error.message,
-          statusCode: error.statusCode,
-        };
-      }
-      throw error;
-    }
-  }
-
-  async getLinkedAppleIdentity(userId: string) {
-    return db
-      .select()
-      .from(authIdentities)
-      .where(
-        and(
-          eq(authIdentities.userId, userId),
-          eq(authIdentities.provider, PROVIDER),
-          isNull(authIdentities.revokedAt),
-        ),
-      )
-      .limit(1)
-      .then((rows) => rows[0] ?? null);
+      await tx.insert(userAcceptances).values(
+        setup.legalDocumentsToAccept.map((document) => ({
+          userId,
+          legalDocumentId: document.id,
+          versionAccepted: document.version,
+          ipAddress: metadata?.ipAddress ?? null,
+          userAgent: metadata?.userAgent ?? null,
+          acceptedAt: now,
+        })),
+      );
+    });
   }
 }

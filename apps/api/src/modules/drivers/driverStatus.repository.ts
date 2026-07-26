@@ -1,8 +1,26 @@
-import { eq } from "drizzle-orm";
+import { eq, and, isNull, isNotNull, gte } from "drizzle-orm";
 import { db } from "../../db/client.js";
-import { driverStatuses } from "../../db/schema/index.js";
+import { driverStatuses, driverProfiles, rideRequests, users } from "../../db/schema/index.js";
 import { AppError } from "../../shared/errors/AppError.js";
 import type { DriverStatus } from "../../db/schema/index.js";
+
+export interface AvailableDriverCandidate {
+  driverUserId:       string;
+  currentLat:         number;
+  currentLng:         number;
+  locationUpdatedAt:  Date;
+  lastSeenAt:         Date;
+  currentZone:        string | null;
+}
+
+export interface BusyDriverCandidate {
+  driverUserId:       string;
+  currentLat:         number;
+  currentLng:         number;
+  locationUpdatedAt:  Date;
+  lastSeenAt:         Date;
+  currentRideId:      string;
+}
 
 export class DriverStatusRepository {
   async findByDriverId(driverUserId: string): Promise<DriverStatus | null> {
@@ -55,14 +73,53 @@ export class DriverStatusRepository {
     }
   }
 
-  async setAvailable(driverUserId: string): Promise<void> {
+
+  async setQueuedRide(driverUserId: string, rideId: string): Promise<void> {
+    try {
+      const now = new Date();
+      await db
+        .insert(driverStatuses)
+        .values({
+          driverUserId,
+          availability: "busy",
+          queuedRideId: rideId,
+          lastSeenAt: now,
+        })
+        .onConflictDoUpdate({
+          target: driverStatuses.driverUserId,
+          set: {
+            queuedRideId: rideId,
+            updatedAt: now,
+          },
+        });
+    } catch (err) {
+      throw AppError.internal(`Failed to set queued ride: ${String(err)}`);
+    }
+  }
+
+  async updateLocation(driverUserId: string, lat: number, lng: number): Promise<void> {
     try {
       await db
         .insert(driverStatuses)
-        .values({ driverUserId, availability: "available", currentRideId: null, lastSeenAt: new Date() })
+        .values({ driverUserId, availability: "unavailable", currentLat: lat, currentLng: lng, locationUpdatedAt: new Date() })
         .onConflictDoUpdate({
           target: driverStatuses.driverUserId,
-          set: { availability: "available", currentRideId: null, updatedAt: new Date() },
+          set: { currentLat: lat, currentLng: lng, locationUpdatedAt: new Date(), updatedAt: new Date() },
+        });
+    } catch (err) {
+      throw AppError.internal(`Failed to update driver location: ${String(err)}`);
+    }
+  }
+
+  async setAvailable(driverUserId: string): Promise<void> {
+    try {
+      const now = new Date();
+      await db
+        .insert(driverStatuses)
+        .values({ driverUserId, availability: "available", currentRideId: null, lastSeenAt: now })
+        .onConflictDoUpdate({
+          target: driverStatuses.driverUserId,
+          set: { availability: "available", currentRideId: null, lastSeenAt: now, updatedAt: now },
         });
     } catch (err) {
       throw AppError.internal(`Failed to set driver available: ${String(err)}`);

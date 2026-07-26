@@ -9,7 +9,7 @@ export type AccountDeletionRequestStatus =
   | "processing"
   | "completed"
   | "deferred"
-  | "rejected"
+  | "identity_not_verified"
   | "failed"
   | "cancelled";
 
@@ -34,11 +34,12 @@ export interface AccountDeletionRequestData {
   trackingCode: string;
   requestChannel: AccountDeletionRequestChannel;
   requesterRole: string;
-  reason: string;
+  reason: string | null;
   comment: string | null;
   status: AccountDeletionRequestStatus;
   adminNote: string | null;
   requestedAt: string;
+  verifiedAt: string;
   deadlineAt: string;
   deferredUntil: string | null;
   decisionReasonCode: string | null;
@@ -48,6 +49,15 @@ export interface AccountDeletionRequestData {
   completedAt: string | null;
   failedAt: string | null;
   failureReason: string | null;
+  appleRevocationStatus:
+    | "not_applicable"
+    | "pending"
+    | "revoked"
+    | "already_invalid"
+    | "failed";
+  appleRevocationAttemptedAt: string | null;
+  appleRevokedAt: string | null;
+  appleRevocationError: string | null;
 }
 
 export interface AccountDeletionDocumentData {
@@ -159,25 +169,10 @@ export const accountDeletionService = {
     );
   },
 
-  async requestVerificationCode(
-    accessToken: string,
-  ): Promise<{ message: string; expiresMinutes: number }> {
-    const result = await apiClient.post<
-      Envelope<{ message: string; expiresMinutes: number }>
-    >(
-      "/account-deletion/reauth/code",
-      {},
-      { token: accessToken },
-    );
-
-    return unwrap(result, "No se pudo enviar el código de verificación.");
-  },
-
   async create(
     accessToken: string,
     payload: {
-      verificationCode: string;
-      reason: string;
+      reason?: string;
       comment?: string;
       requesterSnapshot?: AccountDeletionClientSnapshot;
     },

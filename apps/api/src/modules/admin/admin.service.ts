@@ -7,6 +7,7 @@ import { DriverStatusRepository } from "../drivers/driverStatus.repository.js";
 import { DriverComplianceService } from "../drivers/driverCompliance.service.js";
 import { OfflineRepository } from "../offline/offline.repository.js";
 import { RidesRepository } from "../rides/rides.repository.js";
+import { RideAssignmentOffersRepository } from "../rides/rideAssignmentOffers.repository.js";
 import { AppError } from "../../shared/errors/AppError.js";
 import type { ListUsersQuery, UpdateUserStatusInput, ListDocumentsQuery, ReviewDocumentInput, AdminListRidesQuery, AdminAssignDriverInput, AdminCancelRideInput, AdminSyncToRideInput } from "./admin.schemas.js";
 import type { AdminUsersListResult, AdminUserResult, AdminUserResponse, AdminDocumentResponse, AdminDocumentsListResult, AdminDocumentResult, AdminRidesListResult, AdminRideResult, AdminRideResponse, ActiveDriversListResult, ActiveDriverResponse } from "./admin.types.js";
@@ -22,6 +23,25 @@ const driverStatusRepo = new DriverStatusRepository();
 const driverComplianceService = new DriverComplianceService();
 const offlineRepo      = new OfflineRepository();
 const ridesRepo        = new RidesRepository();
+const offersRepo       = new RideAssignmentOffersRepository();
+
+const RESIDENCE_DOCUMENT_TYPES = new Set([
+  "rapa_nui_residence",
+  "residence_document",
+  "rapanui_residence",
+  "resident_certificate",
+  "rapa_nui_resident_certificate",
+  "residente_rapa_nui_document",
+]);
+
+function isResidenceDocumentType(value: string): boolean {
+  const normalized = value.trim().toLowerCase();
+  return (
+    RESIDENCE_DOCUMENT_TYPES.has(normalized) ||
+    normalized.includes("residen") ||
+    normalized.includes("rapa")
+  );
+}
 
 function toRideResponse(r: AdminRideRow): AdminRideResponse {
   return {
@@ -47,6 +67,11 @@ function toRideResponse(r: AdminRideRow): AdminRideResponse {
     cancellationReason: r.cancellationReason ?? null,
     cancelledByRole:    r.cancelledByRole ?? null,
     createdAt:          r.createdAt.toISOString(),
+    rideType:           r.rideType ?? "immediate",
+    scheduledPickupAt:  r.scheduledPickupAt?.toISOString() ?? null,
+    priorityFeeClp:         r.priorityFeeClp ?? null,
+    flightNumber:           r.flightNumber ?? null,
+    preferredDriverGender:  (r.preferredDriverGender as "female" | null | undefined) ?? null,
   };
 }
 
@@ -211,15 +236,57 @@ export class AdminService {
       return { ok: false, code: "NOT_FOUND", message: "Document not found.", statusCode: 404 };
     }
 
-    const rejectionReason = input.status === "approved" ? null : (input.rejectionReason ?? null);
-    const updated = await adminRepo.reviewDocument(documentId, input.status, rejectionReason);
+    const rejectionReason =
+      input.status === "approved" ? null : (input.rejectionReason ?? null);
+    const isResidenceDocument = isResidenceDocumentType(existing.documentType);
+
+    if (
+      isResidenceDocument &&
+      input.status === "rejected" &&
+      !input.reclassifiedFareType
+    ) {
+      return {
+        ok: false,
+        code: "ADMIN_RESIDENCE_RECLASSIFICATION_REQUIRED",
+        message:
+          "Debes elegir Turista chileno o Turista extranjero al rechazar la acreditación.",
+        statusCode: 400,
+      };
+    }
+
+    const updated = isResidenceDocument
+      ? await adminRepo.reviewResidenceDocument({
+          documentId,
+          adminUserId: auth.userId,
+          status: input.status,
+          rejectionReason,
+          ...(input.reclassifiedFareType
+            ? { reclassifiedFareType: input.reclassifiedFareType }
+            : {}),
+        })
+      : await adminRepo.reviewDocument(
+          documentId,
+          input.status,
+          rejectionReason,
+        );
+
     if (!updated) {
       return { ok: false, code: "NOT_FOUND", message: "Document not found.", statusCode: 404 };
     }
 
     auditService.recordSafe({
       eventType: "admin.document_reviewed",
-      metadata:  { adminUserId: auth.userId, documentId, previousStatus: existing.status, newStatus: input.status },
+      metadata: {
+        adminUserId: auth.userId,
+        documentId,
+        previousStatus: existing.status,
+        newStatus: input.status,
+        fareType: isResidenceDocument
+          ? input.status === "approved"
+            ? "resident"
+            : (input.reclassifiedFareType ?? null)
+          : null,
+      },
     });
 
     return { ok: true, document: toDocResponse(updated) };
@@ -314,7 +381,10 @@ export class AdminService {
       };
     }
 
-    await driverStatusRepo.setBusy(input.driverUserId, rideId);
+    // Scheduled rides keep driver available until they press "Voy en camino"
+    if (existing.rideType !== "scheduled") {
+      await driverStatusRepo.setBusy(input.driverUserId, rideId);
+    }
 
     auditService.recordSafe({
       eventType: "admin.ride_driver_assigned",

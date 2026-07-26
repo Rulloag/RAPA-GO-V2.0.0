@@ -31,6 +31,7 @@ export class DriverProfileRepository {
       if (input.licenseNumber !== undefined)   setValues.licenseNumber   = input.licenseNumber;
       if (input.licenseExpiry !== undefined)   setValues.licenseExpiry   = input.licenseExpiry;
       if (input.profilePhotoUrl !== undefined) setValues.profilePhotoUrl = input.profilePhotoUrl;
+      if (input.vehiclePhotoUrl !== undefined) setValues.vehiclePhotoUrl = input.vehiclePhotoUrl;
       if (input.bio !== undefined)             setValues.bio             = input.bio;
       if (input.languages !== undefined)       setValues.languages       = input.languages;
 

@@ -131,7 +131,12 @@ export function DriverLocationRuntime(): JSX.Element | null {
 
   const refreshPermissions = useCallback(async () => {
     try {
-      setPermissions(await locationPermissionService.check());
+      const next = await locationPermissionService.check();
+      setPermissions(next);
+
+      if (foregroundGranted(next)) {
+        setMessage(null);
+      }
     } catch {
       setPermissions(null);
     }
@@ -142,6 +147,20 @@ export function DriverLocationRuntime(): JSX.Element | null {
     void refreshPermissions();
 
     let disposed = false;
+    const refreshWhenVisible = () => {
+      if (!disposed && document.visibilityState !== "hidden") {
+        void refreshPermissions();
+      }
+    };
+
+    const refreshOnPageShow = () => {
+      if (!disposed) void refreshPermissions();
+    };
+
+    window.addEventListener("focus", refreshWhenVisible);
+    window.addEventListener("pageshow", refreshOnPageShow);
+    document.addEventListener("visibilitychange", refreshWhenVisible);
+
     void App.addListener("appStateChange", ({ isActive }) => {
       if (isActive && !disposed) void refreshPermissions();
     }).then((listener) => {
@@ -151,6 +170,9 @@ export function DriverLocationRuntime(): JSX.Element | null {
 
     return () => {
       disposed = true;
+      window.removeEventListener("focus", refreshWhenVisible);
+      window.removeEventListener("pageshow", refreshOnPageShow);
+      document.removeEventListener("visibilitychange", refreshWhenVisible);
       permissionAppListenerRef.current?.remove();
       permissionAppListenerRef.current = null;
     };
@@ -225,7 +247,14 @@ export function DriverLocationRuntime(): JSX.Element | null {
             // El servicio nativo reintentará cuando la app esté en segundo plano.
           });
         },
-        (errorMessage) => setMessage(errorMessage),
+        (errorMessage) => {
+          setMessage(errorMessage);
+
+          if (/permission|denied|not allowed|autoriz/i.test(errorMessage)) {
+            locationPermissionService.clearRememberedWebGrant();
+            void refreshPermissions();
+          }
+        },
       )
       .then((stop) => {
         if (cancelled) {
@@ -246,7 +275,7 @@ export function DriverLocationRuntime(): JSX.Element | null {
         stopWatchRef.current = null;
       }
     };
-  }, [accessToken, activeRide?.id, isDriver, permissions?.foreground, permissions?.coarse, session?.user]);
+  }, [accessToken, activeRide?.id, isDriver, permissions?.foreground, permissions?.coarse, refreshPermissions, session?.user]);
 
   useEffect(() => {
     if (!isDriver || !accessToken || !activeRide) {
@@ -285,7 +314,10 @@ export function DriverLocationRuntime(): JSX.Element | null {
     };
   }, []);
 
-  const needsForeground = isDriver && !foregroundGranted(permissions);
+  const needsForeground =
+    isDriver &&
+    permissions !== null &&
+    !foregroundGranted(permissions);
   const needsBackground =
     isDriver &&
     Boolean(activeRide) &&
@@ -304,7 +336,12 @@ export function DriverLocationRuntime(): JSX.Element | null {
     setBusy(true);
     setMessage(null);
     try {
-      setPermissions(await locationPermissionService.requestForeground());
+      const next = await locationPermissionService.requestForeground();
+      setPermissions(next);
+
+      if (foregroundGranted(next)) {
+        setMessage(null);
+      }
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "No se pudo solicitar el permiso.");
     } finally {

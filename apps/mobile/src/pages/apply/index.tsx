@@ -27,7 +27,7 @@
   import { useEffect, useState, type CSSProperties, type Dispatch, type SetStateAction } from "react";
   import { useHistory } from "react-router-dom";
   import { useAuth } from "../../features/auth/index.js";
-  import { applicationsService, type ApplicationData } from "../../features/applications/applications.service.js";
+  import { applicationsService, type ApplicationData, type UploadApplicationFilePayload } from "../../features/applications/applications.service.js";
 
   const SPECIALTIES = ["Arqueología", "Botánica", "Astronomía", "Historia", "Cultura Rapa Nui", "Senderismo"];
   const OFFERED_TOURS = ["Ahu Tongariki", "Rano Raraku", "Anakena", "Orongo", "Tahai", "Custom"];
@@ -540,6 +540,41 @@ function isRutValid(value: string): boolean {
     return file?.dataUrl ?? file?.url ?? file?.previewUrl ?? null;
   }
 
+
+  function applicationFileMimeType(
+    file: ApplicationFilePayload | null | undefined,
+  ): UploadApplicationFilePayload["mimeType"] {
+    const dataUrl = applicationFileUrl(file);
+    const match = /^data:([^;]+);base64,/.exec(dataUrl ?? "");
+    const mimeType = match?.[1] ?? file?.fileType ?? "image/jpeg";
+
+    if (
+      mimeType === "image/png" ||
+      mimeType === "image/webp" ||
+      mimeType === "application/pdf"
+    ) {
+      return mimeType;
+    }
+
+    return "image/jpeg";
+  }
+
+  function applicationFileUploadPayload(
+    kind: UploadApplicationFilePayload["kind"],
+    file: ApplicationFilePayload | null | undefined,
+    fallbackName: string,
+  ): UploadApplicationFilePayload | null {
+    const dataUrl = applicationFileUrl(file);
+    if (!dataUrl) return null;
+
+    return {
+      kind,
+      fileName: file?.fileName?.trim() || fallbackName,
+      mimeType: applicationFileMimeType(file),
+      dataUrl,
+    };
+  }
+
   function safeRemoveApplicationStorageItem(key: string): void {
     try {
       localStorage.removeItem(key);
@@ -986,13 +1021,167 @@ function isRutValid(value: string): boolean {
   }
 
   function buildApiSafeApplicationInput(input: Record<string, unknown>): Record<string, unknown> {
-    const safe = removeNullishForApi(stripHeavyApplicationPayload(input)) as Record<string, unknown>;
+    const source = input as Record<string, unknown>;
+    const vehicle =
+      source.vehicle && typeof source.vehicle === "object"
+        ? (source.vehicle as Record<string, unknown>)
+        : {};
+    const vehicles = Array.isArray(source.vehicles)
+      ? source.vehicles
+      : [];
+    const primaryVehicle =
+      vehicles[0] && typeof vehicles[0] === "object"
+        ? (vehicles[0] as Record<string, unknown>)
+        : vehicle;
 
-    // La API queda liviana: recibe datos y metadatos. Las fotos reales quedan
-    // guardadas localmente para Admin Applications.
-    safe.localDocumentsSaved = true;
-    safe.localDocumentsNotice =
-      "Documentos e imágenes guardados localmente para el panel Admin. API recibe solo metadatos para evitar corte por payload pesado.";
+    const readString = (...values: unknown[]): string | undefined => {
+      for (const value of values) {
+        if (typeof value !== "string") continue;
+        const clean = value.trim();
+        if (clean) return clean;
+      }
+
+      return undefined;
+    };
+
+    const readBoolean = (...values: unknown[]): boolean | undefined => {
+      for (const value of values) {
+        if (typeof value === "boolean") return value;
+      }
+
+      return undefined;
+    };
+
+    const readInteger = (...values: unknown[]): number | undefined => {
+      for (const value of values) {
+        if (typeof value === "number" && Number.isInteger(value)) {
+          return value;
+        }
+
+        if (typeof value === "string" && value.trim()) {
+          const parsed = Number(value);
+          if (Number.isInteger(parsed)) return parsed;
+        }
+      }
+
+      return undefined;
+    };
+
+    const readPublicHttpUrl = (...values: unknown[]): string | undefined => {
+      for (const value of values) {
+        if (typeof value !== "string") continue;
+
+        const clean = value.trim();
+        if (!clean) continue;
+
+        try {
+          const url = new URL(clean);
+          if (url.protocol === "https:" || url.protocol === "http:") {
+            return url.toString();
+          }
+        } catch {
+          // Los data URL se suben después, uno por uno.
+        }
+      }
+
+      return undefined;
+    };
+
+    const safeVehicles = vehicles
+      .filter((entry): entry is Record<string, unknown> =>
+        Boolean(entry && typeof entry === "object"),
+      )
+      .slice(0, 8)
+      .map((entry, index) => ({
+        id: readString(entry.id) ?? `vehicle-${index + 1}`,
+        order: readInteger(entry.order) ?? index + 1,
+        primary: readBoolean(entry.primary) ?? index === 0,
+        ownership:
+          readString(entry.ownership) === "optional"
+            ? "optional"
+            : "own",
+        brand: readString(entry.brand) ?? "",
+        model: readString(entry.model) ?? "",
+        year: readString(entry.year) ?? readInteger(entry.year) ?? "",
+        plate: readString(entry.plate) ?? "",
+        color: readString(entry.color) ?? "",
+        label: readString(entry.label) ?? "",
+        expiresAt: readString(entry.expiresAt) ?? null,
+        photoFileName: readString(
+          entry.photoFileName,
+          entry.imageName,
+        ) ?? null,
+      }));
+
+    const safe: Record<string, unknown> = {
+      type: "driver",
+      firstName: readString(source.firstName) ?? "",
+      lastName: readString(source.lastName) ?? "",
+      email: readString(source.email)?.toLowerCase() ?? "",
+      phone: readString(source.phone) ?? "",
+      vehicles: safeVehicles,
+    };
+
+    const optionalFields: Record<string, unknown> = {
+      rut: readString(source.rut),
+      birthDate: readString(source.birthDate),
+      city: readString(source.city),
+      emergencyContactName: readString(source.emergencyContactName),
+      emergencyContactPhone: readString(source.emergencyContactPhone),
+      vehicleBrand: readString(
+        source.vehicleBrand,
+        primaryVehicle.brand,
+        vehicle.brand,
+      ),
+      vehicleModel: readString(
+        source.vehicleModel,
+        primaryVehicle.model,
+        vehicle.model,
+      ),
+      vehicleYear: readInteger(
+        source.vehicleYear,
+        primaryVehicle.year,
+        vehicle.year,
+      ),
+      vehiclePlate: readString(
+        source.vehiclePlate,
+        primaryVehicle.plate,
+        vehicle.plate,
+      ),
+      vehicleColor: readString(
+        source.vehicleColor,
+        primaryVehicle.color,
+        vehicle.color,
+      ),
+      licenseNumber: readString(source.licenseNumber),
+      licenseExpiry: readString(source.licenseExpiry),
+      hasOwnVehicle: readBoolean(
+        source.hasOwnVehicle,
+        vehicle.hasOwnVehicle,
+      ),
+      idFrontUrl: readPublicHttpUrl(source.idFrontUrl),
+      idBackUrl: readPublicHttpUrl(source.idBackUrl),
+      profilePhotoUrl: readPublicHttpUrl(source.profilePhotoUrl),
+      licenseFrontUrl: readPublicHttpUrl(source.licenseFrontUrl),
+      licenseBackUrl: readPublicHttpUrl(source.licenseBackUrl),
+      vehiclePhotoUrl: readPublicHttpUrl(source.vehiclePhotoUrl),
+    };
+
+    for (const [key, value] of Object.entries(optionalFields)) {
+      if (value !== undefined) {
+        safe[key] = value;
+      }
+    }
+
+    const payloadBytes = new TextEncoder().encode(
+      JSON.stringify(safe),
+    ).byteLength;
+
+    if (payloadBytes > 50_000) {
+      throw new Error(
+        "La postulación contiene demasiados metadatos. Vuelve a cargar la página e inténtalo nuevamente.",
+      );
+    }
 
     return safe;
   }
@@ -1593,20 +1782,88 @@ function isRutValid(value: string): boolean {
 
         persistSubmittedDriverApplicationForAdmin(input, session?.user);
 
-        try {
-          const apiInput = buildApiSafeApplicationInput(input);
-          const result = await applicationsService.createApplication(apiInput, session?.accessToken);
-          setSuccessMessage(result.message || "Tu solicitud fue enviada correctamente. Cuando el admin la apruebe, tu perfil de conductor quedará listo con estos datos.");
-        } catch (apiError) {
-          if (!isRecoverableApplicationApiError(apiError)) {
-            throw apiError;
-          }
-
-          setSuccessMessage(
-            "Tu solicitud quedó guardada para revisión del admin. La API rechazó algunos metadatos, pero el panel Admin tomará los documentos desde Inscripción.",
+        if (!session?.accessToken) {
+          throw new Error(
+            "Tu sesión no está disponible. Vuelve a iniciar sesión antes de enviar la postulación.",
           );
         }
 
+        const apiInput = buildApiSafeApplicationInput(input);
+        const result = await applicationsService.createApplication(
+          apiInput,
+          session.accessToken,
+        );
+
+        const vehiclePhotoDoc: ApplicationFilePayload = {
+          provided: Boolean(primaryVehiclePhotoUrl),
+          fileName:
+            vehiclePayloads[0]?.photoFileName ??
+            vehiclePayloads[0]?.imageName ??
+            "vehiculo-principal.jpg",
+          fileType:
+            vehiclePayloads[0]?.photoFileType ??
+            "image/jpeg",
+          fileSize:
+            vehiclePayloads[0]?.photoFileSize,
+          dataUrl: primaryVehiclePhotoUrl,
+          url: primaryVehiclePhotoUrl,
+          previewUrl: primaryVehiclePhotoUrl,
+          uploadedAt: primaryVehiclePhotoUrl ? nowIso : null,
+        };
+
+        const uploads = [
+          applicationFileUploadPayload(
+            "id_front",
+            identityFrontDoc,
+            "cedula-frente.jpg",
+          ),
+          applicationFileUploadPayload(
+            "id_back",
+            identityBackDoc,
+            "cedula-reverso.jpg",
+          ),
+          applicationFileUploadPayload(
+            "license_front",
+            licenseFrontDoc,
+            "licencia-frente.jpg",
+          ),
+          applicationFileUploadPayload(
+            "license_back",
+            licenseBackDoc,
+            "licencia-reverso.jpg",
+          ),
+          applicationFileUploadPayload(
+            "profile_photo",
+            profilePhotoDoc,
+            "foto-perfil.jpg",
+          ),
+          applicationFileUploadPayload(
+            "vehicle_photo",
+            vehiclePhotoDoc,
+            "vehiculo-principal.jpg",
+          ),
+        ].filter(
+          (upload): upload is UploadApplicationFilePayload =>
+            upload != null,
+        );
+
+        if (uploads.length !== 6) {
+          throw new Error(
+            "No se pudieron preparar los seis archivos obligatorios de la postulación.",
+          );
+        }
+
+        for (const upload of uploads) {
+          await applicationsService.uploadApplicationFile(
+            session.accessToken,
+            result.id,
+            upload,
+          );
+        }
+
+        setSuccessMessage(
+          "Tu solicitud, fotografías, documentos y vehículo fueron guardados. Cuando el administrador apruebe, aparecerán automáticamente en tu perfil de conductor.",
+        );
         setShowSuccess(true);
       } catch (err) {
         setError(err instanceof Error ? err.message : "Error inesperado al enviar la postulación.");

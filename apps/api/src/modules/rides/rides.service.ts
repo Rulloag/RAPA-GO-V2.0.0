@@ -1,10 +1,15 @@
 import { TokenService } from "../auth/token.service.js";
 import { SessionService } from "../auth/session.service.js";
 import { UsersRepository } from "../users/users.repository.js";
-import { RidesRepository, type RideWithDriverName } from "./rides.repository.js";
+import { RidesRepository } from "./rides.repository.js";
+import type { RideWithDriverName } from "./rides.repository.js";
+import { RideStopsRepository } from "./rideStops.repository.js";
+import { RideAssignmentOffersRepository } from "./rideAssignmentOffers.repository.js";
+import { DriverStatusRepository } from "../drivers/driverStatus.repository.js";
+import { FareSettingsRepository } from "../fareSettings/fareSettings.repository.js";
+import { WalletRepository } from "../wallet/wallet.repository.js";
 import { AppError } from "../../shared/errors/AppError.js";
 import { DriverComplianceService } from "../drivers/driverCompliance.service.js";
-import { DriverStatusRepository } from "../drivers/driverStatus.repository.js";
 import type {
   RideRequestResponse,
   RidesListResult,
@@ -623,6 +628,13 @@ function toResponse(
     destinationText: r.destinationText,
     notes: r.notes,
     estimatedFareClp: r.estimatedFareClp ?? null,
+    originLat: r.originLat ?? null,
+    originLng: r.originLng ?? null,
+    destinationLat: r.destinationLat ?? null,
+    destinationLng: r.destinationLng ?? null,
+    distanceMeters: r.distanceMeters ?? null,
+    durationSeconds: r.durationSeconds ?? null,
+    fareCalculationSource: r.fareCalculationSource,
     status: r.status,
     requestedAt: r.requestedAt.toISOString(),
     acceptedAt: r.acceptedAt?.toISOString() ?? null,
@@ -652,6 +664,12 @@ function toResponse(
     discountApplied: discountInfo != null,
     discountPercent: discountInfo?.discountPercent ?? null,
     originalFareClp: discountInfo?.originalFare ?? null,
+    rideType: r.rideType ?? "immediate",
+    scheduledPickupAt: r.scheduledPickupAt?.toISOString() ?? null,
+    priorityFeeClp: r.priorityFeeClp ?? null,
+    flightNumber: r.flightNumber ?? null,
+    preferredDriverGender:
+      (r.preferredDriverGender as "female" | null | undefined) ?? null,
     paymentMethod:
       r.paymentMethod === "cash" || r.paymentMethod === "card"
         ? r.paymentMethod
@@ -712,6 +730,13 @@ function toDriverRideResponse(r: RideRequest): DriverRideResponse {
     destinationText: r.destinationText,
     notes: r.notes,
     estimatedFareClp: r.estimatedFareClp ?? null,
+    originLat: r.originLat ?? null,
+    originLng: r.originLng ?? null,
+    destinationLat: r.destinationLat ?? null,
+    destinationLng: r.destinationLng ?? null,
+    distanceMeters: r.distanceMeters ?? null,
+    durationSeconds: r.durationSeconds ?? null,
+    fareCalculationSource: r.fareCalculationSource,
     status: r.status,
     requestedAt: r.requestedAt.toISOString(),
     acceptedAt: r.acceptedAt?.toISOString() ?? null,
@@ -723,6 +748,10 @@ function toDriverRideResponse(r: RideRequest): DriverRideResponse {
     cancellationReason: r.cancellationReason ?? null,
     cancelledByRole: r.cancelledByRole ?? null,
     createdAt: r.createdAt.toISOString(),
+    rideType: r.rideType ?? "immediate",
+    scheduledPickupAt: r.scheduledPickupAt?.toISOString() ?? null,
+    priorityFeeClp: r.priorityFeeClp ?? null,
+    flightNumber: r.flightNumber ?? null,
   };
 }
 
@@ -733,6 +762,9 @@ function toAvailableResponse(r: RideRequest): AvailableRideResponse {
     destinationText: r.destinationText,
     notes: r.notes,
     estimatedFareClp: r.estimatedFareClp ?? null,
+    distanceMeters: r.distanceMeters ?? null,
+    durationSeconds: r.durationSeconds ?? null,
+    fareCalculationSource: r.fareCalculationSource,
     status: r.status,
     requestedAt: r.requestedAt.toISOString(),
     createdAt: r.createdAt.toISOString(),
@@ -1508,7 +1540,7 @@ export class RidesService {
         return {
           ok: false,
           code: "RIDE_CANNOT_START",
-          message: "Driver must mark arrival before starting the ride.",
+          message: `Ride cannot be started — current status is '${existing.status}'.`,
           statusCode: 409,
         };
       }

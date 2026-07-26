@@ -1,44 +1,29 @@
-import { SignJWT, importPKCS8 } from "jose";
 import { AppError } from "../../shared/errors/AppError.js";
-import {
-  APPLE_ISSUER,
-  APPLE_REVOKE_URL,
-  APPLE_TOKEN_URL,
-  getAppleAuthConfig,
-} from "./appleAuth.config.js";
+import { APPLE_TOKEN_URL } from "./appleAuth.config.js";
+import { buildAppleClientSecret } from "./appleClientSecret.js";
+import type { FetchLike } from "./appleIdentityToken.verifier.js";
 
 export interface AppleTokenExchangeResult {
   accessToken: string;
-  refreshToken?: string;
+  refreshToken: string | undefined;
   idToken: string;
   expiresIn: number;
 }
 
-const CLIENT_SECRET_TTL_SECONDS = 5 * 60;
-type FetchLike = typeof fetch;
-
+/**
+ * Exchanges an authorization code for Apple's access/refresh/id tokens.
+ * The generated client secret and all returned provider tokens are never
+ * logged by this client.
+ */
 export class AppleTokenExchangeClient {
   constructor(private readonly fetchImpl: FetchLike = fetch) {}
-
-  private async buildClientSecret(clientId: string): Promise<string> {
-    const config = getAppleAuthConfig();
-    const privateKey = await importPKCS8(config.privateKey, "ES256");
-
-    return new SignJWT({})
-      .setProtectedHeader({ alg: "ES256", kid: config.keyId })
-      .setIssuer(config.teamId)
-      .setAudience(APPLE_ISSUER)
-      .setSubject(clientId)
-      .setIssuedAt()
-      .setExpirationTime(`${CLIENT_SECRET_TTL_SECONDS}s`)
-      .sign(privateKey);
-  }
 
   async exchange(
     authorizationCode: string,
     clientId: string,
   ): Promise<AppleTokenExchangeResult> {
-    const clientSecret = await this.buildClientSecret(clientId);
+    const clientSecret = await buildAppleClientSecret(clientId);
+
     const body = new URLSearchParams({
       grant_type: "authorization_code",
       code: authorizationCode,
@@ -50,13 +35,15 @@ export class AppleTokenExchangeClient {
     try {
       response = await this.fetchImpl(APPLE_TOKEN_URL, {
         method: "POST",
-        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        headers: {
+          "Content-Type": "application/x-www-form-urlencoded",
+        },
         body: body.toString(),
       });
     } catch {
       throw new AppError({
         code: "AUTH_APPLE_TOKEN_EXCHANGE_FAILED",
-        message: "No fue posible contactar el servicio de Apple.",
+        message: "Could not reach Apple's token endpoint.",
         statusCode: 503,
       });
     }
@@ -64,55 +51,42 @@ export class AppleTokenExchangeClient {
     if (!response.ok) {
       throw new AppError({
         code: "AUTH_APPLE_TOKEN_EXCHANGE_FAILED",
-        message: "Apple rechazó el código de autorización.",
+        message: "Apple rejected the authorization code.",
         statusCode: 401,
       });
     }
 
-    const data = (await response.json()) as {
+    let data: unknown;
+    try {
+      data = await response.json();
+    } catch {
+      throw new AppError({
+        code: "AUTH_APPLE_TOKEN_EXCHANGE_FAILED",
+        message: "Apple's token endpoint returned an invalid response.",
+        statusCode: 503,
+      });
+    }
+
+    const parsed = data as {
       access_token?: string;
       refresh_token?: string;
       id_token?: string;
       expires_in?: number;
     };
 
-    if (!data.access_token || !data.id_token) {
+    if (!parsed.access_token || !parsed.id_token) {
       throw new AppError({
         code: "AUTH_APPLE_TOKEN_EXCHANGE_FAILED",
-        message: "Apple entregó una respuesta incompleta.",
+        message: "Apple's token endpoint response is missing required fields.",
         statusCode: 503,
       });
     }
 
     return {
-      accessToken: data.access_token,
-      ...(data.refresh_token ? { refreshToken: data.refresh_token } : {}),
-      idToken: data.id_token,
-      expiresIn: data.expires_in ?? 0,
+      accessToken: parsed.access_token,
+      refreshToken: parsed.refresh_token,
+      idToken: parsed.id_token,
+      expiresIn: parsed.expires_in ?? 0,
     };
-  }
-
-  async revoke(refreshToken: string, clientId: string): Promise<void> {
-    const clientSecret = await this.buildClientSecret(clientId);
-    const body = new URLSearchParams({
-      token: refreshToken,
-      token_type_hint: "refresh_token",
-      client_id: clientId,
-      client_secret: clientSecret,
-    });
-
-    const response = await this.fetchImpl(APPLE_REVOKE_URL, {
-      method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      body: body.toString(),
-    });
-
-    if (!response.ok) {
-      throw new AppError({
-        code: "AUTH_APPLE_REVOCATION_FAILED",
-        message: "Apple no confirmó la revocación del acceso.",
-        statusCode: 502,
-      });
-    }
   }
 }

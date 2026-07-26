@@ -61,7 +61,7 @@ export const cashOverpaymentRefundRequests = pgTable(
     bankAccountNumberLast4: varchar("bank_account_number_last4", {
       length: 4,
     }).notNull(),
-    bankAccountNumberEncrypted: text("bank_account_number_encrypted").notNull(),
+    bankAccountNumberEncrypted: text("bank_account_number_encrypted"),
 
     transferReference: varchar("transfer_reference", { length: 180 }),
     transferProofUrl: text("transfer_proof_url"),
@@ -72,6 +72,9 @@ export const cashOverpaymentRefundRequests = pgTable(
     ),
     reviewedAt: timestamp("reviewed_at", { withTimezone: true }),
     completedAt: timestamp("completed_at", { withTimezone: true }),
+    sensitiveDataPurgedAt: timestamp("sensitive_data_purged_at", {
+      withTimezone: true,
+    }),
 
     requestedAt: timestamp("requested_at", { withTimezone: true })
       .notNull()

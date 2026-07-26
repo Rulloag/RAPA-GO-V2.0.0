@@ -15,6 +15,9 @@ const {
   mockDefer,
   mockNotifyUserOfDeferral,
   mockApproveAndAnonymize,
+  mockRecordAppleRevocationResult,
+  mockMarkAppleRevocationFailure,
+  mockRevokeAppleForUser,
   mockHasRecentPublicVerification,
   mockCreatePublicVerification,
   mockRevokePublicVerification,
@@ -25,6 +28,7 @@ const {
   mockRecordSafe,
   mockSendReceived,
   mockSendDeferred,
+  mockSendIdentityNotVerified,
   mockSendCompleted,
   mockSendVerificationCode,
 } = vi.hoisted(() => ({
@@ -42,6 +46,9 @@ const {
   mockDefer: vi.fn(),
   mockNotifyUserOfDeferral: vi.fn(),
   mockApproveAndAnonymize: vi.fn(),
+  mockRecordAppleRevocationResult: vi.fn(),
+  mockMarkAppleRevocationFailure: vi.fn(),
+  mockRevokeAppleForUser: vi.fn(),
   mockHasRecentPublicVerification: vi.fn(),
   mockCreatePublicVerification: vi.fn(),
   mockRevokePublicVerification: vi.fn(),
@@ -52,6 +59,7 @@ const {
   mockRecordSafe: vi.fn(),
   mockSendReceived: vi.fn().mockResolvedValue(undefined),
   mockSendDeferred: vi.fn().mockResolvedValue(undefined),
+  mockSendIdentityNotVerified: vi.fn().mockResolvedValue(undefined),
   mockSendCompleted: vi.fn().mockResolvedValue(undefined),
   mockSendVerificationCode: vi.fn().mockResolvedValue(undefined),
 }));
@@ -87,6 +95,8 @@ vi.mock("../accountDeletion.repository.js", () => ({
     defer: mockDefer,
     notifyUserOfDeferral: mockNotifyUserOfDeferral,
     approveAndAnonymize: mockApproveAndAnonymize,
+    recordAppleRevocationResult: mockRecordAppleRevocationResult,
+    markAppleRevocationFailure: mockMarkAppleRevocationFailure,
     hasRecentPublicVerification: mockHasRecentPublicVerification,
     createPublicVerification: mockCreatePublicVerification,
     revokePublicVerification: mockRevokePublicVerification,
@@ -94,6 +104,12 @@ vi.mock("../accountDeletion.repository.js", () => ({
     createPublicRequest: mockCreatePublicRequest,
     attachPublicContact: mockAttachPublicContact,
     findPublicStatus: mockFindPublicStatus,
+  })),
+}));
+
+vi.mock("../../auth/appleAccountRevocation.service.js", () => ({
+  AppleAccountRevocationService: vi.fn().mockImplementation(() => ({
+    revokeForUser: mockRevokeAppleForUser,
   })),
 }));
 
@@ -107,6 +123,8 @@ vi.mock("../../auth/mail.service.js", () => ({
   MailService: vi.fn().mockImplementation(() => ({
     sendAccountDeletionRequestReceived: mockSendReceived,
     sendAccountDeletionDeferred: mockSendDeferred,
+    sendAccountDeletionIdentityNotVerified:
+      mockSendIdentityNotVerified,
     sendAccountDeletionCompleted: mockSendCompleted,
     sendAccountDeletionVerificationCode: mockSendVerificationCode,
   })),
@@ -156,6 +174,7 @@ const pendingRequest = {
   status: "pending" as const,
   adminNote: null,
   requestedAt: "2026-07-19T00:00:00.000Z",
+  verifiedAt: "2026-07-19T00:00:00.000Z",
   deadlineAt: "2026-08-18T00:00:00.000Z",
   deferredUntil: null,
   decisionReasonCode: null,
@@ -165,6 +184,10 @@ const pendingRequest = {
   completedAt: null,
   failedAt: null,
   failureReason: null,
+  appleRevocationStatus: "not_applicable" as const,
+  appleRevocationAttemptedAt: null,
+  appleRevokedAt: null,
+  appleRevocationError: null,
 };
 
 describe("AccountDeletionService", () => {
@@ -179,6 +202,13 @@ describe("AccountDeletionService", () => {
     mockCreatePublicVerification.mockResolvedValue(
       "55555555-5555-4555-8555-555555555555",
     );
+    mockRevokeAppleForUser.mockResolvedValue({
+      applicable: false,
+      revokedTokens: 0,
+      alreadyInvalidTokens: 0,
+    });
+    mockRecordAppleRevocationResult.mockResolvedValue(undefined);
+    mockMarkAppleRevocationFailure.mockResolvedValue(undefined);
   });
 
   it.each([
@@ -194,10 +224,7 @@ describe("AccountDeletionService", () => {
       requesterRole: user.role,
     });
 
-    mockVerifyAndConsumePublicCode.mockResolvedValue(user.id);
-
     const result = await service.createRequest("access-token", {
-      verificationCode: "123456",
       reason: "Ya no utilizaré la aplicación.",
       requesterSnapshot: {
         sourceView: user.role as "passenger" | "driver",
@@ -205,6 +232,8 @@ describe("AccountDeletionService", () => {
     });
 
     expect(result.ok).toBe(true);
+    expect(mockVerifyAndConsumePublicCode).not.toHaveBeenCalled();
+    expect(mockSendVerificationCode).not.toHaveBeenCalled();
     expect(mockCreate).toHaveBeenCalledWith(
       user.id,
       user.role,
@@ -221,7 +250,6 @@ describe("AccountDeletionService", () => {
     mockFindPendingByUserId.mockResolvedValue(pendingRequest);
 
     const result = await service.createRequest("access-token", {
-      verificationCode: "123456",
       reason: "Quiero cerrar definitivamente mi cuenta.",
     });
 
@@ -401,6 +429,11 @@ describe("AccountDeletionService", () => {
     });
 
     expect(result.ok).toBe(true);
+    expect(mockRevokeAppleForUser).toHaveBeenCalledWith(PASSENGER_ID);
+    expect(mockRecordAppleRevocationResult).toHaveBeenCalledWith(
+      REQUEST_ID,
+      expect.objectContaining({ applicable: false }),
+    );
     expect(mockApproveAndAnonymize).toHaveBeenCalledWith(
       REQUEST_ID,
       ADMIN_ID,
@@ -492,10 +525,15 @@ describe("AccountDeletionService", () => {
       trackingCode: pendingRequest.trackingCode,
       status: "pending",
       requestedAt: pendingRequest.requestedAt,
+      verifiedAt: pendingRequest.verifiedAt,
+      deadlineAt: pendingRequest.deadlineAt,
+      deferredUntil: null,
+      decisionReasonCode: null,
       reviewedAt: null,
       completedAt: null,
       adminNote: null,
       failureReason: null,
+      retentionSummary: null,
     });
 
     const result = await service.getPublicStatus({
@@ -505,6 +543,86 @@ describe("AccountDeletionService", () => {
 
     expect(result.ok).toBe(true);
     expect(mockFindPublicStatus).toHaveBeenCalledOnce();
+  });
+
+  it("permite reintentar una solicitud fallida", async () => {
+    mockVerifyAccessToken.mockReturnValue({ sub: ADMIN_ID });
+    mockFindUserById.mockResolvedValue(admin);
+    mockFindAdminById.mockResolvedValue({
+      ...pendingRequest,
+      status: "failed",
+      requester: passenger,
+      clientSnapshot: null,
+      passengerProfile: null,
+      driverProfile: null,
+      application: null,
+      documents: [],
+      accountSummary: {
+        totalRides: 0,
+        activeRides: 0,
+        pendingPayments: 0,
+        walletBalanceClp: 0,
+        activeServiceBookings: 0,
+        activeRentalBookings: 0,
+        activeEventTickets: 0,
+        openSupportCases: 0,
+      },
+      blockers: [],
+      canApprove: true,
+    });
+    mockApproveAndAnonymize.mockResolvedValue({
+      ...pendingRequest,
+      status: "completed",
+      completedAt: "2026-07-23T12:00:00.000Z",
+    });
+
+    const result = await service.approve("admin-token", REQUEST_ID, {
+      note: "Reintento corregido.",
+    });
+
+    expect(result.ok).toBe(true);
+    expect(mockApproveAndAnonymize).toHaveBeenCalledOnce();
+  });
+
+  it("marca la solicitud como fallida cuando Apple no puede revocarse", async () => {
+    mockVerifyAccessToken.mockReturnValue({ sub: ADMIN_ID });
+    mockFindUserById.mockResolvedValue(admin);
+    mockFindAdminById.mockResolvedValue({
+      ...pendingRequest,
+      requester: passenger,
+      clientSnapshot: null,
+      passengerProfile: null,
+      driverProfile: null,
+      application: null,
+      documents: [],
+      accountSummary: {
+        totalRides: 0,
+        activeRides: 0,
+        pendingPayments: 0,
+        walletBalanceClp: 0,
+        activeServiceBookings: 0,
+        activeRentalBookings: 0,
+        activeEventTickets: 0,
+        openSupportCases: 0,
+      },
+      blockers: [],
+      canApprove: true,
+    });
+    mockRevokeAppleForUser.mockRejectedValue(
+      new Error("Apple temporalmente no disponible"),
+    );
+
+    await expect(
+      service.approve("admin-token", REQUEST_ID, {
+        note: "Revisión realizada.",
+      }),
+    ).rejects.toThrow("Apple temporalmente no disponible");
+
+    expect(mockMarkAppleRevocationFailure).toHaveBeenCalledWith(
+      REQUEST_ID,
+      expect.any(Error),
+    );
+    expect(mockApproveAndAnonymize).not.toHaveBeenCalled();
   });
 
 });

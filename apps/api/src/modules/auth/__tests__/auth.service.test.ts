@@ -72,37 +72,108 @@ vi.mock("../facebookLoginExchange.repository.js", () => ({
     consume: mockConsumeFacebookExchange,
   })),
 }));
+
+
+vi.mock("../registrationLegal.service.js", () => ({
+  validateRequiredRegistrationLegalAcceptances: vi.fn().mockResolvedValue([
+    {
+      id: "legal-terms",
+      type: "terms_and_conditions",
+      version: "2.0",
+      isActive: true,
+    },
+    {
+      id: "legal-privacy",
+      type: "privacy_policy",
+      version: "2.0",
+      isActive: true,
+    },
+    {
+      id: "legal-users",
+      type: "user_conditions",
+      version: "2.0",
+      isActive: true,
+    },
+  ]),
+}));
 vi.mock("../../../db/client.js", () => {
   const makeSelectChain = () => {
     const chain: Record<string, unknown> = {};
-    chain.from = vi.fn(() => chain);
-    chain.where = vi.fn(() => chain);
-    chain.orderBy = vi.fn(() => chain);
-    chain.limit = vi.fn(async () => mockDbSelectRows());
+    chain["from"] = vi.fn(() => chain);
+    chain["where"] = vi.fn(() => chain);
+    chain["orderBy"] = vi.fn(() => chain);
+    chain["limit"] = vi.fn(async () => mockDbSelectRows());
+    chain["then"] = (
+      resolve: (value: unknown) => unknown,
+      reject: (reason: unknown) => unknown,
+    ) => Promise.resolve(mockDbSelectRows()).then(resolve, reject);
     return chain;
   };
 
   const makeInsertChain = () => {
     const chain: Record<string, unknown> = {};
-    chain.values = vi.fn(() => chain);
-    chain.onConflictDoUpdate = vi.fn(() => chain);
-    chain.returning = vi.fn(async () => mockDbReturningRows());
+    chain["values"] = vi.fn(() => chain);
+    chain["onConflictDoUpdate"] = vi.fn(() => chain);
+    chain["returning"] = vi.fn(async () => mockDbReturningRows());
     return chain;
   };
 
   const makeUpdateChain = () => {
     const chain: Record<string, unknown> = {};
-    chain.set = vi.fn(() => chain);
-    chain.where = vi.fn(() => chain);
-    chain.returning = vi.fn(async () => mockDbReturningRows());
+    chain["set"] = vi.fn(() => chain);
+    chain["where"] = vi.fn(() => chain);
+    chain["returning"] = vi.fn(async () => mockDbReturningRows());
     return chain;
   };
+
+  const transaction = vi.fn(
+    async (
+      callback: (tx: {
+        insert: () => {
+          values: (value: unknown) => unknown;
+          returning: () => Promise<unknown[]>;
+        };
+      }) => Promise<unknown>,
+    ) => {
+      let insertNumber = 0;
+
+      const tx = {
+        insert: () => {
+          insertNumber += 1;
+          let insertedValue: unknown;
+          const chain: Record<string, unknown> = {};
+
+          chain["values"] = vi.fn((value: unknown) => {
+            insertedValue = value;
+            return chain;
+          });
+
+          chain["returning"] = vi.fn(async () => {
+            // En AuthService.register el primer INSERT es public.users.
+            if (insertNumber === 1) {
+              const created = await mockCreateUser(insertedValue);
+              return created ? [created] : [];
+            }
+            return mockDbReturningRows();
+          });
+
+          return chain as {
+            values: (value: unknown) => unknown;
+            returning: () => Promise<unknown[]>;
+          };
+        },
+      };
+
+      return callback(tx);
+    },
+  );
 
   return {
     db: {
       select: vi.fn(() => makeSelectChain()),
       insert: vi.fn(() => makeInsertChain()),
       update: vi.fn(() => makeUpdateChain()),
+      transaction,
     },
   };
 });

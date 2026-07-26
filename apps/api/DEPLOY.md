@@ -14,6 +14,12 @@ Nunca commitear `.env` real. Usa `.env.example` como plantilla.
 | `DATABASE_URL` | PostgreSQL connection string completa | `postgresql://user:pass@host:5432/db` |
 | `JWT_SECRET` | Secreto para firmar JWT (mín. 64 bytes aleatorios) | `openssl rand -hex 64` |
 | `CORS_ORIGIN` | Origen(es) permitidos por CORS (sin wildcard en prod) | `https://app.rapago.cl` |
+| `MERCADOPAGO_WEBHOOK_SECRET` | Secreto para verificar la firma del webhook de MercadoPago. **Obligatorio si `PAYMENT_PROVIDER=mercadopago`** — sin él, el webhook falla cerrado y rechaza toda notificación (nunca procesa un pago sin firma verificable) | `openssl rand -hex 32` |
+| `APPLE_ALLOWED_CLIENT_IDS` | **Obligatoria si se usa `POST /api/auth/apple`.** Lista de client IDs permitidos como audiencia del `identityToken`, separados por coma — nunca se acepta una audiencia fuera de esta lista | `cl.rapago.app` |
+| `APPLE_TEAM_ID` | **Obligatoria si se usa `POST /api/auth/apple`.** Team ID de la cuenta de Apple Developer | — |
+| `APPLE_KEY_ID` | **Obligatoria si se usa `POST /api/auth/apple`.** Key ID de la clave `.p8` generada para Sign in with Apple | — |
+| `APPLE_PRIVATE_KEY` | **Obligatoria si se usa `POST /api/auth/apple`.** Clave privada `.p8` en PEM. Conserva los saltos de línea reales (o `\n` literal, se normaliza al leerse). **Nunca se sube al repositorio** | — |
+| `OAUTH_TOKEN_ENCRYPTION_KEY` | **Obligatoria si se usa `POST /api/auth/apple`.** Clave AES-256 (64 caracteres hex) para cifrar el refresh token de Apple antes de guardarlo — sin ella, el sistema falla cerrado y no persiste ningún token | `openssl rand -hex 32` |
 
 ### Variables opcionales
 

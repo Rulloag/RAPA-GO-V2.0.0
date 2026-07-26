@@ -1,6 +1,7 @@
 import { AppError } from "../../shared/errors/AppError.js";
 import { decryptSensitiveValue } from "../../shared/security/fieldEncryption.js";
 import type { CashOverpaymentRefundRequest } from "../../db/schema/index.js";
+import { AuditService } from "../audit/audit.service.js";
 import { TokenService } from "../auth/token.service.js";
 import { SessionService } from "../auth/session.service.js";
 import { BankAccountsRepository } from "../bankAccounts/bankAccounts.repository.js";
@@ -22,6 +23,7 @@ const ridesRepository = new RidesRepository();
 const bankAccountsRepository = new BankAccountsRepository();
 const refundsRepository = new CashRefundsRepository();
 const cashPaymentsRepository = new CashPaymentsRepository();
+const auditService = new AuditService();
 
 type AuthResult =
   | { ok: true; userId: string; role: string }
@@ -368,6 +370,16 @@ export class CashRefundsService {
       };
     }
 
+    if (!refund.bankAccountNumberEncrypted) {
+      return {
+        ok: false as const,
+        code: "CASH_REFUND_BANK_DETAILS_PURGED",
+        message:
+          "Los datos bancarios completos ya fueron eliminados conforme al plazo de conservación.",
+        statusCode: 410,
+      };
+    }
+
     let accountNumber: string;
     try {
       accountNumber = decryptSensitiveValue(
@@ -382,6 +394,17 @@ export class CashRefundsService {
         statusCode: 503,
       };
     }
+
+    auditService.recordSafe({
+      actorUserId: auth.userId,
+      eventType: "cash_refund.bank_details.viewed",
+      entityType: "cash_overpayment_refund_request",
+      entityId: refund.id,
+      metadata: {
+        ownerUserId: refund.ownerUserId,
+        accountNumberLast4: refund.bankAccountNumberLast4,
+      },
+    });
 
     return {
       ok: true as const,

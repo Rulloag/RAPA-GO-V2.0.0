@@ -1,4 +1,7 @@
-import { apiClient } from "../../services/api/index.js";
+import {
+  apiClient,
+  buildApiUrl,
+} from "../../services/api/index.js";
 
 export interface ApplicationData {
   id: string; type: string; status: string;
@@ -7,6 +10,8 @@ export interface ApplicationData {
   emergencyContactName: string | null; emergencyContactPhone: string | null;
   vehicleBrand: string | null; vehicleModel: string | null; vehicleYear: number | null;
   vehiclePlate: string | null; vehicleColor: string | null;
+  vehiclePhotoUrl: string | null;
+  vehicles: Array<Record<string, unknown>>;
   licenseNumber: string | null; licenseExpiry: string | null;
   hasOwnVehicle: boolean;
   experienceYears: number | null; specialties: string[] | null;
@@ -21,6 +26,83 @@ export interface ApplicationData {
   createdAt: string; updatedAt: string;
 }
 
+export type ApplicationFileKind =
+  | "id_front"
+  | "id_back"
+  | "license_front"
+  | "license_back"
+  | "profile_photo"
+  | "vehicle_photo";
+
+export interface UploadApplicationFilePayload {
+  kind: ApplicationFileKind;
+  fileName: string;
+  mimeType: "image/jpeg" | "image/png" | "image/webp" | "application/pdf";
+  dataUrl: string;
+}
+
+type UploadEnvelope = {
+  ok?: boolean;
+  data?: ApplicationData;
+  code?: string;
+  message?: string;
+};
+
+const MAX_APPLICATION_FILE_BYTES = 650_000;
+const APPLICATION_UPLOAD_TIMEOUT_MS = 45_000;
+
+async function dataUrlToBlob(dataUrl: string): Promise<Blob> {
+  const match = /^data:([^;,]+)(;base64)?,(.*)$/s.exec(dataUrl);
+
+  if (!match) {
+    throw new Error("Uno de los archivos seleccionados no tiene un formato válido.");
+  }
+
+  const mimeType = match[1] ?? "application/octet-stream";
+  const encoded = match[3] ?? "";
+
+  try {
+    if (match[2]) {
+      const binary = window.atob(encoded);
+      const bytes = new Uint8Array(binary.length);
+
+      for (let index = 0; index < binary.length; index += 1) {
+        bytes[index] = binary.charCodeAt(index);
+      }
+
+      return new Blob([bytes], { type: mimeType });
+    }
+
+    return new Blob([decodeURIComponent(encoded)], { type: mimeType });
+  } catch {
+    throw new Error("No se pudo convertir uno de los archivos seleccionados.");
+  }
+}
+
+function forceLogoutWhenNeeded(
+  statusCode: number,
+  code: string | undefined,
+): void {
+  if (
+    statusCode !== 401 &&
+    ![
+      "AUTH_SESSION_REVOKED",
+      "AUTH_TOKEN_EXPIRED",
+      "AUTH_ACCOUNT_DELETED",
+      "AUTH_ACCOUNT_SUSPENDED",
+      "UNAUTHORIZED",
+    ].includes(code ?? "")
+  ) {
+    return;
+  }
+
+  window.dispatchEvent(
+    new CustomEvent("auth:force-logout", {
+      detail: { code: code ?? "UNAUTHORIZED" },
+    }),
+  );
+}
+
 export const applicationsService = {
   async createApplication(input: Record<string, unknown>, token?: string): Promise<{ id: string; status: string; message: string }> {
     const opts = token ? { token } : {};
@@ -28,25 +110,112 @@ export const applicationsService = {
     if (!result.ok) throw new Error((result as { message?: string }).message ?? "Error al enviar postulación");
     return result.data.data;
   },
+
+  async uploadApplicationFile(
+    token: string,
+    applicationId: string,
+    input: UploadApplicationFilePayload,
+  ): Promise<ApplicationData> {
+    const blob = await dataUrlToBlob(input.dataUrl);
+
+    if (blob.size === 0) {
+      throw new Error(`El archivo ${input.fileName} está vacío.`);
+    }
+
+    if (blob.size > MAX_APPLICATION_FILE_BYTES) {
+      throw new Error(
+        `El archivo ${input.fileName} supera 650 KB. Selecciona una imagen más liviana.`,
+      );
+    }
+
+    const query = new URLSearchParams({
+      fileName: input.fileName,
+    });
+    const url = buildApiUrl(
+      `/applications/${encodeURIComponent(applicationId)}/files/${encodeURIComponent(input.kind)}?${query.toString()}`,
+    );
+    const controller = new AbortController();
+    const timeoutId = window.setTimeout(
+      () => controller.abort(),
+      APPLICATION_UPLOAD_TIMEOUT_MS,
+    );
+
+    let response: Response;
+
+    try {
+      response = await fetch(url, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": input.mimeType,
+        },
+        body: blob,
+        signal: controller.signal,
+      });
+    } catch (error) {
+      if (error instanceof DOMException && error.name === "AbortError") {
+        throw new Error(
+          `La carga de ${input.fileName} tardó demasiado. Revisa tu conexión y vuelve a intentar.`,
+        );
+      }
+
+      throw new Error(
+        error instanceof Error
+          ? `No se pudo subir ${input.fileName}: ${error.message}`
+          : `No se pudo subir ${input.fileName}.`,
+      );
+    } finally {
+      window.clearTimeout(timeoutId);
+    }
+
+    let parsed: UploadEnvelope | null = null;
+
+    try {
+      parsed = await response.json() as UploadEnvelope;
+    } catch {
+      parsed = null;
+    }
+
+    if (!response.ok) {
+      forceLogoutWhenNeeded(response.status, parsed?.code);
+
+      throw new Error(
+        parsed?.message ??
+          `No se pudo guardar ${input.fileName} (HTTP ${response.status}).`,
+      );
+    }
+
+    if (!parsed?.data) {
+      throw new Error(
+        `El servidor no confirmó la carga de ${input.fileName}.`,
+      );
+    }
+
+    return parsed.data;
+  },
+
   async getMyApplications(token: string): Promise<ApplicationData[]> {
     const result = await apiClient.get<{ data: { items: ApplicationData[] } }>("/applications/me", { token });
     if (!result.ok) throw new Error((result as { message?: string }).message ?? "Error");
     return result.data.data.items;
   },
+
   async listApplications(token: string, params?: { type?: string; status?: string; page?: number }): Promise<{ items: ApplicationData[]; total: number; page: number }> {
     const qs = new URLSearchParams();
-    if (params?.type)   qs.set("type", params.type);
+    if (params?.type) qs.set("type", params.type);
     if (params?.status) qs.set("status", params.status);
-    if (params?.page)   qs.set("page", String(params.page));
+    if (params?.page) qs.set("page", String(params.page));
     const result = await apiClient.get<{ data: { items: ApplicationData[]; total: number; page: number } }>(`/admin/applications?${qs.toString()}`, { token });
     if (!result.ok) throw new Error((result as { message?: string }).message ?? "Error");
     return result.data.data;
   },
+
   async getApplication(token: string, id: string): Promise<ApplicationData> {
     const result = await apiClient.get<{ data: ApplicationData }>(`/admin/applications/${id}`, { token });
     if (!result.ok) throw new Error((result as { message?: string }).message ?? "Error");
     return result.data.data;
   },
+
   async reviewApplication(token: string, id: string, input: { status: string; rejectionReason?: string; notes?: string }): Promise<ApplicationData> {
     const result = await apiClient.patch<{ data: ApplicationData }>(`/admin/applications/${id}/review`, input, { token });
     if (!result.ok) throw new Error((result as { message?: string }).message ?? "Error");

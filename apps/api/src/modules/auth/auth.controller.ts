@@ -1115,4 +1115,5 @@ export const authController = {
       .status(result.ok ? 200 : (result.statusCode ?? 401))
       .send(result);
   },
+
 };

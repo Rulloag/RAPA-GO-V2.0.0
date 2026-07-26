@@ -272,6 +272,8 @@ export const ridesController = {
     sendOk(reply, result.ride);
   },
 
+
+
   async cancelAcceptedRide(
     request: FastifyRequest<{ Params: { id: string } }>,
     reply: FastifyReply,

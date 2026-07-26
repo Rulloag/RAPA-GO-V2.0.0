@@ -27,6 +27,10 @@ const VALID_DOC_TYPES = [
   "guide_certification",
   "business_registration",
   "vehicle_ownership",
+  "rapa_nui_residence",
+  "residence_document",
+  "rapanui_residence",
+  "resident_certificate",
 ] as const;
 
 export const listDocumentsQuerySchema = z.object({
@@ -38,11 +42,16 @@ export const listDocumentsQuerySchema = z.object({
 export type ListDocumentsQuery = z.infer<typeof listDocumentsQuerySchema>;
 
 export const reviewDocumentSchema = z.object({
-  status:          z.enum(["approved", "rejected"]),
+  status: z.enum(["approved", "rejected"]),
   rejectionReason: z.string().trim().max(500).optional(),
+  reclassifiedFareType: z.enum(["chilean", "foreigner"]).optional(),
 }).superRefine((val, ctx) => {
   if (val.status === "rejected" && !val.rejectionReason) {
-    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["rejectionReason"], message: "rejectionReason is required when status is rejected." });
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["rejectionReason"],
+      message: "rejectionReason is required when status is rejected.",
+    });
   }
 });
 

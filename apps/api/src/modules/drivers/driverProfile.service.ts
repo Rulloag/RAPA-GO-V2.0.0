@@ -43,6 +43,7 @@ function serializeProfile(profile: import("../../db/schema/index.js").DriverProf
     licenseNumber:   profile.licenseNumber   ?? null,
     licenseExpiry:   profile.licenseExpiry   ?? null,
     profilePhotoUrl: profile.profilePhotoUrl ?? null,
+    vehiclePhotoUrl: profile.vehiclePhotoUrl ?? null,
     bio:             profile.bio             ?? null,
     languages:       profile.languages       ?? [],
     createdAt:       profile.createdAt.toISOString(),

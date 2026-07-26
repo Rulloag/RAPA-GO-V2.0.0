@@ -7,7 +7,6 @@ import {
   IonCardTitle,
   IonCheckbox,
   IonIcon,
-  IonInput,
   IonItem,
   IonLabel,
   IonNote,
@@ -40,6 +39,7 @@ const OPEN_STATUSES = new Set<AccountDeletionRequestStatus>([
   "deferred",
   "approved",
   "processing",
+  "failed",
 ]);
 
 function statusLabel(status: AccountDeletionRequestStatus): string {
@@ -54,8 +54,8 @@ function statusLabel(status: AccountDeletionRequestStatus): string {
       return "Procesando eliminación";
     case "completed":
       return "Cuenta eliminada";
-    case "rejected":
-      return "Rechazada";
+    case "identity_not_verified":
+      return "No procesada: identidad no verificada";
     case "failed":
       return "Error de procesamiento";
     case "cancelled":
@@ -106,9 +106,6 @@ export function AccountDeletionCard({
   const [reason, setReason] = useState("");
   const [comment, setComment] = useState("");
   const [confirmed, setConfirmed] = useState(false);
-  const [verificationCode, setVerificationCode] = useState("");
-  const [sendingCode, setSendingCode] = useState(false);
-  const [codeSent, setCodeSent] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
 
@@ -142,33 +139,6 @@ export function AccountDeletionCard({
     void loadRequest();
   }, [loadRequest]);
 
-  async function sendVerificationCode(): Promise<void> {
-    if (!session?.accessToken) {
-      setError("Debes iniciar sesión nuevamente.");
-      return;
-    }
-
-    setSendingCode(true);
-    setError("");
-    setSuccess("");
-
-    try {
-      const result = await accountDeletionService.requestVerificationCode(
-        session.accessToken,
-      );
-      setCodeSent(true);
-      setSuccess(result.message);
-    } catch (codeError) {
-      setError(
-        codeError instanceof Error
-          ? codeError.message
-          : "No se pudo enviar el código.",
-      );
-    } finally {
-      setSendingCode(false);
-    }
-  }
-
   async function submit(): Promise<void> {
     if (!session?.accessToken) {
       setError("Debes iniciar sesión nuevamente.");
@@ -177,19 +147,6 @@ export function AccountDeletionCard({
 
     const cleanReason = reason.trim();
     const cleanComment = comment.trim();
-    const cleanVerificationCode = verificationCode.trim();
-
-    if (cleanReason.length < 10) {
-      setError(
-        "Escribe el motivo con al menos 10 caracteres.",
-      );
-      return;
-    }
-
-    if (!/^\d{6}$/.test(cleanVerificationCode)) {
-      setError("Solicita e ingresa el código de 6 números enviado a tu correo.");
-      return;
-    }
 
     if (!confirmed) {
       setError(
@@ -204,15 +161,12 @@ export function AccountDeletionCard({
 
     try {
       const payload: {
-        verificationCode: string;
-        reason: string;
+        reason?: string;
         comment?: string;
         requesterSnapshot?: AccountDeletionClientSnapshot;
-      } = {
-        verificationCode: cleanVerificationCode,
-        reason: cleanReason,
-      };
+      } = {};
 
+      if (cleanReason) payload.reason = cleanReason;
       if (cleanComment) payload.comment = cleanComment;
 
       if (requesterSnapshot) {
@@ -228,8 +182,6 @@ export function AccountDeletionCard({
       setReason("");
       setComment("");
       setConfirmed(false);
-      setVerificationCode("");
-      setCodeSent(false);
       setShowForm(false);
       setSuccess(
         "Solicitud enviada. Tu cuenta continuará activa durante la revisión y el plazo ordinario máximo es de 30 días.",
@@ -247,6 +199,8 @@ export function AccountDeletionCard({
 
   const hasOpenRequest =
     request != null && OPEN_STATUSES.has(request.status);
+
+  const canSubmit = confirmed && !submitting;
 
   const cardStyle = {
     margin: "14px 0",
@@ -283,8 +237,9 @@ export function AccountDeletionCard({
           }}
         >
           La cuenta no se elimina automáticamente. Tu solicitud
-          llegará al administrador, quien revisará el motivo, los
-          viajes, pagos, beneficios y documentos pendientes.
+          llegará al administrador, quien verificará tu identidad y
+          revisará únicamente viajes, pagos, beneficios o casos pendientes.
+          Informar un motivo es voluntario.
         </p>
 
         {loading && (
@@ -319,9 +274,11 @@ export function AccountDeletionCard({
               </IonBadge>
             </div>
 
-            <p style={{ margin: "8px 0 0", fontWeight: 800 }}>
-              <strong>Motivo:</strong> {request.reason}
-            </p>
+            {request.reason && (
+              <p style={{ margin: "8px 0 0", fontWeight: 800 }}>
+                <strong>Motivo informado:</strong> {request.reason}
+              </p>
+            )}
 
             <p
               style={{
@@ -413,46 +370,6 @@ export function AccountDeletionCard({
 
             {showForm && (
               <div style={{ marginTop: 12 }}>
-                <IonButton
-                  expand="block"
-                  fill="outline"
-                  onClick={() => void sendVerificationCode()}
-                  disabled={sendingCode}
-                  style={{ fontWeight: 900, marginBottom: 10 }}
-                >
-                  {sendingCode ? <IonSpinner name="dots" /> : "Enviar código a mi correo"}
-                </IonButton>
-
-                <IonItem
-                  lines="none"
-                  style={{
-                    "--background": "#fffaf0",
-                    borderRadius: 16,
-                    marginBottom: 10,
-                  } as CSSProperties}
-                >
-                  <IonLabel position="stacked">Código de verificación</IonLabel>
-                  <IonInput
-                    value={verificationCode}
-                    inputMode="numeric"
-                    maxlength={6}
-                    placeholder="000000"
-                    onIonInput={(event) => {
-                      setVerificationCode(
-                        String(event.detail.value ?? "")
-                          .replace(/\D/g, "")
-                          .slice(0, 6),
-                      );
-                      setError("");
-                    }}
-                  />
-                  <IonNote slot="helper">
-                    {codeSent
-                      ? "Código enviado. Vence en 10 minutos."
-                      : "Reautenticación obligatoria antes de enviar la solicitud."}
-                  </IonNote>
-                </IonItem>
-
                 <IonItem
                   lines="none"
                   style={{
@@ -462,7 +379,7 @@ export function AccountDeletionCard({
                   } as CSSProperties}
                 >
                   <IonLabel position="stacked">
-                    Motivo obligatorio
+                    Motivo (opcional)
                   </IonLabel>
 
                   <IonTextarea
@@ -471,7 +388,7 @@ export function AccountDeletionCard({
                       setReason(String(event.detail.value ?? ""));
                       setError("");
                     }}
-                    placeholder="Explica por qué quieres eliminar la cuenta"
+                    placeholder="Puedes explicar por qué quieres eliminar la cuenta"
                     maxlength={500}
                     counter
                     autoGrow
@@ -479,7 +396,7 @@ export function AccountDeletionCard({
                   />
 
                   <IonNote slot="helper">
-                    Mínimo 10 caracteres.
+                    Opcional. Máximo 500 caracteres.
                   </IonNote>
                 </IonItem>
 
@@ -542,7 +459,7 @@ export function AccountDeletionCard({
                   expand="block"
                   color="danger"
                   onClick={() => void submit()}
-                  disabled={submitting}
+                  disabled={!canSubmit}
                   style={
                     {
                       "--border-radius": "16px",

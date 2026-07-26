@@ -1,6 +1,7 @@
 import { homeOutline, carOutline, calendarOutline, cashOutline } from "ionicons/icons";
 import { Redirect, Route } from "react-router-dom";
 import { RoleLayout } from "./RoleLayout";
+import { UnknownRolePathRedirect } from "./UnknownRolePathRedirect.js";
 import { ROUTES } from "../navigation/routes";
 import {
   RentalHomePage,
@@ -17,6 +18,16 @@ const TABS = [
   { path: ROUTES.RENTAL.EARNINGS, label: "Ganancias", icon: cashOutline },
 ];
 
+const RENTAL_ALLOWED_PATHS = [
+  ROUTES.RENTAL.BASE,
+  ROUTES.RENTAL.HOME,
+  ROUTES.RENTAL.VEHICLES,
+  ROUTES.RENTAL.VEHICLE_DETAIL_PATTERN,
+  ROUTES.RENTAL.BOOKINGS,
+  ROUTES.RENTAL.EARNINGS,
+  ROUTES.RENTAL.PROFILE,
+] as const;
+
 export function RentalLayout(): JSX.Element {
   return (
     <RoleLayout tabs={TABS}>
@@ -27,6 +38,15 @@ export function RentalLayout(): JSX.Element {
       <Route exact path={ROUTES.RENTAL.BOOKINGS} component={RentalBookingsPage} />
       <Route exact path={ROUTES.RENTAL.EARNINGS} component={RentalEarningsPage} />
       <Route exact path={ROUTES.RENTAL.PROFILE} component={RentalProfilePage} />
+      <Route
+        path={ROUTES.RENTAL.BASE}
+        render={() => (
+          <UnknownRolePathRedirect
+            basePath={ROUTES.RENTAL.BASE}
+            allowedPaths={RENTAL_ALLOWED_PATHS}
+          />
+        )}
+      />
     </RoleLayout>
   );
 }

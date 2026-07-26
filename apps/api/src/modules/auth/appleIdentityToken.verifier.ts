@@ -1,122 +1,108 @@
 import { createHash, timingSafeEqual } from "node:crypto";
 import { decodeProtectedHeader, importJWK, jwtVerify } from "jose";
 import { AppError } from "../../shared/errors/AppError.js";
-import {
-  APPLE_ISSUER,
-  APPLE_JWKS_URL,
-  getAppleAuthConfig,
-} from "./appleAuth.config.js";
+import { getAppleAuthConfig, APPLE_ISSUER, APPLE_JWKS_URL } from "./appleAuth.config.js";
 
 export interface AppleIdentityTokenClaims {
   sub: string;
+  /** The verified audience — the exact client_id that requested this token. */
   aud: string;
-  email?: string;
+  email: string | undefined;
   emailVerified: boolean;
   isPrivateEmail: boolean;
 }
 
-type FetchLike = typeof fetch;
-interface AppleJwksResponse {
-  keys: Array<Record<string, unknown> & { kid?: string; alg?: string }>;
+interface JsonWebKeySet {
+  keys: Array<Record<string, unknown> & { kid?: string }>;
 }
 
-const JWKS_CACHE_MS = 6 * 60 * 60 * 1000;
-let cachedJwks: { expiresAt: number; value: AppleJwksResponse } | null = null;
+/** Injectable so tests never hit the real network — defaults to global fetch. */
+export type FetchLike = typeof fetch;
 
-function toBoolean(value: unknown): boolean {
+function toBool(value: unknown): boolean {
   return value === true || value === "true";
 }
 
+/**
+ * AppleIdentityTokenVerifier — verifies an Apple `identityToken` per Apple's
+ * published requirements:
+ *  - signature verified against Apple's live JWKS (https://appleid.apple.com/auth/keys),
+ *    selecting the key by the token's `kid`;
+ *  - algorithm restricted to RS256 only (checked both before and during
+ *    verification — a token asserting any other alg is rejected without
+ *    ever fetching a key for it);
+ *  - `iss` must be exactly "https://appleid.apple.com";
+ *  - `aud` must be one of the operator-configured APPLE_ALLOWED_CLIENT_IDS
+ *    (never an arbitrary/attacker-supplied audience);
+ *  - `exp` enforced by jose's clock check;
+ *  - `sub` must be present and non-empty;
+ *  - `nonce`, when the caller supplies an expected raw nonce, is checked
+ *    against the SHA-256 hex digest embedded in the token — this matches
+ *    how native "Sign in with Apple" embeds the nonce (Apple hashes the
+ *    raw nonce before putting it in the identityToken).
+ */
 export class AppleIdentityTokenVerifier {
   constructor(private readonly fetchImpl: FetchLike = fetch) {}
 
-  private async getJwks(forceRefresh = false): Promise<AppleJwksResponse> {
-    if (!forceRefresh && cachedJwks && cachedJwks.expiresAt > Date.now()) {
-      return cachedJwks.value;
-    }
-
+  private async fetchJwks(): Promise<JsonWebKeySet> {
     let response: Response;
     try {
-      response = await this.fetchImpl(APPLE_JWKS_URL, {
-        headers: { Accept: "application/json" },
-      });
+      response = await this.fetchImpl(APPLE_JWKS_URL);
     } catch {
       throw new AppError({
         code: "AUTH_APPLE_JWKS_UNAVAILABLE",
-        message: "No fue posible consultar las claves públicas de Apple.",
+        message: "Could not reach Apple's signing key endpoint.",
         statusCode: 503,
       });
     }
-
     if (!response.ok) {
       throw new AppError({
         code: "AUTH_APPLE_JWKS_UNAVAILABLE",
-        message: "Apple no entregó sus claves públicas de autenticación.",
+        message: `Apple's signing key endpoint returned HTTP ${response.status}.`,
         statusCode: 503,
       });
     }
-
-    let parsed: AppleJwksResponse;
     try {
-      parsed = (await response.json()) as AppleJwksResponse;
+      return (await response.json()) as JsonWebKeySet;
     } catch {
       throw new AppError({
         code: "AUTH_APPLE_JWKS_UNAVAILABLE",
-        message: "Apple entregó una respuesta de claves no válida.",
+        message: "Apple's signing key endpoint returned an invalid response.",
         statusCode: 503,
       });
     }
-
-    if (!Array.isArray(parsed.keys) || parsed.keys.length === 0) {
-      throw new AppError({
-        code: "AUTH_APPLE_JWKS_UNAVAILABLE",
-        message: "Apple no entregó claves públicas utilizables.",
-        statusCode: 503,
-      });
-    }
-
-    cachedJwks = { expiresAt: Date.now() + JWKS_CACHE_MS, value: parsed };
-    return parsed;
   }
 
   async verify(
     identityToken: string,
-    options: { expectedNonce?: string } = {},
+    opts: { expectedNonce?: string } = {},
   ): Promise<AppleIdentityTokenClaims> {
     const config = getAppleAuthConfig();
 
-    let header: ReturnType<typeof decodeProtectedHeader>;
+    let header;
     try {
       header = decodeProtectedHeader(identityToken);
     } catch {
+      throw new AppError({ code: "AUTH_APPLE_TOKEN_INVALID", message: "Malformed Apple identity token.", statusCode: 401 });
+    }
+
+    if (header.alg !== "RS256") {
       throw new AppError({
         code: "AUTH_APPLE_TOKEN_INVALID",
-        message: "El token de Apple no tiene un formato válido.",
+        message: "Apple identity token must be signed with RS256.",
         statusCode: 401,
       });
     }
-
-    // Apple publica RS256 para la firma de identity_token. ES256 se usa
-    // únicamente para firmar el client_secret del servidor.
-    if (header.alg !== "RS256" || !header.kid) {
-      throw new AppError({
-        code: "AUTH_APPLE_TOKEN_INVALID",
-        message: "El token de Apple usa una firma no permitida.",
-        statusCode: 401,
-      });
+    if (!header.kid) {
+      throw new AppError({ code: "AUTH_APPLE_TOKEN_INVALID", message: "Apple identity token is missing a key id.", statusCode: 401 });
     }
 
-    let jwks = await this.getJwks();
-    let jwk = jwks.keys.find((item) => item.kid === header.kid);
-    if (!jwk) {
-      jwks = await this.getJwks(true);
-      jwk = jwks.keys.find((item) => item.kid === header.kid);
-    }
-
+    const jwks = await this.fetchJwks();
+    const jwk = jwks.keys.find((k) => k.kid === header.kid);
     if (!jwk) {
       throw new AppError({
         code: "AUTH_APPLE_TOKEN_INVALID",
-        message: "El token de Apple referencia una clave desconocida.",
+        message: "Apple identity token references an unknown signing key.",
         statusCode: 401,
       });
     }
@@ -125,70 +111,40 @@ export class AppleIdentityTokenVerifier {
     try {
       const key = await importJWK(jwk, "RS256");
       const result = await jwtVerify(identityToken, key, {
-        issuer: APPLE_ISSUER,
-        audience: config.allowedClientIds,
+        issuer:     APPLE_ISSUER,
+        audience:   config.allowedClientIds,
         algorithms: ["RS256"],
       });
       payload = result.payload;
     } catch {
-      throw new AppError({
-        code: "AUTH_APPLE_TOKEN_INVALID",
-        message: "No fue posible verificar el token de Apple.",
-        statusCode: 401,
-      });
+      throw new AppError({ code: "AUTH_APPLE_TOKEN_INVALID", message: "Apple identity token failed verification.", statusCode: 401 });
     }
 
-    const subject = typeof payload["sub"] === "string" ? payload["sub"].trim() : "";
-    if (!subject) {
-      throw new AppError({
-        code: "AUTH_APPLE_TOKEN_INVALID",
-        message: "El token de Apple no contiene un identificador estable.",
-        statusCode: 401,
-      });
+    const sub = typeof payload["sub"] === "string" ? payload["sub"] : "";
+    if (!sub) {
+      throw new AppError({ code: "AUTH_APPLE_TOKEN_INVALID", message: "Apple identity token is missing sub.", statusCode: 401 });
     }
 
-    const audienceValue = Array.isArray(payload["aud"])
-      ? payload["aud"][0]
-      : payload["aud"];
-    const audience = typeof audienceValue === "string" ? audienceValue : "";
-    if (!audience || !config.allowedClientIds.includes(audience)) {
-      throw new AppError({
-        code: "AUTH_APPLE_TOKEN_INVALID",
-        message: "El token de Apple no corresponde a RAPA GO.",
-        statusCode: 401,
-      });
-    }
-
-    if (options.expectedNonce !== undefined) {
-      const expectedHash = createHash("sha256")
-        .update(options.expectedNonce, "utf8")
-        .digest("hex");
+    if (opts.expectedNonce !== undefined) {
+      const expectedHashedNonce = createHash("sha256").update(opts.expectedNonce).digest("hex");
       const tokenNonce = payload["nonce"];
-      const validNonce =
-        typeof tokenNonce === "string" &&
-        /^[a-f0-9]{64}$/i.test(tokenNonce) &&
-        timingSafeEqual(
-          Buffer.from(tokenNonce.toLowerCase(), "hex"),
-          Buffer.from(expectedHash, "hex"),
-        );
-
-      if (!validNonce) {
-        throw new AppError({
-          code: "AUTH_APPLE_NONCE_MISMATCH",
-          message: "La validación de seguridad de Apple no coincide.",
-          statusCode: 401,
-        });
+      let matches = false;
+      if (typeof tokenNonce === "string" && /^[0-9a-f]{64}$/i.test(tokenNonce)) {
+        matches = timingSafeEqual(Buffer.from(tokenNonce, "hex"), Buffer.from(expectedHashedNonce, "hex"));
+      }
+      if (!matches) {
+        throw new AppError({ code: "AUTH_APPLE_NONCE_MISMATCH", message: "Apple identity token nonce does not match.", statusCode: 401 });
       }
     }
 
+    const aud = Array.isArray(payload["aud"]) ? payload["aud"][0] : payload["aud"];
+
     return {
-      sub: subject,
-      aud: audience,
-      ...(typeof payload["email"] === "string"
-        ? { email: payload["email"].trim().toLowerCase() }
-        : {}),
-      emailVerified: toBoolean(payload["email_verified"]),
-      isPrivateEmail: toBoolean(payload["is_private_email"]),
+      sub,
+      aud:            typeof aud === "string" ? aud : "",
+      email:          typeof payload["email"] === "string" ? payload["email"] : undefined,
+      emailVerified:  toBool(payload["email_verified"]),
+      isPrivateEmail: toBool(payload["is_private_email"]),
     };
   }
 }
