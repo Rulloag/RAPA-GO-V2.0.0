@@ -330,6 +330,123 @@ ion-modal.request-map-modal {
   line-height: 1.35;
 }
 
+.request-map-frequent {
+  display: grid;
+  gap: 9px;
+  margin-bottom: 12px;
+}
+
+.request-map-frequent__heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.request-map-frequent__heading div {
+  display: grid;
+  gap: 2px;
+}
+
+.request-map-frequent__heading strong {
+  color: var(--rp-text, #111827);
+  font-size: 0.8rem;
+  font-weight: 900;
+}
+
+.request-map-frequent__heading span {
+  color: var(--rp-muted, #667085);
+  font-size: 0.67rem;
+  font-weight: 650;
+  line-height: 1.3;
+}
+
+.request-map-frequent__list {
+  display: grid;
+  grid-auto-flow: column;
+  grid-template-rows: repeat(2, minmax(58px, auto));
+  grid-auto-columns: minmax(148px, 44%);
+  gap: 8px;
+  width: 100%;
+  padding: 1px 1px 6px;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scroll-snap-type: x proximity;
+  scrollbar-width: thin;
+  -webkit-overflow-scrolling: touch;
+}
+
+.request-map-frequent__item {
+  display: grid;
+  grid-template-columns: 25px minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  padding: 9px 10px;
+  background: var(--rp-field-bg, #f8fafc);
+  color: var(--rp-text, #111827);
+  border: 1px solid var(--rp-border-c, rgba(17, 24, 39, 0.12));
+  border-radius: 14px;
+  text-align: left;
+  scroll-snap-align: start;
+  cursor: pointer;
+}
+
+.request-map-frequent__item ion-icon {
+  width: 24px;
+  height: 24px;
+  padding: 5px;
+  box-sizing: border-box;
+  background: color-mix(
+    in srgb,
+    #ef4444 12%,
+    var(--rp-surface, #ffffff)
+  );
+  color: #dc2626;
+  border-radius: 999px;
+}
+
+.request-map-frequent__item span {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+
+.request-map-frequent__item strong {
+  overflow: hidden;
+  color: var(--rp-text, #111827);
+  font-size: 0.72rem;
+  font-weight: 850;
+  line-height: 1.2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.request-map-frequent__item small {
+  overflow: hidden;
+  color: var(--rp-muted, #667085);
+  font-size: 0.62rem;
+  font-weight: 650;
+  line-height: 1.2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.request-map-frequent__item--active {
+  background: color-mix(
+    in srgb,
+    #fee2e2 64%,
+    var(--rp-surface, #ffffff)
+  );
+  border-color: #ef4444;
+  box-shadow: 0 0 0 2px rgba(239, 68, 68, 0.12);
+}
+
+.request-map-frequent__item:disabled {
+  cursor: wait;
+  opacity: 0.64;
+}
+
 .request-map-candidates {
   display: grid;
   gap: 8px;

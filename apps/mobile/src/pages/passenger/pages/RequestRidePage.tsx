@@ -4480,6 +4480,76 @@ function MapPointPicker({
     }
   }
 
+  async function pickFrequentDestination(
+    destination: (typeof TOURIST_DESTINATION_SUGGESTIONS)[number],
+  ): Promise<void> {
+    const map = mapRef.current;
+    if (!map) return;
+
+    const sequence = ++requestSequenceRef.current;
+    setLoadingAddress(true);
+    setSearchText(destination.name);
+    setPickerSuggestions([]);
+
+    try {
+      const predictions = await getGooglePredictions(destination.search);
+
+      if (sequence !== requestSequenceRef.current) return;
+
+      const targetKey = normalizePlaceStreetCompare(destination.name);
+      const preferred =
+        predictions.find((prediction) => {
+          const predictionKey = normalizePlaceStreetCompare(
+            prediction.mainText,
+          );
+
+          return (
+            predictionKey === targetKey ||
+            predictionKey.includes(targetKey) ||
+            targetKey.includes(predictionKey)
+          );
+        }) ??
+        predictions[0] ??
+        null;
+
+      const details = preferred
+        ? await getPlaceDetailsExact(preferred.placeId)
+        : await geocodeTextExact(destination.search);
+
+      if (
+        sequence !== requestSequenceRef.current ||
+        !details ||
+        !mapRef.current
+      ) {
+        return;
+      }
+
+      const nextPoint: PickerResult = {
+        ...details,
+        text: destination.name,
+      };
+
+      const point = {
+        lat: nextPoint.lat,
+        lng: nextPoint.lng,
+      };
+
+      // Evita que el evento idle reemplace el nombre frecuente por un
+      // comercio o dirección cercana después de centrar el mapa.
+      lastResolvedCenterRef.current = point;
+      setPickupCandidates([]);
+      setSelected(nextPoint);
+      drawAccessiblePickupPreview(nextPoint, []);
+
+      mapRef.current.setCenter(point);
+      mapRef.current.setZoom(18);
+    } finally {
+      if (sequence === requestSequenceRef.current) {
+        setLoadingAddress(false);
+      }
+    }
+  }
+
   function useCurrentLocation(): void {
     if (!navigator.geolocation || !mapRef.current) return;
 
@@ -4744,6 +4814,60 @@ function MapPointPicker({
                     </span>
                   </div>
                 </div>
+
+                {mode === "destination" && (
+                  <section
+                    className="request-map-frequent"
+                    aria-label="Destinos frecuentes de Rapa Nui"
+                  >
+                    <div className="request-map-frequent__heading">
+                      <div>
+                        <strong>Destinos frecuentes</strong>
+                        <span>
+                          Toca uno y Google Maps buscará su acceso exacto.
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="request-map-frequent__list">
+                      {TOURIST_DESTINATION_SUGGESTIONS.map(
+                        (destination) => {
+                          const active =
+                            normalizePlaceStreetCompare(
+                              selected?.text ?? "",
+                            ) ===
+                            normalizePlaceStreetCompare(
+                              destination.name,
+                            );
+
+                          return (
+                            <button
+                              key={destination.name}
+                              type="button"
+                              className={`request-map-frequent__item ${
+                                active
+                                  ? "request-map-frequent__item--active"
+                                  : ""
+                              }`}
+                              onClick={() =>
+                                void pickFrequentDestination(destination)
+                              }
+                              disabled={loadingAddress}
+                              aria-pressed={active}
+                            >
+                              <IonIcon icon={locationOutline} />
+
+                              <span>
+                                <strong>{destination.name}</strong>
+                                <small>{destination.subtitle}</small>
+                              </span>
+                            </button>
+                          );
+                        },
+                      )}
+                    </div>
+                  </section>
+                )}
 
                 {mode === "origin" && pickupCandidates.length > 0 && (
                   <div className="request-map-candidates">
