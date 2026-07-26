@@ -97,32 +97,32 @@ export function PassengerLayout(): JSX.Element {
         <Route
           exact
           path={ROUTES.PASSENGER.HOME}
-          component={HomePage}
+          render={() => <PageSuspense><HomePage /></PageSuspense>}
         />
         <Route
           exact
           path={ROUTES.PASSENGER.REQUEST_RIDE}
-          component={RequestRidePage}
+          render={() => <PageSuspense><RequestRidePage /></PageSuspense>}
         />
         <Route
           exact
           path={ROUTES.PASSENGER.TRIPS}
-          component={TripsPage}
+          render={() => <PageSuspense><TripsPage /></PageSuspense>}
         />
         <Route
           exact
           path={ROUTES.PASSENGER.TRIP_DETAIL_PATTERN}
-          component={TripsPage}
+          render={() => <PageSuspense><TripsPage /></PageSuspense>}
         />
         <Route
           exact
           path={ROUTES.PASSENGER.WALLET}
-          component={WalletPage}
+          render={() => <PageSuspense><WalletPage /></PageSuspense>}
         />
         <Route
           exact
           path={ROUTES.PASSENGER.PROFILE}
-          component={ProfilePage}
+          render={() => <PageSuspense><ProfilePage /></PageSuspense>}
         />
         <Route
           exact
@@ -134,7 +134,7 @@ export function PassengerLayout(): JSX.Element {
           <Route
             exact
             path={[ROUTES.PASSENGER.GUIDES, ROUTES.PASSENGER.GUIDE_DETAIL_PATTERN]}
-            component={GuidesPage}
+            render={() => <PageSuspense><GuidesPage /></PageSuspense>}
           />
         )}
 
@@ -142,7 +142,7 @@ export function PassengerLayout(): JSX.Element {
           <Route
             exact
             path={[ROUTES.PASSENGER.RENTALS, ROUTES.PASSENGER.RENTAL_DETAIL_PATTERN]}
-            component={RentalsPage}
+            render={() => <PageSuspense><RentalsPage /></PageSuspense>}
           />
         )}
 
@@ -150,7 +150,7 @@ export function PassengerLayout(): JSX.Element {
           <Route
             exact
             path={ROUTES.PASSENGER.EVENTS}
-            component={PassengerEventsPage}
+            render={() => <PageSuspense><PassengerEventsPage /></PageSuspense>}
           />
         )}
 
@@ -158,7 +158,7 @@ export function PassengerLayout(): JSX.Element {
           <Route
             exact
             path={ROUTES.PASSENGER.EVENT_TICKETS}
-            component={PassengerEventTicketsPage}
+            render={() => <PageSuspense><PassengerEventTicketsPage /></PageSuspense>}
           />
         )}
 
@@ -173,5 +173,3 @@ export function PassengerLayout(): JSX.Element {
     </>
   );
 }
-
-
