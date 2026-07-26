@@ -85,6 +85,41 @@
   margin-top: 4px;
 }
 
+/* ── Campo de búsqueda sobre el mapa ─────────────────────────────────────── */
+/* El borde se veía irregular, medio transparente a trozos. Eran dos cosas
+   sumándose:
+
+   · sections.css:267-274 fija con !important `border`, `border-radius` y
+     `--border-radius` en TODOS los ion-item de la pantalla. Los valores que
+     este campo declaraba en línea —999px de radio, grosor `--rp-border-w`—
+     nunca llegaban a aplicarse, porque !important gana a los estilos en línea.
+     El código decía una cosa y la pantalla mostraba otra.
+   · Encima, `--rp-shadow` incluye un anillo de 1px (`0 0 0 1px rgba(...,.1)`)
+     que caía justo por fuera del borde translúcido de 1px: dos anillos dorados
+     concéntricos con distinta opacidad. Sobre un mapa, que cambia de color por
+     debajo, esa doble línea se lee como un borde a medio pintar.
+
+   Aquí el canto se define UNA sola vez. Gana por especificidad (dos clases
+   frente a una clase más un elemento), no por orden de importación.
+
+   El color pasa a `--rp-gold`, que es sólido en ambos temas: un borde
+   translúcido flotando sobre un mapa cambia de aspecto según lo que tenga
+   detrás, y era parte de la sensación de "transparente a ratos". */
+.rapago-request-page .rp-request-search-field {
+  --background: var(--rp-field-bg) !important;
+  --border-radius: 999px !important;
+  --padding-start: 16px;
+  --inner-padding-end: 12px;
+  --highlight-color-focused: var(--rp-gold);
+  border: 1.5px solid var(--rp-gold) !important;
+  border-radius: 999px !important;
+  /* Recorta el fondo interior al contorno redondeado: sin esto asoma por las
+     esquinas y vuelve a verse un canto sucio. */
+  overflow: hidden;
+  /* Sombra de caída sin anillo: el borde ya es la única línea. */
+  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.3);
+}
+
 /* ── Controles flotantes sobre el mapa ───────────────────────────────────── */
 /* Una única columna alineada al borde derecho, con todos los botones del mismo
    tamaño y separación. Antes el zoom lo pintaba Google donde él decidía y el
@@ -245,8 +280,11 @@
    variable no llegara. */
 .rapago-request-page .rp-request-map-canvas {
   position: relative;
-  flex: 0 0 var(--rp-map-share, 50%);
-  min-height: 0;
+  /* `0 1` y no `0 0`: el mapa pide su reparto pero CEDE si la hoja se queda sin
+     el mínimo de abajo. Es la red para pantallas muy bajas o en horizontal,
+     donde ningún porcentaje da de sí. */
+  flex: 0 1 var(--rp-map-share, 50%);
+  min-height: 22%;
   /* Curva con un punto de rebasamiento: el panel llega, se pasa un pelo y
      asienta. Una curva que solo frena llega "muerta"; este pequeño exceso es lo
      que hace que se lea como un objeto con peso y no como una caja que cambia
@@ -267,9 +305,19 @@
   box-shadow: 0 -26px 56px rgba(0, 0, 0, 0.44);
 }
 
+/* NO hay regla de "hoja cerrada", y es a propósito. La hubo: desvanecía el
+   contenido con `opacity` pero le seguía reservando su espacio, así que el
+   panel quedaba como una caja negra vacía bajo el título. Ese hueco era
+   justamente el que tenía que ser mapa.
+
+   Al no existir, encoger la hoja recorta su contenido por la propia caja y el
+   mapa ocupa de verdad lo que ella deja. Es imposible que quede espacio
+   reservado sin nada dentro. */
+
 @media (prefers-reduced-motion: reduce) {
   .rapago-request-page .rp-request-map-canvas,
   .rapago-request-page .rp-request-map-sheet,
+  .rapago-request-page .rp-request-map-sheet-scroll,
   .rapago-request-page .rp-request-map-grip__bar {
     transition: none;
   }
@@ -292,14 +340,33 @@
    como una hoja apoyada encima y no como una franja pegada al borde. */
 .rapago-request-page .rp-request-map-sheet {
   flex: 1 1 auto;
-  min-height: 0;
+  /* Suelo = exactamente su cabecera: relleno superior + barra y título + el
+     inferior, que depende del área segura y por eso se compone con `max()` en
+     vez de darlo por hecho. Es hasta donde puede encoger la hoja al bajar la
+     barra, y por tanto hasta dónde puede crecer el mapa — así que cada píxel
+     de más aquí es un píxel de mapa de menos.
+
+     56px es la cabecera YA recortada (ver rp-request-map-sheet-head): antes
+     este número era 82px, con relleno propio de la cabecera además del de
+     aquí. Ese sobrante no se veía como "espacio de más" — se sentía como que
+     el panel no bajaba todo lo que debía.
+
+     Va en píxeles y no en porcentaje porque la cabecera mide lo mismo en todos
+     los aparatos; en % volvería a quedarse corto justo en las pantallas
+     pequeñas. Se acota con `min()` para que en horizontal, donde el alto total
+     es poco, este suelo no se coma la pantalla. */
+  min-height: min(calc(56px + max(20px, env(safe-area-inset-bottom))), 40%);
   background: var(--rp-surface);
   border-top-left-radius: 28px;
   border-top-right-radius: 28px;
   margin-top: -20px;
   position: relative;
   z-index: 20;
-  padding: 14px 18px max(20px, env(safe-area-inset-bottom));
+  /* El 14px de arriba bajó a 10px: es el otro tramo del suelo, junto con el
+     56px de la cabecera de la regla de arriba. El lateral y el inferior se
+     quedan igual — el inferior es el que de verdad importa (zona del gesto de
+     inicio en iOS) y no debe recortarse. */
+  padding: 10px 18px max(20px, env(safe-area-inset-bottom));
   box-shadow: 0 -18px 38px rgba(0, 0, 0, 0.28);
   transition: box-shadow 0.42s cubic-bezier(0.34, 1.28, 0.52, 1);
   display: flex;
@@ -324,37 +391,86 @@
   overflow-y: auto;
   overscroll-behavior: contain; /* el scroll no se propaga al mapa de debajo */
   -webkit-overflow-scrolling: touch;
-  padding-bottom: 12px;
+  /* Holgura mayor que el degradado (24px): ahora el último elemento es el botón
+     de confirmar, y al llegar abajo del todo el difuminado tiene que caer sobre
+     hueco vacío y no sobre él. Un botón principal con el canto lavado se lee
+     como deshabilitado. */
+  padding-bottom: 30px;
   -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 24px), transparent);
   mask-image: linear-gradient(to bottom, #000 calc(100% - 24px), transparent);
+  transition: opacity 0.22s ease;
 }
 
-/* Tirador del panel. En su día se dejó deliberadamente discreto porque no
-   hacía nada y parecer arrastrable era engañar; ahora arrastra de verdad, así
-   que vuelve a tener presencia de agarradero.
+/* CABECERA DEL PANEL — la superficie de arrastre entera, no solo la rayita.
+   Antes el gesto vivía en un botón de 30px y había que apuntarle; agarrando por
+   toda esta zona (rayita + título) el panel responde al primer intento, que es
+   lo que hace que se sienta del sistema y no de la app.
 
-   La barra visible es fina, pero el botón que la envuelve ocupa todo el ancho
-   y 30px de alto: el objetivo táctil tiene que ser cómodo aunque el adorno sea
-   pequeño. `touch-action: none` es imprescindible — sin él, iOS interpreta el
-   gesto vertical como scroll y se queda con él antes de que lleguen los
-   eventos de puntero. */
+   `touch-action: none` es imprescindible: sin él iOS interpreta el gesto
+   vertical como scroll y se queda con él antes de que lleguen los eventos de
+   puntero. `user-select: none` evita que arrastrar sobre el título acabe
+   seleccionando texto a media maniobra. */
+.rapago-request-page .rp-request-map-sheet-head {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  /* Recortado a lo justo: antes tenía `padding-top: 8px` propio además del
+     padding de la hoja, y `margin-bottom: 12px`. Esa holgura de más era
+     exactamente lo que le restaba altura al mapa cuando el panel está en su
+     punto más bajo — este bloque, con flex-shrink:0, NUNCA se encoge, así que
+     todo lo que mida aquí es techo que el mapa no puede alcanzar. Se mantiene
+     el gesto de 45px de alto porque sigue siendo el tirador entero (WCAG
+     2.5.5, objetivo táctil mínimo 44px), no solo la rayita. */
+  margin: -6px 0 6px;
+  touch-action: none;
+  cursor: grab;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.rapago-request-page .rp-request-map-shell.is-dragging .rp-request-map-sheet-head {
+  cursor: grabbing;
+}
+
+/* El botón se queda como control accesible —foco de teclado y flechas—, pero
+   ya no necesita ser el objetivo táctil: de eso se encarga la cabecera entera.
+   Por eso se encoge a la rayita y nada más. */
 .rapago-request-page .rp-request-map-grip {
   flex: 0 0 auto;
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 100%;
-  height: 30px;
-  margin: -8px 0 6px;
+  width: 72px;
+  height: 16px;
   padding: 0;
   border: 0;
   background: transparent;
   touch-action: none;
-  cursor: grab;
+  cursor: inherit;
 }
 
-.rapago-request-page .rp-request-map-shell.is-dragging .rp-request-map-grip {
-  cursor: grabbing;
+/* El título deja de estar dentro del área con scroll: se queda fijo aquí, así
+   que sigue diciendo qué se mira mientras el contenido se desplaza. */
+.rapago-request-page .rp-request-map-sheet-title {
+  width: 100%;
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--rp-text);
+  font-size: 1.05rem;
+  font-weight: 850;
+  line-height: 1.2;
+}
+
+.rapago-request-page .rp-request-map-sheet-title__tick {
+  flex-shrink: 0;
+  width: 20px;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--rp-btn-primary);
 }
 
 /* El tirador se ensancha y se enciende mientras se arrastra. Es la única señal
@@ -381,10 +497,10 @@
   border-radius: 12px;
 }
 
-/* Hermano normal al final del flex column, NO sticky: con el scroll ya
-   contenido en .rp-request-map-sheet-scroll, el botón queda siempre visible
-   sin necesitar position: sticky ni la superficie duplicada que eso exigía. */
-.rapago-request-page .rp-request-map-sheet .rp-request-confirm {
-  flex: 0 0 auto;
+/* Último elemento DENTRO del área que se desplaza, no hermano anclado abajo.
+   Así se recoge junto a las tarjetas cuando se baja el panel, en vez de
+   quedarse flotando suelto sobre el mapa. El margen superior lo separa de la
+   última tarjeta lo mismo que las tarjetas se separan entre sí. */
+.rapago-request-page .rp-request-map-sheet-scroll .rp-request-confirm {
   margin: 14px 0 0;
 }
