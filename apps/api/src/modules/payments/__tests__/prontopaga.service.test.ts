@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, vi } from "vitest";
 
 beforeEach(() => {
   process.env["PRONTOPAGA_ENVIRONMENT"]  = "sandbox";
@@ -130,5 +130,64 @@ describe("ProntoPagaProvider.normalizeWebhook", () => {
   it("returns 'unknown' for unrecognised statuses", async () => {
     const r = await provider.normalizeWebhook({ order: "id", status: "chargeback" }, {});
     expect(r.status).toBe("unknown");
+  });
+});
+
+describe("ProntoPagaProvider.createPayment (timeout behavior)", () => {
+  let provider: ProntoPagaProvider;
+
+  const baseParams = {
+    orderId:        "order-uuid-1",
+    amountClp:      1000,
+    description:    "Viaje de prueba",
+    passengerEmail: "pasajero@example.com",
+    passengerName:  "Pasajero de Prueba",
+    returnUrl:      "https://rapago.cl/return",
+    webhookUrl:     "https://rapago.cl/api/payments/webhooks/prontopaga",
+  };
+
+  beforeEach(() => {
+    provider = new ProntoPagaProvider();
+    vi.restoreAllMocks();
+  });
+
+  it("creates the payment normally when ProntoPaga responds in time", async () => {
+    global.fetch = vi.fn().mockResolvedValueOnce({
+      ok:   true,
+      status: 200,
+      json: async () => ({ order_id: "pp-order-1", url_pay: "https://sandbox.prontopaga.cl/pay/1" }),
+    } as unknown as Response);
+
+    const result = await provider.createPayment(baseParams);
+
+    expect(result.providerOrderId).toBe("pp-order-1");
+    expect(result.urlPay).toBe("https://sandbox.prontopaga.cl/pay/1");
+  });
+
+  it("throws ProviderTimeoutError when ProntoPaga exceeds the timeout", async () => {
+    const timeoutError = new DOMException("The operation was aborted due to timeout", "TimeoutError");
+    global.fetch = vi.fn().mockRejectedValueOnce(timeoutError);
+
+    await expect(provider.createPayment(baseParams)).rejects.toMatchObject({
+      name: "ProviderTimeoutError",
+    });
+  });
+
+  it("throws ProviderNetworkError on a generic network failure", async () => {
+    global.fetch = vi.fn().mockRejectedValueOnce(new TypeError("fetch failed"));
+
+    await expect(provider.createPayment(baseParams)).rejects.toMatchObject({
+      name: "ProviderNetworkError",
+    });
+  });
+
+  it("still throws a business error (not a timeout) when ProntoPaga returns a non-OK HTTP response", async () => {
+    global.fetch = vi.fn().mockResolvedValueOnce({
+      ok: false,
+      status: 400,
+      text: async () => "invalid request",
+    } as unknown as Response);
+
+    await expect(provider.createPayment(baseParams)).rejects.toThrow("ProntoPaga API error 400");
   });
 });

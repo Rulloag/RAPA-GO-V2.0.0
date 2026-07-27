@@ -1,4 +1,5 @@
 import { AppError } from "../../shared/errors/AppError.js";
+import { fetchWithTimeout, resolveTimeoutMs, ProviderTimeoutError } from "../../shared/http/providerTimeout.js";
 import { APPLE_TOKEN_URL } from "./appleAuth.config.js";
 import { buildAppleClientSecret } from "./appleClientSecret.js";
 import type { FetchLike } from "./appleIdentityToken.verifier.js";
@@ -9,6 +10,9 @@ export interface AppleTokenExchangeResult {
   idToken: string;
   expiresIn: number;
 }
+
+// Fallback seguro si APPLE_TOKEN_TIMEOUT_MS no está definido o es inválido.
+const APPLE_TOKEN_DEFAULT_TIMEOUT_MS = 8000;
 
 /**
  * Exchanges an authorization code for Apple's access/refresh/id tokens.
@@ -31,16 +35,29 @@ export class AppleTokenExchangeClient {
       client_secret: clientSecret,
     });
 
+    const timeoutMs = resolveTimeoutMs("APPLE_TOKEN_TIMEOUT_MS", APPLE_TOKEN_DEFAULT_TIMEOUT_MS);
+
     let response: Response;
     try {
-      response = await this.fetchImpl(APPLE_TOKEN_URL, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/x-www-form-urlencoded",
+      response = await fetchWithTimeout(
+        "apple-token-exchange",
+        APPLE_TOKEN_URL,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/x-www-form-urlencoded",
+          },
+          body: body.toString(),
         },
-        body: body.toString(),
-      });
-    } catch {
+        timeoutMs,
+        this.fetchImpl,
+      );
+    } catch (error) {
+      if (error instanceof ProviderTimeoutError) {
+        console.error("[Apple] Timeout en intercambio de token:", { timeoutMs: error.timeoutMs });
+      } else {
+        console.error("[Apple] Error de red en intercambio de token.");
+      }
       throw new AppError({
         code: "AUTH_APPLE_TOKEN_EXCHANGE_FAILED",
         message: "Could not reach Apple's token endpoint.",

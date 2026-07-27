@@ -6,6 +6,10 @@ import type {
   NormalizedWebhook,
   NormalizedStatus,
 } from "./payment.provider.js";
+import { fetchWithTimeout, resolveTimeoutMs, ProviderTimeoutError } from "../../shared/http/providerTimeout.js";
+
+// Fallback seguro si PRONTOPAGA_TIMEOUT_MS no está definido o es inválido.
+const PRONTOPAGA_DEFAULT_TIMEOUT_MS = 8000;
 
 function getConfig(): { apiUrl: string; apiKey: string; secretKey: string; commerceId: string } {
   const environment = process.env["PRONTOPAGA_ENVIRONMENT"] ?? "sandbox";
@@ -65,14 +69,35 @@ export class ProntoPagaProvider implements PaymentProvider {
 
     body["signature"] = buildSignature(body, config.secretKey);
 
-    const response = await fetch(`${config.apiUrl}/payments/create`, {
-      method:  "POST",
-      headers: {
-        "Content-Type":  "application/json",
-        "Authorization": `Bearer ${config.apiKey}`,
-      },
-      body: JSON.stringify(body),
-    });
+    const timeoutMs = resolveTimeoutMs("PRONTOPAGA_TIMEOUT_MS", PRONTOPAGA_DEFAULT_TIMEOUT_MS);
+
+    let response: Response;
+
+    try {
+      response = await fetchWithTimeout(
+        "prontopaga",
+        `${config.apiUrl}/payments/create`,
+        {
+          method:  "POST",
+          headers: {
+            "Content-Type":  "application/json",
+            "Authorization": `Bearer ${config.apiKey}`,
+          },
+          body: JSON.stringify(body),
+        },
+        timeoutMs,
+      );
+    } catch (error) {
+      if (error instanceof ProviderTimeoutError) {
+        console.error("[ProntoPaga] Timeout creando pago:", {
+          timeoutMs: error.timeoutMs,
+          orderId: params.orderId,
+        });
+      } else {
+        console.error("[ProntoPaga] Error de red creando pago:", { orderId: params.orderId });
+      }
+      throw error;
+    }
 
     if (!response.ok) {
       const text = await response.text().catch(() => "");
