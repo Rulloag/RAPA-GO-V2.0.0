@@ -498,6 +498,29 @@
     var(--rp-shadow);
 }
 
+/* Variante de ATENCIÓN, hermana de --highlight y con el mismo criterio: se
+   refuerza el borde, nunca el fondo. Cambia solo la familia semántica, porque
+   "tienes reservas por confirmar" es un aviso pendiente, no un logro: pintarlo
+   de verde como el saldo a favor diría lo contrario de lo que pasa. */
+.rapago-home-quick-card--attention {
+  border-color: var(--rp-warn-bd);
+  box-shadow:
+    0 0 0 1px var(--rp-warn-bd),
+    var(--rp-shadow);
+}
+
+.rapago-home-quick-card--attention .rapago-home-quick-icon {
+  background: var(--rp-warn-bg);
+  border-color: var(--rp-warn-bd);
+  color: var(--rp-warn-fg);
+}
+
+.rapago-home-quick-card--attention .rapago-home-quick-sub {
+  color: var(--rp-warn-fg);
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+
 .rapago-home-quick-icon {
   width: var(--rp-icon-size);
   height: var(--rp-icon-size);

@@ -149,6 +149,11 @@ export type RapagoSection =
   | "wallet"
   | "support"
   | "request-ride"
+  | "driver-home"
+  | "driver-requests"
+  | "driver-trips"
+  | "driver-earnings"
+  | "driver-profile"
   | "auth";
 
 /**
@@ -161,8 +166,13 @@ export type RapagoSection =
  *
  * `auth` queda aparte a propósito: Login y Registro son previos a la sesión, no
  * se sabe todavía el rol de quien mira, y tienen su propia superficie visual.
+ *
+ * `driver` es un ámbito propio y no comparte con `passenger`: son dos sesiones
+ * de uso distintas (el conductor trabaja de noche mucho más a menudo) y sus
+ * pantallas viven en árboles de rutas separados, así que cada rol recuerda su
+ * preferencia sin pisar la del otro.
  */
-export type RapagoThemeScope = "passenger" | "auth";
+export type RapagoThemeScope = "passenger" | "driver" | "auth";
 
 const SECTION_SCOPE: Record<RapagoSection, RapagoThemeScope> = {
   home: "passenger",
@@ -171,6 +181,11 @@ const SECTION_SCOPE: Record<RapagoSection, RapagoThemeScope> = {
   wallet: "passenger",
   support: "passenger",
   "request-ride": "passenger",
+  "driver-home": "driver",
+  "driver-requests": "driver",
+  "driver-trips": "driver",
+  "driver-earnings": "driver",
+  "driver-profile": "driver",
   auth: "auth",
 };
 
@@ -181,6 +196,13 @@ const SECTION_SCOPE: Record<RapagoSection, RapagoThemeScope> = {
  */
 const LEGACY_SECTIONS_BY_SCOPE: Record<RapagoThemeScope, RapagoSection[]> = {
   passenger: ["home", "profile", "trips", "wallet", "support", "request-ride"],
+  driver: [
+    "driver-home",
+    "driver-requests",
+    "driver-trips",
+    "driver-earnings",
+    "driver-profile",
+  ],
   auth: ["auth"],
 };
 

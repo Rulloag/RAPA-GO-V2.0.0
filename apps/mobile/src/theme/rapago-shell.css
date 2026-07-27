@@ -63,6 +63,20 @@
   --rp-terracotta: #b84f2e;
   --rp-btn-primary: linear-gradient(135deg, #f8d879 0%, #d6a640 46%, #b84f2e 100%);
   --rp-btn-primary-fg: #201607;
+  /* Estado pulsado del botón principal. Estaba escrito a mano en sections.css
+     como un degradado literal; se nombra aquí para que no vuelva a copiarse.
+     Es constante de marca: igual en día y en noche, como el propio botón. */
+  --rp-btn-primary-activated: linear-gradient(135deg, #c89b3c, #b84f2e);
+
+  /* Héroe dorado (.rp-hero y el del Inicio del conductor): borde y superficies
+     interiores. No llevan contraparte de día A PROPÓSITO: el héroe usa el oro
+     de marca, que es el mismo en ambos temas, así que su borde, sus tiles y su
+     texto secundario también deben serlo. Antes se escribían a mano en cada
+     regla que los necesitaba. */
+  --rp-hero-bd: rgba(122, 53, 31, 0.35);
+  --rp-hero-inset: rgba(32, 22, 7, 0.12);
+  --rp-hero-inset-bd: rgba(32, 22, 7, 0.2);
+  --rp-hero-muted: rgba(32, 22, 7, 0.74);
 
   /* ── Tema oscuro (defecto) ────────────────────────────────────────────── */
   /* Sin background-attachment: fixed — en móvil obliga a repintar una capa
@@ -130,6 +144,17 @@
   --rp-surface-legacy: linear-gradient(180deg, #fffdf9, #f6f2ec);
   --rp-text-legacy: #1a1a1a;
   --rp-accent-legacy: #8a641c;
+  /* Resto de la paleta legacy. Faltaban y sections.css los resolvía con hex y
+     rgba() escritos a mano dentro de las reglas; se nombran aquí para que la
+     capa del conductor no repita esos literales.
+     NO se redefinen en el bloque de tema claro A PROPÓSITO: viven en :root y
+     valen igual en día y en noche, porque acompañan a una superficie que es
+     clara en ambos temas. Desaparecen junto con --rp-surface-legacy. */
+  --rp-muted-legacy: rgba(26, 26, 26, 0.62);
+  --rp-border-c-legacy: rgba(200, 155, 60, 0.42);
+  --rp-field-bg-legacy: #ffffff;
+  --rp-field-fg-legacy: #111111;
+  --rp-field-ph-legacy: rgba(17, 17, 17, 0.45);
 
   /* Tarjeta de Login/Registro: borde y halo más marcados que una tarjeta
      normal, porque es el único elemento en pantalla. */
@@ -238,7 +263,8 @@
 .rapago-home-page,
 .rapago-profile-page,
 .rapago-auth-dark,
-.rapago-section-page {
+.rapago-section-page,
+.rapago-driver-page {
   background: var(--rp-page-bg) !important;
   color: var(--rp-text) !important;
 }
@@ -336,7 +362,8 @@ ion-tab-bar.rapago-role-tabbar ion-tab-button[aria-selected="true"] ion-label {
 /* Botón de chrome (header): sol/luna, idioma, volver. */
 .rapago-home-page .rapago-chrome-btn,
 .rapago-profile-page .rapago-chrome-btn,
-.rapago-section-page .rapago-chrome-btn {
+.rapago-section-page .rapago-chrome-btn,
+.rapago-driver-page .rapago-chrome-btn {
   --border-radius: 12px;
   --background: var(--rp-chrome);
   --background-hover: var(--rp-icon-bg);
@@ -374,7 +401,8 @@ ion-tab-bar.rapago-role-tabbar ion-tab-button[aria-selected="true"] ion-label {
    ========================================================================== */
 .rapago-section-page :focus-visible,
 .rapago-home-page :focus-visible,
-.rapago-profile-page :focus-visible {
+.rapago-profile-page :focus-visible,
+.rapago-driver-page :focus-visible {
   outline: 3px solid var(--rp-border-strong);
   outline-offset: 2px;
   border-radius: 6px;
@@ -384,7 +412,9 @@ ion-tab-bar.rapago-role-tabbar ion-tab-button[aria-selected="true"] ion-label {
    aplica sobre el host para que el anillo no quede recortado. */
 .rapago-section-page ion-button:focus-visible,
 .rapago-section-page ion-chip:focus-visible,
-.rapago-home-page ion-button:focus-visible {
+.rapago-home-page ion-button:focus-visible,
+.rapago-driver-page ion-button:focus-visible,
+.rapago-driver-page ion-chip:focus-visible {
   outline: 3px solid var(--rp-border-strong);
   outline-offset: 3px;
 }

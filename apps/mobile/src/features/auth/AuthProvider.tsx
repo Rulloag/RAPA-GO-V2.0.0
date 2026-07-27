@@ -186,6 +186,12 @@ export function AuthProvider({ children }: AuthProviderProps): JSX.Element {
         setSession(response.session);
         setUser(response.session.user);
         setStatus("authenticated");
+
+        /**
+         * Protocolo de sesión: notifica el login exitoso para que la UI
+         * muestre el mensaje correspondiente (AuthFeedbackToast).
+         */
+        window.dispatchEvent(new CustomEvent("auth:login-result"));
       } else {
         setStatus("unauthenticated");
       }
@@ -206,6 +212,12 @@ export function AuthProvider({ children }: AuthProviderProps): JSX.Element {
         setSession(response.session);
         setUser(response.session.user);
         setStatus("authenticated");
+
+        /**
+         * Protocolo de sesión: notifica el registro exitoso para que la UI
+         * muestre el mensaje correspondiente (AuthFeedbackToast).
+         */
+        window.dispatchEvent(new CustomEvent("auth:register-result"));
       } else {
         setStatus("unauthenticated");
       }
@@ -266,7 +278,7 @@ export function AuthProvider({ children }: AuthProviderProps): JSX.Element {
 
     /**
      * Protocolo de sesión: notifica el resultado del cierre para que la UI
-     * muestre el mensaje correspondiente (SessionLogoutToast).
+     * muestre el mensaje correspondiente (AuthFeedbackToast).
      */
     window.dispatchEvent(
       new CustomEvent("auth:logout-result", { detail: { ok } }),

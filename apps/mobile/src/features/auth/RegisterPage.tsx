@@ -500,8 +500,6 @@ const formShellStyle: CSSProperties = {
 };
 
 const registerItemStyle = {
-  "--background": "rgba(255,255,255,.055)",
-  "--color": "#ffffff",
   "--border-color": "transparent",
   "--highlight-color-focused": "#d6a640",
   "--highlight-color-valid": "#d6a640",
@@ -509,20 +507,15 @@ const registerItemStyle = {
   "--padding-start": "14px",
   "--inner-padding-end": "10px",
   "--min-height": "62px",
-  border: "1.5px solid rgba(214,166,64,.28)",
   borderRadius: 16,
   overflow: "hidden",
 } as CSSProperties;
 
 const labelStyle: CSSProperties = {
-  color: "#F8D879",
   fontWeight: 800,
 };
 
 const inputStyle = {
-  "--color": "#ffffff",
-  "--placeholder-color": "rgba(255,255,255,0.5)",
-  "--placeholder-opacity": "1",
   fontWeight: 700,
 } as CSSProperties;
 
@@ -544,17 +537,17 @@ const choiceGridStyle: CSSProperties = {
 };
 
 const nationalityFieldStyle: CSSProperties = {
-  border: "1px solid rgba(210, 164, 58, 0.38)",
+  border: "1px solid var(--rp-border-c)",
   borderRadius: 18,
-  background: "#242424",
-  color: "#f6f2ec",
+  background: "var(--rp-field-bg)",
+  color: "var(--rp-field-fg)",
   padding: "14px 16px",
   boxShadow: "0 8px 20px rgba(0, 0, 0, 0.16)",
   overflow: "hidden",
 };
 
 const nationalityLabelStyle: CSSProperties = {
-  color: "#e8d7b5",
+  color: "var(--rp-label)",
   fontWeight: 950,
   fontSize: "0.88rem",
   display: "block",
@@ -565,11 +558,11 @@ function passengerChoiceButtonStyle(active: boolean): CSSProperties {
   return {
     width: "100%",
     minHeight: 58,
-    border: active ? "1px solid #f4d782" : "1px solid rgba(210, 164, 58, 0.32)",
+    border: active ? "1px solid #f4d782" : "1px solid var(--rp-border-c)",
     borderRadius: 14,
     padding: "11px 12px",
-    background: active ? "linear-gradient(135deg, #d2a43a, #f4d782)" : "#1f1f1f",
-    color: active ? "#111111" : "#f6f2ec",
+    background: active ? "linear-gradient(135deg, #d2a43a, #f4d782)" : "var(--rp-field-bg)",
+    color: active ? "#111111" : "var(--rp-field-fg)",
     textAlign: "left",
     boxShadow: active ? "0 10px 24px rgba(210, 164, 58, 0.22)" : "none",
     cursor: "pointer",
@@ -586,7 +579,7 @@ function passengerBadgeStyle(active: boolean): CSSProperties {
     padding: "3px 8px",
     borderRadius: 999,
     background: active ? "rgba(17, 17, 17, 0.12)" : "rgba(244, 215, 130, 0.12)",
-    color: active ? "#3a2a1b" : "#f4d782",
+    color: active ? "#3a2a1b" : "var(--rp-label)",
     fontSize: "0.66rem",
     fontWeight: 950,
     letterSpacing: ".02em",
@@ -597,9 +590,9 @@ function passengerBadgeStyle(active: boolean): CSSProperties {
 const uploadBoxStyle: CSSProperties = {
   padding: "12px",
   borderRadius: 14,
-  background: "#1f1f1f",
+  background: "var(--rp-field-bg)",
   border: "1px dashed rgba(244, 215, 130, 0.58)",
-  color: "#f6f2ec",
+  color: "var(--rp-field-fg)",
 };
 
 const phoneInputRowStyle: CSSProperties = {
@@ -617,7 +610,7 @@ const phonePrefixStyle: CSSProperties = {
   paddingInlineEnd: 10,
   marginInlineEnd: 2,
   borderInlineEnd: "1px solid rgba(214, 166, 64, 0.35)",
-  color: "#F8D879",
+  color: "var(--rp-label)",
   fontWeight: 800,
   fontSize: "0.98rem",
   letterSpacing: "0.01em",
@@ -1115,7 +1108,7 @@ export function RegisterPage(): JSX.Element {
             </IonText>
           )}
 
-          <IonItem className={fieldErrors.name ? "ion-invalid" : ""} style={registerItemStyle}>
+          <IonItem className={`rapago-auth-field ${fieldErrors.name ? "ion-invalid" : ""}`} style={registerItemStyle}>
             <IonIcon slot="start" icon={personOutline} className="rapago-auth-field-icon" />
             <IonLabel position="stacked" style={labelStyle}>Nombre *</IonLabel>
             <IonInput
@@ -1134,7 +1127,7 @@ export function RegisterPage(): JSX.Element {
             {fieldErrors.name && <IonNote slot="error">{fieldErrors.name}</IonNote>}
           </IonItem>
 
-          <IonItem className={fieldErrors.lastName ? "ion-invalid" : ""} style={registerItemStyle}>
+          <IonItem className={`rapago-auth-field ${fieldErrors.lastName ? "ion-invalid" : ""}`} style={registerItemStyle}>
             <IonIcon slot="start" icon={personOutline} className="rapago-auth-field-icon" />
             <IonLabel position="stacked" style={labelStyle}>Apellido *</IonLabel>
             <IonInput
@@ -1177,7 +1170,7 @@ export function RegisterPage(): JSX.Element {
                     <div
                       style={{
                         marginTop: 4,
-                        color: active ? "#3a2a1b" : "rgba(246, 242, 236, 0.72)",
+                        color: active ? "#3a2a1b" : "var(--rp-muted)",
                         fontSize: "0.76rem",
                         fontWeight: 750,
                         lineHeight: 1.32,
@@ -1215,7 +1208,7 @@ export function RegisterPage(): JSX.Element {
                   ACREDITACIÓN RESIDENCIA *
                 </div>
 
-                <IonNote style={{ color: "rgba(246, 242, 236, 0.72)", display: "block", marginBottom: 10, lineHeight: 1.35 }}>
+                <IonNote style={{ color: "var(--rp-muted)", display: "block", marginBottom: 10, lineHeight: 1.35 }}>
                   Si eres Rapanui, adjunta una fotografía clara de tu cédula de identidad. Si eres residente, adjunta tu resolución de residencia vigente emitida por la Delegación Presidencial Provincial de Isla de Pascua. Formatos: PDF, JPG, JPEG, PNG o WEBP.
                 </IonNote>
 
@@ -1252,7 +1245,7 @@ export function RegisterPage(): JSX.Element {
 
           {/* RUT o Pasaporte según nacionalidad */}
           {passengerFareType !== "" && passengerFareType !== "foreigner" && (
-            <IonItem className={fieldErrors.rut ? "ion-invalid" : ""} style={registerItemStyle}>
+            <IonItem className={`rapago-auth-field ${fieldErrors.rut ? "ion-invalid" : ""}`} style={registerItemStyle}>
               <IonLabel position="stacked" style={labelStyle}>RUT *</IonLabel>
               <IonInput
                 type="tel"
@@ -1275,7 +1268,7 @@ export function RegisterPage(): JSX.Element {
           )}
 
           {passengerFareType === "foreigner" && (
-            <IonItem className={fieldErrors.passport ? "ion-invalid" : ""} style={registerItemStyle}>
+            <IonItem className={`rapago-auth-field ${fieldErrors.passport ? "ion-invalid" : ""}`} style={registerItemStyle}>
               <IonLabel position="stacked" style={labelStyle}>Pasaporte *</IonLabel>
               <IonInput
                 type="text"
@@ -1296,7 +1289,7 @@ export function RegisterPage(): JSX.Element {
             </IonItem>
           )}
 
-          <IonItem className={fieldErrors.phone ? "ion-invalid" : ""} style={registerItemStyle}>
+          <IonItem className={`rapago-auth-field ${fieldErrors.phone ? "ion-invalid" : ""}`} style={registerItemStyle}>
             <IonIcon slot="start" icon={callOutline} className="rapago-auth-field-icon" />
             <IonLabel position="stacked" style={labelStyle}>Teléfono *</IonLabel>
             <div style={phoneInputRowStyle}>
@@ -1321,7 +1314,7 @@ export function RegisterPage(): JSX.Element {
             {fieldErrors.phone && <IonNote slot="error">{fieldErrors.phone}</IonNote>}
           </IonItem>
 
-          <IonItem className={fieldErrors.email ? "ion-invalid" : ""} style={registerItemStyle}>
+          <IonItem className={`rapago-auth-field ${fieldErrors.email ? "ion-invalid" : ""}`} style={registerItemStyle}>
             <IonIcon slot="start" icon={mailOutline} className="rapago-auth-field-icon" />
             <IonLabel position="stacked" style={labelStyle}>Correo electrónico *</IonLabel>
             <IonInput
@@ -1342,7 +1335,7 @@ export function RegisterPage(): JSX.Element {
             {fieldErrors.email && <IonNote slot="error">{fieldErrors.email}</IonNote>}
           </IonItem>
 
-          <IonItem className={fieldErrors.password ? "ion-invalid" : ""} style={registerItemStyle}>
+          <IonItem className={`rapago-auth-field ${fieldErrors.password ? "ion-invalid" : ""}`} style={registerItemStyle}>
             <IonIcon slot="start" icon={lockClosedOutline} className="rapago-auth-field-icon" />
             <IonLabel position="stacked" style={labelStyle}>Contraseña *</IonLabel>
             <IonInput
@@ -1374,7 +1367,7 @@ export function RegisterPage(): JSX.Element {
             {fieldErrors.password && <IonNote slot="error">{fieldErrors.password}</IonNote>}
           </IonItem>
 
-          <IonItem className={fieldErrors.confirmPassword ? "ion-invalid" : ""} style={registerItemStyle}>
+          <IonItem className={`rapago-auth-field ${fieldErrors.confirmPassword ? "ion-invalid" : ""}`} style={registerItemStyle}>
             <IonIcon slot="start" icon={lockClosedOutline} className="rapago-auth-field-icon" />
             <IonLabel position="stacked" style={labelStyle}>Confirmar contraseña *</IonLabel>
             <IonInput
@@ -1423,7 +1416,7 @@ export function RegisterPage(): JSX.Element {
 
          
 
-          <IonItem style={{ ...registerItemStyle, marginTop: "0.5rem" } as CSSProperties}>
+          <IonItem className="rapago-auth-field" style={{ ...registerItemStyle, marginTop: "0.5rem" } as CSSProperties}>
             <IonLabel position="stacked" style={labelStyle}>Código de referido (opcional)</IonLabel>
             <IonInput
               value={referralCode}
@@ -1443,7 +1436,7 @@ export function RegisterPage(): JSX.Element {
           )}
 
           <IonList style={{ marginTop: "0.75rem", borderRadius: 18, overflow: "hidden", background: "transparent" }}>
-            <IonItem style={{ ...registerItemStyle, borderRadius: 0, boxShadow: "none", borderLeft: 0, borderRight: 0, borderTop: 0 } as CSSProperties}>
+            <IonItem className="rapago-auth-field" style={{ ...registerItemStyle, borderRadius: 0, boxShadow: "none", borderLeft: 0, borderRight: 0, borderTop: 0 } as CSSProperties}>
               <IonCheckbox
                 checked={acceptTerms}
                 onIonChange={(event) => {
@@ -1453,7 +1446,7 @@ export function RegisterPage(): JSX.Element {
                 slot="start"
                 disabled={loading}
               />
-              <IonLabel style={{ whiteSpace: "normal", color: "#F6F2EC", fontWeight: 750, lineHeight: 1.35 }}>
+              <IonLabel style={{ whiteSpace: "normal", color: "var(--rp-text)", fontWeight: 750, lineHeight: 1.35 }}>
                 He leído y acepto los{" "}
                 <a href="/legal/terms-and-conditions" target="_blank" rel="noopener noreferrer">
                   Términos y Condiciones
@@ -1461,7 +1454,7 @@ export function RegisterPage(): JSX.Element {
               </IonLabel>
             </IonItem>
 
-            <IonItem style={{ ...registerItemStyle, borderRadius: 0, boxShadow: "none", borderLeft: 0, borderRight: 0, borderTop: 0 } as CSSProperties}>
+            <IonItem className="rapago-auth-field" style={{ ...registerItemStyle, borderRadius: 0, boxShadow: "none", borderLeft: 0, borderRight: 0, borderTop: 0 } as CSSProperties}>
               <IonCheckbox
                 checked={acceptPrivacy}
                 onIonChange={(event) => {
@@ -1471,7 +1464,7 @@ export function RegisterPage(): JSX.Element {
                 slot="start"
                 disabled={loading}
               />
-              <IonLabel style={{ whiteSpace: "normal", color: "#F6F2EC", fontWeight: 750, lineHeight: 1.35 }}>
+              <IonLabel style={{ whiteSpace: "normal", color: "var(--rp-text)", fontWeight: 750, lineHeight: 1.35 }}>
                 He leído y acepto la{" "}
                 <a href="/legal/privacy-policy" target="_blank" rel="noopener noreferrer">
                   Política de Privacidad
@@ -1479,7 +1472,7 @@ export function RegisterPage(): JSX.Element {
               </IonLabel>
             </IonItem>
 
-            <IonItem style={{ ...registerItemStyle, borderRadius: 0, boxShadow: "none", borderLeft: 0, borderRight: 0, borderTop: 0 } as CSSProperties}>
+            <IonItem className="rapago-auth-field" style={{ ...registerItemStyle, borderRadius: 0, boxShadow: "none", borderLeft: 0, borderRight: 0, borderTop: 0 } as CSSProperties}>
               <IonCheckbox
                 checked={acceptUserConditions}
                 onIonChange={(event) => {
@@ -1489,7 +1482,7 @@ export function RegisterPage(): JSX.Element {
                 slot="start"
                 disabled={loading}
               />
-              <IonLabel style={{ whiteSpace: "normal", color: "#F6F2EC", fontWeight: 750, lineHeight: 1.35 }}>
+              <IonLabel style={{ whiteSpace: "normal", color: "var(--rp-text)", fontWeight: 750, lineHeight: 1.35 }}>
                 Acepto las{" "}
                 <a href="/legal/user-conditions" target="_blank" rel="noopener noreferrer">
                   Condiciones para Usuarios

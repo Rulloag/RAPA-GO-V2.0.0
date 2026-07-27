@@ -1,0 +1,1961 @@
+/* ==========================================================================
+   RAPA GO — Capa de coherencia para las pantallas del CONDUCTOR
+   (Inicio, Solicitudes, Mis viajes, Ganancias y Mi perfil).
+
+   POR QUÉ ESTA CAPA Y NO UN REDISEÑO DEL JSX
+   `pages/driver/index.tsx` tiene más de 20.000 líneas y ahí vive el flujo de
+   trabajo real del conductor: aceptar, iniciar, cobrar y cerrar viajes.
+   Reescribir esos renders no es una operación que se pueda verificar de forma
+   fiable. En vez de eso, estas reglas conectan los componentes Ionic que ya
+   usa al sistema de tokens de rapago-shell.css, de modo que las cinco
+   pantallas comparten colores, bordes, radios y tipografía con las del
+   pasajero y responden al modo día/noche.
+
+   Es la MISMA capa que sections.css aplica al pasajero, con el ámbito movido
+   de `.rapago-section-page` a `.rapago-driver-page`. Se mantiene como archivo
+   aparte (y no como una lista de selectores en sections.css) porque el
+   conductor va a divergir: tiene su propio ámbito de tema y en fases
+   siguientes recibirá su propio UI-kit.
+
+   LÍMITE CONOCIDO
+   Solo alcanza a componentes Ionic y a elementos con clase. Los <div> con
+   `style={{ background: ... }}` incrustado siguen fuera: un override genérico
+   sobre todos los div rompería mapas, badges de estado y timelines. Esos
+   bloques necesitan pasar a clases, que es trabajo de refactor del JSX.
+
+   Se importa DESPUÉS de global.css y de sections.css. El !important es
+   necesario dos veces: contra las reglas de tipo de global.css, y porque el
+   CSS de autor con !important es lo único que gana a un `style=""` inline.
+   ========================================================================== */
+
+/* ── Superficie de página ───────────────────────────────────────────────── */
+/* El fondo del IonPage lo pinta rapago-shell.css, que ya incluye
+   .rapago-driver-page en la regla con el !important que hace falta para
+   ganarle a `.ion-page` de global.css:2074. */
+.rapago-driver-page ion-content {
+  --background: transparent !important;
+}
+
+/* Inicio del conductor: su hoja incrustada pintaba aquí una foto con
+   `background-attachment: fixed`, prohibido por su coste de repintado en
+   móvil. El fondo pasa a ser el del tema, vía --rp-page-bg en el IonPage. */
+.rapago-driver-page .driver-home-content {
+  --background: transparent !important;
+}
+
+/* ── Cabecera ───────────────────────────────────────────────────────────── */
+/* global.css:2094 y :2099 imponen fondo volcánico y degradado terracota. */
+.rapago-driver-page ion-header {
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+.rapago-driver-page ion-header::after {
+  display: none !important;
+}
+
+/* El `color="success"` que traían las cuatro cabeceras genera `.ion-color-*`,
+   que fija --ion-color-base con !important. Hay que anular tanto --background
+   como --ion-color-base para que el toolbar sea de verdad transparente y deje
+   ver el fondo de la página. */
+.rapago-driver-page ion-toolbar,
+.rapago-driver-page ion-toolbar[color],
+.rapago-driver-page ion-toolbar.ion-color {
+  --background: transparent !important;
+  --ion-color-base: transparent !important;
+  --color: var(--rp-text) !important;
+  --border-width: 0 !important;
+  border-bottom: 1px solid var(--rp-divider) !important;
+  --min-height: 56px !important;
+}
+
+.rapago-driver-page ion-toolbar::part(background) {
+  background: transparent !important;
+}
+
+/* ESCALA TIPOGRÁFICA
+   global.css:2110 pone `ion-title { font-weight: 950 !important }`, y ese 950
+   se repite por toda la hoja. Con todo en el peso máximo no hay jerarquía: el
+   título de la pantalla, el de una tarjeta y una etiqueta pesan igual. Aquí el
+   título de sección baja a 800 y el resto se apoya en la escala fluida. */
+.rapago-driver-page ion-toolbar ion-title,
+.rapago-driver-page .rapago-section-title {
+  color: var(--rp-text) !important;
+  font-size: var(--rp-fs-h2) !important;
+  font-weight: 800 !important;
+  letter-spacing: -0.01em !important;
+}
+
+.rapago-driver-page .rapago-section-header {
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+/* Segmentos de filtro con scroll horizontal propio para que no se recorten. */
+.rapago-driver-page ion-segment {
+  overflow-x: auto !important;
+  scrollbar-width: none;
+}
+
+.rapago-driver-page ion-segment::-webkit-scrollbar {
+  display: none;
+}
+
+/* global.css:3691 fuerza los botones de cabecera a blanco. */
+.rapago-driver-page ion-toolbar ion-buttons ion-button {
+  --color: var(--rp-icon-fg) !important;
+  color: var(--rp-icon-fg) !important;
+}
+
+.rapago-driver-page ion-toolbar ion-buttons ion-button::part(native) {
+  color: var(--rp-icon-fg) !important;
+}
+
+.rapago-driver-page ion-back-button {
+  --color: var(--rp-icon-fg) !important;
+  color: var(--rp-icon-fg) !important;
+}
+
+/* El interruptor sol/luna del Inicio del conductor usa .rapago-home-theme-btn
+   (home.css:90) sin ningún override: ahora que el encabezado de marca es
+   transparente y temático, el botón resuelve igual que en el Inicio del
+   pasajero. */
+
+/* ── Tarjetas ───────────────────────────────────────────────────────────── */
+/* global.css:883 y :2149 fijan `ion-card` en ivory con texto #1a1a1a. Aquí
+   pasan al borde dorado, el radio y la sombra del sistema. */
+.rapago-driver-page ion-card {
+  border: var(--rp-border-w) solid var(--rp-border-c) !important;
+  border-radius: var(--rp-radius) !important;
+  box-shadow: var(--rp-shadow) !important;
+  margin-inline: 0 !important;
+}
+
+/* SUPERFICIE CLARA EN LAS CINCO PANTALLAS — DEUDA TÉCNICA CON NOMBRE
+   Las pantallas del conductor escriben el color del texto dentro del propio
+   `style=""`, casi siempre en tonos oscuros (32 casos con `color: "#111"`).
+   Al forzar la tarjeta a superficie oscura en modo noche, ese texto quedaría
+   negro sobre negro y bloques enteros desaparecerían.
+
+   Forzar también el color del texto no sirve: borraría los verdes y rojos que
+   comunican estado de viaje, de pago y de cobro, que es información, no
+   decoración.
+
+   Así que la tarjeta se mantiene sobre fondo claro en AMBOS temas. Sigue
+   adoptando el borde dorado, el radio, la sombra y la tipografía, de modo que
+   el conjunto se lee como la misma app. Esta excepción se retira cuando esos
+   `style=""` pasen a clases y el texto pueda heredar del tema.
+
+   `.rapago-home-quick-card` queda FUERA de la excepción: sus textos ya salen
+   de clases (título, copia, insignia), así que puede vivir sobre la superficie
+   del tema como cualquier tarjeta del pasajero. Es el modelo al que tienen que
+   llegar las demás. */
+.rapago-driver-page ion-card:not(.rapago-home-quick-card):not(.rapago-driver-card) {
+  background: var(--rp-surface-legacy) !important;
+  color: var(--rp-text-legacy) !important;
+}
+
+.rapago-driver-page ion-card-title,
+.rapago-driver-page ion-card-header ion-card-title {
+  color: var(--rp-accent-legacy) !important;
+  font-size: var(--rp-fs-h2) !important;
+  font-weight: 850 !important;
+  letter-spacing: -0.01em;
+}
+
+.rapago-driver-page ion-card-subtitle {
+  color: var(--rp-muted-legacy) !important;
+  font-size: var(--rp-fs-label) !important;
+  font-weight: 750 !important;
+  letter-spacing: 0.08em;
+}
+
+.rapago-driver-page ion-card:not(.rapago-home-quick-card):not(.rapago-driver-card) ion-card-content {
+  color: var(--rp-text-legacy) !important;
+  font-size: var(--rp-fs-body) !important;
+}
+
+/* Los títulos sueltos dentro de la tarjeta heredan el color legible en vez del
+   del tema, que sobre superficie clara sería ivory sobre blanco. */
+.rapago-driver-page ion-card:not(.rapago-driver-card) :is(h1, h2, h3, h4, h5, p, li, dt, dd) {
+  color: inherit;
+}
+
+/* Campos dentro de tarjeta: la tarjeta es clara, así que el campo va claro con
+   texto oscuro pase lo que pase el tema. */
+.rapago-driver-page ion-card:not(.rapago-driver-card) ion-item {
+  --background: var(--rp-field-bg-legacy) !important;
+  --color: var(--rp-text-legacy) !important;
+  border-color: var(--rp-border-c-legacy) !important;
+}
+
+.rapago-driver-page ion-card:not(.rapago-driver-card) ion-item ion-label,
+.rapago-driver-page ion-card:not(.rapago-driver-card) ion-item ion-label.label-stacked {
+  color: var(--rp-accent-legacy) !important;
+}
+
+.rapago-driver-page ion-card:not(.rapago-driver-card) ion-item ion-label :is(h1, h2, h3, p) {
+  color: var(--rp-text-legacy) !important;
+}
+
+.rapago-driver-page ion-card:not(.rapago-driver-card) :is(ion-input, ion-textarea, ion-select) {
+  --color: var(--rp-field-fg-legacy) !important;
+  --placeholder-color: var(--rp-field-ph-legacy) !important;
+  color: var(--rp-field-fg-legacy) !important;
+}
+
+.rapago-driver-page ion-card:not(.rapago-driver-card) :is(ion-input, ion-textarea) :is(input, textarea),
+.rapago-driver-page ion-card:not(.rapago-driver-card) ion-input::part(native),
+.rapago-driver-page ion-card:not(.rapago-driver-card) ion-textarea::part(native) {
+  color: var(--rp-field-fg-legacy) !important;
+  -webkit-text-fill-color: var(--rp-field-fg-legacy) !important;
+}
+
+.rapago-driver-page ion-card:not(.rapago-driver-card) ion-note {
+  color: var(--rp-muted-legacy) !important;
+}
+
+/* ── Listas y filas ─────────────────────────────────────────────────────── */
+.rapago-driver-page ion-list {
+  background: transparent !important;
+}
+
+.rapago-driver-page ion-item {
+  --background: var(--rp-field-bg) !important;
+  --color: var(--rp-text) !important;
+  --border-color: var(--rp-divider) !important;
+  --border-radius: var(--rp-radius-sm) !important;
+  border: 1px solid var(--rp-border-c) !important;
+  border-radius: var(--rp-radius-sm) !important;
+}
+
+/* global.css:2982 fuerza las etiquetas a #111111: en modo noche quedarían
+   negras sobre superficie negra. */
+.rapago-driver-page ion-item ion-label,
+.rapago-driver-page ion-item ion-label.label-stacked {
+  color: var(--rp-label) !important;
+  opacity: 1 !important;
+}
+
+.rapago-driver-page ion-item ion-label h1,
+.rapago-driver-page ion-item ion-label h2,
+.rapago-driver-page ion-item ion-label h3,
+.rapago-driver-page ion-item ion-label p {
+  color: var(--rp-text) !important;
+}
+
+/* ── Campos ─────────────────────────────────────────────────────────────── */
+/* global.css:2992 y variables.css:49 fuerzan el texto de los inputs, uno a
+   #111111 y el otro a #ffffff. Sin este bloque, uno de los dos temas queda
+   siempre con texto invisible. */
+.rapago-driver-page ion-input,
+.rapago-driver-page ion-textarea,
+.rapago-driver-page ion-searchbar {
+  --color: var(--rp-field-fg) !important;
+  --placeholder-color: var(--rp-field-ph) !important;
+  --placeholder-opacity: 1 !important;
+  color: var(--rp-field-fg) !important;
+}
+
+.rapago-driver-page ion-input input,
+.rapago-driver-page ion-input::part(native),
+.rapago-driver-page ion-textarea textarea,
+.rapago-driver-page ion-textarea::part(native),
+.rapago-driver-page ion-searchbar input {
+  color: var(--rp-field-fg) !important;
+  -webkit-text-fill-color: var(--rp-field-fg) !important;
+  caret-color: var(--rp-gold) !important;
+}
+
+.rapago-driver-page ion-input input::placeholder,
+.rapago-driver-page ion-textarea textarea::placeholder {
+  color: var(--rp-field-ph) !important;
+  -webkit-text-fill-color: var(--rp-field-ph) !important;
+  opacity: 1 !important;
+}
+
+.rapago-driver-page ion-searchbar {
+  --background: var(--rp-field-bg) !important;
+  --border-radius: var(--rp-radius-sm) !important;
+  --box-shadow: none !important;
+  --icon-color: var(--rp-icon-fg) !important;
+}
+
+.rapago-driver-page ion-select {
+  --placeholder-color: var(--rp-field-ph) !important;
+  color: var(--rp-field-fg) !important;
+}
+
+.rapago-driver-page ion-note {
+  color: var(--rp-muted) !important;
+}
+
+.rapago-driver-page ion-note[slot="error"] {
+  color: var(--rp-err-fg) !important;
+}
+
+/* ── Botones ────────────────────────────────────────────────────────────── */
+/* global.css:2115 impone --border-radius: 15px a todos los ion-button. */
+.rapago-driver-page ion-button {
+  --border-radius: var(--rp-radius-sm) !important;
+  text-transform: none !important;
+}
+
+/* El botón sólido sin color explícito es la acción principal de la pantalla:
+   toma el degradado dorado de la marca, igual que en Home y Perfil. */
+.rapago-driver-page ion-button:not([fill]):not([color]),
+.rapago-driver-page ion-button[fill="solid"]:not([color]),
+.rapago-driver-page ion-button[color="primary"] {
+  --background: var(--rp-btn-primary) !important;
+  --background-activated: var(--rp-btn-primary-activated) !important;
+  --color: var(--rp-btn-primary-fg) !important;
+  color: var(--rp-btn-primary-fg) !important;
+}
+
+.rapago-driver-page ion-button[fill="outline"]:not([color="danger"]) {
+  --border-color: var(--rp-border-c) !important;
+  --border-width: var(--rp-border-w) !important;
+  --color: var(--rp-icon-fg) !important;
+  --background: transparent !important;
+  --background-activated: var(--rp-icon-bg) !important;
+  color: var(--rp-icon-fg) !important;
+}
+
+.rapago-driver-page ion-button[fill="clear"]:not([color="danger"]) {
+  --color: var(--rp-icon-fg) !important;
+  color: var(--rp-icon-fg) !important;
+}
+
+.rapago-driver-page ion-button[color="danger"] {
+  --border-color: var(--rp-danger-bd) !important;
+  --color: var(--rp-danger-fg) !important;
+  color: var(--rp-danger-fg) !important;
+}
+
+/* Los colores semánticos (éxito, aviso, error) se dejan intactos a propósito:
+   comunican estado de viaje o de cobro, no identidad de marca. */
+
+/* Cerrar sesión: mismo botón que en el perfil del pasajero
+   (profile.css:534). Aquí solo se le da el ámbito del conductor. */
+.rapago-driver-page .rapago-profile-btn-danger {
+  --border-radius: var(--rp-radius-sm) !important;
+  --border-color: var(--rp-danger-bd) !important;
+  --border-width: var(--rp-border-w) !important;
+  --color: var(--rp-danger-fg) !important;
+  --background: var(--rp-err-bg) !important;
+  --background-activated: var(--rp-err-bg) !important;
+  color: var(--rp-danger-fg) !important;
+  height: calc(var(--rp-control-h) - 4px);
+  font-weight: 800;
+  text-transform: none;
+  /* Separación del botón que lo precede; antes iba en un `style` inline. */
+  margin: var(--rp-gap-sm) 0 0;
+}
+
+/* ── Franja descriptiva bajo la cabecera (Solicitudes) ──────────────────── */
+/* Clase nueva y no reutilizada del UI-kit a propósito: no existe en él un
+   patrón de "franja de contexto" bajo la cabecera. Antes era un IonToolbar con
+   un degradado terracota y texto ivory escritos en `style=""`, que no
+   respondía al tema y chocaba con la cabecera transparente. */
+.rapago-driver-page .rapago-section-subheader ion-toolbar {
+  --background: transparent !important;
+  --ion-color-base: transparent !important;
+  --border-width: 0 !important;
+  --min-height: 0 !important;
+  border-bottom: 0 !important;
+}
+
+.rapago-driver-page .rapago-driver-subhead {
+  min-width: 0;
+  padding: 0 var(--rp-pad-x) 12px;
+}
+
+.rapago-driver-page .rapago-driver-subhead__title {
+  font-size: var(--rp-fs-sub);
+  font-weight: 800;
+  color: var(--rp-text);
+  overflow-wrap: anywhere;
+}
+
+.rapago-driver-page .rapago-driver-subhead__note {
+  margin-top: 2px;
+  font-size: var(--rp-fs-micro);
+  font-weight: 650;
+  line-height: 1.3;
+  color: var(--rp-muted);
+  overflow-wrap: anywhere;
+}
+
+/* ── Segmentos y pestañas internas ──────────────────────────────────────── */
+.rapago-driver-page ion-segment {
+  --background: var(--rp-seg-track) !important;
+  border: 1px solid var(--rp-icon-bd) !important;
+  border-radius: 14px !important;
+}
+
+.rapago-driver-page ion-segment-button {
+  --color: var(--rp-muted) !important;
+  --color-checked: var(--rp-btn-primary-fg) !important;
+  --background-checked: var(--rp-btn-primary) !important;
+  --indicator-color: transparent !important;
+  --border-radius: 11px !important;
+  text-transform: none !important;
+  font-weight: 800 !important;
+}
+
+/* ── Acordeones y modales ───────────────────────────────────────────────── */
+.rapago-driver-page ion-accordion,
+.rapago-driver-page ion-accordion ion-item[slot="header"] {
+  --background: var(--rp-surface) !important;
+  color: var(--rp-text) !important;
+}
+
+.rapago-driver-page ion-accordion [slot="content"] {
+  background: var(--rp-surface) !important;
+  color: var(--rp-text) !important;
+}
+
+.rapago-driver-page ion-spinner {
+  color: var(--rp-icon-fg) !important;
+}
+
+.rapago-driver-page ion-refresher ion-refresher-content {
+  --color: var(--rp-icon-fg) !important;
+}
+
+/* ── Texto suelto dentro del contenido ──────────────────────────────────── */
+/* Solo encabezados y párrafos directos del contenido, no cualquier div: los
+   bloques con estilo inline (mapa, timeline, badges de estado) deben seguir
+   controlando su propio color. */
+.rapago-driver-page ion-content > h1,
+.rapago-driver-page ion-content > h2,
+.rapago-driver-page ion-content > h3,
+.rapago-driver-page ion-content > p {
+  color: var(--rp-text);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rapago-driver-page * {
+    animation-duration: 0.001ms !important;
+    transition-duration: 0.001ms !important;
+  }
+}
+
+/* ==========================================================================
+   INICIO DEL CONDUCTOR
+
+   Este bloque venía de `DRIVER_HOME_STYLES`, una plantilla de ~760 líneas que
+   el JSX inyectaba con <style> en cada render de la página. Traía su propio
+   sistema de variables (--driver-ink, --driver-volcanic, --driver-gold…), fijo
+   en tonos de noche, así que la pantalla se veía "a dos aguas": un encabezado
+   y un héroe permanentemente oscuros sobre un cuerpo que sí seguía el tema.
+
+   Aquí todo eso se resuelve con los tokens --rp-*. Las nueve variables
+   --driver-* desaparecen: cada una se tradujo según su USO concreto, no según
+   su nombre, porque en modo día varias se invierten (el ivory que era texto
+   pasa a ser superficie, y la tinta volcánica que era fondo pasa a ser texto).
+
+   Las clases propias que duplicaban patrones ya existentes se retiraron y el
+   JSX pasó al kit compartido: las métricas son .rp-tile, los accesos rápidos
+   .rapago-home-quick-card, el aviso de conectividad .rp-banner y el título de
+   sección .rapago-section-label. Lo que queda con nombre .driver-home-* es lo
+   que NO tiene equivalente en el kit: la cabecera de marca, el héroe de
+   bienvenida, el panel de disponibilidad y la llamada a la acción del pie.
+
+   Las dos media queries de tamaño (620px y 370px) se retiran: la escala fluida
+   con clamp() y los grid auto-fit cubren el mismo rango sin puntos de corte.
+   La de (hover: hover) se conserva — no es una consulta de tamaño.
+   ========================================================================== */
+
+/* ── Cabecera de marca ──────────────────────────────────────────────────── */
+/* Deja de ser un degradado volcánico fijo: ahora es transparente sobre el fondo
+   de página, como la cabecera de Inicio del pasajero y como las demás secciones
+   del conductor. Por eso ya no hace falta la exclusión :not(.driver-home-toolbar)
+   que llevaban las reglas genéricas de arriba. */
+.rapago-driver-page .driver-home-toolbar {
+  --min-height: 64px !important;
+  --padding-start: var(--rp-pad-x) !important;
+  --padding-end: 8px !important;
+}
+
+/* El bloque de marca va en slot="start" (ver comentario en el JSX), no dentro
+   de <IonTitle>: en modo "md" Ionic posiciona ion-title en absoluto y trunca
+   su contenido a una sola línea con elipsis dentro de su Shadow DOM, algo que
+   ningún CSS externo puede anular — con un nombre de conductor real y
+   variable eso cortaba el texto a la mitad. slot="start" es un contenedor de
+   flujo normal: crece con su contenido y toma el ancho que sobra junto al
+   grupo de botones en slot="end". */
+.rapago-driver-page .driver-home-brand {
+  display: flex;
+  align-items: center;
+  gap: var(--rp-gap-sm);
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+/* El logo real de Rapa Go (el mismo del Login) sustituye al icono de auto:
+   ya no hace falta el par oro/tinta volcánica para dar contraste, la imagen
+   trae su propio fondo blanco, igual que en la tarjeta de Login. */
+.rapago-driver-page .driver-home-brand__mark {
+  width: var(--rp-icon-size);
+  height: var(--rp-icon-size);
+  flex: 0 0 auto;
+  overflow: hidden;
+  border-radius: var(--rp-radius-sm);
+  border: 1px solid var(--rp-border-c);
+  box-shadow: var(--rp-shadow-accent);
+}
+
+.rapago-driver-page .driver-home-brand__mark img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.rapago-driver-page .driver-home-brand__text {
+  min-width: 0;
+}
+
+.rapago-driver-page .driver-home-brand__title {
+  color: var(--rp-text) !important;
+  font-size: var(--rp-fs-h2);
+  line-height: 1.1;
+  /* 950 era el peso por defecto de toda la app y aplanaba la jerarquía: el
+     título de pantalla va en 800. */
+  font-weight: 800;
+  letter-spacing: 0.01em;
+  overflow-wrap: anywhere;
+}
+
+.rapago-driver-page .driver-home-brand__subtitle {
+  margin-top: 3px;
+  color: var(--rp-muted-soft) !important;
+  font-size: var(--rp-fs-label);
+  line-height: 1;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.rapago-driver-page .driver-home-header-actions {
+  gap: 6px;
+  padding-right: 8px;
+}
+
+/* Mismo cromo que .rapago-chrome-btn y que el interruptor sol/luna, para que
+   los tres botones de la cabecera se lean como un solo grupo. */
+.rapago-driver-page .driver-home-header-action {
+  width: clamp(38px, 11vw, 42px);
+  height: clamp(38px, 11vw, 42px);
+  margin: 0 !important;
+  --border-radius: 13px !important;
+  --background: var(--rp-chrome) !important;
+  --background-hover: var(--rp-icon-bg) !important;
+  --background-activated: var(--rp-icon-bg) !important;
+  --color: var(--rp-icon-fg) !important;
+  --box-shadow: none !important;
+  border: 1px solid var(--rp-icon-bd);
+  border-radius: 13px;
+}
+
+.rapago-driver-page .driver-home-header-action ion-icon {
+  color: var(--rp-icon-fg) !important;
+  font-size: 20px;
+}
+
+/* ── Columna de lectura ─────────────────────────────────────────────────── */
+/* Era min(100%, 1040px): en un teléfono no cambiaba nada, pero rompía el ritmo
+   respecto a las demás pantallas y en tablet estiraba las tarjetas a lo ancho.
+   Pasa a los mismos 460px que .rp-shell, .rapago-home-shell y la tarjeta de
+   Login. El padding se mueve del ::part(scroll) al contenedor para que el ancho
+   máximo se mida sobre el área de lectura real. */
+.rapago-driver-page .driver-home-content::part(scroll) {
+  padding: 0;
+}
+
+.rapago-driver-page .driver-home-shell {
+  width: min(100%, 460px);
+  margin: 0 auto;
+  padding: var(--rp-gap-sm) var(--rp-pad-x)
+    calc(104px + env(safe-area-inset-bottom, 0px));
+  display: flex;
+  flex-direction: column;
+  gap: var(--rp-gap);
+}
+
+/* ── Panel de disponibilidad ────────────────────────────────────────────── */
+.rapago-driver-page .driver-availability-panel {
+  margin: 0;
+  padding: var(--rp-pad);
+  border-radius: var(--rp-radius);
+  color: var(--rp-text);
+  background: var(--rp-surface);
+  border: var(--rp-border-w) solid var(--rp-border-c);
+  box-shadow: var(--rp-shadow);
+}
+
+.rapago-driver-page .driver-availability-panel__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--rp-gap-sm);
+  margin-bottom: var(--rp-gap-sm);
+  min-width: 0;
+}
+
+.rapago-driver-page .driver-availability-panel__eyebrow {
+  color: var(--rp-muted-soft);
+  font-size: var(--rp-fs-label);
+  line-height: 1;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.rapago-driver-page .driver-availability-panel__title {
+  margin-top: 4px;
+  color: var(--rp-text);
+  font-size: var(--rp-fs-h2);
+  line-height: 1.15;
+  font-weight: 850;
+  overflow-wrap: anywhere;
+}
+
+.rapago-driver-page .driver-availability-panel__status {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 7px 10px;
+  flex: 0 0 auto;
+  border-radius: 999px;
+  color: var(--rp-text);
+  background: var(--rp-surface-soft);
+  border: 1px solid var(--rp-divider);
+  font-size: var(--rp-fs-micro);
+  font-weight: 800;
+}
+
+.rapago-driver-page .driver-availability-panel__dot {
+  width: 9px;
+  height: 9px;
+  flex: 0 0 auto;
+  border-radius: 999px;
+}
+
+.rapago-driver-page .driver-availability-panel__dot.is-available {
+  background: var(--rp-ok-fg);
+  box-shadow: 0 0 0 5px var(--rp-ok-bg);
+}
+
+.rapago-driver-page .driver-availability-panel__dot.is-unavailable {
+  background: var(--rp-err-fg);
+  box-shadow: 0 0 0 5px var(--rp-err-bg);
+}
+
+.rapago-driver-page .driver-availability-panel__grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+/* El par de botones sigue comunicando estado con verde y rojo, pero ahora con
+   los tokens semánticos, que tienen contraparte de día contrastada. El estado
+   elegido se distingue por relleno + borde reforzado, no solo por color. */
+.rapago-driver-page .driver-availability-button {
+  min-height: var(--rp-control-h);
+  padding: 10px 12px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-width: 0;
+  border-radius: var(--rp-radius-sm);
+  border: 1px solid var(--rp-border-c);
+  font: inherit;
+  font-size: var(--rp-fs-body);
+  font-weight: 800;
+  line-height: 1.15;
+  cursor: pointer;
+  overflow-wrap: anywhere;
+  transition:
+    transform 160ms ease,
+    box-shadow 160ms ease,
+    background 160ms ease;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.rapago-driver-page .driver-availability-button:active {
+  transform: scale(0.985);
+}
+
+.rapago-driver-page .driver-availability-button.is-inactive {
+  color: var(--rp-muted);
+  background: var(--rp-field-bg);
+}
+
+.rapago-driver-page .driver-availability-button.is-active.is-available {
+  color: var(--rp-ok-fg);
+  background: var(--rp-ok-bg);
+  border-color: var(--rp-ok-bd);
+  border-width: var(--rp-border-w);
+  box-shadow: var(--rp-shadow);
+}
+
+.rapago-driver-page .driver-availability-button.is-active.is-unavailable {
+  color: var(--rp-err-fg);
+  background: var(--rp-err-bg);
+  border-color: var(--rp-err-bd);
+  border-width: var(--rp-border-w);
+  box-shadow: var(--rp-shadow);
+}
+
+.rapago-driver-page .driver-availability-button ion-icon {
+  color: inherit !important;
+  font-size: 19px;
+  flex: 0 0 auto;
+}
+
+/* ── Héroe ──────────────────────────────────────────────────────────────── */
+/* Antes: degradado volcánico fijo con texto ivory, el bloque que más hacía que
+   la pantalla se viera de otra app en modo día. Ahora es el mismo héroe dorado
+   de marca que Beneficios (.rp-hero): constante en ambos temas y con tinta
+   volcánica encima, que es el único par legible sobre el oro. */
+.rapago-driver-page .driver-home-hero {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  padding: var(--rp-pad);
+  border-radius: var(--rp-radius);
+  color: var(--rp-btn-primary-fg);
+  background: var(--rp-btn-primary);
+  border: var(--rp-border-w) solid var(--rp-hero-bd);
+  box-shadow: var(--rp-shadow-accent);
+}
+
+.rapago-driver-page .driver-home-hero::before,
+.rapago-driver-page .driver-home-hero::after {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  border-radius: 999px;
+  background: var(--rp-hero-inset);
+  pointer-events: none;
+}
+
+.rapago-driver-page .driver-home-hero::before {
+  width: 190px;
+  height: 190px;
+  right: -72px;
+  top: -78px;
+}
+
+.rapago-driver-page .driver-home-hero::after {
+  width: 130px;
+  height: 130px;
+  right: 65px;
+  bottom: -88px;
+}
+
+.rapago-driver-page .driver-home-hero__top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--rp-gap-sm);
+  min-width: 0;
+}
+
+.rapago-driver-page .driver-home-hero__eyebrow {
+  color: inherit;
+  opacity: 0.78;
+  font-size: var(--rp-fs-label);
+  line-height: 1;
+  font-weight: 800;
+  letter-spacing: 0.11em;
+  text-transform: uppercase;
+}
+
+.rapago-driver-page .driver-home-hero__title {
+  margin-top: 7px;
+  color: inherit;
+  font-size: var(--rp-fs-hero);
+  line-height: 1.08;
+  font-weight: 850;
+  letter-spacing: -0.02em;
+  overflow-wrap: anywhere;
+}
+
+.rapago-driver-page .driver-home-hero__subtitle {
+  margin-top: 7px;
+  color: var(--rp-hero-muted);
+  font-size: var(--rp-fs-body);
+  line-height: 1.45;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+
+.rapago-driver-page .driver-home-hero__car {
+  width: var(--rp-icon-size);
+  height: var(--rp-icon-size);
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  border-radius: var(--rp-radius-sm);
+  color: var(--rp-btn-primary-fg);
+  background: var(--rp-hero-inset);
+  border: 1px solid var(--rp-hero-inset-bd);
+}
+
+.rapago-driver-page .driver-home-hero__car ion-icon {
+  color: var(--rp-btn-primary-fg) !important;
+  font-size: 24px;
+}
+
+/* ── Fichas de resumen (Estado / Zona / Red) ────────────────────────────── */
+/* Ya no hay reglas propias: el JSX usa .rp-tile-grid y .rp-tile del kit
+   compartido. Lo único específico es que aquí son TRES fichas y la rejilla del
+   kit es de dos columnas, así que la última huérfana ocupa la fila entera en
+   vez de quedar a media anchura junto a un hueco. Es también la que más texto
+   lleva ("Conexión estable", "Verificando señal"), así que le viene bien. */
+.rapago-driver-page .rp-tile-grid > .rp-tile:last-child:nth-child(odd) {
+  grid-column: 1 / -1;
+}
+
+/* ── Cabecera de sección ────────────────────────────────────────────────── */
+/* El título pasa a .rapago-section-label (la etiqueta con filete degradado que
+   ya usan Inicio y Perfil del pasajero). Se conserva la fila de dos columnas
+   porque la pista de la derecha es texto visible que no se toca. */
+.rapago-driver-page .driver-home-section {
+  margin: 0;
+}
+
+.rapago-driver-page .driver-home-section__header {
+  display: flex;
+  align-items: center;
+  gap: var(--rp-gap-sm);
+  min-width: 0;
+}
+
+.rapago-driver-page .driver-home-section__header .rapago-section-label {
+  flex: 1 1 auto;
+  margin: 0;
+  min-width: 0;
+}
+
+.rapago-driver-page .driver-home-section__hint {
+  flex: 0 1 auto;
+  color: var(--rp-muted-soft);
+  font-size: var(--rp-fs-micro);
+  font-weight: 750;
+  text-align: right;
+  overflow-wrap: anywhere;
+}
+
+/* ── Accesos rápidos ────────────────────────────────────────────────────── */
+/* El cuerpo de la tarjeta es .rapago-home-quick-card (home.css:468), idéntico
+   al del pasajero. Lo único que se añade aquí es la capa de compatibilidad con
+   IonCard: se conserva ese elemento porque `routerLink` es una prop de Ionic
+   que un <button> nativo no tiene, y cambiarla por un onClick sería tocar
+   navegación, no diseño. El relleno se traslada de la tarjeta al
+   ion-card-content para no sumarlo dos veces. */
+.rapago-driver-page ion-card.rapago-home-quick-card {
+  margin: 0 !important;
+  padding: 0;
+  /* La clase base es un flex column pensado para un <button> cuyos hijos son
+     el icono y el texto. Aquí el único hijo es el ion-card-content, y con
+     align-items: flex-start heredado se encogería al ancho de su contenido:
+     el layout flex se traslada al content y la tarjeta vuelve a ser un bloque. */
+  display: block;
+  border-radius: var(--rp-radius-sm) !important;
+  background: var(--rp-surface) !important;
+  border: var(--rp-border-w) solid var(--rp-border-c) !important;
+  box-shadow: var(--rp-shadow) !important;
+  color: var(--rp-text) !important;
+}
+
+.rapago-driver-page ion-card.rapago-home-quick-card.rapago-home-quick-card--attention {
+  border-color: var(--rp-warn-bd) !important;
+  box-shadow:
+    0 0 0 1px var(--rp-warn-bd),
+    var(--rp-shadow) !important;
+}
+
+.rapago-driver-page ion-card.rapago-home-quick-card ion-card-content {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
+  padding: var(--rp-pad-x) !important;
+  color: var(--rp-text) !important;
+}
+
+.rapago-driver-page ion-card.rapago-home-quick-card:active {
+  transform: scale(0.975);
+  border-color: var(--rp-border-strong) !important;
+}
+
+/* REFINAMIENTO: el pasajero tiene exactamente dos accesos rápidos y la rejilla
+   de dos columnas le cierra perfecta. El conductor tiene cinco, así que la
+   quinta quedaba sola en media fila con un hueco al lado, que es justo lo que
+   hacía que el bloque se viera desordenado. La última tarjeta huérfana ocupa
+   el ancho completo y cambia a disposición horizontal (icono a la izquierda,
+   texto a la derecha), en vez de estirar el diseño vertical. La regla es por
+   :nth-child, no por posición fija, así que sigue funcionando si algún día
+   cambia el número de accesos. */
+.rapago-driver-page
+  .rapago-home-quick
+  > ion-card.rapago-home-quick-card:last-child:nth-child(odd) {
+  grid-column: 1 / -1;
+}
+
+.rapago-driver-page
+  .rapago-home-quick
+  > ion-card.rapago-home-quick-card:last-child:nth-child(odd)
+  ion-card-content {
+  flex-direction: row;
+  align-items: center;
+  gap: var(--rp-gap-sm);
+}
+
+.rapago-driver-page
+  .rapago-home-quick
+  > ion-card.rapago-home-quick-card:last-child:nth-child(odd)
+  .rapago-driver-quick-top {
+  width: auto;
+}
+
+/* global.css:2952-2963 declara `ion-card, ion-card *, ion-card span { color:#111
+   !important }` para las tarjetas claras heredadas. El selector universal
+   `ion-card *` alcanza a CUALQUIER descendiente — incluido el propio <ion-icon>,
+   que pinta su SVG con `fill: currentColor` resuelto sobre el color sobre SU
+   PROPIO elemento, no el heredado del span que lo envuelve. Una declaración
+   directa sobre el elemento le gana siempre al color heredado del contenedor,
+   así que sin este override los iconos salían negros sobre la superficie
+   oscura del tema, igual que le pasaba antes al texto. Se repone el color aquí
+   con la misma fuerza y acotado a la tarjeta. */
+.rapago-driver-page
+  ion-card.rapago-home-quick-card
+  :is(span, strong, div, p, ion-icon) {
+  color: inherit !important;
+}
+
+.rapago-driver-page ion-card.rapago-home-quick-card .rapago-home-quick-title {
+  color: var(--rp-text) !important;
+}
+
+.rapago-driver-page ion-card.rapago-home-quick-card .rapago-home-quick-sub {
+  color: var(--rp-muted) !important;
+}
+
+.rapago-driver-page
+  ion-card.rapago-home-quick-card
+  .rapago-home-quick-icon,
+.rapago-driver-page
+  ion-card.rapago-home-quick-card
+  .rapago-home-quick-icon
+  ion-icon {
+  color: var(--rp-icon-fg) !important;
+}
+
+.rapago-driver-page
+  ion-card.rapago-home-quick-card--attention
+  .rapago-home-quick-sub {
+  color: var(--rp-warn-fg) !important;
+}
+
+.rapago-driver-page
+  ion-card.rapago-home-quick-card--attention
+  .rapago-home-quick-icon,
+.rapago-driver-page
+  ion-card.rapago-home-quick-card--attention
+  .rapago-home-quick-icon
+  ion-icon {
+  color: var(--rp-warn-fg) !important;
+}
+
+.rapago-driver-page ion-card.rapago-home-quick-card .rapago-driver-quick-badge {
+  color: var(--rp-warn-fg) !important;
+}
+
+/* Fila superior de la tarjeta: icono a la izquierda, contador a la derecha.
+   El pasajero no la necesita porque sus accesos rápidos no llevan contador. */
+.rapago-driver-page .rapago-driver-quick-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+}
+
+/* Píldora de recuento, con el mismo tratamiento que el distintivo de los
+   servicios del pasajero (.rapago-service-card__badge, home.css:404). */
+.rapago-driver-page .rapago-driver-quick-badge {
+  min-width: 26px;
+  height: 24px;
+  padding: 0 8px;
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  border-radius: 999px;
+  background: var(--rp-warn-bg);
+  border: 1px solid var(--rp-warn-bd);
+  color: var(--rp-warn-fg);
+  font-size: var(--rp-fs-micro);
+  font-weight: 850;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── Llamada a la acción del pie ────────────────────────────────────────── */
+/* Era el segundo degradado volcánico fijo de la pantalla. Pasa a superficie
+   del tema con borde reforzado, el mismo tratamiento que .rapago-surface--accent. */
+.rapago-driver-page .driver-home-cta {
+  margin: 0;
+  padding: var(--rp-pad);
+  display: grid;
+  grid-template-columns: var(--rp-icon-size) minmax(0, 1fr);
+  gap: var(--rp-gap-sm);
+  align-items: center;
+  border-radius: var(--rp-radius);
+  color: var(--rp-text);
+  background: var(--rp-surface);
+  border: var(--rp-border-w) solid var(--rp-border-strong);
+  box-shadow: var(--rp-shadow-accent);
+}
+
+.rapago-driver-page .driver-home-cta__icon {
+  width: var(--rp-icon-size);
+  height: var(--rp-icon-size);
+  display: grid;
+  place-items: center;
+  border-radius: var(--rp-radius-sm);
+  color: var(--rp-btn-primary-fg);
+  background: var(--rp-btn-primary);
+}
+
+.rapago-driver-page .driver-home-cta__icon ion-icon {
+  color: var(--rp-btn-primary-fg) !important;
+  font-size: 22px;
+}
+
+.rapago-driver-page .driver-home-cta__title {
+  color: var(--rp-text);
+  font-size: var(--rp-fs-h2);
+  line-height: 1.2;
+  font-weight: 850;
+  overflow-wrap: anywhere;
+}
+
+.rapago-driver-page .driver-home-cta__copy {
+  margin-top: 4px;
+  color: var(--rp-muted);
+  font-size: var(--rp-fs-sub);
+  line-height: 1.4;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+
+/* El botón ocupa la fila completa: a 460px de columna, la variante de tres
+   columnas del diseño anterior dejaba el texto del CTA en dos palabras por
+   línea. Antes esto lo hacía una media query a 620px. */
+.rapago-driver-page .driver-home-cta__button {
+  grid-column: 1 / -1;
+  width: 100%;
+  min-height: var(--rp-control-h);
+  padding: 9px 15px;
+  border: 0;
+  border-radius: var(--rp-radius-sm);
+  color: var(--rp-btn-primary-fg);
+  background: var(--rp-btn-primary);
+  font: inherit;
+  font-size: var(--rp-fs-body);
+  font-weight: 800;
+  cursor: pointer;
+  box-shadow: var(--rp-shadow);
+}
+
+@media (hover: hover) {
+  .rapago-driver-page ion-card.rapago-home-quick-card:hover {
+    transform: translateY(-3px);
+    box-shadow: var(--rp-shadow-accent) !important;
+  }
+
+  .rapago-driver-page .driver-availability-button:hover,
+  .rapago-driver-page .driver-home-cta__button:hover {
+    transform: translateY(-1px);
+  }
+}
+
+/* ==========================================================================
+   HORARIO DE DESCANSO (components/DriverRestScheduleCard.tsx)
+
+   Era la pieza con más color escrito a mano de todo el conductor: la tarjeta
+   cambiaba entera de piel según `blocked` —índigo oscuro con texto blanco
+   cuando el descanso estaba activo, crema con texto casi negro cuando no—, y
+   además el borde, la píldora, el campo, el botón y los dos avisos llevaban
+   cada uno sus propios hexadecimales. Dieciséis en total, ninguno con
+   contraparte de día.
+
+   Ahora el contenedor es .rp-card del kit compartido y el estado se comunica
+   donde corresponde: en la píldora, en el acento lateral y en los avisos, con
+   la paleta semántica. La tarjeta ya no cambia de estética, solo de señal.
+   ========================================================================== */
+
+/* El acento lateral marca el descanso en curso. Es informativo, no un error:
+   el conductor no ha hecho nada mal, está cumpliendo su franja. */
+.rapago-driver-page .rapago-driver-rest.rp-card--accent {
+  --rp-card-accent: var(--rp-info-fg);
+}
+
+.rapago-driver-page .rapago-driver-rest__head {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  min-width: 0;
+}
+
+.rapago-driver-page .rapago-driver-rest__icon {
+  width: var(--rp-icon-size);
+  height: var(--rp-icon-size);
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  border-radius: var(--rp-radius-sm);
+  background: var(--rp-icon-bg);
+  border: 1px solid var(--rp-icon-bd);
+  color: var(--rp-icon-fg);
+  font-size: 20px;
+}
+
+.rapago-driver-page .rapago-driver-rest__heading {
+  min-width: 0;
+}
+
+.rapago-driver-page .rapago-driver-rest__eyebrow {
+  font-size: var(--rp-fs-label);
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--rp-muted-soft);
+}
+
+.rapago-driver-page .rapago-driver-rest__title {
+  margin-top: 2px;
+  font-size: var(--rp-fs-h2);
+  font-weight: 850;
+  line-height: 1.2;
+  color: var(--rp-text);
+  overflow-wrap: anywhere;
+}
+
+/* La píldora llevaba white-space: nowrap; con overflow-wrap el texto largo se
+   parte en vez de empujar el título fuera de la tarjeta. */
+.rapago-driver-page .rapago-driver-rest__pill {
+  flex: 0 0 auto;
+  padding: 6px 10px;
+  border-radius: 999px;
+  font-size: var(--rp-fs-micro);
+  font-weight: 800;
+  overflow-wrap: anywhere;
+}
+
+.rapago-driver-page .rapago-driver-rest__pill.is-blocked {
+  background: var(--rp-info-bg);
+  border: 1px solid var(--rp-info-bd);
+  color: var(--rp-info-fg);
+}
+
+.rapago-driver-page .rapago-driver-rest__pill.is-scheduled {
+  background: var(--rp-ok-bg);
+  border: 1px solid var(--rp-ok-bd);
+  color: var(--rp-ok-fg);
+}
+
+.rapago-driver-page .rapago-driver-rest__loading {
+  padding: 18px 0 4px;
+  text-align: center;
+}
+
+.rapago-driver-page .rapago-driver-rest__copy {
+  margin: var(--rp-gap-sm) 0;
+  font-size: var(--rp-fs-body);
+  line-height: 1.45;
+  font-weight: 700;
+  color: var(--rp-muted);
+  overflow-wrap: anywhere;
+}
+
+.rapago-driver-page .rapago-driver-rest__label {
+  display: block;
+  margin: var(--rp-gap-sm) 0 6px;
+  font-size: var(--rp-fs-label);
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--rp-label);
+}
+
+.rapago-driver-page .rapago-driver-rest__row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 9px;
+  align-items: center;
+}
+
+/* CAMPO NATIVO
+   La especificación pedía .rapago-profile-field, pero esa clase estiliza un
+   ion-item (trabaja con --background, --min-height y demás propiedades de
+   Ionic) y aquí el control es un <input type="time"> nativo, que las ignora.
+   Se replican por tanto sus MISMOS tokens sobre el elemento nativo: el
+   resultado se ve igual, y el input sigue siendo nativo para que el selector
+   de hora del sistema funcione como espera el usuario. */
+.rapago-driver-page .rapago-driver-rest__field {
+  position: relative;
+  min-width: 0;
+}
+
+.rapago-driver-page .rapago-driver-rest__field-icon {
+  position: absolute;
+  left: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  pointer-events: none;
+  color: var(--rp-icon-fg);
+}
+
+.rapago-driver-page .rapago-driver-rest__input {
+  width: 100%;
+  min-height: var(--rp-control-h);
+  box-sizing: border-box;
+  border-radius: var(--rp-radius-sm);
+  border: var(--rp-border-w) solid var(--rp-border-c);
+  background: var(--rp-field-bg);
+  color: var(--rp-field-fg);
+  padding: 10px 12px 10px 38px;
+  /* 16px fijos: por debajo de ese tamaño iOS hace zoom al enfocar un campo.
+     Es la única excepción admitida a la escala fluida. */
+  font-size: 16px;
+  font-weight: 800;
+  font-family: inherit;
+}
+
+.rapago-driver-page .rapago-driver-rest__input:focus {
+  border-color: var(--rp-border-strong);
+  outline: none;
+}
+
+.rapago-driver-page .rapago-driver-rest__save {
+  min-height: var(--rp-control-h);
+  margin: 0;
+}
+
+.rapago-driver-page .rapago-driver-rest__alert {
+  margin-top: 10px;
+}
+
+/* El botón principal de sección del kit, con el ámbito del conductor
+   (sections.css:774 solo cubre .rapago-section-page y .rapago-modal-body). */
+.rapago-driver-page .rp-cta {
+  --border-radius: var(--rp-radius-sm) !important;
+  height: var(--rp-control-h);
+  font-weight: 800;
+  font-size: var(--rp-fs-body);
+  text-transform: none !important;
+  letter-spacing: 0.01em;
+}
+
+/* ==========================================================================
+   GANANCIAS
+
+   La pantalla se apoya ya entera en el kit compartido (.rp-shell, .rp-hero,
+   .rp-tile, .rp-card, .rp-empty, .rp-banner). Aquí solo queda lo que el kit
+   deja abierto: el ámbito de las clases que en sections.css están limitadas a
+   .rapago-section-page, y la rejilla de los cuatro filtros.
+   ========================================================================== */
+
+/* Columna de lectura: mismo ancho y ritmo que .rp-shell del pasajero
+   (sections.css:439, que solo alcanza a .rapago-section-page). */
+.rapago-driver-page .rp-shell {
+  width: min(100%, 460px);
+  margin: 0 auto;
+  padding: 8px var(--rp-pad-x) calc(96px + env(safe-area-inset-bottom, 0px));
+  display: flex;
+  flex-direction: column;
+  gap: var(--rp-gap);
+}
+
+/* Cuatro filtros en una fila. auto-fit con un mínimo permite que "7 días" y
+   "Mes" se acomoden sin recortarse en pantallas estrechas, sin media query. */
+.rapago-driver-page .rapago-driver-filters {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(72px, 1fr));
+  gap: 8px;
+}
+
+/* Copia de .rapago-filter-chip (sections.css:64) con el ámbito del conductor.
+   El selector lleva el tipo `ion-button` porque aquí el control es un botón y
+   no un ion-chip: sin él perdería contra la regla genérica de botón sólido sin
+   color de más arriba, que le pondría el degradado dorado también en reposo. */
+.rapago-driver-page ion-button.rapago-filter-chip {
+  --background: var(--rp-surface-soft);
+  --background-activated: var(--rp-icon-bg);
+  --color: var(--rp-muted);
+  --border-radius: 999px !important;
+  --box-shadow: none;
+  height: 34px;
+  margin: 0;
+  font-size: var(--rp-fs-sub);
+  font-weight: 750;
+  text-transform: none;
+  border: 1px solid var(--rp-icon-bd);
+  border-radius: 999px;
+  transition:
+    background 0.18s ease,
+    color 0.18s ease;
+}
+
+.rapago-driver-page ion-button.rapago-filter-chip.is-active {
+  --background: var(--rp-btn-primary);
+  --background-activated: var(--rp-btn-primary-activated);
+  --color: var(--rp-btn-primary-fg);
+  color: var(--rp-btn-primary-fg);
+  font-weight: 850;
+  border-color: transparent;
+}
+
+/* Centrado de los spinners de carga; antes era un flex inline en cada uso.
+   Lo usan tanto Ganancias como Perfil. */
+.rapago-driver-page .rapago-driver-loading {
+  display: flex;
+  justify-content: center;
+  padding: 40px 0 28px;
+}
+
+/* El estado vacío del kit trae título y cuerpo; aquí solo hay cuerpo, así que
+   el icono necesita recuperar el aire que aportaba el título. */
+.rapago-driver-page .rp-empty__icon + .rp-empty__body {
+  margin-top: 12px;
+}
+
+/* ==========================================================================
+   MI PERFIL
+
+   Era la pantalla con más deuda del conductor: 79 estilos incrustados y 48
+   colores escritos a mano, cuatro de ellos generados por funciones auxiliares
+   (driverFormCardStyle, driverInputItemStyle, driverFieldTextStyle,
+   driverFieldLabelStyle) que se llamaban en 41 sitios. Esas cuatro funciones
+   ya no existen: los campos usan .rapago-profile-field —el mismo ion-item que
+   edita el perfil del pasajero—, las etiquetas y el texto de los campos
+   heredan de las reglas genéricas de más arriba, y las tarjetas pasan a
+   .rapago-driver-card.
+
+   El héroe de identidad, los chips y los botones son los del perfil del
+   pasajero (profile.css), reutilizados tal cual: solo hacía falta darles el
+   ámbito del conductor.
+   ========================================================================== */
+
+/* ── Reutilización del perfil del pasajero ──────────────────────────────── */
+/* Estas clases existen en profile.css pero acotadas a .rapago-profile-page.
+   Se replican con el ámbito del conductor en vez de ampliar aquel selector,
+   para que un cambio en el perfil del pasajero no arrastre al del conductor
+   sin querer. */
+.rapago-driver-page .rapago-profile-field {
+  --background: var(--rp-field-bg) !important;
+  --border-color: transparent !important;
+  --highlight-color-focused: var(--rp-gold) !important;
+  --highlight-color-valid: var(--rp-gold) !important;
+  --highlight-color-invalid: var(--rp-terracotta) !important;
+  --padding-start: 14px !important;
+  --inner-padding-end: 10px !important;
+  --inner-border-width: 0 !important;
+  --min-height: 62px !important;
+  --color: var(--rp-field-fg) !important;
+  --border-radius: var(--rp-radius-sm) !important;
+  border: var(--rp-border-w) solid var(--rp-border-c) !important;
+  border-radius: var(--rp-radius-sm) !important;
+  margin-bottom: 12px;
+  overflow: hidden;
+  transition:
+    border-color 0.2s ease,
+    box-shadow 0.2s ease;
+}
+
+.rapago-driver-page .rapago-profile-field.item-has-focus {
+  border-color: var(--rp-border-strong) !important;
+}
+
+/* El perfil del pasajero pone estos campos sueltos sobre la página, así que
+   nunca chocan con las reglas de global.css que fuerzan fondo blanco y texto
+   negro para CUALQUIER ion-item/ion-input dentro de un ion-card
+   (global.css:2966-2977 y :2989-3039). El conductor sí agrupa sus campos
+   dentro de .rapago-driver-card, así que esas reglas viejas ganaban por
+   especificidad y el campo salía blanco y sin ningún color del sistema,
+   fuera cual fuera el tema. Se repone aquí con más fuerza: clases explícitas
+   en vez de solo custom properties, para que gane tanto sobre las variables
+   Ionic como sobre las propiedades `background`/`color` en crudo. */
+.rapago-driver-page
+  ion-card.rapago-driver-card
+  ion-item.rapago-profile-field {
+  --background: var(--rp-field-bg) !important;
+  --color: var(--rp-field-fg) !important;
+  background: var(--rp-field-bg) !important;
+  color: var(--rp-field-fg) !important;
+}
+
+.rapago-driver-page
+  ion-card.rapago-driver-card
+  ion-item.rapago-profile-field
+  ion-label {
+  color: var(--rp-label) !important;
+}
+
+.rapago-driver-page
+  ion-card.rapago-driver-card
+  ion-item.rapago-profile-field
+  :is(ion-input, ion-textarea) {
+  --color: var(--rp-field-fg) !important;
+  --placeholder-color: var(--rp-field-ph) !important;
+  --placeholder-opacity: 1 !important;
+  color: var(--rp-field-fg) !important;
+  font-weight: 700 !important;
+}
+
+.rapago-driver-page
+  ion-card.rapago-driver-card
+  ion-item.rapago-profile-field
+  :is(ion-input, ion-textarea)::part(native) {
+  color: var(--rp-field-fg) !important;
+  -webkit-text-fill-color: var(--rp-field-fg) !important;
+}
+
+.rapago-driver-page
+  ion-card.rapago-driver-card
+  ion-item.rapago-profile-field
+  :is(ion-input, ion-textarea)::part(placeholder) {
+  color: var(--rp-field-ph) !important;
+  -webkit-text-fill-color: var(--rp-field-ph) !important;
+}
+
+.rapago-driver-page
+  ion-card.rapago-driver-card
+  ion-item.rapago-profile-field
+  :is(ion-input, ion-textarea)
+  :is(input, textarea) {
+  color: var(--rp-field-fg) !important;
+  -webkit-text-fill-color: var(--rp-field-fg) !important;
+}
+
+.rapago-driver-page
+  ion-card.rapago-driver-card
+  ion-item.rapago-profile-field
+  :is(ion-input, ion-textarea)
+  :is(input, textarea)::placeholder {
+  color: var(--rp-field-ph) !important;
+  -webkit-text-fill-color: var(--rp-field-ph) !important;
+}
+
+/* AccountDeletionCard se comparte con el perfil del pasajero (que ya tiene
+   esta misma clase en profile.css:850), así que su archivo no se toca: aquí
+   se reencuadra a la superficie del tema del conductor conservando el
+   acento rojo que identifica la acción destructiva. Neutraliza tanto
+   global.css:883/:2149 (ion-card fondo ivory + texto #1a1a1a) COMO la
+   excepción "tarjeta clara legacy" de arriba (:153): su selector
+   `ion-card:not(.rapago-home-quick-card):not(.rapago-driver-card)` cuenta
+   como 3 clases por los dos `:not()`, más que las 2 de `.rapago-driver-page
+   .rapago-profile-danger-slot`. Con !important en ambos lados ganaba la
+   legacy por especificidad: el fondo se quedaba crema fijo (nunca oscurecía
+   en modo noche) mientras el texto sí adoptaba el tono del tema — crema
+   pálido sobre fondo crema, casi invisible. `.rapago-driver-page` repetido
+   sube la cuenta de clases a 3 para empatar y a 4 para ganar sin depender del
+   orden de las reglas en el archivo. */
+.rapago-driver-page.rapago-driver-page .rapago-profile-danger-slot ion-card {
+  margin: 0 !important;
+  border-radius: var(--rp-radius) !important;
+  background: var(--rp-surface) !important;
+  border: var(--rp-border-w) solid var(--rp-danger-bd) !important;
+  box-shadow: var(--rp-shadow) !important;
+  color: var(--rp-text) !important;
+}
+
+.rapago-driver-page.rapago-driver-page
+  .rapago-profile-danger-slot
+  ion-card
+  ion-card-title,
+.rapago-driver-page.rapago-driver-page
+  .rapago-profile-danger-slot
+  ion-card
+  ion-card-title
+  *,
+.rapago-driver-page.rapago-driver-page .rapago-profile-danger-slot ion-card h1,
+.rapago-driver-page.rapago-driver-page .rapago-profile-danger-slot ion-card h2,
+.rapago-driver-page.rapago-driver-page .rapago-profile-danger-slot ion-card h3,
+.rapago-driver-page.rapago-driver-page
+  .rapago-profile-danger-slot
+  ion-card
+  strong {
+  color: var(--rp-danger-fg) !important;
+}
+
+.rapago-driver-page.rapago-driver-page .rapago-profile-danger-slot ion-card p,
+.rapago-driver-page.rapago-driver-page
+  .rapago-profile-danger-slot
+  ion-card
+  div,
+.rapago-driver-page.rapago-driver-page
+  .rapago-profile-danger-slot
+  ion-card
+  span,
+.rapago-driver-page.rapago-driver-page
+  .rapago-profile-danger-slot
+  ion-card
+  ion-note,
+.rapago-driver-page.rapago-driver-page
+  .rapago-profile-danger-slot
+  ion-card
+  ion-card-content {
+  color: var(--rp-muted) !important;
+}
+
+/* El motivo del fallo de una solicitud es la única línea que debe distinguirse
+   del resto del texto silenciado de arriba: más clases que la regla genérica
+   le ganan por especificidad. */
+.rapago-driver-page.rapago-driver-page
+  .rapago-profile-danger-slot
+  .rp-card__danger {
+  color: var(--rp-danger-fg) !important;
+}
+
+.rapago-driver-page.rapago-driver-page
+  .rapago-profile-danger-slot
+  ion-card
+  ion-label {
+  color: var(--rp-text) !important;
+}
+
+.rapago-driver-page.rapago-driver-page
+  .rapago-profile-danger-slot
+  ion-card
+  ion-item {
+  --background: var(--rp-field-bg) !important;
+  --color: var(--rp-text) !important;
+  border-color: var(--rp-danger-bd) !important;
+}
+
+.rapago-driver-page.rapago-driver-page
+  .rapago-profile-danger-slot
+  ion-card
+  ion-input,
+.rapago-driver-page.rapago-driver-page
+  .rapago-profile-danger-slot
+  ion-card
+  ion-textarea {
+  --color: var(--rp-field-fg) !important;
+  color: var(--rp-field-fg) !important;
+}
+
+.rapago-driver-page.rapago-driver-page
+  .rapago-profile-danger-slot
+  ion-card
+  ion-input
+  input,
+.rapago-driver-page.rapago-driver-page
+  .rapago-profile-danger-slot
+  ion-card
+  ion-textarea
+  textarea {
+  color: var(--rp-field-fg) !important;
+  -webkit-text-fill-color: var(--rp-field-fg) !important;
+}
+
+.rapago-driver-page .rapago-profile-btn-primary {
+  --border-radius: var(--rp-radius-sm) !important;
+  --background: var(--rp-btn-primary) !important;
+  --background-activated: var(--rp-btn-primary-activated) !important;
+  --color: var(--rp-btn-primary-fg) !important;
+  color: var(--rp-btn-primary-fg) !important;
+  height: var(--rp-control-h);
+  font-weight: 800;
+  text-transform: none;
+  letter-spacing: 0.01em;
+  margin: 0;
+}
+
+/* ── Tarjetas de formulario ─────────────────────────────────────────────── */
+/* Sustituyen a driverFormCardStyle(): superficie del tema en lugar del crema
+   fijo con texto #111. Al no tener ya colores incrustados dentro, quedan
+   FUERA de la excepción "legacy" y por fin son oscuras en modo noche. */
+.rapago-driver-page ion-card.rapago-driver-card {
+  margin: 0 !important;
+  border-radius: var(--rp-radius) !important;
+  background: var(--rp-surface) !important;
+  color: var(--rp-text) !important;
+  border: var(--rp-border-w) solid var(--rp-border-c) !important;
+  box-shadow: var(--rp-shadow) !important;
+  overflow: hidden;
+}
+
+.rapago-driver-page ion-card.rapago-driver-card--accent {
+  border-color: var(--rp-border-strong) !important;
+  box-shadow: var(--rp-shadow-accent) !important;
+}
+
+.rapago-driver-page ion-card.rapago-driver-card ion-card-content {
+  padding: var(--rp-pad) !important;
+  color: var(--rp-text) !important;
+}
+
+/* Mismo bug que en los accesos rápidos (ver comentario más abajo, junto a
+   .rapago-home-quick-card): global.css:2952-2963 fuerza `color:#111 !important`
+   en CUALQUIER descendiente de un ion-card mediante selectores directos
+   (`ion-card div`, `ion-card span`, `ion-card *`…), y una declaración directa
+   sobre el propio elemento gana siempre a la heredada, aunque esta última
+   también lleve `!important`. Sin este reset, "Reputación del conductor",
+   "Vehículos del conductor" y el resto de textos de estas tarjetas salían en
+   negro sobre la superficie oscura del tema — invisibles en modo noche. Los
+   selectores concretos de abajo (con su propio `!important`) ganan por
+   especificidad sobre este reset genérico cuando necesitan un tono distinto
+   (--rp-muted, --rp-gold, --rp-ok-fg…). */
+.rapago-driver-page
+  ion-card.rapago-driver-card
+  :is(div, span, p, strong, li, dt, dd, h1, h2, h3, h4, h5, ion-icon) {
+  color: inherit !important;
+}
+
+.rapago-driver-page .rapago-driver-card__title {
+  font-size: var(--rp-fs-h2);
+  font-weight: 850;
+  line-height: 1.25;
+  color: var(--rp-text) !important;
+  overflow-wrap: anywhere;
+}
+
+.rapago-driver-page .rapago-driver-card__note {
+  margin: 4px 0 10px;
+  font-size: var(--rp-fs-sub);
+  font-weight: 700;
+  line-height: 1.4;
+  color: var(--rp-muted) !important;
+  overflow-wrap: anywhere;
+}
+
+.rapago-driver-page .rapago-driver-inline-note {
+  margin: 8px 0 0;
+  font-size: var(--rp-fs-sub);
+  font-weight: 800;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.rapago-driver-page .rapago-driver-note {
+  margin-top: 12px;
+}
+
+/* Chip de recuento: hereda .rapago-profile-chip, solo necesita separarse del
+   texto que tiene encima. */
+.rapago-driver-page .rapago-driver-count {
+  margin-bottom: 12px;
+}
+
+/* ── Reputación ─────────────────────────────────────────────────────────── */
+.rapago-driver-page .rapago-driver-ratings {
+  margin-top: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* El oro se conserva aquí a propósito: en una calificación la estrella dorada
+   ES el dato, no decoración de marca. */
+.rapago-driver-page .rapago-driver-rating__stars {
+  font-weight: 850;
+  color: var(--rp-gold) !important;
+  letter-spacing: 0.06em;
+}
+
+.rapago-driver-page .rapago-driver-rating__route {
+  margin-top: 3px;
+  font-size: var(--rp-fs-sub);
+  font-weight: 650;
+  line-height: 1.35;
+  color: var(--rp-muted) !important;
+  overflow-wrap: anywhere;
+}
+
+.rapago-driver-page .rapago-driver-rating__comment {
+  margin-top: 4px;
+  font-size: var(--rp-fs-sub);
+  font-weight: 800;
+  line-height: 1.4;
+  color: var(--rp-text) !important;
+  overflow-wrap: anywhere;
+}
+
+/* Estrellas de calificación (DriverRatingStarsDisplay). Se reutiliza en el
+   chip del héroe y en la tarjeta de reputación, así que hereda el color del
+   contenedor para la etiqueta y solo fija el oro de la estrella encendida. */
+.rapago-driver-page .rapago-driver-stars {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+.rapago-driver-page .rapago-driver-stars__row {
+  display: flex;
+  gap: 1px;
+  font-size: 1rem;
+  line-height: 1;
+}
+
+.rapago-driver-page .rapago-driver-stars__row .is-on {
+  color: var(--rp-gold) !important;
+}
+
+.rapago-driver-page .rapago-driver-stars__row .is-off {
+  color: var(--rp-muted-soft) !important;
+}
+
+.rapago-driver-page .rapago-driver-stars__label {
+  font-size: var(--rp-fs-sub);
+  font-weight: 800;
+  overflow-wrap: anywhere;
+}
+
+/* ── Bloques de foto (perfil y vehículo) ────────────────────────────────── */
+.rapago-driver-page .rapago-driver-media {
+  margin-top: 14px;
+  padding: var(--rp-pad-x);
+  border-radius: var(--rp-radius-sm);
+  background: var(--rp-surface-soft);
+  border: 1px solid var(--rp-border-c);
+}
+
+/* El borde punteado distingue "todavía no has subido nada" de un bloque ya
+   resuelto, igual que .rapago-profile-field--readonly (profile.css:501). */
+.rapago-driver-page .rapago-driver-media--dashed {
+  border-style: dashed;
+}
+
+.rapago-driver-page .rapago-driver-media__head {
+  display: flex;
+  align-items: center;
+  gap: var(--rp-gap-sm);
+  min-width: 0;
+}
+
+.rapago-driver-page .rapago-driver-media__thumb {
+  width: 76px;
+  height: 76px;
+  flex-shrink: 0;
+  overflow: hidden;
+  border-radius: var(--rp-radius-sm);
+  display: grid;
+  place-items: center;
+  background: var(--rp-btn-primary);
+  color: var(--rp-btn-primary-fg) !important;
+  font-size: var(--rp-fs-stat);
+  font-weight: 850;
+}
+
+.rapago-driver-page .rapago-driver-media__thumb img,
+.rapago-driver-page .rapago-driver-media__preview img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.rapago-driver-page .rapago-driver-media__copy {
+  flex: 1;
+  min-width: 0;
+}
+
+.rapago-driver-page .rapago-driver-media__preview {
+  margin-top: 12px;
+  width: 100%;
+  height: 180px;
+  overflow: hidden;
+  border-radius: var(--rp-radius-sm);
+  background: var(--rp-surface-soft);
+  border: 1px solid var(--rp-divider);
+}
+
+.rapago-driver-page .rapago-driver-media__actions {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.rapago-driver-page .rapago-driver-media__actions.is-split {
+  grid-template-columns: 1fr 1fr;
+}
+
+/* ── Pares de botones y de opciones ─────────────────────────────────────── */
+.rapago-driver-page .rapago-driver-pair {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.rapago-driver-page .rapago-driver-pair ion-button {
+  margin: 0;
+}
+
+/* ── Lista de vehículos ─────────────────────────────────────────────────── */
+.rapago-driver-page .rapago-driver-vehicles {
+  display: grid;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.rapago-driver-page .rapago-driver-vehicle {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 10px;
+  padding: 10px;
+  border-radius: var(--rp-radius-sm);
+  background: var(--rp-surface-soft);
+  border: 1px solid var(--rp-border-c);
+}
+
+.rapago-driver-page .rapago-driver-vehicle.has-photo {
+  grid-template-columns: 82px minmax(0, 1fr);
+}
+
+/* El vehículo activo se marca reforzando el borde, no rellenando de verde:
+   el mismo criterio que los accesos rápidos del Inicio (home.css:492). */
+.rapago-driver-page .rapago-driver-vehicle.is-selected {
+  border-color: var(--rp-ok-bd);
+  border-width: var(--rp-border-w);
+  box-shadow: 0 0 0 1px var(--rp-ok-bd);
+}
+
+.rapago-driver-page .rapago-driver-vehicle__photo {
+  width: 82px;
+  height: 82px;
+  border-radius: var(--rp-radius-sm);
+  object-fit: cover;
+  background: var(--rp-surface-soft);
+}
+
+.rapago-driver-page .rapago-driver-vehicle__body {
+  min-width: 0;
+}
+
+.rapago-driver-page .rapago-driver-vehicle__title {
+  font-size: var(--rp-fs-body);
+  font-weight: 850;
+  line-height: 1.25;
+  color: var(--rp-text) !important;
+  overflow-wrap: anywhere;
+}
+
+.rapago-driver-page .rapago-driver-vehicle__meta {
+  margin-top: 2px;
+  font-size: var(--rp-fs-sub);
+  font-weight: 700;
+  color: var(--rp-muted) !important;
+  overflow-wrap: anywhere;
+}
+
+.rapago-driver-page .rapago-driver-vehicle .rapago-driver-pair {
+  margin: 10px 0 0;
+}
+
+.rapago-driver-page .rapago-driver-vehicle__badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+/* Los badges de estado del vehículo conservan sus colores semánticos de Ionic
+   (propio / temporal / activo), solo adoptan la forma de píldora del kit. */
+.rapago-driver-page .rapago-driver-vehicle__badges ion-badge {
+  border-radius: 999px;
+  padding: 5px 10px;
+  font-size: var(--rp-fs-micro);
+  font-weight: 800;
+  text-transform: none;
+}
+
+/* ── Selector de idioma ─────────────────────────────────────────────────── */
+/* Mismo criterio que el vehículo activo: el elegido refuerza borde y superficie
+   en vez de rellenarse de verde degradado con texto blanco.
+
+   global.css:3851-3876 define `button[aria-pressed] / [aria-pressed="true"] /
+   [aria-pressed="false"]` como estilo genérico para botones-selector de
+   estado (pestañas, switches…), con fondo, borde y sombra en `!important`.
+   Nuestro botón lleva `aria-pressed` para accesibilidad y cae directo en esa
+   regla: sin `!important` aquí en TODAS las propiedades competidas (no solo
+   el color de texto), el fondo dorado/oscuro genérico ganaba igual y dejaba
+   un botón dorado con texto verde o crema encima — la mezcla que se veía
+   fea y sin relación con el tema. */
+.rapago-driver-page .rapago-driver-lang {
+  min-height: 62px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border-radius: var(--rp-radius-sm);
+  border: 1px solid var(--rp-border-c) !important;
+  background: var(--rp-surface-soft) !important;
+  color: var(--rp-text) !important;
+  box-shadow: none !important;
+  font: inherit;
+  font-size: var(--rp-fs-body);
+  font-weight: 800;
+  cursor: pointer;
+  overflow-wrap: anywhere;
+  transition:
+    border-color 0.18s ease,
+    background 0.18s ease;
+}
+
+.rapago-driver-page .rapago-driver-lang.is-selected {
+  border-color: var(--rp-ok-bd) !important;
+  border-width: var(--rp-border-w);
+  background: var(--rp-ok-bg) !important;
+  color: var(--rp-ok-fg) !important;
+}
+
+.rapago-driver-page .rapago-driver-lang__flag {
+  font-size: 1.2rem;
+  line-height: 1;
+}
+
+/* ── Cambio a modo pasajero ─────────────────────────────────────────────── */
+.rapago-driver-page .rapago-driver-switch {
+  display: flex;
+  align-items: center;
+  gap: var(--rp-gap-sm);
+  min-width: 0;
+}
+
+.rapago-driver-page .rapago-driver-switch__icon {
+  width: var(--rp-icon-size);
+  height: var(--rp-icon-size);
+  flex-shrink: 0;
+  display: grid;
+  place-items: center;
+  border-radius: var(--rp-radius-sm);
+  background: var(--rp-btn-primary);
+  color: var(--rp-btn-primary-fg) !important;
+  font-size: 22px;
+}
+
+.rapago-driver-page .rapago-driver-switch__icon ion-icon {
+  color: var(--rp-btn-primary-fg) !important;
+}
+
+.rapago-driver-page .rapago-driver-switch__copy {
+  flex: 1;
+  min-width: 0;
+}
+
+.rapago-driver-page .rapago-driver-switch__btn {
+  margin-top: 12px;
+}

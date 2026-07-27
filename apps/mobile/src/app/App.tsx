@@ -20,6 +20,9 @@ import "../theme/auth.css";
 import "../theme/profile.css";
 import "../theme/home.css";
 import "../theme/sections.css";
+/* Va después de sections.css: misma capa de coherencia, pero con el ámbito de
+   las pantallas del conductor. */
+import "../theme/driver.css";
 import "../theme/request-ride.css";
 import "../theme/request.css";
 
@@ -32,7 +35,7 @@ initRapagoTheme();
 import { AppRouter } from "../navigation/AppRouter";
 import { AppProviders } from "./AppProviders";
 import { RapaGoLanguageRuntime } from "../i18n/rapagoI18n";
-import { SessionLogoutToast } from "../components/SessionLogoutToast";
+import { AuthFeedbackToast } from "../components/AuthFeedbackToast";
 
 setupIonicReact({
   mode: "md",
@@ -50,8 +53,8 @@ export function App(): JSX.Element {
       <IonReactRouter>
         <AppProviders>
           <AppRouter />
-          {/* Protocolo de sesión: feedback global de cierre de sesión */}
-          <SessionLogoutToast />
+          {/* Protocolo de sesión: feedback global de login, registro y cierre de sesión */}
+          <AuthFeedbackToast />
         </AppProviders>
       </IonReactRouter>
     </IonApp>

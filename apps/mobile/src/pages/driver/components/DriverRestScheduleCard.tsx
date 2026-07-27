@@ -1,6 +1,6 @@
 import { IonButton, IonIcon, IonSpinner } from "@ionic/react";
 import { moonOutline, saveOutline, timeOutline } from "ionicons/icons";
-import { useCallback, useEffect, useMemo, useState, type CSSProperties } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { useAuth } from "../../../features/auth";
 import {
@@ -144,115 +144,50 @@ export function DriverRestScheduleCard({
   return (
     <section
       aria-label="Horario diario de desconexión"
-      style={{
-        margin: "12px 0",
-        padding: 16,
-        borderRadius: 22,
-        border: blocked
-          ? "1px solid rgba(99,102,241,.46)"
-          : "1px solid rgba(200,155,60,.38)",
-        background: blocked
-          ? "linear-gradient(145deg,#111827,#312e81)"
-          : "linear-gradient(145deg,#fffaf0,#fff3cf)",
-        color: blocked ? "#fff" : "#111827",
-        boxShadow: blocked
-          ? "0 18px 38px rgba(49,46,129,.28)"
-          : "0 14px 32px rgba(112,78,16,.12)",
-      }}
+      /* Antes la tarjeta cambiaba de piel según `blocked`: índigo oscuro con
+         texto blanco cuando el descanso estaba activo, crema con texto casi
+         negro cuando no. Eran dos estéticas distintas y ninguna respondía al
+         tema. Ahora es una .rp-card del kit y el estado se comunica en la
+         píldora y en los avisos, que es donde corresponde. */
+      className={`rp-card rapago-driver-rest${blocked ? " rp-card--accent" : ""}`}
     >
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "flex-start",
-          gap: 12,
-        }}
-      >
-        <div style={{ display: "flex", gap: 10, alignItems: "flex-start" }}>
-          <div
-            style={{
-              width: 42,
-              height: 42,
-              borderRadius: 14,
-              display: "grid",
-              placeItems: "center",
-              background: blocked
-                ? "rgba(255,255,255,.12)"
-                : "rgba(200,155,60,.16)",
-              flex: "0 0 auto",
-            }}
-          >
-            <IonIcon icon={moonOutline} style={{ fontSize: 22 }} />
+      <div className="rp-card__row">
+        <div className="rapago-driver-rest__head">
+          <div className="rapago-driver-rest__icon" aria-hidden="true">
+            <IonIcon icon={moonOutline} />
           </div>
-          <div>
-            <div
-              style={{
-                fontSize: ".68rem",
-                fontWeight: 950,
-                letterSpacing: ".06em",
-                textTransform: "uppercase",
-                opacity: 0.72,
-              }}
-            >
+          <div className="rapago-driver-rest__heading">
+            <div className="rapago-driver-rest__eyebrow">
               Desconexión verificable
             </div>
-            <div style={{ fontSize: "1rem", fontWeight: 950, marginTop: 2 }}>
+            <div className="rapago-driver-rest__title">
               Descanso continuo de 12 horas
             </div>
           </div>
         </div>
 
         <div
-          style={{
-            padding: "6px 9px",
-            borderRadius: 999,
-            background: blocked
-              ? "rgba(129,140,248,.22)"
-              : "rgba(34,197,94,.14)",
-            border: blocked
-              ? "1px solid rgba(165,180,252,.34)"
-              : "1px solid rgba(34,197,94,.28)",
-            fontSize: ".7rem",
-            fontWeight: 950,
-            whiteSpace: "nowrap",
-          }}
+          className={`rapago-driver-rest__pill${
+            blocked ? " is-blocked" : " is-scheduled"
+          }`}
         >
           {blocked ? "Descanso activo" : "Programado"}
         </div>
       </div>
 
       {loading ? (
-        <div style={{ padding: "18px 0 4px", textAlign: "center" }}>
+        <div className="rapago-driver-rest__loading">
           <IonSpinner name="dots" />
         </div>
       ) : (
         <>
-          <p
-            style={{
-              margin: "12px 0",
-              fontSize: ".8rem",
-              lineHeight: 1.45,
-              fontWeight: 760,
-              opacity: 0.9,
-            }}
-          >
+          <p className="rapago-driver-rest__copy">
             {state?.message ??
               "Elige una hora diaria. Durante esa franja el backend no enviará nuevas ofertas."}
           </p>
 
           {blocked && state?.activePeriod && (
-            <div
-              style={{
-                marginBottom: 12,
-                padding: "10px 11px",
-                borderRadius: 14,
-                background: "rgba(255,255,255,.10)",
-                border: "1px solid rgba(255,255,255,.14)",
-                fontSize: ".76rem",
-                fontWeight: 850,
-                lineHeight: 1.45,
-              }}
-            >
+            <div className="rp-card__quote">
               {state.status === "pending_trip_completion" ? (
                 <>
                   El viaje actual puede finalizar. Al cerrarlo comenzarán las
@@ -267,36 +202,15 @@ export function DriverRestScheduleCard({
             </div>
           )}
 
-          <label
-            style={{
-              display: "block",
-              fontSize: ".74rem",
-              fontWeight: 950,
-              marginBottom: 6,
-            }}
-          >
+          <label className="rapago-driver-rest__label">
             Hora diaria de inicio
           </label>
 
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "minmax(0,1fr) auto",
-              gap: 9,
-              alignItems: "center",
-            }}
-          >
-            <div style={{ position: "relative" }}>
+          <div className="rapago-driver-rest__row">
+            <div className="rapago-driver-rest__field">
               <IonIcon
                 icon={timeOutline}
-                style={{
-                  position: "absolute",
-                  left: 12,
-                  top: "50%",
-                  transform: "translateY(-50%)",
-                  pointerEvents: "none",
-                  color: "#8a6418",
-                }}
+                className="rapago-driver-rest__field-icon"
               />
               <input
                 type="time"
@@ -306,48 +220,20 @@ export function DriverRestScheduleCard({
                   setSuccess(null);
                 }}
                 disabled={saving}
-                style={{
-                  width: "100%",
-                  minHeight: 46,
-                  boxSizing: "border-box",
-                  borderRadius: 14,
-                  border: "1px solid rgba(200,155,60,.40)",
-                  background: "#fff",
-                  color: "#111827",
-                  padding: "10px 12px 10px 38px",
-                  fontSize: ".95rem",
-                  fontWeight: 900,
-                }}
+                className="rapago-driver-rest__input"
               />
             </div>
 
             <IonButton
               onClick={() => void save()}
               disabled={saving || !/^([01]\d|2[0-3]):[0-5]\d$/.test(startTime)}
-              style={
-                {
-                  "--border-radius": "14px",
-                  "--background": blocked ? "#818cf8" : "#111827",
-                  "--color": "#ffffff",
-                  minHeight: 46,
-                  fontWeight: 950,
-                  margin: 0,
-                } as CSSProperties
-              }
+              className="rp-cta rapago-driver-rest__save"
             >
               {saving ? <IonSpinner name="dots" /> : <IonIcon icon={saveOutline} />}
             </IonButton>
           </div>
 
-          <div
-            style={{
-              marginTop: 9,
-              fontSize: ".7rem",
-              lineHeight: 1.4,
-              fontWeight: 780,
-              opacity: 0.78,
-            }}
-          >
+          <div className="rp-card__foot">
             Zona horaria: Rapa Nui · Duración fija: 12 horas. Los cambios de una
             franja vigente comienzan el día siguiente.
             {schedule?.effectiveFrom
@@ -356,37 +242,13 @@ export function DriverRestScheduleCard({
           </div>
 
           {error && (
-            <div
-              role="alert"
-              style={{
-                marginTop: 10,
-                padding: "9px 10px",
-                borderRadius: 12,
-                background: "rgba(239,68,68,.13)",
-                border: "1px solid rgba(239,68,68,.26)",
-                color: blocked ? "#fecaca" : "#991b1b",
-                fontSize: ".74rem",
-                fontWeight: 850,
-              }}
-            >
+            <div role="alert" className="rp-banner rp-banner--error rapago-driver-rest__alert">
               {error}
             </div>
           )}
 
           {success && (
-            <div
-              role="status"
-              style={{
-                marginTop: 10,
-                padding: "9px 10px",
-                borderRadius: 12,
-                background: "rgba(34,197,94,.13)",
-                border: "1px solid rgba(34,197,94,.26)",
-                color: blocked ? "#bbf7d0" : "#166534",
-                fontSize: ".74rem",
-                fontWeight: 850,
-              }}
-            >
+            <div role="status" className="rp-banner rp-banner--success rapago-driver-rest__alert">
               {success}
             </div>
           )}
