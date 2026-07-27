@@ -339,20 +339,20 @@ function residentStatusMessage(
   rejectionReason?: string | null,
 ): string {
   if (status === "approved") {
-    return "Tu residencia Rapa Nui fue aprobada. Ya puedes continuar con Facebook.";
+    return "Tu acreditación RAPA NUI / RESIDENTE RAPA NUI fue aprobada y la categoría se mantiene activa.";
   }
 
   if (status === "rejected") {
     return rejectionReason?.trim()
-      ? `Tu documento fue rechazado. Motivo: ${rejectionReason.trim()}. Tu cuenta permanece activa con tarifa Turista chileno.`
-      : "Tu documento fue rechazado. Tu cuenta permanece activa con tarifa Turista chileno y puedes adjuntar otro documento.";
+      ? `Tu acreditación fue rechazada. Motivo: ${rejectionReason.trim()}. El administrador actualizó tu categoría tarifaria.`
+      : "Tu acreditación fue rechazada y el administrador actualizó tu categoría tarifaria.";
   }
 
   if (status === "pending") {
-    return "Tu documento fue enviado al administrador. Tu cuenta permanece activa con tarifa Turista chileno mientras se revisa.";
+    return "Tu acreditación fue enviada al administrador. La categoría RAPA NUI / RESIDENTE RAPA NUI permanece activa durante la revisión.";
   }
 
-  return "Todavía no existe una solicitud de residencia Rapa Nui para este correo.";
+  return "Todavía no existe una acreditación RAPA NUI / RESIDENTE RAPA NUI para este correo.";
 }
 
 
@@ -374,10 +374,12 @@ function normalizePassengerFareType(
 function effectivePassengerFareType(
   requested: PassengerFareType,
   status: ResidenceVerificationStatus,
+  currentEffective?: string | null,
 ): PassengerFareType {
-  return requested === "resident" && status !== "approved"
-    ? "chilean"
-    : requested;
+  if (requested !== "resident") return requested;
+  if (status !== "rejected") return "resident";
+
+  return currentEffective === "foreigner" ? "foreigner" : "chilean";
 }
 
 export async function upsertPassengerFareProfile(input: {
@@ -386,9 +388,11 @@ export async function upsertPassengerFareProfile(input: {
   requestedFareType: PassengerFareType;
   verificationStatus: ResidenceVerificationStatus;
 }): Promise<typeof passengerProfiles.$inferSelect> {
+  const currentProfile = await findPassengerFareProfile(input.userId);
   const effectiveFareType = effectivePassengerFareType(
     input.requestedFareType,
     input.verificationStatus,
+    currentProfile?.effectiveFareType,
   );
   const now = new Date();
 
@@ -637,11 +641,55 @@ export class AuthService {
         requestedFareType === "resident"
           ? "pending"
           : "not_required";
-      const effectiveFareType =
-        requestedFareType === "resident"
-          ? "chilean"
-          : requestedFareType;
+      const effectiveFareType = requestedFareType;
       const now = new Date();
+
+      let storedResidenceAccreditation: string | null = null;
+      let residenceAccreditationMetadata:
+        | FacebookResidentDocumentMetadata
+        | null = null;
+
+      if (requestedFareType === "resident") {
+        const accreditation = payload.residenceAccreditation;
+
+        if (!accreditation) {
+          return {
+            ok: false,
+            code: "AUTH_RESIDENCE_ACCREDITATION_REQUIRED",
+            message: "Debes adjuntar tu acreditación de residencia para continuar.",
+            statusCode: 400,
+          };
+        }
+
+        const documentValidation = validateResidentDocumentDataUrl({
+          documentDataUrl: accreditation.documentDataUrl,
+          documentType: accreditation.documentType,
+          documentSize: accreditation.documentSize,
+        });
+
+        if (!documentValidation.ok) {
+          return {
+            ok: false,
+            code: "AUTH_RESIDENCE_ACCREDITATION_INVALID",
+            message: documentValidation.message,
+            statusCode: 400,
+          };
+        }
+
+        residenceAccreditationMetadata = {
+          version: 1,
+          phone: payload.phone?.trim() ?? "",
+          rut: normalizeResidentRut(payload.rut),
+          provider: "email",
+          documentName: accreditation.documentName.trim(),
+          documentType: accreditation.documentType,
+          uploadedAt: now.toISOString(),
+        };
+        storedResidenceAccreditation = attachResidentDocumentMetadata(
+          documentValidation.dataUrl,
+          residenceAccreditationMetadata,
+        );
+      }
 
       const user = await db.transaction(async (tx) => {
         const userRows = await tx
@@ -678,6 +726,24 @@ export class AuthService {
             requestedFareType === "resident" ? now : null,
           updatedAt: now,
         });
+
+        if (
+          requestedFareType === "resident" &&
+          storedResidenceAccreditation &&
+          residenceAccreditationMetadata
+        ) {
+          await tx.insert(userDocuments).values({
+            userId: createdUser.id,
+            documentType: FACEBOOK_RESIDENT_DOCUMENT_TYPE,
+            status: "uploaded",
+            fileUrl: storedResidenceAccreditation,
+            rejectionReason: null,
+            uploadedAt: now,
+            reviewedAt: null,
+            createdAt: now,
+            updatedAt: now,
+          });
+        }
 
         await tx.insert(userAcceptances).values(
           legalDocumentsToAccept.map((document) => ({
@@ -1152,7 +1218,7 @@ export class AuthService {
         provider,
         documentType: FACEBOOK_RESIDENT_DOCUMENT_TYPE,
         userStatus: "active",
-        effectiveFareType: "chilean",
+        effectiveFareType: "resident",
       },
     });
 
@@ -1477,12 +1543,27 @@ export class AuthService {
     );
 
     if (input.passengerFareType === "resident") {
+      if (!residentDocument || residentDocumentStatus === "missing") {
+        return {
+          ok: false,
+          code: "AUTH_RESIDENCE_ACCREDITATION_REQUIRED",
+          message: "Debes adjuntar tu acreditación de residencia para continuar.",
+          statusCode: 400,
+        };
+      }
+
+      if (residentDocumentStatus === "rejected") {
+        return {
+          ok: false,
+          code: "AUTH_RESIDENCE_ACCREDITATION_REJECTED",
+          message:
+            "La acreditación anterior fue rechazada. Adjunta una nueva acreditación para continuar como RAPA NUI / RESIDENTE RAPA NUI.",
+          statusCode: 409,
+        };
+      }
+
       const verificationStatus: ResidenceVerificationStatus =
-        residentDocumentStatus === "approved"
-          ? "approved"
-          : residentDocumentStatus === "rejected"
-            ? "rejected"
-            : "pending";
+        residentDocumentStatus === "approved" ? "approved" : "pending";
 
       await upsertPassengerFareProfile({
         userId: user.id,

@@ -10,6 +10,7 @@ export const upsertDriverProfileSchema = z.object({
   licenseNumber:   z.string().trim().max(30).optional(),
   licenseExpiry:   z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
   profilePhotoUrl: z.string().url().optional(),
+  vehiclePhotoUrl: z.string().url().optional(),
   bio:             z.string().trim().max(500).optional(),
   languages:       z.array(z.enum(["es", "en", "rapa_nui", "fr"])).optional(),
 });

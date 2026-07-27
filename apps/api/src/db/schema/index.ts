@@ -27,6 +27,10 @@ export * from "./touristServices.schema.js";
 export * from "./rentalVehicles.schema.js";
 export * from "./servicePricingTiers.schema.js";
 export * from "./notifications.schema.js";
+export * from "./oauthIdentities.schema.js";
+export * from "./rideAssignmentOffers.schema.js";
+export * from "./rideStops.schema.js";
+export * from "./whatsappMessages.schema.js";
 
 export {
   applications,

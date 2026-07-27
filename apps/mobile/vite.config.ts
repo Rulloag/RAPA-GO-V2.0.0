@@ -3,8 +3,11 @@ import react from "@vitejs/plugin-react";
 import { resolve } from "path";
 
 export default defineConfig({
+  base: "/",
+  appType: "spa",
   plugins: [react()],
   resolve: {
+    dedupe: ["react", "react-dom", "react-router", "react-router-dom"],
     alias: {
       "@": resolve(__dirname, "src"),
       "@components": resolve(__dirname, "src/components"),
@@ -29,15 +32,5 @@ export default defineConfig({
   build: {
     outDir: "dist",
     sourcemap: true,
-    rollupOptions: {
-      // These packages are not installed locally; they are provided by the native
-      // Capacitor layer at runtime. Externalize so the web build succeeds.
-      external: [
-        "@sentry/capacitor",
-        "@sentry/react",
-        "@capacitor/splash-screen",
-        "@aparajita/capacitor-secure-storage",
-      ],
-    },
   },
 });

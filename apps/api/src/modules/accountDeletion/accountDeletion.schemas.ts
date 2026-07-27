@@ -6,7 +6,7 @@ export const ACCOUNT_DELETION_STATUSES = [
   "processing",
   "completed",
   "deferred",
-  "rejected",
+  "identity_not_verified",
   "failed",
   "cancelled",
 ] as const;
@@ -18,11 +18,17 @@ const emailSchema = z
   .email("Ingresa un correo electrónico válido.")
   .max(255, "El correo no puede superar 255 caracteres.");
 
-const reasonSchema = z
-  .string()
-  .trim()
-  .min(10, "Debes escribir un motivo de al menos 10 caracteres.")
-  .max(500, "El motivo no puede superar 500 caracteres.");
+const reasonSchema = z.preprocess(
+  (value) => {
+    if (value === null || value === undefined) return undefined;
+    const normalized = String(value).trim();
+    return normalized.length > 0 ? normalized : undefined;
+  },
+  z
+    .string()
+    .max(500, "El motivo no puede superar 500 caracteres.")
+    .optional(),
+);
 
 const commentSchema = z
   .string()
@@ -44,10 +50,6 @@ export const accountDeletionClientSnapshotSchema = z.object({
 });
 
 export const createAccountDeletionRequestSchema = z.object({
-  verificationCode: z
-    .string()
-    .trim()
-    .regex(/^\d{6}$/, "El código de verificación debe tener 6 números."),
   reason: reasonSchema,
   comment: commentSchema,
   requesterSnapshot: accountDeletionClientSnapshotSchema.optional(),

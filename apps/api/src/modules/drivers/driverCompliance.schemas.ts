@@ -1,11 +1,25 @@
 import { z } from "zod";
 
-export const upsertDriverRestScheduleSchema = z.object({
-  startTime: z
-    .string()
-    .trim()
-    .regex(/^([01]\d|2[0-3]):[0-5]\d$/, "La hora debe tener formato HH:mm."),
-});
+const driverServiceTimeSchema = z
+  .string()
+  .trim()
+  .regex(/^([01]\d|2[0-3]):[0-5]\d$/, "La hora debe tener formato HH:mm.");
+
+export const upsertDriverRestScheduleSchema = z
+  .object({
+    serviceStartTime: driverServiceTimeSchema.optional(),
+    serviceEndTime: driverServiceTimeSchema.optional(),
+    /**
+     * Compatibilidad con clientes anteriores: `startTime` era la hora en que
+     * empezaba automáticamente el descanso. Ahora se interpreta únicamente
+     * como hora de término del horario de servicios.
+     */
+    startTime: driverServiceTimeSchema.optional(),
+  })
+  .refine(
+    (value) => Boolean(value.serviceEndTime || value.startTime),
+    "Debes indicar la hora de término del horario de servicios.",
+  );
 
 export type UpsertDriverRestScheduleInput = z.infer<
   typeof upsertDriverRestScheduleSchema

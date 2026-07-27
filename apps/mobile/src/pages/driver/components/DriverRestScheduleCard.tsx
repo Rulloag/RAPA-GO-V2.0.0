@@ -1,12 +1,29 @@
-import { IonButton, IonIcon, IonSpinner } from "@ionic/react";
-import { moonOutline, saveOutline, timeOutline } from "ionicons/icons";
-import { useCallback, useEffect, useMemo, useState, type CSSProperties } from "react";
+import {
+  IonButton,
+  IonIcon,
+  IonSpinner,
+} from "@ionic/react";
+import {
+  briefcaseOutline,
+  moonOutline,
+  saveOutline,
+  timeOutline,
+} from "ionicons/icons";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  type CSSProperties,
+} from "react";
 
 import { useAuth } from "../../../features/auth";
 import {
   driverProfileService,
   type DriverRestComplianceData,
 } from "../../../features/drivers/driverProfile.service";
+
+const TIME_PATTERN = /^([01]\d|2[0-3]):[0-5]\d$/;
 
 function formatDateTime(value: string | null | undefined): string {
   if (!value) return "";
@@ -15,10 +32,14 @@ function formatDateTime(value: string | null | undefined): string {
   return date.toLocaleString("es-CL", {
     dateStyle: "short",
     timeStyle: "short",
+    timeZone: "Pacific/Easter",
   });
 }
 
-function formatRemaining(value: string | null | undefined, nowMs: number): string {
+function formatRemaining(
+  value: string | null | undefined,
+  nowMs: number,
+): string {
   if (!value) return "";
   const endMs = new Date(value).getTime();
   if (!Number.isFinite(endMs)) return "";
@@ -29,6 +50,25 @@ function formatRemaining(value: string | null | undefined, nowMs: number): strin
   return `${hours} h ${String(minutes).padStart(2, "0")} min`;
 }
 
+function statusLabel(
+  state: DriverRestComplianceData["state"] | null,
+): string {
+  switch (state?.status) {
+    case "active":
+      return "Descanso activo";
+    case "reminder_due":
+      return "Decisión pendiente";
+    case "working":
+      return "Trabajando";
+    case "completed":
+      return "Completado";
+    case "scheduled":
+      return "Programado";
+    default:
+      return "Sin iniciar";
+  }
+}
+
 export function DriverRestScheduleCard({
   onBlockedChange,
 }: {
@@ -37,18 +77,34 @@ export function DriverRestScheduleCard({
   const { session } = useAuth();
   const [compliance, setCompliance] =
     useState<DriverRestComplianceData | null>(null);
-  const [startTime, setStartTime] = useState("22:00");
+  const [serviceStartTime, setServiceStartTime] = useState("10:00");
+  const [serviceEndTime, setServiceEndTime] = useState("22:00");
+  const [scheduleDirty, setScheduleDirty] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
+  const [savingSchedule, setSavingSchedule] = useState(false);
+  const [performingAction, setPerformingAction] = useState<
+    "rest" | "work" | null
+  >(null);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [nowMs, setNowMs] = useState(Date.now());
 
   const publish = useCallback(
-    (data: DriverRestComplianceData) => {
+    (
+      data: DriverRestComplianceData,
+      options?: { forceSchedule?: boolean },
+    ) => {
       setCompliance(data);
       const schedule = data.latestSchedule ?? data.effectiveSchedule;
-      if (schedule?.startTime) setStartTime(schedule.startTime);
+
+      if (schedule && (options?.forceSchedule || !scheduleDirty)) {
+        setServiceStartTime(schedule.serviceStartTime || "10:00");
+        setServiceEndTime(
+          schedule.serviceEndTime || schedule.startTime || "22:00",
+        );
+      }
+
+      // Solo un descanso confirmado manualmente bloquea al conductor.
       onBlockedChange?.(data.state.blockedForNewOffers);
 
       try {
@@ -62,10 +118,10 @@ export function DriverRestScheduleCard({
           }),
         );
       } catch {
-        // El evento local solo mejora la presentación de la app.
+        // El evento local solo sincroniza la presentación de la aplicación.
       }
     },
-    [onBlockedChange],
+    [onBlockedChange, scheduleDirty],
   );
 
   const load = useCallback(
@@ -76,6 +132,7 @@ export function DriverRestScheduleCard({
       }
 
       if (!silent) setLoading(true);
+
       try {
         const data = await driverProfileService.getMyRestSchedule(
           session.accessToken,
@@ -86,7 +143,7 @@ export function DriverRestScheduleCard({
         setError(
           caught instanceof Error
             ? caught.message
-            : "No se pudo cargar el horario de descanso.",
+            : "No se pudo cargar el horario de servicios.",
         );
       } finally {
         if (!silent) setLoading(false);
@@ -97,53 +154,136 @@ export function DriverRestScheduleCard({
 
   useEffect(() => {
     void load();
+
     const timerId = window.setInterval(() => {
       setNowMs(Date.now());
       void load(true);
-    }, 60_000);
+    }, 30_000);
+
     return () => window.clearInterval(timerId);
   }, [load]);
 
-  async function save(): Promise<void> {
-    if (!session?.accessToken || saving) return;
-    setSaving(true);
+  async function saveSchedule(): Promise<void> {
+    if (!session?.accessToken || savingSchedule) return;
+
+    setSavingSchedule(true);
     setError(null);
     setSuccess(null);
 
     try {
       const data = await driverProfileService.updateMyRestSchedule(
         session.accessToken,
-        startTime,
+        serviceStartTime,
+        serviceEndTime,
       );
-      publish(data);
-      const effectiveFrom = data.latestSchedule?.effectiveFrom;
+      setScheduleDirty(false);
+      publish(data, { forceSchedule: true });
       setSuccess(
-        effectiveFrom
-          ? `Horario guardado. Comienza a regir el ${effectiveFrom}.`
-          : "Horario guardado correctamente.",
+        "Horario de servicios guardado. Solo organiza tu jornada y no cambia Disponible/No disponible.",
       );
     } catch (caught) {
       setError(
         caught instanceof Error
           ? caught.message
-          : "No se pudo guardar el horario de descanso.",
+          : "No se pudo guardar el horario de servicios.",
       );
     } finally {
-      setSaving(false);
+      setSavingSchedule(false);
+    }
+  }
+
+  async function startRest(): Promise<void> {
+    if (!session?.accessToken || performingAction) return;
+
+    const confirmed = window.confirm(
+      "¿Comenzar ahora el descanso continuo de 12 horas? Quedarás No disponible y el botón Trabajar se deshabilitará hasta terminar.",
+    );
+    if (!confirmed) return;
+
+    setPerformingAction("rest");
+    setError(null);
+    setSuccess(null);
+
+    try {
+      const data = await driverProfileService.startMyRest(
+        session.accessToken,
+      );
+      publish(data);
+      setSuccess(
+        "Descanso iniciado. Debes completar las 12 horas continuas.",
+      );
+    } catch (caught) {
+      setError(
+        caught instanceof Error
+          ? caught.message
+          : "No se pudo comenzar el descanso.",
+      );
+    } finally {
+      setPerformingAction(null);
+    }
+  }
+
+  async function continueWorking(): Promise<void> {
+    if (!session?.accessToken || performingAction) return;
+
+    const confirmed = window.confirm(
+      "¿Continuar trabajando? Se descartará el descanso de este ciclo y podrás administrar normalmente Disponible/No disponible.",
+    );
+    if (!confirmed) return;
+
+    setPerformingAction("work");
+    setError(null);
+    setSuccess(null);
+
+    try {
+      const data = await driverProfileService.continueWorking(
+        session.accessToken,
+      );
+      publish(data);
+      setSuccess(
+        "Elegiste Trabajar. Tomar descanso quedó deshabilitado para este ciclo.",
+      );
+    } catch (caught) {
+      setError(
+        caught instanceof Error
+          ? caught.message
+          : "No se pudo confirmar que continuarás trabajando.",
+      );
+    } finally {
+      setPerformingAction(null);
     }
   }
 
   const state = compliance?.state ?? null;
   const schedule = compliance?.latestSchedule ?? compliance?.effectiveSchedule;
   const blocked = Boolean(state?.blockedForNewOffers);
+  const activeRest = state?.status === "active";
+  const restDisabledForCycle =
+    state?.status === "working" || state?.status === "completed";
   const remaining = useMemo(
     () => formatRemaining(state?.activePeriod?.requiredEndAt, nowMs),
     [nowMs, state?.activePeriod?.requiredEndAt],
   );
 
+  const scheduleValid =
+    TIME_PATTERN.test(serviceStartTime) &&
+    TIME_PATTERN.test(serviceEndTime);
+  const actionBusy = performingAction !== null;
+
+  const panelStyle: CSSProperties = {
+    borderRadius: 18,
+    padding: 14,
+    border: blocked
+      ? "1px solid rgba(165,180,252,.32)"
+      : "1px solid rgba(200,155,60,.28)",
+    background: blocked
+      ? "rgba(255,255,255,.08)"
+      : "rgba(255,255,255,.64)",
+  };
+
   return (
     <section
-      aria-label="Horario diario de desconexión"
+      aria-label="Horario de servicios y descanso continuo"
       style={{
         margin: "12px 0",
         padding: 16,
@@ -160,199 +300,429 @@ export function DriverRestScheduleCard({
           : "0 14px 32px rgba(112,78,16,.12)",
       }}
     >
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "flex-start",
-          gap: 12,
-        }}
-      >
-        <div style={{ display: "flex", gap: 10, alignItems: "flex-start" }}>
-          <div
-            style={{
-              width: 42,
-              height: 42,
-              borderRadius: 14,
-              display: "grid",
-              placeItems: "center",
-              background: blocked
-                ? "rgba(255,255,255,.12)"
-                : "rgba(200,155,60,.16)",
-              flex: "0 0 auto",
-            }}
-          >
-            <IonIcon icon={moonOutline} style={{ fontSize: 22 }} />
-          </div>
-          <div>
-            <div
-              style={{
-                fontSize: ".68rem",
-                fontWeight: 950,
-                letterSpacing: ".06em",
-                textTransform: "uppercase",
-                opacity: 0.72,
-              }}
-            >
-              Desconexión verificable
-            </div>
-            <div style={{ fontSize: "1rem", fontWeight: 950, marginTop: 2 }}>
-              Descanso continuo de 12 horas
-            </div>
-          </div>
-        </div>
-
-        <div
-          style={{
-            padding: "6px 9px",
-            borderRadius: 999,
-            background: blocked
-              ? "rgba(129,140,248,.22)"
-              : "rgba(34,197,94,.14)",
-            border: blocked
-              ? "1px solid rgba(165,180,252,.34)"
-              : "1px solid rgba(34,197,94,.28)",
-            fontSize: ".7rem",
-            fontWeight: 950,
-            whiteSpace: "nowrap",
-          }}
-        >
-          {blocked ? "Descanso activo" : "Programado"}
-        </div>
-      </div>
-
       {loading ? (
-        <div style={{ padding: "18px 0 4px", textAlign: "center" }}>
+        <div style={{ padding: "18px 0", textAlign: "center" }}>
           <IonSpinner name="dots" />
         </div>
       ) : (
         <>
-          <p
-            style={{
-              margin: "12px 0",
-              fontSize: ".8rem",
-              lineHeight: 1.45,
-              fontWeight: 760,
-              opacity: 0.9,
-            }}
-          >
-            {state?.message ??
-              "Elige una hora diaria. Durante esa franja el backend no enviará nuevas ofertas."}
-          </p>
-
-          {blocked && state?.activePeriod && (
+          <div style={panelStyle}>
             <div
               style={{
-                marginBottom: 12,
-                padding: "10px 11px",
-                borderRadius: 14,
-                background: "rgba(255,255,255,.10)",
-                border: "1px solid rgba(255,255,255,.14)",
-                fontSize: ".76rem",
-                fontWeight: 850,
-                lineHeight: 1.45,
+                display: "flex",
+                alignItems: "flex-start",
+                gap: 10,
               }}
             >
-              {state.status === "pending_trip_completion" ? (
-                <>
-                  El viaje actual puede finalizar. Al cerrarlo comenzarán las
-                  doce horas completas.
-                </>
-              ) : (
-                <>
-                  Fin exigido: {formatDateTime(state.activePeriod.requiredEndAt)}
-                  {remaining ? ` · Restan ${remaining}` : ""}
-                </>
-              )}
-            </div>
-          )}
-
-          <label
-            style={{
-              display: "block",
-              fontSize: ".74rem",
-              fontWeight: 950,
-              marginBottom: 6,
-            }}
-          >
-            Hora diaria de inicio
-          </label>
-
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "minmax(0,1fr) auto",
-              gap: 9,
-              alignItems: "center",
-            }}
-          >
-            <div style={{ position: "relative" }}>
-              <IonIcon
-                icon={timeOutline}
+              <div
                 style={{
-                  position: "absolute",
-                  left: 12,
-                  top: "50%",
-                  transform: "translateY(-50%)",
-                  pointerEvents: "none",
-                  color: "#8a6418",
-                }}
-              />
-              <input
-                type="time"
-                value={startTime}
-                onChange={(event) => {
-                  setStartTime(event.target.value);
-                  setSuccess(null);
-                }}
-                disabled={saving}
-                style={{
-                  width: "100%",
-                  minHeight: 46,
-                  boxSizing: "border-box",
+                  width: 42,
+                  height: 42,
                   borderRadius: 14,
-                  border: "1px solid rgba(200,155,60,.40)",
-                  background: "#fff",
-                  color: "#111827",
-                  padding: "10px 12px 10px 38px",
-                  fontSize: ".95rem",
-                  fontWeight: 900,
+                  display: "grid",
+                  placeItems: "center",
+                  background: "rgba(200,155,60,.16)",
+                  flex: "0 0 auto",
                 }}
-              />
+              >
+                <IonIcon
+                  icon={briefcaseOutline}
+                  style={{ fontSize: 22 }}
+                />
+              </div>
+
+              <div>
+                <div
+                  style={{
+                    fontSize: ".68rem",
+                    fontWeight: 950,
+                    letterSpacing: ".06em",
+                    textTransform: "uppercase",
+                    opacity: 0.72,
+                  }}
+                >
+                  Planificación personal
+                </div>
+                <div
+                  style={{
+                    fontSize: "1rem",
+                    fontWeight: 950,
+                    marginTop: 2,
+                  }}
+                >
+                  Horario de servicios
+                </div>
+              </div>
+            </div>
+
+            <p
+              style={{
+                margin: "10px 0 12px",
+                fontSize: ".78rem",
+                lineHeight: 1.45,
+                fontWeight: 760,
+              }}
+            >
+              Configura el inicio y término de tu jornada. Este horario solo
+              genera un aviso y nunca cambia automáticamente tu disponibilidad.
+            </p>
+
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "minmax(0,1fr) minmax(0,1fr)",
+                gap: 9,
+              }}
+            >
+              <label style={{ minWidth: 0 }}>
+                <span
+                  style={{
+                    display: "block",
+                    fontSize: ".7rem",
+                    fontWeight: 950,
+                    marginBottom: 5,
+                  }}
+                >
+                  Inicio
+                </span>
+                <div style={{ position: "relative" }}>
+                  <IonIcon
+                    icon={timeOutline}
+                    style={{
+                      position: "absolute",
+                      left: 11,
+                      top: "50%",
+                      transform: "translateY(-50%)",
+                      pointerEvents: "none",
+                      color: "#8a6418",
+                    }}
+                  />
+                  <input
+                    type="time"
+                    value={serviceStartTime}
+                    onChange={(event) => {
+                      setServiceStartTime(event.target.value);
+                      setScheduleDirty(true);
+                      setSuccess(null);
+                    }}
+                    disabled={savingSchedule}
+                    style={{
+                      width: "100%",
+                      minHeight: 46,
+                      boxSizing: "border-box",
+                      borderRadius: 14,
+                      border: "1px solid rgba(200,155,60,.40)",
+                      background: "#fff",
+                      color: "#111827",
+                      padding: "10px 8px 10px 36px",
+                      fontSize: ".9rem",
+                      fontWeight: 900,
+                    }}
+                  />
+                </div>
+              </label>
+
+              <label style={{ minWidth: 0 }}>
+                <span
+                  style={{
+                    display: "block",
+                    fontSize: ".7rem",
+                    fontWeight: 950,
+                    marginBottom: 5,
+                  }}
+                >
+                  Término
+                </span>
+                <div style={{ position: "relative" }}>
+                  <IonIcon
+                    icon={timeOutline}
+                    style={{
+                      position: "absolute",
+                      left: 11,
+                      top: "50%",
+                      transform: "translateY(-50%)",
+                      pointerEvents: "none",
+                      color: "#8a6418",
+                    }}
+                  />
+                  <input
+                    type="time"
+                    value={serviceEndTime}
+                    onChange={(event) => {
+                      setServiceEndTime(event.target.value);
+                      setScheduleDirty(true);
+                      setSuccess(null);
+                    }}
+                    disabled={savingSchedule}
+                    style={{
+                      width: "100%",
+                      minHeight: 46,
+                      boxSizing: "border-box",
+                      borderRadius: 14,
+                      border: "1px solid rgba(200,155,60,.40)",
+                      background: "#fff",
+                      color: "#111827",
+                      padding: "10px 8px 10px 36px",
+                      fontSize: ".9rem",
+                      fontWeight: 900,
+                    }}
+                  />
+                </div>
+              </label>
             </div>
 
             <IonButton
-              onClick={() => void save()}
-              disabled={saving || !/^([01]\d|2[0-3]):[0-5]\d$/.test(startTime)}
+              expand="block"
+              onClick={() => void saveSchedule()}
+              disabled={savingSchedule || !scheduleValid}
               style={
                 {
                   "--border-radius": "14px",
-                  "--background": blocked ? "#818cf8" : "#111827",
+                  "--background": "#111827",
                   "--color": "#ffffff",
                   minHeight: 46,
                   fontWeight: 950,
-                  margin: 0,
+                  margin: "10px 0 0",
                 } as CSSProperties
               }
             >
-              {saving ? <IonSpinner name="dots" /> : <IonIcon icon={saveOutline} />}
+              {savingSchedule ? (
+                <IonSpinner name="dots" />
+              ) : (
+                <>
+                  <IonIcon icon={saveOutline} slot="start" />
+                  Guardar horario
+                </>
+              )}
             </IonButton>
+
+            <div
+              style={{
+                marginTop: 8,
+                fontSize: ".69rem",
+                lineHeight: 1.4,
+                fontWeight: 780,
+                opacity: 0.76,
+              }}
+            >
+              Zona horaria: Rapa Nui
+              {schedule?.effectiveFrom
+                ? ` · Vigente desde ${schedule.effectiveFrom}`
+                : ""}
+            </div>
           </div>
 
-          <div
-            style={{
-              marginTop: 9,
-              fontSize: ".7rem",
-              lineHeight: 1.4,
-              fontWeight: 780,
-              opacity: 0.78,
-            }}
-          >
-            Zona horaria: Rapa Nui · Duración fija: 12 horas. Los cambios de una
-            franja vigente comienzan el día siguiente.
-            {schedule?.effectiveFrom
-              ? ` Vigente desde: ${schedule.effectiveFrom}.`
-              : ""}
+          <div style={{ ...panelStyle, marginTop: 12 }}>
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "flex-start",
+                gap: 12,
+              }}
+            >
+              <div
+                style={{
+                  display: "flex",
+                  gap: 10,
+                  alignItems: "flex-start",
+                }}
+              >
+                <div
+                  style={{
+                    width: 42,
+                    height: 42,
+                    borderRadius: 14,
+                    display: "grid",
+                    placeItems: "center",
+                    background: blocked
+                      ? "rgba(255,255,255,.12)"
+                      : "rgba(200,155,60,.16)",
+                    flex: "0 0 auto",
+                  }}
+                >
+                  <IonIcon
+                    icon={moonOutline}
+                    style={{ fontSize: 22 }}
+                  />
+                </div>
+                <div>
+                  <div
+                    style={{
+                      fontSize: ".68rem",
+                      fontWeight: 950,
+                      letterSpacing: ".06em",
+                      textTransform: "uppercase",
+                      opacity: 0.72,
+                    }}
+                  >
+                    Decisión manual
+                  </div>
+                  <div
+                    style={{
+                      fontSize: "1rem",
+                      fontWeight: 950,
+                      marginTop: 2,
+                    }}
+                  >
+                    Descanso continuo
+                  </div>
+                </div>
+              </div>
+
+              <div
+                style={{
+                  padding: "6px 9px",
+                  borderRadius: 999,
+                  background: blocked
+                    ? "rgba(129,140,248,.22)"
+                    : state?.status === "reminder_due"
+                      ? "rgba(245,158,11,.18)"
+                      : "rgba(34,197,94,.14)",
+                  border: blocked
+                    ? "1px solid rgba(165,180,252,.34)"
+                    : state?.status === "reminder_due"
+                      ? "1px solid rgba(245,158,11,.35)"
+                      : "1px solid rgba(34,197,94,.28)",
+                  fontSize: ".68rem",
+                  fontWeight: 950,
+                  whiteSpace: "nowrap",
+                }}
+              >
+                {statusLabel(state)}
+              </div>
+            </div>
+
+            <p
+              style={{
+                margin: "11px 0",
+                fontSize: ".8rem",
+                lineHeight: 1.45,
+                fontWeight: 780,
+              }}
+            >
+              {state?.message ??
+                "Todavía no has comenzado tu descanso."}
+            </p>
+
+            {activeRest && state?.activePeriod && (
+              <div
+                style={{
+                  marginBottom: 11,
+                  padding: "10px 11px",
+                  borderRadius: 14,
+                  background: "rgba(255,255,255,.10)",
+                  border: "1px solid rgba(255,255,255,.14)",
+                  fontSize: ".75rem",
+                  fontWeight: 850,
+                  lineHeight: 1.45,
+                }}
+              >
+                Inicio:{" "}
+                {formatDateTime(state.activePeriod.actualStartAt)}
+                <br />
+                Término:{" "}
+                {formatDateTime(state.activePeriod.requiredEndAt)}
+                {remaining ? ` · Restan ${remaining}` : ""}
+              </div>
+            )}
+
+            {state?.nextScheduledStartAt && !activeRest && (
+              <div
+                style={{
+                  marginBottom: 11,
+                  fontSize: ".72rem",
+                  fontWeight: 820,
+                  opacity: 0.78,
+                }}
+              >
+                Próximo aviso:{" "}
+                {formatDateTime(state.nextScheduledStartAt)}
+              </div>
+            )}
+
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "minmax(0,1fr) minmax(0,1fr)",
+                gap: 9,
+              }}
+            >
+              <IonButton
+                expand="block"
+                onClick={() => void startRest()}
+                disabled={
+                  actionBusy ||
+                  activeRest ||
+                  restDisabledForCycle ||
+                  state?.canStartRest === false
+                }
+                style={
+                  {
+                    "--border-radius": "14px",
+                    "--background": "#c89b3c",
+                    "--color": "#111827",
+                    minHeight: 48,
+                    fontWeight: 950,
+                    margin: 0,
+                  } as CSSProperties
+                }
+              >
+                {performingAction === "rest" ? (
+                  <IonSpinner name="dots" />
+                ) : restDisabledForCycle ? (
+                  "Descanso deshabilitado"
+                ) : activeRest ? (
+                  "Descansando"
+                ) : (
+                  "Tomar descanso"
+                )}
+              </IonButton>
+
+              <IonButton
+                expand="block"
+                onClick={() => void continueWorking()}
+                disabled={
+                  actionBusy ||
+                  activeRest ||
+                  state?.canContinueWorking === false ||
+                  state?.status === "working"
+                }
+                style={
+                  {
+                    "--border-radius": "14px",
+                    "--background": "#111827",
+                    "--color": "#ffffff",
+                    minHeight: 48,
+                    fontWeight: 950,
+                    margin: 0,
+                  } as CSSProperties
+                }
+              >
+                {performingAction === "work" ? (
+                  <IonSpinner name="dots" />
+                ) : state?.status === "working" ? (
+                  "Trabajando"
+                ) : (
+                  "Trabajar"
+                )}
+              </IonButton>
+            </div>
+
+            {state?.hasActiveRide && (
+              <div
+                style={{
+                  marginTop: 9,
+                  fontSize: ".72rem",
+                  lineHeight: 1.4,
+                  fontWeight: 850,
+                  color: blocked ? "#fde68a" : "#92400e",
+                }}
+              >
+                Tienes un viaje activo. La aplicación no lo interrumpirá;
+                podrás tomar el descanso cuando finalice.
+              </div>
+            )}
           </div>
 
           {error && (

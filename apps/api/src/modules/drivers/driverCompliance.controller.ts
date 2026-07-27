@@ -49,6 +49,30 @@ export const driverComplianceController = {
     return sendOk(reply, result.compliance);
   },
 
+  async startMyRest(request: FastifyRequest, reply: FastifyReply) {
+    const result = await complianceService.startMyRest(getToken(request));
+    if (result.ok === false) return sendResultError(reply, result);
+    return sendOk(reply, result.compliance);
+  },
+
+  async continueWorking(request: FastifyRequest, reply: FastifyReply) {
+    const result = await complianceService.continueWorking(getToken(request));
+    if (result.ok === false) return sendResultError(reply, result);
+    return sendOk(reply, result.compliance);
+  },
+
+  async adminListServiceSchedules(
+    request: FastifyRequest<{ Querystring: Record<string, unknown> }>,
+    reply: FastifyReply,
+  ) {
+    const result = await complianceService.adminListServiceScheduleReport(
+      getToken(request),
+      request.query ?? {},
+    );
+    if (result.ok === false) return sendResultError(reply, result);
+    return sendOk(reply, result.schedules);
+  },
+
   async adminListAssignmentReport(
     request: FastifyRequest<{ Querystring: Record<string, unknown> }>,
     reply: FastifyReply,

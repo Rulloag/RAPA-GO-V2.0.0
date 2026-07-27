@@ -31,7 +31,7 @@ La ubicación previa se conserva de forma temporal. El seguimiento operativo com
 
 ## Funciones no incluidas
 
-Turismo local, guías, arriendo de vehículos y eventos no forman parte de esta versión y no aparecen ni son accesibles mediante rutas directas.
+Turismo local, guías, arriendo de vehículos y eventos no forman parte de esta versión y se muestran únicamente como módulos deshabilitados y no son accesibles mediante rutas directas.
 
 ## URLs
 

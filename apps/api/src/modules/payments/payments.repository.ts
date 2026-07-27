@@ -4,6 +4,7 @@ import { db } from "../../db/client.js";
 import {
   paymentWebhookEvents,
   payments,
+  rideRequests,
   type NewPayment,
   type NewPaymentWebhookEvent,
   type Payment,
@@ -178,6 +179,108 @@ export class PaymentsRepository {
       .returning();
 
     return row!;
+  }
+
+  async markSuccessAndActivateRide(input: {
+    id: string;
+    rideRequestId: string;
+    externalId: string;
+    providerPayload: unknown;
+  }): Promise<{ payment: Payment; rideActivated: boolean }> {
+    return db.transaction(async (tx) => {
+      const [existingPayment] = await tx
+        .select()
+        .from(payments)
+        .where(eq(payments.id, input.id))
+        .limit(1);
+
+      if (!existingPayment) {
+        throw new Error(`Payment not found: ${input.id}`);
+      }
+
+      let confirmedPayment = existingPayment;
+      const confirmedAt = new Date();
+
+      if (existingPayment.status !== "success") {
+        const [updatedPayment] = await tx
+          .update(payments)
+          .set({
+            status: "success",
+            providerPaymentId: input.externalId,
+            rawProviderPayload:
+              input.providerPayload as Record<string, unknown>,
+            paidAt: confirmedAt,
+            updatedAt: confirmedAt,
+          })
+          .where(
+            and(
+              eq(payments.id, input.id),
+              inArray(payments.status, ["pending", "processing"]),
+            ),
+          )
+          .returning();
+
+        if (!updatedPayment) {
+          throw new Error(
+            `Payment ${input.id} could not transition to success.`,
+          );
+        }
+
+        confirmedPayment = updatedPayment;
+      }
+
+      const activatedAt = new Date();
+      const [activatedRide] = await tx
+        .update(rideRequests)
+        .set({
+          status: "requested",
+          requestedAt: activatedAt,
+          updatedAt: activatedAt,
+        })
+        .where(
+          and(
+            eq(rideRequests.id, input.rideRequestId),
+            eq(rideRequests.status, "pending_payment"),
+          ),
+        )
+        .returning({ id: rideRequests.id });
+
+      if (activatedRide) {
+        return {
+          payment: confirmedPayment,
+          rideActivated: true,
+        };
+      }
+
+      const [currentRide] = await tx
+        .select({ status: rideRequests.status })
+        .from(rideRequests)
+        .where(eq(rideRequests.id, input.rideRequestId))
+        .limit(1);
+
+      const currentStatus = String(
+        currentRide?.status ?? "",
+      )
+        .trim()
+        .toLowerCase();
+      const alreadyActivated = Boolean(
+        currentRide &&
+          currentStatus &&
+          currentStatus !== "pending_payment" &&
+          currentStatus !== "cancelled",
+      );
+
+      if (!alreadyActivated) {
+        throw new Error(
+          `Ride ${input.rideRequestId} could not be activated after payment.`,
+        );
+      }
+
+      return {
+        payment: confirmedPayment,
+        rideActivated: true,
+      };
+    });
   }
 
   async markRejected(id: string, webhookPayload: unknown): Promise<Payment> {

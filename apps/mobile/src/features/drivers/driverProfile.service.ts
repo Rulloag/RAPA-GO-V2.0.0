@@ -12,6 +12,7 @@ export interface DriverProfileData {
   licenseNumber:   string | null;
   licenseExpiry:   string | null;
   profilePhotoUrl: string | null;
+  vehiclePhotoUrl: string | null;
   bio:             string | null;
   languages:       string[];
   createdAt:       string;
@@ -22,7 +23,11 @@ export interface DriverProfileData {
 export interface DriverRestScheduleData {
   id: string;
   driverUserId: string;
+  /** Compatibilidad: corresponde a la hora de término del servicio. */
   startTime: string;
+  serviceStartTime: string;
+  serviceEndTime: string;
+  serviceStartMinuteLocal: number;
   startMinuteLocal: number;
   durationMinutes: number;
   durationHours: number;
@@ -42,20 +47,35 @@ export interface DriverRestPeriodData {
   requiredEndAt: string | null;
   completedAt: string | null;
   status: string;
+  decision: "rest" | "work" | null;
+  decisionAt: string | null;
   delayedByRideId: string | null;
   durationMinutes: number;
   durationHours: number;
 }
+
+export type DriverRestStateStatus =
+  | "not_configured"
+  | "scheduled"
+  | "reminder_due"
+  | "working"
+  | "active"
+  | "completed";
 
 export interface DriverRestComplianceData {
   effectiveSchedule: DriverRestScheduleData | null;
   latestSchedule: DriverRestScheduleData | null;
   state: {
     blockedForNewOffers: boolean;
-    status: string;
+    status: DriverRestStateStatus;
     message: string;
     activePeriod: DriverRestPeriodData | null;
     nextScheduledStartAt: string | null;
+    reminderDue: boolean;
+    workingSelected: boolean;
+    canStartRest: boolean;
+    canContinueWorking: boolean;
+    hasActiveRide: boolean;
   };
 }
 
@@ -69,6 +89,7 @@ export interface UpsertDriverProfilePayload {
   licenseNumber?:   string;
   licenseExpiry?:   string;
   profilePhotoUrl?: string;
+  vehiclePhotoUrl?: string;
   bio?:             string;
   languages?:       string[];
 }
@@ -96,7 +117,7 @@ export const driverProfileService = {
     if (!result.ok) {
       throw new Error(
         (result as { message?: string }).message ??
-          "No se pudo cargar tu horario de descanso.",
+          "No se pudo cargar tu horario de servicios.",
       );
     }
     return (result.data as Envelope<DriverRestComplianceData>).data;
@@ -104,17 +125,51 @@ export const driverProfileService = {
 
   async updateMyRestSchedule(
     accessToken: string,
-    startTime: string,
+    serviceStartTime: string,
+    serviceEndTime: string,
   ): Promise<DriverRestComplianceData> {
     const result = await apiClient.patch<Envelope<DriverRestComplianceData>>(
       "/drivers/me/rest-schedule",
-      { startTime },
+      {
+        serviceStartTime,
+        serviceEndTime,
+      },
       { token: accessToken },
     );
     if (!result.ok) {
       throw new Error(
         (result as { message?: string }).message ??
-          "No se pudo guardar tu horario de descanso.",
+          "No se pudo guardar tu horario de servicios.",
+      );
+    }
+    return (result.data as Envelope<DriverRestComplianceData>).data;
+  },
+
+  async startMyRest(accessToken: string): Promise<DriverRestComplianceData> {
+    const result = await apiClient.post<Envelope<DriverRestComplianceData>>(
+      "/drivers/me/rest/start",
+      {},
+      { token: accessToken },
+    );
+    if (!result.ok) {
+      throw new Error(
+        (result as { message?: string }).message ??
+          "No se pudo comenzar el descanso.",
+      );
+    }
+    return (result.data as Envelope<DriverRestComplianceData>).data;
+  },
+
+  async continueWorking(accessToken: string): Promise<DriverRestComplianceData> {
+    const result = await apiClient.post<Envelope<DriverRestComplianceData>>(
+      "/drivers/me/rest/work",
+      {},
+      { token: accessToken },
+    );
+    if (!result.ok) {
+      throw new Error(
+        (result as { message?: string }).message ??
+          "No se pudo confirmar que continuarás trabajando.",
       );
     }
     return (result.data as Envelope<DriverRestComplianceData>).data;

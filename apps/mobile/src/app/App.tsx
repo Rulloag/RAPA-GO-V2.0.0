@@ -21,6 +21,7 @@ import "../theme/profile.css";
 import "../theme/home.css";
 import "../theme/sections.css";
 import "../theme/request-ride.css";
+import "../theme/request.css";
 
 import { initRapagoTheme } from "../theme/rapagoTheme";
 

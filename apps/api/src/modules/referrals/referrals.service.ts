@@ -11,6 +11,18 @@ const sessionService = new SessionService();
 const usersRepo      = new UsersRepository();
 const referralsRepo  = new ReferralsRepository();
 
+const PUBLIC_WEB_BASE_URL = String(
+  process.env["PUBLIC_WEB_BASE_URL"] ??
+    process.env["FRONTEND_URL"] ??
+    "https://api.rapago.cl",
+)
+  .trim()
+  .replace(/\/+$/, "");
+
+function referralLink(code: string): string {
+  return `${PUBLIC_WEB_BASE_URL}/ref/${encodeURIComponent(code)}`;
+}
+
 type AuthResult =
   | { ok: true; userId: string; role: string }
   | { ok: false; code: string; message: string; statusCode: number };
@@ -49,7 +61,7 @@ function serializeCode(code: ReferralCode) {
     expiresAt:      code.expiresAt?.toISOString() ?? null,
     isActive:       code.isActive,
     createdAt:      code.createdAt.toISOString(),
-    link:           `https://rapago.cl/ref/${code.code}`,
+    link:           referralLink(code.code),
   };
 }
 
@@ -124,7 +136,7 @@ export const referralsService = {
       ok: true,
       data: {
         code:          existing.code,
-        link:          `https://rapago.cl/ref/${existing.code}`,
+        link:          referralLink(existing.code),
         usedCount:     summary.usedCount,
         totalReward:   summary.totalReward,
         pendingReward: summary.pendingReward,
@@ -138,7 +150,7 @@ export const referralsService = {
 
     const existing = await referralsRepo.findCodeByUserId(auth.userId);
     if (existing) {
-      return { ok: true, data: { code: existing.code, link: `https://rapago.cl/ref/${existing.code}` } };
+      return { ok: true, data: { code: existing.code, link: referralLink(existing.code) } };
     }
 
     let code: string;
@@ -172,7 +184,7 @@ export const referralsService = {
       expiresAt:      null,
     });
 
-    return { ok: true, data: { code: created.code, link: `https://rapago.cl/ref/${created.code}` } };
+    return { ok: true, data: { code: created.code, link: referralLink(created.code) } };
   },
 
   async applyCode(code: string, userId?: string): Promise<ApplyCodeResult> {
@@ -298,7 +310,7 @@ export const referralsService = {
       expiresAt:      data.expiresAt ? new Date(data.expiresAt) : null,
     });
 
-    return { ok: true, data: { code: created.code, link: `https://rapago.cl/ref/${created.code}` } };
+    return { ok: true, data: { code: created.code, link: referralLink(created.code) } };
   },
 };
 

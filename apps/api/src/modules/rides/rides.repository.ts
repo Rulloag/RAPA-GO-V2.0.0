@@ -1,4 +1,4 @@
-import { and, asc, avg, count, desc, eq, inArray, isNull, sql } from "drizzle-orm";
+import { and, asc, avg, count, desc, eq, gte, inArray, isNull, lt, ne, sql } from "drizzle-orm";
 import { db } from "../../db/client.js";
 import {
   driverProfiles,
@@ -11,6 +11,7 @@ import {
 } from "../../db/schema/index.js";
 import { alias } from "drizzle-orm/pg-core";
 import { AppError } from "../../shared/errors/AppError.js";
+import { formatDatabaseErrorDetails } from "../../shared/errors/databaseErrorDetails.js";
 import type { RideRequest } from "../../db/schema/index.js";
 import {
   ridePolicyCharges,
@@ -223,6 +224,10 @@ export class RidesRepository {
           createdAt:          rideRequests.createdAt,
           updatedAt:          rideRequests.updatedAt,
           isOfflineBooking:   rideRequests.isOfflineBooking,
+          rideType:           rideRequests.rideType,
+          scheduledPickupAt:  rideRequests.scheduledPickupAt,
+          priorityFeeClp:     rideRequests.priorityFeeClp,
+          flightNumber:       rideRequests.flightNumber,
           driverName:         driver.name,
           driverPhone:        driverProfiles.phone,
           driverVehicleBrand: driverProfiles.vehicleBrand,
@@ -525,7 +530,8 @@ export class RidesRepository {
     } catch (err) {
       if (err instanceof AppError) throw err;
       throw AppError.internal(
-        `Failed to create ride request with policy charges and benefits: ${String(err)}`,
+        "Failed to create ride request with policy charges and benefits: " +
+          formatDatabaseErrorDetails(err),
       );
     }
   }
@@ -555,15 +561,75 @@ export class RidesRepository {
     }
   }
 
+  async findCompletedByDriverIdOnDate(
+    driverUserId: string,
+    date: Date,
+  ): Promise<RideRequest[]> {
+    try {
+      const start = new Date(Date.UTC(
+        date.getUTCFullYear(),
+        date.getUTCMonth(),
+        date.getUTCDate(),
+      ));
+      const end = new Date(start.getTime() + 24 * 60 * 60 * 1000);
+
+      return await db
+        .select()
+        .from(rideRequests)
+        .where(
+          and(
+            eq(rideRequests.driverUserId, driverUserId),
+            eq(rideRequests.status, "completed"),
+            gte(rideRequests.completedAt, start),
+            lt(rideRequests.completedAt, end),
+          ),
+        )
+        .orderBy(desc(rideRequests.completedAt));
+    } catch (err) {
+      throw AppError.internal(
+        `Failed to query completed driver rides: ${String(err)}`,
+      );
+    }
+  }
+
   async findAvailable(): Promise<RideRequest[]> {
     try {
       return await db
         .select()
         .from(rideRequests)
-        .where(eq(rideRequests.status, "requested"))
+        .where(and(
+          eq(rideRequests.status, "requested"),
+          ne(rideRequests.rideType, "scheduled"),
+        ))
         .orderBy(desc(rideRequests.requestedAt));
     } catch (err) {
       throw AppError.internal(`Failed to query available rides: ${String(err)}`);
+    }
+  }
+
+  /**
+   * Atomically accept a ride as a queued offer (driver is still on current ride).
+   * Sets assignmentMode='queued_offer' and queuedOfferDriverId.
+   * Returns null if the ride is no longer 'requested' (race condition).
+   */
+  async acceptAsQueued(id: string, driverUserId: string): Promise<RideRequest | null> {
+    try {
+      const rows = await db
+        .update(rideRequests)
+        .set({
+          status:              "accepted",
+          driverUserId,
+          acceptedAt:          new Date(),
+          assignmentMode:      "queued_offer",
+          queuedOfferDriverId: driverUserId,
+          updatedAt:           new Date(),
+        })
+        .where(and(eq(rideRequests.id, id), eq(rideRequests.status, "requested")))
+        .returning();
+      return rows[0] ?? null;
+    } catch (err) {
+      if (err instanceof AppError) throw err;
+      throw AppError.internal(`Failed to accept ride as queued: ${String(err)}`);
     }
   }
 
@@ -941,11 +1007,13 @@ export class RidesRepository {
 
   async activateAfterApprovedPayment(id: string): Promise<RideRequest | null> {
     try {
+      const activatedAt = new Date();
       const [row] = await db
         .update(rideRequests)
         .set({
           status: "requested",
-          updatedAt: new Date(),
+          requestedAt: activatedAt,
+          updatedAt: activatedAt,
         })
         .where(
           and(

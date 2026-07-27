@@ -51,6 +51,7 @@ import {
 import { sql } from "drizzle-orm";
 import { db } from "./db/client.js";
 import { releaseFeatures } from "./config/features.js";
+import { RetentionJob } from "./jobs/retention.job.js";
 
 async function checkDbConnection(): Promise<"connected" | "disconnected"> {
   try {
@@ -200,6 +201,14 @@ export async function buildApp(): Promise<FastifyInstance> {
   await fastify.register(fareSettingsAdminRoutes, { prefix: "/api/admin" });
   await fastify.register(referralsRoutes, { prefix: "/api" });
   await fastify.register(adminReferralsRoutes, { prefix: "/api/admin" });
+
+  const retentionJob = new RetentionJob(fastify.log);
+  fastify.addHook("onReady", async () => {
+    retentionJob.start();
+  });
+  fastify.addHook("onClose", async () => {
+    retentionJob.stop();
+  });
 
   return fastify;
 }

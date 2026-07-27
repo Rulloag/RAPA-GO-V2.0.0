@@ -51,8 +51,14 @@ export type RideDriverAssignmentReportRow = RideDriverAssignment & {
 export type DriverRestPeriodReportRow = DriverRestPeriod & {
   driverName: string | null;
   driverEmail: string | null;
+  serviceStartMinuteLocal: number;
   startMinuteLocal: number;
   timezone: string;
+};
+
+export type DriverServiceScheduleReportRow = DriverRestSchedule & {
+  driverName: string | null;
+  driverEmail: string | null;
 };
 
 export class DriverComplianceRepository {
@@ -106,6 +112,7 @@ export class DriverComplianceRepository {
 
   async replaceSchedule(input: {
     driverUserId: string;
+    serviceStartMinuteLocal: number;
     startMinuteLocal: number;
     durationMinutes: number;
     timezone: string;
@@ -137,6 +144,7 @@ export class DriverComplianceRepository {
           .insert(driverRestSchedules)
           .values({
             driverUserId: input.driverUserId,
+            serviceStartMinuteLocal: input.serviceStartMinuteLocal,
             startMinuteLocal: input.startMinuteLocal,
             durationMinutes: input.durationMinutes,
             timezone: input.timezone,
@@ -151,6 +159,7 @@ export class DriverComplianceRepository {
               driverRestSchedules.effectiveFrom,
             ],
             set: {
+              serviceStartMinuteLocal: input.serviceStartMinuteLocal,
               startMinuteLocal: input.startMinuteLocal,
               durationMinutes: input.durationMinutes,
               timezone: input.timezone,
@@ -234,11 +243,7 @@ export class DriverComplianceRepository {
         .where(
           and(
             eq(driverRestPeriods.driverUserId, driverUserId),
-            inArray(driverRestPeriods.status, [
-              "scheduled",
-              "pending_trip_completion",
-              "active",
-            ]),
+            eq(driverRestPeriods.status, "active"),
           ),
         )
         .orderBy(desc(driverRestPeriods.scheduledStartAt))
@@ -265,7 +270,7 @@ export class DriverComplianceRepository {
           scheduleId: input.scheduleId,
           scheduledStartAt: input.scheduledStartAt,
           durationMinutes: input.durationMinutes,
-          status: "scheduled",
+          status: "reminder_due",
         })
         .onConflictDoNothing()
         .returning();
@@ -284,6 +289,75 @@ export class DriverComplianceRepository {
       if (err instanceof AppError) throw err;
       throw AppError.internal(
         `Failed to create driver rest period: ${String(err)}`,
+      );
+    }
+  }
+
+  async markPeriodReminderDue(
+    periodId: string,
+  ): Promise<DriverRestPeriod | null> {
+    try {
+      const rows = await db
+        .update(driverRestPeriods)
+        .set({
+          status: "reminder_due",
+          decision: null,
+          decisionAt: null,
+          delayedByRideId: null,
+          updatedAt: new Date(),
+        })
+        .where(
+          and(
+            eq(driverRestPeriods.id, periodId),
+            inArray(driverRestPeriods.status, [
+              "scheduled",
+              "pending_trip_completion",
+              "reminder_due",
+            ]),
+          ),
+        )
+        .returning();
+      return rows[0] ?? null;
+    } catch (err) {
+      throw AppError.internal(
+        `Failed to mark rest reminder due: ${String(err)}`,
+      );
+    }
+  }
+
+  async markPeriodWorking(
+    periodId: string,
+    decisionAt: Date,
+  ): Promise<DriverRestPeriod | null> {
+    try {
+      const rows = await db
+        .update(driverRestPeriods)
+        .set({
+          status: "working",
+          decision: "work",
+          decisionAt,
+          actualStartAt: null,
+          requiredEndAt: null,
+          completedAt: null,
+          delayedByRideId: null,
+          updatedAt: decisionAt,
+        })
+        .where(
+          and(
+            eq(driverRestPeriods.id, periodId),
+            inArray(driverRestPeriods.status, [
+              "scheduled",
+              "pending_trip_completion",
+              "reminder_due",
+              "working",
+            ]),
+          ),
+        )
+        .returning();
+      return rows[0] ?? null;
+    } catch (err) {
+      throw AppError.internal(
+        `Failed to mark driver as continuing work: ${String(err)}`,
       );
     }
   }
@@ -328,9 +402,12 @@ export class DriverComplianceRepository {
         .update(driverRestPeriods)
         .set({
           status: "active",
+          decision: "rest",
+          decisionAt: actualStartAt,
           actualStartAt,
           requiredEndAt,
           completedAt: null,
+          delayedByRideId: null,
           updatedAt: new Date(),
         })
         .where(
@@ -339,6 +416,7 @@ export class DriverComplianceRepository {
             inArray(driverRestPeriods.status, [
               "scheduled",
               "pending_trip_completion",
+              "reminder_due",
               "active",
             ]),
           ),
@@ -533,12 +611,16 @@ export class DriverComplianceRepository {
           requiredEndAt: driverRestPeriods.requiredEndAt,
           completedAt: driverRestPeriods.completedAt,
           status: driverRestPeriods.status,
+          decision: driverRestPeriods.decision,
+          decisionAt: driverRestPeriods.decisionAt,
           delayedByRideId: driverRestPeriods.delayedByRideId,
           durationMinutes: driverRestPeriods.durationMinutes,
           createdAt: driverRestPeriods.createdAt,
           updatedAt: driverRestPeriods.updatedAt,
           driverName: driver.name,
           driverEmail: driver.email,
+          serviceStartMinuteLocal:
+            driverRestSchedules.serviceStartMinuteLocal,
           startMinuteLocal: driverRestSchedules.startMinuteLocal,
           timezone: driverRestSchedules.timezone,
         })
@@ -560,4 +642,50 @@ export class DriverComplianceRepository {
       );
     }
   }
+  async listServiceScheduleReport(filter: {
+    driverUserId?: string;
+  }): Promise<DriverServiceScheduleReportRow[]> {
+    try {
+      const driver = alias(users, "service_schedule_driver");
+      const conditions: SQL[] = [isNull(driverRestSchedules.effectiveTo)];
+
+      if (filter.driverUserId) {
+        conditions.push(
+          eq(driverRestSchedules.driverUserId, filter.driverUserId),
+        );
+      }
+
+      const rows = await db
+        .select({
+          id: driverRestSchedules.id,
+          driverUserId: driverRestSchedules.driverUserId,
+          serviceStartMinuteLocal:
+            driverRestSchedules.serviceStartMinuteLocal,
+          startMinuteLocal: driverRestSchedules.startMinuteLocal,
+          durationMinutes: driverRestSchedules.durationMinutes,
+          timezone: driverRestSchedules.timezone,
+          effectiveFrom: driverRestSchedules.effectiveFrom,
+          effectiveTo: driverRestSchedules.effectiveTo,
+          createdByUserId: driverRestSchedules.createdByUserId,
+          createdAt: driverRestSchedules.createdAt,
+          updatedAt: driverRestSchedules.updatedAt,
+          driverName: driver.name,
+          driverEmail: driver.email,
+        })
+        .from(driverRestSchedules)
+        .innerJoin(
+          driver,
+          eq(driverRestSchedules.driverUserId, driver.id),
+        )
+        .where(and(...conditions))
+        .orderBy(desc(driverRestSchedules.updatedAt));
+
+      return rows as DriverServiceScheduleReportRow[];
+    } catch (err) {
+      throw AppError.internal(
+        `Failed to list driver service schedules: ${String(err)}`,
+      );
+    }
+  }
+
 }

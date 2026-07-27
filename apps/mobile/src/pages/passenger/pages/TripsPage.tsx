@@ -20,8 +20,10 @@ import { useAuth } from "../../../features/auth/index.js";
 import { ridesService, type RideRequestData } from "../../../features/rides/rides.service.js";
 import { walletService } from "../../../features/wallet/wallet.service.js";
 import { cashRefundsService } from "../../../features/cashRefunds/cashRefunds.service.js";
+
 import { RapagoSectionHeader } from "../../../components/RapagoSectionHeader.js";
 import { useRapagoSectionTheme } from "../../../theme/rapagoTheme.js";
+
 import { ROUTES } from "../../../navigation/routes.js";
 import { RAPAGO_CONTACT, WA_MESSAGES } from "@rapa-go/shared";
 import { RIDE_STATUS_LABEL, RIDE_STATUS_COLOR } from "../shared.js";
@@ -241,6 +243,8 @@ function cleanPaymentReturnQuery(): void {
     url.searchParams.delete("external_reference");
     url.searchParams.delete("merchant_order_id");
     url.searchParams.delete("preference_id");
+    url.searchParams.delete("backend_reconciled");
+    url.searchParams.delete("reconcile_result");
     window.history.replaceState(null, "", `${url.pathname}${url.search}${url.hash}`);
   } catch {
     // No bloquea la verificación.
@@ -1186,13 +1190,18 @@ function getPassengerRideStartedAtMs(ride: RideRequestData & Record<string, unkn
     if (Number.isFinite(activationMs)) return activationMs;
   }
 
+  const isRequestedCardRide =
+    effectiveStatus === "requested" &&
+    getRidePaymentMethodLabel(ride.notes).includes("Mercado Pago");
+
   const candidates = [
     ride.searchStartedAt,
     ride.requeuedAt,
+    ...(isRequestedCardRide ? [ride.updatedAt] : []),
     ride.requestedAt,
     ride.createdAt,
     ride.adminBridgeUpdatedAt,
-    ride.updatedAt,
+    ...(isRequestedCardRide ? [] : [ride.updatedAt]),
   ];
 
   for (const candidate of candidates) {
@@ -1472,6 +1481,66 @@ async function fetchPassengerFastSearchPaymentStatus(
   }
 
   return String(payload.status ?? "").trim().toLowerCase();
+}
+
+type MercadoPagoReconciliationResult = {
+  id: string;
+  rideRequestId: string;
+  status: string;
+  paymentPurpose: "ride" | "fast_search";
+  providerPaymentId: string | null;
+  activated: boolean;
+  reconciled: boolean;
+};
+
+async function reconcileMercadoPagoReturnWithBackend(
+  accessToken: string,
+  paymentId: string,
+  providerPaymentId?: string,
+): Promise<MercadoPagoReconciliationResult> {
+  const response = await fetch(
+    `${getTripsApiBaseUrl()}/api/payments/${encodeURIComponent(paymentId)}/reconcile/mercadopago`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${accessToken}`,
+      },
+      body: JSON.stringify({
+        ...(providerPaymentId ? { providerPaymentId } : {}),
+      }),
+    },
+  );
+
+  const raw = await response.json().catch(() => ({}));
+  const payload = unwrapTripsApiPayload(raw);
+
+  if (!response.ok) {
+    throw new Error(
+      String(
+        payload.message ??
+          payload.error ??
+          "No se pudo conciliar el pago con Mercado Pago.",
+      ),
+    );
+  }
+
+  return {
+    id: String(payload.id ?? paymentId),
+    rideRequestId: String(payload.rideRequestId ?? ""),
+    status: String(payload.status ?? "").trim().toLowerCase(),
+    paymentPurpose:
+      String(payload.paymentPurpose ?? "").trim().toLowerCase() === "fast_search"
+        ? "fast_search"
+        : "ride",
+    providerPaymentId:
+      typeof payload.providerPaymentId === "string" &&
+      payload.providerPaymentId.trim()
+        ? payload.providerPaymentId.trim()
+        : null,
+    activated: payload.activated === true,
+    reconciled: payload.reconciled === true,
+  };
 }
 
 async function applyPassengerFastSearchChoice(
@@ -5770,7 +5839,7 @@ function getEffectivePassengerRideStatus(ride: RideRequestData): string {
 }
 
 function getPassengerRideStatusLabel(status: string): string {
-  if (status === "pending_payment") return "Pago pendiente";
+  if (status === "pending_payment") return "En aprobación de Mercado Pago";
   if (status === "scheduled") return "Agendado";
   if (status === "driver_scheduled") return "Tu conductor fue asignado";
   return RIDE_STATUS_LABEL[status] ?? status;
@@ -5784,7 +5853,7 @@ function getPassengerRideStatusColor(status: string): string {
 }
 
 function rideStatusTitle(status: string, ride?: RideRequestData): string {
-  if (status === "pending_payment") return "Esperando confirmación de pago";
+  if (status === "pending_payment") return "Esperando aprobación de Mercado Pago";
   if (status === "driver_scheduled") return "Tu conductor fue asignado";
   if (status === "scheduled" && ride && isRoundTripReturnPickupRide(ride as RideRequestData & Record<string, unknown>)) return "Agendamiento de recogida";
   if (status === "scheduled") return "Viaje agendado";
@@ -5802,7 +5871,7 @@ function rideStatusSubtitle(ride: RideRequestData): string {
   const effectiveStatus = getEffectivePassengerRideStatus(ride);
 
   if (effectiveStatus === "pending_payment") {
-    return "El servicio todavía no está activo. Solo se publicará cuando el backend confirme el pago aprobado por Mercado Pago.";
+    return "Mercado Pago está verificando el cobro. Apenas figure como aprobado, la solicitud se enviará automáticamente a los conductores.";
   }
 
   if (effectiveStatus === "driver_scheduled") {
@@ -7776,8 +7845,8 @@ function PassengerRideCard({
                 lineHeight: 1.35,
               }}
             >
-              ⏳ <strong>Pago pendiente con Mercado Pago.</strong>
-              <br />Este servicio está bloqueado y no se enviará a ningún conductor hasta que el backend confirme el pago aprobado.
+              ⏳ <strong>En espera de aprobación de Mercado Pago.</strong>
+              <br />Mercado Pago está verificando el cobro. Apenas lo apruebe, RAPA GO enviará automáticamente la solicitud a los conductores disponibles.
             </div>
           )}
 
@@ -8351,7 +8420,7 @@ function PassengerRideCard({
               <div style={{ marginTop: 3, fontSize: ".72rem", color: "rgba(17,17,17,.60)", lineHeight: 1.25 }}>
                 {paymentLabel.includes("Mercado Pago")
                   ? effectiveStatus === "pending_payment"
-                    ? "Este monto todavía no está confirmado. El servicio sigue bloqueado."
+                    ? "Pago en proceso de aprobación por Mercado Pago. No vuelvas a pagar; la solicitud se habilitará automáticamente."
                     : "Pago con tarjeta validado por Mercado Pago y el backend de RAPA GO."
                   : "Este es el valor que pagarás al finalizar el viaje."}
               </div>
@@ -8659,11 +8728,21 @@ export default function TripsPage(): JSX.Element {
 
   useEffect(() => {
     let returnMarker = "";
+    let returnProviderPaymentId = "";
+    let returnExternalReference = "";
 
     try {
-      returnMarker = new URLSearchParams(window.location.search).get("payment") ?? "";
+      const params = new URLSearchParams(window.location.search);
+      returnMarker = params.get("payment") ?? "";
+      returnProviderPaymentId =
+        params.get("payment_id") ??
+        params.get("collection_id") ??
+        "";
+      returnExternalReference = params.get("external_reference") ?? "";
     } catch {
       returnMarker = "";
+      returnProviderPaymentId = "";
+      returnExternalReference = "";
     }
 
     const supportedMarkers = new Set([
@@ -8673,8 +8752,13 @@ export default function TripsPage(): JSX.Element {
       "failure_return",
       "pending_return",
     ]);
+    const hasPendingLocalPayment = Boolean(
+      readPendingCardPayment() ?? readPendingFastSearchPayment(),
+    );
 
-    if (!supportedMarkers.has(returnMarker)) return;
+    // También reintenta al abrir Mis Viajes si el navegador conservó una
+    // conciliación pendiente aunque Mercado Pago ya haya limpiado la query.
+    if (!supportedMarkers.has(returnMarker) && !hasPendingLocalPayment) return;
 
     let disposed = false;
     let waitTimer: number | null = null;
@@ -8688,12 +8772,60 @@ export default function TripsPage(): JSX.Element {
       setPaymentReturnMessage({
         tone: "checking",
         title: "Verificando pago con Mercado Pago",
-        body: "Volver desde la tienda no activa el servicio. Estamos consultando el estado real guardado por el backend.",
+        body: "RAPA GO está verificando directamente con Mercado Pago. Apenas el cobro figure aprobado, la solicitud se publicará automáticamente.",
       });
 
       const pending = readPendingCardPayment();
       const pendingFastSearch = readPendingFastSearchPayment();
       const accessToken = session?.accessToken;
+      const internalPaymentId = String(
+        returnExternalReference ??
+          pendingFastSearch?.paymentId ??
+          pending?.paymentId ??
+          "",
+      ).trim();
+
+      // La URL de retorno no es autoridad. Se envía el payment_id al backend,
+      // que consulta directamente la API de Mercado Pago y verifica:
+      // external_reference, monto, moneda y estado.
+      if (accessToken && internalPaymentId && !pending && !pendingFastSearch) {
+        try {
+          const reconciled = await reconcileMercadoPagoReturnWithBackend(
+            accessToken,
+            internalPaymentId,
+            returnProviderPaymentId || undefined,
+          );
+
+          cleanPaymentReturnQuery();
+
+          if (reconciled.status === "success") {
+            setPaymentReturnMessage({
+              tone: "approved",
+              title: "Pago aprobado",
+              body: "Mercado Pago aprobó el cobro y RAPA GO envió inmediatamente la solicitud a los conductores disponibles.",
+            });
+          } else if (
+            ["rejected", "failed", "refunded"].includes(reconciled.status)
+          ) {
+            setPaymentReturnMessage({
+              tone: "rejected",
+              title: "Pago no aprobado",
+              body: "Mercado Pago informó que el pago fue rechazado o cancelado.",
+            });
+          } else {
+            setPaymentReturnMessage({
+              tone: "pending",
+              title: "Pago pendiente de confirmación",
+              body: "Mercado Pago todavía no informa una aprobación definitiva. No vuelvas a pagar; RAPA GO seguirá verificando automáticamente.",
+            });
+          }
+
+          await loadRides();
+          return;
+        } catch (err) {
+          console.warn("[MercadoPago] No se pudo recuperar el regreso sin almacenamiento local:", err);
+        }
+      }
 
       if (accessToken && pendingFastSearch) {
         setPaymentReturnMessage({
@@ -8704,6 +8836,14 @@ export default function TripsPage(): JSX.Element {
 
         for (let attempt = 0; attempt < 15 && !disposed; attempt += 1) {
           try {
+            await reconcileMercadoPagoReturnWithBackend(
+              accessToken,
+              pendingFastSearch.paymentId,
+              attempt === 0
+                ? returnProviderPaymentId || undefined
+                : undefined,
+            );
+
             const status = await fetchPassengerFastSearchPaymentStatus(
               accessToken,
               pendingFastSearch.paymentId,
@@ -8776,7 +8916,9 @@ export default function TripsPage(): JSX.Element {
           setPaymentReturnMessage({
             tone: "pending",
             title: "Pago todavía no confirmado",
-            body: "No encontramos una confirmación local para este regreso. El servicio no se activará hasta que el backend reciba un pago aprobado.",
+            body: accessToken
+              ? "No pudimos relacionar este regreso con una solicitud local. Revisa nuevamente Mis Viajes; el backend seguirá siendo la autoridad."
+              : "Tu sesión expiró. Inicia sesión nuevamente para consultar el pago sin volver a pagar.",
           });
           void loadRides();
         }
@@ -8785,6 +8927,20 @@ export default function TripsPage(): JSX.Element {
 
       for (let attempt = 0; attempt < 15 && !disposed; attempt += 1) {
         try {
+          const paymentId = String(
+            returnExternalReference ?? pending.paymentId ?? "",
+          ).trim();
+
+          if (paymentId) {
+            await reconcileMercadoPagoReturnWithBackend(
+              accessToken,
+              paymentId,
+              attempt === 0
+                ? returnProviderPaymentId || undefined
+                : undefined,
+            );
+          }
+
           const serverRides = await ridesService.listMyRides(accessToken);
           const serverRide = serverRides.find((ride) => ride.id === pending.rideRequestId);
           const status = String(serverRide?.status ?? "").trim().toLowerCase();
@@ -8808,7 +8964,7 @@ export default function TripsPage(): JSX.Element {
             setPaymentReturnMessage({
               tone: "approved",
               title: "Pago aprobado",
-              body: "El backend confirmó el pago. Ahora el servicio quedó habilitado y puede continuar con la búsqueda o la reserva.",
+              body: "Mercado Pago aprobó el cobro. La solicitud fue enviada inmediatamente a los conductores disponibles.",
             });
             await loadRides();
             return;
@@ -8818,7 +8974,7 @@ export default function TripsPage(): JSX.Element {
             setPaymentReturnMessage({
               tone: attempt < 5 ? "checking" : "pending",
               title: attempt < 5 ? "Confirmando tu pago" : "Pago pendiente de confirmación",
-              body: "El viaje sigue bloqueado y no aparece al conductor. Se habilitará solamente cuando Mercado Pago lo informe como aprobado.",
+              body: "Mercado Pago aún está procesando el cobro. La solicitud se enviará automáticamente apenas figure como aprobada.",
             });
           }
         } catch {
@@ -8839,7 +8995,7 @@ export default function TripsPage(): JSX.Element {
         setPaymentReturnMessage({
           tone: "pending",
           title: "Pago aún no confirmado",
-          body: "La solicitud continúa bloqueada. No se mostrará al conductor hasta recibir la aprobación real de Mercado Pago.",
+          body: "Mercado Pago todavía no entrega una aprobación final. La solicitud se publicará automáticamente cuando la entregue.",
         });
         void loadRides();
       }

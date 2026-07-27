@@ -27,8 +27,8 @@
   "amount":      1500000,
   "currency":    "CLP",
   "description": "Viaje Rapa Go Hanga Roa → Anakena",
-  "returnUrl":   "https://rapago.cl/payment/success",
-  "cancelUrl":   "https://rapago.cl/payment/cancel",
+  "returnUrl":   "https://api.rapago.cl/payment/success",
+  "cancelUrl":   "https://api.rapago.cl/payment/cancel",
   "metadata": {
     "rideId":    "uuid-del-viaje",
     "userId":    "uuid-del-usuario"
