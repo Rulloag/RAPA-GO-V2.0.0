@@ -5033,3 +5033,182 @@ ion-modal.facebook-step-modal::part(content) {
 .rapago-suggestion-item:active {
   background: rgba(210, 164, 58, 0.18) !important;
 }
+
+
+/* ==========================================================================
+   RAPA GO: Facebook setup backend-first y modo claro V30
+   El formulario se muestra solo cuando el backend devuelve facebook=setup.
+   ========================================================================== */
+
+ion-modal.facebook-step-modal {
+  color-scheme: light;
+  --background: #fffaf0 !important;
+}
+
+ion-modal.facebook-step-modal::part(content) {
+  background: #fffaf0 !important;
+  color: #111827 !important;
+}
+
+.facebook-step-page,
+.facebook-step-content,
+.facebook-step-body {
+  --background: #fffaf0 !important;
+  --color: #111827 !important;
+  background: #fffaf0 !important;
+  color: #111827 !important;
+}
+
+.facebook-step-content::part(scroll) {
+  background:
+    radial-gradient(
+      circle at 50% 0,
+      rgba(248, 216, 121, 0.2),
+      transparent 34%
+    ),
+    #fffaf0 !important;
+}
+
+.facebook-step-body h1,
+.facebook-step-body h2,
+.facebook-step-body h3,
+.facebook-step-body h4,
+.facebook-step-body strong {
+  color: #111827 !important;
+  opacity: 1 !important;
+}
+
+.facebook-step-body p,
+.facebook-step-body span,
+.facebook-step-body small,
+.facebook-step-body ion-note {
+  color: #4b5563 !important;
+  opacity: 1 !important;
+}
+
+.facebook-step-body ion-item {
+  --background: #ffffff !important;
+  --color: #111827 !important;
+  --border-color: transparent !important;
+  color: #111827 !important;
+  opacity: 1 !important;
+}
+
+.facebook-step-body ion-item::part(native) {
+  border-radius: 16px;
+  background: #ffffff !important;
+  color: #111827 !important;
+}
+
+.facebook-step-body ion-label {
+  --color: #1f2937 !important;
+  color: #1f2937 !important;
+  opacity: 1 !important;
+}
+
+.facebook-step-body ion-input,
+.facebook-step-body ion-select,
+.facebook-step-body ion-textarea {
+  --color: #111827 !important;
+  --placeholder-color: #6b7280 !important;
+  --placeholder-opacity: 1 !important;
+  color: #111827 !important;
+  opacity: 1 !important;
+}
+
+.facebook-step-body input,
+.facebook-step-body textarea,
+.facebook-step-body select {
+  color: #111827 !important;
+  caret-color: #8a5a00 !important;
+}
+
+.facebook-step-body .facebook-legal-card {
+  --background: #ffffff !important;
+  --color: #111827 !important;
+  --padding-start: 14px !important;
+  --padding-end: 12px !important;
+  --inner-padding-end: 0 !important;
+  --min-height: 64px;
+  display: block;
+  margin: 10px 0;
+  overflow: hidden;
+  border: 1px solid rgba(154, 107, 20, 0.28);
+  border-radius: 18px !important;
+  background: #ffffff !important;
+  color: #111827 !important;
+  box-shadow:
+    0 7px 18px rgba(17, 24, 39, 0.07),
+    inset 0 1px 0 rgba(255, 255, 255, 0.96);
+}
+
+.facebook-step-body .facebook-legal-card::part(native) {
+  min-height: 64px;
+  padding-top: 10px;
+  padding-bottom: 10px;
+  border-radius: 18px !important;
+  background: #ffffff !important;
+  color: #111827 !important;
+}
+
+.facebook-step-body .facebook-legal-card ion-checkbox {
+  --size: 25px;
+  --border-radius: 8px;
+  --border-width: 2px;
+  --border-color: #8a6118;
+  --border-color-checked: #9a6b14;
+  --checkbox-background: #ffffff;
+  --checkbox-background-checked: #d6a640;
+  --checkmark-color: #111827;
+  width: 25px;
+  min-width: 25px;
+  height: 25px;
+  margin-top: 2px;
+  margin-inline-end: 13px;
+}
+
+.facebook-step-body .facebook-legal-card ion-label {
+  color: #24201b !important;
+  font-weight: 800 !important;
+  line-height: 1.45 !important;
+  white-space: normal !important;
+}
+
+.facebook-step-body .facebook-legal-link {
+  display: inline-flex;
+  align-items: center;
+  margin: 4px 0 0 4px;
+  padding: 5px 9px !important;
+  border: 1px solid rgba(138, 90, 0, 0.28) !important;
+  border-radius: 999px !important;
+  background: #fff7df !important;
+  color: #744b00 !important;
+  font-weight: 950 !important;
+  line-height: 1.1;
+  text-decoration: none !important;
+  cursor: pointer;
+}
+
+.facebook-step-body .facebook-legal-link:hover,
+.facebook-step-body .facebook-legal-link:focus-visible {
+  border-color: rgba(138, 90, 0, 0.55) !important;
+  background: #f8e5a9 !important;
+  color: #4a3000 !important;
+}
+
+.facebook-step-body .facebook-legal-card:focus-within {
+  border-color: rgba(154, 107, 20, 0.62);
+  box-shadow:
+    0 0 0 3px rgba(214, 166, 64, 0.18),
+    0 8px 20px rgba(17, 24, 39, 0.08);
+}
+
+@media (max-width: 560px) {
+  .facebook-step-body .facebook-legal-card {
+    border-radius: 16px !important;
+  }
+
+  .facebook-step-body .facebook-legal-card::part(native) {
+    border-radius: 16px !important;
+  }
+}

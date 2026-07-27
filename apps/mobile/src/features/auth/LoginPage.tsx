@@ -581,7 +581,41 @@ function getFacebookRedirectErrorMessage(): string {
   return "";
 }
 
+type FacebookSetupRequest = {
+  setupCode: string;
+  email: string;
+};
+
+function getFacebookSetupRequest(): FacebookSetupRequest | null {
+  if (typeof window === "undefined") {
+    return null;
+  }
+
+  try {
+    const searchParams = new URLSearchParams(window.location.search);
+
+    if (searchParams.get("facebook") !== "setup") {
+      return null;
+    }
+
+    const setupCode = searchParams.get("setupCode")?.trim() ?? "";
+    const email = normalizeEmail(searchParams.get("email") ?? "");
+
+    if (!/^[A-Za-z0-9_-]{32,128}$/.test(setupCode)) {
+      return null;
+    }
+
+    return {
+      setupCode,
+      email,
+    };
+  } catch {
+    return null;
+  }
+}
+
 export function LoginPage(): JSX.Element {
+  const initialFacebookSetupRequest = getFacebookSetupRequest();
   const history = useHistory();
   const { login } = useAuth();
   const apple = useAppleSignIn();
@@ -673,12 +707,19 @@ export function LoginPage(): JSX.Element {
     getFacebookRedirectErrorMessage,
   );
 
-  const [showFacebookStep, setShowFacebookStep] = useState(false);
+  const [facebookSetupRequest] =
+    useState<FacebookSetupRequest | null>(
+      initialFacebookSetupRequest,
+    );
+  const [showFacebookStep, setShowFacebookStep] = useState(
+    Boolean(initialFacebookSetupRequest),
+  );
   const [passengerCondition, setPassengerCondition] =
     useState<PassengerCondition>(getStoredPassengerCondition());
 
   const [passengerEmail, setPassengerEmail] = useState(
-    getStoredValue("rapago_passenger_email"),
+    initialFacebookSetupRequest?.email ||
+      getStoredValue("rapago_passenger_email"),
   );
 
   const [passengerPhone, setPassengerPhone] = useState(
@@ -765,14 +806,22 @@ export function LoginPage(): JSX.Element {
   }
 
   function openFacebookStep(): void {
+    setServerError("");
     setFacebookStepError("");
     setResidentSubmissionMessage("");
 
-    if (!passengerEmail && email.trim()) {
-      setPassengerEmail(normalizeEmail(email));
-    }
+    // El backend decide si la cuenta ya está completa.
+    // Usuarios existentes ingresan directo; cuentas nuevas vuelven con
+    // facebook=setup y un setupCode de un solo uso.
+    window.location.href = `${API_URL}/api/auth/facebook`;
+  }
 
-    setShowFacebookStep(true);
+  function closeFacebookStep(): void {
+    setShowFacebookStep(false);
+
+    if (facebookSetupRequest) {
+      history.replace(ROUTES.AUTH.LOGIN);
+    }
   }
 
   function handlePassengerConditionChange(value: PassengerCondition): void {
@@ -927,13 +976,17 @@ export function LoginPage(): JSX.Element {
       );
       return;
     }
+    let facebookLegalAcceptances:
+      PendingFacebookLegalAcceptance[] = [];
+
     setFacebookLegalLoading(true);
 
     try {
       const activeLegalDocuments = await legalService.getActive();
-      persistPendingFacebookLegalAcceptances(
-        activeLegalDocuments,
-      );
+      facebookLegalAcceptances =
+        persistPendingFacebookLegalAcceptances(
+          activeLegalDocuments,
+        );
     } catch (error) {
       setFacebookStepError(
         error instanceof Error
@@ -1118,33 +1171,58 @@ export function LoginPage(): JSX.Element {
       facebookLoginPrecheck: true,
     });
 
-    const params = new URLSearchParams({
-      condition: legacyCondition,
-      passengerCondition,
-      passengerFareType,
-      passengerFareLabel,
-      email: cleanEmail,
-      phone: cleanPhone,
-      rut: needsPassport
-        ? cleanPassengerPassport
-        : cleanPassengerRut,
-      passport: needsPassport
-        ? cleanPassengerPassport
-        : "",
-      residenceDocumentRequired: isResidentRapaNui
-        ? "true"
-        : "false",
-      residenceDocumentUploaded: isResidentRapaNui
-        ? "true"
-        : "false",
-      residenceVerificationStatus,
-      rapaNuiEthnicity: isResidentRapaNui
-        ? "si"
-        : "no",
-    });
+    if (!facebookSetupRequest?.setupCode) {
+      setFacebookStepError(
+        "La validación de Facebook expiró. Vuelve al login y presiona Continuar con Facebook.",
+      );
+      return;
+    }
 
-    window.location.href =
-      `${API_URL}/api/auth/facebook?${params.toString()}`;
+    setFacebookPrecheckLoading(true);
+
+    try {
+      const setupResult =
+        await authService.completeFacebookSetup({
+          setupCode: facebookSetupRequest.setupCode,
+          passengerFareType,
+          phone: cleanPhone,
+          ...(needsRut
+            ? { rut: cleanPassengerRut }
+            : {}),
+          ...(needsPassport
+            ? { passport: cleanPassengerPassport }
+            : {}),
+          legalAcceptances:
+            facebookLegalAcceptances.map((document) => ({
+              legalDocumentId: document.legalDocumentId,
+              version: document.version,
+            })),
+        });
+
+      if (setupResult.ok === false) {
+        setFacebookStepError(
+          setupResult.message ||
+            "No se pudo completar el perfil de Facebook.",
+        );
+        return;
+      }
+
+      const callbackParams = new URLSearchParams({
+        exchangeCode: setupResult.exchangeCode,
+      });
+
+      window.location.replace(
+        `${ROUTES.AUTH.FACEBOOK_CALLBACK}?${callbackParams.toString()}`,
+      );
+    } catch (error) {
+      setFacebookStepError(
+        error instanceof Error
+          ? error.message
+          : "No se pudo completar el perfil de Facebook.",
+      );
+    } finally {
+      setFacebookPrecheckLoading(false);
+    }
   }
 
   function goToRegister(): void {
@@ -1434,7 +1512,7 @@ export function LoginPage(): JSX.Element {
         <IonModal
           className="facebook-step-modal"
           isOpen={showFacebookStep}
-          onDidDismiss={() => setShowFacebookStep(false)}
+          onDidDismiss={closeFacebookStep}
           style={
             {
               "--width": "min(94vw, 620px)",
@@ -1458,7 +1536,7 @@ export function LoginPage(): JSX.Element {
                         marginBottom: 4,
                       }}
                     >
-                      Antes de continuar
+                      Completa tu perfil
                     </div>
                     <h2 style={{ margin: 0, fontSize: "1.35rem", fontWeight: 950 }}>
                       Datos del pasajero
@@ -1467,7 +1545,7 @@ export function LoginPage(): JSX.Element {
 
                   <button
                     type="button"
-                    onClick={() => setShowFacebookStep(false)}
+                    onClick={closeFacebookStep}
                     style={{
                       width: 42,
                       height: 42,
@@ -1750,6 +1828,7 @@ export function LoginPage(): JSX.Element {
                     </div>
 
                     <IonItem
+                      className="facebook-legal-card"
                       lines="none"
                       style={{
                         "--background": "transparent",
@@ -1778,6 +1857,7 @@ export function LoginPage(): JSX.Element {
                       >
                         Acepto los Términos y Condiciones.
                         <button
+                          className="facebook-legal-link"
                           type="button"
                           onClick={() =>
                             history.push(ROUTES.PUBLIC.TERMS)
@@ -1797,6 +1877,7 @@ export function LoginPage(): JSX.Element {
                     </IonItem>
 
                     <IonItem
+                      className="facebook-legal-card"
                       lines="none"
                       style={{
                         "--background": "transparent",
@@ -1825,6 +1906,7 @@ export function LoginPage(): JSX.Element {
                       >
                         Acepto la Política de Privacidad.
                         <button
+                          className="facebook-legal-link"
                           type="button"
                           onClick={() =>
                             history.push(
@@ -1846,6 +1928,7 @@ export function LoginPage(): JSX.Element {
                     </IonItem>
 
                     <IonItem
+                      className="facebook-legal-card"
                       lines="none"
                       style={{
                         "--background": "transparent",
@@ -1946,7 +2029,7 @@ export function LoginPage(): JSX.Element {
                   <IonButton
                     expand="block"
                     fill="outline"
-                    onClick={() => setShowFacebookStep(false)}
+                    onClick={closeFacebookStep}
                     type="button"
                     style={{
                       ...outlineButtonStyle,

@@ -42,6 +42,29 @@ export type FacebookResidentPrecheckResponse = {
   rejectionReason?: string | null;
 };
 
+export type FacebookAccountSetupPayload = {
+  setupCode: string;
+  passengerFareType: "resident" | "chilean" | "foreigner";
+  phone: string;
+  rut?: string;
+  passport?: string;
+  legalAcceptances: Array<{
+    legalDocumentId: string;
+    version: string;
+  }>;
+};
+
+export type FacebookAccountSetupResponse =
+  | {
+      ok: true;
+      exchangeCode: string;
+    }
+  | {
+      ok: false;
+      code: string;
+      message: string;
+    };
+
 type MessageResponse = {
   ok: true;
   message: string;
@@ -84,6 +107,28 @@ export const authService = {
       undefined,
       0,
     );
+
+    if (result.ok === false) {
+      return {
+        ok: false,
+        code: result.code,
+        message: result.message,
+      };
+    }
+
+    return result.data;
+  },
+
+  async completeFacebookSetup(
+    payload: FacebookAccountSetupPayload,
+  ): Promise<FacebookAccountSetupResponse> {
+    const result =
+      await apiClient.post<{ ok: true; exchangeCode: string }>(
+        "/auth/facebook/setup",
+        payload,
+        undefined,
+        0,
+      );
 
     if (result.ok === false) {
       return {
