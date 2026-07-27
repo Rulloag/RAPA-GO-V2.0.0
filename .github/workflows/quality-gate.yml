@@ -82,6 +82,11 @@ jobs:
             packages/shared/node_modules
           key: quality-gate-node-modules-${{ github.event.pull_request.number }}-${{ github.run_id }}
           fail-on-cache-miss: true
+      env:
+        DATABASE_URL: "postgresql://postgres:postgres@127.0.0.1:5432/rapago_test"
+      - name: Compilar paquete compartido
+        working-directory: .
+        run: npm run build --workspace=@rapa-go/shared
       - run: npm run test --workspace=apps/api
 
   test-mobile:
@@ -229,8 +234,13 @@ jobs:
       # Cobertura financiera/autorización = todo lo bajo payments/wallet/rides. Corre esa porción
       # de la suite de forma aislada y falla el job si algo ahí falla — no basta con que la suite
       # completa (job test-api) pase en verde, este job aísla específicamente el dinero.
+      - name: Compilar paquete compartido
+        working-directory: .
+        run: npm run build --workspace=@rapa-go/shared
       - name: Ejecutar suite financiera/autorización (payments, wallet, rides)
         working-directory: apps/api
+        env:
+          DATABASE_URL: "postgresql://postgres:postgres@127.0.0.1:5432/rapago_test"
         run: npx vitest run src/modules/payments src/modules/wallet src/modules/rides
       # Evita que un fallo se "resuelva" borrando el test en vez de arreglando el bug: compara el
       # número de archivos de test bajo esas rutas contra main y falla si bajó.
