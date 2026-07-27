@@ -250,6 +250,7 @@
 }
 
 .rapago-home-hero-dot {
+  position: relative;
   width: 7px;
   height: 7px;
   padding: 0;
@@ -266,6 +267,19 @@
   width: 20px;
   background: #f8d879;
   border-color: #f8d879;
+}
+
+/* El punto mide 7px, muy por debajo del objetivo tactil de 44px recomendado.
+   Este pseudo-elemento amplia SOLO la zona pulsable, sin alterar el aspecto:
+   quien apunte con el dedo acierta, y el diseño no cambia. */
+.rapago-home-hero-dot::before {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 28px;
+  height: 44px;
 }
 
 /* ── Avisos ─────────────────────────────────────────────────────────────── */

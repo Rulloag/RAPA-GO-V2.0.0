@@ -103,7 +103,8 @@ function refundStatusInfo(status: string): {
 
 export default function WalletPage(): JSX.Element {
   const { session } = useAuth();
-  const { theme, isDark, toggleTheme } = useRapagoSectionTheme("wallet");
+  // Solo se lee: el interruptor único vive en el encabezado de Inicio.
+  const { theme } = useRapagoSectionTheme("wallet");
   const [wallet, setWallet] = useState<WalletData | null>(null);
   const [requests, setRequests] = useState<
     CashOverpaymentBenefitData[]
@@ -198,8 +199,6 @@ export default function WalletPage(): JSX.Element {
     >
       <RapagoSectionHeader
         title="Beneficios"
-        isDark={isDark}
-        onToggleTheme={toggleTheme}
       />
 
       <IonContent>

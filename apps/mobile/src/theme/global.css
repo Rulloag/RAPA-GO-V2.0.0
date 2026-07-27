@@ -3324,9 +3324,22 @@ button[style*="#D2A43A"] {
   --rapago-form-muted: rgba(17, 24, 39, 0.64);
 }
 
-/* Páginas donde queremos formularios claros */
+/* Páginas donde queremos formularios claros.
+
+   OJO: `.rapago-request-page` SALIÓ de todos los grupos de este bloque. Esta
+   paleta es de crema fija y se aplicaba en los dos temas, así que de noche esa
+   pantalla mostraba campos crema mientras el placeholder lo pintaba el sistema
+   de tokens con su valor nocturno: texto blanco sobre fondo crema, ilegible.
+
+   No bastaba con que sections.css llegue después, porque aquí no solo se
+   define `--background` (la variable de Ionic, que sí se puede sobrescribir)
+   sino también `background` en el propio host y en `::part(native)`, que el
+   sistema de tokens no toca. Ganaba siempre la crema.
+
+   Solicitar viaje se tematiza ahora con los tokens de rapago-shell.css vía
+   sections.css y request-ride.css, que sí responden a día/noche. Las clases
+   del conductor siguen aquí porque driver/index.tsx aún las usa. */
 .rapago-request-light,
-.rapago-request-page,
 .rapago-driver-light-form,
 .rapago-driver-light-panel,
 .rapago-light-form-page {
@@ -3335,7 +3348,6 @@ button[style*="#D2A43A"] {
 
 /* IonItem/IonInput/IonTextarea/IonSelect claros */
 .rapago-request-light ion-item,
-.rapago-request-page ion-item,
 .rapago-driver-light-form ion-item,
 .rapago-driver-light-panel ion-item,
 .rapago-light-form-page ion-item,
@@ -3356,7 +3368,6 @@ ion-item.rapago-cash-close-input {
 
 /* El native part de Ionic era el que seguía pintando negro */
 .rapago-request-light ion-item::part(native),
-.rapago-request-page ion-item::part(native),
 .rapago-driver-light-form ion-item::part(native),
 .rapago-driver-light-panel ion-item::part(native),
 .rapago-light-form-page ion-item::part(native),
@@ -3371,9 +3382,6 @@ ion-item.rapago-cash-close-input::part(native) {
 .rapago-request-light ion-input,
 .rapago-request-light ion-textarea,
 .rapago-request-light ion-select,
-.rapago-request-page ion-input,
-.rapago-request-page ion-textarea,
-.rapago-request-page ion-select,
 .rapago-driver-light-form ion-input,
 .rapago-driver-light-form ion-textarea,
 .rapago-driver-light-form ion-select,
@@ -3394,8 +3402,6 @@ ion-item.rapago-cash-close-input ion-input {
 
 .rapago-request-light ion-input input,
 .rapago-request-light ion-textarea textarea,
-.rapago-request-page ion-input input,
-.rapago-request-page ion-textarea textarea,
 .rapago-driver-light-form ion-input input,
 .rapago-driver-light-form ion-textarea textarea,
 .rapago-driver-light-panel ion-input input,
@@ -3412,8 +3418,6 @@ ion-item.rapago-cash-close-input ion-input input {
 /* Labels dentro de formularios claros */
 .rapago-request-light ion-label,
 .rapago-request-light label,
-.rapago-request-page ion-label,
-.rapago-request-page label,
 .rapago-driver-light-form ion-label,
 .rapago-driver-light-form label,
 .rapago-driver-light-panel ion-label,
@@ -3431,12 +3435,7 @@ ion-item.rapago-cash-close-input ion-label {
 .rapago-request-light .rapago-accessible-box,
 .rapago-request-light .rapago-picker-panel,
 .rapago-request-light .rapago-confirm-card,
-.rapago-request-light .rapago-suggestion-box,
-.rapago-request-page .rapago-info-box,
-.rapago-request-page .rapago-accessible-box,
-.rapago-request-page .rapago-picker-panel,
-.rapago-request-page .rapago-confirm-card,
-.rapago-request-page .rapago-suggestion-box {
+.rapago-request-light .rapago-suggestion-box {
   background: linear-gradient(180deg, #fffaf0, #f8ead0) !important;
   color: var(--rapago-form-text) !important;
   border: 1px solid var(--rapago-form-border) !important;
@@ -3450,12 +3449,6 @@ ion-item.rapago-cash-close-input ion-label {
 .rapago-request-light div[style*="background:#171717"],
 .rapago-request-light div[style*="background: #242424"],
 .rapago-request-light div[style*="background:#242424"],
-.rapago-request-page div[style*="background: #111"],
-.rapago-request-page div[style*="background:#111"],
-.rapago-request-page div[style*="background: #171717"],
-.rapago-request-page div[style*="background:#171717"],
-.rapago-request-page div[style*="background: #242424"],
-.rapago-request-page div[style*="background:#242424"],
 .rapago-driver-light-form div[style*="background: #111"],
 .rapago-driver-light-form div[style*="background:#111"],
 .rapago-driver-light-form div[style*="background: #171717"],
@@ -3472,10 +3465,6 @@ ion-item.rapago-cash-close-input ion-label {
 .rapago-request-light .rapago-accessible-box *,
 .rapago-request-light .rapago-picker-panel *,
 .rapago-request-light .rapago-confirm-card *,
-.rapago-request-page .rapago-info-box *,
-.rapago-request-page .rapago-accessible-box *,
-.rapago-request-page .rapago-picker-panel *,
-.rapago-request-page .rapago-confirm-card *,
 .rapago-driver-light-form .rapago-info-box *,
 .rapago-driver-light-form .rapago-accessible-box *,
 .rapago-driver-light-form .rapago-picker-panel *,
@@ -3485,7 +3474,6 @@ ion-item.rapago-cash-close-input ion-label {
 
 /* Mantener botones oscuros especiales sin romperlos */
 .rapago-request-light ion-button,
-.rapago-request-page ion-button,
 .rapago-driver-light-form ion-button {
   color: inherit;
 }
@@ -3805,7 +3793,6 @@ ion-segment-button[aria-disabled="true"]::part(native) {
 /* Segmentos dentro de tarjetas claras */
 ion-card ion-segment,
 .rapago-request-light ion-segment,
-.rapago-request-page ion-segment,
 .rapago-driver-light-panel ion-segment,
 .rapago-driver-light-form ion-segment {
   --background: #ece1cd !important;
@@ -3816,7 +3803,6 @@ ion-card ion-segment,
    Paneles claros: textos auxiliares y controles siempre oscuros
    -------------------------------------------------------------------------- */
 .rapago-request-light,
-.rapago-request-page,
 .rapago-driver-light-form,
 .rapago-driver-light-panel,
 .rapago-light-form-page,
@@ -3825,27 +3811,22 @@ ion-card {
 }
 
 .rapago-request-light ion-note,
-.rapago-request-page ion-note,
 .rapago-driver-light-form ion-note,
 .rapago-driver-light-panel ion-note,
 .rapago-light-form-page ion-note,
 .rapago-request-light small,
-.rapago-request-page small,
 .rapago-driver-light-form small,
 .rapago-driver-light-panel small,
 .rapago-light-form-page small,
 .rapago-request-light .helper-text,
-.rapago-request-page .helper-text,
 .rapago-driver-light-form .helper-text,
 .rapago-driver-light-panel .helper-text,
 .rapago-light-form-page .helper-text,
 .rapago-request-light .hint,
-.rapago-request-page .hint,
 .rapago-driver-light-form .hint,
 .rapago-driver-light-panel .hint,
 .rapago-light-form-page .hint,
 .rapago-request-light .subtitle,
-.rapago-request-page .subtitle,
 .rapago-driver-light-form .subtitle,
 .rapago-driver-light-panel .subtitle,
 .rapago-light-form-page .subtitle {

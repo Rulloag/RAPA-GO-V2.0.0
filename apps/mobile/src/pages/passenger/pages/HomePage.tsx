@@ -75,264 +75,6 @@ const RAPA_NUI_NEWS = [
   },
 ];
 
-const RAPAGO_WALLET_BALANCE_KEY = "rapago_wallet_balance_clp_v1";
-const RAPAGO_WALLET_APPLIED_BENEFITS_KEY = "rapago_wallet_applied_benefits_v1";
-const RAPAGO_WALLET_EVENT = "rapago:wallet-balance-updated";
-
-const RAPAGO_WALLET_BENEFIT_SOURCE_KEYS = [
-  "rapago_admin_wallet_benefit_requests_v1",
-  "rapago_admin_wallet_credits_v1",
-  "rapago_wallet_pending_benefits_v1",
-  "rapago_passenger_wallet_benefits_v1",
-  "rapago_admin_passenger_credit_adjustments_v1",
-] as const;
-
-type WalletBenefitRecord = Record<string, unknown>;
-
-function getHomeUserStringField(user: unknown, key: string): string {
-  if (!user || typeof user !== "object") return "";
-  const value = (user as Record<string, unknown>)[key];
-  return typeof value === "string" ? value.trim() : "";
-}
-
-function normalizeWalletIdentity(value: unknown): string {
-  return String(value ?? "").trim().toLowerCase();
-}
-
-function getPassengerWalletIdentityKeys(user: unknown): string[] {
-  const keys = [
-    getHomeUserStringField(user, "id"),
-    getHomeUserStringField(user, "userId"),
-    getHomeUserStringField(user, "email"),
-    getHomeUserStringField(user, "phone"),
-    getHomeUserStringField(user, "phoneNumber"),
-  ]
-    .map(normalizeWalletIdentity)
-    .filter(Boolean);
-
-  try {
-    const stored = localStorage.getItem("rapago_registration_profile");
-    const parsed = stored ? (JSON.parse(stored) as Record<string, unknown>) : {};
-    keys.push(
-      normalizeWalletIdentity(parsed.id),
-      normalizeWalletIdentity(parsed.userId),
-      normalizeWalletIdentity(parsed.email),
-      normalizeWalletIdentity(parsed.phone),
-      normalizeWalletIdentity(localStorage.getItem("rapago_profile_phone")),
-      normalizeWalletIdentity(localStorage.getItem("rapago_passenger_email")),
-    );
-  } catch {
-    // No bloquea el saldo local.
-  }
-
-  return Array.from(new Set(keys.filter(Boolean)));
-}
-
-function walletBenefitMatchesPassenger(
-  record: WalletBenefitRecord,
-  user: unknown,
-): boolean {
-  const userKeys = getPassengerWalletIdentityKeys(user);
-  if (userKeys.length === 0) return true;
-
-  const recordKeys = [
-    record.passengerId,
-    record.passengerUserId,
-    record.userId,
-    record.user_id,
-    record.email,
-    record.passengerEmail,
-    record.passengerPhone,
-    record.phone,
-    record.phoneNumber,
-  ]
-    .map(normalizeWalletIdentity)
-    .filter(Boolean);
-
-  if (recordKeys.length === 0) return true;
-
-  return recordKeys.some((key) => userKeys.includes(key));
-}
-
-function readWalletAppliedBenefitIds(): Set<string> {
-  try {
-    const raw = localStorage.getItem(RAPAGO_WALLET_APPLIED_BENEFITS_KEY);
-    const parsed = raw ? (JSON.parse(raw) as string[]) : [];
-    return new Set(Array.isArray(parsed) ? parsed.map(String) : []);
-  } catch {
-    return new Set();
-  }
-}
-
-function saveWalletAppliedBenefitIds(ids: Set<string>): void {
-  try {
-    localStorage.setItem(
-      RAPAGO_WALLET_APPLIED_BENEFITS_KEY,
-      JSON.stringify(Array.from(ids).slice(-500)),
-    );
-  } catch {
-    // No bloquea.
-  }
-}
-
-function readPassengerWalletBalance(): number {
-  try {
-    const value = Number(localStorage.getItem(RAPAGO_WALLET_BALANCE_KEY));
-    return Number.isFinite(value) && value > 0 ? Math.round(value) : 0;
-  } catch {
-    return 0;
-  }
-}
-
-function writePassengerWalletBalance(value: number): void {
-  try {
-    const safeValue = Math.max(0, Math.round(value));
-    localStorage.setItem(RAPAGO_WALLET_BALANCE_KEY, String(safeValue));
-    localStorage.setItem("rapago_passenger_wallet_balance_clp", String(safeValue));
-    localStorage.setItem("rapago_wallet_available_balance_clp", String(safeValue));
-
-    window.dispatchEvent(
-      new CustomEvent(RAPAGO_WALLET_EVENT, {
-        detail: { balanceClp: safeValue },
-      }),
-    );
-  } catch {
-    // No bloquea la app.
-  }
-}
-
-function normalizeWalletBenefitStatus(value: unknown): string {
-  return String(value ?? "")
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .toLowerCase()
-    .trim();
-}
-
-function walletBenefitIsApproved(record: WalletBenefitRecord): boolean {
-  const status = normalizeWalletBenefitStatus(
-    record.status ??
-      record.adminStatus ??
-      record.approvalStatus ??
-      record.walletStatus,
-  );
-
-  return (
-    status === "approved" ||
-    status === "aprobado" ||
-    status === "approved_by_admin" ||
-    status === "wallet_approved" ||
-    status === "credit_approved" ||
-    status === "ready_to_credit"
-  );
-}
-
-function readWalletBenefitAmount(record: WalletBenefitRecord): number {
-  const candidates = [
-    record.amountClp,
-    record.creditClp,
-    record.benefitClp,
-    record.refundClp,
-    record.balanceClp,
-    record.walletCreditClp,
-    record.extraPaidClp,
-  ];
-
-  for (const value of candidates) {
-    const amount = Number(value);
-    if (Number.isFinite(amount) && amount > 0) return Math.round(amount);
-  }
-
-  return 0;
-}
-
-function readWalletBenefitId(record: WalletBenefitRecord, fallbackIndex: number): string {
-  const raw = String(
-    record.id ??
-      record.benefitId ??
-      record.creditId ??
-      record.rideId ??
-      record.paymentId ??
-      "",
-  ).trim();
-
-  if (raw) return raw;
-
-  return [
-    normalizeWalletIdentity(record.passengerEmail),
-    normalizeWalletIdentity(record.passengerPhone),
-    readWalletBenefitAmount(record),
-    normalizeWalletIdentity(record.reason),
-    fallbackIndex,
-  ].join("|");
-}
-
-function readWalletBenefitRecordsFromStorage(): WalletBenefitRecord[] {
-  const records: WalletBenefitRecord[] = [];
-
-  for (const key of RAPAGO_WALLET_BENEFIT_SOURCE_KEYS) {
-    try {
-      const raw = localStorage.getItem(key);
-      if (!raw) continue;
-
-      const parsed = JSON.parse(raw) as unknown;
-
-      if (Array.isArray(parsed)) {
-        records.push(...parsed.filter((item): item is WalletBenefitRecord => Boolean(item && typeof item === "object")));
-        continue;
-      }
-
-      if (parsed && typeof parsed === "object") {
-        for (const value of Object.values(parsed as Record<string, unknown>)) {
-          if (Array.isArray(value)) {
-            records.push(
-              ...value.filter((item): item is WalletBenefitRecord => Boolean(item && typeof item === "object")),
-            );
-          } else if (value && typeof value === "object") {
-            records.push(value as WalletBenefitRecord);
-          }
-        }
-      }
-    } catch {
-      // Ignora datos locales dañados.
-    }
-  }
-
-  return records;
-}
-
-function syncApprovedWalletBenefits(user: unknown): number {
-  const appliedIds = readWalletAppliedBenefitIds();
-  const records = readWalletBenefitRecordsFromStorage();
-  let balance = readPassengerWalletBalance();
-  let changed = false;
-
-  records.forEach((record, index) => {
-    if (!walletBenefitIsApproved(record)) return;
-    if (!walletBenefitMatchesPassenger(record, user)) return;
-
-    const amount = readWalletBenefitAmount(record);
-    if (amount <= 0) return;
-
-    const id = readWalletBenefitId(record, index);
-    if (appliedIds.has(id)) return;
-
-    balance += amount;
-    appliedIds.add(id);
-    changed = true;
-  });
-
-  if (changed) {
-    writePassengerWalletBalance(balance);
-    saveWalletAppliedBenefitIds(appliedIds);
-  }
-
-  return balance;
-}
-
-function formatWalletClp(value: number): string {
-  return `$${Math.max(0, Math.round(value)).toLocaleString("es-CL")} CLP`;
-}
 
 export default function HomePage(): JSX.Element {
   const history = useHistory();
@@ -343,9 +85,6 @@ export default function HomePage(): JSX.Element {
 
   const [profile, setProfile] = useState<PassengerProfileData | null>(null);
   const [carouselIndex, setCarouselIndex] = useState(0);
-  const [walletBalanceClp, setWalletBalanceClp] = useState(() =>
-    syncApprovedWalletBenefits(session?.user),
-  );
 
   useEffect(() => {
     if (!session?.accessToken) return;
@@ -355,28 +94,6 @@ export default function HomePage(): JSX.Element {
       .then(setProfile)
       .catch(() => {});
   }, [session?.accessToken]);
-
-  useEffect(() => {
-    const refreshWalletBalance = () => {
-      setWalletBalanceClp(syncApprovedWalletBenefits(session?.user));
-    };
-
-    refreshWalletBalance();
-
-    window.addEventListener("storage", refreshWalletBalance);
-    window.addEventListener("focus", refreshWalletBalance);
-    window.addEventListener(RAPAGO_WALLET_EVENT, refreshWalletBalance as EventListener);
-    window.addEventListener("rapago:admin-wallet-benefit-approved", refreshWalletBalance as EventListener);
-    window.addEventListener("rapago:wallet-benefit-approved", refreshWalletBalance as EventListener);
-
-    return () => {
-      window.removeEventListener("storage", refreshWalletBalance);
-      window.removeEventListener("focus", refreshWalletBalance);
-      window.removeEventListener(RAPAGO_WALLET_EVENT, refreshWalletBalance as EventListener);
-      window.removeEventListener("rapago:admin-wallet-benefit-approved", refreshWalletBalance as EventListener);
-      window.removeEventListener("rapago:wallet-benefit-approved", refreshWalletBalance as EventListener);
-    };
-  }, [session?.user]);
 
   useEffect(() => {
     const interval = window.setInterval(() => {
@@ -408,7 +125,6 @@ export default function HomePage(): JSX.Element {
   };
 
   const openWallet = () => {
-    setWalletBalanceClp(syncApprovedWalletBenefits(session?.user));
     history.push(ROUTES.PASSENGER.WALLET);
   };
 
@@ -630,11 +346,7 @@ export default function HomePage(): JSX.Element {
 
               <button
                 type="button"
-                className={
-                  walletBalanceClp > 0
-                    ? "rapago-home-quick-card rapago-home-quick-card--highlight"
-                    : "rapago-home-quick-card"
-                }
+                className="rapago-home-quick-card"
                 onClick={openWallet}
               >
                 <span className="rapago-home-quick-icon">
@@ -642,11 +354,7 @@ export default function HomePage(): JSX.Element {
                 </span>
                 <span>
                   <span className="rapago-home-quick-title">Wallet</span>
-                  <span className="rapago-home-quick-sub">
-                    {walletBalanceClp > 0
-                      ? `Saldo a favor: ${formatWalletClp(walletBalanceClp)}`
-                      : "Saldo y beneficios"}
-                  </span>
+                  <span className="rapago-home-quick-sub">Saldo y beneficios</span>
                 </span>
               </button>
             </div>

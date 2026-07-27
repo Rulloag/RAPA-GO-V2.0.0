@@ -2,43 +2,39 @@ import {
   IonAlert,
   IonBadge,
   IonButton,
-  IonButtons,
   IonCard,
   IonCardContent,
   IonContent,
-  IonHeader,
   IonIcon,
   IonInput,
   IonItem,
-  IonLabel,
   IonModal,
   IonNote,
   IonPage,
   IonSpinner,
   IonText,
   IonTextarea,
-  IonTitle,
-  IonToolbar,
 } from "@ionic/react";
 import {
-  arrowBackOutline,
+  addOutline,
   calendarOutline,
-  checkmarkCircleOutline,
   createOutline,
   flagOutline,
   locationOutline,
   locateOutline,
   navigateOutline,
+  removeOutline,
   searchOutline,
   timeOutline,
+  alertCircleOutline,
 } from "ionicons/icons";
 import {
-  useCallback,
   useEffect,
   useMemo,
   useRef,
   useState,
   type CSSProperties,
+  type KeyboardEvent as ReactKeyboardEvent,
   type PointerEvent as ReactPointerEvent,
 } from "react";
 import { useHistory } from "react-router-dom";
@@ -50,9 +46,9 @@ import {
   type CreateRideInput,
 } from "../../../features/rides/rides.service.js";
 import { walletService } from "../../../features/wallet/wallet.service.js";
-import { RIDE_STATUS_LABEL } from "../shared.js";
 import { getApiOrigin as getConfiguredApiOrigin } from "../../../services/api/apiBaseUrl.js";
 import { preSearchLocationService } from "../../../features/location/preSearchLocation.service.js";
+import { RapagoSectionHeader } from "../../../components/RapagoSectionHeader.js";
 
 import "../../../theme/request-ride.css";
 
@@ -5205,6 +5201,97 @@ function getBlueMarkerVisualAnchor(
   return new google.maps.Point(1.9, 0);
 }
 
+/* Reparto de alto entre mapa y hoja, en % del contenedor, expresado como cuánto
+   se lleva el MAPA. El panel es de colocación LIBRE: se queda exactamente donde
+   se suelte, sin posiciones de encaje. Las hubo —tres reposos con salto por
+   impulso— y eran la causa de que el panel "no obedeciera": el usuario lo
+   dejaba a su gusto y medio segundo después se recolocaba solo en el reposo más
+   cercano, deshaciéndole el gesto. Un control cuyo resultado no coincide con
+   donde lo dejaste se siente roto, por bien calibrado que esté el salto.
+
+   Los valores de referencia NO son porcentajes fijos. El contenido de la hoja mide
+   siempre lo mismo en píxeles —la tarjeta de dirección, la de caminata y el
+   botón no encogen con la pantalla—, así que un reparto fijo da resultados
+   distintos en cada aparato: un 50% son 390px de hoja en un teléfono alto,
+   donde sobra sitio, y 252px en uno bajo, donde el mismo contenido no entra.
+   El porcentaje escala a ciegas; lo que hay que repartir es el alto REAL. */
+
+/* Alto de la hoja en reposo. Con este valor el panel queda a media pantalla:
+   se leen la dirección y la caminata, y el mapa se lleva algo más de la mitad,
+   que es el reparto de referencia pedido. */
+const SHEET_CONTENT_PX = 295;
+
+/* Márgenes del reparto calculado. Por debajo del mínimo el mapa deja de servir
+   para reconocer dónde cae el punto; por encima del máximo la hoja no da ni
+   para la dirección. Entre ambos manda el contenido. */
+const MAP_SHARE_FIT_MIN = 30;
+const MAP_SHARE_FIT_MAX = 66;
+
+/* Solo se usa antes de la primera medición, mientras no se sabe el alto real. */
+const MAP_SHARE_DEFAULT = 50;
+
+/* Extremos del recorrido. El máximo deja la hoja reducida a su cabecera —barra
+   y título, sin ninguna tarjeta—, que es hasta donde puede crecer el mapa sin
+   que quede un panel sin nada dentro.
+
+   No hace falta que sea exacto: quien manda de verdad es el suelo en CSS
+   (request-ride.css, `.rp-request-map-sheet`), que varía con el área segura de
+   cada aparato vía `env(safe-area-inset-bottom)` — algo que un solo número de
+   JS no puede replicar, porque ese margen cambia de un iPhone con muesca a uno
+   sin ella. Aquí basta con un techo GENEROSO: en aparatos con poca área segura
+   el suelo real de CSS permite más que este valor y manda él; en los que
+   necesitan más margen abajo, el mismo suelo se ocupa de frenar antes. El mapa
+   cede sin pelear porque es `flex: 0 1`. */
+const MAP_SHARE_MIN = 22;
+const MAP_SHARE_MAX = 90;
+
+/* Margen para distinguir un toque de un arrastre. 10px y no 4: un dedo real se
+   desplaza varios píxeles mientras toca, y con el listón tan bajo el toque se
+   leía como arrastre — el interruptor no llegaba a dispararse nunca y pulsar la
+   barra parecía no hacer nada. Es el margen que usan iOS y Android. */
+const TAP_SLOP_PX = 10;
+
+/* Reparto de reposo para un alto disponible concreto: a la hoja se le da lo que
+   su contenido pide y el mapa se queda con el resto, acotado. En una pantalla
+   alta sobra sitio y el mapa crece; en una baja el mapa cede para que la
+   información siga entrando. Es lo que hace que el equilibrio se sienta igual
+   en cualquier dispositivo en vez de escalar a ciegas. */
+function fitMapShare(shellHeight: number): number {
+  if (shellHeight <= 0) return MAP_SHARE_DEFAULT;
+
+  const sheetShare = (SHEET_CONTENT_PX / shellHeight) * 100;
+
+  return Math.min(
+    MAP_SHARE_FIT_MAX,
+    Math.max(MAP_SHARE_FIT_MIN, 100 - sheetShare),
+  );
+}
+
+/* Tope superior del panel (= mínimo del mapa) para un alto dado: un poco más de
+   hoja que el reposo. El contenido ya se enseña entero en el reposo, así que
+   subir más allá de este margen solo añadiría panel vacío. Cuelga del reparto
+   ajustado, no de un número absoluto, para significar lo mismo en cualquier
+   pantalla. */
+function minMapShare(shellHeight: number): number {
+  return Math.max(MAP_SHARE_MIN, fitMapShare(shellHeight) - 18);
+}
+
+/* Resistencia elástica fuera del recorrido útil. Un tope seco se siente como
+   que algo se rompió; que el panel ceda cada vez menos y vuelva solo al soltar
+   se siente deliberado.
+
+   Los límites se pasan explícitos y no se sacan de las posiciones de reposo: el
+   recorrido real llega desde la posición más abierta hasta la hoja CERRADA, que
+   no es un reposo pero sí un extremo legítimo. Tomando el último reposo como
+   techo, tirar de una hoja cerrada la hacía saltar hacia arriba en el primer
+   píxel del gesto, porque ya arrancaba fuera de la banda. */
+function rubberBandShare(value: number, min: number, max: number): number {
+  if (value < min) return min - (min - value) * 0.35;
+  if (value > max) return max + (value - max) * 0.35;
+
+  return value;
+}
+
 function MapPointPicker({
   isOpen,
   title,
@@ -5234,6 +5321,7 @@ function MapPointPicker({
   const realPointCircleRef = useRef<google.maps.Circle | null>(null);
   const walkingDotsRef = useRef<google.maps.Polyline | null>(null);
   const walkingDotsShadowRef = useRef<google.maps.Polyline | null>(null);
+  const mapResizeObserverRef = useRef<ResizeObserver | null>(null);
 
   const [ready, setReady] = useState(false);
   const [selected, setSelected] = useState<PickerResult | null>(null);
@@ -5246,79 +5334,272 @@ function MapPointPicker({
   const [searchingPicker, setSearchingPicker] = useState(false);
   const [scopeMessage, setScopeMessage] = useState<string | null>(null);
   const [modalReady, setModalReady] = useState(false);
-  const [sheetExpanded, setSheetExpanded] = useState(true);
-  const sheetGestureRef = useRef<{
-    pointerId: number;
+  /* Fallo al cargar Google Maps. Se mantiene APARTE de `selected`: un error no
+     es un lugar válido, así que el botón de confirmar debe seguir inhabilitado. */
+  const [mapError, setMapError] = useState<string | null>(null);
+
+  /* Panel arrastrable. El reparto mapa/hoja es estado, no un número fijo en
+     CSS, porque ahora lo decide el usuario: hay quien quiere ver bien el mapa
+     antes de confirmar y quien quiere leer la dirección entera. */
+  const [mapShare, setMapShare] = useState<number>(MAP_SHARE_DEFAULT);
+  const [draggingSheet, setDraggingSheet] = useState(false);
+  const shellRef = useRef<HTMLDivElement | null>(null);
+
+  /* Alto realmente disponible. No se sabe hasta que el modal está montado, y
+     cambia al girar el aparato o cuando la barra del navegador se encoge, así
+     que se mide en vivo en lugar de suponerlo. */
+  const [shellHeight, setShellHeight] = useState(0);
+  const minShare = useMemo(() => minMapShare(shellHeight), [shellHeight]);
+
+  /* Tope inferior REAL del panel, leído del CSS en vez de supuesto.
+
+     Antes esto era la constante MAP_SHARE_MAX y no cuadraba con la realidad:
+     quien frena el panel es su `min-height`, que se compone con
+     `env(safe-area-inset-bottom)` y por tanto vale distinto en cada aparato.
+     Al pedir el JS más de lo que el CSS concede quedaba una zona muerta al
+     final del recorrido —entre 2% y 5% según el teléfono— donde el dedo seguía
+     bajando y el panel ya no se movía. Se siente exactamente como "no baja
+     más", que es lo que se estaba reportando: el gesto corría en vacío justo
+     donde uno empuja para llegar al fondo.
+
+     Midiéndolo, el arrastre termina justo donde el panel deja de moverse. */
+  const [maxShare, setMaxShare] = useState(MAP_SHARE_MAX);
+  const sheetRef = useRef<HTMLDivElement | null>(null);
+
+  /* NO hay un estado "cerrado" aparte, y es a propósito. Lo hubo: desvanecía el
+     contenido con `opacity` pero seguía reservándole su espacio, así que el
+     panel se quedaba como una caja negra vacía con el título encima. Ese hueco
+     era precisamente el que debía ser mapa.
+
+     Ahora hay una sola magnitud —cuánto se lleva el mapa— y la hoja es siempre
+     el resto. Al encogerla, el contenido se recorta solo porque su caja mengua;
+     no hay nada que ocultar por separado y por tanto no puede quedar espacio
+     reservado y vacío. Subir la barra encoge el mapa y bajarla lo agranda, de
+     forma continua. */
+
+  /* En cuanto el usuario coloca el panel a mano, manda él: recolocárselo por
+     debajo al recalcular sería deshacerle el gesto. */
+  const sheetAdjustedByUserRef = useRef(false);
+  /* Última posición abierta conocida. El toque que reabre vuelve aquí: a donde
+     el usuario lo tenía, no a un sitio decidido por la app. */
+  const lastOpenShareRef = useRef<number | null>(null);
+  const sheetDragRef = useRef<{
     startY: number;
-    lastY: number;
+    startShare: number;
+    shellHeight: number;
+    /* Última posición aplicada. Se guarda aquí y no se lee del estado porque al
+       soltar hay que decidir con el valor real del gesto, y el de React podría
+       ir un render por detrás. */
+    share: number;
   } | null>(null);
-  const ignoreNextSheetClickRef = useRef(false);
+  /* Espejo de `draggingSheet` en ref: el ResizeObserver del mapa se crea una
+     sola vez y no vería los cambios de estado, pero necesita saber si hay un
+     arrastre en curso. */
+  const draggingSheetRef = useRef(false);
+  /* Distingue un arrastre de una pulsación: en táctil, al soltar tras arrastrar
+     también llega un `click`, y sin esto el panel saltaría de posición justo
+     después de que el usuario acabara de colocarlo a mano. */
+  const sheetDraggedRef = useRef(false);
+  /* Marca que el toque ya se atendió en `pointerup`, para que el `click` que
+     llega después no lo repita y deje el panel como estaba. */
+  const tapHandledRef = useRef(false);
 
-  function beginSheetGesture(
-    event: ReactPointerEvent<HTMLButtonElement>,
-  ): void {
-    if (event.pointerType === "mouse" && event.button !== 0) return;
+  /* Mide el hueco disponible y lo mantiene al día. El ResizeObserver cubre el
+     giro de pantalla y el encogido de la barra del navegador, que en iOS pasa
+     constantemente al desplazarse. */
+  useEffect(() => {
+    const shell = shellRef.current;
 
-    sheetGestureRef.current = {
-      pointerId: event.pointerId,
-      startY: event.clientY,
-      lastY: event.clientY,
+    if (!isOpen || !shell || typeof ResizeObserver === "undefined") return;
+
+    const measure = (): void => {
+      const height = shell.getBoundingClientRect().height;
+      setShellHeight(height);
+
+      const sheet = sheetRef.current;
+      if (!sheet || height <= 0) return;
+
+      /* `min-height` resuelto por el navegador: ya trae aplicados el `min()`,
+         el `calc()` y el área segura concreta de este aparato. */
+      const floorPx = parseFloat(window.getComputedStyle(sheet).minHeight);
+      if (!Number.isFinite(floorPx) || floorPx <= 0) return;
+
+      setMaxShare(
+        Math.min(95, Math.max(50, 100 - (floorPx / height) * 100)),
+      );
     };
 
-    event.currentTarget.setPointerCapture?.(event.pointerId);
+    const observer = new ResizeObserver(measure);
+    observer.observe(shell);
+    measure();
+
+    return () => observer.disconnect();
+  }, [isOpen, modalReady]);
+
+  /* Mientras el usuario no haya movido el panel, sigue al reparto ajustado: al
+     abrir, al girar el teléfono o al cambiar el alto útil, la hoja vuelve a
+     pedir exactamente lo que su contenido necesita. */
+  useEffect(() => {
+    if (sheetAdjustedByUserRef.current || shellHeight <= 0) return;
+
+    setMapShare(fitMapShare(shellHeight));
+  }, [shellHeight]);
+
+  function handleGripPointerDown(event: ReactPointerEvent<HTMLElement>): void {
+    const shellHeight = shellRef.current?.getBoundingClientRect().height ?? 0;
+    if (shellHeight <= 0) return;
+
+    event.currentTarget.setPointerCapture(event.pointerId);
+    sheetDragRef.current = {
+      startY: event.clientY,
+      startShare: mapShare,
+      shellHeight,
+      share: mapShare,
+    };
+    sheetDraggedRef.current = false;
+    draggingSheetRef.current = true;
+    setDraggingSheet(true);
   }
 
-  function moveSheetGesture(
-    event: ReactPointerEvent<HTMLButtonElement>,
-  ): void {
-    const gesture = sheetGestureRef.current;
-    if (!gesture || gesture.pointerId !== event.pointerId) return;
+  function handleGripPointerMove(event: ReactPointerEvent<HTMLElement>): void {
+    const drag = sheetDragRef.current;
+    if (!drag) return;
 
-    gesture.lastY = event.clientY;
+    const deltaPx = event.clientY - drag.startY;
+
+    if (Math.abs(deltaPx) > TAP_SLOP_PX) sheetDraggedRef.current = true;
+
+    /* clientY crece hacia abajo, así que arrastrar hacia abajo encoge la hoja y
+       agranda el mapa: el delta se suma tal cual a la parte del mapa. */
+    const raw = drag.startShare + (deltaPx / drag.shellHeight) * 100;
+
+    /* Entre los dos extremos el panel sigue al dedo sin resistencia; fuera cede
+       cada vez menos. El tope duro deja un margen para que se note la
+       elasticidad antes de frenar del todo. */
+    const next = Math.min(
+      maxShare + 5,
+      Math.max(MAP_SHARE_MIN, rubberBandShare(raw, minShare, maxShare)),
+    );
+
+    drag.share = next;
+    setMapShare(next);
   }
 
-  function endSheetGesture(
-    event: ReactPointerEvent<HTMLButtonElement>,
-  ): void {
-    const gesture = sheetGestureRef.current;
-    if (!gesture || gesture.pointerId !== event.pointerId) return;
+  function handleGripPointerUp(event: ReactPointerEvent<HTMLElement>): void {
+    const drag = sheetDragRef.current;
+    if (!drag) return;
 
-    const deltaY = event.clientY - gesture.startY;
-    sheetGestureRef.current = null;
-    ignoreNextSheetClickRef.current = true;
+    const { share } = drag;
 
-    try {
-      event.currentTarget.releasePointerCapture?.(event.pointerId);
-    } catch {
-      // El navegador puede liberar la captura automáticamente.
+    sheetDragRef.current = null;
+    draggingSheetRef.current = false;
+    sheetAdjustedByUserRef.current = true;
+    setDraggingSheet(false);
+
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
     }
 
-    if (deltaY >= 34) {
-      setSheetExpanded(false);
-    } else if (deltaY <= -34) {
-      setSheetExpanded(true);
-    } else {
-      setSheetExpanded((current) => !current);
+    /* El dedo no llegó a arrastrar: es un toque, y se resuelve AQUÍ.
+
+       Antes esto vivía en el `onClick`, y era un error: con `setPointerCapture`
+       activo el navegador redirige los eventos al elemento que captura, y el
+       `click` posterior no llega de forma fiable en todos los motores. El
+       interruptor dependía de un evento que a veces no existía. `pointerup`
+       siempre llega. */
+    if (!sheetDraggedRef.current) {
+      tapHandledRef.current = true;
+      toggleSheet();
+      return;
     }
 
-    window.setTimeout(() => {
-      ignoreNextSheetClickRef.current = false;
-    }, 450);
+    /* SIN encaje: el panel se queda EXACTAMENTE donde se soltó. Lo único que
+       ocurre al soltar es deshacer el estiramiento elástico si el gesto terminó
+       fuera del recorrido. Colocarlo es del usuario; recolocarlo no es nuestro. */
+    const resolved = Math.min(maxShare, Math.max(minShare, share));
+
+    /* Si quedó abierta, esta pasa a ser la posición a la que volverá el toque
+       que reabra: se respeta dónde la dejó el usuario, venga de donde venga. */
+    if (resolved < maxShare - 4) lastOpenShareRef.current = resolved;
+
+    setMapShare(resolved);
   }
 
-  function cancelSheetGesture(
-    event: ReactPointerEvent<HTMLButtonElement>,
-  ): void {
-    const gesture = sheetGestureRef.current;
-    if (!gesture || gesture.pointerId !== event.pointerId) return;
+  /* Pulsar la barra es un INTERRUPTOR: un toque pliega el panel hasta dejar
+     solo la barra y el título —mapa entero a la vista— y el siguiente lo
+     reabre.
 
-    sheetGestureRef.current = null;
+     Hubo un intento anterior de esto que confundía, y conviene recordar por
+     qué antes de "mejorarlo": aquel cierre ocultaba el contenido con `opacity`
+     pero le reservaba el sitio, así que quedaba una caja negra vacía y parecía
+     que la información se había perdido. Ahora cerrar es solo llevar el
+     reparto a su extremo: el panel se pliega de verdad (el suelo en CSS lo
+     detiene justo en la cabecera), la barra y el título quedan siempre a la
+     vista como asa para volver, y el movimiento es una animación continua que
+     enseña adónde se fue.
 
-    try {
-      event.currentTarget.releasePointerCapture?.(event.pointerId);
-    } catch {
-      // Sin acción: la captura ya fue liberada.
+     La reapertura vuelve a la última posición abierta, no a una fija: si el
+     usuario había colocado el panel a su gusto, eso es suyo. Sin posición
+     previa, vuelve al reparto ajustado a la pantalla. */
+  function toggleSheet(): void {
+    sheetAdjustedByUserRef.current = true;
+
+    const closed = mapShare >= maxShare - 4;
+
+    if (closed) {
+      setMapShare(lastOpenShareRef.current ?? fitMapShare(shellHeight));
+      return;
     }
+
+    lastOpenShareRef.current = mapShare;
+    setMapShare(maxShare);
+  }
+
+  /* Solo cubre el `click` que NO viene del dedo: Enter o Espacio sobre el botón
+     con el foco puesto. El táctil ya se atendió en `pointerup`. */
+  function handleGripClick(): void {
+    if (tapHandledRef.current) {
+      tapHandledRef.current = false;
+      return;
+    }
+
+    if (sheetDraggedRef.current) return;
+
+    toggleSheet();
+  }
+
+  function handleGripKeyDown(event: ReactKeyboardEvent<HTMLButtonElement>): void {
+    if (event.key !== "ArrowUp" && event.key !== "ArrowDown") return;
+
+    event.preventDefault();
+    sheetAdjustedByUserRef.current = true;
+
+    /* Pasos fijos, espejo del arrastre libre: sin posiciones privilegiadas,
+       solo un recorrido acotado. Arriba agranda la hoja (menos mapa); abajo,
+       al revés. */
+    const delta = event.key === "ArrowUp" ? -8 : 8;
+
+    setMapShare((current) =>
+      Math.min(maxShare, Math.max(minShare, current + delta)),
+    );
+  }
+
+  function openSheetDetails(): void {
+    sheetAdjustedByUserRef.current = true;
+    const next = Math.min(
+      maxShare,
+      Math.max(minShare, lastOpenShareRef.current ?? fitMapShare(shellHeight)),
+    );
+    lastOpenShareRef.current = next;
+    setMapShare(next);
+  }
+
+  function closeSheetForSearch(): void {
+    sheetAdjustedByUserRef.current = true;
+    if (mapShare < maxShare - 4) {
+      lastOpenShareRef.current = mapShare;
+    }
+    setMapShare(maxShare);
   }
 
   function clearMapPreview(): void {
@@ -5534,7 +5815,7 @@ function MapPointPicker({
       marker.addListener("click", () => {
         setSelected(candidate);
         drawAccessiblePickupPreview(candidate, candidates);
-        setSheetExpanded(true);
+        openSheetDetails();
       });
 
       candidateMarkersRef.current.push(marker);
@@ -5722,11 +6003,15 @@ function MapPointPicker({
       setModalReady(false);
       clearMapPreview();
       lastResolvedCenterRef.current = null;
+      mapResizeObserverRef.current?.disconnect();
+      mapResizeObserverRef.current = null;
       mapRef.current = null;
       return;
     }
 
-    setSheetExpanded(true);
+    sheetAdjustedByUserRef.current = false;
+    lastOpenShareRef.current = null;
+    setMapShare(MAP_SHARE_DEFAULT);
   }, [isOpen]);
 
   useEffect(() => {
@@ -5739,6 +6024,7 @@ function MapPointPicker({
     setPickerSuggestions([]);
     setSearchingPicker(false);
     setScopeMessage(null);
+    setMapError(null);
 
     let cancelled = false;
 
@@ -5776,7 +6062,7 @@ function MapPointPicker({
           clickableIcons: true,
           gestureHandling: "greedy",
           disableDefaultUI: true,
-          zoomControl: true,
+          zoomControl: false,
           minZoom: 11,
           restriction: {
             latLngBounds: getRapaNuiMapBounds(),
@@ -5786,6 +6072,19 @@ function MapPointPicker({
         });
 
         mapRef.current = map;
+
+        if (typeof ResizeObserver !== "undefined" && mapElementRef.current) {
+          const observer = new ResizeObserver(() => {
+            if (cancelled || draggingSheetRef.current) return;
+
+            const currentCenter = map.getCenter();
+            google.maps.event.trigger(map, "resize");
+            if (currentCenter) map.setCenter(currentCenter);
+          });
+
+          observer.observe(mapElementRef.current);
+          mapResizeObserverRef.current = observer;
+        }
 
         window.setTimeout(() => {
           if (cancelled) return;
@@ -5815,14 +6114,11 @@ function MapPointPicker({
       })
       .catch(() => {
         setReady(true);
-        setSelected({
-          text: "No se pudo cargar el mapa",
-          address:
-            "Revisa la configuración de Google Maps y vuelve a intentar.",
-          lat: RAPA_NUI_CENTER.lat,
-          lng: RAPA_NUI_CENTER.lng,
-          placeId: null,
-        });
+        setSelected(null);
+        setPickupCandidates([]);
+        setMapError(
+          "No se pudo cargar el mapa. Revisa tu conexión e inténtalo de nuevo.",
+        );
       });
 
     return () => {
@@ -5834,6 +6130,8 @@ function MapPointPicker({
       }
 
       clearMapPreview();
+      mapResizeObserverRef.current?.disconnect();
+      mapResizeObserverRef.current = null;
       mapRef.current = null;
     };
   }, [
@@ -5919,7 +6217,7 @@ function MapPointPicker({
         await resolveMapPoint(exactPoint, true);
       }
 
-      setSheetExpanded(true);
+      openSheetDetails();
     } finally {
       setLoadingAddress(false);
     }
@@ -6135,6 +6433,8 @@ function MapPointPicker({
       onDidPresent={() => setModalReady(true)}
       onDidDismiss={() => {
         setModalReady(false);
+        sheetAdjustedByUserRef.current = false;
+        lastOpenShareRef.current = null;
         onCancel();
       }}
     >
@@ -6143,165 +6443,211 @@ function MapPointPicker({
         data-rapago-theme="light"
         style={{ colorScheme: "light" }}
       >
-        <IonHeader className="request-map-header">
-          <IonToolbar>
-            <IonButtons slot="start">
-              <IonButton
-                fill="clear"
-                onClick={onCancel}
-                aria-label="Volver"
-                className="request-map-back"
-              >
-                <IonIcon slot="start" icon={arrowBackOutline} />
-                Volver
-              </IonButton>
-            </IonButtons>
-
-            <IonTitle aria-label={title}>
-              {mode === "origin"
-                ? "Confirmar recogida"
-                : "Confirmar destino"}
-            </IonTitle>
-          </IonToolbar>
-        </IonHeader>
+        <RapagoSectionHeader
+          title={
+            title ||
+            (mode === "origin" ? "Confirmar recogida" : "Confirmar destino")
+          }
+          onBack={onCancel}
+          backLabel="Volver"
+        />
 
         <IonContent
-          fullscreen
-          className="request-map-content"
           scrollY={false}
+          className="request-map-content"
+          style={{ "--background": "transparent" } as CSSProperties}
         >
-          <div className="request-map-shell">
-            <div
-              ref={mapElementRef}
-              className="request-map-canvas"
-              aria-label="Mapa para elegir el punto"
-            />
+          <div
+            ref={shellRef}
+            className={[
+              "rp-request-map-shell",
+              draggingSheet ? "is-dragging" : "",
+              mapShare <= minShare + 4 ? "is-sheet-tall" : "",
+            ]
+              .filter(Boolean)
+              .join(" ")}
+            style={{ "--rp-map-share": `${mapShare}%` } as CSSProperties}
+            aria-label={title}
+          >
+            <div className="rp-request-map-canvas">
+              <div
+                ref={mapElementRef}
+                className="request-map-canvas"
+                aria-label="Mapa para elegir el punto"
+                style={{
+                  width: "100%",
+                  height: "100%",
+                  background: "#e8eef4",
+                }}
+              />
 
-            <div className="request-map-search">
-              <IonItem lines="none" className="request-map-search__field">
-                <IonIcon icon={searchOutline} slot="start" />
-                <IonInput
-                  value={searchText}
-                  placeholder="Buscar solo dentro de Rapa Nui"
-                  onIonFocus={() => setSheetExpanded(false)}
-                  onIonInput={(event) => {
-                    const value = String(event.detail.value ?? "");
-                    setSearchText(value);
+              <div
+                className="request-map-search"
+                style={{
+                  top: 14,
+                  zIndex: 20,
+                }}
+              >
+                <IonItem lines="none" className="rp-request-search-field">
+                  <IonIcon
+                    icon={searchOutline}
+                    slot="start"
+                    style={{ color: "var(--rp-icon-fg)" }}
+                  />
+                  <IonInput
+                    value={searchText}
+                    placeholder="Buscar solo dentro de Rapa Nui"
+                    onIonFocus={closeSheetForSearch}
+                    onIonInput={(event) => {
+                      const value = String(event.detail.value ?? "");
+                      setSearchText(value);
 
-                    if (value.trim()) {
-                      setSheetExpanded(false);
-                    }
-                  }}
-                />
-              </IonItem>
+                      if (value.trim()) {
+                        closeSheetForSearch();
+                      }
+                    }}
+                  />
+                </IonItem>
 
-              {scopeMessage && (
-                <span
-                  className="request-map-visually-hidden"
-                  aria-live="polite"
-                >
-                  {scopeMessage}
-                </span>
-              )}
+                {scopeMessage && (
+                  <span
+                    className="request-map-visually-hidden"
+                    aria-live="polite"
+                  >
+                    {scopeMessage}
+                  </span>
+                )}
 
-              {pickerSuggestions.length > 0 && (
-                <div className="request-map-suggestions">
-                  {pickerSuggestions.map((suggestion) => (
-                    <button
-                      key={suggestion.placeId}
-                      type="button"
-                      className="request-map-suggestion"
-                      onClick={() => void pickSuggestion(suggestion)}
+                {pickerSuggestions.length > 0 && (
+                  <div className="request-map-suggestions">
+                    {pickerSuggestions.map((suggestion) => (
+                      <button
+                        key={suggestion.placeId}
+                        type="button"
+                        className="request-map-suggestion"
+                        onClick={() => void pickSuggestion(suggestion)}
+                      >
+                        <strong>{suggestion.mainText}</strong>
+                        <span>{suggestion.secondaryText}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+
+                {mode === "origin" &&
+                  pickerSuggestions.length === 0 &&
+                  selected?.walkMeters != null &&
+                  selected.walkMeters > 8 && (
+                    <div
+                      style={{
+                        marginTop: 8,
+                        background: "rgba(17,17,17,.94)",
+                        color: "#ffffff",
+                        border: "1px solid rgba(34,197,94,.65)",
+                        borderRadius: "16px",
+                        padding: "8px 14px",
+                        textAlign: "center",
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                        fontWeight: 800,
+                        fontSize: ".72rem",
+                        boxShadow: "0 5px 14px rgba(0,0,0,.35)",
+                        whiteSpace: "nowrap",
+                        pointerEvents: "none",
+                      }}
                     >
-                      <strong>{suggestion.mainText}</strong>
-                      <span>{suggestion.secondaryText}</span>
-                    </button>
-                  ))}
+                      Inicio de viaje en{" "}
+                      {selected.text.replace("Recogida en ", "")}
+                    </div>
+                  )}
+              </div>
+
+              <div className="rp-map-controls">
+                <button
+                  type="button"
+                  className="rp-map-control"
+                  aria-label="Acercar el mapa"
+                  onClick={() => {
+                    const map = mapRef.current;
+                    if (map) map.setZoom((map.getZoom() ?? 17) + 1);
+                  }}
+                >
+                  <IonIcon icon={addOutline} />
+                </button>
+
+                <button
+                  type="button"
+                  className="rp-map-control"
+                  aria-label="Alejar el mapa"
+                  onClick={() => {
+                    const map = mapRef.current;
+                    if (map) map.setZoom((map.getZoom() ?? 17) - 1);
+                  }}
+                >
+                  <IonIcon icon={removeOutline} />
+                </button>
+
+                <button
+                  type="button"
+                  className="rp-map-control"
+                  aria-label="Usar mi ubicación actual"
+                  onClick={useCurrentLocation}
+                >
+                  <IonIcon icon={locateOutline} />
+                </button>
+              </div>
+
+              {modalReady && (!ready || loadingAddress || searchingPicker) && (
+                <div className="request-map-loading" aria-live="polite">
+                  <IonSpinner name="crescent" />
+                  <span>
+                    {searchingPicker
+                      ? "Buscando solo dentro de Rapa Nui..."
+                      : mode === "origin"
+                        ? "Buscando calles accesibles y referencias..."
+                        : "Buscando el destino..."}
+                  </span>
                 </div>
               )}
             </div>
 
-            <button
-              type="button"
-              onClick={useCurrentLocation}
-              className="request-map-location-button"
-              aria-label="Usar mi ubicación actual"
-            >
-              <IonIcon icon={locateOutline} />
-            </button>
-
-            {modalReady && (!ready || loadingAddress || searchingPicker) && (
+            <div ref={sheetRef} className="rp-request-map-sheet">
               <div
-                className="request-map-loading"
-                aria-live="polite"
+                className="rp-request-map-sheet-head"
+                onPointerDown={handleGripPointerDown}
+                onPointerMove={handleGripPointerMove}
+                onPointerUp={handleGripPointerUp}
+                onPointerCancel={handleGripPointerUp}
+                onClick={handleGripClick}
               >
-                <IonSpinner name="crescent" />
-                <span>
-                  {searchingPicker
-                    ? "Buscando solo dentro de Rapa Nui..."
-                    : mode === "origin"
-                      ? "Buscando calles accesibles y referencias..."
-                      : "Buscando el destino..."}
-                </span>
+                <button
+                  type="button"
+                  className="rp-request-map-grip"
+                  aria-expanded={mapShare < maxShare - 4}
+                  aria-label={
+                    mapShare >= maxShare - 4
+                      ? "Mostrar los detalles del punto. También puedes arrastrar esta barra."
+                      : "Plegar el panel y ver el mapa completo. También puedes arrastrar esta barra."
+                  }
+                  onKeyDown={handleGripKeyDown}
+                >
+                  <span className="rp-request-map-grip__bar" aria-hidden />
+                </button>
+
+                <h2 className="rp-request-map-sheet-title">
+                  <span
+                    className="rp-request-map-sheet-title__tick"
+                    aria-hidden
+                  />
+                  {mode === "origin"
+                    ? hasNearbyReferenceCandidates
+                      ? "Puntos de recogida cercanos"
+                      : "Punto accesible recomendado"
+                    : "Destino seleccionado"}
+                </h2>
               </div>
-            )}
 
-            <section
-              className={`request-map-sheet ${
-                sheetExpanded
-                  ? "request-map-sheet--expanded"
-                  : "request-map-sheet--collapsed"
-              }`}
-              aria-label="Información del punto seleccionado"
-            >
-              <button
-                type="button"
-                className="request-map-sheet__drag"
-                onPointerDown={beginSheetGesture}
-                onPointerMove={moveSheetGesture}
-                onPointerUp={endSheetGesture}
-                onPointerCancel={cancelSheetGesture}
-                onClick={() => {
-                  if (ignoreNextSheetClickRef.current) return;
-                  setSheetExpanded((current) => !current);
-                }}
-                aria-expanded={sheetExpanded}
-                aria-label={
-                  sheetExpanded
-                    ? "Bajar la tarjeta del mapa"
-                    : "Subir la tarjeta del mapa"
-                }
-              >
-                <span className="request-map-sheet__grip" />
-                <span>
-                  {sheetExpanded
-                    ? "Desliza hacia abajo para ver más mapa"
-                    : "Desliza hacia arriba para ver los detalles"}
-                </span>
-              </button>
-
-              <div
-                className="request-map-sheet__body"
-                aria-hidden={!sheetExpanded}
-              >
-                <div className="request-map-sheet__heading">
-                  <span className="request-map-sheet__heading-mark" />
-                  <div>
-                    <strong>
-                      {mode === "origin"
-                        ? hasNearbyReferenceCandidates
-                          ? "Puntos de recogida cercanos"
-                          : "Punto de recogida en calle"
-                        : "Destino seleccionado"}
-                    </strong>
-                    {mode === "destination" && (
-                      <span>
-                        Mueve el punto rojo o busca un lugar dentro de Rapa Nui.
-                      </span>
-                    )}
-                  </div>
-                </div>
-
+              <div className="rp-request-map-sheet-scroll">
                 {mode === "destination" && (
                   <section
                     className="request-map-frequent"
@@ -6317,45 +6663,38 @@ function MapPointPicker({
                     </div>
 
                     <div className="request-map-frequent__list">
-                      {TOURIST_DESTINATION_SUGGESTIONS.map(
-                        (destination) => {
-                          const active =
-                            normalizePlaceStreetCompare(
-                              selected?.text ?? "",
-                            ) ===
-                            normalizePlaceStreetCompare(
-                              destination.name,
-                            );
+                      {TOURIST_DESTINATION_SUGGESTIONS.map((destination) => {
+                        const active =
+                          normalizePlaceStreetCompare(selected?.text ?? "") ===
+                          normalizePlaceStreetCompare(destination.name);
 
-                          return (
-                            <button
-                              key={destination.name}
-                              type="button"
-                              className={`request-map-frequent__item ${
-                                active
-                                  ? "request-map-frequent__item--active"
-                                  : ""
-                              }`}
-                              onClick={() =>
-                                void pickFrequentDestination(destination)
-                              }
-                              disabled={loadingAddress}
-                              aria-pressed={active}
-                            >
-                              <IonIcon icon={locationOutline} />
+                        return (
+                          <button
+                            key={destination.name}
+                            type="button"
+                            className={`request-map-frequent__item ${
+                              active
+                                ? "request-map-frequent__item--active"
+                                : ""
+                            }`}
+                            onClick={() =>
+                              void pickFrequentDestination(destination)
+                            }
+                            disabled={loadingAddress}
+                            aria-pressed={active}
+                          >
+                            <IonIcon icon={locationOutline} />
 
-                              <span>
-                                <strong>{destination.name}</strong>
-                                <small>{destination.subtitle}</small>
-                              </span>
-                            </button>
-                          );
-                        },
-                      )}
+                            <span>
+                              <strong>{destination.name}</strong>
+                              <small>{destination.subtitle}</small>
+                            </span>
+                          </button>
+                        );
+                      })}
                     </div>
                   </section>
                 )}
-
 
                 {mode === "origin" && hasNearbyReferenceCandidates && (
                   <section
@@ -6366,8 +6705,8 @@ function MapPointPicker({
                       <div>
                         <strong>Locales más cercanos a ti</strong>
                         <span>
-                          Toca un local y el punto verde se moverá a su
-                          ubicación exacta.
+                          Toca un local y el punto verde se moverá a su ubicación
+                          exacta.
                         </span>
                       </div>
                       <small>{nearbyReferenceCandidates.length}</small>
@@ -6391,36 +6730,83 @@ function MapPointPicker({
                     </div>
                   )}
 
-                <div className="request-map-selected">
-                  <span
-                    className={`request-map-selected__dot ${
-                      mode === "origin"
-                        ? "request-map-selected__dot--pickup"
-                        : "request-map-selected__dot--destination"
-                    }`}
-                  />
-
-                  <div>
-                    <strong>
-                      {loadingAddress
-                        ? "Actualizando el punto..."
-                        : selected?.text ??
-                          (mode === "origin"
-                            ? "Punto de recogida"
-                            : "Destino")}
-                    </strong>
-
-                    <span>
-                      {selected?.address ??
-                        "Mueve el mapa para elegir la ubicación."}
-                    </span>
+                {mapError && (
+                  <div
+                    className="rp-request-note"
+                    role="alert"
+                    style={{
+                      padding: "14px 16px",
+                      marginBottom: 12,
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 12,
+                      borderColor: "var(--rp-danger-bd)",
+                    }}
+                  >
+                    <IonIcon
+                      icon={alertCircleOutline}
+                      style={{
+                        color: "var(--rp-danger-fg)",
+                        fontSize: 24,
+                        flexShrink: 0,
+                      }}
+                    />
+                    <div style={{ flex: 1 }}>
+                      <div
+                        style={{
+                          color: "var(--rp-danger-fg)",
+                          fontWeight: 850,
+                          fontSize: ".9rem",
+                          marginBottom: 4,
+                        }}
+                      >
+                        No se pudo cargar el mapa
+                      </div>
+                      <div
+                        style={{
+                          color: "var(--rp-muted)",
+                          fontSize: ".82rem",
+                          lineHeight: 1.35,
+                        }}
+                      >
+                        {mapError}
+                      </div>
+                    </div>
                   </div>
+                )}
 
-                  <IonIcon icon={createOutline} />
-                </div>
+                {!mapError && (
+                  <div className="request-map-selected rp-request-note">
+                    <span
+                      className={`request-map-selected__dot ${
+                        mode === "origin"
+                          ? "request-map-selected__dot--pickup"
+                          : "request-map-selected__dot--destination"
+                      }`}
+                    />
 
-                {mode === "origin" && selected && (
-                  <div className="request-map-walk">
+                    <div>
+                      <strong>
+                        {loadingAddress
+                          ? "Actualizando el punto..."
+                          : selected?.text ??
+                            (mode === "origin"
+                              ? "Punto de recogida"
+                              : "Destino")}
+                      </strong>
+
+                      <span>
+                        {selected?.address ??
+                          "Mueve el mapa para elegir la ubicación."}
+                      </span>
+                    </div>
+
+                    <IonIcon icon={createOutline} />
+                  </div>
+                )}
+
+                {mode === "origin" && selected && !mapError && (
+                  <div className="request-map-walk rp-request-note">
                     <div className="request-map-walk__icon">🚶</div>
 
                     <div className="request-map-walk__text">
@@ -6455,27 +6841,27 @@ function MapPointPicker({
                   </div>
                 )}
 
-                {mode === "origin" && (
+                {mode === "origin" && !mapError && (
                   <p className="request-map-walking-warning">
-                    La ruta a pie es una estimación de Google Maps. Revisa
-                    que el camino sea seguro antes de confirmar.
+                    La ruta a pie es una estimación de Google Maps. Revisa que el
+                    camino sea seguro antes de confirmar.
                   </p>
                 )}
 
                 <IonButton
                   expand="block"
-                  disabled={!selected || loadingAddress}
+                  disabled={!selected || loadingAddress || Boolean(mapError)}
                   onClick={() => {
-                    if (selected) onConfirm(selected);
+                    if (selected && !mapError) onConfirm(selected);
                   }}
-                  className="request-map-confirm"
+                  className="request-map-confirm rp-request-confirm"
                 >
                   {mode === "origin"
-                    ? "Confirmar punto de partida"
+                    ? "Confirmar recogida"
                     : "Confirmar destino"}
                 </IonButton>
               </div>
-            </section>
+            </div>
           </div>
         </IonContent>
       </IonPage>
@@ -8484,21 +8870,11 @@ return (
       data-rapago-theme="light"
       style={{ colorScheme: "light" }}
     >
-      <IonHeader className="rp-request-fixed-header">
-        <IonToolbar className="rp-request-fixed-toolbar">
-          <IonButtons slot="start">
-            <IonButton
-              fill="clear"
-              className="rp-request-header-back"
-              onClick={() => history.replace(ROUTES.PASSENGER.HOME)}
-              aria-label="Volver al inicio"
-            >
-              <IonIcon icon={arrowBackOutline} />
-            </IonButton>
-          </IonButtons>
-          <IonTitle>Solicitar Viaje</IonTitle>
-        </IonToolbar>
-      </IonHeader>
+      <RapagoSectionHeader
+        title="Solicitar Viaje"
+        onBack={() => history.replace(ROUTES.PASSENGER.HOME)}
+        backLabel="Volver al inicio"
+      />
 
       <IonContent
         fullscreen={false}
@@ -10068,7 +10444,7 @@ return (
             )}
 
             {submitError && (
-              <IonText color="danger" className="rp-request-error">
+              <IonText color="danger" className="rp-request-error" role="alert">
                 <p style={{ fontWeight: 700, fontSize: ".84rem" }}>
                   {submitError}
                 </p>
@@ -10139,7 +10515,7 @@ return (
         {pickerTarget && (
           <MapPointPicker
             isOpen={pickerTarget !== null}
-            title={pickerTarget === "origin" ? "Confirma el punto de partida" : "Confirma el destino"}
+            title={pickerTarget === "origin" ? "Confirmar recogida" : "Confirmar destino"}
             mode={pickerTarget}
             initialPoint={pickerInitialPoint}
             onCancel={() => setPickerTarget(null)}
