@@ -42,6 +42,18 @@ export function throwingFetch(): typeof fetch {
   }) as unknown as typeof fetch;
 }
 
+/** Simulates AbortSignal.timeout firing — same `.name === "TimeoutError"`
+ * shape Node/undici produces, distinct from a generic network failure
+ * (throwingFetch). Built from a plain Error (not the DOM-lib-only
+ * DOMException type) since this project's tsconfig has no "dom" lib. */
+export function timingOutFetch(): typeof fetch {
+  return (async () => {
+    const error = new Error("The operation was aborted due to timeout");
+    error.name = "TimeoutError";
+    throw error;
+  }) as unknown as typeof fetch;
+}
+
 /** Full control over header/payload — used to build both valid and deliberately malformed Apple-style identity tokens. */
 export async function signAppleToken(
   privateKey: CryptoKey,

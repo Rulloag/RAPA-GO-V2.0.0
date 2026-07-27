@@ -160,4 +160,85 @@ describe("MercadoPagoProvider.normalizeWebhook", () => {
       provider.normalizeWebhook({ type: "payment", data: { id: "3" } }, {}),
     ).rejects.toThrow("MercadoPago API error 500");
   });
+
+  it("throws ProviderTimeoutError when the confirmation call times out", async () => {
+    const timeoutError = new DOMException("The operation was aborted due to timeout", "TimeoutError");
+    global.fetch = vi.fn().mockRejectedValueOnce(timeoutError);
+
+    await expect(
+      provider.normalizeWebhook({ type: "payment", data: { id: "4" } }, {}),
+    ).rejects.toMatchObject({ name: "ProviderTimeoutError" });
+  });
+
+  it("throws ProviderNetworkError on a generic network failure during confirmation", async () => {
+    global.fetch = vi.fn().mockRejectedValueOnce(new TypeError("fetch failed"));
+
+    await expect(
+      provider.normalizeWebhook({ type: "payment", data: { id: "5" } }, {}),
+    ).rejects.toMatchObject({ name: "ProviderNetworkError" });
+  });
+});
+
+describe("MercadoPagoProvider.createPayment (timeout behavior)", () => {
+  let provider: MercadoPagoProvider;
+
+  const baseParams = {
+    orderId:        "order-uuid-1",
+    amountClp:      1000,
+    description:    "Viaje de prueba",
+    passengerEmail: "pasajero@example.com",
+    passengerName:  "Pasajero de Prueba",
+    returnUrl:      "https://rapago.cl/return",
+    webhookUrl:     "https://rapago.cl/api/payments/webhooks/mercadopago",
+  };
+
+  beforeEach(() => {
+    provider = new MercadoPagoProvider();
+    vi.restoreAllMocks();
+  });
+
+  it("creates the payment normally when MercadoPago responds in time", async () => {
+    global.fetch = vi.fn().mockResolvedValueOnce({
+      ok:   true,
+      status: 201,
+      text: async () => JSON.stringify({ id: "pref-1", init_point: "https://mp.cl/checkout/pref-1" }),
+    } as unknown as Response);
+
+    const result = await provider.createPayment(baseParams);
+
+    expect(result.providerOrderId).toBe("pref-1");
+    expect(result.urlPay).toBe("https://mp.cl/checkout/pref-1");
+    expect(global.fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it("aborts immediately (no retry of other payloads) when the first attempt times out", async () => {
+    const timeoutError = new DOMException("The operation was aborted due to timeout", "TimeoutError");
+    const fetchMock = vi.fn().mockRejectedValueOnce(timeoutError);
+    global.fetch = fetchMock;
+
+    await expect(provider.createPayment(baseParams)).rejects.toMatchObject({
+      name: "ProviderTimeoutError",
+    });
+    // Same behavior as before this change: a thrown fetch error aborts the
+    // attempts loop immediately instead of trying the other payload variants.
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("propagates a generic network error distinctly from a timeout", async () => {
+    global.fetch = vi.fn().mockRejectedValueOnce(new TypeError("fetch failed"));
+
+    await expect(provider.createPayment(baseParams)).rejects.toMatchObject({
+      name: "ProviderNetworkError",
+    });
+  });
+
+  it("still throws a business error (not a timeout) when MercadoPago returns a non-OK response", async () => {
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: false,
+      status: 400,
+      text: async () => JSON.stringify({ message: "invalid preference" }),
+    } as unknown as Response);
+
+    await expect(provider.createPayment(baseParams)).rejects.toThrow("MercadoPago API error");
+  });
 });

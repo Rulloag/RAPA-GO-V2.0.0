@@ -82,7 +82,12 @@ jobs:
             packages/shared/node_modules
           key: quality-gate-node-modules-${{ github.event.pull_request.number }}-${{ github.run_id }}
           fail-on-cache-miss: true
-      - run: npm run test --workspace=apps/api
+      - name: Compilar paquete compartido
+        run: npm run build --workspace=packages/shared
+      - name: Ejecutar Tests API
+        env:
+          DATABASE_URL: "postgresql://postgres:postgres@127.0.0.1:5432/rapago_test"
+        run: npm run test --workspace=apps/api
 
   test-mobile:
     name: Tests Mobile
@@ -231,6 +236,8 @@ jobs:
       # completa (job test-api) pase en verde, este job aísla específicamente el dinero.
       - name: Ejecutar suite financiera/autorización (payments, wallet, rides)
         working-directory: apps/api
+        env:
+          DATABASE_URL: "postgresql://postgres:postgres@127.0.0.1:5432/rapago_test"
         run: npx vitest run src/modules/payments src/modules/wallet src/modules/rides
       # Evita que un fallo se "resuelva" borrando el test en vez de arreglando el bug: compara el
       # número de archivos de test bajo esas rutas contra main y falla si bajó.

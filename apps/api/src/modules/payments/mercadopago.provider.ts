@@ -6,9 +6,12 @@ import type {
   NormalizedWebhook,
   NormalizedStatus,
 } from "./payment.provider.js";
+import { fetchWithTimeout, resolveTimeoutMs, ProviderTimeoutError } from "../../shared/http/providerTimeout.js";
 
 const MP_API_URL = "https://api.mercadopago.com";
 const LOCAL_HOSTNAMES = new Set(["localhost", "127.0.0.1", "0.0.0.0"]);
+// Fallback seguro si MERCADOPAGO_TIMEOUT_MS no está definido o es inválido.
+const MP_DEFAULT_TIMEOUT_MS = 8000;
 
 function getConfig(): {
   accessToken: string;
@@ -140,14 +143,21 @@ async function postPreference(
     [k: string]: unknown;
   };
 }> {
-  const response = await fetch(`${MP_API_URL}/checkout/preferences`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${accessToken}`,
+  const timeoutMs = resolveTimeoutMs("MERCADOPAGO_TIMEOUT_MS", MP_DEFAULT_TIMEOUT_MS);
+
+  const response = await fetchWithTimeout(
+    "mercadopago",
+    `${MP_API_URL}/checkout/preferences`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${accessToken}`,
+      },
+      body: JSON.stringify(preference),
     },
-    body: JSON.stringify(preference),
-  });
+    timeoutMs,
+  );
 
   const text = await response.text().catch(() => "");
 
@@ -283,7 +293,23 @@ export class MercadoPagoProvider implements PaymentProvider {
     let lastError: { status: number; text: string; parsedMessage: string } | null = null;
 
     for (const attempt of attempts) {
-      const result = await postPreference(attempt.payload, config.accessToken);
+      let result: Awaited<ReturnType<typeof postPreference>>;
+
+      try {
+        result = await postPreference(attempt.payload, config.accessToken);
+      } catch (error) {
+        if (error instanceof ProviderTimeoutError) {
+          console.error(`[MercadoPago] Timeout creando preferencia (${attempt.name}):`, {
+            timeoutMs: error.timeoutMs,
+            orderId,
+          });
+        } else {
+          console.error(`[MercadoPago] Error de red creando preferencia (${attempt.name}):`, {
+            orderId,
+          });
+        }
+        throw error;
+      }
 
       if (result.ok) {
         const data = result.data ?? {};
@@ -402,12 +428,32 @@ export class MercadoPagoProvider implements PaymentProvider {
     }
 
     const config = getConfig();
+    const timeoutMs = resolveTimeoutMs("MERCADOPAGO_TIMEOUT_MS", MP_DEFAULT_TIMEOUT_MS);
 
-    const response = await fetch(`${MP_API_URL}/v1/payments/${paymentId}`, {
-      headers: {
-        Authorization: `Bearer ${config.accessToken}`,
-      },
-    });
+    let response: Response;
+
+    try {
+      response = await fetchWithTimeout(
+        "mercadopago",
+        `${MP_API_URL}/v1/payments/${paymentId}`,
+        {
+          headers: {
+            Authorization: `Bearer ${config.accessToken}`,
+          },
+        },
+        timeoutMs,
+      );
+    } catch (error) {
+      if (error instanceof ProviderTimeoutError) {
+        console.error("[MercadoPago] Timeout confirmando pago del webhook:", {
+          timeoutMs: error.timeoutMs,
+          paymentId,
+        });
+      } else {
+        console.error("[MercadoPago] Error de red confirmando pago del webhook:", { paymentId });
+      }
+      throw error;
+    }
 
     if (!response.ok) {
       const text =
