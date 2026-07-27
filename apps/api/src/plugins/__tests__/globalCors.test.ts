@@ -1,14 +1,15 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import Fastify, { type FastifyInstance } from "fastify";
+import cors from "@fastify/cors";
 import { helmetPlugin } from "../helmet.js";
-import { corsPlugin } from "../cors.js";
+import { createCorsOptions } from "../cors.js";
 import { rateLimitPlugin } from "../rateLimit.js";
 import { globalErrorHandler } from "../../shared/errors/errorHandler.js";
 
 const ALLOWED_ORIGIN = "http://localhost:5173";
 
 /**
- * Registers helmetPlugin/corsPlugin/rateLimitPlugin/setErrorHandler exactly as
+ * Registers helmetPlugin/@fastify-cors/rateLimitPlugin/setErrorHandler exactly as
  * app.ts does, then sibling routes registered independently afterwards — the
  * same topology real route modules use in app.ts. This reproduces the actual
  * encapsulation bug (global hooks registered inside a plugin's own child
@@ -21,7 +22,7 @@ async function buildTestApp(): Promise<FastifyInstance> {
 
   const app = Fastify({ logger: false });
   await app.register(helmetPlugin);
-  await app.register(corsPlugin);
+  await app.register(cors, createCorsOptions());
   await app.register(rateLimitPlugin);
   app.setErrorHandler(globalErrorHandler);
   app.get("/sibling", async () => ({ ok: true }));

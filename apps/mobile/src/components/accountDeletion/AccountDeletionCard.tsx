@@ -7,21 +7,14 @@ import {
   IonCardTitle,
   IonCheckbox,
   IonIcon,
-  IonInput,
   IonItem,
   IonLabel,
   IonNote,
   IonSpinner,
-  IonText,
   IonTextarea,
 } from "@ionic/react";
 import { trashOutline } from "ionicons/icons";
-import {
-  useCallback,
-  useEffect,
-  useState,
-  type CSSProperties,
-} from "react";
+import { useCallback, useEffect, useState } from "react";
 
 import { useAuth } from "../../features/auth/useAuth.js";
 import {
@@ -40,6 +33,7 @@ const OPEN_STATUSES = new Set<AccountDeletionRequestStatus>([
   "deferred",
   "approved",
   "processing",
+  "failed",
 ]);
 
 function statusLabel(status: AccountDeletionRequestStatus): string {
@@ -54,8 +48,8 @@ function statusLabel(status: AccountDeletionRequestStatus): string {
       return "Procesando eliminación";
     case "completed":
       return "Cuenta eliminada";
-    case "rejected":
-      return "Rechazada";
+    case "identity_not_verified":
+      return "No procesada: identidad no verificada";
     case "failed":
       return "Error de procesamiento";
     case "cancelled":
@@ -106,9 +100,6 @@ export function AccountDeletionCard({
   const [reason, setReason] = useState("");
   const [comment, setComment] = useState("");
   const [confirmed, setConfirmed] = useState(false);
-  const [verificationCode, setVerificationCode] = useState("");
-  const [sendingCode, setSendingCode] = useState(false);
-  const [codeSent, setCodeSent] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
 
@@ -142,33 +133,6 @@ export function AccountDeletionCard({
     void loadRequest();
   }, [loadRequest]);
 
-  async function sendVerificationCode(): Promise<void> {
-    if (!session?.accessToken) {
-      setError("Debes iniciar sesión nuevamente.");
-      return;
-    }
-
-    setSendingCode(true);
-    setError("");
-    setSuccess("");
-
-    try {
-      const result = await accountDeletionService.requestVerificationCode(
-        session.accessToken,
-      );
-      setCodeSent(true);
-      setSuccess(result.message);
-    } catch (codeError) {
-      setError(
-        codeError instanceof Error
-          ? codeError.message
-          : "No se pudo enviar el código.",
-      );
-    } finally {
-      setSendingCode(false);
-    }
-  }
-
   async function submit(): Promise<void> {
     if (!session?.accessToken) {
       setError("Debes iniciar sesión nuevamente.");
@@ -177,19 +141,6 @@ export function AccountDeletionCard({
 
     const cleanReason = reason.trim();
     const cleanComment = comment.trim();
-    const cleanVerificationCode = verificationCode.trim();
-
-    if (cleanReason.length < 10) {
-      setError(
-        "Escribe el motivo con al menos 10 caracteres.",
-      );
-      return;
-    }
-
-    if (!/^\d{6}$/.test(cleanVerificationCode)) {
-      setError("Solicita e ingresa el código de 6 números enviado a tu correo.");
-      return;
-    }
 
     if (!confirmed) {
       setError(
@@ -204,15 +155,12 @@ export function AccountDeletionCard({
 
     try {
       const payload: {
-        verificationCode: string;
-        reason: string;
+        reason?: string;
         comment?: string;
         requesterSnapshot?: AccountDeletionClientSnapshot;
-      } = {
-        verificationCode: cleanVerificationCode,
-        reason: cleanReason,
-      };
+      } = {};
 
+      if (cleanReason) payload.reason = cleanReason;
       if (cleanComment) payload.comment = cleanComment;
 
       if (requesterSnapshot) {
@@ -228,8 +176,6 @@ export function AccountDeletionCard({
       setReason("");
       setComment("");
       setConfirmed(false);
-      setVerificationCode("");
-      setCodeSent(false);
       setShowForm(false);
       setSuccess(
         "Solicitud enviada. Tu cuenta continuará activa durante la revisión y el plazo ordinario máximo es de 30 días.",
@@ -248,43 +194,23 @@ export function AccountDeletionCard({
   const hasOpenRequest =
     request != null && OPEN_STATUSES.has(request.status);
 
-  const cardStyle = {
-    margin: "14px 0",
-    borderRadius: 22,
-    border: "1.5px solid rgba(220, 38, 38, 0.28)",
-    boxShadow: "0 14px 34px rgba(65, 34, 20, .10)",
-    overflow: "hidden",
-  } as CSSProperties;
+  const canSubmit = confirmed && !submitting;
 
   return (
-    <IonCard style={cardStyle}>
+    <IonCard>
       <IonCardHeader>
-        <IonCardTitle
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 8,
-            color: "#111",
-            fontWeight: 950,
-          }}
-        >
+        <IonCardTitle className="rp-card__title">
           <IonIcon icon={trashOutline} />
           Eliminar mi cuenta
         </IonCardTitle>
       </IonCardHeader>
 
-      <IonCardContent style={{ paddingTop: 0 }}>
-        <p
-          style={{
-            margin: "0 0 12px",
-            color: "#5b4632",
-            fontWeight: 800,
-            lineHeight: 1.45,
-          }}
-        >
+      <IonCardContent>
+        <p>
           La cuenta no se elimina automáticamente. Tu solicitud
-          llegará al administrador, quien revisará el motivo, los
-          viajes, pagos, beneficios y documentos pendientes.
+          llegará al administrador, quien verificará tu identidad y
+          revisará únicamente viajes, pagos, beneficios o casos pendientes.
+          Informar un motivo es voluntario.
         </p>
 
         {loading && (
@@ -294,24 +220,8 @@ export function AccountDeletionCard({
         )}
 
         {!loading && request && (
-          <div
-            style={{
-              marginBottom: 12,
-              padding: "12px 14px",
-              borderRadius: 16,
-              background: "#fff7ed",
-              border: "1px solid rgba(210, 164, 58, 0.34)",
-              color: "#1f1711",
-            }}
-          >
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "space-between",
-                gap: 8,
-              }}
-            >
+          <div className="rp-card__quote">
+            <div className="rp-card__row">
               <strong>Estado de la solicitud</strong>
 
               <IonBadge color={statusColor(request.status)}>
@@ -319,72 +229,38 @@ export function AccountDeletionCard({
               </IonBadge>
             </div>
 
-            <p style={{ margin: "8px 0 0", fontWeight: 800 }}>
-              <strong>Motivo:</strong> {request.reason}
-            </p>
+            {request.reason && (
+              <p className="rp-card__foot">
+                <strong>Motivo informado:</strong> {request.reason}
+              </p>
+            )}
 
-            <p
-              style={{
-                margin: "6px 0 0",
-                color: "#6b5a45",
-                fontSize: ".82rem",
-                fontWeight: 750,
-              }}
-            >
+            <p className="rp-card__foot">
               Enviada: {readableDate(request.requestedAt)}
             </p>
 
-            <p
-              style={{
-                margin: "6px 0 0",
-                color: "#5b4632",
-                fontSize: ".82rem",
-                fontWeight: 900,
-              }}
-            >
+            <p className="rp-card__foot">
               Seguimiento: {request.trackingCode}
             </p>
 
             {request.adminNote && (
-              <p
-                style={{
-                  margin: "8px 0 0",
-                  padding: "9px 10px",
-                  borderRadius: 12,
-                  background: "rgba(255,255,255,.72)",
-                  fontWeight: 850,
-                }}
-              >
+              <p className="rp-card__quote">
                 <strong>Respuesta del administrador:</strong>{" "}
                 {request.adminNote}
               </p>
             )}
 
             {request.failureReason && (
-              <p
-                style={{
-                  margin: "8px 0 0",
-                  color: "#b42318",
-                  fontWeight: 850,
-                }}
-              >
-                {request.failureReason}
-              </p>
+              <p className="rp-card__danger">{request.failureReason}</p>
             )}
           </div>
         )}
 
         {success && (
-          <IonText color="success">
-            <p style={{ fontWeight: 900 }}>{success}</p>
-          </IonText>
+          <div className="rp-banner rp-banner--success">{success}</div>
         )}
 
-        {error && (
-          <IonText color="danger">
-            <p style={{ fontWeight: 900 }}>{error}</p>
-          </IonText>
-        )}
+        {error && <div className="rp-banner rp-banner--error">{error}</div>}
 
         {!loading && !hasOpenRequest && (
           <>
@@ -398,13 +274,6 @@ export function AccountDeletionCard({
                 setSuccess("");
               }}
               disabled={submitting}
-              style={
-                {
-                  "--border-radius": "16px",
-                  height: "50px",
-                  fontWeight: 950,
-                } as CSSProperties
-              }
             >
               {showForm
                 ? "Cerrar formulario"
@@ -413,56 +282,9 @@ export function AccountDeletionCard({
 
             {showForm && (
               <div style={{ marginTop: 12 }}>
-                <IonButton
-                  expand="block"
-                  fill="outline"
-                  onClick={() => void sendVerificationCode()}
-                  disabled={sendingCode}
-                  style={{ fontWeight: 900, marginBottom: 10 }}
-                >
-                  {sendingCode ? <IonSpinner name="dots" /> : "Enviar código a mi correo"}
-                </IonButton>
-
-                <IonItem
-                  lines="none"
-                  style={{
-                    "--background": "#fffaf0",
-                    borderRadius: 16,
-                    marginBottom: 10,
-                  } as CSSProperties}
-                >
-                  <IonLabel position="stacked">Código de verificación</IonLabel>
-                  <IonInput
-                    value={verificationCode}
-                    inputMode="numeric"
-                    maxlength={6}
-                    placeholder="000000"
-                    onIonInput={(event) => {
-                      setVerificationCode(
-                        String(event.detail.value ?? "")
-                          .replace(/\D/g, "")
-                          .slice(0, 6),
-                      );
-                      setError("");
-                    }}
-                  />
-                  <IonNote slot="helper">
-                    {codeSent
-                      ? "Código enviado. Vence en 10 minutos."
-                      : "Reautenticación obligatoria antes de enviar la solicitud."}
-                  </IonNote>
-                </IonItem>
-
-                <IonItem
-                  lines="none"
-                  style={{
-                    "--background": "#fffaf0",
-                    borderRadius: 16,
-                    marginBottom: 10,
-                  } as CSSProperties}
-                >
+                <IonItem lines="none" className="rapago-profile-field">
                   <IonLabel position="stacked">
-                    Motivo obligatorio
+                    Motivo (opcional)
                   </IonLabel>
 
                   <IonTextarea
@@ -471,7 +293,7 @@ export function AccountDeletionCard({
                       setReason(String(event.detail.value ?? ""));
                       setError("");
                     }}
-                    placeholder="Explica por qué quieres eliminar la cuenta"
+                    placeholder="Puedes explicar por qué quieres eliminar la cuenta"
                     maxlength={500}
                     counter
                     autoGrow
@@ -479,18 +301,11 @@ export function AccountDeletionCard({
                   />
 
                   <IonNote slot="helper">
-                    Mínimo 10 caracteres.
+                    Opcional. Máximo 500 caracteres.
                   </IonNote>
                 </IonItem>
 
-                <IonItem
-                  lines="none"
-                  style={{
-                    "--background": "#fffaf0",
-                    borderRadius: 16,
-                    marginBottom: 10,
-                  } as CSSProperties}
-                >
+                <IonItem lines="none" className="rapago-profile-field">
                   <IonLabel position="stacked">
                     Observación adicional
                   </IonLabel>
@@ -509,13 +324,7 @@ export function AccountDeletionCard({
                   />
                 </IonItem>
 
-                <IonItem
-                  lines="none"
-                  style={{
-                    "--background": "#fffaf0",
-                    borderRadius: 16,
-                  } as CSSProperties}
-                >
+                <IonItem lines="none" className="rapago-profile-field">
                   <IonCheckbox
                     slot="start"
                     checked={confirmed}
@@ -525,13 +334,7 @@ export function AccountDeletionCard({
                     }}
                   />
 
-                  <IonLabel
-                    style={{
-                      whiteSpace: "normal",
-                      fontWeight: 800,
-                      lineHeight: 1.35,
-                    }}
-                  >
+                  <IonLabel style={{ whiteSpace: "normal" }}>
                     Entiendo que la solicitud será revisada, que no puede
                     rechazarse discrecionalmente y que solo puede aplazarse
                     por una causa objetiva y temporal informada.
@@ -542,15 +345,8 @@ export function AccountDeletionCard({
                   expand="block"
                   color="danger"
                   onClick={() => void submit()}
-                  disabled={submitting}
-                  style={
-                    {
-                      "--border-radius": "16px",
-                      height: "52px",
-                      marginTop: 12,
-                      fontWeight: 950,
-                    } as CSSProperties
-                  }
+                  disabled={!canSubmit}
+                  style={{ marginTop: 12 }}
                 >
                   {submitting
                     ? <IonSpinner name="dots" />

@@ -1,4 +1,4 @@
 User-agent: *
 Allow: /
 
-Sitemap: https://rapago.cl/sitemap.xml
+Sitemap: https://api.rapago.cl/sitemap.xml

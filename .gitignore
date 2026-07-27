@@ -144,12 +144,28 @@ vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
 .vite/
 
-# RAPA GO monorepo — build outputs and native platform folders
+# RAPA GO monorepo — build outputs
 apps/mobile/dist/
-# android/ is not generated yet — no android build in this repo.
-apps/mobile/android/
 apps/api/dist/
 packages/*/dist/
+
+# Capacitor Android: el proyecto nativo sí se versiona; solo se excluyen salidas locales.
+apps/mobile/android/.gradle/
+apps/mobile/android/build/
+apps/mobile/android/app/build/
+apps/mobile/android/local.properties
+apps/mobile/android/.idea/
+
+# Capacitor iOS: excluir dependencias y salidas generadas.
+apps/mobile/ios/App/Pods/
+apps/mobile/ios/App/DerivedData/
+apps/mobile/ios/App/build/
+apps/mobile/ios/App/*.xcworkspace/xcuserdata/
+apps/mobile/ios/App/*.xcodeproj/xcuserdata/
+
+# Evidencias locales de release: pueden contener datos de entorno.
+release-evidence/*
+!release-evidence/README.md
 
 # Capacitor
 .capacitor/

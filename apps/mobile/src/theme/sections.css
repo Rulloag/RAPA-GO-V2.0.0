@@ -553,6 +553,12 @@
   display: grid;
   place-items: center;
   font-size: 18px;
+  /* Neutro por defecto: hasta ahora el aspecto vivía solo en --ok y --warn, así
+     que una ficha sin variante dejaba el icono como una caja invisible. Las
+     variantes siguen ganando por especificidad. */
+  color: var(--rp-icon-fg);
+  background: var(--rp-icon-bg);
+  border: 1px solid var(--rp-icon-bd);
 }
 
 .rp-tile--ok .rp-tile__icon {
@@ -675,6 +681,15 @@
   color: var(--rp-ok-fg);
 }
 
+/* Hermana de .rp-card__ok para el caso contrario: un fallo o error puntual
+   dentro de una tarjeta (p. ej. "no se pudo procesar la eliminación"). */
+.rp-card__danger {
+  margin: 8px 0 0;
+  font-size: var(--rp-fs-sub);
+  font-weight: 800;
+  color: var(--rp-danger-fg);
+}
+
 /* Respuesta del administrador: inset suave sobre la superficie. */
 .rp-card__quote {
   margin: var(--rp-gap-sm) 0 0;
@@ -768,6 +783,65 @@
   background: var(--rp-ok-bg);
   border: 1.5px solid var(--rp-ok-bd);
   color: var(--rp-ok-fg);
+}
+
+/* Aviso e informativo. Faltaban en el kit: el aviso de conectividad del
+   conductor tiene tres estados (comprobando / sin red / señal baja) y solo dos
+   encajaban en error y éxito. Se añaden aquí, y no en driver.css, porque son
+   genéricos: la paleta semántica ya tiene las dos variantes de tema. */
+.rp-banner--warn {
+  background: var(--rp-warn-bg);
+  border: 1.5px solid var(--rp-warn-bd);
+  color: var(--rp-warn-fg);
+}
+
+.rp-banner--info {
+  background: var(--rp-info-bg);
+  border: 1.5px solid var(--rp-info-bd);
+  color: var(--rp-info-fg);
+}
+
+/* Aviso de dos niveles: titular + explicación. El aviso simple sigue siendo
+   solo texto suelto dentro de .rp-banner, así que esto no cambia los usos
+   existentes. */
+.rp-banner__copy {
+  min-width: 0;
+}
+
+.rp-banner__title {
+  display: block;
+  font-size: var(--rp-fs-body);
+  font-weight: 850;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+
+.rp-banner__message {
+  display: block;
+  margin-top: 4px;
+  font-size: var(--rp-fs-sub);
+  font-weight: 700;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+/* Glifo de texto (no un ion-icon): el aviso de conectividad usa "…", "⌁" y "!"
+   para no depender de que el pack de iconos haya cargado justo cuando se está
+   perdiendo la red. */
+/* El contorno usa currentColor, que ya es el color semántico de la variante:
+   así no hace falta un token de fondo por cada estado. */
+.rp-banner__glyph {
+  width: var(--rp-icon-size-sm);
+  height: var(--rp-icon-size-sm);
+  flex-shrink: 0;
+  display: grid;
+  place-items: center;
+  border-radius: 10px;
+  border: 1.5px solid currentColor;
+  color: inherit;
+  font-size: 1.05rem;
+  font-weight: 850;
+  line-height: 1;
 }
 
 /* ── Botón de acción principal de sección ───────────────────────────────── */

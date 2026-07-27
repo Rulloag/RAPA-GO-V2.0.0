@@ -2169,6 +2169,28 @@ export function AdminApplicationsPage(): JSX.Element {
     setSelected(updated);
   }
 
+  async function openApplication(item: ApplicationData): Promise<void> {
+    if (!session?.accessToken) return;
+
+    setError(null);
+
+    try {
+      const detail = await applicationsService.getApplication(
+        session.accessToken,
+        item.id,
+      );
+
+      setSelected(detail);
+    } catch (openError) {
+      setSelected(item);
+      setError(
+        openError instanceof Error
+          ? openError.message
+          : "No se pudo cargar el detalle completo de la postulación.",
+      );
+    }
+  }
+
   return (
     <IonPage>
       <IonHeader>
@@ -2275,7 +2297,7 @@ export function AdminApplicationsPage(): JSX.Element {
                 key={item.id}
                 button
                 onClick={() => {
-                  setSelected(item);
+                  void openApplication(item);
                 }}
                 detail
                 style={{

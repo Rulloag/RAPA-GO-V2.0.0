@@ -63,29 +63,6 @@ export const accountDeletionController = {
     return sendOk(reply, result.request);
   },
 
-  async requestAppCode(
-    request: FastifyRequest,
-    reply: FastifyReply,
-  ): Promise<FastifyReply> {
-    const token = bearer(request);
-    if (!token) return missingToken(reply);
-
-    const result = await service.requestAppVerification(token);
-
-    if (result.ok === false) {
-      return sendError(reply, {
-        code: result.code,
-        message: result.message,
-        statusCode: result.statusCode,
-      });
-    }
-
-    return sendOk(reply, {
-      message: result.message,
-      expiresMinutes: result.expiresMinutes,
-    });
-  },
-
   async create(
     request: FastifyRequest,
     reply: FastifyReply,

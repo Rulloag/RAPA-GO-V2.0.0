@@ -6,15 +6,6 @@ export async function accountDeletionRoutes(
   fastify: FastifyInstance,
 ): Promise<void> {
   fastify.get("/me", accountDeletionController.getMine);
-  fastify.post(
-    "/reauth/code",
-    {
-      config: {
-        rateLimit: { max: 5, timeWindow: "15 minutes" },
-      },
-    },
-    accountDeletionController.requestAppCode,
-  );
   fastify.post("/requests", accountDeletionController.create);
 
   fastify.post(

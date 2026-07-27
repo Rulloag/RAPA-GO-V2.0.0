@@ -23,6 +23,7 @@ import {
   eventTickets,
   facebookLoginExchanges,
   notifications,
+  oauthIdentities,
   passengerProfiles,
   paymentOrders,
   payments,
@@ -36,6 +37,7 @@ import {
   wallets,
 } from "../../db/schema/index.js";
 import { AppError } from "../../shared/errors/AppError.js";
+import { formatDatabaseErrorDetails } from "../../shared/errors/databaseErrorDetails.js";
 import type {
   AccountDeletionAdminResponse,
   AccountDeletionClientSnapshot,
@@ -94,6 +96,7 @@ function toPublicResponse(
     status: row.status as AccountDeletionRequestStatus,
     adminNote: row.adminNote,
     requestedAt: row.requestedAt.toISOString(),
+    verifiedAt: row.verifiedAt.toISOString(),
     deadlineAt: row.deadlineAt.toISOString(),
     deferredUntil: iso(row.deferredUntil),
     decisionReasonCode: row.decisionReasonCode,
@@ -103,6 +106,11 @@ function toPublicResponse(
     completedAt: iso(row.completedAt),
     failedAt: iso(row.failedAt),
     failureReason: row.failureReason,
+    appleRevocationStatus:
+      row.appleRevocationStatus as AccountDeletionRequestResponse["appleRevocationStatus"],
+    appleRevocationAttemptedAt: iso(row.appleRevocationAttemptedAt),
+    appleRevokedAt: iso(row.appleRevokedAt),
+    appleRevocationError: row.appleRevocationError,
   };
 }
 
@@ -111,6 +119,81 @@ function newTrackingCode(): string {
     .toString("hex")
     .slice(0, 16)
     .toUpperCase()}`;
+}
+
+type DatabaseErrorDetails = {
+  message: string;
+  code: string | null;
+  detail: string | null;
+  hint: string | null;
+  constraint: string | null;
+  schema: string | null;
+  table: string | null;
+  column: string | null;
+};
+
+function getDatabaseErrorDetails(error: unknown): DatabaseErrorDetails {
+  let current: unknown = error;
+  const visited = new Set<unknown>();
+
+  for (let depth = 0; depth < 8; depth += 1) {
+    if (!current || typeof current !== "object" || visited.has(current)) {
+      break;
+    }
+
+    visited.add(current);
+
+    const candidate = current as {
+      message?: unknown;
+      code?: unknown;
+      detail?: unknown;
+      hint?: unknown;
+      constraint?: unknown;
+      schema?: unknown;
+      table?: unknown;
+      column?: unknown;
+      cause?: unknown;
+    };
+
+    const hasPostgresDetails =
+      typeof candidate.code === "string" ||
+      typeof candidate.detail === "string" ||
+      typeof candidate.constraint === "string" ||
+      typeof candidate.table === "string" ||
+      typeof candidate.column === "string";
+
+    if (hasPostgresDetails) {
+      return {
+        message:
+          typeof candidate.message === "string"
+            ? candidate.message
+            : String(error),
+        code: typeof candidate.code === "string" ? candidate.code : null,
+        detail: typeof candidate.detail === "string" ? candidate.detail : null,
+        hint: typeof candidate.hint === "string" ? candidate.hint : null,
+        constraint:
+          typeof candidate.constraint === "string"
+            ? candidate.constraint
+            : null,
+        schema: typeof candidate.schema === "string" ? candidate.schema : null,
+        table: typeof candidate.table === "string" ? candidate.table : null,
+        column: typeof candidate.column === "string" ? candidate.column : null,
+      };
+    }
+
+    current = candidate.cause;
+  }
+
+  return {
+    message: error instanceof Error ? error.message : String(error),
+    code: null,
+    detail: null,
+    hint: null,
+    constraint: null,
+    schema: null,
+    table: null,
+    column: null,
+  };
 }
 
 export class AccountDeletionRepository {
@@ -128,7 +211,7 @@ export class AccountDeletionRepository {
       return rows[0] ? toPublicResponse(rows[0]) : null;
     } catch (error) {
       throw AppError.internal(
-        `Failed to load account deletion request: ${String(error)}`,
+        "Failed to load account deletion request: " + formatDatabaseErrorDetails(error),
       );
     }
   }
@@ -148,6 +231,7 @@ export class AccountDeletionRepository {
               "deferred",
               "approved",
               "processing",
+              "failed",
             ]),
           ),
         )
@@ -168,6 +252,7 @@ export class AccountDeletionRepository {
     input: CreateAccountDeletionRequestInput,
   ): Promise<AccountDeletionRequestResponse> {
     try {
+      const verifiedAt = new Date();
       const rows = await db
         .insert(accountDeletionRequests)
         .values({
@@ -175,11 +260,14 @@ export class AccountDeletionRepository {
           trackingCode: newTrackingCode(),
           requestChannel: "app",
           requesterRole,
-          reason: input.reason,
+          reason: input.reason?.trim() || null,
           comment: input.comment?.trim() || null,
           requesterSnapshot: input.requesterSnapshot ?? null,
           status: "pending",
-          deadlineAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+          verifiedAt,
+          deadlineAt: new Date(
+            verifiedAt.getTime() + 30 * 24 * 60 * 60 * 1000,
+          ),
         })
         .returning();
 
@@ -337,6 +425,7 @@ export class AccountDeletionRepository {
     input: CreateAccountDeletionRequestInput,
   ): Promise<AccountDeletionRequestResponse> {
     try {
+      const verifiedAt = new Date();
       const rows = await db
         .insert(accountDeletionRequests)
         .values({
@@ -345,11 +434,14 @@ export class AccountDeletionRepository {
           requestChannel: "web",
           contactEmailHash: emailHash,
           requesterRole,
-          reason: input.reason,
+          reason: input.reason?.trim() || null,
           comment: input.comment?.trim() || null,
           requesterSnapshot: null,
           status: "pending",
-          deadlineAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+          verifiedAt,
+          deadlineAt: new Date(
+            verifiedAt.getTime() + 30 * 24 * 60 * 60 * 1000,
+          ),
         })
         .returning();
 
@@ -388,7 +480,7 @@ export class AccountDeletionRepository {
 
       if (!updated) {
         throw AppError.notFound(
-          "No se encontró la solicitud de eliminación.",
+          "No se encontrÃ³ la solicitud de eliminaciÃ³n.",
         );
       }
 
@@ -425,6 +517,7 @@ export class AccountDeletionRepository {
         trackingCode: row.trackingCode,
         status: row.status as AccountDeletionRequestStatus,
         requestedAt: row.requestedAt.toISOString(),
+        verifiedAt: row.verifiedAt.toISOString(),
         deadlineAt: row.deadlineAt.toISOString(),
         deferredUntil: iso(row.deferredUntil),
         decisionReasonCode: row.decisionReasonCode,
@@ -485,7 +578,7 @@ export class AccountDeletionRepository {
     } catch (error) {
       if (error instanceof AppError) throw error;
       throw AppError.internal(
-        `Failed to load account deletion request: ${String(error)}`,
+        "Failed to load account deletion request: " + formatDatabaseErrorDetails(error),
       );
     }
   }
@@ -518,14 +611,64 @@ export class AccountDeletionRepository {
         },
         blockers: [],
         canApprove:
-          row.status === "pending" || row.status === "deferred",
+          row.status === "pending" ||
+          row.status === "deferred" ||
+          row.status === "failed",
       };
     }
 
+    const userRows = await db
+      .select()
+      .from(users)
+      .where(eq(users.id, userId))
+      .limit(1);
+
+    const user = userRows[0] ?? null;
+
+    /*
+     * The deletion list must not query every column from both profile tables.
+     * Production may legitimately have only the profile that matches the
+     * account role, and selecting the complete Drizzle model can reference
+     * optional columns that have not been deployed yet.
+     *
+     * Load only the fields required by AccountDeletionAdminResponse and only
+     * from the table that corresponds to the actual account role.
+     */
+    const passengerRows =
+      user?.role === "passenger"
+        ? await db
+            .select({
+              phone: passengerProfiles.phone,
+              preferredLanguage: passengerProfiles.preferredLanguage,
+              emergencyContactName:
+                passengerProfiles.emergencyContactName,
+              emergencyContactPhone:
+                passengerProfiles.emergencyContactPhone,
+            })
+            .from(passengerProfiles)
+            .where(eq(passengerProfiles.userId, userId))
+            .limit(1)
+        : [];
+
+    const driverRows =
+      user?.role === "driver"
+        ? await db
+            .select({
+              phone: driverProfiles.phone,
+              vehicleBrand: driverProfiles.vehicleBrand,
+              vehicleModel: driverProfiles.vehicleModel,
+              vehicleYear: driverProfiles.vehicleYear,
+              vehiclePlate: driverProfiles.vehiclePlate,
+              vehicleColor: driverProfiles.vehicleColor,
+              licenseNumber: driverProfiles.licenseNumber,
+              licenseExpiry: driverProfiles.licenseExpiry,
+            })
+            .from(driverProfiles)
+            .where(eq(driverProfiles.userId, userId))
+            .limit(1)
+        : [];
+
     const [
-      userRows,
-      passengerRows,
-      driverRows,
       documentRows,
       rideRows,
       paymentRows,
@@ -536,20 +679,6 @@ export class AccountDeletionRepository {
       ticketRows,
       supportRows,
     ] = await Promise.all([
-      db.select().from(users).where(eq(users.id, userId)).limit(1),
-
-      db
-        .select()
-        .from(passengerProfiles)
-        .where(eq(passengerProfiles.userId, userId))
-        .limit(1),
-
-      db
-        .select()
-        .from(driverProfiles)
-        .where(eq(driverProfiles.userId, userId))
-        .limit(1),
-
       db
         .select()
         .from(userDocuments)
@@ -612,8 +741,6 @@ export class AccountDeletionRepository {
         .from(supportCases)
         .where(eq(supportCases.requesterUserId, userId)),
     ]);
-
-    const user = userRows[0] ?? null;
 
     const applicationRows = user
       ? await db
@@ -686,7 +813,7 @@ export class AccountDeletionRepository {
 
     if (activeServiceBookings > 0) {
       blockers.push(
-        `La cuenta tiene ${activeServiceBookings} reserva(s) turística(s) activa(s).`,
+        `La cuenta tiene ${activeServiceBookings} reserva(s) turÃ­stica(s) activa(s).`,
       );
     }
 
@@ -792,10 +919,86 @@ export class AccountDeletionRepository {
       blockers,
 
       canApprove:
-        (row.status === "pending" || row.status === "deferred") &&
+        (
+          row.status === "pending" ||
+          row.status === "deferred" ||
+          row.status === "failed"
+        ) &&
         user?.status !== "deleted" &&
         blockers.length === 0,
     };
+  }
+
+  async recordAppleRevocationResult(
+    requestId: string,
+    result: {
+      applicable: boolean;
+      revokedTokens: number;
+      alreadyInvalidTokens: number;
+    },
+  ): Promise<void> {
+    const now = new Date();
+    const allAlreadyInvalid =
+      result.applicable &&
+      result.revokedTokens > 0 &&
+      result.revokedTokens === result.alreadyInvalidTokens;
+
+    try {
+      await db
+        .update(accountDeletionRequests)
+        .set({
+          appleRevocationStatus: result.applicable
+            ? allAlreadyInvalid
+              ? "already_invalid"
+              : "revoked"
+            : "not_applicable",
+          appleRevocationAttemptedAt: result.applicable ? now : null,
+          appleRevokedAt: result.applicable ? now : null,
+          appleRevocationError: null,
+          failureReason: null,
+          failedAt: null,
+          updatedAt: now,
+        })
+        .where(eq(accountDeletionRequests.id, requestId));
+    } catch (error) {
+      throw AppError.internal(
+        `Failed to persist Apple revocation result: ${String(error)}`,
+      );
+    }
+  }
+
+  async markAppleRevocationFailure(
+    requestId: string,
+    error: unknown,
+  ): Promise<void> {
+    const now = new Date();
+    const safeMessage =
+      error instanceof AppError
+        ? `${error.code}: ${error.message}`
+        : error instanceof Error
+          ? error.message
+          : String(error);
+
+    try {
+      await db
+        .update(accountDeletionRequests)
+        .set({
+          status: "failed",
+          appleRevocationStatus: "failed",
+          appleRevocationAttemptedAt: now,
+          appleRevocationError: safeMessage.slice(0, 1000),
+          failedAt: now,
+          failureReason:
+            "No se pudo revocar la vinculación de Sign in with Apple. La solicitud puede reintentarse desde Administración después de corregir la configuración o volver a autenticar la cuenta.",
+          updatedAt: now,
+        })
+        .where(eq(accountDeletionRequests.id, requestId));
+    } catch (persistError) {
+      console.error(
+        "[AccountDeletion] failed to persist Apple revocation failure",
+        persistError,
+      );
+    }
   }
 
   async defer(
@@ -811,11 +1014,17 @@ export class AccountDeletionRepository {
       const rows = await db
         .update(accountDeletionRequests)
         .set({
-          status: "deferred",
+          status:
+            input.reasonCode === "identity_unverified"
+              ? "identity_not_verified"
+              : "deferred",
           reviewedByUserId: adminUserId,
           adminNote: input.note,
           reviewedAt: new Date(),
-          deferredUntil: input.deferUntil,
+          deferredUntil:
+            input.reasonCode === "identity_unverified"
+              ? null
+              : input.deferUntil,
           decisionReasonCode: input.reasonCode,
           updatedAt: new Date(),
           failureReason: null,
@@ -856,9 +1065,31 @@ export class AccountDeletionRepository {
   ): Promise<AccountDeletionRequestResponse> {
     const now = new Date();
     const anonymizedEmail = `deleted+${userId}@deleted.rapago.local`;
+    let currentStep = "inicializaciÃ³n";
 
     try {
       return await db.transaction(async (tx) => {
+        currentStep = "cargar cuenta";
+
+        const userRows = await tx
+          .select({
+            id: users.id,
+            email: users.email,
+          })
+          .from(users)
+          .where(eq(users.id, userId))
+          .limit(1);
+
+        const account = userRows[0];
+
+        if (!account) {
+          throw AppError.notFound(
+            "No se encontrÃ³ la cuenta asociada a la solicitud.",
+          );
+        }
+
+        currentStep = "aprobar solicitud";
+
         const approvedRows = await tx
           .update(accountDeletionRequests)
           .set({
@@ -866,12 +1097,20 @@ export class AccountDeletionRepository {
             reviewedByUserId: adminUserId,
             adminNote,
             reviewedAt: now,
+            processingAt: null,
+            completedAt: null,
+            failedAt: null,
+            failureReason: null,
             updatedAt: now,
           })
           .where(
             and(
               eq(accountDeletionRequests.id, requestId),
-              inArray(accountDeletionRequests.status, ["pending", "deferred"]),
+              inArray(accountDeletionRequests.status, [
+                "pending",
+                "deferred",
+                "failed",
+              ]),
             ),
           )
           .returning();
@@ -880,10 +1119,12 @@ export class AccountDeletionRepository {
           throw new AppError({
             code: "ACCOUNT_DELETION_NOT_PENDING",
             message:
-              "La solicitud ya fue revisada o no se encuentra pendiente.",
+              "La solicitud ya fue completada o no se encuentra disponible para revisiÃ³n.",
             statusCode: 409,
           });
         }
+
+        currentStep = "marcar procesamiento";
 
         await tx
           .update(accountDeletionRequests)
@@ -893,6 +1134,8 @@ export class AccountDeletionRepository {
             updatedAt: now,
           })
           .where(eq(accountDeletionRequests.id, requestId));
+
+        currentStep = "revocar sesiones";
 
         await tx
           .update(authSessions)
@@ -914,13 +1157,14 @@ export class AccountDeletionRepository {
             ),
           );
 
-        // Datos de autenticación y recuperación.
+        currentStep = "eliminar credenciales";
+
         await tx.execute(
-          sql`DELETE FROM auth_credentials WHERE user_id = ${userId}::uuid`,
+          sql`DELETE FROM public.auth_credentials WHERE user_id = ${userId}::uuid`,
         );
 
         await tx.execute(
-          sql`DELETE FROM password_reset_tokens WHERE user_id = ${userId}::uuid`,
+          sql`DELETE FROM public.password_reset_tokens WHERE user_id = ${userId}::uuid`,
         );
 
         await tx
@@ -928,94 +1172,120 @@ export class AccountDeletionRepository {
           .where(eq(authIdentities.userId, userId));
 
         await tx
+          .delete(oauthIdentities)
+          .where(eq(oauthIdentities.userId, userId));
+
+        await tx
           .delete(facebookLoginExchanges)
           .where(eq(facebookLoginExchanges.userId, userId));
 
-        // Información privada que no debe conservarse después del cierre.
+        currentStep = "eliminar datos privados";
+
         await tx.execute(
-          sql`DELETE FROM payment_methods WHERE user_id = ${userId}::uuid`,
+          sql`DELETE FROM public.payment_methods WHERE user_id = ${userId}::uuid`,
         );
 
         await tx.execute(
-          sql`DELETE FROM user_bank_accounts WHERE user_id = ${userId}::uuid`,
+          sql`DELETE FROM public.user_bank_accounts WHERE user_id = ${userId}::uuid`,
         );
 
         await tx.execute(
-          sql`DELETE FROM user_documents WHERE user_id = ${userId}::uuid`,
+          sql`DELETE FROM public.user_documents WHERE user_id = ${userId}::uuid`,
         );
 
         await tx.execute(
-          sql`DELETE FROM passenger_profiles WHERE user_id = ${userId}::uuid`,
+          sql`DELETE FROM public.passenger_profiles WHERE user_id = ${userId}::uuid`,
         );
 
         await tx.execute(
-          sql`DELETE FROM driver_profiles WHERE user_id = ${userId}::uuid`,
+          sql`DELETE FROM public.driver_profiles WHERE user_id = ${userId}::uuid`,
         );
 
         await tx.execute(
-          sql`DELETE FROM driver_statuses WHERE driver_user_id = ${userId}::uuid`,
+          sql`DELETE FROM public.driver_statuses WHERE driver_user_id = ${userId}::uuid`,
         );
 
         await tx.execute(
-          sql`DELETE FROM notifications WHERE user_id = ${userId}::uuid`,
+          sql`DELETE FROM public.notifications WHERE user_id = ${userId}::uuid`,
         );
 
         await tx.execute(
-          sql`DELETE FROM sync_queue WHERE user_id = ${userId}::uuid`,
+          sql`DELETE FROM public.sync_queue WHERE user_id = ${userId}::uuid`,
         );
 
         await tx.execute(
-          sql`DELETE FROM connectivity_logs WHERE user_id = ${userId}::uuid`,
+          sql`DELETE FROM public.connectivity_logs WHERE user_id = ${userId}::uuid`,
         );
 
-        // Las postulaciones se conservan como registro operativo, pero sin PII.
+        currentStep = "buscar postulaciÃ³n vinculada";
+
+        const applicationWhere = or(
+          eq(applications.userId, userId),
+          eq(applications.email, account.email),
+        );
+
+        const linkedApplications = await tx
+          .select({ id: applications.id })
+          .from(applications)
+          .where(applicationWhere)
+          .limit(1);
+
+        /*
+         * No todas las cuentas tienen una postulaciÃ³n. Evitamos ejecutar un
+         * UPDATE innecesario cuando no existe ninguna fila vinculada.
+         */
+        if (linkedApplications.length > 0) {
+          currentStep = "anonimizar postulaciÃ³n";
+
+          await tx
+            .update(applications)
+            .set({
+              status: "withdrawn_account_deleted",
+              firstName: "Cuenta",
+              lastName: "Eliminada",
+              email: anonymizedEmail,
+              phone: "ELIMINADO",
+              rut: null,
+              birthDate: null,
+              city: null,
+              emergencyContactName: null,
+              emergencyContactPhone: null,
+              vehicleBrand: null,
+              vehicleModel: null,
+              vehicleYear: null,
+              vehiclePlate: null,
+              vehicleColor: null,
+              licenseNumber: null,
+              licenseExpiry: null,
+              idFrontUrl: null,
+              idBackUrl: null,
+              licenseFrontUrl: null,
+              licenseBackUrl: null,
+              certificateUrl: null,
+              profilePhotoUrl: null,
+              notes: null,
+              updatedAt: now,
+            })
+            .where(applicationWhere);
+        }
+
+        currentStep = "cerrar beneficios";
+
         await tx.execute(sql`
-          UPDATE applications
-          SET
-            status = 'withdrawn_account_deleted',
-            first_name = 'Cuenta',
-            last_name = 'Eliminada',
-            email = ${anonymizedEmail},
-            phone = 'ELIMINADO',
-            rut = NULL,
-            birth_date = NULL,
-            city = NULL,
-            emergency_contact_name = NULL,
-            emergency_contact_phone = NULL,
-            vehicle_brand = NULL,
-            vehicle_model = NULL,
-            vehicle_year = NULL,
-            vehicle_plate = NULL,
-            vehicle_color = NULL,
-            license_number = NULL,
-            license_expiry = NULL,
-            id_front_url = NULL,
-            id_back_url = NULL,
-            license_front_url = NULL,
-            license_back_url = NULL,
-            certificate_url = NULL,
-            profile_photo_url = NULL,
-            notes = NULL,
-            updated_at = ${now}
+          UPDATE public.wallets
+          SET status = 'closed', balance = 0, updated_at = CURRENT_TIMESTAMP
           WHERE user_id = ${userId}::uuid
         `);
 
-        // Beneficios: la aprobación solo se permite con saldo cero.
         await tx.execute(sql`
-          UPDATE wallets
-          SET status = 'closed', balance = 0, updated_at = ${now}
-          WHERE user_id = ${userId}::uuid
-        `);
-
-        await tx.execute(sql`
-          UPDATE referral_codes
+          UPDATE public.referral_codes
           SET is_active = FALSE
           WHERE user_id = ${userId}::uuid
         `);
 
-        // No se borran viajes, pagos, comprobantes ni aceptaciones legales.
-        // Se conserva el usuario anonimizado para mantener integridad referencial.
-        await tx
+        currentStep = "anonimizar usuario";
+
+        const anonymizedUsers = await tx
           .update(users)
           .set({
             email: anonymizedEmail,
@@ -1025,7 +1295,16 @@ export class AccountDeletionRepository {
             isVerified: false,
             updatedAt: now,
           })
-          .where(eq(users.id, userId));
+          .where(eq(users.id, userId))
+          .returning({ id: users.id });
+
+        if (!anonymizedUsers[0]) {
+          throw AppError.internal(
+            "La anonimizaciÃ³n del usuario no modificÃ³ ninguna fila.",
+          );
+        }
+
+        currentStep = "completar solicitud";
 
         const completedRows = await tx
           .update(accountDeletionRequests)
@@ -1061,6 +1340,16 @@ export class AccountDeletionRepository {
         return toPublicResponse(completed);
       });
     } catch (error) {
+      const databaseError = getDatabaseErrorDetails(error);
+
+      console.error("[AccountDeletion] approveAndAnonymize failed", {
+        requestId,
+        userId,
+        step: currentStep,
+        databaseError,
+        error,
+      });
+
       if (error instanceof AppError) throw error;
 
       await db
@@ -1069,14 +1358,22 @@ export class AccountDeletionRepository {
           status: "failed",
           failedAt: new Date(),
           failureReason:
-            "No se pudo completar la anonimización. Reintenta desde Admin.",
+            `No se pudo completar la anonimizaciÃ³n en el paso "${currentStep}". ` +
+            "Reintenta desde Admin.",
           updatedAt: new Date(),
         })
         .where(eq(accountDeletionRequests.id, requestId))
-        .catch(() => {});
+        .catch((failureUpdateError) => {
+          console.error(
+            "[AccountDeletion] failed to persist failure status",
+            failureUpdateError,
+          );
+        });
 
       throw AppError.internal(
-        `Failed to approve account deletion request: ${String(error)}`,
+        `Failed to approve account deletion request at step "${currentStep}". ` +
+          `Database code: ${databaseError.code ?? "unknown"}. ` +
+          `Cause: ${databaseError.message}`,
       );
     }
   }
@@ -1104,14 +1401,14 @@ export class AccountDeletionRepository {
           userId: admin.id,
           type: "account_deletion_request",
           title: "Nueva solicitud para eliminar cuenta",
-          message: `${requesterName} (${requesterRole}) solicitó eliminar su cuenta.`,
+          message: `${requesterName} (${requesterRole}) solicitÃ³ eliminar su cuenta.`,
           entityType: "account_deletion_request",
           entityId: requestId,
           actionUrl: "/admin",
         })),
       );
     } catch {
-      // La notificación no debe impedir crear la solicitud.
+      // La notificaciÃ³n no debe impedir crear la solicitud.
     }
   }
 
@@ -1125,7 +1422,7 @@ export class AccountDeletionRepository {
       await db.insert(notifications).values({
         userId,
         type: "account_deletion_deferred",
-        title: "Solicitud de eliminación aplazada",
+        title: "Solicitud de eliminaciÃ³n aplazada",
         message: `Tu solicitud sigue vigente. Causa temporal: ${note}`,
         entityType: "account_deletion_request",
         entityId: requestId,
@@ -1135,7 +1432,7 @@ export class AccountDeletionRepository {
             : "/passenger/profile",
       });
     } catch {
-      // La respuesta administrativa sigue siendo válida aunque falle el aviso.
+      // La respuesta administrativa sigue siendo vÃ¡lida aunque falle el aviso.
     }
   }
 }

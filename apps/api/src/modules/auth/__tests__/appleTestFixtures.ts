@@ -18,10 +18,10 @@ let counter = 0;
 export async function generateAppleKeyPair(): Promise<AppleTestKeyPair> {
   counter += 1;
   const kid = `test-key-${counter}`;
-  const { publicKey, privateKey } = await generateKeyPair("ES256", { extractable: true });
+  const { publicKey, privateKey } = await generateKeyPair("RS256", { extractable: true });
   const jwk = await exportJWK(publicKey);
   jwk["kid"] = kid;
-  jwk["alg"] = "ES256";
+  jwk["alg"] = "RS256";
   jwk["use"] = "sig";
   const pkcs8 = await exportPKCS8(privateKey);
   return { publicKey, privateKey, kid, jwk: jwk as Record<string, unknown>, pkcs8 };
@@ -64,4 +64,62 @@ export function defaultClaims(overrides: Record<string, unknown> = {}): Record<s
     is_private_email: false,
     ...overrides,
   };
+}
+
+/**
+ * Helpers used by the end-to-end Apple security test.
+ * Apple signs identity tokens with RS256, while the RAPA GO client secret
+ * is signed with an ES256 private key.
+ */
+export async function createRsaSigningKey(): Promise<{
+  publicKey: CryptoKey;
+  privateKey: CryptoKey;
+  kid: string;
+  jwk: Record<string, unknown>;
+}> {
+  const { publicKey, privateKey } = await generateKeyPair("RS256", {
+    extractable: true,
+  });
+  const kid = `apple-rsa-test-${Date.now()}`;
+  const jwk = await exportJWK(publicKey);
+  jwk["kid"] = kid;
+  jwk["alg"] = "RS256";
+  jwk["use"] = "sig";
+
+  return {
+    publicKey,
+    privateKey,
+    kid,
+    jwk: jwk as Record<string, unknown>,
+  };
+}
+
+export async function createEcPrivateKeyPem(): Promise<string> {
+  const { privateKey } = await generateKeyPair("ES256", {
+    extractable: true,
+  });
+  return exportPKCS8(privateKey);
+}
+
+export function jsonFetch(status: number, body: unknown): typeof fetch {
+  return (async () =>
+    new Response(JSON.stringify(body), {
+      status,
+      headers: { "content-type": "application/json" },
+    })) as unknown as typeof fetch;
+}
+
+export async function signIdentityToken(
+  privateKey: CryptoKey,
+  kid: string,
+  overrides: Record<string, unknown> = {},
+): Promise<string> {
+  return new SignJWT({
+    ...defaultClaims({
+      sub: "001234.rapago.apple.subject",
+      ...overrides,
+    }),
+  })
+    .setProtectedHeader({ alg: "RS256", kid })
+    .sign(privateKey);
 }

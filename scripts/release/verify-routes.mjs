@@ -50,18 +50,31 @@ console.log(`OK: React DOM único ${mobilePackage.dependencies?.["react-dom"]} e
 
 requireText(
   app,
-  "<RouteErrorBoundary>",
-  "La aplicación completa queda protegida contra una pantalla negra",
+  "<AppRouter />",
+  "La aplicación monta el router principal",
 );
-requireText(appRouter, "<Switch>", "Router principal usa Switch estable");
+requireText(
+  appRouter,
+  "<RouteErrorBoundary>",
+  "Todas las ramas del router tienen recuperación ante errores",
+);
+requireText(
+  appRouter,
+  "function StandaloneRoutes()",
+  "Las rutas públicas y autónomas están separadas de los layouts con pestañas",
+);
+requireText(
+  appRouter,
+  '<IonRouterOutlet animated={false} className="rapago-root-outlet">',
+  "Las rutas autónomas usan un único IonRouterOutlet raíz",
+);
 forbidText(
   appRouter,
-  "<IonRouterOutlet>\n        <Switch>",
-  "Router principal no anida Switch dentro de IonRouterOutlet",
+  "<Switch>",
+  "El router raíz no anida Switch dentro de IonRouterOutlet",
 );
-requireText(appRouter, "<RouteErrorBoundary>", "Existe pantalla de recuperación ante errores");
-requireText(appRouter, "<Redirect exact from={ROUTES.AUTH.BASE}", "La base /auth redirige al inicio");
-requireText(roleLayout, "<IonRouterOutlet>{children}</IonRouterOutlet>", "Tabs usa IonRouterOutlet con rutas directas");
+requireText(appRouter, '<Route exact path={ROUTES.AUTH.BASE} component={LoginPage} />', "La base /auth muestra el login");
+requireText(roleLayout, "{validRouteChildren}", "Tabs filtra rutas nulas y usa hijos directos en IonRouterOutlet");
 
 for (const [name, source, base] of [
   ["pasajero", passenger, "ROUTES.PASSENGER.BASE"],
@@ -72,15 +85,15 @@ for (const [name, source, base] of [
 ]) {
   forbidText(source, "<Switch>", `${name}: no usa Switch dentro del outlet de tabs`);
   requireText(source, `<Redirect exact from={${base}}`, `${name}: la ruta base redirige a su inicio`);
-  requireText(source, "<Route render={() => <Redirect to={ROUTES.NOT_FOUND} />} />", `${name}: ruta desconocida muestra 404`);
+  requireText(source, "<UnknownRolePathRedirect", `${name}: ruta desconocida muestra 404`);
 }
 
-forbidText(appleButton, "if (!isAvailable) return null", "Apple no desaparece del login web");
-requireText(appleButton, "Continuar con Apple", "Botón Apple visible");
+requireText(appleButton, "if (!isAvailable) return null", "Apple se muestra únicamente cuando el flujo nativo está disponible");
+requireText(appleButton, "Sign in with Apple", "Botón Apple usa la etiqueta oficial");
 requireText(login, 'outcome.kind === "unavailable"', "Login explica Apple fuera de iPhone");
 requireText(vite, 'base: "/"', "Vite genera assets desde la raíz");
 requireText(vite, 'appType: "spa"', "Vite está configurado como SPA");
 requireText(vite, 'dedupe: ["react", "react-dom", "react-router", "react-router-dom"]', "Vite evita duplicar React y React Router");
-requireText(htaccess, "RewriteRule ^ index.html [L]", "Hostinger redirige rutas SPA a index.html");
+requireText(htaccess, "RewriteRule ^ index.html [END]", "Hostinger redirige rutas SPA a index.html");
 
 console.log("\nRUTAS RAPA GO: VERIFICACION OK");

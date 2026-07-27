@@ -35,6 +35,20 @@ describe("MercadoPagoProvider.verifyWebhookSignature", () => {
     )).toBe(true);
   });
 
+  it("uses the official data.id query value when it is not duplicated in the body", () => {
+    const v1 = buildMPSignature(dataId, requestId, ts, secret);
+    const sig = `ts=${ts},v1=${v1}`;
+
+    expect(provider.verifyWebhookSignature(
+      { type: "payment" },
+      {
+        "x-signature": sig,
+        "x-request-id": requestId,
+        "x-data-id": dataId,
+      },
+    )).toBe(true);
+  });
+
   it("returns false when v1 does not match", () => {
     const sig = `ts=${ts},v1=badhash000000000000000000000000000000000000000000000000000000000000`;
 
@@ -51,13 +65,13 @@ describe("MercadoPagoProvider.verifyWebhookSignature", () => {
     )).toBe(false);
   });
 
-  it("returns true when MERCADOPAGO_WEBHOOK_SECRET is not set (dev bypass)", () => {
+  it("returns false when MERCADOPAGO_WEBHOOK_SECRET is not set (fails closed)", () => {
     delete process.env["MERCADOPAGO_WEBHOOK_SECRET"];
 
     expect(provider.verifyWebhookSignature(
       { type: "payment", data: { id: dataId } },
       {},
-    )).toBe(true);
+    )).toBe(false);
   });
 
   it("returns false when MERCADOPAGO_ACCESS_TOKEN is missing", () => {

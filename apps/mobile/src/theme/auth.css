@@ -75,6 +75,18 @@
   background: var(--rp-icon-bg) !important;
 }
 
+/* ── Olvidé mi contraseña: tarjeta única, centrada verticalmente ──────────
+   Es la única pantalla de auth con un solo bloque de contenido (sin pasos
+   extra ni modales), así que se ve mejor a media altura que pegada arriba.
+   Login/Registro no usan esto: su contenido es más largo y ya ocupa el alto
+   de la pantalla. */
+.rapago-forgot-content::part(scroll) {
+  min-height: 100%;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
 /* ── Campos ─────────────────────────────────────────────────────────────── */
 .rapago-auth-dark .rapago-auth-field {
   --background: var(--rp-field-bg) !important;

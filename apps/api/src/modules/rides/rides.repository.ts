@@ -11,6 +11,7 @@ import {
 } from "../../db/schema/index.js";
 import { alias } from "drizzle-orm/pg-core";
 import { AppError } from "../../shared/errors/AppError.js";
+import { formatDatabaseErrorDetails } from "../../shared/errors/databaseErrorDetails.js";
 import type { RideRequest } from "../../db/schema/index.js";
 import {
   ridePolicyCharges,
@@ -529,7 +530,8 @@ export class RidesRepository {
     } catch (err) {
       if (err instanceof AppError) throw err;
       throw AppError.internal(
-        `Failed to create ride request with policy charges and benefits: ${String(err)}`,
+        "Failed to create ride request with policy charges and benefits: " +
+          formatDatabaseErrorDetails(err),
       );
     }
   }
@@ -1005,11 +1007,13 @@ export class RidesRepository {
 
   async activateAfterApprovedPayment(id: string): Promise<RideRequest | null> {
     try {
+      const activatedAt = new Date();
       const [row] = await db
         .update(rideRequests)
         .set({
           status: "requested",
-          updatedAt: new Date(),
+          requestedAt: activatedAt,
+          updatedAt: activatedAt,
         })
         .where(
           and(

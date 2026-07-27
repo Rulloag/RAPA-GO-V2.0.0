@@ -2,12 +2,12 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-    <key>CAPACITOR_DEBUG</key>
+	<key>CAPACITOR_DEBUG</key>
 	<string>$(CAPACITOR_DEBUG)</string>
 	<key>CFBundleDevelopmentRegion</key>
 	<string>en</string>
 	<key>CFBundleDisplayName</key>
-        <string>RAPA GO</string>
+	<string>RAPA GO</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
@@ -47,5 +47,15 @@
 	</array>
 	<key>UIViewControllerBasedStatusBarAppearance</key>
 	<true/>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>RAPA GO usa tu ubicación para mostrar el mapa, calcular el punto de recogida y ejecutar viajes activos.</string>
+	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+	<string>Durante un viaje activo, RAPA GO necesita actualizar la ubicación del conductor en segundo plano para que el pasajero y la operación puedan seguir la ruta. El seguimiento se detiene al finalizar o cancelar el viaje.</string>
+	<key>NSLocationAlwaysUsageDescription</key>
+	<string>Durante un viaje activo, RAPA GO necesita actualizar la ubicación del conductor en segundo plano. El seguimiento se detiene al finalizar o cancelar el viaje.</string>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>location</string>
+	</array>
 </dict>
 </plist>

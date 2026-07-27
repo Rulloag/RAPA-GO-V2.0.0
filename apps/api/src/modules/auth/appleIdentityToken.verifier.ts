@@ -28,7 +28,7 @@ function toBool(value: unknown): boolean {
  * published requirements:
  *  - signature verified against Apple's live JWKS (https://appleid.apple.com/auth/keys),
  *    selecting the key by the token's `kid`;
- *  - algorithm restricted to ES256 only (checked both before and during
+ *  - algorithm restricted to RS256 only (checked both before and during
  *    verification — a token asserting any other alg is rejected without
  *    ever fetching a key for it);
  *  - `iss` must be exactly "https://appleid.apple.com";
@@ -86,10 +86,10 @@ export class AppleIdentityTokenVerifier {
       throw new AppError({ code: "AUTH_APPLE_TOKEN_INVALID", message: "Malformed Apple identity token.", statusCode: 401 });
     }
 
-    if (header.alg !== "ES256") {
+    if (header.alg !== "RS256") {
       throw new AppError({
         code: "AUTH_APPLE_TOKEN_INVALID",
-        message: "Apple identity token must be signed with ES256.",
+        message: "Apple identity token must be signed with RS256.",
         statusCode: 401,
       });
     }
@@ -109,11 +109,11 @@ export class AppleIdentityTokenVerifier {
 
     let payload;
     try {
-      const key = await importJWK(jwk, "ES256");
+      const key = await importJWK(jwk, "RS256");
       const result = await jwtVerify(identityToken, key, {
         issuer:     APPLE_ISSUER,
         audience:   config.allowedClientIds,
-        algorithms: ["ES256"],
+        algorithms: ["RS256"],
       });
       payload = result.payload;
     } catch {

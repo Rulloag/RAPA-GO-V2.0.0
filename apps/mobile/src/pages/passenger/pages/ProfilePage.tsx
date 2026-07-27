@@ -1048,6 +1048,7 @@ export function ProfileIndexPage(): JSX.Element {
         JSON.stringify(next),
       );
 
+
       if (next.email) {
         sessionStorage.setItem("rapago_profile_email", next.email);
         sessionStorage.setItem("rapago_passenger_email", next.email);
@@ -1060,6 +1061,7 @@ export function ProfileIndexPage(): JSX.Element {
         sessionStorage.setItem("rapago_profile_rut", next.rut);
         sessionStorage.setItem("rapago_passenger_rut", next.rut);
       }
+
 
       const {
         email: _email,
@@ -1553,18 +1555,22 @@ export function ProfileIndexPage(): JSX.Element {
             </IonButtons>
           )}
 
+
           <IonTitle className="rapago-profile-title">{profileText.profile}</IonTitle>
 
           <IonButtons slot="end">
             <IonButton
               className="rapago-profile-iconbtn"
+
               aria-label={
                 language === "es"
                   ? "Cambiar aplicación a inglés"
                   : "Switch app to Spanish"
               }
+
               title={language === "es" ? "Cambiar a English" : "Cambiar a Español"}
               onClick={() => handleLanguageChange(language === "es" ? "en" : "es")}
+
             >
               <IonIcon icon={languageOutline} slot="start" />
               {language === "es" ? "EN" : "ES"}

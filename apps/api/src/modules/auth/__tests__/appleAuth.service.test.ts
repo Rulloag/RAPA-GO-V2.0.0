@@ -3,6 +3,67 @@ import { randomBytes } from "node:crypto";
 import { AppleAuthService } from "../appleAuth.service.js";
 import { AppError } from "../../../shared/errors/AppError.js";
 
+
+vi.mock("../../../db/client.js", () => {
+  const activeLegalDocuments = [
+    {
+      id: "legal-terms",
+      type: "terms_and_conditions",
+      version: "2.0",
+      isActive: true,
+    },
+    {
+      id: "legal-privacy",
+      type: "privacy_policy",
+      version: "2.0",
+      isActive: true,
+    },
+    {
+      id: "legal-users",
+      type: "user_conditions",
+      version: "2.0",
+      isActive: true,
+    },
+  ];
+
+  const makeSelectChain = () => {
+    const chain: Record<string, unknown> = {};
+    chain["from"] = vi.fn(() => chain);
+    chain["where"] = vi.fn(() => chain);
+    chain["then"] = (
+      resolve: (value: unknown) => unknown,
+      reject: (reason: unknown) => unknown,
+    ) => Promise.resolve(activeLegalDocuments).then(resolve, reject);
+    return chain;
+  };
+
+  const transaction = vi.fn(
+    async (
+      callback: (tx: {
+        insert: () => {
+          values: (value: unknown) => Promise<void>;
+        };
+      }) => Promise<unknown>,
+    ) =>
+      callback({
+        insert: () => ({
+          values: vi.fn(async (_value: unknown) => undefined),
+        }),
+      }),
+  );
+
+  return {
+    db: {
+      select: vi.fn(() => makeSelectChain()),
+      transaction,
+      delete: vi.fn(() => ({
+        where: vi.fn(async () => undefined),
+      })),
+    },
+  };
+});
+
+
 const VALID_SUB = "001234.abcdef1234567890.1234";
 
 function baseClaims(overrides: Record<string, unknown> = {}) {
@@ -50,7 +111,7 @@ function buildFakes(opts: {
   const usersRepository = { findById: mockFindById, findByEmail: mockFindByEmail } as never;
   const identitiesRepository = {
     findByProviderAndSub:  mockFindByProviderAndSub,
-    updateEncryptedRefreshToken: mockUpdateRefreshToken,
+    updateProviderCredentials: mockUpdateRefreshToken,
     createUserWithIdentity: mockCreateUserWithIdentity,
   } as never;
   const auditService = { recordSafe: mockRecordSafe } as never;
@@ -87,9 +148,18 @@ function buildFakes(opts: {
   };
 }
 
+const PASSENGER_LEGAL_ACCEPTANCES = [
+  { legalDocumentId: "legal-terms", version: "2.0" },
+  { legalDocumentId: "legal-privacy", version: "2.0" },
+  { legalDocumentId: "legal-users", version: "2.0" },
+];
+
 const basePayload = {
   identityToken: "fake-identity-token",
   authorizationCode: "fake-authorization-code",
+  phone: "+56912345678",
+  passengerFareType: "chilean" as const,
+  legalAcceptances: PASSENGER_LEGAL_ACCEPTANCES,
 };
 
 describe("AppleAuthService.signIn", () => {
@@ -374,6 +444,7 @@ describe("AppleAuthService.signIn", () => {
 
     expect(fakes.mockUpdateRefreshToken).toHaveBeenCalledWith(
       "identity-existing2",
+      "cl.rapago.app",
       expect.not.stringContaining("apple-refresh-token-raw"),
     );
   });

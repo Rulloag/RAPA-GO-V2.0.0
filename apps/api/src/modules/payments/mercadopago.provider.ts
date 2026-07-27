@@ -207,9 +207,15 @@ export class MercadoPagoProvider implements PaymentProvider {
     const publicWebhookUrl = normalizePublicHttpsUrl(params.webhookUrl);
     const payerEmail = normalizePayerEmail(params.passengerEmail);
 
+    if (!publicReturnUrl) {
+      throw new Error(
+        "Mercado Pago requiere una URL HTTPS pública de retorno para confirmar el pago y publicar el viaje inmediatamente.",
+      );
+    }
+
     if (!publicWebhookUrl) {
       throw new Error(
-        "Mercado Pago requiere una URL HTTPS pÃºblica de webhook. El viaje no puede activarse usando solamente la URL de retorno.",
+        "Mercado Pago requiere una URL HTTPS pública de webhook como respaldo de seguridad.",
       );
     }
 
@@ -272,12 +278,6 @@ export class MercadoPagoProvider implements PaymentProvider {
         name: "sin payment_methods",
         payload: withoutKeys(preference, ["payment_methods"]),
       },
-      {
-        // Nunca quitamos notification_url: el webhook es la Ãºnica autoridad
-        // que puede desbloquear un viaje pagado con tarjeta.
-        name: "mÃ­nima conservando webhook",
-        payload: withoutKeys(preference, ["payment_methods", "back_urls", "auto_return"]),
-      },
     ];
 
     let lastError: { status: number; text: string; parsedMessage: string } | null = null;
@@ -325,7 +325,9 @@ export class MercadoPagoProvider implements PaymentProvider {
     try {
       const config = getConfig();
 
-      if (!config.webhookSecret) return true;
+      if (!config.webhookSecret) {
+        return false;
+      }
 
       const xSignature = headers["x-signature"] ?? "";
       const xRequestId = headers["x-request-id"] ?? "";
@@ -347,7 +349,14 @@ export class MercadoPagoProvider implements PaymentProvider {
 
       if (!ts || !v1) return false;
 
-      const dataId = String((payload["data"] as Record<string, unknown>)?.["id"] ?? "");
+      const dataId = String(
+        headers["x-data-id"] ??
+          (payload["data"] as Record<string, unknown> | undefined)?.["id"] ??
+          "",
+      ).trim();
+
+      if (!dataId || !xRequestId) return false;
+
       const manifest = `id:${dataId};request-id:${xRequestId};ts:${ts};`;
       const expected = crypto
         .createHmac("sha256", config.webhookSecret)
@@ -377,7 +386,11 @@ export class MercadoPagoProvider implements PaymentProvider {
       };
     }
 
-    const paymentId = String((payload["data"] as Record<string, unknown>)?.["id"] ?? "");
+    const paymentId = String(
+      _headers["x-data-id"] ??
+        (payload["data"] as Record<string, unknown> | undefined)?.["id"] ??
+        "",
+    ).trim();
 
     if (!paymentId) {
       return {

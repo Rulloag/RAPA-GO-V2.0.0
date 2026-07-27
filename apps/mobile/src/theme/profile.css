@@ -877,6 +877,13 @@
   color: var(--rp-muted) !important;
 }
 
+/* El motivo del fallo de una solicitud es la única línea que debe distinguirse
+   del resto del texto silenciado de arriba: más clases que la regla genérica
+   le ganan por especificidad. */
+.rapago-profile-page .rapago-profile-danger-slot .rp-card__danger {
+  color: var(--rp-danger-fg) !important;
+}
+
 .rapago-profile-page .rapago-profile-danger-slot ion-card ion-label {
   color: var(--rp-text) !important;
 }

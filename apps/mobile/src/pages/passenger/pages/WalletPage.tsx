@@ -1,5 +1,7 @@
 import {
   IonBadge,
+  IonCard,
+  IonCardContent,
   IonContent,
   IonIcon,
   IonPage,
@@ -26,8 +28,10 @@ import {
   cashRefundsService,
   type CashOverpaymentRefundData,
 } from "../../../features/cashRefunds/cashRefunds.service.js";
+
 import { RapagoSectionHeader } from "../../../components/RapagoSectionHeader.js";
 import { useRapagoSectionTheme } from "../../../theme/rapagoTheme.js";
+
 
 function formatClp(value: number | null | undefined): string {
   const amount = Math.max(0, Math.round(Number(value ?? 0)));
@@ -365,6 +369,77 @@ export default function WalletPage(): JSX.Element {
                     </p>
                   )}
                 </article>
+              );
+            })
+          )}
+
+          <h2
+            style={{
+              color: "#fff",
+              fontSize: "1.05rem",
+              fontWeight: 950,
+              margin: "24px 4px 12px",
+            }}
+          >
+            Devoluciones bancarias
+          </h2>
+
+          {refunds.length === 0 ? (
+            <IonCard
+              style={{
+                margin: 0,
+                borderRadius: 24,
+                background: "rgba(255,255,255,.96)",
+              }}
+            >
+              <IonCardContent style={{ textAlign: "center", padding: 22 }}>
+                <IonIcon icon={cashOutline} style={{ fontSize: 34, color: "#B7791F" }} />
+                <p style={{ margin: "8px 0 0", color: "#655B50", lineHeight: 1.45 }}>
+                  Las devoluciones de dinero pagado de más en efectivo aparecerán aquí.
+                </p>
+              </IonCardContent>
+            </IonCard>
+          ) : (
+            refunds.map((refund) => {
+              const info = refundStatusInfo(refund.status);
+              const amount = refund.approvedAmountClp ?? refund.requestedAmountClp;
+              return (
+                <IonCard
+                  key={refund.id}
+                  style={{
+                    margin: "0 0 12px",
+                    borderRadius: 24,
+                    background: "rgba(255,255,255,.97)",
+                  }}
+                >
+                  <IonCardContent>
+                    <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
+                      <div>
+                        <div style={{ fontWeight: 950 }}>Devolución a cuenta bancaria</div>
+                        <div style={{ fontSize: "1.2rem", fontWeight: 950, marginTop: 7 }}>
+                          {formatClp(amount)}
+                        </div>
+                      </div>
+                      <IonBadge color={info.color}>{info.label}</IonBadge>
+                    </div>
+                    <p style={{ margin: "12px 0 0", color: "#5F564B", fontSize: ".8rem" }}>
+                      {refund.bankAccount.bankName} · •••• {refund.bankAccount.accountNumberLast4}
+                    </p>
+                    <p style={{ margin: "6px 0 0", color: "#6B6257", fontSize: ".78rem" }}>
+                      Solicitada: {formatDate(refund.requestedAt)}
+                    </p>
+                    {refund.transferReference && (
+                      <p style={{ margin: "8px 0 0", color: "#14532D", fontSize: ".8rem", fontWeight: 850 }}>
+                        Comprobante: {refund.transferReference}
+                      </p>
+                    )}
+                    {refund.adminDecisionReason && (
+                      <p style={{ margin: "9px 0 0", padding: "9px 11px", borderRadius: 14, background: "#F5F1EA", color: "#463D34", fontSize: ".8rem" }}>
+                        <strong>Respuesta:</strong> {refund.adminDecisionReason}
+                      </p>
+                    )}
+                  </IonCardContent>
+                </IonCard>
               );
             })
           )}

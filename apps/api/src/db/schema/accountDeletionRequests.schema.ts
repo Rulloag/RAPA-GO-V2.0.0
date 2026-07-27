@@ -31,7 +31,7 @@ export const accountDeletionRequests = pgTable(
 
     requesterRole: varchar("requester_role", { length: 30 }).notNull(),
 
-    reason: varchar("reason", { length: 500 }).notNull(),
+    reason: varchar("reason", { length: 500 }),
 
     comment: text("comment"),
 
@@ -47,6 +47,10 @@ export const accountDeletionRequests = pgTable(
     adminNote: text("admin_note"),
 
     requestedAt: timestamp("requested_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+
+    verifiedAt: timestamp("verified_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
 
@@ -69,6 +73,23 @@ export const accountDeletionRequests = pgTable(
     failedAt: timestamp("failed_at", { withTimezone: true }),
 
     failureReason: text("failure_reason"),
+
+    appleRevocationStatus: varchar("apple_revocation_status", {
+      length: 30,
+    })
+      .notNull()
+      .default("not_applicable"),
+
+    appleRevocationAttemptedAt: timestamp(
+      "apple_revocation_attempted_at",
+      { withTimezone: true },
+    ),
+
+    appleRevokedAt: timestamp("apple_revoked_at", {
+      withTimezone: true,
+    }),
+
+    appleRevocationError: text("apple_revocation_error"),
 
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()

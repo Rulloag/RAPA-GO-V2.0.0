@@ -4735,7 +4735,6 @@ ion-modal.facebook-step-modal::part(content) {
   }
 
   .rapago-auth-tagline {
-    white-space: nowrap;
     font-size: clamp(0.72rem, 2.8vw, 0.9rem);
   }
 
@@ -4774,14 +4773,16 @@ ion-modal.facebook-step-modal::part(content) {
 }
 
 /* ==========================================================================
-   PROTOCOLO DE SESIÓN — TOAST DE CIERRE DE SESIÓN
-   Paleta: éxito = dorado · error = terracota · fondo = volcánico
+   PROTOCOLO DE SESIÓN — TOAST DE LOGIN / REGISTRO / CIERRE DE SESIÓN
+   Paleta: éxito = dorado · error = terracota · fondo = superficie del tema.
+   Usa los tokens --rp-* (rapago-shell.css) para responder a modo día/noche,
+   ya que data-rapago-theme se refleja en <html> y este toast es global.
    ========================================================================== */
 
 .rapago-session-toast {
   --border-radius: 18px;
-  --box-shadow: 0 18px 44px rgba(0, 0, 0, 0.5);
-  --color: #f6f2ec;
+  --box-shadow: var(--rp-shadow);
+  --color: var(--rp-text);
   --start: 16px;
   --end: 16px;
   --max-width: 440px;
@@ -4791,8 +4792,8 @@ ion-modal.facebook-step-modal::part(content) {
 }
 
 .rapago-session-toast::part(container) {
-  border: 1.5px solid rgba(214, 166, 64, 0.55);
-  background: linear-gradient(135deg, #1a1a1a 0%, #241d14 100%);
+  border: 1.5px solid var(--rp-border-c);
+  background: var(--rp-surface);
   padding: 14px 18px;
 }
 
@@ -4808,28 +4809,24 @@ ion-modal.facebook-step-modal::part(content) {
 
 /* Éxito — acento dorado */
 .rapago-session-toast--success::part(container) {
-  border-color: rgba(214, 166, 64, 0.75);
-  box-shadow:
-    0 18px 44px rgba(0, 0, 0, 0.5),
-    0 0 0 1px rgba(214, 166, 64, 0.18),
-    0 8px 28px rgba(214, 166, 64, 0.22);
+  border-color: var(--rp-border-strong);
+  box-shadow: var(--rp-shadow-accent);
 }
 
 .rapago-session-toast--success::part(icon) {
-  color: #f8d879;
+  color: var(--rp-icon-fg);
 }
 
 /* Error — acento terracota */
 .rapago-session-toast--error::part(container) {
-  border-color: rgba(184, 79, 46, 0.85);
+  border-color: var(--rp-danger-bd);
   box-shadow:
-    0 18px 44px rgba(0, 0, 0, 0.5),
-    0 0 0 1px rgba(184, 79, 46, 0.22),
-    0 8px 28px rgba(184, 79, 46, 0.28);
+    var(--rp-shadow),
+    0 0 0 1px var(--rp-danger-bd);
 }
 
 .rapago-session-toast--error::part(icon) {
-  color: #c16246;
+  color: var(--rp-danger-fg);
 }
 
 /* ==========================================================================

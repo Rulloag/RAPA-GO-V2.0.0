@@ -13,6 +13,7 @@ export const driverProfiles = pgTable("driver_profiles", {
   licenseNumber:   text("license_number"),
   licenseExpiry:   date("license_expiry"),
   profilePhotoUrl: text("profile_photo_url"),
+  vehiclePhotoUrl: text("vehicle_photo_url"),
   bio:             text("bio"),
   languages:       text("languages").array(),
   gender:          text("gender"),

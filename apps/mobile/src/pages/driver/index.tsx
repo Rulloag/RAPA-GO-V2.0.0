@@ -55,12 +55,23 @@ import {
   notificationsOutline,
   volumeHighOutline,
   logOutOutline,
+  moonOutline,
+  sunnyOutline,
+  radioOutline,
+  cellularOutline,
+  cloudOfflineOutline,
+  pauseCircleOutline,
 } from "ionicons/icons";
-import { driverProfileService } from "../../features/drivers/driverProfile.service";
+import { RapagoSectionHeader } from "../../components/RapagoSectionHeader";
+import { useRapagoSectionTheme } from "../../theme/rapagoTheme";
+import { driverProfileService, type DriverProfileData } from "../../features/drivers/driverProfile.service";
+import { driverStatusService } from "../../features/drivers/driverStatus.service";
 import { ActionCard } from "../../components/ActionCard";
 import { ROUTE_METADATA } from "../../navigation/routeConfig";
 import { ROUTES } from "../../navigation/routes";
 import { useAuth } from "../../features/auth";
+import { ROLE_LABELS, type PublicRole } from "../../features/auth/roles";
+import logoRapago from "../../theme/img/logo-rapago.jpeg";
 import { ridesService } from "../../features/rides/rides.service";
 import {
   MapFallback,
@@ -638,26 +649,30 @@ function RapaGoConnectivityBanner({
 
   return (
     <div
-      className={`rapago-connectivity-banner ${
-        isChecking ? "is-checking" : isOffline ? "is-offline" : "is-poor"
+      className={`rp-banner ${
+        isChecking
+          ? "rp-banner--info"
+          : isOffline
+            ? "rp-banner--error"
+            : "rp-banner--warn"
       }`}
       style={style}
       role="status"
       aria-live="polite"
     >
-      <div className="rapago-connectivity-banner__icon" aria-hidden="true">
+      <div className="rp-banner__glyph" aria-hidden="true">
         {isChecking ? "…" : isOffline ? "⌁" : "!"}
       </div>
 
-      <div className="rapago-connectivity-banner__copy">
-        <div className="rapago-connectivity-banner__title">
+      <div className="rp-banner__copy">
+        <div className="rp-banner__title">
           {isChecking
             ? "Revisando conexión"
             : isOffline
               ? "Modo sin internet"
               : "Modo conexión baja"}
         </div>
-        <div className="rapago-connectivity-banner__message">
+        <div className="rp-banner__message">
           {getRapaGoConnectivityMessage(role, status)}
         </div>
       </div>
@@ -812,15 +827,21 @@ function DriverRatingStarsDisplay({ summary }: { summary: DriverRatingSummary })
   const rounded = summary.count > 0 ? Math.round(summary.average) : 0;
 
   return (
-    <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-      <div style={{ display: "flex", gap: 1, fontSize: "1rem", lineHeight: 1 }}>
+    /* Las estrellas apagadas iban en blanco al 42%: sobre la superficie clara
+       del modo día desaparecían y no se distinguía 2 de 5 estrellas. Ahora la
+       apagada usa --rp-muted-soft, que tiene contraparte en ambos temas. */
+    <div className="rapago-driver-stars">
+      <div className="rapago-driver-stars__row">
         {[1, 2, 3, 4, 5].map((star) => (
-          <span key={star} style={{ color: star <= rounded ? "#f4c430" : "rgba(255,255,255,.42)" }}>
+          <span
+            key={star}
+            className={star <= rounded ? "is-on" : "is-off"}
+          >
             ★
           </span>
         ))}
       </div>
-      <div style={{ fontWeight: 950, fontSize: ".82rem" }}>
+      <div className="rapago-driver-stars__label">
         {summary.count > 0
           ? `${summary.average.toFixed(1)} · ${summary.count} calificación${summary.count === 1 ? "" : "es"}`
           : "Sin calificaciones todavía"}
@@ -3487,777 +3508,19 @@ function saveDriverAvailability(
   );
 }
 
-const DRIVER_HOME_STYLES = String.raw`
-  .driver-home-page {
-    --driver-ink: #171412;
-    --driver-volcanic: #1a1a1a;
-    --driver-gold: #c89b3c;
-    --driver-gold-soft: #e8c86d;
-    --driver-sand: #d9c3a0;
-    --driver-ivory: #fffaf0;
-    --driver-terracotta: #b84f2e;
-    --driver-green: #138a4a;
-    --driver-red: #b42318;
-  }
-
-  .driver-home-toolbar {
-    --background: linear-gradient(115deg, #171412 0%, #2d2119 54%, #a63f25 100%) !important;
-    --color: #fffaf0 !important;
-    --border-width: 0 !important;
-    --min-height: 72px !important;
-    border-bottom: 1px solid rgba(232, 200, 109, 0.34) !important;
-    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.24);
-  }
-
-  .driver-home-toolbar ion-title {
-    color: #fffaf0 !important;
-    padding-inline: 18px 110px !important;
-  }
-
-  .driver-home-brand {
-    display: flex;
-    align-items: center;
-    gap: 11px;
-    min-width: 0;
-  }
-
-  .driver-home-brand__mark {
-    width: 42px;
-    height: 42px;
-    border-radius: 15px;
-    display: grid;
-    place-items: center;
-    flex: 0 0 auto;
-    background: linear-gradient(145deg, #e8c86d, #c89b3c);
-    color: #171412;
-    box-shadow: 0 8px 22px rgba(200, 155, 60, 0.32);
-    border: 1px solid rgba(255, 250, 240, 0.45);
-  }
-
-  .driver-home-brand__mark ion-icon {
-    font-size: 23px;
-  }
-
-  .driver-home-brand__text {
-    min-width: 0;
-  }
-
-  .driver-home-brand__title {
-    color: #fffaf0 !important;
-    font-size: 1.08rem;
-    line-height: 1.05;
-    font-weight: 950;
-    letter-spacing: 0.01em;
-  }
-
-  .driver-home-brand__subtitle {
-    margin-top: 3px;
-    color: rgba(255, 250, 240, 0.76) !important;
-    font-size: 0.68rem;
-    line-height: 1;
-    font-weight: 800;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
-  }
-
-  .driver-home-header-actions {
-    gap: 4px;
-    padding-right: 8px;
-  }
-
-  .driver-home-header-action {
-    width: 43px;
-    height: 43px;
-    margin: 0 !important;
-    --border-radius: 14px !important;
-    --background: rgba(255, 250, 240, 0.11) !important;
-    --background-hover: rgba(255, 250, 240, 0.18) !important;
-    --background-activated: rgba(255, 250, 240, 0.22) !important;
-    --color: #fffaf0 !important;
-    --box-shadow: none !important;
-    border: 1px solid rgba(255, 250, 240, 0.18);
-    border-radius: 14px;
-  }
-
-  .driver-home-header-action ion-icon {
-    color: #fffaf0 !important;
-    font-size: 21px;
-  }
-
-  .driver-home-content {
-    --background:
-      linear-gradient(180deg, rgba(18, 17, 16, 0.82), rgba(18, 17, 16, 0.96)),
-      url('/assets/rapa-go-bg.jpg') center / cover no-repeat fixed !important;
-  }
-
-  .driver-home-content::part(scroll) {
-    padding: 18px 16px calc(108px + env(safe-area-inset-bottom));
-  }
-
-  .driver-home-shell {
-    width: min(100%, 1040px);
-    margin: 0 auto;
-  }
-
-  .rapago-connectivity-banner {
-    position: relative;
-    z-index: 2;
-    width: 100%;
-    min-height: 96px;
-    margin: 4px 0 16px;
-    padding: 16px;
-    display: grid;
-    grid-template-columns: 44px minmax(0, 1fr);
-    gap: 12px;
-    align-items: start;
-    overflow: visible;
-    border-radius: 22px;
-    color: #ffffff !important;
-    border: 1px solid rgba(255, 255, 255, 0.16);
-    box-shadow: 0 16px 34px rgba(0, 0, 0, 0.30);
-  }
-
-  .rapago-connectivity-banner.is-checking {
-    background: linear-gradient(135deg, #1f2937, #334155);
-  }
-
-  .rapago-connectivity-banner.is-offline {
-    background: linear-gradient(135deg, #321a18, #8d1d1d);
-  }
-
-  .rapago-connectivity-banner.is-poor {
-    background: linear-gradient(135deg, #352019, #9a4828);
-  }
-
-  .rapago-connectivity-banner__icon {
-    width: 44px;
-    height: 44px;
-    border-radius: 15px;
-    display: grid;
-    place-items: center;
-    background: rgba(255, 255, 255, 0.14);
-    color: #ffffff !important;
-    font-size: 1.2rem;
-    font-weight: 950;
-  }
-
-  .rapago-connectivity-banner__copy,
-  .rapago-connectivity-banner__title,
-  .rapago-connectivity-banner__message {
-    color: #ffffff !important;
-  }
-
-  .rapago-connectivity-banner__title {
-    font-size: 0.98rem;
-    line-height: 1.2;
-    font-weight: 950;
-  }
-
-  .rapago-connectivity-banner__message {
-    margin-top: 6px;
-    font-size: 0.82rem;
-    line-height: 1.46;
-    font-weight: 800;
-    opacity: 1;
-    overflow-wrap: anywhere;
-  }
-
-  .driver-availability-panel {
-    margin-bottom: 15px;
-    padding: 15px;
-    border-radius: 24px;
-    color: #171412;
-    background: linear-gradient(145deg, #fffdf7 0%, #f5ead8 100%);
-    border: 1px solid rgba(200, 155, 60, 0.35);
-    box-shadow: 0 18px 42px rgba(0, 0, 0, 0.24);
-  }
-
-  .driver-availability-panel__header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 12px;
-    margin-bottom: 12px;
-  }
-
-  .driver-availability-panel__eyebrow {
-    color: #775a24;
-    font-size: 0.68rem;
-    line-height: 1;
-    font-weight: 950;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
-  }
-
-  .driver-availability-panel__title {
-    margin-top: 4px;
-    color: #171412;
-    font-size: 1rem;
-    line-height: 1.1;
-    font-weight: 950;
-  }
-
-  .driver-availability-panel__status {
-    display: inline-flex;
-    align-items: center;
-    gap: 7px;
-    padding: 7px 10px;
-    flex: 0 0 auto;
-    border-radius: 999px;
-    color: #171412;
-    background: rgba(255, 255, 255, 0.72);
-    border: 1px solid rgba(23, 20, 18, 0.1);
-    font-size: 0.7rem;
-    font-weight: 950;
-  }
-
-  .driver-availability-panel__dot {
-    width: 9px;
-    height: 9px;
-    border-radius: 999px;
-  }
-
-  .driver-availability-panel__dot.is-available {
-    background: #16a45b;
-    box-shadow: 0 0 0 5px rgba(22, 164, 91, 0.14);
-  }
-
-  .driver-availability-panel__dot.is-unavailable {
-    background: #d13c30;
-    box-shadow: 0 0 0 5px rgba(209, 60, 48, 0.14);
-  }
-
-  .driver-availability-panel__grid {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 10px;
-  }
-
-  .driver-availability-button {
-    min-height: 50px;
-    padding: 10px 12px;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    gap: 8px;
-    border-radius: 16px;
-    border: 1px solid rgba(23, 20, 18, 0.12);
-    font: inherit;
-    font-size: 0.88rem;
-    font-weight: 950;
-    line-height: 1.1;
-    cursor: pointer;
-    transition: transform 160ms ease, box-shadow 160ms ease, background 160ms ease;
-    -webkit-tap-highlight-color: transparent;
-  }
-
-  .driver-availability-button:active {
-    transform: scale(0.985);
-  }
-
-  .driver-availability-button.is-inactive {
-    color: #332d28;
-    background: #ffffff;
-    box-shadow: inset 0 0 0 1px rgba(200, 155, 60, 0.08);
-  }
-
-  .driver-availability-button.is-active.is-available {
-    color: #ffffff;
-    background: linear-gradient(135deg, #149b50, #0c743b);
-    border-color: rgba(12, 116, 59, 0.52);
-    box-shadow: 0 10px 24px rgba(20, 155, 80, 0.28);
-  }
-
-  .driver-availability-button.is-active.is-unavailable {
-    color: #ffffff;
-    background: linear-gradient(135deg, #cf3d30, #92271f);
-    border-color: rgba(146, 39, 31, 0.52);
-    box-shadow: 0 10px 24px rgba(180, 35, 24, 0.24);
-  }
-
-  .driver-availability-button ion-icon {
-    color: inherit !important;
-    font-size: 19px;
-  }
-
-  .driver-home-hero {
-    position: relative;
-    isolation: isolate;
-    overflow: hidden;
-    min-height: 190px;
-    padding: 20px;
-    border-radius: 28px;
-    color: #fffaf0;
-    background:
-      radial-gradient(circle at 88% 8%, rgba(232, 200, 109, 0.35), transparent 30%),
-      linear-gradient(135deg, #171412 0%, #32251c 54%, #a94429 100%);
-    border: 1px solid rgba(232, 200, 109, 0.34);
-    box-shadow: 0 24px 54px rgba(0, 0, 0, 0.36);
-  }
-
-  .driver-home-hero::before,
-  .driver-home-hero::after {
-    content: '';
-    position: absolute;
-    z-index: -1;
-    border-radius: 999px;
-    pointer-events: none;
-  }
-
-  .driver-home-hero::before {
-    width: 190px;
-    height: 190px;
-    right: -72px;
-    top: -78px;
-    background: rgba(255, 250, 240, 0.09);
-  }
-
-  .driver-home-hero::after {
-    width: 130px;
-    height: 130px;
-    right: 65px;
-    bottom: -88px;
-    background: rgba(200, 155, 60, 0.14);
-  }
-
-  .driver-home-hero__top {
-    display: flex;
-    align-items: flex-start;
-    justify-content: space-between;
-    gap: 16px;
-  }
-
-  .driver-home-hero__eyebrow {
-    color: #e8c86d;
-    font-size: 0.7rem;
-    line-height: 1;
-    font-weight: 950;
-    letter-spacing: 0.11em;
-    text-transform: uppercase;
-  }
-
-  .driver-home-hero__title {
-    margin-top: 7px;
-    color: #fffaf0;
-    font-size: clamp(1.45rem, 4.4vw, 2rem);
-    line-height: 1.04;
-    font-weight: 950;
-    letter-spacing: -0.025em;
-  }
-
-  .driver-home-hero__subtitle {
-    max-width: 520px;
-    margin-top: 7px;
-    color: rgba(255, 250, 240, 0.78);
-    font-size: 0.82rem;
-    line-height: 1.4;
-    font-weight: 750;
-  }
-
-  .driver-home-hero__car {
-    width: 58px;
-    height: 58px;
-    display: grid;
-    place-items: center;
-    flex: 0 0 auto;
-    border-radius: 19px;
-    color: #171412;
-    background: linear-gradient(145deg, #f1d77f, #c89b3c);
-    border: 1px solid rgba(255, 250, 240, 0.46);
-    box-shadow: 0 14px 28px rgba(0, 0, 0, 0.25);
-  }
-
-  .driver-home-hero__car ion-icon {
-    color: #171412 !important;
-    font-size: 30px;
-  }
-
-  .driver-home-hero__metrics {
-    display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: 10px;
-    margin-top: 20px;
-  }
-
-  .driver-home-metric {
-    min-width: 0;
-    padding: 12px;
-    border-radius: 17px;
-    color: #fffaf0;
-    background: rgba(255, 250, 240, 0.1);
-    border: 1px solid rgba(255, 250, 240, 0.15);
-    backdrop-filter: blur(10px);
-  }
-
-  .driver-home-metric__label {
-    color: rgba(255, 250, 240, 0.68);
-    font-size: 0.66rem;
-    line-height: 1;
-    font-weight: 850;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-  }
-
-  .driver-home-metric__value {
-    margin-top: 5px;
-    overflow: hidden;
-    color: #fffaf0;
-    font-size: 0.9rem;
-    line-height: 1.15;
-    font-weight: 950;
-    white-space: nowrap;
-    text-overflow: ellipsis;
-  }
-
-  .driver-home-section {
-    margin-top: 22px;
-  }
-
-  .driver-home-section__header {
-    display: flex;
-    align-items: flex-end;
-    justify-content: space-between;
-    gap: 12px;
-    margin-bottom: 12px;
-  }
-
-  .driver-home-section__title {
-    margin: 0;
-    color: #fffaf0;
-    font-size: 1.05rem;
-    line-height: 1.1;
-    font-weight: 950;
-    text-shadow: 0 2px 12px rgba(0, 0, 0, 0.65);
-  }
-
-  .driver-home-section__hint {
-    color: rgba(255, 250, 240, 0.62);
-    font-size: 0.7rem;
-    font-weight: 750;
-  }
-
-  .driver-home-actions-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
-    gap: 12px;
-  }
-
-  ion-card.driver-home-action-card {
-    position: relative;
-    isolation: isolate;
-    min-height: 150px;
-    margin: 0 !important;
-    overflow: hidden;
-    border-radius: 22px !important;
-    color: #171412 !important;
-    background: linear-gradient(155deg, #fffdf8 0%, #f3e8d7 100%) !important;
-    border: 1px solid rgba(200, 155, 60, 0.28) !important;
-    box-shadow: 0 14px 34px rgba(0, 0, 0, 0.22) !important;
-    transition: transform 170ms ease, box-shadow 170ms ease;
-  }
-
-  ion-card.driver-home-action-card::after {
-    content: '';
-    position: absolute;
-    z-index: -1;
-    width: 90px;
-    height: 90px;
-    right: -34px;
-    top: -36px;
-    border-radius: 999px;
-    background: var(--driver-card-glow, rgba(200, 155, 60, 0.18));
-  }
-
-  ion-card.driver-home-action-card:active {
-    transform: scale(0.985);
-  }
-
-  ion-card.driver-home-action-card ion-card-content {
-    height: 100%;
-    padding: 16px !important;
-    color: #171412 !important;
-  }
-
-  .driver-home-action-card.is-reservations.has-pending {
-    background: linear-gradient(145deg, #fff8dc 0%, #efd486 100%) !important;
-    border-color: rgba(200, 155, 60, 0.66) !important;
-    box-shadow: 0 15px 38px rgba(200, 155, 60, 0.24) !important;
-  }
-
-  .driver-home-action-icon {
-    width: 48px;
-    height: 48px;
-    display: grid;
-    place-items: center;
-    margin-bottom: 13px;
-    border-radius: 16px;
-    color: #ffffff;
-    background: var(--driver-card-accent, #b84f2e);
-    box-shadow: 0 10px 22px var(--driver-card-shadow, rgba(184, 79, 46, 0.24));
-  }
-
-  .driver-home-action-icon ion-icon {
-    color: #ffffff !important;
-    font-size: 25px;
-  }
-
-  .driver-home-action-card.is-reservations.has-pending .driver-home-action-icon {
-    color: #171412;
-    background: #c89b3c;
-  }
-
-  .driver-home-action-card.is-reservations.has-pending .driver-home-action-icon ion-icon {
-    color: #171412 !important;
-  }
-
-  .driver-home-action-row {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 8px;
-  }
-
-  .driver-home-action-title {
-    color: #171412 !important;
-    font-size: 0.98rem;
-    line-height: 1.1;
-    font-weight: 950;
-  }
-
-  .driver-home-action-badge {
-    min-width: 28px;
-    height: 28px;
-    display: grid;
-    place-items: center;
-    flex: 0 0 auto;
-    border-radius: 999px;
-    color: #171412;
-    background: #ffffff;
-    border: 1px solid rgba(23, 20, 18, 0.12);
-    font-size: 0.72rem;
-    font-weight: 950;
-    box-shadow: 0 5px 14px rgba(0, 0, 0, 0.12);
-  }
-
-  .driver-home-action-copy {
-    margin-top: 6px;
-    color: rgba(23, 20, 18, 0.68) !important;
-    font-size: 0.75rem;
-    line-height: 1.35;
-    font-weight: 750;
-  }
-
-  .driver-home-cta {
-    margin-top: 18px;
-    padding: 17px;
-    display: grid;
-    grid-template-columns: 48px minmax(0, 1fr) auto;
-    gap: 13px;
-    align-items: center;
-    border-radius: 23px;
-    color: #fffaf0;
-    background: linear-gradient(135deg, #171412 0%, #3b2b20 56%, #a94429 100%);
-    border: 1px solid rgba(232, 200, 109, 0.3);
-    box-shadow: 0 18px 42px rgba(0, 0, 0, 0.28);
-  }
-
-  .driver-home-cta__icon {
-    width: 48px;
-    height: 48px;
-    display: grid;
-    place-items: center;
-    border-radius: 16px;
-    color: #171412;
-    background: linear-gradient(145deg, #e8c86d, #c89b3c);
-  }
-
-  .driver-home-cta__icon ion-icon {
-    color: #171412 !important;
-    font-size: 24px;
-  }
-
-  .driver-home-cta__title {
-    color: #fffaf0;
-    font-size: 0.92rem;
-    line-height: 1.15;
-    font-weight: 950;
-  }
-
-  .driver-home-cta__copy {
-    margin-top: 4px;
-    color: rgba(255, 250, 240, 0.7);
-    font-size: 0.73rem;
-    line-height: 1.35;
-    font-weight: 750;
-  }
-
-  .driver-home-cta__button {
-    min-height: 42px;
-    padding: 9px 15px;
-    border: 0;
-    border-radius: 999px;
-    color: #171412;
-    background: #fffaf0;
-    font: inherit;
-    font-size: 0.78rem;
-    font-weight: 950;
-    cursor: pointer;
-    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.2);
-  }
-
-  @media (hover: hover) {
-    ion-card.driver-home-action-card:hover {
-      transform: translateY(-3px);
-      box-shadow: 0 20px 42px rgba(0, 0, 0, 0.28) !important;
-    }
-
-    .driver-availability-button:hover,
-    .driver-home-cta__button:hover {
-      transform: translateY(-1px);
-    }
-  }
-
-  @media (max-width: 620px) {
-    .rapago-connectivity-banner {
-      min-height: 104px;
-      margin-top: 2px;
-      padding: 15px 14px;
-      grid-template-columns: 42px minmax(0, 1fr);
-      gap: 11px;
-      border-radius: 20px;
-    }
-
-    .rapago-connectivity-banner__icon {
-      width: 42px;
-      height: 42px;
-    }
-
-    .rapago-connectivity-banner__title {
-      font-size: 0.94rem;
-    }
-
-    .rapago-connectivity-banner__message {
-      font-size: 0.8rem;
-      line-height: 1.5;
-    }
-
-    .driver-home-content::part(scroll) {
-      padding: 14px 12px calc(104px + env(safe-area-inset-bottom));
-    }
-
-    .driver-home-toolbar ion-title {
-      padding-inline: 12px 102px !important;
-    }
-
-    .driver-home-brand__mark {
-      width: 39px;
-      height: 39px;
-      border-radius: 14px;
-    }
-
-    .driver-home-brand__title {
-      font-size: 1rem;
-    }
-
-    .driver-home-brand__subtitle {
-      font-size: 0.61rem;
-    }
-
-    .driver-home-header-action {
-      width: 40px;
-      height: 40px;
-    }
-
-    .driver-home-hero {
-      padding: 18px;
-      border-radius: 24px;
-    }
-
-    .driver-home-hero__metrics {
-      grid-template-columns: 1fr 1fr;
-    }
-
-    .driver-home-metric:last-child {
-      grid-column: 1 / -1;
-    }
-
-    .driver-home-actions-grid {
-      grid-template-columns: 1fr 1fr;
-      gap: 10px;
-    }
-
-    ion-card.driver-home-action-card {
-      min-height: 145px;
-      border-radius: 20px !important;
-    }
-
-    ion-card.driver-home-action-card ion-card-content {
-      padding: 14px !important;
-    }
-
-    .driver-home-action-icon {
-      width: 45px;
-      height: 45px;
-      margin-bottom: 12px;
-      border-radius: 15px;
-    }
-
-    .driver-home-action-title {
-      font-size: 0.9rem;
-    }
-
-    .driver-home-action-copy {
-      font-size: 0.69rem;
-    }
-
-    .driver-home-cta {
-      grid-template-columns: 44px minmax(0, 1fr);
-    }
-
-    .driver-home-cta__icon {
-      width: 44px;
-      height: 44px;
-    }
-
-    .driver-home-cta__button {
-      grid-column: 1 / -1;
-      width: 100%;
-    }
-  }
-
-  @media (max-width: 370px) {
-    .driver-availability-panel {
-      padding: 13px;
-      border-radius: 21px;
-    }
-
-    .driver-availability-panel__status {
-      padding: 6px 8px;
-      font-size: 0.64rem;
-    }
-
-    .driver-availability-button {
-      min-height: 48px;
-      padding: 8px;
-      font-size: 0.78rem;
-    }
-
-    .driver-home-actions-grid {
-      grid-template-columns: 1fr;
-    }
-
-    ion-card.driver-home-action-card {
-      min-height: 132px;
-    }
-  }
-`;
-
 function DriverHeaderWithoutNotifications(): JSX.Element {
   const auth = useAuth() as ReturnType<typeof useAuth> & {
     logout?: () => void | Promise<void>;
     signOut?: () => void | Promise<void>;
   };
   const history = useHistory();
+  /* Mismo ámbito que la página que lo aloja: el hook sincroniza por evento, así
+     que el interruptor y el IonPage nunca se quedan a dos luces. */
+  const { isDark, toggleTheme } = useRapagoSectionTheme("driver-home");
+
+  const driverDisplayName = auth.user?.name ?? auth.user?.email ?? "Conductor";
+  const driverRoleLabel =
+    ROLE_LABELS[auth.user?.role as PublicRole] ?? "Conductor";
 
   async function handleLogout(): Promise<void> {
     try {
@@ -4279,19 +3542,39 @@ function DriverHeaderWithoutNotifications(): JSX.Element {
   return (
     <IonHeader className="driver-home-header">
       <IonToolbar className="driver-home-toolbar">
-        <IonTitle>
-          <div className="driver-home-brand">
-            <div className="driver-home-brand__mark" aria-hidden="true">
-              <IonIcon icon={carOutline} />
-            </div>
-            <div className="driver-home-brand__text">
-              <div className="driver-home-brand__title">RAPA GO</div>
-              <div className="driver-home-brand__subtitle">Panel conductor</div>
-            </div>
+        {/* Antes iba dentro de <IonTitle>: en modo "md" Ionic la posiciona en
+            absoluto y trunca su contenido a una sola línea con elipsis DENTRO
+            de su Shadow DOM, algo que ningún CSS externo puede anular. Con un
+            nombre de conductor real (variable, a veces largo) eso cortaba el
+            texto a la mitad sin ni siquiera mostrar "...". slot="start" es un
+            contenedor de flujo normal de Ionic, sin ese límite: el nombre
+            puede ocupar el ancho real disponible y saltar de línea si hace
+            falta. */}
+        <div slot="start" className="driver-home-brand">
+          <div className="driver-home-brand__mark">
+            <img src={logoRapago} alt="Rapa Go" />
           </div>
-        </IonTitle>
+          <div className="driver-home-brand__text">
+            <div className="driver-home-brand__title">{driverDisplayName}</div>
+            <div className="driver-home-brand__subtitle">{driverRoleLabel}</div>
+          </div>
+        </div>
 
         <IonButtons slot="end" className="driver-home-header-actions">
+          {/* Interruptor día/noche, el mismo control que el Inicio del
+              pasajero (home.css:90). Es un <button> nativo, no un IonButton,
+              para que las reglas globales de `ion-button` no impongan su radio
+              ni su color. */}
+          <button
+            type="button"
+            className="rapago-home-theme-btn"
+            onClick={toggleTheme}
+            aria-label={isDark ? "Activar modo día" : "Activar modo nocturno"}
+            title={isDark ? "Modo día" : "Modo nocturno"}
+          >
+            <IonIcon icon={isDark ? sunnyOutline : moonOutline} />
+          </button>
+
           <IonButton
             fill="clear"
             routerLink={ROUTES.DRIVER.PROFILE}
@@ -4318,9 +3601,11 @@ function DriverHeaderWithoutNotifications(): JSX.Element {
 function DriverAvailabilityControl({
   value,
   onChange,
+  disabled = false,
 }: {
   value: DriverAvailability;
-  onChange: (value: DriverAvailability) => void;
+  onChange: (value: DriverAvailability) => void | Promise<void>;
+  disabled?: boolean;
 }): JSX.Element {
   const isAvailable = value === "available";
 
@@ -4348,8 +3633,11 @@ function DriverAvailabilityControl({
           className={`driver-availability-button ${
             isAvailable ? "is-active is-available" : "is-inactive"
           }`}
-          onClick={() => onChange("available")}
+          onClick={() => {
+            void onChange("available");
+          }}
           aria-pressed={isAvailable}
+          disabled={disabled}
         >
           <IonIcon icon={checkmarkCircleOutline} />
           Disponible
@@ -4360,8 +3648,11 @@ function DriverAvailabilityControl({
           className={`driver-availability-button ${
             !isAvailable ? "is-active is-unavailable" : "is-inactive"
           }`}
-          onClick={() => onChange("unavailable")}
+          onClick={() => {
+            void onChange("unavailable");
+          }}
           aria-pressed={!isAvailable}
+          disabled={disabled}
         >
           <IonIcon icon={closeOutline} />
           No disponible
@@ -5204,6 +4495,84 @@ function readSelectedDriverVehicle(user?: unknown): DriverVehicleRecord | null {
   }
 
   return vehicles.find((vehicle) => vehicle.primary) ?? vehicles[0] ?? null;
+}
+
+function hydrateApprovedDriverProfileLocally(
+  profile: DriverProfileData | null,
+  user?: unknown,
+): DriverVehicleRecord | null {
+  if (!profile) return null;
+
+  if (profile.profilePhotoUrl?.trim()) {
+    persistStoredDriverProfilePhotoUrl(
+      profile.profilePhotoUrl,
+      user,
+    );
+  }
+
+  const brand = profile.vehicleBrand?.trim() ?? "";
+  const model = profile.vehicleModel?.trim() ?? "";
+  const plate = profile.vehiclePlate?.trim().toUpperCase() ?? "";
+  const color = profile.vehicleColor?.trim() ?? "";
+  const year =
+    profile.vehicleYear != null
+      ? String(profile.vehicleYear)
+      : "";
+
+  if (!brand && !model && !plate && !color && !year) {
+    return null;
+  }
+
+  const ownerKey = getDriverVehicleOwnerKey(user);
+  const vehicle: DriverVehicleRecord = {
+    id: "vehicle-from-approved-application",
+    ownerKey,
+    ownership: "own",
+    brand,
+    model,
+    plate,
+    color,
+    year,
+    label:
+      [brand, model, year].filter(Boolean).join(" ") ||
+      plate ||
+      "Vehículo principal",
+    imageDataUrl: profile.vehiclePhotoUrl?.trim() || null,
+    imageName: profile.vehiclePhotoUrl ? "vehiculo-aprobado" : null,
+    createdAt: profile.createdAt,
+    expiresAt: null,
+    primary: true,
+    applicationStatus: "approved",
+  };
+
+  const current = readAllDriverVehicles(user).filter(
+    (entry) =>
+      !(
+        entry.ownerKey === ownerKey &&
+        entry.id === vehicle.id
+      ),
+  );
+
+  saveAllDriverVehicles([...current, vehicle]);
+  writeSelectedDriverVehicleId(vehicle.id, user);
+
+  if (vehicle.imageDataUrl) {
+    persistStoredDriverVehicleImageDataUrl(
+      vehicle.imageDataUrl,
+      vehicle.imageName,
+      user,
+    );
+  }
+
+  return vehicle;
+}
+
+async function hydrateApprovedDriverProfileFromServer(
+  accessToken: string,
+  user?: unknown,
+): Promise<DriverVehicleRecord | null> {
+  const profile = await driverProfileService.getMyProfile(accessToken);
+  return hydrateApprovedDriverProfileLocally(profile, user);
 }
 
 function getDriverVehicleLabel(vehicle: DriverVehicleRecord | null): string {
@@ -7265,6 +6634,7 @@ function getBorrowedVehicleRemainingText(vehicle: DriverVehicleRecord): string |
 
 export function DriverHomePage(): JSX.Element {
   const { session } = useAuth();
+  const { theme: driverTheme } = useRapagoSectionTheme("driver-home");
   const history = useHistory();
   const driverAvailabilityUser = session?.user as
     DriverAvailabilityUser | undefined;
@@ -7274,10 +6644,43 @@ export function DriverHomePage(): JSX.Element {
       readDriverAvailability(driverAvailabilityUser),
     );
   const [restBlocked, setRestBlocked] = useState(false);
+  const [availabilitySaving, setAvailabilitySaving] = useState(false);
+  const [availabilityError, setAvailabilityError] = useState<string | null>(null);
 
   useEffect(() => {
     setDriverAvailability(readDriverAvailability(driverAvailabilityUser));
   }, [
+    driverAvailabilityUser?.id,
+    driverAvailabilityUser?.userId,
+    driverAvailabilityUser?.email,
+    driverAvailabilityUser?.name,
+  ]);
+
+  useEffect(() => {
+    if (!session?.accessToken) return;
+
+    let cancelled = false;
+
+    void driverStatusService
+      .getMyStatus(session.accessToken)
+      .then((status) => {
+        if (cancelled) return;
+
+        const next: DriverAvailability =
+          status.availability === "available" ? "available" : "unavailable";
+
+        setDriverAvailability(next);
+        saveDriverAvailability(next, driverAvailabilityUser);
+      })
+      .catch(() => {
+        // Conserva el estado local si el backend no está disponible.
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    session?.accessToken,
     driverAvailabilityUser?.id,
     driverAvailabilityUser?.userId,
     driverAvailabilityUser?.email,
@@ -7368,24 +6771,65 @@ export function DriverHomePage(): JSX.Element {
     isDriverAvailable,
   ]);
 
-  function handleAvailabilityChange(value: DriverAvailability): void {
+  async function handleAvailabilityChange(
+    value: DriverAvailability,
+  ): Promise<void> {
+    if (availabilitySaving) return;
+
+    setAvailabilityError(null);
+
     if (value === "available" && restBlocked) {
       setDriverAvailability("unavailable");
       saveDriverAvailability("unavailable", driverAvailabilityUser);
+      setAvailabilityError(
+        "Tu descanso continuo todavía está activo. Podrás marcarte Disponible cuando el backend confirme que finalizó.",
+      );
       return;
     }
 
     if (value === "available" && driverConnection.blocked) {
       setDriverAvailability("unavailable");
       saveDriverAvailability("unavailable", driverAvailabilityUser);
+      setAvailabilityError(
+        "Necesitas una conexión estable antes de marcarte Disponible.",
+      );
       return;
     }
 
-    setDriverAvailability(value);
-    saveDriverAvailability(value, driverAvailabilityUser);
+    if (!session?.accessToken) {
+      setAvailabilityError(
+        "Tu sesión no está disponible. Vuelve a iniciar sesión.",
+      );
+      return;
+    }
 
-    if (value === "available") {
-      enableDriverRideAlerts();
+    setAvailabilitySaving(true);
+
+    try {
+      const updated = await driverStatusService.updateMyStatus(
+        session.accessToken,
+        value,
+      );
+
+      const confirmed: DriverAvailability =
+        updated.availability === "available" ? "available" : "unavailable";
+
+      setDriverAvailability(confirmed);
+      saveDriverAvailability(confirmed, driverAvailabilityUser);
+
+      if (confirmed === "available") {
+        enableDriverRideAlerts();
+      }
+    } catch (caught) {
+      setDriverAvailability("unavailable");
+      saveDriverAvailability("unavailable", driverAvailabilityUser);
+      setAvailabilityError(
+        caught instanceof Error
+          ? caught.message
+          : "No se pudo actualizar tu disponibilidad.",
+      );
+    } finally {
+      setAvailabilitySaving(false);
     }
   }
 
@@ -7403,15 +6847,20 @@ export function DriverHomePage(): JSX.Element {
           ? "Señal baja"
           : "Sin internet";
 
+  /* Antes cada tarjeta traía tres colores propios (`accent`, `shadow`, `glow`)
+     escritos en hexadecimal y volcados al DOM con `style=""`: cinco chips
+     saturados —verde, dorado, azul, terracota y gris— sobre fondos crema, sin
+     relación con la paleta ni con el tema. El Inicio del pasajero ya resolvió
+     esto: el icono es neutro en todas las tarjetas y el destaque se hace
+     REFORZANDO EL BORDE, no cambiando el color de fondo (ver el comentario en
+     home.css:492). Aquí se adopta ese mismo criterio, así que los colores por
+     tarjeta desaparecen y solo queda el modificador de destaque. */
   const actionCards: Array<{
     key: string;
     title: string;
     description: string;
     route: string;
     icon: string;
-    accent: string;
-    shadow: string;
-    glow: string;
     className?: string;
     badge?: number;
   }> = [
@@ -7423,9 +6872,6 @@ export function DriverHomePage(): JSX.Element {
         : "Ponte disponible para recibir viajes",
       route: DRIVER_REQUESTS_VIEW_ROUTE,
       icon: listOutline,
-      accent: "#138a4a",
-      shadow: "rgba(19,138,74,.25)",
-      glow: "rgba(19,138,74,.16)",
     },
     {
       key: "reservations",
@@ -7438,12 +6884,8 @@ export function DriverHomePage(): JSX.Element {
           : "Revisa tus viajes asignados para más tarde",
       route: DRIVER_RESERVATIONS_VIEW_ROUTE,
       icon: timeOutline,
-      accent: pendingReservationCount > 0 ? "#c89b3c" : "#a56d18",
-      shadow: "rgba(200,155,60,.28)",
-      glow: "rgba(200,155,60,.20)",
-      className: `is-reservations ${
-        pendingReservationCount > 0 ? "has-pending" : ""
-      }`,
+      className:
+        pendingReservationCount > 0 ? "rapago-home-quick-card--attention" : "",
       badge: pendingReservationCount > 0 ? pendingReservationCount : undefined,
     },
     {
@@ -7452,9 +6894,6 @@ export function DriverHomePage(): JSX.Element {
       description: "Historial, estados y navegación en ruta",
       route: ROUTES.DRIVER.TRIPS,
       icon: carOutline,
-      accent: "#2563a8",
-      shadow: "rgba(37,99,168,.25)",
-      glow: "rgba(37,99,168,.15)",
     },
     {
       key: "earnings",
@@ -7462,9 +6901,6 @@ export function DriverHomePage(): JSX.Element {
       description: "Consulta ingresos y pagos de tus servicios",
       route: ROUTES.DRIVER.EARNINGS,
       icon: cashOutline,
-      accent: "#b84f2e",
-      shadow: "rgba(184,79,46,.25)",
-      glow: "rgba(184,79,46,.16)",
     },
     {
       key: "profile",
@@ -7472,15 +6908,14 @@ export function DriverHomePage(): JSX.Element {
       description: "Datos personales, documentos y vehículo",
       route: ROUTES.DRIVER.PROFILE,
       icon: personOutline,
-      accent: "#4b5563",
-      shadow: "rgba(75,85,99,.25)",
-      glow: "rgba(75,85,99,.14)",
     },
   ];
 
   return (
-    <IonPage className="driver-home-page">
-      <style>{DRIVER_HOME_STYLES}</style>
+    <IonPage
+      className="driver-home-page rapago-driver-page"
+      data-rapago-theme={driverTheme}
+    >
       <DriverHeaderWithoutNotifications />
 
       <IonContent className="driver-home-content">
@@ -7493,9 +6928,21 @@ export function DriverHomePage(): JSX.Element {
           <DriverAvailabilityControl
             value={isDriverAvailable ? "available" : "unavailable"}
             onChange={handleAvailabilityChange}
+            disabled={availabilitySaving}
           />
 
-          <DriverRestScheduleCard onBlockedChange={setRestBlocked} />
+          {availabilityError && (
+            <div role="alert" className="rp-banner rp-banner--error">
+              {availabilityError}
+            </div>
+          )}
+
+          <DriverRestScheduleCard
+            onBlockedChange={(blocked) => {
+              setRestBlocked(blocked);
+              if (!blocked) setAvailabilityError(null);
+            }}
+          />
 
           <section className="driver-home-hero">
             <div className="driver-home-hero__top">
@@ -7520,73 +6967,110 @@ export function DriverHomePage(): JSX.Element {
               </div>
             </div>
 
-            <div className="driver-home-hero__metrics">
-              <div className="driver-home-metric">
-                <div className="driver-home-metric__label">Estado</div>
-                <div className="driver-home-metric__value">
-                  {isDriverAvailable ? "Disponible" : "No disponible"}
-                </div>
-              </div>
+          </section>
 
-              <div className="driver-home-metric">
-                <div className="driver-home-metric__label">Zona</div>
-                <div className="driver-home-metric__value">Rapa Nui</div>
+          {/* Las tres métricas salen del héroe y pasan al kit .rp-tile: dentro
+              del héroe dorado eran recuadros translúcidos que no existen en
+              ninguna otra pantalla; fuera son las mismas fichas de resumen que
+              usan Beneficios y Mis viajes. */}
+          <div className="rp-tile-grid">
+            {/* La variante semántica acompaña al dato: verde cuando el estado es
+                favorable (disponible / conexión estable) y ámbar cuando pide
+                atención. El icono es aria-hidden porque el texto ya lo dice. */}
+            <div
+              className={`rp-tile ${isDriverAvailable ? "rp-tile--ok" : "rp-tile--warn"}`}
+            >
+              <div className="rp-tile__label">Estado</div>
+              <div className="rp-tile__icon" aria-hidden>
+                <IonIcon
+                  icon={
+                    isDriverAvailable
+                      ? checkmarkCircleOutline
+                      : pauseCircleOutline
+                  }
+                />
               </div>
-
-              <div className="driver-home-metric">
-                <div className="driver-home-metric__label">Red</div>
-                <div className="driver-home-metric__value">
-                  {connectionLabel}
-                </div>
+              <div className="rp-tile__value">
+                {isDriverAvailable ? "Disponible" : "No disponible"}
               </div>
             </div>
-          </section>
+
+            <div className="rp-tile">
+              <div className="rp-tile__label">Zona</div>
+              <div className="rp-tile__icon" aria-hidden>
+                <IonIcon icon={locationOutline} />
+              </div>
+              <div className="rp-tile__value">Rapa Nui</div>
+            </div>
+
+            <div
+              className={`rp-tile ${
+                driverConnection.status === "online"
+                  ? "rp-tile--ok"
+                  : driverConnection.status === "checking"
+                    ? ""
+                    : "rp-tile--warn"
+              }`}
+            >
+              <div className="rp-tile__label">Red</div>
+              <div className="rp-tile__icon" aria-hidden>
+                <IonIcon
+                  icon={
+                    driverConnection.status === "online"
+                      ? radioOutline
+                      : driverConnection.status === "checking"
+                        ? cellularOutline
+                        : cloudOfflineOutline
+                  }
+                />
+              </div>
+              <div className="rp-tile__value">{connectionLabel}</div>
+            </div>
+          </div>
 
           <section className="driver-home-section">
             <div className="driver-home-section__header">
-              <h2 className="driver-home-section__title">Accesos rápidos</h2>
+              <h2 className="rapago-section-label">Accesos rápidos</h2>
               <div className="driver-home-section__hint">
                 Todo tu trabajo en un lugar
               </div>
             </div>
 
-            <div className="driver-home-actions-grid">
+            {/* Mismo patrón que los accesos rápidos del pasajero
+                (HomePage.tsx:332). Se conserva IonCard porque `routerLink` es
+                una prop funcional de Ionic y no existe en un <button> nativo:
+                el marcado interior sí adopta el del pasajero. */}
+            <div className="rapago-home-quick">
               {actionCards.map((card) => (
                 <IonCard
                   key={card.key}
                   button
                   routerLink={card.route}
-                  className={`driver-home-action-card ${card.className ?? ""}`}
-                  style={
-                    {
-                      "--driver-card-accent": card.accent,
-                      "--driver-card-shadow": card.shadow,
-                      "--driver-card-glow": card.glow,
-                    } as CSSProperties
-                  }
+                  className={`rapago-home-quick-card ${card.className ?? ""}`}
                 >
                   <IonCardContent>
-                    <div className="driver-home-action-icon">
-                      <IonIcon icon={card.icon} />
-                    </div>
-
-                    <div className="driver-home-action-row">
-                      <div className="driver-home-action-title">
-                        {card.title}
-                      </div>
+                    <span className="rapago-driver-quick-top">
+                      <span className="rapago-home-quick-icon">
+                        <IonIcon icon={card.icon} />
+                      </span>
                       {card.badge != null && (
-                        <div
-                          className="driver-home-action-badge"
+                        <span
+                          className="rapago-driver-quick-badge"
                           aria-label={`${card.badge} reservas pendientes`}
                         >
                           {card.badge}
-                        </div>
+                        </span>
                       )}
-                    </div>
+                    </span>
 
-                    <div className="driver-home-action-copy">
-                      {card.description}
-                    </div>
+                    <span>
+                      <span className="rapago-home-quick-title">
+                        {card.title}
+                      </span>
+                      <span className="rapago-home-quick-sub">
+                        {card.description}
+                      </span>
+                    </span>
                   </IonCardContent>
                 </IonCard>
               ))}
@@ -7620,7 +7104,7 @@ export function DriverHomePage(): JSX.Element {
                 if (isDriverAvailable) {
                   history.push(ROUTES.DRIVER.REQUESTS);
                 } else {
-                  handleAvailabilityChange("available");
+                  void handleAvailabilityChange("available");
                 }
               }}
             >
@@ -12601,6 +12085,7 @@ function DriverGlobalRideAlert(): JSX.Element | null {
 
 function AssignedRidesPage(): JSX.Element {
   const { session } = useAuth();
+  const { theme: driverTheme } = useRapagoSectionTheme("driver-requests");
   const location = useLocation();
   const driverAvailabilityUser = session?.user as
     DriverAvailabilityUser | undefined;
@@ -13128,6 +12613,13 @@ La solicitud fue retirada de tu pantalla. No debes continuar hacia la recogida.`
     }
 
     try {
+      if (!readSelectedDriverVehicleId(session?.user)) {
+        await hydrateApprovedDriverProfileFromServer(
+          session.accessToken,
+          session?.user,
+        ).catch(() => null);
+      }
+
       const mine = await ridesService.listDriverRides(session.accessToken);
 
       const recentPassengerCancellation = mine
@@ -15538,43 +15030,25 @@ La reserva fue retirada. No continúes hacia la recogida.`,
   }
 
   return (
-    <IonPage>
-      <IonHeader>
-        <IonToolbar color="success">
-          <IonTitle>{activeRide ? "Viaje activo" : showOnlyReservations ? "Reservas" : "Solicitudes"}</IonTitle>
-          <div slot="end" style={{ paddingRight: 8 }}>
-            {!activeRide && (
-              <IonButton
-                fill="clear"
-                color="light"
-                onClick={() => void loadRides()}
-                disabled={loading}
-              >
-                <IonIcon icon={refreshOutline} slot="icon-only" />
-              </IonButton>
-            )}
-          </div>
-        </IonToolbar>
-        {!activeRide && (
-          <IonToolbar
-            style={
-              {
-                "--background": "linear-gradient(135deg, #1f1f1f, #8f3f25)",
-                "--border-width": "0",
-              } as CSSProperties
-            }
-          >
-            <div style={{ padding: "9px 16px 12px", color: "#F6F2EC" }}>
-              <div style={{ fontWeight: 950, fontSize: ".92rem" }}>
+    <IonPage className="rapago-driver-page" data-rapago-theme={driverTheme}>
+      {/* Cabecera común de sección: el toolbar verde propio se sustituye por la
+          misma cabecera transparente que usan las pantallas del pasajero, y el
+          botón de refrescar pasa a la ranura de acción. */}
+      <RapagoSectionHeader
+        title={activeRide ? "Viaje activo" : showOnlyReservations ? "Reservas" : "Solicitudes"}
+        actionIcon={activeRide ? undefined : refreshOutline}
+        actionLabel="Actualizar solicitudes"
+        actionLoading={loading}
+        onAction={activeRide ? undefined : () => void loadRides()}
+      />
+      {!activeRide && (
+        <IonHeader className="rapago-section-subheader">
+          <IonToolbar>
+            <div className="rapago-driver-subhead">
+              <div className="rapago-driver-subhead__title">
                 {showOnlyReservations ? "Reservas asignadas" : "Viajes disponibles"}
               </div>
-              <div
-                style={{
-                  color: "rgba(246,242,236,.62)",
-                  fontSize: ".74rem",
-                  marginTop: 2,
-                }}
-              >
+              <div className="rapago-driver-subhead__note">
                 {showOnlyReservations
                   ? "Acepta o rechaza solo las reservas que te asignó el administrador."
                   : isDriverAvailable
@@ -15583,18 +15057,10 @@ La reserva fue retirada. No continúes hacia la recogida.`,
               </div>
             </div>
           </IonToolbar>
-        )}
-      </IonHeader>
+        </IonHeader>
+      )}
 
-      <IonContent
-        className={activeRide ? "" : "ion-padding"}
-        style={
-          {
-            "--background":
-              "linear-gradient(180deg, rgba(246,242,236,.86), rgba(217,195,160,.72)), url('/assets/rapa-go-bg.jpg') center/cover no-repeat",
-          } as CSSProperties
-        }
-      >
+      <IonContent className={activeRide ? "" : "ion-padding"}>
         {activeRide ? (
           <ActiveRideScreen ride={activeRide} />
         ) : (
@@ -16457,6 +15923,7 @@ function DriverHistoryRideCard({
 
 function DriverMyRidesPage(): JSX.Element {
   const { session } = useAuth();
+  const { theme: driverTheme } = useRapagoSectionTheme("driver-trips");
   type DriverRideData =
     import("../../features/rides/rides.service").DriverRideData;
 
@@ -16975,7 +16442,7 @@ function DriverMyRidesPage(): JSX.Element {
   const hasAcceptedQueuedRide = hasInProgressRide && rides.some((ride) => ride.status === "accepted");
 
   return (
-    <IonPage>
+    <IonPage className="rapago-driver-page" data-rapago-theme={driverTheme}>
       <style>{`
         .rapago-passenger-cancel-alert-trips .alert-wrapper {
           width: min(92vw, 520px);
@@ -17015,16 +16482,13 @@ function DriverMyRidesPage(): JSX.Element {
           margin: 0;
         }
       `}</style>
-      <IonHeader>
-        <IonToolbar color="success">
-          <IonTitle>Mis Viajes</IonTitle>
-          <div slot="end" style={{ paddingRight: "8px" }}>
-            <IonButton fill="clear" color="light" disabled={loading} onClick={() => void loadRides()}>
-              <IonIcon icon={refreshOutline} slot="icon-only" />
-            </IonButton>
-          </div>
-        </IonToolbar>
-      </IonHeader>
+      <RapagoSectionHeader
+        title="Mis Viajes"
+        actionIcon={refreshOutline}
+        actionLabel="Actualizar viajes"
+        actionLoading={loading}
+        onAction={() => void loadRides()}
+      />
 
       <IonContent className="ion-padding">
         <IonRefresher
@@ -17425,6 +16889,7 @@ function clp(amount: number): string {
 export function DriverEarningsPage(): JSX.Element {
   const m = meta("/driver/earnings");
   const { session } = useAuth();
+  const { theme: driverTheme } = useRapagoSectionTheme("driver-earnings");
   const [rides, setRides] = useState<DriverEarningsRide[]>([]);
   const [filter, setFilter] = useState<DriverEarningsFilter>("today");
   const [loading, setLoading] = useState(true);
@@ -17494,21 +16959,11 @@ export function DriverEarningsPage(): JSX.Element {
 
   return (
     <>
-      <IonPage>
-      <IonHeader>
-        <IonToolbar color="success">
-          <IonTitle>{m.label}</IonTitle>
-        </IonToolbar>
-      </IonHeader>
-      <IonContent
-        className="ion-padding"
-        style={
-          {
-            "--background":
-              "linear-gradient(180deg, rgba(15,15,15,.82), rgba(15,15,15,.96)), url('/assets/rapa-go-bg.jpg') center/cover no-repeat",
-          } as CSSProperties
-        }
-      >
+      <IonPage className="rapago-driver-page" data-rapago-theme={driverTheme}>
+      <RapagoSectionHeader title={m.label} />
+      {/* Sin ion-padding: el relleno y el ancho de lectura los aporta .rp-shell,
+          igual que en Beneficios y Centro de ayuda del pasajero. */}
+      <IonContent>
         <IonRefresher
           slot="fixed"
           onIonRefresh={(event) => {
@@ -17518,167 +16973,121 @@ export function DriverEarningsPage(): JSX.Element {
           <IonRefresherContent />
         </IonRefresher>
 
-        <IonCard
-          style={{
-            margin: 0,
-            borderRadius: 24,
-            background: "linear-gradient(135deg,#22c55e,#d2a43a)",
-            color: "#111111",
-            boxShadow: "0 18px 42px rgba(0,0,0,.28)",
-          }}
-        >
-          <IonCardContent style={{ padding: 18 }}>
-            <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "flex-start" }}>
-              <div>
-                <div style={{ fontSize: ".78rem", fontWeight: 900, opacity: .78 }}>
-                  Ganancia acumulada
-                </div>
-                <div style={{ marginTop: 4, fontSize: "1.8rem", fontWeight: 950, lineHeight: 1 }}>
-                  {formatClp(totalEarningsClp)}
-                </div>
-                <div style={{ marginTop: 7, fontSize: ".82rem", fontWeight: 850 }}>
-                  {visibleRides.length} viaje{visibleRides.length === 1 ? "" : "s"} completado{visibleRides.length === 1 ? "" : "s"}
-                </div>
+        <div className="rp-shell">
+          {/* Mismo héroe que el saldo de la billetera del pasajero
+              (WalletPage.tsx:215). El degradado verde→dorado que había aquí no
+              existía en ninguna otra pantalla y no respondía al tema. */}
+          <section className="rp-hero">
+            <div className="rp-hero__top">
+              <div className="rp-hero__icon" aria-hidden>
+                <IonIcon icon={cashOutline} />
               </div>
-
-              <div
-                style={{
-                  width: 54,
-                  height: 54,
-                  borderRadius: 18,
-                  background: "rgba(17,17,17,.14)",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                }}
-              >
-                <IonIcon icon={cashOutline} style={{ fontSize: 30 }} />
+              <div>
+                <p className="rp-hero__kicker">Ganancia acumulada</p>
+                <p className="rp-hero__amount">{formatClp(totalEarningsClp)}</p>
               </div>
             </div>
-          </IonCardContent>
-        </IonCard>
 
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "1fr 1fr",
-            gap: 10,
-            marginTop: 12,
-          }}
-        >
-          <IonCard style={{ margin: 0, borderRadius: 18, background: "#F6F2EC" }}>
-            <IonCardContent style={{ padding: 14 }}>
-              <div style={{ color: "#555", fontSize: ".72rem", fontWeight: 850 }}>Total cobrado</div>
-              <div style={{ color: "#111", fontWeight: 950, marginTop: 3 }}>{formatClp(totalFareClp)}</div>
-            </IonCardContent>
-          </IonCard>
-          <IonCard style={{ margin: 0, borderRadius: 18, background: "#F6F2EC" }}>
-            <IonCardContent style={{ padding: 14 }}>
-              <div style={{ color: "#555", fontSize: ".72rem", fontWeight: 850 }}>Comisión Rapa Go</div>
-              <div style={{ color: "#111", fontWeight: 950, marginTop: 3 }}>{formatClp(totalCommissionClp)}</div>
-            </IonCardContent>
-          </IonCard>
-        </div>
+            <p className="rp-hero__note">
+              {visibleRides.length} viaje{visibleRides.length === 1 ? "" : "s"} completado{visibleRides.length === 1 ? "" : "s"}
+            </p>
+          </section>
 
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(4, 1fr)",
-            gap: 8,
-            marginTop: 14,
-          }}
-        >
-          {(["today", "week", "month", "all"] as DriverEarningsFilter[]).map((item) => (
-            <IonButton
-              key={item}
-              size="small"
-              fill={filter === item ? "solid" : "outline"}
-              color={filter === item ? "success" : "light"}
-              onClick={() => setFilter(item)}
-              style={{ "--border-radius": "999px", fontWeight: 900 } as CSSProperties}
-            >
-              {filterLabels[item]}
-            </IonButton>
-          ))}
-        </div>
-
-        <IonButton
-          expand="block"
-          color="success"
-          disabled={visibleRides.length === 0}
-          onClick={() => exportDriverEarningsCsv(visibleRides, filter)}
-          style={{ marginTop: 12, "--border-radius": "16px", height: 48, fontWeight: 950 } as CSSProperties}
-        >
-          Exportar Excel
-        </IonButton>
-
-        {loadError && (
-          <IonText color="warning">
-            <p style={{ fontSize: ".78rem", fontWeight: 800 }}>{loadError}</p>
-          </IonText>
-        )}
-
-        {loading && (
-          <div style={{ display: "flex", justifyContent: "center", paddingTop: 28 }}>
-            <IonSpinner name="crescent" />
+          <div className="rp-tile-grid">
+            <div className="rp-tile">
+              <span className="rp-tile__label">Total cobrado</span>
+              <span className="rp-tile__value">{formatClp(totalFareClp)}</span>
+            </div>
+            <div className="rp-tile">
+              <span className="rp-tile__label">Comisión Rapa Go</span>
+              <span className="rp-tile__value">{formatClp(totalCommissionClp)}</span>
+            </div>
           </div>
-        )}
 
-        {!loading && visibleRides.length === 0 && (
-          <IonCard style={{ margin: "14px 0 0", borderRadius: 20, background: "#F6F2EC" }}>
-            <IonCardContent style={{ color: "#111", fontWeight: 850 }}>
-              Todavía no hay viajes completados para este filtro.
-            </IonCardContent>
-          </IonCard>
-        )}
+          {/* Los cuatro filtros reutilizan .rapago-filter-chip, el control que
+              Mis viajes del pasajero ya usa para lo mismo (sections.css:64).
+              El estado activo llega por .is-active, no por `color="success"`:
+              ese verde comunicaba selección, no estado del dato. */}
+          <div className="rapago-driver-filters">
+            {(["today", "week", "month", "all"] as DriverEarningsFilter[]).map((item) => (
+              <IonButton
+                key={item}
+                size="small"
+                className={`rapago-filter-chip ${filter === item ? "is-active" : ""}`}
+                onClick={() => setFilter(item)}
+              >
+                {filterLabels[item]}
+              </IonButton>
+            ))}
+          </div>
 
-        {!loading && visibleRides.length > 0 && (
-          <div style={{ display: "flex", flexDirection: "column", gap: 10, marginTop: 14 }}>
-            {visibleRides.map((ride) => {
+          <IonButton
+            expand="block"
+            className="rp-cta"
+            disabled={visibleRides.length === 0}
+            onClick={() => exportDriverEarningsCsv(visibleRides, filter)}
+          >
+            Exportar Excel
+          </IonButton>
+
+          {loadError && (
+            <div className="rp-banner rp-banner--warn">{loadError}</div>
+          )}
+
+          {loading && (
+            <div className="rapago-driver-loading">
+              <IonSpinner name="crescent" />
+            </div>
+          )}
+
+          {!loading && visibleRides.length === 0 && (
+            <div className="rp-empty">
+              <div className="rp-empty__icon" aria-hidden>
+                <IonIcon icon={cashOutline} />
+              </div>
+              <p className="rp-empty__body">
+                Todavía no hay viajes completados para este filtro.
+              </p>
+            </div>
+          )}
+
+          {!loading && visibleRides.length > 0 && (
+            visibleRides.map((ride) => {
               const fare = getRideDisplayFareClp(ride as RideWithFarePayload) ?? 0;
               const earning = getDriverEarningsAmountClp(ride);
               const dateMs = getDriverEarningsRideDateMs(ride);
 
               return (
-                <IonCard
+                <article
+                  className="rp-card"
                   key={String(ride.id ?? `${getDriverRidePointDisplayLabel(ride, "origin")}-${getDriverRidePointDisplayLabel(ride, "destination")}-${dateMs}`)}
-                  style={{
-                    margin: 0,
-                    borderRadius: 20,
-                    background: "#F6F2EC",
-                    color: "#111111",
-                    border: "1px solid rgba(210,164,58,.34)",
-                  }}
                 >
-                  <IonCardContent style={{ padding: 14 }}>
-                    <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}>
-                      <div style={{ minWidth: 0 }}>
-                        <div style={{ fontWeight: 950, fontSize: ".94rem", lineHeight: 1.25 }}>
-                          {getDriverRideRouteDisplayLabel(ride as unknown as Record<string, unknown>)}
-                        </div>
-                        <div style={{ marginTop: 5, color: "#555", fontSize: ".74rem", fontWeight: 800 }}>
-                          {dateMs ? new Date(dateMs).toLocaleString("es-CL") : "Fecha no informada"}
-                        </div>
-                        <div style={{ marginTop: 5, color: "#555", fontSize: ".74rem", fontWeight: 800 }}>
-                          {getRidePaymentMethodLabel(String(ride.notes ?? ""))} · {getRideTripTypeLabel(String(ride.notes ?? ""))}
-                        </div>
-                      </div>
-
-                      <div style={{ textAlign: "right", flexShrink: 0 }}>
-                        <IonBadge color="success" style={{ fontWeight: 950 }}>
-                          {formatClp(earning)}
-                        </IonBadge>
-                        <div style={{ marginTop: 6, color: "#555", fontSize: ".72rem", fontWeight: 850 }}>
-                          Precio {formatClp(fare)}
-                        </div>
-                      </div>
+                  <div className="rp-card__row">
+                    <div className="rp-card__main">
+                      <h3 className="rp-card__title">
+                        {getDriverRideRouteDisplayLabel(ride as unknown as Record<string, unknown>)}
+                      </h3>
                     </div>
-                  </IonCardContent>
-                </IonCard>
+                    <IonBadge color="success">{formatClp(earning)}</IonBadge>
+                  </div>
+
+                  <div className="rp-card__meta">
+                    <div>
+                      Precio <strong>{formatClp(fare)}</strong>
+                    </div>
+                    <div>
+                      {getRidePaymentMethodLabel(String(ride.notes ?? ""))} · {getRideTripTypeLabel(String(ride.notes ?? ""))}
+                    </div>
+                  </div>
+
+                  <p className="rp-card__foot">
+                    {dateMs ? new Date(dateMs).toLocaleString("es-CL") : "Fecha no informada"}
+                  </p>
+                </article>
               );
-            })}
-          </div>
-        )}
+            })
+          )}
+        </div>
       </IonContent>
       </IonPage>
       <DriverGlobalRideAlert />
@@ -18097,59 +17506,6 @@ function getAutoDriverPhone(
   );
 }
 
-function driverFormCardStyle(extra?: CSSProperties): CSSProperties {
-  return {
-    margin: "0 0 14px",
-    borderRadius: "22px",
-    background: "#F6F2EC",
-    color: "#111",
-    border: "1px solid rgba(210,164,58,.28)",
-    boxShadow: "0 14px 34px rgba(0,0,0,.18)",
-    overflow: "hidden",
-    ...extra,
-  };
-}
-
-function driverInputItemStyle(): CSSProperties {
-  return {
-    "--background": "#ffffff",
-    "--color": "#050505",
-    "--placeholder-color": "#5f5f5f",
-    "--placeholder-opacity": "1",
-    "--highlight-color-focused": "#d2a43a",
-    "--border-color": "rgba(210,164,58,.55)",
-    "--border-radius": "16px",
-    "--padding-start": "14px",
-    "--inner-padding-end": "14px",
-    marginTop: "10px",
-    border: "1.5px solid rgba(210,164,58,.55)",
-    borderRadius: "16px",
-    overflow: "hidden",
-    fontWeight: 900,
-  } as CSSProperties;
-}
-
-function driverFieldTextStyle(): CSSProperties {
-  return {
-    color: "#050505",
-    fontWeight: 950,
-    fontSize: ".95rem",
-    opacity: 1,
-    "--color": "#050505",
-    "--placeholder-color": "#5f5f5f",
-    "--placeholder-opacity": "1",
-  } as CSSProperties;
-}
-
-function driverFieldLabelStyle(): CSSProperties {
-  return {
-    color: "#050505",
-    fontWeight: 950,
-    fontSize: ".78rem",
-    opacity: 1,
-  };
-}
-
 function safeProfileMessage(message: string | null): string | null {
   if (!message) return null;
 
@@ -18172,6 +17528,7 @@ export function DriverProfilePage(): JSX.Element {
   };
 
   const { session } = auth;
+  const { theme: driverTheme } = useRapagoSectionTheme("driver-profile");
   const history = useHistory();
 
   const storedProfile = readStoredDriverRegistrationProfile(session?.user);
@@ -18243,6 +17600,7 @@ export function DriverProfilePage(): JSX.Element {
       const profile = await driverProfileService.getMyProfile(
         session.accessToken,
       );
+      hydrateApprovedDriverProfileLocally(profile, session.user);
       const autoPhone = getAutoDriverPhone(session.user, profile?.phone);
 
       const selectedVehicle = readSelectedDriverVehicle(session.user);
@@ -18286,7 +17644,8 @@ export function DriverProfilePage(): JSX.Element {
           profile.vehicleColor ?? String(storedProfile.vehicleColor ?? ""),
         );
         setVehicleImageDataUrl(
-          String(storedProfile.vehicleImageDataUrl ?? getStoredDriverVehicleImageDataUrl(session?.user)),
+          profile.vehiclePhotoUrl ??
+            String(storedProfile.vehicleImageDataUrl ?? getStoredDriverVehicleImageDataUrl(session?.user)),
         );
         setVehicleImageName(String(storedProfile.vehicleImageName ?? ""));
       } else {
@@ -18727,17 +18086,12 @@ export function DriverProfilePage(): JSX.Element {
 
   return (
     <>
-      <IonPage>
-      <IonHeader>
-        <IonToolbar color="success">
-          <IonTitle>Mi Perfil</IonTitle>
-          <IonButtons slot="end">
-            <IonButton color="light" onClick={() => void handleLogout()}>
-              Cerrar sesión
-            </IonButton>
-          </IonButtons>
-        </IonToolbar>
-      </IonHeader>
+      <IonPage className="rapago-driver-page" data-rapago-theme={driverTheme}>
+      {/* El "Cerrar sesión" que vivía aquí en la cabecera sale del cromo: ya
+          existía un botón idéntico (misma acción y mismo texto) al final del
+          formulario, así que se conserva ese y la cabecera queda con el mismo
+          peso visual que las demás secciones. */}
+      <RapagoSectionHeader title="Mi Perfil" />
 
       <IonAlert
         isOpen={success}
@@ -18747,15 +18101,8 @@ export function DriverProfilePage(): JSX.Element {
         onDidDismiss={() => setSuccess(false)}
       />
 
-      <IonContent
-        className="ion-padding"
-        style={
-          {
-            "--background":
-              "linear-gradient(180deg, rgba(15,15,15,.86), rgba(15,15,15,.96)), url('/assets/rapa-go-bg.jpg') center/cover no-repeat",
-          } as CSSProperties
-        }
-      >
+      {/* Sin ion-padding: el relleno y el ancho de lectura los aporta .rp-shell. */}
+      <IonContent>
         <IonRefresher
           slot="fixed"
           onIonRefresh={(event) => {
@@ -18766,163 +18113,73 @@ export function DriverProfilePage(): JSX.Element {
         </IonRefresher>
 
         {loading && (
-          <div
-            style={{
-              display: "flex",
-              justifyContent: "center",
-              paddingTop: "40px",
-            }}
-          >
+          <div className="rapago-driver-loading">
             <IonSpinner name="crescent" />
           </div>
         )}
 
+        {/* 560px era el único ancho de columna distinto de la app: el resto de
+            pantallas leen a 460px. Pasa a .rp-shell, que además aporta el ritmo
+            vertical y el hueco para la barra de pestañas. */}
         {!loading && (
-          <div style={{ maxWidth: 560, margin: "0 auto", paddingBottom: 96 }}>
-            <section
-              style={{
-                position: "relative",
-                overflow: "hidden",
-                borderRadius: "26px",
-                padding: "20px",
-                marginBottom: 14,
-                background:
-                  "linear-gradient(135deg, rgba(45,211,111,.95), rgba(210,164,58,.92))",
-                color: "#fff",
-                boxShadow: "0 18px 44px rgba(0,0,0,.30)",
-              }}
-            >
-              <div
-                style={{
-                  position: "absolute",
-                  right: -45,
-                  top: -50,
-                  width: 150,
-                  height: 150,
-                  borderRadius: 999,
-                  background: "rgba(255,255,255,.16)",
-                }}
-              />
-              <div
-                style={{
-                  position: "relative",
-                  zIndex: 1,
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 14,
-                }}
-              >
-                <div
-                  style={{
-                    width: 76,
-                    height: 76,
-                    borderRadius: "24px",
-                    background: "rgba(17,17,17,.24)",
-                    border: "2px solid rgba(255,255,255,.36)",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    fontSize: "1.55rem",
-                    fontWeight: 950,
-                    overflow: "hidden",
-                    boxShadow: "0 14px 30px rgba(0,0,0,.24)",
-                    flexShrink: 0,
-                  }}
-                >
+          <div className="rp-shell">
+            {/* Mismo héroe de identidad que el perfil del pasajero
+                (profile.css:75): avatar con halo dorado y datos centrados. El
+                degradado verde→dorado con texto blanco que había aquí no
+                aparecía en ninguna otra pantalla y era ilegible en modo día. */}
+            <section className="rapago-profile-hero">
+              <div className="rapago-profile-avatar-wrap">
+                <div className="rapago-profile-avatar">
                   {hasProfilePhoto ? (
-                    <img
-                      src={cleanProfilePhotoUrl}
-                      alt="Foto de perfil"
-                      style={{
-                        width: "100%",
-                        height: "100%",
-                        objectFit: "cover",
-                        display: "block",
-                      }}
-                    />
+                    <img src={cleanProfilePhotoUrl} alt="Foto de perfil" />
                   ) : (
                     initials
                   )}
                 </div>
-                <div>
-                  <div
-                    style={{
-                      fontSize: "1.28rem",
-                      fontWeight: 950,
-                      lineHeight: 1.1,
-                    }}
-                  >
-                    {displayName}
-                  </div>
-                  <div
-                    style={{ marginTop: 4, fontSize: ".83rem", opacity: 0.94 }}
-                  >
-                    Perfil de conductor Rapa Go
-                  </div>
-                  <div
-                    style={{
-                      marginTop: 8,
-                      fontSize: ".78rem",
-                      fontWeight: 850,
-                    }}
-                  >
-                    {phone.trim() ? phone : "Teléfono pendiente"}
-                  </div>
-                  <div
-                    style={{
-                      marginTop: 8,
-                      display: "inline-flex",
-                      alignItems: "center",
-                      gap: 8,
-                      padding: "7px 10px",
-                      borderRadius: 999,
-                      background: "rgba(17,17,17,.22)",
-                      border: "1px solid rgba(255,255,255,.20)",
-                    }}
-                  >
-                    <DriverRatingStarsDisplay summary={driverRatingSummary} />
-                  </div>
-                </div>
+              </div>
+
+              <h2 className="rapago-profile-name">{displayName}</h2>
+              <p className="rapago-profile-email">
+                Perfil de conductor Rapa Go
+              </p>
+
+              <div className="rapago-profile-chips">
+                <span className="rapago-profile-chip rapago-profile-chip--gold">
+                  {phone.trim() ? phone : "Teléfono pendiente"}
+                </span>
+                <span className="rapago-profile-chip rapago-profile-chip--muted">
+                  <DriverRatingStarsDisplay summary={driverRatingSummary} />
+                </span>
               </div>
             </section>
 
-            <IonCard
-              style={driverFormCardStyle({
-                background: "linear-gradient(135deg,#111827,#1f2937)",
-                color: "#ffffff",
-                border: "1px solid rgba(244,196,48,.35)",
-              })}
-            >
-              <IonCardContent style={{ padding: "14px" }}>
-                <div style={{ fontWeight: 950, fontSize: ".98rem", marginBottom: 8 }}>
+            {/* La tarjeta de reputación era la única de la pantalla en azul
+                marino con texto blanco: una isla visual. Pasa a la superficie
+                del tema con borde reforzado, y las estrellas conservan el oro
+                de marca, que aquí sí es información. */}
+            <IonCard className="rapago-driver-card rapago-driver-card--accent">
+              <IonCardContent>
+                <div className="rapago-driver-card__title">
                   Reputación del conductor
                 </div>
                 <DriverRatingStarsDisplay summary={driverRatingSummary} />
-                <div style={{ marginTop: 7, color: "rgba(255,255,255,.72)", fontSize: ".78rem", lineHeight: 1.35 }}>
+                <div className="rapago-driver-card__note">
                   Las estrellas se actualizan cuando el pasajero califica un viaje completado.
                 </div>
 
                 {driverRatingSummary.latest.length > 0 && (
-                  <div style={{ marginTop: 12, display: "flex", flexDirection: "column", gap: 8 }}>
+                  <div className="rapago-driver-ratings">
                     {driverRatingSummary.latest.map((rating) => (
-                      <div
-                        key={rating.id}
-                        style={{
-                          background: "rgba(255,255,255,.08)",
-                          border: "1px solid rgba(255,255,255,.10)",
-                          borderRadius: 14,
-                          padding: "9px 10px",
-                        }}
-                      >
-                        <div style={{ fontWeight: 950, color: "#f4c430" }}>
+                      <div key={rating.id} className="rp-card__quote">
+                        <div className="rapago-driver-rating__stars">
                           {"★".repeat(Math.max(1, Math.min(5, Math.round(Number(rating.stars) || 1))))}
                           {"☆".repeat(5 - Math.max(1, Math.min(5, Math.round(Number(rating.stars) || 1))))}
                         </div>
-                        <div style={{ marginTop: 3, fontSize: ".76rem", color: "rgba(255,255,255,.78)", lineHeight: 1.35 }}>
+                        <div className="rapago-driver-rating__route">
                           {rating.originText ?? "Origen"} → {rating.destinationText ?? "Destino"}
                         </div>
                         {rating.comment && (
-                          <div style={{ marginTop: 4, fontSize: ".78rem", color: "#ffffff", fontWeight: 800 }}>
+                          <div className="rapago-driver-rating__comment">
                             “{rating.comment}”
                           </div>
                         )}
@@ -18934,73 +18191,30 @@ export function DriverProfilePage(): JSX.Element {
             </IonCard>
 
             {error && (
-              <IonCard
-                style={driverFormCardStyle({
-                  background: "#fff3cd",
-                  border: "1px solid #ffc107",
-                })}
-              >
-                <IonCardContent style={{ padding: "10px 14px" }}>
-                  <IonText>
-                    <p
-                      style={{
-                        margin: 0,
-                        color: "#6b4700",
-                        fontWeight: 800,
-                        fontSize: ".82rem",
-                      }}
-                    >
-                      {error}
-                    </p>
-                  </IonText>
-                </IonCardContent>
-              </IonCard>
+              <div className="rp-banner rp-banner--warn">{error}</div>
             )}
 
             {success && (
-              <IonCard
-                style={driverFormCardStyle({
-                  background: "#e8fff1",
-                  border: "1px solid rgba(34,197,94,.40)",
-                })}
-              >
-                <IonCardContent style={{ padding: "10px 14px" }}>
-                  <IonText color="success">
-                    <p
-                      style={{ margin: 0, fontWeight: 900, fontSize: ".82rem" }}
-                    >
-                      Perfil guardado correctamente.
-                    </p>
-                  </IonText>
-                </IonCardContent>
-              </IonCard>
+              <div className="rp-banner rp-banner--success">
+                Perfil guardado correctamente.
+              </div>
             )}
 
-            <IonCard style={driverFormCardStyle()}>
+            <IonCard className="rapago-driver-card">
               <IonCardContent>
-                <div
-                  style={{ fontWeight: 950, fontSize: "1rem", marginBottom: 4 }}
-                >
+                <div className="rapago-driver-card__title">
                   Datos personales
                 </div>
-                <div
-                  style={{
-                    color: "#333",
-                    fontSize: ".78rem",
-                    fontWeight: 800,
-                    marginBottom: 10,
-                  }}
-                >
+                <div className="rapago-driver-card__note">
                   El teléfono se toma automáticamente desde el registro si está
                   disponible.
                 </div>
 
-                <IonItem lines="none" style={driverInputItemStyle()}>
-                  <IonLabel position="stacked" style={driverFieldLabelStyle()}>
+                <IonItem lines="none" className="rapago-profile-field">
+                  <IonLabel position="stacked">
                     Teléfono
                   </IonLabel>
                   <IonInput
-                    style={driverFieldTextStyle()}
                     value={phone}
                     onIonInput={(event) =>
                       setPhone(String(event.detail.value ?? ""))
@@ -19012,72 +18226,21 @@ export function DriverProfilePage(): JSX.Element {
                   />
                 </IonItem>
 
-                <div
-                  style={{
-                    marginTop: 14,
-                    padding: 14,
-                    borderRadius: 20,
-                    background:
-                      "linear-gradient(135deg,#ffffff 0%,#fff8e6 100%)",
-                    border: "1.5px solid rgba(210,164,58,.50)",
-                    boxShadow: "0 12px 26px rgba(0,0,0,.08)",
-                  }}
-                >
-                  <div
-                    style={{ display: "flex", alignItems: "center", gap: 14 }}
-                  >
-                    <div
-                      style={{
-                        width: 76,
-                        height: 76,
-                        borderRadius: 24,
-                        overflow: "hidden",
-                        background: "linear-gradient(135deg,#2dd36f,#d2a43a)",
-                        color: "#fff",
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        fontWeight: 950,
-                        fontSize: "1.35rem",
-                        boxShadow: "0 14px 28px rgba(0,0,0,.18)",
-                        flexShrink: 0,
-                      }}
-                    >
+                <div className="rapago-driver-media">
+                  <div className="rapago-driver-media__head">
+                    <div className="rapago-driver-media__thumb">
                       {hasProfilePhoto ? (
-                        <img
-                          src={cleanProfilePhotoUrl}
-                          alt="Foto de perfil"
-                          style={{
-                            width: "100%",
-                            height: "100%",
-                            objectFit: "cover",
-                            display: "block",
-                          }}
-                        />
+                        <img src={cleanProfilePhotoUrl} alt="Foto de perfil" />
                       ) : (
                         initials
                       )}
                     </div>
 
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div
-                        style={{
-                          fontWeight: 950,
-                          color: "#111",
-                          fontSize: ".95rem",
-                        }}
-                      >
+                    <div className="rapago-driver-media__copy">
+                      <div className="rapago-driver-card__title">
                         Foto de perfil
                       </div>
-                      <div
-                        style={{
-                          color: "#555",
-                          fontSize: ".76rem",
-                          fontWeight: 800,
-                          lineHeight: 1.35,
-                          marginTop: 3,
-                        }}
-                      >
+                      <div className="rapago-driver-card__note">
                         Adjunta una foto clara. Se actualizará inmediatamente en
                         tu perfil.
                       </div>
@@ -19093,24 +18256,14 @@ export function DriverProfilePage(): JSX.Element {
                   />
 
                   <div
-                    style={{
-                      display: "grid",
-                      gridTemplateColumns: hasProfilePhoto ? "1fr 1fr" : "1fr",
-                      gap: 10,
-                      marginTop: 14,
-                    }}
+                    className={`rapago-driver-media__actions${
+                      hasProfilePhoto ? " is-split" : ""
+                    }`}
                   >
                     <IonButton
                       expand="block"
-                      color="success"
+                      className="rapago-profile-btn-primary"
                       onClick={() => profilePhotoFileRef.current?.click()}
-                      style={
-                        {
-                          "--border-radius": "16px",
-                          height: "48px",
-                          fontWeight: 950,
-                        } as CSSProperties
-                      }
                     >
                       <IonIcon icon={cameraOutline} slot="start" />
                       {hasProfilePhoto ? "Cambiar foto" : "Adjuntar foto"}
@@ -19121,14 +18274,8 @@ export function DriverProfilePage(): JSX.Element {
                         expand="block"
                         fill="outline"
                         color="danger"
+                        className="rapago-profile-btn-danger"
                         onClick={handleRemoveProfilePhoto}
-                        style={
-                          {
-                            "--border-radius": "16px",
-                            height: "48px",
-                            fontWeight: 950,
-                          } as CSSProperties
-                        }
                       >
                         <IonIcon icon={trashOutline} slot="start" />
                         Quitar
@@ -19138,16 +18285,14 @@ export function DriverProfilePage(): JSX.Element {
 
                   <IonItem
                     lines="none"
-                    style={{ ...driverInputItemStyle(), marginTop: 12 }}
+                    className="rapago-profile-field"
                   >
                     <IonLabel
                       position="stacked"
-                      style={driverFieldLabelStyle()}
                     >
                       URL opcional
                     </IonLabel>
                     <IonInput
-                      style={driverFieldTextStyle()}
                       value={
                         profilePhotoUrl.startsWith("data:")
                           ? ""
@@ -19166,13 +18311,7 @@ export function DriverProfilePage(): JSX.Element {
 
                   {photoError && (
                     <IonText color="danger">
-                      <p
-                        style={{
-                          margin: "8px 0 0",
-                          fontSize: ".78rem",
-                          fontWeight: 850,
-                        }}
-                      >
+                      <p className="rapago-driver-inline-note">
                         {photoError}
                       </p>
                     </IonText>
@@ -19181,44 +18320,21 @@ export function DriverProfilePage(): JSX.Element {
               </IonCardContent>
             </IonCard>
 
-            <IonCard style={driverFormCardStyle()}>
+            <IonCard className="rapago-driver-card">
               <IonCardContent>
-                <div
-                  style={{ fontWeight: 950, fontSize: "1rem", marginBottom: 4 }}
-                >
+                <div className="rapago-driver-card__title">
                   Vehículos del conductor
                 </div>
-                <div
-                  style={{
-                    color: "#333",
-                    fontSize: ".78rem",
-                    fontWeight: 800,
-                    marginBottom: 10,
-                    lineHeight: 1.35,
-                  }}
-                >
+                <div className="rapago-driver-card__note">
                   Aquí se toman los vehículos enviados en la inscripción. Puedes agregar todos los vehículos que tengas y elegir cuál queda activo para recibir solicitudes y reservas.
                 </div>
 
-                <div
-                  style={{
-                    display: "inline-flex",
-                    alignItems: "center",
-                    gap: 6,
-                    marginBottom: 12,
-                    padding: "6px 10px",
-                    borderRadius: 999,
-                    background: "rgba(34,197,94,.12)",
-                    color: "#166534",
-                    fontSize: ".74rem",
-                    fontWeight: 950,
-                  }}
-                >
+                <div className="rapago-profile-chip rapago-profile-chip--green rapago-driver-count">
                   {driverVehicles.length} vehículo{driverVehicles.length !== 1 ? "s" : ""} registrado{driverVehicles.length !== 1 ? "s" : ""}
                 </div>
 
                 {driverVehicles.length > 0 && (
-                  <div style={{ display: "grid", gap: 10, marginBottom: 14 }}>
+                  <div className="rapago-driver-vehicles">
                     {driverVehicles.map((vehicle) => {
                       const selected = selectedVehicleId === vehicle.id;
                       const borrowedText = getBorrowedVehicleRemainingText(vehicle);
@@ -19226,40 +18342,26 @@ export function DriverProfilePage(): JSX.Element {
                       return (
                         <div
                           key={vehicle.id}
-                          style={{
-                            display: "grid",
-                            gridTemplateColumns: vehicle.imageDataUrl ? "82px 1fr" : "1fr",
-                            gap: 10,
-                            padding: 10,
-                            borderRadius: 18,
-                            background: selected ? "#ECFDF3" : "#FFFDF7",
-                            border: selected
-                              ? "2px solid rgba(34,197,94,.70)"
-                              : "1.5px solid rgba(210,164,58,.42)",
-                          }}
+                          className={`rapago-driver-vehicle${
+                            selected ? " is-selected" : ""
+                          }${vehicle.imageDataUrl ? " has-photo" : ""}`}
                         >
                           {vehicle.imageDataUrl && (
                             <img
+                              className="rapago-driver-vehicle__photo"
                               src={vehicle.imageDataUrl}
                               alt={vehicle.label}
-                              style={{
-                                width: 82,
-                                height: 82,
-                                borderRadius: 14,
-                                objectFit: "cover",
-                                background: "#111",
-                              }}
                             />
                           )}
 
-                          <div style={{ minWidth: 0 }}>
-                            <div style={{ fontWeight: 950, color: "#111", fontSize: ".92rem" }}>
+                          <div className="rapago-driver-vehicle__body">
+                            <div className="rapago-driver-vehicle__title">
                               {vehicle.brand} {vehicle.model} {vehicle.year ? `· ${vehicle.year}` : ""}
                             </div>
-                            <div style={{ color: "#333", fontSize: ".78rem", fontWeight: 850, marginTop: 2 }}>
+                            <div className="rapago-driver-vehicle__meta">
                               Patente {vehicle.plate || "sin patente"} · {vehicle.color || "sin color"}
                             </div>
-                            <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 8 }}>
+                            <div className="rapago-driver-vehicle__badges">
                               <IonBadge color={vehicle.ownership === "borrowed" ? "warning" : "success"}>
                                 {vehicle.ownership === "borrowed" ? "Opcional / temporal" : "Vehículo propio"}
                               </IonBadge>
@@ -19267,22 +18369,18 @@ export function DriverProfilePage(): JSX.Element {
                               {borrowedText && <IonBadge color="medium">{borrowedText}</IonBadge>}
                             </div>
 
-                            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginTop: 10 }}>
+                            <div className="rapago-driver-pair">
                               <IonButton
                                 size="small"
-                                color={selected ? "success" : "warning"}
                                 fill={selected ? "solid" : "outline"}
                                 onClick={() => handleSelectDriverVehicle(vehicle)}
-                                style={{ "--border-radius": "14px", fontWeight: 950 } as CSSProperties}
                               >
                                 {selected ? "Vehículo activo" : "Usar este"}
                               </IonButton>
                               <IonButton
                                 size="small"
                                 fill="outline"
-                                color="medium"
                                 onClick={() => handleEditDriverVehicle(vehicle)}
-                                style={{ "--border-radius": "14px", fontWeight: 950 } as CSSProperties}
                               >
                                 Editar abajo
                               </IonButton>
@@ -19294,7 +18392,6 @@ export function DriverProfilePage(): JSX.Element {
                                 fill="clear"
                                 color="danger"
                                 onClick={() => handleRemoveDriverVehicle(vehicle.id)}
-                                style={{ marginTop: 4, fontWeight: 900 }}
                               >
                                 Eliminar opcional
                               </IonButton>
@@ -19307,51 +18404,39 @@ export function DriverProfilePage(): JSX.Element {
                 )}
 
                 {driverVehicles.length === 0 && (
-                  <IonNote style={{ display: "block", marginBottom: 12, color: "#8f3c24", fontWeight: 900 }}>
+                  <div className="rp-banner rp-banner--warn rapago-driver-note">
                     No hay vehículos cargados desde la inscripción. Completa los datos abajo y guarda tu vehículo principal. Después podrás agregar más vehículos si tienes.
-                  </IonNote>
+                  </div>
                 )}
 
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 12 }}>
+                <div className="rapago-driver-pair">
                   <IonButton
                     expand="block"
-                    color={vehicleOwnership === "own" ? "success" : "medium"}
                     fill={vehicleOwnership === "own" ? "solid" : "outline"}
                     onClick={() => handlePrepareNewVehicle("own")}
-                    style={{ "--border-radius": "16px", height: "46px", fontWeight: 950 } as CSSProperties}
                   >
                     Vehículo propio
                   </IonButton>
                   <IonButton
                     expand="block"
-                    color={vehicleOwnership === "borrowed" ? "warning" : "medium"}
                     fill={vehicleOwnership === "borrowed" ? "solid" : "outline"}
                     onClick={() => handlePrepareNewVehicle("borrowed")}
-                    style={{ "--border-radius": "16px", height: "46px", fontWeight: 950 } as CSSProperties}
                   >
                     Agregar vehículo opcional
                   </IonButton>
                 </div>
 
-                <div
-                  style={{
-                    color: "#333",
-                    fontSize: ".78rem",
-                    fontWeight: 800,
-                    marginBottom: 10,
-                  }}
-                >
+                <div className="rapago-driver-card__note">
                   {vehicleOwnership === "borrowed"
                     ? "Vehículo opcional/temporal: puedes agregar más de uno. Cada opcional exige fecha de expiración y luego se borra automáticamente."
                     : "Vehículo propio: puedes guardar tu principal y también agregar más vehículos propios si los usas en Rapa Go."}
                 </div>
 
-                <IonItem lines="none" style={driverInputItemStyle()}>
-                  <IonLabel position="stacked" style={driverFieldLabelStyle()}>
+                <IonItem lines="none" className="rapago-profile-field">
+                  <IonLabel position="stacked">
                     Marca
                   </IonLabel>
                   <IonInput
-                    style={driverFieldTextStyle()}
                     value={vehicleBrand}
                     onIonInput={(event) =>
                       setVehicleBrand(String(event.detail.value ?? ""))
@@ -19361,12 +18446,11 @@ export function DriverProfilePage(): JSX.Element {
                   />
                 </IonItem>
 
-                <IonItem lines="none" style={driverInputItemStyle()}>
-                  <IonLabel position="stacked" style={driverFieldLabelStyle()}>
+                <IonItem lines="none" className="rapago-profile-field">
+                  <IonLabel position="stacked">
                     Modelo
                   </IonLabel>
                   <IonInput
-                    style={driverFieldTextStyle()}
                     value={vehicleModel}
                     onIonInput={(event) =>
                       setVehicleModel(String(event.detail.value ?? ""))
@@ -19376,12 +18460,11 @@ export function DriverProfilePage(): JSX.Element {
                   />
                 </IonItem>
 
-                <IonItem lines="none" style={driverInputItemStyle()}>
-                  <IonLabel position="stacked" style={driverFieldLabelStyle()}>
+                <IonItem lines="none" className="rapago-profile-field">
+                  <IonLabel position="stacked">
                     Año
                   </IonLabel>
                   <IonInput
-                    style={driverFieldTextStyle()}
                     value={vehicleYear}
                     onIonInput={(event) =>
                       setVehicleYear(String(event.detail.value ?? ""))
@@ -19392,12 +18475,11 @@ export function DriverProfilePage(): JSX.Element {
                   />
                 </IonItem>
 
-                <IonItem lines="none" style={driverInputItemStyle()}>
-                  <IonLabel position="stacked" style={driverFieldLabelStyle()}>
+                <IonItem lines="none" className="rapago-profile-field">
+                  <IonLabel position="stacked">
                     Patente
                   </IonLabel>
                   <IonInput
-                    style={driverFieldTextStyle()}
                     value={vehiclePlate}
                     onIonInput={(event) =>
                       setVehiclePlate(
@@ -19409,12 +18491,11 @@ export function DriverProfilePage(): JSX.Element {
                   />
                 </IonItem>
 
-                <IonItem lines="none" style={driverInputItemStyle()}>
-                  <IonLabel position="stacked" style={driverFieldLabelStyle()}>
+                <IonItem lines="none" className="rapago-profile-field">
+                  <IonLabel position="stacked">
                     Color
                   </IonLabel>
                   <IonInput
-                    style={driverFieldTextStyle()}
                     value={vehicleColor}
                     onIonInput={(event) =>
                       setVehicleColor(String(event.detail.value ?? ""))
@@ -19425,12 +18506,11 @@ export function DriverProfilePage(): JSX.Element {
                 </IonItem>
 
                 {vehicleOwnership === "borrowed" && (
-                  <IonItem lines="none" style={driverInputItemStyle()}>
-                    <IonLabel position="stacked" style={driverFieldLabelStyle()}>
+                  <IonItem lines="none" className="rapago-profile-field">
+                    <IonLabel position="stacked">
                       Fecha de expiración del vehículo opcional *
                     </IonLabel>
                     <IonInput
-                      style={driverFieldTextStyle()}
                       type="date"
                       value={vehicleExpiresAt}
                       onIonInput={(event) => setVehicleExpiresAt(String(event.detail.value ?? ""))}
@@ -19438,53 +18518,19 @@ export function DriverProfilePage(): JSX.Element {
                   </IonItem>
                 )}
 
-                <div
-                  style={{
-                    marginTop: 14,
-                    padding: 14,
-                    borderRadius: 20,
-                    background: "linear-gradient(135deg,#ffffff 0%,#fff8e6 100%)",
-                    border: "1.5px dashed rgba(210,164,58,.62)",
-                    boxShadow: "0 12px 26px rgba(0,0,0,.08)",
-                  }}
-                >
-                  <div style={{ fontWeight: 950, fontSize: ".95rem", color: "#111" }}>
+                <div className="rapago-driver-media rapago-driver-media--dashed">
+                  <div className="rapago-driver-card__title">
                     Foto del vehículo
                   </div>
-                  <div
-                    style={{
-                      color: "#555",
-                      fontSize: ".76rem",
-                      fontWeight: 800,
-                      lineHeight: 1.35,
-                      marginTop: 3,
-                    }}
-                  >
+                  <div className="rapago-driver-card__note">
                     Esta foto se mostrará al pasajero cuando aceptes un viaje.
                   </div>
 
                   {hasVehiclePhoto && (
-                    <div
-                      style={{
-                        marginTop: 12,
-                        width: "100%",
-                        minHeight: 145,
-                        borderRadius: 18,
-                        overflow: "hidden",
-                        background: "#111",
-                        border: "1px solid rgba(0,0,0,.12)",
-                        boxShadow: "0 10px 24px rgba(0,0,0,.18)",
-                      }}
-                    >
+                    <div className="rapago-driver-media__preview">
                       <img
                         src={cleanVehicleImageDataUrl}
                         alt="Foto del vehículo"
-                        style={{
-                          width: "100%",
-                          height: 180,
-                          objectFit: "cover",
-                          display: "block",
-                        }}
                       />
                     </div>
                   )}
@@ -19498,24 +18544,14 @@ export function DriverProfilePage(): JSX.Element {
                   />
 
                   <div
-                    style={{
-                      display: "grid",
-                      gridTemplateColumns: hasVehiclePhoto ? "1fr 1fr" : "1fr",
-                      gap: 10,
-                      marginTop: 14,
-                    }}
+                    className={`rapago-driver-media__actions${
+                      hasVehiclePhoto ? " is-split" : ""
+                    }`}
                   >
                     <IonButton
                       expand="block"
-                      color="success"
+                      className="rapago-profile-btn-primary"
                       onClick={() => vehiclePhotoFileRef.current?.click()}
-                      style={
-                        {
-                          "--border-radius": "16px",
-                          height: "48px",
-                          fontWeight: 950,
-                        } as CSSProperties
-                      }
                     >
                       <IonIcon icon={cameraOutline} slot="start" />
                       {hasVehiclePhoto ? "Cambiar foto" : "Adjuntar foto"}
@@ -19526,14 +18562,8 @@ export function DriverProfilePage(): JSX.Element {
                         expand="block"
                         fill="outline"
                         color="danger"
+                        className="rapago-profile-btn-danger"
                         onClick={handleRemoveVehiclePhoto}
-                        style={
-                          {
-                            "--border-radius": "16px",
-                            height: "48px",
-                            fontWeight: 950,
-                          } as CSSProperties
-                        }
                       >
                         <IonIcon icon={trashOutline} slot="start" />
                         Quitar
@@ -19543,13 +18573,7 @@ export function DriverProfilePage(): JSX.Element {
 
                   {vehiclePhotoError && (
                     <IonText color="danger">
-                      <p
-                        style={{
-                          margin: "8px 0 0",
-                          fontSize: ".78rem",
-                          fontWeight: 850,
-                        }}
-                      >
+                      <p className="rapago-driver-inline-note">
                         {vehiclePhotoError}
                       </p>
                     </IonText>
@@ -19558,20 +18582,17 @@ export function DriverProfilePage(): JSX.Element {
               </IonCardContent>
             </IonCard>
 
-            <IonCard style={driverFormCardStyle()}>
+            <IonCard className="rapago-driver-card">
               <IonCardContent>
-                <div
-                  style={{ fontWeight: 950, fontSize: "1rem", marginBottom: 4 }}
-                >
+                <div className="rapago-driver-card__title">
                   Licencia de conducir
                 </div>
 
-                <IonItem lines="none" style={driverInputItemStyle()}>
-                  <IonLabel position="stacked" style={driverFieldLabelStyle()}>
+                <IonItem lines="none" className="rapago-profile-field">
+                  <IonLabel position="stacked">
                     Número de licencia
                   </IonLabel>
                   <IonInput
-                    style={driverFieldTextStyle()}
                     value={licenseNumber}
                     onIonInput={(event) =>
                       setLicenseNumber(String(event.detail.value ?? ""))
@@ -19581,12 +18602,11 @@ export function DriverProfilePage(): JSX.Element {
                   />
                 </IonItem>
 
-                <IonItem lines="none" style={driverInputItemStyle()}>
-                  <IonLabel position="stacked" style={driverFieldLabelStyle()}>
+                <IonItem lines="none" className="rapago-profile-field">
+                  <IonLabel position="stacked">
                     Fecha de vencimiento
                   </IonLabel>
                   <IonInput
-                    style={driverFieldTextStyle()}
                     value={licenseExpiry}
                     onIonInput={(event) =>
                       setLicenseExpiry(String(event.detail.value ?? ""))
@@ -19601,13 +18621,7 @@ export function DriverProfilePage(): JSX.Element {
                       isLicenseExpired(licenseExpiry) ? "danger" : "warning"
                     }
                   >
-                    <p
-                      style={{
-                        fontSize: ".8rem",
-                        fontWeight: 800,
-                        margin: "8px 0 0",
-                      }}
-                    >
+                    <p className="rapago-driver-inline-note">
                       {licenseWarning}
                     </p>
                   </IonText>
@@ -19615,23 +18629,16 @@ export function DriverProfilePage(): JSX.Element {
               </IonCardContent>
             </IonCard>
 
-            <IonCard style={driverFormCardStyle()}>
+            <IonCard className="rapago-driver-card">
               <IonCardContent>
-                <div
-                  style={{
-                    fontWeight: 950,
-                    fontSize: "1rem",
-                    marginBottom: 10,
-                  }}
-                >
+                <div className="rapago-driver-card__title">
                   Biografía
                 </div>
-                <IonItem lines="none" style={driverInputItemStyle()}>
-                  <IonLabel position="stacked" style={driverFieldLabelStyle()}>
+                <IonItem lines="none" className="rapago-profile-field">
+                  <IonLabel position="stacked">
                     Sobre ti
                   </IonLabel>
                   <IonTextarea
-                    style={driverFieldTextStyle()}
                     value={bio}
                     onIonInput={(event) =>
                       setBio(String(event.detail.value ?? ""))
@@ -19644,31 +18651,16 @@ export function DriverProfilePage(): JSX.Element {
               </IonCardContent>
             </IonCard>
 
-            <IonCard style={driverFormCardStyle()}>
+            <IonCard className="rapago-driver-card">
               <IonCardContent>
-                <div
-                  style={{ fontWeight: 950, fontSize: "1rem", marginBottom: 4 }}
-                >
+                <div className="rapago-driver-card__title">
                   Idiomas
                 </div>
-                <div
-                  style={{
-                    color: "#333",
-                    fontSize: ".78rem",
-                    fontWeight: 800,
-                    marginBottom: 12,
-                  }}
-                >
+                <div className="rapago-driver-card__note">
                   Selecciona el idioma principal que verán tus pasajeros.
                 </div>
 
-                <div
-                  style={{
-                    display: "grid",
-                    gridTemplateColumns: "1fr 1fr",
-                    gap: 10,
-                  }}
-                >
+                <div className="rapago-driver-pair">
                   {LANGUAGE_OPTIONS.map((option) => {
                     const selected = languages.includes(option.value);
                     return (
@@ -19676,29 +18668,12 @@ export function DriverProfilePage(): JSX.Element {
                         key={option.value}
                         type="button"
                         onClick={() => selectLanguage(option.value)}
-                        style={{
-                          minHeight: 62,
-                          borderRadius: 18,
-                          border: selected
-                            ? "2px solid #2dd36f"
-                            : "1.5px solid rgba(210,164,58,.45)",
-                          background: selected
-                            ? "linear-gradient(135deg,#2dd36f 0%,#d2a43a 100%)"
-                            : "linear-gradient(135deg,#ffffff 0%,#fff8e6 100%)",
-                          color: selected ? "#ffffff" : "#111111",
-                          boxShadow: selected
-                            ? "0 14px 28px rgba(45,211,111,.28)"
-                            : "0 8px 18px rgba(0,0,0,.08)",
-                          fontWeight: 950,
-                          fontSize: ".95rem",
-                          display: "flex",
-                          alignItems: "center",
-                          justifyContent: "center",
-                          gap: 8,
-                        }}
+                        className={`rapago-driver-lang${
+                          selected ? " is-selected" : ""
+                        }`}
                         aria-pressed={selected}
                       >
-                        <span style={{ fontSize: "1.2rem" }}>
+                        <span className="rapago-driver-lang__flag">
                           {option.emoji}
                         </span>
                         {option.label}
@@ -19707,18 +18682,7 @@ export function DriverProfilePage(): JSX.Element {
                   })}
                 </div>
 
-                <div
-                  style={{
-                    marginTop: 12,
-                    padding: "10px 12px",
-                    borderRadius: 16,
-                    background: "rgba(45,211,111,.10)",
-                    border: "1px solid rgba(45,211,111,.25)",
-                    color: "#0f6f36",
-                    fontWeight: 900,
-                    fontSize: ".78rem",
-                  }}
-                >
+                <div className="rp-banner rp-banner--success rapago-driver-note">
                   Idioma seleccionado:{" "}
                   {languages.includes("en") ? "Inglés" : "Español"}
                 </div>
@@ -19726,50 +18690,17 @@ export function DriverProfilePage(): JSX.Element {
             </IonCard>
 
             {canSwitchToPassengerMode && (
-              <IonCard
-                style={driverFormCardStyle({
-                  background: "linear-gradient(135deg, #fff7dc, #f6f2ec)",
-                  border: "1px solid rgba(210,164,58,.55)",
-                })}
-              >
-                <IonCardContent style={{ padding: "14px" }}>
-                  <div
-                    style={{ display: "flex", alignItems: "center", gap: 12 }}
-                  >
-                    <div
-                      style={{
-                        width: 48,
-                        height: 48,
-                        borderRadius: 16,
-                        background: "#d2a43a",
-                        color: "#111",
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        flexShrink: 0,
-                      }}
-                    >
-                      <IonIcon icon={personOutline} style={{ fontSize: 26 }} />
+              <IonCard className="rapago-driver-card rapago-driver-card--accent">
+                <IonCardContent>
+                  <div className="rapago-driver-switch">
+                    <div className="rapago-driver-switch__icon" aria-hidden>
+                      <IonIcon icon={personOutline} />
                     </div>
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div
-                        style={{
-                          fontWeight: 950,
-                          fontSize: ".98rem",
-                          color: "#111",
-                        }}
-                      >
+                    <div className="rapago-driver-switch__copy">
+                      <div className="rapago-driver-card__title">
                         ¿Quieres pedir un Rapa Go?
                       </div>
-                      <div
-                        style={{
-                          marginTop: 3,
-                          color: "#555",
-                          fontSize: ".78rem",
-                          fontWeight: 800,
-                          lineHeight: 1.35,
-                        }}
-                      >
+                      <div className="rapago-driver-card__note">
                         Cambia temporalmente a la vista de pasajero sin cerrar
                         sesión.
                       </div>
@@ -19778,18 +18709,9 @@ export function DriverProfilePage(): JSX.Element {
 
                   <IonButton
                     expand="block"
-                    color="warning"
+                    className="rp-cta rapago-driver-switch__btn"
                     onClick={handleSwitchToPassengerMode}
                     disabled={saving}
-                    style={
-                      {
-                        "--border-radius": "16px",
-                        height: "52px",
-                        marginTop: 12,
-                        fontWeight: 950,
-                        "--color": "#111",
-                      } as CSSProperties
-                    }
                   >
                     Cambiar a modo pasajero
                   </IonButton>
@@ -19797,34 +18719,37 @@ export function DriverProfilePage(): JSX.Element {
               </IonCard>
             )}
 
-            <AccountDeletionCard
-              requesterSnapshot={{
-                phone: phone.trim() || null,
-                rut: storedProfile.rut?.trim() || null,
-                vehicleBrand: vehicleBrand.trim() || null,
-                vehicleModel: vehicleModel.trim() || null,
-                vehicleYear: Number.isFinite(Number(vehicleYear))
-                  ? Number(vehicleYear)
-                  : null,
-                vehiclePlate: vehiclePlate.trim() || null,
-                vehicleColor: vehicleColor.trim() || null,
-                licenseNumber: licenseNumber.trim() || null,
-                sourceView: "driver",
-              }}
-            />
+            {/* Mismo enganche que el perfil del pasajero (ProfilePage.tsx:2209):
+                AccountDeletionCard se comparte entre pantallas y su archivo no
+                se toca, así que esta clase reencuadra su IonCard interno a la
+                superficie del tema conservando el acento rojo de la acción
+                destructiva (ver profile.css:850 y su réplica en driver.css). */}
+            <div className="rapago-profile-danger-slot">
+              <AccountDeletionCard
+                requesterSnapshot={{
+                  phone: phone.trim() || null,
+                  rut: storedProfile.rut?.trim() || null,
+                  vehicleBrand: vehicleBrand.trim() || null,
+                  vehicleModel: vehicleModel.trim() || null,
+                  vehicleYear: Number.isFinite(Number(vehicleYear))
+                    ? Number(vehicleYear)
+                    : null,
+                  vehiclePlate: vehiclePlate.trim() || null,
+                  vehicleColor: vehicleColor.trim() || null,
+                  licenseNumber: licenseNumber.trim() || null,
+                  sourceView: "driver",
+                }}
+              />
+            </div>
 
+            {/* El verde comunicaba "acción principal", no un estado: pasa al
+                botón primario de marca, el mismo que guarda el perfil del
+                pasajero (profile.css:507). */}
             <IonButton
               expand="block"
-              color="success"
+              className="rapago-profile-btn-primary"
               onClick={() => void handleSave()}
               disabled={saving}
-              style={
-                {
-                  "--border-radius": "16px",
-                  height: "52px",
-                  fontWeight: 950,
-                } as CSSProperties
-              }
             >
               {saving ? <IonSpinner name="dots" /> : "Guardar cambios"}
             </IonButton>
@@ -19833,16 +18758,9 @@ export function DriverProfilePage(): JSX.Element {
               expand="block"
               fill="outline"
               color="danger"
+              className="rapago-profile-btn-danger"
               onClick={() => void handleLogout()}
               disabled={saving}
-              style={
-                {
-                  "--border-radius": "16px",
-                  height: "52px",
-                  marginTop: 12,
-                  fontWeight: 950,
-                } as CSSProperties
-              }
             >
               Cerrar sesión
             </IonButton>

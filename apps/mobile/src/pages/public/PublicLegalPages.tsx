@@ -13,7 +13,7 @@ import {
   publicSiteStyles,
 } from "./PublicSiteShell.js";
 
-const UPDATED_AT = "19 de julio de 2026";
+const UPDATED_AT = "23 de julio de 2026";
 
 function Section({
   title,
@@ -125,29 +125,33 @@ export function PrivacyPublicPage(): JSX.Element {
         </p>
       </Section>
 
-      <Section title="5. Proveedores y destinatarios">
+      <Section title="5. Proveedores, infraestructura y destinatarios">
         <p>
-          Podemos utilizar proveedores de mapas, infraestructura, correo,
-          notificaciones y pagos. Solo reciben la información necesaria para su
-          función y deben aplicar medidas de seguridad. Los datos del viaje se
-          comparten con pasajero y conductor únicamente en la medida necesaria
-          para realizar el servicio. No vendemos datos personales.
+          La API de producción opera en infraestructura Hostinger bajo
+          backend.rapago.cl. La base PostgreSQL es administrada mediante Supabase
+          en la región de São Paulo, Brasil. También podemos utilizar Google Maps,
+          Mercado Pago, Apple, Meta/Facebook, correo y notificaciones según la
+          función elegida. Cada proveedor recibe solo la información necesaria.
+          No vendemos datos personales.
         </p>
       </Section>
 
       <Section title="6. Conservación, eliminación y anonimización">
-        <p>
-          Conservamos los datos mientras la cuenta esté activa y, después, solo
-          durante el tiempo requerido por obligaciones legales, tributarias,
-          prevención de fraude o defensa de derechos. Al aprobarse una eliminación,
-          revocamos sesiones, bloqueamos el acceso y eliminamos o anonimizamos la
-          información que no deba conservarse.
-        </p>
+        <List>
+          <li>Ubicaciones GPS detalladas: hasta 90 días.</li>
+          <li>Registros básicos de viajes, incidentes y reclamos: hasta 5 años.</li>
+          <li>Pagos, conciliaciones y documentos tributarios: 6 años o el plazo obligatorio superior.</li>
+          <li>Registros de seguridad e IP: hasta 12 meses, salvo investigación activa.</li>
+          <li>Soporte ordinario: hasta 24 meses desde el cierre.</li>
+          <li>Adjuntos bancarios de reembolso: eliminación dentro de 30 días desde el término del reembolso, conservando solo el comprobante mínimo.</li>
+        </List>
         <p>
           Puedes iniciar la solicitud dentro de la aplicación o desde
-          <a style={publicSiteStyles.link} href="/eliminar-cuenta"> rapago.cl/eliminar-cuenta</a>.
-          La solicitud pasa a revisión administrativa y no elimina la cuenta de
-          manera automática.
+          <a style={publicSiteStyles.link} href="/eliminar-cuenta"> api.rapago.cl/eliminar-cuenta</a>.
+          El motivo es opcional y el plazo de 30 días comienza cuando verificamos
+          la identidad. Revocamos las sesiones y, cuando corresponde, la
+          autorización de Sign in with Apple; después eliminamos o anonimizamos
+          los datos que no deban conservarse.
         </p>
       </Section>
 
@@ -254,14 +258,17 @@ export function TermsPublicPage(): JSX.Element {
           puede rechazar discrecionalmente la solicitud: solo puede aplazarla por
           una causa objetiva y temporal, como un viaje activo, un saldo, un
           reembolso, un contracargo, un reclamo o una investigación de seguridad.
-          La solicitud debe completarse dentro de un plazo máximo de 30 días,
-          salvo una obligación legal de conservación debidamente informada.
+          Informar un motivo es opcional. El plazo máximo de 30 días comienza
+          después de verificar la identidad, salvo una obligación legal de
+          conservación debidamente informada. Cuando la cuenta utiliza Sign in
+          with Apple, RAPA GO revoca la autorización antes de eliminar la
+          vinculación interna.
         </p>
       </Section>
 
       <Section title="8. Contacto">
         <p>
-          Para soporte utiliza <a style={publicSiteStyles.link} href="/soporte">rapago.cl/soporte</a> o WhatsApp al {RAPAGO_CONTACT.supportPhoneDisplay}.
+          Para soporte utiliza <a style={publicSiteStyles.link} href="/soporte">api.rapago.cl/soporte</a> o WhatsApp al {RAPAGO_CONTACT.supportPhoneDisplay}.
         </p>
       </Section>
     </PublicSiteShell>
@@ -305,7 +312,7 @@ export function EulaPublicPage(): JSX.Element {
         <p>
           El tratamiento de datos se rige por la Política de Privacidad. Para
           soporte consulta
-          <a style={publicSiteStyles.link} href="/soporte"> rapago.cl/soporte</a>.
+          <a style={publicSiteStyles.link} href="/soporte"> api.rapago.cl/soporte</a>.
         </p>
       </Section>
     </PublicSiteShell>
@@ -394,7 +401,7 @@ export function SupportPublicPage(): JSX.Element {
       <Section title="Eliminación de cuenta">
         <p>
           Para solicitarla fuera de la aplicación utiliza
-          <a style={publicSiteStyles.link} href="/eliminar-cuenta"> rapago.cl/eliminar-cuenta</a>.
+          <a style={publicSiteStyles.link} href="/eliminar-cuenta"> api.rapago.cl/eliminar-cuenta</a>.
         </p>
       </Section>
     </PublicSiteShell>

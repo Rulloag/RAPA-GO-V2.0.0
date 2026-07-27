@@ -2,35 +2,46 @@
 
 ## Integrado en el código
 
-- Botón nativo **Continuar con Apple** solo en iOS.
+- Botón nativo **Continuar con Apple** en iOS.
 - Nonce criptográfico y verificación de nonce en backend.
-- Verificación del `identityToken` mediante JWKS de Apple, algoritmo RS256, emisor, audiencia y expiración.
-- Intercambio del código de autorización mediante `client_secret` ES256 generado en backend.
+- Verificación de `identityToken` mediante JWKS, emisor, audiencia y expiración.
+- Intercambio del código mediante `client_secret` ES256 generado en backend.
 - Refresh token cifrado con AES-256-GCM.
-- Identidad Apple almacenada en la tabla existente `auth_identities`.
+- Identidad Apple principal almacenada en `oauth_identities`.
+- `provider_client_id` conserva el audience original para revocación.
 - Prohibición de fusión automática por coincidencia de correo.
 - Vinculación autenticada desde Perfil > Seguridad.
-- Migración `0040_apple_identity_support.sql`.
-- Proyecto Capacitor iOS, entitlement de Apple y Swift Package del plugin.
-- Permisos `When In Use` y `Always and When In Use` para ubicación.
+- Revocación oficial `/auth/revoke` antes de anonimizar una cuenta.
+- Solicitud fallida y reintentable si no se puede revocar.
+- Migraciones `0040_apple_identity_support.sql` y `0042_production_closure.sql`.
+- Proyecto Capacitor iOS y entitlement de Sign in with Apple.
+- Permisos `When In Use` y `Always and When In Use`.
 - `UIBackgroundModes=location`.
-- Plugin Swift `RapaGoBackgroundLocationPlugin` agregado al target Xcode.
-- Inicio y término del seguimiento conectados al flujo existente de viaje.
+- Seguimiento conectado al flujo de viaje.
 
-## Validaciones ejecutadas fuera de macOS
+## Validación local requerida
 
-- TypeScript shared: OK.
-- Backend typecheck y build: OK.
-- Frontend iOS/Android typecheck y build de producción: OK.
-- `npx cap sync ios`: OK; detectó Apple Sign In, Geolocation, Local Notifications, Push y demás plugins.
-- Verificación de release de los puntos 25/26: OK.
-- Pruebas backend: 117 pruebas existentes aprobaron; una suite administrativa requiere `DATABASE_URL` y no puede ejecutarse sin el entorno de prueba.
+Ejecutar desde el commit congelado:
 
-## Pendiente manual, no resoluble dentro del ZIP
+```powershell
+npm ci
+npm run typecheck
+npm run test -- --run
+npm run build:all
+npm run verify:release
+npx cap sync ios
+```
 
-- Inscripción y aprobación de Apple Developer para Haka Taiko SpA.
-- App ID/capabilities/key/provisioning de la cuenta empresarial.
-- Variables secretas en Hostinger.
-- Compilar y firmar en Xcode sobre macOS.
-- Pruebas reales en iPhone, pantalla bloqueada, segundo plano, pérdida de GPS/red y recuperación.
-- TestFlight, App Privacy y aprobación final de tienda.
+Guardar los logs en la carpeta de evidencia del release.
+
+## Pendiente manual
+
+- Apple Developer activo para Haka Taiko SpA.
+- App ID, key, provisioning y certificados.
+- Variables secretas correctas en Hostinger.
+- Compilación y firma en Xcode/macOS.
+- Pruebas reales en iPhone.
+- Revocación real y nuevo registro con la misma cuenta Apple.
+- TestFlight, App Privacy y aprobación final.
+
+Ver `APPLE_ACCOUNT_DELETION_RUNBOOK.md` y `EXTERNAL_EVIDENCE_CHECKLIST.md`.

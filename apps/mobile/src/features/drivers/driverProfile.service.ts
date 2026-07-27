@@ -12,6 +12,7 @@ export interface DriverProfileData {
   licenseNumber:   string | null;
   licenseExpiry:   string | null;
   profilePhotoUrl: string | null;
+  vehiclePhotoUrl: string | null;
   bio:             string | null;
   languages:       string[];
   createdAt:       string;
@@ -69,6 +70,7 @@ export interface UpsertDriverProfilePayload {
   licenseNumber?:   string;
   licenseExpiry?:   string;
   profilePhotoUrl?: string;
+  vehiclePhotoUrl?: string;
   bio?:             string;
   languages?:       string[];
 }

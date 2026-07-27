@@ -33,6 +33,7 @@ export const authIdentities = pgTable(
     providerIsPrivateEmail: boolean("provider_is_private_email")
       .notNull()
       .default(false),
+    providerClientId: varchar("provider_client_id", { length: 255 }),
     encryptedRefreshToken: text("encrypted_refresh_token"),
     linkedAt: timestamp("linked_at", { withTimezone: true })
       .notNull()
