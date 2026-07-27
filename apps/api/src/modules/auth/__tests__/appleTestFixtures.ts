@@ -42,11 +42,15 @@ export function throwingFetch(): typeof fetch {
   }) as unknown as typeof fetch;
 }
 
-/** Simulates AbortSignal.timeout firing — the exact error shape Node/undici
- * produces, distinct from a generic network failure (throwingFetch). */
+/** Simulates AbortSignal.timeout firing — same `.name === "TimeoutError"`
+ * shape Node/undici produces, distinct from a generic network failure
+ * (throwingFetch). Built from a plain Error (not the DOM-lib-only
+ * DOMException type) since this project's tsconfig has no "dom" lib. */
 export function timingOutFetch(): typeof fetch {
   return (async () => {
-    throw new DOMException("The operation was aborted due to timeout", "TimeoutError");
+    const error = new Error("The operation was aborted due to timeout");
+    error.name = "TimeoutError";
+    throw error;
   }) as unknown as typeof fetch;
 }
 

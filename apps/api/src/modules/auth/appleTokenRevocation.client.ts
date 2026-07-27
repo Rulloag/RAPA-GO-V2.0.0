@@ -1,4 +1,5 @@
 import { AppError } from "../../shared/errors/AppError.js";
+import { fetchWithTimeout, resolveTimeoutMs, ProviderTimeoutError } from "../../shared/http/providerTimeout.js";
 import { APPLE_REVOKE_URL } from "./appleAuth.config.js";
 import { buildAppleClientSecret } from "./appleClientSecret.js";
 import type { FetchLike } from "./appleIdentityToken.verifier.js";
@@ -7,6 +8,9 @@ export interface AppleTokenRevocationResult {
   revoked: true;
   alreadyInvalid: boolean;
 }
+
+// Fallback seguro si APPLE_TOKEN_TIMEOUT_MS no está definido o es inválido.
+const APPLE_TOKEN_DEFAULT_TIMEOUT_MS = 8000;
 
 /**
  * Revokes a Sign in with Apple refresh token through Apple's official
@@ -27,16 +31,29 @@ export class AppleTokenRevocationClient {
       token_type_hint: "refresh_token",
     });
 
+    const timeoutMs = resolveTimeoutMs("APPLE_TOKEN_TIMEOUT_MS", APPLE_TOKEN_DEFAULT_TIMEOUT_MS);
+
     let response: Response;
     try {
-      response = await this.fetchImpl(APPLE_REVOKE_URL, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/x-www-form-urlencoded",
+      response = await fetchWithTimeout(
+        "apple-token-revocation",
+        APPLE_REVOKE_URL,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/x-www-form-urlencoded",
+          },
+          body: body.toString(),
         },
-        body: body.toString(),
-      });
-    } catch {
+        timeoutMs,
+        this.fetchImpl,
+      );
+    } catch (error) {
+      if (error instanceof ProviderTimeoutError) {
+        console.error("[Apple] Timeout en revocación de token:", { timeoutMs: error.timeoutMs });
+      } else {
+        console.error("[Apple] Error de red en revocación de token.");
+      }
       throw new AppError({
         code: "AUTH_APPLE_TOKEN_REVOCATION_UNAVAILABLE",
         message:
