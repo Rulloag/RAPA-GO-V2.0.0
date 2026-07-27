@@ -18,4 +18,5 @@ export async function adminRoutes(app: FastifyInstance) {
 
   app.get("/compliance/ride-assignments", driverComplianceController.adminListAssignmentReport);
   app.get("/compliance/driver-rest-periods", driverComplianceController.adminListRestPeriodReport);
+  app.get("/compliance/driver-service-schedules", driverComplianceController.adminListServiceSchedules);
 }

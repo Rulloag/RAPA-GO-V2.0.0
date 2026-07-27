@@ -26,6 +26,14 @@ export const driverRestSchedules = pgTable(
     driverUserId: uuid("driver_user_id")
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
+    /**
+     * Hora local en que comienza el horario de servicios del conductor.
+     * `startMinuteLocal` se conserva como hora de término/aviso por
+     * compatibilidad con las versiones anteriores.
+     */
+    serviceStartMinuteLocal: integer("service_start_minute_local")
+      .notNull()
+      .default(600),
     startMinuteLocal: integer("start_minute_local").notNull(),
     durationMinutes: integer("duration_minutes").notNull().default(720),
     timezone: varchar("timezone", { length: 64 })
@@ -54,9 +62,9 @@ export const driverRestSchedules = pgTable(
 );
 
 /**
- * Evidencia verificable de cada período diario. Si el conductor estaba en un
- * viaje al comenzar su franja, queda pending_trip_completion y las doce horas
- * se cuentan desde el cierre real de ese servicio.
+ * Evidencia verificable de cada ciclo diario. La hora programada solo genera
+ * un aviso: no cambia la disponibilidad y no inicia las doce horas. El descanso
+ * comienza únicamente cuando el conductor confirma "Tomar descanso".
  */
 export const driverRestPeriods = pgTable(
   "driver_rest_periods",
@@ -75,7 +83,14 @@ export const driverRestPeriods = pgTable(
     completedAt: timestamp("completed_at", { withTimezone: true }),
     status: varchar("status", { length: 40 })
       .notNull()
-      .default("scheduled"),
+      .default("reminder_due"),
+    /**
+     * Decisión manual tomada por el conductor para el ciclo:
+     * - rest: comenzó las 12 horas.
+     * - work: decidió continuar trabajando y descartó el aviso actual.
+     */
+    decision: varchar("decision", { length: 30 }),
+    decisionAt: timestamp("decision_at", { withTimezone: true }),
     delayedByRideId: uuid("delayed_by_ride_id").references(
       () => rideRequests.id,
       { onDelete: "set null" },

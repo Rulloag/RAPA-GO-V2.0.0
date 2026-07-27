@@ -13,7 +13,9 @@ if (!DATABASE_URL) {
 
 const sql = postgres(DATABASE_URL, {
   max: 10,
-  prepare: true,
+  // El pooler de Supabase en modo transacción (pgbouncer) no soporta
+  // prepared statements — deben desactivarse en el driver.
+  prepare: false,
 });
 
 export const db = drizzle(sql, { schema });

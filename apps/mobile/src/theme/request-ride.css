@@ -1,4 +1,1063 @@
 /* ==========================================================================
+   RAPA GO — Selector de mapa del Request
+   v12 — tema claro fijo, isla Rapa Nui, sin conflicto de cascada
+
+   FIX respecto a v11:
+   - Se eliminaron los 3 bloques que peleaban por el color de los chips
+     de "destinos frecuentes" (el override de @media prefers-color-scheme,
+     el override .dark / [data-theme="dark"], y el intento de "forzar
+     claro" de V10). Esos tres bloques tenían la MISMA especificidad de
+     selector, así que si algún toggle de tema en JS llega a escribir
+     estas custom properties como inline style en el elemento
+     (element.style.setProperty(...)), le gana a CUALQUIER regla de
+     clase sin !important — por eso el "forzado a claro" no alcanzaba
+     a pisar el inline style y los chips seguían viéndose oscuros con
+     texto casi negro sobre negro.
+   - Ahora hay UNA sola fuente de verdad para los tokens de chip, y esos
+     tokens llevan !important, que sí gana incluso sobre un inline style
+     sin !important. Esta pantalla es de tema claro fijo (ya lo definiste
+     así en v10), así que no hace falta variante oscura.
+   - Paleta ajustada a Rapa Nui: el rojo genérico de "peligro" pasa a un
+     coral/terracota (atardecer del Pacífico), reservado solo para el
+     pin de destino activo. El resto de los pines usan dorado por
+     defecto para que no compitan visualmente con el estado seleccionado.
+   ========================================================================== */
+
+.request-map-page {
+  color-scheme: light !important;
+
+  /* ---- Superficie / texto ---- */
+  --rp-bg: #f3ecdd;
+  --rp-bg-elevated: #f8f2e4;
+  --rp-surface: #ffffff;
+  --rp-text: #2f2418;
+  --rp-muted: #7c6a52;
+  --rp-border-c: rgba(47, 36, 24, 0.14);
+  --rp-field-bg: #fffaf0;
+  --rp-icon-fg: #2f2418;
+
+  /* ---- Marca / isla ---- */
+  --rp-gold: #d9a62e;
+  --rp-gold-dark: #b9820f;
+  --rp-gold-soft: #f2c563;
+  --rp-btn-primary: var(--rp-gold);
+  --rp-btn-primary-fg: #241a06;
+  --rp-shadow-accent: 0 10px 26px rgba(185, 126, 22, 0.32);
+
+  /* Verde "laguna" para punto de partida / candidatos / a pie */
+  --rp-ok-bg: #dcf3e6;
+  --rp-ok-fg: #146b45;
+  --rp-lagoon: #1f9d63;
+  --rp-lagoon-dark: #14713f;
+
+  /* Coral/terracota — reservado SOLO para el destino activo/seleccionado.
+     Ya no es un rojo de alerta genérico: es el color que distingue un
+     pin elegido del resto, nada más. */
+  --rp-danger: #e2543b;
+  --rp-danger-bg: #fbe4de;
+
+  /* Chips de "destinos frecuentes": única definición, sin variantes de
+     tema en conflicto. !important porque estos valores deben ganarle
+     incluso a un inline style de un toggle de tema mal ubicado. */
+  --rp-chip-bg: #fbf1de !important;
+  --rp-chip-bg-hover: #f6e7c8 !important;
+  --rp-chip-border: rgba(185, 130, 15, 0.24) !important;
+  --rp-chip-text: #3a2c12 !important;
+  --rp-chip-muted: #7c6848 !important;
+  --rp-chip-shadow-hover: 0 4px 14px rgba(120, 90, 30, 0.16) !important;
+  --rp-chip-icon-bg: #f2dcae !important;
+  --rp-chip-icon-fg: #9a680d !important;
+
+  /* ---- Escala ---- */
+  --rp-radius-sm: 12px;
+  --rp-radius-md: 16px;
+  --rp-radius-lg: 22px;
+  --rp-radius-xl: 28px;
+  --rp-ease: cubic-bezier(0.22, 1, 0.36, 1);
+
+  --request-sheet-peek: 52px;
+  --request-sheet-expanded-height: min(58dvh, 560px);
+
+  background: radial-gradient(
+      120% 90% at 50% -10%,
+      color-mix(in srgb, var(--rp-gold) 8%, var(--rp-bg)) 0%,
+      var(--rp-bg) 46%
+    ),
+    var(--rp-bg) !important;
+
+  height: 100dvh;
+  min-height: 100dvh;
+  overflow: hidden;
+}
+
+.request-map-page,
+.request-map-page * {
+  transition: background-color 200ms var(--rp-ease, ease),
+    border-color 200ms var(--rp-ease, ease), color 160ms var(--rp-ease, ease),
+    box-shadow 200ms var(--rp-ease, ease);
+}
+
+.request-map-page .request-map-frequent__item,
+.request-map-page .request-map-candidate,
+.request-map-page .request-map-location-button,
+.request-map-page .request-map-back,
+.request-map-page .request-map-confirm,
+.request-map-page .request-map-suggestion,
+.request-map-page .request-map-sheet,
+.request-map-page .request-map-selected ion-icon {
+  transition: border-color 150ms var(--rp-ease, ease), background-color 150ms var(--rp-ease, ease),
+    transform 120ms var(--rp-ease, ease), box-shadow 150ms var(--rp-ease, ease);
+}
+
+/* ---- Encabezado ---- */
+.request-map-header {
+  position: sticky;
+  top: 0;
+  z-index: 100;
+}
+
+.request-map-header ion-toolbar {
+  --background: linear-gradient(180deg, #fffaf0 0%, #f7e7bd 100%);
+  --color: var(--rp-text);
+  --border-color: rgba(185, 130, 15, 0.22);
+  --min-height: 58px;
+  box-shadow: 0 4px 18px rgba(47, 36, 24, 0.12);
+}
+
+.request-map-header ion-title {
+  color: var(--rp-text);
+  font-size: 0.98rem;
+  font-weight: 900;
+  text-align: center;
+  letter-spacing: 0.01em;
+}
+
+.request-map-back {
+  --color: var(--rp-text);
+  font-size: 0.82rem;
+  font-weight: 850;
+  border-radius: var(--rp-radius-sm);
+  transition: opacity 160ms var(--rp-ease), transform 160ms var(--rp-ease);
+}
+
+.request-map-back:active {
+  opacity: 0.6;
+  transform: translateX(-1px);
+}
+
+.request-map-back:focus-visible {
+  outline: 2px solid var(--rp-gold);
+  outline-offset: 3px;
+}
+
+.request-map-content {
+  --background: transparent;
+}
+
+.request-map-content::part(scroll) {
+  overflow: hidden;
+}
+
+.request-map-shell {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  min-height: 100%;
+  overflow: hidden;
+  background: radial-gradient(
+    130% 70% at 50% 0%,
+    color-mix(in srgb, var(--rp-gold) 7%, var(--rp-bg-elevated)) 0%,
+    var(--rp-bg) 55%
+  );
+  isolation: isolate;
+}
+
+.request-map-canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  background: var(--rp-bg);
+}
+
+/* ---- Buscador ---- */
+.request-map-search {
+  position: absolute;
+  top: max(14px, env(safe-area-inset-top, 0px));
+  left: 14px;
+  right: 14px;
+  z-index: 40;
+  max-width: 680px;
+  margin: 0 auto;
+}
+
+.request-map-search__field {
+  --background: var(--rp-field-bg);
+  --color: var(--rp-text);
+  --placeholder-color: var(--rp-muted);
+  --padding-start: 14px;
+  --inner-padding-end: 12px;
+  --min-height: 52px;
+  --border-radius: 999px;
+  color: var(--rp-text);
+  border: 1px solid var(--rp-border-c);
+  border-radius: 999px;
+  box-shadow: 0 10px 28px rgba(47, 36, 24, 0.16);
+  overflow: hidden;
+  transition: box-shadow 180ms var(--rp-ease), border-color 180ms var(--rp-ease);
+}
+
+.request-map-search__field.ion-focused,
+.request-map-search__field:focus-within {
+  border-color: color-mix(in srgb, var(--rp-gold) 55%, transparent);
+  box-shadow: 0 10px 28px rgba(47, 36, 24, 0.18),
+    0 0 0 3px color-mix(in srgb, var(--rp-gold) 22%, transparent);
+}
+
+.request-map-search__field ion-icon {
+  color: var(--rp-text);
+  font-size: 21px;
+}
+
+.request-map-search__field ion-input {
+  --color: var(--rp-text);
+  --placeholder-color: var(--rp-muted);
+  font-size: 0.92rem;
+  font-weight: 700;
+}
+
+.request-map-suggestions {
+  max-height: min(40dvh, 320px);
+  margin-top: 8px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  background: var(--rp-surface);
+  border: 1px solid var(--rp-border-c);
+  border-radius: var(--rp-radius-lg);
+  box-shadow: 0 14px 34px rgba(47, 36, 24, 0.18);
+  animation: rp-suggestions-in 160ms var(--rp-ease);
+}
+
+@keyframes rp-suggestions-in {
+  from {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.request-map-suggestion {
+  display: grid;
+  width: 100%;
+  gap: 3px;
+  padding: 12px 15px;
+  border: 0;
+  border-bottom: 1px solid var(--rp-border-c);
+  background: transparent;
+  color: var(--rp-text);
+  text-align: left;
+  transition: background-color 120ms var(--rp-ease);
+}
+
+.request-map-suggestion:last-child {
+  border-bottom: 0;
+}
+
+.request-map-suggestion:hover {
+  background: var(--rp-field-bg);
+}
+
+.request-map-suggestion:active {
+  background: #f3e9d2;
+}
+
+.request-map-suggestion:focus-visible {
+  outline: 2px solid var(--rp-gold);
+  outline-offset: -2px;
+  background: var(--rp-field-bg);
+}
+
+.request-map-suggestion strong {
+  color: var(--rp-text);
+  font-size: 0.86rem;
+  font-weight: 850;
+  line-height: 1.25;
+}
+
+.request-map-suggestion span {
+  color: var(--rp-muted);
+  font-size: 0.73rem;
+  font-weight: 650;
+  line-height: 1.3;
+}
+
+.request-map-start-label {
+  position: absolute;
+  top: 46%;
+  left: 50%;
+  z-index: 32;
+  max-width: min(82vw, 420px);
+  padding: 7px 12px;
+  transform: translate(-50%, -110%);
+  overflow: hidden;
+  background: var(--rp-text);
+  color: #fffaf0;
+  border: 1px solid var(--rp-lagoon);
+  border-radius: var(--rp-radius-md);
+  box-shadow: 0 7px 18px rgba(47, 36, 24, 0.3);
+  font-size: 0.74rem;
+  font-weight: 850;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.request-map-location-button {
+  position: absolute;
+  right: 16px;
+  bottom: calc(var(--request-sheet-peek) + 18px);
+  z-index: 35;
+  display: grid;
+  width: 54px;
+  height: 54px;
+  place-items: center;
+  padding: 0;
+  background: var(--rp-surface);
+  color: var(--rp-text);
+  border: 1px solid var(--rp-border-c);
+  border-radius: 999px;
+  box-shadow: 0 10px 25px rgba(47, 36, 24, 0.16);
+  font-size: 24px;
+  transition: transform 140ms var(--rp-ease), box-shadow 140ms var(--rp-ease),
+    background-color 140ms var(--rp-ease);
+}
+
+@media (hover: hover) {
+  .request-map-location-button:hover {
+    background: #ffffff;
+    box-shadow: 0 12px 28px rgba(47, 36, 24, 0.22);
+  }
+}
+
+.request-map-location-button:active {
+  transform: scale(0.94);
+  box-shadow: 0 6px 16px rgba(47, 36, 24, 0.18);
+}
+
+.request-map-location-button:focus-visible {
+  outline: 2px solid var(--rp-gold);
+  outline-offset: 3px;
+}
+
+.request-map-loading {
+  position: absolute;
+  top: 84px;
+  left: 50%;
+  z-index: 45;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  max-width: calc(100vw - 40px);
+  padding: 8px 13px;
+  transform: translateX(-50%);
+  background: var(--rp-text);
+  color: #fffaf0;
+  border-radius: 999px;
+  box-shadow: 0 8px 20px rgba(47, 36, 24, 0.26);
+  font-size: 0.73rem;
+  font-weight: 750;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.request-map-loading ion-spinner {
+  width: 17px;
+  height: 17px;
+  color: var(--rp-gold-soft);
+}
+
+/* ---- Hoja inferior ---- */
+.request-map-sheet {
+  --request-sheet-drag-y: 0px;
+
+  position: absolute !important;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 50;
+  height: var(--request-sheet-expanded-height);
+  min-height: var(--request-sheet-peek);
+  background: var(--rp-surface);
+  color: var(--rp-text);
+  border-top: 1px solid var(--rp-border-c);
+  border-radius: var(--rp-radius-xl) var(--rp-radius-xl) 0 0;
+  box-shadow: 0 -18px 42px rgba(47, 36, 24, 0.2);
+  overscroll-behavior: none;
+  will-change: transform;
+  transition: transform 220ms var(--rp-ease);
+}
+
+.request-map-sheet--expanded {
+  transform: translateY(var(--request-sheet-drag-y));
+}
+
+.request-map-sheet--collapsed {
+  transform: translateY(
+    calc(100% - var(--request-sheet-peek) + var(--request-sheet-drag-y))
+  );
+}
+
+.request-map-sheet--dragging {
+  transition: none;
+}
+
+/* Con la hoja colapsada, solo queda visible el asa: nada de bloque
+   vacío color arena flotando encima del mapa. */
+.request-map-sheet--collapsed .request-map-sheet__body {
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.request-map-sheet--expanded .request-map-sheet__body {
+  visibility: visible;
+  pointer-events: auto;
+}
+
+.request-map-sheet__drag {
+  display: grid;
+  width: 100%;
+  min-height: 52px;
+  place-items: center;
+  gap: 4px;
+  padding: 8px 18px 5px;
+  touch-action: none !important;
+  user-select: none;
+  background: transparent;
+  color: var(--rp-muted);
+  border: 0;
+  border-radius: var(--rp-radius-xl) var(--rp-radius-xl) 0 0;
+  font-size: 0.65rem;
+  font-weight: 750;
+  cursor: grab;
+}
+
+.request-map-sheet__drag:active {
+  cursor: grabbing;
+}
+
+.request-map-sheet__drag:focus-visible {
+  outline: 2px solid var(--rp-gold);
+  outline-offset: -3px;
+}
+
+.request-map-sheet__grip {
+  display: block;
+  width: 44px;
+  height: 5px;
+  background: var(--rp-border-c);
+  border-radius: 999px;
+  transition: background-color 140ms var(--rp-ease);
+}
+
+.request-map-sheet__drag:hover .request-map-sheet__grip,
+.request-map-sheet__drag:active .request-map-sheet__grip {
+  background: color-mix(in srgb, var(--rp-gold) 55%, var(--rp-border-c));
+}
+
+.request-map-sheet__body {
+  height: calc(100% - 42px);
+  padding: 4px 17px max(18px, env(safe-area-inset-bottom, 0px));
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  touch-action: pan-y;
+}
+
+.request-map-sheet__heading {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.request-map-sheet__heading-mark {
+  flex: 0 0 auto;
+  width: 18px;
+  height: 4px;
+  margin-top: 8px;
+  background: linear-gradient(90deg, var(--rp-gold), var(--rp-gold-soft));
+  border-radius: 999px;
+}
+
+.request-map-sheet__heading div {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.request-map-sheet__heading strong {
+  color: var(--rp-text);
+  font-size: 0.98rem;
+  font-weight: 900;
+  line-height: 1.2;
+}
+
+.request-map-sheet__heading span {
+  color: var(--rp-muted);
+  font-size: 0.72rem;
+  font-weight: 650;
+  line-height: 1.35;
+}
+
+/* ---- Destinos frecuentes ---- */
+.request-map-frequent {
+  display: grid;
+  gap: 9px;
+  margin-bottom: 12px;
+}
+
+.request-map-frequent__heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.request-map-frequent__heading div {
+  display: grid;
+  gap: 2px;
+}
+
+.request-map-frequent__heading strong {
+  color: var(--rp-text);
+  font-size: 0.8rem;
+  font-weight: 900;
+}
+
+.request-map-frequent__heading span {
+  color: var(--rp-muted);
+  font-size: 0.67rem;
+  font-weight: 650;
+  line-height: 1.3;
+}
+
+.request-map-frequent__list {
+  display: grid;
+  grid-auto-flow: column;
+  grid-template-rows: repeat(2, minmax(58px, auto));
+  grid-auto-columns: minmax(148px, 44%);
+  gap: 8px;
+  width: 100%;
+  padding: 1px 1px 6px;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scroll-snap-type: x proximity;
+  scrollbar-width: thin;
+  -webkit-overflow-scrolling: touch;
+}
+
+.request-map-frequent__item {
+  display: grid;
+  grid-template-columns: 25px minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  padding: 9px 10px;
+  /* !important: en global.css existe button[aria-pressed="false"] con
+     background/color/border en !important (pensado para otros botones
+     tipo tab/switch). Estos chips también son <button aria-pressed=...>,
+     así que sin !important aquí, esa regla global les ganaba y dejaba
+     texto oscuro sobre fondo oscuro casi ilegible. */
+  background: var(--rp-chip-bg) !important;
+  color: var(--rp-chip-text) !important;
+  border: 1px solid var(--rp-chip-border) !important;
+  border-radius: var(--rp-radius-md);
+  text-align: left;
+  scroll-snap-align: start;
+  cursor: pointer;
+  transition: border-color 150ms var(--rp-ease), background-color 150ms var(--rp-ease),
+    transform 120ms var(--rp-ease), box-shadow 150ms var(--rp-ease);
+}
+
+@media (hover: hover) {
+  .request-map-frequent__item:hover:not(:disabled) {
+    background: var(--rp-chip-bg-hover);
+    border-color: color-mix(in srgb, var(--rp-gold) 55%, var(--rp-chip-border));
+    box-shadow: var(--rp-chip-shadow-hover);
+  }
+}
+
+.request-map-frequent__item:active:not(:disabled) {
+  transform: scale(0.98);
+}
+
+.request-map-frequent__item:focus-visible {
+  outline: 2px solid var(--rp-gold);
+  outline-offset: 2px;
+}
+
+.request-map-frequent__item ion-icon {
+  width: 24px;
+  height: 24px;
+  padding: 5px;
+  box-sizing: border-box;
+  background: var(--rp-chip-icon-bg);
+  color: var(--rp-chip-icon-fg);
+  border-radius: 999px;
+  transition: background-color 150ms var(--rp-ease), color 150ms var(--rp-ease);
+}
+
+.request-map-frequent__item span {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+
+.request-map-frequent__item strong {
+  overflow: hidden;
+  color: var(--rp-chip-text);
+  font-size: 0.72rem;
+  font-weight: 850;
+  line-height: 1.2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.request-map-frequent__item small {
+  overflow: hidden;
+  color: var(--rp-chip-muted);
+  font-size: 0.62rem;
+  font-weight: 650;
+  line-height: 1.2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Único chip que usa coral: el seleccionado. Así se distingue de un
+   vistazo sin que el resto de los pines compita en rojo. */
+.request-map-frequent__item--active {
+  /* !important por la misma razón: button[aria-pressed="true"] en
+     global.css trae su propio background/color en !important. */
+  background: var(--rp-danger-bg) !important;
+  color: #7a2416 !important;
+  border-color: var(--rp-danger) !important;
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--rp-danger) 30%, transparent);
+}
+
+.request-map-frequent__item--active strong,
+.request-map-frequent__item--active small {
+  color: #7a2416 !important;
+}
+
+.request-map-frequent__item--active ion-icon {
+  background: var(--rp-danger);
+  color: #ffffff;
+}
+
+.request-map-frequent__item:disabled {
+  cursor: wait;
+  opacity: 0.55;
+  transform: none;
+  box-shadow: none;
+}
+
+/* ---- Candidatos de dirección ---- */
+.request-map-candidates {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.request-map-candidate {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 10px;
+  background: var(--rp-field-bg);
+  color: var(--rp-text);
+  border: 1px solid var(--rp-border-c);
+  border-radius: var(--rp-radius-lg);
+  text-align: left;
+  transition: border-color 150ms var(--rp-ease), background-color 150ms var(--rp-ease),
+    transform 120ms var(--rp-ease);
+}
+
+@media (hover: hover) {
+  .request-map-candidate:hover {
+    border-color: color-mix(in srgb, var(--rp-lagoon) 40%, var(--rp-border-c));
+  }
+}
+
+.request-map-candidate:active {
+  transform: scale(0.99);
+}
+
+.request-map-candidate:focus-visible {
+  outline: 2px solid var(--rp-lagoon);
+  outline-offset: 2px;
+}
+
+.request-map-candidate--active {
+  background: color-mix(in srgb, var(--rp-ok-bg) 62%, var(--rp-surface));
+  border-color: var(--rp-lagoon);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--rp-lagoon) 16%, transparent);
+}
+
+.request-map-candidate__number {
+  display: grid;
+  width: 27px;
+  height: 27px;
+  place-items: center;
+  background: linear-gradient(160deg, var(--rp-lagoon), var(--rp-lagoon-dark));
+  color: #ffffff;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 900;
+}
+
+.request-map-candidate__content {
+  display: grid;
+  min-width: 0;
+  gap: 3px;
+}
+
+.request-map-candidate__content strong {
+  overflow: hidden;
+  color: var(--rp-text);
+  font-size: 0.79rem;
+  font-weight: 850;
+  line-height: 1.2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.request-map-candidate__content span {
+  display: -webkit-box;
+  overflow: hidden;
+  color: var(--rp-muted);
+  font-size: 0.68rem;
+  font-weight: 650;
+  line-height: 1.3;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.request-map-candidate__walk {
+  display: grid;
+  min-width: 44px;
+  gap: 2px;
+  color: var(--rp-ok-fg);
+  font-size: 0.79rem;
+  font-weight: 900;
+  text-align: right;
+}
+
+.request-map-candidate__walk small {
+  color: var(--rp-muted);
+  font-size: 0.65rem;
+  font-weight: 700;
+}
+
+/* ---- Resumen origen/destino seleccionado ---- */
+.request-map-selected {
+  display: grid;
+  grid-template-columns: 14px minmax(0, 1fr) 22px;
+  align-items: center;
+  gap: 11px;
+  margin-bottom: 11px;
+  padding: 12px 13px;
+  background: var(--rp-field-bg);
+  border: 1px solid var(--rp-border-c);
+  border-radius: var(--rp-radius-md);
+}
+
+.request-map-selected__dot {
+  width: 13px;
+  height: 13px;
+  border: 3px solid #ffffff;
+  border-radius: 999px;
+  box-shadow: 0 0 0 2px currentColor;
+}
+
+.request-map-selected__dot--pickup {
+  background: var(--rp-lagoon);
+  color: var(--rp-lagoon);
+}
+
+.request-map-selected__dot--destination {
+  background: var(--rp-danger);
+  color: var(--rp-danger);
+}
+
+.request-map-selected > div {
+  display: grid;
+  min-width: 0;
+  gap: 3px;
+}
+
+.request-map-selected strong {
+  overflow: hidden;
+  color: var(--rp-text);
+  font-size: 0.84rem;
+  font-weight: 850;
+  line-height: 1.25;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.request-map-selected span {
+  display: -webkit-box;
+  overflow: hidden;
+  color: var(--rp-muted);
+  font-size: 0.7rem;
+  font-weight: 650;
+  line-height: 1.35;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.request-map-selected ion-icon {
+  color: var(--rp-icon-fg);
+  font-size: 20px;
+  transition: transform 140ms var(--rp-ease), color 140ms var(--rp-ease);
+  cursor: pointer;
+}
+
+.request-map-selected ion-icon:hover {
+  color: var(--rp-gold-dark);
+  transform: scale(1.08);
+}
+
+/* ---- Banner "a pie" ---- */
+.request-map-walk {
+  display: grid;
+  grid-template-columns: 38px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 11px;
+  margin-bottom: 10px;
+  padding: 12px 13px;
+  background: var(--rp-ok-bg);
+  color: var(--rp-ok-fg);
+  border: 1px solid color-mix(in srgb, var(--rp-lagoon) 36%, transparent);
+  border-radius: var(--rp-radius-md);
+}
+
+.request-map-walk__icon {
+  font-size: 25px;
+  line-height: 1;
+}
+
+.request-map-walk__text {
+  display: grid;
+  min-width: 0;
+  gap: 3px;
+}
+
+.request-map-walk__text strong {
+  font-size: 0.8rem;
+  font-weight: 900;
+  line-height: 1.25;
+}
+
+.request-map-walk__text span {
+  color: var(--rp-muted);
+  font-size: 0.68rem;
+  font-weight: 650;
+  line-height: 1.35;
+}
+
+.request-map-walk__metrics {
+  display: grid;
+  min-width: 46px;
+  gap: 2px;
+  font-size: 0.86rem;
+  font-weight: 900;
+  text-align: right;
+}
+
+.request-map-walk__metrics small {
+  color: var(--rp-muted);
+  font-size: 0.66rem;
+  font-weight: 700;
+}
+
+.request-map-walking-warning {
+  margin: 0 2px 10px;
+  color: var(--rp-muted);
+  font-size: 0.63rem;
+  font-weight: 620;
+  line-height: 1.35;
+}
+
+/* ---- Botón confirmar ---- */
+.request-map-confirm {
+  --background: linear-gradient(165deg, var(--rp-gold-soft) 0%, var(--rp-btn-primary) 55%, var(--rp-gold-dark) 100%);
+  --background-activated: var(--rp-gold-dark);
+  --background-hover: var(--rp-gold-soft);
+  --color: var(--rp-btn-primary-fg);
+  --border-radius: var(--rp-radius-md);
+  --box-shadow: var(--rp-shadow-accent);
+  --ripple-color: rgba(36, 26, 6, 0.18);
+  min-height: 52px;
+  margin: 0;
+  font-size: 0.9rem;
+  font-weight: 900;
+  letter-spacing: 0.01em;
+  transition: transform 120ms var(--rp-ease), box-shadow 160ms var(--rp-ease);
+}
+
+.request-map-confirm:not([disabled]):active {
+  transform: translateY(1px) scale(0.995);
+}
+
+.request-map-confirm[disabled] {
+  --background: var(--rp-border-c);
+  --box-shadow: none;
+  --color: var(--rp-muted);
+  opacity: 0.7;
+}
+
+.request-map-confirm:focus-visible {
+  outline: 2px solid var(--rp-gold-dark);
+  outline-offset: 3px;
+}
+
+/* ---- Responsive ---- */
+@media (min-width: 720px) {
+  .request-map-page {
+    --request-sheet-peek: 52px;
+    --request-sheet-expanded-height: min(55dvh, 520px);
+  }
+
+  .request-map-sheet {
+    right: max(18px, calc((100vw - 680px) / 2));
+    bottom: 18px;
+    left: max(18px, calc((100vw - 680px) / 2));
+    border: 1px solid var(--rp-border-c);
+    border-radius: var(--rp-radius-xl);
+    overflow: hidden;
+  }
+
+  .request-map-location-button {
+    right: max(28px, calc((100vw - 760px) / 2));
+  }
+}
+
+@media (max-height: 680px) {
+  .request-map-page {
+    --request-sheet-peek: 52px;
+    --request-sheet-expanded-height: 62dvh;
+  }
+
+  .request-map-sheet__body {
+    padding-bottom: max(12px, env(safe-area-inset-bottom, 0px));
+  }
+
+  .request-map-sheet__heading {
+    margin-bottom: 8px;
+  }
+
+  .request-map-candidate {
+    padding-block: 8px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .request-map-page,
+  .request-map-page *,
+  .request-map-sheet,
+  .request-map-location-button,
+  .request-map-back,
+  .request-map-suggestion,
+  .request-map-frequent__item,
+  .request-map-candidate,
+  .request-map-selected ion-icon,
+  .request-map-confirm {
+    transition: none;
+    animation: none;
+  }
+}
+
+/* ==========================================================================
+   FIX — global.css intercepta cualquier <button aria-pressed> o
+   <button role="tab"> de toda la app (regla "CONTRASTE PROFESIONAL
+   DEFINITIVO") con !important, pisando el fondo/color que esta pantalla
+   pone por inline style (React no permite !important en el atributo
+   style). Afecta: toggle Ahora/Agendar, tarjeta "Solo ida", tarjetas de
+   vehículo y tarjetas de promoción — todas quedaban con el fondo café
+   oscuro por defecto en vez del dorado/crema que pide el diseño.
+
+   Se restaura el look correcto aquí, con más especificidad
+   (.rapago-request-page + atributo) y !important, para ganarle a esa
+   regla global sin tener que tocarla ni romper otras pantallas que sí
+   la necesitan. */
+.rapago-request-page button[aria-pressed],
+.rapago-request-page button[role="tab"] {
+  color: #111111 !important;
+}
+
+.rapago-request-page button[aria-pressed="false"],
+.rapago-request-page button[role="tab"][aria-selected="false"] {
+  background: linear-gradient(180deg, #fffdf7 0%, #f2e5c9 100%) !important;
+  border: 1.5px solid rgba(138, 100, 28, 0.42) !important;
+}
+
+.rapago-request-page button[aria-pressed="true"],
+.rapago-request-page button[role="tab"][aria-selected="true"] {
+  background: linear-gradient(135deg, #d2a43a 0%, #f8d879 100%) !important;
+  border: 2px solid #b98517 !important;
+}
+
+/* ==========================================================================
+   FIX — el panel "Ofertas destacadas" (rp-request-promotion-panel) y las
+   tarjetas rp-request-trip-card / rp-request-vehicle-card /
+   rp-request-promotion-card / rp-request-panel traen su fondo OSCURO
+   puesto directo por inline style en el JSX (background: #191919/#0d0d0d).
+   Esta regla estaba en el archivo original y se perdió al reescribir el
+   CSS para arreglar los chips — se repone aquí para que el panel de
+   promociones y sus tarjetas queden en modo claro con texto legible,
+   igual que el resto de la pantalla. */
+.rp-request-trip-card,
+.rp-request-vehicle-card,
+.rp-request-promotion-panel,
+.rp-request-promotion-card,
+.rp-request-panel {
+  color: #111827 !important;
+  border-color: rgba(155, 105, 16, 0.28) !important;
+  text-shadow: none !important;
+}
+
+.rp-request-trip-card:not([aria-pressed="true"]),
+.rp-request-vehicle-card:not([aria-pressed="true"]),
+.rp-request-promotion-card:not([aria-pressed="true"]),
+.rp-request-panel {
+  background: linear-gradient(180deg, #ffffff 0%, #f7ead0 100%) !important;
+  box-shadow: 0 8px 18px rgba(15, 23, 42, 0.10) !important;
+}
+
+.rp-request-promotion-panel {
+  background:
+    radial-gradient(circle at top left, rgba(248, 216, 121, 0.34), transparent 38%),
+    linear-gradient(145deg, #fffdf7 0%, #f7e9c9 52%, #f2e0b8 100%) !important;
+  box-shadow: 0 12px 28px rgba(155, 105, 16, 0.16) !important;
+}
+
+.rp-request-promotion-panel *,
+.rp-request-promotion-card * {
+  color: #111827 !important;
+  text-shadow: none !important;
+}
+
+/* ========================================================================== */
+/* Integración de la estructura visual y accesible del panel de origin/main. */
+/* ========================================================================== */
+
+/* ==========================================================================
    RAPA GO — Solicitar viaje (RequestRidePage)
 
    POR QUÉ ESTE ARCHIVO
@@ -305,6 +1364,63 @@
   box-shadow: 0 -26px 56px rgba(0, 0, 0, 0.44);
 }
 
+
+/* ESTADO GUARDADO.
+   La hoja no desaparece: queda únicamente el tirador visible, como una
+   bandeja guardada en la parte inferior. El mapa recupera el espacio real y
+   la barra de búsqueda permanece totalmente utilizable. */
+.rapago-request-page
+  .rp-request-map-shell.is-sheet-collapsed
+  .rp-request-map-sheet {
+  padding-top: 4px;
+  padding-bottom: max(8px, env(safe-area-inset-bottom));
+  box-shadow: 0 -8px 22px rgba(0, 0, 0, 0.2);
+}
+
+.rapago-request-page
+  .rp-request-map-shell.is-sheet-collapsed
+  .rp-request-map-sheet-head {
+  min-height: 34px;
+  margin: -2px 0 0;
+  gap: 0;
+  justify-content: flex-start;
+}
+
+.rapago-request-page
+  .rp-request-map-shell.is-sheet-collapsed
+  .rp-request-map-sheet-title {
+  display: none;
+}
+
+.rapago-request-page
+  .rp-request-map-shell.is-sheet-collapsed
+  .rp-request-map-sheet-scroll {
+  flex: 0 0 0;
+  min-height: 0;
+  height: 0;
+  padding: 0;
+  overflow: hidden;
+  visibility: hidden;
+  opacity: 0;
+  pointer-events: none;
+  -webkit-mask-image: none;
+  mask-image: none;
+}
+
+.rapago-request-page
+  .rp-request-map-shell.is-sheet-collapsed
+  .rp-request-map-grip {
+  width: 92px;
+  height: 30px;
+}
+
+.rapago-request-page
+  .rp-request-map-shell.is-sheet-collapsed
+  .rp-request-map-grip__bar {
+  width: 58px;
+  background: var(--rp-accent);
+}
+
 /* NO hay regla de "hoja cerrada", y es a propósito. La hubo: desvanecía el
    contenido con `opacity` pero le seguía reservando su espacio, así que el
    panel quedaba como una caja negra vacía bajo el título. Ese hueco era
@@ -355,7 +1471,7 @@
      los aparatos; en % volvería a quedarse corto justo en las pantallas
      pequeñas. Se acota con `min()` para que en horizontal, donde el alto total
      es poco, este suelo no se coma la pantalla. */
-  min-height: min(calc(56px + max(20px, env(safe-area-inset-bottom))), 40%);
+  min-height: min(calc(44px + max(8px, env(safe-area-inset-bottom))), 30%);
   background: var(--rp-surface);
   border-top-left-radius: 28px;
   border-top-right-radius: 28px;
@@ -366,7 +1482,7 @@
      56px de la cabecera de la regla de arriba. El lateral y el inferior se
      quedan igual — el inferior es el que de verdad importa (zona del gesto de
      inicio en iOS) y no debe recortarse. */
-  padding: 10px 18px max(20px, env(safe-area-inset-bottom));
+  padding: 8px 18px max(10px, env(safe-area-inset-bottom));
   box-shadow: 0 -18px 38px rgba(0, 0, 0, 0.28);
   transition: box-shadow 0.42s cubic-bezier(0.34, 1.28, 0.52, 1);
   display: flex;

@@ -6437,6 +6437,63 @@ function fmtDate(iso: string | null): string {
   });
 }
 
+function adminRestStatusLabel(status: string | null | undefined): string {
+  switch (String(status ?? "").toLowerCase()) {
+    case "active":
+      return "Descanso activo";
+    case "reminder_due":
+    case "scheduled":
+    case "pending_trip_completion":
+      return "Aviso pendiente";
+    case "working":
+      return "Eligió trabajar";
+    case "completed":
+      return "Descanso completado";
+    default:
+      return "Programado";
+  }
+}
+
+function adminRestStatusStyle(
+  status: string | null | undefined,
+): CSSProperties {
+  const normalized = String(status ?? "").toLowerCase();
+
+  if (normalized === "active") {
+    return {
+      background: "rgba(79,70,229,.14)",
+      color: "#3730a3",
+      border: "1px solid rgba(79,70,229,.28)",
+    };
+  }
+
+  if (
+    normalized === "reminder_due" ||
+    normalized === "scheduled" ||
+    normalized === "pending_trip_completion"
+  ) {
+    return {
+      background: "rgba(245,158,11,.14)",
+      color: "#92400e",
+      border: "1px solid rgba(245,158,11,.30)",
+    };
+  }
+
+  if (normalized === "working") {
+    return {
+      background: "rgba(34,197,94,.13)",
+      color: "#166534",
+      border: "1px solid rgba(34,197,94,.28)",
+    };
+  }
+
+  return {
+    background: "rgba(100,116,139,.12)",
+    color: "#334155",
+    border: "1px solid rgba(100,116,139,.24)",
+  };
+}
+
 export function AdminDriversPage(): JSX.Element {
   const { session } = useAuth();
   const token = session?.accessToken;
@@ -6452,6 +6509,16 @@ export function AdminDriversPage(): JSX.Element {
   const [assignmentToast, setAssignmentToast] = useState<string | null>(null);
   const [assignmentError, setAssignmentError] = useState<string | null>(null);
   const [driverRides, setDriverRides] = useState<AdminRideData[]>([]);
+  const [driverServiceSchedules, setDriverServiceSchedules] = useState<
+    AdminDriverServiceScheduleRow[]
+  >([]);
+  const [driverRestPeriods, setDriverRestPeriods] = useState<
+    AdminDriverRestComplianceRow[]
+  >([]);
+  const [restOverviewLoading, setRestOverviewLoading] = useState(false);
+  const [restOverviewError, setRestOverviewError] = useState<string | null>(
+    null,
+  );
   const [, setAvailabilityRevision] = useState(0);
 
   const loadDrivers = useCallback(
@@ -6478,9 +6545,39 @@ export function AdminDriversPage(): JSX.Element {
     [token],
   );
 
+  const loadDriverRestOverview = useCallback(
+    async (silent = false) => {
+      if (!token) return;
+      if (!silent) setRestOverviewLoading(true);
+      setRestOverviewError(null);
+
+      try {
+        const report = await fetchAdminDriverComplianceReport(token);
+        setDriverServiceSchedules(report.serviceSchedules);
+        setDriverRestPeriods(report.restPeriods);
+      } catch (err) {
+        setRestOverviewError(
+          err instanceof Error
+            ? err.message
+            : "No se pudieron cargar los horarios y descansos.",
+        );
+      } finally {
+        if (!silent) setRestOverviewLoading(false);
+      }
+    },
+    [token],
+  );
+
   useEffect(() => {
     void loadDrivers();
-  }, [loadDrivers]);
+    void loadDriverRestOverview();
+
+    const restTimerId = window.setInterval(() => {
+      void loadDriverRestOverview(true);
+    }, 60_000);
+
+    return () => window.clearInterval(restTimerId);
+  }, [loadDriverRestOverview, loadDrivers]);
 
   useEffect(() => {
     const refreshPendingAssignment = () => {
@@ -6501,6 +6598,7 @@ export function AdminDriversPage(): JSX.Element {
     setAssignmentRide(readPendingAdminDriverAssignmentRide());
     setAvailabilityRevision((current) => current + 1);
     void loadDrivers(false);
+    void loadDriverRestOverview(false);
   });
 
   useEffect(() => {
@@ -6619,6 +6717,21 @@ export function AdminDriversPage(): JSX.Element {
       ) ?? null)
     : null;
 
+  const latestRestPeriodByDriver = new Map<
+    string,
+    AdminDriverRestComplianceRow
+  >();
+
+  for (const period of [...driverRestPeriods].sort(
+    (a, b) =>
+      new Date(b.scheduledStartAt).getTime() -
+      new Date(a.scheduledStartAt).getTime(),
+  )) {
+    if (!latestRestPeriodByDriver.has(period.driverUserId)) {
+      latestRestPeriodByDriver.set(period.driverUserId, period);
+    }
+  }
+
   function getAdminPaymentMethod(notes: string | null | undefined): string {
     const text = String(notes ?? "").toLowerCase();
     if (text.includes("prontopaga") || text.includes("tarjeta"))
@@ -6665,8 +6778,11 @@ export function AdminDriversPage(): JSX.Element {
             <IonButton
               fill="clear"
               color="light"
-              onClick={() => void loadDrivers()}
-              disabled={loading}
+              onClick={() => {
+                void loadDrivers();
+                void loadDriverRestOverview();
+              }}
+              disabled={loading || restOverviewLoading}
             >
               Actualizar
             </IonButton>
@@ -6677,7 +6793,10 @@ export function AdminDriversPage(): JSX.Element {
         <IonRefresher
           slot="fixed"
           onIonRefresh={async (e) => {
-            await loadDrivers();
+            await Promise.all([
+              loadDrivers(),
+              loadDriverRestOverview(),
+            ]);
             e.detail.complete();
           }}
         >
@@ -6743,6 +6862,241 @@ export function AdminDriversPage(): JSX.Element {
             <p style={{ fontSize: "0.85rem" }}>{assignmentError}</p>
           </IonText>
         )}
+
+        <IonCard
+          style={{
+            margin: "0 0 12px",
+            borderRadius: 18,
+            border: "1px solid rgba(200,155,60,.32)",
+            background: "linear-gradient(145deg,#fffaf0,#fff4d6)",
+          }}
+        >
+          <IonCardContent style={{ padding: "14px" }}>
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                gap: 12,
+                alignItems: "flex-start",
+              }}
+            >
+              <div>
+                <div
+                  style={{
+                    fontSize: ".68rem",
+                    fontWeight: 950,
+                    letterSpacing: ".06em",
+                    color: "#8a6418",
+                    textTransform: "uppercase",
+                  }}
+                >
+                  Gestión administrativa
+                </div>
+                <div
+                  style={{
+                    marginTop: 2,
+                    fontSize: "1rem",
+                    fontWeight: 950,
+                    color: "#111827",
+                  }}
+                >
+                  Horarios y descansos de conductores
+                </div>
+              </div>
+
+              <IonButton
+                size="small"
+                fill="outline"
+                color="dark"
+                disabled={restOverviewLoading}
+                onClick={() => void loadDriverRestOverview()}
+                style={{ margin: 0 }}
+              >
+                {restOverviewLoading ? (
+                  <IonSpinner name="dots" />
+                ) : (
+                  "Actualizar"
+                )}
+              </IonButton>
+            </div>
+
+            <IonNote
+              style={{
+                display: "block",
+                marginTop: 7,
+                color: "#4b5563",
+                fontSize: ".75rem",
+                lineHeight: 1.4,
+                fontWeight: 760,
+              }}
+            >
+              El horario es planificación y aviso. Solo “Tomar descanso”
+              inicia el bloqueo continuo de 12 horas.
+            </IonNote>
+
+            {restOverviewError && (
+              <div
+                role="alert"
+                style={{
+                  marginTop: 10,
+                  padding: "9px 10px",
+                  borderRadius: 12,
+                  background: "rgba(239,68,68,.10)",
+                  border: "1px solid rgba(239,68,68,.24)",
+                  color: "#991b1b",
+                  fontSize: ".74rem",
+                  fontWeight: 850,
+                }}
+              >
+                {restOverviewError}
+              </div>
+            )}
+
+            {!restOverviewLoading &&
+              !restOverviewError &&
+              driverServiceSchedules.length === 0 && (
+                <div
+                  style={{
+                    marginTop: 12,
+                    padding: "12px",
+                    borderRadius: 14,
+                    background: "#fff",
+                    border: "1px solid rgba(15,23,42,.10)",
+                    color: "#475569",
+                    fontSize: ".78rem",
+                    fontWeight: 800,
+                  }}
+                >
+                  Ningún conductor ha configurado todavía su horario de
+                  servicios.
+                </div>
+              )}
+
+            <div
+              style={{
+                display: "grid",
+                gap: 9,
+                marginTop: driverServiceSchedules.length > 0 ? 12 : 0,
+              }}
+            >
+              {driverServiceSchedules.slice(0, 30).map((schedule) => {
+                const period = latestRestPeriodByDriver.get(
+                  schedule.driverUserId,
+                );
+                const status = period?.status ?? "scheduled";
+
+                return (
+                  <div
+                    key={schedule.id}
+                    style={{
+                      padding: "11px 12px",
+                      borderRadius: 15,
+                      background: "#fff",
+                      border: "1px solid rgba(15,23,42,.10)",
+                      boxShadow: "0 7px 18px rgba(15,23,42,.06)",
+                    }}
+                  >
+                    <div
+                      style={{
+                        display: "flex",
+                        justifyContent: "space-between",
+                        alignItems: "flex-start",
+                        gap: 10,
+                      }}
+                    >
+                      <div style={{ minWidth: 0 }}>
+                        <div
+                          style={{
+                            color: "#111827",
+                            fontSize: ".84rem",
+                            fontWeight: 950,
+                            overflowWrap: "anywhere",
+                          }}
+                        >
+                          {schedule.driverName ||
+                            schedule.driverEmail ||
+                            "Conductor"}
+                        </div>
+                        {schedule.driverEmail && (
+                          <div
+                            style={{
+                              marginTop: 2,
+                              color: "#64748b",
+                              fontSize: ".68rem",
+                              fontWeight: 760,
+                              overflowWrap: "anywhere",
+                            }}
+                          >
+                            {schedule.driverEmail}
+                          </div>
+                        )}
+                      </div>
+
+                      <span
+                        style={{
+                          ...adminRestStatusStyle(status),
+                          padding: "5px 8px",
+                          borderRadius: 999,
+                          fontSize: ".65rem",
+                          fontWeight: 950,
+                          whiteSpace: "nowrap",
+                        }}
+                      >
+                        {adminRestStatusLabel(status)}
+                      </span>
+                    </div>
+
+                    <div
+                      style={{
+                        marginTop: 8,
+                        color: "#1f2937",
+                        fontSize: ".75rem",
+                        lineHeight: 1.45,
+                        fontWeight: 820,
+                      }}
+                    >
+                      Servicios: {schedule.serviceStartTime} a{" "}
+                      {schedule.serviceEndTime}
+                      <br />
+                      Próximo aviso:{" "}
+                      {fmtDate(schedule.nextScheduledEndAt)}
+                    </div>
+
+                    {period && (
+                      <div
+                        style={{
+                          marginTop: 7,
+                          paddingTop: 7,
+                          borderTop: "1px solid rgba(15,23,42,.08)",
+                          color: "#475569",
+                          fontSize: ".7rem",
+                          lineHeight: 1.45,
+                          fontWeight: 760,
+                        }}
+                      >
+                        Decisión:{" "}
+                        {period.decision === "rest"
+                          ? "Tomar descanso"
+                          : period.decision === "work"
+                            ? "Trabajar"
+                            : "Pendiente"}
+                        {period.decisionAt
+                          ? ` · ${fmtDate(period.decisionAt)}`
+                          : ""}
+                        {period.actualStartAt
+                          ? ` · Inicio real: ${fmtDate(period.actualStartAt)}`
+                          : ""}
+                        {period.requiredEndAt
+                          ? ` · Fin: ${fmtDate(period.requiredEndAt)}`
+                          : ""}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </IonCardContent>
+        </IonCard>
 
         {/* Filters */}
         <IonCard style={{ margin: "0 0 12px", borderRadius: "18px" }}>
@@ -10517,6 +10871,23 @@ type AdminRideAssignmentComplianceRow = {
   locationCapturedAt: string | null;
 };
 
+type AdminDriverServiceScheduleRow = {
+  id: string;
+  driverUserId: string;
+  driverName: string | null;
+  driverEmail: string | null;
+  startTime: string;
+  serviceStartTime: string;
+  serviceEndTime: string;
+  serviceStartMinuteLocal: number;
+  startMinuteLocal: number;
+  timezone: string;
+  effectiveFrom: string;
+  effectiveTo: string | null;
+  nextScheduledEndAt: string | null;
+  updatedAt: string;
+};
+
 type AdminDriverRestComplianceRow = {
   id: string;
   driverUserId: string;
@@ -10524,12 +10895,16 @@ type AdminDriverRestComplianceRow = {
   driverEmail: string | null;
   scheduleId: string;
   startTime: string;
+  serviceStartTime: string;
+  serviceEndTime: string;
   timezone: string;
   scheduledStartAt: string;
   actualStartAt: string | null;
   requiredEndAt: string | null;
   completedAt: string | null;
   status: string;
+  decision: "rest" | "work" | null;
+  decisionAt: string | null;
   delayedByRideId: string | null;
   durationMinutes: number;
   durationHours: number;
@@ -10540,28 +10915,43 @@ async function fetchAdminDriverComplianceReport(
 ): Promise<{
   assignments: AdminRideAssignmentComplianceRow[];
   restPeriods: AdminDriverRestComplianceRow[];
+  serviceSchedules: AdminDriverServiceScheduleRow[];
 }> {
   const baseUrl = getAdminPolicyChargeApiBaseUrl();
   const apiBaseUrl = /\/api$/i.test(baseUrl) ? baseUrl : `${baseUrl}/api`;
   const headers = { Authorization: `Bearer ${accessToken}` };
 
-  const [assignmentResponse, restResponse] = await Promise.all([
-    fetch(`${apiBaseUrl}/admin/compliance/ride-assignments`, {
-      method: "GET",
-      headers,
-      cache: "no-store",
-    }),
-    fetch(`${apiBaseUrl}/admin/compliance/driver-rest-periods`, {
-      method: "GET",
-      headers,
-      cache: "no-store",
-    }),
-  ]);
+  const [assignmentResponse, restResponse, scheduleResponse] =
+    await Promise.all([
+      fetch(`${apiBaseUrl}/admin/compliance/ride-assignments`, {
+        method: "GET",
+        headers,
+        cache: "no-store",
+      }),
+      fetch(`${apiBaseUrl}/admin/compliance/driver-rest-periods`, {
+        method: "GET",
+        headers,
+        cache: "no-store",
+      }),
+      fetch(`${apiBaseUrl}/admin/compliance/driver-service-schedules`, {
+        method: "GET",
+        headers,
+        cache: "no-store",
+      }),
+    ]);
 
-  const [assignmentPayload, restPayload] = await Promise.all([
-    assignmentResponse.json().catch(() => ({})) as Promise<Record<string, unknown>>,
-    restResponse.json().catch(() => ({})) as Promise<Record<string, unknown>>,
-  ]);
+  const [assignmentPayload, restPayload, schedulePayload] =
+    await Promise.all([
+      assignmentResponse
+        .json()
+        .catch(() => ({})) as Promise<Record<string, unknown>>,
+      restResponse
+        .json()
+        .catch(() => ({})) as Promise<Record<string, unknown>>,
+      scheduleResponse
+        .json()
+        .catch(() => ({})) as Promise<Record<string, unknown>>,
+    ]);
 
   if (!assignmentResponse.ok) {
     throw new Error(
@@ -10574,7 +10964,14 @@ async function fetchAdminDriverComplianceReport(
     throw new Error(
       typeof restPayload.message === "string"
         ? restPayload.message
-        : "No se pudo cargar el informe de desconexión de conductores.",
+        : "No se pudo cargar el informe de descansos.",
+    );
+  }
+  if (!scheduleResponse.ok) {
+    throw new Error(
+      typeof schedulePayload.message === "string"
+        ? schedulePayload.message
+        : "No se pudieron cargar los horarios de servicios.",
     );
   }
 
@@ -10584,6 +10981,9 @@ async function fetchAdminDriverComplianceReport(
       : [],
     restPeriods: Array.isArray(restPayload.data)
       ? (restPayload.data as AdminDriverRestComplianceRow[])
+      : [],
+    serviceSchedules: Array.isArray(schedulePayload.data)
+      ? (schedulePayload.data as AdminDriverServiceScheduleRow[])
       : [],
   };
 }
@@ -10627,20 +11027,23 @@ const ADMIN_REST_COMPLIANCE_HEADERS = [
   "ID conductor",
   "Conductor",
   "Email conductor",
-  "Hora diaria",
+  "Inicio servicios",
+  "Término servicios",
   "Zona horaria",
-  "Inicio programado",
-  "Inicio real",
+  "Hora aviso",
+  "Decisión",
+  "Fecha decisión",
+  "Inicio real descanso",
   "Fin exigido",
   "Completado",
   "Estado",
-  "Atrasado por viaje",
+  "Atrasado por viaje (histórico)",
   "Minutos exigidos",
   "Horas exigidas",
 ] as const;
 
 const ADMIN_REST_COMPLIANCE_WIDTHS = [
-  22, 22, 24, 28, 14, 20, 20, 20, 20, 20, 24, 22, 18, 16,
+  22, 22, 24, 28, 16, 16, 20, 20, 18, 20, 20, 20, 20, 24, 22, 18, 16,
 ];
 
 function getAdminAssignmentComplianceTableRows(
@@ -10684,9 +11087,19 @@ function getAdminRestComplianceTableRows(
       sanitizeAdminExcelText(row.driverUserId, 140),
       sanitizeAdminExcelText(row.driverName, 160),
       sanitizeAdminExcelText(row.driverEmail, 180),
-      sanitizeAdminExcelText(row.startTime, 20),
+      sanitizeAdminExcelText(row.serviceStartTime, 20),
+      sanitizeAdminExcelText(row.serviceEndTime, 20),
       sanitizeAdminExcelText(row.timezone, 80),
       formatAdminExcelDate(row.scheduledStartAt),
+      sanitizeAdminExcelText(
+        row.decision === "rest"
+          ? "Tomar descanso"
+          : row.decision === "work"
+            ? "Trabajar"
+            : "Pendiente",
+        40,
+      ),
+      formatAdminExcelDate(row.decisionAt),
       formatAdminExcelDate(row.actualStartAt),
       formatAdminExcelDate(row.requiredEndAt),
       formatAdminExcelDate(row.completedAt),
