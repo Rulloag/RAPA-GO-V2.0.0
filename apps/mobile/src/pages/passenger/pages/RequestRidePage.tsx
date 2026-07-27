@@ -5341,7 +5341,7 @@ function MapPointPicker({
   /* Panel arrastrable. El reparto mapa/hoja es estado, no un número fijo en
      CSS, porque ahora lo decide el usuario: hay quien quiere ver bien el mapa
      antes de confirmar y quien quiere leer la dirección entera. */
-  const [mapShare, setMapShare] = useState<number>(MAP_SHARE_DEFAULT);
+  const [mapShare, setMapShare] = useState<number>(MAP_SHARE_MAX);
   const [draggingSheet, setDraggingSheet] = useState(false);
   const shellRef = useRef<HTMLDivElement | null>(null);
 
@@ -5436,14 +5436,15 @@ function MapPointPicker({
     return () => observer.disconnect();
   }, [isOpen, modalReady]);
 
-  /* Mientras el usuario no haya movido el panel, sigue al reparto ajustado: al
-     abrir, al girar el teléfono o al cambiar el alto útil, la hoja vuelve a
-     pedir exactamente lo que su contenido necesita. */
+  /* La hoja comienza guardada abajo para que el pasajero pueda usar el mapa y
+     la búsqueda sin que las tarjetas tapen la pantalla. Conservamos una
+     posición abierta cómoda para recuperarla al tocar o deslizar el tirador. */
   useEffect(() => {
     if (sheetAdjustedByUserRef.current || shellHeight <= 0) return;
 
-    setMapShare(fitMapShare(shellHeight));
-  }, [shellHeight]);
+    lastOpenShareRef.current = fitMapShare(shellHeight);
+    setMapShare(maxShare);
+  }, [shellHeight, maxShare]);
 
   function handleGripPointerDown(event: ReactPointerEvent<HTMLElement>): void {
     const shellHeight = shellRef.current?.getBoundingClientRect().height ?? 0;
@@ -6011,7 +6012,7 @@ function MapPointPicker({
 
     sheetAdjustedByUserRef.current = false;
     lastOpenShareRef.current = null;
-    setMapShare(MAP_SHARE_DEFAULT);
+    setMapShare(MAP_SHARE_MAX);
   }, [isOpen]);
 
   useEffect(() => {
@@ -6463,13 +6464,21 @@ function MapPointPicker({
               "rp-request-map-shell",
               draggingSheet ? "is-dragging" : "",
               mapShare <= minShare + 4 ? "is-sheet-tall" : "",
+              mapShare >= maxShare - 4 ? "is-sheet-collapsed" : "",
             ]
               .filter(Boolean)
               .join(" ")}
             style={{ "--rp-map-share": `${mapShare}%` } as CSSProperties}
             aria-label={title}
           >
-            <div className="rp-request-map-canvas">
+            <div
+              className="rp-request-map-canvas"
+              onPointerDown={() => {
+                if (mapShare < maxShare - 4) {
+                  closeSheetForSearch();
+                }
+              }}
+            >
               <div
                 ref={mapElementRef}
                 className="request-map-canvas"
@@ -6699,19 +6708,8 @@ function MapPointPicker({
                 {mode === "origin" && hasNearbyReferenceCandidates && (
                   <section
                     className="request-map-nearby-places"
-                    aria-label="Locales más cercanos"
+                    aria-label="Puntos de recogida cercanos"
                   >
-                    <div className="request-map-nearby-places__heading">
-                      <div>
-                        <strong>Locales más cercanos a ti</strong>
-                        <span>
-                          Toca un local y el punto verde se moverá a su ubicación
-                          exacta.
-                        </span>
-                      </div>
-                      <small>{nearbyReferenceCandidates.length}</small>
-                    </div>
-
                     <div className="request-map-candidates">
                       {nearbyReferenceCandidates.map((candidate, index) =>
                         renderPickupCandidate(candidate, index),
