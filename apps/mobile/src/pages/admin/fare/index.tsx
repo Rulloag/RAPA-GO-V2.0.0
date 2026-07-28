@@ -56,6 +56,7 @@ type FixedDestinationRule = {
 };
 
 type FareEngineConfig = {
+  schemaVersion: number;
   urban: {
     includedKm: number;
     baseMinimumClp: number;
@@ -145,6 +146,8 @@ const ENGINE_STORAGE_KEY = "rapago_admin_fare_engine_v1";
 const COMPATIBILITY_RULES_STORAGE_KEY = "rapago_admin_fare_cards_rules_v1";
 const USD_RATE_STORAGE_KEY = "rapago_admin_fare_cards_usd_rate_v1";
 const AUDIT_STORAGE_KEY = "rapago_admin_fare_engine_audit_v1";
+const FARE_ENGINE_UPDATED_EVENT = "rapago:fare-engine-updated";
+const FARE_ENGINE_SCHEMA_VERSION = 2;
 
 const PASSENGER_LABEL: Record<PassengerKey, string> = {
   resident: "RAPA NUI / RESIDENTE RAPA NUI",
@@ -165,6 +168,7 @@ const VEHICLE_DESCRIPTION: Record<VehicleKey, string> = {
 };
 
 const DEFAULT_CONFIG: FareEngineConfig = {
+  schemaVersion: FARE_ENGINE_SCHEMA_VERSION,
   urban: {
     includedKm: 2,
     baseMinimumClp: 5000,
@@ -176,7 +180,8 @@ const DEFAULT_CONFIG: FareEngineConfig = {
     ruralFactor: 0.75,
   },
   passengerMultipliers: {
-    resident: 1,
+    // RAPA NUI / RESIDENTE RAPA NUI: 10% de descuento sobre la tarifa base.
+    resident: 0.9,
     chilean: 1.13,
     foreigner: 1.2,
   },
@@ -446,8 +451,15 @@ function readStoredConfig(): FareEngineConfig {
     if (!raw) return fallback;
 
     const parsed = JSON.parse(raw) as Partial<FareEngineConfig>;
+    const storedSchemaVersion = Math.max(
+      0,
+      Math.floor(Number(parsed.schemaVersion ?? 1)),
+    );
+    const shouldMigrateResidentMultiplier =
+      storedSchemaVersion < FARE_ENGINE_SCHEMA_VERSION;
 
     return {
+      schemaVersion: FARE_ENGINE_SCHEMA_VERSION,
       urban: {
         includedKm: Number(parsed.urban?.includedKm ?? fallback.urban.includedKm),
         baseMinimumClp: Number(parsed.urban?.baseMinimumClp ?? fallback.urban.baseMinimumClp),
@@ -468,7 +480,12 @@ function readStoredConfig(): FareEngineConfig {
         ),
       },
       passengerMultipliers: {
-        resident: Number(parsed.passengerMultipliers?.resident ?? fallback.passengerMultipliers.resident),
+        resident: shouldMigrateResidentMultiplier
+          ? 0.9
+          : Number(
+              parsed.passengerMultipliers?.resident ??
+                fallback.passengerMultipliers.resident,
+            ),
         chilean: Number(parsed.passengerMultipliers?.chilean ?? fallback.passengerMultipliers.chilean),
         foreigner: Number(parsed.passengerMultipliers?.foreigner ?? fallback.passengerMultipliers.foreigner),
       },
@@ -626,14 +643,20 @@ function saveCompatibilityRules(config: FareEngineConfig): void {
 }
 
 function saveConfig(config: FareEngineConfig, action = "Actualización de tarifas"): FareEngineConfig {
-  const next = {
+  const next: FareEngineConfig = {
     ...config,
+    schemaVersion: FARE_ENGINE_SCHEMA_VERSION,
     updatedAt: new Date().toISOString(),
   };
 
   localStorage.setItem(ENGINE_STORAGE_KEY, JSON.stringify(next));
   saveCompatibilityRules(next);
   appendAudit(next, action);
+  window.dispatchEvent(
+    new CustomEvent(FARE_ENGINE_UPDATED_EVENT, {
+      detail: { config: next },
+    }),
+  );
 
   return next;
 }
@@ -704,9 +727,24 @@ export function AdminFareSettingsPage(): React.ReactElement {
     setError(null);
 
     try {
+      const raw = localStorage.getItem(ENGINE_STORAGE_KEY);
+      const storedVersion = raw
+        ? Number(
+            (JSON.parse(raw) as { schemaVersion?: number }).schemaVersion ?? 1,
+          )
+        : FARE_ENGINE_SCHEMA_VERSION;
       const stored = readStoredConfig();
-      setConfig(stored);
-      saveCompatibilityRules(stored);
+
+      if (raw && storedVersion < FARE_ENGINE_SCHEMA_VERSION) {
+        const migrated = saveConfig(
+          stored,
+          "Migración tarifaria: RAPA NUI / RESIDENTE RAPA NUI x0,90.",
+        );
+        setConfig(migrated);
+      } else {
+        setConfig(stored);
+        saveCompatibilityRules(stored);
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "No se pudieron cargar las tarifas.");
     } finally {

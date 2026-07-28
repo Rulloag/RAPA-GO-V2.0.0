@@ -3643,7 +3643,7 @@ function cleanRideNotes(notes: string | null | undefined): string | null {
 
   // No mostramos textos técnicos largos generados por RAPA GO en la tarjeta del pasajero.
   // La información importante ya se muestra arriba como origen, destino, monto, pago y estado.
-  const isSystemNote = /Forma de pago seleccionada:|Categor[ií]a de veh[ií]culo seleccionada:|Tipo de viaje seleccionado:|Promoci[oó]n con regreso seleccionado:|Destino promocional:|Tarifa RAPA GO calculada:|Tarifa estimada pasajero:|RAPAGO_|Coordenadas recogida accesible:|Coordenadas destino accesible:|Fecha y hora de recogida agendada:|Fecha y hora de regreso agendada:|Tipo de solicitud:|Tipo de reserva:|Tipo de servicio:|Recogida de regreso elegida por el pasajero:/i.test(raw);
+  const isSystemNote = /Forma de pago seleccionada:|Categor[ií]a de veh[ií]culo seleccionada:|Tipo de viaje seleccionado:|Promoci[oó]n con regreso seleccionado:|Experiencia con reserva seleccionada:|Destino promocional:|Destino reservado:|Experiencia reservada:|Destino de la experiencia:|Tarifa RAPA GO calculada:|Tarifa estimada pasajero:|RAPAGO_|Coordenadas recogida accesible:|Coordenadas destino accesible:|Fecha y hora de recogida agendada:|Fecha y hora de regreso agendada:|Tipo de solicitud:|Tipo de reserva:|Tipo de servicio:|Recogida de regreso elegida por el pasajero:/i.test(raw);
 
   if (isSystemNote) return null;
 
@@ -8367,7 +8367,7 @@ function PassengerRideCard({
                 <>
                   <span style={{ color: "var(--rp-warn-fg)", fontSize: "1rem" }}>●</span>
                   <div>
-                    <strong>Incluido en promoción:</strong> esta recogida de regreso no se cobra nuevamente.
+                    <strong>Incluido en la reserva:</strong> este tramo de regreso no se cobra nuevamente.
                   </div>
                 </>
               )}
