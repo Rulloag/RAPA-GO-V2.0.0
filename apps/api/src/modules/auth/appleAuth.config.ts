@@ -48,6 +48,27 @@ export function getAppleAuthConfig(): AppleAuthConfig {
     .replace(/\\n/g, "\n")
     .trim();
 
+  // Diagnóstico temporal y seguro: nunca imprime la clave ni un fragmento de
+  // ella, solo longitudes y booleanos, para averiguar en qué forma exacta
+  // llega APPLE_PRIVATE_KEY desde el entorno de Hostinger. Quitar una vez
+  // resuelto el AUTH_CONFIGURATION_ERROR de importPKCS8.
+  console.log("[Apple][config] APPLE_PRIVATE_KEY diagnóstico (sin exponer la clave)", {
+    rawLength: rawPrivateKey.length,
+    rawHasLiteralBackslashN: rawPrivateKey.includes("\\n"),
+    rawHasRealNewline: rawPrivateKey.includes("\n"),
+    rawHasCarriageReturn: rawPrivateKey.includes("\r"),
+    rawStartsWithQuote: /^["']/.test(rawPrivateKey.trim()),
+    rawEndsWithQuote: /["']$/.test(rawPrivateKey.trim()),
+    rawHasBegin: rawPrivateKey.includes("BEGIN PRIVATE KEY"),
+    rawHasEnd: rawPrivateKey.includes("END PRIVATE KEY"),
+    normalizedLength: privateKey.length,
+    normalizedHasLiteralBackslashN: privateKey.includes("\\n"),
+    normalizedHasRealNewline: privateKey.includes("\n"),
+    normalizedLineCount: privateKey.split("\n").length,
+    normalizedHasBegin: privateKey.includes("-----BEGIN PRIVATE KEY-----"),
+    normalizedHasEnd: privateKey.includes("-----END PRIVATE KEY-----"),
+  });
+
   if (!privateKey) {
     missing.push("APPLE_PRIVATE_KEY");
   } else if (
