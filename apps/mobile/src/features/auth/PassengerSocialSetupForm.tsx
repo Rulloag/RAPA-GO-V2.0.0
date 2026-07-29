@@ -11,6 +11,9 @@ import {
   IonText,
 } from "@ionic/react";
 
+type IonicStyle = CSSProperties &
+  Record<`--${string}`, string | number | undefined>;
+
 /**
  * Formulario social compartido de pasajero (Facebook / Apple).
  *
@@ -97,7 +100,7 @@ export function isValidPassportForAuth(value: unknown): boolean {
   return clean.length >= 5 && clean.length <= 15;
 }
 
-const primaryButtonStyle = {
+const primaryButtonStyle: IonicStyle = {
   "--border-radius": "18px",
   "--background": "linear-gradient(135deg,#F8D879 0%,#D6A640 48%,#B84F2E 100%)",
   "--background-activated": "linear-gradient(135deg,#C89B3C,#B84F2E)",
@@ -106,16 +109,16 @@ const primaryButtonStyle = {
   height: "54px",
   fontWeight: 950,
   marginTop: "14px",
-} as CSSProperties;
+};
 
-const outlineButtonStyle = {
+const outlineButtonStyle: IonicStyle = {
   "--border-radius": "18px",
   "--border-color": "rgba(29,29,27,.42)",
   "--color": "#1D1D1B",
   height: "50px",
   fontWeight: 900,
   marginTop: "10px",
-} as CSSProperties;
+};
 
 const modalCardStyle: CSSProperties = {
   width: "min(92vw, 560px)",
@@ -142,7 +145,7 @@ const modalBodyStyle: CSSProperties = {
   padding: "18px",
 };
 
-const modalItemStyle = {
+const modalItemStyle: IonicStyle = {
   "--background": "rgba(17,17,17,.93)",
   "--color": "#F6F2EC",
   "--border-color": "transparent",
@@ -153,14 +156,14 @@ const modalItemStyle = {
   borderRadius: "18px",
   marginBottom: "12px",
   overflow: "hidden",
-} as CSSProperties;
+};
 
-const modalInputStyle = {
+const modalInputStyle: IonicStyle = {
   "--color": "#F6F2EC",
   "--placeholder-color": "rgba(246,242,236,.55)",
   "--placeholder-opacity": "1",
   fontWeight: 850,
-} as CSSProperties;
+};
 
 export const conditionOptions: Array<{
   value: Exclude<PassengerCondition, "">;
@@ -199,6 +202,7 @@ export interface PassengerSocialSetupFormProps {
   isOpen: boolean;
   onClose: () => void;
   submitLabel?: string;
+  visualVariant?: "default" | "apple-light";
 
   loading: boolean;
   error: string;
@@ -232,6 +236,7 @@ export interface PassengerSocialSetupFormProps {
   onAcceptUserConditionsChange: (value: boolean) => void;
   onOpenTerms: () => void;
   onOpenPrivacy: () => void;
+  onOpenUserConditions: () => void;
 
   onSubmit: () => void;
   setupCode?: string;
@@ -242,6 +247,7 @@ export function PassengerSocialSetupForm({
   isOpen,
   onClose,
   submitLabel,
+  visualVariant = "default",
   loading,
   error,
   successMessage,
@@ -266,15 +272,103 @@ export function PassengerSocialSetupForm({
   onAcceptUserConditionsChange,
   onOpenTerms,
   onOpenPrivacy,
+  onOpenUserConditions,
   onSubmit,
 }: PassengerSocialSetupFormProps): JSX.Element {
   const isResidentRapaNui = passengerCondition === "residente_rapa_nui";
   const emailReadOnly = onEmailChange === undefined;
   const resolvedSubmitLabel =
     submitLabel ?? `Continuar con ${PROVIDER_LABEL[provider]}`;
+  const isAppleLight = visualVariant === "apple-light";
+
+  const resolvedModalCardStyle: CSSProperties = isAppleLight
+    ? {
+        ...modalCardStyle,
+        background:
+          "linear-gradient(180deg,rgba(255,253,247,.99),rgba(247,239,225,.99))",
+        border: "1px solid rgba(200,155,60,.52)",
+        boxShadow: "0 28px 70px rgba(80,55,22,.24)",
+        color: "#211A13",
+      }
+    : modalCardStyle;
+
+  const resolvedModalHeaderStyle: CSSProperties = isAppleLight
+    ? {
+        ...modalHeaderStyle,
+        color: "#2D2114",
+        background:
+          "linear-gradient(135deg,rgba(255,253,247,.98),rgba(239,224,198,.98))",
+        borderBottom: "1px solid rgba(200,155,60,.30)",
+      }
+    : modalHeaderStyle;
+
+  const resolvedModalItemStyle: IonicStyle = isAppleLight
+    ? {
+        ...modalItemStyle,
+        "--background": "rgba(255,255,255,.94)",
+        "--color": "#211A13",
+        "--border-color": "transparent",
+        "--highlight-color-focused": "#C89B3C",
+        border: "1px solid rgba(200,155,60,.42)",
+        boxShadow: "0 8px 22px rgba(70,48,21,.06)",
+      }
+    : modalItemStyle;
+
+  const resolvedModalInputStyle: IonicStyle = isAppleLight
+    ? {
+        ...modalInputStyle,
+        "--color": "#211A13",
+        "--placeholder-color": "rgba(64,54,44,.55)",
+        "--placeholder-opacity": "1",
+      }
+    : modalInputStyle;
+
+  const resolvedPrimaryButtonStyle: IonicStyle = isAppleLight
+    ? {
+        ...primaryButtonStyle,
+        "--background":
+          "linear-gradient(135deg,#D7AA43 0%,#F1D68D 100%)",
+        "--background-activated":
+          "linear-gradient(135deg,#C89B3C,#E6C46F)",
+        "--box-shadow": "0 16px 32px rgba(200,155,60,.30)",
+        color: "#17120D",
+      }
+    : primaryButtonStyle;
+
+  const resolvedOutlineButtonStyle: IonicStyle = isAppleLight
+    ? {
+        ...outlineButtonStyle,
+        "--border-color": "rgba(64,45,24,.48)",
+        "--color": "#2E2418",
+      }
+    : outlineButtonStyle;
 
   const canSubmit =
     acceptTerms && acceptPrivacy && acceptUserConditions && !loading;
+
+  const legalAcceptances = [
+    {
+      key: "terms",
+      label: "Acepto los Términos y Condiciones.",
+      checked: acceptTerms,
+      onChange: onAcceptTermsChange,
+      onOpen: onOpenTerms,
+    },
+    {
+      key: "user-conditions",
+      label: "Acepto las Condiciones para Usuarios.",
+      checked: acceptUserConditions,
+      onChange: onAcceptUserConditionsChange,
+      onOpen: onOpenUserConditions,
+    },
+    {
+      key: "privacy",
+      label: "Acepto la Política de Privacidad.",
+      checked: acceptPrivacy,
+      onChange: onAcceptPrivacyChange,
+      onOpen: onOpenPrivacy,
+    },
+  ] as const;
 
   return (
     <IonModal
@@ -291,15 +385,15 @@ export function PassengerSocialSetupForm({
       }
     >
       <IonContent className="facebook-step-content" scrollY={true}>
-        <div className="facebook-step-card" style={modalCardStyle}>
-          <div className="facebook-step-header" style={modalHeaderStyle}>
+        <div className="facebook-step-card" style={resolvedModalCardStyle}>
+          <div className="facebook-step-header" style={resolvedModalHeaderStyle}>
             <div>
               <div
                 style={{
                   fontSize: ".72rem",
                   textTransform: "uppercase",
                   letterSpacing: ".08em",
-                  color: "rgba(248,216,121,.95)",
+                  color: isAppleLight ? "#9A6500" : "rgba(248,216,121,.95)",
                   fontWeight: 950,
                   marginBottom: 4,
                 }}
@@ -318,9 +412,13 @@ export function PassengerSocialSetupForm({
                 width: 42,
                 height: 42,
                 borderRadius: 999,
-                border: "1px solid rgba(255,255,255,.26)",
-                background: "rgba(255,255,255,.10)",
-                color: "#fff",
+                border: isAppleLight
+                  ? "1px solid rgba(154,101,0,.30)"
+                  : "1px solid rgba(255,255,255,.26)",
+                background: isAppleLight
+                  ? "rgba(255,255,255,.80)"
+                  : "rgba(255,255,255,.10)",
+                color: isAppleLight ? "#704600" : "#fff",
                 fontWeight: 950,
                 fontSize: "1.25rem",
               }}
@@ -453,12 +551,12 @@ export function PassengerSocialSetupForm({
               para revisión del administrador antes de aprobar la tarifa.
             </div>
 
-            <IonItem style={modalItemStyle}>
-              <IonLabel position="stacked" style={{ color: "#F8D879", fontWeight: 950 }}>
+            <IonItem style={resolvedModalItemStyle}>
+              <IonLabel position="stacked" style={{ color: isAppleLight ? "#8A5A00" : "#F8D879", fontWeight: 950 }}>
                 Correo electrónico *
               </IonLabel>
               <IonInput
-                style={modalInputStyle}
+                style={resolvedModalInputStyle}
                 type="email"
                 value={email}
                 readonly={emailReadOnly}
@@ -473,12 +571,12 @@ export function PassengerSocialSetupForm({
               />
             </IonItem>
 
-            <IonItem style={modalItemStyle}>
-              <IonLabel position="stacked" style={{ color: "#F8D879", fontWeight: 950 }}>
+            <IonItem style={resolvedModalItemStyle}>
+              <IonLabel position="stacked" style={{ color: isAppleLight ? "#8A5A00" : "#F8D879", fontWeight: 950 }}>
                 Celular *
               </IonLabel>
               <IonInput
-                style={modalInputStyle}
+                style={resolvedModalInputStyle}
                 type="tel"
                 value={phone}
                 onIonInput={(e) => {
@@ -492,12 +590,12 @@ export function PassengerSocialSetupForm({
             </IonItem>
 
             {passengerCondition !== "turista_extranjero" && (
-              <IonItem style={modalItemStyle}>
-                <IonLabel position="stacked" style={{ color: "#F8D879", fontWeight: 950 }}>
+              <IonItem style={resolvedModalItemStyle}>
+                <IonLabel position="stacked" style={{ color: isAppleLight ? "#8A5A00" : "#F8D879", fontWeight: 950 }}>
                   RUT *
                 </IonLabel>
                 <IonInput
-                  style={modalInputStyle}
+                  style={resolvedModalInputStyle}
                   type="text"
                   value={rut}
                   onIonInput={(e) => {
@@ -513,12 +611,12 @@ export function PassengerSocialSetupForm({
             )}
 
             {passengerCondition === "turista_extranjero" && (
-              <IonItem style={modalItemStyle}>
-                <IonLabel position="stacked" style={{ color: "#F8D879", fontWeight: 950 }}>
+              <IonItem style={resolvedModalItemStyle}>
+                <IonLabel position="stacked" style={{ color: isAppleLight ? "#8A5A00" : "#F8D879", fontWeight: 950 }}>
                   Pasaporte *
                 </IonLabel>
                 <IonInput
-                  style={modalInputStyle}
+                  style={resolvedModalInputStyle}
                   type="text"
                   value={passport}
                   placeholder="Ej: A1234567"
@@ -573,7 +671,8 @@ export function PassengerSocialSetupForm({
               </div>
             )}
 
-            <div
+            <section
+              aria-labelledby={`${provider}-legal-title`}
               style={{
                 margin: "4px 0 14px",
                 padding: "14px",
@@ -582,147 +681,102 @@ export function PassengerSocialSetupForm({
                 border: "1px solid rgba(200,155,60,.42)",
               }}
             >
-              <div
+              <h3
+                id={`${provider}-legal-title`}
                 style={{
-                  marginBottom: 10,
-                  color: "#111",
-                  fontSize: ".9rem",
+                  margin: "0 0 12px",
+                  color: "#211A13",
+                  fontSize: ".95rem",
                   fontWeight: 950,
                 }}
               >
                 Documentos legales obligatorios
+              </h3>
+
+              <div style={{ display: "grid", gap: 10 }}>
+                {legalAcceptances.map((document) => (
+                  <div
+                    key={document.key}
+                    className="facebook-legal-card"
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns: "34px minmax(0,1fr)",
+                      alignItems: "start",
+                      gap: 12,
+                      padding: "14px",
+                      borderRadius: 18,
+                      background: "rgba(255,255,255,.96)",
+                      border: document.checked
+                        ? "2px solid rgba(34,197,94,.68)"
+                        : "1px solid rgba(200,155,60,.42)",
+                      boxShadow: document.checked
+                        ? "0 10px 24px rgba(34,197,94,.12)"
+                        : "0 8px 20px rgba(70,48,21,.06)",
+                    }}
+                  >
+                    <IonCheckbox
+                      checked={document.checked}
+                      disabled={loading}
+                      aria-label={document.label}
+                      onIonChange={(event) => {
+                        document.onChange(event.detail.checked);
+                      }}
+                      style={
+                        {
+                          "--size": "30px",
+                          "--border-radius": "9px",
+                          "--border-color": "#8A5A00",
+                          "--border-color-checked": "#22C55E",
+                          "--checkbox-background-checked": "#22C55E",
+                          "--checkmark-color": "#FFFFFF",
+                          marginTop: 1,
+                        } as IonicStyle
+                      }
+                    />
+
+                    <div style={{ minWidth: 0 }}>
+                      <strong
+                        style={{
+                          display: "block",
+                          color: "#2A2119",
+                          fontSize: ".94rem",
+                          fontWeight: 950,
+                          lineHeight: 1.35,
+                        }}
+                      >
+                        {document.label}
+                      </strong>
+
+                      <button
+                        className="facebook-legal-link"
+                        type="button"
+                        disabled={loading}
+                        onClick={(event) => {
+                          event.preventDefault();
+                          event.stopPropagation();
+                          document.onOpen();
+                        }}
+                        style={{
+                          marginTop: 8,
+                          padding: "7px 13px",
+                          borderRadius: 999,
+                          border: "1px solid rgba(138,90,0,.28)",
+                          background:
+                            "linear-gradient(135deg,#FFF6D8,#F7E7B0)",
+                          color: "#6F4700",
+                          fontSize: ".78rem",
+                          fontWeight: 950,
+                          cursor: loading ? "not-allowed" : "pointer",
+                          opacity: loading ? 0.62 : 1,
+                        }}
+                      >
+                        Ver documento
+                      </button>
+                    </div>
+                  </div>
+                ))}
               </div>
-
-              <IonItem
-                className="facebook-legal-card"
-                lines="none"
-                style={{
-                  "--background": "transparent",
-                  "--padding-start": "0",
-                  "--inner-padding-end": "0",
-                  alignItems: "flex-start",
-                } as CSSProperties}
-              >
-                <IonCheckbox
-                  slot="start"
-                  checked={acceptTerms}
-                  onIonChange={(event) => {
-                    onAcceptTermsChange(event.detail.checked);
-                  }}
-                />
-                <IonLabel
-                  style={{
-                    color: "#30271F",
-                    whiteSpace: "normal",
-                    lineHeight: 1.35,
-                    fontWeight: 800,
-                  }}
-                >
-                  Acepto los Términos y Condiciones.
-                  <button
-                    className="facebook-legal-link"
-                    type="button"
-                    onClick={onOpenTerms}
-                    style={{
-                      border: 0,
-                      background: "transparent",
-                      color: "#8A5A00",
-                      fontWeight: 950,
-                      textDecoration: "underline",
-                      cursor: "pointer",
-                    }}
-                  >
-                    Ver documento
-                  </button>
-                </IonLabel>
-              </IonItem>
-
-              <IonItem
-                className="facebook-legal-card"
-                lines="none"
-                style={{
-                  "--background": "transparent",
-                  "--padding-start": "0",
-                  "--inner-padding-end": "0",
-                  alignItems: "flex-start",
-                } as CSSProperties}
-              >
-                <IonCheckbox
-                  slot="start"
-                  checked={acceptPrivacy}
-                  onIonChange={(event) => {
-                    onAcceptPrivacyChange(event.detail.checked);
-                  }}
-                />
-                <IonLabel
-                  style={{
-                    color: "#30271F",
-                    whiteSpace: "normal",
-                    lineHeight: 1.35,
-                    fontWeight: 800,
-                  }}
-                >
-                  Acepto la Política de Privacidad.
-                  <button
-                    className="facebook-legal-link"
-                    type="button"
-                    onClick={onOpenPrivacy}
-                    style={{
-                      border: 0,
-                      background: "transparent",
-                      color: "#8A5A00",
-                      fontWeight: 950,
-                      textDecoration: "underline",
-                      cursor: "pointer",
-                    }}
-                  >
-                    Ver documento
-                  </button>
-                </IonLabel>
-              </IonItem>
-
-              <IonItem
-                className="facebook-legal-card"
-                lines="none"
-                style={{
-                  "--background": "transparent",
-                  "--padding-start": "0",
-                  "--inner-padding-end": "0",
-                  alignItems: "flex-start",
-                } as CSSProperties}
-              >
-                <IonCheckbox
-                  slot="start"
-                  checked={acceptUserConditions}
-                  onIonChange={(event) => {
-                    onAcceptUserConditionsChange(event.detail.checked);
-                  }}
-                />
-                <IonLabel
-                  style={{
-                    color: "#30271F",
-                    whiteSpace: "normal",
-                    lineHeight: 1.35,
-                    fontWeight: 800,
-                  }}
-                >
-                  Acepto las Condiciones para Usuarios.
-                </IonLabel>
-              </IonItem>
-
-              <p
-                style={{
-                  margin: "8px 0 0",
-                  color: "#675A4A",
-                  fontSize: ".76rem",
-                  fontWeight: 760,
-                  lineHeight: 1.4,
-                }}
-              >
-                Las Condiciones para Conductores no se solicitan a pasajeros.
-                Solo corresponden al proceso de postulación de conductor.
-              </p>
-            </div>
+            </section>
 
             {successMessage && (
               <div
@@ -745,7 +799,7 @@ export function PassengerSocialSetupForm({
 
             <IonButton
               expand="block"
-              style={primaryButtonStyle}
+              style={resolvedPrimaryButtonStyle}
               onClick={(e) => {
                 e.preventDefault();
                 e.stopPropagation();
@@ -769,7 +823,7 @@ export function PassengerSocialSetupForm({
               fill="outline"
               onClick={onClose}
               type="button"
-              style={outlineButtonStyle}
+              style={resolvedOutlineButtonStyle}
             >
               Volver
             </IonButton>

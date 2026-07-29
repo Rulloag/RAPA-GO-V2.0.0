@@ -103,7 +103,7 @@ export function PublicSiteShell({
                 "linear-gradient(135deg,#111 0%,#5a241a 58%,#c89b3c 135%)",
               "--color": "#fff",
               "--min-height": "70px",
-              "border-bottom": "2px solid rgba(248,216,121,.35)",
+              borderBottom: "2px solid rgba(248,216,121,.35)",
             } as CSSProperties
           }
         >

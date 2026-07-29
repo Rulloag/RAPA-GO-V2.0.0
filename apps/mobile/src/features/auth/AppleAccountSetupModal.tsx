@@ -284,6 +284,7 @@ export function AppleAccountSetupModal({
   return (
     <PassengerSocialSetupForm
       provider="apple"
+      visualVariant="apple-light"
       isOpen={isOpen}
       onClose={onCancel}
       loading={loading}
@@ -331,6 +332,7 @@ export function AppleAccountSetupModal({
       }
       onOpenTerms={() => history.push(ROUTES.PUBLIC.TERMS)}
       onOpenPrivacy={() => history.push(ROUTES.PUBLIC.PRIVACY)}
+      onOpenUserConditions={() => history.push(ROUTES.PUBLIC.USER_CONDITIONS)}
       onSubmit={handleSubmit}
     />
   );

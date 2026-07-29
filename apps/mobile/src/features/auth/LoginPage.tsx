@@ -24,7 +24,7 @@ import { AppleAccountSetupModal } from "./AppleAccountSetupModal.js";
 import { AppleRoleSelectionModal } from "./AppleRoleSelectionModal.js";
 import { AppleSignInButton } from "./AppleSignInButton.js";
 import { useAppleSignIn, type AppleSignInOutcome } from "./useAppleSignIn.js";
-import type { PublicRole } from "./roles.js";
+import { ROLE_LABELS, type PublicRole } from "./roles.js";
 import {
   PassengerSocialSetupForm,
   formatRut,
@@ -70,6 +70,41 @@ const RAPAGO_FACEBOOK_REQUIRED_LEGAL_TYPES = [
 
 type FacebookRequiredLegalType =
   (typeof RAPAGO_FACEBOOK_REQUIRED_LEGAL_TYPES)[number];
+
+
+const APPLE_WEB_QA_DOCUMENTS: LegalDocumentData[] = [
+  {
+    id: "qa-terms-and-conditions-v3",
+    type: "terms_and_conditions",
+    version: "3.0",
+    title: "Términos y Condiciones Generales de Uso",
+    effectiveDate: "2026-07-29",
+    isActive: true,
+    createdAt: "2026-07-29T00:00:00.000Z",
+    updatedAt: "2026-07-29T00:00:00.000Z",
+  },
+  {
+    id: "qa-user-conditions-v1",
+    type: "user_conditions",
+    version: "1.0",
+    title: "Condiciones de Usuarios",
+    effectiveDate: "2026-07-29",
+    isActive: true,
+    createdAt: "2026-07-29T00:00:00.000Z",
+    updatedAt: "2026-07-29T00:00:00.000Z",
+  },
+  {
+    id: "qa-privacy-policy",
+    type: "privacy_policy",
+    version: "1.0",
+    title: "Política de Privacidad",
+    effectiveDate: "2026-07-29",
+    isActive: true,
+    createdAt: "2026-07-29T00:00:00.000Z",
+    updatedAt: "2026-07-29T00:00:00.000Z",
+  },
+];
+
 
 type PendingFacebookLegalAcceptance = {
   legalDocumentId: string;
@@ -182,7 +217,6 @@ function hasValidRutLengthForAuth(value: unknown): boolean {
   const clean = String(value ?? "").replace(/[^0-9kK]/g, "");
   return clean.length >= 8 && clean.length <= 10;
 }
-
 
 
 const RAPAGO_AUTH_PII_LOCAL_STORAGE_KEYS = [
@@ -555,6 +589,13 @@ export function LoginPage(): JSX.Element {
   const history = useHistory();
   const { login } = useAuth();
   const apple = useAppleSignIn();
+  const isAppleWebQaMode =
+    !apple.isAvailable &&
+    (import.meta.env.DEV ||
+      (typeof window !== "undefined" &&
+        new URLSearchParams(window.location.search).get("appleQa") === "1"));
+  const [appleQaRoleOpen, setAppleQaRoleOpen] = useState(false);
+  const [appleQaSetupOpen, setAppleQaSetupOpen] = useState(false);
   /* Tema propio del flujo de acceso (compartido con Registro). */
   const { theme, isDark, toggleTheme } = useRapagoSectionTheme("auth");
 
@@ -599,6 +640,14 @@ export function LoginPage(): JSX.Element {
 
   async function startAppleSignIn(): Promise<void> {
     setServerError("");
+    setAppleSetupError("");
+
+    if (isAppleWebQaMode) {
+      setAppleQaSetupOpen(false);
+      setAppleQaRoleOpen(true);
+      return;
+    }
+
     handleAppleOutcome(await apple.signIn());
   }
 
@@ -1449,6 +1498,7 @@ export function LoginPage(): JSX.Element {
           onAcceptUserConditionsChange={setAcceptFacebookUserConditions}
           onOpenTerms={() => history.push(ROUTES.PUBLIC.TERMS)}
           onOpenPrivacy={() => history.push(ROUTES.PUBLIC.PRIVACY)}
+          onOpenUserConditions={() => history.push(ROUTES.PUBLIC.USER_CONDITIONS)}
           onSubmit={() => void continueWithFacebook()}
         />
 
@@ -1456,23 +1506,65 @@ export function LoginPage(): JSX.Element {
       </IonContent>
 
       <AppleRoleSelectionModal
-        isOpen={apple.awaitingRole}
+        isOpen={apple.awaitingRole || appleQaRoleOpen}
         loading={apple.loading}
-        onCancel={apple.cancelRoleSelection}
-        onConfirm={(role) => { void handleAppleRoleSubmit(role); }}
+        onCancel={() => {
+          if (appleQaRoleOpen) {
+            setAppleQaRoleOpen(false);
+            return;
+          }
+
+          apple.cancelRoleSelection();
+        }}
+        onConfirm={(role) => {
+          if (appleQaRoleOpen) {
+            setAppleQaRoleOpen(false);
+
+            if (role === "passenger") {
+              setAppleQaSetupOpen(true);
+              setAppleSetupError("");
+              return;
+            }
+
+            setServerError(
+              `Modo QA web Apple: la selección de ${ROLE_LABELS[role]} funciona. El formulario detallado corresponde al flujo de pasajero.`,
+            );
+            return;
+          }
+
+          void handleAppleRoleSubmit(role);
+        }}
       />
 
       <AppleAccountSetupModal
-        isOpen={apple.setupOpen}
+        isOpen={apple.setupOpen || appleQaSetupOpen}
         loading={apple.loading}
-        documents={apple.documents}
-        displayEmail={apple.setupDisplayEmail}
+        documents={
+          appleQaSetupOpen ? APPLE_WEB_QA_DOCUMENTS : apple.documents
+        }
+        displayEmail={appleQaSetupOpen ? "" : apple.setupDisplayEmail}
         serverError={appleSetupError}
         onCancel={() => {
           setAppleSetupError("");
+
+          if (appleQaSetupOpen) {
+            setAppleQaSetupOpen(false);
+            return;
+          }
+
           apple.cancelSetup();
         }}
-        onConfirm={(input) => void completeAppleSetup(input)}
+        onConfirm={(input) => {
+          if (appleQaSetupOpen) {
+            setAppleQaSetupOpen(false);
+            setServerError(
+              `Modo QA web Apple correcto: formulario de pasajero validado para la categoría ${input.passengerFareType}. No se creó una sesión ni se enviaron credenciales falsas.`,
+            );
+            return;
+          }
+
+          void completeAppleSetup(input);
+        }}
       />
     </IonPage>
   );
