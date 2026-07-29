@@ -500,7 +500,17 @@ export const authController = {
 
     const result = await appleAuthService.signIn(parsed.data, {
       ipAddress: request.ip,
+      requestId: String(request.id),
       ...(userAgent ? { userAgent } : {}),
+    });
+
+    // Diagnóstico seguro y temporal: código/estado final por request.id, sin
+    // tokens ni PII, para correlacionar con los logs [Apple][...] de
+    // appleAuth.service.ts durante la investigación en curso.
+    console.log(`[Apple][${request.id}] appleLogin:result`, {
+      ok: result.ok,
+      code: result.ok ? "SUCCESS" : result.code,
+      statusCode: result.ok ? 200 : result.statusCode,
     });
 
     reply

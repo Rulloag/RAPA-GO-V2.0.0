@@ -46,6 +46,16 @@ export interface AppleSignInRequest {
   /** Required only for creation of a new account. */
   role?: UserRole;
   phone?: string;
+  /**
+   * Contact email typed by the user, only when Apple's identity token did
+   * not include a verified email. Never used to identify the account — the
+   * Apple subject remains the sole identity key.
+   */
+  contactEmail?: string;
+  /** Required for chilean and resident passenger fare types. */
+  rut?: string;
+  /** Required for foreigner passenger fare type. */
+  passport?: string;
   passengerFareType?: ApplePassengerFareType;
   legalAcceptances?: AppleLegalAcceptance[];
   residenceAccreditation?: ResidenceAccreditationInput;

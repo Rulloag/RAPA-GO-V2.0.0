@@ -22,6 +22,17 @@ vi.mock("@capawesome/capacitor-apple-sign-in", () => ({
   ErrorCode: { SignInCanceled: "SIGN_IN_CANCELED" },
 }));
 
+const mockGetActiveLegalDocuments = vi.fn();
+vi.mock("../../legal/legal.service.js", () => ({
+  legalService: { getActive: () => mockGetActiveLegalDocuments() },
+}));
+
+const REQUIRED_LEGAL_DOCUMENTS = [
+  { id: "legal-terms", type: "terms_and_conditions", version: "2.0", isActive: true },
+  { id: "legal-privacy", type: "privacy_policy", version: "2.0", isActive: true },
+  { id: "legal-users", type: "user_conditions", version: "2.0", isActive: true },
+];
+
 const { useAppleSignIn } = await import("../useAppleSignIn.js");
 import type { AppleSignInOutcome } from "../useAppleSignIn.js";
 
@@ -41,6 +52,7 @@ describe("useAppleSignIn", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockPlatform = "ios";
+    mockGetActiveLegalDocuments.mockResolvedValue(REQUIRED_LEGAL_DOCUMENTS);
   });
 
   it("isAvailable is true on iOS", () => {
@@ -243,6 +255,101 @@ describe("useAppleSignIn", () => {
 
     await act(async () => { await result.current.submitRole("passenger"); });
     expect(result.current.awaitingRole).toBe(false);
+  });
+
+  it("advancing from role selection to passenger setup keeps the setup form open (reproduces the flicker bug)", async () => {
+    mockPluginSignIn.mockResolvedValue(validPluginResult());
+    mockSignInWithApple
+      .mockResolvedValueOnce({ ok: false, code: "VALIDATION_ERROR", message: "role required" })
+      .mockResolvedValueOnce({ ok: false, code: "AUTH_APPLE_SETUP_REQUIRED", message: "setup required" });
+
+    const { result } = renderHook(() => useAppleSignIn());
+    await act(async () => { await result.current.signIn(); });
+    expect(result.current.awaitingRole).toBe(true);
+
+    let outcome: AppleSignInOutcome | undefined;
+    await act(async () => { outcome = await result.current.submitRole("passenger"); });
+
+    expect(outcome).toEqual({ kind: "setup_required" });
+    expect(result.current.awaitingRole).toBe(false);
+    expect(result.current.setupOpen).toBe(true);
+    expect(result.current.documents).toHaveLength(3);
+
+    // Simulates Ionic's IonModal firing onDidDismiss on the role-selection
+    // modal after its `isOpen` prop flipped to false as part of the
+    // transition above — this used to wipe out the passenger setup we just
+    // opened and bounce the user back to the login screen.
+    act(() => { result.current.cancelRoleSelection(); });
+
+    expect(result.current.setupOpen).toBe(true);
+    expect(result.current.documents).toHaveLength(3);
+
+    // A real cancel afterwards must still work normally.
+    act(() => { result.current.cancelSetup(); });
+    expect(result.current.setupOpen).toBe(false);
+  });
+
+  it("surfaces the backend's validation message when a completeSetup resubmission is rejected, unlike the silent first transition", async () => {
+    mockPluginSignIn.mockResolvedValue(validPluginResult());
+    mockSignInWithApple
+      .mockResolvedValueOnce({ ok: false, code: "VALIDATION_ERROR", message: "role required" })
+      .mockResolvedValueOnce({ ok: false, code: "AUTH_APPLE_SETUP_REQUIRED", message: "setup required" })
+      .mockResolvedValueOnce({ ok: false, code: "AUTH_APPLE_SETUP_REQUIRED", message: "Ingresa un RUT válido para continuar con Apple." });
+
+    const { result } = renderHook(() => useAppleSignIn());
+    await act(async () => { await result.current.signIn(); });
+    await act(async () => { await result.current.submitRole("passenger"); });
+    expect(result.current.setupOpen).toBe(true);
+
+    let outcome: AppleSignInOutcome | undefined;
+    await act(async () => {
+      outcome = await result.current.completeSetup({
+        passengerFareType: "chilean",
+        acceptedDocumentIds: ["legal-terms", "legal-privacy", "legal-users"],
+        phone: "+56912345678",
+        rut: "11111111-1",
+      });
+    });
+
+    expect(outcome).toEqual({
+      kind: "setup_required",
+      message: "Ingresa un RUT válido para continuar con Apple.",
+    });
+    // The form must remain open so the user can correct the field.
+    expect(result.current.setupOpen).toBe(true);
+  });
+
+  it("maps a 500-masked Apple token-exchange failure to a fixed Spanish message instead of the generic English backend text", async () => {
+    mockPluginSignIn.mockResolvedValue(validPluginResult());
+    mockSignInWithApple
+      .mockResolvedValueOnce({ ok: false, code: "VALIDATION_ERROR", message: "role required" })
+      .mockResolvedValueOnce({ ok: false, code: "AUTH_APPLE_SETUP_REQUIRED", message: "setup required" })
+      // This mirrors what the real backend sends once the authorizationCode
+      // exchange with Apple fails and errorHandler.ts replaces the AppError
+      // message with the generic "An unexpected error occurred." for any
+      // statusCode >= 500 — the code itself is never rewritten, so the
+      // frontend maps by code, not by trusting this text.
+      .mockResolvedValueOnce({ ok: false, code: "AUTH_APPLE_TOKEN_EXCHANGE_FAILED", message: "An unexpected error occurred." });
+
+    const { result } = renderHook(() => useAppleSignIn());
+    await act(async () => { await result.current.signIn(); });
+    await act(async () => { await result.current.submitRole("passenger"); });
+
+    let outcome: AppleSignInOutcome | undefined;
+    await act(async () => {
+      outcome = await result.current.completeSetup({
+        passengerFareType: "chilean",
+        acceptedDocumentIds: ["legal-terms", "legal-privacy", "legal-users"],
+        phone: "+56912345678",
+        rut: "12345678-5",
+      });
+    });
+
+    expect(outcome?.kind).toBe("invalid_credential");
+    expect((outcome as { message: string }).message).not.toMatch(/unexpected error/i);
+    expect((outcome as { message: string }).message).toContain("Apple");
+    // A failed exchange must fully reset — the user restarts from scratch.
+    expect(result.current.setupOpen).toBe(false);
   });
 
   it("cancelRoleSelection discards pending credentials without calling the backend again", async () => {
