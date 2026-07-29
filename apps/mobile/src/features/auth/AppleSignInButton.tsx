@@ -2,7 +2,7 @@ import { IonButton, IonIcon, IonSpinner } from "@ionic/react";
 import { logoApple } from "ionicons/icons";
 
 export interface AppleSignInButtonProps {
-  /** From useAppleSignIn() — only true on iOS running as a native Capacitor app. */
+  /** True for native iOS and for supported web browsers. */
   isAvailable: boolean;
   loading: boolean;
   disabled?: boolean;
@@ -12,12 +12,9 @@ export interface AppleSignInButtonProps {
 /**
  * Official-style "Sign in with Apple" button.
  *
- * Rendered ONLY on iOS running as a native Capacitor app — Apple's Human
- * Interface Guidelines require the button to only appear where the native
- * flow is actually available. Android and web are explicitly out of scope
- * for this PR (no partial/incomplete flow is offered on those platforms) —
- * `isAvailable` (from Capacitor.getPlatform()) fully hides the button
- * rather than showing it disabled.
+ * Rendered when a complete Apple flow is available:
+ * native AuthenticationServices on iOS, or the Services ID web flow in a
+ * browser. Native Android keeps the button hidden.
  *
  * Visual: solid black button, official "Sign in with Apple" logo + the
  * official English label text (Apple's guidelines do not provide an

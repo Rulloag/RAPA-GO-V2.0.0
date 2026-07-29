@@ -23,6 +23,10 @@ import type {
 } from "./appleAuth.types.js";
 import { AppleIdentityTokenVerifier } from "./appleIdentityToken.verifier.js";
 import { AppleTokenExchangeClient } from "./appleTokenExchange.client.js";
+import type {
+  ApplePreparedWebIdentity,
+  AppleWebCompleteInput,
+} from "./appleWeb.types.js";
 import type { AuthUser } from "./auth.types.js";
 import { SessionService } from "./session.service.js";
 import { TokenService } from "./token.service.js";
@@ -411,6 +415,153 @@ export class AppleAuthService {
     );
   }
 
+  async prepareWebFlow(
+    input: {
+      identityToken: string;
+      authorizationCode: string;
+      nonce: string;
+      expectedClientId: string;
+      redirectUri: string;
+      name?: AppleAuthRequest["name"];
+    },
+    metadata?: AppleRequestMetadata,
+  ): Promise<ApplePreparedWebIdentity> {
+    const requestId = metadata?.requestId;
+    logAppleStage(requestId, "web:prepare:start", {});
+
+    const identityClaims = await this.identityTokenVerifier.verify(
+      input.identityToken,
+      { expectedNonce: input.nonce },
+    );
+
+    if (identityClaims.aud !== input.expectedClientId) {
+      throw new AppError({
+        code: "AUTH_APPLE_TOKEN_INVALID",
+        message: "Apple returned an unexpected web client identifier.",
+        statusCode: 401,
+      });
+    }
+
+    const payload: AppleAuthRequest = {
+      identityToken: input.identityToken,
+      authorizationCode: input.authorizationCode,
+      nonce: input.nonce,
+      ...(input.name ? { name: input.name } : {}),
+    };
+
+    const exchanged = await this.exchangeIdentity(
+      payload,
+      identityClaims,
+      requestId,
+      input.redirectUri,
+    );
+
+    if (!exchanged.ok) {
+      throw new AppError({
+        code: exchanged.result.code,
+        message: exchanged.result.message,
+        statusCode: exchanged.result.statusCode ?? 401,
+      });
+    }
+
+    logAppleStage(requestId, "web:prepare:complete", {
+      hasEmail: Boolean(identityClaims.email),
+      hasRefreshToken: Boolean(exchanged.encryptedRefreshToken),
+    });
+
+    return {
+      sub: identityClaims.sub,
+      aud: identityClaims.aud,
+      ...(identityClaims.email
+        ? { email: identityClaims.email }
+        : {}),
+      emailVerified: identityClaims.emailVerified,
+      isPrivateEmail: identityClaims.isPrivateEmail,
+      ...(input.name ? { name: input.name } : {}),
+      ...(exchanged.encryptedRefreshToken
+        ? { encryptedRefreshToken: exchanged.encryptedRefreshToken }
+        : {}),
+    };
+  }
+
+  async completeWebFlow(
+    prepared: ApplePreparedWebIdentity,
+    input: Omit<AppleWebCompleteInput, "flowToken">,
+    metadata?: AppleRequestMetadata,
+  ): Promise<AppleAuthResult> {
+    const requestId = metadata?.requestId;
+    const identityClaims: VerifiedAppleClaims = {
+      sub: prepared.sub,
+      aud: prepared.aud,
+      email: prepared.email,
+      emailVerified: prepared.emailVerified,
+      isPrivateEmail: prepared.isPrivateEmail,
+    };
+
+    const existing =
+      await this.identitiesRepository.findByProviderAndSub(
+        PROVIDER,
+        identityClaims.sub,
+      );
+
+    if (existing) {
+      return this.signInExistingAfterExchange(
+        identityClaims,
+        existing.userId,
+        existing.id,
+        prepared.encryptedRefreshToken,
+        requestId,
+      );
+    }
+
+    const payload: AppleAuthRequest = {
+      identityToken: "web-flow-prepared",
+      authorizationCode: "web-flow-prepared",
+      nonce: "0".repeat(64),
+      role: "passenger",
+      ...(prepared.name ? { name: prepared.name } : {}),
+      ...(input.phone ? { phone: input.phone } : {}),
+      ...(input.contactEmail
+        ? { contactEmail: input.contactEmail }
+        : {}),
+      ...(input.rut ? { rut: input.rut } : {}),
+      ...(input.passport ? { passport: input.passport } : {}),
+      ...(input.passengerFareType
+        ? { passengerFareType: input.passengerFareType }
+        : {}),
+      ...(input.legalAcceptances
+        ? { legalAcceptances: input.legalAcceptances }
+        : {}),
+      ...(input.residenceAccreditation
+        ? { residenceAccreditation: input.residenceAccreditation }
+        : {}),
+    };
+
+    const precondition = this.checkNewAccountPreconditions(
+      payload,
+      identityClaims,
+    );
+
+    if (precondition) return precondition;
+
+    const passengerSetupResult = await this.preparePassengerSetup(
+      payload,
+      identityClaims,
+    );
+
+    if (!passengerSetupResult.ok) {
+      return passengerSetupResult.result;
+    }
+
+    return this.completeNewAccountAfterExchange(
+      payload,
+      identityClaims,
+      passengerSetupResult.setup,
+      prepared.encryptedRefreshToken,
+      metadata,
+    );
+  }
+
   async link(
     accessToken: string,
     payload: AppleAuthRequest,
@@ -561,34 +712,19 @@ export class AppleAuthService {
       };
     }
 
-    if (payload.role === "admin") {
+    if (payload.role !== "passenger") {
       return {
         ok: false,
         code: "AUTH_FORBIDDEN",
         message:
-          "Las cuentas administradoras no pueden registrarse públicamente.",
+          "El registro con Apple está disponible solamente para pasajeros.",
         statusCode: 403,
       };
     }
 
-    const email = identityClaims.email?.toLowerCase().trim();
-    const hasVerifiedIdentityEmail = Boolean(email) && identityClaims.emailVerified;
-
-    // Los demás roles (driver/guide/rental_operator) no tienen un paso de
-    // formulario donde recolectar un correo de contacto alternativo, así que
-    // para ellos seguimos exigiendo el correo verificado de Apple. Para
-    // pasajeros, si Apple no lo entrega, el formulario de "Datos del
-    // pasajero" pide un correo de contacto y preparePassengerSetup lo valida.
-    if (!hasVerifiedIdentityEmail && payload.role !== "passenger") {
-      return {
-        ok: false,
-        code: "AUTH_APPLE_EMAIL_MISSING",
-        message:
-          "Apple no entregó un correo verificado para crear esta cuenta.",
-        statusCode: 400,
-      };
-    }
-
+    // Si Apple no entrega un correo verificado, el formulario de pasajero
+    // solicita un correo de contacto. El Apple subject sigue siendo siempre
+    // la identidad principal.
     return null;
   }
 
@@ -854,6 +990,7 @@ export class AppleAuthService {
     payload: AppleAuthRequest,
     identityClaims: VerifiedAppleClaims,
     requestId?: string,
+    redirectUri?: string,
   ): Promise<
     | { ok: true; encryptedRefreshToken: string | undefined }
     | { ok: false; result: AppleAuthFailure }
@@ -867,6 +1004,7 @@ export class AppleAuthService {
       exchange = await this.tokenExchangeClient.exchange(
         payload.authorizationCode,
         identityClaims.aud,
+        redirectUri,
       );
     } catch (error) {
       logAppleStage(requestId, "exchangeIdentity:tokenExchangeThrew", {
@@ -923,6 +1061,30 @@ export class AppleAuthService {
     identityId: string,
     requestId?: string,
   ): Promise<AppleAuthResult> {
+    const exchanged = await this.exchangeIdentity(
+      payload,
+      identityClaims,
+      requestId,
+    );
+
+    if (!exchanged.ok) return exchanged.result;
+
+    return this.signInExistingAfterExchange(
+      identityClaims,
+      userId,
+      identityId,
+      exchanged.encryptedRefreshToken,
+      requestId,
+    );
+  }
+
+  private async signInExistingAfterExchange(
+    identityClaims: VerifiedAppleClaims,
+    userId: string,
+    identityId: string,
+    encryptedRefreshToken: string | undefined,
+    requestId?: string,
+  ): Promise<AppleAuthResult> {
     const user = await this.usersRepository.findById(userId);
 
     if (!user) {
@@ -961,13 +1123,6 @@ export class AppleAuthService {
       };
     }
 
-    const exchanged = await this.exchangeIdentity(
-      payload,
-      identityClaims,
-      requestId,
-    );
-    if (!exchanged.ok) return exchanged.result;
-
     logAppleStage(requestId, "signInExisting:sessionIssuing", {
       userId: user.id,
     });
@@ -975,7 +1130,7 @@ export class AppleAuthService {
     return this.completeExistingUserSignIn(
       user,
       identityId,
-      exchanged.encryptedRefreshToken,
+      encryptedRefreshToken,
       identityClaims.aud,
     );
   }
@@ -1020,7 +1175,32 @@ export class AppleAuthService {
     metadata?: AppleRequestMetadata,
   ): Promise<AppleAuthResult> {
     const requestId = metadata?.requestId;
-    logAppleStage(requestId, "exchangeAndCompleteNewAccount:start", {
+    const exchanged = await this.exchangeIdentity(
+      payload,
+      identityClaims,
+      requestId,
+    );
+
+    if (!exchanged.ok) return exchanged.result;
+
+    return this.completeNewAccountAfterExchange(
+      payload,
+      identityClaims,
+      passengerSetup,
+      exchanged.encryptedRefreshToken,
+      metadata,
+    );
+  }
+
+  private async completeNewAccountAfterExchange(
+    payload: AppleAuthRequest,
+    identityClaims: VerifiedAppleClaims,
+    passengerSetup: PassengerSetup | null,
+    encryptedRefreshToken: string | undefined,
+    metadata?: AppleRequestMetadata,
+  ): Promise<AppleAuthResult> {
+    const requestId = metadata?.requestId;
+    logAppleStage(requestId, "completeNewAccountAfterExchange:start", {
       role: payload.role ?? null,
     });
 
@@ -1030,22 +1210,20 @@ export class AppleAuthService {
       undefined;
 
     if (!email || !payload.role || payload.role === "admin") {
-      // Diagnóstico seguro: nunca imprime tokens, Apple subject ni PII —
-      // solo qué precondición faltó, para poder auditar futuros reportes de
-      // "error inesperado" sin exponer credenciales.
-      console.error("[Apple] exchangeAndCompleteNewAccount: precondición faltante", {
-        hasIdentityEmail: Boolean(identityClaims.email),
-        hasContactEmail: Boolean(passengerSetup?.contactEmail),
-        hasRole: Boolean(payload.role),
-        role: payload.role ?? null,
-      });
+      console.error(
+        "[Apple] completeNewAccountAfterExchange: precondición faltante",
+        {
+          hasIdentityEmail: Boolean(identityClaims.email),
+          hasContactEmail: Boolean(passengerSetup?.contactEmail),
+          hasRole: Boolean(payload.role),
+          role: payload.role ?? null,
+        },
+      );
       throw AppError.internal(
-        "exchangeAndCompleteNewAccount called without validated preconditions.",
+        "completeNewAccountAfterExchange called without validated preconditions.",
       );
     }
 
-    // Nunca vinculamos cuentas por coincidencia de correo sin que el dueño
-    // primero se autentique con su método actual.
     const emailOwner = await this.usersRepository.findByEmail(email);
     if (emailOwner) {
       this.auditService.recordSafe({
@@ -1064,14 +1242,7 @@ export class AppleAuthService {
       };
     }
 
-    const exchanged = await this.exchangeIdentity(
-      payload,
-      identityClaims,
-      requestId,
-    );
-    if (!exchanged.ok) return exchanged.result;
-
-    logAppleStage(requestId, "exchangeAndCompleteNewAccount:creatingUser", {});
+    logAppleStage(requestId, "completeNewAccountAfterExchange:creatingUser", {});
 
     const created = await this.identitiesRepository.createUserWithIdentity({
       email,
@@ -1085,11 +1256,11 @@ export class AppleAuthService {
       providerEmail: email,
       providerEmailVerified: identityClaims.emailVerified,
       providerIsPrivateEmail: identityClaims.isPrivateEmail,
-      encryptedRefreshToken: exchanged.encryptedRefreshToken,
+      encryptedRefreshToken,
     });
 
     if (!created) {
-      logAppleStage(requestId, "exchangeAndCompleteNewAccount:creationRace", {});
+      logAppleStage(requestId, "completeNewAccountAfterExchange:creationRace", {});
 
       const identity =
         await this.identitiesRepository.findByProviderAndSub(
@@ -1129,12 +1300,12 @@ export class AppleAuthService {
       return this.completeExistingUserSignIn(
         winnerUser,
         identity.id,
-        exchanged.encryptedRefreshToken,
+        encryptedRefreshToken,
         identityClaims.aud,
       );
     }
 
-    logAppleStage(requestId, "exchangeAndCompleteNewAccount:userCreated", {
+    logAppleStage(requestId, "completeNewAccountAfterExchange:userCreated", {
       userId: created.user.id,
     });
 
@@ -1153,13 +1324,13 @@ export class AppleAuthService {
         );
         logAppleStage(
           requestId,
-          "exchangeAndCompleteNewAccount:passengerSetupPersisted",
+          "completeNewAccountAfterExchange:passengerSetupPersisted",
           { userId: created.user.id },
         );
       } catch (error) {
         logAppleStage(
           requestId,
-          "exchangeAndCompleteNewAccount:passengerSetupPersistenceFailed",
+          "completeNewAccountAfterExchange:passengerSetupPersistenceFailed",
           {
             userId: created.user.id,
             errorName: error instanceof Error ? error.name : "UNKNOWN",
@@ -1174,9 +1345,6 @@ export class AppleAuthService {
           metadata: { reason: "passenger_setup_persistence_failed" },
         });
 
-        // Intento compensatorio. Si las FK tienen CASCADE, también elimina la
-        // identidad OAuth creada por el repositorio. Nunca ocultamos el error
-        // original si la limpieza no puede completarse.
         try {
           await db.delete(users).where(eq(users.id, created.user.id));
         } catch {
@@ -1189,7 +1357,7 @@ export class AppleAuthService {
 
     const session = await this.issueSession(created.user);
 
-    logAppleStage(requestId, "exchangeAndCompleteNewAccount:sessionIssued", {
+    logAppleStage(requestId, "completeNewAccountAfterExchange:sessionIssued", {
       userId: created.user.id,
     });
 

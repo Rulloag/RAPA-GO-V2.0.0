@@ -14,6 +14,7 @@ import type {
   AppleSignInRequest,
 } from "./auth.types.js";
 import type { PublicRole } from "./roles.js";
+import { authService } from "./auth.service.js";
 import { useAuth } from "./useAuth.js";
 
 const REQUIRED_LEGAL_TYPES = new Set([
@@ -38,6 +39,7 @@ interface PendingCredentials {
 export type AppleSignInOutcome =
   | { kind: "success"; role: UserRole }
   | { kind: "cancelled" }
+  | { kind: "redirecting" }
   | { kind: "role_required" }
   /**
    * `message` is only present when the backend rejected a resubmission
@@ -74,6 +76,8 @@ const INVALID_CREDENTIAL_CODES = new Set([
   "AUTH_APPLE_TOKEN_INCOHERENT",
   "AUTH_APPLE_NONCE_MISMATCH",
   "AUTH_APPLE_EMAIL_MISSING",
+  "AUTH_APPLE_WEB_FLOW_INVALID",
+  "AUTH_APPLE_WEB_STATE_INVALID",
   "AUTH_FORBIDDEN",
 ]);
 const NETWORK_CODES = new Set(["NETWORK_ERROR", "TIMEOUT"]);
@@ -95,6 +99,10 @@ const FIXED_SPANISH_MESSAGES: Record<string, string> = {
   AUTH_APPLE_EMAIL_MISSING: "Correo obligatorio.",
   AUTH_CONFIGURATION_ERROR:
     "Continuar con Apple no está disponible en este momento. Inténtalo más tarde.",
+  AUTH_APPLE_WEB_FLOW_INVALID:
+    "El ingreso web con Apple venció. Vuelve a presionar “Sign in with Apple”.",
+  AUTH_APPLE_WEB_STATE_INVALID:
+    "No pudimos validar el inicio web con Apple. Inténtalo nuevamente.",
 };
 
 function mapBackendError(code: string, message: string): AppleSignInOutcome {
@@ -129,6 +137,7 @@ export interface UseAppleSignInResult {
   isAvailable: boolean;
   loading: boolean;
   signIn: () => Promise<AppleSignInOutcome>;
+  resumeWebFlow: (flowToken: string) => Promise<AppleSignInOutcome>;
   awaitingRole: boolean;
   submitRole: (role: PublicRole) => Promise<AppleSignInOutcome>;
   cancelRoleSelection: () => void;
@@ -150,13 +159,14 @@ export interface UseAppleSignInResult {
 }
 
 export function useAppleSignIn(): UseAppleSignInResult {
-  const { signInWithApple } = useAuth();
+  const { signInWithApple, signInWithAppleWeb } = useAuth();
   const [loading, setLoading] = useState(false);
   const [awaitingRole, setAwaitingRole] = useState(false);
   const [setupOpen, setSetupOpen] = useState(false);
   const [documents, setDocuments] = useState<LegalDocumentData[]>([]);
   const [setupDisplayEmail, setSetupDisplayEmail] = useState("");
   const pendingRef = useRef<PendingCredentials | null>(null);
+  const pendingWebFlowTokenRef = useRef<string | null>(null);
   const selectedRoleRef = useRef<PublicRole | null>(null);
   /**
    * Ionic fires IonModal's onDidDismiss whenever `isOpen` transitions to
@@ -168,12 +178,16 @@ export function useAppleSignIn(): UseAppleSignInResult {
    */
   const skipNextRoleDismissRef = useRef(false);
 
-  const isAvailable =
+  const isNativeIos =
     Capacitor.isNativePlatform() && Capacitor.getPlatform() === "ios";
+  const isWebBrowser =
+    typeof window !== "undefined" && !Capacitor.isNativePlatform();
+  const isAvailable = isNativeIos || isWebBrowser;
 
   const clearPending = useCallback(() => {
     skipNextRoleDismissRef.current = false;
     pendingRef.current = null;
+    pendingWebFlowTokenRef.current = null;
     selectedRoleRef.current = null;
     setAwaitingRole(false);
     setSetupOpen(false);
@@ -268,6 +282,85 @@ export function useAppleSignIn(): UseAppleSignInResult {
     [clearPending, preparePassengerSetup, signInWithApple],
   );
 
+  const submitWebToBackend = useCallback(
+    async (
+      flowToken: string,
+      extras: {
+        phone?: string;
+        contactEmail?: string;
+        rut?: string;
+        passport?: string;
+        passengerFareType?: ApplePassengerFareType;
+        legalAcceptances?: Array<{
+          legalDocumentId: string;
+          version: string;
+        }>;
+        residenceAccreditation?: AppleSignInRequest["residenceAccreditation"];
+      } = {},
+    ): Promise<AppleSignInOutcome> => {
+      const response = await signInWithAppleWeb({
+        flowToken,
+        ...extras,
+      });
+
+      if (response.ok === true) {
+        clearPending();
+        return { kind: "success", role: response.session.user.role };
+      }
+
+      const outcome = mapBackendError(
+        response.code,
+        response.message ?? "No se pudo continuar con Apple.",
+      );
+
+      if (outcome.kind === "setup_required") {
+        pendingWebFlowTokenRef.current = flowToken;
+        selectedRoleRef.current = "passenger";
+        const prepared = await preparePassengerSetup(
+          response.displayEmail,
+        );
+
+        if (!prepared) {
+          clearPending();
+          return {
+            kind: "internal_error",
+            message:
+              "No pudimos cargar todos los documentos legales obligatorios.",
+          };
+        }
+
+        return { kind: "setup_required" };
+      }
+
+      clearPending();
+      return outcome;
+    },
+    [clearPending, preparePassengerSetup, signInWithAppleWeb],
+  );
+
+  const resumeWebFlow = useCallback(
+    async (flowToken: string): Promise<AppleSignInOutcome> => {
+      const cleanToken = flowToken.trim();
+
+      if (!cleanToken || loading) {
+        return {
+          kind: "internal_error",
+          message: "El ingreso web con Apple no es válido.",
+        };
+      }
+
+      setLoading(true);
+      pendingWebFlowTokenRef.current = cleanToken;
+
+      try {
+        return await submitWebToBackend(cleanToken);
+      } finally {
+        setLoading(false);
+      }
+    },
+    [loading, submitWebToBackend],
+  );
+
   const signIn = useCallback(async (): Promise<AppleSignInOutcome> => {
     if (loading) {
       return {
@@ -276,6 +369,11 @@ export function useAppleSignIn(): UseAppleSignInResult {
       };
     }
     if (!isAvailable) return { kind: "unavailable" };
+
+    if (isWebBrowser) {
+      window.location.assign(authService.getAppleWebStartUrl());
+      return { kind: "redirecting" };
+    }
 
     setLoading(true);
 
@@ -332,19 +430,22 @@ export function useAppleSignIn(): UseAppleSignInResult {
     } finally {
       setLoading(false);
     }
-  }, [clearPending, isAvailable, loading, submitToBackend]);
+  }, [
+    clearPending,
+    isAvailable,
+    isWebBrowser,
+    loading,
+    submitToBackend,
+  ]);
 
   const submitRole = useCallback(
     async (role: PublicRole): Promise<AppleSignInOutcome> => {
-      const allowedRoles: readonly string[] = [
-        "passenger",
-        "driver",
-        "guide",
-        "rental_operator",
-      ];
-
-      if (!allowedRoles.includes(role)) {
-        return { kind: "internal_error", message: "Rol no válido." };
+      if (role !== "passenger") {
+        return {
+          kind: "internal_error",
+          message:
+            "El registro con Apple está disponible solamente para pasajeros.",
+        };
       }
 
       const credentials = pendingRef.current;
@@ -384,6 +485,38 @@ export function useAppleSignIn(): UseAppleSignInResult {
       contactEmail?: string;
       residenceAccreditation?: AppleSignInRequest["residenceAccreditation"];
     }): Promise<AppleSignInOutcome> => {
+      const legalAcceptances = documents
+        .filter((document) =>
+          input.acceptedDocumentIds.includes(document.id),
+        )
+        .map((document) => ({
+          legalDocumentId: document.id,
+          version: document.version,
+        }));
+
+      const webFlowToken = pendingWebFlowTokenRef.current;
+
+      if (webFlowToken) {
+        setLoading(true);
+        try {
+          return await submitWebToBackend(webFlowToken, {
+            phone: input.phone,
+            passengerFareType: input.passengerFareType,
+            ...(input.rut ? { rut: input.rut } : {}),
+            ...(input.passport ? { passport: input.passport } : {}),
+            ...(input.contactEmail
+              ? { contactEmail: input.contactEmail }
+              : {}),
+            ...(input.residenceAccreditation
+              ? { residenceAccreditation: input.residenceAccreditation }
+              : {}),
+            legalAcceptances,
+          });
+        } finally {
+          setLoading(false);
+        }
+      }
+
       const credentials = pendingRef.current;
       if (!credentials) {
         return {
@@ -406,26 +539,20 @@ export function useAppleSignIn(): UseAppleSignInResult {
           ...(input.residenceAccreditation
             ? { residenceAccreditation: input.residenceAccreditation }
             : {}),
-          legalAcceptances: documents
-            .filter((document) =>
-              input.acceptedDocumentIds.includes(document.id),
-            )
-            .map((document) => ({
-              legalDocumentId: document.id,
-              version: document.version,
-            })),
+          legalAcceptances,
         });
       } finally {
         setLoading(false);
       }
     },
-    [documents, submitToBackend],
+    [documents, submitToBackend, submitWebToBackend],
   );
 
   return {
     isAvailable,
     loading,
     signIn,
+    resumeWebFlow,
     awaitingRole,
     submitRole,
     cancelRoleSelection,

@@ -61,6 +61,23 @@ export interface AppleSignInRequest {
   residenceAccreditation?: ResidenceAccreditationInput;
 }
 
+export interface AppleWebCompleteRequest {
+  flowToken: string;
+  phone?: string;
+  contactEmail?: string;
+  rut?: string;
+  passport?: string;
+  passengerFareType?: ApplePassengerFareType;
+  legalAcceptances?: AppleLegalAcceptance[];
+  residenceAccreditation?: ResidenceAccreditationInput;
+}
+
+export type AppleWebAuthResponse =
+  | Extract<AuthResponse, { ok: true }>
+  | (Extract<AuthResponse, { ok: false }> & {
+      displayEmail?: string;
+    });
+
 /** Shape exposed by AuthContext. */
 export interface AuthContextValue {
   status: AuthStatus;
@@ -70,6 +87,9 @@ export interface AuthContextValue {
   login: (payload: LoginRequest) => Promise<AuthResponse>;
   register: (payload: RegisterRequest) => Promise<AuthResponse>;
   signInWithApple: (payload: AppleSignInRequest) => Promise<AuthResponse>;
+  signInWithAppleWeb: (
+    payload: AppleWebCompleteRequest,
+  ) => Promise<AppleWebAuthResponse>;
   refreshSession: () => Promise<void>;
   logout: () => Promise<void>;
 }

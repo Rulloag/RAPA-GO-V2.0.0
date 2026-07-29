@@ -7,6 +7,7 @@ import { rateLimitPlugin } from "./plugins/rateLimit.js";
 import { globalErrorHandler } from "./shared/errors/errorHandler.js";
 
 import { authRoutes } from "./modules/auth/auth.routes.js";
+import { appleWebRoutes } from "./modules/auth/appleWeb.routes.js";
 import {
   accountDeletionRoutes,
   adminAccountDeletionRoutes,
@@ -154,6 +155,9 @@ export async function buildApp(): Promise<FastifyInstance> {
 
   // ── Modules ───────────────────────────────────────────────────────────────
   await fastify.register(authRoutes, { prefix: "/api/auth" });
+  // Apple web uses the exact public callback registered in Apple Developer:
+  // POST /auth/apple/web/callback (without the /api prefix).
+  await fastify.register(appleWebRoutes);
   await fastify.register(accountDeletionRoutes, {
     prefix: "/api/account-deletion",
   });

@@ -25,6 +25,7 @@ export class AppleTokenExchangeClient {
   async exchange(
     authorizationCode: string,
     clientId: string,
+    redirectUri?: string,
   ): Promise<AppleTokenExchangeResult> {
     const clientSecret = await buildAppleClientSecret(clientId);
 
@@ -34,6 +35,10 @@ export class AppleTokenExchangeClient {
       client_id: clientId,
       client_secret: clientSecret,
     });
+
+    if (redirectUri) {
+      body.set("redirect_uri", redirectUri);
+    }
 
     const timeoutMs = resolveTimeoutMs("APPLE_TOKEN_TIMEOUT_MS", APPLE_TOKEN_DEFAULT_TIMEOUT_MS);
 
