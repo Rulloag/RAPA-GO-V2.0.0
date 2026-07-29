@@ -1392,7 +1392,7 @@ export function LoginPage(): JSX.Element {
           </IonButton>
 
           <AppleSignInButton
-            isAvailable={apple.isAvailable}
+            isAvailable={true}
             loading={apple.loading}
             disabled={loading}
             onPress={() => void startAppleSignIn()}
