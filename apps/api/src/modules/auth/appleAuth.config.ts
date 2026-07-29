@@ -38,12 +38,22 @@ export function getAppleAuthConfig(): AppleAuthConfig {
   if (!keyId) missing.push("APPLE_KEY_ID");
 
   const rawPrivateKey = process.env["APPLE_PRIVATE_KEY"] ?? "";
-  // .env files store the PEM's newlines as the literal two-character
-  // sequence \n; normalize back to real newlines before use.
-  const privateKey = rawPrivateKey.replace(/\\n/g, "\n").trim();
+  // Hostinger (y otros paneles) guardan el PEM en una sola línea, a veces
+  // envuelto en comillas, con \n literales en vez de saltos de línea reales.
+  // Normalizamos: quitamos comillas envolventes y convertimos \n -> salto
+  // real antes de pasarlo a importPKCS8.
+  const privateKey = rawPrivateKey
+    .trim()
+    .replace(/^["']|["']$/g, "")
+    .replace(/\\n/g, "\n")
+    .trim();
+
   if (!privateKey) {
     missing.push("APPLE_PRIVATE_KEY");
-  } else if (!privateKey.includes("BEGIN") || !privateKey.includes("PRIVATE KEY")) {
+  } else if (
+    !privateKey.includes("-----BEGIN PRIVATE KEY-----") ||
+    !privateKey.includes("-----END PRIVATE KEY-----")
+  ) {
     throw new AppError({
       code: "AUTH_CONFIGURATION_ERROR",
       message: "APPLE_PRIVATE_KEY is not a valid PEM-encoded private key.",

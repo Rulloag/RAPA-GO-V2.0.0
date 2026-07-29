@@ -34,6 +34,17 @@ export interface AppleAuthRequest {
   role?: UserRole | undefined;
   /** Passenger setup fields, ignored for an existing Apple identity. */
   phone?: string | undefined;
+  /**
+   * Contact email typed by the user, only accepted/required when Apple's
+   * identity token did not include a verified email. Never used to look up
+   * or identify the account — the Apple subject remains the sole identity
+   * key. See preparePassengerSetup in appleAuth.service.ts.
+   */
+  contactEmail?: string | undefined;
+  /** Required for chilean and resident passenger fare types. */
+  rut?: string | undefined;
+  /** Required for foreigner passenger fare type. */
+  passport?: string | undefined;
   passengerFareType?: ApplePassengerFareType | undefined;
   legalAcceptances?: AppleLegalAcceptanceInput[] | undefined;
   residenceAccreditation?: ResidenceAccreditationInput | undefined;

@@ -1,5 +1,6 @@
 import { SignJWT, importPKCS8 } from "jose";
 
+import { AppError } from "../../shared/errors/AppError.js";
 import {
   APPLE_ISSUER,
   getAppleAuthConfig,
@@ -15,7 +16,19 @@ export async function buildAppleClientSecret(
   clientId: string,
 ): Promise<string> {
   const config = getAppleAuthConfig();
-  const privateKey = await importPKCS8(config.privateKey, "ES256");
+
+  let privateKey: Awaited<ReturnType<typeof importPKCS8>>;
+  try {
+    privateKey = await importPKCS8(config.privateKey, "ES256");
+  } catch {
+    // Nunca se expone la clave ni el error crudo de `jose` (que puede citar
+    // fragmentos del PEM); solo un AUTH_CONFIGURATION_ERROR controlado.
+    throw new AppError({
+      code: "AUTH_CONFIGURATION_ERROR",
+      message: "APPLE_PRIVATE_KEY could not be imported as a PKCS8 EC key.",
+      statusCode: 503,
+    });
+  }
 
   return new SignJWT({})
     .setProtectedHeader({ alg: "ES256", kid: config.keyId })

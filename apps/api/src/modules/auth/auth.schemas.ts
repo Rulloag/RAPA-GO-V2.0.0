@@ -263,6 +263,12 @@ export const appleAuthRequestSchema = z.object({
     .trim()
     .regex(/^\+?[0-9]{8,15}$/, "El teléfono de Apple no es válido.")
     .optional(),
+  rut: z.string().trim().max(20).optional(),
+  passport: z.string().trim().max(30).optional(),
+  // Formato validado en preparePassengerSetup (no aquí): un .email() fallido
+  // a nivel de schema devolvería VALIDATION_ERROR, código que el cliente
+  // interpreta como "falta elegir rol" y lo devolvería a esa pantalla.
+  contactEmail: z.string().trim().max(254).optional(),
   passengerFareType: z
     .enum(["resident", "chilean", "foreigner"])
     .optional(),

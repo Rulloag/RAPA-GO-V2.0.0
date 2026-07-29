@@ -58,4 +58,28 @@ describe("getAppleAuthConfig", () => {
     process.env["APPLE_PRIVATE_KEY"] = "not-a-pem-key-at-all";
     expect(() => getAppleAuthConfig()).toThrowError(expect.objectContaining({ code: "AUTH_CONFIGURATION_ERROR" }));
   });
+
+  it("parses the exact Hostinger format: single line, wrapped in double quotes, literal \\n sequences", () => {
+    process.env["APPLE_PRIVATE_KEY"] =
+      '"-----BEGIN PRIVATE KEY-----\\nMIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBG0wawIBAQQgV\\nV-----END PRIVATE KEY-----"';
+
+    const config = getAppleAuthConfig();
+
+    expect(config.privateKey.startsWith("-----BEGIN PRIVATE KEY-----")).toBe(true);
+    expect(config.privateKey.endsWith("-----END PRIVATE KEY-----")).toBe(true);
+    expect(config.privateKey).not.toContain('"');
+    expect(config.privateKey).not.toContain("\\n");
+    expect(config.privateKey).toContain("\n");
+  });
+
+  it("parses the exact Hostinger format with single quotes instead of double quotes", () => {
+    process.env["APPLE_PRIVATE_KEY"] =
+      "'-----BEGIN PRIVATE KEY-----\\nabc123\\n-----END PRIVATE KEY-----'";
+
+    const config = getAppleAuthConfig();
+
+    expect(config.privateKey.startsWith("-----BEGIN PRIVATE KEY-----")).toBe(true);
+    expect(config.privateKey.endsWith("-----END PRIVATE KEY-----")).toBe(true);
+    expect(config.privateKey).not.toContain("'");
+  });
 });

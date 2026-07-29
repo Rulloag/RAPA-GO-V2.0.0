@@ -46,13 +46,35 @@ type VerifiedAppleClaims = Awaited<
 type AppleRequestMetadata = {
   ipAddress?: string;
   userAgent?: string;
+  /** Fastify's request.id — used only to correlate safe diagnostic logs. */
+  requestId?: string;
 };
+
+/**
+ * Safe diagnostic log for the Apple sign-in pipeline: correlation id + stage
+ * + booleans/codes only. Never logs authorizationCode, identityToken, the
+ * Apple subject, private keys, or any other token/credential material.
+ * Temporary — meant to be removed once the current investigation is closed.
+ */
+function logAppleStage(
+  requestId: string | undefined,
+  stage: string,
+  details: Record<string, unknown> = {},
+): void {
+  console.log(`[Apple][${requestId ?? "no-request-id"}] ${stage}`, details);
+}
 
 type PassengerSetup = {
   phone: string;
   requestedFareType: ApplePassengerFareType;
   legalDocumentsToAccept: Array<typeof legalDocuments.$inferSelect>;
   storedResidenceAccreditation: string | null;
+  /**
+   * Correo de contacto escrito por el usuario, solo cuando Apple no entregó
+   * un correo verificado en el identity token. Nunca reemplaza al Apple
+   * subject como identidad: solo se usa como valor informativo/contacto.
+   */
+  contactEmail: string | null;
 };
 
 function toUserRole(raw: string): UserRole {
@@ -104,8 +126,66 @@ function isValidApplePhone(value: string): boolean {
   return /^\+?[0-9]{8,15}$/.test(value);
 }
 
+function requiresRutForFareType(value: ApplePassengerFareType): boolean {
+  return value === "chilean" || value === "resident";
+}
+
+function requiresPassportForFareType(value: ApplePassengerFareType): boolean {
+  return value === "foreigner";
+}
+
+function normalizeAppleRut(value: string | undefined): string {
+  return String(value ?? "")
+    .replace(/\./g, "")
+    .replace(/-/g, "")
+    .trim()
+    .toUpperCase();
+}
+
+function isValidAppleRut(value: string): boolean {
+  if (!/^\d{7,8}[0-9K]$/.test(value)) return false;
+
+  const body = value.slice(0, -1);
+  const dv = value.slice(-1);
+
+  let sum = 0;
+  let multiplier = 2;
+
+  for (let i = body.length - 1; i >= 0; i -= 1) {
+    sum += Number(body[i]) * multiplier;
+    multiplier = multiplier === 7 ? 2 : multiplier + 1;
+  }
+
+  const expectedNumber = 11 - (sum % 11);
+  const expectedDv =
+    expectedNumber === 11 ? "0" : expectedNumber === 10 ? "K" : String(expectedNumber);
+
+  return dv === expectedDv;
+}
+
+function normalizeApplePassport(value: string | undefined): string {
+  return String(value ?? "")
+    .trim()
+    .toUpperCase()
+    .replace(/[^A-Z0-9-]/g, "");
+}
+
+function isValidApplePassport(value: string): boolean {
+  const clean = value.replace(/-/g, "");
+  return clean.length >= 5 && clean.length <= 15;
+}
+
+function normalizeAppleContactEmail(value: string | undefined): string {
+  return String(value ?? "").trim().toLowerCase();
+}
+
+function isValidAppleContactEmail(value: string): boolean {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
+}
+
 function validateAppleResidenceAccreditation(
   input: NonNullable<AppleAuthRequest["residenceAccreditation"]>,
+  rut?: string,
 ): { ok: true; storedDataUrl: string } | { ok: false; message: string } {
   const match = input.documentDataUrl
     .trim()
@@ -178,6 +258,7 @@ function validateAppleResidenceAccreditation(
       documentName: input.documentName.trim(),
       documentType: input.documentType,
       uploadedAt: new Date().toISOString(),
+      ...(rut ? { rut } : {}),
     }),
   );
 
@@ -239,6 +320,19 @@ export class AppleAuthService {
     payload: AppleAuthRequest,
     metadata?: AppleRequestMetadata,
   ): Promise<AppleAuthResult> {
+    const requestId = metadata?.requestId;
+    logAppleStage(requestId, "signIn:start", {
+      hasRole: Boolean(payload.role),
+      role: payload.role ?? null,
+      hasPhone: Boolean(payload.phone),
+      hasFareType: Boolean(payload.passengerFareType),
+      hasRut: Boolean(payload.rut),
+      hasPassport: Boolean(payload.passport),
+      hasContactEmail: Boolean(payload.contactEmail),
+      hasResidenceAccreditation: Boolean(payload.residenceAccreditation),
+      legalAcceptancesCount: payload.legalAcceptances?.length ?? 0,
+    });
+
     // Verificamos primero el identity token. El authorizationCode es de un
     // solo uso y no debe consumirse antes de que el usuario termine el rol y,
     // para pasajeros, la configuración obligatoria.
@@ -251,11 +345,22 @@ export class AppleAuthService {
       },
     );
 
+    logAppleStage(requestId, "signIn:identityTokenVerified", {
+      hasEmail: Boolean(identityClaims.email),
+      emailVerified: identityClaims.emailVerified,
+      isPrivateEmail: identityClaims.isPrivateEmail,
+      aud: identityClaims.aud,
+    });
+
     const existing =
       await this.identitiesRepository.findByProviderAndSub(
         PROVIDER,
         identityClaims.sub,
       );
+
+    logAppleStage(requestId, "signIn:existingIdentityLookup", {
+      found: Boolean(existing),
+    });
 
     if (existing) {
       return this.signInExisting(
@@ -263,6 +368,7 @@ export class AppleAuthService {
         identityClaims,
         existing.userId,
         existing.id,
+        requestId,
       );
     }
 
@@ -270,13 +376,30 @@ export class AppleAuthService {
       payload,
       identityClaims,
     );
-    if (precondition) return precondition;
+    if (precondition) {
+      logAppleStage(requestId, "signIn:newAccountPreconditionFailed", {
+        code: precondition.ok === false ? precondition.code : null,
+      });
+      return precondition;
+    }
 
     let passengerSetup: PassengerSetup | null = null;
     if (payload.role === "passenger") {
-      const prepared = await this.preparePassengerSetup(payload);
-      if (!prepared.ok) return prepared.result;
+      const prepared = await this.preparePassengerSetup(
+        payload,
+        identityClaims,
+      );
+      if (!prepared.ok) {
+        logAppleStage(requestId, "signIn:preparePassengerSetupFailed", {
+          code: prepared.result.ok === false ? prepared.result.code : null,
+        });
+        return prepared.result;
+      }
       passengerSetup = prepared.setup;
+      logAppleStage(requestId, "signIn:preparePassengerSetupOk", {
+        requestedFareType: passengerSetup.requestedFareType,
+        usedContactEmailFallback: Boolean(passengerSetup.contactEmail),
+      });
     }
 
     return this.exchangeAndCompleteNewAccount(
@@ -428,18 +551,6 @@ export class AppleAuthService {
     payload: AppleAuthRequest,
     identityClaims: VerifiedAppleClaims,
   ): AppleAuthResult | null {
-    const email = identityClaims.email?.toLowerCase().trim();
-
-    if (!email || !identityClaims.emailVerified) {
-      return {
-        ok: false,
-        code: "AUTH_APPLE_EMAIL_MISSING",
-        message:
-          "Apple no entregó un correo verificado para crear esta cuenta.",
-        statusCode: 400,
-      };
-    }
-
     if (!payload.role) {
       return {
         ok: false,
@@ -459,11 +570,30 @@ export class AppleAuthService {
       };
     }
 
+    const email = identityClaims.email?.toLowerCase().trim();
+    const hasVerifiedIdentityEmail = Boolean(email) && identityClaims.emailVerified;
+
+    // Los demás roles (driver/guide/rental_operator) no tienen un paso de
+    // formulario donde recolectar un correo de contacto alternativo, así que
+    // para ellos seguimos exigiendo el correo verificado de Apple. Para
+    // pasajeros, si Apple no lo entrega, el formulario de "Datos del
+    // pasajero" pide un correo de contacto y preparePassengerSetup lo valida.
+    if (!hasVerifiedIdentityEmail && payload.role !== "passenger") {
+      return {
+        ok: false,
+        code: "AUTH_APPLE_EMAIL_MISSING",
+        message:
+          "Apple no entregó un correo verificado para crear esta cuenta.",
+        statusCode: 400,
+      };
+    }
+
     return null;
   }
 
   private async preparePassengerSetup(
     payload: AppleAuthRequest,
+    identityClaims: VerifiedAppleClaims,
   ): Promise<
     | { ok: true; setup: PassengerSetup }
     | { ok: false; result: AppleAuthFailure }
@@ -482,6 +612,119 @@ export class AppleAuthService {
           statusCode: 409,
         },
       };
+    }
+
+    // Apple solo entrega correo verificado en el identity token; si no lo
+    // entregó, el formulario de pasajero pide un correo de contacto. Nunca
+    // reemplaza al Apple subject como identidad, solo sirve como dato de
+    // contacto cuando no hay otro correo disponible.
+    const hasVerifiedIdentityEmail =
+      Boolean(identityClaims.email) && identityClaims.emailVerified;
+    let contactEmail: string | null = null;
+
+    if (!hasVerifiedIdentityEmail) {
+      const normalizedContactEmail = normalizeAppleContactEmail(
+        payload.contactEmail,
+      );
+
+      if (!payload.contactEmail) {
+        return {
+          ok: false,
+          result: {
+            ok: false,
+            code: "AUTH_APPLE_SETUP_REQUIRED",
+            message: "Ingresa tu correo electrónico de contacto.",
+            statusCode: 409,
+          },
+        };
+      }
+
+      if (!isValidAppleContactEmail(normalizedContactEmail)) {
+        return {
+          ok: false,
+          result: {
+            ok: false,
+            code: "AUTH_APPLE_SETUP_REQUIRED",
+            message: "Ingresa un correo electrónico válido.",
+            statusCode: 409,
+          },
+        };
+      }
+
+      contactEmail = normalizedContactEmail;
+    }
+
+    // RUT y pasaporte son mutuamente excluyentes: nunca se aceptan ambos a
+    // la vez, sin importar la categoría.
+    if (payload.rut && payload.passport) {
+      return {
+        ok: false,
+        result: {
+          ok: false,
+          code: "AUTH_APPLE_SETUP_REQUIRED",
+          message: "No debes enviar RUT y pasaporte al mismo tiempo.",
+          statusCode: 409,
+        },
+      };
+    }
+
+    const rut = normalizeAppleRut(payload.rut);
+    const passport = normalizeApplePassport(payload.passport);
+
+    // chilean / resident: RUT obligatorio y válido, pasaporte no debe
+    // enviarse. foreigner: pasaporte obligatorio y válido, RUT no debe
+    // enviarse. Misma regla de negocio que el formulario de Facebook.
+    if (requiresRutForFareType(requestedFareType)) {
+      if (payload.passport) {
+        return {
+          ok: false,
+          result: {
+            ok: false,
+            code: "AUTH_APPLE_SETUP_REQUIRED",
+            message:
+              "El pasaporte no corresponde a esta categoría de pasajero.",
+            statusCode: 409,
+          },
+        };
+      }
+
+      if (!payload.rut || !isValidAppleRut(rut)) {
+        return {
+          ok: false,
+          result: {
+            ok: false,
+            code: "AUTH_APPLE_SETUP_REQUIRED",
+            message: "Ingresa un RUT válido para continuar con Apple.",
+            statusCode: 409,
+          },
+        };
+      }
+    }
+
+    if (requiresPassportForFareType(requestedFareType)) {
+      if (payload.rut) {
+        return {
+          ok: false,
+          result: {
+            ok: false,
+            code: "AUTH_APPLE_SETUP_REQUIRED",
+            message: "El RUT no corresponde a esta categoría de pasajero.",
+            statusCode: 409,
+          },
+        };
+      }
+
+      if (!payload.passport || !isValidApplePassport(passport)) {
+        return {
+          ok: false,
+          result: {
+            ok: false,
+            code: "AUTH_APPLE_SETUP_REQUIRED",
+            message: "Ingresa un pasaporte válido para continuar con Apple.",
+            statusCode: 409,
+          },
+        };
+      }
     }
 
     let legalDocumentsToAccept: Array<
@@ -523,6 +766,7 @@ export class AppleAuthService {
 
       const validation = validateAppleResidenceAccreditation(
         payload.residenceAccreditation,
+        rut,
       );
 
       if (!validation.ok) {
@@ -547,6 +791,7 @@ export class AppleAuthService {
         requestedFareType,
         legalDocumentsToAccept,
         storedResidenceAccreditation,
+        contactEmail,
       },
     };
   }
@@ -607,14 +852,33 @@ export class AppleAuthService {
   private async exchangeIdentity(
     payload: AppleAuthRequest,
     identityClaims: VerifiedAppleClaims,
+    requestId?: string,
   ): Promise<
     | { ok: true; encryptedRefreshToken: string | undefined }
     | { ok: false; result: AppleAuthFailure }
   > {
-    const exchange = await this.tokenExchangeClient.exchange(
-      payload.authorizationCode,
-      identityClaims.aud,
-    );
+    logAppleStage(requestId, "exchangeIdentity:start", {
+      aud: identityClaims.aud,
+    });
+
+    let exchange;
+    try {
+      exchange = await this.tokenExchangeClient.exchange(
+        payload.authorizationCode,
+        identityClaims.aud,
+      );
+    } catch (error) {
+      logAppleStage(requestId, "exchangeIdentity:tokenExchangeThrew", {
+        code: error instanceof AppError ? error.code : "UNKNOWN",
+        statusCode: error instanceof AppError ? error.statusCode : null,
+      });
+      throw error;
+    }
+
+    logAppleStage(requestId, "exchangeIdentity:tokenExchangeOk", {
+      hasRefreshToken: exchange.refreshToken !== undefined,
+    });
+
     const exchangedClaims = await this.identityTokenVerifier.verify(
       exchange.idToken,
       {},
@@ -624,6 +888,7 @@ export class AppleAuthService {
       exchangedClaims.sub !== identityClaims.sub ||
       exchangedClaims.aud !== identityClaims.aud
     ) {
+      logAppleStage(requestId, "exchangeIdentity:incoherentResponse", {});
       this.auditService.recordSafe({
         eventType: "auth.apple.login.failure",
         entityType: "auth",
@@ -655,6 +920,7 @@ export class AppleAuthService {
     identityClaims: VerifiedAppleClaims,
     userId: string,
     identityId: string,
+    requestId?: string,
   ): Promise<AppleAuthResult> {
     const user = await this.usersRepository.findById(userId);
 
@@ -694,8 +960,16 @@ export class AppleAuthService {
       };
     }
 
-    const exchanged = await this.exchangeIdentity(payload, identityClaims);
+    const exchanged = await this.exchangeIdentity(
+      payload,
+      identityClaims,
+      requestId,
+    );
     if (!exchanged.ok) return exchanged.result;
+
+    logAppleStage(requestId, "signInExisting:sessionIssuing", {
+      userId: user.id,
+    });
 
     return this.completeExistingUserSignIn(
       user,
@@ -744,9 +1018,26 @@ export class AppleAuthService {
     passengerSetup: PassengerSetup | null,
     metadata?: AppleRequestMetadata,
   ): Promise<AppleAuthResult> {
-    const email = identityClaims.email?.toLowerCase().trim();
+    const requestId = metadata?.requestId;
+    logAppleStage(requestId, "exchangeAndCompleteNewAccount:start", {
+      role: payload.role ?? null,
+    });
+
+    const email =
+      identityClaims.email?.toLowerCase().trim() ||
+      passengerSetup?.contactEmail ||
+      undefined;
 
     if (!email || !payload.role || payload.role === "admin") {
+      // Diagnóstico seguro: nunca imprime tokens, Apple subject ni PII —
+      // solo qué precondición faltó, para poder auditar futuros reportes de
+      // "error inesperado" sin exponer credenciales.
+      console.error("[Apple] exchangeAndCompleteNewAccount: precondición faltante", {
+        hasIdentityEmail: Boolean(identityClaims.email),
+        hasContactEmail: Boolean(passengerSetup?.contactEmail),
+        hasRole: Boolean(payload.role),
+        role: payload.role ?? null,
+      });
       throw AppError.internal(
         "exchangeAndCompleteNewAccount called without validated preconditions.",
       );
@@ -772,8 +1063,14 @@ export class AppleAuthService {
       };
     }
 
-    const exchanged = await this.exchangeIdentity(payload, identityClaims);
+    const exchanged = await this.exchangeIdentity(
+      payload,
+      identityClaims,
+      requestId,
+    );
     if (!exchanged.ok) return exchanged.result;
+
+    logAppleStage(requestId, "exchangeAndCompleteNewAccount:creatingUser", {});
 
     const created = await this.identitiesRepository.createUserWithIdentity({
       email,
@@ -791,6 +1088,8 @@ export class AppleAuthService {
     });
 
     if (!created) {
+      logAppleStage(requestId, "exchangeAndCompleteNewAccount:creationRace", {});
+
       const identity =
         await this.identitiesRepository.findByProviderAndSub(
           PROVIDER,
@@ -834,6 +1133,10 @@ export class AppleAuthService {
       );
     }
 
+    logAppleStage(requestId, "exchangeAndCompleteNewAccount:userCreated", {
+      userId: created.user.id,
+    });
+
     if (payload.role === "passenger") {
       if (!passengerSetup) {
         throw AppError.internal(
@@ -847,7 +1150,21 @@ export class AppleAuthService {
           passengerSetup,
           metadata,
         );
+        logAppleStage(
+          requestId,
+          "exchangeAndCompleteNewAccount:passengerSetupPersisted",
+          { userId: created.user.id },
+        );
       } catch (error) {
+        logAppleStage(
+          requestId,
+          "exchangeAndCompleteNewAccount:passengerSetupPersistenceFailed",
+          {
+            userId: created.user.id,
+            errorName: error instanceof Error ? error.name : "UNKNOWN",
+            code: error instanceof AppError ? error.code : null,
+          },
+        );
         this.auditService.recordSafe({
           eventType: "auth.apple.register.failure",
           entityType: "user",
@@ -870,6 +1187,10 @@ export class AppleAuthService {
     }
 
     const session = await this.issueSession(created.user);
+
+    logAppleStage(requestId, "exchangeAndCompleteNewAccount:sessionIssued", {
+      userId: created.user.id,
+    });
 
     this.auditService.recordSafe({
       eventType: "auth.apple.register.success",

@@ -159,6 +159,8 @@ const basePayload = {
   authorizationCode: "fake-authorization-code",
   phone: "+56912345678",
   passengerFareType: "chilean" as const,
+  // RUT obligatorio para la categoría "chilean" (ver preparePassengerSetup).
+  rut: "12345678-5",
   legalAcceptances: PASSENGER_LEGAL_ACCEPTANCES,
 };
 
@@ -526,7 +528,7 @@ describe("AppleAuthService.signIn", () => {
     expect(fakes.mockCreateUserWithIdentity).not.toHaveBeenCalled();
   });
 
-  it("rejects when Apple provides no email for a first-time sign-in", async () => {
+  it("rejects a non-passenger role (driver) when Apple provides no email — no form to collect a fallback contact email", async () => {
     const fakes = buildFakes({
       existingIdentity: null,
       userByEmail: null,
@@ -534,9 +536,293 @@ describe("AppleAuthService.signIn", () => {
       exchangedClaims: { email: undefined },
     });
 
-    const result = await fakes.service.signIn({ ...basePayload, role: "passenger" });
+    const result = await fakes.service.signIn({ ...basePayload, role: "driver" });
 
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.code).toBe("AUTH_APPLE_EMAIL_MISSING");
+  });
+
+  it("defers the email requirement for passenger role to the setup form instead of hard-blocking immediately", async () => {
+    const fakes = buildFakes({
+      existingIdentity: null,
+      userByEmail: null,
+      identityClaims: { email: undefined },
+      exchangedClaims: { email: undefined },
+    });
+
+    // Role-selection style call: no phone/fareType/contactEmail yet.
+    const result = await fakes.service.signIn({
+      identityToken: "fake-identity-token",
+      authorizationCode: "fake-authorization-code",
+      role: "passenger",
+    });
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.code).toBe("AUTH_APPLE_SETUP_REQUIRED");
+    expect(fakes.mockCreateUserWithIdentity).not.toHaveBeenCalled();
+  });
+
+  it("requires a valid contactEmail for passenger role when Apple provides no email", async () => {
+    const fakes = buildFakes({
+      existingIdentity: null,
+      userByEmail: null,
+      identityClaims: { email: undefined },
+      exchangedClaims: { email: undefined },
+    });
+
+    const result = await fakes.service.signIn({
+      ...basePayload,
+      role: "passenger",
+      contactEmail: "not-an-email",
+    });
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.code).toBe("AUTH_APPLE_SETUP_REQUIRED");
+      expect(result.message).toBe("Ingresa un correo electrónico válido.");
+    }
+    expect(fakes.mockCreateUserWithIdentity).not.toHaveBeenCalled();
+  });
+
+  it("creates a passenger account using contactEmail as the account email when Apple provides no email — Apple subject remains the identity", async () => {
+    const newUser = {
+      id: "user-contact-email",
+      email: "contact@example.com",
+      name: "New User",
+      role: "passenger",
+      status: "active",
+      avatarUrl: null,
+      isVerified: true,
+    };
+    const fakes = buildFakes({
+      existingIdentity: null,
+      userByEmail: null,
+      identityClaims: { email: undefined },
+      exchangedClaims: { email: undefined },
+      createUserWithIdentityResult: { user: newUser, identity: { id: "identity-contact" } },
+    });
+
+    const result = await fakes.service.signIn({
+      ...basePayload,
+      role: "passenger",
+      contactEmail: "contact@example.com",
+    });
+
+    expect(result.ok).toBe(true);
+    expect(fakes.mockCreateUserWithIdentity).toHaveBeenCalledWith(
+      expect.objectContaining({
+        email: "contact@example.com",
+        providerUserId: VALID_SUB,
+      }),
+    );
+  });
+});
+
+describe("AppleAuthService.signIn passenger fare validation rules", () => {
+  const originalEnv = { ...process.env };
+
+  beforeEach(() => {
+    process.env["OAUTH_TOKEN_ENCRYPTION_KEY"] = randomBytes(32).toString("hex");
+  });
+
+  afterEach(() => {
+    process.env = { ...originalEnv };
+  });
+
+  const VALID_RUT = "12345678-5";
+  const VALID_PASSPORT = "A1234567";
+  const VALID_ACCREDITATION = {
+    documentName: "cedula.pdf",
+    documentType: "application/pdf" as const,
+    documentSize: 60,
+    documentDataUrl:
+      "data:application/pdf;base64,JVBERi0xLjQgbWluaW1hbCB0ZXN0IGZpbGUgY29udGVudCBwYWRkaW5nIHBhZGRpbmc=",
+  };
+
+  function newUserFakes() {
+    const newUser = {
+      id: "user-new",
+      email: "newuser@example.com",
+      name: "New User",
+      role: "passenger",
+      status: "active",
+      avatarUrl: null,
+      isVerified: true,
+    };
+    return buildFakes({
+      existingIdentity: null,
+      userByEmail: null,
+      createUserWithIdentityResult: { user: newUser, identity: { id: "identity-1" } },
+    });
+  }
+
+  it("requires a valid RUT for passengerFareType=chilean", async () => {
+    const fakes = newUserFakes();
+    const result = await fakes.service.signIn({
+      ...basePayload,
+      role: "passenger",
+      passengerFareType: "chilean",
+      rut: undefined,
+    });
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.code).toBe("AUTH_APPLE_SETUP_REQUIRED");
+    expect(fakes.mockCreateUserWithIdentity).not.toHaveBeenCalled();
+  });
+
+  it("rejects an invalid RUT for passengerFareType=chilean", async () => {
+    const fakes = newUserFakes();
+    const result = await fakes.service.signIn({
+      ...basePayload,
+      role: "passenger",
+      passengerFareType: "chilean",
+      rut: "11111111-9",
+    });
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.code).toBe("AUTH_APPLE_SETUP_REQUIRED");
+  });
+
+  it("accepts a valid RUT for passengerFareType=chilean and creates the account", async () => {
+    const fakes = newUserFakes();
+    const result = await fakes.service.signIn({
+      ...basePayload,
+      role: "passenger",
+      passengerFareType: "chilean",
+      rut: VALID_RUT,
+    });
+
+    expect(result.ok).toBe(true);
+    expect(fakes.mockCreateUserWithIdentity).toHaveBeenCalled();
+  });
+
+  it("rejects passengerFareType=chilean when a passport is sent instead of a RUT", async () => {
+    const fakes = newUserFakes();
+    const result = await fakes.service.signIn({
+      ...basePayload,
+      role: "passenger",
+      passengerFareType: "chilean",
+      rut: undefined,
+      passport: VALID_PASSPORT,
+    });
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.code).toBe("AUTH_APPLE_SETUP_REQUIRED");
+    expect(fakes.mockCreateUserWithIdentity).not.toHaveBeenCalled();
+  });
+
+  it("requires a valid passport for passengerFareType=foreigner", async () => {
+    const fakes = newUserFakes();
+    const result = await fakes.service.signIn({
+      ...basePayload,
+      role: "passenger",
+      passengerFareType: "foreigner",
+      rut: undefined,
+    });
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.code).toBe("AUTH_APPLE_SETUP_REQUIRED");
+    expect(fakes.mockCreateUserWithIdentity).not.toHaveBeenCalled();
+  });
+
+  it("accepts a valid passport for passengerFareType=foreigner and creates the account", async () => {
+    const fakes = newUserFakes();
+    const result = await fakes.service.signIn({
+      ...basePayload,
+      role: "passenger",
+      passengerFareType: "foreigner",
+      rut: undefined,
+      passport: VALID_PASSPORT,
+    });
+
+    expect(result.ok).toBe(true);
+    expect(fakes.mockCreateUserWithIdentity).toHaveBeenCalled();
+  });
+
+  it("rejects passengerFareType=foreigner when a RUT is sent instead of a passport", async () => {
+    const fakes = newUserFakes();
+    const result = await fakes.service.signIn({
+      ...basePayload,
+      role: "passenger",
+      passengerFareType: "foreigner",
+      rut: VALID_RUT,
+    });
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.code).toBe("AUTH_APPLE_SETUP_REQUIRED");
+    expect(fakes.mockCreateUserWithIdentity).not.toHaveBeenCalled();
+  });
+
+  it("requires a valid RUT and a residence accreditation for passengerFareType=resident", async () => {
+    const fakes = newUserFakes();
+    const result = await fakes.service.signIn({
+      ...basePayload,
+      role: "passenger",
+      passengerFareType: "resident",
+      rut: undefined,
+    });
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.code).toBe("AUTH_APPLE_SETUP_REQUIRED");
+    expect(fakes.mockCreateUserWithIdentity).not.toHaveBeenCalled();
+  });
+
+  it("rejects passengerFareType=resident without a residence accreditation even with a valid RUT", async () => {
+    const fakes = newUserFakes();
+    const result = await fakes.service.signIn({
+      ...basePayload,
+      role: "passenger",
+      passengerFareType: "resident",
+      rut: VALID_RUT,
+    });
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.code).toBe("AUTH_RESIDENCE_ACCREDITATION_REQUIRED");
+    expect(fakes.mockCreateUserWithIdentity).not.toHaveBeenCalled();
+  });
+
+  it("accepts passengerFareType=resident with a valid RUT and residence accreditation", async () => {
+    const fakes = newUserFakes();
+    const result = await fakes.service.signIn({
+      ...basePayload,
+      role: "passenger",
+      passengerFareType: "resident",
+      rut: VALID_RUT,
+      residenceAccreditation: VALID_ACCREDITATION,
+    });
+
+    expect(result.ok).toBe(true);
+    expect(fakes.mockCreateUserWithIdentity).toHaveBeenCalled();
+  });
+
+  it("rejects passengerFareType=resident when a passport is sent instead of a RUT", async () => {
+    const fakes = newUserFakes();
+    const result = await fakes.service.signIn({
+      ...basePayload,
+      role: "passenger",
+      passengerFareType: "resident",
+      rut: undefined,
+      passport: VALID_PASSPORT,
+      residenceAccreditation: VALID_ACCREDITATION,
+    });
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.code).toBe("AUTH_APPLE_SETUP_REQUIRED");
+    expect(fakes.mockCreateUserWithIdentity).not.toHaveBeenCalled();
+  });
+
+  it("never accepts RUT and passport at the same time, regardless of fare type", async () => {
+    const fakes = newUserFakes();
+    const result = await fakes.service.signIn({
+      ...basePayload,
+      role: "passenger",
+      passengerFareType: "chilean",
+      rut: VALID_RUT,
+      passport: VALID_PASSPORT,
+    });
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.code).toBe("AUTH_APPLE_SETUP_REQUIRED");
+    expect(fakes.mockCreateUserWithIdentity).not.toHaveBeenCalled();
   });
 });

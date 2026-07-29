@@ -27,13 +27,24 @@ interface PendingCredentials {
   authorizationCode: string;
   nonce: string;
   name?: AppleSignInRequest["name"];
+  /**
+   * Solo para mostrar en el formulario de pasajero (campo de solo lectura).
+   * Nunca se reenvía al backend: la identidad se valida exclusivamente vía
+   * identityToken, ver SECURITY note en auth.types.ts.
+   */
+  displayEmail?: string;
 }
 
 export type AppleSignInOutcome =
   | { kind: "success"; role: UserRole }
   | { kind: "cancelled" }
   | { kind: "role_required" }
-  | { kind: "setup_required" }
+  /**
+   * `message` is only present when the backend rejected a resubmission
+   * (e.g. invalid RUT/passport/contactEmail) — absent on the very first
+   * transition into the form, which has nothing to show yet.
+   */
+  | { kind: "setup_required"; message?: string }
   | { kind: "linking_required"; message: string }
   | { kind: "invalid_credential"; message: string }
   | { kind: "suspended"; message: string }
@@ -67,18 +78,51 @@ const INVALID_CREDENTIAL_CODES = new Set([
 ]);
 const NETWORK_CODES = new Set(["NETWORK_ERROR", "TIMEOUT"]);
 
+/**
+ * Fixed Spanish messages for codes whose backend `message` text is either
+ * in English or gets replaced with the generic "An unexpected error
+ * occurred." (any AppError with statusCode >= 500 loses its own message —
+ * see apps/api/src/shared/errors/errorHandler.ts). We key off the `code`
+ * (never rewritten) instead of trusting whatever text arrives.
+ */
+const FIXED_SPANISH_MESSAGES: Record<string, string> = {
+  AUTH_APPLE_TOKEN_EXCHANGE_FAILED:
+    "El código de registro con Apple venció o no se pudo validar. Vuelve a presionar “Continuar con Apple” para intentarlo de nuevo.",
+  AUTH_APPLE_TOKEN_INCOHERENT:
+    "La respuesta de Apple no coincide con tu identidad. Vuelve a intentar el ingreso con Apple.",
+  AUTH_APPLE_NONCE_MISMATCH:
+    "No pudimos validar tu ingreso con Apple. Vuelve a intentarlo.",
+  AUTH_APPLE_EMAIL_MISSING: "Correo obligatorio.",
+  AUTH_CONFIGURATION_ERROR:
+    "Continuar con Apple no está disponible en este momento. Inténtalo más tarde.",
+};
+
 function mapBackendError(code: string, message: string): AppleSignInOutcome {
+  const fixedMessage = FIXED_SPANISH_MESSAGES[code];
+
   if (ROLE_REQUIRED_CODES.has(code)) return { kind: "role_required" };
-  if (SETUP_REQUIRED_CODES.has(code)) return { kind: "setup_required" };
+  if (SETUP_REQUIRED_CODES.has(code)) {
+    return { kind: "setup_required", message: fixedMessage ?? message };
+  }
   if (LINKING_REQUIRED_CODES.has(code)) {
-    return { kind: "linking_required", message };
+    return { kind: "linking_required", message: fixedMessage ?? message };
   }
-  if (SUSPENDED_CODES.has(code)) return { kind: "suspended", message };
+  if (SUSPENDED_CODES.has(code)) {
+    return { kind: "suspended", message: fixedMessage ?? message };
+  }
   if (INVALID_CREDENTIAL_CODES.has(code)) {
-    return { kind: "invalid_credential", message };
+    return { kind: "invalid_credential", message: fixedMessage ?? message };
   }
-  if (NETWORK_CODES.has(code)) return { kind: "network_error", message };
-  return { kind: "internal_error", message };
+  if (NETWORK_CODES.has(code)) {
+    return { kind: "network_error", message: fixedMessage ?? message };
+  }
+  if (fixedMessage) {
+    return { kind: "invalid_credential", message: fixedMessage };
+  }
+  return {
+    kind: "internal_error",
+    message: "No fue posible completar el registro. Inténtalo nuevamente.",
+  };
 }
 
 export interface UseAppleSignInResult {
@@ -90,10 +134,16 @@ export interface UseAppleSignInResult {
   cancelRoleSelection: () => void;
   setupOpen: boolean;
   documents: LegalDocumentData[];
+  /** Correo verificado por Apple, solo para mostrar (nunca se reenvía al backend). */
+  setupDisplayEmail: string;
   completeSetup: (input: {
     passengerFareType: ApplePassengerFareType;
     acceptedDocumentIds: string[];
     phone: string;
+    rut?: string;
+    passport?: string;
+    /** Only when Apple didn't provide an email (setupDisplayEmail is empty). */
+    contactEmail?: string;
     residenceAccreditation?: AppleSignInRequest["residenceAccreditation"];
   }) => Promise<AppleSignInOutcome>;
   cancelSetup: () => void;
@@ -105,40 +155,65 @@ export function useAppleSignIn(): UseAppleSignInResult {
   const [awaitingRole, setAwaitingRole] = useState(false);
   const [setupOpen, setSetupOpen] = useState(false);
   const [documents, setDocuments] = useState<LegalDocumentData[]>([]);
+  const [setupDisplayEmail, setSetupDisplayEmail] = useState("");
   const pendingRef = useRef<PendingCredentials | null>(null);
   const selectedRoleRef = useRef<PublicRole | null>(null);
+  /**
+   * Ionic fires IonModal's onDidDismiss whenever `isOpen` transitions to
+   * false for ANY reason, including us programmatically closing the role
+   * modal to advance to the next step (setup_required). Without this guard,
+   * that dismissal calls cancelRoleSelection (= clearPending) right after
+   * preparePassengerSetup opens the passenger form, immediately wiping
+   * setupOpen/pendingRef and bouncing the user back to the login screen.
+   */
+  const skipNextRoleDismissRef = useRef(false);
 
   const isAvailable =
     Capacitor.isNativePlatform() && Capacitor.getPlatform() === "ios";
 
   const clearPending = useCallback(() => {
+    skipNextRoleDismissRef.current = false;
     pendingRef.current = null;
     selectedRoleRef.current = null;
     setAwaitingRole(false);
     setSetupOpen(false);
     setDocuments([]);
+    setSetupDisplayEmail("");
   }, []);
 
-  const preparePassengerSetup = useCallback(async (): Promise<boolean> => {
-    try {
-      const active = await legalService.getActive();
-      const required = active.filter(
-        (document) =>
-          document.isActive && REQUIRED_LEGAL_TYPES.has(document.type),
-      );
+  const cancelRoleSelection = useCallback(() => {
+    if (skipNextRoleDismissRef.current) {
+      skipNextRoleDismissRef.current = false;
+      return;
+    }
+    clearPending();
+  }, [clearPending]);
 
-      if (required.length !== REQUIRED_LEGAL_TYPES.size) {
+  const preparePassengerSetup = useCallback(
+    async (displayEmail?: string): Promise<boolean> => {
+      try {
+        const active = await legalService.getActive();
+        const required = active.filter(
+          (document) =>
+            document.isActive && REQUIRED_LEGAL_TYPES.has(document.type),
+        );
+
+        if (required.length !== REQUIRED_LEGAL_TYPES.size) {
+          return false;
+        }
+
+        setDocuments(required);
+        skipNextRoleDismissRef.current = true;
+        setAwaitingRole(false);
+        setSetupDisplayEmail(displayEmail ?? "");
+        setSetupOpen(true);
+        return true;
+      } catch {
         return false;
       }
-
-      setDocuments(required);
-      setAwaitingRole(false);
-      setSetupOpen(true);
-      return true;
-    } catch {
-      return false;
-    }
-  }, []);
+    },
+    [],
+  );
 
   const submitToBackend = useCallback(
     async (
@@ -167,6 +242,7 @@ export function useAppleSignIn(): UseAppleSignInResult {
 
       if (outcome.kind === "role_required") {
         pendingRef.current = credentials;
+        skipNextRoleDismissRef.current = false;
         setAwaitingRole(true);
         setSetupOpen(false);
         return outcome;
@@ -174,7 +250,7 @@ export function useAppleSignIn(): UseAppleSignInResult {
 
       if (outcome.kind === "setup_required") {
         pendingRef.current = credentials;
-        const prepared = await preparePassengerSetup();
+        const prepared = await preparePassengerSetup(credentials.displayEmail);
         if (!prepared) {
           clearPending();
           return {
@@ -233,6 +309,7 @@ export function useAppleSignIn(): UseAppleSignInResult {
               },
             }
           : {}),
+        ...(result.email ? { displayEmail: result.email } : {}),
       };
 
       pendingRef.current = credentials;
@@ -282,7 +359,14 @@ export function useAppleSignIn(): UseAppleSignInResult {
       setLoading(true);
 
       try {
-        return await submitToBackend(credentials, { role });
+        const outcome = await submitToBackend(credentials, { role });
+        // This first transition into the passenger form only ever fails
+        // because phone/fareType/legal docs weren't sent yet (nothing was
+        // submitted by the user) — that's not an error to show, unlike a
+        // real validation failure from a later resubmission via
+        // completeSetup, which does carry a message worth surfacing.
+        if (outcome.kind === "setup_required") return { kind: "setup_required" };
+        return outcome;
       } finally {
         setLoading(false);
       }
@@ -295,6 +379,9 @@ export function useAppleSignIn(): UseAppleSignInResult {
       passengerFareType: ApplePassengerFareType;
       acceptedDocumentIds: string[];
       phone: string;
+      rut?: string;
+      passport?: string;
+      contactEmail?: string;
       residenceAccreditation?: AppleSignInRequest["residenceAccreditation"];
     }): Promise<AppleSignInOutcome> => {
       const credentials = pendingRef.current;
@@ -313,6 +400,9 @@ export function useAppleSignIn(): UseAppleSignInResult {
           role,
           phone: input.phone,
           passengerFareType: input.passengerFareType,
+          ...(input.rut ? { rut: input.rut } : {}),
+          ...(input.passport ? { passport: input.passport } : {}),
+          ...(input.contactEmail ? { contactEmail: input.contactEmail } : {}),
           ...(input.residenceAccreditation
             ? { residenceAccreditation: input.residenceAccreditation }
             : {}),
@@ -338,9 +428,10 @@ export function useAppleSignIn(): UseAppleSignInResult {
     signIn,
     awaitingRole,
     submitRole,
-    cancelRoleSelection: clearPending,
+    cancelRoleSelection,
     setupOpen,
     documents,
+    setupDisplayEmail,
     completeSetup,
     cancelSetup: clearPending,
   };
