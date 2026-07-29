@@ -912,3 +912,167 @@
     font-size: 16px !important;
   }
 }
+
+
+/* RAPA GO V34 · Ayuda, documentos legales y reaceptación en Perfil */
+.rapago-profile-page .rapago-profile-legal-card ion-card-content {
+  padding: 18px;
+}
+
+.rapago-profile-page .rapago-profile-legal-links {
+  display: grid;
+  gap: 10px;
+  margin-top: 16px;
+}
+
+.rapago-profile-page .rapago-profile-legal-link {
+  appearance: none;
+  width: 100%;
+  min-height: 62px;
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  border: 1px solid var(--rp-border);
+  border-radius: 18px;
+  background: var(--rp-field-bg);
+  color: var(--rp-text);
+  text-align: left;
+  box-shadow: 0 6px 16px rgba(31, 24, 14, 0.07);
+  cursor: pointer;
+}
+
+.rapago-profile-page .rapago-profile-legal-link:hover,
+.rapago-profile-page .rapago-profile-legal-link:focus-visible {
+  border-color: var(--rp-accent);
+  transform: translateY(-1px);
+  outline: 3px solid rgba(214, 166, 64, 0.2);
+  outline-offset: 1px;
+}
+
+.rapago-profile-page .rapago-profile-legal-link--danger {
+  border-color: var(--rp-danger-bd);
+}
+
+.rapago-profile-page .rapago-profile-legal-link-icon {
+  width: 42px;
+  height: 42px;
+  display: grid;
+  place-items: center;
+  border-radius: 14px;
+  background: rgba(214, 166, 64, 0.14);
+  color: var(--rp-accent-strong);
+  font-size: 1.3rem;
+}
+
+.rapago-profile-page .rapago-profile-legal-link > span:nth-child(2) {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+
+.rapago-profile-page .rapago-profile-legal-link strong {
+  color: var(--rp-text);
+  font-size: 0.93rem;
+  font-weight: 950;
+}
+
+.rapago-profile-page .rapago-profile-legal-link small {
+  color: var(--rp-muted);
+  font-size: 0.76rem;
+  font-weight: 750;
+  line-height: 1.25;
+}
+
+.rapago-profile-page .rapago-profile-legal-open {
+  color: var(--rp-accent-strong);
+  font-size: 0.74rem;
+  font-weight: 950;
+}
+
+.rapago-profile-page .rapago-profile-legal-status,
+.rapago-profile-page .rapago-profile-legal-ok,
+.rapago-profile-page .rapago-profile-legal-pending {
+  margin-top: 14px;
+  padding: 14px;
+  border-radius: 18px;
+}
+
+.rapago-profile-page .rapago-profile-legal-status {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border: 1px dashed var(--rp-border);
+  background: var(--rp-field-bg);
+}
+
+.rapago-profile-page .rapago-profile-legal-ok {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  border: 1px solid rgba(34, 197, 94, 0.34);
+  background: rgba(34, 197, 94, 0.1);
+  color: var(--rp-success-fg);
+  font-weight: 900;
+}
+
+.rapago-profile-page .rapago-profile-legal-pending {
+  display: grid;
+  gap: 11px;
+  border: 1px solid rgba(214, 166, 64, 0.48);
+  background: rgba(248, 216, 121, 0.09);
+  color: var(--rp-text);
+}
+
+.rapago-profile-page .rapago-profile-legal-select-all,
+.rapago-profile-page .rapago-profile-legal-consent {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr);
+  align-items: start;
+  gap: 10px;
+  padding: 11px 12px;
+  border: 1px solid var(--rp-border);
+  border-radius: 15px;
+  background: var(--rp-field-bg);
+  cursor: pointer;
+}
+
+.rapago-profile-page .rapago-profile-legal-select-all span,
+.rapago-profile-page .rapago-profile-legal-consent ion-label {
+  color: var(--rp-text);
+  font-weight: 850;
+  white-space: normal;
+}
+
+.rapago-profile-page .rapago-profile-legal-consent ion-label {
+  display: grid;
+  gap: 3px;
+}
+
+.rapago-profile-page .rapago-profile-legal-consent ion-label small {
+  color: var(--rp-muted);
+  font-size: 0.74rem;
+}
+
+.rapago-profile-page .rapago-profile-legal-card ion-checkbox {
+  --size: 23px;
+  --border-radius: 7px;
+  --border-width: 2px;
+  --border-color: var(--rp-accent-strong);
+  --border-color-checked: var(--rp-accent-strong);
+  --checkbox-background: var(--rp-field-bg);
+  --checkbox-background-checked: var(--rp-accent);
+  --checkmark-color: #111827;
+  margin: 0;
+}
+
+@media (max-width: 430px) {
+  .rapago-profile-page .rapago-profile-legal-link {
+    grid-template-columns: 40px minmax(0, 1fr);
+  }
+
+  .rapago-profile-page .rapago-profile-legal-open {
+    display: none;
+  }
+}

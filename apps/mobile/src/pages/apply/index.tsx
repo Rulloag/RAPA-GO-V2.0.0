@@ -28,6 +28,7 @@
   import { useHistory } from "react-router-dom";
   import { useAuth } from "../../features/auth/index.js";
   import { applicationsService, type ApplicationData, type UploadApplicationFilePayload } from "../../features/applications/applications.service.js";
+  import { legalService, type LegalDocumentData } from "../../features/legal/legal.service.js";
 
   const SPECIALTIES = ["Arqueología", "Botánica", "Astronomía", "Historia", "Cultura Rapa Nui", "Senderismo"];
   const OFFERED_TOURS = ["Ahu Tongariki", "Rano Raraku", "Anakena", "Orongo", "Tahai", "Custom"];
@@ -35,6 +36,19 @@
 
   function toggleArrayItem(arr: string[], item: string): string[] {
     return arr.includes(item) ? arr.filter((x) => x !== item) : [...arr, item];
+  }
+
+  function addHoursToClock(value: string, hoursToAdd: number): string {
+    const [hours, minutes] = value.split(":").map(Number);
+    const total =
+      (((hours ?? 0) * 60 + (minutes ?? 0) + hoursToAdd * 60) %
+        (24 * 60) +
+        24 * 60) %
+      (24 * 60);
+
+    return `${String(Math.floor(total / 60)).padStart(2, "0")}:${String(
+      total % 60,
+    ).padStart(2, "0")}`;
   }
 
   type SessionUserForApplication = {
@@ -1173,6 +1187,39 @@ function isRutValid(value: string): boolean {
       }
     }
 
+    const contract =
+      source.driverContractAcceptance &&
+      typeof source.driverContractAcceptance === "object"
+        ? (source.driverContractAcceptance as Record<string, unknown>)
+        : null;
+
+    if (contract) {
+      safe.driverContractAcceptance = {
+        legalDocumentId:
+          readString(contract.legalDocumentId) ?? "",
+        version: readString(contract.version) ?? "",
+        acceptedContract:
+          readBoolean(contract.acceptedContract) === true,
+        acceptedDocumentsTruth:
+          readBoolean(contract.acceptedDocumentsTruth) === true,
+        acceptedIndependentNature:
+          readBoolean(contract.acceptedIndependentNature) === true,
+        acceptedPrivacyGeolocation:
+          readBoolean(contract.acceptedPrivacyGeolocation) === true,
+        acceptedRestWindow:
+          readBoolean(contract.acceptedRestWindow) === true,
+        acceptedPersonalService:
+          readBoolean(contract.acceptedPersonalService) === true,
+        restWindowStart:
+          readString(contract.restWindowStart) ?? "",
+        restWindowEnd:
+          readString(contract.restWindowEnd) ?? "",
+        clientAcceptedAt:
+          readString(contract.clientAcceptedAt) ??
+          new Date().toISOString(),
+      };
+    }
+
     const payloadBytes = new TextEncoder().encode(
       JSON.stringify(safe),
     ).byteLength;
@@ -1426,13 +1473,72 @@ function isRutValid(value: string): boolean {
     ]);
     const [confirmOwnVehicle, setConfirmOwnVehicle] = useState(false);
 
-    const [acceptDataTreatment, setAcceptDataTreatment] = useState(false);
-    const [acceptDeclaration,   setAcceptDeclaration]   = useState(false);
+    const [driverStep, setDriverStep] = useState(1);
+    const [driverContractDocument, setDriverContractDocument] =
+      useState<LegalDocumentData | null>(null);
+    const [driverContractLoading, setDriverContractLoading] =
+      useState(true);
+    const [driverContractError, setDriverContractError] =
+      useState("");
+
+    const [restWindowStart, setRestWindowStart] = useState("22:00");
+    const restWindowEnd = addHoursToClock(restWindowStart, 12);
+
+    const [acceptDriverContract, setAcceptDriverContract] =
+      useState(false);
+    const [acceptDeclaration, setAcceptDeclaration] =
+      useState(false);
+    const [acceptIndependentNature, setAcceptIndependentNature] =
+      useState(false);
+    const [acceptDataTreatment, setAcceptDataTreatment] =
+      useState(false);
+    const [acceptRestWindow, setAcceptRestWindow] =
+      useState(false);
+    const [acceptPersonalService, setAcceptPersonalService] =
+      useState(false);
 
     const [loading,        setLoading]        = useState(false);
     const [showSuccess,    setShowSuccess]    = useState(false);
     const [successMessage, setSuccessMessage] = useState("");
     const [error,          setError]          = useState<string | null>(null);
+
+    useEffect(() => {
+      let active = true;
+
+      legalService
+        .getActive()
+        .then((documents) => {
+          if (!active) return;
+
+          const current =
+            documents.find(
+              (document) =>
+                document.type === "driver_conditions" &&
+                document.isActive,
+            ) ?? null;
+
+          setDriverContractDocument(current);
+          setDriverContractError(
+            current
+              ? ""
+              : "El contrato de conductor vigente no está disponible. No es posible enviar la postulación.",
+          );
+        })
+        .catch(() => {
+          if (!active) return;
+          setDriverContractDocument(null);
+          setDriverContractError(
+            "No fue posible cargar el contrato vigente. Revisa tu conexión y vuelve a intentarlo.",
+          );
+        })
+        .finally(() => {
+          if (active) setDriverContractLoading(false);
+        });
+
+      return () => {
+        active = false;
+      };
+    }, []);
 
     useEffect(() => {
       const auto = getAutoAccountData(sessionUser);
@@ -1516,28 +1622,58 @@ function isRutValid(value: string): boolean {
     const primaryVehicleReady = primaryVehicle ? isVehicleComplete(primaryVehicle) : false;
     const vehiclesReady = vehicles.length > 0 && vehicles.every(isVehicleComplete);
     const vehicleReady = confirmOwnVehicle && primaryVehicleReady && vehiclesReady;
-    const termsAccepted = acceptDataTreatment && acceptDeclaration;
+    const termsAccepted =
+      acceptDriverContract &&
+      acceptDeclaration &&
+      acceptIndependentNature &&
+      acceptDataTreatment &&
+      acceptRestWindow &&
+      acceptPersonalService &&
+      driverContractDocument != null;
 
-    const canSubmit =
+    const accountReady =
       firstName.trim().length > 0 &&
       lastName.trim().length > 0 &&
       isEmailValid(email) &&
       isPhoneValid(phone) &&
-      isRutValid(rut) &&
-      belongsToRapaNuiEthnicity !== "" &&
+      isRutValid(rut);
+    const rapaNuiReady = belongsToRapaNuiEthnicity !== "";
+    const documentsReady =
       identityFrontFile != null &&
       identityBackFile != null &&
       driverLicenseFrontFile != null &&
       driverLicenseBackFile != null &&
-      profilePhotoFile != null &&
-      vehicleReady &&
+      profilePhotoFile != null;
+    const contractReady =
       termsAccepted &&
+      /^\d{2}:\d{2}$/.test(restWindowStart) &&
+      /^\d{2}:\d{2}$/.test(restWindowEnd);
+
+    const stepReady = [
+      accountReady,
+      rapaNuiReady,
+      documentsReady,
+      vehicleReady,
+      contractReady,
+      true,
+    ][driverStep - 1] ?? false;
+
+    const canSubmit =
+      accountReady &&
+      rapaNuiReady &&
+      documentsReady &&
+      vehicleReady &&
+      contractReady &&
+      !driverContractLoading &&
       !loading;
 
     async function handleSubmit() {
       if (!canSubmit) {
-        if (!acceptDataTreatment || !acceptDeclaration) {
-          setError("Debes aceptar los términos y la declaración antes de enviar la solicitud.");
+        if (!termsAccepted) {
+          setError(
+            "Debes leer el contrato y aceptar las seis declaraciones obligatorias antes de enviar la postulación.",
+          );
+          setDriverStep(5);
           return;
         }
 
@@ -1562,6 +1698,15 @@ function isRutValid(value: string): boolean {
         }
 
         setError("Completa los datos requeridos. Teléfono y RUT se toman automáticamente desde el registro, pero deben ser válidos.");
+        return;
+      }
+
+      if (!driverContractDocument) {
+        setError(
+          driverContractError ||
+            "El contrato de conductor vigente no está disponible.",
+        );
+        setDriverStep(5);
         return;
       }
 
@@ -1771,12 +1916,18 @@ function isRutValid(value: string): boolean {
             })),
           },
 
-          legalAcceptance: {
-            acceptedDataTreatment: acceptDataTreatment,
-            acceptedTruthDeclaration: acceptDeclaration,
-            acceptedVehicleOwnership: confirmOwnVehicle,
-            acceptedAt: nowIso,
-            text: "Autorizo a Rapa Go a revisar mi cédula de identidad, licencia de conducir, foto de perfil y foto de cada vehículo únicamente para validar mi inscripción como conductor. Declaro que cuento con vehículo propio principal para prestar servicios en Rapa Go y que los vehículos opcionales registrados serán usados solo si se encuentran vigentes y aprobados.",
+          driverContractAcceptance: {
+            legalDocumentId: driverContractDocument.id,
+            version: driverContractDocument.version,
+            acceptedContract: acceptDriverContract,
+            acceptedDocumentsTruth: acceptDeclaration,
+            acceptedIndependentNature: acceptIndependentNature,
+            acceptedPrivacyGeolocation: acceptDataTreatment,
+            acceptedRestWindow: acceptRestWindow,
+            acceptedPersonalService: acceptPersonalService,
+            restWindowStart,
+            restWindowEnd,
+            clientAcceptedAt: nowIso,
           },
         };
 
@@ -1862,7 +2013,7 @@ function isRutValid(value: string): boolean {
         }
 
         setSuccessMessage(
-          "Tu solicitud, fotografías, documentos y vehículo fueron guardados. Cuando el administrador apruebe, aparecerán automáticamente en tu perfil de conductor.",
+          "Tu postulación y aceptación contractual fueron registradas. Enviaremos una copia PDF del contrato a tu correo. La cuenta no quedará habilitada hasta aprobar documentos, capacitación y condiciones previas.",
         );
         setShowSuccess(true);
       } catch (err) {
@@ -1881,6 +2032,75 @@ function isRutValid(value: string): boolean {
         </IonHeader>
 
         <IonContent className="ion-padding driver-registration-page">
+          <IonCard
+            style={{
+              ...styles.cardStyle,
+              position: "sticky",
+              top: 8,
+              zIndex: 20,
+              background: "rgba(255,253,247,.97)",
+              backdropFilter: "blur(10px)",
+            }}
+          >
+            <IonCardContent>
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  gap: 8,
+                  alignItems: "center",
+                }}
+              >
+                <div>
+                  <strong style={{ color: "#7A4A00" }}>
+                    Paso {driverStep} de 6
+                  </strong>
+                  <div
+                    style={{
+                      marginTop: 4,
+                      color: "#4A4A4A",
+                      fontSize: ".82rem",
+                      fontWeight: 800,
+                    }}
+                  >
+                    {[
+                      "Datos personales",
+                      "Acreditación Rapa Nui",
+                      "Documentos",
+                      "Vehículo",
+                      "Contrato",
+                      "Revisión y envío",
+                    ][driverStep - 1]}
+                  </div>
+                </div>
+                <IonChip color={stepReady ? "success" : "warning"}>
+                  {stepReady ? "Completo" : "Pendiente"}
+                </IonChip>
+              </div>
+              <div
+                aria-hidden
+                style={{
+                  height: 8,
+                  marginTop: 12,
+                  borderRadius: 99,
+                  overflow: "hidden",
+                  background: "rgba(200,155,60,.18)",
+                }}
+              >
+                <div
+                  style={{
+                    width: `${(driverStep / 6) * 100}%`,
+                    height: "100%",
+                    borderRadius: 99,
+                    background:
+                      "linear-gradient(90deg,#C89B3C,#F8D879,#C5532F)",
+                    transition: "width .2s ease",
+                  }}
+                />
+              </div>
+            </IonCardContent>
+          </IonCard>
+          {driverStep === 1 && (
           <IonCard style={styles.cardStyle}>
             <IonCardHeader>
               <IonCardTitle style={styles.cardTitleStyle}>Datos de tu cuenta</IonCardTitle>
@@ -1957,7 +2177,9 @@ function isRutValid(value: string): boolean {
               </IonItem>
             </IonCardContent>
           </IonCard>
+          )}
 
+          {driverStep === 2 && (
           <IonCard style={styles.cardStyle}>
             <IonCardHeader>
               <IonCardTitle style={styles.cardTitleStyle}>Validación Rapa Nui</IonCardTitle>
@@ -1993,7 +2215,9 @@ function isRutValid(value: string): boolean {
               </IonNote>
             </IonCardContent>
           </IonCard>
+          )}
 
+          {driverStep === 3 && (
           <IonCard style={styles.cardStyle}>
             <IonCardHeader>
               <IonCardTitle style={styles.cardTitleStyle}>Documentación requerida</IonCardTitle>
@@ -2048,7 +2272,9 @@ function isRutValid(value: string): boolean {
               ))}
             </IonCardContent>
           </IonCard>
+          )}
 
+          {driverStep === 4 && (
           <IonCard
             style={{
               ...styles.cardStyle,
@@ -2290,7 +2516,9 @@ function isRutValid(value: string): boolean {
               </IonNote>
             </IonCardContent>
           </IonCard>
+          )}
 
+          {driverStep === 5 && (
           <IonCard
             style={{
               ...styles.cardStyle,
@@ -2300,71 +2528,272 @@ function isRutValid(value: string): boolean {
             }}
           >
             <IonCardHeader>
-              <IonCardTitle style={styles.cardTitleStyle}>Términos y autorización</IonCardTitle>
+              <IonCardTitle style={styles.cardTitleStyle}>
+                Contrato y declaraciones
+              </IonCardTitle>
               <IonNote style={styles.noteStyle}>
-                Debes aceptar ambos puntos para habilitar el botón de envío.
+                La postulación exige aceptar el Contrato de Conductor y seis
+                declaraciones separadas. La aceptación no habilita tu cuenta
+                por sí sola.
               </IonNote>
             </IonCardHeader>
 
             <IonCardContent>
-              <IonItem
-                lines="none"
+              <div
                 style={{
-                  ...styles.itemStyle,
-                  alignItems: "flex-start",
-                  border: acceptDataTreatment
-                    ? "2px solid rgba(34,197,94,.75)"
-                    : "2px solid rgba(200,155,60,.5)",
-                  "--background": acceptDataTreatment ? "#ECFDF3" : "#FFFDF7",
-                } as CSSProperties}
+                  padding: "14px",
+                  marginBottom: "12px",
+                  borderRadius: "16px",
+                  border: "1px solid rgba(200,155,60,.48)",
+                  background: "#FFF8DF",
+                }}
               >
-                <IonCheckbox
-                  color="warning"
-                  checked={acceptDataTreatment}
-                  onIonChange={(e) => setAcceptDataTreatment(e.detail.checked)}
-                  slot="start"
-                />
-                <IonLabel style={{ ...styles.labelStyle, marginLeft: "12px", whiteSpace: "normal", lineHeight: 1.35 }}>
-                  Autorizo a Rapa Go a revisar mi cédula de identidad, licencia de conducir y foto de cada vehículo registrado únicamente para validar mi inscripción como conductor.
+                <strong style={{ color: "#6F4700" }}>
+                  {driverContractDocument
+                    ? `${driverContractDocument.title} · versión ${driverContractDocument.version}`
+                    : "Contrato de conductor"}
+                </strong>
+
+                {driverContractLoading ? (
+                  <IonNote style={{ display: "block", marginTop: 8 }}>
+                    Cargando contrato vigente…
+                  </IonNote>
+                ) : driverContractError ? (
+                  <IonNote
+                    style={{
+                      display: "block",
+                      marginTop: 8,
+                      color: "#B42318",
+                      fontWeight: 900,
+                    }}
+                  >
+                    {driverContractError}
+                  </IonNote>
+                ) : (
+                  <IonButton
+                    fill="clear"
+                    size="small"
+                    onClick={() => history.push("/legal/driver-conditions")}
+                    style={{
+                      marginTop: "6px",
+                      "--color": "#7A4A00",
+                      fontWeight: 950,
+                    } as CSSProperties}
+                  >
+                    Leer contrato completo
+                  </IonButton>
+                )}
+              </div>
+
+              <IonItem lines="full" style={styles.itemStyle}>
+                <IonLabel position="stacked" style={styles.labelStyle}>
+                  Inicio de la franja de desconexión *
                 </IonLabel>
+                <IonInput
+                  type="time"
+                  value={restWindowStart}
+                  onIonInput={(event) =>
+                    setRestWindowStart(
+                      String(event.detail.value ?? "22:00"),
+                    )
+                  }
+                  style={styles.inputStyle}
+                />
+                <IonNote style={{ ...styles.noteStyle, marginTop: 6 }}>
+                  La franja tendrá 12 horas continuas: {restWindowStart} a{" "}
+                  {restWindowEnd}.
+                </IonNote>
               </IonItem>
 
-              <IonItem
-                lines="none"
-                style={{
-                  ...styles.itemStyle,
-                  alignItems: "flex-start",
-                  border: acceptDeclaration
-                    ? "2px solid rgba(34,197,94,.75)"
-                    : "2px solid rgba(200,155,60,.5)",
-                  "--background": acceptDeclaration ? "#ECFDF3" : "#FFFDF7",
-                } as CSSProperties}
-              >
-                <IonCheckbox
-                  color="warning"
-                  checked={acceptDeclaration}
-                  onIonChange={(e) => setAcceptDeclaration(e.detail.checked)}
-                  slot="start"
-                />
-                <IonLabel style={{ ...styles.labelStyle, marginLeft: "12px", whiteSpace: "normal", lineHeight: 1.35 }}>
-                  Declaro que la información, documentación enviada y fotos de los vehículos son verdaderas y corresponden a mi identidad.
-                </IonLabel>
-              </IonItem>
+              {[
+                {
+                  checked: acceptDriverContract,
+                  setChecked: setAcceptDriverContract,
+                  text: driverContractDocument
+                    ? `He leído y acepto el Contrato de Prestación de Servicios de Conductor Independiente de Rapa Go, versión ${driverContractDocument.version}, y sus anexos.`
+                    : "He leído y acepto el Contrato de Prestación de Servicios de Conductor Independiente y sus anexos.",
+                },
+                {
+                  checked: acceptDeclaration,
+                  setChecked: setAcceptDeclaration,
+                  text: "Declaro que mis antecedentes, licencia, permiso de circulación, residencia, domicilio tributario y documentos son auténticos, vigentes y verificables.",
+                },
+                {
+                  checked: acceptIndependentNature,
+                  setChecked: setAcceptIndependentNature,
+                  text: "Comprendo que organizo libremente mi conexión, no tengo exclusividad ni mínimo de viajes y puedo rechazar ofertas antes de aceptarlas sin sanción.",
+                },
+                {
+                  checked: acceptDataTreatment,
+                  setChecked: setAcceptDataTreatment,
+                  text: "Declaro haber leído la Política de Privacidad y autorizo el tratamiento de mi ubicación durante disponibilidad, asignación y viaje conforme a los permisos del sistema.",
+                },
+                {
+                  checked: acceptRestWindow,
+                  setChecked: setAcceptRestWindow,
+                  text: `Confirmo mi franja diaria de doce horas continuas de desconexión entre ${restWindowStart} y ${restWindowEnd}.`,
+                },
+                {
+                  checked: acceptPersonalService,
+                  setChecked: setAcceptPersonalService,
+                  text: "Me obligo a ejecutar personalmente los servicios y a no permitir que una persona no habilitada utilice mi cuenta o vehículo durante un viaje.",
+                },
+              ].map((acceptance, index) => (
+                <IonItem
+                  key={`driver-acceptance-${index + 1}`}
+                  lines="none"
+                  style={{
+                    ...styles.itemStyle,
+                    alignItems: "flex-start",
+                    border: acceptance.checked
+                      ? "2px solid rgba(34,197,94,.75)"
+                      : "2px solid rgba(200,155,60,.5)",
+                    "--background": acceptance.checked
+                      ? "#ECFDF3"
+                      : "#FFFDF7",
+                    marginTop: "10px",
+                  } as CSSProperties}
+                >
+                  <IonCheckbox
+                    color="warning"
+                    checked={acceptance.checked}
+                    onIonChange={(event) =>
+                      acceptance.setChecked(event.detail.checked)
+                    }
+                    slot="start"
+                  />
+                  <IonLabel
+                    style={{
+                      ...styles.labelStyle,
+                      marginLeft: "12px",
+                      whiteSpace: "normal",
+                      lineHeight: 1.42,
+                    }}
+                  >
+                    {acceptance.text}
+                  </IonLabel>
+                </IonItem>
+              ))}
 
               {!termsAccepted && (
                 <IonNote
                   style={{
                     display: "block",
-                    marginTop: "8px",
+                    marginTop: "10px",
                     color: "#B84F2E",
                     fontWeight: 950,
                   }}
                 >
-                  Sin aceptar los términos y condiciones no se puede enviar la solicitud.
+                  Debes aceptar las seis declaraciones antes de continuar.
                 </IonNote>
               )}
             </IonCardContent>
           </IonCard>
+          )}
+
+          {driverStep === 6 && (
+            <IonCard style={styles.cardStyle}>
+              <IonCardHeader>
+                <IonCardTitle style={styles.cardTitleStyle}>
+                  Revisión final
+                </IonCardTitle>
+                <IonNote style={styles.noteStyle}>
+                  Comprueba el resumen antes de aceptar el contrato y enviar
+                  la postulación.
+                </IonNote>
+              </IonCardHeader>
+              <IonCardContent>
+                {[
+                  ["Cuenta", accountReady],
+                  ["Acreditación Rapa Nui", rapaNuiReady],
+                  ["Documentos obligatorios", documentsReady],
+                  ["Vehículo principal y opcionales", vehicleReady],
+                  ["Contrato y seis declaraciones", contractReady],
+                ].map(([label, ready]) => (
+                  <div
+                    key={String(label)}
+                    style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      gap: 12,
+                      padding: "11px 0",
+                      borderBottom: "1px solid rgba(200,155,60,.2)",
+                      fontWeight: 900,
+                      color: "#2E261D",
+                    }}
+                  >
+                    <span>{String(label)}</span>
+                    <span
+                      style={{
+                        color: ready ? "#167A35" : "#B42318",
+                      }}
+                    >
+                      {ready ? "Listo" : "Pendiente"}
+                    </span>
+                  </div>
+                ))}
+
+                <div
+                  style={{
+                    marginTop: 16,
+                    padding: 14,
+                    borderRadius: 16,
+                    background: "#FFF8DF",
+                    border: "1px solid rgba(200,155,60,.48)",
+                    color: "#5B3A00",
+                    lineHeight: 1.5,
+                    fontWeight: 800,
+                  }}
+                >
+                  Al enviar, el contrato quedará aceptado y se remitirá una
+                  copia PDF a tu correo. La aceptación no activa
+                  automáticamente tu cuenta: Rapa Go deberá aprobar los
+                  documentos, la capacitación y las condiciones previas.
+                </div>
+              </IonCardContent>
+            </IonCard>
+          )}
+
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: driverStep > 1 ? "1fr 1fr" : "1fr",
+              gap: 10,
+              margin: "6px 0 14px",
+            }}
+          >
+            {driverStep > 1 && (
+              <IonButton
+                fill="outline"
+                color="medium"
+                onClick={() =>
+                  setDriverStep((current) => Math.max(1, current - 1))
+                }
+                style={{ "--border-radius": "16px" } as CSSProperties}
+              >
+                Anterior
+              </IonButton>
+            )}
+
+            {driverStep < 6 && (
+              <IonButton
+                disabled={!stepReady}
+                onClick={() => {
+                  setError(null);
+                  setDriverStep((current) => Math.min(6, current + 1));
+                }}
+                style={{
+                  "--border-radius": "16px",
+                  "--background":
+                    "linear-gradient(135deg,#F8D879,#C89B3C)",
+                  color: "#111",
+                  fontWeight: 950,
+                } as CSSProperties}
+              >
+                Continuar
+              </IonButton>
+            )}
+          </div>
 
           {error && (
             <IonText color="danger">
@@ -2372,6 +2801,7 @@ function isRutValid(value: string): boolean {
             </IonText>
           )}
 
+          {driverStep === 6 && (
           <div style={{ padding: "8px 0 18px" }}>
             <IonButton
               expand="block"
@@ -2395,8 +2825,8 @@ function isRutValid(value: string): boolean {
               {loading
                 ? <IonSpinner name="crescent" />
                 : canSubmit
-                  ? "Enviar solicitud"
-                  : "Completa documentos, vehículo y términos"}
+                  ? "Acepto el contrato y envío mi postulación"
+                  : "Completa todas las etapas"}
             </IonButton>
 
             <IonButton
@@ -2409,6 +2839,7 @@ function isRutValid(value: string): boolean {
               Cancelar
             </IonButton>
           </div>
+          )}
 
           <IonAlert
             isOpen={showSuccess}
@@ -2881,6 +3312,77 @@ function isRutValid(value: string): boolean {
                 <p style={{ margin: 0, fontSize: "0.82rem", color: "#444", fontWeight: 700 }}>
                   Última actualización: {new Date(item.updatedAt).toLocaleDateString("es-CL")}
                 </p>
+
+                {item.type === "driver" && (
+                  <div
+                    style={{
+                      display: "grid",
+                      gap: 7,
+                      marginTop: 14,
+                      padding: 13,
+                      borderRadius: 15,
+                      border: "1px solid rgba(200,155,60,.38)",
+                      background: "#FFFDF7",
+                      color: "#2E261D",
+                      fontSize: ".84rem",
+                      fontWeight: 800,
+                    }}
+                  >
+                    <div>
+                      Contrato:{" "}
+                      <strong>
+                        {item.driverContractAcceptedAt
+                          ? `Aceptado · versión ${item.driverContractVersion ?? "--"}`
+                          : "Pendiente"}
+                      </strong>
+                    </div>
+                    <div>
+                      Copia por correo:{" "}
+                      <strong>{item.contractDeliveryStatus}</strong>
+                    </div>
+                    <div>
+                      Revisión documental:{" "}
+                      <strong>{item.documentReviewStatus}</strong>
+                    </div>
+                    <div>
+                      Capacitación: <strong>{item.trainingStatus}</strong>
+                    </div>
+                    <div>
+                      Habilitación:{" "}
+                      <strong>
+                        {item.status === "approved"
+                          ? "Completada"
+                          : "Pendiente de decisión administrativa"}
+                      </strong>
+                    </div>
+
+                    {item.driverContractDocumentId && session?.accessToken && (
+                      <IonButton
+                        size="small"
+                        fill="outline"
+                        color="warning"
+                        onClick={() =>
+                          void applicationsService
+                            .downloadContract(session.accessToken, item.id)
+                            .catch((downloadError: unknown) =>
+                              setError(
+                                downloadError instanceof Error
+                                  ? downloadError.message
+                                  : "No se pudo descargar el contrato.",
+                              ),
+                            )
+                        }
+                        style={{
+                          marginTop: 4,
+                          "--border-radius": "14px",
+                          fontWeight: 900,
+                        } as CSSProperties}
+                      >
+                        Descargar contrato aceptado
+                      </IonButton>
+                    )}
+                  </div>
+                )}
 
                 {item.status === "rejected" && item.rejectionReason && (
                   <IonNote color="danger" style={{ display: "block", marginTop: "8px", fontWeight: 900 }}>

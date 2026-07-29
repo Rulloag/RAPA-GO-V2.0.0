@@ -37,6 +37,18 @@ export interface ApplicationResponse {
   licenseBackUrl: string | null;
   certificateUrl: string | null;
   profilePhotoUrl: string | null;
+  driverContractDocumentId: string | null;
+  driverContractVersion: string | null;
+  driverContractAcceptedAt: string | null;
+  driverContractAcceptance: Record<string, unknown> | null;
+  restWindowStart: string | null;
+  restWindowEnd: string | null;
+  documentReviewStatus: string;
+  trainingStatus: string;
+  reviewChecklist: Record<string, boolean>;
+  contractDeliveryStatus: string;
+  contractDeliveredAt: string | null;
+  contractDeliveryError: string | null;
   reviewedBy: string | null;
   reviewedAt: string | null;
   rejectionReason: string | null;
@@ -55,4 +67,17 @@ export type ApplicationsListResult =
 
 export type CreateApplicationResult =
   | { ok: true; id: string; status: string; message: string }
+  | { ok: false; code: string; message: string; statusCode: number };
+
+export type ApplicationContractResult =
+  | {
+      ok: true;
+      fileName: string;
+      contentType: "application/pdf";
+      buffer: Buffer;
+    }
+  | { ok: false; code: string; message: string; statusCode: number };
+
+export type ContractDeliveryResult =
+  | { ok: true; status: string; deliveredAt: string | null }
   | { ok: false; code: string; message: string; statusCode: number };

@@ -36,6 +36,7 @@ import type {
 import {
   validateRequiredRegistrationLegalAcceptances,
 } from "./registrationLegal.service.js";
+import { buildLegalAcceptanceEvidence } from "../legal/legalEvidence.js";
 
 function toUserRole(raw: string): UserRole {
   return raw as UserRole;
@@ -750,6 +751,10 @@ export class AuthService {
             userId: createdUser.id,
             legalDocumentId: document.id,
             versionAccepted: document.version,
+            ...buildLegalAcceptanceEvidence(
+              document,
+              "password",
+            ),
             ipAddress: metadata?.ipAddress ?? null,
             userAgent: metadata?.userAgent ?? null,
             acceptedAt: now,
@@ -1625,6 +1630,10 @@ export class AuthService {
           userId: user.id,
           legalDocumentId: document.id,
           versionAccepted: document.version,
+          ...buildLegalAcceptanceEvidence(
+            document,
+            "facebook",
+          ),
           ipAddress: metadata?.ipAddress ?? null,
           userAgent: metadata?.userAgent ?? null,
           acceptedAt,
@@ -1636,6 +1645,10 @@ export class AuthService {
           ],
           set: {
             versionAccepted: document.version,
+            ...buildLegalAcceptanceEvidence(
+              document,
+              "facebook",
+            ),
             ipAddress: metadata?.ipAddress ?? null,
             userAgent: metadata?.userAgent ?? null,
             acceptedAt,

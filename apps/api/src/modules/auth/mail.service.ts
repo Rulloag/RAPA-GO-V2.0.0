@@ -295,4 +295,59 @@ export class MailService {
     });
   }
 
+  async sendDriverContractAccepted(input: {
+    to: string;
+    name: string;
+    applicationId: string;
+    contractVersion: string;
+    pdfBuffer: Buffer;
+  }): Promise<void> {
+    const safeName = input.name.replace(/[<>]/g, "").trim() || "Conductor/a";
+
+    await this.getTransporter().sendMail({
+      from: this.getFrom(),
+      to: input.to,
+      subject: "Confirmación de aceptación de contrato y postulación en RAPA GO",
+      text: [
+        `Estimado/a ${safeName}:`,
+        "",
+        `Confirmamos que aceptaste electrónicamente el Contrato de Prestación de Servicios de Conductor Independiente de RAPA GO, versión ${input.contractVersion}.`,
+        `Identificador de postulación: ${input.applicationId}`,
+        "",
+        "Adjuntamos una copia íntegra en PDF para tu registro.",
+        "",
+        "La aceptación contractual no implica por sí sola la activación definitiva. RAPA GO continuará revisando documentos, vehículo, residencia, domicilio tributario, capacitación, franja de desconexión y demás condiciones previas.",
+        "",
+        "Recibirás una notificación cuando la postulación sea habilitada, requiera antecedentes adicionales o no sea aprobada.",
+        "",
+        "Consultas: conductores@rapago.cl · +56 9 4796 4171",
+      ].join("\n"),
+      html: `
+        <div style="font-family:Arial,sans-serif;background:#f4efe7;padding:28px;color:#171717">
+          <div style="max-width:620px;margin:auto;background:#ffffff;border-radius:20px;padding:28px;border:1px solid #d6a640">
+            <h1 style="margin:0 0 14px;color:#8f3c24">RAPA GO</h1>
+            <h2 style="margin:0 0 14px">Contrato aceptado</h2>
+            <p>Estimado/a <strong>${safeName}</strong>:</p>
+            <p>Confirmamos la aceptación electrónica del Contrato de Prestación de Servicios de Conductor Independiente, versión <strong>${input.contractVersion}</strong>.</p>
+            <p><strong>Postulación:</strong> ${input.applicationId}</p>
+            <p>Adjuntamos una copia íntegra en PDF para tu registro.</p>
+            <div style="margin:20px 0;padding:16px;border-radius:14px;background:#fff8df;border:1px solid #d6a640">
+              <strong>La aceptación no habilita automáticamente tu cuenta.</strong>
+              <p style="margin-bottom:0">Revisaremos documentos, vehículo, residencia, domicilio tributario, capacitación y franja de desconexión antes de informar el resultado.</p>
+            </div>
+            <p>Consultas: <a href="mailto:conductores@rapago.cl">conductores@rapago.cl</a> · +56 9 4796 4171</p>
+          </div>
+        </div>
+      `,
+      attachments: [
+        {
+          filename: `Contrato-Rapa-Go-Conductor-v${input.contractVersion}.pdf`,
+          content: input.pdfBuffer,
+          contentType: "application/pdf",
+        },
+      ],
+    });
+  }
+
+
 }

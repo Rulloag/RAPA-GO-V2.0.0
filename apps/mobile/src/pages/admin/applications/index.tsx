@@ -7,6 +7,7 @@ import {
   IonCardContent,
   IonCardHeader,
   IonCardTitle,
+  IonCheckbox,
   IonContent,
   IonHeader,
   IonIcon,
@@ -31,8 +32,12 @@ import {
   checkmarkCircleOutline,
   closeCircleOutline,
   documentTextOutline,
+  downloadOutline,
   eyeOutline,
   hourglassOutline,
+  mailOutline,
+  schoolOutline,
+  shieldCheckmarkOutline,
   imageOutline,
   refreshOutline,
   timeOutline,
@@ -1748,29 +1753,149 @@ function AdminApplicationDetailModal({
   const [showReviewAlert, setShowReviewAlert] = useState(false);
   const [showHoldAlert, setShowHoldAlert] = useState(false);
   const [showPendingAlert, setShowPendingAlert] = useState(false);
+  const [documentReviewStatus, setDocumentReviewStatus] = useState(
+    item.documentReviewStatus || "pending",
+  );
+  const [trainingStatus, setTrainingStatus] = useState(
+    item.trainingStatus || "pending",
+  );
+  const [reviewChecklist, setReviewChecklist] = useState<Record<string, boolean>>(
+    item.reviewChecklist ?? {},
+  );
 
   const isReviewable = item.status !== "approved" && item.status !== "rejected";
   const documents = buildDocumentViews(item);
   const vehicles = buildVehicleViews(item);
   const uploadedDocuments = documents.filter((doc) => doc.url).length;
+  const requiredChecklistKeys = [
+    "identity",
+    "driverLicense",
+    "profilePhoto",
+    "vehicle",
+    "residence",
+    "taxDomicile",
+    "restWindow",
+  ];
+  const checklistReady = requiredChecklistKeys.every(
+    (key) => reviewChecklist[key] === true,
+  );
+  const driverApprovalReady =
+    item.type !== "driver" ||
+    (
+      Boolean(item.driverContractAcceptedAt) &&
+      documentReviewStatus === "approved" &&
+      trainingStatus === "approved" &&
+      checklistReady &&
+      uploadedDocuments >= 6
+    );
 
-  async function doReview(status: string, rejectionReason?: string, notes?: string) {
+  async function doReview(
+    status: string,
+    rejectionReason?: string,
+    notes?: string,
+    workflow?: {
+      documentReviewStatus?: "pending" | "approved" | "needs_information" | "rejected";
+      trainingStatus?: "pending" | "approved" | "rejected";
+      reviewChecklist?: Record<string, boolean>;
+    },
+  ) {
     setLoading(true);
     setError(null);
 
     try {
-      const input: { status: string; rejectionReason?: string; notes?: string } = { status };
+      const input: {
+        status: string;
+        rejectionReason?: string;
+        notes?: string;
+        documentReviewStatus?: "pending" | "approved" | "needs_information" | "rejected";
+        trainingStatus?: "pending" | "approved" | "rejected";
+        reviewChecklist?: Record<string, boolean>;
+      } = { status };
 
       if (rejectionReason) input.rejectionReason = rejectionReason;
       if (notes) input.notes = notes;
+      if (workflow?.documentReviewStatus) {
+        input.documentReviewStatus = workflow.documentReviewStatus;
+      }
+      if (workflow?.trainingStatus) {
+        input.trainingStatus = workflow.trainingStatus;
+      }
+      if (workflow?.reviewChecklist) {
+        input.reviewChecklist = workflow.reviewChecklist;
+      }
 
-      const updated = await applicationsService.reviewApplication(token, item.id, input);
+      const updated = await applicationsService.reviewApplication(
+        token,
+        item.id,
+        input,
+      );
+
+      setDocumentReviewStatus(updated.documentReviewStatus);
+      setTrainingStatus(updated.trainingStatus);
+      setReviewChecklist(updated.reviewChecklist ?? {});
       onUpdated(updated);
     } catch (err) {
       setError(err instanceof Error ? err.message : "No se pudo actualizar la postulación.");
     } finally {
       setLoading(false);
     }
+  }
+
+  async function downloadContract(): Promise<void> {
+    setLoading(true);
+    setError(null);
+
+    try {
+      await applicationsService.downloadContract(token, item.id);
+    } catch (downloadError) {
+      setError(
+        downloadError instanceof Error
+          ? downloadError.message
+          : "No se pudo descargar el contrato.",
+      );
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function resendContract(): Promise<void> {
+    setLoading(true);
+    setError(null);
+
+    try {
+      const delivery = await applicationsService.resendContract(
+        token,
+        item.id,
+      );
+
+      if (delivery.status !== "sent") {
+        throw new Error(
+          "El servidor no confirmó el envío del contrato.",
+        );
+      }
+
+      onUpdated({
+        ...item,
+        contractDeliveryStatus: delivery.status,
+        contractDeliveredAt: delivery.deliveredAt,
+        contractDeliveryError: null,
+      });
+    } catch (sendError) {
+      setError(
+        sendError instanceof Error
+          ? sendError.message
+          : "No se pudo reenviar el contrato.",
+      );
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  function toggleChecklist(key: string, checked: boolean): void {
+    setReviewChecklist((current) => ({
+      ...current,
+      [key]: checked,
+    }));
   }
 
   return (
@@ -1971,6 +2096,211 @@ function AdminApplicationDetailModal({
           </IonCardContent>
         </IonCard>
 
+        {item.type === "driver" && (
+          <IonCard style={detailSectionStyle}>
+            <IonCardHeader>
+              <IonCardTitle style={{ fontSize: "1rem", fontWeight: 950 }}>
+                Contrato, documentos y capacitación
+              </IonCardTitle>
+              <IonNote>
+                La aceptación del contrato no habilita por sí sola al
+                conductor.
+              </IonNote>
+            </IonCardHeader>
+
+            <IonCardContent>
+              <div style={{ display: "grid", gap: 8, marginBottom: 14 }}>
+                <div>
+                  <strong>Contrato:</strong>{" "}
+                  {item.driverContractVersion
+                    ? `Versión ${item.driverContractVersion}`
+                    : "No registrado"}
+                </div>
+                <div>
+                  <strong>Aceptado:</strong>{" "}
+                  {item.driverContractAcceptedAt
+                    ? new Date(item.driverContractAcceptedAt).toLocaleString("es-CL")
+                    : "No"}
+                </div>
+                <div>
+                  <strong>Desconexión:</strong>{" "}
+                  {item.restWindowStart && item.restWindowEnd
+                    ? `${item.restWindowStart} a ${item.restWindowEnd}`
+                    : "No registrada"}
+                </div>
+                <div>
+                  <strong>Entrega del PDF:</strong>{" "}
+                  <IonBadge
+                    color={
+                      item.contractDeliveryStatus === "sent"
+                        ? "success"
+                        : item.contractDeliveryStatus === "failed"
+                          ? "danger"
+                          : "warning"
+                    }
+                  >
+                    {item.contractDeliveryStatus}
+                  </IonBadge>
+                </div>
+              </div>
+
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "repeat(auto-fit,minmax(180px,1fr))",
+                  gap: 8,
+                  marginBottom: 14,
+                }}
+              >
+                <IonButton
+                  fill="outline"
+                  color="warning"
+                  disabled={!item.driverContractDocumentId || loading}
+                  onClick={() => void downloadContract()}
+                  style={{ "--border-radius": "14px", fontWeight: 900 } as CSSProperties}
+                >
+                  <IonIcon icon={downloadOutline} slot="start" />
+                  Descargar contrato
+                </IonButton>
+
+                <IonButton
+                  fill="outline"
+                  color="tertiary"
+                  disabled={!item.driverContractDocumentId || loading}
+                  onClick={() => void resendContract()}
+                  style={{ "--border-radius": "14px", fontWeight: 900 } as CSSProperties}
+                >
+                  <IonIcon icon={mailOutline} slot="start" />
+                  Reenviar PDF
+                </IonButton>
+              </div>
+
+              <h3 style={{ margin: "12px 0 8px", fontSize: ".95rem" }}>
+                Checklist administrativo
+              </h3>
+
+              {[
+                ["identity", "Identidad"],
+                ["driverLicense", "Licencia de conducir"],
+                ["profilePhoto", "Foto de perfil"],
+                ["vehicle", "Vehículo y fotografías"],
+                ["residence", "Residencia / habilitación territorial"],
+                ["taxDomicile", "Domicilio tributario en Rapa Nui"],
+                ["restWindow", "Franja de desconexión de 12 horas"],
+                ["insurance", "Anexo de seguro, cuando corresponda"],
+              ].map(([key, label]) => (
+                <IonItem
+                  key={key}
+                  lines="none"
+                  style={{
+                    ...rowCardStyle,
+                    "--min-height": "52px",
+                    marginBottom: 7,
+                  } as CSSProperties}
+                >
+                  <IonCheckbox
+                    checked={reviewChecklist[key] === true}
+                    onIonChange={(event) =>
+                      toggleChecklist(key, event.detail.checked)
+                    }
+                    slot="start"
+                  />
+                  <IonLabel style={{ whiteSpace: "normal", fontWeight: 850 }}>
+                    {label}
+                  </IonLabel>
+                </IonItem>
+              ))}
+
+              <div style={{ display: "grid", gap: 8, marginTop: 12 }}>
+                <IonButton
+                  color="success"
+                  fill={documentReviewStatus === "approved" ? "solid" : "outline"}
+                  disabled={loading}
+                  onClick={() => {
+                    setDocumentReviewStatus("approved");
+                    void doReview("under_review", undefined, undefined, {
+                      documentReviewStatus: "approved",
+                      trainingStatus:
+                        trainingStatus as "pending" | "approved" | "rejected",
+                      reviewChecklist,
+                    });
+                  }}
+                  style={{ "--border-radius": "14px", fontWeight: 900 } as CSSProperties}
+                >
+                  <IonIcon icon={shieldCheckmarkOutline} slot="start" />
+                  Aprobar revisión documental
+                </IonButton>
+
+                <IonButton
+                  color="warning"
+                  fill={documentReviewStatus === "needs_information" ? "solid" : "outline"}
+                  disabled={loading}
+                  onClick={() => {
+                    setDocumentReviewStatus("needs_information");
+                    void doReview("on_hold", undefined, "Se solicitaron antecedentes adicionales.", {
+                      documentReviewStatus: "needs_information",
+                      trainingStatus:
+                        trainingStatus as "pending" | "approved" | "rejected",
+                      reviewChecklist,
+                    });
+                  }}
+                  style={{ "--border-radius": "14px", fontWeight: 900 } as CSSProperties}
+                >
+                  Solicitar antecedentes
+                </IonButton>
+
+                <IonButton
+                  color="tertiary"
+                  fill={trainingStatus === "approved" ? "solid" : "outline"}
+                  disabled={loading}
+                  onClick={() => {
+                    setTrainingStatus("approved");
+                    void doReview("under_review", undefined, undefined, {
+                      documentReviewStatus:
+                        documentReviewStatus as "pending" | "approved" | "needs_information" | "rejected",
+                      trainingStatus: "approved",
+                      reviewChecklist,
+                    });
+                  }}
+                  style={{ "--border-radius": "14px", fontWeight: 900 } as CSSProperties}
+                >
+                  <IonIcon icon={schoolOutline} slot="start" />
+                  Marcar capacitación aprobada
+                </IonButton>
+
+                <IonButton
+                  color="medium"
+                  fill="outline"
+                  disabled={loading}
+                  onClick={() =>
+                    void doReview("under_review", undefined, undefined, {
+                      documentReviewStatus:
+                        documentReviewStatus as "pending" | "approved" | "needs_information" | "rejected",
+                      trainingStatus:
+                        trainingStatus as "pending" | "approved" | "rejected",
+                      reviewChecklist,
+                    })
+                  }
+                  style={{ "--border-radius": "14px", fontWeight: 900 } as CSSProperties}
+                >
+                  Guardar checklist
+                </IonButton>
+              </div>
+
+              {!driverApprovalReady && (
+                <IonNote
+                  color="warning"
+                  style={{ display: "block", marginTop: 12, fontWeight: 900 }}
+                >
+                  Para aprobar faltan contrato aceptado, seis documentos,
+                  revisión documental, capacitación o elementos obligatorios
+                  del checklist.
+                </IonNote>
+              )}
+            </IonCardContent>
+          </IonCard>
+        )}
+
         <IonCard style={detailSectionStyle}>
           <IonCardHeader>
             <IonCardTitle style={{ fontSize: "1rem", fontWeight: 950 }}>
@@ -2012,7 +2342,7 @@ function AdminApplicationDetailModal({
                 expand="block"
                 color="success"
                 onClick={() => setShowApproveAlert(true)}
-                disabled={loading || item.status === "approved"}
+                disabled={loading || item.status === "approved" || !driverApprovalReady}
                 style={{ "--border-radius": "16px", fontWeight: 950 } as CSSProperties}
               >
                 <IonIcon icon={checkmarkCircleOutline} slot="start" />
@@ -2063,7 +2393,17 @@ function AdminApplicationDetailModal({
           message={`¿Confirmas que deseas aprobar la postulación de ${item.firstName} ${item.lastName}? Se creará o actualizará su cuenta como conductor.`}
           buttons={[
             { text: "Cancelar", role: "cancel" },
-            { text: "Aprobar", handler: () => void doReview("approved") },
+            {
+              text: "Aprobar",
+              handler: () =>
+                void doReview("approved", undefined, undefined, {
+                  documentReviewStatus:
+                    documentReviewStatus as "pending" | "approved" | "needs_information" | "rejected",
+                  trainingStatus:
+                    trainingStatus as "pending" | "approved" | "rejected",
+                  reviewChecklist,
+                }),
+            },
           ]}
           onDidDismiss={() => setShowApproveAlert(false)}
         />

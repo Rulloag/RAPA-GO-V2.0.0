@@ -5,9 +5,16 @@ export interface LegalDocumentResponse {
 }
 
 export interface UserAcceptanceResponse {
-  id: string; userId: string; legalDocumentId: string; versionAccepted: string;
+  id: string;
+  userId: string;
+  legalDocumentId: string;
+  versionAccepted: string;
   acceptedAt: string;
-  documentTitle?: string; documentType?: string;
+  documentTitle?: string;
+  documentType?: string;
+  documentHash?: string;
+  authenticationMethod?: string;
+  acceptanceStatus?: string;
 }
 
 export type LegalDocumentsResult =

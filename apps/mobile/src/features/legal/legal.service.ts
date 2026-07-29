@@ -7,8 +7,15 @@ export interface LegalDocumentData {
 }
 
 export interface UserAcceptanceData {
-  id: string; legalDocumentId: string; versionAccepted: string;
-  acceptedAt: string; documentTitle?: string; documentType?: string;
+  id: string;
+  legalDocumentId: string;
+  versionAccepted: string;
+  acceptedAt: string;
+  documentTitle?: string;
+  documentType?: string;
+  documentHash?: string;
+  authenticationMethod?: string;
+  acceptanceStatus?: string;
 }
 
 export const legalService = {

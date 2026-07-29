@@ -78,6 +78,9 @@ export class ApplicationsRepository {
       status: string;
       rejectionReason?: string | null;
       notes?: string | null;
+      documentReviewStatus?: string;
+      trainingStatus?: string;
+      reviewChecklist?: Record<string, boolean>;
     },
   ): Promise<Application | null> {
     const rows = await db.update(applications).set({
@@ -88,6 +91,33 @@ export class ApplicationsRepository {
         ? { rejectionReason: input.rejectionReason }
         : {}),
       ...(input.notes !== undefined ? { notes: input.notes } : {}),
+      ...(input.documentReviewStatus !== undefined
+        ? { documentReviewStatus: input.documentReviewStatus }
+        : {}),
+      ...(input.trainingStatus !== undefined
+        ? { trainingStatus: input.trainingStatus }
+        : {}),
+      ...(input.reviewChecklist !== undefined
+        ? { reviewChecklist: input.reviewChecklist }
+        : {}),
+      updatedAt: new Date(),
+    }).where(eq(applications.id, id)).returning();
+
+    return rows[0] ?? null;
+  }
+
+  async updateContractDelivery(
+    id: string,
+    input: {
+      status: "pending" | "sent" | "failed";
+      deliveredAt?: Date | null;
+      error?: string | null;
+    },
+  ): Promise<Application | null> {
+    const rows = await db.update(applications).set({
+      contractDeliveryStatus: input.status,
+      contractDeliveredAt: input.deliveredAt ?? null,
+      contractDeliveryError: input.error ?? null,
       updatedAt: new Date(),
     }).where(eq(applications.id, id)).returning();
 

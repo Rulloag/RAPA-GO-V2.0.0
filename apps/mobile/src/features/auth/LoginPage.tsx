@@ -1,4 +1,4 @@
-import { useState, type ChangeEvent, type FormEvent, type CSSProperties } from "react";
+import { useEffect, useState, type ChangeEvent, type FormEvent, type CSSProperties } from "react";
 import {
   IonButton,
   IonContent,
@@ -704,6 +704,54 @@ export function LoginPage(): JSX.Element {
   ] = useState(false);
   const [facebookLegalLoading, setFacebookLegalLoading] =
     useState(false);
+  const [facebookLegalDocuments, setFacebookLegalDocuments] =
+    useState<PendingFacebookLegalAcceptance[]>([]);
+
+  useEffect(() => {
+    if (!showFacebookStep) return;
+
+    let active = true;
+    setFacebookLegalLoading(true);
+
+    legalService
+      .getActive()
+      .then((documents) => {
+        if (!active) return;
+
+        setFacebookLegalDocuments(
+          persistPendingFacebookLegalAcceptances(
+            documents,
+          ),
+        );
+      })
+      .catch((loadError) => {
+        if (!active) return;
+
+        setFacebookLegalDocuments([]);
+        setFacebookStepError(
+          loadError instanceof Error
+            ? loadError.message
+            : "No pudimos cargar las versiones legales vigentes.",
+        );
+      })
+      .finally(() => {
+        if (active) setFacebookLegalLoading(false);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [showFacebookStep]);
+
+  function facebookLegalVersion(
+    type: FacebookRequiredLegalType,
+  ): string {
+    return (
+      facebookLegalDocuments.find(
+        (document) => document.type === type,
+      )?.version ?? "vigente"
+    );
+  }
 
   const isResidentRapaNui = passengerCondition === "residente_rapa_nui";
 
@@ -935,11 +983,13 @@ export function LoginPage(): JSX.Element {
     setFacebookLegalLoading(true);
 
     try {
-      const activeLegalDocuments = await legalService.getActive();
       facebookLegalAcceptances =
-        persistPendingFacebookLegalAcceptances(
-          activeLegalDocuments,
-        );
+        facebookLegalDocuments.length ===
+        RAPAGO_FACEBOOK_REQUIRED_LEGAL_TYPES.length
+          ? facebookLegalDocuments
+          : persistPendingFacebookLegalAcceptances(
+              await legalService.getActive(),
+            );
     } catch (error) {
       setFacebookStepError(
         error instanceof Error

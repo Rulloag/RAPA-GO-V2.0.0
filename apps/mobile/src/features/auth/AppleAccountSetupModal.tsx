@@ -40,6 +40,25 @@ function isValidContactEmail(value: string): boolean {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim());
 }
 
+
+function getAppleLegalLabel(document: LegalDocumentData): string {
+  if (document.type === "terms_and_conditions") {
+    return `He leído y acepto los Términos y Condiciones Generales de Rapa Go, versión ${document.version}.`;
+  }
+
+  if (document.type === "user_conditions") {
+    return `He leído y acepto las Condiciones de Usuarios, versión ${document.version}, como anexo subordinado a los Términos Generales.`;
+  }
+
+  return `Declaro haber leído la Política de Privacidad, versión ${document.version}, y conocer cómo Rapa Go trata mis datos personales, geolocalización, pagos, autenticación, soporte y eliminación de cuenta.`;
+}
+
+function getAppleLegalHref(type: string): string {
+  if (type === "terms_and_conditions") return ROUTES.PUBLIC.TERMS;
+  if (type === "user_conditions") return ROUTES.PUBLIC.USER_CONDITIONS;
+  return ROUTES.PUBLIC.PRIVACY;
+}
+
 const RESIDENCE_MAX_BYTES = Math.floor(1.5 * 1024 * 1024);
 const RESIDENCE_MIME_TYPES = new Set([
   "application/pdf",

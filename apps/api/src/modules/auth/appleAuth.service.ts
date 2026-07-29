@@ -26,6 +26,7 @@ import { AppleTokenExchangeClient } from "./appleTokenExchange.client.js";
 import type { AuthUser } from "./auth.types.js";
 import { SessionService } from "./session.service.js";
 import { TokenService } from "./token.service.js";
+import { buildLegalAcceptanceEvidence } from "../legal/legalEvidence.js";
 
 const PROVIDER = "apple";
 const REQUIRED_LEGAL_TYPES = [
@@ -1260,6 +1261,10 @@ export class AppleAuthService {
           userId,
           legalDocumentId: document.id,
           versionAccepted: document.version,
+          ...buildLegalAcceptanceEvidence(
+            document,
+            "apple",
+          ),
           ipAddress: metadata?.ipAddress ?? null,
           userAgent: metadata?.userAgent ?? null,
           acceptedAt: now,

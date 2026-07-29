@@ -33,6 +33,7 @@ import {
   PrivacyPublicPage,
   SupportPublicPage,
   TermsPublicPage,
+  UserConditionsPublicPage,
 } from "../pages/public/PublicLegalPages.js";
 import { RELEASE_FEATURES } from "../config/releaseFeatures.js";
 
@@ -79,6 +80,11 @@ function StandaloneRoutes(): JSX.Element {
 
       <Route exact path={ROUTES.PUBLIC.PRIVACY} component={PrivacyPublicPage} />
       <Route exact path={ROUTES.PUBLIC.TERMS} component={TermsPublicPage} />
+      <Route
+        exact
+        path={ROUTES.PUBLIC.USER_CONDITIONS}
+        component={UserConditionsPublicPage}
+      />
       <Route exact path={ROUTES.PUBLIC.SUPPORT} component={SupportPublicPage} />
       <Route exact path={ROUTES.PUBLIC.EULA} component={EulaPublicPage} />
       <Route
