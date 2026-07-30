@@ -2841,6 +2841,7 @@ export function ProfileSecurityPage(): JSX.Element {
   const cardStyle = {
     borderRadius: 22,
     border: "1px solid rgba(210,164,58,.35)",
+    color: "var(--rp-text-legacy)",
     boxShadow: "0 14px 34px rgba(65,34,20,.10)",
   } as CSSProperties;
 
