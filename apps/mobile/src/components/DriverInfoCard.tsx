@@ -69,7 +69,7 @@ export function DriverInfoCard({
 
       {/* Info */}
       <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ fontWeight: 700, fontSize: "0.95rem", color: "var(--ion-text-color)" }}>{name}</div>
+        <div style={{ fontWeight: 700, fontSize: "0.95rem", color: "var(--ion-color-dark)" }}>{name}</div>
         {rating != null && (
           <div style={{ display: "flex", alignItems: "center", gap: "6px", marginTop: "3px" }}>
             <StarRating value={rating} />
