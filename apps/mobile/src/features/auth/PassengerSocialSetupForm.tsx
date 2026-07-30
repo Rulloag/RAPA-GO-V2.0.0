@@ -132,7 +132,12 @@ const modalCardStyle: CSSProperties = {
 };
 
 const modalHeaderStyle: CSSProperties = {
-  padding: "18px 20px",
+  // paddingTop respeta la Safe Area (notch/Dynamic Island) sin perder el
+  // padding visual mínimo de 18px en dispositivos sin notch.
+  paddingTop: "max(18px, env(safe-area-inset-top))",
+  paddingRight: "20px",
+  paddingBottom: "18px",
+  paddingLeft: "20px",
   color: "#fff",
   background: "linear-gradient(135deg,#171717 0%,#5A241A 48%,#C89B3C 120%)",
   display: "flex",
