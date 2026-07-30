@@ -1,4 +1,4 @@
-import type { ChangeEvent, CSSProperties } from "react";
+import { useRef, type ChangeEvent, type CSSProperties } from "react";
 import {
   IonButton,
   IonCheckbox,
@@ -280,6 +280,7 @@ export function PassengerSocialSetupForm({
   onOpenUserConditions,
   onSubmit,
 }: PassengerSocialSetupFormProps): JSX.Element {
+  const residenceDocumentInputRef = useRef<HTMLInputElement | null>(null);
   const isResidentRapaNui = passengerCondition === "residente_rapa_nui";
   const emailReadOnly = onEmailChange === undefined;
   const resolvedSubmitLabel =
@@ -660,11 +661,25 @@ export function PassengerSocialSetupForm({
                 </p>
 
                 <input
+                  ref={residenceDocumentInputRef}
                   type="file"
                   accept="application/pdf,image/jpeg,image/png,image/webp"
+                  style={{ display: "none" }}
                   onChange={onResidenceDocumentChange}
-                  style={{ width: "100%", fontWeight: 850, color: "#111" }}
+                  disabled={loading}
                 />
+
+                <IonButton
+                  type="button"
+                  expand="block"
+                  fill="outline"
+                  color="warning"
+                  disabled={loading}
+                  onClick={() => residenceDocumentInputRef.current?.click()}
+                  style={{ "--border-radius": "14px", fontWeight: 950 } as CSSProperties}
+                >
+                  {residenceDocumentName ? "Cambiar acreditación" : "Adjuntar acreditación"}
+                </IonButton>
 
                 {residenceDocumentName && (
                   <IonText color="success">
