@@ -26,5 +26,8 @@ project(':capacitor-push-notifications').projectDir = new File('../../../node_mo
 include ':capacitor-splash-screen'
 project(':capacitor-splash-screen').projectDir = new File('../../../node_modules/@capacitor/splash-screen/android')
 
+include ':capawesome-capacitor-apple-sign-in'
+project(':capawesome-capacitor-apple-sign-in').projectDir = new File('../../../node_modules/@capawesome/capacitor-apple-sign-in/android')
+
 include ':sentry-capacitor'
 project(':sentry-capacitor').projectDir = new File('../../../node_modules/@sentry/capacitor/android')
