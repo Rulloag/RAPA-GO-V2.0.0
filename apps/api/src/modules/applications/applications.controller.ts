@@ -317,4 +317,71 @@ export const applicationsController = {
 
     sendOk(reply, result.application);
   },
+
+  async getApplicationContract(
+    request: FastifyRequest,
+    reply: FastifyReply,
+  ): Promise<void> {
+    const token = extractBearer(request);
+
+    if (!token) {
+      sendError(reply, {
+        code: "UNAUTHORIZED",
+        message: "Missing Bearer token.",
+        statusCode: 401,
+      });
+      return;
+    }
+
+    const { id } = request.params as { id: string };
+    const result = await service.getApplicationContract(token, id);
+
+    if (!result.ok) {
+      sendError(reply, {
+        code: result.code,
+        message: result.message,
+        statusCode: result.statusCode,
+      });
+      return;
+    }
+
+    reply
+      .header("Content-Type", result.contentType)
+      .header(
+        "Content-Disposition",
+        `attachment; filename="${result.fileName.replace(/"/g, "")}"`,
+      )
+      .header("Cache-Control", "private, no-store")
+      .send(result.buffer);
+  },
+
+  async resendApplicationContract(
+    request: FastifyRequest,
+    reply: FastifyReply,
+  ): Promise<void> {
+    const token = extractBearer(request);
+
+    if (!token) {
+      sendError(reply, {
+        code: "UNAUTHORIZED",
+        message: "Missing Bearer token.",
+        statusCode: 401,
+      });
+      return;
+    }
+
+    const { id } = request.params as { id: string };
+    const result = await service.resendApplicationContract(token, id);
+
+    if (!result.ok) {
+      sendError(reply, {
+        code: result.code,
+        message: result.message,
+        statusCode: result.statusCode,
+      });
+      return;
+    }
+
+    sendOk(reply, result);
+  },
 };

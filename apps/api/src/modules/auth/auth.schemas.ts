@@ -263,6 +263,12 @@ export const appleAuthRequestSchema = z.object({
     .trim()
     .regex(/^\+?[0-9]{8,15}$/, "El teléfono de Apple no es válido.")
     .optional(),
+  rut: z.string().trim().max(20).optional(),
+  passport: z.string().trim().max(30).optional(),
+  // Formato validado en preparePassengerSetup (no aquí): un .email() fallido
+  // a nivel de schema devolvería VALIDATION_ERROR, código que el cliente
+  // interpreta como "falta elegir rol" y lo devolvería a esa pantalla.
+  contactEmail: z.string().trim().max(254).optional(),
   passengerFareType: z
     .enum(["resident", "chilean", "foreigner"])
     .optional(),
@@ -281,3 +287,37 @@ export const appleAuthRequestSchema = z.object({
 export type AppleAuthRequestInput = z.infer<
   typeof appleAuthRequestSchema
 >;
+
+export const googleAuthRequestSchema = z
+  .object({
+    idToken: z.string().trim().min(100).max(16000),
+    phone: z
+      .string()
+      .trim()
+      .regex(/^\+?[0-9]{8,15}$/, "El teléfono de Google no es válido.")
+      .optional(),
+    rut: z.string().trim().max(20).optional(),
+    passport: z.string().trim().max(30).optional(),
+    passengerFareType: z
+      .enum(["resident", "chilean", "foreigner"])
+      .optional(),
+    legalAcceptances: z
+      .array(legalAcceptanceInputSchema)
+      .max(12)
+      .optional(),
+    residenceAccreditation: residenceAccreditationSchema.optional(),
+  })
+  .superRefine((value, context) => {
+    if (value.rut && value.passport) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["rut"],
+        message: "No debes enviar RUT y pasaporte al mismo tiempo.",
+      });
+    }
+  });
+
+export type GoogleAuthRequestInput = z.infer<
+  typeof googleAuthRequestSchema
+>;
+

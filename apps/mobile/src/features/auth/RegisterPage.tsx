@@ -1,4 +1,4 @@
-import { useRef, useState, type CSSProperties, type ChangeEvent, type FormEvent } from "react";
+import { useEffect, useRef, useState, type CSSProperties, type ChangeEvent, type FormEvent } from "react";
 import {
   IonButton,
   IonCheckbox,
@@ -35,7 +35,7 @@ import { useAuth } from "./useAuth.js";
 import { authService } from "./auth.service.js";
 import { sessionStorageService } from "./sessionStorage.service.js";
 import { ROUTES } from "../../navigation/routes.js";
-import { legalService } from "../../features/legal/legal.service.js";
+import { legalService, type LegalDocumentData } from "../../features/legal/legal.service.js";
 import { referralsService } from "../../features/referrals/referrals.service.js";
 import logoRapago from "../../theme/img/logo-rapago.jpeg";
 
@@ -640,12 +640,63 @@ export function RegisterPage(): JSX.Element {
   const [acceptTerms, setAcceptTerms] = useState(false);
   const [acceptPrivacy, setAcceptPrivacy] = useState(false);
   const [acceptUserConditions, setAcceptUserConditions] = useState(false);
+  const [registrationLegalDocuments, setRegistrationLegalDocuments] =
+    useState<LegalDocumentData[]>([]);
+  const [registrationLegalError, setRegistrationLegalError] = useState("");
 
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [fieldErrors, setFieldErrors] = useState<Record<RegisterField | string, string>>({});
   const [serverError, setServerError] = useState("");
+
+  useEffect(() => {
+    let active = true;
+
+    legalService
+      .getActive()
+      .then((items) => {
+        if (!active) return;
+
+        const requiredTypes = new Set([
+          "terms_and_conditions",
+          "user_conditions",
+          "privacy_policy",
+        ]);
+
+        const required = items.filter(
+          (item) =>
+            item.isActive &&
+            requiredTypes.has(item.type),
+        );
+
+        setRegistrationLegalDocuments(required);
+        setRegistrationLegalError(
+          required.length === 3
+            ? ""
+            : "No están disponibles todos los documentos legales obligatorios.",
+        );
+      })
+      .catch(() => {
+        if (!active) return;
+        setRegistrationLegalDocuments([]);
+        setRegistrationLegalError(
+          "No fue posible cargar las versiones legales vigentes.",
+        );
+      });
+
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  function registrationLegalVersion(type: string): string {
+    return (
+      registrationLegalDocuments.find(
+        (document) => document.type === type,
+      )?.version ?? "vigente"
+    );
+  }
 
   const passwordMismatch =
     confirmPassword.length > 0 && password.length > 0 && password !== confirmPassword;
@@ -654,6 +705,7 @@ export function RegisterPage(): JSX.Element {
     acceptTerms &&
     acceptPrivacy &&
     acceptUserConditions &&
+    registrationLegalDocuments.length === 3 &&
     passengerFareType !== "" &&
     (!passengerFareRequiresRut(passengerFareType) || validateRut(rut)) &&
     (!passengerFareRequiresPassport(passengerFareType) || validatePassportForRegister(passport)) &&
@@ -766,7 +818,10 @@ export function RegisterPage(): JSX.Element {
       "privacy_policy",
       "user_conditions",
     ] as const;
-    const documents = await legalService.getActive();
+    const documents =
+      registrationLegalDocuments.length === 3
+        ? registrationLegalDocuments
+        : await legalService.getActive();
 
     return requiredTypes.map((type) => {
       const document = documents.find(
@@ -1414,7 +1469,7 @@ export function RegisterPage(): JSX.Element {
             </p>
           )}
 
-         
+
 
           <IonItem className="rapago-auth-field" style={{ ...registerItemStyle, marginTop: "0.5rem" } as CSSProperties}>
             <IonLabel position="stacked" style={labelStyle}>Código de referido (opcional)</IonLabel>
@@ -1435,8 +1490,26 @@ export function RegisterPage(): JSX.Element {
             </IonText>
           )}
 
-          <IonList style={{ marginTop: "0.75rem", borderRadius: 18, overflow: "hidden", background: "transparent" }}>
-            <IonItem className="rapago-auth-field" style={{ ...registerItemStyle, borderRadius: 0, boxShadow: "none", borderLeft: 0, borderRight: 0, borderTop: 0 } as CSSProperties}>
+          <IonList
+            className="rapago-auth-legal-list"
+            style={{
+              marginTop: "0.75rem",
+              borderRadius: 20,
+              overflow: "hidden",
+              background: "transparent",
+            }}
+          >
+            <IonItem
+              className="rapago-auth-field rapago-auth-legal-item"
+              style={{
+                ...registerItemStyle,
+                borderRadius: 0,
+                boxShadow: "none",
+                borderLeft: 0,
+                borderRight: 0,
+                borderTop: 0,
+              } as CSSProperties}
+            >
               <IonCheckbox
                 checked={acceptTerms}
                 onIonChange={(event) => {
@@ -1446,15 +1519,88 @@ export function RegisterPage(): JSX.Element {
                 slot="start"
                 disabled={loading}
               />
-              <IonLabel style={{ whiteSpace: "normal", color: "var(--rp-text)", fontWeight: 750, lineHeight: 1.35 }}>
+              <IonLabel
+                style={{
+                  whiteSpace: "normal",
+                  color: "var(--rp-text)",
+                  fontWeight: 750,
+                  lineHeight: 1.4,
+                }}
+              >
                 He leído y acepto los{" "}
-                <a href="/legal/terms-and-conditions" target="_blank" rel="noopener noreferrer">
-                  Términos y Condiciones
+                <a
+                  href={ROUTES.PUBLIC.TERMS}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  Términos y Condiciones Generales de Rapa Go
                 </a>
+                , versión{" "}
+                {registrationLegalVersion(
+                  "terms_and_conditions",
+                )}
+                .
               </IonLabel>
             </IonItem>
 
-            <IonItem className="rapago-auth-field" style={{ ...registerItemStyle, borderRadius: 0, boxShadow: "none", borderLeft: 0, borderRight: 0, borderTop: 0 } as CSSProperties}>
+            <IonItem
+              className="rapago-auth-field rapago-auth-legal-item"
+              style={{
+                ...registerItemStyle,
+                borderRadius: 0,
+                boxShadow: "none",
+                borderLeft: 0,
+                borderRight: 0,
+                borderTop: 0,
+              } as CSSProperties}
+            >
+              <IonCheckbox
+                checked={acceptUserConditions}
+                onIonChange={(event) => {
+                  setAcceptUserConditions(
+                    event.detail.checked,
+                  );
+                  clearFieldError("terms");
+                }}
+                slot="start"
+                disabled={loading}
+              />
+              <IonLabel
+                style={{
+                  whiteSpace: "normal",
+                  color: "var(--rp-text)",
+                  fontWeight: 750,
+                  lineHeight: 1.4,
+                }}
+              >
+                He leído y acepto las{" "}
+                <a
+                  href={ROUTES.PUBLIC.USER_CONDITIONS}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  Condiciones de Usuarios
+                </a>
+                , versión{" "}
+                {registrationLegalVersion(
+                  "user_conditions",
+                )}
+                , como anexo subordinado a los Términos
+                Generales.
+              </IonLabel>
+            </IonItem>
+
+            <IonItem
+              className="rapago-auth-field rapago-auth-legal-item"
+              style={{
+                ...registerItemStyle,
+                borderRadius: 0,
+                boxShadow: "none",
+                borderLeft: 0,
+                borderRight: 0,
+                borderTop: 0,
+              } as CSSProperties}
+            >
               <IonCheckbox
                 checked={acceptPrivacy}
                 onIonChange={(event) => {
@@ -1464,32 +1610,50 @@ export function RegisterPage(): JSX.Element {
                 slot="start"
                 disabled={loading}
               />
-              <IonLabel style={{ whiteSpace: "normal", color: "var(--rp-text)", fontWeight: 750, lineHeight: 1.35 }}>
-                He leído y acepto la{" "}
-                <a href="/legal/privacy-policy" target="_blank" rel="noopener noreferrer">
-                  Política de Privacidad
-                </a>
-              </IonLabel>
-            </IonItem>
-
-            <IonItem className="rapago-auth-field" style={{ ...registerItemStyle, borderRadius: 0, boxShadow: "none", borderLeft: 0, borderRight: 0, borderTop: 0 } as CSSProperties}>
-              <IonCheckbox
-                checked={acceptUserConditions}
-                onIonChange={(event) => {
-                  setAcceptUserConditions(event.detail.checked);
-                  clearFieldError("terms");
+              <IonLabel
+                style={{
+                  whiteSpace: "normal",
+                  color: "var(--rp-text)",
+                  fontWeight: 750,
+                  lineHeight: 1.4,
                 }}
-                slot="start"
-                disabled={loading}
-              />
-              <IonLabel style={{ whiteSpace: "normal", color: "var(--rp-text)", fontWeight: 750, lineHeight: 1.35 }}>
-                Acepto las{" "}
-                <a href="/legal/user-conditions" target="_blank" rel="noopener noreferrer">
-                  Condiciones para Usuarios
-                </a>
+              >
+                Declaro haber leído la{" "}
+                <a
+                  href={ROUTES.PUBLIC.PRIVACY}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  Política de Privacidad
+                </a>{" "}
+                y conocer cómo Rapa Go trata mis datos
+                personales, geolocalización, pagos,
+                autenticación, soporte y eliminación de
+                cuenta.
               </IonLabel>
             </IonItem>
           </IonList>
+
+          <p className="rapago-auth-legal-evidence-note">
+            Al continuar, tus aceptaciones quedarán
+            registradas con la versión, fecha, hora y cuenta
+            asociada. Puedes consultar estos documentos en
+            cualquier momento desde tu perfil.
+          </p>
+
+          {registrationLegalError && (
+            <IonText color="danger">
+              <p
+                style={{
+                  margin: "8px 12px",
+                  fontSize: "0.82rem",
+                  fontWeight: 800,
+                }}
+              >
+                {registrationLegalError}
+              </p>
+            </IonText>
+          )}
 
           {fieldErrors.terms && (
             <IonText color="danger">
@@ -1505,7 +1669,7 @@ export function RegisterPage(): JSX.Element {
             disabled={!canSubmit}
             className="rapago-auth-btn-primary"
           >
-            {loading ? <IonSpinner name="crescent" /> : "Crear cuenta"}
+            {loading ? <IonSpinner name="crescent" /> : "Crear cuenta y continuar"}
           </IonButton>
 
           <IonButton

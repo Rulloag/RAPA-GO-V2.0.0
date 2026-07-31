@@ -1620,3 +1620,38 @@
 .rapago-request-page .rp-request-map-sheet-scroll .rp-request-confirm {
   margin: 14px 0 0;
 }
+
+/* RAPA GO V32 - RESERVAS Y EXPERIENCIAS IDA/VUELTA */
+.rapago-request-page .rp-request-panel {
+  border-radius: 24px;
+  border: 1px solid rgba(185, 133, 23, 0.28);
+  background:
+    radial-gradient(circle at 100% 0, rgba(248, 216, 121, 0.22), transparent 34%),
+    linear-gradient(180deg, #fffdf8 0%, #fff7e5 100%);
+  box-shadow: 0 18px 40px rgba(75, 52, 16, 0.14);
+}
+
+.rapago-request-page .rp-request-panel .rp-request-label {
+  color: #704b0e;
+  font-weight: 950;
+  letter-spacing: 0.06em;
+}
+
+.rapago-request-page .rp-request-panel ion-input,
+.rapago-request-page .rp-request-panel ion-note {
+  color: #241a0b;
+}
+
+.rapago-request-page .rp-request-panel ion-item {
+  --background: #ffffff;
+  --color: #111827;
+  --placeholder-color: #6b7280;
+  --placeholder-opacity: 1;
+}
+
+@media (max-width: 560px) {
+  .rapago-request-page .rp-request-panel {
+    border-radius: 20px;
+    padding: 14px;
+  }
+}

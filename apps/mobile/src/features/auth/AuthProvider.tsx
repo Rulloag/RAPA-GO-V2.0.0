@@ -6,8 +6,11 @@ import {
   type ReactNode,
 } from "react";
 import { useHistory } from "react-router-dom";
+import { Capacitor } from "@capacitor/core";
 import { authService } from "./auth.service.js";
 import { sessionStorageService } from "./sessionStorage.service.js";
+import { GoogleNativeAuth } from "./googleNative.js";
+import { disableGoogleAutoSelect } from "./googleIdentityServices.js";
 import { ROUTES } from "../../navigation/routes.js";
 import { clientStoragePolicy } from "../../services/storage/clientStoragePolicy.js";
 import type {
@@ -18,6 +21,10 @@ import type {
   LoginRequest,
   RegisterRequest,
   AppleSignInRequest,
+  AppleWebAuthResponse,
+  AppleWebCompleteRequest,
+  GoogleAuthResponse,
+  GoogleSignInRequest,
   AuthResponse,
 } from "./auth.types.js";
 
@@ -227,6 +234,30 @@ export function AuthProvider({ children }: AuthProviderProps): JSX.Element {
     [],
   );
 
+
+  const signInWithGoogle = useCallback(
+    async (payload: GoogleSignInRequest): Promise<GoogleAuthResponse> => {
+      setStatus("loading");
+      clientStoragePolicy.prepareClientStorageForAuthentication();
+      const response = await authService.signInWithGoogle(payload);
+
+      if (response.ok) {
+        await sessionStorageService.saveSession(
+          response.session,
+          response.refreshToken,
+        );
+        setSession(response.session);
+        setUser(response.session.user);
+        setStatus("authenticated");
+      } else {
+        setStatus("unauthenticated");
+      }
+
+      return response;
+    },
+    [],
+  );
+
   const signInWithApple = useCallback(
     async (payload: AppleSignInRequest): Promise<AuthResponse> => {
       setStatus("loading");
@@ -235,6 +266,31 @@ export function AuthProvider({ children }: AuthProviderProps): JSX.Element {
 
       if (response.ok) {
         await sessionStorageService.saveSession(response.session, response.refreshToken);
+        setSession(response.session);
+        setUser(response.session.user);
+        setStatus("authenticated");
+      } else {
+        setStatus("unauthenticated");
+      }
+
+      return response;
+    },
+    [],
+  );
+
+  const signInWithAppleWeb = useCallback(
+    async (
+      payload: AppleWebCompleteRequest,
+    ): Promise<AppleWebAuthResponse> => {
+      setStatus("loading");
+      clientStoragePolicy.prepareClientStorageForAuthentication();
+      const response = await authService.signInWithAppleWeb(payload);
+
+      if (response.ok) {
+        await sessionStorageService.saveSession(
+          response.session,
+          response.refreshToken,
+        );
         setSession(response.session);
         setUser(response.session.user);
         setStatus("authenticated");
@@ -276,6 +332,17 @@ export function AuthProvider({ children }: AuthProviderProps): JSX.Element {
       ok = false;
     }
 
+    try {
+      if (Capacitor.isNativePlatform()) {
+        await GoogleNativeAuth.signOut();
+      } else {
+        disableGoogleAutoSelect();
+      }
+    } catch {
+      // El cierre de la sesión propia ya se completó. Esta limpieza solo
+      // evita que Google priorice la cuenta anterior en el próximo intento.
+    }
+
     /**
      * Protocolo de sesión: notifica el resultado del cierre para que la UI
      * muestre el mensaje correspondiente (AuthFeedbackToast).
@@ -289,7 +356,18 @@ export function AuthProvider({ children }: AuthProviderProps): JSX.Element {
 
   return (
     <AuthContext.Provider
-      value={{ status, user, session, login, register, signInWithApple, logout, refreshSession }}
+      value={{
+        status,
+        user,
+        session,
+        login,
+        register,
+        signInWithApple,
+        signInWithGoogle,
+        signInWithAppleWeb,
+        logout,
+        refreshSession,
+      }}
     >
       {children}
     </AuthContext.Provider>

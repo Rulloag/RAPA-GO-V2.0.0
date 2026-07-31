@@ -21,6 +21,18 @@ export interface ApplicationData {
   idFrontUrl: string | null; idBackUrl: string | null;
   licenseFrontUrl: string | null; licenseBackUrl: string | null;
   certificateUrl: string | null; profilePhotoUrl: string | null;
+  driverContractDocumentId: string | null;
+  driverContractVersion: string | null;
+  driverContractAcceptedAt: string | null;
+  driverContractAcceptance: Record<string, unknown> | null;
+  restWindowStart: string | null;
+  restWindowEnd: string | null;
+  documentReviewStatus: string;
+  trainingStatus: string;
+  reviewChecklist: Record<string, boolean>;
+  contractDeliveryStatus: string;
+  contractDeliveredAt: string | null;
+  contractDeliveryError: string | null;
   reviewedBy: string | null; reviewedAt: string | null;
   rejectionReason: string | null; notes: string | null;
   createdAt: string; updatedAt: string;
@@ -216,9 +228,88 @@ export const applicationsService = {
     return result.data.data;
   },
 
-  async reviewApplication(token: string, id: string, input: { status: string; rejectionReason?: string; notes?: string }): Promise<ApplicationData> {
+  async reviewApplication(
+    token: string,
+    id: string,
+    input: {
+      status: string;
+      rejectionReason?: string;
+      notes?: string;
+      documentReviewStatus?: "pending" | "approved" | "needs_information" | "rejected";
+      trainingStatus?: "pending" | "approved" | "rejected";
+      reviewChecklist?: Record<string, boolean>;
+    },
+  ): Promise<ApplicationData> {
     const result = await apiClient.patch<{ data: ApplicationData }>(`/admin/applications/${id}/review`, input, { token });
     if (!result.ok) throw new Error((result as { message?: string }).message ?? "Error");
     return result.data.data;
   },
+  async downloadContract(
+    token: string,
+    applicationId: string,
+  ): Promise<void> {
+    const response = await fetch(
+      buildApiUrl(
+        `/applications/${encodeURIComponent(applicationId)}/contract`,
+      ),
+      {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      },
+    );
+
+    if (!response.ok) {
+      let message = "No se pudo descargar el contrato.";
+
+      try {
+        const body = await response.json() as { message?: string };
+        message = body.message ?? message;
+      } catch {
+        // Respuesta sin JSON.
+      }
+
+      throw new Error(message);
+    }
+
+    const blob = await response.blob();
+    const url = URL.createObjectURL(blob);
+    const disposition = response.headers.get("content-disposition") ?? "";
+    const fileNameMatch = /filename="?([^";]+)"?/i.exec(disposition);
+    const fileName =
+      fileNameMatch?.[1] ??
+      `Contrato-Rapa-Go-${applicationId}.pdf`;
+    const anchor = document.createElement("a");
+
+    anchor.href = url;
+    anchor.download = fileName;
+    anchor.rel = "noopener";
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    URL.revokeObjectURL(url);
+  },
+
+  async resendContract(
+    token: string,
+    applicationId: string,
+  ): Promise<{ status: string; deliveredAt: string | null }> {
+    const result = await apiClient.post<{
+      data: { status: string; deliveredAt: string | null };
+    }>(
+      `/admin/applications/${applicationId}/contract/resend`,
+      {},
+      { token },
+    );
+
+    if (!result.ok) {
+      throw new Error(
+        (result as { message?: string }).message ??
+          "No se pudo reenviar el contrato.",
+      );
+    }
+
+    return result.data.data;
+  },
+
 };

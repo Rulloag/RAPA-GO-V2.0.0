@@ -14,6 +14,7 @@ import {
   facebookResidentPrecheckSchema,
   facebookResidentStatusSchema,
   forgotPasswordRequestSchema,
+  googleAuthRequestSchema,
   loginRequestSchema,
   registerRequestSchema,
   resetPasswordRequestSchema,
@@ -32,14 +33,18 @@ import type {
   FacebookLoginExchangeInput,
   FacebookResidentPrecheckInput,
   FacebookResidentStatusInput,
+  GoogleAuthRequestInput,
 } from "./auth.schemas.js";
 import { sendError } from "../../shared/http/apiResponse.js";
 import { PasswordResetService } from "./passwordReset.service.js";
 import { AppleAuthService } from "./appleAuth.service.js";
+import { GoogleAuthService } from "./googleAuth.service.js";
+import { getGoogleAuthConfig } from "./googleAuth.config.js";
 
 const authService = new AuthService();
 const passwordResetService = new PasswordResetService();
 const appleAuthService = new AppleAuthService();
+const googleAuthService = new GoogleAuthService();
 
 const FACEBOOK_STATE_COOKIE = "rapago_fb_oauth_state";
 const FACEBOOK_STATE_TTL_SECONDS = 15 * 60;
@@ -500,13 +505,75 @@ export const authController = {
 
     const result = await appleAuthService.signIn(parsed.data, {
       ipAddress: request.ip,
+      requestId: String(request.id),
       ...(userAgent ? { userAgent } : {}),
+    });
+
+    // Diagnóstico seguro y temporal: código/estado final por request.id, sin
+    // tokens ni PII, para correlacionar con los logs [Apple][...] de
+    // appleAuth.service.ts durante la investigación en curso.
+    console.log(`[Apple][${request.id}] appleLogin:result`, {
+      ok: result.ok,
+      code: result.ok ? "SUCCESS" : result.code,
+      statusCode: result.ok ? 200 : result.statusCode,
     });
 
     reply
       .header("Cache-Control", "no-store")
       .header("Pragma", "no-cache")
       .status(result.ok ? 200 : (result.statusCode ?? 401))
+      .send(result);
+  },
+
+
+  async googleStatus(
+    _request: FastifyRequest,
+    reply: FastifyReply,
+  ): Promise<void> {
+    const config = getGoogleAuthConfig();
+
+    reply
+      .header("Cache-Control", "no-store")
+      .header("Pragma", "no-cache")
+      .status(200)
+      .send({
+        ok: true,
+        configured: true,
+        allowedClientIds: config.allowedClientIds,
+      });
+  },
+
+  async googleLogin(
+    request: FastifyRequest<{ Body: GoogleAuthRequestInput }>,
+    reply: FastifyReply,
+  ): Promise<void> {
+    const parsed = googleAuthRequestSchema.safeParse(request.body);
+
+    if (!parsed.success) {
+      sendError(reply, {
+        code: "VALIDATION_ERROR",
+        message:
+          parsed.error.issues[0]?.message ??
+          "Los datos de Google no son válidos.",
+        statusCode: 400,
+      });
+      return;
+    }
+
+    const userAgentHeader = request.headers["user-agent"];
+    const userAgent = Array.isArray(userAgentHeader)
+      ? userAgentHeader.join(" ")
+      : userAgentHeader;
+    const result = await googleAuthService.signIn(parsed.data, {
+      ipAddress: request.ip,
+      requestId: String(request.id),
+      ...(userAgent ? { userAgent } : {}),
+    });
+
+    reply
+      .header("Cache-Control", "no-store")
+      .header("Pragma", "no-cache")
+      .status(result.ok ? 200 : result.statusCode)
       .send(result);
   },
 

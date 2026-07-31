@@ -85,6 +85,11 @@ export async function applicationsRoutes(
   );
 
   fastify.get(
+    "/applications/:id/contract",
+    applicationsController.getApplicationContract,
+  );
+
+  fastify.get(
     "/admin/applications",
     applicationsController.listApplications,
   );
@@ -97,5 +102,10 @@ export async function applicationsRoutes(
   fastify.patch(
     "/admin/applications/:id/review",
     applicationsController.reviewApplication,
+  );
+
+  fastify.post(
+    "/admin/applications/:id/contract/resend",
+    applicationsController.resendApplicationContract,
   );
 }

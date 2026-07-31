@@ -61,18 +61,46 @@ export class LegalRepository {
   }
 
   async createAcceptance(data: {
-    userId: string; legalDocumentId: string; versionAccepted: string;
-    ipAddress?: string; userAgent?: string;
+    userId: string;
+    legalDocumentId: string;
+    versionAccepted: string;
+    documentType?: string;
+    documentTitle?: string;
+    documentHash?: string;
+    authenticationMethod?: string;
+    acceptanceStatus?: string;
+    ipAddress?: string;
+    userAgent?: string;
   }): Promise<UserAcceptance> {
     const rows = await db.insert(userAcceptances).values({
-      userId: data.userId, legalDocumentId: data.legalDocumentId,
+      userId: data.userId,
+      legalDocumentId: data.legalDocumentId,
       versionAccepted: data.versionAccepted,
+      ...(data.documentType ? { documentType: data.documentType } : {}),
+      ...(data.documentTitle ? { documentTitle: data.documentTitle } : {}),
+      ...(data.documentHash ? { documentHash: data.documentHash } : {}),
+      ...(data.authenticationMethod
+        ? { authenticationMethod: data.authenticationMethod }
+        : {}),
+      ...(data.acceptanceStatus
+        ? { acceptanceStatus: data.acceptanceStatus }
+        : {}),
       ...(data.ipAddress ? { ipAddress: data.ipAddress } : {}),
       ...(data.userAgent ? { userAgent: data.userAgent } : {}),
     })
     .onConflictDoUpdate({
       target: [userAcceptances.userId, userAcceptances.legalDocumentId],
-      set: { versionAccepted: data.versionAccepted, acceptedAt: new Date() },
+      set: {
+        versionAccepted: data.versionAccepted,
+        documentType: data.documentType ?? null,
+        documentTitle: data.documentTitle ?? null,
+        documentHash: data.documentHash ?? null,
+        authenticationMethod: data.authenticationMethod ?? null,
+        acceptanceStatus: data.acceptanceStatus ?? "accepted",
+        ipAddress: data.ipAddress ?? null,
+        userAgent: data.userAgent ?? null,
+        acceptedAt: new Date(),
+      },
     })
     .returning();
     if (!rows[0]) throw new Error("Insert returned no rows.");

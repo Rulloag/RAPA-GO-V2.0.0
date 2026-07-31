@@ -11,3 +11,7 @@ export { AppleAccountSetupModal } from "./AppleAccountSetupModal.js";
 export { useAppleSignIn } from "./useAppleSignIn.js";
 export type { AppleSignInOutcome } from "./useAppleSignIn.js";
 export { AppleLinkButton } from "./AppleLinkButton.js";
+export { GoogleSignInButton } from "./GoogleSignInButton.js";
+export { GoogleAccountSetupModal } from "./GoogleAccountSetupModal.js";
+export { useGoogleSignIn } from "./useGoogleSignIn.js";
+export type { GoogleSignInOutcome } from "./useGoogleSignIn.js";

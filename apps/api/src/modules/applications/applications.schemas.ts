@@ -1,6 +1,10 @@
 import { z } from "zod";
 
 const optionalPublicUrl = z.string().url().optional();
+const hourMinuteSchema = z.string().regex(
+  /^(?:[01]\\d|2[0-3]):[0-5]\\d$/,
+  "La hora debe usar el formato HH:MM.",
+);
 
 const personalFields = {
   firstName: z.string().trim().min(1),
@@ -16,6 +20,23 @@ const personalFields = {
   idBackUrl: optionalPublicUrl,
   profilePhotoUrl: optionalPublicUrl,
 };
+
+export const driverContractAcceptanceSchema = z.object({
+  legalDocumentId: z.string().uuid(),
+  version: z.string().trim().min(1).max(32),
+  acceptedContract: z.literal(true),
+  acceptedDocumentsTruth: z.literal(true),
+  acceptedIndependentNature: z.literal(true),
+  acceptedPrivacyGeolocation: z.literal(true),
+  acceptedRestWindow: z.literal(true),
+  acceptedPersonalService: z.literal(true),
+  restWindowStart: hourMinuteSchema,
+  restWindowEnd: hourMinuteSchema,
+  clientAcceptedAt: z.string().datetime().optional(),
+}).strict();
+
+export type DriverContractAcceptanceInput =
+  z.infer<typeof driverContractAcceptanceSchema>;
 
 export const applicationVehicleSchema = z.object({
   id: z.string().trim().max(120).optional(),
@@ -50,7 +71,8 @@ export const createDriverApplicationSchema = z.object({
   licenseBackUrl: optionalPublicUrl,
   vehiclePhotoUrl: optionalPublicUrl,
   vehicles: z.array(applicationVehicleSchema).max(8).optional(),
-});
+  driverContractAcceptance: driverContractAcceptanceSchema,
+}).strict();
 
 export const createGuideApplicationSchema = z.object({
   type: z.literal("guide"),
@@ -80,10 +102,26 @@ export const createApplicationSchema = z.discriminatedUnion("type", [
 
 export type CreateApplicationInput = z.infer<typeof createApplicationSchema>;
 
+export const driverReviewChecklistSchema = z.object({
+  identity: z.boolean().optional(),
+  driverLicense: z.boolean().optional(),
+  profilePhoto: z.boolean().optional(),
+  vehicle: z.boolean().optional(),
+  residence: z.boolean().optional(),
+  taxDomicile: z.boolean().optional(),
+  restWindow: z.boolean().optional(),
+  insurance: z.boolean().optional(),
+}).strict();
+
 export const reviewApplicationSchema = z.object({
   status: z.enum(["pending", "under_review", "approved", "rejected", "on_hold"]),
   rejectionReason: z.string().optional(),
   notes: z.string().optional(),
+  documentReviewStatus: z
+    .enum(["pending", "approved", "needs_information", "rejected"])
+    .optional(),
+  trainingStatus: z.enum(["pending", "approved", "rejected"]).optional(),
+  reviewChecklist: driverReviewChecklistSchema.optional(),
 });
 
 export type ReviewApplicationInput = z.infer<typeof reviewApplicationSchema>;
@@ -108,5 +146,6 @@ export const uploadApplicationFileSchema = z.object({
   ]),
 });
 
-export type UploadApplicationFileInput = z.infer<typeof uploadApplicationFileSchema>;
+export type UploadApplicationFileInput =
+  z.infer<typeof uploadApplicationFileSchema>;
 export type ApplicationFileKind = typeof APPLICATION_FILE_KINDS[number];

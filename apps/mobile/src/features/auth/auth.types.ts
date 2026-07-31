@@ -46,10 +46,58 @@ export interface AppleSignInRequest {
   /** Required only for creation of a new account. */
   role?: UserRole;
   phone?: string;
+  /**
+   * Contact email typed by the user, only when Apple's identity token did
+   * not include a verified email. Never used to identify the account — the
+   * Apple subject remains the sole identity key.
+   */
+  contactEmail?: string;
+  /** Required for chilean and resident passenger fare types. */
+  rut?: string;
+  /** Required for foreigner passenger fare type. */
+  passport?: string;
   passengerFareType?: ApplePassengerFareType;
   legalAcceptances?: AppleLegalAcceptance[];
   residenceAccreditation?: ResidenceAccreditationInput;
 }
+
+export interface AppleWebCompleteRequest {
+  flowToken: string;
+  phone?: string;
+  contactEmail?: string;
+  rut?: string;
+  passport?: string;
+  passengerFareType?: ApplePassengerFareType;
+  legalAcceptances?: AppleLegalAcceptance[];
+  residenceAccreditation?: ResidenceAccreditationInput;
+}
+
+export type AppleWebAuthResponse =
+  | Extract<AuthResponse, { ok: true }>
+  | (Extract<AuthResponse, { ok: false }> & {
+      displayEmail?: string;
+    });
+
+
+
+export type GooglePassengerFareType = ApplePassengerFareType;
+
+export interface GoogleSignInRequest {
+  /** Google ID token; the backend verifies signature, issuer and audience. */
+  idToken: string;
+  phone?: string;
+  rut?: string;
+  passport?: string;
+  passengerFareType?: GooglePassengerFareType;
+  legalAcceptances?: AppleLegalAcceptance[];
+  residenceAccreditation?: ResidenceAccreditationInput;
+}
+
+export type GoogleAuthResponse =
+  | Extract<AuthResponse, { ok: true }>
+  | (Extract<AuthResponse, { ok: false }> & {
+      displayEmail?: string;
+    });
 
 /** Shape exposed by AuthContext. */
 export interface AuthContextValue {
@@ -60,6 +108,10 @@ export interface AuthContextValue {
   login: (payload: LoginRequest) => Promise<AuthResponse>;
   register: (payload: RegisterRequest) => Promise<AuthResponse>;
   signInWithApple: (payload: AppleSignInRequest) => Promise<AuthResponse>;
+  signInWithGoogle: (payload: GoogleSignInRequest) => Promise<GoogleAuthResponse>;
+  signInWithAppleWeb: (
+    payload: AppleWebCompleteRequest,
+  ) => Promise<AppleWebAuthResponse>;
   refreshSession: () => Promise<void>;
   logout: () => Promise<void>;
 }

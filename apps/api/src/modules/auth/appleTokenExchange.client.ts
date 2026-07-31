@@ -25,6 +25,7 @@ export class AppleTokenExchangeClient {
   async exchange(
     authorizationCode: string,
     clientId: string,
+    redirectUri?: string,
   ): Promise<AppleTokenExchangeResult> {
     const clientSecret = await buildAppleClientSecret(clientId);
 
@@ -34,6 +35,10 @@ export class AppleTokenExchangeClient {
       client_id: clientId,
       client_secret: clientSecret,
     });
+
+    if (redirectUri) {
+      body.set("redirect_uri", redirectUri);
+    }
 
     const timeoutMs = resolveTimeoutMs("APPLE_TOKEN_TIMEOUT_MS", APPLE_TOKEN_DEFAULT_TIMEOUT_MS);
 
@@ -66,6 +71,14 @@ export class AppleTokenExchangeClient {
     }
 
     if (!response.ok) {
+      // Diagnóstico seguro: nunca imprime el authorizationCode ni el
+      // client_secret. Un 400/invalid_grant aquí casi siempre significa que
+      // el authorizationCode ya expiró (Apple los invalida ~5 minutos
+      // después de emitidos) porque el usuario tardó en completar el
+      // formulario de pasajero antes de confirmar.
+      console.error("[Apple] Apple rechazó el intercambio de token.", {
+        httpStatus: response.status,
+      });
       throw new AppError({
         code: "AUTH_APPLE_TOKEN_EXCHANGE_FAILED",
         message: "Apple rejected the authorization code.",

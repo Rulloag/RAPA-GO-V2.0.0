@@ -6630,7 +6630,9 @@ export function AdminDriversPage(): JSX.Element {
     if (drivers.length === 0) return;
 
     const runAutoReassign = () => {
-      const localScheduled = readLocalAdminScheduledRides();
+      const localScheduled = includeGeneratedRoundTripReturnLegs(
+        readLocalAdminScheduledRides(),
+      );
       const assignedAutomatically: AdminRideData[] = [];
       const reassigned: AdminRideData[] = [];
 
@@ -8764,7 +8766,33 @@ function isAdminReturnOnlyPromotionRide(ride: AdminRideData): boolean {
     notes.includes("promoción con regreso agendado") ||
     notes.includes("promocion con regreso agendado") ||
     notes.includes("promoción regreso") ||
-    notes.includes("promocion regreso")
+    notes.includes("promocion regreso") ||
+    notes.includes("experiencia ida y vuelta") ||
+    notes.includes("round_trip_experience") ||
+    notes.includes("experiencia reservada")
+  );
+}
+
+function isAdminRoundTripExperienceRide(ride: AdminRideData): boolean {
+  if (isAdminReturnReservationCard(ride)) return false;
+
+  const notes = String(ride.notes ?? "").toLowerCase();
+  const metaText = getRideLowerTextField(ride, [
+    "bookingPurpose",
+    "serviceType",
+    "reservationStatus",
+    "reservationKind",
+    "tripType",
+    "tripFareMode",
+  ]);
+
+  return (
+    getRideUnknownField(ride, "roundTripExperienceBooking") === true ||
+    getRideUnknownField(ride, "reservationKind") === "round_trip_experience" ||
+    metaText.includes("round_trip_experience") ||
+    notes.includes("rapago_reservation_kind: round_trip_experience") ||
+    notes.includes("experiencia con reserva ida y vuelta") ||
+    notes.includes("experiencia ida y vuelta programada")
   );
 }
 
@@ -8804,7 +8832,12 @@ function getAdminReturnActivationAt(ride: AdminRideData, returnScheduledAt: stri
 }
 
 function buildAdminReturnReservationFromRide(ride: AdminRideData): AdminRideData | null {
-  if (!isAdminReturnOnlyPromotionRide(ride)) return null;
+  if (isAdminReturnReservationCard(ride)) return null;
+
+  const isLegacyReturnOnly = isAdminReturnOnlyPromotionRide(ride);
+  const isRoundTripExperience = isAdminRoundTripExperienceRide(ride);
+
+  if (!isLegacyReturnOnly && !isRoundTripExperience) return null;
 
   const schedule = getAdminRideScheduleInfo(ride);
   const returnAt = schedule.returnScheduledAt;
@@ -8861,7 +8894,7 @@ function buildAdminReturnReservationFromRide(ride: AdminRideData): AdminRideData
     passengerNotification:
       getRideUnknownField(ride, "returnPassengerNotification") ??
       "Tu regreso está agendado. RAPA GO asignará un conductor para la vuelta.",
-    notes: `${String(ride.notes ?? "").trim()} Gestión admin: regreso promocional. El admin debe asignar conductor para el regreso ${originText} → ${destinationText}.`.trim(),
+    notes: `${String(ride.notes ?? "").trim()} Gestión admin: regreso de experiencia reservada. El admin debe asignar conductor para el regreso ${originText} → ${destinationText}.`.trim(),
     localAdminOverride: true,
     reservationRequiresCard: true,
     paymentRequiredProvider: "mercadopago",
@@ -8896,6 +8929,17 @@ function buildAdminReturnReservationsFromRides(rides: AdminRideData[]): AdminRid
   });
 
   return result;
+}
+
+function includeGeneratedRoundTripReturnLegs(rides: AdminRideData[]): AdminRideData[] {
+  const existingIds = new Set(
+    rides.map((ride) => String(ride.id ?? "").trim()).filter(Boolean),
+  );
+  const generatedReturns = buildAdminReturnReservationsFromRides(rides).filter(
+    (ride) => !existingIds.has(String(ride.id ?? "").trim()),
+  );
+
+  return mergeAdminRides([...rides, ...generatedReturns]);
 }
 
 function hasAdminAssignedDriver(ride: AdminRideData): boolean {
@@ -9631,6 +9675,10 @@ function upsertAdminReservationAutoAssignLog(input: Omit<AdminReservationAutoAss
 function adminRideCanBeAutoAssignedFromReservation(ride: AdminRideData): boolean {
   const schedule = getAdminRideScheduleInfo(ride);
   if (!schedule.isScheduled) return false;
+
+  // La asignación automática se ejecuta únicamente al entrar en la ventana
+  // operativa de 30 minutos. El administrador conserva la asignación manual.
+  if (!schedule.isActiveWindow) return false;
   if (hasAdminAssignedDriver(ride)) return false;
 
   const effectiveStatus = getEffectiveAdminRideStatus(ride);
@@ -11128,7 +11176,7 @@ const ADMIN_RIDE_EXCEL_HEADERS = [
   "Email conductor",
   "Vehículo",
   "Patente",
-  "Oferta destacada",
+  "Experiencia reservada",
   "Tarifa CLP",
   "Método de pago",
   "Fecha aceptación",
@@ -11182,7 +11230,7 @@ function getAdminRidePromotionLabel(ride: AdminRideData): string | null {
   if (direct) return direct;
 
   const notes = String(ride.notes ?? "");
-  const match = notes.match(/(?:Promoción con regreso seleccionado|Promoción asociada|Oferta seleccionada):\s*([^\n.]+)/i);
+  const match = notes.match(/(?:Promoción con regreso seleccionado|Promoción asociada|Oferta seleccionada|Experiencia con reserva seleccionada|Experiencia reservada):\s*([^\n.]+)/i);
   return match?.[1] ? sanitizeAdminExcelText(match[1], 180) : null;
 }
 
@@ -11369,7 +11417,7 @@ function getAdminRideExcelRows(
         "Email conductor": driverEmail,
         Vehículo: getAdminRideVehicleSummary(ride),
         Patente: vehiclePlate,
-        "Oferta destacada": sanitizeAdminExcelText(getAdminRidePromotionLabel(ride), 180),
+        "Experiencia reservada": sanitizeAdminExcelText(getAdminRidePromotionLabel(ride), 180),
         "Tarifa CLP": Number.isFinite(fare) && fare > 0 ? String(Math.round(fare)) : "",
         "Método de pago": getAdminRideExcelPaymentLabel(ride),
         "Fecha aceptación": formatAdminExcelDate(ride.acceptedAt ?? record.driverAcceptedAt),
@@ -11794,7 +11842,9 @@ export function AdminTripsPage(): JSX.Element {
 
       try {
         const drivers = await adminService.listActiveDrivers(accessToken);
-        const localScheduled = readLocalAdminScheduledRides();
+        const localScheduled = includeGeneratedRoundTripReturnLegs(
+          readLocalAdminScheduledRides(),
+        );
         const processed: AdminRideData[] = [];
 
         for (const ride of localScheduled) {
@@ -12360,7 +12410,7 @@ export function AdminTripsPage(): JSX.Element {
                           color: "#111",
                         }}
                       >
-                        <strong>{scheduleInfo.isReturnOnlyPromotion ? "🔁 Regreso promocional" : "📅 Reserva agendada"}</strong>
+                        <strong>{scheduleInfo.isReturnOnlyPromotion ? "🔁 Regreso de experiencia" : "📅 Reserva agendada"}</strong>
                         {scheduleInfo.isReturnOnlyPromotion ? (
                           <div>Regreso: {formatAdminScheduleDate(scheduleInfo.returnScheduledAt ?? scheduleInfo.displayScheduledAt)}</div>
                         ) : (
@@ -12374,7 +12424,7 @@ export function AdminTripsPage(): JSX.Element {
                             ? "habilitada para buscar conductores disponibles."
                             : scheduleInfo.isReturnOnlyPromotion
                               ? "el admin debe asignar conductor para el regreso."
-                              : "se buscarán conductores 10 min antes."}
+                              : `se buscarán conductores ${SCHEDULE_ACTIVATION_MINUTES_ADMIN} min antes.`}
                         </div>
                       </div>
                     )}
@@ -12553,7 +12603,7 @@ export function AdminTripsPage(): JSX.Element {
                           fontWeight: 850,
                         }}
                       >
-                        <strong>🎁 Oferta destacada aplicada</strong>
+                        <strong>🗺️ Experiencia con reserva</strong>
                         <div style={{ marginTop: 4 }}>{adminPromotionLabel}</div>
                       </div>
                     )}

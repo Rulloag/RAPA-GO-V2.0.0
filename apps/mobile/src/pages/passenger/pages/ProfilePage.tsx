@@ -57,6 +57,7 @@ import {
 import { useRapagoSectionTheme } from "../../../theme/rapagoTheme.js";
 import { ModulePlaceholderPage } from "../../../components/ModulePlaceholderPage";
 import { AccountDeletionCard } from "../../../components/accountDeletion/AccountDeletionCard.js";
+import { LegalAndHelpCard } from "../../../components/legal/LegalAndHelpCard.js";
 import { ROUTE_METADATA } from "../../../navigation/routeConfig";
 import { ROUTES } from "../../../navigation/routes";
 import { authService, useAuth } from "../../../features/auth";
@@ -2200,6 +2201,15 @@ export function ProfileIndexPage(): JSX.Element {
               </div>
             </section>
 
+            <div className="rapago-profile-section-label">
+              {language === "en" ? "Help and legal" : "Ayuda y legal"}
+            </div>
+
+            <LegalAndHelpCard
+              token={session?.accessToken ?? null}
+              language={language}
+            />
+
             {/* ── Zona de cuenta ────────────────────────────────────────── */}
             {/* Acciones irreversibles agrupadas al final, lejos del uso diario. */}
             <div className="rapago-profile-section-label">
@@ -2831,6 +2841,7 @@ export function ProfileSecurityPage(): JSX.Element {
   const cardStyle = {
     borderRadius: 22,
     border: "1px solid rgba(210,164,58,.35)",
+    color: "var(--rp-text-legacy)",
     boxShadow: "0 14px 34px rgba(65,34,20,.10)",
   } as CSSProperties;
 

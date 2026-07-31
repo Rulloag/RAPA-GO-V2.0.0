@@ -1,17 +1,13 @@
-import { useState, type ChangeEvent, type FormEvent, type CSSProperties } from "react";
+import { useEffect, useRef, useState, type ChangeEvent, type FormEvent, type CSSProperties } from "react";
 import {
   IonButton,
-  IonCheckbox,
   IonContent,
   IonIcon,
   IonInput,
   IonItem,
   IonLabel,
-  IonModal,
   IonNote,
   IonPage,
-  IonSelect,
-  IonSelectOption,
   IonSpinner,
   IonText,
 } from "@ionic/react";
@@ -27,8 +23,23 @@ import logoRapago from "../../theme/img/logo-rapago.jpeg";
 import { AppleAccountSetupModal } from "./AppleAccountSetupModal.js";
 import { AppleRoleSelectionModal } from "./AppleRoleSelectionModal.js";
 import { AppleSignInButton } from "./AppleSignInButton.js";
+import { GoogleAccountSetupModal } from "./GoogleAccountSetupModal.js";
+import { GoogleSignInButton } from "./GoogleSignInButton.js";
+import { useGoogleSignIn, type GoogleSignInOutcome } from "./useGoogleSignIn.js";
 import { useAppleSignIn, type AppleSignInOutcome } from "./useAppleSignIn.js";
 import type { PublicRole } from "./roles.js";
+import {
+  PassengerSocialSetupForm,
+  formatRut,
+  getPassengerFareType,
+  isValidPassportForAuth,
+  isValidRut,
+  normalizePassportForAuth,
+  requiresPassportForPassengerCondition,
+  requiresRutForPassengerCondition,
+  type PassengerCondition,
+  type PassengerFareType,
+} from "./PassengerSocialSetupForm.js";
 
 const ROLE_HOME: Record<UserRole, string> = {
   passenger: ROUTES.PASSENGER.HOME,
@@ -62,6 +73,8 @@ const RAPAGO_FACEBOOK_REQUIRED_LEGAL_TYPES = [
 
 type FacebookRequiredLegalType =
   (typeof RAPAGO_FACEBOOK_REQUIRED_LEGAL_TYPES)[number];
+
+
 
 type PendingFacebookLegalAcceptance = {
   legalDocumentId: string;
@@ -115,14 +128,6 @@ function persistPendingFacebookLegalAcceptances(
 
 type ResidenceVerificationStatus = "pending" | "approved" | "rejected" | "not_required";
 
-type PassengerCondition =
-  | "turista_chileno"
-  | "turista_extranjero"
-  | "residente_rapa_nui"
-  | "";
-
-type PassengerFareType = "resident" | "chilean" | "foreigner";
-
 type ResidenceDocumentMeta = {
   name: string;
   type: string;
@@ -158,12 +163,6 @@ type PassengerRegistrationProfile = {
   facebookLoginPrecheck?: boolean;
 };
 
-function getPassengerFareType(condition: PassengerCondition): PassengerFareType {
-  if (condition === "residente_rapa_nui") return "resident";
-  if (condition === "turista_chileno") return "chilean";
-  return "foreigner";
-}
-
 function getConditionLabel(value: PassengerCondition): string {
   if (value === "residente_rapa_nui") return "RAPA NUI / RESIDENTE RAPA NUI";
   if (value === "turista_chileno") return "Turista chileno";
@@ -184,31 +183,10 @@ function getLegacyPassengerCondition(value: PassengerCondition): string {
   return "";
 }
 
-function normalizePassportForAuth(value: unknown): string {
-  return String(value ?? "")
-    .trim()
-    .toUpperCase()
-    .replace(/[^A-Z0-9-]/g, "");
-}
-
-function isValidPassportForAuth(value: unknown): boolean {
-  const clean = normalizePassportForAuth(value).replace(/-/g, "");
-  return clean.length >= 5 && clean.length <= 15;
-}
-
-function requiresPassportForPassengerCondition(value: PassengerCondition): boolean {
-  return value === "turista_extranjero";
-}
-
-function requiresRutForPassengerCondition(value: PassengerCondition): boolean {
-  return value === "turista_chileno" || value === "residente_rapa_nui";
-}
-
 function hasValidRutLengthForAuth(value: unknown): boolean {
   const clean = String(value ?? "").replace(/[^0-9kK]/g, "");
   return clean.length >= 8 && clean.length <= 10;
 }
-
 
 
 const RAPAGO_AUTH_PII_LOCAL_STORAGE_KEYS = [
@@ -289,44 +267,6 @@ function normalizePhone(value: string): string {
 function isValidPhone(value: string): boolean {
   const normalized = normalizePhone(value);
   return normalized.length >= 8 && normalized.length <= 15;
-}
-
-function cleanRut(value: string): string {
-  return value.replace(/\./g, "").replace(/-/g, "").trim().toUpperCase();
-}
-
-function formatRut(value: string): string {
-  const cleaned = cleanRut(value);
-
-  if (cleaned.length <= 1) return cleaned;
-
-  const body = cleaned.slice(0, -1);
-  const dv = cleaned.slice(-1);
-
-  return `${body}-${dv}`;
-}
-
-function isValidRut(value: string): boolean {
-  const cleaned = cleanRut(value);
-
-  if (!/^\d{7,8}[0-9K]$/.test(cleaned)) return false;
-
-  const body = cleaned.slice(0, -1);
-  const dv = cleaned.slice(-1);
-
-  let sum = 0;
-  let multiplier = 2;
-
-  for (let i = body.length - 1; i >= 0; i -= 1) {
-    sum += Number(body[i]) * multiplier;
-    multiplier = multiplier === 7 ? 2 : multiplier + 1;
-  }
-
-  const expectedNumber = 11 - (sum % 11);
-  const expectedDv =
-    expectedNumber === 11 ? "0" : expectedNumber === 10 ? "K" : String(expectedNumber);
-
-  return dv === expectedDv;
 }
 
 function readFileAsDataUrl(file: File): Promise<string> {
@@ -619,18 +559,156 @@ export function LoginPage(): JSX.Element {
   const history = useHistory();
   const { login } = useAuth();
   const apple = useAppleSignIn();
+  const google = useGoogleSignIn();
+  const appleWebCallbackHandledRef = useRef(false);
+  const googleWebSignInInFlightRef = useRef(false);
+  const googleSetupSubmitInFlightRef = useRef(false);
   /* Tema propio del flujo de acceso (compartido con Registro). */
   const { theme, isDark, toggleTheme } = useRapagoSectionTheme("auth");
 
-  function handleAppleOutcome(outcome: AppleSignInOutcome): void {
+  function handleGoogleOutcome(outcome: GoogleSignInOutcome): void {
     if (outcome.kind === "success") {
+      setGoogleSetupError("");
       history.replace(ROLE_HOME[outcome.role] ?? ROUTES.PASSENGER.HOME);
       return;
     }
 
-    if (outcome.kind === "role_required" || outcome.kind === "setup_required") {
+    if (outcome.kind === "setup_required") {
+      // Abrir el formulario es una continuación normal del ingreso, no un
+      // error de la pantalla principal. Solo mostramos dentro del formulario
+      // mensajes de validación posteriores al primer envío.
+      setServerError("");
+      setGoogleSetupError(outcome.message ?? "");
       return;
     }
+
+    setGoogleSetupError("");
+
+    if (outcome.kind === "cancelled") {
+      setServerError("Cancelaste el ingreso con Google.");
+      return;
+    }
+
+    if (outcome.kind === "unavailable") {
+      setServerError(
+        "Continuar con Google no está disponible en este momento.",
+      );
+      return;
+    }
+
+    if ("message" in outcome) {
+      if (google.setupOpen) {
+        setGoogleSetupError(outcome.message);
+      } else {
+        setServerError(outcome.message);
+      }
+    }
+  }
+
+  async function startGoogleNativeSignIn(): Promise<void> {
+    setServerError("");
+    setGoogleSetupError("");
+    handleGoogleOutcome(await google.signInNative());
+  }
+
+  async function handleGoogleWebCredential(idToken: string): Promise<void> {
+    // Google Identity Services puede disparar el callback más de una vez en
+    // desarrollo (por re-render/StrictMode o doble interacción rápida). Una
+    // sola credencial debe producir una sola petición al backend.
+    if (googleWebSignInInFlightRef.current) return;
+
+    googleWebSignInInFlightRef.current = true;
+    setServerError("");
+    setGoogleSetupError("");
+
+    try {
+      handleGoogleOutcome(await google.handleWebCredential(idToken));
+    } finally {
+      googleWebSignInInFlightRef.current = false;
+    }
+  }
+
+  async function completeGoogleSetup(input: {
+    passengerFareType: "resident" | "chilean" | "foreigner";
+    acceptedDocumentIds: string[];
+    phone: string;
+    rut?: string;
+    passport?: string;
+    residenceAccreditation?: import("@rapa-go/shared").ResidenceAccreditationInput;
+  }): Promise<void> {
+    if (googleSetupSubmitInFlightRef.current) return;
+
+    googleSetupSubmitInFlightRef.current = true;
+    setServerError("");
+    setGoogleSetupError("");
+    const cleanPhone = normalizePhone(input.phone);
+
+    try {
+      const outcome = await google.completeSetup({ ...input, phone: cleanPhone });
+
+      if (outcome.kind === "success") {
+      const passengerConditionByFare: Record<
+        "resident" | "chilean" | "foreigner",
+        PassengerCondition
+      > = {
+        resident: "residente_rapa_nui",
+        chilean: "turista_chileno",
+        foreigner: "turista_extranjero",
+      };
+      persistPassengerProfile({
+        email: google.setupDisplayEmail,
+        phone: cleanPhone,
+        rut: input.rut ?? "",
+        passport: input.passport ?? "",
+        nationality: getPassengerFareLabel(input.passengerFareType),
+        passengerFareLabel: getPassengerFareLabel(input.passengerFareType),
+        passengerFareType: input.passengerFareType,
+        farePassengerType: input.passengerFareType,
+        passengerType: input.passengerFareType,
+        passengerCondition: passengerConditionByFare[input.passengerFareType],
+        belongsToRapaNuiEthnicity: input.passengerFareType === "resident",
+        residenceDocumentRequired: input.passengerFareType === "resident",
+        residenceDocumentUploaded: Boolean(input.residenceAccreditation),
+        residenceVerificationStatus:
+          input.passengerFareType === "resident" ? "pending" : "not_required",
+        residenceVerificationMessage:
+          input.passengerFareType === "resident"
+            ? "Tu categoría RAPA NUI / RESIDENTE RAPA NUI está activa y tu acreditación quedó pendiente de revisión administrativa."
+            : "",
+      });
+      }
+
+      handleGoogleOutcome(outcome);
+    } finally {
+      googleSetupSubmitInFlightRef.current = false;
+    }
+  }
+
+  function handleAppleOutcome(outcome: AppleSignInOutcome): void {
+    if (outcome.kind === "success") {
+      setAppleSetupError("");
+      history.replace(ROLE_HOME[outcome.role] ?? ROUTES.PASSENGER.HOME);
+      return;
+    }
+
+    if (outcome.kind === "redirecting") {
+      return;
+    }
+
+    if (outcome.kind === "role_required") {
+      setAppleSetupError("");
+      return;
+    }
+
+    if (outcome.kind === "setup_required") {
+      // Solo hay mensaje cuando el backend rechazó un reenvío (RUT/correo/
+      // pasaporte inválido, etc.) — la primera apertura del formulario no
+      // trae mensaje y no debe mostrar nada.
+      setAppleSetupError(outcome.message ?? "");
+      return;
+    }
+
+    setAppleSetupError("");
 
     if (outcome.kind === "cancelled") {
       setServerError("Cancelaste el ingreso con Apple.");
@@ -651,6 +729,7 @@ export function LoginPage(): JSX.Element {
 
   async function startAppleSignIn(): Promise<void> {
     setServerError("");
+    setAppleSetupError("");
     handleAppleOutcome(await apple.signIn());
   }
 
@@ -663,9 +742,13 @@ export function LoginPage(): JSX.Element {
     passengerFareType: "resident" | "chilean" | "foreigner";
     acceptedDocumentIds: string[];
     phone: string;
+    rut?: string;
+    passport?: string;
+    contactEmail?: string;
     residenceAccreditation?: import("@rapa-go/shared").ResidenceAccreditationInput;
   }): Promise<void> {
     setServerError("");
+    setAppleSetupError("");
     const cleanPhone = normalizePhone(input.phone);
     const outcome = await apple.completeSetup({ ...input, phone: cleanPhone });
 
@@ -706,6 +789,12 @@ export function LoginPage(): JSX.Element {
   const [serverError, setServerError] = useState(
     getFacebookRedirectErrorMessage,
   );
+  const [appleSetupError, setAppleSetupError] = useState("");
+  const [googleSetupError, setGoogleSetupError] = useState("");
+  const facebookLoginEnabled =
+    String(import.meta.env.VITE_FACEBOOK_LOGIN_ENABLED ?? "false")
+      .trim()
+      .toLowerCase() === "true";
 
   const [facebookSetupRequest] =
     useState<FacebookSetupRequest | null>(
@@ -751,6 +840,100 @@ export function LoginPage(): JSX.Element {
   ] = useState(false);
   const [facebookLegalLoading, setFacebookLegalLoading] =
     useState(false);
+  const [facebookLegalDocuments, setFacebookLegalDocuments] =
+    useState<PendingFacebookLegalAcceptance[]>([]);
+
+  useEffect(() => {
+    if (
+      appleWebCallbackHandledRef.current ||
+      typeof window === "undefined"
+    ) {
+      return;
+    }
+
+    const hash = window.location.hash.startsWith("#")
+      ? window.location.hash.slice(1)
+      : window.location.hash;
+    const params = new URLSearchParams(hash);
+    const flowToken = params.get("appleWebFlow")?.trim() ?? "";
+    const providerError = params.get("appleWebError")?.trim() ?? "";
+
+    if (!flowToken && !providerError) return;
+
+    appleWebCallbackHandledRef.current = true;
+    window.history.replaceState(
+      {},
+      document.title,
+      `${window.location.pathname}${window.location.search}`,
+    );
+
+    if (providerError) {
+      setServerError(
+        providerError === "cancelled"
+          ? "Cancelaste el ingreso con Apple."
+          : "No pudimos completar el ingreso web con Apple. Inténtalo nuevamente.",
+      );
+      return;
+    }
+
+    setServerError("");
+    setAppleSetupError("");
+
+    void apple
+      .resumeWebFlow(flowToken)
+      .then(handleAppleOutcome)
+      .catch(() => {
+        setServerError(
+          "No pudimos completar el ingreso web con Apple. Inténtalo nuevamente.",
+        );
+      });
+  }, [apple.resumeWebFlow]);
+
+  useEffect(() => {
+    if (!showFacebookStep) return;
+
+    let active = true;
+    setFacebookLegalLoading(true);
+
+    legalService
+      .getActive()
+      .then((documents) => {
+        if (!active) return;
+
+        setFacebookLegalDocuments(
+          persistPendingFacebookLegalAcceptances(
+            documents,
+          ),
+        );
+      })
+      .catch((loadError) => {
+        if (!active) return;
+
+        setFacebookLegalDocuments([]);
+        setFacebookStepError(
+          loadError instanceof Error
+            ? loadError.message
+            : "No pudimos cargar las versiones legales vigentes.",
+        );
+      })
+      .finally(() => {
+        if (active) setFacebookLegalLoading(false);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [showFacebookStep]);
+
+  function facebookLegalVersion(
+    type: FacebookRequiredLegalType,
+  ): string {
+    return (
+      facebookLegalDocuments.find(
+        (document) => document.type === type,
+      )?.version ?? "vigente"
+    );
+  }
 
   const isResidentRapaNui = passengerCondition === "residente_rapa_nui";
 
@@ -982,11 +1165,13 @@ export function LoginPage(): JSX.Element {
     setFacebookLegalLoading(true);
 
     try {
-      const activeLegalDocuments = await legalService.getActive();
       facebookLegalAcceptances =
-        persistPendingFacebookLegalAcceptances(
-          activeLegalDocuments,
-        );
+        facebookLegalDocuments.length ===
+        RAPAGO_FACEBOOK_REQUIRED_LEGAL_TYPES.length
+          ? facebookLegalDocuments
+          : persistPendingFacebookLegalAcceptances(
+              await legalService.getActive(),
+            );
     } catch (error) {
       setFacebookStepError(
         error instanceof Error
@@ -1233,97 +1418,6 @@ export function LoginPage(): JSX.Element {
     "--background": "linear-gradient(180deg, rgba(20,16,12,.72), rgba(20,16,12,.86)), url('/assets/rapa-go-bg.jpg') center / cover no-repeat fixed",
   } as CSSProperties;
 
-  const primaryButtonStyle = {
-    "--border-radius": "18px",
-    "--background": "linear-gradient(135deg,#F8D879 0%,#D6A640 48%,#B84F2E 100%)",
-    "--background-activated": "linear-gradient(135deg,#C89B3C,#B84F2E)",
-    "--box-shadow": "0 16px 32px rgba(214,166,64,.35)",
-    color: "#111",
-    height: "54px",
-    fontWeight: 950,
-    marginTop: "14px",
-  } as CSSProperties;
-
-  const outlineButtonStyle = {
-    "--border-radius": "18px",
-    "--border-color": "rgba(214,166,64,.72)",
-    "--color": "#F8D879",
-    height: "50px",
-    fontWeight: 900,
-    marginTop: "10px",
-  } as CSSProperties;
-
-  const modalCardStyle: CSSProperties = {
-    width: "min(92vw, 560px)",
-    margin: "18px auto 24px",
-    borderRadius: "30px",
-    overflow: "hidden",
-    background: "linear-gradient(180deg, rgba(246,242,236,.98), rgba(232,221,202,.98))",
-    border: "1px solid rgba(214,166,64,.38)",
-    boxShadow: "0 30px 80px rgba(0,0,0,.48)",
-    color: "#111",
-  };
-
-  const modalHeaderStyle: CSSProperties = {
-    padding: "18px 20px",
-    color: "#fff",
-    background: "linear-gradient(135deg,#171717 0%,#5A241A 48%,#C89B3C 120%)",
-    display: "flex",
-    justifyContent: "space-between",
-    alignItems: "center",
-    gap: 12,
-  };
-
-  const modalBodyStyle: CSSProperties = {
-    padding: "18px",
-  };
-
-  const modalItemStyle = {
-    "--background": "rgba(17,17,17,.93)",
-    "--color": "#F6F2EC",
-    "--border-color": "transparent",
-    "--highlight-color-focused": "#D6A640",
-    "--padding-start": "16px",
-    "--inner-padding-end": "16px",
-    border: "1px solid rgba(200,155,60,.35)",
-    borderRadius: "18px",
-    marginBottom: "12px",
-    overflow: "hidden",
-  } as CSSProperties;
-
-  const modalInputStyle = {
-    "--color": "#F6F2EC",
-    "--placeholder-color": "rgba(246,242,236,.55)",
-    "--placeholder-opacity": "1",
-    fontWeight: 850,
-  } as CSSProperties;
-
-  const conditionOptions: Array<{
-    value: Exclude<PassengerCondition, "">;
-    title: string;
-    subtitle: string;
-    icon: string;
-  }> = [
-    {
-      value: "turista_chileno",
-      title: "Turista chileno",
-      subtitle: "Tarifa nacional para visitantes de Chile.",
-      icon: "🇨🇱",
-    },
-    {
-      value: "turista_extranjero",
-      title: "Turista extranjero",
-      subtitle: "Tarifa internacional para visitantes.",
-      icon: "🌎",
-    },
-    {
-      value: "residente_rapa_nui",
-      title: "RAPA NUI / RESIDENTE RAPA NUI",
-      subtitle: "La categoría se activa inmediatamente y queda sujeta a revisión administrativa.",
-      icon: "🗿",
-    },
-  ];
-
   return (
     <IonPage className="rapago-auth-dark" data-rapago-theme={theme}>
       <IonContent className="ion-padding" style={pageStyle}>
@@ -1463,21 +1557,34 @@ export function LoginPage(): JSX.Element {
 
           <div className="rapago-auth-divider">o</div>
 
-          <IonButton
-            expand="block"
-            fill="outline"
-            disabled={loading}
-            onClick={(e) => {
-              e.preventDefault();
-              e.stopPropagation();
-              openFacebookStep();
+          {facebookLoginEnabled && (
+            <IonButton
+              expand="block"
+              fill="outline"
+              disabled={loading}
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                openFacebookStep();
+              }}
+              type="button"
+              className="rapago-auth-btn-outline"
+            >
+              <IonIcon slot="start" icon={logoFacebook} />
+              Continuar con Facebook
+            </IonButton>
+          )}
+
+          <GoogleSignInButton
+            isAvailable={google.isAvailable}
+            loading={google.loading}
+            disabled={loading || apple.loading}
+            onNativePress={() => void startGoogleNativeSignIn()}
+            onWebCredential={(idToken) => {
+              void handleGoogleWebCredential(idToken);
             }}
-            type="button"
-            className="rapago-auth-btn-outline"
-          >
-            <IonIcon slot="start" icon={logoFacebook} />
-            Continuar con Facebook
-          </IonButton>
+            onError={setServerError}
+          />
 
           <AppleSignInButton
             isAvailable={apple.isAvailable}
@@ -1509,556 +1616,78 @@ export function LoginPage(): JSX.Element {
           </IonButton>
         </form>
 
-        <IonModal
-          className="facebook-step-modal"
+        <PassengerSocialSetupForm
+          provider="facebook"
           isOpen={showFacebookStep}
-          onDidDismiss={closeFacebookStep}
-          style={
-            {
-              "--width": "min(94vw, 620px)",
-              "--height": "92vh",
-              "--max-height": "92vh",
-              "--border-radius": "30px",
-            } as CSSProperties
-          }
-        >
-          <IonContent className="facebook-step-content" scrollY={true}>
-              <div className="facebook-step-card" style={modalCardStyle}>
-                <div className="facebook-step-header" style={modalHeaderStyle}>
-                  <div>
-                    <div
-                      style={{
-                        fontSize: ".72rem",
-                        textTransform: "uppercase",
-                        letterSpacing: ".08em",
-                        color: "rgba(248,216,121,.95)",
-                        fontWeight: 950,
-                        marginBottom: 4,
-                      }}
-                    >
-                      Completa tu perfil
-                    </div>
-                    <h2 style={{ margin: 0, fontSize: "1.35rem", fontWeight: 950 }}>
-                      Datos del pasajero
-                    </h2>
-                  </div>
+          onClose={closeFacebookStep}
+          loading={facebookPrecheckLoading || facebookLegalLoading}
+          error={facebookStepError}
+          successMessage={residentSubmissionMessage}
+          passengerCondition={passengerCondition}
+          onPassengerConditionChange={handlePassengerConditionChange}
+          email={passengerEmail}
+          onEmailChange={setPassengerEmail}
+          phone={passengerPhone}
+          onPhoneChange={setPassengerPhone}
+          rut={passengerRut}
+          onRutChange={setPassengerRut}
+          onRutBlur={() => setPassengerRut(formatRut(passengerRut))}
+          passport={passengerPassport}
+          onPassportChange={setPassengerPassport}
+          residenceDocumentName={residenceDocumentName}
+          onResidenceDocumentChange={handleResidenceDocumentChange}
+          acceptTerms={acceptFacebookTerms}
+          onAcceptTermsChange={setAcceptFacebookTerms}
+          acceptPrivacy={acceptFacebookPrivacy}
+          onAcceptPrivacyChange={setAcceptFacebookPrivacy}
+          acceptUserConditions={acceptFacebookUserConditions}
+          onAcceptUserConditionsChange={setAcceptFacebookUserConditions}
+          onOpenTerms={() => history.push(ROUTES.PUBLIC.TERMS)}
+          onOpenPrivacy={() => history.push(ROUTES.PUBLIC.PRIVACY)}
+          onOpenUserConditions={() => history.push(ROUTES.PUBLIC.USER_CONDITIONS)}
+          onSubmit={() => void continueWithFacebook()}
+        />
 
-                  <button
-                    type="button"
-                    onClick={closeFacebookStep}
-                    style={{
-                      width: 42,
-                      height: 42,
-                      borderRadius: 999,
-                      border: "1px solid rgba(255,255,255,.26)",
-                      background: "rgba(255,255,255,.10)",
-                      color: "#fff",
-                      fontWeight: 950,
-                      fontSize: "1.25rem",
-                    }}
-                    aria-label="Cerrar"
-                  >
-                    ×
-                  </button>
-                </div>
-
-                <div className="facebook-step-body" style={modalBodyStyle}>
-                  <p
-                    style={{
-                      margin: "0 0 14px",
-                      color: "#4A4237",
-                      fontSize: ".92rem",
-                      lineHeight: 1.38,
-                      fontWeight: 760,
-                    }}
-                  >
-                    Selecciona tu tipo de pasajero. Si eliges RAPA NUI / RESIDENTE RAPA NUI, debes adjuntar una acreditación; la categoría se activa inmediatamente y queda sujeta a revisión administrativa.
-                  </p>
-
-                  {facebookStepError && (
-                    <IonText color="danger">
-                      <p
-                        className="auth-error"
-                        style={{
-                          background: "rgba(239,68,68,.12)",
-                          border: "1px solid rgba(239,68,68,.30)",
-                          padding: "10px 12px",
-                          borderRadius: 14,
-                          fontWeight: 950,
-                          margin: "0 0 12px",
-                        }}
-                      >
-                        {facebookStepError}
-                      </p>
-                    </IonText>
-                  )}
-
-                  <div
-                    style={{
-                      display: "grid",
-                      gap: 10,
-                      marginBottom: 14,
-                    }}
-                  >
-                    {conditionOptions.map((option) => {
-                      const active = passengerCondition === option.value;
-
-                      return (
-                        <button
-                          key={option.value}
-                          type="button"
-                          onClick={() => handlePassengerConditionChange(option.value)}
-                          style={{
-                            width: "100%",
-                            display: "grid",
-                            gridTemplateColumns: "46px 1fr 26px",
-                            alignItems: "center",
-                            gap: 12,
-                            borderRadius: 20,
-                            padding: "12px",
-                            textAlign: "left",
-                            border: active
-                              ? "2px solid rgba(34,197,94,.72)"
-                              : "1px solid rgba(200,155,60,.38)",
-                            background: active
-                              ? "linear-gradient(135deg,#ECFDF3,#FFFFFF)"
-                              : "rgba(255,255,255,.74)",
-                            boxShadow: active
-                              ? "0 12px 28px rgba(34,197,94,.16)"
-                              : "0 8px 20px rgba(0,0,0,.07)",
-                            color: "#111",
-                          }}
-                        >
-                          <span
-                            style={{
-                              width: 46,
-                              height: 46,
-                              borderRadius: 16,
-                              display: "grid",
-                              placeItems: "center",
-                              background: active ? "#22C55E" : "#1D1D1B",
-                              color: "#fff",
-                              fontSize: "1.25rem",
-                            }}
-                          >
-                            {option.icon}
-                          </span>
-
-                          <span style={{ minWidth: 0 }}>
-                            <strong style={{ display: "block", fontSize: ".95rem", fontWeight: 950 }}>
-                              {option.title}
-                            </strong>
-                            <span style={{ display: "block", color: "#675A4A", fontSize: ".76rem", fontWeight: 760, marginTop: 2 }}>
-                              {option.subtitle}
-                            </span>
-                          </span>
-
-                          <span
-                            style={{
-                              width: 24,
-                              height: 24,
-                              borderRadius: 999,
-                              display: "grid",
-                              placeItems: "center",
-                              background: active ? "#22C55E" : "rgba(17,17,17,.10)",
-                              color: active ? "#fff" : "#777",
-                              fontWeight: 950,
-                            }}
-                          >
-                            {active ? "✓" : ""}
-                          </span>
-                        </button>
-                      );
-                    })}
-                  </div>
-
-                  <div
-                    style={{
-                      margin: "2px 0 12px",
-                      padding: "12px",
-                      borderRadius: 18,
-                      background: "rgba(17,17,17,.08)",
-                      border: "1px solid rgba(200,155,60,.30)",
-                      color: "#372F28",
-                      fontWeight: 850,
-                      fontSize: ".82rem",
-                      lineHeight: 1.35,
-                    }}
-                  >
-                    🗿 Si eres Residente Rapa Nui, el documento quedará pendiente para revisión del administrador antes de aprobar la tarifa.
-                  </div>
-
-                  <IonItem style={modalItemStyle}>
-                    <IonLabel position="stacked" style={{ color: "#F8D879", fontWeight: 950 }}>
-                      Correo electrónico *
-                    </IonLabel>
-                    <IonInput
-                      style={modalInputStyle}
-                      type="email"
-                      value={passengerEmail}
-                      onIonInput={(e) => {
-                        setPassengerEmail(String(e.detail.value ?? ""));
-                      }}
-                      placeholder="tu@correo.com"
-                      autocomplete="email"
-                      inputmode="email"
-                      required
-                    />
-                  </IonItem>
-
-                  <IonItem style={modalItemStyle}>
-                    <IonLabel position="stacked" style={{ color: "#F8D879", fontWeight: 950 }}>
-                      Celular *
-                    </IonLabel>
-                    <IonInput
-                      style={modalInputStyle}
-                      type="tel"
-                      value={passengerPhone}
-                      onIonInput={(e) => {
-                        setPassengerPhone(String(e.detail.value ?? ""));
-                      }}
-                      placeholder="+56 9 1234 5678"
-                      autocomplete="tel"
-                      inputmode="tel"
-                      required
-                    />
-                  </IonItem>
-
-                  {passengerCondition !== "turista_extranjero" && (
-                    <IonItem style={modalItemStyle}>
-                    <IonLabel position="stacked" style={{ color: "#F8D879", fontWeight: 950 }}>
-                      RUT *
-                    </IonLabel>
-                    <IonInput
-                      style={modalInputStyle}
-                      type="text"
-                      value={passengerRut}
-                      onIonInput={(e) => {
-                        setPassengerRut(String(e.detail.value ?? ""));
-                      }}
-                      onIonBlur={() => {
-                        setPassengerRut(formatRut(passengerRut));
-                      }}
-                      placeholder="12345678-9"
-                      autocomplete="off"
-                      inputmode="text"
-                      required
-                    />
-                  </IonItem>
-                  )}
-
-                  {passengerCondition === "turista_extranjero" && (
-                    <IonItem style={modalItemStyle}>
-                      <IonLabel position="stacked" style={{ color: "#F8D879", fontWeight: 950 }}>
-                        Pasaporte *
-                      </IonLabel>
-                      <IonInput
-                        style={modalInputStyle}
-                        type="text"
-                        value={passengerPassport}
-                        placeholder="Ej: A1234567"
-                        autocomplete="off"
-                        inputmode="text"
-                        maxlength={20}
-                        required
-                        onIonInput={(event) => {
-                          setPassengerPassport(normalizePassportForAuth(event.detail.value ?? ""));
-                          setFacebookStepError("");
-                        }}
-                      />
-                    </IonItem>
-                  )}
-
-                  {isResidentRapaNui && (
-                    <div
-                      style={{
-                        borderRadius: 20,
-                        padding: 14,
-                        background: "linear-gradient(135deg,#FFF8E6,#FFFFFF)",
-                        border: residenceDocumentName
-                          ? "2px solid rgba(34,197,94,.62)"
-                          : "2px dashed rgba(200,155,60,.72)",
-                        marginBottom: 12,
-                      }}
-                    >
-                      <strong style={{ display: "block", fontSize: ".9rem", color: "#111", fontWeight: 950 }}>
-                        ACREDITACIÓN RESIDENCIA *
-                      </strong>
-                      <p style={{ margin: "4px 0 10px", color: "#675A4A", fontSize: ".78rem", fontWeight: 760 }}>
-                        Si eres Rapanui, adjunta una foto clara de tu cédula de identidad. Si eres residente, adjunta tu resolución de residencia vigente emitida por la Delegación Presidencial Provincial de Isla de Pascua. PDF, JPG, JPEG, PNG o WEBP; máximo 1.5 MB.
-                      </p>
-
-                      <input
-                        type="file"
-                        accept="application/pdf,image/jpeg,image/png,image/webp"
-                        onChange={handleResidenceDocumentChange}
-                        style={{ width: "100%", fontWeight: 850, color: "#111" }}
-                      />
-
-                      {residenceDocumentName && (
-                        <IonText color="success">
-                          <p style={{ fontSize: "0.84rem", margin: "8px 0 0", fontWeight: 950 }}>
-                            ✓ Acreditación cargada: {residenceDocumentName}
-                          </p>
-                        </IonText>
-                      )}
-                    </div>
-                  )}
-
-                  <div
-                    style={{
-                      margin: "4px 0 14px",
-                      padding: "14px",
-                      borderRadius: 20,
-                      background:
-                        "linear-gradient(135deg,#FFF8E6,#FFFFFF)",
-                      border:
-                        "1px solid rgba(200,155,60,.42)",
-                    }}
-                  >
-                    <div
-                      style={{
-                        marginBottom: 10,
-                        color: "#111",
-                        fontSize: ".9rem",
-                        fontWeight: 950,
-                      }}
-                    >
-                      Documentos legales obligatorios
-                    </div>
-
-                    <IonItem
-                      className="facebook-legal-card"
-                      lines="none"
-                      style={{
-                        "--background": "transparent",
-                        "--padding-start": "0",
-                        "--inner-padding-end": "0",
-                        alignItems: "flex-start",
-                      } as CSSProperties}
-                    >
-                      <IonCheckbox
-                        slot="start"
-                        checked={acceptFacebookTerms}
-                        onIonChange={(event) => {
-                          setAcceptFacebookTerms(
-                            event.detail.checked,
-                          );
-                          setFacebookStepError("");
-                        }}
-                      />
-                      <IonLabel
-                        style={{
-                          color: "#30271F",
-                          whiteSpace: "normal",
-                          lineHeight: 1.35,
-                          fontWeight: 800,
-                        }}
-                      >
-                        Acepto los Términos y Condiciones.
-                        <button
-                          className="facebook-legal-link"
-                          type="button"
-                          onClick={() =>
-                            history.push(ROUTES.PUBLIC.TERMS)
-                          }
-                          style={{
-                            border: 0,
-                            background: "transparent",
-                            color: "#8A5A00",
-                            fontWeight: 950,
-                            textDecoration: "underline",
-                            cursor: "pointer",
-                          }}
-                        >
-                          Ver documento
-                        </button>
-                      </IonLabel>
-                    </IonItem>
-
-                    <IonItem
-                      className="facebook-legal-card"
-                      lines="none"
-                      style={{
-                        "--background": "transparent",
-                        "--padding-start": "0",
-                        "--inner-padding-end": "0",
-                        alignItems: "flex-start",
-                      } as CSSProperties}
-                    >
-                      <IonCheckbox
-                        slot="start"
-                        checked={acceptFacebookPrivacy}
-                        onIonChange={(event) => {
-                          setAcceptFacebookPrivacy(
-                            event.detail.checked,
-                          );
-                          setFacebookStepError("");
-                        }}
-                      />
-                      <IonLabel
-                        style={{
-                          color: "#30271F",
-                          whiteSpace: "normal",
-                          lineHeight: 1.35,
-                          fontWeight: 800,
-                        }}
-                      >
-                        Acepto la Política de Privacidad.
-                        <button
-                          className="facebook-legal-link"
-                          type="button"
-                          onClick={() =>
-                            history.push(
-                              ROUTES.PUBLIC.PRIVACY,
-                            )
-                          }
-                          style={{
-                            border: 0,
-                            background: "transparent",
-                            color: "#8A5A00",
-                            fontWeight: 950,
-                            textDecoration: "underline",
-                            cursor: "pointer",
-                          }}
-                        >
-                          Ver documento
-                        </button>
-                      </IonLabel>
-                    </IonItem>
-
-                    <IonItem
-                      className="facebook-legal-card"
-                      lines="none"
-                      style={{
-                        "--background": "transparent",
-                        "--padding-start": "0",
-                        "--inner-padding-end": "0",
-                        alignItems: "flex-start",
-                      } as CSSProperties}
-                    >
-                      <IonCheckbox
-                        slot="start"
-                        checked={
-                          acceptFacebookUserConditions
-                        }
-                        onIonChange={(event) => {
-                          setAcceptFacebookUserConditions(
-                            event.detail.checked,
-                          );
-                          setFacebookStepError("");
-                        }}
-                      />
-                      <IonLabel
-                        style={{
-                          color: "#30271F",
-                          whiteSpace: "normal",
-                          lineHeight: 1.35,
-                          fontWeight: 800,
-                        }}
-                      >
-                        Acepto las Condiciones para Usuarios.
-                      </IonLabel>
-                    </IonItem>
-
-                    <p
-                      style={{
-                        margin: "8px 0 0",
-                        color: "#675A4A",
-                        fontSize: ".76rem",
-                        fontWeight: 760,
-                        lineHeight: 1.4,
-                      }}
-                    >
-                      Las Condiciones para Conductores no se
-                      solicitan a pasajeros. Solo corresponden
-                      al proceso de postulación de conductor.
-                    </p>
-                  </div>
-
-                  {residentSubmissionMessage && (
-                    <div
-                      role="status"
-                      style={{
-                        margin: "4px 0 12px",
-                        padding: "12px 14px",
-                        borderRadius: 16,
-                        background: "rgba(34,197,94,.12)",
-                        border: "1px solid rgba(34,197,94,.38)",
-                        color: "#14532D",
-                        fontSize: ".84rem",
-                        fontWeight: 850,
-                        lineHeight: 1.4,
-                      }}
-                    >
-                      {residentSubmissionMessage}
-                    </div>
-                  )}
-
-                  <IonButton
-                    expand="block"
-                    style={primaryButtonStyle}
-                    onClick={(e) => {
-                      e.preventDefault();
-                      e.stopPropagation();
-                      void continueWithFacebook();
-                    }}
-                    type="button"
-                    disabled={
-                      facebookPrecheckLoading ||
-                      facebookLegalLoading ||
-                      !acceptFacebookTerms ||
-                      !acceptFacebookPrivacy ||
-                      !acceptFacebookUserConditions
-                    }
-                  >
-                    {facebookPrecheckLoading ||
-                    facebookLegalLoading ? (
-                      <>
-                        <IonSpinner
-                          name="crescent"
-                          style={{ marginRight: 8 }}
-                        />
-                        Validando datos...
-                      </>
-                    ) : (
-                      "Continuar con Facebook"
-                    )}
-                  </IonButton>
-
-                  <IonButton
-                    expand="block"
-                    fill="outline"
-                    onClick={closeFacebookStep}
-                    type="button"
-                    style={{
-                      ...outlineButtonStyle,
-                      "--color": "#1D1D1B",
-                      "--border-color": "rgba(29,29,27,.42)",
-                    } as CSSProperties}
-                  >
-                    Volver
-                  </IonButton>
-                </div>
-              </div>
-            </IonContent>
-        </IonModal>
 
       </IonContent>
+
+      <GoogleAccountSetupModal
+        isOpen={google.setupOpen}
+        loading={google.loading}
+        documents={google.documents}
+        displayEmail={google.setupDisplayEmail}
+        serverError={googleSetupError}
+        onCancel={() => {
+          setGoogleSetupError("");
+          google.cancelSetup();
+        }}
+        onConfirm={(input) => {
+          void completeGoogleSetup(input);
+        }}
+      />
 
       <AppleRoleSelectionModal
         isOpen={apple.awaitingRole}
         loading={apple.loading}
         onCancel={apple.cancelRoleSelection}
-        onConfirm={(role) => { void handleAppleRoleSubmit(role); }}
+        onConfirm={(role) => {
+          void handleAppleRoleSubmit(role);
+        }}
       />
 
       <AppleAccountSetupModal
         isOpen={apple.setupOpen}
         loading={apple.loading}
         documents={apple.documents}
-        onCancel={apple.cancelSetup}
-        onConfirm={(input) => void completeAppleSetup(input)}
+        displayEmail={apple.setupDisplayEmail}
+        serverError={appleSetupError}
+        onCancel={() => {
+          setAppleSetupError("");
+          apple.cancelSetup();
+        }}
+        onConfirm={(input) => {
+          void completeAppleSetup(input);
+        }}
       />
     </IonPage>
   );

@@ -25,6 +25,22 @@ export async function authRoutes(
     authController.register,
   );
 
+
+  fastify.get(
+    "/google/status",
+    { config: { rateLimit: { max: 30, timeWindow: "15 minutes" } } },
+    authController.googleStatus,
+  );
+
+  fastify.post(
+    "/google",
+    {
+      bodyLimit: 3 * 1024 * 1024,
+      config: { rateLimit: { max: 10, timeWindow: "15 minutes" } },
+    },
+    authController.googleLogin,
+  );
+
   fastify.post(
     "/apple",
     {

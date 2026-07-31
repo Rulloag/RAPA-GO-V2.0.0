@@ -3643,7 +3643,7 @@ function cleanRideNotes(notes: string | null | undefined): string | null {
 
   // No mostramos textos técnicos largos generados por RAPA GO en la tarjeta del pasajero.
   // La información importante ya se muestra arriba como origen, destino, monto, pago y estado.
-  const isSystemNote = /Forma de pago seleccionada:|Categor[ií]a de veh[ií]culo seleccionada:|Tipo de viaje seleccionado:|Promoci[oó]n con regreso seleccionado:|Destino promocional:|Tarifa RAPA GO calculada:|Tarifa estimada pasajero:|RAPAGO_|Coordenadas recogida accesible:|Coordenadas destino accesible:|Fecha y hora de recogida agendada:|Fecha y hora de regreso agendada:|Tipo de solicitud:|Tipo de reserva:|Tipo de servicio:|Recogida de regreso elegida por el pasajero:/i.test(raw);
+  const isSystemNote = /Forma de pago seleccionada:|Categor[ií]a de veh[ií]culo seleccionada:|Tipo de viaje seleccionado:|Promoci[oó]n con regreso seleccionado:|Experiencia con reserva seleccionada:|Destino promocional:|Destino reservado:|Experiencia reservada:|Destino de la experiencia:|Tarifa RAPA GO calculada:|Tarifa estimada pasajero:|RAPAGO_|Coordenadas recogida accesible:|Coordenadas destino accesible:|Fecha y hora de recogida agendada:|Fecha y hora de regreso agendada:|Tipo de solicitud:|Tipo de reserva:|Tipo de servicio:|Recogida de regreso elegida por el pasajero:/i.test(raw);
 
   if (isSystemNote) return null;
 
@@ -8367,7 +8367,7 @@ function PassengerRideCard({
                 <>
                   <span style={{ color: "var(--rp-warn-fg)", fontSize: "1rem" }}>●</span>
                   <div>
-                    <strong>Incluido en promoción:</strong> esta recogida de regreso no se cobra nuevamente.
+                    <strong>Incluido en la reserva:</strong> este tramo de regreso no se cobra nuevamente.
                   </div>
                 </>
               )}
@@ -9751,7 +9751,7 @@ export default function TripsPage(): JSX.Element {
                   borderRadius: 28,
                   overflow: "hidden",
                   background: "linear-gradient(180deg,#fffaf0,#f8ead0)",
-                  color: "var(--rp-text)",
+                  color: "var(--rp-text-legacy)",
                   boxShadow: "0 28px 80px rgba(0,0,0,.45)",
                   border: "1px solid rgba(214,168,62,.34)",
                 }}
@@ -9786,7 +9786,7 @@ export default function TripsPage(): JSX.Element {
                       <div style={{ fontWeight: 950, fontSize: "1.16rem", lineHeight: 1.16 }}>
                         ¿Quieres calificar al conductor que te recogió?
                       </div>
-                      <div style={{ marginTop: 5, color: "var(--rp-muted)", fontSize: ".84rem", fontWeight: 800, lineHeight: 1.35 }}>
+                      <div style={{ marginTop: 5, color: "var(--rp-muted-legacy)", fontSize: ".84rem", fontWeight: 800, lineHeight: 1.35 }}>
                         Evalúa a <strong>{ratingDriverName}</strong> y agrega extras del servicio para mejorar la experiencia RAPA GO.
                       </div>
                     </div>
@@ -9800,7 +9800,7 @@ export default function TripsPage(): JSX.Element {
                         borderRadius: 18,
                         background: "rgba(255,255,255,.70)",
                         border: "1px solid rgba(214,168,62,.24)",
-                        color: "var(--rp-muted)",
+                        color: "var(--rp-muted-legacy)",
                         fontSize: ".78rem",
                         fontWeight: 850,
                         lineHeight: 1.35,
@@ -9818,7 +9818,7 @@ export default function TripsPage(): JSX.Element {
                   <div style={{ fontWeight: 950, fontSize: ".86rem", marginTop: 12 }}>
                     Extras del conductor
                   </div>
-                  <div style={{ color: "var(--rp-muted)", fontSize: ".76rem", fontWeight: 800, marginTop: 2 }}>
+                  <div style={{ color: "var(--rp-muted-legacy)", fontSize: ".76rem", fontWeight: 800, marginTop: 2 }}>
                     Toca una o varias opciones.
                   </div>
                   <RatingExtrasSelector selected={ratingExtras} onToggle={toggleRatingExtra} />
@@ -9839,11 +9839,11 @@ export default function TripsPage(): JSX.Element {
                       maxlength={500}
                       rows={3}
                       style={{
-                        background: "var(--rp-surface)",
+                        background: "var(--rp-surface-legacy)",
                         borderRadius: 18,
                         border: "1px solid rgba(214,168,62,.34)",
                         padding: "10px 12px",
-                        color: "var(--rp-text)",
+                        color: "var(--rp-text-legacy)",
                         fontWeight: 800,
                       } as CSSProperties}
                     />
@@ -9852,7 +9852,7 @@ export default function TripsPage(): JSX.Element {
                   <IonItem lines="none" style={{ "--background": "transparent", "--padding-start": "0" } as CSSProperties}>
                     <IonLabel>
                       <div style={{ fontWeight: 900 }}>Comentario solo para RAPA GO</div>
-                      <div style={{ fontSize: ".74rem", color: "var(--rp-muted)" }}>
+                      <div style={{ fontSize: ".74rem", color: "var(--rp-muted-legacy)" }}>
                         Al activarlo, el conductor no verá el texto. La calificación numérica sí cuenta para su promedio.
                       </div>
                     </IonLabel>
@@ -9893,7 +9893,7 @@ export default function TripsPage(): JSX.Element {
                       color="warning"
                       onClick={() => void handleSubmitRating()}
                       disabled={submittingRating}
-                      style={{ "--border-radius": "16px", "--color": "var(--rp-text)", fontWeight: 950 } as CSSProperties}
+                      style={{ "--border-radius": "16px", "--color": "var(--rp-text-legacy)", fontWeight: 950 } as CSSProperties}
                     >
                       {submittingRating ? <IonSpinner name="dots" /> : "Enviar calificación"}
                     </IonButton>

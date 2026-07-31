@@ -1,0 +1,267 @@
+/*
+ * rapago-google-button.css
+ *
+ * VERSIÓN COMPLETA Y CORREGIDA
+ *
+ * Solución de errores anteriores:
+ * - Se elimina position: absolute + translate(-50%, -50%) que cortaba y descentraba el iframe.
+ * - Se elimina scale(1.12) que provocaba el desbordamiento/recorte visual a la derecha.
+ * - Se utiliza Flexbox nativo para un centrado perfecto y fluido en cualquier pantalla.
+ * - Soporte adaptativo para contenedores, placeholders, custom buttons y responsive design.
+ */
+
+.rapago-google-button {
+  width: 100%;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+
+.rapago-google-button__shell,
+.rapago-google-button__custom {
+  width: 100%;
+  height: 52px;
+  min-height: 52px;
+  border-radius: 999px;
+}
+
+.rapago-google-button__shell {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+  isolation: isolate;
+  overflow: hidden;
+}
+
+/*
+ * Contenedor del botón oficial de Google.
+ * Usamos flexbox directo en lugar de position: absolute con translate,
+ * permitiendo que el iframe tome su espacio natural sin cortarse.
+ */
+.rapago-google-button__official {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  width: 100%;
+  max-width: 100%;
+  height: 100%;
+}
+
+/*
+ * Forzar reseteo de estilos sobre el iframe/div inyectado por Google
+ */
+.rapago-google-button__official > div,
+.rapago-google-button__official iframe {
+  display: block !important;
+  margin: 0 auto !important;
+  border: 0 !important;
+  max-width: 100% !important;
+}
+
+/* Placeholder mientras carga el SDK de Google */
+.rapago-google-button__placeholder {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 11px;
+  padding: 0 18px;
+  background: #ffffff;
+  color: #352d23;
+  font-size: 0.96rem;
+  font-weight: 760;
+  letter-spacing: -0.01em;
+  text-align: center;
+  border: 1px solid rgba(90, 72, 42, 0.22);
+  border-radius: 999px;
+  box-shadow:
+    0 8px 20px rgba(72, 53, 22, 0.10),
+    inset 0 1px 0 rgba(255, 255, 255, 0.96);
+}
+
+/* Estilo para botón custom (si no se usa la librería nativa de Google) */
+.rapago-google-button__custom {
+  appearance: none;
+  position: relative;
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr) 28px;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  padding: 0 18px;
+  overflow: hidden;
+  cursor: pointer;
+  background: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.99),
+    rgba(249, 247, 242, 0.99)
+  );
+  color: #352d23;
+  border: 1px solid rgba(90, 72, 42, 0.22);
+  box-shadow:
+    0 8px 20px rgba(72, 53, 22, 0.10),
+    inset 0 1px 0 rgba(255, 255, 255, 0.96);
+  font: inherit;
+  font-size: 0.96rem;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  transition:
+    transform 160ms ease,
+    box-shadow 160ms ease,
+    border-color 160ms ease;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.rapago-google-button__custom::after {
+  content: "";
+  width: 28px;
+  height: 1px;
+}
+
+.rapago-google-button__custom:hover:not(:disabled) {
+  transform: translateY(-1px);
+  border-color: rgba(172, 124, 29, 0.46);
+  box-shadow:
+    0 12px 26px rgba(72, 53, 22, 0.14),
+    inset 0 1px 0 #ffffff;
+}
+
+.rapago-google-button__custom:active:not(:disabled) {
+  transform: scale(0.992);
+}
+
+.rapago-google-button__custom:focus-visible {
+  outline: 3px solid rgba(213, 166, 58, 0.30);
+  outline-offset: 3px;
+}
+
+.rapago-google-button__custom:disabled,
+.rapago-google-button__shell[aria-disabled="true"] {
+  cursor: not-allowed;
+  opacity: 0.62;
+  filter: saturate(0.78);
+}
+
+/* Capa para deshabilitar interacciones durante carga/envío */
+.rapago-google-button__blocker {
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  cursor: not-allowed;
+  background: rgba(255, 255, 255, 0.14);
+}
+
+.rapago-google-button__logo {
+  width: 22px;
+  height: 22px;
+  display: block;
+  justify-self: start;
+  flex: 0 0 auto;
+}
+
+.rapago-google-button__label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: center;
+}
+
+.rapago-google-button__spinner {
+  width: 21px;
+  height: 21px;
+  display: inline-block;
+  justify-self: start;
+  border-radius: 999px;
+  border: 2px solid rgba(66, 133, 244, 0.24);
+  border-top-color: #4285f4;
+  animation: rapago-google-button-spin 0.72s linear infinite;
+}
+
+.rapago-google-button__error {
+  display: block;
+  margin: 7px 4px 0;
+  color: #a33c2c;
+  font-size: 0.76rem;
+  font-weight: 700;
+  line-height: 1.35;
+  text-align: center;
+}
+
+@keyframes rapago-google-button-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* 
+ * MEDIA QUERIES / RESPONSIVE DESIGN
+ */
+
+/* iPhone SE y pantallas muy pequeñas */
+@media (max-width: 360px) {
+  .rapago-google-button__shell,
+  .rapago-google-button__custom {
+    height: 48px;
+    min-height: 48px;
+  }
+
+  .rapago-google-button__custom,
+  .rapago-google-button__placeholder {
+    padding-inline: 12px;
+    font-size: 0.88rem;
+  }
+}
+
+/* Tablets */
+@media (min-width: 768px) and (max-width: 1023px) {
+  .rapago-google-button__shell,
+  .rapago-google-button__custom {
+    height: 52px;
+    min-height: 52px;
+  }
+}
+
+/* Pantallas grandes (Desktop) */
+@media (min-width: 1024px) {
+  .rapago-google-button__shell,
+  .rapago-google-button__custom {
+    height: 54px;
+    min-height: 54px;
+  }
+
+  .rapago-google-button__custom,
+  .rapago-google-button__placeholder {
+    font-size: 1rem;
+  }
+}
+
+/* Dispositivos en modo horizontal (Landscape) con baja altura */
+@media (max-height: 520px) and (orientation: landscape) {
+  .rapago-google-button__shell,
+  .rapago-google-button__custom {
+    height: 46px;
+    min-height: 46px;
+  }
+}
+
+/* Accesibilidad: movimiento reducido */
+@media (prefers-reduced-motion: reduce) {
+  .rapago-google-button__custom {
+    transition: none;
+  }
+
+  .rapago-google-button__spinner {
+    animation-duration: 1.4s;
+  }
+}

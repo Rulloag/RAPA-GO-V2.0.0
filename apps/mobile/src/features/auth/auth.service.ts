@@ -1,6 +1,14 @@
 import { apiClient } from "../../services/api/index.js";
-import type { AuthResponse } from "./auth.types.js";
-import type { LoginRequest, RegisterRequest, AppleSignInRequest } from "./auth.types.js";
+import type {
+  AppleSignInRequest,
+  AppleWebAuthResponse,
+  AppleWebCompleteRequest,
+  AuthResponse,
+  GoogleAuthResponse,
+  GoogleSignInRequest,
+  LoginRequest,
+  RegisterRequest,
+} from "./auth.types.js";
 
 
 export type FacebookResidentVerificationStatus =
@@ -199,6 +207,28 @@ export const authService = {
     return result.data;
   },
 
+
+  async signInWithGoogle(
+    payload: GoogleSignInRequest,
+  ): Promise<GoogleAuthResponse> {
+    const result = await apiClient.post<GoogleAuthResponse>(
+      "/auth/google",
+      payload,
+      undefined,
+      0,
+    );
+
+    if (result.ok === false) {
+      return {
+        ok: false,
+        code: result.code,
+        message: result.message,
+      };
+    }
+
+    return result.data;
+  },
+
   /**
    * Exchanges a verified Apple identity for a Rapa Go session.
    * Never sent: client-reported email, Apple's `sub`, isPrivateEmail, or any
@@ -208,10 +238,48 @@ export const authService = {
    * Apple's side, since codes are single-use).
    */
   async signInWithApple(payload: AppleSignInRequest): Promise<AuthResponse> {
-    const result = await apiClient.post<AuthResponse>("/auth/apple", payload, undefined, 0);
+    const result = await apiClient.post<AuthResponse>(
+      "/auth/apple",
+      payload,
+      undefined,
+      0,
+    );
     if (result.ok === false) {
       return { ok: false, code: result.code, message: result.message };
     }
+    return result.data;
+  },
+
+  getAppleWebStartUrl(): string {
+    const configuredBase = String(
+      import.meta.env.VITE_API_BASE_URL ??
+        import.meta.env.VITE_API_URL ??
+        "",
+    ).trim();
+    const baseUrl = configuredBase || window.location.origin;
+    const backendOrigin = new URL(baseUrl, window.location.origin).origin;
+
+    return `${backendOrigin}/auth/apple/web/start`;
+  },
+
+  async signInWithAppleWeb(
+    payload: AppleWebCompleteRequest,
+  ): Promise<AppleWebAuthResponse> {
+    const result = await apiClient.post<AppleWebAuthResponse>(
+      "/auth/apple/web/complete",
+      payload,
+      undefined,
+      0,
+    );
+
+    if (result.ok === false) {
+      return {
+        ok: false,
+        code: result.code,
+        message: result.message,
+      };
+    }
+
     return result.data;
   },
 

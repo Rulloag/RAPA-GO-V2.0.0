@@ -8,6 +8,7 @@ import type {
   UserAcceptancesResult, LegalDocumentResponse, UserAcceptanceResponse,
 } from "./legal.types.js";
 import type { LegalDocument, UserAcceptance } from "../../db/schema/index.js";
+import { buildLegalAcceptanceEvidence } from "./legalEvidence.js";
 
 const tokenService   = new TokenService();
 const sessionService = new SessionService();
@@ -54,8 +55,20 @@ function toDocResponse(d: LegalDocument): LegalDocumentResponse {
 
 function toAcceptanceResponse(a: UserAcceptance): UserAcceptanceResponse {
   return {
-    id: a.id, userId: a.userId, legalDocumentId: a.legalDocumentId,
-    versionAccepted: a.versionAccepted, acceptedAt: a.acceptedAt.toISOString(),
+    id: a.id,
+    userId: a.userId,
+    legalDocumentId: a.legalDocumentId,
+    versionAccepted: a.versionAccepted,
+    acceptedAt: a.acceptedAt.toISOString(),
+    ...(a.documentTitle ? { documentTitle: a.documentTitle } : {}),
+    ...(a.documentType ? { documentType: a.documentType } : {}),
+    ...(a.documentHash ? { documentHash: a.documentHash } : {}),
+    ...(a.authenticationMethod
+      ? { authenticationMethod: a.authenticationMethod }
+      : {}),
+    ...(a.acceptanceStatus
+      ? { acceptanceStatus: a.acceptanceStatus }
+      : {}),
   };
 }
 
@@ -125,8 +138,13 @@ export class LegalService {
     }
 
     const acceptance = await legalRepo.createAcceptance({
-      userId: auth.userId, legalDocumentId: input.legalDocumentId,
+      userId: auth.userId,
+      legalDocumentId: input.legalDocumentId,
       versionAccepted: document.version,
+      ...buildLegalAcceptanceEvidence(
+        document,
+        "session_reacceptance",
+      ),
       ...(ipAddress ? { ipAddress } : {}),
       ...(userAgent ? { userAgent } : {}),
     });

@@ -1,19 +1,148 @@
-import { IonButton, IonIcon } from "@ionic/react";
+import { IonButton, IonIcon, IonNote, IonSpinner } from "@ionic/react";
 import {
   callOutline,
   logoWhatsapp,
   mailOutline,
   shieldCheckmarkOutline,
 } from "ionicons/icons";
-import type { CSSProperties, ReactNode } from "react";
+import { useEffect, useState, type CSSProperties, type ReactNode } from "react";
 import { RAPAGO_CONTACT } from "@rapa-go/shared";
+import { legalService, type LegalDocumentData } from "../../features/legal/legal.service.js";
 
 import {
   PublicSiteShell,
   publicSiteStyles,
 } from "./PublicSiteShell.js";
 
-const UPDATED_AT = "23 de julio de 2026";
+const UPDATED_AT = "29 de julio de 2026";
+
+
+const LEGAL_TYPE_LABELS: Record<string, string> = {
+  terms_and_conditions: "Términos y Condiciones Generales",
+  privacy_policy: "Política de Privacidad",
+  user_conditions: "Condiciones de Usuarios",
+};
+
+function ActiveLegalDocumentPage({
+  type,
+  fallbackTitle,
+}: {
+  type: "terms_and_conditions" | "privacy_policy" | "user_conditions";
+  fallbackTitle: string;
+}): JSX.Element {
+  const [document, setDocument] = useState<LegalDocumentData | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
+
+  useEffect(() => {
+    let active = true;
+
+    legalService
+      .getActive()
+      .then((items) => {
+        if (!active) return;
+
+        const current =
+          items.find((item) => item.type === type && item.isActive) ?? null;
+
+        setDocument(current);
+        setLoadError(
+          current
+            ? ""
+            : "El documento vigente no está disponible. Comunícate con soporte antes de continuar.",
+        );
+      })
+      .catch(() => {
+        if (!active) return;
+        setDocument(null);
+        setLoadError(
+          "No fue posible cargar el documento vigente. Revisa tu conexión y vuelve a intentarlo.",
+        );
+      })
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [type]);
+
+  const title =
+    document?.title ??
+    LEGAL_TYPE_LABELS[type] ??
+    fallbackTitle;
+
+  return (
+    <PublicSiteShell
+      title={title}
+      subtitle={
+        document
+          ? `Versión ${document.version} · Vigente desde ${document.effectiveDate}`
+          : `Documento legal de RAPA GO · ${UPDATED_AT}`
+      }
+    >
+      <section style={publicSiteStyles.card}>
+        {loading ? (
+          <div
+            role="status"
+            aria-live="polite"
+            style={{
+              display: "grid",
+              justifyItems: "center",
+              gap: 12,
+              padding: "28px 12px",
+            }}
+          >
+            <IonSpinner name="crescent" />
+            <IonNote>Cargando versión legal vigente…</IonNote>
+          </div>
+        ) : document ? (
+          <>
+            <div
+              style={{
+                marginBottom: 18,
+                padding: "10px 12px",
+                borderRadius: 14,
+                border: "1px solid rgba(214,166,64,.42)",
+                background: "rgba(248,216,121,.10)",
+                color: "#f8d879",
+                fontWeight: 850,
+              }}
+            >
+              Versión {document.version} · Vigente desde {document.effectiveDate}
+            </div>
+
+            <article
+              style={{
+                whiteSpace: "pre-wrap",
+                lineHeight: 1.75,
+                color: "#f4efe7",
+              }}
+            >
+              {document.content}
+            </article>
+          </>
+        ) : (
+          <div
+            role="alert"
+            style={{
+              padding: 18,
+              borderRadius: 16,
+              border: "1px solid rgba(239,68,68,.45)",
+              background: "rgba(127,29,29,.28)",
+              color: "#fee2e2",
+              fontWeight: 800,
+              lineHeight: 1.55,
+            }}
+          >
+            {loadError}
+          </div>
+        )}
+      </section>
+    </PublicSiteShell>
+  );
+}
 
 function Section({
   title,
@@ -68,210 +197,28 @@ function List({ children }: { children: ReactNode }): JSX.Element {
 
 export function PrivacyPublicPage(): JSX.Element {
   return (
-    <PublicSiteShell
-      title="Política de privacidad"
-      subtitle={`Haka Taiko SpA — RAPA GO. Última actualización: ${UPDATED_AT}.`}
-    >
-      <Section title="1. Responsable y alcance">
-        <p>
-          RAPA GO es una plataforma de movilidad y servicios turísticos operada
-          por Haka Taiko SpA en Rapa Nui, Chile. Esta política se aplica a la
-          aplicación móvil, al panel administrativo y a los formularios web
-          públicos vinculados al servicio.
-        </p>
-        <p>
-          Contacto de privacidad: <a style={publicSiteStyles.link} href={`mailto:${RAPAGO_CONTACT.privacyEmail}`}>{RAPAGO_CONTACT.privacyEmail}</a>.
-        </p>
-      </Section>
-
-      <Section title="2. Datos que tratamos">
-        <List>
-          <li>Identificación y cuenta: nombre, correo, teléfono, RUT o pasaporte cuando corresponda.</li>
-          <li>Ubicación: origen, destino y posición durante la prestación de un viaje activo.</li>
-          <li>Operación: viajes, reservas, cancelaciones, calificaciones, reclamos y soporte.</li>
-          <li>Conductor: licencia, vehículo, patente, fotografías y documentos de habilitación.</li>
-          <li>Pagos: órdenes, estado, medio de pago, comprobantes y beneficios por pago de más.</li>
-          <li>Seguridad: sesiones, dirección IP, dispositivo, registros técnicos y auditoría.</li>
-        </List>
-      </Section>
-
-      <Section title="3. Finalidades y base del tratamiento">
-        <List>
-          <li>Crear y administrar la cuenta.</li>
-          <li>Solicitar, asignar, realizar y cerrar viajes o reservas.</li>
-          <li>Calcular tarifas, procesar pagos y atender devoluciones o beneficios.</li>
-          <li>Validar conductores, residentes y documentos obligatorios.</li>
-          <li>Prevenir fraude, proteger a usuarios y responder a emergencias.</li>
-          <li>Cumplir obligaciones legales, tributarias y de conservación documental.</li>
-        </List>
-        <p>
-          Solicitamos autorización cuando corresponde y tratamos solo los datos
-          necesarios para las finalidades informadas o para ejecutar el servicio.
-        </p>
-      </Section>
-
-      <Section title="4. Ubicación y mapas">
-        <p>
-          La ubicación se utiliza para mostrar el mapa, calcular rutas, encontrar
-          el punto de recogida y permitir seguimiento durante un viaje activo. La
-          ubicación en segundo plano se solicita únicamente al conductor cuando ya
-          tiene un viaje activo, para mantener visible su posición al pasajero y al
-          operador aunque la aplicación quede minimizada. El seguimiento se detiene
-          al finalizar o cancelar el viaje, al cerrar la sesión o cuando el permiso
-          es retirado. RAPA GO no debe usar ubicación en segundo plano cuando no
-          exista una función operacional activa que lo justifique. Puedes retirar
-          el permiso desde la configuración del dispositivo, aunque algunas
-          funciones dejarán de estar disponibles.
-        </p>
-      </Section>
-
-      <Section title="5. Proveedores, infraestructura y destinatarios">
-        <p>
-          La API de producción opera en infraestructura Hostinger bajo
-          backend.rapago.cl. La base PostgreSQL es administrada mediante Supabase
-          en la región de São Paulo, Brasil. También podemos utilizar Google Maps,
-          Mercado Pago, Apple, Meta/Facebook, correo y notificaciones según la
-          función elegida. Cada proveedor recibe solo la información necesaria.
-          No vendemos datos personales.
-        </p>
-      </Section>
-
-      <Section title="6. Conservación, eliminación y anonimización">
-        <List>
-          <li>Ubicaciones GPS detalladas: hasta 90 días.</li>
-          <li>Registros básicos de viajes, incidentes y reclamos: hasta 5 años.</li>
-          <li>Pagos, conciliaciones y documentos tributarios: 6 años o el plazo obligatorio superior.</li>
-          <li>Registros de seguridad e IP: hasta 12 meses, salvo investigación activa.</li>
-          <li>Soporte ordinario: hasta 24 meses desde el cierre.</li>
-          <li>Adjuntos bancarios de reembolso: eliminación dentro de 30 días desde el término del reembolso, conservando solo el comprobante mínimo.</li>
-        </List>
-        <p>
-          Puedes iniciar la solicitud dentro de la aplicación o desde
-          <a style={publicSiteStyles.link} href="/eliminar-cuenta"> api.rapago.cl/eliminar-cuenta</a>.
-          El motivo es opcional y el plazo de 30 días comienza cuando verificamos
-          la identidad. Revocamos las sesiones y, cuando corresponde, la
-          autorización de Sign in with Apple; después eliminamos o anonimizamos
-          los datos que no deban conservarse.
-        </p>
-      </Section>
-
-      <Section title="7. Derechos y contacto">
-        <p>
-          Puedes solicitar acceso, rectificación, eliminación, oposición y demás
-          derechos reconocidos por la normativa aplicable. La Ley N.º 19.628 se
-          encuentra vigente a la fecha de esta política. RAPA GO también prepara
-          sus procesos para la Ley N.º 21.719, cuya vigencia general comienza el
-          1 de diciembre de 2026.
-        </p>
-        <p>
-          Envía tu solicitud a <a style={publicSiteStyles.link} href={`mailto:${RAPAGO_CONTACT.privacyEmail}`}>{RAPAGO_CONTACT.privacyEmail}</a> o utiliza el formulario de eliminación.
-        </p>
-        <p>
-          Fuentes oficiales: <a style={publicSiteStyles.link} href="https://www.bcn.cl/leychile/navegar?idNorma=141599" target="_blank" rel="noreferrer">Ley N.º 19.628</a> y <a style={publicSiteStyles.link} href="https://www.bcn.cl/leychile/navegar?idNorma=1209272" target="_blank" rel="noreferrer">Ley N.º 21.719</a>.
-        </p>
-      </Section>
-
-      <Section title="8. Seguridad y cambios">
-        <p>
-          Utilizamos controles de acceso por rol, cifrado en tránsito, sesiones
-          revocables, auditoría y validaciones de archivos. Ningún sistema es
-          infalible; por eso revisamos y mejoramos estas medidas. Los cambios
-          relevantes de esta política serán informados en la aplicación o por
-          canales de contacto disponibles.
-        </p>
-      </Section>
-    </PublicSiteShell>
+    <ActiveLegalDocumentPage
+      type="privacy_policy"
+      fallbackTitle="Política de Privacidad"
+    />
   );
 }
 
 export function TermsPublicPage(): JSX.Element {
   return (
-    <PublicSiteShell
-      title="Términos y condiciones"
-      subtitle={`Condiciones de uso de RAPA GO. Vigentes desde ${UPDATED_AT}.`}
-    >
-      <Section title="1. Aceptación y operador">
-        <p>
-          Al registrarte o utilizar RAPA GO aceptas estas condiciones y los
-          documentos aplicables a tu rol. El servicio es operado por Haka Taiko
-          SpA en Rapa Nui, Chile. Debes proporcionar información verdadera y
-          mantener protegidas tus credenciales.
-        </p>
-      </Section>
+    <ActiveLegalDocumentPage
+      type="terms_and_conditions"
+      fallbackTitle="Términos y Condiciones Generales"
+    />
+  );
+}
 
-      <Section title="2. Servicio y tarifas">
-        <p>
-          RAPA GO conecta usuarios con conductores y permite gestionar servicios
-          turísticos. Antes de confirmar, la aplicación debe mostrar el precio,
-          moneda, forma de pago y condiciones relevantes. El monto final se
-          redondeará según la regla vigente informada en la aplicación y nunca de
-          forma oculta.
-        </p>
-      </Section>
-
-      <Section title="3. Cancelaciones y no presentación">
-        <List>
-          <li>Viaje inmediato: cancelación gratuita durante los primeros 2 minutos desde que el conductor acepta la solicitud y la aplicación confirma su asignación al pasajero.</li>
-          <li>Desde el tercer minuto: cargo de 30 % de la tarifa, con tope de $3.000 CLP.</li>
-          <li>Viaje programado: gratuito hasta 30 minutos antes; dentro de los últimos 30 minutos, 30 % con tope de $3.000 CLP.</li>
-          <li>No presentación: después de 5 minutos de espera en el origen, 50 % de la tarifa con tope de $5.000 CLP. Cuando el cargo sea aprobado y recaudado, se distribuirá 50 % al conductor y 50 % a Rapa Go.</li>
-        </List>
-        <p>
-          No corresponde cargo cuando exista discrepancia de identidad o vehículo,
-          riesgo de seguridad, duplicidad atribuible a la plataforma u otra causa
-          imputable al operador o conductor. El detalle debe quedar registrado y
-          puede ser revisado por administración.
-        </p>
-      </Section>
-
-      <Section title="4. Pagos y beneficios">
-        <p>
-          Los pagos pueden realizarse mediante los medios habilitados. El beneficio
-          por pago de más en efectivo no es una cuenta recargable: requiere
-          aprobación administrativa, pertenece a la misma cuenta que pagó, no se
-          transfiere y puede descontarse de un viaje posterior de esa cuenta.
-        </p>
-      </Section>
-
-      <Section title="5. Conducta y seguridad">
-        <p>
-          Está prohibido usar la plataforma para actividades ilícitas, hostigar,
-          discriminar, falsear identidad, manipular tarifas o poner en riesgo a
-          terceros. Pasajeros y conductores pueden reportar incidentes. RAPA GO
-          puede suspender preventivamente una cuenta mientras investiga un caso.
-        </p>
-      </Section>
-
-      <Section title="6. Responsabilidad y disponibilidad">
-        <p>
-          La disponibilidad depende de conectividad, GPS, conductores y proveedores
-          tecnológicos. RAPA GO procura continuidad y soporte, pero no garantiza
-          que el servicio sea ininterrumpido. Nada de estas condiciones limita los
-          derechos irrenunciables reconocidos por la legislación chilena.
-        </p>
-      </Section>
-
-      <Section title="7. Cuenta y terminación">
-        <p>
-          Puedes solicitar la eliminación desde tu perfil o mediante el sitio
-          público. La cuenta permanece activa durante la revisión. RAPA GO no
-          puede rechazar discrecionalmente la solicitud: solo puede aplazarla por
-          una causa objetiva y temporal, como un viaje activo, un saldo, un
-          reembolso, un contracargo, un reclamo o una investigación de seguridad.
-          Informar un motivo es opcional. El plazo máximo de 30 días comienza
-          después de verificar la identidad, salvo una obligación legal de
-          conservación debidamente informada. Cuando la cuenta utiliza Sign in
-          with Apple, RAPA GO revoca la autorización antes de eliminar la
-          vinculación interna.
-        </p>
-      </Section>
-
-      <Section title="8. Contacto">
-        <p>
-          Para soporte utiliza <a style={publicSiteStyles.link} href="/soporte">api.rapago.cl/soporte</a> o WhatsApp al {RAPAGO_CONTACT.supportPhoneDisplay}.
-        </p>
-      </Section>
-    </PublicSiteShell>
+export function UserConditionsPublicPage(): JSX.Element {
+  return (
+    <ActiveLegalDocumentPage
+      type="user_conditions"
+      fallbackTitle="Condiciones de Usuarios"
+    />
   );
 }
 

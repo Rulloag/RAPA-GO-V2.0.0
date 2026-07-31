@@ -27,6 +27,7 @@ export const ROUTES = {
   PUBLIC: {
     PRIVACY: "/privacidad",
     TERMS: "/terminos",
+    USER_CONDITIONS: "/condiciones-usuarios",
     SUPPORT: "/soporte",
     EULA: "/eula",
     DELETE_ACCOUNT: "/eliminar-cuenta",

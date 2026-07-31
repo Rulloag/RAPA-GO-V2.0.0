@@ -57,5 +57,18 @@
 	<array>
 		<string>location</string>
 	</array>
+	<key>GIDClientID</key>
+	<string>235001725437-r6rtfm44ratrqlu9bffpl2o26er50eth.apps.googleusercontent.com</string>
+	<key>GIDServerClientID</key>
+	<string>235001725437-vrlbsljvd7dualqoer59fl94d7qugciu.apps.googleusercontent.com</string>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>com.googleusercontent.apps.235001725437-r6rtfm44ratrqlu9bffpl2o26er50eth</string>
+			</array>
+		</dict>
+	</array>
 </dict>
 </plist>

@@ -4,6 +4,10 @@ import { TokenService } from "../auth/token.service.js";
 import { SessionService } from "../auth/session.service.js";
 import { UsersRepository } from "../users/users.repository.js";
 import { ApplicationsRepository } from "./applications.repository.js";
+import { LegalRepository } from "../legal/legal.repository.js";
+import { MailService } from "../auth/mail.service.js";
+import { buildLegalAcceptanceEvidence } from "../legal/legalEvidence.js";
+import { generateDriverContractPdf } from "./driverContractPdf.service.js";
 import { AppError } from "../../shared/errors/AppError.js";
 import { db } from "../../db/client.js";
 import {
@@ -26,6 +30,8 @@ import type {
   ApplicationResult,
   ApplicationsListResult,
   CreateApplicationResult,
+  ApplicationContractResult,
+  ContractDeliveryResult,
 } from "./applications.types.js";
 import type { UserRole } from "@rapa-go/shared";
 import { isApplicationTypeEnabled } from "../../config/features.js";
@@ -38,6 +44,55 @@ const tokenService = new TokenService();
 const sessionService = new SessionService();
 const usersRepo = new UsersRepository();
 const repo = new ApplicationsRepository();
+const legalRepo = new LegalRepository();
+const mailService = new MailService();
+
+function minutesFromClock(value: string): number {
+  const [hours, minutes] = value.split(":").map(Number);
+  return (hours ?? 0) * 60 + (minutes ?? 0);
+}
+
+function isTwelveHourRestWindow(start: string, end: string): boolean {
+  const startMinutes = minutesFromClock(start);
+  const endMinutes = minutesFromClock(end);
+  return (endMinutes - startMinutes + 24 * 60) % (24 * 60) === 12 * 60;
+}
+
+function normalizeReviewChecklist(
+  checklist:
+    | ReviewApplicationInput["reviewChecklist"]
+    | Record<string, boolean>
+    | null
+    | undefined,
+): Record<string, boolean> | null {
+  if (!checklist) return null;
+
+  const normalized: Record<string, boolean> = {};
+
+  for (const [key, value] of Object.entries(checklist)) {
+    if (typeof value === "boolean") {
+      normalized[key] = value;
+    }
+  }
+
+  return normalized;
+}
+
+function requiredChecklistApproved(
+  checklist: Record<string, boolean> | null | undefined,
+): boolean {
+  const required = [
+    "identity",
+    "driverLicense",
+    "profilePhoto",
+    "vehicle",
+    "residence",
+    "taxDomicile",
+    "restWindow",
+  ];
+
+  return required.every((key) => checklist?.[key] === true);
+}
 
 type AuthResult =
   | {
@@ -167,6 +222,28 @@ async function toResponse(application: Application): Promise<ApplicationResponse
     licenseBackUrl,
     certificateUrl,
     profilePhotoUrl,
+    driverContractDocumentId: application.driverContractDocumentId ?? null,
+    driverContractVersion: application.driverContractVersion ?? null,
+    driverContractAcceptedAt:
+      application.driverContractAcceptedAt?.toISOString() ?? null,
+    driverContractAcceptance:
+      application.driverContractAcceptance &&
+      typeof application.driverContractAcceptance === "object"
+        ? application.driverContractAcceptance
+        : null,
+    restWindowStart: application.restWindowStart ?? null,
+    restWindowEnd: application.restWindowEnd ?? null,
+    documentReviewStatus: application.documentReviewStatus,
+    trainingStatus: application.trainingStatus,
+    reviewChecklist:
+      application.reviewChecklist &&
+      typeof application.reviewChecklist === "object"
+        ? application.reviewChecklist
+        : {},
+    contractDeliveryStatus: application.contractDeliveryStatus,
+    contractDeliveredAt:
+      application.contractDeliveredAt?.toISOString() ?? null,
+    contractDeliveryError: application.contractDeliveryError ?? null,
     reviewedBy: application.reviewedBy ?? null,
     reviewedAt: application.reviewedAt?.toISOString() ?? null,
     rejectionReason: application.rejectionReason ?? null,
@@ -241,6 +318,66 @@ async function provisionApprovedDriver(
   }
 }
 
+async function getDriverContractForApplication(
+  application: Application,
+): Promise<import("../../db/schema/index.js").LegalDocument | null> {
+  if (!application.driverContractDocumentId) return null;
+
+  const document = await legalRepo.findById(
+    application.driverContractDocumentId,
+  );
+
+  if (
+    !document ||
+    document.type !== "driver_conditions" ||
+    document.version !== application.driverContractVersion
+  ) {
+    return null;
+  }
+
+  return document;
+}
+
+async function deliverDriverContract(
+  application: Application,
+): Promise<void> {
+  const document = await getDriverContractForApplication(application);
+
+  if (!document) {
+    await repo.updateContractDelivery(application.id, {
+      status: "failed",
+      error: "No se encontró la versión del contrato aceptado.",
+    });
+    return;
+  }
+
+  const pdfBuffer = generateDriverContractPdf(application, document);
+
+  try {
+    await mailService.sendDriverContractAccepted({
+      to: application.email,
+      name: `${application.firstName} ${application.lastName}`.trim(),
+      applicationId: application.id,
+      contractVersion: document.version,
+      pdfBuffer,
+    });
+
+    await repo.updateContractDelivery(application.id, {
+      status: "sent",
+      deliveredAt: new Date(),
+      error: null,
+    });
+  } catch (error) {
+    await repo.updateContractDelivery(application.id, {
+      status: "failed",
+      error:
+        error instanceof Error
+          ? error.message.slice(0, 800)
+          : String(error).slice(0, 800),
+    });
+  }
+}
+
 export class ApplicationsService {
   async createApplication(
     accessToken: string | null,
@@ -266,12 +403,52 @@ export class ApplicationsService {
       }
 
       let userId: string | null = null;
+      let driverContractDocument:
+        | import("../../db/schema/index.js").LegalDocument
+        | null = null;
 
       if (accessToken) {
         const auth = await authenticate(accessToken);
 
         if (!auth.ok) return auth;
         userId = auth.userId;
+      }
+
+      if (input.type === "driver") {
+        const acceptance = input.driverContractAcceptance;
+        driverContractDocument = await legalRepo.findById(
+          acceptance.legalDocumentId,
+        );
+
+        if (
+          !driverContractDocument ||
+          !driverContractDocument.isActive ||
+          driverContractDocument.type !== "driver_conditions" ||
+          driverContractDocument.version !== acceptance.version
+        ) {
+          return {
+            ok: false,
+            code: "DRIVER_CONTRACT_VERSION_INVALID",
+            message:
+              "El contrato de conductor cambió o ya no está vigente. Recarga la página, léelo nuevamente y vuelve a aceptar.",
+            statusCode: 409,
+          };
+        }
+
+        if (
+          !isTwelveHourRestWindow(
+            acceptance.restWindowStart,
+            acceptance.restWindowEnd,
+          )
+        ) {
+          return {
+            ok: false,
+            code: "INVALID_REST_WINDOW",
+            message:
+              "La franja de desconexión debe cubrir exactamente 12 horas continuas.",
+            statusCode: 400,
+          };
+        }
       }
 
       const insertData: typeof import("../../db/schema/index.js").applications.$inferInsert = {
@@ -311,6 +488,27 @@ export class ApplicationsService {
         if (input.licenseBackUrl !== undefined) insertData.licenseBackUrl = input.licenseBackUrl;
         if (input.vehiclePhotoUrl !== undefined) insertData.vehiclePhotoUrl = input.vehiclePhotoUrl;
         if (input.vehicles !== undefined) insertData.vehicles = input.vehicles;
+
+        const acceptance = input.driverContractAcceptance;
+        insertData.driverContractDocumentId = acceptance.legalDocumentId;
+        insertData.driverContractVersion = acceptance.version;
+        insertData.driverContractAcceptedAt = acceptance.clientAcceptedAt
+          ? new Date(acceptance.clientAcceptedAt)
+          : new Date();
+        insertData.driverContractAcceptance = {
+          acceptedContract: acceptance.acceptedContract,
+          acceptedDocumentsTruth: acceptance.acceptedDocumentsTruth,
+          acceptedIndependentNature: acceptance.acceptedIndependentNature,
+          acceptedPrivacyGeolocation: acceptance.acceptedPrivacyGeolocation,
+          acceptedRestWindow: acceptance.acceptedRestWindow,
+          acceptedPersonalService: acceptance.acceptedPersonalService,
+          clientAcceptedAt: acceptance.clientAcceptedAt ?? null,
+        };
+        insertData.restWindowStart = acceptance.restWindowStart;
+        insertData.restWindowEnd = acceptance.restWindowEnd;
+        insertData.documentReviewStatus = "pending";
+        insertData.trainingStatus = "pending";
+        insertData.contractDeliveryStatus = "pending";
       } else if (input.type === "guide") {
         if (input.experienceYears !== undefined) insertData.experienceYears = input.experienceYears;
         if (input.specialties !== undefined) insertData.specialties = input.specialties;
@@ -326,6 +524,24 @@ export class ApplicationsService {
       }
 
       const application = await repo.create(insertData);
+
+      if (
+        input.type === "driver" &&
+        userId &&
+        driverContractDocument
+      ) {
+        await legalRepo.createAcceptance({
+          userId,
+          legalDocumentId: driverContractDocument.id,
+          versionAccepted: driverContractDocument.version,
+          ...buildLegalAcceptanceEvidence(
+            driverContractDocument,
+            "driver_application",
+          ),
+        });
+
+        void deliverDriverContract(application);
+      }
 
       void (async () => {
         try {
@@ -351,7 +567,9 @@ export class ApplicationsService {
         ok: true,
         id: application.id,
         status: "pending",
-        message: "Postulación creada. Ahora se están guardando tus fotografías y documentos.",
+        message: input.type === "driver"
+          ? "Postulación enviada. Tu contrato fue registrado y enviaremos una copia PDF a tu correo. La aceptación no habilita la cuenta hasta completar la revisión documental y la capacitación."
+          : "Postulación creada. Ahora se están guardando tus fotografías y documentos.",
       };
     } catch (err) {
       if (err instanceof AppError) {
@@ -610,6 +828,59 @@ export class ApplicationsService {
             statusCode: 400,
           };
         }
+
+        const documentReviewStatus =
+          input.documentReviewStatus ?? existing.documentReviewStatus;
+        const trainingStatus =
+          input.trainingStatus ?? existing.trainingStatus;
+        const checklist = normalizeReviewChecklist(
+          input.reviewChecklist ??
+            (existing.reviewChecklist as Record<string, boolean> | null),
+        );
+
+        if (
+          !existing.driverContractDocumentId ||
+          !existing.driverContractVersion ||
+          !existing.driverContractAcceptedAt
+        ) {
+          return {
+            ok: false,
+            code: "DRIVER_CONTRACT_NOT_ACCEPTED",
+            message:
+              "No puedes habilitar al conductor porque no existe una aceptación contractual versionada.",
+            statusCode: 400,
+          };
+        }
+
+        if (documentReviewStatus !== "approved") {
+          return {
+            ok: false,
+            code: "DRIVER_DOCUMENT_REVIEW_PENDING",
+            message:
+              "Primero debes aprobar la revisión documental del conductor.",
+            statusCode: 400,
+          };
+        }
+
+        if (trainingStatus !== "approved") {
+          return {
+            ok: false,
+            code: "DRIVER_TRAINING_PENDING",
+            message:
+              "Primero debes registrar la capacitación como aprobada.",
+            statusCode: 400,
+          };
+        }
+
+        if (!requiredChecklistApproved(checklist)) {
+          return {
+            ok: false,
+            code: "DRIVER_CHECKLIST_INCOMPLETE",
+            message:
+              "Completa el checklist de identidad, licencia, vehículo, residencia, domicilio tributario y franja de desconexión.",
+            statusCode: 400,
+          };
+        }
       }
 
       try {
@@ -673,12 +944,26 @@ export class ApplicationsService {
       }
     }
 
+    const normalizedReviewChecklist =
+      input.reviewChecklist === undefined
+        ? undefined
+        : normalizeReviewChecklist(input.reviewChecklist) ?? {};
+
     const updated = await repo.updateStatus(id, auth.userId, {
       status: input.status,
       ...(input.rejectionReason !== undefined
         ? { rejectionReason: input.rejectionReason }
         : {}),
       ...(input.notes !== undefined ? { notes: input.notes } : {}),
+      ...(input.documentReviewStatus !== undefined
+        ? { documentReviewStatus: input.documentReviewStatus }
+        : {}),
+      ...(input.trainingStatus !== undefined
+        ? { trainingStatus: input.trainingStatus }
+        : {}),
+      ...(normalizedReviewChecklist !== undefined
+        ? { reviewChecklist: normalizedReviewChecklist }
+        : {}),
     });
 
     if (!updated) {
@@ -724,4 +1009,96 @@ export class ApplicationsService {
       application: await toResponse(updated),
     };
   }
+  async getApplicationContract(
+    accessToken: string,
+    id: string,
+  ): Promise<ApplicationContractResult> {
+    const auth = await authenticate(accessToken);
+    if (!auth.ok) return auth;
+
+    const application = await repo.findById(id);
+
+    if (!application) {
+      return {
+        ok: false,
+        code: "NOT_FOUND",
+        message: "Application not found.",
+        statusCode: 404,
+      };
+    }
+
+    if (
+      auth.role !== "admin" &&
+      application.userId !== auth.userId
+    ) {
+      return {
+        ok: false,
+        code: "FORBIDDEN",
+        message: "No puedes descargar este contrato.",
+        statusCode: 403,
+      };
+    }
+
+    const document = await getDriverContractForApplication(application);
+
+    if (!document) {
+      return {
+        ok: false,
+        code: "DRIVER_CONTRACT_NOT_FOUND",
+        message: "No se encontró la versión contractual aceptada.",
+        statusCode: 404,
+      };
+    }
+
+    return {
+      ok: true,
+      fileName: `Contrato-Rapa-Go-${application.id}.pdf`,
+      contentType: "application/pdf",
+      buffer: generateDriverContractPdf(application, document),
+    };
+  }
+
+  async resendApplicationContract(
+    accessToken: string,
+    id: string,
+  ): Promise<ContractDeliveryResult> {
+    const auth = await authenticate(accessToken);
+    if (!auth.ok) return auth;
+
+    if (auth.role !== "admin") {
+      return {
+        ok: false,
+        code: "FORBIDDEN",
+        message: "Admin access required.",
+        statusCode: 403,
+      };
+    }
+
+    const application = await repo.findById(id);
+
+    if (!application) {
+      return {
+        ok: false,
+        code: "NOT_FOUND",
+        message: "Application not found.",
+        statusCode: 404,
+      };
+    }
+
+    await repo.updateContractDelivery(id, {
+      status: "pending",
+      error: null,
+    });
+    await deliverDriverContract(application);
+
+    const updated = await repo.findById(id);
+
+    return {
+      ok: true,
+      status: updated?.contractDeliveryStatus ?? "failed",
+      deliveredAt:
+        updated?.contractDeliveredAt?.toISOString() ?? null,
+    };
+  }
+
 }
