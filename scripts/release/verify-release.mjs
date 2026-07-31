@@ -7,7 +7,8 @@ const failures = [];
 const checks = [];
 
 async function text(relative) {
-  return readFile(path.join(root, relative), "utf8");
+  const value = await readFile(path.join(root, relative), "utf8");
+  return value.replace(/\r\n/g, "\n");
 }
 
 async function exists(relative) {

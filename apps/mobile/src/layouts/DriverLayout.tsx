@@ -1,6 +1,7 @@
 import { homeOutline, carOutline, listOutline, cashOutline, personOutline } from "ionicons/icons";
 import { Redirect, Route } from "react-router-dom";
 import { RoleLayout } from "./RoleLayout";
+import { UnknownRolePathRedirect } from "./UnknownRolePathRedirect.js";
 import { ROUTES } from "../navigation/routes";
 import * as DriverPages from "../pages/driver";
 import { DriverLocationRuntime } from "../features/location/index.js";
@@ -23,6 +24,15 @@ const TABS = [
   { path: ROUTES.DRIVER.PROFILE, label: "Perfil", icon: personOutline },
 ];
 
+const DRIVER_ALLOWED_PATHS = [
+  ROUTES.DRIVER.BASE,
+  ROUTES.DRIVER.HOME,
+  ROUTES.DRIVER.REQUESTS,
+  ROUTES.DRIVER.TRIPS,
+  ROUTES.DRIVER.TRIP_DETAIL_PATTERN,
+  ROUTES.DRIVER.EARNINGS,
+  ROUTES.DRIVER.PROFILE,
+] as const;
 export function DriverLayout(): JSX.Element {
   return (
     <>
@@ -35,10 +45,18 @@ export function DriverLayout(): JSX.Element {
         <Route exact path={ROUTES.DRIVER.TRIP_DETAIL_PATTERN} component={DriverTripsPage} />
         <Route exact path={ROUTES.DRIVER.EARNINGS} component={DriverEarningsPage} />
         <Route exact path={ROUTES.DRIVER.PROFILE} component={DriverProfilePage} />
+        <Route
+          path={ROUTES.DRIVER.BASE}
+          render={() => (
+            <UnknownRolePathRedirect
+              basePath={ROUTES.DRIVER.BASE}
+              allowedPaths={DRIVER_ALLOWED_PATHS}
+            />
+          )}
+        />
       </RoleLayout>
     </>
   );
 }
 
 export default DriverLayout;
-

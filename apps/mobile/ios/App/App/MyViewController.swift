@@ -10,5 +10,6 @@ import Capacitor
 class MyViewController: CAPBridgeViewController {
     override open func capacitorDidLoad() {
         bridge?.registerPluginInstance(RapaGoGoogleAuthPlugin())
+        bridge?.registerPluginInstance(RapaGoBackgroundLocationPlugin())
     }
 }
