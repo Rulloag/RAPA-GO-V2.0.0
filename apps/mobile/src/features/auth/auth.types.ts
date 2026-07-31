@@ -78,6 +78,27 @@ export type AppleWebAuthResponse =
       displayEmail?: string;
     });
 
+
+
+export type GooglePassengerFareType = ApplePassengerFareType;
+
+export interface GoogleSignInRequest {
+  /** Google ID token; the backend verifies signature, issuer and audience. */
+  idToken: string;
+  phone?: string;
+  rut?: string;
+  passport?: string;
+  passengerFareType?: GooglePassengerFareType;
+  legalAcceptances?: AppleLegalAcceptance[];
+  residenceAccreditation?: ResidenceAccreditationInput;
+}
+
+export type GoogleAuthResponse =
+  | Extract<AuthResponse, { ok: true }>
+  | (Extract<AuthResponse, { ok: false }> & {
+      displayEmail?: string;
+    });
+
 /** Shape exposed by AuthContext. */
 export interface AuthContextValue {
   status: AuthStatus;
@@ -87,6 +108,7 @@ export interface AuthContextValue {
   login: (payload: LoginRequest) => Promise<AuthResponse>;
   register: (payload: RegisterRequest) => Promise<AuthResponse>;
   signInWithApple: (payload: AppleSignInRequest) => Promise<AuthResponse>;
+  signInWithGoogle: (payload: GoogleSignInRequest) => Promise<GoogleAuthResponse>;
   signInWithAppleWeb: (
     payload: AppleWebCompleteRequest,
   ) => Promise<AppleWebAuthResponse>;

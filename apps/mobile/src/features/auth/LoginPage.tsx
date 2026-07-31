@@ -23,6 +23,9 @@ import logoRapago from "../../theme/img/logo-rapago.jpeg";
 import { AppleAccountSetupModal } from "./AppleAccountSetupModal.js";
 import { AppleRoleSelectionModal } from "./AppleRoleSelectionModal.js";
 import { AppleSignInButton } from "./AppleSignInButton.js";
+import { GoogleAccountSetupModal } from "./GoogleAccountSetupModal.js";
+import { GoogleSignInButton } from "./GoogleSignInButton.js";
+import { useGoogleSignIn, type GoogleSignInOutcome } from "./useGoogleSignIn.js";
 import { useAppleSignIn, type AppleSignInOutcome } from "./useAppleSignIn.js";
 import type { PublicRole } from "./roles.js";
 import {
@@ -556,9 +559,130 @@ export function LoginPage(): JSX.Element {
   const history = useHistory();
   const { login } = useAuth();
   const apple = useAppleSignIn();
+  const google = useGoogleSignIn();
   const appleWebCallbackHandledRef = useRef(false);
+  const googleWebSignInInFlightRef = useRef(false);
+  const googleSetupSubmitInFlightRef = useRef(false);
   /* Tema propio del flujo de acceso (compartido con Registro). */
   const { theme, isDark, toggleTheme } = useRapagoSectionTheme("auth");
+
+  function handleGoogleOutcome(outcome: GoogleSignInOutcome): void {
+    if (outcome.kind === "success") {
+      setGoogleSetupError("");
+      history.replace(ROLE_HOME[outcome.role] ?? ROUTES.PASSENGER.HOME);
+      return;
+    }
+
+    if (outcome.kind === "setup_required") {
+      // Abrir el formulario es una continuación normal del ingreso, no un
+      // error de la pantalla principal. Solo mostramos dentro del formulario
+      // mensajes de validación posteriores al primer envío.
+      setServerError("");
+      setGoogleSetupError(outcome.message ?? "");
+      return;
+    }
+
+    setGoogleSetupError("");
+
+    if (outcome.kind === "cancelled") {
+      setServerError("Cancelaste el ingreso con Google.");
+      return;
+    }
+
+    if (outcome.kind === "unavailable") {
+      setServerError(
+        "Continuar con Google no está disponible en este momento.",
+      );
+      return;
+    }
+
+    if ("message" in outcome) {
+      if (google.setupOpen) {
+        setGoogleSetupError(outcome.message);
+      } else {
+        setServerError(outcome.message);
+      }
+    }
+  }
+
+  async function startGoogleNativeSignIn(): Promise<void> {
+    setServerError("");
+    setGoogleSetupError("");
+    handleGoogleOutcome(await google.signInNative());
+  }
+
+  async function handleGoogleWebCredential(idToken: string): Promise<void> {
+    // Google Identity Services puede disparar el callback más de una vez en
+    // desarrollo (por re-render/StrictMode o doble interacción rápida). Una
+    // sola credencial debe producir una sola petición al backend.
+    if (googleWebSignInInFlightRef.current) return;
+
+    googleWebSignInInFlightRef.current = true;
+    setServerError("");
+    setGoogleSetupError("");
+
+    try {
+      handleGoogleOutcome(await google.handleWebCredential(idToken));
+    } finally {
+      googleWebSignInInFlightRef.current = false;
+    }
+  }
+
+  async function completeGoogleSetup(input: {
+    passengerFareType: "resident" | "chilean" | "foreigner";
+    acceptedDocumentIds: string[];
+    phone: string;
+    rut?: string;
+    passport?: string;
+    residenceAccreditation?: import("@rapa-go/shared").ResidenceAccreditationInput;
+  }): Promise<void> {
+    if (googleSetupSubmitInFlightRef.current) return;
+
+    googleSetupSubmitInFlightRef.current = true;
+    setServerError("");
+    setGoogleSetupError("");
+    const cleanPhone = normalizePhone(input.phone);
+
+    try {
+      const outcome = await google.completeSetup({ ...input, phone: cleanPhone });
+
+      if (outcome.kind === "success") {
+      const passengerConditionByFare: Record<
+        "resident" | "chilean" | "foreigner",
+        PassengerCondition
+      > = {
+        resident: "residente_rapa_nui",
+        chilean: "turista_chileno",
+        foreigner: "turista_extranjero",
+      };
+      persistPassengerProfile({
+        email: google.setupDisplayEmail,
+        phone: cleanPhone,
+        rut: input.rut ?? "",
+        passport: input.passport ?? "",
+        nationality: getPassengerFareLabel(input.passengerFareType),
+        passengerFareLabel: getPassengerFareLabel(input.passengerFareType),
+        passengerFareType: input.passengerFareType,
+        farePassengerType: input.passengerFareType,
+        passengerType: input.passengerFareType,
+        passengerCondition: passengerConditionByFare[input.passengerFareType],
+        belongsToRapaNuiEthnicity: input.passengerFareType === "resident",
+        residenceDocumentRequired: input.passengerFareType === "resident",
+        residenceDocumentUploaded: Boolean(input.residenceAccreditation),
+        residenceVerificationStatus:
+          input.passengerFareType === "resident" ? "pending" : "not_required",
+        residenceVerificationMessage:
+          input.passengerFareType === "resident"
+            ? "Tu categoría RAPA NUI / RESIDENTE RAPA NUI está activa y tu acreditación quedó pendiente de revisión administrativa."
+            : "",
+      });
+      }
+
+      handleGoogleOutcome(outcome);
+    } finally {
+      googleSetupSubmitInFlightRef.current = false;
+    }
+  }
 
   function handleAppleOutcome(outcome: AppleSignInOutcome): void {
     if (outcome.kind === "success") {
@@ -666,6 +790,11 @@ export function LoginPage(): JSX.Element {
     getFacebookRedirectErrorMessage,
   );
   const [appleSetupError, setAppleSetupError] = useState("");
+  const [googleSetupError, setGoogleSetupError] = useState("");
+  const facebookLoginEnabled =
+    String(import.meta.env.VITE_FACEBOOK_LOGIN_ENABLED ?? "false")
+      .trim()
+      .toLowerCase() === "true";
 
   const [facebookSetupRequest] =
     useState<FacebookSetupRequest | null>(
@@ -1428,21 +1557,34 @@ export function LoginPage(): JSX.Element {
 
           <div className="rapago-auth-divider">o</div>
 
-          <IonButton
-            expand="block"
-            fill="outline"
-            disabled={loading}
-            onClick={(e) => {
-              e.preventDefault();
-              e.stopPropagation();
-              openFacebookStep();
+          {facebookLoginEnabled && (
+            <IonButton
+              expand="block"
+              fill="outline"
+              disabled={loading}
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                openFacebookStep();
+              }}
+              type="button"
+              className="rapago-auth-btn-outline"
+            >
+              <IonIcon slot="start" icon={logoFacebook} />
+              Continuar con Facebook
+            </IonButton>
+          )}
+
+          <GoogleSignInButton
+            isAvailable={google.isAvailable}
+            loading={google.loading}
+            disabled={loading || apple.loading}
+            onNativePress={() => void startGoogleNativeSignIn()}
+            onWebCredential={(idToken) => {
+              void handleGoogleWebCredential(idToken);
             }}
-            type="button"
-            className="rapago-auth-btn-outline"
-          >
-            <IonIcon slot="start" icon={logoFacebook} />
-            Continuar con Facebook
-          </IonButton>
+            onError={setServerError}
+          />
 
           <AppleSignInButton
             isAvailable={apple.isAvailable}
@@ -1508,6 +1650,21 @@ export function LoginPage(): JSX.Element {
 
 
       </IonContent>
+
+      <GoogleAccountSetupModal
+        isOpen={google.setupOpen}
+        loading={google.loading}
+        documents={google.documents}
+        displayEmail={google.setupDisplayEmail}
+        serverError={googleSetupError}
+        onCancel={() => {
+          setGoogleSetupError("");
+          google.cancelSetup();
+        }}
+        onConfirm={(input) => {
+          void completeGoogleSetup(input);
+        }}
+      />
 
       <AppleRoleSelectionModal
         isOpen={apple.awaitingRole}

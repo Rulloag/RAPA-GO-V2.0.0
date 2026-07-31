@@ -15,7 +15,7 @@ type IonicStyle = CSSProperties &
   Record<`--${string}`, string | number | undefined>;
 
 /**
- * Formulario social compartido de pasajero (Facebook / Apple).
+ * Formulario social compartido de pasajero (Facebook / Apple / Google).
  *
  * Reutiliza EXACTAMENTE la estructura visual, clases CSS
  * (`facebook-step-modal`, `facebook-step-content`, `facebook-step-card`,
@@ -32,7 +32,7 @@ export type PassengerCondition =
 
 export type PassengerFareType = "resident" | "chilean" | "foreigner";
 
-export type PassengerSocialProvider = "facebook" | "apple";
+export type PassengerSocialProvider = "facebook" | "apple" | "google";
 
 export function getPassengerFareType(
   condition: PassengerCondition,
@@ -200,6 +200,7 @@ export const conditionOptions: Array<{
 const PROVIDER_LABEL: Record<PassengerSocialProvider, string> = {
   facebook: "Facebook",
   apple: "Apple",
+  google: "Google",
 };
 
 export interface PassengerSocialSetupFormProps {

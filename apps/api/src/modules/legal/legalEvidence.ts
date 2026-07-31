@@ -6,6 +6,7 @@ export type LegalAuthenticationMethod =
   | "password"
   | "facebook"
   | "apple"
+  | "google"
   | "session_reacceptance"
   | "driver_application";
 

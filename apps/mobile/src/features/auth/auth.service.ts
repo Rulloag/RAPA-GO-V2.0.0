@@ -4,6 +4,8 @@ import type {
   AppleWebAuthResponse,
   AppleWebCompleteRequest,
   AuthResponse,
+  GoogleAuthResponse,
+  GoogleSignInRequest,
   LoginRequest,
   RegisterRequest,
 } from "./auth.types.js";
@@ -202,6 +204,28 @@ export const authService = {
     if (result.ok === false) {
       return { ok: false, code: result.code, message: result.message };
     }
+    return result.data;
+  },
+
+
+  async signInWithGoogle(
+    payload: GoogleSignInRequest,
+  ): Promise<GoogleAuthResponse> {
+    const result = await apiClient.post<GoogleAuthResponse>(
+      "/auth/google",
+      payload,
+      undefined,
+      0,
+    );
+
+    if (result.ok === false) {
+      return {
+        ok: false,
+        code: result.code,
+        message: result.message,
+      };
+    }
+
     return result.data;
   },
 
