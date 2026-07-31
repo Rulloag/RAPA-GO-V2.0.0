@@ -407,6 +407,36 @@ export class AppleAuthService {
       });
     }
 
+    const candidateEmail =
+      identityClaims.email?.toLowerCase().trim() ||
+      passengerSetup?.contactEmail ||
+      undefined;
+
+    if (candidateEmail) {
+      const emailOwner = await this.usersRepository.findByEmail(candidateEmail);
+
+      if (emailOwner) {
+        logAppleStage(requestId, "signIn:newAccountEmailConflict", {
+          userId: emailOwner.id,
+        });
+
+        this.auditService.recordSafe({
+          eventType: "auth.apple.login.conflict",
+          entityType: "user",
+          entityId: emailOwner.id,
+          metadata: { reason: "email_taken_before_exchange" },
+        });
+
+        return {
+          ok: false,
+          code: "AUTH_APPLE_ACCOUNT_LINKING_REQUIRED",
+          message:
+            "Ya existe una cuenta con ese correo. Ingresa con tu método actual para vincular Apple.",
+          statusCode: 409,
+        };
+      }
+    }
+
     return this.exchangeAndCompleteNewAccount(
       payload,
       identityClaims,
@@ -708,6 +738,19 @@ export class AppleAuthService {
         ok: false,
         code: "VALIDATION_ERROR",
         message: "role is required to create a new account.",
+        statusCode: 400,
+      };
+    }
+
+    const hasVerifiedIdentityEmail =
+      Boolean(identityClaims.email) && identityClaims.emailVerified;
+
+    if (payload.role !== "passenger" && !hasVerifiedIdentityEmail) {
+      return {
+        ok: false,
+        code: "AUTH_APPLE_EMAIL_MISSING",
+        message:
+          "Apple no entregó un correo verificado para completar este registro.",
         statusCode: 400,
       };
     }

@@ -182,7 +182,7 @@ export function useAppleSignIn(): UseAppleSignInResult {
     Capacitor.isNativePlatform() && Capacitor.getPlatform() === "ios";
   const isWebBrowser =
     typeof window !== "undefined" && !Capacitor.isNativePlatform();
-  const isAvailable = isNativeIos || isWebBrowser;
+  const isAvailable = isNativeIos;
 
   const clearPending = useCallback(() => {
     skipNextRoleDismissRef.current = false;

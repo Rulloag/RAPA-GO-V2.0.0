@@ -11,6 +11,7 @@ import {
 import { Redirect, Route } from "react-router-dom";
 import { IonContent, IonPage, IonSpinner } from "@ionic/react";
 import { RoleLayout } from "./RoleLayout";
+import { UnknownRolePathRedirect } from "./UnknownRolePathRedirect.js";
 import { ROUTES } from "../navigation/routes";
 import { PassengerLocationRuntime } from "../features/location/index.js";
 import {
@@ -62,6 +63,21 @@ const TABS = [
   { path: ROUTES.PASSENGER.WALLET, label: "Beneficios", icon: walletOutline },
 ];
 
+const PASSENGER_ALLOWED_PATHS = [
+  ROUTES.PASSENGER.BASE,
+  ROUTES.PASSENGER.HOME,
+  ROUTES.PASSENGER.REQUEST_RIDE,
+  ROUTES.PASSENGER.TRIPS,
+  ROUTES.PASSENGER.TRIP_DETAIL_PATTERN,
+  ROUTES.PASSENGER.WALLET,
+  ROUTES.PASSENGER.PROFILE,
+  ROUTES.PASSENGER.GUIDES,
+  ROUTES.PASSENGER.GUIDE_DETAIL_PATTERN,
+  ROUTES.PASSENGER.RENTALS,
+  ROUTES.PASSENGER.RENTAL_DETAIL_PATTERN,
+  ROUTES.PASSENGER.EVENTS,
+  ROUTES.PASSENGER.EVENT_TICKETS,
+] as const;
 function PageSuspense({ children }: { children: ReactNode }): JSX.Element {
   return (
     <Suspense
@@ -169,6 +185,15 @@ export function PassengerLayout(): JSX.Element {
           />
         )}
 
+        <Route
+          path={ROUTES.PASSENGER.BASE}
+          render={() => (
+            <UnknownRolePathRedirect
+              basePath={ROUTES.PASSENGER.BASE}
+              allowedPaths={PASSENGER_ALLOWED_PATHS}
+            />
+          )}
+        />
       </RoleLayout>
     </>
   );

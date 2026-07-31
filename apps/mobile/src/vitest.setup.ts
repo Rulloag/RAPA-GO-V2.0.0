@@ -13,6 +13,45 @@ import * as matchers from "@testing-library/jest-dom/matchers";
 // `expect` singleton than the one this workspace's tests actually use.
 // Extending the `expect` imported here (correctly resolved to apps/mobile's
 // own nested vitest@4.1.10) sidesteps that mismatch entirely.
+function createMemoryStorage(): Storage {
+  const values = new Map<string, string>();
+
+  return {
+    get length(): number {
+      return values.size;
+    },
+    clear(): void {
+      values.clear();
+    },
+    getItem(key: string): string | null {
+      return values.has(String(key)) ? values.get(String(key)) ?? null : null;
+    },
+    key(index: number): string | null {
+      return Array.from(values.keys())[index] ?? null;
+    },
+    removeItem(key: string): void {
+      values.delete(String(key));
+    },
+    setItem(key: string, value: string): void {
+      values.set(String(key), String(value));
+    },
+  };
+}
+
+const memoryLocalStorage = createMemoryStorage();
+
+Object.defineProperty(globalThis, "localStorage", {
+  configurable: true,
+  value: memoryLocalStorage,
+});
+
+if (typeof window !== "undefined") {
+  Object.defineProperty(window, "localStorage", {
+    configurable: true,
+    value: memoryLocalStorage,
+  });
+}
+
 expect.extend(matchers);
 
 afterEach(() => {

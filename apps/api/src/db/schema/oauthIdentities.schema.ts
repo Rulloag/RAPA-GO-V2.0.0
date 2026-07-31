@@ -48,7 +48,7 @@ export const oauthIdentities = pgTable(
   (t) => ({
     uqProviderUser:   unique("uq_oauth_identities_provider_user").on(t.provider, t.providerUserId),
     idxUserId:        index("idx_oauth_identities_user_id").on(t.userId),
-    chkProviderValue: check("chk_oauth_identities_provider", sql`${t.provider} IN ('apple')`),
+    chkProviderValue: check("chk_oauth_identities_provider", sql`${t.provider} IN ('apple', 'facebook', 'google')`),
   }),
 );
 

@@ -13,6 +13,7 @@ import {
 } from "ionicons/icons";
 import { Redirect, Route } from "react-router-dom";
 import { RoleLayout } from "./RoleLayout";
+import { UnknownRolePathRedirect } from "./UnknownRolePathRedirect.js";
 import { ROUTES } from "../navigation/routes";
 import {
   AdminHomePage,
@@ -56,6 +57,27 @@ const TABS = [
   { path: ROUTES.ADMIN.SETTINGS, label: "Config", icon: settingsOutline },
 ];
 
+const ADMIN_ALLOWED_PATHS = [
+  ROUTES.ADMIN.BASE,
+  ROUTES.ADMIN.HOME,
+  ROUTES.ADMIN.USERS,
+  ROUTES.ADMIN.DRIVERS,
+  ROUTES.ADMIN.GUIDES,
+  ROUTES.ADMIN.RENTALS,
+  ROUTES.ADMIN.TRIPS,
+  ROUTES.ADMIN.PAYMENTS,
+  ROUTES.ADMIN.SETTINGS,
+  ROUTES.ADMIN.DOCUMENTS,
+  ROUTES.ADMIN.OFFLINE_BOOKINGS,
+  ROUTES.ADMIN.APPLICATIONS,
+  ROUTES.ADMIN.EVENT_TICKETS,
+  ROUTES.ADMIN.LEGAL_DOCUMENTS,
+  ROUTES.ADMIN.FARE_SETTINGS,
+  ROUTES.ADMIN.REFERRALS,
+  ROUTES.ADMIN.SUPPORT,
+  "/admin/activity",
+  "/admin/alerts",
+] as const;
 export function AdminLayout(): JSX.Element {
   return (
     <RoleLayout tabs={TABS}>
@@ -92,7 +114,15 @@ export function AdminLayout(): JSX.Element {
         />
       )}
 
+      <Route
+        path={ROUTES.ADMIN.BASE}
+        render={() => (
+          <UnknownRolePathRedirect
+            basePath={ROUTES.ADMIN.BASE}
+            allowedPaths={ADMIN_ALLOWED_PATHS}
+          />
+        )}
+      />
     </RoleLayout>
   );
 }
-
