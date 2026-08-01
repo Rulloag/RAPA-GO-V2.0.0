@@ -11,6 +11,7 @@ const {
   mockFindSuccessfulByRideIdAndPurpose,
   mockCreate,
   mockMarkProcessing,
+  mockMarkEmbeddedProcessing,
   mockMarkFailed,
   mockRecordSafe,
   mockCreateEmbeddedOrder,
@@ -23,7 +24,11 @@ const {
   mockFindActiveByRideIdAndPurpose: vi.fn().mockResolvedValue(null),
   mockFindSuccessfulByRideIdAndPurpose: vi.fn().mockResolvedValue(null),
   mockCreate: vi.fn(),
+  // `markProcessing` (redirect) is mocked too, only so a regression is loud and
+  // immediate: the Klap embedded flow must NEVER call it (see the dedicated test
+  // below) — if it ever did, it would need a urlPay argument again.
   mockMarkProcessing: vi.fn(),
+  mockMarkEmbeddedProcessing: vi.fn(),
   mockMarkFailed: vi.fn(),
   mockRecordSafe: vi.fn(),
   mockCreateEmbeddedOrder: vi.fn(),
@@ -56,6 +61,7 @@ vi.mock("../payments.repository.js", () => ({
     findSuccessfulByRideIdAndPurpose: mockFindSuccessfulByRideIdAndPurpose,
     create: mockCreate,
     markProcessing: mockMarkProcessing,
+    markEmbeddedProcessing: mockMarkEmbeddedProcessing,
     markFailed: mockMarkFailed,
   })),
 }));
@@ -132,7 +138,7 @@ describe("PaymentsService.createKlapEmbeddedOrder", () => {
       providerOrderId: "klap-order-abc123",
       publicCheckoutData: { orderId: "klap-order-abc123" },
     });
-    mockMarkProcessing.mockResolvedValue({ id: PAYMENT_ID, status: "processing" });
+    mockMarkEmbeddedProcessing.mockResolvedValue({ id: PAYMENT_ID, status: "processing", urlPay: null });
 
     const result = await service.createKlapEmbeddedOrder("tok", { rideRequestId: RIDE_ID });
 
@@ -154,7 +160,7 @@ describe("PaymentsService.createKlapEmbeddedOrder", () => {
       providerOrderId: "klap-order-abc123",
       publicCheckoutData: { orderId: "klap-order-abc123" },
     });
-    mockMarkProcessing.mockResolvedValue({ id: PAYMENT_ID, status: "processing" });
+    mockMarkEmbeddedProcessing.mockResolvedValue({ id: PAYMENT_ID, status: "processing", urlPay: null });
 
     // The input type only accepts rideRequestId — casting to `any` here only to
     // prove that even if a client smuggled an `amountClp` field into the JSON
@@ -236,7 +242,7 @@ describe("PaymentsService.createKlapEmbeddedOrder", () => {
       providerOrderId: "klap-order-abc123",
       publicCheckoutData: { orderId: "klap-order-abc123" },
     });
-    mockMarkProcessing.mockResolvedValue({ id: PAYMENT_ID, status: "processing" });
+    mockMarkEmbeddedProcessing.mockResolvedValue({ id: PAYMENT_ID, status: "processing", urlPay: null });
 
     const result = await service.createKlapEmbeddedOrder("tok", { rideRequestId: RIDE_ID });
 
@@ -254,7 +260,7 @@ describe("PaymentsService.createKlapEmbeddedOrder", () => {
       providerOrderId: "klap-order-abc123",
       publicCheckoutData: { orderId: "klap-order-abc123" },
     });
-    mockMarkProcessing.mockResolvedValue({ id: PAYMENT_ID, status: "processing" });
+    mockMarkEmbeddedProcessing.mockResolvedValue({ id: PAYMENT_ID, status: "processing", urlPay: null });
 
     const result = await service.createKlapEmbeddedOrder("tok", { rideRequestId: RIDE_ID });
 
@@ -270,19 +276,97 @@ describe("PaymentsService.createKlapEmbeddedOrder", () => {
       providerOrderId: "klap-order-abc123",
       publicCheckoutData: { orderId: "klap-order-abc123" },
     });
-    mockMarkProcessing.mockResolvedValue({ id: PAYMENT_ID, status: "processing" });
+    mockMarkEmbeddedProcessing.mockResolvedValue({ id: PAYMENT_ID, status: "processing", urlPay: null });
 
     await service.createKlapEmbeddedOrder("tok", { rideRequestId: RIDE_ID });
 
-    // 12: local payment stays in the pending-equivalent state used by every other
-    // provider right after creating their checkout mechanism — never "success".
-    expect(mockMarkProcessing).toHaveBeenCalledWith(PAYMENT_ID, "", "klap-order-abc123");
+    // 3. providerOrderId persisted correctly, via the embedded-only method — which
+    // has NO urlPay parameter at all, so there is no argument position where a
+    // fake/empty URL could ever be passed.
+    expect(mockMarkEmbeddedProcessing).toHaveBeenCalledWith(PAYMENT_ID, "klap-order-abc123");
+    expect(mockMarkEmbeddedProcessing.mock.calls[0]).toHaveLength(2);
+    // The redirect-only method must never be touched by this flow.
+    expect(mockMarkProcessing).not.toHaveBeenCalled();
     // 13/14/15: no ride activation, no receipt generation, no Wallet crediting —
     // none of those repositories/services are even imported by this flow; the
-    // only side effects are payments.create/markProcessing and a safe audit event.
+    // only side effects are payments.create/markEmbeddedProcessing and a safe
+    // audit event.
     expect(mockRecordSafe).toHaveBeenCalledWith(
       expect.objectContaining({ eventType: "payment.klap_order_created" }),
     );
+  });
+
+  it("1. Klap persists providerOrderId, leaves urlPay as null (no urlPay argument exists to smuggle a value through)", async () => {
+    setupPassengerAuth();
+    mockFindRideById.mockResolvedValue(completedRide);
+    mockCreate.mockResolvedValue({ id: PAYMENT_ID, amountClp: 5000 });
+    mockCreateEmbeddedOrder.mockResolvedValue({
+      checkoutType: "embedded",
+      providerOrderId: "klap-order-xyz789",
+      publicCheckoutData: { orderId: "klap-order-xyz789" },
+    });
+    mockMarkEmbeddedProcessing.mockResolvedValue({ id: PAYMENT_ID, status: "processing", urlPay: null });
+
+    await service.createKlapEmbeddedOrder("tok", { rideRequestId: RIDE_ID });
+
+    const call = mockMarkEmbeddedProcessing.mock.calls[0] as unknown[];
+    expect(call[0]).toBe(PAYMENT_ID);
+    expect(call[1]).toBe("klap-order-xyz789");
+    // No third argument was ever passed — "" cannot appear because there is no
+    // parameter slot for it in markEmbeddedProcessing's signature.
+    expect(call).toHaveLength(2);
+  });
+
+  it("3. Klap leaves the payment in 'processing' (the existing pending-equivalent state)", async () => {
+    setupPassengerAuth();
+    mockFindRideById.mockResolvedValue(completedRide);
+    mockCreate.mockResolvedValue({ id: PAYMENT_ID, amountClp: 5000 });
+    mockCreateEmbeddedOrder.mockResolvedValue({
+      checkoutType: "embedded",
+      providerOrderId: "klap-order-abc123",
+      publicCheckoutData: { orderId: "klap-order-abc123" },
+    });
+    mockMarkEmbeddedProcessing.mockResolvedValue({ id: PAYMENT_ID, status: "processing", urlPay: null });
+
+    await service.createKlapEmbeddedOrder("tok", { rideRequestId: RIDE_ID });
+
+    // The service only ever calls markEmbeddedProcessing (which the repository
+    // hardcodes to `status: "processing"`) — never markSuccess/markSuccessAndActivateRide.
+    expect(mockMarkEmbeddedProcessing).toHaveBeenCalledOnce();
+  });
+
+  it("7. the Klap embedded flow's own source contains no urlPay: \"\" (grep-equivalent guard, scoped to createKlapEmbeddedOrder/markEmbeddedProcessing only)", async () => {
+    const fs = await import("node:fs");
+    const path = await import("node:path");
+    const serviceSrc = fs.readFileSync(
+      path.resolve(import.meta.dirname, "../payments.service.ts"),
+      "utf8",
+    );
+    const repoSrc = fs.readFileSync(
+      path.resolve(import.meta.dirname, "../payments.repository.ts"),
+      "utf8",
+    );
+
+    // Scoped to this method only — the file also contains a pre-existing,
+    // out-of-scope `urlPay: ""` for the unrelated cash fast-search path
+    // (payments.service.ts, createPayment()), which this fase is explicitly
+    // forbidden from touching. Only the code this fase actually wrote is checked.
+    const methodStart = serviceSrc.indexOf("async createKlapEmbeddedOrder(");
+    const methodEnd = serviceSrc.indexOf("async reconcileMercadoPagoPayment(");
+    expect(methodStart).toBeGreaterThan(-1);
+    expect(methodEnd).toBeGreaterThan(methodStart);
+    const klapMethodSrc = serviceSrc.slice(methodStart, methodEnd);
+
+    expect(klapMethodSrc).not.toMatch(/urlPay:\s*""/);
+    expect(klapMethodSrc).not.toMatch(/urlPay:\s*''/);
+    expect(klapMethodSrc).not.toContain("markProcessing(payment.id");
+
+    const embeddedMethodMatch = repoSrc.match(
+      /async markEmbeddedProcessing\([\s\S]*?\n {2}\}/,
+    );
+    expect(embeddedMethodMatch).not.toBeNull();
+    expect(embeddedMethodMatch![0]).not.toMatch(/urlPay:\s*""/);
+    expect(embeddedMethodMatch![0]).toMatch(/urlPay:\s*null/);
   });
 
   it("16. a timeout does not create a second order automatically", async () => {
@@ -297,7 +381,7 @@ describe("PaymentsService.createKlapEmbeddedOrder", () => {
     expect(result.ok).toBe(false);
     expect(mockCreateEmbeddedOrder).toHaveBeenCalledTimes(1);
     expect(mockMarkFailed).toHaveBeenCalledWith(PAYMENT_ID);
-    expect(mockMarkProcessing).not.toHaveBeenCalled();
+    expect(mockMarkEmbeddedProcessing).not.toHaveBeenCalled();
   });
 
   it("17. an HTTP rejection from Klap is sanitized before reaching the response", async () => {
@@ -331,7 +415,7 @@ describe("PaymentsService.createKlapEmbeddedOrder", () => {
     const result = await service.createKlapEmbeddedOrder("tok", { rideRequestId: RIDE_ID });
 
     expect(result.ok).toBe(false);
-    expect(mockMarkProcessing).not.toHaveBeenCalled();
+    expect(mockMarkEmbeddedProcessing).not.toHaveBeenCalled();
   });
 
   it("22. this flow never touches webhook machinery (no webhook repo/service is imported or called)", () => {

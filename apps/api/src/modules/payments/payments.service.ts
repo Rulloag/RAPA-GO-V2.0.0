@@ -1526,10 +1526,10 @@ export class PaymentsService {
       };
     }
 
-    // Klap has no redirect URL — `urlPay` is a nullable DB column that simply does
-    // not apply to an embedded provider. This is a storage detail only: the API
-    // response below never includes `urlPay` in any form.
-    await paymentsRepo.markProcessing(payment.id, "", embeddedResult.providerOrderId);
+    // Klap has no redirect URL — `markEmbeddedProcessing` has no urlPay parameter
+    // at all, so this row's `url_pay` column is persisted as genuine NULL, never
+    // an empty string. The API response below never includes `urlPay` in any form.
+    await paymentsRepo.markEmbeddedProcessing(payment.id, embeddedResult.providerOrderId);
 
     auditService.recordSafe({
       actorUserId: auth.userId,
