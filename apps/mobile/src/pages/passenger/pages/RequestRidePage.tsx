@@ -18,17 +18,27 @@ import {
 } from "@ionic/react";
 import {
   addOutline,
+  airplaneOutline,
+  arrowForwardOutline,
+  briefcaseOutline,
+  busOutline,
   calendarOutline,
+  carOutline,
   checkmarkCircleOutline,
+  compassOutline,
   createOutline,
   flagOutline,
+  flowerOutline,
+  leafOutline,
   locationOutline,
   locateOutline,
   navigateOutline,
   removeOutline,
   searchOutline,
+  sunnyOutline,
   timeOutline,
   alertCircleOutline,
+  walkOutline,
 } from "ionicons/icons";
 import {
   useCallback,
@@ -3103,6 +3113,12 @@ function vehicleCategoryDescription(category: VehicleCategory): string {
   if (category === "xl") return "Más espacio y comodidad";
   if (category === "luggage") return "Ideal si llevas equipaje";
   return "Viaje normal urbano";
+}
+
+function vehicleCategoryIcon(category: VehicleCategory): string {
+  if (category === "xl") return busOutline;
+  if (category === "luggage") return briefcaseOutline;
+  return carOutline;
 }
 
 function tripFareModeLabel(mode: TripFareMode): string {
@@ -6764,7 +6780,9 @@ function MapPointPicker({
 
                 {mode === "origin" && selected && !mapError && (
                   <div className="request-map-walk rp-request-note">
-                    <div className="request-map-walk__icon">🚶</div>
+                    <div className="request-map-walk__icon">
+                      <IonIcon icon={walkOutline} />
+                    </div>
 
                     <div className="request-map-walk__text">
                       <strong>
@@ -8913,16 +8931,8 @@ return (
             )}
 
             {!canChooseOrigin ? (
-              <div
-                style={{
-                  margin: "-4px 0 22px",
-                  color: "var(--rp-accent)",
-                  fontSize: ".78rem",
-                  fontWeight: 900,
-                  lineHeight: 1.35,
-                }}
-              >
-                ✈️ Origen fijo: Aeropuerto Rapa Nui. El pasajero elige el destino.
+              <div style={{ margin: "-4px 0 22px", color: "var(--rp-accent)", fontSize: ".78rem", fontWeight: 900, lineHeight: 1.35, display: "flex", alignItems: "center", gap: 5 }}>
+              <IonIcon icon={airplaneOutline} style={{ fontSize: "1rem", flexShrink: 0 }} /> Origen fijo: Aeropuerto Rapa Nui. El pasajero elige el destino.
               </div>
             ) : (
               <>
@@ -9168,7 +9178,9 @@ return (
                   textAlign: "center",
                 }}
               >
-                <div style={{ fontSize: "1.25rem", lineHeight: 1 }}>➡️</div>
+                <div style={{ fontSize: "1.5rem", lineHeight: 1 }}>
+                  <IonIcon icon={arrowForwardOutline} />
+                </div>
                 <div style={{ marginTop: 6, fontSize: ".86rem", lineHeight: 1.15 }}>
                   Solo ida
                 </div>
@@ -9229,8 +9241,8 @@ return (
                       textAlign: "center",
                     }}
                   >
-                    <div style={{ fontSize: "1.25rem", lineHeight: 1 }}>
-                      {category === "standard" ? "🚗" : category === "xl" ? "🚙" : "🧳"}
+                    <div style={{ fontSize: "1.5rem", lineHeight: 1 }}>
+                      <IonIcon icon={vehicleCategoryIcon(category)} />
                     </div>
                     <div style={{ marginTop: 6, fontSize: ".76rem", lineHeight: 1.15 }}>
                       {vehicleCategoryTitle(category)}
@@ -9366,11 +9378,11 @@ return (
                   {roundTripPromotions.map((promotion) => {
                     const active = selectedRoundTripPromotion?.id === promotion.id;
                     const destinationKey = String(promotion.destinationName ?? "").toLowerCase();
-                    const promoIcon = destinationKey.includes("anakena")
-                      ? "🏝️"
+                    const promoIconRef = destinationKey.includes("anakena")
+                      ? sunnyOutline
                       : destinationKey.includes("terevaka")
-                        ? "⛰️"
-                        : "🚗";
+                        ? compassOutline
+                        : carOutline;
                     const promoTitle = destinationKey.includes("anakena")
                       ? "Escapada a Anakena"
                       : destinationKey.includes("terevaka")
@@ -9423,7 +9435,7 @@ return (
                             pointerEvents: "none",
                           }}
                         >
-                          {promoIcon}
+                          <IonIcon icon={promoIconRef} />
                         </div>
 
                         <div
@@ -9449,7 +9461,7 @@ return (
                                 flex: "0 0 auto",
                               }}
                             >
-                              {promoIcon}
+                            <IonIcon icon={promoIconRef} />
                             </div>
 
                             <div style={{ minWidth: 0 }}>
@@ -9780,13 +9792,13 @@ return (
                   {([
                     {
                       id: "none" as AirportWelcomeOption,
-                      emoji: "🚕",
+                      icon: carOutline,
                       title: "Solo recogida",
                       text: "El conductor te espera y te lleva directo.",
                     },
                     {
                       id: "flower_lei" as AirportWelcomeOption,
-                      emoji: "🌺",
+                      icon: flowerOutline,
                       title: "Collar de flores",
                       text: `Bienvenida Rapa Nui al llegar · +${formatCLP(AIRPORT_FLOWER_LEI_SURCHARGE_CLP)}`,
                     },
@@ -9822,8 +9834,8 @@ return (
                           fontWeight: 950,
                         }}
                       >
-                        <div style={{ fontSize: "1.35rem", lineHeight: 1 }}>
-                          {option.emoji}
+                        <div style={{ fontSize: "1.5rem", lineHeight: 1 }}>
+                          <IonIcon icon={option.icon} />
                         </div>
                         <div style={{ marginTop: 5, fontSize: ".78rem", lineHeight: 1.15 }}>
                           {option.title}
@@ -9869,7 +9881,7 @@ return (
                         : "0 10px 22px rgba(210,164,58,.14)",
                     }}
                   >
-                    🌺 <strong>Collar de flores agregado.</strong> Sumamos {formatCLP(AIRPORT_FLOWER_LEI_SURCHARGE_CLP)} al total para preparar tu bienvenida Rapa Nui al llegar.
+                    <><IonIcon icon={flowerOutline} style={{ verticalAlign: "middle", marginRight: 4, fontSize: "1rem" }} />{" "}<strong>Collar de flores agregado.</strong> Sumamos {formatCLP(AIRPORT_FLOWER_LEI_SURCHARGE_CLP)} al total para preparar tu bienvenida Rapa Nui al llegar.</>
                   </div>
                 )}
                   </>
@@ -9895,11 +9907,11 @@ return (
                 >
                   {selectedRoundTripPromotion ? (
                     <>
-                      🌴 <strong>Experiencia ida y vuelta reservada.</strong> Ambos horarios quedarán programados y vinculados a la misma reserva.
+                      <><IonIcon icon={leafOutline} style={{ verticalAlign: "middle", marginRight: 4, fontSize: "1rem" }} />{" "}<strong>Experiencia ida y vuelta reservada.</strong> Ambos horarios quedarán programados y vinculados a la misma reserva.</>
                     </>
                   ) : (
                     <>
-                      ✈️ <strong>Recogida programada desde Mataveri.</strong> Tú eliges el destino, la hora y el recibimiento. Prepararemos tu viaje y te avisaremos cuando tu RapaGo esté listo para ir por ti.
+                      <><IonIcon icon={airplaneOutline} style={{ verticalAlign: "middle", marginRight: 4, fontSize: "1rem" }} />{" "}<strong>Recogida programada desde Mataveri.</strong> Tú eliges el destino, la hora y el recibimiento. Prepararemos tu viaje y te avisaremos cuando tu RapaGo esté listo para ir por ti.</>
                     </>
                   )}
                 </div>
@@ -10056,7 +10068,7 @@ return (
                   </span>
                   {hasAirportFlowerLei && (
                     <span style={{ borderRadius: 999, padding: "6px 9px", background: "rgba(248,216,121,.16)", border: "1px solid rgba(248,216,121,.28)", color: "#F8D879", fontSize: ".66rem", fontWeight: 950 }}>
-                      🌺 Collar +{formatCLP(AIRPORT_FLOWER_LEI_SURCHARGE_CLP)}
+                      <IonIcon icon={flowerOutline} style={{ verticalAlign: "middle", fontSize: "0.8rem" }} />{" "}Collar +{formatCLP(AIRPORT_FLOWER_LEI_SURCHARGE_CLP)}
                     </span>
                   )}
                 </div>

@@ -45,38 +45,43 @@
 }
 
 .rapago-section-page .rapago-section-title {
-  color: var(--rp-text) !important;
-  font-size: var(--rp-fs-h2) !important;
-  font-weight: 800 !important;
-  letter-spacing: -0.01em !important;
+  /* Solo aloja el logo — el IonTitle lo centra en el toolbar */
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
 }
 
-/* Marca Rapa Go en la cabecera de sección: el logo va SIEMPRE junto al título
-   (Solicitar viaje, Mis viajes, Ayuda, Beneficios…) para que todas las
-   pantallas del pasajero compartan la misma identidad, no solo el Inicio. El
-   grupo logo+texto se mantiene unido y centrado dentro del IonTitle. */
-.rapago-section-title__inner {
-  display: inline-flex;
-  align-items: center;
-  gap: 9px;
-  min-width: 0;
-  vertical-align: middle;
-}
-
-.rapago-section-title__text {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
+/* Logo con el mismo estilo que el de Inicio (rapago-home-logo en home.css):
+   rectángulo redondeado, fondo blanco, halo dorado. Se ve igual en todas las
+   secciones del pasajero para reforzar la identidad de marca. */
 .rapago-section-logo {
   flex-shrink: 0;
-  width: 30px;
-  height: 30px;
-  border-radius: 999px;
+  width: clamp(36px, 10vw, 42px);
+  height: clamp(36px, 10vw, 42px);
+  border-radius: clamp(11px, 3vw, 14px);
   object-fit: cover;
-  border: 1.5px solid var(--rp-border-c);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.22);
+  background: #ffffff;
+  padding: 3px;
+  display: block;
+  box-shadow:
+    0 0 0 2px rgba(214, 166, 64, 0.55),
+    0 0 0 4px rgba(214, 166, 64, 0.12),
+    0 6px 18px rgba(0, 0, 0, 0.30);
+  transition: transform 0.2s ease;
+}
+
+/* Texto del título en el slot derecho.
+   Hereda --rp-text del tema activo → claro en noche, oscuro en día. */
+.rapago-section-title-text {
+  color: var(--rp-text);
+  font-size: var(--rp-fs-h2);
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: clamp(110px, 38vw, 175px);
+  padding-right: 8px;
 }
 
 /* La cabecera secundaria solo aloja los filtros: sin borde ni fondo propio. */

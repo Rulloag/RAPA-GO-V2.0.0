@@ -84,19 +84,18 @@ export function RapagoSectionHeader({
           </IonButtons>
         )}
 
+        {/* Logo centrado en el IonTitle */}
         <IonTitle className="rapago-section-title">
-          <span className="rapago-section-title__inner">
-            <img
-              src={logoRapago}
-              alt=""
-              aria-hidden="true"
-              className="rapago-section-logo"
-            />
-            <span className="rapago-section-title__text">{title}</span>
-          </span>
+          <img
+            src={logoRapago}
+            alt="Rapa Go"
+            className="rapago-section-logo"
+          />
         </IonTitle>
 
+        {/* Título a la derecha + acción opcional */}
         <IonButtons slot="end">
+          <span className="rapago-section-title-text">{title}</span>
           {actionIcon && onAction && (
             <IonButton
               className="rapago-chrome-btn"
