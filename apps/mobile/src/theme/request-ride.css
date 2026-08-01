@@ -1744,3 +1744,109 @@
     padding: 14px;
   }
 }
+
+/* ==========================================================================
+   MODO NOCHE — SELECTOR DE MAPA (origen / destino)
+   ==========================================================================
+   El picker (MapPointPicker) se montaba con data-rapago-theme="light" FIJO, así
+   que se quedaba claro aunque el resto de Solicitar viaje estuviera en noche:
+   ese era el "un lado claro y otro oscuro". Ahora el componente refleja el tema
+   activo (data-rapago-theme={theme}); aquí se define su paleta oscura
+   REDEFINIENDO los mismos tokens que el bloque claro de .request-map-page. Como
+   casi toda la UI del picker (hoja, buscador, tarjetas, candidatos, caminata,
+   chips) se construye con esos tokens, se oscurece de una sola fuente. El
+   selector [data-rapago-theme="dark"] tiene más especificidad que .request-map-page
+   a secas, así que gana sin tocar el bloque claro. */
+.request-map-page[data-rapago-theme="dark"] {
+  color-scheme: dark !important;
+
+  --rp-bg: #17130e;
+  --rp-bg-elevated: #1e1913;
+  --rp-surface: linear-gradient(180deg, rgba(30, 27, 22, 0.98), rgba(18, 16, 13, 0.99));
+  --rp-text: #f6f2ec;
+  --rp-muted: rgba(246, 242, 236, 0.66);
+  --rp-border-c: rgba(214, 166, 64, 0.40);
+  --rp-field-bg: rgba(255, 255, 255, 0.06);
+  --rp-icon-fg: #f8d879;
+
+  /* Verde laguna sobre superficie oscura (WCAG AA sobre #1c1a17). */
+  --rp-ok-bg: rgba(34, 197, 94, 0.14);
+  --rp-ok-fg: #86efac;
+
+  /* Fondo del coral de destino seleccionado. */
+  --rp-danger-bg: rgba(226, 84, 59, 0.18);
+
+  /* Chips de "destinos frecuentes" en noche. Llevan !important porque el bloque
+     claro también los fija con !important (para ganarle a global.css). */
+  --rp-chip-bg: rgba(255, 255, 255, 0.06) !important;
+  --rp-chip-bg-hover: rgba(255, 255, 255, 0.10) !important;
+  --rp-chip-border: rgba(214, 166, 64, 0.30) !important;
+  --rp-chip-text: #f6f2ec !important;
+  --rp-chip-muted: rgba(246, 242, 236, 0.60) !important;
+  --rp-chip-shadow-hover: 0 6px 16px rgba(0, 0, 0, 0.40) !important;
+  --rp-chip-icon-bg: rgba(214, 166, 64, 0.18) !important;
+  --rp-chip-icon-fg: #f8d879 !important;
+}
+
+/* Cabecera del picker: el degradado crema estaba escrito a mano, no en tokens. */
+.request-map-page[data-rapago-theme="dark"] .request-map-header ion-toolbar {
+  --background: linear-gradient(180deg, #1e1913 0%, #14110d 100%);
+  --border-color: rgba(214, 166, 64, 0.26);
+  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.42);
+}
+
+/* Etiqueta "tu punto de partida" flotante: usaba background: var(--rp-text), que
+   en noche se vuelve claro y dejaba el texto (casi blanco) ilegible. Se fija a un
+   tono oscuro con el texto claro. */
+.request-map-page[data-rapago-theme="dark"] .request-map-start-label {
+  background: #14110d;
+  color: #fffaf0;
+  border-color: var(--rp-lagoon);
+}
+
+/* Estados hover/active que traían cremas fijos fuera de los tokens. */
+.request-map-page[data-rapago-theme="dark"] .request-map-suggestion:active {
+  background: rgba(255, 255, 255, 0.10);
+}
+
+.request-map-page[data-rapago-theme="dark"] .request-map-location-button:hover {
+  background: rgba(255, 255, 255, 0.10);
+}
+
+/* ==========================================================================
+   MODO NOCHE — PANEL DE RESERVA (.rp-request-panel)
+   ==========================================================================
+   El panel traía fondo crema FIJO por dos reglas anteriores (una con !important
+   y el bloque "V32"), así que ignoraba el modo noche del IonPage. Aquí se le da
+   la superficie oscura del tema cuando la página está en noche. Los textos e
+   inputs internos ya usan tokens (--rp-label, --rp-field-fg) que la propia
+   página resuelve en oscuro; solo hace falta oscurecer el contenedor y los
+   ion-item que traen --background:#ffffff en línea, ganándoles con !important y
+   mayor especificidad (3 clases + atributo). Las tarjetas de recibimiento y las
+   notas se oscurecen desde el TSX con isDark, porque su color activo/!flor no se
+   puede distinguir solo con CSS. */
+[data-rapago-theme="dark"] .rapago-request-page .rp-request-panel {
+  background: linear-gradient(180deg, rgba(30, 27, 22, 0.98) 0%, rgba(17, 15, 12, 0.99) 100%) !important;
+  border: 1px solid rgba(214, 166, 64, 0.34) !important;
+  color: var(--rp-text) !important;
+  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.5) !important;
+}
+
+/* Título del panel: el bloque V32 lo fijaba en #704b0e (marrón), ilegible en
+   noche; vuelve al dorado de etiqueta. */
+[data-rapago-theme="dark"] .rapago-request-page .rp-request-panel .rp-request-label {
+  color: var(--rp-label) !important;
+}
+
+/* Campos de fecha / hora de regreso / número de vuelo: traen --background:#ffffff
+   en línea; el !important de aquí les gana. */
+[data-rapago-theme="dark"] .rapago-request-page .rp-request-panel ion-item {
+  --background: var(--rp-field-bg) !important;
+  --color: var(--rp-field-fg) !important;
+  border-color: rgba(214, 166, 64, 0.30) !important;
+}
+
+[data-rapago-theme="dark"] .rapago-request-page .rp-request-panel ion-item ion-input {
+  --color: var(--rp-field-fg) !important;
+  color: var(--rp-field-fg) !important;
+}

@@ -5241,6 +5241,7 @@ function MapPointPicker({
   onCancel: () => void;
   onConfirm: (point: PickerResult) => void;
 }): JSX.Element {
+  const { theme: pickerTheme } = useRapagoSectionTheme("request-ride");
   const mapElementRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<google.maps.Map | null>(null);
   const geocodeTimerRef = useRef<number | null>(null);
@@ -6375,8 +6376,8 @@ function MapPointPicker({
     >
       <IonPage
         className="rapago-section-page rapago-request-page request-map-page"
-        data-rapago-theme="light"
-        style={{ colorScheme: "light" }}
+        data-rapago-theme={pickerTheme}
+        style={{ colorScheme: pickerTheme === "dark" ? "dark" : "light" }}
       >
         <RapagoSectionHeader
           title={
@@ -7077,7 +7078,7 @@ export default function RequestRidePage(): JSX.Element {
   const { session } = useAuth();
   const history = useHistory();
   // Solo se lee: el interruptor único vive en el encabezado de Inicio.
-  const { theme } = useRapagoSectionTheme("request-ride");
+  const { theme, isDark } = useRapagoSectionTheme("request-ride");
 
   useEffect(() => {
     preSearchLocationService.read();
@@ -9800,17 +9801,23 @@ return (
                         style={{
                           border: active
                             ? "2px solid #D2A43A"
-                            : "1px solid rgba(210,164,58,.32)",
+                            : isDark
+                              ? "1px solid rgba(214,166,64,.34)"
+                              : "1px solid rgba(210,164,58,.32)",
                           borderRadius: "14px",
                           minHeight: "82px",
                           padding: "10px 8px",
                           background: active
                             ? "linear-gradient(135deg,#D2A43A 0%,#F8D879 100%)"
-                            : "#ffffff",
-                          color: "#111111",
+                            : isDark
+                              ? "rgba(255,255,255,.055)"
+                              : "#ffffff",
+                          color: active ? "#111111" : isDark ? "#f6f2ec" : "#111111",
                           boxShadow: active
                             ? "0 10px 22px rgba(210,164,58,.28)"
-                            : "0 6px 14px rgba(0,0,0,.08)",
+                            : isDark
+                              ? "0 6px 14px rgba(0,0,0,.34)"
+                              : "0 6px 14px rgba(0,0,0,.08)",
                           textAlign: "left",
                           fontWeight: 950,
                         }}
@@ -9824,7 +9831,11 @@ return (
                         <div
                           style={{
                             marginTop: 4,
-                            color: "rgba(17,17,17,.62)",
+                            color: active
+                              ? "rgba(17,17,17,.62)"
+                              : isDark
+                                ? "rgba(246,242,236,.62)"
+                                : "rgba(17,17,17,.62)",
                             fontSize: ".64rem",
                             lineHeight: 1.22,
                             fontWeight: 850,
@@ -9840,16 +9851,22 @@ return (
                 {airportWelcomeOption === "flower_lei" && (
                   <div
                     style={{
-                      background: "linear-gradient(135deg,rgba(255,246,214,.98),rgba(255,232,166,.98))",
-                      border: "1px solid rgba(210,164,58,.42)",
-                      color: "#4F350D",
+                      background: isDark
+                        ? "linear-gradient(135deg,rgba(214,166,64,.16),rgba(214,166,64,.10))"
+                        : "linear-gradient(135deg,rgba(255,246,214,.98),rgba(255,232,166,.98))",
+                      border: isDark
+                        ? "1px solid rgba(214,166,64,.42)"
+                        : "1px solid rgba(210,164,58,.42)",
+                      color: isDark ? "#f1c864" : "#4F350D",
                       borderRadius: "14px",
                       padding: "10px 12px",
                       fontSize: "0.74rem",
                       lineHeight: 1.35,
                       fontWeight: 900,
                       marginBottom: "12px",
-                      boxShadow: "0 10px 22px rgba(210,164,58,.14)",
+                      boxShadow: isDark
+                        ? "0 10px 22px rgba(0,0,0,.30)"
+                        : "0 10px 22px rgba(210,164,58,.14)",
                     }}
                   >
                     🌺 <strong>Collar de flores agregado.</strong> Sumamos {formatCLP(AIRPORT_FLOWER_LEI_SURCHARGE_CLP)} al total para preparar tu bienvenida Rapa Nui al llegar.
@@ -9860,14 +9877,20 @@ return (
 
                 <div
                   style={{
-                    background: "linear-gradient(135deg,#fff7d6 0%,#ffe39a 100%)",
-                    color: "#111",
+                    background: isDark
+                      ? "linear-gradient(135deg,rgba(214,166,64,.14) 0%,rgba(214,166,64,.08) 100%)"
+                      : "linear-gradient(135deg,#fff7d6 0%,#ffe39a 100%)",
+                    color: isDark ? "#f0e6d4" : "#111",
                     borderRadius: "14px",
                     padding: "13px 14px",
                     fontSize: "0.8rem",
                     lineHeight: 1.45,
-                    border: "1px solid rgba(210,164,58,.36)",
-                    boxShadow: "0 12px 24px rgba(210,164,58,.16)",
+                    border: isDark
+                      ? "1px solid rgba(214,166,64,.34)"
+                      : "1px solid rgba(210,164,58,.36)",
+                    boxShadow: isDark
+                      ? "0 12px 24px rgba(0,0,0,.32)"
+                      : "0 12px 24px rgba(210,164,58,.16)",
                   }}
                 >
                   {selectedRoundTripPromotion ? (
