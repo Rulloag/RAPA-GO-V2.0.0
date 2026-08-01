@@ -75,7 +75,26 @@ forbidText(
   "El router raíz no anida Switch dentro de IonRouterOutlet",
 );
 requireText(appRouter, '<Route exact path={ROUTES.AUTH.BASE} component={LoginPage} />', "La base /auth muestra el login");
-requireText(roleLayout, "{validRouteChildren}", "Tabs filtra rutas nulas y usa hijos directos en IonRouterOutlet");
+requireText(
+  roleLayout,
+  "partitionRoleRouteChildren",
+  "Tabs separa guards generales de rutas concretas",
+);
+requireText(
+  roleLayout,
+  "{outletChildren}",
+  "Tabs deja las rutas concretas dentro de IonRouterOutlet",
+);
+requireText(
+  roleLayout,
+  "{guardChildren}",
+  "Tabs renderiza los guards generales fuera de IonRouterOutlet",
+);
+forbidText(
+  roleLayout,
+  "{validRouteChildren}",
+  "Tabs no usa la lista antigua que mezclaba guards y rutas",
+);
 
 for (const [name, source, base] of [
   ["pasajero", passenger, "ROUTES.PASSENGER.BASE"],
