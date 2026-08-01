@@ -355,4 +355,54 @@ export const paymentsController = {
 
     sendOk(reply, { processed: result.processed });
   },
+
+  /**
+   * POST /webhooks/klap/confirm
+   * POST /webhooks/klap/reject
+   *
+   * Klap's own documented response contract is NOT the app-wide
+   * `{ok,data,statusCode}` envelope (`sendOk`/`sendError` above) — it requires
+   * exactly `{"status": "..."}` with a 2xx for accepted/duplicate events,
+   * since an unrecognized shape or slow/non-2xx response can trigger an
+   * automatic reversal on Klap's side. These two handlers reply directly.
+   */
+  async klapConfirmWebhook(request: FastifyRequest, reply: FastifyReply): Promise<void> {
+    const headers: Record<string, string> = {
+      apikey: String(request.headers["apikey"] ?? ""),
+    };
+
+    const result = await paymentsService.handleKlapConfirmWebhook(request.body, headers);
+
+    if (!result.ok) {
+      reply.status(result.statusCode).send({
+        status: result.code === "VALIDATION_ERROR" ? "invalid_request"
+          : result.code === "WEBHOOK_INVALID_SIGNATURE" ? "unauthorized"
+          : result.code === "NOT_FOUND" ? "not_found"
+          : "error",
+      });
+      return;
+    }
+
+    reply.status(200).send({ status: "ok" });
+  },
+
+  async klapRejectWebhook(request: FastifyRequest, reply: FastifyReply): Promise<void> {
+    const headers: Record<string, string> = {
+      apikey: String(request.headers["apikey"] ?? ""),
+    };
+
+    const result = await paymentsService.handleKlapRejectWebhook(request.body, headers);
+
+    if (!result.ok) {
+      reply.status(result.statusCode).send({
+        status: result.code === "VALIDATION_ERROR" ? "invalid_request"
+          : result.code === "WEBHOOK_INVALID_SIGNATURE" ? "unauthorized"
+          : result.code === "NOT_FOUND" ? "not_found"
+          : "error",
+      });
+      return;
+    }
+
+    reply.status(200).send({ status: "ok" });
+  },
 };

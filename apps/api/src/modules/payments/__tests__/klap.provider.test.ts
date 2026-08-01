@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
+import crypto from "node:crypto";
 
 beforeEach(() => {
   process.env["KLAP_ENVIRONMENT"] = "sandbox";
@@ -412,15 +413,32 @@ describe("KlapProvider.createPayment (legacy redirect contract — must refuse, 
   });
 });
 
-describe("KlapProvider — webhook methods (not implemented in this phase)", () => {
-  it("verifyWebhookSignature denies by default (deny-by-default, not Fase C yet)", () => {
+describe("KlapProvider — webhook methods (Fase C: verifyWebhookSignature real, normalizeWebhook unsupported)", () => {
+  it("verifyWebhookSignature denies an empty payload/headers pair", () => {
     const provider = new KlapProvider();
     expect(provider.verifyWebhookSignature({}, {})).toBe(false);
   });
 
-  it("normalizeWebhook rejects, documenting it is scheduled for Fase C", async () => {
+  it("verifyWebhookSignature delegates to the confirmed Apikey formula and can succeed", () => {
+    const orderId = "klap-order-abc123";
+    const referenceId = "pay-uuid-0001";
+    const expected = crypto
+      .createHash("sha256")
+      .update(referenceId + orderId + "test-sandbox-api-key", "utf8")
+      .digest("hex");
+
     const provider = new KlapProvider();
-    await expect(provider.normalizeWebhook({}, {})).rejects.toThrow(/Fase C/);
+    expect(
+      provider.verifyWebhookSignature(
+        { order_id: orderId, reference_id: referenceId },
+        { apikey: expected },
+      ),
+    ).toBe(true);
+  });
+
+  it("normalizeWebhook rejects — Klap's confirm/reject are dedicated handlers, not a unified NormalizedWebhook", async () => {
+    const provider = new KlapProvider();
+    await expect(provider.normalizeWebhook({}, {})).rejects.toThrow(/dedicated handlers/);
   });
 });
 

@@ -28,6 +28,52 @@ const MAX_AMOUNT_CLP = 99_999_999;
 
 const MAX_REFERENCE_ID_LENGTH = 100;
 
+// sha256 hex digest is always exactly 64 lowercase hex characters — checked
+// before any Buffer/hex conversion so an invalid header can never silently
+// produce a shorter buffer that would make timingSafeEqual throw or, worse,
+// compare fewer bytes than intended.
+const SHA256_HEX_PATTERN = /^[0-9a-f]{64}$/;
+
+/**
+ * Klap webhook authentication — confirmed formula:
+ *   sha256(reference_id + order_id + KLAP_API_KEY), hex-encoded.
+ * Header name is "Apikey" (case-insensitive per HTTP; Fastify already
+ * lower-cases incoming header names, so callers pass `headers["apikey"]`).
+ *
+ * Never logs the header value, the computed digest, or the API key. Returns
+ * `false` for every failure mode uniformly — callers must not report which
+ * check failed.
+ */
+export function verifyKlapWebhookApikey(
+  orderId: unknown,
+  referenceId: unknown,
+  headerApikey: unknown,
+): boolean {
+  try {
+    if (typeof headerApikey !== "string" || !SHA256_HEX_PATTERN.test(headerApikey)) {
+      return false;
+    }
+    if (typeof orderId !== "string" || orderId.length === 0) return false;
+    if (typeof referenceId !== "string" || referenceId.length === 0) return false;
+
+    const apiKey = process.env["KLAP_API_KEY"];
+    if (!apiKey) return false;
+
+    const expected = crypto
+      .createHash("sha256")
+      .update(referenceId + orderId + apiKey, "utf8")
+      .digest("hex");
+
+    const expectedBuffer = Buffer.from(expected, "hex");
+    const receivedBuffer = Buffer.from(headerApikey, "hex");
+    if (expectedBuffer.length !== receivedBuffer.length) return false;
+
+    return crypto.timingSafeEqual(expectedBuffer, receivedBuffer);
+  } catch {
+    return false;
+  }
+}
+
 function parseBooleanEnv(value: string | undefined, defaultValue: boolean): boolean {
   if (value === undefined) return defaultValue;
   const normalized = value.trim().toLowerCase();
@@ -294,18 +340,24 @@ export class KlapProvider implements PaymentProvider {
   }
 
   /**
-   * NO IMPLEMENTADO EN ESTA FASE (Fase C — Webhook).
-   * Devuelve `false` por diseño (deny-by-default) para que ningún código que
-   * llame a este provider fuera de esta fase pueda confiar accidentalmente en un
-   * webhook de Klap como válido antes de que el mecanismo real esté confirmado
-   * contra la documentación oficial.
+   * Real implementation (Fase C). Delegates to `verifyKlapWebhookApikey()` —
+   * see that function for the confirmed formula and security notes. Present
+   * here only for structural `PaymentProvider` compliance: KlapProvider is not
+   * registered in `provider.registry.ts`'s `getProvider()` map, so the generic
+   * multi-provider `/payments/webhook/:provider` route can never reach this.
+   * The real Klap confirm/reject routes call `verifyKlapWebhookApikey()`
+   * directly (see payments.service.ts) since Klap's confirm/reject payloads
+   * are not a single unified `NormalizedWebhook` shape.
    */
-  verifyWebhookSignature(_payload: Record<string, unknown>, _headers: Record<string, string>): boolean {
-    return false;
+  verifyWebhookSignature(payload: Record<string, unknown>, headers: Record<string, string>): boolean {
+    return verifyKlapWebhookApikey(payload["order_id"], payload["reference_id"], headers["apikey"]);
   }
 
   /**
-   * NO IMPLEMENTADO EN ESTA FASE (Fase C — Webhook).
+   * NO IMPLEMENTADO — Klap's confirm/reject webhooks are not a single
+   * `NormalizedWebhook`-shaped event (two distinct endpoints/payloads), so this
+   * generic method is intentionally left unsupported. See
+   * PaymentsService.handleKlapConfirmWebhook/handleKlapRejectWebhook.
    */
   async normalizeWebhook(
     _payload: Record<string, unknown>,
@@ -313,7 +365,7 @@ export class KlapProvider implements PaymentProvider {
   ): Promise<NormalizedWebhook> {
     throw new KlapProviderError(
       "config",
-      "KlapProvider.normalizeWebhook is not implemented yet (scheduled for Fase C).",
+      "KlapProvider.normalizeWebhook is not implemented — confirm/reject use dedicated handlers.",
     );
   }
 }
