@@ -183,23 +183,54 @@ describe("PaymentsService.handleKlapConfirmWebhook", () => {
     expect(mockMarkSuccessAndActivateRide).not.toHaveBeenCalled();
   });
 
-  it("16. an amount that does not match payment.amountClp does not mark success", async () => {
+  it("16. an amount that does not match payment.amountClp responds 409 amount_mismatch, never success (Fase C.1)", async () => {
     mockFindByProviderOrderId.mockResolvedValue(paymentFixture({ amountClp: 9999 }));
     const result = await service.handleKlapConfirmWebhook(confirmBody({ amount: "5000" }), {
       apikey: validApikeyHeader(),
     });
-    expect(result.ok).toBe(true); // acknowledged, but...
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.code).toBe("AMOUNT_MISMATCH");
+      expect(result.statusCode).toBe(409);
+      // Never leaks the expected/received amounts in the result itself.
+      expect(JSON.stringify(result)).not.toMatch(/9999|5000/);
+    }
     expect(mockMarkSuccessAndActivateRide).not.toHaveBeenCalled();
+    expect(mockClaimWebhookEvent).not.toHaveBeenCalled();
     expect(mockRecordSafe).toHaveBeenCalledWith(
       expect.objectContaining({ eventType: "payment.amount_mismatch" }),
     );
   });
 
-  it("17. payment_method different from 'tarjetas' does not mark success", async () => {
-    await service.handleKlapConfirmWebhook(confirmBody({ payment_method: "efectivo" }), {
+  it("a corrected redelivery with the right amount succeeds even though the first mismatched delivery used the same mc_code (no stale idempotency block)", async () => {
+    mockFindByProviderOrderId.mockResolvedValue(paymentFixture({ amountClp: 5000 }));
+
+    const badResult = await service.handleKlapConfirmWebhook(
+      confirmBody({ amount: "1", mc_code: "MC-STABLE" }),
+      { apikey: validApikeyHeader() },
+    );
+    expect(badResult.ok).toBe(false);
+    expect(mockClaimWebhookEvent).not.toHaveBeenCalled();
+
+    const goodResult = await service.handleKlapConfirmWebhook(
+      confirmBody({ amount: "5000", mc_code: "MC-STABLE" }),
+      { apikey: validApikeyHeader() },
+    );
+    expect(goodResult.ok).toBe(true);
+    expect(mockMarkSuccessAndActivateRide).toHaveBeenCalledOnce();
+  });
+
+  it("6/17. payment_method different from 'tarjetas' responds 422 unsupported_payment_method, never success (Fase C.1)", async () => {
+    const result = await service.handleKlapConfirmWebhook(confirmBody({ payment_method: "efectivo" }), {
       apikey: validApikeyHeader(),
     });
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.code).toBe("UNSUPPORTED_PAYMENT_METHOD");
+      expect(result.statusCode).toBe(422);
+    }
     expect(mockMarkSuccessAndActivateRide).not.toHaveBeenCalled();
+    expect(mockClaimWebhookEvent).not.toHaveBeenCalled();
   });
 
   it("18. order_id and reference_id of the same payment are accepted", async () => {
@@ -209,12 +240,16 @@ describe("PaymentsService.handleKlapConfirmWebhook", () => {
     expect(mockMarkSuccessAndActivateRide).toHaveBeenCalled();
   });
 
-  it("19. order_id and reference_id pointing to different payments is rejected", async () => {
+  it("19. order_id and reference_id pointing to different payments responds 409 payment_mismatch (Fase C.1)", async () => {
     mockFindByProviderOrderId.mockResolvedValue(paymentFixture({ id: "a-completely-different-payment-id" }));
     const result = await service.handleKlapConfirmWebhook(confirmBody(), { apikey: validApikeyHeader() });
     expect(result.ok).toBe(false);
-    if (!result.ok) expect(result.code).toBe("VALIDATION_ERROR");
+    if (!result.ok) {
+      expect(result.code).toBe("PAYMENT_MISMATCH");
+      expect(result.statusCode).toBe(409);
+    }
     expect(mockMarkSuccessAndActivateRide).not.toHaveBeenCalled();
+    expect(mockClaimWebhookEvent).not.toHaveBeenCalled();
   });
 
   it("20. a non-existent payment is reported safely", async () => {
@@ -356,11 +391,16 @@ describe("PaymentsService.handleKlapRejectWebhook", () => {
     expect(mockMarkRejected).not.toHaveBeenCalled();
   });
 
-  it("37. a reject on an already-success payment does not downgrade it", async () => {
+  it("16/37. a reject on an already-success payment responds 409 state_conflict, never downgrades it (Fase C.1)", async () => {
     mockFindByProviderOrderId.mockResolvedValue(paymentFixture({ status: "success" }));
     const result = await service.handleKlapRejectWebhook(rejectBody(), { apikey: validApikeyHeader() });
     expect(mockMarkRejected).not.toHaveBeenCalled();
-    expect(result).toMatchObject({ ok: true, status: "ok" });
+    expect(mockClaimWebhookEvent).not.toHaveBeenCalled();
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.code).toBe("STATE_CONFLICT");
+      expect(result.statusCode).toBe(409);
+    }
     expect(mockRecordSafe).toHaveBeenCalledWith(
       expect.objectContaining({ eventType: "payment.klap_reject_after_success" }),
     );
@@ -393,10 +433,15 @@ describe("PaymentsService.handleKlapRejectWebhook", () => {
     if (!result.ok) expect(result.code).toBe("WEBHOOK_INVALID_SIGNATURE");
   });
 
-  it("rejects order_id/reference_id pointing to different payments", async () => {
+  it("8/9. rejects order_id/reference_id pointing to different payments with 409 payment_mismatch", async () => {
     mockFindByProviderOrderId.mockResolvedValue(paymentFixture({ id: "different-payment-id" }));
     const result = await service.handleKlapRejectWebhook(rejectBody(), { apikey: validApikeyHeader() });
     expect(result.ok).toBe(false);
-    if (!result.ok) expect(result.code).toBe("VALIDATION_ERROR");
+    if (!result.ok) {
+      expect(result.code).toBe("PAYMENT_MISMATCH");
+      expect(result.statusCode).toBe(409);
+    }
+    expect(mockMarkRejected).not.toHaveBeenCalled();
   });
+
 });

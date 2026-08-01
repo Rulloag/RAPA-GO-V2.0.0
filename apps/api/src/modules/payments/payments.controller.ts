@@ -17,6 +17,32 @@ function extractBearer(request: FastifyRequest): string | null {
   return auth.slice(7);
 }
 
+/**
+ * Maps a PaymentsService.Result error code to Klap's own documented response
+ * vocabulary (Fase C.1). Never falls through to leaking `result.message` —
+ * unmapped codes get the generic "error" string.
+ */
+function klapWebhookErrorStatus(code: string): string {
+  switch (code) {
+    case "VALIDATION_ERROR":
+      return "invalid_request";
+    case "WEBHOOK_INVALID_SIGNATURE":
+      return "unauthorized";
+    case "NOT_FOUND":
+      return "not_found";
+    case "PAYMENT_MISMATCH":
+      return "payment_mismatch";
+    case "AMOUNT_MISMATCH":
+      return "amount_mismatch";
+    case "UNSUPPORTED_PAYMENT_METHOD":
+      return "unsupported_payment_method";
+    case "STATE_CONFLICT":
+      return "state_conflict";
+    default:
+      return "error";
+  }
+}
+
 export const paymentsController = {
   async createPayment(request: FastifyRequest, reply: FastifyReply): Promise<void> {
     const token = extractBearer(request);
@@ -365,6 +391,10 @@ export const paymentsController = {
    * exactly `{"status": "..."}` with a 2xx for accepted/duplicate events,
    * since an unrecognized shape or slow/non-2xx response can trigger an
    * automatic reversal on Klap's side. These two handlers reply directly.
+   *
+   * `klapWebhookErrorStatus` never echoes payment details, amounts, ids, the
+   * ApiKey, or any internal message — only one of a fixed, documented set of
+   * status strings (Fase C.1).
    */
   async klapConfirmWebhook(request: FastifyRequest, reply: FastifyReply): Promise<void> {
     const headers: Record<string, string> = {
@@ -374,12 +404,7 @@ export const paymentsController = {
     const result = await paymentsService.handleKlapConfirmWebhook(request.body, headers);
 
     if (!result.ok) {
-      reply.status(result.statusCode).send({
-        status: result.code === "VALIDATION_ERROR" ? "invalid_request"
-          : result.code === "WEBHOOK_INVALID_SIGNATURE" ? "unauthorized"
-          : result.code === "NOT_FOUND" ? "not_found"
-          : "error",
-      });
+      reply.status(result.statusCode).send({ status: klapWebhookErrorStatus(result.code) });
       return;
     }
 
@@ -394,12 +419,7 @@ export const paymentsController = {
     const result = await paymentsService.handleKlapRejectWebhook(request.body, headers);
 
     if (!result.ok) {
-      reply.status(result.statusCode).send({
-        status: result.code === "VALIDATION_ERROR" ? "invalid_request"
-          : result.code === "WEBHOOK_INVALID_SIGNATURE" ? "unauthorized"
-          : result.code === "NOT_FOUND" ? "not_found"
-          : "error",
-      });
+      reply.status(result.statusCode).send({ status: klapWebhookErrorStatus(result.code) });
       return;
     }
 
