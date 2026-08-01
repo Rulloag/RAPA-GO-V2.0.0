@@ -384,4 +384,34 @@ export const applicationsController = {
 
     sendOk(reply, result);
   },
+
+  async resendApplicationApproval(
+    request: FastifyRequest,
+    reply: FastifyReply,
+  ): Promise<void> {
+    const token = extractBearer(request);
+
+    if (!token) {
+      sendError(reply, {
+        code: "UNAUTHORIZED",
+        message: "Missing Bearer token.",
+        statusCode: 401,
+      });
+      return;
+    }
+
+    const { id } = request.params as { id: string };
+    const result = await service.resendApplicationApproval(token, id);
+
+    if (!result.ok) {
+      sendError(reply, {
+        code: result.code,
+        message: result.message,
+        statusCode: result.statusCode,
+      });
+      return;
+    }
+
+    sendOk(reply, result);
+  },
 };

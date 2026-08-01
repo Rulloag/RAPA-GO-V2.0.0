@@ -9,7 +9,7 @@ describe("AppleSignInButton", () => {
     expect(screen.getByText("Sign in with Apple")).toBeInTheDocument();
   });
 
-  it("is hidden (renders nothing) when isAvailable is false — covers both Android and Web", () => {
+  it("is hidden (renders nothing) when the Apple flow is unavailable, such as Android", () => {
     const { container } = render(<AppleSignInButton isAvailable={false} loading={false} onPress={() => {}} />);
     expect(container).toBeEmptyDOMElement();
   });

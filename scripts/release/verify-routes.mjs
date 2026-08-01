@@ -28,6 +28,7 @@ const guide = read("apps/mobile/src/layouts/GuideLayout.tsx");
 const rental = read("apps/mobile/src/layouts/RentalLayout.tsx");
 const admin = read("apps/mobile/src/layouts/AdminLayout.tsx");
 const appleButton = read("apps/mobile/src/features/auth/AppleSignInButton.tsx");
+const appleHook = read("apps/mobile/src/features/auth/useAppleSignIn.ts");
 const login = read("apps/mobile/src/features/auth/LoginPage.tsx");
 const vite = read("apps/mobile/vite.config.ts");
 const htaccess = read("apps/mobile/public/.htaccess");
@@ -74,7 +75,26 @@ forbidText(
   "El router raíz no anida Switch dentro de IonRouterOutlet",
 );
 requireText(appRouter, '<Route exact path={ROUTES.AUTH.BASE} component={LoginPage} />', "La base /auth muestra el login");
-requireText(roleLayout, "{validRouteChildren}", "Tabs filtra rutas nulas y usa hijos directos en IonRouterOutlet");
+requireText(
+  roleLayout,
+  "partitionRoleRouteChildren",
+  "Tabs separa guards generales de rutas concretas",
+);
+requireText(
+  roleLayout,
+  "{outletChildren}",
+  "Tabs deja las rutas concretas dentro de IonRouterOutlet",
+);
+requireText(
+  roleLayout,
+  "{guardChildren}",
+  "Tabs renderiza los guards generales fuera de IonRouterOutlet",
+);
+forbidText(
+  roleLayout,
+  "{validRouteChildren}",
+  "Tabs no usa la lista antigua que mezclaba guards y rutas",
+);
 
 for (const [name, source, base] of [
   ["pasajero", passenger, "ROUTES.PASSENGER.BASE"],
@@ -88,7 +108,12 @@ for (const [name, source, base] of [
   requireText(source, "<UnknownRolePathRedirect", `${name}: ruta desconocida muestra 404`);
 }
 
-requireText(appleButton, "if (!isAvailable) return null", "Apple se muestra únicamente cuando el flujo nativo está disponible");
+requireText(appleButton, "if (!isAvailable) return null", "Apple se muestra cuando existe un flujo compatible");
+requireText(
+  appleHook,
+  "const isAvailable = isNativeIos || isWebBrowser;",
+  "Apple está habilitado en iOS nativo y en la web",
+);
 requireText(appleButton, "Sign in with Apple", "Botón Apple usa la etiqueta oficial");
 requireText(login, 'outcome.kind === "unavailable"', "Login explica Apple fuera de iPhone");
 requireText(vite, 'base: "/"', "Vite genera assets desde la raíz");

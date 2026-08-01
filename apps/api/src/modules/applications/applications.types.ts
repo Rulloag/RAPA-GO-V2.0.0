@@ -49,6 +49,9 @@ export interface ApplicationResponse {
   contractDeliveryStatus: string;
   contractDeliveredAt: string | null;
   contractDeliveryError: string | null;
+  approvalDeliveryStatus: string;
+  approvalDeliveredAt: string | null;
+  approvalDeliveryError: string | null;
   reviewedBy: string | null;
   reviewedAt: string | null;
   rejectionReason: string | null;

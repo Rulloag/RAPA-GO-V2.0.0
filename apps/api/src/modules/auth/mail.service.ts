@@ -9,6 +9,34 @@ type PasswordResetEmailInput = {
   expiresMinutes: number;
 };
 
+type RideReceiptEmailInput = {
+  to: string;
+  passengerName: string;
+  subject: string;
+  heading: string;
+  summary: string;
+  documentNumber: string;
+  fileName: string;
+  pdfBuffer: Buffer;
+};
+
+type DriverApplicationApprovedEmailInput = {
+  to: string;
+  name: string;
+  applicationId: string;
+  contractVersion: string;
+  pdfBuffer: Buffer;
+};
+
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
+
 function requiredEnvironmentValue(name: string): string {
   const value = process.env[name]?.trim();
 
@@ -336,6 +364,98 @@ export class MailService {
               <p style="margin-bottom:0">Revisaremos documentos, vehículo, residencia, domicilio tributario, capacitación y franja de desconexión antes de informar el resultado.</p>
             </div>
             <p>Consultas: <a href="mailto:conductores@rapago.cl">conductores@rapago.cl</a> · +56 9 4796 4171</p>
+          </div>
+        </div>
+      `,
+      attachments: [
+        {
+          filename: `Contrato-Rapa-Go-Conductor-v${input.contractVersion}.pdf`,
+          content: input.pdfBuffer,
+          contentType: "application/pdf",
+        },
+      ],
+    });
+  }
+
+  async sendRideReceiptEmail(input: RideReceiptEmailInput): Promise<void> {
+    const safeName = escapeHtml(input.passengerName.trim() || "Pasajero/a");
+    const safeHeading = escapeHtml(input.heading);
+    const safeSummary = escapeHtml(input.summary);
+    const safeDocumentNumber = escapeHtml(input.documentNumber);
+
+    await this.getTransporter().sendMail({
+      from: this.getFrom(),
+      to: input.to,
+      subject: input.subject,
+      text: [
+        `Hola ${input.passengerName.trim() || "Pasajero/a"}:`,
+        "",
+        input.summary,
+        `Comprobante: ${input.documentNumber}`,
+        "",
+        "Adjuntamos el comprobante PDF generado automáticamente por RAPA GO.",
+        "",
+        "Soporte: soporte@rapago.cl · +56 9 4796 4171",
+      ].join("\n"),
+      html: `
+        <div style="font-family:Arial,sans-serif;background:#f4efe7;padding:28px;color:#171717">
+          <div style="max-width:620px;margin:auto;background:#ffffff;border-radius:20px;padding:28px;border:1px solid #d6a640">
+            <h1 style="margin:0 0 8px;color:#8f3c24">RAPA GO</h1>
+            <h2 style="margin:0 0 16px">${safeHeading}</h2>
+            <p>Hola <strong>${safeName}</strong>:</p>
+            <p>${safeSummary}</p>
+            <div style="margin:20px 0;padding:14px;border-radius:12px;background:#fff8df;border:1px solid #d6a640">
+              <strong>Comprobante:</strong> ${safeDocumentNumber}
+            </div>
+            <p>El PDF adjunto contiene la ruta registrada, los datos del servicio y el monto informado por el backend de RAPA GO.</p>
+            <p style="color:#675a4a">Soporte: <a href="mailto:soporte@rapago.cl">soporte@rapago.cl</a> · +56 9 4796 4171</p>
+          </div>
+        </div>
+      `,
+      attachments: [
+        {
+          filename: input.fileName,
+          content: input.pdfBuffer,
+          contentType: "application/pdf",
+        },
+      ],
+    });
+  }
+
+  async sendDriverApplicationApproved(
+    input: DriverApplicationApprovedEmailInput,
+  ): Promise<void> {
+    const safeName = escapeHtml(input.name.trim() || "Conductor/a");
+
+    await this.getTransporter().sendMail({
+      from: this.getFrom(),
+      to: input.to,
+      subject: "Tu postulación como conductor fue aprobada en RAPA GO",
+      text: [
+        `Estimado/a ${input.name.trim() || "Conductor/a"}:`,
+        "",
+        "Confirmamos que la revisión de tu postulación finalizó correctamente y tu cuenta quedó habilitada como conductor de RAPA GO.",
+        `Identificador de postulación: ${input.applicationId}`,
+        `Contrato aceptado: versión ${input.contractVersion}`,
+        "",
+        "Adjuntamos nuevamente la copia del contrato aceptado para tu registro.",
+        "",
+        "Consultas: conductores@rapago.cl · +56 9 4796 4171",
+      ].join("\n"),
+      html: `
+        <div style="font-family:Arial,sans-serif;background:#f4efe7;padding:28px;color:#171717">
+          <div style="max-width:620px;margin:auto;background:#ffffff;border-radius:20px;padding:28px;border:1px solid #d6a640">
+            <h1 style="margin:0 0 8px;color:#8f3c24">RAPA GO</h1>
+            <h2 style="margin:0 0 16px">Conductor habilitado</h2>
+            <p>Estimado/a <strong>${safeName}</strong>:</p>
+            <p>La revisión de tu postulación finalizó correctamente y tu cuenta quedó <strong>habilitada como conductor</strong>.</p>
+            <p><strong>Postulación:</strong> ${escapeHtml(input.applicationId)}</p>
+            <p><strong>Contrato aceptado:</strong> versión ${escapeHtml(input.contractVersion)}</p>
+            <div style="margin:20px 0;padding:14px;border-radius:12px;background:#eaf8ee;border:1px solid #78bd88">
+              Ya puedes ingresar a RAPA GO y revisar tu perfil de conductor.
+            </div>
+            <p>Adjuntamos nuevamente la copia del contrato aceptado.</p>
+            <p style="color:#675a4a">Consultas: <a href="mailto:conductores@rapago.cl">conductores@rapago.cl</a> · +56 9 4796 4171</p>
           </div>
         </div>
       `,

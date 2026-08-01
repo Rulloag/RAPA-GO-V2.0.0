@@ -11,6 +11,7 @@ export * from "./bankAccounts.schema.js";
 export * from "./rides.schema.js";
 export * from "./rideLocationUpdates.schema.js";
 export * from "./ridePolicyCharges.schema.js";
+export * from "./rideReceipts.schema.js";
 export * from "./ratings.schema.js";
 export * from "./cashPaymentClosures.schema.js";
 export * from "./paymentWebhookEvents.schema.js";

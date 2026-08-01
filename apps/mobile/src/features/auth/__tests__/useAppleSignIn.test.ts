@@ -67,10 +67,10 @@ describe("useAppleSignIn", () => {
     expect(result.current.isAvailable).toBe(false);
   });
 
-  it("isAvailable is false on web", () => {
+  it("isAvailable is true on web when the Apple Services ID flow is supported", () => {
     mockPlatform = "web";
     const { result } = renderHook(() => useAppleSignIn());
-    expect(result.current.isAvailable).toBe(false);
+    expect(result.current.isAvailable).toBe(true);
   });
 
   it("returns 'unavailable' and never calls the plugin when not on iOS", async () => {
