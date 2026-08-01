@@ -56,6 +56,9 @@
   --rp-icon-size-sm: clamp(28px, 8vw, 32px);
   --rp-avatar: clamp(76px, 24vw, 96px);
   --rp-control-h: clamp(46px, 13vw, 52px);
+  /* Geometría compartida de la barra flotante para evitar choques con FABs. */
+  --rp-tabbar-bottom-offset: calc(12px + env(safe-area-inset-bottom, 0px));
+  --rp-tabbar-height: 64px;
 
   /* ── Marca (constante en ambos temas) ─────────────────────────────────── */
   --rp-gold: #d6a640;
@@ -318,15 +321,15 @@ ion-tab-bar.rapago-role-tabbar {
   left: 50% !important;
   right: auto !important;
   transform: translateX(-50%) !important;
-  bottom: calc(12px + env(safe-area-inset-bottom, 0px)) !important;
+  bottom: var(--rp-tabbar-bottom-offset) !important;
   width: calc(100% - 28px) !important;
   max-width: 460px !important;
   z-index: 9999 !important;
 
   /* La barra flota, así que el área segura ya la absorbe el `bottom`: aquí el
      alto es solo el de la píldora, sin sumar inset. */
-  height: 64px !important;
-  min-height: 64px !important;
+  height: var(--rp-tabbar-height) !important;
+  min-height: var(--rp-tabbar-height) !important;
   padding: 8px 10px !important;
 
   --background: var(--rp-nav-bg) !important;
@@ -436,7 +439,8 @@ ion-tab-bar.rapago-role-tabbar ion-tab-button[aria-selected="true"] ion-label {
 .rapago-shell {
   width: min(100%, 460px);
   margin: 0 auto;
-  padding: 8px var(--rp-pad-x) calc(96px + env(safe-area-inset-bottom, 0px));
+  padding: 8px var(--rp-pad-x)
+    calc(var(--rp-tabbar-bottom-offset) + var(--rp-tabbar-height) + 20px);
   display: flex;
   flex-direction: column;
   gap: var(--rp-gap);

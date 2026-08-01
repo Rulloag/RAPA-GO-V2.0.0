@@ -777,7 +777,11 @@
 .rapago-home-wa {
   position: fixed;
   right: 18px;
-  bottom: calc(88px + env(safe-area-inset-bottom, 0px));
+  bottom: calc(
+    var(--rp-tabbar-bottom-offset, calc(12px + env(safe-area-inset-bottom, 0px)))
+      + var(--rp-tabbar-height, 64px)
+      + 20px
+  );
   z-index: 1200;
   width: clamp(54px, 15vw, 60px);
   height: clamp(54px, 15vw, 60px);
