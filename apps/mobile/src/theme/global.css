@@ -1678,15 +1678,16 @@ ion-badge[color="danger"] {
    IMPORTANTE: este bloque debe quedar SIEMPRE al final del global.css.
    ========================================================================== */
 
-/* Evita que el contenido quede tapado por la barra */
+/* Evita que el contenido quede tapado por la barra flotante (bottom 12px +
+   alto 64px + holgura). */
 ion-content,
 .admin-dashboard-content {
-  --padding-bottom: calc(82px + env(safe-area-inset-bottom)) !important;
+  --padding-bottom: calc(96px + env(safe-area-inset-bottom)) !important;
 }
 
 .admin-dashboard-shell,
 .passenger-home-content {
-  padding-bottom: calc(96px + env(safe-area-inset-bottom)) !important;
+  padding-bottom: calc(104px + env(safe-area-inset-bottom)) !important;
 }
 
 /* BARRA INFERIOR: muestra todos los accesos en celular */
@@ -2572,12 +2573,12 @@ ion-tab-button[aria-selected="true"] ion-label {
 
 ion-content,
 .admin-dashboard-content {
-  --padding-bottom: calc(82px + env(safe-area-inset-bottom)) !important;
+  --padding-bottom: calc(96px + env(safe-area-inset-bottom)) !important;
 }
 
 .admin-dashboard-shell,
 .passenger-home-content {
-  padding-bottom: calc(96px + env(safe-area-inset-bottom)) !important;
+  padding-bottom: calc(104px + env(safe-area-inset-bottom)) !important;
 }
 
 @media (min-width: 390px) {

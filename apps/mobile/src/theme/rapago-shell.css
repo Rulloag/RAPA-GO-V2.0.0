@@ -135,6 +135,13 @@
   --rp-nav-active: #c89b3c;
   --rp-nav-border: rgba(200, 155, 60, 0.28);
   --rp-nav-shadow: 0 -8px 20px rgba(0, 0, 0, 0.42);
+  /* Píldora dorada del ítem activo (estilo WhatsApp) y sombra de la barra
+     flotante. En noche el tinte oro va translúcido sobre la superficie oscura;
+     la sombra rodea la píldora en lugar de proyectarse solo hacia arriba. */
+  --rp-nav-active-bg: rgba(214, 166, 64, 0.20);
+  --rp-nav-float-shadow:
+    0 10px 30px rgba(0, 0, 0, 0.5),
+    0 2px 8px rgba(0, 0, 0, 0.35);
 
   /* Superficie "legacy": clara en ambos temas. La usan solo las tarjetas de
      Solicitar viaje y Mis viajes, cuyo texto está escrito en oscuro dentro de
@@ -231,6 +238,12 @@
   --rp-nav-active: #8a641c;
   --rp-nav-border: rgba(200, 155, 60, 0.5);
   --rp-nav-shadow: 0 -6px 18px rgba(90, 60, 20, 0.14);
+  /* Píldora dorada del activo y sombra flotante en modo día: tinte oro más
+     saturado para que se lea sobre la superficie clara, sombra cálida suave. */
+  --rp-nav-active-bg: rgba(200, 155, 60, 0.20);
+  --rp-nav-float-shadow:
+    0 12px 30px rgba(90, 60, 20, 0.20),
+    0 2px 8px rgba(90, 60, 20, 0.12);
 
   /* Sobre fondo claro el halo dorado no se percibe: se cambia por un borde
      bronce sólido y una sombra proyectada. */
@@ -281,27 +294,112 @@
 }
 
 /* ==========================================================================
-   BARRA DE NAVEGACIÓN INFERIOR
+   BARRA DE NAVEGACIÓN INFERIOR — FLOTANTE ESTILO WHATSAPP
 
-   global.css:1700 fija `ion-tab-bar { background: #1A1A1A !important }` y
-   :1747 fija los colores de los botones, todo hardcodeado. Por eso la barra
-   se quedaba negra al pasar a modo día. Estos overrides la conectan a los
-   tokens; necesitan !important porque compiten contra !important.
+   global.css:1700+ fija `ion-tab-bar { position:fixed; left/right/bottom:0;
+   background:#1A1A1A; border-radius:0; label 6.2px }` todo hardcodeado con
+   !important en 3 bloques duplicados. Por eso la barra quedaba pegada a los
+   bordes, rectangular, negra en día y con textos ilegibles.
 
-   No van scoped a una pantalla: la barra es común a todas las pestañas del
-   rol, así que el cambio alcanza también a Viajes, Wallet y Ayuda.
+   Estos overrides —scoped a `.rapago-role-tabbar`, que tiene más especificidad
+   que el `ion-tab-bar` plano aun con !important— la convierten en una PÍLDORA
+   FLOTANTE: despegada de los bordes, redondeada, con el ítem activo resaltado
+   por una píldora dorada (como Novedades en WhatsApp). Consume los tokens
+   `--rp-nav-*`, así que se adapta sola a día/noche.
+
+   No va scoped a una pantalla: la barra es común a todas las pestañas del rol
+   (pasajero, conductor, admin, rental, guía), así que el rediseño alcanza a
+   todas por igual.
    ========================================================================== */
 ion-tab-bar.rapago-role-tabbar {
+  /* Flotante: se despega de los tres bordes y se centra con un ancho máximo
+     coherente con el resto de la columna de lectura (.rapago-shell). */
+  position: fixed !important;
+  left: 50% !important;
+  right: auto !important;
+  transform: translateX(-50%) !important;
+  bottom: calc(12px + env(safe-area-inset-bottom, 0px)) !important;
+  width: calc(100% - 28px) !important;
+  max-width: 460px !important;
+  z-index: 9999 !important;
+
+  /* La barra flota, así que el área segura ya la absorbe el `bottom`: aquí el
+     alto es solo el de la píldora, sin sumar inset. */
+  height: 64px !important;
+  min-height: 64px !important;
+  padding: 8px 10px !important;
+
   --background: var(--rp-nav-bg) !important;
   background: var(--rp-nav-bg) !important;
+
+  border: 1px solid var(--rp-nav-border) !important;
   border-top: 1px solid var(--rp-nav-border) !important;
-  box-shadow: var(--rp-nav-shadow) !important;
+  border-radius: 30px !important;
+  box-shadow: var(--rp-nav-float-shadow) !important;
+
+  backdrop-filter: blur(18px) saturate(1.1) !important;
+  -webkit-backdrop-filter: blur(18px) saturate(1.1) !important;
+
+  overflow: visible !important;
 }
 
+/* Cada celda: contenedor relativo para alojar la píldora del activo y apilar
+   el contenido por encima. Se sube el label a un tamaño legible (el plano de
+   global era 6.2px). */
 ion-tab-bar.rapago-role-tabbar ion-tab-button {
+  position: relative !important;
+  isolation: isolate !important;
+  height: 48px !important;
+  min-height: 48px !important;
+  border-radius: 999px !important;
+
+  --padding-top: 0 !important;
+  --padding-bottom: 0 !important;
+
   --color: var(--rp-nav-fg) !important;
   --color-selected: var(--rp-nav-active) !important;
   color: var(--rp-nav-fg) !important;
+  background: transparent !important;
+}
+
+/* Píldora dorada del ítem activo (estilo WhatsApp): pseudo-elemento inset
+   dentro de la celda, detrás del icono y el texto. El `isolation: isolate` del
+   botón crea un contexto de apilamiento propio, así que `z-index: -1` deja la
+   píldora por detrás del contenido pero SIN caer detrás de la barra. */
+ion-tab-bar.rapago-role-tabbar ion-tab-button.tab-selected::before,
+ion-tab-bar.rapago-role-tabbar ion-tab-button[aria-selected="true"]::before {
+  content: "" !important;
+  position: absolute !important;
+  inset: 2px 6px !important;
+  border-radius: 999px !important;
+  background: var(--rp-nav-active-bg) !important;
+  box-shadow: inset 0 0 0 1px var(--rp-nav-border) !important;
+  z-index: -1 !important;
+  pointer-events: none !important;
+}
+
+/* Icono y texto por encima de la píldora. */
+ion-tab-bar.rapago-role-tabbar ion-tab-button ion-icon,
+ion-tab-bar.rapago-role-tabbar ion-tab-button ion-label {
+  position: relative !important;
+  z-index: 1 !important;
+}
+
+ion-tab-bar.rapago-role-tabbar ion-tab-button ion-icon {
+  width: 22px !important;
+  height: 22px !important;
+  font-size: 22px !important;
+  margin: 0 0 3px !important;
+  color: inherit !important;
+}
+
+ion-tab-bar.rapago-role-tabbar ion-tab-button ion-label {
+  max-width: none !important;
+  font-size: 10.5px !important;
+  line-height: 1.1 !important;
+  font-weight: 800 !important;
+  letter-spacing: 0.01em !important;
+  color: inherit !important;
 }
 
 ion-tab-bar.rapago-role-tabbar ion-tab-button.tab-selected,
@@ -314,6 +412,24 @@ ion-tab-bar.rapago-role-tabbar ion-tab-button.tab-selected ion-label,
 ion-tab-bar.rapago-role-tabbar ion-tab-button[aria-selected="true"] ion-icon,
 ion-tab-bar.rapago-role-tabbar ion-tab-button[aria-selected="true"] ion-label {
   color: var(--rp-nav-active) !important;
+}
+
+/* Pantallas muy angostas (≤360px): la píldora se estrecha y el texto baja un
+   punto para que 4–5 pestañas quepan sin apretarse. */
+@media (max-width: 360px) {
+  ion-tab-bar.rapago-role-tabbar {
+    width: calc(100% - 20px) !important;
+    padding: 8px 6px !important;
+  }
+
+  ion-tab-bar.rapago-role-tabbar ion-tab-button ion-label {
+    font-size: 9.5px !important;
+  }
+
+  ion-tab-bar.rapago-role-tabbar ion-tab-button.tab-selected::before,
+  ion-tab-bar.rapago-role-tabbar ion-tab-button[aria-selected="true"]::before {
+    inset: 2px 3px !important;
+  }
 }
 
 /* Columna de lectura: el mismo ancho que .rapago-auth-card del Login. */
