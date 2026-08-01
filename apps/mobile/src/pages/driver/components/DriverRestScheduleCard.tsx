@@ -1,4 +1,5 @@
 import {
+  IonAlert,
   IonButton,
   IonIcon,
   IonSpinner,
@@ -24,6 +25,8 @@ import {
 } from "../../../features/drivers/driverProfile.service";
 
 const TIME_PATTERN = /^([01]\d|2[0-3]):[0-5]\d$/;
+
+type ConfirmationAction = "rest" | "work";
 
 function formatDateTime(value: string | null | undefined): string {
   if (!value) return "";
@@ -87,6 +90,8 @@ export function DriverRestScheduleCard({
   >(null);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  const [confirmationAction, setConfirmationAction] =
+    useState<ConfirmationAction | null>(null);
   const [nowMs, setNowMs] = useState(Date.now());
 
   const publish = useCallback(
@@ -192,13 +197,13 @@ export function DriverRestScheduleCard({
     }
   }
 
-  async function startRest(): Promise<void> {
+  function startRest(): void {
     if (!session?.accessToken || performingAction) return;
+    setConfirmationAction("rest");
+  }
 
-    const confirmed = window.confirm(
-      "¿Comenzar ahora el descanso continuo de 12 horas? Quedarás No disponible y el botón Trabajar se deshabilitará hasta terminar.",
-    );
-    if (!confirmed) return;
+  async function confirmStartRest(): Promise<void> {
+    if (!session?.accessToken || performingAction) return;
 
     setPerformingAction("rest");
     setError(null);
@@ -223,13 +228,13 @@ export function DriverRestScheduleCard({
     }
   }
 
-  async function continueWorking(): Promise<void> {
+  function continueWorking(): void {
     if (!session?.accessToken || performingAction) return;
+    setConfirmationAction("work");
+  }
 
-    const confirmed = window.confirm(
-      "¿Continuar trabajando? Se descartará el descanso de este ciclo y podrás administrar normalmente Disponible/No disponible.",
-    );
-    if (!confirmed) return;
+  async function confirmContinueWorking(): Promise<void> {
+    if (!session?.accessToken || performingAction) return;
 
     setPerformingAction("work");
     setError(null);
@@ -650,7 +655,7 @@ export function DriverRestScheduleCard({
             >
               <IonButton
                 expand="block"
-                onClick={() => void startRest()}
+                onClick={startRest}
                 disabled={
                   actionBusy ||
                   activeRest ||
@@ -681,7 +686,7 @@ export function DriverRestScheduleCard({
 
               <IonButton
                 expand="block"
-                onClick={() => void continueWorking()}
+                onClick={continueWorking}
                 disabled={
                   actionBusy ||
                   activeRest ||
@@ -724,6 +729,47 @@ export function DriverRestScheduleCard({
               </div>
             )}
           </div>
+
+          <IonAlert
+            isOpen={confirmationAction !== null}
+            onDidDismiss={() => setConfirmationAction(null)}
+            backdropDismiss={!actionBusy}
+            keyboardClose
+            cssClass="rapago-driver-rest-confirm-alert"
+            header={
+              confirmationAction === "rest"
+                ? "Iniciar descanso"
+                : "Continuar trabajando"
+            }
+            message={
+              confirmationAction === "rest"
+                ? "Comenzarás ahora un descanso continuo de 12 horas. Quedarás No disponible y no podrás volver a Trabajar hasta completar el período."
+                : "Se descartará el descanso de este ciclo y podrás administrar normalmente tu estado Disponible o No disponible."
+            }
+            buttons={[
+              {
+                text: "Cancelar",
+                role: "cancel",
+              },
+              {
+                text:
+                  confirmationAction === "rest"
+                    ? "Iniciar descanso"
+                    : "Continuar trabajando",
+                role: "confirm",
+                handler: () => {
+                  const action = confirmationAction;
+                  setConfirmationAction(null);
+
+                  if (action === "rest") {
+                    void confirmStartRest();
+                  } else if (action === "work") {
+                    void confirmContinueWorking();
+                  }
+                },
+              },
+            ]}
+          />
 
           {error && (
             <div
