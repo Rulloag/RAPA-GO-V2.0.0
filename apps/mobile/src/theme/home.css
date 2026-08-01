@@ -364,16 +364,18 @@
   overflow: hidden;
   display: flex;
   flex-direction: column;
-  align-items: flex-start;
-  gap: 7px;
-  padding: var(--rp-pad-x);
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  gap: 9px;
+  padding: calc(var(--rp-pad-x) + 8px) var(--rp-pad-x) var(--rp-pad-x);
   border-radius: var(--rp-radius-sm);
   background: var(--rp-surface);
   border: var(--rp-border-w) solid var(--rp-border-c);
   box-shadow: var(--rp-shadow);
   color: var(--rp-text);
   cursor: pointer;
-  min-height: clamp(142px, 40vw, 164px);
+  min-height: clamp(150px, 42vw, 172px);
   transition:
     transform 0.18s ease,
     border-color 0.18s ease;
@@ -395,8 +397,8 @@
   opacity: 0.68;
   border-style: dashed;
   box-shadow: none;
-  min-height: clamp(152px, 44vw, 176px);
-  gap: 6px;
+  min-height: clamp(158px, 46vw, 182px);
+  gap: 8px;
 }
 
 .rapago-home-page .rapago-service-card--disabled:active {
@@ -455,7 +457,6 @@
   font-weight: 900;
   line-height: 1.2;
   color: var(--rp-text);
-  padding-right: 4px;
 }
 
 .rapago-home-page .rapago-service-card--featured .rapago-service-card__title {
@@ -463,7 +464,7 @@
 }
 
 .rapago-home-page .rapago-service-card__subtitle {
-  margin-top: -2px;
+  margin-top: 0;
   font-size: var(--rp-fs-micro);
   font-weight: 650;
   color: var(--rp-muted);
