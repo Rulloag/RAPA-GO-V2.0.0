@@ -286,8 +286,8 @@ export default function HomePage(): JSX.Element {
             <div className="rapago-home-services">
               <ServiceCard
                 icon={carOutline}
-                title="Viaje"
-                subtitle="Solicitar ahora"
+                title="VIAJES"
+                subtitle="Solicita tu viaje y muévete por Rapa Nui."
                 color="primary"
                 featured
                 onClick={() => history.push(ROUTES.PASSENGER.REQUEST_RIDE)}
@@ -295,31 +295,31 @@ export default function HomePage(): JSX.Element {
 
               <ServiceCard
                 icon={mapOutline}
-                title="Turismo local"
-                subtitle="Guías y tours"
+                title="TOURS EN RAPA NUI"
+                subtitle="Descubre la isla junto a guías rapanui."
                 color="medium"
                 disabled
-                badge="Pronto"
+                badge="PRÓXIMAMENTE"
                 onClick={() => {}}
               />
 
               <ServiceCard
                 icon={carSportOutline}
-                title="Reserva vehículo"
-                subtitle="Arriendos"
+                title="RENT A CAR"
+                subtitle="Reserva un vehículo y recorre Rapa Nui a tu ritmo."
                 color="medium"
                 disabled
-                badge="Pronto"
+                badge="PRÓXIMAMENTE"
                 onClick={() => {}}
               />
 
               <ServiceCard
                 icon={ticketOutline}
-                title="Eventos"
-                subtitle="Cultura"
+                title="EVENTOS Y SERVICIOS"
+                subtitle="Conecta con experiencias y servicios de Rapa Nui."
                 color="medium"
                 disabled
-                badge="Pronto"
+                badge="PRÓXIMAMENTE"
                 onClick={() => {}}
               />
             </div>
