@@ -51,6 +51,34 @@
   letter-spacing: -0.01em !important;
 }
 
+/* Marca Rapa Go en la cabecera de sección: el logo va SIEMPRE junto al título
+   (Solicitar viaje, Mis viajes, Ayuda, Beneficios…) para que todas las
+   pantallas del pasajero compartan la misma identidad, no solo el Inicio. El
+   grupo logo+texto se mantiene unido y centrado dentro del IonTitle. */
+.rapago-section-title__inner {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  min-width: 0;
+  vertical-align: middle;
+}
+
+.rapago-section-title__text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rapago-section-logo {
+  flex-shrink: 0;
+  width: 30px;
+  height: 30px;
+  border-radius: 999px;
+  object-fit: cover;
+  border: 1.5px solid var(--rp-border-c);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.22);
+}
+
 /* La cabecera secundaria solo aloja los filtros: sin borde ni fondo propio. */
 .rapago-section-subheader ion-toolbar {
   --background: transparent !important;

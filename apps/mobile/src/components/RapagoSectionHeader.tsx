@@ -9,6 +9,7 @@ import {
 } from "@ionic/react";
 import { arrowBackOutline } from "ionicons/icons";
 import { useHistory } from "react-router-dom";
+import logoRapago from "../theme/img/logo-rapago.jpeg";
 
 interface RapagoSectionHeaderProps {
   title: string;
@@ -83,7 +84,17 @@ export function RapagoSectionHeader({
           </IonButtons>
         )}
 
-        <IonTitle className="rapago-section-title">{title}</IonTitle>
+        <IonTitle className="rapago-section-title">
+          <span className="rapago-section-title__inner">
+            <img
+              src={logoRapago}
+              alt=""
+              aria-hidden="true"
+              className="rapago-section-logo"
+            />
+            <span className="rapago-section-title__text">{title}</span>
+          </span>
+        </IonTitle>
 
         <IonButtons slot="end">
           {actionIcon && onAction && (

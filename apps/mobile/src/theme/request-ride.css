@@ -1850,3 +1850,57 @@
   --color: var(--rp-field-fg) !important;
   color: var(--rp-field-fg) !important;
 }
+
+/* ==========================================================================
+   FIX — Chips "Destinos frecuentes" no tomaban el color del tema
+   ==========================================================================
+   global.css estampa button[aria-pressed="false"|"true"] con
+   background/color/border en !important y especificidad (0,1,1). Esos chips son
+   <button aria-pressed=...>, así que esa regla global le ganaba a los estilos
+   del chip (0,1,0): el fondo quedaba en el marrón fijo de global y el texto en
+   blanco, sin tomar el color del tema, y el texto interno quedaba ilegible.
+   Aquí se reafirma con (0,2,0) — dos clases — que SÍ supera a button[aria-pressed],
+   apoyándose en los tokens de chip, que ya son sensibles al tema (claros en
+   .request-map-page, oscuros en el bloque [data-rapago-theme="dark"]). */
+.request-map-page .request-map-frequent__item {
+  background: var(--rp-chip-bg) !important;
+  color: var(--rp-chip-text) !important;
+  border: 1px solid var(--rp-chip-border) !important;
+}
+
+.request-map-page .request-map-frequent__item strong {
+  color: var(--rp-chip-text) !important;
+}
+
+.request-map-page .request-map-frequent__item small {
+  color: var(--rp-chip-muted) !important;
+}
+
+.request-map-page .request-map-frequent__item ion-icon {
+  background: var(--rp-chip-icon-bg) !important;
+  color: var(--rp-chip-icon-fg) !important;
+}
+
+/* Chip seleccionado: coral de marca, ganándole también al gradiente dorado que
+   global pone en button[aria-pressed="true"]. */
+.request-map-page .request-map-frequent__item--active {
+  background: var(--rp-danger-bg) !important;
+  border-color: var(--rp-danger) !important;
+}
+
+.request-map-page .request-map-frequent__item--active strong,
+.request-map-page .request-map-frequent__item--active small {
+  color: #7a2416 !important;
+}
+
+/* En noche el rojo oscuro del texto activo quedaría ilegible sobre el coral
+   translúcido; sube a un coral claro. */
+.request-map-page[data-rapago-theme="dark"] .request-map-frequent__item--active strong,
+.request-map-page[data-rapago-theme="dark"] .request-map-frequent__item--active small {
+  color: #f3c6b4 !important;
+}
+
+.request-map-page .request-map-frequent__item--active ion-icon {
+  background: var(--rp-danger) !important;
+  color: #ffffff !important;
+}
