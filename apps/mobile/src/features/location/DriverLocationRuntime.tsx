@@ -407,14 +407,24 @@ export function DriverLocationRuntime(): JSX.Element | null {
                 {message}
               </div>
             )}
-            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-start" }}>
               {needsForeground && (
-                <IonButton size="small" disabled={busy} onClick={() => void requestForeground()}>
+                <IonButton
+                  size="small"
+                  disabled={busy}
+                  onClick={() => void requestForeground()}
+                  style={{ flex: "1 1 auto", minWidth: 140 }}
+                >
                   Activar ubicación
                 </IonButton>
               )}
               {needsBackground && (
-                <IonButton size="small" disabled={busy} onClick={() => void requestBackground()}>
+                <IonButton
+                  size="small"
+                  disabled={busy}
+                  onClick={() => void requestBackground()}
+                  style={{ flex: "1 1 auto", minWidth: 140 }}
+                >
                   Permitir siempre
                 </IonButton>
               )}
@@ -423,6 +433,7 @@ export function DriverLocationRuntime(): JSX.Element | null {
                 fill="clear"
                 color="dark"
                 onClick={() => void locationPermissionService.openSettings()}
+                style={{ flex: "1 1 auto", minWidth: 110 }}
               >
                 <IonIcon icon={settingsOutline} slot="start" />
                 Ajustes
