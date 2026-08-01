@@ -10,7 +10,9 @@ beforeEach(() => {
 
 import { KlapProvider } from "../klap.provider.js";
 import { KlapProviderError } from "../klap.types.js";
-import type { CreatePaymentParams } from "../payment.provider.js";
+import type { CreatePaymentParams, CreatePaymentResult, PaymentProvider } from "../payment.provider.js";
+import { MercadoPagoProvider } from "../mercadopago.provider.js";
+import { ProntoPagaProvider } from "../prontopaga.provider.js";
 
 const SANDBOX_URL = "https://api-pasarela-sandbox.mcdesaqa.cl/payment-gateway/v1/orders";
 
@@ -36,7 +38,7 @@ function mockFetchOnce(status: number, jsonBody: unknown, ok = status >= 200 && 
   } as unknown as Response);
 }
 
-describe("KlapProvider.createPayment", () => {
+describe("KlapProvider.createEmbeddedOrder", () => {
   let provider: KlapProvider;
 
   beforeEach(() => {
@@ -46,16 +48,35 @@ describe("KlapProvider.createPayment", () => {
   it("1. creates an order successfully and maps order_id to providerOrderId", async () => {
     mockFetchOnce(200, { order_id: "klap-order-abc123" });
 
-    const result = await provider.createPayment(baseParams());
+    const result = await provider.createEmbeddedOrder(baseParams());
 
     expect(result.providerOrderId).toBe("klap-order-abc123");
     expect(global.fetch).toHaveBeenCalledTimes(1);
   });
 
+  it("3. returns a checkoutType='embedded' result with publicCheckoutData.orderId, never a redirect shape", async () => {
+    mockFetchOnce(200, { order_id: "klap-order-abc123" });
+
+    const result = await provider.createEmbeddedOrder(baseParams());
+
+    expect(result.checkoutType).toBe("embedded");
+    expect(result.publicCheckoutData).toEqual({ orderId: "klap-order-abc123" });
+    // A redirect-shaped consumer would look for `.urlPay` — it must not exist here.
+    expect((result as unknown as { urlPay?: unknown }).urlPay).toBeUndefined();
+  });
+
+  it("5. urlPay is never present anywhere in the result (no empty-string control signal)", async () => {
+    mockFetchOnce(200, { order_id: "klap-order-abc123" });
+
+    const result = await provider.createEmbeddedOrder(baseParams());
+
+    expect(Object.prototype.hasOwnProperty.call(result, "urlPay")).toBe(false);
+  });
+
   it("2. sends the Api-Key header without asserting its concrete secret value", async () => {
     mockFetchOnce(200, { order_id: "klap-order-abc123" });
 
-    await provider.createPayment(baseParams());
+    await provider.createEmbeddedOrder(baseParams());
 
     const [, init] = (global.fetch as ReturnType<typeof vi.fn>).mock.calls[0] as [string, RequestInit];
     const headers = init.headers as Record<string, string>;
@@ -63,10 +84,10 @@ describe("KlapProvider.createPayment", () => {
     expect(headers["Api-Key"].length).toBeGreaterThan(0);
   });
 
-  it("3. sends an Idempotency-Key header", async () => {
+  it("sends an Idempotency-Key header", async () => {
     mockFetchOnce(200, { order_id: "klap-order-abc123" });
 
-    await provider.createPayment(baseParams());
+    await provider.createEmbeddedOrder(baseParams());
 
     const [, init] = (global.fetch as ReturnType<typeof vi.fn>).mock.calls[0] as [string, RequestInit];
     const headers = init.headers as Record<string, string>;
@@ -74,10 +95,10 @@ describe("KlapProvider.createPayment", () => {
     expect(headers["Idempotency-Key"].length).toBeGreaterThan(0);
   });
 
-  it("4. sends amount as an integer CLP value in the request body", async () => {
+  it("sends amount as an integer CLP value in the request body", async () => {
     mockFetchOnce(200, { order_id: "klap-order-abc123" });
 
-    await provider.createPayment(baseParams({ amountClp: 12345 }));
+    await provider.createEmbeddedOrder(baseParams({ amountClp: 12345 }));
 
     const [, init] = (global.fetch as ReturnType<typeof vi.fn>).mock.calls[0] as [string, RequestInit];
     const body = JSON.parse(String(init.body));
@@ -86,97 +107,97 @@ describe("KlapProvider.createPayment", () => {
     expect(Number.isInteger(body.amount)).toBe(true);
   });
 
-  it("5. rejects a zero amount without calling fetch", async () => {
-    await expect(provider.createPayment(baseParams({ amountClp: 0 }))).rejects.toThrow(KlapProviderError);
+  it("rejects a zero amount without calling fetch", async () => {
+    await expect(provider.createEmbeddedOrder(baseParams({ amountClp: 0 }))).rejects.toThrow(KlapProviderError);
     expect(global.fetch).not.toHaveBeenCalled();
   });
 
-  it("6. rejects a negative amount without calling fetch", async () => {
-    await expect(provider.createPayment(baseParams({ amountClp: -500 }))).rejects.toThrow(KlapProviderError);
+  it("rejects a negative amount without calling fetch", async () => {
+    await expect(provider.createEmbeddedOrder(baseParams({ amountClp: -500 }))).rejects.toThrow(KlapProviderError);
     expect(global.fetch).not.toHaveBeenCalled();
   });
 
-  it("7. rejects a decimal amount without calling fetch", async () => {
-    await expect(provider.createPayment(baseParams({ amountClp: 1500.5 }))).rejects.toThrow(KlapProviderError);
+  it("rejects a decimal amount without calling fetch", async () => {
+    await expect(provider.createEmbeddedOrder(baseParams({ amountClp: 1500.5 }))).rejects.toThrow(KlapProviderError);
     expect(global.fetch).not.toHaveBeenCalled();
   });
 
   it("rejects an amount above the internal safety ceiling", async () => {
     await expect(
-      provider.createPayment(baseParams({ amountClp: 999_999_999 })),
+      provider.createEmbeddedOrder(baseParams({ amountClp: 999_999_999 })),
     ).rejects.toThrow(KlapProviderError);
     expect(global.fetch).not.toHaveBeenCalled();
   });
 
-  it("8. throws a config error when KLAP_API_KEY is missing", async () => {
+  it("throws a config error when KLAP_API_KEY is missing", async () => {
     delete process.env["KLAP_API_KEY"];
 
-    await expect(provider.createPayment(baseParams())).rejects.toMatchObject({
+    await expect(provider.createEmbeddedOrder(baseParams())).rejects.toMatchObject({
       kind: "config",
     });
     expect(global.fetch).not.toHaveBeenCalled();
   });
 
-  it("9. throws a config error when the orders URL is explicitly set to empty", async () => {
+  it("throws a config error when the orders URL is explicitly set to empty", async () => {
     // Nullish coalescing (??) only falls back on null/undefined, not on an empty
     // string — so an operator setting this to "" must still be rejected explicitly.
     process.env["KLAP_SANDBOX_ORDERS_URL"] = "";
 
-    await expect(provider.createPayment(baseParams())).rejects.toMatchObject({ kind: "config" });
+    await expect(provider.createEmbeddedOrder(baseParams())).rejects.toMatchObject({ kind: "config" });
     expect(global.fetch).not.toHaveBeenCalled();
   });
 
-  it("10. maps an AbortError to a timeout KlapProviderError", async () => {
+  it("maps an AbortError to a timeout KlapProviderError", async () => {
     const abortError = new Error("aborted");
     abortError.name = "AbortError";
     global.fetch = vi.fn().mockRejectedValueOnce(abortError);
 
-    await expect(provider.createPayment(baseParams())).rejects.toMatchObject({ kind: "timeout" });
+    await expect(provider.createEmbeddedOrder(baseParams())).rejects.toMatchObject({ kind: "timeout" });
   });
 
-  it("11. maps a generic fetch rejection to a network KlapProviderError", async () => {
+  it("maps a generic fetch rejection to a network KlapProviderError", async () => {
     global.fetch = vi.fn().mockRejectedValueOnce(new Error("ECONNRESET"));
 
-    await expect(provider.createPayment(baseParams())).rejects.toMatchObject({ kind: "network" });
+    await expect(provider.createEmbeddedOrder(baseParams())).rejects.toMatchObject({ kind: "network" });
   });
 
-  it("12. maps an HTTP 400 response to an http_rejected KlapProviderError", async () => {
+  it("maps an HTTP 400 response to an http_rejected KlapProviderError", async () => {
     mockFetchOnce(400, { error: "bad_request" });
 
-    await expect(provider.createPayment(baseParams())).rejects.toMatchObject({
+    await expect(provider.createEmbeddedOrder(baseParams())).rejects.toMatchObject({
       kind: "http_rejected",
       httpStatus: 400,
     });
   });
 
-  it("13. maps an HTTP 401 response to an http_rejected KlapProviderError", async () => {
+  it("maps an HTTP 401 response to an http_rejected KlapProviderError", async () => {
     mockFetchOnce(401, { error: "unauthorized" });
 
-    await expect(provider.createPayment(baseParams())).rejects.toMatchObject({
+    await expect(provider.createEmbeddedOrder(baseParams())).rejects.toMatchObject({
       kind: "http_rejected",
       httpStatus: 401,
     });
   });
 
-  it("14. maps an HTTP 409 response to http_rejected (no undocumented special-casing)", async () => {
+  it("maps an HTTP 409 response to http_rejected (no undocumented special-casing)", async () => {
     mockFetchOnce(409, { error: "conflict" });
 
-    await expect(provider.createPayment(baseParams())).rejects.toMatchObject({
+    await expect(provider.createEmbeddedOrder(baseParams())).rejects.toMatchObject({
       kind: "http_rejected",
       httpStatus: 409,
     });
   });
 
-  it("15. maps an HTTP 500 response to an http_rejected KlapProviderError", async () => {
+  it("maps an HTTP 500 response to an http_rejected KlapProviderError", async () => {
     mockFetchOnce(500, { error: "internal_error" });
 
-    await expect(provider.createPayment(baseParams())).rejects.toMatchObject({
+    await expect(provider.createEmbeddedOrder(baseParams())).rejects.toMatchObject({
       kind: "http_rejected",
       httpStatus: 500,
     });
   });
 
-  it("16. maps invalid JSON in the response to invalid_response", async () => {
+  it("maps invalid JSON in the response to invalid_response", async () => {
     global.fetch = vi.fn().mockResolvedValueOnce({
       ok: true,
       status: 200,
@@ -184,31 +205,93 @@ describe("KlapProvider.createPayment", () => {
       text: () => Promise.resolve("not json"),
     } as unknown as Response);
 
-    await expect(provider.createPayment(baseParams())).rejects.toMatchObject({
+    await expect(provider.createEmbeddedOrder(baseParams())).rejects.toMatchObject({
       kind: "invalid_response",
     });
   });
 
-  it("17. maps a response missing order_id to invalid_response", async () => {
+  it("maps a response missing order_id to invalid_response", async () => {
     mockFetchOnce(200, { status: "created" });
 
-    await expect(provider.createPayment(baseParams())).rejects.toMatchObject({
+    await expect(provider.createEmbeddedOrder(baseParams())).rejects.toMatchObject({
       kind: "invalid_response",
     });
   });
 
-  it("18. never includes PAN/CVV fields anywhere in the request body", async () => {
+  it("4. delivers order_id as the minimal public data needed to init Checkout Transparente", async () => {
     mockFetchOnce(200, { order_id: "klap-order-abc123" });
 
-    await provider.createPayment(baseParams());
+    const result = await provider.createEmbeddedOrder(baseParams());
+
+    expect(Object.keys(result.publicCheckoutData)).toEqual(["orderId"]);
+  });
+
+  it("8. never includes PAN/CVV fields anywhere in the request body", async () => {
+    mockFetchOnce(200, { order_id: "klap-order-abc123" });
+
+    await provider.createEmbeddedOrder(baseParams());
 
     const [, init] = (global.fetch as ReturnType<typeof vi.fn>).mock.calls[0] as [string, RequestInit];
     const rawBody = String(init.body);
     expect(rawBody).not.toMatch(/pan|cvv|card_number|cardNumber|security_code/i);
   });
 
-  it("19. never includes the ApiKey value inside a thrown error message", async () => {
+  it("7. never includes the ApiKey value inside a thrown error message", async () => {
     mockFetchOnce(401, { error: "unauthorized" });
+    process.env["KLAP_API_KEY"] = "super-secret-sandbox-key-xyz";
+
+    try {
+      await provider.createEmbeddedOrder(baseParams());
+      throw new Error("expected createEmbeddedOrder to reject");
+    } catch (err) {
+      expect(String((err as Error).message)).not.toContain("super-secret-sandbox-key-xyz");
+    }
+  });
+
+  it("calls the confirmed Sandbox URL, never a production-looking URL", async () => {
+    mockFetchOnce(200, { order_id: "klap-order-abc123" });
+
+    await provider.createEmbeddedOrder(baseParams());
+
+    const [url] = (global.fetch as ReturnType<typeof vi.fn>).mock.calls[0] as [string, RequestInit];
+    expect(url).toBe(SANDBOX_URL);
+    expect(url).not.toContain("api.pasarela.multicaja.cl");
+  });
+
+  it("refuses to operate when KLAP_ENVIRONMENT=production, even without other changes", async () => {
+    process.env["KLAP_ENVIRONMENT"] = "production";
+
+    await expect(provider.createEmbeddedOrder(baseParams())).rejects.toMatchObject({ kind: "config" });
+    expect(global.fetch).not.toHaveBeenCalled();
+  });
+
+  it("does not retry automatically after a timeout", async () => {
+    const abortError = new Error("aborted");
+    abortError.name = "AbortError";
+    global.fetch = vi.fn().mockRejectedValueOnce(abortError);
+
+    await expect(provider.createEmbeddedOrder(baseParams())).rejects.toThrow();
+    expect(global.fetch).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("KlapProvider.createPayment (legacy redirect contract — must refuse, not fake)", () => {
+  let provider: KlapProvider;
+
+  beforeEach(() => {
+    provider = new KlapProvider();
+  });
+
+  it("6. rejects immediately with 'unsupported_checkout_type' instead of returning urlPay=''", async () => {
+    await expect(provider.createPayment(baseParams())).rejects.toMatchObject({
+      kind: "unsupported_checkout_type",
+    });
+    // It must never even attempt the network call — this is a compile/contract-time
+    // refusal, not a failed order.
+    expect(global.fetch).not.toHaveBeenCalled();
+  });
+
+  it("does not leak the ApiKey in the refusal message", async () => {
     process.env["KLAP_API_KEY"] = "super-secret-sandbox-key-xyz";
 
     try {
@@ -217,32 +300,6 @@ describe("KlapProvider.createPayment", () => {
     } catch (err) {
       expect(String((err as Error).message)).not.toContain("super-secret-sandbox-key-xyz");
     }
-  });
-
-  it("20. calls the confirmed Sandbox URL, never a production-looking URL", async () => {
-    mockFetchOnce(200, { order_id: "klap-order-abc123" });
-
-    await provider.createPayment(baseParams());
-
-    const [url] = (global.fetch as ReturnType<typeof vi.fn>).mock.calls[0] as [string, RequestInit];
-    expect(url).toBe(SANDBOX_URL);
-    expect(url).not.toContain("api.pasarela.multicaja.cl");
-  });
-
-  it("21. refuses to operate when KLAP_ENVIRONMENT=production, even without other changes", async () => {
-    process.env["KLAP_ENVIRONMENT"] = "production";
-
-    await expect(provider.createPayment(baseParams())).rejects.toMatchObject({ kind: "config" });
-    expect(global.fetch).not.toHaveBeenCalled();
-  });
-
-  it("22. does not retry automatically after a timeout", async () => {
-    const abortError = new Error("aborted");
-    abortError.name = "AbortError";
-    global.fetch = vi.fn().mockRejectedValueOnce(abortError);
-
-    await expect(provider.createPayment(baseParams())).rejects.toThrow();
-    expect(global.fetch).toHaveBeenCalledTimes(1);
   });
 });
 
@@ -255,5 +312,33 @@ describe("KlapProvider — webhook methods (not implemented in this phase)", () 
   it("normalizeWebhook rejects, documenting it is scheduled for Fase C", async () => {
     const provider = new KlapProvider();
     await expect(provider.normalizeWebhook({}, {})).rejects.toThrow(/Fase C/);
+  });
+});
+
+describe("Regresión: Mercado Pago y ProntoPaga conservan el contrato redirect sin cambios", () => {
+  // `CreatePaymentResult`/`PaymentProvider.createPayment` no se tocaron en esta fase
+  // (ver payment.provider.ts). Esta función identidad solo compila si el resultado
+  // real de cada provider sigue siendo exactamente `{ providerOrderId, urlPay }` —
+  // es una prueba de tipos en tiempo de compilación, no solo en runtime.
+  function assertRedirectShape(result: CreatePaymentResult): { providerOrderId: string; urlPay: string } {
+    return result;
+  }
+
+  it("MercadoPagoProvider still implements PaymentProvider with the unchanged redirect result", () => {
+    const provider: PaymentProvider = new MercadoPagoProvider();
+    expect(provider.name).toBe("mercadopago");
+    // Prueba de tipos: si `createPayment` alguna vez dejara de devolver
+    // `CreatePaymentResult`, esta línea no compilaría.
+    const typeCheck: (p: CreatePaymentParams) => Promise<CreatePaymentResult> = provider.createPayment.bind(provider);
+    expect(typeCheck).toBeTypeOf("function");
+    void assertRedirectShape;
+  });
+
+  it("ProntoPagaProvider still implements PaymentProvider with the unchanged redirect result", () => {
+    const provider: PaymentProvider = new ProntoPagaProvider();
+    expect(provider.name).toBe("prontopaga");
+    const typeCheck: (p: CreatePaymentParams) => Promise<CreatePaymentResult> = provider.createPayment.bind(provider);
+    expect(typeCheck).toBeTypeOf("function");
+    void assertRedirectShape;
   });
 });

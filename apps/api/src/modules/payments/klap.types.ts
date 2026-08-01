@@ -20,7 +20,17 @@
 //   contra el Swagger real (bloqueado por 403 / SPA no renderizable). Agregar estos
 //   campos requiere confirmar el schema oficial antes de tocar este archivo de nuevo.
 
+import type { EmbeddedCheckoutResult } from "./payment.provider.js";
+
 export type KlapEnvironment = "sandbox" | "production";
+
+/**
+ * Klap Checkout Transparente is embedded, never a redirect — this is the real
+ * result shape `KlapProvider.createEmbeddedOrder()` returns. See the discriminated
+ * union proposal in `payment.provider.ts` for why this is a separate method from
+ * the legacy `PaymentProvider.createPayment()`.
+ */
+export type KlapEmbeddedCheckoutResult = EmbeddedCheckoutResult;
 
 /** Config resuelta desde variables de entorno. Nunca se expone tal cual al frontend. */
 export interface KlapConfig {
@@ -56,7 +66,8 @@ export type KlapProviderErrorKind =
   | "timeout" // AbortController disparado
   | "network" // fetch rechazó por un error de red (no timeout)
   | "http_rejected" // Klap respondió con un status HTTP no-2xx
-  | "invalid_response"; // 2xx pero el body no es JSON válido o no trae order_id
+  | "invalid_response" // 2xx pero el body no es JSON válido o no trae order_id
+  | "unsupported_checkout_type"; // se llamó al método redirect-only sobre un provider embebido
 
 /**
  * Error normalizado y saneado. `message` nunca debe contener la ApiKey ni el body

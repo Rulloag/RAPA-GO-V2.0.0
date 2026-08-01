@@ -10,6 +10,7 @@ import {
   type KlapConfig,
   type KlapCreateOrderRequestBody,
   type KlapCreateOrderValidatedResponse,
+  type KlapEmbeddedCheckoutResult,
 } from "./klap.types.js";
 
 // Endpoints confirmados textualmente en la documentación entregada por el usuario.
@@ -106,7 +107,15 @@ function parseKlapOrderResponse(raw: unknown): KlapCreateOrderValidatedResponse 
 export class KlapProvider implements PaymentProvider {
   readonly name = "klap";
 
-  async createPayment(params: CreatePaymentParams): Promise<CreatePaymentResult> {
+  /**
+   * Real, correctly-typed entry point for Klap Checkout Transparente. Returns a
+   * discriminated `checkoutType: "embedded"` result — the frontend uses
+   * `publicCheckoutData.orderId` to initialize Klap's official script on the same
+   * screen. There is no `urlPay`/redirect here because Transparente does not
+   * redirect. This is what Fase D (Payments Service) and the Fase E frontend must
+   * call once wired — not `createPayment()` below.
+   */
+  async createEmbeddedOrder(params: CreatePaymentParams): Promise<KlapEmbeddedCheckoutResult> {
     validateAmountClp(params.amountClp);
     const config = getKlapConfig();
 
@@ -164,18 +173,35 @@ export class KlapProvider implements PaymentProvider {
     const validated = parseKlapOrderResponse(raw);
 
     return {
+      checkoutType: "embedded",
       providerOrderId: validated.order_id,
-      // Checkout Transparente NO es un flujo de redirección: el frontend inicializa
-      // el script oficial de Klap embebido en la misma pantalla usando `order_id`,
-      // no navega a una URL externa. El contrato `PaymentProvider.createPayment`
-      // (diseñado originalmente para Mercado Pago/ProntoPaga, que sí redirigen)
-      // exige un `urlPay: string` no vacío por convención de los otros providers,
-      // pero no hay un equivalente real para Transparente. Se deja vacío y
-      // documentado aquí como un desajuste de contrato pendiente de resolver en la
-      // Fase D (Payments Service), cuando se decida cómo el frontend debe recibir
-      // el order_id sin depender de un campo pensado para redirección.
-      urlPay: "",
+      publicCheckoutData: {
+        orderId: validated.order_id,
+      },
     };
+  }
+
+  /**
+   * Present only for structural compliance with the legacy `PaymentProvider`
+   * interface (required so `KlapProvider implements PaymentProvider` compiles).
+   * KlapProvider is NOT registered in `provider.registry.ts` yet, so this is
+   * unreachable from real traffic today.
+   *
+   * It deliberately REFUSES to run rather than silently returning `urlPay: ""` —
+   * an empty string is a control-signal hack, and Checkout Transparente has no
+   * real redirect URL to give honestly. Treating an embedded checkout as a
+   * redirect one must fail loudly, not fake a value. Real callers must use
+   * `createEmbeddedOrder()` above; wiring this into `PaymentsService` requires
+   * Fase D to update `PaymentProvider`/`CreatePaymentResult` (or branch by
+   * provider name) — explicitly out of scope for this change.
+   */
+  async createPayment(_params: CreatePaymentParams): Promise<CreatePaymentResult> {
+    throw new KlapProviderError(
+      "unsupported_checkout_type",
+      "KlapProvider does not support the redirect PaymentProvider.createPayment() contract. " +
+        "Klap Checkout Transparente is embedded, not redirect-based — call createEmbeddedOrder() " +
+        "instead. Wiring this into PaymentsService is Fase D scope.",
+    );
   }
 
   /**
