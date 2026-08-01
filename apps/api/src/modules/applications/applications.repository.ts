@@ -124,6 +124,24 @@ export class ApplicationsRepository {
     return rows[0] ?? null;
   }
 
+  async updateApprovalDelivery(
+    id: string,
+    input: {
+      status: "pending" | "sent" | "failed";
+      deliveredAt?: Date | null;
+      error?: string | null;
+    },
+  ): Promise<Application | null> {
+    const rows = await db.update(applications).set({
+      approvalDeliveryStatus: input.status,
+      approvalDeliveredAt: input.deliveredAt ?? null,
+      approvalDeliveryError: input.error ?? null,
+      updatedAt: new Date(),
+    }).where(eq(applications.id, id)).returning();
+
+    return rows[0] ?? null;
+  }
+
   async attachUser(id: string, userId: string): Promise<Application | null> {
     const rows = await db.update(applications).set({
       userId,

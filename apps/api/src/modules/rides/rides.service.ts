@@ -10,6 +10,7 @@ import { FareSettingsRepository } from "../fareSettings/fareSettings.repository.
 import { WalletRepository } from "../wallet/wallet.repository.js";
 import { AppError } from "../../shared/errors/AppError.js";
 import { DriverComplianceService } from "../drivers/driverCompliance.service.js";
+import { rideReceiptsService } from "../rideReceipts/rideReceipts.service.js";
 import type {
   RideRequestResponse,
   RidesListResult,
@@ -50,6 +51,18 @@ const driverComplianceService = new DriverComplianceService();
 const driverStatusRepo = new DriverStatusRepository();
 
 const SCHEDULE_ACTIVATION_MINUTES = 30;
+
+function queueReceiptWithoutBlocking(
+  task: Promise<unknown>,
+  context: string,
+): void {
+  void task.catch((error: unknown) => {
+    const message =
+      error instanceof Error ? error.message : String(error);
+
+    console.error(`[RAPA GO] ${context}: ${message.slice(0, 500)}`);
+  });
+}
 
 async function estimateFare(
   originText: string,
@@ -1331,6 +1344,11 @@ export class RidesService {
       })
       .catch(() => {});
 
+    queueReceiptWithoutBlocking(
+      rideReceiptsService.queueCompletedRide(completed.id),
+      `No se pudo encolar el comprobante del viaje ${completed.id}`,
+    );
+
     return { ok: true, ride: toResponse(completed) };
   }
 
@@ -1849,6 +1867,11 @@ export class RidesService {
       };
     }
 
+    queueReceiptWithoutBlocking(
+      rideReceiptsService.queuePolicyCharge(updated.id),
+      `No se pudo encolar el comprobante del cargo ${updated.id}`,
+    );
+
     return {
       ok: true,
       charge: toPolicyChargeResponse(updated),
@@ -1986,6 +2009,11 @@ export class RidesService {
         statusCode: 409,
       };
     }
+
+    queueReceiptWithoutBlocking(
+      rideReceiptsService.queuePolicyCharge(updated.id),
+      `No se pudo encolar el comprobante del cargo ${updated.id}`,
+    );
 
     return {
       ok: true,

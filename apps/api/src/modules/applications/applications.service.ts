@@ -244,6 +244,10 @@ async function toResponse(application: Application): Promise<ApplicationResponse
     contractDeliveredAt:
       application.contractDeliveredAt?.toISOString() ?? null,
     contractDeliveryError: application.contractDeliveryError ?? null,
+    approvalDeliveryStatus: application.approvalDeliveryStatus,
+    approvalDeliveredAt:
+      application.approvalDeliveredAt?.toISOString() ?? null,
+    approvalDeliveryError: application.approvalDeliveryError ?? null,
     reviewedBy: application.reviewedBy ?? null,
     reviewedAt: application.reviewedAt?.toISOString() ?? null,
     rejectionReason: application.rejectionReason ?? null,
@@ -369,6 +373,62 @@ async function deliverDriverContract(
     });
   } catch (error) {
     await repo.updateContractDelivery(application.id, {
+      status: "failed",
+      error:
+        error instanceof Error
+          ? error.message.slice(0, 800)
+          : String(error).slice(0, 800),
+    });
+  }
+}
+
+function driverApprovalEmailEnabled(): boolean {
+  const configured = process.env["DRIVER_APPROVAL_EMAIL_ENABLED"]
+    ?.trim()
+    .toLowerCase();
+
+  if (configured === "true") return true;
+  if (configured === "false") return false;
+
+  return process.env["NODE_ENV"] !== "test";
+}
+
+async function deliverDriverApproval(
+  application: Application,
+): Promise<void> {
+  if (!driverApprovalEmailEnabled()) return;
+  if (application.type !== "driver" || application.status !== "approved") {
+    return;
+  }
+
+  const document = await getDriverContractForApplication(application);
+
+  if (!document) {
+    await repo.updateApprovalDelivery(application.id, {
+      status: "failed",
+      error: "No se encontró la versión del contrato aceptado.",
+    });
+    return;
+  }
+
+  const pdfBuffer = generateDriverContractPdf(application, document);
+
+  try {
+    await mailService.sendDriverApplicationApproved({
+      to: application.email,
+      name: `${application.firstName} ${application.lastName}`.trim(),
+      applicationId: application.id,
+      contractVersion: document.version,
+      pdfBuffer,
+    });
+
+    await repo.updateApprovalDelivery(application.id, {
+      status: "sent",
+      deliveredAt: new Date(),
+      error: null,
+    });
+  } catch (error) {
+    await repo.updateApprovalDelivery(application.id, {
       status: "failed",
       error:
         error instanceof Error
@@ -984,6 +1044,7 @@ export class ApplicationsService {
         entityType: "application",
         entityId: id,
       });
+      void deliverDriverApproval(updated);
     } else if (input.status === "rejected" && existing.userId) {
       notifyAsync({
         userId: existing.userId,
@@ -1098,6 +1159,59 @@ export class ApplicationsService {
       status: updated?.contractDeliveryStatus ?? "failed",
       deliveredAt:
         updated?.contractDeliveredAt?.toISOString() ?? null,
+    };
+  }
+
+  async resendApplicationApproval(
+    accessToken: string,
+    id: string,
+  ): Promise<ContractDeliveryResult> {
+    const auth = await authenticate(accessToken);
+    if (!auth.ok) return auth;
+
+    if (auth.role !== "admin") {
+      return {
+        ok: false,
+        code: "FORBIDDEN",
+        message: "Admin access required.",
+        statusCode: 403,
+      };
+    }
+
+    const application = await repo.findById(id);
+
+    if (!application) {
+      return {
+        ok: false,
+        code: "NOT_FOUND",
+        message: "Application not found.",
+        statusCode: 404,
+      };
+    }
+
+    if (application.type !== "driver" || application.status !== "approved") {
+      return {
+        ok: false,
+        code: "APPLICATION_NOT_APPROVED",
+        message:
+          "El correo de habilitación solo puede enviarse a conductores aprobados.",
+        statusCode: 409,
+      };
+    }
+
+    await repo.updateApprovalDelivery(id, {
+      status: "pending",
+      error: null,
+    });
+    await deliverDriverApproval(application);
+
+    const updated = await repo.findById(id);
+
+    return {
+      ok: true,
+      status: updated?.approvalDeliveryStatus ?? "failed",
+      deliveredAt:
+        updated?.approvalDeliveredAt?.toISOString() ?? null,
     };
   }
 

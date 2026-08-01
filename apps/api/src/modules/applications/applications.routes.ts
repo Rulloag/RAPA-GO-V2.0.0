@@ -108,4 +108,9 @@ export async function applicationsRoutes(
     "/admin/applications/:id/contract/resend",
     applicationsController.resendApplicationContract,
   );
+
+  fastify.post(
+    "/admin/applications/:id/approval/resend",
+    applicationsController.resendApplicationApproval,
+  );
 }

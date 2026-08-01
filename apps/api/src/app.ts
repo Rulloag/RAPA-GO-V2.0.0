@@ -17,6 +17,7 @@ import { documentsRoutes } from "./modules/documents/documents.routes.js";
 import { bankAccountsRoutes } from "./modules/bankAccounts/bankAccounts.routes.js";
 import { ridesRoutes } from "./modules/rides/rides.routes.js";
 import { rideTrackingRoutes } from "./modules/rideTracking/rideTracking.routes.js";
+import { rideReceiptsRoutes } from "./modules/rideReceipts/rideReceipts.routes.js";
 import { paymentsRoutes } from "./modules/payments/payments.routes.js";
 import { ratingsRoutes } from "./modules/ratings/ratings.routes.js";
 import { supportRoutes, adminSupportRoutes } from "./modules/support/support.routes.js";
@@ -53,6 +54,7 @@ import { sql } from "drizzle-orm";
 import { db } from "./db/client.js";
 import { releaseFeatures } from "./config/features.js";
 import { RetentionJob } from "./jobs/retention.job.js";
+import { RideReceiptsJob } from "./jobs/rideReceipts.job.js";
 
 async function checkDbConnection(): Promise<"connected" | "disconnected"> {
   try {
@@ -169,6 +171,7 @@ export async function buildApp(): Promise<FastifyInstance> {
   await fastify.register(bankAccountsRoutes, { prefix: "/api/bank-account" });
   await fastify.register(ridesRoutes, { prefix: "/api/rides" });
   await fastify.register(rideTrackingRoutes, { prefix: "/api/rides" });
+  await fastify.register(rideReceiptsRoutes, { prefix: "/api" });
 
   // Pagos:
   // payments.routes.ts define /payments/create y /payments/webhook/...
@@ -207,11 +210,16 @@ export async function buildApp(): Promise<FastifyInstance> {
   await fastify.register(adminReferralsRoutes, { prefix: "/api/admin" });
 
   const retentionJob = new RetentionJob(fastify.log);
+  const rideReceiptsJob = new RideReceiptsJob(fastify.log);
+
   fastify.addHook("onReady", async () => {
     retentionJob.start();
+    rideReceiptsJob.start();
   });
+
   fastify.addHook("onClose", async () => {
     retentionJob.stop();
+    rideReceiptsJob.stop();
   });
 
   return fastify;
