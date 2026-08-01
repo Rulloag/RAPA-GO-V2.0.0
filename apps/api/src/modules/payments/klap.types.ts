@@ -1,24 +1,35 @@
 // Klap Checkout Transparente — tipos internos.
 //
-// Alcance de esta fase: SOLO creación de orden en Sandbox. El webhook (Fase C) y la
-// conexión con PaymentsService (Fase D) no están implementados aquí.
+// Alcance de esta fase (Fase B.2): corrección del contrato HTTP de creación de
+// orden contra el OAS oficial 1.2.0
+// (https://api.pasarela.multicaja.cl/docs/swagger/ecommerce_api_payments_tarjetas.yml).
+// El webhook (Fase C) y su lógica financiera siguen sin implementarse aquí.
 //
-// CAMPOS CONFIRMADOS por la documentación entregada (no inventados):
-//   - Header de autenticación: "Api-Key".
-//   - Header de idempotencia: "Idempotency-Key" (vigencia documentada: 24 horas).
-//   - Identificador único de transacción: "consumer_transaction_id".
-//   - Montos en CLP, enteros (Klap Checkout Transparente).
-//   - Endpoints: sandbox "https://api-pasarela-sandbox.mcdesaqa.cl/payment-gateway/v1/orders",
-//     producción "https://api.pasarela.multicaja.cl/payment-gateway/v1/orders".
-//   - La respuesta de creación de orden incluye un "order_id" (referenciado de forma
-//     consistente en toda la documentación entregada).
+// CAMPOS CONFIRMADOS por el Swagger oficial (OAS 1.2.0):
+//   - Endpoint: POST /payment-gateway/v1/orders.
+//   - Header de autenticación: "apikey" (minúscula, sin guion — reemplaza el
+//     "Api-Key" usado antes de confirmar el schema real).
+//   - Cuerpo (OrderModel): reference_id, generate_token, amount{currency,total},
+//     methods, description, customs[]{key,value}, urls{return_url,cancel_url},
+//     webhooks{webhook_confirm,webhook_reject} (más user/ship_to/webhook_validation
+//     y otros customs opcionales, deliberadamente NO enviados en esta fase — ver
+//     nota de alcance mínimo más abajo).
+//   - Respuesta (OrderModelResponse): al menos "order_id"; "status" y
+//     "redirect_url" existen en el schema pero no se usan por Checkout
+//     Transparente (redirect_url es del flujo de Checkout Pro/redirect, no del
+//     embebido) — nunca se convierte redirect_url en urlPay.
 //
-// CAMPOS NO CONFIRMADOS (deliberadamente NO incluidos en el request saliente):
-//   descripción de la orden, email/nombre del pagador, return_url, webhook_url,
-//   objeto "commerce"/comercio, campos custom. MercadoPago/ProntoPaga sí los envían,
-//   pero para Klap Checkout Transparente su nombre exacto de campo no pudo verificarse
-//   contra el Swagger real (bloqueado por 403 / SPA no renderizable). Agregar estos
-//   campos requiere confirmar el schema oficial antes de tocar este archivo de nuevo.
+// CAMPOS DELIBERADAMENTE NO ENVIADOS en esta fase (requieren decisión de negocio
+// + documentación específica antes de agregarse): user, ship_to,
+// webhook_validation, tarjetas_payment_indicator, notify_payment_user,
+// notify_payment_merchant, notify_payment_email_merchant, transaction_type,
+// tarjetas_card_type_allowed, tarjetas_quotas_allowed, recurring_amount_type.
+//
+// NO CONFIRMADO POR EL OAS 1.2.0 REVISADO: el header "Idempotency-Key" (heredado
+// de la fase anterior, antes de tener el Swagger real). Se mantiene como
+// extensión propia de Rapa Go, no como parte confirmada del contrato oficial —
+// ver `KlapConfig.sendIdempotencyHeader` y su env var. Puede desactivarse si Klap
+// rechaza headers no documentados. No se implementan reintentos automáticos.
 
 import type { EmbeddedCheckoutResult } from "./payment.provider.js";
 
@@ -38,31 +49,69 @@ export interface KlapConfig {
   ordersUrl: string;
   apiKey: string;
   requestTimeoutMs: number;
+  returnUrl: string;
+  cancelUrl: string;
+  webhookConfirmUrl: string;
+  webhookRejectUrl: string;
+  orderExpirationMinutes: number;
+  /** Extensión no confirmada por el OAS — ver nota de cabecera. */
+  sendIdempotencyHeader: boolean;
 }
 
-/**
- * Cuerpo exacto enviado a POST {ordersUrl}.
- * Contiene ÚNICAMENTE los campos confirmados — ver nota de cabecera.
- */
-export interface KlapCreateOrderRequestBody {
-  consumer_transaction_id: string;
-  amount: number;
+// ── OrderModel (request) — OAS 1.2.0 ───────────────────────────────────────────
+
+export interface KlapAmount {
   currency: "CLP";
+  total: number;
+}
+
+export interface KlapCustom {
+  key: string;
+  value: string;
+}
+
+export interface KlapUrls {
+  return_url: string;
+  cancel_url: string;
+}
+
+export interface KlapWebhooks {
+  webhook_confirm: string;
+  webhook_reject: string;
 }
 
 /**
- * Respuesta cruda de Klap, sin validar. Tratada como `unknown` hasta pasar por
- * `parseKlapOrderResponse` — nunca se persiste ni se reenvía tal cual.
+ * Cuerpo exacto enviado a POST {ordersUrl}. Contiene ÚNICAMENTE los campos del
+ * alcance mínimo confirmado para Rapa Go — ver nota de cabecera para lo que se
+ * omite a propósito.
  */
+export interface KlapOrderRequest {
+  reference_id: string;
+  generate_token: "none";
+  amount: KlapAmount;
+  methods: ["tarjetas"];
+  description: string;
+  customs: KlapCustom[];
+  urls: KlapUrls;
+  webhooks: KlapWebhooks;
+}
+
+// ── OrderModelResponse — OAS 1.2.0 (subconjunto confirmado que se usa) ────────
+
+/** Respuesta cruda de Klap, sin validar. Nunca se persiste ni se reenvía tal cual. */
 export type KlapCreateOrderRawResponse = unknown;
 
-/** Subconjunto validado y mínimo de la respuesta que este provider efectivamente usa. */
+/**
+ * Subconjunto validado y mínimo de la respuesta que este provider efectivamente
+ * usa. `status`/`redirect_url` existen en el OAS pero no se leen aquí —
+ * Checkout Transparente no es un flujo de redirección.
+ */
 export interface KlapCreateOrderValidatedResponse {
   order_id: string;
 }
 
 export type KlapProviderErrorKind =
-  | "config" // credenciales/URL faltantes o entorno no soportado en esta fase
+  | "config" // credenciales/URL/monto/reference_id inválidos o entorno no soportado en esta fase
   | "timeout" // AbortController disparado
   | "network" // fetch rechazó por un error de red (no timeout)
   | "http_rejected" // Klap respondió con un status HTTP no-2xx

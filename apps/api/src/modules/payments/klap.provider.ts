@@ -8,7 +8,7 @@ import type {
 import {
   KlapProviderError,
   type KlapConfig,
-  type KlapCreateOrderRequestBody,
+  type KlapOrderRequest,
   type KlapCreateOrderValidatedResponse,
   type KlapEmbeddedCheckoutResult,
 } from "./klap.types.js";
@@ -18,14 +18,38 @@ import {
 // el riesgo de duplicar la ruta.
 const KLAP_SANDBOX_ORDERS_URL_DEFAULT =
   "https://api-pasarela-sandbox.mcdesaqa.cl/payment-gateway/v1/orders";
-const KLAP_PRODUCTION_ORDERS_URL_DEFAULT =
-  "https://api.pasarela.multicaja.cl/payment-gateway/v1/orders";
 
 const DEFAULT_TIMEOUT_MS = 10_000;
+const DEFAULT_ORDER_EXPIRATION_MINUTES = 30;
 
-// Techo de seguridad propio de Rapa Go (NO documentado por Klap) — evita enviar un
-// monto absurdo por un bug de cálculo aguas arriba. Ajustable si el negocio lo requiere.
-const MAX_SANE_AMOUNT_CLP = 50_000_000;
+// Rango confirmado para esta fase (requisito explícito del usuario, no inventado).
+const MIN_AMOUNT_CLP = 50;
+const MAX_AMOUNT_CLP = 99_999_999;
+
+const MAX_REFERENCE_ID_LENGTH = 100;
+
+function parseBooleanEnv(value: string | undefined, defaultValue: boolean): boolean {
+  if (value === undefined) return defaultValue;
+  const normalized = value.trim().toLowerCase();
+  if (normalized === "false" || normalized === "0") return false;
+  if (normalized === "true" || normalized === "1") return true;
+  return defaultValue;
+}
+
+function assertValidHttpUrl(value: string, fieldName: string): void {
+  if (!value) {
+    throw new KlapProviderError("config", `${fieldName} is not configured.`);
+  }
+  let parsed: URL;
+  try {
+    parsed = new URL(value);
+  } catch {
+    throw new KlapProviderError("config", `${fieldName} is not a valid URL.`);
+  }
+  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+    throw new KlapProviderError("config", `${fieldName} must be an http(s) URL.`);
+  }
+}
 
 function getKlapConfig(): KlapConfig {
   const environment = (process.env["KLAP_ENVIRONMENT"] ?? "sandbox").trim();
@@ -43,12 +67,32 @@ function getKlapConfig(): KlapConfig {
   const ordersUrl = process.env["KLAP_SANDBOX_ORDERS_URL"] ?? KLAP_SANDBOX_ORDERS_URL_DEFAULT;
   const apiKey = process.env["KLAP_API_KEY"] ?? "";
   const requestTimeoutMs = Number(process.env["KLAP_REQUEST_TIMEOUT_MS"] ?? DEFAULT_TIMEOUT_MS);
+  const returnUrl = process.env["KLAP_RETURN_URL"] ?? "";
+  const cancelUrl = process.env["KLAP_CANCEL_URL"] ?? "";
+  const webhookConfirmUrl = process.env["KLAP_WEBHOOK_CONFIRM_URL"] ?? "";
+  const webhookRejectUrl = process.env["KLAP_WEBHOOK_REJECT_URL"] ?? "";
+  const orderExpirationMinutes = Number(
+    process.env["KLAP_ORDER_EXPIRATION_MINUTES"] ?? DEFAULT_ORDER_EXPIRATION_MINUTES,
+  );
+  // Idempotency-Key is NOT confirmed by the reviewed OAS 1.2.0 — kept as a Rapa Go
+  // extension, defaulting on, but disableable if Klap rejects undocumented headers.
+  const sendIdempotencyHeader = parseBooleanEnv(process.env["KLAP_SEND_IDEMPOTENCY_HEADER"], true);
 
   if (!apiKey) {
     throw new KlapProviderError("config", "KLAP_API_KEY is not configured.");
   }
   if (!ordersUrl) {
     throw new KlapProviderError("config", "Klap orders URL is not configured.");
+  }
+  assertValidHttpUrl(returnUrl, "KLAP_RETURN_URL");
+  assertValidHttpUrl(cancelUrl, "KLAP_CANCEL_URL");
+  assertValidHttpUrl(webhookConfirmUrl, "KLAP_WEBHOOK_CONFIRM_URL");
+  assertValidHttpUrl(webhookRejectUrl, "KLAP_WEBHOOK_REJECT_URL");
+  if (!Number.isInteger(orderExpirationMinutes) || orderExpirationMinutes <= 0) {
+    throw new KlapProviderError(
+      "config",
+      "KLAP_ORDER_EXPIRATION_MINUTES must be a positive integer.",
+    );
   }
 
   return {
@@ -58,6 +102,12 @@ function getKlapConfig(): KlapConfig {
     requestTimeoutMs: Number.isFinite(requestTimeoutMs) && requestTimeoutMs > 0
       ? requestTimeoutMs
       : DEFAULT_TIMEOUT_MS,
+    returnUrl,
+    cancelUrl,
+    webhookConfirmUrl,
+    webhookRejectUrl,
+    orderExpirationMinutes,
+    sendIdempotencyHeader,
   };
 }
 
@@ -68,15 +118,30 @@ function validateAmountClp(amountClp: number): void {
       "amountClp must be an integer (CLP has no decimal subunit).",
     );
   }
-  if (amountClp <= 0) {
-    throw new KlapProviderError("config", "amountClp must be greater than zero.");
-  }
-  if (amountClp > MAX_SANE_AMOUNT_CLP) {
+  if (amountClp < MIN_AMOUNT_CLP || amountClp > MAX_AMOUNT_CLP) {
     throw new KlapProviderError(
       "config",
-      `amountClp exceeds the configured safety ceiling (${MAX_SANE_AMOUNT_CLP} CLP).`,
+      `amountClp must be between ${MIN_AMOUNT_CLP} and ${MAX_AMOUNT_CLP} CLP.`,
     );
   }
+}
+
+function validateReferenceId(referenceId: string): void {
+  if (!referenceId || referenceId.trim().length === 0) {
+    throw new KlapProviderError("config", "reference_id must not be empty.");
+  }
+  if (referenceId.length > MAX_REFERENCE_ID_LENGTH) {
+    throw new KlapProviderError(
+      "config",
+      `reference_id must be at most ${MAX_REFERENCE_ID_LENGTH} characters.`,
+    );
+  }
+}
+
+/** Strips control characters and caps length — never trusts free-text verbatim. */
+function sanitizeDescription(description: string): string {
+  const controlChars = /[\u0000-\u001F\u007F]/g;
+  return description.replace(controlChars, " ").replace(/\s+/g, " ").trim().slice(0, 255);
 }
 
 /**
@@ -85,6 +150,8 @@ function validateAmountClp(amountClp: number): void {
  * generado por el backend antes de llegar aquí (ver payments.service.ts).
  * Ser determinística permite que un reintento del mismo intento de creación de
  * orden reutilice la misma clave en vez de generar una orden duplicada.
+ *
+ * NO CONFIRMADO por el OAS 1.2.0 revisado — ver KlapConfig.sendIdempotencyHeader.
  */
 function buildIdempotencyKey(internalPaymentId: string): string {
   return crypto.createHash("sha256").update(`klap-create-order:${internalPaymentId}`).digest("hex");
@@ -117,15 +184,41 @@ export class KlapProvider implements PaymentProvider {
    */
   async createEmbeddedOrder(params: CreatePaymentParams): Promise<KlapEmbeddedCheckoutResult> {
     validateAmountClp(params.amountClp);
+    validateReferenceId(params.orderId);
     const config = getKlapConfig();
 
-    const idempotencyKey = buildIdempotencyKey(params.orderId);
+    const expirationMinutes = String(config.orderExpirationMinutes);
 
-    const body: KlapCreateOrderRequestBody = {
-      consumer_transaction_id: params.orderId,
-      amount: params.amountClp,
-      currency: "CLP",
+    const body: KlapOrderRequest = {
+      reference_id: params.orderId,
+      generate_token: "none",
+      amount: {
+        currency: "CLP",
+        total: params.amountClp,
+      },
+      methods: ["tarjetas"],
+      description: sanitizeDescription(params.description),
+      customs: [
+        { key: "tarjetas_expiration_minutes", value: expirationMinutes },
+        { key: "tarjetas_delivery_type", value: "4" },
+      ],
+      urls: {
+        return_url: config.returnUrl,
+        cancel_url: config.cancelUrl,
+      },
+      webhooks: {
+        webhook_confirm: config.webhookConfirmUrl,
+        webhook_reject: config.webhookRejectUrl,
+      },
     };
+
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      apikey: config.apiKey,
+    };
+    if (config.sendIdempotencyHeader) {
+      headers["Idempotency-Key"] = buildIdempotencyKey(params.orderId);
+    }
 
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), config.requestTimeoutMs);
@@ -134,11 +227,7 @@ export class KlapProvider implements PaymentProvider {
     try {
       response = await fetch(config.ordersUrl, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Api-Key": config.apiKey,
-          "Idempotency-Key": idempotencyKey,
-        },
+        headers,
         body: JSON.stringify(body),
         signal: controller.signal,
       });
