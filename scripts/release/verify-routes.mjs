@@ -28,6 +28,7 @@ const guide = read("apps/mobile/src/layouts/GuideLayout.tsx");
 const rental = read("apps/mobile/src/layouts/RentalLayout.tsx");
 const admin = read("apps/mobile/src/layouts/AdminLayout.tsx");
 const appleButton = read("apps/mobile/src/features/auth/AppleSignInButton.tsx");
+const appleHook = read("apps/mobile/src/features/auth/useAppleSignIn.ts");
 const login = read("apps/mobile/src/features/auth/LoginPage.tsx");
 const vite = read("apps/mobile/vite.config.ts");
 const htaccess = read("apps/mobile/public/.htaccess");
@@ -88,7 +89,12 @@ for (const [name, source, base] of [
   requireText(source, "<UnknownRolePathRedirect", `${name}: ruta desconocida muestra 404`);
 }
 
-requireText(appleButton, "if (!isAvailable) return null", "Apple se muestra únicamente cuando el flujo nativo está disponible");
+requireText(appleButton, "if (!isAvailable) return null", "Apple se muestra cuando existe un flujo compatible");
+requireText(
+  appleHook,
+  "const isAvailable = isNativeIos || isWebBrowser;",
+  "Apple está habilitado en iOS nativo y en la web",
+);
 requireText(appleButton, "Sign in with Apple", "Botón Apple usa la etiqueta oficial");
 requireText(login, 'outcome.kind === "unavailable"', "Login explica Apple fuera de iPhone");
 requireText(vite, 'base: "/"', "Vite genera assets desde la raíz");
