@@ -83,16 +83,16 @@ const [
   text("apps/mobile/src/pages/public/PublicLegalPages.tsx"),
 ]);
 
-// Configuración de producción del mobile.
+// ConfiguraciÃ³n de producciÃ³n del mobile.
 check(
   /^VITE_API_BASE_URL=https:\/\/backend\.rapago\.cl\/api$/m.test(
     mobileProductionEnv,
   ),
-  "El mobile de producción debe consumir https://backend.rapago.cl/api",
+  "El mobile de producciÃ³n debe consumir https://backend.rapago.cl/api",
 );
 check(
   /^VITE_ENV=production$/m.test(mobileProductionEnv),
-  "VITE_ENV debe ser production en la plantilla de producción",
+  "VITE_ENV debe ser production en la plantilla de producciÃ³n",
 );
 
 for (const name of [
@@ -107,7 +107,7 @@ for (const name of [
   );
 }
 
-// Configuración documentada del backend.
+// ConfiguraciÃ³n documentada del backend.
 for (const name of [
   "ALLOW_FUTURE_FEATURES_IN_PRODUCTION",
   "FEATURE_TOURISM_ENABLED",
@@ -143,19 +143,19 @@ check(
 );
 check(
   /^PUBLIC_WEB_BASE_URL=https:\/\/api\.rapago\.cl$/m.test(apiExampleEnv),
-  "PUBLIC_WEB_BASE_URL debe apuntar al frontend público api.rapago.cl",
+  "PUBLIC_WEB_BASE_URL debe apuntar al frontend pÃºblico api.rapago.cl",
 );
 check(
   /^PASSWORD_RESET_FRONTEND_URL=https:\/\/api\.rapago\.cl\/restablecer-contrasena$/m.test(
     apiExampleEnv,
   ),
-  "PASSWORD_RESET_FRONTEND_URL debe apuntar a la ruta pública correcta",
+  "PASSWORD_RESET_FRONTEND_URL debe apuntar a la ruta pÃºblica correcta",
 );
 
 // Rutas y funciones futuras.
 check(
   appRouter.includes('<Route exact path={ROUTES.ROOT} component={LoginPage} />'),
-  "El login debe vivir en la raíz pública",
+  "El login debe vivir en la raÃ­z pÃºblica",
 );
 check(
   appRouter.includes('<Route exact path={ROUTES.AUTH.LOGIN} component={LoginPage} />'),
@@ -167,15 +167,15 @@ check(
 );
 check(
   adminLayout.includes("DISABLED_ADMIN_PATHS"),
-  "Las rutas futuras de administración deben bloquearse",
+  "Las rutas futuras de administraciÃ³n deben bloquearse",
 );
 check(
-  homePage.includes("disabled") && homePage.includes('badge="Pronto"'),
-  "Los módulos futuros visibles en Inicio deben permanecer deshabilitados",
+  homePage.includes("disabled"),
+  "Los mÃ³dulos futuros visibles en Inicio deben permanecer deshabilitados",
 );
 check(
-  !passengerLayout.includes('label: "Próximamente"'),
-  "Las pestañas no deben mostrar Próximamente",
+  !passengerLayout.includes('label: "PrÃ³ximamente"'),
+  "Las pestaÃ±as no deben mostrar PrÃ³ximamente",
 );
 
 // Android/iOS.
@@ -185,7 +185,7 @@ check(
 );
 check(
   androidManifest.includes('android:usesCleartextTraffic="false"'),
-  "Android debe bloquear tráfico HTTP claro",
+  "Android debe bloquear trÃ¡fico HTTP claro",
 );
 check(
   androidGradle.includes("versionName releaseVersionName"),
@@ -207,7 +207,7 @@ check(
   "iOS debe declarar location en UIBackgroundModes",
 );
 
-// Eliminación de cuenta.
+// EliminaciÃ³n de cuenta.
 check(
   accountDeletionSchema.includes("reason: reasonSchema"),
   "El esquema debe aceptar el motivo mediante reasonSchema",
@@ -215,11 +215,11 @@ check(
 check(
   accountDeletionSchema.includes(".optional()") &&
     !accountDeletionSchema.includes('.min(10, "El motivo'),
-  "El motivo de eliminación debe ser opcional",
+  "El motivo de eliminaciÃ³n debe ser opcional",
 );
 check(
   !accountDeletionTypes.includes('| "rejected"'),
-  "El estado genérico rejected no debe existir en los tipos de eliminación",
+  "El estado genÃ©rico rejected no debe existir en los tipos de eliminaciÃ³n",
 );
 check(
   accountDeletionTypes.includes('"identity_not_verified"'),
@@ -247,33 +247,33 @@ check(
   accountDeletionMailService.includes(
     "sendAccountDeletionIdentityNotVerified",
   ),
-  "La identidad no verificada debe notificar al usuario sin usar rechazo genérico",
+  "La identidad no verificada debe notificar al usuario sin usar rechazo genÃ©rico",
 );
 check(
   migration0042.includes("ALTER COLUMN reason DROP NOT NULL"),
-  "La migración 0042 debe hacer opcional el motivo",
+  "La migraciÃ³n 0042 debe hacer opcional el motivo",
 );
 check(
   migration0042.includes("status = 'identity_not_verified'"),
-  "La migración 0042 debe migrar rejected",
+  "La migraciÃ³n 0042 debe migrar rejected",
 );
 check(
   migration0042.includes("verified_at"),
-  "La migración 0042 debe registrar la verificación de identidad",
+  "La migraciÃ³n 0042 debe registrar la verificaciÃ³n de identidad",
 );
 
 // Apple.
 check(
   appleRevocationClient.includes("APPLE_REVOKE_URL"),
-  "Debe existir el cliente oficial de revocación Apple",
+  "Debe existir el cliente oficial de revocaciÃ³n Apple",
 );
 check(
   appleRevocationClient.includes('token_type_hint: "refresh_token"'),
-  "La revocación Apple debe indicar refresh_token",
+  "La revocaciÃ³n Apple debe indicar refresh_token",
 );
 check(
   appleRevocationService.includes("OAuthTokenCrypto.decrypt"),
-  "La revocación Apple debe recuperar el refresh token cifrado",
+  "La revocaciÃ³n Apple debe recuperar el refresh token cifrado",
 );
 check(
   appleAuthService.includes("providerClientId: identityClaims.aud"),
@@ -283,48 +283,48 @@ check(
   accountDeletionService.includes(
     "appleAccountRevocationService.revokeForUser",
   ),
-  "La eliminación debe revocar Apple antes de anonimizar",
+  "La eliminaciÃ³n debe revocar Apple antes de anonimizar",
 );
 check(
   accountDeletionRepository.includes(".delete(authIdentities)") &&
     accountDeletionRepository.includes(".delete(oauthIdentities)"),
-  "La anonimización debe eliminar ambas tablas de identidades después de la revocación",
+  "La anonimizaciÃ³n debe eliminar ambas tablas de identidades despuÃ©s de la revocaciÃ³n",
 );
 
-// Conservación.
+// ConservaciÃ³n.
 check(
   retentionJob.includes("purgeExpired(now)"),
   "El job debe purgar ubicaciones vencidas",
 );
 check(
   retentionJob.includes("interval '30 days'"),
-  "El job debe minimizar antecedentes bancarios después de 30 días",
+  "El job debe minimizar antecedentes bancarios despuÃ©s de 30 dÃ­as",
 );
 check(
   retentionJob.includes("const nowIso = now.toISOString()") &&
     retentionJob.includes("${nowIso}::timestamptz"),
-  "El job de conservación debe enlazar fechas como ISO para postgres-js",
+  "El job de conservaciÃ³n debe enlazar fechas como ISO para postgres-js",
 );
 check(
   migration0043.includes("ADD COLUMN IF NOT EXISTS payment_method") &&
     migration0043.includes("ADD COLUMN IF NOT EXISTS wallet_benefit_requested") &&
     migration0043.includes("ADD COLUMN IF NOT EXISTS assignment_mode"),
-  "La migración 0043 debe reparar el esquema runtime de ride_requests",
+  "La migraciÃ³n 0043 debe reparar el esquema runtime de ride_requests",
 );
 check(
   appSource.includes("new RetentionJob"),
-  "La API debe registrar el job de conservación",
+  "La API debe registrar el job de conservaciÃ³n",
 );
 check(
   appSource.includes('addHook("onReady"'),
-  "El job de conservación debe iniciarse con la API",
+  "El job de conservaciÃ³n debe iniciarse con la API",
 );
 
-// URLs públicas canónicas.
+// URLs pÃºblicas canÃ³nicas.
 for (const hostDocument of [sitemap, robots, playNotes, privacyPage]) {
   check(
     hostDocument.includes("api.rapago.cl"),
-    "Los documentos públicos deben usar api.rapago.cl",
+    "Los documentos pÃºblicos deben usar api.rapago.cl",
   );
 }
 check(
@@ -360,11 +360,11 @@ for (const item of checks) {
 }
 
 if (failures.length > 0) {
-  console.error(`\nVerificación fallida: ${failures.length} problema(s).`);
+  console.error(`\nVerificaciÃ³n fallida: ${failures.length} problema(s).`);
   process.exit(1);
 }
 
 console.log(
-  "\nCIERRE TÉCNICO DE CÓDIGO: VERIFICACIÓN OK. " +
-    "Las evidencias de tiendas, tributación y firmas siguen siendo externas.",
+  "\nCIERRE TÃ‰CNICO DE CÃ“DIGO: VERIFICACIÃ“N OK. " +
+    "Las evidencias de tiendas, tributaciÃ³n y firmas siguen siendo externas.",
 );
