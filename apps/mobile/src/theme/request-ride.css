@@ -1570,7 +1570,8 @@
 /* El título deja de estar dentro del área con scroll: se queda fijo aquí, así
    que sigue diciendo qué se mira mientras el contenido se desplaza. */
 .rapago-request-page .rp-request-map-sheet-title {
-  width: 100%;
+  flex: 1 1 auto;
+  min-width: 0;
   margin: 0;
   display: flex;
   align-items: center;
@@ -1579,6 +1580,94 @@
   font-size: 1.05rem;
   font-weight: 850;
   line-height: 1.2;
+}
+
+/* Cabecera en fila: el título ocupa el espacio disponible (se recorta con
+   elipsis si no cabe) y a su derecha vive un atajo "Confirmar" SIEMPRE visible.
+   El botón principal del panel se desplaza con las tarjetas y, cuando cargan
+   muchos puntos, queda tapado; este atajo, anclado en la cabecera fija, permite
+   confirmar sin tener que hacer scroll. */
+.rapago-request-page .rp-request-map-sheet-headline {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+}
+
+.rapago-request-page .rp-request-map-sheet-title__text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Atajo dorado: misma paleta que .request-map-confirm (degradado oro de marca)
+   pero en formato "pill" compacto para caber junto al título en móvil. */
+.rapago-request-page .rp-request-map-head-confirm {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 40px;
+  padding: 0 16px;
+  border: 0;
+  border-radius: 999px;
+  background: linear-gradient(
+    165deg,
+    var(--rp-gold-soft) 0%,
+    var(--rp-btn-primary) 55%,
+    var(--rp-gold-dark) 100%
+  );
+  color: var(--rp-btn-primary-fg);
+  font-size: 0.85rem;
+  font-weight: 900;
+  letter-spacing: 0.01em;
+  line-height: 1;
+  white-space: nowrap;
+  cursor: pointer;
+  box-shadow: var(--rp-shadow-accent);
+  touch-action: manipulation;
+  transition:
+    transform 120ms var(--rp-ease),
+    box-shadow 160ms var(--rp-ease),
+    filter 160ms var(--rp-ease);
+}
+
+.rapago-request-page .rp-request-map-head-confirm ion-icon {
+  font-size: 1.05rem;
+}
+
+.rapago-request-page .rp-request-map-head-confirm:not([disabled]):hover {
+  filter: brightness(1.03);
+}
+
+.rapago-request-page .rp-request-map-head-confirm:not([disabled]):active {
+  transform: translateY(1px) scale(0.98);
+}
+
+.rapago-request-page .rp-request-map-head-confirm[disabled] {
+  background: var(--rp-border-c);
+  box-shadow: none;
+  cursor: default;
+}
+
+.rapago-request-page .rp-request-map-head-confirm:focus-visible {
+  outline: 2px solid var(--rp-gold-dark);
+  outline-offset: 2px;
+}
+
+/* Pantallas muy estrechas (iPhone SE y similares): el atajo se compacta un poco
+   para dejarle el máximo de ancho legible al título. */
+@media (max-width: 360px) {
+  .rapago-request-page .rp-request-map-head-confirm {
+    padding: 0 12px;
+    font-size: 0.8rem;
+  }
+
+  .rapago-request-page .rp-request-map-head-confirm ion-icon {
+    font-size: 1rem;
+  }
 }
 
 .rapago-request-page .rp-request-map-sheet-title__tick {

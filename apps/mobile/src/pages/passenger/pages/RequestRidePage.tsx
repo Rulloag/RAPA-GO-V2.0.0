@@ -6577,17 +6577,41 @@ function MapPointPicker({
                   <span className="rp-request-map-grip__bar" aria-hidden />
                 </button>
 
-                <h2 className="rp-request-map-sheet-title">
-                  <span
-                    className="rp-request-map-sheet-title__tick"
-                    aria-hidden
-                  />
-                  {mode === "origin"
-                    ? hasNearbyReferenceCandidates
-                      ? "Puntos de recogida cercanos"
-                      : "Punto accesible recomendado"
-                    : "Destino seleccionado"}
-                </h2>
+                <div className="rp-request-map-sheet-headline">
+                  <h2 className="rp-request-map-sheet-title">
+                    <span
+                      className="rp-request-map-sheet-title__tick"
+                      aria-hidden
+                    />
+                    <span className="rp-request-map-sheet-title__text">
+                      {mode === "origin"
+                        ? hasNearbyReferenceCandidates
+                          ? "Puntos de recogida cercanos"
+                          : "Punto accesible recomendado"
+                        : "Destino seleccionado"}
+                    </span>
+                  </h2>
+
+                  <button
+                    type="button"
+                    className="rp-request-map-head-confirm"
+                    disabled={!selected || loadingAddress || Boolean(mapError)}
+                    aria-label={
+                      mode === "origin"
+                        ? "Confirmar recogida"
+                        : "Confirmar destino"
+                    }
+                    onPointerDown={(event) => event.stopPropagation()}
+                    onPointerUp={(event) => event.stopPropagation()}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      if (selected && !mapError) onConfirm(selected);
+                    }}
+                  >
+                    <IonIcon icon={checkmarkCircleOutline} aria-hidden />
+                    <span>Confirmar</span>
+                  </button>
+                </div>
               </div>
 
               <div className="rp-request-map-sheet-scroll">
