@@ -9,6 +9,18 @@ export const createPaymentSchema = z.object({
 
 export type CreatePaymentInput = z.input<typeof createPaymentSchema>;
 
+// ── Create Klap embedded order (Sandbox only, Fase D) ────────────────────────
+//
+// Deliberately minimal: only the ride the passenger owns. No amount, no
+// provider, no paymentPurpose — the server always computes the authoritative
+// fare from the ride record itself (see PaymentsService.createKlapEmbeddedOrder).
+
+export const createKlapEmbeddedOrderSchema = z.object({
+  rideRequestId: z.string().uuid("rideRequestId must be a valid UUID."),
+});
+
+export type CreateKlapEmbeddedOrderInput = z.input<typeof createKlapEmbeddedOrderSchema>;
+
 
 // ── Conciliación segura del regreso de Mercado Pago ───────────────────────────
 

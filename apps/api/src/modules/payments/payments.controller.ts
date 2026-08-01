@@ -2,6 +2,7 @@ import type { FastifyRequest, FastifyReply } from "fastify";
 import { PaymentsService } from "./payments.service.js";
 import {
   createPaymentSchema,
+  createKlapEmbeddedOrderSchema,
   reconcileMercadoPagoPaymentSchema,
   prontoPagaWebhookSchema,
   mercadoPagoWebhookSchema,
@@ -45,6 +46,45 @@ export const paymentsController = {
       paymentId: result.paymentId,
       paymentPurpose: result.paymentPurpose,
       activated: result.activated,
+    }, 201);
+  },
+
+  /**
+   * Klap Checkout Transparente — Sandbox-only embedded order creation (Fase D).
+   * Deliberately a separate endpoint from `createPayment` above: that one's
+   * response shape (`urlPay`, redirect-oriented) is already relied upon by the
+   * mobile client for Mercado Pago/ProntoPaga and is left untouched here.
+   */
+  async createKlapEmbeddedOrder(request: FastifyRequest, reply: FastifyReply): Promise<void> {
+    const token = extractBearer(request);
+    if (!token) {
+      sendError(reply, { code: "UNAUTHORIZED", message: "Missing Bearer token.", statusCode: 401 });
+      return;
+    }
+
+    const parsed = createKlapEmbeddedOrderSchema.safeParse(request.body);
+    if (!parsed.success) {
+      sendError(reply, {
+        code:       "VALIDATION_ERROR",
+        message:    parsed.error.errors[0]?.message ?? "Invalid request body.",
+        statusCode: 400,
+      });
+      return;
+    }
+
+    const result = await paymentsService.createKlapEmbeddedOrder(token, parsed.data);
+    if (!result.ok) {
+      sendError(reply, { code: result.code, message: result.message, statusCode: result.statusCode });
+      return;
+    }
+
+    // Only the public, non-secret fields — never the raw Klap response, ApiKey,
+    // headers, or anything resembling a redirect URL.
+    sendOk(reply, {
+      paymentId: result.paymentId,
+      provider: result.provider,
+      checkoutType: result.checkoutType,
+      publicCheckoutData: result.publicCheckoutData,
     }, 201);
   },
 

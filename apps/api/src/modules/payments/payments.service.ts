@@ -3,11 +3,12 @@ import { TokenService } from "../auth/token.service.js";
 import { SessionService } from "../auth/session.service.js";
 import { UsersRepository } from "../users/users.repository.js";
 import { PaymentsRepository, type PaymentPurpose } from "./payments.repository.js";
-import { getActiveProvider, getProvider } from "./provider.registry.js";
+import { getActiveProvider, getProvider, getKlapEmbeddedProvider } from "./provider.registry.js";
 import { AuditService } from "../audit/audit.service.js";
 import { AppError } from "../../shared/errors/AppError.js";
-import type { CreatePaymentInput } from "./payments.schema.js";
+import type { CreatePaymentInput, CreateKlapEmbeddedOrderInput } from "./payments.schema.js";
 import type { NormalizedWebhook } from "./payment.provider.js";
+import { KlapProviderError } from "./klap.types.js";
 
 const tokenService = new TokenService();
 const sessionService = new SessionService();
@@ -1350,6 +1351,205 @@ export class PaymentsService {
       paymentId: payment.id,
       paymentPurpose,
       activated: false,
+    };
+  }
+
+  /**
+   * Klap Checkout Transparente — Sandbox-only embedded order creation (Fase D).
+   *
+   * Separate from `createPayment()` above on purpose: Klap is embedded, not
+   * redirect-based (see the discriminated-union note in payment.provider.ts), and
+   * is not wired into `getActiveProvider()`/`PAYMENT_PROVIDER` — reaching it
+   * requires this method specifically, called from its own dedicated route.
+   *
+   * Creating the order here is NOT a successful payment. The local `payments` row
+   * stays in the same "processing" state Mercado Pago/ProntoPaga use right after
+   * creating their checkout (pending confirmation) — the ride is never activated,
+   * no receipt is generated, Wallet is never touched, and no success notification
+   * is sent. Real financial confirmation is exclusively the webhook's job, to be
+   * implemented in a later phase.
+   */
+  async createKlapEmbeddedOrder(
+    accessToken: string,
+    input: CreateKlapEmbeddedOrderInput,
+  ): Promise<Result<{
+    paymentId: string;
+    provider: "klap";
+    checkoutType: "embedded";
+    publicCheckoutData: { orderId: string };
+  }>> {
+    const auth = await authenticate(accessToken);
+    if (!auth.ok) return auth;
+
+    if (!canCreatePassengerPayment(auth.user)) {
+      return {
+        ok: false,
+        code: "AUTH_FORBIDDEN",
+        message:
+          "Solo pasajeros, conductores aprobados usando vista pasajero o administradores pueden crear pagos.",
+        statusCode: 403,
+      };
+    }
+
+    const { RidesRepository } = await import("../rides/rides.repository.js");
+    const ridesRepo = new RidesRepository();
+    const ride = await ridesRepo.findById(input.rideRequestId);
+
+    if (!ride) {
+      return {
+        ok: false,
+        code: "NOT_FOUND",
+        message: "Ride request not found.",
+        statusCode: 404,
+      };
+    }
+
+    const isAdmin =
+      normalizePaymentText(auth.role) === "admin" ||
+      normalizePaymentText(auth.role) === "administrator";
+
+    if (!isAdmin && ride.passengerUserId !== auth.userId) {
+      return {
+        ok: false,
+        code: "AUTH_FORBIDDEN",
+        message: "This ride does not belong to you.",
+        statusCode: 403,
+      };
+    }
+
+    if (!PAYMENT_ALLOWED_RIDE_STATUSES.has(String(ride.status ?? ""))) {
+      return {
+        ok: false,
+        code: "PAYMENT_RIDE_STATUS_NOT_ALLOWED",
+        message:
+          "Payment can only be initiated for an active, scheduled, in-progress or completed ride.",
+        statusCode: 409,
+      };
+    }
+
+    // Sandbox-only, "ride" purpose only in this phase — fast_search/cash branches
+    // are intentionally out of scope for the Klap embedded flow (Fase D).
+    const successful = await paymentsRepo.findSuccessfulByRideIdAndPurpose(
+      input.rideRequestId,
+      "ride",
+    );
+
+    if (successful) {
+      return {
+        ok: false,
+        code: "PAYMENT_ALREADY_PAID",
+        message: "Este viaje ya tiene un pago aprobado.",
+        statusCode: 409,
+      };
+    }
+
+    const active = await paymentsRepo.findActiveByRideIdAndPurpose(input.rideRequestId, "ride");
+
+    if (active) {
+      return {
+        ok: false,
+        code: "PAYMENT_ALREADY_EXISTS",
+        message: "A payment for this ride is already pending or processing.",
+        statusCode: 409,
+      };
+    }
+
+    // Authoritative amount — computed server-side from the ride record, exactly
+    // like createPayment() above. The request body has no amount field at all
+    // (see createKlapEmbeddedOrderSchema): there is nothing for the client to
+    // manipulate here even in principle.
+    const amountClp = Math.max(0, Math.round(Number(ride.estimatedFareClp ?? 0)));
+
+    if (!Number.isInteger(amountClp) || amountClp <= 0) {
+      return {
+        ok: false,
+        code: "PAYMENT_INVALID_AMOUNT",
+        message: "Ride has no valid fare amount.",
+        statusCode: 422,
+      };
+    }
+
+    const user = await usersRepo.findById(auth.userId);
+
+    const payment = await paymentsRepo.create({
+      rideRequestId: ride.id,
+      passengerUserId: auth.userId,
+      amountClp,
+      paymentPurpose: "ride",
+      status: "pending",
+      provider: "klap",
+    });
+
+    const webhookBaseUrl = process.env["PAYMENT_WEBHOOK_BASE_URL"] ?? "";
+    const provider = getKlapEmbeddedProvider();
+
+    let embeddedResult;
+
+    try {
+      embeddedResult = await provider.createEmbeddedOrder({
+        orderId: payment.id,
+        amountClp,
+        description: `Viaje Rapa Go — ${ride.originText} → ${ride.destinationText}`,
+        passengerEmail: user?.email ?? "",
+        passengerName: user?.name ?? "Pasajero",
+        // Not read by KlapProvider.createEmbeddedOrder today (Checkout Transparente
+        // does not redirect); kept consistent with the other providers' call shape
+        // in case a confirmed schema field needs them in a later phase.
+        returnUrl: buildPaymentReturnUrl("klap"),
+        webhookUrl: `${webhookBaseUrl.replace(/\/+$/, "")}/api/payments/webhook/klap`,
+      });
+    } catch (err) {
+      await paymentsRepo.markFailed(payment.id);
+
+      // Timeout/network/http_rejected all land here without a second automatic
+      // attempt — the local payment stays "failed" and reconciliable; the caller
+      // must explicitly retry (which creates a new payment row with a new
+      // deterministic Idempotency-Key), never an implicit second order.
+      auditService.recordSafe({
+        actorUserId: auth.userId,
+        eventType: "payment.klap_provider_error",
+        entityType: "payment",
+        entityId: payment.id,
+        metadata: {
+          errorKind: err instanceof KlapProviderError ? err.kind : "unknown",
+          rideId: ride.id,
+          provider: "klap",
+          actorRole: auth.role,
+        },
+      });
+
+      return {
+        ok: false,
+        code: "PAYMENT_PROVIDER_ERROR",
+        message: "No se pudo iniciar el pago con Klap. Intenta nuevamente.",
+        statusCode: 502,
+      };
+    }
+
+    // Klap has no redirect URL — `urlPay` is a nullable DB column that simply does
+    // not apply to an embedded provider. This is a storage detail only: the API
+    // response below never includes `urlPay` in any form.
+    await paymentsRepo.markProcessing(payment.id, "", embeddedResult.providerOrderId);
+
+    auditService.recordSafe({
+      actorUserId: auth.userId,
+      eventType: "payment.klap_order_created",
+      entityType: "payment",
+      entityId: payment.id,
+      metadata: {
+        rideId: ride.id,
+        amountClp,
+        provider: "klap",
+        actorRole: auth.role,
+      },
+    });
+
+    return {
+      ok: true,
+      paymentId: payment.id,
+      provider: "klap",
+      checkoutType: "embedded",
+      publicCheckoutData: embeddedResult.publicCheckoutData,
     };
   }
 
