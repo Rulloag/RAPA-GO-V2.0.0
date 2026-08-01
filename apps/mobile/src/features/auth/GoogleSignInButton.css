@@ -265,3 +265,112 @@
     animation-duration: 1.4s;
   }
 }
+
+/* ==========================================================================
+   MODO NOCHE — data-rapago-theme="dark"
+   El sistema de temas del proyecto coloca este atributo en IonPage cuando la
+   hora local cae fuera del rango diurno (7–20 h) o cuando el usuario elige
+   manualmente el modo oscuro. Las reglas de abajo adaptan el botón nativo
+   (custom) y el placeholder del botón web a la paleta oscura de la auth card.
+
+   El botón oficial renderizado por Google (iframe) no se puede estilizar desde
+   fuera; sigue mostrándose con el tema "outline" propio de Google, que es
+   blanco con borde gris. La capa shell/placeholder que lo envuelve sí adopta
+   los colores oscuros mientras el SDK carga.
+   ========================================================================== */
+[data-rapago-theme="dark"] .rapago-google-button__custom,
+[data-rapago-theme="dark"] .rapago-google-button__placeholder {
+  background: linear-gradient(
+    180deg,
+    rgba(38, 34, 27, 0.97) 0%,
+    rgba(22, 19, 15, 0.98) 100%
+  );
+  color: #f0e6d4;
+  border-color: rgba(214, 166, 64, 0.48);
+  box-shadow:
+    0 8px 24px rgba(0, 0, 0, 0.35),
+    inset 0 1px 0 rgba(255, 255, 255, 0.07);
+}
+
+/* Estado hover modo noche */
+[data-rapago-theme="dark"] .rapago-google-button__custom:hover:not(:disabled) {
+  border-color: rgba(248, 216, 121, 0.72);
+  box-shadow:
+    0 12px 30px rgba(0, 0, 0, 0.40),
+    0 0 0 1px rgba(214, 166, 64, 0.20),
+    inset 0 1px 0 rgba(255, 255, 255, 0.10);
+  filter: brightness(1.06);
+}
+
+/* Estado activo / press modo noche */
+[data-rapago-theme="dark"] .rapago-google-button__custom:active:not(:disabled) {
+  background: linear-gradient(
+    180deg,
+    rgba(50, 44, 34, 0.99) 0%,
+    rgba(30, 26, 20, 0.99) 100%
+  );
+  transform: scale(0.990);
+}
+
+/* Focus visible modo noche */
+[data-rapago-theme="dark"] .rapago-google-button__custom:focus-visible {
+  outline-color: rgba(248, 216, 121, 0.55);
+}
+
+/* Texto del label en noche: crema para contrastar */
+[data-rapago-theme="dark"] .rapago-google-button__label {
+  color: #f0e6d4;
+}
+
+/* Spinner en modo noche: dorado para coherencia visual */
+[data-rapago-theme="dark"] .rapago-google-button__spinner {
+  border-color: rgba(214, 166, 64, 0.28);
+  border-top-color: #d6a640;
+}
+
+/* Mensaje de error en fondo oscuro: rojo más claro para legibilidad */
+[data-rapago-theme="dark"] .rapago-google-button__error {
+  color: #f4918d;
+}
+
+/* Capa blocker en modo noche: tinte oscuro en vez del blanco de día */
+[data-rapago-theme="dark"] .rapago-google-button__blocker {
+  background: rgba(0, 0, 0, 0.18);
+}
+
+/* ==========================================================================
+   MODO DÍA — data-rapago-theme="light" (o cuando el atributo no está)
+   Estas reglas son explícitas para que, si en algún momento el CSS se carga
+   en un contexto donde el atributo dark ya había sido aplicado, el retorno
+   a "light" restaure correctamente los colores diurnos.
+   ========================================================================== */
+[data-rapago-theme="light"] .rapago-google-button__custom,
+[data-rapago-theme="light"] .rapago-google-button__placeholder {
+  background: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.99),
+    rgba(249, 247, 242, 0.99)
+  );
+  color: #352d23;
+  border-color: rgba(90, 72, 42, 0.22);
+  box-shadow:
+    0 8px 20px rgba(72, 53, 22, 0.10),
+    inset 0 1px 0 rgba(255, 255, 255, 0.96);
+}
+
+[data-rapago-theme="light"] .rapago-google-button__label {
+  color: #352d23;
+}
+
+[data-rapago-theme="light"] .rapago-google-button__spinner {
+  border-color: rgba(66, 133, 244, 0.24);
+  border-top-color: #4285f4;
+}
+
+[data-rapago-theme="light"] .rapago-google-button__error {
+  color: #a33c2c;
+}
+
+[data-rapago-theme="light"] .rapago-google-button__blocker {
+  background: rgba(255, 255, 255, 0.14);
+}
