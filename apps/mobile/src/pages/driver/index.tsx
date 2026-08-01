@@ -1,4 +1,4 @@
-import {
+﻿import {
   IonAlert,
   IonBadge,
   IonButton,
@@ -12453,7 +12453,7 @@ function DriverGlobalRideAlert(): JSX.Element | null {
           display: "flex",
           alignItems: "flex-end",
           justifyContent: "center",
-          padding: "18px",
+          padding: "18px 18px calc(18px + env(safe-area-inset-bottom, 0px)) 18px",
           pointerEvents: "auto",
         }}
       >
@@ -16287,7 +16287,7 @@ La reserva fue retirada. No continúes hacia la recogida.`,
                   display: "flex",
                   flexDirection: "column",
                   gap: 16,
-                  paddingBottom: 90,
+                  paddingBottom: "calc(90px + env(safe-area-inset-bottom, 0px))",
                   maxWidth: 520,
                   margin: "0 auto",
                 }}

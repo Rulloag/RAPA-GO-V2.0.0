@@ -1959,3 +1959,197 @@
 .rapago-driver-page .rapago-driver-switch__btn {
   margin-top: 12px;
 }
+
+/* ==========================================================================
+   UX/UI SPRINT — fixes de diseño módulo conductor
+   Sin tocar lógica de negocio. Solo layout, colores, jerarquía visual.
+   ========================================================================== */
+
+/* ── 1. Botón Aceptar viaje / Descanso continuo: guardia CSS ──────────────
+   Las correcciones de safe-area se aplican directamente en los style={} del
+   JSX (L11623, L11835, L15239). Esta regla añade una guardia de z-index para
+   cualquier overlay de alerta nuevo que use la clase .rapago-ride-alert-overlay.
+   ─────────────────────────────────────────────────────────────────────────── */
+.rapago-ride-alert-overlay {
+  position: fixed !important;
+  inset: 0 !important;
+  z-index: 100000 !important;
+  pointer-events: auto !important;
+}
+
+/* ── 2. Pantalla Viaje Activo: mapa como protagonista ─────────────────────
+   Añadir className="active-ride-root" al div L14578 y
+   className="active-ride-panel" al div del panel de acciones L14598.
+   ─────────────────────────────────────────────────────────────────────────── */
+.rapago-driver-page .active-ride-root {
+  display: flex;
+  flex-direction: column;
+  min-height: 100%;
+  background: #0f1115;
+  overflow: hidden;           /* evita el scroll-x del margin:-16px */
+}
+
+/* El mapa puede crecer para llenar el espacio libre */
+.rapago-driver-page .active-ride-map-wrap {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 260px;
+  overflow: hidden;
+}
+
+/* El panel de acciones admite scroll interno si acumula muchos banners */
+.rapago-driver-page .active-ride-panel {
+  flex: 0 0 auto;
+  overflow-y: auto;
+  max-height: 52vh;
+  overscroll-behavior: contain;
+  padding: 12px 14px calc(18px + env(safe-area-inset-bottom, 0px));
+}
+
+/* ── 3. Banner GPS error dentro del mapa de navegación ───────────────────
+   Añadir className="active-ride-map-error" al div del mapError (L2887).
+   ─────────────────────────────────────────────────────────────────────────── */
+.rapago-driver-page .active-ride-map-error {
+  white-space: normal !important;
+  overflow: visible !important;
+  text-overflow: clip !important;
+  font-size: .76rem !important;
+  line-height: 1.35 !important;
+  padding: 8px 12px !important;
+  border-radius: 14px !important;
+}
+
+/* ── 4. Card de permiso de ubicación (pantalla Solicitudes) ───────────────
+   Añadir className="driver-location-error-card" a la IonCard (L15101).
+   ─────────────────────────────────────────────────────────────────────────── */
+.rapago-driver-page .driver-location-error-card {
+  margin: 0 0 14px !important;
+  border-radius: 18px !important;
+  background: #fff3cd !important;
+  border: 1.5px solid rgba(210,164,58,.55) !important;
+  box-shadow: 0 4px 14px rgba(210,164,58,.18);
+}
+
+.rapago-driver-page .driver-location-error-card .card-content-md,
+.rapago-driver-page .driver-location-error-card .card-content-ios {
+  padding: 12px 14px !important;
+}
+
+/* ── 5. Tarjeta Esperando pasajero: jerarquía visual ─────────────────────
+   El panel usa style="" inline; estas reglas actúan donde hay clases.
+   ─────────────────────────────────────────────────────────────────────────── */
+
+/* Dirección del punto de recogida: subir contraste WCAG */
+.rapago-driver-page .active-ride-pickup-address {
+  font-size: .88rem !important;
+  font-weight: 700 !important;
+  color: rgba(246,242,236,.88) !important;
+  overflow-wrap: anywhere;
+  line-height: 1.4;
+}
+
+/* Grid de botones: primario full-width, resto en grid 2 col */
+.rapago-driver-page .active-ride-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.rapago-driver-page .active-ride-actions__primary {
+  width: 100%;
+  min-height: 56px !important;
+  font-size: 1.05rem !important;
+  font-weight: 900 !important;
+}
+
+.rapago-driver-page .active-ride-actions__secondary-grid {
+  display: grid !important;
+  grid-template-columns: 1fr 1fr !important;
+  gap: 8px !important;
+}
+
+.rapago-driver-page .active-ride-actions__danger {
+  width: 100%;
+  min-height: 44px !important;
+  font-size: var(--rp-fs-body) !important;
+  opacity: 0.85;
+}
+
+/* ── 6. Tarjeta No Show: barra de progreso más visible ───────────────────
+   Añadir className="driver-noshow-card" al div L14764,
+   className="driver-noshow-track" a la barra (L14799),
+   className="driver-noshow-fill" al fill (L14803).
+   ─────────────────────────────────────────────────────────────────────────── */
+.rapago-driver-page .driver-noshow-card {
+  padding: 12px 13px;
+  border-radius: 18px;
+  transition: background 0.4s ease, border-color 0.4s ease;
+}
+
+.rapago-driver-page .driver-noshow-track {
+  margin-top: 10px !important;
+  height: 14px !important;
+  border-radius: 999px !important;
+  overflow: hidden;
+}
+
+.rapago-driver-page .driver-noshow-fill {
+  height: 100% !important;
+  border-radius: 999px !important;
+  transition: width 0.35s ease !important;
+}
+
+/* Caption legible: sin opacity < 1 */
+.rapago-driver-page .driver-noshow-caption {
+  margin-top: 8px;
+  font-size: var(--rp-fs-sub, .80rem) !important;
+  font-weight: 750 !important;
+  opacity: 1 !important;
+  color: var(--rp-muted) !important;
+  line-height: 1.45;
+}
+
+/* ── 7. Descanso continuo: botón Guardar con texto + quote con jerarquía ──
+   El botón ya existe en driver.css; solo añadimos el min-width y el texto.
+   ─────────────────────────────────────────────────────────────────────────── */
+.rapago-driver-page .rapago-driver-rest__save {
+  min-width: 96px !important;  /* espacio para texto "Guardar" */
+  font-size: var(--rp-fs-body) !important;
+  font-weight: 800 !important;
+  letter-spacing: 0.01em !important;
+}
+
+/* Tiempo restante en el quote: destacarlo sobre la fecha */
+.rapago-driver-page .rp-card__quote .rest-remaining {
+  font-size: 1.1rem !important;
+  font-weight: 950 !important;
+  display: block;
+  margin-top: 2px;
+  color: var(--rp-btn-primary, #d7a739) !important;
+}
+
+/* ── 8. Planificación servicios: selectores de horario sin desborde ───────
+   Añadir className="driver-schedule-wrap" al contenedor del selector.
+   ─────────────────────────────────────────────────────────────────────────── */
+.rapago-driver-page .driver-schedule-wrap {
+  overflow-x: hidden;
+  max-width: 100%;
+}
+
+.rapago-driver-page .driver-schedule-wrap ion-select,
+.rapago-driver-page .driver-schedule-wrap input[type="time"] {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ── 9. Responsive: eliminar scroll horizontal global del módulo ──────────── */
+.rapago-driver-page ion-content::part(scroll) {
+  overflow-x: hidden !important;
+}
+
+.rapago-driver-page > * {
+  max-width: 100vw;
+  overflow-x: hidden;
+}
