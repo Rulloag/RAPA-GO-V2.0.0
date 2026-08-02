@@ -16,9 +16,10 @@ import {
   type FormEvent,
 } from "react";
 import {
+  initializeKlapCheckoutOnce,
   isKlapPaymentApproved,
   isKlapPaymentRejected,
-  loadKlapCheckoutSdk,
+  klapCheckoutRequiresReload,
   waitForKlapPaymentResolution,
   type PendingKlapPaymentRecord,
 } from "./klapCheckout.service.js";
@@ -50,6 +51,7 @@ export function KlapCheckoutModal({
   const [cardType, setCardType] = useState<CardType>("1");
   const [processing, setProcessing] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  const [reloadRequired, setReloadRequired] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
 
   const callbackNames = useMemo(() => {
@@ -64,6 +66,7 @@ export function KlapCheckoutModal({
     setCardType("1");
     setProcessing(false);
     setMessage(null);
+    setReloadRequired(false);
   }, [payment?.paymentId]);
 
   useEffect(() => {
@@ -132,8 +135,12 @@ export function KlapCheckoutModal({
 
     callbackWindow[callbackNames.error] = () => {
       setProcessing(false);
+      const mustReload = klapCheckoutRequiresReload(payment.orderId);
+      setReloadRequired(mustReload);
       setMessage(
-        "Klap no pudo completar el formulario. Revisa los datos o cierra para continuar después.",
+        mustReload
+          ? "El perfil de seguridad de Klap falló. Recarga esta pantalla antes de volver a intentar."
+          : "Klap rechazó el intento. Revisa los datos y vuelve a pagar sin recargar el SDK.",
       );
     };
 
@@ -154,28 +161,20 @@ export function KlapCheckoutModal({
     setMessage("Abriendo el pago seguro de Klap...");
 
     try {
-      const sdk = await loadKlapCheckoutSdk();
-
-      await Promise.resolve(
-        sdk.init({
-          method: "tarjetas",
-        }),
+      const initializedSdk = await initializeKlapCheckoutOnce(
+        payment.orderId,
       );
 
-      const initializedSdk = window.KLAP ?? sdk;
+      await Promise.resolve(initializedSdk.payOrder?.());
 
-      if (typeof initializedSdk.payOrder !== "function") {
-        throw new Error(
-          "Klap cargó, pero no habilitó el pago. Revisa el formulario y vuelve a intentarlo.",
-        );
-      }
-
-      await Promise.resolve(initializedSdk.payOrder());
       setMessage(
         "Procesando con Klap. No cierres esta ventana hasta recibir confirmación.",
       );
     } catch (error) {
       setProcessing(false);
+      setReloadRequired(
+        klapCheckoutRequiresReload(payment.orderId),
+      );
       setMessage(
         error instanceof Error
           ? error.message
@@ -279,7 +278,7 @@ export function KlapCheckoutModal({
               <label style={labelStyle}>
                 Tipo de tarjeta
                 <select
-                  data-klap-card-type={cardType}
+                  id="klap-card-type-selector"
                   value={cardType}
                   onChange={(event) =>
                     setCardType(event.target.value === "2" ? "2" : "1")
@@ -290,13 +289,21 @@ export function KlapCheckoutModal({
                   <option value="1">Débito o prepago</option>
                   <option value="2">Crédito</option>
                 </select>
+
+                <input
+                  id="klap-card-type"
+                  type="hidden"
+                  data-klap-card-type={cardType}
+                />
               </label>
 
               <label style={labelStyle}>
                 Número de tarjeta
                 <input
+                  id="cardNumber"
                   data-klap-card-number
-                  type="tel"
+                  type="text"
+                  maxLength={19}
                   inputMode="numeric"
                   autoComplete="cc-number"
                   placeholder="0000 0000 0000 0000"
@@ -316,8 +323,10 @@ export function KlapCheckoutModal({
                 <label style={labelStyle}>
                   Vencimiento
                   <input
+                    id="cardExpiryDate"
                     data-klap-expiry-date
-                    type="tel"
+                    type="text"
+                    maxLength={5}
                     inputMode="numeric"
                     autoComplete="cc-exp"
                     placeholder="MM/AA"
@@ -330,8 +339,10 @@ export function KlapCheckoutModal({
                 <label style={labelStyle}>
                   CVV
                   <input
+                    id="cardCvv"
                     data-klap-card-cvv
                     type="password"
+                    maxLength={4}
                     inputMode="numeric"
                     autoComplete="cc-csc"
                     placeholder="123"
@@ -342,10 +353,21 @@ export function KlapCheckoutModal({
                 </label>
               </div>
 
+              <input
+                id="generateToken"
+                type="checkbox"
+                name="generateToken"
+                data-klap-generate-token
+                checked={false}
+                readOnly
+                hidden
+              />
+
               {cardType === "2" && (
                 <label style={labelStyle}>
                   Cuotas
                   <select
+                    id="quotas"
                     data-klap-quotas
                     defaultValue="2"
                     disabled={processing}
@@ -361,6 +383,22 @@ export function KlapCheckoutModal({
                   </select>
                 </label>
               )}
+
+              <div
+                style={{
+                  borderRadius: 12,
+                  padding: "9px 11px",
+                  background: "#eef6ff",
+                  color: "#183b63",
+                  border: "1px solid #b8d8f5",
+                  fontSize: ".75rem",
+                  lineHeight: 1.4,
+                  fontWeight: 800,
+                }}
+              >
+                Para Sandbox, usa una tarjeta acorde al tipo seleccionado.
+                Presiona Pagar una sola vez y espera la respuesta de Klap.
+              </div>
 
               {message && (
                 <div
@@ -380,10 +418,26 @@ export function KlapCheckoutModal({
                 </div>
               )}
 
+              {reloadRequired && (
+                <IonButton
+                  type="button"
+                  expand="block"
+                  fill="outline"
+                  onClick={() => window.location.reload()}
+                  style={{
+                    "--border-color": "#9f6b17",
+                    "--color": "#5f3f00",
+                    fontWeight: 900,
+                  }}
+                >
+                  Recargar checkout Klap
+                </IonButton>
+              )}
+
               <IonButton
                 type="submit"
                 expand="block"
-                disabled={processing}
+                disabled={processing || reloadRequired}
                 style={{
                   "--background": "linear-gradient(135deg,#d5a737,#f3d781)",
                   "--color": "#171006",

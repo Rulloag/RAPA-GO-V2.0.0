@@ -202,6 +202,115 @@ async function waitForKlapGlobal(timeoutMs = 5_000): Promise<void> {
   }
 }
 
+export async function waitForKlapPayOrder(
+  timeoutMs = 15_000,
+): Promise<KlapBrowserSdk> {
+  const startedAt = Date.now();
+
+  while (typeof window.KLAP?.payOrder !== "function") {
+    if (Date.now() - startedAt >= timeoutMs) {
+      throw new Error(
+        "Klap no terminó de preparar el pago. Recarga esta pantalla y prueba una sola vez.",
+      );
+    }
+
+    await new Promise<void>((resolve) => {
+      window.setTimeout(resolve, 100);
+    });
+  }
+
+  return window.KLAP;
+}
+
+type KlapInitializationStatus =
+  | "idle"
+  | "initializing"
+  | "ready"
+  | "failed";
+
+const klapInitializationState: {
+  orderId: string | null;
+  status: KlapInitializationStatus;
+  promise: Promise<KlapBrowserSdk> | null;
+} = {
+  orderId: null,
+  status: "idle",
+  promise: null,
+};
+
+export async function initializeKlapCheckoutOnce(
+  orderId: string,
+): Promise<KlapBrowserSdk> {
+  const normalizedOrderId = orderId.trim();
+
+  if (!normalizedOrderId) {
+    throw new Error("La orden Klap no es válida.");
+  }
+
+  if (
+    klapInitializationState.orderId &&
+    klapInitializationState.orderId !== normalizedOrderId
+  ) {
+    throw new Error(
+      "Hay otra orden Klap cargada. Recarga la pantalla para iniciar el nuevo pago.",
+    );
+  }
+
+  if (
+    klapInitializationState.status === "ready" &&
+    typeof window.KLAP?.payOrder === "function"
+  ) {
+    return window.KLAP;
+  }
+
+  if (
+    klapInitializationState.status === "initializing" &&
+    klapInitializationState.promise
+  ) {
+    return klapInitializationState.promise;
+  }
+
+  if (klapInitializationState.status === "failed") {
+    throw new Error(
+      "El perfil de seguridad de Klap ya falló en esta pantalla. Recárgala antes de volver a pagar.",
+    );
+  }
+
+  klapInitializationState.orderId = normalizedOrderId;
+  klapInitializationState.status = "initializing";
+
+  const promise = (async (): Promise<KlapBrowserSdk> => {
+    try {
+      const sdk = await loadKlapCheckoutSdk();
+
+      await Promise.resolve(
+        sdk.init({
+          method: "tarjetas",
+        }),
+      );
+
+      const initializedSdk = await waitForKlapPayOrder();
+      klapInitializationState.status = "ready";
+      return initializedSdk;
+    } catch (error) {
+      klapInitializationState.status = "failed";
+      throw error;
+    } finally {
+      klapInitializationState.promise = null;
+    }
+  })();
+
+  klapInitializationState.promise = promise;
+  return promise;
+}
+
+export function klapCheckoutRequiresReload(orderId: string): boolean {
+  return (
+    klapInitializationState.orderId === orderId.trim() &&
+    klapInitializationState.status === "failed"
+  );
+}
+
 export async function loadKlapCheckoutSdk(): Promise<KlapBrowserSdk> {
   if (klapInitAvailable()) {
     return window.KLAP as KlapBrowserSdk;

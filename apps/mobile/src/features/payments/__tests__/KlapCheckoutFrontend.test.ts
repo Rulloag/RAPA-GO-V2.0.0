@@ -24,9 +24,9 @@ describe("Klap Checkout Transparente frontend", () => {
     expect(modalSource).toContain("data-klap-card-cvv");
     expect(modalSource).toContain("data-klap-card-type");
     expect(modalSource).toContain("data-klap-quotas");
-    expect(modalSource).toContain("sdk.init({");
-    expect(modalSource).toContain('method: "tarjetas"');
-    expect(modalSource).toContain("initializedSdk.payOrder()");
+    expect(serviceSource).toContain("sdk.init({");
+    expect(serviceSource).toContain('method: "tarjetas"');
+    expect(modalSource).toContain("initializedSdk.payOrder?.()");
     expect(modalSource).toContain(
       "data-klap-card-type={cardType}",
     );
@@ -60,5 +60,68 @@ describe("Klap Checkout Transparente frontend", () => {
     expect(tripsSource).toContain('return "Tarjeta / Klap"');
     expect(tripsSource).toContain("No disponible para Klap");
     expect(tripsSource).toContain("no se generará un cobro adicional de Mercado Pago");
+  });
+});
+
+describe("Klap Checkout formulario oficial", () => {
+  it("usa un campo oculto independiente para data-klap-card-type", () => {
+    expect(modalSource).toContain('id="klap-card-type-selector"');
+    expect(modalSource).toContain('id="klap-card-type"');
+    expect(modalSource).toContain("data-klap-card-type={cardType}");
+    expect(modalSource).not.toContain(
+      "<select\n                  data-klap-card-type",
+    );
+  });
+
+  it("espera payOrder después de KLAP.init", () => {
+    expect(serviceSource).toContain(
+      "export async function waitForKlapPayOrder",
+    );
+    expect(serviceSource).toContain(
+      "const initializedSdk = await waitForKlapPayOrder();",
+    );
+    expect(serviceSource).not.toContain("debug: true");
+  });
+
+  it("incluye todos los campos esperados por Klap", () => {
+    expect(modalSource).toContain('id="cardNumber"');
+    expect(modalSource).toContain('id="cardExpiryDate"');
+    expect(modalSource).toContain('id="cardCvv"');
+    expect(modalSource).toContain('id="generateToken"');
+    expect(modalSource).toContain("data-klap-generate-token");
+  });
+});
+
+
+
+describe("Klap Checkout inicialización única", () => {
+  it("inicializa Klap una sola vez por orderId", () => {
+    expect(serviceSource).toContain(
+      "export async function initializeKlapCheckoutOnce",
+    );
+    expect(serviceSource).toContain(
+      'status: "idle"',
+    );
+    expect(serviceSource).toContain(
+      'status === "failed"',
+    );
+    expect(modalSource).toMatch(
+      /initializeKlapCheckoutOnce\(\s*payment\.orderId,?\s*\)/,
+    );
+    expect(modalSource).not.toContain(
+      "sdk.init({",
+    );
+  });
+
+  it("obliga a recargar después de un fallo de perfil de seguridad", () => {
+    expect(serviceSource).toContain(
+      "klapCheckoutRequiresReload",
+    );
+    expect(modalSource).toContain(
+      "Recargar checkout Klap",
+    );
+    expect(modalSource).toContain(
+      "window.location.reload()",
+    );
   });
 });
