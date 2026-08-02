@@ -16,7 +16,8 @@ import {
   useMemo,
   useState,
   type CSSProperties,
-} from "react";`r`n
+} from "react";
+
 import { useAuth } from "../../../features/auth";
 import {
   driverProfileService,
@@ -497,7 +498,8 @@ export function DriverRestScheduleCard({
                   <IonIcon icon={saveOutline} slot="start" />
                   Guardar horario
                 </>
-              )}`r`n            </IonButton>
+              )}
+            </IonButton>
 
             <div
               style={{
