@@ -4,6 +4,7 @@ import { UsersRepository } from "../users/users.repository.js";
 import { PassengerProfileRepository } from "./passengerProfile.repository.js";
 import { AppError } from "../../shared/errors/AppError.js";
 import type { UpsertPassengerProfileInput } from "./passengerProfile.schemas.js";
+import { canUsePassengerProfile } from "./passengerProfile.access.js";
 
 const tokenService   = new TokenService();
 const sessionService = new SessionService();
@@ -59,8 +60,13 @@ export class PassengerProfileService {
   async getProfile(accessToken: string) {
     const auth = await authenticate(accessToken);
     if (!auth.ok) return auth;
-    if (auth.role !== "passenger") {
-      return { ok: false as const, code: "AUTH_FORBIDDEN", message: "Only passengers can access passenger profile.", statusCode: 403 };
+    if (!canUsePassengerProfile(auth.role)) {
+      return {
+        ok: false as const,
+        code: "AUTH_FORBIDDEN",
+        message: "Only passenger or driver accounts can access passenger profile.",
+        statusCode: 403,
+      };
     }
     let profile = await profileRepo.findByUserId(auth.userId);
     if (!profile) {
@@ -72,8 +78,13 @@ export class PassengerProfileService {
   async upsertProfile(accessToken: string, input: UpsertPassengerProfileInput) {
     const auth = await authenticate(accessToken);
     if (!auth.ok) return auth;
-    if (auth.role !== "passenger") {
-      return { ok: false as const, code: "AUTH_FORBIDDEN", message: "Only passengers can update passenger profile.", statusCode: 403 };
+    if (!canUsePassengerProfile(auth.role)) {
+      return {
+        ok: false as const,
+        code: "AUTH_FORBIDDEN",
+        message: "Only passenger or driver accounts can update passenger profile.",
+        statusCode: 403,
+      };
     }
     const profile = await profileRepo.upsert(auth.userId, input);
     return { ok: true as const, profile: serializeProfile(profile) };
@@ -82,8 +93,13 @@ export class PassengerProfileService {
   async getPreferences(accessToken: string) {
     const auth = await authenticate(accessToken);
     if (!auth.ok) return auth;
-    if (auth.role !== "passenger") {
-      return { ok: false as const, code: "AUTH_FORBIDDEN", message: "Only passengers can access passenger preferences.", statusCode: 403 };
+    if (!canUsePassengerProfile(auth.role)) {
+      return {
+        ok: false as const,
+        code: "AUTH_FORBIDDEN",
+        message: "Only passenger or driver accounts can access passenger preferences.",
+        statusCode: 403,
+      };
     }
     let profile = await profileRepo.findByUserId(auth.userId);
     if (!profile) {

@@ -2,12 +2,23 @@ import { z } from "zod";
 
 const nullableFinite = z.number().finite().nullable().optional();
 
+function nullableBoundedMetric(min: number, max: number) {
+  return z.preprocess(
+    (value) => {
+      if (value === null || value === undefined) return value;
+      if (typeof value !== "number" || !Number.isFinite(value)) return null;
+      return value >= min && value <= max ? value : null;
+    },
+    z.number().finite().min(min).max(max).nullable().optional(),
+  );
+}
+
 export const rideLocationUpdateSchema = z.object({
   lat: z.number().finite().min(-90).max(90),
   lng: z.number().finite().min(-180).max(180),
-  accuracyMeters: z.number().finite().min(0).max(10000).nullable().optional(),
-  headingDegrees: z.number().finite().min(0).max(360).nullable().optional(),
-  speedMetersPerSecond: z.number().finite().min(0).max(150).nullable().optional(),
+  accuracyMeters: nullableBoundedMetric(0, 10000),
+  headingDegrees: nullableBoundedMetric(0, 360),
+  speedMetersPerSecond: nullableBoundedMetric(0, 150),
   altitudeMeters: nullableFinite,
   capturedAt: z.string().datetime({ offset: true }),
   source: z

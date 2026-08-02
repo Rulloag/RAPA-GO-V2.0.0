@@ -3,6 +3,28 @@ import { apiClient } from "../../services/api/index.js";
 type RidesEnvelope = { ok: true; data: RideRequestData[]; statusCode: number };
 type RideEnvelope  = { ok: true; data: RideRequestData;   statusCode: number };
 
+type ApiFailureLike = {
+  ok: false;
+  message?: string;
+  statusCode?: number;
+  code?: string;
+};
+
+export type RideServiceError = Error & {
+  statusCode?: number;
+  code?: string;
+};
+
+function createRideServiceError(
+  failure: ApiFailureLike,
+  fallbackMessage: string,
+): RideServiceError {
+  const error = new Error(failure.message ?? fallbackMessage) as RideServiceError;
+  error.statusCode = failure.statusCode;
+  error.code = failure.code;
+  return error;
+}
+
 type ComplianceLocationPayload = {
   lat: number;
   lng: number;
@@ -237,7 +259,12 @@ export const ridesService = {
     const body: { reason?: string } = {};
     if (reason) body.reason = reason;
     const result = await apiClient.post<RideEnvelope>(`/rides/${rideId}/cancel`, body, { token: accessToken });
-    if (result.ok === false) throw new Error(result.message ?? "Failed to cancel ride request.");
+    if (result.ok === false) {
+      throw createRideServiceError(
+        result as unknown as ApiFailureLike,
+        "Failed to cancel ride request.",
+      );
+    }
     return (result.data as RideEnvelope).data;
   },
 
@@ -292,7 +319,12 @@ export const ridesService = {
     if (location) body.location = location;
 
     const result = await apiClient.post<RideEnvelope>(`/rides/${rideId}/cancel-accepted`, body, { token: accessToken });
-    if (result.ok === false) throw new Error(result.message ?? "Failed to cancel ride.");
+    if (result.ok === false) {
+      throw createRideServiceError(
+        result as unknown as ApiFailureLike,
+        "Failed to cancel ride.",
+      );
+    }
     return (result.data as RideEnvelope).data;
   },
 

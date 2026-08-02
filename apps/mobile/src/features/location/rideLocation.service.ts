@@ -20,25 +20,64 @@ function nativeApiBaseUrl(): string {
   return trimmed;
 }
 
-function finiteOrNull(value: unknown): number | null {
-  const numberValue = Number(value);
-  return Number.isFinite(numberValue) ? numberValue : null;
+const LOCATION_LIMITS = {
+  accuracyMeters: { min: 0, max: 10000 },
+  headingDegrees: { min: 0, max: 360 },
+  speedMetersPerSecond: { min: 0, max: 150 },
+} as const;
+
+function finiteNumberOrNull(value: unknown): number | null {
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+function boundedMetricOrNull(
+  value: unknown,
+  min: number,
+  max: number,
+): number | null {
+  const numberValue = finiteNumberOrNull(value);
+  if (numberValue === null) return null;
+  return numberValue >= min && numberValue <= max ? numberValue : null;
+}
+
+function sanitizeLocationPoint(
+  point: RapaGoLocationPoint,
+): RapaGoLocationPoint {
+  return {
+    ...point,
+    accuracyMeters: boundedMetricOrNull(
+      point.accuracyMeters,
+      LOCATION_LIMITS.accuracyMeters.min,
+      LOCATION_LIMITS.accuracyMeters.max,
+    ),
+    headingDegrees: boundedMetricOrNull(
+      point.headingDegrees,
+      LOCATION_LIMITS.headingDegrees.min,
+      LOCATION_LIMITS.headingDegrees.max,
+    ),
+    speedMetersPerSecond: boundedMetricOrNull(
+      point.speedMetersPerSecond,
+      LOCATION_LIMITS.speedMetersPerSecond.min,
+      LOCATION_LIMITS.speedMetersPerSecond.max,
+    ),
+    altitudeMeters: finiteNumberOrNull(point.altitudeMeters),
+  };
 }
 
 function toPoint(position: Position, appState: "foreground" | "background"): RapaGoLocationPoint {
-  return {
+  return sanitizeLocationPoint({
     lat: position.coords.latitude,
     lng: position.coords.longitude,
-    accuracyMeters: finiteOrNull(position.coords.accuracy),
-    headingDegrees: finiteOrNull(position.coords.heading),
-    speedMetersPerSecond: finiteOrNull(position.coords.speed),
-    altitudeMeters: finiteOrNull(position.coords.altitude),
+    accuracyMeters: position.coords.accuracy,
+    headingDegrees: position.coords.heading,
+    speedMetersPerSecond: position.coords.speed,
+    altitudeMeters: position.coords.altitude,
     capturedAt: new Date(position.timestamp || Date.now()).toISOString(),
     source: Capacitor.isNativePlatform() ? "foreground_native" : "web",
     appState,
     sequenceNumber: null,
     isMocked: false,
-  };
+  });
 }
 
 type PointEnvelope = {
@@ -108,9 +147,10 @@ export const rideLocationService = {
     rideId: string,
     point: RapaGoLocationPoint,
   ): Promise<RideLocationPointResponse> {
+    const safePoint = sanitizeLocationPoint(point);
     const result = await apiClient.post<PointEnvelope>(
       `/rides/${encodeURIComponent(rideId)}/location`,
-      point,
+      safePoint,
       { token: accessToken, timeoutMs: 10000 },
       0,
     );

@@ -9137,6 +9137,63 @@ export default function TripsPage(): JSX.Element {
     });
   }
 
+  function isRideCancellationStateConflict(error: unknown): boolean {
+    const details = error as {
+      statusCode?: number;
+      code?: string;
+      message?: string;
+    };
+    const message =
+      error instanceof Error
+        ? error.message
+        : String(details?.message ?? error ?? "");
+
+    return (
+      details?.statusCode === 409 ||
+      details?.code === "RIDE_CANNOT_CANCEL" ||
+      /cannot be cancelled|current status/i.test(message)
+    );
+  }
+
+  async function cancelPassengerRideUsingBackendState(
+    accessToken: string,
+    rideId: string,
+    mode: "requested" | "accepted",
+    cancellationReason: string,
+  ): Promise<void> {
+    const cancelRequested = () =>
+      ridesService.cancelRideRequest(
+        accessToken,
+        rideId,
+        cancellationReason,
+      );
+    const cancelAccepted = () =>
+      ridesService.cancelAcceptedRide(
+        accessToken,
+        rideId,
+        cancellationReason,
+      );
+
+    try {
+      if (mode === "accepted") {
+        await cancelAccepted();
+      } else {
+        await cancelRequested();
+      }
+    } catch (error) {
+      if (!isRideCancellationStateConflict(error)) throw error;
+
+      // El estado visual puede quedar atrás respecto al backend. Ante un 409,
+      // reintentamos una sola vez con el endpoint correspondiente al otro
+      // grupo de estados para no dejar al pasajero atrapado.
+      if (mode === "accepted") {
+        await cancelRequested();
+      } else {
+        await cancelAccepted();
+      }
+    }
+  }
+
   async function performPassengerCancel(
     targetRide: RideRequestData,
     rideId: string,
@@ -9167,19 +9224,12 @@ export default function TripsPage(): JSX.Element {
           resolvedPolicy.title ??
           "Cancelado por pasajero.";
 
-        if (mode === "accepted") {
-          await ridesService.cancelAcceptedRide(
-            session!.accessToken,
-            rideId,
-            cancellationReason,
-          );
-        } else {
-          await ridesService.cancelRideRequest(
-            session!.accessToken,
-            rideId,
-            cancellationReason,
-          );
-        }
+        await cancelPassengerRideUsingBackendState(
+          session!.accessToken,
+          rideId,
+          mode,
+          cancellationReason,
+        );
       }
 
       showMercadoPagoRefundAlert(targetRide);
