@@ -23,12 +23,28 @@ describe("seguimiento real del vehículo para el pasajero", () => {
     );
   });
 
-  it("muestra un vehículo orientado en vez de una flecha genérica", () => {
+  it("muestra un vehículo SVG reconocible y orientado", () => {
     expect(passengerSource).toContain("function makeDriverVehicleIcon");
-    expect(passengerSource).toContain("M -8 -14 C -6 -18");
+    expect(passengerSource).toContain("data:image/svg+xml");
+    expect(passengerSource).toContain('class="rapago-driver-car"');
+    expect(passengerSource).toContain('fill="#111827"');
+    expect(passengerSource).toContain('fill="#fde047"');
     expect(passengerSource).not.toContain(
       "path: google.maps.SymbolPath.FORWARD_CLOSED_ARROW",
     );
+  });
+
+  it("muestra el estado del conductor con contraste legible", () => {
+    expect(passengerSource).toContain(
+      'data-rapago-driver-map-status="true"',
+    );
+    expect(passengerSource).toContain(
+      'background: "rgba(255,255,255,.97)"',
+    );
+    expect(passengerSource).toContain(
+      'WebkitTextFillColor: "#111827"',
+    );
+    expect(passengerSource).toContain("GPS EN VIVO");
   });
 
   it("cambia el objetivo desde la recogida hacia el destino al iniciar el viaje", () => {

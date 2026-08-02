@@ -46,6 +46,9 @@ const ACTIVE_STATUSES = [
   "in_progress",
 ];
 
+const PASSENGER_ACTIVE_POLL_INTERVAL_MS = 2500;
+const PASSENGER_IDLE_POLL_INTERVAL_MS = 15000;
+
 const LOCAL_PASSENGER_RIDES_KEY = "rapago_local_passenger_rides";
 
 const RAPAGO_PENDING_CARD_PAYMENT_KEY = "rapago_pending_card_payment_v1";
@@ -6059,19 +6062,39 @@ function PassengerLiveRouteMap({
     };
   }
 
-  function makeDriverVehicleIcon(rotation: number): google.maps.Symbol {
+  function makeDriverVehicleIcon(rotation: number): google.maps.Icon {
+    const safeRotation = ((rotation % 360) + 360) % 360;
+    const vehicleSvg = `
+      <svg xmlns="http://www.w3.org/2000/svg" width="72" height="72" viewBox="0 0 72 72">
+        <defs>
+          <filter id="shadow" x="-40%" y="-40%" width="180%" height="180%">
+            <feDropShadow dx="0" dy="4" stdDeviation="3" flood-color="#020617" flood-opacity=".46"/>
+          </filter>
+        </defs>
+        <g transform="rotate(${safeRotation} 36 36)" filter="url(#shadow)">
+          <circle cx="36" cy="36" r="29" fill="#ffffff" fill-opacity=".96" stroke="#c89b3c" stroke-width="3"/>
+          <g class="rapago-driver-car">
+            <rect x="22" y="9" width="28" height="54" rx="12" fill="#2382ff" stroke="#ffffff" stroke-width="3"/>
+            <path d="M27 21 Q36 15 45 21 L47 31 H25 Z" fill="#dbeafe" stroke="#0f172a" stroke-width="1.7"/>
+            <path d="M25 39 H47 L44 53 Q36 57 28 53 Z" fill="#bfdbfe" stroke="#0f172a" stroke-width="1.7"/>
+            <rect x="18" y="19" width="6" height="13" rx="3" fill="#111827"/>
+            <rect x="48" y="19" width="6" height="13" rx="3" fill="#111827"/>
+            <rect x="18" y="42" width="6" height="13" rx="3" fill="#111827"/>
+            <rect x="48" y="42" width="6" height="13" rx="3" fill="#111827"/>
+            <circle cx="28" cy="14" r="2.5" fill="#fde047"/>
+            <circle cx="44" cy="14" r="2.5" fill="#fde047"/>
+            <circle cx="28" cy="58" r="2.3" fill="#ef4444"/>
+            <circle cx="44" cy="58" r="2.3" fill="#ef4444"/>
+            <path d="M36 4 L31 12 H41 Z" fill="#c89b3c" stroke="#ffffff" stroke-width="1.5"/>
+          </g>
+        </g>
+      </svg>
+    `;
+
     return {
-      // Silueta superior de vehículo. La coordenada 0,0 queda en el centro
-      // para que el ícono gire sobre el GPS real del conductor.
-      path:
-        "M -8 -14 C -6 -18 6 -18 8 -14 L 11 -5 L 11 10 C 11 14 8 16 4 16 L -4 16 C -8 16 -11 14 -11 10 L -11 -5 Z M -7 -10 L 7 -10 L 9 -4 L -9 -4 Z",
-      anchor: new google.maps.Point(0, 0),
-      scale: 1.05,
-      fillColor: "#2382ff",
-      fillOpacity: 1,
-      strokeColor: "#ffffff",
-      strokeWeight: 2.8,
-      rotation: ((rotation % 360) + 360) % 360,
+      url: `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(vehicleSvg)}`,
+      scaledSize: new google.maps.Size(58, 58),
+      anchor: new google.maps.Point(29, 29),
     };
   }
 
@@ -6081,7 +6104,7 @@ function PassengerLiveRouteMap({
     point: { lat: number; lng: number } | null,
     options: {
       title: string;
-      icon: google.maps.Symbol;
+      icon: google.maps.Symbol | google.maps.Icon;
       label?: google.maps.MarkerLabel;
       zIndex: number;
       visible?: boolean;
@@ -6671,58 +6694,117 @@ function PassengerLiveRouteMap({
       {/* Panel inferior: el pasajero ve la flecha del conductor y el avance con GPS real. */}
       {driverPoint && ["driver_scheduled", "accepted", "driver_en_route", "driver_arrived", "in_progress"].includes(effectiveMapStatus) && (
         <div
+          data-rapago-driver-map-status="true"
           style={{
             position: "absolute",
             left: 12,
             right: 12,
-            bottom: 12,
-            zIndex: 20,
-            borderRadius: 20,
-            padding: "12px 14px",
-            background: "rgba(17,17,17,.92)",
-            color: "#ffffff",
-            boxShadow: "0 14px 34px rgba(0,0,0,.28)",
-            border: "1px solid rgba(255,255,255,.10)",
+            bottom: 38,
+            zIndex: 50,
+            minHeight: 68,
+            borderRadius: 18,
+            padding: "11px 13px",
+            background: "rgba(255,255,255,.97)",
+            color: "#111827",
+            WebkitTextFillColor: "#111827",
+            boxShadow: "0 16px 38px rgba(2,6,23,.36)",
+            border: "2px solid rgba(200,155,60,.88)",
+            backdropFilter: "blur(10px)",
             pointerEvents: "none",
           }}
         >
-          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 11 }}>
             <div
               style={{
-                width: 38,
-                height: 38,
-                borderRadius: 999,
-                background: "var(--rp-accent)",
-                color: "var(--rp-text)",
+                width: 42,
+                height: 42,
+                borderRadius: 14,
+                background: "#f4c453",
+                color: "#111827",
+                WebkitTextFillColor: "#111827",
                 display: "grid",
                 placeItems: "center",
-                fontWeight: 950,
-                boxShadow: "0 8px 18px rgba(250,204,21,.25)",
+                flex: "0 0 auto",
+                boxShadow: "0 7px 16px rgba(146,100,18,.24)",
+                border: "1px solid rgba(17,24,39,.14)",
               }}
             >
-              <IonIcon icon={carOutline} style={{ fontSize: 22 }} />
+              <IonIcon
+                icon={carOutline}
+                aria-hidden="true"
+                style={{
+                  fontSize: 24,
+                  color: "#111827",
+                  WebkitTextFillColor: "#111827",
+                }}
+              />
             </div>
+
             <div style={{ minWidth: 0, flex: 1 }}>
-              <div style={{ fontWeight: 950, fontSize: ".92rem" }}>
-                {effectiveMapStatus === "driver_arrived" ? "Tu conductor llegó al punto" : effectiveMapStatus === "in_progress" ? "Viaje en curso" : "Tu conductor viene en camino"}
-              </div>
               <div
                 style={{
-                  marginTop: 2,
-                  fontSize: ".78rem",
-                  color: "rgba(255,255,255,.78)",
-                  fontWeight: 800,
-                  whiteSpace: "nowrap",
-                  overflow: "hidden",
-                  textOverflow: "ellipsis",
+                  color: "#111827",
+                  WebkitTextFillColor: "#111827",
+                  fontWeight: 950,
+                  fontSize: ".92rem",
+                  lineHeight: 1.2,
+                  textShadow: "none",
                 }}
               >
                 {effectiveMapStatus === "driver_arrived"
-                  ? "Sal ahora al punto de recogida"
-                  : routeInfo?.durationText ? `${routeInfo.durationText}` : "GPS real activo"}
-                {effectiveMapStatus !== "driver_arrived" && routeInfo?.distanceText ? ` · ${routeInfo.distanceText}` : ""}
-                {effectiveMapStatus !== "driver_arrived" ? (effectiveMapStatus === "in_progress" ? " hasta tu destino" : " hasta el punto de recogida") : ""}
+                  ? "Tu conductor llegó al punto"
+                  : effectiveMapStatus === "in_progress"
+                    ? "Viaje en curso"
+                    : "Tu conductor viene en camino"}
               </div>
+
+              <div
+                style={{
+                  marginTop: 4,
+                  fontSize: ".76rem",
+                  lineHeight: 1.35,
+                  color: "#334155",
+                  WebkitTextFillColor: "#334155",
+                  fontWeight: 800,
+                  whiteSpace: "normal",
+                  overflow: "visible",
+                  textOverflow: "clip",
+                  textShadow: "none",
+                }}
+              >
+                {effectiveMapStatus === "driver_arrived"
+                  ? "Sal ahora al punto de recogida."
+                  : routeInfo?.durationText
+                    ? `${routeInfo.durationText}`
+                    : "GPS real activo"}
+                {effectiveMapStatus !== "driver_arrived" &&
+                routeInfo?.distanceText
+                  ? ` · ${routeInfo.distanceText}`
+                  : ""}
+                {effectiveMapStatus !== "driver_arrived"
+                  ? effectiveMapStatus === "in_progress"
+                    ? " hasta tu destino."
+                    : " hasta el punto de recogida."
+                  : ""}
+              </div>
+            </div>
+
+            <div
+              style={{
+                alignSelf: "flex-start",
+                padding: "4px 7px",
+                borderRadius: 999,
+                background: "#dcfce7",
+                color: "#166534",
+                WebkitTextFillColor: "#166534",
+                border: "1px solid #86efac",
+                fontSize: ".62rem",
+                lineHeight: 1,
+                fontWeight: 950,
+                whiteSpace: "nowrap",
+              }}
+            >
+              GPS EN VIVO
             </div>
           </div>
         </div>
@@ -8687,10 +8769,18 @@ export default function TripsPage(): JSX.Element {
   const [, setKnownAssignedRideIds] = useState<Set<string>>(new Set());
   const [tripSafetyReportsRevision, setTripSafetyReportsRevision] = useState(0);
   const [paymentReturnMessage, setPaymentReturnMessage] = useState<PaymentReturnMessage | null>(null);
+  const loadRidesInFlightRef = useRef(false);
 
-  const loadRides = useCallback(async () => {
-    setLoading(true);
-    setLoadError(null);
+  const loadRides = useCallback(async (options?: { silent?: boolean }) => {
+    const silent = options?.silent === true;
+
+    if (loadRidesInFlightRef.current) return;
+    loadRidesInFlightRef.current = true;
+
+    if (!silent) {
+      setLoading(true);
+      setLoadError(null);
+    }
 
     try {
       cleanupExpiredCancelledRidesEverywhere();
@@ -8705,7 +8795,7 @@ export default function TripsPage(): JSX.Element {
         setAllRides(merged);
         setRatedIds(readPassengerRatedRideIds(merged, session?.user));
         setKnownAssignedRideIds(new Set());
-        setPage(1);
+        if (!silent) setPage(1);
         setLastRefreshAt(new Date());
         return;
       }
@@ -8721,26 +8811,31 @@ export default function TripsPage(): JSX.Element {
       setKnownAssignedRideIds(assignedIds);
       setAllRides(mergedRides);
       setRatedIds(readPassengerRatedRideIds(mergedRides, session?.user));
-      setPage(1);
+      if (!silent) setPage(1);
       setLastRefreshAt(new Date());
+      if (!silent) setLoadError(null);
     } catch (err) {
-      const localRides = readLocalPassengerRides();
-      const bridgeRides = readPassengerVisibleScheduledBridgeRides(session?.user);
-      const requeuedRides = readPassengerVisibleRequeuedRides(session?.user);
-      requeuedRides.forEach(upsertRequeuedRideIntoPassengerLocalStorage);
-      const merged = mergeRides([...localRides, ...bridgeRides, ...requeuedRides], requeuedRides);
-      setAllRides(merged);
-      setRatedIds(readPassengerRatedRideIds(merged, session?.user));
-      setKnownAssignedRideIds(new Set());
-      setPage(1);
-      setLastRefreshAt(new Date());
+      if (!silent) {
+        const localRides = readLocalPassengerRides();
+        const bridgeRides = readPassengerVisibleScheduledBridgeRides(session?.user);
+        const requeuedRides = readPassengerVisibleRequeuedRides(session?.user);
+        requeuedRides.forEach(upsertRequeuedRideIntoPassengerLocalStorage);
+        const merged = mergeRides([...localRides, ...bridgeRides, ...requeuedRides], requeuedRides);
+        setAllRides(merged);
+        setRatedIds(readPassengerRatedRideIds(merged, session?.user));
+        setKnownAssignedRideIds(new Set());
+        setPage(1);
+        setLastRefreshAt(new Date());
 
-      const message = err instanceof Error ? err.message : "Error al cargar tus viajes.";
-      setLoadError(safeTripsErrorMessage(message));
+        const message = err instanceof Error ? err.message : "Error al cargar tus viajes.";
+        setLoadError(safeTripsErrorMessage(message));
+      }
     } finally {
-      setLoading(false);
+      loadRidesInFlightRef.current = false;
+      if (!silent) setLoading(false);
     }
   }, [session?.accessToken, session?.user]);
+
 
   useEffect(() => {
     const refreshPassengerNotice = () => {
@@ -9054,20 +9149,42 @@ export default function TripsPage(): JSX.Element {
     };
   }, [loadRides, session?.accessToken]);
 
+  const hasActiveRide = allRides.some((ride) =>
+    ACTIVE_STATUSES.includes(getPassengerNoShowCompletedEffectiveStatus(ride)),
+  );
+
   useEffect(() => {
     cleanupExpiredCancelledRidesEverywhere();
 
-    const interval = window.setInterval(() => {
-      cleanupExpiredCancelledRidesEverywhere();
-      void loadRides();
-    }, 10 * 60 * 1000);
+    const refreshSilently = (): void => {
+      if (document.visibilityState !== "visible") return;
+      void loadRides({ silent: true });
+    };
 
-    return () => window.clearInterval(interval);
-  }, [loadRides]);
+    const interval = window.setInterval(
+      refreshSilently,
+      hasActiveRide
+        ? PASSENGER_ACTIVE_POLL_INTERVAL_MS
+        : PASSENGER_IDLE_POLL_INTERVAL_MS,
+    );
+
+    const handleVisibilityChange = (): void => {
+      if (document.visibilityState === "visible") refreshSilently();
+    };
+
+    window.addEventListener("focus", refreshSilently);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+
+    return () => {
+      window.clearInterval(interval);
+      window.removeEventListener("focus", refreshSilently);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
+  }, [hasActiveRide, loadRides]);
 
   useEffect(() => {
     const refresh = () => {
-      void loadRides();
+      void loadRides({ silent: true });
     };
 
     window.addEventListener(RAPAGO_ADMIN_SCHEDULED_RIDES_EVENT, refresh as EventListener);

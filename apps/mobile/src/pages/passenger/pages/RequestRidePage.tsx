@@ -7097,6 +7097,28 @@ export default function RequestRidePage(): JSX.Element {
   const history = useHistory();
   // Solo se lee: el interruptor único vive en el encabezado de Inicio.
   const { theme, isDark } = useRapagoSectionTheme("request-ride");
+  const tripsRedirectStartedRef = useRef(false);
+
+  const goToTripsAfterRequest = useCallback(
+    (rideId?: string | null): void => {
+      if (tripsRedirectStartedRef.current) return;
+      tripsRedirectStartedRef.current = true;
+
+      window.dispatchEvent(
+        new CustomEvent("rapago:passenger-rides-updated", {
+          detail: {
+            rideId: rideId ?? null,
+            source: "request-ride-created",
+          },
+        }),
+      );
+
+      // replace evita que Ionic conserve la pantalla de solicitud encima de
+      // Mis Viajes y garantiza que Atrás no vuelva a un formulario ya enviado.
+      history.replace(ROUTES.PASSENGER.TRIPS);
+    },
+    [history],
+  );
 
   useEffect(() => {
     preSearchLocationService.read();
@@ -8503,7 +8525,7 @@ export default function RequestRidePage(): JSX.Element {
       setVehicleCategory("standard");
       setUseWalletBenefit(null);
 
-      history.push("/passenger/trips");
+      goToTripsAfterRequest(createdRideId);
     } catch (err) {
       const message = err instanceof Error ? err.message : "Error al solicitar el viaje.";
       const normalizedMessage = message.toLowerCase();
@@ -8780,7 +8802,7 @@ export default function RequestRidePage(): JSX.Element {
         setVehicleCategory("standard");
         setUseWalletBenefit(null);
 
-        history.push("/passenger/trips");
+        goToTripsAfterRequest(String(localRide.id ?? ""));
         return;
       }
 
