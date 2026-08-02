@@ -24,8 +24,18 @@ describe("Klap Checkout Transparente frontend", () => {
     expect(modalSource).toContain("data-klap-card-cvv");
     expect(modalSource).toContain("data-klap-card-type");
     expect(modalSource).toContain("data-klap-quotas");
-    expect(modalSource).toContain("sdk.init()");
-    expect(modalSource).toContain("sdk.payOrder()");
+    expect(modalSource).toContain("sdk.init({");
+    expect(modalSource).toContain('method: "tarjetas"');
+    expect(modalSource).toContain("initializedSdk.payOrder()");
+    expect(modalSource).toContain(
+      "data-klap-card-type={cardType}",
+    );
+    expect(serviceSource).toContain(
+      'typeof window.KLAP?.init === "function"',
+    );
+    expect(serviceSource).not.toContain(
+      "window.KLAP?.init && window.KLAP?.payOrder",
+    );
   });
 
   it("no guarda ni lee los datos sensibles de la tarjeta", () => {

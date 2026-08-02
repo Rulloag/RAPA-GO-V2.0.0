@@ -44,8 +44,13 @@ type Envelope<T> = {
 };
 
 type KlapBrowserSdk = {
-  init: (options?: Record<string, unknown>) => unknown;
-  payOrder: () => unknown;
+  init: (options?: {
+    method?: "tarjetas";
+    debug?: boolean | string;
+    successUrl?: string;
+    errorUrl?: string;
+  }) => unknown;
+  payOrder?: () => unknown;
 };
 
 declare global {
@@ -179,9 +184,27 @@ function validateKlapScriptUrl(rawUrl: string): string {
   return url.toString();
 }
 
+function klapInitAvailable(): boolean {
+  return typeof window.KLAP?.init === "function";
+}
+
+async function waitForKlapGlobal(timeoutMs = 5_000): Promise<void> {
+  const startedAt = Date.now();
+
+  while (!klapInitAvailable()) {
+    if (Date.now() - startedAt >= timeoutMs) {
+      throw new Error("El script de Klap cargó, pero no publicó KLAP.init().");
+    }
+
+    await new Promise<void>((resolve) => {
+      window.setTimeout(resolve, 50);
+    });
+  }
+}
+
 export async function loadKlapCheckoutSdk(): Promise<KlapBrowserSdk> {
-  if (window.KLAP?.init && window.KLAP?.payOrder) {
-    return window.KLAP;
+  if (klapInitAvailable()) {
+    return window.KLAP as KlapBrowserSdk;
   }
 
   const scriptUrl = validateKlapScriptUrl(configuredKlapScriptUrl());
@@ -199,7 +222,7 @@ export async function loadKlapCheckoutSdk(): Promise<KlapBrowserSdk> {
   }
 
   await new Promise<void>((resolve, reject) => {
-    if (window.KLAP?.init && window.KLAP?.payOrder) {
+    if (klapInitAvailable()) {
       resolve();
       return;
     }
@@ -222,11 +245,9 @@ export async function loadKlapCheckoutSdk(): Promise<KlapBrowserSdk> {
     script.addEventListener("error", onError, { once: true });
   });
 
-  if (!window.KLAP?.init || !window.KLAP?.payOrder) {
-    throw new Error("El checkout de Klap no quedó disponible.");
-  }
+  await waitForKlapGlobal();
 
-  return window.KLAP;
+  return window.KLAP as KlapBrowserSdk;
 }
 
 const TERMINAL_APPROVED = new Set(["success"]);

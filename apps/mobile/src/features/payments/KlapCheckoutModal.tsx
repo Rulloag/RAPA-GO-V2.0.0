@@ -155,8 +155,22 @@ export function KlapCheckoutModal({
 
     try {
       const sdk = await loadKlapCheckoutSdk();
-      await Promise.resolve(sdk.init());
-      await Promise.resolve(sdk.payOrder());
+
+      await Promise.resolve(
+        sdk.init({
+          method: "tarjetas",
+        }),
+      );
+
+      const initializedSdk = window.KLAP ?? sdk;
+
+      if (typeof initializedSdk.payOrder !== "function") {
+        throw new Error(
+          "Klap cargó, pero no habilitó el pago. Revisa el formulario y vuelve a intentarlo.",
+        );
+      }
+
+      await Promise.resolve(initializedSdk.payOrder());
       setMessage(
         "Procesando con Klap. No cierres esta ventana hasta recibir confirmación.",
       );
@@ -265,7 +279,7 @@ export function KlapCheckoutModal({
               <label style={labelStyle}>
                 Tipo de tarjeta
                 <select
-                  data-klap-card-type
+                  data-klap-card-type={cardType}
                   value={cardType}
                   onChange={(event) =>
                     setCardType(event.target.value === "2" ? "2" : "1")
@@ -347,8 +361,6 @@ export function KlapCheckoutModal({
                   </select>
                 </label>
               )}
-
-              <input data-klap-generate-token type="hidden" value="false" />
 
               {message && (
                 <div
