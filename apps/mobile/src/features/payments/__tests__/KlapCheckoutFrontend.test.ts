@@ -125,3 +125,44 @@ describe("Klap Checkout inicialización única", () => {
     );
   });
 });
+
+describe("Klap Checkout espera Cardinal antes del pago", () => {
+  it("precarga Songbird y espera la variable global Cardinal", () => {
+    expect(serviceSource).toContain(
+      "export const KLAP_SANDBOX_CARDINAL_URL",
+    );
+    expect(serviceSource).toContain(
+      "export async function preloadKlapCardinal",
+    );
+    expect(serviceSource).toContain(
+      "async function waitForCardinalGlobal",
+    );
+    expect(serviceSource).toContain(
+      "typeof window.Cardinal",
+    );
+  });
+
+  it("prepara Cardinal antes de inicializar Klap", () => {
+    const cardinalIndex = serviceSource.indexOf(
+      "await preloadKlapCardinal();",
+    );
+    const klapIndex = serviceSource.indexOf(
+      "const sdk = await loadKlapCheckoutSdk();",
+    );
+
+    expect(cardinalIndex).toBeGreaterThan(-1);
+    expect(klapIndex).toBeGreaterThan(cardinalIndex);
+  });
+
+  it("deduplica el script Songbird", () => {
+    expect(serviceSource).toContain(
+      'script[data-rapago-klap-cardinal="true"]',
+    );
+    expect(serviceSource).toContain(
+      "data-rapago-klap-cardinal",
+    );
+    expect(serviceSource).toContain(
+      "songbirdstag.cardinalcommerce.com",
+    );
+  });
+});

@@ -10,9 +10,17 @@ export const RAPAGO_PENDING_CARD_PAYMENT_KEY =
 export const KLAP_SANDBOX_SCRIPT_URL =
   "https://pagos-pasarela-sandbox.mcdesaqa.cl/checkout-frictionless/v1/main.min.js";
 
+export const KLAP_SANDBOX_CARDINAL_URL =
+  "https://songbirdstag.cardinalcommerce.com/cardinalcruise/v1/songbird.js";
+
 const ALLOWED_KLAP_SCRIPT_HOSTS = new Set([
   "pagos-pasarela-sandbox.mcdesaqa.cl",
   "pagos.pasarela.multicaja.cl",
+]);
+
+const ALLOWED_CARDINAL_SCRIPT_HOSTS = new Set([
+  "songbirdstag.cardinalcommerce.com",
+  "songbird.cardinalcommerce.com",
 ]);
 
 export type PendingKlapPaymentRecord = {
@@ -56,6 +64,7 @@ type KlapBrowserSdk = {
 declare global {
   interface Window {
     KLAP?: KlapBrowserSdk;
+    Cardinal?: unknown;
   }
 }
 
@@ -184,6 +193,118 @@ function validateKlapScriptUrl(rawUrl: string): string {
   return url.toString();
 }
 
+function cardinalAvailable(): boolean {
+  return (
+    typeof window.Cardinal === "object" ||
+    typeof window.Cardinal === "function"
+  );
+}
+
+function validateCardinalScriptUrl(rawUrl: string): string {
+  let url: URL;
+
+  try {
+    url = new URL(rawUrl);
+  } catch {
+    throw new Error("La URL de seguridad 3DS no es válida.");
+  }
+
+  if (
+    url.protocol !== "https:" ||
+    !ALLOWED_CARDINAL_SCRIPT_HOSTS.has(url.hostname.toLowerCase())
+  ) {
+    throw new Error(
+      "La URL de seguridad 3DS no pertenece a un host permitido.",
+    );
+  }
+
+  return url.toString();
+}
+
+async function waitForCardinalGlobal(timeoutMs = 20_000): Promise<void> {
+  const startedAt = Date.now();
+
+  while (!cardinalAvailable()) {
+    if (Date.now() - startedAt >= timeoutMs) {
+      throw new Error(
+        "Klap no pudo preparar la seguridad 3DS. Cardinal no quedó disponible.",
+      );
+    }
+
+    await new Promise<void>((resolve) => {
+      window.setTimeout(resolve, 100);
+    });
+  }
+}
+
+export async function preloadKlapCardinal(): Promise<void> {
+  if (cardinalAvailable()) return;
+
+  const scriptUrl = validateCardinalScriptUrl(
+    KLAP_SANDBOX_CARDINAL_URL,
+  );
+
+  const existing =
+    document.querySelector<HTMLScriptElement>(
+      'script[data-rapago-klap-cardinal="true"]',
+    ) ??
+    Array.from(document.scripts).find((script) =>
+      /songbird(?:stag)?\.cardinalcommerce\.com/i.test(script.src),
+    );
+
+  const script = existing ?? document.createElement("script");
+
+  if (!existing) {
+    script.src = scriptUrl;
+    script.async = true;
+    script.dataset.rapagoKlapCardinal = "true";
+    document.head.appendChild(script);
+  }
+
+  if (!cardinalAvailable()) {
+    await new Promise<void>((resolve, reject) => {
+      const timeout = window.setTimeout(() => {
+        reject(
+          new Error(
+            "Songbird cargó demasiado lento y no preparó Cardinal.",
+          ),
+        );
+      }, 20_000);
+
+      const finish = (): void => {
+        window.clearTimeout(timeout);
+        resolve();
+      };
+
+      const fail = (): void => {
+        window.clearTimeout(timeout);
+        reject(
+          new Error(
+            "No se pudo cargar la seguridad 3DS de Klap.",
+          ),
+        );
+      };
+
+      if (script.dataset.rapagoKlapCardinalLoaded === "true") {
+        finish();
+        return;
+      }
+
+      script.addEventListener(
+        "load",
+        () => {
+          script.dataset.rapagoKlapCardinalLoaded = "true";
+          finish();
+        },
+        { once: true },
+      );
+      script.addEventListener("error", fail, { once: true });
+    });
+  }
+
+  await waitForCardinalGlobal();
+}
+
 function klapInitAvailable(): boolean {
   return typeof window.KLAP?.init === "function";
 }
@@ -281,6 +402,8 @@ export async function initializeKlapCheckoutOnce(
 
   const promise = (async (): Promise<KlapBrowserSdk> => {
     try {
+      await preloadKlapCardinal();
+
       const sdk = await loadKlapCheckoutSdk();
 
       await Promise.resolve(
