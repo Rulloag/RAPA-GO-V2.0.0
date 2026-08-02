@@ -1891,9 +1891,28 @@ export class PaymentsService {
       };
     }
 
-    const active = await paymentsRepo.findActiveByRideIdAndPurpose(input.rideRequestId, "ride");
+    const active = await paymentsRepo.findActiveByRideIdAndPurpose(
+      input.rideRequestId,
+      "ride",
+    );
 
     if (active) {
+      const activeProvider = normalizePaymentText(active.provider);
+      const activeOrderId = String(active.providerOrderId ?? "").trim();
+
+      // Reabrir el mismo checkout Klap es idempotente: no se crea una segunda
+      // orden ni un segundo cobro cuando el pasajero cerró el modal, recargó
+      // la app o volvió desde Mis Viajes.
+      if (activeProvider === "klap" && activeOrderId) {
+        return {
+          ok: true,
+          paymentId: active.id,
+          provider: "klap",
+          checkoutType: "embedded",
+          publicCheckoutData: { orderId: activeOrderId },
+        };
+      }
+
       return {
         ok: false,
         code: "PAYMENT_ALREADY_EXISTS",

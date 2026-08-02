@@ -218,10 +218,36 @@ describe("PaymentsService.createKlapEmbeddedOrder", () => {
     expect(mockCreate).not.toHaveBeenCalled();
   });
 
-  it("7. an existing active payment blocks duplicate order creation", async () => {
+  it("7. resumes an existing active Klap order without creating a duplicate", async () => {
     setupPassengerAuth();
     mockFindRideById.mockResolvedValue(completedRide);
-    mockFindActiveByRideIdAndPurpose.mockResolvedValue({ id: PAYMENT_ID, status: "processing" });
+    mockFindActiveByRideIdAndPurpose.mockResolvedValue({
+      id: PAYMENT_ID,
+      status: "processing",
+      provider: "klap",
+      providerOrderId: "klap-order-existing",
+    });
+
+    const result = await service.createKlapEmbeddedOrder("tok", { rideRequestId: RIDE_ID });
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.paymentId).toBe(PAYMENT_ID);
+      expect(result.publicCheckoutData.orderId).toBe("klap-order-existing");
+    }
+    expect(mockCreate).not.toHaveBeenCalled();
+    expect(mockCreateEmbeddedOrder).not.toHaveBeenCalled();
+  });
+
+  it("7b. an active payment from another provider still blocks Klap", async () => {
+    setupPassengerAuth();
+    mockFindRideById.mockResolvedValue(completedRide);
+    mockFindActiveByRideIdAndPurpose.mockResolvedValue({
+      id: PAYMENT_ID,
+      status: "processing",
+      provider: "mercadopago",
+      providerOrderId: "mp-order-existing",
+    });
 
     const result = await service.createKlapEmbeddedOrder("tok", { rideRequestId: RIDE_ID });
 

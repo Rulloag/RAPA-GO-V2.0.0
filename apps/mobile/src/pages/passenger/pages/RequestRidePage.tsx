@@ -59,6 +59,14 @@ import {
   type CreateRideInput,
 } from "../../../features/rides/rides.service.js";
 import { walletService } from "../../../features/wallet/wallet.service.js";
+import { KlapCheckoutModal } from "../../../features/payments/KlapCheckoutModal.js";
+import {
+  clearPendingKlapPayment,
+  createKlapEmbeddedOrder,
+  readPendingKlapPayment,
+  savePendingKlapPayment,
+  type PendingKlapPaymentRecord,
+} from "../../../features/payments/klapCheckout.service.js";
 import { RIDE_STATUS_LABEL } from "../shared.js";
 import { getApiOrigin as getConfiguredApiOrigin } from "../../../services/api/apiBaseUrl.js";
 import { preSearchLocationService } from "../../../features/location/preSearchLocation.service.js";
@@ -1383,59 +1391,6 @@ function extractRideRequestIdFromResponse(response: unknown): string | null {
   }
 
   return null;
-}
-
-async function createMercadoPagoCheckout(input: {
-  accessToken: string;
-  rideRequestId: string;
-}): Promise<{ urlPay: string; paymentId: string | null }> {
-  const response = await fetch(`${getRapaGoApiBaseUrl()}/api/payments/create`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${input.accessToken}`,
-    },
-    body: JSON.stringify({
-      rideRequestId: input.rideRequestId,
-    }),
-  });
-
-  const payload = (await response.json().catch(() => ({}))) as Record<string, unknown>;
-
-  if (!response.ok) {
-    const message =
-      typeof payload.message === "string"
-        ? payload.message
-        : typeof payload.error === "string"
-          ? payload.error
-          : "No se pudo iniciar el pago con Mercado Pago.";
-    throw new Error(message);
-  }
-
-  const urlPay =
-    (typeof payload.urlPay === "string" && payload.urlPay.trim()) ||
-    (typeof getNestedUnknown(payload, ["data", "urlPay"]) === "string" &&
-      String(getNestedUnknown(payload, ["data", "urlPay"])).trim()) ||
-    (typeof getNestedUnknown(payload, ["result", "urlPay"]) === "string" &&
-      String(getNestedUnknown(payload, ["result", "urlPay"])).trim()) ||
-    "";
-
-  if (!urlPay) {
-    throw new Error("Mercado Pago no devolvió URL de pago.");
-  }
-
-  const paymentIdValue =
-    payload.paymentId ??
-    getNestedUnknown(payload, ["data", "paymentId"]) ??
-    getNestedUnknown(payload, ["result", "paymentId"]);
-
-  return {
-    urlPay,
-    paymentId:
-      typeof paymentIdValue === "string" && paymentIdValue.trim()
-        ? paymentIdValue.trim()
-        : null,
-  };
 }
 
 type RideMode = "now" | "scheduled";
@@ -7120,6 +7075,79 @@ export default function RequestRidePage(): JSX.Element {
     [history],
   );
 
+  const [klapPayment, setKlapPayment] =
+    useState<PendingKlapPaymentRecord | null>(null);
+
+  const restorePendingKlapPayment = useCallback((): void => {
+    if (!session?.accessToken) return;
+    const pending = readPendingKlapPayment();
+    if (pending) setKlapPayment(pending);
+  }, [session?.accessToken]);
+
+  useEffect(() => {
+    restorePendingKlapPayment();
+    window.addEventListener(
+      "rapago:resume-klap-payment",
+      restorePendingKlapPayment,
+    );
+
+    return () => {
+      window.removeEventListener(
+        "rapago:resume-klap-payment",
+        restorePendingKlapPayment,
+      );
+    };
+  }, [restorePendingKlapPayment]);
+
+  const handleKlapApproved = useCallback(
+    (pending: PendingKlapPaymentRecord): void => {
+      const approvedAt = new Date().toISOString();
+
+      if (pending.scheduledRideMirror) {
+        upsertLocalAdminScheduledRide({
+          ...pending.scheduledRideMirror,
+          serverRideId: pending.rideRequestId,
+          originalRideId: pending.rideRequestId,
+          paymentStatus: "approved",
+          paymentApproved: true,
+          paymentApprovedAt: approvedAt,
+          paymentProvider: "klap",
+        });
+      }
+
+      clearPendingKlapPayment();
+      setKlapPayment(null);
+      window.dispatchEvent(
+        new CustomEvent("rapago:passenger-rides-updated", {
+          detail: {
+            rideId: pending.rideRequestId,
+            source: "klap-payment-approved",
+          },
+        }),
+      );
+      goToTripsAfterRequest(pending.rideRequestId);
+    },
+    [goToTripsAfterRequest],
+  );
+
+  const handleKlapRejected = useCallback(
+    (pending: PendingKlapPaymentRecord, message: string): void => {
+      clearPendingKlapPayment();
+      setKlapPayment(null);
+      setSubmitError(message);
+      goToTripsAfterRequest(pending.rideRequestId);
+    },
+    [goToTripsAfterRequest],
+  );
+
+  const handleCloseKlapCheckout = useCallback(
+    (pending: PendingKlapPaymentRecord): void => {
+      setKlapPayment(null);
+      goToTripsAfterRequest(pending.rideRequestId);
+    },
+    [goToTripsAfterRequest],
+  );
+
   useEffect(() => {
     preSearchLocationService.read();
     return () => preSearchLocationService.clear();
@@ -7965,7 +7993,7 @@ export default function RequestRidePage(): JSX.Element {
     if (method === "card") {
       return cardPaymentAmount != null
         ? `Tarjeta · ${formatCLP(cardPaymentAmount)}`
-        : "Tarjeta · Mercado Pago";
+        : "Tarjeta · Klap";
     }
     return "Pendiente";
   }
@@ -8029,7 +8057,7 @@ export default function RequestRidePage(): JSX.Element {
     if (reservationRequiresCard && method === "cash") {
       setPaymentMethod("card");
       setShowPaymentBox(false);
-      setSubmitError("Todas las reservas se pagan obligatoriamente con tarjeta/Mercado Pago. Si cancelas dentro de los últimos 30 minutos, se descuenta 30% con tope $3.000. El saldo restante se gestiona como devolución al medio de pago original y no se convierte en Beneficios.");
+      setSubmitError("Todas las reservas se pagan obligatoriamente con tarjeta/Klap. Si cancelas dentro de los últimos 30 minutos, se descuenta 30% con tope $3.000. El saldo restante se gestiona como devolución al medio de pago original y no se convierte en Beneficios.");
       return;
     }
 
@@ -8078,7 +8106,7 @@ export default function RequestRidePage(): JSX.Element {
     if (reservationRequiresCard && String(activePaymentMethod) !== "card") {
       setPaymentMethod("card");
       setShowPaymentBox(true);
-      setSubmitError("Todas las reservas deben pagarse obligatoriamente con tarjeta/Mercado Pago. Si cancelas dentro de los últimos 30 minutos, se descuenta 30% con tope $3.000. El saldo restante se gestiona como devolución al medio de pago original y no se convierte en Beneficios.");
+      setSubmitError("Todas las reservas deben pagarse obligatoriamente con tarjeta/Klap. Si cancelas dentro de los últimos 30 minutos, se descuenta 30% con tope $3.000. El saldo restante se gestiona como devolución al medio de pago original y no se convierte en Beneficios.");
       return;
     }
 
@@ -8111,7 +8139,7 @@ export default function RequestRidePage(): JSX.Element {
 
       notes.push(`Forma de pago seleccionada: ${getPaymentLabel(activePaymentMethod)}.`);
       if (reservationRequiresCard) {
-        notes.push("Pago obligatorio para reservas: tarjeta/Mercado Pago.");
+        notes.push("Pago obligatorio para reservas: tarjeta/Klap.");
         notes.push("Gestión reserva: el administrador designa conductor 30 minutos antes del inicio del servicio.");
         notes.push("Política cancelación reserva: desde los últimos 30 minutos previos al inicio se cobra 30% con tope $3.000.");
         notes.push("Si se cancela con tarjeta, la penalización aprobada se descuenta del pago y el saldo restante se gestiona como devolución al medio de pago original. No se convierte en Beneficios ni en saldo transferible.");
@@ -8175,8 +8203,8 @@ export default function RequestRidePage(): JSX.Element {
           notes.push("Gestión: administrador o asignación automática a conductor activo.");
         } else {
           notes.push(`Tipo de reserva: recogida aeropuerto.`);
-          notes.push("Pago obligatorio para reservas: tarjeta/Mercado Pago.");
-          notes.push("Política cancelación reserva: dentro de los últimos 30 minutos se cobra 30% con tope $3.000; el saldo restante se gestiona como devolución al medio de pago original por backend/Mercado Pago.");
+          notes.push("Pago obligatorio para reservas: tarjeta/Klap.");
+          notes.push("Política cancelación reserva: dentro de los últimos 30 minutos se cobra 30% con tope $3.000; el saldo restante se gestiona como devolución al medio de pago original por backend/Klap.");
           notes.push(`Origen automático aeropuerto: ${RAPA_NUI_AIRPORT_DESTINATION.text}.`);
           notes.push(`RAPAGO_AIRPORT_ORIGIN_LAT: ${RAPA_NUI_AIRPORT_DESTINATION.lat}.`);
           notes.push(`RAPAGO_AIRPORT_ORIGIN_LNG: ${RAPA_NUI_AIRPORT_DESTINATION.lng}.`);
@@ -8344,7 +8372,7 @@ export default function RequestRidePage(): JSX.Element {
           finalFareWithExtrasClp: selectedFareAmount,
           airportReservationRequiresCard: isAirportScheduledRide,
           reservationRequiresCard: reservationRequiresCard,
-          paymentRequiredProvider: "mercadopago",
+          paymentRequiredProvider: "klap",
           cardCancellationCreditToWallet: false,
           cardCancellationAdminReviewRequired: reservationRequiresCard && String(activePaymentMethod) === "card",
           cardCancellationCreditName: null,
@@ -8362,7 +8390,7 @@ export default function RequestRidePage(): JSX.Element {
           roundTripReturnPickupRequested: true,
           roundTripReturnPickupAt: returnScheduledAt,
           reservationRequiresCard: true,
-          paymentRequiredProvider: "mercadopago",
+          paymentRequiredProvider: "klap",
           adminAssignmentMode: "manual_or_automatic_active_driver",
           frozenForDrivers: true,
           baseFareBeforeExtrasClp: selectedBaseFareAmount,
@@ -8451,13 +8479,15 @@ export default function RequestRidePage(): JSX.Element {
 
       if (String(activePaymentMethod) === "card" && selectedFareAmount > 0) {
         if (!createdRideId) {
-          throw new Error("El viaje se creó, pero no se pudo obtener el ID para iniciar Mercado Pago.");
+          throw new Error(
+            "El viaje se creó, pero no se pudo obtener el ID para iniciar Klap.",
+          );
         }
 
-        const payment = await createMercadoPagoCheckout({
-          accessToken: session.accessToken,
-          rideRequestId: createdRideId,
-        });
+        const order = await createKlapEmbeddedOrder(
+          session.accessToken,
+          createdRideId,
+        );
 
         if (pendingPassengerChargeTotalClp > 0) {
           markPassengerPendingChargesAppliedToRide(
@@ -8466,32 +8496,28 @@ export default function RequestRidePage(): JSX.Element {
           );
         }
 
-        try {
-          localStorage.setItem(
-            "rapago_pending_card_payment_v1",
-            JSON.stringify({
-              rideRequestId: createdRideId,
-              paymentId: payment.paymentId,
-              amountClp: selectedFareAmount,
-              provider: "mercadopago",
-              createdAt: new Date().toISOString(),
-              originText: resolved.origin.text,
-              destinationText: resolved.destination.text,
-              scheduledRideMirror: pendingScheduledRide
-                ? {
-                    ...pendingScheduledRide,
-                    serverRideId: createdRideId,
-                    originalRideId: createdRideId,
-                    paymentStatus: "pending",
-                  }
-                : null,
-            }),
-          );
-        } catch {
-          // No bloquea la redirección a Mercado Pago.
-        }
+        const pendingKlapPayment: PendingKlapPaymentRecord = {
+          rideRequestId: createdRideId,
+          paymentId: order.paymentId,
+          orderId: order.publicCheckoutData.orderId,
+          amountClp: selectedFareAmount,
+          provider: "klap",
+          createdAt: new Date().toISOString(),
+          originText: resolved.origin.text,
+          destinationText: resolved.destination.text,
+          scheduledRideMirror: pendingScheduledRide
+            ? {
+                ...pendingScheduledRide,
+                serverRideId: createdRideId,
+                originalRideId: createdRideId,
+                paymentStatus: "pending",
+                paymentProvider: "klap",
+              }
+            : null,
+        };
 
-        window.location.href = payment.urlPay;
+        savePendingKlapPayment(pendingKlapPayment);
+        setKlapPayment(pendingKlapPayment);
         return;
       }
 
@@ -8555,7 +8581,7 @@ export default function RequestRidePage(): JSX.Element {
 
         localNotes.push(`Forma de pago seleccionada: ${getPaymentLabel(activePaymentMethod)}.`);
         if (reservationRequiresCard) {
-          localNotes.push("Pago obligatorio para reservas: tarjeta/Mercado Pago.");
+          localNotes.push("Pago obligatorio para reservas: tarjeta/Klap.");
           localNotes.push("Gestión reserva: el administrador designa conductor 30 minutos antes del inicio del servicio.");
           localNotes.push("Política cancelación reserva: desde los últimos 30 minutos previos al inicio se cobra 30% con tope $3.000.");
           localNotes.push("Si se cancela con tarjeta, la penalización aprobada se descuenta del pago y el saldo restante se gestiona como devolución al medio de pago original. No se convierte en Beneficios ni en saldo transferible.");
@@ -8616,8 +8642,8 @@ export default function RequestRidePage(): JSX.Element {
             localNotes.push("Gestión: administrador o asignación automática a conductor activo.");
           } else {
             localNotes.push(`Tipo de reserva: recogida aeropuerto.`);
-            localNotes.push("Pago obligatorio para reservas: tarjeta/Mercado Pago.");
-            localNotes.push("Política cancelación reserva: dentro de los últimos 30 minutos se cobra 30% con tope $3.000; el saldo restante se gestiona como devolución al medio de pago original por backend/Mercado Pago.");
+            localNotes.push("Pago obligatorio para reservas: tarjeta/Klap.");
+            localNotes.push("Política cancelación reserva: dentro de los últimos 30 minutos se cobra 30% con tope $3.000; el saldo restante se gestiona como devolución al medio de pago original por backend/Klap.");
             localNotes.push(`Origen automático aeropuerto: ${RAPA_NUI_AIRPORT_DESTINATION.text}.`);
             localNotes.push(`RAPAGO_AIRPORT_ORIGIN_LAT: ${RAPA_NUI_AIRPORT_DESTINATION.lat}.`);
             localNotes.push(`RAPAGO_AIRPORT_ORIGIN_LNG: ${RAPA_NUI_AIRPORT_DESTINATION.lng}.`);
@@ -8727,7 +8753,7 @@ export default function RequestRidePage(): JSX.Element {
           roundTripReturnPickupAt: selectedRoundTripPromotion ? returnScheduledAt : null,
           airportReservationRequiresCard: isAirportScheduledRide,
           reservationRequiresCard: reservationRequiresCard,
-          paymentRequiredProvider: reservationRequiresCard ? "mercadopago" : null,
+          paymentRequiredProvider: reservationRequiresCard ? "klap" : null,
           cardCancellationCreditToWallet: false,
           cardCancellationAdminReviewRequired: reservationRequiresCard && String(activePaymentMethod) === "card",
           cardCancellationCreditName: null,
@@ -10256,7 +10282,7 @@ return (
                     } as CSSProperties
                   }
                 >
-                  {paymentMethod === "cash" ? "Efectivo seleccionado · continuar" : paymentMethod === "card" ? "Tarjeta seleccionada · Mercado Pago" : "Elegir forma de pago"}
+                  {paymentMethod === "cash" ? "Efectivo seleccionado · continuar" : paymentMethod === "card" ? "Tarjeta seleccionada · Klap" : "Elegir forma de pago"}
                 </IonButton>
               </div>
 
@@ -10281,11 +10307,11 @@ return (
                         ¿Cómo quieres pagar?
                       </div>
                       <div style={{ marginTop: 6, color: "rgba(17,17,17,.66)", fontSize: ".74rem", lineHeight: 1.35, fontWeight: 800 }}>
-                        {reservationRequiresCard ? "Todas las reservas se pagan obligatoriamente con tarjeta. Si cancelas dentro de los últimos 30 minutos, se descuenta 30% con tope $3.000. El saldo restante se devuelve al medio de pago original y no se convierte en Beneficios." : "Elige efectivo al conductor o paga con tarjeta mediante Mercado Pago Checkout Pro."}
+                        {reservationRequiresCard ? "Todas las reservas se pagan obligatoriamente con tarjeta. Si cancelas dentro de los últimos 30 minutos, se descuenta 30% con tope $3.000. El saldo restante se devuelve al medio de pago original y no se convierte en Beneficios." : "Elige efectivo al conductor o paga con tarjeta mediante Klap Checkout Transparente."}
                       </div>
                     </div>
                     <span style={{ borderRadius: 999, padding: "6px 9px", background: "#fff7e8", color: "#9A6A10", fontSize: ".66rem", fontWeight: 950, whiteSpace: "nowrap" }}>
-                      Mercado Pago activo
+                      Klap activo
                     </span>
                   </div>
 
@@ -10352,7 +10378,7 @@ return (
                           <div style={{ fontSize: "1.25rem", lineHeight: 1 }}>💳</div>
                           <div style={{ marginTop: 5, fontSize: ".9rem" }}>Tarjeta</div>
                           <div style={{ marginTop: 3, fontSize: ".72rem", fontWeight: 850, opacity: .72 }}>
-                            Mercado Pago seguro
+                            Klap seguro
                           </div>
                         </div>
                         <div style={{ textAlign: "right" }}>
@@ -10570,6 +10596,14 @@ return (
             }}
           />
         )}
+
+        <KlapCheckoutModal
+          payment={klapPayment}
+          accessToken={session?.accessToken}
+          onApproved={handleKlapApproved}
+          onRejected={handleKlapRejected}
+          onClose={handleCloseKlapCheckout}
+        />
       </IonContent>
     </IonPage>
   );

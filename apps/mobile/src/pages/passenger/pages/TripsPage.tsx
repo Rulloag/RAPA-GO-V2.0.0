@@ -63,6 +63,7 @@ const RAPAGO_PAID_SCHEDULE_MIRROR_KEYS = [
 type PendingCardPaymentRecord = {
   rideRequestId: string;
   paymentId?: string | null;
+  orderId?: string | null;
   amountClp?: number | null;
   provider?: string | null;
   createdAt?: string | null;
@@ -183,6 +184,10 @@ function upsertPaidMirrorIntoStorage(
 
 function activatePaidCardPaymentMirrors(pending: PendingCardPaymentRecord): void {
   const approvedAt = new Date().toISOString();
+  const provider =
+    String(pending.provider ?? "").trim().toLowerCase() === "klap"
+      ? "klap"
+      : "mercadopago";
   const scheduledMirror = pending.scheduledRideMirror;
   const returnMirror = pending.returnPickupRideMirror;
 
@@ -194,7 +199,7 @@ function activatePaidCardPaymentMirrors(pending: PendingCardPaymentRecord): void
       paymentStatus: "approved",
       paymentApproved: true,
       paymentApprovedAt: approvedAt,
-      paymentProvider: "mercadopago",
+      paymentProvider: provider,
     };
 
     for (const key of RAPAGO_PAID_SCHEDULE_MIRROR_KEYS) {
@@ -215,7 +220,7 @@ function activatePaidCardPaymentMirrors(pending: PendingCardPaymentRecord): void
       paymentStatus: "approved",
       paymentApproved: true,
       paymentApprovedAt: approvedAt,
-      paymentProvider: "mercadopago",
+      paymentProvider: provider,
     };
 
     upsertPaidMirrorIntoStorage(LOCAL_PASSENGER_RIDES_KEY, approvedReturnMirror, 40);
@@ -1196,7 +1201,7 @@ function getPassengerRideStartedAtMs(ride: RideRequestData & Record<string, unkn
 
   const isRequestedCardRide =
     effectiveStatus === "requested" &&
-    getRidePaymentMethodLabel(ride.notes).includes("Mercado Pago");
+    getRidePaymentMethodLabel(ride.notes).startsWith("Tarjeta /");
 
   const candidates = [
     ride.searchStartedAt,
@@ -2613,6 +2618,7 @@ function isPassengerCancellationCardPayment(ride: Partial<RideRequestData> & Rec
     text.includes("card") ||
     text.includes("mercadopago") ||
     text.includes("mercado pago") ||
+    text.includes("klap") ||
     text.includes("prontopaga") ||
     text.includes("webpay") ||
     Boolean(ride.paymentId || ride.mercadoPagoPaymentId)
@@ -2645,7 +2651,7 @@ function isPassengerCancellationCardPaymentForRefundAction(
   ride: Partial<RideRequestData> & Record<string, unknown>,
 ): boolean {
   // Regla RAPA GO:
-  // El botón “Cancelar/devolución” es ÚNICAMENTE para tarjeta/Mercado Pago.
+  // El botón “Cancelar/devolución” es únicamente para pagos con tarjeta.
   // Si el viaje fue efectivo, jamás debe aparecer aunque un registro antiguo
   // haya quedado con flags de refund en localStorage.
   if (isPassengerCancellationCashPaymentForRefundAction(ride)) return false;
@@ -2707,7 +2713,7 @@ function buildPassengerCancelledRide(
     cardRefundNotice: isCardPayment
       ? candidateFeeClp > 0
         ? `Tu viaje fue cancelado. La devolución queda pendiente de revisión segura. El cargo referencial de ${formatClp(candidateFeeClp)} no se aplica automáticamente desde el frontend.`
-        : "Tu viaje fue cancelado. La devolución debe ser procesada por backend/Mercado Pago. No ingreses tarjeta, claves ni códigos bancarios."
+        : "Tu viaje fue cancelado. La devolución debe ser procesada por el backend y el proveedor de tarjeta. No ingreses tarjeta, claves ni códigos bancarios."
       : null,
     cardWalletCreditRequested: false,
     cardWalletCreditClp: 0,
@@ -3497,7 +3503,15 @@ function getRideDisplayFareClp(ride: RideRequestData): number | null {
 
 function getRidePaymentMethodLabel(notes: string | null | undefined): string {
   const text = String(notes ?? "").toLowerCase();
-  if (text.includes("tarjeta") || text.includes("prontopaga") || text.includes("mercadopago") || text.includes("mercado pago")) return "Tarjeta / Mercado Pago";
+  if (text.includes("klap")) return "Tarjeta / Klap";
+  if (
+    text.includes("prontopaga") ||
+    text.includes("mercadopago") ||
+    text.includes("mercado pago")
+  ) {
+    return "Tarjeta / Mercado Pago";
+  }
+  if (text.includes("tarjeta")) return "Tarjeta";
   if (text.includes("efectivo")) return "Efectivo";
   return "Pendiente";
 }
@@ -5812,7 +5826,7 @@ function getEffectivePassengerRideStatus(ride: RideRequestData): string {
 }
 
 function getPassengerRideStatusLabel(status: string): string {
-  if (status === "pending_payment") return "En aprobación de Mercado Pago";
+  if (status === "pending_payment") return "En aprobación del pago con tarjeta";
   if (status === "scheduled") return "Agendado";
   if (status === "driver_scheduled") return "Tu conductor fue asignado";
   return RIDE_STATUS_LABEL[status] ?? status;
@@ -5826,7 +5840,7 @@ function getPassengerRideStatusColor(status: string): string {
 }
 
 function rideStatusTitle(status: string, ride?: RideRequestData): string {
-  if (status === "pending_payment") return "Esperando aprobación de Mercado Pago";
+  if (status === "pending_payment") return "Esperando aprobación del pago";
   if (status === "driver_scheduled") return "Tu conductor fue asignado";
   if (status === "scheduled" && ride && isRoundTripReturnPickupRide(ride as RideRequestData & Record<string, unknown>)) return "Agendamiento de recogida";
   if (status === "scheduled") return "Viaje agendado";
@@ -5844,7 +5858,7 @@ function rideStatusSubtitle(ride: RideRequestData): string {
   const effectiveStatus = getEffectivePassengerRideStatus(ride);
 
   if (effectiveStatus === "pending_payment") {
-    return "Mercado Pago está verificando el cobro. Apenas figure como aprobado, la solicitud se enviará automáticamente a los conductores.";
+    return "El proveedor de tarjeta está verificando el cobro. Apenas figure como aprobado, la solicitud se enviará automáticamente a los conductores.";
   }
 
   if (effectiveStatus === "driver_scheduled") {
@@ -7814,7 +7828,7 @@ function buildPassengerCancellationAlertMessage(
     : false;
 
   const paymentNotice = isCardPayment
-    ? " La devolución de tarjeta/Mercado Pago será procesada únicamente por backend/admin."
+    ? " La devolución de tarjeta será procesada únicamente por backend/admin y el proveedor original."
     : "";
 
   if (policy.candidateFeeClp <= 0) {
@@ -7929,6 +7943,7 @@ function PassengerRideCard({
   const fastSearchFeeClp = getPassengerFastSearchFeeClp(ride as RideRequestData & Record<string, unknown>);
   const showFastSearchPrompt = shouldShowPassengerFastSearchPrompt(ride as RideRequestData & Record<string, unknown>, nowMs);
   const fastSearchUsesMercadoPago = paymentLabel.includes("Mercado Pago");
+  const fastSearchUsesKlap = paymentLabel.includes("Klap");
   const cancellationPolicy = getPassengerCancellationPolicyForRide(ride);
   const passengerCancelledChargeClp = Math.max(
     0,
@@ -7972,8 +7987,8 @@ function PassengerRideCard({
                 lineHeight: 1.35,
               }}
             >
-              ⏳ <strong>En espera de aprobación de Mercado Pago.</strong>
-              <br />Mercado Pago está verificando el cobro. Apenas lo apruebe, RAPA GO enviará automáticamente la solicitud a los conductores disponibles.
+              ⏳ <strong>En espera de aprobación del pago.</strong>
+              <br />El proveedor de tarjeta está verificando el cobro. Apenas lo apruebe, RAPA GO enviará automáticamente la solicitud a los conductores disponibles.
             </div>
           )}
 
@@ -8092,8 +8107,8 @@ function PassengerRideCard({
                 lineHeight: 1.35,
               }}
             >
-              💳 Pago con tarjeta/Mercado Pago.
-              <br />La devolución se procesa al medio de pago original mediante backend/Mercado Pago y queda sujeta a revisión administrativa. No se convierte en Beneficios. No entregues claves ni datos de tu tarjeta.
+              💳 Pago con tarjeta.
+              <br />La devolución se procesa al medio de pago original mediante backend y el proveedor de tarjeta y queda sujeta a revisión administrativa. No se convierte en Beneficios. No entregues claves ni datos de tu tarjeta.
               <IonButton
                 expand="block"
                 size="small"
@@ -8280,6 +8295,13 @@ function PassengerRideCard({
                       <button
                         type="button"
                         onClick={() => {
+                          if (fastSearchUsesKlap) {
+                            setFastSearchActionError(
+                              "RapaGo más veloz todavía no está habilitado para pagos Klap. El viaje principal continúa normalmente.",
+                            );
+                            return;
+                          }
+
                           setFastSearchBusy(true);
                           setFastSearchActionError(null);
                           void applyPassengerFastSearchChoice(ride, true, token)
@@ -8308,9 +8330,11 @@ function PassengerRideCard({
                       >
                         {fastSearchBusy
                           ? "Procesando…"
-                          : fastSearchUsesMercadoPago
-                            ? `💳 Pagar ${formatClp(RAPAGO_FAST_SEARCH_FEE_CLP)} con Mercado Pago`
-                            : `⚡ Sí, activar por ${formatClp(RAPAGO_FAST_SEARCH_FEE_CLP)}`}
+                          : fastSearchUsesKlap
+                            ? "No disponible para Klap"
+                            : fastSearchUsesMercadoPago
+                              ? `💳 Pagar ${formatClp(RAPAGO_FAST_SEARCH_FEE_CLP)} con Mercado Pago`
+                              : `⚡ Sí, activar por ${formatClp(RAPAGO_FAST_SEARCH_FEE_CLP)}`}
                       </button>
 
                       <button
@@ -8367,9 +8391,11 @@ function PassengerRideCard({
                         textAlign: "center",
                       }}
                     >
-                      {fastSearchUsesMercadoPago
-                        ? "La prioridad se activará solamente cuando Mercado Pago confirme realmente el pago de $800."
-                        : "Los $800 se sumarán al total en efectivo y el conductor verá el monto actualizado."}
+                      {fastSearchUsesKlap
+                        ? "El backend Klap actual solo procesa el pago principal del viaje; no se generará un cobro adicional de Mercado Pago."
+                        : fastSearchUsesMercadoPago
+                          ? "La prioridad se activará solamente cuando Mercado Pago confirme realmente el pago de $800."
+                          : "Los $800 se sumarán al total en efectivo y el conductor verá el monto actualizado."}
                     </div>
                   </div>
                 )}
@@ -8545,11 +8571,15 @@ function PassengerRideCard({
                 </div>
               )}
               <div style={{ marginTop: 3, fontSize: ".72rem", color: "rgba(17,17,17,.60)", lineHeight: 1.25 }}>
-                {paymentLabel.includes("Mercado Pago")
+                {paymentLabel.includes("Klap")
                   ? effectiveStatus === "pending_payment"
-                    ? "Pago en proceso de aprobación por Mercado Pago. No vuelvas a pagar; la solicitud se habilitará automáticamente."
-                    : "Pago con tarjeta validado por Mercado Pago y el backend de RAPA GO."
-                  : "Este es el valor que pagarás al finalizar el viaje."}
+                    ? "Pago en proceso de aprobación por Klap. No vuelvas a pagar; la solicitud se habilitará automáticamente."
+                    : "Pago con tarjeta validado por Klap y el backend de RAPA GO."
+                  : paymentLabel.includes("Mercado Pago")
+                    ? effectiveStatus === "pending_payment"
+                      ? "Pago histórico en proceso de aprobación por Mercado Pago."
+                      : "Pago histórico validado por Mercado Pago y el backend de RAPA GO."
+                    : "Este es el valor que pagarás al finalizar el viaje."}
               </div>
             </div>
           )}
@@ -8769,6 +8799,7 @@ export default function TripsPage(): JSX.Element {
   const [, setKnownAssignedRideIds] = useState<Set<string>>(new Set());
   const [tripSafetyReportsRevision, setTripSafetyReportsRevision] = useState(0);
   const [paymentReturnMessage, setPaymentReturnMessage] = useState<PaymentReturnMessage | null>(null);
+  const [canResumeKlapPayment, setCanResumeKlapPayment] = useState(false);
   const loadRidesInFlightRef = useRef(false);
 
   const loadRides = useCallback(async (options?: { silent?: boolean }) => {
@@ -8924,6 +8955,94 @@ export default function TripsPage(): JSX.Element {
           pending?.paymentId ??
           "",
       ).trim();
+
+      if (
+        accessToken &&
+        pending &&
+        String(pending.provider ?? "").trim().toLowerCase() === "klap"
+      ) {
+        const paymentId = String(pending.paymentId ?? "").trim();
+        setCanResumeKlapPayment(true);
+        setPaymentReturnMessage({
+          tone: "checking",
+          title: "Verificando pago con Klap",
+          body: "RAPA GO está esperando la confirmación segura del backend. No vuelvas a pagar.",
+        });
+
+        if (!paymentId) {
+          setPaymentReturnMessage({
+            tone: "rejected",
+            title: "Pago Klap incompleto",
+            body: "No encontramos el identificador del pago. Comunícate con soporte antes de crear otra solicitud.",
+          });
+          return;
+        }
+
+        for (let attempt = 0; attempt < 15 && !disposed; attempt += 1) {
+          try {
+            const statusData = await walletService.getPaymentStatus(
+              accessToken,
+              paymentId,
+            );
+            const status = String(statusData.status ?? "")
+              .trim()
+              .toLowerCase();
+
+            if (status === "success") {
+              activatePaidCardPaymentMirrors(pending);
+              clearPendingCardPayment();
+              cleanPaymentReturnQuery();
+              setCanResumeKlapPayment(false);
+              setPaymentReturnMessage({
+                tone: "approved",
+                title: "Pago Klap aprobado",
+                body: "El backend confirmó el cobro y la solicitud quedó habilitada para continuar.",
+              });
+              await loadRides();
+              return;
+            }
+
+            if (["rejected", "failed", "refunded"].includes(status)) {
+              clearPendingCardPayment();
+              cleanPaymentReturnQuery();
+              setCanResumeKlapPayment(false);
+              setPaymentReturnMessage({
+                tone: "rejected",
+                title: "Pago Klap no aprobado",
+                body: "Klap informó que el pago fue rechazado, cancelado o no pudo completarse.",
+              });
+              await loadRides();
+              return;
+            }
+
+            setPaymentReturnMessage({
+              tone: attempt < 5 ? "checking" : "pending",
+              title: attempt < 5 ? "Confirmando tu pago Klap" : "Pago Klap pendiente",
+              body: "La solicitud seguirá bloqueada hasta que el webhook de Klap confirme el pago.",
+            });
+          } catch {
+            setPaymentReturnMessage({
+              tone: "pending",
+              title: "No pudimos confirmar Klap todavía",
+              body: "Puedes continuar el checkout o revisar más tarde. No vuelvas a crear otro pago.",
+            });
+          }
+
+          if (attempt < 14 && !disposed) await wait(2000);
+        }
+
+        if (!disposed) {
+          setPaymentReturnMessage({
+            tone: "pending",
+            title: "Pago Klap aún pendiente",
+            body: "Continúa el checkout de Klap o vuelve a revisar Mis Viajes más tarde.",
+          });
+          setCanResumeKlapPayment(true);
+        }
+        return;
+      }
+
+      setCanResumeKlapPayment(false);
 
       // La URL de retorno no es autoridad. Se envía el payment_id al backend,
       // que consulta directamente la API de Mercado Pago y verifica:
@@ -9245,7 +9364,7 @@ export default function TripsPage(): JSX.Element {
       message: [
         "Tu viaje fue cancelado correctamente.",
         "",
-        "Como el pago fue con tarjeta/Mercado Pago, el saldo restante se gestiona como devolución al medio de pago original mediante backend/Mercado Pago. No se convierte en Beneficios. Esta opción no aplica para efectivo.",
+        "Como el pago fue con tarjeta, el saldo restante se gestiona como devolución al medio de pago original mediante backend y el proveedor original. No se convierte en Beneficios. Esta opción no aplica para efectivo.",
         "",
         "No debes ingresar tarjeta, claves ni códigos bancarios.",
         "",
@@ -9822,6 +9941,21 @@ export default function TripsPage(): JSX.Element {
               <div style={{ marginTop: 4, fontSize: ".8rem", lineHeight: 1.4 }}>
                 {paymentReturnMessage.body}
               </div>
+              {canResumeKlapPayment && (
+                <IonButton
+                  size="small"
+                  color="warning"
+                  style={{ "--border-radius": "999px", marginTop: 8, fontWeight: 950 } as CSSProperties}
+                  onClick={() => {
+                    window.dispatchEvent(
+                      new CustomEvent("rapago:resume-klap-payment"),
+                    );
+                    history.push(ROUTES.PASSENGER.REQUEST_RIDE);
+                  }}
+                >
+                  Continuar pago con Klap
+                </IonButton>
+              )}
               {paymentReturnMessage.tone !== "checking" && (
                 <IonButton
                   size="small"
