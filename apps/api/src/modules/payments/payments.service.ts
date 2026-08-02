@@ -3,11 +3,19 @@ import { TokenService } from "../auth/token.service.js";
 import { SessionService } from "../auth/session.service.js";
 import { UsersRepository } from "../users/users.repository.js";
 import { PaymentsRepository, type PaymentPurpose } from "./payments.repository.js";
-import { getActiveProvider, getProvider } from "./provider.registry.js";
+import { getActiveProvider, getProvider, getKlapEmbeddedProvider } from "./provider.registry.js";
 import { AuditService } from "../audit/audit.service.js";
 import { AppError } from "../../shared/errors/AppError.js";
-import type { CreatePaymentInput } from "./payments.schema.js";
+import { klapConfirmWebhookSchema, klapRejectWebhookSchema } from "./payments.schema.js";
+import type {
+  CreatePaymentInput,
+  CreateKlapEmbeddedOrderInput,
+  KlapConfirmWebhookBody,
+  KlapRejectWebhookBody,
+} from "./payments.schema.js";
 import type { NormalizedWebhook } from "./payment.provider.js";
+import { KlapProviderError } from "./klap.types.js";
+import { verifyKlapWebhookApikey } from "./klap.provider.js";
 
 const tokenService = new TokenService();
 const sessionService = new SessionService();
@@ -1046,7 +1054,448 @@ async function reconcileStoredMercadoPagoPayment(
   };
 }
 
+// ── Klap confirm/reject webhooks (Fase C) ──────────────────────────────────────
+//
+// Deliberately NOT reusing the generic multi-provider `handleWebhook()` above:
+// Klap documents two distinct endpoints/payloads (confirm, reject), not one
+// event with a unified `status` field like Mercado Pago/ProntoPaga. Klap is
+// also not registered in `provider.registry.ts`'s `getProvider()` map, so
+// `handleWebhook("klap", ...)` is unreachable by design — these dedicated
+// methods are the only path to Klap's webhooks.
+//
+// POLÍTICA DE REINTENTOS KLAP: NO DOCUMENTADA. The reviewed OAS/manual does not
+// specify retry count, interval, backoff, or delivery order — every method
+// below assumes duplicates and out-of-order delivery are possible and normal.
+
+const KLAP_WEBHOOK_TERMINAL_STATUSES = new Set(["rejected", "failed", "refunded"]);
+
+/** Strips control characters and bounds length — defensive even after Zod's own limits. */
+function sanitizeKlapWebhookText(value: string | undefined, maxLength: number): string | null {
+  if (!value) return null;
+  const controlChars = new RegExp("[\\u0000-\\u001F\\u007F]", "g");
+  const cleaned = value.replace(controlChars, " ").replace(/\s+/g, " ").trim();
+  return cleaned.length > 0 ? cleaned.slice(0, maxLength) : null;
+}
+
+/**
+ * Strict CLP integer parsing for Klap's `amount` field (string or number per
+ * the confirmed payload). Rejects NaN, decimals, negative values, and zero.
+ */
+function parseKlapWebhookAmountClp(raw: string | number): number | null {
+  if (typeof raw === "number") {
+    return Number.isInteger(raw) && raw > 0 ? raw : null;
+  }
+  const trimmed = raw.trim();
+  if (!/^\d+$/.test(trimmed)) return null; // digits only — no sign, no decimal point
+  const parsed = Number(trimmed);
+  return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : null;
+}
+
 export class PaymentsService {
+  /**
+   * POST /webhooks/klap/confirm
+   *
+   * Never marks a payment success from anything other than this authenticated,
+   * server-validated event — never from a frontend callback, return_url visit,
+   * or the order-creation response. Responds quickly: only signature check,
+   * payload validation, an idempotent claim, and one atomic status transition
+   * happen before returning — no email/PDF/push/Sentry-with-payload/external
+   * calls of any kind.
+   */
+  async handleKlapConfirmWebhook(
+    rawBody: unknown,
+    headers: Record<string, string>,
+  ): Promise<Result<{ status: "ok" }>> {
+    // Orden obligatorio (Fase C.1): schema → firma → buscar payment → verificar
+    // identidad → validar método → validar monto → recién ahí eventKey/claim →
+    // transición → responder. Una discrepancia financiera/contractual NUNCA
+    // llega a construir un eventKey ni a reclamar payment_webhook_events — así
+    // una entrega posterior corregida por Klap se revalida desde cero en vez de
+    // quedar bloqueada por un evento previo marcado "processed" por error.
+    const parsed = klapConfirmWebhookSchema.safeParse(rawBody);
+    if (!parsed.success) {
+      return {
+        ok: false,
+        code: "VALIDATION_ERROR",
+        message: "Invalid Klap confirm webhook payload.",
+        statusCode: 400,
+      };
+    }
+    const body: KlapConfirmWebhookBody = parsed.data;
+
+    if (!verifyKlapWebhookApikey(body.order_id, body.reference_id, headers["apikey"])) {
+      auditService.recordSafe({
+        eventType: "payment.webhook_invalid_signature",
+        entityType: "payment",
+        metadata: { provider: "klap", action: "confirm" } as Record<string, string>,
+      });
+      return {
+        ok: false,
+        code: "WEBHOOK_INVALID_SIGNATURE",
+        message: "Invalid webhook signature.",
+        statusCode: 401,
+      };
+    }
+
+    const payment = await paymentsRepo.findByProviderOrderId(body.order_id);
+
+    if (!payment || payment.provider !== "klap") {
+      // Deliberately not 2xx: a confirm for an order_id we never created must
+      // not be silently acknowledged as if it were a known, valid duplicate.
+      // 404 is the safer signal here (see Fase C/C.1 report for the tradeoff
+      // against Klap's possible automatic reversal on non-2xx).
+      return {
+        ok: false,
+        code: "NOT_FOUND",
+        message: "Payment not found.",
+        statusCode: 404,
+      };
+    }
+
+    if (payment.id !== body.reference_id) {
+      auditService.recordSafe({
+        actorUserId: payment.passengerUserId,
+        eventType: "payment.klap_reference_mismatch",
+        entityType: "payment",
+        entityId: payment.id,
+        metadata: { action: "confirm", provider: "klap" },
+      });
+      return {
+        ok: false,
+        code: "PAYMENT_MISMATCH",
+        message: "order_id and reference_id do not match the same payment.",
+        statusCode: 409,
+      };
+    }
+
+    // Already terminal (rejected/failed/refunded): do not invent a
+    // confirm-after-reject transition. Genuinely a late/duplicate delivery —
+    // no financial re-validation needed, ack without touching payment_webhook_events.
+    if (KLAP_WEBHOOK_TERMINAL_STATUSES.has(payment.status)) {
+      auditService.recordSafe({
+        actorUserId: payment.passengerUserId,
+        eventType: "payment.klap_confirm_after_terminal_status",
+        entityType: "payment",
+        entityId: payment.id,
+        metadata: { previousStatus: payment.status },
+      });
+      return { ok: true, status: "ok" };
+    }
+
+    // Already success: valid duplicate confirm for the same transaction — no
+    // repeated transition/effects, no need to re-validate method/amount.
+    if (payment.status === "success") {
+      return { ok: true, status: "ok" };
+    }
+
+    if (body.payment_method !== "tarjetas") {
+      auditService.recordSafe({
+        actorUserId: payment.passengerUserId,
+        eventType: "payment.klap_unexpected_payment_method",
+        entityType: "payment",
+        entityId: payment.id,
+        metadata: { paymentMethod: body.payment_method },
+      });
+      return {
+        ok: false,
+        code: "UNSUPPORTED_PAYMENT_METHOD",
+        message: "Unsupported payment method for this integration.",
+        statusCode: 422,
+      };
+    }
+
+    const paidAmountClp = parseKlapWebhookAmountClp(body.amount);
+    const expectedAmountClp = Math.round(Number(payment.amountClp));
+
+    if (paidAmountClp == null || paidAmountClp !== expectedAmountClp) {
+      auditService.recordSafe({
+        actorUserId: payment.passengerUserId,
+        eventType: "payment.amount_mismatch",
+        entityType: "payment",
+        entityId: payment.id,
+        metadata: {
+          rideId: payment.rideRequestId,
+          expectedAmountClp,
+          paidAmountClp: paidAmountClp ?? "invalid",
+          provider: "klap",
+        },
+      });
+      // Does not mark success, does not reject either — no confirmed rule for
+      // auto-rejecting Klap on mismatch. Never claims an idempotency event for
+      // this delivery, so a corrected redelivery is revalidated from scratch.
+      return {
+        ok: false,
+        code: "AMOUNT_MISMATCH",
+        message: "Confirmed amount does not match the authoritative payment amount.",
+        statusCode: 409,
+      };
+    }
+
+    // Only past this point — everything financially/contractually valid — do
+    // we build an eventKey and claim idempotency, guarding solely the actual
+    // success transition against concurrent/duplicate valid deliveries.
+    const payloadHash = crypto.createHash("sha256").update(stableJson(body)).digest("hex");
+    const eventKey = `klap:confirm:${body.order_id}:${body.reference_id}:${body.mc_code ?? payloadHash}`;
+
+    const claimed = await paymentsRepo.claimWebhookEvent({
+      provider: "klap",
+      eventKey,
+      payloadHash,
+      payload: {
+        order_id: body.order_id,
+        reference_id: body.reference_id,
+        payment_method: body.payment_method,
+        transaction_type: body.transaction_type,
+        // amount/mc_code/card_type/brand/last_digits/quotas kept — never
+        // token_id, never bin, never the raw request body.
+        amount: body.amount,
+        mc_code: body.mc_code ?? null,
+        card_type: body.card_type ?? null,
+        brand: body.brand ?? null,
+        last_digits: body.last_digits ?? null,
+        quotas_number: body.quotas_number ?? null,
+        quotas_type: body.quotas_type ?? null,
+        wallet: body.wallet ?? null,
+      },
+      requestId: null,
+      action: "confirm",
+      status: "processing",
+      updatedAt: new Date(),
+    });
+
+    if (!claimed.claimed) {
+      return { ok: true, status: "ok" };
+    }
+
+    const eventId = claimed.event.id;
+
+    try {
+      await paymentsRepo.markSuccessAndActivateRide({
+        id: payment.id,
+        rideRequestId: payment.rideRequestId,
+        externalId: body.order_id,
+        providerPayload: {
+          order_id: body.order_id,
+          reference_id: body.reference_id,
+          payment_method: body.payment_method,
+          transaction_type: body.transaction_type,
+        },
+      });
+
+      auditService.recordSafe({
+        actorUserId: payment.passengerUserId,
+        eventType: "payment.success",
+        entityType: "payment",
+        entityId: payment.id,
+        metadata: {
+          rideId: payment.rideRequestId,
+          amountClp: payment.amountClp,
+          provider: "klap",
+        },
+      });
+
+      await paymentsRepo.completeWebhookEvent({
+        id: eventId,
+        paymentId: payment.id,
+        providerPaymentId: payment.providerPaymentId ?? null,
+        action: "confirm",
+      });
+      return { ok: true, status: "ok" };
+    } catch (error) {
+      await paymentsRepo.failWebhookEvent(eventId, String(error));
+      auditService.recordSafe({
+        eventType: "payment.webhook_processing_error",
+        entityType: "payment",
+        metadata: { provider: "klap", action: "confirm", error: String(error) } as Record<
+          string,
+          string
+        >,
+      });
+      return {
+        ok: false,
+        code: "WEBHOOK_PROVIDER_ERROR",
+        message: "Could not process payment webhook.",
+        statusCode: 500,
+      };
+    }
+  }
+
+  /**
+   * POST /webhooks/klap/reject
+   */
+  async handleKlapRejectWebhook(
+    rawBody: unknown,
+    headers: Record<string, string>,
+  ): Promise<Result<{ status: "ok" }>> {
+    const parsed = klapRejectWebhookSchema.safeParse(rawBody);
+    if (!parsed.success) {
+      return {
+        ok: false,
+        code: "VALIDATION_ERROR",
+        message: "Invalid Klap reject webhook payload.",
+        statusCode: 400,
+      };
+    }
+    const body: KlapRejectWebhookBody = parsed.data;
+
+    if (!verifyKlapWebhookApikey(body.order_id, body.reference_id, headers["apikey"])) {
+      auditService.recordSafe({
+        eventType: "payment.webhook_invalid_signature",
+        entityType: "payment",
+        metadata: { provider: "klap", action: "reject" } as Record<string, string>,
+      });
+      return {
+        ok: false,
+        code: "WEBHOOK_INVALID_SIGNATURE",
+        message: "Invalid webhook signature.",
+        statusCode: 401,
+      };
+    }
+
+    const sanitizedCode = sanitizeKlapWebhookText(body.code, 64);
+    const sanitizedMessage = sanitizeKlapWebhookText(body.message, 255);
+
+    const payment = await paymentsRepo.findByProviderOrderId(body.order_id);
+
+    if (!payment || payment.provider !== "klap") {
+      return {
+        ok: false,
+        code: "NOT_FOUND",
+        message: "Payment not found.",
+        statusCode: 404,
+      };
+    }
+
+    if (payment.id !== body.reference_id) {
+      auditService.recordSafe({
+        actorUserId: payment.passengerUserId,
+        eventType: "payment.klap_reference_mismatch",
+        entityType: "payment",
+        entityId: payment.id,
+        metadata: { action: "reject", provider: "klap" },
+      });
+      return {
+        ok: false,
+        code: "PAYMENT_MISMATCH",
+        message: "order_id and reference_id do not match the same payment.",
+        statusCode: 409,
+      };
+    }
+
+    // Already success: never degrade automatically. A reject arriving after a
+    // confirmed success is a real state conflict, not a duplicate — it must
+    // not be acknowledged as if the reject had been applied.
+    if (payment.status === "success") {
+      auditService.recordSafe({
+        actorUserId: payment.passengerUserId,
+        eventType: "payment.klap_reject_after_success",
+        entityType: "payment",
+        entityId: payment.id,
+        metadata: { code: sanitizedCode ?? "none" },
+      });
+      return {
+        ok: false,
+        code: "STATE_CONFLICT",
+        message: "Payment is already confirmed as successful.",
+        statusCode: 409,
+      };
+    }
+
+    // Already rejected/failed/refunded: genuine duplicate/late reject, no
+    // financial re-validation needed, no repeated transition.
+    if (KLAP_WEBHOOK_TERMINAL_STATUSES.has(payment.status)) {
+      return { ok: true, status: "ok" };
+    }
+
+    // Only past this point do we build an eventKey and claim idempotency,
+    // guarding solely the actual reject transition against concurrent/duplicate
+    // valid deliveries.
+    const payloadHash = crypto
+      .createHash("sha256")
+      .update(stableJson({ ...body, code: sanitizedCode, message: sanitizedMessage }))
+      .digest("hex");
+    const eventKey = `klap:reject:${body.order_id}:${body.reference_id}:${sanitizedCode ?? "none"}:${payloadHash}`;
+
+    const claimed = await paymentsRepo.claimWebhookEvent({
+      provider: "klap",
+      eventKey,
+      payloadHash,
+      payload: {
+        order_id: body.order_id,
+        reference_id: body.reference_id,
+        code: sanitizedCode,
+        message: sanitizedMessage,
+      },
+      requestId: null,
+      action: "reject",
+      status: "processing",
+      updatedAt: new Date(),
+    });
+
+    if (!claimed.claimed) {
+      return { ok: true, status: "ok" };
+    }
+
+    const eventId = claimed.event.id;
+
+    try {
+      await paymentsRepo.markRejected(payment.id, {
+        order_id: body.order_id,
+        reference_id: body.reference_id,
+        code: sanitizedCode,
+        message: sanitizedMessage,
+      });
+
+      const paymentPurpose = getPaymentPurpose(payment.paymentPurpose);
+      if (paymentPurpose === "ride") {
+        try {
+          await cancelRideAfterRejectedPayment(
+            payment.rideRequestId,
+            "Pago rechazado por Klap.",
+          );
+        } catch {
+          // El viaje permanece pending_payment y no se publica.
+        }
+      }
+
+      auditService.recordSafe({
+        actorUserId: payment.passengerUserId,
+        eventType: "payment.rejected",
+        entityType: "payment",
+        entityId: payment.id,
+        metadata: {
+          rideId: payment.rideRequestId,
+          provider: "klap",
+          code: sanitizedCode ?? "none",
+        },
+      });
+
+      await paymentsRepo.completeWebhookEvent({
+        id: eventId,
+        paymentId: payment.id,
+        providerPaymentId: payment.providerPaymentId ?? null,
+        action: "reject",
+      });
+      return { ok: true, status: "ok" };
+    } catch (error) {
+      await paymentsRepo.failWebhookEvent(eventId, String(error));
+      auditService.recordSafe({
+        eventType: "payment.webhook_processing_error",
+        entityType: "payment",
+        metadata: { provider: "klap", action: "reject", error: String(error) } as Record<
+          string,
+          string
+        >,
+      });
+      return {
+        ok: false,
+        code: "WEBHOOK_PROVIDER_ERROR",
+        message: "Could not process payment webhook.",
+        statusCode: 500,
+      };
+    }
+  }
+
   async createPayment(
     accessToken: string,
     input: CreatePaymentInput,
@@ -1350,6 +1799,205 @@ export class PaymentsService {
       paymentId: payment.id,
       paymentPurpose,
       activated: false,
+    };
+  }
+
+  /**
+   * Klap Checkout Transparente — Sandbox-only embedded order creation (Fase D).
+   *
+   * Separate from `createPayment()` above on purpose: Klap is embedded, not
+   * redirect-based (see the discriminated-union note in payment.provider.ts), and
+   * is not wired into `getActiveProvider()`/`PAYMENT_PROVIDER` — reaching it
+   * requires this method specifically, called from its own dedicated route.
+   *
+   * Creating the order here is NOT a successful payment. The local `payments` row
+   * stays in the same "processing" state Mercado Pago/ProntoPaga use right after
+   * creating their checkout (pending confirmation) — the ride is never activated,
+   * no receipt is generated, Wallet is never touched, and no success notification
+   * is sent. Real financial confirmation is exclusively the webhook's job, to be
+   * implemented in a later phase.
+   */
+  async createKlapEmbeddedOrder(
+    accessToken: string,
+    input: CreateKlapEmbeddedOrderInput,
+  ): Promise<Result<{
+    paymentId: string;
+    provider: "klap";
+    checkoutType: "embedded";
+    publicCheckoutData: { orderId: string };
+  }>> {
+    const auth = await authenticate(accessToken);
+    if (!auth.ok) return auth;
+
+    if (!canCreatePassengerPayment(auth.user)) {
+      return {
+        ok: false,
+        code: "AUTH_FORBIDDEN",
+        message:
+          "Solo pasajeros, conductores aprobados usando vista pasajero o administradores pueden crear pagos.",
+        statusCode: 403,
+      };
+    }
+
+    const { RidesRepository } = await import("../rides/rides.repository.js");
+    const ridesRepo = new RidesRepository();
+    const ride = await ridesRepo.findById(input.rideRequestId);
+
+    if (!ride) {
+      return {
+        ok: false,
+        code: "NOT_FOUND",
+        message: "Ride request not found.",
+        statusCode: 404,
+      };
+    }
+
+    const isAdmin =
+      normalizePaymentText(auth.role) === "admin" ||
+      normalizePaymentText(auth.role) === "administrator";
+
+    if (!isAdmin && ride.passengerUserId !== auth.userId) {
+      return {
+        ok: false,
+        code: "AUTH_FORBIDDEN",
+        message: "This ride does not belong to you.",
+        statusCode: 403,
+      };
+    }
+
+    if (!PAYMENT_ALLOWED_RIDE_STATUSES.has(String(ride.status ?? ""))) {
+      return {
+        ok: false,
+        code: "PAYMENT_RIDE_STATUS_NOT_ALLOWED",
+        message:
+          "Payment can only be initiated for an active, scheduled, in-progress or completed ride.",
+        statusCode: 409,
+      };
+    }
+
+    // Sandbox-only, "ride" purpose only in this phase — fast_search/cash branches
+    // are intentionally out of scope for the Klap embedded flow (Fase D).
+    const successful = await paymentsRepo.findSuccessfulByRideIdAndPurpose(
+      input.rideRequestId,
+      "ride",
+    );
+
+    if (successful) {
+      return {
+        ok: false,
+        code: "PAYMENT_ALREADY_PAID",
+        message: "Este viaje ya tiene un pago aprobado.",
+        statusCode: 409,
+      };
+    }
+
+    const active = await paymentsRepo.findActiveByRideIdAndPurpose(input.rideRequestId, "ride");
+
+    if (active) {
+      return {
+        ok: false,
+        code: "PAYMENT_ALREADY_EXISTS",
+        message: "A payment for this ride is already pending or processing.",
+        statusCode: 409,
+      };
+    }
+
+    // Authoritative amount — computed server-side from the ride record, exactly
+    // like createPayment() above. The request body has no amount field at all
+    // (see createKlapEmbeddedOrderSchema): there is nothing for the client to
+    // manipulate here even in principle.
+    const amountClp = Math.max(0, Math.round(Number(ride.estimatedFareClp ?? 0)));
+
+    if (!Number.isInteger(amountClp) || amountClp <= 0) {
+      return {
+        ok: false,
+        code: "PAYMENT_INVALID_AMOUNT",
+        message: "Ride has no valid fare amount.",
+        statusCode: 422,
+      };
+    }
+
+    const user = await usersRepo.findById(auth.userId);
+
+    const payment = await paymentsRepo.create({
+      rideRequestId: ride.id,
+      passengerUserId: auth.userId,
+      amountClp,
+      paymentPurpose: "ride",
+      status: "pending",
+      provider: "klap",
+    });
+
+    const webhookBaseUrl = process.env["PAYMENT_WEBHOOK_BASE_URL"] ?? "";
+    const provider = getKlapEmbeddedProvider();
+
+    let embeddedResult;
+
+    try {
+      embeddedResult = await provider.createEmbeddedOrder({
+        orderId: payment.id,
+        amountClp,
+        description: `Viaje Rapa Go — ${ride.originText} → ${ride.destinationText}`,
+        passengerEmail: user?.email ?? "",
+        passengerName: user?.name ?? "Pasajero",
+        // Not read by KlapProvider.createEmbeddedOrder today (Checkout Transparente
+        // does not redirect); kept consistent with the other providers' call shape
+        // in case a confirmed schema field needs them in a later phase.
+        returnUrl: buildPaymentReturnUrl("klap"),
+        webhookUrl: `${webhookBaseUrl.replace(/\/+$/, "")}/api/payments/webhook/klap`,
+      });
+    } catch (err) {
+      await paymentsRepo.markFailed(payment.id);
+
+      // Timeout/network/http_rejected all land here without a second automatic
+      // attempt — the local payment stays "failed" and reconciliable; the caller
+      // must explicitly retry (which creates a new payment row with a new
+      // deterministic Idempotency-Key), never an implicit second order.
+      auditService.recordSafe({
+        actorUserId: auth.userId,
+        eventType: "payment.klap_provider_error",
+        entityType: "payment",
+        entityId: payment.id,
+        metadata: {
+          errorKind: err instanceof KlapProviderError ? err.kind : "unknown",
+          rideId: ride.id,
+          provider: "klap",
+          actorRole: auth.role,
+        },
+      });
+
+      return {
+        ok: false,
+        code: "PAYMENT_PROVIDER_ERROR",
+        message: "No se pudo iniciar el pago con Klap. Intenta nuevamente.",
+        statusCode: 502,
+      };
+    }
+
+    // Klap has no redirect URL — `markEmbeddedProcessing` has no urlPay parameter
+    // at all, so this row's `url_pay` column is persisted as genuine NULL, never
+    // an empty string. The API response below never includes `urlPay` in any form.
+    await paymentsRepo.markEmbeddedProcessing(payment.id, embeddedResult.providerOrderId);
+
+    auditService.recordSafe({
+      actorUserId: auth.userId,
+      eventType: "payment.klap_order_created",
+      entityType: "payment",
+      entityId: payment.id,
+      metadata: {
+        rideId: ride.id,
+        amountClp,
+        provider: "klap",
+        actorRole: auth.role,
+      },
+    });
+
+    return {
+      ok: true,
+      paymentId: payment.id,
+      provider: "klap",
+      checkoutType: "embedded",
+      publicCheckoutData: embeddedResult.publicCheckoutData,
     };
   }
 

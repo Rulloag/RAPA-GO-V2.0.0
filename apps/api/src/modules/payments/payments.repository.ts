@@ -147,6 +147,28 @@ export class PaymentsRepository {
     return row!;
   }
 
+  /**
+   * Same "processing" transition as `markProcessing()` above, for providers with
+   * no checkout URL at all (Klap Checkout Transparente). `urlPay` has no
+   * parameter here — not `string | null`, not optional — so an embedded provider
+   * has no way, even by mistake, to pass a fake or empty-string URL through this
+   * method. The column is genuinely NULL for these rows, not `""`.
+   */
+  async markEmbeddedProcessing(id: string, providerOrderId: string): Promise<Payment> {
+    const [row] = await db
+      .update(payments)
+      .set({
+        status: "processing",
+        urlPay: null,
+        providerOrderId,
+        updatedAt: new Date(),
+      })
+      .where(eq(payments.id, id))
+      .returning();
+
+    return row!;
+  }
+
   async markFailed(id: string): Promise<Payment> {
     const [row] = await db
       .update(payments)

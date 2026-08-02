@@ -2,6 +2,7 @@ import type { FastifyRequest, FastifyReply } from "fastify";
 import { PaymentsService } from "./payments.service.js";
 import {
   createPaymentSchema,
+  createKlapEmbeddedOrderSchema,
   reconcileMercadoPagoPaymentSchema,
   prontoPagaWebhookSchema,
   mercadoPagoWebhookSchema,
@@ -14,6 +15,32 @@ function extractBearer(request: FastifyRequest): string | null {
   const auth = request.headers["authorization"];
   if (!auth || !auth.startsWith("Bearer ")) return null;
   return auth.slice(7);
+}
+
+/**
+ * Maps a PaymentsService.Result error code to Klap's own documented response
+ * vocabulary (Fase C.1). Never falls through to leaking `result.message` —
+ * unmapped codes get the generic "error" string.
+ */
+function klapWebhookErrorStatus(code: string): string {
+  switch (code) {
+    case "VALIDATION_ERROR":
+      return "invalid_request";
+    case "WEBHOOK_INVALID_SIGNATURE":
+      return "unauthorized";
+    case "NOT_FOUND":
+      return "not_found";
+    case "PAYMENT_MISMATCH":
+      return "payment_mismatch";
+    case "AMOUNT_MISMATCH":
+      return "amount_mismatch";
+    case "UNSUPPORTED_PAYMENT_METHOD":
+      return "unsupported_payment_method";
+    case "STATE_CONFLICT":
+      return "state_conflict";
+    default:
+      return "error";
+  }
 }
 
 export const paymentsController = {
@@ -45,6 +72,45 @@ export const paymentsController = {
       paymentId: result.paymentId,
       paymentPurpose: result.paymentPurpose,
       activated: result.activated,
+    }, 201);
+  },
+
+  /**
+   * Klap Checkout Transparente — Sandbox-only embedded order creation (Fase D).
+   * Deliberately a separate endpoint from `createPayment` above: that one's
+   * response shape (`urlPay`, redirect-oriented) is already relied upon by the
+   * mobile client for Mercado Pago/ProntoPaga and is left untouched here.
+   */
+  async createKlapEmbeddedOrder(request: FastifyRequest, reply: FastifyReply): Promise<void> {
+    const token = extractBearer(request);
+    if (!token) {
+      sendError(reply, { code: "UNAUTHORIZED", message: "Missing Bearer token.", statusCode: 401 });
+      return;
+    }
+
+    const parsed = createKlapEmbeddedOrderSchema.safeParse(request.body);
+    if (!parsed.success) {
+      sendError(reply, {
+        code:       "VALIDATION_ERROR",
+        message:    parsed.error.errors[0]?.message ?? "Invalid request body.",
+        statusCode: 400,
+      });
+      return;
+    }
+
+    const result = await paymentsService.createKlapEmbeddedOrder(token, parsed.data);
+    if (!result.ok) {
+      sendError(reply, { code: result.code, message: result.message, statusCode: result.statusCode });
+      return;
+    }
+
+    // Only the public, non-secret fields — never the raw Klap response, ApiKey,
+    // headers, or anything resembling a redirect URL.
+    sendOk(reply, {
+      paymentId: result.paymentId,
+      provider: result.provider,
+      checkoutType: result.checkoutType,
+      publicCheckoutData: result.publicCheckoutData,
     }, 201);
   },
 
@@ -314,5 +380,49 @@ export const paymentsController = {
     }
 
     sendOk(reply, { processed: result.processed });
+  },
+
+  /**
+   * POST /webhooks/klap/confirm
+   * POST /webhooks/klap/reject
+   *
+   * Klap's own documented response contract is NOT the app-wide
+   * `{ok,data,statusCode}` envelope (`sendOk`/`sendError` above) — it requires
+   * exactly `{"status": "..."}` with a 2xx for accepted/duplicate events,
+   * since an unrecognized shape or slow/non-2xx response can trigger an
+   * automatic reversal on Klap's side. These two handlers reply directly.
+   *
+   * `klapWebhookErrorStatus` never echoes payment details, amounts, ids, the
+   * ApiKey, or any internal message — only one of a fixed, documented set of
+   * status strings (Fase C.1).
+   */
+  async klapConfirmWebhook(request: FastifyRequest, reply: FastifyReply): Promise<void> {
+    const headers: Record<string, string> = {
+      apikey: String(request.headers["apikey"] ?? ""),
+    };
+
+    const result = await paymentsService.handleKlapConfirmWebhook(request.body, headers);
+
+    if (!result.ok) {
+      reply.status(result.statusCode).send({ status: klapWebhookErrorStatus(result.code) });
+      return;
+    }
+
+    reply.status(200).send({ status: "ok" });
+  },
+
+  async klapRejectWebhook(request: FastifyRequest, reply: FastifyReply): Promise<void> {
+    const headers: Record<string, string> = {
+      apikey: String(request.headers["apikey"] ?? ""),
+    };
+
+    const result = await paymentsService.handleKlapRejectWebhook(request.body, headers);
+
+    if (!result.ok) {
+      reply.status(result.statusCode).send({ status: klapWebhookErrorStatus(result.code) });
+      return;
+    }
+
+    reply.status(200).send({ status: "ok" });
   },
 };
