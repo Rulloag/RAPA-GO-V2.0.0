@@ -1424,6 +1424,7 @@ function UberDriverNavigationMap({
   const [targetDistanceMeters, setTargetDistanceMeters] = useState<number | null>(null);
   const [mapError, setMapError] = useState<string | null>(null);
   const [mapReady, setMapReady] = useState(false);
+  const [instructionBannerCollapsed, setInstructionBannerCollapsed] = useState(false);
   const [isNavigationCameraLocked, setIsNavigationCameraLocked] = useState(true);
   const [mapVoiceMuted, setMapVoiceMuted] = useState(true);
   const [speedKmh, setSpeedKmh] = useState<number | null>(null);
@@ -2484,14 +2485,43 @@ function UberDriverNavigationMap({
           pointerEvents: "none",
         }}
       >
+        <button
+          type="button"
+          onClick={() => setInstructionBannerCollapsed((prev) => !prev)}
+          aria-label={instructionBannerCollapsed ? "Expandir indicaciones" : "Minimizar indicaciones"}
+          style={{
+            position: "absolute",
+            right: 6,
+            top: 6,
+            width: 26,
+            height: 26,
+            borderRadius: 999,
+            border: "0",
+            background: "rgba(255,255,255,.16)",
+            color: "#ffffff",
+            fontSize: 14,
+            lineHeight: 1,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            zIndex: 13,
+            pointerEvents: "auto",
+          }}
+        >
+          {instructionBannerCollapsed ? "▾" : "▴"}
+        </button>
+
         <div
           style={{
-            minHeight: 74,
-            padding: "12px 16px",
+            minHeight: instructionBannerCollapsed ? 0 : 74,
+            maxHeight: instructionBannerCollapsed ? 0 : undefined,
+            padding: instructionBannerCollapsed ? "0 16px" : "12px 16px",
+            overflow: "hidden",
             display: "grid",
             gridTemplateColumns: "48px 1fr",
             gap: 12,
             alignItems: "center",
+            transition: "min-height .2s ease, max-height .2s ease, padding .2s ease",
           }}
         >
           <div
@@ -2551,7 +2581,7 @@ function UberDriverNavigationMap({
           </div>
         </div>
 
-        {nextInstruction && nextInstruction.maneuver !== "arrive" && (
+        {!instructionBannerCollapsed && nextInstruction && nextInstruction.maneuver !== "arrive" && (
           <div
             style={{
               background: "rgba(0, 72, 68, .92)",
@@ -2588,7 +2618,7 @@ function UberDriverNavigationMap({
           style={{
             position: "absolute",
             left: "14px",
-            top: nextInstruction ? "146px" : "96px",
+            top: instructionBannerCollapsed ? "56px" : nextInstruction ? "146px" : "96px",
             background: "rgba(239,68,68,.92)",
             color: "#ffffff",
             borderRadius: "999px",
@@ -2610,7 +2640,9 @@ function UberDriverNavigationMap({
             position: "absolute",
             left: "14px",
             right: "78px",
-            top: nextInstruction ? (driverOutsideRapaNui ? "178px" : "146px") : (driverOutsideRapaNui ? "128px" : "96px"),
+            top: instructionBannerCollapsed
+              ? (driverOutsideRapaNui ? "88px" : "56px")
+              : nextInstruction ? (driverOutsideRapaNui ? "178px" : "146px") : (driverOutsideRapaNui ? "128px" : "96px"),
             ...uberPanelStyle({
               background: "rgba(17,17,17,.82)",
               padding: "7px 10px",
@@ -2874,7 +2906,9 @@ function UberDriverNavigationMap({
             position: "absolute",
             left: 14,
             right: 84,
-            top: nextInstruction ? (driverOutsideRapaNui ? 178 : 146) : (driverOutsideRapaNui ? 128 : 96),
+            top: instructionBannerCollapsed
+              ? (driverOutsideRapaNui ? 88 : 56)
+              : nextInstruction ? (driverOutsideRapaNui ? 178 : 146) : (driverOutsideRapaNui ? 128 : 96),
             background: "rgba(17,17,17,.82)",
             color: "#fff",
             borderRadius: 999,
@@ -7736,6 +7770,7 @@ export function DriverHomePage(): JSX.Element {
   ];
 
   return (
+    <>
     <IonPage className="driver-home-page">
       <style>{DRIVER_HOME_STYLES}</style>
       <DriverHeaderWithoutNotifications />
@@ -7911,9 +7946,9 @@ export function DriverHomePage(): JSX.Element {
           </section>
         </main>
       </IonContent>
-
-      <DriverGlobalRideAlert />
     </IonPage>
+      <DriverGlobalRideAlert />
+    </>
   );
 }
 
@@ -12630,7 +12665,7 @@ function DriverGlobalRideAlert(): JSX.Element | null {
         display: "flex",
         alignItems: "flex-end",
         justifyContent: "center",
-        padding: "18px",
+        padding: "18px 18px calc(18px + env(safe-area-inset-bottom, 0px)) 18px",
         pointerEvents: "auto",
       }}
     >
@@ -12638,6 +12673,9 @@ function DriverGlobalRideAlert(): JSX.Element | null {
         style={{
           width: "100%",
           maxWidth: 440,
+          maxHeight: "calc(100vh - 36px - env(safe-area-inset-bottom, 0px))",
+          display: "flex",
+          flexDirection: "column",
           borderRadius: "30px 30px 24px 24px",
           overflow: "hidden",
           background: "linear-gradient(145deg, #fff8e1 0%, #f6d98e 100%)",
@@ -12649,6 +12687,7 @@ function DriverGlobalRideAlert(): JSX.Element | null {
       >
         <div
           style={{
+            flex: "0 0 auto",
             padding: "16px 18px",
             background: "linear-gradient(135deg,#111,#8F3F25)",
             color: "#fff",
@@ -12701,7 +12740,7 @@ function DriverGlobalRideAlert(): JSX.Element | null {
           </IonButton>
         </div>
 
-        <div style={{ padding: "18px" }}>
+        <div style={{ flex: "1 1 auto", minHeight: 0, overflowY: "auto", padding: "18px" }}>
           <div
             style={{
               display: "flex",
@@ -12818,7 +12857,9 @@ function DriverGlobalRideAlert(): JSX.Element | null {
               </p>
             </IonText>
           )}
+        </div>
 
+        <div style={{ flex: "0 0 auto", padding: "0 18px 18px" }}>
           <div
             style={{
               display: "grid",
@@ -15586,7 +15627,7 @@ La reserva fue retirada. No continúes hacia la recogida.`,
           color: "#F6F2EC",
           display: "flex",
           flexDirection: "column",
-          paddingBottom: 92,
+          paddingBottom: "calc(92px + env(safe-area-inset-bottom, 0px))",
         }}
       >
         <div style={{ flex: "0 0 auto", position: "relative", minHeight: activeMapHeight }}>
@@ -15867,7 +15908,7 @@ La reserva fue retirada. No continúes hacia la recogida.`,
                     }
                     onClick={() => void handleDriverNoShowRide(ride)}
                   >
-                    {driverNoShowState.allowed ? `No show · Cargo ${formatClp(driverNoShowState.feeClp)}` : `Espera ${formatDriverNoShowRemaining(driverNoShowState.remainingMs)}`}
+                    {driverNoShowState.allowed ? `No show · Cargo ${formatClp(driverNoShowState.feeClp)}` : "Disponible al terminar la espera"}
                   </IonButton>
 
                   <IonButton
@@ -15944,25 +15985,6 @@ La reserva fue retirada. No continúes hacia la recogida.`,
                   onClick={() => requestCancelActiveRide(ride)}
                 >
                   Cancelar
-                </IonButton>
-
-
-                <IonButton
-                  expand="block"
-                  color="danger"
-                  style={
-                    {
-                      "--border-radius": "14px",
-                      height: "52px",
-                      position: "relative",
-                      zIndex: 31,
-                      gridColumn: "1 / -1",
-                      fontWeight: 950,
-                    } as CSSProperties
-                  }
-                  onClick={() => handleReportDriverAccidentFromHome(ride)}
-                >
-                  Reportar accidente / emergencia
                 </IonButton>
 
 
@@ -17337,7 +17359,7 @@ function DriverMyRidesPage(): JSX.Element {
   function statusLabel(status: string): string {
     if (status === "accepted") return "Aceptado";
     if (status === "driver_en_route") return "En camino";
-    if (status === "driver_arrived") return "Llegué";
+    if (status === "driver_arrived") return "Esperando pasajero";
     if (status === "in_progress") return "En viaje";
     if (status === "completed") return "Completado";
     if (status === "cancelled") return "Cancelado";
@@ -17749,7 +17771,7 @@ function DriverMyRidesPage(): JSX.Element {
                       disabled={actionLoading === activeRide.id || !getDriverNoShowState(activeRide as DriverRideData & Record<string, unknown>).allowed}
                       onClick={() => void handleDriverNoShowRide(activeRide)}
                     >
-                      {actionLoading === activeRide.id ? <IonSpinner name="dots" /> : getDriverNoShowState(activeRide as DriverRideData & Record<string, unknown>).allowed ? `No show · Cargo ${formatClp(getDriverNoShowState(activeRide as DriverRideData & Record<string, unknown>).feeClp)}` : `Espera ${formatDriverNoShowRemaining(getDriverNoShowState(activeRide as DriverRideData & Record<string, unknown>).remainingMs)}`}
+                      {actionLoading === activeRide.id ? <IonSpinner name="dots" /> : getDriverNoShowState(activeRide as DriverRideData & Record<string, unknown>).allowed ? `No show · Cargo ${formatClp(getDriverNoShowState(activeRide as DriverRideData & Record<string, unknown>).feeClp)}` : "Disponible al terminar la espera"}
                     </IonButton>
                   </>
                 )}
