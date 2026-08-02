@@ -18,6 +18,7 @@ import { WhatsAppButton } from "../../../components/WhatsAppButton.js";
 import { loadRapaGoGoogleMaps } from "../../../components/MapFallback.js";
 import { useAuth } from "../../../features/auth/index.js";
 import { ridesService, type RideRequestData } from "../../../features/rides/rides.service.js";
+import { rideLocationService } from "../../../features/location/rideLocation.service.js";
 import { walletService } from "../../../features/wallet/wallet.service.js";
 import { cashRefundsService } from "../../../features/cashRefunds/cashRefunds.service.js";
 
@@ -5450,68 +5451,35 @@ function PassengerDriverAndVehicleDetails({
   );
 }
 
-type RideLiveResponse = {
-  rideId: string;
-  status: string;
-  driver: DriverLivePoint | null;
-};
-
-function getApiBaseUrl(): string {
-  return getConfiguredApiOrigin();
-}
-
-function buildApiUrl(path: string): string {
-  const baseUrl = getApiBaseUrl().replace(/\/$/, "");
-  const cleanPath = path.startsWith("/") ? path : `/${path}`;
-
-  if (baseUrl.endsWith("/api") && cleanPath.startsWith("/api/")) {
-    return `${baseUrl}${cleanPath.slice(4)}`;
-  }
-
-  return `${baseUrl}${cleanPath}`;
-}
-
-function isPassengerLiveDriverEndpointEnabled(): boolean {
-  // En desarrollo tu backend todavía no tiene /api/rides/:id/live.
-  // Si lo llamamos igual, Vite muestra 404 muchas veces y puede romper la vista.
-  // Cuando tengas ese endpoint listo, agrega en .env: VITE_RAPAGO_LIVE_DRIVER=true
-  return String(import.meta.env["VITE_RAPAGO_LIVE_DRIVER"] ?? "").toLowerCase() === "true";
-}
-
 async function fetchRideLiveDriverPoint(
   token: string,
   rideId: string,
 ): Promise<DriverLivePoint | null> {
-  const response = await fetch(buildApiUrl(`/api/rides/${encodeURIComponent(rideId)}/live`), {
-    method: "GET",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${token}`,
-    },
-  });
+  const point = await rideLocationService.latest(token, rideId);
+  if (!point) return null;
 
-  if (response.status === 404 || response.status === 204) return null;
-
-  if (!response.ok) {
-    throw new Error("No se pudo obtener la ubicación real del conductor.");
-  }
-
-  const data = (await response.json()) as RideLiveResponse;
-
-  if (!data.driver) return null;
-
-  const lat = Number(data.driver.lat);
-  const lng = Number(data.driver.lng);
+  const lat = Number(point.lat);
+  const lng = Number(point.lng);
 
   if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
 
   return {
     lat,
     lng,
-    heading: data.driver.heading ?? null,
-    speed: data.driver.speed ?? null,
-    accuracy: data.driver.accuracy ?? null,
-    updatedAt: data.driver.updatedAt ?? null,
+    heading:
+      point.headingDegrees != null && Number.isFinite(Number(point.headingDegrees))
+        ? Number(point.headingDegrees)
+        : null,
+    speed:
+      point.speedMetersPerSecond != null &&
+      Number.isFinite(Number(point.speedMetersPerSecond))
+        ? Number(point.speedMetersPerSecond)
+        : null,
+    accuracy:
+      point.accuracyMeters != null && Number.isFinite(Number(point.accuracyMeters))
+        ? Number(point.accuracyMeters)
+        : null,
+    updatedAt: point.capturedAt || point.receivedAt || null,
   };
 }
 
@@ -5531,12 +5499,14 @@ function getDriverPointForPassengerMap(
     };
   }
 
-  const localLivePoint = readPassengerLocalDriverLivePoint(ride.id);
-  if (isValidDriverPoint(localLivePoint)) {
-    return {
-      lat: localLivePoint.lat,
-      lng: localLivePoint.lng,
-    };
+  if (import.meta.env.DEV) {
+    const localLivePoint = readPassengerLocalDriverLivePoint(ride.id);
+    if (isValidDriverPoint(localLivePoint)) {
+      return {
+        lat: localLivePoint.lat,
+        lng: localLivePoint.lng,
+      };
+    }
   }
 
   const withLocation = ride as RideRequestData & {
@@ -5918,6 +5888,7 @@ function PassengerLiveRouteMap({
   const walkLineShadowRef = useRef<google.maps.Polyline | null>(null);
 
   const routeKeyRef = useRef<string>("");
+  const lastRouteRequestAtRef = useRef(0);
   const didFitBoundsRef = useRef(false);
   const lastDriverPointRef = useRef<{ lat: number; lng: number } | null>(null);
   const lastPassengerMapFollowAtRef = useRef(0);
@@ -6088,6 +6059,22 @@ function PassengerLiveRouteMap({
     };
   }
 
+  function makeDriverVehicleIcon(rotation: number): google.maps.Symbol {
+    return {
+      // Silueta superior de vehículo. La coordenada 0,0 queda en el centro
+      // para que el ícono gire sobre el GPS real del conductor.
+      path:
+        "M -8 -14 C -6 -18 6 -18 8 -14 L 11 -5 L 11 10 C 11 14 8 16 4 16 L -4 16 C -8 16 -11 14 -11 10 L -11 -5 Z M -7 -10 L 7 -10 L 9 -4 L -9 -4 Z",
+      anchor: new google.maps.Point(0, 0),
+      scale: 1.05,
+      fillColor: "#2382ff",
+      fillOpacity: 1,
+      strokeColor: "#ffffff",
+      strokeWeight: 2.8,
+      rotation: ((rotation % 360) + 360) % 360,
+    };
+  }
+
   function createOrMoveMarker(
     ref: React.MutableRefObject<google.maps.Marker | null>,
     map: google.maps.Map,
@@ -6184,14 +6171,26 @@ function PassengerLiveRouteMap({
 
 
   useEffect(() => {
-    const shouldTrackDriver = ["driver_scheduled", "accepted", "driver_en_route", "driver_arrived", "in_progress"].includes(effectiveMapStatus);
+    // El puente local solo existe para pruebas en un mismo navegador.
+    // En producción nunca se toma la ubicación de otro conductor desde localStorage.
+    if (!import.meta.env.DEV) return;
+
+    const shouldTrackDriver = [
+      "driver_scheduled",
+      "accepted",
+      "driver_en_route",
+      "driver_arrived",
+      "in_progress",
+    ].includes(effectiveMapStatus);
 
     function loadLocalLivePoint(): void {
       const point = readPassengerLocalDriverLivePoint(ride.id);
 
       if (point) {
         setLiveDriverPoint(point);
-        setLastLiveUpdate(point.updatedAt ? new Date(point.updatedAt) : new Date());
+        setLastLiveUpdate(
+          point.updatedAt ? new Date(point.updatedAt) : new Date(),
+        );
         setLiveDriverError(null);
       }
     }
@@ -6201,7 +6200,9 @@ function PassengerLiveRouteMap({
     if (!shouldTrackDriver) return;
 
     const handleLocalLiveUpdate = (event: Event): void => {
-      const detail = (event as CustomEvent<PassengerLocalDriverLivePayload>).detail;
+      const detail = (
+        event as CustomEvent<PassengerLocalDriverLivePayload>
+      ).detail;
 
       if (detail && String(detail.rideId ?? "") !== ride.id) return;
       loadLocalLivePoint();
@@ -6216,22 +6217,32 @@ function PassengerLiveRouteMap({
       }
     };
 
-    window.addEventListener(RAPAGO_DRIVER_LIVE_LOCATION_EVENT, handleLocalLiveUpdate as EventListener);
+    window.addEventListener(
+      RAPAGO_DRIVER_LIVE_LOCATION_EVENT,
+      handleLocalLiveUpdate as EventListener,
+    );
     window.addEventListener("storage", handleStorageUpdate);
 
     const timerId = window.setInterval(loadLocalLivePoint, 2500);
 
     return () => {
-      window.removeEventListener(RAPAGO_DRIVER_LIVE_LOCATION_EVENT, handleLocalLiveUpdate as EventListener);
+      window.removeEventListener(
+        RAPAGO_DRIVER_LIVE_LOCATION_EVENT,
+        handleLocalLiveUpdate as EventListener,
+      );
       window.removeEventListener("storage", handleStorageUpdate);
       window.clearInterval(timerId);
     };
   }, [ride.id, effectiveMapStatus]);
 
   useEffect(() => {
-    const shouldTrackDriver = ["driver_scheduled", "accepted", "driver_en_route", "driver_arrived", "in_progress"].includes(effectiveMapStatus);
-    const liveEndpointEnabled = isPassengerLiveDriverEndpointEnabled();
-    const localLivePoint = readPassengerLocalDriverLivePoint(ride.id);
+    const shouldTrackDriver = [
+      "driver_scheduled",
+      "accepted",
+      "driver_en_route",
+      "driver_arrived",
+      "in_progress",
+    ].includes(effectiveMapStatus);
 
     if (!shouldTrackDriver) {
       setLiveDriverPoint(null);
@@ -6240,37 +6251,70 @@ function PassengerLiveRouteMap({
       return;
     }
 
-    if (!token || !liveEndpointEnabled) {
-      // No llamamos /api/rides/:id/live si el backend aún no lo tiene.
-      // Mientras tanto usamos el puente local que publica la pantalla del conductor.
-      if (localLivePoint) {
-        setLiveDriverPoint(localLivePoint);
-        setLastLiveUpdate(localLivePoint.updatedAt ? new Date(localLivePoint.updatedAt) : new Date());
+    const developmentFallback = import.meta.env.DEV
+      ? readPassengerLocalDriverLivePoint(ride.id)
+      : null;
+
+    if (!token) {
+      if (developmentFallback) {
+        setLiveDriverPoint(developmentFallback);
+        setLastLiveUpdate(
+          developmentFallback.updatedAt
+            ? new Date(developmentFallback.updatedAt)
+            : new Date(),
+        );
         setLiveDriverError(null);
       } else {
-        setLiveDriverError("Esperando señal GPS del conductor.");
+        setLiveDriverError("Esperando una sesión válida para ver el GPS.");
       }
       return;
     }
 
     let stopped = false;
 
-    async function loadLiveDriver() {
+    async function loadLiveDriver(): Promise<void> {
       try {
         const point = await fetchRideLiveDriverPoint(token, ride.id);
-
         if (stopped) return;
 
-        setLiveDriverPoint(point);
-        setLastLiveUpdate(point ? new Date() : null);
-        setLiveDriverError(point ? null : "Esperando señal GPS real del conductor.");
+        if (point) {
+          setLiveDriverPoint(point);
+          setLastLiveUpdate(
+            point.updatedAt ? new Date(point.updatedAt) : new Date(),
+          );
+          setLiveDriverError(null);
+          return;
+        }
+
+        if (developmentFallback) {
+          setLiveDriverPoint(developmentFallback);
+          setLastLiveUpdate(
+            developmentFallback.updatedAt
+              ? new Date(developmentFallback.updatedAt)
+              : new Date(),
+          );
+          setLiveDriverError(null);
+          return;
+        }
+
+        setLiveDriverError("Esperando señal GPS real del conductor.");
       } catch {
         if (stopped) return;
 
-        // No reventamos la pantalla si el live falla; solo dejamos el mapa sin GPS.
-        setLiveDriverPoint(null);
-        setLastLiveUpdate(null);
-        setLiveDriverError("Esperando señal GPS real del conductor.");
+        if (developmentFallback) {
+          setLiveDriverPoint(developmentFallback);
+          setLastLiveUpdate(
+            developmentFallback.updatedAt
+              ? new Date(developmentFallback.updatedAt)
+              : new Date(),
+          );
+          setLiveDriverError(null);
+          return;
+        }
+
+        // Conservamos el último punto real para evitar que el vehículo desaparezca
+        // durante una pérdida breve de señal móvil en Rapa Nui.
+        setLiveDriverError("Señal GPS temporalmente interrumpida.");
       }
     }
 
@@ -6485,15 +6529,7 @@ function PassengerLiveRouteMap({
           ? calculatePassengerBearingDegrees(previous, driverPoint)
           : 0;
 
-    const icon = {
-      path: google.maps.SymbolPath.FORWARD_CLOSED_ARROW,
-      scale: 9,
-      fillColor: "#2382ff",
-      fillOpacity: 1,
-      strokeColor: "#ffffff",
-      strokeWeight: 4,
-      rotation,
-    };
+    const icon = makeDriverVehicleIcon(rotation);
 
     if (!driverMarkerRef.current) {
       driverMarkerRef.current = new google.maps.Marker({
@@ -6551,7 +6587,16 @@ function PassengerLiveRouteMap({
       return;
     }
 
+    const now = Date.now();
+    if (
+      routeKeyRef.current &&
+      now - lastRouteRequestAtRef.current < 12_000
+    ) {
+      return;
+    }
+
     routeKeyRef.current = routeKey;
+    lastRouteRequestAtRef.current = now;
 
     renderer.set("directions", null);
     fallbackRouteLineRef.current?.setMap(null);
@@ -6655,7 +6700,7 @@ function PassengerLiveRouteMap({
                 boxShadow: "0 8px 18px rgba(250,204,21,.25)",
               }}
             >
-              ▲
+              <IonIcon icon={carOutline} style={{ fontSize: 22 }} />
             </div>
             <div style={{ minWidth: 0, flex: 1 }}>
               <div style={{ fontWeight: 950, fontSize: ".92rem" }}>

@@ -64,6 +64,7 @@ import { ROUTE_METADATA } from "../../navigation/routeConfig";
 import { ROUTES } from "../../navigation/routes";
 import { useAuth } from "../../features/auth";
 import { ridesService } from "../../features/rides/rides.service";
+import { rideLocationService } from "../../features/location/rideLocation.service.js";
 import {
   MapFallback,
   loadRapaGoGoogleMaps,
@@ -85,6 +86,9 @@ type DriverRideData =
   import("../../features/rides/rides.service").DriverRideData;
 type ActiveRideOfferData =
   import("../../features/rides/rides.service").ActiveRideOfferData;
+type DriverRideLocationPoint = Parameters<
+  typeof rideLocationService.publish
+>[2];
 
 type RapaGoConnectivityMode = "checking" | "online" | "poor" | "offline";
 type RapaGoConnectivityRole = "driver" | "passenger" | "admin";
@@ -12908,6 +12912,8 @@ function AssignedRidesPage(): JSX.Element {
   const driverLocationRef = useRef<{ lat: number; lng: number } | null>(null);
   const lastPublishedDriverLocationRef = useRef<{ lat: number; lng: number } | null>(null);
   const liveDriverHeadingRef = useRef<number | null>(null);
+  const activeRideTrackingPayloadRef = useRef<DriverRideData | null>(null);
+  const driverTrackingUserRef = useRef(session?.user);
   const [locationError, setLocationError] = useState<string | null>(null);
   const [driverAvailability, setDriverAvailability] =
     useState<DriverAvailability>(() =>
@@ -12966,6 +12972,17 @@ function AssignedRidesPage(): JSX.Element {
   const displayedAvailableRides = showOnlyReservations ? [] : availableRides;
   const nextQueuedRide = getDriverNextRideForActiveRide(activeRide, session?.user);
   const reservationsTotal = reservationOffers.length + confirmedReservationOffers.length;
+  const activeRideTrackingStatus = String(activeRide?.status ?? "");
+  const activeRideTrackingId =
+    activeRide &&
+    ["accepted", "driver_en_route", "driver_arrived", "in_progress"].includes(
+      activeRideTrackingStatus,
+    )
+      ? String(activeRide.id)
+      : null;
+
+  activeRideTrackingPayloadRef.current = activeRide;
+  driverTrackingUserRef.current = session?.user;
 
   useEffect(() => {
     const refreshNextQueue = () => setNextRideQueueVersion((value) => value + 1);
@@ -12977,6 +12994,199 @@ function AssignedRidesPage(): JSX.Element {
     };
   }, []);
   void nextRideQueueVersion;
+
+  useEffect(() => {
+    const accessToken = session?.accessToken;
+    const rideId = activeRideTrackingId;
+
+    if (!accessToken || !rideId) {
+      void rideLocationService.stopNativeBackground();
+      return;
+    }
+
+    let cancelled = false;
+    let stopForegroundWatch: (() => Promise<void>) | null = null;
+    let publishing = false;
+    let pendingPoint: DriverRideLocationPoint | null = null;
+    let lastBackendWarningAt = 0;
+
+    const publishLatestPoint = async (
+      initialPoint: DriverRideLocationPoint,
+    ): Promise<void> => {
+      pendingPoint = initialPoint;
+      if (publishing) return;
+
+      publishing = true;
+
+      try {
+        while (!cancelled && pendingPoint) {
+          const point = pendingPoint;
+          pendingPoint = null;
+
+          try {
+            await rideLocationService.publish(accessToken, rideId, point);
+          } catch (caught) {
+            const now = Date.now();
+
+            if (now - lastBackendWarningAt >= 15_000) {
+              lastBackendWarningAt = now;
+              console.warn(
+                "[RAPA GO] No se pudo sincronizar una ubicación del conductor",
+                caught,
+              );
+            }
+          }
+        }
+      } finally {
+        publishing = false;
+      }
+    };
+
+    const applyRealDriverPoint = (point: DriverRideLocationPoint): void => {
+      if (cancelled) return;
+
+      const lat = Number(point.lat);
+      const lng = Number(point.lng);
+      if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
+
+      const nextLocation = { lat, lng };
+      const previousLocation = lastPublishedDriverLocationRef.current;
+      const movedMeters = previousLocation
+        ? distanceMetersForLiveDriverGps(previousLocation, nextLocation)
+        : Number.POSITIVE_INFINITY;
+
+      let heading =
+        point.headingDegrees != null &&
+        Number.isFinite(Number(point.headingDegrees))
+          ? Number(point.headingDegrees)
+          : liveDriverHeadingRef.current;
+
+      if (previousLocation && movedMeters >= 4) {
+        heading = bearingDegreesForLiveDriverGps(
+          previousLocation,
+          nextLocation,
+        );
+      }
+
+      liveDriverHeadingRef.current = heading ?? null;
+      lastPublishedDriverLocationRef.current = nextLocation;
+      driverLocationRef.current = nextLocation;
+      setDriverLocation(nextLocation);
+      setLocationError(null);
+
+      const trackedRide = activeRideTrackingPayloadRef.current;
+      if (trackedRide && String(trackedRide.id) === rideId) {
+        publishDriverLiveLocationForPassenger(
+          trackedRide,
+          {
+            lat,
+            lng,
+            heading: heading ?? null,
+            speed: point.speedMetersPerSecond ?? null,
+            accuracy: point.accuracyMeters ?? null,
+          },
+          heading ?? null,
+          driverTrackingUserRef.current,
+        );
+      }
+
+      try {
+        localStorage.setItem(
+          "rapago_current_driver_location",
+          JSON.stringify({
+            rideId,
+            lat,
+            lng,
+            heading: heading ?? null,
+            speed: point.speedMetersPerSecond ?? null,
+            accuracy: point.accuracyMeters ?? null,
+            updatedAt: point.capturedAt,
+            ...getDriverVehiclePublicPayload(driverTrackingUserRef.current),
+          }),
+        );
+      } catch {
+        // El backend sigue siendo la autoridad del GPS.
+      }
+
+      void publishLatestPoint({
+        ...point,
+        headingDegrees: heading ?? point.headingDegrees ?? null,
+      });
+    };
+
+    async function startTracking(): Promise<void> {
+      try {
+        const initialPoint = await rideLocationService.current();
+        applyRealDriverPoint(initialPoint);
+      } catch (caught) {
+        if (!cancelled) {
+          setLocationError(
+            caught instanceof Error
+              ? caught.message
+              : "No se pudo obtener la ubicación real del conductor.",
+          );
+        }
+      }
+
+      try {
+        const stop = await rideLocationService.watch(
+          applyRealDriverPoint,
+          (message) => {
+            if (!cancelled) {
+              setLocationError(
+                message || "Se interrumpió la señal GPS del conductor.",
+              );
+            }
+          },
+        );
+
+        if (cancelled) {
+          await stop();
+        } else {
+          stopForegroundWatch = stop;
+        }
+      } catch (caught) {
+        if (!cancelled) {
+          setLocationError(
+            caught instanceof Error
+              ? caught.message
+              : "No se pudo iniciar el seguimiento GPS.",
+          );
+        }
+      }
+
+      try {
+        await rideLocationService.startNativeBackground(
+          accessToken,
+          rideId,
+        );
+      } catch (caught) {
+        // El seguimiento foreground continúa. En Android/iOS se registra el
+        // problema para revisarlo sin ocultar el mapa al conductor.
+        console.warn(
+          "[RAPA GO] Seguimiento nativo en segundo plano no disponible",
+          caught,
+        );
+      }
+    }
+
+    void startTracking();
+
+    return () => {
+      cancelled = true;
+      pendingPoint = null;
+
+      if (stopForegroundWatch) {
+        void stopForegroundWatch();
+      }
+
+      void rideLocationService.stopNativeBackground();
+    };
+  }, [
+    activeRideTrackingId,
+    activeRideTrackingStatus,
+    session?.accessToken,
+  ]);
 
   const stopRideRequestAlert = useCallback((clearCurrentRide = true): void => {
     rideAlertControllerRef.current?.stop();
