@@ -502,7 +502,8 @@
   flex: 0 0 auto;
   overflow: hidden;
   border-radius: var(--rp-radius-sm);
-  border: 1px solid var(--rp-border-c);
+  background: #ffffff;
+  border: 1px solid rgba(214, 166, 64, 0.55);
   box-shadow: var(--rp-shadow-accent);
 }
 
@@ -801,14 +802,24 @@
   place-items: center;
   flex: 0 0 auto;
   border-radius: var(--rp-radius-sm);
-  color: var(--rp-btn-primary-fg);
-  background: var(--rp-hero-inset);
-  border: 1px solid var(--rp-hero-inset-bd);
+  overflow: hidden;
+  background: #ffffff;
+  border: 1px solid rgba(32, 22, 7, 0.18);
+  box-shadow:
+    0 0 0 2px rgba(214, 166, 64, 0.35),
+    0 12px 24px rgba(32, 22, 7, 0.18);
 }
 
 .rapago-driver-page .driver-home-hero__car ion-icon {
   color: var(--rp-btn-primary-fg) !important;
   font-size: 24px;
+}
+
+.rapago-driver-page .driver-home-hero__car img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
 }
 
 /* ── Fichas de resumen (Estado / Zona / Red) ────────────────────────────── */

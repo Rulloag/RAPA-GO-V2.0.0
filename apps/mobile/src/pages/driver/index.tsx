@@ -55,6 +55,8 @@ import {
   notificationsOutline,
   volumeHighOutline,
   logOutOutline,
+  moonOutline,
+  sunnyOutline,
 } from "ionicons/icons";
 import { driverProfileService, type DriverProfileData } from "../../features/drivers/driverProfile.service";
 import { driverVehiclePhotoService } from "../../features/drivers/driverVehiclePhoto.service";
@@ -79,6 +81,8 @@ import { WhatsAppButton } from "../../components/WhatsAppButton";
 import { DriverRestScheduleCard } from "./components/DriverRestScheduleCard";
 import { AccountDeletionCard } from "../../components/accountDeletion/AccountDeletionCard.js";
 import { getApiOrigin as getConfiguredApiOrigin } from "../../services/api/apiBaseUrl.js";
+import { useRapagoSectionTheme } from "../../theme/rapagoTheme.js";
+import logoRapago from "../../theme/img/logo-rapago.jpeg";
 
 type AvailableRideData =
   import("../../features/rides/rides.service").AvailableRideData;
@@ -4292,7 +4296,15 @@ const DRIVER_HOME_STYLES = String.raw`
   }
 `;
 
-function DriverHeaderWithoutNotifications(): JSX.Element {
+function DriverHeaderWithoutNotifications({
+  driverName,
+  isDark,
+  onToggleTheme,
+}: {
+  driverName: string;
+  isDark: boolean;
+  onToggleTheme: () => void;
+}): JSX.Element {
   const auth = useAuth() as ReturnType<typeof useAuth> & {
     logout?: () => void | Promise<void>;
     signOut?: () => void | Promise<void>;
@@ -4319,19 +4331,35 @@ function DriverHeaderWithoutNotifications(): JSX.Element {
   return (
     <IonHeader className="driver-home-header">
       <IonToolbar className="driver-home-toolbar">
-        <IonTitle>
-          <div className="driver-home-brand">
-            <div className="driver-home-brand__mark" aria-hidden="true">
-              <IonIcon icon={carOutline} />
-            </div>
-            <div className="driver-home-brand__text">
-              <div className="driver-home-brand__title">RAPA GO</div>
-              <div className="driver-home-brand__subtitle">Panel conductor</div>
-            </div>
+        <div slot="start" className="driver-home-brand">
+          <div className="driver-home-brand__mark" aria-hidden="true">
+            <img
+              src={logoRapago}
+              alt=""
+              width={50}
+              height={50}
+            />
           </div>
-        </IonTitle>
+          <div className="driver-home-brand__text">
+            <div className="driver-home-brand__title">Hola, {driverName}</div>
+            <div className="driver-home-brand__subtitle">Panel conductor</div>
+          </div>
+        </div>
 
         <IonButtons slot="end" className="driver-home-header-actions">
+          <IonButton
+            fill="clear"
+            onClick={onToggleTheme}
+            aria-label={isDark ? "Activar modo día" : "Activar modo nocturno"}
+            title={isDark ? "Modo día" : "Modo nocturno"}
+            className="driver-home-header-action"
+          >
+            <IonIcon
+              icon={isDark ? sunnyOutline : moonOutline}
+              slot="icon-only"
+            />
+          </IonButton>
+
           <IonButton
             fill="clear"
             routerLink={ROUTES.DRIVER.PROFILE}
@@ -7482,6 +7510,7 @@ function getBorrowedVehicleRemainingText(vehicle: DriverVehicleRecord): string |
 
 export function DriverHomePage(): JSX.Element {
   const { session } = useAuth();
+  const { theme, isDark, toggleTheme } = useRapagoSectionTheme("driver-home");
   const history = useHistory();
   const driverAvailabilityUser = session?.user as
     DriverAvailabilityUser | undefined;
@@ -7771,9 +7800,16 @@ export function DriverHomePage(): JSX.Element {
 
   return (
     <>
-    <IonPage className="driver-home-page">
+      <IonPage
+        className="rapago-driver-page driver-home-page"
+        data-rapago-theme={theme}
+      >
       <style>{DRIVER_HOME_STYLES}</style>
-      <DriverHeaderWithoutNotifications />
+      <DriverHeaderWithoutNotifications
+        driverName={driverName}
+        isDark={isDark}
+        onToggleTheme={toggleTheme}
+      />
 
       <IonContent className="driver-home-content">
         <main className="driver-home-shell">
@@ -7821,7 +7857,7 @@ export function DriverHomePage(): JSX.Element {
                   Panel de conductor
                 </div>
                 <div className="driver-home-hero__title">
-                  Hola, {driverName} 👋
+                  Tu jornada en Rapa Nui
                 </div>
                 <div className="driver-home-hero__subtitle">
                   {restBlocked
@@ -7833,7 +7869,12 @@ export function DriverHomePage(): JSX.Element {
               </div>
 
               <div className="driver-home-hero__car" aria-hidden="true">
-                <IonIcon icon={carOutline} />
+                <img
+                  src={logoRapago}
+                  alt=""
+                  width={50}
+                  height={50}
+                />
               </div>
             </div>
 
@@ -12924,6 +12965,7 @@ function DriverGlobalRideAlert(): JSX.Element | null {
 
 function AssignedRidesPage(): JSX.Element {
   const { session } = useAuth();
+  const { theme } = useRapagoSectionTheme("driver-requests");
   const location = useLocation();
   const driverAvailabilityUser = session?.user as
     DriverAvailabilityUser | undefined;
@@ -16055,7 +16097,7 @@ La reserva fue retirada. No continúes hacia la recogida.`,
   }
 
   return (
-    <IonPage>
+    <IonPage className="rapago-driver-page" data-rapago-theme={theme}>
       <IonHeader>
         <IonToolbar color="success">
           <IonTitle>{activeRide ? "Viaje activo" : showOnlyReservations ? "Reservas" : "Solicitudes"}</IonTitle>
@@ -16974,6 +17016,7 @@ function DriverHistoryRideCard({
 
 function DriverMyRidesPage(): JSX.Element {
   const { session } = useAuth();
+  const { theme } = useRapagoSectionTheme("driver-trips");
   type DriverRideData =
     import("../../features/rides/rides.service").DriverRideData;
 
@@ -17492,7 +17535,7 @@ function DriverMyRidesPage(): JSX.Element {
   const hasAcceptedQueuedRide = hasInProgressRide && rides.some((ride) => ride.status === "accepted");
 
   return (
-    <IonPage>
+    <IonPage className="rapago-driver-page" data-rapago-theme={theme}>
       <style>{`
         .rapago-passenger-cancel-alert-trips .alert-wrapper {
           width: min(92vw, 520px);
@@ -17942,6 +17985,7 @@ function clp(amount: number): string {
 export function DriverEarningsPage(): JSX.Element {
   const m = meta("/driver/earnings");
   const { session } = useAuth();
+  const { theme } = useRapagoSectionTheme("driver-earnings");
   const [rides, setRides] = useState<DriverEarningsRide[]>([]);
   const [filter, setFilter] = useState<DriverEarningsFilter>("today");
   const [loading, setLoading] = useState(true);
@@ -18011,7 +18055,7 @@ export function DriverEarningsPage(): JSX.Element {
 
   return (
     <>
-      <IonPage>
+      <IonPage className="rapago-driver-page" data-rapago-theme={theme}>
       <IonHeader>
         <IonToolbar color="success">
           <IonTitle>{m.label}</IonTitle>
@@ -18793,6 +18837,7 @@ export function DriverProfilePage(): JSX.Element {
   };
 
   const { session } = auth;
+  const { theme } = useRapagoSectionTheme("driver-profile");
   const history = useHistory();
 
   const storedProfile = readStoredDriverRegistrationProfile(session?.user);
@@ -19807,7 +19852,7 @@ export function DriverProfilePage(): JSX.Element {
 
   return (
     <>
-      <IonPage>
+      <IonPage className="rapago-driver-page" data-rapago-theme={theme}>
       <IonHeader>
         <IonToolbar color="success">
           <IonTitle>Mi Perfil</IonTitle>
