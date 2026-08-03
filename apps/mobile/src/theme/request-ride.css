@@ -1056,6 +1056,55 @@
   text-shadow: none !important;
 }
 
+/* ==========================================================================
+   CONTRAPARTE DE NOCHE de los dos bloques anteriores.
+
+   Los fixes de arriba fuerzan modo claro con !important para ganarle a un
+   fondo oscuro puesto inline en el JSX. El problema: lo forzaban SIEMPRE, así
+   que en modo noche el toggle Ahora/Agendar, las tarjetas de vehículo y el
+   panel de promociones quedaban como bloques blancos deslumbrantes dentro de
+   una pantalla oscura — el único punto donde el modo noche del pasajero se
+   rompía de forma visible.
+
+   Especificidad (0,3,x) contra la (0,2,0) de arriba: gana sin tocar aquellas
+   reglas, que siguen siendo correctas de día. Mismo patrón que ya usa el
+   bloque de .rp-request-panel más abajo.
+
+   El estado SELECCIONADO conserva el degradado dorado con texto oscuro: es el
+   par de marca y vale igual en ambos temas, como el botón principal.
+   ========================================================================== */
+[data-rapago-theme="dark"] .rapago-request-page button[aria-pressed="false"],
+[data-rapago-theme="dark"] .rapago-request-page button[role="tab"][aria-selected="false"] {
+  background: var(--rp-surface) !important;
+  color: var(--rp-text) !important;
+  border: 1.5px solid var(--rp-border-c) !important;
+}
+
+[data-rapago-theme="dark"] .rapago-request-page .rp-request-trip-card:not([aria-pressed="true"]),
+[data-rapago-theme="dark"] .rapago-request-page .rp-request-vehicle-card:not([aria-pressed="true"]),
+[data-rapago-theme="dark"] .rapago-request-page .rp-request-promotion-card:not([aria-pressed="true"]) {
+  background: var(--rp-surface) !important;
+  color: var(--rp-text) !important;
+  border-color: var(--rp-border-c) !important;
+  box-shadow: var(--rp-shadow) !important;
+}
+
+[data-rapago-theme="dark"] .rapago-request-page .rp-request-promotion-panel {
+  background:
+    radial-gradient(circle at top left, rgba(214, 166, 64, 0.16), transparent 42%),
+    linear-gradient(180deg, rgba(28, 26, 23, 0.97), rgba(14, 13, 12, 0.98)) !important;
+  color: var(--rp-text) !important;
+  border-color: var(--rp-border-c) !important;
+  box-shadow: var(--rp-shadow-accent) !important;
+}
+
+/* El bloque de día usa el selector universal para pisar los colores inline del
+   JSX; hay que igualarlo aquí o el texto de dentro se queda en #111827. */
+[data-rapago-theme="dark"] .rapago-request-page .rp-request-promotion-panel *,
+[data-rapago-theme="dark"] .rapago-request-page .rp-request-promotion-card * {
+  color: var(--rp-text) !important;
+}
+
 /* ========================================================================== */
 /* Integración de la estructura visual y accesible del panel de origin/main. */
 /* ========================================================================== */
@@ -1846,12 +1895,48 @@
 [data-rapago-theme="dark"] .rapago-request-page .rp-request-panel ion-item {
   --background: var(--rp-field-bg) !important;
   --color: var(--rp-field-fg) !important;
+  /* El bloque V32 fija --placeholder-color en #6b7280, un gris pensado para el
+     campo blanco del modo día. Sobre el campo oscuro cae a 2,70:1 y el
+     "Ej: LA800" del número de vuelo desaparece; el placeholder es texto y
+     necesita 4,5:1. El token queda en ~4,9:1. */
+  --placeholder-color: var(--rp-field-ph) !important;
   border-color: rgba(214, 166, 64, 0.30) !important;
 }
 
 [data-rapago-theme="dark"] .rapago-request-page .rp-request-panel ion-item ion-input {
   --color: var(--rp-field-fg) !important;
   color: var(--rp-field-fg) !important;
+}
+
+/* ==========================================================================
+   FIX — BOTONES `fill="clear"` DEL CONTENIDO ("Elegir punto en el mapa",
+   "Usar mi ubicación actual", "Elegir destino en el mapa", "Volver a
+   recogida reservada en Mataveri")
+
+   global.css:3717 y :3720 los fijan en #68480b —un marrón de modo día— con
+   !important, tanto en el host como en ::part(native). Dos consecuencias:
+
+   1. Sobre el fondo volcánico de la página ese marrón queda en 1,79:1, muy
+      por debajo del 4,5:1 de AA: en noche los cuatro enlaces se leían como
+      manchas apagadas sobre el fondo.
+   2. Una declaración !important de hoja de estilos gana SIEMPRE a un
+      `style=""` normal, así que el `--color` que cada botón declaraba en
+      línea nunca llegaba a pintar. Por eso daba igual que ahí hubiera un
+      token o un literal: era código muerto.
+
+   Se recupera el mando con (0,3,3) —las dos clases del IonPage— que supera
+   tanto a global.css como al `--color: var(--rp-icon-fg) !important` que
+   sections.css:402 pone para todos los clear de sección.
+
+   El valor lo decide cada botón con `--rp-clear-fg`, una propiedad propia que
+   ninguna otra hoja toca (a diferencia de `--color`, que sections.css
+   sobrescribe): así el TSX vuelve a poder elegir el token adecuado a la
+   superficie sobre la que va cada botón. Sin ella se cae al oro de icono,
+   que ya tiene contraparte de día y de noche.
+   ========================================================================== */
+.rapago-section-page.rapago-request-page ion-content ion-button[fill="clear"],
+.rapago-section-page.rapago-request-page ion-content ion-button[fill="clear"]::part(native) {
+  color: var(--rp-clear-fg, var(--rp-icon-fg)) !important;
 }
 
 /* ==========================================================================

@@ -1,7 +1,5 @@
 import {
   IonBadge,
-  IonCard,
-  IonCardContent,
   IonContent,
   IonIcon,
   IonPage,
@@ -13,6 +11,7 @@ import {
   alertCircleOutline,
   cashOutline,
   checkmarkCircleOutline,
+  chevronDownCircleOutline,
   giftOutline,
   timeOutline,
 } from "ionicons/icons";
@@ -208,7 +207,17 @@ export default function WalletPage(): JSX.Element {
             void load().finally(() => event.detail.complete());
           }}
         >
-          <IonRefresherContent />
+          {/* Sin props el refresher sale con la flecha y el spinner de fábrica
+              de Ionic, idénticos a los de cualquier app: el gesto más repetido
+              de la pantalla era el único sitio sin voz propia. El copy en
+              español y el spinner dorado (regla en rapago-shell.css) lo atan a
+              la marca sin tocar el ciclo de recarga. */}
+          <IonRefresherContent
+            pullingIcon={chevronDownCircleOutline}
+            pullingText="Desliza para actualizar"
+            refreshingSpinner="crescent"
+            refreshingText="Sincronizando…"
+          />
         </IonRefresher>
 
         <div className="rp-shell">
@@ -373,76 +382,12 @@ export default function WalletPage(): JSX.Element {
             })
           )}
 
-          <h2
-            style={{
-              color: "#fff",
-              fontSize: "1.05rem",
-              fontWeight: 950,
-              margin: "24px 4px 12px",
-            }}
-          >
-            Devoluciones bancarias
-          </h2>
-
-          {refunds.length === 0 ? (
-            <IonCard
-              style={{
-                margin: 0,
-                borderRadius: 24,
-                background: "rgba(255,255,255,.96)",
-              }}
-            >
-              <IonCardContent style={{ textAlign: "center", padding: 22 }}>
-                <IonIcon icon={cashOutline} style={{ fontSize: 34, color: "#B7791F" }} />
-                <p style={{ margin: "8px 0 0", color: "#655B50", lineHeight: 1.45 }}>
-                  Las devoluciones de dinero pagado de más en efectivo aparecerán aquí.
-                </p>
-              </IonCardContent>
-            </IonCard>
-          ) : (
-            refunds.map((refund) => {
-              const info = refundStatusInfo(refund.status);
-              const amount = refund.approvedAmountClp ?? refund.requestedAmountClp;
-              return (
-                <IonCard
-                  key={refund.id}
-                  style={{
-                    margin: "0 0 12px",
-                    borderRadius: 24,
-                    background: "rgba(255,255,255,.97)",
-                  }}
-                >
-                  <IonCardContent>
-                    <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
-                      <div>
-                        <div style={{ fontWeight: 950 }}>Devolución a cuenta bancaria</div>
-                        <div style={{ fontSize: "1.2rem", fontWeight: 950, marginTop: 7 }}>
-                          {formatClp(amount)}
-                        </div>
-                      </div>
-                      <IonBadge color={info.color}>{info.label}</IonBadge>
-                    </div>
-                    <p style={{ margin: "12px 0 0", color: "#5F564B", fontSize: ".8rem" }}>
-                      {refund.bankAccount.bankName} · •••• {refund.bankAccount.accountNumberLast4}
-                    </p>
-                    <p style={{ margin: "6px 0 0", color: "#6B6257", fontSize: ".78rem" }}>
-                      Solicitada: {formatDate(refund.requestedAt)}
-                    </p>
-                    {refund.transferReference && (
-                      <p style={{ margin: "8px 0 0", color: "#14532D", fontSize: ".8rem", fontWeight: 850 }}>
-                        Comprobante: {refund.transferReference}
-                      </p>
-                    )}
-                    {refund.adminDecisionReason && (
-                      <p style={{ margin: "9px 0 0", padding: "9px 11px", borderRadius: 14, background: "#F5F1EA", color: "#463D34", fontSize: ".8rem" }}>
-                        <strong>Respuesta:</strong> {refund.adminDecisionReason}
-                      </p>
-                    )}
-                  </IonCardContent>
-                </IonCard>
-              );
-            })
-          )}
+          {/* Aquí vivía una SEGUNDA copia de "Devoluciones bancarias": mismo
+              array `refunds`, mismo orden, mismos campos, pero pintada con
+              IonCard blancas y hex fijos (#655B50, #5F564B, #14532D, #F5F1EA)
+              que no responden al tema. La pantalla mostraba la lista dos veces
+              seguidas, la primera con el tema y la segunda en blanco. Se
+              conserva la versión con clases rp-*; se elimina la duplicada. */}
         </div>
       </IonContent>
     </IonPage>

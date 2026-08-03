@@ -36,12 +36,12 @@ import rapaNuiOne from "../../../theme/img/imgen-rapuni1.jpeg";
 import rapaNuiTwo from "../../../theme/img/imgen-rapanui2.jpeg";
 import logoRapago from "../../../theme/img/logo-rapago.jpeg";
 
+/* rapanui.jpg es EL MISMO ARCHIVO que public/assets/rapa-go-bg.jpg (mismo md5),
+   que es el fondo de página. Cuando abría el carrusel, la primera diapositiva
+   era el mismo fotograma que el papel tapiz de detrás: se leía como un fallo de
+   carga, no como una decisión. Va al final para que la entrada del Home muestre
+   una imagen distinta del fondo. */
 const HOME_CAROUSEL_IMAGES = [
-  {
-    src: rapaNuiMain,
-    title: "Rapa Nui",
-    subtitle: "Viajes seguros y servicios locales",
-  },
   {
     src: rapaNuiOne,
     title: "Explora la isla",
@@ -51,6 +51,11 @@ const HOME_CAROUSEL_IMAGES = [
     src: rapaNuiTwo,
     title: "Cultura y aventura",
     subtitle: "Conecta con la cultura y el transporte local",
+  },
+  {
+    src: rapaNuiMain,
+    title: "Rapa Nui",
+    subtitle: "Viajes seguros y servicios locales",
   },
 ];
 
@@ -96,6 +101,12 @@ export default function HomePage(): JSX.Element {
   }, [session?.accessToken]);
 
   useEffect(() => {
+    /* home.css ya declara prefers-reduced-motion, pero el CSS no puede parar un
+       setInterval: el carrusel seguía rotando solo cada 3,8s para quien pide
+       movimiento reducido. Hay que consultarlo desde JS (WCAG 2.2.2). */
+    const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
+    if (reduceMotion.matches) return;
+
     const interval = window.setInterval(() => {
       setCarouselIndex((current) =>
         current === HOME_CAROUSEL_IMAGES.length - 1 ? 0 : current + 1,

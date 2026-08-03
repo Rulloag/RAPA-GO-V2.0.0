@@ -43,7 +43,20 @@
   --rp-fs-body: clamp(0.82rem, 3.1vw, 0.92rem);
   --rp-fs-sub: clamp(0.69rem, 2.7vw, 0.78rem);
   --rp-fs-micro: clamp(0.62rem, 2.5vw, 0.72rem);
-  --rp-fs-label: clamp(0.6rem, 2.3vw, 0.68rem);
+  /* El suelo estaba en 0.6rem = 9,6px, ilegible al sol y para présbitas. */
+  --rp-fs-label: clamp(0.72rem, 2.6vw, 0.8rem);
+
+  /* ── Voz de display ───────────────────────────────────────────────────── */
+  /* El sistema tenía 10 pesos distintos (650…950), pero con el font stack del
+     SO todo lo que pasa de 700 renderiza igual: bold. Es decir, el código creía
+     tener diez niveles y la pantalla tenía dos, y por eso el título de pantalla
+     y una etiqueta pesaban lo mismo.
+
+     Mientras no haya una fuente variable cargada, la jerarquía se construye con
+     lo que sí responde hoy: tracking negativo y line-height apretado en display,
+     tracking abierto en eyebrow. Apretar el titular es lo que lo hace titular. */
+  --rp-tracking-display: -0.025em;
+  --rp-tracking-eyebrow: 0.14em;
 
   /* ── Espaciado y forma fluidos ────────────────────────────────────────── */
   --rp-gap: clamp(14px, 4.2vw, 20px);
@@ -58,7 +71,9 @@
   --rp-control-h: clamp(46px, 13vw, 52px);
   /* Geometría compartida de la barra flotante para evitar choques con FABs. */
   --rp-tabbar-bottom-offset: calc(12px + env(safe-area-inset-bottom, 0px));
-  --rp-tabbar-height: 54px;
+  /* 54px dejaba las celdas en 42px de alto, bajo el mínimo táctil (44pt iOS /
+     48dp Android). A 60px las celdas llegan a 48px sin engordar la píldora. */
+  --rp-tabbar-height: 60px;
 
   /* ── Marca (constante en ambos temas) ─────────────────────────────────── */
   --rp-gold: #d6a640;
@@ -70,6 +85,28 @@
      como un degradado literal; se nombra aquí para que no vuelva a copiarse.
      Es constante de marca: igual en día y en noche, como el propio botón. */
   --rp-btn-primary-activated: linear-gradient(135deg, #c89b3c, #b84f2e);
+
+  /* ── Eje océano: el contrapunto del oro ───────────────────────────────── */
+  /* La marca tenía un solo eje cromático (oro sobre volcánico), y una gama sin
+     oposición se lee como un filtro, no como identidad. Rapa Nui visualmente ES
+     el contraste entre roca negra, Pacífico y pasto quemado.
+
+     Reparto semántico — no es decoración, es significado:
+       oro    → lo que el usuario controla (acciones, marca, saldo)
+       océano → lo que se mueve solo (ruta, conductor en camino, viaje en curso)
+       laguna → confirmado / aprobado
+       toba   → error real, nunca adorno
+
+     Teal desaturado a propósito: lee como agua, no como enlace. Constantes de
+     marca, así que viven en :root y valen igual en día y en noche. */
+  --rp-ocean-deep: #0b3d4a;
+  --rp-ocean: #12697e;
+  --rp-ocean-bright: #2fa8bf;
+  --rp-ocean-mist: #cfe7ec;
+  --rp-lagoon: #2e7d5b;
+  --rp-lagoon-light: #6fbf95;
+  --rp-scoria: #a63a24;
+  --rp-anakena: #f2e6d3;
 
   /* Héroe dorado (.rp-hero y el del Inicio del conductor): borde y superficies
      interiores. No llevan contraparte de día A PROPÓSITO: el héroe usa el oro
@@ -84,17 +121,28 @@
   /* ── Tema oscuro (defecto) ────────────────────────────────────────────── */
   /* Sin background-attachment: fixed — en móvil obliga a repintar una capa
      completa en cada frame de scroll. */
+  /* El velo pasa de marrón plano a basalto teñido de océano arriba: es lo que
+     se ve al mirar la isla desde el mar. Introduce el eje frío sin tocar una
+     sola pantalla, porque todas heredan este token. */
   --rp-page-bg:
-    linear-gradient(180deg, rgba(20, 16, 12, 0.86), rgba(12, 10, 9, 0.95)),
+    linear-gradient(
+      180deg,
+      rgba(11, 61, 74, 0.5) 0%,
+      rgba(20, 16, 12, 0.9) 52%,
+      rgba(12, 10, 9, 0.96) 100%
+    ),
     url("/assets/rapa-go-bg.jpg") center / cover no-repeat;
   --rp-surface: linear-gradient(180deg, rgba(28, 26, 23, 0.97), rgba(14, 13, 12, 0.98));
   --rp-surface-soft: rgba(255, 255, 255, 0.05);
   --rp-border-w: 1.5px;
-  --rp-border-c: rgba(214, 166, 64, 0.42);
-  --rp-border-strong: rgba(214, 166, 64, 0.72);
+  /* .42 dejaba el borde en 2,43:1 sobre la superficie oscura, bajo el mínimo
+     de 3:1 que WCAG 1.4.11 pide para elementos de UI. A .62 sube a ~3,4:1. */
+  --rp-border-c: rgba(214, 166, 64, 0.62);
+  --rp-border-strong: rgba(214, 166, 64, 0.82);
   --rp-text: #f6f2ec;
   --rp-muted: rgba(246, 242, 236, 0.64);
-  --rp-muted-soft: rgba(246, 242, 236, 0.46);
+  /* .46 daba 4,24:1, bajo AA. A .55 queda en ~5,5:1. */
+  --rp-muted-soft: rgba(246, 242, 236, 0.55);
   --rp-divider: rgba(246, 242, 236, 0.08);
   --rp-accent: #f1c864;
   --rp-icon-fg: #f8d879;
@@ -102,10 +150,16 @@
   --rp-icon-bd: rgba(214, 166, 64, 0.3);
   --rp-field-bg: rgba(255, 255, 255, 0.055);
   --rp-field-fg: #ffffff;
-  --rp-field-ph: rgba(255, 255, 255, 0.42);
+  /* .42 daba 3,88:1 sobre el campo oscuro. El placeholder es texto: necesita
+     4,5:1. A .55 queda en ~4,9:1. */
+  --rp-field-ph: rgba(255, 255, 255, 0.55);
   --rp-label: #f8d879;
   --rp-chrome: rgba(255, 255, 255, 0.07);
   --rp-seg-track: rgba(0, 0, 0, 0.28);
+  /* El brillo del esqueleto de Ionic se dibuja con --background-rgb, no con un
+     color: si no se le da uno propio usa el gris de fábrica y el placeholder
+     queda como un parche que no pertenece a la pantalla. */
+  --rp-skeleton-rgb: 246, 242, 236;
   --rp-shadow:
     0 0 0 1px rgba(214, 166, 64, 0.1),
     0 18px 44px rgba(0, 0, 0, 0.44);
@@ -113,9 +167,12 @@
     0 0 0 1px rgba(214, 166, 64, 0.16),
     0 0 26px rgba(214, 166, 64, 0.12),
     0 18px 44px rgba(0, 0, 0, 0.46);
-  --rp-ok-fg: #86efac;
-  --rp-ok-bg: rgba(34, 197, 94, 0.13);
-  --rp-ok-bd: rgba(34, 197, 94, 0.36);
+  /* El verde de "confirmado" era #86efac sobre rgba(34,197,94,…): pastel de
+     Tailwind, sin relación con la marca. Pasa al eje laguna (Rano Raraku:
+     verde con amarillo dentro). Ratio sobre superficie oscura: 9,2:1. */
+  --rp-ok-fg: #6fbf95;
+  --rp-ok-bg: rgba(46, 125, 91, 0.18);
+  --rp-ok-bd: rgba(46, 125, 91, 0.45);
   --rp-err-fg: #f3c6b4;
   --rp-err-bg: rgba(184, 79, 46, 0.16);
   --rp-err-bd: rgba(184, 79, 46, 0.4);
@@ -128,9 +185,11 @@
   --rp-warn-fg: #f1c864;
   --rp-warn-bg: rgba(241, 200, 100, 0.13);
   --rp-warn-bd: rgba(241, 200, 100, 0.36);
-  --rp-info-fg: #93c5fd;
-  --rp-info-bg: rgba(147, 197, 253, 0.13);
-  --rp-info-bd: rgba(147, 197, 253, 0.36);
+  /* El informativo era #93c5fd (azul Tailwind). Pasa al eje océano para que lo
+     frío de la app sea siempre el mismo color. Ratio: 6,4:1. */
+  --rp-info-fg: #2fa8bf;
+  --rp-info-bg: rgba(47, 168, 191, 0.14);
+  --rp-info-bd: rgba(47, 168, 191, 0.38);
 
   /* Barra de navegación inferior. Fondo translúcido: con el backdrop-filter la
      barra flotante se ve como cristal esmerilado sobre el contenido, no como una
@@ -189,14 +248,18 @@
    pantalla siga siendo reconociblemente Rapa Nui. */
 :root[data-rapago-theme="light"],
 [data-rapago-theme="light"] {
+  /* Arena de Anakena arriba, bruma de océano abajo: el mismo eje frío que el
+     tema oscuro, pero en clave alta. Antes eran dos beiges casi idénticos. */
   --rp-page-bg:
-    linear-gradient(180deg, rgba(243, 237, 226, 0.94), rgba(233, 222, 203, 0.97)),
+    linear-gradient(180deg, rgba(242, 230, 211, 0.95), rgba(207, 231, 236, 0.93)),
     url("/assets/rapa-go-bg.jpg") center / cover no-repeat;
   --rp-surface: linear-gradient(180deg, #fffdf9, #fdf7ec);
   --rp-surface-soft: rgba(26, 26, 26, 0.045);
   --rp-border-w: 2px;
-  --rp-border-c: #c89b3c;
-  --rp-border-strong: #a8781f;
+  /* #c89b3c sobre la superficie clara daba 2,40:1, bajo el mínimo de 3:1 para
+     elementos de UI. #a8781f llega a 3,67:1 sin perder el bronce. */
+  --rp-border-c: #a8781f;
+  --rp-border-strong: #8a641c;
   --rp-text: #1a1a1a;
   /* Sobre la superficie clara, .50 dejaba las etiquetas de sección en ~3.9:1,
      bajo el mínimo AA de 4.5:1. A .62 quedan en ~4.8:1. */
@@ -204,24 +267,29 @@
   --rp-muted-soft: rgba(26, 26, 26, 0.62);
   --rp-divider: rgba(26, 26, 26, 0.1);
   --rp-accent: #8a641c;
-  --rp-icon-fg: #8a641c;
+  /* Sobre su propia píldora rgba(200,155,60,.16) el oro daba 4,42:1. */
+  --rp-icon-fg: #7d5a17;
   --rp-icon-bg: rgba(200, 155, 60, 0.16);
   --rp-icon-bd: rgba(200, 155, 60, 0.42);
   --rp-field-bg: #ffffff;
   --rp-field-fg: #111111;
-  --rp-field-ph: rgba(17, 17, 17, 0.42);
+  /* .42 sobre blanco daba 2,78:1: el placeholder desaparecía al sol. A .62
+     queda en 5,33:1 y sigue leyéndose como texto de ayuda. */
+  --rp-field-ph: rgba(17, 17, 17, 0.62);
   --rp-label: #8a641c;
   --rp-chrome: rgba(26, 26, 26, 0.06);
   --rp-seg-track: rgba(26, 26, 26, 0.07);
+  --rp-skeleton-rgb: 26, 26, 26;
   --rp-shadow:
     0 1px 0 rgba(200, 155, 60, 0.16),
     0 14px 30px rgba(90, 60, 20, 0.13);
   --rp-shadow-accent:
     0 0 0 1px rgba(200, 155, 60, 0.28),
     0 14px 34px rgba(90, 60, 20, 0.18);
-  --rp-ok-fg: #14783f;
-  --rp-ok-bg: rgba(20, 120, 63, 0.1);
-  --rp-ok-bd: rgba(20, 120, 63, 0.34);
+  /* Contraparte de día del eje laguna. Ratio sobre superficie clara: 5,9:1. */
+  --rp-ok-fg: #1f6347;
+  --rp-ok-bg: rgba(46, 125, 91, 0.12);
+  --rp-ok-bd: rgba(46, 125, 91, 0.38);
   --rp-err-fg: #9a3412;
   --rp-err-bg: rgba(184, 79, 46, 0.1);
   --rp-err-bd: rgba(184, 79, 46, 0.38);
@@ -232,16 +300,18 @@
   --rp-warn-fg: #6b4b00;
   --rp-warn-bg: rgba(107, 75, 0, 0.1);
   --rp-warn-bd: rgba(107, 75, 0, 0.34);
-  --rp-info-fg: #1d4ed8;
-  --rp-info-bg: rgba(29, 78, 216, 0.09);
-  --rp-info-bd: rgba(29, 78, 216, 0.32);
+  /* Contraparte de día del eje océano. Ratio sobre superficie clara: 6,7:1. */
+  --rp-info-fg: #0e5566;
+  --rp-info-bg: rgba(18, 105, 126, 0.1);
+  --rp-info-bd: rgba(18, 105, 126, 0.34);
 
   /* En modo día la barra pasa a superficie clara translúcida: el backdrop-filter
      la convierte en cristal cálido esmerilado. El inactivo es #6b5a3e y no un
      gris al 50%: sobre blanco cálido da ~5.2:1, por encima del mínimo AA. */
   --rp-nav-bg: rgba(255, 253, 249, 0.66);
   --rp-nav-fg: #6b5a3e;
-  --rp-nav-active: #8a641c;
+  /* Sobre su propia píldora rgba(200,155,60,.20) el activo daba 4,21:1. */
+  --rp-nav-active: #7a5715;
   --rp-nav-border: rgba(200, 155, 60, 0.5);
   --rp-nav-shadow: 0 -6px 18px rgba(90, 60, 20, 0.14);
   /* Píldora dorada del activo y sombra flotante en modo día: tinte oro más
@@ -355,8 +425,8 @@ ion-tab-bar.rapago-role-tabbar {
 ion-tab-bar.rapago-role-tabbar ion-tab-button {
   position: relative !important;
   isolation: isolate !important;
-  height: 42px !important;
-  min-height: 42px !important;
+  height: 48px !important;
+  min-height: 48px !important;
   border-radius: 999px !important;
 
   --padding-top: 0 !important;
@@ -492,10 +562,12 @@ ion-tab-bar.rapago-role-tabbar ion-tab-button[aria-selected="true"] ion-label {
   --background-hover: var(--rp-icon-bg);
   --background-activated: var(--rp-icon-bg);
   --color: var(--rp-icon-fg);
-  --padding-start: 10px;
-  --padding-end: 10px;
-  height: 40px;
-  min-height: 40px;
+  --padding-start: 12px;
+  --padding-end: 12px;
+  /* Es el botón "volver" de TODAS las secciones (Solicitar viaje, Mis viajes,
+     Beneficios, Ayuda). A 40px quedaba bajo el mínimo táctil de 44pt/48dp. */
+  height: 48px;
+  min-height: 48px;
   font-weight: 800;
   font-size: var(--rp-fs-sub);
   text-transform: none;
@@ -510,6 +582,36 @@ ion-tab-bar.rapago-role-tabbar ion-tab-button[aria-selected="true"] ion-label {
     animation-duration: 0.001ms !important;
     transition-duration: 0.001ms !important;
   }
+}
+
+/* ==========================================================================
+   PULL TO REFRESH
+
+   El refresher de Ionic pinta su flecha y su spinner con --ion-color-primary,
+   que en esta app sigue siendo el azul de fábrica: el gesto más repetido de
+   varias pantallas era gris-azulado y no se parecía a nada del resto.
+
+   La regla es global a propósito, no scoped a una página: el refresher es el
+   mismo componente en Beneficios, Mis viajes, Guías y Arriendos, y no hay
+   motivo para que uno sea dorado y los demás no. El texto acompaña al icono en
+   tono apagado para que el copy no compita con el spinner.
+   ========================================================================== */
+ion-refresher-content .refresher-pulling-icon,
+ion-refresher-content .refresher-refreshing-icon {
+  color: var(--rp-gold);
+}
+
+ion-refresher-content .refresher-pulling-icon ion-icon,
+ion-refresher-content .refresher-refreshing-icon ion-spinner {
+  color: var(--rp-gold);
+}
+
+ion-refresher-content .refresher-pulling-text,
+ion-refresher-content .refresher-refreshing-text {
+  color: var(--rp-muted);
+  font-size: var(--rp-fs-sub);
+  font-weight: 700;
+  letter-spacing: 0.01em;
 }
 
 /* ==========================================================================

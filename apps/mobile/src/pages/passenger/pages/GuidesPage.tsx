@@ -1,20 +1,42 @@
 import {
-  IonBadge, IonButton, IonCard, IonCardContent, IonChip, IonContent, IonHeader,
+  IonBadge, IonButton, IonChip, IonContent, IonHeader,
   IonIcon, IonInput, IonItem, IonLabel, IonModal, IonPage, IonRefresher, IonRefresherContent,
-  IonSearchbar, IonSelect, IonSelectOption, IonSpinner, IonText, IonTextarea, IonTitle, IonToast, IonToolbar,
+  IonSearchbar, IonSelect, IonSelectOption, IonSpinner, IonTextarea, IonTitle, IonToast, IonToolbar,
 } from "@ionic/react";
 import { useState, useCallback, useEffect } from "react";
-import { chevronForwardOutline } from "ionicons/icons";
-import { compassOutline } from "ionicons/icons";
-import { EmptyState } from "../../../components/EmptyState.js";
+import {
+  alertCircleOutline,
+  carOutline,
+  checkmarkOutline,
+  chevronForwardOutline,
+  compassOutline,
+  locationOutline,
+  peopleOutline,
+  timeOutline,
+} from "ionicons/icons";
 import { SkeletonList } from "../../../components/SkeletonCard.js";
+import { RapagoSectionHeader } from "../../../components/RapagoSectionHeader.js";
+import { useRapagoSectionTheme } from "../../../theme/rapagoTheme.js";
 import { useAuth } from "../../../features/auth/index.js";
 import { touristService, type GuidePublicData, type TouristServiceData } from "../../../features/tourist/tourist.service.js";
 import { useIonViewWillEnter } from "@ionic/react";
 import { LANG_LABEL, SERVICE_TYPE_LABEL } from "../shared.js";
 
+/* Guías todavía no tiene id propio en `RapagoSection`, y añadirlo es tocar
+   rapagoTheme.ts. Se reutiliza "trips" porque lo que decide el tema es el
+   ÁMBITO (`passenger`), compartido por todas las pantallas del pasajero: con
+   cualquier id de ese grupo la pantalla lee y escribe la misma preferencia. */
+const SECCION_TEMA = "trips" as const;
+
+/* Iconografía de la ficha de servicio. Antes eran emojis (⏱ 👥 📍 🚗), que el
+   SO pinta con su propia paleta: no heredaban el color del tema y en modo día
+   quedaban como manchas de color ajenas a la marca. */
+const META_ICON_STYLE = { fontSize: "1em", flexShrink: 0 } as const;
+
 export default function GuidesPage(): JSX.Element {
   const { session } = useAuth();
+  // Solo se lee: el interruptor único vive en el encabezado de Inicio.
+  const { theme } = useRapagoSectionTheme(SECCION_TEMA);
   const [guides,        setGuides]        = useState<GuidePublicData[]>([]);
   const [loading,       setLoading]       = useState(true);
   const [loadError,     setLoadError]     = useState<string | null>(null);
@@ -47,28 +69,22 @@ export default function GuidesPage(): JSX.Element {
   }
 
   return (
-    <IonPage>
-      <IonHeader>
-        <IonToolbar color="primary">
-          <IonTitle>Guías locales</IonTitle>
-        </IonToolbar>
-        <IonToolbar style={{ "--background": "var(--ion-color-primary)", "--border-width": "0" }}>
+    <IonPage className="rapago-section-page rapago-guides-page" data-rapago-theme={theme}>
+      <RapagoSectionHeader title="Guías locales" />
+      {/* Buscador y filtros en la cabecera secundaria, igual que Mis viajes:
+          así el toolbar deja de pintar su propio dorado y se ve el fondo. */}
+      <IonHeader className="rapago-section-subheader">
+        <IonToolbar>
           <div style={{ padding: "0 12px 10px" }}>
             <IonSearchbar value={searchName} onIonInput={(e) => setSearchName(String(e.detail.value ?? ""))}
               onIonChange={() => void load()} placeholder="Buscar guía..." debounce={400}
-              style={{ "--background": "rgba(255,255,255,0.15)", "--color": "#fff", "--placeholder-color": "rgba(255,255,255,0.7)", "--icon-color": "rgba(255,255,255,0.8)", padding: 0 }}
+              style={{ padding: 0 }}
             />
             <div style={{ display: "flex", gap: "8px", overflowX: "auto", paddingBottom: "2px" }}>
               {(["", "es", "en", "rapa_nui"] as const).map((lang) => (
                 <IonChip key={lang}
                   aria-label={`Filtrar por idioma: ${lang === "" ? "Todos" : LANG_LABEL[lang] ?? lang}`}
-                  style={{
-                    flexShrink: 0,
-                    "--background": filterLang === lang ? "#fff" : "rgba(255,255,255,0.2)",
-                    "--color": filterLang === lang ? "var(--ion-color-primary)" : "#fff",
-                    fontSize: "0.76rem", height: "36px",
-                    fontWeight: filterLang === lang ? 700 : 400,
-                  }}
+                  className={filterLang === lang ? "rapago-filter-chip is-active" : "rapago-filter-chip"}
                   onClick={() => setFilterLang(lang)}
                 >
                   {lang === "" ? "Todos" : LANG_LABEL[lang] ?? lang}
@@ -83,71 +99,93 @@ export default function GuidesPage(): JSX.Element {
           <IonRefresherContent />
         </IonRefresher>
 
-        {loading && <SkeletonList count={4} height="120px" />}
-        {loadError && <div style={{ padding: "16px" }}><IonText color="danger"><p>{loadError}</p></IonText></div>}
+        <div className="rp-shell">
+          {loading && <SkeletonList count={4} height="120px" />}
+          {loadError && (
+            <div className="rp-banner rp-banner--error" role="alert">
+              <IonIcon icon={alertCircleOutline} />
+              <span>{loadError}</span>
+            </div>
+          )}
 
-        {!loading && guides.length === 0 && (
-          <EmptyState icon={compassOutline} title="Sin guías disponibles" subtitle="Vuelve a intentarlo más tarde" />
-        )}
+          {!loading && guides.length === 0 && (
+            <div className="rp-empty">
+              <div className="rp-empty__icon" aria-hidden>
+                <IonIcon icon={compassOutline} />
+              </div>
+              <h3 className="rp-empty__title">Sin guías disponibles</h3>
+              <p className="rp-empty__body">Vuelve a intentarlo más tarde</p>
+            </div>
+          )}
 
-        {!loading && guides.length > 0 && (
-          <div style={{ display: "flex", flexDirection: "column", gap: "12px", padding: "12px 16px 80px" }}>
-            {guides.map((guide) => {
-              const initials = guide.name.trim().split(/\s+/).map((p) => p[0] ?? "").slice(0, 2).join("").toUpperCase();
-              const rating   = guide.ratingAverage ?? 0;
-              return (
-                <IonCard key={guide.id} className="ion-activatable"
-                  aria-label={`Guía ${guide.name}, ${rating > 0 ? rating.toFixed(1) : "sin calificaciones"} estrellas, idiomas: ${(guide.languages ?? []).join(", ")}`}
-                  style={{ margin: 0, borderRadius: "16px", boxShadow: "0 2px 12px rgba(0,0,0,0.08)", cursor: "pointer", overflow: "hidden" }}
-                  onClick={() => setSelectedGuide(guide)}
-                >
-                  <IonCardContent style={{ padding: "16px" }}>
-                    <div style={{ display: "flex", gap: "14px", alignItems: "flex-start" }}>
+          {!loading && guides.length > 0 && (
+            <div style={{ display: "flex", flexDirection: "column", gap: "var(--rp-gap-sm)" }}>
+              {guides.map((guide) => {
+                const initials = guide.name.trim().split(/\s+/).map((p) => p[0] ?? "").slice(0, 2).join("").toUpperCase();
+                const rating   = guide.ratingAverage ?? 0;
+                return (
+                  /* Deja de ser IonCard: sections.css mantiene a propósito las
+                     ion-card sobre superficie clara en ambos temas (deuda de las
+                     pantallas con texto oscuro inline). Con .rp-card la ficha
+                     adopta la superficie del tema activo. */
+                  <button key={guide.id} type="button" className="rp-card rp-card--tap"
+                    aria-label={`Guía ${guide.name}, ${rating > 0 ? rating.toFixed(1) : "sin calificaciones"} estrellas, idiomas: ${(guide.languages ?? []).join(", ")}`}
+                    onClick={() => setSelectedGuide(guide)}
+                  >
+                    <div style={{ display: "flex", gap: "var(--rp-gap-sm)", alignItems: "flex-start" }}>
                       <div style={{
                         width: "60px", height: "60px", borderRadius: "50%", flexShrink: 0,
-                        background: "var(--ion-color-warning-tint)",
+                        background: "var(--rp-icon-bg)",
                         display: "flex", alignItems: "center", justifyContent: "center",
-                        border: "2px solid var(--ion-color-warning)",
+                        border: "var(--rp-border-w) solid var(--rp-icon-bd)",
                       }}>
-                        <span style={{ fontWeight: 800, fontSize: "1.2rem", color: "var(--ion-color-warning-shade)" }}>
+                        <span style={{ fontWeight: 850, fontSize: "var(--rp-fs-stat)", color: "var(--rp-icon-fg)" }}>
                           {initials || "G"}
                         </span>
                       </div>
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <div style={{ display: "flex", alignItems: "center", gap: "6px", flexWrap: "wrap" }}>
-                          <span style={{ fontWeight: 700, fontSize: "1rem" }}>{guide.name}</span>
+                          <span className="rp-card__title">{guide.name}</span>
                         </div>
                         <div style={{ display: "flex", alignItems: "center", gap: "4px", marginTop: "4px" }}>
+                          {/* La estrella sigue siendo un glifo de texto: es la
+                              convención de calificación de toda la app (el mismo
+                              criterio que el rediseño del conductor). Lo que
+                              cambia es el color, que era #f4c430 a mano. */}
                           {[1,2,3,4,5].map((n) => (
-                            <span key={n} style={{ fontSize: "0.85rem", color: n <= Math.round(rating) ? "#f4c430" : "var(--ion-color-light-shade)" }}>★</span>
+                            <span key={n} style={{ fontSize: "var(--rp-fs-body)", color: n <= Math.round(rating) ? "var(--rp-gold)" : "var(--rp-divider)" }}>★</span>
                           ))}
-                          <span style={{ fontSize: "0.72rem", color: "var(--ion-color-medium)", marginLeft: "4px" }}>
+                          <span style={{ fontSize: "var(--rp-fs-sub)", color: "var(--rp-muted)", marginLeft: "4px" }}>
                             {rating > 0 ? rating.toFixed(1) : "Sin calificaciones"}{guide.ratingCount ? ` (${guide.ratingCount})` : ""}
                           </span>
                         </div>
                         {guide.bio && (
-                          <div style={{ fontSize: "0.78rem", color: "var(--ion-color-medium)", marginTop: "4px", lineHeight: 1.4 }}>
+                          <div style={{ fontSize: "var(--rp-fs-sub)", color: "var(--rp-muted)", marginTop: "4px", lineHeight: 1.45 }}>
                             {guide.bio.slice(0, 90)}{guide.bio.length > 90 ? "…" : ""}
                           </div>
                         )}
                         {(guide.languages ?? []).length > 0 && (
                           <div style={{ display: "flex", gap: "4px", flexWrap: "wrap", marginTop: "6px" }}>
                             {(guide.languages ?? []).map((lang) => (
-                              <IonChip key={lang} color="warning" style={{ fontSize: "0.68rem", height: "20px", margin: 0 }}>
+                              <IonChip key={lang} style={{
+                                fontSize: "var(--rp-fs-micro)", height: "22px", margin: 0,
+                                "--background": "var(--rp-icon-bg)", "--color": "var(--rp-icon-fg)",
+                                border: "1px solid var(--rp-icon-bd)",
+                              }}>
                                 <IonLabel>{LANG_LABEL[lang] ?? lang.toUpperCase()}</IonLabel>
                               </IonChip>
                             ))}
                           </div>
                         )}
                       </div>
-                      <IonIcon icon={chevronForwardOutline} style={{ color: "var(--ion-color-medium)", fontSize: "1.1rem", flexShrink: 0, marginTop: "4px" }} />
+                      <IonIcon icon={chevronForwardOutline} style={{ color: "var(--rp-icon-fg)", fontSize: "1.1rem", flexShrink: 0, marginTop: "4px" }} />
                     </div>
-                  </IonCardContent>
-                </IonCard>
-              );
-            })}
-          </div>
-        )}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </div>
       </IonContent>
     </IonPage>
   );
@@ -155,6 +193,7 @@ export default function GuidesPage(): JSX.Element {
 
 function GuideDetailPage({ guide, onBack }: { guide: GuidePublicData; onBack: () => void }): JSX.Element {
   const { session } = useAuth();
+  const { theme } = useRapagoSectionTheme(SECCION_TEMA);
   const [services,      setServices]      = useState<TouristServiceData[]>(guide.services ?? []);
   const [loading,       setLoading]       = useState(!guide.services);
   const [bookingService, setBookingService] = useState<TouristServiceData | null>(null);
@@ -216,100 +255,120 @@ function GuideDetailPage({ guide, onBack }: { guide: GuidePublicData; onBack: ()
   }
 
   return (
-    <IonPage>
-      <IonHeader>
-        <IonToolbar color="primary">
-          <IonButton slot="start" fill="clear" color="light" onClick={onBack}>
-            <IonIcon slot="icon-only" icon={chevronForwardOutline} style={{ transform: "rotate(180deg)" }} />
-          </IonButton>
-          <IonTitle>Perfil del guía</IonTitle>
-        </IonToolbar>
-      </IonHeader>
+    <IonPage className="rapago-section-page rapago-guides-page" data-rapago-theme={theme}>
+      <RapagoSectionHeader title="Perfil del guía" onBack={onBack} />
       <IonContent>
-        <div style={{
-          background: "linear-gradient(145deg, var(--ion-color-warning-shade) 0%, var(--ion-color-warning) 100%)",
-          padding: "28px 20px 24px", display: "flex", flexDirection: "column", alignItems: "center", gap: "10px",
-        }}>
-          <div style={{ width: "84px", height: "84px", borderRadius: "50%", background: "rgba(255,255,255,0.25)", border: "3px solid rgba(255,255,255,0.7)", display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", fontWeight: 800, fontSize: "1.8rem" }}>
-            {initials || "G"}
-          </div>
-          <div style={{ textAlign: "center" }}>
-            <div style={{ color: "#fff", fontWeight: 800, fontSize: "1.15rem" }}>{guide.name}</div>
-          </div>
-          <div style={{ display: "flex", alignItems: "center", gap: "4px" }}>
-            {[1,2,3,4,5].map((n) => <span key={n} style={{ fontSize: "1rem", color: n <= stars ? "#fff" : "rgba(255,255,255,0.4)" }}>★</span>)}
-            <span style={{ color: "rgba(255,255,255,0.85)", fontSize: "0.8rem", marginLeft: "4px" }}>
-              {guide.ratingAverage ? guide.ratingAverage.toFixed(1) : "Sin calificaciones"}
-              {guide.ratingCount ? ` · ${guide.ratingCount} valoraciones` : ""}
-            </span>
-          </div>
-          {(guide.languages ?? []).length > 0 && (
-            <div style={{ display: "flex", gap: "6px", flexWrap: "wrap", justifyContent: "center" }}>
-              {(guide.languages ?? []).map((lang) => (
-                <span key={lang} style={{ background: "rgba(255,255,255,0.2)", color: "#fff", borderRadius: "12px", padding: "2px 10px", fontSize: "0.72rem", fontWeight: 600 }}>
-                  {LANG_LABEL_DETAIL[lang] ?? lang.toUpperCase()}
+        <div className="rp-shell">
+          {/* El degradado ámbar inline se sustituye por el héroe de marca: es el
+              mismo oro en día y en noche, con la tinta volcánica que ya cumple
+              contraste sobre él (ver .rp-hero en sections.css). */}
+          <section className="rp-hero">
+            <div className="rp-hero__top" style={{ flexDirection: "column", textAlign: "center" }}>
+              <div className="rp-hero__icon" style={{
+                width: "var(--rp-avatar)", height: "var(--rp-avatar)", borderRadius: "50%",
+                border: "3px solid var(--rp-hero-inset-bd)",
+                fontWeight: 850, fontSize: "var(--rp-fs-hero)",
+              }}>
+                {initials || "G"}
+              </div>
+              <div>
+                <div className="rp-hero__amount">{guide.name}</div>
+              </div>
+              <div style={{ display: "flex", alignItems: "center", gap: "4px" }}>
+                {[1,2,3,4,5].map((n) => <span key={n} style={{ fontSize: "1rem", color: n <= stars ? "var(--rp-btn-primary-fg)" : "var(--rp-hero-inset-bd)" }}>★</span>)}
+                <span style={{ color: "var(--rp-hero-muted)", fontSize: "var(--rp-fs-sub)", marginLeft: "4px" }}>
+                  {guide.ratingAverage ? guide.ratingAverage.toFixed(1) : "Sin calificaciones"}
+                  {guide.ratingCount ? ` · ${guide.ratingCount} valoraciones` : ""}
                 </span>
-              ))}
+              </div>
+              {(guide.languages ?? []).length > 0 && (
+                <div style={{ display: "flex", gap: "6px", flexWrap: "wrap", justifyContent: "center" }}>
+                  {(guide.languages ?? []).map((lang) => (
+                    <span key={lang} style={{
+                      background: "var(--rp-hero-inset)", color: "var(--rp-btn-primary-fg)",
+                      border: "1px solid var(--rp-hero-inset-bd)",
+                      borderRadius: "999px", padding: "3px 10px",
+                      fontSize: "var(--rp-fs-micro)", fontWeight: 700,
+                    }}>
+                      {LANG_LABEL_DETAIL[lang] ?? lang.toUpperCase()}
+                    </span>
+                  ))}
+                </div>
+              )}
             </div>
-          )}
-        </div>
+          </section>
 
-        <div style={{ padding: "16px 16px 80px" }}>
           {guide.bio && (
-            <IonCard style={{ margin: "0 0 16px", borderRadius: "14px" }}>
-              <IonCardContent style={{ padding: "14px 16px" }}>
-                <div style={{ fontWeight: 600, fontSize: "0.82rem", color: "var(--ion-color-medium)", marginBottom: "6px", textTransform: "uppercase", letterSpacing: "0.5px" }}>Sobre mí</div>
-                <div style={{ fontSize: "0.88rem", lineHeight: 1.6 }}>{guide.bio}</div>
-              </IonCardContent>
-            </IonCard>
+            <article className="rp-card">
+              <div style={{
+                fontSize: "var(--rp-fs-label)", fontWeight: 800, textTransform: "uppercase",
+                letterSpacing: "0.08em", color: "var(--rp-muted)", marginBottom: "6px",
+              }}>Sobre mí</div>
+              <div style={{ fontSize: "var(--rp-fs-body)", lineHeight: 1.6 }}>{guide.bio}</div>
+            </article>
           )}
 
-          <div style={{ fontWeight: 700, fontSize: "1rem", marginBottom: "12px" }}>Servicios disponibles</div>
+          <h2 className="rapago-section-label">Servicios disponibles</h2>
 
           {loading && <div style={{ display: "flex", justifyContent: "center", padding: "20px" }}><IonSpinner name="crescent" /></div>}
 
           {!loading && services.length === 0 && (
-            <EmptyState icon={compassOutline} title="Sin servicios activos" subtitle="Este guía no tiene servicios publicados aún" />
+            <div className="rp-empty">
+              <div className="rp-empty__icon" aria-hidden>
+                <IonIcon icon={compassOutline} />
+              </div>
+              <h3 className="rp-empty__title">Sin servicios activos</h3>
+              <p className="rp-empty__body">Este guía no tiene servicios publicados aún</p>
+            </div>
           )}
 
           {!loading && services.length > 0 && (
-            <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+            <div style={{ display: "flex", flexDirection: "column", gap: "var(--rp-gap-sm)" }}>
               {services.map((svc) => {
                 const priceDisplay = svc.price !== null ? `$${(svc.price / 100).toLocaleString("es-CL")} CLP/persona` : "Consultar precio";
                 return (
-                  <IonCard key={svc.id} style={{ margin: 0, borderRadius: "16px", boxShadow: "0 2px 12px rgba(0,0,0,0.07)" }}>
-                    <IonCardContent style={{ padding: "16px" }}>
-                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "8px" }}>
-                        <div style={{ fontWeight: 700, fontSize: "0.95rem", flex: 1 }}>{svc.title}</div>
-                        <IonBadge color="tertiary" style={{ fontSize: "0.65rem", marginLeft: "8px", flexShrink: 0 }}>
-                          {SERVICE_TYPE_LABEL[svc.type] ?? svc.type}
-                        </IonBadge>
+                  <article key={svc.id} className="rp-card">
+                    <div className="rp-card__row">
+                      <h3 className="rp-card__title" style={{ flex: 1 }}>{svc.title}</h3>
+                      {/* El tipo de servicio no es un estado: no le corresponde
+                          un color semántico de Ionic. Va con el cromo dorado. */}
+                      <IonBadge className="rp-badge" style={{
+                        marginLeft: "8px",
+                        "--background": "var(--rp-icon-bg)", "--color": "var(--rp-icon-fg)",
+                        border: "1px solid var(--rp-icon-bd)",
+                      }}>
+                        {SERVICE_TYPE_LABEL[svc.type] ?? svc.type}
+                      </IonBadge>
+                    </div>
+                    {svc.description && <div style={{ fontSize: "var(--rp-fs-sub)", color: "var(--rp-muted)", margin: "8px 0 10px", lineHeight: 1.45 }}>{svc.description}</div>}
+                    <div style={{ display: "flex", gap: "12px", flexWrap: "wrap", alignItems: "center", fontSize: "var(--rp-fs-sub)", color: "var(--rp-muted)", marginBottom: "8px" }}>
+                      {svc.durationMinutes && <span style={{ display: "inline-flex", alignItems: "center", gap: "5px" }}><IonIcon icon={timeOutline} style={META_ICON_STYLE} /> {svc.durationMinutes} min</span>}
+                      {svc.maxPeople && <span style={{ display: "inline-flex", alignItems: "center", gap: "5px" }}><IonIcon icon={peopleOutline} style={META_ICON_STYLE} /> Máx {svc.maxPeople}</span>}
+                      {svc.meetingPoint && <span style={{ display: "inline-flex", alignItems: "center", gap: "5px" }}><IonIcon icon={locationOutline} style={META_ICON_STYLE} /> {svc.meetingPoint}</span>}
+                      <span style={{ display: "inline-flex", alignItems: "center", gap: "5px", color: svc.includesVehicle ? "var(--rp-accent)" : "var(--rp-muted)" }}>
+                        <IonIcon icon={carOutline} style={META_ICON_STYLE} /> {svc.includesVehicle ? "Incluye vehículo" : "Sin vehículo"}
+                      </span>
+                    </div>
+                    {(svc.includes ?? []).length > 0 && (
+                      <div style={{ display: "flex", gap: "4px", flexWrap: "wrap", marginBottom: "10px" }}>
+                        {(svc.includes ?? []).map((inc) => (
+                          <span key={inc} style={{
+                            display: "inline-flex", alignItems: "center", gap: "4px",
+                            background: "var(--rp-ok-bg)", color: "var(--rp-ok-fg)",
+                            border: "1px solid var(--rp-ok-bd)",
+                            borderRadius: "999px", padding: "3px 9px", fontSize: "var(--rp-fs-micro)",
+                          }}><IonIcon icon={checkmarkOutline} style={META_ICON_STYLE} /> {inc}</span>
+                        ))}
                       </div>
-                      {svc.description && <div style={{ fontSize: "0.8rem", color: "var(--ion-color-medium)", marginBottom: "10px", lineHeight: 1.4 }}>{svc.description}</div>}
-                      <div style={{ display: "flex", gap: "12px", flexWrap: "wrap", fontSize: "0.78rem", color: "var(--ion-color-medium)", marginBottom: "8px" }}>
-                        {svc.durationMinutes && <span>⏱ {svc.durationMinutes} min</span>}
-                        {svc.maxPeople && <span>👥 Máx {svc.maxPeople}</span>}
-                        {svc.meetingPoint && <span>📍 {svc.meetingPoint}</span>}
-                        <span style={{ color: svc.includesVehicle ? "var(--ion-color-primary)" : "var(--ion-color-medium)" }}>
-                          🚗 {svc.includesVehicle ? "Incluye vehículo" : "Sin vehículo"}
-                        </span>
-                      </div>
-                      {(svc.includes ?? []).length > 0 && (
-                        <div style={{ display: "flex", gap: "4px", flexWrap: "wrap", marginBottom: "10px" }}>
-                          {(svc.includes ?? []).map((inc) => (
-                            <span key={inc} style={{ background: "var(--ion-color-success-tint)", color: "var(--ion-color-success-shade)", borderRadius: "10px", padding: "2px 8px", fontSize: "0.7rem" }}>✓ {inc}</span>
-                          ))}
-                        </div>
-                      )}
-                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: "4px" }}>
-                        <div style={{ fontWeight: 800, fontSize: "1.05rem", color: "var(--ion-color-success)" }}>{priceDisplay}</div>
-                        <IonButton size="small" style={{ "--border-radius": "10px" }}
-                          onClick={() => { setBookingService(svc); setBookingDate(new Date().toISOString().slice(0, 10)); }}>
-                          Reservar
-                        </IonButton>
-                      </div>
-                    </IonCardContent>
-                  </IonCard>
+                    )}
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "var(--rp-gap-sm)", marginTop: "4px" }}>
+                      <div className="rp-card__amount" style={{ margin: 0 }}>{priceDisplay}</div>
+                      <IonButton size="small"
+                        onClick={() => { setBookingService(svc); setBookingDate(new Date().toISOString().slice(0, 10)); }}>
+                        Reservar
+                      </IonButton>
+                    </div>
+                  </article>
                 );
               })}
             </div>
@@ -317,53 +376,56 @@ function GuideDetailPage({ guide, onBack }: { guide: GuidePublicData; onBack: ()
         </div>
 
         <IonModal isOpen={bookingService !== null} onDidDismiss={() => setBookingService(null)}>
-          <IonHeader>
-            <IonToolbar color="primary">
+          <IonHeader className="rapago-section-header">
+            <IonToolbar className="rapago-modal-toolbar">
               <IonTitle>Reservar servicio</IonTitle>
-              <IonButton slot="end" fill="clear" color="light" onClick={() => setBookingService(null)}>Cerrar</IonButton>
+              <IonButton slot="end" fill="clear" className="rapago-modal-close" onClick={() => setBookingService(null)}>Cerrar</IonButton>
             </IonToolbar>
           </IonHeader>
-          <IonContent className="ion-padding">
-            {bookingService && (
-              <>
-                <div style={{ fontWeight: 600, marginBottom: "12px" }}>{bookingService.title}</div>
-                <IonItem lines="full">
-                  <IonLabel position="stacked">Fecha</IonLabel>
-                  <IonInput type="date" value={bookingDate} min={new Date().toISOString().slice(0, 10)} onIonInput={(e) => setBookingDate(String(e.detail.value ?? ""))} />
-                </IonItem>
-                <IonItem lines="full">
-                  <IonLabel>Hora (opcional)</IonLabel>
-                  <IonSelect interface="action-sheet" value={bookingTime} onIonChange={(e) => setBookingTime(String(e.detail.value ?? ""))} placeholder="Sin hora específica">
-                    <IonSelectOption value="">Sin hora</IonSelectOption>
-                    {["08:00","09:00","10:00","11:00","12:00","13:00","14:00","15:00","16:00","17:00"].map((t) => <IonSelectOption key={t} value={t}>{t}</IonSelectOption>)}
-                  </IonSelect>
-                </IonItem>
-                <IonItem lines="full">
-                  <IonLabel position="stacked">Número de personas</IonLabel>
-                  <IonInput type="number" value={numPeople} min={1} max={bookingService.maxPeople ?? 20}
-                    onIonInput={(e) => setNumPeople(Math.max(1, parseInt(String(e.detail.value ?? "1"), 10)))} />
-                </IonItem>
-                <IonItem lines="none">
-                  <IonLabel position="stacked">Notas (opcional)</IonLabel>
-                  <IonTextarea value={notes} onIonInput={(e) => setNotes(String(e.detail.value ?? ""))} placeholder="Indicaciones especiales..." rows={3} maxlength={500} />
-                </IonItem>
-                {(() => {
-                  const pr = computePrice();
-                  return pr.display ? (
-                    <div style={{ padding: "12px 0", fontWeight: 600, color: pr.valid ? "inherit" : "var(--ion-color-warning)" }}>
-                      {pr.valid ? `Total estimado: ${pr.display}` : pr.display}
-                    </div>
-                  ) : null;
-                })()}
-                {pricingData?.conditions && <div style={{ fontSize: "0.78rem", color: "var(--ion-color-medium)", marginBottom: "6px" }}><strong>Condiciones:</strong> {pricingData.conditions}</div>}
-                {pricingData?.cancellationPolicy && <div style={{ fontSize: "0.78rem", color: "var(--ion-color-medium)", marginBottom: "8px" }}><strong>Cancelación:</strong> {pricingData.cancellationPolicy}</div>}
-                <IonButton expand="block" onClick={() => void handleBook()}
-                  disabled={submitting || (pricingData !== null && pricingData.tiers.length > 0 && !pricingData.tiers.find((t) => t.minPeople <= numPeople && t.maxPeople >= numPeople))}
-                  style={{ marginTop: "8px" }}>
-                  {submitting ? <IonSpinner name="dots" /> : "Confirmar reserva"}
-                </IonButton>
-              </>
-            )}
+          {/* El IonModal se monta FUERA del IonPage, así que no hereda ni el
+              scope ni el tema: se los damos aquí (ver .rapago-modal-body). */}
+          <IonContent className="rapago-modal-content">
+            <div className="rapago-section-page rapago-modal-body" data-rapago-theme={theme}>
+              {bookingService && (
+                <div className="rp-modal-inner">
+                  <div style={{ fontSize: "var(--rp-fs-h2)", fontWeight: 800, color: "var(--rp-text)" }}>{bookingService.title}</div>
+                  <IonItem lines="full">
+                    <IonLabel position="stacked">Fecha</IonLabel>
+                    <IonInput type="date" value={bookingDate} min={new Date().toISOString().slice(0, 10)} onIonInput={(e) => setBookingDate(String(e.detail.value ?? ""))} />
+                  </IonItem>
+                  <IonItem lines="full">
+                    <IonLabel>Hora (opcional)</IonLabel>
+                    <IonSelect interface="action-sheet" value={bookingTime} onIonChange={(e) => setBookingTime(String(e.detail.value ?? ""))} placeholder="Sin hora específica">
+                      <IonSelectOption value="">Sin hora</IonSelectOption>
+                      {["08:00","09:00","10:00","11:00","12:00","13:00","14:00","15:00","16:00","17:00"].map((t) => <IonSelectOption key={t} value={t}>{t}</IonSelectOption>)}
+                    </IonSelect>
+                  </IonItem>
+                  <IonItem lines="full">
+                    <IonLabel position="stacked">Número de personas</IonLabel>
+                    <IonInput type="number" value={numPeople} min={1} max={bookingService.maxPeople ?? 20}
+                      onIonInput={(e) => setNumPeople(Math.max(1, parseInt(String(e.detail.value ?? "1"), 10)))} />
+                  </IonItem>
+                  <IonItem lines="none">
+                    <IonLabel position="stacked">Notas (opcional)</IonLabel>
+                    <IonTextarea value={notes} onIonInput={(e) => setNotes(String(e.detail.value ?? ""))} placeholder="Indicaciones especiales..." rows={3} maxlength={500} />
+                  </IonItem>
+                  {(() => {
+                    const pr = computePrice();
+                    return pr.display ? (
+                      <div style={{ fontWeight: 800, fontSize: "var(--rp-fs-body)", color: pr.valid ? "var(--rp-text)" : "var(--rp-warn-fg)" }}>
+                        {pr.valid ? `Total estimado: ${pr.display}` : pr.display}
+                      </div>
+                    ) : null;
+                  })()}
+                  {pricingData?.conditions && <div style={{ fontSize: "var(--rp-fs-sub)", color: "var(--rp-muted)" }}><strong>Condiciones:</strong> {pricingData.conditions}</div>}
+                  {pricingData?.cancellationPolicy && <div style={{ fontSize: "var(--rp-fs-sub)", color: "var(--rp-muted)" }}><strong>Cancelación:</strong> {pricingData.cancellationPolicy}</div>}
+                  <IonButton className="rp-cta" expand="block" onClick={() => void handleBook()}
+                    disabled={submitting || (pricingData !== null && pricingData.tiers.length > 0 && !pricingData.tiers.find((t) => t.minPeople <= numPeople && t.maxPeople >= numPeople))}>
+                    {submitting ? <IonSpinner name="dots" /> : "Confirmar reserva"}
+                  </IonButton>
+                </div>
+              )}
+            </div>
           </IonContent>
         </IonModal>
 

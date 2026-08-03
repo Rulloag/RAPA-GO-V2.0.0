@@ -271,9 +271,9 @@ function makeUserCircle(center: LatLng): google.maps.CircleOptions {
   return {
     center,
     radius: 25,
-    fillColor: "#2563eb",
+    fillColor: "#12697e",
     fillOpacity: 0.18,
-    strokeColor: "#2563eb",
+    strokeColor: "#12697e",
     strokeOpacity: 0.28,
     strokeWeight: 1,
     clickable: false,
@@ -357,11 +357,26 @@ function GoogleRapaMap({
           streetViewControl: false,
           clickableIcons: true,
           gestureHandling: "greedy",
+          /* Paleta de la isla, no la de fábrica de Google.
+             El mapa es la superficie más grande de la app y estaba en gris
+             genérico con agua celeste: la marca desaparecía justo en la
+             pantalla donde el usuario pasa más tiempo.
+             En Rapa Nui el mar ocupa el borde de casi cualquier encuadre, así
+             que pintarlo en el teal del eje océano y la tierra en arena de
+             Anakena hace que el mapa se vea como esta isla y como ninguna otra,
+             sin necesidad de ilustración. */
           styles: [
-            { elementType: "geometry", stylers: [{ color: "#f2eee9" }] },
-            { featureType: "road", elementType: "geometry", stylers: [{ color: "#ffffff" }] },
-            { featureType: "road", elementType: "labels.text.fill", stylers: [{ color: "#334155" }] },
-            { featureType: "water", elementType: "geometry", stylers: [{ color: "#bde7f2" }] },
+            { elementType: "geometry", stylers: [{ color: "#f2e6d3" }] },
+            { elementType: "labels.text.fill", stylers: [{ color: "#4a3b2a" }] },
+            { elementType: "labels.text.stroke", stylers: [{ color: "#f7efe2" }, { weight: 3 }] },
+            { featureType: "water", elementType: "geometry", stylers: [{ color: "#12697e" }] },
+            { featureType: "landscape.natural", elementType: "geometry", stylers: [{ color: "#dcd0b8" }] },
+            /* La isla entera es parque nacional: el verde no es un detalle. */
+            { featureType: "poi.park", elementType: "geometry", stylers: [{ color: "#b9c48a" }] },
+            { featureType: "road", elementType: "geometry", stylers: [{ color: "#fffdf9" }] },
+            { featureType: "road", elementType: "geometry.stroke", stylers: [{ color: "#e0cfae" }] },
+            { featureType: "road", elementType: "labels.text.fill", stylers: [{ color: "#6b5a3e" }] },
+            { featureType: "administrative", elementType: "geometry.stroke", stylers: [{ color: "#c89b3c" }] },
             { featureType: "poi.business", stylers: [{ visibility: "on" }] },
           ],
         });
@@ -371,7 +386,10 @@ function GoogleRapaMap({
           suppressMarkers: true,
           preserveViewport: false,
           polylineOptions: {
-            strokeColor: "#2563eb",
+            /* Eje océano: en el sistema de color, lo que se mueve solo (la
+               ruta, el conductor acercándose) va en teal; el oro se reserva
+               para lo que el usuario controla. Antes era el azul de Tailwind. */
+            strokeColor: "#12697e",
             strokeOpacity: 1,
             strokeWeight: 7,
           },
@@ -479,7 +497,8 @@ function GoogleRapaMap({
           fontSize: "16px",
           fontWeight: "900",
         },
-        icon: makeCircleIcon("#2563eb", 13),
+        /* Origen en laguna: "confirmado, ya estás aquí". */
+        icon: makeCircleIcon("#2e7d5b", 13),
         zIndex: 30,
       });
 
@@ -542,7 +561,9 @@ function GoogleRapaMap({
           fontSize: "16px",
           fontWeight: "900",
         },
-        icon: makeCircleIcon("#e53935", 12),
+        /* Destino en oro de marca: es el objetivo del usuario, no un error.
+           El rojo Material de antes leía como alerta. */
+        icon: makeCircleIcon("#c89b3c", 12),
         zIndex: 19,
       });
 
@@ -577,7 +598,7 @@ function GoogleRapaMap({
           fallbackLineRef.current = new google.maps.Polyline({
             map,
             path: [originPoint, destinationPoint],
-            strokeColor: "#2563eb",
+            strokeColor: "#12697e",
             strokeOpacity: 0.95,
             strokeWeight: 6,
             icons: [

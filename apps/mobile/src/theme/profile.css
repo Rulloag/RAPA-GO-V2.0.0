@@ -59,10 +59,11 @@
   --background-hover: var(--rp-icon-bg);
   --background-activated: var(--rp-icon-bg);
   --color: var(--rp-icon-fg);
-  --padding-start: 10px;
-  --padding-end: 10px;
-  height: 40px;
-  min-height: 40px;
+  --padding-start: 12px;
+  --padding-end: 12px;
+  /* 40px quedaba bajo el mínimo táctil de 44pt/48dp. */
+  height: 48px;
+  min-height: 48px;
   font-weight: 800;
   font-size: var(--rp-fs-sub);
   text-transform: none;
@@ -445,7 +446,9 @@
   align-items: center;
   justify-content: center;
   gap: 6px;
-  padding: 10px 8px;
+  /* Los segmentos de tema e idioma quedaban en ~35px de alto. */
+  min-height: 48px;
+  padding: 12px 8px;
   border: 0;
   border-radius: 11px;
   background: transparent;
@@ -934,7 +937,7 @@
   align-items: center;
   gap: 12px;
   padding: 12px 14px;
-  border: 1px solid var(--rp-border);
+  border: 1px solid var(--rp-border-c);
   border-radius: 18px;
   background: var(--rp-field-bg);
   color: var(--rp-text);
@@ -962,7 +965,7 @@
   place-items: center;
   border-radius: 14px;
   background: rgba(214, 166, 64, 0.14);
-  color: var(--rp-accent-strong);
+  color: var(--rp-accent);
   font-size: 1.3rem;
 }
 
@@ -986,7 +989,7 @@
 }
 
 .rapago-profile-page .rapago-profile-legal-open {
-  color: var(--rp-accent-strong);
+  color: var(--rp-accent);
   font-size: 0.74rem;
   font-weight: 950;
 }
@@ -1003,7 +1006,7 @@
   display: flex;
   align-items: center;
   gap: 10px;
-  border: 1px dashed var(--rp-border);
+  border: 1px dashed var(--rp-border-c);
   background: var(--rp-field-bg);
 }
 
@@ -1032,7 +1035,7 @@
   align-items: start;
   gap: 10px;
   padding: 11px 12px;
-  border: 1px solid var(--rp-border);
+  border: 1px solid var(--rp-border-c);
   border-radius: 15px;
   background: var(--rp-field-bg);
   cursor: pointer;
@@ -1059,8 +1062,8 @@
   --size: 23px;
   --border-radius: 7px;
   --border-width: 2px;
-  --border-color: var(--rp-accent-strong);
-  --border-color-checked: var(--rp-accent-strong);
+  --border-color: var(--rp-accent);
+  --border-color-checked: var(--rp-accent);
   --checkbox-background: var(--rp-field-bg);
   --checkbox-background-checked: var(--rp-accent);
   --checkmark-color: #111827;

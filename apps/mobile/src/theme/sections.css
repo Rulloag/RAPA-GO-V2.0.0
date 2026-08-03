@@ -98,7 +98,8 @@
   --background: var(--rp-surface-soft);
   --color: var(--rp-muted);
   flex-shrink: 0;
-  height: 34px;
+  /* 34px quedaba muy por debajo del mínimo táctil de 44pt/48dp. */
+  height: 44px;
   font-size: var(--rp-fs-sub);
   font-weight: 750;
   border: 1px solid var(--rp-icon-bd);

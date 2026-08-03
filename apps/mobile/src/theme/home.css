@@ -88,9 +88,10 @@
 /* Toggle sol/luna. Es un <button> nativo, no un IonButton, para que las
    reglas globales de `ion-button` no impongan su radio y su color. */
 .rapago-home-theme-btn {
-  width: clamp(38px, 11vw, 42px);
-  height: clamp(38px, 11vw, 42px);
-  border-radius: 13px;
+  /* 38-42px quedaba bajo el mínimo táctil de 44pt/48dp. */
+  width: clamp(44px, 12vw, 48px);
+  height: clamp(44px, 12vw, 48px);
+  border-radius: 14px;
   display: grid;
   place-items: center;
   background: var(--rp-chrome);
@@ -113,7 +114,10 @@
   display: flex;
   align-items: center;
   gap: 7px;
-  padding: 5px 11px 5px 5px;
+  /* El avatar es de 28-32px: sin este min-height el botón se quedaba en ~38px
+     de alto, bajo el mínimo táctil. */
+  min-height: 48px;
+  padding: 8px 12px 8px 8px;
   border-radius: 999px;
   background: var(--rp-chrome);
   border: 1px solid var(--rp-icon-bd);
@@ -206,15 +210,19 @@
   font-size: var(--rp-fs-label);
   font-weight: 800;
   text-transform: uppercase;
-  letter-spacing: 0.08em;
+  letter-spacing: var(--rp-tracking-eyebrow);
   margin-bottom: 6px;
 }
 
 .rapago-home-hero-title {
   font-size: var(--rp-fs-hero);
   font-weight: 900;
+  /* Tracking negativo y line-height apretado: es lo que separa un titular de
+     un texto grande cuando el peso no puede hacerlo (ver --rp-tracking-display
+     en rapago-shell.css). */
+  letter-spacing: var(--rp-tracking-display);
   color: #ffffff;
-  line-height: 1.12;
+  line-height: 1.05;
   text-wrap: balance;
   text-shadow: 0 2px 14px rgba(0, 0, 0, 0.5);
 }
@@ -339,7 +347,7 @@
   font-size: var(--rp-fs-label);
   font-weight: 800;
   text-transform: uppercase;
-  letter-spacing: 0.1em;
+  letter-spacing: var(--rp-tracking-eyebrow);
   color: var(--rp-muted-soft);
 }
 
@@ -414,10 +422,11 @@
   background: var(--rp-surface-soft);
   border: 1px solid var(--rp-icon-bd);
   color: var(--rp-muted);
-  font-size: 0.5rem;
+  /* 0.5rem = 8px: ilegible, sobre todo al sol. */
+  font-size: 0.68rem;
   font-weight: 800;
   text-transform: uppercase;
-  letter-spacing: 0.03em;
+  letter-spacing: 0.05em;
   white-space: nowrap;
   line-height: 1.4;
 }

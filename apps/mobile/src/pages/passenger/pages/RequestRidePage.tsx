@@ -8981,7 +8981,11 @@ return (
                   style={
                     {
                       margin: "-4px 0 10px",
-                      "--color": "var(--rp-accent)",
+                      /* `--color` no llegaba a pintar: sections.css lo fija con
+                         !important para todos los clear de sección. El color de
+                         estos enlaces se declara con `--rp-clear-fg`, la
+                         propiedad que lee request-ride.css. */
+                      "--rp-clear-fg": "var(--rp-accent)",
                       fontWeight: 900,
                       letterSpacing: ".02em",
                     } as CSSProperties
@@ -8999,7 +9003,7 @@ return (
                   style={
                     {
                       margin: "-4px 0 22px",
-                      "--color": "var(--rp-accent)",
+                      "--rp-clear-fg": "var(--rp-accent)",
                       fontWeight: 900,
                       letterSpacing: ".02em",
                     } as CSSProperties
@@ -9057,7 +9061,13 @@ return (
               style={
                 {
                   margin: "-4px 0 22px",
-                  "--color": "#EF4444",
+                  /* Era #EF4444: el único literal de los cuatro enlaces del
+                     mapa. Va sobre el fondo de página, que sí cambia con el
+                     tema, y no tenía contraparte de noche (3,01:1 en día,
+                     3,49:1 en noche). El token de peligro conserva el rojo que
+                     lo emparenta con el pin de destino y sube a 4,88:1 de día y
+                     5,6:1 de noche. */
+                  "--rp-clear-fg": "var(--rp-danger-fg)",
                   fontWeight: 900,
                   letterSpacing: ".02em",
                 } as CSSProperties
@@ -9627,7 +9637,12 @@ return (
                   onClick={clearRoundTripPromotion}
                   style={
                     {
-                      "--color": "#F8D879",
+                      /* Este botón vive DENTRO del panel de experiencias, que
+                         es oscuro en los dos temas por su degradado literal.
+                         Por eso no toma el oro de icono (de día sería #7d5a17
+                         sobre #191919: 2,80:1) sino la constante de marca, que
+                         vale igual en día y en noche. */
+                      "--rp-clear-fg": "var(--rp-gold-light)",
                       marginTop: "12px",
                       fontWeight: 950,
                     } as CSSProperties

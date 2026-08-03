@@ -1769,11 +1769,14 @@ ion-tab-button ion-icon {
 ion-tab-button ion-label {
   display: block !important;
   width: 100% !important;
-  max-width: 52px !important;
+  max-width: 64px !important;
   margin: 0 auto !important;
 
   color: inherit !important;
-  font-size: 6.2px !important;
+  /* Estaba en 6.2px. Hoy lo neutraliza .rapago-role-tabbar (10px, más
+     especificidad), pero cualquier IonTabBar sin esa clase caía aquí y
+     mostraba etiquetas ilegibles. */
+  font-size: 10px !important;
   line-height: 1.05 !important;
   font-weight: 900 !important;
   text-align: center !important;
@@ -1808,16 +1811,16 @@ ion-tab-button[aria-selected="true"] ion-label {
   }
 
   ion-tab-button ion-label {
-    max-width: 56px !important;
-    font-size: 6.8px !important;
+    max-width: 66px !important;
+    font-size: 10px !important;
   }
 }
 
 /* Pantallas muy angostas (≤360px): labels más compactos */
 @media (max-width: 360px) {
   ion-tab-button ion-label {
-    max-width: 44px !important;
-    font-size: 5.8px !important;
+    max-width: 56px !important;
+    font-size: 9.5px !important;
   }
 }
 
@@ -2063,6 +2066,51 @@ ion-tab-button[aria-selected="true"] ion-label {
   --ion-color-tertiary-contrast-rgb: 26, 26, 26;
   --ion-color-tertiary-shade: #BFAE8D;
   --ion-color-tertiary-tint: #DDC9AA;
+
+  /* ── Semánticos de Ionic ──────────────────────────────────────────────────
+     Estos cuatro NUNCA se habían redefinido, ni aquí ni en el :root de arriba,
+     así que seguían en los valores de fábrica: success #2dd36f, warning
+     #ffc409, danger #eb445a, medium #92949c. Son el motivo de que las pantallas
+     no rediseñadas (GuidesPage, RentalsPage, EmptyState, todos los IonBadge y
+     los IonToast) se vean como una app de Ionic genérica: el amarillo semáforo
+     y el verde menta no pertenecen a esta marca.
+
+     Se alinean con el sistema de color de rapago-shell.css:
+       success → laguna (Rano Raraku)
+       warning → oro de marca
+       danger  → toba roja de Puna Pau
+       medium  → gris CÁLIDO; el de fábrica es azulado y desentona con la arena.
+
+     Van en ESTE bloque y no en el :root de la línea 5 porque este es el último
+     que declara la familia --ion-color-*, así que es el que gana la cascada.
+     Con solo esto, esas pantallas cambian de aspecto sin tocar su JSX. */
+  --ion-color-success: #2E7D5B;
+  --ion-color-success-rgb: 46, 125, 91;
+  --ion-color-success-contrast: #FFFFFF;
+  --ion-color-success-contrast-rgb: 255, 255, 255;
+  --ion-color-success-shade: #286E50;
+  --ion-color-success-tint: #438A6B;
+
+  --ion-color-warning: #C89B3C;
+  --ion-color-warning-rgb: 200, 155, 60;
+  --ion-color-warning-contrast: #201607;
+  --ion-color-warning-contrast-rgb: 32, 22, 7;
+  --ion-color-warning-shade: #B08435;
+  --ion-color-warning-tint: #D4AD61;
+
+  --ion-color-danger: #A63A24;
+  --ion-color-danger-rgb: 166, 58, 36;
+  --ion-color-danger-contrast: #FFFFFF;
+  --ion-color-danger-contrast-rgb: 255, 255, 255;
+  --ion-color-danger-shade: #923320;
+  --ion-color-danger-tint: #AF4E3A;
+
+  --ion-color-medium: #7C6E5E;
+  --ion-color-medium-rgb: 124, 110, 94;
+  --ion-color-medium-contrast: #FFFFFF;
+  --ion-color-medium-contrast-rgb: 255, 255, 255;
+  --ion-color-medium-shade: #6D6153;
+  --ion-color-medium-tint: #897D6E;
 
   --ion-background-color: #1A1A1A;
   --ion-text-color: #F6F2EC;
@@ -2544,10 +2592,11 @@ ion-tab-button ion-icon {
 ion-tab-button ion-label {
   display: block !important;
   width: 100% !important;
-  max-width: 38px !important;
+  max-width: 60px !important;
   margin: 0 auto !important;
   color: inherit !important;
-  font-size: 6.2px !important;
+  /* Duplicado del bloque de arriba; mismo motivo, mismo arreglo. */
+  font-size: 10px !important;
   line-height: 1.05 !important;
   font-weight: 900 !important;
   text-align: center !important;
@@ -2589,8 +2638,8 @@ ion-content,
   }
 
   ion-tab-button ion-label {
-    max-width: 42px !important;
-    font-size: 6.8px !important;
+    max-width: 62px !important;
+    font-size: 10px !important;
   }
 }
 

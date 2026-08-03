@@ -5338,7 +5338,10 @@ function PassengerDriverAndVehicleDetails({
         }}
       >
         <div>
-          <div style={{ color: "rgba(17,17,17,.62)", fontSize: ".74rem", fontWeight: 850 }}>
+          {/* El contenedor usa var(--rp-surface), que en modo noche es casi
+              negro: este texto iba en rgba(17,17,17,.62) y quedaba en 1,06:1,
+              es decir invisible, justo mientras el conductor viene en camino. */}
+          <div style={{ color: "var(--rp-muted)", fontSize: ".74rem", fontWeight: 850 }}>
             Detalles del viaje
           </div>
           <div style={{ fontWeight: 950, fontSize: ".92rem", marginTop: 1, lineHeight: 1.25 }}>
@@ -5346,7 +5349,7 @@ function PassengerDriverAndVehicleDetails({
               ? `Espera en ${String(ride.originText ?? "el punto de partida")}`
               : `Recogida: ${String(ride.originText ?? "punto de partida")}`}
             <br />
-            <span style={{ fontSize: ".78rem", color: "rgba(17,17,17,.62)", fontWeight: 850 }}>
+            <span style={{ fontSize: ".78rem", color: "var(--rp-muted)", fontWeight: 850 }}>
               Destino: {String(ride.destinationText ?? "destino del viaje")}
             </span>
           </div>
@@ -5389,7 +5392,10 @@ function PassengerDriverAndVehicleDetails({
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
-              color: "var(--rp-text)",
+              /* La inicial iba en var(--rp-text) sobre var(--rp-accent): en
+                 noche, marfil sobre oro claro = 1,43:1. El contraste del oro
+                 es el mismo par que ya usa el botón principal. */
+              color: "var(--rp-btn-primary-fg)",
               fontWeight: 950,
               fontSize: "1.25rem",
               border: "3px solid #ffffff",
@@ -5415,7 +5421,7 @@ function PassengerDriverAndVehicleDetails({
           <div style={{ fontWeight: 950, fontSize: ".86rem", color: "var(--rp-ok-fg)", letterSpacing: ".02em" }}>
             {driverName}
           </div>
-          <div style={{ marginTop: 4, fontWeight: 850, fontSize: ".74rem", color: "rgba(17,17,17,.62)", lineHeight: 1.25 }}>
+          <div style={{ marginTop: 4, fontWeight: 850, fontSize: ".74rem", color: "var(--rp-muted)", lineHeight: 1.25 }}>
             {modelLine}
             <br />{colorLine}
           </div>
@@ -5434,7 +5440,7 @@ function PassengerDriverAndVehicleDetails({
           >
             {plateText}
           </div>
-          <div style={{ fontSize: ".78rem", color: "rgba(17,17,17,.66)", fontWeight: 850, marginTop: 2 }}>
+          <div style={{ fontSize: ".78rem", color: "var(--rp-muted)", fontWeight: 850, marginTop: 2 }}>
             {modelLine}
           </div>
           <div
@@ -9975,7 +9981,9 @@ export default function TripsPage(): JSX.Element {
           <IonCard style={{ margin: "12px 14px 0", borderRadius: 18, background: "var(--rp-warn-bg)", color: "var(--rp-text)", border: "1px solid rgba(210,164,58,.65)", boxShadow: "0 10px 24px rgba(0,0,0,.16)" }}>
             <IonCardContent style={{ padding: "12px 14px" }}>
               <div style={{ fontWeight: 950, fontSize: ".92rem" }}>{passengerNotice.title}</div>
-              <div style={{ marginTop: 4, color: "rgba(17,17,17,.70)", fontSize: ".8rem", lineHeight: 1.35 }}>{passengerNotice.body}</div>
+              {/* La tarjeta usa var(--rp-warn-bg) + var(--rp-text): en noche el
+                  fondo es oscuro y este texto quedaba invisible. */}
+              <div style={{ marginTop: 4, color: "var(--rp-muted)", fontSize: ".8rem", lineHeight: 1.35 }}>{passengerNotice.body}</div>
               <IonButton
                 size="small"
                 color="warning"
