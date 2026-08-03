@@ -6777,19 +6777,6 @@ function MapPointPicker({
                     camino sea seguro antes de confirmar.
                   </p>
                 )}
-
-                <IonButton
-                  expand="block"
-                  disabled={!selected || loadingAddress || Boolean(mapError)}
-                  onClick={() => {
-                    if (selected && !mapError) onConfirm(selected);
-                  }}
-                  className="request-map-confirm rp-request-confirm"
-                >
-                  {mode === "origin"
-                    ? "Confirmar recogida"
-                    : "Confirmar destino"}
-                </IonButton>
               </div>
             </div>
           </div>
