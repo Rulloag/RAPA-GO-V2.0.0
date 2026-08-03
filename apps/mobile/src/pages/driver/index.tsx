@@ -18535,10 +18535,10 @@ function driverFormCardStyle(extra?: CSSProperties): CSSProperties {
   return {
     margin: "0 0 14px",
     borderRadius: "22px",
-    background: "#F6F2EC",
-    color: "#111",
-    border: "1px solid rgba(210,164,58,.28)",
-    boxShadow: "0 14px 34px rgba(0,0,0,.18)",
+    background: "var(--rp-surface)",
+    color: "var(--rp-text)",
+    border: "var(--rp-border-w) solid var(--rp-border-c)",
+    boxShadow: "var(--rp-shadow)",
     overflow: "hidden",
     ...extra,
   };
@@ -18546,17 +18546,17 @@ function driverFormCardStyle(extra?: CSSProperties): CSSProperties {
 
 function driverInputItemStyle(): CSSProperties {
   return {
-    "--background": "#ffffff",
-    "--color": "#050505",
-    "--placeholder-color": "#5f5f5f",
+    "--background": "var(--rp-field-bg)",
+    "--color": "var(--rp-field-fg)",
+    "--placeholder-color": "var(--rp-field-ph)",
     "--placeholder-opacity": "1",
-    "--highlight-color-focused": "#d2a43a",
-    "--border-color": "rgba(210,164,58,.55)",
+    "--highlight-color-focused": "var(--rp-accent)",
+    "--border-color": "var(--rp-border-c)",
     "--border-radius": "16px",
     "--padding-start": "14px",
     "--inner-padding-end": "14px",
     marginTop: "10px",
-    border: "1.5px solid rgba(210,164,58,.55)",
+    border: "var(--rp-border-w) solid var(--rp-border-c)",
     borderRadius: "16px",
     overflow: "hidden",
     fontWeight: 900,
@@ -18565,19 +18565,19 @@ function driverInputItemStyle(): CSSProperties {
 
 function driverFieldTextStyle(): CSSProperties {
   return {
-    color: "#050505",
+    color: "var(--rp-field-fg)",
     fontWeight: 950,
     fontSize: ".95rem",
     opacity: 1,
-    "--color": "#050505",
-    "--placeholder-color": "#5f5f5f",
+    "--color": "var(--rp-field-fg)",
+    "--placeholder-color": "var(--rp-field-ph)",
     "--placeholder-opacity": "1",
   } as CSSProperties;
 }
 
 function driverFieldLabelStyle(): CSSProperties {
   return {
-    color: "#050505",
+    color: "var(--rp-label)",
     fontWeight: 950,
     fontSize: ".78rem",
     opacity: 1,
@@ -19681,8 +19681,8 @@ export function DriverProfilePage(): JSX.Element {
                 padding: "20px",
                 marginBottom: 14,
                 background:
-                  "linear-gradient(135deg, rgba(45,211,111,.95), rgba(210,164,58,.92))",
-                color: "#fff",
+                  "var(--rp-btn-primary)",
+                color: "var(--rp-btn-primary-fg)",
                 boxShadow: "0 18px 44px rgba(0,0,0,.30)",
               }}
             >
@@ -19781,10 +19781,11 @@ export function DriverProfilePage(): JSX.Element {
             </section>
 
             <IonCard
+              className="rapago-driver-card"
               style={driverFormCardStyle({
-                background: "linear-gradient(135deg,#111827,#1f2937)",
-                color: "#ffffff",
-                border: "1px solid rgba(244,196,48,.35)",
+                background: "var(--rp-surface)",
+                color: "var(--rp-text)",
+                border: "1px solid var(--rp-border-c)",
               })}
             >
               <IonCardContent style={{ padding: "14px" }}>
@@ -19792,7 +19793,7 @@ export function DriverProfilePage(): JSX.Element {
                   Reputación del conductor
                 </div>
                 <DriverRatingStarsDisplay summary={driverRatingSummary} />
-                <div style={{ marginTop: 7, color: "rgba(255,255,255,.72)", fontSize: ".78rem", lineHeight: 1.35 }}>
+                <div style={{ marginTop: 7, color: "var(--rp-muted)", fontSize: ".78rem", lineHeight: 1.35 }}>
                   Las estrellas se actualizan cuando el pasajero califica un viaje completado.
                 </div>
 
@@ -19802,21 +19803,21 @@ export function DriverProfilePage(): JSX.Element {
                       <div
                         key={rating.id}
                         style={{
-                          background: "rgba(255,255,255,.08)",
-                          border: "1px solid rgba(255,255,255,.10)",
+                          background: "var(--rp-surface-soft)",
+                          border: "1px solid var(--rp-border-c)",
                           borderRadius: 14,
                           padding: "9px 10px",
                         }}
                       >
-                        <div style={{ fontWeight: 950, color: "#f4c430" }}>
+                        <div style={{ fontWeight: 950, color: "var(--rp-accent)" }}>
                           {"★".repeat(Math.max(1, Math.min(5, Math.round(Number(rating.stars) || 1))))}
                           {"☆".repeat(5 - Math.max(1, Math.min(5, Math.round(Number(rating.stars) || 1))))}
                         </div>
-                        <div style={{ marginTop: 3, fontSize: ".76rem", color: "rgba(255,255,255,.78)", lineHeight: 1.35 }}>
+                        <div style={{ marginTop: 3, fontSize: ".76rem", color: "var(--rp-muted)", lineHeight: 1.35 }}>
                           {rating.originText ?? "Origen"} → {rating.destinationText ?? "Destino"}
                         </div>
                         {rating.comment && (
-                          <div style={{ marginTop: 4, fontSize: ".78rem", color: "#ffffff", fontWeight: 800 }}>
+                          <div style={{ marginTop: 4, fontSize: ".78rem", color: "var(--rp-text)", fontWeight: 800 }}>
                             “{rating.comment}”
                           </div>
                         )}
@@ -19829,9 +19830,10 @@ export function DriverProfilePage(): JSX.Element {
 
             {error && (
               <IonCard
+                className="rapago-driver-card"
                 style={driverFormCardStyle({
-                  background: "#fff3cd",
-                  border: "1px solid #ffc107",
+                  background: "var(--rp-warn-bg)",
+                  border: "1px solid var(--rp-warn-bd)",
                 })}
               >
                 <IonCardContent style={{ padding: "10px 14px" }}>
@@ -19839,7 +19841,7 @@ export function DriverProfilePage(): JSX.Element {
                     <p
                       style={{
                         margin: 0,
-                        color: "#6b4700",
+                        color: "var(--rp-warn-fg)",
                         fontWeight: 800,
                         fontSize: ".82rem",
                       }}
@@ -19853,9 +19855,10 @@ export function DriverProfilePage(): JSX.Element {
 
             {success && (
               <IonCard
+                className="rapago-driver-card"
                 style={driverFormCardStyle({
-                  background: "#e8fff1",
-                  border: "1px solid rgba(34,197,94,.40)",
+                  background: "var(--rp-ok-bg)",
+                  border: "1px solid var(--rp-ok-bd)",
                 })}
               >
                 <IonCardContent style={{ padding: "10px 14px" }}>
@@ -19870,7 +19873,7 @@ export function DriverProfilePage(): JSX.Element {
               </IonCard>
             )}
 
-            <IonCard style={driverFormCardStyle()}>
+            <IonCard className="rapago-driver-card" style={driverFormCardStyle()}>
               <IonCardContent>
                 <div
                   style={{ fontWeight: 950, fontSize: "1rem", marginBottom: 4 }}
@@ -19879,7 +19882,7 @@ export function DriverProfilePage(): JSX.Element {
                 </div>
                 <div
                   style={{
-                    color: "#333",
+                    color: "var(--rp-muted)",
                     fontSize: ".78rem",
                     fontWeight: 800,
                     marginBottom: 10,
@@ -19912,8 +19915,8 @@ export function DriverProfilePage(): JSX.Element {
                     padding: 14,
                     borderRadius: 20,
                     background:
-                      "linear-gradient(135deg,#ffffff 0%,#fff8e6 100%)",
-                    border: "1.5px solid rgba(210,164,58,.50)",
+                      "var(--rp-surface-soft)",
+                    border: "1.5px solid var(--rp-border-c)",
                     boxShadow: "0 12px 26px rgba(0,0,0,.08)",
                   }}
                 >
@@ -19926,8 +19929,8 @@ export function DriverProfilePage(): JSX.Element {
                         height: 76,
                         borderRadius: 24,
                         overflow: "hidden",
-                        background: "linear-gradient(135deg,#2dd36f,#d2a43a)",
-                        color: "#fff",
+                        background: "var(--rp-btn-primary)",
+                        color: "var(--rp-btn-primary-fg)",
                         display: "flex",
                         alignItems: "center",
                         justifyContent: "center",
@@ -19957,7 +19960,7 @@ export function DriverProfilePage(): JSX.Element {
                       <div
                         style={{
                           fontWeight: 950,
-                          color: "#111",
+                          color: "var(--rp-text)",
                           fontSize: ".95rem",
                         }}
                       >
@@ -19965,7 +19968,7 @@ export function DriverProfilePage(): JSX.Element {
                       </div>
                       <div
                         style={{
-                          color: "#555",
+                          color: "var(--rp-muted)",
                           fontSize: ".76rem",
                           fontWeight: 800,
                           lineHeight: 1.35,
@@ -19996,7 +19999,6 @@ export function DriverProfilePage(): JSX.Element {
                   >
                     <IonButton
                       expand="block"
-                      color="success"
                       onClick={() => {
                         const input = profilePhotoFileRef.current;
                         if (!input) return;
@@ -20006,6 +20008,8 @@ export function DriverProfilePage(): JSX.Element {
                       style={
                         {
                           "--border-radius": "16px",
+                          "--background": "var(--rp-btn-primary)",
+                          "--color": "var(--rp-btn-primary-fg)",
                           height: "48px",
                           fontWeight: 950,
                         } as CSSProperties
@@ -20053,7 +20057,7 @@ export function DriverProfilePage(): JSX.Element {
               </IonCardContent>
             </IonCard>
 
-            <IonCard style={driverFormCardStyle()}>
+            <IonCard className="rapago-driver-card" style={driverFormCardStyle()}>
               <IonCardContent>
                 <div
                   style={{ fontWeight: 950, fontSize: "1rem", marginBottom: 4 }}
@@ -20062,7 +20066,7 @@ export function DriverProfilePage(): JSX.Element {
                 </div>
                 <div
                   style={{
-                    color: "#333",
+                    color: "var(--rp-muted)",
                     fontSize: ".78rem",
                     fontWeight: 800,
                     marginBottom: 10,
@@ -20080,8 +20084,8 @@ export function DriverProfilePage(): JSX.Element {
                     marginBottom: 12,
                     padding: "6px 10px",
                     borderRadius: 999,
-                    background: "rgba(34,197,94,.12)",
-                    color: "#166534",
+                    background: "var(--rp-ok-bg)",
+                    color: "var(--rp-ok-fg)",
                     fontSize: ".74rem",
                     fontWeight: 950,
                   }}
@@ -20104,10 +20108,10 @@ export function DriverProfilePage(): JSX.Element {
                             gap: 10,
                             padding: 10,
                             borderRadius: 18,
-                            background: selected ? "#ECFDF3" : "#FFFDF7",
+                            background: selected ? "var(--rp-ok-bg)" : "var(--rp-surface-soft)",
                             border: selected
-                              ? "2px solid rgba(34,197,94,.70)"
-                              : "1.5px solid rgba(210,164,58,.42)",
+                              ? "2px solid var(--rp-ok-bd)"
+                              : "1.5px solid var(--rp-border-c)",
                           }}
                         >
                           {vehicle.imageDataUrl && (
@@ -20119,16 +20123,16 @@ export function DriverProfilePage(): JSX.Element {
                                 height: 82,
                                 borderRadius: 14,
                                 objectFit: "cover",
-                                background: "#111",
+                                background: "var(--rp-surface-soft)",
                               }}
                             />
                           )}
 
                           <div style={{ minWidth: 0 }}>
-                            <div style={{ fontWeight: 950, color: "#111", fontSize: ".92rem" }}>
+                            <div style={{ fontWeight: 950, color: "var(--rp-text)", fontSize: ".92rem" }}>
                               {vehicle.brand} {vehicle.model} {vehicle.year ? `· ${vehicle.year}` : ""}
                             </div>
-                            <div style={{ color: "#333", fontSize: ".78rem", fontWeight: 850, marginTop: 2 }}>
+                            <div style={{ color: "var(--rp-muted)", fontSize: ".78rem", fontWeight: 850, marginTop: 2 }}>
                               Patente {vehicle.plate || "sin patente"} · {vehicle.color || "sin color"}
                             </div>
                             <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 8 }}>
@@ -20179,7 +20183,7 @@ export function DriverProfilePage(): JSX.Element {
                 )}
 
                 {driverVehicles.length === 0 && (
-                  <IonNote style={{ display: "block", marginBottom: 12, color: "#8f3c24", fontWeight: 900 }}>
+                  <IonNote style={{ display: "block", marginBottom: 12, color: "var(--rp-muted)", fontWeight: 900 }}>
                     No hay vehículos cargados desde la inscripción. Completa los datos abajo y guarda tu vehículo principal. Después podrás agregar más vehículos si tienes.
                   </IonNote>
                 )}
@@ -20207,7 +20211,7 @@ export function DriverProfilePage(): JSX.Element {
 
                 <div
                   style={{
-                    color: "#333",
+                    color: "var(--rp-muted)",
                     fontSize: ".78rem",
                     fontWeight: 800,
                     marginBottom: 10,
@@ -20329,17 +20333,17 @@ export function DriverProfilePage(): JSX.Element {
                     marginTop: 14,
                     padding: 14,
                     borderRadius: 20,
-                    background: "linear-gradient(135deg,#ffffff 0%,#fff8e6 100%)",
-                    border: "1.5px dashed rgba(210,164,58,.62)",
+                    background: "var(--rp-surface-soft)",
+                    border: "1.5px dashed var(--rp-border-c)",
                     boxShadow: "0 12px 26px rgba(0,0,0,.08)",
                   }}
                 >
-                  <div style={{ fontWeight: 950, fontSize: ".95rem", color: "#111" }}>
+                  <div style={{ fontWeight: 950, fontSize: ".95rem", color: "var(--rp-text)" }}>
                     Foto del vehículo
                   </div>
                   <div
                     style={{
-                      color: "#555",
+                      color: "var(--rp-muted)",
                       fontSize: ".76rem",
                       fontWeight: 800,
                       lineHeight: 1.35,
@@ -20357,8 +20361,8 @@ export function DriverProfilePage(): JSX.Element {
                         minHeight: 145,
                         borderRadius: 18,
                         overflow: "hidden",
-                        background: "#111",
-                        border: "1px solid rgba(0,0,0,.12)",
+                        background: "var(--rp-surface-soft)",
+                        border: "1px solid var(--rp-border-c)",
                         boxShadow: "0 10px 24px rgba(0,0,0,.18)",
                       }}
                     >
@@ -20393,7 +20397,6 @@ export function DriverProfilePage(): JSX.Element {
                   >
                     <IonButton
                       expand="block"
-                      color="success"
                       disabled={uploadingVehiclePhoto}
                       onClick={() => {
                         const input = vehiclePhotoFileRef.current;
@@ -20412,6 +20415,8 @@ export function DriverProfilePage(): JSX.Element {
                       style={
                         {
                           "--border-radius": "16px",
+                          "--background": "var(--rp-btn-primary)",
+                          "--color": "var(--rp-btn-primary-fg)",
                           height: "48px",
                           fontWeight: 950,
                         } as CSSProperties
@@ -20469,9 +20474,9 @@ export function DriverProfilePage(): JSX.Element {
                       marginTop: 12,
                       padding: "11px 12px",
                       borderRadius: 16,
-                      border: "1px solid rgba(220,38,38,.35)",
-                      background: "#FEF2F2",
-                      color: "#991B1B",
+                      border: "1px solid var(--rp-err-bd)",
+                      background: "var(--rp-err-bg)",
+                      color: "var(--rp-err-fg)",
                       fontSize: ".8rem",
                       lineHeight: 1.4,
                       fontWeight: 900,
@@ -20489,10 +20494,10 @@ export function DriverProfilePage(): JSX.Element {
                       padding: "11px 12px",
                       borderRadius: 16,
                       border: vehicleDraftDirty
-                        ? "1px solid rgba(210,164,58,.45)"
-                        : "1px solid rgba(34,197,94,.35)",
-                      background: vehicleDraftDirty ? "#FFF8E6" : "#ECFDF3",
-                      color: vehicleDraftDirty ? "#7C5A13" : "#166534",
+                        ? "1px solid var(--rp-border-c)"
+                        : "1px solid var(--rp-ok-bd)",
+                      background: vehicleDraftDirty ? "var(--rp-warn-bg)" : "var(--rp-ok-bg)",
+                      color: vehicleDraftDirty ? "var(--rp-warn-fg)" : "var(--rp-ok-fg)",
                       fontSize: ".8rem",
                       lineHeight: 1.4,
                       fontWeight: 900,
@@ -20532,7 +20537,7 @@ export function DriverProfilePage(): JSX.Element {
                 <div
                   style={{
                     marginTop: 8,
-                    color: "#555",
+                    color: "var(--rp-muted)",
                     fontSize: ".72rem",
                     fontWeight: 800,
                     lineHeight: 1.35,
@@ -20544,7 +20549,7 @@ export function DriverProfilePage(): JSX.Element {
               </IonCardContent>
             </IonCard>
 
-            <IonCard style={driverFormCardStyle()}>
+            <IonCard className="rapago-driver-card" style={driverFormCardStyle()}>
               <IonCardContent>
                 <div
                   style={{ fontWeight: 950, fontSize: "1rem", marginBottom: 4 }}
@@ -20601,7 +20606,7 @@ export function DriverProfilePage(): JSX.Element {
               </IonCardContent>
             </IonCard>
 
-            <IonCard style={driverFormCardStyle()}>
+            <IonCard className="rapago-driver-card" style={driverFormCardStyle()}>
               <IonCardContent>
                 <div
                   style={{
@@ -20630,7 +20635,7 @@ export function DriverProfilePage(): JSX.Element {
               </IonCardContent>
             </IonCard>
 
-            <IonCard style={driverFormCardStyle()}>
+            <IonCard className="rapago-driver-card" style={driverFormCardStyle()}>
               <IonCardContent>
                 <div
                   style={{ fontWeight: 950, fontSize: "1rem", marginBottom: 4 }}
@@ -20639,7 +20644,7 @@ export function DriverProfilePage(): JSX.Element {
                 </div>
                 <div
                   style={{
-                    color: "#333",
+                    color: "var(--rp-muted)",
                     fontSize: ".78rem",
                     fontWeight: 800,
                     marginBottom: 12,
@@ -20666,15 +20671,15 @@ export function DriverProfilePage(): JSX.Element {
                           minHeight: 62,
                           borderRadius: 18,
                           border: selected
-                            ? "2px solid #2dd36f"
-                            : "1.5px solid rgba(210,164,58,.45)",
+                            ? "2px solid var(--rp-border-strong)"
+                            : "1.5px solid var(--rp-border-c)",
                           background: selected
-                            ? "linear-gradient(135deg,#2dd36f 0%,#d2a43a 100%)"
-                            : "linear-gradient(135deg,#ffffff 0%,#fff8e6 100%)",
-                          color: selected ? "#ffffff" : "#111111",
+                            ? "var(--rp-btn-primary)"
+                            : "var(--rp-surface-soft)",
+                          color: selected ? "var(--rp-btn-primary-fg)" : "var(--rp-text)",
                           boxShadow: selected
-                            ? "0 14px 28px rgba(45,211,111,.28)"
-                            : "0 8px 18px rgba(0,0,0,.08)",
+                            ? "var(--rp-shadow-accent)"
+                            : "var(--rp-shadow)",
                           fontWeight: 950,
                           fontSize: ".95rem",
                           display: "flex",
@@ -20698,9 +20703,9 @@ export function DriverProfilePage(): JSX.Element {
                     marginTop: 12,
                     padding: "10px 12px",
                     borderRadius: 16,
-                    background: "rgba(45,211,111,.10)",
-                    border: "1px solid rgba(45,211,111,.25)",
-                    color: "#0f6f36",
+                    background: "var(--rp-ok-bg)",
+                    border: "1px solid var(--rp-ok-bd)",
+                    color: "var(--rp-ok-fg)",
                     fontWeight: 900,
                     fontSize: ".78rem",
                   }}
@@ -20713,9 +20718,10 @@ export function DriverProfilePage(): JSX.Element {
 
             {canSwitchToPassengerMode && (
               <IonCard
+                className="rapago-driver-card"
                 style={driverFormCardStyle({
-                  background: "linear-gradient(135deg, #fff7dc, #f6f2ec)",
-                  border: "1px solid rgba(210,164,58,.55)",
+                  background: "var(--rp-surface)",
+                  border: "1px solid var(--rp-border-c)",
                 })}
               >
                 <IonCardContent style={{ padding: "14px" }}>
@@ -20727,8 +20733,8 @@ export function DriverProfilePage(): JSX.Element {
                         width: 48,
                         height: 48,
                         borderRadius: 16,
-                        background: "#d2a43a",
-                        color: "#111",
+                        background: "var(--rp-btn-primary)",
+                        color: "var(--rp-btn-primary-fg)",
                         display: "flex",
                         alignItems: "center",
                         justifyContent: "center",
@@ -20742,7 +20748,7 @@ export function DriverProfilePage(): JSX.Element {
                         style={{
                           fontWeight: 950,
                           fontSize: ".98rem",
-                          color: "#111",
+                          color: "var(--rp-text)",
                         }}
                       >
                         ¿Quieres pedir un Rapa Go?
@@ -20750,7 +20756,7 @@ export function DriverProfilePage(): JSX.Element {
                       <div
                         style={{
                           marginTop: 3,
-                          color: "#555",
+                          color: "var(--rp-muted)",
                           fontSize: ".78rem",
                           fontWeight: 800,
                           lineHeight: 1.35,
@@ -20801,12 +20807,13 @@ export function DriverProfilePage(): JSX.Element {
 
             <IonButton
               expand="block"
-              color="success"
               onClick={() => void handleSave()}
               disabled={saving}
               style={
                 {
                   "--border-radius": "16px",
+                  "--background": "var(--rp-btn-primary)",
+                  "--color": "var(--rp-btn-primary-fg)",
                   height: "52px",
                   fontWeight: 950,
                 } as CSSProperties

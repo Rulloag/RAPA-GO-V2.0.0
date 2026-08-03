@@ -279,11 +279,9 @@ export function DriverRestScheduleCard({
     borderRadius: 18,
     padding: 14,
     border: blocked
-      ? "1px solid rgba(165,180,252,.32)"
-      : "1px solid rgba(200,155,60,.28)",
-    background: blocked
-      ? "rgba(255,255,255,.08)"
-      : "rgba(255,255,255,.64)",
+      ? "1px solid var(--rp-info-bd)"
+      : "1px solid var(--rp-border-c)",
+    background: "var(--rp-surface-soft)",
   };
 
   return (
@@ -294,15 +292,11 @@ export function DriverRestScheduleCard({
         padding: 16,
         borderRadius: 22,
         border: blocked
-          ? "1px solid rgba(99,102,241,.46)"
-          : "1px solid rgba(200,155,60,.38)",
-        background: blocked
-          ? "linear-gradient(145deg,#111827,#312e81)"
-          : "linear-gradient(145deg,#fffaf0,#fff3cf)",
-        color: blocked ? "#fff" : "#111827",
-        boxShadow: blocked
-          ? "0 18px 38px rgba(49,46,129,.28)"
-          : "0 14px 32px rgba(112,78,16,.12)",
+          ? "var(--rp-border-w) solid var(--rp-info-bd)"
+          : "var(--rp-border-w) solid var(--rp-border-c)",
+        background: "var(--rp-surface)",
+        color: "var(--rp-text)",
+        boxShadow: "var(--rp-shadow)",
       }}
     >
       {loading ? (
@@ -326,13 +320,13 @@ export function DriverRestScheduleCard({
                   borderRadius: 14,
                   display: "grid",
                   placeItems: "center",
-                  background: "rgba(200,155,60,.16)",
+                  background: "var(--rp-icon-bg)",
                   flex: "0 0 auto",
                 }}
               >
                 <IonIcon
                   icon={briefcaseOutline}
-                  style={{ fontSize: 22 }}
+                  style={{ fontSize: 22, color: "var(--rp-icon-fg)" }}
                 />
               </div>
 
@@ -399,7 +393,7 @@ export function DriverRestScheduleCard({
                       top: "50%",
                       transform: "translateY(-50%)",
                       pointerEvents: "none",
-                      color: "#8a6418",
+                      color: "var(--rp-accent)",
                     }}
                   />
                   <input
@@ -416,9 +410,9 @@ export function DriverRestScheduleCard({
                       minHeight: 46,
                       boxSizing: "border-box",
                       borderRadius: 14,
-                      border: "1px solid rgba(200,155,60,.40)",
-                      background: "#fff",
-                      color: "#111827",
+                      border: "1px solid var(--rp-border-c)",
+                      background: "var(--rp-field-bg)",
+                      color: "var(--rp-field-fg)",
                       padding: "10px 8px 10px 36px",
                       fontSize: ".9rem",
                       fontWeight: 900,
@@ -447,7 +441,7 @@ export function DriverRestScheduleCard({
                       top: "50%",
                       transform: "translateY(-50%)",
                       pointerEvents: "none",
-                      color: "#8a6418",
+                      color: "var(--rp-accent)",
                     }}
                   />
                   <input
@@ -464,9 +458,9 @@ export function DriverRestScheduleCard({
                       minHeight: 46,
                       boxSizing: "border-box",
                       borderRadius: 14,
-                      border: "1px solid rgba(200,155,60,.40)",
-                      background: "#fff",
-                      color: "#111827",
+                      border: "1px solid var(--rp-border-c)",
+                      background: "var(--rp-field-bg)",
+                      color: "var(--rp-field-fg)",
                       padding: "10px 8px 10px 36px",
                       fontSize: ".9rem",
                       fontWeight: 900,
@@ -483,8 +477,8 @@ export function DriverRestScheduleCard({
               style={
                 {
                   "--border-radius": "14px",
-                  "--background": "#111827",
-                  "--color": "#ffffff",
+                  "--background": "var(--rp-btn-primary)",
+                  "--color": "var(--rp-btn-primary-fg)",
                   minHeight: 46,
                   fontWeight: 950,
                   margin: "10px 0 0",
@@ -540,15 +534,13 @@ export function DriverRestScheduleCard({
                     borderRadius: 14,
                     display: "grid",
                     placeItems: "center",
-                    background: blocked
-                      ? "rgba(255,255,255,.12)"
-                      : "rgba(200,155,60,.16)",
+                    background: "var(--rp-icon-bg)",
                     flex: "0 0 auto",
                   }}
                 >
                   <IonIcon
                     icon={moonOutline}
-                    style={{ fontSize: 22 }}
+                    style={{ fontSize: 22, color: "var(--rp-icon-fg)" }}
                   />
                 </div>
                 <div>
@@ -580,15 +572,20 @@ export function DriverRestScheduleCard({
                   padding: "6px 9px",
                   borderRadius: 999,
                   background: blocked
-                    ? "rgba(129,140,248,.22)"
+                    ? "var(--rp-info-bg)"
                     : state?.status === "reminder_due"
-                      ? "rgba(245,158,11,.18)"
-                      : "rgba(34,197,94,.14)",
+                      ? "var(--rp-warn-bg)"
+                      : "var(--rp-ok-bg)",
                   border: blocked
-                    ? "1px solid rgba(165,180,252,.34)"
+                    ? "1px solid var(--rp-info-bd)"
                     : state?.status === "reminder_due"
-                      ? "1px solid rgba(245,158,11,.35)"
-                      : "1px solid rgba(34,197,94,.28)",
+                      ? "1px solid var(--rp-warn-bd)"
+                      : "1px solid var(--rp-ok-bd)",
+                  color: blocked
+                    ? "var(--rp-info-fg)"
+                    : state?.status === "reminder_due"
+                      ? "var(--rp-warn-fg)"
+                      : "var(--rp-ok-fg)",
                   fontSize: ".68rem",
                   fontWeight: 950,
                   whiteSpace: "nowrap",
@@ -616,8 +613,8 @@ export function DriverRestScheduleCard({
                   marginBottom: 11,
                   padding: "10px 11px",
                   borderRadius: 14,
-                  background: "rgba(255,255,255,.10)",
-                  border: "1px solid rgba(255,255,255,.14)",
+                  background: "var(--rp-surface-soft)",
+                  border: "1px solid var(--rp-border-c)",
                   fontSize: ".75rem",
                   fontWeight: 850,
                   lineHeight: 1.45,
@@ -665,8 +662,8 @@ export function DriverRestScheduleCard({
                 style={
                   {
                     "--border-radius": "14px",
-                    "--background": "#c89b3c",
-                    "--color": "#111827",
+                    "--background": "var(--rp-btn-primary)",
+                    "--color": "var(--rp-btn-primary-fg)",
                     minHeight: 48,
                     fontWeight: 950,
                     margin: 0,
@@ -696,8 +693,8 @@ export function DriverRestScheduleCard({
                 style={
                   {
                     "--border-radius": "14px",
-                    "--background": "#111827",
-                    "--color": "#ffffff",
+                    "--background": "var(--rp-icon-bg)",
+                    "--color": "var(--rp-text)",
                     minHeight: 48,
                     fontWeight: 950,
                     margin: 0,
@@ -721,7 +718,7 @@ export function DriverRestScheduleCard({
                   fontSize: ".72rem",
                   lineHeight: 1.4,
                   fontWeight: 850,
-                  color: blocked ? "#fde68a" : "#92400e",
+                  color: "var(--rp-warn-fg)",
                 }}
               >
                 Tienes un viaje activo. La aplicaciÃ³n no lo interrumpirÃ¡;
@@ -778,9 +775,9 @@ export function DriverRestScheduleCard({
                 marginTop: 10,
                 padding: "9px 10px",
                 borderRadius: 12,
-                background: "rgba(239,68,68,.13)",
-                border: "1px solid rgba(239,68,68,.26)",
-                color: blocked ? "#fecaca" : "#991b1b",
+                background: "var(--rp-err-bg)",
+                border: "1px solid var(--rp-err-bd)",
+                color: "var(--rp-err-fg)",
                 fontSize: ".74rem",
                 fontWeight: 850,
               }}
@@ -796,9 +793,9 @@ export function DriverRestScheduleCard({
                 marginTop: 10,
                 padding: "9px 10px",
                 borderRadius: 12,
-                background: "rgba(34,197,94,.13)",
-                border: "1px solid rgba(34,197,94,.26)",
-                color: blocked ? "#bbf7d0" : "#166534",
+                background: "var(--rp-ok-bg)",
+                border: "1px solid var(--rp-ok-bd)",
+                color: "var(--rp-ok-fg)",
                 fontSize: ".74rem",
                 fontWeight: 850,
               }}

@@ -215,6 +215,23 @@
   color: var(--rp-muted-legacy) !important;
 }
 
+/* ── Tarjeta migrada al tema (.rapago-driver-card) ──────────────────────── */
+/* Contraparte de la excepción legacy de arriba: las tarjetas cuyo texto YA no
+   se escribe con color fijo en el `style=""` (perfil del conductor) llevan
+   esta clase y viven sobre la superficie del tema, como las del pasajero, así
+   que responden al modo día/noche en vez de quedar siempre claras. */
+.rapago-driver-page ion-card.rapago-driver-card {
+  background: var(--rp-surface) !important;
+  color: var(--rp-text) !important;
+  border: var(--rp-border-w) solid var(--rp-border-c) !important;
+  box-shadow: var(--rp-shadow) !important;
+}
+
+.rapago-driver-page ion-card.rapago-driver-card ion-card-content,
+.rapago-driver-page ion-card.rapago-driver-card ion-card-title {
+  color: var(--rp-text) !important;
+}
+
 /* ── Listas y filas ─────────────────────────────────────────────────────── */
 .rapago-driver-page ion-list {
   background: transparent !important;

@@ -58,7 +58,7 @@
   --rp-control-h: clamp(46px, 13vw, 52px);
   /* Geometría compartida de la barra flotante para evitar choques con FABs. */
   --rp-tabbar-bottom-offset: calc(12px + env(safe-area-inset-bottom, 0px));
-  --rp-tabbar-height: 64px;
+  --rp-tabbar-height: 54px;
 
   /* ── Marca (constante en ambos temas) ─────────────────────────────────── */
   --rp-gold: #d6a640;
@@ -132,8 +132,10 @@
   --rp-info-bg: rgba(147, 197, 253, 0.13);
   --rp-info-bd: rgba(147, 197, 253, 0.36);
 
-  /* Barra de navegación inferior. */
-  --rp-nav-bg: #1a1a1a;
+  /* Barra de navegación inferior. Fondo translúcido: con el backdrop-filter la
+     barra flotante se ve como cristal esmerilado sobre el contenido, no como una
+     franja sólida. */
+  --rp-nav-bg: rgba(22, 20, 18, 0.62);
   --rp-nav-fg: #d9c3a0;
   --rp-nav-active: #c89b3c;
   --rp-nav-border: rgba(200, 155, 60, 0.28);
@@ -234,9 +236,10 @@
   --rp-info-bg: rgba(29, 78, 216, 0.09);
   --rp-info-bd: rgba(29, 78, 216, 0.32);
 
-  /* En modo día la barra pasa a superficie clara. El inactivo es #6b5a3e y no
-     un gris al 50%: sobre blanco cálido da ~5.2:1, por encima del mínimo AA. */
-  --rp-nav-bg: #fffdf9;
+  /* En modo día la barra pasa a superficie clara translúcida: el backdrop-filter
+     la convierte en cristal cálido esmerilado. El inactivo es #6b5a3e y no un
+     gris al 50%: sobre blanco cálido da ~5.2:1, por encima del mínimo AA. */
+  --rp-nav-bg: rgba(255, 253, 249, 0.66);
   --rp-nav-fg: #6b5a3e;
   --rp-nav-active: #8a641c;
   --rp-nav-border: rgba(200, 155, 60, 0.5);
@@ -330,18 +333,18 @@ ion-tab-bar.rapago-role-tabbar {
      alto es solo el de la píldora, sin sumar inset. */
   height: var(--rp-tabbar-height) !important;
   min-height: var(--rp-tabbar-height) !important;
-  padding: 8px 10px !important;
+  padding: 6px 8px !important;
 
   --background: var(--rp-nav-bg) !important;
   background: var(--rp-nav-bg) !important;
 
   border: 1px solid var(--rp-nav-border) !important;
   border-top: 1px solid var(--rp-nav-border) !important;
-  border-radius: 30px !important;
+  border-radius: 26px !important;
   box-shadow: var(--rp-nav-float-shadow) !important;
 
-  backdrop-filter: blur(18px) saturate(1.1) !important;
-  -webkit-backdrop-filter: blur(18px) saturate(1.1) !important;
+  backdrop-filter: blur(22px) saturate(1.2) !important;
+  -webkit-backdrop-filter: blur(22px) saturate(1.2) !important;
 
   overflow: visible !important;
 }
@@ -352,8 +355,8 @@ ion-tab-bar.rapago-role-tabbar {
 ion-tab-bar.rapago-role-tabbar ion-tab-button {
   position: relative !important;
   isolation: isolate !important;
-  height: 48px !important;
-  min-height: 48px !important;
+  height: 42px !important;
+  min-height: 42px !important;
   border-radius: 999px !important;
 
   --padding-top: 0 !important;
@@ -389,16 +392,16 @@ ion-tab-bar.rapago-role-tabbar ion-tab-button ion-label {
 }
 
 ion-tab-bar.rapago-role-tabbar ion-tab-button ion-icon {
-  width: 22px !important;
-  height: 22px !important;
-  font-size: 22px !important;
-  margin: 0 0 3px !important;
+  width: 20px !important;
+  height: 20px !important;
+  font-size: 20px !important;
+  margin: 0 0 2px !important;
   color: inherit !important;
 }
 
 ion-tab-bar.rapago-role-tabbar ion-tab-button ion-label {
   max-width: none !important;
-  font-size: 10.5px !important;
+  font-size: 10px !important;
   line-height: 1.1 !important;
   font-weight: 800 !important;
   letter-spacing: 0.01em !important;
