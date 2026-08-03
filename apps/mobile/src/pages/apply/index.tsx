@@ -32,6 +32,16 @@
   import { applicationsService, type ApplicationData, type UploadApplicationFilePayload } from "../../features/applications/applications.service.js";
   import { legalService, type LegalDocumentData } from "../../features/legal/legal.service.js";
 
+  // Qué falta en cada etapa de la inscripción de conductor. El botón de avance
+  // ya no va deshabilitado, así que al tocarlo incompleto explica el motivo.
+  const STEP_HINTS = [
+    "Completa nombre, apellido, email, teléfono y RUT con datos válidos.",
+    "Indica si perteneces o no a la etnia Rapa Nui.",
+    "Adjunta los cinco documentos: carnet (ambos lados), licencia (ambos lados) y foto de perfil.",
+    "Confirma que cuentas con vehículo propio y completa marca, modelo, año, patente, color y foto de cada vehículo.",
+    "Lee el contrato y acepta las seis declaraciones obligatorias.",
+  ];
+
   const SPECIALTIES = ["Arqueología", "Botánica", "Astronomía", "Historia", "Cultura Rapa Nui", "Senderismo"];
   const OFFERED_TOURS = ["Ahu Tongariki", "Rano Raraku", "Anakena", "Orongo", "Tahai", "Custom"];
   const LANGUAGES = ["Español", "Inglés", "Rapa Nui", "Francés", "Alemán", "Portugués"];
@@ -1670,6 +1680,9 @@ function isRutValid(value: string): boolean {
       !loading;
 
     async function handleSubmit() {
+      // El botón ya no va deshabilitado, así que aquí frenamos el doble envío.
+      if (loading) return;
+
       if (!canSubmit) {
         if (!termsAccepted) {
           setError(
@@ -2837,27 +2850,23 @@ function isRutValid(value: string): boolean {
             )}
 
             {driverStep < 6 && (
+              // El tema fuerza el degradado dorado sobre ::part(native) con
+              // !important, así que un --background inline nunca se ve: el
+              // estado se comunica con `fill`. Tampoco usamos `disabled`,
+              // porque React deja el atributo puesto como disabled="false" y
+              // las reglas [disabled] seguirían apagando el botón ya completo.
               <IonButton
-                disabled={!stepReady}
+                fill={stepReady ? "solid" : "outline"}
                 onClick={() => {
+                  if (!stepReady) {
+                    setError(STEP_HINTS[driverStep - 1] ?? "");
+                    return;
+                  }
+
                   setError(null);
                   setDriverStep((current) => Math.min(6, current + 1));
                 }}
-                style={{
-                  "--border-radius": "16px",
-                  "--background": stepReady
-                    ? "linear-gradient(135deg,#F8D879,#C89B3C)"
-                    : "#DAD3C6",
-                  "--background-activated": "linear-gradient(135deg,#C5532F,#C89B3C)",
-                  "--box-shadow": stepReady
-                    ? "0 12px 26px rgba(200,155,60,.40)"
-                    : "none",
-                  "--color": stepReady ? "#111111" : "#8A857B",
-                  "--opacity": "1",
-                  color: stepReady ? "#111" : "#8A857B",
-                  fontWeight: 950,
-                  opacity: 1,
-                } as CSSProperties}
+                style={{ fontWeight: 950 }}
               >
                 {stepReady ? "Continuar" : "Completa esta etapa"}
               </IonButton>
@@ -2872,27 +2881,17 @@ function isRutValid(value: string): boolean {
 
           {driverStep === 6 && (
           <div style={{ padding: "8px 0 18px" }}>
+            {/* handleSubmit ya valida y explica qué falta, así que el botón se
+                mantiene activo: el color indica el estado y el toque informa. */}
             <IonButton
               expand="block"
-              disabled={!canSubmit}
+              fill={canSubmit ? "solid" : "outline"}
               onClick={() => void handleSubmit()}
               style={{
-                "--border-radius": "18px",
-                "--background": canSubmit
-                  ? "linear-gradient(135deg,#F8D879 0%,#C89B3C 45%,#C5532F 100%)"
-                  : "#DAD3C6",
-                "--background-activated": "linear-gradient(135deg,#C5532F,#C89B3C)",
-                "--box-shadow": canSubmit
-                  ? "0 16px 32px rgba(200,155,60,.42)"
-                  : "none",
-                "--color": canSubmit ? "#111111" : "#8A857B",
-                "--opacity": "1",
                 height: "56px",
                 fontWeight: 950,
-                color: canSubmit ? "#111111" : "#8A857B",
                 letterSpacing: ".01em",
-                opacity: 1,
-              } as CSSProperties}
+              }}
             >
               {loading
                 ? <IonSpinner name="crescent" />
