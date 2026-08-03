@@ -822,6 +822,60 @@
   display: block;
 }
 
+/* ── Fichas del héroe (Estado / Zona / Red) ─────────────────────────────── */
+/* Viven dentro del héroe dorado, que es constante en ambos temas, así que su
+   color no cambia con día/noche: usan la tinta volcánica y las superficies
+   internas del héroe (--rp-hero-*), la misma familia que el borde y los
+   círculos decorativos. Antes escribían texto ivory (#fffaf0) sobre el oro,
+   que quedaba lavado y con poco contraste. */
+.rapago-driver-page .driver-home-hero__metrics {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--rp-gap-sm);
+  margin-top: var(--rp-gap);
+}
+
+.rapago-driver-page .driver-home-metric {
+  min-width: 0;
+  padding: 10px 12px;
+  border-radius: var(--rp-radius-sm);
+  color: var(--rp-btn-primary-fg);
+  background: var(--rp-hero-inset);
+  border: 1px solid var(--rp-hero-inset-bd);
+}
+
+.rapago-driver-page .driver-home-metric__label {
+  color: var(--rp-hero-muted);
+  font-size: var(--rp-fs-label);
+  line-height: 1;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.rapago-driver-page .driver-home-metric__value {
+  margin-top: 5px;
+  overflow: hidden;
+  color: var(--rp-btn-primary-fg);
+  font-size: var(--rp-fs-body);
+  line-height: 1.15;
+  font-weight: 850;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+/* En pantallas angostas la última ficha ocupa la fila completa en vez de
+   quedar sola a un tercio del ancho. */
+@media (max-width: 380px) {
+  .rapago-driver-page .driver-home-hero__metrics {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .rapago-driver-page .driver-home-metric:last-child {
+    grid-column: 1 / -1;
+  }
+}
+
 /* ── Fichas de resumen (Estado / Zona / Red) ────────────────────────────── */
 /* Ya no hay reglas propias: el JSX usa .rp-tile-grid y .rp-tile del kit
    compartido. Lo único específico es que aquí son TRES fichas y la rejilla del

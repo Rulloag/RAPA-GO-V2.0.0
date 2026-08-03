@@ -3916,43 +3916,6 @@ const DRIVER_HOME_STYLES = String.raw`
     font-size: 30px;
   }
 
-  .driver-home-hero__metrics {
-    display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: 10px;
-    margin-top: 20px;
-  }
-
-  .driver-home-metric {
-    min-width: 0;
-    padding: 12px;
-    border-radius: 17px;
-    color: #fffaf0;
-    background: rgba(255, 250, 240, 0.1);
-    border: 1px solid rgba(255, 250, 240, 0.15);
-    backdrop-filter: blur(10px);
-  }
-
-  .driver-home-metric__label {
-    color: rgba(255, 250, 240, 0.68);
-    font-size: 0.66rem;
-    line-height: 1;
-    font-weight: 850;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-  }
-
-  .driver-home-metric__value {
-    margin-top: 5px;
-    overflow: hidden;
-    color: #fffaf0;
-    font-size: 0.9rem;
-    line-height: 1.15;
-    font-weight: 950;
-    white-space: nowrap;
-    text-overflow: ellipsis;
-  }
-
   .driver-home-section {
     margin-top: 22px;
   }
@@ -3965,129 +3928,9 @@ const DRIVER_HOME_STYLES = String.raw`
     margin-bottom: 12px;
   }
 
-  .driver-home-section__title {
-    margin: 0;
-    color: #fffaf0;
-    font-size: 1.05rem;
-    line-height: 1.1;
-    font-weight: 950;
-    text-shadow: 0 2px 12px rgba(0, 0, 0, 0.65);
-  }
-
   .driver-home-section__hint {
     color: rgba(255, 250, 240, 0.62);
     font-size: 0.7rem;
-    font-weight: 750;
-  }
-
-  .driver-home-actions-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
-    gap: 12px;
-  }
-
-  ion-card.driver-home-action-card {
-    position: relative;
-    isolation: isolate;
-    min-height: 150px;
-    margin: 0 !important;
-    overflow: hidden;
-    border-radius: 22px !important;
-    color: #171412 !important;
-    background: linear-gradient(155deg, #fffdf8 0%, #f3e8d7 100%) !important;
-    border: 1px solid rgba(200, 155, 60, 0.28) !important;
-    box-shadow: 0 14px 34px rgba(0, 0, 0, 0.22) !important;
-    transition: transform 170ms ease, box-shadow 170ms ease;
-  }
-
-  ion-card.driver-home-action-card::after {
-    content: '';
-    position: absolute;
-    z-index: -1;
-    width: 90px;
-    height: 90px;
-    right: -34px;
-    top: -36px;
-    border-radius: 999px;
-    background: var(--driver-card-glow, rgba(200, 155, 60, 0.18));
-  }
-
-  ion-card.driver-home-action-card:active {
-    transform: scale(0.985);
-  }
-
-  ion-card.driver-home-action-card ion-card-content {
-    height: 100%;
-    padding: 16px !important;
-    color: #171412 !important;
-  }
-
-  .driver-home-action-card.is-reservations.has-pending {
-    background: linear-gradient(145deg, #fff8dc 0%, #efd486 100%) !important;
-    border-color: rgba(200, 155, 60, 0.66) !important;
-    box-shadow: 0 15px 38px rgba(200, 155, 60, 0.24) !important;
-  }
-
-  .driver-home-action-icon {
-    width: 48px;
-    height: 48px;
-    display: grid;
-    place-items: center;
-    margin-bottom: 13px;
-    border-radius: 16px;
-    color: #ffffff;
-    background: var(--driver-card-accent, #b84f2e);
-    box-shadow: 0 10px 22px var(--driver-card-shadow, rgba(184, 79, 46, 0.24));
-  }
-
-  .driver-home-action-icon ion-icon {
-    color: #ffffff !important;
-    font-size: 25px;
-  }
-
-  .driver-home-action-card.is-reservations.has-pending .driver-home-action-icon {
-    color: #171412;
-    background: #c89b3c;
-  }
-
-  .driver-home-action-card.is-reservations.has-pending .driver-home-action-icon ion-icon {
-    color: #171412 !important;
-  }
-
-  .driver-home-action-row {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 8px;
-  }
-
-  .driver-home-action-title {
-    color: #171412 !important;
-    font-size: 0.98rem;
-    line-height: 1.1;
-    font-weight: 950;
-  }
-
-  .driver-home-action-badge {
-    min-width: 28px;
-    height: 28px;
-    display: grid;
-    place-items: center;
-    flex: 0 0 auto;
-    border-radius: 999px;
-    color: #171412;
-    background: #ffffff;
-    border: 1px solid rgba(23, 20, 18, 0.12);
-    font-size: 0.72rem;
-    font-weight: 950;
-    box-shadow: 0 5px 14px rgba(0, 0, 0, 0.12);
-  }
-
-  .driver-home-action-copy {
-    margin-top: 6px;
-    color: rgba(23, 20, 18, 0.68) !important;
-    font-size: 0.75rem;
-    line-height: 1.35;
     font-weight: 750;
   }
 
@@ -4150,11 +3993,6 @@ const DRIVER_HOME_STYLES = String.raw`
   }
 
   @media (hover: hover) {
-    ion-card.driver-home-action-card:hover {
-      transform: translateY(-3px);
-      box-shadow: 0 20px 42px rgba(0, 0, 0, 0.28) !important;
-    }
-
     .driver-availability-button:hover,
     .driver-home-cta__button:hover {
       transform: translateY(-1px);
@@ -4217,43 +4055,6 @@ const DRIVER_HOME_STYLES = String.raw`
       border-radius: 24px;
     }
 
-    .driver-home-hero__metrics {
-      grid-template-columns: 1fr 1fr;
-    }
-
-    .driver-home-metric:last-child {
-      grid-column: 1 / -1;
-    }
-
-    .driver-home-actions-grid {
-      grid-template-columns: 1fr 1fr;
-      gap: 10px;
-    }
-
-    ion-card.driver-home-action-card {
-      min-height: 145px;
-      border-radius: 20px !important;
-    }
-
-    ion-card.driver-home-action-card ion-card-content {
-      padding: 14px !important;
-    }
-
-    .driver-home-action-icon {
-      width: 45px;
-      height: 45px;
-      margin-bottom: 12px;
-      border-radius: 15px;
-    }
-
-    .driver-home-action-title {
-      font-size: 0.9rem;
-    }
-
-    .driver-home-action-copy {
-      font-size: 0.69rem;
-    }
-
     .driver-home-cta {
       grid-template-columns: 44px minmax(0, 1fr);
     }
@@ -4284,14 +4085,6 @@ const DRIVER_HOME_STYLES = String.raw`
       min-height: 48px;
       padding: 8px;
       font-size: 0.78rem;
-    }
-
-    .driver-home-actions-grid {
-      grid-template-columns: 1fr;
-    }
-
-    ion-card.driver-home-action-card {
-      min-height: 132px;
     }
   }
 `;
@@ -7729,10 +7522,7 @@ export function DriverHomePage(): JSX.Element {
     description: string;
     route: string;
     icon: string;
-    accent: string;
-    shadow: string;
-    glow: string;
-    className?: string;
+    attention?: boolean;
     badge?: number;
   }> = [
     {
@@ -7743,9 +7533,6 @@ export function DriverHomePage(): JSX.Element {
         : "Ponte disponible para recibir viajes",
       route: DRIVER_REQUESTS_VIEW_ROUTE,
       icon: listOutline,
-      accent: "#138a4a",
-      shadow: "rgba(19,138,74,.25)",
-      glow: "rgba(19,138,74,.16)",
     },
     {
       key: "reservations",
@@ -7758,12 +7545,7 @@ export function DriverHomePage(): JSX.Element {
           : "Revisa tus viajes asignados para más tarde",
       route: DRIVER_RESERVATIONS_VIEW_ROUTE,
       icon: timeOutline,
-      accent: pendingReservationCount > 0 ? "#c89b3c" : "#a56d18",
-      shadow: "rgba(200,155,60,.28)",
-      glow: "rgba(200,155,60,.20)",
-      className: `is-reservations ${
-        pendingReservationCount > 0 ? "has-pending" : ""
-      }`,
+      attention: pendingReservationCount > 0,
       badge: pendingReservationCount > 0 ? pendingReservationCount : undefined,
     },
     {
@@ -7772,9 +7554,6 @@ export function DriverHomePage(): JSX.Element {
       description: "Historial, estados y navegación en ruta",
       route: ROUTES.DRIVER.TRIPS,
       icon: carOutline,
-      accent: "#2563a8",
-      shadow: "rgba(37,99,168,.25)",
-      glow: "rgba(37,99,168,.15)",
     },
     {
       key: "earnings",
@@ -7782,9 +7561,6 @@ export function DriverHomePage(): JSX.Element {
       description: "Consulta ingresos y pagos de tus servicios",
       route: ROUTES.DRIVER.EARNINGS,
       icon: cashOutline,
-      accent: "#b84f2e",
-      shadow: "rgba(184,79,46,.25)",
-      glow: "rgba(184,79,46,.16)",
     },
     {
       key: "profile",
@@ -7792,9 +7568,6 @@ export function DriverHomePage(): JSX.Element {
       description: "Datos personales, documentos y vehículo",
       route: ROUTES.DRIVER.PROFILE,
       icon: personOutline,
-      accent: "#4b5563",
-      shadow: "rgba(75,85,99,.25)",
-      glow: "rgba(75,85,99,.14)",
     },
   ];
 
@@ -7902,48 +7675,44 @@ export function DriverHomePage(): JSX.Element {
 
           <section className="driver-home-section">
             <div className="driver-home-section__header">
-              <h2 className="driver-home-section__title">Accesos rápidos</h2>
+              <div className="rapago-section-label">Accesos rápidos</div>
               <div className="driver-home-section__hint">
                 Todo tu trabajo en un lugar
               </div>
             </div>
 
-            <div className="driver-home-actions-grid">
+            <div className="rapago-home-quick">
               {actionCards.map((card) => (
                 <IonCard
                   key={card.key}
                   button
                   routerLink={card.route}
-                  className={`driver-home-action-card ${card.className ?? ""}`}
-                  style={
-                    {
-                      "--driver-card-accent": card.accent,
-                      "--driver-card-shadow": card.shadow,
-                      "--driver-card-glow": card.glow,
-                    } as CSSProperties
-                  }
+                  className={`rapago-home-quick-card${
+                    card.attention ? " rapago-home-quick-card--attention" : ""
+                  }`}
                 >
                   <IonCardContent>
-                    <div className="driver-home-action-icon">
-                      <IonIcon icon={card.icon} />
-                    </div>
-
-                    <div className="driver-home-action-row">
-                      <div className="driver-home-action-title">
-                        {card.title}
-                      </div>
+                    <div className="rapago-driver-quick-top">
+                      <span className="rapago-home-quick-icon">
+                        <IonIcon icon={card.icon} />
+                      </span>
                       {card.badge != null && (
-                        <div
-                          className="driver-home-action-badge"
+                        <span
+                          className="rapago-driver-quick-badge"
                           aria-label={`${card.badge} reservas pendientes`}
                         >
                           {card.badge}
-                        </div>
+                        </span>
                       )}
                     </div>
 
-                    <div className="driver-home-action-copy">
-                      {card.description}
+                    <div style={{ minWidth: 0 }}>
+                      <span className="rapago-home-quick-title">
+                        {card.title}
+                      </span>
+                      <span className="rapago-home-quick-sub">
+                        {card.description}
+                      </span>
                     </div>
                   </IonCardContent>
                 </IonCard>
