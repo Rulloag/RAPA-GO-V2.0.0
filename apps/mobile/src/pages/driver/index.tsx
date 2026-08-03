@@ -11356,11 +11356,11 @@ function getRequestCardStyles(): Record<string, CSSProperties> {
       borderRadius: "28px",
       overflow: "hidden",
       background: "linear-gradient(145deg, #F6F2EC 0%, #EFE6D8 100%)",
-      color: "#111111",
+      color: "var(--rp-text)",
       border: "1px solid rgba(210,164,58,.42)",
       boxShadow: "0 24px 64px rgba(0,0,0,.34)",
       "--background": "#F6F2EC",
-      "--color": "#111111",
+      "--color": "var(--rp-text)",
     } as CSSProperties,
     darkLayer: {
       position: "absolute",
@@ -11375,9 +11375,9 @@ function getRequestCardStyles(): Record<string, CSSProperties> {
       gap: "6px",
       padding: "7px 10px",
       borderRadius: "999px",
-      background: "rgba(17,17,17,.06)",
-      border: "1px solid rgba(17,17,17,.10)",
-      color: "#111111",
+      background: "var(--rp-surface-soft)",
+      border: "1px solid var(--rp-border-c)",
+      color: "var(--rp-text)",
       fontSize: ".72rem",
       fontWeight: 950,
     },
@@ -11385,10 +11385,10 @@ function getRequestCardStyles(): Record<string, CSSProperties> {
       marginTop: "16px",
       padding: "14px",
       borderRadius: "20px",
-      background: "#FFFFFF",
-      border: "1px solid rgba(210,164,58,.30)",
+      background: "var(--rp-surface-soft)",
+      border: "1px solid var(--rp-border-c)",
       boxShadow: "0 10px 26px rgba(0,0,0,.08)",
-      color: "#111111",
+      color: "var(--rp-text)",
     },
     routeDot: {
       width: 13,
@@ -14468,10 +14468,10 @@ La reserva fue retirada. No continúes hacia la recogida.`,
             maxWidth: 440,
             borderRadius: "28px",
             overflow: "hidden",
-            background: "linear-gradient(145deg, #fff7dd 0%, #f6d98e 100%)",
-            color: "#111",
-            border: "2px solid rgba(255,255,255,.55)",
-            boxShadow: "0 28px 80px rgba(0,0,0,.55)",
+            background: "var(--rp-surface)",
+            color: "var(--rp-text)",
+            border: "2px solid var(--rp-border-c)",
+            boxShadow: "var(--rp-shadow)",
           }}
         >
           <div
@@ -14563,8 +14563,8 @@ La reserva fue retirada. No continúes hacia la recogida.`,
             <div
               style={{
                 borderRadius: "20px",
-                background: "#fff",
-                border: "1px solid rgba(210,164,58,.35)",
+                background: "var(--rp-surface-soft)",
+                border: "1px solid var(--rp-border-c)",
                 padding: "14px",
               }}
             >
@@ -14572,7 +14572,7 @@ La reserva fue retirada. No continúes hacia la recogida.`,
                 <div>
                   <div
                     style={{
-                      color: "#22c55e",
+                      color: "var(--rp-ok-fg)",
                       fontSize: ".72rem",
                       fontWeight: 950,
                     }}
@@ -14590,7 +14590,7 @@ La reserva fue retirada. No continúes hacia la recogida.`,
                   style={{
                     width: 2,
                     height: 28,
-                    background: "linear-gradient(180deg,#22c55e,#ef4444)",
+                    background: "linear-gradient(180deg,var(--rp-ok-fg),var(--rp-err-fg))",
                     borderRadius: 999,
                     marginLeft: 7,
                   }}
@@ -14599,7 +14599,7 @@ La reserva fue retirada. No continúes hacia la recogida.`,
                 <div>
                   <div
                     style={{
-                      color: "#ef4444",
+                      color: "var(--rp-err-fg)",
                       fontSize: ".72rem",
                       fontWeight: 950,
                     }}
@@ -14619,8 +14619,8 @@ La reserva fue retirada. No continúes hacia la recogida.`,
               style={{
                 marginTop: 14,
                 borderRadius: "20px",
-                background: "rgba(17,17,17,.92)",
-                color: "#fff",
+                background: "var(--rp-surface-soft)",
+                color: "var(--rp-text)",
                 padding: "14px 15px",
                 display: "flex",
                 justifyContent: "space-between",
@@ -14632,7 +14632,7 @@ La reserva fue retirada. No continúes hacia la recogida.`,
                 <div
                   style={{
                     fontSize: ".72rem",
-                    color: "#f6d98e",
+                    color: "var(--rp-label)",
                     fontWeight: 950,
                   }}
                 >
@@ -14694,7 +14694,7 @@ La reserva fue retirada. No continúes hacia la recogida.`,
                   {
                     "--border-radius": "17px",
                     height: "54px",
-                    "--color": "#111",
+                    "--color": "var(--rp-btn-primary-fg)",
                     fontWeight: 950,
                   } as CSSProperties
                 }
@@ -14733,21 +14733,22 @@ La reserva fue retirada. No continúes hacia la recogida.`,
 
     return (
       <IonCard
+        className="rapago-driver-card"
         style={{
           margin: "0",
           borderRadius: "24px",
           overflow: "hidden",
-          background: "linear-gradient(145deg,#111827 0%,#2A1A18 48%,#8F3F25 100%)",
-          color: "#F6F2EC",
-          border: "1px solid rgba(210,164,58,.46)",
-          boxShadow: "0 18px 42px rgba(0,0,0,.34)",
+          background: "var(--rp-surface)",
+          color: "var(--rp-text)",
+          border: "1px solid var(--rp-border-c)",
+          boxShadow: "var(--rp-shadow)",
         }}
       >
         <IonCardContent style={{ padding: 0 }}>
           <div
             style={{
               padding: "15px 16px",
-              background: "linear-gradient(135deg,rgba(210,164,58,.25),rgba(255,255,255,.04))",
+              background: "var(--rp-surface-soft)",
               display: "flex",
               justifyContent: "space-between",
               gap: 12,
@@ -14762,9 +14763,9 @@ La reserva fue retirada. No continúes hacia la recogida.`,
                   gap: 7,
                   padding: "6px 10px",
                   borderRadius: 999,
-                  background: "rgba(210,164,58,.18)",
-                  border: "1px solid rgba(210,164,58,.46)",
-                  color: "#f8d879",
+                  background: "var(--rp-warn-bg)",
+                  border: "1px solid var(--rp-warn-bd)",
+                  color: "var(--rp-warn-fg)",
                   fontSize: ".68rem",
                   fontWeight: 950,
                   textTransform: "uppercase",
@@ -14781,7 +14782,7 @@ La reserva fue retirada. No continúes hacia la recogida.`,
               <div
                 style={{
                   marginTop: 6,
-                  color: "rgba(246,242,236,.76)",
+                  color: "var(--rp-muted)",
                   fontSize: ".78rem",
                   fontWeight: 800,
                   lineHeight: 1.35,
@@ -14796,14 +14797,14 @@ La reserva fue retirada. No continúes hacia la recogida.`,
                 minWidth: 88,
                 padding: "9px 10px",
                 borderRadius: 18,
-                background: "rgba(246,242,236,.96)",
-                color: "#111",
+                background: "var(--rp-surface-soft)",
+                color: "var(--rp-text)",
                 textAlign: "right",
                 fontWeight: 950,
                 boxShadow: "0 10px 26px rgba(0,0,0,.25)",
               }}
             >
-              <div style={{ fontSize: ".64rem", color: "#8a6418", textTransform: "uppercase" }}>
+              <div style={{ fontSize: ".64rem", color: "var(--rp-label)", textTransform: "uppercase" }}>
                 Tarifa
               </div>
               <div style={{ fontSize: "1rem", marginTop: 1 }}>{formatClp(fareClp)}</div>
@@ -14822,12 +14823,12 @@ La reserva fue retirada. No continúes hacia la recogida.`,
               <div
                 style={{
                   borderRadius: 18,
-                  background: "rgba(255,255,255,.08)",
-                  border: "1px solid rgba(255,255,255,.10)",
+                  background: "var(--rp-surface-soft)",
+                  border: "1px solid var(--rp-border-c)",
                   padding: "11px 12px",
                 }}
               >
-                <div style={{ color: "#f8d879", fontSize: ".68rem", fontWeight: 950 }}>
+                <div style={{ color: "var(--rp-label)", fontSize: ".68rem", fontWeight: 950 }}>
                   RECOGIDA
                 </div>
                 <div style={{ marginTop: 4, fontWeight: 950, lineHeight: 1.25 }}>{scheduledText}</div>
@@ -14836,12 +14837,12 @@ La reserva fue retirada. No continúes hacia la recogida.`,
               <div
                 style={{
                   borderRadius: 18,
-                  background: "rgba(255,255,255,.08)",
-                  border: "1px solid rgba(255,255,255,.10)",
+                  background: "var(--rp-surface-soft)",
+                  border: "1px solid var(--rp-border-c)",
                   padding: "11px 12px",
                 }}
               >
-                <div style={{ color: "#f8d879", fontSize: ".68rem", fontWeight: 950 }}>
+                <div style={{ color: "var(--rp-label)", fontSize: ".68rem", fontWeight: 950 }}>
                   SE ABRE A CONDUCTORES
                 </div>
                 <div style={{ marginTop: 4, fontWeight: 950, lineHeight: 1.25 }}>{activationText}</div>
@@ -14878,7 +14879,7 @@ La reserva fue retirada. No continúes hacia la recogida.`,
                 style={
                   {
                     "--border-radius": "16px",
-                    "--border-color": "rgba(255,255,255,.72)",
+                    "--border-color": "var(--rp-border-c)",
                     height: "50px",
                     fontWeight: 950,
                   } as CSSProperties
@@ -14925,13 +14926,14 @@ La reserva fue retirada. No continúes hacia la recogida.`,
 
     return (
       <IonCard
+        className="rapago-driver-card"
         style={{
           margin: "0",
           borderRadius: "22px",
-          background: "linear-gradient(145deg,#F6F2EC 0%,#FFE8A3 100%)",
-          color: "#111",
-          border: "1px solid rgba(210,164,58,.62)",
-          boxShadow: "0 14px 34px rgba(0,0,0,.22)",
+          background: "var(--rp-surface)",
+          color: "var(--rp-text)",
+          border: "1px solid var(--rp-border-c)",
+          boxShadow: "var(--rp-shadow)",
         }}
       >
         <IonCardContent style={{ padding: "15px 16px" }}>
@@ -14943,23 +14945,23 @@ La reserva fue retirada. No continúes hacia la recogida.`,
               <div style={{ fontWeight: 950, fontSize: "1.05rem", lineHeight: 1.18 }}>
                 {getDriverRideRouteDisplayLabel(ride)}
               </div>
-              <div style={{ marginTop: 7, fontSize: ".82rem", fontWeight: 850, color: "rgba(17,17,17,.74)", lineHeight: 1.35 }}>
+              <div style={{ marginTop: 7, fontSize: ".82rem", fontWeight: 850, color: "var(--rp-muted)", lineHeight: 1.35 }}>
                 Ya aceptaste esta reserva. Espera la hora indicada: te llegará una notificación para iniciar el viaje y se abrirá la ruta.
               </div>
             </div>
             <div style={{ minWidth: 82, textAlign: "right", fontWeight: 950 }}>
-              <div style={{ color: "#8a6418", fontSize: ".66rem", textTransform: "uppercase" }}>Tarifa</div>
+              <div style={{ color: "var(--rp-label)", fontSize: ".66rem", textTransform: "uppercase" }}>Tarifa</div>
               <div style={{ fontSize: "1rem" }}>{formatClp(fareClp)}</div>
             </div>
           </div>
 
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginTop: 13 }}>
-            <div style={{ borderRadius: 16, background: "rgba(255,255,255,.70)", padding: "10px 11px" }}>
-              <div style={{ fontSize: ".66rem", color: "#8a6418", fontWeight: 950 }}>RECOGIDA</div>
+            <div style={{ borderRadius: 16, background: "var(--rp-surface-soft)", padding: "10px 11px" }}>
+              <div style={{ fontSize: ".66rem", color: "var(--rp-label)", fontWeight: 950 }}>RECOGIDA</div>
               <div style={{ marginTop: 3, fontWeight: 950 }}>{scheduledText}</div>
             </div>
-            <div style={{ borderRadius: 16, background: "rgba(255,255,255,.70)", padding: "10px 11px" }}>
-              <div style={{ fontSize: ".66rem", color: "#8a6418", fontWeight: 950 }}>AVISO PARA SALIR</div>
+            <div style={{ borderRadius: 16, background: "var(--rp-surface-soft)", padding: "10px 11px" }}>
+              <div style={{ fontSize: ".66rem", color: "var(--rp-label)", fontWeight: 950 }}>AVISO PARA SALIR</div>
               <div style={{ marginTop: 3, fontWeight: 950 }}>{activationText}</div>
             </div>
           </div>
@@ -14969,7 +14971,7 @@ La reserva fue retirada. No continúes hacia la recogida.`,
 
           {readyToStart ? (
             <div style={{ marginTop: 12 }}>
-              <div style={{ marginBottom: 10, borderRadius: 16, background: "rgba(34,197,94,.16)", border: "1px solid rgba(34,197,94,.36)", padding: "10px 12px", fontWeight: 950, fontSize: ".82rem", lineHeight: 1.35, color: "#0F8A3A" }}>
+              <div style={{ marginBottom: 10, borderRadius: 16, background: "var(--rp-ok-bg)", border: "1px solid var(--rp-ok-bd)", padding: "10px 12px", fontWeight: 950, fontSize: ".82rem", lineHeight: 1.35, color: "var(--rp-ok-fg)" }}>
                 ✅ Reserva lista. Ya puedes iniciar la ruta hacia el pasajero.
               </div>
               <IonButton
@@ -14977,13 +14979,13 @@ La reserva fue retirada. No continúes hacia la recogida.`,
                 color="warning"
                 disabled={acceptingId === String(ride.id) || !isDriverAvailable}
                 onClick={() => void handleStartReadyScheduledReservation(ride)}
-                style={{ "--border-radius": "16px", height: "50px", fontWeight: 950, color: "#111" } as CSSProperties}
+                style={{ "--border-radius": "16px", height: "50px", fontWeight: 950, color: "var(--rp-btn-primary-fg)" } as CSSProperties}
               >
                 {acceptingId === String(ride.id) ? <IonSpinner name="dots" /> : "Iniciar viaje ahora"}
               </IonButton>
             </div>
           ) : (
-            <div style={{ marginTop: 12, borderRadius: 16, background: "rgba(34,197,94,.14)", border: "1px solid rgba(34,197,94,.30)", padding: "10px 12px", fontWeight: 900, fontSize: ".80rem", lineHeight: 1.35 }}>
+            <div style={{ marginTop: 12, borderRadius: 16, background: "var(--rp-ok-bg)", border: "1px solid var(--rp-ok-bd)", padding: "10px 12px", fontWeight: 900, fontSize: ".80rem", lineHeight: 1.35 }}>
               ⏱ {countdownText}. Cuando llegue el momento, te avisaremos: “Tenemos agendado tu viaje, ve a buscar al usuario”.
             </div>
           )}
@@ -15018,7 +15020,7 @@ La reserva fue retirada. No continúes hacia la recogida.`,
         : "Punto de recogida confirmado";
 
     return (
-      <IonCard style={styles.card}>
+      <IonCard className="rapago-driver-card" style={styles.card}>
         <div style={styles.darkLayer} />
 
         <IonCardContent
@@ -15041,9 +15043,9 @@ La reserva fue retirada. No continúes hacia la recogida.`,
                   gap: 8,
                   padding: "7px 11px",
                   borderRadius: "999px",
-                  background: "rgba(45,211,111,.18)",
-                  border: "1px solid rgba(15,138,58,.22)",
-                  color: "#0F8A3A",
+                  background: "var(--rp-ok-bg)",
+                  border: "1px solid var(--rp-ok-bd)",
+                  color: "var(--rp-ok-fg)",
                   fontSize: ".72rem",
                   fontWeight: 950,
                   marginBottom: 10,
@@ -15056,7 +15058,7 @@ La reserva fue retirada. No continúes hacia la recogida.`,
                     width: 8,
                     height: 8,
                     borderRadius: 999,
-                    background: "#22c55e",
+                    background: "var(--rp-ok-fg)",
                     boxShadow: "0 0 18px rgba(34,197,94,.9)",
                   }}
                 />
@@ -15068,7 +15070,7 @@ La reserva fue retirada. No continúes hacia la recogida.`,
                   fontWeight: 950,
                   fontSize: "1.22rem",
                   lineHeight: 1.08,
-                  color: "#111111",
+                  color: "var(--rp-text)",
                 }}
               >
                 Solicitud cercana
@@ -15076,7 +15078,7 @@ La reserva fue retirada. No continúes hacia la recogida.`,
               <div
                 style={{
                   marginTop: 5,
-                  color: "rgba(17,17,17,.66)",
+                  color: "var(--rp-muted)",
                   fontSize: ".78rem",
                   lineHeight: 1.35,
                 }}
@@ -15092,9 +15094,9 @@ La reserva fue retirada. No continúes hacia la recogida.`,
                 width: 36,
                 height: 36,
                 borderRadius: 999,
-                border: "1px solid rgba(255,255,255,.16)",
-                background: "rgba(255,255,255,.08)",
-                color: "#111111",
+                border: "1px solid var(--rp-border-c)",
+                background: "var(--rp-surface-soft)",
+                color: "var(--rp-text)",
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
@@ -15113,14 +15115,14 @@ La reserva fue retirada. No continúes hacia la recogida.`,
             <div style={styles.pill}>
               <IonIcon
                 icon={timeOutline}
-                style={{ fontSize: 15, color: "#ffd33d" }}
+                style={{ fontSize: 15, color: "var(--rp-accent)" }}
               />
               Ahora
             </div>
             <div style={styles.pill}>
               <IonIcon
                 icon={carOutline}
-                style={{ fontSize: 15, color: "#0F8A3A" }}
+                style={{ fontSize: 15, color: "var(--rp-ok-fg)" }}
               />
               {rideVehicleEmoji} {rideVehicleShortLabel}
             </div>
@@ -15132,7 +15134,7 @@ La reserva fue retirada. No continúes hacia la recogida.`,
                 icon={paymentLabel === "Mercado Pago" ? cardOutline : cashOutline}
                 style={{
                   fontSize: 15,
-                  color: paymentLabel === "Mercado Pago" ? "#2563eb" : "#22c55e",
+                  color: paymentLabel === "Mercado Pago" ? "var(--rp-info-fg)" : "var(--rp-ok-fg)",
                 }}
               />
               {paymentIcon} {paymentLabel}
@@ -15140,7 +15142,7 @@ La reserva fue retirada. No continúes hacia la recogida.`,
             <div style={styles.pill}>
               <IonIcon
                 icon={starOutline}
-                style={{ fontSize: 15, color: "#ffd33d" }}
+                style={{ fontSize: 15, color: "var(--rp-accent)" }}
               />
               Verificado
             </div>
@@ -15156,11 +15158,11 @@ La reserva fue retirada. No continúes hacia la recogida.`,
                 alignItems: "start",
               }}
             >
-              <div style={{ ...styles.routeDot, background: "#22c55e" }} />
+              <div style={{ ...styles.routeDot, background: "var(--rp-ok-fg)" }} />
               <div style={{ minWidth: 0 }}>
                 <div
                   style={{
-                    color: "#22c55e",
+                    color: "var(--rp-ok-fg)",
                     fontSize: ".72rem",
                     fontWeight: 950,
                     letterSpacing: ".35px",
@@ -15174,14 +15176,14 @@ La reserva fue retirada. No continúes hacia la recogida.`,
                     fontSize: "1.02rem",
                     marginTop: 3,
                     lineHeight: 1.25,
-                    color: "#111111",
+                    color: "var(--rp-text)",
                   }}
                 >
                   {getDriverRidePointDisplayLabel(ride, "origin")}
                 </div>
                 <div
                   style={{
-                    color: "rgba(17,17,17,.66)",
+                    color: "var(--rp-muted)",
                     fontSize: ".78rem",
                     marginTop: 5,
                     lineHeight: 1.35,
@@ -15193,7 +15195,7 @@ La reserva fue retirada. No continúes hacia la recogida.`,
                       fontSize: 14,
                       marginRight: 4,
                       verticalAlign: "-2px",
-                      color: "#d2a43a",
+                      color: "var(--rp-accent)",
                     }}
                   />
                   {pickupWalkText}
@@ -15204,18 +15206,18 @@ La reserva fue retirada. No continúes hacia la recogida.`,
                 style={{
                   width: 2,
                   height: 34,
-                  background: "linear-gradient(180deg, #22c55e, #ef4444)",
+                  background: "linear-gradient(180deg, var(--rp-ok-fg), var(--rp-err-fg))",
                   marginLeft: 6,
                   borderRadius: 999,
                 }}
               />
               <div />
 
-              <div style={{ ...styles.routeDot, background: "#ef4444" }} />
+              <div style={{ ...styles.routeDot, background: "var(--rp-err-fg)" }} />
               <div style={{ minWidth: 0 }}>
                 <div
                   style={{
-                    color: "#ef4444",
+                    color: "var(--rp-err-fg)",
                     fontSize: ".72rem",
                     fontWeight: 950,
                     letterSpacing: ".35px",
@@ -15229,7 +15231,7 @@ La reserva fue retirada. No continúes hacia la recogida.`,
                     fontSize: "1.02rem",
                     marginTop: 3,
                     lineHeight: 1.25,
-                    color: "#111111",
+                    color: "var(--rp-text)",
                   }}
                 >
                   {getDriverRidePointDisplayLabel(ride, "destination")}
@@ -15247,9 +15249,8 @@ La reserva fue retirada. No continúes hacia la recogida.`,
               marginTop: 14,
               padding: "14px 15px",
               borderRadius: "20px",
-              background:
-                "linear-gradient(135deg, rgba(34,197,94,.16), rgba(210,164,58,.20))",
-              border: "1px solid rgba(15,138,58,.22)",
+              background: "var(--rp-ok-bg)",
+              border: "1px solid var(--rp-ok-bd)",
               display: "flex",
               alignItems: "center",
               justifyContent: "space-between",
@@ -15259,7 +15260,7 @@ La reserva fue retirada. No continúes hacia la recogida.`,
             <div>
               <div
                 style={{
-                  color: "rgba(17,17,17,.62)",
+                  color: "var(--rp-muted)",
                   fontSize: ".72rem",
                   fontWeight: 900,
                 }}
@@ -15268,7 +15269,7 @@ La reserva fue retirada. No continúes hacia la recogida.`,
               </div>
               <div
                 style={{
-                  color: "#0F8A3A",
+                  color: "var(--rp-ok-fg)",
                   fontWeight: 950,
                   fontSize: "1.48rem",
                   lineHeight: 1.05,
@@ -15279,7 +15280,7 @@ La reserva fue retirada. No continúes hacia la recogida.`,
               </div>
               <div
                 style={{
-                  color: "rgba(17,17,17,.66)",
+                  color: "var(--rp-muted)",
                   fontSize: ".74rem",
                   marginTop: 4,
                   fontWeight: 800,
@@ -15289,7 +15290,7 @@ La reserva fue retirada. No continúes hacia la recogida.`,
               </div>
               <div
                 style={{
-                  color: "rgba(17,17,17,.72)",
+                  color: "var(--rp-muted)",
                   fontSize: ".74rem",
                   marginTop: 3,
                   fontWeight: 900,
@@ -15299,7 +15300,7 @@ La reserva fue retirada. No continúes hacia la recogida.`,
               </div>
               <div
                 style={{
-                  color: "rgba(17,17,17,.72)",
+                  color: "var(--rp-muted)",
                   fontSize: ".74rem",
                   marginTop: 3,
                   fontWeight: 900,
@@ -15310,7 +15311,7 @@ La reserva fue retirada. No continúes hacia la recogida.`,
               {driverEarningClp != null && (
                 <div
                   style={{
-                    color: "rgba(17,17,17,.62)",
+                    color: "var(--rp-muted)",
                     fontSize: ".72rem",
                     marginTop: 3,
                   }}
@@ -15325,12 +15326,12 @@ La reserva fue retirada. No continúes hacia la recogida.`,
                 width: 50,
                 height: 50,
                 borderRadius: "17px",
-                background: "rgba(15,138,58,.10)",
-                border: "1px solid rgba(15,138,58,.20)",
+                background: "var(--rp-ok-bg)",
+                border: "1px solid var(--rp-ok-bd)",
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
-                color: "#0F8A3A",
+                color: "var(--rp-ok-fg)",
                 fontWeight: 950,
                 fontSize: "1.22rem",
                 flexShrink: 0,
@@ -15435,7 +15436,7 @@ La reserva fue retirada. No continúes hacia la recogida.`,
           minHeight: "100%",
           background: "#0f1115",
           margin: "-16px",
-          color: "#F6F2EC",
+          color: "#fff",
           display: "flex",
           flexDirection: "column",
           paddingBottom: "calc(92px + env(safe-area-inset-bottom, 0px))",
@@ -15561,7 +15562,7 @@ La reserva fue retirada. No continúes hacia la recogida.`,
                     color="warning"
                     disabled={acceptingId === nextOfferWhileActive.id || !driverLocation}
                     onClick={() => void handleAcceptRide(nextOfferWhileActive.id)}
-                    style={{ "--border-radius": "999px", "--color": "#111", fontWeight: 950 } as CSSProperties}
+                    style={{ "--border-radius": "999px", "--color": "var(--rp-btn-primary-fg)", fontWeight: 950 } as CSSProperties}
                   >
                     {acceptingId === nextOfferWhileActive.id ? <IonSpinner name="dots" /> : "Aceptar próximo"}
                   </IonButton>
@@ -15710,7 +15711,7 @@ La reserva fue retirada. No continúes hacia la recogida.`,
                       {
                         "--border-radius": "14px",
                         height: "52px",
-                        "--color": driverNoShowState.allowed ? "#111111" : "#ffffff",
+                        "--color": driverNoShowState.allowed ? "var(--rp-btn-primary-fg)" : "#ffffff",
                         "--background": driverNoShowState.allowed ? undefined : "rgba(71,85,105,.75)",
                         opacity: driverNoShowState.allowed ? 1 : .68,
                         position: "relative",
@@ -15892,13 +15893,13 @@ La reserva fue retirada. No continúes hacia la recogida.`,
               } as CSSProperties
             }
           >
-            <div style={{ padding: "9px 16px 12px", color: "#F6F2EC" }}>
+            <div style={{ padding: "9px 16px 12px", color: "#fff" }}>
               <div style={{ fontWeight: 950, fontSize: ".92rem" }}>
                 {showOnlyReservations ? "Reservas asignadas" : "Viajes disponibles"}
               </div>
               <div
                 style={{
-                  color: "rgba(246,242,236,.62)",
+                  color: "rgba(255,255,255,.62)",
                   fontSize: ".74rem",
                   marginTop: 2,
                 }}
@@ -15918,8 +15919,7 @@ La reserva fue retirada. No continúes hacia la recogida.`,
         className={activeRide ? "" : "ion-padding"}
         style={
           {
-            "--background":
-              "linear-gradient(180deg, rgba(246,242,236,.86), rgba(217,195,160,.72)), url('/assets/rapa-go-bg.jpg') center/cover no-repeat",
+            "--background": "transparent",
           } as CSSProperties
         }
       >
@@ -15961,12 +15961,13 @@ La reserva fue retirada. No continúes hacia la recogida.`,
 
             {locationError && (
               <IonCard
+                className="rapago-driver-card"
                 style={{
                   margin: "0 0 14px",
                   borderRadius: "18px",
-                  background: "#fff3cd",
-                  color: "#111",
-                  border: "1px solid rgba(210,164,58,.45)",
+                  background: "var(--rp-surface)",
+                  color: "var(--rp-text)",
+                  border: "1px solid var(--rp-border-c)",
                 }}
               >
                 <IonCardContent
@@ -15983,13 +15984,14 @@ La reserva fue retirada. No continúes hacia la recogida.`,
 
             {!loading && !showOnlyReservations && !isDriverAvailable && displayedAvailableRides.length === 0 && (
               <IonCard
+                className="rapago-driver-card"
                 style={{
                   margin: "10px 0 14px",
                   borderRadius: "22px",
-                  background: "linear-gradient(135deg,#2A1A18,#8F3F25)",
-                  color: "#F6F2EC",
-                  border: "1px solid rgba(255,255,255,.10)",
-                  boxShadow: "0 16px 34px rgba(0,0,0,.24)",
+                  background: "var(--rp-surface)",
+                  color: "var(--rp-text)",
+                  border: "1px solid var(--rp-border-c)",
+                  boxShadow: "var(--rp-shadow)",
                 }}
               >
                 <IonCardContent
@@ -16043,7 +16045,7 @@ La reserva fue retirada. No continúes hacia la recogida.`,
               >
                 <div
                   style={{
-                    color: "#2A1A18",
+                    color: "var(--rp-text)",
                     fontWeight: 950,
                     fontSize: "1rem",
                     display: "flex",
@@ -16074,7 +16076,7 @@ La reserva fue retirada. No continúes hacia la recogida.`,
               >
                 <div
                   style={{
-                    color: "#2A1A18",
+                    color: "var(--rp-text)",
                     fontWeight: 950,
                     fontSize: "1rem",
                     display: "flex",
@@ -16127,10 +16129,10 @@ La reserva fue retirada. No continúes hacia la recogida.`,
                     width: "min(430px, 100%)",
                     borderRadius: 22,
                     overflow: "hidden",
-                    background: "linear-gradient(180deg,#fff3c4,#f6d56e)",
-                    color: "#111",
-                    boxShadow: "0 24px 60px rgba(0,0,0,.45)",
-                    border: "1px solid rgba(255,255,255,.75)",
+                    background: "var(--rp-surface)",
+                    color: "var(--rp-text)",
+                    boxShadow: "var(--rp-shadow)",
+                    border: "1px solid var(--rp-border-c)",
                   }}
                 >
                   <div
@@ -16190,28 +16192,28 @@ La reserva fue retirada. No continúes hacia la recogida.`,
                         marginBottom: 14,
                       }}
                     >
-                      <span style={{ border: "1px solid rgba(210,164,58,.45)", borderRadius: 999, padding: "7px 10px", fontWeight: 950 }}>📅 Reserva lista</span>
-                      <span style={{ border: "1px solid rgba(34,197,94,.35)", borderRadius: 999, padding: "7px 10px", fontWeight: 950 }}>🚕 Estándar</span>
-                      <span style={{ border: "1px solid rgba(210,164,58,.45)", borderRadius: 999, padding: "7px 10px", fontWeight: 950 }}>💵 Efectivo</span>
+                      <span style={{ border: "1px solid var(--rp-border-c)", borderRadius: 999, padding: "7px 10px", fontWeight: 950 }}>📅 Reserva lista</span>
+                      <span style={{ border: "1px solid var(--rp-ok-bd)", borderRadius: 999, padding: "7px 10px", fontWeight: 950 }}>🚕 Estándar</span>
+                      <span style={{ border: "1px solid var(--rp-border-c)", borderRadius: 999, padding: "7px 10px", fontWeight: 950 }}>💵 Efectivo</span>
                     </div>
 
                     <div
                       style={{
-                        background: "#fff",
+                        background: "var(--rp-surface-soft)",
                         borderRadius: 18,
                         padding: 16,
                         marginBottom: 14,
                         boxShadow: "inset 0 0 0 1px rgba(0,0,0,.04)",
                       }}
                     >
-                      <div style={{ color: "#22c55e", fontSize: ".70rem", fontWeight: 950, textTransform: "uppercase" }}>
+                      <div style={{ color: "var(--rp-ok-fg)", fontSize: ".70rem", fontWeight: 950, textTransform: "uppercase" }}>
                         Ve a buscar al usuario
                       </div>
                       <div style={{ marginTop: 5, fontSize: "1rem", fontWeight: 950 }}>
                         {String(scheduledReservationReadyAlert.originText ?? "Punto de recogida")}
                       </div>
-                      <div style={{ width: 2, height: 28, background: "linear-gradient(#22c55e,#ef4444)", margin: "10px 0 10px 10px" }} />
-                      <div style={{ color: "#ef4444", fontSize: ".70rem", fontWeight: 950, textTransform: "uppercase" }}>
+                      <div style={{ width: 2, height: 28, background: "linear-gradient(var(--rp-ok-fg),var(--rp-err-fg))", margin: "10px 0 10px 10px" }} />
+                      <div style={{ color: "var(--rp-err-fg)", fontSize: ".70rem", fontWeight: 950, textTransform: "uppercase" }}>
                         Destino del pasajero
                       </div>
                       <div style={{ marginTop: 5, fontSize: "1rem", fontWeight: 950 }}>
@@ -16221,8 +16223,8 @@ La reserva fue retirada. No continúes hacia la recogida.`,
 
                     <div
                       style={{
-                        background: "#17120f",
-                        color: "#fff",
+                        background: "var(--rp-surface-soft)",
+                        color: "var(--rp-text)",
                         borderRadius: 16,
                         padding: "13px 14px",
                         marginBottom: 14,
@@ -16232,7 +16234,7 @@ La reserva fue retirada. No continúes hacia la recogida.`,
                         gap: 12,
                       }}
                     >
-                      <div style={{ fontSize: ".72rem", fontWeight: 950, color: "#f6d56e" }}>
+                      <div style={{ fontSize: ".72rem", fontWeight: 950, color: "var(--rp-label)" }}>
                         TARIFA RESERVADA
                       </div>
                       <div style={{ fontSize: "1.25rem", fontWeight: 950 }}>
@@ -16254,7 +16256,7 @@ La reserva fue retirada. No continúes hacia la recogida.`,
                         color="warning"
                         disabled={acceptingId === String(scheduledReservationReadyAlert.id)}
                         onClick={() => void handleStartReadyScheduledReservation(scheduledReservationReadyAlert)}
-                        style={{ "--border-radius": "14px", fontWeight: 950, color: "#111" } as CSSProperties}
+                        style={{ "--border-radius": "14px", fontWeight: 950, color: "var(--rp-btn-primary-fg)" } as CSSProperties}
                       >
                         Iniciar viaje
                       </IonButton>
@@ -16272,7 +16274,7 @@ La reserva fue retirada. No continúes hacia la recogida.`,
         )}
       </IonContent>
 
-      <style>{`.rapago-danger-alert { --background: #2A1A18; --color: #ffffff; --button-color: #ff6467; } .rapago-danger-alert .alert-title { color: #fecaca; font-weight: 950; } .rapago-danger-alert .alert-message { color: rgba(255,255,255,.82); } .rapago-complete-alert { --background: #F6F2EC; --color: #111111; } .rapago-complete-alert .alert-title { color: #14532d; font-weight: 950; } .rapago-passenger-cancel-alert {
+      <style>{`.rapago-danger-alert { --background: #2A1A18; --color: #ffffff; --button-color: #ff6467; } .rapago-danger-alert .alert-title { color: #fecaca; font-weight: 950; } .rapago-danger-alert .alert-message { color: rgba(255,255,255,.82); } .rapago-complete-alert { --background: var(--rp-surface); --color: var(--rp-text); } .rapago-complete-alert .alert-title { color: var(--rp-ok-fg); font-weight: 950; } .rapago-passenger-cancel-alert {
   --background: linear-gradient(180deg,#fffaf0,#f8ead0);
   --color: #111827;
   --button-color: #111827;
@@ -16712,12 +16714,13 @@ function DriverHistoryRideCard({
 
   return (
     <IonCard
+      className="rapago-driver-card"
       style={{
         margin: 0,
         borderRadius: "18px",
-        background: "#F6F2EC",
-        color: "#111111",
-        border: "1px solid rgba(0,0,0,.08)",
+        background: "var(--rp-surface)",
+        color: "var(--rp-text)",
+        border: "1px solid var(--rp-border-c)",
       }}
     >
       <IonCardContent style={{ padding: "14px" }}>
@@ -16755,13 +16758,13 @@ function DriverHistoryRideCard({
             )}
 
             {ride.completedAt && (
-              <div style={{ marginTop: 4, color: "#666", fontSize: ".74rem" }}>
+              <div style={{ marginTop: 4, color: "var(--rp-muted)", fontSize: ".74rem" }}>
                 Completado: {new Date(ride.completedAt).toLocaleString("es-CL")}
               </div>
             )}
 
             {ride.cancelledAt && (
-              <div style={{ marginTop: 4, color: "#666", fontSize: ".74rem" }}>
+              <div style={{ marginTop: 4, color: "var(--rp-muted)", fontSize: ".74rem" }}>
                 Cancelado: {new Date(ride.cancelledAt).toLocaleString("es-CL")}
               </div>
             )}
@@ -17385,12 +17388,13 @@ function DriverMyRidesPage(): JSX.Element {
 
         {!loading && activeRide && (
           <IonCard
+            className="rapago-driver-card"
             style={{
               margin: "0 0 14px",
               borderRadius: "22px",
               overflow: "hidden",
-              background: "#F6F2EC",
-              border: "2px solid rgba(45,211,111,.55)",
+              background: "var(--rp-surface)",
+              border: "2px solid var(--rp-border-c)",
             }}
           >
             <IonCardContent style={{ padding: "12px" }}>
@@ -17408,14 +17412,14 @@ function DriverMyRidesPage(): JSX.Element {
                     style={{
                       fontWeight: 950,
                       fontSize: "1.08rem",
-                      color: "#111",
+                      color: "var(--rp-text)",
                     }}
                   >
                     Viaje activo
                   </div>
                   <div
                     style={{
-                      color: "#333",
+                      color: "var(--rp-muted)",
                       fontSize: ".78rem",
                       fontWeight: 800,
                       marginTop: 2,
@@ -17436,7 +17440,7 @@ function DriverMyRidesPage(): JSX.Element {
                 style={{
                   borderRadius: "18px",
                   overflow: "hidden",
-                  border: "1px solid rgba(0,0,0,.1)",
+                  border: "1px solid var(--rp-border-c)",
                   background: "#111827",
                 }}
               >
@@ -17447,14 +17451,14 @@ function DriverMyRidesPage(): JSX.Element {
                 />
               </div>
 
-              <div style={{ marginTop: "12px", color: "#111" }}>
+              <div style={{ marginTop: "12px", color: "var(--rp-text)" }}>
                 <div style={{ fontWeight: 900, fontSize: ".92rem" }}>
                   {activeRide.originText} → {activeRide.destinationText}
                 </div>
 
                 {getRideDisplayFareClp(activeRide) != null && (
                   <div
-                    style={{ marginTop: 6, color: "#C89B3C", fontWeight: 950 }}
+                    style={{ marginTop: 6, color: "var(--rp-accent)", fontWeight: 950 }}
                   >
                     Precio: {formatClp(getRideDisplayFareClp(activeRide))} ·
                     Pago: {getRidePaymentMethodLabel(activeRide.notes)}
@@ -17464,7 +17468,7 @@ function DriverMyRidesPage(): JSX.Element {
                 <div
                   style={{
                     marginTop: 4,
-                    color: "#333",
+                    color: "var(--rp-muted)",
                     fontSize: ".82rem",
                     fontWeight: 900,
                   }}
@@ -17482,7 +17486,7 @@ function DriverMyRidesPage(): JSX.Element {
                   <div
                     style={{
                       marginTop: 6,
-                      color: "#333",
+                      color: "var(--rp-muted)",
                       fontSize: ".78rem",
                       fontWeight: 800,
                       lineHeight: 1.35,
@@ -17653,10 +17657,11 @@ function DriverMyRidesPage(): JSX.Element {
               return (
                 <IonCard
                   key={ride.id}
+                  className="rapago-driver-card"
                   style={{
                     margin: 0,
                     borderRadius: "16px",
-                    background: "#F6F2EC",
+                    background: "var(--rp-surface)",
                   }}
                 >
                   <IonCardContent style={{ padding: "14px" }}>
@@ -17668,7 +17673,7 @@ function DriverMyRidesPage(): JSX.Element {
                       }}
                     >
                       <div>
-                        <div style={{ fontWeight: 900, color: "#111" }}>
+                        <div style={{ fontWeight: 900, color: "var(--rp-text)" }}>
                           {getDriverRideRouteDisplayLabel(ride)}
                         </div>
                         <IonBadge
@@ -17683,7 +17688,7 @@ function DriverMyRidesPage(): JSX.Element {
                           <div
                             style={{
                               marginTop: 8,
-                              color: "#333",
+                              color: "var(--rp-muted)",
                               fontSize: ".82rem",
                             }}
                           >
@@ -17834,8 +17839,7 @@ export function DriverEarningsPage(): JSX.Element {
         className="ion-padding"
         style={
           {
-            "--background":
-              "linear-gradient(180deg, rgba(15,15,15,.82), rgba(15,15,15,.96)), url('/assets/rapa-go-bg.jpg') center/cover no-repeat",
+            "--background": "transparent",
           } as CSSProperties
         }
       >
@@ -17849,12 +17853,13 @@ export function DriverEarningsPage(): JSX.Element {
         </IonRefresher>
 
         <IonCard
+          className="rapago-driver-card"
           style={{
             margin: 0,
             borderRadius: 24,
-            background: "linear-gradient(135deg,#22c55e,#d2a43a)",
-            color: "#111111",
-            boxShadow: "0 18px 42px rgba(0,0,0,.28)",
+            background: "var(--rp-surface)",
+            color: "var(--rp-text)",
+            boxShadow: "var(--rp-shadow)",
           }}
         >
           <IonCardContent style={{ padding: 18 }}>
@@ -17876,7 +17881,7 @@ export function DriverEarningsPage(): JSX.Element {
                   width: 54,
                   height: 54,
                   borderRadius: 18,
-                  background: "rgba(17,17,17,.14)",
+                  background: "var(--rp-surface-soft)",
                   display: "flex",
                   alignItems: "center",
                   justifyContent: "center",
@@ -17896,16 +17901,16 @@ export function DriverEarningsPage(): JSX.Element {
             marginTop: 12,
           }}
         >
-          <IonCard style={{ margin: 0, borderRadius: 18, background: "#F6F2EC" }}>
+          <IonCard className="rapago-driver-card" style={{ margin: 0, borderRadius: 18, background: "var(--rp-surface)" }}>
             <IonCardContent style={{ padding: 14 }}>
-              <div style={{ color: "#555", fontSize: ".72rem", fontWeight: 850 }}>Total cobrado</div>
-              <div style={{ color: "#111", fontWeight: 950, marginTop: 3 }}>{formatClp(totalFareClp)}</div>
+              <div style={{ color: "var(--rp-muted)", fontSize: ".72rem", fontWeight: 850 }}>Total cobrado</div>
+              <div style={{ color: "var(--rp-text)", fontWeight: 950, marginTop: 3 }}>{formatClp(totalFareClp)}</div>
             </IonCardContent>
           </IonCard>
-          <IonCard style={{ margin: 0, borderRadius: 18, background: "#F6F2EC" }}>
+          <IonCard className="rapago-driver-card" style={{ margin: 0, borderRadius: 18, background: "var(--rp-surface)" }}>
             <IonCardContent style={{ padding: 14 }}>
-              <div style={{ color: "#555", fontSize: ".72rem", fontWeight: 850 }}>Comisión Rapa Go</div>
-              <div style={{ color: "#111", fontWeight: 950, marginTop: 3 }}>{formatClp(totalCommissionClp)}</div>
+              <div style={{ color: "var(--rp-muted)", fontSize: ".72rem", fontWeight: 850 }}>Comisión Rapa Go</div>
+              <div style={{ color: "var(--rp-text)", fontWeight: 950, marginTop: 3 }}>{formatClp(totalCommissionClp)}</div>
             </IonCardContent>
           </IonCard>
         </div>
@@ -17955,8 +17960,8 @@ export function DriverEarningsPage(): JSX.Element {
         )}
 
         {!loading && visibleRides.length === 0 && (
-          <IonCard style={{ margin: "14px 0 0", borderRadius: 20, background: "#F6F2EC" }}>
-            <IonCardContent style={{ color: "#111", fontWeight: 850 }}>
+          <IonCard className="rapago-driver-card" style={{ margin: "14px 0 0", borderRadius: 20, background: "var(--rp-surface)" }}>
+            <IonCardContent style={{ color: "var(--rp-text)", fontWeight: 850 }}>
               Todavía no hay viajes completados para este filtro.
             </IonCardContent>
           </IonCard>
@@ -17972,12 +17977,13 @@ export function DriverEarningsPage(): JSX.Element {
               return (
                 <IonCard
                   key={String(ride.id ?? `${getDriverRidePointDisplayLabel(ride, "origin")}-${getDriverRidePointDisplayLabel(ride, "destination")}-${dateMs}`)}
+                  className="rapago-driver-card"
                   style={{
                     margin: 0,
                     borderRadius: 20,
-                    background: "#F6F2EC",
-                    color: "#111111",
-                    border: "1px solid rgba(210,164,58,.34)",
+                    background: "var(--rp-surface)",
+                    color: "var(--rp-text)",
+                    border: "1px solid var(--rp-border-c)",
                   }}
                 >
                   <IonCardContent style={{ padding: 14 }}>
@@ -17986,10 +17992,10 @@ export function DriverEarningsPage(): JSX.Element {
                         <div style={{ fontWeight: 950, fontSize: ".94rem", lineHeight: 1.25 }}>
                           {getDriverRideRouteDisplayLabel(ride as unknown as Record<string, unknown>)}
                         </div>
-                        <div style={{ marginTop: 5, color: "#555", fontSize: ".74rem", fontWeight: 800 }}>
+                        <div style={{ marginTop: 5, color: "var(--rp-muted)", fontSize: ".74rem", fontWeight: 800 }}>
                           {dateMs ? new Date(dateMs).toLocaleString("es-CL") : "Fecha no informada"}
                         </div>
-                        <div style={{ marginTop: 5, color: "#555", fontSize: ".74rem", fontWeight: 800 }}>
+                        <div style={{ marginTop: 5, color: "var(--rp-muted)", fontSize: ".74rem", fontWeight: 800 }}>
                           {getRidePaymentMethodLabel(String(ride.notes ?? ""))} · {getRideTripTypeLabel(String(ride.notes ?? ""))}
                         </div>
                       </div>
@@ -17998,7 +18004,7 @@ export function DriverEarningsPage(): JSX.Element {
                         <IonBadge color="success" style={{ fontWeight: 950 }}>
                           {formatClp(earning)}
                         </IonBadge>
-                        <div style={{ marginTop: 6, color: "#555", fontSize: ".72rem", fontWeight: 850 }}>
+                        <div style={{ marginTop: 6, color: "var(--rp-muted)", fontSize: ".72rem", fontWeight: 850 }}>
                           Precio {formatClp(fare)}
                         </div>
                       </div>
