@@ -24,6 +24,8 @@
     IonToolbar,
     useIonViewWillEnter,
   } from "@ionic/react";
+  import { cameraOutline, checkmarkCircle } from "ionicons/icons";
+  import { IonIcon } from "@ionic/react";
   import { useEffect, useState, type CSSProperties, type Dispatch, type SetStateAction } from "react";
   import { useHistory } from "react-router-dom";
   import { useAuth } from "../../features/auth/index.js";
@@ -2246,7 +2248,35 @@ function isRutValid(value: string): boolean {
                     background: file ? "linear-gradient(135deg,#ecfdf3,#ffffff)" : "#ffffff",
                   }}
                 >
-                  {String(label)}
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                      gap: 10,
+                    }}
+                  >
+                    <span>{String(label)}</span>
+                    <span
+                      style={{
+                        flex: "0 0 auto",
+                        width: 34,
+                        height: 34,
+                        borderRadius: 12,
+                        display: "grid",
+                        placeItems: "center",
+                        background: file
+                          ? "rgba(34,197,94,.16)"
+                          : "rgba(200,155,60,.16)",
+                        color: file ? "#167A35" : "#8A6418",
+                      }}
+                    >
+                      <IonIcon
+                        icon={file ? checkmarkCircle : cameraOutline}
+                        style={{ fontSize: 19 }}
+                      />
+                    </span>
+                  </div>
                   <input
                     type="file"
                     accept={String(accept)}
@@ -2260,13 +2290,15 @@ function isRutValid(value: string): boolean {
                   <div
                     className="selected-file"
                     style={{
-                      color: file ? "#167A35" : "#4A4A4A",
+                      color: file ? "#167A35" : "#6B6357",
                       marginTop: "6px",
-                      fontSize: ".78rem",
-                      fontWeight: 900,
+                      fontSize: ".76rem",
+                      fontWeight: file ? 900 : 700,
                     }}
                   >
-                    {fileLabel(file as File | null)}
+                    {file
+                      ? fileLabel(file as File | null)
+                      : "Toca para tomar una foto o elegir un archivo"}
                   </div>
                 </label>
               ))}
@@ -2438,11 +2470,38 @@ function isRutValid(value: string): boolean {
                           : "#ffffff",
                       }}
                     >
-                      Foto del vehículo *
+                      <div
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "space-between",
+                          gap: 10,
+                        }}
+                      >
+                        <span>Foto del vehículo *</span>
+                        <span
+                          style={{
+                            flex: "0 0 auto",
+                            width: 34,
+                            height: 34,
+                            borderRadius: 12,
+                            display: "grid",
+                            placeItems: "center",
+                            background: vehicle.photoFile
+                              ? "rgba(34,197,94,.16)"
+                              : "rgba(200,155,60,.16)",
+                            color: vehicle.photoFile ? "#167A35" : "#8A6418",
+                          }}
+                        >
+                          <IonIcon
+                            icon={vehicle.photoFile ? checkmarkCircle : cameraOutline}
+                            style={{ fontSize: 19 }}
+                          />
+                        </span>
+                      </div>
                       <input
                         type="file"
                         accept="image/*"
-                        capture="environment"
                         style={{ display: "none" }}
                         onChange={(e) =>
                           updateVehicle(vehicle.id, {
@@ -2453,13 +2512,15 @@ function isRutValid(value: string): boolean {
                       <div
                         className="selected-file"
                         style={{
-                          color: vehicle.photoFile ? "#167A35" : "#4A4A4A",
+                          color: vehicle.photoFile ? "#167A35" : "#6B6357",
                           marginTop: "6px",
-                          fontSize: ".78rem",
-                          fontWeight: 900,
+                          fontSize: ".76rem",
+                          fontWeight: vehicle.photoFile ? 900 : 700,
                         }}
                       >
-                        {fileLabel(vehicle.photoFile)}
+                        {vehicle.photoFile
+                          ? fileLabel(vehicle.photoFile)
+                          : "Toca para tomar una foto o elegir un archivo"}
                       </div>
                     </label>
                   </div>
@@ -2784,13 +2845,21 @@ function isRutValid(value: string): boolean {
                 }}
                 style={{
                   "--border-radius": "16px",
-                  "--background":
-                    "linear-gradient(135deg,#F8D879,#C89B3C)",
-                  color: "#111",
+                  "--background": stepReady
+                    ? "linear-gradient(135deg,#F8D879,#C89B3C)"
+                    : "#DAD3C6",
+                  "--background-activated": "linear-gradient(135deg,#C5532F,#C89B3C)",
+                  "--box-shadow": stepReady
+                    ? "0 12px 26px rgba(200,155,60,.40)"
+                    : "none",
+                  "--color": stepReady ? "#111111" : "#8A857B",
+                  "--opacity": "1",
+                  color: stepReady ? "#111" : "#8A857B",
                   fontWeight: 950,
+                  opacity: 1,
                 } as CSSProperties}
               >
-                Continuar
+                {stepReady ? "Continuar" : "Completa esta etapa"}
               </IonButton>
             )}
           </div>
@@ -2811,15 +2880,18 @@ function isRutValid(value: string): boolean {
                 "--border-radius": "18px",
                 "--background": canSubmit
                   ? "linear-gradient(135deg,#F8D879 0%,#C89B3C 45%,#C5532F 100%)"
-                  : "linear-gradient(135deg,#C9C2B5,#8D877D)",
+                  : "#DAD3C6",
                 "--background-activated": "linear-gradient(135deg,#C5532F,#C89B3C)",
                 "--box-shadow": canSubmit
                   ? "0 16px 32px rgba(200,155,60,.42)"
                   : "none",
+                "--color": canSubmit ? "#111111" : "#8A857B",
+                "--opacity": "1",
                 height: "56px",
                 fontWeight: 950,
-                color: "#111111",
+                color: canSubmit ? "#111111" : "#8A857B",
                 letterSpacing: ".01em",
+                opacity: 1,
               } as CSSProperties}
             >
               {loading
