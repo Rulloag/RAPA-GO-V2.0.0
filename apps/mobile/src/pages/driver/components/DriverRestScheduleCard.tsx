@@ -60,7 +60,7 @@ function statusLabel(
     case "active":
       return "Descanso activo";
     case "reminder_due":
-      return "DecisiÃ³n pendiente";
+      return "Decisión pendiente";
     case "working":
       return "Trabajando";
     case "completed":
@@ -123,7 +123,7 @@ export function DriverRestScheduleCard({
           }),
         );
       } catch {
-        // El evento local solo sincroniza la presentaciÃ³n de la aplicaciÃ³n.
+        // El evento local solo sincroniza la presentación de la aplicación.
       }
     },
     [onBlockedChange, scheduleDirty],
@@ -246,13 +246,13 @@ export function DriverRestScheduleCard({
       );
       publish(data);
       setSuccess(
-        "Elegiste Trabajar. Tomar descanso quedÃ³ deshabilitado para este ciclo.",
+        "Elegiste Trabajar. Tomar descanso quedó deshabilitado para este ciclo.",
       );
     } catch (caught) {
       setError(
         caught instanceof Error
           ? caught.message
-          : "No se pudo confirmar que continuarÃ¡s trabajando.",
+          : "No se pudo confirmar que continuarás trabajando.",
       );
     } finally {
       setPerformingAction(null);
@@ -340,7 +340,7 @@ export function DriverRestScheduleCard({
                     opacity: 0.72,
                   }}
                 >
-                  PlanificaciÃ³n personal
+                  Planificación personal
                 </div>
                 <div
                   style={{
@@ -362,8 +362,8 @@ export function DriverRestScheduleCard({
                 fontWeight: 760,
               }}
             >
-              Configura el inicio y tÃ©rmino de tu jornada. Este horario solo
-              genera un aviso y nunca cambia automÃ¡ticamente tu disponibilidad.
+              Configura el inicio y término de tu jornada. Este horario solo
+              genera un aviso y nunca cambia automáticamente tu disponibilidad.
             </p>
 
             <div
@@ -430,7 +430,7 @@ export function DriverRestScheduleCard({
                     marginBottom: 5,
                   }}
                 >
-                  TÃ©rmino
+                  Término
                 </span>
                 <div style={{ position: "relative" }}>
                   <IonIcon
@@ -506,7 +506,7 @@ export function DriverRestScheduleCard({
             >
               Zona horaria: Rapa Nui
               {schedule?.effectiveFrom
-                ? ` Â· Vigente desde ${schedule.effectiveFrom}`
+                ? ` · Vigente desde ${schedule.effectiveFrom}`
                 : ""}
             </div>
           </div>
@@ -553,7 +553,7 @@ export function DriverRestScheduleCard({
                       opacity: 0.72,
                     }}
                   >
-                    DecisiÃ³n manual
+                    Decisión manual
                   </div>
                   <div
                     style={{
@@ -604,7 +604,7 @@ export function DriverRestScheduleCard({
               }}
             >
               {state?.message ??
-                "TodavÃ­a no has comenzado tu descanso."}
+                "Todavía no has comenzado tu descanso."}
             </p>
 
             {activeRest && state?.activePeriod && (
@@ -623,9 +623,9 @@ export function DriverRestScheduleCard({
                 Inicio:{" "}
                 {formatDateTime(state.activePeriod.actualStartAt)}
                 <br />
-                TÃ©rmino:{" "}
+                Término:{" "}
                 {formatDateTime(state.activePeriod.requiredEndAt)}
-                {remaining ? ` Â· Restan ${remaining}` : ""}
+                {remaining ? ` · Restan ${remaining}` : ""}
               </div>
             )}
 
@@ -638,7 +638,7 @@ export function DriverRestScheduleCard({
                   opacity: 0.78,
                 }}
               >
-                PrÃ³ximo aviso:{" "}
+                Próximo aviso:{" "}
                 {formatDateTime(state.nextScheduledStartAt)}
               </div>
             )}
@@ -721,8 +721,8 @@ export function DriverRestScheduleCard({
                   color: "var(--rp-warn-fg)",
                 }}
               >
-                Tienes un viaje activo. La aplicaciÃ³n no lo interrumpirÃ¡;
-                podrÃ¡s tomar el descanso cuando finalice.
+                Tienes un viaje activo. La aplicación no lo interrumpirá;
+                podrás tomar el descanso cuando finalice.
               </div>
             )}
           </div>
@@ -740,8 +740,8 @@ export function DriverRestScheduleCard({
             }
             message={
               confirmationAction === "rest"
-                ? "ComenzarÃ¡s ahora un descanso continuo de 12 horas. QuedarÃ¡s No disponible y no podrÃ¡s volver a Trabajar hasta completar el perÃ­odo."
-                : "Se descartarÃ¡ el descanso de este ciclo y podrÃ¡s administrar normalmente tu estado Disponible o No disponible."
+                ? "Comenzarás ahora un descanso continuo de 12 horas. Quedarás No disponible y no podrás volver a Trabajar hasta completar el período."
+                : "Se descartará el descanso de este ciclo y podrás administrar normalmente tu estado Disponible o No disponible."
             }
             buttons={[
               {
