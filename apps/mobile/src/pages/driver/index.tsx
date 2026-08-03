@@ -36,6 +36,10 @@ import { useHistory, useLocation } from "react-router-dom";
 import {
   carOutline,
   cashOutline,
+  calendarOutline,
+  documentTextOutline,
+  flashOutline,
+  volumeMuteOutline,
   listOutline,
   personOutline,
   refreshOutline,
@@ -1001,7 +1005,7 @@ function PassengerRideNoteCard({
           textTransform: "uppercase",
         }}
       >
-        📝 Nota del pasajero
+        <IonIcon icon={documentTextOutline} style={{ fontSize: "1em", verticalAlign: "-0.125em" }} /> Nota del pasajero
       </div>
       <div
         style={{
@@ -2536,7 +2540,7 @@ function UberDriverNavigationMap({
               textAlign: "center",
             }}
           >
-            {nextInstruction?.maneuver === "arrive" ? "🏁" : maneuverArrow(nextInstruction?.maneuver)}
+            {nextInstruction?.maneuver === "arrive" ? <IonIcon icon={flagOutline} style={{ fontSize: "1em" }} /> : maneuverArrow(nextInstruction?.maneuver)}
           </div>
 
           <div style={{ minWidth: 0 }}>
@@ -2660,7 +2664,7 @@ function UberDriverNavigationMap({
             pointerEvents: "none",
           }}
         >
-          📍 Activando GPS real...
+          <IonIcon icon={locationOutline} style={{ fontSize: "1em", verticalAlign: "-0.125em" }} /> Activando GPS real...
         </div>
       )}
 
@@ -2740,7 +2744,7 @@ function UberDriverNavigationMap({
         }}
         aria-label={mapVoiceMuted ? "Indicaciones visuales sin voz" : "Voz activada"}
       >
-        {mapVoiceMuted ? "🔇" : "🔊"}
+        {mapVoiceMuted ? <IonIcon icon={volumeMuteOutline} /> : <IonIcon icon={volumeHighOutline} />}
       </button>
 
       {!isNavigationCameraLocked && (
@@ -9425,7 +9429,7 @@ function DriverFastSearchBadge({
               color: isCard ? "#1d4ed8" : "#805900",
             }}
           >
-            ⚡ RapaGo más veloz
+            <IonIcon icon={flashOutline} style={{ fontSize: "1em", verticalAlign: "-0.125em" }} /> RapaGo más veloz
           </div>
           <div
             style={{
@@ -9469,9 +9473,15 @@ function DriverFastSearchBadge({
         }}
       >
         <span>
-          {isCard
-            ? "✅ Recargo pagado con Mercado Pago. No cobrar efectivo."
-            : "💵 Cobrar el total actualizado en efectivo."}
+          {isCard ? (
+            <>
+              <IonIcon icon={checkmarkCircleOutline} style={{ fontSize: "1em", verticalAlign: "-0.125em" }} /> Recargo pagado con Mercado Pago. No cobrar efectivo.
+            </>
+          ) : (
+            <>
+              <IonIcon icon={cashOutline} style={{ fontSize: "1em", verticalAlign: "-0.125em" }} /> Cobrar el total actualizado en efectivo.
+            </>
+          )}
         </span>
         {totalClp != null && <strong>Total: {formatClp(totalClp)}</strong>}
       </div>
@@ -12305,7 +12315,7 @@ function DriverGlobalRideAlert(): JSX.Element | null {
                   fontSize: 26,
                 }}
               >
-                📅
+                <IonIcon icon={calendarOutline} style={{ fontSize: "1em" }} />
               </div>
 
               <div>
@@ -12331,7 +12341,7 @@ function DriverGlobalRideAlert(): JSX.Element | null {
           <div style={{ padding: "18px" }}>
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 14 }}>
               <IonChip color="warning" style={{ fontWeight: 950 }}>
-                📅 Reserva asignada
+                <IonIcon icon={calendarOutline} style={{ fontSize: "1em" }} /> Reserva asignada
               </IonChip>
               <IonChip color="success" style={{ fontWeight: 950 }}>
                 {vehicleEmoji} {vehicleLabel}
@@ -14773,7 +14783,7 @@ La reserva fue retirada. No continúes hacia la recogida.`,
                   marginBottom: 10,
                 }}
               >
-                📅 Viaje agendado asignado
+                <IonIcon icon={calendarOutline} style={{ fontSize: "1em" }} />Viaje agendado asignado
               </div>
 
               <div style={{ fontWeight: 950, fontSize: "1.12rem", lineHeight: 1.15 }}>
@@ -14972,7 +14982,7 @@ La reserva fue retirada. No continúes hacia la recogida.`,
           {readyToStart ? (
             <div style={{ marginTop: 12 }}>
               <div style={{ marginBottom: 10, borderRadius: 16, background: "var(--rp-ok-bg)", border: "1px solid var(--rp-ok-bd)", padding: "10px 12px", fontWeight: 950, fontSize: ".82rem", lineHeight: 1.35, color: "var(--rp-ok-fg)" }}>
-                ✅ Reserva lista. Ya puedes iniciar la ruta hacia el pasajero.
+                <IonIcon icon={checkmarkCircleOutline} style={{ fontSize: "1em", verticalAlign: "-0.125em" }} /> Reserva lista. Ya puedes iniciar la ruta hacia el pasajero.
               </div>
               <IonButton
                 expand="block"
@@ -15977,7 +15987,7 @@ La reserva fue retirada. No continúes hacia la recogida.`,
                     fontSize: ".82rem",
                   }}
                 >
-                  📍 {locationError}
+                  <IonIcon icon={locationOutline} style={{ fontSize: "1em", verticalAlign: "-0.125em" }} /> {locationError}
                 </IonCardContent>
               </IonCard>
             )}
@@ -16157,7 +16167,7 @@ La reserva fue retirada. No continúes hacia la recogida.`,
                         fontSize: "1.35rem",
                       }}
                     >
-                      📅
+                      <IonIcon icon={calendarOutline} style={{ fontSize: "1em" }} />
                     </div>
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ fontWeight: 950, fontSize: "1.08rem" }}>
@@ -16192,9 +16202,9 @@ La reserva fue retirada. No continúes hacia la recogida.`,
                         marginBottom: 14,
                       }}
                     >
-                      <span style={{ border: "1px solid var(--rp-border-c)", borderRadius: 999, padding: "7px 10px", fontWeight: 950 }}>📅 Reserva lista</span>
-                      <span style={{ border: "1px solid var(--rp-ok-bd)", borderRadius: 999, padding: "7px 10px", fontWeight: 950 }}>🚕 Estándar</span>
-                      <span style={{ border: "1px solid var(--rp-border-c)", borderRadius: 999, padding: "7px 10px", fontWeight: 950 }}>💵 Efectivo</span>
+                      <span style={{ border: "1px solid var(--rp-border-c)", borderRadius: 999, padding: "7px 10px", fontWeight: 950, display: "inline-flex", alignItems: "center", gap: 6 }}><IonIcon icon={calendarOutline} style={{ fontSize: "1em" }} />Reserva lista</span>
+                      <span style={{ border: "1px solid var(--rp-ok-bd)", borderRadius: 999, padding: "7px 10px", fontWeight: 950, display: "inline-flex", alignItems: "center", gap: 6 }}><IonIcon icon={carOutline} style={{ fontSize: "1em" }} />Estándar</span>
+                      <span style={{ border: "1px solid var(--rp-border-c)", borderRadius: 999, padding: "7px 10px", fontWeight: 950, display: "inline-flex", alignItems: "center", gap: 6 }}><IonIcon icon={cashOutline} style={{ fontSize: "1em" }} />Efectivo</span>
                     </div>
 
                     <div
@@ -17492,7 +17502,7 @@ function DriverMyRidesPage(): JSX.Element {
                       lineHeight: 1.35,
                     }}
                   >
-                    📝 Nota del pasajero: {getPassengerRideNoteForDriver(activeRide)}
+                    <IonIcon icon={documentTextOutline} style={{ fontSize: "1em", verticalAlign: "-0.125em" }} /> Nota del pasajero: {getPassengerRideNoteForDriver(activeRide)}
                   </div>
                 )}
               </div>
