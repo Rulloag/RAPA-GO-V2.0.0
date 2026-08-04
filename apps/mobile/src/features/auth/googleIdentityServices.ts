@@ -27,8 +27,8 @@ interface GoogleAccountsIdApi {
 }
 
 export interface GoogleIdentityServicesGlobal {
-  accounts: {
-    id: GoogleAccountsIdApi;
+  accounts?: {
+    id?: GoogleAccountsIdApi;
   };
 }
 
@@ -45,7 +45,7 @@ export function getGoogleIdentityServices():
 }
 
 export function disableGoogleAutoSelect(): void {
-  getGoogleIdentityServices()?.accounts.id.disableAutoSelect();
+  getGoogleIdentityServices()?.accounts?.id?.disableAutoSelect();
 }
 
 const SCRIPT_ID = "rapago-google-identity-services";
@@ -53,7 +53,7 @@ const SCRIPT_URL = "https://accounts.google.com/gsi/client";
 let scriptPromise: Promise<void> | null = null;
 
 export function loadGoogleIdentityServices(): Promise<void> {
-  if (getGoogleIdentityServices()?.accounts.id) return Promise.resolve();
+  if (getGoogleIdentityServices()?.accounts?.id) return Promise.resolve();
   if (scriptPromise) return scriptPromise;
 
   scriptPromise = new Promise<void>((resolve, reject) => {
