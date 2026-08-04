@@ -8,6 +8,16 @@ import {
   parseErrorBody,
 } from "./apiErrors.js";
 
+const inFlightGetRequests = new Map<string, Promise<ApiResponse<unknown>>>();
+const getRateLimitCooldowns = new Map<
+  string,
+  { until: number; response: ApiResponse<unknown> }
+>();
+
+function getRequestIdentity(path: string, options: RequestOptions = {}): string {
+  return `${options.token ?? "anonymous"}::${path}`;
+}
+
 async function request<T>(
   method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE",
   path: string,
@@ -133,7 +143,38 @@ async function requestWithRetry<T>(
 
 export const apiClient = {
   get<T>(path: string, options?: RequestOptions): Promise<ApiResponse<T>> {
-    return requestWithRetry<T>("GET", path, undefined, options, 2);
+    const key = getRequestIdentity(path, options);
+    const cooldown = getRateLimitCooldowns.get(key);
+
+    if (cooldown && cooldown.until > Date.now()) {
+      return Promise.resolve(cooldown.response as ApiResponse<T>);
+    }
+
+    if (cooldown) getRateLimitCooldowns.delete(key);
+
+    const existing = inFlightGetRequests.get(key);
+    if (existing) return existing as Promise<ApiResponse<T>>;
+
+    const pending = requestWithRetry<T>("GET", path, undefined, options, 2);
+    const tracked = pending.then((result) => {
+      if (result.ok === false && result.statusCode === 429) {
+        getRateLimitCooldowns.set(key, {
+          until: Date.now() + 65_000,
+          response: result as ApiResponse<unknown>,
+        });
+      } else {
+        getRateLimitCooldowns.delete(key);
+      }
+
+      return result;
+    }).finally(() => {
+      if (inFlightGetRequests.get(key) === tracked) {
+        inFlightGetRequests.delete(key);
+      }
+    });
+
+    inFlightGetRequests.set(key, tracked as Promise<ApiResponse<unknown>>);
+    return tracked;
   },
 
   post<T>(

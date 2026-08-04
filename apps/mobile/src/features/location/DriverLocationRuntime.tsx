@@ -195,7 +195,9 @@ export function DriverLocationRuntime(): JSX.Element | null {
     };
 
     void load();
-    const timer = window.setInterval(() => void load(), 5000);
+    const timer = window.setInterval(() => {
+      if (document.visibilityState === "visible") void load();
+    }, 15_000);
     const onRideUpdate = () => void load();
     window.addEventListener("rapago:driver-rides-updated", onRideUpdate);
 

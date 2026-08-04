@@ -162,7 +162,7 @@ export function DriverRestScheduleCard({
 
     const timerId = window.setInterval(() => {
       setNowMs(Date.now());
-      void load(true);
+      if (document.visibilityState === "visible") void load(true);
     }, 30_000);
 
     return () => window.clearInterval(timerId);

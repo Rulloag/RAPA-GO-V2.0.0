@@ -10,6 +10,7 @@ const DriverHomePage = DriverPages.DriverHomePage;
 const DriverRequestsPage = DriverPages.DriverRequestsPage;
 const DriverTripsPage = DriverPages.DriverTripsPage;
 const DriverProfilePage = DriverPages.DriverProfilePage;
+const DriverGlobalRideAlert = DriverPages.DriverGlobalRideAlert;
 
 const DriverEarningsPage =
   (DriverPages as typeof DriverPages & {
@@ -37,6 +38,7 @@ export function DriverLayout(): JSX.Element {
   return (
     <>
       <DriverLocationRuntime />
+      <DriverGlobalRideAlert />
       <RoleLayout tabs={TABS}>
         <Redirect exact from={ROUTES.DRIVER.BASE} to={ROUTES.DRIVER.HOME} />
         <Route exact path={ROUTES.DRIVER.HOME} component={DriverHomePage} />
