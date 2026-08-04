@@ -331,7 +331,7 @@ export function KlapCheckoutModal({
 
     callbackWindow[callbackNames.error] = () => {
       void confirmWithBackend(
-        "La autenticación del banco cerró o informó un problema. Verificaremos el resultado real en el backend antes de declarar el pago rechazado.",
+        "Klap informó un error al validar el formulario o procesar el pago. Verificaremos el resultado real en el backend antes de declarar el pago rechazado.",
       );
     };
 
@@ -671,7 +671,7 @@ export function KlapCheckoutModal({
 
                 <input
                   type="hidden"
-                  data-klap-card-type
+                  data-klap-card-type={klapCardType}
                   value={klapCardType}
                   readOnly
                 />

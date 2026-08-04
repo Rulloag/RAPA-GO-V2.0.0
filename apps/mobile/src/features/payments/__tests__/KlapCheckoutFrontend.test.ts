@@ -23,11 +23,17 @@ describe("Klap Checkout Transparente frontend", () => {
     expect(modalSource).toContain("data-klap-card-number");
     expect(modalSource).toContain("data-klap-expiry-date");
     expect(modalSource).toContain("data-klap-card-cvv");
-    expect(modalSource).toContain("data-klap-card-type");
+    expect(modalSource).toContain("data-klap-card-type={klapCardType}");
     expect(modalSource).toContain("data-klap-quotas");
     expect(serviceSource).toContain("sdk.init({");
     expect(serviceSource).toContain('method: "tarjetas"');
     expect(modalSource).toContain("initializedSdk.payOrder?.()");
+    expect(modalSource).toContain(
+      "Klap informó un error al validar el formulario o procesar el pago",
+    );
+    expect(modalSource).not.toContain(
+      "La autenticación del banco cerró o informó un problema",
+    );
   });
 
   it("prepara el SDK sin escribir tarjetas de prueba en runtime", () => {
