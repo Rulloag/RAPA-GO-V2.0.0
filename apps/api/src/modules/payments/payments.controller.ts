@@ -4,6 +4,7 @@ import {
   createPaymentSchema,
   createKlapEmbeddedOrderSchema,
   reconcileMercadoPagoPaymentSchema,
+  reconcileKlapSandboxPaymentSchema,
   prontoPagaWebhookSchema,
   mercadoPagoWebhookSchema,
 } from "./payments.schema.js";
@@ -143,6 +144,72 @@ export const paymentsController = {
     sendOk(reply, result.payment);
   },
 
+
+  async reconcileKlapSandboxPayment(
+    request: FastifyRequest,
+    reply: FastifyReply,
+  ): Promise<void> {
+    const token = extractBearer(request);
+
+    if (!token) {
+      sendError(reply, {
+        code: "UNAUTHORIZED",
+        message: "Missing Bearer token.",
+        statusCode: 401,
+      });
+      return;
+    }
+
+    const paymentId = String(
+      (request.params as Record<string, unknown> | undefined)?.["paymentId"] ??
+        "",
+    ).trim();
+
+    if (
+      !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+        paymentId,
+      )
+    ) {
+      sendError(reply, {
+        code: "VALIDATION_ERROR",
+        message: "paymentId must be a valid UUID.",
+        statusCode: 400,
+      });
+      return;
+    }
+
+    const parsed = reconcileKlapSandboxPaymentSchema.safeParse(
+      request.body ?? {},
+    );
+
+    if (!parsed.success) {
+      sendError(reply, {
+        code: "VALIDATION_ERROR",
+        message:
+          parsed.error.errors[0]?.message ??
+          "Invalid Klap sandbox reconciliation payload.",
+        statusCode: 400,
+      });
+      return;
+    }
+
+    const result = await paymentsService.reconcileKlapSandboxPayment(
+      token,
+      paymentId,
+      parsed.data.profile,
+    );
+
+    if (!result.ok) {
+      sendError(reply, {
+        code: result.code,
+        message: result.message,
+        statusCode: result.statusCode,
+      });
+      return;
+    }
+
+    sendOk(reply, result.payment);
+  },
 
   async reconcileMercadoPagoPayment(
     request: FastifyRequest,
@@ -396,6 +463,47 @@ export const paymentsController = {
    * ApiKey, or any internal message — only one of a fixed, documented set of
    * status strings (Fase C.1).
    */
+  async klapUnifiedWebhook(
+    request: FastifyRequest,
+    reply: FastifyReply,
+  ): Promise<void> {
+    const body =
+      request.body && typeof request.body === "object"
+        ? (request.body as Record<string, unknown>)
+        : {};
+
+    const looksLikeConfirm =
+      "amount" in body ||
+      "payment_method" in body ||
+      "transaction_type" in body;
+    const looksLikeReject = "code" in body || "message" in body;
+
+    if (!looksLikeConfirm && !looksLikeReject) {
+      reply.status(400).send({ status: "invalid_request" });
+      return;
+    }
+
+    const headers: Record<string, string> = {
+      apikey: String(request.headers["apikey"] ?? ""),
+    };
+
+    // Los campos financieros de confirmación tienen prioridad. De esta forma,
+    // un mensaje descriptivo opcional no convierte por error una confirmación
+    // válida en un payload ambiguo.
+    const result = looksLikeConfirm
+      ? await paymentsService.handleKlapConfirmWebhook(body, headers)
+      : await paymentsService.handleKlapRejectWebhook(body, headers);
+
+    if (!result.ok) {
+      reply
+        .status(result.statusCode)
+        .send({ status: klapWebhookErrorStatus(result.code) });
+      return;
+    }
+
+    reply.status(200).send({ status: "ok" });
+  },
+
   async klapConfirmWebhook(request: FastifyRequest, reply: FastifyReply): Promise<void> {
     const headers: Record<string, string> = {
       apikey: String(request.headers["apikey"] ?? ""),

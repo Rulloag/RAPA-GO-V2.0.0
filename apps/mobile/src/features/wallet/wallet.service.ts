@@ -54,6 +54,14 @@ export interface PaymentOrderData {
   createdAt: string;
 }
 
+
+export type KlapSandboxTestProfile =
+  | "visa_prepaid_2984"
+  | "visa_credit_1091"
+  | "mastercard_debit_1096"
+  | "visa_auth_rejected_1112"
+  | "mastercard_auth_rejected_1112";
+
 export interface PaymentStatusData {
   id: string;
   rideRequestId: string;
@@ -73,7 +81,7 @@ export interface PaymentStatusData {
   cardType: "credit" | "debit" | "prepaid" | null;
   cardLast4: string | null;
   installments: number | null;
-refundStatus: string | null;
+  refundStatus: string | null;
   refundProviderId: string | null;
   refundedAt: string | null;
   receiptNumber: string;
@@ -301,6 +309,23 @@ export const walletService = {
       { token: accessToken },
     );
     return unwrap(result, "No se pudo consultar el estado del pago.");
+  },
+
+  async reconcileKlapSandboxPayment(
+    accessToken: string,
+    paymentId: string,
+    profile: KlapSandboxTestProfile,
+  ): Promise<PaymentStatusData> {
+    const result = await apiClient.post<Envelope<PaymentStatusData>>(
+      `/payments/${encodeURIComponent(paymentId)}/reconcile/klap-sandbox`,
+      { profile },
+      { token: accessToken },
+    );
+
+    return unwrap(
+      result,
+      "No se pudo conciliar la tarjeta oficial de prueba Klap.",
+    );
   },
 
   async getPaymentReceipt(

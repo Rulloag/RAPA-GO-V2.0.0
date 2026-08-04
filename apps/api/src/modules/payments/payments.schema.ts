@@ -22,6 +22,33 @@ export const createKlapEmbeddedOrderSchema = z.object({
 export type CreateKlapEmbeddedOrderInput = z.input<typeof createKlapEmbeddedOrderSchema>;
 
 
+
+// ── Conciliación determinística de tarjetas oficiales Sandbox Klap ───────────
+//
+// Este contrato nunca recibe PAN, CVV, fecha de vencimiento ni token. El móvil
+// envía únicamente un identificador no sensible de la tarjeta oficial de prueba.
+// El endpoint correspondiente se niega a operar fuera de KLAP_ENVIRONMENT=sandbox.
+
+export const klapSandboxTestProfileSchema = z.enum([
+  "visa_prepaid_2984",
+  "visa_credit_1091",
+  "mastercard_debit_1096",
+  "visa_auth_rejected_1112",
+  "mastercard_auth_rejected_1112",
+]);
+
+export const reconcileKlapSandboxPaymentSchema = z.object({
+  profile: klapSandboxTestProfileSchema,
+});
+
+export type KlapSandboxTestProfile = z.infer<
+  typeof klapSandboxTestProfileSchema
+>;
+
+export type ReconcileKlapSandboxPaymentInput = z.infer<
+  typeof reconcileKlapSandboxPaymentSchema
+>;
+
 // ── Conciliación segura del regreso de Mercado Pago ───────────────────────────
 
 export const reconcileMercadoPagoPaymentSchema = z.object({

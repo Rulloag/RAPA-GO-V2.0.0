@@ -12,6 +12,7 @@ import type {
   CreateKlapEmbeddedOrderInput,
   KlapConfirmWebhookBody,
   KlapRejectWebhookBody,
+  KlapSandboxTestProfile,
 } from "./payments.schema.js";
 import type { NormalizedWebhook } from "./payment.provider.js";
 import { KlapProviderError } from "./klap.types.js";
@@ -56,6 +57,63 @@ const PAYMENT_ALLOWED_RIDE_STATUSES = new Set([
   "in_progress",
   "completed",
 ]);
+
+const KLAP_SANDBOX_TEST_OUTCOME: Readonly<
+  Record<
+    KlapSandboxTestProfile,
+    {
+      status: "success" | "rejected";
+      code: string | null;
+      message: string | null;
+      cardType: "credit" | "debit" | "prepaid";
+      brand: "VISA" | "MASTERCARD";
+      last4: string;
+    }
+  >
+> = {
+  visa_prepaid_2984: {
+    status: "success",
+    code: null,
+    message: null,
+    cardType: "prepaid",
+    brand: "VISA",
+    last4: "2984",
+  },
+  visa_credit_1091: {
+    status: "success",
+    code: null,
+    message: null,
+    cardType: "credit",
+    brand: "VISA",
+    last4: "1091",
+  },
+  mastercard_debit_1096: {
+    status: "success",
+    code: null,
+    message: null,
+    cardType: "debit",
+    brand: "MASTERCARD",
+    last4: "1096",
+  },
+  visa_auth_rejected_1112: {
+    status: "rejected",
+    code: "AUTHENTICATION_FAILED",
+    message:
+      "No pudimos validar la tarjeta con tu banco. No se realizó el cobro.",
+    cardType: "credit",
+    brand: "VISA",
+    last4: "1112",
+  },
+  mastercard_auth_rejected_1112: {
+    status: "rejected",
+    code: "AUTHENTICATION_FAILED",
+    message:
+      "No pudimos validar la tarjeta con tu banco. No se realizó el cobro.",
+    cardType: "credit",
+    brand: "MASTERCARD",
+    last4: "1112",
+  },
+};
 
 const RAPAGO_FAST_SEARCH_FEE_CLP = 800;
 const RAPAGO_FAST_SEARCH_MARKER = "RAPAGO_FAST_SEARCH_ACTIVE: true";
@@ -1261,9 +1319,11 @@ export class PaymentsService {
   /**
    * POST /webhooks/klap/confirm
    *
-   * Never marks a payment success from anything other than this authenticated,
-   * server-validated event — never from a frontend callback, return_url visit,
-   * or the order-creation response. Responds quickly: only signature check,
+   * En operación normal, solo este evento autenticado y validado por servidor
+   * confirma el pago. La única excepción es el conciliador determinístico de
+   * tarjetas oficiales, disponible exclusivamente mientras Klap está configurado
+   * en Sandbox; nunca usa un callback del navegador como prueba de pago.
+   * Responds quickly: only signature check,
    * payload validation, an idempotent claim, and one atomic status transition
    * happen before returning — no email/PDF/push/Sentry-with-payload/external
    * calls of any kind.
@@ -2341,6 +2401,137 @@ export class PaymentsService {
         reason,
       }),
     };
+  }
+
+
+  async reconcileKlapSandboxPayment(
+    accessToken: string,
+    paymentId: string,
+    profile: KlapSandboxTestProfile,
+  ) {
+    const auth = await authenticate(accessToken);
+
+    if (!auth.ok) return auth;
+
+    if (
+      normalizePaymentText(
+        process.env["KLAP_ENVIRONMENT"] ?? "sandbox",
+      ) !== "sandbox"
+    ) {
+      return {
+        ok: false as const,
+        code: "AUTH_FORBIDDEN",
+        message: "Klap sandbox reconciliation is disabled.",
+        statusCode: 403,
+      };
+    }
+
+    const payment = await paymentsRepo.findById(paymentId);
+
+    if (!payment) {
+      return {
+        ok: false as const,
+        code: "NOT_FOUND",
+        message: "Payment not found.",
+        statusCode: 404,
+      };
+    }
+
+    const isAdmin = ["admin", "administrator"].includes(
+      normalizePaymentText(auth.role),
+    );
+
+    if (!isAdmin && payment.passengerUserId !== auth.userId) {
+      return {
+        ok: false as const,
+        code: "AUTH_FORBIDDEN",
+        message: "This payment does not belong to you.",
+        statusCode: 403,
+      };
+    }
+
+    if (normalizePaymentText(payment.provider) !== "klap") {
+      return {
+        ok: false as const,
+        code: "PAYMENT_PROVIDER_MISMATCH",
+        message: "This payment was not created with Klap.",
+        statusCode: 409,
+      };
+    }
+
+    const currentStatus = normalizePaymentText(payment.status);
+
+    if (
+      currentStatus === "success" ||
+      ["rejected", "failed", "refunded", "cancelled"].includes(
+        currentStatus,
+      )
+    ) {
+      return this.getPaymentStatus(accessToken, paymentId);
+    }
+
+    if (!["pending", "processing"].includes(currentStatus)) {
+      return {
+        ok: false as const,
+        code: "STATE_CONFLICT",
+        message: "Payment is not pending Klap confirmation.",
+        statusCode: 409,
+      };
+    }
+
+    const outcome = KLAP_SANDBOX_TEST_OUTCOME[profile];
+
+    if (outcome.status === "success") {
+      await paymentsRepo.markSuccessAndActivateRide({
+        id: payment.id,
+        rideRequestId: payment.rideRequestId,
+        externalId: payment.providerOrderId ?? payment.id,
+        providerPayload: {
+          source: "klap_sandbox_test_matrix",
+          sandboxFallback: true,
+          profile,
+          card_type: outcome.cardType,
+          brand: outcome.brand,
+          last_digits: outcome.last4,
+          quotas_number: outcome.cardType === "credit" ? "2" : "1",
+        },
+      });
+
+      auditService.recordSafe({
+        actorUserId: auth.userId,
+        eventType: "payment.klap_sandbox_reconciled_success",
+        entityType: "payment",
+        entityId: payment.id,
+        metadata: {
+          rideId: payment.rideRequestId,
+          profile,
+          provider: "klap",
+        },
+      });
+    } else {
+      await paymentsRepo.markRejected(payment.id, {
+        source: "klap_sandbox_test_matrix",
+        sandboxFallback: true,
+        profile,
+        code: outcome.code,
+        message: outcome.message,
+      });
+
+      auditService.recordSafe({
+        actorUserId: auth.userId,
+        eventType: "payment.klap_sandbox_reconciled_rejected",
+        entityType: "payment",
+        entityId: payment.id,
+        metadata: {
+          rideId: payment.rideRequestId,
+          profile,
+          provider: "klap",
+          code: outcome.code ?? "none",
+        },
+      });
+    }
+
+    return this.getPaymentStatus(accessToken, paymentId);
   }
 
 

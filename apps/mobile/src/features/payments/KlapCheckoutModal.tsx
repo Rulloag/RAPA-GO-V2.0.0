@@ -25,6 +25,10 @@ import {
   waitForKlapPaymentResolution,
   type PendingKlapPaymentRecord,
 } from "./klapCheckout.service.js";
+import {
+  walletService,
+  type KlapSandboxTestProfile,
+} from "../wallet/wallet.service.js";
 
 export type KlapCardKind = "debit" | "prepaid" | "credit";
 type CardBrand = "visa" | "mastercard" | "amex" | "unknown";
@@ -63,6 +67,16 @@ const KLAP_SANDBOX_CARD_KIND_BY_NUMBER: Readonly<Record<string, KlapCardKind>> =
   "5200000000001096": "debit",
 };
 
+const KLAP_SANDBOX_PROFILE_BY_NUMBER: Readonly<
+  Record<string, KlapSandboxTestProfile>
+> = {
+  "4985468390202984": "visa_prepaid_2984",
+  "4000000000001091": "visa_credit_1091",
+  "5200000000001096": "mastercard_debit_1096",
+  "4456530000001112": "visa_auth_rejected_1112",
+  "5200000000001112": "mastercard_auth_rejected_1112",
+};
+
 function safeCallbackSuffix(paymentId: string): string {
   return paymentId.replace(/[^a-zA-Z0-9]/g, "");
 }
@@ -96,6 +110,12 @@ export function detectKlapSandboxCardKind(
   cardNumber: string,
 ): KlapCardKind | null {
   return KLAP_SANDBOX_CARD_KIND_BY_NUMBER[onlyDigits(cardNumber)] ?? null;
+}
+
+export function detectKlapSandboxTestProfile(
+  cardNumber: string,
+): KlapSandboxTestProfile | null {
+  return KLAP_SANDBOX_PROFILE_BY_NUMBER[onlyDigits(cardNumber)] ?? null;
 }
 
 function cardBrandLabel(brand: CardBrand): string {
@@ -179,6 +199,7 @@ export function KlapCheckoutModal({
     ((initialMessage?: string) => Promise<void>) | null
   >(null);
   const verificationRunningRef = useRef<string | null>(null);
+  const sandboxProfileRef = useRef<KlapSandboxTestProfile | null>(null);
 
   const callbackNames = useMemo(() => {
     const suffix = payment ? safeCallbackSuffix(payment.paymentId) : "none";
@@ -210,6 +231,7 @@ export function KlapCheckoutModal({
     setFieldError(null);
     setRejection(null);
     cancelledRef.current = false;
+    sandboxProfileRef.current = null;
   }, [payment?.paymentId]);
 
   useEffect(() => {
@@ -236,42 +258,86 @@ export function KlapCheckoutModal({
       );
 
       try {
-        const status = await waitForKlapPaymentResolution(
+        const applyTerminalStatus = (
+          status: Awaited<
+            ReturnType<typeof walletService.getPaymentStatus>
+          >,
+        ): boolean => {
+          if (isKlapPaymentApproved(status.status)) {
+            setMessage("Pago aprobado por Klap.");
+            onApproved(payment);
+            return true;
+          }
+
+          if (isKlapPaymentRejected(status.status)) {
+            const declineMessage =
+              status.declineReason ||
+              fallbackDeclineMessage(status.declineCode);
+            const rejectionState: RejectionState = {
+              code: status.declineCode ?? null,
+              message: declineMessage,
+              retryAllowed: status.retryAllowed !== false,
+            };
+
+            clearPendingKlapPayment();
+            resetKlapCheckoutForNextOrder();
+            setRejection(rejectionState);
+            setMessage(null);
+            onRejected(payment, declineMessage);
+            return true;
+          }
+
+          return false;
+        };
+
+        let status = await waitForKlapPaymentResolution(
+          accessToken,
+          payment.paymentId,
+          {
+            attempts: 3,
+            intervalMs: 5_000,
+            slowIntervalMs: 15_000,
+            fastAttempts: 3,
+            signal: controller.signal,
+          },
+        );
+
+        if (disposed || applyTerminalStatus(status)) return;
+
+        const sandboxProfile = sandboxProfileRef.current;
+
+        if (sandboxProfile) {
+          setMessage(
+            "Conciliando la tarjeta oficial de prueba Klap en Sandbox...",
+          );
+
+          try {
+            status = await walletService.reconcileKlapSandboxPayment(
+              accessToken,
+              payment.paymentId,
+              sandboxProfile,
+            );
+          } catch {
+            // El webhook continúa siendo la vía principal. Si el respaldo
+            // Sandbox no está disponible, se mantiene el polling normal.
+          }
+
+          if (disposed || applyTerminalStatus(status)) return;
+        }
+
+        status = await waitForKlapPaymentResolution(
           accessToken,
           payment.paymentId,
           {
             attempts: 10,
             intervalMs: 5_000,
             slowIntervalMs: 15_000,
-            fastAttempts: 6,
+            fastAttempts: 5,
             signal: controller.signal,
           },
         );
 
-        if (disposed) return;
-
-        if (isKlapPaymentApproved(status.status)) {
-          setMessage("Pago aprobado por Klap.");
-          onApproved(payment);
-          return;
-        }
-
-        if (isKlapPaymentRejected(status.status)) {
-          const declineMessage =
-            status.declineReason || fallbackDeclineMessage(status.declineCode);
-          const rejectionState: RejectionState = {
-            code: status.declineCode ?? null,
-            message: declineMessage,
-            retryAllowed: status.retryAllowed !== false,
-          };
-
-          clearPendingKlapPayment();
-          resetKlapCheckoutForNextOrder();
-          setRejection(rejectionState);
-          setMessage(null);
-          onRejected(payment, declineMessage);
-          return;
-        }
+        if (disposed || applyTerminalStatus(status)) return;
 
         setMessage(
           "Klap todavía no confirma el resultado. Puedes ir a Mis Viajes; no vuelvas a pagar esta solicitud.",
@@ -316,6 +382,7 @@ export function KlapCheckoutModal({
   const handleCardNumberChange = (value: string): void => {
     const formatted = formatCardNumber(value);
     const detected = detectKlapSandboxCardKind(formatted);
+    sandboxProfileRef.current = detectKlapSandboxTestProfile(formatted);
 
     setCardNumber(formatted);
     setFieldError(null);

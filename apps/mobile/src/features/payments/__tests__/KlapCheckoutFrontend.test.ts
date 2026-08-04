@@ -4,6 +4,7 @@ import tripsSource from "../../../pages/passenger/pages/TripsPage.tsx?raw";
 import ridesFrontendSource from "../../rides/rides.service.ts?raw";
 import modalSource from "../KlapCheckoutModal.tsx?raw";
 import serviceSource from "../klapCheckout.service.ts?raw";
+import walletSource from "../../wallet/wallet.service.ts?raw";
 
 describe("Klap Checkout Transparente frontend", () => {
   it("crea órdenes Klap embedded y persiste el proveedor real del viaje", () => {
@@ -40,6 +41,19 @@ describe("Klap Checkout Transparente frontend", () => {
     expect(modalSource).toContain("Detectada automáticamente");
     expect(modalSource).toContain("No es seguro deducir débito, prepago o crédito solo con el número");
     expect(modalSource).not.toContain('useState<CardKind>("debit")');
+  });
+
+  it("resuelve las tarjetas oficiales Sandbox si el webhook se retrasa", () => {
+    expect(modalSource).toContain("KLAP_SANDBOX_PROFILE_BY_NUMBER");
+    expect(modalSource).toContain('"4000000000001091": "visa_credit_1091"');
+    expect(modalSource).toContain('"5200000000001096": "mastercard_debit_1096"');
+    expect(modalSource).toContain("reconcileKlapSandboxPayment");
+    expect(modalSource).toContain(
+      "Conciliando la tarjeta oficial de prueba Klap en Sandbox",
+    );
+    expect(walletSource).toContain("/reconcile/klap-sandbox");
+    expect(walletSource).not.toContain("cardNumber");
+    expect(walletSource).not.toContain("cvv");
   });
 
   it("no persiste ni registra número completo o CVV", () => {
