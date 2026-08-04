@@ -2622,7 +2622,7 @@ function UberDriverNavigationMap({
           background: "rgba(0, 105, 96, .96)",
           color: "#ffffff",
           borderRadius: "22px",
-          boxShadow: "0 14px 34px rgba(0,0,0,.26)",
+          boxShadow: "var(--rp-shadow)",
           overflow: "hidden",
           zIndex: 12,
           pointerEvents: "none",
@@ -2820,7 +2820,7 @@ function UberDriverNavigationMap({
           border: "0",
           background: "rgba(255,255,255,.96)",
           color: "#111111",
-          boxShadow: "0 12px 28px rgba(0,0,0,.30)",
+          boxShadow: "var(--rp-shadow)",
           fontSize: 22,
           display: "flex",
           alignItems: "center",
@@ -2870,7 +2870,7 @@ function UberDriverNavigationMap({
           border: "0",
           background: "rgba(255,255,255,.96)",
           color: "#111111",
-          boxShadow: "0 12px 28px rgba(0,0,0,.26)",
+          boxShadow: "var(--rp-shadow)",
           fontSize: 21,
           display: "flex",
           alignItems: "center",
@@ -2915,7 +2915,7 @@ function UberDriverNavigationMap({
           borderRadius: 999,
           background: "rgba(255,255,255,.96)",
           color: "#111",
-          boxShadow: "0 12px 28px rgba(0,0,0,.24)",
+          boxShadow: "var(--rp-shadow)",
           display: "flex",
           flexDirection: "column",
           alignItems: "center",
@@ -2941,7 +2941,7 @@ function UberDriverNavigationMap({
           background: "rgba(255,255,255,.96)",
           color: "#6B4A13",
           padding: "12px 15px",
-          boxShadow: "0 12px 28px rgba(0,0,0,.22)",
+          boxShadow: "var(--rp-shadow)",
           zIndex: 12,
           fontSize: ".86rem",
           fontWeight: 900,
@@ -11582,7 +11582,7 @@ function getRequestCardStyles(): Record<string, CSSProperties> {
       padding: "7px 10px",
       borderRadius: "999px",
       background: "var(--rp-surface-soft)",
-      border: "1px solid var(--rp-border-c)",
+      border: "var(--rp-border-w) solid var(--rp-border-c)",
       color: "var(--rp-text)",
       fontSize: ".72rem",
       fontWeight: 950,
@@ -11592,7 +11592,7 @@ function getRequestCardStyles(): Record<string, CSSProperties> {
       padding: "14px",
       borderRadius: "20px",
       background: "var(--rp-surface-soft)",
-      border: "1px solid var(--rp-border-c)",
+      border: "var(--rp-border-w) solid var(--rp-border-c)",
       boxShadow: "0 10px 26px rgba(0,0,0,.08)",
       color: "var(--rp-text)",
     },
@@ -14832,7 +14832,7 @@ La reserva fue retirada. No continúes hacia la recogida.`,
               style={{
                 borderRadius: "20px",
                 background: "var(--rp-surface-soft)",
-                border: "1px solid var(--rp-border-c)",
+                border: "var(--rp-border-w) solid var(--rp-border-c)",
                 padding: "14px",
               }}
             >
@@ -15008,7 +15008,7 @@ La reserva fue retirada. No continúes hacia la recogida.`,
           overflow: "hidden",
           background: "var(--rp-surface)",
           color: "var(--rp-text)",
-          border: "1px solid var(--rp-border-c)",
+          border: "var(--rp-border-w) solid var(--rp-border-c)",
           boxShadow: "var(--rp-shadow)",
         }}
       >
@@ -15092,7 +15092,7 @@ La reserva fue retirada. No continúes hacia la recogida.`,
                 style={{
                   borderRadius: 18,
                   background: "var(--rp-surface-soft)",
-                  border: "1px solid var(--rp-border-c)",
+                  border: "var(--rp-border-w) solid var(--rp-border-c)",
                   padding: "11px 12px",
                 }}
               >
@@ -15106,7 +15106,7 @@ La reserva fue retirada. No continúes hacia la recogida.`,
                 style={{
                   borderRadius: 18,
                   background: "var(--rp-surface-soft)",
-                  border: "1px solid var(--rp-border-c)",
+                  border: "var(--rp-border-w) solid var(--rp-border-c)",
                   padding: "11px 12px",
                 }}
               >
@@ -15200,7 +15200,7 @@ La reserva fue retirada. No continúes hacia la recogida.`,
           borderRadius: "22px",
           background: "var(--rp-surface)",
           color: "var(--rp-text)",
-          border: "1px solid var(--rp-border-c)",
+          border: "var(--rp-border-w) solid var(--rp-border-c)",
           boxShadow: "var(--rp-shadow)",
         }}
       >
@@ -15362,7 +15362,7 @@ La reserva fue retirada. No continúes hacia la recogida.`,
                 width: 36,
                 height: 36,
                 borderRadius: 999,
-                border: "1px solid var(--rp-border-c)",
+                border: "var(--rp-border-w) solid var(--rp-border-c)",
                 background: "var(--rp-surface-soft)",
                 color: "var(--rp-text)",
                 display: "flex",
@@ -16235,7 +16235,7 @@ La reserva fue retirada. No continúes hacia la recogida.`,
                   borderRadius: "18px",
                   background: "var(--rp-surface)",
                   color: "var(--rp-text)",
-                  border: "1px solid var(--rp-border-c)",
+                  border: "var(--rp-border-w) solid var(--rp-border-c)",
                 }}
               >
                 <IonCardContent
@@ -16258,7 +16258,7 @@ La reserva fue retirada. No continúes hacia la recogida.`,
                   borderRadius: "22px",
                   background: "var(--rp-surface)",
                   color: "var(--rp-text)",
-                  border: "1px solid var(--rp-border-c)",
+                  border: "var(--rp-border-w) solid var(--rp-border-c)",
                   boxShadow: "var(--rp-shadow)",
                 }}
               >
@@ -16400,7 +16400,7 @@ La reserva fue retirada. No continúes hacia la recogida.`,
                     background: "var(--rp-surface)",
                     color: "var(--rp-text)",
                     boxShadow: "var(--rp-shadow)",
-                    border: "1px solid var(--rp-border-c)",
+                    border: "var(--rp-border-w) solid var(--rp-border-c)",
                   }}
                 >
                   <div
@@ -16460,9 +16460,9 @@ La reserva fue retirada. No continúes hacia la recogida.`,
                         marginBottom: 14,
                       }}
                     >
-                      <span style={{ border: "1px solid var(--rp-border-c)", borderRadius: 999, padding: "7px 10px", fontWeight: 950, display: "inline-flex", alignItems: "center", gap: 6 }}><IonIcon icon={calendarOutline} style={{ fontSize: "1em" }} />Reserva lista</span>
+                      <span style={{ border: "var(--rp-border-w) solid var(--rp-border-c)", borderRadius: 999, padding: "7px 10px", fontWeight: 950, display: "inline-flex", alignItems: "center", gap: 6 }}><IonIcon icon={calendarOutline} style={{ fontSize: "1em" }} />Reserva lista</span>
                       <span style={{ border: "1px solid var(--rp-ok-bd)", borderRadius: 999, padding: "7px 10px", fontWeight: 950, display: "inline-flex", alignItems: "center", gap: 6 }}><IonIcon icon={carOutline} style={{ fontSize: "1em" }} />Estándar</span>
-                      <span style={{ border: "1px solid var(--rp-border-c)", borderRadius: 999, padding: "7px 10px", fontWeight: 950, display: "inline-flex", alignItems: "center", gap: 6 }}><IonIcon icon={cashOutline} style={{ fontSize: "1em" }} />Efectivo</span>
+                      <span style={{ border: "var(--rp-border-w) solid var(--rp-border-c)", borderRadius: 999, padding: "7px 10px", fontWeight: 950, display: "inline-flex", alignItems: "center", gap: 6 }}><IonIcon icon={cashOutline} style={{ fontSize: "1em" }} />Efectivo</span>
                     </div>
 
                     <div
@@ -16987,7 +16987,7 @@ function DriverHistoryRideCard({
         borderRadius: "18px",
         background: "var(--rp-surface)",
         color: "var(--rp-text)",
-        border: "1px solid var(--rp-border-c)",
+        border: "var(--rp-border-w) solid var(--rp-border-c)",
       }}
     >
       <IonCardContent style={{ padding: "14px" }}>
@@ -17736,7 +17736,7 @@ function DriverMyRidesPage(): JSX.Element {
                 style={{
                   borderRadius: "18px",
                   overflow: "hidden",
-                  border: "1px solid var(--rp-border-c)",
+                  border: "var(--rp-border-w) solid var(--rp-border-c)",
                   background: "#111827",
                 }}
               >
@@ -18299,7 +18299,7 @@ export function DriverEarningsPage(): JSX.Element {
                     borderRadius: 20,
                     background: "var(--rp-surface)",
                     color: "var(--rp-text)",
-                    border: "1px solid var(--rp-border-c)",
+                    border: "var(--rp-border-w) solid var(--rp-border-c)",
                   }}
                 >
                   <IonCardContent style={{ padding: 14 }}>
@@ -20106,7 +20106,7 @@ export function DriverProfilePage(): JSX.Element {
               style={driverFormCardStyle({
                 background: "var(--rp-surface)",
                 color: "var(--rp-text)",
-                border: "1px solid var(--rp-border-c)",
+                border: "var(--rp-border-w) solid var(--rp-border-c)",
               })}
             >
               <IonCardContent style={{ padding: "14px" }}>
@@ -20125,7 +20125,7 @@ export function DriverProfilePage(): JSX.Element {
                         key={rating.id}
                         style={{
                           background: "var(--rp-surface-soft)",
-                          border: "1px solid var(--rp-border-c)",
+                          border: "var(--rp-border-w) solid var(--rp-border-c)",
                           borderRadius: 14,
                           padding: "9px 10px",
                         }}
@@ -20683,7 +20683,7 @@ export function DriverProfilePage(): JSX.Element {
                         borderRadius: 18,
                         overflow: "hidden",
                         background: "var(--rp-surface-soft)",
-                        border: "1px solid var(--rp-border-c)",
+                        border: "var(--rp-border-w) solid var(--rp-border-c)",
                         boxShadow: "0 10px 24px rgba(0,0,0,.18)",
                       }}
                     >
@@ -21042,7 +21042,7 @@ export function DriverProfilePage(): JSX.Element {
                 className="rapago-driver-card"
                 style={driverFormCardStyle({
                   background: "var(--rp-surface)",
-                  border: "1px solid var(--rp-border-c)",
+                  border: "var(--rp-border-w) solid var(--rp-border-c)",
                 })}
               >
                 <IonCardContent style={{ padding: "14px" }}>

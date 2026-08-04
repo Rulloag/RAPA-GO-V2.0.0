@@ -2943,7 +2943,7 @@ ion-content.driver-registration-page {
 }
 
 /* Botón deshabilitado */
-.driver-registration-page ion-button[disabled] {
+.driver-registration-page ion-button[disabled]:not([disabled="false"]) {
   opacity: 0.55 !important;
 }
 
@@ -3601,24 +3601,30 @@ ion-button {
   opacity: 1 !important;
 }
 
-ion-button:not([fill="clear"]):not([fill="outline"]):not([color="danger"]):not([color="secondary"]):not([color="success"]):not([color="medium"]):not([color="dark"]):not([color="light"]),
+/* Botón sólido de marca.
+   La cadena de ocho :not([color]) daba especificidad (0,8,1) y le ganaba a los
+   scopes de página —(0,3,1)— aunque carguen después y lleven !important. Un
+   solo :not([color]) baja a (0,2,1), cubre lo mismo (cualquier botón sin color
+   explícito) y deja que .rapago-section-page / .rapago-driver-page manden en su
+   propia pantalla. De paso, warning y tertiary dejan de salir dorados: no
+   estaban en la lista de exclusiones y perdían su color semántico.
+   El valor pasa al token de marca: el degradado literal de aquí no llevaba
+   terracota, así que --rp-btn-primary no se pintaba en ningún botón de la app. */
+ion-button:not([fill="clear"]):not([fill="outline"]):not([color]),
 ion-button[color="primary"] {
-  --background: linear-gradient(135deg, #d7a739 0%, #f3d58d 100%) !important;
-  --background-activated: #c89b3c !important;
-  --background-focused: #d7a739 !important;
-  --background-hover: #e6c16d !important;
-  --color: var(--rapago-ui-text) !important;
+  --background: var(--rp-btn-primary) !important;
+  --background-activated: var(--rp-btn-primary-activated) !important;
+  --background-focused: var(--rp-btn-primary-activated) !important;
+  --background-hover: var(--rp-btn-primary-activated) !important;
+  --color: var(--rp-btn-primary-fg) !important;
   --border-color: rgba(138, 100, 28, 0.55) !important;
   --box-shadow: 0 10px 24px rgba(139, 96, 18, 0.28) !important;
-  color: var(--rapago-ui-text) !important;
+  color: var(--rp-btn-primary-fg) !important;
 }
 
-ion-button:not([fill="clear"]):not([fill="outline"]):not([color="danger"]):not([color="secondary"]):not([color="success"]):not([color="medium"]):not([color="dark"]):not([color="light"])::part(native),
-ion-button[color="primary"]::part(native) {
-  color: var(--rapago-ui-text) !important;
-  background: linear-gradient(135deg, #d7a739 0%, #f3d58d 100%) !important;
-  text-shadow: none !important;
-}
+/* Sin regla sobre ::part(native): pintar ahí el background sustituye el
+   `background: var(--background)` interno de Ionic, y entonces ni el token ni
+   un style inline pueden cambiar el color del botón nunca. */
 
 ion-button[color="secondary"] {
   --background: linear-gradient(135deg, #b84f2e 0%, #d56c49 100%) !important;
@@ -3738,10 +3744,14 @@ ion-header ion-buttons ion-button::part(native) {
   color: #ffffff !important;
 }
 
-/* Estado deshabilitado: sigue siendo claramente legible */
-ion-button[disabled],
+/* Estado deshabilitado: sigue siendo claramente legible.
+   `[disabled]` a secas matchea por PRESENCIA del atributo: React escribe
+   disabled="false" sobre los custom elements en vez de quitar el atributo, así
+   que un botón activo entraba aquí y se pintaba como apagado. El :not() lo
+   excluye. Lo mismo con aria-disabled, que Ionic deja obsoleto al reactivarse. */
+ion-button[disabled]:not([disabled="false"]),
 ion-button.button-disabled,
-ion-button[aria-disabled="true"] {
+ion-button[aria-disabled="true"]:not([disabled="false"]) {
   --background: var(--rapago-ui-disabled-bg) !important;
   --background-activated: var(--rapago-ui-disabled-bg) !important;
   --background-hover: var(--rapago-ui-disabled-bg) !important;
@@ -3753,9 +3763,9 @@ ion-button[aria-disabled="true"] {
   filter: saturate(0.78) !important;
 }
 
-ion-button[disabled]::part(native),
+ion-button[disabled]:not([disabled="false"])::part(native),
 ion-button.button-disabled::part(native),
-ion-button[aria-disabled="true"]::part(native) {
+ion-button[aria-disabled="true"]:not([disabled="false"])::part(native) {
   color: var(--rapago-ui-disabled-text) !important;
   background: var(--rapago-ui-disabled-bg) !important;
   border-color: #aa9162 !important;
