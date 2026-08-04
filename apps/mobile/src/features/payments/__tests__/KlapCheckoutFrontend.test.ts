@@ -30,13 +30,16 @@ describe("Klap Checkout Transparente frontend", () => {
     expect(modalSource).toContain("initializedSdk.payOrder?.()");
   });
 
-  it("muestra una tarjeta visual y explica débito, prepago y crédito", () => {
+  it("muestra una tarjeta visual y detecta las tarjetas oficiales de prueba", () => {
     expect(modalSource).toContain("Vista previa de la tarjeta");
-    expect(modalSource).toContain('type CardKind = "debit" | "prepaid" | "credit"');
-    expect(modalSource).toContain("¿Qué tipo de tarjeta estás usando?");
-    expect(modalSource).toContain("Klap y tu banco confirmarán el tipo definitivo");
-    expect(modalSource).toContain("La disponibilidad final depende de tu tarjeta y de Klap");
-    expect(modalSource).not.toContain("Array.from({ length: 47 }");
+    expect(modalSource).toContain('export type KlapCardKind = "debit" | "prepaid" | "credit"');
+    expect(modalSource).toContain("KLAP_SANDBOX_CARD_KIND_BY_NUMBER");
+    expect(modalSource).toContain('"4985468390202984": "prepaid"');
+    expect(modalSource).toContain('"4000000000001091": "credit"');
+    expect(modalSource).toContain('"5200000000001096": "debit"');
+    expect(modalSource).toContain("Detectada automáticamente");
+    expect(modalSource).toContain("No es seguro deducir débito, prepago o crédito solo con el número");
+    expect(modalSource).not.toContain('useState<CardKind>("debit")');
   });
 
   it("no persiste ni registra número completo o CVV", () => {
@@ -77,6 +80,23 @@ describe("Klap Checkout Transparente frontend", () => {
     expect(tripsSource).toContain('return "Tarjeta / Klap"');
     expect(tripsSource).toContain('return "Tarjeta / Mercado Pago"');
     expect(tripsSource).toContain("Pago con tarjeta validado por Klap");
+  });
+
+  it("explica rechazos y permite probar otra tarjeta sin recargar", () => {
+    expect(modalSource).toContain("Pago rechazado");
+    expect(modalSource).toContain("Probar otra tarjeta");
+    expect(modalSource).toContain("onRetryRequest");
+    expect(modalSource).toContain("status.declineReason");
+    expect(requestRideSource).toContain("handleRetryKlapPayment");
+    expect(requestRideSource).toContain("resetKlapCheckoutForNextOrder");
+    const rejectedHandler =
+      requestRideSource.match(
+        /const handleKlapRejected = useCallback\(([\s\S]*?)\n\s*const handleRetryKlapPayment/,
+      )?.[1] ?? "";
+
+    expect(rejectedHandler).toContain("clearPendingKlapPayment()");
+    expect(rejectedHandler).toContain("setSubmitError(message)");
+    expect(rejectedHandler).not.toContain("goToTripsAfterRequest");
   });
 
 });

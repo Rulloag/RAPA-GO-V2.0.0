@@ -1077,6 +1077,172 @@ function sanitizeKlapWebhookText(value: string | undefined, maxLength: number): 
   return cleaned.length > 0 ? cleaned.slice(0, maxLength) : null;
 }
 
+type PublicKlapCardType = "credit" | "debit" | "prepaid";
+
+type PublicKlapPaymentDetails = {
+  declineCode: string | null;
+  declineReason: string | null;
+  retryAllowed: boolean;
+  cardBrand: string | null;
+  cardType: PublicKlapCardType | null;
+  cardLast4: string | null;
+  installments: number | null;
+};
+
+function asPaymentPayloadRecord(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
+}
+
+function normalizePublicKlapCardType(value: unknown): PublicKlapCardType | null {
+  const normalized = normalizePaymentText(value);
+
+  if (normalized.includes("prepago") || normalized.includes("prepaid")) {
+    return "prepaid";
+  }
+
+  if (normalized.includes("credito") || normalized.includes("credit") || normalized === "2") {
+    return "credit";
+  }
+
+  if (normalized.includes("debito") || normalized.includes("debit") || normalized === "1") {
+    return "debit";
+  }
+
+  return null;
+}
+
+function normalizePublicKlapBrand(value: unknown): string | null {
+  const normalized = normalizePaymentText(value);
+  if (!normalized) return null;
+  if (normalized.includes("visa")) return "Visa";
+  if (normalized.includes("master")) return "Mastercard";
+  if (normalized.includes("american") || normalized.includes("amex")) {
+    return "American Express";
+  }
+  return String(value ?? "").trim().slice(0, 32) || null;
+}
+
+function normalizePublicKlapLast4(value: unknown): string | null {
+  const digits = String(value ?? "").replace(/\D/g, "");
+  return digits.length > 0 ? digits.slice(-4) : null;
+}
+
+function normalizePublicKlapInstallments(value: unknown): number | null {
+  const parsed = Number(String(value ?? "").trim());
+  return Number.isInteger(parsed) && parsed >= 1 && parsed <= 48
+    ? parsed
+    : null;
+}
+
+function mapKlapDeclineForPassenger(
+  codeValue: unknown,
+  messageValue: unknown,
+): { code: string; reason: string } {
+  const providerCode = normalizePaymentText(codeValue);
+  const providerMessage = normalizePaymentText(messageValue);
+  const combined = `${providerCode} ${providerMessage}`.trim();
+
+  if (/auth|autentic|3ds|cardinal|challenge/.test(combined)) {
+    return {
+      code: "AUTHENTICATION_FAILED",
+      reason: "No pudimos validar la tarjeta con tu banco. No se realizó el cobro.",
+    };
+  }
+
+  if (/insufficient|funds|saldo|cupo|fondos/.test(combined)) {
+    return {
+      code: "INSUFFICIENT_FUNDS",
+      reason: "La tarjeta no dispone de saldo o cupo suficiente. No se realizó el cobro.",
+    };
+  }
+
+  if (/cvv|cvc|security.?code|codigo.?seguridad/.test(combined)) {
+    return {
+      code: "INVALID_CVV",
+      reason: "El banco rechazó el código de seguridad. Revisa el CVV e inténtalo nuevamente.",
+    };
+  }
+
+  if (/expired|expiry|vencid|fecha.?vencimiento/.test(combined)) {
+    return {
+      code: "EXPIRED_CARD",
+      reason: "La tarjeta está vencida o la fecha ingresada no es válida.",
+    };
+  }
+
+  if (/issuer|declin|reject|banco|emisor/.test(combined)) {
+    return {
+      code: "ISSUER_DECLINED",
+      reason: "Tu banco rechazó la operación. Puedes probar otra tarjeta.",
+    };
+  }
+
+  return {
+    code: "PAYMENT_REJECTED",
+    reason: "El pago fue rechazado por Klap o por el banco. No se realizó el cobro.",
+  };
+}
+
+function getPublicKlapPaymentDetails(input: {
+  provider: unknown;
+  status: unknown;
+  rawProviderPayload: unknown;
+}): PublicKlapPaymentDetails {
+  const provider = normalizePaymentText(input.provider);
+  const status = normalizePaymentText(input.status);
+  const payload = asPaymentPayloadRecord(input.rawProviderPayload);
+
+  const cardType = normalizePublicKlapCardType(
+    payload?.["card_type"] ?? payload?.["payment_method"],
+  );
+  const cardBrand = normalizePublicKlapBrand(payload?.["brand"]);
+  const cardLast4 = normalizePublicKlapLast4(payload?.["last_digits"]);
+  const installments = normalizePublicKlapInstallments(
+    payload?.["quotas_number"],
+  );
+
+  if (provider !== "klap") {
+    return {
+      declineCode: null,
+      declineReason: null,
+      retryAllowed: false,
+      cardBrand,
+      cardType,
+      cardLast4,
+      installments,
+    };
+  }
+
+  if (["rejected", "failed", "cancelled", "canceled", "expired"].includes(status)) {
+    const decline = mapKlapDeclineForPassenger(
+      payload?.["code"],
+      payload?.["message"],
+    );
+
+    return {
+      declineCode: decline.code,
+      declineReason: decline.reason,
+      retryAllowed: true,
+      cardBrand,
+      cardType,
+      cardLast4,
+      installments,
+    };
+  }
+
+  return {
+    declineCode: null,
+    declineReason: null,
+    retryAllowed: false,
+    cardBrand,
+    cardType,
+    cardLast4,
+    installments,
+  };
+}
+
 /**
  * Strict CLP integer parsing for Klap's `amount` field (string or number per
  * the confirmed payload). Rejects NaN, decimals, negative values, and zero.
@@ -1277,6 +1443,11 @@ export class PaymentsService {
           reference_id: body.reference_id,
           payment_method: body.payment_method,
           transaction_type: body.transaction_type,
+          card_type: body.card_type ?? null,
+          brand: body.brand ?? null,
+          last_digits: body.last_digits ?? null,
+          quotas_number: body.quotas_number ?? null,
+          quotas_type: body.quotas_type ?? null,
         },
       });
 
@@ -1441,17 +1612,11 @@ export class PaymentsService {
         message: sanitizedMessage,
       });
 
-      const paymentPurpose = getPaymentPurpose(payment.paymentPurpose);
-      if (paymentPurpose === "ride") {
-        try {
-          await cancelRideAfterRejectedPayment(
-            payment.rideRequestId,
-            "Pago rechazado por Klap.",
-          );
-        } catch {
-          // El viaje permanece pending_payment y no se publica.
-        }
-      }
+      // Un rechazo Klap no elimina la solicitud. El viaje permanece en
+      // pending_payment, oculto para conductores, para que el pasajero pueda
+      // crear una nueva orden y probar otra tarjeta sin recargar ni duplicar
+      // el viaje. Solo la cancelación explícita del pasajero elimina la
+      // solicitud pendiente.
 
       auditService.recordSafe({
         actorUserId: payment.passengerUserId,
@@ -2195,6 +2360,13 @@ export class PaymentsService {
       failedAt: string | null;
       providerOrderId: string | null;
       providerPaymentId: string | null;
+      declineCode: string | null;
+      declineReason: string | null;
+      retryAllowed: boolean;
+      cardBrand: string | null;
+      cardType: PublicKlapCardType | null;
+      cardLast4: string | null;
+      installments: number | null;
       refundStatus: string | null;
       refundProviderId: string | null;
       refundedAt: string | null;
@@ -2229,6 +2401,12 @@ export class PaymentsService {
       };
     }
 
+    const klapDetails = getPublicKlapPaymentDetails({
+      provider: payment.provider,
+      status: payment.status,
+      rawProviderPayload: payment.rawProviderPayload,
+    });
+
     return {
       ok: true,
       payment: {
@@ -2243,6 +2421,13 @@ export class PaymentsService {
         failedAt: payment.failedAt?.toISOString() ?? null,
         providerOrderId: payment.providerOrderId ?? null,
         providerPaymentId: payment.providerPaymentId ?? null,
+        declineCode: klapDetails.declineCode,
+        declineReason: klapDetails.declineReason,
+        retryAllowed: klapDetails.retryAllowed,
+        cardBrand: klapDetails.cardBrand,
+        cardType: klapDetails.cardType,
+        cardLast4: klapDetails.cardLast4,
+        installments: klapDetails.installments,
         refundStatus: payment.refundStatus ?? null,
         refundProviderId: payment.refundProviderId ?? null,
         refundedAt: payment.refundedAt?.toISOString() ?? null,

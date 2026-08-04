@@ -711,3 +711,91 @@ describe("PaymentsService.reconcileMercadoPagoPayment", () => {
     vi.unstubAllGlobals();
   });
 });
+
+describe("PaymentsService.getPaymentStatus Klap details", () => {
+  let service: PaymentsService;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    service = new PaymentsService();
+    mockIsSessionValid.mockResolvedValue(true);
+    setupPassengerAuth();
+  });
+
+  it("returns a safe passenger-facing reason for authentication failure", async () => {
+    const now = new Date("2026-08-04T20:00:00.000Z");
+    mockFindById.mockResolvedValue({
+      id: PAYMENT_ID,
+      rideRequestId: RIDE_ID,
+      passengerUserId: PASSENGER_ID,
+      amountClp: 5000,
+      paymentPurpose: "ride",
+      provider: "klap",
+      status: "rejected",
+      providerOrderId: "klap-order",
+      providerPaymentId: null,
+      rawProviderPayload: {
+        code: "authentication_failed",
+        message: "3DS authentication failed",
+      },
+      paidAt: null,
+      rejectedAt: now,
+      failedAt: null,
+      refundStatus: null,
+      refundProviderId: null,
+      refundedAt: null,
+      createdAt: now,
+      updatedAt: now,
+    });
+
+    const result = await service.getPaymentStatus("tok", PAYMENT_ID);
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.payment.declineCode).toBe("AUTHENTICATION_FAILED");
+      expect(result.payment.declineReason).toContain("validar la tarjeta con tu banco");
+      expect(result.payment.retryAllowed).toBe(true);
+      expect(JSON.stringify(result.payment)).not.toContain("3DS authentication failed");
+    }
+  });
+
+  it("returns safe card metadata after a successful Klap confirmation", async () => {
+    const now = new Date("2026-08-04T20:00:00.000Z");
+    mockFindById.mockResolvedValue({
+      id: PAYMENT_ID,
+      rideRequestId: RIDE_ID,
+      passengerUserId: PASSENGER_ID,
+      amountClp: 5000,
+      paymentPurpose: "ride",
+      provider: "klap",
+      status: "success",
+      providerOrderId: "klap-order",
+      providerPaymentId: "klap-order",
+      rawProviderPayload: {
+        card_type: "credito",
+        brand: "Visa",
+        last_digits: "1091",
+        quotas_number: "3",
+      },
+      paidAt: now,
+      rejectedAt: null,
+      failedAt: null,
+      refundStatus: null,
+      refundProviderId: null,
+      refundedAt: null,
+      createdAt: now,
+      updatedAt: now,
+    });
+
+    const result = await service.getPaymentStatus("tok", PAYMENT_ID);
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.payment.cardType).toBe("credit");
+      expect(result.payment.cardBrand).toBe("Visa");
+      expect(result.payment.cardLast4).toBe("1091");
+      expect(result.payment.installments).toBe(3);
+      expect(result.payment.declineReason).toBeNull();
+    }
+  });
+});
