@@ -124,14 +124,23 @@
   /* El velo pasa de marrón plano a basalto teñido de océano arriba: es lo que
      se ve al mirar la isla desde el mar. Introduce el eje frío sin tocar una
      sola pantalla, porque todas heredan este token. */
+  /* La foto es parte del tema, no un literal: de noche la isla bajo la Vía
+     Láctea, de día la misma costa al atardecer. Se nombra aquí para que ninguna
+     pantalla vuelva a escribir la ruta a mano. */
+  --rp-page-photo: url("/assets/rapa-go-bg-dark.jpeg");
+  /* El velo baja mucho respecto al anterior (.5/.9/.96): aquel tapaba un cielo
+     diurno, y sobre una foto que ya es nocturna borraba las estrellas. Va en
+     azul noche, no en marrón, para no pelearse con el azul de la propia foto.
+     Sigue cerrando abajo, que es donde la imagen se aclara en el horizonte y
+     donde el contenido necesita fondo. */
   --rp-page-bg:
     linear-gradient(
       180deg,
-      rgba(11, 61, 74, 0.5) 0%,
-      rgba(20, 16, 12, 0.9) 52%,
-      rgba(12, 10, 9, 0.96) 100%
+      rgba(8, 14, 32, 0.32) 0%,
+      rgba(11, 14, 26, 0.62) 55%,
+      rgba(10, 10, 14, 0.86) 100%
     ),
-    url("/assets/rapa-go-bg.jpg") center / cover no-repeat;
+    var(--rp-page-photo) center / cover no-repeat;
   --rp-surface: linear-gradient(180deg, rgba(28, 26, 23, 0.97), rgba(14, 13, 12, 0.98));
   --rp-surface-soft: rgba(255, 255, 255, 0.05);
   --rp-border-w: 1.5px;
@@ -250,9 +259,10 @@
 [data-rapago-theme="light"] {
   /* Arena de Anakena arriba, bruma de océano abajo: el mismo eje frío que el
      tema oscuro, pero en clave alta. Antes eran dos beiges casi idénticos. */
+  --rp-page-photo: url("/assets/rapa-go-bg.jpg");
   --rp-page-bg:
     linear-gradient(180deg, rgba(242, 230, 211, 0.95), rgba(207, 231, 236, 0.93)),
-    url("/assets/rapa-go-bg.jpg") center / cover no-repeat;
+    var(--rp-page-photo) center / cover no-repeat;
   --rp-surface: linear-gradient(180deg, #fffdf9, #fdf7ec);
   --rp-surface-soft: rgba(26, 26, 26, 0.045);
   --rp-border-w: 2px;
