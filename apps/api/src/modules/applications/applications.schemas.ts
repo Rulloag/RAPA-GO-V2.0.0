@@ -2,7 +2,7 @@ import { z } from "zod";
 
 const optionalPublicUrl = z.string().url().optional();
 const hourMinuteSchema = z.string().regex(
-  /^(?:[01]\\d|2[0-3]):[0-5]\\d$/,
+  /^(?:[01]\d|2[0-3]):[0-5]\d$/,
   "La hora debe usar el formato HH:MM.",
 );
 
