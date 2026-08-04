@@ -7,7 +7,6 @@ import {
   IonCardContent,
   IonCardHeader,
   IonCardTitle,
-  IonCheckbox,
   IonContent,
   IonHeader,
   IonIcon,
@@ -36,8 +35,6 @@ import {
   eyeOutline,
   hourglassOutline,
   mailOutline,
-  schoolOutline,
-  shieldCheckmarkOutline,
   imageOutline,
   refreshOutline,
   timeOutline,
@@ -1753,9 +1750,6 @@ function AdminApplicationDetailModal({
   const [showReviewAlert, setShowReviewAlert] = useState(false);
   const [showHoldAlert, setShowHoldAlert] = useState(false);
   const [showPendingAlert, setShowPendingAlert] = useState(false);
-  const [documentReviewStatus, setDocumentReviewStatus] = useState(
-    item.documentReviewStatus || "pending",
-  );
   const [trainingStatus, setTrainingStatus] = useState(
     item.trainingStatus || "pending",
   );
@@ -1776,18 +1770,20 @@ function AdminApplicationDetailModal({
     "taxDomicile",
     "restWindow",
   ];
-  const checklistReady = requiredChecklistKeys.every(
-    (key) => reviewChecklist[key] === true,
+  const completedApprovalChecklist = requiredChecklistKeys.reduce<Record<string, boolean>>(
+    (result, key) => ({ ...result, [key]: true }),
+    { ...reviewChecklist },
   );
-  const driverApprovalReady =
-    item.type !== "driver" ||
-    (
-      Boolean(item.driverContractAcceptedAt) &&
-      documentReviewStatus === "approved" &&
-      trainingStatus === "approved" &&
-      checklistReady &&
-      uploadedDocuments >= 6
-    );
+  const driverApprovalMissing =
+    item.type !== "driver"
+      ? []
+      : [
+          ...(!item.driverContractAcceptedAt ? ["contrato aceptado"] : []),
+          ...(uploadedDocuments < 6
+            ? [`${6 - uploadedDocuments} documento(s) obligatorio(s)`]
+            : []),
+        ];
+  const driverApprovalReady = driverApprovalMissing.length === 0;
 
   async function doReview(
     status: string,
@@ -1830,7 +1826,6 @@ function AdminApplicationDetailModal({
         input,
       );
 
-      setDocumentReviewStatus(updated.documentReviewStatus);
       setTrainingStatus(updated.trainingStatus);
       setReviewChecklist(updated.reviewChecklist ?? {});
       onUpdated(updated);
@@ -1891,12 +1886,6 @@ function AdminApplicationDetailModal({
     }
   }
 
-  function toggleChecklist(key: string, checked: boolean): void {
-    setReviewChecklist((current) => ({
-      ...current,
-      [key]: checked,
-    }));
-  }
 
   return (
     <>
@@ -2175,115 +2164,62 @@ function AdminApplicationDetailModal({
                 </IonButton>
               </div>
 
-              <h3 style={{ margin: "12px 0 8px", fontSize: ".95rem" }}>
-                Checklist administrativo
-              </h3>
-
-              {[
-                ["identity", "Identidad"],
-                ["driverLicense", "Licencia de conducir"],
-                ["profilePhoto", "Foto de perfil"],
-                ["vehicle", "Vehículo y fotografías"],
-                ["residence", "Residencia / habilitación territorial"],
-                ["taxDomicile", "Domicilio tributario en Rapa Nui"],
-                ["restWindow", "Franja de desconexión de 12 horas"],
-                ["insurance", "Anexo de seguro, cuando corresponda"],
-              ].map(([key, label]) => (
-                <IonItem
-                  key={key}
-                  lines="none"
-                  style={{
-                    ...rowCardStyle,
-                    "--min-height": "52px",
-                    marginBottom: 7,
-                  } as CSSProperties}
+              <div
+                style={{
+                  border: "1px solid rgba(205,145,20,.35)",
+                  borderRadius: 16,
+                  padding: 14,
+                  background: "rgba(255,248,231,.72)",
+                }}
+              >
+                <div style={{ fontWeight: 950, marginBottom: 8 }}>
+                  Aprobación simple en un solo paso
+                </div>
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                  <IonBadge
+                    color={uploadedDocuments >= 6 ? "success" : "warning"}
+                  >
+                    Documentos {uploadedDocuments}/6
+                  </IonBadge>
+                  <IonBadge
+                    color={item.driverContractAcceptedAt ? "success" : "warning"}
+                  >
+                    Contrato {item.driverContractAcceptedAt ? "aceptado" : "pendiente"}
+                  </IonBadge>
+                </div>
+                <IonNote
+                  color="medium"
+                  style={{ display: "block", marginTop: 10, fontWeight: 800 }}
                 >
-                  <IonCheckbox
-                    checked={reviewChecklist[key] === true}
-                    onIonChange={(event) =>
-                      toggleChecklist(key, event.detail.checked)
-                    }
-                    slot="start"
-                  />
-                  <IonLabel style={{ whiteSpace: "normal", fontWeight: 850 }}>
-                    {label}
-                  </IonLabel>
-                </IonItem>
-              ))}
-
-              <div style={{ display: "grid", gap: 8, marginTop: 12 }}>
-                <IonButton
-                  color="success"
-                  fill={documentReviewStatus === "approved" ? "solid" : "outline"}
-                  disabled={loading}
-                  onClick={() => {
-                    setDocumentReviewStatus("approved");
-                    void doReview("under_review", undefined, undefined, {
-                      documentReviewStatus: "approved",
-                      trainingStatus:
-                        trainingStatus as "pending" | "approved" | "rejected",
-                      reviewChecklist,
-                    });
-                  }}
-                  style={{ "--border-radius": "14px", fontWeight: 900 } as CSSProperties}
-                >
-                  <IonIcon icon={shieldCheckmarkOutline} slot="start" />
-                  Aprobar revisión documental
-                </IonButton>
+                  Al confirmar “Aprobar conductor”, el sistema registrará la
+                  revisión documental, la capacitación y el checklist como
+                  completados en la misma operación.
+                </IonNote>
 
                 <IonButton
                   color="warning"
-                  fill={documentReviewStatus === "needs_information" ? "solid" : "outline"}
-                  disabled={loading}
-                  onClick={() => {
-                    setDocumentReviewStatus("needs_information");
-                    void doReview("on_hold", undefined, "Se solicitaron antecedentes adicionales.", {
-                      documentReviewStatus: "needs_information",
-                      trainingStatus:
-                        trainingStatus as "pending" | "approved" | "rejected",
-                      reviewChecklist,
-                    });
-                  }}
-                  style={{ "--border-radius": "14px", fontWeight: 900 } as CSSProperties}
-                >
-                  Solicitar antecedentes
-                </IonButton>
-
-                <IonButton
-                  color="tertiary"
-                  fill={trainingStatus === "approved" ? "solid" : "outline"}
-                  disabled={loading}
-                  onClick={() => {
-                    setTrainingStatus("approved");
-                    void doReview("under_review", undefined, undefined, {
-                      documentReviewStatus:
-                        documentReviewStatus as "pending" | "approved" | "needs_information" | "rejected",
-                      trainingStatus: "approved",
-                      reviewChecklist,
-                    });
-                  }}
-                  style={{ "--border-radius": "14px", fontWeight: 900 } as CSSProperties}
-                >
-                  <IonIcon icon={schoolOutline} slot="start" />
-                  Marcar capacitación aprobada
-                </IonButton>
-
-                <IonButton
-                  color="medium"
                   fill="outline"
                   disabled={loading}
                   onClick={() =>
-                    void doReview("under_review", undefined, undefined, {
-                      documentReviewStatus:
-                        documentReviewStatus as "pending" | "approved" | "needs_information" | "rejected",
-                      trainingStatus:
-                        trainingStatus as "pending" | "approved" | "rejected",
-                      reviewChecklist,
-                    })
+                    void doReview(
+                      "on_hold",
+                      undefined,
+                      "Se solicitaron antecedentes adicionales.",
+                      {
+                        documentReviewStatus: "needs_information",
+                        trainingStatus:
+                          trainingStatus as "pending" | "approved" | "rejected",
+                        reviewChecklist,
+                      },
+                    )
                   }
-                  style={{ "--border-radius": "14px", fontWeight: 900 } as CSSProperties}
+                  style={{
+                    marginTop: 12,
+                    "--border-radius": "14px",
+                    fontWeight: 900,
+                  } as CSSProperties}
                 >
-                  Guardar checklist
+                  Solicitar antecedentes
                 </IonButton>
               </div>
 
@@ -2292,9 +2228,7 @@ function AdminApplicationDetailModal({
                   color="warning"
                   style={{ display: "block", marginTop: 12, fontWeight: 900 }}
                 >
-                  Para aprobar faltan contrato aceptado, seis documentos,
-                  revisión documental, capacitación o elementos obligatorios
-                  del checklist.
+                  Para aprobar falta: {driverApprovalMissing.join(" y ")}.
                 </IonNote>
               )}
             </IonCardContent>
@@ -2390,18 +2324,16 @@ function AdminApplicationDetailModal({
         <IonAlert
           isOpen={showApproveAlert}
           header="Aprobar postulación"
-          message={`¿Confirmas que deseas aprobar la postulación de ${item.firstName} ${item.lastName}? Se creará o actualizará su cuenta como conductor.`}
+          message={`¿Confirmas que revisaste los documentos y deseas aprobar a ${item.firstName} ${item.lastName}? En un solo paso se completarán la revisión documental, la capacitación y el checklist, y se habilitará su cuenta como conductor.`}
           buttons={[
             { text: "Cancelar", role: "cancel" },
             {
               text: "Aprobar",
               handler: () =>
                 void doReview("approved", undefined, undefined, {
-                  documentReviewStatus:
-                    documentReviewStatus as "pending" | "approved" | "needs_information" | "rejected",
-                  trainingStatus:
-                    trainingStatus as "pending" | "approved" | "rejected",
-                  reviewChecklist,
+                  documentReviewStatus: "approved",
+                  trainingStatus: "approved",
+                  reviewChecklist: completedApprovalChecklist,
                 }),
             },
           ]}
