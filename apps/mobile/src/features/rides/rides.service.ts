@@ -230,7 +230,7 @@ export interface CreateRideInput {
   notes?: string;
   estimatedFareClp?: number;
   paymentMethod?: "cash" | "card";
-  paymentProvider?: "mercadopago" | "prontopaga" | "transbank" | null;
+  paymentProvider?: "klap" | "mercadopago" | "prontopaga" | "transbank" | null;
   useWalletBenefit?: boolean;
   rideMode?: "now" | "scheduled";
   isScheduled?: boolean;

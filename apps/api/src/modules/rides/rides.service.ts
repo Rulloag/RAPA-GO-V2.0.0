@@ -400,6 +400,7 @@ function appendPaymentMetaToNotes(
   notes: string | null | undefined,
   paymentMethod: "cash" | "card" | undefined,
   paymentProvider:
+    | "klap"
     | "mercadopago"
     | "prontopaga"
     | "transbank"
@@ -927,7 +928,7 @@ export class RidesService {
       isScheduledRide &&
       input.paymentMethod === "card" &&
       input.paymentProvider &&
-      !["mercadopago", "prontopaga", "transbank"].includes(input.paymentProvider)
+      !["klap", "mercadopago", "prontopaga", "transbank"].includes(input.paymentProvider)
     ) {
       return {
         ok: false,
@@ -1109,7 +1110,13 @@ export class RidesService {
     // Las reservas se cobran dentro de los últimos 30 minutos aunque todavía
     // no hayan sido aceptadas por un conductor. Un viaje inmediato sin
     // conductor sigue siendo gratuito.
-    if (shouldCreatePassengerCancellationCharge(existing)) {
+    // Una solicitud todavía sin pago aprobado se puede descartar sin multa.
+    // La política de cancelación comienza después de publicar/activar el viaje,
+    // no mientras el pasajero sigue completando Klap.
+    if (
+      existing.status !== "pending_payment" &&
+      shouldCreatePassengerCancellationCharge(existing)
+    ) {
       const chargeData = buildPolicyChargeData({
         ride: existing,
         type: "late_cancellation",

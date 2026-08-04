@@ -30,6 +30,7 @@ export type PendingKlapPaymentRecord = {
   amountClp?: number | null;
   provider: "klap";
   createdAt: string;
+  checkoutStartedAt?: string | null;
   originText?: string | null;
   destinationText?: string | null;
   scheduledRideMirror?: Record<string, unknown> | null;
@@ -164,6 +165,44 @@ export function clearPendingKlapPayment(): void {
   } catch {
     // El backend sigue siendo la autoridad del pago.
   }
+}
+
+export function markPendingKlapPaymentStarted(
+  record: PendingKlapPaymentRecord,
+): PendingKlapPaymentRecord {
+  const updated: PendingKlapPaymentRecord = {
+    ...record,
+    checkoutStartedAt: record.checkoutStartedAt ?? new Date().toISOString(),
+  };
+  savePendingKlapPayment(updated);
+  return updated;
+}
+
+export async function cancelPendingKlapRide(
+  accessToken: string,
+  record: PendingKlapPaymentRecord,
+): Promise<void> {
+  const rideRequestId = String(record.rideRequestId ?? "").trim();
+
+  if (!rideRequestId) {
+    throw new Error("No encontramos la solicitud pendiente que deseas cancelar.");
+  }
+
+  const result = await apiClient.post(
+    `/rides/${encodeURIComponent(rideRequestId)}/cancel`,
+    { reason: "Pago Klap cancelado por el pasajero antes de completarse." },
+    { token: accessToken },
+  );
+
+  if (result.ok === false) {
+    throw new Error(
+      result.message ??
+        "No pudimos cancelar la solicitud. Revisa el estado del pago antes de volver a intentarlo.",
+    );
+  }
+
+  clearPendingKlapPayment();
+  resetKlapCheckoutForNextOrder();
 }
 
 function configuredKlapScriptUrl(): string {
@@ -359,6 +398,12 @@ const klapInitializationState: {
   promise: null,
 };
 
+export function resetKlapCheckoutForNextOrder(): void {
+  klapInitializationState.orderId = null;
+  klapInitializationState.status = "idle";
+  klapInitializationState.promise = null;
+}
+
 export async function initializeKlapCheckoutOnce(
   orderId: string,
 ): Promise<KlapBrowserSdk> {
@@ -372,9 +417,9 @@ export async function initializeKlapCheckoutOnce(
     klapInitializationState.orderId &&
     klapInitializationState.orderId !== normalizedOrderId
   ) {
-    throw new Error(
-      "Hay otra orden Klap cargada. Recarga la pantalla para iniciar el nuevo pago.",
-    );
+    // El formulario anterior ya fue cerrado o cancelado. Klap puede volver a
+    // inicializarse con el nuevo data-klap-order-id sin obligar a recargar la app.
+    resetKlapCheckoutForNextOrder();
   }
 
   if (
@@ -392,9 +437,9 @@ export async function initializeKlapCheckoutOnce(
   }
 
   if (klapInitializationState.status === "failed") {
-    throw new Error(
-      "El perfil de seguridad de Klap ya falló en esta pantalla. Recárgala antes de volver a pagar.",
-    );
+    // Permite un reintento explícito. No crea una orden nueva: reutiliza la misma
+    // orden del backend y vuelve a preparar el SDK en esta pantalla.
+    resetKlapCheckoutForNextOrder();
   }
 
   klapInitializationState.orderId = normalizedOrderId;
@@ -487,6 +532,9 @@ const TERMINAL_REJECTED = new Set([
   "rejected",
   "failed",
   "refunded",
+  "cancelled",
+  "canceled",
+  "expired",
 ]);
 
 export function isKlapPaymentApproved(status: string): boolean {
@@ -503,16 +551,39 @@ export async function waitForKlapPaymentResolution(
   options: {
     attempts?: number;
     intervalMs?: number;
+    slowIntervalMs?: number;
+    fastAttempts?: number;
     signal?: AbortSignal;
   } = {},
 ): Promise<PaymentStatusData> {
-  const attempts = Math.max(1, options.attempts ?? 30);
-  const intervalMs = Math.max(500, options.intervalMs ?? 2_000);
+  const attempts = Math.max(1, options.attempts ?? 10);
+  const intervalMs = Math.max(5_000, options.intervalMs ?? 5_000);
+  const slowIntervalMs = Math.max(15_000, options.slowIntervalMs ?? 15_000);
+  const fastAttempts = Math.max(1, options.fastAttempts ?? 6);
   let lastStatus: PaymentStatusData | null = null;
 
   for (let attempt = 0; attempt < attempts; attempt += 1) {
     if (options.signal?.aborted) {
       throw new DOMException("Operación cancelada.", "AbortError");
+    }
+
+    // No genera tráfico oculto mientras el usuario está en otra pestaña.
+    if (document.visibilityState === "hidden") {
+      await new Promise<void>((resolve, reject) => {
+        const onVisible = (): void => {
+          if (document.visibilityState !== "hidden") {
+            document.removeEventListener("visibilitychange", onVisible);
+            options.signal?.removeEventListener("abort", onAbort);
+            resolve();
+          }
+        };
+        const onAbort = (): void => {
+          document.removeEventListener("visibilitychange", onVisible);
+          reject(new DOMException("Operación cancelada.", "AbortError"));
+        };
+        document.addEventListener("visibilitychange", onVisible);
+        options.signal?.addEventListener("abort", onAbort, { once: true });
+      });
     }
 
     lastStatus = await walletService.getPaymentStatus(
@@ -528,12 +599,16 @@ export async function waitForKlapPaymentResolution(
     }
 
     if (attempt < attempts - 1) {
+      const delay = attempt < fastAttempts ? intervalMs : slowIntervalMs;
       await new Promise<void>((resolve, reject) => {
-        const timeout = window.setTimeout(resolve, intervalMs);
         const onAbort = (): void => {
           window.clearTimeout(timeout);
           reject(new DOMException("Operación cancelada.", "AbortError"));
         };
+        const timeout = window.setTimeout(() => {
+          options.signal?.removeEventListener("abort", onAbort);
+          resolve();
+        }, delay);
 
         options.signal?.addEventListener("abort", onAbort, { once: true });
       });

@@ -18,8 +18,8 @@ import {
 import {
   initializeKlapCheckoutOnce,
   isKlapPaymentApproved,
+  markPendingKlapPaymentStarted,
   isKlapPaymentRejected,
-  klapCheckoutRequiresReload,
   waitForKlapPaymentResolution,
   type PendingKlapPaymentRecord,
 } from "./klapCheckout.service.js";
@@ -33,12 +33,69 @@ type Props = {
     message: string,
   ) => void;
   onClose: (payment: PendingKlapPaymentRecord) => void;
+  onCancelRequest: (payment: PendingKlapPaymentRecord) => Promise<void>;
 };
 
-type CardType = "1" | "2";
+type CardKind = "debit" | "prepaid" | "credit";
+type CardBrand = "visa" | "mastercard" | "amex" | "unknown";
 
 function safeCallbackSuffix(paymentId: string): string {
   return paymentId.replace(/[^a-zA-Z0-9]/g, "");
+}
+
+function onlyDigits(value: string): string {
+  return value.replace(/\D/g, "");
+}
+
+function formatCardNumber(value: string): string {
+  return onlyDigits(value).slice(0, 19).replace(/(.{4})/g, "$1 ").trim();
+}
+
+function formatExpiry(value: string): string {
+  const digits = onlyDigits(value).slice(0, 4);
+  return digits.length > 2
+    ? `${digits.slice(0, 2)}/${digits.slice(2)}`
+    : digits;
+}
+
+function detectCardBrand(cardNumber: string): CardBrand {
+  const digits = onlyDigits(cardNumber);
+  if (/^4/.test(digits)) return "visa";
+  if (/^(5[1-5]|2(?:2[2-9]|[3-6]\d|7[01]|720))/.test(digits)) {
+    return "mastercard";
+  }
+  if (/^3[47]/.test(digits)) return "amex";
+  return "unknown";
+}
+
+function cardBrandLabel(brand: CardBrand): string {
+  if (brand === "visa") return "VISA";
+  if (brand === "mastercard") return "MASTERCARD";
+  if (brand === "amex") return "AMERICAN EXPRESS";
+  return "TARJETA";
+}
+
+function cardKindLabel(kind: CardKind): string {
+  if (kind === "credit") return "Crédito";
+  if (kind === "prepaid") return "Prepago";
+  return "Débito";
+}
+
+function cardKindDescription(kind: CardKind): string {
+  if (kind === "credit") {
+    return "Compra con cupo de crédito. Puedes elegir cuotas disponibles.";
+  }
+  if (kind === "prepaid") {
+    return "Usa el saldo cargado en tu tarjeta. Se paga en una sola vez.";
+  }
+  return "El monto se descuenta de tu cuenta. Se paga en una sola vez.";
+}
+
+function isValidExpiry(value: string): boolean {
+  const match = value.match(/^(\d{2})\/(\d{2})$/);
+  if (!match) return false;
+  const month = Number(match[1]);
+  return month >= 1 && month <= 12;
 }
 
 export function KlapCheckoutModal({
@@ -47,12 +104,20 @@ export function KlapCheckoutModal({
   onApproved,
   onRejected,
   onClose,
+  onCancelRequest,
 }: Props): JSX.Element {
-  const [cardType, setCardType] = useState<CardType>("1");
+  const [cardKind, setCardKind] = useState<CardKind>("debit");
+  const [cardNumber, setCardNumber] = useState("");
+  const [expiry, setExpiry] = useState("");
+  const [cvv, setCvv] = useState("");
+  const [quotas, setQuotas] = useState("2");
   const [processing, setProcessing] = useState(false);
+  const [cancelling, setCancelling] = useState(false);
+  const [paymentAttemptStarted, setPaymentAttemptStarted] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
-  const [reloadRequired, setReloadRequired] = useState(false);
+  const [fieldError, setFieldError] = useState<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
+  const cancelledRef = useRef(false);
 
   const callbackNames = useMemo(() => {
     const suffix = payment ? safeCallbackSuffix(payment.paymentId) : "none";
@@ -62,11 +127,22 @@ export function KlapCheckoutModal({
     };
   }, [payment]);
 
+  const brand = useMemo(() => detectCardBrand(cardNumber), [cardNumber]);
+  const klapCardType = cardKind === "credit" ? "2" : "1";
+  const disabled = processing || cancelling;
+
   useEffect(() => {
-    setCardType("1");
+    setCardKind("debit");
+    setCardNumber("");
+    setExpiry("");
+    setCvv("");
+    setQuotas("2");
     setProcessing(false);
+    setCancelling(false);
+    setPaymentAttemptStarted(false);
     setMessage(null);
-    setReloadRequired(false);
+    setFieldError(null);
+    cancelledRef.current = false;
   }, [payment?.paymentId]);
 
   useEffect(() => {
@@ -78,13 +154,15 @@ export function KlapCheckoutModal({
     >;
     let disposed = false;
 
-    const confirmWithBackend = async (): Promise<void> => {
+    const confirmWithBackend = async (initialMessage?: string): Promise<void> => {
       abortRef.current?.abort();
       const controller = new AbortController();
       abortRef.current = controller;
       setProcessing(true);
+      setPaymentAttemptStarted(true);
       setMessage(
-        "Klap recibió la operación. Estamos esperando la confirmación segura del backend.",
+        initialMessage ??
+          "Klap recibió la operación. Esperamos la confirmación segura del backend.",
       );
 
       try {
@@ -92,8 +170,10 @@ export function KlapCheckoutModal({
           accessToken,
           payment.paymentId,
           {
-            attempts: 30,
-            intervalMs: 2_000,
+            attempts: 10,
+            intervalMs: 5_000,
+            slowIntervalMs: 15_000,
+            fastAttempts: 6,
             signal: controller.signal,
           },
         );
@@ -109,13 +189,13 @@ export function KlapCheckoutModal({
         if (isKlapPaymentRejected(status.status)) {
           onRejected(
             payment,
-            "Klap informó que el pago fue rechazado o cancelado.",
+            "Klap informó que el pago fue rechazado, cancelado o no pudo autenticarse.",
           );
           return;
         }
 
         setMessage(
-          "El pago continúa pendiente. Puedes cerrar esta ventana y revisarlo en Mis Viajes sin volver a pagar.",
+          "Klap todavía no confirma el resultado. Puedes ir a Mis Viajes; no vuelvas a pagar esta solicitud.",
         );
       } catch (error) {
         if (disposed || controller.signal.aborted) return;
@@ -134,13 +214,8 @@ export function KlapCheckoutModal({
     };
 
     callbackWindow[callbackNames.error] = () => {
-      setProcessing(false);
-      const mustReload = klapCheckoutRequiresReload(payment.orderId);
-      setReloadRequired(mustReload);
-      setMessage(
-        mustReload
-          ? "El perfil de seguridad de Klap falló. Recarga esta pantalla antes de volver a intentar."
-          : "Klap rechazó el intento. Revisa los datos y vuelve a pagar sin recargar el SDK.",
+      void confirmWithBackend(
+        "Klap no completó la autenticación en pantalla. Verificaremos con el backend si el intento fue rechazado o sigue pendiente.",
       );
     };
 
@@ -152,29 +227,43 @@ export function KlapCheckoutModal({
     };
   }, [accessToken, callbackNames, onApproved, onRejected, payment]);
 
+  const validateForm = (): string | null => {
+    const digits = onlyDigits(cardNumber);
+    if (digits.length < 13) return "Revisa el número de tarjeta.";
+    if (!isValidExpiry(expiry)) return "Ingresa un vencimiento válido en formato MM/AA.";
+    if (!/^\d{3,4}$/.test(cvv)) return "El CVV debe tener 3 o 4 números.";
+    if (cardKind === "credit" && !/^\d+$/.test(quotas)) {
+      return "Selecciona una cantidad de cuotas válida.";
+    }
+    return null;
+  };
+
   const submit = async (event: FormEvent<HTMLFormElement>): Promise<void> => {
     event.preventDefault();
 
-    if (!payment || !accessToken || processing) return;
+    if (!payment || !accessToken || processing || cancelling) return;
 
+    const validationMessage = validateForm();
+    if (validationMessage) {
+      setFieldError(validationMessage);
+      return;
+    }
+
+    setFieldError(null);
     setProcessing(true);
-    setMessage("Abriendo el pago seguro de Klap...");
+    setMessage("Preparando el pago seguro de Klap...");
 
     try {
-      const initializedSdk = await initializeKlapCheckoutOnce(
-        payment.orderId,
-      );
-
+      const initializedSdk = await initializeKlapCheckoutOnce(payment.orderId);
+      markPendingKlapPaymentStarted(payment);
+      setPaymentAttemptStarted(true);
       await Promise.resolve(initializedSdk.payOrder?.());
-
       setMessage(
         "Procesando con Klap. No cierres esta ventana hasta recibir confirmación.",
       );
     } catch (error) {
       setProcessing(false);
-      setReloadRequired(
-        klapCheckoutRequiresReload(payment.orderId),
-      );
+      setPaymentAttemptStarted(false);
       setMessage(
         error instanceof Error
           ? error.message
@@ -183,17 +272,43 @@ export function KlapCheckoutModal({
     }
   };
 
+  const cancelRequest = async (): Promise<void> => {
+    if (!payment || cancelling || processing || paymentAttemptStarted) return;
+
+    const confirmed = window.confirm(
+      "¿Cancelar esta solicitud? Se quitará de tus viajes pendientes y podrás crear otra inmediatamente.",
+    );
+    if (!confirmed) return;
+
+    setCancelling(true);
+    setFieldError(null);
+    setMessage("Cancelando la solicitud pendiente...");
+
+    try {
+      await onCancelRequest(payment);
+      cancelledRef.current = true;
+    } catch (error) {
+      setMessage(
+        error instanceof Error
+          ? error.message
+          : "No pudimos cancelar la solicitud.",
+      );
+      setCancelling(false);
+    }
+  };
+
   const inputStyle: CSSProperties = {
     width: "100%",
-    minHeight: 48,
-    borderRadius: 14,
-    border: "1px solid rgba(151,105,27,.48)",
-    padding: "0 13px",
+    minHeight: 50,
+    borderRadius: 15,
+    border: "1px solid rgba(151,105,27,.42)",
+    padding: "0 14px",
     background: "#ffffff",
     color: "#111827",
     fontSize: "1rem",
-    fontWeight: 750,
+    fontWeight: 800,
     outline: "none",
+    boxSizing: "border-box",
   };
 
   const labelStyle: CSSProperties = {
@@ -204,13 +319,16 @@ export function KlapCheckoutModal({
     fontWeight: 900,
   };
 
+  const visibleCardNumber = cardNumber || "•••• •••• •••• ••••";
+  const visibleExpiry = expiry || "MM/AA";
+
   return (
     <IonModal
       isOpen={payment !== null}
-      backdropDismiss={!processing}
-      canDismiss={!processing}
+      backdropDismiss={!disabled}
+      canDismiss={!disabled}
       onDidDismiss={() => {
-        if (payment && !processing) onClose(payment);
+        if (payment && !disabled && !cancelledRef.current) onClose(payment);
       }}
     >
       <IonHeader>
@@ -220,45 +338,74 @@ export function KlapCheckoutModal({
       </IonHeader>
 
       <IonContent>
-        <div
-          style={{
-            padding: "20px 18px 30px",
-            maxWidth: 520,
-            margin: "0 auto",
-          }}
-        >
+        <div style={{ padding: "18px 16px 32px", maxWidth: 560, margin: "0 auto" }}>
           <div
+            aria-label="Vista previa de la tarjeta"
             style={{
-              borderRadius: 22,
-              padding: 16,
-              background: "linear-gradient(145deg,#161006,#33230c)",
+              position: "relative",
+              overflow: "hidden",
+              minHeight: 205,
+              borderRadius: 26,
+              padding: 22,
+              background:
+                cardKind === "credit"
+                  ? "linear-gradient(145deg,#111827 0%,#2f2109 52%,#b47b16 140%)"
+                  : cardKind === "prepaid"
+                    ? "linear-gradient(145deg,#0f3d3e 0%,#126466 56%,#e1b84b 145%)"
+                    : "linear-gradient(145deg,#171006 0%,#4a3108 62%,#d5a737 145%)",
               color: "#ffffff",
-              boxShadow: "0 16px 36px rgba(0,0,0,.22)",
+              boxShadow: "0 18px 42px rgba(0,0,0,.25)",
             }}
           >
             <div
               style={{
-                color: "#f5c755",
-                fontSize: ".72rem",
-                fontWeight: 950,
-                letterSpacing: ".08em",
+                position: "absolute",
+                width: 210,
+                height: 210,
+                right: -70,
+                top: -95,
+                borderRadius: "50%",
+                background: "rgba(255,255,255,.09)",
               }}
-            >
-              KLAP CHECKOUT TRANSPARENTE
+            />
+            <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
+              <div>
+                <div style={{ color: "#f8d879", fontSize: ".7rem", fontWeight: 950, letterSpacing: ".12em" }}>
+                  RAPA GO · KLAP
+                </div>
+                <div style={{ marginTop: 5, fontSize: ".9rem", fontWeight: 900 }}>
+                  {cardKindLabel(cardKind)}
+                </div>
+              </div>
+              <div style={{ fontSize: ".92rem", fontWeight: 950, letterSpacing: ".05em" }}>
+                {cardBrandLabel(brand)}
+              </div>
             </div>
-            <div style={{ marginTop: 6, fontSize: "1.15rem", fontWeight: 950 }}>
-              Completa los datos de tu tarjeta
-            </div>
+
             <div
               style={{
-                marginTop: 5,
-                color: "rgba(255,255,255,.78)",
-                fontSize: ".78rem",
-                lineHeight: 1.45,
+                width: 45,
+                height: 34,
+                marginTop: 23,
+                borderRadius: 8,
+                background: "linear-gradient(135deg,#f8e29a,#b88a28)",
+                boxShadow: "inset 0 0 0 1px rgba(79,53,4,.35)",
               }}
-            >
-              RAPA GO no guarda el número, vencimiento ni CVV. El pago solo se
-              activa cuando el backend recibe la confirmación de Klap.
+            />
+
+            <div style={{ marginTop: 18, fontSize: "1.23rem", fontWeight: 950, letterSpacing: ".095em" }}>
+              {visibleCardNumber}
+            </div>
+
+            <div style={{ display: "flex", justifyContent: "space-between", gap: 16, marginTop: 19 }}>
+              <div>
+                <div style={{ fontSize: ".58rem", opacity: .66, fontWeight: 850 }}>TITULAR</div>
+                <div style={{ marginTop: 3, fontSize: ".75rem", fontWeight: 900 }}>PASAJERO RAPA GO</div>
+              </div>
+              <div style={{ textAlign: "right" }}>
+                <div style={{ fontSize: ".58rem", opacity: .66, fontWeight: 850 }}>VENCE</div>
+                <div style={{ marginTop: 3, fontSize: ".75rem", fontWeight: 900 }}>{visibleExpiry}</div>
+              </div>
             </div>
           </div>
 
@@ -269,33 +416,43 @@ export function KlapCheckoutModal({
               data-klap-fn-success={callbackNames.success}
               data-klap-fn-error={callbackNames.error}
               onSubmit={(event) => void submit(event)}
-              style={{
-                marginTop: 16,
-                display: "grid",
-                gap: 14,
-              }}
+              style={{ marginTop: 17, display: "grid", gap: 14 }}
             >
-              <label style={labelStyle}>
-                Tipo de tarjeta
-                <select
-                  id="klap-card-type-selector"
-                  value={cardType}
-                  onChange={(event) =>
-                    setCardType(event.target.value === "2" ? "2" : "1")
-                  }
-                  disabled={processing}
-                  style={inputStyle}
-                >
-                  <option value="1">Débito o prepago</option>
-                  <option value="2">Crédito</option>
-                </select>
-
-                <input
-                  id="klap-card-type"
-                  type="hidden"
-                  data-klap-card-type={cardType}
-                />
-              </label>
+              <div style={{ display: "grid", gap: 9 }}>
+                <div style={{ color: "#4b3410", fontSize: ".78rem", fontWeight: 950 }}>
+                  ¿Qué tipo de tarjeta estás usando?
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0,1fr))", gap: 8 }}>
+                  {(["debit", "prepaid", "credit"] as CardKind[]).map((kind) => {
+                    const selected = cardKind === kind;
+                    return (
+                      <button
+                        key={kind}
+                        type="button"
+                        disabled={disabled}
+                        aria-pressed={selected}
+                        onClick={() => setCardKind(kind)}
+                        style={{
+                          minHeight: 58,
+                          borderRadius: 14,
+                          border: selected ? "2px solid #b77b0d" : "1px solid rgba(151,105,27,.32)",
+                          background: selected ? "#fff2c5" : "#ffffff",
+                          color: "#2f2109",
+                          fontSize: ".76rem",
+                          fontWeight: 950,
+                          cursor: disabled ? "not-allowed" : "pointer",
+                        }}
+                      >
+                        {cardKindLabel(kind)}
+                      </button>
+                    );
+                  })}
+                </div>
+                <div style={{ borderRadius: 12, padding: "9px 11px", background: "#fff8df", color: "#5f3f00", fontSize: ".72rem", lineHeight: 1.38, fontWeight: 800 }}>
+                  {cardKindDescription(cardKind)} Klap y tu banco confirmarán el tipo definitivo durante el pago.
+                </div>
+                <input id="klap-card-type" type="hidden" data-klap-card-type={klapCardType} value={klapCardType} readOnly />
+              </div>
 
               <label style={labelStyle}>
                 Número de tarjeta
@@ -303,34 +460,32 @@ export function KlapCheckoutModal({
                   id="cardNumber"
                   data-klap-card-number
                   type="text"
-                  maxLength={19}
+                  value={cardNumber}
+                  onChange={(event) => setCardNumber(formatCardNumber(event.target.value))}
+                  maxLength={23}
                   inputMode="numeric"
                   autoComplete="cc-number"
                   placeholder="0000 0000 0000 0000"
-                  disabled={processing}
+                  disabled={disabled}
                   required
                   style={inputStyle}
                 />
               </label>
 
-              <div
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "1fr 1fr",
-                  gap: 12,
-                }}
-              >
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
                 <label style={labelStyle}>
                   Vencimiento
                   <input
                     id="cardExpiryDate"
                     data-klap-expiry-date
                     type="text"
+                    value={expiry}
+                    onChange={(event) => setExpiry(formatExpiry(event.target.value))}
                     maxLength={5}
                     inputMode="numeric"
                     autoComplete="cc-exp"
                     placeholder="MM/AA"
-                    disabled={processing}
+                    disabled={disabled}
                     required
                     style={inputStyle}
                   />
@@ -342,122 +497,100 @@ export function KlapCheckoutModal({
                     id="cardCvv"
                     data-klap-card-cvv
                     type="password"
+                    value={cvv}
+                    onChange={(event) => setCvv(onlyDigits(event.target.value).slice(0, 4))}
                     maxLength={4}
                     inputMode="numeric"
                     autoComplete="cc-csc"
                     placeholder="123"
-                    disabled={processing}
+                    disabled={disabled}
                     required
                     style={inputStyle}
                   />
+                  <span style={{ color: "#756039", fontSize: ".66rem", fontWeight: 750 }}>
+                    Son los 3 números del reverso; algunas tarjetas usan 4 al frente.
+                  </span>
                 </label>
               </div>
 
-              <input
-                id="generateToken"
-                type="checkbox"
-                name="generateToken"
-                data-klap-generate-token
-                checked={false}
-                readOnly
-                hidden
-              />
+              <input id="generateToken" type="checkbox" name="generateToken" data-klap-generate-token checked={false} readOnly hidden />
 
-              {cardType === "2" && (
+              {cardKind === "credit" && (
                 <label style={labelStyle}>
                   Cuotas
                   <select
                     id="quotas"
                     data-klap-quotas
-                    defaultValue="2"
-                    disabled={processing}
+                    value={quotas}
+                    onChange={(event) => setQuotas(event.target.value)}
+                    disabled={disabled}
                     style={inputStyle}
                   >
-                    {Array.from({ length: 47 }, (_, index) => index + 2).map(
-                      (quota) => (
-                        <option key={quota} value={String(quota)}>
-                          {quota} cuotas
-                        </option>
-                      ),
-                    )}
+                    {Array.from({ length: 11 }, (_, index) => index + 2).map((quota) => (
+                      <option key={quota} value={String(quota)}>
+                        {quota} cuotas
+                      </option>
+                    ))}
                   </select>
+                  <span style={{ color: "#756039", fontSize: ".66rem", fontWeight: 750 }}>
+                    La disponibilidad final depende de tu tarjeta y de Klap.
+                  </span>
                 </label>
               )}
 
-              <div
-                style={{
-                  borderRadius: 12,
-                  padding: "9px 11px",
-                  background: "#eef6ff",
-                  color: "#183b63",
-                  border: "1px solid #b8d8f5",
-                  fontSize: ".75rem",
-                  lineHeight: 1.4,
-                  fontWeight: 800,
-                }}
-              >
-                Para Sandbox, usa una tarjeta acorde al tipo seleccionado.
-                Presiona Pagar una sola vez y espera la respuesta de Klap.
-              </div>
+              {fieldError && (
+                <div role="alert" style={{ borderRadius: 14, padding: "11px 12px", background: "#fff1f2", color: "#8b1e2d", border: "1px solid rgba(220,38,38,.30)", fontSize: ".78rem", lineHeight: 1.4, fontWeight: 850 }}>
+                  {fieldError}
+                </div>
+              )}
 
               {message && (
-                <div
-                  role="status"
-                  style={{
-                    borderRadius: 14,
-                    padding: "11px 12px",
-                    background: "#fff8df",
-                    color: "#5f3f00",
-                    border: "1px solid rgba(210,164,58,.52)",
-                    fontSize: ".8rem",
-                    lineHeight: 1.42,
-                    fontWeight: 800,
-                  }}
-                >
+                <div role="status" style={{ borderRadius: 14, padding: "11px 12px", background: "#fff8df", color: "#5f3f00", border: "1px solid rgba(210,164,58,.52)", fontSize: ".8rem", lineHeight: 1.42, fontWeight: 800 }}>
                   {message}
                 </div>
               )}
 
-              {reloadRequired && (
-                <IonButton
-                  type="button"
-                  expand="block"
-                  fill="outline"
-                  onClick={() => window.location.reload()}
-                  style={{
-                    "--border-color": "#9f6b17",
-                    "--color": "#5f3f00",
-                    fontWeight: 900,
-                  }}
-                >
-                  Recargar checkout Klap
-                </IonButton>
-              )}
+              <div style={{ borderRadius: 14, padding: "10px 12px", background: "#eef6ff", color: "#183b63", border: "1px solid #b8d8f5", fontSize: ".72rem", lineHeight: 1.42, fontWeight: 800 }}>
+                RAPA GO no guarda el número completo ni el CVV. Presiona pagar una sola vez y espera la confirmación del backend.
+              </div>
 
               <IonButton
                 type="submit"
                 expand="block"
-                disabled={processing || reloadRequired}
+                disabled={disabled}
                 style={{
                   "--background": "linear-gradient(135deg,#d5a737,#f3d781)",
                   "--color": "#171006",
                   "--border-radius": "16px",
-                  minHeight: 50,
+                  minHeight: 52,
                   fontWeight: 950,
                 } as CSSProperties}
               >
-                {processing ? <IonSpinner name="dots" /> : "PAGAR CON KLAP"}
+                {processing ? <IonSpinner name="dots" /> : `PAGAR CON KLAP${payment.amountClp ? ` · $${Math.round(payment.amountClp).toLocaleString("es-CL")}` : ""}`}
               </IonButton>
+
+              {!paymentAttemptStarted && (
+                <IonButton
+                  type="button"
+                  fill="outline"
+                  color="danger"
+                  expand="block"
+                  disabled={disabled}
+                  onClick={() => void cancelRequest()}
+                >
+                  {cancelling ? <IonSpinner name="dots" /> : "Cancelar esta solicitud"}
+                </IonButton>
+              )}
 
               <IonButton
                 type="button"
-                fill="outline"
+                fill="clear"
                 color="medium"
                 expand="block"
-                disabled={processing}
+                disabled={disabled}
                 onClick={() => onClose(payment)}
               >
-                Continuar después en Mis Viajes
+                {paymentAttemptStarted ? "Continuar después en Mis Viajes" : "Volver sin cancelar"}
               </IonButton>
             </form>
           )}

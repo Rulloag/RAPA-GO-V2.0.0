@@ -34,7 +34,7 @@ export const createRideRequestSchema = z.object({
   useWalletBenefit: z.boolean().optional(),
 
   paymentProvider: z
-    .enum(["mercadopago", "prontopaga", "transbank"])
+    .enum(["klap", "mercadopago", "prontopaga", "transbank"])
     .nullable()
     .optional(),
 

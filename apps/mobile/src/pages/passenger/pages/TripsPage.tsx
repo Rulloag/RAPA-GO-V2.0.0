@@ -20,6 +20,10 @@ import { useAuth } from "../../../features/auth/index.js";
 import { ridesService, type RideRequestData } from "../../../features/rides/rides.service.js";
 import { rideLocationService } from "../../../features/location/rideLocation.service.js";
 import { walletService } from "../../../features/wallet/wallet.service.js";
+import {
+  cancelPendingKlapRide,
+  type PendingKlapPaymentRecord,
+} from "../../../features/payments/klapCheckout.service.js";
 import { cashRefundsService } from "../../../features/cashRefunds/cashRefunds.service.js";
 
 import { RapagoSectionHeader } from "../../../components/RapagoSectionHeader.js";
@@ -67,6 +71,7 @@ type PendingCardPaymentRecord = {
   amountClp?: number | null;
   provider?: string | null;
   createdAt?: string | null;
+  checkoutStartedAt?: string | null;
   originText?: string | null;
   destinationText?: string | null;
   scheduledRideMirror?: Record<string, unknown> | null;
@@ -1201,7 +1206,7 @@ function getPassengerRideStartedAtMs(ride: RideRequestData & Record<string, unkn
 
   const isRequestedCardRide =
     effectiveStatus === "requested" &&
-    getRidePaymentMethodLabel(ride.notes).startsWith("Tarjeta /");
+    getRidePaymentMethodLabel(ride).startsWith("Tarjeta /");
 
   const candidates = [
     ride.searchStartedAt,
@@ -1566,7 +1571,7 @@ async function applyPassengerFastSearchChoice(
     throw new Error("Tu sesión expiró. Inicia sesión nuevamente para activar RapaGo más veloz.");
   }
 
-  const paymentLabel = getRidePaymentMethodLabel(ride.notes);
+  const paymentLabel = getRidePaymentMethodLabel(ride);
   const isCard = paymentLabel.includes("Mercado Pago");
   const result = await requestPassengerFastSearch(ride, accessToken);
 
@@ -1873,11 +1878,29 @@ function isExpiredCancelledRideRecord(
   return nowMs - cancelledMs >= CANCELLED_RIDE_EXPIRATION_MS;
 }
 
+function isCancelledBeforeKlapPayment(
+  ride: Partial<RideRequestData> & Record<string, unknown>,
+): boolean {
+  const status = String(ride.status ?? "").trim().toLowerCase();
+  const reason = String(ride.cancellationReason ?? ride.cancelReason ?? "")
+    .trim()
+    .toLowerCase();
+
+  return (
+    ["cancelled", "canceled", "passenger_cancelled"].includes(status) &&
+    reason.includes("pago klap cancelado")
+  );
+}
+
 function purgeExpiredCancelledRideRecords<T extends Partial<RideRequestData> & Record<string, unknown>>(
   rides: T[],
   nowMs = Date.now(),
 ): T[] {
-  return rides.filter((ride) => !isExpiredCancelledRideRecord(ride, nowMs));
+  return rides.filter(
+    (ride) =>
+      !isCancelledBeforeKlapPayment(ride) &&
+      !isExpiredCancelledRideRecord(ride, nowMs),
+  );
 }
 
 
@@ -3501,18 +3524,32 @@ function getRideDisplayFareClp(ride: RideRequestData): number | null {
   return addFastSearchFeeToBaseFare(ride, getPassengerRideBaseFareClp(ride));
 }
 
-function getRidePaymentMethodLabel(notes: string | null | undefined): string {
+function getRidePaymentMethodLabel(
+  source: RideRequestData | string | null | undefined,
+): string {
+  const ride =
+    source && typeof source === "object"
+      ? source
+      : null;
+  const notes = ride ? ride.notes : source;
+  const provider = String(ride?.paymentProvider ?? "").trim().toLowerCase();
+  const method = String(ride?.paymentMethod ?? "").trim().toLowerCase();
   const text = String(notes ?? "").toLowerCase();
-  if (text.includes("klap")) return "Tarjeta / Klap";
+
+  if (provider === "klap" || text.includes("klap")) {
+    return "Tarjeta / Klap";
+  }
   if (
+    provider === "mercadopago" ||
+    provider === "prontopaga" ||
     text.includes("prontopaga") ||
     text.includes("mercadopago") ||
     text.includes("mercado pago")
   ) {
     return "Tarjeta / Mercado Pago";
   }
-  if (text.includes("tarjeta")) return "Tarjeta";
-  if (text.includes("efectivo")) return "Efectivo";
+  if (method === "card" || text.includes("tarjeta")) return "Tarjeta";
+  if (method === "cash" || text.includes("efectivo")) return "Efectivo";
   return "Pendiente";
 }
 
@@ -6925,7 +6962,7 @@ function getPassengerCashPaymentRideKey(ride: Partial<RideRequestData> & Record<
 
 function isPassengerCashPaymentRide(ride: RideRequestData): boolean {
   const text = String(ride.notes ?? "").toLowerCase();
-  const label = getRidePaymentMethodLabel(ride.notes).toLowerCase();
+  const label = getRidePaymentMethodLabel(ride).toLowerCase();
 
   return (
     label.includes("efectivo") ||
@@ -7894,7 +7931,7 @@ function PassengerRideCard({
   const showMap = passengerCanTrackDriver && (hasDriver || navHasMapPoints || effectiveStatus === "driver_scheduled");
   const label = getPassengerRideStatusLabel(effectiveStatus);
   const displayFareClp = getRideDisplayFareClp(ride);
-  const paymentLabel = getRidePaymentMethodLabel(ride.notes);
+  const paymentLabel = getRidePaymentMethodLabel(ride);
   const ridePassengerFareType = getRidePassengerFareType(ride);
   const fareBreakdown = extractRideFareBreakdown(ride.notes);
   const scheduleInfo = getPassengerRideScheduleInfo(ride as RideRequestData & Record<string, unknown>);
@@ -8806,6 +8843,7 @@ export default function TripsPage(): JSX.Element {
   const [tripSafetyReportsRevision, setTripSafetyReportsRevision] = useState(0);
   const [paymentReturnMessage, setPaymentReturnMessage] = useState<PaymentReturnMessage | null>(null);
   const [canResumeKlapPayment, setCanResumeKlapPayment] = useState(false);
+  const [cancellingPendingKlap, setCancellingPendingKlap] = useState(false);
   const loadRidesInFlightRef = useRef(false);
 
   const loadRides = useCallback(async (options?: { silent?: boolean }) => {
@@ -8898,6 +8936,76 @@ export default function TripsPage(): JSX.Element {
     };
   }, []);
 
+  const cancelUnstartedKlapRequest = useCallback(async (): Promise<void> => {
+    const pending = readPendingCardPayment();
+    const accessToken = session?.accessToken;
+
+    if (!pending || String(pending.provider ?? "").toLowerCase() !== "klap") {
+      setCanResumeKlapPayment(false);
+      return;
+    }
+
+    if (pending.checkoutStartedAt) {
+      setPaymentReturnMessage({
+        tone: "pending",
+        title: "Pago Klap en verificación",
+        body: "Este intento ya fue enviado a Klap. Primero debemos confirmar si hubo cobro; no crees otro pago todavía.",
+      });
+      return;
+    }
+
+    if (!accessToken) {
+      setPaymentReturnMessage({
+        tone: "rejected",
+        title: "Sesión expirada",
+        body: "Inicia sesión nuevamente para cancelar esta solicitud.",
+      });
+      return;
+    }
+
+    const paymentId = String(pending.paymentId ?? "").trim();
+    const orderId = String(pending.orderId ?? "").trim();
+    if (!paymentId || !orderId) {
+      setPaymentReturnMessage({
+        tone: "rejected",
+        title: "Solicitud incompleta",
+        body: "No encontramos los datos suficientes para cancelarla de forma segura.",
+      });
+      return;
+    }
+
+    if (!window.confirm("¿Cancelar esta solicitud pendiente? Podrás crear otro viaje inmediatamente.")) {
+      return;
+    }
+
+    setCancellingPendingKlap(true);
+    try {
+      await cancelPendingKlapRide(accessToken, {
+        ...pending,
+        paymentId,
+        orderId,
+        provider: "klap",
+        createdAt: String(pending.createdAt ?? "").trim() || new Date().toISOString(),
+      } as PendingKlapPaymentRecord);
+      clearPendingCardPayment();
+      setCanResumeKlapPayment(false);
+      setPaymentReturnMessage({
+        tone: "approved",
+        title: "Solicitud cancelada",
+        body: "La solicitud sin pago se quitó de tus viajes. Ya puedes crear otra inmediatamente.",
+      });
+      await loadRides();
+    } catch (error) {
+      setPaymentReturnMessage({
+        tone: "rejected",
+        title: "No pudimos cancelar",
+        body: error instanceof Error ? error.message : "Inténtalo nuevamente.",
+      });
+    } finally {
+      setCancellingPendingKlap(false);
+    }
+  }, [loadRides, session?.accessToken]);
+
   useEffect(() => {
     void loadRides();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -8946,13 +9054,18 @@ export default function TripsPage(): JSX.Element {
       });
 
     const verifyPaymentWithBackend = async (): Promise<void> => {
+      const pending = readPendingCardPayment();
       setPaymentReturnMessage({
         tone: "checking",
-        title: "Verificando pago con Mercado Pago",
-        body: "RAPA GO está verificando directamente con Mercado Pago. Apenas el cobro figure aprobado, la solicitud se publicará automáticamente.",
+        title:
+          String(pending?.provider ?? "").trim().toLowerCase() === "klap"
+            ? "Verificando pago con Klap"
+            : "Verificando pago con Mercado Pago",
+        body:
+          String(pending?.provider ?? "").trim().toLowerCase() === "klap"
+            ? "RAPA GO está esperando la confirmación segura de Klap y del backend."
+            : "RAPA GO está verificando directamente con Mercado Pago. Apenas el cobro figure aprobado, la solicitud se publicará automáticamente.",
       });
-
-      const pending = readPendingCardPayment();
       const pendingFastSearch = readPendingFastSearchPayment();
       const accessToken = session?.accessToken;
       const internalPaymentId = String(
@@ -8984,7 +9097,7 @@ export default function TripsPage(): JSX.Element {
           return;
         }
 
-        for (let attempt = 0; attempt < 15 && !disposed; attempt += 1) {
+        for (let attempt = 0; attempt < 8 && !disposed; attempt += 1) {
           try {
             const statusData = await walletService.getPaymentStatus(
               accessToken,
@@ -9034,7 +9147,7 @@ export default function TripsPage(): JSX.Element {
             });
           }
 
-          if (attempt < 14 && !disposed) await wait(2000);
+          if (attempt < 7 && !disposed) await wait(attempt < 5 ? 5000 : 15000);
         }
 
         if (!disposed) {
@@ -9160,7 +9273,7 @@ export default function TripsPage(): JSX.Element {
             });
           }
 
-          if (attempt < 14 && !disposed) await wait(2000);
+          if (attempt < 14 && !disposed) await wait(attempt < 5 ? 5000 : 15000);
         }
 
         cleanPaymentReturnQuery();
@@ -9252,7 +9365,7 @@ export default function TripsPage(): JSX.Element {
           }
         }
 
-        if (attempt < 14 && !disposed) await wait(2000);
+        if (attempt < 14 && !disposed) await wait(attempt < 5 ? 5000 : 15000);
       }
 
       cleanPaymentReturnQuery();
@@ -9960,6 +10073,18 @@ export default function TripsPage(): JSX.Element {
                   }}
                 >
                   Continuar pago con Klap
+                </IonButton>
+              )}
+              {canResumeKlapPayment && !readPendingCardPayment()?.checkoutStartedAt && (
+                <IonButton
+                  size="small"
+                  fill="outline"
+                  color="danger"
+                  disabled={cancellingPendingKlap}
+                  style={{ "--border-radius": "999px", marginTop: 8, fontWeight: 900 } as CSSProperties}
+                  onClick={() => void cancelUnstartedKlapRequest()}
+                >
+                  {cancellingPendingKlap ? <IonSpinner name="dots" /> : "Cancelar solicitud"}
                 </IonButton>
               )}
               {paymentReturnMessage.tone !== "checking" && (

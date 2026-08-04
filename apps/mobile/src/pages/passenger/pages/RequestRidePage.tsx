@@ -61,6 +61,7 @@ import {
 import { walletService } from "../../../features/wallet/wallet.service.js";
 import { KlapCheckoutModal } from "../../../features/payments/KlapCheckoutModal.js";
 import {
+  cancelPendingKlapRide,
   clearPendingKlapPayment,
   createKlapEmbeddedOrder,
   readPendingKlapPayment,
@@ -7135,6 +7136,27 @@ export default function RequestRidePage(): JSX.Element {
     [goToTripsAfterRequest],
   );
 
+  const handleCancelKlapRequest = useCallback(
+    async (pending: PendingKlapPaymentRecord): Promise<void> => {
+      if (!session?.accessToken) {
+        throw new Error("Tu sesión expiró. Inicia sesión nuevamente.");
+      }
+
+      await cancelPendingKlapRide(session.accessToken, pending);
+      setKlapPayment(null);
+      tripsRedirectStartedRef.current = false;
+      window.dispatchEvent(
+        new CustomEvent("rapago:passenger-rides-updated", {
+          detail: {
+            rideId: pending.rideRequestId,
+            source: "klap-request-cancelled-before-payment",
+          },
+        }),
+      );
+    },
+    [session?.accessToken],
+  );
+
   useEffect(() => {
     preSearchLocationService.read();
     return () => preSearchLocationService.clear();
@@ -8332,6 +8354,8 @@ export default function RequestRidePage(): JSX.Element {
           vehicleCategory?: VehicleCategory;
         }).vehicleCategory = vehicleCategory;
         (input as CreateRideInput & { paymentMethod?: string }).paymentMethod = activePaymentMethod;
+        (input as CreateRideInput & { paymentProvider?: string | null }).paymentProvider =
+          activePaymentMethod === "card" ? "klap" : null;
         // Phase 3 security:
         // Cancellation/no-show charges are backend/admin authority only.
         // Do not send passengerPendingChargeClp or finalFareWithPendingChargesClp from frontend.
@@ -10605,6 +10629,7 @@ return (
           onApproved={handleKlapApproved}
           onRejected={handleKlapRejected}
           onClose={handleCloseKlapCheckout}
+          onCancelRequest={handleCancelKlapRequest}
         />
       </IonContent>
     </IonPage>
