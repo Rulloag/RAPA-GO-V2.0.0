@@ -265,8 +265,15 @@
      despegaban del fondo. Baja a .86/.88 y el tono se profundiza un paso, así
      la superficie clara de las tarjetas separa por luminancia y la foto vuelve
      a intuirse, igual que de noche. */
+  /* .80/.84 separaba bien las tarjetas del fondo, pero subió tanto la
+     saturación del velo que los botones de cabecera —borde dorado a .42 de
+     opacidad, pensado para leerse sobre una superficie casi neutra— quedaron
+     del mismo tono que el propio fondo y se volvieron invisibles. La cabecera
+     vive en el primer stop del degradado (arriba de la pantalla), así que ese
+     stop baja más que el segundo: .70 destraba los botones sin devolver el
+     lavado plano que tenían las tarjetas con el valor original de .95. */
   --rp-page-bg:
-    linear-gradient(180deg, rgba(206, 182, 147, 0.80), rgba(150, 186, 201, 0.84)),
+    linear-gradient(180deg, rgba(222, 202, 172, 0.70), rgba(172, 202, 215, 0.85)),
     var(--rp-page-photo) center / cover no-repeat;
   --rp-surface: linear-gradient(180deg, #fffdf9, #fdf7ec);
   --rp-surface-soft: rgba(26, 26, 26, 0.045);
