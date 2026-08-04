@@ -23,6 +23,7 @@ import {
   eyeOffOutline,
   moonOutline,
   sunnyOutline,
+  alertCircleOutline,
 } from "ionicons/icons";
 import { useRapagoSectionTheme } from "../../theme/rapagoTheme.js";
 import { useHistory } from "react-router-dom";
@@ -649,6 +650,10 @@ export function RegisterPage(): JSX.Element {
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [fieldErrors, setFieldErrors] = useState<Record<RegisterField | string, string>>({});
   const [serverError, setServerError] = useState("");
+  // Aviso propio para AUTH_EMAIL_TAKEN: el error de campo ya marca el input en
+  // rojo, pero alguien que no recuerda haberse registrado necesita un camino
+  // hacia adelante (iniciar sesión o recuperar clave), no solo saber qué falló.
+  const [emailTakenNotice, setEmailTakenNotice] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -859,6 +864,7 @@ export function RegisterPage(): JSX.Element {
 
     setFieldErrors({});
     setServerError("");
+    setEmailTakenNotice(false);
     setReferralMsg(null);
 
     const cleanName = cleanPersonName(name).trim();
@@ -1037,6 +1043,7 @@ export function RegisterPage(): JSX.Element {
       if (result.ok === false) {
         if (result.code === "AUTH_EMAIL_TAKEN") {
           setFieldErrors({ email: "Este correo ya está registrado." });
+          setEmailTakenNotice(true);
           return;
         }
 
@@ -1378,6 +1385,7 @@ export function RegisterPage(): JSX.Element {
               onIonInput={(event) => {
                 setEmail(cleanEmailInput(String(event.detail.value ?? "")));
                 clearFieldError("email");
+                setEmailTakenNotice(false);
               }}
               placeholder="tu@correo.com"
               style={inputStyle}
@@ -1389,6 +1397,42 @@ export function RegisterPage(): JSX.Element {
             />
             {fieldErrors.email && <IonNote slot="error">{fieldErrors.email}</IonNote>}
           </IonItem>
+
+          {emailTakenNotice && (
+            <div className="rp-banner rp-banner--warn" style={{ margin: "0 0 12px" }}>
+              <IonIcon icon={alertCircleOutline} aria-hidden="true" />
+              <div className="rp-banner__copy">
+                <span className="rp-banner__title">Ya existe una cuenta con este correo</span>
+                <span className="rp-banner__message">
+                  Puede que ya te hayas registrado antes. Inicia sesión o recupera tu contraseña.
+                </span>
+                <div style={{ display: "flex", gap: 8, marginTop: 10, flexWrap: "wrap" }}>
+                  <IonButton
+                    size="small"
+                    fill="outline"
+                    onClick={() =>
+                      history.push(
+                        `${ROUTES.AUTH.LOGIN}?email=${encodeURIComponent(email)}`,
+                      )
+                    }
+                  >
+                    Iniciar sesión
+                  </IonButton>
+                  <IonButton
+                    size="small"
+                    fill="clear"
+                    onClick={() =>
+                      history.push(
+                        `/auth/forgot-password?email=${encodeURIComponent(email)}`,
+                      )
+                    }
+                  >
+                    ¿Olvidaste tu contraseña?
+                  </IonButton>
+                </div>
+              </div>
+            </div>
+          )}
 
           <IonItem className={`rapago-auth-field ${fieldErrors.password ? "ion-invalid" : ""}`} style={registerItemStyle}>
             <IonIcon slot="start" icon={lockClosedOutline} className="rapago-auth-field-icon" />

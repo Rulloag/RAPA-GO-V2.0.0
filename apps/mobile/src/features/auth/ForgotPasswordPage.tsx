@@ -30,12 +30,23 @@ function isValidEmail(value: string): boolean {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
 }
 
+/* Llega desde el registro cuando el correo ya tenía cuenta: precarga el campo
+   para que la persona no tenga que volver a escribirlo. Solo se lee al montar. */
+function getPrefillEmailFromQuery(): string {
+  try {
+    const value = new URLSearchParams(window.location.search).get("email");
+    return value ? normalizeEmail(value) : "";
+  } catch {
+    return "";
+  }
+}
+
 export function ForgotPasswordPage(): JSX.Element {
   const history = useHistory();
   /* Tema propio del flujo de acceso (compartido con Login y Registro). */
   const { theme, isDark, toggleTheme } = useRapagoSectionTheme("auth");
 
-  const [email, setEmail] = useState("");
+  const [email, setEmail] = useState(getPrefillEmailFromQuery());
   const [fieldError, setFieldError] = useState("");
   const [serverError, setServerError] = useState("");
   const [loading, setLoading] = useState(false);

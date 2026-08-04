@@ -470,6 +470,18 @@ function persistPassengerProfile(profile: PassengerRegistrationProfile): void {
   }
 }
 
+/* Llega desde el registro cuando el correo ya tenía cuenta ("Iniciar sesión"
+   dentro del aviso de RegisterPage): precarga el campo para que la persona no
+   tenga que volver a escribirlo. Solo se lee una vez, al montar. */
+function getPrefillEmailFromQuery(): string {
+  try {
+    const value = new URLSearchParams(window.location.search).get("email");
+    return value ? normalizeEmail(value) : "";
+  } catch {
+    return "";
+  }
+}
+
 function getFacebookRedirectErrorMessage(): string {
   try {
     const searchParams = new URLSearchParams(window.location.search);
@@ -780,7 +792,9 @@ export function LoginPage(): JSX.Element {
 
     handleAppleOutcome(outcome);
   }
-  const [email, setEmail] = useState(getStoredValue("rapago_passenger_email"));
+  const [email, setEmail] = useState(
+    getPrefillEmailFromQuery() || getStoredValue("rapago_passenger_email"),
+  );
   const [password, setPassword] = useState("");
 
   const [loading, setLoading] = useState(false);
