@@ -13,7 +13,7 @@ import { alertCircleOutline, checkmarkCircleOutline } from "ionicons/icons";
  */
 
 export const LOGIN_SUCCESS_MESSAGE = "Has iniciado sesión correctamente";
-export const REGISTER_SUCCESS_MESSAGE = "Tu cuenta se creó correctamente";
+export const REGISTER_SUCCESS_MESSAGE = "Haz creado tu cuenta con éxito";
 export const LOGOUT_SUCCESS_MESSAGE = "Haz cerrado sesión correctamente";
 export const LOGOUT_ERROR_MESSAGE = "Ha Habido un problema para cerrar sesión";
 
