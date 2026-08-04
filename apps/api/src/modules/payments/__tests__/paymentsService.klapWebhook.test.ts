@@ -220,17 +220,18 @@ describe("PaymentsService.handleKlapConfirmWebhook", () => {
     expect(mockMarkSuccessAndActivateRide).toHaveBeenCalledOnce();
   });
 
-  it("6/17. payment_method different from 'tarjetas' responds 422 unsupported_payment_method, never success (Fase C.1)", async () => {
-    const result = await service.handleKlapConfirmWebhook(confirmBody({ payment_method: "efectivo" }), {
-      apikey: validApikeyHeader(),
-    });
-    expect(result.ok).toBe(false);
-    if (!result.ok) {
-      expect(result.code).toBe("UNSUPPORTED_PAYMENT_METHOD");
-      expect(result.statusCode).toBe(422);
-    }
-    expect(mockMarkSuccessAndActivateRide).not.toHaveBeenCalled();
-    expect(mockClaimWebhookEvent).not.toHaveBeenCalled();
+  it("6/17. payment_method distinto se audita, pero una confirmación firmada y consistente responde ok", async () => {
+    const result = await service.handleKlapConfirmWebhook(
+      confirmBody({ payment_method: "debito" }),
+      { apikey: validApikeyHeader() },
+    );
+    expect(result.ok).toBe(true);
+    expect(mockMarkSuccessAndActivateRide).toHaveBeenCalledOnce();
+    expect(mockRecordSafe).toHaveBeenCalledWith(
+      expect.objectContaining({
+        eventType: "payment.klap_unexpected_payment_method",
+      }),
+    );
   });
 
   it("18. order_id and reference_id of the same payment are accepted", async () => {
@@ -391,18 +392,19 @@ describe("PaymentsService.handleKlapRejectWebhook", () => {
     expect(mockMarkRejected).not.toHaveBeenCalled();
   });
 
-  it("16/37. a reject on an already-success payment responds 409 state_conflict, never downgrades it (Fase C.1)", async () => {
+  it("16/37. un reject tardío sobre un pago success responde ok y nunca lo degrada", async () => {
     mockFindByProviderOrderId.mockResolvedValue(paymentFixture({ status: "success" }));
-    const result = await service.handleKlapRejectWebhook(rejectBody(), { apikey: validApikeyHeader() });
+    const result = await service.handleKlapRejectWebhook(
+      rejectBody(),
+      { apikey: validApikeyHeader() },
+    );
     expect(mockMarkRejected).not.toHaveBeenCalled();
     expect(mockClaimWebhookEvent).not.toHaveBeenCalled();
-    expect(result.ok).toBe(false);
-    if (!result.ok) {
-      expect(result.code).toBe("STATE_CONFLICT");
-      expect(result.statusCode).toBe(409);
-    }
+    expect(result).toMatchObject({ ok: true, status: "ok" });
     expect(mockRecordSafe).toHaveBeenCalledWith(
-      expect.objectContaining({ eventType: "payment.klap_reject_after_success" }),
+      expect.objectContaining({
+        eventType: "payment.klap_reject_after_success",
+      }),
     );
   });
 

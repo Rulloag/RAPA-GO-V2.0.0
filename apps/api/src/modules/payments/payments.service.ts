@@ -1188,6 +1188,10 @@ export class PaymentsService {
       return { ok: true, status: "ok" };
     }
 
+    // La orden fue creada por RAPA GO con methods: ["tarjetas"].
+    // Klap puede describir el medio concreto con otro texto en payment_method.
+    // Para una firma válida, order_id/reference_id coincidentes y monto exacto,
+    // este campo se conserva para auditoría, pero no debe provocar HTTP 422.
     if (body.payment_method !== "tarjetas") {
       auditService.recordSafe({
         actorUserId: payment.passengerUserId,
@@ -1196,12 +1200,6 @@ export class PaymentsService {
         entityId: payment.id,
         metadata: { paymentMethod: body.payment_method },
       });
-      return {
-        ok: false,
-        code: "UNSUPPORTED_PAYMENT_METHOD",
-        message: "Unsupported payment method for this integration.",
-        statusCode: 422,
-      };
     }
 
     const paidAmountClp = parseKlapWebhookAmountClp(body.amount);
@@ -1393,12 +1391,9 @@ export class PaymentsService {
         entityId: payment.id,
         metadata: { code: sanitizedCode ?? "none" },
       });
-      return {
-        ok: false,
-        code: "STATE_CONFLICT",
-        message: "Payment is already confirmed as successful.",
-        statusCode: 409,
-      };
+      // No degrada el pago y reconoce la entrega tardía para evitar que Klap
+      // considere fallido el webhook por una respuesta HTTP no-2xx.
+      return { ok: true, status: "ok" };
     }
 
     // Already rejected/failed/refunded: genuine duplicate/late reject, no
