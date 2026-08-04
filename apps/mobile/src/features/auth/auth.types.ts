@@ -114,4 +114,6 @@ export interface AuthContextValue {
   ) => Promise<AppleWebAuthResponse>;
   refreshSession: () => Promise<void>;
   logout: () => Promise<void>;
+  /** Cierra la sesión recién creada sin el toast ni la redirección de logout. */
+  endSessionSilently: (accessToken?: string | null) => Promise<void>;
 }

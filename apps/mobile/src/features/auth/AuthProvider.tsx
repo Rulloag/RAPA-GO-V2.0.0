@@ -315,6 +315,38 @@ export function AuthProvider({ children }: AuthProviderProps): JSX.Element {
     setStatus("authenticated");
   }, [session?.accessToken]);
 
+  /**
+   * Cierra una sesión sin el ritual de logout: sin el toast de "cerraste
+   * sesión" ni la redirección a /auth/login. Existe para el registro público:
+   * la cuenta se crea autenticada (así lo devuelve el backend), pero se pide
+   * que la persona inicie sesión ella misma en vez de quedar logueada de
+   * arranque, así que el llamador decide a dónde navegar después.
+   *
+   * Recibe el accessToken en vez de leerlo de `session`: se llama justo
+   * después de `register()`, y `session` del closure capturado por el
+   * componente que llama a esta función todavía sería el de antes de
+   * registrarse — el `setSession` de `register()` no llega a tiempo por ser
+   * un estado de React distinto (AuthProvider), no algo que se pueda leer de
+   * vuelta en el mismo tick desde quien lo invoca.
+   */
+  const endSessionSilently = useCallback(
+    async (accessToken?: string | null): Promise<void> => {
+      const token = accessToken ?? session?.accessToken ?? null;
+
+      if (token) {
+        try {
+          await authService.logout(token);
+        } catch {
+          // Best effort: si el backend no alcanza a revocar el token, igual
+          // limpiamos el estado local para que la cuenta no quede logueada.
+        }
+      }
+
+      await clearLocalSession();
+    },
+    [session, clearLocalSession],
+  );
+
   const logout = useCallback(async (): Promise<void> => {
     let ok = true;
 
@@ -366,6 +398,7 @@ export function AuthProvider({ children }: AuthProviderProps): JSX.Element {
         signInWithGoogle,
         signInWithAppleWeb,
         logout,
+        endSessionSilently,
         refreshSession,
       }}
     >

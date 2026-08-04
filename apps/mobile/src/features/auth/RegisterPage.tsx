@@ -30,7 +30,6 @@ import { useHistory } from "react-router-dom";
 import {
   registerRequestSchema,
   type LegalAcceptanceInput,
-  type UserRole,
 } from "@rapa-go/shared";
 import { useAuth } from "./useAuth.js";
 import { authService } from "./auth.service.js";
@@ -40,13 +39,6 @@ import { legalService, type LegalDocumentData } from "../../features/legal/legal
 import { referralsService } from "../../features/referrals/referrals.service.js";
 import logoRapago from "../../theme/img/logo-rapago.jpeg";
 
-const ROLE_HOME: Record<UserRole, string> = {
-  passenger: ROUTES.PASSENGER.HOME,
-  driver: ROUTES.PASSENGER.HOME,
-  guide: ROUTES.PASSENGER.HOME,
-  rental_operator: ROUTES.PASSENGER.HOME,
-  admin: ROUTES.ADMIN.HOME,
-};
 
 type RegisterField =
   | "name"
@@ -619,7 +611,7 @@ const phonePrefixStyle: CSSProperties = {
 
 export function RegisterPage(): JSX.Element {
   const history = useHistory();
-  const { register } = useAuth();
+  const { register, endSessionSilently } = useAuth();
   /* Tema propio del flujo de acceso (compartido con Login). */
   const { theme, isDark, toggleTheme } = useRapagoSectionTheme("auth");
   const residentDocumentInputRef = useRef<HTMLInputElement | null>(null);
@@ -1054,7 +1046,6 @@ export function RegisterPage(): JSX.Element {
       const accessToken = result.session.accessToken;
       createdAccessToken = accessToken;
       const userId = result.session.user.id;
-      const registeredRole = result.session.user.role;
 
       await applyReferralCode(userId);
 
@@ -1085,9 +1076,18 @@ export function RegisterPage(): JSX.Element {
         });
       }
 
-      history.replace(
-        ROLE_HOME[registeredRole] ?? ROUTES.PASSENGER.HOME,
-      );
+      /**
+       * El backend devuelve la cuenta ya autenticada, pero no queremos que
+       * quede logueada de arranque: se pide que la persona confirme su
+       * acceso escribiendo sus credenciales. Se revoca el token recién
+       * emitido y se limpia el estado local antes de salir de esta pantalla;
+       * el toast de "cuenta creada" ya quedó disparado por AuthProvider y
+       * sobrevive a la navegación porque vive en la raíz de la app, no
+       * dentro de esta página.
+       */
+      await endSessionSilently(createdAccessToken);
+      createdAccessToken = null;
+      history.replace(ROUTES.WELCOME);
     } catch (error) {
       if (createdAccessToken) {
         await authService.logout(createdAccessToken).catch(() => {});
