@@ -4,7 +4,6 @@ import tripsSource from "../../../pages/passenger/pages/TripsPage.tsx?raw";
 import ridesFrontendSource from "../../rides/rides.service.ts?raw";
 import modalSource from "../KlapCheckoutModal.tsx?raw";
 import serviceSource from "../klapCheckout.service.ts?raw";
-import walletSource from "../../wallet/wallet.service.ts?raw";
 
 describe("Klap Checkout Transparente frontend", () => {
   it("crea órdenes Klap embedded y persiste el proveedor real del viaje", () => {
@@ -16,7 +15,7 @@ describe("Klap Checkout Transparente frontend", () => {
     expect(requestRideSource).not.toContain("window.location.href = payment.urlPay");
   });
 
-  it("usa el contrato público oficial del formulario Klap", () => {
+  it("usa el contrato público del formulario Klap sin imponer el producto", () => {
     expect(modalSource).toContain('id="checkout-klap"');
     expect(modalSource).toContain("data-klap-order-id");
     expect(modalSource).toContain("data-klap-fn-success");
@@ -24,36 +23,26 @@ describe("Klap Checkout Transparente frontend", () => {
     expect(modalSource).toContain("data-klap-card-number");
     expect(modalSource).toContain("data-klap-expiry-date");
     expect(modalSource).toContain("data-klap-card-cvv");
-    expect(modalSource).toContain("data-klap-card-type");
-    expect(modalSource).toContain("data-klap-quotas");
+    expect(modalSource).not.toContain("data-klap-card-type");
+    expect(modalSource).not.toContain("data-klap-quotas");
     expect(serviceSource).toContain("sdk.init({");
     expect(serviceSource).toContain('method: "tarjetas"');
     expect(modalSource).toContain("initializedSdk.payOrder?.()");
   });
 
-  it("muestra una tarjeta visual y detecta las tarjetas oficiales de prueba", () => {
+  it("deja que Klap reconozca automáticamente débito, crédito o prepago", () => {
     expect(modalSource).toContain("Vista previa de la tarjeta");
-    expect(modalSource).toContain('export type KlapCardKind = "debit" | "prepaid" | "credit"');
-    expect(modalSource).toContain("KLAP_SANDBOX_CARD_KIND_BY_NUMBER");
-    expect(modalSource).toContain('"4985468390202984": "prepaid"');
-    expect(modalSource).toContain('"4000000000001091": "credit"');
-    expect(modalSource).toContain('"5200000000001096": "debit"');
-    expect(modalSource).toContain("Detectada automáticamente");
-    expect(modalSource).toContain("No es seguro deducir débito, prepago o crédito solo con el número");
-    expect(modalSource).not.toContain('useState<CardKind>("debit")');
-  });
-
-  it("resuelve las tarjetas oficiales Sandbox si el webhook se retrasa", () => {
-    expect(modalSource).toContain("KLAP_SANDBOX_PROFILE_BY_NUMBER");
-    expect(modalSource).toContain('"4000000000001091": "visa_credit_1091"');
-    expect(modalSource).toContain('"5200000000001096": "mastercard_debit_1096"');
-    expect(modalSource).toContain("reconcileKlapSandboxPayment");
+    expect(modalSource).toContain("Detección automática por Klap");
     expect(modalSource).toContain(
-      "Conciliando la tarjeta oficial de prueba Klap en Sandbox",
+      "RAPA GO no te pedirá elegir débito, crédito o prepago",
     );
-    expect(walletSource).toContain("/reconcile/klap-sandbox");
-    expect(walletSource).not.toContain("cardNumber");
-    expect(walletSource).not.toContain("cvv");
+    expect(modalSource).toContain("PAGAR CON KLAP");
+    expect(modalSource).toContain("disabled={busy}");
+    expect(modalSource).not.toContain("KLAP_SANDBOX_CARD_KIND_BY_NUMBER");
+    expect(modalSource).not.toContain("KLAP_SANDBOX_PROFILE_BY_NUMBER");
+    expect(modalSource).not.toContain("selectCardKind");
+    expect(modalSource).not.toContain("Selecciona si tu tarjeta es débito");
+    expect(modalSource).not.toContain("reconcileKlapSandboxPayment");
   });
 
   it("no persiste ni registra número completo o CVV", () => {
@@ -62,6 +51,13 @@ describe("Klap Checkout Transparente frontend", () => {
     expect(modalSource).not.toContain("console.warn");
     expect(serviceSource).not.toContain('localStorage.setItem("cardNumber"');
     expect(serviceSource).not.toContain('localStorage.setItem("cvv"');
+  });
+
+  it("solo muestra el tipo confirmado por el webhook o estado del backend", () => {
+    expect(modalSource).toContain("confirmedPaymentLabel(status)");
+    expect(modalSource).toContain("status.cardBrand");
+    expect(modalSource).toContain("status.cardType");
+    expect(modalSource).not.toMatch(/["'`]\d{13,19}["'`]/);
   });
 
   it("cancela una solicitud no pagada y permite crear otra sin recargar", () => {

@@ -17,10 +17,6 @@ export async function paymentsRoutes(fastify: FastifyInstance): Promise<void> {
     "/payments/:paymentId/reconcile/mercadopago",
     paymentsController.reconcileMercadoPagoPayment,
   );
-  fastify.post(
-    "/payments/:paymentId/reconcile/klap-sandbox",
-    paymentsController.reconcileKlapSandboxPayment,
-  );
   const webhookOptions = {
     config: {
       // Los proveedores reintentan automáticamente sus notificaciones.

@@ -4,7 +4,6 @@ import {
   createPaymentSchema,
   createKlapEmbeddedOrderSchema,
   reconcileMercadoPagoPaymentSchema,
-  reconcileKlapSandboxPaymentSchema,
   prontoPagaWebhookSchema,
   mercadoPagoWebhookSchema,
 } from "./payments.schema.js";
@@ -144,72 +143,6 @@ export const paymentsController = {
     sendOk(reply, result.payment);
   },
 
-
-  async reconcileKlapSandboxPayment(
-    request: FastifyRequest,
-    reply: FastifyReply,
-  ): Promise<void> {
-    const token = extractBearer(request);
-
-    if (!token) {
-      sendError(reply, {
-        code: "UNAUTHORIZED",
-        message: "Missing Bearer token.",
-        statusCode: 401,
-      });
-      return;
-    }
-
-    const paymentId = String(
-      (request.params as Record<string, unknown> | undefined)?.["paymentId"] ??
-        "",
-    ).trim();
-
-    if (
-      !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
-        paymentId,
-      )
-    ) {
-      sendError(reply, {
-        code: "VALIDATION_ERROR",
-        message: "paymentId must be a valid UUID.",
-        statusCode: 400,
-      });
-      return;
-    }
-
-    const parsed = reconcileKlapSandboxPaymentSchema.safeParse(
-      request.body ?? {},
-    );
-
-    if (!parsed.success) {
-      sendError(reply, {
-        code: "VALIDATION_ERROR",
-        message:
-          parsed.error.errors[0]?.message ??
-          "Invalid Klap sandbox reconciliation payload.",
-        statusCode: 400,
-      });
-      return;
-    }
-
-    const result = await paymentsService.reconcileKlapSandboxPayment(
-      token,
-      paymentId,
-      parsed.data.profile,
-    );
-
-    if (!result.ok) {
-      sendError(reply, {
-        code: result.code,
-        message: result.message,
-        statusCode: result.statusCode,
-      });
-      return;
-    }
-
-    sendOk(reply, result.payment);
-  },
 
   async reconcileMercadoPagoPayment(
     request: FastifyRequest,
