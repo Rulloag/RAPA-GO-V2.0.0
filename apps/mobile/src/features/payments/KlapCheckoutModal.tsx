@@ -28,6 +28,7 @@ import {
 import { walletService } from "../wallet/wallet.service.js";
 
 type CardBrand = "visa" | "mastercard" | "amex" | "unknown";
+export type KlapCardKind = "debit" | "prepaid" | "credit";
 
 type RejectionState = {
   code: string | null;
@@ -85,6 +86,22 @@ function cardBrandLabel(brand: CardBrand): string {
   if (brand === "mastercard") return "MASTERCARD";
   if (brand === "amex") return "AMERICAN EXPRESS";
   return "TARJETA";
+}
+
+function cardKindLabel(kind: KlapCardKind): string {
+  if (kind === "credit") return "Crédito";
+  if (kind === "prepaid") return "Prepago";
+  return "Débito";
+}
+
+function cardKindDescription(kind: KlapCardKind): string {
+  if (kind === "credit") {
+    return "Compra con cupo de crédito. Puedes elegir las cuotas disponibles.";
+  }
+  if (kind === "prepaid") {
+    return "Usa el saldo cargado en tu tarjeta y paga en una sola vez.";
+  }
+  return "El monto se descuenta de tu cuenta y se paga en una sola vez.";
 }
 
 function confirmedCardTypeLabel(
@@ -150,6 +167,8 @@ export function KlapCheckoutModal({
   onCancelRequest,
 }: Props): JSX.Element {
   const [cardNumber, setCardNumber] = useState("");
+  const [cardKind, setCardKind] = useState<KlapCardKind | null>(null);
+  const [quotas, setQuotas] = useState("2");
   const [expiry, setExpiry] = useState("");
   const [cvv, setCvv] = useState("");
   const [processing, setProcessing] = useState(false);
@@ -175,11 +194,20 @@ export function KlapCheckoutModal({
   }, [payment]);
 
   const brand = useMemo(() => detectCardBrand(cardNumber), [cardNumber]);
+  const klapCardType =
+    cardKind === "credit"
+      ? "2"
+      : cardKind === "debit" || cardKind === "prepaid"
+        ? "1"
+        : "";
+  const effectiveQuotas = cardKind === "credit" ? quotas : "1";
   const busy = processing || cancelling || retrying;
   const formLocked = busy || rejection !== null;
 
   useEffect(() => {
     setCardNumber("");
+    setCardKind(null);
+    setQuotas("2");
     setExpiry("");
     setCvv("");
     setProcessing(false);
@@ -322,14 +350,27 @@ export function KlapCheckoutModal({
     setFieldError(null);
   };
 
+  const selectCardKind = (kind: KlapCardKind): void => {
+    if (busy || rejection) return;
+    setCardKind(kind);
+    if (kind !== "credit") setQuotas("2");
+    setFieldError(null);
+  };
+
   const validateForm = (): string | null => {
     const digits = onlyDigits(cardNumber);
     if (digits.length < 13) return "Revisa el número de tarjeta.";
+    if (!cardKind) {
+      return "Selecciona Débito, Prepago o Crédito para preparar el checkout de Klap.";
+    }
     if (!isValidExpiry(expiry)) {
       return "Ingresa un vencimiento válido en formato MM/AA.";
     }
     if (!/^\d{3,4}$/.test(cvv)) {
       return "El CVV debe tener 3 o 4 números.";
+    }
+    if (cardKind === "credit" && !/^\d+$/.test(quotas)) {
+      return "Selecciona una cantidad de cuotas válida.";
     }
     return null;
   };
@@ -445,11 +486,15 @@ export function KlapCheckoutModal({
 
   const visibleCardNumber = cardNumber || "•••• •••• •••• ••••";
   const visibleExpiry = expiry || "MM/AA";
-  const selectedKindLabel = "Tipo detectado por Klap al procesar";
+  const selectedKindLabel = cardKind
+    ? cardKindLabel(cardKind)
+    : "Tipo pendiente de selección";
   const amountLabel = payment?.amountClp
     ? ` · $${Math.round(payment.amountClp).toLocaleString("es-CL")}`
     : "";
-  const payButtonLabel = `PAGAR CON KLAP${amountLabel}`;
+  const payButtonLabel = cardKind
+    ? `PAGAR CON ${cardKindLabel(cardKind).toUpperCase()}${amountLabel}`
+    : `SELECCIONA EL TIPO DE TARJETA${amountLabel}`;
 
   return (
     <IonModal
@@ -567,29 +612,69 @@ export function KlapCheckoutModal({
                 />
               </label>
 
-              <div
-                role="status"
-                style={{
-                  display: "grid",
-                  gap: 7,
-                  borderRadius: 15,
-                  padding: "12px 13px",
-                  background: "#eef6ff",
-                  color: "#183b63",
-                  border: "1px solid #b8d8f5",
-                  fontWeight: 850,
-                  fontSize: ".78rem",
-                  lineHeight: 1.42,
-                }}
-              >
-                <div style={{ fontWeight: 950 }}>
-                  Detección automática por Klap
+              <div style={{ display: "grid", gap: 9 }}>
+                <div style={{ color: "#4b3410", fontSize: ".78rem", fontWeight: 950 }}>
+                  Tipo de tarjeta
                 </div>
-                <div>
-                  RAPA GO no te pedirá elegir débito, crédito o prepago. Klap
-                  reconocerá el producto de la tarjeta durante el pago y el
-                  backend guardará el tipo confirmado por Klap o por el banco.
+
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
+                    gap: 8,
+                  }}
+                >
+                  {(["debit", "prepaid", "credit"] as KlapCardKind[]).map((kind) => {
+                    const selected = cardKind === kind;
+
+                    return (
+                      <button
+                        key={kind}
+                        type="button"
+                        disabled={formLocked}
+                        aria-pressed={selected}
+                        onClick={() => selectCardKind(kind)}
+                        style={{
+                          minHeight: 58,
+                          borderRadius: 14,
+                          border: selected
+                            ? "2px solid #b77b0d"
+                            : "1px solid rgba(151,105,27,.32)",
+                          background: selected ? "#fff2c5" : "#ffffff",
+                          color: "#2f2109",
+                          fontWeight: 950,
+                        }}
+                      >
+                        {cardKindLabel(kind)}
+                      </button>
+                    );
+                  })}
                 </div>
+
+                <div
+                  role="status"
+                  style={{
+                    borderRadius: 15,
+                    padding: "11px 12px",
+                    background: "#fff8df",
+                    color: "#5f3f00",
+                    border: "1px solid rgba(210,164,58,.52)",
+                    fontWeight: 850,
+                    fontSize: ".74rem",
+                    lineHeight: 1.42,
+                  }}
+                >
+                  {cardKind
+                    ? `${cardKindDescription(cardKind)} Klap y el banco confirmarán el producto definitivo después del procesamiento.`
+                    : "El Checkout Transparente de Klap necesita este dato para preparar el pago. RAPA GO no compara el número con listas de tarjetas."}
+                </div>
+
+                <input
+                  type="hidden"
+                  data-klap-card-type
+                  value={klapCardType}
+                  readOnly
+                />
               </div>
 
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
@@ -639,6 +724,38 @@ export function KlapCheckoutModal({
                 </label>
               </div>
 
+              {cardKind === "credit" ? (
+                <label style={labelStyle}>
+                  Cuotas
+                  <select
+                    data-klap-quotas
+                    value={quotas}
+                    onChange={(event) => {
+                      setQuotas(event.target.value);
+                      setFieldError(null);
+                    }}
+                    disabled={formLocked}
+                    required
+                    style={inputStyle}
+                  >
+                    {Array.from({ length: 11 }, (_, index) => index + 2).map(
+                      (quota) => (
+                        <option key={quota} value={String(quota)}>
+                          {quota} cuotas
+                        </option>
+                      ),
+                    )}
+                  </select>
+                </label>
+              ) : (
+                <input
+                  type="hidden"
+                  data-klap-quotas
+                  value={effectiveQuotas}
+                  readOnly
+                />
+              )}
+
               <input id="generateToken" type="checkbox" name="generateToken" data-klap-generate-token checked={false} readOnly hidden />
 
               {fieldError && (
@@ -664,14 +781,14 @@ export function KlapCheckoutModal({
               )}
 
               <div style={{ borderRadius: 14, padding: "10px 12px", background: "#eef6ff", color: "#183b63", border: "1px solid #b8d8f5", fontSize: ".72rem", lineHeight: 1.42, fontWeight: 800 }}>
-                RAPA GO no guarda el número completo ni el CVV. El tipo de tarjeta se confirma automáticamente con Klap después de procesar el pago.
+                RAPA GO no guarda el número completo ni el CVV. La selección prepara el Checkout Transparente y el tipo definitivo queda confirmado por Klap o por el banco.
               </div>
 
               {!rejection && (
                 <IonButton
                   type="submit"
                   expand="block"
-                  disabled={busy}
+                  disabled={busy || !cardKind}
                   style={{
                     "--background": "linear-gradient(135deg,#d5a737,#f3d781)",
                     "--color": "#171006",

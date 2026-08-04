@@ -15,7 +15,7 @@ describe("Klap Checkout Transparente frontend", () => {
     expect(requestRideSource).not.toContain("window.location.href = payment.urlPay");
   });
 
-  it("usa el contrato público del formulario Klap sin imponer el producto", () => {
+  it("usa el contrato requerido por Checkout Transparente", () => {
     expect(modalSource).toContain('id="checkout-klap"');
     expect(modalSource).toContain("data-klap-order-id");
     expect(modalSource).toContain("data-klap-fn-success");
@@ -23,25 +23,24 @@ describe("Klap Checkout Transparente frontend", () => {
     expect(modalSource).toContain("data-klap-card-number");
     expect(modalSource).toContain("data-klap-expiry-date");
     expect(modalSource).toContain("data-klap-card-cvv");
-    expect(modalSource).not.toContain("data-klap-card-type");
-    expect(modalSource).not.toContain("data-klap-quotas");
+    expect(modalSource).toContain("data-klap-card-type");
+    expect(modalSource).toContain("data-klap-quotas");
     expect(serviceSource).toContain("sdk.init({");
     expect(serviceSource).toContain('method: "tarjetas"');
     expect(modalSource).toContain("initializedSdk.payOrder?.()");
   });
 
-  it("deja que Klap reconozca automáticamente débito, crédito o prepago", () => {
+  it("prepara el SDK sin escribir tarjetas de prueba en runtime", () => {
     expect(modalSource).toContain("Vista previa de la tarjeta");
-    expect(modalSource).toContain("Detección automática por Klap");
+    expect(modalSource).toContain("Tipo de tarjeta");
+    expect(modalSource).toContain("selectCardKind");
+    expect(modalSource).toContain("PAGAR CON");
+    expect(modalSource).toContain("disabled={busy || !cardKind}");
     expect(modalSource).toContain(
-      "RAPA GO no te pedirá elegir débito, crédito o prepago",
+      "RAPA GO no compara el número con listas de tarjetas",
     );
-    expect(modalSource).toContain("PAGAR CON KLAP");
-    expect(modalSource).toContain("disabled={busy}");
     expect(modalSource).not.toContain("KLAP_SANDBOX_CARD_KIND_BY_NUMBER");
     expect(modalSource).not.toContain("KLAP_SANDBOX_PROFILE_BY_NUMBER");
-    expect(modalSource).not.toContain("selectCardKind");
-    expect(modalSource).not.toContain("Selecciona si tu tarjeta es débito");
     expect(modalSource).not.toContain("reconcileKlapSandboxPayment");
   });
 
