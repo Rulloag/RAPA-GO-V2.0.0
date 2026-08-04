@@ -260,8 +260,13 @@
   /* Arena de Anakena arriba, bruma de océano abajo: el mismo eje frío que el
      tema oscuro, pero en clave alta. Antes eran dos beiges casi idénticos. */
   --rp-page-photo: url("/assets/rapa-go-bg.jpg");
+  /* El velo estaba en .95/.93: tapaba la foto casi por completo y dejaba un
+     lavado beige plano, tan claro que las tarjetas (crema casi blanca) no se
+     despegaban del fondo. Baja a .86/.88 y el tono se profundiza un paso, así
+     la superficie clara de las tarjetas separa por luminancia y la foto vuelve
+     a intuirse, igual que de noche. */
   --rp-page-bg:
-    linear-gradient(180deg, rgba(242, 230, 211, 0.95), rgba(207, 231, 236, 0.93)),
+    linear-gradient(180deg, rgba(206, 182, 147, 0.80), rgba(150, 186, 201, 0.84)),
     var(--rp-page-photo) center / cover no-repeat;
   --rp-surface: linear-gradient(180deg, #fffdf9, #fdf7ec);
   --rp-surface-soft: rgba(26, 26, 26, 0.045);
