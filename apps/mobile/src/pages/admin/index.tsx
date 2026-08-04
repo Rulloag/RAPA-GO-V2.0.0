@@ -2200,6 +2200,7 @@ export function AdminHomePage(): JSX.Element {
   const [showTripSafetyReportsModal, setShowTripSafetyReportsModal] = useState(false);
   const [tripSafetyReports, setTripSafetyReports] = useState<AdminTripSafetyReport[]>(() => readAdminTripSafetyReports());
   const [pendingChargeWaiver, setPendingChargeWaiver] = useState<AdminPassengerPendingCharge | null>(null);
+  const loadInFlightRef = useRef<Promise<void> | null>(null);
 
 
   useEffect(() => {
@@ -2222,61 +2223,101 @@ export function AdminHomePage(): JSX.Element {
     async (silent = false) => {
       if (!session?.accessToken) return;
 
-      if (!silent) setLoading(true);
-      setError(null);
+      if (loadInFlightRef.current) {
+        await loadInFlightRef.current;
+        return;
+      }
 
-      try {
+      const pendingLoad = (async () => {
+        if (!silent) setLoading(true);
+        setError(null);
+
         const token = session.accessToken;
+        const failures: string[] = [];
 
-        const [
-          dash,
-          acts,
-          ridesResult,
-          driversResult,
-          usersResult,
-          policyChargesResult,
-          cashBenefitsResult,
-        ] = await Promise.all([
-            dashboardService.getDashboard(token),
-            dashboardService.getActivity(token, 5),
-            adminService
-              .listRides(token, {})
-              .catch(() => [] as AdminRideData[]),
-            adminService
-              .listActiveDrivers(token)
-              .catch(() => [] as ActiveDriverData[]),
-            adminService
-              .listUsers(token, {})
-              .catch(() => [] as AdminUserData[]),
-            fetchAdminBackendPolicyCharges(token)
-              .catch(() => [] as AdminPassengerPendingCharge[]),
+        try {
+          const [
+            dash,
+            acts,
+            ridesResult,
+            driversResult,
+            usersResult,
+            policyChargesResult,
+            cashBenefitsResult,
+          ] = await Promise.all([
+            dashboardService.getDashboard(token).catch(() => {
+              failures.push("dashboard");
+              return null as DashboardData | null;
+            }),
+            dashboardService.getActivity(token, 5).catch(() => {
+              failures.push("activity");
+              return [] as DashActivityItem[];
+            }),
+            adminService.listRides(token, {}).catch(() => {
+              failures.push("rides");
+              return [] as AdminRideData[];
+            }),
+            adminService.listActiveDrivers(token).catch(() => {
+              failures.push("drivers");
+              return [] as ActiveDriverData[];
+            }),
+            adminService.listUsers(token, {}).catch(() => {
+              failures.push("users");
+              return [] as AdminUserData[];
+            }),
+            fetchAdminBackendPolicyCharges(token).catch(() => {
+              failures.push("policy-charges");
+              return [] as AdminPassengerPendingCharge[];
+            }),
             walletService
               .adminListCashOverpaymentBenefits(token, "all")
-              .catch(() => [] as CashOverpaymentBenefitData[]),
+              .catch(() => {
+                failures.push("cash-benefits");
+                return [] as CashOverpaymentBenefitData[];
+              }),
           ]);
 
-        setData(dash);
-        setActivity(acts);
-        setAdminRides(ridesResult);
-        setAdminDrivers(driversResult);
-        setAdminUsers(usersResult);
-        if (cashBenefitsResult.length > 0) {
-          mergeAdminBackendCashOverpaymentBenefits(
-            cashBenefitsResult,
-            ridesResult,
+          if (dash) setData(dash);
+          if (!failures.includes("activity")) setActivity(acts);
+          if (!failures.includes("rides")) setAdminRides(ridesResult);
+          if (!failures.includes("drivers")) setAdminDrivers(driversResult);
+          if (!failures.includes("users")) setAdminUsers(usersResult);
+
+          if (cashBenefitsResult.length > 0) {
+            mergeAdminBackendCashOverpaymentBenefits(
+              cashBenefitsResult,
+              ridesResult,
+            );
+            setCashReviewsRevision((current) => current + 1);
+          }
+
+          if (policyChargesResult.length > 0) {
+            mergeAdminBackendPolicyCharges(policyChargesResult);
+            setCashReviewsRevision((current) => current + 1);
+          }
+
+          if (failures.length > 0) {
+            setError(
+              "Algunos datos no pudieron actualizarse. Espera un minuto y presiona Actualizar.",
+            );
+          }
+        } catch (err) {
+          setError(
+            err instanceof Error ? err.message : "Error al cargar dashboard.",
           );
-          setCashReviewsRevision((current) => current + 1);
+        } finally {
+          if (!silent) setLoading(false);
         }
-        if (policyChargesResult.length > 0) {
-          mergeAdminBackendPolicyCharges(policyChargesResult);
-          setCashReviewsRevision((current) => current + 1);
-        }
-      } catch (err) {
-        setError(
-          err instanceof Error ? err.message : "Error al cargar dashboard.",
-        );
+      })();
+
+      loadInFlightRef.current = pendingLoad;
+
+      try {
+        await pendingLoad;
       } finally {
-        if (!silent) setLoading(false);
+        if (loadInFlightRef.current === pendingLoad) {
+          loadInFlightRef.current = null;
+        }
       }
     },
     [session?.accessToken],
@@ -2288,34 +2329,59 @@ export function AdminHomePage(): JSX.Element {
 
   useEffect(() => {
     if (selectedKpi !== "drivers") return;
-
     setAdminAvailabilityRevision((current) => current + 1);
-    void load(true);
-  }, [selectedKpi, load]);
+  }, [selectedKpi]);
+
+  const refreshDriversOnly = useCallback(async () => {
+    if (!session?.accessToken) return;
+
+    try {
+      const driversResult = await adminService.listActiveDrivers(
+        session.accessToken,
+      );
+      setAdminDrivers(driversResult);
+      setAdminAvailabilityRevision((current) => current + 1);
+    } catch {
+      // Mantiene los datos anteriores. La actualización manual sigue disponible.
+    }
+  }, [session?.accessToken]);
 
   useEffect(() => {
     const refreshAvailability = () => {
-      setAdminAvailabilityRevision((current) => current + 1);
-      void load(true);
+      void refreshDriversOnly();
     };
 
-    window.addEventListener("storage", refreshAvailability);
+    const refreshAvailabilityFromStorage = (event: StorageEvent) => {
+      if (
+        event.key &&
+        ![
+          DRIVER_AVAILABILITY_STORAGE_KEY,
+          DRIVER_AVAILABILITY_MAP_KEY,
+          DRIVER_AVAILABILITY_EMAIL_KEY,
+          DRIVER_AVAILABILITY_NAME_KEY,
+          DRIVER_AVAILABILITY_SNAPSHOT_KEY,
+        ].includes(event.key)
+      ) {
+        return;
+      }
+
+      void refreshDriversOnly();
+    };
+
+    window.addEventListener("storage", refreshAvailabilityFromStorage);
     window.addEventListener(
       DRIVER_AVAILABILITY_EVENT,
       refreshAvailability as EventListener,
     );
 
-    const timerId = window.setInterval(refreshAvailability, 3000);
-
     return () => {
-      window.removeEventListener("storage", refreshAvailability);
+      window.removeEventListener("storage", refreshAvailabilityFromStorage);
       window.removeEventListener(
         DRIVER_AVAILABILITY_EVENT,
         refreshAvailability as EventListener,
       );
-      window.clearInterval(timerId);
     };
-  }, [load]);
+  }, [refreshDriversOnly]);
 
   useEffect(() => {
     const refreshCashReviews = () => setCashReviewsRevision((current) => current + 1);
@@ -2352,8 +2418,6 @@ export function AdminHomePage(): JSX.Element {
     } catch {
       // No bloquea navegación.
     }
-
-    void load(true);
 
     const targetPath = ADMIN_DRIVERS_ROUTE;
     const currentPath = cleanPath(window.location.pathname);
@@ -2725,9 +2789,25 @@ export function AdminHomePage(): JSX.Element {
               <p className="admin-hero-date">{dateStr}</p>
             </div>
 
-            <div className="admin-status-pill">
-              <span className="admin-status-dot" />
-              Sistema online
+            <div
+              style={{
+                display: "grid",
+                justifyItems: "end",
+                gap: "8px",
+              }}
+            >
+              <div className="admin-status-pill">
+                <span className="admin-status-dot" />
+                Sistema online
+              </div>
+              <IonButton
+                size="small"
+                fill="outline"
+                disabled={loading}
+                onClick={() => void load()}
+              >
+                Actualizar
+              </IonButton>
             </div>
           </section>
 
@@ -6260,8 +6340,6 @@ const DRIVER_AVAILABILITY_REFRESH_EVENTS = [
   "rapago:availability-changed",
   "rapago:driver-status-changed",
   ADMIN_DRIVERS_REFRESH_EVENT,
-  "focus",
-  "visibilitychange",
 ] as const;
 
 function normalizeAvailabilityValue(
@@ -6571,12 +6649,6 @@ export function AdminDriversPage(): JSX.Element {
   useEffect(() => {
     void loadDrivers();
     void loadDriverRestOverview();
-
-    const restTimerId = window.setInterval(() => {
-      void loadDriverRestOverview(true);
-    }, 60_000);
-
-    return () => window.clearInterval(restTimerId);
   }, [loadDriverRestOverview, loadDrivers]);
 
   useEffect(() => {
@@ -6607,22 +6679,36 @@ export function AdminDriversPage(): JSX.Element {
       void loadDrivers(true);
     };
 
-    window.addEventListener("storage", refreshAvailability);
+    const refreshAvailabilityFromStorage = (event: StorageEvent) => {
+      if (
+        event.key &&
+        ![
+          DRIVER_AVAILABILITY_STORAGE_KEY,
+          DRIVER_AVAILABILITY_MAP_KEY,
+          DRIVER_AVAILABILITY_EMAIL_KEY,
+          DRIVER_AVAILABILITY_NAME_KEY,
+          DRIVER_AVAILABILITY_SNAPSHOT_KEY,
+        ].includes(event.key)
+      ) {
+        return;
+      }
+
+      refreshAvailability();
+    };
+
+    window.addEventListener("storage", refreshAvailabilityFromStorage);
     DRIVER_AVAILABILITY_REFRESH_EVENTS.forEach((eventName) => {
       window.addEventListener(eventName, refreshAvailability as EventListener);
     });
 
-    const timerId = window.setInterval(refreshAvailability, 2500);
-
     return () => {
-      window.removeEventListener("storage", refreshAvailability);
+      window.removeEventListener("storage", refreshAvailabilityFromStorage);
       DRIVER_AVAILABILITY_REFRESH_EVENTS.forEach((eventName) => {
         window.removeEventListener(
           eventName,
           refreshAvailability as EventListener,
         );
       });
-      window.clearInterval(timerId);
     };
   }, [loadDrivers]);
 

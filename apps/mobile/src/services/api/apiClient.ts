@@ -13,9 +13,17 @@ const getRateLimitCooldowns = new Map<
   string,
   { until: number; response: ApiResponse<unknown> }
 >();
+const globalGetRateLimitCooldowns = new Map<
+  string,
+  { until: number; response: ApiResponse<unknown> }
+>();
 
 function getRequestIdentity(path: string, options: RequestOptions = {}): string {
   return `${options.token ?? "anonymous"}::${path}`;
+}
+
+function getRateLimitScope(options: RequestOptions = {}): string {
+  return options.token ?? "anonymous";
 }
 
 async function request<T>(
@@ -144,9 +152,19 @@ async function requestWithRetry<T>(
 export const apiClient = {
   get<T>(path: string, options?: RequestOptions): Promise<ApiResponse<T>> {
     const key = getRequestIdentity(path, options);
+    const scope = getRateLimitScope(options);
+    const now = Date.now();
+    const globalCooldown = globalGetRateLimitCooldowns.get(scope);
+
+    if (globalCooldown && globalCooldown.until > now) {
+      return Promise.resolve(globalCooldown.response as ApiResponse<T>);
+    }
+
+    if (globalCooldown) globalGetRateLimitCooldowns.delete(scope);
+
     const cooldown = getRateLimitCooldowns.get(key);
 
-    if (cooldown && cooldown.until > Date.now()) {
+    if (cooldown && cooldown.until > now) {
       return Promise.resolve(cooldown.response as ApiResponse<T>);
     }
 
@@ -158,10 +176,18 @@ export const apiClient = {
     const pending = requestWithRetry<T>("GET", path, undefined, options, 2);
     const tracked = pending.then((result) => {
       if (result.ok === false && result.statusCode === 429) {
-        getRateLimitCooldowns.set(key, {
-          until: Date.now() + 65_000,
-          response: result as ApiResponse<unknown>,
+        const until = Date.now() + 65_000;
+        const cachedResponse = result as ApiResponse<unknown>;
+
+        getRateLimitCooldowns.set(key, { until, response: cachedResponse });
+        globalGetRateLimitCooldowns.set(scope, {
+          until,
+          response: cachedResponse,
         });
+
+        window.dispatchEvent(
+          new CustomEvent("api:rate-limited", { detail: { until } }),
+        );
       } else {
         getRateLimitCooldowns.delete(key);
       }
