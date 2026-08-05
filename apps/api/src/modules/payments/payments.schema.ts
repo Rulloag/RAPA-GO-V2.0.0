@@ -22,6 +22,7 @@ export const createKlapEmbeddedOrderSchema = z.object({
 export type CreateKlapEmbeddedOrderInput = z.input<typeof createKlapEmbeddedOrderSchema>;
 
 
+
 // ── Conciliación segura del regreso de Mercado Pago ───────────────────────────
 
 export const reconcileMercadoPagoPaymentSchema = z.object({

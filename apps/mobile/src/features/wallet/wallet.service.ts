@@ -54,6 +54,7 @@ export interface PaymentOrderData {
   createdAt: string;
 }
 
+
 export interface PaymentStatusData {
   id: string;
   rideRequestId: string;
@@ -66,6 +67,13 @@ export interface PaymentStatusData {
   failedAt: string | null;
   providerOrderId: string | null;
   providerPaymentId: string | null;
+  declineCode: string | null;
+  declineReason: string | null;
+  retryAllowed: boolean;
+  cardBrand: string | null;
+  cardType: "credit" | "debit" | "prepaid" | null;
+  cardLast4: string | null;
+  installments: number | null;
   refundStatus: string | null;
   refundProviderId: string | null;
   refundedAt: string | null;
@@ -85,6 +93,13 @@ export interface PaymentReceiptData {
   status: string;
   providerOrderId: string | null;
   providerPaymentId: string | null;
+  declineCode: string | null;
+  declineReason: string | null;
+  retryAllowed: boolean;
+  cardBrand: string | null;
+  cardType: "credit" | "debit" | "prepaid" | null;
+  cardLast4: string | null;
+  installments: number | null;
   refundStatus: string | null;
   refundProviderId: string | null;
   paidAt: string | null;

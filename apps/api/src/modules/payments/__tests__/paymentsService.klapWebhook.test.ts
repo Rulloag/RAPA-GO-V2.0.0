@@ -279,6 +279,31 @@ describe("PaymentsService.handleKlapConfirmWebhook", () => {
     expect(mockMarkSuccessAndActivateRide).not.toHaveBeenCalled();
   });
 
+  it("persists only safe card metadata needed by the passenger receipt", async () => {
+    await service.handleKlapConfirmWebhook(
+      confirmBody({
+        card_type: "credito",
+        brand: "Visa",
+        last_digits: "1091",
+        quotas_number: "3",
+        quotas_type: "issuer",
+      }),
+      { apikey: validApikeyHeader() },
+    );
+
+    expect(mockMarkSuccessAndActivateRide).toHaveBeenCalledWith(
+      expect.objectContaining({
+        providerPayload: expect.objectContaining({
+          card_type: "credito",
+          brand: "Visa",
+          last_digits: "1091",
+          quotas_number: "3",
+          quotas_type: "issuer",
+        }),
+      }),
+    );
+  });
+
   it("23/24. never persists token_id or bin (not even declared in the claimed event payload)", async () => {
     await service.handleKlapConfirmWebhook(
       confirmBody({ token_id: "secret-token-should-not-appear", bin: "123456" }),
@@ -372,11 +397,12 @@ describe("PaymentsService.handleKlapRejectWebhook", () => {
     expect(String(persisted.message).length).toBeLessThanOrEqual(255);
   });
 
-  it("35. processes a pending/processing payment into rejected", async () => {
+  it("35. processes a pending/processing payment into rejected without deleting the ride", async () => {
     mockFindByProviderOrderId.mockResolvedValue(paymentFixture({ status: "processing" }));
     const result = await service.handleKlapRejectWebhook(rejectBody(), { apikey: validApikeyHeader() });
     expect(result.ok).toBe(true);
     expect(mockMarkRejected).toHaveBeenCalledOnce();
+    expect(mockCancelPendingPayment).not.toHaveBeenCalled();
   });
 
   it("36. a duplicate reject does not repeat the transition", async () => {

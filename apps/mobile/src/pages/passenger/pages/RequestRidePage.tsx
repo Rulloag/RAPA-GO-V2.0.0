@@ -67,6 +67,7 @@ import {
   clearPendingKlapPayment,
   createKlapEmbeddedOrder,
   readPendingKlapPayment,
+  resetKlapCheckoutForNextOrder,
   savePendingKlapPayment,
   type PendingKlapPaymentRecord,
 } from "../../../features/payments/klapCheckout.service.js";
@@ -7121,13 +7122,44 @@ export default function RequestRidePage(): JSX.Element {
   );
 
   const handleKlapRejected = useCallback(
-    (pending: PendingKlapPaymentRecord, message: string): void => {
+    (_pending: PendingKlapPaymentRecord, message: string): void => {
+      // El modal permanece abierto para que el pasajero vea el motivo y pueda
+      // probar otra tarjeta. Solo limpiamos la orden terminal del almacenamiento.
       clearPendingKlapPayment();
-      setKlapPayment(null);
       setSubmitError(message);
-      goToTripsAfterRequest(pending.rideRequestId);
     },
-    [goToTripsAfterRequest],
+    [],
+  );
+
+  const handleRetryKlapPayment = useCallback(
+    async (pending: PendingKlapPaymentRecord): Promise<PendingKlapPaymentRecord> => {
+      if (!session?.accessToken) {
+        throw new Error("Tu sesión expiró. Inicia sesión nuevamente.");
+      }
+
+      clearPendingKlapPayment();
+      resetKlapCheckoutForNextOrder();
+
+      const order = await createKlapEmbeddedOrder(
+        session.accessToken,
+        pending.rideRequestId,
+      );
+
+      const nextPayment: PendingKlapPaymentRecord = {
+        ...pending,
+        paymentId: order.paymentId,
+        orderId: order.publicCheckoutData.orderId,
+        provider: "klap",
+        createdAt: new Date().toISOString(),
+        checkoutStartedAt: null,
+      };
+
+      savePendingKlapPayment(nextPayment);
+      setSubmitError(null);
+      setKlapPayment(nextPayment);
+      return nextPayment;
+    },
+    [session?.accessToken],
   );
 
   const handleCloseKlapCheckout = useCallback(
@@ -10633,6 +10665,7 @@ return (
           accessToken={session?.accessToken}
           onApproved={handleKlapApproved}
           onRejected={handleKlapRejected}
+          onRetryRequest={handleRetryKlapPayment}
           onClose={handleCloseKlapCheckout}
           onCancelRequest={handleCancelKlapRequest}
         />

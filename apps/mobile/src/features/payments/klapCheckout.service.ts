@@ -13,9 +13,19 @@ export const KLAP_SANDBOX_SCRIPT_URL =
 export const KLAP_SANDBOX_CARDINAL_URL =
   "https://songbirdstag.cardinalcommerce.com/cardinalcruise/v1/songbird.js";
 
+export const KLAP_PRODUCTION_CARDINAL_URL =
+  "https://songbird.cardinalcommerce.com/edge/v1/songbird.js";
+
 const ALLOWED_KLAP_SCRIPT_HOSTS = new Set([
   "pagos-pasarela-sandbox.mcdesaqa.cl",
   "pagos.pasarela.multicaja.cl",
+]);
+
+const ALLOWED_KLAP_RECEIPT_HOSTS = new Set([
+  ...ALLOWED_KLAP_SCRIPT_HOSTS,
+  "api-pasarela-sandbox.mcdesaqa.cl",
+  "api-pasarela.multicaja.cl",
+  "api.pasarela.multicaja.cl",
 ]);
 
 const ALLOWED_CARDINAL_SCRIPT_HOSTS = new Set([
@@ -62,12 +72,52 @@ type KlapBrowserSdk = {
   payOrder?: () => unknown;
 };
 
+type CardinalBrowserSdk = {
+  continue?: (
+    action: "cca",
+    challenge: {
+      AcsUrl: string;
+      Payload: string;
+    },
+    order: {
+      OrderDetails: {
+        TransactionId: string;
+      };
+    },
+  ) => unknown;
+  on?: (
+    eventName: "payments.setupComplete" | "payments.validated",
+    callback: (data?: unknown, jwt?: string) => void,
+  ) => unknown;
+};
+
 declare global {
   interface Window {
     KLAP?: KlapBrowserSdk;
-    Cardinal?: unknown;
+    Cardinal?: CardinalBrowserSdk;
   }
 }
+
+type KlapChallengeResponse = {
+  status?: unknown;
+  data?: {
+    acsUrl?: unknown;
+    pareq?: unknown;
+    authenticationTransactionId?: unknown;
+    consumerAuthInfo?: {
+      acsUrl?: unknown;
+      pareq?: unknown;
+      authenticationTransactionId?: unknown;
+      paresStatus?: unknown;
+    } | null;
+  } | null;
+};
+
+type ParsedKlapChallenge = {
+  acsUrl: string;
+  pareq: string;
+  transactionId: string;
+};
 
 function unwrap<T>(
   result: {
@@ -232,11 +282,20 @@ function validateKlapScriptUrl(rawUrl: string): string {
   return url.toString();
 }
 
-function cardinalAvailable(): boolean {
-  return (
-    typeof window.Cardinal === "object" ||
-    typeof window.Cardinal === "function"
+function configuredCardinalScriptUrl(): string {
+  const configured = String(
+    import.meta.env.VITE_KLAP_CARDINAL_SCRIPT_URL ?? "",
+  ).trim();
+
+  if (configured) return configured;
+
+  const klapScriptUrl = new URL(
+    validateKlapScriptUrl(configuredKlapScriptUrl()),
   );
+
+  return klapScriptUrl.hostname.toLowerCase().includes("sandbox")
+    ? KLAP_SANDBOX_CARDINAL_URL
+    : KLAP_PRODUCTION_CARDINAL_URL;
 }
 
 function validateCardinalScriptUrl(rawUrl: string): string {
@@ -245,7 +304,7 @@ function validateCardinalScriptUrl(rawUrl: string): string {
   try {
     url = new URL(rawUrl);
   } catch {
-    throw new Error("La URL de seguridad 3DS no es válida.");
+    throw new Error("La URL de seguridad 3DS de Klap no es válida.");
   }
 
   if (
@@ -253,20 +312,29 @@ function validateCardinalScriptUrl(rawUrl: string): string {
     !ALLOWED_CARDINAL_SCRIPT_HOSTS.has(url.hostname.toLowerCase())
   ) {
     throw new Error(
-      "La URL de seguridad 3DS no pertenece a un host permitido.",
+      "La URL de seguridad 3DS no pertenece a un host oficial permitido.",
     );
   }
 
   return url.toString();
 }
 
-async function waitForCardinalGlobal(timeoutMs = 20_000): Promise<void> {
+function cardinalAvailable(): boolean {
+  return (
+    typeof window.Cardinal === "object" ||
+    typeof window.Cardinal === "function"
+  );
+}
+
+async function waitForCardinalGlobal(
+  timeoutMs = 20_000,
+): Promise<void> {
   const startedAt = Date.now();
 
   while (!cardinalAvailable()) {
     if (Date.now() - startedAt >= timeoutMs) {
       throw new Error(
-        "Klap no pudo preparar la seguridad 3DS. Cardinal no quedó disponible.",
+        "Klap no pudo preparar la seguridad 3DS porque Cardinal no quedó disponible.",
       );
     }
 
@@ -280,38 +348,41 @@ export async function preloadKlapCardinal(): Promise<void> {
   if (cardinalAvailable()) return;
 
   const scriptUrl = validateCardinalScriptUrl(
-    KLAP_SANDBOX_CARDINAL_URL,
+    configuredCardinalScriptUrl(),
   );
 
   const existing =
     document.querySelector<HTMLScriptElement>(
       'script[data-rapago-klap-cardinal="true"]',
     ) ??
-    Array.from(document.scripts).find((script) =>
-      /songbird(?:stag)?\.cardinalcommerce\.com/i.test(script.src),
-    );
-
-  const script = existing ?? document.createElement("script");
+    Array.from(document.scripts).find((candidate) => {
+      try {
+        return ALLOWED_CARDINAL_SCRIPT_HOSTS.has(
+          new URL(candidate.src).hostname.toLowerCase(),
+        );
+      } catch {
+        return false;
+      }
+    });
 
   if (!existing) {
+    const script = document.createElement("script");
     script.src = scriptUrl;
     script.async = true;
     script.dataset.rapagoKlapCardinal = "true";
-    document.head.appendChild(script);
-  }
 
-  if (!cardinalAvailable()) {
     await new Promise<void>((resolve, reject) => {
       const timeout = window.setTimeout(() => {
         reject(
           new Error(
-            "Songbird cargó demasiado lento y no preparó Cardinal.",
+            "La seguridad 3DS de Klap demoró demasiado en cargar.",
           ),
         );
       }, 20_000);
 
       const finish = (): void => {
         window.clearTimeout(timeout);
+        script.dataset.rapagoKlapCardinalLoaded = "true";
         resolve();
       };
 
@@ -319,29 +390,329 @@ export async function preloadKlapCardinal(): Promise<void> {
         window.clearTimeout(timeout);
         reject(
           new Error(
-            "No se pudo cargar la seguridad 3DS de Klap.",
+            "No se pudo cargar la seguridad 3DS requerida por Klap.",
           ),
         );
       };
 
-      if (script.dataset.rapagoKlapCardinalLoaded === "true") {
-        finish();
-        return;
-      }
-
-      script.addEventListener(
-        "load",
-        () => {
-          script.dataset.rapagoKlapCardinalLoaded = "true";
-          finish();
-        },
-        { once: true },
-      );
+      script.addEventListener("load", finish, { once: true });
       script.addEventListener("error", fail, { once: true });
+      document.head.appendChild(script);
     });
   }
 
   await waitForCardinalGlobal();
+}
+
+let klapReceiptChallengeBridgeInstalled = false;
+let cardinalSetupObserverInstalled = false;
+let cardinalSetupCompleted = false;
+let cardinalValidationObserverInstalled = false;
+let cardinalLayerObserver: MutationObserver | null = null;
+
+const handledKlapChallengeTransactions = new Set<string>();
+const klapXhrRequestUrls = new WeakMap<XMLHttpRequest, string>();
+
+function parseKlapChallengeResponse(
+  payload: unknown,
+): ParsedKlapChallenge | null {
+  if (!payload || typeof payload !== "object") return null;
+
+  const response = payload as KlapChallengeResponse;
+  if (
+    String(response.status ?? "").trim().toUpperCase() !==
+    "SEND_TO_CHALLENGE"
+  ) {
+    return null;
+  }
+
+  const consumerAuthInfo = response.data?.consumerAuthInfo;
+  const acsUrl = String(
+    response.data?.acsUrl ?? consumerAuthInfo?.acsUrl ?? "",
+  ).trim();
+  const pareq = String(
+    response.data?.pareq ?? consumerAuthInfo?.pareq ?? "",
+  ).trim();
+  const transactionId = String(
+    response.data?.authenticationTransactionId ??
+      consumerAuthInfo?.authenticationTransactionId ??
+      "",
+  ).trim();
+
+  if (!acsUrl || !pareq || !transactionId) {
+    throw new Error(
+      "Klap solicitó autenticación 3DS, pero entregó datos incompletos.",
+    );
+  }
+
+  let parsedAcsUrl: URL;
+
+  try {
+    parsedAcsUrl = new URL(acsUrl);
+  } catch {
+    throw new Error("Klap entregó una URL 3DS inválida.");
+  }
+
+  if (parsedAcsUrl.protocol !== "https:") {
+    throw new Error("La autenticación 3DS no utiliza una conexión segura.");
+  }
+
+  return {
+    acsUrl: parsedAcsUrl.toString(),
+    pareq,
+    transactionId,
+  };
+}
+
+function isAllowedKlapReceiptUrl(rawUrl: string): boolean {
+  try {
+    const url = new URL(rawUrl, window.location.href);
+
+    return (
+      url.protocol === "https:" &&
+      ALLOWED_KLAP_RECEIPT_HOSTS.has(url.hostname.toLowerCase()) &&
+      /\/cards\/receipt(?:\/|$)/i.test(url.pathname)
+    );
+  } catch {
+    return false;
+  }
+}
+
+function ensureCardinalChallengeLayerStyles(): void {
+  if (document.getElementById("rapago-cardinal-challenge-layer")) return;
+
+  const style = document.createElement("style");
+  style.id = "rapago-cardinal-challenge-layer";
+  style.textContent = `
+    #Cardinal-Modal,
+    #Cardinal-ModalContent,
+    #Cardinal-Modal iframe,
+    [id*="Cardinal-CCA"],
+    [class*="cardinal-modal"] {
+      z-index: 2147483647 !important;
+    }
+
+    #Cardinal-Modal {
+      position: fixed !important;
+      inset: 0 !important;
+    }
+  `;
+  document.head.appendChild(style);
+}
+
+function promoteCardinalChallengeLayer(): void {
+  ensureCardinalChallengeLayerStyles();
+
+  document
+    .querySelectorAll<HTMLElement>(
+      '#Cardinal-Modal, #Cardinal-ModalContent, [id*="Cardinal-CCA"], [class*="cardinal-modal"]',
+    )
+    .forEach((element) => {
+      element.style.setProperty("z-index", "2147483647", "important");
+    });
+}
+
+function installCardinalLayerObserver(): void {
+  if (cardinalLayerObserver || !document.body) return;
+
+  cardinalLayerObserver = new MutationObserver(() => {
+    promoteCardinalChallengeLayer();
+  });
+
+  cardinalLayerObserver.observe(document.body, {
+    childList: true,
+    subtree: true,
+    attributes: true,
+    attributeFilter: ["class", "style"],
+  });
+
+  promoteCardinalChallengeLayer();
+}
+
+function stopCardinalLayerObserver(): void {
+  cardinalLayerObserver?.disconnect();
+  cardinalLayerObserver = null;
+}
+
+function installCardinalSetupObserver(): void {
+  if (cardinalSetupObserverInstalled) return;
+  if (typeof window.Cardinal?.on !== "function") return;
+
+  window.Cardinal.on("payments.setupComplete", () => {
+    cardinalSetupCompleted = true;
+  });
+
+  cardinalSetupObserverInstalled = true;
+}
+
+async function waitBrieflyForCardinalSetup(
+  timeoutMs = 2_500,
+): Promise<void> {
+  if (cardinalSetupCompleted) return;
+
+  const startedAt = Date.now();
+
+  while (!cardinalSetupCompleted && Date.now() - startedAt < timeoutMs) {
+    await new Promise<void>((resolve) => {
+      window.setTimeout(resolve, 50);
+    });
+  }
+
+  // /cards/receipt solo puede responder SEND_TO_CHALLENGE después de que Klap
+  // ya creó el JWE y preparó la transacción. Si el evento setupComplete ocurrió
+  // antes de que pudiéramos observarlo, continuamos con la misma instancia.
+}
+
+function installCardinalValidationObserver(): void {
+  if (cardinalValidationObserverInstalled) return;
+  if (typeof window.Cardinal?.on !== "function") return;
+
+  window.Cardinal.on("payments.validated", () => {
+    stopCardinalLayerObserver();
+  });
+
+  cardinalValidationObserverInstalled = true;
+}
+
+async function continueKlap3dsChallenge(
+  payload: unknown,
+): Promise<boolean> {
+  const challenge = parseKlapChallengeResponse(payload);
+  if (!challenge) return false;
+
+  if (handledKlapChallengeTransactions.has(challenge.transactionId)) {
+    return true;
+  }
+
+  await preloadKlapCardinal();
+  installCardinalSetupObserver();
+  installCardinalValidationObserver();
+  await waitBrieflyForCardinalSetup();
+
+  if (typeof window.Cardinal?.continue !== "function") {
+    throw new Error(
+      "Cardinal cargó, pero no publicó la función para abrir la autenticación 3DS.",
+    );
+  }
+
+  handledKlapChallengeTransactions.add(challenge.transactionId);
+  installCardinalLayerObserver();
+
+  try {
+    await Promise.resolve(
+      window.Cardinal.continue(
+        "cca",
+        {
+          AcsUrl: challenge.acsUrl,
+          Payload: challenge.pareq,
+        },
+        {
+          OrderDetails: {
+            TransactionId: challenge.transactionId,
+          },
+        },
+      ),
+    );
+
+    window.setTimeout(promoteCardinalChallengeLayer, 0);
+    window.setTimeout(promoteCardinalChallengeLayer, 250);
+    window.setTimeout(promoteCardinalChallengeLayer, 750);
+    window.setTimeout(promoteCardinalChallengeLayer, 1_500);
+
+    return true;
+  } catch (error) {
+    handledKlapChallengeTransactions.delete(challenge.transactionId);
+    stopCardinalLayerObserver();
+    throw error;
+  }
+}
+
+function installKlapReceiptChallengeBridge(): void {
+  if (klapReceiptChallengeBridgeInstalled) return;
+
+  const originalFetch = window.fetch.bind(window);
+  const originalOpen = XMLHttpRequest.prototype.open;
+  const originalSend = XMLHttpRequest.prototype.send;
+
+  window.fetch = async (...args): Promise<Response> => {
+    const response = await originalFetch(...args);
+    const input = args[0];
+    const requestUrl =
+      response.url ||
+      (typeof input === "string"
+        ? input
+        : input instanceof URL
+          ? input.toString()
+          : input.url);
+
+    if (response.ok && isAllowedKlapReceiptUrl(requestUrl)) {
+      void response
+        .clone()
+        .json()
+        .then((payload: unknown) => continueKlap3dsChallenge(payload))
+        .catch(() => {
+          // Klap y el polling del backend conservan la autoridad del pago.
+        });
+    }
+
+    return response;
+  };
+
+  XMLHttpRequest.prototype.open = function (
+    method: string,
+    url: string | URL,
+    async = true,
+    username?: string | null,
+    password?: string | null,
+  ): void {
+    klapXhrRequestUrls.set(this, String(url));
+    originalOpen.call(
+      this,
+      method,
+      url,
+      async,
+      username ?? null,
+      password ?? null,
+    );
+  } as XMLHttpRequest["open"];
+
+  XMLHttpRequest.prototype.send = function (
+    body?: Document | XMLHttpRequestBodyInit | null,
+  ): void {
+    this.addEventListener(
+      "loadend",
+      () => {
+        const requestUrl =
+          this.responseURL || klapXhrRequestUrls.get(this) || "";
+
+        if (!isAllowedKlapReceiptUrl(requestUrl)) return;
+        if (this.status < 200 || this.status >= 300) return;
+
+        let payload: unknown;
+
+        try {
+          payload =
+            this.responseType === "json" && this.response
+              ? this.response
+              : JSON.parse(String(this.responseText ?? ""));
+        } catch {
+          return;
+        }
+
+        window.setTimeout(() => {
+          void continueKlap3dsChallenge(payload).catch(() => {
+            // El callback de Klap y el polling del backend siguen siendo la
+            // autoridad. No se registran CReq, CVV, PAN ni tokens en consola.
+          });
+        }, 0);
+      },
+      { once: true },
+    );
+
+    originalSend.call(this, body ?? null);
+  };
+
+  klapReceiptChallengeBridgeInstalled = true;
 }
 
 function klapInitAvailable(): boolean {
@@ -402,6 +773,9 @@ export function resetKlapCheckoutForNextOrder(): void {
   klapInitializationState.orderId = null;
   klapInitializationState.status = "idle";
   klapInitializationState.promise = null;
+  cardinalSetupCompleted = false;
+  handledKlapChallengeTransactions.clear();
+  stopCardinalLayerObserver();
 }
 
 export async function initializeKlapCheckoutOnce(
@@ -447,7 +821,14 @@ export async function initializeKlapCheckoutOnce(
 
   const promise = (async (): Promise<KlapBrowserSdk> => {
     try {
+      // Songbird/Cardinal es una dependencia del checkout de tarjetas. RAPA GO
+      // garantiza que exista antes de KLAP.init(). Klap configura la sesión.
+      // Cuando /cards/receipt exige desafío, usamos esa misma sesión para
+      // ejecutar Cardinal.continue; no se crea un iframe CReq independiente.
+      installKlapReceiptChallengeBridge();
       await preloadKlapCardinal();
+      installCardinalSetupObserver();
+      installCardinalValidationObserver();
 
       const sdk = await loadKlapCheckoutSdk();
 

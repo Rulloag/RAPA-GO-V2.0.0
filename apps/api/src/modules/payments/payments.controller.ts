@@ -396,6 +396,47 @@ export const paymentsController = {
    * ApiKey, or any internal message — only one of a fixed, documented set of
    * status strings (Fase C.1).
    */
+  async klapUnifiedWebhook(
+    request: FastifyRequest,
+    reply: FastifyReply,
+  ): Promise<void> {
+    const body =
+      request.body && typeof request.body === "object"
+        ? (request.body as Record<string, unknown>)
+        : {};
+
+    const looksLikeConfirm =
+      "amount" in body ||
+      "payment_method" in body ||
+      "transaction_type" in body;
+    const looksLikeReject = "code" in body || "message" in body;
+
+    if (!looksLikeConfirm && !looksLikeReject) {
+      reply.status(400).send({ status: "invalid_request" });
+      return;
+    }
+
+    const headers: Record<string, string> = {
+      apikey: String(request.headers["apikey"] ?? ""),
+    };
+
+    // Los campos financieros de confirmación tienen prioridad. De esta forma,
+    // un mensaje descriptivo opcional no convierte por error una confirmación
+    // válida en un payload ambiguo.
+    const result = looksLikeConfirm
+      ? await paymentsService.handleKlapConfirmWebhook(body, headers)
+      : await paymentsService.handleKlapRejectWebhook(body, headers);
+
+    if (!result.ok) {
+      reply
+        .status(result.statusCode)
+        .send({ status: klapWebhookErrorStatus(result.code) });
+      return;
+    }
+
+    reply.status(200).send({ status: "ok" });
+  },
+
   async klapConfirmWebhook(request: FastifyRequest, reply: FastifyReply): Promise<void> {
     const headers: Record<string, string> = {
       apikey: String(request.headers["apikey"] ?? ""),

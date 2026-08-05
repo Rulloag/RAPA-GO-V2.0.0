@@ -166,7 +166,7 @@ export function GoogleSignInButton({
       .then(() => {
         if (cancelled) return;
 
-        if (getGoogleIdentityServices()?.accounts.id) {
+        if (getGoogleIdentityServices()?.accounts?.id) {
           setRenderError("");
           setScriptReady(true);
           return;
@@ -231,7 +231,7 @@ export function GoogleSignInButton({
 
     const shell = shellRef.current;
     const target = officialButtonRef.current;
-    const googleApi = getGoogleIdentityServices()?.accounts.id;
+    const googleApi = getGoogleIdentityServices()?.accounts?.id;
 
     if (!shell || !target || !googleApi) return;
 

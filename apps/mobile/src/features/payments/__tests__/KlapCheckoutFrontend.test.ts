@@ -15,7 +15,7 @@ describe("Klap Checkout Transparente frontend", () => {
     expect(requestRideSource).not.toContain("window.location.href = payment.urlPay");
   });
 
-  it("usa el contrato público oficial del formulario Klap", () => {
+  it("usa el contrato requerido por Checkout Transparente", () => {
     expect(modalSource).toContain('id="checkout-klap"');
     expect(modalSource).toContain("data-klap-order-id");
     expect(modalSource).toContain("data-klap-fn-success");
@@ -23,20 +23,31 @@ describe("Klap Checkout Transparente frontend", () => {
     expect(modalSource).toContain("data-klap-card-number");
     expect(modalSource).toContain("data-klap-expiry-date");
     expect(modalSource).toContain("data-klap-card-cvv");
-    expect(modalSource).toContain("data-klap-card-type");
+    expect(modalSource).toContain("data-klap-card-type={klapCardType}");
     expect(modalSource).toContain("data-klap-quotas");
     expect(serviceSource).toContain("sdk.init({");
     expect(serviceSource).toContain('method: "tarjetas"');
     expect(modalSource).toContain("initializedSdk.payOrder?.()");
+    expect(modalSource).toContain(
+      "Klap informó un error al validar el formulario o procesar el pago",
+    );
+    expect(modalSource).not.toContain(
+      "La autenticación del banco cerró o informó un problema",
+    );
   });
 
-  it("muestra una tarjeta visual y explica débito, prepago y crédito", () => {
+  it("prepara el SDK sin escribir tarjetas de prueba en runtime", () => {
     expect(modalSource).toContain("Vista previa de la tarjeta");
-    expect(modalSource).toContain('type CardKind = "debit" | "prepaid" | "credit"');
-    expect(modalSource).toContain("¿Qué tipo de tarjeta estás usando?");
-    expect(modalSource).toContain("Klap y tu banco confirmarán el tipo definitivo");
-    expect(modalSource).toContain("La disponibilidad final depende de tu tarjeta y de Klap");
-    expect(modalSource).not.toContain("Array.from({ length: 47 }");
+    expect(modalSource).toContain("Tipo de tarjeta");
+    expect(modalSource).toContain("selectCardKind");
+    expect(modalSource).toContain("PAGAR CON");
+    expect(modalSource).toContain("disabled={busy || !cardKind}");
+    expect(modalSource).toContain(
+      "RAPA GO no compara el número con listas de tarjetas",
+    );
+    expect(modalSource).not.toContain("KLAP_SANDBOX_CARD_KIND_BY_NUMBER");
+    expect(modalSource).not.toContain("KLAP_SANDBOX_PROFILE_BY_NUMBER");
+    expect(modalSource).not.toContain("reconcileKlapSandboxPayment");
   });
 
   it("no persiste ni registra número completo o CVV", () => {
@@ -45,6 +56,13 @@ describe("Klap Checkout Transparente frontend", () => {
     expect(modalSource).not.toContain("console.warn");
     expect(serviceSource).not.toContain('localStorage.setItem("cardNumber"');
     expect(serviceSource).not.toContain('localStorage.setItem("cvv"');
+  });
+
+  it("solo muestra el tipo confirmado por el webhook o estado del backend", () => {
+    expect(modalSource).toContain("confirmedPaymentLabel(status)");
+    expect(modalSource).toContain("status.cardBrand");
+    expect(modalSource).toContain("status.cardType");
+    expect(modalSource).not.toMatch(/["'`]\d{13,19}["'`]/);
   });
 
   it("cancela una solicitud no pagada y permite crear otra sin recargar", () => {
@@ -77,6 +95,46 @@ describe("Klap Checkout Transparente frontend", () => {
     expect(tripsSource).toContain('return "Tarjeta / Klap"');
     expect(tripsSource).toContain('return "Tarjeta / Mercado Pago"');
     expect(tripsSource).toContain("Pago con tarjeta validado por Klap");
+  });
+
+  it("explica rechazos y permite probar otra tarjeta sin recargar", () => {
+    expect(modalSource).toContain("Pago rechazado");
+    expect(modalSource).toContain("Probar otra tarjeta");
+    expect(modalSource).toContain("onRetryRequest");
+    expect(modalSource).toContain("status.declineReason");
+    expect(requestRideSource).toContain("handleRetryKlapPayment");
+    expect(requestRideSource).toContain("resetKlapCheckoutForNextOrder");
+    const rejectedHandler =
+      requestRideSource.match(
+        /const handleKlapRejected = useCallback\(([\s\S]*?)\n\s*const handleRetryKlapPayment/,
+      )?.[1] ?? "";
+
+    expect(rejectedHandler).toContain("clearPendingKlapPayment()");
+    expect(rejectedHandler).toContain("setSubmitError(message)");
+    expect(rejectedHandler).not.toContain("goToTripsAfterRequest");
+  });
+
+  it("continúa SEND_TO_CHALLENGE con la misma sesión Cardinal de Klap", () => {
+    expect(serviceSource).toContain("KLAP_SANDBOX_CARDINAL_URL");
+    expect(serviceSource).toContain("KLAP_PRODUCTION_CARDINAL_URL");
+    expect(serviceSource).toContain("preloadKlapCardinal");
+    expect(serviceSource).toContain("await preloadKlapCardinal();");
+    expect(serviceSource).toContain('data-rapago-klap-cardinal="true"');
+    expect(serviceSource).toContain("installKlapReceiptChallengeBridge");
+    expect(serviceSource).toContain("ALLOWED_KLAP_RECEIPT_HOSTS");
+    expect(serviceSource).toContain("api-pasarela-sandbox.mcdesaqa.cl");
+    expect(serviceSource).toMatch(/response\s*\.\s*clone\(\)\s*\.\s*json\(\)/s);
+    expect(serviceSource).toContain("SEND_TO_CHALLENGE");
+    expect(serviceSource).toContain("window.Cardinal.continue(");
+    expect(serviceSource).toContain('"payments.setupComplete"');
+    expect(serviceSource).toContain('"payments.validated"');
+    expect(serviceSource).toContain("sdk.init({");
+    expect(modalSource).toContain("initializedSdk.payOrder?.()");
+    expect(serviceSource).not.toContain("Cardinal.setup");
+    expect(serviceSource).not.toContain("Cardinal.configure");
+    expect(serviceSource).not.toContain("openDirectKlap3dsChallenge");
+    expect(serviceSource).not.toContain("rapago-klap-3ds-overlay");
+    expect(serviceSource).not.toContain('name = "creq"');
   });
 
 });

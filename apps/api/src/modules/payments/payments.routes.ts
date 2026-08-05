@@ -5,7 +5,7 @@ export async function paymentsRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.post("/payments/create", paymentsController.createPayment);
   // Klap Checkout Transparente — Sandbox-only embedded order creation (Fase D).
   // Not reachable through PAYMENT_PROVIDER/getActiveProvider(); this route is the
-  // only controlled path to Klap in this phase. No webhook route for Klap yet.
+  // controlled path used by the mobile client for embedded Klap orders.
   fastify.post("/payments/klap/orders", paymentsController.createKlapEmbeddedOrder);
   fastify.get("/payments/:paymentId/status", paymentsController.getPaymentStatus);
   fastify.get("/payments/:paymentId/receipt", paymentsController.getPaymentReceipt);
@@ -37,18 +37,42 @@ export async function paymentsRoutes(fastify: FastifyInstance): Promise<void> {
     paymentsController.mercadoPagoWebhook,
   );
 
-  // Klap Checkout Transparente — confirm/reject webhooks (Fase C). Separate
-  // endpoints per Klap's own documented payloads (not a single unified event
-  // like Mercado Pago/ProntoPaga above). Same rate-limit exemption rationale:
-  // the "apikey" signature is the real protection here.
-  fastify.post(
+  // Klap Checkout Transparente usa dos webhooks. Se conservan las rutas
+  // canónicas y se agregan aliases de compatibilidad para órdenes creadas con
+  // configuraciones anteriores. Todos terminan en los mismos handlers firmados.
+  const klapConfirmPaths = [
     "/webhooks/klap/confirm",
-    webhookOptions,
-    paymentsController.klapConfirmWebhook,
-  );
-  fastify.post(
+    "/payments/webhooks/klap/confirm",
+    "/payments/webhook/klap/confirm",
+  ] as const;
+
+  const klapRejectPaths = [
     "/webhooks/klap/reject",
+    "/payments/webhooks/klap/reject",
+    "/payments/webhook/klap/reject",
+  ] as const;
+
+  for (const path of klapConfirmPaths) {
+    fastify.post(
+      path,
+      webhookOptions,
+      paymentsController.klapConfirmWebhook,
+    );
+  }
+
+  for (const path of klapRejectPaths) {
+    fastify.post(
+      path,
+      webhookOptions,
+      paymentsController.klapRejectWebhook,
+    );
+  }
+
+  // Compatibilidad con PAYMENT_WEBHOOK_BASE_URL + /api/payments/webhook/klap.
+  // El controlador discrimina confirm/reject por el contrato del payload.
+  fastify.post(
+    "/payments/webhook/klap",
     webhookOptions,
-    paymentsController.klapRejectWebhook,
+    paymentsController.klapUnifiedWebhook,
   );
 }
