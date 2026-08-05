@@ -138,9 +138,11 @@ describe("Klap Checkout Transparente frontend", () => {
     expect(modalSource).toContain("initializedSdk.payOrder?.()");
     expect(serviceSource).not.toContain("Cardinal.setup");
     expect(serviceSource).not.toContain("Cardinal.configure");
-    expect(serviceSource).not.toContain("openDirectKlap3dsChallenge");
-    expect(serviceSource).not.toContain("rapago-klap-3ds-overlay");
-    expect(serviceSource).not.toContain('name = "creq"');
+    expect(serviceSource).toContain("openDirectKlap3dsSandboxChallenge");
+    expect(serviceSource).toContain("rapago-klap-3ds-overlay");
+    expect(serviceSource).toContain('creq.name = "creq"');
+    expect(serviceSource).toContain("VITE_KLAP_DIRECT_3DS_FALLBACK");
+    expect(serviceSource).toContain("Modo Sandbox de prueba");
   });
 
 });

@@ -450,6 +450,8 @@ let cardinalSetupObserverInstalled = false;
 let cardinalSetupCompleted = false;
 let cardinalValidationObserverInstalled = false;
 let cardinalLayerObserver: MutationObserver | null = null;
+let directChallengeOverlay: HTMLDivElement | null = null;
+let directChallengeTransactionId: string | null = null;
 
 const handledKlapChallengeTransactions = new Set<string>();
 const klapXhrRequests = new WeakMap<
@@ -588,6 +590,270 @@ function stopCardinalLayerObserver(): void {
   cardinalLayerObserver = null;
 }
 
+function closeDirectKlap3dsSandboxOverlay(): void {
+  directChallengeOverlay?.remove();
+  directChallengeOverlay = null;
+  directChallengeTransactionId = null;
+}
+
+function isKlapDirect3dsSandboxFallbackEnabled(): boolean {
+  const rawFlag = String(
+    import.meta.env.VITE_KLAP_DIRECT_3DS_FALLBACK ?? "true",
+  )
+    .trim()
+    .toLowerCase();
+
+  if (["0", "false", "off", "no"].includes(rawFlag)) {
+    return false;
+  }
+
+  try {
+    const checkoutUrl = new URL(
+      validateKlapScriptUrl(configuredKlapScriptUrl()),
+    );
+
+    return checkoutUrl.hostname.toLowerCase() ===
+      "pagos-pasarela-sandbox.mcdesaqa.cl";
+  } catch {
+    return false;
+  }
+}
+
+function hasVisibleCardinalChallenge(): boolean {
+  const modal = document.querySelector<HTMLElement>("#Cardinal-Modal");
+  if (modal) {
+    const style = window.getComputedStyle(modal);
+    const rect = modal.getBoundingClientRect();
+
+    if (
+      style.display !== "none" &&
+      style.visibility !== "hidden" &&
+      Number(style.opacity || "1") > 0 &&
+      rect.width > 8 &&
+      rect.height > 8
+    ) {
+      return true;
+    }
+  }
+
+  return Array.from(document.querySelectorAll<HTMLIFrameElement>("iframe")).some(
+    (frame) => {
+      const identity = `${frame.id} ${frame.name} ${frame.src}`;
+
+      if (/cardinal[-_ ]?collector/i.test(identity)) {
+        return false;
+      }
+
+      if (
+        !/cardinal[-_ ]?cca|merchantacs|centinel|three[-_]?ds|3ds|stepup|challenge/i.test(
+          identity,
+        )
+      ) {
+        return false;
+      }
+
+      const style = window.getComputedStyle(frame);
+      const rect = frame.getBoundingClientRect();
+
+      return (
+        style.display !== "none" &&
+        style.visibility !== "hidden" &&
+        Number(style.opacity || "1") > 0 &&
+        rect.width > 8 &&
+        rect.height > 8 &&
+        rect.bottom > 0 &&
+        rect.right > 0 &&
+        rect.top < window.innerHeight &&
+        rect.left < window.innerWidth
+      );
+    },
+  );
+}
+
+async function waitForVisibleCardinalChallenge(
+  timeoutMs = 2_500,
+): Promise<boolean> {
+  const startedAt = Date.now();
+
+  while (Date.now() - startedAt < timeoutMs) {
+    promoteCardinalChallengeLayer();
+
+    if (hasVisibleCardinalChallenge()) {
+      return true;
+    }
+
+    await new Promise<void>((resolve) => {
+      window.setTimeout(resolve, 100);
+    });
+  }
+
+  return false;
+}
+
+function openDirectKlap3dsSandboxChallenge(
+  challenge: ParsedKlapChallenge,
+): void {
+  if (!isKlapDirect3dsSandboxFallbackEnabled()) return;
+
+  let acsUrl: URL;
+
+  try {
+    acsUrl = new URL(challenge.acsUrl);
+  } catch {
+    throw new Error("Klap entregó una URL de validación inválida.");
+  }
+
+  const acsHost = acsUrl.hostname.toLowerCase();
+  if (
+    acsUrl.protocol !== "https:" ||
+    (!acsHost.endsWith(".cardinaltrusted.com") &&
+      !acsHost.endsWith(".cardinalcommerce.com"))
+  ) {
+    throw new Error(
+      "El respaldo Sandbox rechazó una URL bancaria no autorizada.",
+    );
+  }
+
+  if (
+    directChallengeOverlay &&
+    directChallengeTransactionId === challenge.transactionId
+  ) {
+    return;
+  }
+
+  closeDirectKlap3dsSandboxOverlay();
+
+  const overlay = document.createElement("div");
+  overlay.id = "rapago-klap-3ds-overlay";
+  overlay.setAttribute("role", "dialog");
+  overlay.setAttribute("aria-modal", "true");
+  overlay.setAttribute("aria-label", "Validación segura del banco");
+  Object.assign(overlay.style, {
+    position: "fixed",
+    inset: "0",
+    zIndex: "2147483647",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    padding: "12px",
+    background: "rgba(0,0,0,.78)",
+  });
+
+  const panel = document.createElement("div");
+  Object.assign(panel.style, {
+    width: "min(600px, 100%)",
+    height: "min(680px, calc(100vh - 24px))",
+    display: "grid",
+    gridTemplateRows: "auto 1fr",
+    overflow: "hidden",
+    borderRadius: "20px",
+    background: "#ffffff",
+    boxShadow: "0 28px 80px rgba(0,0,0,.48)",
+  });
+
+  const header = document.createElement("div");
+  Object.assign(header.style, {
+    padding: "14px 16px",
+    background: "linear-gradient(135deg,#1d1713,#9b3f20)",
+    color: "#ffffff",
+    fontFamily: "system-ui, sans-serif",
+  });
+
+  const titleRow = document.createElement("div");
+  Object.assign(titleRow.style, {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: "12px",
+  });
+
+  const title = document.createElement("div");
+  title.textContent = "Validación segura del banco";
+  Object.assign(title.style, {
+    fontSize: "1rem",
+    fontWeight: "900",
+  });
+
+  const closeButton = document.createElement("button");
+  closeButton.type = "button";
+  closeButton.textContent = "Cerrar";
+  closeButton.setAttribute("aria-label", "Cerrar validación bancaria");
+  Object.assign(closeButton.style, {
+    border: "1px solid rgba(255,255,255,.42)",
+    borderRadius: "999px",
+    padding: "7px 11px",
+    background: "rgba(255,255,255,.12)",
+    color: "#ffffff",
+    fontSize: ".72rem",
+    fontWeight: "900",
+    cursor: "pointer",
+  });
+  closeButton.addEventListener("click", () => {
+    closeDirectKlap3dsSandboxOverlay();
+    dispatchKlap3dsState({
+      state: "challenge-error",
+      message:
+        "Cerraste la validación Sandbox. Revisa el estado en Mis Viajes y no vuelvas a pagar hasta confirmar el resultado.",
+    });
+  });
+
+  const description = document.createElement("div");
+  description.textContent =
+    "Modo Sandbox de prueba: completa el OTP. Esta ventana puede no finalizar el pago real de Klap.";
+  Object.assign(description.style, {
+    marginTop: "4px",
+    fontSize: ".76rem",
+    lineHeight: "1.35",
+    opacity: ".88",
+    fontWeight: "700",
+  });
+
+  const frameName = `rapago-klap-3ds-${challenge.transactionId.replace(
+    /[^a-zA-Z0-9_-]/g,
+    "",
+  )}`;
+
+  const frame = document.createElement("iframe");
+  frame.name = frameName;
+  frame.title = "Autenticación bancaria 3D Secure Sandbox";
+  frame.setAttribute("allow", "payment *");
+  frame.setAttribute("referrerpolicy", "origin");
+  Object.assign(frame.style, {
+    width: "100%",
+    height: "100%",
+    minHeight: "400px",
+    border: "0",
+    background: "#ffffff",
+  });
+
+  const form = document.createElement("form");
+  form.method = "POST";
+  form.action = acsUrl.toString();
+  form.target = frameName;
+  form.acceptCharset = "UTF-8";
+  form.style.display = "none";
+
+  const creq = document.createElement("input");
+  creq.type = "hidden";
+  creq.name = "creq";
+  creq.value = challenge.pareq;
+  form.appendChild(creq);
+
+  titleRow.append(title, closeButton);
+  header.append(titleRow, description);
+  panel.append(header, frame);
+  overlay.append(panel, form);
+  document.body.appendChild(overlay);
+
+  directChallengeOverlay = overlay;
+  directChallengeTransactionId = challenge.transactionId;
+  form.submit();
+
+  window.setTimeout(() => {
+    form.remove();
+  }, 1_000);
+}
+
 function installCardinalSetupObserver(): void {
   if (cardinalSetupObserverInstalled) return;
   if (typeof window.Cardinal?.on !== "function") return;
@@ -623,6 +889,7 @@ function installCardinalValidationObserver(): void {
 
   window.Cardinal.on("payments.validated", () => {
     stopCardinalLayerObserver();
+    closeDirectKlap3dsSandboxOverlay();
     dispatchKlap3dsState({
       state: "challenge-validated",
       message:
@@ -691,19 +958,35 @@ async function continueKlap3dsChallenge(
     window.setTimeout(promoteCardinalChallengeLayer, 750);
     window.setTimeout(promoteCardinalChallengeLayer, 1_500);
 
-    window.setTimeout(() => {
-      promoteCardinalChallengeLayer();
+    const cardinalChallengeVisible =
+      await waitForVisibleCardinalChallenge(2_500);
+
+    if (cardinalChallengeVisible) {
       dispatchKlap3dsState({
         state: "challenge-opened",
         message:
           "Completa la validación en la ventana de tu banco. No vuelvas a presionar pagar.",
       });
-    }, 400);
+      return true;
+    }
 
-    return true;
+    if (isKlapDirect3dsSandboxFallbackEnabled()) {
+      openDirectKlap3dsSandboxChallenge(challenge);
+      dispatchKlap3dsState({
+        state: "challenge-opened",
+        message:
+          "Se abrió el respaldo 3DS de Sandbox. Ingresa el OTP, pero confirma el resultado final en Mis Viajes.",
+      });
+      return true;
+    }
+
+    throw new Error(
+      "Cardinal no mostró la ventana de autenticación bancaria.",
+    );
   } catch (error) {
     handledKlapChallengeTransactions.delete(challenge.transactionId);
     stopCardinalLayerObserver();
+    closeDirectKlap3dsSandboxOverlay();
     throw error;
   }
 }
@@ -874,6 +1157,7 @@ export function resetKlapCheckoutForNextOrder(): void {
   cardinalSetupCompleted = false;
   handledKlapChallengeTransactions.clear();
   stopCardinalLayerObserver();
+  closeDirectKlap3dsSandboxOverlay();
 }
 
 export async function initializeKlapCheckoutOnce(
