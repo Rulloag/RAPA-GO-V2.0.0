@@ -120,6 +120,11 @@ describe("Klap Checkout Transparente frontend", () => {
     expect(serviceSource).toContain('/cardinal[-_ ]?collector/i');
     expect(serviceSource).toContain('window.getComputedStyle(frame)');
     expect(serviceSource).toContain('rect.width > 8');
+    expect(serviceSource).toContain('"payments.setupComplete"');
+    expect(serviceSource).toContain("waitForCardinalSetupComplete");
+    expect(serviceSource).toContain("#Cardinal-Modal");
+    expect(serviceSource).toContain("2147483647");
+    expect(serviceSource).toContain("promoteCardinalChallengeLayer");
     expect(serviceSource).toContain('"cca"');
     expect(serviceSource).toContain("AcsUrl: challenge.acsUrl");
     expect(serviceSource).toContain("Payload: challenge.pareq");

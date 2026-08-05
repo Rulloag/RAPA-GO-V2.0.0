@@ -76,7 +76,7 @@ type CardinalBrowserSdk = {
     },
   ) => unknown;
   on?: (
-    eventName: "payments.validated",
+    eventName: "payments.setupComplete" | "payments.validated",
     callback: (data?: unknown, jwt?: string) => void,
   ) => unknown;
 };
@@ -278,7 +278,12 @@ function cardinalAvailable(): boolean {
 
 const handledKlapChallengeTransactions = new Set<string>();
 let klapReceiptChallengeBridgeInstalled = false;
+let cardinalSetupObserverInstalled = false;
+let cardinalSetupCompleted = false;
+let cardinalSetupPromise: Promise<void> | null = null;
+let cardinalSetupResolve: (() => void) | null = null;
 let cardinalValidationObserverInstalled = false;
+let cardinalLayerObserver: MutationObserver | null = null;
 const klapXhrRequestUrls = new WeakMap<XMLHttpRequest, string>();
 
 function currentKlapOrderId(): string | null {
@@ -345,7 +350,78 @@ function isAllowedKlapReceiptUrl(rawUrl: string): boolean {
   }
 }
 
+function ensureCardinalLayerStyles(): void {
+  if (document.getElementById("rapago-cardinal-layer-styles")) return;
+
+  const style = document.createElement("style");
+  style.id = "rapago-cardinal-layer-styles";
+  style.textContent = `
+    #Cardinal-Modal,
+    #Cardinal-ModalContent,
+    #Cardinal-Modal iframe,
+    [id*="Cardinal-CCA"],
+    [class*="cardinal-modal"] {
+      z-index: 2147483647 !important;
+    }
+
+    #Cardinal-Modal {
+      position: fixed !important;
+    }
+  `;
+  document.head.appendChild(style);
+}
+
+function promoteCardinalChallengeLayer(): void {
+  ensureCardinalLayerStyles();
+
+  const candidates = document.querySelectorAll<HTMLElement>(
+    '#Cardinal-Modal, #Cardinal-ModalContent, [id*="Cardinal-CCA"], [class*="cardinal-modal"]',
+  );
+
+  candidates.forEach((element) => {
+    element.style.setProperty("z-index", "2147483647", "important");
+  });
+}
+
+function installCardinalLayerObserver(): void {
+  if (cardinalLayerObserver || !document.body) return;
+
+  cardinalLayerObserver = new MutationObserver(() => {
+    promoteCardinalChallengeLayer();
+  });
+
+  cardinalLayerObserver.observe(document.body, {
+    childList: true,
+    subtree: true,
+    attributes: true,
+    attributeFilter: ["class", "style"],
+  });
+
+  promoteCardinalChallengeLayer();
+}
+
+function stopCardinalLayerObserver(): void {
+  cardinalLayerObserver?.disconnect();
+  cardinalLayerObserver = null;
+}
+
 function hasVisibleCardinalChallenge(): boolean {
+  const cardinalModal = document.querySelector<HTMLElement>("#Cardinal-Modal");
+  if (cardinalModal) {
+    const style = window.getComputedStyle(cardinalModal);
+    const rect = cardinalModal.getBoundingClientRect();
+
+    if (
+      style.display !== "none" &&
+      style.visibility !== "hidden" &&
+      Number(style.opacity || "1") > 0 &&
+      rect.width > 8 &&
+      rect.height > 8
+    ) {
+      return true;
+    }
+  }
+
   return Array.from(document.querySelectorAll<HTMLIFrameElement>("iframe")).some(
     (frame) => {
       const identity = `${frame.id} ${frame.name} ${frame.src}`;
@@ -357,7 +433,9 @@ function hasVisibleCardinalChallenge(): boolean {
       }
 
       if (
-        !/merchantacs|centinel|three[-_]?ds|3ds|stepup|challenge/i.test(identity)
+        !/cardinal[-_ ]?cca|merchantacs|centinel|three[-_]?ds|3ds|stepup|challenge/i.test(
+          identity,
+        )
       ) {
         return false;
       }
@@ -380,11 +458,56 @@ function hasVisibleCardinalChallenge(): boolean {
   );
 }
 
+function markCardinalSetupComplete(): void {
+  cardinalSetupCompleted = true;
+  cardinalSetupResolve?.();
+  cardinalSetupResolve = null;
+}
+
+function installCardinalSetupObserver(): void {
+  if (cardinalSetupObserverInstalled) return;
+  if (typeof window.Cardinal?.on !== "function") return;
+
+  window.Cardinal.on("payments.setupComplete", () => {
+    markCardinalSetupComplete();
+  });
+
+  cardinalSetupObserverInstalled = true;
+}
+
+async function waitForCardinalSetupComplete(
+  timeoutMs = 15_000,
+): Promise<void> {
+  if (cardinalSetupCompleted) return;
+
+  installCardinalSetupObserver();
+
+  if (!cardinalSetupPromise) {
+    cardinalSetupPromise = new Promise<void>((resolve) => {
+      cardinalSetupResolve = resolve;
+    });
+  }
+
+  await Promise.race([
+    cardinalSetupPromise,
+    new Promise<never>((_, reject) => {
+      window.setTimeout(() => {
+        reject(
+          new Error(
+            "Cardinal no terminó de preparar la autenticación bancaria 3DS.",
+          ),
+        );
+      }, timeoutMs);
+    }),
+  ]);
+}
+
 function installCardinalValidationObserver(): void {
   if (cardinalValidationObserverInstalled) return;
   if (typeof window.Cardinal?.on !== "function") return;
 
   window.Cardinal.on("payments.validated", () => {
+    stopCardinalLayerObserver();
     dispatchKlap3dsEvent(KLAP_3DS_VALIDATED_EVENT, {
       orderId: currentKlapOrderId(),
     });
@@ -404,7 +527,9 @@ export async function continueKlap3dsChallenge(
   }
 
   await preloadKlapCardinal();
+  installCardinalSetupObserver();
   installCardinalValidationObserver();
+  await waitForCardinalSetupComplete();
 
   if (typeof window.Cardinal?.continue !== "function") {
     throw new Error(
@@ -412,6 +537,7 @@ export async function continueKlap3dsChallenge(
     );
   }
 
+  installCardinalLayerObserver();
   handledKlapChallengeTransactions.add(challenge.transactionId);
   dispatchKlap3dsEvent(KLAP_3DS_CHALLENGE_STARTED_EVENT, {
     orderId: currentKlapOrderId(),
@@ -433,8 +559,15 @@ export async function continueKlap3dsChallenge(
         },
       ),
     );
+
+    window.setTimeout(promoteCardinalChallengeLayer, 0);
+    window.setTimeout(promoteCardinalChallengeLayer, 250);
+    window.setTimeout(promoteCardinalChallengeLayer, 750);
+    window.setTimeout(promoteCardinalChallengeLayer, 1_500);
+
     return true;
   } catch (error) {
+    stopCardinalLayerObserver();
     handledKlapChallengeTransactions.delete(challenge.transactionId);
     throw error;
   }
@@ -707,6 +840,7 @@ export async function initializeKlapCheckoutOnce(
     try {
       installKlapReceiptChallengeBridge();
       await preloadKlapCardinal();
+      installCardinalSetupObserver();
       installCardinalValidationObserver();
 
       const sdk = await loadKlapCheckoutSdk();
