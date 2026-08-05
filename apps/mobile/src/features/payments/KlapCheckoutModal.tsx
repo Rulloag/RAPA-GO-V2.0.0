@@ -17,9 +17,13 @@ import {
 } from "react";
 import {
   clearPendingKlapPayment,
+  continueKlap3dsChallenge,
   initializeKlapCheckoutOnce,
   isKlapPaymentApproved,
   isKlapPaymentRejected,
+  KLAP_3DS_CHALLENGE_ERROR_EVENT,
+  KLAP_3DS_CHALLENGE_STARTED_EVENT,
+  KLAP_3DS_VALIDATED_EVENT,
   markPendingKlapPaymentStarted,
   resetKlapCheckoutForNextOrder,
   waitForKlapPaymentResolution,
@@ -335,6 +339,49 @@ export function KlapCheckoutModal({
       );
     };
 
+    const belongsToCurrentPayment = (event: Event): boolean => {
+      const eventOrderId = String(
+        (event as CustomEvent<{ orderId?: unknown }>).detail?.orderId ?? "",
+      ).trim();
+      return !eventOrderId || eventOrderId === payment.orderId;
+    };
+
+    const handleChallengeStarted = (event: Event): void => {
+      if (!belongsToCurrentPayment(event)) return;
+      setProcessing(true);
+      setPaymentAttemptStarted(true);
+      setMessage(
+        "Tu banco necesita validar esta compra. Completa la ventana segura para continuar.",
+      );
+    };
+
+    const handleChallengeValidated = (event: Event): void => {
+      if (!belongsToCurrentPayment(event)) return;
+      void confirmWithBackend(
+        "Autenticación bancaria completada. Confirmando el resultado final con Klap.",
+      );
+    };
+
+    const handleChallengeError = (event: Event): void => {
+      if (!belongsToCurrentPayment(event)) return;
+      const detail = (event as CustomEvent<{ message?: unknown }>).detail;
+      setProcessing(false);
+      setMessage(
+        String(detail?.message ?? "").trim() ||
+          "No se pudo abrir la autenticación segura del banco.",
+      );
+    };
+
+    window.addEventListener(
+      KLAP_3DS_CHALLENGE_STARTED_EVENT,
+      handleChallengeStarted,
+    );
+    window.addEventListener(KLAP_3DS_VALIDATED_EVENT, handleChallengeValidated);
+    window.addEventListener(
+      KLAP_3DS_CHALLENGE_ERROR_EVENT,
+      handleChallengeError,
+    );
+
     return () => {
       disposed = true;
       abortRef.current?.abort();
@@ -342,6 +389,18 @@ export function KlapCheckoutModal({
       verificationRunningRef.current = null;
       delete callbackWindow[callbackNames.success];
       delete callbackWindow[callbackNames.error];
+      window.removeEventListener(
+        KLAP_3DS_CHALLENGE_STARTED_EVENT,
+        handleChallengeStarted,
+      );
+      window.removeEventListener(
+        KLAP_3DS_VALIDATED_EVENT,
+        handleChallengeValidated,
+      );
+      window.removeEventListener(
+        KLAP_3DS_CHALLENGE_ERROR_EVENT,
+        handleChallengeError,
+      );
     };
   }, [accessToken, callbackNames, onApproved, onRejected, payment]);
 
@@ -394,9 +453,14 @@ export function KlapCheckoutModal({
       const initializedSdk = await initializeKlapCheckoutOnce(payment.orderId);
       markPendingKlapPaymentStarted(payment);
       setPaymentAttemptStarted(true);
-      await Promise.resolve(initializedSdk.payOrder?.());
+      const payOrderResult = await Promise.resolve(
+        initializedSdk.payOrder?.(),
+      );
+      const challengeStarted = await continueKlap3dsChallenge(payOrderResult);
       setMessage(
-        "Procesando con Klap. No cierres esta ventana hasta recibir confirmación.",
+        challengeStarted
+          ? "Tu banco necesita validar esta compra. Completa la ventana segura para continuar."
+          : "Procesando con Klap. No cierres esta ventana hasta recibir confirmación.",
       );
 
       // Respaldo: algunos navegadores o el desafío 3DS pueden no ejecutar el

@@ -114,4 +114,18 @@ describe("Klap Checkout Transparente frontend", () => {
     expect(rejectedHandler).not.toContain("goToTripsAfterRequest");
   });
 
+  it("continúa el desafío 3DS cuando Klap responde SEND_TO_CHALLENGE", () => {
+    expect(serviceSource).toContain('"SEND_TO_CHALLENGE"');
+    expect(serviceSource).toContain('window.Cardinal.continue(');
+    expect(serviceSource).toContain('"cca"');
+    expect(serviceSource).toContain("AcsUrl: challenge.acsUrl");
+    expect(serviceSource).toContain("Payload: challenge.pareq");
+    expect(serviceSource).toContain("TransactionId: challenge.transactionId");
+    expect(serviceSource).toContain("/\\/cards\\/receipt");
+    expect(modalSource).toContain("continueKlap3dsChallenge(payOrderResult)");
+    expect(modalSource).toContain("KLAP_3DS_CHALLENGE_STARTED_EVENT");
+    expect(modalSource).toContain("Autenticación bancaria completada");
+    expect(serviceSource).not.toContain("console.log");
+  });
+
 });

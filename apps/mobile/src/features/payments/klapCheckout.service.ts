@@ -62,12 +62,49 @@ type KlapBrowserSdk = {
   payOrder?: () => unknown;
 };
 
+type CardinalBrowserSdk = {
+  continue?: (
+    action: "cca",
+    challenge: {
+      AcsUrl: string;
+      Payload: string;
+    },
+    order: {
+      OrderDetails: {
+        TransactionId: string;
+      };
+    },
+  ) => unknown;
+  on?: (
+    eventName: "payments.validated",
+    callback: (data?: unknown, jwt?: string) => void,
+  ) => unknown;
+};
+
 declare global {
   interface Window {
     KLAP?: KlapBrowserSdk;
-    Cardinal?: unknown;
+    Cardinal?: CardinalBrowserSdk;
   }
 }
+
+export const KLAP_3DS_CHALLENGE_STARTED_EVENT =
+  "rapago:klap:3ds-challenge-started";
+export const KLAP_3DS_VALIDATED_EVENT = "rapago:klap:3ds-validated";
+export const KLAP_3DS_CHALLENGE_ERROR_EVENT =
+  "rapago:klap:3ds-challenge-error";
+
+type KlapChallengeResponse = {
+  status?: unknown;
+  data?: {
+    acsUrl?: unknown;
+    pareq?: unknown;
+    authenticationTransactionId?: unknown;
+    consumerAuthInfo?: {
+      paresStatus?: unknown;
+    } | null;
+  } | null;
+};
 
 function unwrap<T>(
   result: {
@@ -237,6 +274,201 @@ function cardinalAvailable(): boolean {
     typeof window.Cardinal === "object" ||
     typeof window.Cardinal === "function"
   );
+}
+
+const handledKlapChallengeTransactions = new Set<string>();
+let klapReceiptChallengeBridgeInstalled = false;
+let cardinalValidationObserverInstalled = false;
+const klapXhrRequestUrls = new WeakMap<XMLHttpRequest, string>();
+
+function currentKlapOrderId(): string | null {
+  return klapInitializationState.orderId;
+}
+
+function dispatchKlap3dsEvent(
+  eventName: string,
+  detail: Record<string, unknown>,
+): void {
+  window.dispatchEvent(new CustomEvent(eventName, { detail }));
+}
+
+function parseKlapChallengeResponse(
+  payload: unknown,
+): {
+  acsUrl: string;
+  pareq: string;
+  transactionId: string;
+} | null {
+  if (!payload || typeof payload !== "object") return null;
+
+  const response = payload as KlapChallengeResponse;
+  if (String(response.status ?? "").trim().toUpperCase() !== "SEND_TO_CHALLENGE") {
+    return null;
+  }
+
+  const acsUrl = String(response.data?.acsUrl ?? "").trim();
+  const pareq = String(response.data?.pareq ?? "").trim();
+  const transactionId = String(
+    response.data?.authenticationTransactionId ?? "",
+  ).trim();
+
+  if (!acsUrl || !pareq || !transactionId) {
+    throw new Error(
+      "Klap solicitó autenticación 3DS, pero entregó datos incompletos.",
+    );
+  }
+
+  let parsedAcsUrl: URL;
+  try {
+    parsedAcsUrl = new URL(acsUrl);
+  } catch {
+    throw new Error("Klap entregó una URL 3DS inválida.");
+  }
+
+  if (parsedAcsUrl.protocol !== "https:") {
+    throw new Error("La autenticación 3DS no utiliza una conexión segura.");
+  }
+
+  return { acsUrl: parsedAcsUrl.toString(), pareq, transactionId };
+}
+
+function isAllowedKlapReceiptUrl(rawUrl: string): boolean {
+  try {
+    const url = new URL(rawUrl, window.location.href);
+    return (
+      url.protocol === "https:" &&
+      ALLOWED_KLAP_SCRIPT_HOSTS.has(url.hostname.toLowerCase()) &&
+      /\/cards\/receipt(?:\/|$)/i.test(url.pathname)
+    );
+  } catch {
+    return false;
+  }
+}
+
+function hasVisibleCardinalChallenge(): boolean {
+  return Array.from(document.querySelectorAll<HTMLIFrameElement>("iframe")).some(
+    (frame) =>
+      /cardinal|merchantacs|centinel|three[-_]?ds|3ds/i.test(
+        `${frame.id} ${frame.name} ${frame.src}`,
+      ),
+  );
+}
+
+function installCardinalValidationObserver(): void {
+  if (cardinalValidationObserverInstalled) return;
+  if (typeof window.Cardinal?.on !== "function") return;
+
+  window.Cardinal.on("payments.validated", () => {
+    dispatchKlap3dsEvent(KLAP_3DS_VALIDATED_EVENT, {
+      orderId: currentKlapOrderId(),
+    });
+  });
+
+  cardinalValidationObserverInstalled = true;
+}
+
+export async function continueKlap3dsChallenge(
+  payload: unknown,
+): Promise<boolean> {
+  const challenge = parseKlapChallengeResponse(payload);
+  if (!challenge) return false;
+
+  if (handledKlapChallengeTransactions.has(challenge.transactionId)) {
+    return true;
+  }
+
+  await preloadKlapCardinal();
+  installCardinalValidationObserver();
+
+  if (typeof window.Cardinal?.continue !== "function") {
+    throw new Error(
+      "Cardinal cargó, pero no publicó la función para continuar la autenticación 3DS.",
+    );
+  }
+
+  handledKlapChallengeTransactions.add(challenge.transactionId);
+  dispatchKlap3dsEvent(KLAP_3DS_CHALLENGE_STARTED_EVENT, {
+    orderId: currentKlapOrderId(),
+    transactionId: challenge.transactionId,
+  });
+
+  try {
+    await Promise.resolve(
+      window.Cardinal.continue(
+        "cca",
+        {
+          AcsUrl: challenge.acsUrl,
+          Payload: challenge.pareq,
+        },
+        {
+          OrderDetails: {
+            TransactionId: challenge.transactionId,
+          },
+        },
+      ),
+    );
+    return true;
+  } catch (error) {
+    handledKlapChallengeTransactions.delete(challenge.transactionId);
+    throw error;
+  }
+}
+
+function installKlapReceiptChallengeBridge(): void {
+  if (klapReceiptChallengeBridgeInstalled) return;
+
+  const originalOpen = XMLHttpRequest.prototype.open;
+  const originalSend = XMLHttpRequest.prototype.send;
+
+  XMLHttpRequest.prototype.open = function (
+    method: string,
+    url: string | URL,
+    async = true,
+    username?: string | null,
+    password?: string | null,
+  ): void {
+    klapXhrRequestUrls.set(this, String(url));
+    originalOpen.call(this, method, url, async, username ?? null, password ?? null);
+  } as XMLHttpRequest["open"];
+
+  XMLHttpRequest.prototype.send = function (
+    body?: Document | XMLHttpRequestBodyInit | null,
+  ): void {
+    this.addEventListener(
+      "loadend",
+      () => {
+        const requestUrl = this.responseURL || klapXhrRequestUrls.get(this) || "";
+        if (!isAllowedKlapReceiptUrl(requestUrl)) return;
+        if (this.status < 200 || this.status >= 300) return;
+
+        let payload: unknown;
+        try {
+          payload = JSON.parse(String(this.responseText ?? ""));
+        } catch {
+          return;
+        }
+
+        window.setTimeout(() => {
+          if (hasVisibleCardinalChallenge()) return;
+
+          void continueKlap3dsChallenge(payload).catch((error: unknown) => {
+            dispatchKlap3dsEvent(KLAP_3DS_CHALLENGE_ERROR_EVENT, {
+              orderId: currentKlapOrderId(),
+              message:
+                error instanceof Error
+                  ? error.message
+                  : "No se pudo abrir la autenticación segura del banco.",
+            });
+          });
+        }, 250);
+      },
+      { once: true },
+    );
+
+    originalSend.call(this, body ?? null);
+  };
+
+  klapReceiptChallengeBridgeInstalled = true;
 }
 
 function validateCardinalScriptUrl(rawUrl: string): string {
@@ -447,7 +679,9 @@ export async function initializeKlapCheckoutOnce(
 
   const promise = (async (): Promise<KlapBrowserSdk> => {
     try {
+      installKlapReceiptChallengeBridge();
       await preloadKlapCardinal();
+      installCardinalValidationObserver();
 
       const sdk = await loadKlapCheckoutSdk();
 
