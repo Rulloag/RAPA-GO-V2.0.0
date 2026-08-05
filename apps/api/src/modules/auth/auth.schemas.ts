@@ -17,6 +17,19 @@ export const AUTH_NOT_IMPLEMENTED = {
 } as const;
 
 
+export const refreshSessionSchema = z.object({
+  refreshToken: z
+    .string()
+    .trim()
+    .regex(
+      /^[a-f0-9]{96}$/i,
+      "El token de renovación no es válido.",
+    ),
+});
+
+export type RefreshSessionInput = z.infer<typeof refreshSessionSchema>;
+
+
 export const forgotPasswordRequestSchema = z.object({
   email: z
     .string()

@@ -65,7 +65,7 @@ import { KlapCheckoutModal } from "../../../features/payments/KlapCheckoutModal.
 import {
   cancelPendingKlapRide,
   clearPendingKlapPayment,
-  createKlapEmbeddedOrder,
+  createKlapHostedOrder,
   readPendingKlapPayment,
   resetKlapCheckoutForNextOrder,
   savePendingKlapPayment,
@@ -7137,10 +7137,12 @@ export default function RequestRidePage(): JSX.Element {
         throw new Error("Tu sesión expiró. Inicia sesión nuevamente.");
       }
 
-      clearPendingKlapPayment();
+      // Conserva el registro anterior hasta que el backend entregue una orden
+      // nueva o recupere de forma segura la existente. Así no perdemos la
+      // referencia local si Klap está temporalmente inaccesible.
       resetKlapCheckoutForNextOrder();
 
-      const order = await createKlapEmbeddedOrder(
+      const order = await createKlapHostedOrder(
         session.accessToken,
         pending.rideRequestId,
       );
@@ -7149,6 +7151,7 @@ export default function RequestRidePage(): JSX.Element {
         ...pending,
         paymentId: order.paymentId,
         orderId: order.publicCheckoutData.orderId,
+        redirectUrl: order.publicCheckoutData.redirectUrl,
         provider: "klap",
         createdAt: new Date().toISOString(),
         checkoutStartedAt: null,
@@ -8529,7 +8532,7 @@ export default function RequestRidePage(): JSX.Element {
           );
         }
 
-        const order = await createKlapEmbeddedOrder(
+        const order = await createKlapHostedOrder(
           session.accessToken,
           createdRideId,
         );
@@ -8545,6 +8548,7 @@ export default function RequestRidePage(): JSX.Element {
           rideRequestId: createdRideId,
           paymentId: order.paymentId,
           orderId: order.publicCheckoutData.orderId,
+          redirectUrl: order.publicCheckoutData.redirectUrl,
           amountClp: selectedFareAmount,
           provider: "klap",
           createdAt: new Date().toISOString(),

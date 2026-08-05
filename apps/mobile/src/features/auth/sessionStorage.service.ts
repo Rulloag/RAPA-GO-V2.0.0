@@ -76,11 +76,8 @@ class SessionStorageService {
         return null;
       }
 
-      if (Date.parse(parsed.expiresAt) <= Date.now()) {
-        await this.clearSession();
-        return null;
-      }
-
+      // La expiración del access token no elimina el refresh token.
+      // AuthProvider decide si renueva la sesión o si realmente debe cerrarla.
       return parsed;
     } catch {
       await this.clearSession();

@@ -83,6 +83,38 @@ export class SessionService {
     }
   }
 
+
+  async consumeRefreshToken(
+    tokenHash: string,
+  ): Promise<{ id: string; userId: string } | null> {
+    const now = new Date();
+
+    try {
+      return await db.transaction(async (tx) => {
+        const [consumed] = await tx
+          .update(refreshTokens)
+          .set({ revokedAt: now })
+          .where(
+            and(
+              eq(refreshTokens.tokenHash, tokenHash),
+              isNull(refreshTokens.revokedAt),
+              gt(refreshTokens.expiresAt, now),
+            ),
+          )
+          .returning({
+            id: refreshTokens.id,
+            userId: refreshTokens.userId,
+          });
+
+        return consumed ?? null;
+      });
+    } catch (err) {
+      throw AppError.internal(
+        `Failed to consume refresh token: ${String(err)}`,
+      );
+    }
+  }
+
   async revokeAllForUser(userId: string): Promise<void> {
     const now = new Date();
 

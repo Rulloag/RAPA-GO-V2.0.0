@@ -3,12 +3,16 @@ import {
   useState,
   useCallback,
   useEffect,
+  useRef,
   type ReactNode,
 } from "react";
 import { useHistory } from "react-router-dom";
 import { Capacitor } from "@capacitor/core";
 import { authService } from "./auth.service.js";
-import { sessionStorageService } from "./sessionStorage.service.js";
+import {
+  sessionStorageService,
+  type PersistedSession,
+} from "./sessionStorage.service.js";
 import { GoogleNativeAuth } from "./googleNative.js";
 import { disableGoogleAutoSelect } from "./googleIdentityServices.js";
 import { ROUTES } from "../../navigation/routes.js";
@@ -51,19 +55,157 @@ async function verifySessionWithTimeout(accessToken: string): Promise<AuthRespon
   ]);
 }
 
+
+const ACCESS_TOKEN_REFRESH_SKEW_MS = 60_000;
+const ACCESS_TOKEN_FOCUS_REFRESH_WINDOW_MS = 2 * 60_000;
+
+const TRANSIENT_AUTH_CODES = new Set([
+  "NETWORK_ERROR",
+  "TIMEOUT",
+  "INVALID_RESPONSE",
+  "AUTH_RESTORE_TIMEOUT",
+]);
+
+const TERMINAL_REFRESH_CODES = new Set([
+  "AUTH_REFRESH_TOKEN_INVALID",
+  "AUTH_SESSION_REVOKED",
+  "AUTH_ACCOUNT_DELETED",
+  "AUTH_ACCOUNT_SUSPENDED",
+  "UNAUTHORIZED",
+]);
+
+type SessionRefreshOutcome =
+  | { kind: "success"; session: AuthSession }
+  | { kind: "missing" }
+  | { kind: "transient"; code: string }
+  | { kind: "terminal"; code: string };
+
+function getAuthFailureCode(response: AuthResponse): string | null {
+  return "code" in response ? response.code : null;
+}
+
+function persistedToAuthSession(
+  persisted: PersistedSession,
+): AuthSession {
+  return {
+    accessToken: persisted.accessToken,
+    expiresAt: persisted.expiresAt,
+    user: {
+      id: persisted.userId,
+      email: persisted.email,
+      name: persisted.name,
+      role: persisted.role,
+      avatarUrl: persisted.avatarUrl,
+      isVerified: persisted.isVerified,
+    },
+  };
+}
+
+function expiresWithin(expiresAt: string, windowMs: number): boolean {
+  const expiresAtMs = Date.parse(expiresAt);
+
+  return (
+    !Number.isFinite(expiresAtMs) ||
+    expiresAtMs <= Date.now() + windowMs
+  );
+}
+
 export function AuthProvider({ children }: AuthProviderProps): JSX.Element {
   const history = useHistory();
   const [status, setStatus] = useState<AuthStatus>("loading");
   const [user, setUser] = useState<AuthUser | null>(null);
   const [session, setSession] = useState<AuthSession | null>(null);
+  const sessionRef = useRef<AuthSession | null>(null);
+  const refreshInFlightRef =
+    useRef<Promise<SessionRefreshOutcome> | null>(null);
+
+  useEffect(() => {
+    sessionRef.current = session;
+  }, [session]);
 
   const clearLocalSession = useCallback(async (): Promise<void> => {
     await sessionStorageService.clearSession();
     clientStoragePolicy.clearSensitiveClientStorage();
+    sessionRef.current = null;
     setSession(null);
     setUser(null);
     setStatus("unauthenticated");
   }, []);
+
+  const applyAuthenticatedSession = useCallback(
+    async (
+      nextSession: AuthSession,
+      refreshToken?: string,
+    ): Promise<void> => {
+      await sessionStorageService.saveSession(
+        nextSession,
+        refreshToken,
+      );
+      sessionRef.current = nextSession;
+      setSession(nextSession);
+      setUser(nextSession.user);
+      setStatus("authenticated");
+    },
+    [],
+  );
+
+  const renewSession = useCallback(
+    async (): Promise<SessionRefreshOutcome> => {
+      const existing = refreshInFlightRef.current;
+      if (existing) return existing;
+
+      const operation = (async (): Promise<SessionRefreshOutcome> => {
+        const refreshToken =
+          await sessionStorageService.loadRefreshToken();
+
+        if (!refreshToken) {
+          return { kind: "missing" };
+        }
+
+        const response = await authService.refresh(refreshToken);
+
+        if (response.ok) {
+          await applyAuthenticatedSession(
+            response.session,
+            response.refreshToken,
+          );
+
+          return {
+            kind: "success",
+            session: response.session,
+          };
+        }
+
+        const responseCode =
+          getAuthFailureCode(response) ?? "INVALID_RESPONSE";
+
+        if (TERMINAL_REFRESH_CODES.has(responseCode)) {
+          await clearLocalSession();
+
+          return {
+            kind: "terminal",
+            code: responseCode,
+          };
+        }
+
+        return {
+          kind: "transient",
+          code: responseCode,
+        };
+      })();
+
+      refreshInFlightRef.current = operation;
+
+      try {
+        return await operation;
+      } finally {
+        if (refreshInFlightRef.current === operation) {
+          refreshInFlightRef.current = null;
+        }
+      }
+    },
+    [applyAuthenticatedSession, clearLocalSession],
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -77,34 +219,77 @@ export function AuthProvider({ children }: AuthProviderProps): JSX.Element {
         return;
       }
 
-      const verified = await verifySessionWithTimeout(persisted.accessToken);
-      if (cancelled) return;
+      const persistedSession = persistedToAuthSession(persisted);
 
-      if (!verified.ok) {
-        await sessionStorageService.clearSession();
-        clientStoragePolicy.clearSensitiveClientStorage();
-        if (!cancelled) {
-          setSession(null);
-          setUser(null);
-          setStatus("unauthenticated");
+      const keepPersistedSessionDuringTransientFailure = (): void => {
+        if (cancelled) return;
+
+        sessionRef.current = persistedSession;
+        setSession(persistedSession);
+        setUser(persistedSession.user);
+        setStatus("authenticated");
+      };
+
+      if (
+        expiresWithin(
+          persisted.expiresAt,
+          ACCESS_TOKEN_REFRESH_SKEW_MS,
+        )
+      ) {
+        const refreshOutcome = await renewSession();
+        if (cancelled || refreshOutcome.kind === "success") return;
+
+        if (
+          refreshOutcome.kind === "terminal" ||
+          refreshOutcome.kind === "missing"
+        ) {
+          await clearLocalSession();
+          return;
         }
+
+        keepPersistedSessionDuringTransientFailure();
         return;
       }
 
-      await sessionStorageService.saveSession(verified.session);
+      const verified = await verifySessionWithTimeout(
+        persisted.accessToken,
+      );
       if (cancelled) return;
 
-      setSession(verified.session);
-      setUser(verified.session.user);
-      setStatus("authenticated");
+      if (verified.ok) {
+        await applyAuthenticatedSession(verified.session);
+        return;
+      }
+
+      const verifiedCode =
+        getAuthFailureCode(verified) ?? "INVALID_RESPONSE";
+
+      if (verifiedCode === "AUTH_TOKEN_EXPIRED") {
+        const refreshOutcome = await renewSession();
+        if (cancelled || refreshOutcome.kind === "success") return;
+
+        if (
+          refreshOutcome.kind === "terminal" ||
+          refreshOutcome.kind === "missing"
+        ) {
+          await clearLocalSession();
+          return;
+        }
+
+        keepPersistedSessionDuringTransientFailure();
+        return;
+      }
+
+      if (TRANSIENT_AUTH_CODES.has(verifiedCode)) {
+        keepPersistedSessionDuringTransientFailure();
+        return;
+      }
+
+      await clearLocalSession();
     }
 
-    void restore().catch(async () => {
-      await sessionStorageService.clearSession();
-      clientStoragePolicy.clearSensitiveClientStorage();
+    void restore().catch(() => {
       if (!cancelled) {
-        setSession(null);
-        setUser(null);
         setStatus("unauthenticated");
       }
     });
@@ -112,37 +297,110 @@ export function AuthProvider({ children }: AuthProviderProps): JSX.Element {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [
+    applyAuthenticatedSession,
+    clearLocalSession,
+    renewSession,
+  ]);
 
   useEffect(() => {
-    if (status !== "authenticated" || !session?.accessToken) return;
+    if (
+      status !== "authenticated" ||
+      !session?.accessToken ||
+      !session.expiresAt
+    ) {
+      return;
+    }
 
     let cancelled = false;
-    let refreshing = false;
+    let checking = false;
 
-    const refreshSessionUser = async (): Promise<void> => {
-      if (refreshing || cancelled) return;
-      refreshing = true;
-
-      try {
-        const verified = await authService.me(session.accessToken);
-        if (cancelled || !verified.ok) return;
-
-        await sessionStorageService.saveSession(verified.session);
-        if (cancelled) return;
-
-        setSession(verified.session);
-        setUser(verified.session.user);
-      } finally {
-        refreshing = false;
+    const redirectToLogin = (): void => {
+      if (!cancelled) {
+        history.replace(ROUTES.AUTH.LOGIN);
       }
     };
 
-    const handleVisibilityChange = () => {
+    const recoverAccessToken = async (): Promise<void> => {
+      const outcome = await renewSession();
+
+      if (
+        outcome.kind === "terminal" ||
+        outcome.kind === "missing"
+      ) {
+        redirectToLogin();
+      }
+    };
+
+    const refreshSessionUser = async (): Promise<void> => {
+      if (checking || cancelled) return;
+      checking = true;
+
+      try {
+        const currentSession = sessionRef.current;
+        if (!currentSession?.accessToken) return;
+
+        if (
+          expiresWithin(
+            currentSession.expiresAt,
+            ACCESS_TOKEN_FOCUS_REFRESH_WINDOW_MS,
+          )
+        ) {
+          await recoverAccessToken();
+          return;
+        }
+
+        const verified = await authService.me(
+          currentSession.accessToken,
+        );
+        if (cancelled) return;
+
+        if (verified.ok) {
+          await applyAuthenticatedSession(verified.session);
+          return;
+        }
+
+        const verifiedCode =
+          getAuthFailureCode(verified) ?? "INVALID_RESPONSE";
+
+        if (verifiedCode === "AUTH_TOKEN_EXPIRED") {
+          await recoverAccessToken();
+          return;
+        }
+
+        if (TERMINAL_REFRESH_CODES.has(verifiedCode)) {
+          await clearLocalSession();
+          redirectToLogin();
+        }
+      } finally {
+        checking = false;
+      }
+    };
+
+    const handleVisibilityChange = (): void => {
       if (document.visibilityState === "visible") {
         void refreshSessionUser();
       }
     };
+
+    const handleTokenExpired = (): void => {
+      void recoverAccessToken();
+    };
+
+    const expiresAtMs = Date.parse(session.expiresAt);
+    const proactiveRefreshDelay = Number.isFinite(expiresAtMs)
+      ? Math.max(
+          1_000,
+          expiresAtMs -
+            Date.now() -
+            ACCESS_TOKEN_REFRESH_SKEW_MS,
+        )
+      : 1_000;
+
+    const proactiveRefreshTimer = window.setTimeout(
+      () => void recoverAccessToken(),
+      proactiveRefreshDelay,
+    );
 
     window.addEventListener("focus", refreshSessionUser);
     document.addEventListener(
@@ -153,9 +411,14 @@ export function AuthProvider({ children }: AuthProviderProps): JSX.Element {
       "rapago:resident-verification-updated",
       refreshSessionUser,
     );
+    window.addEventListener(
+      "auth:token-expired",
+      handleTokenExpired,
+    );
 
     return () => {
       cancelled = true;
+      window.clearTimeout(proactiveRefreshTimer);
       window.removeEventListener("focus", refreshSessionUser);
       document.removeEventListener(
         "visibilitychange",
@@ -165,8 +428,20 @@ export function AuthProvider({ children }: AuthProviderProps): JSX.Element {
         "rapago:resident-verification-updated",
         refreshSessionUser,
       );
+      window.removeEventListener(
+        "auth:token-expired",
+        handleTokenExpired,
+      );
     };
-  }, [session?.accessToken, status]);
+  }, [
+    applyAuthenticatedSession,
+    clearLocalSession,
+    history,
+    renewSession,
+    session?.accessToken,
+    session?.expiresAt,
+    status,
+  ]);
 
   useEffect(() => {
     const forceLogout = () => {
@@ -190,6 +465,7 @@ export function AuthProvider({ children }: AuthProviderProps): JSX.Element {
 
       if (response.ok) {
         await sessionStorageService.saveSession(response.session, response.refreshToken);
+        sessionRef.current = response.session;
         setSession(response.session);
         setUser(response.session.user);
         setStatus("authenticated");
@@ -216,6 +492,7 @@ export function AuthProvider({ children }: AuthProviderProps): JSX.Element {
 
       if (response.ok) {
         await sessionStorageService.saveSession(response.session, response.refreshToken);
+        sessionRef.current = response.session;
         setSession(response.session);
         setUser(response.session.user);
         setStatus("authenticated");
@@ -246,6 +523,7 @@ export function AuthProvider({ children }: AuthProviderProps): JSX.Element {
           response.session,
           response.refreshToken,
         );
+        sessionRef.current = response.session;
         setSession(response.session);
         setUser(response.session.user);
         setStatus("authenticated");
@@ -266,6 +544,7 @@ export function AuthProvider({ children }: AuthProviderProps): JSX.Element {
 
       if (response.ok) {
         await sessionStorageService.saveSession(response.session, response.refreshToken);
+        sessionRef.current = response.session;
         setSession(response.session);
         setUser(response.session.user);
         setStatus("authenticated");
@@ -291,6 +570,7 @@ export function AuthProvider({ children }: AuthProviderProps): JSX.Element {
           response.session,
           response.refreshToken,
         );
+        sessionRef.current = response.session;
         setSession(response.session);
         setUser(response.session.user);
         setStatus("authenticated");
@@ -304,16 +584,50 @@ export function AuthProvider({ children }: AuthProviderProps): JSX.Element {
   );
 
   const refreshSession = useCallback(async (): Promise<void> => {
-    if (!session?.accessToken) return;
+    const currentSession = sessionRef.current;
+    if (!currentSession?.accessToken) return;
 
-    const verified = await authService.me(session.accessToken);
-    if (!verified.ok) return;
+    if (
+      expiresWithin(
+        currentSession.expiresAt,
+        ACCESS_TOKEN_FOCUS_REFRESH_WINDOW_MS,
+      )
+    ) {
+      const outcome = await renewSession();
 
-    await sessionStorageService.saveSession(verified.session);
-    setSession(verified.session);
-    setUser(verified.session.user);
-    setStatus("authenticated");
-  }, [session?.accessToken]);
+      if (
+        outcome.kind === "terminal" ||
+        outcome.kind === "missing"
+      ) {
+        history.replace(ROUTES.AUTH.LOGIN);
+      }
+
+      return;
+    }
+
+    const verified = await authService.me(
+      currentSession.accessToken,
+    );
+
+    if (verified.ok) {
+      await applyAuthenticatedSession(verified.session);
+      return;
+    }
+
+    const verifiedCode =
+      getAuthFailureCode(verified) ?? "INVALID_RESPONSE";
+
+    if (verifiedCode === "AUTH_TOKEN_EXPIRED") {
+      const outcome = await renewSession();
+
+      if (
+        outcome.kind === "terminal" ||
+        outcome.kind === "missing"
+      ) {
+        history.replace(ROUTES.AUTH.LOGIN);
+      }
+    }
+  }, [applyAuthenticatedSession, history, renewSession]);
 
   /**
    * Cierra una sesión sin el ritual de logout: sin el toast de "cerraste
