@@ -20,6 +20,7 @@ import {
   initializeKlapCheckoutOnce,
   KLAP_FAST_STATUS_RETRY_DELAYS_MS,
   RAPAGO_KLAP_3DS_STATE_EVENT,
+  RAPAGO_KLAP_RECEIPT_STARTED_EVENT,
   isKlapPaymentApproved,
   isKlapPaymentRejected,
   markPendingKlapPaymentStarted,
@@ -250,6 +251,35 @@ export function KlapCheckoutModal({
   useEffect(() => {
     if (!payment || !accessToken) return undefined;
 
+    const handleReceiptStarted = (): void => {
+      setPaymentAttemptStarted(true);
+      setProcessing(true);
+      setRejection(null);
+      setMessage(
+        "Klap recibió los datos cifrados. RAPA GO ya está verificando la confirmación segura del backend.",
+      );
+
+      void verifyPaymentRef.current?.(
+        "Klap recibió los datos cifrados. RAPA GO ya está verificando la confirmación segura del backend.",
+      );
+    };
+
+    window.addEventListener(
+      RAPAGO_KLAP_RECEIPT_STARTED_EVENT,
+      handleReceiptStarted,
+    );
+
+    return () => {
+      window.removeEventListener(
+        RAPAGO_KLAP_RECEIPT_STARTED_EVENT,
+        handleReceiptStarted,
+      );
+    };
+  }, [accessToken, payment]);
+
+  useEffect(() => {
+    if (!payment || !accessToken) return undefined;
+
     const callbackWindow = window as unknown as Record<
       string,
       ((payload?: unknown) => void) | undefined
@@ -312,6 +342,14 @@ export function KlapCheckoutModal({
             signal: controller.signal,
             onPendingStatus: (_pendingStatus, context) => {
               if (disposed) return;
+
+              if (context.elapsedMs >= 120_000 && progressBand < 3) {
+                progressBand = 3;
+                setMessage(
+                  "El Sandbox de Klap sigue pendiente. RAPA GO continuará verificando hasta recibir el webhook; no vuelvas a pagar.",
+                );
+                return;
+              }
 
               if (context.elapsedMs >= 30_000 && progressBand < 2) {
                 progressBand = 2;
@@ -426,17 +464,17 @@ export function KlapCheckoutModal({
         "Procesando con Klap. No cierres esta pantalla ni vuelvas a presionar pagar.",
       );
 
-      // Deja que el SDK de Klap complete primero su propia solicitud. La versión
-      // anterior iniciaba el polling casi al mismo tiempo que payOrder(), lo que
-      // agregaba trabajo concurrente justo durante /cards/receipt.
+      // El puente del SDK inicia la verificación exactamente cuando Klap envía
+      // POST /cards/receipt. Así no consultamos antes de que exista una operación
+      // real, pero tampoco esperamos a que el navegador reciba un 504/CORS.
       //
-      // Como respaldo, si Klap demora demasiado, RAPA GO comienza a consultar el
-      // backend después de 8 segundos. El backend sigue siendo la única autoridad.
+      // Este temporizador es solo un respaldo por si una versión futura del SDK
+      // cambia el transporte interno y no dispara el evento observado.
       const verificationFallbackTimer = window.setTimeout(() => {
         void verifyPaymentRef.current?.(
           "Tu banco o Klap sigue procesando el pago. RAPA GO confirmará apenas el backend reciba el resultado.",
         );
-      }, 8_000);
+      }, 10_000);
 
       try {
         await Promise.resolve(initializedSdk.payOrder?.());

@@ -10,6 +10,9 @@ export const RAPAGO_PENDING_CARD_PAYMENT_KEY =
 export const RAPAGO_KLAP_3DS_STATE_EVENT =
   "rapago:klap-3ds-state";
 
+export const RAPAGO_KLAP_RECEIPT_STARTED_EVENT =
+  "rapago:klap-receipt-started";
+
 export const KLAP_SANDBOX_SCRIPT_URL =
   "https://pagos-pasarela-sandbox.mcdesaqa.cl/checkout-frictionless/v1/main.min.js";
 
@@ -144,6 +147,20 @@ function dispatchKlap3dsState(
       { detail },
     ),
   );
+}
+
+let lastKlapReceiptStartedAt = 0;
+
+function dispatchKlapReceiptStarted(): void {
+  const now = Date.now();
+
+  // El SDK puede pasar por fetch y XMLHttpRequest en una misma preparación.
+  // Evita iniciar dos verificadores por la misma solicitud sin transportar
+  // URL, tarjeta, CVV ni contenido cifrado dentro del evento.
+  if (now - lastKlapReceiptStartedAt < 750) return;
+
+  lastKlapReceiptStartedAt = now;
+  window.dispatchEvent(new Event(RAPAGO_KLAP_RECEIPT_STARTED_EVENT));
 }
 
 function safeKlap3dsErrorMessage(error: unknown): string {
@@ -999,15 +1016,20 @@ function installKlapReceiptChallengeBridge(): void {
   const originalSend = XMLHttpRequest.prototype.send;
 
   window.fetch = async (...args): Promise<Response> => {
-    const response = await originalFetch(...args);
     const input = args[0];
-    const requestUrl =
-      response.url ||
-      (typeof input === "string"
+    const requestedUrl =
+      typeof input === "string"
         ? input
         : input instanceof URL
           ? input.toString()
-          : input.url);
+          : input.url;
+
+    if (isAllowedKlapReceiptUrl(requestedUrl)) {
+      dispatchKlapReceiptStarted();
+    }
+
+    const response = await originalFetch(...args);
+    const requestUrl = response.url || requestedUrl;
 
     if (response.ok && isAllowedKlapReceiptUrl(requestUrl)) {
       void response
@@ -1049,6 +1071,15 @@ function installKlapReceiptChallengeBridge(): void {
   XMLHttpRequest.prototype.send = function (
     body?: Document | XMLHttpRequestBodyInit | null,
   ): void {
+    const startedRequest = klapXhrRequests.get(this);
+
+    if (
+      startedRequest?.method === "POST" &&
+      isAllowedKlapReceiptUrl(startedRequest.url)
+    ) {
+      dispatchKlapReceiptStarted();
+    }
+
     this.addEventListener(
       "loadend",
       () => {
@@ -1217,6 +1248,7 @@ export async function initializeKlapCheckoutOnce(
       await Promise.resolve(
         sdk.init({
           method: "tarjetas",
+          debug: false,
         }),
       );
 
@@ -1296,7 +1328,6 @@ export const KLAP_FAST_STATUS_RETRY_DELAYS_MS = [
   1_000,
   1_000,
   1_000,
-  1_000,
   1_250,
   1_500,
   1_750,
@@ -1309,6 +1340,9 @@ export const KLAP_FAST_STATUS_RETRY_DELAYS_MS = [
   10_000,
   15_000,
   20_000,
+  30_000,
+  30_000,
+  30_000,
 ] as const;
 
 const TERMINAL_APPROVED = new Set(["success"]);
