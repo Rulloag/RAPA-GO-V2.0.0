@@ -45,6 +45,21 @@ export const payments = pgTable(
     urlPay: text("url_pay"),
     rawProviderPayload: jsonb("raw_provider_payload"),
 
+    // ── Captura diferida (Klap Checkout Alojado — autorización primero) ──────
+    // "authorization" hoy; reservado para distinguir de una eventual captura
+    // inmediata futura sin necesidad de otra migración.
+    transactionType: varchar("transaction_type", { length: 32 }),
+    authorizedAmountClp: integer("authorized_amount_clp"),
+    capturedAmountClp: integer("captured_amount_clp"),
+    authorizedAt: timestamp("authorized_at", { withTimezone: true }),
+    captureRequestedAt: timestamp("capture_requested_at", { withTimezone: true }),
+    capturedAt: timestamp("captured_at", { withTimezone: true }),
+    captureFailedAt: timestamp("capture_failed_at", { withTimezone: true }),
+    captureFailureReason: text("capture_failure_reason"),
+    captureProviderPayload: jsonb("capture_provider_payload"),
+    /** Clave interna de control de reintentos; nunca se envía a Klap. */
+    captureAttemptKey: varchar("capture_attempt_key", { length: 160 }),
+
     /** Estado persistido de la devolución al medio original. */
     refundStatus: varchar("refund_status", { length: 32 }),
     refundProviderId: varchar("refund_provider_id", { length: 160 }),

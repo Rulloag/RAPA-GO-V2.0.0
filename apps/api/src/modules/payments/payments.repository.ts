@@ -109,7 +109,54 @@ export class PaymentsRepository {
         and(
           eq(payments.rideRequestId, rideRequestId),
           eq(payments.paymentPurpose, paymentPurpose),
-          inArray(payments.status, ["pending", "processing"]),
+          // Una autorización o una captura incierta/rechazada nunca deben
+          // permitir crear automáticamente una segunda orden Klap — todas
+          // estas variantes cuentan como "activa" hasta que se resuelvan de
+          // forma explícita (success/rejected/refunded/failed son terminales).
+          inArray(payments.status, [
+            "pending",
+            "processing",
+            "authorized",
+            "capture_pending",
+            "capture_unknown",
+            "capture_failed",
+          ]),
+        ),
+      )
+      .orderBy(desc(payments.createdAt))
+      .limit(1);
+
+    return row ?? null;
+  }
+
+  /**
+   * Pago suficientemente aprobado para permitir que el viaje avance
+   * (aceptar/en-route/arrived/start/complete), sin exigir todavía una
+   * captura confirmada. Para Klap, "authorized"/"capture_pending"/
+   * "capture_unknown" ya reservaron el dinero en la tarjeta — el viaje
+   * puede continuar mientras la captura se resuelve al completar el viaje.
+   * Mercado Pago y ProntoPaga no tienen concepto de autorización diferida:
+   * para ellos solo "success" cuenta.
+   */
+  async findApprovedByRideId(rideRequestId: string): Promise<Payment | null> {
+    const [row] = await db
+      .select()
+      .from(payments)
+      .where(
+        and(
+          eq(payments.rideRequestId, rideRequestId),
+          eq(payments.paymentPurpose, "ride"),
+          or(
+            eq(payments.status, "success"),
+            and(
+              eq(payments.provider, "klap"),
+              inArray(payments.status, [
+                "authorized",
+                "capture_pending",
+                "capture_unknown",
+              ]),
+            ),
+          ),
         ),
       )
       .orderBy(desc(payments.createdAt))
@@ -303,6 +350,238 @@ export class PaymentsRepository {
         rideActivated: true,
       };
     });
+  }
+
+  /**
+   * Equivalente de `markSuccessAndActivateRide` para captura diferida: deja
+   * el pago en `authorized` (tarjeta autorizada, NO cobrada — paidAt/capturedAt
+   * permanecen null) y activa el viaje pendiente. Atómica, idempotente frente
+   * a webhooks duplicados: solo transiciona pending/processing → authorized;
+   * un pago ya en authorized/capture_pending/capture_unknown/success no
+   * repite la activación ni ningún efecto.
+   */
+  async markAuthorizedAndActivateRide(input: {
+    id: string;
+    rideRequestId: string;
+    authorizedAmountClp: number;
+    transactionType: string;
+    providerPayload: unknown;
+  }): Promise<{ payment: Payment; rideActivated: boolean }> {
+    return db.transaction(async (tx) => {
+      const [existingPayment] = await tx
+        .select()
+        .from(payments)
+        .where(eq(payments.id, input.id))
+        .limit(1);
+
+      if (!existingPayment) {
+        throw new Error(`Payment not found: ${input.id}`);
+      }
+
+      let currentPayment = existingPayment;
+
+      if (existingPayment.status === "pending" || existingPayment.status === "processing") {
+        const authorizedAt = new Date();
+        const [updatedPayment] = await tx
+          .update(payments)
+          .set({
+            status: "authorized",
+            transactionType: input.transactionType,
+            authorizedAmountClp: input.authorizedAmountClp,
+            authorizedAt,
+            rawProviderPayload: input.providerPayload as Record<string, unknown>,
+            updatedAt: authorizedAt,
+          })
+          .where(
+            and(
+              eq(payments.id, input.id),
+              inArray(payments.status, ["pending", "processing"]),
+            ),
+          )
+          .returning();
+
+        if (!updatedPayment) {
+          // Perdió la carrera contra otro webhook concurrente — releer abajo.
+          const [reread] = await tx
+            .select()
+            .from(payments)
+            .where(eq(payments.id, input.id))
+            .limit(1);
+          if (reread) currentPayment = reread;
+        } else {
+          currentPayment = updatedPayment;
+        }
+      }
+      // Si ya está authorized/capture_pending/capture_unknown/capture_failed/
+      // success, no se repite la transición — solo se activa el viaje abajo
+      // (idempotente también, vía el mismo guard de estado del viaje).
+
+      const activatedAt = new Date();
+      const [activatedRide] = await tx
+        .update(rideRequests)
+        .set({
+          status: "requested",
+          requestedAt: activatedAt,
+          updatedAt: activatedAt,
+        })
+        .where(
+          and(
+            eq(rideRequests.id, input.rideRequestId),
+            eq(rideRequests.status, "pending_payment"),
+          ),
+        )
+        .returning({ id: rideRequests.id });
+
+      if (activatedRide) {
+        return { payment: currentPayment, rideActivated: true };
+      }
+
+      const [currentRide] = await tx
+        .select({ status: rideRequests.status })
+        .from(rideRequests)
+        .where(eq(rideRequests.id, input.rideRequestId))
+        .limit(1);
+
+      const currentStatus = String(currentRide?.status ?? "").trim().toLowerCase();
+      const alreadyActivated = Boolean(
+        currentRide &&
+          currentStatus &&
+          currentStatus !== "pending_payment" &&
+          currentStatus !== "cancelled",
+      );
+
+      if (!alreadyActivated) {
+        throw new Error(
+          `Ride ${input.rideRequestId} could not be activated after authorization.`,
+        );
+      }
+
+      return { payment: currentPayment, rideActivated: true };
+    });
+  }
+
+  /**
+   * Reclama atómicamente el derecho a capturar: solo transiciona
+   * authorized → capture_pending, y solo una llamada concurrente puede
+   * ganar la carrera (WHERE status = 'authorized'). Devuelve null si el pago
+   * ya no está en authorized (otra captura en curso, ya capturado, fallido, etc).
+   */
+  async claimCapture(input: {
+    id: string;
+    captureAttemptKey: string;
+  }): Promise<Payment | null> {
+    const now = new Date();
+    const [row] = await db
+      .update(payments)
+      .set({
+        status: "capture_pending",
+        captureRequestedAt: now,
+        captureAttemptKey: input.captureAttemptKey,
+        updatedAt: now,
+      })
+      .where(and(eq(payments.id, input.id), eq(payments.status, "authorized")))
+      .returning();
+
+    return row ?? null;
+  }
+
+  async markCapturedSuccess(input: {
+    id: string;
+    capturedAmountClp: number;
+    providerPayload: unknown;
+  }): Promise<Payment> {
+    const now = new Date();
+    const [row] = await db
+      .update(payments)
+      .set({
+        status: "success",
+        capturedAmountClp: input.capturedAmountClp,
+        capturedAt: now,
+        paidAt: now,
+        captureProviderPayload: input.providerPayload as Record<string, unknown>,
+        captureFailureReason: null,
+        updatedAt: now,
+      })
+      .where(
+        and(
+          eq(payments.id, input.id),
+          inArray(payments.status, ["capture_pending", "capture_unknown"]),
+        ),
+      )
+      .returning();
+
+    if (!row) {
+      const current = await this.findById(input.id);
+      if (current?.status === "success") return current;
+      throw new Error(`Payment ${input.id} could not transition to success after capture.`);
+    }
+
+    return row;
+  }
+
+  /**
+   * Timeout / error de red / HTTP 5xx: Klap podría haber procesado la
+   * captura aunque Rapa Go no recibiera la respuesta. Nunca se convierte
+   * automáticamente en capture_failed.
+   */
+  async markCaptureUnknown(input: {
+    id: string;
+    reason: string;
+  }): Promise<Payment> {
+    const now = new Date();
+    const [row] = await db
+      .update(payments)
+      .set({
+        status: "capture_unknown",
+        captureFailureReason: input.reason.slice(0, 1000),
+        updatedAt: now,
+      })
+      .where(
+        and(
+          eq(payments.id, input.id),
+          inArray(payments.status, ["capture_pending", "capture_unknown"]),
+        ),
+      )
+      .returning();
+
+    if (!row) {
+      const current = await this.findById(input.id);
+      if (current) return current;
+      throw new Error(`Payment ${input.id} not found while marking capture_unknown.`);
+    }
+
+    return row;
+  }
+
+  /** HTTP 4xx: Klap rechazó definitivamente la captura. */
+  async markCaptureFailed(input: {
+    id: string;
+    reason: string;
+  }): Promise<Payment> {
+    const now = new Date();
+    const [row] = await db
+      .update(payments)
+      .set({
+        status: "capture_failed",
+        captureFailedAt: now,
+        captureFailureReason: input.reason.slice(0, 1000),
+        updatedAt: now,
+      })
+      .where(
+        and(
+          eq(payments.id, input.id),
+          inArray(payments.status, ["capture_pending", "capture_unknown"]),
+        ),
+      )
+      .returning();
+
+    if (!row) {
+      const current = await this.findById(input.id);
+      if (current) return current;
+      throw new Error(`Payment ${input.id} not found while marking capture_failed.`);
+    }
+
+    return row;
   }
 
   async markRejected(id: string, webhookPayload: unknown): Promise<Payment> {

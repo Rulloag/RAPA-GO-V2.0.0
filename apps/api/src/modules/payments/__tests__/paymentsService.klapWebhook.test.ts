@@ -7,7 +7,7 @@ const {
   mockCompleteWebhookEvent,
   mockFailWebhookEvent,
   mockFindByProviderOrderId,
-  mockMarkSuccessAndActivateRide,
+  mockMarkAuthorizedAndActivateRide,
   mockMarkRejected,
   mockRecordSafe,
   mockCancelPendingPayment,
@@ -16,7 +16,7 @@ const {
   mockCompleteWebhookEvent: vi.fn(),
   mockFailWebhookEvent: vi.fn(),
   mockFindByProviderOrderId: vi.fn(),
-  mockMarkSuccessAndActivateRide: vi.fn(),
+  mockMarkAuthorizedAndActivateRide: vi.fn(),
   mockMarkRejected: vi.fn(),
   mockRecordSafe: vi.fn(),
   mockCancelPendingPayment: vi.fn(),
@@ -28,7 +28,7 @@ vi.mock("../payments.repository.js", () => ({
     completeWebhookEvent: mockCompleteWebhookEvent,
     failWebhookEvent: mockFailWebhookEvent,
     findByProviderOrderId: mockFindByProviderOrderId,
-    markSuccessAndActivateRide: mockMarkSuccessAndActivateRide,
+    markAuthorizedAndActivateRide: mockMarkAuthorizedAndActivateRide,
     markRejected: mockMarkRejected,
   })),
 }));
@@ -72,7 +72,7 @@ beforeEach(() => {
   mockClaimWebhookEvent.mockResolvedValue({ claimed: true, event: { id: "webhook-event-uuid" } });
   mockCompleteWebhookEvent.mockResolvedValue(undefined);
   mockFailWebhookEvent.mockResolvedValue(undefined);
-  mockMarkSuccessAndActivateRide.mockResolvedValue({ payment: paymentFixture({ status: "success" }), rideActivated: true });
+  mockMarkAuthorizedAndActivateRide.mockResolvedValue({ payment: paymentFixture({ status: "authorized" }), rideActivated: true });
   mockMarkRejected.mockResolvedValue(paymentFixture({ status: "rejected" }));
 });
 
@@ -82,7 +82,7 @@ function confirmBody(overrides: Record<string, unknown> = {}): Record<string, un
     reference_id: REFERENCE_ID,
     payment_method: "tarjetas",
     amount: "5000",
-    transaction_type: "sale",
+    transaction_type: "authorization",
     ...overrides,
   };
 }
@@ -159,7 +159,7 @@ describe("PaymentsService.handleKlapConfirmWebhook", () => {
       { apikey: validApikeyHeader() },
     );
     expect(result.ok).toBe(true);
-    expect(mockMarkSuccessAndActivateRide).toHaveBeenCalled();
+    expect(mockMarkAuthorizedAndActivateRide).toHaveBeenCalled();
   });
 
   it("13. accepts amount as a number", async () => {
@@ -168,19 +168,19 @@ describe("PaymentsService.handleKlapConfirmWebhook", () => {
       { apikey: validApikeyHeader() },
     );
     expect(result.ok).toBe(true);
-    expect(mockMarkSuccessAndActivateRide).toHaveBeenCalled();
+    expect(mockMarkAuthorizedAndActivateRide).toHaveBeenCalled();
   });
 
   it("14. a decimal amount does not mark success", async () => {
     await service.handleKlapConfirmWebhook(confirmBody({ amount: "5000.50" }), { apikey: validApikeyHeader() });
-    expect(mockMarkSuccessAndActivateRide).not.toHaveBeenCalled();
+    expect(mockMarkAuthorizedAndActivateRide).not.toHaveBeenCalled();
   });
 
   it("15. a non-numeric amount does not mark success", async () => {
     await service.handleKlapConfirmWebhook(confirmBody({ amount: "not-a-number" }), {
       apikey: validApikeyHeader(),
     });
-    expect(mockMarkSuccessAndActivateRide).not.toHaveBeenCalled();
+    expect(mockMarkAuthorizedAndActivateRide).not.toHaveBeenCalled();
   });
 
   it("16. an amount that does not match payment.amountClp responds 409 amount_mismatch, never success (Fase C.1)", async () => {
@@ -195,10 +195,26 @@ describe("PaymentsService.handleKlapConfirmWebhook", () => {
       // Never leaks the expected/received amounts in the result itself.
       expect(JSON.stringify(result)).not.toMatch(/9999|5000/);
     }
-    expect(mockMarkSuccessAndActivateRide).not.toHaveBeenCalled();
+    expect(mockMarkAuthorizedAndActivateRide).not.toHaveBeenCalled();
     expect(mockClaimWebhookEvent).not.toHaveBeenCalled();
     expect(mockRecordSafe).toHaveBeenCalledWith(
       expect.objectContaining({ eventType: "payment.amount_mismatch" }),
+    );
+  });
+
+  it("16b. a transaction_type distinto de authorization no marca success/authorized (Fase 4)", async () => {
+    const result = await service.handleKlapConfirmWebhook(
+      confirmBody({ transaction_type: "sale" }),
+      { apikey: validApikeyHeader() },
+    );
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.code).toBe("TRANSACTION_TYPE_MISMATCH");
+    }
+    expect(mockMarkAuthorizedAndActivateRide).not.toHaveBeenCalled();
+    expect(mockClaimWebhookEvent).not.toHaveBeenCalled();
+    expect(mockRecordSafe).toHaveBeenCalledWith(
+      expect.objectContaining({ eventType: "payment.klap_unexpected_transaction_type" }),
     );
   });
 
@@ -217,7 +233,7 @@ describe("PaymentsService.handleKlapConfirmWebhook", () => {
       { apikey: validApikeyHeader() },
     );
     expect(goodResult.ok).toBe(true);
-    expect(mockMarkSuccessAndActivateRide).toHaveBeenCalledOnce();
+    expect(mockMarkAuthorizedAndActivateRide).toHaveBeenCalledOnce();
   });
 
   it("6/17. payment_method distinto se audita, pero una confirmación firmada y consistente responde ok", async () => {
@@ -226,7 +242,7 @@ describe("PaymentsService.handleKlapConfirmWebhook", () => {
       { apikey: validApikeyHeader() },
     );
     expect(result.ok).toBe(true);
-    expect(mockMarkSuccessAndActivateRide).toHaveBeenCalledOnce();
+    expect(mockMarkAuthorizedAndActivateRide).toHaveBeenCalledOnce();
     expect(mockRecordSafe).toHaveBeenCalledWith(
       expect.objectContaining({
         eventType: "payment.klap_unexpected_payment_method",
@@ -238,7 +254,7 @@ describe("PaymentsService.handleKlapConfirmWebhook", () => {
     mockFindByProviderOrderId.mockResolvedValue(paymentFixture({ id: REFERENCE_ID }));
     const result = await service.handleKlapConfirmWebhook(confirmBody(), { apikey: validApikeyHeader() });
     expect(result.ok).toBe(true);
-    expect(mockMarkSuccessAndActivateRide).toHaveBeenCalled();
+    expect(mockMarkAuthorizedAndActivateRide).toHaveBeenCalled();
   });
 
   it("19. order_id and reference_id pointing to different payments responds 409 payment_mismatch (Fase C.1)", async () => {
@@ -249,7 +265,7 @@ describe("PaymentsService.handleKlapConfirmWebhook", () => {
       expect(result.code).toBe("PAYMENT_MISMATCH");
       expect(result.statusCode).toBe(409);
     }
-    expect(mockMarkSuccessAndActivateRide).not.toHaveBeenCalled();
+    expect(mockMarkAuthorizedAndActivateRide).not.toHaveBeenCalled();
     expect(mockClaimWebhookEvent).not.toHaveBeenCalled();
   });
 
@@ -263,20 +279,20 @@ describe("PaymentsService.handleKlapConfirmWebhook", () => {
   it("21. processes a pending/processing payment into success", async () => {
     mockFindByProviderOrderId.mockResolvedValue(paymentFixture({ status: "processing" }));
     await service.handleKlapConfirmWebhook(confirmBody(), { apikey: validApikeyHeader() });
-    expect(mockMarkSuccessAndActivateRide).toHaveBeenCalledOnce();
+    expect(mockMarkAuthorizedAndActivateRide).toHaveBeenCalledOnce();
   });
 
   it("22. a duplicate confirm (already claimed) does not repeat effects", async () => {
     mockClaimWebhookEvent.mockResolvedValue({ claimed: false, event: { id: "existing" } });
     const result = await service.handleKlapConfirmWebhook(confirmBody(), { apikey: validApikeyHeader() });
     expect(result.ok).toBe(true);
-    expect(mockMarkSuccessAndActivateRide).not.toHaveBeenCalled();
+    expect(mockMarkAuthorizedAndActivateRide).not.toHaveBeenCalled();
   });
 
   it("22b. confirm on an already-success payment does not repeat the transition", async () => {
     mockFindByProviderOrderId.mockResolvedValue(paymentFixture({ status: "success" }));
     await service.handleKlapConfirmWebhook(confirmBody(), { apikey: validApikeyHeader() });
-    expect(mockMarkSuccessAndActivateRide).not.toHaveBeenCalled();
+    expect(mockMarkAuthorizedAndActivateRide).not.toHaveBeenCalled();
   });
 
   it("persists only safe card metadata needed by the passenger receipt", async () => {
@@ -291,7 +307,7 @@ describe("PaymentsService.handleKlapConfirmWebhook", () => {
       { apikey: validApikeyHeader() },
     );
 
-    expect(mockMarkSuccessAndActivateRide).toHaveBeenCalledWith(
+    expect(mockMarkAuthorizedAndActivateRide).toHaveBeenCalledWith(
       expect.objectContaining({
         providerPayload: expect.objectContaining({
           card_type: "credito",
@@ -329,7 +345,7 @@ describe("PaymentsService.handleKlapConfirmWebhook", () => {
   it("27/28. responds {status:'ok'} and leaves the payment success", async () => {
     const result = await service.handleKlapConfirmWebhook(confirmBody(), { apikey: validApikeyHeader() });
     expect(result).toMatchObject({ ok: true, status: "ok" });
-    expect(mockMarkSuccessAndActivateRide).toHaveBeenCalledWith(
+    expect(mockMarkAuthorizedAndActivateRide).toHaveBeenCalledWith(
       expect.objectContaining({ id: REFERENCE_ID, rideRequestId: "ride-uuid" }),
     );
   });
