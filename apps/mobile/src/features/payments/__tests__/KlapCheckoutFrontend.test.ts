@@ -114,23 +114,24 @@ describe("Klap Checkout Transparente frontend", () => {
     expect(rejectedHandler).not.toContain("goToTripsAfterRequest");
   });
 
-  it("carga Cardinal como dependencia sin controlar manualmente el desafío 3DS", () => {
+  it("continúa SEND_TO_CHALLENGE con la misma sesión Cardinal de Klap", () => {
     expect(serviceSource).toContain("KLAP_SANDBOX_CARDINAL_URL");
     expect(serviceSource).toContain("KLAP_PRODUCTION_CARDINAL_URL");
     expect(serviceSource).toContain("preloadKlapCardinal");
     expect(serviceSource).toContain("await preloadKlapCardinal();");
     expect(serviceSource).toContain('data-rapago-klap-cardinal="true"');
+    expect(serviceSource).toContain("installKlapReceiptChallengeBridge");
+    expect(serviceSource).toContain("SEND_TO_CHALLENGE");
+    expect(serviceSource).toContain("window.Cardinal.continue(");
+    expect(serviceSource).toContain('"payments.setupComplete"');
+    expect(serviceSource).toContain('"payments.validated"');
     expect(serviceSource).toContain("sdk.init({");
     expect(modalSource).toContain("initializedSdk.payOrder?.()");
-    expect(serviceSource).not.toContain("window.Cardinal.continue");
     expect(serviceSource).not.toContain("Cardinal.setup");
     expect(serviceSource).not.toContain("Cardinal.configure");
     expect(serviceSource).not.toContain("openDirectKlap3dsChallenge");
     expect(serviceSource).not.toContain("rapago-klap-3ds-overlay");
-    expect(serviceSource).not.toContain("continueKlap3dsChallenge");
     expect(serviceSource).not.toContain('name = "creq"');
-    expect(modalSource).not.toContain("KLAP_3DS_CHALLENGE_STARTED_EVENT");
-    expect(modalSource).not.toContain("closeKlap3dsChallengeOverlay");
   });
 
 });
