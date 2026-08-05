@@ -17,6 +17,7 @@ import {
   googleAuthRequestSchema,
   loginRequestSchema,
   registerRequestSchema,
+  refreshSessionSchema,
   resetPasswordRequestSchema,
 } from "./auth.schemas.js";
 import type {
@@ -34,6 +35,7 @@ import type {
   FacebookResidentPrecheckInput,
   FacebookResidentStatusInput,
   GoogleAuthRequestInput,
+  RefreshSessionInput,
 } from "./auth.schemas.js";
 import { sendError } from "../../shared/http/apiResponse.js";
 import { PasswordResetService } from "./passwordReset.service.js";
@@ -701,6 +703,36 @@ export const authController = {
     reply
       .header("Cache-Control", "no-store")
       .status(result.ok ? 200 : result.statusCode)
+      .send(result);
+  },
+
+
+
+  async refresh(
+    request: FastifyRequest<{ Body: RefreshSessionInput }>,
+    reply: FastifyReply,
+  ): Promise<void> {
+    const parsed = refreshSessionSchema.safeParse(request.body);
+
+    if (!parsed.success) {
+      sendError(reply, {
+        code: "VALIDATION_ERROR",
+        message:
+          parsed.error.issues[0]?.message ??
+          "El token de renovación no es válido.",
+        statusCode: 400,
+      });
+      return;
+    }
+
+    const result = await authService.refreshSession(
+      parsed.data.refreshToken,
+    );
+
+    reply
+      .header("Cache-Control", "no-store")
+      .header("Pragma", "no-cache")
+      .status(result.ok ? 200 : (result.statusCode ?? 401))
       .send(result);
   },
 

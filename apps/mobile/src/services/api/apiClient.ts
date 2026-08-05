@@ -96,24 +96,36 @@ async function request<T>(
   if (response.ok === false) {
     const errorResponse = parseErrorBody(parsed, response.status);
 
+    const hasAuthenticatedRequest = Boolean(token);
+    const shouldRefreshAccessToken =
+      hasAuthenticatedRequest &&
+      errorResponse.ok === false &&
+      errorResponse.code === "AUTH_TOKEN_EXPIRED";
     const mustForceLogout =
-      Boolean(token) &&
+      hasAuthenticatedRequest &&
       errorResponse.ok === false &&
       (
-        response.status === 401 ||
         [
           "AUTH_SESSION_REVOKED",
-          "AUTH_TOKEN_EXPIRED",
           "AUTH_ACCOUNT_DELETED",
           "AUTH_ACCOUNT_SUSPENDED",
-          "UNAUTHORIZED",
-        ].includes(errorResponse.code)
+        ].includes(errorResponse.code) ||
+        (
+          path === "/auth/me" &&
+          errorResponse.code === "UNAUTHORIZED"
+        )
       );
 
-    if (mustForceLogout) {
+    if (shouldRefreshAccessToken) {
+      window.dispatchEvent(
+        new CustomEvent("auth:token-expired", {
+          detail: { code: errorResponse.code, path },
+        }),
+      );
+    } else if (mustForceLogout) {
       window.dispatchEvent(
         new CustomEvent("auth:force-logout", {
-          detail: { code: errorResponse.code },
+          detail: { code: errorResponse.code, path },
         }),
       );
     }
