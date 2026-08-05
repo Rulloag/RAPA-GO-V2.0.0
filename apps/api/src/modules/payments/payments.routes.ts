@@ -3,10 +3,14 @@ import { paymentsController } from "./payments.controller.js";
 
 export async function paymentsRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.post("/payments/create", paymentsController.createPayment);
-  // Klap Checkout Transparente — Sandbox-only embedded order creation (Fase D).
-  // Not reachable through PAYMENT_PROVIDER/getActiveProvider(); this route is the
-  // controlled path used by the mobile client for embedded Klap orders.
+  // Crea una orden y devuelve el redirect_url oficial del checkout alojado.
   fastify.post("/payments/klap/orders", paymentsController.createKlapEmbeddedOrder);
+  fastify.post(
+    "/payments/:paymentId/reconcile/klap",
+    paymentsController.reconcileKlapPayment,
+  );
+  fastify.get("/payments/return/klap", paymentsController.klapBrowserReturn);
+  fastify.get("/payments/cancel/klap", paymentsController.klapBrowserCancel);
   fastify.get("/payments/:paymentId/status", paymentsController.getPaymentStatus);
   fastify.get("/payments/:paymentId/receipt", paymentsController.getPaymentReceipt);
   fastify.get(

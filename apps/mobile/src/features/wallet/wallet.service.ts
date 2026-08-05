@@ -304,6 +304,24 @@ export const walletService = {
     return unwrap(result, "No se pudo consultar el estado del pago.");
   },
 
+  async reconcileKlapPayment(
+    accessToken: string,
+    paymentId: string,
+  ): Promise<{ status: string; providerStatus: string }> {
+    const result = await apiClient.post<
+      Envelope<{ status: string; providerStatus: string }>
+    >(
+      `/payments/${encodeURIComponent(paymentId)}/reconcile/klap`,
+      {},
+      { token: accessToken },
+    );
+
+    return unwrap(
+      result,
+      "No se pudo consultar la orden directamente en Klap.",
+    );
+  },
+
   async getPaymentReceipt(
     accessToken: string,
     paymentId: string,

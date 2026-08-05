@@ -54,6 +54,15 @@ export async function authRoutes(
     { config: { rateLimit: { max: 5, timeWindow: "15 minutes" } } },
     authController.appleLink,
   );
+  fastify.post(
+    "/refresh",
+    {
+      config: {
+        rateLimit: { max: 30, timeWindow: "15 minutes" },
+      },
+    },
+    authController.refresh,
+  );
   fastify.post("/logout", authController.logout);
   fastify.get("/me", authController.me);
 

@@ -9218,6 +9218,12 @@ export default function TripsPage(): JSX.Element {
 
         for (let attempt = 0; attempt < 8 && !disposed; attempt += 1) {
           try {
+            // La URL de retorno no es autoridad. El backend consulta la orden
+            // oficial de Klap por order_id y valida referencia, monto y moneda.
+            if (attempt === 0 || attempt === 3 || attempt === 6) {
+              await walletService.reconcileKlapPayment(accessToken, paymentId);
+            }
+
             const statusData = await walletService.getPaymentStatus(
               accessToken,
               paymentId,
@@ -9262,7 +9268,7 @@ export default function TripsPage(): JSX.Element {
             setPaymentReturnMessage({
               tone: "pending",
               title: "No pudimos confirmar Klap todavía",
-              body: "Puedes continuar el checkout o revisar más tarde. No vuelvas a crear otro pago.",
+              body: "Puedes volver al checkout alojado por Klap o revisar más tarde. No crees otro pago.",
             });
           }
 
@@ -9273,7 +9279,7 @@ export default function TripsPage(): JSX.Element {
           setPaymentReturnMessage({
             tone: "pending",
             title: "Pago Klap aún pendiente",
-            body: "Continúa el checkout de Klap o vuelve a revisar Mis Viajes más tarde.",
+            body: "Vuelve al checkout seguro de Klap o revisa Mis Viajes más tarde.",
           });
           setCanResumeKlapPayment(true);
         }
@@ -10207,7 +10213,7 @@ export default function TripsPage(): JSX.Element {
                     history.push(ROUTES.PASSENGER.REQUEST_RIDE);
                   }}
                 >
-                  Continuar pago con Klap
+                  Abrir checkout seguro de Klap
                 </IonButton>
               )}
               {canResumeKlapPayment && !readPendingCardPayment()?.checkoutStartedAt && (

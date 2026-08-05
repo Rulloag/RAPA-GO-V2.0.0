@@ -802,6 +802,7 @@ export class AuthService {
           expiresAt: accessToken.expiresAt.toISOString(),
           user: authUser,
         },
+        refreshToken: refreshToken.token,
       };
     } catch (err) {
       if (
@@ -974,6 +975,7 @@ export class AuthService {
         expiresAt: accessToken.expiresAt.toISOString(),
         user: authUser,
       },
+      refreshToken: refreshToken.token,
     };
   }
 
@@ -2104,6 +2106,99 @@ export class AuthService {
         expiresAt: accessToken.expiresAt.toISOString(),
         user: authUser,
       },
+      refreshToken: refreshToken.token,
+    };
+  }
+
+
+  async refreshSession(
+    rawRefreshToken: string,
+  ): Promise<AuthServiceResult> {
+    const refreshTokenValue = rawRefreshToken.trim();
+
+    if (!/^[a-f0-9]{96}$/i.test(refreshTokenValue)) {
+      return {
+        ok: false,
+        code: "AUTH_REFRESH_TOKEN_INVALID",
+        message: "La sesión no se puede renovar.",
+        statusCode: 401,
+      };
+    }
+
+    const consumed = await sessionService.consumeRefreshToken(
+      tokenService.hashToken(refreshTokenValue),
+    );
+
+    if (!consumed) {
+      return {
+        ok: false,
+        code: "AUTH_REFRESH_TOKEN_INVALID",
+        message: "La sesión expiró o ya fue renovada.",
+        statusCode: 401,
+      };
+    }
+
+    const user = await usersRepository.findById(consumed.userId);
+
+    if (!user) {
+      return {
+        ok: false,
+        code: "UNAUTHORIZED",
+        message: "Usuario no encontrado.",
+        statusCode: 401,
+      };
+    }
+
+    if (user.status !== "active") {
+      await sessionService.revokeAllForUser(user.id);
+
+      return {
+        ok: false,
+        code:
+          user.status === "deleted"
+            ? "AUTH_ACCOUNT_DELETED"
+            : "AUTH_ACCOUNT_SUSPENDED",
+        message:
+          user.status === "deleted"
+            ? "Esta cuenta fue eliminada."
+            : "Esta cuenta no está habilitada.",
+        statusCode: user.status === "deleted" ? 401 : 403,
+      };
+    }
+
+    const authUser = await buildAuthUser(user);
+    const accessToken = tokenService.issueAccessToken(authUser);
+    const nextRefreshToken = tokenService.issueRefreshToken();
+
+    await sessionService.createSession({
+      userId: user.id,
+      accessTokenHash: accessToken.hash,
+      expiresAt: accessToken.expiresAt,
+    });
+
+    await sessionService.createRefreshToken({
+      userId: user.id,
+      tokenHash: nextRefreshToken.hash,
+      expiresAt: nextRefreshToken.expiresAt,
+      rotatedFromTokenId: consumed.id,
+    });
+
+    auditService.recordSafe({
+      eventType: "auth.session.refresh.success",
+      entityType: "user",
+      entityId: user.id,
+      actorUserId: user.id,
+      metadata: { rotatedFromTokenId: consumed.id },
+    });
+
+    return {
+      ok: true,
+      session: {
+        accessToken: accessToken.token,
+        expiresAt: accessToken.expiresAt.toISOString(),
+        user: authUser,
+      },
+      refreshToken: nextRefreshToken.token,
     };
   }
 
