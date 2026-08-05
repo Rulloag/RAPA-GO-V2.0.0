@@ -76,10 +76,8 @@ export const paymentsController = {
   },
 
   /**
-   * Klap Checkout Transparente — Sandbox-only embedded order creation (Fase D).
-   * Deliberately a separate endpoint from `createPayment` above: that one's
-   * response shape (`urlPay`, redirect-oriented) is already relied upon by the
-   * mobile client for Mercado Pago/ProntoPaga and is left untouched here.
+   * Crea una orden Klap y devuelve el redirect_url oficial del checkout alojado.
+   * La ruta se conserva para no romper clientes desplegados.
    */
   async createKlapEmbeddedOrder(request: FastifyRequest, reply: FastifyReply): Promise<void> {
     const token = extractBearer(request);
@@ -104,14 +102,85 @@ export const paymentsController = {
       return;
     }
 
-    // Only the public, non-secret fields — never the raw Klap response, ApiKey,
-    // headers, or anything resembling a redirect URL.
+    // Solo datos públicos: orderId, redirectUrl y estado inicial.
+    // Nunca se expone ApiKey ni la respuesta cruda de Klap.
     sendOk(reply, {
       paymentId: result.paymentId,
       provider: result.provider,
       checkoutType: result.checkoutType,
       publicCheckoutData: result.publicCheckoutData,
     }, 201);
+  },
+
+  async reconcileKlapPayment(
+    request: FastifyRequest,
+    reply: FastifyReply,
+  ): Promise<void> {
+    const token = extractBearer(request);
+
+    if (!token) {
+      sendError(reply, {
+        code: "UNAUTHORIZED",
+        message: "Missing Bearer token.",
+        statusCode: 401,
+      });
+      return;
+    }
+
+    const paymentId = String(
+      (request.params as Record<string, unknown> | undefined)?.["paymentId"] ??
+        "",
+    ).trim();
+
+    if (
+      !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+        paymentId,
+      )
+    ) {
+      sendError(reply, {
+        code: "VALIDATION_ERROR",
+        message: "paymentId must be a valid UUID.",
+        statusCode: 400,
+      });
+      return;
+    }
+
+    const result = await paymentsService.reconcileKlapPayment(
+      token,
+      paymentId,
+    );
+
+    if (!result.ok) {
+      sendError(reply, {
+        code: result.code,
+        message: result.message,
+        statusCode: result.statusCode,
+      });
+      return;
+    }
+
+    sendOk(reply, {
+      status: result.status,
+      providerStatus: result.providerStatus,
+    });
+  },
+
+  async klapBrowserReturn(
+    _request: FastifyRequest,
+    reply: FastifyReply,
+  ): Promise<void> {
+    reply.header("Cache-Control", "no-store, max-age=0");
+    reply.header("Pragma", "no-cache");
+    reply.redirect(303, paymentsService.getKlapBrowserReturnRedirect(false));
+  },
+
+  async klapBrowserCancel(
+    _request: FastifyRequest,
+    reply: FastifyReply,
+  ): Promise<void> {
+    reply.header("Cache-Control", "no-store, max-age=0");
+    reply.header("Pragma", "no-cache");
+    reply.redirect(303, paymentsService.getKlapBrowserReturnRedirect(true));
   },
 
   async getPaymentStatus(request: FastifyRequest, reply: FastifyReply): Promise<void> {

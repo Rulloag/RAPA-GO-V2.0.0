@@ -3,7 +3,7 @@ import { TokenService } from "../auth/token.service.js";
 import { SessionService } from "../auth/session.service.js";
 import { UsersRepository } from "../users/users.repository.js";
 import { PaymentsRepository, type PaymentPurpose } from "./payments.repository.js";
-import { getActiveProvider, getProvider, getKlapEmbeddedProvider } from "./provider.registry.js";
+import { getActiveProvider, getProvider, getKlapProvider } from "./provider.registry.js";
 import { AuditService } from "../audit/audit.service.js";
 import { AppError } from "../../shared/errors/AppError.js";
 import { klapConfirmWebhookSchema, klapRejectWebhookSchema } from "./payments.schema.js";
@@ -313,13 +313,14 @@ function buildPaymentFrontendResultUrl(input: {
   externalReference?: string;
   providerPaymentId?: string;
   reason?: string;
+  backendReconciled?: boolean;
 }): string {
   const baseUrl = getPaymentFrontendReturnUrl();
 
   try {
     const url = new URL(baseUrl);
     url.searchParams.set("payment", input.marker);
-    url.searchParams.set("backend_reconciled", "1");
+    url.searchParams.set("backend_reconciled", input.backendReconciled === false ? "0" : "1");
 
     if (input.externalReference) {
       url.searchParams.set("external_reference", input.externalReference);
@@ -338,7 +339,7 @@ function buildPaymentFrontendResultUrl(input: {
     const separator = baseUrl.includes("?") ? "&" : "?";
     const params = new URLSearchParams({
       payment: input.marker,
-      backend_reconciled: "1",
+      backend_reconciled: input.backendReconciled === false ? "0" : "1",
       ...(input.externalReference
         ? { external_reference: input.externalReference }
         : {}),
@@ -388,6 +389,66 @@ function buildPaymentReturnUrl(providerName: string): string {
     : buildPaymentFrontendResultUrl({ marker: "pending_return" });
 }
 
+
+type KlapReconciledStatus = "success" | "rejected" | "pending" | "unknown";
+
+function normalizeKlapOrderStatus(value: unknown): KlapReconciledStatus {
+  const status = String(value ?? "").trim().toLowerCase();
+
+  if (["approved", "success", "paid", "completed", "confirmed"].includes(status)) {
+    return "success";
+  }
+
+  if (
+    [
+      "rejected",
+      "failed",
+      "cancelled",
+      "canceled",
+      "expired",
+      "voided",
+      "refunded",
+    ].includes(status)
+  ) {
+    return "rejected";
+  }
+
+  if (["pending", "processing", "created", "in_process", "in-process"].includes(status)) {
+    return "pending";
+  }
+
+  return "unknown";
+}
+
+function getKlapOrderExpirationMs(): number {
+  const minutes = Number(process.env["KLAP_ORDER_EXPIRATION_MINUTES"] ?? 30);
+  const safeMinutes = Number.isInteger(minutes) && minutes > 0 ? minutes : 30;
+  return safeMinutes * 60_000;
+}
+
+function isKlapPaymentExpired(createdAt: Date): boolean {
+  return Date.now() - createdAt.getTime() >= getKlapOrderExpirationMs();
+}
+
+function sanitizeKlapOrderQueryPayload(input: {
+  orderId: string;
+  referenceId: string | null;
+  status: string;
+  amount: { currency: string | null; total: number | null } | null;
+  transactionId: string | null;
+  mcCode: string | null;
+}): Record<string, unknown> {
+  return {
+    source: "klap_get_order",
+    order_id: input.orderId,
+    reference_id: input.referenceId,
+    status: input.status,
+    amount: input.amount,
+    transaction_id: input.transactionId,
+    mc_code: input.mcCode,
+    reconciled_at: new Date().toISOString(),
+  };
+}
 
 function isPaymentRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value && typeof value === "object");
@@ -1965,19 +2026,11 @@ export class PaymentsService {
   }
 
   /**
-   * Klap Checkout Transparente — Sandbox-only embedded order creation (Fase D).
+   * Crea o recupera una orden Klap alojada.
    *
-   * Separate from `createPayment()` above on purpose: Klap is embedded, not
-   * redirect-based (see the discriminated-union note in payment.provider.ts), and
-   * is not wired into `getActiveProvider()`/`PAYMENT_PROVIDER` — reaching it
-   * requires this method specifically, called from its own dedicated route.
-   *
-   * Creating the order here is NOT a successful payment. The local `payments` row
-   * stays in the same "processing" state Mercado Pago/ProntoPaga use right after
-   * creating their checkout (pending confirmation) — the ride is never activated,
-   * no receipt is generated, Wallet is never touched, and no success notification
-   * is sent. Real financial confirmation is exclusively the webhook's job, to be
-   * implemented in a later phase.
+   * El frontend recibe exclusivamente orderId + redirectUrl. Los datos de
+   * tarjeta se capturan en el dominio de Klap; RAPA GO no carga el SDK
+   * anterior ni procesa endpoints internos de captura de tarjeta.
    */
   async createKlapEmbeddedOrder(
     accessToken: string,
@@ -1985,8 +2038,12 @@ export class PaymentsService {
   ): Promise<Result<{
     paymentId: string;
     provider: "klap";
-    checkoutType: "embedded";
-    publicCheckoutData: { orderId: string };
+    checkoutType: "redirect";
+    publicCheckoutData: {
+      orderId: string;
+      redirectUrl: string;
+      initialStatus: string | null;
+    };
   }>> {
     const auth = await authenticate(accessToken);
     if (!auth.ok) return auth;
@@ -2037,8 +2094,6 @@ export class PaymentsService {
       };
     }
 
-    // Sandbox-only, "ride" purpose only in this phase — fast_search/cash branches
-    // are intentionally out of scope for the Klap embedded flow (Fase D).
     const successful = await paymentsRepo.findSuccessfulByRideIdAndPurpose(
       input.rideRequestId,
       "ride",
@@ -2053,6 +2108,7 @@ export class PaymentsService {
       };
     }
 
+    const provider = getKlapProvider();
     const active = await paymentsRepo.findActiveByRideIdAndPurpose(
       input.rideRequestId,
       "ride",
@@ -2061,33 +2117,163 @@ export class PaymentsService {
     if (active) {
       const activeProvider = normalizePaymentText(active.provider);
       const activeOrderId = String(active.providerOrderId ?? "").trim();
+      const activeRedirectUrl = String(active.urlPay ?? "").trim();
+      const locallyExpired = isKlapPaymentExpired(active.createdAt);
 
-      // Reabrir el mismo checkout Klap es idempotente: no se crea una segunda
-      // orden ni un segundo cobro cuando el pasajero cerró el modal, recargó
-      // la app o volvió desde Mis Viajes.
-      if (activeProvider === "klap" && activeOrderId) {
+      if (activeProvider !== "klap" || !activeOrderId) {
         return {
-          ok: true,
-          paymentId: active.id,
-          provider: "klap",
-          checkoutType: "embedded",
-          publicCheckoutData: { orderId: activeOrderId },
+          ok: false,
+          code: "PAYMENT_ALREADY_EXISTS",
+          message: "A payment for this ride is already pending or processing.",
+          statusCode: 409,
         };
       }
 
+      // Nunca se crea una segunda orden basándose solamente en el reloj local.
+      // Primero se consulta la orden oficial de Klap para evitar doble cobro.
+      if (locallyExpired || !activeRedirectUrl) {
+        try {
+          const remoteOrder = await provider.getOrder(activeOrderId);
+
+          if (
+            remoteOrder.reference_id &&
+            remoteOrder.reference_id !== active.id
+          ) {
+            return {
+              ok: false,
+              code: "PAYMENT_MISMATCH",
+              message:
+                "La orden pendiente de Klap no coincide con el pago local. Contacta a soporte.",
+              statusCode: 409,
+            };
+          }
+
+          const remoteTotal = remoteOrder.amount?.total ?? null;
+          const remoteCurrency = String(
+            remoteOrder.amount?.currency ?? "CLP",
+          ).toUpperCase();
+
+          if (
+            remoteTotal !== null &&
+            (Math.round(remoteTotal) !== active.amountClp ||
+              remoteCurrency !== "CLP")
+          ) {
+            return {
+              ok: false,
+              code: "AMOUNT_MISMATCH",
+              message:
+                "La orden pendiente de Klap tiene un monto o moneda diferente. Contacta a soporte.",
+              statusCode: 409,
+            };
+          }
+
+          const remoteStatus = normalizeKlapOrderStatus(remoteOrder.status);
+          const safePayload = sanitizeKlapOrderQueryPayload({
+            orderId: remoteOrder.order_id,
+            referenceId: remoteOrder.reference_id,
+            status: remoteOrder.status,
+            amount: remoteOrder.amount,
+            transactionId: remoteOrder.transaction_id,
+            mcCode: remoteOrder.mc_code,
+          });
+
+          if (remoteStatus === "success") {
+            await paymentsRepo.markSuccessAndActivateRide({
+              id: active.id,
+              rideRequestId: active.rideRequestId,
+              externalId:
+                remoteOrder.transaction_id ??
+                remoteOrder.mc_code ??
+                remoteOrder.order_id,
+              providerPayload: safePayload,
+            });
+
+            return {
+              ok: false,
+              code: "PAYMENT_ALREADY_PAID",
+              message:
+                "Klap ya confirmó el pago de este viaje. Revisa Mis Viajes.",
+              statusCode: 409,
+            };
+          }
+
+          if (remoteStatus === "rejected") {
+            await paymentsRepo.markRejected(active.id, safePayload);
+            // La orden terminó oficialmente. Se permite crear una nueva abajo.
+          } else {
+            const recoveredRedirectUrl = String(
+              remoteOrder.redirect_url ?? activeRedirectUrl,
+            ).trim();
+
+            if (recoveredRedirectUrl) {
+              await paymentsRepo.markProcessing(
+                active.id,
+                recoveredRedirectUrl,
+                activeOrderId,
+              );
+
+              return {
+                ok: true,
+                paymentId: active.id,
+                provider: "klap",
+                checkoutType: "redirect",
+                publicCheckoutData: {
+                  orderId: activeOrderId,
+                  redirectUrl: recoveredRedirectUrl,
+                  initialStatus: remoteOrder.status,
+                },
+              };
+            }
+
+            return {
+              ok: false,
+              code: "KLAP_ORDER_RECOVERY_PENDING",
+              message:
+                "La orden Klap anterior sigue pendiente y todavía no tiene un enlace recuperable. Revisa Mis Viajes antes de intentar otro pago.",
+              statusCode: 409,
+            };
+          }
+        } catch (error) {
+          auditService.recordSafe({
+            actorUserId: auth.userId,
+            eventType: "payment.klap_active_order_check_failed",
+            entityType: "payment",
+            entityId: active.id,
+            metadata: {
+              errorKind:
+                error instanceof KlapProviderError ? error.kind : "unknown",
+              provider: "klap",
+              locallyExpired,
+            },
+          });
+
+          return {
+            ok: false,
+            code: "KLAP_ORDER_RECOVERY_PENDING",
+            message:
+              "No pudimos confirmar si la orden Klap anterior terminó. Por seguridad no se creará otro cobro todavía.",
+            statusCode: 409,
+          };
+        }
+      }
+
       return {
-        ok: false,
-        code: "PAYMENT_ALREADY_EXISTS",
-        message: "A payment for this ride is already pending or processing.",
-        statusCode: 409,
+        ok: true,
+        paymentId: active.id,
+        provider: "klap",
+        checkoutType: "redirect",
+        publicCheckoutData: {
+          orderId: activeOrderId,
+          redirectUrl: activeRedirectUrl,
+          initialStatus: active.status,
+        },
       };
     }
 
-    // Authoritative amount — computed server-side from the ride record, exactly
-    // like createPayment() above. The request body has no amount field at all
-    // (see createKlapEmbeddedOrderSchema): there is nothing for the client to
-    // manipulate here even in principle.
-    const amountClp = Math.max(0, Math.round(Number(ride.estimatedFareClp ?? 0)));
+    const amountClp = Math.max(
+      0,
+      Math.round(Number(ride.estimatedFareClp ?? 0)),
+    );
 
     if (!Number.isInteger(amountClp) || amountClp <= 0) {
       return {
@@ -2109,38 +2295,29 @@ export class PaymentsService {
       provider: "klap",
     });
 
-    const webhookBaseUrl = process.env["PAYMENT_WEBHOOK_BASE_URL"] ?? "";
-    const provider = getKlapEmbeddedProvider();
-
-    let embeddedResult;
+    let hostedResult;
 
     try {
-      embeddedResult = await provider.createEmbeddedOrder({
+      hostedResult = await provider.createHostedOrder({
         orderId: payment.id,
         amountClp,
         description: `Viaje Rapa Go — ${ride.originText} → ${ride.destinationText}`,
         passengerEmail: user?.email ?? "",
         passengerName: user?.name ?? "Pasajero",
-        // Not read by KlapProvider.createEmbeddedOrder today (Checkout Transparente
-        // does not redirect); kept consistent with the other providers' call shape
-        // in case a confirmed schema field needs them in a later phase.
         returnUrl: buildPaymentReturnUrl("klap"),
-        webhookUrl: `${webhookBaseUrl.replace(/\/+$/, "")}/api/payments/webhook/klap`,
+        webhookUrl: "",
       });
-    } catch (err) {
+    } catch (error) {
       await paymentsRepo.markFailed(payment.id);
 
-      // Timeout/network/http_rejected all land here without a second automatic
-      // attempt — the local payment stays "failed" and reconciliable; the caller
-      // must explicitly retry (which creates a new payment row with a new
-      // deterministic Idempotency-Key), never an implicit second order.
       auditService.recordSafe({
         actorUserId: auth.userId,
         eventType: "payment.klap_provider_error",
         entityType: "payment",
         entityId: payment.id,
         metadata: {
-          errorKind: err instanceof KlapProviderError ? err.kind : "unknown",
+          errorKind:
+            error instanceof KlapProviderError ? error.kind : "unknown",
           rideId: ride.id,
           provider: "klap",
           actorRole: auth.role,
@@ -2150,19 +2327,21 @@ export class PaymentsService {
       return {
         ok: false,
         code: "PAYMENT_PROVIDER_ERROR",
-        message: "No se pudo iniciar el pago con Klap. Intenta nuevamente.",
+        message:
+          "No se pudo crear el checkout oficial de Klap. Intenta nuevamente.",
         statusCode: 502,
       };
     }
 
-    // Klap has no redirect URL — `markEmbeddedProcessing` has no urlPay parameter
-    // at all, so this row's `url_pay` column is persisted as genuine NULL, never
-    // an empty string. The API response below never includes `urlPay` in any form.
-    await paymentsRepo.markEmbeddedProcessing(payment.id, embeddedResult.providerOrderId);
+    await paymentsRepo.markProcessing(
+      payment.id,
+      hostedResult.urlPay,
+      hostedResult.providerOrderId,
+    );
 
     auditService.recordSafe({
       actorUserId: auth.userId,
-      eventType: "payment.klap_order_created",
+      eventType: "payment.klap_redirect_order_created",
       entityType: "payment",
       entityId: payment.id,
       metadata: {
@@ -2177,9 +2356,194 @@ export class PaymentsService {
       ok: true,
       paymentId: payment.id,
       provider: "klap",
-      checkoutType: "embedded",
-      publicCheckoutData: embeddedResult.publicCheckoutData,
+      checkoutType: "redirect",
+      publicCheckoutData: hostedResult.publicCheckoutData,
     };
+  }
+
+  /**
+   * Consulta GET /payment-gateway/v1/orders/{order_id}.
+   * El webhook sigue siendo la vía principal; esta consulta es el respaldo
+   * oficial cuando el pasajero vuelve del checkout o abre Mis Viajes.
+   */
+  async reconcileKlapPayment(
+    accessToken: string,
+    paymentId: string,
+  ): Promise<Result<{
+    status: string;
+    providerStatus: string;
+  }>> {
+    const auth = await authenticate(accessToken);
+    if (!auth.ok) return auth;
+
+    const payment = await paymentsRepo.findById(paymentId);
+
+    if (!payment) {
+      return {
+        ok: false,
+        code: "NOT_FOUND",
+        message: "Payment not found.",
+        statusCode: 404,
+      };
+    }
+
+    const isAdmin = ["admin", "administrator"].includes(
+      normalizePaymentText(auth.role),
+    );
+
+    if (!isAdmin && payment.passengerUserId !== auth.userId) {
+      return {
+        ok: false,
+        code: "AUTH_FORBIDDEN",
+        message: "This payment does not belong to you.",
+        statusCode: 403,
+      };
+    }
+
+    if (normalizePaymentText(payment.provider) !== "klap") {
+      return {
+        ok: false,
+        code: "PAYMENT_PROVIDER_MISMATCH",
+        message: "This payment does not belong to Klap.",
+        statusCode: 409,
+      };
+    }
+
+    if (["success", "rejected", "failed", "refunded"].includes(payment.status)) {
+      return {
+        ok: true,
+        status: payment.status,
+        providerStatus: payment.status,
+      };
+    }
+
+    const orderId = String(payment.providerOrderId ?? "").trim();
+
+    if (!orderId) {
+      return {
+        ok: false,
+        code: "KLAP_ORDER_ID_MISSING",
+        message: "The Klap order id is missing.",
+        statusCode: 409,
+      };
+    }
+
+    let remoteOrder;
+
+    try {
+      remoteOrder = await getKlapProvider().getOrder(orderId);
+    } catch (error) {
+      auditService.recordSafe({
+        actorUserId: auth.userId,
+        eventType: "payment.klap_reconciliation_error",
+        entityType: "payment",
+        entityId: payment.id,
+        metadata: {
+          errorKind:
+            error instanceof KlapProviderError ? error.kind : "unknown",
+          provider: "klap",
+        },
+      });
+
+      return {
+        ok: false,
+        code: "PAYMENT_PROVIDER_ERROR",
+        message: "Klap todavía no permite consultar el estado de la orden.",
+        statusCode: 502,
+      };
+    }
+
+    if (remoteOrder.order_id !== orderId) {
+      return {
+        ok: false,
+        code: "PAYMENT_MISMATCH",
+        message: "Klap returned a different order id.",
+        statusCode: 409,
+      };
+    }
+
+    if (
+      remoteOrder.reference_id &&
+      remoteOrder.reference_id !== payment.id
+    ) {
+      return {
+        ok: false,
+        code: "PAYMENT_MISMATCH",
+        message: "Klap returned a different reference id.",
+        statusCode: 409,
+      };
+    }
+
+    const remoteTotal = remoteOrder.amount?.total ?? null;
+    const remoteCurrency = String(
+      remoteOrder.amount?.currency ?? "CLP",
+    ).toUpperCase();
+
+    if (
+      remoteTotal !== null &&
+      (Math.round(remoteTotal) !== payment.amountClp ||
+        remoteCurrency !== "CLP")
+    ) {
+      auditService.recordSafe({
+        actorUserId: auth.userId,
+        eventType: "payment.klap_reconciliation_amount_mismatch",
+        entityType: "payment",
+        entityId: payment.id,
+        metadata: {
+          provider: "klap",
+          localAmountClp: payment.amountClp,
+          remoteAmountClp: remoteTotal,
+          remoteCurrency,
+        },
+      });
+
+      return {
+        ok: false,
+        code: "AMOUNT_MISMATCH",
+        message: "Klap returned an unexpected amount or currency.",
+        statusCode: 409,
+      };
+    }
+
+    const normalizedStatus = normalizeKlapOrderStatus(remoteOrder.status);
+    const safePayload = sanitizeKlapOrderQueryPayload({
+      orderId: remoteOrder.order_id,
+      referenceId: remoteOrder.reference_id,
+      status: remoteOrder.status,
+      amount: remoteOrder.amount,
+      transactionId: remoteOrder.transaction_id,
+      mcCode: remoteOrder.mc_code,
+    });
+
+    if (normalizedStatus === "success") {
+      await paymentsRepo.markSuccessAndActivateRide({
+        id: payment.id,
+        rideRequestId: payment.rideRequestId,
+        externalId:
+          remoteOrder.transaction_id ??
+          remoteOrder.mc_code ??
+          remoteOrder.order_id,
+        providerPayload: safePayload,
+      });
+    } else if (normalizedStatus === "rejected") {
+      await paymentsRepo.markRejected(payment.id, safePayload);
+    }
+
+    const current = await paymentsRepo.findById(payment.id);
+
+    return {
+      ok: true,
+      status: current?.status ?? payment.status,
+      providerStatus: remoteOrder.status,
+    };
+  }
+
+  getKlapBrowserReturnRedirect(cancelled: boolean): string {
+    return buildPaymentFrontendResultUrl({
+      marker: cancelled ? "failure_return" : "pending_return",
+      reason: cancelled ? "klap_cancel_return" : "klap_return",
+      backendReconciled: false,
+    });
   }
 
   async reconcileMercadoPagoPayment(
