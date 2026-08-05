@@ -7,6 +7,9 @@ import {
 export const RAPAGO_PENDING_CARD_PAYMENT_KEY =
   "rapago_pending_card_payment_v1";
 
+export const RAPAGO_KLAP_3DS_STATE_EVENT =
+  "rapago:klap-3ds-state";
+
 export const KLAP_SANDBOX_SCRIPT_URL =
   "https://pagos-pasarela-sandbox.mcdesaqa.cl/checkout-frictionless/v1/main.min.js";
 
@@ -118,6 +121,44 @@ type ParsedKlapChallenge = {
   pareq: string;
   transactionId: string;
 };
+
+export type RapagoKlap3dsState =
+  | "challenge-received"
+  | "waiting-cardinal"
+  | "opening-challenge"
+  | "challenge-opened"
+  | "challenge-validated"
+  | "challenge-error";
+
+export type RapagoKlap3dsStateDetail = {
+  state: RapagoKlap3dsState;
+  message: string;
+};
+
+function dispatchKlap3dsState(
+  detail: RapagoKlap3dsStateDetail,
+): void {
+  window.dispatchEvent(
+    new CustomEvent<RapagoKlap3dsStateDetail>(
+      RAPAGO_KLAP_3DS_STATE_EVENT,
+      { detail },
+    ),
+  );
+}
+
+function safeKlap3dsErrorMessage(error: unknown): string {
+  const message =
+    error instanceof Error ? error.message.trim() : "";
+
+  if (
+    message &&
+    !/pareq|payload|creq|jwe|jwt|cvv|card|token/i.test(message)
+  ) {
+    return message;
+  }
+
+  return "No se pudo abrir la validación segura del banco. No vuelvas a pagar; revisaremos el estado real con Klap.";
+}
 
 function unwrap<T>(
   result: {
@@ -411,7 +452,10 @@ let cardinalValidationObserverInstalled = false;
 let cardinalLayerObserver: MutationObserver | null = null;
 
 const handledKlapChallengeTransactions = new Set<string>();
-const klapXhrRequestUrls = new WeakMap<XMLHttpRequest, string>();
+const klapXhrRequests = new WeakMap<
+  XMLHttpRequest,
+  { method: string; url: string }
+>();
 
 function parseKlapChallengeResponse(
   payload: unknown,
@@ -465,8 +509,18 @@ function parseKlapChallengeResponse(
 }
 
 function isAllowedKlapReceiptUrl(rawUrl: string): boolean {
+  const normalized = String(rawUrl ?? "").trim();
+  if (!normalized) return false;
+
+  if (/^\/cards\/receipt(?:\/|$|\?)/i.test(normalized)) {
+    return true;
+  }
+
   try {
-    const url = new URL(rawUrl, window.location.href);
+    const configuredCheckout = new URL(
+      validateKlapScriptUrl(configuredKlapScriptUrl()),
+    );
+    const url = new URL(normalized, configuredCheckout.origin);
 
     return (
       url.protocol === "https:" &&
@@ -569,6 +623,11 @@ function installCardinalValidationObserver(): void {
 
   window.Cardinal.on("payments.validated", () => {
     stopCardinalLayerObserver();
+    dispatchKlap3dsState({
+      state: "challenge-validated",
+      message:
+        "El banco terminó la validación. Confirmaremos el resultado real con Klap.",
+    });
   });
 
   cardinalValidationObserverInstalled = true;
@@ -584,10 +643,20 @@ async function continueKlap3dsChallenge(
     return true;
   }
 
+  dispatchKlap3dsState({
+    state: "challenge-received",
+    message: "Klap solicitó la validación segura de tu banco.",
+  });
+
+  dispatchKlap3dsState({
+    state: "waiting-cardinal",
+    message: "Preparando la ventana segura del banco…",
+  });
+
   await preloadKlapCardinal();
   installCardinalSetupObserver();
   installCardinalValidationObserver();
-  await waitBrieflyForCardinalSetup();
+  await waitBrieflyForCardinalSetup(8_000);
 
   if (typeof window.Cardinal?.continue !== "function") {
     throw new Error(
@@ -598,26 +667,38 @@ async function continueKlap3dsChallenge(
   handledKlapChallengeTransactions.add(challenge.transactionId);
   installCardinalLayerObserver();
 
+  dispatchKlap3dsState({
+    state: "opening-challenge",
+    message: "Abriendo la validación segura del banco…",
+  });
+
   try {
-    await Promise.resolve(
-      window.Cardinal.continue(
-        "cca",
-        {
-          AcsUrl: challenge.acsUrl,
-          Payload: challenge.pareq,
+    window.Cardinal.continue(
+      "cca",
+      {
+        AcsUrl: challenge.acsUrl,
+        Payload: challenge.pareq,
+      },
+      {
+        OrderDetails: {
+          TransactionId: challenge.transactionId,
         },
-        {
-          OrderDetails: {
-            TransactionId: challenge.transactionId,
-          },
-        },
-      ),
+      },
     );
 
     window.setTimeout(promoteCardinalChallengeLayer, 0);
     window.setTimeout(promoteCardinalChallengeLayer, 250);
     window.setTimeout(promoteCardinalChallengeLayer, 750);
     window.setTimeout(promoteCardinalChallengeLayer, 1_500);
+
+    window.setTimeout(() => {
+      promoteCardinalChallengeLayer();
+      dispatchKlap3dsState({
+        state: "challenge-opened",
+        message:
+          "Completa la validación en la ventana de tu banco. No vuelvas a presionar pagar.",
+      });
+    }, 400);
 
     return true;
   } catch (error) {
@@ -650,8 +731,11 @@ function installKlapReceiptChallengeBridge(): void {
         .clone()
         .json()
         .then((payload: unknown) => continueKlap3dsChallenge(payload))
-        .catch(() => {
-          // Klap y el polling del backend conservan la autoridad del pago.
+        .catch((error: unknown) => {
+          dispatchKlap3dsState({
+            state: "challenge-error",
+            message: safeKlap3dsErrorMessage(error),
+          });
         });
     }
 
@@ -665,7 +749,10 @@ function installKlapReceiptChallengeBridge(): void {
     username?: string | null,
     password?: string | null,
   ): void {
-    klapXhrRequestUrls.set(this, String(url));
+    klapXhrRequests.set(this, {
+      method: String(method ?? "GET").toUpperCase(),
+      url: String(url),
+    });
     originalOpen.call(
       this,
       method,
@@ -682,10 +769,17 @@ function installKlapReceiptChallengeBridge(): void {
     this.addEventListener(
       "loadend",
       () => {
-        const requestUrl =
-          this.responseURL || klapXhrRequestUrls.get(this) || "";
+        const request = klapXhrRequests.get(this);
+        const responseUrl = String(this.responseURL ?? "");
+        const requestUrl = String(request?.url ?? "");
 
-        if (!isAllowedKlapReceiptUrl(requestUrl)) return;
+        if (request?.method !== "POST") return;
+        if (
+          !isAllowedKlapReceiptUrl(responseUrl) &&
+          !isAllowedKlapReceiptUrl(requestUrl)
+        ) {
+          return;
+        }
         if (this.status < 200 || this.status >= 300) return;
 
         let payload: unknown;
@@ -700,11 +794,15 @@ function installKlapReceiptChallengeBridge(): void {
         }
 
         window.setTimeout(() => {
-          void continueKlap3dsChallenge(payload).catch(() => {
-            // El callback de Klap y el polling del backend siguen siendo la
-            // autoridad. No se registran CReq, CVV, PAN ni tokens en consola.
-          });
-        }, 0);
+          void continueKlap3dsChallenge(payload).catch(
+            (error: unknown) => {
+              dispatchKlap3dsState({
+                state: "challenge-error",
+                message: safeKlap3dsErrorMessage(error),
+              });
+            },
+          );
+        }, 250);
       },
       { once: true },
     );
