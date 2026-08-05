@@ -1290,6 +1290,27 @@ export async function loadKlapCheckoutSdk(): Promise<KlapBrowserSdk> {
   return window.KLAP as KlapBrowserSdk;
 }
 
+export const KLAP_FAST_STATUS_RETRY_DELAYS_MS = [
+  500,
+  750,
+  1_000,
+  1_000,
+  1_000,
+  1_000,
+  1_250,
+  1_500,
+  1_750,
+  2_000,
+  2_500,
+  3_000,
+  4_000,
+  5_000,
+  7_500,
+  10_000,
+  15_000,
+  20_000,
+] as const;
+
 const TERMINAL_APPROVED = new Set(["success"]);
 const TERMINAL_REJECTED = new Set([
   "rejected",
@@ -1312,47 +1333,117 @@ export async function waitForKlapPaymentResolution(
   accessToken: string,
   paymentId: string,
   options: {
+    retryDelaysMs?: readonly number[];
     attempts?: number;
     intervalMs?: number;
     slowIntervalMs?: number;
     fastAttempts?: number;
     signal?: AbortSignal;
+    onPendingStatus?: (
+      status: PaymentStatusData,
+      context: {
+        attempt: number;
+        elapsedMs: number;
+        remainingChecks: number;
+      },
+    ) => void;
   } = {},
 ): Promise<PaymentStatusData> {
-  const attempts = Math.max(1, options.attempts ?? 10);
-  const intervalMs = Math.max(5_000, options.intervalMs ?? 5_000);
-  const slowIntervalMs = Math.max(15_000, options.slowIntervalMs ?? 15_000);
-  const fastAttempts = Math.max(1, options.fastAttempts ?? 6);
-  let lastStatus: PaymentStatusData | null = null;
+  const legacyAttempts = Math.max(1, options.attempts ?? 10);
+  const legacyIntervalMs = Math.max(500, options.intervalMs ?? 5_000);
+  const legacySlowIntervalMs = Math.max(
+    legacyIntervalMs,
+    options.slowIntervalMs ?? 15_000,
+  );
+  const legacyFastAttempts = Math.max(1, options.fastAttempts ?? 6);
 
-  for (let attempt = 0; attempt < attempts; attempt += 1) {
+  const retryDelaysMs =
+    options.retryDelaysMs ??
+    (options.attempts != null ||
+    options.intervalMs != null ||
+    options.slowIntervalMs != null ||
+    options.fastAttempts != null
+      ? Array.from(
+          { length: Math.max(0, legacyAttempts - 1) },
+          (_, index) =>
+            index < legacyFastAttempts
+              ? legacyIntervalMs
+              : legacySlowIntervalMs,
+        )
+      : KLAP_FAST_STATUS_RETRY_DELAYS_MS);
+
+  const totalChecks = retryDelaysMs.length + 1;
+  const startedAt = Date.now();
+  let lastStatus: PaymentStatusData | null = null;
+  let lastError: unknown = null;
+
+  const throwIfAborted = (): void => {
     if (options.signal?.aborted) {
       throw new DOMException("Operación cancelada.", "AbortError");
     }
+  };
 
-    // No genera tráfico oculto mientras el usuario está en otra pestaña.
-    if (document.visibilityState === "hidden") {
-      await new Promise<void>((resolve, reject) => {
-        const onVisible = (): void => {
-          if (document.visibilityState !== "hidden") {
-            document.removeEventListener("visibilitychange", onVisible);
-            options.signal?.removeEventListener("abort", onAbort);
-            resolve();
-          }
-        };
-        const onAbort = (): void => {
+  const waitUntilVisible = async (): Promise<void> => {
+    if (document.visibilityState !== "hidden") return;
+
+    await new Promise<void>((resolve, reject) => {
+      const onVisible = (): void => {
+        if (document.visibilityState !== "hidden") {
           document.removeEventListener("visibilitychange", onVisible);
-          reject(new DOMException("Operación cancelada.", "AbortError"));
-        };
-        document.addEventListener("visibilitychange", onVisible);
-        options.signal?.addEventListener("abort", onAbort, { once: true });
-      });
+          options.signal?.removeEventListener("abort", onAbort);
+          resolve();
+        }
+      };
+      const onAbort = (): void => {
+        document.removeEventListener("visibilitychange", onVisible);
+        reject(new DOMException("Operación cancelada.", "AbortError"));
+      };
+
+      document.addEventListener("visibilitychange", onVisible);
+      options.signal?.addEventListener("abort", onAbort, { once: true });
+    });
+  };
+
+  const waitDelay = async (delayMs: number): Promise<void> => {
+    await new Promise<void>((resolve, reject) => {
+      const onAbort = (): void => {
+        window.clearTimeout(timeout);
+        reject(new DOMException("Operación cancelada.", "AbortError"));
+      };
+      const timeout = window.setTimeout(() => {
+        options.signal?.removeEventListener("abort", onAbort);
+        resolve();
+      }, Math.max(0, delayMs));
+
+      options.signal?.addEventListener("abort", onAbort, { once: true });
+    });
+  };
+
+  for (let attempt = 0; attempt < totalChecks; attempt += 1) {
+    throwIfAborted();
+
+    if (attempt > 0) {
+      await waitDelay(retryDelaysMs[attempt - 1] ?? 0);
     }
 
-    lastStatus = await walletService.getPaymentStatus(
-      accessToken,
-      paymentId,
-    );
+    await waitUntilVisible();
+    throwIfAborted();
+
+    try {
+      lastStatus = await walletService.getPaymentStatus(
+        accessToken,
+        paymentId,
+      );
+      lastError = null;
+    } catch (error) {
+      lastError = error;
+
+      if (attempt >= totalChecks - 1) {
+        throw error;
+      }
+
+      continue;
+    }
 
     if (
       isKlapPaymentApproved(lastStatus.status) ||
@@ -1361,26 +1452,20 @@ export async function waitForKlapPaymentResolution(
       return lastStatus;
     }
 
-    if (attempt < attempts - 1) {
-      const delay = attempt < fastAttempts ? intervalMs : slowIntervalMs;
-      await new Promise<void>((resolve, reject) => {
-        const onAbort = (): void => {
-          window.clearTimeout(timeout);
-          reject(new DOMException("Operación cancelada.", "AbortError"));
-        };
-        const timeout = window.setTimeout(() => {
-          options.signal?.removeEventListener("abort", onAbort);
-          resolve();
-        }, delay);
-
-        options.signal?.addEventListener("abort", onAbort, { once: true });
-      });
-    }
+    options.onPendingStatus?.(lastStatus, {
+      attempt: attempt + 1,
+      elapsedMs: Date.now() - startedAt,
+      remainingChecks: totalChecks - attempt - 1,
+    });
   }
 
-  if (!lastStatus) {
-    throw new Error("No fue posible consultar el estado del pago Klap.");
+  if (lastStatus) {
+    return lastStatus;
   }
 
-  return lastStatus;
+  if (lastError instanceof Error) {
+    throw lastError;
+  }
+
+  throw new Error("No fue posible consultar el estado del pago Klap.");
 }

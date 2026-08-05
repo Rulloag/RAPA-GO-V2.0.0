@@ -82,10 +82,16 @@ describe("Klap Checkout Transparente frontend", () => {
     expect(tripsSource).toContain("Este intento ya fue enviado a Klap");
   });
 
-  it("reduce el polling y se detiene cuando la pestaña está oculta", () => {
-    expect(serviceSource).toContain("intervalMs ?? 5_000");
-    expect(serviceSource).toContain("slowIntervalMs ?? 15_000");
-    expect(serviceSource).toContain('document.visibilityState === "hidden"');
+  it("confirma rápido con polling adaptativo y se detiene en segundo plano", () => {
+    expect(serviceSource).toContain("KLAP_FAST_STATUS_RETRY_DELAYS_MS");
+    expect(serviceSource).toContain("retryDelaysMs");
+    expect(serviceSource).toContain("onPendingStatus");
+    expect(serviceSource).toContain('document.visibilityState !== "hidden"');
+    expect(modalSource).toContain("}, 150);");
+    expect(modalSource).toContain("const checkoutResult = initializedSdk.payOrder?.()");
+    expect(modalSource).toContain("void Promise.resolve(checkoutResult).catch");
+    expect(modalSource.indexOf("const checkoutResult = initializedSdk.payOrder?.()"))
+      .toBeLessThan(modalSource.indexOf("void Promise.resolve(checkoutResult).catch"));
     expect(tripsSource).toContain("attempt < 5 ? 5000 : 15000");
     expect(tripsSource).not.toContain("await wait(2000)");
   });
