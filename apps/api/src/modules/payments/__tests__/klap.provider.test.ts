@@ -120,9 +120,28 @@ describe("KlapProvider V108 — checkout alojado oficial", () => {
       expect.arrayContaining([
         { key: "tarjetas_expiration_minutes", value: "30" },
         { key: "tarjetas_payment_indicator", value: "typed" },
+        { key: "transaction_type", value: "authorization" },
       ]),
     );
     expect(raw).not.toMatch(/pan|cvv|card_number|security_code|cards\/receipt/i);
+  });
+
+  it("la orden siempre declara transaction_type=authorization (captura diferida, nunca controlada por el cliente)", async () => {
+    mockJson(201, {
+      order_id: "test-order-123",
+      redirect_url: CHECKOUT_URL,
+    });
+
+    await new KlapProvider().createHostedOrder(params());
+
+    const [, init] = request();
+    const body = JSON.parse(String(init.body)) as Record<string, unknown>;
+    const customs = body["customs"] as Array<{ key: string; value: string }>;
+
+    expect(customs.find((c) => c.key === "transaction_type")).toEqual({
+      key: "transaction_type",
+      value: "authorization",
+    });
   });
 
   it("no envía Idempotency-Key por defecto porque no aparece en el Swagger entregado", async () => {
@@ -259,6 +278,128 @@ describe("KlapProvider V108 — checkout alojado oficial", () => {
     await expect(
       new KlapProvider().createHostedOrder(params()),
     ).rejects.toMatchObject({ kind: "config" });
+  });
+});
+
+describe("KlapProvider.captureOrder", () => {
+  it("hace POST a {ordersUrl}/{orderId}/capture con body {amount} y header apikey, sin Idempotency-Key", async () => {
+    global.fetch = vi.fn().mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      text: vi.fn().mockResolvedValue(JSON.stringify({ status: "captured" })),
+    } as unknown as Response);
+
+    const result = await new KlapProvider().captureOrder({
+      orderId: "test-order-123",
+      amountClp: 5000,
+    });
+
+    const [url, init] = request();
+    expect(url).toBe(`${SANDBOX_ORDERS_URL}/test-order-123/capture`);
+    expect(init.method).toBe("POST");
+    expect(JSON.parse(String(init.body))).toEqual({ amount: 5000 });
+    expect((init.headers as Record<string, string>)["apikey"]).toBe(
+      "sandbox-secret",
+    );
+    expect((init.headers as Record<string, string>)["Content-Type"]).toBe(
+      "application/json",
+    );
+    expect(init.headers).not.toHaveProperty("Idempotency-Key");
+    expect(result).toEqual({
+      httpStatus: 200,
+      sanitizedResponse: { status: "captured" },
+    });
+  });
+
+  it("trata cualquier 2xx como aceptado y lee el body de forma defensiva (incluyendo vacío)", async () => {
+    global.fetch = vi.fn().mockResolvedValueOnce({
+      ok: true,
+      status: 204,
+      text: vi.fn().mockResolvedValue(""),
+    } as unknown as Response);
+
+    const result = await new KlapProvider().captureOrder({
+      orderId: "test-order-123",
+      amountClp: 5000,
+    });
+
+    expect(result).toEqual({ httpStatus: 204, sanitizedResponse: null });
+  });
+
+  it("nunca filtra la ApiKey ni datos sensibles al leer el body de captura", async () => {
+    global.fetch = vi.fn().mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      text: vi
+        .fn()
+        .mockResolvedValue(
+          JSON.stringify({
+            status: "captured",
+            nested: { card_number: "4111111111111111" },
+            amount: 5000,
+          }),
+        ),
+    } as unknown as Response);
+
+    const result = await new KlapProvider().captureOrder({
+      orderId: "test-order-123",
+      amountClp: 5000,
+    });
+
+    expect(result.sanitizedResponse).toEqual({
+      status: "captured",
+      amount: 5000,
+    });
+    expect(JSON.stringify(result.sanitizedResponse)).not.toContain(
+      "4111111111111111",
+    );
+  });
+
+  it("lanza KlapProviderError con httpStatus en respuestas no-2xx (rechazo definitivo de Klap)", async () => {
+    mockJson(400, { error: "invalid amount" }, false);
+
+    try {
+      await new KlapProvider().captureOrder({
+        orderId: "test-order-123",
+        amountClp: 5000,
+      });
+      throw new Error("expected rejection");
+    } catch (error) {
+      expect(error).toMatchObject({ kind: "http_rejected", httpStatus: 400 });
+      expect(String((error as Error).message)).not.toContain("sandbox-secret");
+    }
+  });
+
+  it("mapea timeout y errores de red sin reintentar automáticamente", async () => {
+    const abort = new Error("aborted");
+    abort.name = "AbortError";
+    global.fetch = vi.fn().mockRejectedValueOnce(abort);
+
+    await expect(
+      new KlapProvider().captureOrder({ orderId: "test-order-123", amountClp: 5000 }),
+    ).rejects.toMatchObject({ kind: "timeout" });
+
+    global.fetch = vi.fn().mockRejectedValueOnce(new Error("ECONNRESET"));
+
+    await expect(
+      new KlapProvider().captureOrder({ orderId: "test-order-123", amountClp: 5000 }),
+    ).rejects.toMatchObject({ kind: "network" });
+
+    expect(global.fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it("rechaza montos inválidos antes de llamar a Klap", async () => {
+    global.fetch = vi.fn();
+
+    await expect(
+      new KlapProvider().captureOrder({ orderId: "test-order-123", amountClp: 0 }),
+    ).rejects.toMatchObject({ kind: "config" });
+
+    await expect(
+      new KlapProvider().captureOrder({ orderId: "", amountClp: 5000 }),
+    ).rejects.toMatchObject({ kind: "config" });
+
+    expect(global.fetch).not.toHaveBeenCalled();
   });
 });
 
