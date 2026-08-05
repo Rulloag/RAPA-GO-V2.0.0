@@ -347,10 +347,36 @@ function isAllowedKlapReceiptUrl(rawUrl: string): boolean {
 
 function hasVisibleCardinalChallenge(): boolean {
   return Array.from(document.querySelectorAll<HTMLIFrameElement>("iframe")).some(
-    (frame) =>
-      /cardinal|merchantacs|centinel|three[-_]?ds|3ds/i.test(
-        `${frame.id} ${frame.name} ${frame.src}`,
-      ),
+    (frame) => {
+      const identity = `${frame.id} ${frame.name} ${frame.src}`;
+
+      // Cardinal crea primero un iframe técnico oculto para recopilar la huella
+      // del dispositivo. Ese collector no es la ventana del desafío bancario.
+      if (/cardinal[-_ ]?collector/i.test(identity)) {
+        return false;
+      }
+
+      if (
+        !/merchantacs|centinel|three[-_]?ds|3ds|stepup|challenge/i.test(identity)
+      ) {
+        return false;
+      }
+
+      const style = window.getComputedStyle(frame);
+      const rect = frame.getBoundingClientRect();
+
+      return (
+        style.display !== "none" &&
+        style.visibility !== "hidden" &&
+        Number(style.opacity || "1") > 0 &&
+        rect.width > 8 &&
+        rect.height > 8 &&
+        rect.bottom > 0 &&
+        rect.right > 0 &&
+        rect.top < window.innerHeight &&
+        rect.left < window.innerWidth
+      );
+    },
   );
 }
 

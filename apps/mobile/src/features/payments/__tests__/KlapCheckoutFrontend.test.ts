@@ -117,6 +117,9 @@ describe("Klap Checkout Transparente frontend", () => {
   it("continúa el desafío 3DS cuando Klap responde SEND_TO_CHALLENGE", () => {
     expect(serviceSource).toContain('"SEND_TO_CHALLENGE"');
     expect(serviceSource).toContain('window.Cardinal.continue(');
+    expect(serviceSource).toContain('/cardinal[-_ ]?collector/i');
+    expect(serviceSource).toContain('window.getComputedStyle(frame)');
+    expect(serviceSource).toContain('rect.width > 8');
     expect(serviceSource).toContain('"cca"');
     expect(serviceSource).toContain("AcsUrl: challenge.acsUrl");
     expect(serviceSource).toContain("Payload: challenge.pareq");
