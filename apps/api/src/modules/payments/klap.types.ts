@@ -46,6 +46,13 @@ export interface KlapCustom {
   value: string;
 }
 
+/**
+ * Captura diferida: la orden se crea como autorización de tarjeta, no como
+ * cobro inmediato. El dinero solo se captura cuando el viaje termina de forma
+ * autoritativa en el backend (ver PaymentsService.captureAuthorizedKlapPayment).
+ */
+export const KLAP_TRANSACTION_TYPE_AUTHORIZATION = "authorization" as const;
+
 export interface KlapUrls {
   return_url: string;
   cancel_url: string;
@@ -73,6 +80,22 @@ export interface KlapCreateOrderValidatedResponse {
   order_id: string;
   redirect_url: string;
   status: string | null;
+}
+
+export interface KlapCaptureOrderParams {
+  orderId: string;
+  amountClp: number;
+}
+
+/**
+ * Klap no documentó (a la fecha de esta fase) el contrato exacto de la
+ * respuesta de POST /orders/{order_id}/capture. Se guarda únicamente una
+ * versión saneada de lo recibido — nunca la respuesta cruda completa — y solo
+ * se usa el código HTTP para clasificar el resultado (ver KlapProvider.captureOrder).
+ */
+export interface KlapCaptureOrderResult {
+  httpStatus: number;
+  sanitizedResponse: Record<string, unknown> | null;
 }
 
 export interface KlapOrderStatusValidatedResponse {

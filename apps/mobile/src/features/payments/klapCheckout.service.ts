@@ -265,7 +265,13 @@ export const KLAP_FAST_STATUS_RETRY_DELAYS_MS = [
   30_000,
 ] as const;
 
+// "success" solo ocurre después de que Rapa Go captura el cobro al finalizar
+// el viaje — ya no es el desenlace del checkout. "authorized" es el
+// desenlace real del checkout con captura diferida: la tarjeta quedó
+// autorizada (dinero reservado, no cobrado todavía) y el viaje ya puede
+// avanzar. Ambos detienen el sondeo tras el regreso del checkout.
 const TERMINAL_APPROVED = new Set(["success"]);
+const TERMINAL_AUTHORIZED = new Set(["authorized"]);
 const TERMINAL_REJECTED = new Set([
   "rejected",
   "failed",
@@ -279,8 +285,35 @@ export function isKlapPaymentApproved(status: string): boolean {
   return TERMINAL_APPROVED.has(status.trim().toLowerCase());
 }
 
+/** Tarjeta autorizada (captura diferida): el cobro ocurrirá al finalizar el viaje. */
+export function isKlapPaymentAuthorized(status: string): boolean {
+  return TERMINAL_AUTHORIZED.has(status.trim().toLowerCase());
+}
+
 export function isKlapPaymentRejected(status: string): boolean {
   return TERMINAL_REJECTED.has(status.trim().toLowerCase());
+}
+
+/**
+ * Mensaje de presentación para cada estado financiero de un pago Klap.
+ * "success" nunca se muestra para "authorized" — evita dar a entender que
+ * ya se cobró cuando solo se autorizó la tarjeta.
+ */
+export function getKlapPaymentStatusMessage(status: string): string {
+  switch (status.trim().toLowerCase()) {
+    case "authorized":
+      return "Tarjeta autorizada. El cobro se realizará al finalizar el viaje.";
+    case "capture_pending":
+      return "Estamos procesando el cobro final.";
+    case "capture_unknown":
+      return "El estado del cobro necesita confirmación. No intentes pagar nuevamente.";
+    case "capture_failed":
+      return "No se pudo completar el cobro. El equipo de soporte debe revisarlo.";
+    case "success":
+      return "Pago realizado.";
+    default:
+      return "La orden sigue pendiente. No crees otro pago; Klap puede confirmar por webhook unos minutos después.";
+  }
 }
 
 export async function waitForKlapPaymentResolution(
@@ -338,6 +371,7 @@ export async function waitForKlapPaymentResolution(
 
     if (
       isKlapPaymentApproved(lastStatus.status) ||
+      isKlapPaymentAuthorized(lastStatus.status) ||
       isKlapPaymentRejected(lastStatus.status)
     ) {
       return lastStatus;

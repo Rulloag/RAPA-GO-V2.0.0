@@ -14,7 +14,7 @@ import type {
   KlapRejectWebhookBody,
 } from "./payments.schema.js";
 import type { NormalizedWebhook } from "./payment.provider.js";
-import { KlapProviderError } from "./klap.types.js";
+import { KlapProviderError, KLAP_TRANSACTION_TYPE_AUTHORIZATION } from "./klap.types.js";
 import { verifyKlapWebhookApikey } from "./klap.provider.js";
 
 const tokenService = new TokenService();
@@ -1130,6 +1130,17 @@ async function reconcileStoredMercadoPagoPayment(
 
 const KLAP_WEBHOOK_TERMINAL_STATUSES = new Set(["rejected", "failed", "refunded"]);
 
+// Captura diferida: una vez autorizado (o más allá), un confirm duplicado
+// válido debe responder idempotentemente sin repetir la activación ni ningún
+// efecto financiero — nunca se re-autoriza ni se re-captura desde este webhook.
+const KLAP_WEBHOOK_ALREADY_HANDLED_STATUSES = new Set([
+  "authorized",
+  "capture_pending",
+  "capture_unknown",
+  "capture_failed",
+  "success",
+]);
+
 /** Strips control characters and bounds length â€” defensive even after Zod's own limits. */
 function sanitizeKlapWebhookText(value: string | undefined, maxLength: number): string | null {
   if (!value) return null;
@@ -1411,9 +1422,10 @@ export class PaymentsService {
       return { ok: true, status: "ok" };
     }
 
-    // Already success: valid duplicate confirm for the same transaction â€” no
-    // repeated transition/effects, no need to re-validate method/amount.
-    if (payment.status === "success") {
+    // Already authorized (or beyond): valid duplicate confirm for the same
+    // transaction â€” no repeated transition/effects, no need to re-validate
+    // method/amount/transaction_type.
+    if (KLAP_WEBHOOK_ALREADY_HANDLED_STATUSES.has(payment.status)) {
       return { ok: true, status: "ok" };
     }
 
@@ -1458,9 +1470,37 @@ export class PaymentsService {
       };
     }
 
+    // Captura diferida: esta orden se creó como autorización (ver
+    // KlapProvider.createHostedOrder, customs.transaction_type). Un confirm
+    // que no declare transaction_type = "authorization" nunca marca el pago
+    // como exitoso ni activa efectos financieros â€” se registra y se rechaza
+    // con un error controlado, sin construir eventKey ni reclamar idempotencia,
+    // igual que amount_mismatch, para que una entrega corregida se revalide
+    // desde cero.
+    if (body.transaction_type !== KLAP_TRANSACTION_TYPE_AUTHORIZATION) {
+      auditService.recordSafe({
+        actorUserId: payment.passengerUserId,
+        eventType: "payment.klap_unexpected_transaction_type",
+        entityType: "payment",
+        entityId: payment.id,
+        metadata: {
+          rideId: payment.rideRequestId,
+          transactionType: body.transaction_type,
+          provider: "klap",
+        },
+      });
+
+      return {
+        ok: false,
+        code: "TRANSACTION_TYPE_MISMATCH",
+        message: "Confirmed transaction_type is not a valid authorization.",
+        statusCode: 409,
+      };
+    }
+
     // Only past this point â€” everything financially/contractually valid â€” do
     // we build an eventKey and claim idempotency, guarding solely the actual
-    // success transition against concurrent/duplicate valid deliveries.
+    // authorization transition against concurrent/duplicate valid deliveries.
     const payloadHash = crypto.createHash("sha256").update(stableJson(body)).digest("hex");
     const eventKey = `klap:confirm:${body.order_id}:${body.reference_id}:${body.mc_code ?? payloadHash}`;
 
@@ -1497,10 +1537,11 @@ export class PaymentsService {
     const eventId = claimed.event.id;
 
     try {
-      await paymentsRepo.markSuccessAndActivateRide({
+      await paymentsRepo.markAuthorizedAndActivateRide({
         id: payment.id,
         rideRequestId: payment.rideRequestId,
-        externalId: body.order_id,
+        authorizedAmountClp: paidAmountClp,
+        transactionType: body.transaction_type,
         providerPayload: {
           order_id: body.order_id,
           reference_id: body.reference_id,
@@ -1516,12 +1557,12 @@ export class PaymentsService {
 
       auditService.recordSafe({
         actorUserId: payment.passengerUserId,
-        eventType: "payment.success",
+        eventType: "payment.klap_authorized",
         entityType: "payment",
         entityId: payment.id,
         metadata: {
           rideId: payment.rideRequestId,
-          amountClp: payment.amountClp,
+          authorizedAmountClp: paidAmountClp,
           provider: "klap",
         },
       });
@@ -2178,13 +2219,20 @@ export class PaymentsService {
           });
 
           if (remoteStatus === "success") {
-            await paymentsRepo.markSuccessAndActivateRide({
+            // Captura diferida: el estado "success" de la consulta oficial de
+            // Klap para un checkout de tarjetas significa que la tarjeta
+            // quedó autorizada, no que el dinero ya fue cobrado â€” el cobro
+            // solo ocurre al completar el viaje (ver captureAuthorizedKlapPayment).
+            const remoteAmountClp =
+              remoteOrder.amount?.total != null
+                ? Math.round(remoteOrder.amount.total)
+                : active.amountClp;
+
+            await paymentsRepo.markAuthorizedAndActivateRide({
               id: active.id,
               rideRequestId: active.rideRequestId,
-              externalId:
-                remoteOrder.transaction_id ??
-                remoteOrder.mc_code ??
-                remoteOrder.order_id,
+              authorizedAmountClp: remoteAmountClp,
+              transactionType: KLAP_TRANSACTION_TYPE_AUTHORIZATION,
               providerPayload: safePayload,
             });
 
@@ -2192,7 +2240,7 @@ export class PaymentsService {
               ok: false,
               code: "PAYMENT_ALREADY_PAID",
               message:
-                "Klap ya confirmÃ³ el pago de este viaje. Revisa Mis Viajes.",
+                "Klap ya autorizÃ³ la tarjeta para este viaje. Revisa Mis Viajes.",
               statusCode: 409,
             };
           }
@@ -2413,7 +2461,18 @@ export class PaymentsService {
       };
     }
 
-    if (["success", "rejected", "failed", "refunded"].includes(payment.status)) {
+    if (
+      [
+        "success",
+        "rejected",
+        "failed",
+        "refunded",
+        "authorized",
+        "capture_pending",
+        "capture_unknown",
+        "capture_failed",
+      ].includes(payment.status)
+    ) {
       return {
         ok: true,
         status: payment.status,
@@ -2520,13 +2579,13 @@ export class PaymentsService {
     });
 
     if (normalizedStatus === "success") {
-      await paymentsRepo.markSuccessAndActivateRide({
+      // Ídem: "success" en la consulta oficial de Klap para tarjetas es una
+      // autorización, no una captura. El cobro real ocurre al completar el viaje.
+      await paymentsRepo.markAuthorizedAndActivateRide({
         id: payment.id,
         rideRequestId: payment.rideRequestId,
-        externalId:
-          remoteOrder.transaction_id ??
-          remoteOrder.mc_code ??
-          remoteOrder.order_id,
+        authorizedAmountClp: remoteTotal != null ? Math.round(remoteTotal) : payment.amountClp,
+        transactionType: KLAP_TRANSACTION_TYPE_AUTHORIZATION,
         providerPayload: safePayload,
       });
     } else if (normalizedStatus === "rejected") {
@@ -2540,6 +2599,218 @@ export class PaymentsService {
       status: current?.status ?? payment.status,
       providerStatus: remoteOrder.status,
     };
+  }
+
+  /**
+   * Captura el monto previamente autorizado por Klap. Se invoca únicamente
+   * desde el cierre autoritativo del viaje en el backend (ver
+   * RidesService.completeRide) — nunca desde un botón del frontend, y el
+   * monto nunca proviene de la solicitud del cliente.
+   *
+   * Idempotente: un pago ya `success` responde sin repetir la llamada al
+   * proveedor; uno en `capture_pending`/`capture_unknown`/`capture_failed`
+   * responde con su estado actual sin enviar otra captura automática. Un
+   * error de captura nunca deshace ni reabre el viaje ya completado.
+   */
+  async captureAuthorizedKlapPayment(
+    paymentId: string,
+  ): Promise<Result<{ status: string }>> {
+    const payment = await paymentsRepo.findById(paymentId);
+
+    if (!payment) {
+      return {
+        ok: false,
+        code: "NOT_FOUND",
+        message: "Payment not found.",
+        statusCode: 404,
+      };
+    }
+
+    if (normalizePaymentText(payment.provider) !== "klap") {
+      return {
+        ok: false,
+        code: "PAYMENT_PROVIDER_MISMATCH",
+        message: "This payment does not belong to Klap.",
+        statusCode: 409,
+      };
+    }
+
+    // Idempotencia: nunca se reintenta automáticamente una captura ya en
+    // curso, ya resuelta con éxito, ya rechazada definitivamente, o incierta
+    // (un timeout/red no distingue si Klap capturó o no).
+    if (payment.status === "success") {
+      return { ok: true, status: "success" };
+    }
+
+    if (
+      payment.status === "capture_pending" ||
+      payment.status === "capture_unknown" ||
+      payment.status === "capture_failed"
+    ) {
+      return { ok: true, status: payment.status };
+    }
+
+    if (payment.status !== "authorized") {
+      return {
+        ok: false,
+        code: "PAYMENT_NOT_AUTHORIZED",
+        message: `Payment cannot be captured — current status is '${payment.status}'.`,
+        statusCode: 409,
+      };
+    }
+
+    const orderId = String(payment.providerOrderId ?? "").trim();
+    if (!orderId) {
+      return {
+        ok: false,
+        code: "KLAP_ORDER_ID_MISSING",
+        message: "The Klap order id is missing.",
+        statusCode: 409,
+      };
+    }
+
+    // FASE 7: no existe todavía en el modelo una tarifa final autoritativa
+    // distinta del monto autorizado al crear la orden — se usa
+    // authorizedAmountClp como primera implementación (nunca amountClp del
+    // request, nunca un valor enviado por el cliente). Limitación conocida,
+    // documentada en el informe de esta fase; una tarifa final real (p.ej.
+    // ajustada por distancia/tiempo real recorrido) requeriría revisar el
+    // modelo completo de tarifas antes de capturarla aquí.
+    const authorizedAmountClp = payment.authorizedAmountClp ?? payment.amountClp;
+    const captureAmountClp = authorizedAmountClp;
+
+    if (!Number.isInteger(captureAmountClp) || captureAmountClp <= 0) {
+      return {
+        ok: false,
+        code: "PAYMENT_INVALID_AMOUNT",
+        message: "Authorized amount is invalid.",
+        statusCode: 409,
+      };
+    }
+
+    if (captureAmountClp > authorizedAmountClp) {
+      return {
+        ok: false,
+        code: "CAPTURE_EXCEEDS_AUTHORIZATION",
+        message: "Capture amount cannot exceed the authorized amount.",
+        statusCode: 409,
+      };
+    }
+
+    const captureAttemptKey = crypto
+      .createHash("sha256")
+      .update(`klap-capture:${payment.id}`)
+      .digest("hex");
+
+    const claimed = await paymentsRepo.claimCapture({
+      id: payment.id,
+      captureAttemptKey,
+    });
+
+    if (!claimed) {
+      // Perdió la carrera contra otra captura concurrente, o ya no está en
+      // authorized por otra razón — responder con el estado actual real.
+      const current = await paymentsRepo.findById(payment.id);
+      return { ok: true, status: current?.status ?? payment.status };
+    }
+
+    try {
+      const result = await getKlapProvider().captureOrder({
+        orderId,
+        amountClp: captureAmountClp,
+      });
+
+      await paymentsRepo.markCapturedSuccess({
+        id: payment.id,
+        capturedAmountClp: captureAmountClp,
+        providerPayload: result.sanitizedResponse,
+      });
+
+      auditService.recordSafe({
+        actorUserId: payment.passengerUserId,
+        eventType: "payment.klap_captured",
+        entityType: "payment",
+        entityId: payment.id,
+        metadata: {
+          rideId: payment.rideRequestId,
+          capturedAmountClp: captureAmountClp,
+          provider: "klap",
+        },
+      });
+
+      return { ok: true, status: "success" };
+    } catch (error) {
+      const isTimeoutOrNetwork =
+        error instanceof KlapProviderError &&
+        (error.kind === "timeout" || error.kind === "network");
+
+      const isServerError =
+        error instanceof KlapProviderError &&
+        error.kind === "http_rejected" &&
+        (error.httpStatus ?? 0) >= 500;
+
+      const isClientRejection =
+        error instanceof KlapProviderError &&
+        error.kind === "http_rejected" &&
+        (error.httpStatus ?? 0) >= 400 &&
+        (error.httpStatus ?? 0) < 500;
+
+      const reason =
+        error instanceof KlapProviderError
+          ? error.message
+          : `Unexpected error during Klap capture: ${String(error)}`;
+
+      if (isClientRejection) {
+        await paymentsRepo.markCaptureFailed({ id: payment.id, reason });
+
+        auditService.recordSafe({
+          actorUserId: payment.passengerUserId,
+          eventType: "payment.klap_capture_failed",
+          entityType: "payment",
+          entityId: payment.id,
+          metadata: {
+            rideId: payment.rideRequestId,
+            provider: "klap",
+            httpStatus: error instanceof KlapProviderError ? error.httpStatus ?? 0 : 0,
+          },
+        });
+
+        return {
+          ok: false,
+          code: "CAPTURE_FAILED",
+          message: "Klap rejected the capture request definitively.",
+          statusCode: 502,
+        };
+      }
+
+      // Timeout, network error, HTTP 5xx, o cualquier otro caso no
+      // clasificado â€” Klap podrÃ­a haber procesado la captura aunque RAPA GO
+      // no recibiera la respuesta. Nunca se marca como fallo definitivo ni
+      // se reintenta automÃ¡ticamente.
+      void isTimeoutOrNetwork;
+      void isServerError;
+      await paymentsRepo.markCaptureUnknown({ id: payment.id, reason });
+
+      auditService.recordSafe({
+        actorUserId: payment.passengerUserId,
+        eventType: "payment.klap_capture_unknown",
+        entityType: "payment",
+        entityId: payment.id,
+        metadata: {
+          rideId: payment.rideRequestId,
+          provider: "klap",
+          errorKind: error instanceof KlapProviderError ? error.kind : "unknown",
+        },
+      });
+
+      return {
+        ok: false,
+        code: "CAPTURE_UNKNOWN",
+        message:
+          "Could not confirm whether the Klap capture succeeded. It will need manual reconciliation.",
+        statusCode: 502,
+      };
+    }
   }
 
   getKlapBrowserReturnRedirect(cancelled: boolean): string {
@@ -2816,6 +3087,19 @@ export class PaymentsService {
     const statusResult = await this.getPaymentStatus(accessToken, paymentId);
     if (!statusResult.ok) return statusResult;
     const payment = statusResult.payment;
+
+    // El recibo definitivo solo existe una vez que el cobro fue realmente
+    // capturado. Una autorización de Klap (o una captura pendiente/incierta)
+    // nunca debe mostrarse como "pago realizado".
+    if (payment.status !== "success") {
+      return {
+        ok: false,
+        code: "PAYMENT_RECEIPT_NOT_AVAILABLE",
+        message: "The definitive receipt is only available once the payment has been captured.",
+        statusCode: 409,
+      };
+    }
+
     return {
       ok: true,
       receipt: {
@@ -2856,6 +3140,50 @@ export class PaymentsService {
     );
 
     if (!payment) {
+      // FASE 8 (captura diferida Klap): todavía no existe una ruta oficial de
+      // Klap para anular/liberar una autorización de tarjeta (void). Si el
+      // viaje se cancela con una autorización Klap viva (nunca capturada),
+      // no hay nada que devolver — pero el banco emisor puede mantener el
+      // monto retenido en la tarjeta del pasajero hasta que la autorización
+      // expire o Klap la libere por su cuenta. Se registra explícitamente
+      // como pendiente de conciliación manual; no se inventa ninguna URL.
+      const activeKlapAuthorization = await paymentsRepo.findActiveByRideIdAndPurpose(
+        input.rideRequestId,
+        "ride",
+      );
+
+      if (
+        activeKlapAuthorization &&
+        normalizePaymentText(activeKlapAuthorization.provider) === "klap" &&
+        ["authorized", "capture_pending", "capture_unknown"].includes(
+          activeKlapAuthorization.status,
+        )
+      ) {
+        auditService.recordSafe({
+          actorUserId: input.cancelledByUserId,
+          eventType: "payment.klap_void_required",
+          entityType: "payment",
+          entityId: activeKlapAuthorization.id,
+          metadata: {
+            rideId: input.rideRequestId,
+            provider: "klap",
+            paymentStatus: activeKlapAuthorization.status,
+            cancelledByRole: input.cancelledByRole,
+          },
+        });
+
+        return {
+          ok: true,
+          processed: false,
+          refunded: false,
+          skippedReason:
+            "Existe una autorización Klap sin capturar para este viaje cancelado. " +
+            "Klap todavía no documentó un endpoint de anulación/liberación — requiere " +
+            "conciliación manual antes de producción.",
+          paymentId: activeKlapAuthorization.id,
+        };
+      }
+
       return {
         ok: true,
         processed: false,

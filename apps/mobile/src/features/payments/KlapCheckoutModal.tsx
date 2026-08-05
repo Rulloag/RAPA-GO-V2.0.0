@@ -16,7 +16,9 @@ import {
 } from "react";
 import {
   clearPendingKlapPayment,
+  getKlapPaymentStatusMessage,
   isKlapPaymentApproved,
+  isKlapPaymentAuthorized,
   isKlapPaymentRejected,
   markPendingKlapPaymentStarted,
   openKlapHostedCheckout,
@@ -127,7 +129,16 @@ export function KlapCheckoutModal({
       );
 
       if (isKlapPaymentApproved(status.status)) {
-        setMessage("Pago aprobado y confirmado por el backend.");
+        setMessage(getKlapPaymentStatusMessage(status.status));
+        onApproved(payment);
+        return;
+      }
+
+      if (isKlapPaymentAuthorized(status.status)) {
+        // Captura diferida: la tarjeta quedó autorizada, no cobrada. El
+        // viaje ya puede avanzar — el cobro real ocurre al finalizar el
+        // viaje en el backend. Nunca se muestra "pago realizado" aquí.
+        setMessage(getKlapPaymentStatusMessage(status.status));
         onApproved(payment);
         return;
       }

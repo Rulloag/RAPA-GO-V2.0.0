@@ -7,11 +7,14 @@ import type {
 } from "./payment.provider.js";
 import {
   KlapProviderError,
+  KLAP_TRANSACTION_TYPE_AUTHORIZATION,
   type KlapConfig,
   type KlapOrderRequest,
   type KlapCreateOrderValidatedResponse,
   type KlapHostedCheckoutResult,
   type KlapOrderStatusValidatedResponse,
+  type KlapCaptureOrderParams,
+  type KlapCaptureOrderResult,
 } from "./klap.types.js";
 
 const KLAP_SANDBOX_ORDERS_URL_DEFAULT =
@@ -450,6 +453,10 @@ export class KlapProvider implements PaymentProvider {
           key: "tarjetas_payment_indicator",
           value: "typed",
         },
+        {
+          key: "transaction_type",
+          value: KLAP_TRANSACTION_TYPE_AUTHORIZATION,
+        },
       ],
       urls: {
         return_url: config.returnUrl,
@@ -562,4 +569,133 @@ export class KlapProvider implements PaymentProvider {
       "Klap confirm/reject use dedicated signed handlers.",
     );
   }
+
+  /**
+   * POST {ordersUrl}/{order_id}/capture — captura el monto previamente
+   * autorizado. Klap no documentó todavía (a la fecha de esta fase) el
+   * contrato exacto de la respuesta: cualquier 2xx se trata como captura
+   * aceptada, el body se lee de forma defensiva (puede venir vacío), y
+   * cualquier respuesta no-2xx lanza KlapProviderError con httpStatus para
+   * que la capa de servicio clasifique el error (ver PaymentsService).
+   *
+   * No se reintenta automáticamente. No se envía Idempotency-Key: no está
+   * documentado para este endpoint, a diferencia de la creación de orden.
+   */
+  async captureOrder(
+    params: KlapCaptureOrderParams,
+  ): Promise<KlapCaptureOrderResult> {
+    if (!params.orderId || !params.orderId.trim()) {
+      throw new KlapProviderError("config", "orderId is required to capture a Klap order.");
+    }
+
+    if (!Number.isInteger(params.amountClp) || params.amountClp <= 0) {
+      throw new KlapProviderError(
+        "config",
+        "amountClp must be a positive integer (CLP has no decimal subunit).",
+      );
+    }
+
+    const config = getKlapConfig();
+    const url = `${config.ordersUrl.replace(/\/+$/, "")}/${encodeURIComponent(
+      params.orderId,
+    )}/capture`;
+
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), config.requestTimeoutMs);
+
+    let response: Response;
+
+    try {
+      response = await fetch(url, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          apikey: config.apiKey,
+        },
+        body: JSON.stringify({ amount: params.amountClp }),
+        signal: controller.signal,
+      });
+    } catch (error) {
+      if (error instanceof Error && error.name === "AbortError") {
+        throw new KlapProviderError(
+          "timeout",
+          `Klap order capture timed out after ${config.requestTimeoutMs}ms.`,
+        );
+      }
+
+      throw new KlapProviderError(
+        "network",
+        "Klap order capture failed due to a network error.",
+      );
+    } finally {
+      clearTimeout(timer);
+    }
+
+    if (!response.ok) {
+      // Cuerpo leído solo para clasificar el error de forma más precisa en
+      // los logs de auditoría; nunca se persiste ni se registra completo.
+      throw new KlapProviderError(
+        "http_rejected",
+        `Klap order capture was rejected with HTTP ${response.status}.`,
+        response.status,
+      );
+    }
+
+    const sanitizedResponse = await readCaptureResponseBodySafely(response);
+
+    return {
+      httpStatus: response.status,
+      sanitizedResponse,
+    };
+  }
+}
+
+/**
+ * Lee el body de una respuesta 2xx de captura de forma defensiva: un body
+ * vacío es válido (Klap no confirmó todavía el contrato exacto), y solo se
+ * conservan pares clave/valor de tipo primitivo del primer nivel — nunca
+ * objetos/arreglos anidados que pudieran llevar datos de tarjeta.
+ */
+async function readCaptureResponseBodySafely(
+  response: Response,
+): Promise<Record<string, unknown> | null> {
+  let text: string;
+
+  try {
+    text = await response.text();
+  } catch {
+    return null;
+  }
+
+  if (!text || !text.trim()) return null;
+
+  let raw: unknown;
+  try {
+    raw = JSON.parse(text);
+  } catch {
+    return null;
+  }
+
+  if (typeof raw !== "object" || raw === null || Array.isArray(raw)) {
+    return null;
+  }
+
+  const record = raw as Record<string, unknown>;
+  const sanitized: Record<string, unknown> = {};
+  let fieldCount = 0;
+
+  for (const [key, value] of Object.entries(record)) {
+    if (fieldCount >= 20) break;
+    if (
+      typeof value === "string" ||
+      typeof value === "number" ||
+      typeof value === "boolean" ||
+      value === null
+    ) {
+      sanitized[key] = typeof value === "string" ? value.slice(0, 500) : value;
+      fieldCount += 1;
+    }
+  }
+
+  return sanitized;
 }
