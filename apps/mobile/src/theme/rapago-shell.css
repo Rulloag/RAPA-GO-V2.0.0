@@ -188,6 +188,17 @@
   --rp-danger-fg: #f0906e;
   --rp-danger-bd: rgba(184, 79, 46, 0.6);
 
+  /* Velo de la barra superior. No es decoración: el fondo de página es una
+     FOTOGRAFÍA y su propio velo está sólo al 32% en el primer tramo, que es
+     justo donde vive la barra. Si la foto tiene cielo claro ahí, el título se
+     pierde. Degradado a transparente para que la barra no parezca una franja
+     pegada, sino que la pantalla se oscurezca hacia arriba. */
+  --rp-appbar-scrim: linear-gradient(
+    180deg,
+    rgba(0, 0, 0, 0.45) 0%,
+    rgba(0, 0, 0, 0) 100%
+  );
+
   /* Aviso (ámbar) e informativo (azul). Faltaban: las pantallas los resolvían
      con hex fijos de modo día (#fff7db/#5f3f00, #dbeafe/#2563eb) que quedaban
      ilegibles de noche. Ratios sobre la superficie oscura: 11,75:1 y 10,38:1. */
@@ -317,6 +328,14 @@
   --rp-err-bd: rgba(184, 79, 46, 0.38);
   --rp-danger-fg: #b03a1c;
   --rp-danger-bd: rgba(184, 79, 46, 0.55);
+
+  /* Contraparte de día del velo de la barra: aclara en vez de oscurecer, para
+     que el texto oscuro conserve contraste sobre las zonas claras de la foto. */
+  --rp-appbar-scrim: linear-gradient(
+    180deg,
+    rgba(255, 253, 249, 0.55) 0%,
+    rgba(255, 253, 249, 0) 100%
+  );
 
   /* Contrapartes de día. Ratios sobre la superficie clara: 7,73:1 y 6,49:1. */
   --rp-warn-fg: #6b4b00;

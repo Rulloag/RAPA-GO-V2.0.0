@@ -25,6 +25,9 @@ import "../theme/sections.css";
 import "../theme/driver.css";
 import "../theme/request-ride.css";
 import "../theme/request.css";
+/* Va al final: la barra superior debe poder pisar los restos de cabecera de
+   cualquier ámbito (sections, driver, request-ride) sin recurrir a !important. */
+import "../theme/appbar.css";
 
 import { initRapagoTheme } from "../theme/rapagoTheme";
 

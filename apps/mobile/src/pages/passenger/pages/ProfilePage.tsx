@@ -55,6 +55,7 @@ import {
   trashOutline,
 } from "ionicons/icons";
 import { useRapagoSectionTheme } from "../../../theme/rapagoTheme.js";
+import { RapagoAppBar } from "../../../components/RapagoAppBar.js";
 import { ModulePlaceholderPage } from "../../../components/ModulePlaceholderPage";
 import { AccountDeletionCard } from "../../../components/accountDeletion/AccountDeletionCard.js";
 import { LegalAndHelpCard } from "../../../components/legal/LegalAndHelpCard.js";
@@ -1539,45 +1540,20 @@ export function ProfileIndexPage(): JSX.Element {
 
   return (
     <IonPage className="rapago-profile-page" data-rapago-theme={theme}>
-      <IonHeader>
-        {/* Toolbar transparente sobre el fondo, como el Login. La barra dorada
-            sólida anterior competía con el hero y con el botón "Inicio". */}
-        <IonToolbar className="rapago-profile-toolbar">
-          {roleHome && (
-            <IonButtons slot="start">
-              <IonButton
-                className="rapago-profile-iconbtn"
-                onClick={() => history.push(roleHome)}
-                aria-label={profileText.home}
-                title={profileText.home}
-              >
-                <IonIcon icon={arrowBackOutline} slot="icon-only" />
-              </IonButton>
-            </IonButtons>
-          )}
-
-
-          <IonTitle className="rapago-profile-title">{profileText.profile}</IonTitle>
-
-          <IonButtons slot="end">
-            <IonButton
-              className="rapago-profile-iconbtn"
-
-              aria-label={
-                language === "es"
-                  ? "Cambiar aplicación a inglés"
-                  : "Switch app to Spanish"
-              }
-
-              title={language === "es" ? "Cambiar a English" : "Cambiar a Español"}
-              onClick={() => handleLanguageChange(language === "es" ? "en" : "es")}
-
-            >
-              <IonIcon icon={languageOutline} slot="start" />
-              {language === "es" ? "EN" : "ES"}
-            </IonButton>
-          </IonButtons>
-        </IonToolbar>
+      <IonHeader className="ion-no-border">
+        <RapagoAppBar
+          sectionId="profile"
+          title={profileText.profile}
+          {...(roleHome ? { backHref: roleHome, backLabel: profileText.home } : {})}
+          actionIcon={languageOutline}
+          actionText={language === "es" ? "EN" : "ES"}
+          actionLabel={
+            language === "es"
+              ? "Cambiar aplicación a inglés"
+              : "Switch app to Spanish"
+          }
+          onAction={() => handleLanguageChange(language === "es" ? "en" : "es")}
+        />
       </IonHeader>
 
       <IonContent className="rapago-profile-content">

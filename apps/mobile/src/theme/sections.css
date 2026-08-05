@@ -249,6 +249,58 @@
   color: var(--rp-text-legacy) !important;
 }
 
+/* ── Escape para paneles que SÍ siguen el tema dentro de una ion-card ────── */
+/* La tarjeta en sí queda clara en ambos temas (regla de arriba), pero dentro
+   de ella hay paneles que declaran su PROPIO fondo con --rp-surface (p.ej.
+   los datos del conductor y "Detalle del viaje" en Mis Viajes): en modo
+   noche ese fondo sí es oscuro. El problema es que global.css:3175 fuerza
+   `color: #111111 !important` en TODO descendiente de cualquier ion-card,
+   sin excepción — pensado solo para la superficie clara de arriba. Sobre un
+   panel oscuro ese texto quedaba negro sobre negro (reportado en Mis Viajes,
+   viajes activos y completados).
+
+   No se puede simplemente quitar la regla de global.css: la usan decenas de
+   tarjetas en Admin, Wallet, Guías, etc. que sí dependen de que TODO su
+   texto se vea oscuro sobre su fondo claro fijo. En vez de eso, estos
+   paneles se marcan con `rapago-trip-theme-panel` para salir de esa regla y
+   dejar que el color que cada elemento ya declara inline (var(--rp-*))
+   vuelva a ganar. `.rp-tone-*` cubre los pocos elementos que necesitan un
+   tono semántico distinto al texto principal (estado, distancia, aviso). */
+.rapago-trip-theme-panel,
+.rapago-trip-theme-panel * {
+  color: var(--rp-text) !important;
+}
+
+.rapago-trip-theme-panel .rp-tone-muted,
+.rapago-trip-theme-panel .rp-tone-muted * {
+  color: var(--rp-muted) !important;
+}
+
+.rapago-trip-theme-panel .rp-tone-ok,
+.rapago-trip-theme-panel .rp-tone-ok * {
+  color: var(--rp-ok-fg) !important;
+}
+
+.rapago-trip-theme-panel .rp-tone-err,
+.rapago-trip-theme-panel .rp-tone-err * {
+  color: var(--rp-err-fg) !important;
+}
+
+.rapago-trip-theme-panel .rp-tone-warn,
+.rapago-trip-theme-panel .rp-tone-warn * {
+  color: var(--rp-warn-fg) !important;
+}
+
+.rapago-trip-theme-panel .rp-tone-info,
+.rapago-trip-theme-panel .rp-tone-info * {
+  color: var(--rp-info-fg) !important;
+}
+
+.rapago-trip-theme-panel .rp-tone-btn-primary-fg,
+.rapago-trip-theme-panel .rp-tone-btn-primary-fg * {
+  color: var(--rp-btn-primary-fg) !important;
+}
+
 .rapago-section-page ion-card-title,
 .rapago-section-page ion-card-header ion-card-title {
   color: var(--rp-accent-legacy) !important;
@@ -991,4 +1043,96 @@ ion-content.rapago-modal-content {
   --background: var(--rp-btn-primary) !important;
   --color: var(--rp-btn-primary-fg) !important;
   color: var(--rp-btn-primary-fg) !important;
+}
+
+/* ==========================================================================
+   Calificación con estrellas
+   --------------------------------------------------------------------------
+   Antes cada estrella era una caja de 42px con el icono SÓLIDO siempre y fondo
+   amarillo cuando estaba activa. Con el valor por defecto en 5, las cinco
+   salían idénticas: se leía como una fila de botones, no como una nota. Y los
+   colores eran fijos (#ffffff, #111827, #9ca3af), así que en modo noche
+   quedaban cinco parches blancos.
+   Ahora el valor se lee por el contraste lleno/contorno, que es como se leen
+   las estrellas en todas partes, y el color sale de tokens.
+   ========================================================================== */
+.rapago-star-rating {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 14px;
+  margin: 10px 0 6px;
+}
+
+.rapago-star-rating__row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.rapago-star-rating__star {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  /* 44px de objetivo táctil aunque la estrella dibujada sea menor: el área se
+     gana con padding, no engordando el icono. */
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border: none;
+  border-radius: 12px;
+  background: transparent;
+  color: var(--rp-border-strong, rgba(148, 163, 184, 0.55));
+  font-size: 1.9rem;
+  line-height: 1;
+  cursor: pointer;
+  transition: transform 120ms ease, color 140ms ease;
+}
+
+.rapago-star-rating__star.is-active {
+  color: var(--rp-gold, #d6a640);
+}
+
+.rapago-star-rating__star:active {
+  transform: scale(0.9);
+}
+
+.rapago-star-rating__star:focus-visible {
+  outline: 2px solid var(--rp-gold, #d6a640);
+  outline-offset: 2px;
+}
+
+/* La palabra ("Excelente") junto al número: una nota sin etiqueta es ambigua
+   —4 estrellas puede leerse como "bien" o como "le falta algo"— y nombrarla
+   hace que el pasajero confirme lo que quiso decir. */
+.rapago-star-rating__label {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+  padding: 5px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--rp-border-c);
+  background: var(--rp-field-bg);
+}
+
+.rapago-star-rating__label strong {
+  font-size: 1.05rem;
+  font-weight: 950;
+  color: var(--rp-gold, #d6a640);
+  font-variant-numeric: tabular-nums;
+}
+
+.rapago-star-rating__label span {
+  font-size: 0.82rem;
+  font-weight: 850;
+  color: var(--rp-text);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rapago-star-rating__star {
+    transition: none;
+  }
+  .rapago-star-rating__star:active {
+    transform: none;
+  }
 }

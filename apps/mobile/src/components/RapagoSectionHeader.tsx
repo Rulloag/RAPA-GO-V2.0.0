@@ -1,15 +1,5 @@
-import {
-  IonButton,
-  IonButtons,
-  IonHeader,
-  IonIcon,
-  IonSpinner,
-  IonTitle,
-  IonToolbar,
-} from "@ionic/react";
-import { arrowBackOutline } from "ionicons/icons";
-import { useHistory } from "react-router-dom";
-import logoRapago from "../theme/img/logo-rapago.jpeg";
+import { RapagoAppBar } from "./RapagoAppBar.js";
+import type { RapagoSection } from "../theme/rapagoTheme";
 
 interface RapagoSectionHeaderProps {
   title: string;
@@ -23,27 +13,34 @@ interface RapagoSectionHeaderProps {
   actionLabel?: string;
   actionLoading?: boolean;
   onAction?: () => void;
+  /** Ámbito de tema de la pantalla. Por omisión "trips", que es el que ya
+   *  declaraban de hecho varias secciones de pasajero (Guías y Arriendo lo
+   *  reutilizan explícitamente). */
+  sectionId?: RapagoSection;
 }
 
 /**
  * Cabecera común de las secciones del pasajero.
  *
- * Existe porque cada pantalla traía su propio toolbar y ninguno coincidía:
+ * AHORA ES UNA ENVOLTURA de `RapagoAppBar`, la barra única de la app.
+ *
+ * Existía porque cada pantalla traía su propio toolbar y ninguno coincidía:
  * Mis viajes usaba `color="primary"` (dorado), Centro de ayuda
- * `color="warning"` (amarillo) y Beneficios un degradado inline. Al llevar
- * el color en el atributo `color` o en `style`, ninguno respondía al tema y
- * las tres cabeceras se veían distintas entre sí.
+ * `color="warning"` (amarillo) y Beneficios un degradado inline. Al llevar el
+ * color en el atributo `color` o en `style`, ninguno respondía al tema y las
+ * tres cabeceras se veían distintas entre sí. Ese diagnóstico sigue vigente y
+ * es el que gobierna la barra nueva: fondo transparente, cero `color` de Ionic.
  *
- * Aquí el toolbar no lleva `color`: el fondo es transparente y deja ver el
- * de la página, igual que en Home, Perfil y Login.
+ * Se conserva la firma EXACTA para que las ocho llamadas existentes sigan
+ * funcionando sin tocar una línea, y de paso ganen las tres cosas que les
+ * faltaban: el logo legible (recortado al moái), el acceso a la cuenta y el
+ * cierre de sesión con confirmación.
  *
- * Esta cabecera YA NO lleva interruptor día/noche. Antes cada sección tenía el
- * suyo y su propia preferencia, así que cambiarlo en Viajes no afectaba a
- * Beneficios ni a Ayuda: el usuario repetía el gesto pantalla por pantalla y la
- * app se quedaba a dos luces. Ahora todas las pantallas de pasajero comparten un
- * único ámbito de tema (`scopeOfSection` en rapagoTheme.ts), gobernado desde el
- * botón del encabezado de Inicio, con Perfil → Preferencias como segundo punto
- * de acceso al mismo ajuste.
+ * Esta cabecera SIGUE SIN llevar interruptor día/noche en la barra. Antes cada
+ * sección tenía el suyo y su propia preferencia, así que cambiarlo en Viajes no
+ * afectaba a Beneficios ni a Ayuda: el usuario repetía el gesto pantalla por
+ * pantalla y la app se quedaba a dos luces. El interruptor vive ahora dentro
+ * del menú de cuenta — un único punto de control sobre un único ámbito.
  */
 export function RapagoSectionHeader({
   title,
@@ -54,65 +51,20 @@ export function RapagoSectionHeader({
   actionLabel,
   actionLoading = false,
   onAction,
+  sectionId = "trips",
 }: RapagoSectionHeaderProps): JSX.Element {
-  const history = useHistory();
-
-  const showBack = Boolean(backHref) || typeof onBack === "function";
-
-  function handleBack(): void {
-    if (onBack) {
-      onBack();
-      return;
-    }
-
-    if (backHref) history.push(backHref);
-  }
-
   return (
-    <IonHeader className="rapago-section-header">
-      <IonToolbar className="rapago-section-toolbar">
-        {showBack && (
-          <IonButtons slot="start">
-            <IonButton
-              className="rapago-chrome-btn"
-              onClick={handleBack}
-              aria-label={backLabel}
-              title={backLabel}
-            >
-              <IonIcon icon={arrowBackOutline} slot="icon-only" />
-            </IonButton>
-          </IonButtons>
-        )}
-
-        {/* Logo centrado en el IonTitle */}
-        <IonTitle className="rapago-section-title">
-          <img
-            src={logoRapago}
-            alt="Rapa Go"
-            className="rapago-section-logo"
-          />
-        </IonTitle>
-
-        {/* Título a la derecha + acción opcional */}
-        <IonButtons slot="end">
-          <span className="rapago-section-title-text">{title}</span>
-          {actionIcon && onAction && (
-            <IonButton
-              className="rapago-chrome-btn"
-              onClick={onAction}
-              disabled={actionLoading}
-              aria-label={actionLabel}
-              title={actionLabel}
-            >
-              {actionLoading ? (
-                <IonSpinner name="dots" style={{ width: 18, height: 18 }} />
-              ) : (
-                <IonIcon icon={actionIcon} slot="icon-only" />
-              )}
-            </IonButton>
-          )}
-        </IonButtons>
-      </IonToolbar>
-    </IonHeader>
+    <RapagoAppBar
+      sectionId={sectionId}
+      title={title}
+      variant="standard"
+      {...(backHref !== undefined ? { backHref } : {})}
+      {...(onBack !== undefined ? { onBack } : {})}
+      backLabel={backLabel}
+      {...(actionIcon !== undefined ? { actionIcon } : {})}
+      {...(actionLabel !== undefined ? { actionLabel } : {})}
+      actionLoading={actionLoading}
+      {...(onAction !== undefined ? { onAction } : {})}
+    />
   );
 }

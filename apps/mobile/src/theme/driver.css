@@ -2465,3 +2465,1059 @@
 .rapago-driver-page .rapago-driver-next-offer-banner > div {
   opacity: 1 !important;
 }
+
+/* ==========================================================================
+   Acciones dentro de la hoja del mapa de navegación
+   --------------------------------------------------------------------------
+   Par "acción principal / Cancelar" que vive junto al ETA, no en un panel
+   aparte bajo el mapa. Se dimensionan como el CTA del pasajero
+   (.request-map-confirm) pero un punto más compactas: aquí comparten fila con
+   el ETA y cada píxel de alto se lo quita al mapa, que es lo que el conductor
+   está mirando.
+   ========================================================================== */
+.rapago-driver-sheet-actions {
+  /* --rp-gold-soft/-dark y --rp-ease sólo existen dentro de .request-map-page
+     (request-ride.css). En el scope del conductor hay que usar los tokens de
+     rapago-shell.css, que ya trae el degradado de marca completo en
+     --rp-btn-primary. La curva se declara aquí para no depender de un token
+     ajeno a este árbol. */
+  --rp-driver-sheet-ease: cubic-bezier(0.22, 1, 0.36, 1);
+
+  display: grid;
+  /* La acción principal manda; Cancelar se queda con lo justo para su texto.
+     `minmax(0, …)` evita que una etiqueta larga ("Reportar accidente") ensanche
+     la columna más allá de la hoja y provoque scroll horizontal. */
+  grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr);
+  gap: 8px;
+  align-items: stretch;
+}
+
+.rapago-driver-sheet-actions ion-button {
+  --border-radius: 999px;
+  --padding-start: 10px;
+  --padding-end: 10px;
+  min-height: 44px;
+  height: 44px;
+  margin: 0;
+  font-size: 0.82rem;
+  font-weight: 900;
+  letter-spacing: 0.01em;
+  text-transform: none;
+  transition:
+    transform 120ms var(--rp-driver-sheet-ease),
+    box-shadow 160ms var(--rp-driver-sheet-ease);
+}
+
+.rapago-driver-sheet-actions ion-button::part(native) {
+  /* Etiquetas como "Finalizar viaje" no deben partirse en dos líneas dentro de
+     un botón de 44px: se recortan con puntos suspensivos y el nombre accesible
+     completo sigue estando en aria-label. */
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.rapago-driver-sheet-actions ion-button:not([disabled]):active {
+  transform: translateY(1px) scale(0.995);
+}
+
+/* Acción principal: mismo degradado dorado de marca que el CTA del pasajero,
+   para que "el botón que avanza el flujo" se vea igual en ambas apps. */
+.rapago-driver-sheet-actions__primary {
+  --background: var(--rp-btn-primary);
+  --background-activated: var(--rp-btn-primary-activated);
+  --background-hover: var(--rp-btn-primary);
+  --color: var(--rp-btn-primary-fg);
+  --box-shadow: var(--rp-shadow-accent);
+  --ripple-color: rgba(36, 26, 6, 0.18);
+}
+
+.rapago-driver-sheet-actions__primary:focus-visible {
+  outline: 2px solid var(--rp-gold);
+  outline-offset: 3px;
+}
+
+/* Cancelar: contorno neutro. Nunca rojo — cancelar un viaje es reversible y
+   pintarlo de peligro compite visualmente con el botón de emergencia real. */
+.rapago-driver-sheet-actions__cancel {
+  --background: transparent;
+  --background-activated: var(--rp-field-bg);
+  --background-hover: var(--rp-field-bg);
+  --color: var(--rp-text);
+  --border-width: 1.5px;
+  --border-style: solid;
+  --border-color: var(--rp-border-c);
+  --box-shadow: none;
+}
+
+.rapago-driver-sheet-actions__cancel:focus-visible {
+  outline: 2px solid var(--rp-border-c);
+  outline-offset: 3px;
+}
+
+/* Pantallas muy angostas (iPhone SE y similares): las dos acciones ya no caben
+   lado a lado sin recortar texto, así que se apilan y la principal queda
+   arriba, bajo el pulgar. */
+@media (max-width: 360px) {
+  .rapago-driver-sheet-actions {
+    grid-template-columns: 1fr;
+    gap: 7px;
+  }
+}
+
+/* Pantallas bajas: el mapa es lo que más sufre, así que las acciones ceden
+   algunos píxeles antes que él. */
+@media (max-height: 680px) {
+  .rapago-driver-sheet-actions ion-button {
+    min-height: 40px;
+    height: 40px;
+    font-size: 0.78rem;
+  }
+}
+
+/* Tablet / horizontal: la hoja es ancha, no tiene sentido estirar los botones
+   de borde a borde. */
+@media (min-width: 720px) {
+  .rapago-driver-sheet-actions {
+    justify-content: center;
+    grid-template-columns: minmax(0, 220px) minmax(0, 160px);
+    gap: 10px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rapago-driver-sheet-actions ion-button {
+    transition: none;
+  }
+}
+
+/* ==========================================================================
+   Viaje activo — contenedor único
+   --------------------------------------------------------------------------
+   Antes esta pantalla era un flex column con el mapa arriba y un panel oscuro
+   fijo abajo (uberPanelStyle). El panel no se podía plegar y se quedaba entre
+   190 y 380 px según el estado, así que el mapa —lo único que el conductor
+   mira mientras maneja— vivía en poco más de un tercio de la pantalla.
+   Ahora el mapa ocupa el 100% y todo lo demás vive dentro de su hoja, que SÍ
+   se pliega. Único fuera de la hoja: el SOS.
+   ========================================================================== */
+.rapago-driver-page .rapago-driver-active-ride {
+  position: relative;
+  /* height (no min-height) heredado del IonContent, que Ionic ya calcula
+     descontando cabecera y tab bar. NO usar dvh aquí: mediría el viewport
+     completo ignorando ambas, y en iOS se re-resuelve al colapsar la barra de
+     URL, lo que reflowearía el mapa a mitad de arrastre. */
+  height: 100%;
+  /* NUNCA volver a margin:-16px. Existió para cancelar un .ion-padding que
+     esta pantalla no tiene (usa className=""), y empujaba el mapa fuera de
+     cada borde, cortando la píldora de velocidad y los botones laterales. */
+  margin: 0;
+  /* El scroll vive DENTRO de la hoja. Si también estuviera aquí, los dos
+     competirían y el gesto de arrastre se lo llevaría la página. */
+  overflow: hidden;
+  background: #0f1115;
+  color: #fff;
+}
+
+/* ---- Botón SOS ---- */
+.rapago-driver-page .rapago-driver-sos {
+  position: absolute;
+  right: 14px;
+  /* Anclado al TOPE, no a la hoja: es el único control que debe seguir en el
+     mismo sitio aunque la hoja se pliegue o se expanda. Si se moviera con
+     ella, el conductor tendría que buscarlo justo cuando menos puede. */
+  top: calc(env(safe-area-inset-top, 0px) + 12px);
+  z-index: 12;
+
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1px;
+  width: 52px;
+  height: 52px;
+  padding: 0;
+  border-radius: 999px;
+  border: 2px solid var(--rp-danger-bd, rgba(220, 38, 38, 0.55));
+  background: var(--rp-surface);
+  color: var(--rp-danger-fg, #dc2626);
+  box-shadow: var(--rp-shadow);
+  font-weight: 950;
+  cursor: pointer;
+}
+
+.rapago-driver-page .rapago-driver-sos ion-icon {
+  font-size: 21px;
+}
+
+.rapago-driver-page .rapago-driver-sos span {
+  font-size: 0.58rem;
+  letter-spacing: 0.04em;
+  line-height: 1;
+}
+
+.rapago-driver-page .rapago-driver-sos:active {
+  transform: scale(0.96);
+}
+
+.rapago-driver-page .rapago-driver-sos:focus-visible {
+  outline: 2px solid var(--rp-danger-fg, #dc2626);
+  outline-offset: 3px;
+}
+
+/* ---- Estado del viaje dentro de la hoja ----
+   Misma rejilla que .request-map-walk del pasajero: columna de icono fija +
+   texto flexible. Que ambas apps compartan la retícula es lo que hace que se
+   sientan del mismo producto, más que compartir colores. */
+.rapago-driver-page .rapago-driver-sheet-status {
+  display: grid;
+  grid-template-columns: 38px minmax(0, 1fr);
+  align-items: center;
+  gap: 11px;
+  min-width: 0;
+  padding: 10px 12px;
+  border: 1px solid var(--rp-border-c);
+  border-radius: var(--rp-radius-md, 16px);
+  background: var(--rp-field-bg);
+}
+
+.rapago-driver-page .rapago-driver-sheet-status__icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  height: 38px;
+  border-radius: 999px;
+  font-size: 20px;
+  background: var(--rp-icon-bg, rgba(214, 166, 64, 0.14));
+  color: var(--rp-icon-fg);
+}
+
+/* El color nunca comunica solo: siempre acompaña al texto del estado, que es
+   quien lleva el significado. Tres tonos para tres fases distintas. */
+.rapago-driver-page .rapago-driver-sheet-status--enroute {
+  border-color: color-mix(in srgb, var(--rp-accent) 38%, transparent);
+}
+.rapago-driver-page .rapago-driver-sheet-status--enroute .rapago-driver-sheet-status__icon {
+  background: color-mix(in srgb, var(--rp-accent) 18%, transparent);
+  color: var(--rp-accent);
+}
+
+.rapago-driver-page .rapago-driver-sheet-status--waiting {
+  border-color: color-mix(in srgb, var(--rp-gold) 42%, transparent);
+}
+.rapago-driver-page .rapago-driver-sheet-status--waiting .rapago-driver-sheet-status__icon {
+  background: color-mix(in srgb, var(--rp-gold) 20%, transparent);
+  color: var(--rp-gold);
+}
+
+.rapago-driver-page .rapago-driver-sheet-status--riding {
+  border-color: color-mix(in srgb, var(--rp-lagoon, #1f9d63) 40%, transparent);
+}
+.rapago-driver-page .rapago-driver-sheet-status--riding .rapago-driver-sheet-status__icon {
+  background: color-mix(in srgb, var(--rp-lagoon, #1f9d63) 20%, transparent);
+  color: var(--rp-lagoon, #1f9d63);
+}
+
+.rapago-driver-page .rapago-driver-sheet-status__text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  line-height: 1.25;
+}
+
+.rapago-driver-page .rapago-driver-sheet-status__text strong {
+  font-size: 0.88rem;
+  font-weight: 900;
+  color: var(--rp-text);
+}
+
+.rapago-driver-page .rapago-driver-sheet-status__text small {
+  font-size: 0.76rem;
+  font-weight: 750;
+  color: var(--rp-muted);
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+/* ---- Avisos dentro de la hoja ----
+   Misma retícula que el bloque de estado y que .request-map-walk: la columna
+   de iconos alineada hace que la hoja se lea como una lista y no como cajas
+   sueltas apiladas. */
+.rapago-driver-page .rapago-driver-sheet-note {
+  display: grid;
+  grid-template-columns: 38px minmax(0, 1fr);
+  align-items: start;
+  gap: 11px;
+  margin-bottom: 10px;
+  padding: 12px 13px;
+  border-radius: var(--rp-radius-md, 16px);
+  border: 1px solid var(--rp-border-c);
+  background: var(--rp-field-bg);
+  color: var(--rp-text);
+}
+
+.rapago-driver-page .rapago-driver-sheet-note__icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  height: 38px;
+  border-radius: 999px;
+  font-size: 19px;
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.rapago-driver-page .rapago-driver-sheet-note__text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.rapago-driver-page .rapago-driver-sheet-note:last-child {
+  margin-bottom: 0;
+}
+
+.rapago-driver-page .rapago-driver-sheet-note strong {
+  font-size: 0.74rem;
+  font-weight: 900;
+  letter-spacing: 0.02em;
+  color: var(--rp-muted);
+  text-transform: uppercase;
+}
+
+.rapago-driver-page .rapago-driver-sheet-note span {
+  font-size: 0.9rem;
+  font-weight: 850;
+}
+
+.rapago-driver-page .rapago-driver-sheet-note small {
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: var(--rp-muted);
+  line-height: 1.35;
+}
+
+/* color-mix sobre --rp-gold y no --rp-gold-soft/-dark: esos dos SÓLO existen
+   dentro de .request-map-page y aquí llegarían vacíos. */
+.rapago-driver-page .rapago-driver-sheet-note--queued {
+  border-color: color-mix(in srgb, var(--rp-gold) 42%, transparent);
+  background: color-mix(in srgb, var(--rp-gold) 12%, var(--rp-field-bg));
+}
+.rapago-driver-page .rapago-driver-sheet-note--queued .rapago-driver-sheet-note__icon {
+  background: color-mix(in srgb, var(--rp-gold) 22%, transparent);
+  color: var(--rp-gold);
+}
+
+.rapago-driver-page .rapago-driver-sheet-note--offer {
+  border-color: color-mix(in srgb, var(--rp-accent) 46%, transparent);
+  background: color-mix(in srgb, var(--rp-accent) 12%, var(--rp-field-bg));
+}
+.rapago-driver-page .rapago-driver-sheet-note--offer .rapago-driver-sheet-note__icon {
+  background: color-mix(in srgb, var(--rp-accent) 22%, transparent);
+  color: var(--rp-accent);
+}
+
+.rapago-driver-page .rapago-driver-sheet-note__actions {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr);
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.rapago-driver-page .rapago-driver-sheet-note__actions ion-button {
+  --border-radius: 999px;
+  min-height: 40px;
+  height: 40px;
+  margin: 0;
+  font-size: 0.78rem;
+  font-weight: 900;
+  text-transform: none;
+}
+
+.rapago-driver-page .rapago-driver-sheet-ghost {
+  --background: transparent;
+  --color: var(--rp-text);
+  --border-width: 1.5px;
+  --border-style: solid;
+  --border-color: var(--rp-border-c);
+  --box-shadow: none;
+}
+
+/* ---- No show: el botón ES la barra de progreso ----
+   Cuatro elementos (título, contador, barra de 8px y leyenda) más una cinta
+   que pulsaba infinitamente se reducen a uno solo. El relleno avanza con la
+   espera; al llegar al 100% el botón se habilita y cambia de etiqueta, así que
+   la transición "ya puedes" es autoevidente y no hace falta explicarla. */
+.rapago-driver-page .rapago-driver-noshow {
+  --border-radius: 999px;
+  --background: linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--rp-gold) 34%, var(--rp-field-bg)) 0 var(--rp-noshow-progress, 0%),
+    var(--rp-field-bg) var(--rp-noshow-progress, 0%)
+  );
+  --background-activated: var(--rp-field-bg);
+  --color: var(--rp-text);
+  --border-width: 1.5px;
+  --border-style: solid;
+  --border-color: var(--rp-border-c);
+  --box-shadow: none;
+  min-height: 48px;
+  height: 48px;
+  margin: 10px 0 0;
+  font-size: 0.8rem;
+  font-weight: 900;
+  text-transform: none;
+}
+
+/* Habilitado: dorado sólido de marca. El cambio de superficie es la señal. */
+.rapago-driver-page .rapago-driver-noshow:not(.button-disabled) {
+  --background: var(--rp-btn-primary);
+  --color: var(--rp-btn-primary-fg);
+  --border-color: transparent;
+}
+
+/* Deshabilitado con tokens, no con opacity sobre un gris fijo: el
+   `opacity:.68` anterior sobre rgba(71,85,105,.75) no llegaba a contraste AA. */
+.rapago-driver-page .rapago-driver-noshow.button-disabled {
+  --color: var(--rp-muted);
+  opacity: 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rapago-driver-page .rapago-driver-sos:active {
+    transform: none;
+  }
+}
+
+/* ---- ETA de la hoja ----
+   El tiempo manda (número grande); la distancia lo acompaña con su icono, en
+   una píldora que la separa visualmente del ETA sin necesitar otro renglón. */
+.rapago-driver-page .rapago-driver-nav-eta__meta {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  max-width: 100%;
+  margin-top: 7px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: var(--rp-field-bg);
+  border: 1px solid var(--rp-border-c);
+  color: var(--rp-muted);
+  font-size: 0.82rem;
+  font-weight: 850;
+}
+
+.rapago-driver-page .rapago-driver-nav-eta__meta ion-icon {
+  flex: 0 0 auto;
+  font-size: 14px;
+  color: var(--rp-icon-fg);
+}
+
+.rapago-driver-page .rapago-driver-nav-eta__meta span {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+/* ---- Iconos dentro de los botones de la hoja ----
+   Tamaño contenido y margen propio: los `slot="start"` de Ionic traen un
+   margen pensado para botones de barra, demasiado ancho para píldoras de
+   44px donde el texto ya va justo. */
+.rapago-driver-page .rapago-driver-sheet-actions ion-button ion-icon,
+.rapago-driver-page .rapago-driver-sheet-note__actions ion-button ion-icon,
+.rapago-driver-page .rapago-driver-noshow ion-icon {
+  font-size: 17px;
+  margin-inline-end: 6px;
+}
+
+/* En pantallas muy angostas el icono cede el sitio al texto: entre ver el
+   icono y leer la etiqueta completa, gana la etiqueta. */
+@media (max-width: 340px) {
+  .rapago-driver-page .rapago-driver-sheet-actions ion-button ion-icon {
+    display: none;
+  }
+}
+
+/* ---- ETA: pieza principal de la hoja ----
+   Con los dos botones de 58px que lo flanqueaban eliminados, el ETA ocupa toda
+   la franja y puede crecer. Es el dato que se mira de reojo, a un brazo de
+   distancia y en movimiento: merece ser lo más grande del contenedor. */
+.rapago-driver-page .rapago-driver-nav-eta__value {
+  font-size: 2.4rem;
+  line-height: 1;
+  font-weight: 900;
+  letter-spacing: -0.02em;
+  color: var(--rp-text);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Pantallas bajas: el ETA cede antes que los targets táctiles, que nunca
+   bajan de 44px. */
+@media (max-height: 680px) {
+  .rapago-driver-page .rapago-driver-nav-eta__value {
+    font-size: 2rem;
+  }
+}
+
+/* ---- Reposos de la hoja ----
+   El asa cambia de aspecto según el reposo para que el conductor sepa de un
+   vistazo si queda contenido debajo: ancha y tenue cuando está todo a la
+   vista, más marcada cuando hay algo plegado. */
+.rapago-driver-page .rapago-driver-nav-grip {
+  display: block;
+  width: 44px;
+  height: 5px;
+  border-radius: 999px;
+  background: var(--rp-border-c);
+  transition: background 180ms ease, width 180ms ease;
+}
+
+.rapago-driver-page .rapago-driver-nav-sheet[data-snap="collapsed"] .rapago-driver-nav-grip,
+.rapago-driver-page .rapago-driver-nav-sheet[data-snap="half"] .rapago-driver-nav-grip {
+  background: var(--rp-gold);
+  width: 52px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rapago-driver-page .rapago-driver-nav-grip {
+    transition: none;
+  }
+}
+
+/* ==========================================================================
+   Tarjetas de "Mis Viajes"
+   --------------------------------------------------------------------------
+   Antes: una IonCard con el texto corrido «Precio: $6.000 CLP · Pago: Efectivo»
+   y «Vehículo: 🚗 Estándar» en párrafos sueltos. Toda la información pesaba lo
+   mismo, no había iconos, y recorrer la lista obligaba a leer cada renglón
+   entero para encontrar un dato.
+   Ahora: franja de estado por color, rejilla de datos etiquetados con icono, y
+   el precio —que es a lo que el conductor viene— destacado del resto.
+   ========================================================================== */
+.rapago-driver-page .rapago-trip-card,
+.rapago-section-page .rapago-trip-card {
+  position: relative;
+  display: block;
+  margin: 0 0 12px;
+  padding: 14px 14px 14px 18px;
+  border-radius: 18px;
+  border: 1px solid var(--rp-border-c);
+  background: var(--rp-surface);
+  color: var(--rp-text);
+  box-shadow: var(--rp-shadow);
+  overflow: hidden;
+}
+
+/* Franja lateral de estado: se reconoce completado vs. cancelado recorriendo
+   la lista, sin leer ninguna etiqueta. */
+.rapago-driver-page .rapago-trip-card::before,
+.rapago-section-page .rapago-trip-card::before {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 5px;
+  background: var(--rp-lagoon, #2e7d5b);
+}
+
+.rapago-driver-page .rapago-trip-card--cancelled::before,
+.rapago-section-page .rapago-trip-card--cancelled::before {
+  background: var(--rp-danger-fg, #b03a1c);
+}
+
+.rapago-driver-page .rapago-trip-card__head,
+.rapago-section-page .rapago-trip-card__head {
+  display: grid;
+  grid-template-columns: 36px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+}
+
+.rapago-driver-page .rapago-trip-card__icon,
+.rapago-section-page .rapago-trip-card__icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 999px;
+  font-size: 19px;
+  background: color-mix(in srgb, var(--rp-lagoon, #2e7d5b) 18%, transparent);
+  color: var(--rp-lagoon, #2e7d5b);
+}
+
+.rapago-driver-page .rapago-trip-card--cancelled .rapago-trip-card__icon,
+.rapago-section-page .rapago-trip-card--cancelled .rapago-trip-card__icon {
+  background: color-mix(in srgb, var(--rp-danger-fg, #b03a1c) 18%, transparent);
+  color: var(--rp-danger-fg, #b03a1c);
+}
+
+.rapago-driver-page .rapago-trip-card__route h3,
+.rapago-section-page .rapago-trip-card__route h3 {
+  margin: 0;
+  font-size: 0.92rem;
+  font-weight: 900;
+  line-height: 1.3;
+  color: var(--rp-text);
+}
+
+.rapago-driver-page .rapago-trip-card__route time,
+.rapago-section-page .rapago-trip-card__route time {
+  display: block;
+  margin-top: 2px;
+  font-size: 0.72rem;
+  font-weight: 750;
+  color: var(--rp-muted);
+}
+
+.rapago-driver-page .rapago-trip-card__state,
+.rapago-section-page .rapago-trip-card__state {
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 0.68rem;
+  font-weight: 950;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  background: color-mix(in srgb, var(--rp-lagoon, #2e7d5b) 16%, transparent);
+  border: 1px solid color-mix(in srgb, var(--rp-lagoon, #2e7d5b) 42%, transparent);
+  color: var(--rp-text);
+}
+
+.rapago-driver-page .rapago-trip-card--cancelled .rapago-trip-card__state,
+.rapago-section-page .rapago-trip-card--cancelled .rapago-trip-card__state {
+  background: color-mix(in srgb, var(--rp-danger-fg, #b03a1c) 16%, transparent);
+  border-color: color-mix(in srgb, var(--rp-danger-fg, #b03a1c) 45%, transparent);
+}
+
+/* Rejilla de datos. Dos columnas en móvil: cabe «Precio» y «Pago» en la misma
+   fila sin que ninguno se parta. */
+.rapago-driver-page .rapago-trip-card__facts,
+.rapago-section-page .rapago-trip-card__facts {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin: 12px 0 0;
+  padding: 10px 11px;
+  border-radius: 14px;
+  background: var(--rp-field-bg);
+  border: 1px solid var(--rp-border-c);
+}
+
+.rapago-driver-page .rapago-trip-card__fact,
+.rapago-section-page .rapago-trip-card__fact {
+  min-width: 0;
+}
+
+.rapago-driver-page .rapago-trip-card__fact dt,
+.rapago-section-page .rapago-trip-card__fact dt {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 0.68rem;
+  font-weight: 850;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--rp-muted);
+}
+
+.rapago-driver-page .rapago-trip-card__fact dt ion-icon,
+.rapago-section-page .rapago-trip-card__fact dt ion-icon {
+  font-size: 13px;
+  color: var(--rp-icon-fg);
+}
+
+.rapago-driver-page .rapago-trip-card__fact dd,
+.rapago-section-page .rapago-trip-card__fact dd {
+  margin: 2px 0 0;
+  font-size: 0.86rem;
+  font-weight: 850;
+  color: var(--rp-text);
+  overflow-wrap: anywhere;
+}
+
+/* El precio es a lo que se entra a esta pantalla: más grande y en dorado. */
+.rapago-driver-page .rapago-trip-card__fact--amount dd,
+.rapago-section-page .rapago-trip-card__fact--amount dd {
+  font-size: 1.02rem;
+  font-weight: 950;
+  color: var(--rp-gold, #d6a640);
+  font-variant-numeric: tabular-nums;
+}
+
+.rapago-driver-page .rapago-trip-card__fact--cash,
+.rapago-section-page .rapago-trip-card__fact--cash {
+  grid-column: 1 / -1;
+}
+
+.rapago-driver-page .rapago-trip-card__rate,
+.rapago-section-page .rapago-trip-card__rate {
+  --border-radius: 999px;
+  --background: transparent;
+  --color: var(--rp-gold, #d6a640);
+  --border-width: 1.5px;
+  --border-style: solid;
+  --border-color: color-mix(in srgb, var(--rp-gold, #d6a640) 55%, transparent);
+  min-height: 42px;
+  height: 42px;
+  margin: 12px 0 0;
+  font-size: 0.82rem;
+  font-weight: 900;
+  text-transform: none;
+}
+
+/* Pantallas angostas: una columna antes de que las etiquetas se partan. */
+@media (max-width: 340px) {
+  .rapago-driver-page .rapago-trip-card__facts,
+  .rapago-section-page .rapago-trip-card__facts {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* ==========================================================================
+   FIX modo noche — campos dentro de tarjeta
+   --------------------------------------------------------------------------
+   Más arriba (regla "Campos dentro de tarjeta") los ion-item de cualquier
+   ion-card que no sea .rapago-driver-card se fuerzan a los tokens *-legacy con
+   !important. --rp-field-bg-legacy es #ffffff fijo, y su comentario lo
+   justifica diciendo "la tarjeta es clara, pase lo que pase el tema".
+
+   Eso es cierto en modo día, pero en modo noche la tarjeta NO es clara: es
+   oscura, y los campos quedaban como pastillas blancas flotando sobre negro
+   —el formulario de vehículo y el de datos personales se veían así—. La
+   premisa de aquella regla simplemente no se cumple de noche.
+
+   Aquí se devuelve el control a los tokens del tema. Va al final del archivo y
+   con la misma especificidad + el atributo de tema, que es lo que le permite
+   ganarle a un !important anterior sin tener que tocar la regla original (que
+   sigue siendo correcta para el tema claro).
+   ========================================================================== */
+.rapago-driver-page[data-rapago-theme="dark"] ion-card:not(.rapago-driver-card) ion-item {
+  --background: var(--rp-field-bg) !important;
+  --color: var(--rp-field-fg) !important;
+  border-color: var(--rp-border-c) !important;
+}
+
+.rapago-driver-page[data-rapago-theme="dark"] ion-card:not(.rapago-driver-card) ion-item ion-label,
+.rapago-driver-page[data-rapago-theme="dark"] ion-card:not(.rapago-driver-card) ion-item ion-label.label-stacked {
+  color: var(--rp-label) !important;
+}
+
+.rapago-driver-page[data-rapago-theme="dark"] ion-card:not(.rapago-driver-card) ion-item ion-label :is(h1, h2, h3, p) {
+  color: var(--rp-text) !important;
+}
+
+.rapago-driver-page[data-rapago-theme="dark"] ion-card:not(.rapago-driver-card) :is(ion-input, ion-textarea, ion-select) {
+  --color: var(--rp-field-fg) !important;
+  --placeholder-color: var(--rp-field-ph) !important;
+  color: var(--rp-field-fg) !important;
+}
+
+/* El icono de limpiar (clearInput) heredaba el color oscuro pensado para fondo
+   blanco y desaparecía sobre el campo oscuro. */
+.rapago-driver-page[data-rapago-theme="dark"] ion-card:not(.rapago-driver-card) ion-input::part(clear-button),
+.rapago-driver-page[data-rapago-theme="dark"] ion-card:not(.rapago-driver-card) ion-input .input-clear-icon {
+  color: var(--rp-muted) !important;
+  opacity: 1;
+}
+
+/* ==========================================================================
+   Aviso "Pasajero canceló el viaje"
+   --------------------------------------------------------------------------
+   Era un IonAlert, que sólo admite texto plano: no aceptaba el logo ni permitía
+   jerarquía, y se veía igual que un diálogo del sistema operativo. Como corta
+   lo que el conductor estaba haciendo, conviene que se reconozca como RAPA GO
+   antes de leerlo.
+   ========================================================================== */
+.rapago-cancel-notice {
+  --background: transparent;
+  --box-shadow: none;
+  --width: min(92vw, 380px);
+  --height: auto;
+  --border-radius: 26px;
+}
+
+.rapago-cancel-notice::part(content) {
+  background: transparent;
+  box-shadow: none;
+}
+
+.rapago-cancel-notice .rapago-cancel-notice__card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  padding: 22px 20px 18px;
+  border-radius: 26px;
+  background: var(--rp-surface);
+  color: var(--rp-text);
+  border: 1px solid var(--rp-border-c);
+  box-shadow: var(--rp-shadow);
+}
+
+.rapago-cancel-notice .rapago-cancel-notice__logo {
+  width: 62px;
+  height: 62px;
+  border-radius: 999px;
+  object-fit: cover;
+  border: 2px solid var(--rp-border-strong, var(--rp-gold));
+}
+
+/* El icono de cancelado se solapa con el logo, como una insignia de estado:
+   marca de quién es el aviso y qué pasó en un solo golpe de vista, sin gastar
+   dos bloques verticales. */
+.rapago-cancel-notice .rapago-cancel-notice__icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  margin: -18px 0 0 44px;
+  border-radius: 999px;
+  font-size: 19px;
+  background: var(--rp-surface);
+  color: var(--rp-danger-fg, #b03a1c);
+  border: 2px solid var(--rp-surface);
+}
+
+.rapago-cancel-notice .rapago-cancel-notice__title {
+  margin: 10px 0 0;
+  font-size: 1.12rem;
+  font-weight: 950;
+  line-height: 1.25;
+  color: var(--rp-text);
+}
+
+.rapago-cancel-notice .rapago-cancel-notice__route {
+  margin: 10px 0 0;
+  padding: 9px 12px;
+  width: 100%;
+  border-radius: 14px;
+  background: var(--rp-field-bg);
+  border: 1px solid var(--rp-border-c);
+  font-size: 0.88rem;
+  font-weight: 900;
+  color: var(--rp-text);
+  overflow-wrap: anywhere;
+}
+
+.rapago-cancel-notice .rapago-cancel-notice__message {
+  margin: 10px 0 0;
+  font-size: 0.84rem;
+  font-weight: 700;
+  line-height: 1.4;
+  color: var(--rp-muted);
+}
+
+.rapago-cancel-notice .rapago-cancel-notice__cta {
+  --border-radius: 999px;
+  --background: var(--rp-btn-primary);
+  --background-activated: var(--rp-btn-primary-activated);
+  --color: var(--rp-btn-primary-fg);
+  --box-shadow: var(--rp-shadow-accent);
+  width: 100%;
+  min-height: 48px;
+  height: 48px;
+  margin: 16px 0 0;
+  font-size: 0.9rem;
+  font-weight: 950;
+  text-transform: none;
+}
+
+/* ==========================================================================
+   Horario de servicios (inicio / término)
+   --------------------------------------------------------------------------
+   Tres problemas que se veían juntos en iPhone:
+   1. El icono de reloj estaba posicionado en absoluto SOBRE el input. Pero
+      `input[type="time"]` dibuja un control nativo del sistema que en iOS
+      ignora el padding, así que el reloj terminaba encima de «10:00 a.m.».
+      Ahora el icono vive en el rótulo y el control nativo queda intacto.
+   2. Los rótulos "Inicio"/"Término" heredaban el color del contenedor y
+      quedaban crema sobre crema, casi ilegibles.
+   3. Dos columnas fijas con 9px de gap: en pantallas angostas «10:00 p.m.» no
+      cabía y el segundo campo se desbordaba de la tarjeta.
+   ========================================================================== */
+.rapago-driver-page .rapago-rest-schedule__times {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.rapago-driver-page .rapago-rest-schedule__field {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.rapago-driver-page .rapago-rest-schedule__label {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin-bottom: 5px;
+  font-size: 0.72rem;
+  font-weight: 950;
+  letter-spacing: 0.01em;
+  /* Color explícito: heredarlo era la causa del crema-sobre-crema. */
+  color: var(--rp-label);
+}
+
+.rapago-driver-page .rapago-rest-schedule__label ion-icon {
+  flex: 0 0 auto;
+  font-size: 14px;
+  color: var(--rp-accent);
+}
+
+.rapago-driver-page .rapago-rest-schedule__input {
+  width: 100%;
+  min-width: 0;
+  min-height: 46px;
+  box-sizing: border-box;
+  padding: 10px 12px;
+  border-radius: 14px;
+  border: 1px solid var(--rp-border-c);
+  background: var(--rp-field-bg);
+  color: var(--rp-field-fg);
+  /* 16px es el mínimo que evita que iOS haga zoom automático al enfocar el
+     campo — por debajo de eso Safari amplía la página y descoloca la vista. */
+  font-size: 16px;
+  font-weight: 900;
+  font-variant-numeric: tabular-nums;
+  /* Quita el estilo nativo de iOS (fondo y bordes propios) para que el campo
+     siga el tema como el resto de la tarjeta. */
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.rapago-driver-page .rapago-rest-schedule__input:focus-visible {
+  outline: 2px solid var(--rp-accent);
+  outline-offset: 2px;
+}
+
+.rapago-driver-page .rapago-rest-schedule__input:disabled {
+  opacity: 0.6;
+}
+
+/* El indicador del selector nativo hereda un color pensado para fondo claro y
+   se perdía sobre el campo oscuro. */
+.rapago-driver-page .rapago-rest-schedule__input::-webkit-calendar-picker-indicator {
+  filter: invert(0.6) sepia(1) saturate(3) hue-rotate(3deg);
+  cursor: pointer;
+}
+
+/* Bajo 360px las dos horas no caben lado a lado sin desbordar: se apilan. */
+@media (max-width: 360px) {
+  .rapago-driver-page .rapago-rest-schedule__times {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* ==========================================================================
+   "Mis Viajes" del conductor — lista, resumen y estado vacío
+   --------------------------------------------------------------------------
+   Las tarjetas usan .rapago-trip-card (definida más arriba). Aquí van el
+   contenedor de la lista, la tira de resumen y el estado vacío.
+   ========================================================================== */
+.rapago-driver-page .rapago-trip-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+/* Tira de resumen: cuántos viajes y cuánto suman. Va arriba porque es la
+   pregunta que trae al conductor a esta pantalla; el detalle viaje por viaje
+   es la respuesta larga, no la primera. */
+.rapago-driver-page .rapago-trip-summary {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 1fr);
+  gap: 10px;
+  margin: 0 0 14px;
+  padding: 12px 13px;
+  border-radius: 18px;
+  border: 1px solid var(--rp-border-c);
+  background: var(--rp-field-bg);
+}
+
+.rapago-driver-page .rapago-trip-summary__item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.rapago-driver-page .rapago-trip-summary__label {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 0.66rem;
+  font-weight: 850;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--rp-muted);
+}
+
+.rapago-driver-page .rapago-trip-summary__label ion-icon {
+  flex: 0 0 auto;
+  font-size: 13px;
+  color: var(--rp-icon-fg);
+}
+
+.rapago-driver-page .rapago-trip-summary__item strong {
+  font-size: 1.15rem;
+  font-weight: 950;
+  color: var(--rp-text);
+  font-variant-numeric: tabular-nums;
+}
+
+.rapago-driver-page .rapago-trip-summary__item--amount strong {
+  color: var(--rp-gold, #d6a640);
+  /* El total puede ser largo ($1.250.000): que encoja antes de desbordar la
+     columna, en vez de empujar a las de al lado. */
+  font-size: clamp(0.95rem, 4.2vw, 1.15rem);
+}
+
+/* ---- Estado vacío ----
+   Antes era un <p> gris suelto ("No tienes viajes todavía"), que en una
+   pantalla por lo demás vacía parecía un error de carga más que un estado
+   legítimo. */
+.rapago-driver-page .rapago-trip-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  text-align: center;
+  margin: 8px 0;
+  padding: 30px 22px;
+  border-radius: 20px;
+  border: 1px dashed var(--rp-border-c);
+  background: var(--rp-field-bg);
+}
+
+.rapago-driver-page .rapago-trip-empty__icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 54px;
+  height: 54px;
+  border-radius: 999px;
+  font-size: 27px;
+  background: color-mix(in srgb, var(--rp-gold, #d6a640) 16%, transparent);
+  color: var(--rp-gold, #d6a640);
+}
+
+.rapago-driver-page .rapago-trip-empty strong {
+  font-size: 1rem;
+  font-weight: 950;
+  color: var(--rp-text);
+}
+
+.rapago-driver-page .rapago-trip-empty span:not(.rapago-trip-empty__icon) {
+  font-size: 0.82rem;
+  font-weight: 700;
+  line-height: 1.45;
+  color: var(--rp-muted);
+  max-width: 30ch;
+}

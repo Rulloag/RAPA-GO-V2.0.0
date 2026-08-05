@@ -20,6 +20,7 @@ import {
 } from "ionicons/icons";
 
 import { useRapagoSectionTheme } from "../../../theme/rapagoTheme.js";
+import { RapagoAppBar } from "../../../components/RapagoAppBar.js";
 import { ServiceCard } from "../../../components/ServiceCard.js";
 import { WhatsAppButton } from "../../../components/WhatsAppButton.js";
 import {
@@ -146,48 +147,19 @@ export default function HomePage(): JSX.Element {
 
   return (
     <IonPage className="rapago-home-page" data-rapago-theme={theme}>
-      {/* Header transparente sobre el fondo, igual que el Login y el perfil.
-          No usa ion-header para evitar la barra volcánica sólida que
-          global.css impone a ese elemento. */}
-      <div className="rapago-home-header">
-        <div className="rapago-home-brand">
-          {/* width/height HTML evitan el salto de layout (FOUC) antes de que cargue el CSS */}
-          <img
-            src={logoRapago}
-            alt="Rapa Go"
-            className="rapago-home-logo"
-            width={50}
-            height={50}
-          />
-
-          <div style={{ minWidth: 0 }}>
-            <div className="rapago-home-greeting">Hola, {firstName}</div>
-            <div className="rapago-home-question">¿A dónde quieres ir?</div>
-          </div>
-        </div>
-
-        <div className="rapago-home-header-actions">
-          <button
-            type="button"
-            className="rapago-home-theme-btn"
-            onClick={toggleTheme}
-            aria-label={isDark ? "Activar modo día" : "Activar modo nocturno"}
-            title={isDark ? "Modo día" : "Modo nocturno"}
-          >
-            <IonIcon icon={isDark ? sunnyOutline : moonOutline} />
-          </button>
-
-          <button
-            type="button"
-            className="rapago-home-avatar-btn"
-            onClick={goToProfile}
-            aria-label="Ir al perfil"
-          >
-            <span className="rapago-home-avatar">{initials}</span>
-            <span className="rapago-home-avatar-text">Perfil</span>
-          </button>
-        </div>
-      </div>
+      {/* Barra única de la app, variante "root". Sustituye al bloque de marca
+          hecho a mano que había aquí: el mismo saludo y el mismo avatar, pero
+          compartidos con el Inicio del conductor y con las otras nueve
+          pantallas, en vez de ser un diseño propio de esta.
+          El interruptor de tema y el botón de perfil se fueron al menú de
+          cuenta — un único punto de control, alcanzable desde toda la app y no
+          sólo desde Inicio. */}
+      <RapagoAppBar
+        sectionId="home"
+        variant="root"
+        roleLabel="Pasajero"
+        showNotifications
+      />
 
       <IonContent className="rapago-home-content">
         <div className="rapago-home-shell">

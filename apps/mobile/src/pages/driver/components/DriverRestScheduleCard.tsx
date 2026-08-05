@@ -366,107 +366,47 @@ export function DriverRestScheduleCard({
               genera un aviso y nunca cambia automáticamente tu disponibilidad.
             </p>
 
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: "minmax(0,1fr) minmax(0,1fr)",
-                gap: 9,
-              }}
-            >
-              <label style={{ minWidth: 0 }}>
-                <span
-                  style={{
-                    display: "block",
-                    fontSize: ".7rem",
-                    fontWeight: 950,
-                    marginBottom: 5,
-                  }}
-                >
+            {/* El icono va en el RÓTULO, no encima del campo.
+                `input[type="time"]` dibuja un control nativo del sistema: en
+                iOS ignora el padding que se le pone, así que el icono que
+                estaba posicionado en absoluto sobre él terminaba encima de la
+                hora («10:00 a.m.» pisado por el reloj). Fuera del campo el
+                icono se ve siempre y el control nativo queda intacto. */}
+            <div className="rapago-rest-schedule__times">
+              <label className="rapago-rest-schedule__field">
+                <span className="rapago-rest-schedule__label">
+                  <IonIcon icon={timeOutline} aria-hidden="true" />
                   Inicio
                 </span>
-                <div style={{ position: "relative" }}>
-                  <IonIcon
-                    icon={timeOutline}
-                    style={{
-                      position: "absolute",
-                      left: 11,
-                      top: "50%",
-                      transform: "translateY(-50%)",
-                      pointerEvents: "none",
-                      color: "var(--rp-accent)",
-                    }}
-                  />
-                  <input
-                    type="time"
-                    value={serviceStartTime}
-                    onChange={(event) => {
-                      setServiceStartTime(event.target.value);
-                      setScheduleDirty(true);
-                      setSuccess(null);
-                    }}
-                    disabled={savingSchedule}
-                    style={{
-                      width: "100%",
-                      minHeight: 46,
-                      boxSizing: "border-box",
-                      borderRadius: 14,
-                      border: "1px solid var(--rp-border-c)",
-                      background: "var(--rp-field-bg)",
-                      color: "var(--rp-field-fg)",
-                      padding: "10px 8px 10px 36px",
-                      fontSize: ".9rem",
-                      fontWeight: 900,
-                    }}
-                  />
-                </div>
+                <input
+                  type="time"
+                  className="rapago-rest-schedule__input"
+                  value={serviceStartTime}
+                  onChange={(event) => {
+                    setServiceStartTime(event.target.value);
+                    setScheduleDirty(true);
+                    setSuccess(null);
+                  }}
+                  disabled={savingSchedule}
+                />
               </label>
 
-              <label style={{ minWidth: 0 }}>
-                <span
-                  style={{
-                    display: "block",
-                    fontSize: ".7rem",
-                    fontWeight: 950,
-                    marginBottom: 5,
-                  }}
-                >
+              <label className="rapago-rest-schedule__field">
+                <span className="rapago-rest-schedule__label">
+                  <IonIcon icon={timeOutline} aria-hidden="true" />
                   Término
                 </span>
-                <div style={{ position: "relative" }}>
-                  <IonIcon
-                    icon={timeOutline}
-                    style={{
-                      position: "absolute",
-                      left: 11,
-                      top: "50%",
-                      transform: "translateY(-50%)",
-                      pointerEvents: "none",
-                      color: "var(--rp-accent)",
-                    }}
-                  />
-                  <input
-                    type="time"
-                    value={serviceEndTime}
-                    onChange={(event) => {
-                      setServiceEndTime(event.target.value);
-                      setScheduleDirty(true);
-                      setSuccess(null);
-                    }}
-                    disabled={savingSchedule}
-                    style={{
-                      width: "100%",
-                      minHeight: 46,
-                      boxSizing: "border-box",
-                      borderRadius: 14,
-                      border: "1px solid var(--rp-border-c)",
-                      background: "var(--rp-field-bg)",
-                      color: "var(--rp-field-fg)",
-                      padding: "10px 8px 10px 36px",
-                      fontSize: ".9rem",
-                      fontWeight: 900,
-                    }}
-                  />
-                </div>
+                <input
+                  type="time"
+                  className="rapago-rest-schedule__input"
+                  value={serviceEndTime}
+                  onChange={(event) => {
+                    setServiceEndTime(event.target.value);
+                    setScheduleDirty(true);
+                    setSuccess(null);
+                  }}
+                  disabled={savingSchedule}
+                />
               </label>
             </div>
 

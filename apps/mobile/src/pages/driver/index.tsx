@@ -1,4 +1,5 @@
 import {
+  IonActionSheet,
   IonAlert,
   IonBadge,
   IonButton,
@@ -36,6 +37,11 @@ import {
 } from "react";
 import { useHistory, useLocation } from "react-router-dom";
 import {
+  alertCircleOutline,
+  closeCircleOutline,
+  walletOutline,
+  callOutline,
+  chatbubbleEllipsesOutline,
   carOutline,
   cashOutline,
   calendarOutline,
@@ -68,6 +74,8 @@ import { driverProfileService, type DriverProfileData } from "../../features/dri
 import { driverVehiclePhotoService } from "../../features/drivers/driverVehiclePhoto.service";
 import { driverStatusService } from "../../features/drivers/driverStatus.service";
 import { ActionCard } from "../../components/ActionCard";
+import { RapagoAppBar } from "../../components/RapagoAppBar";
+import { setDriverActiveRideFlag } from "../../features/rides/driverActiveRideFlag";
 import { ROUTE_METADATA } from "../../navigation/routeConfig";
 import { ROUTES } from "../../navigation/routes";
 import { useAuth } from "../../features/auth";
@@ -1525,6 +1533,35 @@ const RAPAGO_NAV_SHEET_HEIGHT = 94;
    táctil. Nunca se pliega entera, porque entonces no quedaría de dónde
    agarrarla para volver a subirla. */
 const RAPAGO_NAV_SHEET_GRIP_H = 34;
+
+/* Reposos de la hoja de navegación, como fracción del recorrido total.
+   `expanded` = 0 (hoja arriba del todo, se ve todo el contenido);
+   `collapsed` = 1 (sólo el asa, máximo mapa);
+   `half` deja ETA + estado + acción principal y esconde el cuerpo de avisos.
+
+   Que las alturas sean predecibles importa más que la libertad del gesto: si
+   la hoja se queda donde cayó el dedo, el botón principal cambia de sitio en
+   cada viaje y el conductor no puede construir memoria muscular de dónde
+   tocar sin mirar. */
+type NavSheetSnap = "collapsed" | "half" | "expanded";
+
+const RAPAGO_NAV_SHEET_SNAP_RATIO: Record<NavSheetSnap, number> = {
+  expanded: 0,
+  half: 0.52,
+  collapsed: 1,
+};
+
+/* De más abierta a más cerrada: el orden define qué es "un paso" al hacer un
+   gesto rápido o al pulsar las flechas del teclado. */
+const RAPAGO_NAV_SHEET_SNAP_ORDER: NavSheetSnap[] = [
+  "expanded",
+  "half",
+  "collapsed",
+];
+
+/* px/ms. Por encima de esto el gesto se lee como intención ("mándala arriba")
+   y no como colocación, así que avanza un reposo sin mirar cuánto recorrió. */
+const RAPAGO_NAV_SHEET_FLICK_VELOCITY = 0.55;
 /* Un gesto que mueve menos que esto es una pulsación, no un arrastre. En
    táctil, al soltar tras arrastrar también llega un `click`: sin distinguirlos
    la hoja saltaría justo después de que el conductor la acabe de colocar. */
@@ -1536,6 +1573,9 @@ function UberDriverNavigationMap({
   ride,
   height = 360,
   driverUser,
+  sheetHeader = null,
+  sheetBody = null,
+  sheetActions = null,
 }: {
   ride: {
     id?: string | null;
@@ -1551,6 +1591,19 @@ function UberDriverNavigationMap({
   // `heightPx` como aproximación cuando height es un string.
   height?: number | string;
   driverUser?: unknown;
+  // Acciones principales del viaje ("Llegué al punto" / "Cancelar", etc.).
+  // Viven DENTRO de la hoja inferior del mapa, junto al ETA, en vez de en un
+  // panel aparte bajo el mapa: así el conductor no pierde de vista la ruta y
+  // el mapa recupera todo el alto que antes ocupaba ese panel. Se ocultan en
+  // previsualizaciones chicas, que no son interactivas.
+  sheetActions?: JSX.Element | null;
+  // Estado del viaje ("Navegando al destino" + dirección). Zona fija, bajo el
+  // ETA: es contexto que el conductor debe poder leer de un vistazo.
+  sheetHeader?: JSX.Element | null;
+  // Avisos y acciones secundarias (próximo servicio, No show). Única zona con
+  // scroll propio: si no cabe, se desplaza aquí dentro y nunca empuja a las
+  // acciones principales fuera de la pantalla.
+  sheetBody?: JSX.Element | null;
 }): JSX.Element {
   // Alto en px para los desplazamientos de cámara (panBy). Cuando `height`
   // es "100%" (mapa a pantalla completa) no hay forma barata de conocer el
@@ -1604,8 +1657,56 @@ function UberDriverNavigationMap({
     startY: number;
     startShift: number;
     shift: number;
+    lastY: number;
+    lastT: number;
+    velocity: number;
   } | null>(null);
   const sheetDraggedRef = useRef(false);
+
+  /* Reposo actual de la hoja. `sheetShift` sigue siendo la única magnitud que
+     se pinta —y de la que cuelgan los rieles—; el reposo sólo decide a qué
+     valor vuelve al soltar. Antes había dos posiciones (arriba del todo o
+     plegada); el intermedio existe porque en el estado "media" el conductor ve
+     ETA, estado y la acción principal sin que los avisos le tapen medio mapa,
+     que es donde pasa casi todo el viaje. */
+  const [sheetSnap, setSheetSnap] = useState<NavSheetSnap>("half");
+
+  const snapShift = useCallback(
+    (snap: NavSheetSnap): number =>
+      sheetMaxShift * RAPAGO_NAV_SHEET_SNAP_RATIO[snap],
+    [sheetMaxShift],
+  );
+
+  const nearestSnap = useCallback(
+    (shift: number): NavSheetSnap =>
+      RAPAGO_NAV_SHEET_SNAP_ORDER.reduce((mejor, snap) =>
+        Math.abs(snapShift(snap) - shift) < Math.abs(snapShift(mejor) - shift)
+          ? snap
+          : mejor,
+      ),
+    [snapShift],
+  );
+
+  /* Fuera del arrastre manda el reposo; durante el arrastre manda el dedo, así
+     que el guard de `draggingSheet` no es cosmético: sin él la hoja pelearía
+     contra el gesto en cada frame. */
+  useEffect(() => {
+    if (draggingSheet) return;
+
+    setSheetShift(snapShift(sheetSnap));
+  }, [draggingSheet, sheetSnap, snapShift]);
+
+  /* Al cambiar la fase del viaje, la hoja vuelve al reposo intermedio. Es el
+     único momento en que puede moverse sola sin traicionar al conductor: la
+     acción principal acaba de cambiar ("Llegué al punto" → "Iniciar viaje") y
+     si la hoja quedó plegada, el botón nuevo estaría fuera de vista justo
+     cuando se vuelve relevante. Fuera de estas transiciones, plegar o abrir es
+     siempre decisión suya. */
+  useEffect(() => {
+    if (isCompactPreview) return;
+
+    setSheetSnap("half");
+  }, [ride.status, isCompactPreview]);
 
   const prefersReducedMotion =
     typeof window !== "undefined" &&
@@ -1623,6 +1724,12 @@ function UberDriverNavigationMap({
     function medir(): void {
       const alto = sheet.getBoundingClientRect().height;
       setSheetMaxShift(Math.max(0, alto - RAPAGO_NAV_SHEET_GRIP_H));
+      /* Los rieles laterales se anclan a la hoja. Antes usaban la constante
+         RAPAGO_NAV_SHEET_HEIGHT (94), que dejó de ser cierta en cuanto la hoja
+         empezó a llevar contenido dentro: los rieles quedaban por debajo de su
+         borde real, encima de los botones. Se publica el alto MEDIDO para que
+         CSS los coloque sin números supuestos. */
+      sheet.parentElement?.style.setProperty("--rp-nav-sheet-h", `${alto}px`);
     }
 
     medir();
@@ -1637,6 +1744,21 @@ function UberDriverNavigationMap({
     setSheetShift((actual) => Math.min(actual, sheetMaxShift));
   }, [sheetMaxShift]);
 
+  const sheetBodyRef = useRef<HTMLDivElement | null>(null);
+
+  /* Desde el cuerpo, el gesto sólo arrastra la hoja si el cuerpo YA está en su
+     tope. Si está desplazado, el gesto es suyo: arrastrar la hoja mientras el
+     conductor intenta leer un aviso la cerraría sin que él lo pidiera. Es la
+     misma regla que usan las hojas nativas de iOS. */
+  function handleSheetBodyPointerDown(
+    event: ReactPointerEvent<HTMLDivElement>,
+  ): void {
+    const body = sheetBodyRef.current;
+    if (!body || body.scrollTop > 0) return;
+
+    handleNavSheetPointerDown(event);
+  }
+
   function handleNavSheetPointerDown(
     event: ReactPointerEvent<HTMLDivElement>,
   ): void {
@@ -1647,6 +1769,9 @@ function UberDriverNavigationMap({
       startY: event.clientY,
       startShift: sheetShift,
       shift: sheetShift,
+      lastY: event.clientY,
+      lastT: event.timeStamp,
+      velocity: 0,
     };
     sheetDraggedRef.current = false;
     setDraggingSheet(true);
@@ -1663,6 +1788,15 @@ function UberDriverNavigationMap({
       sheetDraggedRef.current = true;
     }
 
+    /* Velocidad suavizada. Una sola muestra entre dos frames es muy ruidosa en
+       táctil: un microtemblor del dedo justo al levantar dispararía un gesto
+       rápido que el conductor no pidió. */
+    const dt = Math.max(1, event.timeStamp - drag.lastT);
+    const instantanea = (event.clientY - drag.lastY) / dt;
+    drag.velocity = drag.velocity * 0.7 + instantanea * 0.3;
+    drag.lastY = event.clientY;
+    drag.lastT = event.timeStamp;
+
     const next = Math.min(
       sheetMaxShift,
       Math.max(0, drag.startShift + delta),
@@ -1677,17 +1811,40 @@ function UberDriverNavigationMap({
     setDraggingSheet(false);
     if (!drag) return;
 
-    /* Sin arrastre real fue una pulsación: alterna entre abierta y plegada, que
-       es lo que espera quien toca el asa en vez de arrastrarla. */
+    /* Sin arrastre real fue una pulsación: alterna entre ver todo y ver el
+       máximo de mapa, que es lo que espera quien toca el asa en vez de
+       arrastrarla. El reposo intermedio se alcanza arrastrando, no pulsando:
+       un toque debe tener un resultado único y previsible. */
     if (!sheetDraggedRef.current) {
-      setSheetShift(drag.startShift > sheetMaxShift / 2 ? 0 : sheetMaxShift);
+      setSheetSnap((actual) =>
+        actual === "expanded" ? "collapsed" : "expanded",
+      );
       return;
     }
 
-    /* Con arrastre, se acomoda al extremo más cercano. Conducir es una tarea a
-       una mano y con la vista en la calle: dejar la hoja a medio camino solo
-       recortaría el contenido sin dar más mapa útil. */
-    setSheetShift(drag.shift > sheetMaxShift / 2 ? sheetMaxShift : 0);
+    /* Gesto rápido: avanza un reposo en la dirección del dedo sin mirar cuánto
+       recorrió. Un movimiento corto y veloz tiene una intención clara, y
+       obligar a arrastrar hasta la posición exacta se siente pesado. */
+    if (Math.abs(drag.velocity) > RAPAGO_NAV_SHEET_FLICK_VELOCITY) {
+      const desde = RAPAGO_NAV_SHEET_SNAP_ORDER.indexOf(
+        nearestSnap(drag.startShift),
+      );
+      const paso = drag.velocity > 0 ? 1 : -1;
+
+      setSheetSnap(
+        RAPAGO_NAV_SHEET_SNAP_ORDER[
+          Math.min(
+            RAPAGO_NAV_SHEET_SNAP_ORDER.length - 1,
+            Math.max(0, desde + paso),
+          )
+        ],
+      );
+      return;
+    }
+
+    /* Arrastre lento: el conductor está colocando la hoja, así que se queda en
+       el reposo más cercano a donde la dejó. */
+    setSheetSnap(nearestSnap(drag.shift));
   }
 
   function handleNavSheetKeyDown(
@@ -1696,22 +1853,29 @@ function UberDriverNavigationMap({
     if (event.key !== "ArrowUp" && event.key !== "ArrowDown") return;
 
     event.preventDefault();
-    /* Pasos fijos, espejo del arrastre libre: arriba abre la hoja, abajo la
-       pliega. Mismo criterio que el asa de Solicitar viaje. */
-    const paso = event.key === "ArrowUp" ? -12 : 12;
-    setSheetShift((actual) =>
-      Math.min(sheetMaxShift, Math.max(0, actual + paso)),
-    );
+    /* Un reposo por pulsación, no 12px sueltos: por teclado no hay forma de
+       "colocar" una hoja a ojo, así que saltar entre posiciones nombradas es
+       lo único que da un resultado predecible. Arriba abre, abajo pliega. */
+    const paso = event.key === "ArrowUp" ? -1 : 1;
+    setSheetSnap((actual) => {
+      const desde = RAPAGO_NAV_SHEET_SNAP_ORDER.indexOf(actual);
+      return RAPAGO_NAV_SHEET_SNAP_ORDER[
+        Math.min(
+          RAPAGO_NAV_SHEET_SNAP_ORDER.length - 1,
+          Math.max(0, desde + paso),
+        )
+      ];
+    });
   }
 
-  const navSheetOpen = sheetShift < sheetMaxShift / 2;
+  const navSheetOpen = sheetSnap !== "collapsed";
 
   /* Los rieles laterales se anclan sobre la hoja, así que bajan con ella: si se
      quedaran fijos, plegar la hoja no daría mapa útil —solo dejaría un hueco
      entre los controles y el borde—, que es justo lo que el gesto busca. */
   const navRailBottom = isCompactPreview
     ? RAPAGO_NAV_RAIL_BOTTOM
-    : `calc(${RAPAGO_NAV_SHEET_HEIGHT}px + ${RAPAGO_NAV_RAIL_GAP}px - ${sheetShift}px)`;
+    : `calc(var(--rp-nav-sheet-h, ${RAPAGO_NAV_SHEET_HEIGHT}px) + ${RAPAGO_NAV_RAIL_GAP}px - ${sheetShift}px)`;
   const navRailTransition =
     draggingSheet || prefersReducedMotion ? "none" : "bottom .22s ease";
 
@@ -3196,28 +3360,18 @@ function UberDriverNavigationMap({
             pointerEvents: "none",
           }}
         >
-          <div style={{ fontSize: "1rem", lineHeight: 1 }}>
+          {/* Sube de .64rem a .7rem: ning\u00FAn texto de esta pantalla debe quedar
+              por debajo de ese piso, se lee de reojo y a un brazo de distancia. */}
+          <div style={{ fontSize: "1.15rem", lineHeight: 1 }}>
             {speedKmh == null ? "--" : speedKmh}
           </div>
-          <div style={{ fontSize: ".64rem", lineHeight: 1.1, color: "var(--rp-muted)" }}>km/h</div>
+          <div style={{ fontSize: ".7rem", lineHeight: 1.1, color: "var(--rp-muted)" }}>km/h</div>
         </div>
 
-        <div
-          style={{
-            border: "1px solid var(--rp-warn-bd)",
-            borderRadius: 999,
-            background: "var(--rp-surface)",
-            color: "var(--rp-warn-fg)",
-            padding: "10px 13px",
-            boxShadow: "var(--rp-shadow)",
-            fontSize: ".78rem",
-            fontWeight: 900,
-            whiteSpace: "nowrap",
-            pointerEvents: "none",
-          }}
-        >
-          <span aria-hidden="true">{"\u26A0"}</span> Informar
-        </div>
+        {/* Aqu\u00ED viv\u00EDa una p\u00EDldora "\u26A0 Informar" que NO era un bot\u00F3n: ten\u00EDa
+            pointerEvents:none y no ejecutaba nada. Ocupaba una esquina del mapa
+            aparentando ser tocable, que es peor que no estar. Informar una
+            emergencia real se hace desde el SOS. */}
       </div>
       </>
       )}
@@ -3229,6 +3383,8 @@ function UberDriverNavigationMap({
           noche, con un corte claro/oscuro muy visible. */}
       <div
         ref={navSheetRef}
+        className="rapago-driver-nav-sheet"
+        data-snap={sheetSnap}
         style={{
           position: "absolute",
           left: 0,
@@ -3239,9 +3395,20 @@ function UberDriverNavigationMap({
           borderTop: "1px solid var(--rp-border-c)",
           borderRadius: "26px 26px 0 0",
           minHeight: RAPAGO_NAV_SHEET_HEIGHT,
+          /* Tope duro: la hoja nunca puede tapar el mapa entero, pase lo que
+             pase con su contenido. Es un porcentaje del mapa —no dvh— porque
+             el mapa ya está dentro del área útil que Ionic calcula descontando
+             cabecera y tab bar; dvh mediría el viewport completo e ignoraría
+             ambas, y además se re-resuelve en iOS al colapsar la barra de URL,
+             lo que provocaría un reflow del mapa a mitad de arrastre. */
+          maxHeight: "62%",
+          display: "flex",
+          flexDirection: "column",
           boxShadow: "0 -12px 34px rgba(0,0,0,.24)",
           zIndex: "var(--rp-z-map-sheet)",
-          padding: "0 12px 12px",
+          /* max() y no suma: --rp-driver-tabbar-clearance YA incluye el
+             safe-area del aparato. Sumarlo otra vez lo contaría dos veces. */
+          padding: "0 12px max(12px, var(--rp-driver-tabbar-clearance))",
           transform: `translateY(${sheetShift}px)`,
           /* Sin transición mientras se arrastra: el dedo ya marca el ritmo y
              animar encima se siente como retraso. */
@@ -3295,101 +3462,107 @@ function UberDriverNavigationMap({
             >
               <span
                 aria-hidden="true"
-                style={{
-                  display: "block",
-                  width: 44,
-                  height: 5,
-                  borderRadius: 999,
-                  background: "var(--rp-border-c)",
-                }}
+                className="rapago-driver-nav-grip"
               />
             </button>
           </div>
         )}
 
+        {/* Una sola columna. Antes esta franja llevaba dos botones de 58px a los
+            lados del ETA: "soltar cámara" (✕) y "recentrar ruta".
+            El ✕ desapareció porque soltar el seguimiento no es una intención
+            del conductor sino el efecto de arrastrar el mapa, que ya ocurre
+            solo; y su icono se leía como "cerrar la hoja", que no es lo que
+            hacía. El de recentrar era el tercer control para la misma
+            intención —ya está el botón verde del riel y la píldora Centrar—,
+            así que se queda el del riel, donde el pulgar ya lo busca.
+            Los 152px que ocupaban se los queda el ETA. */}
         <div
           style={{
-            display: "grid",
-            gridTemplateColumns: "76px 1fr 76px",
-            alignItems: "center",
             paddingTop: isCompactPreview ? 14 : 0,
           }}
         >
-        <button
-          type="button"
-          onClick={() => updateNavigationCameraLock(false)}
-          style={{
-            width: 58,
-            height: 58,
-            borderRadius: 999,
-            border: "1px solid var(--rp-border-c)",
-            background: "var(--rp-field-bg)",
-            color: "var(--rp-icon-fg)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            fontSize: 26,
-            justifySelf: "start",
-          }}
-          aria-label="Soltar seguimiento de cámara"
-        >
-          <IonIcon icon={closeOutline} aria-hidden="true" />
-        </button>
-
-        <div style={{ textAlign: "center", minWidth: 0 }}>
-          <div
-            style={{
-              fontSize: "1.95rem",
-              lineHeight: 1,
-              fontWeight: 900,
-              letterSpacing: "-.02em",
-            }}
-          >
+        <div className="rapago-driver-nav-eta" style={{ textAlign: "center", minWidth: 0 }}>
+          {/* 2.4rem, no 1.95: con los dos botones de 58px fuera, el ETA deja de
+              competir por el ancho y puede ser lo más grande de la hoja, que es
+              lo que merece el dato que el conductor mira de reojo. */}
+          <div className="rapago-driver-nav-eta__value">
             {routeInfo?.duration || "--"}
           </div>
           {/* Solo duración/distancia: el destino (targetLabel) ya aparece en
               el banner superior y en el panel de estado bajo el mapa.
               Repetirlo una tercera vez aquí solo restaba el poco alto
               vertical disponible en un teléfono. */}
-          <div
-            style={{
-              marginTop: 6,
-              color: "var(--rp-muted)",
-              fontSize: ".92rem",
-              fontWeight: 820,
-              whiteSpace: "nowrap",
-              overflow: "hidden",
-              textOverflow: "ellipsis",
-            }}
-          >
-            {routeInfo?.distance || "Calculando distancia"}
+          {/* Distancia con icono: el par «reloj grande + regla pequeña» deja
+              claro de un vistazo cuál de los dos números es el tiempo y cuál
+              el trayecto, sin tener que leer las unidades. */}
+          <div className="rapago-driver-nav-eta__meta">
+            <IonIcon icon={navigateOutline} aria-hidden="true" />
+            <span>{routeInfo?.distance || "Calculando distancia"}</span>
           </div>
         </div>
 
-        <button
-          type="button"
-          onClick={() => {
-            calculateRouteOnce(true);
-            focusNavigationCameraInsideApp(true);
-          }}
-          style={{
-            width: 58,
-            height: 58,
-            borderRadius: 999,
-            border: "1px solid var(--rp-border-c)",
-            background: "var(--rp-field-bg)",
-            color: "var(--rp-icon-fg)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            fontSize: 24,
-            justifySelf: "end",
-          }}
-          aria-label="Recentrar ruta"
-        >
-          <IonIcon icon={navigateOutline} aria-hidden="true" />
-        </button>
         </div>
+
+        {/* Estado del viaje. Zona fija, pegada al ETA: juntos responden las dos
+            preguntas del conductor en movimiento ("qué estoy haciendo" y
+            "cuánto falta") sin que ninguna se vaya con el scroll. */}
+        {!isCompactPreview && sheetHeader && (
+          <div style={{ flex: "0 0 auto", marginTop: 8 }}>{sheetHeader}</div>
+        )}
+
+        {/* Acciones principales ANTES que los avisos, y no al final. El orden
+            del DOM decide qué sobrevive al plegado: la hoja se desplaza hacia
+            abajo, así que lo último se oculta primero. Con las acciones al
+            fondo, el reposo intermedio escondía justo los botones y dejaba a la
+            vista los avisos, que es exactamente al revés de lo que necesita
+            quien va conduciendo. */}
+        {!isCompactPreview && sheetActions && (
+          <div
+            style={{
+              flex: "0 0 auto",
+              marginTop: 10,
+              paddingTop: 10,
+              borderTop: "1px solid var(--rp-border-c)",
+            }}
+          >
+            {sheetActions}
+          </div>
+        )}
+
+        {/* Avisos y acciones secundarias. ÚNICA zona con scroll de la hoja, y
+            la primera en quedar fuera de vista al plegar — es información de
+            consulta, no de conducción.
+            `minHeight: 0` es imprescindible: sin él un hijo flex no encoge por
+            debajo de su contenido y la hoja crecería sin tope, ignorando el
+            maxHeight de arriba. `overscroll-behavior: contain` evita que al
+            llegar al final el gesto se propague al mapa, que respondería con
+            zoom o desplazamiento. */}
+        {!isCompactPreview && sheetBody && (
+          <div
+            ref={sheetBodyRef}
+            onPointerDown={handleSheetBodyPointerDown}
+            onPointerMove={handleNavSheetPointerMove}
+            onPointerUp={handleNavSheetPointerUp}
+            onPointerCancel={handleNavSheetPointerUp}
+            style={{
+              flex: "1 1 auto",
+              minHeight: 0,
+              overflowY: "auto",
+              overscrollBehavior: "contain",
+              WebkitOverflowScrolling: "touch",
+              /* pan-y explícito: el navegador se queda el desplazamiento
+                 vertical y el código decide cuándo robárselo para arrastrar la
+                 hoja (sólo con el cuerpo ya en su tope). */
+              touchAction: "pan-y",
+              marginTop: 10,
+              paddingTop: 10,
+              borderTop: "1px solid var(--rp-border-c)",
+            }}
+          >
+            {sheetBody}
+          </div>
+        )}
       </div>
 
       {/* Único caso de la pantalla de mapa que corta la navegación de verdad
@@ -8073,11 +8246,19 @@ export function DriverHomePage(): JSX.Element {
         data-rapago-theme={theme}
       >
       <style>{DRIVER_HOME_STYLES}</style>
-      <DriverHeaderWithoutNotifications
-        driverName={driverName}
-        isDark={isDark}
-        onToggleTheme={toggleTheme}
-      />
+      {/* Variante "root": es la única pantalla donde la marca es el sujeto y no
+          una firma, y la única donde el saludo es información nueva. El toggle
+          de tema y el acceso a perfil que había aquí sueltos se fueron al menú
+          de cuenta — eran dos de los tres iconos dorados idénticos separados
+          por 6px, con "cerrar sesión" de tercero. */}
+      <IonHeader className="ion-no-border">
+        <RapagoAppBar
+          sectionId="driver-home"
+          variant="root"
+          roleLabel="Conductor"
+          showNotifications
+        />
+      </IonHeader>
 
       <IonContent className="driver-home-content">
         <main className="driver-home-shell">
@@ -13426,6 +13607,47 @@ function AssignedRidesPage(): JSX.Element {
   ) ?? null;
   const displayedAvailableRides = showOnlyReservations ? [] : availableRides;
   const nextQueuedRide = getDriverNextRideForActiveRide(activeRide, session?.user);
+
+  /* Publica si hay viaje en curso, para que la barra pueda deshabilitar
+     "Cerrar sesión". Un conductor sin sesión con un pasajero a bordo pierde la
+     navegación, el contacto y el cierre de pago: es un incidente operativo, no
+     un problema de interfaz. Al desmontar se limpia, para que salir de esta
+     pantalla no deje el bloqueo pegado. */
+  useEffect(() => {
+    setDriverActiveRideFlag(activeRide?.id ?? null);
+    return () => setDriverActiveRideFlag(null);
+  }, [activeRide?.id]);
+
+  /* Reloj de la espera de No show. Vive AQUÍ, en el componente de página, y no
+     dentro de ActiveRideScreen, por una razón que no es de estilo:
+     ActiveRideScreen se declara en el cuerpo de este componente, así que en
+     cada render es una función NUEVA. React identifica los componentes por la
+     identidad de su función, de modo que al usarlo como <ActiveRideScreen/> el
+     subárbol entero se DESMONTA y se vuelve a montar en cada render del padre
+     — incluido UberDriverNavigationMap, que en cada ciclo destruía y recreaba
+     la instancia de google.maps.Map, sus marcadores y la ruta.
+
+     La solución es invocarlo como función normal ({ActiveRideScreen(...)}) para
+     que su salida se integre en el árbol del padre sin instancia propia. Pero
+     eso sólo es legal si no tiene hooks, porque se llama de forma condicional
+     (sólo cuando hay viaje activo) y el orden de hooks debe ser estable. Estos
+     dos eran los únicos que tenía. */
+  /* Hoja de emergencia. El botón SOS ya no ejecuta: abre estas opciones. Antes
+     era un botón rojo grande que disparaba WhatsApp con un solo toque y sin
+     confirmación, a un dedo de distancia del pulgar mientras se conduce; para
+     una acción que manda un mensaje real a soporte, el toque de más es barato
+     y el falso positivo no. */
+  const [driverSosOpen, setDriverSosOpen] = useState(false);
+
+  const driverWaitingPassengerAtPoint = activeRide?.status === "driver_arrived";
+  const [activeRideNoShowNowMs, setActiveRideNoShowNowMs] = useState(() => Date.now());
+
+  useEffect(() => {
+    if (!driverWaitingPassengerAtPoint) return;
+
+    const interval = window.setInterval(() => setActiveRideNoShowNowMs(Date.now()), 1000);
+    return () => window.clearInterval(interval);
+  }, [driverWaitingPassengerAtPoint, activeRide?.id]);
   const reservationsTotal = reservationOffers.length + confirmedReservationOffers.length;
   const activeRideTrackingStatus = String(activeRide?.status ?? "");
   const activeRideTrackingId =
@@ -16079,546 +16301,268 @@ La reserva fue retirada. No continúes hacia la recogida.`,
     // flex que SE ENCOGE (flex:1 1 auto) para ceder todo el espacio que el
     // panel de abajo necesite — el panel nunca pierde espacio, es el mapa el
     // que se ajusta, no al revés.
-    const activeRideWaitingPassenger = ride.status === "driver_arrived";
-    const [activeRideNoShowNowMs, setActiveRideNoShowNowMs] = useState(() => Date.now());
-
-    useEffect(() => {
-      if (!activeRideWaitingPassenger) return;
-
-      const interval = window.setInterval(() => setActiveRideNoShowNowMs(Date.now()), 1000);
-      return () => window.clearInterval(interval);
-    }, [activeRideWaitingPassenger, ride.id]);
-
+    // Sin hooks a partir de aquí: esta función se INVOCA, no se monta como
+    // componente (ver el comentario del reloj de No show en el cuerpo de la
+    // página). Añadir un hook aquí volvería a romper el mapa.
     const driverNoShowState = getDriverNoShowState(
       ride as DriverRideData & Record<string, unknown>,
       activeRideNoShowNowMs,
     );
 
-    return (
-      <div
-        style={{
-          // `height: 100%` (no minHeight) es lo que permite que el mapa,
-          // como flex item con flex:1 1 auto, pueda ENCOGERSE de verdad: sin
-          // un alto definido en este contenedor, flex-shrink no tiene contra
-          // qué medirse y el mapa simplemente crece con su contenido, tal
-          // como pasaba con el cálculo en JS que este reemplaza.
-          height: "100%",
-          background: "#0f1115",
-          // Antes: margin:"-16px" para cancelar el padding de 16px de
-          // `.ion-padding` en <IonContent>. Pero esta pantalla (activeRide)
-          // usa className="" en el IonContent (ver más abajo), SIN
-          // .ion-padding — no hay padding que cancelar. Ese margen negativo
-          // sobrante empujaba el mapa y sus controles ~16px más allá de cada
-          // borde real del viewport, cortando la píldora de velocidad por la
-          // izquierda y los botones de navegar/silenciar por la derecha.
-          margin: 0,
-          color: "#fff",
-          display: "flex",
-          flexDirection: "column",
-          // Red de seguridad: si algún estado (banners + botones) no cupiera
-          // igual en pantallas muy bajas, esta pantalla se desplaza en vez de
-          // recortar contenido de forma invisible.
-          overflowY: "auto",
-          WebkitOverflowScrolling: "touch",
-        }}
-      >
-        <div style={{ flex: "1 1 auto", position: "relative", minHeight: 220 }}>
-          <UberDriverNavigationMap
-            ride={ride}
-            height="100%"
-            driverUser={session?.user}
-          />
-        </div>
+    // Par de acciones principales del estado actual. Van dentro de la hoja del
+    // mapa (prop sheetActions) y NO se repiten en el panel de abajo: ahí sólo
+    // quedan las acciones secundarias (No show, emergencia) y los avisos.
+    const sheetPrimaryLabel =
+      ride.status === "driver_arrived"
+        ? "Iniciar viaje"
+        : ride.status === "in_progress"
+          ? "Finalizar viaje"
+          : "Llegué al punto";
 
-        {/* Panel de acciones separado del mapa: visible pero sin tapar la
-            navegación. El padding-bottom reserva el alto real de la tab bar
-            flotante (global.css: ion-tab-bar, position:fixed, z-index:9999)
-            más el safe-area del dispositivo — ver --rp-driver-tabbar-clearance
-            en driver.css — para que "Llegué al punto / Cancelar" y el resto
-            de las acciones del viaje activo nunca queden debajo de ella. */}
-        <div
-          style={{
-            padding: "12px 14px calc(18px + var(--rp-driver-tabbar-clearance))",
-            flex: "0 0 auto",
-          }}
+    const runSheetPrimary = () => {
+      if (ride.status === "driver_arrived") {
+        void handleStartRide(ride.id);
+        return;
+      }
+
+      if (ride.status === "in_progress") {
+        requestCompleteRide(ride);
+        return;
+      }
+
+      void handleArrivedSmart(ride);
+    };
+
+    /* Icono de la acción: refuerza el significado antes de leer. Bandera al
+       llegar a un punto, coche al arrancar, meta al terminar. */
+    const sheetPrimaryIcon =
+      ride.status === "driver_arrived"
+        ? carOutline
+        : ride.status === "in_progress"
+          ? checkmarkCircleOutline
+          : flagOutline;
+
+    const sheetActions = (
+      <div className="rapago-driver-sheet-actions">
+        <IonButton
+          expand="block"
+          className="rapago-driver-sheet-actions__primary"
+          // El texto visible puede recortarse con ellipsis en pantallas
+          // angostas; aria-label conserva siempre la etiqueta completa.
+          aria-label={sheetPrimaryLabel}
+          onClick={runSheetPrimary}
         >
-          <div
-            style={{
-              position: "relative",
-              zIndex: 3,
-              pointerEvents: "auto",
-              ...uberPanelStyle({
-                padding: 16,
-                borderRadius: "22px",
-              }),
-            }}
-          >
-            <div
-              className="rapago-driver-nav-status"
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 12,
-                marginBottom: 12,
-              }}
-            >
-              <div
-                aria-hidden="true"
-                className="rapago-driver-nav-status__icon"
-                style={{
-                  width: 46,
-                  height: 46,
-                  borderRadius: 999,
-                  background: "#22c55e",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  flexShrink: 0,
-                }}
-              >
-                <IonIcon
-                  icon={checkmarkCircleOutline}
-                  style={{ fontSize: 28, color: "#fff" }}
-                />
-              </div>
-              {/* Región viva del estado del viaje: "Navegando al punto de
-                  recogida" / "Esperando pasajero" / "Navegando al destino"
-                  cambia solo en las transiciones de verdad importantes
-                  (nunca en cada tick de GPS), así que atomic aquí no genera
-                  ruido y sí da el contexto completo en un solo anuncio. */}
-              <div aria-live="polite" aria-atomic="true">
-                <div style={{ fontWeight: 950, fontSize: "1.1rem" }}>
-                  {statusText}
-                </div>
-                <div
-                  style={{
-                    color: "rgba(246,242,236,.68)",
-                    fontSize: ".82rem",
-                    marginTop: 2,
-                  }}
+          <IonIcon icon={sheetPrimaryIcon} slot="start" aria-hidden="true" />
+          {sheetPrimaryLabel}
+        </IonButton>
+
+        <IonButton
+          expand="block"
+          fill="outline"
+          className="rapago-driver-sheet-actions__cancel"
+          aria-label="Cancelar el viaje"
+          onClick={() => requestCancelActiveRide(ride)}
+        >
+          <IonIcon icon={closeOutline} slot="start" aria-hidden="true" />
+          Cancelar
+        </IonButton>
+      </div>
+    );
+
+    /* Estado del viaje. Antes era un disco verde de 46px con un check dentro
+       (que no decía de qué estaba "ok") más dos líneas de texto, dentro de un
+       panel aparte. Aquí es una línea: punto semántico + estado + dirección.
+       El aria-live se conserva tal cual: statusText sólo cambia en transiciones
+       reales del viaje, nunca por tick de GPS, así que `atomic` da el anuncio
+       completo sin generar ruido. */
+    const sheetStatusTone =
+      ride.status === "driver_arrived"
+        ? "waiting"
+        : ride.status === "in_progress"
+          ? "riding"
+          : "enroute";
+
+    /* Icono por estado, no un check genérico: el conductor distingue la fase
+       del viaje por la forma antes que por el texto. Misma rejilla que
+       .request-map-walk del pasajero (columna de icono + texto + dato). */
+    const sheetStatusIcon =
+      ride.status === "driver_arrived"
+        ? walkOutline
+        : ride.status === "in_progress"
+          ? carOutline
+          : navigateOutline;
+
+    const sheetHeader = (
+      <div
+        className={`rapago-driver-sheet-status rapago-driver-sheet-status--${sheetStatusTone}`}
+        aria-live="polite"
+        aria-atomic="true"
+      >
+        <span className="rapago-driver-sheet-status__icon" aria-hidden="true">
+          <IonIcon icon={sheetStatusIcon} />
+        </span>
+
+        <span className="rapago-driver-sheet-status__text">
+          <strong>{statusText}</strong>
+          <small>
+            {ride.status === "in_progress"
+              ? getDriverRidePointDisplayLabel(ride, "destination")
+              : getDriverRidePointDisplayLabel(ride, "origin")}
+          </small>
+        </span>
+      </div>
+    );
+
+    /* Cuerpo de la hoja: avisos y acciones secundarias. Todo lo que antes vivía
+       en el panel oscuro y ahora se pinta con tokens --rp-*, porque el fondo
+       pasó a ser var(--rp-surface) —claro en modo día—: los colores fijos que
+       traía (#fff7cc, #dbeafe, #bbf7d0, rgba(255,255,255,.16)) eran texto claro
+       sobre fondo claro, es decir invisibles. */
+    const sheetBody = (
+      <>
+        {nextQueuedRide && (
+          <div className="rapago-driver-sheet-note rapago-driver-sheet-note--queued">
+            <span className="rapago-driver-sheet-note__icon" aria-hidden="true">
+              <IonIcon icon={timeOutline} />
+            </span>
+            <div className="rapago-driver-sheet-note__text">
+              <strong>Próximo servicio aceptado</strong>
+              <span>{getDriverRideRouteDisplayLabel(nextQueuedRide)}</span>
+              <small>Se activará cuando confirmes que llegaste al destino actual.</small>
+            </div>
+          </div>
+        )}
+
+        {!nextQueuedRide && nextOfferWhileActive && (
+          <div className="rapago-driver-sheet-note rapago-driver-sheet-note--offer">
+            <span className="rapago-driver-sheet-note__icon" aria-hidden="true">
+              <IonIcon icon={flashOutline} />
+            </span>
+            <div className="rapago-driver-sheet-note__text">
+              <strong>Nuevo servicio para continuar</strong>
+              <span>{getDriverRideRouteDisplayLabel(nextOfferWhileActive)}</span>
+
+              <div className="rapago-driver-sheet-note__actions">
+                <IonButton
+                  size="small"
+                  fill="outline"
+                  className="rapago-driver-sheet-ghost"
+                  disabled={acceptingId === nextOfferWhileActive.id}
+                  onClick={() => dismissAvailableRide(nextOfferWhileActive)}
                 >
-                  {ride.status === "in_progress"
-                    ? getDriverRidePointDisplayLabel(ride, "destination")
-                    : getDriverRidePointDisplayLabel(ride, "origin")}
-                </div>
+                  <IonIcon icon={closeOutline} slot="start" aria-hidden="true" />
+                  Rechazar
+                </IonButton>
+                <IonButton
+                  size="small"
+                  className="rapago-driver-sheet-actions__primary"
+                  disabled={acceptingId === nextOfferWhileActive.id || !driverLocation}
+                  onClick={() => void handleAcceptRide(nextOfferWhileActive.id)}
+                >
+                  {acceptingId === nextOfferWhileActive.id ? (
+                    <IonSpinner name="dots" />
+                  ) : (
+                    <>
+                      <IonIcon icon={checkmarkCircleOutline} slot="start" aria-hidden="true" />
+                      Aceptar
+                    </>
+                  )}
+                </IonButton>
               </div>
             </div>
-
-            {nextQueuedRide && (
-              <div
-                className="rapago-driver-next-ride-banner"
-                style={{
-                  marginBottom: 12,
-                  borderRadius: 16,
-                  background: "rgba(250,204,21,.16)",
-                  border: "1px solid rgba(250,204,21,.45)",
-                  padding: "10px 12px",
-                  color: "#fff7cc",
-                  fontWeight: 900,
-                  lineHeight: 1.35,
-                }}
-              >
-                <div style={{ fontSize: ".80rem", opacity: .86 }}>Próximo servicio aceptado</div>
-                <div style={{ fontSize: ".92rem", marginTop: 2 }}>
-                  {getDriverRideRouteDisplayLabel(nextQueuedRide)}
-                </div>
-                <div style={{ fontSize: ".74rem", opacity: .78, marginTop: 3 }}>
-                  Se activará automáticamente cuando confirmes que llegaste al destino actual.
-                </div>
-              </div>
-            )}
-
-            {!nextQueuedRide && nextOfferWhileActive && (
-              <div
-                className="rapago-driver-next-offer-banner"
-                style={{
-                  marginBottom: 12,
-                  borderRadius: 16,
-                  background: "rgba(59,130,246,.16)",
-                  border: "1px solid rgba(59,130,246,.42)",
-                  padding: "10px 12px",
-                  color: "#dbeafe",
-                  fontWeight: 900,
-                  lineHeight: 1.35,
-                }}
-              >
-                <div style={{ fontSize: ".78rem", opacity: .86 }}>Nuevo servicio para continuar</div>
-                <div style={{ fontSize: ".92rem", marginTop: 2 }}>
-                  {getDriverRideRouteDisplayLabel(nextOfferWhileActive)}
-                </div>
-                <div style={{ display: "grid", gridTemplateColumns: "0.85fr 1.15fr", gap: 8, marginTop: 9 }}>
-                  <IonButton
-                    size="small"
-                    fill="outline"
-                    color="light"
-                    disabled={acceptingId === nextOfferWhileActive.id}
-                    onClick={() => dismissAvailableRide(nextOfferWhileActive)}
-                    style={{ "--border-radius": "999px", fontWeight: 950 } as CSSProperties}
-                  >
-                    Rechazar
-                  </IonButton>
-                  <IonButton
-                    size="small"
-                    color="warning"
-                    disabled={acceptingId === nextOfferWhileActive.id || !driverLocation}
-                    onClick={() => void handleAcceptRide(nextOfferWhileActive.id)}
-                    style={{ "--border-radius": "999px", "--color": "var(--rp-btn-primary-fg)", fontWeight: 950 } as CSSProperties}
-                  >
-                    {acceptingId === nextOfferWhileActive.id ? <IonSpinner name="dots" /> : "Aceptar próximo"}
-                  </IonButton>
-                </div>
-              </div>
-            )}
-
-            {ride.status === "driver_arrived" && (
-              <>
-                <style>{`@keyframes rapago-driver-waiting-pulse { 0% { opacity: .62; transform: scale(.985); } 50% { opacity: 1; transform: scale(1); } 100% { opacity: .62; transform: scale(.985); } }
-.rapago-driver-light-form,
-.rapago-driver-light-panel,
-.rapago-driver-light-card,
-.rapago-driver-light-form ion-card,
-.rapago-driver-light-form ion-item,
-.rapago-driver-light-form ion-input,
-.rapago-driver-light-form ion-textarea,
-.rapago-driver-light-form ion-select {
-  --background: #fffaf0 !important;
-  --color: #111827 !important;
-  color: #111827 !important;
-}
-.rapago-driver-light-form ion-item,
-.rapago-driver-light-form .item-native {
-  --background: #fffaf0 !important;
-  --border-color: rgba(214,166,64,.35) !important;
-}
-.rapago-driver-light-form ion-label,
-.rapago-driver-light-form ion-note,
-.rapago-driver-light-form p,
-.rapago-driver-light-form div,
-.rapago-driver-light-form span {
-  color: #111827;
-}
-.rapago-driver-light-form input,
-.rapago-driver-light-form textarea {
-  color: #111827 !important;
-}
-`}</style>
-                <div
-                  style={{
-                    marginBottom: 10,
-                    padding: "10px 12px",
-                    borderRadius: 14,
-                    background: "rgba(34,197,94,.18)",
-                    border: "1px solid rgba(34,197,94,.58)",
-                    color: "#bbf7d0",
-                    fontWeight: 950,
-                    textAlign: "center",
-                    animation: "rapago-driver-waiting-pulse 1.15s ease-in-out infinite",
-                  }}
-                >
-                  Estado: esperando pasajero en el punto
-                </div>
-                <div
-                  className="driver-noshow-card"
-                  style={{
-                    margin: "0 0 12px",
-                    padding: "12px 13px",
-                    borderRadius: 18,
-                    background: driverNoShowState.allowed
-                      ? "linear-gradient(135deg, rgba(250,204,21,.22), rgba(245,158,11,.16))"
-                      : "linear-gradient(135deg, rgba(15,23,42,.72), rgba(30,41,59,.72))",
-                    border: driverNoShowState.allowed
-                      ? "1px solid rgba(250,204,21,.45)"
-                      : "1px solid rgba(148,163,184,.22)",
-                    color: "#ffffff",
-                  }}
-                >
-                  <div
-                    style={{
-                      display: "flex",
-                      justifyContent: "space-between",
-                      alignItems: "center",
-                      gap: 10,
-                      fontWeight: 950,
-                      fontSize: ".86rem",
-                    }}
-                  >
-                    <span>Espera para No show</span>
-                    <span>
-                      {driverNoShowState.allowed
-                        ? "Listo"
-                        : formatDriverNoShowRemaining(driverNoShowState.remainingMs)}
-                    </span>
-                  </div>
-
-                  <div
-                    className="driver-noshow-track"
-                    style={{
-                      marginTop: 9,
-                      height: 8,
-                      borderRadius: 999,
-                      overflow: "hidden",
-                      background: "rgba(255,255,255,.16)",
-                    }}
-                  >
-                    <div
-                      className="driver-noshow-fill"
-                      style={{
-                        width: `${getDriverNoShowProgressPercent(driverNoShowState)}%`,
-                        height: "100%",
-                        borderRadius: 999,
-                        background: driverNoShowState.allowed
-                          ? "linear-gradient(90deg,#facc15,#22c55e)"
-                          : "linear-gradient(90deg,#38bdf8,#facc15)",
-                        transition: "width .35s ease",
-                      }}
-                    />
-                  </div>
-
-                  <div
-                    className="driver-noshow-caption"
-                    style={{
-                      marginTop: 7,
-                      fontSize: ".72rem",
-                      fontWeight: 850,
-                      opacity: .86,
-                    }}
-                  >
-                    {driverNoShowState.allowed
-                      ? "Ya puedes marcar No show si el pasajero no aparece."
-                      : "El botón se habilita automáticamente al cumplir 5 minutos."}
-                  </div>
-                </div>
-
-                <div
-                  style={{
-                    display: "grid",
-                    gridTemplateColumns: "1fr 1fr",
-                    gap: 10,
-                  }}
-                >
-                  <IonButton
-                    expand="block"
-                    color="success"
-                    style={
-                      { "--border-radius": "14px", height: "52px" } as CSSProperties
-                    }
-                    onClick={() => void handleStartRide(ride.id)}
-                  >
-                    Iniciar viaje
-                  </IonButton>
-
-                  <IonButton
-                    expand="block"
-                    color="warning"
-                    disabled={!driverNoShowState.allowed}
-                    style={
-                      {
-                        "--border-radius": "14px",
-                        height: "52px",
-                        "--color": driverNoShowState.allowed ? "var(--rp-btn-primary-fg)" : "#ffffff",
-                        "--background": driverNoShowState.allowed ? undefined : "rgba(71,85,105,.75)",
-                        opacity: driverNoShowState.allowed ? 1 : .68,
-                        position: "relative",
-                        zIndex: 31,
-                      } as CSSProperties
-                    }
-                    onClick={() => void handleDriverNoShowRide(ride)}
-                  >
-                    {driverNoShowState.allowed ? `No show · Cargo ${formatClp(driverNoShowState.feeClp)}` : "Disponible al terminar la espera"}
-                  </IonButton>
-
-                  <IonButton
-                    expand="block"
-                    fill="outline"
-                    color="light"
-                    style={
-                      {
-                        "--border-radius": "14px",
-                        height: "52px",
-                        position: "relative",
-                        zIndex: 31,
-                        gridColumn: "1 / -1",
-                      } as CSSProperties
-                    }
-                    onClick={() => requestCancelActiveRide(ride)}
-                  >
-                    Cancelar
-                  </IonButton>
-
-
-                  <IonButton
-                    expand="block"
-                    color="danger"
-                    style={
-                      {
-                        "--border-radius": "14px",
-                        height: "52px",
-                        position: "relative",
-                        zIndex: 31,
-                        gridColumn: "1 / -1",
-                        fontWeight: 950,
-                      } as CSSProperties
-                    }
-                    onClick={() => handleReportDriverAccidentFromHome(ride)}
-                  >
-                    Reportar accidente / emergencia
-                  </IonButton>
-                </div>
-              </>
-            )}
-
-            {ride.status === "in_progress" && (
-              <div
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "1fr 1fr",
-                  gap: 10,
-                }}
-              >
-                <IonButton
-                  expand="block"
-                  color="success"
-                  style={
-                    { "--border-radius": "14px", height: "52px" } as CSSProperties
-                  }
-                  onClick={() => requestCompleteRide(ride)}
-                >
-                  Finalizar viaje
-                </IonButton>
-
-                <IonButton
-                  expand="block"
-                  fill="outline"
-                  color="light"
-                  style={
-                    {
-                      "--border-radius": "14px",
-                      height: "52px",
-                      position: "relative",
-                      zIndex: 31,
-                    } as CSSProperties
-                  }
-                  onClick={() => requestCancelActiveRide(ride)}
-                >
-                  Cancelar
-                </IonButton>
-
-
-                <IonButton
-                  expand="block"
-                  color="danger"
-                  style={
-                    {
-                      "--border-radius": "14px",
-                      height: "52px",
-                      position: "relative",
-                      zIndex: 31,
-                      gridColumn: "1 / -1",
-                      fontWeight: 950,
-                    } as CSSProperties
-                  }
-                  onClick={() => handleReportDriverAccidentFromHome(ride)}
-                >
-                  Reportar accidente / emergencia
-                </IonButton>
-              </div>
-            )}
-
-            {["accepted", "driver_en_route"].includes(ride.status) && (
-              <div
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "1fr 1fr",
-                  gap: 10,
-                }}
-              >
-                <IonButton
-                  expand="block"
-                  color="success"
-                  style={
-                    {
-                      "--border-radius": "14px",
-                      height: "52px",
-                    } as CSSProperties
-                  }
-                  onClick={() => void handleArrivedSmart(ride)}
-                >
-                  Llegué al punto
-                </IonButton>
-
-                <IonButton
-                  expand="block"
-                  fill="outline"
-                  color="light"
-                  style={
-                    {
-                      "--border-radius": "14px",
-                      height: "52px",
-                      position: "relative",
-                      zIndex: 31,
-                    } as CSSProperties
-                  }
-                  onClick={() => requestCancelActiveRide(ride)}
-                >
-                  Cancelar
-                </IonButton>
-              </div>
-            )}
           </div>
-        </div>
+        )}
+
+        {ride.status === "driver_arrived" && (
+          /* El botón ES la barra de progreso: su relleno avanza con la espera y
+             al completarse cambia de etiqueta y se habilita. Antes esto eran
+             cuatro elementos (título, contador, barra de 8px y leyenda) más una
+             cinta que pulsaba infinitamente ignorando prefers-reduced-motion,
+             para comunicar un dato que cabe en el propio botón. */
+          <IonButton
+            expand="block"
+            className="rapago-driver-noshow"
+            disabled={!driverNoShowState.allowed}
+            style={
+              {
+                "--rp-noshow-progress": `${getDriverNoShowProgressPercent(driverNoShowState)}%`,
+              } as CSSProperties
+            }
+            onClick={() => void handleDriverNoShowRide(ride)}
+          >
+            <IonIcon
+              icon={driverNoShowState.allowed ? flagOutline : timeOutline}
+              slot="start"
+              aria-hidden="true"
+            />
+            {driverNoShowState.allowed
+              ? `No show · Cargo ${formatClp(driverNoShowState.feeClp)}`
+              : `No show disponible en ${formatDriverNoShowRemaining(driverNoShowState.remainingMs)}`}
+          </IonButton>
+        )}
+      </>
+    );
+
+    return (
+      <div className="rapago-driver-active-ride">
+        {/* Identidad de marca SIN coste de mapa: la píldora es absoluta, el mapa
+            pasa por debajo. Y como esta pantalla ya no lleva IonHeader en el
+            flujo, el mapa GANA los 103px que ocupaba la cabecera verde.
+            Sin campana (una notificación no debe robarle la vista a quien
+            conduce) y sin acción (durante un viaje no hay nada que refrescar). */}
+        <RapagoAppBar
+          sectionId="driver-requests"
+          variant="overlay"
+          title="Viaje activo"
+        />
+        <UberDriverNavigationMap
+          ride={ride}
+          height="100%"
+          driverUser={session?.user}
+          sheetHeader={sheetHeader}
+          sheetBody={sheetBody}
+          sheetActions={sheetActions}
+        />
+
+        {/* SOS. Fuera de la hoja a propósito: es el único control que debe
+            seguir alcanzable con la hoja plegada del todo. Además antes sólo
+            existía en driver_arrived e in_progress — es decir, faltaba
+            justamente en driver_en_route, el estado en que el conductor va en
+            movimiento y más riesgo corre. Ahora está en los tres. */}
+        <button
+          type="button"
+          className="rapago-driver-sos"
+          onClick={() => setDriverSosOpen(true)}
+          aria-label="Emergencia y reporte de accidente"
+        >
+          <IonIcon icon={alertCircleOutline} aria-hidden="true" />
+          <span>SOS</span>
+        </button>
       </div>
     );
   }
 
   return (
     <IonPage className="rapago-driver-page" data-rapago-theme={theme}>
-      <IonHeader>
-        <IonToolbar color="success">
-          <IonTitle>{activeRide ? "Viaje activo" : showOnlyReservations ? "Reservas" : "Solicitudes"}</IonTitle>
-          <div slot="end" style={{ paddingRight: 8 }}>
-            {!activeRide && (
-              <IonButton
-                fill="clear"
-                color="light"
-                onClick={() => void loadRides()}
-                disabled={loading}
-                aria-label="Actualizar solicitudes"
-              >
-                <IonIcon icon={refreshOutline} slot="icon-only" />
-              </IonButton>
-            )}
-          </div>
-        </IonToolbar>
-        {!activeRide && (
-          <IonToolbar
-            style={
-              {
-                "--background": "linear-gradient(135deg, #1f1f1f, #8f3f25)",
-                "--border-width": "0",
-              } as CSSProperties
-            }
-          >
-            <div style={{ padding: "9px 16px 12px", color: "#fff" }}>
-              <div style={{ fontWeight: 950, fontSize: ".92rem" }}>
-                {showOnlyReservations ? "Reservas asignadas" : "Viajes disponibles"}
-              </div>
-              <div
-                style={{
-                  color: "rgba(255,255,255,.62)",
-                  fontSize: ".74rem",
-                  marginTop: 2,
-                }}
-              >
-                {showOnlyReservations
-                  ? "Acepta o rechaza solo las reservas que te asignó el administrador."
-                  : isDriverAvailable
-                    ? "Acepta solo cuando puedas iniciar la ruta."
-                    : "Estás no disponible. No se cargarán solicitudes nuevas."}
-              </div>
-            </div>
-          </IonToolbar>
-        )}
-      </IonHeader>
+      {/* Durante un viaje activo NO hay barra en el flujo: la identidad la
+          pone la píldora flotante de ActiveRideScreen, que no le quita un solo
+          píxel al mapa. Fuera del viaje, barra estándar con su acción propia.
+
+          El subtoolbar de degradado inline que había aquí desapareció: su texto
+          ("Viajes disponibles" + el estado de disponibilidad) es CONTENIDO, no
+          cromo, así que baja al principio de la lista. Ganancia: 66px. */}
+      {!activeRide && (
+        <IonHeader className="ion-no-border">
+          <RapagoAppBar
+            sectionId="driver-requests"
+            title={showOnlyReservations ? "Reservas" : "Solicitudes"}
+            actionIcon={refreshOutline}
+            actionLabel="Actualizar solicitudes"
+            actionLoading={loading}
+            onAction={() => void loadRides()}
+          />
+        </IonHeader>
+      )}
 
       <IonContent
         className={activeRide ? "" : "ion-padding"}
@@ -16629,7 +16573,12 @@ La reserva fue retirada. No continúes hacia la recogida.`,
         }
       >
         {activeRide ? (
-          <ActiveRideScreen ride={activeRide} />
+          // Llamada, no <ActiveRideScreen/>: como se declara en el cuerpo de
+          // esta página, su identidad de función cambia en cada render y React
+          // remontaría todo el subárbol —recreando el mapa de Google entero— en
+          // cada ciclo. Invocada, su salida se integra en este mismo árbol y el
+          // mapa conserva su instancia.
+          ActiveRideScreen({ ride: activeRide })
         ) : (
           <>
             <IonRefresher
@@ -17139,6 +17088,37 @@ La reserva fue retirada. No continúes hacia la recogida.`,
           },
         ]}
       />
+
+      {/* Opciones de emergencia. El SOS del mapa abre esto en vez de ejecutar:
+          "Reportar accidente" abre WhatsApp soporte y deja registro, así que un
+          toque accidental mandaba un mensaje real a soporte. Llamar a
+          Carabineros va primero por ser lo urgente de verdad. */}
+      <IonActionSheet
+        isOpen={driverSosOpen}
+        header="Emergencia"
+        subHeader="Elige qué necesitas ahora"
+        onDidDismiss={() => setDriverSosOpen(false)}
+        buttons={[
+          {
+            text: "Llamar a Carabineros (133)",
+            icon: callOutline,
+            handler: () => {
+              window.location.href = "tel:133";
+            },
+          },
+          {
+            text: "Reportar accidente a soporte",
+            icon: chatbubbleEllipsesOutline,
+            handler: () => {
+              if (activeRide) handleReportDriverAccidentFromHome(activeRide);
+            },
+          },
+          {
+            text: "Cancelar",
+            role: "cancel",
+          },
+        ]}
+      />
     </IonPage>
   );
 }
@@ -17385,114 +17365,11 @@ export function DriverTripsPage(): JSX.Element {
   );
 }
 
-function DriverHistoryRideCard({
-  ride,
-  onRate,
-  alreadyRated,
-}: {
-  ride: {
-    id: string;
-    originText: string;
-    destinationText: string;
-    status: string;
-    estimatedFareClp?: number | null;
-    acceptedAt?: string | null;
-    completedAt?: string | null;
-    cancelledAt?: string | null;
-  };
-  onRate: () => void;
-  alreadyRated: boolean;
-}): JSX.Element {
-  const label =
-    ride.status === "completed"
-      ? "Completado"
-      : ride.status === "cancelled"
-        ? "Cancelado"
-        : ride.status;
-
-  const displayFareClp = getRideDisplayFareClp(ride as RideWithFarePayload);
-  const paymentLabel = getRidePaymentMethodLabel(
-    (ride as { notes?: string | null }).notes,
-  );
-  const rideVehicleCategory = getRideVehicleCategory(
-    ride as RideWithFarePayload,
-  );
-  const rideVehicleLabel = getRideVehicleLabel(rideVehicleCategory);
-  const rideVehicleEmoji = getRideVehicleEmoji(rideVehicleCategory);
-
-  return (
-    <IonCard
-      className="rapago-driver-card"
-      style={{
-        margin: 0,
-        borderRadius: "18px",
-        background: "var(--rp-surface)",
-        color: "var(--rp-text)",
-        border: "var(--rp-border-w) solid var(--rp-border-c)",
-      }}
-    >
-      <IonCardContent style={{ padding: "14px" }}>
-        <div
-          style={{ display: "flex", justifyContent: "space-between", gap: 10 }}
-        >
-          <div style={{ flex: 1 }}>
-            <div style={{ fontWeight: 900, fontSize: ".92rem" }}>
-              {getDriverRideRouteDisplayLabel(ride)}
-            </div>
-
-            <IonBadge
-              color={ride.status === "completed" ? "medium" : "danger"}
-              style={{ marginTop: 6 }}
-            >
-              {label}
-            </IonBadge>
-
-            <DriverFastSearchBadge ride={ride as unknown as RideWithFarePayload & Record<string, unknown>} compact />
-          <PassengerRideNoteCard ride={ride} compact />
-
-            {displayFareClp != null && (
-              <div
-                style={{ marginTop: 8, fontWeight: 800, fontSize: ".82rem" }}
-              >
-                Precio: {formatClp(displayFareClp)} · Pago: {paymentLabel}
-                {((ride as unknown as Record<string, unknown>).cashPaymentConfirmedByDriver === true || (ride as unknown as Record<string, unknown>).cashPaymentClosure) && (
-                  <>
-                    <br />
-                    Efectivo recibido: {formatClp(Number((ride as unknown as Record<string, unknown>).cashPaidClp ?? (ride as unknown as Record<string, unknown>).paymentReceivedByDriverClp ?? 0))}
-                    {Number((ride as unknown as Record<string, unknown>).cashOverpaidClp ?? 0) > 0 && ` · Pagó demás: ${formatClp(Number((ride as unknown as Record<string, unknown>).cashOverpaidClp))}`}
-                  </>
-                )}
-              </div>
-            )}
-
-            {ride.completedAt && (
-              <div style={{ marginTop: 4, color: "var(--rp-muted)", fontSize: ".74rem" }}>
-                Completado: {new Date(ride.completedAt).toLocaleString("es-CL")}
-              </div>
-            )}
-
-            {ride.cancelledAt && (
-              <div style={{ marginTop: 4, color: "var(--rp-muted)", fontSize: ".74rem" }}>
-                Cancelado: {new Date(ride.cancelledAt).toLocaleString("es-CL")}
-              </div>
-            )}
-          </div>
-
-          {ride.status === "completed" && !alreadyRated && (
-            <IonButton
-              size="small"
-              fill="outline"
-              color="warning"
-              onClick={onRate}
-            >
-              Calificar
-            </IonButton>
-          )}
-        </div>
-      </IonCardContent>
-    </IonCard>
-  );
-}
+/* Aquí vivía DriverHistoryRideCard: un componente de tarjeta de historial
+   que NUNCA se usó — la lista de "Mis Viajes" siempre se renderizó con JSX
+   en línea dentro de DriverMyRidesPage. Tener las dos versiones hacía que
+   editar la tarjeta "correcta" no cambiara nada en pantalla, así que se
+   elimina la copia muerta y queda una sola fuente de verdad. */
 
 function DriverMyRidesPage(): JSX.Element {
   const { session } = useAuth();
@@ -17745,6 +17622,22 @@ function DriverMyRidesPage(): JSX.Element {
         "in_progress",
       ].includes(ride.status),
   );
+
+  /* Resumen de la lista. Son datos ya cargados: no cuesta una petición más y
+     evita que el conductor tenga que sumar de cabeza recorriendo las tarjetas.
+     El total cuenta SÓLO los completados — un viaje cancelado puede traer
+     tarifa en el registro y sumarla inflaría lo que de verdad ganó. */
+  const historyCompletedRides = historyRides.filter(
+    (ride) => ride.status === "completed",
+  );
+  const historyCompletedCount = historyCompletedRides.length;
+  const historyCancelledCount = historyRides.filter(
+    (ride) => ride.status === "cancelled",
+  ).length;
+  const historyEarningsClp = historyCompletedRides.reduce((total, ride) => {
+    const fare = getRideDisplayFareClp(ride);
+    return total + (Number.isFinite(Number(fare)) ? Number(fare) : 0);
+  }, 0);
 
   async function runRideAction(
     rideId: string,
@@ -18084,15 +17977,15 @@ function DriverMyRidesPage(): JSX.Element {
           margin: 0;
         }
       `}</style>
-      <IonHeader>
-        <IonToolbar color="success">
-          <IonTitle>Mis Viajes</IonTitle>
-          <div slot="end" style={{ paddingRight: "8px" }}>
-            <IonButton fill="clear" color="light" disabled={loading} onClick={() => void loadRides()} aria-label="Actualizar viajes">
-              <IonIcon icon={refreshOutline} slot="icon-only" />
-            </IonButton>
-          </div>
-        </IonToolbar>
+      <IonHeader className="ion-no-border">
+        <RapagoAppBar
+          sectionId="driver-trips"
+          title="Mis Viajes"
+          actionIcon={refreshOutline}
+          actionLabel="Actualizar viajes"
+          actionLoading={loading}
+          onAction={() => void loadRides()}
+        />
       </IonHeader>
 
       <IonContent className="ion-padding">
@@ -18377,79 +18270,150 @@ function DriverMyRidesPage(): JSX.Element {
         )}
 
         {!loading && !activeRide && historyRides.length === 0 && (
-          <IonText color="medium">
-            <p>No tienes viajes todavía.</p>
-          </IonText>
+          <div className="rapago-trip-empty">
+            <span className="rapago-trip-empty__icon" aria-hidden="true">
+              <IonIcon icon={carOutline} />
+            </span>
+            <strong>Aún no tienes viajes</strong>
+            <span>
+              Cuando completes tu primer servicio aparecerá aquí con su detalle
+              de pago.
+            </span>
+          </div>
         )}
 
         {!loading && !activeRide && historyRides.length > 0 && (
-          <div
-            style={{ display: "flex", flexDirection: "column", gap: "12px" }}
-          >
-            {historyRides.map((ride) => {
-              const rideVehicleCategory = getRideVehicleCategory(ride as RideWithFarePayload);
-              const rideVehicleLabel = getRideVehicleLabel(rideVehicleCategory);
-              const rideVehicleEmoji = getRideVehicleEmoji(rideVehicleCategory);
+          <>
+            {/* Resumen de la lista. Antes había que sumar de cabeza recorriendo
+                las tarjetas para saber cuánto se llevaba hecho; son datos que ya
+                están cargados, así que mostrarlos no cuesta una petición más. */}
+            <div className="rapago-trip-summary">
+              <div className="rapago-trip-summary__item">
+                <span className="rapago-trip-summary__label">
+                  <IonIcon icon={checkmarkCircleOutline} aria-hidden="true" />
+                  Completados
+                </span>
+                <strong>{historyCompletedCount}</strong>
+              </div>
 
-              return (
-                <IonCard
-                  key={ride.id}
-                  className="rapago-driver-card"
-                  style={{
-                    margin: 0,
-                    borderRadius: "16px",
-                    background: "var(--rp-surface)",
-                  }}
-                >
-                  <IonCardContent style={{ padding: "14px" }}>
-                    <div
-                      style={{
-                        display: "flex",
-                        justifyContent: "space-between",
-                        gap: "8px",
-                      }}
-                    >
-                      <div>
-                        <div style={{ fontWeight: 900, color: "var(--rp-text)" }}>
-                          {getDriverRideRouteDisplayLabel(ride)}
-                        </div>
-                        <IonBadge
-                          color={
-                            ride.status === "completed" ? "medium" : "danger"
-                          }
-                          style={{ marginTop: 6 }}
-                        >
-                          {statusLabel(ride.status)}
-                        </IonBadge>
-                        {getRideDisplayFareClp(ride) != null && (
-                          <div
-                            style={{
-                              marginTop: 8,
-                              color: "var(--rp-muted)",
-                              fontSize: ".82rem",
-                            }}
-                          >
-                            Precio: {formatClp(getRideDisplayFareClp(ride))} ·
-                            Pago: {getRidePaymentMethodLabel(ride.notes)}
-                            {((ride as unknown as Record<string, unknown>).cashPaymentConfirmedByDriver === true || (ride as unknown as Record<string, unknown>).cashPaymentClosure) && (
-                              <>
-                                <br />
-                                Efectivo recibido: {formatClp(Number((ride as unknown as Record<string, unknown>).cashPaidClp ?? (ride as unknown as Record<string, unknown>).paymentReceivedByDriverClp ?? 0))}
-                                {Number((ride as unknown as Record<string, unknown>).cashOverpaidClp ?? 0) > 0 && ` · Pagó demás: ${formatClp(Number((ride as unknown as Record<string, unknown>).cashOverpaidClp))}`}
-                              </>
-                            )}
-                            <br />
-                            Vehículo: {rideVehicleEmoji} {rideVehicleLabel}
-                          </div>
+              <div className="rapago-trip-summary__item rapago-trip-summary__item--amount">
+                <span className="rapago-trip-summary__label">
+                  <IonIcon icon={cashOutline} aria-hidden="true" />
+                  Total
+                </span>
+                <strong>{formatClp(historyEarningsClp)}</strong>
+              </div>
+
+              {historyCancelledCount > 0 && (
+                <div className="rapago-trip-summary__item">
+                  <span className="rapago-trip-summary__label">
+                    <IonIcon icon={closeCircleOutline} aria-hidden="true" />
+                    Cancelados
+                  </span>
+                  <strong>{historyCancelledCount}</strong>
+                </div>
+              )}
+            </div>
+
+            <div className="rapago-trip-list">
+              {historyRides.map((ride) => {
+                const rideVehicleCategory = getRideVehicleCategory(ride as RideWithFarePayload);
+                const rideVehicleLabel = getRideVehicleLabel(rideVehicleCategory);
+                const rideVehicleEmoji = getRideVehicleEmoji(rideVehicleCategory);
+                const rideRecord = ride as unknown as Record<string, unknown>;
+                const cancelled = ride.status === "cancelled";
+                const fareClp = getRideDisplayFareClp(ride);
+                const closedAt =
+                  (rideRecord.completedAt as string | null | undefined) ??
+                  (rideRecord.cancelledAt as string | null | undefined) ??
+                  null;
+                const cashConfirmed =
+                  rideRecord.cashPaymentConfirmedByDriver === true ||
+                  Boolean(rideRecord.cashPaymentClosure);
+
+                return (
+                  <article
+                    key={ride.id}
+                    className={`rapago-trip-card${cancelled ? " rapago-trip-card--cancelled" : ""}`}
+                  >
+                    <header className="rapago-trip-card__head">
+                      <span className="rapago-trip-card__icon" aria-hidden="true">
+                        <IonIcon icon={cancelled ? closeCircleOutline : checkmarkCircleOutline} />
+                      </span>
+
+                      <div className="rapago-trip-card__route">
+                        <h3>{getDriverRideRouteDisplayLabel(ride)}</h3>
+                        {closedAt && (
+                          <time dateTime={closedAt}>
+                            {new Date(closedAt).toLocaleString("es-CL", {
+                              day: "2-digit",
+                              month: "short",
+                              hour: "2-digit",
+                              minute: "2-digit",
+                            })}
+                          </time>
                         )}
                       </div>
-                    </div>
-                  </IonCardContent>
-                </IonCard>
-              );
-            })}
-          </div>
 
+                      <span className="rapago-trip-card__state">
+                        {statusLabel(ride.status)}
+                      </span>
+                    </header>
+
+                    {fareClp != null && (
+                      <dl className="rapago-trip-card__facts">
+                        <div className="rapago-trip-card__fact rapago-trip-card__fact--amount">
+                          <dt>
+                            <IonIcon icon={cashOutline} aria-hidden="true" />
+                            Precio
+                          </dt>
+                          <dd>{formatClp(fareClp)}</dd>
+                        </div>
+
+                        <div className="rapago-trip-card__fact">
+                          <dt>
+                            <IonIcon icon={cardOutline} aria-hidden="true" />
+                            Pago
+                          </dt>
+                          <dd>{getRidePaymentMethodLabel(ride.notes)}</dd>
+                        </div>
+
+                        <div className="rapago-trip-card__fact">
+                          <dt>
+                            <IonIcon icon={carOutline} aria-hidden="true" />
+                            Vehículo
+                          </dt>
+                          <dd>
+                            {rideVehicleEmoji} {rideVehicleLabel}
+                          </dd>
+                        </div>
+
+                        {cashConfirmed && (
+                          <div className="rapago-trip-card__fact rapago-trip-card__fact--cash">
+                            <dt>
+                              <IonIcon icon={walletOutline} aria-hidden="true" />
+                              Efectivo recibido
+                            </dt>
+                            <dd>
+                              {formatClp(
+                                Number(
+                                  rideRecord.cashPaidClp ??
+                                    rideRecord.paymentReceivedByDriverClp ??
+                                    0,
+                                ),
+                              )}
+                              {Number(rideRecord.cashOverpaidClp ?? 0) > 0 &&
+                                ` · Pagó demás: ${formatClp(Number(rideRecord.cashOverpaidClp))}`}
+                            </dd>
+                          </div>
+                        )}
+                      </dl>
+                    )}
+                  </article>
+                );
+              })}
+            </div>
+          </>
         )}
       </IonContent>
 
@@ -18465,26 +18429,51 @@ function DriverMyRidesPage(): JSX.Element {
         />
       )}
 
-      <IonAlert
+      {/* Modal propio y no IonAlert: un alert sólo admite texto plano, así que
+          no había forma de darle el logo ni jerarquía visual. Al ser una
+          interrupción que corta lo que el conductor estaba haciendo, conviene
+          que se reconozca como RAPA GO de inmediato y no como un aviso del
+          sistema operativo. */}
+      <IonModal
         isOpen={Boolean(passengerCancelNotice)}
-        header="Pasajero canceló el viaje"
-        message={
-          passengerCancelNotice
-            ? `${passengerCancelNotice.route}
-
-${passengerCancelNotice.message}`
-            : ""
-        }
-        cssClass="rapago-passenger-cancel-alert-trips"
         backdropDismiss={false}
+        className="rapago-cancel-notice"
         onDidDismiss={() => setPassengerCancelNotice(null)}
-        buttons={[
-          {
-            text: "Entendido",
-            role: "confirm",
-          },
-        ]}
-      />
+      >
+        <div className="rapago-cancel-notice__card" role="alertdialog" aria-modal="true">
+          <img
+            className="rapago-cancel-notice__logo"
+            src={logoRapago}
+            alt="RAPA GO"
+          />
+
+          <span className="rapago-cancel-notice__icon" aria-hidden="true">
+            <IonIcon icon={closeCircleOutline} />
+          </span>
+
+          <h2 className="rapago-cancel-notice__title">Pasajero canceló el viaje</h2>
+
+          {passengerCancelNotice && (
+            <>
+              <p className="rapago-cancel-notice__route">
+                {passengerCancelNotice.route}
+              </p>
+              <p className="rapago-cancel-notice__message">
+                {passengerCancelNotice.message}
+              </p>
+            </>
+          )}
+
+          <IonButton
+            expand="block"
+            className="rapago-cancel-notice__cta"
+            onClick={() => setPassengerCancelNotice(null)}
+          >
+            Entendido
+          </IonButton>
+        </div>
+      </IonModal>
+
     </IonPage>
   );
 }
@@ -18587,10 +18576,8 @@ export function DriverEarningsPage(): JSX.Element {
   return (
     <>
       <IonPage className="rapago-driver-page" data-rapago-theme={theme}>
-      <IonHeader>
-        <IonToolbar color="success">
-          <IonTitle>{m.label}</IonTitle>
-        </IonToolbar>
+      <IonHeader className="ion-no-border">
+        <RapagoAppBar sectionId="driver-earnings" title={m.label} />
       </IonHeader>
       <IonContent
         className="ion-padding"
@@ -20385,15 +20372,12 @@ export function DriverProfilePage(): JSX.Element {
   return (
     <>
       <IonPage className="rapago-driver-page" data-rapago-theme={theme}>
-      <IonHeader>
-        <IonToolbar color="success">
-          <IonTitle>Mi Perfil</IonTitle>
-          <IonButtons slot="end">
-            <IonButton color="light" onClick={() => void handleLogout()}>
-              Cerrar sesión
-            </IonButton>
-          </IonButtons>
-        </IonToolbar>
+      {/* "Cerrar sesión" sale de la cabecera: ahora vive en el menú de cuenta
+          de la barra, con confirmación y bloqueado si hay viaje en curso. El
+          segundo acceso sigue estando al pie de esta misma pantalla, que es
+          donde la convención lo pone. */}
+      <IonHeader className="ion-no-border">
+        <RapagoAppBar sectionId="driver-profile" title="Mi Perfil" />
       </IonHeader>
 
       <IonAlert

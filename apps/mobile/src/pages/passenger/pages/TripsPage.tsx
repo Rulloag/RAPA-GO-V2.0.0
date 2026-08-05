@@ -10,7 +10,7 @@ import { useHistory } from "react-router-dom";
 import {
   carOutline, refreshOutline, locationOutline, warningOutline, cashOutline,
   cardOutline, calendarOutline, flashOutline, carSportOutline, ticketOutline,
-  alertCircleOutline, star, notificationsOutline, hourglassOutline,
+  alertCircleOutline, star, starOutline, notificationsOutline, hourglassOutline,
   checkmarkCircle, closeCircle, businessOutline, walletOutline,
 } from "ionicons/icons";
 import { MapView } from "../../../features/maps/MapView.js";
@@ -3407,36 +3407,55 @@ const RATING_EXTRA_OPTIONS = [
   "Conoce bien la isla",
 ] as const;
 
+/* Etiqueta del valor elegido. Una calificación sin palabra es ambigua: cuatro
+   estrellas puede leerse como "bien" o como "le falta algo" según quién mire.
+   Nombrarla hace que el pasajero confirme lo que quiso decir. */
+const RATING_VALUE_LABELS: Record<number, string> = {
+  1: "Muy malo",
+  2: "Malo",
+  3: "Regular",
+  4: "Bueno",
+  5: "Excelente",
+};
+
 function StarRatingInput({ value, onChange }: { value: number; onChange: (v: number) => void }) {
   return (
-    <div style={{ display: "flex", gap: "7px", margin: "10px 0 6px", alignItems: "center" }}>
-      {[1, 2, 3, 4, 5].map((s) => (
-        <button
-          key={s}
-          type="button"
-          onClick={() => onChange(s)}
-          aria-label={`${s} estrella${s === 1 ? "" : "s"}`}
-          style={{
-            width: 42,
-            height: 42,
-            borderRadius: 14,
-            border: s <= value ? "1px solid rgba(245,158,11,.42)" : "1px solid rgba(17,24,39,.10)",
-            background: s <= value ? "linear-gradient(135deg,#fff7d6,#facc15)" : "#ffffff",
-            color: s <= value ? "#111827" : "#9ca3af",
-            fontSize: "1.35rem",
-            fontWeight: 950,
-            cursor: "pointer",
-            boxShadow: s <= value ? "0 10px 24px rgba(245,158,11,.20)" : "none",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-          }}
-        >
-          {/* Icono real en vez del glifo ★, que renderiza distinto según
-              plataforma/fuente y no siempre es legible. */}
-          <IonIcon icon={star} aria-hidden="true" style={{ fontSize: "1.35rem" }} />
-        </button>
-      ))}
+    /* radiogroup y no cinco botones sueltos: es UNA pregunta con cinco
+       respuestas excluyentes, y así el lector de pantalla anuncia "3 de 5" en
+       vez de leer cinco botones sin relación entre ellos. */
+    <div
+      className="rapago-star-rating"
+      role="radiogroup"
+      aria-label="Calificación del conductor"
+    >
+      <div className="rapago-star-rating__row">
+        {[1, 2, 3, 4, 5].map((s) => {
+          const active = s <= value;
+
+          return (
+            <button
+              key={s}
+              type="button"
+              role="radio"
+              aria-checked={s === value}
+              className={`rapago-star-rating__star${active ? " is-active" : ""}`}
+              onClick={() => onChange(s)}
+              aria-label={`${s} estrella${s === 1 ? "" : "s"} · ${RATING_VALUE_LABELS[s]}`}
+            >
+              {/* Rellena vs. contorno. Antes todas usaban el icono sólido y la
+                  caja amarilla, así que con el valor por defecto (5) las cinco
+                  salían idénticas: parecían una fila de botones, no una nota.
+                  El contraste lleno/vacío es lo que hace legible el valor. */}
+              <IonIcon icon={active ? star : starOutline} aria-hidden="true" />
+            </button>
+          );
+        })}
+      </div>
+
+      <div className="rapago-star-rating__label" aria-live="polite">
+        <strong>{value}</strong>
+        <span>{RATING_VALUE_LABELS[value] ?? ""}</span>
+      </div>
     </div>
   );
 }
@@ -5356,7 +5375,15 @@ function PassengerDriverAndVehicleDetails({
   const statusText = getPassengerUberStatusText(effectiveStatus);
 
   return (
+    /* global.css:3175 fuerza color:#111111 !important en TODO descendiente de
+       ion-card, sin importar el tema — pensado para la tarjeta clara "legacy"
+       de esta misma sección. Este panel sí declara su propio fondo con
+       --rp-surface (oscuro en modo noche), así que ese texto quedaba negro
+       sobre negro. sections.css libera .rapago-trip-theme-panel y sus tonos
+       (.rp-tone-*) con la misma !important, así que el color que cada
+       elemento ya declaraba inline vuelve a ganar. */
     <div
+      className="rapago-trip-theme-panel"
       style={{
         marginBottom: 14,
         background: "var(--rp-surface)",
@@ -5388,7 +5415,7 @@ function PassengerDriverAndVehicleDetails({
           {/* El contenedor usa var(--rp-surface), que en modo noche es casi
               negro: este texto iba en rgba(17,17,17,.62) y quedaba en 1,06:1,
               es decir invisible, justo mientras el conductor viene en camino. */}
-          <div style={{ color: "var(--rp-muted)", fontSize: ".74rem", fontWeight: 850 }}>
+          <div className="rp-tone-muted" style={{ color: "var(--rp-muted)", fontSize: ".74rem", fontWeight: 850 }}>
             Detalles del viaje
           </div>
           <div style={{ fontWeight: 950, fontSize: ".92rem", marginTop: 1, lineHeight: 1.25 }}>
@@ -5396,7 +5423,7 @@ function PassengerDriverAndVehicleDetails({
               ? `Espera en ${String(ride.originText ?? "el punto de partida")}`
               : `Recogida: ${String(ride.originText ?? "punto de partida")}`}
             <br />
-            <span style={{ fontSize: ".78rem", color: "var(--rp-muted)", fontWeight: 850 }}>
+            <span className="rp-tone-muted" style={{ fontSize: ".78rem", color: "var(--rp-muted)", fontWeight: 850 }}>
               Destino: {String(ride.destinationText ?? "destino del viaje")}
             </span>
           </div>
@@ -5430,6 +5457,7 @@ function PassengerDriverAndVehicleDetails({
       >
         <div style={{ position: "relative", width: 78 }}>
           <div
+            className="rp-tone-btn-primary-fg"
             style={{
               width: 58,
               height: 58,
@@ -5465,10 +5493,10 @@ function PassengerDriverAndVehicleDetails({
         </div>
 
         <div style={{ minWidth: 0, textAlign: "center" }}>
-          <div style={{ fontWeight: 950, fontSize: ".86rem", color: "var(--rp-ok-fg)", letterSpacing: ".02em" }}>
+          <div className="rp-tone-ok" style={{ fontWeight: 950, fontSize: ".86rem", color: "var(--rp-ok-fg)", letterSpacing: ".02em" }}>
             {driverName}
           </div>
-          <div style={{ marginTop: 4, fontWeight: 850, fontSize: ".74rem", color: "var(--rp-muted)", lineHeight: 1.25 }}>
+          <div className="rp-tone-muted" style={{ marginTop: 4, fontWeight: 850, fontSize: ".74rem", color: "var(--rp-muted)", lineHeight: 1.25 }}>
             {modelLine}
             <br />{colorLine}
           </div>
@@ -5487,7 +5515,7 @@ function PassengerDriverAndVehicleDetails({
           >
             {plateText}
           </div>
-          <div style={{ fontSize: ".78rem", color: "var(--rp-muted)", fontWeight: 850, marginTop: 2 }}>
+          <div className="rp-tone-muted" style={{ fontSize: ".78rem", color: "var(--rp-muted)", fontWeight: 850, marginTop: 2 }}>
             {modelLine}
           </div>
           <div
@@ -8585,11 +8613,16 @@ function PassengerRideCard({
             <PassengerDriverAndVehicleDetails ride={ride as RideRequestData & Record<string, unknown>} />
           )}
 
+          {/* Mismo escape del wildcard ion-card * que PassengerDriverAndVehicleDetails
+              (ver el comentario largo ahí): este panel también declara su propio
+              fondo con --rp-surface, así que necesita rapago-trip-theme-panel. */}
           <div
+            className="rapago-trip-theme-panel"
             style={{
               background: "var(--rp-surface)",
               borderRadius: 18,
               padding: "12px",
+              color: "var(--rp-text)",
               border: "1px solid rgba(0,0,0,.06)",
             }}
           >
@@ -8600,34 +8633,34 @@ function PassengerRideCard({
             <div style={{ display: "grid", gridTemplateColumns: "20px 1fr", gap: 9, fontSize: ".84rem", lineHeight: 1.35 }}>
               {nav.passengerOriginalLat != null && nav.passengerOriginalLng != null && (
                 <>
-                  <span style={{ color: "var(--rp-info-fg)", fontSize: "1rem" }}>●</span>
+                  <span className="rp-tone-info" style={{ color: "var(--rp-info-fg)", fontSize: "1rem" }}>●</span>
                   <div>
                     <strong>Tu ubicación:</strong> punto donde estás ahora
-                    <div style={{ color: "var(--rp-muted)", fontSize: ".76rem", marginTop: 2 }}>
+                    <div className="rp-tone-muted" style={{ color: "var(--rp-muted)", fontSize: ".76rem", marginTop: 2 }}>
                       En el mapa aparece en azul. Camina hacia el punto verde recomendado.
                     </div>
                   </div>
                 </>
               )}
 
-              <span style={{ color: "var(--rp-ok-fg)", fontSize: "1rem" }}>●</span>
+              <span className="rp-tone-ok" style={{ color: "var(--rp-ok-fg)", fontSize: "1rem" }}>●</span>
               <div>
                 <strong>Recogida accesible en calle:</strong> {ride.originText}
                 {nav.pickupWalkMeters != null && nav.pickupWalkMeters > 8 && (
-                  <div style={{ color: "var(--rp-muted)", fontSize: ".76rem", marginTop: 2 }}>
+                  <div className="rp-tone-muted" style={{ color: "var(--rp-muted)", fontSize: ".76rem", marginTop: 2 }}>
                     Camina aprox. {Math.round(nav.pickupWalkMeters)} m hasta este punto para que el conductor te encuentre.
                   </div>
                 )}
               </div>
 
-              <span style={{ color: "var(--rp-err-fg)", fontSize: "1rem" }}>●</span>
+              <span className="rp-tone-err" style={{ color: "var(--rp-err-fg)", fontSize: "1rem" }}>●</span>
               <div>
                 <strong>Destino:</strong> {ride.destinationText}
               </div>
 
               {isRoundTripReturnPickupRide(ride as RideRequestData & Record<string, unknown>) && (
                 <>
-                  <span style={{ color: "var(--rp-warn-fg)", fontSize: "1rem" }}>●</span>
+                  <span className="rp-tone-warn" style={{ color: "var(--rp-warn-fg)", fontSize: "1rem" }}>●</span>
                   <div>
                     <strong>Incluido en la reserva:</strong> este tramo de regreso no se cobra nuevamente.
                   </div>
