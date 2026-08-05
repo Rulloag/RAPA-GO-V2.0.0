@@ -21,6 +21,13 @@ const ALLOWED_KLAP_SCRIPT_HOSTS = new Set([
   "pagos.pasarela.multicaja.cl",
 ]);
 
+const ALLOWED_KLAP_RECEIPT_HOSTS = new Set([
+  ...ALLOWED_KLAP_SCRIPT_HOSTS,
+  "api-pasarela-sandbox.mcdesaqa.cl",
+  "api-pasarela.multicaja.cl",
+  "api.pasarela.multicaja.cl",
+]);
+
 const ALLOWED_CARDINAL_SCRIPT_HOSTS = new Set([
   "songbirdstag.cardinalcommerce.com",
   "songbird.cardinalcommerce.com",
@@ -463,7 +470,7 @@ function isAllowedKlapReceiptUrl(rawUrl: string): boolean {
 
     return (
       url.protocol === "https:" &&
-      ALLOWED_KLAP_SCRIPT_HOSTS.has(url.hostname.toLowerCase()) &&
+      ALLOWED_KLAP_RECEIPT_HOSTS.has(url.hostname.toLowerCase()) &&
       /\/cards\/receipt(?:\/|$)/i.test(url.pathname)
     );
   } catch {
@@ -623,8 +630,33 @@ async function continueKlap3dsChallenge(
 function installKlapReceiptChallengeBridge(): void {
   if (klapReceiptChallengeBridgeInstalled) return;
 
+  const originalFetch = window.fetch.bind(window);
   const originalOpen = XMLHttpRequest.prototype.open;
   const originalSend = XMLHttpRequest.prototype.send;
+
+  window.fetch = async (...args): Promise<Response> => {
+    const response = await originalFetch(...args);
+    const input = args[0];
+    const requestUrl =
+      response.url ||
+      (typeof input === "string"
+        ? input
+        : input instanceof URL
+          ? input.toString()
+          : input.url);
+
+    if (response.ok && isAllowedKlapReceiptUrl(requestUrl)) {
+      void response
+        .clone()
+        .json()
+        .then((payload: unknown) => continueKlap3dsChallenge(payload))
+        .catch(() => {
+          // Klap y el polling del backend conservan la autoridad del pago.
+        });
+    }
+
+    return response;
+  };
 
   XMLHttpRequest.prototype.open = function (
     method: string,

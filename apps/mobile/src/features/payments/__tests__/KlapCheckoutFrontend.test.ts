@@ -121,6 +121,9 @@ describe("Klap Checkout Transparente frontend", () => {
     expect(serviceSource).toContain("await preloadKlapCardinal();");
     expect(serviceSource).toContain('data-rapago-klap-cardinal="true"');
     expect(serviceSource).toContain("installKlapReceiptChallengeBridge");
+    expect(serviceSource).toContain("ALLOWED_KLAP_RECEIPT_HOSTS");
+    expect(serviceSource).toContain("api-pasarela-sandbox.mcdesaqa.cl");
+    expect(serviceSource).toMatch(/response\s*\.\s*clone\(\)\s*\.\s*json\(\)/s);
     expect(serviceSource).toContain("SEND_TO_CHALLENGE");
     expect(serviceSource).toContain("window.Cardinal.continue(");
     expect(serviceSource).toContain('"payments.setupComplete"');
