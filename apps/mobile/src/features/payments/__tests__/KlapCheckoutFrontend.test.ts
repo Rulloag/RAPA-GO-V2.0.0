@@ -89,6 +89,14 @@ describe("Klap Checkout Transparente frontend", () => {
     expect(serviceSource).toContain('document.visibilityState !== "hidden"');
     expect(serviceSource).toContain("RAPAGO_KLAP_RECEIPT_STARTED_EVENT");
     expect(serviceSource).toContain("dispatchKlapReceiptStarted");
+    expect(serviceSource).toContain("RAPAGO_KLAP_RECEIPT_RESULT_EVENT");
+    expect(serviceSource).toContain("buildKlapReceiptResultDetail");
+    expect(serviceSource).toContain('status === 504');
+    expect(serviceSource).toContain('response.headers.get("retry-after")');
+    expect(serviceSource).toContain('this.getResponseHeader("retry-after")');
+    expect(modalSource).toContain("RapagoKlapReceiptResultDetail");
+    expect(modalSource).toContain("handleReceiptResult");
+    expect(modalSource).toContain('detail.category === "accepted"');
     expect(serviceSource).toContain("debug: false");
     expect(modalSource).toContain("RAPAGO_KLAP_RECEIPT_STARTED_EVENT");
     expect(modalSource).toContain("handleReceiptStarted");

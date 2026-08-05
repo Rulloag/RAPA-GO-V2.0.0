@@ -20,6 +20,7 @@ import {
   initializeKlapCheckoutOnce,
   KLAP_FAST_STATUS_RETRY_DELAYS_MS,
   RAPAGO_KLAP_3DS_STATE_EVENT,
+  RAPAGO_KLAP_RECEIPT_RESULT_EVENT,
   RAPAGO_KLAP_RECEIPT_STARTED_EVENT,
   isKlapPaymentApproved,
   isKlapPaymentRejected,
@@ -28,6 +29,7 @@ import {
   waitForKlapPaymentResolution,
   type PendingKlapPaymentRecord,
   type RapagoKlap3dsStateDetail,
+  type RapagoKlapReceiptResultDetail,
 } from "./klapCheckout.service.js";
 import { walletService } from "../wallet/wallet.service.js";
 
@@ -273,6 +275,37 @@ export function KlapCheckoutModal({
       window.removeEventListener(
         RAPAGO_KLAP_RECEIPT_STARTED_EVENT,
         handleReceiptStarted,
+      );
+    };
+  }, [accessToken, payment]);
+
+  useEffect(() => {
+    if (!payment || !accessToken) return undefined;
+
+    const handleReceiptResult = (event: Event): void => {
+      const detail = (
+        event as CustomEvent<RapagoKlapReceiptResultDetail>
+      ).detail;
+
+      if (!detail || detail.category === "accepted") return;
+
+      setPaymentAttemptStarted(true);
+      setProcessing(true);
+      setRejection(null);
+      setMessage(detail.message);
+
+      void verifyPaymentRef.current?.(detail.message);
+    };
+
+    window.addEventListener(
+      RAPAGO_KLAP_RECEIPT_RESULT_EVENT,
+      handleReceiptResult,
+    );
+
+    return () => {
+      window.removeEventListener(
+        RAPAGO_KLAP_RECEIPT_RESULT_EVENT,
+        handleReceiptResult,
       );
     };
   }, [accessToken, payment]);

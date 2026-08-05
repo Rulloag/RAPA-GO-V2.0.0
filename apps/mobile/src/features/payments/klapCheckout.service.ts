@@ -13,6 +13,9 @@ export const RAPAGO_KLAP_3DS_STATE_EVENT =
 export const RAPAGO_KLAP_RECEIPT_STARTED_EVENT =
   "rapago:klap-receipt-started";
 
+export const RAPAGO_KLAP_RECEIPT_RESULT_EVENT =
+  "rapago:klap-receipt-result";
+
 export const KLAP_SANDBOX_SCRIPT_URL =
   "https://pagos-pasarela-sandbox.mcdesaqa.cl/checkout-frictionless/v1/main.min.js";
 
@@ -138,6 +141,21 @@ export type RapagoKlap3dsStateDetail = {
   message: string;
 };
 
+export type RapagoKlapReceiptResultCategory =
+  | "accepted"
+  | "gateway-timeout"
+  | "rate-limited"
+  | "server-error"
+  | "network-error"
+  | "other-error";
+
+export type RapagoKlapReceiptResultDetail = {
+  status: number;
+  category: RapagoKlapReceiptResultCategory;
+  retryAfterSeconds: number | null;
+  message: string;
+};
+
 function dispatchKlap3dsState(
   detail: RapagoKlap3dsStateDetail,
 ): void {
@@ -161,6 +179,105 @@ function dispatchKlapReceiptStarted(): void {
 
   lastKlapReceiptStartedAt = now;
   window.dispatchEvent(new Event(RAPAGO_KLAP_RECEIPT_STARTED_EVENT));
+}
+
+function parseRetryAfterSeconds(value: string | null): number | null {
+  const normalized = String(value ?? "").trim();
+  if (!normalized) return null;
+
+  const numericSeconds = Number(normalized);
+  if (Number.isFinite(numericSeconds) && numericSeconds >= 0) {
+    return Math.ceil(numericSeconds);
+  }
+
+  const retryDateMs = Date.parse(normalized);
+  if (!Number.isFinite(retryDateMs)) return null;
+
+  return Math.max(0, Math.ceil((retryDateMs - Date.now()) / 1_000));
+}
+
+function buildKlapReceiptResultDetail(
+  status: number,
+  retryAfterHeader: string | null,
+): RapagoKlapReceiptResultDetail {
+  const retryAfterSeconds = parseRetryAfterSeconds(retryAfterHeader);
+  const retryMessage =
+    retryAfterSeconds != null
+      ? ` Klap solicita esperar ${retryAfterSeconds} segundos.`
+      : "";
+
+  if (status >= 200 && status < 300) {
+    return {
+      status,
+      category: "accepted",
+      retryAfterSeconds,
+      message:
+        "Klap recibió la solicitud de tarjeta. Confirmaremos el resultado real mediante el backend.",
+    };
+  }
+
+  if (status === 504) {
+    return {
+      status,
+      category: "gateway-timeout",
+      retryAfterSeconds,
+      message:
+        "El Sandbox de Klap respondió 504 Gateway Timeout. El cobro todavía no está confirmado; RAPA GO seguirá verificando el webhook y el estado del backend. No vuelvas a pagar." +
+        retryMessage,
+    };
+  }
+
+  if (status === 429) {
+    return {
+      status,
+      category: "rate-limited",
+      retryAfterSeconds,
+      message:
+        "Klap limitó temporalmente las solicitudes. El cobro todavía no está confirmado y RAPA GO seguirá verificando el backend. No vuelvas a pagar." +
+        retryMessage,
+    };
+  }
+
+  if (status >= 500) {
+    return {
+      status,
+      category: "server-error",
+      retryAfterSeconds,
+      message:
+        `Klap respondió con un error temporal ${status}. El cobro todavía no está confirmado; RAPA GO seguirá verificando el backend. No vuelvas a pagar.` +
+        retryMessage,
+    };
+  }
+
+  if (status === 0) {
+    return {
+      status,
+      category: "network-error",
+      retryAfterSeconds,
+      message:
+        "El navegador no recibió una respuesta verificable de Klap. El cobro todavía no está confirmado; RAPA GO seguirá consultando el backend. No vuelvas a pagar.",
+    };
+  }
+
+  return {
+    status,
+    category: "other-error",
+    retryAfterSeconds,
+    message:
+      `Klap respondió con estado ${status}. No declararemos el pago rechazado hasta verificar el resultado real en el backend. No vuelvas a pagar.` +
+      retryMessage,
+  };
+}
+
+function dispatchKlapReceiptResult(
+  detail: RapagoKlapReceiptResultDetail,
+): void {
+  window.dispatchEvent(
+    new CustomEvent<RapagoKlapReceiptResultDetail>(
+      RAPAGO_KLAP_RECEIPT_RESULT_EVENT,
+      { detail },
+    ),
+  );
 }
 
 function safeKlap3dsErrorMessage(error: unknown): string {
@@ -1028,8 +1145,29 @@ function installKlapReceiptChallengeBridge(): void {
       dispatchKlapReceiptStarted();
     }
 
-    const response = await originalFetch(...args);
+    let response: Response;
+
+    try {
+      response = await originalFetch(...args);
+    } catch (error) {
+      if (isAllowedKlapReceiptUrl(requestedUrl)) {
+        dispatchKlapReceiptResult(
+          buildKlapReceiptResultDetail(0, null),
+        );
+      }
+      throw error;
+    }
+
     const requestUrl = response.url || requestedUrl;
+
+    if (isAllowedKlapReceiptUrl(requestUrl)) {
+      dispatchKlapReceiptResult(
+        buildKlapReceiptResultDetail(
+          response.status,
+          response.headers.get("retry-after"),
+        ),
+      );
+    }
 
     if (response.ok && isAllowedKlapReceiptUrl(requestUrl)) {
       void response
@@ -1094,6 +1232,14 @@ function installKlapReceiptChallengeBridge(): void {
         ) {
           return;
         }
+
+        dispatchKlapReceiptResult(
+          buildKlapReceiptResultDetail(
+            this.status,
+            this.getResponseHeader("retry-after"),
+          ),
+        );
+
         if (this.status < 200 || this.status >= 300) return;
 
         let payload: unknown;
