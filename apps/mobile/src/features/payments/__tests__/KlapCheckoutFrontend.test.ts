@@ -114,12 +114,17 @@ describe("Klap Checkout Transparente frontend", () => {
     expect(rejectedHandler).not.toContain("goToTripsAfterRequest");
   });
 
-  it("deja la sesión 3DS bajo control exclusivo del SDK oficial de Klap", () => {
-    expect(serviceSource).toContain("El SDK oficial de Klap debe crear y configurar su propia sesión 3DS");
+  it("carga Cardinal como dependencia sin controlar manualmente el desafío 3DS", () => {
+    expect(serviceSource).toContain("KLAP_SANDBOX_CARDINAL_URL");
+    expect(serviceSource).toContain("KLAP_PRODUCTION_CARDINAL_URL");
+    expect(serviceSource).toContain("preloadKlapCardinal");
+    expect(serviceSource).toContain("await preloadKlapCardinal();");
+    expect(serviceSource).toContain('data-rapago-klap-cardinal="true"');
     expect(serviceSource).toContain("sdk.init({");
     expect(modalSource).toContain("initializedSdk.payOrder?.()");
-    expect(serviceSource).not.toContain("songbird");
-    expect(serviceSource).not.toContain("Cardinal");
+    expect(serviceSource).not.toContain("window.Cardinal.continue");
+    expect(serviceSource).not.toContain("Cardinal.setup");
+    expect(serviceSource).not.toContain("Cardinal.configure");
     expect(serviceSource).not.toContain("openDirectKlap3dsChallenge");
     expect(serviceSource).not.toContain("rapago-klap-3ds-overlay");
     expect(serviceSource).not.toContain("continueKlap3dsChallenge");
