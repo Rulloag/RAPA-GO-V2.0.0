@@ -7,11 +7,15 @@ import type {
 } from "./payment.provider.js";
 import {
   KlapProviderError,
+  KLAP_TRANSACTION_TYPE_AUTHORIZATION,
   type KlapConfig,
+  type KlapCustom,
   type KlapOrderRequest,
   type KlapCreateOrderValidatedResponse,
   type KlapHostedCheckoutResult,
   type KlapOrderStatusValidatedResponse,
+  type KlapCaptureOrderParams,
+  type KlapCaptureOrderResult,
 } from "./klap.types.js";
 
 const KLAP_SANDBOX_ORDERS_URL_DEFAULT =
@@ -72,6 +76,24 @@ function parseBooleanEnv(value: string | undefined, defaultValue: boolean): bool
   if (normalized === "false" || normalized === "0") return false;
   if (normalized === "true" || normalized === "1") return true;
   return defaultValue;
+}
+
+export function isKlapDeferredCaptureEnabled(): boolean {
+  return (
+    parseBooleanEnv(process.env["KLAP_DEFERRED_CAPTURE_ENABLED"], false) &&
+    parseBooleanEnv(process.env["KLAP_CAPTURE_CONTRACT_CONFIRMED"], false)
+  );
+}
+
+function parseCaptureSuccessStatuses(value: string | undefined): string[] {
+  return Array.from(
+    new Set(
+      String(value ?? "")
+        .split(",")
+        .map((status) => status.trim().toLowerCase())
+        .filter((status) => /^[a-z0-9_-]{2,64}$/.test(status)),
+    ),
+  );
 }
 
 function assertValidHttpUrl(value: string, fieldName: string): void {
@@ -138,6 +160,33 @@ function getKlapConfig(): KlapConfig {
     process.env["KLAP_SEND_IDEMPOTENCY_HEADER"],
     false,
   );
+  const deferredCaptureRequested = parseBooleanEnv(
+    process.env["KLAP_DEFERRED_CAPTURE_ENABLED"],
+    false,
+  );
+  const captureContractConfirmed = parseBooleanEnv(
+    process.env["KLAP_CAPTURE_CONTRACT_CONFIRMED"],
+    false,
+  );
+  const deferredCaptureEnabled =
+    deferredCaptureRequested && captureContractConfirmed;
+  const captureSuccessStatuses = parseCaptureSuccessStatuses(
+    process.env["KLAP_CAPTURE_SUCCESS_STATUSES"],
+  );
+
+  if (deferredCaptureRequested && !captureContractConfirmed) {
+    throw new KlapProviderError(
+      "config",
+      "Klap deferred capture is blocked until KLAP_CAPTURE_CONTRACT_CONFIRMED=true.",
+    );
+  }
+
+  if (deferredCaptureEnabled && captureSuccessStatuses.length === 0) {
+    throw new KlapProviderError(
+      "config",
+      "KLAP_CAPTURE_SUCCESS_STATUSES must list the final capture statuses confirmed by Klap.",
+    );
+  }
 
   if (!apiKey) {
     throw new KlapProviderError("config", "KLAP_API_KEY is not configured.");
@@ -173,6 +222,8 @@ function getKlapConfig(): KlapConfig {
     webhookRejectUrl,
     orderExpirationMinutes,
     sendIdempotencyHeader,
+    deferredCaptureEnabled,
+    captureSuccessStatuses,
   };
 }
 
@@ -432,6 +483,24 @@ export class KlapProvider implements PaymentProvider {
     const config = getKlapConfig();
     const expirationMinutes = String(config.orderExpirationMinutes);
 
+    const customs: KlapCustom[] = [
+      {
+        key: "tarjetas_expiration_minutes",
+        value: expirationMinutes,
+      },
+      {
+        key: "tarjetas_payment_indicator",
+        value: "typed",
+      },
+    ];
+
+    if (config.deferredCaptureEnabled) {
+      customs.push({
+        key: "transaction_type",
+        value: KLAP_TRANSACTION_TYPE_AUTHORIZATION,
+      });
+    }
+
     const body: KlapOrderRequest = {
       reference_id: params.orderId,
       generate_token: "none",
@@ -441,16 +510,7 @@ export class KlapProvider implements PaymentProvider {
       },
       methods: ["tarjetas"],
       description: sanitizeDescription(params.description),
-      customs: [
-        {
-          key: "tarjetas_expiration_minutes",
-          value: expirationMinutes,
-        },
-        {
-          key: "tarjetas_payment_indicator",
-          value: "typed",
-        },
-      ],
+      customs,
       urls: {
         return_url: config.returnUrl,
         cancel_url: config.cancelUrl,
@@ -562,4 +622,170 @@ export class KlapProvider implements PaymentProvider {
       "Klap confirm/reject use dedicated signed handlers.",
     );
   }
+
+  /**
+   * Captura experimental bloqueada por defecto. Solo opera cuando el contrato
+   * fue confirmado explícitamente y Klap devuelve un estado final permitido.
+   * Un 202, 204, body vacío o estado desconocido nunca marca el pago como cobrado.
+   */
+  async captureOrder(
+    params: KlapCaptureOrderParams,
+  ): Promise<KlapCaptureOrderResult> {
+    if (!params.orderId || !params.orderId.trim()) {
+      throw new KlapProviderError("config", "orderId is required to capture a Klap order.");
+    }
+
+    if (!Number.isInteger(params.amountClp) || params.amountClp <= 0) {
+      throw new KlapProviderError(
+        "config",
+        "amountClp must be a positive integer (CLP has no decimal subunit).",
+      );
+    }
+
+    const config = getKlapConfig();
+
+    if (!config.deferredCaptureEnabled) {
+      throw new KlapProviderError(
+        "config",
+        "Klap deferred capture is disabled until the official contract is confirmed.",
+      );
+    }
+
+    const url = `${config.ordersUrl.replace(/\/+$/, "")}/${encodeURIComponent(
+      params.orderId,
+    )}/capture`;
+
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), config.requestTimeoutMs);
+
+    let response: Response;
+
+    try {
+      response = await fetch(url, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          apikey: config.apiKey,
+        },
+        body: JSON.stringify({ amount: params.amountClp }),
+        signal: controller.signal,
+      });
+    } catch (error) {
+      if (error instanceof Error && error.name === "AbortError") {
+        throw new KlapProviderError(
+          "timeout",
+          `Klap order capture timed out after ${config.requestTimeoutMs}ms.`,
+        );
+      }
+
+      throw new KlapProviderError(
+        "network",
+        "Klap order capture failed due to a network error.",
+      );
+    } finally {
+      clearTimeout(timer);
+    }
+
+    if (!response.ok) {
+      // Cuerpo leído solo para clasificar el error de forma más precisa en
+      // los logs de auditoría; nunca se persiste ni se registra completo.
+      throw new KlapProviderError(
+        "http_rejected",
+        `Klap order capture was rejected with HTTP ${response.status}.`,
+        response.status,
+      );
+    }
+
+    if (response.status === 202 || response.status === 204) {
+      throw new KlapProviderError(
+        "invalid_response",
+        `Klap capture returned HTTP ${response.status} without a confirmed final state.`,
+        response.status,
+      );
+    }
+
+    const sanitizedResponse = await readCaptureResponseBodySafely(response);
+    const providerStatus = String(sanitizedResponse?.["status"] ?? "")
+      .trim()
+      .toLowerCase();
+
+    if (!providerStatus || !config.captureSuccessStatuses.includes(providerStatus)) {
+      throw new KlapProviderError(
+        "invalid_response",
+        "Klap capture did not return an explicitly allowed final success status.",
+        response.status,
+      );
+    }
+
+    return {
+      httpStatus: response.status,
+      sanitizedResponse,
+    };
+  }
+}
+
+/**
+ * Lee el body de una respuesta 2xx de captura de forma defensiva: un body
+ * vacío es válido (Klap no confirmó todavía el contrato exacto), y solo se
+ * conservan pares clave/valor de tipo primitivo del primer nivel — nunca
+ * objetos/arreglos anidados que pudieran llevar datos de tarjeta.
+ */
+async function readCaptureResponseBodySafely(
+  response: Response,
+): Promise<Record<string, unknown> | null> {
+  let text: string;
+
+  try {
+    text = await response.text();
+  } catch {
+    return null;
+  }
+
+  if (!text || !text.trim()) return null;
+
+  let raw: unknown;
+  try {
+    raw = JSON.parse(text);
+  } catch {
+    return null;
+  }
+
+  if (typeof raw !== "object" || raw === null || Array.isArray(raw)) {
+    return null;
+  }
+
+  const record = raw as Record<string, unknown>;
+  const allowedFields = new Map<string, string>([
+    ["status", "status"],
+    ["capture_status", "status"],
+    ["payment_status", "status"],
+    ["transaction_id", "transaction_id"],
+    ["transactionId", "transaction_id"],
+    ["authorization_code", "authorization_code"],
+    ["authorizationCode", "authorization_code"],
+    ["order_id", "order_id"],
+    ["orderId", "order_id"],
+    ["reference_id", "reference_id"],
+    ["referenceId", "reference_id"],
+    ["amount", "amount"],
+    ["currency", "currency"],
+    ["mc_code", "mc_code"],
+    ["mcCode", "mc_code"],
+  ]);
+  const sanitized: Record<string, unknown> = {};
+
+  for (const [sourceKey, targetKey] of allowedFields.entries()) {
+    if (!(sourceKey in record) || targetKey in sanitized) continue;
+    const value = record[sourceKey];
+
+    if (typeof value === "string") {
+      sanitized[targetKey] = value.slice(0, 500);
+    } else if (typeof value === "number" && Number.isFinite(value)) {
+      sanitized[targetKey] = value;
+    } else if (value === null) {
+      sanitized[targetKey] = null;
+    }
+  }
+
+  return Object.keys(sanitized).length > 0 ? sanitized : null;
 }

@@ -481,7 +481,12 @@ async function rideHasApprovedCardPayment(ride: RideRequest): Promise<boolean> {
     const { PaymentsRepository } = await import(
       "../payments/payments.repository.js"
     );
-    const payment = await new PaymentsRepository().findSuccessfulByRideId(ride.id);
+    // Captura diferida (Klap): una tarjeta autorizada ya reservó el dinero —
+    // el viaje puede avanzar sin esperar la captura final, que ocurre recién
+    // al completar el viaje (ver completeRide más abajo). Mercado Pago no
+    // tiene concepto de autorización diferida: para ese proveedor solo
+    // "success" cuenta, sin cambios de comportamiento.
+    const payment = await new PaymentsRepository().findApprovedByRideId(ride.id);
     return Boolean(payment);
   } catch {
     // Ante una falla de base de datos, cerramos el acceso por seguridad.
@@ -1355,6 +1360,61 @@ export class RidesService {
       rideReceiptsService.queueCompletedRide(completed.id),
       `No se pudo encolar el comprobante del viaje ${completed.id}`,
     );
+
+    // Captura diferida (Klap): el cierre del viaje en el backend es la única
+    // autoridad financiera que dispara el cobro real. Ni el conductor ni el
+    // pasajero controlan el monto — se resuelve enteramente dentro de
+    // captureAuthorizedKlapPayment(). Un error de captura NUNCA deshace ni
+    // reabre el viaje ya completado: se atrapa y se ignora aquí a propósito,
+    // dejando el viaje completed con el pago en
+    // capture_pending/capture_unknown/capture_failed para conciliación.
+    try {
+      const { isKlapDeferredCaptureEnabled } = await import(
+        "../payments/klap.provider.js"
+      );
+
+      if (isKlapDeferredCaptureEnabled()) {
+        const { PaymentsRepository } = await import(
+          "../payments/payments.repository.js"
+        );
+        const payment = await new PaymentsRepository().findByRideId(completed.id);
+
+        if (
+          payment &&
+          payment.provider === "klap" &&
+          payment.status === "authorized"
+        ) {
+          const { PaymentsService } = await import(
+            "../payments/payments.service.js"
+          );
+          const captureResult =
+            await new PaymentsService().captureAuthorizedKlapPayment(payment.id);
+
+          if (!captureResult.ok) {
+            const { AuditService } = await import(
+              "../audit/audit.service.js"
+            );
+            new AuditService().recordSafe({
+              actorUserId: completed.passengerUserId,
+              eventType: "payment.klap_capture_requires_attention",
+              entityType: "payment",
+              entityId: payment.id,
+              metadata: {
+                rideId: completed.id,
+                code: captureResult.code,
+                paymentStatus: payment.status,
+              },
+            });
+          }
+        }
+      }
+    } catch (error) {
+      console.error(
+        `[RAPA GO] Falló el disparo de captura Klap del viaje ${completed.id}: ${
+          error instanceof Error ? error.message.slice(0, 300) : "unknown"
+        }`,
+      );
+    }
 
     return { ok: true, ride: toResponse(completed) };
   }

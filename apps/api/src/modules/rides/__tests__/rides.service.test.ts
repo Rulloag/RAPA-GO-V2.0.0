@@ -25,6 +25,9 @@ const mockReleaseDriverAfterRide = vi.fn();
 const mockAssertDriverCanAcceptRide = vi.fn();
 
 const mockFindSuccessfulPaymentByRideId = vi.fn();
+const mockFindApprovedByRideId = vi.fn();
+const mockFindPaymentByRideId = vi.fn();
+const mockCaptureAuthorizedKlapPayment = vi.fn();
 const mockFareFindByType = vi.fn();
 const mockFareFindZoneByRoute = vi.fn();
 const mockFindReferralUse = vi.fn();
@@ -110,6 +113,14 @@ vi.mock("../../fareSettings/fareSettings.repository.js", () => ({
 vi.mock("../../payments/payments.repository.js", () => ({
   PaymentsRepository: vi.fn().mockImplementation(() => ({
     findSuccessfulByRideId: mockFindSuccessfulPaymentByRideId,
+    findApprovedByRideId: mockFindApprovedByRideId,
+    findByRideId: mockFindPaymentByRideId,
+  })),
+}));
+
+vi.mock("../../payments/payments.service.js", () => ({
+  PaymentsService: vi.fn().mockImplementation(() => ({
+    captureAuthorizedKlapPayment: mockCaptureAuthorizedKlapPayment,
   })),
 }));
 
@@ -222,6 +233,8 @@ describe("RidesService - contrato actual", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    process.env["KLAP_DEFERRED_CAPTURE_ENABLED"] = "true";
+    process.env["KLAP_CAPTURE_CONTRACT_CONFIRMED"] = "true";
 
     mockVerifyAccessToken.mockReturnValue({ sub: "user-123" });
     mockHashToken.mockReturnValue("token-hash");
@@ -235,6 +248,9 @@ describe("RidesService - contrato actual", () => {
     mockFareFindZoneByRoute.mockResolvedValue(null);
     mockFindReferralUse.mockResolvedValue(null);
     mockFindSuccessfulPaymentByRideId.mockResolvedValue(null);
+    mockFindApprovedByRideId.mockResolvedValue(null);
+    mockFindPaymentByRideId.mockResolvedValue(null);
+    mockCaptureAuthorizedKlapPayment.mockResolvedValue({ ok: true, status: "success" });
     mockFindByPassengerIdWithDriver.mockResolvedValue([]);
     mockFindByDriverId.mockResolvedValue([]);
     mockFindAvailable.mockResolvedValue([]);
@@ -560,6 +576,9 @@ describe("RidesService - contrato actual", () => {
       );
 
       mockFindSuccessfulPaymentByRideId.mockResolvedValue(null);
+    mockFindApprovedByRideId.mockResolvedValue(null);
+    mockFindPaymentByRideId.mockResolvedValue(null);
+    mockCaptureAuthorizedKlapPayment.mockResolvedValue({ ok: true, status: "success" });
 
       const result = await service.markEnRoute("token", "ride-1");
 
@@ -633,6 +652,183 @@ describe("RidesService - contrato actual", () => {
       expect(mockReleaseDriverAfterRide).toHaveBeenCalledWith(
         "driver-1",
       );
+      expect(mockCaptureAuthorizedKlapPayment).not.toHaveBeenCalled();
+    });
+
+    it("al completar un viaje Klap autorizado, dispara la captura diferida", async () => {
+      mockFindUserById.mockResolvedValue({
+        id: "driver-1",
+        role: "driver",
+      });
+
+      mockFindById.mockResolvedValue(
+        makeRide({
+          status: "in_progress",
+          driverUserId: "driver-1",
+          notes: "PaymentMethod: card\nPaymentProvider: klap",
+          paymentMethod: "card",
+        }),
+      );
+      mockFindApprovedByRideId.mockResolvedValue({ id: "payment-1", status: "authorized" });
+
+      mockComplete.mockResolvedValue(
+        makeRide({
+          status: "completed",
+          driverUserId: "driver-1",
+          completedAt: NOW,
+        }),
+      );
+
+      mockFindPaymentByRideId.mockResolvedValue({
+        id: "payment-1",
+        provider: "klap",
+        status: "authorized",
+      });
+
+      const result = await service.completeRide("token", "ride-1");
+
+      expect(result.ok).toBe(true);
+      expect(mockCaptureAuthorizedKlapPayment).toHaveBeenCalledWith("payment-1");
+    });
+
+    it("nunca dispara la captura Klap al completar un viaje en efectivo", async () => {
+      mockFindUserById.mockResolvedValue({
+        id: "driver-1",
+        role: "driver",
+      });
+
+      mockFindById.mockResolvedValue(
+        makeRide({
+          status: "in_progress",
+          driverUserId: "driver-1",
+          notes: "PaymentMethod: cash",
+        }),
+      );
+
+      mockComplete.mockResolvedValue(
+        makeRide({
+          status: "completed",
+          driverUserId: "driver-1",
+          completedAt: NOW,
+        }),
+      );
+
+      mockFindPaymentByRideId.mockResolvedValue(null);
+
+      const result = await service.completeRide("token", "ride-1");
+
+      expect(result.ok).toBe(true);
+      expect(mockCaptureAuthorizedKlapPayment).not.toHaveBeenCalled();
+    });
+
+    it("nunca dispara la captura Klap al completar un viaje pagado con Mercado Pago (success, no authorized)", async () => {
+      mockFindUserById.mockResolvedValue({
+        id: "driver-1",
+        role: "driver",
+      });
+
+      mockFindById.mockResolvedValue(
+        makeRide({
+          status: "in_progress",
+          driverUserId: "driver-1",
+          notes: "PaymentMethod: card\nPaymentProvider: mercadopago",
+          paymentMethod: "card",
+        }),
+      );
+      mockFindApprovedByRideId.mockResolvedValue({ id: "payment-2", status: "success" });
+
+      mockComplete.mockResolvedValue(
+        makeRide({
+          status: "completed",
+          driverUserId: "driver-1",
+          completedAt: NOW,
+        }),
+      );
+
+      mockFindPaymentByRideId.mockResolvedValue({
+        id: "payment-2",
+        provider: "mercadopago",
+        status: "success",
+      });
+
+      const result = await service.completeRide("token", "ride-1");
+
+      expect(result.ok).toBe(true);
+      expect(mockCaptureAuthorizedKlapPayment).not.toHaveBeenCalled();
+    });
+
+    it("un pago Klap ya success al completar el viaje no repite la captura", async () => {
+      mockFindUserById.mockResolvedValue({
+        id: "driver-1",
+        role: "driver",
+      });
+
+      mockFindById.mockResolvedValue(
+        makeRide({
+          status: "in_progress",
+          driverUserId: "driver-1",
+          notes: "PaymentMethod: card\nPaymentProvider: klap",
+          paymentMethod: "card",
+        }),
+      );
+      mockFindApprovedByRideId.mockResolvedValue({ id: "payment-3", status: "success" });
+
+      mockComplete.mockResolvedValue(
+        makeRide({
+          status: "completed",
+          driverUserId: "driver-1",
+          completedAt: NOW,
+        }),
+      );
+
+      mockFindPaymentByRideId.mockResolvedValue({
+        id: "payment-3",
+        provider: "klap",
+        status: "success",
+      });
+
+      const result = await service.completeRide("token", "ride-1");
+
+      expect(result.ok).toBe(true);
+      expect(mockCaptureAuthorizedKlapPayment).not.toHaveBeenCalled();
+    });
+
+    it("un error de captura Klap nunca deshace ni reabre el viaje ya completado", async () => {
+      mockFindUserById.mockResolvedValue({
+        id: "driver-1",
+        role: "driver",
+      });
+
+      mockFindById.mockResolvedValue(
+        makeRide({
+          status: "in_progress",
+          driverUserId: "driver-1",
+          notes: "PaymentMethod: card\nPaymentProvider: klap",
+          paymentMethod: "card",
+        }),
+      );
+      mockFindApprovedByRideId.mockResolvedValue({ id: "payment-4", status: "authorized" });
+
+      mockComplete.mockResolvedValue(
+        makeRide({
+          status: "completed",
+          driverUserId: "driver-1",
+          completedAt: NOW,
+        }),
+      );
+
+      mockFindPaymentByRideId.mockResolvedValue({
+        id: "payment-4",
+        provider: "klap",
+        status: "authorized",
+      });
+      mockCaptureAuthorizedKlapPayment.mockRejectedValue(new Error("capture blew up"));
+
+      const result = await service.completeRide("token", "ride-1");
+
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      expect(result.ride.status).toBe("completed");
     });
   });
 
@@ -767,6 +963,9 @@ describe("RidesService - contrato actual", () => {
         }),
       ]);
       mockFindSuccessfulPaymentByRideId.mockResolvedValue(null);
+    mockFindApprovedByRideId.mockResolvedValue(null);
+    mockFindPaymentByRideId.mockResolvedValue(null);
+    mockCaptureAuthorizedKlapPayment.mockResolvedValue({ ok: true, status: "success" });
 
       const result = await service.listMyRides("token");
 
