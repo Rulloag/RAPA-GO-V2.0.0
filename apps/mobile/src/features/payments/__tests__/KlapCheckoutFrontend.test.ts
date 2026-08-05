@@ -114,33 +114,18 @@ describe("Klap Checkout Transparente frontend", () => {
     expect(rejectedHandler).not.toContain("goToTripsAfterRequest");
   });
 
-  it("continúa el desafío 3DS cuando Klap responde SEND_TO_CHALLENGE", () => {
-    expect(serviceSource).toContain('"SEND_TO_CHALLENGE"');
-    expect(serviceSource).toContain('window.Cardinal.continue(');
-    expect(serviceSource).toContain('/cardinal[-_ ]?collector/i');
-    expect(serviceSource).toContain('window.getComputedStyle(frame)');
-    expect(serviceSource).toContain('rect.width > 8');
-    expect(serviceSource).toContain('"payments.setupComplete"');
-    expect(serviceSource).toContain("waitForCardinalSetupComplete");
-    expect(serviceSource).toContain("#Cardinal-Modal");
-    expect(serviceSource).toContain("2147483647");
-    expect(serviceSource).toContain("promoteCardinalChallengeLayer");
-    expect(serviceSource).toContain("revealExistingCardinalChallenge");
-    expect(serviceSource).toContain("openDirectKlap3dsChallenge");
-    expect(serviceSource).toContain('name = "creq"');
-    expect(serviceSource).toContain("rapago-klap-3ds-overlay");
-    expect(serviceSource).toContain("waitForVisibleCardinalChallenge");
-    expect(serviceSource).toContain('"cca"');
-    expect(serviceSource).toContain("AcsUrl: challenge.acsUrl");
-    expect(serviceSource).toContain("Payload: challenge.pareq");
-    expect(serviceSource).toContain("TransactionId: challenge.transactionId");
-    expect(serviceSource).toContain("/\\/cards\\/receipt");
-    expect(modalSource).toContain("continueKlap3dsChallenge(payOrderResult)");
-    expect(modalSource).toContain("KLAP_3DS_CHALLENGE_STARTED_EVENT");
-    expect(modalSource).toContain("Autenticación bancaria completada");
-    expect(modalSource).toContain("closeKlap3dsChallengeOverlay");
-    expect(serviceSource).toContain("closeKlap3dsChallengeOverlay");
-    expect(serviceSource).not.toContain("console.log");
+  it("deja la sesión 3DS bajo control exclusivo del SDK oficial de Klap", () => {
+    expect(serviceSource).toContain("El SDK oficial de Klap debe crear y configurar su propia sesión 3DS");
+    expect(serviceSource).toContain("sdk.init({");
+    expect(modalSource).toContain("initializedSdk.payOrder?.()");
+    expect(serviceSource).not.toContain("songbird");
+    expect(serviceSource).not.toContain("Cardinal");
+    expect(serviceSource).not.toContain("openDirectKlap3dsChallenge");
+    expect(serviceSource).not.toContain("rapago-klap-3ds-overlay");
+    expect(serviceSource).not.toContain("continueKlap3dsChallenge");
+    expect(serviceSource).not.toContain('name = "creq"');
+    expect(modalSource).not.toContain("KLAP_3DS_CHALLENGE_STARTED_EVENT");
+    expect(modalSource).not.toContain("closeKlap3dsChallengeOverlay");
   });
 
 });
