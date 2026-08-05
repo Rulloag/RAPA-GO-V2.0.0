@@ -73,18 +73,51 @@ ion-input::part(native)::selection {
   background: rgba(255, 255, 255, 0.25);
 }
 
-/* Dark mode support */
-@media (prefers-color-scheme: dark) {
-  :root {
-    --ion-color-primary: #4a7fad;
-    --ion-color-primary-rgb: 74, 127, 173;
-    --ion-color-primary-contrast: #ffffff;
-    --ion-color-primary-shade: #416f98;
-    --ion-color-primary-tint: #5c8cb5;
+/* ── Tema oscuro/claro por pantalla, NO por el sistema operativo ──────────
+ * Antes este bloque usaba `@media (prefers-color-scheme: dark)`, que ata las
+ * variables base de Ionic al tema del SO — totalmente independiente de
+ * `data-rapago-theme` (theme/rapagoTheme.ts), que es quien decide el tema
+ * real de cada pantalla vía `useRapagoSectionTheme`. Si el SO estaba en
+ * oscuro pero la pantalla activa estaba en claro (o al revés), quedaban
+ * superficies negras de Ionic por debajo de tokens --rp-* claros: texto
+ * negro sobre negro, tarjetas negras donde debían ser claras.
+ *
+ * Se reemplaza por selectores de atributo, igual que rapago-shell.css hace
+ * con los tokens --rp-*: `--ion-*` se define en :root con los valores claros
+ * (comportamiento por defecto para pantallas que aún no adoptan el tema) y
+ * se sobreescribe localmente según `data-rapago-theme`. Como las custom
+ * properties se heredan y un valor puesto en el propio elemento siempre
+ * gana sobre el heredado, una pantalla en modo noche queda oscura aunque
+ * <html> esté en "light", y viceversa. */
+:root {
+  --ion-background-color: #ffffff;
+  --ion-background-color-rgb: 255, 255, 255;
+  --ion-text-color: #000000;
+  --ion-text-color-rgb: 0, 0, 0;
+}
 
-    --ion-background-color: #121212;
-    --ion-background-color-rgb: 18, 18, 18;
-    --ion-text-color: #e0e0e0;
-    --ion-text-color-rgb: 224, 224, 224;
-  }
+[data-rapago-theme="dark"] {
+  --ion-color-primary: #4a7fad;
+  --ion-color-primary-rgb: 74, 127, 173;
+  --ion-color-primary-contrast: #ffffff;
+  --ion-color-primary-shade: #416f98;
+  --ion-color-primary-tint: #5c8cb5;
+
+  --ion-background-color: #121212;
+  --ion-background-color-rgb: 18, 18, 18;
+  --ion-text-color: #e0e0e0;
+  --ion-text-color-rgb: 224, 224, 224;
+}
+
+[data-rapago-theme="light"] {
+  --ion-color-primary: #1a3a5c;
+  --ion-color-primary-rgb: 26, 58, 92;
+  --ion-color-primary-contrast: #ffffff;
+  --ion-color-primary-shade: #173351;
+  --ion-color-primary-tint: #314e6c;
+
+  --ion-background-color: #ffffff;
+  --ion-background-color-rgb: 255, 255, 255;
+  --ion-text-color: #000000;
+  --ion-text-color-rgb: 0, 0, 0;
 }

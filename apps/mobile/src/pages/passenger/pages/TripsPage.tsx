@@ -7,7 +7,12 @@ IonInfiniteScroll, IonInfiniteScrollContent, IonLabel, IonModal, IonPage,
 } from "@ionic/react";
 import { useState, useCallback, useEffect, useRef, type CSSProperties } from "react";
 import { useHistory } from "react-router-dom";
-import { carOutline, refreshOutline, locationOutline } from "ionicons/icons";
+import {
+  carOutline, refreshOutline, locationOutline, warningOutline, cashOutline,
+  cardOutline, calendarOutline, flashOutline, carSportOutline, ticketOutline,
+  alertCircleOutline, star, notificationsOutline, hourglassOutline,
+  checkmarkCircle, closeCircle, businessOutline, walletOutline,
+} from "ionicons/icons";
 import { MapView } from "../../../features/maps/MapView.js";
 import { useDirectionsRoute } from "../../../features/maps/useDirectionsRoute.js";
 import type { GoogleMapInstance } from "../../../features/maps/maps.types.js";
@@ -3422,9 +3427,14 @@ function StarRatingInput({ value, onChange }: { value: number; onChange: (v: num
             fontWeight: 950,
             cursor: "pointer",
             boxShadow: s <= value ? "0 10px 24px rgba(245,158,11,.20)" : "none",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
           }}
         >
-          ★
+          {/* Icono real en vez del glifo ★, que renderiza distinto según
+              plataforma/fuente y no siempre es legible. */}
+          <IonIcon icon={star} aria-hidden="true" style={{ fontSize: "1.35rem" }} />
         </button>
       ))}
     </div>
@@ -7425,16 +7435,36 @@ function PassengerCashPaymentAfterRideCard({
           marginTop: 12,
           borderRadius: 20,
           padding: "13px 14px",
-          background: isRefund ? "#fff7db" : "#ecfdf3",
-          border: isRefund ? "1px solid rgba(210,164,58,.60)" : "1px solid rgba(34,197,94,.38)",
-          color: isRefund ? "#5f3f00" : "#14532d",
+          /* Antes background/color iban en hex fijo (#fff7db/#5f3f00,
+             #ecfdf3/#14532d): en modo noche esta tarjeta se quedaba clara
+             y desentonaba de golpe con el resto de la lista oscura. Se pasa
+             a los tokens semánticos warn/ok, que ya tienen contraparte de
+             noche y de día calculada. */
+          background: isRefund ? "var(--rp-warn-bg)" : "var(--rp-ok-bg)",
+          border: isRefund ? "1px solid var(--rp-warn-bd)" : "1px solid var(--rp-ok-bd)",
+          color: isRefund ? "var(--rp-warn-fg)" : "var(--rp-ok-fg)",
           boxShadow: "0 8px 22px rgba(0,0,0,.08)",
         }}
       >
-        <div style={{ fontWeight: 950, fontSize: ".9rem" }}>
-          {review.decision === "exact" && "✅ Pago en efectivo confirmado"}
-          {isWallet && "💚 Saldo para próximo viaje enviado a revisión"}
-          {isRefund && "🏦 Devolución bancaria enviada a revisión"}
+        <div style={{ fontWeight: 950, fontSize: ".9rem", display: "flex", alignItems: "center", gap: 7 }}>
+          {review.decision === "exact" && (
+            <>
+              <IonIcon icon={checkmarkCircle} aria-hidden="true" style={{ fontSize: "1.1rem", flexShrink: 0 }} />
+              Pago en efectivo confirmado
+            </>
+          )}
+          {isWallet && (
+            <>
+              <IonIcon icon={walletOutline} aria-hidden="true" style={{ fontSize: "1.1rem", flexShrink: 0 }} />
+              Saldo para próximo viaje enviado a revisión
+            </>
+          )}
+          {isRefund && (
+            <>
+              <IonIcon icon={businessOutline} aria-hidden="true" style={{ fontSize: "1.1rem", flexShrink: 0 }} />
+              Devolución bancaria enviada a revisión
+            </>
+          )}
         </div>
 
         <div style={{ marginTop: 5, fontSize: ".78rem", lineHeight: 1.35, fontWeight: 800 }}>
@@ -7478,7 +7508,7 @@ function PassengerCashPaymentAfterRideCard({
       }}
     >
       <div style={{ display: "flex", gap: 10, alignItems: "flex-start" }}>
-        <span style={{ fontSize: "1.35rem" }}>💵</span>
+        <IonIcon icon={cashOutline} aria-hidden="true" style={{ fontSize: "1.35rem", flexShrink: 0 }} />
         <div style={{ flex: 1 }}>
           <div style={{ fontWeight: 950, fontSize: ".95rem" }}>
             ¿Pagaste de más en efectivo?
@@ -8030,7 +8060,8 @@ function PassengerRideCard({
                 lineHeight: 1.35,
               }}
             >
-              ⏳ <strong>En espera de aprobación del pago.</strong>
+              <IonIcon icon={hourglassOutline} aria-hidden="true" style={{ verticalAlign: "-2px", marginRight: 4 }} />
+              <strong>En espera de aprobación del pago.</strong>
               <br />El proveedor de tarjeta está verificando el cobro. Apenas lo apruebe, RAPA GO enviará automáticamente la solicitud a los conductores disponibles.
             </div>
           )}
@@ -8048,7 +8079,8 @@ function PassengerRideCard({
                 lineHeight: 1.35,
               }}
             >
-              ⚠️ Tu conductor canceló el viaje. Estamos buscando un nuevo conductor disponible.
+              <IonIcon icon={warningOutline} aria-hidden="true" style={{ verticalAlign: "-2px", marginRight: 4 }} />
+              Tu conductor canceló el viaje. Estamos buscando un nuevo conductor disponible.
               <br />Tiempo buscando nuevamente: <strong>{searchingElapsedLabel}</strong>
             </div>
           )}
@@ -8057,18 +8089,24 @@ function PassengerRideCard({
             <div
               style={{
                 marginBottom: 12,
-                background: passengerDriverArrivedState.finished ? "#fff7db" : "#ecfdf5",
+                /* Antes background/color iban en hex fijo (#fff7db/#7c2d12,
+                   #ecfdf5/#064e3b): en modo noche la tarjeta se quedaba clara
+                   sobre una pantalla oscura, texto oscuro sobre fondo claro
+                   se lee bien pero desentona del resto. Se pasa a los mismos
+                   tokens warn/ok que usa el resto de avisos de esta tarjeta. */
+                background: passengerDriverArrivedState.finished ? "var(--rp-warn-bg)" : "var(--rp-ok-bg)",
                 borderRadius: 18,
                 padding: "12px",
                 border: passengerDriverArrivedState.finished
-                  ? "1px solid rgba(245,158,11,.46)"
-                  : "1px solid rgba(34,197,94,.34)",
-                color: passengerDriverArrivedState.finished ? "#7c2d12" : "#064e3b",
+                  ? "1px solid var(--rp-warn-bd)"
+                  : "1px solid var(--rp-ok-bd)",
+                color: passengerDriverArrivedState.finished ? "var(--rp-warn-fg)" : "var(--rp-ok-fg)",
                 fontWeight: 900,
                 lineHeight: 1.35,
               }}
             >
-              🚗 <strong>Tu conductor llegó.</strong>
+              <IonIcon icon={carOutline} aria-hidden="true" style={{ verticalAlign: "-2px", marginRight: 4 }} />
+              <strong>Tu conductor llegó.</strong>
               <br />
               Sal ahora al punto de recogida.
               <br />
@@ -8093,7 +8131,8 @@ function PassengerRideCard({
                 lineHeight: 1.35,
               }}
             >
-              ⚠️ <strong>{passengerNoShowNotice.title}</strong>
+              <IonIcon icon={warningOutline} aria-hidden="true" style={{ verticalAlign: "-2px", marginRight: 4 }} />
+              <strong>{passengerNoShowNotice.title}</strong>
               <br />
               {passengerNoShowNotice.body}
             </div>
@@ -8112,7 +8151,8 @@ function PassengerRideCard({
                 lineHeight: 1.35,
               }}
             >
-              ⚠️ Revision backend pendiente: <strong>{formatClp(passengerCancelledChargeClp)}</strong>.
+              <IonIcon icon={warningOutline} aria-hidden="true" style={{ verticalAlign: "-2px", marginRight: 4 }} />
+              Revision backend pendiente: <strong>{formatClp(passengerCancelledChargeClp)}</strong>.
               <br />El backend/admin debe confirmar y aplicar cualquier cobro. Esta pantalla no crea cargos locales.
               {passengerCancelledCardRefundNotice && (
                 <>
@@ -8141,16 +8181,20 @@ function PassengerRideCard({
             <div
               style={{
                 marginBottom: 12,
-                background: "linear-gradient(135deg,#fff7db,#fffaf0)",
+                /* Iba en gradiente hex fijo (#fff7db→#fffaf0): quedaba claro
+                   incluso en modo noche. Se pasa a var(--rp-warn-bg), la
+                   misma pareja tonal que usa color: var(--rp-warn-fg) abajo. */
+                background: "var(--rp-warn-bg)",
                 borderRadius: 18,
                 padding: "12px",
-                border: "1px solid rgba(210,164,58,.62)",
+                border: "1px solid var(--rp-warn-bd)",
                 color: "var(--rp-warn-fg)",
                 fontWeight: 900,
                 lineHeight: 1.35,
               }}
             >
-              💳 Pago con tarjeta.
+              <IonIcon icon={cardOutline} aria-hidden="true" style={{ verticalAlign: "-2px", marginRight: 4 }} />
+              Pago con tarjeta.
               <br />La devolución se procesa al medio de pago original mediante backend y el proveedor de tarjeta y queda sujeta a revisión administrativa. No se convierte en Beneficios. No entregues claves ni datos de tu tarjeta.
               <IonButton
                 expand="block"
@@ -8176,7 +8220,7 @@ function PassengerRideCard({
                 }}
               >
                 <div style={{ display: "flex", alignItems: "flex-start", gap: 10 }}>
-                  <span style={{ fontSize: "1.25rem" }}>📅</span>
+                  <IonIcon icon={calendarOutline} aria-hidden="true" style={{ fontSize: "1.25rem", color: "var(--rp-warn-fg)", flexShrink: 0, marginTop: 2 }} />
                   <div>
                     <div style={{ fontWeight: 950, fontSize: ".92rem" }}>
                       {isRoundTripReturnPickupRide(ride as RideRequestData & Record<string, unknown>)
@@ -8227,7 +8271,7 @@ function PassengerRideCard({
                       padding: "10px 12px",
                       borderRadius: 14,
                       background: "var(--rp-warn-bg)",
-                      border: "1px solid #e6bd52",
+                      border: "1px solid var(--rp-warn-bd)",
                       color: "var(--rp-warn-fg)",
                       fontSize: ".76rem",
                       fontWeight: 900,
@@ -8235,7 +8279,8 @@ function PassengerRideCard({
                       boxShadow: "0 4px 12px rgba(95,63,0,.08)",
                     }}
                   >
-                    ⚡ Si pasan 2 minutos sin conductor, podrás activar
+                    <IonIcon icon={flashOutline} aria-hidden="true" style={{ verticalAlign: "-2px", marginRight: 2 }} />
+                    Si pasan 2 minutos sin conductor, podrás activar
                     <strong> RapaGo más veloz</strong> por
                     <strong> +{formatClp(RAPAGO_FAST_SEARCH_FEE_CLP)}</strong>.
                   </div>
@@ -8251,9 +8296,16 @@ function PassengerRideCard({
                       overflow: "hidden",
                       borderRadius: 22,
                       padding: "16px",
+                      /* Superficie dorada fija a propósito (misma familia que
+                         --rp-surface-legacy/--rp-hero: es una tarjeta promo,
+                         no cambia con el tema). El bug estaba en el texto:
+                         color: var(--rp-warn-fg) se volvía oro claro en modo
+                         noche y quedaba oro sobre oro. Se pasa a los tokens
+                         *-legacy (siempre oscuros), pensados justo para texto
+                         sobre esta clase de superficie clara fija. */
                       background: "linear-gradient(145deg,#fffdf6 0%,#fff1b8 58%,#f4cb55 100%)",
                       border: "2px solid #d49b16",
-                      color: "var(--rp-warn-fg)",
+                      color: "var(--rp-text-legacy)",
                       boxShadow: "0 14px 30px rgba(92,62,0,.22)",
                     }}
                   >
@@ -8279,13 +8331,13 @@ function PassengerRideCard({
                           boxShadow: "0 7px 16px rgba(17,24,39,.24)",
                         }}
                       >
-                        ⚡
+                        <IonIcon icon={flashOutline} aria-hidden="true" />
                       </div>
 
                       <div style={{ minWidth: 0, flex: 1 }}>
                         <div
                           style={{
-                            color: "var(--rp-warn-fg)",
+                            color: "var(--rp-accent-legacy)",
                             fontSize: ".68rem",
                             fontWeight: 950,
                             letterSpacing: ".08em",
@@ -8298,7 +8350,7 @@ function PassengerRideCard({
                         <div
                           style={{
                             marginTop: 3,
-                            color: "var(--rp-warn-fg)",
+                            color: "var(--rp-text-legacy)",
                             fontWeight: 950,
                             fontSize: "1rem",
                             lineHeight: 1.2,
@@ -8316,7 +8368,7 @@ function PassengerRideCard({
                         borderRadius: 14,
                         background: "rgba(255,255,255,.82)",
                         border: "1px solid rgba(117,80,0,.22)",
-                        color: "var(--rp-warn-fg)",
+                        color: "var(--rp-text-legacy)",
                         fontSize: ".8rem",
                         lineHeight: 1.45,
                         fontWeight: 800,
@@ -8371,13 +8423,21 @@ function PassengerRideCard({
                           boxShadow: "0 8px 18px rgba(17,24,39,.22)",
                         }}
                       >
-                        {fastSearchBusy
-                          ? "Procesando…"
-                          : fastSearchUsesKlap
-                            ? "No disponible para Klap"
-                            : fastSearchUsesMercadoPago
-                              ? `💳 Pagar ${formatClp(RAPAGO_FAST_SEARCH_FEE_CLP)} con Mercado Pago`
-                              : `⚡ Sí, activar por ${formatClp(RAPAGO_FAST_SEARCH_FEE_CLP)}`}
+                        {fastSearchBusy ? (
+                          "Procesando…"
+                        ) : fastSearchUsesKlap ? (
+                          "No disponible para Klap"
+                        ) : fastSearchUsesMercadoPago ? (
+                          <>
+                            <IonIcon icon={cardOutline} aria-hidden="true" style={{ verticalAlign: "-2px", marginRight: 4 }} />
+                            Pagar {formatClp(RAPAGO_FAST_SEARCH_FEE_CLP)} con Mercado Pago
+                          </>
+                        ) : (
+                          <>
+                            <IonIcon icon={flashOutline} aria-hidden="true" style={{ verticalAlign: "-2px", marginRight: 4 }} />
+                            Sí, activar por {formatClp(RAPAGO_FAST_SEARCH_FEE_CLP)}
+                          </>
+                        )}
                       </button>
 
                       <button
@@ -8390,7 +8450,7 @@ function PassengerRideCard({
                         style={{
                           width: "100%",
                           minHeight: 43,
-                          border: "2px solid #6b4b00",
+                          border: "2px solid var(--rp-warn-bd)",
                           borderRadius: 14,
                           padding: "9px 14px",
                           background: "var(--rp-surface)",
@@ -8427,7 +8487,7 @@ function PassengerRideCard({
                     <div
                       style={{
                         marginTop: 10,
-                        color: "var(--rp-warn-fg)",
+                        color: "var(--rp-accent-legacy)",
                         fontSize: ".68rem",
                         fontWeight: 800,
                         lineHeight: 1.35,
@@ -8449,9 +8509,14 @@ function PassengerRideCard({
                       marginTop: 12,
                       borderRadius: 18,
                       padding: "12px 14px",
-                      background: "linear-gradient(135deg,#ecfdf3,#c9f7da)",
+                      /* Iba en gradiente hex fijo (#ecfdf3→#c9f7da) emparejado
+                         con color: var(--rp-ok-fg): en modo noche ese verde se
+                         aclara y queda verde claro sobre verde claro. Se pasa
+                         el fondo también al token var(--rp-ok-bg), que sí
+                         cambia junto con --rp-ok-fg en cada tema. */
+                      background: "var(--rp-ok-bg)",
                       color: "var(--rp-ok-fg)",
-                      border: "2px solid #38a169",
+                      border: "2px solid var(--rp-ok-bd)",
                       fontSize: ".8rem",
                       fontWeight: 900,
                       lineHeight: 1.4,
@@ -8459,7 +8524,8 @@ function PassengerRideCard({
                     }}
                   >
                     <div style={{ fontSize: ".9rem", fontWeight: 950 }}>
-                      ⚡ RapaGo más veloz activado
+                      <IonIcon icon={flashOutline} aria-hidden="true" style={{ verticalAlign: "-2px", marginRight: 4 }} />
+                      RapaGo más veloz activado
                     </div>
                     <div style={{ marginTop: 3 }}>
                       Tu solicitud tiene prioridad. Se agregan
@@ -8483,7 +8549,7 @@ function PassengerRideCard({
               }}
             >
               <div style={{ display: "flex", alignItems: "flex-start", gap: 10 }}>
-                <span style={{ fontSize: "1.25rem" }}>🚕</span>
+                <IonIcon icon={carSportOutline} aria-hidden="true" style={{ fontSize: "1.25rem", color: "var(--rp-ok-fg)", flexShrink: 0, marginTop: 2 }} />
                 <div style={{ minWidth: 0 }}>
                   <div style={{ fontWeight: 950, fontSize: ".92rem", color: "var(--rp-ok-fg)" }}>
                     Tu conductor fue asignado
@@ -8579,26 +8645,38 @@ function PassengerRideCard({
                 background: "linear-gradient(135deg,#fff9e8 0%,#f1d58a 100%)",
                 border: "1px solid rgba(210,164,58,.70)",
                 boxShadow: "0 8px 22px rgba(0,0,0,.10)",
-                color: "var(--rp-text)",
+                /* Superficie dorada fija (igual que la promo de arriba): el
+                   color usaba var(--rp-text), que en modo noche es casi
+                   blanco y quedaba ilegible sobre este fondo claro. Se pasa
+                   a --rp-text-legacy, pensado para texto oscuro fijo sobre
+                   superficies claras que no cambian con el tema. */
+                color: "var(--rp-text-legacy)",
               }}
             >
-              <div style={{ fontSize: ".72rem", fontWeight: 950, color: "var(--rp-warn-fg)", letterSpacing: ".04em" }}>
+              <div style={{ fontSize: ".72rem", fontWeight: 950, color: "var(--rp-accent-legacy)", letterSpacing: ".04em" }}>
                 MONTO A PAGAR
               </div>
               <div style={{ fontSize: "1.35rem", fontWeight: 950, lineHeight: 1.1, marginTop: 3 }}>
                 {formatClp(displayFareClp)}
               </div>
               <div style={{ marginTop: 6, fontSize: ".78rem", color: "rgba(17,17,17,.72)", fontWeight: 800 }}>
-                💵 Pago: {paymentLabel}
+                <IonIcon icon={cashOutline} aria-hidden="true" style={{ verticalAlign: "-2px", marginRight: 3 }} />
+                Pago: {paymentLabel}
               </div>
               {fastSearchFeeClp > 0 && (
-                <div style={{ marginTop: 4, fontSize: ".76rem", color: "var(--rp-ok-fg)", fontWeight: 900 }}>
-                  ⚡ RapaGo más veloz: +{formatClp(fastSearchFeeClp)} incluido en este monto.
+                /* Verde fijo (no var(--rp-ok-fg)) a propósito: esta tarjeta es
+                   una superficie clara fija en ambos temas, así que el texto
+                   necesita el valor de contraste calculado para día, no el
+                   que --rp-ok-fg toma en modo noche (más claro, ilegible aquí). */
+                <div style={{ marginTop: 4, fontSize: ".76rem", color: "#1f6347", fontWeight: 900 }}>
+                  <IonIcon icon={flashOutline} aria-hidden="true" style={{ verticalAlign: "-2px", marginRight: 3 }} />
+                  RapaGo más veloz: +{formatClp(fastSearchFeeClp)} incluido en este monto.
                 </div>
               )}
               {ridePassengerFareType && (
                 <div style={{ marginTop: 4, fontSize: ".76rem", color: "rgba(17,17,17,.72)", fontWeight: 800 }}>
-                  🎫 Tarifa aplicada: {passengerFareTypeLabel(ridePassengerFareType)}
+                  <IonIcon icon={ticketOutline} aria-hidden="true" style={{ verticalAlign: "-2px", marginRight: 3 }} />
+                  Tarifa aplicada: {passengerFareTypeLabel(ridePassengerFareType)}
                 </div>
               )}
               {fareBreakdown.ruralKm != null && fareBreakdown.ruralKm > 0 && (
@@ -8641,11 +8719,14 @@ function PassengerRideCard({
                 marginTop: 12,
                 borderRadius: 20,
                 padding: "12px",
-                background: safetyReportStatus === "problem_reported" ? "#fff1f2" : "#ecfdf5",
+                /* Antes en hex fijo: quedaba clara aunque el resto del viaje
+                   estuviera en modo noche. Se pasa a los tokens err/ok, que
+                   ya tienen la pareja bg+fg correcta para cada tema. */
+                background: safetyReportStatus === "problem_reported" ? "var(--rp-err-bg)" : "var(--rp-ok-bg)",
                 border: safetyReportStatus === "problem_reported"
-                  ? "1px solid rgba(220,38,38,.30)"
-                  : "1px solid rgba(34,197,94,.30)",
-                color: safetyReportStatus === "problem_reported" ? "#7f1d1d" : "#064e3b",
+                  ? "1px solid var(--rp-err-bd)"
+                  : "1px solid var(--rp-ok-bd)",
+                color: safetyReportStatus === "problem_reported" ? "var(--rp-err-fg)" : "var(--rp-ok-fg)",
                 fontWeight: 900,
                 lineHeight: 1.35,
               }}
@@ -8696,15 +8777,17 @@ function PassengerRideCard({
                 marginTop: 12,
                 borderRadius: 18,
                 padding: "11px 12px",
-                background: passengerDriverAcceptedState.isFree ? "#ecfdf5" : "#fff1f2",
-                border: passengerDriverAcceptedState.isFree ? "1px solid rgba(34,197,94,.28)" : "1px solid rgba(220,38,38,.28)",
-                color: passengerDriverAcceptedState.isFree ? "#064e3b" : "#7f1d1d",
+                /* Igual que el resto: hex fijo -> tokens ok/err adaptables. */
+                background: passengerDriverAcceptedState.isFree ? "var(--rp-ok-bg)" : "var(--rp-err-bg)",
+                border: passengerDriverAcceptedState.isFree ? "1px solid var(--rp-ok-bd)" : "1px solid var(--rp-err-bd)",
+                color: passengerDriverAcceptedState.isFree ? "var(--rp-ok-fg)" : "var(--rp-err-fg)",
                 fontSize: ".78rem",
                 lineHeight: 1.35,
                 fontWeight: 900,
               }}
             >
-              🚗 Conductor aceptó hace <strong>{formatPassengerElapsedTime(passengerDriverAcceptedState.elapsedMs)}</strong>.
+              <IonIcon icon={carOutline} aria-hidden="true" style={{ verticalAlign: "-2px", marginRight: 4 }} />
+              Conductor aceptó hace <strong>{formatPassengerElapsedTime(passengerDriverAcceptedState.elapsedMs)}</strong>.
               <br />
               {passengerDriverAcceptedState.isFree ? (
                 <>Cancelación gratis: <strong>{formatPassengerElapsedTime(passengerDriverAcceptedState.remainingFreeMs)}</strong> restantes.</>
@@ -8772,7 +8855,8 @@ function PassengerRideCard({
                 onClick={() => onEmergency(ride)}
                 style={{ "--border-radius": "999px", fontWeight: 950 } as CSSProperties}
               >
-                🚨 Emergencia / WhatsApp
+                <IonIcon icon={alertCircleOutline} slot="start" aria-hidden="true" />
+                Emergencia / WhatsApp
               </IonButton>
             )}
 
@@ -8783,13 +8867,15 @@ function PassengerRideCard({
                 color="warning"
                 onClick={() => onRate(ride.id)}
               >
-                ⭐ Clasificar conductor
+                <IonIcon icon={star} slot="start" aria-hidden="true" />
+                Clasificar conductor
               </IonButton>
             )}
 
             {effectiveStatus === "completed" && rated && (
-              <IonBadge color="success" style={{ fontSize: "0.72rem", padding: "4px 8px" }}>
-                ✓ Calificado
+              <IonBadge color="success" style={{ fontSize: "0.72rem", padding: "4px 8px", display: "inline-flex", alignItems: "center", gap: 4 }}>
+                <IonIcon icon={checkmarkCircle} aria-hidden="true" style={{ fontSize: "0.9rem" }} />
+                Calificado
               </IonBadge>
             )}
 
@@ -9993,7 +10079,7 @@ export default function TripsPage(): JSX.Element {
             }}
           >
             <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
-              <span style={{ color: "var(--rp-accent)", fontSize: 18, lineHeight: 1 }}>🔔</span>
+              <IonIcon icon={notificationsOutline} aria-hidden="true" style={{ color: "var(--rp-accent)", fontSize: 18, lineHeight: 1 }} />
               <span>
                 {counts.active > 0
                   ? "Tienes viajes o reservas activas. Revisa el detalle y el mapa cuando el conductor esté en camino."
@@ -10028,33 +10114,49 @@ export default function TripsPage(): JSX.Element {
       <IonContent>
         {paymentReturnMessage && (
           <IonCard
+            className="rapago-trips-notice-card"
             style={{
               margin: "12px 14px 0",
               borderRadius: 18,
+              /* Antes en hex fijo por tono: se quedaba clara aunque la
+                 pantalla estuviera en modo noche. Se pasa a los tokens
+                 semánticos ok/err/warn, ya calculados para ambos temas. */
               background:
                 paymentReturnMessage.tone === "approved"
-                  ? "#ecfdf5"
+                  ? "var(--rp-ok-bg)"
                   : paymentReturnMessage.tone === "rejected"
-                    ? "#fff1f2"
-                    : "#fff7db",
+                    ? "var(--rp-err-bg)"
+                    : "var(--rp-warn-bg)",
               color:
                 paymentReturnMessage.tone === "approved"
-                  ? "#064e3b"
+                  ? "var(--rp-ok-fg)"
                   : paymentReturnMessage.tone === "rejected"
-                    ? "#7f1d1d"
-                    : "#5f3f00",
+                    ? "var(--rp-err-fg)"
+                    : "var(--rp-warn-fg)",
               border:
                 paymentReturnMessage.tone === "approved"
-                  ? "1px solid rgba(34,197,94,.38)"
+                  ? "1px solid var(--rp-ok-bd)"
                   : paymentReturnMessage.tone === "rejected"
-                    ? "1px solid rgba(220,38,38,.35)"
-                    : "1px solid rgba(210,164,58,.65)",
+                    ? "1px solid var(--rp-err-bd)"
+                    : "1px solid var(--rp-warn-bd)",
               boxShadow: "0 10px 24px rgba(0,0,0,.12)",
             }}
           >
             <IonCardContent style={{ padding: "12px 14px" }}>
-              <div style={{ fontWeight: 950, fontSize: ".92rem" }}>
-                {paymentReturnMessage.tone === "checking" ? "⏳ " : paymentReturnMessage.tone === "approved" ? "✅ " : paymentReturnMessage.tone === "rejected" ? "❌ " : "⚠️ "}
+              <div style={{ fontWeight: 950, fontSize: ".92rem", display: "flex", alignItems: "center", gap: 6 }}>
+                <IonIcon
+                  aria-hidden="true"
+                  style={{ fontSize: "1.05rem", flexShrink: 0 }}
+                  icon={
+                    paymentReturnMessage.tone === "checking"
+                      ? hourglassOutline
+                      : paymentReturnMessage.tone === "approved"
+                        ? checkmarkCircle
+                        : paymentReturnMessage.tone === "rejected"
+                          ? closeCircle
+                          : warningOutline
+                  }
+                />
                 {paymentReturnMessage.title}
               </div>
               <div style={{ marginTop: 4, fontSize: ".8rem", lineHeight: 1.4 }}>
@@ -10103,7 +10205,7 @@ export default function TripsPage(): JSX.Element {
         )}
 
         {passengerNotice && (
-          <IonCard style={{ margin: "12px 14px 0", borderRadius: 18, background: "var(--rp-warn-bg)", color: "var(--rp-text)", border: "1px solid rgba(210,164,58,.65)", boxShadow: "0 10px 24px rgba(0,0,0,.16)" }}>
+          <IonCard className="rapago-trips-notice-card" style={{ margin: "12px 14px 0", borderRadius: 18, background: "var(--rp-warn-bg)", color: "var(--rp-text)", border: "1px solid rgba(210,164,58,.65)", boxShadow: "0 10px 24px rgba(0,0,0,.16)" }}>
             <IonCardContent style={{ padding: "12px 14px" }}>
               <div style={{ fontWeight: 950, fontSize: ".92rem" }}>{passengerNotice.title}</div>
               {/* La tarjeta usa var(--rp-warn-bg) + var(--rp-text): en noche el
@@ -10159,7 +10261,7 @@ export default function TripsPage(): JSX.Element {
         )}
 
         {!loading && filtered.length > 0 && (
-          <div style={{ display: "flex", flexDirection: "column", gap: "16px", padding: "12px 14px 18px" }}>
+          <div className="rapago-trips-list" style={{ display: "flex", flexDirection: "column", gap: "16px", padding: "12px 14px 18px" }}>
             {filtered.map((ride) => (
               <PassengerRideCard
                 key={ride.id}
@@ -10254,11 +10356,12 @@ export default function TripsPage(): JSX.Element {
                         alignItems: "center",
                         justifyContent: "center",
                         fontSize: 28,
+                        color: "#7a5715",
                         boxShadow: "0 12px 30px rgba(245,158,11,.26)",
                         flexShrink: 0,
                       }}
                     >
-                      ⭐
+                      <IonIcon icon={star} aria-hidden="true" />
                     </div>
 
                     <div style={{ flex: 1, minWidth: 0 }}>

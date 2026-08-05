@@ -31,6 +31,8 @@ import {
   useRef,
   type CSSProperties,
   type ChangeEvent,
+  type PointerEvent as ReactPointerEvent,
+  type KeyboardEvent as ReactKeyboardEvent,
 } from "react";
 import { useHistory, useLocation } from "react-router-dom";
 import {
@@ -1140,7 +1142,8 @@ function PassengerRideNoteCard({
           textTransform: "uppercase",
         }}
       >
-        <IonIcon icon={documentTextOutline} style={{ fontSize: "1em", verticalAlign: "-0.125em" }} /> Nota del pasajero
+        {/* Decorativo: el texto de al lado ya dice "Nota del pasajero". */}
+        <IonIcon icon={documentTextOutline} aria-hidden="true" style={{ fontSize: "1em", verticalAlign: "-0.125em" }} /> Nota del pasajero
       </div>
       <div
         style={{
@@ -1507,6 +1510,28 @@ function uberPanelStyle(extra?: CSSProperties): CSSProperties {
   };
 }
 
+// ── Capas del mapa de navegación (UberDriverNavigationMap) ─────────────────
+// Alto real de la hoja inferior (duración/distancia + soltar cámara/recentrar)
+// y separación mínima que deben respetar los controles flotantes por encima
+// de ella. Antes cada botón traía su propio "top" o "bottom" mágico y en
+// pantallas de conductor reales (iPhone, ~390pt de ancho) el riel derecho
+// (recalcular/navegar/silenciar), anclado desde ARRIBA, terminaba invadiendo
+// la hoja inferior, anclada desde ABAJO: a partir de cierto alto de mapa
+// ambos grupos ocupaban el mismo rectángulo. Anclar TODO desde abajo, con la
+// misma referencia, hace que la separación sea siempre la misma sin importar
+// el alto del mapa.
+const RAPAGO_NAV_SHEET_HEIGHT = 94;
+/* Franja que sigue visible con la hoja plegada del todo: el asa y su zona
+   táctil. Nunca se pliega entera, porque entonces no quedaría de dónde
+   agarrarla para volver a subirla. */
+const RAPAGO_NAV_SHEET_GRIP_H = 34;
+/* Un gesto que mueve menos que esto es una pulsación, no un arrastre. En
+   táctil, al soltar tras arrastrar también llega un `click`: sin distinguirlos
+   la hoja saltaría justo después de que el conductor la acabe de colocar. */
+const RAPAGO_NAV_SHEET_TAP_SLOP = 6;
+const RAPAGO_NAV_RAIL_GAP = 14;
+const RAPAGO_NAV_RAIL_BOTTOM = `calc(${RAPAGO_NAV_SHEET_HEIGHT}px + ${RAPAGO_NAV_RAIL_GAP}px)`;
+
 function UberDriverNavigationMap({
   ride,
   height = 360,
@@ -1519,9 +1544,177 @@ function UberDriverNavigationMap({
     notes?: string | null;
     status: string;
   };
-  height?: number;
+  // Acepta número (alto fijo en px, usado en previsualizaciones pequeñas) o
+  // "100%" (el mapa a pantalla completa de ActiveRideScreen, que reserva su
+  // alto real vía flexbox en vez de un cálculo en JS). El cálculo de cámara
+  // de más abajo necesita un número en px pase lo que pase, así que usa
+  // `heightPx` como aproximación cuando height es un string.
+  height?: number | string;
   driverUser?: unknown;
 }): JSX.Element {
+  // Alto en px para los desplazamientos de cámara (panBy). Cuando `height`
+  // es "100%" (mapa a pantalla completa) no hay forma barata de conocer el
+  // alto real desde JS sin un ResizeObserver, así que se usa una
+  // aproximación fija: el efecto es puramente cosmético (deja al conductor
+  // más abajo en el encuadre), no necesita ser exacto.
+  const heightPx = typeof height === "number" ? height : 380;
+  // Los rieles laterales (recalcular/navegar/silenciar + velocidad/informar)
+  // necesitan ~190px de alto libre por encima de la hoja inferior. En el
+  // mapa a pantalla completa (height="100%") ese espacio siempre está,
+  // porque ActiveRideScreen le cede todo el alto disponible. Pero este mismo
+  // componente también se usa como previsualización de alto fijo y chico
+  // (la tarjeta "Viaje activo" de Mis viajes, 320px): ahí, en el peor caso
+  // (banner de instrucciones expandido + aviso de fuera de Rapa Nui + GPS no
+  // listo, todos a la vez), los rieles podían terminar solapando el propio
+  // banner. En vez de adivinar ese peor caso con más números mágicos, en
+  // previsualizaciones chicas se ocultan los controles secundarios: el mapa
+  // sigue mostrando ruta, banner de instrucciones y hoja inferior (que sí
+  // caben siempre), que es toda la información que aporta una vista previa.
+  const isCompactPreview = typeof height === "number" && height < 360;
+
+  /* ── Hoja inferior plegable ──────────────────────────────────────────────
+     Mismo gesto que la hoja de Solicitar viaje (RequestRidePage): se mantiene
+     apretada y se baja. Aquí la arquitectura es distinta —allá el mapa y la
+     hoja se reparten el alto; aquí la hoja es un overlay absoluto sobre el
+     mapa— así que la magnitud no es "cuánto se lleva el mapa" sino cuántos px
+     está desplazada la hoja hacia abajo.
+
+     Se mantiene la decisión de allá de NO tener un estado "plegada" aparte:
+     una sola magnitud continua y la hoja se recorta sola al bajar. Si hubiera
+     un booleano que ocultara el contenido, la hoja seguiría reservando su
+     caja y quedaría un hueco vacío justo donde debe verse mapa. */
+  const [sheetShift, setSheetShift] = useState(0);
+  const [draggingSheet, setDraggingSheet] = useState(false);
+  const navSheetRef = useRef<HTMLDivElement | null>(null);
+
+  /* Recorrido real, MEDIDO del elemento en vez de supuesto. La hoja crece con
+     su contenido (la distancia puede ocupar una línea o dos) y con
+     `env(safe-area-inset-bottom)`, que vale distinto en cada aparato. En la
+     hoja del pasajero, suponer este tope dejaba una zona muerta al final del
+     recorrido donde el dedo seguía bajando y el panel ya no se movía; se
+     siente exactamente como "no baja más". */
+  const [sheetMaxShift, setSheetMaxShift] = useState(
+    RAPAGO_NAV_SHEET_HEIGHT - RAPAGO_NAV_SHEET_GRIP_H,
+  );
+
+  /* La última posición aplicada vive en la ref y no en el estado: al soltar hay
+     que decidir con el valor real del gesto, y el de React va un render por
+     detrás. */
+  const sheetDragRef = useRef<{
+    startY: number;
+    startShift: number;
+    shift: number;
+  } | null>(null);
+  const sheetDraggedRef = useRef(false);
+
+  const prefersReducedMotion =
+    typeof window !== "undefined" &&
+    typeof window.matchMedia === "function" &&
+    window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+  /* Mide el recorrido y lo mantiene al día: la hoja cambia de alto cuando
+     llega la distancia de la ruta, y al girar el aparato. */
+  useEffect(() => {
+    const sheet = navSheetRef.current;
+    if (isCompactPreview || !sheet || typeof ResizeObserver === "undefined") {
+      return;
+    }
+
+    function medir(): void {
+      const alto = sheet.getBoundingClientRect().height;
+      setSheetMaxShift(Math.max(0, alto - RAPAGO_NAV_SHEET_GRIP_H));
+    }
+
+    medir();
+    const observer = new ResizeObserver(medir);
+    observer.observe(sheet);
+    return () => observer.disconnect();
+  }, [isCompactPreview]);
+
+  /* Si el recorrido se acorta (llegó la distancia y la hoja encogió), una
+     posición vieja podría dejarla más abajo de lo que ahora se puede. */
+  useEffect(() => {
+    setSheetShift((actual) => Math.min(actual, sheetMaxShift));
+  }, [sheetMaxShift]);
+
+  function handleNavSheetPointerDown(
+    event: ReactPointerEvent<HTMLDivElement>,
+  ): void {
+    if (isCompactPreview) return;
+
+    event.currentTarget.setPointerCapture(event.pointerId);
+    sheetDragRef.current = {
+      startY: event.clientY,
+      startShift: sheetShift,
+      shift: sheetShift,
+    };
+    sheetDraggedRef.current = false;
+    setDraggingSheet(true);
+  }
+
+  function handleNavSheetPointerMove(
+    event: ReactPointerEvent<HTMLDivElement>,
+  ): void {
+    const drag = sheetDragRef.current;
+    if (!drag) return;
+
+    const delta = event.clientY - drag.startY;
+    if (Math.abs(delta) > RAPAGO_NAV_SHEET_TAP_SLOP) {
+      sheetDraggedRef.current = true;
+    }
+
+    const next = Math.min(
+      sheetMaxShift,
+      Math.max(0, drag.startShift + delta),
+    );
+    drag.shift = next;
+    setSheetShift(next);
+  }
+
+  function handleNavSheetPointerUp(): void {
+    const drag = sheetDragRef.current;
+    sheetDragRef.current = null;
+    setDraggingSheet(false);
+    if (!drag) return;
+
+    /* Sin arrastre real fue una pulsación: alterna entre abierta y plegada, que
+       es lo que espera quien toca el asa en vez de arrastrarla. */
+    if (!sheetDraggedRef.current) {
+      setSheetShift(drag.startShift > sheetMaxShift / 2 ? 0 : sheetMaxShift);
+      return;
+    }
+
+    /* Con arrastre, se acomoda al extremo más cercano. Conducir es una tarea a
+       una mano y con la vista en la calle: dejar la hoja a medio camino solo
+       recortaría el contenido sin dar más mapa útil. */
+    setSheetShift(drag.shift > sheetMaxShift / 2 ? sheetMaxShift : 0);
+  }
+
+  function handleNavSheetKeyDown(
+    event: ReactKeyboardEvent<HTMLButtonElement>,
+  ): void {
+    if (event.key !== "ArrowUp" && event.key !== "ArrowDown") return;
+
+    event.preventDefault();
+    /* Pasos fijos, espejo del arrastre libre: arriba abre la hoja, abajo la
+       pliega. Mismo criterio que el asa de Solicitar viaje. */
+    const paso = event.key === "ArrowUp" ? -12 : 12;
+    setSheetShift((actual) =>
+      Math.min(sheetMaxShift, Math.max(0, actual + paso)),
+    );
+  }
+
+  const navSheetOpen = sheetShift < sheetMaxShift / 2;
+
+  /* Los rieles laterales se anclan sobre la hoja, así que bajan con ella: si se
+     quedaran fijos, plegar la hoja no daría mapa útil —solo dejaría un hueco
+     entre los controles y el borde—, que es justo lo que el gesto busca. */
+  const navRailBottom = isCompactPreview
+    ? RAPAGO_NAV_RAIL_BOTTOM
+    : `calc(${RAPAGO_NAV_SHEET_HEIGHT}px + ${RAPAGO_NAV_RAIL_GAP}px - ${sheetShift}px)`;
+  const navRailTransition =
+    draggingSheet || prefersReducedMotion ? "none" : "bottom .22s ease";
+
   const mapElementRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<google.maps.Map | null>(null);
   const directionsRendererRef = useRef<google.maps.DirectionsRenderer | null>(
@@ -2038,7 +2231,7 @@ function UberDriverNavigationMap({
       // Efecto Google Maps: deja el conductor más abajo y muestra más ruta hacia adelante.
       window.setTimeout(() => {
         try {
-          map.panBy(0, Math.round(height * 0.16));
+          map.panBy(0, Math.round(heightPx * 0.16));
         } catch {
           // No bloquea la cámara si el navegador no soporta panBy en ese momento.
         }
@@ -2151,7 +2344,7 @@ function UberDriverNavigationMap({
     window.setTimeout(() => {
       try {
         if (navigationCameraLockedRef.current || force) {
-          map.panBy(0, Math.round(height * 0.14));
+          map.panBy(0, Math.round(heightPx * 0.14));
         }
       } catch {
         // No bloquea seguimiento.
@@ -2624,7 +2817,7 @@ function UberDriverNavigationMap({
           borderRadius: "22px",
           boxShadow: "var(--rp-shadow)",
           overflow: "hidden",
-          zIndex: 12,
+          zIndex: "var(--rp-z-map-panel)",
           pointerEvents: "none",
         }}
       >
@@ -2667,7 +2860,11 @@ function UberDriverNavigationMap({
             transition: "min-height .2s ease, max-height .2s ease, padding .2s ease",
           }}
         >
+          {/* Flecha/bandera de maniobra: puramente visual. La misma información
+              (hacia dónde va y por qué calle) ya se lee en el bloque de texto
+              de al lado, así que para un lector de pantalla es ruido. */}
           <div
+            aria-hidden="true"
             style={{
               fontSize: "2.25rem",
               fontWeight: 950,
@@ -2678,7 +2875,12 @@ function UberDriverNavigationMap({
             {nextInstruction?.maneuver === "arrive" ? <IonIcon icon={flagOutline} style={{ fontSize: "1em" }} /> : maneuverArrow(nextInstruction?.maneuver)}
           </div>
 
-          <div style={{ minWidth: 0 }}>
+          {/* Región viva del estado de navegación: "hacia dónde vamos" y la
+              calle cambian solo cuando cambia el tramo, así que avisar por
+              aria-live aquí sí aporta. Sin aria-atomic: cada lector anuncia
+              el fragmento que cambió (dirección o calle) en vez de repetir
+              todo el bloque cada vez. */}
+          <div aria-live="polite" style={{ minWidth: 0 }}>
             <div
               style={{
                 fontSize: ".82rem",
@@ -2707,7 +2909,12 @@ function UberDriverNavigationMap({
             >
               {nextInstruction?.street || targetLabel || "Punto de ruta"}
             </div>
+            {/* Duración/distancia se recalculan con cada punto de GPS: puestas
+                dentro de la región viva de arriba, el lector anunciaría el
+                tiempo restante varias veces por minuto. aria-live="off" las
+                saca de esa región sin sacarlas del bloque visual. */}
             <div
+              aria-live="off"
               style={{
                 marginTop: 4,
                 fontSize: ".78rem",
@@ -2724,40 +2931,59 @@ function UberDriverNavigationMap({
           </div>
         </div>
 
-        {!instructionBannerCollapsed && nextInstruction && nextInstruction.maneuver !== "arrive" && (
-          <div
-            style={{
-              background: "rgba(0, 72, 68, .92)",
-              padding: "10px 16px",
-              display: "flex",
-              alignItems: "center",
-              gap: 12,
-              minHeight: 48,
-            }}
-          >
-            <span style={{ fontSize: "1.42rem", fontWeight: 950, lineHeight: 1 }}>
-              Luego {maneuverArrow(nextInstruction.maneuver)}
-            </span>
-            <span
-              style={{
-                minWidth: 0,
-                flex: 1,
-                fontSize: ".86rem",
-                fontWeight: 800,
-                color: "rgba(255,255,255,.84)",
-                whiteSpace: "nowrap",
-                overflow: "hidden",
-                textOverflow: "ellipsis",
-              }}
-            >
-              {nextInstruction.text}
-            </span>
-          </div>
-        )}
+        {/* Vista previa del siguiente giro ("Luego ..."). El contenedor queda
+            SIEMPRE montado (se colapsa a 0 con padding/minHeight cuando no
+            aplica) en vez de aparecer y desaparecer del DOM con el `&&`: una
+            región aria-live que se crea de cero cada vez que cambia de
+            maniobra no llega a anunciarse en varios lectores de pantalla,
+            porque nunca la vieron "montada" para poder avisar del cambio. */}
+        <div
+          aria-live="polite"
+          style={{
+            background: "rgba(0, 72, 68, .92)",
+            padding:
+              !instructionBannerCollapsed && nextInstruction && nextInstruction.maneuver !== "arrive"
+                ? "10px 16px"
+                : 0,
+            display: "flex",
+            alignItems: "center",
+            gap: 12,
+            minHeight:
+              !instructionBannerCollapsed && nextInstruction && nextInstruction.maneuver !== "arrive"
+                ? 48
+                : 0,
+            overflow: "hidden",
+          }}
+        >
+          {!instructionBannerCollapsed && nextInstruction && nextInstruction.maneuver !== "arrive" && (
+            <>
+              <span style={{ fontSize: "1.42rem", fontWeight: 950, lineHeight: 1 }}>
+                Luego <span aria-hidden="true">{maneuverArrow(nextInstruction.maneuver)}</span>
+              </span>
+              <span
+                style={{
+                  minWidth: 0,
+                  flex: 1,
+                  fontSize: ".86rem",
+                  fontWeight: 800,
+                  color: "rgba(255,255,255,.84)",
+                  whiteSpace: "nowrap",
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                }}
+              >
+                {nextInstruction.text}
+              </span>
+            </>
+          )}
+        </div>
       </div>
 
       {driverOutsideRapaNui && (
         <div
+          role="status"
+          aria-live="polite"
+          className="rapago-driver-gps-chip rapago-driver-gps-chip--outside"
           style={{
             position: "absolute",
             left: "14px",
@@ -2769,7 +2995,7 @@ function UberDriverNavigationMap({
             fontSize: ".64rem",
             fontWeight: 950,
             boxShadow: "0 6px 14px rgba(0,0,0,.20)",
-            zIndex: 12,
+            zIndex: "var(--rp-z-map-panel)",
             pointerEvents: "none",
           }}
         >
@@ -2779,6 +3005,9 @@ function UberDriverNavigationMap({
 
       {!driverGpsReady && (
         <div
+          role="status"
+          aria-live="polite"
+          className="rapago-driver-gps-chip rapago-driver-gps-chip--acquiring"
           style={{
             position: "absolute",
             left: "14px",
@@ -2795,92 +3024,113 @@ function UberDriverNavigationMap({
             color: "#F6F2EC",
             fontSize: ".70rem",
             fontWeight: 900,
-            zIndex: 12,
+            zIndex: "var(--rp-z-map-panel)",
             pointerEvents: "none",
           }}
         >
-          <IonIcon icon={locationOutline} style={{ fontSize: "1em", verticalAlign: "-0.125em" }} /> Activando GPS real...
+          <IonIcon icon={locationOutline} aria-hidden="true" style={{ fontSize: "1em", verticalAlign: "-0.125em" }} /> Activando GPS real...
         </div>
       )}
 
-      {/* Botones laterales internos: ninguno abre Google Maps externo */}
-      <button
-        type="button"
-        onClick={() => {
-          calculateRouteOnce(true);
-          focusNavigationCameraInsideApp(true);
-        }}
+      {/* Rieles laterales y botón "Centrar": ocultos en previsualizaciones
+          chicas (isCompactPreview) porque no tienen alto libre garantizado
+          entre el banner de instrucciones y la hoja inferior. Ver el
+          comentario de isCompactPreview más arriba. */}
+      {!isCompactPreview && (
+      <>
+      {/* Riel derecho: acciones sobre el mapa. Ancladas desde ABAJO con la
+          misma referencia que la hoja inferior (RAPAGO_NAV_RAIL_BOTTOM), no
+          desde arriba: así nunca invaden la hoja sin importar el alto real
+          del mapa en el teléfono del conductor. El gap del flex reemplaza los
+          "top" sueltos de 130/194/264px que antes podían solaparse entre sí
+          y con la hoja en pantallas más bajas. También quedan dentro del
+          margen seguro lateral (env(safe-area-inset-right)), en vez de un
+          "right:14px" fijo que en algunos recortes de viewport quedaba justo
+          en el borde. */}
+      <div
         style={{
           position: "absolute",
-          right: "14px",
-          top: "130px",
-          width: 52,
-          height: 52,
-          borderRadius: 999,
-          border: "0",
-          background: "rgba(255,255,255,.96)",
-          color: "#111111",
-          boxShadow: "var(--rp-shadow)",
-          fontSize: 22,
+          right: "calc(14px + env(safe-area-inset-right, 0px))",
+          bottom: navRailBottom,
+          transition: navRailTransition,
           display: "flex",
+          flexDirection: "column",
           alignItems: "center",
-          justifyContent: "center",
-          zIndex: 14,
+          gap: 12,
+          zIndex: "var(--rp-z-map-controls)",
         }}
-        aria-label="Recalcular ruta"
       >
-        <IonIcon icon={refreshOutline} />
-      </button>
+        <button
+          type="button"
+          onClick={() => {
+            calculateRouteOnce(true);
+            focusNavigationCameraInsideApp(true);
+          }}
+          style={{
+            width: 52,
+            height: 52,
+            borderRadius: 999,
+            border: "1px solid var(--rp-border-c)",
+            background: "var(--rp-surface)",
+            color: "var(--rp-icon-fg)",
+            boxShadow: "var(--rp-shadow)",
+            fontSize: 22,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+          aria-label="Recalcular ruta"
+        >
+          <IonIcon icon={refreshOutline} aria-hidden="true" />
+        </button>
 
-      <button
-        type="button"
-        onClick={openExternalNavigationToTarget}
-        style={{
-          position: "absolute",
-          right: "14px",
-          top: "194px",
-          width: 58,
-          height: 58,
-          borderRadius: 999,
-          border: "0",
-          background: "#00a884",
-          color: "#ffffff",
-          boxShadow: "0 12px 28px rgba(0,0,0,.42)",
-          fontSize: 25,
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          zIndex: 14,
-        }}
-        aria-label="Acercar mapa y seguir ruta dentro de Rapa Go"
-      >
-        <IonIcon icon={navigateOutline} />
-      </button>
+        <button
+          type="button"
+          onClick={openExternalNavigationToTarget}
+          style={{
+            width: 58,
+            height: 58,
+            borderRadius: 999,
+            border: "1px solid rgba(255,255,255,.25)",
+            background: "#00a884",
+            color: "#ffffff",
+            boxShadow: "0 12px 28px rgba(0,0,0,.42)",
+            fontSize: 25,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+          aria-label="Acercar mapa y seguir ruta dentro de Rapa Go"
+        >
+          <IonIcon icon={navigateOutline} aria-hidden="true" />
+        </button>
 
-      <button
-        type="button"
-        onClick={() => setMapVoiceMuted((current) => !current)}
-        style={{
-          position: "absolute",
-          right: "14px",
-          top: "264px",
-          width: 52,
-          height: 52,
-          borderRadius: 999,
-          border: "0",
-          background: "rgba(255,255,255,.96)",
-          color: "#111111",
-          boxShadow: "var(--rp-shadow)",
-          fontSize: 21,
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          zIndex: 14,
-        }}
-        aria-label={mapVoiceMuted ? "Indicaciones visuales sin voz" : "Voz activada"}
-      >
-        {mapVoiceMuted ? <IonIcon icon={volumeMuteOutline} /> : <IonIcon icon={volumeHighOutline} />}
-      </button>
+        <button
+          type="button"
+          onClick={() => setMapVoiceMuted((current) => !current)}
+          style={{
+            width: 52,
+            height: 52,
+            borderRadius: 999,
+            border: "1px solid var(--rp-border-c)",
+            background: "var(--rp-surface)",
+            color: "var(--rp-icon-fg)",
+            boxShadow: "var(--rp-shadow)",
+            fontSize: 21,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+          /* Criterio de nombre para botones interruptor en toda esta pantalla:
+             el aria-label describe la ACCIÓN que se ejecuta al tocar (mismo
+             criterio que el botón de modo día/noche del encabezado), no el
+             estado actual. Antes decía "Voz activada"/"Indicaciones visuales
+             sin voz" -describiendo el estado-, inconsistente con el resto. */
+          aria-label={mapVoiceMuted ? "Activar voz de las indicaciones" : "Silenciar voz de las indicaciones"}
+        >
+          {mapVoiceMuted ? <IonIcon icon={volumeMuteOutline} aria-hidden="true" /> : <IonIcon icon={volumeHighOutline} aria-hidden="true" />}
+        </button>
+      </div>
 
       {!isNavigationCameraLocked && (
         <button
@@ -2888,88 +3138,183 @@ function UberDriverNavigationMap({
           onClick={() => focusNavigationCameraInsideApp(true)}
           style={{
             position: "absolute",
-            left: "18px",
-            bottom: "114px",
-            border: "0",
+            left: "50%",
+            transform: "translateX(-50%)",
+            bottom: navRailBottom,
+            transition: navRailTransition,
+            border: "1px solid var(--rp-border-c)",
             borderRadius: 999,
-            background: "rgba(255,255,255,.96)",
-            color: "#00796B",
-            padding: "10px 14px",
+            background: "var(--rp-surface)",
+            color: "var(--rp-ok-fg)",
+            padding: "10px 16px",
+            display: "flex",
+            alignItems: "center",
+            gap: 6,
+            minHeight: 44,
             fontSize: ".78rem",
             fontWeight: 950,
-            boxShadow: "0 10px 26px rgba(0,0,0,.20)",
-            zIndex: 14,
+            boxShadow: "var(--rp-shadow)",
+            zIndex: "var(--rp-z-map-controls)",
           }}
         >
-          △ Centrar
+          <IonIcon icon={navigateOutline} aria-hidden="true" style={{ fontSize: "1.1em" }} /> Centrar
         </button>
       )}
 
+      {/* Riel izquierdo: informaci\u00F3n pasiva (velocidad, aviso). No es
+          interactivo (pointerEvents:none), as\u00ED que vive en su propia columna
+          con gap real en vez de compartir esquina con los botones de acci\u00F3n
+          del riel derecho. Antes "Informar" viv\u00EDa a la DERECHA, en la misma
+          esquina que el bot\u00F3n de silenciar, y uno tapaba el final del otro. */}
       <div
         style={{
           position: "absolute",
-          left: "14px",
-          bottom: "104px",
-          width: 66,
-          height: 66,
-          borderRadius: 999,
-          background: "rgba(255,255,255,.96)",
-          color: "#111",
-          boxShadow: "var(--rp-shadow)",
+          left: "calc(14px + env(safe-area-inset-left, 0px))",
+          bottom: navRailBottom,
+          transition: navRailTransition,
           display: "flex",
           flexDirection: "column",
-          alignItems: "center",
-          justifyContent: "center",
-          zIndex: 12,
-          fontWeight: 950,
-          pointerEvents: "none",
+          alignItems: "flex-start",
+          gap: 10,
+          zIndex: "var(--rp-z-map-panel)",
         }}
       >
-        <div style={{ fontSize: "1rem", lineHeight: 1 }}>
-          {speedKmh == null ? "--" : speedKmh}
+        <div
+          style={{
+            width: 62,
+            height: 62,
+            borderRadius: 999,
+            background: "var(--rp-surface)",
+            border: "1px solid var(--rp-border-c)",
+            color: "var(--rp-text)",
+            boxShadow: "var(--rp-shadow)",
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+            justifyContent: "center",
+            fontWeight: 950,
+            pointerEvents: "none",
+          }}
+        >
+          <div style={{ fontSize: "1rem", lineHeight: 1 }}>
+            {speedKmh == null ? "--" : speedKmh}
+          </div>
+          <div style={{ fontSize: ".64rem", lineHeight: 1.1, color: "var(--rp-muted)" }}>km/h</div>
         </div>
-        <div style={{ fontSize: ".68rem", lineHeight: 1.1 }}>km/h</div>
-      </div>
 
-      <div
-        style={{
-          position: "absolute",
-          right: "14px",
-          bottom: "104px",
-          border: "0",
-          borderRadius: 999,
-          background: "rgba(255,255,255,.96)",
-          color: "#6B4A13",
-          padding: "12px 15px",
-          boxShadow: "var(--rp-shadow)",
-          zIndex: 12,
-          fontSize: ".86rem",
-          fontWeight: 900,
-          pointerEvents: "none",
-        }}
-      >
-        {"\u26A0"} Informar
+        <div
+          style={{
+            border: "1px solid var(--rp-warn-bd)",
+            borderRadius: 999,
+            background: "var(--rp-surface)",
+            color: "var(--rp-warn-fg)",
+            padding: "10px 13px",
+            boxShadow: "var(--rp-shadow)",
+            fontSize: ".78rem",
+            fontWeight: 900,
+            whiteSpace: "nowrap",
+            pointerEvents: "none",
+          }}
+        >
+          <span aria-hidden="true">{"\u26A0"}</span> Informar
+        </div>
       </div>
+      </>
+      )}
 
-      {/* Hoja inferior estilo navegación */}
+      {/* Hoja inferior estilo navegación. Usa tokens --rp-* (no blanco fijo)
+          para que siga data-rapago-theme: antes quedaba siempre blanca,
+          pegada contra el panel de estado siempre oscuro que va debajo del
+          mapa (uberPanelStyle) y contra el resto de la pantalla en modo
+          noche, con un corte claro/oscuro muy visible. */}
       <div
+        ref={navSheetRef}
         style={{
           position: "absolute",
           left: 0,
           right: 0,
           bottom: 0,
-          background: "rgba(255,255,255,.98)",
-          color: "#111111",
+          background: "var(--rp-surface)",
+          color: "var(--rp-text)",
+          borderTop: "1px solid var(--rp-border-c)",
           borderRadius: "26px 26px 0 0",
-          minHeight: 94,
+          minHeight: RAPAGO_NAV_SHEET_HEIGHT,
           boxShadow: "0 -12px 34px rgba(0,0,0,.24)",
-          zIndex: 13,
-          display: "grid",
-          gridTemplateColumns: "76px 1fr 76px",
-          alignItems: "center",
-          padding: "14px 12px 12px",
+          zIndex: "var(--rp-z-map-sheet)",
+          padding: "0 12px 12px",
+          transform: `translateY(${sheetShift}px)`,
+          /* Sin transición mientras se arrastra: el dedo ya marca el ritmo y
+             animar encima se siente como retraso. */
+          transition:
+            draggingSheet || prefersReducedMotion
+              ? "none"
+              : "transform .22s ease",
         }}
       >
+        {/* Asa. Los handlers de puntero van en la franja entera y no solo en el
+            botón, para que el gesto se agarre con el pulgar sin apuntar. El
+            botón de dentro es el que da el nombre accesible y la ruta por
+            teclado. `touchAction: none` evita que el navegador interprete el
+            arrastre vertical como desplazamiento de la página. */}
+        {!isCompactPreview && (
+          <div
+            onPointerDown={handleNavSheetPointerDown}
+            onPointerMove={handleNavSheetPointerMove}
+            onPointerUp={handleNavSheetPointerUp}
+            onPointerCancel={handleNavSheetPointerUp}
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              height: RAPAGO_NAV_SHEET_GRIP_H,
+              touchAction: "none",
+              cursor: draggingSheet ? "grabbing" : "grab",
+            }}
+          >
+            <button
+              type="button"
+              aria-expanded={navSheetOpen}
+              aria-label={
+                navSheetOpen
+                  ? "Plegar el panel de ruta y ver más mapa. También puedes arrastrar esta barra."
+                  : "Mostrar el panel de ruta. También puedes arrastrar esta barra."
+              }
+              onKeyDown={handleNavSheetKeyDown}
+              style={{
+                /* Se ve como una barrita fina, pero el objetivo táctil ocupa
+                   los 34px de alto de la franja: se agranda con padding en vez
+                   de engordar la barra. */
+                border: "none",
+                background: "transparent",
+                padding: "12px 22px",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                cursor: "inherit",
+              }}
+            >
+              <span
+                aria-hidden="true"
+                style={{
+                  display: "block",
+                  width: 44,
+                  height: 5,
+                  borderRadius: 999,
+                  background: "var(--rp-border-c)",
+                }}
+              />
+            </button>
+          </div>
+        )}
+
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "76px 1fr 76px",
+            alignItems: "center",
+            paddingTop: isCompactPreview ? 14 : 0,
+          }}
+        >
         <button
           type="button"
           onClick={() => updateNavigationCameraLock(false)}
@@ -2977,9 +3322,9 @@ function UberDriverNavigationMap({
             width: 58,
             height: 58,
             borderRadius: 999,
-            border: "2px solid rgba(0,0,0,.16)",
-            background: "#ffffff",
-            color: "#444",
+            border: "1px solid var(--rp-border-c)",
+            background: "var(--rp-field-bg)",
+            color: "var(--rp-icon-fg)",
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
@@ -2988,7 +3333,7 @@ function UberDriverNavigationMap({
           }}
           aria-label="Soltar seguimiento de cámara"
         >
-          <IonIcon icon={closeOutline} />
+          <IonIcon icon={closeOutline} aria-hidden="true" />
         </button>
 
         <div style={{ textAlign: "center", minWidth: 0 }}>
@@ -3002,10 +3347,14 @@ function UberDriverNavigationMap({
           >
             {routeInfo?.duration || "--"}
           </div>
+          {/* Solo duración/distancia: el destino (targetLabel) ya aparece en
+              el banner superior y en el panel de estado bajo el mapa.
+              Repetirlo una tercera vez aquí solo restaba el poco alto
+              vertical disponible en un teléfono. */}
           <div
             style={{
               marginTop: 6,
-              color: "#70757A",
+              color: "var(--rp-muted)",
               fontSize: ".92rem",
               fontWeight: 820,
               whiteSpace: "nowrap",
@@ -3014,7 +3363,6 @@ function UberDriverNavigationMap({
             }}
           >
             {routeInfo?.distance || "Calculando distancia"}
-            {targetLabel ? ` · ${targetLabel}` : ""}
           </div>
         </div>
 
@@ -3028,9 +3376,9 @@ function UberDriverNavigationMap({
             width: 58,
             height: 58,
             borderRadius: 999,
-            border: "2px solid rgba(0,0,0,.16)",
-            background: "#ffffff",
-            color: "#555",
+            border: "1px solid var(--rp-border-c)",
+            background: "var(--rp-field-bg)",
+            color: "var(--rp-icon-fg)",
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
@@ -3039,12 +3387,20 @@ function UberDriverNavigationMap({
           }}
           aria-label="Recentrar ruta"
         >
-          <IonIcon icon={navigateOutline} />
+          <IonIcon icon={navigateOutline} aria-hidden="true" />
         </button>
+        </div>
       </div>
 
+      {/* Único caso de la pantalla de mapa que corta la navegación de verdad
+          (el GPS falló y no hay ruta que seguir): role="alert" -implícito
+          aria-live="assertive"- es a propósito el único assertive de este
+          componente. El resto de avisos usa "polite"/"status" para no
+          interrumpir al conductor a cada rato. */}
       {mapError && (
         <div
+          role="alert"
+          className="active-ride-map-error"
           style={{
             position: "absolute",
             left: 14,
@@ -3061,7 +3417,7 @@ function UberDriverNavigationMap({
             whiteSpace: "nowrap",
             overflow: "hidden",
             textOverflow: "ellipsis",
-            zIndex: 14,
+            zIndex: "var(--rp-z-map-alert)",
           }}
         >
           {mapError}
@@ -4356,7 +4712,7 @@ function DriverAvailabilityControl({
           aria-pressed={isAvailable}
           disabled={disabled}
         >
-          <IonIcon icon={checkmarkCircleOutline} />
+          <IonIcon icon={checkmarkCircleOutline} aria-hidden="true" />
           Disponible
         </button>
 
@@ -4371,7 +4727,7 @@ function DriverAvailabilityControl({
           aria-pressed={!isAvailable}
           disabled={disabled}
         >
-          <IonIcon icon={closeOutline} />
+          <IonIcon icon={closeOutline} aria-hidden="true" />
           No disponible
         </button>
       </div>
@@ -7832,7 +8188,9 @@ export function DriverHomePage(): JSX.Element {
                 >
                   <IonCardContent>
                     <div className="rapago-driver-quick-top">
-                      <span className="rapago-home-quick-icon">
+                      {/* Decorativo: el título de la tarjeta (card.title, abajo)
+                          ya dice de qué acceso se trata. */}
+                      <span className="rapago-home-quick-icon" aria-hidden="true">
                         <IonIcon icon={card.icon} />
                       </span>
                       {card.badge != null && (
@@ -9625,7 +9983,7 @@ function DriverFastSearchBadge({
               color: isCard ? "#1d4ed8" : "#805900",
             }}
           >
-            <IonIcon icon={flashOutline} style={{ fontSize: "1em", verticalAlign: "-0.125em" }} /> RapaGo más veloz
+            <IonIcon icon={flashOutline} aria-hidden="true" style={{ fontSize: "1em", verticalAlign: "-0.125em" }} /> RapaGo más veloz
           </div>
           <div
             style={{
@@ -9671,11 +10029,11 @@ function DriverFastSearchBadge({
         <span>
           {isCard ? (
             <>
-              <IonIcon icon={checkmarkCircleOutline} style={{ fontSize: "1em", verticalAlign: "-0.125em" }} /> Recargo pagado con Mercado Pago. No cobrar efectivo.
+              <IonIcon icon={checkmarkCircleOutline} aria-hidden="true" style={{ fontSize: "1em", verticalAlign: "-0.125em" }} /> Recargo pagado con Mercado Pago. No cobrar efectivo.
             </>
           ) : (
             <>
-              <IonIcon icon={cashOutline} style={{ fontSize: "1em", verticalAlign: "-0.125em" }} /> Cobrar el total actualizado en efectivo.
+              <IonIcon icon={cashOutline} aria-hidden="true" style={{ fontSize: "1em", verticalAlign: "-0.125em" }} /> Cobrar el total actualizado en efectivo.
             </>
           )}
         </span>
@@ -10919,7 +11277,7 @@ function DriverCashCloseRideOverlay({
       style={{
         position: "fixed",
         inset: 0,
-        zIndex: 2147483000,
+        zIndex: "var(--rp-z-modal)",
         background: "rgba(0,0,0,.62)",
         display: "flex",
         alignItems: "flex-start",
@@ -10964,6 +11322,9 @@ function DriverCashCloseRideOverlay({
         }
       `}</style>
       <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="rapago-driver-cash-close-title"
         style={{
           width: "min(560px, calc(100vw - 16px))",
           maxHeight: "calc(100dvh - 108px)",
@@ -10985,7 +11346,7 @@ function DriverCashCloseRideOverlay({
             borderRadius: "24px 24px 0 0",
           }}
         >
-          <div style={{ fontSize: "1.05rem", fontWeight: 950 }}>
+          <div id="rapago-driver-cash-close-title" style={{ fontSize: "1.05rem", fontWeight: 950 }}>
             Cierre de carrera
           </div>
           <div style={{ marginTop: 3, fontSize: ".78rem", fontWeight: 800, opacity: .92 }}>
@@ -11055,7 +11416,7 @@ function DriverCashCloseRideOverlay({
               }}
             >
               <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 9 }}>
-                <IonIcon icon={cashOutline} style={{ color: "#166534", fontSize: 24 }} />
+                <IonIcon icon={cashOutline} aria-hidden="true" style={{ color: "#166534", fontSize: 24 }} />
                 <div>
                   <div style={{ fontWeight: 950 }}>Pago en efectivo</div>
                   <div style={{ fontSize: ".74rem", color: "#555", fontWeight: 800 }}>
@@ -12484,7 +12845,7 @@ export function DriverGlobalRideAlert(): JSX.Element | null {
         style={{
           position: "fixed",
           inset: 0,
-          zIndex: 99999,
+          zIndex: "var(--rp-z-above-tabbar)",
           background: "rgba(0,0,0,.58)",
           display: "flex",
           alignItems: "flex-end",
@@ -12494,6 +12855,9 @@ export function DriverGlobalRideAlert(): JSX.Element | null {
         }}
       >
         <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="rapago-driver-scheduled-alert-title"
           style={{
             width: "100%",
             maxWidth: 460,
@@ -12519,6 +12883,7 @@ export function DriverGlobalRideAlert(): JSX.Element | null {
           >
             <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
               <div
+                aria-hidden="true"
                 style={{
                   width: 48,
                   height: 48,
@@ -12535,7 +12900,7 @@ export function DriverGlobalRideAlert(): JSX.Element | null {
               </div>
 
               <div>
-                <div style={{ fontSize: "1.1rem", fontWeight: 950, lineHeight: 1.1 }}>
+                <div id="rapago-driver-scheduled-alert-title" style={{ fontSize: "1.1rem", fontWeight: 950, lineHeight: 1.1 }}>
                   Viaje agendado listo
                 </div>
                 <div style={{ fontSize: ".78rem", opacity: 0.86, marginTop: 3 }}>
@@ -12548,6 +12913,7 @@ export function DriverGlobalRideAlert(): JSX.Element | null {
               fill="clear"
               color="light"
               onClick={() => dismissScheduledReservationAlert(ride)}
+              aria-label="Cerrar aviso de viaje agendado"
               style={{ "--border-radius": "999px" } as CSSProperties}
             >
               <IonIcon icon={closeOutline} slot="icon-only" />
@@ -12557,7 +12923,7 @@ export function DriverGlobalRideAlert(): JSX.Element | null {
           <div style={{ padding: "18px" }}>
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 14 }}>
               <IonChip color="warning" style={{ fontWeight: 950 }}>
-                <IonIcon icon={calendarOutline} style={{ fontSize: "1em" }} /> Reserva asignada
+                <IonIcon icon={calendarOutline} aria-hidden="true" style={{ fontSize: "1em" }} /> Reserva asignada
               </IonChip>
               <IonChip color="success" style={{ fontWeight: 950 }}>
                 {vehicleEmoji} {vehicleLabel}
@@ -12696,7 +13062,7 @@ export function DriverGlobalRideAlert(): JSX.Element | null {
       style={{
         position: "fixed",
         inset: 0,
-        zIndex: 99999,
+        zIndex: "var(--rp-z-above-tabbar)",
         background: "rgba(0,0,0,.58)",
         display: "flex",
         alignItems: "flex-end",
@@ -12706,6 +13072,9 @@ export function DriverGlobalRideAlert(): JSX.Element | null {
       }}
     >
       <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="rapago-driver-ride-alert-title"
         style={{
           width: "100%",
           maxWidth: 440,
@@ -12735,6 +13104,7 @@ export function DriverGlobalRideAlert(): JSX.Element | null {
         >
           <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
             <div
+              aria-hidden="true"
               style={{
                 width: 48,
                 height: 48,
@@ -12754,6 +13124,7 @@ export function DriverGlobalRideAlert(): JSX.Element | null {
 
             <div>
               <div
+                id="rapago-driver-ride-alert-title"
                 style={{ fontSize: "1.1rem", fontWeight: 950, lineHeight: 1.1 }}
               >
                 {isNextServiceAlert ? "Nuevo servicio para continuar" : "Nueva solicitud de viaje"}
@@ -12770,6 +13141,7 @@ export function DriverGlobalRideAlert(): JSX.Element | null {
             fill="clear"
             color="light"
             onClick={() => dismissRideAlert(rideAlert.id)}
+            aria-label="Cerrar alerta de viaje"
             style={{ "--border-radius": "999px" } as CSSProperties}
           >
             <IonIcon icon={closeOutline} slot="icon-only" />
@@ -12786,7 +13158,7 @@ export function DriverGlobalRideAlert(): JSX.Element | null {
             }}
           >
             <IonChip color="success" style={{ fontWeight: 950 }}>
-              <IonIcon icon={volumeHighOutline} />
+              <IonIcon icon={volumeHighOutline} aria-hidden="true" />
               <IonLabel>Alerta activa</IonLabel>
             </IonChip>
             <IonChip color="warning" style={{ fontWeight: 950 }}>
@@ -14721,16 +15093,31 @@ La reserva fue retirada. No continúes hacia la recogida.`,
         style={{
           position: "fixed",
           inset: 0,
-          zIndex: 9999,
+          // Antes: 9999, el MISMO z-index que la tab bar flotante
+          // (global.css:1699, ion-tab-bar, position:fixed). Con z-index
+          // empatado, el orden de pintado lo decide el orden en el DOM, y la
+          // tab bar se monta DESPUÉS del contenido de la ruta (RoleLayout.tsx
+          // pone <IonTabBar> luego de <IonRouterOutlet>), así que podía
+          // pintarse encima de esta alerta y tapar sus botones Aceptar/
+          // Rechazar — la interacción más crítica de toda la app del
+          // conductor. Ver --rp-z-above-tabbar en driver.css.
+          zIndex: "var(--rp-z-above-tabbar)",
           background: "rgba(0,0,0,.58)",
           display: "flex",
           alignItems: "flex-end",
           justifyContent: "center",
-          padding: "18px",
+          // Antes solo "18px": sin margen para el "home indicator" del
+          // iPhone ni para la propia tab bar (que ahora queda por debajo,
+          // pero no hace daño reservarle el mismo aire que a las otras dos
+          // alertas de pantalla completa de este archivo).
+          padding: "18px 18px calc(18px + env(safe-area-inset-bottom, 0px)) 18px",
           pointerEvents: "auto",
         }}
       >
         <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="rapago-driver-request-alert-title"
           style={{
             width: "100%",
             maxWidth: 440,
@@ -14755,6 +15142,7 @@ La reserva fue retirada. No continúes hacia la recogida.`,
           >
             <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
               <div
+                aria-hidden="true"
                 style={{
                   width: 46,
                   height: 46,
@@ -14774,6 +15162,7 @@ La reserva fue retirada. No continúes hacia la recogida.`,
 
               <div>
                 <div
+                  id="rapago-driver-request-alert-title"
                   style={{
                     fontSize: "1.08rem",
                     fontWeight: 950,
@@ -14795,6 +15184,7 @@ La reserva fue retirada. No continúes hacia la recogida.`,
               fill="clear"
               color="light"
               onClick={() => stopRideRequestAlert(true)}
+              aria-label="Cerrar alerta de viaje"
               style={{ "--border-radius": "999px" } as CSSProperties}
             >
               <IonIcon icon={closeOutline} slot="icon-only" />
@@ -14811,7 +15201,7 @@ La reserva fue retirada. No continúes hacia la recogida.`,
               }}
             >
               <IonChip color="success" style={{ fontWeight: 950 }}>
-                <IonIcon icon={volumeHighOutline} />
+                <IonIcon icon={volumeHighOutline} aria-hidden="true" />
                 <IonLabel>Sonando</IonLabel>
               </IonChip>
               <IonChip color="warning" style={{ fontWeight: 950 }}>
@@ -15041,7 +15431,7 @@ La reserva fue retirada. No continúes hacia la recogida.`,
                   marginBottom: 10,
                 }}
               >
-                <IonIcon icon={calendarOutline} style={{ fontSize: "1em" }} />Viaje agendado asignado
+                <IonIcon icon={calendarOutline} aria-hidden="true" style={{ fontSize: "1em" }} />Viaje agendado asignado
               </div>
 
               <div style={{ fontWeight: 950, fontSize: "1.12rem", lineHeight: 1.15 }}>
@@ -15240,7 +15630,7 @@ La reserva fue retirada. No continúes hacia la recogida.`,
           {readyToStart ? (
             <div style={{ marginTop: 12 }}>
               <div style={{ marginBottom: 10, borderRadius: 16, background: "var(--rp-ok-bg)", border: "1px solid var(--rp-ok-bd)", padding: "10px 12px", fontWeight: 950, fontSize: ".82rem", lineHeight: 1.35, color: "var(--rp-ok-fg)" }}>
-                <IonIcon icon={checkmarkCircleOutline} style={{ fontSize: "1em", verticalAlign: "-0.125em" }} /> Reserva lista. Ya puedes iniciar la ruta hacia el pasajero.
+                <IonIcon icon={checkmarkCircleOutline} aria-hidden="true" style={{ fontSize: "1em", verticalAlign: "-0.125em" }} /> Reserva lista. Ya puedes iniciar la ruta hacia el pasajero.
               </div>
               <IonButton
                 expand="block"
@@ -15372,7 +15762,7 @@ La reserva fue retirada. No continúes hacia la recogida.`,
               }}
               aria-label="Cerrar solicitud"
             >
-              <IonIcon icon={closeOutline} style={{ fontSize: 20 }} />
+              <IonIcon icon={closeOutline} aria-hidden="true" style={{ fontSize: 20 }} />
             </button>
           </div>
 
@@ -15383,6 +15773,7 @@ La reserva fue retirada. No continúes hacia la recogida.`,
             <div style={styles.pill}>
               <IonIcon
                 icon={timeOutline}
+                aria-hidden="true"
                 style={{ fontSize: 15, color: "var(--rp-accent)" }}
               />
               Ahora
@@ -15390,6 +15781,7 @@ La reserva fue retirada. No continúes hacia la recogida.`,
             <div style={styles.pill}>
               <IonIcon
                 icon={carOutline}
+                aria-hidden="true"
                 style={{ fontSize: 15, color: "var(--rp-ok-fg)" }}
               />
               {rideVehicleEmoji} {rideVehicleShortLabel}
@@ -15400,6 +15792,7 @@ La reserva fue retirada. No continúes hacia la recogida.`,
             <div style={styles.pill}>
               <IonIcon
                 icon={paymentLabel === "Mercado Pago" ? cardOutline : cashOutline}
+                aria-hidden="true"
                 style={{
                   fontSize: 15,
                   color: paymentLabel === "Mercado Pago" ? "var(--rp-info-fg)" : "var(--rp-ok-fg)",
@@ -15410,6 +15803,7 @@ La reserva fue retirada. No continúes hacia la recogida.`,
             <div style={styles.pill}>
               <IonIcon
                 icon={starOutline}
+                aria-hidden="true"
                 style={{ fontSize: 15, color: "var(--rp-accent)" }}
               />
               Verificado
@@ -15459,6 +15853,7 @@ La reserva fue retirada. No continúes hacia la recogida.`,
                 >
                   <IonIcon
                     icon={walkOutline}
+                    aria-hidden="true"
                     style={{
                       fontSize: 14,
                       marginRight: 4,
@@ -15675,14 +16070,15 @@ La reserva fue retirada. No continúes hacia la recogida.`,
           ? "Navegando al destino"
           : "Navegando al punto de recogida";
 
-    // El mapa debe quedar visible: los botones de acción van debajo,
-    // no encima del mapa. En celular se reduce la altura para que
-    // "Llegué al punto / Cancelar" quede siempre a la vista.
-    const activeMapHeight =
-      typeof window !== "undefined"
-        ? Math.max(310, Math.min(430, window.innerHeight - 280))
-        : 390;
-
+    // El mapa debe quedar visible: los botones de acción van debajo, no
+    // encima del mapa. Antes el alto del mapa se adivinaba en JS
+    // (`window.innerHeight - 280`), sin restar la barra de pestañas
+    // flotante (global.css: ion-tab-bar, position:fixed, 66px + safe-area).
+    // En un iPhone real ese cálculo dejaba "Llegué al punto / Cancelar" por
+    // debajo de la tab bar, cortados e intocables. Ahora el mapa es un ítem
+    // flex que SE ENCOGE (flex:1 1 auto) para ceder todo el espacio que el
+    // panel de abajo necesite — el panel nunca pierde espacio, es el mapa el
+    // que se ajusta, no al revés.
     const activeRideWaitingPassenger = ride.status === "driver_arrived";
     const [activeRideNoShowNowMs, setActiveRideNoShowNowMs] = useState(() => Date.now());
 
@@ -15701,25 +16097,51 @@ La reserva fue retirada. No continúes hacia la recogida.`,
     return (
       <div
         style={{
-          minHeight: "100%",
+          // `height: 100%` (no minHeight) es lo que permite que el mapa,
+          // como flex item con flex:1 1 auto, pueda ENCOGERSE de verdad: sin
+          // un alto definido en este contenedor, flex-shrink no tiene contra
+          // qué medirse y el mapa simplemente crece con su contenido, tal
+          // como pasaba con el cálculo en JS que este reemplaza.
+          height: "100%",
           background: "#0f1115",
-          margin: "-16px",
+          // Antes: margin:"-16px" para cancelar el padding de 16px de
+          // `.ion-padding` en <IonContent>. Pero esta pantalla (activeRide)
+          // usa className="" en el IonContent (ver más abajo), SIN
+          // .ion-padding — no hay padding que cancelar. Ese margen negativo
+          // sobrante empujaba el mapa y sus controles ~16px más allá de cada
+          // borde real del viewport, cortando la píldora de velocidad por la
+          // izquierda y los botones de navegar/silenciar por la derecha.
+          margin: 0,
           color: "#fff",
           display: "flex",
           flexDirection: "column",
-          paddingBottom: "calc(92px + env(safe-area-inset-bottom, 0px))",
+          // Red de seguridad: si algún estado (banners + botones) no cupiera
+          // igual en pantallas muy bajas, esta pantalla se desplaza en vez de
+          // recortar contenido de forma invisible.
+          overflowY: "auto",
+          WebkitOverflowScrolling: "touch",
         }}
       >
-        <div style={{ flex: "0 0 auto", position: "relative", minHeight: activeMapHeight }}>
+        <div style={{ flex: "1 1 auto", position: "relative", minHeight: 220 }}>
           <UberDriverNavigationMap
             ride={ride}
-            height={activeMapHeight}
+            height="100%"
             driverUser={session?.user}
           />
         </div>
 
-        {/* Panel de acciones separado del mapa: visible pero sin tapar la navegación */}
-        <div style={{ padding: "12px 14px 18px", flex: "0 0 auto" }}>
+        {/* Panel de acciones separado del mapa: visible pero sin tapar la
+            navegación. El padding-bottom reserva el alto real de la tab bar
+            flotante (global.css: ion-tab-bar, position:fixed, z-index:9999)
+            más el safe-area del dispositivo — ver --rp-driver-tabbar-clearance
+            en driver.css — para que "Llegué al punto / Cancelar" y el resto
+            de las acciones del viaje activo nunca queden debajo de ella. */}
+        <div
+          style={{
+            padding: "12px 14px calc(18px + var(--rp-driver-tabbar-clearance))",
+            flex: "0 0 auto",
+          }}
+        >
           <div
             style={{
               position: "relative",
@@ -15732,6 +16154,7 @@ La reserva fue retirada. No continúes hacia la recogida.`,
             }}
           >
             <div
+              className="rapago-driver-nav-status"
               style={{
                 display: "flex",
                 alignItems: "center",
@@ -15740,6 +16163,8 @@ La reserva fue retirada. No continúes hacia la recogida.`,
               }}
             >
               <div
+                aria-hidden="true"
+                className="rapago-driver-nav-status__icon"
                 style={{
                   width: 46,
                   height: 46,
@@ -15756,7 +16181,12 @@ La reserva fue retirada. No continúes hacia la recogida.`,
                   style={{ fontSize: 28, color: "#fff" }}
                 />
               </div>
-              <div>
+              {/* Región viva del estado del viaje: "Navegando al punto de
+                  recogida" / "Esperando pasajero" / "Navegando al destino"
+                  cambia solo en las transiciones de verdad importantes
+                  (nunca en cada tick de GPS), así que atomic aquí no genera
+                  ruido y sí da el contexto completo en un solo anuncio. */}
+              <div aria-live="polite" aria-atomic="true">
                 <div style={{ fontWeight: 950, fontSize: "1.1rem" }}>
                   {statusText}
                 </div>
@@ -15776,6 +16206,7 @@ La reserva fue retirada. No continúes hacia la recogida.`,
 
             {nextQueuedRide && (
               <div
+                className="rapago-driver-next-ride-banner"
                 style={{
                   marginBottom: 12,
                   borderRadius: 16,
@@ -15799,6 +16230,7 @@ La reserva fue retirada. No continúes hacia la recogida.`,
 
             {!nextQueuedRide && nextOfferWhileActive && (
               <div
+                className="rapago-driver-next-offer-banner"
                 style={{
                   marginBottom: 12,
                   borderRadius: 16,
@@ -15886,6 +16318,7 @@ La reserva fue retirada. No continúes hacia la recogida.`,
                   Estado: esperando pasajero en el punto
                 </div>
                 <div
+                  className="driver-noshow-card"
                   style={{
                     margin: "0 0 12px",
                     padding: "12px 13px",
@@ -15918,6 +16351,7 @@ La reserva fue retirada. No continúes hacia la recogida.`,
                   </div>
 
                   <div
+                    className="driver-noshow-track"
                     style={{
                       marginTop: 9,
                       height: 8,
@@ -15927,6 +16361,7 @@ La reserva fue retirada. No continúes hacia la recogida.`,
                     }}
                   >
                     <div
+                      className="driver-noshow-fill"
                       style={{
                         width: `${getDriverNoShowProgressPercent(driverNoShowState)}%`,
                         height: "100%",
@@ -15940,6 +16375,7 @@ La reserva fue retirada. No continúes hacia la recogida.`,
                   </div>
 
                   <div
+                    className="driver-noshow-caption"
                     style={{
                       marginTop: 7,
                       fontSize: ".72rem",
@@ -16146,6 +16582,7 @@ La reserva fue retirada. No continúes hacia la recogida.`,
                 color="light"
                 onClick={() => void loadRides()}
                 disabled={loading}
+                aria-label="Actualizar solicitudes"
               >
                 <IonIcon icon={refreshOutline} slot="icon-only" />
               </IonButton>
@@ -16229,7 +16666,7 @@ La reserva fue retirada. No continúes hacia la recogida.`,
 
             {locationError && (
               <IonCard
-                className="rapago-driver-card"
+                className="rapago-driver-card driver-location-error-card"
                 style={{
                   margin: "0 0 14px",
                   borderRadius: "18px",
@@ -16245,7 +16682,7 @@ La reserva fue retirada. No continúes hacia la recogida.`,
                     fontSize: ".82rem",
                   }}
                 >
-                  <IonIcon icon={locationOutline} style={{ fontSize: "1em", verticalAlign: "-0.125em" }} /> {locationError}
+                  <IonIcon icon={locationOutline} aria-hidden="true" style={{ fontSize: "1em", verticalAlign: "-0.125em" }} /> {locationError}
                 </IonCardContent>
               </IonCard>
             )}
@@ -16384,7 +16821,7 @@ La reserva fue retirada. No continúes hacia la recogida.`,
                 style={{
                   position: "fixed",
                   inset: 0,
-                  zIndex: 10000,
+                  zIndex: "var(--rp-z-above-tabbar)",
                   background: "rgba(0,0,0,.58)",
                   display: "flex",
                   alignItems: "center",
@@ -16393,6 +16830,9 @@ La reserva fue retirada. No continúes hacia la recogida.`,
                 }}
               >
                 <div
+                  role="dialog"
+                  aria-modal="true"
+                  aria-labelledby="rapago-driver-scheduled-ready-alert-title"
                   style={{
                     width: "min(430px, 100%)",
                     borderRadius: 22,
@@ -16414,6 +16854,7 @@ La reserva fue retirada. No continúes hacia la recogida.`,
                     }}
                   >
                     <div
+                      aria-hidden="true"
                       style={{
                         width: 46,
                         height: 46,
@@ -16428,7 +16869,7 @@ La reserva fue retirada. No continúes hacia la recogida.`,
                       <IonIcon icon={calendarOutline} style={{ fontSize: "1em" }} />
                     </div>
                     <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontWeight: 950, fontSize: "1.08rem" }}>
+                      <div id="rapago-driver-scheduled-ready-alert-title" style={{ fontWeight: 950, fontSize: "1.08rem" }}>
                         Viaje agendado listo
                       </div>
                       <div style={{ marginTop: 2, fontSize: ".75rem", opacity: .9 }}>
@@ -16447,7 +16888,7 @@ La reserva fue retirada. No continúes hacia la recogida.`,
                       }}
                       aria-label="Cerrar alerta"
                     >
-                      ×
+                      <span aria-hidden="true">×</span>
                     </button>
                   </div>
 
@@ -16460,9 +16901,9 @@ La reserva fue retirada. No continúes hacia la recogida.`,
                         marginBottom: 14,
                       }}
                     >
-                      <span style={{ border: "var(--rp-border-w) solid var(--rp-border-c)", borderRadius: 999, padding: "7px 10px", fontWeight: 950, display: "inline-flex", alignItems: "center", gap: 6 }}><IonIcon icon={calendarOutline} style={{ fontSize: "1em" }} />Reserva lista</span>
-                      <span style={{ border: "1px solid var(--rp-ok-bd)", borderRadius: 999, padding: "7px 10px", fontWeight: 950, display: "inline-flex", alignItems: "center", gap: 6 }}><IonIcon icon={carOutline} style={{ fontSize: "1em" }} />Estándar</span>
-                      <span style={{ border: "var(--rp-border-w) solid var(--rp-border-c)", borderRadius: 999, padding: "7px 10px", fontWeight: 950, display: "inline-flex", alignItems: "center", gap: 6 }}><IonIcon icon={cashOutline} style={{ fontSize: "1em" }} />Efectivo</span>
+                      <span style={{ border: "var(--rp-border-w) solid var(--rp-border-c)", borderRadius: 999, padding: "7px 10px", fontWeight: 950, display: "inline-flex", alignItems: "center", gap: 6 }}><IonIcon icon={calendarOutline} aria-hidden="true" style={{ fontSize: "1em" }} />Reserva lista</span>
+                      <span style={{ border: "1px solid var(--rp-ok-bd)", borderRadius: 999, padding: "7px 10px", fontWeight: 950, display: "inline-flex", alignItems: "center", gap: 6 }}><IonIcon icon={carOutline} aria-hidden="true" style={{ fontSize: "1em" }} />Estándar</span>
+                      <span style={{ border: "var(--rp-border-w) solid var(--rp-border-c)", borderRadius: 999, padding: "7px 10px", fontWeight: 950, display: "inline-flex", alignItems: "center", gap: 6 }}><IonIcon icon={cashOutline} aria-hidden="true" style={{ fontSize: "1em" }} />Efectivo</span>
                     </div>
 
                     <div
@@ -17647,7 +18088,7 @@ function DriverMyRidesPage(): JSX.Element {
         <IonToolbar color="success">
           <IonTitle>Mis Viajes</IonTitle>
           <div slot="end" style={{ paddingRight: "8px" }}>
-            <IonButton fill="clear" color="light" disabled={loading} onClick={() => void loadRides()}>
+            <IonButton fill="clear" color="light" disabled={loading} onClick={() => void loadRides()} aria-label="Actualizar viajes">
               <IonIcon icon={refreshOutline} slot="icon-only" />
             </IonButton>
           </div>
@@ -17788,7 +18229,7 @@ function DriverMyRidesPage(): JSX.Element {
                       lineHeight: 1.35,
                     }}
                   >
-                    <IonIcon icon={documentTextOutline} style={{ fontSize: "1em", verticalAlign: "-0.125em" }} /> Nota del pasajero: {getPassengerRideNoteForDriver(activeRide)}
+                    <IonIcon icon={documentTextOutline} aria-hidden="true" style={{ fontSize: "1em", verticalAlign: "-0.125em" }} /> Nota del pasajero: {getPassengerRideNoteForDriver(activeRide)}
                   </div>
                 )}
               </div>
@@ -18193,6 +18634,7 @@ export function DriverEarningsPage(): JSX.Element {
               </div>
 
               <div
+                aria-hidden="true"
                 style={{
                   width: 54,
                   height: 54,
@@ -20336,7 +20778,7 @@ export function DriverProfilePage(): JSX.Element {
                         } as CSSProperties
                       }
                     >
-                      <IonIcon icon={cameraOutline} slot="start" />
+                      <IonIcon icon={cameraOutline} slot="start" aria-hidden="true" />
                       {hasProfilePhoto ? "Cambiar foto" : "Adjuntar foto"}
                     </IonButton>
 
@@ -20354,7 +20796,7 @@ export function DriverProfilePage(): JSX.Element {
                           } as CSSProperties
                         }
                       >
-                        <IonIcon icon={trashOutline} slot="start" />
+                        <IonIcon icon={trashOutline} slot="start" aria-hidden="true" />
                         Quitar
                       </IonButton>
                     )}
@@ -20747,7 +21189,7 @@ export function DriverProfilePage(): JSX.Element {
                         <IonSpinner name="dots" />
                       ) : (
                         <>
-                          <IonIcon icon={cameraOutline} slot="start" />
+                          <IonIcon icon={cameraOutline} slot="start" aria-hidden="true" />
                           {hasVehiclePhoto ? "Cambiar foto" : "Adjuntar foto"}
                         </>
                       )}
@@ -20767,7 +21209,7 @@ export function DriverProfilePage(): JSX.Element {
                           } as CSSProperties
                         }
                       >
-                        <IonIcon icon={trashOutline} slot="start" />
+                        <IonIcon icon={trashOutline} slot="start" aria-hidden="true" />
                         Quitar
                       </IonButton>
                     )}
@@ -21050,6 +21492,7 @@ export function DriverProfilePage(): JSX.Element {
                     style={{ display: "flex", alignItems: "center", gap: 12 }}
                   >
                     <div
+                      aria-hidden="true"
                       style={{
                         width: 48,
                         height: 48,

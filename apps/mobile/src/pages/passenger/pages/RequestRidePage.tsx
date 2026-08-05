@@ -24,6 +24,8 @@ import {
   busOutline,
   calendarOutline,
   carOutline,
+  cardOutline,
+  cashOutline,
   checkmarkCircleOutline,
   compassOutline,
   createOutline,
@@ -8573,10 +8575,10 @@ export default function RequestRidePage(): JSX.Element {
         normalizedMessage.includes("debes aceptar los documentos legales")
       ) {
         setSubmitError(
-          "Debes aceptar los documentos legales vigentes antes de solicitar un viaje. Te llevaremos a Perfil > Documentos.",
+          "Debes aceptar los documentos legales vigentes antes de solicitar un viaje. Te llevaremos a tu Perfil.",
         );
         window.setTimeout(() => {
-          history.push(ROUTES.PROFILE.DOCUMENTS);
+          history.push(`${ROUTES.PASSENGER.PROFILE}?legal=required`);
         }, 500);
         return;
       }
@@ -10195,7 +10197,8 @@ return (
                       fontWeight: 900,
                     }}
                   >
-                    📅 Regreso agendado para {formatScheduleDateTime(returnScheduledAt)}
+                    <IonIcon icon={calendarOutline} aria-hidden="true" style={{ verticalAlign: "-2px", marginRight: 4 }} />
+                    Regreso agendado para {formatScheduleDateTime(returnScheduledAt)}
                   </div>
                 ) : rideMode === "scheduled" && scheduledAt ? (
                   <div
@@ -10211,7 +10214,8 @@ return (
                       fontWeight: 900,
                     }}
                   >
-                    📅 Agendado para {formatScheduleDateTime(scheduledAt)}{requireReturnScheduledAt && returnScheduledAt ? ` · regreso ${formatScheduleDateTime(returnScheduledAt)}` : ""}
+                    <IonIcon icon={calendarOutline} aria-hidden="true" style={{ verticalAlign: "-2px", marginRight: 4 }} />
+                    Agendado para {formatScheduleDateTime(scheduledAt)}{requireReturnScheduledAt && returnScheduledAt ? ` · regreso ${formatScheduleDateTime(returnScheduledAt)}` : ""}
                   </div>
                 ) : null}
 
@@ -10229,7 +10233,8 @@ return (
                       fontWeight: 900,
                     }}
                   >
-                    ⚠️ Cargos aprobados que se sumarán a este viaje: <strong>{formatCLP(pendingPassengerChargeTotalClp)}</strong>.
+                    <IonIcon icon={alertCircleOutline} aria-hidden="true" style={{ verticalAlign: "-2px", marginRight: 4 }} />
+                    Cargos aprobados que se sumarán a este viaje: <strong>{formatCLP(pendingPassengerChargeTotalClp)}</strong>.
                     {pendingCancellationChargeTotalClp > 0 && (
                       <>
                         <br />Cancelación desde el minuto 3: <strong>{formatCLP(pendingCancellationChargeTotalClp)}</strong>.
@@ -10363,7 +10368,7 @@ return (
                     >
                       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
                         <div>
-                          <div style={{ fontSize: "1.35rem", lineHeight: 1 }}>💵</div>
+                          <IonIcon icon={cashOutline} aria-hidden="true" style={{ fontSize: "1.35rem", lineHeight: 1 }} />
                           <div style={{ marginTop: 5, fontSize: ".94rem" }}>{reservationRequiresCard ? "Efectivo no disponible" : "Efectivo al conductor"}</div>
                           <div style={{ marginTop: 3, fontSize: ".72rem", fontWeight: 850, opacity: .78 }}>
                             {reservationRequiresCard ? "Reservas: solo tarjeta" : "Confirmación inmediata"}
@@ -10401,7 +10406,7 @@ return (
                     >
                       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
                         <div>
-                          <div style={{ fontSize: "1.25rem", lineHeight: 1 }}>💳</div>
+                          <IonIcon icon={cardOutline} aria-hidden="true" style={{ fontSize: "1.25rem", lineHeight: 1 }} />
                           <div style={{ marginTop: 5, fontSize: ".9rem" }}>Tarjeta</div>
                           <div style={{ marginTop: 3, fontSize: ".72rem", fontWeight: 850, opacity: .72 }}>
                             Klap seguro

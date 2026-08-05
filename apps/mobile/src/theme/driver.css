@@ -28,6 +28,146 @@
    CSS de autor con !important es lo único que gana a un `style=""` inline.
    ========================================================================== */
 
+/* ── Sistema de capas del mapa del conductor ─────────────────────────────
+   El mapa de navegación (UberDriverNavigationMap en pages/driver/index.tsx)
+   superpone varios grupos de controles: banner de instrucciones, avisos de
+   GPS, rieles de botones, hoja inferior de navegación y mensajes de error.
+   Antes cada uno traía su propio z-index suelto (12, 13, 14, 31, 35, 40, 50,
+   9999, 99999, 10000, 2147483000...) sin relación entre ellos. Escala única,
+   de abajo hacia arriba:
+
+     1. mapa base            → el lienzo de Google Maps (z-index implícito).
+     2. --rp-z-map-controls  → botones sobre el mapa: recalcular, navegar,
+                                silenciar, centrar cámara.
+     3. --rp-z-map-panel     → paneles informativos: banner de instrucciones,
+                                avisos de GPS/velocidad/"Informar".
+     4. --rp-z-map-sheet     → hoja inferior de navegación (duración/
+                                distancia + soltar cámara/recentrar).
+     5. --rp-z-map-alert     → mensajes de error del mapa: deben ganarle a
+                                todo lo anterior porque cortan la navegación.
+     6. --rp-z-above-tabbar  → cualquier alerta o modal de pantalla completa
+                                del conductor (viaje entrante, cobro, reserva
+                                lista). Debe superar SIEMPRE a la tab bar
+                                flotante (global.css:1699, z-index:9999
+                                !important): si no, la barra de pestañas puede
+                                pintarse encima y tapar sus botones.
+
+   También vive aquí la altura real de esa tab bar, para que cualquier panel
+   de acciones del conductor pueda reservarle espacio exacto en vez de un
+   padding-bottom adivinado. */
+.rapago-driver-page {
+  --rp-z-map-controls: 10;
+  --rp-z-map-panel: 20;
+  --rp-z-map-sheet: 30;
+  --rp-z-map-alert: 40;
+  --rp-z-above-tabbar: 10500;
+  /* Modal bloqueante absoluto (cierre de cobro en efectivo): tiene que
+     ganarle a cualquier otra cosa, incluidas las alertas de --rp-z-above-tabbar,
+     porque interrumpe un flujo de dinero en curso. */
+  --rp-z-modal: 2147483000;
+
+  /* global.css:1694-1705 fija `ion-tab-bar { position:fixed; z-index:9999;
+     height:calc(66px + env(safe-area-inset-bottom)) }`. No es una
+     estimación: si esa altura cambia allá, hay que actualizarla aquí. */
+  --rp-driver-tabbar-h: 66px;
+  --rp-driver-tabbar-clearance: calc(
+    var(--rp-driver-tabbar-h) + env(safe-area-inset-bottom, 0px)
+  );
+}
+
+/* global.css:1828-1834 sube la barra a 70px desde 700px de ancho (tablet y
+   escritorio). Sin esto la reserva quedaba 4px corta justo ahí y los botones
+   de acción del viaje activo volvían a rozar la barra. */
+@media (min-width: 700px) {
+  .rapago-driver-page {
+    --rp-driver-tabbar-h: 70px;
+  }
+}
+
+/* ==========================================================================
+   MAPA DE NAVEGACIÓN (UberDriverNavigationMap) — controles sin clase
+
+   Todo el overlay del mapa (pages/driver/index.tsx, ~L2790-3380) está escrito
+   en `style={{...}}` puro: ni un solo className. No es un descuido — es la
+   pieza más grande de UI inline de toda la pantalla de conductor, y esta hoja
+   no puede tocar el TSX. La mayoría de esos controles (rieles de botones,
+   hoja inferior) YA consumen los tokens --rp-* del tema compartido
+   (var(--rp-surface), var(--rp-border-c), var(--rp-icon-fg)...), así que ya
+   se leen como el resto de la app sin que haga falta nada aquí.
+
+   Dos excepciones SÍ tenían el aspecto de "otra app" (banner teal, botón
+   verde sin relación con la marca) y sí exponen `aria-label`, que es un
+   atributo real del DOM y por tanto un selector CSS válido aunque no haya
+   className. Se usa aquí SOLO donde el valor del aria-label es estable
+   (texto fijo en español, no interpolado desde datos del viaje). Es un
+   acoplamiento a un string de accesibilidad, no a una clase de diseño: si
+   ese texto cambia de redacción en el TSX (incluida la pasada de ARIA que
+   corre en paralelo sobre este mismo archivo), estas reglas simplemente
+   dejan de aplicar — no rompen nada, vuelven al estilo inline original. */
+
+/* Botón de plegar/expandir el banner de instrucciones (26×26 en el TSX,
+   L2823-2847): el único control redondo del mapa bajo el mínimo táctil de
+   44px. Visualmente se queda en 26px —agrandarlo de verdad lo sacaría de la
+   esquina del banner—, así que el área de toque crece con un `::after`
+   invisible en vez de con el tamaño real.
+   El botón vive a solo 6px del borde superior y del borde derecho DEL
+   BANNER (right:6, top:6 en el TSX), que a su vez recorta con
+   overflow:hidden: un inset simétrico se habría cortado por esos dos lados
+   sin llegar a los 44px reales. Se reparte asimétrico: 6px arriba/derecha
+   (todo lo que cabe sin toparse con el recorte) y 12px abajo/izquierda
+   (sobra espacio, cae sobre texto informativo sin onClick propio) — total
+   26 + 6 + 12 = 44px en ambos ejes. */
+.rapago-driver-page button[aria-label="Expandir indicaciones"]::after,
+.rapago-driver-page button[aria-label="Minimizar indicaciones"]::after {
+  content: "";
+  position: absolute;
+  inset: -6px -6px -12px -12px;
+}
+
+/* Banner superior de instrucciones (TSX L2808-2949): fondo teal
+   rgba(0,105,96,.96) sin relación con ningún token de marca —ni el eje oro
+   ni el eje océano de rapago-shell.css—, así que era el elemento más "de
+   otra app" de toda la pantalla de conductor. Se selecciona por `:has()`
+   sobre su botón de plegado (hijo directo, ver TSX), que es el único hijo
+   con un hook estable. Pasa a la misma superficie oscura con filo dorado que
+   usa el resto del cromo del mapa (uberPanelStyle, la hoja inferior), pero
+   CONSTANTE en los dos temas —no var(--rp-surface)— porque el texto de
+   dentro sigue fijo en blanco (#fff, rgba(255,255,255,.78/.82/.84)) vía
+   style inline: sobre la superficie clara del tema día ese texto blanco
+   desaparecería, el mismo error que la excepción "legacy" de más abajo evita
+   para las tarjetas. Contraste verificado: blanco puro sobre el stop más
+   oscuro del degradado (rgba(42,28,16)) → 16,5:1. El texto secundario más
+   transparente que usa el banner (rgba(255,255,255,.78)) compuesto sobre ese
+   mismo fondo → ~10,4:1. Ambos muy por encima del mínimo AA de 4,5:1. */
+.rapago-driver-page div:has(> button[aria-label="Expandir indicaciones"]),
+.rapago-driver-page div:has(> button[aria-label="Minimizar indicaciones"]) {
+  background: linear-gradient(
+    135deg,
+    rgba(23, 18, 12, 0.96),
+    rgba(42, 28, 16, 0.96)
+  ) !important;
+  border: 1px solid rgba(214, 166, 64, 0.4) !important;
+  box-shadow: var(--rp-shadow-accent) !important;
+}
+
+/* Botón "Acercar mapa y seguir ruta dentro de Rapa Go" (TSX L3050-3069): el
+   único control sólido de color puro (#00a884, verde WhatsApp) en un riel
+   donde los otros dos botones ya son superficie neutra con icono dorado. Es
+   la acción principal del riel —empezar navegación asistida—, así que en vez
+   de apagarla a neutro pasa al MISMO degradado dorado que cualquier otra
+   acción primaria de la app (--rp-btn-primary), con su sombra con halo
+   (--rp-shadow-accent) en vez de la sombra negra plana que traía. Contraste
+   del icono blanco original vs. el nuevo: el ink oscuro (--rp-btn-primary-fg)
+   sobre el stop más oscuro del degradado (terracota #b84f2e) da 3,6:1 —
+   supera el mínimo de 3:1 de WCAG 1.4.11 para componentes gráficos (es un
+   ion-icon, no texto). */
+.rapago-driver-page button[aria-label="Acercar mapa y seguir ruta dentro de Rapa Go"] {
+  background: var(--rp-btn-primary) !important;
+  border-color: var(--rp-hero-bd) !important;
+  box-shadow: var(--rp-shadow-accent) !important;
+  color: var(--rp-btn-primary-fg) !important;
+}
+
 /* ── Superficie de página ───────────────────────────────────────────────── */
 /* El fondo del IonPage lo pinta rapago-shell.css, que ya incluye
    .rapago-driver-page en la regla con el !important que hace falta para
@@ -318,6 +458,16 @@
   text-transform: none !important;
 }
 
+/* TÁCTIL: Ionic recorta el padding vertical de size="small" hasta quedar
+   bien por debajo de 44px. El conductor lo usa 7 veces, incluida la decisión
+   de "Aceptar próximo / Rechazar" un servicio nuevo mientras ya va manejando
+   — justo el control que menos margen de error debería tener. Solo se toca
+   el alto mínimo del objetivo táctil: el texto, el padding lateral y la
+   lectura "compacta" del botón no cambian. */
+.rapago-driver-page ion-button[size="small"] {
+  min-height: 44px !important;
+}
+
 /* El botón sólido sin color explícito es la acción principal de la pantalla:
    toma el degradado dorado de la marca, igual que en Home y Perfil. */
 .rapago-driver-page ion-button:not([fill]):not([color]),
@@ -562,10 +712,14 @@
 }
 
 /* Mismo cromo que .rapago-chrome-btn y que el interruptor sol/luna, para que
-   los tres botones de la cabecera se lean como un solo grupo. */
+   los tres botones de la cabecera se lean como un solo grupo.
+   TÁCTIL: el máximo de la escala (42px) quedaba bajo el mínimo de 44pt/48dp.
+   .rapago-chrome-btn (rapago-shell.css:591, el mismo botón en el pasajero) ya
+   resolvió esto con 48px fijos; aquí se mantiene la escala fluida pero con
+   suelo en 44 y techo en 48 para no perder el ajuste a pantallas angostas. */
 .rapago-driver-page .driver-home-header-action {
-  width: clamp(38px, 11vw, 42px);
-  height: clamp(38px, 11vw, 42px);
+  width: clamp(44px, 11vw, 48px);
+  height: clamp(44px, 11vw, 48px);
   margin: 0 !important;
   --border-radius: 13px !important;
   --background: var(--rp-chrome) !important;
@@ -1377,14 +1531,17 @@
 /* Copia de .rapago-filter-chip (sections.css:64) con el ámbito del conductor.
    El selector lleva el tipo `ion-button` porque aquí el control es un botón y
    no un ion-chip: sin él perdería contra la regla genérica de botón sólido sin
-   color de más arriba, que le pondría el degradado dorado también en reposo. */
+   color de más arriba, que le pondría el degradado dorado también en reposo.
+   TÁCTIL: esta copia se había quedado en los 34px originales del pasajero,
+   de antes de que sections.css:102 subiera a 44px ("quedaba muy por debajo
+   del mínimo táctil de 44pt/48dp"). Se replica aquí el mismo arreglo. */
 .rapago-driver-page ion-button.rapago-filter-chip {
   --background: var(--rp-surface-soft);
   --background-activated: var(--rp-icon-bg);
   --color: var(--rp-muted);
   --border-radius: 999px !important;
   --box-shadow: none;
-  height: 34px;
+  height: 44px;
   margin: 0;
   font-size: var(--rp-fs-sub);
   font-weight: 750;
@@ -2202,13 +2359,20 @@
   letter-spacing: 0.01em !important;
 }
 
-/* Tiempo restante en el quote: destacarlo sobre la fecha */
+/* Tiempo restante en el quote: destacarlo sobre la fecha.
+   BUG: --rp-btn-primary es un degradado (rapago-shell.css:82), no un color
+   sólido. `color: var(--rp-btn-primary, #d7a739)` es inválido para `color` —
+   y como la propiedad SÍ existe (solo que resuelve a un valor del tipo
+   equivocado), el fallback nunca se usa: el navegador descarta toda la
+   declaración y el texto hereda el color del contenedor, no el dorado
+   buscado. Se cambia a --rp-gold, el sólido de marca (mismo criterio que
+   .rapago-driver-rating__stars más abajo). */
 .rapago-driver-page .rp-card__quote .rest-remaining {
   font-size: 1.1rem !important;
   font-weight: 950 !important;
   display: block;
   margin-top: 2px;
-  color: var(--rp-btn-primary, #d7a739) !important;
+  color: var(--rp-gold) !important;
 }
 
 /* ── 8. Planificación servicios: selectores de horario sin desborde ───────
@@ -2234,4 +2398,70 @@
 .rapago-driver-page > * {
   max-width: 100vw;
   overflow-x: hidden;
+}
+
+/* ── Contraste de los elementos del viaje activo ──────────────────────────
+   Estos elementos estaban con `style={{...}}` inline y sin gancho, así que no
+   se podían alcanzar desde aquí. Ahora tienen className y se corrigen sus
+   fallos de contraste medidos.
+
+   TODAS las reglas de este bloque llevan `!important` por una única razón: los
+   valores que corrigen están escritos como estilo inline en el TSX, y un estilo
+   inline solo se puede vencer con `!important`. No es preferencia, es la única
+   vía sin editar el TSX. */
+
+/* Chip de GPS fuera de cobertura.
+   Estaba en rgba(239,68,68,.92) con texto blanco: 3,76:1 sobre el rojo pleno, y
+   aún menos con el mapa colándose por ese 8% de transparencia. Para texto chico
+   el mínimo AA es 4,5:1, así que no llegaba.
+   #dc2626 opaco da 4,68:1 con blanco. Opaco a propósito: sobre un mapa el fondo
+   es impredecible (calle clara, agua, parque) y cualquier translucidez hace que
+   el contraste dependa de por dónde vaya el conductor. */
+.rapago-driver-page .rapago-driver-gps-chip--outside {
+  background: #dc2626 !important;
+  /* .64rem ≈ 10px era muy poco para leer de reojo mientras se conduce. */
+  font-size: 0.72rem !important;
+}
+
+/* Chip de "activando GPS": mismo criterio de fondo opaco, en tono neutro. */
+.rapago-driver-page .rapago-driver-gps-chip--acquiring {
+  background: rgba(17, 17, 17, 0.94) !important;
+  color: #ffffff !important;
+  font-size: 0.72rem !important;
+}
+
+/* Círculo de estado bajo el mapa.
+   #22c55e con el icono blanco encima daba 2,34:1. Es un componente de interfaz
+   (WCAG 1.4.11), cuyo mínimo es 3:1, así que tampoco llegaba.
+   #16a34a sube a 3,45:1 sin perder el verde vivo. Es color fijo en ambos temas
+   a propósito: el círculo aporta su propio fondo, no depende de la superficie
+   que tenga detrás. */
+.rapago-driver-page .rapago-driver-nav-status__icon {
+  background: #16a34a !important;
+}
+
+/* Banners de servicio en cola (ámbar) y de nueva oferta (azul).
+   El texto venía en #fff7cc y #dbeafe —casi blancos— sobre un fondo translúcido
+   al 16%. En noche funcionaba; en día ese mismo texto casi blanco queda sobre
+   una superficie clara y desaparece. Se pasan a los tokens semánticos, que
+   existen en los dos temas, para que el banner siga al tema de la pantalla. */
+.rapago-driver-page .rapago-driver-next-ride-banner {
+  background: var(--rp-warn-bg) !important;
+  border-color: var(--rp-warn-fg) !important;
+  color: var(--rp-warn-fg) !important;
+}
+
+.rapago-driver-page .rapago-driver-next-offer-banner {
+  background: var(--rp-ok-bg) !important;
+  border-color: var(--rp-ok-fg) !important;
+  color: var(--rp-ok-fg) !important;
+}
+
+/* Las líneas secundarias de ambos banners traen `opacity: .78`/.86 inline.
+   Sobre un color ya atenuado como --rp-warn-fg eso volvía a hundir el
+   contraste por debajo del mínimo, así que se restituye la opacidad plena: la
+   jerarquía ya la marcan el tamaño y el peso, que no cuestan contraste. */
+.rapago-driver-page .rapago-driver-next-ride-banner > div,
+.rapago-driver-page .rapago-driver-next-offer-banner > div {
+  opacity: 1 !important;
 }

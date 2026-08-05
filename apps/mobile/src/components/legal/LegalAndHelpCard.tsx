@@ -17,8 +17,8 @@ import {
   shieldCheckmarkOutline,
   trashOutline,
 } from "ionicons/icons";
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { useHistory } from "react-router-dom";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useHistory, useLocation } from "react-router-dom";
 
 import {
   legalService,
@@ -70,6 +70,12 @@ export function LegalAndHelpCard({
   language = "es",
 }: LegalAndHelpCardProps): JSX.Element {
   const history = useHistory();
+  const location = useLocation();
+  const cardRef = useRef<HTMLIonCardElement>(null);
+  /** Evita repetir el salto si la lista de pendientes cambia luego. */
+  const attentionFiredRef = useRef(false);
+  const [attentionRequested, setAttentionRequested] = useState(false);
+  const [attention, setAttention] = useState(false);
   const [documents, setDocuments] = useState<LegalDocumentData[]>([]);
   const [acceptances, setAcceptances] = useState<UserAcceptanceData[]>([]);
   const [selected, setSelected] = useState<Record<string, boolean>>({});
@@ -97,6 +103,8 @@ export function LegalAndHelpCard({
           version: "Version",
           selectAll: "Select all pending documents",
           saving: "Saving acceptance…",
+          rideBlocked:
+            "To request your ride you must accept every legal document listed below.",
         }
       : {
           title: "Ayuda y legal",
@@ -115,6 +123,8 @@ export function LegalAndHelpCard({
           version: "Versión",
           selectAll: "Seleccionar todos los documentos pendientes",
           saving: "Guardando aceptación…",
+          rideBlocked:
+            "Para solicitar tu viaje debes aceptar todos los documentos legales que aparecen aquí abajo.",
         };
 
   const load = useCallback(async (): Promise<void> => {
@@ -195,6 +205,52 @@ export function LegalAndHelpCard({
     });
   }, [pendingDocuments]);
 
+  // Solicitar un viaje sin aceptar la legal vigente redirige aquí con
+  // ?legal=required. Guardamos la señal y limpiamos la URL para que un
+  // refresco no vuelva a disparar el salto.
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    if (params.get("legal") !== "required") return;
+
+    setAttentionRequested(true);
+    params.delete("legal");
+    const rest = params.toString();
+    history.replace(
+      rest ? `${location.pathname}?${rest}` : location.pathname,
+    );
+  }, [history, location.pathname, location.search]);
+
+  // Una vez cargado el estado legal, llevamos la vista a la tarjeta y la
+  // hacemos saltar para que el pendiente no pase desapercibido.
+  useEffect(() => {
+    if (!attentionRequested || loading) return;
+    if (pendingDocuments.length === 0) return;
+    if (attentionFiredRef.current) return;
+
+    attentionFiredRef.current = true;
+    setAttention(true);
+
+    const scrollTimer = window.setTimeout(() => {
+      cardRef.current?.scrollIntoView({
+        behavior: "smooth",
+        block: "center",
+      });
+    }, 120);
+
+    const stopTimer = window.setTimeout(
+      () => setAttention(false),
+      2600,
+    );
+
+    return () => {
+      window.clearTimeout(scrollTimer);
+      window.clearTimeout(stopTimer);
+    };
+  }, [attentionRequested, loading, pendingDocuments.length]);
+
+  const rideBlocked =
+    attentionRequested && !loading && pendingDocuments.length > 0;
+
   const allPendingSelected =
     pendingDocuments.length > 0 &&
     pendingDocuments.every(
@@ -248,7 +304,13 @@ export function LegalAndHelpCard({
   }
 
   return (
-    <IonCard className="rapago-profile-card rapago-profile-legal-card">
+    <IonCard
+      ref={cardRef}
+      className={
+        "rapago-profile-card rapago-profile-legal-card" +
+        (attention ? " rapago-profile-legal-card--attention" : "")
+      }
+    >
       <IonCardContent>
         <div className="rapago-profile-card-head">
           <span className="rapago-profile-card-icon">
@@ -264,6 +326,16 @@ export function LegalAndHelpCard({
             </p>
           </div>
         </div>
+
+        {rideBlocked && (
+          <div
+            className="rapago-profile-legal-blocked"
+            role="alert"
+          >
+            <IonIcon icon={documentTextOutline} />
+            <span>{copy.rideBlocked}</span>
+          </div>
+        )}
 
         <div className="rapago-profile-legal-links">
           {documents.map((document) => {

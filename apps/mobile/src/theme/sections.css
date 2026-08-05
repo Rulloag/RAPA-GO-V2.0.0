@@ -115,6 +115,22 @@
   border-color: transparent;
 }
 
+/* ── Ancho de columna en Mis viajes (pantallas anchas) ───────────────────── */
+/* La lista de tarjetas de viaje y los avisos (pago/notificación) no tenían
+   max-width: en escritorio el IonContent ocupa toda la ventana y las
+   tarjetas se estiraban de borde a borde, perdiendo la proporción de tarjeta
+   móvil y viéndose "pobres". Se centra la columna al mismo ancho que ya usa
+   el resto de la app (rapago-shell.css: tab bar y .rp-modal-inner, 460px).
+   En pantallas angostas el elemento ya mide menos de 460px de forma natural
+   (el padding interno de cada bloque limita el ancho real), así que el
+   max-width no afecta el layout móvil actual. */
+.rapago-trips-page .rapago-trips-list,
+.rapago-trips-page .rapago-trips-notice-card {
+  max-width: 460px;
+  margin-left: auto !important;
+  margin-right: auto !important;
+}
+
 /* ── Superficie de página ───────────────────────────────────────────────── */
 /* El fondo del IonPage lo pinta rapago-shell.css, que ya incluye
    .rapago-section-page en la regla con el !important que hace falta para

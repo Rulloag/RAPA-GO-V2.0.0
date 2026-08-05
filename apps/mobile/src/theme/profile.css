@@ -1079,3 +1079,79 @@
     display: none;
   }
 }
+
+/* Aviso y salto de atención cuando un viaje quedó bloqueado por la legal
+   pendiente. El usuario llega aquí redirigido, así que la tarjeta tiene que
+   anunciarse sola. */
+.rapago-profile-page .rapago-profile-legal-blocked {
+  display: grid;
+  grid-template-columns: 22px minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 14px;
+  padding: 12px 14px;
+  border-radius: 16px;
+  border: 1px solid rgba(214, 166, 64, 0.55);
+  background: rgba(248, 216, 121, 0.14);
+  color: var(--rp-text);
+  font-size: 0.84rem;
+  font-weight: 800;
+  line-height: 1.35;
+}
+
+.rapago-profile-page .rapago-profile-legal-blocked ion-icon {
+  font-size: 22px;
+  color: var(--rp-accent);
+}
+
+@keyframes rapago-legal-attention {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  10% {
+    transform: translateY(-12px);
+  }
+  22% {
+    transform: translateY(0);
+  }
+  32% {
+    transform: translateY(-8px);
+  }
+  44% {
+    transform: translateY(0);
+  }
+  54% {
+    transform: translateY(-4px);
+  }
+  64% {
+    transform: translateY(0);
+  }
+}
+
+@keyframes rapago-legal-attention-glow {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(214, 166, 64, 0);
+  }
+  30% {
+    box-shadow: 0 0 0 6px rgba(214, 166, 64, 0.32);
+  }
+  60% {
+    box-shadow: 0 0 0 3px rgba(214, 166, 64, 0.18);
+  }
+}
+
+.rapago-profile-page .rapago-profile-legal-card--attention {
+  animation:
+    rapago-legal-attention 1.15s ease-in-out 2,
+    rapago-legal-attention-glow 1.15s ease-in-out 2;
+  border-color: var(--rp-accent);
+  will-change: transform;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rapago-profile-page .rapago-profile-legal-card--attention {
+    animation: rapago-legal-attention-glow 1.15s ease-in-out 2;
+  }
+}
