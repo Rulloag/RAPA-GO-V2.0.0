@@ -136,7 +136,7 @@ function getRecordBoolean(
     if (typeof value === "string") {
       const normalized = normalizePaymentText(value);
 
-      if (["true", "si", "sí", "yes", "1", "approved", "aprobado"].includes(normalized)) {
+      if (["true", "si", "sÃ­", "yes", "1", "approved", "aprobado"].includes(normalized)) {
         return true;
       }
 
@@ -378,7 +378,7 @@ function buildMercadoPagoBackendReturnUrl(): string {
     return url.toString();
   } catch {
     throw new Error(
-      "Falta una URL HTTPS válida para el regreso de Mercado Pago. Configura PAYMENT_MERCADOPAGO_RETURN_URL o PAYMENT_WEBHOOK_BASE_URL.",
+      "Falta una URL HTTPS vÃ¡lida para el regreso de Mercado Pago. Configura PAYMENT_MERCADOPAGO_RETURN_URL o PAYMENT_WEBHOOK_BASE_URL.",
     );
   }
 }
@@ -875,7 +875,7 @@ async function reconcileStoredMercadoPagoPayment(
         activated = true;
       }
     } catch (err) {
-      console.warn("[MercadoPago] Pago ya aprobado, pero la reactivación no terminó:", {
+      console.warn("[MercadoPago] Pago ya aprobado, pero la reactivaciÃ³n no terminÃ³:", {
         paymentId: payment.id,
         rideRequestId: payment.rideRequestId,
         error: String(err),
@@ -922,7 +922,7 @@ async function reconcileStoredMercadoPagoPayment(
       );
     }
   } catch (err) {
-    console.error("[MercadoPago] Falló la conciliación con la API:", {
+    console.error("[MercadoPago] FallÃ³ la conciliaciÃ³n con la API:", {
       paymentId: payment.id,
       rideRequestId: payment.rideRequestId,
       hasProviderPaymentId: Boolean(providerPaymentId),
@@ -961,7 +961,7 @@ async function reconcileStoredMercadoPagoPayment(
   ).trim();
 
   if (externalReference !== payment.id) {
-    console.warn("[MercadoPago] Conciliación rechazada por external_reference:", {
+    console.warn("[MercadoPago] ConciliaciÃ³n rechazada por external_reference:", {
       paymentId: payment.id,
       providerPaymentId: resolvedProviderPaymentId || null,
       externalReference: externalReference || null,
@@ -984,7 +984,7 @@ async function reconcileStoredMercadoPagoPayment(
     paidAmountClp != null && paidAmountClp === expectedAmountClp;
   const currencyMatches = !currency || currency === "CLP";
 
-  console.log("[MercadoPago] Conciliación segura:", {
+  console.log("[MercadoPago] ConciliaciÃ³n segura:", {
     paymentId: payment.id,
     rideRequestId: payment.rideRequestId,
     providerPaymentId: resolvedProviderPaymentId || null,
@@ -1027,11 +1027,11 @@ async function reconcileStoredMercadoPagoPayment(
 
       if (!activated) {
         throw new Error(
-          "El viaje no salió de pending_payment después de confirmar el pago.",
+          "El viaje no saliÃ³ de pending_payment despuÃ©s de confirmar el pago.",
         );
       }
     } catch (err) {
-      console.error("[MercadoPago] Pago conciliado, pero falló la activación:", {
+      console.error("[MercadoPago] Pago conciliado, pero fallÃ³ la activaciÃ³n:", {
         paymentId: payment.id,
         rideRequestId: payment.rideRequestId,
         error: String(err),
@@ -1041,7 +1041,7 @@ async function reconcileStoredMercadoPagoPayment(
         ok: false,
         code: "PAYMENT_APPROVED_RIDE_ACTIVATION_ERROR",
         message:
-          "El pago fue confirmado, pero el viaje no pudo activarse automáticamente. No vuelvas a pagar.",
+          "El pago fue confirmado, pero el viaje no pudo activarse automÃ¡ticamente. No vuelvas a pagar.",
         statusCode: 500,
       };
     }
@@ -1080,10 +1080,10 @@ async function reconcileStoredMercadoPagoPayment(
       try {
         await cancelRideAfterRejectedPayment(
           payment.rideRequestId,
-          "Mercado Pago informó que el pago fue rechazado o cancelado.",
+          "Mercado Pago informÃ³ que el pago fue rechazado o cancelado.",
         );
       } catch {
-        // La conciliación del pago sigue siendo la autoridad.
+        // La conciliaciÃ³n del pago sigue siendo la autoridad.
       }
     }
 
@@ -1115,22 +1115,22 @@ async function reconcileStoredMercadoPagoPayment(
   };
 }
 
-// ── Klap confirm/reject webhooks (Fase C) ──────────────────────────────────────
+// â”€â”€ Klap confirm/reject webhooks (Fase C) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 //
 // Deliberately NOT reusing the generic multi-provider `handleWebhook()` above:
 // Klap documents two distinct endpoints/payloads (confirm, reject), not one
 // event with a unified `status` field like Mercado Pago/ProntoPaga. Klap is
 // also not registered in `provider.registry.ts`'s `getProvider()` map, so
-// `handleWebhook("klap", ...)` is unreachable by design — these dedicated
+// `handleWebhook("klap", ...)` is unreachable by design â€” these dedicated
 // methods are the only path to Klap's webhooks.
 //
-// POLÍTICA DE REINTENTOS KLAP: NO DOCUMENTADA. The reviewed OAS/manual does not
-// specify retry count, interval, backoff, or delivery order — every method
+// POLÃTICA DE REINTENTOS KLAP: NO DOCUMENTADA. The reviewed OAS/manual does not
+// specify retry count, interval, backoff, or delivery order â€” every method
 // below assumes duplicates and out-of-order delivery are possible and normal.
 
 const KLAP_WEBHOOK_TERMINAL_STATUSES = new Set(["rejected", "failed", "refunded"]);
 
-/** Strips control characters and bounds length — defensive even after Zod's own limits. */
+/** Strips control characters and bounds length â€” defensive even after Zod's own limits. */
 function sanitizeKlapWebhookText(value: string | undefined, maxLength: number): string | null {
   if (!value) return null;
   const controlChars = new RegExp("[\\u0000-\\u001F\\u007F]", "g");
@@ -1208,41 +1208,41 @@ function mapKlapDeclineForPassenger(
   if (/auth|autentic|3ds|cardinal|challenge/.test(combined)) {
     return {
       code: "AUTHENTICATION_FAILED",
-      reason: "No pudimos validar la tarjeta con tu banco. No se realizó el cobro.",
+      reason: "No pudimos validar la tarjeta con tu banco. No se realizÃ³ el cobro.",
     };
   }
 
   if (/insufficient|funds|saldo|cupo|fondos/.test(combined)) {
     return {
       code: "INSUFFICIENT_FUNDS",
-      reason: "La tarjeta no dispone de saldo o cupo suficiente. No se realizó el cobro.",
+      reason: "La tarjeta no dispone de saldo o cupo suficiente. No se realizÃ³ el cobro.",
     };
   }
 
   if (/cvv|cvc|security.?code|codigo.?seguridad/.test(combined)) {
     return {
       code: "INVALID_CVV",
-      reason: "El banco rechazó el código de seguridad. Revisa el CVV e inténtalo nuevamente.",
+      reason: "El banco rechazÃ³ el cÃ³digo de seguridad. Revisa el CVV e intÃ©ntalo nuevamente.",
     };
   }
 
   if (/expired|expiry|vencid|fecha.?vencimiento/.test(combined)) {
     return {
       code: "EXPIRED_CARD",
-      reason: "La tarjeta está vencida o la fecha ingresada no es válida.",
+      reason: "La tarjeta estÃ¡ vencida o la fecha ingresada no es vÃ¡lida.",
     };
   }
 
   if (/issuer|declin|reject|banco|emisor/.test(combined)) {
     return {
       code: "ISSUER_DECLINED",
-      reason: "Tu banco rechazó la operación. Puedes probar otra tarjeta.",
+      reason: "Tu banco rechazÃ³ la operaciÃ³n. Puedes probar otra tarjeta.",
     };
   }
 
   return {
     code: "PAYMENT_REJECTED",
-    reason: "El pago fue rechazado por Klap o por el banco. No se realizó el cobro.",
+    reason: "El pago fue rechazado por Klap o por el banco. No se realizÃ³ el cobro.",
   };
 }
 
@@ -1313,7 +1313,7 @@ function parseKlapWebhookAmountClp(raw: string | number): number | null {
     return Number.isInteger(raw) && raw > 0 ? raw : null;
   }
   const trimmed = raw.trim();
-  if (!/^\d+$/.test(trimmed)) return null; // digits only — no sign, no decimal point
+  if (!/^\d+$/.test(trimmed)) return null; // digits only â€” no sign, no decimal point
   const parsed = Number(trimmed);
   return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : null;
 }
@@ -1322,23 +1322,23 @@ export class PaymentsService {
   /**
    * POST /webhooks/klap/confirm
    *
-   * En operación normal, solo este evento autenticado y validado por servidor
-   * confirma el pago. La única excepción es el conciliador determinístico de
-   * tarjetas oficiales, disponible exclusivamente mientras Klap está configurado
+   * En operaciÃ³n normal, solo este evento autenticado y validado por servidor
+   * confirma el pago. La Ãºnica excepciÃ³n es el conciliador determinÃ­stico de
+   * tarjetas oficiales, disponible exclusivamente mientras Klap estÃ¡ configurado
    * en Sandbox; nunca usa un callback del navegador como prueba de pago.
    * Responds quickly: only signature check,
    * payload validation, an idempotent claim, and one atomic status transition
-   * happen before returning — no email/PDF/push/Sentry-with-payload/external
+   * happen before returning â€” no email/PDF/push/Sentry-with-payload/external
    * calls of any kind.
    */
   async handleKlapConfirmWebhook(
     rawBody: unknown,
     headers: Record<string, string>,
   ): Promise<Result<{ status: "ok" }>> {
-    // Orden obligatorio (Fase C.1): schema → firma → buscar payment → verificar
-    // identidad → validar método → validar monto → recién ahí eventKey/claim →
-    // transición → responder. Una discrepancia financiera/contractual NUNCA
-    // llega a construir un eventKey ni a reclamar payment_webhook_events — así
+    // Orden obligatorio (Fase C.1): schema â†’ firma â†’ buscar payment â†’ verificar
+    // identidad â†’ validar mÃ©todo â†’ validar monto â†’ reciÃ©n ahÃ­ eventKey/claim â†’
+    // transiciÃ³n â†’ responder. Una discrepancia financiera/contractual NUNCA
+    // llega a construir un eventKey ni a reclamar payment_webhook_events â€” asÃ­
     // una entrega posterior corregida por Klap se revalida desde cero en vez de
     // quedar bloqueada por un evento previo marcado "processed" por error.
     const parsed = klapConfirmWebhookSchema.safeParse(rawBody);
@@ -1398,7 +1398,7 @@ export class PaymentsService {
     }
 
     // Already terminal (rejected/failed/refunded): do not invent a
-    // confirm-after-reject transition. Genuinely a late/duplicate delivery —
+    // confirm-after-reject transition. Genuinely a late/duplicate delivery â€”
     // no financial re-validation needed, ack without touching payment_webhook_events.
     if (KLAP_WEBHOOK_TERMINAL_STATUSES.has(payment.status)) {
       auditService.recordSafe({
@@ -1411,7 +1411,7 @@ export class PaymentsService {
       return { ok: true, status: "ok" };
     }
 
-    // Already success: valid duplicate confirm for the same transaction — no
+    // Already success: valid duplicate confirm for the same transaction â€” no
     // repeated transition/effects, no need to re-validate method/amount.
     if (payment.status === "success") {
       return { ok: true, status: "ok" };
@@ -1419,8 +1419,8 @@ export class PaymentsService {
 
     // La orden fue creada por RAPA GO con methods: ["tarjetas"].
     // Klap puede describir el medio concreto con otro texto en payment_method.
-    // Para una firma válida, order_id/reference_id coincidentes y monto exacto,
-    // este campo se conserva para auditoría, pero no debe provocar HTTP 422.
+    // Para una firma vÃ¡lida, order_id/reference_id coincidentes y monto exacto,
+    // este campo se conserva para auditorÃ­a, pero no debe provocar HTTP 422.
     if (body.payment_method !== "tarjetas") {
       auditService.recordSafe({
         actorUserId: payment.passengerUserId,
@@ -1447,7 +1447,7 @@ export class PaymentsService {
           provider: "klap",
         },
       });
-      // Does not mark success, does not reject either — no confirmed rule for
+      // Does not mark success, does not reject either â€” no confirmed rule for
       // auto-rejecting Klap on mismatch. Never claims an idempotency event for
       // this delivery, so a corrected redelivery is revalidated from scratch.
       return {
@@ -1458,7 +1458,7 @@ export class PaymentsService {
       };
     }
 
-    // Only past this point — everything financially/contractually valid — do
+    // Only past this point â€” everything financially/contractually valid â€” do
     // we build an eventKey and claim idempotency, guarding solely the actual
     // success transition against concurrent/duplicate valid deliveries.
     const payloadHash = crypto.createHash("sha256").update(stableJson(body)).digest("hex");
@@ -1473,7 +1473,7 @@ export class PaymentsService {
         reference_id: body.reference_id,
         payment_method: body.payment_method,
         transaction_type: body.transaction_type,
-        // amount/mc_code/card_type/brand/last_digits/quotas kept — never
+        // amount/mc_code/card_type/brand/last_digits/quotas kept â€” never
         // token_id, never bin, never the raw request body.
         amount: body.amount,
         mc_code: body.mc_code ?? null,
@@ -1615,7 +1615,7 @@ export class PaymentsService {
     }
 
     // Already success: never degrade automatically. A reject arriving after a
-    // confirmed success is a real state conflict, not a duplicate — it must
+    // confirmed success is a real state conflict, not a duplicate â€” it must
     // not be acknowledged as if the reject had been applied.
     if (payment.status === "success") {
       auditService.recordSafe({
@@ -1625,7 +1625,7 @@ export class PaymentsService {
         entityId: payment.id,
         metadata: { code: sanitizedCode ?? "none" },
       });
-      // No degrada el pago y reconoce la entrega tardía para evitar que Klap
+      // No degrada el pago y reconoce la entrega tardÃ­a para evitar que Klap
       // considere fallido el webhook por una respuesta HTTP no-2xx.
       return { ok: true, status: "ok" };
     }
@@ -1678,7 +1678,7 @@ export class PaymentsService {
       // Un rechazo Klap no elimina la solicitud. El viaje permanece en
       // pending_payment, oculto para conductores, para que el pasajero pueda
       // crear una nueva orden y probar otra tarjeta sin recargar ni duplicar
-      // el viaje. Solo la cancelación explícita del pasajero elimina la
+      // el viaje. Solo la cancelaciÃ³n explÃ­cita del pasajero elimina la
       // solicitud pendiente.
 
       auditService.recordSafe({
@@ -1785,7 +1785,7 @@ export class PaymentsService {
         ok: false,
         code: "FAST_SEARCH_STATUS_NOT_ALLOWED",
         message:
-          "RapaGo más veloz solo se puede activar mientras el viaje está buscando conductor.",
+          "RapaGo mÃ¡s veloz solo se puede activar mientras el viaje estÃ¡ buscando conductor.",
         statusCode: 409,
       };
     }
@@ -1794,7 +1794,7 @@ export class PaymentsService {
       return {
         ok: false,
         code: "FAST_SEARCH_ALREADY_ACTIVE",
-        message: "RapaGo más veloz ya está activo para este viaje.",
+        message: "RapaGo mÃ¡s veloz ya estÃ¡ activo para este viaje.",
         statusCode: 409,
       };
     }
@@ -1813,7 +1813,7 @@ export class PaymentsService {
             : "PAYMENT_ALREADY_PAID",
         message:
           paymentPurpose === "fast_search"
-            ? "El recargo de RapaGo más veloz ya fue pagado."
+            ? "El recargo de RapaGo mÃ¡s veloz ya fue pagado."
             : "Este viaje ya tiene un pago aprobado.",
         statusCode: 409,
       };
@@ -1830,7 +1830,7 @@ export class PaymentsService {
         code: "PAYMENT_ALREADY_EXISTS",
         message:
           paymentPurpose === "fast_search"
-            ? "El pago de RapaGo más veloz ya está pendiente o procesándose."
+            ? "El pago de RapaGo mÃ¡s veloz ya estÃ¡ pendiente o procesÃ¡ndose."
             : "A payment for this ride is already pending or processing.",
         statusCode: 409,
       };
@@ -1874,7 +1874,7 @@ export class PaymentsService {
         return {
           ok: false,
           code: "FAST_SEARCH_ACTIVATION_ERROR",
-          message: "No se pudo activar RapaGo más veloz. Intenta nuevamente.",
+          message: "No se pudo activar RapaGo mÃ¡s veloz. Intenta nuevamente.",
           statusCode: 500,
         };
       }
@@ -1909,7 +1909,7 @@ export class PaymentsService {
           ok: false,
           code: "RIDE_PAYMENT_NOT_APPROVED",
           message:
-            "El pago principal del viaje todavía no está aprobado por Mercado Pago.",
+            "El pago principal del viaje todavÃ­a no estÃ¡ aprobado por Mercado Pago.",
           statusCode: 409,
         };
       }
@@ -1952,8 +1952,8 @@ export class PaymentsService {
         amountClp,
         description:
           paymentPurpose === "fast_search"
-            ? `RapaGo más veloz — ${ride.originText} → ${ride.destinationText}`
-            : `Viaje Rapa Go — ${ride.originText} → ${ride.destinationText}`,
+            ? `RapaGo mÃ¡s veloz â€” ${ride.originText} â†’ ${ride.destinationText}`
+            : `Viaje Rapa Go â€” ${ride.originText} â†’ ${ride.destinationText}`,
         passengerEmail: user?.email ?? "",
         passengerName: user?.name ?? "Pasajero",
         returnUrl: buildPaymentReturnUrl(provider.name),
@@ -1994,7 +1994,7 @@ export class PaymentsService {
         code: "PAYMENT_PROVIDER_ERROR",
         message:
           paymentPurpose === "fast_search"
-            ? "No se pudo iniciar el pago de RapaGo más veloz. Intenta nuevamente."
+            ? "No se pudo iniciar el pago de RapaGo mÃ¡s veloz. Intenta nuevamente."
             : "Could not initiate payment with provider. Please try again.",
         statusCode: 502,
       };
@@ -2129,7 +2129,7 @@ export class PaymentsService {
         };
       }
 
-      // Nunca se crea una segunda orden basándose solamente en el reloj local.
+      // Nunca se crea una segunda orden basÃ¡ndose solamente en el reloj local.
       // Primero se consulta la orden oficial de Klap para evitar doble cobro.
       if (locallyExpired || !activeRedirectUrl) {
         try {
@@ -2192,14 +2192,14 @@ export class PaymentsService {
               ok: false,
               code: "PAYMENT_ALREADY_PAID",
               message:
-                "Klap ya confirmó el pago de este viaje. Revisa Mis Viajes.",
+                "Klap ya confirmÃ³ el pago de este viaje. Revisa Mis Viajes.",
               statusCode: 409,
             };
           }
 
           if (remoteStatus === "rejected") {
             await paymentsRepo.markRejected(active.id, safePayload);
-            // La orden terminó oficialmente. Se permite crear una nueva abajo.
+            // La orden terminÃ³ oficialmente. Se permite crear una nueva abajo.
           } else {
             const recoveredRedirectUrl = String(
               remoteOrder.redirect_url ?? activeRedirectUrl,
@@ -2229,7 +2229,7 @@ export class PaymentsService {
               ok: false,
               code: "KLAP_ORDER_RECOVERY_PENDING",
               message:
-                "La orden Klap anterior sigue pendiente y todavía no tiene un enlace recuperable. Revisa Mis Viajes antes de intentar otro pago.",
+                "La orden Klap anterior sigue pendiente y todavÃ­a no tiene un enlace recuperable. Revisa Mis Viajes antes de intentar otro pago.",
               statusCode: 409,
             };
           }
@@ -2251,7 +2251,7 @@ export class PaymentsService {
             ok: false,
             code: "KLAP_ORDER_RECOVERY_PENDING",
             message:
-              "No pudimos confirmar si la orden Klap anterior terminó. Por seguridad no se creará otro cobro todavía.",
+              "No pudimos confirmar si la orden Klap anterior terminÃ³. Por seguridad no se crearÃ¡ otro cobro todavÃ­a.",
             statusCode: 409,
           };
         }
@@ -2301,7 +2301,7 @@ export class PaymentsService {
       hostedResult = await provider.createHostedOrder({
         orderId: payment.id,
         amountClp,
-        description: `Viaje Rapa Go — ${ride.originText} → ${ride.destinationText}`,
+        description: `Viaje Rapa Go â€” ${ride.originText} â†’ ${ride.destinationText}`,
         passengerEmail: user?.email ?? "",
         passengerName: user?.name ?? "Pasajero",
         returnUrl: buildPaymentReturnUrl("klap"),
@@ -2318,6 +2318,10 @@ export class PaymentsService {
         metadata: {
           errorKind:
             error instanceof KlapProviderError ? error.kind : "unknown",
+          errorDetail:
+            error instanceof KlapProviderError
+              ? error.message.slice(0, 200)
+              : "unknown",
           rideId: ride.id,
           provider: "klap",
           actorRole: auth.role,
@@ -2363,7 +2367,7 @@ export class PaymentsService {
 
   /**
    * Consulta GET /payment-gateway/v1/orders/{order_id}.
-   * El webhook sigue siendo la vía principal; esta consulta es el respaldo
+   * El webhook sigue siendo la vÃ­a principal; esta consulta es el respaldo
    * oficial cuando el pasajero vuelve del checkout o abre Mis Viajes.
    */
   async reconcileKlapPayment(
@@ -2448,7 +2452,7 @@ export class PaymentsService {
       return {
         ok: false,
         code: "PAYMENT_PROVIDER_ERROR",
-        message: "Klap todavía no permite consultar el estado de la orden.",
+        message: "Klap todavÃ­a no permite consultar el estado de la orden.",
         statusCode: 502,
       };
     }
@@ -2906,13 +2910,13 @@ export class PaymentsService {
         processed: true,
         refunded: false,
         skippedReason:
-          "La devolución de este pago ya está siendo procesada.",
+          "La devoluciÃ³n de este pago ya estÃ¡ siendo procesada.",
         paymentId: payment.id,
         mercadoPagoPaymentId,
       };
     }
 
-    // Clave estable: un mismo pago siempre usa exactamente la misma operación
+    // Clave estable: un mismo pago siempre usa exactamente la misma operaciÃ³n
     // idempotente ante reintentos, timeouts o llamadas duplicadas.
     const idempotencyKey = `rapago-refund-${payment.id}`;
     const claimed = await paymentsRepo.claimRefund(
@@ -2942,7 +2946,7 @@ export class PaymentsService {
         processed: true,
         refunded: false,
         skippedReason:
-          "Otra solicitud ya está procesando la devolución.",
+          "Otra solicitud ya estÃ¡ procesando la devoluciÃ³n.",
         paymentId: payment.id,
         mercadoPagoPaymentId,
       };
@@ -2957,7 +2961,7 @@ export class PaymentsService {
       const providerMessage =
         getPaymentStringValue(refundResult.data, ["message"]) ||
         getPaymentStringValue(refundResult.data, ["error"]) ||
-        `MercadoPago respondió HTTP ${refundResult.statusCode}.`;
+        `MercadoPago respondiÃ³ HTTP ${refundResult.statusCode}.`;
 
       await paymentsRepo.markRefundFailed({
         id: payment.id,
@@ -2985,7 +2989,7 @@ export class PaymentsService {
         ok: false,
         code: "MERCADOPAGO_REFUND_ERROR",
         message:
-          "El viaje fue cancelado, pero MercadoPago no pudo procesar la devolución.",
+          "El viaje fue cancelado, pero MercadoPago no pudo procesar la devoluciÃ³n.",
         statusCode: refundResult.statusCode,
       };
     }

@@ -24,8 +24,16 @@ const MAX_AMOUNT_CLP = 99_999_999;
 const MAX_REFERENCE_ID_LENGTH = 100;
 const SHA256_HEX_PATTERN = /^[0-9a-f]{64}$/;
 
+const configuredSandboxCheckoutHosts = String(
+  process.env["KLAP_ALLOWED_SANDBOX_CHECKOUT_HOSTS"] ?? "",
+)
+  .split(",")
+  .map((host) => host.trim().toLowerCase())
+  .filter((host) => /^[a-z0-9.-]+$/.test(host));
+
 const ALLOWED_SANDBOX_CHECKOUT_HOSTS = new Set([
   "pagos-pasarela-sandbox.mcdesaqa.cl",
+  ...configuredSandboxCheckoutHosts,
 ]);
 
 export function verifyKlapWebhookApikey(
@@ -267,7 +275,7 @@ function validateKlapRedirectUrl(value: string): string {
   ) {
     throw new KlapProviderError(
       "unsafe_redirect",
-      "Klap redirect_url does not belong to the approved Sandbox checkout host.",
+      `Klap redirect_url host is not approved: ${hostname}`,
     );
   }
 
@@ -488,8 +496,8 @@ export class KlapProvider implements PaymentProvider {
   }
 
   /**
-   * Alias de transición V107 -> V108. Los clientes antiguos pueden conservar
-   * el nombre del método, pero el resultado ya es un checkout redirect oficial.
+   * Alias de transiciÃ³n V107 -> V108. Los clientes antiguos pueden conservar
+   * el nombre del mÃ©todo, pero el resultado ya es un checkout redirect oficial.
    */
   async createEmbeddedOrder(
     params: CreatePaymentParams,
