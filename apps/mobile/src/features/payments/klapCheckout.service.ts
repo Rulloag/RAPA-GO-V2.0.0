@@ -9,6 +9,7 @@ export const RAPAGO_PENDING_CARD_PAYMENT_KEY =
 
 const ALLOWED_KLAP_CHECKOUT_HOSTS = new Set([
   "pagos-pasarela-sandbox.mcdesaqa.cl",
+  "sandbox.mcdesaqa.cl",
 ]);
 
 export type PendingKlapPaymentRecord = {
@@ -72,7 +73,7 @@ export function validateKlapRedirectUrl(value: string): string {
   try {
     url = new URL(value);
   } catch {
-    throw new Error("Klap devolvió un enlace de pago inválido.");
+    throw new Error("Klap devolviÃ³ un enlace de pago invÃ¡lido.");
   }
 
   if (
@@ -114,7 +115,7 @@ export async function createKlapHostedOrder(
     !paymentId ||
     !orderId
   ) {
-    throw new Error("Klap devolvió una orden de pago incompleta.");
+    throw new Error("Klap devolviÃ³ una orden de pago incompleta.");
   }
 
   return {
@@ -143,7 +144,7 @@ export function savePendingKlapPayment(
     );
   } catch {
     throw new Error(
-      "No se pudo guardar el pago pendiente. Libera espacio del navegador e inténtalo nuevamente.",
+      "No se pudo guardar el pago pendiente. Libera espacio del navegador e intÃ©ntalo nuevamente.",
     );
   }
 }
@@ -234,13 +235,13 @@ export async function cancelPendingKlapRide(
 }
 
 export function resetKlapCheckoutForNextOrder(): void {
-  // El checkout V108 es alojado por Klap. No existe SDK ni sesión Cardinal local.
+  // El checkout V108 es alojado por Klap. No existe SDK ni sesiÃ³n Cardinal local.
 }
 
 export function openKlapHostedCheckout(redirectUrl: string): void {
   const safeUrl = validateKlapRedirectUrl(redirectUrl);
 
-  // Navegación en la misma ventana: evita bloqueadores de pop-up, elimina el
+  // NavegaciÃ³n en la misma ventana: evita bloqueadores de pop-up, elimina el
   // riesgo de abrir dos checkouts y permite que return_url/cancel_url regresen
   // al flujo de RAPA GO de forma determinista.
   window.location.assign(safeUrl);
@@ -307,7 +308,7 @@ export async function waitForKlapPaymentResolution(
     new Promise((resolve, reject) => {
       const onAbort = (): void => {
         window.clearTimeout(timer);
-        reject(new DOMException("Operación cancelada.", "AbortError"));
+        reject(new DOMException("OperaciÃ³n cancelada.", "AbortError"));
       };
 
       const timer = window.setTimeout(() => {
@@ -320,7 +321,7 @@ export async function waitForKlapPaymentResolution(
 
   for (let index = 0; index < delays.length; index += 1) {
     if (options.signal?.aborted) {
-      throw new DOMException("Operación cancelada.", "AbortError");
+      throw new DOMException("OperaciÃ³n cancelada.", "AbortError");
     }
 
     const delay = delays[index] ?? 0;
