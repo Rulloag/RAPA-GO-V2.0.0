@@ -41,7 +41,7 @@ describe("Klap Checkout Transparente frontend", () => {
     expect(modalSource).toContain("Tipo de tarjeta");
     expect(modalSource).toContain("selectCardKind");
     expect(modalSource).toContain("PAGAR CON");
-    expect(modalSource).toContain("disabled={busy || !cardKind}");
+    expect(modalSource).toContain("disabled={busy || paymentSubmissionLocked || !cardKind}");
     expect(modalSource).toContain(
       "RAPA GO no compara el número con listas de tarjetas",
     );
@@ -82,16 +82,18 @@ describe("Klap Checkout Transparente frontend", () => {
     expect(tripsSource).toContain("Este intento ya fue enviado a Klap");
   });
 
-  it("confirma rápido con polling adaptativo y se detiene en segundo plano", () => {
+  it("respeta primero el procesamiento de Klap y confirma con respaldo del backend", () => {
     expect(serviceSource).toContain("KLAP_FAST_STATUS_RETRY_DELAYS_MS");
     expect(serviceSource).toContain("retryDelaysMs");
     expect(serviceSource).toContain("onPendingStatus");
     expect(serviceSource).toContain('document.visibilityState !== "hidden"');
-    expect(modalSource).toContain("}, 150);");
-    expect(modalSource).toContain("const checkoutResult = initializedSdk.payOrder?.()");
-    expect(modalSource).toContain("void Promise.resolve(checkoutResult).catch");
-    expect(modalSource.indexOf("const checkoutResult = initializedSdk.payOrder?.()"))
-      .toBeLessThan(modalSource.indexOf("void Promise.resolve(checkoutResult).catch"));
+    expect(modalSource).toContain("verificationFallbackTimer");
+    expect(modalSource).toContain("}, 8_000);");
+    expect(modalSource).toContain("await Promise.resolve(initializedSdk.payOrder?.())");
+    expect(modalSource).toContain("await verifyPaymentRef.current?.(");
+    expect(modalSource).toContain("paymentSubmissionLocked");
+    expect(modalSource).toContain("PAGO ENVIADO · VERIFICANDO");
+    expect(modalSource).not.toContain("}, 150);");
     expect(tripsSource).toContain("attempt < 5 ? 5000 : 15000");
     expect(tripsSource).not.toContain("await wait(2000)");
   });

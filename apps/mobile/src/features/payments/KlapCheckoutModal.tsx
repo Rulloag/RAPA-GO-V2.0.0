@@ -205,7 +205,8 @@ export function KlapCheckoutModal({
         : "";
   const effectiveQuotas = cardKind === "credit" ? quotas : "1";
   const busy = processing || cancelling || retrying;
-  const formLocked = busy || rejection !== null;
+  const paymentSubmissionLocked = paymentAttemptStarted && rejection === null;
+  const formLocked = busy || paymentSubmissionLocked || rejection !== null;
 
   useEffect(() => {
     setCardNumber("");
@@ -421,28 +422,38 @@ export function KlapCheckoutModal({
       const initializedSdk = await initializeKlapCheckoutOnce(payment.orderId);
       markPendingKlapPaymentStarted(payment);
       setPaymentAttemptStarted(true);
-      const checkoutResult = initializedSdk.payOrder?.();
       setMessage(
-        "Procesando con Klap. RAPA GO ya está verificando el resultado con el backend.",
+        "Procesando con Klap. No cierres esta pantalla ni vuelvas a presionar pagar.",
       );
 
-      // Comienza a consultar el backend sin esperar a que la promesa visual del
-      // SDK termine. En Sandbox, payOrder puede tardar o responder 504 aunque el
-      // webhook confirme correctamente el cobro unos segundos después.
-      window.setTimeout(() => {
+      // Deja que el SDK de Klap complete primero su propia solicitud. La versión
+      // anterior iniciaba el polling casi al mismo tiempo que payOrder(), lo que
+      // agregaba trabajo concurrente justo durante /cards/receipt.
+      //
+      // Como respaldo, si Klap demora demasiado, RAPA GO comienza a consultar el
+      // backend después de 8 segundos. El backend sigue siendo la única autoridad.
+      const verificationFallbackTimer = window.setTimeout(() => {
         void verifyPaymentRef.current?.(
-          "Verificando con tu banco. Todavía no se ha confirmado ni rechazado el pago.",
+          "Tu banco o Klap sigue procesando el pago. RAPA GO confirmará apenas el backend reciba el resultado.",
         );
-      }, 150);
+      }, 8_000);
 
-      void Promise.resolve(checkoutResult).catch(() => {
-        if (verificationRunningRef.current !== payment.paymentId) {
-          setMessage(
-            "Klap demoró en responder al navegador. Seguimos verificando el resultado real con el backend.",
-          );
-        }
-        void verifyPaymentRef.current?.();
-      });
+      try {
+        await Promise.resolve(initializedSdk.payOrder?.());
+        window.clearTimeout(verificationFallbackTimer);
+
+        await verifyPaymentRef.current?.(
+          "Klap terminó el procesamiento inicial. Confirmando el resultado con el backend.",
+        );
+      } catch {
+        window.clearTimeout(verificationFallbackTimer);
+
+        // Un 504/CORS del navegador no se interpreta como rechazo. Klap puede
+        // terminar la operación y enviar el webhook después.
+        await verifyPaymentRef.current?.(
+          "Klap demoró en responder al navegador. Seguimos verificando el resultado real con el backend.",
+        );
+      }
     } catch (error) {
       setProcessing(false);
       setMessage(
@@ -824,7 +835,7 @@ export function KlapCheckoutModal({
                 <IonButton
                   type="submit"
                   expand="block"
-                  disabled={busy || !cardKind}
+                  disabled={busy || paymentSubmissionLocked || !cardKind}
                   style={{
                     "--background": "linear-gradient(135deg,#d5a737,#f3d781)",
                     "--color": "#171006",
@@ -833,7 +844,13 @@ export function KlapCheckoutModal({
                     fontWeight: 950,
                   } as CSSProperties}
                 >
-                  {processing ? <IonSpinner name="dots" /> : payButtonLabel}
+                  {processing ? (
+                    <IonSpinner name="dots" />
+                  ) : paymentSubmissionLocked ? (
+                    "PAGO ENVIADO · VERIFICANDO"
+                  ) : (
+                    payButtonLabel
+                  )}
                 </IonButton>
               )}
 
