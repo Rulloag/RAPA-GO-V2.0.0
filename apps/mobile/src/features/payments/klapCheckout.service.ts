@@ -284,6 +284,9 @@ let cardinalSetupPromise: Promise<void> | null = null;
 let cardinalSetupResolve: (() => void) | null = null;
 let cardinalValidationObserverInstalled = false;
 let cardinalLayerObserver: MutationObserver | null = null;
+let directChallengeOverlay: HTMLDivElement | null = null;
+let directChallengeFrame: HTMLIFrameElement | null = null;
+let directChallengeTransactionId: string | null = null;
 const klapXhrRequestUrls = new WeakMap<XMLHttpRequest, string>();
 
 function currentKlapOrderId(): string | null {
@@ -348,6 +351,250 @@ function isAllowedKlapReceiptUrl(rawUrl: string): boolean {
   } catch {
     return false;
   }
+}
+
+export function closeKlap3dsChallengeOverlay(): void {
+  directChallengeOverlay?.remove();
+  directChallengeOverlay = null;
+  directChallengeFrame = null;
+  directChallengeTransactionId = null;
+}
+
+function revealExistingCardinalChallenge(): boolean {
+  ensureCardinalLayerStyles();
+
+  const modal = document.querySelector<HTMLElement>("#Cardinal-Modal");
+  const content = document.querySelector<HTMLElement>("#Cardinal-ModalContent");
+  const frame = Array.from(
+    document.querySelectorAll<HTMLIFrameElement>("iframe"),
+  ).find((candidate) => {
+    const identity = `${candidate.id} ${candidate.name} ${candidate.src}`;
+
+    if (/cardinal[-_ ]?collector/i.test(identity)) {
+      return false;
+    }
+
+    return /merchantacs|\/centinelapi\/v2\/cruise\/stepup|stepup|challenge/i.test(
+      identity,
+    );
+  });
+
+  if (!modal && !content && !frame) {
+    return false;
+  }
+
+  if (modal) {
+    modal.style.setProperty("display", "flex", "important");
+    modal.style.setProperty("visibility", "visible", "important");
+    modal.style.setProperty("opacity", "1", "important");
+    modal.style.setProperty("position", "fixed", "important");
+    modal.style.setProperty("inset", "0", "important");
+    modal.style.setProperty("width", "100vw", "important");
+    modal.style.setProperty("height", "100vh", "important");
+    modal.style.setProperty("align-items", "center", "important");
+    modal.style.setProperty("justify-content", "center", "important");
+    modal.style.setProperty("background", "rgba(0,0,0,.72)", "important");
+    modal.style.setProperty("z-index", "2147483647", "important");
+  }
+
+  if (content) {
+    content.style.setProperty("display", "block", "important");
+    content.style.setProperty("visibility", "visible", "important");
+    content.style.setProperty("opacity", "1", "important");
+    content.style.setProperty("position", "relative", "important");
+    content.style.setProperty("width", "min(600px, calc(100vw - 24px))", "important");
+    content.style.setProperty("height", "min(680px, calc(100vh - 24px))", "important");
+    content.style.setProperty("max-width", "600px", "important");
+    content.style.setProperty("max-height", "680px", "important");
+    content.style.setProperty("margin", "auto", "important");
+    content.style.setProperty("background", "#ffffff", "important");
+    content.style.setProperty("border-radius", "18px", "important");
+    content.style.setProperty("overflow", "hidden", "important");
+    content.style.setProperty("z-index", "2147483647", "important");
+  }
+
+  if (frame) {
+    frame.style.setProperty("display", "block", "important");
+    frame.style.setProperty("visibility", "visible", "important");
+    frame.style.setProperty("opacity", "1", "important");
+    frame.style.setProperty("position", "relative", "important");
+    frame.style.setProperty("width", "100%", "important");
+    frame.style.setProperty("height", "100%", "important");
+    frame.style.setProperty("min-height", "400px", "important");
+    frame.style.setProperty("border", "0", "important");
+    frame.style.setProperty("z-index", "2147483647", "important");
+  }
+
+  return true;
+}
+
+function openDirectKlap3dsChallenge(challenge: {
+  acsUrl: string;
+  pareq: string;
+  transactionId: string;
+}): void {
+  if (
+    directChallengeOverlay &&
+    directChallengeTransactionId === challenge.transactionId
+  ) {
+    return;
+  }
+
+  closeKlap3dsChallengeOverlay();
+
+  const overlay = document.createElement("div");
+  overlay.id = "rapago-klap-3ds-overlay";
+  overlay.setAttribute("role", "dialog");
+  overlay.setAttribute("aria-modal", "true");
+  overlay.setAttribute("aria-label", "Validación segura del banco");
+  Object.assign(overlay.style, {
+    position: "fixed",
+    inset: "0",
+    zIndex: "2147483647",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    padding: "12px",
+    background: "rgba(0,0,0,.78)",
+  });
+
+  const panel = document.createElement("div");
+  Object.assign(panel.style, {
+    width: "min(600px, 100%)",
+    height: "min(680px, calc(100vh - 24px))",
+    display: "grid",
+    gridTemplateRows: "auto 1fr",
+    overflow: "hidden",
+    borderRadius: "20px",
+    background: "#ffffff",
+    boxShadow: "0 28px 80px rgba(0,0,0,.48)",
+  });
+
+  const header = document.createElement("div");
+  Object.assign(header.style, {
+    padding: "14px 16px",
+    background: "linear-gradient(135deg,#1d1713,#9b3f20)",
+    color: "#ffffff",
+    fontFamily: "system-ui, sans-serif",
+  });
+
+  const titleRow = document.createElement("div");
+  Object.assign(titleRow.style, {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: "12px",
+  });
+
+  const title = document.createElement("div");
+  title.textContent = "Validación segura del banco";
+  Object.assign(title.style, {
+    fontSize: "1rem",
+    fontWeight: "900",
+  });
+
+  const closeButton = document.createElement("button");
+  closeButton.type = "button";
+  closeButton.textContent = "Cerrar";
+  closeButton.setAttribute("aria-label", "Cerrar validación bancaria");
+  Object.assign(closeButton.style, {
+    border: "1px solid rgba(255,255,255,.42)",
+    borderRadius: "999px",
+    padding: "7px 11px",
+    background: "rgba(255,255,255,.12)",
+    color: "#ffffff",
+    fontSize: ".72rem",
+    fontWeight: "900",
+    cursor: "pointer",
+  });
+  closeButton.addEventListener("click", () => {
+    closeKlap3dsChallengeOverlay();
+    dispatchKlap3dsEvent(KLAP_3DS_CHALLENGE_ERROR_EVENT, {
+      orderId: currentKlapOrderId(),
+      message:
+        "Cerraste la validación bancaria. Revisa el estado en Mis Viajes y no vuelvas a pagar hasta confirmar el resultado.",
+    });
+  });
+
+  const description = document.createElement("div");
+  description.textContent =
+    "Completa la autenticación para que Klap confirme el pago.";
+  Object.assign(description.style, {
+    marginTop: "4px",
+    fontSize: ".76rem",
+    lineHeight: "1.35",
+    opacity: ".82",
+    fontWeight: "700",
+  });
+
+  const frameName = `rapago-klap-3ds-${challenge.transactionId.replace(
+    /[^a-zA-Z0-9_-]/g,
+    "",
+  )}`;
+
+  const frame = document.createElement("iframe");
+  frame.name = frameName;
+  frame.title = "Autenticación bancaria 3D Secure";
+  frame.setAttribute("allow", "payment *");
+  frame.setAttribute("referrerpolicy", "origin");
+  Object.assign(frame.style, {
+    width: "100%",
+    height: "100%",
+    minHeight: "400px",
+    border: "0",
+    background: "#ffffff",
+  });
+
+  const form = document.createElement("form");
+  form.method = "POST";
+  form.action = challenge.acsUrl;
+  form.target = frameName;
+  form.acceptCharset = "UTF-8";
+  form.style.display = "none";
+
+  const creq = document.createElement("input");
+  creq.type = "hidden";
+  creq.name = "creq";
+  creq.value = challenge.pareq;
+  form.appendChild(creq);
+
+  titleRow.append(title, closeButton);
+  header.append(titleRow, description);
+  panel.append(header, frame);
+  overlay.append(panel, form);
+  document.body.appendChild(overlay);
+
+  directChallengeOverlay = overlay;
+  directChallengeFrame = frame;
+  directChallengeTransactionId = challenge.transactionId;
+
+  form.submit();
+
+  window.setTimeout(() => {
+    form.remove();
+  }, 1_000);
+}
+
+async function waitForVisibleCardinalChallenge(
+  timeoutMs = 2_500,
+): Promise<boolean> {
+  const startedAt = Date.now();
+
+  while (Date.now() - startedAt < timeoutMs) {
+    if (hasVisibleCardinalChallenge()) {
+      return true;
+    }
+
+    if (revealExistingCardinalChallenge() && hasVisibleCardinalChallenge()) {
+      return true;
+    }
+
+    await new Promise<void>((resolve) => {
+      window.setTimeout(resolve, 100);
+    });
+  }
+
+  return false;
 }
 
 function ensureCardinalLayerStyles(): void {
@@ -508,6 +755,7 @@ function installCardinalValidationObserver(): void {
 
   window.Cardinal.on("payments.validated", () => {
     stopCardinalLayerObserver();
+    closeKlap3dsChallengeOverlay();
     dispatchKlap3dsEvent(KLAP_3DS_VALIDATED_EVENT, {
       orderId: currentKlapOrderId(),
     });
@@ -565,9 +813,17 @@ export async function continueKlap3dsChallenge(
     window.setTimeout(promoteCardinalChallengeLayer, 750);
     window.setTimeout(promoteCardinalChallengeLayer, 1_500);
 
+    const cardinalChallengeVisible =
+      await waitForVisibleCardinalChallenge();
+
+    if (!cardinalChallengeVisible) {
+      openDirectKlap3dsChallenge(challenge);
+    }
+
     return true;
   } catch (error) {
     stopCardinalLayerObserver();
+    closeKlap3dsChallengeOverlay();
     handledKlapChallengeTransactions.delete(challenge.transactionId);
     throw error;
   }
@@ -790,6 +1046,8 @@ const klapInitializationState: {
 };
 
 export function resetKlapCheckoutForNextOrder(): void {
+  stopCardinalLayerObserver();
+  closeKlap3dsChallengeOverlay();
   klapInitializationState.orderId = null;
   klapInitializationState.status = "idle";
   klapInitializationState.promise = null;

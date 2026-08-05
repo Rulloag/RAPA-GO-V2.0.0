@@ -125,6 +125,11 @@ describe("Klap Checkout Transparente frontend", () => {
     expect(serviceSource).toContain("#Cardinal-Modal");
     expect(serviceSource).toContain("2147483647");
     expect(serviceSource).toContain("promoteCardinalChallengeLayer");
+    expect(serviceSource).toContain("revealExistingCardinalChallenge");
+    expect(serviceSource).toContain("openDirectKlap3dsChallenge");
+    expect(serviceSource).toContain('name = "creq"');
+    expect(serviceSource).toContain("rapago-klap-3ds-overlay");
+    expect(serviceSource).toContain("waitForVisibleCardinalChallenge");
     expect(serviceSource).toContain('"cca"');
     expect(serviceSource).toContain("AcsUrl: challenge.acsUrl");
     expect(serviceSource).toContain("Payload: challenge.pareq");
@@ -133,6 +138,8 @@ describe("Klap Checkout Transparente frontend", () => {
     expect(modalSource).toContain("continueKlap3dsChallenge(payOrderResult)");
     expect(modalSource).toContain("KLAP_3DS_CHALLENGE_STARTED_EVENT");
     expect(modalSource).toContain("Autenticación bancaria completada");
+    expect(modalSource).toContain("closeKlap3dsChallengeOverlay");
+    expect(serviceSource).toContain("closeKlap3dsChallengeOverlay");
     expect(serviceSource).not.toContain("console.log");
   });
 

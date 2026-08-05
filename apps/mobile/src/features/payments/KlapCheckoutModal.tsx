@@ -17,6 +17,7 @@ import {
 } from "react";
 import {
   clearPendingKlapPayment,
+  closeKlap3dsChallengeOverlay,
   continueKlap3dsChallenge,
   initializeKlapCheckoutOnce,
   isKlapPaymentApproved,
@@ -254,6 +255,7 @@ export function KlapCheckoutModal({
           >,
         ): boolean => {
           if (isKlapPaymentApproved(status.status)) {
+            closeKlap3dsChallengeOverlay();
             setMessage(confirmedPaymentLabel(status));
             onApproved(payment);
             return true;
@@ -269,6 +271,7 @@ export function KlapCheckoutModal({
               retryAllowed: status.retryAllowed !== false,
             };
 
+            closeKlap3dsChallengeOverlay();
             clearPendingKlapPayment();
             resetKlapCheckoutForNextOrder();
             setRejection(rejectionState);
@@ -357,6 +360,7 @@ export function KlapCheckoutModal({
 
     const handleChallengeValidated = (event: Event): void => {
       if (!belongsToCurrentPayment(event)) return;
+      closeKlap3dsChallengeOverlay();
       void confirmWithBackend(
         "Autenticación bancaria completada. Confirmando el resultado final con Klap.",
       );
@@ -364,6 +368,7 @@ export function KlapCheckoutModal({
 
     const handleChallengeError = (event: Event): void => {
       if (!belongsToCurrentPayment(event)) return;
+      closeKlap3dsChallengeOverlay();
       const detail = (event as CustomEvent<{ message?: unknown }>).detail;
       setProcessing(false);
       setMessage(
@@ -384,6 +389,7 @@ export function KlapCheckoutModal({
 
     return () => {
       disposed = true;
+      closeKlap3dsChallengeOverlay();
       abortRef.current?.abort();
       verifyPaymentRef.current = null;
       verificationRunningRef.current = null;
