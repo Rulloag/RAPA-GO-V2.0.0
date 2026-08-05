@@ -18,12 +18,14 @@ import {
 import {
   clearPendingKlapPayment,
   initializeKlapCheckoutOnce,
+  RAPAGO_KLAP_3DS_STATE_EVENT,
   isKlapPaymentApproved,
   isKlapPaymentRejected,
   markPendingKlapPaymentStarted,
   resetKlapCheckoutForNextOrder,
   waitForKlapPaymentResolution,
   type PendingKlapPaymentRecord,
+  type RapagoKlap3dsStateDetail,
 } from "./klapCheckout.service.js";
 import { walletService } from "../wallet/wallet.service.js";
 
@@ -219,6 +221,29 @@ export function KlapCheckoutModal({
     setRejection(null);
     cancelledRef.current = false;
   }, [payment?.paymentId]);
+
+  useEffect(() => {
+    const handleKlap3dsState = (event: Event): void => {
+      const detail = (event as CustomEvent<RapagoKlap3dsStateDetail>).detail;
+      if (!detail?.message) return;
+
+      setPaymentAttemptStarted(true);
+      setProcessing(true);
+      setMessage(detail.message);
+    };
+
+    window.addEventListener(
+      RAPAGO_KLAP_3DS_STATE_EVENT,
+      handleKlap3dsState,
+    );
+
+    return () => {
+      window.removeEventListener(
+        RAPAGO_KLAP_3DS_STATE_EVENT,
+        handleKlap3dsState,
+      );
+    };
+  }, []);
 
   useEffect(() => {
     if (!payment || !accessToken) return undefined;

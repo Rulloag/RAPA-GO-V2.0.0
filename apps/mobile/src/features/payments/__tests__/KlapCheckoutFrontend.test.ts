@@ -123,11 +123,17 @@ describe("Klap Checkout Transparente frontend", () => {
     expect(serviceSource).toContain("installKlapReceiptChallengeBridge");
     expect(serviceSource).toContain("ALLOWED_KLAP_RECEIPT_HOSTS");
     expect(serviceSource).toContain("api-pasarela-sandbox.mcdesaqa.cl");
+    expect(serviceSource).toContain('/^\\/cards\\/receipt');
+    expect(serviceSource).toContain("klapXhrRequests");
+    expect(serviceSource).toContain('request?.method !== "POST"');
     expect(serviceSource).toMatch(/response\s*\.\s*clone\(\)\s*\.\s*json\(\)/s);
     expect(serviceSource).toContain("SEND_TO_CHALLENGE");
     expect(serviceSource).toContain("window.Cardinal.continue(");
     expect(serviceSource).toContain('"payments.setupComplete"');
     expect(serviceSource).toContain('"payments.validated"');
+    expect(serviceSource).toContain("RAPAGO_KLAP_3DS_STATE_EVENT");
+    expect(serviceSource).toContain("safeKlap3dsErrorMessage");
+    expect(modalSource).toContain("RapagoKlap3dsStateDetail");
     expect(serviceSource).toContain("sdk.init({");
     expect(modalSource).toContain("initializedSdk.payOrder?.()");
     expect(serviceSource).not.toContain("Cardinal.setup");
