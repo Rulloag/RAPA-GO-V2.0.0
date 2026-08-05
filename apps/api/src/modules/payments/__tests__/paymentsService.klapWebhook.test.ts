@@ -69,6 +69,8 @@ function paymentFixture(overrides: Record<string, unknown> = {}): Record<string,
 beforeEach(() => {
   vi.clearAllMocks();
   process.env["KLAP_API_KEY"] = KLAP_API_KEY;
+  process.env["KLAP_DEFERRED_CAPTURE_ENABLED"] = "true";
+  process.env["KLAP_CAPTURE_CONTRACT_CONFIRMED"] = "true";
   mockClaimWebhookEvent.mockResolvedValue({ claimed: true, event: { id: "webhook-event-uuid" } });
   mockCompleteWebhookEvent.mockResolvedValue(undefined);
   mockFailWebhookEvent.mockResolvedValue(undefined);

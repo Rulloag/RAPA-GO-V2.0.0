@@ -51,6 +51,8 @@ function paymentFixture(overrides: Record<string, unknown> = {}): Record<string,
 
 beforeEach(() => {
   vi.clearAllMocks();
+  process.env["KLAP_DEFERRED_CAPTURE_ENABLED"] = "true";
+  process.env["KLAP_CAPTURE_CONTRACT_CONFIRMED"] = "true";
 });
 
 describe("PaymentsService.captureAuthorizedKlapPayment", () => {
@@ -217,4 +219,24 @@ describe("PaymentsService.captureAuthorizedKlapPayment", () => {
       expect.objectContaining({ eventType: "payment.klap_capture_failed" }),
     );
   });
+  it.each([408, 409, 425, 429])(
+    "HTTP %s remains capture_unknown and is never treated as a definitive rejection",
+    async (statusCode) => {
+      mockFindById.mockResolvedValue(paymentFixture());
+      mockClaimCapture.mockResolvedValue(
+        paymentFixture({ status: "capture_pending" }),
+      );
+      mockCaptureOrder.mockRejectedValue(
+        new KlapProviderError("http_rejected", "uncertain response", statusCode),
+      );
+
+      const result = await service.captureAuthorizedKlapPayment(PAYMENT_ID);
+
+      expect(mockMarkCaptureUnknown).toHaveBeenCalledOnce();
+      expect(mockMarkCaptureFailed).not.toHaveBeenCalled();
+      expect(result.ok).toBe(false);
+      if (!result.ok) expect(result.code).toBe("CAPTURE_UNKNOWN");
+    },
+  );
+
 });

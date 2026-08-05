@@ -233,6 +233,8 @@ describe("RidesService - contrato actual", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    process.env["KLAP_DEFERRED_CAPTURE_ENABLED"] = "true";
+    process.env["KLAP_CAPTURE_CONTRACT_CONFIRMED"] = "true";
 
     mockVerifyAccessToken.mockReturnValue({ sub: "user-123" });
     mockHashToken.mockReturnValue("token-hash");

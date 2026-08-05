@@ -57,6 +57,9 @@ beforeEach(() => {
     "https://backend.rapago.cl/api/webhooks/klap/reject";
   process.env["KLAP_ORDER_EXPIRATION_MINUTES"] = "30";
   process.env["KLAP_SEND_IDEMPOTENCY_HEADER"] = "false";
+  process.env["KLAP_DEFERRED_CAPTURE_ENABLED"] = "true";
+  process.env["KLAP_CAPTURE_CONTRACT_CONFIRMED"] = "true";
+  process.env["KLAP_CAPTURE_SUCCESS_STATUSES"] = "captured,success,approved";
   delete process.env["KLAP_SANDBOX_ORDERS_URL"];
   delete process.env["KLAP_REQUEST_TIMEOUT_MS"];
 });
@@ -281,6 +284,33 @@ describe("KlapProvider V108 — checkout alojado oficial", () => {
   });
 });
 
+describe("KlapProvider safe deferred-capture gate", () => {
+  it("omite transaction_type y bloquea capture cuando el contrato no está confirmado", async () => {
+    process.env["KLAP_DEFERRED_CAPTURE_ENABLED"] = "false";
+    process.env["KLAP_CAPTURE_CONTRACT_CONFIRMED"] = "false";
+    mockJson(201, {
+      order_id: "test-order-123",
+      redirect_url: CHECKOUT_URL,
+    });
+
+    await new KlapProvider().createHostedOrder(params());
+
+    const body = JSON.parse(String(request()[1].body)) as {
+      customs: Array<{ key: string; value: string }>;
+    };
+    expect(body.customs.some((item) => item.key === "transaction_type")).toBe(false);
+
+    global.fetch = vi.fn();
+    await expect(
+      new KlapProvider().captureOrder({
+        orderId: "test-order-123",
+        amountClp: 5000,
+      }),
+    ).rejects.toMatchObject({ kind: "config" });
+    expect(global.fetch).not.toHaveBeenCalled();
+  });
+});
+
 describe("KlapProvider.captureOrder", () => {
   it("hace POST a {ordersUrl}/{orderId}/capture con body {amount} y header apikey, sin Idempotency-Key", async () => {
     global.fetch = vi.fn().mockResolvedValueOnce({
@@ -311,19 +341,19 @@ describe("KlapProvider.captureOrder", () => {
     });
   });
 
-  it("trata cualquier 2xx como aceptado y lee el body de forma defensiva (incluyendo vacío)", async () => {
+  it("nunca acepta 202/204 o body vacío como captura confirmada", async () => {
     global.fetch = vi.fn().mockResolvedValueOnce({
       ok: true,
       status: 204,
       text: vi.fn().mockResolvedValue(""),
     } as unknown as Response);
 
-    const result = await new KlapProvider().captureOrder({
-      orderId: "test-order-123",
-      amountClp: 5000,
-    });
-
-    expect(result).toEqual({ httpStatus: 204, sanitizedResponse: null });
+    await expect(
+      new KlapProvider().captureOrder({
+        orderId: "test-order-123",
+        amountClp: 5000,
+      }),
+    ).rejects.toMatchObject({ kind: "invalid_response", httpStatus: 204 });
   });
 
   it("nunca filtra la ApiKey ni datos sensibles al leer el body de captura", async () => {
@@ -336,6 +366,8 @@ describe("KlapProvider.captureOrder", () => {
           JSON.stringify({
             status: "captured",
             nested: { card_number: "4111111111111111" },
+            card_number: "4000000000001091",
+            token: "sensitive-token",
             amount: 5000,
           }),
         ),

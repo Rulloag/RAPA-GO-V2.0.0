@@ -15,7 +15,10 @@ import type {
 } from "./payments.schema.js";
 import type { NormalizedWebhook } from "./payment.provider.js";
 import { KlapProviderError, KLAP_TRANSACTION_TYPE_AUTHORIZATION } from "./klap.types.js";
-import { verifyKlapWebhookApikey } from "./klap.provider.js";
+import {
+  isKlapDeferredCaptureEnabled,
+  verifyKlapWebhookApikey,
+} from "./klap.provider.js";
 
 const tokenService = new TokenService();
 const sessionService = new SessionService();
@@ -1477,7 +1480,12 @@ export class PaymentsService {
     // con un error controlado, sin construir eventKey ni reclamar idempotencia,
     // igual que amount_mismatch, para que una entrega corregida se revalide
     // desde cero.
-    if (body.transaction_type !== KLAP_TRANSACTION_TYPE_AUTHORIZATION) {
+    const deferredCaptureEnabled = isKlapDeferredCaptureEnabled();
+
+    if (
+      deferredCaptureEnabled &&
+      body.transaction_type !== KLAP_TRANSACTION_TYPE_AUTHORIZATION
+    ) {
       auditService.recordSafe({
         actorUserId: payment.passengerUserId,
         eventType: "payment.klap_unexpected_transaction_type",
@@ -1537,34 +1545,53 @@ export class PaymentsService {
     const eventId = claimed.event.id;
 
     try {
-      await paymentsRepo.markAuthorizedAndActivateRide({
-        id: payment.id,
-        rideRequestId: payment.rideRequestId,
-        authorizedAmountClp: paidAmountClp,
-        transactionType: body.transaction_type,
-        providerPayload: {
-          order_id: body.order_id,
-          reference_id: body.reference_id,
-          payment_method: body.payment_method,
-          transaction_type: body.transaction_type,
-          card_type: body.card_type ?? null,
-          brand: body.brand ?? null,
-          last_digits: body.last_digits ?? null,
-          quotas_number: body.quotas_number ?? null,
-          quotas_type: body.quotas_type ?? null,
-        },
-      });
+      const providerPayload = {
+        order_id: body.order_id,
+        reference_id: body.reference_id,
+        payment_method: body.payment_method,
+        transaction_type: body.transaction_type,
+        card_type: body.card_type ?? null,
+        brand: body.brand ?? null,
+        last_digits: body.last_digits ?? null,
+        quotas_number: body.quotas_number ?? null,
+        quotas_type: body.quotas_type ?? null,
+      };
+
+      if (deferredCaptureEnabled) {
+        await paymentsRepo.markAuthorizedAndActivateRide({
+          id: payment.id,
+          rideRequestId: payment.rideRequestId,
+          authorizedAmountClp: paidAmountClp,
+          transactionType: body.transaction_type,
+          providerPayload,
+        });
+      } else {
+        await paymentsRepo.markSuccessAndActivateRide({
+          id: payment.id,
+          rideRequestId: payment.rideRequestId,
+          externalId: body.order_id,
+          providerPayload,
+        });
+      }
 
       auditService.recordSafe({
         actorUserId: payment.passengerUserId,
-        eventType: "payment.klap_authorized",
+        eventType: deferredCaptureEnabled
+          ? "payment.klap_authorized"
+          : "payment.success",
         entityType: "payment",
         entityId: payment.id,
-        metadata: {
-          rideId: payment.rideRequestId,
-          authorizedAmountClp: paidAmountClp,
-          provider: "klap",
-        },
+        metadata: deferredCaptureEnabled
+          ? {
+              rideId: payment.rideRequestId,
+              authorizedAmountClp: paidAmountClp,
+              provider: "klap",
+            }
+          : {
+              rideId: payment.rideRequestId,
+              amountClp: paidAmountClp,
+              provider: "klap",
+            },
       });
 
       await paymentsRepo.completeWebhookEvent({
@@ -2579,15 +2606,23 @@ export class PaymentsService {
     });
 
     if (normalizedStatus === "success") {
-      // Ídem: "success" en la consulta oficial de Klap para tarjetas es una
-      // autorización, no una captura. El cobro real ocurre al completar el viaje.
-      await paymentsRepo.markAuthorizedAndActivateRide({
-        id: payment.id,
-        rideRequestId: payment.rideRequestId,
-        authorizedAmountClp: remoteTotal != null ? Math.round(remoteTotal) : payment.amountClp,
-        transactionType: KLAP_TRANSACTION_TYPE_AUTHORIZATION,
-        providerPayload: safePayload,
-      });
+      if (isKlapDeferredCaptureEnabled()) {
+        await paymentsRepo.markAuthorizedAndActivateRide({
+          id: payment.id,
+          rideRequestId: payment.rideRequestId,
+          authorizedAmountClp:
+            remoteTotal != null ? Math.round(remoteTotal) : payment.amountClp,
+          transactionType: KLAP_TRANSACTION_TYPE_AUTHORIZATION,
+          providerPayload: safePayload,
+        });
+      } else {
+        await paymentsRepo.markSuccessAndActivateRide({
+          id: payment.id,
+          rideRequestId: payment.rideRequestId,
+          externalId: remoteOrder.transaction_id ?? remoteOrder.order_id,
+          providerPayload: safePayload,
+        });
+      }
     } else if (normalizedStatus === "rejected") {
       await paymentsRepo.markRejected(payment.id, safePayload);
     }
@@ -2631,6 +2666,16 @@ export class PaymentsService {
         ok: false,
         code: "PAYMENT_PROVIDER_MISMATCH",
         message: "This payment does not belong to Klap.",
+        statusCode: 409,
+      };
+    }
+
+    if (!isKlapDeferredCaptureEnabled()) {
+      return {
+        ok: false,
+        code: "KLAP_DEFERRED_CAPTURE_DISABLED",
+        message:
+          "Klap deferred capture is disabled until the official contract is confirmed.",
         statusCode: 409,
       };
     }
@@ -2749,11 +2794,13 @@ export class PaymentsService {
         error.kind === "http_rejected" &&
         (error.httpStatus ?? 0) >= 500;
 
+      const definitiveClientRejectionStatuses = new Set([
+        400, 401, 403, 404, 410, 422,
+      ]);
       const isClientRejection =
         error instanceof KlapProviderError &&
         error.kind === "http_rejected" &&
-        (error.httpStatus ?? 0) >= 400 &&
-        (error.httpStatus ?? 0) < 500;
+        definitiveClientRejectionStatuses.has(error.httpStatus ?? 0);
 
       const reason =
         error instanceof KlapProviderError

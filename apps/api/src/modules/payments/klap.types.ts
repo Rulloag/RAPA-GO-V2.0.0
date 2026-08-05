@@ -34,6 +34,10 @@ export interface KlapConfig {
   orderExpirationMinutes: number;
   /** Header no documentado por Swagger; por seguridad se desactiva por defecto. */
   sendIdempotencyHeader: boolean;
+  /** Captura diferida solicitada y contrato remoto confirmado explícitamente. */
+  deferredCaptureEnabled: boolean;
+  /** Estados finales que Klap confirmó oficialmente como captura exitosa. */
+  captureSuccessStatuses: readonly string[];
 }
 
 export interface KlapAmount {
@@ -88,10 +92,10 @@ export interface KlapCaptureOrderParams {
 }
 
 /**
- * Klap no documentó (a la fecha de esta fase) el contrato exacto de la
- * respuesta de POST /orders/{order_id}/capture. Se guarda únicamente una
- * versión saneada de lo recibido — nunca la respuesta cruda completa — y solo
- * se usa el código HTTP para clasificar el resultado (ver KlapProvider.captureOrder).
+ * La captura permanece bloqueada por defecto. Solo puede ejecutarse cuando
+ * KLAP_DEFERRED_CAPTURE_ENABLED y KLAP_CAPTURE_CONTRACT_CONFIRMED están activos,
+ * y la respuesta contiene un estado final incluido explícitamente en
+ * KLAP_CAPTURE_SUCCESS_STATUSES. Nunca se acepta un 2xx vacío como cobro.
  */
 export interface KlapCaptureOrderResult {
   httpStatus: number;

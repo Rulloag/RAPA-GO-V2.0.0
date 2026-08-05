@@ -1369,23 +1369,51 @@ export class RidesService {
     // dejando el viaje completed con el pago en
     // capture_pending/capture_unknown/capture_failed para conciliación.
     try {
-      const { PaymentsRepository } = await import(
-        "../payments/payments.repository.js"
+      const { isKlapDeferredCaptureEnabled } = await import(
+        "../payments/klap.provider.js"
       );
-      const payment = await new PaymentsRepository().findByRideId(completed.id);
 
-      if (
-        payment &&
-        payment.provider === "klap" &&
-        payment.status === "authorized"
-      ) {
-        const { PaymentsService } = await import(
-          "../payments/payments.service.js"
+      if (isKlapDeferredCaptureEnabled()) {
+        const { PaymentsRepository } = await import(
+          "../payments/payments.repository.js"
         );
-        await new PaymentsService().captureAuthorizedKlapPayment(payment.id);
+        const payment = await new PaymentsRepository().findByRideId(completed.id);
+
+        if (
+          payment &&
+          payment.provider === "klap" &&
+          payment.status === "authorized"
+        ) {
+          const { PaymentsService } = await import(
+            "../payments/payments.service.js"
+          );
+          const captureResult =
+            await new PaymentsService().captureAuthorizedKlapPayment(payment.id);
+
+          if (!captureResult.ok) {
+            const { AuditService } = await import(
+              "../audit/audit.service.js"
+            );
+            new AuditService().recordSafe({
+              actorUserId: completed.passengerUserId,
+              eventType: "payment.klap_capture_requires_attention",
+              entityType: "payment",
+              entityId: payment.id,
+              metadata: {
+                rideId: completed.id,
+                code: captureResult.code,
+                paymentStatus: payment.status,
+              },
+            });
+          }
+        }
       }
-    } catch {
-      // Intencional: ver comentario arriba.
+    } catch (error) {
+      console.error(
+        `[RAPA GO] Falló el disparo de captura Klap del viaje ${completed.id}: ${
+          error instanceof Error ? error.message.slice(0, 300) : "unknown"
+        }`,
+      );
     }
 
     return { ok: true, ride: toResponse(completed) };
