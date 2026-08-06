@@ -8,6 +8,7 @@ import { DriverLocationRuntime } from "../features/location/index.js";
 
 const DriverHomePage = DriverPages.DriverHomePage;
 const DriverRequestsPage = DriverPages.DriverRequestsPage;
+const DriverActiveRidePage = DriverPages.DriverActiveRidePage;
 const DriverTripsPage = DriverPages.DriverTripsPage;
 const DriverProfilePage = DriverPages.DriverProfilePage;
 const DriverGlobalRideAlert = DriverPages.DriverGlobalRideAlert;
@@ -29,6 +30,7 @@ const DRIVER_ALLOWED_PATHS = [
   ROUTES.DRIVER.BASE,
   ROUTES.DRIVER.HOME,
   ROUTES.DRIVER.REQUESTS,
+  ROUTES.DRIVER.ACTIVE_RIDE,
   ROUTES.DRIVER.TRIPS,
   ROUTES.DRIVER.TRIP_DETAIL_PATTERN,
   ROUTES.DRIVER.EARNINGS,
@@ -43,6 +45,7 @@ export function DriverLayout(): JSX.Element {
         <Redirect exact from={ROUTES.DRIVER.BASE} to={ROUTES.DRIVER.HOME} />
         <Route exact path={ROUTES.DRIVER.HOME} component={DriverHomePage} />
         <Route exact path={ROUTES.DRIVER.REQUESTS} component={DriverRequestsPage} />
+        <Route exact path={ROUTES.DRIVER.ACTIVE_RIDE} component={DriverActiveRidePage} />
         <Route exact path={ROUTES.DRIVER.TRIPS} component={DriverTripsPage} />
         <Route exact path={ROUTES.DRIVER.TRIP_DETAIL_PATTERN} component={DriverTripsPage} />
         <Route exact path={ROUTES.DRIVER.EARNINGS} component={DriverEarningsPage} />

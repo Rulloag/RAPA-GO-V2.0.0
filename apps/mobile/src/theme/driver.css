@@ -3527,3 +3527,40 @@
   color: var(--rp-muted);
   max-width: 30ch;
 }
+
+/* Estado de red compacto y legible en el panel del conductor. */
+.rapago-driver-page .driver-home-metric--network .driver-home-metric__value {
+  overflow: visible;
+  text-overflow: clip;
+  white-space: normal;
+  line-height: 1.08;
+}
+
+.rapago-driver-page .driver-home-metric--network.is-online {
+  border-color: rgba(22, 163, 74, .42);
+  background: rgba(220, 252, 231, .72);
+}
+
+.rapago-driver-page .driver-home-metric--network.is-online .driver-home-metric__value {
+  color: #166534;
+}
+
+.rapago-driver-page .driver-home-metric--network.is-checking,
+.rapago-driver-page .driver-home-metric--network.is-poor {
+  border-color: rgba(217, 119, 6, .42);
+  background: rgba(254, 243, 199, .72);
+}
+
+.rapago-driver-page .driver-home-metric--network.is-checking .driver-home-metric__value,
+.rapago-driver-page .driver-home-metric--network.is-poor .driver-home-metric__value {
+  color: #92400e;
+}
+
+.rapago-driver-page .driver-home-metric--network.is-offline {
+  border-color: rgba(220, 38, 38, .42);
+  background: rgba(254, 226, 226, .76);
+}
+
+.rapago-driver-page .driver-home-metric--network.is-offline .driver-home-metric__value {
+  color: #991b1b;
+}

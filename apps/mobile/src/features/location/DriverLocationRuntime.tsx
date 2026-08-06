@@ -209,7 +209,7 @@ export function DriverLocationRuntime(): JSX.Element | null {
   }, [accessToken, isDriver]);
 
   useEffect(() => {
-    if (!isDriver || !foregroundGranted(permissions)) {
+    if (!isDriver || !activeRide || !foregroundGranted(permissions)) {
       if (stopWatchRef.current) {
         void stopWatchRef.current();
         stopWatchRef.current = null;
@@ -318,6 +318,7 @@ export function DriverLocationRuntime(): JSX.Element | null {
 
   const needsForeground =
     isDriver &&
+    Boolean(activeRide) &&
     permissions !== null &&
     !foregroundGranted(permissions);
   const needsBackground =
@@ -398,7 +399,7 @@ export function DriverLocationRuntime(): JSX.Element | null {
             <IonText>
               <p style={{ margin: "4px 0 10px", fontSize: ".8rem", lineHeight: 1.35 }}>
                 {needsForeground
-                  ? "RAPA GO usa tu GPS para mostrar viajes cercanos y navegar. El permiso se solicita solo después de esta explicación."
+                  ? "Aceptaste un viaje. Activa el GPS para abrir la ruta, ubicar al pasajero y compartir tu avance mientras el servicio esté activo."
                   : needsBackground
                     ? "Durante un viaje activo, la ubicación debe continuar aunque cambies de aplicación o bloquees la pantalla. Se detiene al cerrar el viaje."
                     : message}

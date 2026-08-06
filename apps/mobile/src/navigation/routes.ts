@@ -54,6 +54,7 @@ export const ROUTES = {
     BASE: "/driver",
     HOME: "/driver/home",
     REQUESTS: "/driver/requests",
+    ACTIVE_RIDE: "/driver/active-ride",
     TRIPS: "/driver/trips",
     TRIP_DETAIL_PATTERN: "/driver/trips/:tripId",
     EARNINGS: "/driver/earnings",

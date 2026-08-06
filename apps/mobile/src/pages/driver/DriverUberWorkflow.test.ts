@@ -13,14 +13,14 @@ describe("flujo del conductor tipo Uber", () => {
     expect(driverSource).toContain("Probar sonido y avisos");
   });
 
-  it("usa Solicitudes para aceptar y Viajes para operar", () => {
+  it("usa Solicitudes para aceptar, Viaje activo para operar y Viajes para historial", () => {
     const redirects =
-      driverSource.match(/history\.replace\(ROUTES\.DRIVER\.TRIPS\)/g) ?? [];
+      driverSource.match(/history\.replace\(ROUTES\.DRIVER\.ACTIVE_RIDE\)/g) ?? [];
 
     expect(redirects.length).toBeGreaterThanOrEqual(3);
-    expect(driverSource).toContain(
-      "Solicitudes solo recibe y acepta ofertas.",
-    );
+    expect(driverSource).toContain('return <AssignedRidesPage mode="requests" />');
+    expect(driverSource).toContain('return <AssignedRidesPage mode="active" />');
+    expect(driverSource).toContain("El mapa y los controles están en una pantalla separada.");
     expect(driverSource).toContain(
       'new CustomEvent("rapago:driver-rides-updated"',
     );
