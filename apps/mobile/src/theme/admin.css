@@ -587,6 +587,82 @@
 }
 
 /* ==========================================================================
+   12. ESTADOS Y CONTRASTE FINAL
+   ========================================================================== */
+
+/* Resultado de validación: no depende de `IonCard color`, porque las reglas
+   globales de tarjetas pisan su superficie semántica. */
+.rapago-admin-page .rapago-admin-validation-result {
+  border-width: var(--rp-border-w) !important;
+  border-style: solid !important;
+  box-shadow: var(--rp-shadow) !important;
+}
+
+.rapago-admin-page .rapago-admin-validation-result--success {
+  background: var(--rp-ok-bg) !important;
+  border-color: var(--rp-ok-bd) !important;
+  color: var(--rp-ok-fg) !important;
+}
+
+.rapago-admin-page .rapago-admin-validation-result--error {
+  background: var(--rp-err-bg) !important;
+  border-color: var(--rp-err-bd) !important;
+  color: var(--rp-err-fg) !important;
+}
+
+.rapago-admin-page .rapago-admin-validation-result__message {
+  margin: 0;
+  color: inherit !important;
+  font-weight: 850;
+  line-height: 1.4;
+}
+
+.rapago-admin-page .rapago-admin-validation-result__date {
+  margin: 8px 0 0;
+  color: inherit !important;
+  opacity: 0.82 !important;
+  font-size: 0.9rem;
+}
+
+/* Cierres de modal: `color="light"` pierde contraste en modo día. */
+ion-modal.rapago-admin-modal [slot="end"] ion-button,
+ion-modal.rapago-admin-modal ion-buttons[slot="end"] ion-button {
+  --color: var(--rp-icon-fg, #f8d879) !important;
+  color: var(--rp-icon-fg, #f8d879) !important;
+}
+
+ion-modal.rapago-admin-modal [slot="end"] ion-button::part(native),
+ion-modal.rapago-admin-modal ion-buttons[slot="end"] ion-button::part(native) {
+  color: var(--rp-icon-fg, #f8d879) !important;
+}
+
+/* Ionic puede dejar disabled="false" en el DOM; ese atributo no debe pintar un
+   botón activo como deshabilitado. */
+.rapago-admin-page ion-button[disabled]:not([disabled="false"]),
+.rapago-admin-page ion-button[aria-disabled="true"]:not([disabled="false"]) {
+  opacity: 1 !important;
+}
+
+/* Badges neutrales: tinta clara en noche y tinta oscura en día. */
+[data-rapago-theme="dark"] .rapago-admin-page ion-badge[color="medium"],
+[data-rapago-theme="dark"] ion-modal.rapago-admin-modal ion-badge[color="medium"] {
+  --background: var(--rp-icon-bg) !important;
+  --color: var(--rp-icon-fg) !important;
+}
+
+[data-rapago-theme="light"] .rapago-admin-page ion-badge[color="medium"],
+[data-rapago-theme="light"] ion-modal.rapago-admin-modal ion-badge[color="medium"] {
+  --background: rgba(26, 26, 26, 0.08) !important;
+  --color: var(--rp-text-legacy) !important;
+}
+
+@media (min-width: 680px) {
+  .rapago-admin-page .admin-kpi-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+  }
+}
+
+/* ==========================================================================
    6. LISTAS, CAMPOS Y CONTROLES FUERA DE TARJETA
    ========================================================================== */
 .rapago-admin-page ion-list {
@@ -950,6 +1026,19 @@
 ion-modal.rapago-admin-modal {
   --background: var(--rp-page-bg);
   --border-radius: var(--rp-radius);
+}
+
+ion-modal.rapago-admin-modal::part(content) {
+  background: var(--rp-page-bg) !important;
+  color: var(--rp-text) !important;
+  border: var(--rp-border-w) solid var(--rp-border-c) !important;
+}
+
+ion-modal.rapago-admin-modal ion-toolbar {
+  --background: var(--rp-appbar-bg) !important;
+  --color: var(--rp-text) !important;
+  --border-width: 0 0 1px !important;
+  --border-color: var(--rp-divider) !important;
 }
 
 /* En escritorio el modal de fábrica ocupa toda la ventana: un formulario de

@@ -2925,6 +2925,7 @@ export function AdminHomePage(): JSX.Element {
               </section>
 
               <IonModal
+                className="rapago-admin-modal"
                 isOpen={selectedKpi !== null}
                 onDidDismiss={() => setSelectedKpi(null)}
                 breakpoints={[0, 0.55, 0.88]}
@@ -3258,6 +3259,7 @@ export function AdminHomePage(): JSX.Element {
 
 
               <IonModal
+                className="rapago-admin-modal"
                 isOpen={showAccountDeletionModal}
                 onDidDismiss={() => setShowAccountDeletionModal(false)}
                 breakpoints={[0, 0.72, 0.95]}
@@ -3284,6 +3286,7 @@ export function AdminHomePage(): JSX.Element {
               </IonModal>
 
               <IonModal
+                className="rapago-admin-modal"
                 isOpen={showTripSafetyReportsModal}
                 onDidDismiss={() => setShowTripSafetyReportsModal(false)}
                 breakpoints={[0, 0.72, 0.95]}
@@ -3401,7 +3404,7 @@ export function AdminHomePage(): JSX.Element {
 
               {/* rapago-admin-no-show-modal */}
               <IonModal
-                className="rapago-admin-no-show-modal"
+                className="rapago-admin-modal rapago-admin-no-show-modal"
                 isOpen={showAdminNoShowModal}
                 onDidDismiss={() => setShowAdminNoShowModal(false)}
                 breakpoints={[0, 0.72, 0.95]}
@@ -3572,6 +3575,7 @@ export function AdminHomePage(): JSX.Element {
               </IonModal>
 
 <IonModal
+                className="rapago-admin-modal"
                 isOpen={showAdminChargesModal}
                 onDidDismiss={() => setShowAdminChargesModal(false)}
                 breakpoints={[0, 0.72, 0.95]}
@@ -7356,6 +7360,7 @@ export function AdminDriversPage(): JSX.Element {
 
         {/* Admin monitor modal */}
         <IonModal
+          className="rapago-admin-modal"
           isOpen={selectedDriver !== null}
           onDidDismiss={() => setSelectedDriver(null)}
         >
@@ -14290,6 +14295,7 @@ export function AdminFareSettingsPage(): JSX.Element {
         )}
 
         <IonModal
+          className="rapago-admin-modal"
           isOpen={editingRow !== null}
           onDidDismiss={() => setEditingRow(null)}
         >
@@ -15798,6 +15804,7 @@ export function AdminDocumentsPage(): JSX.Element {
 
 
         <IonModal
+          className="rapago-admin-modal"
           isOpen={selectedDriverApplication !== null}
           onDidDismiss={() => {
             setSelectedDriverApplication(null);
@@ -16056,6 +16063,7 @@ export function AdminDocumentsPage(): JSX.Element {
         )}
 
         <IonModal
+          className="rapago-admin-modal"
           isOpen={
             actionType === "reject" &&
             actionId !== null &&
@@ -16601,18 +16609,19 @@ export function AdminEventTicketsPage(): JSX.Element {
         </IonCard>
 
         {validationResult && (
-          <IonCard color={validationResult.ok ? "success" : "danger"}>
+          <IonCard
+            className={`rapago-admin-validation-result ${
+              validationResult.ok
+                ? "rapago-admin-validation-result--success"
+                : "rapago-admin-validation-result--error"
+            }`}
+          >
             <IonCardContent>
-              <p style={{ color: "white", fontWeight: "bold" }}>
+              <p className="rapago-admin-validation-result__message">
                 {validationResult.ok ? "✓" : "✗"} {validationResult.message}
               </p>
               {validationResult.validatedAt && (
-                <p
-                  style={{
-                    color: "rgba(255,255,255,0.85)",
-                    fontSize: "0.9rem",
-                  }}
-                >
+                <p className="rapago-admin-validation-result__date">
                   Validada:{" "}
                   {new Date(validationResult.validatedAt).toLocaleString(
                     "es-CL",
