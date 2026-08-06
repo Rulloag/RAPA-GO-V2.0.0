@@ -201,7 +201,7 @@ const PROFILE_TEXT: Record<ProfileLanguage, Record<string, string>> = {
     saving: "Guardando...",
     noChanges: "No hay cambios para guardar.",
     saved: "Cambios guardados correctamente.",
-    completePhone: "Completa tu teléfono para solicitar viajes.",
+    completePhone: "Tu cuenta no tiene teléfono registrado. Solicita la corrección a soporte para poder solicitar viajes.",
     inviteTitle: "Invita y Gana",
     inviteSubtitle: "Comparte tu código. Cuando alguien complete su primer viaje, recibirás un beneficio en tu billetera.",
     yourCode: "Tu código",
@@ -1347,37 +1347,20 @@ export function ProfileIndexPage(): JSX.Element {
   async function handleSave() {
     if (!session?.accessToken || !profile) return;
 
-    const payload: { name?: string; avatarUrl?: string | null; phone?: string } = {};
-    const typedName = sanitizeProfileText(nameInput, 100);
-    const fallbackName = sanitizeProfileText(
-      profile.name || session?.user?.name || session?.user?.email?.split("@")[0] || "",
-      100,
-    );
-    const finalName = typedName || fallbackName;
-    const trimmedPhone = sanitizeProfilePhone(phoneInput);
+    const payload: { avatarUrl?: string | null } = {};
 
-    // La foto de perfil es 100% opcional.
-    // No se pide URL ni se bloquea guardar por no adjuntar foto.
-    // Si el usuario adjunta foto, se guarda localmente comprimida para no exponer enlaces externos.
+    // La identidad de la cuenta es inmutable desde el perfil. Solo la foto
+    // puede cambiarse directamente; cualquier corrección de nombre, correo,
+    // teléfono o RUT debe solicitarse a soporte y administración.
     const cleanAvatarPhoto = getSafePassengerProfilePhotoSource(avatarInput);
     persistStoredPassengerProfilePhoto(cleanAvatarPhoto, profile);
-
-    // Siempre enviamos el nombre visible si existe. Así el backend no responde
-    // con el error antiguo de "name or avatarUrl" cuando solo se guardan datos locales.
-    if (finalName) {
-      payload.name = finalName;
-    }
 
     if (!cleanAvatarPhoto && profile.avatarUrl) {
       payload.avatarUrl = null;
     }
 
-    if (trimmedPhone) {
-      payload.phone = trimmedPhone;
-    }
-
-    setNameInput(finalName);
-    setPhoneInput(trimmedPhone);
+    setNameInput(profile.name);
+    setPhoneInput(getAutoPhone(profile.phone));
     setAvatarInput(cleanAvatarPhoto);
 
     if (Object.keys(payload).length === 0) {
@@ -1392,7 +1375,9 @@ export function ProfileIndexPage(): JSX.Element {
 
     try {
       const updated = await profileService.updateProfile(session.accessToken, payload);
-      const savedPhone = getAutoPhone((updated as ProfileData & { phone?: string | null }).phone ?? trimmedPhone);
+      const savedPhone = getAutoPhone(
+        (updated as ProfileData & { phone?: string | null }).phone ?? profile.phone,
+      );
 
       setProfile(updated);
       setNameInput(updated.name);
@@ -1425,10 +1410,11 @@ export function ProfileIndexPage(): JSX.Element {
         raw.includes("name or avatar url")
       ) {
         // Guardado local correcto; no bloqueamos al usuario por una validación vieja del backend.
+        const lockedPhone = getAutoPhone(profile.phone);
         persistStoredRegistrationProfile({
-          ...(trimmedPhone ? { phone: trimmedPhone } : {}),
+          ...(lockedPhone ? { phone: lockedPhone } : {}),
           email: profile.email,
-          name: finalName || profile.name,
+          name: profile.name,
           role: profile.role,
           ...(passengerFareType
             ? {
@@ -1784,7 +1770,7 @@ export function ProfileIndexPage(): JSX.Element {
               <button
                 type="button"
                 className="rapago-profile-action"
-                onClick={() => history.push(ROUTES.SUPPORT.CENTER)}
+                onClick={() => history.push(`${ROUTES.SUPPORT.CENTER}?category=identity_correction`)}
               >
                 <span className="rapago-profile-action-icon">
                   <IonIcon icon={helpCircleOutline} />
@@ -1925,28 +1911,70 @@ export function ProfileIndexPage(): JSX.Element {
                 </div>
               </div>
 
-              <IonItem lines="none" className="rapago-profile-field">
+              <IonItem
+                lines="none"
+                className="rapago-profile-field rapago-profile-field--readonly"
+              >
                 <IonLabel position="stacked">{profileText.name}</IonLabel>
                 <IonInput
-                  value={nameInput}
-                  onIonInput={(e) => setNameInput(sanitizeProfileText(e.detail.value, 100))}
-                  placeholder={profileText.namePlaceholder}
-                  maxlength={100}
-                  clearInput
+                  value={profile.name}
+                  readonly
+                  aria-readonly="true"
                 />
               </IonItem>
 
-              <IonItem lines="none" className="rapago-profile-field">
+              <IonItem
+                lines="none"
+                className="rapago-profile-field rapago-profile-field--readonly"
+              >
                 <IonLabel position="stacked">{profileText.phone}</IonLabel>
                 <IonInput
                   value={phoneInput}
-                  onIonInput={(e) => setPhoneInput(sanitizeProfilePhone(e.detail.value))}
-                  placeholder={profileText.phonePlaceholder}
                   type="tel"
-                  maxlength={20}
-                  clearInput
+                  readonly
+                  aria-readonly="true"
                 />
               </IonItem>
+
+              <IonItem
+                lines="none"
+                className="rapago-profile-field rapago-profile-field--readonly"
+              >
+                <IonLabel position="stacked">Correo electrónico</IonLabel>
+                <IonInput
+                  value={profile.email}
+                  type="email"
+                  readonly
+                  aria-readonly="true"
+                />
+              </IonItem>
+
+              <IonItem
+                lines="none"
+                className="rapago-profile-field rapago-profile-field--readonly"
+              >
+                <IonLabel position="stacked">RUT</IonLabel>
+                <IonInput
+                  value={profile.rut ?? "No informado"}
+                  readonly
+                  aria-readonly="true"
+                />
+              </IonItem>
+
+              <div className="rapago-profile-feedback" style={{ marginBottom: 12 }}>
+                <IonIcon icon={lockClosedOutline} />
+                Nombre, correo, teléfono y RUT están protegidos. Para corregirlos debes crear una solicitud de soporte para revisión administrativa.
+              </div>
+
+              <IonButton
+                expand="block"
+                fill="outline"
+                className="rapago-profile-btn-outline"
+                onClick={() => history.push(`${ROUTES.SUPPORT.CENTER}?category=identity_correction`)}
+                style={{ marginBottom: 12 }}
+              >
+                Solicitar corrección de identidad
+              </IonButton>
 
               <IonItem
                 lines="none"
@@ -1991,7 +2019,7 @@ export function ProfileIndexPage(): JSX.Element {
                 onClick={() => void handleSave()}
                 disabled={saving}
               >
-                {saving ? <IonSpinner name="dots" /> : profileText.save}
+                {saving ? <IonSpinner name="dots" /> : "Guardar foto de perfil"}
               </IonButton>
             </section>
 

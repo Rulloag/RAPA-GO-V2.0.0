@@ -22,14 +22,11 @@ export class DriverProfileRepository {
         updatedAt: new Date(),
       };
 
-      if (input.phone !== undefined)           setValues.phone           = input.phone;
       if (input.vehicleBrand !== undefined)    setValues.vehicleBrand    = input.vehicleBrand;
       if (input.vehicleModel !== undefined)    setValues.vehicleModel    = input.vehicleModel;
       if (input.vehicleYear !== undefined)     setValues.vehicleYear     = input.vehicleYear;
       if (input.vehiclePlate !== undefined)    setValues.vehiclePlate    = input.vehiclePlate;
       if (input.vehicleColor !== undefined)    setValues.vehicleColor    = input.vehicleColor;
-      if (input.licenseNumber !== undefined)   setValues.licenseNumber   = input.licenseNumber;
-      if (input.licenseExpiry !== undefined)   setValues.licenseExpiry   = input.licenseExpiry;
       if (input.profilePhotoUrl !== undefined) setValues.profilePhotoUrl = input.profilePhotoUrl;
       if (input.vehiclePhotoUrl !== undefined) setValues.vehiclePhotoUrl = input.vehiclePhotoUrl;
       if (input.bio !== undefined)             setValues.bio             = input.bio;

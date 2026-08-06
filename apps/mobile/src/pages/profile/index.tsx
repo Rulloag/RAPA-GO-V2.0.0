@@ -458,26 +458,16 @@ export function ProfileIndexPage(): JSX.Element {
   async function handleSave() {
     if (!session?.accessToken || !profile) return;
 
-    const payload: { name?: string; avatarUrl?: string | null; phone?: string } = {};
-    const trimmedName = nameInput.trim();
-    const trimmedPhone = phoneInput.trim();
-
-    if (trimmedName && trimmedName !== profile.name) {
-      payload.name = trimmedName;
-    }
-
+    const payload: { avatarUrl?: string | null } = {};
     const trimmedAvatar = avatarInput.trim();
     const avatarChanged = trimmedAvatar !== (profile.avatarUrl ?? "");
+
     if (avatarChanged) {
       payload.avatarUrl = trimmedAvatar === "" ? null : trimmedAvatar;
     }
 
-    if (trimmedPhone) {
-      payload.phone = trimmedPhone;
-    }
-
     if (Object.keys(payload).length === 0) {
-      setSaveError("No hay cambios para guardar.");
+      setSaveError("No hay cambios de foto para guardar.");
       return;
     }
 
@@ -487,7 +477,9 @@ export function ProfileIndexPage(): JSX.Element {
 
     try {
       const updated = await profileService.updateProfile(session.accessToken, payload);
-      const savedPhone = getAutoPhone((updated as ProfileData & { phone?: string | null }).phone ?? trimmedPhone);
+      const savedPhone = getAutoPhone(
+        (updated as ProfileData & { phone?: string | null }).phone ?? profile.phone,
+      );
 
       setProfile(updated);
       setNameInput(updated.name);
@@ -593,7 +585,7 @@ export function ProfileIndexPage(): JSX.Element {
                 <IonCardContent style={{ padding: "8px 14px" }}>
                   <IonText>
                     <p style={{ margin: 0, fontSize: "0.82rem", color: "#6b4700" }}>
-                      Completa tu teléfono para solicitar viajes.
+                      Tu cuenta no tiene teléfono registrado. Solicita la corrección a soporte para poder solicitar viajes.
                     </p>
                   </IonText>
                 </IonCardContent>
@@ -638,11 +630,9 @@ export function ProfileIndexPage(): JSX.Element {
                 <IonItem lines="full">
                   <IonLabel position="stacked">Nombre</IonLabel>
                   <IonInput
-                    value={nameInput}
-                    onIonInput={(e) => setNameInput(String(e.detail.value ?? ""))}
-                    placeholder="Tu nombre completo"
-                    maxlength={100}
-                    clearInput
+                    value={profile.name}
+                    readonly
+                    aria-readonly="true"
                   />
                 </IonItem>
 
@@ -650,13 +640,42 @@ export function ProfileIndexPage(): JSX.Element {
                   <IonLabel position="stacked">Teléfono</IonLabel>
                   <IonInput
                     value={phoneInput}
-                    onIonInput={(e) => setPhoneInput(String(e.detail.value ?? ""))}
-                    placeholder="+56 9 1234 5678"
                     type="tel"
-                    maxlength={20}
-                    clearInput
+                    readonly
+                    aria-readonly="true"
                   />
                 </IonItem>
+
+                <IonItem lines="full" style={{ marginTop: "8px" }}>
+                  <IonLabel position="stacked">Correo electrónico</IonLabel>
+                  <IonInput
+                    value={profile.email}
+                    type="email"
+                    readonly
+                    aria-readonly="true"
+                  />
+                </IonItem>
+
+                <IonItem lines="full" style={{ marginTop: "8px" }}>
+                  <IonLabel position="stacked">RUT</IonLabel>
+                  <IonInput
+                    value={profile.rut ?? "No informado"}
+                    readonly
+                    aria-readonly="true"
+                  />
+                  <IonNote slot="helper" style={{ fontSize: "0.7rem" }}>
+                    Nombre, correo, teléfono y RUT están bloqueados. Solicita cualquier corrección a soporte.
+                  </IonNote>
+                </IonItem>
+
+                <IonButton
+                  expand="block"
+                  fill="outline"
+                  style={{ marginTop: "12px" }}
+                  onClick={() => history.push(`${ROUTES.SUPPORT.CENTER}?category=identity_correction`)}
+                >
+                  Solicitar corrección de identidad
+                </IonButton>
 
                 <IonItem lines="full" style={{ marginTop: "8px" }}>
                   <IonLabel position="stacked">Nacionalidad / residencia</IonLabel>
@@ -700,7 +719,7 @@ export function ProfileIndexPage(): JSX.Element {
                   onClick={() => void handleSave()}
                   disabled={saving}
                 >
-                  {saving ? <IonSpinner name="dots" /> : "Guardar cambios"}
+                  {saving ? <IonSpinner name="dots" /> : "Guardar avatar"}
                 </IonButton>
               </IonCardContent>
             </IonCard>

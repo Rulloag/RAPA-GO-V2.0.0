@@ -386,6 +386,7 @@ function effectivePassengerFareType(
 export async function upsertPassengerFareProfile(input: {
   userId: string;
   phone?: string | null | undefined;
+  rut?: string | null | undefined;
   requestedFareType: PassengerFareType;
   verificationStatus: ResidenceVerificationStatus;
 }): Promise<typeof passengerProfiles.$inferSelect> {
@@ -396,12 +397,17 @@ export async function upsertPassengerFareProfile(input: {
     currentProfile?.effectiveFareType,
   );
   const now = new Date();
+  const immutablePhone =
+    currentProfile?.phone?.trim() || input.phone?.trim() || null;
+  const immutableRut =
+    currentProfile?.rut?.trim() || input.rut?.trim() || null;
 
   const rows = await db
     .insert(passengerProfiles)
     .values({
       userId: input.userId,
-      phone: input.phone?.trim() || null,
+      phone: immutablePhone,
+      rut: immutableRut,
       requestedFareType: input.requestedFareType,
       effectiveFareType,
       residenceVerificationStatus: input.verificationStatus,
@@ -418,8 +424,11 @@ export async function upsertPassengerFareProfile(input: {
     .onConflictDoUpdate({
       target: passengerProfiles.userId,
       set: {
-        ...(input.phone !== undefined
-          ? { phone: input.phone?.trim() || null }
+        ...(!currentProfile?.phone && immutablePhone
+          ? { phone: immutablePhone }
+          : {}),
+        ...(!currentProfile?.rut && immutableRut
+          ? { rut: immutableRut }
           : {}),
         requestedFareType: input.requestedFareType,
         effectiveFareType,
@@ -720,6 +729,7 @@ export class AuthService {
         await tx.insert(passengerProfiles).values({
           userId: createdUser.id,
           phone: payload.phone ?? null,
+          rut: payload.rut?.trim() || null,
           requestedFareType,
           effectiveFareType,
           residenceVerificationStatus: verificationStatus,
@@ -1212,6 +1222,7 @@ export class AuthService {
     await upsertPassengerFareProfile({
       userId: user.id,
       phone: input.phone,
+      rut: input.rut,
       requestedFareType: "resident",
       verificationStatus: "pending",
     });
@@ -1575,6 +1586,7 @@ export class AuthService {
       await upsertPassengerFareProfile({
         userId: user.id,
         phone: input.phone,
+        rut: input.rut,
         requestedFareType: "resident",
         verificationStatus,
       });
@@ -1582,6 +1594,7 @@ export class AuthService {
       await upsertPassengerFareProfile({
         userId: user.id,
         phone: input.phone,
+        rut: input.rut ?? input.passport,
         requestedFareType: input.passengerFareType,
         verificationStatus: "not_required",
       });

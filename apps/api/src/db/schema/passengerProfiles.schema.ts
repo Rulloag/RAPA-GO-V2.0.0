@@ -6,6 +6,8 @@ export const passengerProfiles = pgTable("passenger_profiles", {
   userId:                uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }).unique(),
   phone:                 text("phone"),
   phoneE164:             varchar("phone_e164", { length: 20 }),
+  rut:                   varchar("rut", { length: 20 }),
+  birthDate:             text("birth_date"),
   requestedFareType:     text("requested_fare_type").notNull().default("chilean"),
   effectiveFareType:     text("effective_fare_type").notNull().default("chilean"),
   residenceVerificationStatus: text("residence_verification_status").notNull().default("not_required"),

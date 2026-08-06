@@ -46,6 +46,7 @@ type GoogleRequestMetadata = {
 
 type PassengerSetup = {
   phone: string;
+  rut: string;
   requestedFareType: GooglePassengerFareType;
   legalDocumentsToAccept: Array<typeof legalDocuments.$inferSelect>;
   storedResidenceAccreditation: string | null;
@@ -470,6 +471,7 @@ export class GoogleAuthService {
       ok: true,
       setup: {
         phone,
+        rut: rut || passport,
         requestedFareType,
         legalDocumentsToAccept,
         storedResidenceAccreditation,
@@ -635,6 +637,7 @@ export class GoogleAuthService {
       await tx.insert(passengerProfiles).values({
         userId,
         phone: setup.phone,
+        rut: setup.rut,
         requestedFareType: setup.requestedFareType,
         effectiveFareType: setup.requestedFareType,
         residenceVerificationStatus:

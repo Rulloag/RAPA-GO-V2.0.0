@@ -49,9 +49,23 @@ export interface SupportCaseEventResponse {
   createdAt: string;
 }
 
+
+export interface SupportRequesterIdentityResponse {
+  userId: string;
+  role: string;
+  name: string;
+  email: string;
+  phone: string | null;
+  rut: string | null;
+  birthDate: string | null;
+  licenseNumber: string | null;
+  licenseExpiry: string | null;
+}
+
 export interface SupportCaseDetailResponse {
   supportCase: SupportCaseResponse;
   events: SupportCaseEventResponse[];
+  requesterIdentity: SupportRequesterIdentityResponse | null;
 }
 
 export type SupportErrorResult = {

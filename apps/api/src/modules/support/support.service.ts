@@ -168,10 +168,17 @@ async function buildDetail(
   supportCase: SupportCaseWithRequester,
   includeInternal: boolean,
 ): Promise<SupportCaseDetailResponse> {
-  const events = await supportRepo.listEvents(supportCase.id);
+  const [events, requesterIdentity] = await Promise.all([
+    supportRepo.listEvents(supportCase.id),
+    includeInternal
+      ? supportRepo.findRequesterIdentity(supportCase.requesterUserId)
+      : Promise.resolve(null),
+  ]);
+
   return {
     supportCase: serializeCase(supportCase),
     events: events.map((event) => serializeEvent(event, includeInternal)),
+    requesterIdentity,
   };
 }
 
@@ -461,11 +468,64 @@ export class SupportService {
       };
     }
 
+    if (input.identityCorrection) {
+      if (current.category !== "identity_correction") {
+        return {
+          ok: false,
+          code: "SUPPORT_IDENTITY_CORRECTION_CASE_REQUIRED",
+          message:
+            "Las correcciones de identidad solo pueden aplicarse desde un caso de corrección de identidad.",
+          statusCode: 409,
+        };
+      }
+
+      if (
+        current.requesterRole !== "driver" &&
+        (input.identityCorrection.licenseNumber !== undefined ||
+          input.identityCorrection.licenseExpiry !== undefined)
+      ) {
+        return {
+          ok: false,
+          code: "SUPPORT_DRIVER_IDENTITY_REQUIRED",
+          message:
+            "La licencia de conducir solo puede corregirse en una cuenta de conductor.",
+          statusCode: 400,
+        };
+      }
+
+      const corrected = await supportRepo.updateRequesterIdentityByAdmin({
+        supportCaseId: current.id,
+        requesterUserId: current.requesterUserId,
+        requesterRole: current.requesterRole,
+        actorUserId: auth.userId,
+        correction: input.identityCorrection,
+      });
+
+      if (!corrected) {
+        return {
+          ok: false,
+          code: "SUPPORT_REQUESTER_NOT_FOUND",
+          message: "No encontramos la cuenta que solicitó la corrección.",
+          statusCode: 404,
+        };
+      }
+    }
+
     const nextStatus = input.status ?? (current.status as SupportStatus);
     const now = new Date();
+    const publicMessage =
+      input.publicMessage ??
+      (input.identityCorrection
+        ? "Tus datos de identidad fueron corregidos por administración. Cierra sesión y vuelve a ingresar para actualizar toda la aplicación."
+        : undefined);
     const firstResponseAt =
       current.firstResponseAt ??
-      (input.publicMessage || input.internalNote || input.status ? now : null);
+      (publicMessage ||
+      input.internalNote ||
+      input.status ||
+      input.identityCorrection
+        ? now
+        : null);
 
     const updated = await supportRepo.updateByAdmin({
       supportCaseId: caseId,
@@ -487,12 +547,14 @@ export class SupportService {
         actorUserId: auth.userId,
         actorRole: auth.role,
         eventType:
-          input.status && input.status !== current.status
-            ? "status_changed"
-            : "admin_update",
+          input.identityCorrection
+            ? "identity_correction_processed"
+            : input.status && input.status !== current.status
+              ? "status_changed"
+              : "admin_update",
         fromStatus: current.status,
         toStatus: nextStatus,
-        publicMessage: input.publicMessage ?? null,
+        publicMessage: publicMessage ?? null,
         internalNote: input.internalNote ?? null,
       },
     });
@@ -506,13 +568,13 @@ export class SupportService {
       };
     }
 
-    if (input.publicMessage || input.status || input.resolution) {
+    if (publicMessage || input.status || input.resolution || input.identityCorrection) {
       await notificationsRepo.create({
         userId: current.requesterUserId,
         type: "support_case_updated",
         title: `Actualización ${current.trackingCode}`,
         message:
-          input.publicMessage ??
+          publicMessage ??
           input.resolution ??
           `Estado actualizado a ${nextStatus}.`,
         entityType: "support_case",

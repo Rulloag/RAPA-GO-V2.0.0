@@ -31,11 +31,13 @@
   import { useAuth } from "../../features/auth/index.js";
   import { applicationsService, type ApplicationData, type UploadApplicationFilePayload } from "../../features/applications/applications.service.js";
   import { legalService, type LegalDocumentData } from "../../features/legal/legal.service.js";
+  import { profileService } from "../../features/profile/profile.service.js";
+  import { ROUTES } from "../../navigation/routes.js";
 
   // Qué falta en cada etapa de la inscripción de conductor. El botón de avance
   // ya no va deshabilitado, así que al tocarlo incompleto explica el motivo.
   const STEP_HINTS = [
-    "Completa nombre, apellido, email, teléfono y RUT con datos válidos.",
+    "Los datos de identidad se cargan desde tu cuenta. Completa únicamente la fecha de nacimiento.",
     "Indica si perteneces o no a la etnia Rapa Nui.",
     "Adjunta los cinco documentos: carnet (ambos lados), licencia (ambos lados) y foto de perfil.",
     "Confirma que cuentas con vehículo propio y completa marca, modelo, año, patente, color y foto de cada vehículo.",
@@ -1461,6 +1463,8 @@ function isRutValid(value: string): boolean {
     const [phone,     setPhone]     = useState("");
     const [rut,       setRut]       = useState("");
     const [birthDate, setBirthDate] = useState("");
+    const [identityLoading, setIdentityLoading] = useState(true);
+    const [identityError, setIdentityError] = useState<string | null>(null);
 
     const [belongsToRapaNuiEthnicity, setBelongsToRapaNuiEthnicity] = useState<"yes" | "no" | "">("");
 
@@ -1553,15 +1557,77 @@ function isRutValid(value: string): boolean {
     }, []);
 
     useEffect(() => {
+      let active = true;
       const auto = getAutoAccountData(sessionUser);
 
-      setFirstName((current) => current || auto.firstName);
-      setLastName((current) => current || auto.lastName);
-      setEmail((current) => current || auto.email);
-      setPhone((current) => current || cleanPhone(auto.phone));
-      setRut((current) => current || formatRut(auto.rut));
+      setFirstName(auto.firstName);
+      setLastName(auto.lastName);
+      setEmail(auto.email);
+      setPhone(cleanPhone(auto.phone));
+      setRut(formatRut(auto.rut));
       setBirthDate((current) => current || auto.birthDate);
+      setIdentityError(null);
+
+      if (!session?.accessToken) {
+        setIdentityLoading(false);
+        setIdentityError(
+          "Tu sesión no está disponible. Vuelve a iniciar sesión antes de postular.",
+        );
+        return () => {
+          active = false;
+        };
+      }
+
+      setIdentityLoading(true);
+
+      void profileService
+        .getProfile(session.accessToken)
+        .then((profile) => {
+          if (!active) return;
+
+          const locked = getAutoAccountData({
+            ...sessionUser,
+            name: profile.name,
+            email: profile.email,
+            phone: profile.phone,
+            rut: profile.rut,
+            birthDate: profile.birthDate,
+          });
+
+          setFirstName(locked.firstName);
+          setLastName(locked.lastName);
+          setEmail(locked.email);
+          setPhone(cleanPhone(locked.phone));
+          setRut(formatRut(locked.rut));
+          setBirthDate((current) => current || locked.birthDate);
+
+          if (
+            !locked.firstName ||
+            !locked.lastName ||
+            !locked.email ||
+            !cleanPhone(locked.phone) ||
+            !formatRut(locked.rut)
+          ) {
+            setIdentityError(
+              "Tu cuenta no tiene completos el nombre, apellido, correo, teléfono o RUT. Solicita la corrección mediante soporte.",
+            );
+          }
+        })
+        .catch(() => {
+          if (!active) return;
+          setIdentityError(
+            "No fue posible verificar tus datos de identidad. Revisa tu conexión o solicita ayuda a soporte.",
+          );
+        })
+        .finally(() => {
+          if (active) setIdentityLoading(false);
+        });
+
+      return () => {
+        active = false;
+      };
     }, [
+      session?.accessToken,
       sessionUser?.name,
       sessionUser?.firstName,
       sessionUser?.lastName,
@@ -1644,11 +1710,14 @@ function isRutValid(value: string): boolean {
       driverContractDocument != null;
 
     const accountReady =
+      !identityLoading &&
+      identityError == null &&
       firstName.trim().length > 0 &&
       lastName.trim().length > 0 &&
       isEmailValid(email) &&
       isPhoneValid(phone) &&
-      isRutValid(rut);
+      isRutValid(rut) &&
+      /^\d{4}-\d{2}-\d{2}$/.test(birthDate);
     const rapaNuiReady = belongsToRapaNuiEthnicity !== "";
     const documentsReady =
       identityFrontFile != null &&
@@ -1712,7 +1781,25 @@ function isRutValid(value: string): boolean {
           return;
         }
 
-        setError("Completa los datos requeridos. Teléfono y RUT se toman automáticamente desde el registro, pero deben ser válidos.");
+        if (identityLoading) {
+          setError("Espera mientras verificamos los datos de tu cuenta.");
+          setDriverStep(1);
+          return;
+        }
+
+        if (identityError) {
+          setError(identityError);
+          setDriverStep(1);
+          return;
+        }
+
+        if (!birthDate) {
+          setError("Debes ingresar tu fecha de nacimiento.");
+          setDriverStep(1);
+          return;
+        }
+
+        setError("Los datos de identidad registrados no están completos o no son válidos. Solicita ayuda a soporte.");
         return;
       }
 
@@ -2120,7 +2207,7 @@ function isRutValid(value: string): boolean {
             <IonCardHeader>
               <IonCardTitle style={styles.cardTitleStyle}>Datos de tu cuenta</IonCardTitle>
               <IonNote style={styles.noteStyle}>
-                Estos datos se completan automáticamente desde tu perfil. Revisa que estén correctos antes de enviar.
+                Nombre, apellido, correo, teléfono y RUT están bloqueados y se cargan desde tu cuenta. Solo puedes ingresar la fecha de nacimiento. Para corregir otro dato debes solicitarlo a soporte.
               </IonNote>
             </IonCardHeader>
 
@@ -2130,8 +2217,9 @@ function isRutValid(value: string): boolean {
                 <IonInput
                   style={styles.inputStyle}
                   value={firstName}
-                  onIonInput={(e) => setFirstName(String(e.detail.value ?? ""))}
-                  placeholder="Tu nombre"
+                  readonly
+                  aria-readonly="true"
+                  placeholder="Tu nombre registrado"
                 />
               </IonItem>
 
@@ -2140,8 +2228,9 @@ function isRutValid(value: string): boolean {
                 <IonInput
                   style={styles.inputStyle}
                   value={lastName}
-                  onIonInput={(e) => setLastName(String(e.detail.value ?? ""))}
-                  placeholder="Tu apellido"
+                  readonly
+                  aria-readonly="true"
+                  placeholder="Tu apellido registrado"
                 />
               </IonItem>
 
@@ -2151,8 +2240,9 @@ function isRutValid(value: string): boolean {
                   style={styles.inputStyle}
                   type="email"
                   value={email}
-                  onIonInput={(e) => setEmail(String(e.detail.value ?? ""))}
-                  placeholder="correo@ejemplo.com"
+                  readonly
+                  aria-readonly="true"
+                  placeholder="Correo registrado"
                 />
               </IonItem>
 
@@ -2162,10 +2252,9 @@ function isRutValid(value: string): boolean {
                   style={styles.inputStyle}
                   type="tel"
                   value={phone}
-                  onIonInput={(e) => setPhone(cleanPhone(String(e.detail.value ?? "")))}
-                  placeholder="56912345678"
-                  inputmode="numeric"
-                  maxlength={11}
+                  readonly
+                  aria-readonly="true"
+                  placeholder="Teléfono registrado"
                 />
               </IonItem>
 
@@ -2174,15 +2263,14 @@ function isRutValid(value: string): boolean {
                 <IonInput
                   style={styles.inputStyle}
                   value={rut}
-                  onIonInput={(e) => setRut(formatRut(String(e.detail.value ?? "")))}
-                  placeholder="12.345.678-9"
-                  inputmode="numeric"
-                  maxlength={12}
+                  readonly
+                  aria-readonly="true"
+                  placeholder="RUT registrado"
                 />
               </IonItem>
 
               <IonItem lines="none" style={styles.itemStyle}>
-                <IonLabel position="stacked" style={styles.labelStyle}>Fecha de nacimiento</IonLabel>
+                <IonLabel position="stacked" style={styles.labelStyle}>Fecha de nacimiento *</IonLabel>
                 <IonInput
                   style={styles.inputStyle}
                   type="date"
@@ -2190,6 +2278,29 @@ function isRutValid(value: string): boolean {
                   onIonInput={(e) => setBirthDate(String(e.detail.value ?? ""))}
                 />
               </IonItem>
+
+              {identityLoading && (
+                <IonNote style={{ ...styles.noteStyle, display: "block", marginTop: 10 }}>
+                  Verificando los datos registrados de tu cuenta…
+                </IonNote>
+              )}
+
+              {identityError && (
+                <div style={{ marginTop: 12 }}>
+                  <IonText color="danger">
+                    <p style={{ margin: "0 0 10px", fontWeight: 800 }}>
+                      {identityError}
+                    </p>
+                  </IonText>
+                  <IonButton
+                    expand="block"
+                    fill="outline"
+                    onClick={() => history.push(`${ROUTES.SUPPORT.CENTER}?category=identity_correction`)}
+                  >
+                    Solicitar corrección a soporte
+                  </IonButton>
+                </div>
+              )}
             </IonCardContent>
           </IonCard>
           )}

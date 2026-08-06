@@ -17,40 +17,33 @@ function toIso(d: Date): string {
   return d.toISOString();
 }
 
-async function readRolePhone(
+async function readRoleIdentity(
   userId: string,
   role: string,
-): Promise<string | null> {
+): Promise<{
+  phone: string | null;
+  rut: string | null;
+  birthDate: string | null;
+}> {
+  const passengerProfile =
+    await passengerProfileRepository.findByUserId(userId);
+
   if (role === "driver") {
     const driverProfile =
       await driverProfileRepository.findByUserId(userId);
-    if (driverProfile?.phone) return driverProfile.phone;
 
-    const passengerProfile =
-      await passengerProfileRepository.findByUserId(userId);
-    return passengerProfile?.phone ?? null;
+    return {
+      phone: driverProfile?.phone ?? passengerProfile?.phone ?? null,
+      rut: passengerProfile?.rut ?? null,
+      birthDate: passengerProfile?.birthDate ?? null,
+    };
   }
 
-  if (role === "passenger") {
-    const passengerProfile =
-      await passengerProfileRepository.findByUserId(userId);
-    return passengerProfile?.phone ?? null;
-  }
-
-  return null;
-}
-
-async function persistRolePhone(
-  userId: string,
-  role: string,
-  phone: string,
-): Promise<void> {
-  if (role === "driver") {
-    await driverProfileRepository.upsert(userId, { phone });
-    return;
-  }
-
-  await passengerProfileRepository.upsert(userId, { phone });
+  return {
+    phone: passengerProfile?.phone ?? null,
+    rut: passengerProfile?.rut ?? null,
+    birthDate: passengerProfile?.birthDate ?? null,
+  };
 }
 
 export class ProfileService {
@@ -97,7 +90,7 @@ export class ProfileService {
       };
     }
 
-    const phone = await readRolePhone(user.id, user.role);
+    const identity = await readRoleIdentity(user.id, user.role);
 
     return {
       ok: true,
@@ -108,7 +101,9 @@ export class ProfileService {
         role: user.role,
         status: user.status,
         avatarUrl: user.avatarUrl,
-        phone,
+        phone: identity.phone,
+        rut: identity.rut,
+        birthDate: identity.birthDate,
         isVerified: user.isVerified,
         createdAt: toIso(user.createdAt),
       },
@@ -161,20 +156,21 @@ export class ProfileService {
       };
     }
 
-    const userFields: UpdateProfileInput = {};
-    if (input.name !== undefined) userFields.name = input.name;
-    if ("avatarUrl" in input) userFields.avatarUrl = input.avatarUrl;
-
-    const updated =
-      Object.keys(userFields).length > 0
-        ? await usersRepository.updateProfile(payload.sub, userFields)
-        : current;
-
-    if (input.phone !== undefined) {
-      await persistRolePhone(updated.id, updated.role, input.phone);
+    if (!("avatarUrl" in input)) {
+      return {
+        ok: false,
+        code: "PROFILE_IDENTITY_LOCKED",
+        message:
+          "Nombre, correo, teléfono y RUT están bloqueados. Solicita cualquier corrección mediante soporte.",
+        statusCode: 403,
+      };
     }
 
-    const phone = await readRolePhone(updated.id, updated.role);
+    const updated = await usersRepository.updateProfile(payload.sub, {
+      avatarUrl: input.avatarUrl,
+    });
+
+    const identity = await readRoleIdentity(updated.id, updated.role);
 
     return {
       ok: true,
@@ -185,7 +181,9 @@ export class ProfileService {
         role: updated.role,
         status: updated.status,
         avatarUrl: updated.avatarUrl,
-        phone,
+        phone: identity.phone,
+        rut: identity.rut,
+        birthDate: identity.birthDate,
         isVerified: updated.isVerified,
         createdAt: toIso(updated.createdAt),
       },

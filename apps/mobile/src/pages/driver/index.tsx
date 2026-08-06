@@ -19896,7 +19896,7 @@ export function DriverProfilePage(): JSX.Element {
     setError(null);
     setSuccess(false);
 
-    const trimPhone = phone.trim();
+    const lockedPhone = phone.trim();
     const cleanVehicleBrand = vehicleBrand.trim();
     const cleanVehicleModel = vehicleModel.trim();
     const cleanVehiclePlate = vehiclePlate.trim().toUpperCase();
@@ -19908,7 +19908,7 @@ export function DriverProfilePage(): JSX.Element {
     const profilePhotoWasRemoved = hasDriverProfilePhotoRemovalMarker(
       session?.user,
     );
-    const cleanLicenseNumber = licenseNumber.trim();
+    const lockedLicenseNumber = licenseNumber.trim();
     const cleanBio = bio.trim();
     const cleanLanguages = normalizeDriverLanguages(languages);
 
@@ -19923,10 +19923,6 @@ export function DriverProfilePage(): JSX.Element {
 
       // Primero guardamos localmente. Así el botón funciona aunque el backend
       // rechace campos nuevos como foto base64 o el perfil aún no exista.
-      if (trimPhone) {
-        writeDriverScopedStorageItem("rapago_driver_public_phone", trimPhone, session?.user);
-      }
-
       if (cleanProfilePhotoUrl) {
         persistStoredDriverProfilePhotoUrl(cleanProfilePhotoUrl, session?.user);
       } else {
@@ -19940,7 +19936,6 @@ export function DriverProfilePage(): JSX.Element {
       );
 
       persistStoredDriverRegistrationProfile({
-        phone: trimPhone,
         email: session?.user?.email ?? null,
         name: session?.user?.name ?? null,
         vehicleBrand: cleanVehicleBrand,
@@ -19950,7 +19945,6 @@ export function DriverProfilePage(): JSX.Element {
         vehicleColor: cleanVehicleColor,
         vehicleImageDataUrl: cleanVehicleImageDataUrl,
         vehicleImageName: cleanVehicleImageName,
-        licenseNumber: cleanLicenseNumber,
       }, session?.user);
 
       let savedVehicle: DriverVehicleRecord | null = null;
@@ -19990,7 +19984,7 @@ export function DriverProfilePage(): JSX.Element {
 
       publishDriverProfileVehicleSnapshot({
         user: session?.user,
-        phone: trimPhone,
+        phone: lockedPhone,
         vehicle: savedVehicle ?? readSelectedDriverVehicle(session?.user),
       });
 
@@ -20001,8 +19995,8 @@ export function DriverProfilePage(): JSX.Element {
           typeof driverProfileService.upsertMyProfile
         >[1] = {};
 
-        if (trimPhone) payload.phone = trimPhone;
-
+        // El backend conserva los datos de identidad y licencia aprobados.
+        // Este formulario solo actualiza información operativa del conductor.
         // El backend actual conserva el vehículo principal aprobado.
         // Los vehículos opcionales se guardan en la lista separada del conductor
         // y no deben reemplazar los datos del vehículo principal.
@@ -20017,8 +20011,6 @@ export function DriverProfilePage(): JSX.Element {
           if (cleanVehicleColor) payload.vehicleColor = cleanVehicleColor;
         }
 
-        if (cleanLicenseNumber) payload.licenseNumber = cleanLicenseNumber;
-        if (licenseExpiry) payload.licenseExpiry = licenseExpiry;
         if (cleanProfilePhotoUrl && !cleanProfilePhotoUrl.startsWith("data:")) {
           payload.profilePhotoUrl = cleanProfilePhotoUrl;
         }
@@ -20046,7 +20038,7 @@ export function DriverProfilePage(): JSX.Element {
       setVehicleImageDataUrl(cleanVehicleImageDataUrl);
       setVehicleImageName(cleanVehicleImageName);
       setProfilePhotoUrl(cleanProfilePhotoUrl);
-      setLicenseNumber(cleanLicenseNumber);
+      setLicenseNumber(lockedLicenseNumber);
       setBio(cleanBio);
       setLanguages(cleanLanguages);
       setDriverVehicles(readDriverVehicles(session?.user));
@@ -20643,8 +20635,8 @@ export function DriverProfilePage(): JSX.Element {
                     marginBottom: 10,
                   }}
                 >
-                  El teléfono se toma automáticamente desde el registro si está
-                  disponible.
+                  El teléfono se toma automáticamente desde el registro y está
+                  bloqueado. Para corregirlo debes solicitarlo a soporte.
                 </div>
 
                 <IonItem lines="none" style={driverInputItemStyle()}>
@@ -20654,13 +20646,10 @@ export function DriverProfilePage(): JSX.Element {
                   <IonInput
                     style={driverFieldTextStyle()}
                     value={phone}
-                    onIonInput={(event) =>
-                      setPhone(String(event.detail.value ?? ""))
-                    }
-                    placeholder="+56 9 1234 5678"
+                    placeholder="Teléfono registrado"
                     type="tel"
-                    maxlength={20}
-                    clearInput
+                    readonly
+                    aria-readonly="true"
                   />
                 </IonItem>
 
@@ -21319,11 +21308,9 @@ export function DriverProfilePage(): JSX.Element {
                   <IonInput
                     style={driverFieldTextStyle()}
                     value={licenseNumber}
-                    onIonInput={(event) =>
-                      setLicenseNumber(String(event.detail.value ?? ""))
-                    }
-                    placeholder="12345678-9"
-                    clearInput
+                    placeholder="Número aprobado"
+                    readonly
+                    aria-readonly="true"
                   />
                 </IonItem>
 
@@ -21334,12 +21321,40 @@ export function DriverProfilePage(): JSX.Element {
                   <IonInput
                     style={driverFieldTextStyle()}
                     value={licenseExpiry}
-                    onIonInput={(event) =>
-                      setLicenseExpiry(String(event.detail.value ?? ""))
-                    }
                     type="date"
+                    readonly
+                    aria-readonly="true"
                   />
                 </IonItem>
+
+                <div
+                  style={{
+                    marginTop: 10,
+                    color: "var(--rp-muted)",
+                    fontSize: ".76rem",
+                    fontWeight: 800,
+                    lineHeight: 1.4,
+                  }}
+                >
+                  El número y vencimiento de la licencia corresponden a los
+                  documentos aprobados. No pueden modificarse desde el perfil.
+                </div>
+
+                <IonButton
+                  expand="block"
+                  fill="outline"
+                  onClick={() => history.push(`${ROUTES.SUPPORT.CENTER}?category=identity_correction`)}
+                  style={
+                    {
+                      "--border-radius": "16px",
+                      height: "48px",
+                      marginTop: 12,
+                      fontWeight: 950,
+                    } as CSSProperties
+                  }
+                >
+                  Solicitar corrección a soporte
+                </IonButton>
 
                 {licenseWarning && (
                   <IonText
