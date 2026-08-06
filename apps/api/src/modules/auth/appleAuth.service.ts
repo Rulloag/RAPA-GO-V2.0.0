@@ -71,6 +71,7 @@ function logAppleStage(
 
 type PassengerSetup = {
   phone: string;
+  rut: string;
   requestedFareType: ApplePassengerFareType;
   legalDocumentsToAccept: Array<typeof legalDocuments.$inferSelect>;
   storedResidenceAccreditation: string | null;
@@ -968,6 +969,7 @@ export class AppleAuthService {
       ok: true,
       setup: {
         phone,
+        rut: rut || passport,
         requestedFareType,
         legalDocumentsToAccept,
         storedResidenceAccreditation,
@@ -1439,6 +1441,7 @@ export class AppleAuthService {
       await tx.insert(passengerProfiles).values({
         userId,
         phone: setup.phone,
+        rut: setup.rut,
         requestedFareType: setup.requestedFareType,
         effectiveFareType: setup.requestedFareType,
         residenceVerificationStatus:

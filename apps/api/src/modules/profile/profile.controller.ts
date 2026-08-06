@@ -45,12 +45,13 @@ export const profileController = {
       return;
     }
 
-    // Build input object conditionally — required by exactOptionalPropertyTypes
+    // La identidad está bloqueada. El único campo de autoservicio admitido
+    // por el esquema y el servicio es la foto de perfil.
     const input: UpdateProfileInput = {};
-    if (typeof parsed.data.name === "string") input.name = parsed.data.name;
-    const av = parsed.data.avatarUrl;
-    if ("avatarUrl" in parsed.data && av !== undefined) input.avatarUrl = av;
-    if (typeof parsed.data.phone === "string") input.phone = parsed.data.phone;
+    const avatarUrl = parsed.data.avatarUrl;
+    if ("avatarUrl" in parsed.data && avatarUrl !== undefined) {
+      input.avatarUrl = avatarUrl;
+    }
 
     const result = await profileService.updateProfile(token, input);
     if (!result.ok) {

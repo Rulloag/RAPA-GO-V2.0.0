@@ -6,6 +6,7 @@ export const supportCategorySchema = z.enum([
   "lost_item",
   "safety",
   "payment",
+  "identity_correction",
   "other",
 ]);
 
@@ -58,6 +59,24 @@ export const addSupportMessageSchema = z.object({
   message: z.string().trim().min(2).max(3000),
 });
 
+
+export const adminIdentityCorrectionSchema = z
+  .object({
+    name: z.string().trim().min(2).max(100).optional(),
+    email: z.string().trim().email().max(255).optional(),
+    phone: z.string().trim().min(8).max(30).optional(),
+    rut: z.string().trim().min(5).max(20).optional(),
+    licenseNumber: z.string().trim().min(3).max(30).optional(),
+    licenseExpiry: z
+      .string()
+      .regex(/^\d{4}-\d{2}-\d{2}$/, "La fecha debe usar YYYY-MM-DD.")
+      .optional(),
+  })
+  .strict()
+  .refine((value) => Object.values(value).some((item) => item !== undefined), {
+    message: "Debes enviar al menos una corrección de identidad.",
+  });
+
 export const adminSupportUpdateSchema = z
   .object({
     status: supportStatusSchema.optional(),
@@ -66,6 +85,7 @@ export const adminSupportUpdateSchema = z
     internalNote: z.string().trim().min(2).max(3000).optional(),
     resolution: z.string().trim().min(3).max(3000).optional(),
     assignToMe: z.boolean().optional(),
+    identityCorrection: adminIdentityCorrectionSchema.optional(),
   })
   .refine(
     (value) => Object.values(value).some((item) => item !== undefined),
@@ -85,5 +105,6 @@ export type SupportPriority = z.infer<typeof supportPrioritySchema>;
 export type SupportStatus = z.infer<typeof supportStatusSchema>;
 export type CreateSupportCaseInput = z.infer<typeof createSupportCaseSchema>;
 export type AddSupportMessageInput = z.infer<typeof addSupportMessageSchema>;
+export type AdminIdentityCorrectionInput = z.infer<typeof adminIdentityCorrectionSchema>;
 export type AdminSupportUpdateInput = z.infer<typeof adminSupportUpdateSchema>;
 export type AdminSupportListQuery = z.infer<typeof adminSupportListQuerySchema>;

@@ -7232,15 +7232,12 @@ export function PassengerProfilePage(): JSX.Element {
         emailNotifications,
         smsNotifications,
       };
-      const trimPhone = phone.trim();
-      if (trimPhone) payload.phone = trimPhone;
       const trimEmName = emergencyContactName.trim();
       if (trimEmName) payload.emergencyContactName = trimEmName;
       const trimEmPhone = emergencyContactPhone.trim();
       if (trimEmPhone) payload.emergencyContactPhone = trimEmPhone;
 
       const updated = await passengerProfileService.upsertMyProfile(session.accessToken, payload);
-      if (payload.phone) persistPassengerAutofill({ phone: payload.phone });
       setProfile(updated);
       setSaveOk(true);
     } catch (err) {
@@ -7288,7 +7285,7 @@ export function PassengerProfilePage(): JSX.Element {
                 <IonCardContent style={{ padding: "8px 14px" }}>
                   <IonText>
                     <p style={{ margin: 0, fontSize: "0.82rem", color: "#6b4700" }}>
-                      Complete su teléfono para solicitar viajes
+                      Tu cuenta no tiene teléfono registrado. Solicita la corrección a soporte para poder solicitar viajes.
                     </p>
                   </IonText>
                 </IonCardContent>
@@ -7324,13 +7321,33 @@ export function PassengerProfilePage(): JSX.Element {
                 <IonLabel position="stacked">Teléfono</IonLabel>
                 <IonInput
                   value={phone}
-                  onIonInput={(e) => setPhone(String(e.detail.value ?? ""))}
-                  placeholder="+56 9 1234 5678"
                   type="tel"
-                  maxlength={20}
-                  clearInput
+                  readonly
+                  aria-readonly="true"
                 />
               </IonItem>
+              <IonItem lines="full">
+                <IonLabel position="stacked">RUT</IonLabel>
+                <IonInput
+                  value={
+                    (profile as PassengerProfileData & { rut?: string | null }).rut ??
+                    "No informado"
+                  }
+                  readonly
+                  aria-readonly="true"
+                />
+                <IonNote slot="helper">
+                  Nombre, correo, teléfono y RUT están bloqueados. Solo soporte y administración pueden corregirlos.
+                </IonNote>
+              </IonItem>
+              <IonButton
+                expand="block"
+                fill="outline"
+                style={{ margin: "12px 16px 0" }}
+                onClick={() => history.push(`${ROUTES.SUPPORT.CENTER}?category=identity_correction`)}
+              >
+                Solicitar corrección de identidad
+              </IonButton>
             </IonList>
 
             {/* Preferred language */}

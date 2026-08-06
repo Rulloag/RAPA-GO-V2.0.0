@@ -7,6 +7,8 @@ export interface ProfileResponse {
   status:     string;
   avatarUrl:  string | null;
   phone:      string | null;
+  rut:        string | null;
+  birthDate:  string | null;
   isVerified: boolean;
   createdAt:  string; // ISO 8601
 }

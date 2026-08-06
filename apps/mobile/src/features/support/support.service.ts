@@ -7,6 +7,7 @@ export type SupportCategory =
   | "lost_item"
   | "safety"
   | "payment"
+  | "identity_correction"
   | "other";
 export type SupportPriority = "low" | "normal" | "high" | "urgent";
 export type SupportStatus =
@@ -57,9 +58,32 @@ export interface SupportCaseEventData {
   createdAt: string;
 }
 
+
+export interface SupportRequesterIdentityData {
+  userId: string;
+  role: string;
+  name: string;
+  email: string;
+  phone: string | null;
+  rut: string | null;
+  birthDate: string | null;
+  licenseNumber: string | null;
+  licenseExpiry: string | null;
+}
+
+export interface AdminIdentityCorrectionPayload {
+  name?: string;
+  email?: string;
+  phone?: string;
+  rut?: string;
+  licenseNumber?: string;
+  licenseExpiry?: string;
+}
+
 export interface SupportCaseDetailData {
   supportCase: SupportCaseData;
   events: SupportCaseEventData[];
+  requesterIdentity: SupportRequesterIdentityData | null;
 }
 
 export interface CreateSupportCasePayload {
@@ -81,6 +105,7 @@ export interface AdminSupportUpdatePayload {
   internalNote?: string;
   resolution?: string;
   assignToMe?: boolean;
+  identityCorrection?: AdminIdentityCorrectionPayload;
 }
 
 function unwrap<T>(result: ApiResponse<T>): T {

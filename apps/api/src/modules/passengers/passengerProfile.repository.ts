@@ -22,7 +22,6 @@ export class PassengerProfileRepository {
         updatedAt: new Date(),
       };
 
-      if (input.phone                 !== undefined) setValues.phone                 = input.phone;
       if (input.preferredLanguage     !== undefined) setValues.preferredLanguage     = input.preferredLanguage;
       if (input.notificationEnabled   !== undefined) setValues.notificationEnabled   = input.notificationEnabled;
       if (input.emailNotifications    !== undefined) setValues.emailNotifications    = input.emailNotifications;

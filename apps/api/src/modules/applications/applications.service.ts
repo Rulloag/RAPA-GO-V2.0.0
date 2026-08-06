@@ -13,6 +13,7 @@ import { db } from "../../db/client.js";
 import {
   authCredentials,
   driverProfiles,
+  passengerProfiles,
   userDocuments,
   users,
 } from "../../db/schema/index.js";
@@ -100,6 +101,7 @@ type AuthResult =
       userId: string;
       role: string;
       email: string;
+      name: string;
     }
   | {
       ok: false;
@@ -159,7 +161,140 @@ async function authenticate(accessToken: string): Promise<AuthResult> {
     userId: user.id,
     role: user.role,
     email: user.email,
+    name: user.name,
   };
+}
+
+
+function splitLockedAccountName(name: string): {
+  firstName: string;
+  lastName: string;
+} {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+
+  return {
+    firstName: parts[0] ?? "",
+    lastName: parts.slice(1).join(" "),
+  };
+}
+
+function normalizeLockedIdentityValue(value: string | null | undefined): string {
+  return String(value ?? "")
+    .trim()
+    .toUpperCase()
+    .replace(/[^0-9A-Z]/g, "");
+}
+
+type LockedDriverIdentity = {
+  firstName: string;
+  lastName: string;
+  email: string;
+  phone: string;
+  rut: string;
+  birthDate: string | null;
+};
+
+async function resolveLockedDriverIdentity(
+  auth: Extract<AuthResult, { ok: true }>,
+  input: Extract<CreateApplicationInput, { type: "driver" }>,
+): Promise<
+  | { ok: true; identity: LockedDriverIdentity }
+  | {
+      ok: false;
+      code: string;
+      message: string;
+      statusCode: number;
+    }
+> {
+  const rows = await db
+    .select()
+    .from(passengerProfiles)
+    .where(eq(passengerProfiles.userId, auth.userId))
+    .limit(1);
+  const profile = rows[0] ?? null;
+  const names = splitLockedAccountName(auth.name);
+
+  const phone = profile?.phone?.trim() || input.phone.trim();
+  const rut = profile?.rut?.trim() || input.rut?.trim() || "";
+  const birthDate =
+    input.birthDate?.trim() || profile?.birthDate?.trim() || null;
+
+  if (
+    !names.firstName ||
+    !names.lastName ||
+    !auth.email.trim() ||
+    !phone ||
+    !rut
+  ) {
+    return {
+      ok: false,
+      code: "PROFILE_IDENTITY_INCOMPLETE",
+      message:
+        "Tu cuenta no tiene completos el nombre, apellido, correo, teléfono o RUT. Solicita la corrección mediante soporte antes de postular como conductor.",
+      statusCode: 409,
+    };
+  }
+
+  if (
+    profile?.rut &&
+    input.rut &&
+    normalizeLockedIdentityValue(profile.rut) !==
+      normalizeLockedIdentityValue(input.rut)
+  ) {
+    return {
+      ok: false,
+      code: "PROFILE_IDENTITY_MISMATCH",
+      message:
+        "El RUT enviado no coincide con el registrado en tu cuenta. Solicita cualquier corrección mediante soporte.",
+      statusCode: 409,
+    };
+  }
+
+  if (
+    profile?.phone &&
+    input.phone &&
+    normalizeLockedIdentityValue(profile.phone) !==
+      normalizeLockedIdentityValue(input.phone)
+  ) {
+    return {
+      ok: false,
+      code: "PROFILE_IDENTITY_MISMATCH",
+      message:
+        "El teléfono enviado no coincide con el registrado en tu cuenta. Solicita cualquier corrección mediante soporte.",
+      statusCode: 409,
+    };
+  }
+
+  const identity: LockedDriverIdentity = {
+    firstName: names.firstName,
+    lastName: names.lastName,
+    email: auth.email.trim().toLowerCase(),
+    phone,
+    rut,
+    birthDate,
+  };
+
+  const now = new Date();
+  await db
+    .insert(passengerProfiles)
+    .values({
+      userId: auth.userId,
+      phone,
+      rut,
+      birthDate,
+      updatedAt: now,
+    })
+    .onConflictDoUpdate({
+      target: passengerProfiles.userId,
+      set: {
+        phone,
+        rut,
+        birthDate,
+        updatedAt: now,
+      },
+    });
+
+  return { ok: true, identity };
 }
 
 async function toResponse(application: Application): Promise<ApplicationResponse> {
@@ -463,6 +598,10 @@ export class ApplicationsService {
       }
 
       let userId: string | null = null;
+      let authenticatedUser:
+        | Extract<AuthResult, { ok: true }>
+        | null = null;
+      let lockedDriverIdentity: LockedDriverIdentity | null = null;
       let driverContractDocument:
         | import("../../db/schema/index.js").LegalDocument
         | null = null;
@@ -471,10 +610,28 @@ export class ApplicationsService {
         const auth = await authenticate(accessToken);
 
         if (!auth.ok) return auth;
+        authenticatedUser = auth;
         userId = auth.userId;
       }
 
       if (input.type === "driver") {
+        if (!authenticatedUser) {
+          return {
+            ok: false,
+            code: "UNAUTHORIZED",
+            message: "Debes iniciar sesión antes de postular como conductor.",
+            statusCode: 401,
+          };
+        }
+
+        const identityResult = await resolveLockedDriverIdentity(
+          authenticatedUser,
+          input,
+        );
+
+        if (!identityResult.ok) return identityResult;
+        lockedDriverIdentity = identityResult.identity;
+
         const acceptance = input.driverContractAcceptance;
         driverContractDocument = await legalRepo.findById(
           acceptance.legalDocumentId,
@@ -515,12 +672,17 @@ export class ApplicationsService {
         userId: userId ?? undefined,
         type: input.type,
         status: "pending",
-        firstName: input.firstName,
-        lastName: input.lastName,
-        email: input.email,
-        phone: input.phone,
-        ...(input.rut !== undefined ? { rut: input.rut } : {}),
-        ...(input.birthDate !== undefined ? { birthDate: input.birthDate } : {}),
+        firstName: lockedDriverIdentity?.firstName ?? input.firstName,
+        lastName: lockedDriverIdentity?.lastName ?? input.lastName,
+        email: lockedDriverIdentity?.email ?? input.email,
+        phone: lockedDriverIdentity?.phone ?? input.phone,
+        ...((lockedDriverIdentity?.rut ?? input.rut) !== undefined
+          ? { rut: lockedDriverIdentity?.rut ?? input.rut }
+          : {}),
+        ...((lockedDriverIdentity?.birthDate ?? input.birthDate) !== undefined &&
+        (lockedDriverIdentity?.birthDate ?? input.birthDate) !== null
+          ? { birthDate: lockedDriverIdentity?.birthDate ?? input.birthDate }
+          : {}),
         ...(input.city !== undefined ? { city: input.city } : {}),
         ...(input.emergencyContactName !== undefined
           ? { emergencyContactName: input.emergencyContactName }
@@ -613,7 +775,7 @@ export class ApplicationsService {
               userId: admin.id,
               type: "application_new",
               title: "Nueva postulación recibida",
-              message: `${input.firstName} ${input.lastName} se postuló como ${input.type}`,
+              message: `${application.firstName} ${application.lastName} se postuló como ${application.type}`,
               entityType: "application",
               entityId: application.id,
             });

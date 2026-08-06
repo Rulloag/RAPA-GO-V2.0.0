@@ -23,7 +23,5 @@ export interface UpdateUserStatusInput {
 
 /** Fields a user can update on their own profile. */
 export interface UpdateProfileInput {
-  name?: string;
   avatarUrl?: string | null;
-  phone?: string;
 }

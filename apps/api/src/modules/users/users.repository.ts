@@ -70,8 +70,7 @@ export class UsersRepository {
     try {
       // Build update set only with provided fields to avoid overwriting with undefined
       const set: Record<string, unknown> = { updatedAt: new Date() };
-      if (input.name !== undefined)      set["name"]      = input.name;
-      if ("avatarUrl" in input)          set["avatarUrl"] = input.avatarUrl;
+      if ("avatarUrl" in input) set["avatarUrl"] = input.avatarUrl;
 
       const rows = await db
         .update(users)
