@@ -2261,11 +2261,17 @@
 /* ── 4. Card de permiso de ubicación (pantalla Solicitudes) ───────────────
    Añadir className="driver-location-error-card" a la IonCard (L15101).
    ─────────────────────────────────────────────────────────────────────────── */
+/* Antes el fondo forzaba #fff3cd (amarillo pálido) fijo con !important, que le
+   ganaba a `var(--rp-surface)` del style inline de la IonCard. El texto sí
+   seguía el tema (`var(--rp-text)`, del mismo inline), así que en modo noche
+   ese texto se resolvía a un color CLARO sobre un fondo AMARILLO PÁLIDO
+   también claro: contraste insuficiente, casi ilegible. `--rp-warn-bg`/`-bd`
+   son la contraparte de este mismo tono ámbar ya calibrada por tema. */
 .rapago-driver-page .driver-location-error-card {
   margin: 0 0 14px !important;
   border-radius: 18px !important;
-  background: #fff3cd !important;
-  border: 1.5px solid rgba(210,164,58,.55) !important;
+  background: var(--rp-warn-bg) !important;
+  border: 1.5px solid var(--rp-warn-bd) !important;
   box-shadow: 0 4px 14px rgba(210,164,58,.18);
 }
 

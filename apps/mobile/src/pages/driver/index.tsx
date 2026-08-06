@@ -8251,14 +8251,13 @@ export function DriverHomePage(): JSX.Element {
           de tema y el acceso a perfil que había aquí sueltos se fueron al menú
           de cuenta — eran dos de los tres iconos dorados idénticos separados
           por 6px, con "cerrar sesión" de tercero. */}
-      <IonHeader className="ion-no-border">
-        <RapagoAppBar
-          sectionId="driver-home"
-          variant="root"
-          roleLabel="Conductor"
-          showNotifications
-        />
-      </IonHeader>
+      <RapagoAppBar
+        sectionId="driver-home"
+        variant="root"
+        subtitle="Tu panel de conductor"
+        roleLabel="Conductor"
+        showNotifications
+      />
 
       <IonContent className="driver-home-content">
         <main className="driver-home-shell">
@@ -11470,35 +11469,35 @@ function DriverCashCloseRideOverlay({
     >
       <style>{`
         .rapago-cash-close-input {
-          --background: #fff8e7 !important;
-          --color: #111827 !important;
-          --highlight-color-focused: #d6a640 !important;
-          background: linear-gradient(180deg,#fffaf0,#fff3d7) !important;
+          --background: var(--rp-field-bg) !important;
+          --color: var(--rp-field-fg) !important;
+          --highlight-color-focused: var(--rp-gold) !important;
+          background: var(--rp-field-bg) !important;
           border-radius: 18px !important;
           overflow: hidden;
         }
         .rapago-cash-close-input::part(native) {
-          background: linear-gradient(180deg,#fffaf0,#fff3d7) !important;
-          color: #111827 !important;
+          background: var(--rp-field-bg) !important;
+          color: var(--rp-field-fg) !important;
           border-radius: 18px !important;
           min-height: 76px;
         }
         .rapago-cash-close-input ion-label {
-          color: #7c4a03 !important;
+          color: var(--rp-label) !important;
           font-size: .76rem !important;
           letter-spacing: .01em;
         }
         .rapago-cash-close-input ion-input {
           --background: transparent !important;
-          --color: #111827 !important;
-          --placeholder-color: #b08a32 !important;
+          --color: var(--rp-field-fg) !important;
+          --placeholder-color: var(--rp-field-ph) !important;
           --placeholder-opacity: 1 !important;
-          color: #111827 !important;
+          color: var(--rp-field-fg) !important;
           font-weight: 950;
         }
         .rapago-cash-close-input input {
           background: transparent !important;
-          color: #111827 !important;
+          color: var(--rp-field-fg) !important;
           font-weight: 950 !important;
         }
       `}</style>
@@ -11513,12 +11512,20 @@ function DriverCashCloseRideOverlay({
           display: "flex",
           flexDirection: "column",
           borderRadius: 24,
-          background: "#F6F2EC",
-          color: "#111",
+          background: "var(--rp-surface)",
+          color: "var(--rp-text)",
           boxShadow: "0 22px 60px rgba(0,0,0,.45)",
-          border: "1px solid rgba(210,164,58,.40)",
+          border: "1px solid var(--rp-border-c)",
         }}
       >
+        {/* El encabezado verde y el scrim oscuro de fondo se mantienen fijos a
+            propósito: son color semántico de "éxito" y un velo neutro, ambos
+            funcionan igual en los dos temas sin necesitar tokens. Todo lo
+            demás en esta tarjeta SÍ variaba: antes era #F6F2EC/#111/#ffffff
+            fijos —un "recibo de papel" que no seguía data-rapago-theme— y en
+            modo noche quedaba como un recuadro claro flotando sobre una app
+            oscura. Es el mismo defecto que tenían el formulario de vehículo y
+            el de datos personales antes de corregirlos. */}
         <div
           style={{
             padding: "16px 18px",
@@ -11546,19 +11553,19 @@ function DriverCashCloseRideOverlay({
           <div
             style={{
               borderRadius: 18,
-              background: "#ffffff",
-              border: "1px solid rgba(0,0,0,.08)",
+              background: "var(--rp-field-bg)",
+              border: "1px solid var(--rp-border-c)",
               padding: 13,
               marginBottom: 12,
             }}
           >
-            <div style={{ fontSize: ".72rem", fontWeight: 950, color: "#166534", textTransform: "uppercase" }}>
+            <div style={{ fontSize: ".72rem", fontWeight: 950, color: "var(--rp-ok-fg)", textTransform: "uppercase" }}>
               Viaje
             </div>
-            <div style={{ marginTop: 5, fontWeight: 950, lineHeight: 1.3 }}>
+            <div style={{ marginTop: 5, fontWeight: 950, lineHeight: 1.3, color: "var(--rp-text)" }}>
               {getDriverRideRouteDisplayLabel(ride)}
             </div>
-            <div style={{ marginTop: 7, fontSize: ".82rem", fontWeight: 900, color: "#333" }}>
+            <div style={{ marginTop: 7, fontSize: ".82rem", fontWeight: 900, color: "var(--rp-muted)" }}>
               Tarifa: {formatClp(fareClp)} · Pago: {isCash ? "Efectivo" : getRidePaymentMethodLabel(ride.notes)}
             </div>
           </div>
@@ -11566,13 +11573,13 @@ function DriverCashCloseRideOverlay({
           <div
             style={{
               borderRadius: 18,
-              background: destinationOk ? "#ecfdf3" : "#ffffff",
-              border: destinationOk ? "1px solid rgba(34,197,94,.45)" : "1px solid rgba(0,0,0,.08)",
+              background: destinationOk ? "var(--rp-ok-bg)" : "var(--rp-field-bg)",
+              border: destinationOk ? "1px solid var(--rp-ok-bd)" : "1px solid var(--rp-border-c)",
               padding: 13,
               marginBottom: 12,
             }}
           >
-            <div style={{ fontWeight: 950, marginBottom: 8 }}>
+            <div style={{ fontWeight: 950, marginBottom: 8, color: "var(--rp-text)" }}>
               ¿Llegaste bien al destino y el pasajero ya bajó?
             </div>
             <IonButton
@@ -11589,18 +11596,18 @@ function DriverCashCloseRideOverlay({
             <div
               style={{
                 borderRadius: 20,
-                background: "linear-gradient(180deg,#fffdf7,#fff7e6)",
-                border: "1px solid rgba(210,164,58,.32)",
+                background: "color-mix(in srgb, var(--rp-gold) 12%, var(--rp-surface))",
+                border: "1px solid color-mix(in srgb, var(--rp-gold) 34%, transparent)",
                 boxShadow: "0 14px 34px rgba(120,82,0,.09)",
                 padding: 13,
                 marginBottom: 12,
               }}
             >
               <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 9 }}>
-                <IonIcon icon={cashOutline} aria-hidden="true" style={{ color: "#166534", fontSize: 24 }} />
+                <IonIcon icon={cashOutline} aria-hidden="true" style={{ color: "var(--rp-ok-fg)", fontSize: 24 }} />
                 <div>
-                  <div style={{ fontWeight: 950 }}>Pago en efectivo</div>
-                  <div style={{ fontSize: ".74rem", color: "#555", fontWeight: 800 }}>
+                  <div style={{ fontWeight: 950, color: "var(--rp-text)" }}>Pago en efectivo</div>
+                  <div style={{ fontSize: ".74rem", color: "var(--rp-muted)", fontWeight: 800 }}>
                     Esto se enviará al panel Admin para cuadratura.
                   </div>
                 </div>
@@ -11636,14 +11643,14 @@ function DriverCashCloseRideOverlay({
                     className="rapago-cash-close-input"
                     lines="none"
                     style={{
-                      "--background": "#fff8e7",
-                      "--color": "#111827",
-                      "--highlight-color-focused": "#C89B3C",
+                      "--background": "var(--rp-field-bg)",
+                      "--color": "var(--rp-field-fg)",
+                      "--highlight-color-focused": "var(--rp-gold)",
                       "--padding-start": "12px",
                       "--inner-padding-end": "12px",
-                      border: "1px solid rgba(210,164,58,.45)",
+                      border: "1px solid color-mix(in srgb, var(--rp-gold) 40%, transparent)",
                       borderRadius: 18,
-                      background: "linear-gradient(180deg,#fffaf0,#fff3d7)",
+                      background: "var(--rp-field-bg)",
                       boxShadow: "0 12px 26px rgba(120,82,0,.10)",
                     } as CSSProperties}
                   >
@@ -11656,10 +11663,10 @@ function DriverCashCloseRideOverlay({
                       inputmode="numeric"
                       placeholder="Ej: 10000"
                       style={{
-                        "--color": "#111111",
-                        "--placeholder-color": "#8a6a2a",
+                        "--color": "var(--rp-field-fg)",
+                        "--placeholder-color": "var(--rp-field-ph)",
                         "--placeholder-opacity": "1",
-                        color: "#111111",
+                        color: "var(--rp-field-fg)",
                         fontWeight: 950,
                         fontSize: "1rem",
                       } as CSSProperties}
@@ -11672,8 +11679,8 @@ function DriverCashCloseRideOverlay({
                       marginTop: 10,
                       borderRadius: 14,
                       padding: "10px 12px",
-                      background: paidAmountClp != null && paidAmountClp > fareClp ? "#ecfdf3" : "#fff7ed",
-                      color: paidAmountClp != null && paidAmountClp > fareClp ? "#14532d" : "#9a3412",
+                      background: paidAmountClp != null && paidAmountClp > fareClp ? "var(--rp-ok-bg)" : "var(--rp-warn-bg)",
+                      color: paidAmountClp != null && paidAmountClp > fareClp ? "var(--rp-ok-fg)" : "var(--rp-warn-fg)",
                       fontSize: ".78rem",
                       fontWeight: 900,
                       lineHeight: 1.35,
@@ -11697,8 +11704,8 @@ function DriverCashCloseRideOverlay({
             <div
               style={{
                 borderRadius: 16,
-                background: "#eef2ff",
-                color: "#1e1b4b",
+                background: "var(--rp-info-bg)",
+                color: "var(--rp-info-fg)",
                 padding: "10px 12px",
                 fontSize: ".78rem",
                 fontWeight: 900,
@@ -11720,8 +11727,8 @@ function DriverCashCloseRideOverlay({
               gap: 8,
               margin: "12px -12px -12px",
               padding: "10px 12px calc(12px + env(safe-area-inset-bottom))",
-              background: "linear-gradient(180deg,rgba(246,242,236,.88),#F6F2EC 34%)",
-              borderTop: "1px solid rgba(210,164,58,.24)",
+              background: "var(--rp-surface)",
+              borderTop: "1px solid var(--rp-border-c)",
               boxShadow: "0 -12px 28px rgba(0,0,0,.08)",
             }}
           >
@@ -12103,11 +12110,20 @@ function getRequestCardStyles(): Record<string, CSSProperties> {
       margin: 0,
       borderRadius: "28px",
       overflow: "hidden",
-      background: "linear-gradient(145deg, #F6F2EC 0%, #EFE6D8 100%)",
+      /* Antes era un gradiente crema fijo (#F6F2EC→#EFE6D8) con
+         `color: var(--rp-text)`: en modo noche ese token se resuelve a un
+         texto claro pensado para fondo oscuro, y quedaba texto claro sobre
+         fondo claro — la tarjeta de solicitud entrante, una de las pantallas
+         que más mira el conductor, se volvía casi ilegible de noche.
+         `--rp-surface` ya ES un gradiente propio por tema (crema de día, casi
+         negro de noche), así que va tal cual: envolverlo en OTRO
+         linear-gradient() como color-stop es CSS inválido — un gradiente no
+         puede ser el color de una parada de otro gradiente. */
+      background: "var(--rp-surface)",
       color: "var(--rp-text)",
-      border: "1px solid rgba(210,164,58,.42)",
+      border: "1px solid var(--rp-border-c)",
       boxShadow: "0 24px 64px rgba(0,0,0,.34)",
-      "--background": "#F6F2EC",
+      "--background": "var(--rp-surface)",
       "--color": "var(--rp-text)",
     } as CSSProperties,
     darkLayer: {
@@ -16552,16 +16568,14 @@ La reserva fue retirada. No continúes hacia la recogida.`,
           ("Viajes disponibles" + el estado de disponibilidad) es CONTENIDO, no
           cromo, así que baja al principio de la lista. Ganancia: 66px. */}
       {!activeRide && (
-        <IonHeader className="ion-no-border">
-          <RapagoAppBar
-            sectionId="driver-requests"
-            title={showOnlyReservations ? "Reservas" : "Solicitudes"}
-            actionIcon={refreshOutline}
-            actionLabel="Actualizar solicitudes"
-            actionLoading={loading}
-            onAction={() => void loadRides()}
-          />
-        </IonHeader>
+        <RapagoAppBar
+          sectionId="driver-requests"
+          title={showOnlyReservations ? "Reservas" : "Solicitudes"}
+          actionIcon={refreshOutline}
+          actionLabel="Actualizar solicitudes"
+          actionLoading={loading}
+          onAction={() => void loadRides()}
+        />
       )}
 
       <IonContent
@@ -17977,16 +17991,14 @@ function DriverMyRidesPage(): JSX.Element {
           margin: 0;
         }
       `}</style>
-      <IonHeader className="ion-no-border">
-        <RapagoAppBar
-          sectionId="driver-trips"
-          title="Mis Viajes"
-          actionIcon={refreshOutline}
-          actionLabel="Actualizar viajes"
-          actionLoading={loading}
-          onAction={() => void loadRides()}
-        />
-      </IonHeader>
+      <RapagoAppBar
+        sectionId="driver-trips"
+        title="Mis Viajes"
+        actionIcon={refreshOutline}
+        actionLabel="Actualizar viajes"
+        actionLoading={loading}
+        onAction={() => void loadRides()}
+      />
 
       <IonContent className="ion-padding">
         <IonRefresher
@@ -18576,9 +18588,7 @@ export function DriverEarningsPage(): JSX.Element {
   return (
     <>
       <IonPage className="rapago-driver-page" data-rapago-theme={theme}>
-      <IonHeader className="ion-no-border">
-        <RapagoAppBar sectionId="driver-earnings" title={m.label} />
-      </IonHeader>
+      <RapagoAppBar sectionId="driver-earnings" title={m.label} />
       <IonContent
         className="ion-padding"
         style={
@@ -20376,9 +20386,7 @@ export function DriverProfilePage(): JSX.Element {
           de la barra, con confirmación y bloqueado si hay viaje en curso. El
           segundo acceso sigue estando al pie de esta misma pantalla, que es
           donde la convención lo pone. */}
-      <IonHeader className="ion-no-border">
-        <RapagoAppBar sectionId="driver-profile" title="Mi Perfil" />
-      </IonHeader>
+      <RapagoAppBar sectionId="driver-profile" title="Mi Perfil" />
 
       <IonAlert
         isOpen={success}

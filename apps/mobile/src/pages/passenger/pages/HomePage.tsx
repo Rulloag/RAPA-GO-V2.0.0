@@ -157,6 +157,7 @@ export default function HomePage(): JSX.Element {
       <RapagoAppBar
         sectionId="home"
         variant="root"
+        subtitle="¿A dónde quieres ir?"
         roleLabel="Pasajero"
         showNotifications
       />

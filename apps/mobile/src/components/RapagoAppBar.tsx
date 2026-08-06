@@ -1,6 +1,7 @@
 import {
   IonAlert,
   IonButton,
+  IonHeader,
   IonIcon,
   IonPopover,
   IonSpinner,
@@ -57,10 +58,15 @@ interface RapagoAppBarProps {
   /** Ámbito de tema al que pertenece la pantalla. Obligatorio: sin él la barra
    *  no sabe si debe leer la preferencia del conductor o la del pasajero. */
   sectionId: RapagoSection;
-  /** Título de pantalla. En "root" se sustituye por el wordmark de marca. */
+  /** Título de pantalla. En "root" se sustituye por el saludo personal. */
   title?: string;
   variant?: RapagoAppBarVariant;
-  /** Texto bajo el wordmark en "root" (ej. "Conductor"). */
+  /** Segunda línea de la variante "root", bajo el saludo. Debe ser una frase
+   *  con intención —"¿A dónde quieres ir?"—, no la etiqueta del rol: el rol ya
+   *  lo sabe quien usa la app, y repetirlo en cada pantalla es ruido. */
+  subtitle?: string;
+  /** Etiqueta del rol. Sólo se usa DENTRO del menú de cuenta, donde sí aporta
+   *  contexto ("con qué cuenta estoy dentro"). Nunca en la barra visible. */
   roleLabel?: string;
   backHref?: string;
   onBack?: () => void;
@@ -134,6 +140,7 @@ export function RapagoAppBar({
   sectionId,
   title,
   variant = "standard",
+  subtitle,
   roleLabel,
   backHref,
   onBack,
@@ -351,8 +358,22 @@ export function RapagoAppBar({
     );
   }
 
+  /* ── Por qué se auto-envuelve en <IonHeader> ─────────────────────────────
+     Antes esta variante devolvía un <header> plano y dejaba que quien la usara
+     lo metiera dentro de un <IonHeader>. Las páginas del conductor lo hacían a
+     mano y funcionaban bien; las del pasajero (vía RapagoSectionHeader y
+     HomePage) no, y ahí apareció el bug: en "Mis Viajes" la barra terminaba
+     renderizada DEBAJO de los chips de filtro en vez de encima.
+
+     La causa: `ion-page` sólo reserva el hueco "fuera del scroll" para
+     elementos <ion-header> reales — un <header> normal no cuenta, así que
+     cuando había un <IonHeader> de verdad compitiendo por esa posición (los
+     chips de "Mis Viajes"), a él le tocaba el sitio fijo y a nuestra barra le
+     tocaba flotar donde el layout la dejara. Envolverse aquí adentro es lo que
+     garantiza la misma posición —arriba, fija, fuera del scroll— en las once
+     pantallas, sin depender de que cada llamada se acuerde de envolverla. */
   return (
-    <>
+    <IonHeader className="ion-no-border">
       <header
         className={`rp-appbar rp-appbar--${variant}`}
         role="banner"
@@ -373,7 +394,7 @@ export function RapagoAppBar({
               <IonIcon icon={arrowBackOutline} aria-hidden="true" />
             </button>
           ) : (
-            <RapagoMark size={32} />
+            <RapagoMark size={isRoot ? 40 : 32} />
           )}
 
           {/* Zona B: identidad de pantalla. La ÚNICA que encoge, y por eso la
@@ -381,15 +402,25 @@ export function RapagoAppBar({
               título empuja los botones fuera del viewport. */}
           <div className="rp-appbar__identity">
             {isRoot ? (
+              /* El saludo ES el título de Inicio, en una sola fila junto al
+                 logo. Antes aquí decía "RAPA GO / PASAJERO" y el saludo vivía
+                 en una segunda banda aparte — tres problemas a la vez: el rol
+                 salía DOS veces (aquí y en una pastilla junto al saludo),
+                 escribir el nombre de la app compite con el logo que ya lo
+                 dice, y separar el saludo del logo lo dejaba huérfano.
+                 La marca la pone el logo; la calidez, el nombre de quien
+                 entra. */
               <>
-                <span className="rp-appbar__wordmark">RAPA GO</span>
-                {roleLabel && (
-                  <span className="rp-appbar__eyebrow">{roleLabel}</span>
+                <span className="rp-appbar__greeting">
+                  Hola, <strong>{name}</strong>
+                </span>
+                {subtitle && (
+                  <span className="rp-appbar__subtitle">{subtitle}</span>
                 )}
               </>
             ) : (
               <>
-                {showBack && <RapagoMark size={24} />}
+                {showBack && <RapagoMark size={26} />}
                 {/* h1 único de la pantalla y enfocable: es lo que anuncia el
                     lector al entrar. Alineado a la izquierda para que la
                     elipsis se coma el final del título y no el principio. */}
@@ -400,28 +431,12 @@ export function RapagoAppBar({
             )}
           </div>
 
-          {/* Zona C: acciones. Como mucho dos, y la última siempre la cuenta. */}
+          {/* Zona C: acciones. Como mucho dos, y la última siempre la más
+              "de identidad" — la cuenta cuando no hay campana, o la campana
+              cuando sí la hay (el aviso nuevo es lo más reciente, se lee al
+              final, más cerca del borde). El avatar va primero: es "quién
+              soy", ancla la lectura antes que "qué me avisan". */}
           <div className="rp-appbar__actions">
-            {showNotifications && (
-              <button
-                type="button"
-                className="rp-appbar__btn"
-                aria-label={
-                  unreadCount > 0
-                    ? `Notificaciones, ${unreadCount} sin leer`
-                    : "Notificaciones"
-                }
-                onClick={() => history.push("/notifications")}
-              >
-                <IonIcon icon={notificationsOutline} aria-hidden="true" />
-                {unreadCount > 0 && (
-                  <em className="rp-appbar__dot" aria-hidden="true">
-                    {unreadCount > 9 ? "9+" : unreadCount}
-                  </em>
-                )}
-              </button>
-            )}
-
             {actionIcon && onAction && (
               <button
                 type="button"
@@ -443,23 +458,33 @@ export function RapagoAppBar({
             )}
 
             {accountButton}
+
+            {showNotifications && (
+              <button
+                type="button"
+                className="rp-appbar__btn"
+                aria-label={
+                  unreadCount > 0
+                    ? `Notificaciones, ${unreadCount} sin leer`
+                    : "Notificaciones"
+                }
+                onClick={() => history.push("/notifications")}
+              >
+                <IonIcon icon={notificationsOutline} aria-hidden="true" />
+                {unreadCount > 0 && (
+                  <em className="rp-appbar__dot" aria-hidden="true">
+                    {unreadCount > 9 ? "9+" : unreadCount}
+                  </em>
+                )}
+              </button>
+            )}
           </div>
         </div>
 
-        {/* Segunda fila sólo en Inicio: ahí el saludo es contenido, el momento
-            en que la app reconoce a quien entra. En las demás pantallas sería
-            cromo repetido — información de sesión, que pertenece al menú de
-            sesión, no a la barra. */}
-        {isRoot && (
-          <div className="rp-appbar__greeting">
-            <span>Hola, {name}</span>
-            {roleLabel && <em>{roleLabel}</em>}
-          </div>
-        )}
       </header>
 
       {accountMenu}
-    </>
+    </IonHeader>
   );
 }
 

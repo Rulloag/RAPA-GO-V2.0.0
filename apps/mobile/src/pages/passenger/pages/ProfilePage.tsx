@@ -1540,21 +1540,19 @@ export function ProfileIndexPage(): JSX.Element {
 
   return (
     <IonPage className="rapago-profile-page" data-rapago-theme={theme}>
-      <IonHeader className="ion-no-border">
-        <RapagoAppBar
-          sectionId="profile"
-          title={profileText.profile}
-          {...(roleHome ? { backHref: roleHome, backLabel: profileText.home } : {})}
-          actionIcon={languageOutline}
-          actionText={language === "es" ? "EN" : "ES"}
-          actionLabel={
-            language === "es"
-              ? "Cambiar aplicación a inglés"
-              : "Switch app to Spanish"
-          }
-          onAction={() => handleLanguageChange(language === "es" ? "en" : "es")}
-        />
-      </IonHeader>
+      <RapagoAppBar
+        sectionId="profile"
+        title={profileText.profile}
+        {...(roleHome ? { backHref: roleHome, backLabel: profileText.home } : {})}
+        actionIcon={languageOutline}
+        actionText={language === "es" ? "EN" : "ES"}
+        actionLabel={
+          language === "es"
+            ? "Cambiar aplicación a inglés"
+            : "Switch app to Spanish"
+        }
+        onAction={() => handleLanguageChange(language === "es" ? "en" : "es")}
+      />
 
       <IonContent className="rapago-profile-content">
         {loading && (

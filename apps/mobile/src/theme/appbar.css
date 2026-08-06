@@ -96,7 +96,15 @@
 .rp-appbar--root .rp-appbar__identity {
   flex-direction: column;
   align-items: flex-start;
-  gap: 1px;
+  gap: 2px;
+}
+
+/* Inicio respira un poco más que el resto: dos líneas de texto necesitan algo
+   más que 56px para no quedar apretadas contra los bordes. Aun así son 64
+   frente a los 92 (56+36) que costaba la versión de dos bandas: 28px menos de
+   cromo en la pantalla que más contenido tiene. */
+.rp-appbar--root .rp-appbar__row {
+  min-height: 64px;
 }
 
 .rp-appbar__identity h1 {
@@ -121,23 +129,39 @@
   border-radius: 4px;
 }
 
-/* Tamaño FIJO, el único de la app, y justificado: un logotipo que cambia de
-   tamaño entre un iPhone SE y un Pixel 7 Pro no es un logotipo, es un texto.
-   La escala fluida es correcta para contenido; la marca es constante. */
-.rp-appbar__wordmark {
-  font-size: 15px;
-  font-weight: 900;
-  letter-spacing: 0.1em;
-  line-height: 1.1;
+/* ---- Saludo de Inicio ----
+   "Hola," en peso normal y el NOMBRE en negrita: la jerarquía cae sobre la
+   persona, que es lo único que cambia entre un usuario y otro. Poner los dos
+   en 900 —como estaba antes— empasta la frase y la vuelve un bloque sólido sin
+   ritmo. */
+.rp-appbar__greeting {
+  max-width: 100%;
+  font-size: clamp(1rem, 4.4vw, 1.18rem);
+  font-weight: 500;
+  line-height: 1.15;
+  letter-spacing: -0.01em;
   color: var(--rp-text);
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 
-.rp-appbar__eyebrow {
-  font-size: var(--rp-fs-label, 0.72rem);
+.rp-appbar__greeting strong {
   font-weight: 800;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-  color: var(--rp-muted-soft, var(--rp-muted));
+}
+
+/* La frase con intención que se había perdido ("¿A dónde quieres ir?"). No es
+   decoración: es lo que convierte una barra de sistema en una bienvenida, y
+   además insinúa la acción principal de la pantalla. */
+.rp-appbar__subtitle {
+  max-width: 100%;
+  font-size: clamp(0.76rem, 3vw, 0.84rem);
+  font-weight: 600;
+  line-height: 1.2;
+  color: var(--rp-muted);
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 
 /* ---- Zona C / acciones ---- */
@@ -150,6 +174,14 @@
   flex: 0 0 auto;
 }
 
+/* ---- Botones de icono: fantasma, no encajonados ----
+   Antes cada icono vivía dentro de una caja de 12px de radio con borde propio,
+   mientras el avatar era un círculo dorado sólido. Dos formas y dos pesos
+   visuales distintos a 8px de distancia: eso es lo que hacía que la esquina
+   derecha se leyera como piezas de dos diseños pegadas.
+   Ahora el ÚNICO elemento con relleno es el avatar —el ancla de identidad— y
+   los iconos son fantasma sobre el fondo. Menos tinta, misma función, y la
+   jerarquía queda clara sin que nadie tenga que pensarla. */
 .rp-appbar__btn {
   position: relative;
   display: flex;
@@ -158,12 +190,19 @@
   width: 44px;
   height: 44px;
   padding: 0;
-  border-radius: 12px;
-  border: 1px solid var(--rp-icon-bd, var(--rp-border-c));
-  background: var(--rp-chrome, var(--rp-field-bg));
+  border-radius: 999px;
+  border: none;
+  background: transparent;
   color: var(--rp-icon-fg);
-  font-size: 20px;
+  font-size: 22px;
   cursor: pointer;
+  transition: background 140ms ease;
+}
+
+/* El realce aparece al tocar, no en reposo: en reposo la barra debe ser lo más
+   silenciosa posible. */
+.rp-appbar__btn:active {
+  background: var(--rp-chrome, var(--rp-field-bg));
 }
 
 /* 44px visuales con área táctil de 48. WCAG 2.5.8 lo permite explícitamente, y
@@ -216,6 +255,9 @@
   cursor: pointer;
 }
 
+/* Único elemento con relleno de toda la barra: es el ancla de identidad y el
+   punto de entrada a la cuenta. Un halo sutil lo despega del fondo fotográfico
+   sin recurrir a sombra proyectada (que sobre una foto se lee como suciedad). */
 .rp-appbar__avatar span {
   display: flex;
   align-items: center;
@@ -225,46 +267,16 @@
   border-radius: 999px;
   background: var(--rp-btn-primary);
   color: var(--rp-btn-primary-fg);
-  font-size: 0.72rem;
-  font-weight: 950;
-  letter-spacing: 0.02em;
+  font-size: 0.74rem;
+  font-weight: 900;
+  letter-spacing: 0.03em;
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--rp-gold, #d6a640) 35%, transparent);
 }
 
-/* ---- Segunda fila: saludo (sólo Inicio) ---- */
-.rp-appbar__greeting {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  width: min(100%, 460px);
-  margin-inline: auto;
-  min-height: 36px;
-  padding: 0 var(--rp-pad-x, 16px) 8px;
-}
-
-.rp-appbar__greeting span {
-  font-size: var(--rp-fs-body, 0.86rem);
-  /* 700 y no 900: un saludo no es la acción principal de la pantalla. En Inicio
-     del pasajero estaba a 900, más pesado que el propio botón de pedir viaje. */
-  font-weight: 700;
-  color: var(--rp-text);
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-}
-
-.rp-appbar__greeting em {
-  flex: 0 0 auto;
-  padding: 3px 9px;
-  border-radius: 999px;
-  border: 1px solid var(--rp-border-c);
-  background: var(--rp-field-bg);
-  color: var(--rp-muted);
-  font-size: 0.68rem;
-  font-style: normal;
-  font-weight: 850;
-  letter-spacing: 0.02em;
-  text-transform: uppercase;
-}
+/* La segunda banda del saludo vivía aquí. Se eliminó: el saludo subió a la fila
+   principal, junto al logo, y la pastilla de rol que lo acompañaba repetía un
+   dato que ya estaba en el eyebrow. Menos 28px de cromo y una redundancia
+   menos. */
 
 /* ---- Variante overlay ----
    Píldora flotante sobre mapas a pantalla completa. Coste en el flujo: CERO. */
@@ -443,9 +455,11 @@
 
 /* ---- Ajustes finos ---- */
 
-/* Bajo 360px el eyebrow del rol compite con el wordmark por el ancho. */
+/* En pantallas muy angostas (iPhone SE) la frase de intención cede el sitio: el
+   saludo con el nombre completo pesa más que la pregunta, y partir el nombre
+   sería peor que no mostrar el subtítulo. */
 @media (max-width: 360px) {
-  .rp-appbar__eyebrow {
+  .rp-appbar__subtitle {
     display: none;
   }
 }
